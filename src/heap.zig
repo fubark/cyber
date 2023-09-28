@@ -150,8 +150,16 @@ pub const HeapObject = extern union {
         return (self.head.typeId & vmc.CYC_TYPE_MASK) == vmc.CYC_TYPE_MASK;
     }
 
+    pub inline fn isPoolObject(self: *HeapObject) bool {
+        return (self.head.typeId & vmc.POOL_TYPE_MASK) == vmc.POOL_TYPE_MASK;
+    }
+
     pub inline fn getDListNode(self: *HeapObject) *DListNode {
-        return @ptrCast(@as([*]DListNode, @ptrCast(self)) - 1);
+        if (cy.Malloc == .zig) {
+            return @ptrFromInt(@intFromPtr(self) - @sizeOf(DListNode) - @sizeOf(u64));
+        } else {
+            return @ptrCast(@as([*]DListNode, @ptrCast(self)) - 1);
+        }
     }
 
     pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
@@ -507,21 +515,27 @@ pub const DListNode = extern struct {
     next: ?*DListNode,
 
     pub fn getHeapObject(self: *DListNode) *HeapObject {
-        return @ptrCast(@alignCast(@as([*]DListNode, @ptrCast(self)) + 1));
+        if (cy.Malloc == .zig) {
+            return @ptrFromInt(@intFromPtr(self) + @sizeOf(DListNode) + @sizeOf(u64));
+        } else {
+            return @ptrFromInt(@intFromPtr(self) + @sizeOf(DListNode));
+        }
     }
 };
 
 pub fn allocExternalObject(vm: *cy.VM, size: usize, comptime cyclable: bool) !*HeapObject {
     // Align with HeapObject so it can be casted.
     const addToCyclableList = comptime (cy.hasGC and cyclable);
-    const slice = try vm.alloc.alignedAlloc(u8, @alignOf(HeapObject), if (addToCyclableList) size + @sizeOf(DListNode) else size);
+
+    // An extra size field is included for the Zig allocator.
+    // u64 so it can be 8 byte aligned.
+    const ZigLenSize = if (cy.Malloc == .zig) @sizeOf(u64) else 0;
+    const PayloadSize = (if (addToCyclableList) @sizeOf(DListNode) else 0) + ZigLenSize;
+
+    const slice = try vm.alloc.alignedAlloc(u8, @alignOf(HeapObject), size + PayloadSize);
     defer {
         if (cy.Trace) {
-            if (addToCyclableList) {
-                cy.heap.traceAlloc(vm, @ptrCast(slice.ptr + @sizeOf(DListNode)));
-            } else {
-                cy.heap.traceAlloc(vm, @ptrCast(slice.ptr));
-            }
+            cy.heap.traceAlloc(vm, @ptrCast(slice.ptr + PayloadSize));
         }
     }
     if (addToCyclableList) {
@@ -533,6 +547,9 @@ pub fn allocExternalObject(vm: *cy.VM, size: usize, comptime cyclable: bool) !*H
         };
         vm.cyclableHead = node;
     }
+    if (cy.Malloc == .zig) {
+        @as(*u64, @ptrCast(slice.ptr + PayloadSize - ZigLenSize)).* = size;
+    }
     if (cy.TrackGlobalRC) {
         vm.refCounts += 1;
     }
@@ -540,11 +557,7 @@ pub fn allocExternalObject(vm: *cy.VM, size: usize, comptime cyclable: bool) !*H
         vm.trace.numRetains += 1;
         vm.trace.numRetainAttempts += 1;
     }
-    if (addToCyclableList) {
-        return @ptrCast(slice.ptr + @sizeOf(DListNode));
-    } else {
-        return @ptrCast(slice.ptr);
-    }
+    return @ptrCast(slice.ptr + PayloadSize);
 }
 
 /// Assumes new object will have an RC = 1.
@@ -617,13 +630,10 @@ fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize, comptime cyclabl
             log.debug("Missing object trace {*} {}", .{obj, obj.getTypeId()});
         }
     }
-    if (cy.hasGC and cyclable) {
-        const slice = (@as([*]align(@alignOf(HeapObject)) u8, @ptrCast(obj)) - @sizeOf(DListNode))[0..len + @sizeOf(DListNode)];
-        vm.alloc.free(slice);
-    } else {
-        const slice = @as([*]align(@alignOf(HeapObject)) u8, @ptrCast(obj))[0..len];
-        vm.alloc.free(slice);
-    }
+    const ZigLenSize = if (cy.Malloc == .zig) @sizeOf(u64) else 0;
+    const PayloadSize = (if (cy.hasGC and cyclable) @sizeOf(DListNode) else 0) + ZigLenSize;
+    const slice = (@as([*]align(@alignOf(HeapObject)) u8, @ptrCast(obj)) - PayloadSize)[0..len + PayloadSize];
+    vm.alloc.free(slice);
 }
 
 /// typeId should be cleared in trace mode since tracking may still hold a reference to the object.
@@ -743,7 +753,7 @@ pub fn allocHostObject(vm: *cy.VM, typeId: rt.TypeId, numBytes: usize) linksecti
     if (numBytes <= MaxPoolObjectUserBytes) {
         const obj = try allocPoolObject(vm);
         obj.head = .{
-            .typeId = typeId,
+            .typeId = typeId | vmc.POOL_TYPE_MASK,
             .rc = 1,
         };
         return @ptrFromInt(@intFromPtr(obj) + 8);
@@ -761,7 +771,7 @@ pub fn allocHostCycObject(vm: *cy.VM, typeId: rt.TypeId, numBytes: usize) linkse
     if (numBytes <= MaxPoolObjectUserBytes) {
         const obj = try allocPoolObject(vm);
         obj.head = .{
-            .typeId = typeId | vmc.CYC_TYPE_MASK,
+            .typeId = typeId | vmc.CYC_TYPE_MASK | vmc.POOL_TYPE_MASK,
             .rc = 1,
         };
         return @ptrFromInt(@intFromPtr(obj) + 8);
@@ -1429,8 +1439,8 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
         if (obj.isFreed()) {
             cy.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});
         } else {
-            log.tracev("free type={}({s})", .{
-                obj.getTypeId(), vm.getTypeName(obj.getTypeId()),
+            log.tracev("free type={}({s}) {*}", .{
+                obj.getTypeId(), vm.getTypeName(obj.getTypeId()), obj,
             });
         }
     }
@@ -1708,14 +1718,24 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                 }
                 if (free) {
                     if (entry.data.hostObject.finalizer) |finalizer| {
-                        const size = @as(cy.ObjectFinalizerFn, @ptrCast(@alignCast(finalizer)))(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                        if (size <= MaxPoolObjectUserBytes) {
+                        @as(cy.ObjectFinalizerFn, @ptrCast(@alignCast(finalizer)))(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
+                        if (obj.isPoolObject()) {
                             freePoolObject(vm, obj);
                         } else {
                             if (obj.isCyclable()) {
-                                freeExternalObject(vm, obj, 8 + size, true);
+                                if (cy.Malloc == .zig) {
+                                    const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
+                                    freeExternalObject(vm, obj, @intCast(size), true);
+                                } else {
+                                    freeExternalObject(vm, obj, 1, true);
+                                }
                             } else {
-                                freeExternalObject(vm, obj, 8 + size, false);
+                                if (cy.Malloc == .zig) {
+                                    const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
+                                    freeExternalObject(vm, obj, @intCast(size), false);
+                                } else {
+                                    freeExternalObject(vm, obj, 1, false);
+                                }
                             }
                         }
                     }

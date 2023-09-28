@@ -330,13 +330,15 @@ pub const Options = struct {
     // },
 
 fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.OptimizeMode) Options {
-    var malloc: config.Allocator = .malloc;
+    var malloc: config.Allocator = undefined;
     // Use mimalloc for fast builds.
     if (target.getCpuArch().isWasm()) {
         malloc = .zig;
     } else {
         if (optimize == .ReleaseFast) {
             malloc = .mimalloc;
+        } else {
+            malloc = .zig;
         }
     }
     return .{

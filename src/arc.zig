@@ -215,6 +215,7 @@ pub fn performGC(vm: *cy.VM) !GCResult {
 }
 
 fn performMark(vm: *cy.VM) !void {
+    log.tracev("Perform mark.", .{});
     try markMainStackRoots(vm);
 
     // Mark globals.
@@ -226,6 +227,7 @@ fn performMark(vm: *cy.VM) !void {
 }
 
 fn performSweep(vm: *cy.VM) !GCResult {
+    log.tracev("Perform sweep.", .{});
     // Collect cyc nodes and release their children (child cyc nodes are skipped).
     if (cy.Trace) {
         vm.countFrees = true;
@@ -238,6 +240,8 @@ fn performSweep(vm: *cy.VM) !GCResult {
     }
     var cycObjs: std.ArrayListUnmanaged(*cy.HeapObject) = .{};
     defer cycObjs.deinit(vm.alloc);
+
+    log.tracev("Sweep heap pages.", .{});
     for (vm.heapPages.items()) |page| {
         var i: u32 = 1;
         while (i < page.objects.len) {
@@ -258,6 +262,7 @@ fn performSweep(vm: *cy.VM) !GCResult {
     }
 
     // Traverse non-pool cyc nodes.
+    log.tracev("Sweep non-pool cyc nodes.", .{});
     var mbNode: ?*cy.heap.DListNode = vm.cyclableHead;
     while (mbNode) |node| {
         const obj = node.getHeapObject();

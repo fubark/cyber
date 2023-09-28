@@ -4927,7 +4927,7 @@ comptime {
 }
 
 const DummyCyclableNode = extern struct {
-    prev: ?*cy.heap.DListNode,
+    prev: ?*cy.heap.DListNode align(@alignOf(HeapObject)), // Ensure same alignment as a heap object.
     next: ?*cy.heap.DListNode,
     typeId: u32,
 };

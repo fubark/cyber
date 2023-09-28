@@ -118,11 +118,11 @@ pub const Chunk = struct {
     modId: cy.ModuleId,
 
     /// For binding @host func declarations.
-    funcLoader: ?cy.HostFuncLoaderFn = null,
+    funcLoader: ?cy.FuncLoaderFn = null,
     /// For binding @host var declarations.
-    varLoader: ?cy.HostVarLoaderFn = null,
+    varLoader: ?cy.VarLoaderFn = null,
     /// For binding @host type declarations.
-    typeLoader: ?cy.HostTypeLoaderFn = null,
+    typeLoader: ?cy.TypeLoaderFn = null,
     /// Run after type declarations are loaded.
     postTypeLoad: ?cy.PostLoadModuleFn = null,
     /// Run after declarations have been loaded.

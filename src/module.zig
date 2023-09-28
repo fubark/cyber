@@ -746,9 +746,9 @@ test "module internals" {
     } else {
         try t.eq(@sizeOf(ModuleFuncNode), 16);
     }
-    if (builtin.mode == .Debug) {
-        try t.eq(@sizeOf(ModuleSym), 24);
-    } else {
+    if (builtin.mode == .ReleaseFast) {
         try t.eq(@sizeOf(ModuleSym), 16);
+    } else {
+        try t.eq(@sizeOf(ModuleSym), 24);
     }
 }

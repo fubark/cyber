@@ -11,10 +11,6 @@ pub fn collect(force: bool) void {
     c.mi_collect(force);
 }
 
-const kb = 1024;
-const BigSize = 4 * kb;
-
-// Uses page allocator for objects > 4kb, otherwise mimalloc is used.
 pub const Allocator = struct {
     dummy: bool,
 
@@ -51,13 +47,9 @@ pub const Allocator = struct {
         ret_addr: usize,
     ) ?[*]u8 {
         _ = ptr;
+        _ = ret_addr;
         const alignment = @as(usize, 1) << @intCast(log2_align);
-        const effLen = len + alignment - 1;
-        if (effLen > BigSize) {
-            return std.heap.page_allocator.rawAlloc(len, log2_align, ret_addr);
-        } else {
-            return @ptrCast(c.mi_malloc_aligned(len, alignment));
-        }
+        return @ptrCast(c.mi_malloc_aligned(len, alignment));
     }
 
     fn resize(
@@ -68,25 +60,15 @@ pub const Allocator = struct {
         ret_addr: usize,
     ) bool {
         _ = ptr;
-        const alignment = @as(usize, 1) << @intCast(log2_align);
-        const effLen = buf.len + alignment - 1;
-        if (effLen > BigSize) {
-            if (new_len > buf.len) {
-                return std.heap.page_allocator.rawResize(buf, log2_align, new_len, ret_addr);
-            } else if (new_len == buf.len) {
+        _ = log2_align;
+        _ = ret_addr;
+        if (new_len > buf.len) {
+            if (c.mi_expand(buf.ptr, new_len)) |_| {
                 return true;
-            } else {
-                return false;
             }
+            return false;
         } else {
-            if (new_len > buf.len) {
-                if (c.mi_expand(buf.ptr, new_len)) |_| {
-                    return true;
-                }
-                return false;
-            } else {
-                return true;
-            }
+            return true;
         }
     }
 
@@ -97,12 +79,8 @@ pub const Allocator = struct {
         ret_addr: usize,
     ) void {
         _ = ptr;
-        const alignment = @as(usize, 1) << @intCast(log2_align);
-        const effLen = buf.len + alignment - 1;
-        if (effLen > BigSize) {
-            std.heap.page_allocator.rawFree(buf, log2_align, ret_addr);
-        } else {
-            c.mi_free(buf.ptr);
-        }
+        _ = ret_addr;
+        _ = log2_align;
+        c.mi_free(buf.ptr);
     }
 };

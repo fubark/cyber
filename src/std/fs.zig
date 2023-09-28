@@ -42,7 +42,7 @@ pub const File = extern struct {
     }
 };
 
-pub fn fileFinalizer(vm: *cy.UserVM, obj: ?*anyopaque) callconv(.C) usize {
+pub fn fileFinalizer(vm: *cy.UserVM, obj: ?*anyopaque) callconv(.C) void {
     if (cy.hasStdFiles) {
         const file: *File = @ptrCast(@alignCast(obj));
         if (file.hasReadBuf) {
@@ -52,15 +52,13 @@ pub fn fileFinalizer(vm: *cy.UserVM, obj: ?*anyopaque) callconv(.C) usize {
             file.close();
         }
     }
-    return @sizeOf(File);
 }
 
-pub fn dirFinalizer(_: *cy.UserVM, obj: ?*anyopaque) callconv(.C) usize {
+pub fn dirFinalizer(_: *cy.UserVM, obj: ?*anyopaque) callconv(.C) void {
     if (cy.hasStdFiles) {
         const dir: *Dir = @ptrCast(@alignCast(obj));
         dir.close();
     }
-    return @sizeOf(Dir);
 }
 
 pub const Dir = extern struct {
@@ -93,7 +91,7 @@ pub const Dir = extern struct {
     }
 };
 
-pub fn dirIteratorFinalizer(_: *cy.UserVM, obj: ?*anyopaque) callconv(.C) usize {
+pub fn dirIteratorFinalizer(_: *cy.UserVM, obj: ?*anyopaque) callconv(.C) void {
     if (cy.hasStdFiles) {
         var dir: *DirIterator = @ptrCast(@alignCast(obj));
         if (dir.recursive) {
@@ -101,7 +99,6 @@ pub fn dirIteratorFinalizer(_: *cy.UserVM, obj: ?*anyopaque) callconv(.C) usize 
             walker.deinit();   
         }
     }
-    return @sizeOf(DirIterator);
 }
 
 pub fn dirIteratorGetChildren(_: *cy.UserVM, obj: ?*anyopaque) callconv(.C) cy.ValueSlice {

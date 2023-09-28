@@ -75,10 +75,10 @@ CsStr csGetBuild();
 CsStr csGetCommit();
 
 // @host func is binded to this function pointer signature.
-typedef CsValue (*CsHostFuncFn)(CsVM* vm, const CsValue* args, uint8_t nargs);
+typedef CsValue (*CsFuncFn)(CsVM* vm, const CsValue* args, uint8_t nargs);
 
 // Internal @host func used to do inline caching.
-typedef void (*CsHostQuickenFuncFn)(CsVM* vm, uint8_t* pc, const CsValue* args, uint8_t nargs);
+typedef void (*CsQuickenFuncFn)(CsVM* vm, uint8_t* pc, const CsValue* args, uint8_t nargs);
 
 // Given the current module's resolved URI and the "to be" imported module specifier,
 // write the resolved specifier in `outUri` and return true, or return false.
@@ -99,7 +99,7 @@ typedef void (*CsPostLoadModuleFn)(CsVM* vm, uint32_t modId);
 typedef void (*CsModuleDestroyFn)(CsVM* vm, uint32_t modId);
 
 // Info about a @host func.
-typedef struct CsHostFuncInfo {
+typedef struct CsFuncInfo {
     // The module it belongs to.
     uint32_t modId;
     // The name of the func.
@@ -109,29 +109,29 @@ typedef struct CsHostFuncInfo {
     // A counter that tracks it's current position among all @host funcs in the module.
     // This is useful if you want to bind an array of function pointers to @host funcs.
     uint32_t idx;
-} CsHostFuncInfo;
+} CsFuncInfo;
 
 typedef enum {
     // Most @host funcs have this type.
-    HOST_FUNC_STANDARD,
+    CS_FUNC_STANDARD,
     // Some internal functions need this to perform inline caching.
-    HOST_FUNC_QUICKEN,
-} HostFuncType;
+    CS_FUNC_QUICKEN,
+} CsFuncType;
 
 // Result given to Cyber when binding a @host func.
-typedef struct CsHostFuncResult {
-    // Pointer to the binded function. (CsHostFuncFn/CsHostQuickenFuncFn)
+typedef struct CsFuncResult {
+    // Pointer to the binded function. (CsFuncFn/CsQuickenFuncFn)
     void* ptr;
-    // `HostFuncType`. By default, this is `HOST_FUNC_STANDARD`.
+    // `CsFuncType`. By default, this is `CS_FUNC_STANDARD`.
     uint8_t type;
-} CsHostFuncResult;
+} CsFuncResult;
 
 // Given info about a @host func, write it's function pointer to `out->ptr` and return true,
 // or return false.
-typedef bool (*CsHostFuncLoaderFn)(CsVM* vm, CsHostFuncInfo funcInfo, CsHostFuncResult* out);
+typedef bool (*CsFuncLoaderFn)(CsVM* vm, CsFuncInfo funcInfo, CsFuncResult* out);
 
 // Info about a @host var.
-typedef struct CsHostVarInfo {
+typedef struct CsVarInfo {
     // The module it belongs to.
     uint32_t modId;
     // The name of the var.
@@ -139,15 +139,15 @@ typedef struct CsHostVarInfo {
     // A counter that tracks it's current position among all @host vars in the module.
     // This is useful if you want to bind an array of `CsValue`s to @host vars.
     uint32_t idx;
-} CsHostVarInfo;
+} CsVarInfo;
 
 // Given info about a @host var, write a value to `out` and return true, or return false.
 // The value is consumed by the module. If the value should outlive the module,
 // call `csRetain` before handing it over.
-typedef bool (*CsHostVarLoaderFn)(CsVM* vm, CsHostVarInfo funcInfo, CsValue* out);
+typedef bool (*CsVarLoaderFn)(CsVM* vm, CsVarInfo funcInfo, CsValue* out);
 
 // Info about a @host type.
-typedef struct CsHostTypeInfo {
+typedef struct CsTypeInfo {
     // The module it belongs to.
     uint32_t modId;
     // The name of the type.
@@ -155,25 +155,21 @@ typedef struct CsHostTypeInfo {
     // A counter that tracks it's current position among all @host types in the module.
     // This is useful if you want to bind an array of data to @host types.
     uint32_t idx;
-} CsHostTypeInfo;
+} CsTypeInfo;
 
 typedef enum {
     // @host object type that needs to be created.
-    HOST_TYPE_OBJECT,
+    CS_TYPE_OBJECT,
     // @host object type that is hardcoded into the VM and already has a semantic and runtime type id.
-    HOST_TYPE_CORE_OBJECT,
-} HostTypeType;
+    CS_TYPE_CORE_OBJECT,
+} CsTypeType;
 
 // Given an object, return the pointer of an array and the number of children.
 // If there are no children, return NULL and 0 for the length.
 typedef CsValueSlice (*CsObjectGetChildrenFn)(CsVM* vm, void* obj);
 
 // Use the finalizer to perform cleanup tasks for the object (eg. free a resource handle)
-// and return the number of bytes the object occupies.
-//
-// When objects of the same type have dynamically sized buffers, the size must be recorded somewhere
-// after instantiation so that the finalizer can return the correct size. In that case, it is
-// recommended to store the size inside your object layout for performance.
+// before it is finally freed by the VM.
 //
 // Unlike finalizers declared in user scripts, this finalizer is guaranteed to be invoked.
 //
@@ -181,11 +177,11 @@ typedef CsValueSlice (*CsObjectGetChildrenFn)(CsVM* vm, void* obj);
 //       is undefined behavior because the VM may be running a GC task.
 //
 // NOTE: If the object retains child VM objects, accessing them is undefined behavior
-//       because they have been freed before the finalizer was invoked.
-typedef size_t (*CsObjectFinalizerFn)(CsVM* vm, void* obj);
+//       because they could have freed before the finalizer was invoked.
+typedef void (*CsObjectFinalizerFn)(CsVM* vm, void* obj);
 
 // Result given to Cyber when binding a @host type.
-typedef struct CsHostTypeResult {
+typedef struct CsTypeResult {
     union {
         struct {
             // The created runtime type id will be written to `outTypeId`.
@@ -205,12 +201,12 @@ typedef struct CsHostTypeResult {
             CsSemaTypeId semaTypeId;
         } coreObject;
     } data;
-    // `HostTypeType`. By default, this is `HOST_TYPE_OBJECT`.
+    // `CsTypeType`. By default, this is `CS_TYPE_OBJECT`.
     uint8_t type;
-} CsHostTypeResult;
+} CsTypeResult;
 
 // Given info about a @host type, write the result to `out` and return true, or return false.
-typedef bool (*CsHostTypeLoaderFn)(CsVM* vm, CsHostTypeInfo typeInfo, CsHostTypeResult* out);
+typedef bool (*CsTypeLoaderFn)(CsVM* vm, CsTypeInfo typeInfo, CsTypeResult* out);
 
 // Module loader config.
 typedef struct CsModuleLoaderResult {
@@ -219,11 +215,11 @@ typedef struct CsModuleLoaderResult {
     // Whether the provided `src` is from static memory or heap memory.
     bool srcIsStatic;
     // Pointer to callback or null.
-    CsHostFuncLoaderFn funcLoader;
+    CsFuncLoaderFn funcLoader;
     // Pointer to callback or null.
-    CsHostVarLoaderFn varLoader;
+    CsVarLoaderFn varLoader;
     // Pointer to callback or null.
-    CsHostTypeLoaderFn typeLoader;
+    CsTypeLoaderFn typeLoader;
     // Pointer to callback or null.
     CsPostTypeLoadModuleFn preLoad;
     // Pointer to callback or null.
@@ -284,7 +280,7 @@ void csSetUserData(CsVM* vm, void* userData);
 extern bool csVerbose;
 
 // Modules.
-void csSetModuleFunc(CsVM* vm, CsModuleId modId, CsStr name, uint32_t numParams, CsHostFuncFn func);
+void csSetModuleFunc(CsVM* vm, CsModuleId modId, CsStr name, uint32_t numParams, CsFuncFn func);
 void csSetModuleVar(CsVM* vm, CsModuleId modId, CsStr name, CsValue val);
 
 // 
@@ -325,6 +321,8 @@ void csFreeStr(CsVM* vm, CsStr str);
 
 //
 // [ Values ]
+// Functions that begin with `csNew` instantiate objects on the heap and
+// automatically retain +1 refcount.
 //
 
 // Create values.
@@ -337,14 +335,32 @@ CsValue csBool(bool b);
 CsValue csInteger(int64_t n);
 CsValue csInteger32(int32_t n);
 CsValue csFloat(double f);
-CsValue csTagLiteral(CsVM* vm, CsStr str);
+CsValue csHostObject(void* ptr);
+CsValue csSymbol(CsVM* vm, CsStr str);
+
+// `csNewString` is the recommended way to create a new string. Use `Astring` or `Ustring` if you know it
+// will be ASCII or UTF-8 respectively.
 CsValue csNewString(CsVM* vm, CsStr str);
 CsValue csNewAstring(CsVM* vm, CsStr str);
 CsValue csNewUstring(CsVM* vm, CsStr str, uint32_t charLen);
-CsValue csNewList(CsVM* vm);
-CsValue csNewMap(CsVM* vm);
-CsValue csNewHostFunc(CsVM* vm, CsHostFuncFn func, uint32_t numParams);
+
+CsValue csNewEmptyList(CsVM* vm);
+CsValue csNewList(CsVM* vm, const CsValue* vals, size_t len);
+CsValue csNewEmptyMap(CsVM* vm);
+CsValue csNewFunc(CsVM* vm, CsFuncFn func, uint32_t numParams);
 CsValue csNewPointer(CsVM* vm, void* ptr);
+
+// Instantiating a `@host type object` requires the `typeId` obtained from `CsTypeLoader` and
+// the number of bytes the object will occupy. Objects of the same type can have different sizes.
+// A `CsValue` which contains the object pointer is returned. Call `csAsHostObject` to obtain the pointer
+// or use `csNewHostObjectPtr` to instantiate instead.
+CsValue csNewHostObject(CsVM* vm, CsTypeId typeId, size_t n);
+
+// Like `csNewHostObject` but returns the object's pointer. Wrap it into a value with `csHostObject`.
+void* csNewHostObjectPtr(CsVM* vm, CsTypeId typeId, size_t n);
+
+// Instantiates a standard `type object`.
+CsValue csNewVmObject(CsVM* vm, CsTypeId typeId);
 
 // Values.
 CsTypeId csGetTypeId(CsValue val);
@@ -354,9 +370,10 @@ double csAsFloat(CsValue val);
 bool csToBool(CsValue val);
 bool csAsBool(CsValue val);
 int64_t csAsInteger(CsValue val);
-uint32_t csAsTagLiteralId(CsValue val);
+uint32_t csAsSymbolId(CsValue val);
 CsStr csToTempString(CsVM* vm, CsValue val);
 CsStr csToTempRawString(CsVM* vm, CsValue val);
+void* csAsHostObject(CsValue val);
 
 // Lists.
 size_t csListLen(CsValue list);

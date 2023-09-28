@@ -79,8 +79,11 @@ typedef struct IndexSlice {
 #define NULL_U32 UINT32_MAX
 #define NULL_U8 UINT8_MAX
 
-// 0011111111111111
-#define TYPE_MASK ((u32)0x3fffffff)
+// 0001111111111111
+#define TYPE_MASK ((u32)0x1fffffff)
+
+// 0010000000000000: Pool object bit. VM checks this bit to free host objects (allocated from embedded API).
+#define POOL_TYPE_MASK ((u32)0x20000000)
 
 // 0100000000000000: Cyclable type bit.
 #define CYC_TYPE_MASK ((u32)0x40000000)

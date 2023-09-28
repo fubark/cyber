@@ -201,9 +201,9 @@ pub const ModuleResolverFn = *const fn (*UserVM, ChunkId, curUri: Str, spec: Str
 pub const ModuleLoaderResult = extern struct {
     src: Str,
     srcIsStatic: bool,
-    funcLoader: ?HostFuncLoaderFn = null,
-    varLoader: ?HostVarLoaderFn = null,
-    typeLoader: ?HostTypeLoaderFn = null,
+    funcLoader: ?FuncLoaderFn = null,
+    varLoader: ?VarLoaderFn = null,
+    typeLoader: ?TypeLoaderFn = null,
     postTypeLoad: ?PostTypeLoadModuleFn = null,
     postLoad: ?PostLoadModuleFn = null,
     destroy: ?ModuleDestroyFn = null,
@@ -223,13 +223,13 @@ pub const HostFuncResult = extern struct {
     ptr: vmc.HostFuncFn,
     type: HostFuncType,
 };
-pub const HostFuncLoaderFn = *const fn (*UserVM, HostFuncInfo, *HostFuncResult) callconv(.C) bool;
+pub const FuncLoaderFn = *const fn (*UserVM, HostFuncInfo, *HostFuncResult) callconv(.C) bool;
 pub const HostVarInfo = extern struct {
     modId: vmc.ModuleId,
     name: Str,
     idx: u32,
 };
-pub const HostVarLoaderFn = *const fn (*UserVM, HostVarInfo, *Value) callconv(.C) bool; 
+pub const VarLoaderFn = *const fn (*UserVM, HostVarInfo, *Value) callconv(.C) bool; 
 pub const HostTypeType = enum(u8) {
     object,
     coreObject,
@@ -262,9 +262,9 @@ pub const ValueSlice = extern struct {
         return self.ptr[0..self.len];
     }
 };
-pub const HostTypeLoaderFn = *const fn (*UserVM, HostTypeInfo, *HostTypeResult) callconv(.C) bool;
+pub const TypeLoaderFn = *const fn (*UserVM, HostTypeInfo, *HostTypeResult) callconv(.C) bool;
 pub const ObjectGetChildrenFn = *const fn (*UserVM, ?*anyopaque) callconv (.C) ValueSlice;
-pub const ObjectFinalizerFn = *const fn (*UserVM, ?*anyopaque) callconv (.C) usize;
+pub const ObjectFinalizerFn = *const fn (*UserVM, ?*anyopaque) callconv (.C) void;
 pub const PrintFn = *const fn (*UserVM, str: Str) callconv(.C) void;
 
 pub const cli = @import("cli.zig");

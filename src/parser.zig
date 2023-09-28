@@ -4762,10 +4762,10 @@ const StaticDecl = struct {
 test "parser internals." {
     try t.eq(@sizeOf(Token), 8);
     try t.eq(@alignOf(Token), 4);
-    if (builtin.mode == .Debug) {
-        try t.eq(@sizeOf(Node), 28);
-    } else {
+    if (builtin.mode == .ReleaseFast) {
         try t.eq(@sizeOf(Node), 24);
+    } else {
+        try t.eq(@sizeOf(Node), 28);
     }
     try t.eq(@sizeOf(TokenizeState), 4);
 

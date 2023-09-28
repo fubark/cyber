@@ -155,7 +155,7 @@ export fn csPerformGC(vm: *cy.UserVM) c.CsGCResult {
     };
 }
 
-export fn csSetModuleFunc(vm: *cy.UserVM, modId: cy.ModuleId, cname: cy.Str, numParams: u32, func: c.CsHostFuncFn) void {
+export fn csSetModuleFunc(vm: *cy.UserVM, modId: cy.ModuleId, cname: cy.Str, numParams: u32, func: c.CsFuncFn) void {
     const symName = cname.slice();
     const mod = vm.internal().compiler.sema.getModulePtr(modId);
     mod.setNativeFuncExt(vm.internal().compiler, symName, true, numParams, @ptrCast(func)) catch fatal();
@@ -231,20 +231,20 @@ export fn csNewMap(vm: *cy.UserVM) Value {
     return vm.allocEmptyMap() catch fatal();
 }
 
-export fn csNewHostFunc(vm: *cy.UserVM, func: c.CsHostFuncFn, numParams: u32) Value {
+export fn csNewFunc(vm: *cy.UserVM, func: c.CsFuncFn, numParams: u32) Value {
     const funcSigId = vm.ensureUntypedFuncSig(numParams) catch fatal();
     return cy.heap.allocNativeFunc1(vm.internal(), @ptrCast(func), numParams, funcSigId, null) catch fatal();
 }
 
-test "csNewHostFunc()" {
+test "csNewFunc()" {
     const vm = c.csCreate();
     defer c.csDestroy(vm);
 
-    const val = c.csNewHostFunc(vm, @ptrFromInt(8), 2);
+    const val = c.csNewFunc(vm, @ptrFromInt(8), 2);
     try t.eq(c.csGetTypeId(val), rt.NativeFuncT);
 }
 
-export fn csTagLiteral(vm: *cy.UserVM, str: cy.Str) Value {
+export fn csSymbol(vm: *cy.UserVM, str: cy.Str) Value {
     const id = vm.internal().ensureSymbolExt(str.slice(), true) catch fatal();
     return Value.initSymbol(@intCast(id));
 }
@@ -301,25 +301,25 @@ test "csAsInteger()" {
     try t.eq(c.csAsInteger(c.csInteger(123)), 123);
 }
 
-export fn csAsTagLiteralId(val: Value) u32 {
+export fn csAsSymbolId(val: Value) u32 {
     return val.asSymbolId();
 }
 
-test "csAsTagLiteralId()" {
+test "csAsSymbolId()" {
     const vm = c.csCreate();
     defer c.csDestroy(vm);
 
     var str = initStrSlice("foo");
-    var val = c.csTagLiteral(vm, str);
-    try t.eq(c.csAsTagLiteralId(val), 0);
+    var val = c.csSymbol(vm, str);
+    try t.eq(c.csAsSymbolId(val), 0);
 
     str = initStrSlice("bar");
-    val = c.csTagLiteral(vm, str);
-    try t.eq(c.csAsTagLiteralId(val), 1);
+    val = c.csSymbol(vm, str);
+    try t.eq(c.csAsSymbolId(val), 1);
 
     str = initStrSlice("foo");
-    val = c.csTagLiteral(vm, str);
-    try t.eq(c.csAsTagLiteralId(val), 0);
+    val = c.csSymbol(vm, str);
+    try t.eq(c.csAsSymbolId(val), 0);
 }
 
 export fn csToTempString(vm: *cy.UserVM, val: Value) cy.Str {

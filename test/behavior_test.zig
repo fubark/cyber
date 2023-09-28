@@ -2254,7 +2254,7 @@ test "Local variable assignment." {
     try evalPass(.{
         .preEval = struct {
             fn func(run: *VMrunner) void {
-                run.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
+                run.vm.fillUndefinedStackSpace(cy.Value.initNoCycPtr(null));
             }
         }.func,
     },
@@ -2268,7 +2268,7 @@ test "Local variable assignment." {
     try evalPass(.{
         .preEval = struct {
             fn func(run: *VMrunner) void {
-                run.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
+                run.vm.fillUndefinedStackSpace(cy.Value.initNoCycPtr(null));
             }
         }.func,
     },

@@ -243,7 +243,7 @@ pub const HostTypeResult = extern struct {
     data: extern union {
         object: extern struct {
             typeId: *rt.TypeId,
-            semaTypeId: *types.TypeId,
+            semaTypeId: ?*types.TypeId,
             getChildren: ?ObjectGetChildrenFn,
             finalizer: ?ObjectFinalizerFn,
         },

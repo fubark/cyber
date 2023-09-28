@@ -114,6 +114,7 @@ const funcs = [_]NameFunc{
     .{"bool", btBool, .standard},
     .{"char", char, .standard},
     .{"copy", copy, .standard},
+    .{"dump", dump, .standard},
     .{"errorReport", errorReport, .standard},
     .{"isAlpha", isAlpha, .standard},
     .{"isDigit", isDigit, .standard},
@@ -270,7 +271,22 @@ pub fn runestr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     }
 }
 
+pub fn dump(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const alloc = vm.allocator();
+    const res = allocToCyon(vm, alloc, args[0]) catch cy.fatal();
+    defer alloc.free(res);
+    vm.internal().print(vm, cy.Str.initSlice(res));
+    return Value.None;
+}
+
 pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const alloc = vm.allocator();
+    const res = allocToCyon(vm, alloc, args[0]) catch cy.fatal();
+    defer alloc.free(res);
+    return vm.allocStringInfer(res) catch fatal();
+}
+
+fn allocToCyon(vm: *cy.UserVM, alloc: std.mem.Allocator, root: Value) ![]const u8 {
     const S = struct {
         fn encodeMap(ctx: *cy.EncodeMapContext, val: cy.Value) anyerror!void {
             const uservm = cy.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
@@ -370,12 +386,7 @@ pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
             }
         }
     };
-    const root = args[0];
-    const alloc = vm.allocator();
-
-    const cyon = cy.encodeCyon(alloc, vm, root, S.encodeRoot) catch fatal();
-    defer alloc.free(cyon);
-    return vm.allocStringInfer(cyon) catch fatal();
+    return try cy.encodeCyon(alloc, vm, root, S.encodeRoot);
 }
 
 pub fn parseCyber(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {

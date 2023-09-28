@@ -582,7 +582,7 @@ pub fn listJoinString(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(c
             std.mem.copy(u8, buf[dst..dst+slice.len], slice);
             dst += slice.len;
         }
-        return Value.initPtr(newObj);
+        return Value.initNoCycPtr(newObj);
     } else {
         // Empty string.
         return Value.initStaticAstring(0, 0);
@@ -768,7 +768,7 @@ pub fn stringUpper(comptime T: cy.StringType) cy.ZHostFuncFn {
                 const new = vm.allocUnsetRawStringObject(str.len) catch fatal();
                 const newBuf = new.rawstring.getSlice();
                 _ = std.ascii.upperString(newBuf, str);
-                return Value.initPtr(new);
+                return Value.initNoCycPtr(new);
             } else fatal();
         }
     };
@@ -794,7 +794,7 @@ pub fn stringLower(comptime T: cy.StringType) cy.ZHostFuncFn {
                 const new = vm.allocUnsetRawStringObject(str.len) catch fatal();
                 const newBuf = new.rawstring.getSlice();
                 _ = std.ascii.lowerString(newBuf, str);
-                return Value.initPtr(new);
+                return Value.initNoCycPtr(new);
             } else fatal();
         }
     };
@@ -985,7 +985,7 @@ fn rawStringInsertByteCommon(vm: *cy.UserVM, str: []const u8, indexv: Value, val
     std.mem.copy(u8, buf[0..uidx], str[0..uidx]);
     buf[uidx] = byte;
     std.mem.copy(u8, buf[uidx+1..], str[uidx..]);
-    return Value.initPtr(new);
+    return Value.initNoCycPtr(new);
 }
 
 fn rawStringInsertByte(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
@@ -1070,7 +1070,7 @@ fn stringRepeat(comptime T: cy.StringType) cy.ZHostFuncFn {
                     dst += @intCast(str.len);
                 }
 
-                return Value.initPtr(new);
+                return Value.initNoCycPtr(new);
             } else {
                 if (un == 0) {
                     if (isRawStringObject(T)) {
@@ -1081,7 +1081,7 @@ fn stringRepeat(comptime T: cy.StringType) cy.ZHostFuncFn {
                 } else {
                     if (isHeapString(T)) {
                         vm.retainObject(obj);
-                        return Value.initPtr(obj);
+                        return Value.initNoCycPtr(obj);
                     } else {
                         return args[0];
                     }
@@ -1307,7 +1307,7 @@ fn stringReplace(comptime T: cy.StringType) cy.ZHostFuncFn {
                 } else {
                     if (T != .staticAstring) {
                         vm.retainObject(obj);
-                        return Value.initPtr(obj);
+                        return Value.initNoCycPtr(obj);
                     } else {
                         return args[0];
                     }
@@ -1318,7 +1318,7 @@ fn stringReplace(comptime T: cy.StringType) cy.ZHostFuncFn {
                 } else {
                     if (T != .staticUstring) {
                         vm.retainObject(obj);
-                        return Value.initPtr(obj);
+                        return Value.initNoCycPtr(obj);
                     } else {
                         return args[0];
                     }
@@ -1337,10 +1337,10 @@ fn stringReplace(comptime T: cy.StringType) cy.ZHostFuncFn {
                     const newBuf = new.rawstring.getSlice();
                     const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
                     cy.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
-                    return Value.initPtr(new);
+                    return Value.initNoCycPtr(new);
                 } else {
                     vm.retainObject(obj);
-                    return Value.initPtr(obj);
+                    return Value.initNoCycPtr(obj);
                 }
             } else fatal();
         }
@@ -1537,7 +1537,7 @@ fn stringInsert(comptime T: cy.StringType) cy.ZHostFuncFn {
                 std.mem.copy(u8, buf[0..uidx], str[0..uidx]);
                 std.mem.copy(u8, buf[uidx..uidx+insert.len], insert);
                 std.mem.copy(u8, buf[uidx+insert.len..], str[uidx..]);
-                return Value.initPtr(new);
+                return Value.initNoCycPtr(new);
             } else fatal();
         }
     };

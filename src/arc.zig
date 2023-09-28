@@ -383,10 +383,10 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
             }
         },
         rt.ListIteratorT => {
-            markValue(vm, cy.Value.initPtr(obj.listIter.list));
+            markValue(vm, cy.Value.initNoCycPtr(obj.listIter.list));
         },
         rt.MapIteratorT => {
-            markValue(vm, cy.Value.initPtr(obj.mapIter.map));
+            markValue(vm, cy.Value.initNoCycPtr(obj.mapIter.map));
         },
         rt.ClosureT => {
             const vals = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
@@ -474,7 +474,7 @@ pub fn checkGlobalRC(vm: *cy.VM) !void {
                     const typeName = vm.getTypeName(it.key_ptr.*.getTypeId());
                     const msg = try std.fmt.bufPrint(&buf, "Init alloc: {*}, type: {s}, rc: {} at pc: {}\nval={s}", .{
                         it.key_ptr.*, typeName, it.key_ptr.*.head.rc, trace.allocPc,
-                        vm.valueToTempString(cy.Value.initPtr(it.key_ptr.*)),
+                        vm.valueToTempString(cy.Value.initNoCycPtr(it.key_ptr.*)),
                     });
                     try cy.debug.printTraceAtPc(vm, trace.allocPc, msg);
                 }

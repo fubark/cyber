@@ -327,7 +327,7 @@ pub const Value = packed union {
         return false;
     }
 
-    pub inline fn asHostObject(self: *const Value, comptime T: type) *T {
+    pub inline fn asHostObject(self: *const Value, comptime T: type) T {
         return @ptrFromInt(@as(usize, @intCast(self.val & ~vmc.POINTER_MASK)) + 8);
     }
 
@@ -415,19 +415,37 @@ pub const Value = packed union {
     }
 
     pub inline fn initHostPtr(ptr: ?*anyopaque) Value {
-        return .{ .val = vmc.NOCYC_POINTER_MASK | (@intFromPtr(ptr) - 8) };
+        const obj: *cy.HeapObject = @ptrFromInt(@intFromPtr(ptr) - 8);
+        if (obj.isCyclable()) {
+            return .{ .val = vmc.CYC_POINTER_MASK | (@intFromPtr(obj) & vmc.POINTER_PAYLOAD_MASK) };
+        } else {
+            return .{ .val = vmc.NOCYC_POINTER_MASK | (@intFromPtr(obj) & vmc.POINTER_PAYLOAD_MASK) };
+        }
+    }
+
+    pub inline fn initHostNoCycPtr(ptr: ?*anyopaque) Value {
+        return .{ .val = vmc.NOCYC_POINTER_MASK | ((@intFromPtr(ptr) & vmc.POINTER_PAYLOAD_MASK) - 8) };
     }
 
     pub inline fn initHostCycPtr(ptr: ?*anyopaque) Value {
-        return .{ .val = vmc.CYC_POINTER_MASK | (@intFromPtr(ptr) - 8) };
+        return .{ .val = vmc.CYC_POINTER_MASK | ((@intFromPtr(ptr) & vmc.POINTER_PAYLOAD_MASK) - 8) };
     }
 
     pub inline fn initPtr(ptr: ?*anyopaque) Value {
-        return .{ .val = vmc.NOCYC_POINTER_MASK | @intFromPtr(ptr) };
+        const obj: *cy.HeapObject = @ptrCast(@alignCast(ptr));
+        if (obj.isCyclable()) {
+            return .{ .val = vmc.CYC_POINTER_MASK | (@intFromPtr(obj) & vmc.POINTER_PAYLOAD_MASK) };
+        } else {
+            return .{ .val = vmc.NOCYC_POINTER_MASK | (@intFromPtr(obj) & vmc.POINTER_PAYLOAD_MASK) };
+        }
+    }
+
+    pub inline fn initNoCycPtr(ptr: ?*anyopaque) Value {
+        return .{ .val = vmc.NOCYC_POINTER_MASK | (@intFromPtr(ptr) & vmc.POINTER_PAYLOAD_MASK) };
     }
 
     pub inline fn initCycPtr(ptr: ?*anyopaque) Value {
-        return .{ .val = vmc.CYC_POINTER_MASK | @intFromPtr(ptr) };
+        return .{ .val = vmc.CYC_POINTER_MASK | (@intFromPtr(ptr) & vmc.POINTER_PAYLOAD_MASK) };
     }
 
     pub inline fn initStaticAstring(start: u32, len: u15) Value {

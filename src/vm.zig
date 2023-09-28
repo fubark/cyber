@@ -1332,7 +1332,7 @@ pub const VM = struct {
                 newFp[3] = Value{ .retFramePtr = framePtr };
 
                 // Copy closure value to new frame pointer local.
-                newFp[sym.inner.closure.local] = Value.initPtr(sym.inner.closure);
+                newFp[sym.inner.closure.local] = Value.initNoCycPtr(sym.inner.closure);
 
                 return cy.fiber.PcSp{
                     .pc = cy.fiber.toVmPc(self, sym.inner.closure.funcPc),

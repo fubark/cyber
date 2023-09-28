@@ -45,9 +45,15 @@ typedef struct IndexSlice {
 #define NOCYC_POINTER_MASK (TAGGED_VALUE_MASK | SIGN_MASK)
 
 // 1111111111111110: Extra bit indicating cyclable pointer.
+//                   GC uses this to skip an expensive dereference.
 #define CYC_POINTER_MASK (NOCYC_POINTER_MASK | ((u64)1 << 49))
 
 #define POINTER_MASK (CYC_POINTER_MASK)
+#if IS_32BIT
+    #define POINTER_PAYLOAD_MASK 0xFFFFFFFF
+#else
+    #define POINTER_PAYLOAD_MASK 0xFFFFFFFFFFFF
+#endif
 
 // 0111111111111101 
 #define TAGGED_INTEGER_MASK (TAGGED_VALUE_MASK | INTEGER_MASK)
@@ -85,7 +91,10 @@ typedef struct IndexSlice {
 // 0010000000000000: Pool object bit. VM checks this bit to free host objects (allocated from embedded API).
 #define POOL_TYPE_MASK ((u32)0x20000000)
 
-// 0100000000000000: Cyclable type bit.
+// 0100000000000000: Cyclable type bit. Currently has two purposes.
+//                   1. Since heap pages don't segregate non-cyc from cyc, it's used
+//                      to check which objects to visit.
+//                   2. Re-encapsulate an object pointer back to a Value.
 #define CYC_TYPE_MASK ((u32)0x40000000)
 
 // 1000000000000000: Mark bit.

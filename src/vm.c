@@ -34,8 +34,8 @@
 #define VALUE_FALSE FALSE_MASK
 #define VALUE_INTERRUPT (ERROR_MASK | 0xffff) 
 #define VALUE_RAW(u) u
-#define VALUE_PTR(ptr) (NOCYC_POINTER_MASK | (u64)ptr)
-#define VALUE_CYCPTR(ptr) (CYC_POINTER_MASK | (u64)ptr)
+#define VALUE_NOCYC_PTR(ptr) (NOCYC_POINTER_MASK | ((size_t)ptr & POINTER_PAYLOAD_MASK))
+#define VALUE_CYC_PTR(ptr) (CYC_POINTER_MASK | ((size_t)ptr & POINTER_PAYLOAD_MASK))
 #define VALUE_STATIC_STRING_SLICE(v) ((IndexSlice){ .start = v & 0xffffffff, .len = (((u32)(v >> 32)) & BEFORE_TAG_MASK) >> 3 })
 #define VALUE_SYMBOL(symId) (SYMBOL_MASK | symId)
 
@@ -309,7 +309,7 @@ static inline ValueResult allocObject(VM* vm, TypeId typeId, Value* fields, u8 n
     Value* dst = objectGetValuesPtr(&res.obj->object);
     memcpy(dst, fields, numFields * sizeof(Value));
 
-    return (ValueResult){ .val = VALUE_CYCPTR(res.obj), .code = RES_CODE_SUCCESS };
+    return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
 static inline ValueResult allocEmptyMap(VM* vm) {
@@ -328,7 +328,7 @@ static inline ValueResult allocEmptyMap(VM* vm) {
             .available = 0,
         },
     };
-    return (ValueResult){ .val = VALUE_CYCPTR(res.obj), .code = RES_CODE_SUCCESS };
+    return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
 static inline ValueResult allocClosure(
@@ -366,7 +366,7 @@ static inline ValueResult allocClosure(
         retain(vm, fp[local]);
         dst[i] = fp[local];
     }
-    return (ValueResult){ .val = VALUE_CYCPTR(res.obj), .code = RES_CODE_SUCCESS };
+    return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
 static inline ValueResult allocLambda(VM* vm, uint32_t funcPc, uint8_t numParams, uint8_t stackSize, uint16_t rFuncSigId) {
@@ -382,7 +382,7 @@ static inline ValueResult allocLambda(VM* vm, uint32_t funcPc, uint8_t numParams
         .stackSize = stackSize,
         .rFuncSigId = rFuncSigId,
     };
-    return (ValueResult){ .val = VALUE_PTR(res.obj), .code = RES_CODE_SUCCESS };
+    return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
 static inline ValueResult allocBox(VM* vm, Value val) {
@@ -395,7 +395,7 @@ static inline ValueResult allocBox(VM* vm, Value val) {
         .rc = 1,
         .val = val,
     };
-    return (ValueResult){ .val = VALUE_CYCPTR(res.obj), .code = RES_CODE_SUCCESS };
+    return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
 static inline ValueResult allocMetaType(VM* vm, uint8_t symType, uint32_t symId) {
@@ -409,7 +409,7 @@ static inline ValueResult allocMetaType(VM* vm, uint8_t symType, uint32_t symId)
         .type = symType,
         .symId = symId,
     };
-    return (ValueResult){ .val = VALUE_PTR(res.obj), .code = RES_CODE_SUCCESS };
+    return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
 static inline ValueResult allocHostFunc(VM* vm, void* func, u32 numParams, u32 rFuncSigId) {
@@ -422,7 +422,7 @@ static inline ValueResult allocHostFunc(VM* vm, void* func, u32 numParams, u32 r
         .rFuncSigId = rFuncSigId,
         .hasTccState = false,
     };
-    return (ValueResult){ .val = VALUE_PTR(res.obj), .code = RES_CODE_SUCCESS };
+    return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
 static inline ValueResult allocFuncFromSym(VM* vm, FuncId funcId) {
@@ -442,7 +442,7 @@ static inline ValueResult allocFuncFromSym(VM* vm, FuncId funcId) {
         }
         case FUNC_SYM_CLOSURE: {
             retainObject(vm, sym.inner.closure);
-            return (ValueResult){ .val = VALUE_PTR(sym.inner.closure), .code = RES_CODE_SUCCESS };
+            return (ValueResult){ .val = VALUE_CYC_PTR(sym.inner.closure), .code = RES_CODE_SUCCESS };
         }
         default:
             zFatal();

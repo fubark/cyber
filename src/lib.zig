@@ -118,7 +118,7 @@ test "csValidate()" {
 
 var tempBuf: [1024]u8 align(8) = undefined;
 
-export fn csAllocLastErrorReport(vm: *cy.UserVM) cy.Str {
+export fn csNewLastErrorReport(vm: *cy.UserVM) cy.Str {
     const report = vm.allocLastErrorReport() catch fatal();
     return cy.Str.initSlice(report);
 }
@@ -211,6 +211,14 @@ export fn csInteger32(n: i32) Value {
     return Value.initInt(n);
 }
 
+export fn csHostObject(ptr: *anyopaque) Value {
+    return Value.initHostPtr(ptr);
+}
+
+export fn csVmObject(ptr: *anyopaque) Value {
+    return Value.initPtr(ptr);
+}
+
 export fn csNewString(vm: *cy.UserVM, cstr: cy.Str) Value {
     return vm.allocStringInfer(cstr.slice()) catch fatal();
 }
@@ -223,11 +231,27 @@ export fn csNewUstring(vm: *cy.UserVM, cstr: cy.Str, charLen: u32) Value {
     return vm.allocUstring(cstr.slice(), charLen) catch fatal();
 }
 
-export fn csNewList(vm: *cy.UserVM) Value {
+export fn csNewTuple(vm: *cy.UserVM, ptr: [*]const Value, len: usize) Value {
+    const elems = ptr[0..len];
+    for (elems) |elem| {
+        cy.arc.retain(vm.internal(), elem);
+    }
+    return cy.heap.allocTuple(vm.internal(), elems) catch fatal();
+}
+
+export fn csNewEmptyList(vm: *cy.UserVM) Value {
     return vm.allocEmptyList() catch fatal();
 }
 
-export fn csNewMap(vm: *cy.UserVM) Value {
+export fn csNewList(vm: *cy.UserVM, ptr: [*]const Value, len: usize) Value {
+    const elems = ptr[0..len];
+    for (elems) |elem| {
+        cy.arc.retain(vm.internal(), elem);
+    }
+    return vm.allocList(elems) catch fatal();
+}
+
+export fn csNewEmptyMap(vm: *cy.UserVM) Value {
     return vm.allocEmptyMap() catch fatal();
 }
 
@@ -242,6 +266,32 @@ test "csNewFunc()" {
 
     const val = c.csNewFunc(vm, @ptrFromInt(8), 2);
     try t.eq(c.csGetTypeId(val), rt.NativeFuncT);
+}
+
+export fn csNewHostObject(vm: *cy.UserVM, typeId: rt.TypeId, size: usize) Value {
+    const ptr = cy.heap.allocHostCycObject(vm.internal(), typeId, size) catch cy.fatal();
+    return Value.initHostCycPtr(ptr);
+}
+
+export fn csNewHostObjectPtr(vm: *cy.UserVM, typeId: rt.TypeId, size: usize) *anyopaque {
+    return cy.heap.allocHostCycObject(vm.internal(), typeId, size) catch cy.fatal();
+}
+
+export fn csNewVmObject(uvm: *cy.UserVM, typeId: rt.TypeId, fieldsPtr: [*]const Value, numFields: usize) Value {
+    const vm = uvm.internal();
+    const entry = &vm.types.buf[typeId];
+    std.debug.assert(!entry.isHostObject);
+
+    std.debug.assert(numFields == entry.data.numFields);
+    const fields = fieldsPtr[0..numFields];
+    for (fields) |field| {
+        cy.arc.retain(vm, field);
+    }
+    if (numFields <= 4) {
+        return cy.heap.allocObjectSmall(vm, typeId, fields) catch cy.fatal();
+    } else {
+        return cy.heap.allocObject(vm, typeId, fields) catch cy.fatal();
+    }
 }
 
 export fn csSymbol(vm: *cy.UserVM, str: cy.Str) Value {
@@ -360,6 +410,10 @@ test "Constants." {
     try t.eq(c.CS_TYPE_POINTER, rt.PointerT);
     try t.eq(c.CS_TYPE_TUPLE, rt.TupleT);
     try t.eq(c.CS_TYPE_METATYPE, rt.MetaTypeT);
+}
+
+export fn csAsHostObject(val: Value) *anyopaque {
+    return val.asHostObject(*anyopaque);
 }
 
 export fn csGetTypeId(val: Value) c.CsTypeId {

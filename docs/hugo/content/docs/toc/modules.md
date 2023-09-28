@@ -99,6 +99,7 @@ print id
 | `arrayFill(val any, n int) List` | Creates a list with initial capacity of `n` and values set to `val`. If the value is an object, it is shallow copied `n` times. | 
 | `boolean(val any) boolean` | Converts a value to either `true` or `false`. | 
 | `copy(val any) any` | Copies a primitive value or creates a shallow copy of an object value. | 
+| `dump(val any) none` | Prints the result of `toCyon` on a value. | 
 | `error(e (enum \| symbol)) error` | Create an error from an enum or symbol. | 
 | `evalJS(val string) none` | Evals JS from the host environment. This is only available in a web WASM build of Cyber. | 
 | `float(val any) float` | Casts or converts the value to a `float`. Panics if type conversion fails. | 

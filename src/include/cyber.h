@@ -187,8 +187,11 @@ typedef struct CsTypeResult {
             // The created runtime type id will be written to `outTypeId`.
             // This typeId is then used to allocate a new instance of the object.
             CsTypeId* outTypeId;
+
             // The created semantic type id will be written to `outSemaTypeId`.
+            // Defaults to null.
             CsSemaTypeId* outSemaTypeId;
+
             // Pointer to callback or null.
             CsObjectGetChildrenFn getChildren;
             // Pointer to callback or null.
@@ -270,7 +273,7 @@ CsResultCode csEval(CsVM* vm, CsStr src, CsValue* outVal);
 CsResultCode csValidate(CsVM* vm, CsStr src);
 
 /// After receiving an error CsResultCode, this returns the error report. Call `csFreeStr` afterwards.
-CsStr csAllocLastErrorReport(CsVM* vm);
+CsStr csNewLastErrorReport(CsVM* vm);
 
 // Attach a userdata pointer inside the VM.
 void* csGetUserData(CsVM* vm);
@@ -316,6 +319,9 @@ size_t csCountObjects(CsVM* vm);
 // that is handed over to Cyber so it knows how to free it.
 // This is also used to manage accessible buffers when embedding WASM.
 void* csAlloc(CsVM* vm, size_t size);
+
+// When using the Zig allocator, you'll need to pass the original memory size.
+// For all other allocators, use 1 for `len`.
 void csFree(CsVM* vm, void* ptr, size_t len);
 void csFreeStr(CsVM* vm, CsStr str);
 
@@ -336,6 +342,7 @@ CsValue csInteger(int64_t n);
 CsValue csInteger32(int32_t n);
 CsValue csFloat(double f);
 CsValue csHostObject(void* ptr);
+CsValue csVmObject(void* ptr);
 CsValue csSymbol(CsVM* vm, CsStr str);
 
 // `csNewString` is the recommended way to create a new string. Use `Astring` or `Ustring` if you know it
@@ -344,6 +351,7 @@ CsValue csNewString(CsVM* vm, CsStr str);
 CsValue csNewAstring(CsVM* vm, CsStr str);
 CsValue csNewUstring(CsVM* vm, CsStr str, uint32_t charLen);
 
+CsValue csNewTuple(CsVM* vm, const CsValue* vals, size_t len);
 CsValue csNewEmptyList(CsVM* vm);
 CsValue csNewList(CsVM* vm, const CsValue* vals, size_t len);
 CsValue csNewEmptyMap(CsVM* vm);

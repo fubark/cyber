@@ -839,9 +839,17 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         };
         c.curHostTypeIdx += 1;
         var res: cy.HostTypeResult = .{
-            .data = undefined,
+            .data = .{
+                .object = .{
+                    .typeId = undefined,
+                    .semaTypeId = null,
+                    .getChildren = null,
+                    .finalizer = null,
+                },
+            },
             .type = .object,
         };
+        log.tracev("Invoke type loader for: {s}", .{name});
         if (typeLoader(@ptrCast(c.compiler.vm), info, &res)) {
             switch (res.type) {
                 .object => {
@@ -853,7 +861,9 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                     const key = ResolvedSymKey.initResolvedSymKey(c.getModule().resolvedRootSymId, nameId);
                     const objType = try resolveObjectSym(c.compiler, key, objModId);
                     res.data.object.typeId.* = objType.typeId;
-                    res.data.object.semaTypeId.* = objType.sTypeId;
+                    if (res.data.object.semaTypeId) |semaTypeId| {
+                        semaTypeId.* = objType.sTypeId;
+                    }
 
                     c.compiler.vm.types.buf[objType.typeId].isHostObject = true;
                     c.compiler.vm.types.buf[objType.typeId].data = .{
@@ -1180,6 +1190,7 @@ pub fn declareHostFunc(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !voi
     };
     c.curHostFuncIdx += 1;
     if (c.funcLoader) |funcLoader| {
+        log.tracev("Invoke func loader for: {s}", .{name});
         var res: cy.HostFuncResult = .{
             .ptr = null,
             .type = .standard,
@@ -1309,6 +1320,7 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     };
     c.curHostVarIdx += 1;
     if (c.varLoader) |varLoader| {
+        log.tracev("Invoke var loader for: {s}", .{name});
         var out: cy.Value = cy.Value.None;
         if (varLoader(@ptrCast(c.compiler.vm), info, &out)) {
             // var type.

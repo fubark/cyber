@@ -692,7 +692,7 @@ pub fn allocMetaType(self: *cy.VM, symType: u8, symId: u32) !Value {
         .type = symType,
         .symId = symId,
     };
-    return Value.initPtr(obj);
+    return Value.initNoCycPtr(obj);
 }
 
 pub fn allocEmptyList(self: *cy.VM) linksection(cy.Section) !Value {
@@ -749,7 +749,7 @@ pub fn allocListFill(self: *cy.VM, val: Value, n: u32) linksection(cy.StdSection
     return Value.initCycPtr(obj);
 }
 
-pub fn allocHostObject(vm: *cy.VM, typeId: rt.TypeId, numBytes: usize) linksection(cy.HotSection) !*anyopaque {
+pub fn allocHostNoCycObject(vm: *cy.VM, typeId: rt.TypeId, numBytes: usize) linksection(cy.HotSection) !*anyopaque {
     if (numBytes <= MaxPoolObjectUserBytes) {
         const obj = try allocPoolObject(vm);
         obj.head = .{
@@ -939,7 +939,7 @@ pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, stackSize: u8, fu
         .stackSize = stackSize,
         .funcSigId = funcSigId,
     };
-    return Value.initPtr(obj);
+    return Value.initNoCycPtr(obj);
 }
 
 pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.Inst, vals: []const Value) !Value {
@@ -982,7 +982,7 @@ pub fn allocRawStringConcat(self: *cy.VM, str: []const u8, str2: []const u8) lin
     const dst = @as([*]u8, @ptrCast(&obj.rawstring.bufStart))[0..len];
     std.mem.copy(u8, dst[0..str.len], str);
     std.mem.copy(u8, dst[str.len..], str2);
-    return Value.initPtr(obj);
+    return Value.initNoCycPtr(obj);
 }
 
 fn allocUstringConcat3Object(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8, charLen: u32) linksection(cy.Section) !*HeapObject {
@@ -1036,16 +1036,16 @@ pub fn getOrAllocAstringConcat(self: *cy.VM, str: []const u8, str2: []const u8) 
         const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
         if (res.found_existing) {
             cy.arc.retainObject(self, res.value_ptr.*);
-            return Value.initPtr(res.value_ptr.*);
+            return Value.initNoCycPtr(res.value_ptr.*);
         } else {
             const obj = try allocAstringConcatObject(self, str, str2);
             res.key_ptr.* = obj.astring.getConstSlice();
             res.value_ptr.* = obj;
-            return Value.initPtr(obj);
+            return Value.initNoCycPtr(obj);
         }
     } else {
         const obj = try allocAstringConcatObject(self, str, str2);
-        return Value.initPtr(obj);
+        return Value.initNoCycPtr(obj);
     }
 }
 
@@ -1060,16 +1060,16 @@ pub fn getOrAllocAstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8
         const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
         if (res.found_existing) {
             cy.arc.retainObject(self, res.value_ptr.*);
-            return Value.initPtr(res.value_ptr.*);
+            return Value.initNoCycPtr(res.value_ptr.*);
         } else {
             const obj = try allocAstringConcat3Object(self, str1, str2, str3);
             res.key_ptr.* = obj.astring.getConstSlice();
             res.value_ptr.* = obj;
-            return Value.initPtr(obj);
+            return Value.initNoCycPtr(obj);
         }
     } else {
         const obj = try allocAstringConcat3Object(self, str1, str2, str3);
-        return Value.initPtr(obj);
+        return Value.initNoCycPtr(obj);
     }
 }
 
@@ -1084,16 +1084,16 @@ pub fn getOrAllocUstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8
         const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
         if (res.found_existing) {
             cy.arc.retainObject(self, res.value_ptr.*);
-            return Value.initPtr(res.value_ptr.*);
+            return Value.initNoCycPtr(res.value_ptr.*);
         } else {
             const obj = try allocUstringConcat3Object(self, str1, str2, str3, charLen);
             res.key_ptr.* = obj.ustring.getConstSlice();
             res.value_ptr.* = obj;
-            return Value.initPtr(obj);
+            return Value.initNoCycPtr(obj);
         }
     } else {
         const obj = try allocUstringConcat3Object(self, str1, str2, str3, charLen);
-        return Value.initPtr(obj);
+        return Value.initNoCycPtr(obj);
     }
 }
 
@@ -1107,16 +1107,16 @@ pub fn getOrAllocUstringConcat(self: *cy.VM, str: []const u8, str2: []const u8, 
         const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
         if (res.found_existing) {
             cy.arc.retainObject(self, res.value_ptr.*);
-            return Value.initPtr(res.value_ptr.*);
+            return Value.initNoCycPtr(res.value_ptr.*);
         } else {
             const obj = try allocUstringConcatObject(self, str, str2, charLen);
             res.key_ptr.* = obj.ustring.getConstSlice();
             res.value_ptr.* = obj;
-            return Value.initPtr(obj);
+            return Value.initNoCycPtr(obj);
         }
     } else {
         const obj = try allocUstringConcatObject(self, str, str2, charLen);
-        return Value.initPtr(obj);
+        return Value.initNoCycPtr(obj);
     }
 }
 
@@ -1130,14 +1130,14 @@ pub fn getOrAllocOwnedString(self: *cy.VM, obj: *HeapObject, str: []const u8) li
         if (res.found_existing) {
             cy.arc.releaseObject(self, obj);
             cy.arc.retainObject(self, res.value_ptr.*);
-            return Value.initPtr(res.value_ptr.*);
+            return Value.initNoCycPtr(res.value_ptr.*);
         } else {
             res.key_ptr.* = str;
             res.value_ptr.* = obj;
-            return Value.initPtr(obj);
+            return Value.initNoCycPtr(obj);
         }
     } else {
-        return Value.initPtr(obj);
+        return Value.initNoCycPtr(obj);
     }
 }
 
@@ -1157,7 +1157,7 @@ pub fn allocAstring(self: *cy.VM, str: []const u8) linksection(cy.Section) !Valu
     const obj = try allocUnsetAstringObject(self, str.len);
     const dst = obj.astring.getSlice();
     std.mem.copy(u8, dst, str);
-    return Value.initPtr(obj);
+    return Value.initNoCycPtr(obj);
 }
 
 pub fn allocUnsetAstringObject(self: *cy.VM, len: usize) linksection(cy.Section) !*HeapObject {
@@ -1181,16 +1181,16 @@ pub fn getOrAllocUstring(self: *cy.VM, str: []const u8, charLen: u32) linksectio
         const res = try self.strInterns.getOrPut(self.alloc, str);
         if (res.found_existing) {
             cy.arc.retainObject(self, res.value_ptr.*);
-            return Value.initPtr(res.value_ptr.*);
+            return Value.initNoCycPtr(res.value_ptr.*);
         } else {
             const obj = try allocUstringObject(self, str, charLen);
             res.key_ptr.* = obj.ustring.getConstSlice();
             res.value_ptr.* = obj;
-            return Value.initPtr(obj);
+            return Value.initNoCycPtr(obj);
         }
     } else {
         const obj = try allocUstringObject(self, str, charLen);
-        return Value.initPtr(obj);
+        return Value.initNoCycPtr(obj);
     }
 }
 
@@ -1199,22 +1199,22 @@ pub fn getOrAllocAstring(self: *cy.VM, str: []const u8) linksection(cy.Section) 
         const res = try self.strInterns.getOrPut(self.alloc, str);
         if (res.found_existing) {
             cy.arc.retainObject(self, res.value_ptr.*);
-            return Value.initPtr(res.value_ptr.*);
+            return Value.initNoCycPtr(res.value_ptr.*);
         } else {
             const obj = try allocAstringObject(self, str);
             res.key_ptr.* = obj.astring.getConstSlice();
             res.value_ptr.* = obj;
-            return Value.initPtr(obj);
+            return Value.initNoCycPtr(obj);
         }
     } else {
         const obj = try allocAstringObject(self, str);
-        return Value.initPtr(obj);
+        return Value.initNoCycPtr(obj);
     }
 }
 
 pub fn allocUstring(self: *cy.VM, str: []const u8, charLen: u32) linksection(cy.Section) !Value {
     const obj = try allocUstringObject(self, str, charLen);
-    return Value.initPtr(obj);
+    return Value.initNoCycPtr(obj);
 }
 
 pub fn allocUstringObject(self: *cy.VM, str: []const u8, charLen: u32) linksection(cy.Section) !*HeapObject {
@@ -1255,7 +1255,7 @@ pub fn allocUstringSlice(self: *cy.VM, slice: []const u8, charLen: u32, parent: 
         .uMruCharIdx = 0,
         .extra = @as(u63, @intCast(@intFromPtr(parent))),
     };
-    return Value.initPtr(obj);
+    return Value.initNoCycPtr(obj);
 }
 
 pub fn allocAstringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject) !Value {
@@ -1270,7 +1270,7 @@ pub fn allocAstringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject) !
         .uMruCharIdx = undefined,
         .extra = @as(u64, @intFromPtr(parent)) | (1 << 63),
     };
-    return Value.initPtr(obj);
+    return Value.initNoCycPtr(obj);
 }
 
 pub fn allocUnsetRawStringObject(self: *cy.VM, len: usize) linksection(cy.Section) !*HeapObject {
@@ -1293,7 +1293,7 @@ pub fn allocRawString(self: *cy.VM, str: []const u8) linksection(cy.Section) !Va
     const obj = try allocUnsetRawStringObject(self, str.len);
     const dst = @as([*]u8, @ptrCast(&obj.rawstring.bufStart))[0..str.len];
     std.mem.copy(u8, dst, str);
-    return Value.initPtr(obj);
+    return Value.initNoCycPtr(obj);
 }
 
 pub fn allocRawStringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject) !Value {
@@ -1305,7 +1305,7 @@ pub fn allocRawStringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject)
         .len = @intCast(slice.len),
         .parent = @ptrCast(parent),
     };
-    return Value.initPtr(obj);
+    return Value.initNoCycPtr(obj);
 }
 
 pub fn allocBox(vm: *cy.VM, val: Value) !Value {
@@ -1333,7 +1333,7 @@ pub fn allocNativeFunc1(self: *cy.VM, func: cy.ZHostFuncFn, numParams: u32, func
         obj.nativeFunc1.tccState = state;
         obj.nativeFunc1.hasTccState = true;
     }
-    return Value.initPtr(obj);
+    return Value.initNoCycPtr(obj);
 }
 
 pub fn allocTccState(self: *cy.VM, state: *tcc.TCCState, lib: *std.DynLib) linksection(cy.StdSection) !Value {
@@ -1344,7 +1344,7 @@ pub fn allocTccState(self: *cy.VM, state: *tcc.TCCState, lib: *std.DynLib) links
         .state = state,
         .lib = lib,
     };
-    return Value.initPtr(obj);
+    return Value.initNoCycPtr(obj);
 }
 
 pub fn allocPointer(self: *cy.VM, ptr: ?*anyopaque) !Value {
@@ -1354,7 +1354,7 @@ pub fn allocPointer(self: *cy.VM, ptr: ?*anyopaque) !Value {
         .rc = 1,
         .ptr = ptr,
     };
-    return Value.initPtr(obj);
+    return Value.initNoCycPtr(obj);
 }
 
 /// Allocates an object outside of the object pool.
@@ -1424,7 +1424,7 @@ pub fn allocFuncFromSym(self: *cy.VM, symId: cy.vm.SymbolId) !Value {
         },
         .closure => {
             cy.arc.retainObject(self, @ptrCast(sym.inner.closure));
-            return Value.initPtr(sym.inner.closure);
+            return Value.initCycPtr(sym.inner.closure);
         },
         .none => return Value.None,
     }

@@ -120,7 +120,7 @@ pub const DirIterator = extern struct {
 };
 
 pub fn allocFile(vm: *cy.VM, fd: std.os.fd_t) linksection(cy.StdSection) !Value {
-    const file: *File = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, FileT, @sizeOf(File))));
+    const file: *File = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, FileT, @sizeOf(File))));
     file.* = .{
         .fd = fd,
         .curPos = 0,
@@ -132,27 +132,27 @@ pub fn allocFile(vm: *cy.VM, fd: std.os.fd_t) linksection(cy.StdSection) !Value 
         .closed = false,
         .closeOnFree = true,
     };
-    return Value.initHostPtr(file);
+    return Value.initHostNoCycPtr(file);
 }
 
 pub fn allocDir(vm: *cy.VM, fd: std.os.fd_t, iterable: bool) linksection(cy.StdSection) !Value {
-    const dir: *Dir = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, DirT, @sizeOf(Dir))));
+    const dir: *Dir = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, DirT, @sizeOf(Dir))));
     dir.* = .{
         .fd = fd,
         .iterable = iterable,
         .closed = false,
     };
-    return Value.initHostPtr(dir);
+    return Value.initHostNoCycPtr(dir);
 }
 
 pub fn allocDirIterator(vm: *cy.VM, dirv: Value, recursive: bool) linksection(cy.StdSection) !Value {
-    const dirIter: *DirIterator = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, DirIterT, @sizeOf(DirIterator))));
+    const dirIter: *DirIterator = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, DirIterT, @sizeOf(DirIterator))));
     dirIter.* = .{
         .dir = dirv,
         .inner = undefined,
         .recursive = recursive,
     };
-    const dir = dirv.asHostObject(Dir);
+    const dir = dirv.asHostObject(*Dir);
     if (recursive) {
         const walker = cy.ptrAlignCast(*std.fs.IterableDir.Walker, &dirIter.inner.walker);
         walker.* = try dir.getStdIterableDir().walk(vm.alloc);
@@ -160,7 +160,7 @@ pub fn allocDirIterator(vm: *cy.VM, dirv: Value, recursive: bool) linksection(cy
         const iter = cy.ptrAlignCast(*std.fs.IterableDir.Iterator, &dirIter.inner.iter);
         iter.* = dir.getStdIterableDir().iterate();
     }
-    return Value.initHostPtr(dirIter);
+    return Value.initHostNoCycPtr(dirIter);
 }
 
 test "fs internals" {
@@ -190,7 +190,7 @@ pub fn fileStreamLines(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksect
 pub fn fileStreamLines1(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
     // Don't need to release obj since it's being returned.
-    const file = args[0].asHostObject(File);
+    const file = args[0].asHostObject(*File);
     const bufSize: usize = @intCast(args[1].asInteger());
     var createReadBuf = true;
     if (file.hasReadBuf) {
@@ -214,7 +214,7 @@ pub fn fileStreamLines1(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection
 
 pub fn dirWalk(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
-    const dir = args[0].asHostObject(Dir);
+    const dir = args[0].asHostObject(*Dir);
     if (dir.iterable) {
         vm.retain(args[0]);
         return vm.allocDirIterator(args[0], true) catch cy.fatal();
@@ -225,7 +225,7 @@ pub fn dirWalk(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
 
 pub fn dirIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
-    const dir = args[0].asHostObject(Dir);
+    const dir = args[0].asHostObject(*Dir);
     if (dir.iterable) {
         vm.retain(args[0]);
         return vm.allocDirIterator(args[0], false) catch cy.fatal();
@@ -238,7 +238,7 @@ pub fn fileIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
 
     // Don't need to release obj since it's being returned.
-    const file = args[0].asHostObject(File);
+    const file = args[0].asHostObject(*File);
     file.curPos = 0;
     file.readBufEnd = 0;
     return args[0];
@@ -247,7 +247,7 @@ pub fn fileIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.
 pub fn fileSeekFromEnd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
 
-    const fileo = args[0].asHostObject(File);
+    const fileo = args[0].asHostObject(*File);
     if (fileo.closed) {
         return prepareThrowSymbol(vm, .Closed);
     }
@@ -267,7 +267,7 @@ pub fn fileSeekFromEnd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(
 pub fn fileSeekFromCur(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
 
-    const fileo = args[0].asHostObject(File);
+    const fileo = args[0].asHostObject(*File);
     if (fileo.closed) {
         return prepareThrowSymbol(vm, .Closed);
     }
@@ -284,7 +284,7 @@ pub fn fileSeekFromCur(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(
 pub fn fileSeek(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
 
-    const fileo = args[0].asHostObject(File);
+    const fileo = args[0].asHostObject(*File);
     if (fileo.closed) {
         return prepareThrowSymbol(vm, .Closed);
     }
@@ -305,7 +305,7 @@ pub fn fileSeek(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
 pub fn fileWrite(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
 
-    const fileo = args[0].asHostObject(File);
+    const fileo = args[0].asHostObject(*File);
     if (fileo.closed) {
         return prepareThrowSymbol(vm, .Closed);
     }
@@ -322,7 +322,7 @@ pub fn fileWrite(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
 pub fn fileClose(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
 
-    const file = args[0].asHostObject(File);
+    const file = args[0].asHostObject(*File);
     file.close();
     return Value.None;
 }
@@ -330,7 +330,7 @@ pub fn fileClose(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
 pub fn fileRead(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
 
-    const fileo = args[0].asHostObject(File);
+    const fileo = args[0].asHostObject(*File);
     if (fileo.closed) {
         return prepareThrowSymbol(vm, .Closed);
     }
@@ -359,7 +359,7 @@ pub fn fileRead(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
 pub fn fileReadToEnd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
 
-    const fileo = args[0].asHostObject(File);
+    const fileo = args[0].asHostObject(*File);
     if (fileo.closed) {
         return prepareThrowSymbol(vm, .Closed);
     }
@@ -398,12 +398,12 @@ pub fn fileOrDirStat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy
     const obj = args[0].asHeapObject();
     const typeId = obj.getTypeId();
     if (typeId == FileT) {
-        const file = args[0].asHostObject(File);
+        const file = args[0].asHostObject(*File);
         if (file.closed) {
             return prepareThrowSymbol(vm, .Closed);
         }
     } else if (typeId == DirT) {
-        const dir = args[0].asHostObject(Dir);
+        const dir = args[0].asHostObject(*Dir);
         if (dir.closed) {
             return prepareThrowSymbol(vm, .Closed);
         }
@@ -412,7 +412,7 @@ pub fn fileOrDirStat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy
     }
 
     // File/Dir share the same fd member offset.
-    const fileo = args[0].asHostObject(File);
+    const fileo = args[0].asHostObject(*File);
     const file = fileo.getStdFile();
     const stat = file.stat() catch |err| {
         return cy.apiUnsupportedError(vm, "stat", err, @errorReturnTrace());
@@ -452,7 +452,7 @@ pub fn fileOrDirStat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy
 pub fn fileNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
 
-    const fileo = args[0].asHostObject(File);
+    const fileo = args[0].asHostObject(*File);
     if (fileo.iterLines) {
         const alloc = vm.allocator();
         const readBuf = fileo.readBuf[0..fileo.readBufCap];
@@ -481,7 +481,7 @@ pub fn fileNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
                 // End of stream.
                 fileo.iterLines = false;
                 if (lineBuf.len > 0) {
-                    return Value.initPtr(lineBuf.ownObject(alloc));
+                    return Value.initNoCycPtr(lineBuf.ownObject(alloc));
                 } else {
                     return Value.None;
                 }
@@ -494,7 +494,7 @@ pub fn fileNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
                 fileo.curPos = @intCast(end);
                 fileo.readBufEnd = @intCast(bytesRead);
 
-                return Value.initPtr(lineBuf.ownObject(alloc));
+                return Value.initNoCycPtr(lineBuf.ownObject(alloc));
             } else {
                 lineBuf.appendString(alloc, readBuf[0..bytesRead]) catch cy.fatal();
 
@@ -512,7 +512,7 @@ pub fn dirIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
 
     const ivm = vm.internal();
-    const iter = args[0].asHostObject(DirIterator);
+    const iter = args[0].asHostObject(*DirIterator);
     if (iter.recursive) {
         const walker = cy.ptrAlignCast(*std.fs.IterableDir.Walker, &iter.inner.walker);
         const entryOpt = walker.next() catch |err| {

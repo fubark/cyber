@@ -143,13 +143,13 @@ pub fn zPostTypeLoad(c: *cy.VMcompiler, modId: cy.ModuleId) !void {
     }
     if (cy.hasStdFiles) {
         const stdin = try fs.allocFile(c.vm, std.io.getStdIn().handle);
-        stdin.asHostObject(fs.File).closeOnFree = false;
+        stdin.asHostObject(*fs.File).closeOnFree = false;
         vars[2] = .{ "stdin", stdin };
         const stdout = try fs.allocFile(c.vm, std.io.getStdOut().handle);
-        stdout.asHostObject(fs.File).closeOnFree = false;
+        stdout.asHostObject(*fs.File).closeOnFree = false;
         vars[3] = .{ "stdout", stdout };
         const stderr = try fs.allocFile(c.vm, std.io.getStdErr().handle);
-        stderr.asHostObject(fs.File).closeOnFree = false;
+        stderr.asHostObject(*fs.File).closeOnFree = false;
         vars[4] = .{ "stderr", stderr };
     } else {
         vars[2] = .{ "stdin", Value.None };

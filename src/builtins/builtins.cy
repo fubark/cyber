@@ -113,6 +113,7 @@ type MapIterator object:
 @host func bool(val any) boolean
 @host func char(val any) any
 @host func copy(val any) any
+@host func dump(val any) string
 @host func errorReport() string
 @host func isAlpha(val int) boolean
 @host func isDigit(val int) boolean

@@ -1636,7 +1636,7 @@ beginSwitch:
         NEXT();
     }
     CASE(PopTry): {
-        vm->tryStack.len += 1; 
+        vm->tryStack.len -= 1; 
         pc += READ_U16(1);
         NEXT();
     }

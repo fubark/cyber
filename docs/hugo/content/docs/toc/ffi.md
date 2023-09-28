@@ -12,7 +12,7 @@ Cyber uses `libtcc` to JIT compile the bindings so function calls are fast. `bin
 import os 'os'
 
 var lib = os.bindLib('mylib.so', [
-    os.CFunc{ sym: 'add', args: [#int, #int], ret: #int }
+    os.CFunc{ sym: 'add', args: [.int, .int], ret: .int }
 ])
 lib.add(123, 321)
 ```
@@ -24,20 +24,20 @@ When using `CFunc` or `CStruct` declarations, [symbols]({{<relref "/docs/toc/dat
 
 | Binding | Cyber | C | Details |
 | -- | -- | -- | -- |
-| #bool | bool | bool |
-| #char | float | int8_t, signed char | 
-| #uchar | float | uint8_t, unsigned char | 
-| #short | float | int16_t, short | 
-| #ushort | float | uint16_t, unsigned short | 
-| #int | float | int32_t, int |
-| #uint | float | uint32_t, unsigned int |
-| #long | float | int64_t, long long | 
-| #ulong | float | uint64_t, unsigned long long | 
-| #usize | float | size_t, uintptr_t | 
-| #float | float | float |
-| #double | float | double |
-| #charPtr | pointer | char* | Use `os.cstr()` and `os.fromCstr()` to convert between a Cyber string and a null terminated C string.
-| #voidPtr | pointer | void* |
+| .bool | bool | bool |
+| .char | int | int8_t, signed char | 
+| .uchar | int | uint8_t, unsigned char | 
+| .short | int | int16_t, short | 
+| .ushort | int | uint16_t, unsigned short | 
+| .int | int | int32_t, int |
+| .uint | int | uint32_t, unsigned int |
+| .long | int | int64_t, long long | 
+| .ulong | int | uint64_t, unsigned long long | 
+| .usize | int | size_t, uintptr_t | 
+| .float | float | float |
+| .double | float | double |
+| .charPtr | pointer | char* | Use `os.cstr()` and `os.fromCstr()` to convert between a Cyber string and a null terminated C string.
+| .voidPtr | pointer | void* |
 | sym symbol | object \<sym\> | Struct | The mapping from a Cyber object type `sym` and the C-struct can be declared with `CStruct`. |
 
 By default `bindLib` returns an anonymous object with the binded C-functions as methods. This is convenient for using it like an object, but it's less optimal compared to binding as functions. If a config is passed into `bindLib` as the third argument, `genMap: true` makes `bindLib` return a map instead with the binded C-functions as Cyber functions.
@@ -51,7 +51,7 @@ The `CFunc` object lets you bind to a C-function. The `sym` field maps to the C-
 import os 'os'
 
 var lib = os.bindLib('mylib.so', [
-    os.CFunc{ sym: 'add', args: [#int, #int], ret: #int }
+    os.CFunc{ sym: 'add', args: [.int, .int], ret: .int }
 ])
 lib.add(123, 321)
 ```
@@ -75,9 +75,9 @@ type MyObject object:
 
 var lib = os.bindLib('mylib.so', [
     os.CFunc{ sym: 'foo', args: [MyObject], ret: MyObject }
-    os.CStruct{ fields: [#f64, #charPtr, #bool], type: MyObject }
+    os.CStruct{ fields: [.double, .charPtr, .bool], type: MyObject }
 ])
-var res = lib.foo(MyObject{ a: 123, b: os.cstr('foo'), c: true })
+var res = lib.foo(MyObject{ a: 123.0, b: os.cstr('foo'), c: true })
 ```
 The example above maps to these C declarations in `mylib.so`:
 ```text
@@ -97,8 +97,8 @@ MyObject foo(MyObject o) {
 import os 'os'
 
 var lib = os.bindLib('mylib.so', [
-    os.CFunc{ sym: 'foo', args: [MyObject], ret: #voidPtr }
-    os.CStruct{ fields: [#f64, #charPtr, #bool], type: MyObject }
+    os.CFunc{ sym: 'foo', args: [MyObject], ret: .voidPtr }
+    os.CStruct{ fields: [.double, .charPtr, .bool], type: MyObject }
 ])
 var ptr = lib.foo(MyObject{ a: 123, b: os.cstr('foo'), c: true })
 var res = lib.ptrToMyObject(ptr)

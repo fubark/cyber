@@ -1201,14 +1201,14 @@ test "FFI." {
         \\var lib = try os.bindLib(libPath, [
         \\  os.CFunc{ sym: 'testAdd', args: [.int, .int], ret: .int }
         \\])
-        \\lib.testAdd(123.0, '321')
+        \\lib.testAdd(123, '321')
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not find compatible function for `testAdd(any, float, string) any` in `BindLib`.
-            \\Only `func testAdd(any, float, float) float` exists for the symbol `testAdd`.
+            \\panic: Can not find compatible function for `testAdd(any, int, string) any` in `BindLib`.
+            \\Only `func testAdd(any, int, int) int` exists for the symbol `testAdd`.
             \\
             \\main:14:1 main:
-            \\lib.testAdd(123.0, '321')
+            \\lib.testAdd(123, '321')
             \\^
             \\
         );
@@ -1229,14 +1229,14 @@ test "FFI." {
         \\var lib = try os.bindLib(libPath, [
         \\  os.CFunc{ sym: 'testAdd', args: [.int, .int], ret: .int }
         \\])
-        \\lib.testAdd(123.0, 234.0, 345.0)
+        \\lib.testAdd(123, 234, 345)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not find compatible function for `testAdd(any, float, float, float) any` in `BindLib`.
-            \\Only `func testAdd(any, float, float) float` exists for the symbol `testAdd`.
+            \\panic: Can not find compatible function for `testAdd(any, int, int, int) any` in `BindLib`.
+            \\Only `func testAdd(any, int, int) int` exists for the symbol `testAdd`.
             \\
             \\main:14:1 main:
-            \\lib.testAdd(123.0, 234.0, 345.0)
+            \\lib.testAdd(123, 234, 345)
             \\^
             \\
         );

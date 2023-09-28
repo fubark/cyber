@@ -10,4 +10,4 @@ import os 'os'
 var lib = os.bindLib('./libfoo.so', [
     os.CFunc{ sym: 'add', args: [.int, .int], ret: .int }
 ])
-print lib.add(123.0, 321.0)
+print lib.add(123, 321)

@@ -162,7 +162,6 @@ const Context = struct {
         }
     }
 
-    /// If the c value is converted to a number, this assumes `cval` is already a double.
     fn genToCyValue(self: *Context, w: anytype, argType: Value, cval: []const u8) !void {
         if (argType.isObjectType(rt.MetaTypeT)) {
             const objType = argType.asPointer(*cy.heap.MetaType);
@@ -176,14 +175,18 @@ const Context = struct {
             const tag = argType.asSymbolId();
             switch (@as(Symbol, @enumFromInt(tag))) {
                 .char,
-                .uchar,
                 .short,
-                .ushort,
                 .int,
-                .uint,
                 .long,
                 .ulong,
-                .usize,
+                .usize => {
+                    try w.print("(0x7FFD000000000000 | ({s} & 0xFFFFFFFFFFFF))", .{cval});
+                },
+                .uchar,
+                .ushort,
+                .uint => {
+                    try w.print("(0x7FFD000000000000 | {s})", .{cval});
+                },
                 .float,
                 .double => {
                     // Assumes cval is already converted to double.
@@ -222,31 +225,32 @@ const Context = struct {
                         try w.print("(args[{}] == 0x7FFC000100000001)?1:0", .{i});
                     },
                     .char => {
-                        try w.print("(int8_t)*(double*)&args[{}]", .{i});
+                        try w.print("(int8_t)(args[{}] & 0xFFFFFFFFFFFF)", .{i});
                     },
                     .uchar => {
-                        try w.print("(uint8_t)*(double*)&args[{}]", .{i});
+                        try w.print("(uint8_t)(args[{}] & 0xFFFFFFFFFFFF)", .{i});
                     },
                     .short => {
-                        try w.print("(int16_t)*(double*)&args[{}]", .{i});
+                        try w.print("(int16_t)(args[{}] & 0xFFFFFFFFFFFF)", .{i});
                     },
                     .ushort => {
-                        try w.print("(uint16_t)*(double*)&args[{}]", .{i});
+                        try w.print("(uint16_t)(args[{}] & 0xFFFFFFFFFFFF)", .{i});
                     },
                     .int => {
-                        try w.print("(int)*(double*)&args[{}]", .{i});
+                        try w.print("(int)(args[{}] & 0xFFFFFFFFFFFF)", .{i});
                     },
                     .uint => {
-                        try w.print("(uint32_t)*(double*)&args[{}]", .{i});
+                        try w.print("(uint32_t)(args[{}] & 0xFFFFFFFFFFFF)", .{i});
                     },
                     .long => {
-                        try w.print("(int64_t)*(double*)&args[{}]", .{i});
+                        // 48-bit int to 64-bit.
+                        try w.print("(((int64_t)(args[{}] & 0xFFFFFFFFFFFF) << 16) >> 16)", .{i});
                     },
                     .ulong => {
-                        try w.print("(uint64_t)*(double*)&args[{}]", .{i});
+                        try w.print("(uint64_t)(args[{}] & 0xFFFFFFFFFFFF)", .{i});
                     },
                     .usize => {
-                        try w.print("(size_t)*(double*)&args[{}]", .{i});
+                        try w.print("(size_t)(args[{}] & 0xFFFFFFFFFFFF)", .{i});
                     },
                     .float => {
                         try w.print("(float)*(double*)&args[{}]", .{i});
@@ -273,20 +277,20 @@ const Context = struct {
     }
 };
 
-fn toResolvedParamTypeSymId(ivm: *cy.VM, val: Value) !cy.sema.SymbolId {
+fn toResolvedTypeSymId(ivm: *cy.VM, val: Value) !cy.sema.SymbolId {
     if (val.isSymbol()) {
         const tag = val.asSymbolId();
         switch (@as(Symbol, @enumFromInt(tag))) {
             .bool => return bt.Boolean,
-            .char => return bt.Float,
-            .uchar => return bt.Float,
-            .short => return bt.Float,
-            .ushort => return bt.Float,
-            .int => return bt.Float,
-            .uint => return bt.Float,
-            .long => return bt.Float,
-            .ulong => return bt.Float,
-            .usize => return bt.Float,
+            .char => return bt.Integer,
+            .uchar => return bt.Integer,
+            .short => return bt.Integer,
+            .ushort => return bt.Integer,
+            .int => return bt.Integer,
+            .uint => return bt.Integer,
+            .long => return bt.Integer,
+            .ulong => return bt.Integer,
+            .usize => return bt.Integer,
             .float => return bt.Float,
             .double => return bt.Float,
             .charPtr => return bt.Pointer,
@@ -300,28 +304,6 @@ fn toResolvedParamTypeSymId(ivm: *cy.VM, val: Value) !cy.sema.SymbolId {
     } else {
         std.debug.print("Unsupported val type: {s}\n", .{ ivm.valueToTempString(val) });
         return error.InvalidArgument;
-    }
-}
-
-fn toResolvedReturnTypeSymId(ivm: *cy.VM, val: Value) cy.sema.SymbolId {
-    const tag = val.asSymbolId();
-    switch (@as(Symbol, @enumFromInt(tag))) {
-        .bool => return bt.Boolean,
-        .char => return bt.Float,
-        .uchar => return bt.Float,
-        .short => return bt.Float,
-        .ushort => return bt.Float,
-        .int => return bt.Float,
-        .uint => return bt.Float,
-        .long => return bt.Float,
-        .ulong => return bt.Float,
-        .usize => return bt.Float,
-        .float => return bt.Float,
-        .double => return bt.Float,
-        .charPtr => return bt.Pointer,
-        .voidPtr => return bt.Pointer,
-        .void => return bt.None,
-        else => cy.panicFmt("Unsupported return type: {s}", .{ ivm.getSymbolName(tag) }),
     }
 }
 
@@ -403,7 +385,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
                     try ctx.ensureArray(ret);
                     retTypeSymId = bt.List;
                 } else {
-                    retTypeSymId = toResolvedReturnTypeSymId(ivm, ret);
+                    retTypeSymId = try toResolvedTypeSymId(ivm, ret);
                 }
 
                 const cargsv = try ivm.getField(decl, argsf);
@@ -420,7 +402,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
                             try ctx.ensureArray(carg);
                             try ivm.compiler.tempSyms.append(ctx.alloc, bt.List);
                         } else {
-                            try ivm.compiler.tempSyms.append(ctx.alloc, try toResolvedParamTypeSymId(ivm, carg));
+                            try ivm.compiler.tempSyms.append(ctx.alloc, try toResolvedTypeSymId(ivm, carg));
                         }
                     }
                 }
@@ -476,6 +458,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         \\#define uint8_t unsigned char
         \\#define int16_t short
         \\#define uint16_t unsigned short
+        \\#define int32_t int
         \\#define uint32_t unsigned int
         \\#define PointerMask 0xFFFE000000000000
         \\typedef struct UserVM *UserVM;
@@ -565,15 +548,6 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
                 if (field.isSymbol()) {
                     const fieldTag = field.asSymbolId();
                     switch (@as(Symbol, @enumFromInt(fieldTag))) {
-                        .char,
-                        .uchar,
-                        .short,
-                        .ushort,
-                        .int,
-                        .uint,
-                        .long,
-                        .ulong,
-                        .usize,
                         .float => {
                             try w.print("  double arg{} = (double)val.f{};\n", .{i, i});
                             const argStr = try std.fmt.bufPrint(&buf, "arg{}", .{i});
@@ -585,9 +559,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
                         else => {},
                     }
                 }
-
-                // Non number types.
-
+                // Int and other types.
                 const argStr = try std.fmt.bufPrint(&buf, "val.f{}", .{i});
                 try w.print("  args[{}] = ", .{i});
                 try ctx.genToCyValue(w, field, argStr);
@@ -872,15 +844,33 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     } else {
         const retTag = ret.asSymbolId();
         switch (@as(Symbol, @enumFromInt(retTag))) {
-            .char,
-            .uchar,
-            .short,
-            .ushort,
-            .int,
-            .uint,
-            .long,
-            .ulong,
-            .usize,
+            .char => {
+                try w.print("  int8_t res = {s}(", .{sym});
+            },
+            .uchar => {
+                try w.print("  uint8_t res = {s}(", .{sym});
+            },
+            .short => {
+                try w.print("  int16_t res = {s}(", .{sym});
+            },
+            .ushort => {
+                try w.print("  uint16_t res = {s}(", .{sym});
+            },
+            .int => {
+                try w.print("  int32_t res = {s}(", .{sym});
+            },
+            .uint => {
+                try w.print("  uint32_t res = {s}(", .{sym});
+            },
+            .long => {
+                try w.print("  int64_t res = {s}(", .{sym});
+            },
+            .ulong => {
+                try w.print("  uint64_t res = {s}(", .{sym});
+            },
+            .usize => {
+                try w.print("  size_t res = {s}(", .{sym});
+            },
             .float => {
                 try w.print("  double res = (double){s}(", .{sym});
             },

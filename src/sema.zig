@@ -729,8 +729,13 @@ pub fn declareImport(chunk: *cy.Chunk, nodeId: cy.NodeId) !void {
     const name = chunk.getNodeTokenString(ident);
     const nameId = try ensureNameSym(chunk.compiler, name);
 
-    const spec = chunk.nodes[node.head.left_right.right];
-    const specPath = chunk.getNodeTokenString(spec);
+    var specPath: []const u8 = undefined;
+    if (node.head.left_right.right != cy.NullId) {
+        const spec = chunk.nodes[node.head.left_right.right];
+        specPath = chunk.getNodeTokenString(spec);
+    } else {
+        specPath = name;
+    }
 
     const modId = try getOrInitModule(chunk, specPath, nodeId);
 

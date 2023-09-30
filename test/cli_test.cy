@@ -1,4 +1,4 @@
-import os 'os'
+import os
 import t 'test'
 
 if os.system == 'windows':
@@ -25,7 +25,7 @@ t.eq(getInput().utf8(), 'abc')
 
 -- os.stdin.streamLines()
 runPipeInput('{printCmd} "abc\nfoo\r\nbar"', "
-import os 'os'
+import os
 import t 'test'
 lines = []
 for os.stdin.streamLines() each line:
@@ -41,7 +41,7 @@ else:
 
 -- os.stdin.streamLines() with small buffer size to test string building.
 runPipeInput('{printCmd} "abcxyz\nfoobar\r\ndeadbeef"', "
-import os 'os'
+import os
 import t 'test'
 lines = []
 for os.stdin.streamLines(4) each line:
@@ -61,7 +61,7 @@ else:
 
 runArgs(['123', 'foobar'], "
 import t 'test'
-import os 'os'
+import os
 args = os.args()
 t.eq(args.len(), 4)
 t.eq(args[0].utf8(), os.exePath())
@@ -72,13 +72,13 @@ t.eq(args[3].utf8(), 'foobar')
 
 -- os.stdout
 runExpectOut("
-import os 'os'
+import os
 os.stdout.write('foo')
 ", 'foo')
 
 -- os.stderr
 runExpectErr("
-import os 'os'
+import os
 os.stderr.write('foo')
 ", 'foo')
 

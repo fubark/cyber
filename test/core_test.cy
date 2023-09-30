@@ -1,5 +1,5 @@
 import t 'test'
-import os 'os'
+import os
 
 --| Tests sensitive to line numbers.
 -- errorReport(), current frame.

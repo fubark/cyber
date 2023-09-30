@@ -1,4 +1,4 @@
-import os 'os'
+import os
 import t 'test'
 
 if os.system != 'windows':

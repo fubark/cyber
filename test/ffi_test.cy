@@ -1,7 +1,7 @@
 -- Copyright (c) 2023 Cyber (See LICENSE)
 
 import t 'test'
-import os 'os'
+import os
 
 -- Not found.
 var lib = try os.bindLib('xyz123.so', [])

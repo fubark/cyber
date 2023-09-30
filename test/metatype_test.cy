@@ -35,5 +35,5 @@ t.eq((fiber).id(), 21)
 t.eq((metatype).id(), 26)
 
 -- Referencing type name path.
-import os 'os'
+import os
 t.eq(typesym(os.CFunc), .metatype)

@@ -1,4 +1,4 @@
-import os 'os'
+import os
 
 str = 'abcdefghijklmnopqrstuvwxyz123456'.repeat(1000000)
 str = str.concat('waldo')

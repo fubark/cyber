@@ -1250,30 +1250,37 @@ pub const Parser = struct {
             const ident = try self.pushIdentNode(self.next_pos);
             self.advanceToken();
 
-            const fromId = (try self.parseExpr(.{})) orelse {
-                return self.reportParseError("Expected from identifier.", &.{});
-            };
-            const from = self.nodes.items[fromId];
-            if (from.node_t == .string) {
-                try self.consumeNewLineOrEnd();
-                const import = try self.pushNode(.importStmt, start);
-                self.nodes.items[import].head = .{
-                    .left_right = .{
-                        .left = ident,
-                        .right = fromId,
-                    },
+            token = self.peekToken();
+            var spec: cy.NodeId = cy.NullId;
+            if (token.tag() != .new_line) {
+                spec = (try self.parseExpr(.{})) orelse {
+                    return self.reportParseError("Expected import specifier.", &.{});
                 };
-
-                try self.staticDecls.append(self.alloc, .{
-                    .declT = .import,
-                    .inner = .{
-                        .import = import,
-                    }
-                });
-                return import;
+                const specN = self.nodes.items[spec];
+                if (specN.node_t == .string) {
+                    try self.consumeNewLineOrEnd();
+                } else {
+                    return self.reportParseError("Expected import specifier to be a string. {}", &.{fmt.v(specN.node_t)});
+                }
             } else {
-                return self.reportParseError("Expected from identifier to be a string. {}", &.{fmt.v(from.node_t)});
+                self.advanceToken();
             }
+
+            const import = try self.pushNode(.importStmt, start);
+            self.nodes.items[import].head = .{
+                .left_right = .{
+                    .left = ident,
+                    .right = spec,
+                },
+            };
+
+            try self.staticDecls.append(self.alloc, .{
+                .declT = .import,
+                .inner = .{
+                    .import = import,
+                }
+            });
+            return import;
         } else {
             return self.reportParseError("Expected import clause.", &.{});
         }

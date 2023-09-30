@@ -11,12 +11,12 @@ Static functions are not initially values themselves. They allow function calls 
 
 Static functions are declared with the `func` keyword and must have a name.
 ```cy
-import m 'math'
+import math
 
 func dist(x0, y0, x1, y1):
     var dx = x0-x1
     var dy = y0-y1
-    return m.sqrt(dx^2 + dy^2)
+    return math.sqrt(dx^2 + dy^2)
 ```
 Calling static functions is straightforward. You can also reassign or pass them around as function values.
 ```cy

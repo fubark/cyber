@@ -7,20 +7,27 @@ weight: 5
 Modules have their own namespace and contain accessible static symbols. By default, importing another Cyber script returns a module with its declared symbols.
 
 ## Importing.
-Import declarations create a local alias to the module referenced by the import specifier. The Cyber CLI comes with some builtin modules like `math` and `test`. If the specifier does not refer to a builtin module, it looks for a Cyber script file relative to the current script's directory. An embedder can integrate their own module loader.
+Import declarations create a local alias to the module referenced by the import specifier. The Cyber CLI comes with some builtin modules like `math` and `test`. If the specifier does not refer to a builtin module, it looks for a Cyber script file relative to the current script's directory. An embedder can integrate their own module loader and resolver.
 ```cy
-import t 'test'
-t.eq(123, 123)
+import test
+test.eq(123, 123)
 
 -- Imports are static declarations so they can be anywhere in the script.
-import m 'math'
-print m.cos(0)
+import math
+print math.cos(0)
+```
 
--- Loading another Cyber script.
+When the alias needs to be renamed, the import specifier comes after the alias name and must be a string literal.
+```cy
+import m 'math'
+print m.random()
+
+-- Loading a Cyber module from the local directory.
 import foo 'bar.cy'
 print foo.myFunc()
 print foo.myVar
 ```
+
 A Cyber script that is imported doesn't evaluate its main block. Only static declarations are effectively loaded. If there is code in the main block, it will skip evaluation. In the following, only the `print` statement in the `main.cy` is evaluated.
 ```cy
 -- main.cy
@@ -58,6 +65,7 @@ func printC():
 Static variable declarations from imports can have circular references. Read more about this in [Static Variables]({{<relref "/docs/toc/syntax#static-variables">}}).
 
 Modules can also be destructured using the following syntax:
+> _Planned Feature_
 ```cy
 import { cos, pi } 'math'
 print cos(pi)

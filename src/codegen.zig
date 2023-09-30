@@ -1182,18 +1182,7 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
             try opAssignStmt(c, nodeId);
         },
         .importStmt => {
-            const ident = c.nodes[node.head.left_right.left];
-            const name = c.getNodeTokenString(ident);
-
-            const spec = c.nodes[node.head.left_right.right];
-            const specPath = c.getNodeTokenString(spec);
-
-            _ = name;
-            _ = specPath;
-
-            // const modId = try self.getOrLoadModule(specPath);
-            // const leadSym = try self.ensureSemaSym(name);
-            // try self.semaSymToMod.put(self.alloc, leadSym, modId);
+            // Nop.
         },
         .funcDeclInit => {
             // Nop. Func declaration initializer are hoisted and initialized at the start of the program.

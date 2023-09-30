@@ -9,7 +9,7 @@ This allows you to call into dynamic libraries created in C or other languages.
 Cyber uses `libtcc` to JIT compile the bindings so function calls are fast. `bindLib` is part of the `os` module and accepts the path to the library as a string and a list of [CFunc](#cfunc) or [CStruct](#cstruct) declarations.
 
 ```cy
-import os 'os'
+import os
 
 var lib = os.bindLib('mylib.so', [
     os.CFunc{ sym: 'add', args: [.int, .int], ret: .int }
@@ -48,7 +48,7 @@ Once the object is released by ARC, the TCCState is also released which removes 
 The `CFunc` object lets you bind to a C-function. The `sym` field maps to the C-function's symbol name in the dynamic library. The `args` field declares the type mapping from Cyber to C-function's arguments. Finally, the `ret` field declares the type mapping from the C-function's return type to a Cyber type.
 
 ```cy
-import os 'os'
+import os
 
 var lib = os.bindLib('mylib.so', [
     os.CFunc{ sym: 'add', args: [.int, .int], ret: .int }
@@ -66,7 +66,7 @@ int add(int a, int b) {
 You can also bind object types to C-structs using the `CStruct` object. The `type` field accepts an object type symbol and `fields` indicates the mapping for each field in `type` to and from a C-struct.
 After adding a `CStruct` declaration, you can use the object type symbol in CFunc `args` and `ret` and also other CStruct `fields`.
 ```cy
-import os 'os'
+import os
 
 type MyObject object:
     a float
@@ -94,7 +94,7 @@ MyObject foo(MyObject o) {
 
 `CStruct` also generates `ptrTo[Type]` as a helper function to dereference an opaque ptr to a new Cyber object:
 ```cy
-import os 'os'
+import os
 
 var lib = os.bindLib('mylib.so', [
     os.CFunc{ sym: 'foo', args: [MyObject], ret: .voidPtr }

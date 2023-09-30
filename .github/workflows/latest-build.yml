@@ -57,7 +57,7 @@ jobs:
           - host: ubuntu-22.04
             target: wasm32-freestanding
             mode: release
-            cmd: lib
+            cmd: web-lib
           - host: ubuntu-22.04
             target: x86_64-linux-gnu
             mode: release
@@ -258,7 +258,7 @@ jobs:
       - name: Move. (wasm)
         if: env.BUILD_TARGET == 'wasm32-freestanding'
         run: |
-          mv zig-out/lib/cyber.wasm ${{ env.BIN_ZIP }}
+          mv zig-out/lib/cyber-web.wasm ${{ env.BIN_ZIP }}
 
       - name: Save artifact.
         if: env.BUILD_CMD == 'cli'
@@ -278,7 +278,7 @@ jobs:
             libcyber-linux-x64.a
             libcyber-macos-x64.a
             libcyber-macos-arm64.a
-            cyber.wasm
+            cyber-web.wasm
 
     outputs:
       short_version: ${{ env.SHORT_VERSION }}
@@ -312,7 +312,7 @@ jobs:
             libcyber-linux-x64.a
             libcyber-macos-x64.a
             libcyber-macos-arm64.a
-            cyber.wasm
+            cyber-web.wasm
 
       # Auto dispatch.
       - name: Github Release.
@@ -330,4 +330,4 @@ jobs:
             libcyber-linux-x64.a
             libcyber-macos-x64.a
             libcyber-macos-arm64.a
-            cyber.wasm
+            cyber-web.wasm

@@ -98,11 +98,49 @@ pub fn build(b: *std.build.Builder) !void {
         }
         lib.addIncludePath(.{. path = thisDir() ++ "/src" });
 
+        if (target.getCpuArch().isWasm()) {
+            // Export table so non-exported functions can still be invoked from:
+            // `instance.exports.__indirect_function_table`
+            lib.export_table = true;
+        }
+
         // Allow dynamic libraries to be loaded by filename in the cwd.
         // lib.addRPath(".");
 
         // Allow exported symbols to be visible to dlopen.
         // Also needed to export symbols in wasm lib.
+        lib.rdynamic = true;
+
+        try buildAndLinkDeps(lib, opts);
+        step.dependOn(&lib.step);
+        step.dependOn(&b.addInstallArtifact(lib, .{}).step);
+    }
+
+    {
+        const step = b.step("web-lib", "Build wasm lib for web.");
+
+        var opts = getDefaultOptions(target, optimize);
+        opts.ffi = false;
+        opts.malloc = if (target.getCpuArch().isWasm()) .zig else .malloc;
+        opts.cli = false;
+        opts.applyOverrides();
+
+        const lib = b.addSharedLibrary(.{
+            .name = "cyber-web",
+            .root_source_file = .{ .path = "src/web.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+        if (lib.optimize != .Debug) {
+            lib.strip = true;
+        }
+        lib.addIncludePath(.{. path = thisDir() ++ "/src" });
+
+        if (target.getCpuArch().isWasm()) {
+            // Export table so non-exported functions can still be invoked from:
+            // `instance.exports.__indirect_function_table`
+            lib.export_table = true;
+        }
         lib.rdynamic = true;
 
         try buildAndLinkDeps(lib, opts);

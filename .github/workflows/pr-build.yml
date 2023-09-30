@@ -47,7 +47,7 @@ jobs:
           - host: ubuntu-22.04
             target: wasm32-freestanding
             mode: release
-            cmd: lib
+            cmd: web-lib
           - host: windows-2022
             target: x86_64-windows-gnu
             mode: release
@@ -76,6 +76,7 @@ jobs:
         }')[matrix.config.target] }}
       BUILD_HOST: ${{ matrix.config.host }}
       BUILD_TARGET: ${{ matrix.config.target }}
+      BUILD_CMD: ${{ matrix.config.cmd }}
       BUILD_MODE: ${{ matrix.config.mode }}
       BIN_EXT: ${{ contains(matrix.config.target, 'windows') && '.exe' || '' }}
       ZIG_MODE_FLAG: ${{ (matrix.config.mode == 'release' && '-Doptimize=ReleaseFast') || '' }}
@@ -151,9 +152,4 @@ jobs:
           wasm3/build/wasm3 zig-out/bin/trace_test.wasm
 
       - name: Build.
-        if: env.BUILD_TARGET != 'wasm32-freestanding'
-        run: zig build cli ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }}
-
-      - name: Build.
-        if: env.BUILD_TARGET == 'wasm32-freestanding'
-        run: zig build lib ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }}
+        run: zig build ${{ env.BUILD_CMD }} ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }}

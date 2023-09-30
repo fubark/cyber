@@ -30,10 +30,8 @@ const stdMods = std.ComptimeStringMap(cy.ModuleLoaderResult, .{
     }},
 });
 
-var defaultLoader: cy.ModuleLoaderFn = undefined;
 pub fn setupVMForCLI(vm: *cy.UserVM) void {
     vm.setModuleResolver(resolve);
-    defaultLoader = vm.getModuleLoader();
     vm.setModuleLoader(loader);
     vm.setPrint(print);
 }
@@ -52,7 +50,7 @@ fn print(_: *cy.UserVM, str: cy.Str) callconv(.C) void {
 pub fn loader(uvm: *cy.UserVM, spec_: cy.Str, out: *cy.ModuleLoaderResult) callconv(.C) bool {
     const spec = spec_.slice();
     if (builtins.get(spec) != null) {
-        return defaultLoader(uvm, spec_, out);
+        return cy.vm_compiler.defaultModuleLoader(uvm, spec_, out);
     }
     if (stdMods.get(spec)) |res| {
         out.* = res;

@@ -699,7 +699,6 @@ pub fn defaultModuleLoader(_: *cy.UserVM, spec: cy.Str, out: *cy.ModuleLoaderRes
             .srcIsStatic = true,
             .funcLoader = cy_mod.funcLoader,
             .typeLoader = cy_mod.typeLoader,
-            .postLoad = cy_mod.postLoad,
         };
         return true;
     } else if (std.mem.eql(u8, spec.slice(), "math")) {

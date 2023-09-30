@@ -4938,12 +4938,6 @@ pub var dummyCyclableHead = DummyCyclableNode{
     .typeId = vmc.GC_MARK_MASK | rt.NoneT,
 };
 
-pub extern fn hostPrint(str: [*]const u8, strLen: usize) void;
-
-pub fn defaultPrint(_: *UserVM, str: cy.Str) callconv(.C) void {
-    if (cy.isWasmFreestanding) {
-        hostPrint(str.buf, str.len);
-    } else {
-        // Default print is a nop.
-    }
+pub fn defaultPrint(_: *UserVM, _: cy.Str) callconv(.C) void {
+    // Default print is a nop.
 }

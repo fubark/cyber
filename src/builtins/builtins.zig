@@ -25,13 +25,6 @@ pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo, out: *cy.HostFuncResult)
     return false;
 }
 
-pub fn postLoad(vm: *cy.UserVM, modId: cy.ModuleId) callconv(.C) void {
-    const b = bindings.ModuleBuilder.init(vm.internal().compiler, modId);
-    if (cy.isWasm) {
-        b.setFunc("evalJS", &.{bt.Any}, bt.None, evalJS) catch cy.fatal();
-    }
-}
-
 const NameFunc = struct { []const u8, ?*const anyopaque, cy.HostFuncType };
 const funcs = [_]NameFunc{
     // boolean
@@ -588,11 +581,3 @@ pub fn typesym(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
         else => fmt.panic("Unsupported {}", &.{fmt.v(val.getUserTag())}),
     }
 }
-
-pub fn evalJS(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const str = vm.valueToTempString(args[0]);
-    hostEvalJS(str.ptr, str.len);
-    return Value.None;
-}
-
-extern fn hostEvalJS(ptr: [*]const u8, len: usize) void;

@@ -146,6 +146,10 @@ pub const SubBlock = struct {
     /// When this sub block ends, the previous sub block id is set as the current.
     prevSubBlockId: SubBlockId,
 
+    // Whether execution can reach the end.
+    // If a return statement was generated, this would be set to false.
+    endReachable: bool = true,
+
     pub fn init(prevSubBlockId: SubBlockId, assignedVarStart: usize, declaredVarStart: usize) SubBlock {
         return .{
             .assignedVarStart = @intCast(assignedVarStart),
@@ -1542,7 +1546,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
             }
             c.nodes[nodeId].head = .{
                 .nonDecInt = .{
-                    .semaNumberVal = val,
+                    .semaVal = val,
                 },
             };
             const canBeInt = std.math.cast(i48, val) != null;
@@ -2688,7 +2692,7 @@ pub const CompactSymbolId = packed struct {
         };
     }
 
-    fn isNull(self: CompactSymbolId) bool {
+    pub fn isNull(self: CompactSymbolId) bool {
         return cy.NullId == @as(u32, @bitCast(self));
     }
 
@@ -4342,6 +4346,7 @@ pub const NameBuiltinTypeEnd = 17;
 pub const FuncDeclId = u32;
 
 /// Sema data about a named or anonymous function.
+/// TODO: This should be consolidated with sema.FuncSym.
 pub const FuncDecl = struct {
     nodeId: cy.NodeId,
 

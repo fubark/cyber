@@ -164,13 +164,17 @@ pub fn printLastUserCompileError(vm: *const cy.VM) !void {
 }
 
 fn writeLastUserCompileError(vm: *const cy.VM, w: anytype) !void {
-    const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
-    if (vm.compiler.lastErrNode != cy.NullId) {
-        const token = chunk.nodes[vm.compiler.lastErrNode].start_token;
-        const pos = chunk.tokens[token].pos();
-        try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, chunk.id, pos);
+    if (vm.compiler.lastErrChunk != cy.NullId) {
+        const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
+        if (vm.compiler.lastErrNode != cy.NullId) {
+            const token = chunk.nodes[vm.compiler.lastErrNode].start_token;
+            const pos = chunk.tokens[token].pos();
+            try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, chunk.id, pos);
+        } else {
+            try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, chunk.id, cy.NullId);
+        }
     } else {
-        try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, chunk.id, cy.NullId);
+        try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, cy.NullId, cy.NullId);
     }
 }
 
@@ -227,34 +231,43 @@ pub fn printUserError(vm: *const cy.VM, title: []const u8, msg: []const u8, chun
 
 /// Reduced to using writer so printed errors can be tested.
 pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []const u8, chunkId: u32, pos: u32) linksection(cy.Section) !void {
-    const chunk = vm.compiler.chunks.items[chunkId];
-    if (pos != NullId) {
-        var line: u32 = undefined;
-        var col: u32 = undefined;
-        var lineStart: u32 = undefined;
-        computeLinePos(chunk.parser.src, pos, &line, &col, &lineStart);
-        const lineEnd = std.mem.indexOfScalarPos(u8, chunk.src, lineStart, '\n') orelse chunk.src.len;
-        try fmt.format(w,
-            \\{}: {}
-            \\
-            \\{}:{}:{}:
-            \\{}
-            \\
-        , &.{
-            v(title), v(msg), v(chunk.srcUri),
-            v(line+1), v(col+1),
-            v(chunk.src[lineStart..lineEnd]),
-        });
-        try w.writeByteNTimes(' ', col);
-        _ = try w.write("^\n");
+    if (chunkId != cy.NullId) {
+        const chunk = vm.compiler.chunks.items[chunkId];
+        if (pos != NullId) {
+            var line: u32 = undefined;
+            var col: u32 = undefined;
+            var lineStart: u32 = undefined;
+            computeLinePos(chunk.parser.src, pos, &line, &col, &lineStart);
+            const lineEnd = std.mem.indexOfScalarPos(u8, chunk.src, lineStart, '\n') orelse chunk.src.len;
+            try fmt.format(w,
+                \\{}: {}
+                \\
+                \\{}:{}:{}:
+                \\{}
+                \\
+            , &.{
+                v(title), v(msg), v(chunk.srcUri),
+                v(line+1), v(col+1),
+                v(chunk.src[lineStart..lineEnd]),
+            });
+            try w.writeByteNTimes(' ', col);
+            _ = try w.write("^\n");
+        } else {
+            try fmt.format(w,
+                \\{}: {}
+                \\
+                \\in {}
+                \\
+            , &.{
+                v(title), v(msg), v(chunk.srcUri),
+            });
+        }
     } else {
         try fmt.format(w,
             \\{}: {}
             \\
-            \\in {}
-            \\
         , &.{
-            v(title), v(msg), v(chunk.srcUri),
+            v(title), v(msg),
         });
     }
 }

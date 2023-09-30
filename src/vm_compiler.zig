@@ -14,6 +14,7 @@ const bt = types.BuiltinTypeSymIds;
 const gen = cy.codegen;
 const cy_mod = @import("builtins/builtins.zig");
 const math_mod = @import("builtins/math.zig");
+const llvm_gen = @import("llvm_gen.zig");
 
 const log = cy.log.scoped(.vm_compiler);
 
@@ -275,112 +276,18 @@ pub const VMcompiler = struct {
         mainMod.chunkId = nextId;
         try self.chunks.append(self.alloc, mainChunk);
 
-        // Load core module first since the members are imported into each user module.
-        var builtinModId: cy.ModuleId = undefined;
-        if (self.importBuiltins) {
-            builtinModId = try sema.appendResolvedRootModule(self, "builtins");
-            const importCore = ImportTask{
-                .chunkId = nextId,
-                .nodeId = cy.NullId,
-                .absSpec = "builtins",
-                .modId = builtinModId,
-            };
-            try performImportTask(self, importCore);
-        }
-
         // All modules and data types are loaded first.
-        log.tracev("Load imports and types.", .{});
-        var id: u32 = 0;
-        while (true) {
-            while (id < self.chunks.items.len) : (id += 1) {
-                log.debug("chunk parse: {}", .{id});
-                try self.performChunkParse(id);
-
-                const chunk = &self.chunks.items[id];
-                const mod = self.sema.getModule(chunk.modId);
-                chunk.semaRootSymId = mod.resolvedRootSymId;
-
-                if (self.importBuiltins) {
-                    // Import builtin module into local namespace.
-                    try sema.declareUsingModule(chunk, builtinModId);
-                }
-
-                // Process static declarations.
-                for (chunk.parser.staticDecls.items) |decl| {
-                    switch (decl.declT) {
-                        .import => {
-                            try sema.declareImport(chunk, decl.inner.import);
-                        },
-                        .object => {
-                            try sema.declareObject(chunk, decl.inner.object);
-                        },
-                        .enumT => {
-                            try sema.declareEnum(chunk, decl.inner.enumT);
-                        },
-                        .typeAlias => {
-                            try sema.declareTypeAlias(chunk, decl.inner.typeAlias);
-                        },
-                        .variable,
-                        .func,
-                        .funcInit => {},
-                    }
-                }
-
-                if (chunk.postTypeLoad) |postTypeLoad| {
-                    postTypeLoad(@ptrCast(self.vm), chunk.modId);
-                }
-            }
-
-            // Check for import tasks.
-            for (self.importTasks.items) |task| {
-                try self.performImportTask(task);
-            }
-            self.importTasks.clearRetainingCapacity();
-
-            if (id == self.chunks.items.len) {
-                // No more chunks were added from import tasks.
-                break;
-            }
-        }
+        try declareImportsAndTypes(self, nextId);
 
         // Declare static vars and funcs after types have been resolved.
-        log.tracev("Load module symbols.", .{});
-        id = 0;
-        while (id < self.chunks.items.len) : (id += 1) {
-            var chunk = &self.chunks.items[id];
-
-            // Process static declarations.
-            for (chunk.parser.staticDecls.items) |decl| {
-                switch (decl.declT) {
-                    .variable => {
-                        try sema.declareVar(chunk, decl.inner.variable);
-                    },
-                    .func => {
-                        try sema.declareFunc(chunk, chunk.modId, decl.inner.func);
-                    },
-                    .funcInit => {
-                        try sema.declareFuncInit(chunk, chunk.modId, decl.inner.funcInit);
-                    },
-                    .object => {
-                        try sema.declareObjectMembers(chunk, decl.inner.object);
-                    },
-                    .enumT,
-                    .import,
-                    .typeAlias => {},
-                }
-            }
-
-            if (chunk.postLoad) |postLoad| {
-                postLoad(@ptrCast(self.vm), chunk.modId);
-            }
-        }
+        try declareSymbols(self);
 
         // Perform sema on all chunks.
         // TODO: Single pass sema/codegen.
         log.tracev("Perform sema.", .{});
-        id = 0;
+        var id: u32 = 0;
         while (id < self.chunks.items.len) : (id += 1) {
-            try self.performChunkSema(id);
+            try performChunkSema(self, id);
         }
         
         // Set up for genVarDecls.
@@ -393,189 +300,317 @@ pub const VMcompiler = struct {
         }
 
         if (!config.skipCodegen) {
-            log.tracev("Perform codegen.", .{});
-            // Once all symbols have been resolved, the static initializers are generated in DFS order.
-            for (self.chunks.items) |*chunk| {
-                log.debug("gen static initializer for chunk: {}", .{chunk.id});
-
-                for (chunk.parser.staticDecls.items) |decl| {
-                    if (decl.declT == .variable) {
-                        const node = chunk.nodes[decl.inner.variable];
-                        if (node.node_t == .staticDecl) {
-                            // Nodetype could have changed after declaration. eg. hostVarDecl.
-                            const symId = node.head.staticDecl.sema_symId;
-                            const csymId = sema.CompactSymbolId.initSymId(symId);
-                            try gen.genStaticInitializerDFS(chunk, csymId);
-                        }
-                    } else if (decl.declT == .funcInit) {
-                        const node = chunk.nodes[decl.inner.funcInit];
-                        if (node.node_t == .funcDeclInit) {
-                            // Nodetype could have changed after declaration. eg. hostFuncDecl.
-                            const declId = node.head.func.semaDeclId;
-                            const func = chunk.semaFuncDecls.items[declId];
-                            const csymId = sema.CompactSymbolId.initFuncSymId(func.inner.staticFunc.semaFuncSymId);
-                            try gen.genStaticInitializerDFS(chunk, csymId);
-                        }
-                    }
-                }
-            }
-
-            for (self.chunks.items, 0..) |*chunk, i| {
-                log.debug("perform codegen for chunk: {}", .{i});
-                try self.performChunkCodegen(chunk.id);
-            }
-
-            // Merge inst and const buffers.
-            var reqLen = self.buf.ops.items.len + self.buf.consts.items.len * @sizeOf(cy.Const) + @alignOf(cy.Const) - 1;
-            if (self.buf.ops.capacity < reqLen) {
-                try self.buf.ops.ensureTotalCapacityPrecise(self.alloc, reqLen);
-            }
-            const constAddr = std.mem.alignForward(usize, @intFromPtr(self.buf.ops.items.ptr) + self.buf.ops.items.len, @alignOf(cy.Const));
-            const constDst = @as([*]cy.Const, @ptrFromInt(constAddr))[0..self.buf.consts.items.len];
-            const constSrc = try self.buf.consts.toOwnedSlice(self.alloc);
-            std.mem.copy(cy.Const, constDst, constSrc);
-            self.alloc.free(constSrc);
-            self.buf.mconsts = constDst;
-        }
-
-        // Final op address is known. Patch pc offsets.
-        // for (self.vm.funcSyms.items()) |*sym| {
-        //     if (sym.entryT == .func) {
-        //         sym.inner.func.pc = .{ .ptr = self.buf.ops.items.ptr + sym.inner.func.pc.offset};
-        //     }
-        // }
-        // for (self.vm.methodGroups.items()) |*sym| {
-        //     if (sym.mapT == .one) {
-        //         if (sym.inner.one.sym.entryT == .func) {
-        //             sym.inner.one.sym.inner.func.pc = .{ .ptr = self.buf.ops.items.ptr + sym.inner.one.sym.inner.func.pc.offset };
-        //         }
-        //     } else if (sym.mapT == .many) {
-        //         if (sym.inner.many.mruSym.entryT == .func) {
-        //             sym.inner.many.mruSym.inner.func.pc = .{ .ptr = self.buf.ops.items.ptr + sym.inner.many.mruSym.inner.func.pc.offset };
-        //         }
-        //     }
-        // }
-        // var iter = self.vm.methodTable.iterator();
-        // while (iter.next()) |entry| {
-        //     const sym = entry.value_ptr;
-        //     if (sym.entryT == .func) {
-        //         sym.inner.func.pc = .{ .ptr = self.buf.ops.items.ptr + sym.inner.func.pc.offset };
-        //     }
-        // }
-    }
-
-    /// Sema pass.
-    /// Symbol resolving, type checking, and builds the model for codegen.
-    fn performChunkSema(self: *VMcompiler, id: cy.ChunkId) !void {
-        const chunk = &self.chunks.items[id];
-
-        // Dummy first element to avoid len > 0 check during pop.
-        try chunk.semaSubBlocks.append(self.alloc, sema.SubBlock.init(0, 0, 0));
-        try chunk.semaBlockStack.append(self.alloc, 0);
-
-        const root = chunk.nodes[chunk.parserAstRootId];
-
-        chunk.mainSemaBlockId = try sema.pushBlock(chunk, cy.NullId);
-        chunk.nodeTypes = try self.alloc.alloc(sema.SymbolId, chunk.nodes.len);
-        sema.semaStmts(chunk, root.head.root.headStmt) catch |err| {
-            try sema.endBlock(chunk);
-            return err;
-        };
-        try sema.endBlock(chunk);
-    }
-
-    /// Tokenize and parse.
-    /// Parser pass collects static declaration info.
-    fn performChunkParse(self: *VMcompiler, id: cy.ChunkId) !void {
-        const chunk = &self.chunks.items[id];
-
-        var tt = cy.debug.timer();
-        const ast = try chunk.parser.parse(chunk.src);
-        tt.endPrint("parse");
-        // Update buffer pointers so success/error paths can access them.
-        chunk.nodes = ast.nodes.items;
-        chunk.tokens = ast.tokens;
-        if (ast.has_error) {
-            self.lastErrChunk = id;
-            if (ast.isTokenError) {
-                return error.TokenError;
-            } else {
-                return error.ParseError;
-            }
-        }
-        chunk.parserAstRootId = ast.root_id;
-    }
-
-    fn performChunkCodegen(self: *VMcompiler, id: cy.ChunkId) !void {
-        const chunk = &self.chunks.items[id];
-
-        if (id == 0) {
-            // Main script performs gen for decls and the main block.
-            try gen.initVarLocals(chunk);
-            const jumpStackStart = chunk.blockJumpStack.items.len;
-            const root = chunk.nodes[0];
-
-            try chunk.unwindTempIndexStack.append(self.alloc, @bitCast(@as(u32, cy.NullId)));
-            defer chunk.popUnwindTempIndex();
-
-            try gen.genStatements(chunk, root.head.root.headStmt, true);
-            chunk.patchBlockJumps(jumpStackStart);
-            chunk.blockJumpStack.items.len = jumpStackStart;
-            self.buf.mainStackSize = chunk.getMaxUsedRegisters();
-            chunk.popBlock();
-        } else {
-            // Modules perform gen for only the top level declarations.
-            const root = chunk.nodes[0];
-            try gen.topDeclStatements(chunk, root.head.root.headStmt);
-            chunk.popBlock();
+            try performCodegen(self);
         }
     }
 
-    fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
-        // Initialize defaults.
-        var res: cy.ModuleLoaderResult = .{
-            .src = cy.Str.initSlice(""),
-            .srcIsStatic = true,
-        };
-
-        self.hasApiError = false;
-        log.tracev("Invoke module loader: {s}", .{task.absSpec});
-        if (self.moduleLoader(@ptrCast(self.vm), cy.Str.initSlice(task.absSpec), &res)) {
-            // Push another chunk.
-            const newChunkId: u32 = @intCast(self.chunks.items.len);
-
-            const src = res.src.slice();
-            var newChunk = try cy.Chunk.init(self, newChunkId, task.absSpec, src);
-            newChunk.funcLoader = res.funcLoader;
-            newChunk.varLoader = res.varLoader;
-            newChunk.typeLoader = res.typeLoader;
-            newChunk.postTypeLoad = res.postTypeLoad;
-            newChunk.postLoad = res.postLoad;
-            newChunk.srcOwned = !res.srcIsStatic;
-            newChunk.destroy = res.destroy;
-            newChunk.modId = task.modId;
-
-            try self.chunks.append(self.alloc, newChunk);
-            self.sema.modules.items[task.modId].chunkId = newChunkId;
-        } else {
-            const chunk = &self.chunks.items[task.chunkId];
-            if (task.nodeId == cy.NullId) {
-                if (self.hasApiError) {
-                    return chunk.reportError(self.apiError, &.{});
-                } else {
-                    return chunk.reportError("Failed to load module: {}", &.{v(task.absSpec)});
-                }
-            } else {
-                const stmt = chunk.nodes[task.nodeId];
-                if (self.hasApiError) {
-                    return chunk.reportErrorAt(self.apiError, &.{}, stmt.head.left_right.right);
-                } else {
-                    return chunk.reportErrorAt("Failed to load module: {}", &.{v(task.absSpec)}, stmt.head.left_right.right);
-                }
-            }
-        }
+    /// If `chunkId` is NullId, then the error comes from an aggregate step.
+    /// If `nodeId` is NullId, then the error does not have a location.
+    pub fn setErrorAt(self: *VMcompiler, chunkId: cy.ChunkId, nodeId: cy.NodeId, format: []const u8, args: []const fmt.FmtValue) !void {
+        self.alloc.free(self.lastErr);
+        self.lastErr = try fmt.allocFormat(self.alloc, format, args);
+        self.lastErrChunk = chunkId;
+        self.lastErrNode = nodeId;
     }
 };
+
+/// Tokenize and parse.
+/// Parser pass collects static declaration info.
+fn performChunkParse(self: *VMcompiler, id: cy.ChunkId) !void {
+    const chunk = &self.chunks.items[id];
+
+    var tt = cy.debug.timer();
+    const ast = try chunk.parser.parse(chunk.src);
+    tt.endPrint("parse");
+    // Update buffer pointers so success/error paths can access them.
+    chunk.nodes = ast.nodes.items;
+    chunk.tokens = ast.tokens;
+    if (ast.has_error) {
+        self.lastErrChunk = id;
+        if (ast.isTokenError) {
+            return error.TokenError;
+        } else {
+            return error.ParseError;
+        }
+    }
+    chunk.parserAstRootId = ast.root_id;
+}
+
+/// Sema pass.
+/// Symbol resolving, type checking, and builds the model for codegen.
+fn performChunkSema(self: *VMcompiler, id: cy.ChunkId) !void {
+    const chunk = &self.chunks.items[id];
+
+    // Dummy first element to avoid len > 0 check during pop.
+    try chunk.semaSubBlocks.append(self.alloc, sema.SubBlock.init(0, 0, 0));
+    try chunk.semaBlockStack.append(self.alloc, 0);
+
+    const root = chunk.nodes[chunk.parserAstRootId];
+
+    chunk.mainSemaBlockId = try sema.pushBlock(chunk, cy.NullId);
+    chunk.nodeTypes = try self.alloc.alloc(sema.SymbolId, chunk.nodes.len);
+    sema.semaStmts(chunk, root.head.root.headStmt) catch |err| {
+        try sema.endBlock(chunk);
+        return err;
+    };
+    try sema.endBlock(chunk);
+}
+
+fn performChunkCodegen(self: *VMcompiler, id: cy.ChunkId) !void {
+    const chunk = &self.chunks.items[id];
+
+    if (id == 0) {
+        // Main script performs gen for decls and the main block.
+        try gen.initVarLocals(chunk);
+        const jumpStackStart = chunk.blockJumpStack.items.len;
+        const root = chunk.nodes[0];
+
+        try chunk.unwindTempIndexStack.append(self.alloc, @bitCast(@as(u32, cy.NullId)));
+        defer chunk.popUnwindTempIndex();
+
+        try gen.genStatements(chunk, root.head.root.headStmt, true);
+        chunk.patchBlockJumps(jumpStackStart);
+        chunk.blockJumpStack.items.len = jumpStackStart;
+        self.buf.mainStackSize = chunk.getMaxUsedRegisters();
+        chunk.popBlock();
+    } else {
+        // Modules perform gen for only the top level declarations.
+        const root = chunk.nodes[0];
+        try gen.topDeclStatements(chunk, root.head.root.headStmt);
+        chunk.popBlock();
+    }
+}
+
+fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
+    // Initialize defaults.
+    var res: cy.ModuleLoaderResult = .{
+        .src = cy.Str.initSlice(""),
+        .srcIsStatic = true,
+    };
+
+    self.hasApiError = false;
+    log.tracev("Invoke module loader: {s}", .{task.absSpec});
+    if (self.moduleLoader(@ptrCast(self.vm), cy.Str.initSlice(task.absSpec), &res)) {
+        // Push another chunk.
+        const newChunkId: u32 = @intCast(self.chunks.items.len);
+
+        const src = res.src.slice();
+        var newChunk = try cy.Chunk.init(self, newChunkId, task.absSpec, src);
+        newChunk.funcLoader = res.funcLoader;
+        newChunk.varLoader = res.varLoader;
+        newChunk.typeLoader = res.typeLoader;
+        newChunk.postTypeLoad = res.postTypeLoad;
+        newChunk.postLoad = res.postLoad;
+        newChunk.srcOwned = !res.srcIsStatic;
+        newChunk.destroy = res.destroy;
+        newChunk.modId = task.modId;
+
+        try self.chunks.append(self.alloc, newChunk);
+        self.sema.modules.items[task.modId].chunkId = newChunkId;
+    } else {
+        const chunk = &self.chunks.items[task.chunkId];
+        if (task.nodeId == cy.NullId) {
+            if (self.hasApiError) {
+                return chunk.reportError(self.apiError, &.{});
+            } else {
+                return chunk.reportError("Failed to load module: {}", &.{v(task.absSpec)});
+            }
+        } else {
+            const stmt = chunk.nodes[task.nodeId];
+            if (self.hasApiError) {
+                return chunk.reportErrorAt(self.apiError, &.{}, stmt.head.left_right.right);
+            } else {
+                return chunk.reportErrorAt("Failed to load module: {}", &.{v(task.absSpec)}, stmt.head.left_right.right);
+            }
+        }
+    }
+}
+
+fn declareImportsAndTypes(self: *VMcompiler, mainChunkId: cy.ChunkId) !void {
+    log.tracev("Load imports and types.", .{});
+
+    // Load core module first since the members are imported into each user module.
+    var builtinModId: cy.ModuleId = undefined;
+    if (self.importBuiltins) {
+        builtinModId = try sema.appendResolvedRootModule(self, "builtins");
+        const importCore = ImportTask{
+            .chunkId = mainChunkId,
+            .nodeId = cy.NullId,
+            .absSpec = "builtins",
+            .modId = builtinModId,
+        };
+        try performImportTask(self, importCore);
+    }
+
+    var id: u32 = 0;
+    while (true) {
+        while (id < self.chunks.items.len) : (id += 1) {
+            log.debug("chunk parse: {}", .{id});
+            try performChunkParse(self, id);
+
+            const chunk = &self.chunks.items[id];
+            const mod = self.sema.getModule(chunk.modId);
+            chunk.semaRootSymId = mod.resolvedRootSymId;
+
+            if (self.importBuiltins) {
+                // Import builtin module into local namespace.
+                try sema.declareUsingModule(chunk, builtinModId);
+            }
+
+            // Process static declarations.
+            for (chunk.parser.staticDecls.items) |decl| {
+                switch (decl.declT) {
+                    .import => {
+                        try sema.declareImport(chunk, decl.inner.import);
+                    },
+                    .object => {
+                        try sema.declareObject(chunk, decl.inner.object);
+                    },
+                    .enumT => {
+                        try sema.declareEnum(chunk, decl.inner.enumT);
+                    },
+                    .typeAlias => {
+                        try sema.declareTypeAlias(chunk, decl.inner.typeAlias);
+                    },
+                    .variable,
+                    .func,
+                    .funcInit => {},
+                }
+            }
+
+            if (chunk.postTypeLoad) |postTypeLoad| {
+                postTypeLoad(@ptrCast(self.vm), chunk.modId);
+            }
+        }
+
+        // Check for import tasks.
+        for (self.importTasks.items) |task| {
+            try performImportTask(self, task);
+        }
+        self.importTasks.clearRetainingCapacity();
+
+        if (id == self.chunks.items.len) {
+            // No more chunks were added from import tasks.
+            break;
+        }
+    }
+}
+
+fn declareSymbols(self: *VMcompiler) !void {
+    log.tracev("Load module symbols.", .{});
+    var id: u32 = 0;
+    while (id < self.chunks.items.len) : (id += 1) {
+        var chunk = &self.chunks.items[id];
+
+        // Process static declarations.
+        for (chunk.parser.staticDecls.items) |decl| {
+            switch (decl.declT) {
+                .variable => {
+                    try sema.declareVar(chunk, decl.inner.variable);
+                },
+                .func => {
+                    try sema.declareFunc(chunk, chunk.modId, decl.inner.func);
+                },
+                .funcInit => {
+                    try sema.declareFuncInit(chunk, chunk.modId, decl.inner.funcInit);
+                },
+                .object => {
+                    try sema.declareObjectMembers(chunk, decl.inner.object);
+                },
+                .enumT,
+                .import,
+                .typeAlias => {},
+            }
+        }
+
+        if (chunk.postLoad) |postLoad| {
+            postLoad(@ptrCast(self.vm), chunk.modId);
+        }
+    }
+}
+
+fn performCodegen(self: *VMcompiler) !void {
+    log.tracev("Perform codegen.", .{});
+
+    if (cy.hasJIT) {
+        if (self.config.aot) {
+            try llvm_gen.genNativeBinary(self);
+            return;
+        }
+    }
+
+    try genBytecode(self);
+}
+
+fn genBytecode(self: *VMcompiler) !void {
+    // Once all symbols have been resolved, the static initializers are generated in DFS order.
+    for (self.chunks.items) |*chunk| {
+        log.tracev("gen static initializer for chunk: {}", .{chunk.id});
+
+        for (chunk.parser.staticDecls.items) |decl| {
+            if (decl.declT == .variable) {
+                const node = chunk.nodes[decl.inner.variable];
+                if (node.node_t == .staticDecl) {
+                    // Nodetype could have changed after declaration. eg. hostVarDecl.
+                    const symId = node.head.staticDecl.sema_symId;
+                    const csymId = sema.CompactSymbolId.initSymId(symId);
+                    try gen.genStaticInitializerDFS(chunk, csymId);
+                }
+            } else if (decl.declT == .funcInit) {
+                const node = chunk.nodes[decl.inner.funcInit];
+                if (node.node_t == .funcDeclInit) {
+                    // Nodetype could have changed after declaration. eg. hostFuncDecl.
+                    const declId = node.head.func.semaDeclId;
+                    const func = chunk.semaFuncDecls.items[declId];
+                    const csymId = sema.CompactSymbolId.initFuncSymId(func.inner.staticFunc.semaFuncSymId);
+                    try gen.genStaticInitializerDFS(chunk, csymId);
+                }
+            }
+        }
+    }
+
+    for (self.chunks.items, 0..) |*chunk, i| {
+        log.tracev("Perform codegen for chunk{}: {s}", .{i, chunk.srcUri});
+        try performChunkCodegen(self, chunk.id);
+    }
+
+    // Merge inst and const buffers.
+    var reqLen = self.buf.ops.items.len + self.buf.consts.items.len * @sizeOf(cy.Const) + @alignOf(cy.Const) - 1;
+    if (self.buf.ops.capacity < reqLen) {
+        try self.buf.ops.ensureTotalCapacityPrecise(self.alloc, reqLen);
+    }
+    const constAddr = std.mem.alignForward(usize, @intFromPtr(self.buf.ops.items.ptr) + self.buf.ops.items.len, @alignOf(cy.Const));
+    const constDst = @as([*]cy.Const, @ptrFromInt(constAddr))[0..self.buf.consts.items.len];
+    const constSrc = try self.buf.consts.toOwnedSlice(self.alloc);
+    std.mem.copy(cy.Const, constDst, constSrc);
+    self.alloc.free(constSrc);
+    self.buf.mconsts = constDst;
+
+    // Final op address is known. Patch pc offsets.
+    // for (self.vm.funcSyms.items()) |*sym| {
+    //     if (sym.entryT == .func) {
+    //         sym.inner.func.pc = .{ .ptr = self.buf.ops.items.ptr + sym.inner.func.pc.offset};
+    //     }
+    // }
+    // for (self.vm.methodGroups.items()) |*sym| {
+    //     if (sym.mapT == .one) {
+    //         if (sym.inner.one.sym.entryT == .func) {
+    //             sym.inner.one.sym.inner.func.pc = .{ .ptr = self.buf.ops.items.ptr + sym.inner.one.sym.inner.func.pc.offset };
+    //         }
+    //     } else if (sym.mapT == .many) {
+    //         if (sym.inner.many.mruSym.entryT == .func) {
+    //             sym.inner.many.mruSym.inner.func.pc = .{ .ptr = self.buf.ops.items.ptr + sym.inner.many.mruSym.inner.func.pc.offset };
+    //         }
+    //     }
+    // }
+    // var iter = self.vm.methodTable.iterator();
+    // while (iter.next()) |entry| {
+    //     const sym = entry.value_ptr;
+    //     if (sym.entryT == .func) {
+    //         sym.inner.func.pc = .{ .ptr = self.buf.ops.items.ptr + sym.inner.func.pc.offset };
+    //     }
+    // }
+}
 
 pub const CompileErrorType = enum {
     tokenize,
@@ -645,6 +680,7 @@ pub const CompileConfig = struct {
     skipCodegen: bool = false,
     enableFileModules: bool = false,
     genDebugFuncMarkers: bool = false,
+    aot: bool = false,
 };
 
 pub const ValidateConfig = struct {

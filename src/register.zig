@@ -51,7 +51,7 @@ pub const Allocator = struct {
     }
 
     pub fn setNextTemp(self: *Allocator, nextTemp: u8) void {
-        stdx.debug.dassert(nextTemp >= self.tempStart);
+        cy.dassert(nextTemp >= self.tempStart);
         self.nextTemp = nextTemp;
     }
 

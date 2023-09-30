@@ -25,6 +25,7 @@ const FmtValueType = enum(u8) {
     ptr,
     enumt,
     err,
+    stringz,
 };
 
 pub const FmtValue = extern struct {
@@ -35,6 +36,7 @@ pub const FmtValue = extern struct {
         u64: u64,
         f64: f64,
         string: [*]const u8,
+        stringz: [*:0]const u8,
         char: u8,
         bool: bool,
         ptr: ?*anyopaque,
@@ -64,6 +66,7 @@ fn toFmtValueType(comptime T: type) FmtValueType {
         f64 => return .f64,
         []u8,
         []const u8 => return .string,
+        [*:0]u8 => return .stringz,
         else => {
             if (@typeInfo(T) == .Enum) {
                 return .enumt;
@@ -167,6 +170,12 @@ pub fn v(val: anytype) FmtValue {
             },
         },
         .string => return str(val),
+        .stringz => return .{
+            .type = .stringz,
+            .data = .{
+                .stringz = val,
+            },
+        },
         .enumt => return enumv(val),
         .err => return str(@errorName(val)),
         .ptr =>  return .{
@@ -264,6 +273,10 @@ fn formatValue(writer: anytype, val: FmtValue) !void {
         .enumt,
         .string => {
             try writer.writeAll(val.data.string[0..val.data2.string]);
+        },
+        .stringz => {
+            const str_ = std.mem.sliceTo(val.data.stringz, 0);
+            try writer.writeAll(str_);
         },
         .ptr => {
             try writer.writeByte('@');

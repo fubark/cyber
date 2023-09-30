@@ -157,6 +157,7 @@ pub const is32Bit = build_options.is32Bit;
 pub const hasStdFiles = !isWasm;
 pub const hasGC = build_options.gc;
 pub const hasFFI = build_options.ffi;
+pub const hasJIT = build_options.jit;
 pub const hasCLI = build_options.cli;
 
 const build_options = @import("build_options");
@@ -274,6 +275,7 @@ pub const IndexSlice = utils.IndexSlice;
 pub const ptrAlignCast = utils.ptrAlignCast;
 pub const panic = utils.panic;
 pub const panicFmt = utils.panicFmt;
+pub const dassert = utils.dassert;
 
 pub inline fn unexpected() noreturn {
     panic("unexpected");

@@ -9,6 +9,8 @@ const sema = cy.sema;
 const types = cy.types;
 const gen = cy.codegen;
 const log = cy.log.scoped(.chunk);
+const llvm = @import("llvm.zig");
+const llvm_gen = @import("llvm_gen.zig");
 
 pub const ChunkId = u32;
 
@@ -136,6 +138,16 @@ pub const Chunk = struct {
     /// Counter for loading @host types.
     curHostTypeIdx: u32,
 
+    /// LLVM
+    tempTypeRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.TypeRef) else void,
+    tempValueRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.ValueRef) else void,
+    mod: if (cy.hasJIT) llvm.ModuleRef else void,
+    builder: if (cy.hasJIT) llvm.BuilderRef else void,
+    ctx: if (cy.hasJIT) llvm.ContextRef else void,
+    exprDoneStack: if (cy.hasJIT) std.ArrayListUnmanaged(llvm_gen.Value) else void,
+    exprStack: if (cy.hasJIT) std.ArrayListUnmanaged(ExprState) else void,
+    llvmFuncs: if (cy.hasJIT) []LLVM_Func else void, // One-to-one with `semaFuncDecls`
+
     pub fn init(c: *cy.VMcompiler, id: ChunkId, srcUri: []const u8, src: []const u8) !Chunk {
         var new = Chunk{
             .id = id,
@@ -186,7 +198,22 @@ pub const Chunk = struct {
             .curHostTypeIdx = 0,
             .usingModules = .{},
             // .funcCandidateStack = .{},
+            .tempTypeRefs = undefined,
+            .tempValueRefs = undefined,
+            .mod = undefined,
+            .builder = undefined,
+            .ctx = undefined,
+            .exprDoneStack = undefined,
+            .exprStack = undefined,
+            .llvmFuncs = undefined,
         };
+        if (cy.hasJIT) {
+            new.tempTypeRefs = .{};
+            new.tempValueRefs = .{};
+            new.exprDoneStack = .{};
+            new.exprStack = .{};
+            new.llvmFuncs = &.{};
+        }
         try new.parser.tokens.ensureTotalCapacityPrecise(c.alloc, 511);
         try new.parser.nodes.ensureTotalCapacityPrecise(c.alloc, 127);
         return new;
@@ -227,6 +254,14 @@ pub const Chunk = struct {
         self.parser.deinit();
         if (self.srcOwned) {
             self.alloc.free(self.src);
+        }
+
+        if (cy.hasJIT) {
+            self.tempTypeRefs.deinit(self.alloc);
+            self.tempValueRefs.deinit(self.alloc);
+            self.exprDoneStack.deinit(self.alloc);
+            self.exprStack.deinit(self.alloc);
+            self.alloc.free(self.llvmFuncs);
         }
 
         self.semaFuncDecls.deinit(self.alloc);
@@ -730,10 +765,7 @@ pub const Chunk = struct {
     }
 
     pub fn setErrorAt(self: *Chunk, format: []const u8, args: []const fmt.FmtValue, nodeId: cy.NodeId) !void {
-        self.alloc.free(self.compiler.lastErr);
-        self.compiler.lastErr = try fmt.allocFormat(self.alloc, format, args);
-        self.compiler.lastErrNode = nodeId;
-        self.compiler.lastErrChunk = self.id;
+        try self.compiler.setErrorAt(self.id, nodeId, format, args);
     }
 
     pub fn reportError(self: *Chunk, format: []const u8, args: []const fmt.FmtValue) error{CompileError, OutOfMemory, FormatError} {
@@ -888,6 +920,9 @@ const GenBlock = struct {
     regaNextTemp: u8,
     regaMaxTemp: u8,
 
+    /// LLVM
+    funcRef: if (cy.hasJIT) llvm.ValueRef else void = undefined,
+
     fn init() GenBlock {
         return .{
             .numLocals = 0,
@@ -942,4 +977,14 @@ const LocalId = u8;
 const UnwindTempIndex = packed struct {
     created: bool,
     idxOrReg: u31,
+};
+
+const ExprState = struct {
+    nodeId: cy.NodeId,
+    previsited: bool,
+};
+
+pub const LLVM_Func = struct {
+    typeRef: llvm.TypeRef,
+    funcRef: llvm.ValueRef,
 };

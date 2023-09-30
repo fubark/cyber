@@ -58,11 +58,11 @@ func foo():
   print 'done'
 
 var fiber = coinit foo()
-print fiber.status()   -- '#paused'
+print fiber.status()   -- '.paused'
 coresume fiber
-print fiber.status()   -- '#paused'
+print fiber.status()   -- '.paused'
 coresume fiber
-print fiber.status()   -- '#done'
+print fiber.status()   -- '.done'
 ```
 The main execution context is a fiber as well. Once the main fiber has finished, the VM is done and control is returned to the host.
 

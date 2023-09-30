@@ -3692,7 +3692,7 @@ pub const Node = struct {
             partsHead: NodeId,
         },
         nonDecInt: struct {
-            semaNumberVal: u64,
+            semaVal: u64,
         } align (4) ,
     },
 };

@@ -214,3 +214,7 @@ pub fn isRcCandidateType(c: *cy.VMcompiler, id: TypeId) bool {
         }
     }
 }
+
+pub fn getTypeName(c: *cy.VMcompiler, id: TypeId) []const u8 {
+    return sema.getSymName(c, id);
+}

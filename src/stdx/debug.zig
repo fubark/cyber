@@ -5,12 +5,6 @@ pub const tracy = @import("tracy.zig");
 
 const UseWasm = builtin.target.cpu.arch == .wasm32;
 
-pub fn dassert(pred: bool) void {
-    if (builtin.mode == .Debug) {
-        std.debug.assert(pred);
-    }
-}
-
 pub fn assertInRange(val: anytype, min: @TypeOf(val), max: @TypeOf(val)) void {
     if (val < min or val > max) {
         unreachable;

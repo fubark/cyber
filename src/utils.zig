@@ -1,7 +1,14 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const cy = @import("cyber.zig");
 const log = cy.log.scoped(.utils);
+
+pub fn dassert(pred: bool) void {
+    if (builtin.mode == .Debug) {
+        std.debug.assert(pred);
+    }
+}
 
 pub fn panicFmt(comptime format: []const u8, args: anytype) noreturn {
     if (cy.isWasm) {

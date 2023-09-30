@@ -8,6 +8,7 @@ const fmt = @import("fmt.zig");
 
 var verbose = false;
 var reload = false;
+var aot = false;
 var dumpStats = false; // Only for trace build.
 var pc: ?u32 = null;
 
@@ -45,6 +46,8 @@ pub fn main() !void {
                 verbose = true;
             } else if (std.mem.eql(u8, arg, "-r")) {
                 reload = true;
+            } else if (std.mem.eql(u8, arg, "-aot")) {
+                aot = true;
             } else if (std.mem.eql(u8, arg, "-pc")) {
                 i += 1;
                 if (i < args.len) {
@@ -138,6 +141,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     const res = vm.compile(path, src, .{
         .enableFileModules = true,
         .genDebugFuncMarkers = true,
+        .aot = aot,
     }) catch |err| {
         fmt.panic("unexpected {}\n", &.{fmt.v(err)});
     };
@@ -222,6 +226,8 @@ fn help() void {
         \\                            
         \\cyber compile Options:
         \\  -pc     Next arg is the pc to dump detailed bytecode at.
+        \\  -aot    Ahead-of-time compilation.
+        \\          Enabled if CLI was built with `-Djit`.
         \\
     , .{build_options.version});
 }

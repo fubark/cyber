@@ -67,7 +67,7 @@ fn identifier(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
     const node = c.nodes[nodeId];
     if (c.genGetVar(node.head.ident.semaVarId)) |svar| {
         // csymId would be active instead.
-        stdx.debug.dassert(svar.type != .staticAlias);
+        cy.dassert(svar.type != .staticAlias);
 
         var dst: RegisterId = undefined;
         if (svar.type == .objectMemberAlias) {
@@ -532,12 +532,9 @@ fn binExpr2(c: *Chunk, opts: GenBinExprOptions) !GenValue {
                     }
 
                     // ARC cleanup.
-                    if (opts.leftv == null) {
-                        try releaseIfRetainedTemp(c, leftv);
-                    }
                     try releaseIfRetainedTemp(c, rightv);
 
-                    return c.initGenValue(dst, bt.Float, false);
+                    return c.initGenValue(dst, leftT, false);
                 },
                 .generic => {
                     return callObjSymBinExpr(c, getInfixMGID(c, opts.op), opts);
@@ -577,9 +574,6 @@ fn binExpr2(c: *Chunk, opts: GenBinExprOptions) !GenValue {
                     }
 
                     // ARC cleanup.
-                    if (opts.leftv == null) {
-                        try releaseIfRetainedTemp(c, leftv);
-                    }
                     try releaseIfRetainedTemp(c, rightv);
 
                     return c.initGenValue(dst, bt.Boolean, false);
@@ -2039,18 +2033,18 @@ fn string(c: *Chunk, str: []const u8, dst: LocalId) !GenValue {
     return c.initGenValue(dst, bt.StaticString, false);
 }
 
-fn constInt(self: *Chunk, val: f64, dst: LocalId) !GenValue {
-    const i: i64 = @intFromFloat(val);
-    if (i >= std.math.minInt(i8) and i <= std.math.maxInt(i8)) {
-        try self.buf.pushOp2(.constI8, @bitCast(@as(i8, @intCast(i))), dst);
+fn constInt(self: *Chunk, val: u64, dst: LocalId) !GenValue {
+    // TODO: Can be constU8.
+    if (val <= std.math.maxInt(i8)) {
+        try self.buf.pushOp2(.constI8, @bitCast(@as(i8, @intCast(val))), dst);
         return self.initGenValue(dst, bt.Integer, false);
     }
-    const idx = try self.buf.pushConst(cy.Const.init(cy.Value.initInt(@intCast(i)).val));
+    const idx = try self.buf.pushConst(cy.Const.init(cy.Value.initInt(@intCast(val)).val));
     try constOp(self, idx, dst);
     return self.initGenValue(dst, bt.Integer, false);
 }
 
-fn constNumber(self: *Chunk, val: f64, dst: LocalId) !GenValue {
+fn constFloat(self: *Chunk, val: f64, dst: LocalId) !GenValue {
     const idx = try self.buf.pushConst(cy.Const.init(@bitCast(val)));
     try constOp(self, idx, dst);
     return self.initGenValue(dst, bt.Float, false);
@@ -2221,7 +2215,7 @@ fn callExpr2(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr, comptime startF
                     if (startFiber) fiberStartLocal else callStartLocal, startFiber);
             } else {
                 const csymId = callee.head.ident.sema_csymId;
-                stdx.debug.dassert(csymId.isPresent());
+                cy.dassert(csymId.isPresent());
                 var rFuncSym: ?sema.FuncSym = null;
 
                 const start = self.operandStack.items.len;
@@ -2847,13 +2841,13 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) anyerror!GenValu
         },
         .number => {
             const literal = c.getNodeTokenString(node);
-            const val = try std.fmt.parseFloat(f64, literal);
-
             const dst = try c.rega.selectFromNonLocalVar(cstr, false);
             if (c.nodeTypes[nodeId] == bt.Integer) {
+                const val = try std.fmt.parseInt(u64, literal, 10);
                 return constInt(c, val, dst);
             } else {
-                return constNumber(c, val, dst);
+                const val = try std.fmt.parseFloat(f64, literal);
+                return constFloat(c, val, dst);
             }
         },
         .float => {
@@ -2861,12 +2855,11 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) anyerror!GenValu
             const val = try std.fmt.parseFloat(f64, literal);
 
             const dst = try c.rega.selectFromNonLocalVar(cstr, false);
-            return constNumber(c, val, dst);
+            return constFloat(c, val, dst);
         },
         .nonDecInt => {
-            const fval: f64 = @floatFromInt(node.head.nonDecInt.semaNumberVal);
             const dst = try c.rega.selectFromNonLocalVar(cstr, false);
-            return try constInt(c, fval, dst);
+            return try constInt(c, node.head.nonDecInt.semaVal, dst);
         },
         .symbolLit => {
             const name = c.getNodeTokenString(node);
@@ -3294,7 +3287,7 @@ fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId) !void {
 
     const svar = c.genGetVarPtr(varId).?;
     if (svar.isBoxed) {
-        stdx.debug.dassert(svar.isDefinedOnce);
+        cy.dassert(svar.isDefinedOnce);
         try assignExprToBoxedVar(c, svar, exprId);
         return;
     }
@@ -3377,7 +3370,7 @@ fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId) !void {
         svar.isDefinedOnce = true;
     } else {
         const exprv = try expression(c, exprId, RegisterCstr.simpleMustRetain);
-        stdx.debug.dassert(exprv.local != svar.local);
+        cy.dassert(exprv.local != svar.local);
         try c.pushOptionalDebugSym(leftId);
         try c.buf.pushOp2(.copyReleaseDst, exprv.local, svar.local);
         svar.vtype = exprv.vtype;

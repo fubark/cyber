@@ -1,5 +1,5 @@
 #!cyber
-import os 'os'
+import os
 
 POST_HEADER = "
 "

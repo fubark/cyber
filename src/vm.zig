@@ -1542,6 +1542,16 @@ pub const VM = struct {
         }
     }
 
+    pub fn valueToTempRawString2(self: *const VM, val: Value, isRaw: *bool) linksection(cy.StdSection) []const u8 {
+        if (val.isRawString()) {
+            isRaw.* = true;
+            return val.asRawString();
+        } else {
+            isRaw.* = false;
+            return self.valueToTempString(val);
+        }
+    }
+
     /// String is guaranteed to be valid UTF-8.
     /// Uses a short desc for rawstring instead of performing validation.
     pub fn valueToTempString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {

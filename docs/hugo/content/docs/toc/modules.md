@@ -93,13 +93,13 @@ import os
 print os.dirName(#ModUri)  -- Prints '/some/path'
 ```
 
-The annotation `@hide` provides a hint to editors that the static symbol should not appear in the auto-complete. Despite this, the symbol is still reachable.
+## Visibility.
+The annotation `@hide` provides a hint to editors that a static symbol should not appear in the auto-complete. Despite this, the symbol is still reachable.
 
 ## Builtin Modules.
 Builtin modules are the bare minimum that comes with Cyber. The [embeddable library]({{<relref "/docs/toc/embedding">}}) contains these modules and nothing more. They include:
 - [builtins](#builtins): Cyber related functions and commonly used utilities.
 - [math](#math): Math constants and functions.
-> _Incomplete: The docs for builtin modules are not completely up-to-date. They will be auto generated in the future._
 
 ## builtins.
 The `builtins` module contains functions related to Cyber and common utilities. It is automatically imported into each script's namespace. 
@@ -111,182 +111,706 @@ print 'hello'
 var id = typeid('my str')
 print id
 ```
+<!-- builtins.start -->
+> `func arrayFill(val any, n int) none`  
+> Creates a list with initial capacity of `n` and values set to `val`.  If the value is an object, it is shallow copied `n` times.
 
-| Function | Summary |
-| ------------- | ----- |
-| `arrayFill(val any, n int) List` | Creates a list with initial capacity of `n` and values set to `val`. If the value is an object, it is shallow copied `n` times. | 
-| `boolean(val any) boolean` | Converts a value to either `true` or `false`. | 
-| `copy(val any) any` | Copies a primitive value or creates a shallow copy of an object value. | 
-| `dump(val any) none` | Prints the result of `toCyon` on a value. | 
-| `error(e (enum \| symbol)) error` | Create an error from an enum or symbol. | 
-| `evalJS(val string) none` | Evals JS from the host environment. This is only available in a web WASM build of Cyber. | 
-| `float(val any) float` | Casts or converts the value to a `float`. Panics if type conversion fails. | 
-| `int(val any) int` | Converts a value to an 32-bit integer. | 
-| `isAlpha(val int) boolean` | Returns whether a rune is an alphabetic letter. | 
-| `isDigit(val int) boolean` | Returns whether a rune is a digit. | 
-| `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
-| `panic(e symbol) noreturn` | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}). |
-| `parseCyber(src any) map` | Parses Cyber source string into structured map object. Currently, only metadata about static declarations is made available but this will be extended to include an AST. | 
-| `parseCyon(src any) any` | Parses a CYON string into a value. | 
-| `performGC() map` | Runs the garbage collector once to detect reference cycles and abandoned objects. Returns the statistics of the run in a map value. | 
-| `pointer(val any) pointer` | Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI. | 
-| `print(s string) none` | Prints a value. The host determines how it is printed. | 
-| `rawstring(str string) rawstring` | Converts a string to a `rawstring`. | 
-| `runestr(val int) string` | Converts a rune to a string. | 
-| `string(val any) string` | Converts a value to a string. | 
-| `toCyon(val any) string` | Encodes a value to CYON string. | 
-| `typeof(any) metatype` | Returns the value's type as a `metatype` object. |
-| `typesym(any) symbol` | Returns the value's type as one of the predefined symbols: #float, #int, #boolean, #object, #list, #map, #string, #rawstring, #function, #fiber, #pointer, #symbol, #metatype, #none, #error |
+> `func copy(val any) none`  
+> Copies a primitive value or creates a shallow copy of an object value.
+
+> `func dump(val any) none`  
+> Prints the result of `toCyon` on a value.
+
+> `func errorReport() none`  
+
+> `func isAlpha(val int) none`  
+> Returns whether a rune is an alphabetic letter.
+
+> `func isDigit(val int) none`  
+> Returns whether a rune is a digit.
+
+> `func must(val any) none`  
+> If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned.
+
+> `func panic(err any) none`  
+> Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}).
+
+> `func parseCyber(src any) none`  
+> Parses Cyber source string into structured map object.  Currently, only metadata about static declarations is made available but this will be extended to include an AST.
+
+> `func parseCyon(src any) none`  
+> Parses a CYON string into a value.
+
+> `func performGC() none`  
+> Runs the garbage collector once to detect reference cycles and abandoned objects.  Returns the statistics of the run in a map value.
+
+> `func print(str any) none`  
+> Prints a value. The host determines how it is printed.
+
+> `func runestr(val int) none`  
+> Converts a rune to a string.
+
+> `func toCyon(val any) none`  
+> Encodes a value to CYON string.
+
+> `func typeof(val any) none`  
+> Returns the value's type as a `metatype` object.
+
+> `func typesym(val any) none`  
+> Returns the value's type as one of the predefined symbols:  .float, .int, .boolean, .object, .list, .map, .string, .rawstring, .function, .fiber, .pointer, .symbol, .metatype, .none, .error
+
+### `type boolean`
+
+> `func $call(val any) none`  
+> Converts a value to either `true` or `false`.
+
+### `type error`
+
+> `func $call(val any) none`  
+> Create an error from an enum or symbol.
+
+> `func value(self any) none`  
+
+### `type int`
+
+> `func $call(val any) none`  
+> Converts a value to an 48-bit integer.
+
+> `func $prefix~(self any) none`  
+
+> `func $prefix-(self any) none`  
+
+> `func $infix<(self any, o any) none`  
+
+> `func $infix<=(self any, o any) none`  
+
+> `func $infix>(self any, o any) none`  
+
+> `func $infix>=(self any, o any) none`  
+
+> `func $infix+(self any, o any) none`  
+
+> `func $infix-(self any, o any) none`  
+
+> `func $infix*(self any, o any) none`  
+
+> `func $infix/(self any, o any) none`  
+
+> `func $infix%(self any, o any) none`  
+
+> `func $infix^(self any, o any) none`  
+
+> `func $infix&(self any, o any) none`  
+
+> `func $infix|(self any, o any) none`  
+
+> `func $infix||(self any, o any) none`  
+
+> `func $infix<<(self any, o any) none`  
+
+> `func $infix>>(self any, o any) none`  
+
+### `type float`
+
+> `func $call(val any) none`  
+> Converts the value to a `float`. Panics if type conversion fails.
+
+> `func $prefix-(self any) none`  
+
+> `func $infix<(self any, o any) none`  
+
+> `func $infix<=(self any, o any) none`  
+
+> `func $infix>(self any, o any) none`  
+
+> `func $infix>=(self any, o any) none`  
+
+> `func $infix+(self any, o any) none`  
+
+> `func $infix-(self any, o any) none`  
+
+> `func $infix*(self any, o any) none`  
+
+> `func $infix/(self any, o any) none`  
+
+> `func $infix%(self any, o any) none`  
+
+> `func $infix^(self any, o any) none`  
+
+### `type List`
+
+> `func $index(self any, idx any) none`  
+
+> `func $setIndex(self any, idx any, val any) none`  
+
+> `func add(self any, val any) none`  
+
+> `func append(self any, val any) none`  
+> Appends a value to the end of the list.
+
+> `func concat(self any, list List) none`  
+> Concats the elements of another list to the end of this list.
+
+> `func insert(self any, idx int, val any) none`  
+> Inserts a value at index `idx`.
+
+> `func iterator(self any) none`  
+> Returns a new iterator over the list elements.
+
+> `func joinString(self any, sep any) none`  
+> Returns a new string that joins the elements with `separator`.
+
+> `func len(self any) none`  
+> Returns the number of elements in the list.
+
+> `func seqIterator(self any) none`  
+> Returns a new sequence iterator over the list elements.
+
+> `func remove(self any, idx int) none`  
+> Removes an element at index `idx`.
+
+> `func resize(self any, size int) none`  
+> Resizes the list to `len` elements. If the new size is bigger, `none` values  are appended to the list. If the new size is smaller, elements at the end of the list are removed.
+
+> `func sort(self any, lessFn any) none`  
+> Sorts the list with the given `less` function.  If element `a` should be ordered before `b`, the function should return `true` otherwise `false`.
+
+### `type ListIterator`
+
+> `func next(self any) none`  
+
+> `func nextSeq(self any) none`  
+
+### `type Map`
+
+> `func $index(self any, key any) none`  
+
+> `func $setIndex(self any, key any, val any) none`  
+
+> `func remove(self any, key any) none`  
+> Removes the element with the given key `key`.
+
+> `func size(self any) none`  
+> Returns the number of key-value pairs in the map.
+
+> `func iterator(self any) none`  
+> Returns a new iterator over the map elements.
+
+> `func seqIterator(self any) none`  
+> Returns a new sequence iterator over the map elements.
+
+### `type MapIterator`
+
+> `func next(self any) none`  
+
+> `func nextSeq(self any) none`  
+
+### `type pointer`
+
+> `func $call(val any) none`  
+> Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI.
+
+> `func value(self any) none`  
+> Returns the memory address as an `int`. The value may be negative since it's  bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
+
+<!-- builtins.end -->
+
+### `type string trait`
+> `func $call(val any) string`  
+> Converts a value to a string.
+
+> `func concat(self, str string) string | rawstring`  
+> Returns a new string that concats this string and `str`.
+
+> `func endsWith(self, suffix string) bool`  
+> Returns whether the string ends with `suffix`.
+
+> `func find(self, needle string) int?`  
+> Returns the first index of substring `needle` in the string or `none` if not found.
+
+> `func findAnyRune(self, set string) int?`  
+> Returns the first index of any UTF-8 rune in `set` or `none` if not found.
+
+> `func findRune(self, needle int) int?`  
+> Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
+
+> `func insert(self, idx int, str string) string`  
+> Returns a new string with `str` inserted at index `idx`.
+
+> `func isAscii(self) bool`  
+> Returns whether the string contains all ASCII runes.
+
+> `func len(self) int`  
+> Returns the number of UTF-8 runes in the string.
+
+> `func less(self, str string) bool`  
+> Returns whether this string is lexicographically before `str`.
+
+> `func lower(self) string`  
+> Returns this string in lowercase.
+
+> `func replace(self, needle string, replacement string) string`  
+> Returns a new string with all occurrences of `needle` replaced with `replacement`.
+
+> `func repeat(self, n int) string`  
+> Returns a new string with this string repeated `n` times.
+
+> `func runeAt(self, idx int) int`  
+> Returns the UTF-8 rune at index `idx`.
+
+> `func slice(self, start int, end int) string`  
+> Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
+
+> `func sliceAt(self, idx int) string`  
+> Returns the UTF-8 rune at index `idx` as a single rune string.
+
+> `func split(self, delim string) List`  
+> Returns a list of UTF-8 strings split at occurrences of `delim`.
+
+> `func startsWith(self, prefix string) bool`  
+> Returns whether the string starts with `prefix`.
+
+> `func trim(self, mode symbol, trimRunes any) string`  
+> Returns the string with ends trimmed from runes in `trimRunes`. `mode` can be .left, .right, or .ends.
+
+> `func upper(self) string`  
+> Returns this string in uppercase.
+
+### `type rawstring trait`
+> `func $call(str string) rawstring`  
+> Converts a string to a `rawstring`.
+
+> `func byteAt(self, idx int) int`  
+> Returns the byte value (0-255) at the given index `idx`.
+
+> `func concat(self, str string | rawstring) rawstring`  
+> Returns a new rawstring that concats this rawstring and `str`.
+
+> `func endsWith(self, suffix string | rawstring) bool`  
+> Returns whether the string ends with `suffix`.
+
+> `func find(self, needle string | rawstring) int?`  
+> Returns the first index of substring `needle` in the string or `none` if not found.
+
+> `func findAnyRune(self, set string | rawstring) int?`  
+> Returns the first index of any UTF-8 rune in `set` or `none` if not found.
+
+> `func findRune(self, needle int) int?`  
+> Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
+
+> `func insert(self, idx int, str string | rawstring) rawstring`  
+> Returns a new string with `str` inserted at index `idx`.
+
+> `func insertByte(self, idx int, byte int) rawstring`  
+> Returns a new string with `byte` inserted at index `idx`.
+
+> `func isAscii(self) bool`  
+> Returns whether the string contains all ASCII runes.
+
+> `func len(self) int`  
+> Returns the number of bytes in the string.
+
+> `func less(self, str rawstring) bool`  
+> Returns whether this rawstring is lexicographically before `str`.
+
+> `func lower(self) rawstring`  
+> Returns this string in lowercase.
+
+> `func repeat(self, n int) rawstring`  
+> Returns a new rawstring with this rawstring repeated `n` times.
+
+> `func replace(self, needle string | rawstring, replacement string | rawstring) rawstring`  
+> Returns a new string with all occurrences of `needle` replaced with `replacement`.
+
+> `func runeAt(self, idx int) int`  
+> Returns the UTF-8 rune at index `idx`. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
+
+> `func slice(self, start int, end int) rawstring`  
+> Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
+
+> `func sliceAt(self, idx int) rawstring`  
+> Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
+
+> `func split(self, delim string) List`  
+> Returns a list of rawstrings split at occurrences of `delim`.
+
+> `func startsWith(self, prefix string | rawstring) bool`  
+> Returns whether the string starts with `prefix`.
+
+> `func upper(self) rawstring`  
+> Returns this string in uppercase.
+
+> `func trim(self, mode symbol, trimRunes any) rawstring`  
+> Returns the string with ends trimmed from runes in `trimRunes`. `mode` can be .left, .right, or .ends.
+
+> `func utf8(self) string`  
+> Returns a valid UTF-8 string or returns `error.InvalidRune`.
 
 ## math.
 The math module contains commonly used math constants and functions.
 
 Sample usage:
 ```cy
-import m 'math'
+import math
 
 var r = 10
-print(m.pi * r^2)
+print(math.pi * r^2)
 ```
-| Variable | Type | Summary |
-| ------------- | ------------- | ----- |
-| e | float | Euler's number and the base of natural logarithms; approximately 2.718. |
-| inf | float | Infinity. |
-| log10e | float | Base-10 logarithm of E; approximately 0.434. |
-| log2e | float | Base-2 logarithm of E; approximately 1.443. |
-| ln10 | float | Natural logarithm of 10; approximately 2.303. |
-| ln2 | float | Natural logarithm of 2; approximately 0.693. |
-| nan | float | Not a number. Note that nan == nan, however, if a nan came from an arithmetic operation, the comparison is undefined (it may be true or false, so it is not reliable). |
-| neginf | float | Negative infinity. |
-| pi | float | Ratio of a circle's circumference to its diameter; approximately 3.14159. |
-| sqrt1_2 | float | Square root of ½; approximately 0.707. |
-| sqrt2 | float | Square root of 2; approximately 1.414. |
 
-| Function | Summary |
-| -- | -- |
-| abs(float) float | Returns the absolute value of x. |
-| acos(float) float | Returns the arccosine of x. |
-| acosh(float) float | Returns the hyperbolic arccosine of x. |
-| asin(float) float | Returns the arcsine of x. |
-| asinh(float) float | Returns the hyperbolic arcsine of a number. |
-| atan(float) float | Returns the arctangent of x. |
-| atan2(float, float) float | Returns the arctangent of the quotient of its arguments. |
-| atanh(float) float | Returns the hyperbolic arctangent of x. |
-| cbrt(float) float | Returns the cube root of x. |
-| ceil(float) float | Returns the smallest integer greater than or equal to x. |
-| clz32(float) float | Returns the number of leading zero bits of the 32-bit integer x. |
-| cos(float) float | Returns the cosine of x. |
-| cosh(float) float | Returns the hyperbolic cosine of x. |
-| exp(float) float | Returns e^x, where x is the argument, and e is Euler's number (2.718…, the base of the natural logarithm). |
-| expm1(float) float | Returns subtracting 1 from exp(x). |
-| floor(float) float | Returns the largest integer less than or equal to x. |
-| hypot(float, float) float | Returns the square root of the sum of squares of its arguments. |
-| isNaN(float) bool | Returns whether x is not a number. |
-| ln(float) float | Returns the natural logarithm (㏒e; also, ㏑) of x. |
-| log(float, float) float | Returns the logarithm of y with base x. |
-| log10(float) float | Returns the base-10 logarithm of x. |
-| log1p(float) float | Returns the natural logarithm (㏒e; also ㏑) of 1 + x for the number x. |
-| log2(float) float | Returns the base-2 logarithm of x. |
-| max(float, float) float | Returns the largest of two numbers. |
-| min(float, float) float | Returns the smallest of two numbers. |
-| mul32(float, float) float | Returns the result of the 32-bit integer multiplication of x and y. Integer overflow is allowed. |
-| pow(float, float) float | Returns base x to the exponent power y (that is, x^y). |
-| random() float | Returns a pseudo-random number between 0 and 1. |
-| round(float) float | Returns the value of the number x rounded to the nearest integer. |
-| sign(float) float | Returns the sign of the x, indicating whether x is positive, negative, or zero. |
-| sin(float) float | Returns the sine of x. |
-| sinh(float) float | Returns the hyperbolic sine of x. |
-| sqrt(float) float | Returns the positive square root of x. |
-| tan(float) float | Returns the tangent of x. |
-| tanh(float) float | Returns the hyperbolic tangent of x. |
-| trunc(float) float | Returns the integer portion of x, removing any fractional digits. |
+<!-- math.start -->
+> `var e float`  
+> Euler's number and the base of natural logarithms; approximately 2.718.
+
+> `var inf float`  
+> Infinity.
+
+> `var log10e float`  
+> Base-10 logarithm of E; approximately 0.434.
+
+> `var log2e float`  
+> Base-2 logarithm of E; approximately 1.443.
+
+> `var ln10 float`  
+> Natural logarithm of 10; approximately 2.303.
+
+> `var ln2 float`  
+> Natural logarithm of 2; approximately 0.693.
+
+> `var maxSafeInt float`  
+> The maximum integer value that can be safely represented as a float. 2^53-1 or 9007199254740991.
+
+> `var minSafeInt float`  
+> The minumum integer value that can be safely represented as a float. -(2^53-1) or -9007199254740991.
+
+> `var nan float`  
+> Not a number. Note that nan == nan.  However, if a nan came from an arithmetic operation, the comparison is undefined.  Use `isNaN` instead.
+
+> `var neginf float`  
+> Negative infinity.
+
+> `var pi float`  
+> Ratio of a circle's circumference to its diameter; approximately 3.14159.
+
+> `var sqrt1_2 float`  
+> Square root of ½; approximately 0.707.
+
+> `var sqrt2 float`  
+> Square root of 2; approximately 1.414.
+
+> `func abs(a float) none`  
+> Returns the absolute value of x.
+
+> `func acos(a float) none`  
+> Returns the arccosine of x.
+
+> `func acosh(a float) none`  
+> Returns the hyperbolic arccosine of x.
+
+> `func asin(a float) none`  
+> Returns the arcsine of x.
+
+> `func asinh(a float) none`  
+> Returns the hyperbolic arcsine of a number.
+
+> `func atan(a float) none`  
+> Returns the arctangent of x.
+
+> `func atan2(a float, b float) none`  
+> Returns the arctangent of the quotient of its arguments.
+
+> `func atanh(a float) none`  
+> Returns the hyperbolic arctangent of x.
+
+> `func cbrt(a float) none`  
+> Returns the cube root of x.
+
+> `func ceil(a float) none`  
+> Returns the smallest integer greater than or equal to x.
+
+> `func clz32(a float) none`  
+> Returns the number of leading zero bits of the 32-bit integer x.
+
+> `func cos(a float) none`  
+> Returns the cosine of x.
+
+> `func cosh(a float) none`  
+> Returns the hyperbolic cosine of x.
+
+> `func exp(a float) none`  
+> Returns e^x, where x is the argument, and e is Euler's number (2.718…, the base of the natural logarithm).
+
+> `func expm1(a float) none`  
+> Returns subtracting 1 from exp(x).
+
+> `func floor(a float) none`  
+> Returns the largest integer less than or equal to x.
+
+> `func frac(a float) none`  
+> Returns the fractional or decimal part of a float value.
+
+> `func hypot(a float, b float) none`  
+> Returns the square root of the sum of squares of its arguments.
+
+> `func isInt(a float) none`  
+> Returns true if the float has no fractional part, otherwise false.
+
+> `func isNaN(a float) none`  
+> Returns whether x is not a number.
+
+> `func ln(a float) none`  
+> Returns the natural logarithm (㏒e; also, ㏑) of x.
+
+> `func log(a float, b float) none`  
+> Returns the logarithm of y with base x.
+
+> `func log10(a float) none`  
+> Returns the base-10 logarithm of x.
+
+> `func log1p(a float) none`  
+> Returns the natural logarithm (㏒e; also ㏑) of 1 + x for the number x.
+
+> `func log2(a float) none`  
+> Returns the base-2 logarithm of x.
+
+> `func max(a float, b float) none`  
+> Returns the largest of two numbers.
+
+> `func min(a float, b float) none`  
+> Returns the smallest of two numbers.
+
+> `func mul32(a float, b float) none`  
+> Returns the result of the 32-bit integer multiplication of x and y. Integer overflow is allowed.
+
+> `func pow(a float, b float) none`  
+> Returns base x to the exponent power y (that is, x^y).
+
+> `func random() none`  
+> Returns a pseudo-random number between 0 and 1.
+
+> `func round(a float) none`  
+> Returns the value of the number x rounded to the nearest integer.
+
+> `func sign(a float) none`  
+> Returns the sign of the x, indicating whether x is positive, negative, or zero.
+
+> `func sin(a float) none`  
+> Returns the sine of x.
+
+> `func sinh(a float) none`  
+> Returns the hyperbolic sine of x.
+
+> `func sqrt(a float) none`  
+> Returns the positive square root of x.
+
+> `func tan(a float) none`  
+> Returns the tangent of x.
+
+> `func tanh(a float) none`  
+> Returns the hyperbolic tangent of x.
+
+> `func trunc(a float) none`  
+> Returns the integer portion of x, removing any fractional digits.
+
+<!-- math.end -->
 
 ## Std Modules.
 Std modules come with Cyber's CLI. They include:
 - [os](#os): System level functions.
 - [test](#test): Utilities for testing.
-> _Incomplete: The docs for std modules are not completely up-to-date. They will be auto generated in the future._
 
 ## os.
 Cyber's os module contains system level functions. It's still undecided as to how much should be included here so it's incomplete. You can still access os and libc functions yourself using Cyber's FFI or embedding API.
 
 Sample usage:
 ```cy
-import os 'os'
+import os
 
 var map = os.getEnvAll()
-for map each k, v:
+for map each [k, v]:
     print '{k} -> {v}'
 ```
-| Variable | Type | Summary |
-| -- | -- | -- |
-| cpu | string | The current cpu arch's tag name. |
-| endian | #little, #big | The current arch's endianness. |
-| stderr | File | Standard error file descriptor. |
-| stdin | File | Standard input file descriptor. |
-| stdout | File | Standard output file descriptor. |
-| system | string | The current operating system's tag name. |
-| vecBitSize | int | Default SIMD vector bit size. |
 
-| Function | Summary |
-| -- | -- |
-| `access(path any, mode (#read \| #write \| #readWrite)) true \| error` | Attempts to access a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. Return true or an error. |
-| `args() List<string \| rawstring>` | Returns the command line arguments as a list. Each argument is validated and returned as a UTF-8 `string` or `rawstring` if the validation failed. |
-| `bindLib(path any, decls [](CFunc\|CStruct)) Object \| Map` | Calls `bindLib(path, decls, {})`. | 
-| `bindLib(path any, decls [](CFunc\|CStruct), config: BindLibConfig) Object \| Map` | Creates an FFI binding to a dynamic library and it's symbols. By default, an anonymous object is returned with the C-functions binded as the object's methods. If `config` contains `genMap: true`, a `Map` is returned instead with C-functions binded as function values. | 
-| `cacheUrl(url string) string` | Returns the path of a locally cached file of `url`. If no such file exists locally, it's fetched from `url`. |
-| `copyFile(srcPath any, dstPath any) none \| error` | Copies a file to a destination path. |
-| `createDir(path any) true \| error` | Creates the directory at `path`. Returns `true` if successful. | 
-| `createFile(path any, truncate boolean) File \| error` | Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated. |
-| `cstr(any) pointer` | Returns a null terminated C string. |
-| `cwd() string` | Returns the current working directory. |
-| `dirName(path any) string \| none` | Returns the given path with its last component removed. |
-| `execCmd(args []string) Map{ out, err, exited }` | Runs a shell command and returns the stdout/stderr. | 
-| `exePath() string` | Returns the current executable's path. |
-| `exit(status int) noreturn` | Exits the program with a status code. | 
-| `fetchUrl(url string) rawstring` | Fetches the contents at `url` using the HTTP GET request method. | 
-| `free(ptr pointer) none` | Frees the memory located at `ptr`. |
-| `fromCstr(pointer) rawstring` | Returns a `rawstring` from a null terminated C string. |
-| `getEnv(key any) string \| none` | Returns an environment value by key. |
-| `getEnvAll() Map` | Returns all environment entries as a `Map`. |
-| `getInput() rawstring` | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
-| `malloc(size int) pointer` | Allocates `size` bytes of memory and returns a pointer. |
-| `milliTime() float` | Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01. |
-| `openDir(path any) Dir \| error` | Invokes `openDir(path, false)`. |
-| `openDir(path any, iterable boolean) Dir \| error` | Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated. |
-| `openFile(path any, mode (#read \| #write \| #readWrite)) File \| error` | Opens a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. |
-| `parseArgs(options list[ArgOption]) map` | Given expected `ArgOption`s, returns a map of the options and a `rest` entry which contains the non-option arguments. |
-| `readAll() rawstring` | Reads stdin to the EOF as a `rawstring`. | 
-| `readFile(path string) rawstring` | Reads the file contents into a `rawstring` value. | 
-| `realPath(path any) string \| error` | Returns the absolute path of the given path. |
-| `removeDir(path any) true \| error` | Removes an empty directory at `path`. Returns `true` if successful. |
-| `removeFile(path any) true \| error` | Removes the file at `path`. Returns `true` if successful. |
-| `setEnv(key any, value any) none` | Sets an environment value by key. |
-| `sleep(ms float) none` | Pauses the current thread for given milliseconds. |
-| `unsetEnv(key any) none` | Removes an environment value by key. |
-| `writeFile(path string, contents string) none` | Writes a string value to a file. | 
+<!-- os.start -->
+> `var cpu string`  
+> The current cpu arch's tag name.
+
+> `var endian symbol`  
+> The current arch's endianness: .little, .big
+
+> `var stderr any`  
+> Standard error file descriptor.
+
+> `var stdin any`  
+> Standard input file descriptor.
+
+> `var stdout any`  
+> Standard output file descriptor.
+
+> `var system string`  
+> The current operating system's tag name.
+
+> `var vecBitSize int`  
+> Default SIMD vector bit size.
+
+> `func access(path any, mode symbol) none`  
+> Attempts to access a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.  Return true or an error.
+
+> `func args() none`  
+> Returns the command line arguments as a list.  Each argument is validated and returned as a UTF-8 `string` or `rawstring` if the validation failed.
+
+> `func bindLib(path any, decls List) none`  
+> Calls `bindLib(path, decls, {})`.
+
+> `func bindLib(path any, decls List, config Map) none`  
+> Creates an FFI binding to a dynamic library and it's symbols.  By default, an anonymous object is returned with the C-functions binded as the object's methods.  If `config` contains `genMap: true`, a `Map` is returned instead with C-functions  binded as function values.
+
+> `func cacheUrl(url any) none`  
+> Returns the path of a locally cached file of `url`.  If no such file exists locally, it's fetched from `url`.
+
+> `func copyFile(srcPath any, dstPath any) none`  
+> Copies a file to a destination path.
+
+> `func createDir(path any) none`  
+> Creates the directory at `path`. Returns `true` if successful.
+
+> `func createFile(path any, truncate boolean) none`  
+> Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated.
+
+> `func cstr(s any) none`  
+> Returns a null terminated C string.
+
+> `func cwd() none`  
+> Returns the current working directory.
+
+> `func dirName(path any) none`  
+> Returns the given path with its last component removed.
+
+> `func execCmd(args List) none`  
+> Runs a shell command and returns the stdout/stderr.
+
+> `func exePath() none`  
+> Returns the current executable's path.
+
+> `func exit(status int) none`  
+> Exits the program with a status code.
+
+> `func fetchUrl(url any) none`  
+> Fetches the contents at `url` using the HTTP GET request method.
+
+> `func free(ptr pointer) none`  
+> Frees the memory located at `ptr`.
+
+> `func fromCstr(ptr pointer) none`  
+> Returns a `rawstring` from a null terminated C string.
+
+> `func getEnv(key any) none`  
+> Returns an environment value by key.
+
+> `func getEnvAll() none`  
+> Returns all environment entries as a `Map`.
+
+> `func getInput() none`  
+> Reads stdin until a new line is reached. This is intended to read user input from the command line.  For bulk reads from stdin, use `os.stdin`.
+
+> `func malloc(size int) none`  
+> Allocates `size` bytes of memory and returns a pointer.
+
+> `func milliTime() none`  
+> Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01.
+
+> `func openDir(path any) none`  
+> Invokes `openDir(path, false)`.
+
+> `func openDir(path any, iterable boolean) none`  
+> Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated.
+
+> `func openFile(path any, mode symbol) none`  
+> Opens a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.
+
+> `func parseArgs(options List) none`  
+> Given expected `ArgOption`s, returns a map of the options and a `rest` entry which contains the non-option arguments. |
+
+> `func readAll() none`  
+> Reads stdin to the EOF as a `rawstring`.
+
+> `func readFile(path any) none`  
+> Reads the file contents into a `rawstring` value.
+
+> `func readLine() none`  
+
+> `func realPath(path any) none`  
+> Returns the absolute path of the given path.
+
+> `func removeDir(path any) none`  
+> Removes an empty directory at `path`. Returns `true` if successful.
+
+> `func removeFile(path any) none`  
+> Removes the file at `path`. Returns `true` if successful.
+
+> `func setEnv(key any, val any) none`  
+> Sets an environment value by key.
+
+> `func sleep(ms float) none`  
+> Pauses the current thread for given milliseconds.
+
+> `func unsetEnv(key any) none`  
+> Removes an environment value by key.
+
+> `func writeFile(path any, contents any) none`  
+> Writes a string value to a file.
 
 ### `type File`
-| Method | Summary |
-| -- | -- |
-| `close() none` | Closes the file handle. File ops invoked afterwards will return `error.Closed`. |
-| `read(n float) rawstring` | Reads at most `n` bytes as a `rawstring`. `n` must be at least 1. A result with length 0 indicates the end of file was reached. |
-| `readToEnd() rawstring` | Reads to the end of the file and returns the content as a `rawstring`. |
-| `seek(pos float) none` | Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid. |
-| `seekFromCur(pos float) none` | Seeks the read/write position by `pos` bytes from the current position. |
-| `seekFromEnd(pos float) none` | Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid. |
-| `stat() Map` | Returns info about the file as a `Map`. |
-| `streamLines() Iterable<rawstring>` | Equivalent to `streamLines(4096)`. |
-| `streamLines(bufSize float) Iterable<rawstring>` | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). A buffer size of `bufSize` bytes is allocated for reading. If `\r` is found at the end of the read buffer, the line is returned instead of waiting to see if the next read has a connecting `\n`. |
-| `write(data (string \| rawstring)) float` | Writes a `string` or `rawstring` at the current file position. The number of bytes written is returned. |
+
+> `func close(self any) none`  
+> Closes the file handle. File ops invoked afterwards will return `error.Closed`.
+
+> `func iterator(self any) none`  
+
+> `func next(self any) none`  
+
+> `func read(self any, n int) none`  
+> Reads at most `n` bytes as a `rawstring`. `n` must be at least 1.  A result with length 0 indicates the end of file was reached.
+
+> `func readToEnd(self any) none`  
+> Reads to the end of the file and returns the content as a `rawstring`.
+
+> `func seek(self any, n int) none`  
+> Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.
+
+> `func seekFromCur(self any, n int) none`  
+> Seeks the read/write position by `pos` bytes from the current position.
+
+> `func seekFromEnd(self any, n int) none`  
+> Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid.
+
+> `func stat(self any) none`  
+> Returns info about the file as a `Map`.
+
+> `func streamLines(self any) none`  
+> Equivalent to `streamLines(4096)`.
+
+> `func streamLines(self any, bufSize int) none`  
+> Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`.  The lines returned include the new line character(s).  A buffer size of `bufSize` bytes is allocated for reading.  If `\r` is found at the end of the read buffer, the line is returned instead of  waiting to see if the next read has a connecting `\n`.
+
+> `func write(self any, val any) none`  
+> Writes a `string` or `rawstring` at the current file position.  The number of bytes written is returned.
 
 ### `type Dir`
-| Method | Summary |
-| -- | -- |
-| `iterator() Iterator<DirEntry> \| error` | Returns a new iterator over the directory entries. If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead. |
-| `stat() Map` | Returns info about the file as a `Map`. |
-| `walk() Iterator<DirWalkEntry> \| error` | Returns a new iterator over the directory recursive entries. If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead. |
 
+> `func iterator(self any) none`  
+> Returns a new iterator over the directory entries.  If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
+
+> `func stat(self any) none`  
+> Returns info about the file as a `Map`.
+
+> `func walk(self any) none`  
+> Returns a new iterator over the directory recursive entries.  If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
+
+### `type DirIterator`
+
+> `func next(self any) none`  
+
+<!-- os.end -->
 ### `map DirEntry`
 | Entry | Summary |
 | -- | -- |
@@ -318,8 +842,16 @@ var a = 123 + 321
 t.eq(a, 444)
 ```
 
-| Function | Summary |
-| -- | -- |
-| `eq(a any, b any) true \| error` | Returns whether two values are equal. Returns `error.AssertError` if types do not match up. |
-| `eqList(a any, b any) true \| error` | Returns true if two lists have the same size and the elements are equal as if `eq` was called on those corresponding elements. |
-| `eqNear(a any, b any) true \| error` | Returns two numbers are near each other within epsilon 1e-5. |
+<!-- test.start -->
+> `func eq(a any, b any) none`  
+> Returns whether two values are equal.  Panics with `error.AssertError` if types or values do not match up.
+
+> `func eqList(a any, b any) none`  
+> Returns true if two lists have the same size and the elements are equal  as if `eq` was called on those corresponding elements.
+
+> `func eqNear(a any, b any) none`  
+> Returns two numbers are near each other within epsilon 1e-5.
+
+> `func fail() none`  
+
+<!-- test.end -->

@@ -105,13 +105,10 @@ var res = lib.ptrToMyObject(ptr)
 ```
 
 ## Pointers
-A `pointer` is used to read or write to an exact memory address. This is typically used for FFI to manually map Cyber types to C, and back. A new pointer can be created with the builtin `pointer`.
+A `pointer` is used to read or write to an exact memory address. This is typically used for FFI to manually map Cyber types to C, and back. See [`type pointer`]({{<relref "/docs/toc/modules#type-pointer">}}).
+
+A new pointer can be created with the builtin `pointer`.
 ```cy
 var ptr = pointer(0xDEADBEEF)
 print ptr.value()     --'3735928559'
 ```
-
-### `type pointer`
-| Method | Summary |
-| ------------- | ----- |
-| `value() int` | Returns the memory address as an `int`. The value may be negative since it's bitcasted from an unsigned 48-bit integer but it retains the original pointer bits. |

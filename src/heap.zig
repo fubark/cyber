@@ -948,13 +948,23 @@ pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.Inst, vals: []const Va
     std.mem.copy(u8, self.u8Buf.items(), firstStr);
 
     const writer = self.u8Buf.writer(self.alloc);
+    var isSafeStr = true;
     for (vals, 0..) |val, i| {
-        self.writeValueToString(writer, val);
+        var isRaw: bool = undefined;
+        const bytes = self.valueToTempRawString2(val, &isRaw);
+        if (isRaw) {
+            isSafeStr = false;
+        }
+        _ = try writer.write(bytes);
         try self.u8Buf.appendSlice(self.alloc, self.valueAsStaticString(Value.initRaw(self.consts[strs[i+1].val].val)));
     }
 
     // TODO: As string is built, accumulate charLen and detect rawstring to avoid doing validation.
-    return getOrAllocStringInfer(self, self.u8Buf.items());
+    if (isSafeStr) {
+        return getOrAllocStringInfer(self, self.u8Buf.items());
+    } else {
+        return allocRawString(self, self.u8Buf.items());
+    }
 }
 
 pub fn getOrAllocOwnedAstring(self: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) !Value {

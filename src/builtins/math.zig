@@ -28,6 +28,8 @@ const vars = [_]NameVar{
     .{"log2e", Value.initF64(std.math.log2e)},
     .{"ln10", Value.initF64(std.math.ln10)},
     .{"ln2", Value.initF64(std.math.ln2)},
+    .{"maxSafeInt", Value.initF64(9007199254740991)},
+    .{"minSafeInt", Value.initF64(-9007199254740991)},
     .{"nan", Value.initF64(std.math.nan_f64)},
     .{"neginf", Value.initF64(-std.math.inf(f64))},
     .{"pi", Value.initF64(std.math.pi)},
@@ -53,7 +55,9 @@ const funcs = [_]NameFunc{
     .{"exp",    exp},
     .{"expm1",  expm1},
     .{"floor",  floor},
+    .{"frac",   frac},
     .{"hypot",  hypot},
+    .{"isInt",  isInt},
     .{"isNaN",  isNaN},
     .{"ln",     ln},
     .{"log",    log},
@@ -155,9 +159,23 @@ pub fn floor(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     return Value.initF64(std.math.floor(args[0].asF64()));
 }
 
+pub fn frac(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const f = args[0].asF64();
+    const res = std.math.modf(f);
+    return Value.initF64(res.fpart);
+}
+
 /// Returns the square root of the sum of squares of its arguments.
 pub fn hypot(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     return Value.initF64(std.math.hypot(f64, args[0].asF64(), args[1].asF64()));
+}
+
+pub fn isInt(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const f = args[0].asF64();
+    if (std.math.isNan(f) or std.math.isInf(f)) {
+        return Value.False;
+    }
+    return Value.initBool(std.math.trunc(f) == f);
 }
 
 /// Returns the absolute value of x.

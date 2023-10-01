@@ -19,6 +19,7 @@ pub fn loader(uvm: *cy.UserVM, spec_: cy.Str, out: *cy.ModuleLoaderResult) callc
     if (std.mem.eql(u8, "web", spec)) {
         out.* = .{
             .src = cy.Str.initSlice(
+                \\--| Evals JS from the host environment.
                 \\@host func eval(val any) none
             ),
             .srcIsStatic = true,

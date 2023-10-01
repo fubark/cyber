@@ -153,3 +153,20 @@ t.eq(m.atanh(-1), m.neginf)
 t.eq(m.atanh(0), 0.0)
 t.eqNear(m.atanh(0.5), 0.54930614)
 t.eq(m.atanh(1), m.inf)
+
+-- isInt
+t.eq(m.isInt(1.0), true)
+t.eq(m.isInt(40000000.0), true)
+t.eq(m.isInt(40000000.1), false)
+t.eq(m.isInt(40000000.01), false)
+t.eq(m.isInt(40000000.001), false)
+t.eq(m.isInt(m.nan), false)
+t.eq(m.isInt(m.inf), false)
+
+-- frac
+t.eqNear(m.frac(1.0), 0.0)
+t.eqNear(m.frac(40000000.0), 0.0)
+t.eqNear(m.frac(40000000.6), 0.6)
+t.eqNear(m.frac(40000000.1), 0.1)
+t.eqNear(m.frac(40000000.01), 0.01)
+t.eqNear(m.frac(40000000.001), 0.001)

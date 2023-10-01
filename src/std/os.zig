@@ -35,28 +35,6 @@ pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo, out: *cy.HostFuncResult)
 
 const NameFunc = struct { []const u8, cy.ZHostFuncFn };
 const funcs = [_]NameFunc{
-    // File
-    .{"close", fs.fileClose},
-    .{"iterator", fs.fileIterator},
-    .{"next", fs.fileNext},
-    .{"read", fs.fileRead},
-    .{"readToEnd", fs.fileReadToEnd},
-    .{"seek", fs.fileSeek},
-    .{"seekFromCur", fs.fileSeekFromCur},
-    .{"seekFromEnd", fs.fileSeekFromEnd},
-    .{"stat", fs.fileOrDirStat},
-    .{"streamLines", fs.fileStreamLines},
-    .{"streamLines", fs.fileStreamLines1},
-    .{"write", fs.fileWrite},
-
-    // Dir
-    .{"iterator", fs.dirIterator},
-    .{"stat", fs.fileOrDirStat},
-    .{"walk", fs.dirWalk},
-
-    // DirIterator
-    .{"next", fs.dirIteratorNext},
-
     // Top level
     .{"access", access},
     .{"args", osArgs},
@@ -94,6 +72,28 @@ const funcs = [_]NameFunc{
     .{"sleep", sleep},
     .{"unsetEnv", unsetEnv},
     .{"writeFile", writeFile},
+
+    // File
+    .{"close", fs.fileClose},
+    .{"iterator", fs.fileIterator},
+    .{"next", fs.fileNext},
+    .{"read", fs.fileRead},
+    .{"readToEnd", fs.fileReadToEnd},
+    .{"seek", fs.fileSeek},
+    .{"seekFromCur", fs.fileSeekFromCur},
+    .{"seekFromEnd", fs.fileSeekFromEnd},
+    .{"stat", fs.fileOrDirStat},
+    .{"streamLines", fs.fileStreamLines},
+    .{"streamLines", fs.fileStreamLines1},
+    .{"write", fs.fileWrite},
+
+    // Dir
+    .{"iterator", fs.dirIterator},
+    .{"stat", fs.fileOrDirStat},
+    .{"walk", fs.dirWalk},
+
+    // DirIterator
+    .{"next", fs.dirIteratorNext},
 };
 
 const NameValue = struct { []const u8, cy.Value };
@@ -142,19 +142,19 @@ pub fn zPostTypeLoad(c: *cy.VMcompiler, modId: cy.ModuleId) !void {
         vars[1] = .{ "endian", cy.Value.initSymbol(@intFromEnum(Symbol.big)) };
     }
     if (cy.hasStdFiles) {
-        const stdin = try fs.allocFile(c.vm, std.io.getStdIn().handle);
-        stdin.asHostObject(*fs.File).closeOnFree = false;
-        vars[2] = .{ "stdin", stdin };
-        const stdout = try fs.allocFile(c.vm, std.io.getStdOut().handle);
-        stdout.asHostObject(*fs.File).closeOnFree = false;
-        vars[3] = .{ "stdout", stdout };
         const stderr = try fs.allocFile(c.vm, std.io.getStdErr().handle);
         stderr.asHostObject(*fs.File).closeOnFree = false;
-        vars[4] = .{ "stderr", stderr };
+        vars[2] = .{ "stderr", stderr };
+        const stdin = try fs.allocFile(c.vm, std.io.getStdIn().handle);
+        stdin.asHostObject(*fs.File).closeOnFree = false;
+        vars[3] = .{ "stdin", stdin };
+        const stdout = try fs.allocFile(c.vm, std.io.getStdOut().handle);
+        stdout.asHostObject(*fs.File).closeOnFree = false;
+        vars[4] = .{ "stdout", stdout };
     } else {
-        vars[2] = .{ "stdin", Value.None };
-        vars[3] = .{ "stdout", Value.None };
-        vars[4] = .{ "stderr", Value.None };
+        vars[2] = .{ "stderr", Value.None };
+        vars[3] = .{ "stdin", Value.None };
+        vars[4] = .{ "stdout", Value.None };
     }
     vars[5] = .{ "system", try c.buf.getOrPushStringValue(@tagName(builtin.os.tag)) };
     

@@ -330,6 +330,14 @@ pub const UserVM = struct {
         return @as(*const VM, @ptrCast(self)).valueToString(val);
     }
 
+    pub inline fn mapRawSet(self: *UserVM, map: cy.Value, key: cy.Value, value: cy.Value) !void {
+        try map.asHeapObject().map.map().put(self.allocator(), self.internal(), key, value);
+    }
+
+    pub inline fn listAppend(self: *UserVM, list: cy.Value, value: cy.Value) !void {
+        try list.asHeapObject().list.getList().append(self.allocator(), value);
+    }
+
     /// Used to return a panic from a native function body.
     pub fn returnPanic(self: *UserVM, msg: []const u8) Value {
         @setCold(true);

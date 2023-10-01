@@ -2,7 +2,7 @@
 
 const builtin = @import("builtin");
 
-const parser = @import("parser.zig");
+pub const parser = @import("parser.zig");
 pub const Parser = parser.Parser;
 pub const ParseResultView = parser.ResultView;
 pub const ParseResult = parser.Result;

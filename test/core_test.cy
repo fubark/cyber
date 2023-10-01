@@ -1,12 +1,11 @@
 import t 'test'
-import os
 
 --| Tests sensitive to line numbers.
 -- errorReport(), current frame.
 try:
   throw error.Boom
 catch:
-  t.eq(errorReport(), "main:7:3 main:
+  t.eq(errorReport(), "main:6:3 main:
   throw error.Boom
   ^
 ")
@@ -18,13 +17,13 @@ func foo():
   try:
     foo2()
   catch:
-    t.eq(errorReport(), "main:16:3 foo2:
+    t.eq(errorReport(), "main:15:3 foo2:
   throw error.Boom
   ^
-main:19:5 foo:
+main:18:5 foo:
     foo2()
     ^
-main:31:1 main:
+main:30:1 main:
 foo()
 ^
 ")

@@ -1586,7 +1586,8 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
                 curId = cur.next;
                 expStringPart = !expStringPart;
             }
-            return bt.String;
+            // string | rawstring
+            return bt.Any;
         },
         .ident => {
             return identifier(c, nodeId);

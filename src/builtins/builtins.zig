@@ -27,6 +27,24 @@ pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo, out: *cy.HostFuncResult)
 
 const NameFunc = struct { []const u8, ?*const anyopaque, cy.HostFuncType };
 const funcs = [_]NameFunc{
+    // Utils.
+    .{"arrayFill", arrayFill, .standard},
+    .{"copy", copy, .standard},
+    .{"dump", dump, .standard},
+    .{"errorReport", errorReport, .standard},
+    .{"isAlpha", isAlpha, .standard},
+    .{"isDigit", isDigit, .standard},
+    .{"must", must, .standard},
+    .{"panic", panic, .standard},
+    .{"parseCyber", parseCyber, .standard},
+    .{"parseCyon", parseCyon, .standard},
+    .{"performGC", performGC, .standard},
+    .{"print", print, .standard},
+    .{"runestr", runestr, .standard},
+    .{"toCyon", toCyon, .standard},
+    .{"typeof", typeof, .standard},
+    .{"typesym", typesym, .standard},
+
     // boolean
     .{"$call", bindings.booleanCall, .standard},
 
@@ -101,29 +119,9 @@ const funcs = [_]NameFunc{
     .{"next", bindings.mapIteratorNext, .standard},
     .{"nextSeq", bindings.mapIteratorNextSeq, .standard},
 
-    // Utils.
-    .{"arrayFill", arrayFill, .standard},
-    .{"asciiCode", asciiCode, .standard},
-    .{"bool", btBool, .standard},
-    .{"char", char, .standard},
-    .{"copy", copy, .standard},
-    .{"dump", dump, .standard},
-    .{"errorReport", errorReport, .standard},
-    .{"isAlpha", isAlpha, .standard},
-    .{"isDigit", isDigit, .standard},
-    .{"must", must, .standard},
-    .{"opaque", btOpaque, .standard},
-    .{"panic", panic, .standard},
-    .{"parseCyber", parseCyber, .standard},
-    .{"parseCyon", parseCyon, .standard},
-    .{"performGC", performGC, .standard},
-    .{"print", print, .standard},
-    .{"runestr", runestr, .standard},
-    .{"toCyon", toCyon, .standard},
-    .{"typeid", typeid, .standard},
-    .{"valtag", valtag, .standard},
-    .{"typesym", typesym, .standard},
-    .{"typeof", typeof, .standard},
+    // pointer
+    .{"$call", bindings.pointerCall, .standard},
+    .{"value", bindings.pointerValue, .standard},
 };
 
 const NameType = struct { []const u8, cy.rt.TypeId, cy.types.TypeId };
@@ -136,6 +134,7 @@ const types = [_]NameType{
     .{"ListIterator", rt.ListIteratorT, bt.ListIter },
     .{"Map", rt.MapT, bt.Map },
     .{"MapIterator", rt.MapIteratorT, bt.MapIter },
+    .{"pointer", rt.PointerT, bt.Pointer },
 };
 
 pub fn typeLoader(_: *cy.UserVM, info: cy.HostTypeInfo, out: *cy.HostTypeResult) callconv(.C) bool {
@@ -152,26 +151,6 @@ pub fn typeLoader(_: *cy.UserVM, info: cy.HostTypeInfo, out: *cy.HostTypeResult)
 
 pub fn arrayFill(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     return vm.allocListFill(args[0], @intCast(args[1].asInteger())) catch cy.fatal();
-}
-
-pub fn asciiCode(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    fmt.printDeprecated("asciiCode", "0.2", "Use UTF-8 rune notation or string.runeAt(0) instead.", &.{});
-    const str = vm.valueToTempString(args[0]);
-    if (str.len > 0) {
-        return Value.initInt(str[0]);
-    } else {
-        return Value.None;
-    }
-}
-
-pub fn btBool(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
-    fmt.printDeprecated("bool", "0.2", "Use boolean() instead.", &.{});
-    return bindings.booleanCall(vm, args, nargs);
-}
-
-pub fn char(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    fmt.printDeprecated("char", "0.1", "Use asciiCode() instead.", &.{});
-    return asciiCode(vm, args, nargs);
 }
 
 pub fn copy(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -213,11 +192,6 @@ pub fn must(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdS
     } else {
         return panic(vm, args, nargs);
     }
-}
-
-pub fn btOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
-    fmt.printDeprecated("opaque", "0.1", "Use pointer() instead.", &.{});
-    return bindings.pointerCall(vm, args, nargs);
 }
 
 pub fn panic(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -387,74 +361,273 @@ pub fn parseCyber(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.St
 
     const alloc = vm.allocator();
     var parser = cy.Parser.init(alloc);
+    parser.parseComments = true;
     defer parser.deinit();
-    const res = parser.parse(src) catch |err| {
+    _ = parser.parse(src) catch |err| {
         log.debug("parseCyber: {}", .{err});
         return prepareThrowSymbol(vm, .UnknownError);
     };
 
-    return parseCyberGenResult(vm, &parser, res) catch |err| {
+    return parseCyberGenResult(vm, &parser) catch |err| {
         log.debug("parseCyber: {}", .{err});
         return prepareThrowSymbol(vm, .UnknownError);
     };
 }
 
-fn parseCyberGenResult(vm: *cy.UserVM, parser: *const cy.Parser, res: cy.ParseResultView) !Value {
+const ParseCyberState = struct {
+    sb: std.ArrayListUnmanaged(u8),
+    commentIdx: u32,
+    pos: u32,
+    node: cy.Node,
+};
+
+fn genTypeSpecString(vm: *cy.UserVM, parser: *const cy.Parser, headId: cy.NodeId) !cy.Value {
+    const alloc = vm.allocator();
+    if (headId != cy.NullId) {
+        var sb: std.ArrayListUnmanaged(u8) = .{};
+        defer sb.deinit(alloc);
+
+        var name = cy.parser.getNodeTokenString(parser, headId);
+        try sb.appendSlice(alloc, name);
+
+        var curId = parser.nodes.items[headId].next;
+        while (curId != cy.NullId) {
+            try sb.append(alloc, '.');
+            name = cy.parser.getNodeTokenString(parser, curId);
+            try sb.appendSlice(alloc, name);
+            curId = parser.nodes.items[curId].next;
+        }
+
+        return try vm.allocAstring(sb.items);
+    } else {
+        return try vm.allocAstring("");
+    }
+}
+
+fn genNodeValue(vm: *cy.UserVM, parser: *const cy.Parser, nodeId: cy.NodeId) !cy.Value {
+    const node = parser.nodes.items[nodeId];
+    const res = try vm.allocEmptyMap();
+    switch (node.node_t) {
+        .funcHeader => {
+            const name = cy.parser.getNodeTokenString(parser, node.head.funcHeader.name);
+            try vm.mapRawSet(res, try vm.allocAstring("name"), try vm.allocStringInfer(name));
+
+            const params = try vm.allocEmptyList();
+            var paramId = node.head.funcHeader.paramHead;
+            while (paramId != cy.NullId) {
+                const param = try genNodeValue(vm, parser, paramId);
+                try vm.listAppend(params, param);
+                paramId = parser.nodes.items[paramId].next;
+            }
+            try vm.mapRawSet(res, try vm.allocAstring("params"), params);
+        },
+        .funcParam => {
+            var name = cy.parser.getNodeTokenString(parser, node.head.funcParam.name);
+            try vm.mapRawSet(res, try vm.allocAstring("name"), try vm.allocStringInfer(name));
+
+            const typeSpec = try genTypeSpecString(vm, parser, node.head.funcParam.typeSpecHead);
+            try vm.mapRawSet(res, try vm.allocAstring("typeSpec"), typeSpec);
+        },
+        else => {},
+    }
+    return res;
+}
+
+fn genDeclEntry(vm: *cy.UserVM, parser: *const cy.Parser, decl: cy.parser.StaticDecl, state: *ParseCyberState) !Value {
     const alloc = vm.allocator();
     const nodes = parser.nodes.items;
+    const tokens = parser.tokens.items;
+    const entry = try vm.allocEmptyMap();
+    try vm.mapRawSet(entry, try vm.allocAstring("type"), try vm.allocAstring(@tagName(decl.declT)));
+    var name: []const u8 = undefined;
+    var node: cy.Node = undefined;
+    switch (decl.declT) {
+        .variable => {
+            node = nodes[decl.inner.variable];
+            const varSpec = nodes[node.head.staticDecl.varSpec];
+            name = cy.parser.getNodeTokenString(parser, varSpec.head.varSpec.name);
+
+            const typeSpec = try genTypeSpecString(vm, parser, varSpec.head.varSpec.typeSpecHead);
+            try vm.mapRawSet(entry, try vm.allocAstring("typeSpec"), typeSpec);
+        },
+        .typeAlias => {
+            node = nodes[decl.inner.typeAlias];
+            name = cy.parser.getNodeTokenString(parser, node.head.typeAliasDecl.name);
+        },
+        .func => {
+            node = nodes[decl.inner.func];
+            const header = nodes[node.head.func.header];
+            name = cy.parser.getNodeTokenString(parser, header.head.funcHeader.name);
+        },
+        .funcInit => {
+            node = nodes[decl.inner.funcInit];
+            const header = nodes[node.head.func.header];
+            name = cy.parser.getNodeTokenString(parser, header.head.funcHeader.name);
+
+            const headerv = try genNodeValue(vm, parser, node.head.func.header);
+            try vm.mapRawSet(entry, try vm.allocAstring("header"), headerv);
+        },
+        .import => {
+            node = nodes[decl.inner.import];
+            name = cy.parser.getNodeTokenString(parser, node.head.left_right.left);
+        },
+        .object => {
+            node = nodes[decl.inner.object];
+            name = cy.parser.getNodeTokenString(parser, node.head.objectDecl.name);
+
+            const childrenv = try vm.allocEmptyList();
+            const children = childrenv.asHeapObject().list.getList();
+
+            const body = nodes[node.head.objectDecl.body];
+            var funcId = body.head.objectDeclBody.funcsHead;
+            while (funcId != cy.NullId) {
+                const funcN = nodes[funcId];
+                var childDecl: cy.parser.StaticDecl = undefined;
+                switch (funcN.node_t) {
+                    .funcDecl => childDecl = .{ .declT = .func, .inner = .{ .func = funcId }},
+                    .funcDeclInit => childDecl = .{ .declT = .funcInit, .inner = .{ .funcInit = funcId }},
+                    else => return error.Unsupported,
+                }
+
+                try children.append(alloc, try genDeclEntry(vm, parser, childDecl, state));
+                funcId = funcN.next;
+            }
+
+            try vm.mapRawSet(entry, try vm.allocAstring("children"), childrenv);
+        },
+        .enumT => {
+            node = nodes[decl.inner.object];
+            name = cy.parser.getNodeTokenString(parser, node.head.enumDecl.name);
+        }
+    }
+    const pos = tokens[node.start_token].pos();
+    state.pos = pos;
+    state.node = node;
+
+    // Find doc comments.
+    if (try genDocComment(vm, parser, decl, state)) |docStr| {
+        try vm.mapRawSet(entry, try vm.allocAstring("docs"), docStr);
+    }
+
+    try vm.mapRawSet(entry, try vm.allocAstring("name"), try vm.allocAstring(name));
+    try vm.mapRawSet(entry, try vm.allocAstring("pos"), Value.initF64(@floatFromInt(pos)));
+    return entry;
+}
+
+fn genDocComment(vm: *cy.UserVM, parser: *const cy.Parser, decl: cy.parser.StaticDecl, state: *ParseCyberState) !?cy.Value {
+    const alloc = vm.allocator();
+    const nodes = parser.nodes.items;
+    const tokens = parser.tokens.items;
+    if (state.commentIdx < parser.comments.items.len) {
+        var docStartIdx = state.commentIdx;
+        var docEndIdx = state.commentIdx;
+        while (state.commentIdx < parser.comments.items.len) {
+            var commentPos = parser.comments.items[state.commentIdx];
+            if (commentPos.start > state.pos) {
+                break;
+            }
+            state.commentIdx += 1;
+            docEndIdx = state.commentIdx;
+            if (commentPos.len() < 3 or !std.mem.eql(u8, "--|", parser.src[commentPos.start..commentPos.start+3])) {
+                // Not a doc comment, reset.
+                docStartIdx = state.commentIdx;
+                continue;
+            }
+            // Check it is connected to last comment.
+            if (docEndIdx > docStartIdx + 1) {
+                const last = parser.comments.items[docEndIdx - 2];
+                if (!linesConnected(parser.src, last.end, commentPos.start)) {
+                    // Reset.
+                    docStartIdx = state.commentIdx;
+                    continue;
+                }
+            }
+        }
+        if (docEndIdx > docStartIdx) {
+            // Check it is connected to last comment.
+            const last = parser.comments.items[docEndIdx - 1];
+
+            var posWithModifiers = state.pos;
+            switch (decl.declT) {
+                .variable => {
+                    const varSpec = nodes[state.node.head.staticDecl.varSpec];
+                    if (varSpec.head.varSpec.modifierHead != cy.NullId) {
+                        const modifier = nodes[varSpec.head.varSpec.modifierHead];
+                        posWithModifiers = tokens[modifier.start_token].pos() - 1;
+                    }
+                },
+                .funcInit,
+                .func => {
+                    const header = nodes[state.node.head.func.header];
+                    if (header.next != cy.NullId) {
+                        const modifier = nodes[header.next];
+                        posWithModifiers = tokens[modifier.start_token].pos() - 1;
+                    }
+                },
+                .object => {
+                    if (state.node.head.objectDecl.modifierHead != cy.NullId) {
+                        const modifier = nodes[state.node.head.objectDecl.modifierHead];
+                        posWithModifiers = tokens[modifier.start_token].pos() - 1;
+                    }
+                },
+                else => {},
+            }
+
+            if (linesConnected(parser.src, last.end, posWithModifiers)) {
+                for (parser.comments.items[docStartIdx..docEndIdx]) |docPos| {
+                    try state.sb.appendSlice(alloc, parser.src[docPos.start+3..docPos.end]);
+                    try state.sb.append(alloc, ' ');
+                }
+                const finalStr = std.mem.trim(u8, state.sb.items, " ");
+                defer state.sb.clearRetainingCapacity();
+                return try vm.allocStringInfer(finalStr);
+            }
+        }
+    }
+    return null;
+}
+
+// Returns whether two lines are connected by a new line and indentation.
+fn linesConnected(src: []const u8, aEnd: u32, bStart: u32) bool {
+    var i = aEnd;
+    if (src[i] == '\r') {
+        i += 1;
+        if (src[i] != '\n') {
+            return false;
+        }
+        i += 1;
+    } else if (src[i] == '\n') {
+        i += 1;
+    } else {
+        return false;
+    }
+    while (i < bStart) {
+        if (src[i] != ' ' and src[i] != '\t') {
+            return false;
+        }
+        i += 1;
+    }
+    return true;
+}
+
+fn parseCyberGenResult(vm: *cy.UserVM, parser: *const cy.Parser) !Value {
+    const alloc = vm.allocator();
     const root = try vm.allocEmptyMap();
     const map = root.asHeapObject().map.map();
 
     const decls = try vm.allocEmptyList();
     const declsList = decls.asHeapObject().list.getList();
+
+    var state = ParseCyberState{
+        .commentIdx = 0,
+        .sb = .{},
+        .pos = undefined,
+        .node = undefined,
+    };
+    defer state.sb.deinit(alloc);
+
     for (parser.staticDecls.items) |decl| {
-        const entry = try vm.allocEmptyMap();
-        const entryMap = entry.asHeapObject().map.map();
-        try entryMap.put(alloc, vm.internal(), try vm.allocAstring("type"), try vm.allocAstring(@tagName(decl.declT)));
-        var name: []const u8 = undefined;
-        var pos: u32 = undefined;
-        switch (decl.declT) {
-            .variable => {
-                const node = nodes[decl.inner.variable];
-                const varSpec = nodes[node.head.staticDecl.varSpec];
-                name = res.getFirstNodeString(varSpec.head.varSpec.name);
-                pos = res.tokens[node.start_token].pos();
-            },
-            .typeAlias => {
-                const node = nodes[decl.inner.typeAlias];
-                name = res.getFirstNodeString(node.head.typeAliasDecl.name);
-                pos = res.tokens[node.start_token].pos();
-            },
-            .func => {
-                const node = nodes[decl.inner.func];
-                const header = nodes[node.head.func.header];
-                name = res.getFirstNodeString(header.head.funcHeader.name);
-                pos = res.tokens[node.start_token].pos();
-            },
-            .funcInit => {
-                const node = nodes[decl.inner.funcInit];
-                const header = nodes[node.head.func.header];
-                name = res.getFirstNodeString(header.head.funcHeader.name);
-                pos = res.tokens[node.start_token].pos();
-            },
-            .import => {
-                const node = nodes[decl.inner.import];
-                name = res.getFirstNodeString(node.head.left_right.left);
-                pos = res.tokens[node.start_token].pos();
-            },
-            .object => {
-                const node = nodes[decl.inner.object];
-                name = res.getFirstNodeString(node.head.objectDecl.name);
-                pos = res.tokens[node.start_token].pos();
-            },
-            .enumT => {
-                const node = nodes[decl.inner.object];
-                name = res.getFirstNodeString(node.head.enumDecl.name);
-                pos = res.tokens[node.start_token].pos();
-            }
-        }
-        try entryMap.put(alloc, vm.internal(), try vm.allocAstring("name"), try vm.allocAstring(name));
-        try entryMap.put(alloc, vm.internal(), try vm.allocAstring("pos"), Value.initF64(@floatFromInt(pos)));
+        const entry = try genDeclEntry(vm, parser, decl, &state);
         try declsList.append(alloc, entry);
     }
     try map.put(alloc, vm.internal(), try vm.allocAstring("decls"), decls);
@@ -540,16 +713,6 @@ pub fn print(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     const str = vm.valueToTempRawString(args[0]);
     vm.internal().print(vm, cy.Str.initSlice(str));
     return Value.None;
-}
-
-pub fn typeid(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    fmt.printDeprecated("typeid", "0.2", "Use metatype.id() instead.", &.{});
-    return Value.initInt(@intCast(args[0].getTypeId()));
-}
-
-pub fn valtag(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    fmt.printDeprecated("valtag", "0.2", "Use typesym() instead.", &.{});
-    return typesym(vm, args, nargs);
 }
 
 pub fn typeof(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {

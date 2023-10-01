@@ -9,7 +9,7 @@ In Cyber, there are primitive types and object types. Primitives are copied arou
 The `none` value represents an empty value. This is similar to null in other languages.
 
 ## Booleans.
-Booleans can be `true` or `false`.
+Booleans can be `true` or `false`. See [`type boolean`]({{<relref "/docs/toc/modules#type-boolean">}}).
 ```cy
 var a = true
 if a:
@@ -22,7 +22,7 @@ When other value types are coerced to the boolean type, the truthy value is dete
 ## Numbers.
 
 ### Integers.
-`int` is the default integer type. It has 48-bits and can represent integers in the range -(2{{<sup "47">}}) to 2{{<sup "47">}}-1.
+`int` is the default integer type. It has 48-bits and can represent integers in the range -(2{{<sup "47">}}) to 2{{<sup "47">}}-1. See [`type int`]({{<relref "/docs/toc/modules#type-int">}}).
 
 When a numeric literal is used and the type can not be inferred, it will default to the `int` type:
 ```cy
@@ -46,7 +46,7 @@ var b = int(a)
 In addition to arithmetic operations, integers can also perform [bitwise operations]({{<relref "/docs/toc/syntax#bitwise-operators">}}).
 
 ### Floats.
-`float` is the default floating point type. It has a (IEEE 754) 64-bit floating point format.
+`float` is the default floating point type. It has a (IEEE 754) 64-bit floating point format. See [`type float`]({{<relref "/docs/toc/modules#type-float">}}).
 
 Although a `float` represents a decimal number, it can also represent integers between -(2{{<sup "53">}}-1) and (2{{<sup "53">}}-1). Any integers beyond the safe integer range is not guaranteed to have a unique representation.
 
@@ -71,7 +71,9 @@ var b = float(a)
 > _Planned Feature_
 
 ## Strings.
-The `string` type represents a sequence of UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as an `int`. Under the hood, Cyber implements 6 different internal string types to optimize string operations, but the user just sees them as one type and doesn't need to care about this detail under normal usage.
+The `string` type represents a sequence of UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as an `int`. See [`type string`]({{<relref "/docs/toc/modules#type-string-trait">}}).
+
+Under the hood, Cyber implements 5 different internal string types to optimize string operations.
 
 Strings are **immutable**, so operations that do string manipulation return a new string. By default, small strings are interned to reduce memory footprint.
 
@@ -89,6 +91,12 @@ You can escape the single quote inside the literal or use double quotes.
 ```cy
 var apple = 'Bob\'s fruit'
 apple = "Bob's fruit"
+```
+
+Concatenate two strings together with the `+` operator or the method `concat`. 
+```cy
+var res = 'abc' + 'xyz'
+res = res.concat('end')
 ```
 
 Strings are UTF-8 encoded.
@@ -127,6 +135,7 @@ The following escape sequences are supported:
 | \t | 0x09 | Horizontal tab character. |
 
 The boundary of each line can be set with a vertical line character. This makes it easier to see the whitespace.
+> _Planned Feature_
 ```cy
 var poem = "line a
        |  two spaces from the left
@@ -156,66 +165,6 @@ i += 1
 print(i + str[i..].findRune(0u'c'))  -- "5"
 ```
 
-### `type string`
-```cy
-func concat(self, str string) string
--- Returns a new string that concats this string and `str`.
-
-func endsWith(self, suffix string) bool
--- Returns whether the string ends with `suffix`.
-
-func find(self, needle string) int?
--- Returns the first index of substring `needle` in the string or `none` if not found.
-
-func findAnyRune(self, set string) int?
--- Returns the first index of any UTF-8 rune in `set` or `none` if not found.
-
-func findRune(self, needle int) int?
--- Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
-
-func insert(self, idx int, str string) string
--- Returns a new string with `str` inserted at index `idx`.
-
-func isAscii(self) bool
--- Returns whether the string contains all ASCII runes.
-
-func len(self) int
--- Returns the number of UTF-8 runes in the string.
-
-func less(self, str string) bool
--- Returns whether this string is lexicographically before `str`.
-
-func lower(self) string
--- Returns this string in lowercase.
-
-func replace(self, needle string, replacement string) string
--- Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
-
-func repeat(self, n int) string
--- Returns a new string with this string repeated `n` times.
-
-func runeAt(self, idx int) int
--- Returns the UTF-8 rune at index `idx`.
-
-func slice(self, start int, end int) string
--- Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
-
-func sliceAt(self, idx int) string
--- Returns the UTF-8 rune at index `idx` as a single rune string.
-
-func split(self, delim string) List
--- Returns a list of UTF-8 strings split at occurrences of `delim`.
-
-func startsWith(self, prefix string) bool
--- Returns whether the string starts with `prefix`.
-
-func trim(self, mode symbol, trimRunes any) string
--- Returns the string with ends trimmed from runes in `trimRunes`. `mode` can be #left, #right, or #ends.
-
-func upper(self) string
--- Returns this string in uppercase.
-```
-
 ### String Interpolation.
 
 You can embed expressions into string templates using braces.
@@ -233,7 +182,7 @@ var str = 'Scoreboard: \{ Bob \} {points}'
 String templates can not contain nested string templates.
 
 ### rawstring.
-A `rawstring` does not automatically validate the string and is indexed by bytes and not UTF-8 runes.
+A `rawstring` does not automatically validate the string and is indexed by bytes and not UTF-8 runes. See [`type rawstring`]({{<relref "/docs/toc/modules#type-rawstring-trait">}}).
 
 Using the index operator will return the UTF-8 rune starting at the given byte index as a slice. If the index does not begin a valid UTF-8 rune, `error.InvalidRune` is returned. This is equivalent to calling the method `sliceAt()`.
 ```cy
@@ -243,77 +192,8 @@ print str[1]     -- error.InvalidRune
 print str[-1]    -- "d"
 ```
 
-### `type rawstring`
-```cy
-func byteAt(self, idx int) int
--- Returns the byte value (0-255) at the given index `idx`.
-
-func concat(self, str string) string
--- Returns a new string that concats this string and `str`.
-
-func endsWith(self, suffix string) bool
--- Returns whether the string ends with `suffix`.
-
-func find(self, needle string) int?
--- Returns the first index of substring `needle` in the string or `none` if not found.
-
-func findAnyRune(self, set string) int?
--- Returns the first index of any UTF-8 rune in `set` or `none` if not found.
-
-func findRune(self, needle int) int?
--- Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
-
-func insert(self, idx int, str string) string
--- Returns a new string with `str` inserted at index `idx`.
-
-func insertByte(self, idx int, byte int) string
--- Returns a new string with `byte` inserted at index `idx`.
-
-func isAscii(self) bool
--- Returns whether the string contains all ASCII runes.
-
-func len(self) int
--- Returns the number of bytes in the string.
-
-func less(self, str rawstring) bool
--- Returns whether this rawstring is lexicographically before `str`.
-
-func lower(self) string
--- Returns this string in lowercase.
-
-func repeat(self, n int) rawstring
--- Returns a new rawstring with this rawstring repeated `n` times.
-
-func replace(self, needle string, replacement string) string
--- Returns a new string with all occurrences of `needle` replaced with `replacement`.
-
-func runeAt(self, idx int) int
--- Returns the UTF-8 rune at index `idx`. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
-
-func slice(self, start int, end int) rawstring
--- Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
-
-func sliceAt(self, idx int) string
--- Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
-
-func split(self, delim string) List
--- Returns a list of rawstrings split at occurrences of `delim`.
-
-func startsWith(self, prefix string) bool
--- Returns whether the string starts with `prefix`.
-
-func upper(self) string
--- Returns this string in uppercase.
-
-func trim(self, mode symbol, trimRunes any) rawstring
--- Returns the string with ends trimmed from runes in `trimRunes`. `mode` can be #left, #right, or #ends.
-
-func utf8(self) string
--- Returns a valid UTF-8 string or returns `error.InvalidRune`.
-```
-
 ## Lists.
-Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements.
+Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements. See [`type List`]({{<relref "/docs/toc/modules#type-list">}}).
 ```cy
 -- Construct a new list.
 var list = [1, 2, 3]
@@ -359,25 +239,11 @@ for list each it:
 list.remove(1)
 ```
 
-### `type List`
-| Method | Summary |
-| ------------- | ----- |
-| `append(val any) none` | Appends a value to the end of the list. |
-| `concat(val any) none` | Concats the elements of another list to the end of this list. |
-| `insert(idx int, val any) none` | Inserts a value at index `idx`. |
-| `iterator() Iterator<any>` | Returns a new iterator over the list elements. |
-| `joinString(separator any) string` | Returns a new string that joins the elements with `separator`. |
-| `len() int` | Returns the number of elements in the list. |
-| `seqIterator() SequenceIterator<int, any>` | Returns a new sequence iterator over the list elements. |
-| `remove(idx int) none` | Removes an element at index `idx`. |
-| `resize(len int) none` | Resizes the list to `len` elements. If the new size is bigger, `none` values are appended to the list. If the new size is smaller, elements at the end of the list are removed. |
-| `sort(less func (a, b) bool) none` | Sorts the list with the given `less` function. If element `a` should be ordered before `b`, the function should return `true` otherwise `false`. |
-
 ## Tuples.
 > _Incomplete: Tuples can only be created from @host funcs at the moment._
 
 ## Maps.
-Maps are a builtin type that store key value pairs in dictionaries.
+Maps are a builtin type that store key value pairs in dictionaries. See [`type Map`]({{<relref "/docs/toc/modules#type-map">}}).
 ```cy
 var map = { a: 123, b: () => 5 }
 print map['a']
@@ -427,14 +293,6 @@ map.remove 123
 for map each [val, key]:
     print '{key} -> {value}'
 ```
-
-### `type Map`
-| Method | Summary |
-| ------------- | ----- |
-| `iterator() Iterator<any>` | Returns a new iterator over the map elements. |
-| `seqIterator() SequenceIterator<any, any>` | Returns a new sequence iterator over the map elements. |
-| `remove(key any) none` | Removes the element with the given key `key`. |
-| `size() int` | Returns the number of key-value pairs in the map. |
 
 ## Objects.
 Any value that isn't a primitive is an object. You can declare your own object types using the `type object` declaration. Object types are similar to structs and classes in other languages. You can declare members and methods. Unlike classes, there is no concept of inheritance at the language level.

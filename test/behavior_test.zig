@@ -993,19 +993,19 @@ test "os module" {
     defer run.destroy();
 
     var val = try run.eval(
-        \\import os 'os'
+        \\import os
         \\os.system
     );
     try t.eqStr(try run.assertValueString(val), @tagName(builtin.os.tag));
 
     val = try run.eval(
-        \\import os 'os'
+        \\import os
         \\os.cpu
     );
     try t.eqStr(try run.assertValueString(val), @tagName(builtin.cpu.arch));
 
     val = try run.eval(
-        \\import os 'os'
+        \\import os
         \\os.endian
     );
     if (builtin.cpu.arch.endian() == .Little) {
@@ -2635,16 +2635,18 @@ test "Bitwise operators." {
 }
 
 test "Arithmetic operators." {
-    // Can only add numbers.
+    // Can't add objects by default.
     try eval(.{ .silent = true },
-        \\var a = 'foo' + 123
+        \\type S object:
+        \\  a any
+        \\var a = S{ a: 123 } + 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: `func $infix+(any, int) any` can not be found in `StaticAstring`.
+            \\panic: `func $infix+(any, int) any` can not be found in `S`.
             \\
-            \\main:1:15 main:
-            \\var a = 'foo' + 123
-            \\              ^
+            \\main:3:21 main:
+            \\var a = S{ a: 123 } + 123
+            \\                    ^
             \\
         );
     }}.func);

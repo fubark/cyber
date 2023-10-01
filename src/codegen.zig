@@ -242,7 +242,8 @@ fn stringTemplate(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue 
 
     try pushReleases(self, retainedTemps, nodeId);
 
-    return self.initGenValue(dst, bt.String, true);
+    // string or rawstring
+    return self.initGenValue(dst, bt.Any, true);
 }
 
 fn objectInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {

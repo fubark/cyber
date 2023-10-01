@@ -95,6 +95,10 @@ pub const Parser = struct {
 
     inObjectDecl: bool,
 
+    /// Whether to parse and accumulate comment tokens in `comments`.
+    parseComments: bool,
+    comments: std.ArrayListUnmanaged(cy.IndexSlice(u32)),
+
     /// For custom functions.
     user: struct {
         ctx: *anyopaque,
@@ -125,6 +129,8 @@ pub const Parser = struct {
             .tokenizeOpts = .{},
             .staticDecls = .{},
             .inObjectDecl = false,
+            .parseComments = false,
+            .comments = .{},
         };
     }
 
@@ -138,6 +144,7 @@ pub const Parser = struct {
         self.block_stack.deinit(self.alloc);
         self.deps.deinit(self.alloc);
         self.staticDecls.deinit(self.alloc);
+        self.comments.deinit(self.alloc);
     }
 
     fn dumpTokensToCurrent(self: *Parser) void {
@@ -3753,6 +3760,12 @@ pub const Result = struct {
     }
 };
 
+pub fn getNodeTokenString(p: *const Parser, nodeId: NodeId) []const u8 {
+    const node = p.nodes.items[nodeId];
+    const token = p.tokens.items[node.start_token];
+    return p.src[token.pos()..token.data.end_pos];
+}
+
 /// Result data is not owned.
 pub const ResultView = struct {
     root_id: NodeId,
@@ -4110,10 +4123,16 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                         // Single line comment. Ignore chars until eol.
                         while (!isAtEndChar(p)) {
                             if (peekChar(p) == '\n') {
+                                if (p.parseComments) {
+                                    try p.comments.append(p.alloc, cy.IndexSlice(u32).init(start, p.next_pos));
+                                }
                                 // Don't consume new line or the current indentation could augment with the next line.
                                 return tokenizeOne(p, state);
                             }
                             advanceChar(p);
+                        }
+                        if (p.parseComments) {
+                            try p.comments.append(p.alloc, cy.IndexSlice(u32).init(start, p.next_pos));
                         }
                         return .{ .stateT = .end };
                     } else {
@@ -4754,7 +4773,7 @@ const StaticDeclType = enum {
     enumT,
 };
 
-const StaticDecl = struct {
+pub const StaticDecl = struct {
     declT: StaticDeclType,
     inner: extern union {
         variable: NodeId,

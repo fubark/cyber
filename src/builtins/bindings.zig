@@ -167,10 +167,6 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const findAnyRune = try b.ensureMethodGroup("findAnyRune");
     const findRune = try b.ensureMethodGroup("findRune");
     const idSym = try b.ensureMethodGroup("id");
-    const index = try b.ensureMethodGroup("index");
-    const indexChar = try b.ensureMethodGroup("indexChar");
-    const indexCharSet = try b.ensureMethodGroup("indexCharSet");
-    const indexCode = try b.ensureMethodGroup("indexCode");
     const insert = try b.ensureMethodGroup("insert");
     const insertByte = try b.ensureMethodGroup("insertByte");
     const isAscii = try b.ensureMethodGroup("isAscii");
@@ -193,7 +189,6 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const trim = try b.ensureMethodGroup("trim");
     const upper = try b.ensureMethodGroup("upper");
     const utf8 = try b.ensureMethodGroup("utf8");
-    const value = try b.ensureMethodGroup("value");
     
     // Init compile time builtins.
     var rsym: sema.Symbol = undefined;
@@ -272,18 +267,17 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
             rt.StringSliceT => .slice,
             else => unreachable,
         };
+        // ret: string | rawstring
+        try b.addMethod(typeId, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Any, stringConcat(tag));
         try b.addMethod(typeId, append,       &.{ bt.Any, bt.Any }, bt.String, stringAppend(tag));
         try b.addMethod(typeId, charAt,       &.{ bt.Any, bt.Integer }, bt.Any, stringCharAt(tag));
         try b.addMethod(typeId, codeAt,       &.{ bt.Any, bt.Integer }, bt.Any, stringCodeAt(tag));
-        try b.addMethod(typeId, concat,       &.{ bt.Any, bt.Any }, bt.String, stringConcat(tag));
+        // ret: string | rawstring
+        try b.addMethod(typeId, concat,       &.{ bt.Any, bt.Any }, bt.Any, stringConcat(tag));
         try b.addMethod(typeId, endsWith,     &.{ bt.Any, bt.Any }, bt.Boolean, stringEndsWith(tag));
         try b.addMethod(typeId, find,         &.{ bt.Any, bt.Any }, bt.Any, stringFind(tag));
         try b.addMethod(typeId, findAnyRune,  &.{ bt.Any, bt.Any }, bt.Any, stringFindAnyRune(tag));
         try b.addMethod(typeId, findRune,     &.{ bt.Any, bt.Integer }, bt.Any, stringFindRune(tag));
-        try b.addMethod(typeId, index,        &.{ bt.Any, bt.Any }, bt.Any, stringIndex(tag));
-        try b.addMethod(typeId, indexChar,    &.{ bt.Any, bt.Any }, bt.Any, stringIndexChar(tag));
-        try b.addMethod(typeId, indexCharSet, &.{ bt.Any, bt.Any }, bt.Any, stringIndexCharSet(tag));
-        try b.addMethod(typeId, indexCode,    &.{ bt.Any, bt.Integer }, bt.Any, stringIndexCode(tag));
         try b.addMethod(typeId, insert,       &.{ bt.Any, bt.Integer, bt.Any }, bt.String, stringInsert(tag));
         try b.addMethod(typeId, isAscii,      &.{ bt.Any }, bt.Boolean, stringIsAscii(tag));
         try b.addMethod(typeId, len,          &.{ bt.Any }, bt.Integer, stringLen(tag));
@@ -320,6 +314,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
             rt.RawstringSliceT => .rawSlice,
             else => unreachable,
         };
+        try b.addMethod(typeId, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Rawstring, stringConcat(tag));
         try b.addMethod(typeId, append,       &.{ bt.Any, bt.Any }, bt.Rawstring, stringAppend(tag));
         try b.addMethod(typeId, byteAt,       &.{ bt.Any, bt.Integer }, bt.Integer,
             if (tag == .rawstring) rawStringByteAt else rawStringSliceByteAt);
@@ -330,10 +325,6 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(typeId, find,         &.{ bt.Any, bt.Any }, bt.Any, stringFind(tag));
         try b.addMethod(typeId, findAnyRune,  &.{ bt.Any, bt.Any }, bt.Any, stringFindAnyRune(tag));
         try b.addMethod(typeId, findRune,     &.{ bt.Any, bt.Integer }, bt.Any, stringFindRune(tag));
-        try b.addMethod(typeId, index,        &.{ bt.Any, bt.Any }, bt.Any, stringIndex(tag));
-        try b.addMethod(typeId, indexChar,    &.{ bt.Any, bt.Any }, bt.Any, stringIndexChar(tag));
-        try b.addMethod(typeId, indexCharSet, &.{ bt.Any, bt.Any }, bt.Any, stringIndexCharSet(tag));
-        try b.addMethod(typeId, indexCode,    &.{ bt.Any, bt.Integer }, bt.Any, stringIndexCode(tag));
         try b.addMethod(typeId, insert,       &.{ bt.Any, bt.Integer, bt.Any }, bt.Any, stringInsert(tag));
         try b.addMethod(typeId, insertByte,   &.{ bt.Any, bt.Integer, bt.Integer }, bt.Any,
             if (tag == .rawstring) rawStringInsertByte else rawStringSliceInsertByte);
@@ -373,10 +364,6 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addBuiltinType("pointer", bt.Pointer);
     std.debug.assert(id == rt.PointerT);
-    rsym = self.compiler.sema.getSymbol(bt.Pointer);
-    sb = ModuleBuilder.init(self.compiler, rsym.inner.builtinType.modId);
-    try sb.setFunc("$call", &.{ bt.Any }, bt.Pointer, pointerCall);
-    try b.addMethod(rt.PointerT, value, &.{ bt.Any }, bt.Integer, pointerValue);
 
     id = try self.addBuiltinType("MetaType", bt.MetaType);
     std.debug.assert(id == rt.MetaTypeT);
@@ -729,7 +716,7 @@ pub fn errorValue(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     }
 }
 
-fn pointerValue(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn pointerValue(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
     return Value.initInt(@bitCast(@as(u48, (@intCast(@intFromPtr(obj.pointer.ptr))))));
 }
@@ -1474,6 +1461,10 @@ fn stringConcat(comptime T: cy.StringType) cy.ZHostFuncFn {
             const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
             if (isAstringObject(T, obj)) {
+                if (args[1].isRawString()) {
+                    const rstr = vm.valueToTempRawString(args[1]);
+                    return vm.allocRawStringConcat(str, rstr) catch fatal();
+                }
                 var rcharLen: u32 = undefined;
                 const rstr = vm.valueToTempString2(args[1], &rcharLen);
                 if (rcharLen == rstr.len) {
@@ -1482,12 +1473,16 @@ fn stringConcat(comptime T: cy.StringType) cy.ZHostFuncFn {
                     return vm.allocUstringConcat(str, rstr, @intCast(str.len + rcharLen)) catch fatal();
                 }
             } else if (isUstringObject(T, obj)) {
+                if (args[1].isRawString()) {
+                    const rstr = vm.valueToTempRawString(args[1]);
+                    return vm.allocRawStringConcat(str, rstr) catch fatal();
+                }
                 var rcharLen: u32 = undefined;
                 const rstr = vm.valueToTempString2(args[1], &rcharLen);
                 const charLen = getStringCharLen(T, vm, obj);
                 return vm.allocUstringConcat(str, rstr, charLen + rcharLen) catch fatal();
             } else if (isRawStringObject(T)) {
-                const rstr = vm.valueToTempString(args[1]);
+                const rstr = vm.valueToTempRawString(args[1]);
                 return vm.allocRawStringConcat(str, rstr) catch fatal();
             } else fatal();
         }
@@ -1539,16 +1534,6 @@ fn stringInsert(comptime T: cy.StringType) cy.ZHostFuncFn {
                 std.mem.copy(u8, buf[uidx+insert.len..], str[uidx..]);
                 return Value.initNoCycPtr(new);
             } else fatal();
-        }
-    };
-    return S.inner;
-}
-
-fn stringIndex(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-            fmt.printDeprecated("string.index()", "0.2", "Use string.find() instead.", &.{});
-            return @call(.never_inline, stringFind(T), .{vm, args, nargs});
         }
     };
     return S.inner;
@@ -1706,16 +1691,6 @@ fn stringIsAscii(comptime T: cy.StringType) cy.ZHostFuncFn {
     return S.inner;
 }
 
-pub fn stringIndexCharSet(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-            fmt.printDeprecated("string.indexCharSet()", "0.2", "Use string.findAnyRune() instead.", &.{});
-            return @call(.never_inline, stringFindAnyRune(T), .{vm, args, nargs});
-        }
-    };
-    return S.inner;
-}
-
 fn stringFindAnyRune(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
         fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -1807,16 +1782,6 @@ fn stringFindAnyRune(comptime T: cy.StringType) cy.ZHostFuncFn {
     return S.inner;
 }
 
-pub fn stringIndexCode(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-            fmt.printDeprecated("string.indexCode()", "0.2", "Use string.findRune() instead.", &.{});
-            return @call(.never_inline, stringFindRune(T), .{vm, args, nargs});
-        }
-    };
-    return S.inner;
-}
-
 fn stringFindRune(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
         fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -1860,21 +1825,6 @@ fn stringFindRune(comptime T: cy.StringType) cy.ZHostFuncFn {
                         }
                     }
                 } else fatal();
-            }
-            return Value.None;
-        }
-    };
-    return S.inner;
-}
-
-fn stringIndexChar(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            fmt.printDeprecated("string.indexChar()", "0.2", "Use string.findRune() instead.", &.{});
-            const needle = vm.valueToTempString(args[1]);
-            if (needle.len > 0) {
-                const cp = cy.string.utf8CodeAtNoCheck(needle, 0);
-                return @call(.never_inline, stringFindRune(T), .{vm, &[_]Value{Value.initF64(@floatFromInt(cp))}, 1});
             }
             return Value.None;
         }

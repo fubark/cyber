@@ -2288,20 +2288,20 @@ test "if expression" {
 
     var val = try run.eval(
         \\var foo = true
-        \\if foo then 123 else 456
+        \\123 if foo else 456
     );
     try t.eq(val.asInteger(), 123);
 
     val = try run.eval(
         \\var foo = false
-        \\if foo then 123 else 456
+        \\123 if foo else 456
     );
     try t.eq(val.asInteger(), 456);
 
     // Types are merged.
     _ = try run.eval(
         \\import t 'test'
-        \\var a = if false then 123 else '{123}456'
+        \\var a = 123 if false else '{123}456'
         \\t.eq(a, '123456')
         \\-- `a` should be released since else returns a heap string.
     );

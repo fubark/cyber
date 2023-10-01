@@ -140,6 +140,7 @@ var d = dist(100, 100, 200, 200)
 ```
 
 You can call functions with named parameters.
+> _Planned Feature_
 ```cy
 var d = dist(x0: 10, x1: 20, y0: 30, y1: 40)
 ```

@@ -17,10 +17,10 @@ else a == 20:
 else:
     print 'neither 10 nor 20'
 ```
-An `if` expression also needs the `then` keyword. Conditional `else` clauses are not allowed in an `if` expression.:
+An `if` expression leads with the return expression for the true case. Conditional `else` clauses are not allowed in an `if` expression:
 ```cy
 var a = 10
-var str = if a == 10 then 'red' else 'blue'
+var str = 'red' if a == 10 else 'blue'
 ```
 Use `and` and `or` logical operators to combine conditions:
 ```cy

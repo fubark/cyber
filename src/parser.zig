@@ -48,7 +48,6 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "some", .some_k },
     .{ "not", .not_k },
     .{ "return", .return_k },
-    .{ "then", .then_k },
     .{ "throw", .throw_k },
     .{ "true", .true_k },
     .{ "try", .try_k },
@@ -1214,14 +1213,7 @@ pub const Parser = struct {
         };
 
         var token = self.peekToken();
-        if (token.tag() == .then_k) {
-            const if_expr = try self.parseIfThenExpr(if_cond, start);
-            const expr_stmt = try self.pushNode(.expr_stmt, start);
-            self.nodes.items[expr_stmt].head = .{
-                .child_head = if_expr,
-            };
-            return expr_stmt;
-        } else if (token.tag() != .colon) {
+        if (token.tag() != .colon) {
             return self.reportParseError("Expected colon after if condition.", &.{});
         }
         self.advanceToken();
@@ -2198,13 +2190,13 @@ pub const Parser = struct {
         return false;
     }
 
-    fn parseIfThenExpr(self: *Parser, if_cond: NodeId, start: u32) !NodeId {
-        // Assume first token is `then`
+    fn parseIfExpr(self: *Parser, if_body: NodeId, start: u32) !NodeId {
+        // Assume if_k.
         self.advanceToken();
 
         const if_expr = try self.pushNode(.if_expr, start);
 
-        const if_body = (try self.parseExpr(.{})) orelse {
+        const if_cond = (try self.parseExpr(.{})) orelse {
             return self.reportParseError("Expected if body.", &.{});
         };
         self.nodes.items[if_expr].head = .{
@@ -2483,19 +2475,6 @@ pub const Parser = struct {
                     return self.reportParseError("Expected identifier.", &.{});
                 }
             },
-            .if_k => {
-                self.advanceToken();
-                const if_cond = (try self.parseExpr(.{})) orelse {
-                    return self.reportParseError("Expected if condition.", &.{});
-                };
-
-                token = self.peekToken();
-                if (token.tag() == .then_k) {
-                    return try self.parseIfThenExpr(if_cond, start);
-                } else {
-                    return self.reportParseError("Expected then keyword.", &.{});
-                }
-            },
             .left_paren => b: {
                 _ = self.consumeToken();
                 token = self.peekToken();
@@ -2745,13 +2724,13 @@ pub const Parser = struct {
                 .operator,
                 .or_k,
                 .and_k,
-                .then_k,
                 .as_k,
                 .some_k,
                 .each_k,
                 .string,
                 .number,
                 .float,
+                .if_k,
                 .ident,
                 .pound,
                 .templateString,
@@ -2894,11 +2873,13 @@ pub const Parser = struct {
                     };
                     left_id = bin_expr;
                 },
+                .if_k => {
+                    left_id = try self.parseIfExpr(left_id, start);
+                },
                 .right_bracket,
                 .right_paren,
                 .right_brace,
                 .else_k,
-                .then_k,
                 .comma,
                 .colon,
                 .some_k,
@@ -3312,7 +3293,6 @@ pub const TokenType = enum(u8) {
     break_k,
     continue_k,
     if_k,
-    then_k,
     else_k,
     for_k,
     while_k,
@@ -4796,6 +4776,6 @@ test "parser internals." {
     }
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 60);
-    try t.eq(keywords.kvs.len, 33);
+    try t.eq(std.enums.values(TokenType).len, 59);
+    try t.eq(keywords.kvs.len, 32);
 }

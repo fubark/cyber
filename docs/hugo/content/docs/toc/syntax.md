@@ -161,7 +161,7 @@ The final resulting value that is assigned to the static variable is provided by
 ## Keywords.
 There are currently `33` keywords in Cyber. This list categorizes them and shows you when you might need them.
 
-- [Control Flow]({{<relref "/docs/toc/control-flow">}}): `if` `then` `else` `match` `while` `for` `each` `break` `continue` `pass` `some`
+- [Control Flow]({{<relref "/docs/toc/control-flow">}}): `if` `else` `match` `while` `for` `each` `break` `continue` `pass` `some`
 - [Operators](#operators): `or` `and` `not` `is`
 - [Variables](#variables): `var` `as`
 - [Functions]({{<relref "/docs/toc/functions">}}): `func` `return`

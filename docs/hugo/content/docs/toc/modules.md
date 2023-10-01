@@ -83,6 +83,16 @@ type Thing object:  -- Exported type.
     a float
 ```
 
+## Module URI.
+To get the absolute path of the current module, reference the compile-time variable `ModUri`.
+This can be used with `os.dirName` to get the current module directory.
+```cy
+print #ModUri              -- Prints '/some/path/foo.cy'
+
+import os
+print os.dirName(#ModUri)  -- Prints '/some/path'
+```
+
 The annotation `@hide` provides a hint to editors that the static symbol should not appear in the auto-complete. Despite this, the symbol is still reachable.
 
 ## Builtin Modules.

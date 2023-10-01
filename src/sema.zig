@@ -1846,7 +1846,21 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
             func.inner.lambda.funcSigId = funcSigId;
             return bt.Any;
         },
-        else => return c.reportErrorAt("Unsupported node", &.{}, nodeId),
+        .comptimeExpr => {
+            const child = c.nodes[node.head.comptimeExpr.child];
+            if (child.node_t == .ident) {
+                const name = c.getNodeTokenString(child);
+                if (std.mem.eql(u8, name, "ModUri")) {
+                    // TODO: Save sym for codegen.
+                    return bt.String;
+                } else {
+                    return c.reportErrorAt("Compile-time symbol does not exist: {}", &.{v(name)}, node.head.comptimeExpr.child);
+                }
+            } else {
+                return c.reportErrorAt("Unsupported compile-time expr: {}", &.{v(child.node_t)}, node.head.comptimeExpr.child);
+            }
+        },
+        else => return c.reportErrorAt("Unsupported node: {}", &.{v(node.node_t)}, nodeId),
     }
 }
 

@@ -3062,6 +3062,20 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) anyerror!GenValu
 
             return c.initGenValue(dst, bt.Any, child.retained or elsev.retained);
         },
+        .comptimeExpr => {
+            const child = c.nodes[node.head.comptimeExpr.child];
+            if (child.node_t == .ident) {
+                const name = c.getNodeTokenString(child);
+                if (std.mem.eql(u8, name, "ModUri")) {
+                    const dst = try c.rega.selectFromNonLocalVar(cstr, false);
+                    return string(c, c.srcUri, dst);
+                } else {
+                    cy.unexpected();
+                }
+            } else {
+                cy.unexpected();
+            }
+        },
         else => {
             return c.reportErrorAt("Unsupported expression: {}", &.{v(node.node_t)}, nodeId);
         }

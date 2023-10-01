@@ -2746,10 +2746,11 @@ pub const Parser = struct {
                 .number,
                 .float,
                 .ident,
+                .pound,
                 .templateString,
                 .new_line,
                 .none => break,
-                else => return self.reportParseError("Unknown token", &.{}),
+                else => return self.reportParseError("Unknown token {}", &.{v(next.tag())}),
             }
         }
         return left_id;

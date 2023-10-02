@@ -513,7 +513,7 @@ fn genDeclEntry(vm: *cy.UserVM, parser: *const cy.Parser, decl: cy.parser.Static
     }
 
     try vm.mapRawSet(entry, try vm.allocAstring("name"), try vm.allocAstring(name));
-    try vm.mapRawSet(entry, try vm.allocAstring("pos"), Value.initF64(@floatFromInt(pos)));
+    try vm.mapRawSet(entry, try vm.allocAstring("pos"), Value.initInt(@intCast(pos)));
     return entry;
 }
 

@@ -326,7 +326,7 @@ const Common = struct {
 
     fn encodeFloat(writer: anytype, f: f64) !void {
         if (cy.Value.floatCanBeInteger(f)) {
-            try writer.print("{d:.0}", .{f});
+            try writer.print("{d:.0}.0", .{f});
         } else {
             try writer.print("{d}", .{f});
         }

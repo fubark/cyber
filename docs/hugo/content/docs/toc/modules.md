@@ -106,140 +106,139 @@ The `builtins` module contains functions related to Cyber and common utilities. 
 
 Sample usage:
 ```cy
--- `print` and `typeid` are available without imports.
+-- `print` and `typeof` are available without imports.
 print 'hello'
-var id = typeid('my str')
-print id
+print typeof('my str').id()
 ```
 <!-- builtins.start -->
-> `func arrayFill(val any, n int) none`  
+> `func arrayFill(val any, n int) List`  
 > Creates a list with initial capacity of `n` and values set to `val`.  If the value is an object, it is shallow copied `n` times.
 
-> `func copy(val any) none`  
+> `func copy(val any) any`  
 > Copies a primitive value or creates a shallow copy of an object value.
 
-> `func dump(val any) none`  
+> `func dump(val any) string`  
 > Prints the result of `toCyon` on a value.
 
-> `func errorReport() none`  
+> `func errorReport() string`  
 
-> `func isAlpha(val int) none`  
+> `func isAlpha(val int) boolean`  
 > Returns whether a rune is an alphabetic letter.
 
-> `func isDigit(val int) none`  
+> `func isDigit(val int) boolean`  
 > Returns whether a rune is a digit.
 
-> `func must(val any) none`  
+> `func must(val any) any`  
 > If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned.
 
 > `func panic(err any) none`  
 > Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}).
 
-> `func parseCyber(src any) none`  
+> `func parseCyber(src any) Map`  
 > Parses Cyber source string into structured map object.  Currently, only metadata about static declarations is made available but this will be extended to include an AST.
 
-> `func parseCyon(src any) none`  
+> `func parseCyon(src any) any`  
 > Parses a CYON string into a value.
 
-> `func performGC() none`  
+> `func performGC() Map`  
 > Runs the garbage collector once to detect reference cycles and abandoned objects.  Returns the statistics of the run in a map value.
 
 > `func print(str any) none`  
 > Prints a value. The host determines how it is printed.
 
-> `func runestr(val int) none`  
+> `func runestr(val int) string`  
 > Converts a rune to a string.
 
-> `func toCyon(val any) none`  
+> `func toCyon(val any) string`  
 > Encodes a value to CYON string.
 
-> `func typeof(val any) none`  
+> `func typeof(val any) metatype`  
 > Returns the value's type as a `metatype` object.
 
-> `func typesym(val any) none`  
+> `func typesym(val any) symbol`  
 > Returns the value's type as one of the predefined symbols:  .float, .int, .boolean, .object, .list, .map, .string, .rawstring, .function, .fiber, .pointer, .symbol, .metatype, .none, .error
 
 ### `type boolean`
 
-> `func $call(val any) none`  
+> `func $call(val any) boolean`  
 > Converts a value to either `true` or `false`.
 
 ### `type error`
 
-> `func $call(val any) none`  
+> `func $call(val any) error`  
 > Create an error from an enum or symbol.
 
-> `func value(self any) none`  
+> `func value(self any) any`  
 
 ### `type int`
 
-> `func $call(val any) none`  
+> `func $call(val any) int`  
 > Converts a value to an 48-bit integer.
 
-> `func $prefix~(self any) none`  
+> `func $prefix~(self any) int`  
 
-> `func $prefix-(self any) none`  
+> `func $prefix-(self any) int`  
 
-> `func $infix<(self any, o any) none`  
+> `func $infix<(self any, o any) boolean`  
 
-> `func $infix<=(self any, o any) none`  
+> `func $infix<=(self any, o any) boolean`  
 
-> `func $infix>(self any, o any) none`  
+> `func $infix>(self any, o any) boolean`  
 
-> `func $infix>=(self any, o any) none`  
+> `func $infix>=(self any, o any) boolean`  
 
-> `func $infix+(self any, o any) none`  
+> `func $infix+(self any, o any) int`  
 
-> `func $infix-(self any, o any) none`  
+> `func $infix-(self any, o any) int`  
 
-> `func $infix*(self any, o any) none`  
+> `func $infix*(self any, o any) int`  
 
-> `func $infix/(self any, o any) none`  
+> `func $infix/(self any, o any) int`  
 
-> `func $infix%(self any, o any) none`  
+> `func $infix%(self any, o any) int`  
 
-> `func $infix^(self any, o any) none`  
+> `func $infix^(self any, o any) int`  
 
-> `func $infix&(self any, o any) none`  
+> `func $infix&(self any, o any) int`  
 
-> `func $infix|(self any, o any) none`  
+> `func $infix|(self any, o any) int`  
 
-> `func $infix||(self any, o any) none`  
+> `func $infix||(self any, o any) int`  
 
-> `func $infix<<(self any, o any) none`  
+> `func $infix<<(self any, o any) int`  
 
-> `func $infix>>(self any, o any) none`  
+> `func $infix>>(self any, o any) int`  
 
 ### `type float`
 
-> `func $call(val any) none`  
+> `func $call(val any) float`  
 > Converts the value to a `float`. Panics if type conversion fails.
 
-> `func $prefix-(self any) none`  
+> `func $prefix-(self any) float`  
 
-> `func $infix<(self any, o any) none`  
+> `func $infix<(self any, o any) boolean`  
 
-> `func $infix<=(self any, o any) none`  
+> `func $infix<=(self any, o any) boolean`  
 
-> `func $infix>(self any, o any) none`  
+> `func $infix>(self any, o any) boolean`  
 
-> `func $infix>=(self any, o any) none`  
+> `func $infix>=(self any, o any) boolean`  
 
-> `func $infix+(self any, o any) none`  
+> `func $infix+(self any, o any) float`  
 
-> `func $infix-(self any, o any) none`  
+> `func $infix-(self any, o any) float`  
 
-> `func $infix*(self any, o any) none`  
+> `func $infix*(self any, o any) float`  
 
-> `func $infix/(self any, o any) none`  
+> `func $infix/(self any, o any) float`  
 
-> `func $infix%(self any, o any) none`  
+> `func $infix%(self any, o any) float`  
 
-> `func $infix^(self any, o any) none`  
+> `func $infix^(self any, o any) float`  
 
 ### `type List`
 
-> `func $index(self any, idx any) none`  
+> `func $index(self any, idx any) any`  
 
 > `func $setIndex(self any, idx any, val any) none`  
 
@@ -251,66 +250,66 @@ print id
 > `func concat(self any, list List) none`  
 > Concats the elements of another list to the end of this list.
 
-> `func insert(self any, idx int, val any) none`  
+> `func insert(self any, idx int, val any) any`  
 > Inserts a value at index `idx`.
 
-> `func iterator(self any) none`  
+> `func iterator(self any) any`  
 > Returns a new iterator over the list elements.
 
-> `func joinString(self any, sep any) none`  
+> `func joinString(self any, sep any) string`  
 > Returns a new string that joins the elements with `separator`.
 
-> `func len(self any) none`  
+> `func len(self any) int`  
 > Returns the number of elements in the list.
 
-> `func seqIterator(self any) none`  
+> `func seqIterator(self any) any`  
 > Returns a new sequence iterator over the list elements.
 
-> `func remove(self any, idx int) none`  
+> `func remove(self any, idx int) any`  
 > Removes an element at index `idx`.
 
-> `func resize(self any, size int) none`  
+> `func resize(self any, size int) any`  
 > Resizes the list to `len` elements. If the new size is bigger, `none` values  are appended to the list. If the new size is smaller, elements at the end of the list are removed.
 
-> `func sort(self any, lessFn any) none`  
+> `func sort(self any, lessFn any) any`  
 > Sorts the list with the given `less` function.  If element `a` should be ordered before `b`, the function should return `true` otherwise `false`.
 
 ### `type ListIterator`
 
-> `func next(self any) none`  
+> `func next(self any) any`  
 
-> `func nextSeq(self any) none`  
+> `func nextSeq(self any) any`  
 
 ### `type Map`
 
-> `func $index(self any, key any) none`  
+> `func $index(self any, key any) any`  
 
 > `func $setIndex(self any, key any, val any) none`  
 
 > `func remove(self any, key any) none`  
 > Removes the element with the given key `key`.
 
-> `func size(self any) none`  
+> `func size(self any) int`  
 > Returns the number of key-value pairs in the map.
 
-> `func iterator(self any) none`  
+> `func iterator(self any) any`  
 > Returns a new iterator over the map elements.
 
-> `func seqIterator(self any) none`  
+> `func seqIterator(self any) any`  
 > Returns a new sequence iterator over the map elements.
 
 ### `type MapIterator`
 
-> `func next(self any) none`  
+> `func next(self any) any`  
 
-> `func nextSeq(self any) none`  
+> `func nextSeq(self any) any`  
 
 ### `type pointer`
 
-> `func $call(val any) none`  
+> `func $call(val any) pointer`  
 > Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI.
 
-> `func value(self any) none`  
+> `func value(self any) int`  
 > Returns the memory address as an `int`. The value may be negative since it's  bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
 
 <!-- builtins.end -->
@@ -497,118 +496,118 @@ print(math.pi * r^2)
 > `var sqrt2 float`  
 > Square root of 2; approximately 1.414.
 
-> `func abs(a float) none`  
+> `func abs(a float) float`  
 > Returns the absolute value of x.
 
-> `func acos(a float) none`  
+> `func acos(a float) float`  
 > Returns the arccosine of x.
 
-> `func acosh(a float) none`  
+> `func acosh(a float) float`  
 > Returns the hyperbolic arccosine of x.
 
-> `func asin(a float) none`  
+> `func asin(a float) float`  
 > Returns the arcsine of x.
 
-> `func asinh(a float) none`  
+> `func asinh(a float) float`  
 > Returns the hyperbolic arcsine of a number.
 
-> `func atan(a float) none`  
+> `func atan(a float) float`  
 > Returns the arctangent of x.
 
-> `func atan2(a float, b float) none`  
+> `func atan2(a float, b float) float`  
 > Returns the arctangent of the quotient of its arguments.
 
-> `func atanh(a float) none`  
+> `func atanh(a float) float`  
 > Returns the hyperbolic arctangent of x.
 
-> `func cbrt(a float) none`  
+> `func cbrt(a float) float`  
 > Returns the cube root of x.
 
-> `func ceil(a float) none`  
+> `func ceil(a float) float`  
 > Returns the smallest integer greater than or equal to x.
 
-> `func clz32(a float) none`  
+> `func clz32(a float) float`  
 > Returns the number of leading zero bits of the 32-bit integer x.
 
-> `func cos(a float) none`  
+> `func cos(a float) float`  
 > Returns the cosine of x.
 
-> `func cosh(a float) none`  
+> `func cosh(a float) float`  
 > Returns the hyperbolic cosine of x.
 
-> `func exp(a float) none`  
+> `func exp(a float) float`  
 > Returns e^x, where x is the argument, and e is Euler's number (2.718…, the base of the natural logarithm).
 
-> `func expm1(a float) none`  
+> `func expm1(a float) float`  
 > Returns subtracting 1 from exp(x).
 
-> `func floor(a float) none`  
+> `func floor(a float) float`  
 > Returns the largest integer less than or equal to x.
 
-> `func frac(a float) none`  
+> `func frac(a float) float`  
 > Returns the fractional or decimal part of a float value.
 
-> `func hypot(a float, b float) none`  
+> `func hypot(a float, b float) float`  
 > Returns the square root of the sum of squares of its arguments.
 
-> `func isInt(a float) none`  
+> `func isInt(a float) boolean`  
 > Returns true if the float has no fractional part, otherwise false.
 
-> `func isNaN(a float) none`  
+> `func isNaN(a float) boolean`  
 > Returns whether x is not a number.
 
-> `func ln(a float) none`  
+> `func ln(a float) float`  
 > Returns the natural logarithm (㏒e; also, ㏑) of x.
 
-> `func log(a float, b float) none`  
+> `func log(a float, b float) float`  
 > Returns the logarithm of y with base x.
 
-> `func log10(a float) none`  
+> `func log10(a float) float`  
 > Returns the base-10 logarithm of x.
 
-> `func log1p(a float) none`  
+> `func log1p(a float) float`  
 > Returns the natural logarithm (㏒e; also ㏑) of 1 + x for the number x.
 
-> `func log2(a float) none`  
+> `func log2(a float) float`  
 > Returns the base-2 logarithm of x.
 
-> `func max(a float, b float) none`  
+> `func max(a float, b float) float`  
 > Returns the largest of two numbers.
 
-> `func min(a float, b float) none`  
+> `func min(a float, b float) float`  
 > Returns the smallest of two numbers.
 
-> `func mul32(a float, b float) none`  
+> `func mul32(a float, b float) float`  
 > Returns the result of the 32-bit integer multiplication of x and y. Integer overflow is allowed.
 
-> `func pow(a float, b float) none`  
+> `func pow(a float, b float) float`  
 > Returns base x to the exponent power y (that is, x^y).
 
-> `func random() none`  
+> `func random() float`  
 > Returns a pseudo-random number between 0 and 1.
 
-> `func round(a float) none`  
+> `func round(a float) float`  
 > Returns the value of the number x rounded to the nearest integer.
 
-> `func sign(a float) none`  
+> `func sign(a float) float`  
 > Returns the sign of the x, indicating whether x is positive, negative, or zero.
 
-> `func sin(a float) none`  
+> `func sin(a float) float`  
 > Returns the sine of x.
 
-> `func sinh(a float) none`  
+> `func sinh(a float) float`  
 > Returns the hyperbolic sine of x.
 
-> `func sqrt(a float) none`  
+> `func sqrt(a float) float`  
 > Returns the positive square root of x.
 
-> `func tan(a float) none`  
+> `func tan(a float) float`  
 > Returns the tangent of x.
 
-> `func tanh(a float) none`  
+> `func tanh(a float) float`  
 > Returns the hyperbolic tangent of x.
 
-> `func trunc(a float) none`  
+> `func trunc(a float) float`  
 > Returns the integer portion of x, removing any fractional digits.
 
 <!-- math.end -->
@@ -652,99 +651,99 @@ for map each [k, v]:
 > `var vecBitSize int`  
 > Default SIMD vector bit size.
 
-> `func access(path any, mode symbol) none`  
+> `func access(path any, mode symbol) any`  
 > Attempts to access a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.  Return true or an error.
 
-> `func args() none`  
+> `func args() List`  
 > Returns the command line arguments as a list.  Each argument is validated and returned as a UTF-8 `string` or `rawstring` if the validation failed.
 
-> `func bindLib(path any, decls List) none`  
+> `func bindLib(path any, decls List) any`  
 > Calls `bindLib(path, decls, {})`.
 
-> `func bindLib(path any, decls List, config Map) none`  
+> `func bindLib(path any, decls List, config Map) any`  
 > Creates an FFI binding to a dynamic library and it's symbols.  By default, an anonymous object is returned with the C-functions binded as the object's methods.  If `config` contains `genMap: true`, a `Map` is returned instead with C-functions  binded as function values.
 
-> `func cacheUrl(url any) none`  
+> `func cacheUrl(url any) any`  
 > Returns the path of a locally cached file of `url`.  If no such file exists locally, it's fetched from `url`.
 
-> `func copyFile(srcPath any, dstPath any) none`  
+> `func copyFile(srcPath any, dstPath any) any`  
 > Copies a file to a destination path.
 
-> `func createDir(path any) none`  
+> `func createDir(path any) any`  
 > Creates the directory at `path`. Returns `true` if successful.
 
-> `func createFile(path any, truncate boolean) none`  
+> `func createFile(path any, truncate boolean) any`  
 > Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated.
 
-> `func cstr(s any) none`  
+> `func cstr(s any) pointer`  
 > Returns a null terminated C string.
 
-> `func cwd() none`  
+> `func cwd() string`  
 > Returns the current working directory.
 
-> `func dirName(path any) none`  
+> `func dirName(path any) any`  
 > Returns the given path with its last component removed.
 
-> `func execCmd(args List) none`  
+> `func execCmd(args List) any`  
 > Runs a shell command and returns the stdout/stderr.
 
-> `func exePath() none`  
+> `func exePath() string`  
 > Returns the current executable's path.
 
 > `func exit(status int) none`  
 > Exits the program with a status code.
 
-> `func fetchUrl(url any) none`  
+> `func fetchUrl(url any) any`  
 > Fetches the contents at `url` using the HTTP GET request method.
 
 > `func free(ptr pointer) none`  
 > Frees the memory located at `ptr`.
 
-> `func fromCstr(ptr pointer) none`  
+> `func fromCstr(ptr pointer) rawstring`  
 > Returns a `rawstring` from a null terminated C string.
 
-> `func getEnv(key any) none`  
+> `func getEnv(key any) any`  
 > Returns an environment value by key.
 
-> `func getEnvAll() none`  
+> `func getEnvAll() Map`  
 > Returns all environment entries as a `Map`.
 
-> `func getInput() none`  
+> `func getInput() any`  
 > Reads stdin until a new line is reached. This is intended to read user input from the command line.  For bulk reads from stdin, use `os.stdin`.
 
-> `func malloc(size int) none`  
+> `func malloc(size int) pointer`  
 > Allocates `size` bytes of memory and returns a pointer.
 
-> `func milliTime() none`  
+> `func milliTime() float`  
 > Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01.
 
-> `func openDir(path any) none`  
+> `func openDir(path any) any`  
 > Invokes `openDir(path, false)`.
 
-> `func openDir(path any, iterable boolean) none`  
+> `func openDir(path any, iterable boolean) any`  
 > Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated.
 
-> `func openFile(path any, mode symbol) none`  
+> `func openFile(path any, mode symbol) any`  
 > Opens a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.
 
-> `func parseArgs(options List) none`  
+> `func parseArgs(options List) Map`  
 > Given expected `ArgOption`s, returns a map of the options and a `rest` entry which contains the non-option arguments. |
 
-> `func readAll() none`  
+> `func readAll() any`  
 > Reads stdin to the EOF as a `rawstring`.
 
-> `func readFile(path any) none`  
+> `func readFile(path any) any`  
 > Reads the file contents into a `rawstring` value.
 
-> `func readLine() none`  
+> `func readLine() any`  
 
-> `func realPath(path any) none`  
+> `func realPath(path any) any`  
 > Returns the absolute path of the given path.
 
-> `func removeDir(path any) none`  
+> `func removeDir(path any) any`  
 > Removes an empty directory at `path`. Returns `true` if successful.
 
-> `func removeFile(path any) none`  
+> `func removeFile(path any) any`  
 > Removes the file at `path`. Returns `true` if successful.
 
 > `func setEnv(key any, val any) none`  
@@ -756,7 +755,7 @@ for map each [k, v]:
 > `func unsetEnv(key any) none`  
 > Removes an environment value by key.
 
-> `func writeFile(path any, contents any) none`  
+> `func writeFile(path any, contents any) any`  
 > Writes a string value to a file.
 
 ### `type File`
@@ -764,51 +763,51 @@ for map each [k, v]:
 > `func close(self any) none`  
 > Closes the file handle. File ops invoked afterwards will return `error.Closed`.
 
-> `func iterator(self any) none`  
+> `func iterator(self any) any`  
 
-> `func next(self any) none`  
+> `func next(self any) any`  
 
-> `func read(self any, n int) none`  
+> `func read(self any, n int) any`  
 > Reads at most `n` bytes as a `rawstring`. `n` must be at least 1.  A result with length 0 indicates the end of file was reached.
 
-> `func readToEnd(self any) none`  
+> `func readToEnd(self any) any`  
 > Reads to the end of the file and returns the content as a `rawstring`.
 
-> `func seek(self any, n int) none`  
+> `func seek(self any, n int) any`  
 > Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.
 
-> `func seekFromCur(self any, n int) none`  
+> `func seekFromCur(self any, n int) any`  
 > Seeks the read/write position by `pos` bytes from the current position.
 
-> `func seekFromEnd(self any, n int) none`  
+> `func seekFromEnd(self any, n int) any`  
 > Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid.
 
-> `func stat(self any) none`  
+> `func stat(self any) any`  
 > Returns info about the file as a `Map`.
 
-> `func streamLines(self any) none`  
+> `func streamLines(self any) any`  
 > Equivalent to `streamLines(4096)`.
 
-> `func streamLines(self any, bufSize int) none`  
+> `func streamLines(self any, bufSize int) any`  
 > Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`.  The lines returned include the new line character(s).  A buffer size of `bufSize` bytes is allocated for reading.  If `\r` is found at the end of the read buffer, the line is returned instead of  waiting to see if the next read has a connecting `\n`.
 
-> `func write(self any, val any) none`  
+> `func write(self any, val any) any`  
 > Writes a `string` or `rawstring` at the current file position.  The number of bytes written is returned.
 
 ### `type Dir`
 
-> `func iterator(self any) none`  
+> `func iterator(self any) any`  
 > Returns a new iterator over the directory entries.  If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
 
-> `func stat(self any) none`  
+> `func stat(self any) any`  
 > Returns info about the file as a `Map`.
 
-> `func walk(self any) none`  
+> `func walk(self any) any`  
 > Returns a new iterator over the directory recursive entries.  If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
 
 ### `type DirIterator`
 
-> `func next(self any) none`  
+> `func next(self any) any`  
 
 <!-- os.end -->
 ### `map DirEntry`
@@ -843,15 +842,15 @@ t.eq(a, 444)
 ```
 
 <!-- test.start -->
-> `func eq(a any, b any) none`  
+> `func eq(a any, b any) any`  
 > Returns whether two values are equal.  Panics with `error.AssertError` if types or values do not match up.
 
-> `func eqList(a any, b any) none`  
+> `func eqList(a any, b any) any`  
 > Returns true if two lists have the same size and the elements are equal  as if `eq` was called on those corresponding elements.
 
-> `func eqNear(a any, b any) none`  
+> `func eqNear(a any, b any) any`  
 > Returns two numbers are near each other within epsilon 1e-5.
 
-> `func fail() none`  
+> `func fail() any`  
 
 <!-- test.end -->

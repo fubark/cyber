@@ -420,6 +420,9 @@ fn genNodeValue(vm: *cy.UserVM, parser: *const cy.Parser, nodeId: cy.NodeId) !cy
                 paramId = parser.nodes.items[paramId].next;
             }
             try vm.mapRawSet(res, try vm.allocAstring("params"), params);
+
+            const ret = try genTypeSpecString(vm, parser, node.head.funcHeader.ret);
+            try vm.mapRawSet(res, try vm.allocAstring("ret"), ret);
         },
         .funcParam => {
             var name = cy.parser.getNodeTokenString(parser, node.head.funcParam.name);

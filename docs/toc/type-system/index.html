@@ -1,27 +1,51 @@
-<!doctype html><html lang=en-us dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Type System. # Cyber supports gradual typing which allows the use of both dynamically and statically typed code.
-Incomplete: Types in general is in development. One of the goals of Cyber is to let dynamic code mix with typed code. At the moment, there are places where it works and other places where it won&rsquo;t. Keep that in mind when using types.
-Dynamic typing can reduce the amount of friction when writing code, but it can also result in more runtime errors."><meta name=theme-color media="(prefers-color-scheme: light)" content="#ffffff"><meta name=theme-color media="(prefers-color-scheme: dark)" content="#343a40"><meta name=color-scheme content="light dark"><meta property="og:title" content="Type System"><meta property="og:description" content="Type System. # Cyber supports gradual typing which allows the use of both dynamically and statically typed code.
-Incomplete: Types in general is in development. One of the goals of Cyber is to let dynamic code mix with typed code. At the moment, there are places where it works and other places where it won&rsquo;t. Keep that in mind when using types.
-Dynamic typing can reduce the amount of friction when writing code, but it can also result in more runtime errors."><meta property="og:type" content="article"><meta property="og:url" content="https://fubark.github.io/cyber/docs/toc/type-system/"><meta property="article:section" content="docs"><title>Type System | Cyber Docs v0.2</title><link rel=manifest href=/cyber/manifest.json><link rel=icon href=/cyber/favicon.png><link rel=stylesheet href=/cyber/book.min.4f0117e74e5337280f18eb9641eae520cb4b25adcf5dd64fafad4664145a5957.css integrity="sha256-TwEX505TNygPGOuWQerlIMtLJa3PXdZPr61GZBRaWVc=" crossorigin=anonymous><script defer src=/cyber/flexsearch.min.js></script>
-<script defer src=/cyber/en.search.min.1c7c28f429fa6baa2e2c3b081ec6884fb21d27ea52ef370ca0b583426ef5695f.js integrity="sha256-HHwo9Cn6a6ouLDsIHsaIT7IdJ+pS7zcMoLWDQm71aV8=" crossorigin=anonymous></script>
+<!doctype html><html lang=en-us dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Type System. # Cyber supports the use of both dynamically and statically typed code.
+Dynamic typing. # Dynamic typing can reduce the amount of friction when writing code, but it can also result in more runtime errors.
+dynamic vs any # Variables without a type specifier are implicitly assigned the dynamic type. dynamic values can be freely used and copied without any compile errors (if there is a chance it can succeed at runtime, see Recent type inference):"><meta name=theme-color media="(prefers-color-scheme: light)" content="#ffffff"><meta name=theme-color media="(prefers-color-scheme: dark)" content="#343a40"><meta name=color-scheme content="light dark"><meta property="og:title" content="Type System"><meta property="og:description" content="Type System. # Cyber supports the use of both dynamically and statically typed code.
+Dynamic typing. # Dynamic typing can reduce the amount of friction when writing code, but it can also result in more runtime errors.
+dynamic vs any # Variables without a type specifier are implicitly assigned the dynamic type. dynamic values can be freely used and copied without any compile errors (if there is a chance it can succeed at runtime, see Recent type inference):"><meta property="og:type" content="article"><meta property="og:url" content="https://fubark.github.io/cyber/docs/toc/type-system/"><meta property="article:section" content="docs"><title>Type System | Cyber Docs v0.2</title><link rel=manifest href=/cyber/manifest.json><link rel=icon href=/cyber/favicon.png><link rel=stylesheet href=/cyber/book.min.4f0117e74e5337280f18eb9641eae520cb4b25adcf5dd64fafad4664145a5957.css integrity="sha256-TwEX505TNygPGOuWQerlIMtLJa3PXdZPr61GZBRaWVc=" crossorigin=anonymous><script defer src=/cyber/flexsearch.min.js></script>
+<script defer src=/cyber/en.search.min.3ded444a4ca8c0ebaa90e2eb156102a636150c50bade5f44065d27af4766b7d7.js integrity="sha256-Pe1ESkyowOuqkOLrFWECpjYVDFC63l9EBl0nr0dmt9c=" crossorigin=anonymous></script>
 <link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel=stylesheet><link rel=stylesheet href=/cyber/hljs.min.css><link rel=stylesheet href=/cyber/style.css></head><body dir=ltr><input type=checkbox class="hidden toggle" id=menu-control>
 <input type=checkbox class="hidden toggle" id=toc-control><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/cyber/><span>Cyber Docs v0.2</span></a></h2><div class=book-search><input type=text id=book-search-input placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><ul><li><a href=https://cyberscript.dev target=_blank rel=noopener>Homepage</a></li><li><a href=https://cyberscript.dev/play.html target=_blank rel=noopener>Playground</a></li></ul><ul><li class=book-section-flat><span>Table of Contents</span><ul><li><a href=/cyber/docs/toc/syntax/>Syntax</a></li><li><a href=/cyber/docs/toc/data-types/>Data Types</a></li><li><a href=/cyber/docs/toc/control-flow/>Control Flow</a></li><li><a href=/cyber/docs/toc/functions/>Functions</a></li><li><a href=/cyber/docs/toc/modules/>Modules</a></li><li><a href=/cyber/docs/toc/ffi/>FFI</a></li><li><a href=/cyber/docs/toc/errors/>Error Handling</a></li><li><a href=/cyber/docs/toc/concurrency/>Concurrency</a></li><li><a href=/cyber/docs/toc/type-system/ class=active>Type System</a></li><li><a href=/cyber/docs/toc/metaprogramming/>Metaprogramming</a></li><li><a href=/cyber/docs/toc/embedding/>Embedding</a></li><li><a href=/cyber/docs/toc/memory/>Memory</a></li><li><a href=/cyber/docs/toc/aot-jit/>AOT/JIT</a></li></ul></li></ul></nav><script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script></div></aside><div class=book-page><header class=book-header><div class="flex align-center justify-between"><label for=menu-control><img src=/cyber/svg/menu.svg class=book-icon alt=Menu></label>
 <strong>Type System</strong>
-<label for=toc-control><img src=/cyber/svg/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class="hidden clearfix"><nav id=TableOfContents><ul><li><a href=#dynamic-typing>Dynamic typing.</a></li><li><a href=#compile-time-dynamic-typing>Compile-time dynamic typing.</a></li><li><a href=#default-types>Default types.</a></li><li><a href=#static-typing>Static typing.</a></li><li><a href=#union-types>Union types.</a></li><li><a href=#traits>Traits.</a></li><li><a href=#type-aliases>Type aliases.</a></li><li><a href=#type-casting>Type casting.</a></li><li><a href=#runtime-type-checking>Runtime type checking.</a></li></ul></nav></aside></header><article class=markdown><h1 id=type-system>Type System.
-<a class=anchor href=#type-system>#</a></h1><p>Cyber supports gradual typing which allows the use of both dynamically and statically typed code.</p><blockquote><p><em>Incomplete: Types in general is in development. One of the goals of Cyber is to let dynamic code mix with typed code. At the moment, there are places where it works and other places where it won&rsquo;t. Keep that in mind when using types.</em></p></blockquote><p>Dynamic typing can reduce the amount of friction when writing code, but it can also result in more runtime errors.
-Gradual typing allows you to add static typing incrementally which provides compile-time guarantees and prevents runtime errors.
-Static typing also makes it easier to maintain and refactor your code.</p><h2 id=dynamic-typing>Dynamic typing.
-<a class=anchor href=#dynamic-typing>#</a></h2><p>A variable with the <code>any</code> type can hold any value. It can only be copied to destinations that also accept the <code>any</code> type. An <code>any</code> value can be used as the callee for a function call or the receiver for a method call. It can be used with any operators.</p><h2 id=compile-time-dynamic-typing>Compile-time dynamic typing.
-<a class=anchor href=#compile-time-dynamic-typing>#</a></h2><p>Cyber introduces the concept of compile-time dynamic typing. This allows a local variable to gain additional compile-time features while using it as a dynamic value. It can prevent inevitable runtime errors and avoid unnecessary type casts.</p><p>Local variables declared without a type specifier start off with the type of their initializer. In the following, <code>a</code> is implicity declared as a <code>float</code> at compile-time because numeric literals default to the <code>float</code> type.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
-</code></pre><p>The type can change at compile-time from another assignment.
-If <code>a</code> is then assigned to a string literal, <code>a</code> from that point on becomes the <code>string</code> type at compile-time.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
+<label for=toc-control><img src=/cyber/svg/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class="hidden clearfix"><nav id=TableOfContents><ul><li><a href=#dynamic-typing>Dynamic typing.</a><ul><li><a href=#dynamic-vs-any><code>dynamic</code> vs <code>any</code></a></li><li><a href=#invoking-dynamic-values>Invoking <code>dynamic</code> values.</a></li><li><a href=#dynamic-return-value>Dynamic return value.</a></li><li><a href=#recent-type-inference>Recent type inference.</a></li></ul></li><li><a href=#static-typing>Static typing.</a><ul><li><a href=#builtin-types>Builtin types.</a></li><li><a href=#typed-variables>Typed variables.</a></li><li><a href=#auto-declarations><code>auto</code> declarations.</a></li><li><a href=#object-types>Object types.</a></li><li><a href=#type-aliases>Type aliases.</a></li><li><a href=#functions>Functions.</a></li><li><a href=#traits>Traits.</a></li><li><a href=#union-types>Union types.</a></li><li><a href=#any-type><code>any</code> type.</a></li><li><a href=#invoking-any-values>Invoking <code>any</code> values.</a></li><li><a href=#type-casting>Type casting.</a></li></ul></li></ul></nav></aside></header><article class=markdown><h1 id=type-system>Type System.
+<a class=anchor href=#type-system>#</a></h1><p>Cyber supports the use of both dynamically and statically typed code.</p><h2 id=dynamic-typing>Dynamic typing.
+<a class=anchor href=#dynamic-typing>#</a></h2><p>Dynamic typing can reduce the amount of friction when writing code, but it can also result in more runtime errors.</p><h3 id=dynamic-vs-any><code>dynamic</code> vs <code>any</code>
+<a class=anchor href=#dynamic-vs-any>#</a></h3><p>Variables without a type specifier are implicitly assigned the <code>dynamic</code> type.
+<code>dynamic</code> values can be freely used and copied without any compile errors (if there is a chance it can succeed at runtime, see <a href=#recent-type-inference>Recent type inference</a>):</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
+
+func getFirstRune(s string):
+    return s[0]
+
+getFirstRune(a)       -- RuntimeError. Expected `string`.
+</code></pre><p>Since <code>a</code> is dynamic, passing it to a typed function parameter is allowed at compile-time, but will fail when the function is invoked at runtime.</p><p>The <code>any</code> type on the otherhand is a <strong>static type</strong> and must be explicitly declared as a variable&rsquo;s type specifier:</p><pre tabindex=0><code class=language-cy data-lang=cy>var a any = 123
+
+func getFirstRune(s string):
+    return s[0]
+
+getFirstRune(a)       -- CompileError. Expected `string`.
+</code></pre><p>This same setup will now fail at compile-time because <code>any</code> does not satisfy the destination&rsquo;s <code>string</code> type constraint.</p><p>The use of the <code>dynamic</code> type effectively defers type checking to runtime while <code>any</code> is a static type and must adhere to type constraints at compile-time.</p><p>A <code>dynamic</code> value can be used in any operation. It can be invoked as the callee, invoked as the receiver of a method call, or used with operators.</p><h3 id=invoking-dynamic-values>Invoking <code>dynamic</code> values.
+<a class=anchor href=#invoking-dynamic-values>#</a></h3><p>When a <code>dynamic</code> value is invoked, checks on whether the callee is a function is deferred to runtime.</p><pre tabindex=0><code class=language-cy data-lang=cy>var op = 123
+print op(1, 2, 3)      -- RuntimeError. Expected a function.
+</code></pre><h3 id=dynamic-return-value>Dynamic return value.
+<a class=anchor href=#dynamic-return-value>#</a></h3><p>When the return type of a function is not specified, it defaults to the <code>dynamic</code> type.
+This allows copying the return value to a typed destination without casting:</p><pre tabindex=0><code class=language-cy data-lang=cy>func getValue():
+    return 123
+
+func add(a int, b int):
+    return a + b
+
+print add(getValue(), 2)    -- Prints &#34;125&#34;
+</code></pre><p>The <code>add</code> function defers type checking of <code>getValue()</code> to runtime because it has the <code>dynamic</code> type.</p><h3 id=recent-type-inference>Recent type inference.
+<a class=anchor href=#recent-type-inference>#</a></h3><p>Although a <code>dynamic</code> variable has the most flexibility, in some situations it is advantageous to know what type it could be.</p><p>The compiler keeps a running record of a <code>dynamic</code> variable&rsquo;s most <strong>recent type</strong> to gain additional compile-time features without sacrificing flexibility. It can prevent inevitable runtime errors and avoid unnecessary type casts.</p><p>When a <code>dynamic</code> variable is first initialized, it has a recent type inferred from its initializer. In the following, <code>a</code> has the recent type of <code>int</code> at compile-time because numeric literals default to the <code>int</code> type:</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
+</code></pre><p>The recent type can change at compile-time from another assignment.
+If <code>a</code> is then assigned to a string literal, <code>a</code> from that point on has the recent type of <code>string</code> at compile-time:</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
 foo(a)           -- Valid call expression.
 a = &#39;hello&#39;
-foo(a)           -- CompileError. Expected `float` argument, got `string`.
+foo(a)           -- CompileError. Expected `int` argument, got `string`.
 
-func foo(n float):
+func foo(n int):
     pass
-</code></pre><p>The type of <code>a</code> can also change in branches. However, after the branch block, <code>a</code> will have a merged type determined by the types assigned to <code>a</code> from the two branched code paths. Currently, the <code>any</code> type is used if the types from the two branches differ. At the end of the following <code>if</code> block, <code>a</code> assumes the <code>any</code> type after merging the <code>float</code> and <code>string</code> types.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
+</code></pre><p>Even though <code>a</code> is <code>dynamic</code> and is usually allowed to defer type checking to runtime, the compiler knows that doing so in this context would <strong>always</strong> result in a runtime error, so it provides a compile error instead. This provides a quicker feedback to fix the problem.</p><p>The recent type of <code>a</code> can also change in branches. However, after the branch block, <code>a</code> will have a recent type after merging the types assigned to <code>a</code> from the two branched code paths. Currently, the <code>any</code> type is used if the types from the two branches differ. At the end of the following <code>if</code> block, <code>a</code> has the recent type of <code>any</code> type after merging the <code>int</code> and <code>string</code> types:</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
 if a &gt; 20:
     a = &#39;hello&#39;
     foo(a)       -- Valid call expression. `foo` can be called without type casting.
@@ -30,61 +54,74 @@ foo(a)           -- CompileError. Expected `string` argument, got `any`.
 
 func foo(s string):
     pass
-</code></pre><h2 id=default-types>Default types.
-<a class=anchor href=#default-types>#</a></h2><p>Static variables without a type specifier will always default to the <code>any</code> type. In the following, <code>a</code> is compiled with the <code>any</code> type despite being initialized to a numeric literal.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a: 123
-a = &#39;hello&#39;
-</code></pre><p>Function parameters without a type specifier will default to the <code>any</code> type. The return type also defaults to <code>any</code>. In the following, both <code>a</code> and <code>b</code> have the <code>any</code> type despite being only used for arithmetic.</p><pre tabindex=0><code class=language-cy data-lang=cy>func add(a, b):
-    return a + b
-
-print add(3, 4) 
 </code></pre><h2 id=static-typing>Static typing.
-<a class=anchor href=#static-typing>#</a></h2><p>In Cyber, types can be optionally declared with variables, parameters, and return values.
-The following builtin types are available in every namespace: <code>bool</code>, <code>float</code>, <code>int</code>, <code>string</code>, <code>List</code>, <code>Map</code>, <code>error</code>, <code>fiber</code>, <code>any</code>.</p><p>A <code>type object</code> declaration creates a new object type.</p><pre tabindex=0><code class=language-cy data-lang=cy>type Student object:    -- Creates a new type named `Student`
-    name string
-    age int
-    gpa float
-</code></pre><p>When a type specifier follows a variable name, it declares the variable with the type. Any operation afterwards that violates the type constraint will result in a compile error.</p><blockquote><p><em>Incomplete: Only function parameter and object member type specifiers have meaning to the VM at the moment. Variable type specifiers have no meaning and will be discarded.</em></p></blockquote><pre tabindex=0><code class=language-cy data-lang=cy>a float = 123
-a = &#39;hello&#39;        -- CompileError. Type mismatch.
-</code></pre><p>Parameter and return type specifiers in a function signature follows the same syntax.</p><pre tabindex=0><code class=language-cy data-lang=cy>func mul(a float, b float) float:
-    return a * b
+<a class=anchor href=#static-typing>#</a></h2><p>Static typing can be incrementally applied which provides compile-time guarantees and prevents runtime errors.
+Static typing also makes it easier to maintain and refactor your code.</p><blockquote><p><em>Incomplete: Static types in general is in development. One of the goals of Cyber is to let dynamic code mix with typed code. At the moment, there are places where it works and other places where it won&rsquo;t. Keep that in mind when using types.</em></p></blockquote><h3 id=builtin-types>Builtin types.
+<a class=anchor href=#builtin-types>#</a></h3><p>The following builtin types are available in every module: <code>boolean</code>, <code>float</code>, <code>int</code>, <code>string</code>, <code>List</code>, <code>Map</code>, <code>error</code>, <code>fiber</code>, <code>any</code>.</p><h3 id=typed-variables>Typed variables.
+<a class=anchor href=#typed-variables>#</a></h3><p>A typed local variable can be declared by attaching a type specifier after its name. The value assigned to the variable must satisfy the type constraint or a compile error is issued.</p><blockquote><p><em>Incomplete: Only function parameter and object member type specifiers have meaning to the VM at the moment. Variable type specifiers have no meaning and will be discarded.</em></p></blockquote><pre tabindex=0><code class=language-cy data-lang=cy>var a float = 123
 
-print mul(3, 4)
-print mul(3, &#39;4&#39;)  -- CompileError. Function signature mismatch.
-</code></pre><p>Type specifiers must be resolved at compile-time.</p><pre tabindex=0><code class=language-cy data-lang=cy>type Foo object:
-    a float
-    b string
-    c Bar          -- CompileError. Bar is not declared.
+var b int = 123.0    -- CompileError. Expected `int`, got `float`.
+</code></pre><p>Any operation afterwards that violates the type constraint of the variable will result in a compile error.</p><pre tabindex=0><code class=language-cy data-lang=cy>a = &#39;hello&#39;          -- CompileError. Expected `float`, got `string`.
+</code></pre><p>Static variables are declared in a similar way except <code>:</code> is used instead of <code>=</code>:</p><pre tabindex=0><code class=language-cy data-lang=cy>var global Map: {}
+</code></pre><p>Type specifiers must be resolved at compile-time.</p><pre tabindex=0><code class=language-cy data-lang=cy>var foo Foo = none   -- CompileError. Type `Foo` is not declared.
+</code></pre><h3 id=auto-declarations><code>auto</code> declarations.
+<a class=anchor href=#auto-declarations>#</a></h3><p>The <code>auto</code> declaration infers the type of the assigned value and initializes the variable with the same type.</p><blockquote><p><em>Planned Feature</em></p></blockquote><pre tabindex=0><code class=language-cy data-lang=cy>-- Initialized as an `int` variable.
+auto a = 123     
+</code></pre><p><code>auto</code> declarations are strictly for static typing. If the assigned value&rsquo;s type is <code>dynamic</code>, the variable&rsquo;s type becomes <code>any</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>func getValue():
+    return [&#39;a&#39;, &#39;list&#39;]
+
+-- Initialized as an `any` variable.
+auto a = getValue()
+</code></pre><h3 id=object-types>Object types.
+<a class=anchor href=#object-types>#</a></h3><p>A <code>type object</code> declaration creates a new object type. Member types are declared with a type specifier after their name.</p><pre tabindex=0><code class=language-cy data-lang=cy>type Student object:    -- Creates a new type named `Student`
+    name string
+    age  int
+    gpa  float
 </code></pre><p>Circular type references are allowed.</p><pre tabindex=0><code class=language-cy data-lang=cy>type Node object:
-    val any
+    val  any
     next Node      -- Valid type specifier.
-</code></pre><h2 id=union-types>Union types.
-<a class=anchor href=#union-types>#</a></h2><blockquote><p><em>Planned Feature</em></p></blockquote><h2 id=traits>Traits.
-<a class=anchor href=#traits>#</a></h2><blockquote><p><em>Planned Feature</em></p></blockquote><h2 id=type-aliases>Type aliases.
-<a class=anchor href=#type-aliases>#</a></h2><p>A type alias is declared from a single line <code>type</code> statement. This creates a new type symbol for an existing data type.</p><pre tabindex=0><code class=language-cy data-lang=cy>import util &#39;./util.cy&#39;
+</code></pre><h3 id=type-aliases>Type aliases.
+<a class=anchor href=#type-aliases>#</a></h3><p>A type alias is declared from a single line <code>type</code> statement. This creates a new type symbol for an existing data type.</p><pre tabindex=0><code class=language-cy data-lang=cy>import util &#39;./util.cy&#39;
 
 type Vec3 util.Vec3
 
 var v = Vec3{ x: 3, y: 4, z: 5 }
-</code></pre><h2 id=type-casting>Type casting.
-<a class=anchor href=#type-casting>#</a></h2><p>The <code>as</code> keyword can be used to cast a value to a specific type. Casting lets the compiler know what the expected type is and does not perform any conversions.
-If the compiler knows the cast will always fail at runtime, a compile error is returned instead.
-If the cast fails at runtime, a panic is returned.</p><pre tabindex=0><code class=language-cy data-lang=cy>print(&#39;123&#39; as float)    -- CompileError. Can not cast `string` to `float`.
+</code></pre><h3 id=functions>Functions.
+<a class=anchor href=#functions>#</a></h3><p>Function parameter and return type specifiers follows a similiar syntax.</p><pre tabindex=0><code class=language-cy data-lang=cy>func mul(a float, b float) float:
+    return a * b
 
-erased any = 123
-add(1, erased as float)  -- Success.
+print mul(3, 4)
+print mul(3, &#39;4&#39;)  -- CompileError. Function signature mismatch.
+</code></pre><h3 id=traits>Traits.
+<a class=anchor href=#traits>#</a></h3><blockquote><p><em>Planned Feature</em></p></blockquote><h3 id=union-types>Union types.
+<a class=anchor href=#union-types>#</a></h3><blockquote><p><em>Planned Feature</em></p></blockquote><h3 id=any-type><code>any</code> type.
+<a class=anchor href=#any-type>#</a></h3><p>A variable with the <code>any</code> type can hold any value, but copying it to narrowed type destination will result in a compile error:</p><pre tabindex=0><code class=language-cy data-lang=cy>func square(i int):
+    return i * i
 
-print(erased as string)   -- Panic. Can not cast `float` to `string`.
+var a any = 123
+a = [&#39;a&#39;, &#39;list&#39;]         -- Valid assignment to a value with a different type.
+a = 10
 
-func add(a float, b float):
+print square(a)           -- CompileError. Expected `int`, got `any`.
+</code></pre><p><code>a</code> must be explicitly casted to satisfy the type constraint:</p><pre tabindex=0><code class=language-cy data-lang=cy>print square(a as int)    -- Prints &#34;100&#34;.
+</code></pre><h3 id=invoking-any-values>Invoking <code>any</code> values.
+<a class=anchor href=#invoking-any-values>#</a></h3><p>Since <code>any</code> is a static type, invoking an <code>any</code> value must be explicitly casted to the appropriate function type.</p><blockquote><p><em>Planned Feature: Casting to a function type is not currently supported.</em></p></blockquote><pre tabindex=0><code class=language-cy data-lang=cy>func add(a int, b int) int:
     return a + b
-</code></pre><h2 id=runtime-type-checking>Runtime type checking.
-<a class=anchor href=#runtime-type-checking>#</a></h2><p>Since Cyber allows invoking <code>any</code> function values, the callee&rsquo;s function signature is not always known at compile-time. To ensure type safety in this situation, type checking is done at runtime and with no additional overhead compared to calling an untyped function.</p><pre tabindex=0><code class=language-cy data-lang=cy>op any = add
-print op(1, 2)           -- &#39;3&#39;
-print op(1, &#39;2&#39;)         -- Panic. Function signature mismatch.
 
-func add(a float, b float) float:
+var op any = add
+print op(1, 2)         -- CompileError. Expected `func (int, int) any`
+
+auto opFunc = op as (func (int, int) int)
+print opFunc(1, 2)     -- Prints &#34;3&#34;.
+</code></pre><h3 id=type-casting>Type casting.
+<a class=anchor href=#type-casting>#</a></h3><p>The <code>as</code> keyword can be used to cast a value to a specific type. Casting lets the compiler know what the expected type is and does not perform any conversions.</p><p>If the compiler knows the cast will always fail at runtime, a compile error is returned instead.</p><pre tabindex=0><code class=language-cy data-lang=cy>print(&#39;123&#39; as int)       -- CompileError. Can not cast `string` to `int`.
+</code></pre><p>If the cast fails at runtime, a panic is returned.</p><pre tabindex=0><code class=language-cy data-lang=cy>var erased any = 123
+add(1, erased as int)     -- Success.
+print(erased as string)   -- Panic. Can not cast `int` to `string`.
+
+func add(a int, b int):
     return a + b
 </code></pre></article><footer class=book-footer><div class="flex flex-wrap justify-between"><div><a class="flex align-center" href=https://github.com/fubark/cyber/edit/master/docs/hugo/content/docs/toc/type-system.md target=_blank rel=noopener><img src=/cyber/svg/edit.svg class=book-icon alt=Edit>
-<span>Edit this page</span></a></div></div><script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script></footer><div class=book-comments></div><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#dynamic-typing>Dynamic typing.</a></li><li><a href=#compile-time-dynamic-typing>Compile-time dynamic typing.</a></li><li><a href=#default-types>Default types.</a></li><li><a href=#static-typing>Static typing.</a></li><li><a href=#union-types>Union types.</a></li><li><a href=#traits>Traits.</a></li><li><a href=#type-aliases>Type aliases.</a></li><li><a href=#type-casting>Type casting.</a></li><li><a href=#runtime-type-checking>Runtime type checking.</a></li></ul></nav></div></aside></main><script src=/cyber/highlight.min.js></script>
-<script>hljs.registerLanguage("cy",function(){return{keywords:{keyword:["func","import","for","coinit","coresume","coyield","return","if","then","else","as","each","while","var","object","break","continue","match","pass","or","and","not","is","some","error","static","capture","true","false","none","throw","try","catch","recover","enum","type"],type:["float","string","bool","any","int","List","Map","rawstring","symbol","pointer"]},contains:[{scope:"string",begin:"'",end:"'"},{scope:"symbol",begin:"#",end:/\w(?=[^\w])/},hljs.COMMENT("--",`
+<span>Edit this page</span></a></div></div><script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script></footer><div class=book-comments></div><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#dynamic-typing>Dynamic typing.</a><ul><li><a href=#dynamic-vs-any><code>dynamic</code> vs <code>any</code></a></li><li><a href=#invoking-dynamic-values>Invoking <code>dynamic</code> values.</a></li><li><a href=#dynamic-return-value>Dynamic return value.</a></li><li><a href=#recent-type-inference>Recent type inference.</a></li></ul></li><li><a href=#static-typing>Static typing.</a><ul><li><a href=#builtin-types>Builtin types.</a></li><li><a href=#typed-variables>Typed variables.</a></li><li><a href=#auto-declarations><code>auto</code> declarations.</a></li><li><a href=#object-types>Object types.</a></li><li><a href=#type-aliases>Type aliases.</a></li><li><a href=#functions>Functions.</a></li><li><a href=#traits>Traits.</a></li><li><a href=#union-types>Union types.</a></li><li><a href=#any-type><code>any</code> type.</a></li><li><a href=#invoking-any-values>Invoking <code>any</code> values.</a></li><li><a href=#type-casting>Type casting.</a></li></ul></li></ul></nav></div></aside></main><script src=/cyber/highlight.min.js></script>
+<script>hljs.registerLanguage("cy",function(){return{keywords:{keyword:["func","import","for","coinit","coresume","coyield","return","if","else","as","each","while","var","object","break","continue","match","pass","or","and","not","is","some","error","true","false","none","throw","try","catch","recover","enum","type","case","auto"],type:["float","string","bool","any","int","List","Map","rawstring","symbol","pointer"]},contains:[{scope:"string",begin:"'",end:"'"},{scope:"symbol",begin:"#",end:/\w(?=[^\w])/},hljs.COMMENT("--",`
 `,{contains:[]}),hljs.C_NUMBER_MODE]}}),hljs.highlightAll()</script></body></html>

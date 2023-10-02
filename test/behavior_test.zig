@@ -2037,37 +2037,54 @@ test "Op assignment statement." {
     try evalPass(.{}, @embedFile("opassign_test.cy"));
 }
 
-test "Undefined variable references." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    // Reading an undefined variable assumes it's a symbol and returns a CompileError. (TODO: should be runtime error).
-    var res = run.evalExt(.{ .silent = true },
+test "Undeclared variable references." {
+    // Reading an undeclared variable is a compile error.
+    try eval(.{ .silent = true },
         \\import t 'test'
         \\t.eq(a, 123)
-    );
-    try run.expectErrorReport(res, error.CompileError,
-        \\CompileError: Undeclared variable `a`.
-        \\
-        \\main:2:6:
-        \\t.eq(a, 123)
-        \\     ^
-        \\
-    );
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Undeclared variable `a`.
+            \\
+            \\main:2:6:
+            \\t.eq(a, 123)
+            \\     ^
+            \\
+        );
+    }}.func);
 
-    // Using an undefined variable as a callee is a runtime panic error.
-    res = run.evalExt(.{ .silent = true },
-        \\a()
-    );
-    try run.expectErrorReport(res, error.CompileError,
-        \\CompileError: Can not find compatible function signature for `a() any`.
-        \\`a` does not exist.
+    // Reading an undeclared variable from unrelated block is a compile error.
+    try eval(.{ .silent = true },
+        \\if true:
+        \\  var a = 123
+        \\func foo():
+        \\  return a
         \\
-        \\main:1:1:
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Undeclared variable `a`.
+            \\
+            \\main:4:10:
+            \\  return a
+            \\         ^
+            \\
+        );
+    }}.func);
+
+    // Using an undeclared variable as a callee is a compile error.
+    try eval(.{ .silent = true },
         \\a()
-        \\^
-        \\
-    );
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function signature for `a() any`.
+            \\`a` does not exist.
+            \\
+            \\main:1:1:
+            \\a()
+            \\^
+            \\
+        );
+    }}.func);
 }
 
 test "Static variable declaration." {

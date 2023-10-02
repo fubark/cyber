@@ -2473,12 +2473,15 @@ fn lookupParentLocal(c: *cy.Chunk, name: []const u8) !?LookupParentLocalResult {
         const prevId = c.semaBlockStack.items[c.semaBlockDepth() - 1];
         const prev = c.semaBlocks.items[prevId];
         if (prev.nameToVar.get(name)) |varId| {
-            if (c.vars.items[varId].type != .staticAlias) {
-                return .{
-                    .varId = varId,
-                    .blockDepth = c.semaBlockDepth(),
-                    .isObjectMember = false,
-                };
+            const svar = c.vars.items[varId];
+            if (svar.isDeclared) {
+                if (svar.type != .staticAlias) {
+                    return .{
+                        .varId = varId,
+                        .blockDepth = c.semaBlockDepth(),
+                        .isObjectMember = false,
+                    };
+                }
             }
         }
 

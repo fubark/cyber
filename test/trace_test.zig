@@ -79,7 +79,7 @@ test "ARC." {
     // Non-initializer expr in if expr true branch is retained.
     val = try run.eval(
         \\var a = [ 123 ]
-        \\var b = if true then a else 234
+        \\var b = a if true else 234
     );
     trace = run.getTrace();
     try t.eq(trace.numRetains, 2);
@@ -88,7 +88,7 @@ test "ARC." {
     // Non-initializer expr in if expr false branch is retained.
     val = try run.eval(
         \\var a = [ 123 ]
-        \\var b = if false then 234 else a
+        \\var b = 234 if false else a
     );
     trace = run.getTrace();
     try t.eq(trace.numRetains, 2);

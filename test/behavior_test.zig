@@ -1840,6 +1840,42 @@ test "Indentation." {
         );
     }}.func);
 
+    // Changing to tabs is not allowed.
+    try eval(.{ .silent = true },
+        \\if true:
+        \\  if true:
+        \\      -- Previously spaces, now tabs.
+        \\		return 123
+        \\
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.ParseError,
+            \\ParseError: Expected spaces for indentation.
+            \\
+            \\main:4:3:
+            \\		return 123
+            \\  ^
+            \\
+        );
+    }}.func);
+
+    // Changing to spaces is not allowed.
+    try eval(.{ .silent = true },
+        \\if true:
+        \\	if true:
+        \\     -- Previously tabs, now spaces.
+        \\     return 123
+        \\
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.ParseError,
+            \\ParseError: Expected tabs for indentation.
+            \\
+            \\main:4:6:
+            \\     return 123
+            \\     ^
+            \\
+        );
+    }}.func);
+
     // Last line with just indents.
     try evalPass(.{},
         \\pass

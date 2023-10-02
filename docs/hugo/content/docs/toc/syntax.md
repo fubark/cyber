@@ -13,22 +13,21 @@ A statement ends with the new line.
 var a = 123
 ```
 ## Blocks.
-A new block starts with a colon.
-This is intended to give structure to nested statements without an ending delimiter.
+Some statements can start a new block with a colon.
+The first statement in a new block must be indented further.
+Spaces or tabs can be used for indentation but not both.
 ```cy
 -- This `if` statement begins a new block.
 if true:
     var a = 234
 ```
-The first statement in a block must be indented further.
-Spaces or tabs can be used for indentation but not both.
 Subsequent statements in the block must follow the same indentation.
 The block ends when a statement recedes from this indentation.
 ```cy
 for items each it:
     if it == 20:
         print it
-        print it
+        print it + 10
     print it      -- This is the first statement outside of the `if` block.
 ```
 Single-line blocks allow only one statement after a starting block.
@@ -39,6 +38,11 @@ if true: print 123
 if true: print 123
     -- This is an indentation error since the single-line block is already consumed.
     print 234
+```
+Since blocks require at least one statement, use `pass` as a placeholder statement.
+```cy
+func foo():
+    pass
 ```
 
 ## Variables.

@@ -106,7 +106,7 @@ t.eq(testAdd(123, 321), 444)
 
 -- Reassign a binded function to a static function.
 -- TODO: Use statements once initializer block is done.
-var staticLibPath: if os.system == 'macos' then 'test/macos_lib.dylib' else if os.system == 'windows' then 'test/win_lib.dll' else none
+var staticLibPath: 'test/macos_lib.dylib' if os.system == 'macos' else ('test/win_lib.dll' if os.system == 'windows' else none)
 var staticLib: os.bindLib(staticLibPath, [
   os.CFunc{ sym: 'testAdd', args: [.int, .int], ret: .int }
 ], { genMap: true })

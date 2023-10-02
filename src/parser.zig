@@ -253,6 +253,7 @@ pub const Parser = struct {
     /// The current line is consumed if there is no statement.
     fn consumeIndentBeforeStmt(self: *Parser) !?u32 {
         while (true) {
+            // Spaces, count = 0.
             var res: u32 = 0;
             var token = self.peekToken();
             if (token.tag() == .indent) {
@@ -321,7 +322,7 @@ pub const Parser = struct {
                 const id = try self.parseStatement();
                 self.nodes.items[last_stmt].next = id;
                 last_stmt = id;
-            } else if (indent <= prevIndent) {
+            } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
                 self.next_pos = start;
                 break;
             } else {
@@ -334,10 +335,19 @@ pub const Parser = struct {
     /// Parses the first child indent and returns the indent size.
     fn parseFirstChildIndent(self: *Parser, fromIndent: u32) !?u32 {
         const indent = (try self.consumeIndentBeforeStmt()) orelse return null;
-        if (indent > fromIndent) {
-            return indent;
+        if ((fromIndent ^ indent < 0x80000000) or fromIndent == 0) {
+            // Either same indent style or indenting from root.
+            if (indent > fromIndent) {
+                return indent;
+            } else {
+                return self.reportParseError("Block requires at least one statement. Use the `pass` statement as a placeholder.", &.{});
+            }
         } else {
-            return self.reportParseError("Block requires at least one statement. Use the `pass` statement as a placeholder.", &.{});
+            if (fromIndent & 0x80000000 == 0x80000000) {
+                return self.reportParseError("Expected tabs for indentation.", &.{});
+            } else {
+                return self.reportParseError("Expected spaces for indentation.", &.{});
+            }
         }
     }
 
@@ -717,7 +727,7 @@ pub const Parser = struct {
                 const id = try self.parseEnumMember();
                 self.nodes.items[lastMember].next = id;
                 lastMember = id;
-            } else if (indent <= prevIndent) {
+            } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
                 self.next_pos = start2;
                 break;
             } else {
@@ -801,7 +811,7 @@ pub const Parser = struct {
                     const id = (try self.parseObjectField()) orelse break;
                     self.nodes.items[lastField].next = id;
                     lastField = id;
-                } else if (indent <= prevIndent) {
+                } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
                     self.next_pos = start2;
                     return self.pushObjectDecl(start, name, modifierHead, firstField, NullId);
                 } else {
@@ -827,7 +837,7 @@ pub const Parser = struct {
                         self.nodes.items[lastFunc].next = func;
                         lastFunc = func;
                     } else return self.reportParseError("Expected function.", &.{});
-                } else if (indent <= prevIndent) {
+                } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
                     self.next_pos = start2;
                     break;
                 } else {
@@ -1134,7 +1144,7 @@ pub const Parser = struct {
                     const case = try self.parseCaseBlock();
                     self.nodes.items[lastCase].next = case;
                     lastCase = case;
-                } else if (indent <= prevIndent) {
+                } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
                     self.next_pos = save;
                     break;
                 } else {
@@ -3191,9 +3201,9 @@ pub const Parser = struct {
         }));
     }
 
-    inline fn pushIndentToken(self: *Parser, num_spaces: u32, start_pos: u32, spaces: bool) void {
+    inline fn pushIndentToken(self: *Parser, count: u32, start_pos: u32, spaces: bool) void {
         self.tokens.append(self.alloc, Token.init(.indent, start_pos, .{
-            .indent = if (spaces) num_spaces else num_spaces + 100,
+            .indent = if (spaces) count else count | 0x80000000,
         })) catch fatal();
     }
 
@@ -4778,4 +4788,20 @@ test "parser internals." {
 
     try t.eq(std.enums.values(TokenType).len, 59);
     try t.eq(keywords.kvs.len, 32);
+}
+
+fn isRecedingIndent(p: *Parser, prevIndent: u32, curIndent: u32, indent: u32) !bool {
+    if (indent ^ curIndent < 0x80000000) {
+        return indent <= prevIndent;
+    } else {
+        if (indent == 0) {
+            return true;
+        } else {
+            if (curIndent & 0x80000000 == 0x80000000) {
+                return p.reportParseError("Expected tabs for indentation.", &.{});
+            } else {
+                return p.reportParseError("Expected spaces for indentation.", &.{});
+            }
+        }
+    }
 }

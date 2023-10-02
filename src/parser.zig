@@ -25,6 +25,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "as", .as_k },
     // .{ "await", .await_k },
     .{ "break", .break_k },
+    .{ "case", .case_k },
     .{ "catch", .catch_k },
     .{ "coinit", .coinit_k },
     .{ "continue", .continue_k },
@@ -1123,44 +1124,42 @@ pub const Parser = struct {
         }
         self.advanceToken();
 
-        const reqIndent = (try self.parseFirstChildIndent(self.cur_indent)) orelse {
-            return self.reportParseError("Expected case.", &.{});
+        var indent = (try self.consumeIndentBeforeStmt()) orelse {
+            return self.reportParseError("Expected case or else block.", &.{});
         };
-
-        // Like `parseBodyStatements` but only parses case blocks.
-        {
-            const prevIndent = self.cur_indent;
-            self.cur_indent = reqIndent;
-            defer self.cur_indent = prevIndent;
-
-            var firstCase = try self.parseCaseBlock();
-            var lastCase = firstCase;
-
-            // Parse body statements until indentation goes back to at least the previous indent.
-            while (true) {
-                const save = self.next_pos;
-                const indent = (try self.consumeIndentBeforeStmt()) orelse break;
-                if (indent == reqIndent) {
-                    const case = try self.parseCaseBlock();
-                    self.nodes.items[lastCase].next = case;
-                    lastCase = case;
-                } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
-                    self.next_pos = save;
-                    break;
-                } else {
-                    return self.reportParseError("Unexpected indentation.", &.{});
-                }
-            }
-
-            const match = try self.pushNode(.matchBlock, start);
-            self.nodes.items[match].head = .{
-                .matchBlock = .{
-                    .expr = expr,
-                    .firstCase = firstCase,
-                },
-            };
-            return match;
+        if (self.cur_indent != indent) {
+            return self.reportParseError("Expected case or else block.", &.{});
         }
+
+        var firstCase = (try self.parseCaseBlock()) orelse {
+            return self.reportParseError("Expected case or else block.", &.{});
+        };
+        var lastCase = firstCase;
+
+        // Parse body statements until no more case blocks indentation recedes.
+        while (true) {
+            const save = self.next_pos;
+            indent = (try self.consumeIndentBeforeStmt()) orelse break;
+            if (self.cur_indent == indent) {
+                const case = (try self.parseCaseBlock()) orelse {
+                    break;
+                };
+                self.nodes.items[lastCase].next = case;
+                lastCase = case;
+            } else {
+                self.next_pos = save;
+                break;
+            }
+        }
+
+        const match = try self.pushNode(.matchBlock, start);
+        self.nodes.items[match].head = .{
+            .matchBlock = .{
+                .expr = expr,
+                .firstCase = firstCase,
+            },
+        };
+        return match;
     }
 
     fn parseTryStmt(self: *Parser) !NodeId {
@@ -1521,18 +1520,20 @@ pub const Parser = struct {
         return id;
     }
 
-    fn parseCaseBlock(self: *Parser) !NodeId {
+    fn parseCaseBlock(self: *Parser) !?NodeId {
         const start = self.next_pos;
         var token = self.peekToken();
         var firstCond: NodeId = undefined;
-        if (token.tag() == .else_k) {
+        if (token.tag() == .case_k) {
             self.advanceToken();
-            firstCond = try self.pushNode(.elseCase, start);
-        } else {
             firstCond = (try self.parseExpr(.{})) orelse {
                 return self.reportParseError("Expected case condition.", &.{});
             };
-        }
+        } else if (token.tag() == .else_k) {
+            self.advanceToken();
+            firstCond = try self.pushNode(.elseCase, start);
+        } else return null;
+
         var lastCond = firstCond;
         while (true) {
             token = self.peekToken();
@@ -3301,6 +3302,7 @@ pub const TokenType = enum(u8) {
     indent,
     return_k,
     break_k,
+    case_k,
     continue_k,
     if_k,
     else_k,
@@ -4786,8 +4788,8 @@ test "parser internals." {
     }
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 59);
-    try t.eq(keywords.kvs.len, 32);
+    try t.eq(std.enums.values(TokenType).len, 60);
+    try t.eq(keywords.kvs.len, 33);
 }
 
 fn isRecedingIndent(p: *Parser, prevIndent: u32, curIndent: u32, indent: u32) !bool {

@@ -131,15 +131,16 @@ Matching is similar to a switch statement. The expression to the right of `match
 ```cy
 var val = 1000
 match val:
-    0..100: print 'at or between 0 and 99'
-    100: print 'val is 100'
-    200:
-        print 'val is 200'
-    300, 400:
-        print 'combined case'
-    else:
-        print 'val is {val}'
+case 0..100: print 'at or between 0 and 99'
+case 100: print 'val is 100'
+case 200:
+    print 'val is 200'
+case 300, 400:
+    print 'combined case'
+else:
+    print 'val is {val}'
 ```
+Note that `match` does not create a new block but instead requires at least one `case` block or an `else` block to come after it.
 
 ## Try/Catch.
 The `try catch` statement, `try else` and `try` expressions provide a way to catch a throwing error and resume execution in a different branch. Learn more about [Error Handling]({{<relref "/docs/toc/errors">}}).

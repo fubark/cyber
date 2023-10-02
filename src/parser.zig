@@ -23,6 +23,7 @@ const annotations = std.ComptimeStringMap(AnnotationType, .{
 const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "and", .and_k },
     .{ "as", .as_k },
+    .{ "auto", .auto_k },
     // .{ "await", .await_k },
     .{ "break", .break_k },
     .{ "case", .case_k },
@@ -3334,6 +3335,7 @@ pub const TokenType = enum(u8) {
     throw_k,
     var_k,
     match_k,
+    auto_k,
     // Error token, returned if ignoreErrors = true.
     err,
     /// Used to indicate no token.
@@ -4788,8 +4790,8 @@ test "parser internals." {
     }
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 60);
-    try t.eq(keywords.kvs.len, 33);
+    try t.eq(std.enums.values(TokenType).len, 61);
+    try t.eq(keywords.kvs.len, 34);
 }
 
 fn isRecedingIndent(p: *Parser, prevIndent: u32, curIndent: u32, indent: u32) !bool {

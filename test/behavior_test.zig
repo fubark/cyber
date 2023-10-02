@@ -487,23 +487,6 @@ test "Typed symbol." {
     );
 }
 
-test "Typed function params." {
-    // Can't resolve param type.
-    try eval(.{ .silent = true },
-        \\func foo(a Vec2):
-        \\  pass
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Could not find type symbol `Vec2`.
-            \\
-            \\main:1:12:
-            \\func foo(a Vec2):
-            \\           ^
-            \\
-        );
-    }}.func);
-}
-
 test "Compile-time typed function calls." {
     // Error from param type mismatch.
     try eval(.{ .silent = true },
@@ -933,21 +916,21 @@ test "Imports." {
     _ = try run.evalExt(Config.initFileModules("./test/import_test.cy"),
         \\import a './test_mods/a.cy'
         \\import t 'test'
-        \\t.eq(a.varNum, 123)
+        \\t.eq(a.varInt, 123)
     );
 
     // Import using implied relative path prefix.
     _ = try run.evalExt(Config.initFileModules("./test/import_test.cy"),
         \\import a 'test_mods/a.cy'
         \\import t 'test'
-        \\t.eq(a.varNum, 123)
+        \\t.eq(a.varInt, 123)
     );
 
     // Import using unresolved relative path.
     _ = try run.evalExt(Config.initFileModules("./test/import_test.cy"),
         \\import a './test_mods/../test_mods/a.cy'
         \\import t 'test'
-        \\t.eq(a.varNum, 123)
+        \\t.eq(a.varInt, 123)
     );
 
     // Import when running main script in the cwd.
@@ -955,7 +938,7 @@ test "Imports." {
     _ = try run.evalExt(Config.initFileModules("./import_test.cy"),
         \\import a 'test_mods/a.cy'
         \\import t 'test'
-        \\t.eq(a.varNum, 123)
+        \\t.eq(a.varInt, 123)
     );
 
     // Import when running main script in a child directory.
@@ -963,7 +946,7 @@ test "Imports." {
     _ = try run.evalExt(Config.initFileModules("../import_test.cy"),
         \\import a 'test_mods/a.cy'
         \\import t 'test'
-        \\t.eq(a.varNum, 123)
+        \\t.eq(a.varInt, 123)
     );
 
     run.deinit();
@@ -2087,20 +2070,40 @@ test "Undeclared variable references." {
     }}.func);
 }
 
-test "Static variable declaration." {
-    const run = VMrunner.create();
-    defer run.destroy();
+test "Typed static variable declaration." {
+    // Type check on initializer.
+    try eval(.{ .silent = true },
+        \\var a float: []
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Expected type `float`, got `List`.
+            \\
+            \\main:1:14:
+            \\var a float: []
+            \\             ^
+            \\
+        );
+    }}.func);
+}
 
+test "Static variable declaration." {
     // Capturing a local variable in a static var initializer is not allowed.
-    var res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\var b = 123
         \\var a: b
-    );
-    try t.expectError(res, error.CompileError);
-    try t.eqStr(run.vm.getCompileErrorMsg(), "The declaration of static variable `a` can not reference the local variable `b`.");
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: The declaration of static variable `a` can not reference the local variable `b`.
+            \\
+            \\main:2:1:
+            \\var a: b
+            \\^
+            \\
+        );
+    }}.func);
 
     // Declaration with a circular reference.
-    _ = try run.eval(
+    _ = try evalPass(.{}, 
         \\import t 'test'
         \\
         \\var a: b
@@ -2114,7 +2117,7 @@ test "Static variable declaration." {
     );
 
     // Declaration that depends on another.
-    _ = try run.eval(
+    _ = try evalPass(.{}, 
         \\import t 'test'
         \\var a: 123
         \\var b: a + 321
@@ -2125,7 +2128,7 @@ test "Static variable declaration." {
     );
 
     // Depends on and declared before another.
-    _ = try run.eval(
+    _ = try evalPass(.{}, 
         \\import t 'test'
         \\var c: a + b
         \\var b: a + 321
@@ -2134,7 +2137,6 @@ test "Static variable declaration." {
         \\t.eq(b, 444) 
         \\t.eq(c, 567) 
     );
-    run.deinit();
 
     // Declaration over using builtin module. 
     try evalPass(.{},
@@ -2491,8 +2493,39 @@ test "Function overloading." {
     try evalPass(.{}, @embedFile("function_overload_test.cy"));
 }
 
-test "Static functions." {
+test "Typed static functions." {
+    // Check return type. 
+    try eval(.{ .silent = true },
+        \\func foo() int:
+        \\  return 1.2
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Expected type `int`, got `float`.
+            \\
+            \\main:2:10:
+            \\  return 1.2
+            \\         ^
+            \\
+        );
+    }}.func);
 
+    // Can't resolve param type.
+    try eval(.{ .silent = true },
+        \\func foo(a Vec2):
+        \\  pass
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Could not find type symbol `Vec2`.
+            \\
+            \\main:1:12:
+            \\func foo(a Vec2):
+            \\           ^
+            \\
+        );
+    }}.func);
+}
+
+test "Static functions." {
     // Call with missing func sym.
     try eval(.{ .silent = true },
         \\foo(1)

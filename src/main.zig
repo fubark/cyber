@@ -153,7 +153,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
                 if (!cy.silentError) {
                     const report = try vm.allocLastErrorReport();
                     defer alloc.free(report);
-                    fmt.printStderr(report, &.{});
+                    cy.writeStderr(report);
                 }
                 exit(1);
             },
@@ -185,7 +185,7 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
                 if (!cy.silentError) {
                     const report = try vm.allocLastErrorReport();
                     defer alloc.free(report);
-                    fmt.printStderr(report, &.{});
+                    cy.writeStderr(report);
                 }
                 exit(1);
             },

@@ -1,9 +1,9 @@
 import a 'test_mods/a.cy'
 import t 'test'
 
-t.eq(a.varNum, 123)
-t.eq(checkNumberArg(a.varTypedNum), 123)
-func checkNumberArg(a float):
+t.eq(a.varInt, 123)
+t.eq(checkIntArg(a.varTypedInt), 123)
+func checkIntArg(a int):
     return a
 t.eqList(a.varList, [1, 2, 3])
 t.eq(a.varMap.size(), 3)

@@ -277,6 +277,16 @@ pub const panic = utils.panic;
 pub const panicFmt = utils.panicFmt;
 pub const dassert = utils.dassert;
 
+pub fn writeStderr(s: []const u8) void {
+    @setCold(true);
+    const w = fmt.lockStderrWriter();
+    defer fmt.unlockPrint();
+    _ = w.writeAll(s) catch |err| {
+        log.debug("{}", .{err});
+        fatal();
+    };
+}
+
 pub inline fn unexpected() noreturn {
     panic("unexpected");
 }

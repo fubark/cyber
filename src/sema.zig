@@ -484,12 +484,12 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 const leftT = try semaExpr(c, left.head.indexExpr.left);
                 if (leftT == bt.List) {
                     // Specialized.
-                    _ = try semaExprType(c, left.head.indexExpr.right, bt.Integer);
+                    _ = try semaExprCstr(c, left.head.indexExpr.right, bt.Integer, false);
                     _ = try semaExpr(c, node.head.left_right.right);
                     c.nodes[leftId].head.indexExpr.semaGenStrat = .specialized;
                 } else if (leftT == bt.Map) {
                     // Specialized.
-                    _ = try semaExprType(c, left.head.indexExpr.right, bt.Any);
+                    _ = try semaExprCstr(c, left.head.indexExpr.right, bt.Any, false);
                     _ = try semaExpr(c, node.head.left_right.right);
                     c.nodes[leftId].head.indexExpr.semaGenStrat = .specialized;
                 } else {
@@ -513,7 +513,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             }
         },
         .staticDecl => {
-            try staticDecl(c, nodeId, true);
+            try staticDecl(c, nodeId);
         },
         .typeAliasDecl => {
             const nameN = c.nodes[node.head.typeAliasDecl.name];
@@ -663,7 +663,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         .return_expr_stmt => {
             const block = curBlock(c);
             const retType = try block.getReturnType(c);
-            _ = try semaExprType(c, node.head.child_head, retType);
+            _ = try semaExprCstr(c, node.head.child_head, retType, true);
         },
         .comptimeStmt => {
             return;
@@ -1395,8 +1395,7 @@ fn localDecl(self: *cy.Chunk, nodeId: cy.NodeId) !void {
     }
 }
 
-fn staticDecl(c: *cy.Chunk, nodeId: cy.NodeId, exported: bool) !void {
-    _ = exported;
+fn staticDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
     const varSpec = c.nodes[node.head.staticDecl.varSpec];
     const nameN = c.nodes[varSpec.head.varSpec.name];
@@ -1414,7 +1413,8 @@ fn staticDecl(c: *cy.Chunk, nodeId: cy.NodeId, exported: bool) !void {
         if (right.node_t == .matchBlock) {
             _ = try matchBlock(c, node.head.staticDecl.right, true);
         } else {
-            _ = semaExpr(c, node.head.staticDecl.right) catch |err| {
+            const symTypeId = getSymType(c.compiler, symId);
+            _ = semaExprCstr(c, node.head.staticDecl.right, symTypeId, true) catch |err| {
                 if (err == error.CanNotUseLocal) {
                     const local = c.nodes[c.compiler.errorPayload];
                     const localName = c.getNodeTokenString(local);
@@ -1436,9 +1436,20 @@ fn semaExpr(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!TypeId {
 }
 
 /// No preferred type when `preferType == bt.Any`.
-fn semaExprType(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!TypeId {
-    const res = try semaExprInner(c, nodeId, preferType);
+/// If the type constraint is required, the type check is performed here and not `semaExprInner`.
+fn semaExprCstr(c: *cy.Chunk, nodeId: cy.NodeId, typeId: TypeId, typeRequired: bool) anyerror!TypeId {
+    const res = try semaExprInner(c, nodeId, typeId);
     c.nodeTypes[nodeId] = res;
+    if (typeRequired) {
+        // Dynamic is allowed.
+        if (res != bt.Dynamic) {
+            if (!types.isTypeSymCompat(c.compiler, res, typeId)) {
+                const cstrName = types.getTypeName(c.compiler, typeId);
+                const typeName = types.getTypeName(c.compiler, res);
+                return c.reportErrorAt("Expected type `{}`, got `{}`.", &.{v(cstrName), v(typeName)}, nodeId);
+            }
+        }
+    }
     return res;
 }
 
@@ -1631,12 +1642,12 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
             const leftT = try semaExpr(c, node.head.indexExpr.left);
             if (leftT == bt.List) {
                 // Specialized.
-                _ = try semaExprType(c, node.head.indexExpr.right, bt.Integer);
+                _ = try semaExprCstr(c, node.head.indexExpr.right, bt.Integer, false);
                 c.nodes[nodeId].head.indexExpr.semaGenStrat = .specialized;
                 return bt.Dynamic;
             } else if (leftT == bt.Map) {
                 // Specialized.
-                _ = try semaExprType(c, node.head.indexExpr.right, bt.Any);
+                _ = try semaExprCstr(c, node.head.indexExpr.right, bt.Any, false);
                 c.nodes[nodeId].head.indexExpr.semaGenStrat = .specialized;
                 return bt.Dynamic;
             } else {
@@ -1663,7 +1674,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
             switch (op) {
                 .minus => {
                     const childPreferT = if (preferType == bt.Integer or preferType == bt.Float) preferType else bt.Any;
-                    const childT = try semaExprType(c, node.head.unary.child, childPreferT);
+                    const childT = try semaExprCstr(c, node.head.unary.child, childPreferT, false);
                     if (childT == bt.Integer or childT == bt.Float) {
                         c.nodes[nodeId].head.unary.semaGenStrat = .specialized;
                         return childT;
@@ -1678,7 +1689,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
                 },
                 .bitwiseNot => {
                     const childPreferT = if (preferType == bt.Integer) preferType else bt.Any;
-                    const childT = try semaExprType(c, node.head.unary.child, childPreferT);
+                    const childT = try semaExprCstr(c, node.head.unary.child, childPreferT, false);
                     if (childT == bt.Integer) {
                         c.nodes[nodeId].head.unary.semaGenStrat = .specialized;
                         return bt.Float;
@@ -1712,16 +1723,16 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
                 .plus,
                 .minus => {
                     const leftPreferT = if (preferType == bt.Float or preferType == bt.Integer) preferType else bt.Any;
-                    const leftT = try semaExprType(c, left, leftPreferT);
+                    const leftT = try semaExprCstr(c, left, leftPreferT, false);
 
                     if (leftT == bt.Integer or leftT == bt.Float) {
                         // Specialized.
-                        _ = try semaExprType(c, right, leftT);
+                        _ = try semaExprCstr(c, right, leftT, false);
                         c.nodes[nodeId].head.binExpr.semaGenStrat = .specialized;
                         return leftT;
                     } else {
                         // Generic callObjSym.
-                        _ = try semaExprType(c, right, bt.Any);
+                        _ = try semaExprCstr(c, right, bt.Any, false);
                         c.nodes[nodeId].head.binExpr.semaGenStrat = .generic;
 
                         // TODO: Check func syms.
@@ -1734,14 +1745,14 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
                 .bitwiseLeftShift,
                 .bitwiseRightShift => {
                     const leftPreferT = if (preferType == bt.Integer) preferType else bt.Any;
-                    const leftT = try semaExprType(c, left, leftPreferT);
+                    const leftT = try semaExprCstr(c, left, leftPreferT, false);
 
                     if (leftT == bt.Integer) {
-                        _ = try semaExprType(c, right, leftT);
+                        _ = try semaExprCstr(c, right, leftT, false);
                         c.nodes[nodeId].head.binExpr.semaGenStrat = .specialized;
                         return leftT;
                     } else {
-                        _ = try semaExprType(c, right, bt.Any);
+                        _ = try semaExprCstr(c, right, bt.Any, false);
                         c.nodes[nodeId].head.binExpr.semaGenStrat = .generic;
 
                         // TODO: Check func syms.
@@ -1765,9 +1776,9 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
                 .bang_equal,
                 .equal_equal => {
                     const leftPreferT = if (preferType == bt.Float or preferType == bt.Integer) preferType else bt.Any;
-                    const leftT = try semaExprType(c, left, leftPreferT);
+                    const leftT = try semaExprCstr(c, left, leftPreferT, false);
                     if (leftT == bt.Integer or leftT == bt.Float) {
-                        _ = try semaExprType(c, right, leftT);
+                        _ = try semaExprCstr(c, right, leftT, false);
                     } else {
                         _ = try semaExpr(c, right);
                     }
@@ -1778,16 +1789,16 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
                 .greater_equal,
                 .less => {
                     const leftPreferT = if (preferType == bt.Float or preferType == bt.Integer) preferType else bt.Any;
-                    const leftT = try semaExprType(c, left, leftPreferT);
+                    const leftT = try semaExprCstr(c, left, leftPreferT, false);
 
                     if (leftT == bt.Integer or leftT == bt.Float) {
                         // Specialized.
-                        _ = try semaExprType(c, right, leftT);
+                        _ = try semaExprCstr(c, right, leftT, false);
                         c.nodes[nodeId].head.binExpr.semaGenStrat = .specialized;
                         return bt.Boolean;
                     } else {
                         // Generic callObjSym.
-                        _ = try semaExprType(c, right, bt.Any);
+                        _ = try semaExprCstr(c, right, bt.Any, false);
                         c.nodes[nodeId].head.binExpr.semaGenStrat = .generic;
 
                         // TODO: Check func syms.
@@ -4289,7 +4300,7 @@ fn pushCallArgsWithPreferredTypes(c: *cy.Chunk, argHead: cy.NodeId, preferredTyp
             preferredT = preferredTypes[i];
             i += 1;
         }
-        const argT = try semaExprType(c, nodeId, preferredT);
+        const argT = try semaExprCstr(c, nodeId, preferredT, false);
         hasDynamicArg = hasDynamicArg or (argT == bt.Dynamic);
         try c.compiler.typeStack.append(c.alloc, argT);
         nodeId = arg.next;

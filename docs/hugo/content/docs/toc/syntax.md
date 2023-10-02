@@ -46,7 +46,9 @@ func foo():
 ```
 
 ## Variables.
-In Cyber, there are local variables and static variables.
+In Cyber, there are local variables and static variables. The following sections show how variables are declared with the dynamic type.
+
+For declaring typed variables, see [Typed variables]({{<relref "/docs/toc/type-system#typed-variables">}}) and [`auto` declarations]({{<relref "/docs/toc/type-system#auto-declarations">}}).
 
 ### Local Variables.
 Local variables exist until the end of their scope.
@@ -163,11 +165,11 @@ var myImage:
 The final resulting value that is assigned to the static variable is provided by a `break` statement. If a `break` statement is not provided, `none` is assigned instead.
 
 ## Keywords.
-There are currently `33` keywords in Cyber. This list categorizes them and shows you when you might need them.
+There are currently `34` keywords in Cyber. This list categorizes them and shows you when you might need them.
 
-- [Control Flow]({{<relref "/docs/toc/control-flow">}}): `if` `else` `match` `while` `for` `each` `break` `continue` `pass` `some`
+- [Control Flow]({{<relref "/docs/toc/control-flow">}}): `if` `else` `match` `case` `while` `for` `each` `break` `continue` `pass` `some`
 - [Operators](#operators): `or` `and` `not` `is`
-- [Variables](#variables): `var` `as`
+- [Variables](#variables): `var` `as` `auto`
 - [Functions]({{<relref "/docs/toc/functions">}}): `func` `return`
 - [Coroutines]({{<relref "/docs/toc/concurrency#fibers">}}): `coinit` `coyield`, `coresume`
 - [Data Types]({{<relref "/docs/toc/data-types">}}): `type` `object` `enum` `true` `false` `none`

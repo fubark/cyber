@@ -34,5 +34,9 @@ var a5: Object{ foo: 123 }
 t.eq(a5.foo, 123)
 
 -- Type specifier.
-var a6 float: 123
-t.eq(a6, 123)
+var a6 float: 123.0
+t.eq(a6, 123.0)
+
+-- Type specifier infer type.
+var a7 float: 123
+t.eq(a7, 123.0)

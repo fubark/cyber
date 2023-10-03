@@ -511,7 +511,7 @@ static void panicIncompatibleFieldType(VM* vm, SemaTypeId fieldSemaTypeId, Value
     TypeId rightTypeId = getTypeId(rightv);
     SemaTypeId rightSemaTypeId = ((Type*)vm->types.buf)[rightTypeId].semaTypeId;
     Str rightTypeName = getSemaSymName(vm, rightSemaTypeId);
-    zPanicFmt(vm, "Assigning to `{}` member with incompatible type `{}`.", (FmtValue[]){
+    zPanicFmt(vm, "Assigning to `{}` field with incompatible type `{}`.", (FmtValue[]){
         FMT_STR(fieldTypeName), FMT_STR(rightTypeName)
     }, 2);
     release(vm, rightv);

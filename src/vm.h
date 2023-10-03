@@ -658,8 +658,6 @@ typedef struct SemaModel {
 
     ZList modules;
     ZHashMap moduleMap;
-
-    ZHashMap objectMembers;
 } SemaModel;
 
 typedef struct Compiler {

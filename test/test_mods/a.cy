@@ -51,7 +51,7 @@ type Vec2 object:
     x float
     y float
 
-    func new(x, y):
+    func new(x float, y float):
         return Vec2{ x: x, y: y }
 type Vec2Alias Vec2
 

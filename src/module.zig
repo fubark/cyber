@@ -40,6 +40,9 @@ pub const Module = struct {
     /// If this is a submodule, it is a relative name.
     absSpec: []const u8,
 
+    /// For object module.
+    fields: []const FieldInfo = &.{},
+
     pub fn setNativeTypedFunc(self: *Module, c: *cy.VMcompiler, name: []const u8,
         sig: []const sema.SymbolId, retSymId: sema.SymbolId, func: cy.ZHostFuncFn) !void {
         return self.setNativeTypedFuncExt(c, name, false, sig, retSymId, func);
@@ -297,6 +300,7 @@ pub const Module = struct {
             }
         }
         self.syms.deinit(alloc);
+        alloc.free(self.fields);
         alloc.free(self.absSpec);
     }
 
@@ -331,6 +335,8 @@ const ModuleSymType = enum {
     enumMember,
     userObject,
     typeAlias,
+
+    field,
 };
 
 const ModuleSym = struct {
@@ -394,6 +400,10 @@ const ModuleSym = struct {
         userObject: struct {
             declId: cy.NodeId,
         },
+        field: struct {
+            idx: u32,
+            typeId: types.TypeId,
+        },
     },
 };
 
@@ -402,14 +412,37 @@ const ModuleFuncNode = struct {
     funcSigId: sema.FuncSigId,
 };
 
+pub const FieldInfo = packed struct {
+    nameId: u31,
+    required: bool,
+};
+
+pub fn getSym(mod: *const Module, nameId: sema.NameSymId) ?ModuleSym {
+    const key = ModuleSymKey.initModuleSymKey(nameId, null);
+    return mod.syms.get(key);
+}
+
+pub fn symNameExists(mod: *const Module, nameId: sema.NameSymId) bool {
+    const key = ModuleSymKey.initModuleSymKey(nameId, null);
+    return mod.syms.contains(key);
+}
+
+pub fn setField(mod: *Module, alloc: std.mem.Allocator, nameId: sema.NameSymId, idx: u32, typeId: types.TypeId) !void {
+    const key = ModuleSymKey.initModuleSymKey(nameId, null);
+    try mod.syms.put(alloc, key, .{
+        .symT = .field,
+        .inner = .{
+            .field = .{
+                .idx = idx,
+                .typeId = typeId,
+            },
+        },
+    });
+}
+
 pub fn declareTypeObject(c: *cy.VMcompiler, modId: ModuleId, name: []const u8, chunkId: cy.ChunkId, declId: cy.NodeId) !ModuleId {
     const nameId = try sema.ensureNameSym(c, name);
-    const key = ModuleSymKey{
-        .moduleSymKey = .{
-            .nameId = nameId,
-            .funcSigId = cy.NullId,
-        },
-    };
+    const key = ModuleSymKey.initModuleSymKey(nameId, null);
     if (c.sema.getModule(modId).syms.contains(key)) {
         return error.DuplicateSymName;
     }
@@ -590,6 +623,9 @@ pub fn findDistinctModuleSym(chunk: *cy.Chunk, modId: ModuleId, nameId: sema.Nam
                 // More than one func for sym.
                 const name = sema.getName(chunk.compiler, nameId);
                 return chunk.reportError("Symbol `{}` is ambiguous. There are multiple functions with the same name.", &.{v(name)});
+            },
+            .field => {
+                return false;
             },
         }
     }

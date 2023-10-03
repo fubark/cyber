@@ -30,8 +30,8 @@ pub const Chunk = struct {
     parser: cy.Parser,
     parserAstRootId: cy.NodeId,
 
-    /// Generic linked list buffer.
-    dataNodes: std.ArrayListUnmanaged(DataNode),
+    /// Generic stack data that is untouched by block pre/post tasks.
+    stackData: std.ArrayListUnmanaged(GenericItem),
 
     /// Used for temp string building.
     tempBufU8: std.ArrayListUnmanaged(u8),
@@ -183,7 +183,7 @@ pub const Chunk = struct {
             .curSemaInitingSym = @bitCast(@as(u32, cy.NullId)),
             .semaVarDeclDeps = .{},
             .bufU32 = .{},
-            .dataNodes = .{},
+            .stackData = .{},
             .tempBufU8 = .{},
             .srcOwned = false,
             .modId = cy.NullId,
@@ -237,7 +237,7 @@ pub const Chunk = struct {
 
         self.bufU32.deinit(self.alloc);
         self.semaVarDeclDeps.deinit(self.alloc);
-        self.dataNodes.deinit(self.alloc);
+        self.stackData.deinit(self.alloc);
 
         self.blockJumpStack.deinit(self.alloc);
         self.subBlockJumpStack.deinit(self.alloc);
@@ -887,17 +887,12 @@ pub const Chunk = struct {
     }
 };
 
-const DataNode = extern struct {
-    inner: extern union {
-        funcSym: extern struct {
-            symId: u32,
-        },
-    },
-    next: u32,
+const GenericItem = extern union {
+    nodeId: cy.NodeId,
 };
 
 test "chunk internals." {
-    try t.eq(@sizeOf(DataNode), 8);
+    try t.eq(@sizeOf(GenericItem), 4);
 }
 
 const GenBlock = struct {

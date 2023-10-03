@@ -505,7 +505,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                     if (!types.isTypeSymCompat(c.compiler, rightT, res.exprT)) {
                         const fieldTypeName = getSymName(c.compiler, res.exprT);
                         const rightTypeName = getSymName(c.compiler, rightT);
-                        return c.reportError("Assigning to `{}` member with incompatible type `{}`.", &.{v(fieldTypeName), v(rightTypeName)});
+                        return c.reportError("Assigning to `{}` field with incompatible type `{}`.", &.{v(fieldTypeName), v(rightTypeName)});
                     }
                 }
             } else {
@@ -938,6 +938,8 @@ pub fn declareObjectMembers(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
     const body = c.nodes[node.head.objectDecl.body];
     if (node.node_t == .objectDecl) {
+        const mod = c.compiler.sema.getModulePtr(objModId);
+        const fields = try c.alloc.alloc(cy.module.FieldInfo, body.head.objectDeclBody.numFields);
         var fieldId = body.head.objectDeclBody.fieldsHead;
         while (fieldId != cy.NullId) : (i += 1) {
             const field = c.nodes[fieldId];
@@ -949,19 +951,21 @@ pub fn declareObjectMembers(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             if (field.head.objectField.typeSpecHead != cy.NullId) {
                 fieldType = try getOrResolveTypeSymFromSpecNode(c, field.head.objectField.typeSpecHead);
             } else {
-                fieldType = bt.Any;
+                fieldType = bt.Dynamic;
+            }
+
+            if (!cy.module.symNameExists(mod, fieldNameId)) {
+                try cy.module.setField(mod, c.alloc, fieldNameId, i, fieldType);
+                fields[i] = .{ .nameId = @intCast(fieldNameId), .required = fieldType == bt.Dynamic };
+            } else {
+                return reportDuplicateModSym(c, mod, fieldNameId, nodeId);
             }
 
             try c.compiler.vm.addFieldSym(rtTypeId, fieldSymId, @intCast(i), fieldType);
 
-            try c.compiler.sema.objectMembers.put(c.alloc, .{
-                .objectMemberKey = .{
-                    .objSymId = objSymId,
-                    .memberNameId = fieldNameId,
-                },
-            }, {});
             fieldId = field.next;
         }
+        mod.fields = fields;
         c.compiler.vm.types.buf[rtTypeId].data.numFields = i;
     }
 
@@ -970,6 +974,18 @@ pub fn declareObjectMembers(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         try declareObjectFunc(c, objModId, funcId);
         const funcN = c.nodes[funcId];
         funcId = funcN.next;
+    }
+}
+
+fn reportDuplicateModSym(c: *cy.Chunk, mod: *cy.Module, nameId: NameSymId, nodeId: cy.NodeId) !void {
+    const key = ModuleSymKey.initModuleSymKey(nameId, nodeId);
+    const sym = mod.syms.get(key).?;
+    const name = getName(c.compiler, nameId);
+    const modName = getSymName(c.compiler, mod.resolvedRootSymId);
+    switch (sym.symT) {
+        else => {
+            return c.reportErrorAt("The symbol `{}` already exists in `{}`.", &.{v(name), v(modName)}, nodeId);
+        }
     }
 }
 
@@ -1497,15 +1513,59 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
             if (csymId.isPresent()) {
                 if (!csymId.isFuncSymId) {
                     c.nodes[nodeId].head.objectInit.sema_symId = csymId.id;
-                    const initializer = c.nodes[node.head.objectInit.initializer];
-                    var i: u32 = 0;
-                    var entry_id = initializer.head.child_head;
-                    while (entry_id != cy.NullId) : (i += 1) {
-                        var entry = c.nodes[entry_id];
-                        _ = try semaExpr(c, entry.head.mapEntry.right);
-                        entry_id = entry.next;
+
+                    const objSym = c.compiler.sema.getSymbol(csymId.id);
+                    if (objSym.symT == .object) {
+                        const mod = c.compiler.sema.getModulePtr(objSym.inner.object.modId);
+
+                        // Set up a temp buffer to map initializer entries to type fields.
+                        const fieldsDataStart = c.stackData.items.len;
+                        try c.stackData.resize(c.alloc, c.stackData.items.len + mod.fields.len);
+                        defer c.stackData.items.len = fieldsDataStart;
+
+                        // Initially set to NullId so missed mappings are known from a linear scan.
+                        const fieldsData = c.stackData.items[fieldsDataStart..];
+                        @memset(fieldsData, .{ .nodeId = cy.NullId });
+
+                        const initializer = c.nodes[node.head.objectInit.initializer];
+
+                        var i: u32 = 0;
+                        var entryId = initializer.head.child_head;
+                        while (entryId != cy.NullId) : (i += 1) {
+                            var entry = c.nodes[entryId];
+
+                            const field = c.nodes[entry.head.mapEntry.left];
+                            const fieldName = c.getNodeTokenString(field);
+                            const fieldNameId = try ensureNameSym(c.compiler, fieldName);
+
+                            if (cy.module.getSym(mod, fieldNameId)) |sym| {
+                                if (sym.symT != .field) {
+                                    const objectName = getSymName(c.compiler, csymId.id);
+                                    return c.reportErrorAt("`{}` is not a field in `{}`.", &.{v(fieldName), v(objectName)}, entry.head.mapEntry.left);
+                                }
+                                _ = try semaExprCstr(c, entry.head.mapEntry.right, sym.inner.field.typeId, true);
+                                c.nodes[entryId].head.mapEntry.semaFieldIdx = sym.inner.field.idx;
+                                fieldsData[sym.inner.field.idx] = .{ .nodeId = entryId };
+                                entryId = entry.next;
+                            } else {
+                                const objectName = getSymName(c.compiler, csymId.id);
+                                return c.reportErrorAt("Field `{}` does not exist in `{}`.", &.{v(fieldName), v(objectName)}, entry.head.mapEntry.left);
+                            }
+                        }
+
+                        // Check that all required type fields were set.
+                        for (fieldsData, 0..) |item, fIdx| {
+                            if (item.nodeId == cy.NullId) {
+                                if (mod.fields[fIdx].required) {
+                                    continue;
+                                }
+                                const name = getName(c.compiler, mod.fields[fIdx].nameId);
+                                return c.reportErrorAt("Expected required field `{}` in initializer.", &.{v(name)}, nodeId);
+                            }
+                        }
+
+                        return csymId.id;
                     }
-                    return csymId.id;
                 }
             }
 
@@ -1898,8 +1958,8 @@ fn callExpr(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
                     const nameId = try ensureNameSym(c.compiler, name);
 
                     const sym = c.compiler.sema.getSymbol(crLeftSym.id);
-                    if (sym.symT == .module) {
-                        if (getFirstFuncSigInModule(c, sym.inner.module.id, nameId)) |funcSigId| {
+                    if (sym.getModuleId()) |modId| {
+                        if (getFirstFuncSigInModule(c, modId, nameId)) |funcSigId| {
                             const funcSig = c.compiler.sema.getFuncSig(funcSigId);
                             const preferredParamTypes = funcSig.params();
 
@@ -2392,17 +2452,15 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool) !VarLoo
     // Look for object member if inside method.
     if (sblock.isMethodBlock) {
         const nameId = try ensureNameSym(self.compiler, name);
-        const key = ObjectMemberKey{
-            .objectMemberKey = .{
-                .objSymId = self.curObjectSymId,
-                .memberNameId = nameId,
-            },
-        };
-        if (self.compiler.sema.objectMembers.contains(key)) {
-            const id = try pushObjectMemberAlias(self, name);
-            return VarLookupResult{
-                .local = id,
-            };
+        const objSym = self.compiler.sema.getSymbol(self.curObjectSymId);
+        const mod = self.compiler.sema.getModulePtr(objSym.inner.object.modId);
+        if (cy.module.getSym(mod, nameId)) |sym| {
+            if (sym.symT == .field) {
+                const id = try pushObjectMemberAlias(self, name);
+                return VarLookupResult{
+                    .local = id,
+                };
+            }
         }
     }
 
@@ -2499,18 +2557,16 @@ fn lookupParentLocal(c: *cy.Chunk, name: []const u8) !?LookupParentLocalResult {
         // Look for object member if inside method.
         if (prev.isMethodBlock) {
             const nameId = try ensureNameSym(c.compiler, name);
-            const key = ObjectMemberKey{
-                .objectMemberKey = .{
-                    .objSymId = c.curObjectSymId,
-                    .memberNameId = nameId,
-                },
-            };
-            if (c.compiler.sema.objectMembers.contains(key)) {
-                return .{
-                    .varId = prev.nameToVar.get("self").?,
-                    .blockDepth = c.semaBlockDepth(),
-                    .isObjectMember = true,
-                };
+            const objSym = c.compiler.sema.getSymbol(c.curObjectSymId);
+            const mod = c.compiler.sema.getModulePtr(objSym.inner.object.modId);
+            if (cy.module.getSym(mod, nameId)) |sym| {
+                if (sym.symT == .field) {
+                    return .{
+                        .varId = prev.nameToVar.get("self").?,
+                        .blockDepth = c.semaBlockDepth(),
+                        .isObjectMember = true,
+                    };
+                }
             }
         }
     }
@@ -3556,6 +3612,9 @@ fn resolveSymFromModule(chunk: *cy.Chunk, modId: cy.ModuleId, nameId: NameSymId,
             .userObject => {
                 return chunk.reportError("Unsupported module sym: userObject", &.{});
             },
+            .field => {
+                return chunk.reportError("Unsupported module sym: field", &.{});
+            },
         }
     }
     return null;
@@ -4504,8 +4563,6 @@ pub const Model = struct {
     /// Owned absolute specifier path to module.
     moduleMap: std.StringHashMapUnmanaged(cy.ModuleId),
 
-    objectMembers: std.HashMapUnmanaged(ObjectMemberKey, void, cy.hash.KeyU64Context, 80),
-
     pub fn init(alloc: std.mem.Allocator, compiler: *cy.VMcompiler) Model {
         return .{
             .alloc = alloc,
@@ -4521,7 +4578,6 @@ pub const Model = struct {
             .resolvedUntypedFuncSigs = .{},
             .modules = .{},
             .moduleMap = .{},
-            .objectMembers = .{},
         };
     }
 
@@ -4531,13 +4587,11 @@ pub const Model = struct {
             self.resolvedSymMap.clearRetainingCapacity();
             self.resolvedFuncSyms.clearRetainingCapacity();
             self.resolvedFuncSymMap.clearRetainingCapacity();
-            self.objectMembers.clearRetainingCapacity();
         } else {
             self.resolvedSyms.deinit(alloc);
             self.resolvedSymMap.deinit(alloc);
             self.resolvedFuncSyms.deinit(alloc);
             self.resolvedFuncSymMap.deinit(alloc);
-            self.objectMembers.deinit(alloc);
         }
 
         for (self.modules.items) |*mod| {
@@ -4757,5 +4811,4 @@ test "sema internals." {
     try t.eq(@offsetOf(Model, "resolvedUntypedFuncSigs"), @offsetOf(vmc.SemaModel, "resolvedUntypedFuncSigs"));
     try t.eq(@offsetOf(Model, "modules"), @offsetOf(vmc.SemaModel, "modules"));
     try t.eq(@offsetOf(Model, "moduleMap"), @offsetOf(vmc.SemaModel, "moduleMap"));
-    try t.eq(@offsetOf(Model, "objectMembers"), @offsetOf(vmc.SemaModel, "objectMembers"));
 }

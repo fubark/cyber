@@ -2026,11 +2026,11 @@ pub const ModuleBuilder = struct {
     }
 
     pub fn setVar(self: *const ModuleBuilder, name: []const u8, typeSymId: sema.SymbolId, val: Value) !void {
-        try self.mod().setTypedVar(self.compiler, name, typeSymId, val);
+        try self.getMod().setTypedVar(self.compiler, name, typeSymId, val);
     }
 
     pub fn setFunc(self: *const ModuleBuilder, name: []const u8, params: []const sema.SymbolId, ret: sema.SymbolId, ptr: cy.ZHostFuncFn) !void {
-        try self.mod().setNativeTypedFunc(self.compiler, name, params, ret, ptr);
+        try self.getMod().setNativeTypedFunc(self.compiler, name, params, ret, ptr);
     }
 
     pub fn ensureMethodGroup(self: *const ModuleBuilder, name: []const u8) !vmc.MethodGroupId {
@@ -2062,7 +2062,7 @@ pub const ModuleBuilder = struct {
         }
     }
 
-    pub fn mod(self: *const ModuleBuilder) *cy.Module {
+    pub fn getMod(self: *const ModuleBuilder) *cy.Module {
         return self.compiler.sema.getModulePtr(self.modId);
     }
 
@@ -2070,7 +2070,7 @@ pub const ModuleBuilder = struct {
         const nameId = try cy.sema.ensureNameSym(self.compiler, name);
         const key = sema.ResolvedSymKey{
             .resolvedSymKey = .{
-                .parentSymId = self.mod().resolvedRootSymId,
+                .parentSymId = self.getMod().resolvedRootSymId,
                 .nameId = nameId,
             },
         };
@@ -2079,10 +2079,16 @@ pub const ModuleBuilder = struct {
         const sym = self.compiler.sema.getSymbol(res.sTypeId);
         const typeId = sym.inner.object.typeId;
 
+        const mod = self.compiler.sema.getModulePtr(modId);
+        const modFields = try self.compiler.alloc.alloc(cy.module.FieldInfo, fields.len);
+
         for (fields, 0..) |field, i| {
             const id = try self.vm.ensureFieldSym(field);
             try self.vm.addFieldSym(typeId, id, @intCast(i), bt.Any);
+            const fieldNameId = try cy.sema.ensureNameSym(self.compiler, field);
+            try cy.module.setField(mod, self.compiler.alloc, fieldNameId, @intCast(i), bt.Any);
         }
+        mod.fields = modFields;
         self.vm.types.buf[typeId].data.numFields = @intCast(fields.len);
         return typeId;
     }

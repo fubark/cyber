@@ -1287,11 +1287,6 @@ test "Objects." {
         \\  x
         \\  y
     );
-    try evalPass(.{},
-        \\type Vec2 object:
-        \\  x float
-        \\  y float
-    );
 
     // Initialize with undeclared field.
     try eval(.{ .silent = true },
@@ -1327,16 +1322,73 @@ test "Objects." {
     }}.func);
 }
 
-test "Object fields." {
-    // Compile time type check.
+test "Typed object fields." {
+    // Field declaration ends the file without parser error.
+    try evalPass(.{},
+        \\type Vec2 object:
+        \\  x float
+        \\  y float
+    );
+
+    // Initialize field with exact type match.
+    try evalPass(.{},
+        \\import test
+        \\type S object:
+        \\  x float
+        \\var s = S{ x: 1.23 }
+        \\test.eq(s.x, 1.23)
+    );
+
+    // Inferred initializer to field type.
+    try evalPass(.{},
+        \\import test
+        \\type S object:
+        \\  x float
+        \\var s = S{ x: 123 }
+        \\test.eq(s.x, 123.0)
+    );
+
+    // Missing required field.
     try eval(.{ .silent = true },
         \\type S object:
         \\  a float
         \\var o = S{}
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Expected required field `a` in initializer.
+            \\
+            \\main:3:9:
+            \\var o = S{}
+            \\        ^
+            \\
+        );
+    }}.func);
+
+    // No such field.
+    try eval(.{ .silent = true },
+        \\type S object:
+        \\  a float
+        \\var o = S{ b: 123 }
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Field `b` does not exist in `S`.
+            \\
+            \\main:3:12:
+            \\var o = S{ b: 123 }
+            \\           ^
+            \\
+        );
+    }}.func);
+
+    // Set field with incompatible type. Static rhs.
+    try eval(.{ .silent = true },
+        \\type S object:
+        \\  a float
+        \\var o = S{ a: 123 }
         \\o.a = []
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Assigning to `float` member with incompatible type `List`.
+            \\CompileError: Assigning to `float` field with incompatible type `List`.
             \\
             \\main:4:7:
             \\o.a = []
@@ -1345,16 +1397,16 @@ test "Object fields." {
         );
     }}.func);
 
-    // Runtime type check when right is dynamic.
+    // Set field with incompatiable type. Dynamic rhs.
     try eval(.{ .silent = false },
         \\type S object:
         \\  a float
         \\func foo(): return []
-        \\var o = S{}
+        \\var o = S{ a: 123 }
         \\o.a = foo()
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Assigning to `float` member with incompatible type `List`.
+            \\panic: Assigning to `float` field with incompatible type `List`.
             \\
             \\main:5:1 main:
             \\o.a = foo()
@@ -1363,16 +1415,16 @@ test "Object fields." {
         );
     }}.func);
 
-    // Runtime type check when receiver is `any`.
+    // Set field with incompatible type. Dynamic lhs.
     try eval(.{ .silent = false },
         \\import t 'test'
         \\type S object:
         \\  a float
-        \\var o = t.erase(S{})
+        \\var o = t.erase(S{ a: 123 })
         \\o.a = []
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Assigning to `float` member with incompatible type `List`.
+            \\panic: Assigning to `float` field with incompatible type `List`.
             \\
             \\main:5:1 main:
             \\o.a = []
@@ -2523,6 +2575,23 @@ test "Typed static functions." {
             \\
         );
     }}.func);
+
+    // Infer type from param.
+    try evalPass(.{},
+        \\import test
+        \\func foo(a float):
+        \\  return a
+        \\test.eq(foo(2), 2.0)
+    );
+
+    // Infer type from object func param. 
+    try evalPass(.{},
+        \\import test
+        \\type S object:
+        \\  func foo(a float):
+        \\    return a
+        \\test.eq(S.foo(2), 2.0)
+    );
 }
 
 test "Static functions." {
@@ -2858,11 +2927,11 @@ test "ARC cycles." {
     _ = try evalPass(.{}, 
         \\import t 'test'
         \\type T object:
-        \\  a any
-        \\  b any
-        \\  c any
-        \\  d any
-        \\  e any
+        \\  a
+        \\  b
+        \\  c
+        \\  d
+        \\  e
         \\func foo():
         \\  var a = T{}
         \\  var b = T{} 

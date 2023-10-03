@@ -253,25 +253,23 @@ fn objectInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     if (node.head.objectInit.sema_symId != cy.NullId) {
         const rSym = self.compiler.sema.getSymbol(node.head.objectInit.sema_symId);
         if (rSym.symT == .object) {
-            const typeId = rSym.getObjectTypeId(self.compiler.vm).?;
             const initializer = self.nodes[node.head.objectInit.initializer];
 
             // TODO: Would it be faster/efficient to copy the fields into contiguous registers
             //       and copy all at once to heap or pass locals into the operands and iterate each and copy to heap?
             //       The current implementation is the former.
-            // TODO: Have sema sort the fields so eval can handle default values easier.
 
-            // Push props onto stack.
+            const mod = self.compiler.sema.getModule(rSym.inner.object.modId);
 
-            const numFields = self.compiler.vm.types.buf[typeId].data.numFields;
-            // Repurpose stack for sorting fields.
-            const sortedFieldsStart = self.assignedVarStack.items.len;
-            try self.assignedVarStack.resize(self.alloc, self.assignedVarStack.items.len + numFields);
-            defer self.assignedVarStack.items.len = sortedFieldsStart;
+            // TODO: This is one case where having an IR would be helpful
+            //       to avoid initializing this buffer again.
+            const fieldsDataStart = self.stackData.items.len;
+            try self.stackData.resize(self.alloc, self.stackData.items.len + mod.fields.len);
+            defer self.stackData.items.len = fieldsDataStart;
 
             // Initially set to NullId so leftovers are defaulted to `none`.
-            const initFields = self.assignedVarStack.items[sortedFieldsStart..];
-            @memset(initFields, cy.NullId);
+            const fieldsData = self.stackData.items[fieldsDataStart..];
+            @memset(fieldsData, .{ .nodeId = cy.NullId });
 
             const dst = try self.rega.selectFromNonLocalVar(req, true);
             const tempStart = self.rega.getNextTemp();
@@ -279,39 +277,31 @@ fn objectInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
 
             var i: u32 = 0;
             var entryId = initializer.head.child_head;
-            // First iteration to sort the initializer fields.
+
             while (entryId != cy.NullId) : (i += 1) {
                 const entry = self.nodes[entryId];
-                const prop = self.nodes[entry.head.mapEntry.left];
-                const fieldName = self.getNodeTokenString(prop);
-                const fieldIdx = self.compiler.vm.getStructFieldIdx(typeId, fieldName) orelse {
-                    const vmType = self.compiler.vm.types.buf[typeId];
-                    const objectName = vmType.namePtr[0..vmType.nameLen];
-                    return self.reportErrorAt("Missing field `{}` in `{}`.", &.{v(fieldName), v(objectName)}, entry.head.mapEntry.left);
-                };
-                initFields[fieldIdx] = entryId;
+                fieldsData[entry.head.mapEntry.semaFieldIdx] = .{ .nodeId = entryId };
                 entryId = entry.next;
             }
 
-            i = 0;
-            while (i < numFields) : (i += 1) {
-                entryId = self.assignedVarStack.items[sortedFieldsStart + i];
-                if (entryId == cy.NullId) {
+            for (fieldsData) |item| {
+                if (item.nodeId == cy.NullId) {
                     // Push none.
                     const local = try self.rega.consumeNextTemp();
                     try self.buf.pushOp1(.none, local);
                 } else {
-                    const entry = self.nodes[entryId];
+                    const entry = self.nodes[item.nodeId];
                     _ = try expression(self, entry.head.mapEntry.right, RegisterCstr.tempMustRetain);
                 }
             }
 
-            if (self.compiler.vm.types.buf[typeId].data.numFields <= 4) {
+            const typeId = rSym.getObjectTypeId(self.compiler.vm).?;
+            if (mod.fields.len <= 4) {
                 try self.pushOptionalDebugSym(nodeId);
-                try self.buf.pushOpSlice(.objectSmall, &[_]u8{ @intCast(typeId), tempStart, @intCast(numFields), dst });
+                try self.buf.pushOpSlice(.objectSmall, &[_]u8{ @intCast(typeId), tempStart, @intCast(mod.fields.len), dst });
             } else {
                 try self.pushDebugSym(nodeId);
-                try self.buf.pushOpSlice(.object, &[_]u8{ @intCast(typeId), tempStart, @intCast(numFields), dst });
+                try self.buf.pushOpSlice(.object, &[_]u8{ @intCast(typeId), tempStart, @intCast(mod.fields.len), dst });
             }
             const type_ = node.head.objectInit.sema_symId;
             return GenValue.initTempValue(dst, type_, true);

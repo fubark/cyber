@@ -11,8 +11,8 @@ type Parent object:
     v Vec2
 
 var v = Vec2{ x: 1, y: 2 }
-t.eq(v.x, 1)
-t.eq(v.y, 2)
+t.eq(v.x, 1.0)
+t.eq(v.y, 2.0)
 
 func foo(v Vec2):
     pass

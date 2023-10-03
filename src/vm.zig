@@ -3792,7 +3792,7 @@ fn panicIncompatibleFieldType(vm: *cy.VM, fieldSemaTypeId: types.TypeId, rightv:
     const rightSemaTypeId = vm.types.buf[rightTypeId].rTypeSymId;
     const rightTypeName = sema.getSymName(&vm.compiler, rightSemaTypeId);
     return vm.panicFmt(
-        \\Assigning to `{}` member with incompatible type `{}`.
+        \\Assigning to `{}` field with incompatible type `{}`.
         , &.{
             v(fieldTypeName), v(rightTypeName),
         },

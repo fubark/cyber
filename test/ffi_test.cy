@@ -23,7 +23,7 @@ t.eq(lib, error.MissingSymbol)
 type MyObject object:
   a float
   b int
-  c string
+  c pointer
   d boolean
 
 lib = os.bindLib(libPath, [

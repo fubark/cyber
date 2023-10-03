@@ -752,12 +752,13 @@ pub const Parser = struct {
         return id;
     }
 
-    fn pushObjectDecl(self: *Parser, start: TokenId, name: NodeId, modifierHead: NodeId, fieldsHead: NodeId, funcsHead: NodeId) !NodeId {
+    fn pushObjectDecl(self: *Parser, start: TokenId, name: NodeId, modifierHead: NodeId, fieldsHead: NodeId, numFields: u32, funcsHead: NodeId) !NodeId {
         const body = try self.pushNode(.objectDeclBody, start);
         self.nodes.items[body].head = .{
             .objectDeclBody = .{
                 .fieldsHead = fieldsHead,
                 .funcsHead = funcsHead,
+                .numFields = numFields,
             },
         };
 
@@ -801,21 +802,23 @@ pub const Parser = struct {
         defer self.cur_indent = prevIndent;
 
         var firstField = (try self.parseObjectField()) orelse NullId;
+        var numFields: u32 = 1;
         if (firstField != NullId) {
             var lastField = firstField;
 
             while (true) {
                 const start2 = self.next_pos;
                 const indent = (try self.consumeIndentBeforeStmt()) orelse {
-                    return self.pushObjectDecl(start, name, modifierHead, firstField, NullId);
+                    return self.pushObjectDecl(start, name, modifierHead, firstField, numFields, NullId);
                 };
                 if (indent == reqIndent) {
                     const id = (try self.parseObjectField()) orelse break;
+                    numFields += 1;
                     self.nodes.items[lastField].next = id;
                     lastField = id;
                 } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
                     self.next_pos = start2;
-                    return self.pushObjectDecl(start, name, modifierHead, firstField, NullId);
+                    return self.pushObjectDecl(start, name, modifierHead, firstField, numFields, NullId);
                 } else {
                     return self.reportParseError("Unexpected indentation.", &.{});
                 }
@@ -846,7 +849,7 @@ pub const Parser = struct {
                     return self.reportParseError("Unexpected indentation.", &.{});
                 }
             }
-            return self.pushObjectDecl(start, name, modifierHead, firstField, firstFunc);
+            return self.pushObjectDecl(start, name, modifierHead, firstField, numFields, firstFunc);
         } else {
             return self.reportParseError("Expected function.", &.{});
         }
@@ -3540,6 +3543,9 @@ pub const Node = struct {
         mapEntry: struct {
             left: NodeId,
             right: NodeId,
+
+            // Used for object initializers to map an entry to an object field.
+            semaFieldIdx: u32 = cy.NullId,
         },
         caseBlock: struct {
             firstCond: NodeId,
@@ -3636,6 +3642,7 @@ pub const Node = struct {
         objectDeclBody: struct {
             fieldsHead: NodeId,
             funcsHead: NodeId,
+            numFields: u32,
         },
         varSpec: struct {
             name: NodeId,

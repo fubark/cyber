@@ -729,7 +729,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         // Create anonymous struct with binded C-functions as methods.
         const sid = try ivm.addAnonymousStruct("BindLib");
         const tccField = try ivm.ensureFieldSym("tcc");
-        ivm.types.buf[sid].data.numFields = 1;
+        ivm.types.buf[sid].data.object.numFields = 1;
         try ivm.addFieldSym(sid, tccField, 0, bt.Any);
 
         const cyState = try cy.heap.allocTccState(ivm, state.?, lib);
@@ -953,10 +953,10 @@ fn cAllocCyPointer(vm: *cy.UserVM, ptr: ?*anyopaque) callconv(.C) Value {
 
 fn cAllocObject(vm: *cy.UserVM, id: u32) callconv(.C) Value {
     const ivm = vm.internal();
-    if (ivm.types.buf[id].data.numFields <= 4) {
+    if (ivm.types.buf[id].data.object.numFields <= 4) {
         return cy.heap.allocEmptyObjectSmall(ivm, id) catch cy.fatal();
     } else {
-        return cy.heap.allocEmptyObject(ivm, id, ivm.types.buf[id].data.numFields) catch cy.fatal();
+        return cy.heap.allocEmptyObject(ivm, id, ivm.types.buf[id].data.object.numFields) catch cy.fatal();
     }
 }
 

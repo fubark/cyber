@@ -139,7 +139,7 @@ pub const ByteCodeBuffer = struct {
         });
     }
 
-    pub fn pushDebugSym(self: *ByteCodeBuffer, pc: usize, file: u32, loc: u32, frameLoc: u32, unwindTempIdx: u32) !void {
+    pub fn pushFailableDebugSym(self: *ByteCodeBuffer, pc: usize, file: u32, loc: u32, frameLoc: u32, unwindTempIdx: u32) !void {
         try self.debugTable.append(self.alloc, .{
             .pc = @intCast(pc),
             .loc = loc,
@@ -208,6 +208,10 @@ pub const ByteCodeBuffer = struct {
         for (operands, 0..) |operand, i| {
             self.ops.items[start+i] = .{ .val = operand };
         }
+    }
+
+    pub fn setOpArgU32(self: *ByteCodeBuffer, idx: usize, arg: u32) void {
+        @as(*align(1) u32, @ptrCast(&self.ops.items[idx])).* = arg;
     }
 
     pub fn setOpArgU16(self: *ByteCodeBuffer, idx: usize, arg: u16) void {
@@ -457,18 +461,18 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extr
             printStderr(" {any}", .{std.mem.sliceAsBytes(keyIdxes)});
         },
         .object => {
-            const typeId = pc[1].val;
-            const startLocal = pc[2].val;
-            const numFields = pc[3].val;
-            const dst = pc[4].val;
+            const typeId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const startLocal = pc[3].val;
+            const numFields = pc[4].val;
+            const dst = pc[5].val;
             fmt.printStderr("{} {} typeId={}, startLocal={}, numFields={}, dst={}", &.{v(pcOffset), v(code),
                 v(typeId), v(startLocal), v(numFields), v(dst)});
         },
         .objectSmall => {
-            const typeId = pc[1].val;
-            const startLocal = pc[2].val;
-            const numFields = pc[3].val;
-            const dst = pc[4].val;
+            const typeId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const startLocal = pc[3].val;
+            const numFields = pc[4].val;
+            const dst = pc[5].val;
             fmt.printStderr("{} {} typeId={}, startLocal={}, numFields={}, dst={}", &.{v(pcOffset), v(code),
                 v(typeId), v(startLocal), v(numFields), v(dst)});
         },
@@ -704,6 +708,9 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .seqDestructure => {
             return 3 + pc[2].val;
         },
+        .objectTypeCheck => {
+            return 3 + pc[2].val * 5;
+        },
         .call,
         .captured,
         .constOp,
@@ -733,15 +740,15 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numEntries = pc[2].val;
             return 4 + numEntries * 2;
         },
-        .callTypeCheck,
-        .object,
-        .objectSmall => {
+        .callTypeCheck => {
             return 5;
         },
         .match => {
             const numConds = pc[2].val;
             return 5 + numConds * 3;
         },
+        .object,
+        .objectSmall,
         .coinit => {
             return 6;
         },
@@ -902,6 +909,7 @@ pub const OpCode = enum(u8) {
     /// init [startLocal] [numLocals]
     init = vmc.CodeInit,
 
+    objectTypeCheck = vmc.CodeObjectTypeCheck,
     objectSmall = vmc.CodeObjectSmall,
     object = vmc.CodeObject,
     setField = vmc.CodeSetField,
@@ -991,7 +999,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 108);
+    try t.eq(std.enums.values(OpCode).len, 109);
     try t.eq(@sizeOf(Inst), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

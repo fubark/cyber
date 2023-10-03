@@ -1698,7 +1698,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             // TODO: Determine isHostObject from object to avoid extra read from `rt.Type`
             const entry = &vm.types.buf[obj.getTypeId()];
             if (!entry.isHostObject) {
-                const numFields = entry.data.numFields;
+                const numFields = entry.data.object.numFields;
                 if (releaseChildren) {
                     for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
                         if (skipCycChildren and child.isGcConfirmedCyc()) {

@@ -786,19 +786,19 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //         const tSym = c.compiler.sema.getSymbol(tSymId);
     //         if (tSym.symT == .object) {
     //             const typeId = tSym.getObjectTypeId(c.compiler.vm).?;
-    //             try c.pushDebugSym(nodeId);
+    //             try c.pushFailableDebugSym(nodeId);
     //             const pc = c.buf.ops.items.len;
     //             try c.buf.pushOpSlice(.cast, &.{ child.local, 0, 0 });
     //             c.buf.setOpArgU16(pc + 2, @intCast(typeId));
     //         } else if (tSym.symT == .builtinType) {
     //             if (types.toRtConcreteType(tSymId)) |typeId| {
-    //                 try c.pushDebugSym(nodeId);
+    //                 try c.pushFailableDebugSym(nodeId);
     //                 const pc = c.buf.ops.items.len;
     //                 try c.buf.pushOpSlice(.cast, &.{ child.local, 0, 0 });
     //                 c.buf.setOpArgU16(pc + 2, @intCast(typeId));
     //             } else {
     //                 // Cast to abstract type.
-    //                 try c.pushDebugSym(nodeId);
+    //                 try c.pushFailableDebugSym(nodeId);
     //                 const pc = c.buf.ops.items.len;
     //                 try c.buf.pushOpSlice(.castAbstract, &.{ child.local, 0, 0 });
     //                 c.buf.setOpArgU16(pc + 2, @intCast(tSymId));
@@ -815,7 +815,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //     .throwExpr => {
     //         const child = try expression(c, node.head.child_head, cstr);
 
-    //         try c.pushDebugSym(nodeId);
+    //         try c.pushFailableDebugSym(nodeId);
     //         try c.buf.pushOp1(.throw, child.local);
 
     //         // ARC cleanup.

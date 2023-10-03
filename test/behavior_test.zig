@@ -1348,6 +1348,24 @@ test "Typed object fields." {
         \\test.eq(s.x, 123.0)
     );
 
+    // Initialize field with incompatible dynamic value.
+    try eval(.{ .silent = true },
+        \\type S object:
+        \\  a float
+        \\func foo():
+        \\  return 123
+        \\var s = S{a: foo()}
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Initializing `float` field with incompatible type `int`.
+            \\
+            \\main:5:9 main:
+            \\var s = S{a: foo()}
+            \\        ^
+            \\
+        );
+    }}.func);
+
     // Zero initialize missing field.
     try evalPass(.{},
         \\import test

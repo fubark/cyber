@@ -410,7 +410,7 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
             const entry = &vm.types.buf[typeId];
             if (!entry.isHostObject) {
                 // User type.
-                const members = obj.object.getValuesConstPtr()[0..entry.data.numFields];
+                const members = obj.object.getValuesConstPtr()[0..entry.data.object.numFields];
                 for (members) |m| {
                     if (m.isCycPointer()) {
                         markValue(vm, m);

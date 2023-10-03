@@ -217,6 +217,7 @@ typedef enum {
     CodeStringTemplate,
     CodeNegFloat,
     CodeInit,
+    CodeObjectTypeCheck,
     CodeObjectSmall,
     CodeObject,
     CodeSetField,
@@ -609,7 +610,9 @@ typedef struct Type {
             const void* getChildren;
             const void* finalizer;
         } hostObject;
-        uint32_t numFields;
+        struct {
+            u32 numFields;
+        } object;
     } data;
 } Type;
 
@@ -785,7 +788,7 @@ typedef struct VM {
     ZHashMap fieldTable;
     ZHashMap fieldSymSignatures;
 
-    ZCyList types; // VmType
+    ZCyList types; // Type
     ZHashMap typeSignatures;
 
     ZCyList enums;

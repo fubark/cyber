@@ -506,15 +506,20 @@ static inline void panicFieldMissing(VM* vm) {
     panicStaticMsg(vm, "Field not found in value.");
 }
 
-static void panicIncompatibleFieldType(VM* vm, SemaTypeId fieldSemaTypeId, Value rightv) {
+static void panicIncompatibleFieldType(VM* vm, SemaTypeId fieldSemaTypeId, SemaTypeId rightSemaTypeId) {
     Str fieldTypeName = getSemaSymName(vm, fieldSemaTypeId);
-    TypeId rightTypeId = getTypeId(rightv);
-    SemaTypeId rightSemaTypeId = ((Type*)vm->types.buf)[rightTypeId].semaTypeId;
     Str rightTypeName = getSemaSymName(vm, rightSemaTypeId);
     zPanicFmt(vm, "Assigning to `{}` field with incompatible type `{}`.", (FmtValue[]){
         FMT_STR(fieldTypeName), FMT_STR(rightTypeName)
     }, 2);
-    release(vm, rightv);
+}
+
+static void panicIncompatibleInitFieldType(VM* vm, SemaTypeId fieldSemaTypeId, SemaTypeId rightSemaTypeId) {
+    Str fieldTypeName = getSemaSymName(vm, fieldSemaTypeId);
+    Str rightTypeName = getSemaSymName(vm, rightSemaTypeId);
+    zPanicFmt(vm, "Initializing `{}` field with incompatible type `{}`.", (FmtValue[]){
+        FMT_STR(fieldTypeName), FMT_STR(rightTypeName)
+    }, 2);
 }
 
 #define DEOPTIMIZE_TERNOP() \
@@ -614,6 +619,7 @@ ResultCode execBytecode(VM* vm) {
     #define READ_U16(offset) (pc[offset] | ((uint16_t)pc[offset + 1] << 8))
     #define WRITE_U16(offset, u) pc[offset] = u & 0xff; pc[offset+1] = u >> 8
     #define READ_U32(offset) ((uint32_t)pc[offset] | ((uint32_t)pc[offset+1] << 8) | ((uint32_t)pc[offset+2] << 16) | ((uint32_t)pc[offset+3] << 24))
+    #define READ_U32_FROM(from, offset) ((uint32_t)from[offset] | ((uint32_t)from[offset+1] << 8) | ((uint32_t)from[offset+2] << 16) | ((uint32_t)from[offset+3] << 24))
     #define READ_U48(offset) ((uint64_t)pc[offset] | ((uint64_t)pc[offset+1] << 8) | ((uint64_t)pc[offset+2] << 16) | ((uint64_t)pc[offset+3] << 24) | ((uint64_t)pc[offset+4] << 32) | ((uint64_t)pc[offset+5] << 40))
 
 #if TRACE
@@ -689,6 +695,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(StringTemplate),
         JENTRY(NegFloat),
         JENTRY(Init),
+        JENTRY(ObjectTypeCheck),
         JENTRY(ObjectSmall),
         JENTRY(Object),
         JENTRY(SetField),
@@ -1138,9 +1145,9 @@ beginSwitch:
         NEXT();
     }
     CASE(CallTypeCheck): {
-        uint8_t argStartReg = pc[1];
-        uint8_t numArgs = pc[2];
-        uint16_t funcSigId = READ_U16(3);
+        u8 argStartReg = pc[1];
+        u8 numArgs = pc[2];
+        u16 funcSigId = READ_U16(3);
 
         FuncSig funcSig = getResolvedFuncSig(vm, funcSigId);
         Value* args = stack + argStartReg;
@@ -1492,28 +1499,47 @@ beginSwitch:
         pc += 3;
         NEXT();
     }
+    CASE(ObjectTypeCheck): {
+        u8 startLocal = pc[1];
+        u8 n = pc[2];
+        u8* dataPtr = pc + 3;
+
+        // Perform type check on field initializers.
+        for (int i = 0; i < n; i += 1) {
+            TypeId valTypeId = getTypeId(stack[startLocal + dataPtr[0]]);
+            SemaTypeId cstrTypeId = READ_U32_FROM(dataPtr, 1);
+
+            SemaTypeId valSemaTypeId = ((Type*)vm->types.buf)[valTypeId].semaTypeId;
+            if (!isTypeSymCompat(valSemaTypeId, cstrTypeId)) {
+                panicIncompatibleInitFieldType(vm, cstrTypeId, valSemaTypeId);
+                RETURN(RES_CODE_PANIC);
+            }
+            dataPtr += 5;
+        }
+        NEXT();
+    }
     CASE(ObjectSmall): {
-        uint8_t sid = pc[1];
-        uint8_t startLocal = pc[2];
-        uint8_t numFields = pc[3];
-        ValueResult res = zAllocObjectSmall(vm, sid, stack + startLocal, numFields);
+        u16 typeId = READ_U16(1);
+        u8 startLocal = pc[3];
+        u8 numFields = pc[4];
+        ValueResult res = zAllocObjectSmall(vm, typeId, stack + startLocal, numFields);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
-        stack[pc[4]] = res.val;
-        pc += 5;
+        stack[pc[5]] = res.val;
+        pc += 6;
         NEXT();
     }
     CASE(Object): {
-        u8 typeId = pc[1];
-        u8 startLocal = pc[2];
-        u8 numFields = pc[3];
+        u16 typeId = READ_U16(1);
+        u8 startLocal = pc[3];
+        u8 numFields = pc[4];
         ValueResult res = allocObject(vm, typeId, stack + startLocal, numFields);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
-        stack[pc[4]] = res.val;
-        pc += 5;
+        stack[pc[5]] = res.val;
+        pc += 6;
         NEXT();
     }
     CASE(SetField): {
@@ -1597,7 +1623,8 @@ beginSwitch:
                 Type* type = ((Type*)vm->types.buf) + rightTypeId;
                 uint32_t rightSemaTypeId = type->semaTypeId;
                 if (!isTypeSymCompat(rightSemaTypeId, fieldSemaTypeId)) {
-                    panicIncompatibleFieldType(vm, fieldSemaTypeId, val);
+                    panicIncompatibleFieldType(vm, fieldSemaTypeId, rightSemaTypeId);
+                    release(vm, val);
                     RETURN(RES_CODE_PANIC);
                 }
 

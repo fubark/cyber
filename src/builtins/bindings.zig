@@ -2089,7 +2089,7 @@ pub const ModuleBuilder = struct {
             try cy.module.setField(mod, self.compiler.alloc, fieldNameId, @intCast(i), bt.Any);
         }
         mod.fields = modFields;
-        self.vm.types.buf[typeId].data.numFields = @intCast(fields.len);
+        self.vm.types.buf[typeId].data.object.numFields = @intCast(fields.len);
         return typeId;
     }
 };

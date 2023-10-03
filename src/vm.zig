@@ -822,7 +822,9 @@ pub const VM = struct {
             .nameLen = @intCast(name.len),
             .isHostObject = false,
             .data = .{
-                .numFields = 0,
+                .object = .{
+                    .numFields = 0,
+                },
             },
             .semaTypeId = sTypeId,
         };

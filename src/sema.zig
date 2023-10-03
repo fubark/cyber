@@ -970,7 +970,7 @@ pub fn declareObjectMembers(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             fieldId = field.next;
         }
         mod.fields = fields;
-        c.compiler.vm.types.buf[rtTypeId].data.numFields = i;
+        c.compiler.vm.types.buf[rtTypeId].data.object.numFields = i;
     }
 
     var funcId = body.head.objectDeclBody.funcsHead;

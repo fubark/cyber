@@ -795,7 +795,7 @@ pub const Chunk = struct {
     /// An optional debug sym is only included in Debug builds.
     pub fn pushOptionalDebugSym(self: *Chunk, nodeId: cy.NodeId) !void {
         if (builtin.mode == .Debug or self.compiler.vm.config.genAllDebugSyms) {
-            try self.buf.pushDebugSym(self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc, cy.NullId);
+            try self.buf.pushFailableDebugSym(self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc, cy.NullId);
         }
     }
 
@@ -883,13 +883,13 @@ pub const Chunk = struct {
         }
     }
 
-    pub fn pushDebugSym(self: *Chunk, nodeId: cy.NodeId) !void {
+    pub fn pushFailableDebugSym(self: *Chunk, nodeId: cy.NodeId) !void {
         const unwindTempIdx = try self.getLastUnwindTempIndex();
-        try self.buf.pushDebugSym(self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc, unwindTempIdx);
+        try self.buf.pushFailableDebugSym(self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc, unwindTempIdx);
     }
 
-    fn pushDebugSymAt(self: *Chunk, pc: usize, nodeId: cy.NodeId, unwindTempIdx: u32) !void {
-        try self.buf.pushDebugSym(pc, self.id, nodeId, self.curBlock.frameLoc, unwindTempIdx);
+    fn pushFailableDebugSymAt(self: *Chunk, pc: usize, nodeId: cy.NodeId, unwindTempIdx: u32) !void {
+        try self.buf.pushFailableDebugSym(pc, self.id, nodeId, self.curBlock.frameLoc, unwindTempIdx);
     }
 
     pub fn getModule(self: *Chunk) *cy.Module {
@@ -899,6 +899,7 @@ pub const Chunk = struct {
 
 const GenericItem = extern union {
     nodeId: cy.NodeId,
+    idx: u32,
 };
 
 test "chunk internals." {

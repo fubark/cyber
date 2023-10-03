@@ -499,8 +499,9 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 }
             } else if (left.node_t == .accessExpr) {
                 const res = try accessExpr(c, node.head.left_right.left);
-                const rightT = try semaExpr(c, node.head.left_right.right);
-                if (rightT != bt.Dynamic and res.recvT != bt.Any) {
+
+                const rightT = try semaExprCstr(c, node.head.left_right.right, res.exprT, false);
+                if (rightT != bt.Dynamic) {
                     // Compile-time type check on the field.
                     if (!types.isTypeSymCompat(c.compiler, rightT, res.exprT)) {
                         const fieldTypeName = getSymName(c.compiler, res.exprT);

@@ -1400,6 +1400,22 @@ test "Typed object fields." {
         );
     }}.func);
 
+    // Set field with exact type.
+    try evalPass(.{},
+        \\type S object:
+        \\  a float
+        \\var o = S{ a: 123.0 }
+        \\o.a = 234.0
+    );
+
+    // Set field inferring rhs.
+    try evalPass(.{},
+        \\type S object:
+        \\  a float
+        \\var o = S{ a: 123.0 }
+        \\o.a = 234
+    );
+
     // Set field with incompatible type. Static rhs.
     try eval(.{ .silent = true },
         \\type S object:

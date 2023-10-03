@@ -153,13 +153,6 @@ type Student object:    -- Creates a new type named `Student`
     gpa  float
 ```
 
-Circular type dependencies are allowed.
-```cy
-type Node object:
-    val  any
-    next Node      -- Valid type specifier.
-```
-
 Instantiating a new object does not require typed fields to be initialized. Missing field values will default to their [zero value](#zero-values):
 ```cy
 var s = Student{}
@@ -168,8 +161,21 @@ print s.age        -- Prints "0"
 print s.gpa        -- Prints "0.0"
 ```
 
-Invoking the zero initializer is not allowed for circular dependencies:
+Circular type dependencies are allowed if the object can be initialized:
+> _Planned Feature: Optional types are not currently supported._
 ```cy
+type Node object:
+    val  any
+    next Node?     -- Valid type specifier.
+```
+In this example, `next` has an optional `Node?` type so it can be initialized to `none` when creating a new `Node` object.
+
+The following example will fail because this version of `Node` can not be initialized:
+```cy
+type Node object:
+    val  any
+    next Node
+
 var n = Node{}     -- CompileError. Can not zero initialize `next`
                    -- because of circular dependency.
 ```
@@ -189,6 +195,7 @@ The following shows the zero values of builtin or created types.
 |`@host type S object`|`S.$zero()`|
 |`dynamic`|`none`|
 |`any`|`none`|
+|`S?`|`none`|
 
 ### Type aliases.
 A type alias is declared from a single line `type` statement. This creates a new type symbol for an existing data type.

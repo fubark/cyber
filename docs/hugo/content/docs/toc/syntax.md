@@ -159,7 +159,7 @@ For this use case, you can use a declaration block.
 var myImage:
     var img = loadImage('me.png')
     img.resize(100, 100)
-    img.filter(#blur, 5)
+    img.filter(.blur, 5)
     break img
 ```
 The final resulting value that is assigned to the static variable is provided by a `break` statement. If a `break` statement is not provided, `none` is assigned instead.

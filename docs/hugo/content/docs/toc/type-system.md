@@ -105,7 +105,7 @@ The following builtin types are available in every module: `boolean`, `float`, `
 
 ### Typed variables.
 A typed local variable can be declared by attaching a type specifier after its name. The value assigned to the variable must satisfy the type constraint or a compile error is issued.
-> _Incomplete: Only function parameter and object member type specifiers have meaning to the VM at the moment. Variable type specifiers have no meaning and will be discarded._
+> _Incomplete: Only function parameter and object field type specifiers have meaning to the VM at the moment. Variable type specifiers have no meaning and will be discarded._
 ```cy
 var a float = 123
 
@@ -128,7 +128,7 @@ var foo Foo = none   -- CompileError. Type `Foo` is not declared.
 ```
 
 ### `auto` declarations.
-The `auto` declaration infers the type of the assigned value and initializes the variable with the same type.
+The `auto` declaration creates a new variable with the type inferred from the initializer. 
 > _Planned Feature_
 ```cy
 -- Initialized as an `int` variable.
@@ -145,7 +145,7 @@ auto a = getValue()
 ```
 
 ### Object types.
-A `type object` declaration creates a new object type. Member types are declared with a type specifier after their name.
+A `type object` declaration creates a new object type. Field types are optional and declared with a type specifier after their name.
 ```cy
 type Student object:    -- Creates a new type named `Student`
     name string
@@ -153,12 +153,42 @@ type Student object:    -- Creates a new type named `Student`
     gpa  float
 ```
 
-Circular type references are allowed.
+Circular type dependencies are allowed.
 ```cy
 type Node object:
     val  any
     next Node      -- Valid type specifier.
 ```
+
+Instantiating a new object does not require typed fields to be initialized. Missing field values will default to their [zero value](#zero-values):
+```cy
+var s = Student{}
+print s.name       -- Prints ""
+print s.age        -- Prints "0"
+print s.gpa        -- Prints "0.0"
+```
+
+Invoking the zero initializer is not allowed for circular dependencies:
+```cy
+var n = Node{}     -- CompileError. Can not zero initialize `next`
+                   -- because of circular dependency.
+```
+
+### Zero values.
+The following shows the zero values of builtin or created types.
+|Type|Zero value|
+|--|--|
+|`boolean`|`false`|
+|`int`|`0`|
+|`float`|`0.0`|
+|`string`|`''`|
+|`rawstring`|`''`|
+|`List`|`[]`|
+|`Map`|`{}`|
+|`type S object`|`S{}`|
+|`@host type S object`|`S.$zero()`|
+|`dynamic`|`none`|
+|`any`|`none`|
 
 ### Type aliases.
 A type alias is declared from a single line `type` statement. This creates a new type symbol for an existing data type.

@@ -956,7 +956,10 @@ pub fn declareObjectMembers(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             if (!cy.module.symNameExists(mod, fieldNameId)) {
                 try cy.module.setField(mod, c.alloc, fieldNameId, i, fieldType);
-                fields[i] = .{ .nameId = @intCast(fieldNameId), .required = fieldType == bt.Dynamic };
+                fields[i] = .{
+                    .nameId = fieldNameId,
+                    .typeId = fieldType,
+                };
             } else {
                 return reportDuplicateModSym(c, mod, fieldNameId, nodeId);
             }
@@ -1553,14 +1556,10 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
                             }
                         }
 
-                        // Check that all required type fields were set.
+                        // Check that unset fields can be zero initialized.
                         for (fieldsData, 0..) |item, fIdx| {
                             if (item.nodeId == cy.NullId) {
-                                if (mod.fields[fIdx].required) {
-                                    continue;
-                                }
-                                const name = getName(c.compiler, mod.fields[fIdx].nameId);
-                                return c.reportErrorAt("Expected required field `{}` in initializer.", &.{v(name)}, nodeId);
+                                try types.checkForZeroInit(c, mod.fields[fIdx].typeId, nodeId);
                             }
                         }
 

@@ -218,3 +218,104 @@ pub fn isRcCandidateType(c: *cy.VMcompiler, id: TypeId) bool {
 pub fn getTypeName(c: *cy.VMcompiler, id: TypeId) []const u8 {
     return sema.getSymName(c, id);
 }
+
+pub fn checkForZeroInit(c: *cy.Chunk, typeId: TypeId, nodeId: cy.NodeId) !void {
+    var res = hasZeroInit(c, typeId);
+    if (res == .missingEntry) {
+        const sym = c.compiler.sema.getSymbol(typeId);
+        const modId = sym.inner.object.modId;
+        res = try visitTypeHasZeroInit(c, modId);
+    }
+    switch (res) {
+        .hasZeroInit => return,
+        .missingEntry => cy.unexpected(),
+        .unsupported => {
+            const name = getTypeName(c.compiler, typeId);
+            return c.reportErrorAt("Unsupported zero initializer for `{}`.", &.{v(name)}, nodeId);
+        },
+        .circularDep => {
+            const name = getTypeName(c.compiler, typeId);
+            return c.reportErrorAt("Can not zero initialize `{}` because of circular dependency.", &.{v(name)}, nodeId);
+        }
+    }
+}
+
+const ZeroInitResult = enum {
+    hasZeroInit,
+    missingEntry,
+    unsupported,
+    circularDep,
+};
+
+fn hasZeroInit(c: *cy.Chunk, typeId: TypeId) ZeroInitResult {
+    switch (typeId) {
+        bt.Dynamic,
+        bt.Any,
+        bt.Boolean,
+        bt.Integer,
+        bt.Float,
+        bt.List,
+        bt.Map,
+        // bt.Rawstring,
+        bt.String => return .hasZeroInit,
+        else => {
+            const sym = c.compiler.sema.getSymbol(typeId);
+            if (sym.symT == .object) {
+                const modId = sym.inner.object.modId;
+                if (c.typeDepsMap.get(modId)) |entryId| {
+                    if (!c.typeDeps.items[entryId].visited) {
+                        // Still being visited, which indicates a circular reference.
+                        return .circularDep;
+                    }
+                    if (c.typeDeps.items[entryId].hasCircularDep) {
+                        return .circularDep;
+                    }
+                    if (c.typeDeps.items[entryId].hasUnsupported) {
+                        return .unsupported;
+                    }
+                    return .hasZeroInit;
+                } else {
+                    return .missingEntry;
+                }
+            }
+            return .unsupported;
+        },
+    }
+}
+
+fn visitTypeHasZeroInit(c: *cy.Chunk, modId: cy.ModuleId) !ZeroInitResult {
+    const entryId = c.typeDeps.items.len;
+    try c.typeDeps.append(c.alloc, .{ .visited = false, .hasCircularDep = false, .hasUnsupported = false });
+    try c.typeDepsMap.put(c.alloc, modId, @intCast(entryId));
+
+    const mod = c.compiler.sema.getModule(modId);
+    var finalRes = ZeroInitResult.hasZeroInit;
+    for (mod.fields) |field| {
+        var res = hasZeroInit(c, field.typeId);
+        if (res == .missingEntry) {
+            res = try visitTypeHasZeroInit(c, modId);
+        }
+        switch (res) {
+            .hasZeroInit => continue,
+            .missingEntry => cy.unexpected(),
+            .unsupported => {
+                if (finalRes == .hasZeroInit) {
+                    finalRes = .unsupported;
+                }
+            },
+            .circularDep => {
+                if (finalRes == .hasZeroInit) {
+                    finalRes = .circularDep;
+                }
+            },
+        }
+    }
+
+    if (finalRes == .circularDep) {
+        c.typeDeps.items[entryId].hasCircularDep = true;
+    } else if (finalRes == .unsupported) {
+        c.typeDeps.items[entryId].hasUnsupported = true;
+    }
+    c.typeDeps.items[entryId].visited = true;
+    return finalRes;
+}

@@ -90,6 +90,11 @@ pub const Chunk = struct {
     /// Using modules.
     usingModules: std.ArrayListUnmanaged(cy.ModuleId),
 
+    /// Object type dependency graph.
+    /// This is only needed for default initializers so it is created on demand per chunk.
+    typeDeps: std.ArrayListUnmanaged(TypeDepNode),
+    typeDepsMap: std.AutoHashMapUnmanaged(cy.ModuleId, u32),
+
     ///
     /// Codegen pass
     ///
@@ -206,6 +211,8 @@ pub const Chunk = struct {
             .exprDoneStack = undefined,
             .exprStack = undefined,
             .llvmFuncs = undefined,
+            .typeDeps = .{},
+            .typeDepsMap = .{},
         };
         if (cy.hasJIT) {
             new.tempTypeRefs = .{};
@@ -263,6 +270,9 @@ pub const Chunk = struct {
             self.exprStack.deinit(self.alloc);
             self.alloc.free(self.llvmFuncs);
         }
+
+        self.typeDeps.deinit(self.alloc);
+        self.typeDepsMap.deinit(self.alloc);
 
         self.semaFuncDecls.deinit(self.alloc);
         self.localSyms.deinit(self.alloc);
@@ -982,4 +992,10 @@ const ExprState = struct {
 pub const LLVM_Func = struct {
     typeRef: llvm.TypeRef,
     funcRef: llvm.ValueRef,
+};
+
+pub const TypeDepNode = struct {
+    visited: bool,
+    hasCircularDep: bool,
+    hasUnsupported: bool,
 };

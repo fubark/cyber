@@ -1295,7 +1295,7 @@ test "Objects." {
         \\var o = S{ b: 100 }
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Missing field `b` in `S`.
+            \\CompileError: Field `b` does not exist in `S`.
             \\
             \\main:3:12:
             \\var o = S{ b: 100 }
@@ -1348,14 +1348,34 @@ test "Typed object fields." {
         \\test.eq(s.x, 123.0)
     );
 
-    // Missing required field.
-    try eval(.{ .silent = true },
+    // Zero initialize missing field.
+    try evalPass(.{},
+        \\import test
         \\type S object:
         \\  a float
         \\var o = S{}
+        \\test.eq(o.a, 0.0)
+    );
+
+    // Zero initialize missing field. Nested object.
+    try evalPass(.{},
+        \\import test
+        \\type T object:
+        \\  a float
+        \\type S object:
+        \\  a T
+        \\var o = S{}
+        \\test.eq(o.a.a, 0.0)
+    );
+
+    // Zero initialize field with circular dep.
+    try eval(.{ .silent = true },
+        \\type S object:
+        \\  a S
+        \\var o = S{}
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Expected required field `a` in initializer.
+            \\CompileError: Can not zero initialize `S` because of circular dependency.
             \\
             \\main:3:9:
             \\var o = S{}

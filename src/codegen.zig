@@ -284,11 +284,15 @@ fn objectInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
                 entryId = entry.next;
             }
 
-            for (fieldsData) |item| {
+            for (fieldsData, 0..) |item, fidx| {
                 if (item.nodeId == cy.NullId) {
-                    // Push none.
-                    const local = try self.rega.consumeNextTemp();
-                    try self.buf.pushOp1(.none, local);
+                    if (mod.fields[fidx].typeId == bt.Dynamic) {
+                        const local = try self.rega.consumeNextTemp();
+                        try self.buf.pushOp1(.none, local);
+                    } else {
+                        const local = try self.rega.consumeNextTemp();
+                        try genZeroInit(self, mod.fields[fidx].typeId, local, nodeId);
+                    }
                 } else {
                     const entry = self.nodes[item.nodeId];
                     _ = try expression(self, entry.head.mapEntry.right, RegisterCstr.tempMustRetain);
@@ -309,6 +313,55 @@ fn objectInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     }
     const oname = self.getNodeTokenString(stype);
     return self.reportErrorAt("Expected object type: `{}`", &.{v(oname)}, nodeId);
+}
+
+fn genZeroInit(c: *cy.Chunk, typeId: types.TypeId, dst: RegisterId, debugNodeId: cy.NodeId) !void {
+    switch (typeId) {
+        bt.Any,
+        bt.Dynamic => try c.buf.pushOp1(.none, dst),
+        bt.Boolean => try c.buf.pushOp1(.false, dst),
+        bt.Integer => _ = try constInt(c, 0, dst),
+        bt.Float => _ = try constFloat(c, 0, dst),
+        bt.List => {
+            try c.pushOptionalDebugSym(debugNodeId);
+            try c.buf.pushOp3(.list, dst, 0, dst);
+        },
+        bt.Map => {
+            try c.buf.pushOp1(.mapEmpty, dst);
+        },
+        // bt.Rawstring => {
+        // },
+        bt.String => {
+            _ = try string(c, "", dst);
+        },
+        else => {
+            const sym = c.compiler.sema.getSymbol(typeId);
+            if (sym.symT == .object) {
+                // Unwind stack registers.
+                const tempStart = c.rega.getNextTemp();
+                defer c.rega.setNextTemp(tempStart);
+
+                const modId = sym.inner.object.modId;
+                const mod = c.compiler.sema.getModule(modId);
+
+                for (mod.fields) |field| {
+                    const local = try c.rega.consumeNextTemp();
+                    try genZeroInit(c, field.typeId, local, debugNodeId);
+                }
+
+                const rtTypeId = sym.getObjectTypeId(c.compiler.vm).?;
+                if (mod.fields.len <= 4) {
+                    try c.pushOptionalDebugSym(debugNodeId);
+                    try c.buf.pushOpSlice(.objectSmall, &[_]u8{ @intCast(rtTypeId), tempStart, @intCast(mod.fields.len), dst });
+                } else {
+                    try c.pushDebugSym(debugNodeId);
+                    try c.buf.pushOpSlice(.object, &[_]u8{ @intCast(rtTypeId), tempStart, @intCast(mod.fields.len), dst });
+                }
+            } else {
+                return error.Unsupported;
+            }
+        },
+    }
 }
 
 fn mapInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
@@ -1010,7 +1063,7 @@ fn accessExpr(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
             }
         }
     } else {
-        return field(self, nodeId, req);
+        return genField(self, nodeId, req);
     }
 }
 
@@ -1030,7 +1083,7 @@ fn releaseIfRetainedTemp(c: *cy.Chunk, val: GenValue) !void {
     return releaseIfRetainedTempAt(c, val, c.curNodeId);
 }
 
-fn field(self: *cy.Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
+fn genField(self: *cy.Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     const node = self.nodes[nodeId];
     const leftId = node.head.accessExpr.left;
     const rightId = node.head.accessExpr.right;

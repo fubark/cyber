@@ -413,8 +413,8 @@ const ModuleFuncNode = struct {
 };
 
 pub const FieldInfo = packed struct {
-    nameId: u31,
-    required: bool,
+    nameId: sema.NameSymId,
+    typeId: types.TypeId,
 };
 
 pub fn getSym(mod: *const Module, nameId: sema.NameSymId) ?ModuleSym {

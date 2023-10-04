@@ -457,8 +457,8 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 c.nodes[nodeId].head.opAssignStmt.semaGenStrat = .generic;
                 _ = try assignVar(c, node.head.opAssignStmt.left, rtype);
             } else if (left.node_t == .accessExpr) {
-                _ = try accessExpr(c, node.head.opAssignStmt.left);
-                _ = try semaExpr(c, node.head.opAssignStmt.right);
+                const accessLeft = try accessExpr(c, node.head.opAssignStmt.left);
+                _ = try semaExprCstr(c, node.head.opAssignStmt.right, accessLeft.exprT, false);
                 c.nodes[nodeId].head.opAssignStmt.semaGenStrat = .generic;
             } else if (left.node_t == .indexExpr) {
                 _ = try semaExpr(c, node.head.opAssignStmt.left);
@@ -3709,7 +3709,7 @@ pub fn getAccessExprResult(c: *cy.Chunk, ltype: TypeId, rightName: []const u8) !
     }
     return AccessExprResult{
         .recvT = ltype,
-        .exprT = bt.Any,
+        .exprT = bt.Dynamic,
     };
 }
 
@@ -3796,7 +3796,7 @@ fn accessExpr(self: *cy.Chunk, nodeId: cy.NodeId) !AccessExprResult {
             const recvT = try semaExpr(self, node.head.accessExpr.left);
             return AccessExprResult{
                 .recvT = recvT,
-                .exprT = bt.Any,
+                .exprT = bt.Dynamic,
             };
         }
     } else {
@@ -3804,7 +3804,7 @@ fn accessExpr(self: *cy.Chunk, nodeId: cy.NodeId) !AccessExprResult {
     }
     return AccessExprResult{
         .recvT = bt.Any,
-        .exprT = bt.Any,
+        .exprT = bt.Dynamic,
     };
 }
 

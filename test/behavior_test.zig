@@ -1426,12 +1426,20 @@ test "Typed object fields." {
         \\o.a = 234.0
     );
 
-    // Set field inferring rhs.
+    // Set field inferring rhs type.
     try evalPass(.{},
         \\type S object:
         \\  a float
         \\var o = S{ a: 123.0 }
         \\o.a = 234
+    );
+
+    // Op set field inferring rhs type.
+    try evalPass(.{},
+        \\type S object:
+        \\  a float
+        \\var o = S{ a: 123.0 }
+        \\o.a += 234
     );
 
     // Set field with incompatible type. Static rhs.
@@ -2372,7 +2380,6 @@ test "Local variable declaration." {
             \\
         );
     }}.func);
-
 
     try evalPass(.{}, @embedFile("localvar_decl_test.cy"));
 }

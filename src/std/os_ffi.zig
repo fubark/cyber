@@ -167,7 +167,7 @@ const Context = struct {
             const objType = argType.asPointer(*cy.heap.MetaType);
             try w.print("fromStruct{}(vm, {s})", .{ objType.symId, cval });
         } else if (argType.isObjectType(os.CArrayT)) {
-            const n: u32 = @intFromFloat((try self.ivm.getField(argType, self.nField)).asF64());
+            const n: u32 = @intCast((try self.ivm.getField(argType, self.nField)).asInteger());
             const elem = try self.ivm.getField(argType, self.elemField);
             const elemName = try self.getTempBaseTypeName(elem);
             try w.print("from{s}Array{}(vm, {s})", .{elemName, n, cval});
@@ -526,7 +526,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             try w.print("  Struct{} res;\n", .{objSymId, });
             for (fields.items(), 0..) |field, i| {
                 if (field.isObjectType(os.CArrayT)) {
-                    const n: u32 = @intFromFloat((try ivm.getField(field, ctx.nField)).asF64());
+                    const n: u32 = @intCast((try ivm.getField(field, ctx.nField)).asInteger());
                     const elem = try ivm.getField(field, ctx.elemField);
                     const elemName = try ctx.getTempBaseTypeName(elem);
                     try w.print("  to{s}Array{}(vm, args[{}], &res.f{}[0]);", .{elemName, n, i, i});
@@ -598,7 +598,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             try w.print("  uint64_t* args = (uint64_t*)*((uint64_t*)(val & ~PointerMask) + 1);\n", .{});
             for (0..n) |i| {
                 if (elem.isObjectType(os.CArrayT)) {
-                    const subn: u32 = @intFromFloat((try ivm.getField(elem, ctx.nField)).asF64());
+                    const subn: u32 = @intCast((try ivm.getField(elem, ctx.nField)).asInteger());
                     const subelem = try ivm.getField(elem, ctx.elemField);
                     const subelemName = try ctx.getTempBaseTypeName(subelem);
                     try w.print("  to{s}Array{}(vm, args[{}], &out[0]);", .{subelemName, subn, i});

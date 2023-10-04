@@ -233,10 +233,10 @@ for lines each line:
 
 -- Generate bindLib.
 
-out = out.concat("\nimport os \'os\'\n")
+out = out.concat("\nimport os\n")
 out = out.concat("var lib: createLib()\n")
 out = out.concat("func createLib():\n")
-out = out.concat("  decls = []\n")
+out = out.concat("  var decls = []\n")
 for funcs each fn:
     out = out.concat("  decls.append(os.CFunc\{ sym: '{fn.name}', args: [{fn.params.joinString(', ')}], ret: {fn.ret} \})\n")
 for structs each name:

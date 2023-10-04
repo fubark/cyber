@@ -1516,6 +1516,7 @@ beginSwitch:
             }
             dataPtr += 5;
         }
+        pc = dataPtr;
         NEXT();
     }
     CASE(ObjectSmall): {

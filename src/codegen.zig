@@ -284,8 +284,8 @@ fn objectInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
                 entryId = entry.next;
             }
 
-            var hasDynamicInit = false;
-            const dynamicInitIdxStart = self.stackData.items.len;
+            var reqTypeCheck = false;
+            const typeCheckIdxStart = self.stackData.items.len;
             for (fieldsData, 0..) |item, fidx| {
                 if (item.nodeId == cy.NullId) {
                     if (mod.fields[fidx].typeId == bt.Dynamic) {
@@ -298,17 +298,18 @@ fn objectInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
                 } else {
                     const entry = self.nodes[item.nodeId];
                     const exprv = try expression(self, entry.head.mapEntry.right, RegisterCstr.tempMustRetain);
-                    if (exprv.vtype == bt.Dynamic) {
-                        hasDynamicInit = true;
+                    if (mod.fields[fidx].typeId != bt.Dynamic and exprv.vtype == bt.Dynamic) {
+                        reqTypeCheck = true;
                         try self.stackData.append(self.alloc, .{ .idx = @intCast(fidx) });
                     }
                 }
             }
 
-            if (hasDynamicInit) {
+            if (reqTypeCheck) {
                 try self.pushFailableDebugSym(nodeId);
-                try self.buf.pushOp2(.objectTypeCheck, tempStart, @intCast(mod.fields.len));
-                for (self.stackData.items[dynamicInitIdxStart..]) |fidx| {
+                const typeCheckIdxes = self.stackData.items[typeCheckIdxStart..];
+                try self.buf.pushOp2(.objectTypeCheck, tempStart, @intCast(typeCheckIdxes.len));
+                for (typeCheckIdxes) |fidx| {
                     const start = self.buf.ops.items.len;
                     try self.buf.pushOperands(&.{ @as(u8, @intCast(fidx.idx)), 0, 0, 0, 0 });
                     self.buf.setOpArgU32(start + 1, mod.fields[fidx.idx].typeId);
@@ -3325,6 +3326,9 @@ fn genMethodDecl(self: *Chunk, typeId: rt.TypeId, node: cy.Node, func: sema.Func
     const jumpPc = try self.pushEmptyJump();
 
     try self.pushSemaBlock(func.semaBlockId);
+    if (self.compiler.config.genDebugFuncMarkers) {
+        try self.compiler.buf.pushDebugFuncStart(node.head.func.semaDeclId, self.id);
+    }
 
     const opStart: u32 = @intCast(self.buf.ops.items.len);
     try self.reserveFuncParams(func.numParams);
@@ -3335,6 +3339,9 @@ fn genMethodDecl(self: *Chunk, typeId: rt.TypeId, node: cy.Node, func: sema.Func
 
     const stackSize = self.getMaxUsedRegisters();
     self.popSemaBlock();
+    if (self.compiler.config.genDebugFuncMarkers) {
+        try self.compiler.buf.pushDebugFuncEnd(node.head.func.semaDeclId, self.id);
+    }
 
     self.patchJumpToCurPc(jumpPc);
 

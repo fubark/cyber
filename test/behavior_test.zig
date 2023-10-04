@@ -1322,6 +1322,46 @@ test "Objects." {
     }}.func);
 }
 
+test "Object fields." {
+    // Initialize field with dynamic value does not gen `objectTypeCheck`.
+    try eval(.{ .silent = true },
+        \\type S object:
+        \\  a
+        \\func foo():
+        \\  return 123
+        \\var s = S{a: foo()}
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        _ = try res;
+
+        const ops = run.vm.internal().ops;
+        var pc: u32 = 0;
+        while (pc < ops.len) {
+            if (@as(cy.OpCode, @enumFromInt(ops[pc].val)) == .objectTypeCheck) {
+                return error.Failed;
+            }
+            pc += cy.bytecode.getInstLenAt(ops.ptr + pc);
+        }
+    }}.func);
+
+    // Initialize field with typed value does not gen `objectTypeCheck`.
+    try eval(.{ .silent = true },
+        \\type S object:
+        \\  a
+        \\var s = S{a: 123}
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        _ = try res;
+
+        const ops = run.vm.internal().ops;
+        var pc: u32 = 0;
+        while (pc < ops.len) {
+            if (@as(cy.OpCode, @enumFromInt(ops[pc].val)) == .objectTypeCheck) {
+                return error.Failed;
+            }
+            pc += cy.bytecode.getInstLenAt(ops.ptr + pc);
+        }
+    }}.func);
+}
+
 test "Typed object fields." {
     // Field declaration ends the file without parser error.
     try evalPass(.{},

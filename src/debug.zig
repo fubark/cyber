@@ -56,6 +56,7 @@ pub fn countNewLines(str: []const u8, outLastIdx: *u32) u32 {
     return count;
 }
 
+/// TODO: Memoize this function.
 pub fn getDebugSymByPc(vm: *const cy.VM, pc: usize) ?cy.DebugSym {
     return getDebugSymFromTable(vm.debugTable, pc);
 }
@@ -428,39 +429,6 @@ pub fn buildStackTrace(self: *cy.VM) !void {
     }
 
     self.stackTrace.frames = try frames.toOwnedSlice(self.alloc);
-}
-
-/// Given pc position, return the end locals pc in the same frame.
-/// TODO: Memoize this function.
-pub fn pcToEndLocalsPc(vm: *const cy.VM, pc: usize) u32 {
-    const idx = indexOfDebugSym(vm, pc) orelse {
-        cy.panicFmt("Missing debug symbol: {}", .{vm.ops[pc].opcode()});
-    };
-    const sym = vm.debugTable[idx];
-    if (sym.frameLoc != cy.NullId) {
-        const chunk = vm.compiler.chunks.items[sym.file];
-        const node = chunk.nodes[sym.frameLoc];
-        return chunk.semaFuncDecls.items[node.head.func.semaDeclId].genEndLocalsPc;
-    } else {
-        // Located in the main block.
-        const chunk = vm.compiler.chunks.items[0];
-        const node = chunk.nodes[0];
-        // Can be NullId if `shouldGenMainScopeReleaseOps` is false.
-        return node.head.root.genEndLocalsPc;
-    }
-}
-
-pub fn debugSymToEndLocalsPc(vm: *const cy.VM, sym: cy.DebugSym) u32 {
-    if (sym.frameLoc != cy.NullId) {
-        const chunk = vm.compiler.chunks.items[sym.file];
-        return chunk.getNodeFuncDecl(sym.frameLoc).genEndLocalsPc;
-    } else {
-        // Located in the main block.
-        const chunk = vm.compiler.chunks.items[0];
-        const node = chunk.nodes[0];
-        // Can be NullId if `shouldGenMainScopeReleaseOps` is false.
-        return node.head.root.genEndLocalsPc;
-    }
 }
 
 pub const ObjectTrace = struct {

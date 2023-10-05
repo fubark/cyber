@@ -2055,7 +2055,7 @@ pub const ModuleBuilder = struct {
     ) !void {
         const funcSigId = try sema.ensureFuncSig(self.compiler, params, ret);
         const funcSig = self.compiler.sema.getFuncSig(funcSigId);
-        if (funcSig.isParamsTyped) {
+        if (funcSig.reqCallTypeCheck) {
             try self.vm.addMethod(typeId, mgId, rt.MethodInit.initHostTyped(funcSigId, ptr, @intCast(params.len)));
         } else {
             try self.vm.addMethod(typeId, mgId, rt.MethodInit.initHostUntyped(funcSigId, ptr, @intCast(params.len)));

@@ -139,12 +139,14 @@ pub const ByteCodeBuffer = struct {
         });
     }
 
-    pub fn pushFailableDebugSym(self: *ByteCodeBuffer, pc: usize, file: u32, loc: u32, frameLoc: u32, unwindTempIdx: u32) !void {
+    pub fn pushFailableDebugSym(self: *ByteCodeBuffer, pc: usize, file: u32, loc: u32, frameLoc: u32, unwindTempIdx: u32, localStart: u8, localEnd: u8) !void {
         try self.debugTable.append(self.alloc, .{
             .pc = @intCast(pc),
             .loc = loc,
             .file = @intCast(file),
             .frameLoc = frameLoc,
+            .localStart = localStart,
+            .localEnd = localEnd,
         });
         try self.debugTempIndexTable.append(self.alloc, unwindTempIdx);
     }
@@ -388,12 +390,6 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extr
             const dst = pc[3].val;
             fmt.printStderr("{} {} left={}, right={}, dst={}", &.{v(pcOffset), v(code), v(left), v(right), v(dst)});
         },
-        .field => {
-            const recv = pc[1].val;
-            const dst = pc[2].val;
-            const symId = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            fmt.printStderr("{} {} recv={}, dst={}, sym={}", &.{v(pcOffset), v(code), v(recv), v(dst), v(symId)});
-        },
         .fieldRetain => {
             const recv = pc[1].val;
             const dst = pc[2].val;
@@ -491,11 +487,6 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extr
             const index = pc[2].val;
             const right = pc[3].val;
             fmt.printStderr("{} {} list={}, index={}, right={}", &.{v(pcOffset), v(code), v(list), v(index), v(right)});
-        },
-        .init => {
-            const start = pc[1].val;
-            const numLocals = pc[2].val;
-            fmt.printStderr("{} {} start={}, numLocals={}", &.{v(pcOffset), v(code), v(start), v(numLocals) });
         },
         .coinit => {
             const startArgs = pc[1].val;
@@ -609,7 +600,15 @@ pub const DebugSym = extern struct {
     frameLoc: u32,
 
     /// CompileChunkId.
-    file: u32,
+    file: u16,
+
+    /// Which locals are alive before this instruction.
+    localStart: u8,
+    localEnd: u8,
+
+    pub fn getLocals(sym: cy.DebugSym) cy.IndexSlice(u8) {
+        return cy.IndexSlice(u8).init(sym.localStart, @intCast(sym.localEnd));
+    }
 };
 
 const DebugMarkerType = enum(u8) {
@@ -687,7 +686,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numVars = pc[1].val;
             return 2 + numVars;
         },
-        .init,
         .popTry,
         .copy,
         .copyRetainSrc,
@@ -763,8 +761,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         },
         .fieldRetain,
         .fieldRetainIC,
-        .field,
-        .fieldIC,
         .forRangeInit => {
             return 8;
         },
@@ -878,8 +874,6 @@ pub const OpCode = enum(u8) {
     /// [calleeLocal] [numArgs] [numRet=0/1]
     call = vmc.CodeCall,
 
-    field = vmc.CodeField,
-    fieldIC = vmc.CodeFieldIC,
     fieldRetain = vmc.CodeFieldRetain,
     fieldRetainIC = vmc.CodeFieldRetainIC,
     lambda = vmc.CodeLambda,
@@ -904,10 +898,6 @@ pub const OpCode = enum(u8) {
     /// [startLocal] [exprCount] [dst] [..string consts]
     stringTemplate = vmc.CodeStringTemplate,
     negFloat = vmc.CodeNegFloat,
-
-    /// Initialize locals starting from `startLocal` to the `none` value.
-    /// init [startLocal] [numLocals]
-    init = vmc.CodeInit,
 
     objectTypeCheck = vmc.CodeObjectTypeCheck,
     objectSmall = vmc.CodeObjectSmall,
@@ -999,7 +989,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 109);
+    try t.eq(std.enums.values(OpCode).len, 106);
     try t.eq(@sizeOf(Inst), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

@@ -162,6 +162,7 @@ pub const hasCLI = build_options.cli;
 
 const build_options = @import("build_options");
 pub const Trace = build_options.trace;
+pub const TraceNewObject = Trace and false;
 pub const TrackGlobalRC = build_options.trackGlobalRC;
 pub const Malloc = build_options.malloc;
 

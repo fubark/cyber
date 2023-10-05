@@ -282,7 +282,7 @@ export fn csNewVmObject(uvm: *cy.UserVM, typeId: rt.TypeId, fieldsPtr: [*]const 
     const entry = &vm.types.buf[typeId];
     std.debug.assert(!entry.isHostObject);
 
-    std.debug.assert(numFields == entry.data.numFields);
+    std.debug.assert(numFields == entry.data.object.numFields);
     const fields = fieldsPtr[0..numFields];
     for (fields) |field| {
         cy.arc.retain(vm, field);

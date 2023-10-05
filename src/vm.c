@@ -672,8 +672,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Ret1),
         JENTRY(Ret0),
         JENTRY(Call),
-        JENTRY(Field),
-        JENTRY(FieldIC),
         JENTRY(FieldRetain),
         JENTRY(FieldRetainIC),
         JENTRY(Lambda),
@@ -694,7 +692,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CompareNot),
         JENTRY(StringTemplate),
         JENTRY(NegFloat),
-        JENTRY(Init),
         JENTRY(ObjectTypeCheck),
         JENTRY(ObjectSmall),
         JENTRY(Object),
@@ -1308,57 +1305,29 @@ beginSwitch:
         }
         RETURN(res.code);
     }
-    CASE(Field): {
-#define FIELD_BODY(v) \
-    uint8_t left = pc[1]; \
-    uint8_t dst = pc[2]; \
-    uint16_t symId = READ_U16(3); \
-    Value recv = stack[left]; \
-    if (VALUE_IS_POINTER(recv)) { \
-        HeapObject* obj = VALUE_AS_HEAPOBJECT(recv); \
-        uint8_t offset = getFieldOffset(vm, obj, symId); \
-        if (offset != NULL_U8) { \
-            stack[dst] = objectGetField((Object*)obj, offset); \
-            pc[0] = FIELD_BODY_IC_##v; \
-            WRITE_U16(5, OBJ_TYPEID(obj)); \
-            pc[7] = offset; \
-        } else { \
-            stack[dst] = zGetFieldFallback(vm, obj, ((FieldSymbolMap*)vm->fieldSyms.buf)[symId].nameId); \
-        } \
-        FIELD_BODY_END_##v \
-        pc += 8; \
-        NEXT(); \
-    } else { \
-        panicFieldMissing(vm); \
-        RETURN(RES_CODE_PANIC); \
-    }
-#define FIELD_BODY_IC_0 CodeFieldIC
-#define FIELD_BODY_END_0 
-        FIELD_BODY(0);
-    }
-    CASE(FieldIC): {
-        Value recv = stack[pc[1]];
+    CASE(FieldRetain): {
+        uint8_t left = pc[1];
         uint8_t dst = pc[2];
+        uint16_t symId = READ_U16(3);
+        Value recv = stack[left];
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            if (OBJ_TYPEID(obj) == READ_U16(5)) {
-                stack[dst] = objectGetField((Object*)obj, pc[7]);
-                pc += 8;
-                NEXT();
+            uint8_t offset = getFieldOffset(vm, obj, symId);
+            if (offset != NULL_U8) {
+                stack[dst] = objectGetField((Object*)obj, offset);
+                pc[0] = CodeFieldRetainIC;
+                WRITE_U16(5, OBJ_TYPEID(obj));
+                pc[7] = offset;
             } else {
-                // Deoptimize.
-                pc[0] = CodeField;
-                NEXT();
+                stack[dst] = zGetFieldFallback(vm, obj, ((FieldSymbolMap*)vm->fieldSyms.buf)[symId].nameId);
             }
+            retain(vm, stack[dst]);
+            pc += 8;
+            NEXT();
         } else {
             panicFieldMissing(vm);
             RETURN(RES_CODE_PANIC);
         }
-    }
-    CASE(FieldRetain): {
-#define FIELD_BODY_IC_1 CodeFieldRetainIC
-#define FIELD_BODY_END_1 retain(vm, stack[dst]);
-        FIELD_BODY(1);
     }
     CASE(FieldRetainIC): {
         Value recv = stack[pc[1]];
@@ -1370,17 +1339,15 @@ beginSwitch:
                 retain(vm, stack[dst]);
                 pc += 8;
                 NEXT();
+            } else {
+                // Deoptimize.
+                pc[0] = CodeFieldRetain;
+                NEXT();
             }
         } else {
-            // return vm.getFieldMissingSymbolError();
-            RETURN(RES_CODE_UNKNOWN);
+            panicFieldMissing(vm);
+            RETURN(RES_CODE_PANIC);
         }
-        // Deoptimize.
-        pc[0] = CodeFieldRetain;
-        // framePtr[dst] = try @call(.never_inline, gvm.getField, .{ recv, pc[3].arg });
-        // retain(vm, framePtr[dst]);
-        // pc += 7;
-        NEXT();
     }
     CASE(Lambda): {
         uint32_t funcPc = ((uint32_t)getInstOffset(vm, pc)) - pc[1];
@@ -1488,16 +1455,6 @@ beginSwitch:
     }
     CASE(NegFloat): {
         FLOAT_UNOP(stack[pc[2]] = VALUE_FLOAT(-VALUE_AS_FLOAT(val)))
-    }
-    CASE(Init): {
-        uint8_t start = pc[1];
-        uint8_t numLocals = pc[2];
-        uint8_t i;
-        for (i = start; i < start + numLocals; i += 1) {
-            stack[i] = VALUE_NONE;
-        }
-        pc += 3;
-        NEXT();
     }
     CASE(ObjectTypeCheck): {
         u8 startLocal = pc[1];

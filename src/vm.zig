@@ -584,14 +584,7 @@ pub const VM = struct {
         }
 
         tt = cy.debug.timer();
-        defer {
-            tt.endPrint("eval");
-            if (cy.Trace) {
-                if (cy.verbose) {
-                    self.dumpInfo() catch fatal();
-                }
-            }
-        }
+        defer tt.endPrint("eval");
 
         return self.evalByteCode(res.buf);
     }

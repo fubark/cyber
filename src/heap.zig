@@ -578,6 +578,9 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
                 self.heapFreeTail = self.heapFreeHead;
             }
         }
+        if (cy.TraceNewObject) {
+            log.tracev("Alloc pool object: {*}", .{ptr});
+        }
         if (cy.TrackGlobalRC) {
             self.refCounts += 1;
         }

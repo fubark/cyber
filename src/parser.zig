@@ -59,7 +59,6 @@ const keywords = std.ComptimeStringMap(TokenType, .{
 });
 
 const BlockState = struct {
-    placeholder: u32 = 0,
     vars: std.StringHashMapUnmanaged(void),
 
     fn deinit(self: *BlockState, alloc: std.mem.Allocator) void {
@@ -3587,8 +3586,6 @@ pub const Node = struct {
         },
         root: struct {
             headStmt: NodeId,
-            genEndLocalsPc: u32 = NullId,
-            genTempStartReg: u8 = 255,
         },
         child_head: NodeId,
         comptimeExpr: struct {

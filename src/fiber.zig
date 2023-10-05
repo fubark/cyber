@@ -138,10 +138,13 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
     if (pc != cy.NullId) {
         // Check if fiber was previously on a yield op.
         if (vm.ops[pc].opcode() == .coyield) {
-            const jump = @as(*const align(1) u16, @ptrCast(&vm.ops[pc+1])).*;
-            log.debug("release on frame {} {} {}", .{framePtr, pc, pc + jump});
-            // The yield statement already contains the end locals pc.
-            cy.arc.runBlockEndReleaseOps(vm, stack, framePtr, pc + jump);
+            // The yield statement contains the alive locals.
+            const localsStart = vm.ops[pc+1].val;
+            const localsEnd = vm.ops[pc+2].val;
+            log.debug("release on frame {} {} localsEnd: {}", .{framePtr, pc, localsEnd});
+            for (stack[framePtr+localsStart..framePtr+localsEnd]) |val| {
+                cy.arc.release(vm, val);
+            }
 
             // Prev frame.
             pc = @intCast(getInstOffset(vm.ops.ptr, stack[framePtr + 2].retPcPtr) - stack[framePtr + 1].retInfoCallInstOffset());
@@ -153,14 +156,14 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
                 const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
                 const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
 
-                const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
-                log.debug("release on frame {} {} {}", .{framePtr, pc, endLocalsPc});
+                const locals = sym.getLocals();
+                log.debug("release on frame {} {}, locals: {}-{}", .{framePtr, pc, locals.start, locals.end});
 
                 if (tempIdx != cy.NullId) {
                     cy.arc.runTempReleaseOps(vm, stack.ptr + framePtr, tempIdx);
                 }
-                if (endLocalsPc != cy.NullId) {
-                    cy.arc.runBlockEndReleaseOps(vm, stack, framePtr, endLocalsPc);
+                if (locals.len() > 0) {
+                    cy.arc.releaseLocals(vm, vm.stack, framePtr, locals);
                 }
 
                 // Prev frame.
@@ -198,16 +201,16 @@ pub fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]co
         const symIdx = cy.debug.indexOfDebugSym(vm, pcOffset) orelse return error.NoDebugSym;
         const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
         const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
-        const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
-        log.debug("release frame: {} {} {} {}", .{pcOffset, vm.ops[pcOffset].opcode(), tempIdx, endLocalsPc});
+        const locals = sym.getLocals();
+        log.debug("release frame: {} {} {}, locals: {}-{}", .{pcOffset, vm.ops[pcOffset].opcode(), tempIdx, locals.start, locals.end});
 
         // Release temporaries in the current frame.
         if (tempIdx != cy.NullId) {
             cy.arc.runTempReleaseOps(vm, vm.stack.ptr + fpOffset, tempIdx);
         }
 
-        if (endLocalsPc != cy.NullId) {
-            cy.arc.runBlockEndReleaseOps(vm, stack, fpOffset, endLocalsPc);
+        if (locals.len() > 0) {
+            cy.arc.releaseLocals(vm, stack, fpOffset, locals);
         }
         if (fpOffset == 0) {
             // Done, at main block.
@@ -233,14 +236,14 @@ pub fn unwindThrowUntilFramePtr(vm: *cy.VM, startFp: [*]const Value, pc: [*]cons
         const symIdx = cy.debug.indexOfDebugSym(vm, pcOffset) orelse return error.NoDebugSym;
         const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
         const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
-        const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
-        log.debug("release frame: {} {}, tempIdx: {}, endLocals: {}", .{pcOffset, vm.ops[pcOffset].opcode(), tempIdx, endLocalsPc});
+        const locals = sym.getLocals();
+        log.debug("release frame: {} {}, tempIdx: {}, locals: {}-{}", .{pcOffset, vm.ops[pcOffset].opcode(), tempIdx, locals.start, locals.end});
 
         // Release temporaries in the current frame.
         cy.arc.runTempReleaseOps(vm, vm.stack.ptr + fpOffset, tempIdx);
 
-        if (endLocalsPc != cy.NullId) {
-            cy.arc.runBlockEndReleaseOps(vm, vm.stack, fpOffset, endLocalsPc);
+        if (locals.len() > 0) {
+            cy.arc.releaseLocals(vm, vm.stack, fpOffset, locals);
         }
 
         // Record frame.
@@ -358,13 +361,7 @@ pub fn stackGrowTotalCapacity(self: *cy.VM, newCap: usize) !void {
             break;
         }
     }
-    if (self.alloc.resize(self.stack, betterCap)) {
-        self.stack.len = betterCap;
-        self.stackEndPtr = self.stack.ptr + betterCap;
-    } else {
-        self.stack = try self.alloc.realloc(self.stack, betterCap);
-        self.stackEndPtr = self.stack.ptr + betterCap;
-    }
+    try stackGrowTotalCapacityPrecise(self, betterCap);
 }
 
 pub fn stackGrowTotalCapacityPrecise(self: *cy.VM, newCap: usize) !void {
@@ -374,8 +371,20 @@ pub fn stackGrowTotalCapacityPrecise(self: *cy.VM, newCap: usize) !void {
     } else {
         self.stack = try self.alloc.realloc(self.stack, newCap);
         self.stackEndPtr = self.stack.ptr + newCap;
+
+        if (builtin.is_test or cy.Trace) {
+            // Fill the stack with null heap objects to surface undefined access better.
+            @memset(self.stack, Value.initCycPtr(&DummyHeapObject));
+        }
     }
 }
+
+var DummyHeapObject = cy.HeapObject{
+    .head = .{
+        .typeId = cy.NullId,
+        .rc = 0,
+    },
+};
 
 pub inline fn toVmPc(self: *const cy.VM, offset: usize) [*]cy.Inst {
     return self.ops.ptr + offset;

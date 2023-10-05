@@ -709,7 +709,7 @@ test "Debug labels." {
         const vm = run.vm.internal();
         try t.eq(vm.compiler.buf.debugMarkers.items.len, 1);
         const actLabel = vm.compiler.buf.debugMarkers.items[0];
-        try t.eq(actLabel.pc, 6);
+        try t.eq(actLabel.pc, 3);
         try t.eqStr(actLabel.getLabelName(), "MyLabel");
     }}.func);
 }
@@ -2311,11 +2311,11 @@ test "Local variable declaration." {
         \\var a = 2
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Variable `a` is already declared in the main block.
+            \\CompileError: Variable `a` is already declared in the block.
             \\
-            \\main:2:1:
+            \\main:2:5:
             \\var a = 2
-            \\^
+            \\    ^
             \\
         );
     }}.func);
@@ -2332,9 +2332,9 @@ test "Local variable declaration." {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: `a` already references a parent local variable.
             \\
-            \\main:6:3:
+            \\main:6:7:
             \\  var a = 3
-            \\  ^
+            \\      ^
             \\
         );
     }}.func);
@@ -2350,28 +2350,22 @@ test "Local variable declaration." {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: `a` already references a static variable.
             \\
-            \\main:5:3:
+            \\main:5:7:
             \\  var a = 3
-            \\  ^
+            \\      ^
             \\
         );
     }}.func);
 
-    // Can't declare in a nested sub block.
-    try eval(.{ .silent = true },
+    // New local inside sub-block.
+    try evalPass(.{},
+        \\import test
         \\var a = 1
         \\if true:
         \\  var a = 2
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Variable `a` is already declared in the main block.
-            \\
-            \\main:3:3:
-            \\  var a = 2
-            \\  ^
-            \\
-        );
-    }}.func);
+        \\  test.eq(a, 2)
+        \\test.eq(a, 1)
+    );
 
     // Can't reference var from non parent if block.
     try eval(.{ .silent = true },

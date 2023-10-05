@@ -108,12 +108,9 @@ pub fn runTempReleaseOps(vm: *cy.VM, fp: [*]const cy.Value, tempIdx: u32) void {
     }
 }
 
-pub fn runBlockEndReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, startPc: usize) void {
-    if (vm.ops[startPc].opcode() == .releaseN) {
-        const numLocals = vm.ops[startPc+1].val;
-        for (vm.ops[startPc+2..startPc+2+numLocals]) |local| {
-            release(vm, stack[framePtr + local.val]);
-        }
+pub fn releaseLocals(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, locals: cy.IndexSlice(u8)) void {
+    for (stack[framePtr+locals.start..framePtr+locals.end]) |val| {
+        release(vm, val);
     }
 }
 
@@ -146,11 +143,11 @@ pub inline fn retain(self: *cy.VM, val: cy.Value) linksection(cy.HotSection) voi
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        obj.head.rc += 1;
         if (cy.Trace) {
             checkRetainDanglingPointer(self, obj);
             log.tracev("retain {} {}", .{obj.getUserTag(), obj.head.rc});
         }
+        obj.head.rc += 1;
         if (cy.TrackGlobalRC) {
             self.refCounts += 1;
         }
@@ -166,11 +163,11 @@ pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) linksection(cy.Ho
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        obj.head.rc += inc;
         if (cy.Trace) {
             checkRetainDanglingPointer(self, obj);
             log.tracev("retain {} {}", .{obj.getUserTag(), obj.head.rc});
         }
+        obj.head.rc += inc;
         if (cy.TrackGlobalRC) {
             self.refCounts += inc;
         }
@@ -293,10 +290,12 @@ fn performSweep(vm: *cy.VM) !GCResult {
         vm.numFreed += @intCast(cycObjs.items.len);
     }
 
-    return GCResult{
+    const res = GCResult{
         .numCycFreed = @intCast(cycObjs.items.len),
         .numObjFreed = if (cy.Trace) vm.numFreed else 0,
     };
+    log.tracev("gc result: num cyc {}, num obj {}", .{res.numCycFreed, res.numObjFreed});
+    return res;
 }
 
 fn markMainStackRoots(vm: *cy.VM) !void {
@@ -311,8 +310,8 @@ fn markMainStackRoots(vm: *cy.VM) !void {
         const symIdx = cy.debug.indexOfDebugSym(vm, pcOff) orelse return error.NoDebugSym;
         const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
         const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
-        const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
-        log.debug("mark frame: {} {} {} {}", .{pcOff, vm.ops[pcOff].opcode(), tempIdx, endLocalsPc});
+        const locals = sym.getLocals();
+        log.tracev("mark frame: pc={} {} fp={} {}, locals={}..{}", .{pcOff, vm.ops[pcOff].opcode(), fpOff, tempIdx, locals.start, locals.end});
 
         if (tempIdx != cy.NullId) {
             const fp = vm.stack.ptr + fpOff;
@@ -328,14 +327,10 @@ fn markMainStackRoots(vm: *cy.VM) !void {
             }
         }
 
-        if (endLocalsPc != cy.NullId) {
-            if (vm.ops[endLocalsPc].opcode() == .releaseN) {
-                const numLocals = vm.ops[endLocalsPc+1].val;
-                for (vm.ops[endLocalsPc+2..endLocalsPc+2+numLocals]) |local| {
-                    const v = vm.stack[fpOff + local.val];
-                    if (v.isCycPointer()) {
-                        markValue(vm, v);
-                    }
+        if (locals.len() > 0) {
+            for (vm.stack[fpOff+locals.start..fpOff+locals.end]) |val| {
+                if (val.isCycPointer()) {
+                    markValue(vm, val);
                 }
             }
         }

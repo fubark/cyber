@@ -61,22 +61,18 @@ var a = 123
 a = 234
 ```
 
-A new variable can be declared in function blocks with the same name as a variable from a parent block.
+Blocks create a new variable scope. Variables declared in the current scope will take precedence over any parent variables with the same name. 
 ```cy
-var a = 123
-foo = func():
-    -- A new local `a` inside function `foo`.
+func foo():
+    -- `a` declared inside `foo`.
     var a = 234
-foo()
-print a      -- '123'
-```
 
-However, variables declared in sub-blocks such as `if` and `for` can not shadow variables in the same main/function block.
-```cy
-var a = 123
-if true:
-    -- CompileError, `a` is already declared in the main block.
-    var a = 234 
+    if true:
+        -- A new `a` declared inside `if`.
+        var a = 345
+        print a         -- Prints "345"
+
+    print a             -- Prints "234"
 ```
 
 When a parent local is referenced in a [lambda function]({{<relref "/docs/toc/functions#lambdas">}}), the variable is automatically captured. Note that [static functions]({{<relref "/docs/toc/functions#static-functions">}}) can not capture parent locals.

@@ -34,12 +34,13 @@ for 0..10 each i:
   count += inner
 t.eq(count, 100)
 
--- Index vars overwrites user var.
+-- Index vars shadow parent vars.
 var i = 123
 var sum = 0
 for 0..10 each i:
   sum += i
-t.eq(i, 9)
+t.eq(sum, 45)
+t.eq(i, 123)
 
 -- Reverse direction.
 sum = 0

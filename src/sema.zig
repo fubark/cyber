@@ -38,10 +38,6 @@ const LocalVarType = enum(u8) {
 
     param,
 
-    /// If a param is written to or turned into a Box, this local would be a copy of the param
-    /// and `inner.paramCopy` would be the param idx.
-    paramCopy,
-
     /// Whether this var references a static variable.
     staticAlias,
 
@@ -56,16 +52,23 @@ const LocalVarType = enum(u8) {
 /// Represents a variable or alias in a block.
 /// Local variables are given reserved registers on the stack frame.
 /// Captured variables have box values at runtime.
+/// TODO: This should be SemaVar since it includes all vars not just locals.
 pub const LocalVar = struct {
     type: LocalVarType,
 
-    /// The current type of the var as the ast is traversed.
-    /// This is updated when there is a variable assignment or a child block returns.
+    /// If the variable is dynamic, this tracks the most recent type as the ast is traversed.
+    ///     This is updated when there is a variable assignment or a child block returns.
+    /// If the variable has a static type, this should never change after initialization.
     vtype: TypeId,
+
+    /// Whether the variable is dynamic or statically typed.
+    dynamic: bool,
+
+    /// Last sub-block that mutated the dynamic var.
+    dynamicLastMutSubBlockId: SubBlockId,
 
     /// If non-null, points to the captured var idx in the closure.
     capturedIdx: u8 = cy.NullU8,
-
 
     /// Currently a captured var always needs to be boxed.
     /// In the future, the concept of a const variable could change this.
@@ -80,30 +83,45 @@ pub const LocalVar = struct {
     /// Locals are relative to the stack frame's start position.
     local: RegisterId = undefined,
 
-    /// Since the same sema var is used later by codegen,
-    /// use a flag to indicate whether the var has been loosely defined in the block. (eg. assigned to lvalue)
-    /// Note that assigning inside a branch counts as defined.
-    /// Entering an iter block will auto mark those as defined since the var could have been assigned by a previous iteration.
-    isDefinedOnce: bool = false,
-
-    /// Whether the var is currently declared (according to the language rules) at the current position in the current block. 
-    /// When a sub block ends, this is set back to false.
-    /// If this variable is an alias, this is always false.
-    isDeclared: bool = false,
-
     inner: extern union {
         staticAlias: extern struct {
             csymId: CompactSymbolId,
         },
-        paramIdx: u8,
-        paramCopy: u8,
+        param: extern struct {
+            idx: u8,
+
+            /// If a param is written to or turned into a Box, `copied` becomes true.
+            copied: bool,
+        },
     } = undefined,
 
-    name: if (builtin.mode == .Debug) []const u8 else void,
+    name: if (cy.Trace) []const u8 else void,
 
     pub inline fn isParentLocalAlias(self: LocalVar) bool {
         return self.capturedIdx != cy.NullU8;
     }
+
+    pub inline fn isCapturable(self: LocalVar) bool {
+        return self.type == .local or self.type == .param;
+    }
+};
+
+const VarSubBlock = extern struct {
+    varId: LocalVarId,
+    subBlockId: SubBlockId,
+};
+
+pub const VarShadow = extern struct {
+    namePtr: [*]const u8,
+    nameLen: u32,
+    varId: LocalVarId,
+    subBlockId: SubBlockId,
+};
+
+pub const NameVar = extern struct {
+    namePtr: [*]const u8,
+    nameLen: u32,
+    varId: LocalVarId,
 };
 
 pub const CapVarDesc = extern union {
@@ -111,7 +129,13 @@ pub const CapVarDesc = extern union {
     user: LocalVarId,
 };
 
-const VarAndType = struct {
+pub const PreLoopVarSave = packed struct {
+    vtype: TypeId,
+    varId: u31,
+    lifetimeRcCandidate: bool,
+};
+
+pub const VarAndType = struct {
     id: LocalVarId,
     vtype: TypeId,
 };
@@ -119,15 +143,6 @@ const VarAndType = struct {
 pub const SubBlockId = u32;
 
 pub const SubBlock = struct {
-    /// Save var start types for entering a codegen iter block.
-    /// This can only be determined after the sema pass.
-    /// This is used to initialize the var type when entering the codegen iter block so
-    /// that the first `genSetVar` produces the correct `set` op.
-    iterVarBeginTypes: std.ArrayListUnmanaged(VarAndType),
-
-    /// Record any merged narrow types at the end of the subblock for codegen.
-    endMergeTypes: std.ArrayListUnmanaged(VarAndType),
-
     /// Track which vars were assigned to in the current sub block.
     /// If the var was first assigned in a parent sub block, the type is saved in the map to
     /// be merged later with the ending var type.
@@ -139,39 +154,53 @@ pub const SubBlock = struct {
     /// back to the parent scope.
     assignedVarStart: u32,
 
-    /// Start of declared vars in this subblock in `declaredVarStack`.
-    declaredVarStart: u32,
+    /// Start of declared vars in this sub-block in `varDeclStack`.
+    varDeclStart: u32,
+
+    /// Start of shadowed vars from the previous sub-block in `varShadowStack`.
+    varShadowStart: u32,
+
+    preLoopVarSaveStart: u32, 
 
     /// Previous sema sub block.
     /// When this sub block ends, the previous sub block id is set as the current.
     prevSubBlockId: SubBlockId,
 
-    // Whether execution can reach the end.
-    // If a return statement was generated, this would be set to false.
+    /// Node that began the sub-block.
+    nodeId: cy.NodeId,
+
+    /// Whether execution can reach the end.
+    /// If a return statement was generated, this would be set to false.
     endReachable: bool = true,
 
-    pub fn init(prevSubBlockId: SubBlockId, assignedVarStart: usize, declaredVarStart: usize) SubBlock {
+    /// Tracks how many locals are owned by this sub-block.
+    /// When the sub-block is popped, this is subtracted from the block's `curNumLocals`.
+    numLocals: u8,
+
+    pub fn init(nodeId: cy.NodeId, prevSubBlockId: SubBlockId, assignedVarStart: usize, varDeclStart: usize, varShadowStart: usize) SubBlock {
         return .{
+            .nodeId = nodeId,
             .assignedVarStart = @intCast(assignedVarStart),
-            .declaredVarStart = @intCast(declaredVarStart),
-            .iterVarBeginTypes = .{},
-            .endMergeTypes = .{},
+            .varDeclStart = @intCast(varDeclStart),
+            .varShadowStart = @intCast(varShadowStart),
+            .preLoopVarSaveStart = 0,
             .prevVarTypes = .{},
             .prevSubBlockId = prevSubBlockId,
+            .numLocals = 0,
         };
     }
 
     pub fn deinit(self: *SubBlock, alloc: std.mem.Allocator) void {
-        self.iterVarBeginTypes.deinit(alloc);
-        self.endMergeTypes.deinit(alloc);
+        _ = self;
+        _ = alloc;
     }
 };
 
 pub const BlockId = u32;
 
 pub const Block = struct {
-    /// Local vars defined in this block. Does not include function params.
-    locals: std.ArrayListUnmanaged(LocalVarId),
+    /// Keep a record of all locals for debugging.
+    locals: if (cy.Trace) std.ArrayListUnmanaged(LocalVarId) else void,
 
     /// Param vars for function blocks.
     /// Codegen will reserve these first for the calling convention layout.
@@ -180,9 +209,11 @@ pub const Block = struct {
     /// Captured vars. 
     captures: std.ArrayListUnmanaged(LocalVarId),
 
-    /// Name to var.
+    /// Maps a name to a var.
+    /// This is updated as sub-blocks declare their own locals and restored
+    /// when sub-blocks end.
     /// This can be deinited after ending the sema block.
-    nameToVar: std.StringHashMapUnmanaged(LocalVarId),
+    nameToVar: std.StringHashMapUnmanaged(VarSubBlock),
 
     /// First sub block id is recorded so the rest can be obtained by advancing
     /// the id in the same order it was traversed in the sema pass.
@@ -203,10 +234,21 @@ pub const Block = struct {
     /// Whether temporaries (nameToVar) was deinit.
     deinitedTemps: bool,
 
-    pub fn init(funcDeclId: cy.NodeId, firstSubBlockId: SubBlockId, isStaticFuncBlock: bool) Block {
+    /// Track max locals so that codegen knows where stack registers begin.
+    maxLocals: u8,
+
+    /// Everytime a new local is encountered in a sub-block, this is incremented by one.
+    /// At the end of the sub-block `maxLocals` is updated and this unwinds by subtracting its numLocals.
+    curNumLocals: u8,
+
+    /// All locals currently alive in this block.
+    /// Every local above the current sub-block is included.
+    varDeclStart: u32,
+
+    pub fn init(funcDeclId: cy.NodeId, firstSubBlockId: SubBlockId, isStaticFuncBlock: bool, varDeclStart: u32) Block {
         return .{
+            .locals = if (cy.Trace) .{} else {},
             .nameToVar = .{},
-            .locals = .{},
             .params = .{},
             .subBlockDepth = 0,
             .funcDeclId = funcDeclId,
@@ -214,11 +256,16 @@ pub const Block = struct {
             .isStaticFuncBlock = isStaticFuncBlock,
             .deinitedTemps = false,
             .captures = .{},
+            .maxLocals = 0,
+            .curNumLocals = 0,
+            .varDeclStart = varDeclStart,
         };
     }
 
     pub fn deinit(self: *Block, alloc: std.mem.Allocator) void {
-        self.locals.deinit(alloc);
+        if (cy.Trace) {
+            self.locals.deinit(alloc);
+        }
         self.params.deinit(alloc);
 
         // Deinit for CompileError during sema.
@@ -477,6 +524,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                     _ = try assignVar(c, node.head.left_right.left, rtype);
                 } else {
                     const rtype = try semaExpr(c, node.head.left_right.right);
+
                     _ = try assignVar(c, node.head.left_right.left, rtype);
                 }
             } else if (left.node_t == .indexExpr) {
@@ -521,10 +569,10 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             const name = c.getNodeTokenString(nameN);
             const nameId = try ensureNameSym(c.compiler, name);
 
-            const symId = try getOrResolveTypeSymFromSpecNode(c, node.head.typeAliasDecl.typeSpecHead);
-            const rSym = c.compiler.sema.getSymbol(symId);
+            const typeId = try getOrResolveTypeFromSpecNode(c, node.head.typeAliasDecl.typeSpecHead);
+            const rSym = c.compiler.sema.getSymbol(typeId);
             try setLocalSym(c, nameId, .{
-                .symId = symId,
+                .symId = typeId,
                 .funcSymId = cy.NullId,
                 .parentSymId = rSym.key.resolvedSymKey.parentSymId,
             });
@@ -547,44 +595,46 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             return;
         },
         .whileCondStmt => {
-            try pushIterSubBlock(c);
+            try pushLoopSubBlock(c, nodeId);
 
             _ = try semaExpr(c, node.head.whileCondStmt.cond);
             try semaStmts(c, node.head.whileCondStmt.bodyHead);
 
-            try endIterSubBlock(c);
+            try endLoopSubBlock(c);
         },
         .whileOptStmt => {
-            try pushIterSubBlock(c);
+            try pushLoopSubBlock(c, nodeId);
 
             const optt = try semaExpr(c, node.head.whileOptStmt.opt);
             if (node.head.whileOptStmt.some != cy.NullId) {
-                _ = try getOrDeclareLocal(c, node.head.whileOptStmt.some, bt.Any);
+                const vtype = if (optt == bt.Dynamic) bt.Dynamic else bt.Any;
+                _ = try declareLocal(c, node.head.whileOptStmt.some, vtype, bt.Any);
                 _ = try assignVar(c, node.head.whileOptStmt.some, optt);
             }
 
             try semaStmts(c, node.head.whileOptStmt.bodyHead);
 
-            try endIterSubBlock(c);
+            try endLoopSubBlock(c);
         },
         .whileInfStmt => {
-            try pushIterSubBlock(c);
+            try pushLoopSubBlock(c, nodeId);
             try semaStmts(c, node.head.child_head);
-            try endIterSubBlock(c);
+            try endLoopSubBlock(c);
         },
         .for_iter_stmt => {
-            try pushIterSubBlock(c);
+            try pushLoopSubBlock(c, nodeId);
 
-            _ = try semaExpr(c, node.head.for_iter_stmt.iterable);
+            const iterT = try semaExpr(c, node.head.for_iter_stmt.iterable);
 
             if (node.head.for_iter_stmt.eachClause != cy.NullId) {
                 const eachClause = c.nodes[node.head.for_iter_stmt.eachClause];
+                const vtype = if (iterT == bt.Dynamic) bt.Dynamic else bt.Any;
                 if (eachClause.node_t == .ident) {
-                    _ = try getOrDeclareLocal(c, node.head.for_iter_stmt.eachClause, bt.Any);
+                    _ = try declareLocal(c, node.head.for_iter_stmt.eachClause, vtype, bt.Any);
                 } else if (eachClause.node_t == .seqDestructure) {
                     var curId = eachClause.head.seqDestructure.head;
                     while (curId != cy.NullId) {
-                        _ = try getOrDeclareLocal(c, curId, bt.Any);
+                        _ = try declareLocal(c, curId, vtype, bt.Any);
                         const cur = c.nodes[curId];
                         curId = cur.next;
                     }
@@ -594,15 +644,15 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             }
 
             try semaStmts(c, node.head.for_iter_stmt.body_head);
-            try endIterSubBlock(c);
+            try endLoopSubBlock(c);
         },
         .for_range_stmt => {
-            try pushIterSubBlock(c);
+            try pushLoopSubBlock(c, nodeId);
 
             if (node.head.for_range_stmt.eachClause != cy.NullId) {
                 const eachClause = c.nodes[node.head.for_range_stmt.eachClause];
                 if (eachClause.node_t == .ident) {
-                    _ = try getOrDeclareLocal(c, node.head.for_range_stmt.eachClause, bt.Integer);
+                    _ = try declareLocal(c, node.head.for_range_stmt.eachClause, bt.Integer, bt.Integer);
                 } else {
                     return c.reportErrorAt("Unsupported each clause: {}", &.{v(eachClause.node_t)}, node.head.for_range_stmt.eachClause);
                 }
@@ -613,7 +663,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             _ = try semaExpr(c, range_clause.head.left_right.right);
 
             try semaStmts(c, node.head.for_range_stmt.body_head);
-            try endIterSubBlock(c);
+            try endLoopSubBlock(c);
         },
         .matchBlock => {
             _ = try matchBlock(c, nodeId, false);
@@ -621,7 +671,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         .if_stmt => {
             _ = try semaExpr(c, node.head.left_right.left);
 
-            try pushSubBlock(c);
+            try pushSubBlock(c, nodeId);
             try semaStmts(c, node.head.left_right.right);
             try endSubBlock(c);
 
@@ -629,14 +679,14 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             while (elseClauseId != cy.NullId) {
                 const elseClause = c.nodes[elseClauseId];
                 if (elseClause.head.else_clause.cond == cy.NullId) {
-                    try pushSubBlock(c);
+                    try pushSubBlock(c, elseClauseId);
                     try semaStmts(c, elseClause.head.else_clause.body_head);
                     try endSubBlock(c);
                     break;
                 } else {
                     _ = try semaExpr(c, elseClause.head.else_clause.cond);
 
-                    try pushSubBlock(c);
+                    try pushSubBlock(c, elseClauseId);
                     try semaStmts(c, elseClause.head.else_clause.body_head);
                     try endSubBlock(c);
                     elseClauseId = elseClause.head.else_clause.else_clause;
@@ -644,13 +694,13 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             }
         },
         .tryStmt => {
-            try pushSubBlock(c);
+            try pushSubBlock(c, nodeId);
             try semaStmts(c, node.head.tryStmt.tryFirstStmt);
             try endSubBlock(c);
 
-            try pushSubBlock(c);
+            try pushSubBlock(c, nodeId);
             if (node.head.tryStmt.errorVar != cy.NullId) {
-                _ = try getOrDeclareLocal(c, node.head.tryStmt.errorVar, bt.Error);
+                _ = try declareLocal(c, node.head.tryStmt.errorVar, bt.Error, bt.Error);
             }
             try semaStmts(c, node.head.tryStmt.catchFirstStmt);
             try endSubBlock(c);
@@ -774,7 +824,7 @@ fn matchBlock(c: *cy.Chunk, nodeId: cy.NodeId, canBreak: bool) !TypeId {
     curCase = node.head.matchBlock.firstCase;
     while (curCase != cy.NullId) {
         const case = c.nodes[curCase];
-        try pushSubBlock(c);
+        try pushSubBlock(c, curCase);
         try semaStmts(c, case.head.caseBlock.firstChild);
         try endSubBlock(c);
         curCase = case.next;
@@ -947,13 +997,7 @@ pub fn declareObjectMembers(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             const fieldName = c.getNodeTokenString(field);
             const fieldNameId = try ensureNameSym(c.compiler, fieldName);
             const fieldSymId = try c.compiler.vm.ensureFieldSym(fieldName);
-
-            var fieldType: SymbolId = undefined;
-            if (field.head.objectField.typeSpecHead != cy.NullId) {
-                fieldType = try getOrResolveTypeSymFromSpecNode(c, field.head.objectField.typeSpecHead);
-            } else {
-                fieldType = bt.Dynamic;
-            }
+            const fieldType = try getOrResolveTypeFromSpecNode(c, field.head.objectField.typeSpecHead);
 
             if (!cy.module.symNameExists(mod, fieldNameId)) {
                 try cy.module.setField(mod, c.alloc, fieldNameId, i, fieldType);
@@ -1185,7 +1229,7 @@ fn declareHostMethod(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !void 
     // Insert method entries into VM.
     const funcSig = c.compiler.sema.getFuncSig(func.funcSigId);
     if (sym.symT == .hostFunc) {
-        if (funcSig.isParamsTyped) {
+        if (funcSig.reqCallTypeCheck) {
             const m = rt.MethodInit.initHostTyped(func.funcSigId, @ptrCast(sym.inner.hostFunc.func), func.numParams);
             try c.compiler.vm.addMethod(typeId, mgId, m);
         } else {
@@ -1239,7 +1283,7 @@ pub fn declareHostFunc(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !voi
                 _ = try resolveHostFunc(c, key, func.funcSigId, res.ptr);
             } else if (res.type == .quicken) {
                 const funcSig = c.compiler.sema.getFuncSig(func.funcSigId);
-                if (funcSig.isParamsTyped) {
+                if (funcSig.reqCallTypeCheck) {
                     return c.reportErrorAt("Failed to load: {}, Only untyped quicken func is supported.", &.{v(name)}, nodeId);
                 }
                 cy.module.declareHostQuickenFunc(c.compiler, modId, name, func.funcSigId, declId, @ptrCast(res.ptr)) catch |err| {
@@ -1322,14 +1366,9 @@ pub fn declareVar(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         try c.compiler.sema.modules.items[c.modId].setUserVar(c.compiler, name, nodeId);
 
         // var type.
-        var typeSymId: SymbolId = undefined;
-        if (varSpec.head.varSpec.typeSpecHead != cy.NullId) {
-            typeSymId = try getOrResolveTypeSymFromSpecNode(c, varSpec.head.varSpec.typeSpecHead);
-        } else {
-            typeSymId = bt.Any;
-        }
+        const typeId = try getOrResolveTypeFromSpecNode(c, varSpec.head.varSpec.typeSpecHead);
 
-        const symId = try resolveLocalVarSym(c, c.semaRootSymId, nameId, typeSymId, nodeId, true);
+        const symId = try resolveLocalVarSym(c, c.semaRootSymId, nameId, typeId, nodeId, true);
         c.nodes[nodeId].head.staticDecl.sema_symId = symId;
     }
 }
@@ -1353,12 +1392,7 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         var out: cy.Value = cy.Value.None;
         if (varLoader(@ptrCast(c.compiler.vm), info, &out)) {
             // var type.
-            var typeId: TypeId = undefined;
-            if (varSpec.head.varSpec.typeSpecHead != cy.NullId) {
-                typeId = try getOrResolveTypeSymFromSpecNode(c, varSpec.head.varSpec.typeSpecHead);
-            } else {
-                typeId = bt.Any;
-            }
+            const typeId = try getOrResolveTypeFromSpecNode(c, varSpec.head.varSpec.typeSpecHead);
             c.nodes[node.head.staticDecl.varSpec].next = typeId;
 
             const outTypeId = c.compiler.vm.types.buf[out.getTypeId()].semaTypeId;
@@ -1377,42 +1411,66 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     }
 }
 
+/// Assumes initType is a compatible with declType.
+fn declareLocal(self: *cy.Chunk, identId: cy.NodeId, declType: TypeId, initType:TypeId) !LocalVarId {
+    const ident = self.nodes[identId];
+    const name = self.getNodeTokenString(ident);
+
+    const block = curBlock(self);
+    if (block.nameToVar.get(name)) |varInfo| {
+        if (varInfo.subBlockId == self.curSemaSubBlockId) {
+            const svar = &self.vars.items[varInfo.varId];
+            if (svar.isParentLocalAlias()) {
+                return self.reportErrorAt("`{}` already references a parent local variable.", &.{v(name)}, identId);
+            } else if (svar.type == .staticAlias) {
+                return self.reportErrorAt("`{}` already references a static variable.", &.{v(name)}, identId);
+            } else {
+                return self.reportErrorAt("Variable `{}` is already declared in the block.", &.{v(name)}, identId);
+            }
+        } else {
+            // Create shadow entry for restoring the prev var.
+            try self.varShadowStack.append(self.alloc, .{
+                .namePtr = name.ptr,
+                .nameLen = @intCast(name.len),
+                .varId = varInfo.varId,
+                .subBlockId = varInfo.subBlockId,
+            });
+        }
+    }
+    const id = try pushLocalVar(self, .local, name, declType);
+    var svar = &self.vars.items[id];
+    if (svar.dynamic) {
+        svar.vtype = initType;
+        svar.lifetimeRcCandidate = types.isRcCandidateType(self.compiler, initType);
+    }
+
+    if (cy.Trace) {
+        try block.locals.append(self.alloc, id);
+    }
+    try self.varDeclStack.append(self.alloc, .{
+        .namePtr = name.ptr,
+        .nameLen = @intCast(name.len),
+        .varId = id,
+    });
+    const sblock = curSubBlock(self);
+    sblock.numLocals += 1;
+    self.nodes[identId].head.ident.semaVarId = id;
+
+    block.curNumLocals += 1;
+    return id;
+}
+
 fn localDecl(self: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = self.nodes[nodeId];
-    const rtype = try semaExpr(self, node.head.localDecl.right);
     const varSpec = self.nodes[node.head.localDecl.varSpec];
-    const nameNid = varSpec.head.varSpec.name;
-    const nameN = self.nodes[nameNid];
-    const name = self.getNodeTokenString(nameN);
 
-    const sblock = curBlock(self);
-    if (sblock.nameToVar.get(name)) |varId| {
-        const svar = &self.vars.items[varId];
-        if (svar.isParentLocalAlias()) {
-            return self.reportErrorAt("`{}` already references a parent local variable.", &.{v(name)}, nodeId);
-        } else if (svar.type == .staticAlias) {
-            return self.reportErrorAt("`{}` already references a static variable.", &.{v(name)}, nodeId);
-        } else {
-            if (!svar.isDeclared) {
-                svar.isDeclared = true;
-                try self.assignedVarStack.append(self.alloc, varId);
-                try self.declaredVarStack.append(self.alloc, varId);
-                self.nodes[nameNid].head.ident.semaVarId = varId;
-            } else {
-                if (self.semaIsMainBlock()) {
-                    return self.reportErrorAt("Variable `{}` is already declared in the main block.", &.{v(name)}, nodeId);
-                } else {
-                    return self.reportErrorAt("Variable `{}` is already declared in the current function block.", &.{v(name)}, nodeId);
-                }
-            }
-        }
-    } else {
-        const id = try pushLocalBodyVar(self, name, rtype);
-        self.vars.items[id].isDeclared = true;
-        try self.assignedVarStack.append(self.alloc, id);
-        try self.declaredVarStack.append(self.alloc, id);
-        self.nodes[nameNid].head.ident.semaVarId = id;
-    }
+    const typeId = try getOrResolveTypeFromSpecNode(self, varSpec.head.varSpec.typeSpecHead);
+
+    // Infer rhs type.
+    const rtype = try semaExprCstr(self, node.head.localDecl.right, typeId, true);
+
+    const varId = try declareLocal(self, varSpec.head.varSpec.name, typeId, rtype);
+    try self.assignedVarStack.append(self.alloc, varId);
 }
 
 fn staticDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
@@ -1766,9 +1824,9 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
         },
         .castExpr => {
             _ = try semaExpr(c, node.head.castExpr.expr);
-            const rTypeSymId = try getOrResolveTypeSymFromSpecNode(c, node.head.castExpr.typeSpecHead);
-            c.nodes[nodeId].head.castExpr.semaTypeSymId = rTypeSymId;
-            return rTypeSymId;
+            const typeId = try getOrResolveTypeFromSpecNode(c, node.head.castExpr.typeSpecHead);
+            c.nodes[nodeId].head.castExpr.semaTypeSymId = typeId;
+            return typeId;
         },
         .binExpr => {
             const left = node.head.binExpr.left;
@@ -2011,7 +2069,7 @@ fn callExpr(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
         } else if (callee.node_t == .ident) {
             const name = c.getNodeTokenString(callee);
 
-            // Perform custom lookup for static vars.
+            // Perform custom lookup for static vars using symName + args.
             const res = try getOrLookupVar(c, name, false);
             switch (res) {
                 .local => |id| {
@@ -2024,6 +2082,8 @@ fn callExpr(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
                         _ = try semaExpr(c, arg_id);
                         arg_id = arg.next;
                     }
+
+                    c.nodeTypes[node.head.callExpr.callee] = bt.Any;
                     return bt.Any;
                 },
                 .static, // There was a previous usage of a static var alias.
@@ -2045,6 +2105,7 @@ fn callExpr(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
                         if (try getOrResolveSymForFuncCall(c, c.semaRootSymId, nameId, callArgs.argTypes, reqRet, callArgs.hasDynamicArg)) |callRes| {
                             try referenceSym(c, callRes.csymId, true);
                             c.nodes[node.head.callExpr.callee].head.ident.sema_csymId = callRes.csymId;
+                            c.nodeTypes[node.head.callExpr.callee] = callRes.retType;
                             return callRes.retType;
                         }
                         return c.reportErrorAt("Undeclared func `{}`.", &.{v(name)}, node.head.callExpr.callee);
@@ -2062,6 +2123,7 @@ fn callExpr(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
                         if (try getOrResolveSymForFuncCall(c, c.semaRootSymId, nameId, callArgs.argTypes, reqRet, callArgs.hasDynamicArg)) |callRes| {
                             try referenceSym(c, callRes.csymId, true);
                             c.nodes[node.head.callExpr.callee].head.ident.sema_csymId = callRes.csymId;
+                            c.nodeTypes[node.head.callExpr.callee] = callRes.retType;
                             return callRes.retType;
                         }
                         return c.reportErrorAt("Undeclared func `{}`.", &.{v(name)}, node.head.callExpr.callee);
@@ -2120,9 +2182,12 @@ fn identifier(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
     }
 }
 
+/// If no type spec, default to `dynamic` type.
 /// Recursively walks a type spec head node and returns the final resolved type sym.
-/// Assumes head is non null.
-fn getOrResolveTypeSymFromSpecNode(chunk: *cy.Chunk, head: cy.NodeId) !SymbolId {
+fn getOrResolveTypeFromSpecNode(chunk: *cy.Chunk, head: cy.NodeId) !types.TypeId {
+    if (head == cy.NullId) {
+        return bt.Dynamic;
+    }
     var nodeId = head;
     var parentSymId = chunk.semaRootSymId;
     // log.debug("getOrResolveTypeSymFromSpecNode from {} ", .{parentSymId});
@@ -2172,24 +2237,15 @@ fn appendFuncDecl(chunk: *cy.Chunk, nodeId: cy.NodeId, isStatic: bool) !FuncDecl
     var numParams: u8 = 0;
     while (curParamId != cy.NullId) {
         const param = chunk.nodes[curParamId];
-        if (param.head.funcParam.typeSpecHead == cy.NullId) {
-            try chunk.compiler.tempSyms.append(chunk.alloc, bt.Any);
-        } else {
-            const rTypeSymId = try getOrResolveTypeSymFromSpecNode(chunk, param.head.funcParam.typeSpecHead);
-            try chunk.compiler.tempSyms.append(chunk.alloc, rTypeSymId);
-        }
+        const typeId = try getOrResolveTypeFromSpecNode(chunk, param.head.funcParam.typeSpecHead);
+        try chunk.compiler.tempSyms.append(chunk.alloc, typeId);
         numParams += 1;
         curParamId = param.next;
     }
     decl.numParams = numParams;
 
     // Get return type.
-    var retType: TypeId = undefined;
-    if (header.head.funcHeader.ret != cy.NullId) {
-        retType = try getOrResolveTypeSymFromSpecNode(chunk, header.head.funcHeader.ret);
-    } else {
-        retType = bt.Dynamic;
-    }
+    const retType = try getOrResolveTypeFromSpecNode(chunk, header.head.funcHeader.ret);
 
     // Resolve func signature.
     decl.funcSigId = try ensureFuncSig(chunk.compiler, chunk.compiler.tempSyms.items, retType);
@@ -2204,20 +2260,77 @@ pub fn pushBlock(self: *cy.Chunk, funcDeclId: u32) !BlockId {
     self.curSemaBlockId = @intCast(self.semaBlocks.items.len);
     const nextSubBlockId: u32 = @intCast(self.semaSubBlocks.items.len);
     var isStaticFuncBlock = false;
+    var subBlockNodeId: cy.NodeId = undefined;
     if (funcDeclId != cy.NullId) {
-        isStaticFuncBlock = self.semaFuncDecls.items[funcDeclId].isStatic;
+        const decl = self.semaFuncDecls.items[funcDeclId];
+        isStaticFuncBlock = decl.isStatic;
+        subBlockNodeId = decl.nodeId;
+    } else {
+        subBlockNodeId = self.parserAstRootId;
     }
-    try self.semaBlocks.append(self.alloc, Block.init(funcDeclId, nextSubBlockId, isStaticFuncBlock));
+    const new = Block.init(funcDeclId, nextSubBlockId, isStaticFuncBlock, @intCast(self.varDeclStack.items.len));
+    try self.semaBlocks.append(self.alloc, new);
     try self.semaBlockStack.append(self.alloc, self.curSemaBlockId);
-    try pushSubBlock(self);
+    try pushSubBlock(self, subBlockNodeId);
     return self.curSemaBlockId;
 }
 
-fn pushSubBlock(self: *cy.Chunk) !void {
+fn pushLoopSubBlock(c: *cy.Chunk, nodeId: cy.NodeId) !void {
+    const block = curBlock(c);
+    const sblock = curSubBlock(c);
+
+    // Scan for dynamic vars and prepare them for entering loop block.
+    const start = c.preLoopVarSaveStack.items.len;
+    const varDecls = c.varDeclStack.items[block.varDeclStart..];
+    for (varDecls) |decl| {
+        var svar = &c.vars.items[decl.varId];
+        if (svar.dynamic) {
+            if (svar.vtype != bt.Any) {
+                // Dynamic vars enter the loop as `any` since the rest of the loop
+                // hasn't been seen.
+                try c.preLoopVarSaveStack.append(c.alloc, .{
+                    .vtype = svar.vtype,
+                    .varId = @intCast(decl.varId),
+                    .lifetimeRcCandidate = svar.lifetimeRcCandidate,
+                });
+                svar.vtype = bt.Any;
+                svar.lifetimeRcCandidate = true;
+            }
+        }
+    }
+
+    sblock.preLoopVarSaveStart = @intCast(start);
+
+    try pushSubBlock(c, nodeId);
+}
+
+fn endLoopSubBlock(c: *cy.Chunk) !void {
+    try endSubBlock(c);
+
+    const sblock = curSubBlock(c);
+    const varSaves = c.preLoopVarSaveStack.items[sblock.preLoopVarSaveStart..];
+    for (varSaves) |save| {
+        var svar = &c.vars.items[save.varId];
+        if (svar.dynamicLastMutSubBlockId <= c.curSemaSubBlockId) {
+            // Unused inside loop block. Restore type.
+            svar.vtype = save.vtype;
+            svar.lifetimeRcCandidate = save.lifetimeRcCandidate;
+        }
+    }
+    c.preLoopVarSaveStack.items.len = sblock.preLoopVarSaveStart;
+}
+
+fn pushSubBlock(self: *cy.Chunk, nodeId: cy.NodeId) !void {
     curBlock(self).subBlockDepth += 1;
     const prev = self.curSemaSubBlockId;
     self.curSemaSubBlockId = @intCast(self.semaSubBlocks.items.len);
-    try self.semaSubBlocks.append(self.alloc, SubBlock.init(prev, self.assignedVarStack.items.len, self.declaredVarStack.items.len));
+    const new = SubBlock.init(
+        nodeId, prev,
+        self.assignedVarStack.items.len,
+        self.varDeclStack.items.len,
+        self.varShadowStack.items.len,
+    );
+    try self.semaSubBlocks.append(self.alloc, new);
 }
 
 fn pushMethodParamVars(c: *cy.Chunk, func: *const FuncDecl) !void {
@@ -2228,8 +2341,12 @@ fn pushMethodParamVars(c: *cy.Chunk, func: *const FuncDecl) !void {
 
     // Add self receiver param.
     var id = try pushLocalVar(c, .param, "self", bt.Any);
-    c.vars.items[id].inner.paramIdx = 0;
-    c.vars.items[id].isDeclared = true;
+    c.vars.items[id].inner = .{
+        .param = .{
+            .idx = 0,
+            .copied = false,
+        },
+    };
     try sblock.params.append(c.alloc, id);
 
     if (func.numParams > 1) {
@@ -2248,8 +2365,12 @@ fn pushMethodParamVars(c: *cy.Chunk, func: *const FuncDecl) !void {
 
             c.curNodeId = curNode;
             id = try pushLocalVar(c, .param, name, rParamSymId);
-            c.vars.items[id].inner.paramIdx = @intCast(idx + 1);
-            c.vars.items[id].isDeclared = true;
+            c.vars.items[id].inner = .{
+                .param = .{
+                    .idx = @intCast(idx + 1),
+                    .copied = false,
+                },
+            };
             try sblock.params.append(c.alloc, id);
 
             curNode = param.next;
@@ -2270,8 +2391,12 @@ fn appendFuncParamVars(chunk: *cy.Chunk, func: *const FuncDecl) !void {
 
             try types.assertTypeSym(chunk, rParamSymId);
             const id = try pushLocalVar(chunk, .param, name, rParamSymId);
-            chunk.vars.items[id].inner.paramIdx = @intCast(idx);
-            chunk.vars.items[id].isDeclared = true;
+            chunk.vars.items[id].inner = .{
+                .param = .{
+                    .idx = @intCast(idx),
+                    .copied = false,
+                }
+            };
             try sblock.params.append(chunk.alloc, id);
 
             curNode = param.next;
@@ -2279,22 +2404,23 @@ fn appendFuncParamVars(chunk: *cy.Chunk, func: *const FuncDecl) !void {
     }
 }
 
-fn pushLocalVar(c: *cy.Chunk, _type: LocalVarType, name: []const u8, vtype: TypeId) !LocalVarId {
+fn pushLocalVar(c: *cy.Chunk, _type: LocalVarType, name: []const u8, declType: TypeId) !LocalVarId {
     const sblock = curBlock(c);
     const id: u32 = @intCast(c.vars.items.len);
-    const res = try sblock.nameToVar.getOrPut(c.alloc, name);
-    if (res.found_existing) {
-        return c.reportError("Var `{}` already exists", &.{v(name)});
-    } else {
-        res.value_ptr.* = id;
-        try c.vars.append(c.alloc, .{
-            .type = _type,
-            .name = if (builtin.mode == .Debug) name else {},
-            .vtype = toLocalType(vtype),
-            .lifetimeRcCandidate = types.isRcCandidateType(c.compiler, vtype),
-        });
-        return id;
-    }
+    _ = try sblock.nameToVar.put(c.alloc, name, .{
+        .varId = id,
+        .subBlockId = c.curSemaSubBlockId,
+    });
+    const dynamic = declType == bt.Dynamic;
+    try c.vars.append(c.alloc, .{
+        .type = _type,
+        .dynamic = dynamic,
+        .dynamicLastMutSubBlockId = 0,
+        .name = if (cy.Trace) name else {},
+        .vtype = declType,
+        .lifetimeRcCandidate = if (dynamic) false else types.isRcCandidateType(c.compiler, declType),
+    });
+    return id;
 }
 
 fn getVarPtr(self: *cy.Chunk, name: []const u8) ?*LocalVar {
@@ -2322,7 +2448,6 @@ fn pushCapturedObjectMemberAlias(self: *cy.Chunk, name: []const u8, parentVarId:
     const capturedIdx: u8 = @intCast(block.captures.items.len);
     self.vars.items[id].capturedIdx = capturedIdx;
     self.vars.items[id].isBoxed = true;
-    self.vars.items[id].isDefinedOnce = true;
 
     try self.capVarDescs.put(self.alloc, id, .{
         .user = parentVarId,
@@ -2338,7 +2463,6 @@ fn pushCapturedVar(self: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, v
     const capturedIdx: u8 = @intCast(block.captures.items.len);
     self.vars.items[id].capturedIdx = capturedIdx;
     self.vars.items[id].isBoxed = true;
-    self.vars.items[id].isDefinedOnce = true;
 
     try self.capVarDescs.put(self.alloc, id, .{
         .user = parentVarId,
@@ -2346,32 +2470,6 @@ fn pushCapturedVar(self: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, v
 
     try block.captures.append(self.alloc, id);
     return id;
-}
-
-fn pushLocalBodyVar(self: *cy.Chunk, name: []const u8, vtype: TypeId) !LocalVarId {
-    const id = try pushLocalVar(self, .local, name, vtype);
-    try curBlock(self).locals.append(self.alloc, id);
-    return id;
-}
-
-fn getOrDeclareLocal(self: *cy.Chunk, ident: cy.NodeId, vtype: TypeId) !LocalVarId {
-    const node = self.nodes[ident];
-    const name = self.getNodeTokenString(node);
-    if (curBlock(self).nameToVar.get(name)) |varId| {
-        self.nodes[ident].head.ident.semaVarId = varId;
-        if (!self.vars.items[varId].isDeclared) {
-            self.vars.items[varId].isDeclared = true;
-            try self.declaredVarStack.append(self.alloc, varId);
-        }
-        return varId;
-    } else {
-        // Declare var.
-        const id = try pushLocalBodyVar(self, name, vtype);
-        self.vars.items[id].isDeclared = true;
-        self.nodes[ident].head.ident.semaVarId = id;
-        try self.declaredVarStack.append(self.alloc, id);
-        return id;
-    }
 }
 
 fn referenceSym(c: *cy.Chunk, symId: CompactSymbolId, trackDep: bool) !void {
@@ -2411,15 +2509,15 @@ const VarLookupResult = union(enum) {
 /// symbol with overloaded signatures.
 fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool) !VarLookupResult {
     const sblock = curBlock(self);
-    if (sblock.nameToVar.get(name)) |varId| {
-        const svar = self.vars.items[varId];
+    if (sblock.nameToVar.get(name)) |varInfo| {
+        const svar = self.vars.items[varInfo.varId];
         if (svar.type == .staticAlias) {
             return VarLookupResult{
                 .static = @bitCast(svar.inner.staticAlias.csymId),
             };
         } else if (svar.type == .objectMemberAlias) {
             return VarLookupResult{
-                .local = varId,
+                .local = varInfo.varId,
             };
         } else if (svar.isParentLocalAlias()) {
             // Can not reference local var in a static var decl unless it's in a nested block.
@@ -2430,22 +2528,16 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool) !VarLoo
                 return error.CanNotUseLocal;
             }
             return VarLookupResult{
-                .local = varId,
+                .local = varInfo.varId,
             };
         } else {
             if (self.isInStaticInitializer() and self.semaBlockDepth() == 1) {
                 self.compiler.errorPayload = self.curNodeId;
                 return error.CanNotUseLocal;
             }
-            if (!svar.isDeclared) {
-                return VarLookupResult{
-                    .not_found = {},
-                };
-            } else {
-                return VarLookupResult{
-                    .local = varId,
-                };
-            }
+            return VarLookupResult{
+                .local = varInfo.varId,
+            };
         }
     }
 
@@ -2483,10 +2575,11 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool) !VarLoo
         if (res.isObjectMember) {
             const parentBlockId = self.semaBlockStack.items[res.blockDepth - 1];
             const parentBlock = &self.semaBlocks.items[parentBlockId];
-            const selfId = parentBlock.nameToVar.get("self").?;
+            const selfId = parentBlock.nameToVar.get("self").?.varId;
             var resVarId = res.varId;
-            if (self.vars.items[selfId].type == .param) {
-                resVarId = try replaceParamWithCopy(self, parentBlock, "self", selfId);
+            if (self.vars.items[selfId].type == .param and !self.vars.items[selfId].inner.param.copied) {
+                var svar = &self.vars.items[selfId];
+                svar.inner.param.copied = true;
             }
 
             const id = try pushCapturedObjectMemberAlias(self, name, resVarId, parentVar.vtype);
@@ -2496,10 +2589,9 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool) !VarLoo
             };
         } else {
             var resVarId = res.varId;
-            if (self.vars.items[res.varId].type == .param) {
-                const parentBlockId = self.semaBlockStack.items[res.blockDepth - 1];
-                const parentBlock = &self.semaBlocks.items[parentBlockId];
-                resVarId = try replaceParamWithCopy(self, parentBlock, name, res.varId);
+            if (self.vars.items[res.varId].type == .param and !self.vars.items[res.varId].inner.param.copied) {
+                var svar = &self.vars.items[res.varId];
+                svar.inner.param.copied = true;
             }
 
             const id = try pushCapturedVar(self, name, resVarId, parentVar.vtype);
@@ -2541,16 +2633,14 @@ fn lookupParentLocal(c: *cy.Chunk, name: []const u8) !?LookupParentLocalResult {
     if (c.semaBlockDepth() > 1) {
         const prevId = c.semaBlockStack.items[c.semaBlockDepth() - 1];
         const prev = c.semaBlocks.items[prevId];
-        if (prev.nameToVar.get(name)) |varId| {
-            const svar = c.vars.items[varId];
-            if (svar.isDeclared) {
-                if (svar.type != .staticAlias) {
-                    return .{
-                        .varId = varId,
-                        .blockDepth = c.semaBlockDepth(),
-                        .isObjectMember = false,
-                    };
-                }
+        if (prev.nameToVar.get(name)) |varInfo| {
+            const svar = c.vars.items[varInfo.varId];
+            if (svar.isCapturable()) {
+                return .{
+                    .varId = varInfo.varId,
+                    .blockDepth = c.semaBlockDepth(),
+                    .isObjectMember = false,
+                };
             }
         }
 
@@ -2562,7 +2652,7 @@ fn lookupParentLocal(c: *cy.Chunk, name: []const u8) !?LookupParentLocalResult {
             if (cy.module.getSym(mod, nameId)) |sym| {
                 if (sym.symT == .field) {
                     return .{
-                        .varId = prev.nameToVar.get("self").?,
+                        .varId = prev.nameToVar.get("self").?.varId,
                         .blockDepth = c.semaBlockDepth(),
                         .isObjectMember = true,
                     };
@@ -2680,23 +2770,18 @@ pub fn ensureFuncSig(c: *cy.VMcompiler, params: []const TypeId, ret: TypeId) !Fu
     } else {
         const id: u32 = @intCast(c.sema.resolvedFuncSigs.items.len);
         const new = try c.alloc.dupe(SymbolId, params);
-        var isParamsTyped = false;
+        var reqCallTypeCheck = false;
         for (params) |symId| {
-            if (symId != bt.Any) {
-                isParamsTyped = true;
+            if (symId != bt.Dynamic and symId != bt.Any) {
+                reqCallTypeCheck = true;
                 break;
             }
-        }
-        var isTyped = isParamsTyped;
-        if (ret != bt.Any) {
-            isTyped = true;
         }
         try c.sema.resolvedFuncSigs.append(c.alloc, .{
             .paramPtr = new.ptr,
             .paramLen = @intCast(new.len),
             .retSymId = ret,
-            .isTyped = isTyped,
-            .isParamsTyped = isParamsTyped,
+            .reqCallTypeCheck = reqCallTypeCheck,
         });
         res.value_ptr.* = id;
         res.key_ptr.* = .{
@@ -3485,8 +3570,8 @@ fn resolveTypeSymFromModule(chunk: *cy.Chunk, modId: cy.ModuleId, nameId: NameSy
             .typeAlias => {
                 const srcChunk = &chunk.compiler.chunks.items[mod.chunkId];
                 const node = srcChunk.nodes[modSym.inner.typeAlias.declId];
-                const symId = try getOrResolveTypeSymFromSpecNode(srcChunk, node.head.typeAliasDecl.typeSpecHead);
-                return symId;
+                const typeId = try getOrResolveTypeFromSpecNode(srcChunk, node.head.typeAliasDecl.typeSpecHead);
+                return typeId;
             },
             else => {},
         }
@@ -3597,8 +3682,8 @@ fn resolveSymFromModule(chunk: *cy.Chunk, modId: cy.ModuleId, nameId: NameSymId,
             .typeAlias => {
                 const srcChunk = &chunk.compiler.chunks.items[mod.chunkId];
                 const node = srcChunk.nodes[modSym.inner.typeAlias.declId];
-                const symId = try getOrResolveTypeSymFromSpecNode(srcChunk, node.head.typeAliasDecl.typeSpecHead);
-                return CompactSymbolId.initSymId(symId);
+                const typeId = try getOrResolveTypeFromSpecNode(srcChunk, node.head.typeAliasDecl.typeSpecHead);
+                return CompactSymbolId.initSymId(typeId);
             },
             .symToManyFuncs => {
                 // More than one func for sym.
@@ -3679,10 +3764,12 @@ pub fn curBlock(self: *cy.Chunk) *Block {
 
 pub fn endBlock(self: *cy.Chunk) !void {
     try endSubBlock(self);
-    const sblock = curBlock(self);
-    sblock.deinitTemps(self.alloc);
+    const block = curBlock(self);
+    block.deinitTemps(self.alloc);
     self.semaBlockStack.items.len -= 1;
     self.curSemaBlockId = self.semaBlockStack.items[self.semaBlockStack.items.len-1];
+
+    self.varDeclStack.items.len = block.varDeclStart;
 }
 
 pub fn getAccessExprResult(c: *cy.Chunk, ltype: TypeId, rightName: []const u8) !AccessExprResult {
@@ -3813,39 +3900,19 @@ const VarResult = struct {
     fromParentBlock: bool,
 };
 
-/// To a local type before assigning to a local variable.
-fn toLocalType(vtype: TypeId) TypeId {
-    return vtype;
-}
-
-fn replaceParamWithCopy(self: *cy.Chunk, sblock: *Block, name: []const u8, id: LocalVarId) !LocalVarId {
-    _ = sblock.nameToVar.remove(name);
-    const svar = self.vars.items[id];
-    const newId: u32 = @intCast(self.vars.items.len);
-    try self.vars.append(self.alloc, .{
-        .type = .paramCopy,
-        .name = if (builtin.mode == .Debug) name else {},
-        .vtype = toLocalType(svar.vtype),
-        .lifetimeRcCandidate = types.isRcCandidateType(self.compiler, svar.vtype),
-        .isDefinedOnce = true,
-        .inner = .{
-            .paramCopy = svar.inner.paramIdx,
-        },
-    });
-    try sblock.locals.append(self.alloc, newId);
-    try sblock.nameToVar.put(self.alloc, name, newId);
-    return newId;
-}
-
 fn assignVar(self: *cy.Chunk, ident: cy.NodeId, vtype: TypeId) !void {
-    // log.debug("set var {s}", .{name});
     const node = self.nodes[ident];
     const name = self.getNodeTokenString(node);
+    // log.tracev("set var {s}", .{name});
 
     const res = try getOrLookupVar(self, name, true);
     switch (res) {
         .local => |id| {
             var svar = &self.vars.items[id];
+
+            // Save type for codegen.
+            self.nodeTypes[ident] = svar.vtype;
+
             if (svar.isParentLocalAlias()) {
                 if (!svar.isBoxed) {
                     // Becomes boxed so codegen knows ahead of time.
@@ -3853,10 +3920,8 @@ fn assignVar(self: *cy.Chunk, ident: cy.NodeId, vtype: TypeId) !void {
                 }
             }
 
-            if (svar.type == .param) {
-                const sblock = curBlock(self);
-                const newId = try replaceParamWithCopy(self, sblock, name, id);
-                svar = &self.vars.items[newId];
+            if (svar.type == .param and !svar.inner.param.copied) {
+                svar.inner.param.copied = true;
             }
 
             const ssblock = curSubBlock(self);
@@ -3865,11 +3930,15 @@ fn assignVar(self: *cy.Chunk, ident: cy.NodeId, vtype: TypeId) !void {
                 try ssblock.prevVarTypes.put(self.alloc, id, svar.vtype);
             }
 
-            // Update current type after checking for branched assignment.
-            if (!types.isSameType(svar.vtype, vtype)) {
-                svar.vtype = toLocalType(vtype);
-                if (!svar.lifetimeRcCandidate and types.isRcCandidateType(self.compiler, vtype)) {
-                    svar.lifetimeRcCandidate = true;
+            if (svar.dynamic) {
+                svar.dynamicLastMutSubBlockId = self.curSemaSubBlockId;
+
+                // Update current type after checking for branched assignment.
+                if (svar.vtype != vtype) {
+                    svar.vtype = vtype;
+                    if (!svar.lifetimeRcCandidate and types.isRcCandidateType(self.compiler, vtype)) {
+                        svar.lifetimeRcCandidate = true;
+                    }
                 }
             }
 
@@ -3893,6 +3962,14 @@ fn endSubBlock(self: *cy.Chunk) !void {
     const sblock = curBlock(self);
     const ssblock = curSubBlock(self);
 
+    // Update max locals.
+    if (sblock.curNumLocals > sblock.maxLocals) {
+        sblock.maxLocals = sblock.curNumLocals;
+    }
+
+    // Unwind.
+    sblock.curNumLocals -= ssblock.numLocals;
+
     const curAssignedVars = self.assignedVarStack.items[ssblock.assignedVarStart..];
     self.assignedVarStack.items.len = ssblock.assignedVarStart;
 
@@ -3912,12 +3989,6 @@ fn endSubBlock(self: *cy.Chunk) !void {
                     if (!pssblock.prevVarTypes.contains(varId)) {
                         try self.assignedVarStack.append(self.alloc, varId);
                     }
-
-                    // Record merged type for codegen.
-                    try ssblock.endMergeTypes.append(self.alloc, .{
-                        .id = varId,
-                        .vtype = svar.vtype,
-                    });
                 }
             } else {
                 // New variable assignment, propagate to parent block.
@@ -3927,43 +3998,30 @@ fn endSubBlock(self: *cy.Chunk) !void {
     }
     ssblock.prevVarTypes.deinit(self.alloc);
 
-    // Mark vars as undeclared.
-    const curDeclaredVars = self.declaredVarStack.items[ssblock.declaredVarStart..];
-    self.declaredVarStack.items.len = ssblock.declaredVarStart;
-    for (curDeclaredVars) |varId| {
-        const svar = &self.vars.items[varId];
-        svar.isDeclared = false;
+    // Restore `nameToVar` to previous sub-block state.
+    if (sblock.subBlockDepth > 1) {
+        // Remove dead vars.
+        const varDecls = self.varDeclStack.items[ssblock.varDeclStart..];
+        for (varDecls) |decl| {
+            const name = decl.namePtr[0..decl.nameLen];
+            _ = sblock.nameToVar.remove(name);
+        }
+        self.varDeclStack.items.len = ssblock.varDeclStart;
+
+        // Restore shadowed vars.
+        const varShadows = self.varShadowStack.items[ssblock.varShadowStart..];
+        for (varShadows) |shadow| {
+            const name = shadow.namePtr[0..shadow.nameLen];
+            try sblock.nameToVar.putNoClobber(self.alloc, name, .{
+                .varId = shadow.varId,
+                .subBlockId = shadow.subBlockId,
+            });
+        }
+        self.varShadowStack.items.len = ssblock.varShadowStart;
     }
 
     self.curSemaSubBlockId = ssblock.prevSubBlockId;
     sblock.subBlockDepth -= 1;
-}
-
-fn pushIterSubBlock(self: *cy.Chunk) !void {
-    try pushSubBlock(self);
-}
-
-fn endIterSubBlock(self: *cy.Chunk) !void {
-    const ssblock = curSubBlock(self);
-    for (self.assignedVarStack.items[ssblock.assignedVarStart..]) |varId| {
-        const svar = self.vars.items[varId];
-        if (ssblock.prevVarTypes.get(varId)) |prevt| {
-            if (svar.vtype != prevt) {
-                // Type differs from prev scope type. Record change for iter block codegen.
-                try ssblock.iterVarBeginTypes.append(self.alloc, .{
-                    .id = varId,
-                    .vtype = bt.Any,
-                });
-            }
-        } else {
-            // First assigned in iter block. Record change for iter block codegen.
-            try ssblock.iterVarBeginTypes.append(self.alloc, .{
-                .id = varId,
-                .vtype = svar.vtype,
-            });
-        }
-    }
-    try endSubBlock(self);
 }
 
 pub fn declareUsingModule(chunk: *cy.Chunk, modId: cy.ModuleId) !void {
@@ -4203,7 +4261,7 @@ fn resolveHostQuickenFunc(
     const rtSymId = try c.compiler.vm.ensureFuncSym(parentSymId, nameId, funcSigId);
 
     const funcSig = c.compiler.sema.getFuncSig(funcSigId);
-    const rtSym = rt.FuncSymbol.initHostQuickenFunc(func, funcSig.isTyped, funcSig.numParams(), funcSigId);
+    const rtSym = rt.FuncSymbol.initHostQuickenFunc(func, funcSig.reqCallTypeCheck, funcSig.numParams(), funcSigId);
     c.compiler.vm.setFuncSym(rtSymId, rtSym);
     return try resolveFunc(c, key, funcSigId, cy.NullId);
 }
@@ -4216,7 +4274,7 @@ fn resolveHostFunc(
     const rtSymId = try c.compiler.vm.ensureFuncSym(parentSymId, nameId, funcSigId);
 
     const funcSig = c.compiler.sema.getFuncSig(funcSigId);
-    const rtSym = rt.FuncSymbol.initHostFunc(func, funcSig.isTyped, funcSig.numParams(), funcSigId);
+    const rtSym = rt.FuncSymbol.initHostFunc(func, funcSig.reqCallTypeCheck, funcSig.numParams(), funcSigId);
     c.compiler.vm.setFuncSym(rtSymId, rtSym);
     return try resolveFunc(c, key, funcSigId, cy.NullId);
 }
@@ -4395,10 +4453,13 @@ pub const FuncSig = struct {
     paramLen: u16,
 
     /// If a param or the return type is not the any type.
-    isTyped: bool,
+    // isTyped: bool,
 
     /// If a param is not the any type.
-    isParamsTyped: bool,
+    // isParamsTyped: bool,
+
+    /// Requires type checking if any param is not `dynamic` or `any`.
+    reqCallTypeCheck: bool,
 
     pub inline fn params(self: FuncSig) []const types.TypeId {
         return self.paramPtr[0..self.paramLen];
@@ -4466,9 +4527,6 @@ pub const FuncDecl = struct {
             funcSigId: u32 = cy.NullId,
         },
     },
-
-    /// pc to start of end locals procedure.
-    genEndLocalsPc: u32 = cy.NullId,
 
     /// Number of params in the function signature.
     numParams: u8,
@@ -4759,14 +4817,14 @@ pub fn appendResolvedRootModule(c: *cy.VMcompiler, absSpec: []const u8) !cy.Modu
 }
 
 test "sema internals." {
-    if (builtin.mode == .Debug) {
+    if (cy.Trace) {
         if (cy.is32Bit) {
-            try t.eq(@sizeOf(LocalVar), 24);
+            try t.eq(@sizeOf(LocalVar), 28);
         } else {
-            try t.eq(@sizeOf(LocalVar), 32);
+            try t.eq(@sizeOf(LocalVar), 40);
         }
     } else {
-        try t.eq(@sizeOf(LocalVar), 16);
+        try t.eq(@sizeOf(LocalVar), 20);
     }
     try t.eq(@sizeOf(FuncSym), 24);
 

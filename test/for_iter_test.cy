@@ -16,12 +16,14 @@ for sList each it:
    sum += it
 t.eq(sum, 6)
 
--- Loop iterator var overwrites the user var.
+-- Loop item var shadows parent var.
 var elem = 123
+sum = 0
 list = [1, 2, 3]
 for list each elem:
-  pass
-t.eq(elem, none)
+   sum += elem
+t.eq(sum, 6)
+t.eq(elem, 123)
 
 -- Break.
 list = [1, 2, 3]

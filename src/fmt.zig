@@ -87,7 +87,7 @@ fn toFmtValueType(comptime T: type) FmtValueType {
     }
 }
 
-pub fn v(val: anytype) FmtValue {
+pub inline fn v(val: anytype) FmtValue {
     const fmt_t = comptime toFmtValueType(@TypeOf(val));
     switch (fmt_t) {
         .bool => {

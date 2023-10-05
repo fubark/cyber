@@ -289,15 +289,6 @@ pub const VMcompiler = struct {
         while (id < self.chunks.items.len) : (id += 1) {
             try performChunkSema(self, id);
         }
-        
-        // Set up for genVarDecls.
-        // All main blocks should be initialized since genVarDecls can alternate chunks.
-        for (self.chunks.items) |*chunk| {
-            try chunk.pushSemaBlock(chunk.mainSemaBlockId);
-            chunk.buf = &self.buf;
-            // Temp locals can start at 0 for initializers codegen.
-            chunk.curBlock.numLocals = 0;
-        }
 
         if (!config.skipCodegen) {
             try performCodegen(self);
@@ -342,7 +333,7 @@ fn performChunkSema(self: *VMcompiler, id: cy.ChunkId) !void {
     const chunk = &self.chunks.items[id];
 
     // Dummy first element to avoid len > 0 check during pop.
-    try chunk.semaSubBlocks.append(self.alloc, sema.SubBlock.init(0, 0, 0));
+    try chunk.semaSubBlocks.append(self.alloc, sema.SubBlock.init(0, 0, 0, 0, 0));
     try chunk.semaBlockStack.append(self.alloc, 0);
 
     const root = chunk.nodes[chunk.parserAstRootId];
@@ -358,10 +349,11 @@ fn performChunkSema(self: *VMcompiler, id: cy.ChunkId) !void {
 
 fn performChunkCodegen(self: *VMcompiler, id: cy.ChunkId) !void {
     const chunk = &self.chunks.items[id];
+    chunk.varDeclStack.clearRetainingCapacity();
 
     if (id == 0) {
         // Main script performs gen for decls and the main block.
-        try gen.initVarLocals(chunk);
+        try gen.reserveMainRegs(chunk);
         const jumpStackStart = chunk.blockJumpStack.items.len;
         const root = chunk.nodes[0];
 
@@ -543,6 +535,15 @@ fn performCodegen(self: *VMcompiler) !void {
 }
 
 fn genBytecode(self: *VMcompiler) !void {
+    // Set up for genVarDecls.
+    // All main blocks should be initialized since genVarDecls can alternate chunks.
+    for (self.chunks.items) |*chunk| {
+        try cy.codegen.pushSemaBlock(chunk, chunk.mainSemaBlockId);
+        chunk.buf = &self.buf;
+        // Temp locals can start at 0 for initializers codegen.
+        chunk.rega.resetState(0);
+    }
+
     // Once all symbols have been resolved, the static initializers are generated in DFS order.
     for (self.chunks.items) |*chunk| {
         log.tracev("gen static initializer for chunk: {}", .{chunk.id});

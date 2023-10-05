@@ -53,8 +53,8 @@ test "ARC." {
         \\t.eq(s.value[0], 123)
     );
     trace = run.getTrace();
-    try t.eq(trace.numRetains, 3);
-    try t.eq(trace.numReleases, 3);
+    try t.eq(trace.numRetains, 4);
+    try t.eq(trace.numReleases, 4);
 
     // Object is released when returned rvalue field access.
     val = try run.eval(
@@ -93,7 +93,6 @@ test "ARC." {
     trace = run.getTrace();
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);
-
 }
 
 test "ARC for static variable declarations." {

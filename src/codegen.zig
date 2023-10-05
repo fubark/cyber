@@ -65,6 +65,7 @@ pub const GenValue = struct {
 
 fn identifier(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
     const node = c.nodes[nodeId];
+    const semaType = c.nodeTypes[nodeId];
     if (c.genGetVar(node.head.ident.semaVarId)) |svar| {
         // csymId would be active instead.
         cy.dassert(svar.type != .staticAlias);
@@ -76,36 +77,22 @@ fn identifier(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
             const selfLocal: u8 = @intCast(4 + sblock.params.items.len - 1);
             const name = c.getNodeTokenString(node);
             const fieldId = try c.compiler.vm.ensureFieldSym(name);
-            if (cstr.mustRetain) {
-                try pushFieldRetain(c, selfLocal, dst, @intCast(fieldId));
-                return c.initGenValue(dst, bt.Any, true);
-            } else {
-                const pc = c.compiler.buf.len();
-                try c.compiler.buf.pushOpSlice(.field, &.{ selfLocal, dst, 0, 0, 0, 0, 0 });
-                c.compiler.buf.setOpArgU16(pc + 3, @intCast(fieldId));
-                return c.initGenValue(dst, bt.Any, false);
-            }
+            try pushFieldRetain(c, selfLocal, dst, @intCast(fieldId), nodeId);
+            return c.initGenValue(dst, bt.Any, true);
         } else if (svar.type == .parentObjectMemberAlias) {
             dst = try c.rega.selectFromNonLocalVar(cstr, cstr.mustRetain);
             try c.buf.pushOp3(.captured, c.curBlock.closureLocal, svar.capturedIdx, dst);
             try c.buf.pushOp2(.boxValue, dst, dst);
             const name = c.getNodeTokenString(node);
             const fieldId = try c.compiler.vm.ensureFieldSym(name);
-            if (cstr.mustRetain) {
-                try pushFieldRetain(c, dst, dst, @intCast(fieldId));
-                return c.initGenValue(dst, bt.Any, true);
-            } else {
-                const pc = c.buf.len();
-                try c.buf.pushOpSlice(.field, &.{ dst, dst, 0, 0, 0, 0, 0 });
-                c.buf.setOpArgU16(pc + 3, @intCast(fieldId));
-                return c.initGenValue(dst, bt.Any, false);
-            }
+            try pushFieldRetain(c, dst, dst, @intCast(fieldId), nodeId);
+            return c.initGenValue(dst, bt.Any, true);
         } else if (!svar.isParentLocalAlias()) {
             dst = try c.rega.selectFromLocalVar(cstr, svar.local);
         } else {
             dst = try c.rega.selectFromNonLocalVar(cstr, cstr.mustRetain);
         }
-        if (cstr.mustRetain and types.isRcCandidateType(c.compiler, svar.vtype)) {
+        if (cstr.mustRetain and types.isRcCandidateType(c.compiler, semaType)) {
             // Ensure retain +1.
             if (svar.isBoxed) {
                 if (svar.isParentLocalAlias()) {
@@ -121,7 +108,7 @@ fn identifier(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
                     try c.buf.pushOp2(.copyRetainSrc, svar.local, dst);
                 }
             }
-            return c.initGenValue(dst, svar.vtype, true);
+            return c.initGenValue(dst, semaType, true);
         } else {
             if (svar.isBoxed) {
                 if (svar.isParentLocalAlias()) {
@@ -137,7 +124,7 @@ fn identifier(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
                     try c.buf.pushOp2(.copy, svar.local, dst);
                 }
             }
-            return c.initGenValue(dst, svar.vtype, false);
+            return c.initGenValue(dst, semaType, false);
         }
     } else {
         return symbolTo(c, node.head.ident.sema_csymId, cstr);
@@ -716,19 +703,18 @@ fn lambdaMulti(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
 
     const func = self.semaFuncDecls.items[node.head.func.semaDeclId];
 
-    try self.pushSemaBlock(func.semaBlockId);
+    try pushSemaBlock(self, func.semaBlockId);
     self.curBlock.frameLoc = nodeId;
 
     const jumpStackStart = self.blockJumpStack.items.len;
     const opStart: u32 = @intCast(self.buf.ops.items.len);
 
     // Generate function body.
-    try self.reserveFuncParams(func.numParams);
-    try initVarLocals(self);
+    try reserveFuncRegs(self, func.numParams);
 
     try genStatements(self, node.head.func.bodyHead, false);
 
-    try self.genBlockEnding();
+    try genBlockEnd(self);
     self.patchJumpToCurPc(jumpPc);
 
     const sblock = sema.curBlock(self);
@@ -739,7 +725,7 @@ fn lambdaMulti(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     self.blockJumpStack.items.len = jumpStackStart;
 
     const stackSize = self.getMaxUsedRegisters();
-    self.popSemaBlock();
+    popSemaBlock(self);
 
     const dst = try self.rega.selectFromNonLocalVar(req, true);
 
@@ -781,15 +767,14 @@ fn lambdaExpr(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     const jumpPc = try self.pushEmptyJump();
 
     const func = self.semaFuncDecls.items[node.head.func.semaDeclId];
-    try self.pushSemaBlock(func.semaBlockId);
+    try pushSemaBlock(self, func.semaBlockId);
     const opStart: u32 = @intCast(self.buf.ops.items.len);
 
     // Generate function body.
-    try self.reserveFuncParams(func.numParams);
-    try initVarLocals(self);
+    try reserveFuncRegs(self, func.numParams);
 
     _ = try expression(self, node.head.func.bodyHead, RegisterCstr.exactMustRetain(0));
-    try self.endLocals();
+    try genBlockReleaseLocals(self);
     try self.buf.pushOp(.ret1);
     self.patchJumpToCurPc(jumpPc);
 
@@ -797,7 +782,7 @@ fn lambdaExpr(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     const numCaptured: u8 = @intCast(sblock.captures.items.len);
     const closureLocal = self.curBlock.closureLocal;
     const stackSize = self.getMaxUsedRegisters();
-    self.popSemaBlock();
+    popSemaBlock(self);
 
     const dst = try self.rega.selectFromNonLocalVar(req, true);
 
@@ -1121,25 +1106,12 @@ fn genField(self: *cy.Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
 
     const newtype = (try sema.getAccessExprResult(self, leftv.vtype, name)).exprT;
 
-    try self.pushFailableDebugSym(nodeId);
-    const leftIsTempRetained = leftv.retained and leftv.isTempLocal;
-    if (req.mustRetain or leftIsTempRetained) {
-        try pushFieldRetain(self, leftv.local, dst, @intCast(fieldId));
+    try pushFieldRetain(self, leftv.local, dst, @intCast(fieldId), nodeId);
 
-        // ARC cleanup.
-        try releaseIfRetainedTemp(self, leftv);
+    // ARC cleanup.
+    try releaseIfRetainedTemp(self, leftv);
 
-        return self.initGenValue(dst, newtype, true);
-    } else {
-        const pc = self.buf.len();
-        try self.buf.pushOpSlice(.field, &.{ leftv.local, dst, 0, 0, 0, 0, 0 });
-        self.buf.setOpArgU16(pc + 3, @intCast(fieldId));
-
-        // ARC cleanup.
-        try releaseIfRetainedTemp(self, leftv);
-
-        return self.initGenValue(dst, newtype, false);
-    }
+    return self.initGenValue(dst, newtype, true);
 }
 
 /// Only generates the top declaration statements.
@@ -1185,9 +1157,7 @@ pub fn genStatements(self: *Chunk, head: cy.NodeId, comptime attachEnd: bool) an
         if (attachEnd) {
             const local = try exprStmt(self, cur_id, true);
             if (shouldGenMainScopeReleaseOps(self.compiler)) {
-                self.curBlock.endLocalsPc = @intCast(self.buf.ops.items.len);
-                self.nodes[0].head.root.genEndLocalsPc = self.curBlock.endLocalsPc;
-                try self.endLocals();
+                try genBlockReleaseLocals(self);
             }
             try self.buf.pushOp1(.end, local);
         } else {
@@ -1197,9 +1167,7 @@ pub fn genStatements(self: *Chunk, head: cy.NodeId, comptime attachEnd: bool) an
         if (attachEnd) {
             try statement(self, cur_id);
             if (shouldGenMainScopeReleaseOps(self.compiler)) {
-                self.curBlock.endLocalsPc = @intCast(self.buf.ops.items.len);
-                self.nodes[0].head.root.genEndLocalsPc = self.curBlock.endLocalsPc;
-                try self.endLocals();
+                try genBlockReleaseLocals(self);
             }
             try self.buf.pushOp1(.end, 255);
         } else {
@@ -1235,7 +1203,11 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
             if (node.head.localDecl.right != cy.NullId) {
                 // Can assume left is .ident from sema.
                 const varSpec = c.nodes[node.head.localDecl.varSpec];
-                try assignExprToLocalVar(c, varSpec.head.varSpec.name, node.head.localDecl.right);
+                const varId = c.nodes[varSpec.head.varSpec.name].head.ident.semaVarId;
+
+                _ = try reserveLocalReg(c, varId, false);
+                try assignExprToLocalVar(c, varSpec.head.varSpec.name, node.head.localDecl.right, true);
+                c.curBlock.nextLocalReg += 1;
             }
         },
         .assign_stmt => {
@@ -1307,15 +1279,16 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
             var errorVarLocal: u8 = cy.NullU8;
             if (node.head.tryStmt.errorVar != cy.NullId) {
                 const errorVarN = c.nodes[node.head.tryStmt.errorVar];
-                errorVarLocal = c.genGetVar(errorVarN.head.ident.semaVarId).?.local;
+                errorVarLocal = try reserveLocalReg(c, errorVarN.head.ident.semaVarId, true);
             }
             const pushTryPc = c.buf.ops.items.len;
             try c.buf.pushOp3(.pushTry, errorVarLocal, 0, 0);
 
             // try body.
-            c.nextSemaSubBlock();
+            nextSemaSubBlock(c);
             try genStatements(c, node.head.tryStmt.tryFirstStmt, false);
-            c.prevSemaSubBlock();
+            try genSubBlockReleaseLocals(c);
+            prevSemaSubBlock(c);
 
             // pop try block.
             const popTryPc = c.buf.ops.items.len;
@@ -1323,9 +1296,10 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
             c.buf.setOpArgU16(pushTryPc + 2, @intCast(c.buf.ops.items.len - pushTryPc));
 
             // catch body.
-            c.nextSemaSubBlock();
+            nextSemaSubBlock(c);
             try genStatements(c, node.head.tryStmt.catchFirstStmt, false);
-            c.prevSemaSubBlock();
+            try genSubBlockReleaseLocals(c);
+            prevSemaSubBlock(c);
 
             c.buf.setOpArgU16(popTryPc + 1, @intCast(c.buf.ops.items.len - popTryPc));
         },
@@ -1336,7 +1310,7 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
             try whileOptStmt(c, nodeId);
         },
         .whileInfStmt => {
-            c.nextSemaSubBlock();
+            nextSemaSubBlock(c);
 
             const pcSave: u32 = @intCast(c.buf.ops.items.len);
             const jumpStackSave: u32 = @intCast(c.subBlockJumpStack.items.len);
@@ -1353,13 +1327,14 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
             // }
 
             try genStatements(c, node.head.child_head, false);
+            try genSubBlockReleaseLocals(c);
             try c.pushJumpBackTo(pcSave);
 
             c.patchForBlockJumps(jumpStackSave, c.buf.ops.items.len, pcSave);
-            c.prevSemaSubBlock();
+            prevSemaSubBlock(c);
         },
         .whileCondStmt => {
-            c.nextSemaSubBlock();
+            nextSemaSubBlock(c);
 
             const topPc: u32 = @intCast(c.buf.ops.items.len);
             const jumpStackSave: u32 = @intCast(c.subBlockJumpStack.items.len);
@@ -1378,12 +1353,13 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
             c.rega.setNextTemp(tempStart);
 
             try genStatements(c, node.head.whileCondStmt.bodyHead, false);
+            try genSubBlockReleaseLocals(c);
             try c.pushJumpBackTo(topPc);
 
             c.patchJumpNotCondToCurPc(jumpPc);
 
             c.patchForBlockJumps(jumpStackSave, c.buf.ops.items.len, topPc);
-            c.prevSemaSubBlock();
+            prevSemaSubBlock(c);
         },
         .for_range_stmt => {
             try forRangeStmt(c, nodeId);
@@ -1393,18 +1369,19 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
         },
         .return_stmt => {
             if (c.blocks.items.len == 1) {
-                try c.endLocals();
+                try genBlockReleaseLocals(c);
                 try c.buf.pushOp1(.end, 255);
             } else {
-                try c.endLocals();
+                try genBlockReleaseLocals(c);
                 try c.buf.pushOp(.ret0);
             }
         },
         .return_expr_stmt => {
+            // TODO: If the returned expr is a local, consume the local after copying to reg 0.
             if (c.blocks.items.len == 1) {
                 // Main block.
                 const val = try expression(c, node.head.child_head, RegisterCstr.simpleMustRetain);
-                try c.endLocals();
+                try genBlockReleaseLocals(c);
                 try c.buf.pushOp1(.end, @intCast(val.local));
             } else {
                 // if (c.curBlock.funcSymId != cy.NullId) {
@@ -1414,7 +1391,7 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
                 // } else {
                     _ = try expression(c, node.head.child_head, RegisterCstr.exactMustRetain(0));
                 // }
-                try c.endLocals();
+                try genBlockReleaseLocals(c);
                 try c.buf.pushOp(.ret1);
             }
         },
@@ -1429,7 +1406,7 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
 
 fn whileOptStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
-    c.nextSemaSubBlock();
+    nextSemaSubBlock(c);
 
     const topPc: u32 = @intCast(c.buf.ops.items.len);
     const jumpStackSave: u32 = @intCast(c.subBlockJumpStack.items.len);
@@ -1438,10 +1415,9 @@ fn whileOptStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     var optLocal: LocalId = undefined;
     if (node.head.whileOptStmt.some != cy.NullId) {
         const some = c.nodes[node.head.whileOptStmt.some];
-        optLocal = c.genGetVar(some.head.ident.semaVarId).?.local;
-        // Since this variable is used in the loop, it is considered defined before codegen.
-        c.vars.items[some.head.ident.semaVarId].isDefinedOnce = true;
-        try assignExprToLocalVar(c, node.head.whileOptStmt.some, node.head.whileOptStmt.opt);
+        optLocal = try reserveLocalReg(c, some.head.ident.semaVarId, false);
+        try assignExprToLocalVar(c, node.head.whileOptStmt.some, node.head.whileOptStmt.opt, true);
+        c.curBlock.nextLocalReg += 1;
     } else {
         const optv = try expression(c, node.head.whileOptStmt.opt, RegisterCstr.simple);
         optLocal = optv.local;
@@ -1452,12 +1428,13 @@ fn whileOptStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     c.patchJumpNotNoneToCurPc(skipSkipJump);
 
     try genStatements(c, node.head.whileOptStmt.bodyHead, false);
+    try genSubBlockReleaseLocals(c);
     try c.pushJumpBackTo(topPc);
 
     c.patchJumpToCurPc(skipBodyJump);
 
     c.patchForBlockJumps(jumpStackSave, c.buf.ops.items.len, topPc);
-    c.prevSemaSubBlock();
+    prevSemaSubBlock(c);
 }
 
 fn opAssignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
@@ -1556,7 +1533,7 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const left = c.nodes[node.head.left_right.left];
     if (left.node_t == .ident) {
         if (left.head.ident.semaVarId != cy.NullId) {
-            try assignExprToLocalVar(c, node.head.left_right.left, node.head.left_right.right);
+            try assignExprToLocalVar(c, node.head.left_right.left, node.head.left_right.right, false);
         } else {
             const csymId = left.head.ident.sema_csymId;
             if (!csymId.isFuncSymId) {
@@ -1672,9 +1649,10 @@ fn ifStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
     c.rega.setNextTemp(tempStart);
 
-    c.nextSemaSubBlock();
+    nextSemaSubBlock(c);
     try genStatements(c, node.head.left_right.right, false);
-    c.prevSemaSubBlock();
+    try genSubBlockReleaseLocals(c);
+    prevSemaSubBlock(c);
 
     var elseClauseId = node.head.left_right.extra;
     if (elseClauseId != cy.NullId) {
@@ -1690,9 +1668,10 @@ fn ifStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             const elseClause = c.nodes[elseClauseId];
             if (elseClause.head.else_clause.cond == cy.NullId) {
-                c.nextSemaSubBlock();
+                nextSemaSubBlock(c);
                 try genStatements(c, elseClause.head.else_clause.body_head, false);
-                c.prevSemaSubBlock();
+                try genSubBlockReleaseLocals(c);
+                prevSemaSubBlock(c);
                 endsWithElse = true;
                 break;
             } else {
@@ -1707,9 +1686,10 @@ fn ifStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
                 c.rega.setNextTemp(tempStart2);
 
-                c.nextSemaSubBlock();
+                nextSemaSubBlock(c);
                 try genStatements(c, elseClause.head.else_clause.body_head, false);
-                c.prevSemaSubBlock();
+                try genSubBlockReleaseLocals(c);
+                prevSemaSubBlock(c);
                 elseClauseId = elseClause.head.else_clause.else_clause;
             }
         }
@@ -1756,8 +1736,8 @@ fn comptimeStmt(c: *Chunk, nodeId: cy.NodeId) !void {
 }
 
 fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
-    c.nextSemaSubBlock();
-    defer c.prevSemaSubBlock();
+    nextSemaSubBlock(c);
+    defer prevSemaSubBlock(c);
 
     const node = c.nodes[nodeId];
 
@@ -1771,16 +1751,15 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     if (hasEach) {
         const eachClause = c.nodes[node.head.for_iter_stmt.eachClause];
         if (eachClause.node_t == .ident) {
-            valReg = c.genGetVar(eachClause.head.ident.semaVarId).?.local;
-
-            // At this point the temp var is loosely defined.
-            c.vars.items[eachClause.head.ident.semaVarId].isDefinedOnce = true;
+            valReg = try reserveLocalReg(c, eachClause.head.ident.semaVarId, false);
         } else if (eachClause.node_t == .seqDestructure) {
             var curId = eachClause.head.seqDestructure.head;
+            var nextLocalReg = c.curBlock.nextLocalReg;
             while (curId != cy.NullId) {
                 const ident = c.nodes[curId];
-                seqRegs[seqLen] = c.genGetVar(ident.head.ident.semaVarId).?.local;
-                c.vars.items[ident.head.ident.semaVarId].isDefinedOnce = true;
+                try reserveLocalRegAt(c, ident.head.ident.semaVarId, nextLocalReg);
+                seqRegs[seqLen] = nextLocalReg;
+                nextLocalReg += 1;
                 seqLen += 1;
                 if (seqLen == 10) {
                     return c.reportErrorAt("Too many destructure identifiers: 10", &.{}, node.head.for_iter_stmt.eachClause);
@@ -1791,7 +1770,6 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
         } else {
             cy.unexpected();
         }
-
     }
 
     // Reserve temp local for iterator.
@@ -1822,11 +1800,12 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
         try pushRelease(c, iterLocal + 5, node.head.for_iter_stmt.iterable);
         if (hasEach) {
             skipFromTop = try c.pushEmptyJumpNone(iterLocal + 1);
-            try pushReleases(c, seqRegs[0..seqLen], node.head.for_iter_stmt.eachClause);
 
             try c.pushFailableDebugSym(nodeId);
             try c.buf.pushOp2(.seqDestructure, iterLocal + 1, @intCast(seqLen));
             try c.buf.pushOperands(seqRegs[0..seqLen]);
+            c.curBlock.nextLocalReg += @intCast(seqLen);
+
             try pushRelease(c, iterLocal + 1, node.head.for_iter_stmt.eachClause);
         } else {
             skipFromTop = try c.pushEmptyJumpNone(iterLocal + 1);
@@ -1838,7 +1817,8 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
         try pushRelease(c, iterLocal + 5, node.head.for_iter_stmt.iterable);
         if (hasEach) {
             try c.pushOptionalDebugSym(nodeId);
-            try c.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valReg);
+            try c.buf.pushOp2(.copy, iterLocal + 1, valReg);
+            c.curBlock.nextLocalReg += 1;
         }
         skipFromTop = try c.pushEmptyJumpNone(iterLocal + 1);
     }
@@ -1847,6 +1827,7 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     const jumpStackSave: u32 = @intCast(c.subBlockJumpStack.items.len);
     defer c.subBlockJumpStack.items.len = jumpStackSave;
     try genStatements(c, node.head.for_iter_stmt.body_head, false);
+    try genSubBlockReleaseLocals(c);
 
     const contPc = c.buf.ops.items.len;
 
@@ -1860,7 +1841,6 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
         if (hasEach) {
             // Must check for `none` before destructuring.
             skipFromInner = try c.pushEmptyJumpNone(iterLocal + 1);
-            try pushReleases(c, seqRegs[0..seqLen], node.head.for_iter_stmt.eachClause);
 
             try c.pushFailableDebugSym(nodeId);
             try c.buf.pushOp2(.seqDestructure, iterLocal + 1, @intCast(seqLen));
@@ -1874,7 +1854,7 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
         try pushRelease(c, iterLocal + 5, node.head.for_iter_stmt.iterable);
         if (hasEach) {
             try c.pushOptionalDebugSym(nodeId);
-            try c.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valReg);
+            try c.buf.pushOp2(.copy, iterLocal + 1, valReg);
         }
     }
 
@@ -1895,15 +1875,15 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
 }
 
 fn forRangeStmt(c: *Chunk, nodeId: cy.NodeId) !void {
-    c.nextSemaSubBlock();
-    defer c.prevSemaSubBlock();
+    nextSemaSubBlock(c);
+    defer prevSemaSubBlock(c);
 
     const node = c.nodes[nodeId];
 
     var local: u8 = cy.NullU8;
     if (node.head.for_range_stmt.eachClause != cy.NullId) {
         const ident = c.nodes[node.head.for_range_stmt.eachClause];
-        local = c.genGetVar(ident.head.ident.semaVarId).?.local;
+        local = try reserveLocalReg(c, ident.head.ident.semaVarId, true);
 
         // inc = as_clause.head.as_range_clause.inc;
         // if (as_clause.head.as_range_clause.step != NullId) {
@@ -1948,6 +1928,7 @@ fn forRangeStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     const jumpStackSave: u32 = @intCast(c.subBlockJumpStack.items.len);
     defer c.subBlockJumpStack.items.len = jumpStackSave;
     try genStatements(c, node.head.for_range_stmt.body_head, false);
+    try genSubBlockReleaseLocals(c);
 
     // Perform counter update and perform check against end range.
     const jumpBackOffset: u16 = @intCast(c.buf.ops.items.len - bodyPc);
@@ -2015,8 +1996,8 @@ fn matchBlock(self: *Chunk, nodeId: cy.NodeId, cstr: ?RegisterCstr) !GenValue {
     var condOffset: u32 = 0;
     while (curCase != cy.NullId) {
         const case = self.nodes[curCase];
-        self.nextSemaSubBlock();
-        defer self.prevSemaSubBlock();
+        nextSemaSubBlock(self);
+        defer prevSemaSubBlock(self);
 
         const blockPc = self.buf.ops.items.len;
         if (isStmt) {
@@ -2032,6 +2013,7 @@ fn matchBlock(self: *Chunk, nodeId: cy.NodeId, cstr: ?RegisterCstr) !GenValue {
                 try genStatements(self, case.head.caseBlock.firstChild, false);
             }
         }
+        try genSubBlockReleaseLocals(self);
 
         if (isStmt) {
             if (case.next != cy.NullId) {
@@ -2603,6 +2585,7 @@ fn pushReleaseOpt2(self: *Chunk, pushRegA: bool, rega: u8, pushRegB: bool, regb:
 
 fn pushReleases(self: *Chunk, regs: []const u8, debugNodeId: cy.NodeId) !void {
     if (regs.len > 1) {
+        try self.pushOptionalDebugSym(debugNodeId);
         try self.buf.pushOp1(.releaseN, @intCast(regs.len));
         try self.buf.pushOperands(regs);
     } else if (regs.len == 1) {
@@ -2692,7 +2675,7 @@ fn funcDecl(self: *Chunk, parentSymId: sema.SymbolId, nodeId: cy.NodeId) !void {
 
     const jumpPc = try self.pushEmptyJump();
 
-    try self.pushSemaBlock(func.semaBlockId);
+    try pushSemaBlock(self, func.semaBlockId);
     if (self.compiler.config.genDebugFuncMarkers) {
         try self.compiler.buf.pushDebugFuncStart(node.head.func.semaDeclId, self.id);
     }
@@ -2704,12 +2687,10 @@ fn funcDecl(self: *Chunk, parentSymId: sema.SymbolId, nodeId: cy.NodeId) !void {
     const jumpStackStart = self.blockJumpStack.items.len;
 
     const opStart: u32 = @intCast(self.buf.ops.items.len);
-    try self.reserveFuncParams(func.numParams);
-    try initVarLocals(self);
+    try reserveFuncRegs(self, func.numParams);
     try genStatements(self, node.head.func.bodyHead, false);
     // TODO: Check last statement to skip adding ret.
-    try self.genBlockEnding();
-    func.genEndLocalsPc = self.curBlock.endLocalsPc;
+    try genBlockEnd(self);
 
     // Reserve another local for the call return info.
     const sblock = sema.curBlock(self);
@@ -2722,7 +2703,7 @@ fn funcDecl(self: *Chunk, parentSymId: sema.SymbolId, nodeId: cy.NodeId) !void {
     self.blockJumpStack.items.len = jumpStackStart;
 
     const stackSize = self.getMaxUsedRegisters();
-    self.popSemaBlock();
+    popSemaBlock(self);
 
     if (self.compiler.config.genDebugFuncMarkers) {
         try self.compiler.buf.pushDebugFuncEnd(node.head.func.semaDeclId, self.id);
@@ -3030,9 +3011,7 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) anyerror!GenValu
             return c.initGenValue(dst, bt.Any, true);
         },
         .coyield => {
-            const pc = c.buf.ops.items.len;
-            try c.buf.pushOp2(.coyield, 0, 0);
-            try c.blockJumpStack.append(c.alloc, .{ .jumpT = .jumpToEndLocals, .pc = @intCast(pc), .pcOffset = 1 });
+            try c.buf.pushOp2(.coyield, c.curBlock.startLocalReg, c.curBlock.nextLocalReg);
 
             // TODO: return coyield expression.
             const dst = try c.rega.selectFromNonLocalVar(cstr, false);
@@ -3294,10 +3273,7 @@ fn binOpAssignToField(
     const recv = try expression(self, left.head.accessExpr.left, RegisterCstr.simple);
     const leftLocal = try self.rega.consumeNextTemp();
 
-    const pc = self.buf.len();
-    try self.pushFailableDebugSym(leftId);
-    try self.buf.pushOpSlice(.field, &.{ recv.local, leftLocal, 0, 0, 0, 0, 0 });
-    self.buf.setOpArgU16(pc + 3, @intCast(fieldId));
+    try pushFieldRetain(self, recv.local, leftLocal, @intCast(fieldId), leftId);
 
     const resv = try binExpr2(self, .{
         .leftId = leftId,
@@ -3325,20 +3301,19 @@ fn genMethodDecl(self: *Chunk, typeId: rt.TypeId, node: cy.Node, func: sema.Func
 
     const jumpPc = try self.pushEmptyJump();
 
-    try self.pushSemaBlock(func.semaBlockId);
+    try pushSemaBlock(self, func.semaBlockId);
     if (self.compiler.config.genDebugFuncMarkers) {
         try self.compiler.buf.pushDebugFuncStart(node.head.func.semaDeclId, self.id);
     }
 
     const opStart: u32 = @intCast(self.buf.ops.items.len);
-    try self.reserveFuncParams(func.numParams);
-    try initVarLocals(self);
+    try reserveFuncRegs(self, func.numParams);
     try genStatements(self, node.head.func.bodyHead, false);
     // TODO: Check last statement to skip adding ret.
-    try self.genBlockEnding();
+    try genBlockEnd(self);
 
     const stackSize = self.getMaxUsedRegisters();
-    self.popSemaBlock();
+    popSemaBlock(self);
     if (self.compiler.config.genDebugFuncMarkers) {
         try self.compiler.buf.pushDebugFuncEnd(node.head.func.semaDeclId, self.id);
     }
@@ -3346,7 +3321,7 @@ fn genMethodDecl(self: *Chunk, typeId: rt.TypeId, node: cy.Node, func: sema.Func
     self.patchJumpToCurPc(jumpPc);
 
     const funcSig = self.compiler.sema.getFuncSig(func.funcSigId);
-    if (funcSig.isTyped) {
+    if (funcSig.reqCallTypeCheck) {
         const m = rt.MethodInit.initTyped(func.funcSigId, opStart, stackSize, func.numParams);
         try self.compiler.vm.addMethod(typeId, mgId, m);
     } else {
@@ -3355,13 +3330,13 @@ fn genMethodDecl(self: *Chunk, typeId: rt.TypeId, node: cy.Node, func: sema.Func
     }
 }
 
-fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId) !void {
+fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId, comptime init: bool) !void {
     const varId = c.nodes[leftId].head.ident.semaVarId;
+    const varT = c.nodeTypes[leftId];
     const expr = c.nodes[exprId];
 
     const svar = c.genGetVarPtr(varId).?;
     if (svar.isBoxed) {
-        cy.dassert(svar.isDefinedOnce);
         try assignExprToBoxedVar(c, svar, exprId);
         return;
     }
@@ -3370,10 +3345,9 @@ fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId) !void {
         const csymId = expr.head.ident.sema_csymId;
         if (csymId.isPresent()) {
             // Copying a symbol.
-            if (!svar.isDefinedOnce or !types.isRcCandidateType(c.compiler, svar.vtype)) {
+            if (init or !types.isRcCandidateType(c.compiler, svar.vtype)) {
                 const exprv = try expression(c, exprId, RegisterCstr.exactMustRetain(svar.local));
                 svar.vtype = exprv.vtype;
-                svar.isDefinedOnce = true;
             } else {
                 const exprv = try expression(c, exprId, RegisterCstr.tempMustRetain);
                 svar.vtype = exprv.vtype;
@@ -3384,7 +3358,7 @@ fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId) !void {
         }
 
         const exprv = try expression(c, exprId, RegisterCstr.simple);
-        if (svar.isDefinedOnce) {
+        if (!init) {
             if (types.isRcCandidateType(c.compiler, svar.vtype)) {
                 // log.debug("releaseSet {} {}", .{varId, svar.vtype.typeT});
                 if (types.isRcCandidateType(c.compiler, exprv.vtype)) {
@@ -3408,7 +3382,6 @@ fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId) !void {
             } else {
                 try c.buf.pushOp2(.copy, exprv.local, svar.local);
             }
-            svar.isDefinedOnce = true;
             svar.vtype = exprv.vtype;
         }
         return;
@@ -3438,10 +3411,9 @@ fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId) !void {
     }
 
     // Retain rval.
-    if (!svar.isDefinedOnce or !types.isRcCandidateType(c.compiler, svar.vtype)) {
+    if (init or !types.isRcCandidateType(c.compiler, varT)) {
         const exprv = try expression(c, exprId, RegisterCstr.exactMustRetain(svar.local));
         svar.vtype = exprv.vtype;
-        svar.isDefinedOnce = true;
     } else {
         const exprv = try expression(c, exprId, RegisterCstr.simpleMustRetain);
         cy.dassert(exprv.local != svar.local);
@@ -3455,7 +3427,6 @@ fn assignExprToBoxedVar(self: *Chunk, svar: *sema.LocalVar, exprId: cy.NodeId) !
     // Retain rval.
     const exprv = try expression(self, exprId, RegisterCstr.tempMustRetain);
     svar.vtype = exprv.vtype;
-    svar.isDefinedOnce = true;
     if (!types.isRcCandidateType(self.compiler, svar.vtype)) {
         if (svar.isParentLocalAlias()) {
             const temp = try self.rega.consumeNextTemp();
@@ -3477,54 +3448,32 @@ fn assignExprToBoxedVar(self: *Chunk, svar: *sema.LocalVar, exprId: cy.NodeId) !
     }
 }
 
-/// Reserve and initialize all var locals to `none`. 
-/// There are a few reasons why this is needed:
-/// 1. Since explicit initializers can fail (errors are thrown by default)
-///    the shared endLocals inst can still rely on the var locals having defined values.
-/// 2. By always generating this fixed sized `init` inst, it allows single-pass
-///    compilation and doesn't require copying a temp inst buffer after a dynamically sized prelude.
-/// 3. It allows variables first assigned in a loop construct to rely on a defined value for
-///    a release op before use. This also allows the lifetime of all var locals to the block end.
-pub fn initVarLocals(self: *Chunk) !void {
-    const sblock = sema.curBlock(self);
+fn reserveLocalRegAt(c: *Chunk, varId: sema.LocalVarId, reg: u8) !void {
+    const svar = &c.vars.items[varId];
+    svar.local = reg;
 
-    // Use the callee local for closure.
-    if (sblock.captures.items.len > 0) {
-        self.curBlock.closureLocal = @intCast(4 + sblock.params.items.len);
+    try c.varDeclStack.append(c.alloc, .{
+        // Name was only needed for sema.
+        .namePtr = undefined,
+        .nameLen = undefined,
+        .varId = varId,
+    });
 
-        // Captured vars are already defined.
-        for (sblock.captures.items) |varId| {
-            self.vars.items[varId].isDefinedOnce = true;
+    // Reset boxed.
+    if (!svar.isParentLocalAlias()) {
+        svar.isBoxed = false;
+    }
+    log.tracev("reserve {s}: {}", .{sema.getVarName(c, varId), svar.local});
+}
+
+fn reserveLocalReg(c: *Chunk, varId: sema.LocalVarId, advanceNext: bool) !RegisterId {
+    try reserveLocalRegAt(c, varId, c.curBlock.nextLocalReg);
+    defer {
+        if (advanceNext) {
+            c.curBlock.nextLocalReg += 1;
         }
     }
-
-    for (sblock.params.items) |varId| {
-        const svar = &self.vars.items[varId];
-        if (!svar.isParentLocalAlias()) {
-            svar.isBoxed = false;
-        }
-    }
-
-    // Main block var locals start at 0 otherwise after the call return info and params.
-    // All locals must be defined at anytime since there is only one cleanup procedure (endLocals).
-    const startLocal: u8 = if (self.semaBlockDepth() == 1) 0 else @intCast(4 + sblock.params.items.len + 1);
-    try self.buf.pushOp2(.init, startLocal, @intCast(sblock.locals.items.len));
-
-    // Reserve the locals.
-    for (sblock.locals.items) |varId| {
-        _ = try self.reserveLocalVar(varId);
-
-        // Reset boxed.
-        const svar = &self.vars.items[varId];
-        if (!svar.isParentLocalAlias()) {
-            svar.isBoxed = false;
-        }
-        // Copy param to local.
-        if (svar.type == .paramCopy) {
-            try self.buf.pushOp2(.copyRetainSrc, 4 + svar.inner.paramCopy, svar.local);
-        }
-        // log.debug("reserve {} {s}", .{local, self.getVarName(varId)});
-    }
+    return c.curBlock.nextLocalReg;
 }
 
 fn unexpectedFmt(format: []const u8, vals: []const fmt.FmtValue) noreturn {
@@ -3534,7 +3483,8 @@ fn unexpectedFmt(format: []const u8, vals: []const fmt.FmtValue) noreturn {
     cy.fatal();
 }
 
-fn pushFieldRetain(c: *cy.Chunk, recv: u8, dst: u8, fieldId: u16) !void {
+fn pushFieldRetain(c: *cy.Chunk, recv: u8, dst: u8, fieldId: u16, debugNodeId: cy.NodeId) !void {
+    try c.pushFailableDebugSym(debugNodeId);
     const start = c.buf.ops.items.len;
     try c.buf.pushOpSlice(.fieldRetain, &.{ recv, dst, 0, 0, 0, 0, 0 });
     c.buf.setOpArgU16(start + 3, fieldId);
@@ -3574,4 +3524,184 @@ fn genCallTypeCheck(c: *cy.Chunk, startLocal: u8, numArgs: u32, funcSigId: sema.
     const start = c.buf.ops.items.len;
     try c.buf.pushOpSlice(.callTypeCheck, &[_]u8{ startLocal, @intCast(numArgs), 0, 0, });
     c.buf.setOpArgU16(start + 3, @intCast(funcSigId));
+}
+
+fn genSubBlockReleaseLocals(c: *Chunk) !void {
+    const sblock = sema.curSubBlock(c);
+
+    const start = c.operandStack.items.len;
+    defer c.operandStack.items.len = start;
+
+    const varDecls = c.varDeclStack.items[sblock.varDeclStart..];
+    for (varDecls) |decl| {
+        const svar = c.vars.items[decl.varId];
+        if (svar.lifetimeRcCandidate) {
+            try c.operandStack.append(c.alloc, svar.local);
+        }
+    }
+
+    const locals = c.operandStack.items[start..];
+    if (locals.len > 0) {
+        try pushReleases(c, locals, sblock.nodeId);
+    }
+}
+
+/// Only the locals that are alive at this moment are considered for released.
+fn genBlockReleaseLocals(c: *Chunk) !void {
+    const block = sema.curBlock(c);
+
+    const start = c.operandStack.items.len;
+    defer c.operandStack.items.len = start;
+
+    const varDecls = c.varDeclStack.items[block.varDeclStart..];
+    for (varDecls) |decl| {
+        const svar = c.vars.items[decl.varId];
+        if (svar.lifetimeRcCandidate) {
+            try c.operandStack.append(c.alloc, svar.local);
+        }
+    }
+    
+    const locals = c.operandStack.items[start..];
+    if (locals.len > 0) {
+        const nodeId = sema.getBlockNodeId(c, block);
+        try pushReleases(c, locals, nodeId);
+    }
+}
+
+fn genBlockEnd(c: *Chunk) !void {
+    try genBlockReleaseLocals(c);
+    if (c.curBlock.requiresEndingRet1) {
+        try c.buf.pushOp(.ret1);
+    } else {
+        try c.buf.pushOp(.ret0);
+    }
+}
+
+pub fn reserveMainRegs(self: *Chunk) !void {
+    var nextReg: u8 = 0;
+
+    self.curBlock.startLocalReg = nextReg;
+    self.curBlock.nextLocalReg = nextReg;
+
+    // Reset temp register state.
+    const sblock = sema.curBlock(self);
+    const tempRegStart = nextReg + sblock.maxLocals;
+    self.rega.resetState(tempRegStart);
+}
+
+/// Reserve params and captured vars.
+/// Function stack layout:
+/// [startLocal/retLocal] [retInfo] [retAddress] [prevFramePtr] [params...] [callee] [var locals...] [temp locals...]
+/// `callee` is reserved so that function values can call static functions with the same call convention.
+/// For this reason, `callee` isn't freed in the function body and a separate release inst is required for lambda calls.
+/// A closure can also occupy the callee and is used to do captured var lookup.
+pub fn reserveFuncRegs(self: *Chunk, numParams: u32) !void {
+    // First local is reserved for a single return value.
+    // Second local is reserved for the return info.
+    // Third local is reserved for the return address.
+    // Fourth local is reserved for the previous frame pointer.
+    var nextReg: u8 = 4;
+
+    const sblock = sema.curBlock(self);
+
+    // Reserve func params.
+    var numParamCopies: u8 = 0;
+    const params = sblock.params.items[0..numParams];
+    for (params) |varId| {
+        const svar = &self.vars.items[varId];
+        if (!svar.isParentLocalAlias()) {
+            svar.isBoxed = false;
+        }
+        if (svar.inner.param.copied) {
+            // Forward reserve the param copy.
+            svar.local = @intCast(4 + params.len + 1 + numParamCopies);
+            try self.varDeclStack.append(self.alloc, .{
+                .namePtr = undefined,
+                .nameLen = undefined,
+                .varId = varId,
+            });
+
+            // Copy param to local.
+            try self.buf.pushOp2(.copyRetainSrc, nextReg, svar.local);
+
+            numParamCopies += 1;
+        } else {
+            svar.local = nextReg;
+        }
+        nextReg += 1;
+    }
+
+    // An extra callee slot is reserved so that function values
+    // can call static functions with the same call convention.
+    // It's also used to store the closure object.
+    if (sblock.captures.items.len > 0) {
+        self.curBlock.closureLocal = nextReg;
+    }
+    nextReg += 1;
+
+    if (sblock.params.items.len > numParams) {
+        {
+            @panic("This path is actually used?");
+        }
+        for (sblock.params.items[numParams..]) |varId| {
+            self.vars.items[varId].local = nextReg;
+            nextReg += 1;
+        }
+    }
+
+    self.curBlock.startLocalReg = nextReg;
+    nextReg += numParamCopies;
+    self.curBlock.nextLocalReg = nextReg;
+
+    // Reset temp register state.
+    const tempRegStart = nextReg + sblock.maxLocals;
+    self.rega.resetState(tempRegStart);
+}
+
+fn nextSemaSubBlock(self: *Chunk) void {
+    self.curSemaSubBlockId = self.nextSemaSubBlockId;
+    self.nextSemaSubBlockId += 1;
+
+    // Codegen varDeclStart can be different than sema due to param copies.
+    const sblock = sema.curSubBlock(self);
+    sblock.varDeclStart = @intCast(self.varDeclStack.items.len);
+}
+
+/// `genSubBlockReleaseLocals` is not called here since
+/// loop sub blocks need to generate a jump statement after the release ops.
+fn prevSemaSubBlock(c: *Chunk) void {
+    const sblock = sema.curSubBlock(c);
+
+    // Unwind var decls.
+    c.varDeclStack.items.len = sblock.varDeclStart;
+
+    c.curSemaSubBlockId = sblock.prevSubBlockId;
+
+    // Recede nextLocalReg.
+    c.curBlock.nextLocalReg -= sblock.numLocals;
+}
+
+pub fn pushSemaBlock(self: *Chunk, id: sema.BlockId) !void {
+    // Codegen block should be pushed first so nextSemaSubBlock can use it.
+    try self.pushBlock();
+
+    try self.semaBlockStack.append(self.alloc, id);
+    self.curSemaBlockId = id;
+
+    // Codegen varDeclStart can be different than sema due to param copies.
+    sema.curBlock(self).varDeclStart = @intCast(self.varDeclStack.items.len);
+
+    self.nextSemaSubBlockId = self.semaBlocks.items[id].firstSubBlockId;
+    nextSemaSubBlock(self);
+}
+
+fn popSemaBlock(self: *Chunk) void {
+    prevSemaSubBlock(self);
+
+    self.varDeclStack.items.len = sema.curBlock(self).varDeclStart;
+
+    self.semaBlockStack.items.len -= 1;
+    self.curSemaBlockId = self.semaBlockStack.items[self.semaBlockStack.items.len-1];
+
+    self.popBlock();
 }

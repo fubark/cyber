@@ -60,7 +60,9 @@ pub const Chunk = struct {
     /// Additional info for initializer symbols.
     semaInitializerSyms: std.AutoArrayHashMapUnmanaged(sema.CompactSymbolId, sema.InitializerSym),
 
-    declaredVarStack: std.ArrayListUnmanaged(sema.LocalVarId),
+    varShadowStack: std.ArrayListUnmanaged(cy.sema.VarShadow),
+    varDeclStack: std.ArrayListUnmanaged(cy.sema.NameVar),
+    preLoopVarSaveStack: std.ArrayListUnmanaged(cy.sema.PreLoopVarSave),
     assignedVarStack: std.ArrayListUnmanaged(sema.LocalVarId),
     curSemaBlockId: sema.BlockId,
     curSemaSubBlockId: sema.SubBlockId,
@@ -174,7 +176,9 @@ pub const Chunk = struct {
             .blockJumpStack = .{},
             .subBlockJumpStack = .{},
             .assignedVarStack = .{},
-            .declaredVarStack = .{},
+            .varShadowStack = .{},
+            .varDeclStack = .{},
+            .preLoopVarSaveStack = .{},
             .regStack = .{},
             .operandStack = .{},
             .unwindTempIndexStack = .{},
@@ -249,7 +253,9 @@ pub const Chunk = struct {
         self.blockJumpStack.deinit(self.alloc);
         self.subBlockJumpStack.deinit(self.alloc);
         self.assignedVarStack.deinit(self.alloc);
-        self.declaredVarStack.deinit(self.alloc);
+        self.varShadowStack.deinit(self.alloc);
+        self.varDeclStack.deinit(self.alloc);
+        self.preLoopVarSaveStack.deinit(self.alloc);
         self.regStack.deinit(self.alloc);
         self.operandStack.deinit(self.alloc);
         self.unwindTempIndexStack.deinit(self.alloc);
@@ -294,33 +300,6 @@ pub const Chunk = struct {
         return self.semaBlockDepth() == 1;
     }
 
-    pub fn pushSemaBlock(self: *Chunk, id: sema.BlockId) !void {
-        // Codegen block should be pushed first so nextSemaSubBlock can use it.
-        try self.pushBlock();
-
-        const sblock = self.semaBlocks.items[id];
-        if (self.blocks.items.len == 1) {
-            const tempStart: u8 = @intCast(sblock.locals.items.len);
-            self.rega.resetState(tempStart);
-        } else {
-            const tempStart: u8 = @intCast(sblock.params.items.len + sblock.locals.items.len + 5);
-            self.rega.resetState(tempStart);
-        }
-
-        try self.semaBlockStack.append(self.alloc, id);
-        self.curSemaBlockId = id;
-        self.nextSemaSubBlockId = self.semaBlocks.items[id].firstSubBlockId;
-        self.nextSemaSubBlock();
-    }
-
-    pub fn popSemaBlock(self: *Chunk) void {
-        self.semaBlockStack.items.len -= 1;
-        self.curSemaBlockId = self.semaBlockStack.items[self.semaBlockStack.items.len-1];
-        self.prevSemaSubBlock();
-
-        self.popBlock();
-    }
-
     pub fn reserveIfTempLocal(self: *Chunk, local: LocalId) !void {
         if (self.isTempLocal(local)) {
             try self.setReservedTempLocal(local);
@@ -328,14 +307,14 @@ pub const Chunk = struct {
     }
 
     pub inline fn isTempLocal(self: *const Chunk, local: LocalId) bool {
-        return local >= self.curBlock.numLocals;
+        return local >= self.rega.tempStart;
     }
 
     pub inline fn isParamOrLocalVar(self: *const Chunk, reg: u8) bool {
         if (self.blocks.items.len > 1) {
-            return reg != 0 and reg < self.curBlock.numLocals;
+            return reg != 0 and reg < self.rega.tempStart;
         } else {
-            return reg < self.curBlock.numLocals;
+            return reg < self.rega.tempStart;
         }
     }
 
@@ -413,59 +392,6 @@ pub const Chunk = struct {
         try self.regStack.append(self.alloc, reg);
     }
 
-    pub fn reserveLocal(self: *Chunk, block: *GenBlock) !u8 {
-        const idx = block.numLocals;
-        block.numLocals += 1;
-        if (idx <= std.math.maxInt(u8)) {
-            return @intCast(idx);
-        } else {
-            return self.reportError("Exceeded max local count: {}", &.{v(@as(u8, std.math.maxInt(u8)))});
-        }
-    }
-
-    /// Reserve params and captured vars.
-    /// Function stack layout:
-    /// [startLocal/retLocal] [retInfo] [retAddress] [prevFramePtr] [params...] [callee] [var locals...] [temp locals...]
-    /// `callee` is reserved so that function values can call static functions with the same call convention.
-    /// For this reason, `callee` isn't freed in the function body and a separate release inst is required for lambda calls.
-    /// A closure can also occupy the callee and is used to do captured var lookup.
-    pub fn reserveFuncParams(self: *Chunk, numParams: u32) !void {
-        // First local is reserved for a single return value.
-        _ = try self.reserveLocal(self.curBlock);
-
-        // Second local is reserved for the return info.
-        _ = try self.reserveLocal(self.curBlock);
-
-        // Third local is reserved for the return address.
-        _ = try self.reserveLocal(self.curBlock);
-
-        // Fourth local is reserved for the previous frame pointer.
-        _ = try self.reserveLocal(self.curBlock);
-
-        const sblock = sema.curBlock(self);
-
-        // Reserve func params.
-        for (sblock.params.items[0..numParams]) |varId| {
-            _ = try self.reserveLocalVar(varId);
-
-            // Params are already defined.
-            self.vars.items[varId].isDefinedOnce = true;
-        }
-
-        // An extra callee slot is reserved so that function values
-        // can call static functions with the same call convention.
-        _ = try self.reserveLocal(self.curBlock);
-
-        if (sblock.params.items.len > numParams) {
-            for (sblock.params.items[numParams..]) |varId| {
-                _ = try self.reserveLocalVar(varId);
-
-                // Params are already defined.
-                self.vars.items[varId].isDefinedOnce = true;
-            }
-        }
-    }
-
     pub fn setNodeFuncDecl(self: *Chunk, nodeId: cy.NodeId, declId: sema.FuncDeclId) void {
         self.nodes[nodeId].head.func.semaDeclId = declId;
     }
@@ -519,40 +445,6 @@ pub const Chunk = struct {
             }
         }
         return null;
-    }
-
-    pub fn genBlockEnding(self: *Chunk) !void {
-        self.curBlock.endLocalsPc = @intCast(self.buf.ops.items.len);
-        try self.endLocals();
-        if (self.curBlock.requiresEndingRet1) {
-            try self.buf.pushOp(.ret1);
-        } else {
-            try self.buf.pushOp(.ret0);
-        }
-    }
-
-    pub fn endLocals(self: *Chunk) !void {
-        const sblock = sema.curBlock(self);
-
-        const start = self.operandStack.items.len;
-        defer self.operandStack.items.len = start;
-
-        for (sblock.locals.items) |varId| {
-            const svar = self.vars.items[varId];
-            if (svar.lifetimeRcCandidate and svar.isDefinedOnce) {
-                try self.operandStack.append(self.alloc, svar.local);
-            }
-        }
-        
-        const locals = self.operandStack.items[start..];
-        if (locals.len > 0) {
-            const nodeId = sema.getBlockNodeId(self, sblock);
-            try self.pushOptionalDebugSym(nodeId);
-
-            // For now always use `releaseN` to distinguish between temp release ops.
-            try self.buf.pushOp1(.releaseN, @intCast(locals.len));
-            try self.buf.pushOperands(locals);
-        }
     }
 
     pub fn pushJumpBackNotNone(self: *Chunk, toPc: usize, condLocal: LocalId) !void {
@@ -666,9 +558,7 @@ pub const Chunk = struct {
     pub fn patchBlockJumps(self: *Chunk, jumpStackStart: usize) void {
         for (self.blockJumpStack.items[jumpStackStart..]) |jump| {
             switch (jump.jumpT) {
-                .jumpToEndLocals => {
-                    self.buf.setOpArgU16(jump.pc + jump.pcOffset, @intCast(self.curBlock.endLocalsPc - jump.pc));
-                }
+                else => {},
             }
         }
     }
@@ -720,56 +610,29 @@ pub const Chunk = struct {
         }
     }
 
-    pub fn reserveLocalVar(self: *Chunk, varId: sema.LocalVarId) !LocalId {
-        const local = try self.reserveLocal(self.curBlock);
-        self.vars.items[varId].local = local;
-        return local;
-    }
-
-    pub fn nextSemaSubBlock(self: *Chunk) void {
-        self.curSemaSubBlockId = self.nextSemaSubBlockId;
-        self.nextSemaSubBlockId += 1;
-
-        const ssblock = sema.curSubBlock(self);
-        for (ssblock.iterVarBeginTypes.items) |varAndType| {
-            const svar = &self.vars.items[varAndType.id];
-            // log.debug("{s} iter var", .{self.getVarName(varAndType.id)});
-            svar.vtype = varAndType.vtype;
-            svar.isDefinedOnce = true;
-        }
-    }
-
-    pub fn prevSemaSubBlock(self: *Chunk) void {
-        const ssblock = sema.curSubBlock(self);
-        self.curSemaSubBlockId = ssblock.prevSubBlockId;
-
-        // Update narrow types.
-        for (ssblock.endMergeTypes.items) |it| {
-            self.vars.items[it.id].vtype = it.vtype;
-        }
-    }
-
     pub fn unescapeString(self: *Chunk, literal: []const u8) ![]const u8 {
         try self.tempBufU8.resize(self.alloc, literal.len);
         return cy.sema.unescapeString(self.tempBufU8.items, literal);
     }
 
     pub fn dumpLocals(self: *const Chunk, sblock: *sema.Block) !void {
-        if (builtin.mode == .Debug and !cy.silentInternal) {
-            fmt.printStderr("Locals:\n", &.{});
-            for (sblock.params.items) |varId| {
-                const svar = self.vars.items[varId];
-                fmt.printStderr("{} (param), local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, capIdx: {}\n", &.{
-                    v(svar.name), v(svar.local), v(svar.vtype),
-                    v(types.isRcCandidateType(self.compiler, svar.vtype)), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.capturedIdx),
-                });
-            }
-            for (sblock.locals.items) |varId| {
-                const svar = self.vars.items[varId];
-                fmt.printStderr("{}, local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, capIdx: {}\n", &.{
-                    v(svar.name), v(svar.local), v(svar.vtype),
-                    v(types.isRcCandidateType(self.compiler, svar.vtype)), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.capturedIdx),
-                });
+        if (cy.Trace) {
+            if (!cy.silentInternal) {
+                fmt.printStderr("Locals:\n", &.{});
+                for (sblock.params.items) |varId| {
+                    const svar = self.vars.items[varId];
+                    fmt.printStderr("{} (param), local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, capIdx: {}\n", &.{
+                        v(svar.name), v(svar.local), v(svar.vtype),
+                        v(types.isRcCandidateType(self.compiler, svar.vtype)), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.capturedIdx),
+                    });
+                }
+                for (sblock.locals.items) |varId| {
+                    const svar = self.vars.items[varId];
+                    fmt.printStderr("{}, local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, capIdx: {}\n", &.{
+                        v(svar.name), v(svar.local), v(svar.vtype),
+                        v(types.isRcCandidateType(self.compiler, svar.vtype)), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.capturedIdx),
+                    });
+                }
             }
         }
     }
@@ -787,6 +650,12 @@ pub const Chunk = struct {
         return error.CompileError;
     }
 
+    pub fn getNodeIdTokenString(self: *const Chunk, nodeId: cy.NodeId) []const u8 {
+        const node = self.nodes[nodeId];
+        const token = self.tokens[node.start_token];
+        return self.src[token.pos()..token.data.end_pos];
+    }
+
     pub fn getNodeTokenString(self: *const Chunk, node: cy.Node) []const u8 {
         const token = self.tokens[node.start_token];
         return self.src[token.pos()..token.data.end_pos];
@@ -795,7 +664,10 @@ pub const Chunk = struct {
     /// An optional debug sym is only included in Debug builds.
     pub fn pushOptionalDebugSym(self: *Chunk, nodeId: cy.NodeId) !void {
         if (builtin.mode == .Debug or self.compiler.vm.config.genAllDebugSyms) {
-            try self.buf.pushFailableDebugSym(self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc, cy.NullId);
+            try self.buf.pushFailableDebugSym(
+                self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc,
+                cy.NullId, 0, 0,
+            );
         }
     }
 
@@ -885,7 +757,10 @@ pub const Chunk = struct {
 
     pub fn pushFailableDebugSym(self: *Chunk, nodeId: cy.NodeId) !void {
         const unwindTempIdx = try self.getLastUnwindTempIndex();
-        try self.buf.pushFailableDebugSym(self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc, unwindTempIdx);
+        try self.buf.pushFailableDebugSym(
+            self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc,
+            unwindTempIdx, self.curBlock.startLocalReg, self.curBlock.nextLocalReg,
+        );
     }
 
     fn pushFailableDebugSymAt(self: *Chunk, pc: usize, nodeId: cy.NodeId, unwindTempIdx: u32) !void {
@@ -907,11 +782,7 @@ test "chunk internals." {
 }
 
 const GenBlock = struct {
-    /// This includes the return info, function params, captured params, and local vars.
-    /// Does not include temp locals.
-    numLocals: u32,
     frameLoc: cy.NodeId = cy.NullId,
-    endLocalsPc: u32,
 
     /// Whether codegen should create an ending that returns 1 arg.
     /// Otherwise `ret0` is generated.
@@ -926,18 +797,24 @@ const GenBlock = struct {
     regaNextTemp: u8,
     regaMaxTemp: u8,
 
+    /// Starts after the prelude registers.
+    startLocalReg: u8,
+
+    /// Increased as var decls are encountered and recedes by sub-block's `numLocals`.
+    nextLocalReg: u8,
+
     /// LLVM
     funcRef: if (cy.hasJIT) llvm.ValueRef else void = undefined,
 
     fn init() GenBlock {
         return .{
-            .numLocals = 0,
-            .endLocalsPc = 0,
             .requiresEndingRet1 = false,
             .closureLocal = cy.NullU8,
             .regaTempStart = undefined,
             .regaNextTemp = undefined,
             .regaMaxTemp = undefined,
+            .startLocalReg = 0,
+            .nextLocalReg = 0,
         };
     }
 

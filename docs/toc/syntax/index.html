@@ -5,7 +5,7 @@ Statements. # A statement ends with the new line.
 Statements. # A statement ends with the new line.
 -- An assignment statement. var a = 123 Blocks. # Some statements can start a new block with a colon. The first statement in a new block must be indented further. Spaces or tabs can be used for indentation but not both.
 -- This `if` statement begins a new block. if true: var a = 234 Subsequent statements in the block must follow the same indentation."><meta property="og:type" content="article"><meta property="og:url" content="https://fubark.github.io/cyber/docs/toc/syntax/"><meta property="article:section" content="docs"><title>Syntax | Cyber Docs v0.2</title><link rel=manifest href=/cyber/manifest.json><link rel=icon href=/cyber/favicon.png><link rel=stylesheet href=/cyber/book.min.4f0117e74e5337280f18eb9641eae520cb4b25adcf5dd64fafad4664145a5957.css integrity="sha256-TwEX505TNygPGOuWQerlIMtLJa3PXdZPr61GZBRaWVc=" crossorigin=anonymous><script defer src=/cyber/flexsearch.min.js></script>
-<script defer src=/cyber/en.search.min.bc7859c84c5fd5444c56d86bd6690863211465849ca0d25c23436dc057c0b555.js integrity="sha256-vHhZyExf1URMVthr1mkIYyEUZYScoNJcI0NtwFfAtVU=" crossorigin=anonymous></script>
+<script defer src=/cyber/en.search.min.b91f847ca2324dc1157f0be0249de3613dabaa0fe04483c3818b1b62995998a7.js integrity="sha256-uR+EfKIyTcEVfwvgJJ3jYT2rqg/gRIPDgYsbYplZmKc=" crossorigin=anonymous></script>
 <link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel=stylesheet><link rel=stylesheet href=/cyber/hljs.min.css><link rel=stylesheet href=/cyber/style.css></head><body dir=ltr><input type=checkbox class="hidden toggle" id=menu-control>
 <input type=checkbox class="hidden toggle" id=toc-control><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/cyber/><span>Cyber Docs v0.2</span></a></h2><div class=book-search><input type=text id=book-search-input placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><ul><li><a href=https://cyberscript.dev target=_blank rel=noopener>Homepage</a></li><li><a href=https://cyberscript.dev/play.html target=_blank rel=noopener>Playground</a></li></ul><ul><li class=book-section-flat><span>Table of Contents</span><ul><li><a href=/cyber/docs/toc/syntax/ class=active>Syntax</a></li><li><a href=/cyber/docs/toc/data-types/>Data Types</a></li><li><a href=/cyber/docs/toc/control-flow/>Control Flow</a></li><li><a href=/cyber/docs/toc/functions/>Functions</a></li><li><a href=/cyber/docs/toc/modules/>Modules</a></li><li><a href=/cyber/docs/toc/ffi/>FFI</a></li><li><a href=/cyber/docs/toc/errors/>Error Handling</a></li><li><a href=/cyber/docs/toc/concurrency/>Concurrency</a></li><li><a href=/cyber/docs/toc/type-system/>Type System</a></li><li><a href=/cyber/docs/toc/metaprogramming/>Metaprogramming</a></li><li><a href=/cyber/docs/toc/embedding/>Embedding</a></li><li><a href=/cyber/docs/toc/memory/>Memory</a></li><li><a href=/cyber/docs/toc/aot-jit/>AOT/JIT</a></li></ul></li></ul></nav><script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script></div></aside><div class=book-page><header class=book-header><div class="flex align-center justify-between"><label for=menu-control><img src=/cyber/svg/menu.svg class=book-icon alt=Menu></label>
 <strong>Syntax</strong>
@@ -41,16 +41,16 @@ var a = 123
 
 -- Subsequent assignment.
 a = 234
-</code></pre><p>A new variable can be declared in function blocks with the same name as a variable from a parent block.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
-foo = func():
-    -- A new local `a` inside function `foo`.
+</code></pre><p>Blocks create a new variable scope. Variables declared in the current scope will take precedence over any parent variables with the same name.</p><pre tabindex=0><code class=language-cy data-lang=cy>func foo():
+    -- `a` declared inside `foo`.
     var a = 234
-foo()
-print a      -- &#39;123&#39;
-</code></pre><p>However, variables declared in sub-blocks such as <code>if</code> and <code>for</code> can not shadow variables in the same main/function block.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
-if true:
-    -- CompileError, `a` is already declared in the main block.
-    var a = 234 
+
+    if true:
+        -- A new `a` declared inside `if`.
+        var a = 345
+        print a         -- Prints &#34;345&#34;
+
+    print a             -- Prints &#34;234&#34;
 </code></pre><p>When a parent local is referenced in a <a href=/cyber/docs/toc/functions/#lambdas>lambda function</a>, the variable is automatically captured. Note that <a href=/cyber/docs/toc/functions/#static-functions>static functions</a> can not capture parent locals.</p><blockquote><p><em>Incomplete: Only variables one parent block away can be captured.</em></p></blockquote><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
 var foo = func():
     a = 234
@@ -88,7 +88,7 @@ var b: a
 For this use case, you can use a declaration block.</p><blockquote><p><em>Planned Feature</em></p></blockquote><pre tabindex=0><code class=language-cy data-lang=cy>var myImage:
     var img = loadImage(&#39;me.png&#39;)
     img.resize(100, 100)
-    img.filter(#blur, 5)
+    img.filter(.blur, 5)
     break img
 </code></pre><p>The final resulting value that is assigned to the static variable is provided by a <code>break</code> statement. If a <code>break</code> statement is not provided, <code>none</code> is assigned instead.</p><h2 id=keywords>Keywords.
 <a class=anchor href=#keywords>#</a></h2><p>There are currently <code>34</code> keywords in Cyber. This list categorizes them and shows you when you might need them.</p><ul><li><a href=/cyber/docs/toc/control-flow/>Control Flow</a>: <code>if</code> <code>else</code> <code>match</code> <code>case</code> <code>while</code> <code>for</code> <code>each</code> <code>break</code> <code>continue</code> <code>pass</code> <code>some</code></li><li><a href=#operators>Operators</a>: <code>or</code> <code>and</code> <code>not</code> <code>is</code></li><li><a href=#variables>Variables</a>: <code>var</code> <code>as</code> <code>auto</code></li><li><a href=/cyber/docs/toc/functions/>Functions</a>: <code>func</code> <code>return</code></li><li><a href=/cyber/docs/toc/concurrency/#fibers>Coroutines</a>: <code>coinit</code> <code>coyield</code>, <code>coresume</code></li><li><a href=/cyber/docs/toc/data-types/>Data Types</a>: <code>type</code> <code>object</code> <code>enum</code> <code>true</code> <code>false</code> <code>none</code></li><li><a href=/cyber/docs/toc/errors/>Error Handling</a>: <code>try</code> <code>catch</code> <code>error</code> <code>throw</code></li><li><a href=/cyber/docs/toc/modules/>Modules</a>: <code>import</code></li></ul><h2 id=operators>Operators.

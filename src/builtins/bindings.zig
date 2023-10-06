@@ -1932,20 +1932,75 @@ pub fn inlineTernNoRetOp(comptime code: cy.OpCode) cy.QuickenFuncFn {
     return S.method;
 }
 
+pub const QuickenType = enum(u8) {
+    binOp,
+    binOpOneCopy,
+    binOpBothCopies,
+};
+
+fn saveInst(vm: *cy.UserVM, qtype: QuickenType, pc: [*]cy.Inst) !void {
+    var data: []u8 = undefined;
+    const pcPtr: [*]const u8 = @ptrCast(pc);
+    switch (qtype) {
+        .binOp => {
+            data = try vm.allocator().alloc(u8, vmc.CALL_OBJ_SYM_INST_LEN + 1);
+            @memcpy(data[1..], pcPtr[0..vmc.CALL_OBJ_SYM_INST_LEN]);
+        },
+        .binOpOneCopy => {
+            data = try vm.allocator().alloc(u8, vmc.CALL_OBJ_SYM_INST_LEN + 3 + 1);
+            @memcpy(data[1..], (pcPtr - 3)[0..vmc.CALL_OBJ_SYM_INST_LEN+3]);
+        },
+        .binOpBothCopies => {
+            data = try vm.allocator().alloc(u8, vmc.CALL_OBJ_SYM_INST_LEN + 6 + 1);
+            @memcpy(data[1..], (pcPtr - 6)[0..vmc.CALL_OBJ_SYM_INST_LEN+6]);
+        },
+    }
+    data[0] = @intFromEnum(qtype);
+    const pcOff = @intFromPtr(pc) - @intFromPtr(vm.internal().ops.ptr);
+    try vm.internal().quickenSaves.put(vm.allocator(), @intCast(pcOff), data.ptr);
+}
+
 pub fn inlineBinOp(comptime code: cy.OpCode) cy.QuickenFuncFn {
     const S = struct {
-        pub fn method(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void {
-            const startLocal = pc[1].val;
-            // Save callObjSym data.
-            pc[8].val = startLocal;
-            pc[9] = pc[2];
-            pc[10] = pc[3];
+        pub fn method(vm: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void {
+            if (pc[7].val == 1) {
+                saveInst(vm, .binOpOneCopy, pc) catch @panic("error");
 
-            // Inline bin op.
-            pc[0] = cy.Inst.initOpCode(code);
-            pc[1].val = startLocal + 4;
-            pc[2].val = startLocal + 5;
-            pc[3].val = startLocal;
+                const startLocal = pc[1].val;
+                pc[0] = cy.Inst.initOpCode(code);
+                if (startLocal + 4 == (pc-3)[2].val) {
+                    pc[1].val = (pc-3)[1].val;
+                    pc[2].val = startLocal + 5;
+                } else {
+                    pc[1].val = startLocal + 4;
+                    pc[2].val = (pc-3)[1].val;
+                }
+                pc[3].val = startLocal;
+
+                (pc-3)[0] = cy.Inst.initOpCode(.jump);
+                @as(*align(1) i16, @ptrCast(pc-2)).* = 3;
+            } else if (pc[7].val == 2) {
+                saveInst(vm, .binOpBothCopies, pc) catch @panic("error");
+
+                const startLocal = pc[1].val;
+                pc[0] = cy.Inst.initOpCode(code);
+                // Lhs copy is always the last inst.
+                pc[1].val = (pc-6)[4].val;
+                pc[2].val = (pc-6)[1].val;
+                pc[3].val = startLocal;
+
+                (pc-6)[0] = cy.Inst.initOpCode(.jump);
+                @as(*align(1) i16, @ptrCast(pc-5)).* = 6;
+            } else {
+                saveInst(vm, .binOp, pc) catch @panic("error");
+
+                // Inline bin op.
+                const startLocal = pc[1].val;
+                pc[0] = cy.Inst.initOpCode(code);
+                pc[1].val = startLocal + 4;
+                pc[2].val = startLocal + 5;
+                pc[3].val = startLocal;
+            }
         }
     };
     return S.method;

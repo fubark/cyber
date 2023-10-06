@@ -499,20 +499,44 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         },
         .opAssignStmt => {
             const left = c.nodes[node.head.opAssignStmt.left];
+            switch (left.node_t) {
+                .ident,
+                .accessExpr,
+                .indexExpr => {},
+                else => {
+                    return c.reportErrorAt("Assignment to the left {} is not allowed.", &.{v(left.node_t)}, nodeId);
+                },
+            }
+
+            const leftT = try semaExpr(c, node.head.opAssignStmt.left);
+            var rightT: types.TypeId = undefined;
+
+            const op = node.head.opAssignStmt.op;
+            switch (op) {
+                .star,
+                .slash,
+                .percent,
+                .caret,
+                .plus,
+                .minus => {
+                    if (leftT == bt.Integer or leftT == bt.Float) {
+                        // Specialized.
+                        c.nodes[nodeId].head.opAssignStmt.semaGenStrat = .specialized;
+                        rightT = try semaExprCstr(c, node.head.opAssignStmt.right, leftT, false);
+                    } else {
+                        // Generic callObjSym.
+                        c.nodes[nodeId].head.opAssignStmt.semaGenStrat = .generic;
+                        rightT = try semaExpr(c, node.head.opAssignStmt.right);
+                    }
+                },
+                else => {
+                    c.nodes[nodeId].head.opAssignStmt.semaGenStrat = .generic;
+                    rightT = try semaExpr(c, node.head.opAssignStmt.right);
+                }
+            }
+
             if (left.node_t == .ident) {
-                const rtype = try semaExpr(c, node.head.opAssignStmt.right);
-                c.nodes[nodeId].head.opAssignStmt.semaGenStrat = .generic;
-                _ = try assignVar(c, node.head.opAssignStmt.left, rtype);
-            } else if (left.node_t == .accessExpr) {
-                const accessLeft = try accessExpr(c, node.head.opAssignStmt.left);
-                _ = try semaExprCstr(c, node.head.opAssignStmt.right, accessLeft.exprT, false);
-                c.nodes[nodeId].head.opAssignStmt.semaGenStrat = .generic;
-            } else if (left.node_t == .indexExpr) {
-                _ = try semaExpr(c, node.head.opAssignStmt.left);
-                _ = try semaExpr(c, node.head.opAssignStmt.right);
-                c.nodes[nodeId].head.opAssignStmt.semaGenStrat = .generic;
-            } else {
-                return c.reportErrorAt("Assignment to the left {} is not allowed.", &.{fmt.v(left.node_t)}, nodeId);
+                _ = try assignVar(c, node.head.opAssignStmt.left, rightT);
             }
         },
         .assign_stmt => {

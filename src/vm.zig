@@ -101,6 +101,9 @@ pub const VM = struct {
     types: cy.List(vmc.Type),
     typeSignatures: std.HashMapUnmanaged(rt.TypeKey, rt.TypeId, cy.hash.KeyU64Context, 80),
 
+    /// Stores insts that were modified to restore them later.
+    quickenSaves: std.AutoHashMapUnmanaged(u32, [*]const u8),
+
     /// Enums.
     enums: cy.List(Enum),
     enumSignatures: std.StringHashMapUnmanaged(EnumId),
@@ -234,6 +237,7 @@ pub const VM = struct {
             .enumSignatures = .{},
             .syms = .{},
             .symSignatures = .{},
+            .quickenSaves = .{},
             .trace = undefined,
             .u8Buf = .{},
             .u8Buf2 = .{},
@@ -466,6 +470,26 @@ pub const VM = struct {
                 self.objectTraceMap.deinit(self.alloc);
                 self.alloc.destroy(self.trace);
             }
+        }
+
+        var iter = self.quickenSaves.valueIterator();
+        while (iter.next()) |it| {
+            switch (@as(cy.bindings.QuickenType, @enumFromInt(it.*[0]))) {
+                .binOp => {
+                    self.alloc.free(it.*[0..vmc.CALL_OBJ_SYM_INST_LEN + 1]);
+                },
+                .binOpOneCopy => {
+                    self.alloc.free(it.*[0..vmc.CALL_OBJ_SYM_INST_LEN + 1 + 3]);
+                },
+                .binOpBothCopies => {
+                    self.alloc.free(it.*[0..vmc.CALL_OBJ_SYM_INST_LEN + 1 + 6]);
+                },
+            }
+        }
+        if (reset) {
+            self.quickenSaves.clearRetainingCapacity();
+        } else {
+            self.quickenSaves.deinit(self.alloc);
         }
 
         if (reset) {
@@ -1948,6 +1972,7 @@ test "vm internals." {
     try t.eq(@offsetOf(VM, "enumSignatures"), @offsetOf(vmc.VM, "enumSignatures"));
     try t.eq(@offsetOf(VM, "syms"), @offsetOf(vmc.VM, "syms"));
     try t.eq(@offsetOf(VM, "symSignatures"), @offsetOf(vmc.VM, "symSignatures"));
+    try t.eq(@offsetOf(VM, "quickenSaves"), @offsetOf(vmc.VM, "quickenSaves"));
     try t.eq(@offsetOf(VM, "u8Buf"), @offsetOf(vmc.VM, "u8Buf"));
     try t.eq(@offsetOf(VM, "u8Buf2"), @offsetOf(vmc.VM, "u8Buf2"));
     try t.eq(@offsetOf(VM, "stackTrace"), @offsetOf(vmc.VM, "stackTrace"));
@@ -4964,4 +4989,28 @@ pub var dummyCyclableHead = DummyCyclableNode{
 
 pub fn defaultPrint(_: *UserVM, _: cy.Str) callconv(.C) void {
     // Default print is a nop.
+}
+
+export fn zDeoptBinOp(vm: *VM, pc: [*]cy.Inst) [*]cy.Inst {
+    const pcOff = @intFromPtr(pc) - @intFromPtr(vm.ops.ptr);
+    const data = vm.quickenSaves.get(@intCast(pcOff)).?;
+    _ = vm.quickenSaves.remove(@intCast(pcOff));
+    const pcPtr: [*]u8 = @ptrCast(pc);
+    switch (@as(cy.bindings.QuickenType, @enumFromInt(data[0]))) {
+        .binOp => {
+            @memcpy(pcPtr[0..vmc.CALL_OBJ_SYM_INST_LEN], data[1..vmc.CALL_OBJ_SYM_INST_LEN+1]);
+            vm.alloc.free(data[0..vmc.CALL_OBJ_SYM_INST_LEN + 1]);
+            return pc;
+        },
+        .binOpOneCopy => {
+            @memcpy((pcPtr-3)[0..vmc.CALL_OBJ_SYM_INST_LEN+3], data[1..vmc.CALL_OBJ_SYM_INST_LEN+1+3]);
+            vm.alloc.free(data[0..vmc.CALL_OBJ_SYM_INST_LEN + 1 + 3]);
+            return pc - 3;
+        },
+        .binOpBothCopies => {
+            @memcpy((pcPtr-6)[0..vmc.CALL_OBJ_SYM_INST_LEN+6], data[1..vmc.CALL_OBJ_SYM_INST_LEN+1+6]);
+            vm.alloc.free(data[0..vmc.CALL_OBJ_SYM_INST_LEN + 1 + 6]);
+            return pc - 6;
+        },
+    }
 }

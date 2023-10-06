@@ -429,9 +429,9 @@ fn binExprGeneric(c: *Chunk, code: cy.OpCode, vtype: types.TypeId, opts: GenBinE
         leftv = _leftv;
     } else {
         leftv = try expression(c, opts.leftId, RegisterCstr.preferIf(dst, canUseDst));
-        if (leftv.local == dst) {
-            canUseDst = false;
-        }
+    }
+    if (leftv.local == dst) {
+        canUseDst = false;
     }
     const rightv = try expression(c, opts.rightId, RegisterCstr.preferIf(dst, canUseDst));
 
@@ -567,9 +567,9 @@ fn binExpr2(c: *Chunk, opts: GenBinExprOptions) !GenValue {
                         leftv = _leftv;
                     } else {
                         leftv = try expression(c, opts.leftId, RegisterCstr.preferIf(dst, canUseDst));
-                        if (leftv.local == dst) {
-                            canUseDst = false;
-                        }
+                    }
+                    if (leftv.local == dst) {
+                        canUseDst = false;
                     }
                     const rightv = try expression(c, opts.rightId, RegisterCstr.preferIf(dst, canUseDst));
 
@@ -609,9 +609,9 @@ fn binExpr2(c: *Chunk, opts: GenBinExprOptions) !GenValue {
                         leftv = _leftv;
                     } else {
                         leftv = try expression(c, opts.leftId, RegisterCstr.preferIf(dst, canUseDst));
-                        if (leftv.local == dst) {
-                            canUseDst = false;
-                        }
+                    }
+                    if (leftv.local == dst) {
+                        canUseDst = false;
                     }
                     const rightv = try expression(c, opts.rightId, RegisterCstr.preferIf(dst, canUseDst));
 
@@ -964,9 +964,9 @@ fn indexExpr(c: *Chunk, nodeId: cy.NodeId, optLeft: ?GenValue, optIndex: ?GenVal
                 leftv = _leftv;
             } else {
                 leftv = try expression(c, node.head.indexExpr.left, RegisterCstr.preferIf(dst, canUseDst));
-                if (leftv.local == dst) {
-                    canUseDst = false;
-                }
+            }
+            if (leftv.local == dst) {
+                canUseDst = false;
             }
 
             // Gen index.
@@ -2498,32 +2498,41 @@ fn callObjSymBinExpr(self: *Chunk, mgId: vmc.MethodGroupId, opts: GenBinExprOpti
 
     // Gen self arg.
     var selfv: GenValue = undefined;
+
+    // Defer generating lhs copy inst so that quickening can skip the op entirely.
+    var selfRetained = false;
+    var lhsIsCopy = false;
+    var lhsReg: u8 = undefined;
+    const selfArg = try self.rega.consumeNextTemp();
     if (opts.leftv) |leftv| {
-        const selfArg = try self.rega.consumeNextTemp();
-        if (types.isRcCandidateType(self.compiler, leftv.vtype)) {
-            try self.buf.pushOp2(.copyRetainSrc, leftv.local, selfArg);
-            selfv = GenValue.initTempValue(selfArg, leftv.vtype, true);
-        } else {
-            try self.buf.pushOp2(.copy, leftv.local, selfArg);
-            selfv = GenValue.initTempValue(selfArg, leftv.vtype, false);
-        }
+        lhsIsCopy = true;
+        lhsReg = leftv.local;
+        selfv = GenValue.initTempValue(selfArg, leftv.vtype, false);
     } else {
-        selfv = try expression(self, opts.leftId, RegisterCstr.temp);
+        const start = self.buf.len();
+        selfv = try expression(self, opts.leftId, RegisterCstr.exact(selfArg));
+        selfRetained = try self.pushUnwindIndexIfRetainedTemp(selfv);
+        if (start + 3 == self.buf.len() and self.buf.ops.items[start].val == @intFromEnum(cy.OpCode.copy)) {
+            lhsIsCopy = true;
+            lhsReg = self.buf.ops.items[start+1].val;
+            self.buf.ops.items.len = start;
+        }
     }
-    const selfRetained = try self.pushUnwindIndexIfRetainedTemp(selfv);
 
     // Gen arg.
+    var rhsIsCopy = false;
     var argv: GenValue = undefined;
     if (opts.rightv) |rightv| {
         const argReg = try self.rega.consumeNextTemp();
-        if (types.isRcCandidateType(self.compiler, rightv.vtype)) {
-            try self.buf.pushOp2(.copyRetainSrc, rightv.local, argReg);
-            argv = GenValue.initTempValue(argReg, rightv.vtype, true);
-        } else {
-            try self.buf.pushOp2(.copy, rightv.local, argReg);
-            argv = GenValue.initTempValue(argReg, rightv.vtype, false);
-        }
+        // Since rightv will outlive this arg, it doesn't need to retain.
+        try self.buf.pushOp2(.copy, rightv.local, argReg);
+        argv = GenValue.initTempValue(argReg, rightv.vtype, false);
+        rhsIsCopy = true;
     } else {
+        const right = self.nodes[opts.rightId];
+        if (right.node_t == .ident and right.head.ident.semaVarId != cy.NullId) {
+            rhsIsCopy = true;
+        }
         argv = try expression(self, opts.rightId, RegisterCstr.temp);
     }
     const argRetained = try self.pushUnwindIndexIfRetainedTemp(argv);
@@ -2537,9 +2546,23 @@ fn callObjSymBinExpr(self: *Chunk, mgId: vmc.MethodGroupId, opts: GenBinExprOpti
         }
     }
 
+    if (lhsIsCopy) {
+        try self.buf.pushOp2(.copy, lhsReg, selfArg);
+    }
+
     const argT = self.nodeTypes[opts.rightId];
     const funcSigId = try sema.ensureFuncSig(self.compiler, &.{ bt.Any, argT }, bt.Any);
+
+    const start = self.buf.len();
     try pushCallObjSym(self, callStartLocal, 2, true, @intCast(mgId), @intCast(funcSigId), opts.debugNodeId);
+    // Provide hint to quickening that one or both args were copies.
+    if (lhsIsCopy or rhsIsCopy) {
+        if (lhsIsCopy and rhsIsCopy) {
+            self.buf.setOpArgs1(start + 7, 2);
+        } else {
+            self.buf.setOpArgs1(start + 7, 1);
+        }
+    }
 
     try pushReleaseOpt2(self, selfv.retained, selfv.local, argv.retained, argv.local, opts.debugNodeId);
 

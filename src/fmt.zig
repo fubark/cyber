@@ -457,8 +457,9 @@ const HostFileWriter = struct {
         os.hostFileWrite(self.fid, data.ptr, data.len);
     }
 
-    pub fn write(self: HostFileWriter, data: []const u8) linksection(cy.Section) Error!void {
+    pub fn write(self: HostFileWriter, data: []const u8) linksection(cy.Section) Error!u64 {
         os.hostFileWrite(self.fid, data.ptr, data.len);
+        return data.len;
     }
 
     pub fn writeByteNTimes(self: HostFileWriter, byte: u8, n: usize) linksection(cy.Section) Error!void {

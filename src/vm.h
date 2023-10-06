@@ -791,6 +791,8 @@ typedef struct VM {
     ZCyList types; // Type
     ZHashMap typeSignatures;
 
+    ZHashMap quickenSaves;
+
     ZCyList enums;
     ZHashMap enumSignatures;
 
@@ -952,3 +954,4 @@ void zCheckRetainDanglingPointer(VM* vm, HeapObject* obj);
 void zPanicFmt(VM* vm, const char* format, FmtValue* args, size_t numArgs);
 Value zValueMapGet(VM* vm, ValueMap* map, Value key, bool* found);
 ResultCode zMapSet(VM* vm, Map* map, Value key, Value val);
+Inst* zDeoptBinOp(VM* vm, Inst* pc);

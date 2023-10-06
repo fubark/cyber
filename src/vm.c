@@ -533,6 +533,11 @@ static void panicIncompatibleInitFieldType(VM* vm, SemaTypeId fieldSemaTypeId, S
 
 #define DEOPTIMIZE_BINOP() \
     do { \
+        pc = zDeoptBinOp(vm, pc); \
+    } while (false)
+
+#define DEOPTIMIZE_BINOP2() \
+    do { \
         pc[0] = CodeCallObjSym; \
         pc[1] = pc[8]; \
         pc[2] = pc[9]; \
@@ -851,7 +856,7 @@ beginSwitch:
         } else {
             if (!VALUE_IS_LIST(listv)) {
                 // Reuse binop layout because of no dst.
-                DEOPTIMIZE_BINOP();
+                DEOPTIMIZE_BINOP2();
                 NEXT();
             }
             panicExpectedInteger(vm);
@@ -872,7 +877,7 @@ beginSwitch:
             RETURN(code);
         } else {
             // Reuse binop layout because of no dst.
-            DEOPTIMIZE_BINOP();
+            DEOPTIMIZE_BINOP2();
             NEXT();
         }
     }

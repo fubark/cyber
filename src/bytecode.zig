@@ -371,27 +371,35 @@ fn printInstArgs(names: []const []const u8, args: []const fmt.FmtValue) !u64 {
 pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u8) !void {
     var len: u64 = try fmt.printStderrCount("{} {}: ", &.{v(pcOffset), v(code)});
     switch (code) {
-        .addFloat => {
-            const left = pc[1].val;
-            const right = pc[2].val;
-            const dst = pc[3].val;
-            len += try printInstArgs(&.{"lhs", "rhs", "dst"}, &.{v(left), v(right), v(dst)});
-        },
         .box => {
             const local = pc[1].val;
             const dst = pc[2].val;
             len += try fmt.printStderrCount("local={}, dst={}", &.{v(local), v(dst)});
         },
         .captured => {
-            const closureLocal = pc[1].val;
+            const closure = pc[1].val;
             const varIdx = pc[2].val;
             const dst = pc[3].val;
-            len += try fmt.printStderrCount("closureLocal={}, varIdx={}, dst={}", &.{v(closureLocal), v(varIdx), v(dst)});
+            len += try fmt.printStderrCount("closure={}, varIdx={}, dst={}", &.{v(closure), v(varIdx), v(dst)});
         },
         .boxValue => {
             const local = pc[1].val;
             const dst = pc[2].val;
             len += try fmt.printStderrCount("local={}, dst={}", &.{v(local), v(dst)});
+        },
+        .divFloat,
+        .divInt,
+        .mulFloat,
+        .mulInt,
+        .subFloat,
+        .subInt,
+        .addFloat,
+        .addInt => {
+            const lhs = pc[1].val;
+            const rhs = pc[2].val;
+            const dst = pc[3].val;
+            len += try printInstArgs(&.{"lhs", "rhs", "dst"},
+                &.{v(lhs), v(rhs), v(dst) });
         },
         .callObjNativeFuncIC => {
             const startLocal = pc[1].val;
@@ -405,7 +413,7 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const numRet = pc[3].val;
             const symId = pc[4].val;
             const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
-            len += try printInstArgs(&.{"arg", "narg", "nret", "sym", "sig"},
+            len += try printInstArgs(&.{"ret", "narg", "nret", "sym", "sig"},
                 &.{v(startLocal), v(numArgs), v(numRet), v(symId), v(funcSigId)});
         },
         .callSym => {
@@ -427,6 +435,11 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const numArgs = pc[2].val;
             const numRet = pc[3].val;
             len += try fmt.printStderrCount("startLocal={}, numArgs={}, numRet={}", &.{v(startLocal), v(numArgs), v(numRet)});
+        },
+        .setBoxValue => {
+            const box = pc[1].val;
+            const rhs = pc[2].val;
+            len += try printInstArgs(&.{"box", "rhs"}, &.{v(box), v(rhs)});
         },
         .closure => {
             const negFuncPcOffset = pc[1].val;

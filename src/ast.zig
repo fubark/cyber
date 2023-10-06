@@ -417,9 +417,15 @@ pub const Encoder = struct {
                 try w.writeByte('=');
                 try self.writeNode(w, node.head.opAssignStmt.right);
             },
+            .binExpr => {
+                try self.writeNode(w, node.head.binExpr.left);
+                try w.writeAll(getBinOpStr(node.head.binExpr.op));
+                try self.writeNode(w, node.head.binExpr.right);
+            },
             .expr_stmt => {
                 try self.writeNode(w, node.head.child_head);
             },
+            .number,
             .ident => {
                 try w.writeAll(self.src.getNodeString(node));
             },
@@ -446,7 +452,9 @@ pub const Encoder = struct {
                 try w.writeByte(')');
             },
             else => {
+                try w.writeByte('<');
                 try w.writeAll(@tagName(node.node_t));
+                try w.writeByte('>');
             },
         }
     }

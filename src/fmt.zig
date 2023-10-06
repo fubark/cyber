@@ -26,6 +26,8 @@ const FmtValueType = enum(u8) {
     enumt,
     err,
     stringz,
+    sliceU8,
+    repeat,
 };
 
 pub const FmtValue = extern struct {
@@ -40,9 +42,15 @@ pub const FmtValue = extern struct {
         char: u8,
         bool: bool,
         ptr: ?*anyopaque,
+        slice: [*]const u8,
+        repeat: extern struct {
+            char: u8,
+            n: u32,
+        },
     },
     data2: extern union {
         string: u32, // string len.
+        slice: u32, // slice len.
     } = undefined,
     type: FmtValueType,
 };
@@ -184,6 +192,10 @@ pub inline fn v(val: anytype) FmtValue {
                 .ptr = @ptrFromInt(@intFromPtr(val)),
             }
         },
+        .sliceU8,
+        .repeat => {
+            cy.unexpected();
+        },
     }
 }
 
@@ -192,6 +204,30 @@ pub fn char(ch: u8) FmtValue {
         .type = .char,
         .data = .{
             .char = ch,
+        },
+    };
+}
+
+pub fn sliceU8(slice: []const u8) FmtValue {
+    return .{
+        .type = .sliceU8,
+        .data = .{
+            .slice = slice.ptr,
+        },
+        .data2 = .{
+            .slice = @intCast(slice.len),
+        },
+    };
+}
+
+pub fn repeat(ch: u8, n: u32) FmtValue {
+    return .{
+        .type = .repeat,
+        .data = .{
+            .repeat = .{
+                .char = ch,
+                .n = n,
+            },
         },
     };
 }
@@ -282,6 +318,21 @@ fn formatValue(writer: anytype, val: FmtValue) !void {
             try writer.writeByte('@');
             try std.fmt.formatInt(@intFromPtr(val.data.ptr), 16, .lower, .{}, writer);
         },
+        .sliceU8 => {
+            try writer.writeByte('{');
+            if (val.data2.slice > 0) {
+                try std.fmt.formatInt(val.data.slice[0], 10, .lower, .{}, writer);
+
+                for (val.data.slice[1..val.data2.slice]) |it| {
+                    try writer.writeAll(", ");
+                    try std.fmt.formatInt(it, 10, .lower, .{}, writer);
+                }
+            }
+            try writer.writeByte('}');
+        },
+        .repeat => {
+            try writer.writeByteNTimes(val.data.repeat.char, val.data.repeat.n);
+        },
         // else => cy.panicFmt("unsupported {}", .{val.type}),
     }
 }
@@ -360,6 +411,15 @@ pub fn printStderr(fmt: []const u8, vals: []const FmtValue) void {
     };
 }
 
+pub fn printStderrCount(fmt: []const u8, vals: []const FmtValue) !u64 {
+    @setCold(true);
+    var numBytesWritten: u64 = undefined;
+    const w = countingWriter(&numBytesWritten, lockStderrWriter());
+    defer unlockPrint();
+    try format(w, fmt, vals);
+    return numBytesWritten;
+}
+
 pub const StderrWriter = if (!cy.isWasmFreestanding) std.fs.File.Writer else HostFileWriter;
 
 pub fn lockStderrWriter() StderrWriter {
@@ -413,6 +473,54 @@ const HostFileWriter = struct {
         }
     }
 };
+
+pub fn CountingWriter(comptime ChildWriter: type) type {
+    return struct {
+        numBytesWritten: *u64,
+        child: ChildWriter,
+
+        // pub const Error = WriterType.Error;
+        // pub const Writer = io.Writer(*Self, Error, write);
+        // pub const Error = error{};
+
+        const Self = @This();
+
+        pub fn writeByte(self: Self, byte: u8) !void {
+            try self.child.writeByte(byte);
+            self.numBytesWritten.* += 1;
+        }
+
+        pub fn writeAll(self: Self, bytes: []const u8) !void {
+            const n = try self.child.write(bytes);
+            self.numBytesWritten.* += n;
+        }
+
+        pub fn writeByteNTimes(self: Self, byte: u8, n: usize) !void {
+            var bytes: [256]u8 = undefined;
+            @memset(bytes[0..], byte);
+
+            var remaining = n;
+            while (remaining > 0) {
+                const to_write = @min(remaining, bytes.len);
+                try self.writeAll(bytes[0..to_write]);
+                remaining -= to_write;
+            }
+            self.numBytesWritten.* += n;
+        }
+
+        // pub fn writer(self: *Self) Writer {
+        //     return .{ .context = self };
+        // }
+    };
+}
+
+fn countingWriter(numBytesWritten: *u64, child: anytype) CountingWriter(@TypeOf(child)) {
+    numBytesWritten.* = 0;
+    return .{
+        .numBytesWritten = numBytesWritten,
+        .child = child,
+    };
+}
 
 pub fn panic(fmt: []const u8, vals: []const FmtValue) noreturn {
     @setCold(true);

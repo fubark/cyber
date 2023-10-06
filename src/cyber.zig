@@ -2,20 +2,22 @@
 
 const builtin = @import("builtin");
 
+pub const ast = @import("ast.zig");
+pub const Node = ast.Node;
+pub const NodeType = ast.NodeType;
+pub const NodeId = ast.NodeId;
+pub const BinaryExprOp = ast.BinaryExprOp;
+pub const UnaryOp = ast.UnaryOp;
+pub const GenBinExprStrategy = ast.GenBinExprStrategy;
+
 pub const parser = @import("parser.zig");
 pub const Parser = parser.Parser;
 pub const ParseResultView = parser.ResultView;
 pub const ParseResult = parser.Result;
-pub const Node = parser.Node;
-pub const NodeType = parser.NodeType;
-pub const NodeId = parser.NodeId;
-pub const BinaryExprOp = parser.BinaryExprOp;
-pub const UnaryOp = parser.UnaryOp;
 pub const Token = parser.Token;
 pub const Tokenizer = parser.Tokenizer;
 pub const TokenizeState = parser.TokenizeState;
 pub const TokenType = parser.TokenType;
-pub const GenBinExprStrategy = parser.GenBinExprStrategy;
 
 pub const sema = @import("sema.zig");
 pub const unescapeString = sema.unescapeString;

@@ -3587,19 +3587,38 @@ fn popStackFrameLocal1(vm: *VM, pc: *[*]const cy.Inst, framePtr: *[*]Value) link
 }
 
 fn dumpEvalOp(vm: *const VM, pc: [*]const cy.Inst) !void {
+    const S = struct {
+        var buf: [1024]u8 = undefined;
+    };
     const offset = getInstOffset(vm, pc);
-    const len = cy.getInstLenAt(pc);
-    try cy.debug.dumpInst(vm, offset, pc[0].opcode(), pc, len);
+    var extra: []const u8 = "";
     switch (pc[0].opcode()) {
+        .callObjSym => {
+            const symId = pc[4].val;
+            const symName = vm.methodGroupExts.buf[symId].getName();
+            extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{symName});
+        },
         .constOp => {
             const idx = @as(*const align (1) u16, @ptrCast(pc + 1)).*;
             const dst = pc[3].val;
             _ = dst;
             const val = Value{ .val = vm.consts[idx].val };
-            fmt.printStderr("rt: [constVal={}]\n", &.{v(vm.valueToTempString(val))});
+            extra = try std.fmt.bufPrint(&S.buf, "rt: constVal={s}", .{vm.valueToTempString(val)});
+        },
+        .callObjNativeFuncIC => {
+            const symId = pc[4].val;
+            const symName = vm.methodGroupExts.buf[symId].getName();
+            extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{symName});
+        },
+        .callSym => {
+            const symId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
+            const symNameId = vm.funcSymDetails.buf[symId].nameId;
+            const symName = cy.sema.getName(vm.compiler, symNameId);
+            extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}]", .{symName});
         },
         else => {},
     }
+    try cy.bytecode.dumpInst(offset, pc[0].opcode(), pc, extra);
 }
 
 pub const EvalError = error{

@@ -459,6 +459,7 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
     var pcOffset: u32 = 0;
     var opsLen = vm.compiler.buf.ops.items.len;
     var pc = vm.compiler.buf.ops.items.ptr;
+    var instIdx: u32 = 0;
     const debugTable = vm.compiler.buf.debugTable.items;
 
     if (optPcContext) |pcContext| {
@@ -513,9 +514,10 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
 
             const code = pc[0].opcode();
             const len = bytecode.getInstLenAt(pc);
-            try dumpInst(vm, pcOffset, code, pc, len);
+            try dumpInst(vm, pcOffset, code, pc, instIdx);
             pcOffset += len;
             pc += len;
+            instIdx += 1;
         }
 
         if (pcOffset == nextMarkerPc) {
@@ -525,9 +527,10 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
         fmt.printStderr("--", &.{});
         var code = pc[0].opcode();
         var len = bytecode.getInstLenAt(pc);
-        try dumpInst(vm, pcOffset, code, pc, len);
+        try dumpInst(vm, pcOffset, code, pc, instIdx);
         pcOffset += len;
         pc += len;
+        instIdx += 1;
 
         // Keep printing instructions until ContextSize or end is reached.
         var i: usize = 0;
@@ -537,9 +540,10 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
             }
             code = pc[0].opcode();
             len = bytecode.getInstLenAt(pc);
-            try dumpInst(vm, pcOffset, code, pc, len);
+            try dumpInst(vm, pcOffset, code, pc, instIdx);
             pcOffset += len;
             pc += len;
+            instIdx += 1;
             i += 1;
             if (i >= ContextSize) {
                 break;
@@ -558,9 +562,10 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
 
             const code = pc[0].opcode();
             const len = bytecode.getInstLenAt(pc);
-            try dumpInst(vm, pcOffset, code, pc, len);
+            try dumpInst(vm, pcOffset, code, pc, instIdx);
             pcOffset += len;
             pc += len;
+            instIdx += 1;
         }
 
         fmt.printStderr("\nConstants:\n", &.{});
@@ -598,7 +603,7 @@ fn dumpMarkerAdvance(vm: *const cy.VM, curMarkerIdx: *u32, nextMarkerPc: *u32) v
     }
 }
 
-pub fn dumpInst(vm: *const cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const cy.Inst, len: u32) !void {
+pub fn dumpInst(vm: *const cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const cy.Inst, instIdx: u32) !void {
     var buf: [1024]u8 = undefined;
     var extra: []const u8 = "";
     switch (code) {
@@ -614,25 +619,34 @@ pub fn dumpInst(vm: *const cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const c
             const name = cy.sema.getName(vm.compiler, sym.nameId);
             extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
         },
-        .callObjSym => {
-            const symId = pc[4].val;
-            const symName = vm.methodGroupExts.buf[symId].getName();
-            extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{symName});
+        else => {
+            if (cy.Trace) {
+                const desc = vm.compiler.buf.instDescs.items[instIdx];
+                if (desc.nodeId != cy.NullId) {
+                    var fbuf = std.io.fixedBufferStream(&buf);
+                    var w = fbuf.writer();
+
+                    if (desc.extraIdx != cy.NullId) {
+                        const descExtra = vm.compiler.buf.instDescExtras.items[desc.extraIdx];
+                        try w.writeAll(descExtra.text);
+                        try w.writeAll(": ");
+                    }
+
+                    const chunk = &vm.compiler.chunks.items[desc.chunkId];
+                    const enc = cy.ast.Encoder{
+                        .src = .{
+                            .src = chunk.src,
+                            .nodes = chunk.nodes,
+                            .tokens = chunk.tokens,
+                        },
+                    };
+                    try enc.writeNode(w, desc.nodeId);
+                    extra = fbuf.getWritten();
+                }
+            }
         },
-        .callObjNativeFuncIC => {
-            const symId = pc[4].val;
-            const symName = vm.methodGroupExts.buf[symId].getName();
-            extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{symName});
-        },
-        .callSym => {
-            const symId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
-            const symNameId = vm.funcSymDetails.buf[symId].nameId;
-            const symName = cy.sema.getName(vm.compiler, symNameId);
-            extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{symName});
-        },
-        else => {},
     }
-    bytecode.dumpInst(pcOffset, code, pc, len, extra);
+    try bytecode.dumpInst(pcOffset, code, pc, extra);
 }
 
 const EnableTimerTrace = builtin.mode == .Debug;

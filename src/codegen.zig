@@ -105,7 +105,7 @@ fn identifier(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
                 if (dst == svar.local) {
                     try c.buf.pushOp1(.retain, svar.local);
                 } else {
-                    try c.buf.pushOp2(.copyRetainSrc, svar.local, dst);
+                    try c.buf.pushOp2Ext(.copyRetainSrc, svar.local, dst, c.desc(nodeId));
                 }
             }
             return c.initGenValue(dst, semaType, true);
@@ -121,7 +121,7 @@ fn identifier(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
                 if (dst == svar.local) {
                     // Nop.
                 } else {
-                    try c.buf.pushOp2(.copy, svar.local, dst);
+                    try c.buf.pushOp2Ext(.copy, svar.local, dst, c.desc(nodeId));
                 }
             }
             return c.initGenValue(dst, semaType, false);
@@ -1740,6 +1740,8 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     defer prevSemaSubBlock(c);
 
     const node = c.nodes[nodeId];
+    const iterNodeId = node.head.for_iter_stmt.iterable;
+    const eachNodeId = node.head.for_iter_stmt.eachClause;
 
     const hasEach = node.head.for_iter_stmt.eachClause != cy.NullId;
 
@@ -1749,7 +1751,7 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     var seqIter = false;
 
     if (hasEach) {
-        const eachClause = c.nodes[node.head.for_iter_stmt.eachClause];
+        const eachClause = c.nodes[eachNodeId];
         if (eachClause.node_t == .ident) {
             valReg = try reserveLocalReg(c, eachClause.head.ident.semaVarId, false);
         } else if (eachClause.node_t == .seqDestructure) {
@@ -1777,27 +1779,31 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
 
     const funcSigId = try sema.ensureFuncSig(c.compiler, &.{ bt.Any }, bt.Any);
 
-    const iterv = try expression(c, node.head.for_iter_stmt.iterable, RegisterCstr.exactMustRetain(iterLocal + 4));
+    const iterv = try expression(c, iterNodeId, RegisterCstr.exactMustRetain(iterLocal + 4));
     if (seqIter) {
         try pushCallObjSym(c, iterLocal, 1, true,
             @intCast(c.compiler.vm.seqIteratorMGID), @intCast(funcSigId),
-            node.head.for_iter_stmt.iterable);
+            iterNodeId);
     } else {
-        try pushCallObjSym(c, iterLocal, 1, true,
+        const extraIdx = try c.fmtExtraDesc("iterator()", .{});
+        try pushCallObjSymExt(c, iterLocal, 1, true,
             @intCast(c.compiler.vm.iteratorMGID), @intCast(funcSigId),
-            node.head.for_iter_stmt.iterable);
+            iterNodeId, extraIdx);
     }
     if (iterv.retained) {
-        try pushRelease(c, iterv.local, node.head.for_iter_stmt.iterable);
+        try pushRelease(c, iterv.local, iterNodeId);
     }
 
     var skipFromTop: u32 = undefined;
-    try c.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
+
+    var extraIdx = try c.fmtExtraDesc("push iterator arg", .{});
+    try c.buf.pushOp2Ext(.copyRetainSrc, iterLocal, iterLocal + 5, c.descExtra(iterNodeId, extraIdx));
+
     if (seqIter) {
         try pushCallObjSym(c, iterLocal + 1, 1, true,
             @intCast(c.compiler.vm.nextSeqMGID), @intCast(funcSigId),
-            node.head.for_iter_stmt.iterable);
-        try pushRelease(c, iterLocal + 5, node.head.for_iter_stmt.iterable);
+            iterNodeId);
+        try pushRelease(c, iterLocal + 5, iterNodeId);
         if (hasEach) {
             skipFromTop = try c.pushEmptyJumpNone(iterLocal + 1);
 
@@ -1806,18 +1812,23 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
             try c.buf.pushOperands(seqRegs[0..seqLen]);
             c.curBlock.nextLocalReg += @intCast(seqLen);
 
-            try pushRelease(c, iterLocal + 1, node.head.for_iter_stmt.eachClause);
+            try pushRelease(c, iterLocal + 1, eachNodeId);
         } else {
             skipFromTop = try c.pushEmptyJumpNone(iterLocal + 1);
         }
     } else {
-        try pushCallObjSym(c, iterLocal + 1, 1, true,
+        extraIdx = try c.fmtExtraDesc("next()", .{});
+        try pushCallObjSymExt(c, iterLocal + 1, 1, true,
             @intCast(c.compiler.vm.nextMGID), @intCast(funcSigId),
-            node.head.for_iter_stmt.iterable);
-        try pushRelease(c, iterLocal + 5, node.head.for_iter_stmt.iterable);
+            iterNodeId, extraIdx);
+
+        extraIdx = try c.fmtExtraDesc("release iter", .{});
+        try pushReleaseExt(c, iterLocal + 5, iterNodeId, extraIdx);
+
         if (hasEach) {
+            extraIdx = try c.fmtExtraDesc("copy next() to local", .{});
             try c.pushOptionalDebugSym(nodeId);
-            try c.buf.pushOp2(.copy, iterLocal + 1, valReg);
+            try c.buf.pushOp2Ext(.copy, iterLocal + 1, valReg, c.descExtra(eachNodeId, extraIdx));
             c.curBlock.nextLocalReg += 1;
         }
         skipFromTop = try c.pushEmptyJumpNone(iterLocal + 1);
@@ -1832,12 +1843,15 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     const contPc = c.buf.ops.items.len;
 
     var skipFromInner: u32 = undefined;
-    try c.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
+
+    extraIdx = try c.fmtExtraDesc("push iterator arg", .{});
+    try c.buf.pushOp2Ext(.copyRetainSrc, iterLocal, iterLocal + 5, c.descExtra(iterNodeId, extraIdx));
+
     if (seqIter) {
         try pushCallObjSym(c, iterLocal + 1, 1, true,
             @intCast(c.compiler.vm.nextSeqMGID), @intCast(funcSigId),
-            node.head.for_iter_stmt.iterable);
-        try pushRelease(c, iterLocal + 5, node.head.for_iter_stmt.iterable);
+            iterNodeId);
+        try pushRelease(c, iterLocal + 5, iterNodeId);
         if (hasEach) {
             // Must check for `none` before destructuring.
             skipFromInner = try c.pushEmptyJumpNone(iterLocal + 1);
@@ -1846,15 +1860,20 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
             try c.buf.pushOp2(.seqDestructure, iterLocal + 1, @intCast(seqLen));
             try c.buf.pushOperands(seqRegs[0..seqLen]);
         }
-        try pushRelease(c, iterLocal + 1, node.head.for_iter_stmt.eachClause);
+        try pushRelease(c, iterLocal + 1, eachNodeId);
     } else {
-        try pushCallObjSym(c, iterLocal + 1, 1, true,
+        extraIdx = try c.fmtExtraDesc("next()", .{});
+        try pushCallObjSymExt(c, iterLocal + 1, 1, true,
             @intCast(c.compiler.vm.nextMGID), @intCast(funcSigId),
-            node.head.for_iter_stmt.iterable);
-        try pushRelease(c, iterLocal + 5, node.head.for_iter_stmt.iterable);
+            iterNodeId, extraIdx);
+
+        extraIdx = try c.fmtExtraDesc("release iter", .{});
+        try pushReleaseExt(c, iterLocal + 5, iterNodeId, extraIdx);
+
         if (hasEach) {
-            try c.pushOptionalDebugSym(nodeId);
-            try c.buf.pushOp2(.copy, iterLocal + 1, valReg);
+            extraIdx = try c.fmtExtraDesc("copy next() to local", .{});
+            try c.pushOptionalDebugSym(eachNodeId);
+            try c.buf.pushOp2Ext(.copy, iterLocal + 1, valReg, c.descExtra(eachNodeId, extraIdx));
         }
     }
 
@@ -2593,9 +2612,14 @@ fn pushReleases(self: *Chunk, regs: []const u8, debugNodeId: cy.NodeId) !void {
     }
 }
 
-fn pushRelease(self: *Chunk, local: u8, nodeId: cy.NodeId) !void {
-    try self.pushOptionalDebugSym(nodeId);
-    try self.buf.pushOp1(.release, local);
+fn pushReleaseExt(c: *Chunk, local: u8, nodeId: cy.NodeId, extraIdx: u32) !void {
+    try c.pushOptionalDebugSym(nodeId);
+    try c.buf.pushOp1Ext(.release, local, c.descExtra(nodeId, extraIdx));
+}
+
+fn pushRelease(c: *Chunk, local: u8, nodeId: cy.NodeId) !void {
+    try c.pushOptionalDebugSym(nodeId);
+    try c.buf.pushOp1Ext(.release, local, c.desc(nodeId));
 }
 
 fn genFuncValueCallExpr(self: *Chunk, nodeId: cy.NodeId, fiberDst: u8, startLocal: u8, comptime startFiber: bool) !GenValue {
@@ -3506,16 +3530,22 @@ fn pushInlineTernExpr(chunk: *cy.Chunk, code: cy.OpCode, a: u8, b: u8, c: u8, ds
 }
 
 fn pushCallObjSym(chunk: *cy.Chunk, startLocal: u8, numArgs: u8, expectReturn: bool, symId: u8, funcSigId: u16, nodeId: cy.NodeId) !void {
+    try pushCallObjSymExt(chunk, startLocal, numArgs, expectReturn, symId, funcSigId, nodeId, cy.NullId);
+}
+
+fn pushCallObjSymExt(chunk: *cy.Chunk, startLocal: u8, numArgs: u8, expectReturn: bool, symId: u8, funcSigId: u16, nodeId: cy.NodeId, extraIdx: u32) !void {
     try chunk.pushFailableDebugSym(nodeId);
     const start = chunk.buf.ops.items.len;
-    try chunk.buf.pushOpSlice(.callObjSym, &.{ startLocal, numArgs, @as(u8, if (expectReturn) 1 else 0), symId, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+    try chunk.buf.pushOpSliceExt(.callObjSym, &.{
+        startLocal, numArgs, @as(u8, if (expectReturn) 1 else 0), symId, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    }, chunk.descExtra(nodeId, extraIdx));
     chunk.buf.setOpArgU16(start + 5, funcSigId);
 }
 
 fn pushCallSym(c: *cy.Chunk, startLocal: u8, numArgs: u32, numRet: u8, symId: u32, nodeId: cy.NodeId) !void {
     try c.pushFailableDebugSym(nodeId);
     const start = c.buf.ops.items.len;
-    try c.buf.pushOpSlice(.callSym, &[_]u8{ startLocal, @intCast(numArgs), numRet, 0, 0, 0, 0, 0, 0, 0, 0 });
+    try c.buf.pushOpSliceExt(.callSym, &.{ startLocal, @as(u8, @intCast(numArgs)), numRet, 0, 0, 0, 0, 0, 0, 0, 0 }, c.desc(nodeId));
     c.buf.setOpArgU16(start + 4, @intCast(symId));
 }
 

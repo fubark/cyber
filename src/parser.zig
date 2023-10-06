@@ -6,17 +6,16 @@ const fatal = cy.fatal;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const cy = @import("cyber.zig");
-const Nullable = cy.Nullable;
 
+const NodeId = cy.NodeId;
 const TokenId = u32;
-pub const NodeId = u32;
 const NullId = cy.NullId;
 const log = cy.log.scoped(.parser);
 const IndexSlice = cy.IndexSlice(u32);
 
 const dumpParseErrorStackTrace = builtin.mode == .Debug and !cy.isWasm and true;
 
-const annotations = std.ComptimeStringMap(AnnotationType, .{
+const annotations = std.ComptimeStringMap(cy.ast.AnnotationType, .{
     .{ "host", .host },
 });
 
@@ -75,7 +74,7 @@ pub const Parser = struct {
     next_pos: u32,
     savePos: u32,
     tokens: std.ArrayListUnmanaged(Token),
-    nodes: std.ArrayListUnmanaged(Node),
+    nodes: std.ArrayListUnmanaged(cy.Node),
     last_err: []const u8,
     /// The last error's src char pos.
     last_err_pos: u32,
@@ -241,10 +240,10 @@ pub const Parser = struct {
         if (indent != 0) {
             return self.reportParseError("Unexpected indentation.", &.{});
         }
-        const first_stmt = try self.parseBodyStatements(0);
+        const first = try self.parseBodyStatements(0);
         self.nodes.items[root_id].head = .{
             .root = .{
-                .headStmt = first_stmt,
+                .headStmt = first,
             },
         };
         return 0;
@@ -1736,7 +1735,7 @@ pub const Parser = struct {
     fn parseMapEntry(self: *Parser) !?NodeId {
         const start = self.next_pos;
 
-        var keyNodeT: NodeType = undefined;
+        var keyNodeT: cy.NodeType = undefined;
         var token = self.peekToken();
         switch (token.tag()) {
             .ident => keyNodeT = .ident,
@@ -2102,7 +2101,7 @@ pub const Parser = struct {
     }
 
     /// Parses the right expression of a BinaryExpression.
-    fn parseRightExpression(self: *Parser, left_op: BinaryExprOp) anyerror!NodeId {
+    fn parseRightExpression(self: *Parser, left_op: cy.ast.BinaryExprOp) anyerror!NodeId {
         var start = self.next_pos;
         var token = self.peekToken();
 
@@ -2128,7 +2127,7 @@ pub const Parser = struct {
         // Check if next token is an operator with higher precedence.
         token = self.peekToken();
 
-        var rightOp: BinaryExprOp = undefined;
+        var rightOp: cy.ast.BinaryExprOp = undefined;
         switch (token.tag()) {
             .operator => rightOp = toBinExprOp(token.data.operator_t),
             .and_k => rightOp = .and_op,
@@ -2164,7 +2163,7 @@ pub const Parser = struct {
             while (true) {
                 token = self.peekToken();
 
-                var rightOp2: BinaryExprOp = undefined;
+                var rightOp2: cy.ast.BinaryExprOp = undefined;
                 switch (token.tag()) {
                     .operator => rightOp2 = toBinExprOp(token.data.operator_t),
                     .and_k => rightOp2 = .and_op,
@@ -2770,7 +2769,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseBinExpr(self: *Parser, left: NodeId, op: BinaryExprOp) !NodeId {
+    fn parseBinExpr(self: *Parser, left: NodeId, op: cy.ast.BinaryExprOp) !NodeId {
         const opStart = self.next_pos;
         // Assumes current token is the operator.
         self.advanceToken();
@@ -2870,9 +2869,9 @@ pub const Parser = struct {
                 .is_k => {
                     self.advanceToken();
                     token = self.peekToken();
-                    var binOp = BinaryExprOp.equal_equal;
+                    var binOp = cy.ast.BinaryExprOp.equal_equal;
                     if (token.tag() == .not_k) {
-                        binOp = BinaryExprOp.bang_equal;
+                        binOp = cy.ast.BinaryExprOp.bang_equal;
                         self.advanceToken();
                     }
                     const right_id = try self.parseRightExpression(binOp);
@@ -3156,7 +3155,7 @@ pub const Parser = struct {
         }
     }
 
-    pub fn pushNode(self: *Parser, node_t: NodeType, start: u32) !NodeId {
+    pub fn pushNode(self: *Parser, node_t: cy.NodeType, start: u32) !NodeId {
         const id = self.nodes.items.len;
         try self.nodes.append(self.alloc, .{
             .node_t = node_t,
@@ -3370,352 +3369,12 @@ pub const Token = extern struct {
     }
 };
 
-pub const NodeType = enum {
-    root,
-    expr_stmt,
-    assign_stmt,
-    opAssignStmt,
-    varSpec,
-    staticDecl,
-    localDecl,
-    pass_stmt,
-    breakStmt,
-    continueStmt,
-    return_stmt,
-    return_expr_stmt,
-    comptimeExpr,
-    comptimeStmt,
-    annotation,
-    ident,
-    true_literal,
-    false_literal,
-    none,
-    string,
-    stringTemplate,
-    await_expr,
-    accessExpr,
-    indexExpr,
-    sliceExpr,
-    callExpr,
-    named_arg,
-    binExpr,
-    unary_expr,
-    number,
-    float,
-    nonDecInt,
-    if_expr,
-    if_stmt,
-    else_clause,
-    whileInfStmt,
-    whileCondStmt,
-    whileOptStmt,
-    for_range_stmt,
-    for_iter_stmt,
-    range_clause,
-    eachClause,
-    label_decl,
-    hostVarDecl,
-    hostFuncDecl,
-    funcDecl,
-    funcDeclInit,
-    funcHeader,
-    funcParam,
-    hostObjectDecl,
-    seqDestructure,
-    objectDecl,
-    objectDeclBody,
-    objectField,
-    objectInit,
-    typeAliasDecl,
-    enumDecl,
-    tagMember,
-    tagInit,
-    symbolLit,
-    errorSymLit,
-    lambda_assign_decl,
-    lambda_expr, 
-    lambda_multi,
-    map_literal,
-    mapEntry,
-    arr_literal,
-    coinit,
-    coyield,
-    coresume,
-    importStmt,
-    tryExpr,
-    tryStmt,
-    throwExpr,
-    group,
-    caseBlock,
-    matchBlock,
-    elseCase,
-    castExpr,
-};
-
-pub const GenUnaryExprStrategy = enum {
-    none,
-    specialized,
-    generic,
-};
-
-pub const GenBinExprStrategy = enum {
-    none,
-    specialized,
-    generic,
-};
-
-pub const AnnotationType = enum {
-    host,
-    custom,
-};
-
-pub const BinaryExprOp = enum {
-    plus,
-    minus,
-    star,
-    caret,
-    slash,
-    percent,
-    bitwiseAnd,
-    bitwiseOr,
-    bitwiseXor,
-    bitwiseLeftShift,
-    bitwiseRightShift,
-    bang_equal,
-    less,
-    less_equal,
-    greater,
-    greater_equal,
-    equal_equal,
-    and_op,
-    or_op,
-    cast,
-    dummy,
-};
-
-pub const UnaryOp = enum {
-    minus,
-    not,
-    bitwiseNot,
-};
-
-pub const Node = struct {
-    node_t: NodeType,
-    start_token: u32,
-    next: NodeId,
-    /// Fixed size. TODO: Rename to `data`.
-    head: union {
-        tryStmt: struct {
-            tryFirstStmt: NodeId,
-            errorVar: Nullable(NodeId),
-            catchFirstStmt: NodeId,
-        },
-        tryExpr: struct {
-            expr: NodeId,
-            elseExpr: Nullable(NodeId),
-        },
-        errorSymLit: struct {
-            symbol: NodeId,
-        },
-        castExpr: struct {
-            expr: NodeId,
-            typeSpecHead: NodeId,
-            semaTypeSymId: cy.sema.SymbolId = cy.NullId,
-        },
-        indexExpr: struct {
-            left: NodeId,
-            right: NodeId,
-            semaGenStrat: GenBinExprStrategy = .none,
-        },
-        binExpr: struct {
-            left: NodeId,
-            right: NodeId,
-            op: BinaryExprOp,
-            semaGenStrat: GenBinExprStrategy = .none,
-        },
-        opAssignStmt: struct {
-            left: NodeId,
-            right: NodeId,
-            op: BinaryExprOp,
-            semaGenStrat: GenBinExprStrategy = .none,
-        },
-        mapEntry: struct {
-            left: NodeId,
-            right: NodeId,
-
-            // Used for object initializers to map an entry to an object field.
-            semaFieldIdx: u32 = cy.NullId,
-        },
-        caseBlock: struct {
-            firstCond: NodeId,
-            firstChild: NodeId,
-        },
-        matchBlock: struct {
-            expr: NodeId,
-            firstCase: NodeId,
-        },
-        annotation: struct {
-            type: AnnotationType,
-        },
-        left_right: struct {
-            left: NodeId,
-            right: NodeId,
-            extra: u32 = NullId,
-        },
-        accessExpr: struct {
-            left: NodeId,
-            right: NodeId,
-            /// Symbol id of a var or func. NullId if it does not point to a symbol.
-            sema_csymId: cy.sema.CompactSymbolId = cy.sema.CompactSymbolId.initNull(),
-        },
-        callExpr: struct {
-            callee: NodeId,
-            arg_head: NodeId,
-            numArgs: u8,
-            has_named_arg: bool,
-        },
-        ident: struct {
-            semaVarId: u32 = NullId,
-            sema_csymId: cy.sema.CompactSymbolId = cy.sema.CompactSymbolId.initNull(),
-            semaMethodSigId: cy.sema.FuncSigId = NullId,
-        },
-        unary: struct {
-            child: NodeId,
-            op: UnaryOp,
-            semaGenStrat: GenUnaryExprStrategy = .none,
-        },
-        root: struct {
-            headStmt: NodeId,
-        },
-        child_head: NodeId,
-        comptimeExpr: struct {
-            child: NodeId,
-        },
-        comptimeStmt: struct {
-            expr: NodeId,
-        },
-        func: struct {
-            header: NodeId,
-            bodyHead: NodeId,
-            semaDeclId: cy.sema.FuncDeclId = NullId,
-        },
-        funcHeader: struct {
-            /// Can be NullId for lambdas.
-            name: Nullable(NodeId),
-            paramHead: Nullable(NodeId),
-            ret: Nullable(NodeId),
-            // modifierHead is stored in `next`.
-        },
-        funcParam: struct {
-            name: NodeId,
-            /// Type spec consists of ident nodes linked by `next`.
-            typeSpecHead: Nullable(NodeId),
-        },
-        lambda_assign_decl: struct {
-            decl_id: cy.sema.FuncDeclId,
-            body_head: NodeId,
-            assign_expr: NodeId,
-        },
-        typeAliasDecl: struct {
-            name: NodeId,
-            typeSpecHead: NodeId,
-        },
-        objectInit: struct {
-            name: NodeId,
-            initializer: NodeId,
-            sema_symId: Nullable(cy.sema.SymbolId) = cy.NullId,
-        },
-        objectField: struct {
-            name: NodeId,
-            /// Type spec consists of ident nodes linked by `next`.
-            typeSpecHead: Nullable(NodeId),
-        },
-        objectDecl: struct {
-            // `name` is an ident token with a semaSymId.
-            name: NodeId,
-            modifierHead: Nullable(NodeId),
-            body: NodeId,
-        },
-        objectDeclBody: struct {
-            fieldsHead: NodeId,
-            funcsHead: NodeId,
-            numFields: u32,
-        },
-        varSpec: struct {
-            name: NodeId,
-            typeSpecHead: Nullable(NodeId),
-            modifierHead: Nullable(NodeId),
-            // `next` contains TypeId for @host var
-        },
-        staticDecl: struct {
-            varSpec: NodeId,
-            right: NodeId,
-            sema_symId: cy.sema.SymbolId = cy.NullId,
-        },
-        localDecl: struct {
-            varSpec: NodeId,
-            right: NodeId,
-        },
-        tagMember: struct {
-            name: NodeId,
-        },
-        enumDecl: struct {
-            name: NodeId,
-            memberHead: NodeId,
-        },
-        whileCondStmt: struct {
-            cond: NodeId,
-            bodyHead: NodeId,
-        },
-        whileOptStmt: struct {
-            opt: NodeId,
-            bodyHead: NodeId,
-            some: NodeId,
-        },
-        for_range_stmt: struct {
-            range_clause: NodeId,
-            body_head: NodeId,
-            eachClause: NodeId,
-        },
-        for_iter_stmt: struct {
-            iterable: NodeId,
-            body_head: NodeId,
-            eachClause: NodeId,
-        },
-        seqDestructure: struct {
-            head: NodeId,
-        },
-        sliceExpr: struct {
-            arr: NodeId,
-            left: NodeId,
-            right: NodeId,
-        },
-        if_expr: struct {
-            cond: NodeId,
-            body_expr: NodeId,
-            else_clause: NodeId,
-        },
-        else_clause: struct {
-            body_head: NodeId,
-            // for else ifs only.
-            cond: NodeId,
-            else_clause: NodeId,
-        },
-        stringTemplate: struct {
-            partsHead: NodeId,
-        },
-        nonDecInt: struct {
-            semaVal: u64,
-        } align (4) ,
-    },
-};
-
 pub const Result = struct {
     inner: ResultView,
     
     pub fn init(alloc: std.mem.Allocator, view: ResultView) !Result {
         const arr = try view.nodes.clone(alloc);
-        const nodes = try alloc.create(std.ArrayListUnmanaged(Node));
+        const nodes = try alloc.create(std.ArrayListUnmanaged(cy.Node));
         nodes.* = arr;
 
         const new_src = try alloc.dupe(u8, view.src);
@@ -3772,7 +3431,7 @@ pub const ResultView = struct {
     isTokenError: bool,
 
     /// ArrayList is returned so resulting ast can be modified.
-    nodes: *std.ArrayListUnmanaged(Node),
+    nodes: *std.ArrayListUnmanaged(cy.Node),
     tokens: []const Token,
     src: []const u8,
 
@@ -3795,7 +3454,7 @@ pub const ResultView = struct {
         return try Result.init(alloc, self);
     }
 
-    pub fn pushNode(self: ResultView, alloc: std.mem.Allocator, node_t: NodeType, start: TokenId) NodeId {
+    pub fn pushNode(self: ResultView, alloc: std.mem.Allocator, node_t: cy.NodeType, start: TokenId) NodeId {
         return pushNodeToList(alloc, self.nodes, node_t, start);
     }
 
@@ -3822,7 +3481,7 @@ pub const ResultView = struct {
     }
 };
 
-fn toBinExprOp(op: OperatorType) BinaryExprOp {
+fn toBinExprOp(op: OperatorType) cy.ast.BinaryExprOp {
     return switch (op) {
         .plus => .plus,
         .minus => .minus,
@@ -3846,7 +3505,7 @@ fn toBinExprOp(op: OperatorType) BinaryExprOp {
     };
 }
 
-pub fn getBinOpPrecedence(op: BinaryExprOp) u8 {
+pub fn getBinOpPrecedence(op: cy.ast.BinaryExprOp) u8 {
     switch (op) {
         .bitwiseLeftShift,
         .bitwiseRightShift => return 9,
@@ -3888,7 +3547,7 @@ pub fn getBinOpPrecedence(op: BinaryExprOp) u8 {
     }
 }
 
-pub fn getLastStmt(nodes: []const Node, head: NodeId, out_prev: *NodeId) NodeId {
+pub fn getLastStmt(nodes: []const cy.Node, head: NodeId, out_prev: *NodeId) NodeId {
     var prev: NodeId = NullId;
     var cur_id = head;
     while (cur_id != NullId) {
@@ -3904,7 +3563,7 @@ pub fn getLastStmt(nodes: []const Node, head: NodeId, out_prev: *NodeId) NodeId 
     return NullId;
 }
 
-pub fn pushNodeToList(alloc: std.mem.Allocator, nodes: *std.ArrayListUnmanaged(Node), node_t: NodeType, start: u32) NodeId {
+pub fn pushNodeToList(alloc: std.mem.Allocator, nodes: *std.ArrayListUnmanaged(cy.Node), node_t: cy.NodeType, start: u32) NodeId {
     const id = nodes.items.len;
     nodes.append(alloc, .{
         .node_t = node_t,
@@ -4787,11 +4446,6 @@ pub const StaticDecl = struct {
 test "parser internals." {
     try t.eq(@sizeOf(Token), 8);
     try t.eq(@alignOf(Token), 4);
-    if (builtin.mode == .ReleaseFast) {
-        try t.eq(@sizeOf(Node), 24);
-    } else {
-        try t.eq(@sizeOf(Node), 28);
-    }
     try t.eq(@sizeOf(TokenizeState), 4);
 
     try t.eq(std.enums.values(TokenType).len, 61);

@@ -767,6 +767,36 @@ pub const Chunk = struct {
         try self.buf.pushFailableDebugSym(pc, self.id, nodeId, self.curBlock.frameLoc, unwindTempIdx);
     }
 
+    pub fn fmtExtraDesc(self: *Chunk, comptime format: []const u8, vals: anytype) !u32 {
+        // Behind a comptime flag since it's doing allocation.
+        if (cy.Trace) {
+            const idx = self.buf.instDescExtras.items.len;
+            const text = try std.fmt.allocPrint(self.alloc, format, vals);
+            try self.buf.instDescExtras.append(self.alloc, .{
+                .text = text,
+            });
+            return @intCast(idx);
+        } else {
+            return cy.NullId;
+        }
+    }
+
+    pub fn desc(self: *Chunk, nodeId: cy.NodeId) cy.bytecode.InstDesc {
+        return .{
+            .chunkId = self.id,
+            .nodeId = nodeId,
+            .extraIdx = cy.NullId,
+        };
+    }
+
+    pub fn descExtra(self: *Chunk, nodeId: cy.NodeId, extraIdx: u32) cy.bytecode.InstDesc {
+        return .{
+            .chunkId = self.id,
+            .nodeId = nodeId,
+            .extraIdx = extraIdx,
+        };
+    }
+
     pub fn getModule(self: *Chunk) *cy.Module {
         return &self.compiler.sema.modules.items[self.modId];
     }

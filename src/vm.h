@@ -631,7 +631,10 @@ typedef struct ByteCodeBuffer {
 
     ZList unwindReleaseRegs;
     ZList unwindReleaseBacklinks;
-
+#if TRACE
+    ZList instDescs;
+    ZList instDescExtras;
+#endif
     u32 mainStackSize;
 } ByteCodeBuffer;
 

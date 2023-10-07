@@ -98,7 +98,7 @@ func foo(s string):
 ## Static typing.
 Static typing can be incrementally applied which provides compile-time guarantees and prevents runtime errors.
 Static typing also makes it easier to maintain and refactor your code.
-> _Incomplete: Static types in general is in development. One of the goals of Cyber is to let dynamic code mix with typed code. At the moment, there are places where it works and other places where it won't. Keep that in mind when using types._
+> _Incomplete: Static types in general is in development. One of the goals of Cyber is to let dynamic code mix with typed code seamlessly. At the moment, there are places where it works and other places where it won't. Keep that in mind when using types._
 
 ### Builtin types.
 The following builtin types are available in every module: `boolean`, `float`, `int`, `string`, `List`, `Map`, `error`, `fiber`, `any`.

@@ -1558,14 +1558,14 @@ test "Object funcs/methods." {
     try eval(.{ .silent = true },
         \\type S object:
         \\  a
-        \\  func foo(self):
+        \\  meth foo():
         \\    return 123
         \\var o = S{}
         \\o.foo(234)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Can not find compatible function for `foo(any, int) any` in `S`.
-            \\Only `func foo(any) any` exists for the symbol `foo`.
+            \\Only `func foo(S) any` exists for the symbol `foo`.
             \\
             \\main:6:1 main:
             \\o.foo(234)
@@ -2476,7 +2476,7 @@ test "Local variable assignment." {
     },
         \\type S object:
         \\  value
-        \\  func foo(self):
+        \\  meth foo():
         \\    if false:
         \\      var a = S{ value: 123 }
         \\var s = S{ value: 234 }

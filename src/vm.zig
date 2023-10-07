@@ -3641,6 +3641,12 @@ fn dumpEvalOp(vm: *const VM, pc: [*]const cy.Inst) !void {
             const symName = cy.sema.getName(vm.compiler, symNameId);
             extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}]", .{symName});
         },
+        .fieldRetain => {
+            const symId = pc[3].val;
+            const sym = vm.fieldSyms.buf[symId];
+            const name = cy.sema.getName(vm.compiler, sym.nameId);
+            extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{name});
+        },
         else => {},
     }
     try cy.bytecode.dumpInst(offset, pc[0].opcode(), pc, extra);

@@ -402,33 +402,32 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
                 &.{v(lhs), v(rhs), v(dst) });
         },
         .callObjNativeFuncIC => {
-            const startLocal = pc[1].val;
+            const ret = pc[1].val;
             const numArgs = pc[2].val;
             const numRet = pc[3].val;
-            len += try fmt.printStderrCount("startLocal={}, numArgs={}, numRet={}", &.{v(startLocal), v(numArgs), v(numRet)});
+            len += try printInstArgs(&.{"ret", "nargs", "nret"}, &.{v(ret), v(numArgs), v(numRet)});
         },
         .callObjSym => {
-            const startLocal = pc[1].val;
+            const ret = pc[1].val;
             const numArgs = pc[2].val;
             const numRet = pc[3].val;
             const symId = pc[4].val;
             const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
             len += try printInstArgs(&.{"ret", "narg", "nret", "sym", "sig"},
-                &.{v(startLocal), v(numArgs), v(numRet), v(symId), v(funcSigId)});
+                &.{v(ret), v(numArgs), v(numRet), v(symId), v(funcSigId)});
         },
         .callSym => {
-            const startLocal = pc[1].val;
+            const ret = pc[1].val;
             const numArgs = pc[2].val;
             const numRet = pc[3].val;
             const symId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
-            len += try fmt.printStderrCount("startLocal={}, numArgs={}, numRet={}, sym={}", &.{v(startLocal), v(numArgs), v(numRet), v(symId)});
+            len += try fmt.printStderrCount("ret={}, nargs={}, nret={}, sym={}", &.{v(ret), v(numArgs), v(numRet), v(symId)});
         },
         .callFuncIC => {
-            const startLocal = pc[1].val;
+            const ret = pc[1].val;
             const numRet = pc[3].val;
-            const stackSize = pc[4].val;
             const pcPtr: [*]cy.Inst = @ptrFromInt(@as(usize, @intCast(@as(*const align(1) u48, @ptrCast(pc + 6)).*)));
-            len += try fmt.printStderrCount("startLocal={}, numRet={}, stackSize={}, pcPtr={}", &.{v(startLocal), v(numRet), v(stackSize), v(pcPtr)});
+            len += try fmt.printStderrCount("ret={}, nret={}, pc={}", &.{v(ret), v(numRet), v(pcPtr)});
         },
         .call => {
             const startLocal = pc[1].val;
@@ -581,10 +580,11 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const regs = std.mem.sliceAsBytes(pc[2..2+numRegs]);
             len += try fmt.printStderrCount("{}", &.{fmt.sliceU8(regs)});
         },
+        .setField,
         .setFieldRelease => {
-            const recv = pc[1].val;
-            const val = pc[2].val;
-            const symId = pc[3].val;
+            const symId = pc[1].val;
+            const recv = pc[2].val;
+            const val = pc[3].val;
             len += try fmt.printStderrCount("recv={}, val={}, sym={}", &.{v(recv), v(val), v(symId)});
         },
         .setIndexList => {

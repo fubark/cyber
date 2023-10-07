@@ -38,6 +38,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "false", .false_k },
     .{ "for", .for_k },
     .{ "func", .func_k },
+    .{ "meth", .meth_k },
     .{ "if", .if_k },
     .{ "import", .import_k },
     .{ "is", .is_k },
@@ -515,6 +516,7 @@ pub const Parser = struct {
                     .typeSpecHead = typeSpecHead,
                 },
             };
+
             var last = paramHead;
             while (true) {
                 token = self.peekToken();
@@ -826,7 +828,7 @@ pub const Parser = struct {
         token = self.peekToken();
         const firstFunc = try self.parseStatement();
         var nodeT = self.nodes.items[firstFunc].node_t;
-        if (nodeT == .funcDecl or nodeT == .funcDeclInit) {
+        if (nodeT == .funcDecl or nodeT == .funcDeclInit or nodeT == .methDecl or nodeT == .methDeclInit) {
             var lastFunc = firstFunc;
 
             while (true) {
@@ -836,7 +838,7 @@ pub const Parser = struct {
                     token = self.peekToken();
                     const func = try self.parseStatement();
                     nodeT = self.nodes.items[func].node_t;
-                    if (nodeT == .funcDecl or nodeT == .funcDeclInit) {
+                    if (nodeT == .funcDecl or nodeT == .funcDeclInit or nodeT == .methDecl or nodeT == .methDeclInit) {
                         self.nodes.items[lastFunc].next = func;
                         lastFunc = func;
                     } else return self.reportParseError("Expected function.", &.{});
@@ -853,7 +855,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseFuncDecl(self: *Parser, modifierHead: cy.NodeId) !NodeId {
+    fn parseFuncDecl(self: *Parser, modifierHead: cy.NodeId, isMethod: bool) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `func` keyword.
         self.advanceToken();
@@ -959,7 +961,7 @@ pub const Parser = struct {
                 };
                 self.nodes.items[header].next = modifierHead;
 
-                const id = try self.pushNode(.funcDecl, start);
+                const id = try self.pushNode(if (isMethod) .methDecl else .funcDecl, start);
                 self.nodes.items[id].head = .{
                     .func = .{
                         .header = header,
@@ -967,7 +969,7 @@ pub const Parser = struct {
                     },
                 };
 
-                if (!self.inObjectDecl) {
+                if (!isMethod and !self.inObjectDecl) {
                     try self.staticDecls.append(self.alloc, .{
                         .declT = .func,
                         .inner = .{
@@ -993,7 +995,7 @@ pub const Parser = struct {
                 };
                 self.nodes.items[header].next = modifierHead;
 
-                const id = try self.pushNode(.funcDeclInit, start);
+                const id = try self.pushNode(if (isMethod) .methDeclInit else .funcDeclInit, start);
                 self.nodes.items[id].head = .{
                     .func = .{
                         .header = header,
@@ -1001,7 +1003,7 @@ pub const Parser = struct {
                     },
                 };
 
-                if (!self.inObjectDecl) {
+                if (!isMethod and !self.inObjectDecl) {
                     try self.staticDecls.append(self.alloc, .{
                         .declT = .funcInit,
                         .inner = .{
@@ -1023,7 +1025,7 @@ pub const Parser = struct {
                 };
                 self.nodes.items[header].next = modifierHead;
 
-                const id = try self.pushNode(.funcDeclInit, start);
+                const id = try self.pushNode(if (isMethod) .methDeclInit else .funcDeclInit, start);
                 self.nodes.items[id].head = .{
                     .func = .{
                         .header = header,
@@ -1031,11 +1033,11 @@ pub const Parser = struct {
                     },
                 };
 
-                if (!self.inObjectDecl) {
+                if (!isMethod and !self.inObjectDecl) {
                     try self.staticDecls.append(self.alloc, .{
                         .declT = .funcInit,
                         .inner = .{
-                            .func = id,
+                            .funcInit = id,
                         },
                     });
                 }
@@ -1606,7 +1608,9 @@ pub const Parser = struct {
                     self.consumeWhitespaceTokens();
 
                     if (self.peekToken().tag() == .func_k) {
-                        return try self.parseFuncDecl(modifier);
+                        return try self.parseFuncDecl(modifier, false);
+                    } else if (self.peekToken().tag() == .meth_k) {
+                        return try self.parseFuncDecl(modifier, true);
                     } else if (self.peekToken().tag() == .var_k) {
                         return try self.parseVarDecl(modifier);
                     } else if (self.peekToken().tag() == .type_k) {
@@ -1650,7 +1654,10 @@ pub const Parser = struct {
                 return try self.parseTypeDecl(cy.NullId);
             },
             .func_k => {
-                return try self.parseFuncDecl(cy.NullId);
+                return try self.parseFuncDecl(cy.NullId, false);
+            },
+            .meth_k => {
+                return try self.parseFuncDecl(cy.NullId, true);
             },
             .if_k => {
                 return try self.parseIfStatement();
@@ -3326,6 +3333,7 @@ pub const TokenType = enum(u8) {
     enum_k,
     error_k,
     func_k,
+    meth_k,
     is_k,
     coinit_k,
     coyield_k,
@@ -3417,7 +3425,7 @@ pub const Result = struct {
     }
 };
 
-pub fn getNodeTokenString(p: *const Parser, nodeId: NodeId) []const u8 {
+pub fn getNodeString(p: *const Parser, nodeId: NodeId) []const u8 {
     const node = p.nodes.items[nodeId];
     const token = p.tokens.items[node.start_token];
     return p.src[token.pos()..token.data.end_pos];
@@ -4448,8 +4456,8 @@ test "parser internals." {
     try t.eq(@alignOf(Token), 4);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 61);
-    try t.eq(keywords.kvs.len, 34);
+    try t.eq(std.enums.values(TokenType).len, 62);
+    try t.eq(keywords.kvs.len, 35);
 }
 
 fn isRecedingIndent(p: *Parser, prevIndent: u32, curIndent: u32, indent: u32) !bool {

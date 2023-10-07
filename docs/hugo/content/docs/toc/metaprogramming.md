@@ -18,13 +18,13 @@ type Vec2 object:
   x float
   y float
 
-  func '$infix+'(self, o):
+  meth '$infix+'(o):
     return Vec2{
       x: x + o.x,
       y: y + o.y,
     }
 
-  func '$prefix-'(self):
+  meth '$prefix-'():
     return Vec2{ x: -x, y: -y }
 
 var a = Vec2{ x: 1, y: 2 }
@@ -37,10 +37,10 @@ Some special operators have their own name. This example overloads the `index` o
 type MyCollection object:
   arr List
 
-  func '$index'(self, idx):
+  meth '$index'(idx):
     return arr[idx * 2]
 
-  func '$setIndex'(self, idx, val):
+  meth '$setIndex'(idx, val):
     arr[idx * 2] = val 
 
 var a = MyCollection{ arr: [1, 2, 3, 4] }
@@ -100,7 +100,7 @@ Declare a `$missing` method as a fallback when a method was not found in an inst
 > _Planned Feature_
 ```cy
 type A object:
-  func '$missing'(self, args...):
+  meth '$missing'(args...):
     return args.len
 
 var a = A{};
@@ -120,7 +120,7 @@ print boolean       -- 'type: boolean'
 
 ### `type metatype`
 ```cy
-func id(self) int
+meth id() int
 -- Returns the type ID as an `int`.
 ```
 

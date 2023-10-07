@@ -52,7 +52,7 @@ Although a `float` represents a decimal number, it can also represent integers b
 
 A numeric literal can be used to create a `float` if the inferred type is a `float`:
 ```cy
-a float = 123
+var a float = 123
 ```
 
 Decimal and scientific notations always produce a `float` value:
@@ -295,43 +295,63 @@ for map each [val, key]:
 ```
 
 ## Objects.
-Any value that isn't a primitive is an object. You can declare your own object types using the `type object` declaration. Object types are similar to structs and classes in other languages. You can declare members and methods. Unlike classes, there is no concept of inheritance at the language level.
+Any value that isn't a primitive is an object. You can declare your own object types using the `type object` declaration.
+Object types are similar to structs and classes in other languages.
+Unlike classes, there is no concept of inheritance at the language level.
+
+### Fields.
+Fields must be declared at the top of the `type object` block:
 ```cy
 type Node object:
     value
     next
 
 var node = Node{ value: 123, next: none }
-print node.value          -- '123'
+print node.value       -- Prints "123"
 ```
-New instances of an object template are created using the type name and braces that surround the initial member values.
+New instances of an object template are created using the type name and braces that surround the initial field values. These fields were declared with the `dynamic` type. See how to declare [typed fields]({{<relref "/docs/toc/type-system#object-types">}}).
 
 ### Methods.
-The first parameter of a method must be `self`. Otherwise, it declares a static function that can only be invoked from the type's namespace.
+Methods allow invoking a function using the `.` operator after an object instance. Since the behavior of methods is closely tied to object instances, they are declared with the `meth` keyword:
 ```cy
 type Node object:
     value
     next
 
-    -- A static function.
-    func create():
-        return Node{ value: 123, next: none }
+    meth inc(n):
+        value += n
 
-    -- A method.
-    func dump(self):
-        print self.value
+    meth incAndPrint():
+        inc(321)
+        print value
 
-var n = Node.create()
-n.dump()
+var node = Node{ value: 123, next: none }
+n.incAndPrint()         -- Prints "444"
 ```
+Type members can be implicitly referenced inside the method.
+> _Incomplete: Only the type's fields can be referenced this way._
 
-Although `self` is required in a method's signature, it's optional when referencing the type's members.
+To reference members explicitly inside a method, use the builtin `self`:
 ```cy
 type Node object:
     value
 
-    func double(self):
-        return value * 2
+    meth double():
+        return self.value * 2
+```
+
+### Functions.
+Regular functions are invoked from the type's namespace:
+```cy
+type Node object:
+    value
+    next
+
+    -- A function.
+    func create():
+        return Node{ value: 123, next: none }
+
+var n = Node.create()
 ```
 
 ## Enums.

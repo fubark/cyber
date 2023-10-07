@@ -613,12 +613,6 @@ pub fn dumpInst(vm: *const cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const c
             const name = cy.sema.getName(vm.compiler, nameId);
             extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
         },
-        .fieldRetain => {
-            const symId = pc[3].val;
-            const sym = vm.fieldSyms.buf[symId];
-            const name = cy.sema.getName(vm.compiler, sym.nameId);
-            extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
-        },
         else => {
             if (cy.Trace) {
                 const desc = vm.compiler.buf.instDescs.items[instIdx];

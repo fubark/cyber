@@ -650,13 +650,13 @@ pub const Chunk = struct {
         return error.CompileError;
     }
 
-    pub fn getNodeIdTokenString(self: *const Chunk, nodeId: cy.NodeId) []const u8 {
+    pub fn getNodeStringById(self: *const Chunk, nodeId: cy.NodeId) []const u8 {
         const node = self.nodes[nodeId];
         const token = self.tokens[node.start_token];
         return self.src[token.pos()..token.data.end_pos];
     }
 
-    pub fn getNodeTokenString(self: *const Chunk, node: cy.Node) []const u8 {
+    pub fn getNodeString(self: *const Chunk, node: cy.Node) []const u8 {
         const token = self.tokens[node.start_token];
         return self.src[token.pos()..token.data.end_pos];
     }

@@ -98,7 +98,7 @@ pub const LocalVar = struct {
     name: if (cy.Trace) []const u8 else void,
 
     pub inline fn isParentLocalAlias(self: LocalVar) bool {
-        return self.capturedIdx != cy.NullU8;
+        return self.type == .parentLocalAlias;
     }
 
     pub inline fn isCapturable(self: LocalVar) bool {
@@ -228,7 +228,7 @@ pub const Block = struct {
     /// Whether this block belongs to a static function.
     isStaticFuncBlock: bool,
 
-    /// Whether this block belongs to an object method.
+    /// Whether this is a method block.
     isMethodBlock: bool = false,
 
     /// Whether temporaries (nameToVar) was deinit.
@@ -590,7 +590,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         },
         .typeAliasDecl => {
             const nameN = c.nodes[node.head.typeAliasDecl.name];
-            const name = c.getNodeTokenString(nameN);
+            const name = c.getNodeString(nameN);
             const nameId = try ensureNameSym(c.compiler, name);
 
             const typeId = try getOrResolveTypeFromSpecNode(c, node.head.typeAliasDecl.typeSpecHead);
@@ -750,7 +750,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 pub fn declareTypeAlias(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
     const nameN = c.nodes[node.head.typeAliasDecl.name];
-    const name = c.getNodeTokenString(nameN);
+    const name = c.getNodeString(nameN);
     const nameId = try ensureNameSym(c.compiler, name);
 
     // Check for local sym.
@@ -801,13 +801,13 @@ pub fn getOrInitModule(self: *cy.Chunk, spec: []const u8, nodeId: cy.NodeId) !cy
 pub fn declareImport(chunk: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = chunk.nodes[nodeId];
     const ident = chunk.nodes[node.head.left_right.left];
-    const name = chunk.getNodeTokenString(ident);
+    const name = chunk.getNodeString(ident);
     const nameId = try ensureNameSym(chunk.compiler, name);
 
     var specPath: []const u8 = undefined;
     if (node.head.left_right.right != cy.NullId) {
         const spec = chunk.nodes[node.head.left_right.right];
-        specPath = chunk.getNodeTokenString(spec);
+        specPath = chunk.getNodeString(spec);
     } else {
         specPath = name;
     }
@@ -864,7 +864,7 @@ fn matchBlock(c: *cy.Chunk, nodeId: cy.NodeId, canBreak: bool) !TypeId {
 pub fn declareEnum(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
     const nameN = c.nodes[node.head.enumDecl.name];
-    const name = c.getNodeTokenString(nameN);
+    const name = c.getNodeString(nameN);
     // const nameId = try ensureNameSym(c.compiler, name);
 
     const spec = try std.fmt.allocPrint(c.alloc, "{s}.{s}", .{c.getModule().absSpec, name});
@@ -881,7 +881,7 @@ pub fn declareEnum(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
     while (memberId != cy.NullId) : (i += 1) {
         const member = c.nodes[memberId];
-        const mName = c.getNodeTokenString(member);
+        const mName = c.getNodeString(member);
         const mNameId = try ensureNameSym(c.compiler, mName);
         try buf.append(c.alloc, mNameId);
         // const mSymId = try c.compiler.vm.ensureSymbol(mName);
@@ -910,7 +910,7 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     c.nodes[nodeId].node_t = .hostObjectDecl;
     const node = c.nodes[nodeId];
     const nameN = c.nodes[node.head.objectDecl.name];
-    const name = c.getNodeTokenString(nameN);
+    const name = c.getNodeString(nameN);
     const nameId = try ensureNameSym(c.compiler, name);
 
     try checkForDuplicateUsingSym(c, c.getModule().resolvedRootSymId, nameId, nodeId);
@@ -985,7 +985,7 @@ pub fn declareObject(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         }
     }
     const nameN = c.nodes[node.head.objectDecl.name];
-    const name = c.getNodeTokenString(nameN);
+    const name = c.getNodeString(nameN);
     const nameId = try ensureNameSym(c.compiler, name);
 
     try checkForDuplicateUsingSym(c, c.getModule().resolvedRootSymId, nameId, nodeId);
@@ -1018,7 +1018,7 @@ pub fn declareObjectMembers(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         var fieldId = body.head.objectDeclBody.fieldsHead;
         while (fieldId != cy.NullId) : (i += 1) {
             const field = c.nodes[fieldId];
-            const fieldName = c.getNodeTokenString(field);
+            const fieldName = c.getNodeString(field);
             const fieldNameId = try ensureNameSym(c.compiler, fieldName);
             const fieldSymId = try c.compiler.vm.ensureFieldSym(fieldName);
             const fieldType = try getOrResolveTypeFromSpecNode(c, field.head.objectField.typeSpecHead);
@@ -1064,7 +1064,7 @@ fn reportDuplicateModSym(c: *cy.Chunk, mod: *cy.Module, nameId: NameSymId, nodeI
 fn objectDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
     // const nameN = c.nodes[node.head.objectDecl.name];
-    // const name = c.getNodeTokenString(nameN);
+    // const name = c.getNodeString(nameN);
     // const nameId = try ensureNameSym(c.compiler, name);
     // const symId = nameN.head.ident.sema_csymId.id;
 
@@ -1082,38 +1082,25 @@ fn objectDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
         const func = &c.semaFuncDecls.items[declId];
         const funcN = c.nodes[funcId];
-        if (funcN.node_t != .funcDecl) {
-            funcId = funcN.next;
-            continue;
+        if (funcN.node_t == .methDecl) {
+            // Object method.
+            const blockId = try pushBlock(c, funcN.head.func.semaDeclId);
+            c.semaBlocks.items[blockId].isMethodBlock = true;
+
+            func.semaBlockId = blockId;
+            errdefer endBlock(c) catch cy.fatal();
+            try pushMethodParamVars(c, c.curObjectSymId, func);
+            try semaStmts(c, funcN.head.func.bodyHead);
+            try endBlock(c);
+        } else if (funcN.node_t == .funcDecl) {
+            // Object function.
+            const blockId = try pushBlock(c, funcN.head.func.semaDeclId);
+            func.semaBlockId = blockId;
+            errdefer endBlock(c) catch cy.fatal();
+            try appendFuncParamVars(c, func);
+            try semaStmts(c, funcN.head.func.bodyHead);
+            try endFuncSymBlock(c, func.numParams);
         }
-
-        if (func.numParams > 0) {
-            const param = c.nodes[func.paramHead];
-            const paramName = c.getNodeTokenString(c.nodes[param.head.funcParam.name]);
-            if (std.mem.eql(u8, paramName, "self")) {
-                // Struct method.
-                const blockId = try pushBlock(c, funcN.head.func.semaDeclId);
-                c.semaBlocks.items[blockId].isMethodBlock = true;
-
-                func.semaBlockId = blockId;
-                errdefer endBlock(c) catch cy.fatal();
-                try pushMethodParamVars(c, func);
-                try semaStmts(c, funcN.head.func.bodyHead);
-                try endBlock(c);
-
-                funcId = funcN.next;
-                continue;
-            }
-        }
-
-        // Object function.
-        const blockId = try pushBlock(c, funcN.head.func.semaDeclId);
-        func.semaBlockId = blockId;
-        errdefer endBlock(c) catch cy.fatal();
-        try appendFuncParamVars(c, func);
-        try semaStmts(c, funcN.head.func.bodyHead);
-        try endFuncSymBlock(c, func.numParams);
-
         funcId = funcN.next;
     }
 }
@@ -1137,11 +1124,11 @@ pub fn declareFuncInit(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !voi
         if (modifierId != cy.NullId) {
             const modifier = c.nodes[modifierId];
             if (modifier.head.annotation.type == .host) {
-                try declareHostFunc(c, modId, nodeId);
+                try declareHostFunc(c, modId, nodeId, false);
                 return;
             }
         }
-        const name = c.getNodeTokenString(c.nodes[c.nodes[node.head.func.header].head.funcHeader.name]);
+        const name = c.getNodeString(c.nodes[c.nodes[node.head.func.header].head.funcHeader.name]);
         return c.reportErrorAt("`{}` does not have an initializer.", &.{v(name)}, nodeId);
     } else {
         const declId = try appendFuncDecl(c, nodeId, true);
@@ -1181,7 +1168,7 @@ fn funcDeclInit(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     _ = semaExpr(c, node.head.func.bodyHead) catch |err| {
         if (err == error.CanNotUseLocal) {
             const local = c.nodes[c.compiler.errorPayload];
-            const localName = c.getNodeTokenString(local);
+            const localName = c.getNodeString(local);
             return c.reportErrorAt("The declaration initializer of static function `{}` can not reference the local variable `{}`.", &.{v(name), v(localName)}, nodeId);
         } else {
             return err;
@@ -1191,16 +1178,11 @@ fn funcDeclInit(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
 fn declareObjectFunc(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
-    const header = c.nodes[node.head.func.header];
 
     // Check for method.
-    if (header.head.funcHeader.paramHead != cy.NullId) {
-        const param = c.nodes[header.head.funcHeader.paramHead];
-        const paramName = c.getNodeTokenString(c.nodes[param.head.funcParam.name]);
-        if (std.mem.eql(u8, paramName, "self")) {
-            try declareMethod(c, modId, nodeId);
-            return;
-        }
+    if (node.node_t == .methDecl or node.node_t == .methDeclInit) {
+        try declareMethod(c, modId, nodeId);
+        return;
     }
 
     // Object function.
@@ -1215,9 +1197,6 @@ fn declareObjectFunc(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !void 
 
 fn declareMethod(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
-    const declId = try appendFuncDecl(c, nodeId, true);
-    c.nodes[nodeId].head.func.semaDeclId = declId;
-
     if (node.head.func.bodyHead == cy.NullId) {
         // No initializer. Check if @host func.
         const modifierId = c.nodes[node.head.func.header].next;
@@ -1228,16 +1207,22 @@ fn declareMethod(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !void {
                 return;
             }
         }
-        const name = c.getNodeTokenString(c.nodes[c.nodes[node.head.func.header].head.funcHeader.name]);
+        const name = c.getNodeString(c.nodes[c.nodes[node.head.func.header].head.funcHeader.name]);
         return c.reportErrorAt("`{}` does not have an initializer.", &.{v(name)}, nodeId);
     } else {
+        const mod = c.compiler.sema.getModule(modId);
+        const objectT = mod.resolvedRootSymId;
+        const declId = try appendMethDecl(c, objectT, nodeId);
+        c.nodes[nodeId].head.func.semaDeclId = declId;
         // Skip methods for now.
         return;
     }
 }
 
 fn declareHostMethod(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !void {
-    try declareHostFunc(c, modId, nodeId);
+    // Declare as a type function first.
+    try declareHostFunc(c, modId, nodeId, true);
+
     const declId = c.nodes[nodeId].head.func.semaDeclId;
     const func = c.semaFuncDecls.items[declId];
     const name = func.getName(c);
@@ -1268,15 +1253,23 @@ fn declareHostMethod(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !void 
     }
 }
 
-pub fn declareHostFunc(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !void {
+pub fn declareHostFunc(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId, isMethod: bool) !void {
     c.nodes[nodeId].node_t = .hostFuncDecl;
-    const declId = try appendFuncDecl(c, nodeId, true);
+
+    const mod = c.compiler.sema.getModule(modId);
+
+    var declId: FuncDeclId = undefined;
+    if (isMethod) {
+        const objectT = mod.resolvedRootSymId;
+        declId = try appendMethDecl(c, objectT, nodeId);
+    } else {
+        declId = try appendFuncDecl(c, nodeId, true);
+    }
     const func = &c.semaFuncDecls.items[declId];
     const name = func.getName(c);
     const nameId = try ensureNameSym(c.compiler, name);
     c.nodes[nodeId].head.func.semaDeclId = declId;
 
-    const mod = c.compiler.sema.getModule(modId);
     try checkForDuplicateUsingSym(c, mod.resolvedRootSymId, nameId, func.getNameNode(c));
 
     const info = cy.HostFuncInfo{
@@ -1306,10 +1299,10 @@ pub fn declareHostFunc(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !voi
                 const key = ResolvedSymKey.initResolvedSymKey(mod.resolvedRootSymId, nameId);
                 _ = try resolveHostFunc(c, key, func.funcSigId, res.ptr);
             } else if (res.type == .quicken) {
-                const funcSig = c.compiler.sema.getFuncSig(func.funcSigId);
-                if (funcSig.reqCallTypeCheck) {
-                    return c.reportErrorAt("Failed to load: {}, Only untyped quicken func is supported.", &.{v(name)}, nodeId);
-                }
+                // const funcSig = c.compiler.sema.getFuncSig(func.funcSigId);
+                // if (funcSig.reqCallTypeCheck) {
+                //     return c.reportErrorAt("Failed to load: {}, Only untyped quicken func is supported.", &.{v(name)}, nodeId);
+                // }
                 cy.module.declareHostQuickenFunc(c.compiler, modId, name, func.funcSigId, declId, @ptrCast(res.ptr)) catch |err| {
                     if (err == error.DuplicateSymName) {
                         const modName = c.compiler.sema.getModuleName(modId);
@@ -1380,12 +1373,12 @@ pub fn declareVar(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 return;
             }
         }
-        const name = c.getNodeTokenString(c.nodes[c.nodes[node.head.staticDecl.varSpec].head.varSpec.name]);
+        const name = c.getNodeString(c.nodes[c.nodes[node.head.staticDecl.varSpec].head.varSpec.name]);
         return c.reportErrorAt("`{}` does not have an initializer.", &.{v(name)}, nodeId);
     } else {
         const varSpec = c.nodes[node.head.staticDecl.varSpec];
         const nameN = c.nodes[varSpec.head.varSpec.name];
-        const name = c.getNodeTokenString(nameN);
+        const name = c.getNodeString(nameN);
         const nameId = try ensureNameSym(c.compiler, name);
         try c.compiler.sema.modules.items[c.modId].setUserVar(c.compiler, name, nodeId);
 
@@ -1402,7 +1395,7 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
     const varSpec = c.nodes[node.head.staticDecl.varSpec];
     const nameN = c.nodes[varSpec.head.varSpec.name];
-    const name = c.getNodeTokenString(nameN);
+    const name = c.getNodeString(nameN);
     // const nameId = try ensureNameSym(c.compiler, name);
 
     const info = cy.HostVarInfo{
@@ -1435,10 +1428,43 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     }
 }
 
+fn declareParam(c: *cy.Chunk, paramId: cy.NodeId, isSelf: bool, paramIdx: u32, declT: TypeId, initT: TypeId) !void {
+    var name: []const u8 = undefined;
+    if (isSelf) {
+        name = "self";
+    } else {
+        const param = c.nodes[paramId];
+        name = c.getNodeStringById(param.head.funcParam.name);
+    }
+
+    const block = curBlock(c);
+    if (!isSelf) {
+        if (block.nameToVar.get(name)) |varInfo| {
+            if (varInfo.subBlockId == c.curSemaSubBlockId) {
+                return c.reportErrorAt("Function param `{}` is already declared.", &.{v(name)}, paramId);
+            }
+        }
+    }
+
+    const id = try pushLocalVar(c, .param, name, declT);
+    var svar = &c.vars.items[id];
+    svar.inner = .{
+        .param = .{
+            .idx = @intCast(paramIdx),
+            .copied = false,
+        },
+    };
+    if (svar.dynamic) {
+        svar.vtype = initT;
+        svar.lifetimeRcCandidate = types.isRcCandidateType(c.compiler, initT);
+    }
+    try block.params.append(c.alloc, id);
+}
+
 /// Assumes initType is a compatible with declType.
 fn declareLocal(self: *cy.Chunk, identId: cy.NodeId, declType: TypeId, initType:TypeId) !LocalVarId {
     const ident = self.nodes[identId];
-    const name = self.getNodeTokenString(ident);
+    const name = self.getNodeString(ident);
 
     const block = curBlock(self);
     if (block.nameToVar.get(name)) |varInfo| {
@@ -1502,7 +1528,7 @@ fn staticDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const varSpec = c.nodes[node.head.staticDecl.varSpec];
     const nameN = c.nodes[varSpec.head.varSpec.name];
     if (nameN.node_t == .ident) {
-        const name = c.getNodeTokenString(nameN);
+        const name = c.getNodeString(nameN);
 
         const symId = node.head.staticDecl.sema_symId;
         const csymId = CompactSymbolId.initSymId(symId);
@@ -1519,7 +1545,7 @@ fn staticDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             _ = semaExprCstr(c, node.head.staticDecl.right, symTypeId, true) catch |err| {
                 if (err == error.CanNotUseLocal) {
                     const local = c.nodes[c.compiler.errorPayload];
-                    const localName = c.getNodeTokenString(local);
+                    const localName = c.getNodeString(local);
                     return c.reportErrorAt("The declaration of static variable `{}` can not reference the local variable `{}`.", &.{v(name), v(localName)}, nodeId);
                 } else {
                     return err;
@@ -1621,7 +1647,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
                             var entry = c.nodes[entryId];
 
                             const field = c.nodes[entry.head.mapEntry.left];
-                            const fieldName = c.getNodeTokenString(field);
+                            const fieldName = c.getNodeString(field);
                             const fieldNameId = try ensureNameSym(c.compiler, fieldName);
 
                             if (cy.module.getSym(mod, fieldNameId)) |sym| {
@@ -1651,7 +1677,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
                 }
             }
 
-            const name = c.getNodeTokenString(nameN);
+            const name = c.getNodeString(nameN);
             return c.reportError("Object type `{}` does not exist.", &.{v(name)});
         },
         .map_literal => {
@@ -1666,7 +1692,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
             return bt.Map;
         },
         .nonDecInt => {
-            const literal = c.getNodeTokenString(node);
+            const literal = c.getNodeString(node);
             var val: u64 = undefined;
             if (literal[1] == 'x') {
                 val = try std.fmt.parseInt(u64, literal[2..], 16);
@@ -1718,7 +1744,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
             if (preferType == bt.Float) {
                 return bt.Float;
             }
-            const literal = c.getNodeTokenString(node);
+            const literal = c.getNodeString(node);
             _ = try std.fmt.parseInt(i48, literal, 10);
             return bt.Integer;
         },
@@ -2003,7 +2029,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
         .comptimeExpr => {
             const child = c.nodes[node.head.comptimeExpr.child];
             if (child.node_t == .ident) {
-                const name = c.getNodeTokenString(child);
+                const name = c.getNodeString(child);
                 if (std.mem.eql(u8, name, "ModUri")) {
                     // TODO: Save sym for codegen.
                     return bt.String;
@@ -2036,7 +2062,7 @@ fn callExpr(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
                 // Calling a symbol.
                 if (!crLeftSym.isFuncSymId) {
                     const right = c.nodes[callee.head.accessExpr.right];
-                    const name = c.getNodeTokenString(right);
+                    const name = c.getNodeString(right);
                     const nameId = try ensureNameSym(c.compiler, name);
 
                     const sym = c.compiler.sema.getSymbol(crLeftSym.id);
@@ -2091,7 +2117,7 @@ fn callExpr(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
 
             return bt.Dynamic;
         } else if (callee.node_t == .ident) {
-            const name = c.getNodeTokenString(callee);
+            const name = c.getNodeString(callee);
 
             // Perform custom lookup for static vars using symName + args.
             const res = try getOrLookupVar(c, name, false);
@@ -2172,7 +2198,7 @@ fn callExpr(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
 
 fn identifier(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
     const node = c.nodes[nodeId];
-    const name = c.getNodeTokenString(node);
+    const name = c.getNodeString(node);
     const res = try getOrLookupVar(c, name, true);
     switch (res) {
         .local => |id| {
@@ -2217,7 +2243,7 @@ fn getOrResolveTypeFromSpecNode(chunk: *cy.Chunk, head: cy.NodeId) !types.TypeId
     // log.debug("getOrResolveTypeSymFromSpecNode from {} ", .{parentSymId});
     while (true) {
         const node = chunk.nodes[nodeId];
-        const name = chunk.getNodeTokenString(node);
+        const name = chunk.getNodeString(node);
         const nameId = try ensureNameSym(chunk.compiler, name);
         // log.debug("looking for {s}", .{name});
 
@@ -2230,6 +2256,52 @@ fn getOrResolveTypeFromSpecNode(chunk: *cy.Chunk, head: cy.NodeId) !types.TypeId
         }
         nodeId = node.next;
     }
+}
+
+fn appendMethDecl(chunk: *cy.Chunk, objectT: TypeId, nodeId: cy.NodeId) !FuncDeclId {
+    const func = chunk.nodes[nodeId];
+    const header = chunk.nodes[func.head.func.header];
+
+    var decl = FuncDecl{
+        .nodeId = nodeId,
+        .paramHead = header.head.funcHeader.paramHead,
+        .rRetTypeSymId = cy.NullId,
+        .isStatic = true,
+        .numParams = undefined,
+        .funcSigId = undefined,
+        .inner = .{
+            .staticFunc = .{},
+        },
+    };
+
+    // Get params, build func signature.
+    chunk.compiler.tempSyms.clearRetainingCapacity();
+    var curParamId = header.head.funcHeader.paramHead;
+    var numParams: u8 = 0;
+
+    // First param is always `self`.
+    try chunk.compiler.tempSyms.append(chunk.alloc, objectT);
+    numParams += 1;
+
+    while (curParamId != cy.NullId) {
+        const param = chunk.nodes[curParamId];
+        const typeId = try getOrResolveTypeFromSpecNode(chunk, param.head.funcParam.typeSpecHead);
+        try chunk.compiler.tempSyms.append(chunk.alloc, typeId);
+        numParams += 1;
+        curParamId = param.next;
+    }
+    decl.numParams = numParams;
+
+    // Get return type.
+    const retType = try getOrResolveTypeFromSpecNode(chunk, header.head.funcHeader.ret);
+
+    // Resolve func signature.
+    decl.funcSigId = try ensureFuncSig(chunk.compiler, chunk.compiler.tempSyms.items, retType);
+    decl.rRetTypeSymId = retType;
+
+    const declId: u32 = @intCast(chunk.semaFuncDecls.items.len);
+    try chunk.semaFuncDecls.append(chunk.alloc, decl);
+    return declId;
 }
 
 fn appendFuncDecl(chunk: *cy.Chunk, nodeId: cy.NodeId, isStatic: bool) !FuncDeclId {
@@ -2357,46 +2429,26 @@ fn pushSubBlock(self: *cy.Chunk, nodeId: cy.NodeId) !void {
     try self.semaSubBlocks.append(self.alloc, new);
 }
 
-fn pushMethodParamVars(c: *cy.Chunk, func: *const FuncDecl) !void {
+fn pushMethodParamVars(c: *cy.Chunk, objectT: TypeId, func: *const FuncDecl) !void {
     const curNodeId = c.curNodeId;
     defer c.curNodeId = curNodeId;
 
-    const sblock = curBlock(c);
+    const rFuncSig = c.compiler.sema.resolvedFuncSigs.items[func.funcSigId];
+    const params = rFuncSig.params();
 
     // Add self receiver param.
-    var id = try pushLocalVar(c, .param, "self", bt.Any);
-    c.vars.items[id].inner = .{
-        .param = .{
-            .idx = 0,
-            .copied = false,
-        },
-    };
-    try sblock.params.append(c.alloc, id);
+    try declareParam(c, cy.NullId, true, 0, params[0], objectT);
 
     if (func.numParams > 1) {
-        const rFuncSig = c.compiler.sema.resolvedFuncSigs.items[func.funcSigId];
-        const params = rFuncSig.params()[1..];
-
-        // Skip the first param node.
         var curNode = func.paramHead;
-        curNode = c.nodes[curNode].next;
-
-        for (params, 0..) |rParamSymId, idx| {
-            const param = c.nodes[curNode];
-            const name = c.getNodeTokenString(c.nodes[param.head.funcParam.name]);
-
+        for (params[1..], 1..) |rParamSymId, idx| {
             try types.assertTypeSym(c, rParamSymId);
-
             c.curNodeId = curNode;
-            id = try pushLocalVar(c, .param, name, rParamSymId);
-            c.vars.items[id].inner = .{
-                .param = .{
-                    .idx = @intCast(idx + 1),
-                    .copied = false,
-                },
-            };
-            try sblock.params.append(c.alloc, id);
 
+            const initType = if (rParamSymId == bt.Dynamic) bt.Any else rParamSymId;
+            try declareParam(c, curNode, false, @intCast(idx), rParamSymId, initType);
+
+            const param = c.nodes[curNode];
             curNode = param.next;
         }
     }
@@ -2411,7 +2463,7 @@ fn appendFuncParamVars(chunk: *cy.Chunk, func: *const FuncDecl) !void {
         var curNode = func.paramHead;
         for (params, 0..) |rParamSymId, idx| {
             const param = chunk.nodes[curNode];
-            const name = chunk.getNodeTokenString(chunk.nodes[param.head.funcParam.name]);
+            const name = chunk.getNodeString(chunk.nodes[param.head.funcParam.name]);
 
             try types.assertTypeSym(chunk, rParamSymId);
             const id = try pushLocalVar(chunk, .param, name, rParamSymId);
@@ -3836,11 +3888,11 @@ fn accessExpr(self: *cy.Chunk, nodeId: cy.NodeId) !AccessExprResult {
     if (right.node_t == .ident) {
         var left = self.nodes[node.head.accessExpr.left];
         if (left.node_t == .ident) {
-            const name = self.getNodeTokenString(left);
+            const name = self.getNodeString(left);
             const nameId = try ensureNameSym(self.compiler, name);
             const res = try getOrLookupVar(self, name, true);
 
-            const rightName = self.getNodeTokenString(right);
+            const rightName = self.getNodeString(right);
             const rightNameId = try ensureNameSym(self.compiler, rightName);
             switch (res) {
                 .local => |id| {
@@ -3891,7 +3943,7 @@ fn accessExpr(self: *cy.Chunk, nodeId: cy.NodeId) !AccessExprResult {
                 // Static var.
                 const crLeftSym = left.head.accessExpr.sema_csymId;
                 if (!crLeftSym.isFuncSymId) {
-                    const rightName = self.getNodeTokenString(right);
+                    const rightName = self.getNodeString(right);
                     const rightNameId = try ensureNameSym(self.compiler, rightName);
                     if (try getOrResolveDistinctSym(self, crLeftSym.id, rightNameId)) |rightSym| {
                         const crRightSym = rightSym.toCompactId();
@@ -3900,7 +3952,7 @@ fn accessExpr(self: *cy.Chunk, nodeId: cy.NodeId) !AccessExprResult {
                     }
                 }
             } else {
-                const rightName = self.getNodeTokenString(right);
+                const rightName = self.getNodeString(right);
                 return getAccessExprResult(self, res.exprT, rightName);
             }
         } else {
@@ -3926,7 +3978,7 @@ const VarResult = struct {
 
 fn assignVar(self: *cy.Chunk, ident: cy.NodeId, vtype: TypeId) !void {
     const node = self.nodes[ident];
-    const name = self.getNodeTokenString(node);
+    const name = self.getNodeString(node);
     // log.tracev("set var {s}", .{name});
 
     const res = try getOrLookupVar(self, name, true);
@@ -4589,7 +4641,7 @@ pub const FuncDecl = struct {
         if (name == cy.NullId) {
             return "";
         } else {
-            return chunk.getNodeTokenString(chunk.nodes[name]);
+            return chunk.getNodeString(chunk.nodes[name]);
         }
     }
 

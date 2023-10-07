@@ -51,6 +51,8 @@ pub const NodeType = enum {
     label_decl,
     hostVarDecl,
     hostFuncDecl,
+    methDecl,
+    methDeclInit,
     funcDecl,
     funcDeclInit,
     funcHeader,
@@ -424,6 +426,9 @@ pub const Encoder = struct {
             },
             .expr_stmt => {
                 try self.writeNode(w, node.head.child_head);
+            },
+            .none => {
+                try w.writeAll("none");
             },
             .number,
             .ident => {

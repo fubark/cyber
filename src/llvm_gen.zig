@@ -187,10 +187,10 @@ fn genStatement(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         // },
         // .importStmt => {
         //     const ident = c.nodes[node.head.left_right.left];
-        //     const name = c.getNodeTokenString(ident);
+        //     const name = c.getNodeString(ident);
 
         //     const spec = c.nodes[node.head.left_right.right];
-        //     const specPath = c.getNodeTokenString(spec);
+        //     const specPath = c.getNodeString(spec);
 
         //     _ = name;
         //     _ = specPath;
@@ -213,7 +213,7 @@ fn genStatement(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         // },
         // .objectDecl => {
         //     const nameN = c.nodes[node.head.objectDecl.name];
-        //     const name = c.getNodeTokenString(nameN);
+        //     const name = c.getNodeString(nameN);
         //     const nameId = try sema.ensureNameSym(c.compiler, name);
         //     const crObjSymId = nameN.head.ident.sema_csymId;
         //     const robjSymId = crObjSymId.id;
@@ -229,7 +229,7 @@ fn genStatement(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         //         const funcName = decl.getName(c);
         //         if (decl.numParams > 0) {
         //             const param = c.nodes[decl.paramHead];
-        //             const paramName = c.getNodeTokenString(c.nodes[param.head.funcParam.name]);
+        //             const paramName = c.getNodeString(c.nodes[param.head.funcParam.name]);
         //             if (std.mem.eql(u8, paramName, "self")) {
         //                 // Object method.
         //                 if (func.node_t == .funcDecl) {
@@ -618,7 +618,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //         return c.initGenValue(dst, bt.Boolean, false);
     //     },
         .number => {
-            const literal = c.getNodeTokenString(node);
+            const literal = c.getNodeString(node);
             if (c.nodeTypes[nodeId] == bt.Integer) {
                 const ival = try std.fmt.parseInt(u64, literal, 10);
                 const val = llvm.ConstInt(llvm.IntTypeInContext(c.ctx, 48), ival, llvm.False);
@@ -630,7 +630,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
             }
         },
     //     .float => {
-    //         const literal = c.getNodeTokenString(node);
+    //         const literal = c.getNodeString(node);
     //         const val = try std.fmt.parseFloat(f64, literal);
 
     //         const dst = try c.rega.selectFromNonLocalVar(cstr, false);
@@ -642,7 +642,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //         return try constInt(c, fval, dst);
     //     },
     //     .symbolLit => {
-    //         const name = c.getNodeTokenString(node);
+    //         const name = c.getNodeString(node);
     //         const symId = try c.compiler.vm.ensureSymbol(name);
     //         const dst = try c.rega.selectFromNonLocalVar(cstr, false);
     //         try c.buf.pushOp2(.tagLiteral, @intCast(symId), dst);
@@ -650,7 +650,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //     },
     //     .errorSymLit => {
     //         const symN = c.nodes[node.head.errorSymLit.symbol];
-    //         const name = c.getNodeTokenString(symN);
+    //         const name = c.getNodeString(symN);
     //         const symId = try c.compiler.vm.ensureSymbol(name);
     //         const val = cy.Value.initErrorSymbol(@intCast(symId));
     //         const idx = try c.buf.pushConst(cy.Const.init(val.val));
@@ -659,7 +659,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //         return c.initGenValue(dst, bt.Error, false);
     //     },
     //     .string => {
-    //         const literal = c.getNodeTokenString(node);
+    //         const literal = c.getNodeString(node);
     //         const str = try c.unescapeString(literal);
     //         const dst = try c.rega.selectFromNonLocalVar(cstr, false);
     //         return string(c, str, dst);
@@ -877,7 +877,7 @@ fn genIdent(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
         //     dst = try c.rega.selectFromNonLocalVar(cstr, cstr.mustRetain);
         //     const sblock = sema.curBlock(c);
         //     const selfLocal: u8 = @intCast(4 + sblock.params.items.len - 1);
-        //     const name = c.getNodeTokenString(node);
+        //     const name = c.getNodeString(node);
         //     const fieldId = try c.compiler.vm.ensureFieldSym(name);
         //     if (cstr.mustRetain) {
         //         try pushFieldRetain(c, selfLocal, dst, @intCast(fieldId));
@@ -892,7 +892,7 @@ fn genIdent(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
         //     dst = try c.rega.selectFromNonLocalVar(cstr, cstr.mustRetain);
         //     try c.buf.pushOp3(.captured, c.curBlock.closureLocal, svar.capturedIdx, dst);
         //     try c.buf.pushOp2(.boxValue, dst, dst);
-        //     const name = c.getNodeTokenString(node);
+        //     const name = c.getNodeString(node);
         //     const fieldId = try c.compiler.vm.ensureFieldSym(name);
         //     if (cstr.mustRetain) {
         //         try pushFieldRetain(c, dst, dst, @intCast(fieldId));

@@ -73,9 +73,8 @@ fn identifier(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
         var dst: RegisterId = undefined;
         if (svar.type == .objectMemberAlias) {
             dst = try c.rega.selectFromNonLocalVar(cstr, cstr.mustRetain);
-            const sblock = sema.curBlock(c);
-            const selfLocal: u8 = @intCast(4 + sblock.params.items.len - 1);
-            const name = c.getNodeTokenString(node);
+            const selfLocal: u8 = 4;
+            const name = c.getNodeString(node);
             const fieldId = try c.compiler.vm.ensureFieldSym(name);
             try pushFieldRetain(c, selfLocal, dst, @intCast(fieldId), nodeId);
             return c.initGenValue(dst, bt.Any, true);
@@ -83,7 +82,7 @@ fn identifier(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
             dst = try c.rega.selectFromNonLocalVar(cstr, cstr.mustRetain);
             try c.buf.pushOp3(.captured, c.curBlock.closureLocal, svar.capturedIdx, dst);
             try c.buf.pushOp2(.boxValue, dst, dst);
-            const name = c.getNodeTokenString(node);
+            const name = c.getNodeString(node);
             const fieldId = try c.compiler.vm.ensureFieldSym(name);
             try pushFieldRetain(c, dst, dst, @intCast(fieldId), nodeId);
             return c.initGenValue(dst, bt.Any, true);
@@ -204,7 +203,7 @@ fn stringTemplate(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue 
     while (curId != cy.NullId) {
         const cur = self.nodes[curId];
         if (expStringPart) {
-            const raw = self.getNodeTokenString(cur);
+            const raw = self.getNodeString(cur);
             const str = try self.unescapeString(raw);
             const idx = try self.buf.getOrPushStringConst(str);
             try self.operandStack.append(self.alloc, @intCast(idx));
@@ -309,7 +308,7 @@ fn objectInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
             return GenValue.initTempValue(dst, type_, true);
         }
     }
-    const oname = self.getNodeTokenString(stype);
+    const oname = self.getNodeString(stype);
     return self.reportErrorAt("Expected object type: `{}`", &.{v(oname)}, nodeId);
 }
 
@@ -388,7 +387,7 @@ fn mapInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
 
         switch (key.node_t) {
             .ident => {
-                const name = self.getNodeTokenString(key);
+                const name = self.getNodeString(key);
                 const idx = try self.buf.getOrPushStringConst(name);
 
                 try self.operandStack.ensureUnusedCapacity(self.alloc, 2);
@@ -396,7 +395,7 @@ fn mapInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
                 self.operandStack.items.len += 2;
             },
             .string => {
-                const name = self.getNodeTokenString(key);
+                const name = self.getNodeString(key);
                 const idx = try self.buf.getOrPushStringConst(name);
                 try self.operandStack.ensureUnusedCapacity(self.alloc, 2);
                 @as(*align (1) u16, @ptrCast(self.operandStack.items.ptr + self.operandStack.items.len)).* = @intCast(idx);
@@ -436,7 +435,7 @@ fn binExprGeneric(c: *Chunk, code: cy.OpCode, vtype: types.TypeId, opts: GenBinE
     const rightv = try expression(c, opts.rightId, RegisterCstr.preferIf(dst, canUseDst));
 
     try c.pushOptionalDebugSym(opts.debugNodeId);
-    try c.buf.pushOp3(code, leftv.local, rightv.local, dst);
+    try c.buf.pushOp3Ext(code, leftv.local, rightv.local, dst, c.desc(opts.debugNodeId));
 
     // ARC cleanup.
     if (opts.leftv == null) {
@@ -522,6 +521,7 @@ fn getInfixMGID(c: *Chunk, op: cy.BinaryExprOp) vmc.MethodGroupId {
 
 const GenBinExprOptions = struct {
     leftId: cy.NodeId,
+    leftT: types.TypeId,
     rightId: cy.NodeId,
     debugNodeId: cy.NodeId,
     op: cy.BinaryExprOp,
@@ -553,7 +553,7 @@ fn binExpr2(c: *Chunk, opts: GenBinExprOptions) !GenValue {
         .caret,
         .minus,
         .plus => {
-            const leftT = c.nodeTypes[opts.leftId];
+            const leftT = opts.leftT;
             switch (opts.genStrat) {
                 .none => cy.fatal(),
                 .specialized => {
@@ -688,6 +688,7 @@ fn binExpr(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
     const node = c.nodes[nodeId];
     return binExpr2(c, .{
         .leftId = node.head.binExpr.left,
+        .leftT = c.nodeTypes[node.head.binExpr.left],
         .rightId = node.head.binExpr.right,
         .debugNodeId = nodeId,
         .op = node.head.binExpr.op,
@@ -998,6 +999,7 @@ fn indexExpr(c: *Chunk, nodeId: cy.NodeId, optLeft: ?GenValue, optIndex: ?GenVal
         .generic => {
             return callObjSymBinExpr(c, c.compiler.vm.indexMGID, .{
                 .leftId = node.head.indexExpr.left,
+                .leftT = c.nodeTypes[node.head.indexExpr.left],
                 .rightId = node.head.indexExpr.right,
                 .op = undefined,
                 .genStrat = node.head.indexExpr.semaGenStrat,
@@ -1101,7 +1103,7 @@ fn genField(self: *cy.Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
 
     // Right should be an ident.
     const right = self.nodes[rightId];
-    const name = self.getNodeTokenString(right);
+    const name = self.getNodeString(right);
     const fieldId = try self.compiler.vm.ensureFieldSym(name);
 
     const newtype = (try sema.getAccessExprResult(self, leftv.vtype, name)).exprT;
@@ -1233,7 +1235,7 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
         },
         .objectDecl => {
             const nameN = c.nodes[node.head.objectDecl.name];
-            const name = c.getNodeTokenString(nameN);
+            const name = c.getNodeString(nameN);
             const nameId = try sema.ensureNameSym(c.compiler, name);
             const crObjSymId = nameN.head.ident.sema_csymId;
             const robjSymId = crObjSymId.id;
@@ -1247,23 +1249,9 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
                 const decl = c.semaFuncDecls.items[func.head.func.semaDeclId];
 
                 const funcName = decl.getName(c);
-                if (decl.numParams > 0) {
-                    const param = c.nodes[decl.paramHead];
-                    const paramName = c.getNodeTokenString(c.nodes[param.head.funcParam.name]);
-                    if (std.mem.eql(u8, paramName, "self")) {
-                        // Object method.
-                        if (func.node_t == .funcDecl) {
-                            try genMethodDecl(c, sid, func, decl, funcName);
-                        }
-                        continue;
-                    }
-                }
-
-                // const detail = cy.FuncSymDetail{
-                //     .name = try c.alloc.dupe(u8, funcName),
-                // };
-                // try c.compiler.vm.funcSymDetails.append(c.alloc, detail);
-                if (func.node_t == .funcDecl) {
+                if (func.node_t == .methDecl) {
+                    try genMethodDecl(c, sid, func, decl, funcName);
+                } else if (func.node_t == .funcDecl) {
                     try funcDecl(c, robjSymId, funcId);
                 }
             }
@@ -1463,6 +1451,7 @@ fn opAssignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
                 _ = try binExpr2(c, .{
                     .leftId = node.head.opAssignStmt.left,
+                    .leftT = c.nodeTypes[node.head.opAssignStmt.left],
                     .rightId = node.head.opAssignStmt.right,
                     .debugNodeId = nodeId,
                     .op = node.head.opAssignStmt.op,
@@ -1480,15 +1469,22 @@ fn opAssignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 }
                 return;
             } else {
-                _ = try binExpr2(c, .{
-                    .leftId = node.head.opAssignStmt.left,
-                    .rightId = node.head.opAssignStmt.right,
-                    .debugNodeId = nodeId,
-                    .op = node.head.opAssignStmt.op,
-                    .genStrat = node.head.opAssignStmt.semaGenStrat,
-                    .leftv = GenValue.initLocalValue(svar.local, svar.vtype, false),
-                    .cstr = RegisterCstr.exact(svar.local),
-                });
+                if (svar.type == .objectMemberAlias) {
+                    const selfv = c.initGenValue(4, bt.Dynamic, false);
+                    const leftT = c.nodeTypes[node.head.opAssignStmt.left];
+                    try binOpAssignToField(c, selfv, node.head.opAssignStmt.left, leftT, node.head.opAssignStmt.right, node.head.opAssignStmt.op, node.head.opAssignStmt.semaGenStrat, nodeId);
+                } else {
+                    _ = try binExpr2(c, .{
+                        .leftId = node.head.opAssignStmt.left,
+                        .leftT = c.nodeTypes[node.head.opAssignStmt.left],
+                        .rightId = node.head.opAssignStmt.right,
+                        .debugNodeId = nodeId,
+                        .op = node.head.opAssignStmt.op,
+                        .genStrat = node.head.opAssignStmt.semaGenStrat,
+                        .leftv = GenValue.initLocalValue(svar.local, svar.vtype, false),
+                        .cstr = RegisterCstr.exact(svar.local),
+                    });
+                }
             }
         } else {
             const csymId = left.head.ident.sema_csymId;
@@ -1504,6 +1500,7 @@ fn opAssignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
                 _ = try binExpr2(c, .{
                     .leftId = node.head.opAssignStmt.left,
+                    .leftT = c.nodeTypes[node.head.opAssignStmt.left],
                     .rightId = node.head.opAssignStmt.right,
                     .debugNodeId = nodeId,
                     .op = node.head.opAssignStmt.op,
@@ -1520,7 +1517,13 @@ fn opAssignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             }
         }
     } else if (left.node_t == .accessExpr) {
-        try binOpAssignToField(c, node.head.opAssignStmt.left, node.head.opAssignStmt.right, node.head.opAssignStmt.op, node.head.opAssignStmt.semaGenStrat, nodeId);
+        const recv = try expression(c, left.head.accessExpr.left, RegisterCstr.simple);
+        const accessRight = c.nodes[left.head.accessExpr.right];
+        if (accessRight.node_t != .ident) {
+            return c.reportErrorAt("Expected ident. Got {}.", &.{v(accessRight.node_t)}, left.head.accessExpr.right);
+        }
+        const leftT = c.nodeTypes[node.head.opAssignStmt.left];
+        try binOpAssignToField(c, recv, left.head.accessExpr.right, leftT, node.head.opAssignStmt.right, node.head.opAssignStmt.op, node.head.opAssignStmt.semaGenStrat, nodeId);
     } else if (left.node_t == .indexExpr) {
         try binOpAssignToIndex(c, node.head.opAssignStmt.left, node.head.opAssignStmt.right, node.head.opAssignStmt.op, node.head.opAssignStmt.semaGenStrat, nodeId);
     } else {
@@ -1533,7 +1536,13 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const left = c.nodes[node.head.left_right.left];
     if (left.node_t == .ident) {
         if (left.head.ident.semaVarId != cy.NullId) {
-            try assignExprToLocalVar(c, node.head.left_right.left, node.head.left_right.right, false);
+            const svar = c.vars.items[left.head.ident.semaVarId];
+            if (svar.type == .objectMemberAlias) {
+                const selfv = c.initGenValue(4, bt.Dynamic, false);
+                try genAssignToField(c, selfv, node.head.left_right.left, node.head.left_right.right, nodeId);
+            } else {
+                try assignExprToLocalVar(c, node.head.left_right.left, node.head.left_right.right, false);
+            }
         } else {
             const csymId = left.head.ident.sema_csymId;
             if (!csymId.isFuncSymId) {
@@ -1601,36 +1610,37 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         }
     } else if (left.node_t == .accessExpr) {
         const leftv = try expression(c, left.head.accessExpr.left, RegisterCstr.simple);
-        const leftRetained = try c.pushUnwindIndexIfRetainedTemp(leftv);
-
         const accessRight = c.nodes[left.head.accessExpr.right];
         if (accessRight.node_t != .ident) {
             return c.reportErrorAt("Expected ident. Got {}.", &.{v(accessRight.node_t)}, left.head.accessExpr.right);
         }
-
-        const rightv = try expression(c, node.head.left_right.right, RegisterCstr.simpleMustRetain);
-
-        const fieldName = c.getNodeTokenString(accessRight);
-        const fieldId = try c.compiler.vm.ensureFieldSym(fieldName);
-
-        const recvT = c.nodeTypes[left.head.accessExpr.left];
-        if (rightv.vtype == bt.Dynamic or types.isAnyOrDynamic(recvT)) {
-            // Runtime type check on dynamic right or any/dynamic receiver.
-            try c.pushFailableDebugSym(nodeId);
-            try c.buf.pushOpSlice(.setCheckFieldRelease, &[_]u8{ leftv.local, rightv.local, @intCast(fieldId), 0, 0, 0 });
-        } else {
-            try c.pushFailableDebugSym(nodeId);
-            try c.buf.pushOpSlice(.setFieldRelease, &[_]u8{ leftv.local, rightv.local, @intCast(fieldId), 0, 0, 0 });
-        }
-
-
-        // ARC cleanup. Right is not released since it's being assigned to the field.
-        if (leftRetained) {
-            try pushRelease(c, leftv.local, left.head.accessExpr.left);
-            c.popUnwindTempIndex();
-        }
+        try genAssignToField(c, leftv, left.head.accessExpr.right, node.head.left_right.right, nodeId);
     } else {
         return c.reportErrorAt("Unsupported assignment to left: {}", &.{v(left.node_t)}, nodeId);
+    }
+}
+
+fn genAssignToField(c: *cy.Chunk, recv: GenValue, fieldIdent: cy.NodeId, rightId: cy.NodeId, debugNodeId: cy.NodeId) !void {
+    const recvRetained = try c.pushUnwindIndexIfRetainedTemp(recv);
+
+    const rightv = try expression(c, rightId, RegisterCstr.simpleMustRetain);
+
+    const fieldName = c.getNodeStringById(fieldIdent);
+    const fieldId = try c.compiler.vm.ensureFieldSym(fieldName);
+
+    if (rightv.vtype == bt.Dynamic or types.isAnyOrDynamic(recv.vtype)) {
+        // Runtime type check on dynamic right or any/dynamic receiver.
+        try c.pushFailableDebugSym(debugNodeId);
+        try c.buf.pushOpSlice(.setCheckFieldRelease, &[_]u8{ recv.local, rightv.local, @intCast(fieldId), 0, 0, 0 });
+    } else {
+        try c.pushFailableDebugSym(debugNodeId);
+        try c.buf.pushOpSlice(.setFieldRelease, &[_]u8{ recv.local, rightv.local, @intCast(fieldId), 0, 0, 0 });
+    }
+
+    // ARC cleanup. Right is not released since it's being assigned to the field.
+    if (recvRetained) {
+        try pushRelease(c, recv.local, debugNodeId);
+        c.popUnwindTempIndex();
     }
 }
 
@@ -1708,7 +1718,7 @@ fn comptimeStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     const expr = c.nodes[node.head.comptimeStmt.expr];
     if (expr.node_t == .callExpr) {
         const callee = c.nodes[expr.head.callExpr.callee];
-        const name = c.getNodeTokenString(callee);
+        const name = c.getNodeString(callee);
 
         if (std.mem.eql(u8, "genLabel", name)) {
             if (expr.head.callExpr.numArgs != 1) {
@@ -1720,7 +1730,7 @@ fn comptimeStmt(c: *Chunk, nodeId: cy.NodeId) !void {
                 return c.reportErrorAt("genLabel expected string arg", &.{}, nodeId);
             }
 
-            const label = c.getNodeTokenString(arg);
+            const label = c.getNodeString(arg);
             try c.buf.pushDebugLabel(label);
         } else if (std.mem.eql(u8, "dumpLocals", name)) {
             const sblock = sema.curBlock(c);
@@ -1916,8 +1926,8 @@ fn forRangeStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     const rangeEndN = c.nodes[range_clause.head.left_right.right];
     var lessThanCond = true;
     if (rangeStartN.node_t == .number and rangeEndN.node_t == .number) {
-        const startLit = c.getNodeTokenString(rangeStartN);
-        const endLit = c.getNodeTokenString(rangeEndN);
+        const startLit = c.getNodeString(rangeStartN);
+        const endLit = c.getNodeString(rangeEndN);
         const start = try std.fmt.parseFloat(f64, startLit);
         const end = try std.fmt.parseFloat(f64, endLit);
         if (start > end) {
@@ -2088,15 +2098,19 @@ fn string(c: *Chunk, str: []const u8, dst: LocalId) !GenValue {
     return c.initGenValue(dst, bt.StaticString, false);
 }
 
-fn constInt(self: *Chunk, val: u64, dst: LocalId) !GenValue {
+fn constIntExt(self: *Chunk, val: u64, dst: LocalId, desc: cy.bytecode.InstDesc) !GenValue {
     // TODO: Can be constU8.
     if (val <= std.math.maxInt(i8)) {
-        try self.buf.pushOp2(.constI8, @bitCast(@as(i8, @intCast(val))), dst);
+        try self.buf.pushOp2Ext(.constI8, @bitCast(@as(i8, @intCast(val))), dst, desc);
         return self.initGenValue(dst, bt.Integer, false);
     }
     const idx = try self.buf.pushConst(cy.Const.init(cy.Value.initInt(@intCast(val)).val));
     try constOp(self, idx, dst);
     return self.initGenValue(dst, bt.Integer, false);
+}
+
+fn constInt(self: *Chunk, val: u64, dst: LocalId) !GenValue {
+    return try constIntExt(self, val, dst, .{});
 }
 
 fn constFloat(self: *Chunk, val: f64, dst: LocalId) !GenValue {
@@ -2502,20 +2516,21 @@ fn callObjSymBinExpr(self: *Chunk, mgId: vmc.MethodGroupId, opts: GenBinExprOpti
     // Defer generating lhs copy inst so that quickening can skip the op entirely.
     var selfRetained = false;
     var lhsIsCopy = false;
-    var lhsReg: u8 = undefined;
     const selfArg = try self.rega.consumeNextTemp();
     if (opts.leftv) |leftv| {
         lhsIsCopy = true;
-        lhsReg = leftv.local;
         selfv = GenValue.initTempValue(selfArg, leftv.vtype, false);
     } else {
-        const start = self.buf.len();
-        selfv = try expression(self, opts.leftId, RegisterCstr.exact(selfArg));
-        selfRetained = try self.pushUnwindIndexIfRetainedTemp(selfv);
-        if (start + 3 == self.buf.len() and self.buf.ops.items[start].val == @intFromEnum(cy.OpCode.copy)) {
-            lhsIsCopy = true;
-            lhsReg = self.buf.ops.items[start+1].val;
-            self.buf.ops.items.len = start;
+        const left = self.nodes[opts.leftId];
+        if (left.node_t == .ident and left.head.ident.semaVarId != cy.NullId) {
+            const svar = self.vars.items[left.head.ident.semaVarId];
+            if (svar.type == .local or svar.type == .param) {
+                lhsIsCopy = true;
+            }
+        }
+        if (!lhsIsCopy) {
+            selfv = try expression(self, opts.leftId, RegisterCstr.exact(selfArg));
+            selfRetained = try self.pushUnwindIndexIfRetainedTemp(selfv);
         }
     }
 
@@ -2531,7 +2546,10 @@ fn callObjSymBinExpr(self: *Chunk, mgId: vmc.MethodGroupId, opts: GenBinExprOpti
     } else {
         const right = self.nodes[opts.rightId];
         if (right.node_t == .ident and right.head.ident.semaVarId != cy.NullId) {
-            rhsIsCopy = true;
+            const svar = self.vars.items[right.head.ident.semaVarId];
+            if (svar.type == .local or svar.type == .param) {
+                rhsIsCopy = true;
+            }
         }
         argv = try expression(self, opts.rightId, RegisterCstr.temp);
     }
@@ -2547,7 +2565,11 @@ fn callObjSymBinExpr(self: *Chunk, mgId: vmc.MethodGroupId, opts: GenBinExprOpti
     }
 
     if (lhsIsCopy) {
-        try self.buf.pushOp2(.copy, lhsReg, selfArg);
+        if (opts.leftv) |leftv| {
+            try self.buf.pushOp2(.copy, leftv.local, selfArg);
+        } else {
+            _ = try expression(self, opts.leftId, RegisterCstr.exact(selfArg));
+        }
     }
 
     const argT = self.nodeTypes[opts.rightId];
@@ -2601,7 +2623,7 @@ fn callObjSym(self: *Chunk, callStartLocal: u8, callExprId: cy.NodeId) !GenValue
     // One more arg for receiver.
     const numArgs = 1 + node.head.callExpr.numArgs;
         
-    const name = self.getNodeTokenString(ident);
+    const name = self.getNodeString(ident);
 
     const methodSymId = try self.compiler.vm.ensureMethodGroup(name);
 
@@ -2922,18 +2944,18 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) anyerror!GenValu
             return c.initGenValue(dst, bt.Boolean, false);
         },
         .number => {
-            const literal = c.getNodeTokenString(node);
+            const literal = c.getNodeString(node);
             const dst = try c.rega.selectFromNonLocalVar(cstr, false);
             if (c.nodeTypes[nodeId] == bt.Integer) {
                 const val = try std.fmt.parseInt(u64, literal, 10);
-                return constInt(c, val, dst);
+                return constIntExt(c, val, dst, c.desc(nodeId));
             } else {
                 const val = try std.fmt.parseFloat(f64, literal);
                 return constFloat(c, val, dst);
             }
         },
         .float => {
-            const literal = c.getNodeTokenString(node);
+            const literal = c.getNodeString(node);
             const val = try std.fmt.parseFloat(f64, literal);
 
             const dst = try c.rega.selectFromNonLocalVar(cstr, false);
@@ -2944,7 +2966,7 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) anyerror!GenValu
             return try constInt(c, node.head.nonDecInt.semaVal, dst);
         },
         .symbolLit => {
-            const name = c.getNodeTokenString(node);
+            const name = c.getNodeString(node);
             const symId = try c.compiler.vm.ensureSymbol(name);
             const dst = try c.rega.selectFromNonLocalVar(cstr, false);
             try c.buf.pushOp2(.tagLiteral, @intCast(symId), dst);
@@ -2952,7 +2974,7 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) anyerror!GenValu
         },
         .errorSymLit => {
             const symN = c.nodes[node.head.errorSymLit.symbol];
-            const name = c.getNodeTokenString(symN);
+            const name = c.getNodeString(symN);
             const symId = try c.compiler.vm.ensureSymbol(name);
             const val = cy.Value.initErrorSymbol(@intCast(symId));
             const idx = try c.buf.pushConst(cy.Const.init(val.val));
@@ -2961,7 +2983,7 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) anyerror!GenValu
             return c.initGenValue(dst, bt.Error, false);
         },
         .string => {
-            const literal = c.getNodeTokenString(node);
+            const literal = c.getNodeString(node);
             const str = try c.unescapeString(literal);
             const dst = try c.rega.selectFromNonLocalVar(cstr, false);
             return string(c, str, dst);
@@ -3156,7 +3178,7 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) anyerror!GenValu
         .comptimeExpr => {
             const child = c.nodes[node.head.comptimeExpr.child];
             if (child.node_t == .ident) {
-                const name = c.getNodeTokenString(child);
+                const name = c.getNodeString(child);
                 if (std.mem.eql(u8, name, "ModUri")) {
                     const dst = try c.rega.selectFromNonLocalVar(cstr, false);
                     return string(c, c.srcUri, dst);
@@ -3221,6 +3243,7 @@ fn binOpAssignToIndex(
 
             const resv = try binExpr2(c, .{
                 .leftId = leftId,
+                .leftT = c.nodeTypes[leftId],
                 .rightId = rightId,
                 .debugNodeId = debugNodeId,
                 .op = op,
@@ -3278,6 +3301,7 @@ fn binOpAssignToIndex(
 
             const resv = try binExpr2(c, .{
                 .leftId = leftId,
+                .leftT = c.nodeTypes[leftId],
                 .rightId = rightId,
                 .debugNodeId = debugNodeId,
                 .op = op,
@@ -3304,26 +3328,19 @@ fn binOpAssignToIndex(
 }
 
 fn binOpAssignToField(
-    self: *Chunk, leftId: cy.NodeId, rightId: cy.NodeId, op: cy.BinaryExprOp,
+    self: *Chunk, recv: GenValue, fieldIdent: cy.NodeId, leftT: types.TypeId, rightId: cy.NodeId, op: cy.BinaryExprOp,
     genStrat: cy.GenBinExprStrategy, debugNodeId: cy.NodeId,
 ) !void {
-    const left = self.nodes[leftId];
-
-    const accessRight = self.nodes[left.head.accessExpr.right];
-    if (accessRight.node_t != .ident) {
-        return self.reportErrorAt("Expected ident. Got {}.", &.{v(accessRight.node_t)}, left.head.accessExpr.right);
-    }
-
-    const fieldName = self.getNodeTokenString(accessRight);
+    const fieldName = self.getNodeStringById(fieldIdent);
     const fieldId = try self.compiler.vm.ensureFieldSym(fieldName);
 
-    const recv = try expression(self, left.head.accessExpr.left, RegisterCstr.simple);
     const leftLocal = try self.rega.consumeNextTemp();
 
-    try pushFieldRetain(self, recv.local, leftLocal, @intCast(fieldId), leftId);
+    try pushFieldRetain(self, recv.local, leftLocal, @intCast(fieldId), debugNodeId);
 
     const resv = try binExpr2(self, .{
-        .leftId = leftId,
+        .leftId = cy.NullId,
+        .leftT = leftT,
         .rightId = rightId,
         .debugNodeId = debugNodeId,
         .op = op,
@@ -3336,7 +3353,7 @@ fn binOpAssignToField(
     try self.buf.pushOp3(.setField, @intCast(fieldId), recv.local, resv.local);
 
     // ARC cleanup. Right is not released since it's being assigned to the index.
-    try releaseIfRetainedTempAt(self, recv, left.head.accessExpr.left);
+    try releaseIfRetainedTempAt(self, recv, debugNodeId);
 }
 
 fn genMethodDecl(self: *Chunk, typeId: rt.TypeId, node: cy.Node, func: sema.FuncDecl, name: []const u8) !void {
@@ -3434,7 +3451,7 @@ fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId, comptim
         return;
     } else if (expr.node_t == .symbolLit) {
         if (types.isEnumType(c.compiler, svar.vtype)) {
-            const name = c.getNodeTokenString(expr);
+            const name = c.getNodeString(expr);
             const nameId = try sema.ensureNameSym(c.compiler, name);
             const sym = c.compiler.sema.getSymbol(svar.vtype);
             const enumSym = c.compiler.vm.enums.buf[sym.inner.enumType.enumId];
@@ -3533,7 +3550,7 @@ fn unexpectedFmt(format: []const u8, vals: []const fmt.FmtValue) noreturn {
 fn pushFieldRetain(c: *cy.Chunk, recv: u8, dst: u8, fieldId: u16, debugNodeId: cy.NodeId) !void {
     try c.pushFailableDebugSym(debugNodeId);
     const start = c.buf.ops.items.len;
-    try c.buf.pushOpSlice(.fieldRetain, &.{ recv, dst, 0, 0, 0, 0, 0 });
+    try c.buf.pushOpSliceExt(.fieldRetain, &.{ recv, dst, 0, 0, 0, 0, 0 }, c.desc(debugNodeId));
     c.buf.setOpArgU16(start + 3, fieldId);
 }
 
@@ -3681,6 +3698,7 @@ pub fn reserveFuncRegs(self: *Chunk, numParams: u32) !void {
         } else {
             svar.local = nextReg;
         }
+        log.tracev("reserve param {s}: {}", .{sema.getVarName(self, varId), svar.local});
         nextReg += 1;
     }
 

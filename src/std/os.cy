@@ -136,56 +136,56 @@
 @host
 type File object:
   --| Closes the file handle. File ops invoked afterwards will return `error.Closed`.
-  @host func close(self) none
-  @host func iterator(self) any
-  @host func next(self) any
+  @host meth close() none
+  @host meth iterator() any
+  @host meth next() any
 
   --| Reads at most `n` bytes as a `rawstring`. `n` must be at least 1.
   --| A result with length 0 indicates the end of file was reached.
-  @host func read(self, n int) any
+  @host meth read(n int) any
 
   --| Reads to the end of the file and returns the content as a `rawstring`.
-  @host func readToEnd(self) any
+  @host meth readToEnd() any
 
   --| Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.
-  @host func seek(self, n int) any
+  @host meth seek(n int) any
 
   --| Seeks the read/write position by `pos` bytes from the current position.
-  @host func seekFromCur(self, n int) any
+  @host meth seekFromCur(n int) any
 
   --| Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid.
-  @host func seekFromEnd(self, n int) any
+  @host meth seekFromEnd(n int) any
 
   --| Returns info about the file as a `Map`.
-  @host func stat(self) any
+  @host meth stat() any
 
   --| Equivalent to `streamLines(4096)`.
-  @host func streamLines(self) any
+  @host meth streamLines() any
 
   --| Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`.
   --| The lines returned include the new line character(s).
   --| A buffer size of `bufSize` bytes is allocated for reading.
   --| If `\r` is found at the end of the read buffer, the line is returned instead of
   --| waiting to see if the next read has a connecting `\n`.
-  @host func streamLines(self, bufSize int) any
+  @host meth streamLines(bufSize int) any
 
   --| Writes a `string` or `rawstring` at the current file position.
   --| The number of bytes written is returned.
-  @host func write(self, val any) any
+  @host meth write(val any) any
 
 @host
 type Dir object:
   --| Returns a new iterator over the directory entries.
   --| If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
-  @host func iterator(self) any
+  @host meth iterator() any
 
   --| Returns info about the file as a `Map`.
-  @host func stat(self) any
+  @host meth stat() any
 
   --| Returns a new iterator over the directory recursive entries.
   --| If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
-  @host func walk(self) any
+  @host meth walk() any
 
 @host
 type DirIterator object:
-  @host func next(self) any
+  @host meth next() any

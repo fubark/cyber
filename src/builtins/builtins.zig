@@ -387,13 +387,13 @@ fn genTypeSpecString(vm: *cy.UserVM, parser: *const cy.Parser, headId: cy.NodeId
         var sb: std.ArrayListUnmanaged(u8) = .{};
         defer sb.deinit(alloc);
 
-        var name = cy.parser.getNodeTokenString(parser, headId);
+        var name = cy.parser.getNodeString(parser, headId);
         try sb.appendSlice(alloc, name);
 
         var curId = parser.nodes.items[headId].next;
         while (curId != cy.NullId) {
             try sb.append(alloc, '.');
-            name = cy.parser.getNodeTokenString(parser, curId);
+            name = cy.parser.getNodeString(parser, curId);
             try sb.appendSlice(alloc, name);
             curId = parser.nodes.items[curId].next;
         }
@@ -409,7 +409,7 @@ fn genNodeValue(vm: *cy.UserVM, parser: *const cy.Parser, nodeId: cy.NodeId) !cy
     const res = try vm.allocEmptyMap();
     switch (node.node_t) {
         .funcHeader => {
-            const name = cy.parser.getNodeTokenString(parser, node.head.funcHeader.name);
+            const name = cy.parser.getNodeString(parser, node.head.funcHeader.name);
             try vm.mapRawSet(res, try vm.allocAstring("name"), try vm.allocStringInfer(name));
 
             const params = try vm.allocEmptyList();
@@ -425,7 +425,7 @@ fn genNodeValue(vm: *cy.UserVM, parser: *const cy.Parser, nodeId: cy.NodeId) !cy
             try vm.mapRawSet(res, try vm.allocAstring("ret"), ret);
         },
         .funcParam => {
-            var name = cy.parser.getNodeTokenString(parser, node.head.funcParam.name);
+            var name = cy.parser.getNodeString(parser, node.head.funcParam.name);
             try vm.mapRawSet(res, try vm.allocAstring("name"), try vm.allocStringInfer(name));
 
             const typeSpec = try genTypeSpecString(vm, parser, node.head.funcParam.typeSpecHead);
@@ -448,35 +448,35 @@ fn genDeclEntry(vm: *cy.UserVM, parser: *const cy.Parser, decl: cy.parser.Static
         .variable => {
             node = nodes[decl.inner.variable];
             const varSpec = nodes[node.head.staticDecl.varSpec];
-            name = cy.parser.getNodeTokenString(parser, varSpec.head.varSpec.name);
+            name = cy.parser.getNodeString(parser, varSpec.head.varSpec.name);
 
             const typeSpec = try genTypeSpecString(vm, parser, varSpec.head.varSpec.typeSpecHead);
             try vm.mapRawSet(entry, try vm.allocAstring("typeSpec"), typeSpec);
         },
         .typeAlias => {
             node = nodes[decl.inner.typeAlias];
-            name = cy.parser.getNodeTokenString(parser, node.head.typeAliasDecl.name);
+            name = cy.parser.getNodeString(parser, node.head.typeAliasDecl.name);
         },
         .func => {
             node = nodes[decl.inner.func];
             const header = nodes[node.head.func.header];
-            name = cy.parser.getNodeTokenString(parser, header.head.funcHeader.name);
+            name = cy.parser.getNodeString(parser, header.head.funcHeader.name);
         },
         .funcInit => {
             node = nodes[decl.inner.funcInit];
             const header = nodes[node.head.func.header];
-            name = cy.parser.getNodeTokenString(parser, header.head.funcHeader.name);
+            name = cy.parser.getNodeString(parser, header.head.funcHeader.name);
 
             const headerv = try genNodeValue(vm, parser, node.head.func.header);
             try vm.mapRawSet(entry, try vm.allocAstring("header"), headerv);
         },
         .import => {
             node = nodes[decl.inner.import];
-            name = cy.parser.getNodeTokenString(parser, node.head.left_right.left);
+            name = cy.parser.getNodeString(parser, node.head.left_right.left);
         },
         .object => {
             node = nodes[decl.inner.object];
-            name = cy.parser.getNodeTokenString(parser, node.head.objectDecl.name);
+            name = cy.parser.getNodeString(parser, node.head.objectDecl.name);
 
             const childrenv = try vm.allocEmptyList();
             const children = childrenv.asHeapObject().list.getList();
@@ -500,7 +500,7 @@ fn genDeclEntry(vm: *cy.UserVM, parser: *const cy.Parser, decl: cy.parser.Static
         },
         .enumT => {
             node = nodes[decl.inner.object];
-            name = cy.parser.getNodeTokenString(parser, node.head.enumDecl.name);
+            name = cy.parser.getNodeString(parser, node.head.enumDecl.name);
         }
     }
     const pos = tokens[node.start_token].pos();

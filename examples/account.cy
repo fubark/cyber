@@ -5,17 +5,17 @@ type Account object:
     func new(name):  
         return Account{ name: name, balance: 0.0 }
 
-    func deposit(self, amt):
-        self.balance += amt
+    meth deposit(amt):
+        balance += amt
 
-    func withdraw(self, amt):
-        if amt > self.balance:
+    meth withdraw(amt):
+        if amt > balance:
             throw error.InsufficientFunds
         else:
-            self.balance -= amt
+            balance -= amt
 
-    func show(self, title):
-        print '{title or ''}, {self.name}, {self.balance}'
+    meth show(title):
+        print '{title or ''}, {name}, {balance}'
 
 var a = Account.new('Savings')
 a.show('Initial')

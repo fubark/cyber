@@ -36,7 +36,7 @@ contexts:
     - match: '\b(var|as|auto)\b'
       scope: keyword.variable.cyber
 
-    - match: '\b(func|return)\b'
+    - match: '\b(func|meth|return)\b'
       scope: keyword.function.cyber
 
     - match: '\b(coyield|coresume|coinit)\b'

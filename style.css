@@ -5,6 +5,8 @@
     --text: #d2d2d2;
     --text-light: #888888;
     --accent-light: #ffc57b;
+/*    --header: #c4beb9;*/
+    --header: #b5aea8;
     /* --accent-light: #fab760; */
     --accent: #ffa430;
     --marked: #ffa430;
@@ -31,16 +33,26 @@ html, body {
 }
 
 .markdown h2 {
-    color: var(--accent-light);
-    /* font-weight: bold; */
+    color: var(--header);
+    font-weight: bold; 
     margin-top: 60px;
 }
 
 .markdown h3 {
-    color: var(--accent-light);
-    /* font-weight: bold; */
+    color: var(--header);
+/*    font-weight: bold; */
     font-size: 1.2em;
     margin-top: 2.2em;
+
+    padding: 0.5rem 1rem 0.7rem 0.75rem;
+    border-bottom: 0.15rem solid var(--gray-200);
+    border-radius: 0rem;
+}
+
+.markdown h3 > code {
+    color: var(--header);
+    font-size: 0.9em;
+    background-color: transparent;
 }
 
 .markdown table tr:nth-child(2n) {
@@ -114,7 +126,8 @@ a {
 /* inline code */
 .markdown code {
     font-size: 17px;
-    background-color: #1a1a1a;
+/*    background-color: #1a1a1a;*/
+    background: none;
     color: var(--accent-light);
     padding: 2px 6px;
 }
@@ -162,5 +175,9 @@ pre code.hljs {
 }
 
 blockquote em {
+    color: #fb6767;
+}
+
+span.todo {
     color: #fb6767;
 }

@@ -1,69 +1,98 @@
-<!doctype html><html lang=en-us dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Error Handling. # Cyber provides error values and try/catch mechanisms to handle expected errors. For unexpected errors, panics can be used as a fail-fast mechanism to abort the currently running fiber.
-Error value. # The error type is a primitive that contains either an enum value or a symbol value. Errors can wrap symbols for convenience but the underlying ID value won&rsquo;t be consistent. Use your own enums if you want reliable ID values."><meta name=theme-color media="(prefers-color-scheme: light)" content="#ffffff"><meta name=theme-color media="(prefers-color-scheme: dark)" content="#343a40"><meta name=color-scheme content="light dark"><meta property="og:title" content="Error Handling"><meta property="og:description" content="Error Handling. # Cyber provides error values and try/catch mechanisms to handle expected errors. For unexpected errors, panics can be used as a fail-fast mechanism to abort the currently running fiber.
-Error value. # The error type is a primitive that contains either an enum value or a symbol value. Errors can wrap symbols for convenience but the underlying ID value won&rsquo;t be consistent. Use your own enums if you want reliable ID values."><meta property="og:type" content="article"><meta property="og:url" content="https://fubark.github.io/cyber/docs/toc/errors/"><meta property="article:section" content="docs"><title>Error Handling | Cyber Docs v0.2</title><link rel=manifest href=/cyber/manifest.json><link rel=icon href=/cyber/favicon.png><link rel=stylesheet href=/cyber/book.min.4f0117e74e5337280f18eb9641eae520cb4b25adcf5dd64fafad4664145a5957.css integrity="sha256-TwEX505TNygPGOuWQerlIMtLJa3PXdZPr61GZBRaWVc=" crossorigin=anonymous><script defer src=/cyber/flexsearch.min.js></script>
-<script defer src=/cyber/en.search.min.b91f847ca2324dc1157f0be0249de3613dabaa0fe04483c3818b1b62995998a7.js integrity="sha256-uR+EfKIyTcEVfwvgJJ3jYT2rqg/gRIPDgYsbYplZmKc=" crossorigin=anonymous></script>
-<link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel=stylesheet><link rel=stylesheet href=/cyber/hljs.min.css><link rel=stylesheet href=/cyber/style.css></head><body dir=ltr><input type=checkbox class="hidden toggle" id=menu-control>
-<input type=checkbox class="hidden toggle" id=toc-control><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/cyber/><span>Cyber Docs v0.2</span></a></h2><div class=book-search><input type=text id=book-search-input placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><ul><li><a href=https://cyberscript.dev target=_blank rel=noopener>Homepage</a></li><li><a href=https://cyberscript.dev/play.html target=_blank rel=noopener>Playground</a></li></ul><ul><li class=book-section-flat><span>Table of Contents</span><ul><li><a href=/cyber/docs/toc/syntax/>Syntax</a></li><li><a href=/cyber/docs/toc/data-types/>Data Types</a></li><li><a href=/cyber/docs/toc/control-flow/>Control Flow</a></li><li><a href=/cyber/docs/toc/functions/>Functions</a></li><li><a href=/cyber/docs/toc/modules/>Modules</a></li><li><a href=/cyber/docs/toc/ffi/>FFI</a></li><li><a href=/cyber/docs/toc/errors/ class=active>Error Handling</a></li><li><a href=/cyber/docs/toc/concurrency/>Concurrency</a></li><li><a href=/cyber/docs/toc/type-system/>Type System</a></li><li><a href=/cyber/docs/toc/metaprogramming/>Metaprogramming</a></li><li><a href=/cyber/docs/toc/embedding/>Embedding</a></li><li><a href=/cyber/docs/toc/memory/>Memory</a></li><li><a href=/cyber/docs/toc/aot-jit/>AOT/JIT</a></li></ul></li></ul></nav><script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script></div></aside><div class=book-page><header class=book-header><div class="flex align-center justify-between"><label for=menu-control><img src=/cyber/svg/menu.svg class=book-icon alt=Menu></label>
-<strong>Error Handling</strong>
-<label for=toc-control><img src=/cyber/svg/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class="hidden clearfix"><nav id=TableOfContents><ul><li><a href=#error-value>Error value.</a></li><li><a href=#throwing-errors>Throwing errors.</a></li><li><a href=#catching-errors>Catching errors.</a></li><li><a href=#stack-trace>Stack trace.</a></li><li><a href=#unexpected-errors>Unexpected errors.</a></li></ul></nav></aside></header><article class=markdown><h1 id=error-handling>Error Handling.
-<a class=anchor href=#error-handling>#</a></h1><p>Cyber provides error values and try/catch mechanisms to handle expected errors. For unexpected errors, panics can be used as a fail-fast mechanism to abort the currently running fiber.</p><h2 id=error-value>Error value.
-<a class=anchor href=#error-value>#</a></h2><p>The <code>error</code> type is a primitive that contains either an enum value or a symbol value. Errors can wrap symbols for convenience but the underlying ID value won&rsquo;t be consistent. Use your own enums if you want reliable ID values.</p><pre tabindex=0><code class=language-cy data-lang=cy>-- Shorthand for creating an error value with a symbol.
-var err = error.Oops
+<!doctype html><html lang=en-us dir=ltr><head><meta charset=UTF-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Error Handling. # Cyber provides a throw/catch mechanism to handle expected errors. For unexpected errors, panics can be used as a fail-fast mechanism to abort the currently running fiber.
+Error trait. # Only types that implement the Error trait can be thrown or attached to a panic. Since the Error trait is empty, it&rsquo;s simple to turn any type into a throwable type.
+error value. # An error value contains a symbol and implements the Error trait."><meta name=theme-color media="(prefers-color-scheme: light)" content="#ffffff"><meta name=theme-color media="(prefers-color-scheme: dark)" content="#343a40"><meta name=color-scheme content="light dark"><meta property="og:title" content="Error Handling"><meta property="og:description" content="Error Handling. # Cyber provides a throw/catch mechanism to handle expected errors. For unexpected errors, panics can be used as a fail-fast mechanism to abort the currently running fiber.
+Error trait. # Only types that implement the Error trait can be thrown or attached to a panic. Since the Error trait is empty, it&rsquo;s simple to turn any type into a throwable type.
+error value. # An error value contains a symbol and implements the Error trait."><meta property="og:type" content="article"><meta property="og:url" content="https://fubark.github.io/cyber/docs/toc/errors/"><meta property="article:section" content="docs"><title>Error Handling | Cyber Docs v0.2</title>
+<link rel=manifest href=/cyber/manifest.json><link rel=icon href=/cyber/favicon.png><link rel=stylesheet href=/cyber/book.min.4f0117e74e5337280f18eb9641eae520cb4b25adcf5dd64fafad4664145a5957.css integrity="sha256-TwEX505TNygPGOuWQerlIMtLJa3PXdZPr61GZBRaWVc=" crossorigin=anonymous><script defer src=/cyber/flexsearch.min.js></script><script defer src=/cyber/en.search.min.c97b7e9d6d7ecdde305d5ebc7d07e2caf6b0d6e43c2fd47e02abf0ada4934c54.js integrity="sha256-yXt+nW1+zd4wXV68fQfiyvaw1uQ8L9R+AqvwraSTTFQ=" crossorigin=anonymous></script><link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel=stylesheet><link rel=stylesheet href=/cyber/hljs.min.css><link rel=stylesheet href=/cyber/style.css></head><body dir=ltr><input type=checkbox class="hidden toggle" id=menu-control>
+<input type=checkbox class="hidden toggle" id=toc-control><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/cyber/><span>Cyber Docs v0.2</span></a></h2><div class=book-search><input type=text id=book-search-input placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><ul><li><a href=https://cyberscript.dev target=_blank rel=noopener>Homepage</a></li><li><a href=https://cyberscript.dev/play.html target=_blank rel=noopener>Playground</a></li></ul><ul><li class=book-section-flat><span>Table of Contents</span><ul><li><a href=/cyber/docs/toc/syntax/>Syntax</a></li><li><a href=/cyber/docs/toc/data-types/>Data Types</a></li><li><a href=/cyber/docs/toc/control-flow/>Control Flow</a></li><li><a href=/cyber/docs/toc/functions/>Functions</a></li><li><a href=/cyber/docs/toc/modules/>Modules</a></li><li><a href=/cyber/docs/toc/ffi/>FFI</a></li><li><a href=/cyber/docs/toc/errors/ class=active>Error Handling</a></li><li><a href=/cyber/docs/toc/concurrency/>Concurrency</a></li><li><a href=/cyber/docs/toc/type-system/>Type System</a></li><li><a href=/cyber/docs/toc/metaprogramming/>Metaprogramming</a></li><li><a href=/cyber/docs/toc/embedding/>Embedding</a></li><li><a href=/cyber/docs/toc/memory/>Memory</a></li><li><a href=/cyber/docs/toc/aot-jit/>AOT/JIT</a></li></ul></li></ul></nav><script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script></div></aside><div class=book-page><header class=book-header><div class="flex align-center justify-between"><label for=menu-control><img src=/cyber/svg/menu.svg class=book-icon alt=Menu>
+</label><strong>Error Handling</strong>
+<label for=toc-control><img src=/cyber/svg/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class="hidden clearfix"><nav id=TableOfContents><ul><li><a href=#error-trait>Error trait.</a><ul><li><a href=#error-value><code>error</code> value.</a></li><li><a href=#enum-error>Enum error.</a></li></ul></li><li><a href=#throwing-errors>Throwing errors.</a></li><li><a href=#catching-errors>Catching errors.</a><ul><li><a href=#try-block><code>try</code> block.</a></li><li><a href=#caught-variable><code>caught</code> variable.</a></li><li><a href=#catch-matching><code>catch</code> matching.</a></li><li><a href=#try-expression><code>try</code> expression.</a></li><li><a href=#value-or-error>Value or error.</a></li></ul></li><li><a href=#semantic-checks>Semantic checks.</a><ul><li><a href=#throws-specifier><code>throws</code> specifier.</a></li><li><a href=#requiring-throws>Requiring <code>throws</code>.</a></li></ul></li><li><a href=#stack-trace>Stack trace.</a></li><li><a href=#unexpected-errors>Unexpected errors.</a><ul><li><a href=#panics>Panics.</a></li></ul></li></ul></nav></aside></header><article class=markdown><h1 id=error-handling>Error Handling.
+<a class=anchor href=#error-handling>#</a></h1><p>Cyber provides a throw/catch mechanism to handle expected errors. For unexpected errors, panics can be used as a fail-fast mechanism to abort the currently running fiber.</p><h2 id=error-trait>Error trait.
+<a class=anchor href=#error-trait>#</a></h2><p>Only types that implement the <code>Error</code> trait can be thrown or attached to a panic.
+Since the <code>Error</code> trait is empty, it&rsquo;s simple to turn any type into a throwable type.</p><h3 id=error-value><code>error</code> value.
+<a class=anchor href=#error-value>#</a></h3><p>An <code>error</code> value contains a <code>symbol</code> and implements the <code>Error</code> trait. They can be created without a declaration using the error literal:</p><pre tabindex=0><code class=language-cy data-lang=cy>var err = error.Oops
+</code></pre><p>Use <code>sym()</code> to obtain the underlying symbol:</p><pre tabindex=0><code class=language-cy data-lang=cy>print err.sym()   -- Prints &#34;.Oops&#34;
+</code></pre><p>Since <code>error</code> is a primitive value, it can be compared using the <code>==</code> operator.</p><pre tabindex=0><code class=language-cy data-lang=cy>if err == error.Oops:
+    handleOops()
 
--- Alternatively, use the builtin error function to wrap a symbol.
-err = error(#Oops)
-
-type MyError enum:
+-- Alternatively.
+if err.sym() == .Oops:
+    handleOops()
+</code></pre><h3 id=enum-error>Enum error.
+<a class=anchor href=#enum-error>#</a></h3><p>By implementing the <code>Error</code> trait, an enum type can be throwable: <span class=todo>*Planned Feature</span></p><pre tabindex=0><code class=language-cy data-lang=cy>type MyError enum:
+    with Error
     boom
     badArgument
     nameTooLong
 
--- Creates an error that wraps an enum value.
-err = error(MyError.boom)
-</code></pre><p>You can attach an optional payload value to an error.</p><blockquote><p><em>Planned Feature</em></p></blockquote><p>Since errors are primitives, they can be compared using the <code>==</code> operator.</p><pre tabindex=0><code class=language-cy data-lang=cy>if err == error.Oops:
-    handleOops()
-
--- Alternatively.
-if err.value() == #Oops:
-    handleOops()
-
--- Comparing errors with enums.
-if err == error(MyError.boom)
-    handleBoom()
-
--- Alternatively.
-if err.value() == MyError.boom
-    handleBoom()
+var err = MyError.nameTooLong
 </code></pre><h2 id=throwing-errors>Throwing errors.
 <a class=anchor href=#throwing-errors>#</a></h2><p>Use the <code>throw</code> keyword to throw errors.
 A thrown error continues to bubble up the call stack until it is caught by a <code>try</code> block or expression.</p><pre tabindex=0><code class=language-cy data-lang=cy>func fail():
     throw error.Oops      -- Throws an error with the symbol `#Oops`
 
 func fail2():
-    throw 123             -- Panic, Can only throw errors.
+    throw 123             -- Panic. Can only throw an error
+                          -- that implement the `Error` trait.
 </code></pre><p><code>throw</code> can also be used as an expression.</p><pre tabindex=0><code class=language-cy data-lang=cy>func fail():
     var a = false or throw error.False
 </code></pre><h2 id=catching-errors>Catching errors.
-<a class=anchor href=#catching-errors>#</a></h2><p>The <code>try catch</code> block catches thrown errors and resumes execution in the <code>catch</code> block.</p><pre tabindex=0><code class=language-cy data-lang=cy>try:
+<a class=anchor href=#catching-errors>#</a></h2><h3 id=try-block><code>try</code> block.
+<a class=anchor href=#try-block>#</a></h3><p>The <code>try</code> block catches thrown errors and resumes execution in a followup <code>catch</code> block:</p><pre tabindex=0><code class=language-cy data-lang=cy>try:
     funcThatCanFail()
 catch err:
-    print err     -- &#39;error.Failed&#39;
-</code></pre><p>The <code>try else</code> expression either returns a non-error result or the default value from the <code>else</code> clause.</p><pre tabindex=0><code class=language-cy data-lang=cy>var res = try funcThatCanFail() else 123
+    print err      -- &#39;error.Failed&#39;
+</code></pre><h3 id=caught-variable><code>caught</code> variable.
+<a class=anchor href=#caught-variable>#</a></h3><p>The contextual <code>caught</code> variable is used to reference the caught error:</p><pre tabindex=0><code class=language-cy data-lang=cy>try:
+    funcThatCanFail()
+catch:
+    print caught   -- &#39;error.Failed&#39;
+</code></pre><h3 id=catch-matching><code>catch</code> matching.
+<a class=anchor href=#catch-matching>#</a></h3><p>An inner <code>catch</code> block contains a matching clause: <span class=todo>*Planned Feature</span></p><pre tabindex=0><code class=language-cy data-lang=cy>try:
+    funcThatCanFail()
+catch error.BadDay:
+    eatSnack()
+catch:
+    print caught
+</code></pre><p>Enum errors can be matched: <span class=todo>*Planned Feature</span></p><pre tabindex=0><code class=language-cy data-lang=cy>try:
+    funcThatCanFail()
+catch MyError.Boom:
+    print &#39;Kaboom!&#39;
+catch:
+    print caught
+</code></pre><h3 id=try-expression><code>try</code> expression.
+<a class=anchor href=#try-expression>#</a></h3><p>The <code>try</code> expression either returns a non-error result or the default value from the <code>catch</code> clause:</p><pre tabindex=0><code class=language-cy data-lang=cy>var res = try funcThatCanFail() catch 123
 print res         -- &#39;123&#39;
-
--- Any errors thrown from sub expressions also return the default value.
-res = try happyFunc(funcThatCanFail()) else 123
+</code></pre><p>Since errors bubble up automatically, any errors thrown from sub-expressions are also caught:</p><pre tabindex=0><code class=language-cy data-lang=cy>var res = try happyFunc(funcThatCanFail()) catch 123
 print res         -- &#39;123&#39;
-</code></pre><p>When <code>try</code> is used by itself, either the result or the caught error value is returned.</p><pre tabindex=0><code class=language-cy data-lang=cy>var res = try funcThatCanFail()
+</code></pre><h3 id=value-or-error>Value or error.
+<a class=anchor href=#value-or-error>#</a></h3><p>When the <code>catch</code> clause is omitted, the <code>try</code> expression will return either the value or the error:</p><pre tabindex=0><code class=language-cy data-lang=cy>var res = try funcThatCanFail()
 if res == error.Failed:
     print &#39;Result is an error.&#39;
+</code></pre><h2 id=semantic-checks>Semantic checks.
+<a class=anchor href=#semantic-checks>#</a></h2><h3 id=throws-specifier><code>throws</code> specifier.
+<a class=anchor href=#throws-specifier>#</a></h3><p>The <code>throws</code> specifier indicates that a function contains a throwing expression that was not caught with <code>try catch</code>.</p><p>When a function does not have a return specifier, it&rsquo;s implicitly given the <code>throws</code> specifier:</p><pre tabindex=0><code class=language-cy data-lang=cy>func foo():
+    throw error.Failure
 
--- Any errors thrown from sub expressions are also caught.
-res = try happyFunc(funcThatCanFail())
+func bar() throws:
+    throw error.Failure
+
+-- `foo` and `bar` both have the same return specifier.
+</code></pre><p>Return types for typed functions are declared after <code>throws</code> using a comma separator:</p><pre tabindex=0><code class=language-cy data-lang=cy>func result(cond bool) throws, int:
+    if cond:
+        return 123
+    else:
+        throw error.Failure
+</code></pre><h3 id=requiring-throws>Requiring <code>throws</code>.
+<a class=anchor href=#requiring-throws>#</a></h3><p>A compile-time error is issued when a typed function without a <code>throws</code> specifier contains an uncaught throwing expression: <span class=todo>*Planned Feature</span></p><pre tabindex=0><code class=language-cy data-lang=cy>func foo(a int) int:
+    if a == 10:
+        throw error.Failure -- CompileError. `foo` requires the `throws`
+    else:                   -- specifier or any throwing expression must
+        return a * 2        -- be caught with `try catch`.
 </code></pre><h2 id=stack-trace>Stack trace.
-<a class=anchor href=#stack-trace>#</a></h2><p>When an uncaught error bubbles up to the top, its stack trace from the <code>throw</code> callsite is dumped to the console. Cyber also provides the builtin <code>errorTrace()</code> and <code>errorReport()</code> to obtain the stack trace info.</p><pre tabindex=0><code class=language-cy data-lang=cy>try:
+<a class=anchor href=#stack-trace>#</a></h2><p>When an uncaught error bubbles up to the top, its stack trace from the <code>throw</code> callsite is dumped to the console. The builtin <code>errorTrace()</code> and <code>errorReport()</code> are used to obtain the stack trace info.</p><pre tabindex=0><code class=language-cy data-lang=cy>try:
     funcThatCanFail()
-catch err:
+catch:
     -- Prints the stack trace summary of the caught error.
     print errorReport()
 
@@ -71,11 +100,11 @@ catch err:
     var info = errorTrace()
     print info.frames.len()
 </code></pre><h2 id=unexpected-errors>Unexpected errors.
-<a class=anchor href=#unexpected-errors>#</a></h2><p>An unexpected error is an error that you don&rsquo;t plan on handling at runtime. In this scenario, you can prefer to fail-fast and <code>panic</code>.</p><p>Panics can not be caught using <code>try catch</code>. Once the builtin <code>panic</code> is invoked, the current fiber stops execution and begins to unwind its call stack. Once the error is propagated to the root, the fiber ends and transitions to a panic state. If the main fiber ends this way, the VM begins to shutdown. Otherwise, execution can resume on the next fiber which allows you to recover from a panic.</p><pre tabindex=0><code class=language-cy data-lang=cy>func kaboom():
-    panic(#danger)
+<a class=anchor href=#unexpected-errors>#</a></h2><p>An unexpected error is an error that is not meant to be handled at runtime.</p><h3 id=panics>Panics.
+<a class=anchor href=#panics>#</a></h3><p>The builtin <code>panic</code> is used as a fail-fast mechanism to quickly exit the current fiber with an error payload:</p><pre tabindex=0><code class=language-cy data-lang=cy>func kaboom():
+    panic(error.danger)
 
 kaboom()     -- Script ends and prints the stack trace.
-</code></pre></article><footer class=book-footer><div class="flex flex-wrap justify-between"><div><a class="flex align-center" href=https://github.com/fubark/cyber/edit/master/docs/hugo/content/docs/toc/errors.md target=_blank rel=noopener><img src=/cyber/svg/edit.svg class=book-icon alt=Edit>
-<span>Edit this page</span></a></div></div><script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script></footer><div class=book-comments></div><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#error-value>Error value.</a></li><li><a href=#throwing-errors>Throwing errors.</a></li><li><a href=#catching-errors>Catching errors.</a></li><li><a href=#stack-trace>Stack trace.</a></li><li><a href=#unexpected-errors>Unexpected errors.</a></li></ul></nav></div></aside></main><script src=/cyber/highlight.min.js></script>
-<script>hljs.registerLanguage("cy",function(){return{keywords:{keyword:["func","import","for","coinit","coresume","coyield","return","if","else","as","each","while","var","object","break","continue","match","pass","or","and","not","is","some","error","true","false","none","throw","try","catch","recover","enum","type","case","auto"],type:["float","string","bool","any","int","List","Map","rawstring","symbol","pointer"]},contains:[{scope:"string",begin:"'",end:"'"},{scope:"symbol",begin:"#",end:/\w(?=[^\w])/},hljs.COMMENT("--",`
+</code></pre><p>Panics can not be caught using <code>try catch</code>. Once <code>panic</code> is invoked, the current fiber stops execution and begins to unwind its call stack. Once the error is propagated to the root, the fiber ends and transitions to a panic state. If the main fiber ends this way, the VM begins to shutdown. Otherwise, execution resumes on the next fiber which allows recovery from a panic.</p></article><footer class=book-footer><div class="flex flex-wrap justify-between"><div><a class="flex align-center" href=https://github.com/fubark/cyber/edit/master/docs/hugo/content/docs/toc/errors.md target=_blank rel=noopener><img src=/cyber/svg/edit.svg class=book-icon alt=Edit>
+<span>Edit this page</span></a></div></div><script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script></footer><div class=book-comments></div><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#error-trait>Error trait.</a><ul><li><a href=#error-value><code>error</code> value.</a></li><li><a href=#enum-error>Enum error.</a></li></ul></li><li><a href=#throwing-errors>Throwing errors.</a></li><li><a href=#catching-errors>Catching errors.</a><ul><li><a href=#try-block><code>try</code> block.</a></li><li><a href=#caught-variable><code>caught</code> variable.</a></li><li><a href=#catch-matching><code>catch</code> matching.</a></li><li><a href=#try-expression><code>try</code> expression.</a></li><li><a href=#value-or-error>Value or error.</a></li></ul></li><li><a href=#semantic-checks>Semantic checks.</a><ul><li><a href=#throws-specifier><code>throws</code> specifier.</a></li><li><a href=#requiring-throws>Requiring <code>throws</code>.</a></li></ul></li><li><a href=#stack-trace>Stack trace.</a></li><li><a href=#unexpected-errors>Unexpected errors.</a><ul><li><a href=#panics>Panics.</a></li></ul></li></ul></nav></div></aside></main><script src=/cyber/highlight.min.js></script><script>hljs.registerLanguage("cy",function(){return{keywords:{keyword:["func","import","for","coinit","coresume","coyield","return","if","else","as","while","var","my","object","with","caught","break","continue","switch","pass","or","and","not","is","error","throws","true","false","none","throw","try","catch","recover","enum","type","case"],type:["float","string","bool","any","int","List","Map","rawstring","symbol","pointer","dynamic"]},contains:[{scope:"string",begin:"'",end:"'"},{scope:"symbol",begin:"#",end:/\w(?=[^\w])/},hljs.COMMENT("--",`
 `,{contains:[]}),hljs.C_NUMBER_MODE]}}),hljs.highlightAll()</script></body></html>

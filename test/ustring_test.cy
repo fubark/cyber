@@ -2,11 +2,9 @@
 
 import t 'test'
 
-var pre = 'abc🦊'
-var str = '{pre}xyz🐶'
+-- Single quote literal.
+var str = 'abc🦊xyz🐶'
 t.eq(str, 'abc🦊xyz🐶')
-
-var upper = '{'abc🦊xyz🐶'}'
 
 -- index operator
 t.eq(str[-1], '🐶')
@@ -21,23 +19,22 @@ t.eq(try str[8], error.OutOfBounds)
 t.eq(str[0..], 'abc🦊xyz🐶')
 t.eq(str[4..], 'xyz🐶')
 t.eq(str[7..], '🐶')
-t.eq(str[-1..], '🐶')
-t.eq(str[8..], '')
+t.eq(try str[-1..], error.OutOfBounds) 
+t.eq(try str[..-1], error.OutOfBounds)
 t.eq(try str[9..], error.OutOfBounds)
-t.eq(try str[-10..], error.OutOfBounds)
+t.eq(try str[..9], error.OutOfBounds)
+t.eq(try str[8..9], error.OutOfBounds)
+t.eq(try str[3..1], error.OutOfBounds)
+t.eq(str[8..], '')
 t.eq(str[..0], '')
 t.eq(str[..4], 'abc🦊')
 t.eq(str[..7], 'abc🦊xyz')
-t.eq(str[..-1], 'abc🦊xyz')
 t.eq(str[..8], 'abc🦊xyz🐶')
-t.eq(try str[..9], error.OutOfBounds)
 t.eq(str[0..0], '')
 t.eq(str[0..1], 'a')
 t.eq(str[4..8], 'xyz🐶')
 t.eq(str[7..8], '🐶')
 t.eq(str[8..8], '')
-t.eq(try str[8..9], error.OutOfBounds)
-t.eq(try str[3..1], error.OutOfBounds)
 
 -- concat()
 t.eq(str.concat('123'), 'abc🦊xyz🐶123')
@@ -88,7 +85,7 @@ t.eq(str.less('ac'), true)
 t.eq(str.less('aa'), false)
 
 -- lower()
-t.eq(upper.lower(), 'abc🦊xyz🐶')
+t.eq('AB🦊C'.lower(), 'ab🦊c')
 
 -- repeat()
 t.eq(try str.repeat(-1), error.InvalidArgument)
@@ -123,7 +120,7 @@ t.eq(str.sliceAt(7), '🐶')
 t.eq(try str.sliceAt(8), error.OutOfBounds)
 
 -- split()
-var res = string('abc,🐶ab,a').split(',')
+var res = 'abc,🐶ab,a'.split(',')
 t.eq(res.len(), 3)
 t.eq(res[0], 'abc')
 t.eq(res[1], '🐶ab')

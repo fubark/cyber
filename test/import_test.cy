@@ -17,7 +17,6 @@ t.eq(typesym(a.fn), .function)
 t.eq(a.fn(), 234)
 t.eq(a.fn1(10), 11)
 t.eq(a.fn2(10, 20), 30)
-t.eq(a.declAssign('123'), 123)
 
 -- Static var from another module is only initialized once.
 -- This tests that ResolvedSym.genStaticInitVisited
@@ -26,7 +25,6 @@ t.eq(a.initOnce, 1)
 
 -- Generates dependencies from symbol's source module and not this module.
 t.eq(a.varDepRes, 123)
-t.eq(a.funcDepRes(), 123)
 
 -- Declare a function with the same name in `a.cy`
 func sameFuncName():
@@ -38,11 +36,11 @@ t.eq(int(1), 1)
 t.eq(a.useInt(1), 1)
 
 type Vec2 object:
-    x float
-    y float
+    var x float
+    var y float
 -- Same name, different object types.
-var v1 = Vec2{ x: 1, y: 2 }
-var v2 = a.Vec2{ x: 3, y: 4 }
+var v1 = [Vec2 x: 1, y: 2]
+var v2 = [a.Vec2 x: 3, y: 4]
 t.eq(typeof(v1) != typeof(v2), true)
 t.eq(v1.x, 1.0)
 t.eq(v1.y, 2.0)
@@ -50,6 +48,6 @@ t.eq(v2.x, 3.0)
 t.eq(v2.y, 4.0)
 
 -- Calling object func from another module.
-var v = a.Vec2.new(3, 4)
+my v = a.Vec2.new(3, 4)
 t.eq(v.x, 3.0)
 t.eq(v.y, 4.0)

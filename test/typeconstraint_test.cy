@@ -6,14 +6,15 @@ import t 'test'
 
 func staticPrim(a int):
 	return a == 123
+
 type PrimType object:
-	a int
+	var a int
 
 -- Call static function with literal.
 t.eq(staticPrim(123), true)
 
 -- Call static function with var.
-var n = 123
+my n = 123
 t.eq(staticPrim(n), true)
 
 -- Call static function from cast.
@@ -21,14 +22,14 @@ n = t.erase(123)
 t.eq(staticPrim(n as int), true)
 
 -- Call static function with object access.
-var o = PrimType{ a: 123 }
+var o = [PrimType a: 123]
 t.eq(staticPrim(o.a), true)
 
 --|
 --| int
 --|
 func fooInt(a int):
-  return a == 123
+    return a == 123
 
 -- Literal.
 t.eq(fooInt(123), true)
@@ -45,7 +46,7 @@ t.eq(fooInt(n as int), true)
 --| none.
 --|
 func fooNone(a none):
-  return a == none
+    return a == none
 
 -- Literal.
 t.eq(fooNone(none), true)

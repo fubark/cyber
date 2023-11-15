@@ -28,33 +28,22 @@ var bar = dist
 -- Passing `dist` as an argument.
 func squareDist(dist, size):
     return dist(0, 0, size, size)
+    
 print squareDist(dist, 30)
 ```
 
-The function declaration can also be initialized to an expression that evaluates to a function. However, the expression can not contain any local variable references since it's a static declaration. The function signatures also have to match.
-```cy
-func myAdd(a, b):
-    return a + b
-func add(a, b) = myAdd      -- Valid declaration.
-
-var myInc = func(a):
-    return a + 1
-func inc(a) = myInc         -- CompileError, referencing local variable `myInc`.
-
-func foo(a, b, c) = myAdd   -- panic, signature mismatch.
-```
-
-Functions can return multiple values. *This feature has not been confirmed nor implemented.*
+Functions can only return one value. However, the value can be destructured: {{<todo "*Planned Feature">}}
 ```cy
 import {cos, sin} 'math'
 
 func compute(rad):
-    return cos(rad), sin(rad)
-var x, y = compute(pi)
+    return { cos(rad), sin(rad) }
+
+var { x, y } = compute(pi)
 ```
 
 ## Function Overloading.
-Static functions can be overloaded by the number of parameters in its signature. [Typed functions]({{<relref "/docs/toc/type-system#static-typing">}}) are further overloaded by its type signature. 
+Functions can be overloaded by the number of parameters in its signature. [Typed functions]({{<relref "/docs/toc/type-system#static-typing">}}) are further overloaded by their type signatures. 
 ```cy
 func foo():
     return 2 + 2
@@ -99,7 +88,7 @@ canvas.onUpdate():
 Passing a lambda block as a call argument is only possible in a call block. See [Function Calls](#function-calls).
 
 ## Closures.
-In Cyber, lambdas can capture local variables from parent blocks. This example shows the lambda `f` capturing `a` from the main scope.
+Lambdas can capture local variables from parent blocks. This example shows the lambda `f` capturing `a` from the main scope: {{<todo "*Incomplete, only variables one parent block away can be captured.">}}
 ```cy
 var a = 1
 var f = func():
@@ -107,7 +96,7 @@ var f = func():
 print f()         -- "3"
 ```
 
-The following lambda expression captures `a` from the function `add`.
+The following lambda expression captures `a` from the function `add`:
 ```cy
 func add():
     var a = 123
@@ -116,7 +105,7 @@ var addTo = add()
 print addTo(10)   -- "133"
 ```
 
-However, static functions can not capture local variables.
+Like static variables, static functions can not reference local variables outside of their scope:
 ```cy
 var a = 1
 func foo():

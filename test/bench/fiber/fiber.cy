@@ -1,4 +1,4 @@
-var count: 0
+var Root.count = 0
 
 func inc():
     count += 1
@@ -7,11 +7,11 @@ func inc():
 
 var fibers = []
 for 0..100000:
-    var f = coinit inc()
+    var f = coinit(inc)
     coresume f
     fibers.append(f)
 
-for fibers each f:
+for fibers -> f:
     coresume f
 
 print(count)

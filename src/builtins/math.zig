@@ -2,7 +2,7 @@ const std = @import("std");
 const cy = @import("../cyber.zig");
 const vmc = cy.vmc;
 const Value = cy.Value;
-const bt = cy.types.BuiltinTypeSymIds;
+const bt = cy.types.BuiltinTypes;
 
 pub const Src = @embedFile("math.cy");
 pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo, out: *cy.HostFuncResult) callconv(.C) bool {
@@ -22,19 +22,19 @@ pub fn varLoader(_: *cy.UserVM, v: cy.HostVarInfo, out: *cy.Value) callconv(.C) 
 
 const NameVar = struct { []const u8, cy.Value };
 const vars = [_]NameVar{
-    .{"e", Value.initF64(std.math.e)},
-    .{"inf", Value.initF64(std.math.inf(f64))},
-    .{"log10e", Value.initF64(std.math.log10e)},
-    .{"log2e", Value.initF64(std.math.log2e)},
-    .{"ln10", Value.initF64(std.math.ln10)},
-    .{"ln2", Value.initF64(std.math.ln2)},
-    .{"maxSafeInt", Value.initF64(9007199254740991)},
-    .{"minSafeInt", Value.initF64(-9007199254740991)},
-    .{"nan", Value.initF64(std.math.nan_f64)},
-    .{"neginf", Value.initF64(-std.math.inf(f64))},
-    .{"pi", Value.initF64(std.math.pi)},
-    .{"sqrt1_2", Value.initF64(std.math.sqrt1_2)},
-    .{"sqrt2", Value.initF64(std.math.sqrt2)},
+    .{"Root.e", Value.initF64(std.math.e)},
+    .{"Root.inf", Value.initF64(std.math.inf(f64))},
+    .{"Root.log10e", Value.initF64(std.math.log10e)},
+    .{"Root.log2e", Value.initF64(std.math.log2e)},
+    .{"Root.ln10", Value.initF64(std.math.ln10)},
+    .{"Root.ln2", Value.initF64(std.math.ln2)},
+    .{"Root.maxSafeInt", Value.initF64(9007199254740991)},
+    .{"Root.minSafeInt", Value.initF64(-9007199254740991)},
+    .{"Root.nan", Value.initF64(std.math.nan_f64)},
+    .{"Root.neginf", Value.initF64(-std.math.inf(f64))},
+    .{"Root.pi", Value.initF64(std.math.pi)},
+    .{"Root.sqrt1_2", Value.initF64(std.math.sqrt1_2)},
+    .{"Root.sqrt2", Value.initF64(std.math.sqrt2)},
 };
 
 const NameFunc = struct { []const u8, cy.ZHostFuncFn };

@@ -1,97 +1,90 @@
 import t 'test'
 
 type Node object:
-  value
+    var value
 
-var snode: Node{ value: 123 }
+var Root.snode = [Node value: 123]
 
 -- Initialization.
-var n = Node{ value: 123 }
+my n = [Node value: 123]
 t.eq(n.value, 123)
 
 -- Init and default field to none.
-n = Node{}
+n = [Node:]
 t.eq(n.value, none)
 
 -- Init with heap value.
-n = Node{ value: [123] }
+n = [Node value: [123]]
 t.eq(n.value[0], 123)
 
 -- Get field from declared static var.
 snode.value = 123
 var f = func():
-  return snode.value
+    return snode.value
 t.eq(f(), 123)
 
 -- Assign to object field.
-n = Node{ value: 123 }
+n = [Node value: 123]
 n.value = 234
 t.eq(n.value, 234)
 
 -- Op assign to object field.
-var nw = Node{ value: 123 }
+var nw = [Node value: 123]
 nw.value += 1
 t.eq(nw.value, 124)
 
 -- Assign to object field when the object is a temp local.
-var nodes = [ Node{ value: 123 } ]
+var nodes = [ [Node value: 123] ]
 nodes[0].value = 234
 t.eq(nodes[0].value, 234)
 
 -- Op assign to object field when the object is a temp local.
-nodes = [ Node{ value: 123 } ]
+nodes = [ [Node value: 123] ]
 nodes[0].value += 1
 t.eq(nodes[0].value, 124)
 
 -- Set object field after declared as a static var.
 snode.value = 123
 f = func():
-  snode.value = 234
-  t.eq(snode.value, 234)
-try f()
+    snode.value = 234
+    t.eq(snode.value, 234)
+f()
 t.eq(snode.value, 234)
 
 -- Set to field with heap value.
-n = Node{ value: [123] }
+n = [Node value: [123]]
 n.value = 234
 t.eq(n.value, 234)
 
 -- Struct to string returns struct's name. 
-n = Node{ value: 123 }
+n = [Node value: 123]
 t.eq(string(n), 'Node')
 
--- Initialize fields without commas.
 type W object:
-  a
-  b
-var w = W{
-  a: 1
-  b: 2
-}
-t.eq(w.a, 1)
-t.eq(w.b, 2)
+    var a
+    var b
 
 -- Initialize fields with commas.
-w = W{ a: 1, b: 2 }
+var w = [W a: 1, b: 2]
 t.eq(w.a, 1)
 t.eq(w.b, 2)
 
 -- Initialize fields with commas and newlines.
-w = W{
+w = [W
   a: 1,
   b: 2,
-}
+]
 t.eq(w.a, 1)
 t.eq(w.b, 2)
 
 -- Big structs (allocated outside of heap pages).
 type BigNode object:
-  a
-  b
-  c
-  d
-  e
-n = BigNode{ a: 1, b: 2, c: 3, d: 4, e: 5 }
+    var a
+    var b
+    var c
+    var d
+    var e
+n = [BigNode a: 1, b: 2, c: 3, d: 4, e: 5]
 t.eq(n.a, 1)
 t.eq(n.b, 2)
 t.eq(n.c, 3)
@@ -100,17 +93,17 @@ t.eq(n.e, 5)
 
 -- Multiple structs with the same field names but different offsets.
 type Node1 object:
-  a
-  b
+    var a
+    var b
 type Node2 object:
-  b
-  a
+    var b
+    var a
 type Node3 object:
-  a
-  b
-var n1 = Node1{ a: 1, b: 2 }
-var n2 = Node2{ a: 3, b: 4 }
-var n3 = Node3{ a: 5, b: 6 }
+    var a
+    var b
+var n1 = [Node1 a: 1, b: 2]
+var n2 = [Node2 a: 3, b: 4]
+var n3 = [Node3 a: 5, b: 6]
 t.eq(n1.a, 1)
 t.eq(n1.b, 2)
 t.eq(n2.a, 3)

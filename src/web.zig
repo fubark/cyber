@@ -17,12 +17,13 @@ export fn csSetupForWeb(vm: *cy.UserVM) void {
 pub fn loader(uvm: *cy.UserVM, spec_: cy.Str, out: *cy.ModuleLoaderResult) callconv(.C) bool {
     const spec = spec_.slice();
     if (std.mem.eql(u8, "web", spec)) {
+        const src = (
+            \\--| Evals JS from the host environment.
+            \\@host func eval(val any) none
+        );
         out.* = .{
-            .src = cy.Str.initSlice(
-                \\--| Evals JS from the host environment.
-                \\@host func eval(val any) none
-            ),
-            .srcIsStatic = true,
+            .src = src,
+            .srcLen = src.len,
             .funcLoader = funcLoader,
         };
         return true;

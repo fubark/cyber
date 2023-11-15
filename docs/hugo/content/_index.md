@@ -17,6 +17,6 @@ import math
 
 var worlds = ['World', '世界', 'दुनिया', 'mundo']
 worlds.append(math.random())
-for worlds each w:
+for worlds -> w:
     print 'Hello, {w}!'
 ```

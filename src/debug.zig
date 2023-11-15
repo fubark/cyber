@@ -89,18 +89,25 @@ pub fn indexOfDebugSymFromTable(table: []const cy.DebugSym, pc: usize) ?usize {
 
 pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) !void {
     if (vm.objectTraceMap.get(obj)) |trace| {
-        const msg = try std.fmt.allocPrint(vm.alloc, "Allocated object: {*} at pc: {}({s})", .{
-            obj, trace.allocPc, @tagName(vm.ops[trace.allocPc].opcode()),
-        });
-        defer vm.alloc.free(msg);
-        try printTraceAtPc(vm, trace.allocPc, msg);
+        if (trace.allocPc != cy.NullId) {
+            const msg = try std.fmt.allocPrint(vm.alloc, "Allocated object: {*} at pc: {}({s})", .{
+                obj, trace.allocPc, @tagName(vm.ops[trace.allocPc].opcode()),
+            });
+            defer vm.alloc.free(msg);
+            try printTraceAtPc(vm, trace.allocPc, msg);
+        } else {
+            try printTraceAtPc(vm, trace.allocPc, "Allocated object");
+        }
 
         if (trace.freePc != cy.NullId) {
-            const msg2 = try std.fmt.allocPrint(vm.alloc, "Last freed at pc: {}({s}) with type: {}({s})", .{
-                trace.freePc, @tagName(vm.ops[trace.freePc].opcode()), trace.freeTypeId, vm.getTypeName(trace.freeTypeId),
+            const msg = try std.fmt.allocPrint(vm.alloc, "Freed object: {}({s}) at pc: {}({s})", .{
+                trace.freeTypeId, vm.getTypeName(trace.freeTypeId),
+                trace.freePc, @tagName(vm.ops[trace.freePc].opcode()),
             });
-            defer vm.alloc.free(msg2);
-            try printTraceAtPc(vm, trace.freePc, msg2);
+            defer vm.alloc.free(msg);
+            try printTraceAtPc(vm, trace.freePc, msg);
+        } else {
+            try printTraceAtPc(vm, trace.freePc, "Freed object");
         }
     } else {
         log.debug("No trace for {*}.", .{obj});
@@ -108,18 +115,18 @@ pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) !void {
 }
 
 pub fn printTraceAtPc(vm: *const cy.VM, pc: u32, msg: []const u8) !void {
+    if (pc == cy.NullId) {
+        fmt.printStderr("Trace: {} (external)\n", &.{v(msg)});
+        return;
+    }
     if (indexOfDebugSym(vm, pc)) |idx| {
         const sym = vm.debugTable[idx];
-        const chunk = &vm.compiler.chunks.items[sym.file];
+        const chunk = vm.compiler.chunks.items[sym.file];
         const node = chunk.nodes[sym.loc];
         const token = chunk.tokens[node.start_token];
         try printUserError(vm, "Trace", msg, sym.file, token.pos());
     } else {
-        if (pc == cy.NullId) {
-            fmt.printStderr("Trace: {} (vm global allocation)\n", &.{v(msg)});
-        } else {
-            fmt.printStderr("{}\nMissing debug sym for {}, pc: {}.\n", &.{v(msg), v(vm.ops[pc].opcode()), v(pc)});
-        }
+        fmt.printStderr("{}\nMissing debug sym for {}, pc: {}.\n", &.{v(msg), v(vm.ops[pc].opcode()), v(pc)});
     }
 }
 
@@ -303,21 +310,6 @@ pub fn allocPanicMsg(vm: *const cy.VM) ![]const u8 {
     }
 }
 
-pub fn freePanicPayload(vm: *const cy.VM) void {
-    switch (@as(cy.fiber.PanicType, @enumFromInt(vm.curFiber.panicType))) {
-        .uncaughtError => {},
-        .msg => {
-            const ptr: usize = @intCast(vm.curFiber.panicPayload & ((1 << 48) - 1));
-            const len: usize = @intCast(vm.curFiber.panicPayload >> 48);
-            vm.alloc.free(@as([*]const u8, @ptrFromInt(ptr))[0..len]);
-        },
-        .staticMsg,
-        .inflightOom,
-        .nativeThrow,
-        .none => {},
-    }
-}
-
 pub const StackTrace = struct {
     frames: []const StackFrame = &.{},
 
@@ -336,17 +328,27 @@ pub const StackTrace = struct {
 pub fn writeStackFrames(vm: *const cy.VM, w: anytype, frames: []const StackFrame) !void {
     for (frames) |frame| {
         const chunk = vm.compiler.chunks.items[frame.chunkId];
-        const lineEnd = std.mem.indexOfScalarPos(u8, chunk.src, frame.lineStartPos, '\n') orelse chunk.src.len;
-        try fmt.format(w,
-            \\{}:{}:{} {}:
-            \\{}
-            \\
-        , &.{
-            v(chunk.srcUri), v(frame.line+1), v(frame.col+1), v(frame.name),
-            v(chunk.src[frame.lineStartPos..lineEnd]),
-        });
-        try w.writeByteNTimes(' ', frame.col);
-        try w.writeAll("^\n");
+        if (frame.lineStartPos != cy.NullId) {
+            const lineEnd = std.mem.indexOfScalarPos(u8, chunk.src, frame.lineStartPos, '\n') orelse chunk.src.len;
+            try fmt.format(w,
+                \\{}:{}:{} {}:
+                \\{}
+                \\
+            , &.{
+                v(chunk.srcUri), v(frame.line+1), v(frame.col+1), v(frame.name),
+                v(chunk.src[frame.lineStartPos..lineEnd]),
+            });
+            try w.writeByteNTimes(' ', frame.col);
+            try w.writeAll("^\n");
+        } else {
+            try fmt.format(w,
+                \\{} {}:
+                \\
+            , &.{
+                v(chunk.srcUri), v(frame.name),
+            });
+
+        }
     }
 }
 
@@ -372,25 +374,51 @@ pub fn compactToStackFrame(vm: *cy.VM, cframe: vmc.CompactFrame) !StackFrame {
 }
 
 fn getStackFrame(vm: *cy.VM, sym: cy.DebugSym) StackFrame {
-    if (sym.frameLoc == cy.NullId) {
+    if (sym.frameLoc == 0) {
+        log.tracev("frame in main", .{});
         const chunk = vm.compiler.chunks.items[sym.file];
-        const node = chunk.nodes[sym.loc];
-        var line: u32 = undefined;
-        var col: u32 = undefined;
-        var lineStart: u32 = undefined;
-        const pos = chunk.tokens[node.start_token].pos();
-        computeLinePos(chunk.parser.src, pos, &line, &col, &lineStart);
-        return StackFrame{
-            .name = "main",
-            .chunkId = sym.file,
-            .line = line,
-            .col = col,
-            .lineStartPos = lineStart,
-        };
+        if (sym.loc != cy.NullId) {
+            const node = chunk.nodes[sym.loc];
+            var line: u32 = undefined;
+            var col: u32 = undefined;
+            var lineStart: u32 = undefined;
+            const pos = chunk.tokens[node.start_token].pos();
+            computeLinePos(chunk.parser.src, pos, &line, &col, &lineStart);
+            return StackFrame{
+                .name = "main",
+                .chunkId = sym.file,
+                .line = line,
+                .col = col,
+                .lineStartPos = lineStart,
+            };
+        } else {
+            // Invoking $init.
+            return StackFrame{
+                .name = "main",
+                .chunkId = sym.file,
+                .line = 0,
+                .col = 0,
+                .lineStartPos = cy.NullId,
+            };
+        }
     } else {
-        const chunk = vm.compiler.chunks.items[sym.file];
-        const func = chunk.getNodeFuncDecl(sym.frameLoc);
-        const name = func.getName(&chunk);
+        const chunk = vm.compiler.chunks.items[sym.file]; 
+        var name: []const u8 = undefined;
+        if (sym.frameLoc != cy.NullId) {
+            const node = chunk.nodes[sym.frameLoc];
+            if (node.node_t == .coinit) {
+                name = "coroutine";
+            } else {
+                const header = chunk.nodes[node.head.func.header];
+                if (header.head.funcHeader.name == cy.NullId) {
+                    name = "lambda";
+                } else {
+                    name = chunk.getNodeStringById(header.head.funcHeader.name);
+                }
+            }
+        } else {
+            name = "init";
+        }
 
         const node = chunk.nodes[sym.loc];
         var line: u32 = undefined;
@@ -416,11 +444,14 @@ pub fn buildStackTrace(self: *cy.VM) !void {
     var fpOffset = cy.getStackOffset(self, self.framePtr);
     var pcOffset = cy.getInstOffset(self, self.pc);
     while (true) {
+        log.tracev("pc: {}, fp: {}", .{pcOffset, fpOffset});
         const sym = getDebugSymByPc(self, pcOffset) orelse return error.NoDebugSym;
 
         const frame = getStackFrame(self, sym);
         try frames.append(self.alloc, frame);
-        if (sym.frameLoc == cy.NullId) {
+
+        if (fpOffset == 0) {
+            // Main.
             break;
         } else {
             pcOffset = cy.getInstOffset(self, self.stack[fpOffset + 2].retPcPtr) - self.stack[fpOffset + 1].retInfoCallInstOffset();
@@ -439,7 +470,7 @@ pub const ObjectTrace = struct {
     freePc: u32,
 
     /// Type when freed.
-    freeTypeId: rt.TypeId,
+    freeTypeId: cy.TypeId,
 };
 
 fn getOpCodeAtPc(ops: []const cy.Inst, atPc: u32) ?cy.OpCode {
@@ -473,21 +504,22 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
         const sym = debugTable[idx];
         const chunk = vm.compiler.chunks.items[sym.file];
 
-        if (sym.frameLoc == cy.NullId) {
+        if (sym.frameLoc == 0) {
             fmt.printStderr("Block: main\n", &.{});
             const sblock = &chunk.semaBlocks.items[chunk.mainSemaBlockId];
             try chunk.dumpLocals(sblock);
         } else {
-            const funcNode = chunk.nodes[sym.frameLoc];
-            const funcDecl = chunk.semaFuncDecls.items[funcNode.head.func.semaDeclId];
-            const funcName = funcDecl.getName(&chunk);
-            if (funcName.len == 0) {
-                fmt.printStderr("Block: lambda()\n", &.{});
-            } else {
-                fmt.printStderr("Block: {}()\n", &.{ v(funcName) });
-            }
-            const sblock = &chunk.semaBlocks.items[funcDecl.semaBlockId];
-            try chunk.dumpLocals(sblock);
+            // const funcNode = chunk.nodes[sym.frameLoc];
+            return error.TODO;
+            // const funcDecl = chunk.semaFuncDecls.items[funcNode.head.func.semaDeclId];
+            // const funcName = funcDecl.getName(&chunk);
+            // if (funcName.len == 0) {
+            //     fmt.printStderr("Block: lambda()\n", &.{});
+            // } else {
+            //     fmt.printStderr("Block: {}()\n", &.{ v(funcName) });
+            // }
+            // const sblock = &chunk.semaBlocks.items[funcDecl.semaBlockId];
+            // try chunk.dumpLocals(sblock);
         }
         fmt.printStderr("\n", &.{});
 
@@ -587,12 +619,10 @@ fn dumpMarkerAdvance(vm: *const cy.VM, curMarkerIdx: *u32, nextMarkerPc: *u32) v
             fmt.printStderr("{}:\n", &.{v(marker.getLabelName())});
         },
         .funcStart => {
-            const chunk = &vm.compiler.chunks.items[marker.data.funcStart.chunkId];
-            fmt.printStderr("--- func begin: {}\n", &.{v(chunk.semaFuncDecls.items[marker.data.funcStart.declId].getName(chunk))});
+            fmt.printStderr("---- func begin: {}\n", &.{v(marker.data.funcStart.func.name())});
         },
         .funcEnd => {
-            const chunk = &vm.compiler.chunks.items[marker.data.funcEnd.chunkId];
-            fmt.printStderr("--- func end: {}\n", &.{v(chunk.semaFuncDecls.items[marker.data.funcEnd.declId].getName(chunk))});
+            fmt.printStderr("---- func end: {}\n", &.{v(marker.data.funcEnd.func.name())});
         },
     }
     curMarkerIdx.* += 1;
@@ -608,10 +638,11 @@ pub fn dumpInst(vm: *const cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const c
     var extra: []const u8 = "";
     switch (code) {
         .staticVar => {
-            const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const nameId = vm.varSymExtras.get(symId).?;
-            const name = cy.sema.getName(vm.compiler, nameId);
-            extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
+            if (cy.Trace) {
+                const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+                const name = vm.varSymExtras.buf[symId].name();
+                extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
+            }
         },
         else => {
             if (cy.Trace) {
@@ -622,11 +653,13 @@ pub fn dumpInst(vm: *const cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const c
 
                     if (desc.extraIdx != cy.NullId) {
                         const descExtra = vm.compiler.buf.instDescExtras.items[desc.extraIdx];
+                        try w.writeByte('"');
                         try w.writeAll(descExtra.text);
-                        try w.writeAll(": ");
+                        try w.writeAll("\" ");
                     }
 
-                    const chunk = &vm.compiler.chunks.items[desc.chunkId];
+                    const chunk = vm.compiler.chunks.items[desc.chunkId];
+
                     const enc = cy.ast.Encoder{
                         .src = .{
                             .src = chunk.src,
@@ -634,7 +667,13 @@ pub fn dumpInst(vm: *const cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const c
                             .tokens = chunk.tokens,
                         },
                     };
-                    try enc.writeNode(w, desc.nodeId);
+
+                    var nodeId = desc.nodeId;
+                    if (chunk.nodes[nodeId].hasParentAssignStmt) {
+                        // Print the entire statement instead.
+                        nodeId = enc.src.getParentAssignStmt(nodeId);
+                    }
+                    try enc.writeNode(w, nodeId);
                     extra = fbuf.getWritten();
                 }
             }

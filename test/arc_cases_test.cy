@@ -1,7 +1,7 @@
 import t 'test'
 
 -- Temporary rc if expr cond is released before entering body. (cond always evaluates true for rc objects)
-var a = 123 if string(1) else false
+var a = string(1) ? 123 else false
 
 -- Temporary rc if stmt cond is released before entering body. (cond always evaluates true for rc objects)
 if string(1):
@@ -18,17 +18,17 @@ while string(1):
     break
 
 -- b's narrow type becomes `any` after the if branch, `a = b` should generate copyRetainSrc.
-var b = []
+my b = []
 if false:
     b = 123
 a = b
 
 -- Binary metatype operand does not reuse dst for temp since it is retained.
 var f = func():
-    return float == boolean
+    return float == bool
 f()
 
 -- if expr returns rcCandidate value if else clause is a RC string and if clause is a non-RC string.
 b = 123
-a = 'abc' if false else '{b}'
+a = false ? 'abc' else '{b}'
 var c = '{a}'  -- If `a` isn't marked as a rcCandidate, `a` would be freed here and at the end of the block.

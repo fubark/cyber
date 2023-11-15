@@ -75,6 +75,7 @@ fn toFmtValueType(comptime T: type) FmtValueType {
         []u8,
         []const u8 => return .string,
         [*:0]u8 => return .stringz,
+        [:0]const u8 => return .string,
         else => {
             if (@typeInfo(T) == .Enum) {
                 return .enumt;

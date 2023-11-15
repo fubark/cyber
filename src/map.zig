@@ -6,6 +6,7 @@ const build_options = @import("build_options");
 const debug = builtin.mode == .Debug;
 
 const cy = @import("cyber.zig");
+const bt = cy.types.BuiltinTypes;
 const log = cy.log.scoped(.map);
 
 /// The implementation of ValueMap is based on Zig's std.HashMapUnmanaged.
@@ -24,21 +25,21 @@ pub const ValueMap = struct {
         return Iterator{ .map = self };
     }
 
-    pub fn put(self: *ValueMap, alloc: std.mem.Allocator, vm: *const cy.VM, key: cy.Value, value: cy.Value) linksection(cy.Section) std.mem.Allocator.Error!void {
-        const res = try self.getOrPut(alloc, vm, key);
+    pub fn put(self: *ValueMap, alloc: std.mem.Allocator, key: cy.Value, value: cy.Value) linksection(cy.Section) std.mem.Allocator.Error!void {
+        const res = try self.getOrPut(alloc, key);
         res.valuePtr.* = value;
     }
 
-    pub fn get(self: ValueMap, vm: *const cy.VM, key: cy.Value) linksection(cy.Section) ?cy.Value {
-        if (self.getIndex(vm, key)) |idx| {
+    pub fn get(self: ValueMap, key: cy.Value) linksection(cy.Section) ?cy.Value {
+        if (self.getIndex(key)) |idx| {
             return self.entries.?[idx].value;
         }
         return null;
     }
 
-    pub fn getByString(self: ValueMap, vm: *const cy.VM, key: []const u8) linksection(cy.Section) ?cy.Value {
+    pub fn getByString(self: ValueMap, key: []const u8) linksection(cy.Section) ?cy.Value {
         @setRuntimeSafety(debug);
-        if (self.getIndexByString(vm, key)) |idx| {
+        if (self.getIndexByString(key)) |idx| {
             return self.entries.?[idx].value;
         }
         return null;
@@ -52,23 +53,23 @@ pub const ValueMap = struct {
         return @truncate(maxLoad - self.available);
     }
 
-    pub fn getOrPut(self: *ValueMap, alloc: std.mem.Allocator, vm: *const cy.VM, key: cy.Value) linksection(cy.Section) std.mem.Allocator.Error!GetOrPutResult {
-        const res = try self.getOrPutAdapted(alloc, vm, key);
+    pub fn getOrPut(self: *ValueMap, alloc: std.mem.Allocator, key: cy.Value) std.mem.Allocator.Error!GetOrPutResult {
+        const res = try self.getOrPutAdapted(alloc, key);
         if (!res.foundExisting) {
             res.keyPtr.* = key;
         }
         return res;
     }
 
-    pub fn getOrPutAdapted(self: *ValueMap, alloc: std.mem.Allocator, vm: *const cy.VM, key: cy.Value) linksection(cy.Section) std.mem.Allocator.Error!GetOrPutResult {
+    pub fn getOrPutAdapted(self: *ValueMap, alloc: std.mem.Allocator, key: cy.Value) std.mem.Allocator.Error!GetOrPutResult {
         if (self.available == 0) {
-            try self.grow(alloc, vm, capacityForSize(self.load() + 1));
+            try self.grow(alloc, capacityForSize(self.load() + 1));
         }
-        return self.getOrPutAssumeCapacityAdapted(vm, key);
+        return self.getOrPutAssumeCapacityAdapted(key);
     }
 
-    pub fn getOrPutAssumeCapacityAdapted(self: *ValueMap, vm: *const cy.VM, key: cy.Value) linksection(cy.Section) GetOrPutResult {
-        const hash = computeHash(vm, key);
+    pub fn getOrPutAssumeCapacityAdapted(self: *ValueMap, key: cy.Value) GetOrPutResult {
+        const hash = computeHash(key);
         const mask = self.cap - 1;
         const fingerprint = Metadata.takeFingerprint(hash);
         var limit = self.cap;
@@ -79,7 +80,7 @@ pub const ValueMap = struct {
         while (!md.isFree() and limit != 0) {
             if (md.isUsed() and md.fingerprint == fingerprint) {
                 const testKey = self.entries.?[idx].key;
-                if (keysEqual(vm, key, testKey)) {
+                if (keysEqual(key, testKey)) {
                     return GetOrPutResult{
                         .keyPtr = &self.entries.?[idx].key,
                         .valuePtr = &self.entries.?[idx].value,
@@ -113,10 +114,10 @@ pub const ValueMap = struct {
         };
     }
 
-    pub fn putAssumeCapacityNoClobber(self: *ValueMap, vm: *const cy.VM, key: cy.Value, value: cy.Value) linksection(cy.Section) void {
-        std.debug.assert(!self.contains(vm, key));
+    pub fn putAssumeCapacityNoClobber(self: *ValueMap, key: cy.Value, value: cy.Value) linksection(cy.Section) void {
+        std.debug.assert(!self.contains(key));
 
-        const hash = computeHash(vm, key);
+        const hash = computeHash(key);
         const mask = self.cap - 1;
         var idx: usize = @truncate(hash & mask);
 
@@ -139,8 +140,8 @@ pub const ValueMap = struct {
         self.size += 1;
     }
 
-    pub fn contains(self: ValueMap, vm: *const cy.VM, key: cy.Value) linksection(cy.Section) bool {
-        return self.getIndex(vm, key) != null;
+    pub fn contains(self: ValueMap, key: cy.Value) linksection(cy.Section) bool {
+        return self.getIndex(key) != null;
     }
 
     fn computeStringHash(str: []const u8) linksection(cy.Section) u64 {
@@ -148,30 +149,42 @@ pub const ValueMap = struct {
         return std.hash.Wyhash.hash(0, str);
     }
 
-    fn computeHash(vm: *const cy.VM, key: cy.Value) linksection(cy.Section) u64 {
-        if (key.isFloat()) {
-            return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.val));
+    fn computeHash(key: cy.Value) linksection(cy.Section) u64 {
+        if (key.isPointer()) {
+            const obj = key.asHeapObject();
+            if (obj.getTypeId() == bt.String) {
+                return std.hash.Wyhash.hash(0, obj.string.getSlice());
+            }
         }
-        if (vm.tryValueAsComparableString(key)) |str| {
-            return std.hash.Wyhash.hash(0, str);
-        } else {
-            return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.val));
-        }
+        return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.val));
     }
 
-    fn stringKeyEqual(vm: *const cy.VM, a: []const u8, b: cy.Value) linksection(cy.Section) bool {
-        const bstr = vm.tryValueAsComparableString(b) orelse return false;
-        return std.mem.eql(u8, a, bstr);
+    fn stringKeyEqual(a: []const u8, b: cy.Value) bool {
+        if (!b.isPointer()) {
+            return false;
+        }
+        const bobj = b.asHeapObject();
+        if (bobj.getTypeId() != bt.String) {
+            return false;
+        }
+        return std.mem.eql(u8, a, bobj.string.getSlice());
     }
 
-    fn keysEqual(vm: *const cy.VM, a: cy.Value, b: cy.Value) linksection(cy.Section) bool {
+    fn keysEqual(a: cy.Value, b: cy.Value) bool {
         if (a.val == b.val) {
             return true;
         }
-        if (vm.tryValueAsComparableString(a)) |astr| {
-            const bstr = vm.tryValueAsComparableString(b) orelse return false;
-            return std.mem.eql(u8, astr, bstr);
-        } else return false;
+        if (!a.isPointer()) {
+            return false;
+        }
+        const aobj = a.asHeapObject();
+        if (aobj.getTypeId() == bt.String) {
+            const astr = aobj.string.getSlice();
+            if (b.getTypeId() == bt.String) {
+                return std.mem.eql(u8, astr, b.asHeapObject().string.getSlice());
+            }
+        }
+        return false;
     }
 
     fn capacityForSize(size: u32) linksection(cy.Section) u32 {
@@ -180,7 +193,7 @@ pub const ValueMap = struct {
         return newCap;
     }
 
-    inline fn getIndexByString(self: ValueMap, vm: *const cy.VM, key: []const u8) linksection(cy.Section) ?usize {
+    inline fn getIndexByString(self: ValueMap, key: []const u8) linksection(cy.Section) ?usize {
         @setRuntimeSafety(debug);
 
         if (self.size == 0) {
@@ -199,7 +212,7 @@ pub const ValueMap = struct {
         while (!md.isFree() and limit != 0) {
             if (md.isUsed() and md.fingerprint == fingerprint) {
                 const testKey = self.entries.?[idx].key;
-                if (stringKeyEqual(vm, key, testKey)) {
+                if (stringKeyEqual(key, testKey)) {
                     return idx;
                 }
             }
@@ -219,12 +232,12 @@ pub const ValueMap = struct {
     /// fuse the basic blocks after the branch to the basic blocks
     /// from this function.  To encourage that, this function is
     /// marked as inline.
-    inline fn getIndex(self: ValueMap, vm: *const cy.VM, key: cy.Value) linksection(cy.Section) ?usize {
+    inline fn getIndex(self: ValueMap, key: cy.Value) linksection(cy.Section) ?usize {
         if (self.size == 0) {
             return null;
         }
 
-        const hash = computeHash(vm, key);
+        const hash = computeHash(key);
         const mask = self.cap - 1;
         const fingerprint = Metadata.takeFingerprint(hash);
 
@@ -236,7 +249,7 @@ pub const ValueMap = struct {
         while (!md.isFree() and limit != 0) {
             if (md.isUsed() and md.fingerprint == fingerprint) {
                 const testKey = self.entries.?[idx].key;
-                if (keysEqual(vm, key, testKey)) {
+                if (keysEqual(key, testKey)) {
                     return idx;
                 }
             }
@@ -248,7 +261,7 @@ pub const ValueMap = struct {
         return null;
     }
 
-    fn grow(self: *ValueMap, alloc: std.mem.Allocator, vm: *const cy.VM, newCap: u32) std.mem.Allocator.Error!void {
+    fn grow(self: *ValueMap, alloc: std.mem.Allocator, newCap: u32) std.mem.Allocator.Error!void {
         const finalCap = @max(newCap, 8);
         std.debug.assert(finalCap > self.cap);
         std.debug.assert(std.math.isPowerOfTwo(newCap));
@@ -273,7 +286,7 @@ pub const ValueMap = struct {
             while (i < self.cap) : (i += 1) {
                 if (self.metadata.?[i].isUsed()) {
                     const entry = self.entries.?[i];
-                    newMap.putAssumeCapacityNoClobber(vm, entry.key, entry.value);
+                    newMap.putAssumeCapacityNoClobber(entry.key, entry.value);
                     if (newMap.size == self.size) {
                         break;
                     }
@@ -304,7 +317,7 @@ pub const ValueMap = struct {
     }
 
     pub fn remove(self: *ValueMap, vm: *cy.VM, key: cy.Value) linksection(cy.Section) bool {
-        if (self.getIndex(vm, key)) |idx| {
+        if (self.getIndex(key)) |idx| {
             self.removeByIndex(idx);
             // Release key since it can be an object.
             cy.arc.release(vm, self.entries.?[idx].key);

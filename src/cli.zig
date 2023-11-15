@@ -5,7 +5,7 @@ const bindings = @import("builtins/bindings.zig");
 const os_mod = @import("std/os.zig");
 const test_mod = @import("std/test.zig");
 const cache = @import("cache.zig");
-const bt = cy.types.BuiltinTypeSymIds;
+const bt = cy.types.BuiltinTypes;
 const v = cy.fmt.v;
 const log = cy.log.scoped(.cli);
 
@@ -16,7 +16,8 @@ const builtins = std.ComptimeStringMap(void, .{
 
 const stdMods = std.ComptimeStringMap(cy.ModuleLoaderResult, .{
     .{"os", cy.ModuleLoaderResult{
-        .src = cy.Str.initSlice(os_mod.Src), .srcIsStatic = true,
+        .src = os_mod.Src,
+        .srcLen = os_mod.Src.len,
         .varLoader = os_mod.varLoader,
         .funcLoader = os_mod.funcLoader,
         .typeLoader = os_mod.typeLoader,
@@ -24,7 +25,8 @@ const stdMods = std.ComptimeStringMap(cy.ModuleLoaderResult, .{
         .postLoad = os_mod.postLoad,
     }},
     .{"test", cy.ModuleLoaderResult{
-        .src = cy.Str.initSlice(test_mod.Src), .srcIsStatic = true,
+        .src = test_mod.Src,
+        .srcLen = test_mod.Src.len,
         .funcLoader = test_mod.funcLoader,
         .postLoad = test_mod.postLoad,
     }},
@@ -86,20 +88,28 @@ pub fn loader(uvm: *cy.UserVM, spec_: cy.Str, out: *cy.ModuleLoaderResult) callc
     }
 
     out.* = .{
-        .src = cy.Str.initSlice(src),
-        .srcIsStatic = false,
+        .src = src.ptr,
+        .srcLen = src.len,
+        .onReceipt = onModuleReceipt,
     };
     return true;
 }
 
-fn resolve(uvm: *cy.UserVM, chunkId: cy.ChunkId, curUri: cy.Str, spec_: cy.Str, outUri: *cy.Str) callconv(.C) bool {
+fn onModuleReceipt(uvm: *cy.UserVM, res: *cy.ModuleLoaderResult) callconv(.C) void {
+    const alloc = uvm.allocator();
+    alloc.free(res.src[0..res.srcLen]);
+}
+
+fn resolve(uvm: *cy.UserVM, chunkId: cy.ChunkId, curUri: cy.Str, spec_: cy.Str, res: *cy.ResolverResult) callconv(.C) bool {
     const spec = spec_.slice();
     if (builtins.get(spec) != null) {
-        outUri.* = spec_;
+        res.uri = spec_.buf;
+        res.uriLen = spec_.len;
         return true;
     }
     if (stdMods.get(spec) != null) {
-        outUri.* = spec_;
+        res.uri = spec_.buf;
+        res.uriLen = spec_.len;
         return true;
     }
 
@@ -109,7 +119,7 @@ fn resolve(uvm: *cy.UserVM, chunkId: cy.ChunkId, curUri: cy.Str, spec_: cy.Str, 
 
     const vm = uvm.internal();
 
-    const res = zResolve(uvm, chunkId, curUri.slice(), spec) catch |err| {
+    const uri = zResolve(uvm, chunkId, curUri.slice(), spec) catch |err| {
         if (err == error.HandledError) {
             return false;
         } else {
@@ -119,13 +129,15 @@ fn resolve(uvm: *cy.UserVM, chunkId: cy.ChunkId, curUri: cy.Str, spec_: cy.Str, 
             return false;
         }
     };
-    outUri.* = cy.Str.initSlice(res);
+
+    res.uri = uri.ptr;
+    res.uriLen = uri.len;
     return true;
 }
 
 fn zResolve(uvm: *cy.UserVM, chunkId: cy.ChunkId, curUri: []const u8, spec: []const u8) ![]const u8 {
     const vm = uvm.internal();
-    const chunk = &vm.compiler.chunks.items[chunkId];
+    const chunk = vm.compiler.chunks.items[chunkId];
     if (std.mem.startsWith(u8, spec, "http://") or std.mem.startsWith(u8, spec, "https://")) {
         const uri = try std.Uri.parse(spec);
         if (std.mem.endsWith(u8, uri.host.?, "github.com")) {

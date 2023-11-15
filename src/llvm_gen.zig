@@ -2,7 +2,7 @@ const std = @import("std");
 const cy = @import("cyber.zig");
 const sema = cy.sema;
 const types = cy.types;
-const bt = types.BuiltinTypeSymIds;
+const bt = types.BuiltinTypes;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const log = cy.log.scoped(.llvm_gen);
@@ -527,10 +527,7 @@ fn genIfStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     // }
 }
 
-/// Iterative using two stacks.
 fn genExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
-    c.exprDoneStack.clearRetainingCapacity();
-    c.exprStack.clearRetainingCapacity();
 
     // When NullId is popped, it triggers the postOrder visit.
     try c.exprStack.append(c.alloc, .{
@@ -548,11 +545,11 @@ fn genExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
             }
         }
         const val = try postExpr(c, cur.nodeId);
-        try c.exprDoneStack.append(c.alloc, val);
+        try c.exprResStack.append(c.alloc, val);
         c.exprStack.items.len -= 1;
     }
 
-    return c.exprDoneStack.items[0];
+    return c.exprResStack.items[0];
 }
 
 fn pushExprChildren(c: *cy.Chunk, nodeId: cy.NodeId) !bool {
@@ -1052,9 +1049,9 @@ fn genBinExpr2(c: *cy.Chunk, opts: GenBinExprOptions) !Value {
             switch (opts.genStrat) {
                 .none => cy.unexpected(),
                 .specialized => {
-                    const leftv = c.exprDoneStack.items[c.exprDoneStack.items.len-2];
-                    const rightv = c.exprDoneStack.items[c.exprDoneStack.items.len-1];
-                    c.exprDoneStack.items.len -= 2;
+                    const leftv = c.exprResStack.items[c.exprResStack.items.len-2];
+                    const rightv = c.exprResStack.items[c.exprResStack.items.len-1];
+                    c.exprResStack.items.len -= 2;
 
                     if (leftT == bt.Float) {
                         if (rightv.typeId != bt.Float) {
@@ -1095,9 +1092,9 @@ fn genBinExpr2(c: *cy.Chunk, opts: GenBinExprOptions) !Value {
             switch (opts.genStrat) {
                 .none => cy.unexpected(),
                 .specialized => {
-                    const leftv = c.exprDoneStack.items[c.exprDoneStack.items.len-2];
-                    const rightv = c.exprDoneStack.items[c.exprDoneStack.items.len-1];
-                    c.exprDoneStack.items.len -= 2;
+                    const leftv = c.exprResStack.items[c.exprResStack.items.len-2];
+                    const rightv = c.exprResStack.items[c.exprResStack.items.len-1];
+                    c.exprResStack.items.len -= 2;
 
                     if (leftT == bt.Float) {
                         if (rightv.typeId != bt.Float) {
@@ -1257,8 +1254,8 @@ fn genCallExpr(c: *cy.Chunk, nodeId: cy.NodeId, comptime startFiber: bool, coini
                 if (csymId.isFuncSymId) {
                     const numArgs = node.head.callExpr.numArgs;
 
-                    const argvs = c.exprDoneStack.items[c.exprDoneStack.items.len-numArgs..];
-                    c.exprDoneStack.items.len -= numArgs;
+                    const argvs = c.exprResStack.items[c.exprResStack.items.len-numArgs..];
+                    c.exprResStack.items.len -= numArgs;
 
                     try c.tempValueRefs.resize(c.alloc, argvs.len);
                     for (argvs, 0..) |argv, i| {

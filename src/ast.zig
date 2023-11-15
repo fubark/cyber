@@ -1,13 +1,15 @@
+const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const log = cy.log.scoped(.ast);
 
 pub const NodeId = u32;
 
 pub const NodeType = enum {
     root,
-    expr_stmt,
+    exprStmt,
     assign_stmt,
     opAssignStmt,
     varSpec,
@@ -38,21 +40,21 @@ pub const NodeType = enum {
     number,
     float,
     nonDecInt,
-    if_expr,
-    if_stmt,
-    else_clause,
+    condExpr,
+    ifStmt,
+    elseBlock,
     whileInfStmt,
     whileCondStmt,
     whileOptStmt,
-    for_range_stmt,
-    for_iter_stmt,
+    forRange,
+    forRangeStmt,
+    forIterStmt,
+    forIterHeader,
     range_clause,
     eachClause,
     label_decl,
     hostVarDecl,
     hostFuncDecl,
-    methDecl,
-    methDeclInit,
     funcDecl,
     funcDeclInit,
     funcHeader,
@@ -65,16 +67,15 @@ pub const NodeType = enum {
     objectInit,
     typeAliasDecl,
     enumDecl,
-    tagMember,
+    enumMember,
     tagInit,
     symbolLit,
     errorSymLit,
-    lambda_assign_decl,
     lambda_expr, 
     lambda_multi,
-    map_literal,
-    mapEntry,
-    arr_literal,
+    arrayLiteral,
+    recordLiteral,
+    keyValue,
     coinit,
     coyield,
     coresume,
@@ -84,13 +85,14 @@ pub const NodeType = enum {
     throwExpr,
     group,
     caseBlock,
-    matchBlock,
-    elseCase,
+    switchBlock,
     castExpr,
 };
 
 pub const Node = struct {
+    /// TODO: Since type is often accessed before visiting a node, it should go into a separate array.
     node_t: NodeType,
+    hasParentAssignStmt: bool = false,
 
     /// TODO: Once tokenizer is merged into AST parser, this would become src start pos.
     start_token: u32,
@@ -98,6 +100,10 @@ pub const Node = struct {
     next: NodeId,
     /// Fixed size. TODO: Rename to `data`.
     head: union {
+        exprStmt: struct {
+            child: NodeId,
+            isLastRootStmt: bool = false, 
+        },
         tryStmt: struct {
             tryFirstStmt: NodeId,
             errorVar: cy.Nullable(NodeId),
@@ -105,7 +111,7 @@ pub const Node = struct {
         },
         tryExpr: struct {
             expr: NodeId,
-            elseExpr: cy.Nullable(NodeId),
+            catchExpr: cy.Nullable(NodeId),
         },
         errorSymLit: struct {
             symbol: NodeId,
@@ -113,42 +119,42 @@ pub const Node = struct {
         castExpr: struct {
             expr: NodeId,
             typeSpecHead: NodeId,
-            semaTypeSymId: cy.sema.SymbolId = cy.NullId,
         },
         indexExpr: struct {
             left: NodeId,
             right: NodeId,
-            semaGenStrat: GenBinExprStrategy = .none,
         },
         binExpr: struct {
             left: NodeId,
             right: NodeId,
             op: BinaryExprOp,
-            semaGenStrat: GenBinExprStrategy = .none,
         },
         opAssignStmt: struct {
             left: NodeId,
             right: NodeId,
             op: BinaryExprOp,
-            semaGenStrat: GenBinExprStrategy = .none,
-        },
-        mapEntry: struct {
-            left: NodeId,
-            right: NodeId,
-
-            // Used for object initializers to map an entry to an object field.
-            semaFieldIdx: u32 = cy.NullId,
         },
         caseBlock: struct {
-            firstCond: NodeId,
-            firstChild: NodeId,
+            // Null when `isElseCase` is true.
+            condHead: cy.Nullable(NodeId),
+            bodyHead: NodeId,
+            numConds: u8,
+            isElseCase: bool,
+            bodyIsExpr: bool,
         },
-        matchBlock: struct {
+        switchBlock: struct {
             expr: NodeId,
-            firstCase: NodeId,
+            caseHead: NodeId,
+            numCases: u8,
         },
         annotation: struct {
             type: AnnotationType,
+        },
+        ifStmt: struct {
+            cond: NodeId,
+            bodyHead: cy.Nullable(cy.NodeId),
+            elseHead: cy.Nullable(cy.NodeId),
+            numElseBlocks: u8,
         },
         left_right: struct {
             left: NodeId,
@@ -158,8 +164,6 @@ pub const Node = struct {
         accessExpr: struct {
             left: NodeId,
             right: NodeId,
-            /// Symbol id of a var or func. NullId if it does not point to a symbol.
-            sema_csymId: cy.sema.CompactSymbolId = cy.sema.CompactSymbolId.initNull(),
         },
         callExpr: struct {
             callee: NodeId,
@@ -169,18 +173,28 @@ pub const Node = struct {
         },
         ident: struct {
             semaVarId: u32 = cy.NullId,
-            sema_csymId: cy.sema.CompactSymbolId = cy.sema.CompactSymbolId.initNull(),
-            semaMethodSigId: cy.sema.FuncSigId = cy.NullId,
+            semaModSymId: cy.module.ModuleSymId = cy.NullId,
         },
         unary: struct {
             child: NodeId,
             op: UnaryOp,
-            semaGenStrat: GenUnaryExprStrategy = .none,
         },
         root: struct {
             headStmt: NodeId,
         },
         child_head: NodeId,
+        arrayLiteral: struct {
+            argHead: NodeId,
+            numArgs: u8,
+        },
+        recordLiteral: struct {
+            argHead: NodeId,
+            numArgs: u8,
+        },
+        keyValue: struct {
+            left: NodeId,
+            right: NodeId,
+        },
         comptimeExpr: struct {
             child: NodeId,
         },
@@ -190,7 +204,7 @@ pub const Node = struct {
         func: struct {
             header: NodeId,
             bodyHead: NodeId,
-            semaDeclId: cy.sema.FuncDeclId = cy.NullId,
+            semaModFuncId: cy.module.ModuleFuncId = cy.NullId,
         },
         funcHeader: struct {
             /// Can be NullId for lambdas.
@@ -204,11 +218,6 @@ pub const Node = struct {
             /// Type spec consists of ident nodes linked by `next`.
             typeSpecHead: cy.Nullable(NodeId),
         },
-        lambda_assign_decl: struct {
-            decl_id: cy.sema.FuncDeclId,
-            body_head: NodeId,
-            assign_expr: NodeId,
-        },
         typeAliasDecl: struct {
             name: NodeId,
             typeSpecHead: NodeId,
@@ -216,12 +225,12 @@ pub const Node = struct {
         objectInit: struct {
             name: NodeId,
             initializer: NodeId,
-            sema_symId: cy.Nullable(cy.sema.SymbolId) = cy.NullId,
         },
         objectField: struct {
             name: NodeId,
             /// Type spec consists of ident nodes linked by `next`.
             typeSpecHead: cy.Nullable(NodeId),
+            typed: bool,
         },
         objectDecl: struct {
             // `name` is an ident token with a semaSymId.
@@ -243,18 +252,20 @@ pub const Node = struct {
         staticDecl: struct {
             varSpec: NodeId,
             right: NodeId,
-            sema_symId: cy.sema.SymbolId = cy.NullId,
+            typed: bool,
         },
         localDecl: struct {
             varSpec: NodeId,
             right: NodeId,
+            typed: bool,
         },
-        tagMember: struct {
+        enumMember: struct {
             name: NodeId,
         },
         enumDecl: struct {
             name: NodeId,
             memberHead: NodeId,
+            numMembers: u8,
         },
         whileCondStmt: struct {
             cond: NodeId,
@@ -265,45 +276,56 @@ pub const Node = struct {
             bodyHead: NodeId,
             some: NodeId,
         },
-        for_range_stmt: struct {
+        forRange: struct {
+            left: NodeId,
+            right: NodeId,
+            increment: bool,
+        },
+        forRangeStmt: struct {
             range_clause: NodeId,
             body_head: NodeId,
             eachClause: NodeId,
         },
-        for_iter_stmt: struct {
+        forIterStmt: struct {
+            header: NodeId,
+            bodyHead: NodeId,
+        },
+        forIterHeader: struct {
             iterable: NodeId,
-            body_head: NodeId,
             eachClause: NodeId,
+            count: cy.Nullable(NodeId),
         },
         seqDestructure: struct {
             head: NodeId,
+            numArgs: u8,
         },
         sliceExpr: struct {
             arr: NodeId,
             left: NodeId,
             right: NodeId,
         },
-        if_expr: struct {
+        condExpr: struct {
             cond: NodeId,
-            body_expr: NodeId,
-            else_clause: NodeId,
+            bodyExpr: NodeId,
+            elseExpr: NodeId,
         },
-        else_clause: struct {
-            body_head: NodeId,
+        elseBlock: struct {
+            bodyHead: NodeId,
             // for else ifs only.
             cond: NodeId,
-            else_clause: NodeId,
         },
         stringTemplate: struct {
-            partsHead: NodeId,
+            exprHead: NodeId,
+            strHead: NodeId,
+            numExprs: u8,
         },
         nonDecInt: struct {
-            semaVal: u64,
-        } align (4) ,
+        },
     },
 };
 
-pub const BinaryExprOp = enum {
+pub const BinaryExprOp = enum(u8) {
+    index,
     plus,
     minus,
     star,
@@ -332,10 +354,11 @@ pub const AnnotationType = enum {
     custom,
 };
 
-pub const UnaryOp = enum {
+pub const UnaryOp = enum(u8) {
     minus,
     not,
     bitwiseNot,
+    dummy,
 };
 
 pub const GenUnaryExprStrategy = enum {
@@ -352,9 +375,9 @@ pub const GenBinExprStrategy = enum {
 
 test "ast internals." {
     if (builtin.mode == .ReleaseFast) {
-        try t.eq(@sizeOf(Node), 24);
-    } else {
         try t.eq(@sizeOf(Node), 28);
+    } else {
+        try t.eq(@sizeOf(Node), 32);
     }
 }
 
@@ -363,13 +386,56 @@ pub const Source = struct {
     nodes: []const Node,
     tokens: []const cy.Token,
 
-    pub fn getNodeStringById(src: Source, nodeId: cy.NodeId) []const u8 {
-        return getNodeString(src, src.nodes[nodeId]);
+    pub fn getParentAssignStmt(self: Source, nodeId: cy.NodeId) cy.NodeId {
+        var cur = nodeId;
+        while (true) {
+            cur -= 1;
+            const nodeT = self.nodes[cur].node_t;
+            if (nodeT == .localDecl or nodeT == .assign_stmt or nodeT == .staticDecl) {
+                return cur;
+            }
+        }
     }
 
-    pub fn getNodeString(src: Source, node: cy.Node) []const u8 {
-        const token = src.tokens[node.start_token];
-        return src.src[token.pos()..token.data.end_pos];
+    pub fn getNodeStringById(self: Source, nodeId: cy.NodeId) []const u8 {
+        return getNodeString(self, self.nodes[nodeId]);
+    }
+
+    pub fn getNodeString(self: Source, node: cy.Node) []const u8 {
+        const token = self.tokens[node.start_token];
+        return self.src[token.pos()..token.data.end_pos];
+    }
+
+    pub fn getNodeStringWithDelim(self: Source, node: cy.Node) []const u8 {
+        const token = self.tokens[node.start_token];
+        return self.src[token.pos()-1..token.data.end_pos+1];
+    }
+
+    pub fn getNamePathStr(self: Source, nameId: cy.NodeId) []const u8 {
+        const nameN = self.nodes[nameId];
+        if (nameN.next == cy.NullId) {
+            return self.getNodeString(nameN);
+        } else {
+            const lastId = self.getLastNameNode(nameN.next);
+            const last = self.nodes[lastId];
+            const startToken = self.tokens[nameN.start_token];
+            const lastToken = self.tokens[last.start_token];
+            var end = lastToken.data.end_pos;
+            if (lastToken.tag() == .string) {
+                end += 1;
+            }
+            return self.src[startToken.pos()..end];
+        }
+    }
+
+    pub fn getLastNameNode(self: Source, nameId: cy.NodeId) cy.NodeId {
+        var name = self.nodes[nameId];
+        var curId = nameId;
+        while (name.next != cy.NullId) {
+            name = self.nodes[name.next];
+            curId = name.next;
+        }
+        return curId;
     }
 };
 
@@ -377,6 +443,15 @@ const EncodeEvent = enum {
     preNode,
     postNode,
 };
+
+fn getUnOpStr(op: UnaryOp) []const u8 {
+    return switch (op) {
+        .minus => "-",
+        .not => "!",
+        .bitwiseNot => "~",
+        .dummy => cy.unexpected(),
+    };
+}
 
 fn getBinOpStr(op: BinaryExprOp) []const u8 {
     return switch (op) {
@@ -397,9 +472,10 @@ fn getBinOpStr(op: BinaryExprOp) []const u8 {
         .greater => ">",
         .greater_equal => ">=",
         .equal_equal => "==",
-        .and_op => "and",
-        .or_op => "or",
+        .and_op => " and ",
+        .or_op => " or ",
         .cast => "as",
+        .index,
         .dummy => cy.unexpected(),
     };
 }
@@ -410,34 +486,120 @@ pub const Encoder = struct {
     src: Source,
     eventHandler: ?*const fn (Encoder, EncodeEvent, cy.NodeId) void = null,
 
+    pub fn formatNode(self: Encoder, nodeId: cy.NodeId, buf: []u8) ![]const u8 {
+        if (nodeId == cy.NullId) {
+            return "";
+        }
+        var fbuf = std.io.fixedBufferStream(buf);
+        try self.writeNode(fbuf.writer(), nodeId);
+        return fbuf.getWritten();
+    }
+
     pub fn writeNode(self: Encoder, w: anytype, nodeId: cy.NodeId) !void {
         const node = self.src.nodes[nodeId];
         switch (node.node_t) {
+            .assign_stmt => {
+                try self.writeNode(w, node.head.left_right.left);
+                try w.writeByte('=');
+                try self.writeNode(w, node.head.left_right.right);
+            },
             .opAssignStmt => {
                 try self.writeNode(w, node.head.opAssignStmt.left);
                 try w.writeAll(getBinOpStr(node.head.opAssignStmt.op));
                 try w.writeByte('=');
                 try self.writeNode(w, node.head.opAssignStmt.right);
             },
+            .unary_expr => {
+                const op = node.head.unary.op;
+                try w.writeAll(getUnOpStr(op));
+                try self.writeNode(w, node.head.unary.child);
+            },
             .binExpr => {
                 try self.writeNode(w, node.head.binExpr.left);
                 try w.writeAll(getBinOpStr(node.head.binExpr.op));
                 try self.writeNode(w, node.head.binExpr.right);
             },
-            .expr_stmt => {
-                try self.writeNode(w, node.head.child_head);
+            .exprStmt => {
+                try self.writeNode(w, node.head.exprStmt.child);
+            },
+            .condExpr => {
+                try self.writeNode(w, node.head.condExpr.cond);
+                try w.writeAll("?");
+                try self.writeNode(w, node.head.condExpr.bodyExpr);
+                try w.writeAll(" else ");
+                try self.writeNode(w, node.head.condExpr.elseExpr);
+            },
+            .caseBlock => {
+                if (node.head.caseBlock.isElseCase) {
+                    try w.writeAll("else");
+                } else {
+                    var cond = node.head.caseBlock.condHead;
+                    try self.writeNode(w, cond);
+                    cond = self.src.nodes[cond].next;
+                    while (cond != cy.NullId) {
+                        try w.writeByte(',');
+                        try self.writeNode(w, cond);
+                        cond = self.src.nodes[cond].next;
+                    }
+                }
+                if (node.head.caseBlock.bodyIsExpr) {
+                    try w.writeAll("=>");
+                    try self.writeNode(w, node.head.caseBlock.bodyHead);
+                } else {
+                    try w.writeAll(": ...");
+                }
             },
             .none => {
                 try w.writeAll("none");
+            },
+            .false_literal => {
+                try w.writeAll("false");
+            },
+            .true_literal => {
+                try w.writeAll("true");
+            },
+            .errorSymLit => {
+                try w.writeAll("error.");
+                try self.writeNode(w, node.head.errorSymLit.symbol);
             },
             .number,
             .ident => {
                 try w.writeAll(self.src.getNodeString(node));
             },
+            .string => {
+                try w.writeAll(self.src.getNodeStringWithDelim(node));
+            },
             .accessExpr => {
                 try self.writeNode(w, node.head.accessExpr.left);
                 try w.writeByte('.');
                 try self.writeNode(w, node.head.accessExpr.right);
+            },
+            .group => {
+                try w.writeByte('(');
+                try self.writeNode(w, node.head.child_head);
+                try w.writeByte(')');
+            },
+            .sliceExpr => {
+                try self.writeNode(w, node.head.sliceExpr.arr);
+                try w.writeByte('[');
+                if (node.head.sliceExpr.left != cy.NullId) {
+                    try self.writeNode(w, node.head.sliceExpr.left);
+                }
+                try w.writeAll("..");
+                if (node.head.sliceExpr.right != cy.NullId) {
+                    try self.writeNode(w, node.head.sliceExpr.right);
+                }
+                try w.writeByte(']');
+            },
+            .indexExpr => {
+                try self.writeNode(w, node.head.indexExpr.left);
+                try w.writeByte('[');
+                try self.writeNode(w, node.head.indexExpr.right);
+                try w.writeByte(']');
+            },
+            .throwExpr => {
+                try w.writeAll("throw ");
+                try self.writeNode(w, node.head.child_head);
             },
             .callExpr => {
                 try self.writeNode(w, node.head.callExpr.callee);
@@ -456,6 +618,43 @@ pub const Encoder = struct {
                 }
                 try w.writeByte(')');
             },
+            .tryExpr => {
+                try w.writeAll("try ");
+                try self.writeNode(w, node.head.tryExpr.expr);
+                if (node.head.tryExpr.catchExpr != cy.NullId) {
+                    try w.writeAll(" catch ");
+                    try self.writeNode(w, node.head.tryExpr.catchExpr);
+                }
+            },
+            .localDecl => {
+                try w.writeAll("var ");
+                try self.writeNode(w, node.head.localDecl.varSpec);
+                try w.writeByte('=');
+                try self.writeNode(w, node.head.localDecl.right);
+            },
+            .arrayLiteral => {
+                try w.writeByte('[');
+                try w.writeAll("...");
+                try w.writeByte(']');
+            },
+            .recordLiteral => {
+                try w.writeByte('[');
+                try w.writeAll("...");
+                try w.writeByte(']');
+            },
+            .varSpec => {
+                try self.writeNode(w, node.head.varSpec.name);
+                if (node.head.varSpec.typeSpecHead != cy.NullId) {
+                    var cur = node.head.varSpec.typeSpecHead;
+                    try self.writeNode(w, cur);
+                    cur = self.src.nodes[cur].next;
+                    while (cur != cy.NullId) {
+                        try w.writeByte('.');
+                        try self.writeNode(w, cur);
+                        cur = self.src.nodes[cur].next;
+                    }
+                }
+            },
             else => {
                 try w.writeByte('<');
                 try w.writeAll(@tagName(node.node_t));
@@ -464,5 +663,3 @@ pub const Encoder = struct {
         }
     }
 };
-
-

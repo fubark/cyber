@@ -4,14 +4,18 @@ import t 'test'
 t.eq(3 is not 2, true)
 t.eq(3 is not 3, false)
 
--- string and rawstring contents.
-t.eq('foo' != rawstring('foo'), false)
-t.eq('foo' != rawstring('bar'), true)
+-- strings.
+t.eq('foo' != 'foo', false)
+t.eq('foo' != 'bar', true)
+
+-- arrays.
+t.eq(array('foo') != array('foo'), false)
+t.eq(array('foo') != array('bar'), true)
 
 -- Comparing objects.
 type S object:
-  value
-var o = S{ value: 3 }
+    var value
+var o = [S value: 3]
 t.eq(o != 123, true)
 var o2 = o
 t.eq(o != o2, false)

@@ -1,1 +1,1 @@
-var foo: panic(.boom)
+var Root.foo = panic(.boom)

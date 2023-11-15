@@ -36,7 +36,6 @@
 #define VALUE_RAW(u) u
 #define VALUE_NOCYC_PTR(ptr) (NOCYC_POINTER_MASK | ((size_t)ptr & POINTER_PAYLOAD_MASK))
 #define VALUE_CYC_PTR(ptr) (CYC_POINTER_MASK | ((size_t)ptr & POINTER_PAYLOAD_MASK))
-#define VALUE_STATIC_STRING_SLICE(v) ((IndexSlice){ .start = v & 0xffffffff, .len = (((u32)(v >> 32)) & BEFORE_TAG_MASK) >> 3 })
 #define VALUE_SYMBOL(symId) (SYMBOL_MASK | symId)
 
 // Value ops.
@@ -61,12 +60,15 @@
 #define VALUE_IS_FLOAT(v) ((v & TAGGED_VALUE_MASK) != TAGGED_VALUE_MASK)
 #define VALUE_IS_ERROR(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == ERROR_MASK)
 
+#define VALUE_IS_ARRAY(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_ARRAY))
+#define VALUE_IS_STRING(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_STRING))
 #define VALUE_IS_LIST(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_LIST))
+#define VALUE_IS_TUPLE(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_TUPLE))
 #define VALUE_IS_MAP(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_MAP))
 #define VALUE_BOTH_FLOATS(a, b) (VALUE_IS_FLOAT(a) && VALUE_IS_FLOAT(b))
-#define VALUE_IS_INTEGER(v) ((v & (TAGGED_INTEGER_MASK | SIGN_MASK)) == TAGGED_INTEGER_MASK)
-#define VALUE_BOTH_INTEGERS(a, b) ((a & b & (TAGGED_INTEGER_MASK | SIGN_MASK)) == TAGGED_INTEGER_MASK)
-#define VALUE_ALL3_INTEGERS(a, b, c) ((a & b & c & (TAGGED_INTEGER_MASK | SIGN_MASK)) == TAGGED_INTEGER_MASK)
+#define VALUE_IS_INTEGER(v) ((v & TAGGED_UPPER_VALUE_MASK) == TAGGED_INTEGER_MASK)
+#define VALUE_BOTH_INTEGERS(a, b) ((a & b & TAGGED_UPPER_VALUE_MASK) == TAGGED_INTEGER_MASK)
+#define VALUE_ALL3_INTEGERS(a, b, c) ((a & b & c & TAGGED_UPPER_VALUE_MASK) == TAGGED_INTEGER_MASK)
 #define OBJ_TYPEID(o) (o->head.typeId & TYPE_MASK)
 
 #define FMT_STRZ(s) ((FmtValue){ .type = FMT_TYPE_STRING, .data = { .string = s }, .data2 = { .string = strlen(s) }})
@@ -75,29 +77,6 @@
 #define FMT_U32(v) ((FmtValue){ .type = FMT_TYPE_U32, .data = { .u32 = v }})
 
 static inline TypeId getTypeId(Value val);
-static Str getTypeName(VM* vm, TypeId id);
-
-static inline bool valueAssumeNotPtrIsStaticString(Value v) {
-    u64 mask = v & TAGGED_PRIMITIVE_MASK;
-    return (mask == STATIC_ASTRING_MASK) || (mask == STATIC_USTRING_MASK);
-}
-
-static inline bool valueIsString(Value v) {
-    if (VALUE_IS_POINTER(v)) {
-        HeapObject* obj = VALUE_AS_HEAPOBJECT(v);
-        return (OBJ_TYPEID(obj) == TYPE_ASTRING) || (OBJ_TYPEID(obj) == TYPE_USTRING) || (OBJ_TYPEID(obj) == TYPE_STRING_SLICE);
-    } else {
-        return valueAssumeNotPtrIsStaticString(v);
-    }
-}
-
-static inline bool valueIsRawString(Value v) {
-    if (!VALUE_IS_POINTER(v)) {
-        return false;
-    }
-    TypeId typeId = OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v));
-    return (typeId == TYPE_RAWSTRING) || (typeId == TYPE_RAWSTRING_SLICE);
-}
 
 static inline uintptr_t getInstOffset(VM* vm, Inst* to) {
     return ((uintptr_t)to) - ((uintptr_t)vm->instPtr);
@@ -125,7 +104,7 @@ static inline void release(VM* vm, Value val) {
 #endif
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
-        VLOG("release obj: {}, rc={}\n", FMT_STR(getTypeName(vm, getTypeId(val))), FMT_U32(obj->head.rc));
+        VLOG("release obj: {}, rc={}\n", FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_U32(obj->head.rc));
 #if TRACE
         zCheckDoubleFree(vm, obj);
 #endif
@@ -146,12 +125,12 @@ static inline void release(VM* vm, Value val) {
             zFreeObject(vm, obj);
         }
     } else {
-        VLOG("release: {}, nop\n", FMT_STR(getTypeName(vm, getTypeId(val))));
+        VLOG("release: {}, nop\n", FMT_STR(zGetTypeName(vm, getTypeId(val))));
     }
 }
 
 static inline void releaseObject(VM* vm, HeapObject* obj) {
-    VLOG("release obj: {}, rc={}\n", FMT_STR(getTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
+    VLOG("release obj: {}, rc={}\n", FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
 #if (TRACE)
     zCheckDoubleFree(vm, obj);
 #endif
@@ -175,7 +154,7 @@ static inline void releaseObject(VM* vm, HeapObject* obj) {
 }
 
 static inline void retainObject(VM* vm, HeapObject* obj) {
-    VLOG("retain {} rc={}\n", FMT_STR(getTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
+    VLOG("retain {} rc={}\n", FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
     obj->head.rc += 1;
 #if TRACE
     zCheckRetainDanglingPointer(vm, obj);
@@ -195,7 +174,7 @@ static inline void retain(VM* vm, Value val) {
 #endif
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
-        VLOG("retain obj: {}, rc={}\n", FMT_STR(getTypeName(vm, getTypeId(val))), FMT_U32(obj->head.rc));
+        VLOG("retain obj: {}, rc={}\n", FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_U32(obj->head.rc));
         obj->head.rc += 1;
 #if TRACE
         zCheckRetainDanglingPointer(vm, obj);
@@ -207,7 +186,7 @@ static inline void retain(VM* vm, Value val) {
         vm->trace->numRetains += 1;
 #endif
     } else {
-        VLOG("retain: {}, nop\n", FMT_STR(getTypeName(vm, getTypeId(val))));
+        VLOG("retain: {}, nop\n", FMT_STR(zGetTypeName(vm, getTypeId(val))));
     }
 }
 
@@ -228,6 +207,8 @@ static inline TypeId getTypeId(Value val) {
         } else {
             if (bits >= TAGGED_INTEGER_MASK) {
                 return TYPE_INTEGER;
+            } else if (bits >= TAGGED_ENUM_MASK) {
+                return val & 0xffffffff;
             } else {
                 return VALUE_GET_TAG(bits);
             }
@@ -235,16 +216,6 @@ static inline TypeId getTypeId(Value val) {
     } else {
         return TYPE_FLOAT;
     }
-}
-
-static Str getTypeName(VM* vm, TypeId id) {
-#if TRACE
-    if ((id & TYPE_MASK) == TYPE_MASK) {
-        return (Str){ .ptr = "DanglingObject", .len = strlen("DanglingObject") };
-    }
-#endif
-    Type t = ((Type*)vm->types.buf)[id];
-    return (Str){ .ptr = t.namePtr, .len = t.nameLen };
 }
 
 static inline uint32_t pcOffset(VM* vm, Inst* pc) {
@@ -264,35 +235,23 @@ static inline uint8_t getFieldOffset(VM* vm, HeapObject* obj, uint32_t symId) {
     }
 }
 
-static inline bool isTypeSymCompat(TypeId typeSymId, TypeId cstrType) {
-    if (typeSymId == cstrType) {
+static inline bool isTypeCompat(TypeId typeId, TypeId cstrType) {
+    if (typeId == cstrType) {
         return true;
     }
-    if (cstrType == SEMA_TYPE_ANY || cstrType == SEMA_TYPE_DYNAMIC) {
-        return true;
-    }
-    if (cstrType == SEMA_TYPE_STRING && typeSymId == SEMA_TYPE_STATICSTRING) {
+    if (cstrType == TYPE_ANY || cstrType == TYPE_DYNAMIC) {
         return true;
     }
     return false;
 }
 
-static inline Symbol getResolvedSym(VM* vm, SymbolId id) {
-    return ((Symbol*)vm->compiler->sema.resolvedSyms.buf)[id];
-}
-
 static inline Str getName(VM* vm, NameId nameId) {
-    Name name = ((Name*)vm->compiler->sema.nameSyms.buf)[nameId];
+    Name name = ((Name*)vm->names.buf)[nameId];
     return (Str){ .ptr = name.ptr, .len = name.len };
 }
 
-static inline Str getSemaSymName(VM* vm, u32 id) {
-    Symbol sym = getResolvedSym(vm, id);
-    return getName(vm, sym.key.nameId);
-}
-
 static inline FuncSig getResolvedFuncSig(VM* vm, FuncSigId id) {
-    return ((FuncSig*)vm->compiler->sema.resolvedFuncSigs.buf)[id];
+    return ((FuncSig*)vm->compiler->sema.funcSigs.buf)[id];
 }
 
 static inline ValueResult allocObject(VM* vm, TypeId typeId, Value* fields, u8 numFields) {
@@ -359,7 +318,7 @@ static inline ValueResult allocClosure(
         Inst local = capturedVals[i];
 #if TRACE
         if (!VALUE_IS_BOX(fp[local])) {
-            PRINT("Expected box value.");
+            VLOG("Expected box value.");
             zFatal();
         }
 #endif
@@ -428,7 +387,7 @@ static inline ValueResult allocHostFunc(VM* vm, void* func, u32 numParams, u32 r
 static inline ValueResult allocFuncFromSym(VM* vm, FuncId funcId) {
     FuncSymbol sym = ((FuncSymbol*)vm->funcSyms.buf)[funcId];
     switch (sym.entryT) {
-        case FUNC_SYM_NATIVEFUNC1: {
+        case FUNC_SYM_HOSTFUNC: {
             u32 rFuncSigId = sym.innerExtra.nativeFunc1.rFuncSigId;
             u16 numParams = sym.innerExtra.nativeFunc1.typedFlagNumParams & ~((u16)1 << 15);
             return allocHostFunc(vm, sym.inner.nativeFunc1, numParams, rFuncSigId);
@@ -475,11 +434,6 @@ static _BitInt(48) ipow(_BitInt(48) b, _BitInt(48) e) {
     return result;
 }
 
-static inline Str getValueStaticString(VM* vm, Value val) {
-    IndexSlice slice = VALUE_STATIC_STRING_SLICE(val);
-    return (Str){ .ptr = vm->strBufPtr + slice.start, .len = slice.len };
-}
-
 static void panicStaticMsg(VM* vm, const char* msg) {
     vm->curFiber->panicPayload = (u64)msg | (((u64)(strlen(msg))) << 48);
     vm->curFiber->panicType = PANIC_STATIC_MSG;
@@ -506,19 +460,27 @@ static inline void panicFieldMissing(VM* vm) {
     panicStaticMsg(vm, "Field not found in value.");
 }
 
-static void panicIncompatibleFieldType(VM* vm, SemaTypeId fieldSemaTypeId, SemaTypeId rightSemaTypeId) {
-    Str fieldTypeName = getSemaSymName(vm, fieldSemaTypeId);
-    Str rightTypeName = getSemaSymName(vm, rightSemaTypeId);
+static void panicIncompatibleFieldType(VM* vm, TypeId fieldTypeId, TypeId rightTypeId) {
+    Str fieldTypeName = zGetTypeName(vm, fieldTypeId);
+    Str rightTypeName = zGetTypeName(vm, rightTypeId);
     zPanicFmt(vm, "Assigning to `{}` field with incompatible type `{}`.", (FmtValue[]){
         FMT_STR(fieldTypeName), FMT_STR(rightTypeName)
     }, 2);
 }
 
-static void panicIncompatibleInitFieldType(VM* vm, SemaTypeId fieldSemaTypeId, SemaTypeId rightSemaTypeId) {
-    Str fieldTypeName = getSemaSymName(vm, fieldSemaTypeId);
-    Str rightTypeName = getSemaSymName(vm, rightSemaTypeId);
+static void panicIncompatibleInitFieldType(VM* vm, TypeId fieldTypeId, TypeId rightTypeId) {
+    Str fieldTypeName = zGetTypeName(vm, fieldTypeId);
+    Str rightTypeName = zGetTypeName(vm, rightTypeId);
     zPanicFmt(vm, "Initializing `{}` field with incompatible type `{}`.", (FmtValue[]){
         FMT_STR(fieldTypeName), FMT_STR(rightTypeName)
+    }, 2);
+}
+
+static void panicCastFail(VM* vm, TypeId actTypeId, TypeId expTypeId) {
+    Str actName = zGetTypeName(vm, actTypeId);
+    Str expName = zGetTypeName(vm, expTypeId);
+    zPanicFmt(vm, "Can not cast `{}` to `{}`.", (FmtValue[]){
+        FMT_STR(actName), FMT_STR(expName),
     }, 2);
 }
 
@@ -644,6 +606,7 @@ ResultCode execBytecode(VM* vm) {
     #define JENTRY(op) &&Code_##op
     static void* jumpTable[] = {
         JENTRY(ConstOp),
+        JENTRY(ConstRetain),
         JENTRY(ConstI8),
         JENTRY(AddFloat),
         JENTRY(SubFloat),
@@ -653,10 +616,12 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Not),
         JENTRY(Copy),
         JENTRY(CopyReleaseDst),
+        JENTRY(CopyRetainSrc),
+        JENTRY(CopyRetainRelease),
         JENTRY(SetIndexList),
         JENTRY(SetIndexMap),
-        JENTRY(CopyRetainSrc),
         JENTRY(IndexList),
+        JENTRY(IndexTuple),
         JENTRY(IndexMap),
         JENTRY(List),
         JENTRY(Map),
@@ -677,8 +642,9 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Ret1),
         JENTRY(Ret0),
         JENTRY(Call),
-        JENTRY(FieldRetain),
-        JENTRY(FieldRetainIC),
+        JENTRY(ObjectField),
+        JENTRY(Field),
+        JENTRY(FieldIC),
         JENTRY(Lambda),
         JENTRY(Closure),
         JENTRY(Compare),
@@ -701,9 +667,9 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(ObjectSmall),
         JENTRY(Object),
         JENTRY(SetField),
-        JENTRY(SetFieldRelease),
-        JENTRY(SetFieldReleaseIC),
-        JENTRY(SetCheckFieldRelease),
+        JENTRY(SetFieldIC),
+        JENTRY(SetObjectField),
+        JENTRY(SetObjectFieldCheck),
         JENTRY(PushTry),
         JENTRY(PopTry),
         JENTRY(Throw),
@@ -712,13 +678,13 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Coresume),
         JENTRY(Coreturn),
         JENTRY(Retain),
-        JENTRY(CopyRetainRelease),
         JENTRY(Box),
         JENTRY(SetBoxValue),
         JENTRY(SetBoxValueRelease),
         JENTRY(BoxValue),
         JENTRY(BoxValueRetain),
         JENTRY(Captured),
+        JENTRY(SetCaptured),
         JENTRY(Tag),
         JENTRY(TagLiteral),
         JENTRY(Cast),
@@ -782,14 +748,23 @@ ResultCode execBytecode(VM* vm) {
 beginSwitch:
     switch ((OpCode)*pc) {
 #endif
-    CASE(ConstOp):
+    CASE(ConstOp): {
         stack[pc[3]] = VALUE_RAW(vm->constPtr[READ_U16(1)]);
         pc += 4;
         NEXT();
-    CASE(ConstI8):
-        stack[pc[2]] = VALUE_INTEGER_CAST(pc[1]);
+    }
+    CASE(ConstRetain): {
+        Value val = VALUE_RAW(vm->constPtr[READ_U16(1)]);
+        retain(vm, val);
+        stack[pc[3]] = val;
+        pc += 4;
+        NEXT();
+    }
+    CASE(ConstI8): {
+        stack[pc[2]] = VALUE_INTEGER_CAST((int8_t)pc[1]);
         pc += 3;
         NEXT();
+    }
     CASE(AddFloat): {
         FLOAT_BINOP(stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) + VALUE_AS_FLOAT(right)))
     }
@@ -812,11 +787,10 @@ beginSwitch:
         NEXT();
     }
     CASE(Not): {
-        Value* dst = &stack[pc[1]];
-        Value val = *dst;
+        Value val = stack[pc[1]];
         bool bval = VALUE_IS_BOOLEAN(val) ? VALUE_AS_BOOLEAN(val) : VALUE_ASSUME_NOT_BOOL_TO_BOOL(val);
-        *dst = VALUE_BOOLEAN(!bval);
-        pc += 2;
+        stack[pc[2]] = VALUE_BOOLEAN(!bval);
+        pc += 3;
         NEXT();
     }
     CASE(Copy):
@@ -827,6 +801,20 @@ beginSwitch:
         uint8_t dst = pc[2];
         release(vm, stack[dst]);
         stack[dst] = stack[pc[1]];
+        pc += 3;
+        NEXT();
+    }
+    CASE(CopyRetainSrc): {
+        Value val = stack[pc[1]];
+        retain(vm, val);
+        stack[pc[2]] = val;
+        pc += 3;
+        NEXT();
+    }
+    CASE(CopyRetainRelease): {
+        retain(vm, stack[pc[1]]);
+        release(vm, stack[pc[2]]);
+        stack[pc[2]] = stack[pc[1]];
         pc += 3;
         NEXT();
     }
@@ -881,13 +869,6 @@ beginSwitch:
             NEXT();
         }
     }
-    CASE(CopyRetainSrc): {
-        Value val = stack[pc[1]];
-        retain(vm, val);
-        stack[pc[2]] = val;
-        pc += 3;
-        NEXT();
-    }
     CASE(IndexList): {
         Value listv = stack[pc[1]];
         Value index = stack[pc[2]];
@@ -918,13 +899,43 @@ beginSwitch:
             RETURN(RES_CODE_PANIC);
         }
     }
+    CASE(IndexTuple): {
+        Value tuplev = stack[pc[1]];
+        Value index = stack[pc[2]];
+        if (VALUE_IS_TUPLE(tuplev) && VALUE_IS_INTEGER(index)) {
+            Tuple* tuple = (Tuple*)VALUE_AS_HEAPOBJECT(tuplev);
+
+            _BitInt(48) idx = VALUE_AS_INTEGER(index);
+            if (idx < 0) {
+                // Reverse index.
+                idx = tuple->len + idx;
+            }
+            if (idx >= 0 && idx < tuple->len) {
+                Value val = ((Value*)&tuple->firstValue)[idx];
+                retain(vm, val);
+                stack[pc[3]] = val;
+                pc += CALL_OBJ_SYM_INST_LEN;
+                NEXT();
+            } else {
+                panicOutOfBounds(vm);
+                RETURN(RES_CODE_PANIC);
+            }
+        } else {
+            if (!VALUE_IS_TUPLE(tuplev)) {
+                DEOPTIMIZE_BINOP();
+                NEXT();
+            }
+            panicExpectedInteger(vm);
+            RETURN(RES_CODE_PANIC);
+        }
+    }
     CASE(IndexMap): {
         Value mapv = stack[pc[1]];
         Value index = stack[pc[2]];
         if (VALUE_IS_MAP(mapv)) {
             HeapObject* mapo = VALUE_AS_HEAPOBJECT(mapv);
             bool found;
-            Value val = zValueMapGet(vm, &mapo->map.inner, index, &found);
+            Value val = zValueMapGet(&mapo->map.inner, index, &found);
             if (found) {
                 retain(vm, val);
                 stack[pc[3]] = val;
@@ -975,27 +986,32 @@ beginSwitch:
         Value listv = stack[pc[1]];
         Value startv = stack[pc[2]];
         Value endv = stack[pc[3]];
-        if (VALUE_IS_LIST(listv) && VALUE_IS_INTEGER(startv) && (VALUE_IS_INTEGER(endv) || VALUE_IS_NONE(endv))) {
+        if (VALUE_IS_LIST(listv) && (VALUE_IS_INTEGER(startv) || VALUE_IS_NONE(startv)) && (VALUE_IS_INTEGER(endv) || VALUE_IS_NONE(endv))) {
             HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
 
-            _BitInt(48) start = VALUE_AS_INTEGER(startv);
-            if (start < 0) {
-                start = listo->list.list.len + start;
+            _BitInt(48) start;
+            if (VALUE_IS_NONE(startv)) {
+                start = 0;
+            } else {
+                start = VALUE_AS_INTEGER(startv);
             }
+            if (start < 0) {
+                panicOutOfBounds(vm);
+                RETURN(RES_CODE_PANIC);
+            }
+
             _BitInt(48) end;
             if (VALUE_IS_NONE(endv)) {
                 end = listo->list.list.len;
             } else {
                 end = VALUE_AS_INTEGER(endv);
             }
-            if (end < 0) {
-                end = listo->list.list.len + end;
-            }
-            if (start < 0 || start > listo->list.list.len) {
+            if (end > listo->list.list.len) {
                 panicOutOfBounds(vm);
                 RETURN(RES_CODE_PANIC);
             }
-            if (end < start || end > listo->list.list.len) {
+
+            if (end < start) {
                 panicOutOfBounds(vm);
                 RETURN(RES_CODE_PANIC);
             }
@@ -1032,12 +1048,10 @@ beginSwitch:
         }
     }
     CASE(JumpCond): {
-        i16 jump = READ_I16(1);
-        Value cond = stack[pc[3]];
-        bool condVal = VALUE_IS_BOOLEAN(cond) ?
-            VALUE_AS_BOOLEAN(cond) : VALUE_ASSUME_NOT_BOOL_TO_BOOL(cond);
+        Value cond = stack[pc[1]];
+        bool condVal = VALUE_IS_BOOLEAN(cond) ? VALUE_AS_BOOLEAN(cond) : VALUE_ASSUME_NOT_BOOL_TO_BOOL(cond);
         if (condVal) {
-            pc += (uintptr_t)jump;
+            pc += (uintptr_t)READ_I16(2);
         } else {
             pc += 4;
         }
@@ -1063,16 +1077,16 @@ beginSwitch:
         NEXT();
     }
     CASE(CallObjSym): {
-        u8 startLocal = pc[1];
+        u8 ret = pc[1];
         u8 numArgs = pc[2];
         u8 numRet = pc[3];
         u8 mgId = pc[4];
         u16 anySelfFuncSigId = READ_U16(5);
 
-        Value recv = stack[startLocal + 4];
+        Value recv = stack[ret + CALL_ARG_START];
         TypeId typeId = getTypeId(recv);
 
-        CallObjSymResult res = zCallObjSym(vm, pc, stack, recv, typeId, mgId, startLocal, numArgs, numRet, anySelfFuncSigId);
+        CallObjSymResult res = zCallObjSym(vm, pc, stack, recv, typeId, mgId, ret, numArgs, numRet, anySelfFuncSigId);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
@@ -1081,23 +1095,23 @@ beginSwitch:
         NEXT();
     }
     CASE(CallObjNativeFuncIC): {
-        uint8_t startLocal = pc[1];
+        uint8_t ret = pc[1];
         uint8_t numArgs = pc[2];
-        Value recv = stack[startLocal + 4];
+        Value recv = stack[ret + CALL_ARG_START];
         TypeId typeId = getTypeId(recv);
 
         TypeId cachedTypeId = READ_U16(14);
         if (typeId == cachedTypeId) {
-            // const newFramePtr = framePtr + startLocal;
+            // const newFramePtr = framePtr + ret;
             vm->curStack = stack;
             HostFuncFn fn = (HostFuncFn)READ_U48(8);
-            Value res = fn(vm, stack + startLocal + 4, numArgs);
+            Value res = fn(vm, stack + ret + CALL_ARG_START, numArgs);
             if (res == VALUE_INTERRUPT) {
                 RETURN(RES_CODE_PANIC);
             }
             uint8_t numRet = pc[3];
             if (numRet == 1) {
-                stack[startLocal] = res;
+                stack[ret] = res;
             } else {
                 switch (numRet) {
                     case 0: 
@@ -1122,18 +1136,18 @@ beginSwitch:
         NEXT();
     }
     CASE(CallObjFuncIC): {
-        uint8_t startLocal = pc[1];
-        uint8_t recv = stack[startLocal + 4];
+        uint8_t ret = pc[1];
+        Value recv = stack[ret + CALL_ARG_START];
         TypeId typeId = getTypeId(recv);
 
         TypeId cachedTypeId = READ_U16(14);
         if (typeId == cachedTypeId) {
             uint8_t numLocals = pc[7];
-            if (stack + startLocal + numLocals >= vm->stackEndPtr) {
+            if (stack + ret + numLocals >= vm->stackEndPtr) {
                 RETURN(RES_CODE_STACK_OVERFLOW);
             }
             Value retFramePtr = (uintptr_t)stack;
-            stack += startLocal;
+            stack += ret;
             *(uint8_t*)(stack + 1) = pc[3];
             *((uint8_t*)(stack + 1) + 1) = 0;
             stack[2] = (uintptr_t)(pc + 16);
@@ -1163,11 +1177,10 @@ beginSwitch:
 
         // Perform type check on args.
         for (int i = 0; i < funcSig.paramLen; i += 1) {
-            SemaTypeId cstrTypeId = funcSig.paramPtr[i];
+            TypeId cstrTypeId = funcSig.paramPtr[i];
             TypeId argTypeId = getTypeId(args[i]);
 
-            SemaTypeId argSemaTypeId = ((Type*)vm->types.buf)[argTypeId].semaTypeId;
-            if (!isTypeSymCompat(argSemaTypeId, cstrTypeId)) {
+            if (!isTypeCompat(argTypeId, cstrTypeId)) {
                 // Assumes next inst is callSym/callNativeFuncIC/callFuncIC.
                 u16 funcId = READ_U16(5 + 4);
                 // return panicIncompatibleFuncSig(vm, funcId, args, funcSigId);
@@ -1213,7 +1226,7 @@ beginSwitch:
         Value* newStack = stack + startLocal;
         vm->curStack = newStack;
         HostFuncFn fn = (HostFuncFn)READ_U48(6);
-        Value res = fn(vm, newStack + 4, numArgs);
+        Value res = fn(vm, newStack + CALL_ARG_START, numArgs);
         if (res == VALUE_INTERRUPT) {
             RETURN(RES_CODE_PANIC);
         }
@@ -1221,15 +1234,7 @@ beginSwitch:
         if (numRet == 1) {
             newStack[0] = res;
         } else {
-            switch (numRet) {
-                case 0:
-                    // Nop.
-                    break;
-                case 1:
-                    zFatal();
-                default:
-                    zFatal();
-            }
+            // Nop.
         }
         pc += CALL_SYM_INST_LEN;
         NEXT();
@@ -1296,13 +1301,13 @@ beginSwitch:
         }
     }
     CASE(Call): {
-        u8 startLocal = pc[1];
+        u8 ret = pc[1];
         u8 numArgs = pc[2];
         u8 numRet = pc[3];
 
-        Value callee = stack[startLocal + numArgs + 4];
+        Value callee = stack[ret + CALLEE_START];
         Value retInfo = VALUE_RETINFO(numRet, false, CALL_INST_LEN);
-        PcSpResult res = zCall(vm, pc, stack, callee, startLocal, numArgs, retInfo);
+        PcSpResult res = zCall(vm, pc, stack, callee, ret, numArgs, retInfo);
         if (LIKELY(res.code == RES_CODE_SUCCESS)) {
             pc = res.pc;
             stack = res.sp;
@@ -1310,7 +1315,15 @@ beginSwitch:
         }
         RETURN(res.code);
     }
-    CASE(FieldRetain): {
+    CASE(ObjectField): {
+        Value recv = stack[pc[1]];
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
+        stack[pc[3]] = objectGetField((Object*)obj, pc[2]);
+        retain(vm, stack[pc[3]]);
+        pc += 4;
+        NEXT();
+    }
+    CASE(Field): {
         uint8_t left = pc[1];
         uint8_t dst = pc[2];
         uint16_t symId = READ_U16(3);
@@ -1320,7 +1333,7 @@ beginSwitch:
             uint8_t offset = getFieldOffset(vm, obj, symId);
             if (offset != NULL_U8) {
                 stack[dst] = objectGetField((Object*)obj, offset);
-                pc[0] = CodeFieldRetainIC;
+                pc[0] = CodeFieldIC;
                 WRITE_U16(5, OBJ_TYPEID(obj));
                 pc[7] = offset;
             } else {
@@ -1334,7 +1347,7 @@ beginSwitch:
             RETURN(RES_CODE_PANIC);
         }
     }
-    CASE(FieldRetainIC): {
+    CASE(FieldIC): {
         Value recv = stack[pc[1]];
         uint8_t dst = pc[2];
         if (VALUE_IS_POINTER(recv)) {
@@ -1346,7 +1359,7 @@ beginSwitch:
                 NEXT();
             } else {
                 // Deoptimize.
-                pc[0] = CodeFieldRetain;
+                pc[0] = CodeField;
                 NEXT();
             }
         } else {
@@ -1391,7 +1404,7 @@ beginSwitch:
         if (left == right) {
             stack[pc[3]] = VALUE_TRUE;
         } else {
-            stack[pc[3]] = zEvalCompare(vm, left, right);
+            stack[pc[3]] = zEvalCompare(left, right);
         }
         pc += 4;
         NEXT();
@@ -1438,7 +1451,7 @@ beginSwitch:
         if (left == right) {
             stack[pc[3]] = VALUE_FALSE;
         } else {
-            stack[pc[3]] = zEvalCompareNot(vm, left, right);
+            stack[pc[3]] = zEvalCompareNot(left, right);
         }
         pc += 4;
         NEXT();
@@ -1469,11 +1482,10 @@ beginSwitch:
         // Perform type check on field initializers.
         for (int i = 0; i < n; i += 1) {
             TypeId valTypeId = getTypeId(stack[startLocal + dataPtr[0]]);
-            SemaTypeId cstrTypeId = READ_U32_FROM(dataPtr, 1);
+            TypeId cstrTypeId = READ_U32_FROM(dataPtr, 1);
 
-            SemaTypeId valSemaTypeId = ((Type*)vm->types.buf)[valTypeId].semaTypeId;
-            if (!isTypeSymCompat(valSemaTypeId, cstrTypeId)) {
-                panicIncompatibleInitFieldType(vm, cstrTypeId, valSemaTypeId);
+            if (!isTypeCompat(valTypeId, cstrTypeId)) {
+                panicIncompatibleInitFieldType(vm, cstrTypeId, valTypeId);
                 RETURN(RES_CODE_PANIC);
             }
             dataPtr += 5;
@@ -1506,65 +1518,57 @@ beginSwitch:
         NEXT();
     }
     CASE(SetField): {
-        u8 symId = pc[1];
-        Value recv = stack[pc[2]];
-        Value val = stack[pc[3]];
-        if (VALUE_IS_POINTER(recv)) {
-            HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            uint8_t offset = getFieldOffset(vm, obj, symId);
-            if (offset != NULL_U8) {
-                Value* lastValue = objectGetFieldPtr((Object*)obj, offset);
-                *lastValue = val;
-                pc += 4;
-                NEXT();
-            } else {
-                // return vm.getFieldMissingSymbolError();
-                RETURN(RES_CODE_UNKNOWN);
-            }
-        } else {
-            // return vm.setFieldNotObjectError();
-            RETURN(RES_CODE_UNKNOWN);
-        }
-    }
-    CASE(SetFieldRelease): {
         Value recv = stack[pc[1]];
-        Value val = stack[pc[2]];
-        u8 symId = pc[3];
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            uint8_t offset = getFieldOffset(vm, obj, symId);
+            u16 fieldId = READ_U16(2);
+            u8 offset = getFieldOffset(vm, obj, fieldId);
             if (offset != NULL_U8) {
+                Value val = stack[pc[4]];
+                FieldSymbolMap* symMap = ((FieldSymbolMap*)vm->fieldSyms.buf) + fieldId;
+                u32 fieldTypeId = symMap->mruFieldTypeSymId;
+                TypeId rightTypeId = getTypeId(val);
+                if (fieldTypeId != TYPE_DYNAMIC) {
+                    // Must perform type check on rhs.
+                    if (!isTypeCompat(rightTypeId, fieldTypeId)) {
+                        panicIncompatibleFieldType(vm, fieldTypeId, rightTypeId);
+                        RETURN(RES_CODE_PANIC);
+                    }
+                }
+
                 Value* lastValue = objectGetFieldPtr((Object*)obj, offset);
                 release(vm, *lastValue);
                 *lastValue = val;
 
-                pc[0] = CodeSetFieldReleaseIC;
-                WRITE_U16(4, OBJ_TYPEID(obj));
-                pc[6] = offset;
-                pc += 7;
+                pc[0] = CodeSetFieldIC;
+                WRITE_U16(5, OBJ_TYPEID(obj));
+                WRITE_U16(7, rightTypeId);
+                pc[9] = offset;
+                pc += 10;
                 NEXT();
             } else {
-                // return vm.getFieldMissingSymbolError();
-                RETURN(RES_CODE_UNKNOWN);
+                panicFieldMissing(vm);
+                RETURN(RES_CODE_PANIC);
             }
         } else {
             // return vm.setFieldNotObjectError();
             RETURN(RES_CODE_UNKNOWN);
         }
     }
-    CASE(SetFieldReleaseIC): {
+    CASE(SetFieldIC): {
         Value recv = stack[pc[1]];
         if (VALUE_IS_POINTER(recv)) {
+            Value val = stack[pc[4]];
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            if (OBJ_TYPEID(obj) == READ_U16(4)) {
-                Value* lastValue = objectGetFieldPtr((Object*)obj, pc[6]);
+            if ((OBJ_TYPEID(obj) == READ_U16(5)) && (getTypeId(val) == READ_U16(7))) {
+                Value* lastValue = objectGetFieldPtr((Object*)obj, pc[9]);
                 release(vm, *lastValue);
-                *lastValue = stack[pc[2]];
-                pc += 7;
+                *lastValue = val;
+                pc += 10;
                 NEXT();
             } else {
                 // Deoptimize.
-                pc[0] = CodeSetFieldRelease;
+                pc[0] = CodeSetField;
                 NEXT();
             }
         } else {
@@ -1572,44 +1576,32 @@ beginSwitch:
             RETURN(RES_CODE_UNKNOWN);
         }
     }
-    CASE(SetCheckFieldRelease): {
-        Value recv = stack[pc[1]];
-        Value val = stack[pc[2]];
-        uint8_t symId = pc[3];
-        if (VALUE_IS_POINTER(recv)) {
-            HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            uint8_t offset = getFieldOffset(vm, obj, symId);
-            if (offset != NULL_U8) {
-                FieldSymbolMap* symMap = ((FieldSymbolMap*)vm->fieldSyms.buf) + symId;
-                uint32_t fieldSemaTypeId = symMap->mruFieldTypeSymId;
-                TypeId rightTypeId = getTypeId(val);
-                Type* type = ((Type*)vm->types.buf) + rightTypeId;
-                uint32_t rightSemaTypeId = type->semaTypeId;
-                if (!isTypeSymCompat(rightSemaTypeId, fieldSemaTypeId)) {
-                    panicIncompatibleFieldType(vm, fieldSemaTypeId, rightSemaTypeId);
-                    release(vm, val);
-                    RETURN(RES_CODE_PANIC);
-                }
-
-                Value* lastValue = objectGetFieldPtr((Object*)obj, offset);
-                release(vm, *lastValue);
-                *lastValue = val;
-
-                // TODO: Inline cache.
-                pc += 7;
-                NEXT();
-            } else {
-                // return vm.getFieldMissingSymbolError();
-                RETURN(RES_CODE_UNKNOWN);
-            }
-        } else {
-            // return vm.setFieldNotObjectError();
-            RETURN(RES_CODE_UNKNOWN);
+    CASE(SetObjectField): {
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
+        Value* lastValue = objectGetFieldPtr((Object*)obj, pc[2]);
+        release(vm, *lastValue);
+        *lastValue = stack[pc[3]];
+        pc += 4;
+        NEXT();
+    }
+    CASE(SetObjectFieldCheck): {
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
+        TypeId cstrType = READ_U16(2);
+        TypeId valType = getTypeId(stack[pc[4]]);
+        if (!isTypeCompat(valType, cstrType)) {
+            panicIncompatibleFieldType(vm, cstrType, valType);
+            RETURN(RES_CODE_PANIC);
         }
+        Value* lastValue = objectGetFieldPtr((Object*)obj, pc[5]);
+        release(vm, *lastValue);
+        *lastValue = stack[pc[4]];
+        pc += 6;
+        NEXT();
     }
     CASE(PushTry): {
         u8 errDst = pc[1];
-        u16 catchPcOffset = READ_U16(2);
+        bool releaseDst = pc[2];
+        u16 catchPcOffset = READ_U16(3);
         if (vm->tryStack.len == vm->tryStack.cap) {
             ResultCode code = zGrowTryStackTotalCapacity(&vm->tryStack, vm->alloc, vm->tryStack.len + 1);
             if (code != RES_CODE_SUCCESS) {
@@ -1620,9 +1612,10 @@ beginSwitch:
             .fp = stack,
             .catchPc = getInstOffset(vm, pc) + catchPcOffset,
             .catchErrDst = errDst,
+            .releaseDst = releaseDst,
         };
         vm->tryStack.len += 1; 
-        pc += 4;
+        pc += 5;
         NEXT();
     }
     CASE(PopTry): {
@@ -1648,11 +1641,12 @@ beginSwitch:
     CASE(Coinit): {
         u8 startArgsLocal = pc[1];
         u8 numArgs = pc[2];
-        u8 jump = pc[3];
-        u8 initialStackSize = pc[4];
-        u8 dst = pc[5];
+        u8 argDst = pc[3];
+        u8 jump = pc[4];
+        u8 initialStackSize = pc[5];
+        u8 dst = pc[6];
 
-        ValueResult res = zAllocFiber(vm, pcOffset(vm, pc + 6), stack + startArgsLocal, numArgs, initialStackSize);
+        ValueResult res = zAllocFiber(vm, pcOffset(vm, pc + INST_COINIT_LEN), stack + startArgsLocal, numArgs, argDst, initialStackSize);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
@@ -1700,15 +1694,6 @@ beginSwitch:
     CASE(Retain): {
         retain(vm, stack[pc[1]]);
         pc += 2;
-        NEXT();
-    }
-    CASE(CopyRetainRelease): {
-        uint8_t src = pc[1];
-        uint8_t dst = pc[2];
-        retain(vm, stack[src]);
-        release(vm, stack[dst]);
-        stack[dst] = stack[src];
-        pc += 3;
         NEXT();
     }
     CASE(Box): {
@@ -1784,7 +1769,34 @@ beginSwitch:
             zFatal();
         }
 #endif
-        stack[pc[3]] = closureGetCapturedValuesPtr(&VALUE_AS_HEAPOBJECT(closure)->closure)[pc[2]];
+        Value box = closureGetCapturedValuesPtr(&VALUE_AS_HEAPOBJECT(closure)->closure)[pc[2]];
+#if TRACE
+        if (!VALUE_IS_BOX(box)) {
+            VLOG("Expected box value.");
+            zFatal();
+        }
+#endif
+        Value val = VALUE_AS_HEAPOBJECT(box)->box.val;
+        retain(vm, val);
+        stack[pc[3]] = val;
+        pc += 4;
+        NEXT();
+    }
+    CASE(SetCaptured): {
+        Value closure = stack[pc[1]];
+#if TRACE
+        if (!VALUE_IS_CLOSURE(closure)) {
+            VLOG("Expected closure value.");
+            zFatal();
+        }
+#endif
+        Value box = closureGetCapturedValuesPtr(&VALUE_AS_HEAPOBJECT(closure)->closure)[pc[2]];
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(box);
+#if TRACE
+        ASSERT(OBJ_TYPEID(obj) == TYPE_BOX);
+#endif
+        release(vm, obj->box.val);
+        obj->box.val = stack[pc[3]];
         pc += 4;
         NEXT();
     }
@@ -1808,39 +1820,18 @@ beginSwitch:
             pc += 4;
             NEXT();
         } else {
-            Type actType = ((Type*)vm->types.buf)[getTypeId(val)];
-            Type expType = ((Type*)vm->types.buf)[expTypeId];
-            zPanicFmt(vm, "Can not cast `{}` to `{}`.", (FmtValue[]){
-                FMT_STRLEN(actType.namePtr, actType.nameLen),
-                FMT_STRLEN(expType.namePtr, expType.nameLen)
-            }, 2);
+            panicCastFail(vm, getTypeId(val), expTypeId);
             RETURN(RES_CODE_PANIC);
         }
     }
     CASE(CastAbstract): {
         Value val = stack[pc[1]];
-        u16 expSemaTypeId = READ_U16(2);
-        if (expSemaTypeId == SEMA_TYPE_ANY) {
+        u16 expTypeId = READ_U16(2);
+        if (expTypeId == TYPE_ANY) {
             pc += 4;
             NEXT();
-        } else if (expSemaTypeId == SEMA_TYPE_STRING) {
-            if (valueIsString(val)) {
-                pc += 4;
-                NEXT();
-            }
-        } else if (expSemaTypeId == SEMA_TYPE_RAWSTRING) {
-            if (valueIsRawString(val)) {
-                pc += 4;
-                NEXT();
-            }
         }
-        Symbol sym = getResolvedSym(vm, expSemaTypeId);
-        Str name = getName(vm, sym.key.nameId);
-        Type actType = ((Type*)vm->types.buf)[getTypeId(val)];
-        zPanicFmt(vm, "Can not cast `{}` to `{}`.", (FmtValue[]){
-            FMT_STRLEN(actType.namePtr, actType.nameLen),
-            FMT_STR(name)
-        }, 2);
+        panicCastFail(vm, getTypeId(val), expTypeId);
         RETURN(RES_CODE_PANIC);
     }
     CASE(BitwiseAnd): {
@@ -1933,53 +1924,52 @@ beginSwitch:
     CASE(ForRangeInit): {
         Value startv = stack[pc[1]];
         Value endv = stack[pc[2]];
-        Value stepv = stack[pc[3]];
-        if (VALUE_ALL3_INTEGERS(startv, endv, stepv)) {
+        bool increment = pc[3];
+        if (VALUE_BOTH_INTEGERS(startv, endv)) {
             _BitInt(48) start = VALUE_AS_INTEGER(startv);
             _BitInt(48) end = VALUE_AS_INTEGER(endv);
-            _BitInt(48) step = VALUE_AS_INTEGER(stepv);
-            if (step < 0) {
-                step = -step;
-            }
-            if (start == end) {
-                pc += READ_U16(6) + 7;
-                NEXT();
-            } else {
-                stack[pc[4]] = startv;
-                stack[pc[5]] = startv;
-                u16 offset = READ_U16(6);
-                if (start < end) {
-                    pc[offset] = CodeForRange;
-                } else {
-                    pc[offset] = CodeForRangeReverse;
+            stack[pc[4]] = startv;
+            stack[pc[5]] = startv;
+            u16 offset = READ_U16(6);
+            if (increment) {
+                if (start >= end) {
+                    pc += offset + 6;
+                    NEXT();
                 }
-                pc += 8;
-                NEXT();
+                pc[offset] = CodeForRange;
+            } else {
+                if (start <= end) {
+                    pc += offset + 6;
+                    NEXT();
+                }
+                pc[offset] = CodeForRangeReverse;
             }
+            pc += 8;
+            NEXT();
         } else {
             panicExpectedInteger(vm);
             RETURN(RES_CODE_PANIC);
         }
     }
     CASE(ForRange): {
-        _BitInt(48) counter = VALUE_AS_INTEGER(stack[pc[1]]) + VALUE_AS_INTEGER(stack[pc[2]]);
-        if (counter < VALUE_AS_INTEGER(stack[pc[3]])) {
+        _BitInt(48) counter = VALUE_AS_INTEGER(stack[pc[1]]) + 1;
+        if (counter < VALUE_AS_INTEGER(stack[pc[2]])) {
             stack[pc[1]] = VALUE_INTEGER(counter);
-            stack[pc[4]] = VALUE_INTEGER(counter);
-            pc -= READ_U16(5);
+            stack[pc[3]] = VALUE_INTEGER(counter);
+            pc -= READ_U16(4);
         } else {
-            pc += 7;
+            pc += 6;
         }
         NEXT();
     }
     CASE(ForRangeReverse): {
-        _BitInt(48) counter = VALUE_AS_INTEGER(stack[pc[1]]) - VALUE_AS_INTEGER(stack[pc[2]]);
-        if (counter > VALUE_AS_INTEGER(stack[pc[3]])) {
+        _BitInt(48) counter = VALUE_AS_INTEGER(stack[pc[1]]) - 1;
+        if (counter > VALUE_AS_INTEGER(stack[pc[2]])) {
             stack[pc[1]] = VALUE_INTEGER(counter);
-            stack[pc[4]] = VALUE_INTEGER(counter);
-            pc -= READ_U16(5);
+            stack[pc[3]] = VALUE_INTEGER(counter);
+            pc -= READ_U16(4);
         } else {
-            pc += 7;
+            pc += 6;
         }
         NEXT();
     }
@@ -2002,13 +1992,12 @@ beginSwitch:
             pc += 3 + numDst;
             NEXT();
         } else {
-            zDumpValue(val);
             panicStaticMsg(vm, "Expected tuple.");
             RETURN(RES_CODE_PANIC);
         }
     }
     CASE(Match): {
-        pc += zOpMatch(vm, pc, stack);
+        pc += zOpMatch(pc, stack);
         NEXT();
     }
     CASE(StaticFunc): {

@@ -13,12 +13,11 @@ pub const EncodeListContext = struct {
     cur_indent: u32,
     user_ctx: ?*anyopaque,
 
-    fn indent(self: *EncodeListContext) !void {
+    pub fn indent(self: *EncodeListContext) !void {
         try self.writer.writeByteNTimes(' ', self.cur_indent * 4);
     }
 
     pub fn encodeList(self: *EncodeListContext, val: anytype, cb: fn (*EncodeListContext, @TypeOf(val)) anyerror!void) !void {
-        try self.indent();
         _ = try self.writer.write("[\n");
 
         var list_ctx = EncodeListContext{
@@ -30,12 +29,11 @@ pub const EncodeListContext = struct {
         try cb(&list_ctx, val);
 
         try self.indent();
-        _ = try self.writer.write("]\n");
+        _ = try self.writer.write("]");
     }
     
     pub fn encodeMap(self: *EncodeListContext, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
-        try self.indent();
-        _ = try self.writer.write("{\n");
+        _ = try self.writer.write("[\n");
 
         var map_ctx = EncodeMapContext{
             .writer = self.writer,
@@ -46,31 +44,23 @@ pub const EncodeListContext = struct {
         try encode_map(&map_ctx, val);
 
         try self.indent();
-        _ = try self.writer.write("}\n");
+        _ = try self.writer.write("]");
     }
 
     pub fn encodeBool(self: *EncodeListContext, b: bool) !void {
-        try self.indent();
         try Common.encodeBool(self.writer, b);
-        _ = try self.writer.write("\n");
     }
 
     pub fn encodeFloat(self: *EncodeListContext, f: f64) !void {
-        try self.indent();
         try Common.encodeFloat(self.writer, f);
-        _ = try self.writer.write("\n");
     }
 
     pub fn encodeInt(self: *EncodeListContext, i: i48) !void {
-        try self.indent();
         try Common.encodeInt(self.writer, i);
-        _ = try self.writer.write("\n");
     }
 
     pub fn encodeString(self: *EncodeListContext, str: []const u8) !void {
-        try self.indent();
         try Common.encodeString(self.tmp_buf, self.writer, str);
-        _ = try self.writer.write("\n");
     }
 };
 
@@ -101,7 +91,7 @@ pub const EncodeValueContext = struct {
     }
 
     pub fn encodeMap(self: *EncodeValueContext, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
-        _ = try self.writer.write("{\n");
+        _ = try self.writer.write("[\n");
 
         var map_ctx = EncodeMapContext{
             .writer = self.writer,
@@ -112,7 +102,7 @@ pub const EncodeValueContext = struct {
         try encode_map(&map_ctx, val);
 
         try self.indent();
-        _ = try self.writer.write("}");
+        _ = try self.writer.write("]");
     }
 
     pub fn encodeBool(self: *EncodeValueContext, b: bool) !void {
@@ -156,12 +146,12 @@ pub const EncodeMapContext = struct {
         for (slice) |it| {
             try self.indent();
             try encode_value(&val_ctx, it);
-            _ = try self.writer.write("\n");
+            _ = try self.writer.write(",\n");
         }
         self.cur_indent -= 1;
 
         try self.indent();
-        _ = try self.writer.write("]\n");
+        _ = try self.writer.write("],\n");
     }
 
     pub fn encodeList(self: *EncodeMapContext, key: []const u8, val: anytype, encode_list: fn (*EncodeListContext, @TypeOf(val)) anyerror!void) !void {
@@ -182,7 +172,7 @@ pub const EncodeMapContext = struct {
 
     pub fn encodeMap(self: *EncodeMapContext, key: []const u8, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
         try self.indent();
-        _ = try self.writer.print("{s}: {{\n", .{key});
+        _ = try self.writer.print("{s}: [\n", .{key});
 
         var map_ctx = EncodeMapContext{
             .writer = self.writer,
@@ -193,7 +183,7 @@ pub const EncodeMapContext = struct {
         try encode_map(&map_ctx, val);
 
         try self.indent();
-        _ = try self.writer.write("}\n");
+        _ = try self.writer.write("],\n");
     }
 
     pub fn encodeMap2(self: *EncodeMapContext, key: []const u8, val: anytype, encode_map: fn (*EncodeMapContext, anytype) anyerror!void) !void {
@@ -218,34 +208,35 @@ pub const EncodeMapContext = struct {
         try self.indent();
         _ = try self.writer.print("{s}: ", .{key});
         try self.encodeValue(val);
+        _ = try self.writer.write(",\n");
     }
 
     pub fn encodeString(self: *EncodeMapContext, key: []const u8, val: []const u8) !void {
         try self.indent();
         _ = try self.writer.print("{s}: ", .{key});
         try Common.encodeString(self.tmp_buf, self.writer, val);
-        _ = try self.writer.write("\n");
+        _ = try self.writer.write(",\n");
     }
 
     pub fn encodeInt(self: *EncodeMapContext, key: []const u8, i: i48) !void {
         try self.indent();
         _ = try self.writer.print("{s}: ", .{key});
         try Common.encodeInt(self.writer, i);
-        _ = try self.writer.write("\n");
+        _ = try self.writer.write(",\n");
     }
 
     pub fn encodeFloat(self: *EncodeMapContext, key: []const u8, f: f64) !void {
         try self.indent();
         _ = try self.writer.print("{s}: ", .{key});
         try Common.encodeFloat(self.writer, f);
-        _ = try self.writer.write("\n");
+        _ = try self.writer.write(",\n");
     }
 
     pub fn encodeBool(self: *EncodeMapContext, key: []const u8, b: bool) !void {
         try self.indent();
         _ = try self.writer.print("{s}: ", .{key});
         try Common.encodeBool(self.writer, b);
-        _ = try self.writer.write("\n");
+        _ = try self.writer.write(",\n");
     }
 
     pub fn encodeAnyToMap(self: *EncodeMapContext, key: anytype, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
@@ -282,12 +273,13 @@ pub const EncodeMapContext = struct {
     pub fn encodeAnyToString(self: *EncodeMapContext, key: anytype, val: []const u8) !void {
         try self.encodeAnyKey_(key);
         try Common.encodeString(self.tmp_buf, self.writer, val);
-        _ = try self.writer.write("\n");
+        _ = try self.writer.write(",\n");
     }
 
     pub fn encodeAnyToValue(self: *EncodeMapContext, key: anytype, val: anytype) !void {
         try self.encodeAnyKey_(key);
         try self.encodeValue(val);
+        _ = try self.writer.write(",\n");
     }
 
     fn encodeValue(self: *EncodeMapContext, val: anytype) !void {
@@ -295,7 +287,7 @@ pub const EncodeMapContext = struct {
         switch (T) {
             bool,
             u32 => {
-                _ = try self.writer.print("{}\n", .{val});
+                _ = try self.writer.print("{}", .{val});
             },
             else => {
                 @compileError("unsupported: " ++ @typeName(T));
@@ -354,7 +346,7 @@ pub const DecodeListIR = struct {
 
     fn init(alloc: std.mem.Allocator, res: cy.ParseResultView, list_id: NodeId) !DecodeListIR {
         const list = res.nodes.items[list_id];
-        if (list.node_t != .arr_literal) {
+        if (list.node_t != .arrayLiteral) {
             return error.NotAList;
         }
 
@@ -366,11 +358,13 @@ pub const DecodeListIR = struct {
 
         // Construct list.
         var buf: std.ArrayListUnmanaged(NodeId) = .{};
-        var item_id = list.head.child_head;
-        while (item_id != NullId) {
-            const item = res.nodes.items[item_id];
-            try buf.append(alloc, item_id);
-            item_id = item.next;
+        if (list.head.arrayLiteral.numArgs > 0) {
+            var item_id = list.head.arrayLiteral.argHead;
+            while (item_id != NullId) {
+                const item = res.nodes.items[item_id];
+                try buf.append(alloc, item_id);
+                item_id = item.next;
+            }
         }
         new.arr = try buf.toOwnedSlice(alloc);
         return new;
@@ -404,7 +398,7 @@ pub const DecodeMapIR = struct {
 
     fn init(alloc: std.mem.Allocator, res: cy.ParseResultView, map_id: NodeId) !DecodeMapIR {
         const map = res.nodes.items[map_id];
-        if (map.node_t != .map_literal) {
+        if (map.node_t != .recordLiteral) {
             return error.NotAMap;
         }
 
@@ -415,15 +409,15 @@ pub const DecodeMapIR = struct {
         };
 
         // Parse literal into map.
-        var entry_id = map.head.child_head;
+        var entry_id = map.head.recordLiteral.argHead;
         while (entry_id != NullId) {
             const entry = res.nodes.items[entry_id];
-            const key = res.nodes.items[entry.head.mapEntry.left];
+            const key = res.nodes.items[entry.head.keyValue.left];
             switch (key.node_t) {
                 .number,
                 .ident => {
                     const str = res.getTokenString(key.start_token);
-                    try new.map.put(alloc, str, entry.head.mapEntry.right);
+                    try new.map.put(alloc, str, entry.head.keyValue.right);
                 },
                 else => return error.Unsupported,
             }
@@ -461,7 +455,7 @@ pub const DecodeMapIR = struct {
                 buf.items.len = str.len;
                 return buf.toOwnedSlice();
             } else if (val_n.node_t == .stringTemplate) {
-                const str = self.res.nodes.items[val_n.head.stringTemplate.partsHead];
+                const str = self.res.nodes.items[val_n.head.stringTemplate.strHead];
                 if (str.next == NullId) {
                     const token_s = self.res.getTokenString(str.start_token);
                     var buf = std.ArrayList(u8).init(self.alloc);
@@ -527,11 +521,11 @@ pub fn decodeMap(alloc: std.mem.Allocator, parser: *Parser, ctx: anytype, out: a
         return error.NotAMap;
     }
     const first_stmt = res.nodes.items[root.head.root.headStmt];
-    if (first_stmt.node_t != .expr_stmt) {
+    if (first_stmt.node_t != .exprStmt) {
         return error.NotAMap;
     }
 
-    var map = try DecodeMapIR.init(alloc, res, first_stmt.head.child_head);
+    var map = try DecodeMapIR.init(alloc, res, first_stmt.head.exprStmt.child);
     defer map.deinit();
     try decode_map(map, ctx, out);
 }
@@ -548,14 +542,14 @@ pub fn decode(alloc: std.mem.Allocator, parser: *Parser, cyon: []const u8) !Deco
         return error.NotAValue;
     }
     const first_stmt = res.nodes.items[root.head.root.headStmt];
-    if (first_stmt.node_t != .expr_stmt) {
+    if (first_stmt.node_t != .exprStmt) {
         return error.NotAValue;
     }
 
     return DecodeValueIR{
         .alloc = alloc, 
         .res = res,
-        .exprId = first_stmt.head.child_head,
+        .exprId = first_stmt.head.exprStmt.child,
     };
 }
 
@@ -565,7 +559,7 @@ const ValueType = enum {
     string,
     integer,
     float,
-    boolean,
+    bool,
 };
 
 pub const DecodeValueIR = struct {
@@ -576,13 +570,13 @@ pub const DecodeValueIR = struct {
     pub fn getValueType(self: DecodeValueIR) ValueType {
         const node = self.res.nodes.items[self.exprId];
         switch (node.node_t) {
-            .arr_literal => return .list,
-            .map_literal => return .map,
+            .arrayLiteral => return .list,
+            .recordLiteral => return .map,
             .string => return .string,
             .number => return .integer,
             .float => return .float,
-            .true_literal => return .boolean,
-            .false_literal => return .boolean,
+            .true_literal => return .bool,
+            .false_literal => return .bool,
             else => cy.panicFmt("unsupported {}", .{node.node_t}),
         }
     }
@@ -690,26 +684,26 @@ test "encode" {
     const res = try encode(t.alloc, null, root, S.encodeValue);
     defer t.alloc.free(res);
     try t.eqStr(res,
-        \\{
-        \\    name: 'project'
+        \\[
+        \\    name: 'project',
         \\    list: [
-        \\        {
-        \\            field: 1
-        \\        }
-        \\        {
-        \\            field: 2
-        \\        }
-        \\    ]
-        \\    map: {
-        \\        1: 'foo'
-        \\        2: 'bar'
-        \\        3: 'ba\'r'
+        \\        [
+        \\            field: 1,
+        \\        ],
+        \\        [
+        \\            field: 2,
+        \\        ],
+        \\    ],
+        \\    map: [
+        \\        1: 'foo',
+        \\        2: 'bar',
+        \\        3: 'ba\'r',
         \\        4: `bar
-        \\bar`
+        \\bar`,
         \\        5: `bar \`bar\`
-        \\bar`
-        \\    }
-        \\}
+        \\bar`,
+        \\    ],
+        \\]
     );
 }
 
@@ -749,26 +743,26 @@ test "decodeMap" {
 
     var root: TestRoot = undefined;
     try decodeMap(t.alloc, &parser, {}, &root, S.decodeRoot, 
-        \\{
-        \\    name: 'project'
+        \\[
+        \\    name: 'project',
         \\    list: [
-        \\        {
+        \\        [
         \\            field: 1
-        \\        }
-        \\        {
+        \\        ],
+        \\        [
         \\            field: 2
-        \\        }
-        \\    ]
-        \\    map: {
-        \\        1: 'foo'
-        \\        2: 'bar'
-        \\        3: 'ba\'r'
+        \\        ]
+        \\    ],
+        \\    map: [
+        \\        1: 'foo',
+        \\        2: 'bar',
+        \\        3: 'ba\'r',
         \\        4: "bar
-        \\bar"
+        \\bar",
         \\        5: "bar `bar`
         \\bar"
-        \\    }
-        \\}
+        \\    ]
+        \\]
     );
     defer {
         t.alloc.free(root.list);

@@ -10,7 +10,7 @@ const vmc = cy.vmc;
 const types = cy.types;
 const rt = cy.rt;
 const sema = cy.sema;
-const bt = cy.types.BuiltinTypeSymIds;
+const bt = cy.types.BuiltinTypes;
 const Value = cy.Value;
 const vm_ = @import("../vm.zig");
 const TrackGlobalRC = vm_.TrackGlobalRC;
@@ -44,6 +44,10 @@ pub const Symbol = enum {
     right,
     ends,
 
+    // Encoding.
+    utf8,
+    bytes,
+
     AssertError,
     FileNotFound,
     MissingSymbol,
@@ -57,12 +61,12 @@ pub const Symbol = enum {
     Closed,
     PermissionDenied,
     UnknownError,
+    Unicode,
 
     running,
     paused,
     done,
 
-    boolean,
     err,
     float,
     object,
@@ -71,7 +75,7 @@ pub const Symbol = enum {
     function,
     fiber,
     string,
-    rawstring,
+    array,
     none,
     symbol,
     pointer,
@@ -89,7 +93,7 @@ pub const Symbol = enum {
     unknown,
 };
 
-fn getBuiltinSymbol(id: u32) ?Symbol {
+pub fn getBuiltinSymbol(id: u32) ?Symbol {
     return std.meta.intToEnum(Symbol, id) catch {
         return null;
     };
@@ -102,281 +106,8 @@ pub fn prepareThrowSymbol(vm: *cy.UserVM, sym: Symbol) Value {
 const StdSection = cy.StdSection;
 const Section = cy.Section;
 
-// TODO: Once traits is done, bind all string types using comptime.
-// const NameFunc = struct { []const u8, cy.ZHostFuncFn };
-// const funcs = b: {
-//     var arr: std.BoundedArray(NameFunc, 100) = .{};
-//     arr.appendSlice(&.{
-//         .{ "sort", listSort},
-//     }) catch cy.fatal();
-
-//     const stringTypes = &[_]rt.TypeId{ rt.StaticAstringT, rt.StaticUstringT, rt.AstringT, rt.UstringT, rt.StringSliceT };
-//     inline for (stringTypes) |stringT| {
-//         const tag: cy.StringType = switch (stringT) {
-//             rt.StaticAstringT => .staticAstring,
-//             rt.StaticUstringT => .staticUstring,
-//             rt.AstringT => .astring,
-//             rt.UstringT => .ustring,
-//             rt.StringSliceT => .slice,
-//             else => unreachable,
-//         };
-//         arr.appendSlice(&.{
-//             .{ "append", stringAppend(tag) },
-//         }) catch cy.fatal();
-//     }
-
-//     if (arr.len != arr.capacity()) {
-//         @compileError(std.fmt.comptimePrint("Len ({}) != Cap ({})", .{arr.len, arr.capacity()}));
-//     }
-//     break :b arr.slice();
-// };
-
 pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     @setCold(true);
-
-    const b = ModuleBuilder.init(self.compiler, undefined);
-
-    // Builtin methods.
-    self.indexMGID = try b.ensureMethodGroup("$index");
-    self.setIndexMGID = try b.ensureMethodGroup("$setIndex");
-    self.sliceMGID = try b.ensureMethodGroup("$slice");
-    self.@"infix<MGID" = try b.ensureMethodGroup("$infix<");
-    self.@"infix<=MGID" = try b.ensureMethodGroup("$infix<=");
-    self.@"infix>MGID" = try b.ensureMethodGroup("$infix>");
-    self.@"infix>=MGID" = try b.ensureMethodGroup("$infix>=");
-    self.@"infix+MGID" = try b.ensureMethodGroup("$infix+");
-    self.@"infix-MGID" = try b.ensureMethodGroup("$infix-");
-    self.@"infix*MGID" = try b.ensureMethodGroup("$infix*");
-    self.@"infix/MGID" = try b.ensureMethodGroup("$infix/");
-    self.@"infix%MGID" = try b.ensureMethodGroup("$infix%");
-    self.@"infix^MGID" = try b.ensureMethodGroup("$infix^");
-    self.@"infix&MGID" = try b.ensureMethodGroup("$infix&");
-    self.@"infix|MGID" = try b.ensureMethodGroup("$infix|");
-    self.@"infix||MGID" = try b.ensureMethodGroup("$infix||");
-    self.@"infix<<MGID" = try b.ensureMethodGroup("$infix<<");
-    self.@"infix>>MGID" = try b.ensureMethodGroup("$infix>>");
-    self.@"prefix~MGID" = try b.ensureMethodGroup("$prefix~");
-    self.@"prefix-MGID" = try b.ensureMethodGroup("$prefix-");
-    const append = try b.ensureMethodGroup("append");
-    const byteAt = try b.ensureMethodGroup("byteAt");
-    const charAt = try b.ensureMethodGroup("charAt");
-    const codeAt = try b.ensureMethodGroup("codeAt");
-    const concat = try b.ensureMethodGroup("concat");
-    const endsWith = try b.ensureMethodGroup("endsWith");
-    const find = try b.ensureMethodGroup("find");
-    const findAnyRune = try b.ensureMethodGroup("findAnyRune");
-    const findRune = try b.ensureMethodGroup("findRune");
-    const idSym = try b.ensureMethodGroup("id");
-    const insert = try b.ensureMethodGroup("insert");
-    const insertByte = try b.ensureMethodGroup("insertByte");
-    const isAscii = try b.ensureMethodGroup("isAscii");
-    self.iteratorMGID = try b.ensureMethodGroup("iterator");
-    const len = try b.ensureMethodGroup("len");
-    const less = try b.ensureMethodGroup("less");
-    const lower = try b.ensureMethodGroup("lower");
-    self.nextMGID = try b.ensureMethodGroup("next");
-    self.nextSeqMGID = try b.ensureMethodGroup("nextSeq");
-    self.seqIteratorMGID = try b.ensureMethodGroup("seqIterator");
-    const repeat = try b.ensureMethodGroup("repeat");
-    const replace = try b.ensureMethodGroup("replace");
-    const runeAt = try b.ensureMethodGroup("runeAt");
-    const slice = try b.ensureMethodGroup("slice");
-    const sliceAt = try b.ensureMethodGroup("sliceAt");
-    const split = try b.ensureMethodGroup("split");
-    const startsWith = try b.ensureMethodGroup("startsWith");
-    const status = try b.ensureMethodGroup("status");
-    const toString = try b.ensureMethodGroup("toString");
-    const trim = try b.ensureMethodGroup("trim");
-    const upper = try b.ensureMethodGroup("upper");
-    const utf8 = try b.ensureMethodGroup("utf8");
-    
-    // Init compile time builtins.
-    var rsym: sema.Symbol = undefined;
-    var sb: ModuleBuilder = undefined;
-
-    // Builtin types.
-    var id = try self.addBuiltinType("none", bt.None);
-    std.debug.assert(id == rt.NoneT);
-
-    id = try self.addBuiltinType("boolean", bt.Boolean);
-    std.debug.assert(id == rt.BooleanT);
-
-    id = try self.addBuiltinType("error", bt.Error);
-    std.debug.assert(id == rt.ErrorT);
-
-    id = try self.addBuiltinType("StaticAstring", bt.String);
-    std.debug.assert(id == rt.StaticAstringT);
-
-    // string type module.
-    rsym = self.compiler.sema.getSymbol(bt.String);
-    sb = ModuleBuilder.init(self.compiler, rsym.inner.builtinType.modId);
-    try sb.setFunc("$call", &.{ bt.Any }, bt.String, stringCall);
-
-    id = try self.addBuiltinType("StaticUstring", bt.String);
-    std.debug.assert(id == rt.StaticUstringT);
-
-    id = try self.addBuiltinType("enum", cy.NullId);
-    std.debug.assert(id == rt.EnumT);
-
-    id = try self.addBuiltinType("symbol", bt.Symbol);
-    std.debug.assert(id == rt.SymbolT);
-
-    id = try self.addBuiltinType("integer", bt.Integer);
-    std.debug.assert(id == rt.IntegerT);
-
-    id = try self.addBuiltinType("float", bt.Float);
-    std.debug.assert(id == rt.FloatT);
-
-    id = try self.addBuiltinType("Tuple", bt.Tuple);
-    std.debug.assert(id == rt.TupleT);
-
-    id = try self.addBuiltinType("List", bt.List);
-    std.debug.assert(id == rt.ListT);
-
-    id = try self.addBuiltinType("ListIterator", bt.ListIter);
-    std.debug.assert(id == rt.ListIteratorT);
-
-    id = try self.addBuiltinType("Map", bt.Map);
-    std.debug.assert(id == rt.MapT);
-
-    id = try self.addBuiltinType("MapIterator", bt.MapIter);
-    std.debug.assert(id == rt.MapIteratorT);
-
-    id = try self.addBuiltinType("Closure", cy.NullId);
-    std.debug.assert(id == rt.ClosureT);
-
-    id = try self.addBuiltinType("Lambda", cy.NullId);
-    std.debug.assert(id == rt.LambdaT);
-
-    id = try self.addBuiltinType("Astring", bt.String);
-    std.debug.assert(id == rt.AstringT);
-
-    id = try self.addBuiltinType("Ustring", bt.String);
-    std.debug.assert(id == rt.UstringT);
-
-    id = try self.addBuiltinType("StringSlice", bt.String);
-    std.debug.assert(id == rt.StringSliceT);
-
-    const StringTypes = &[_]rt.TypeId{ rt.StaticAstringT, rt.StaticUstringT, rt.AstringT, rt.UstringT, rt.StringSliceT };
-    inline for (StringTypes) |typeId| {
-        const tag: cy.StringType = switch (typeId) {
-            rt.StaticAstringT => .staticAstring,
-            rt.StaticUstringT => .staticUstring,
-            rt.AstringT => .astring,
-            rt.UstringT => .ustring,
-            rt.StringSliceT => .slice,
-            else => unreachable,
-        };
-        // ret: string | rawstring
-        try b.addMethod(typeId, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Any, stringConcat(tag));
-        try b.addMethod(typeId, append,       &.{ bt.Any, bt.Any }, bt.String, stringAppend(tag));
-        try b.addMethod(typeId, charAt,       &.{ bt.Any, bt.Integer }, bt.Any, stringCharAt(tag));
-        try b.addMethod(typeId, codeAt,       &.{ bt.Any, bt.Integer }, bt.Any, stringCodeAt(tag));
-        // ret: string | rawstring
-        try b.addMethod(typeId, concat,       &.{ bt.Any, bt.Any }, bt.Any, stringConcat(tag));
-        try b.addMethod(typeId, endsWith,     &.{ bt.Any, bt.Any }, bt.Boolean, stringEndsWith(tag));
-        try b.addMethod(typeId, find,         &.{ bt.Any, bt.Any }, bt.Any, stringFind(tag));
-        try b.addMethod(typeId, findAnyRune,  &.{ bt.Any, bt.Any }, bt.Any, stringFindAnyRune(tag));
-        try b.addMethod(typeId, findRune,     &.{ bt.Any, bt.Integer }, bt.Any, stringFindRune(tag));
-        try b.addMethod(typeId, insert,       &.{ bt.Any, bt.Integer, bt.Any }, bt.String, stringInsert(tag));
-        try b.addMethod(typeId, isAscii,      &.{ bt.Any }, bt.Boolean, stringIsAscii(tag));
-        try b.addMethod(typeId, len,          &.{ bt.Any }, bt.Integer, stringLen(tag));
-        try b.addMethod(typeId, less,         &.{ bt.Any, bt.Any }, bt.Boolean, stringLess(tag));
-        try b.addMethod(typeId, lower,        &.{ bt.Any }, bt.String, stringLower(tag));
-        try b.addMethod(typeId, replace,      &.{ bt.Any, bt.Any, bt.Any }, bt.String, stringReplace(tag));
-        try b.addMethod(typeId, repeat,       &.{ bt.Any, bt.Integer }, bt.Any, stringRepeat(tag));
-        try b.addMethod(typeId, runeAt,       &.{ bt.Any, bt.Integer }, bt.Any, stringRuneAt(tag));
-        try b.addMethod(typeId, slice,        &.{ bt.Any, bt.Integer, bt.Integer }, bt.Any, stringSlice(tag));
-        try b.addMethod(typeId, self.sliceMGID, &.{ bt.Any, bt.Integer, bt.Any }, bt.Any, stringSlice(tag));
-        try b.addMethod(typeId, sliceAt,      &.{ bt.Any, bt.Integer }, bt.Any, stringSliceAt(tag));
-        try b.addMethod(typeId, self.indexMGID, &.{ bt.Any, bt.Integer }, bt.Any, stringSliceAt(tag));
-        try b.addMethod(typeId, split,        &.{ bt.Any, bt.Any }, bt.List, stringSplit(tag));
-        try b.addMethod(typeId, startsWith,   &.{ bt.Any, bt.Any }, bt.Boolean, stringStartsWith(tag));
-        try b.addMethod(typeId, trim,         &.{ bt.Any, bt.Symbol, bt.Any }, bt.Any, stringTrim(tag));
-        try b.addMethod(typeId, upper,        &.{ bt.Any }, bt.String, stringUpper(tag));
-    }
-
-    id = try self.addBuiltinType("Rawstring", bt.Rawstring);
-    std.debug.assert(id == rt.RawstringT);
-
-    // rawstring type module.
-    rsym = self.compiler.sema.getSymbol(bt.Rawstring);
-    sb = ModuleBuilder.init(self.compiler, rsym.inner.builtinType.modId);
-    try sb.setFunc("$call", &.{ bt.Any }, bt.Rawstring, rawstringCall);
-
-    id = try self.addBuiltinType("RawstringSlice", bt.Rawstring);
-    std.debug.assert(id == rt.RawstringSliceT);
-
-    const RawstringTypes = &[_]rt.TypeId{ rt.RawstringT, rt.RawstringSliceT };
-    inline for (RawstringTypes) |typeId| {
-        const tag = switch (typeId) {
-            rt.RawstringT => .rawstring,
-            rt.RawstringSliceT => .rawSlice,
-            else => unreachable,
-        };
-        try b.addMethod(typeId, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Rawstring, stringConcat(tag));
-        try b.addMethod(typeId, append,       &.{ bt.Any, bt.Any }, bt.Rawstring, stringAppend(tag));
-        try b.addMethod(typeId, byteAt,       &.{ bt.Any, bt.Integer }, bt.Integer,
-            if (tag == .rawstring) rawStringByteAt else rawStringSliceByteAt);
-        try b.addMethod(typeId, charAt,       &.{ bt.Any, bt.Integer }, bt.Any, stringCharAt(tag));
-        try b.addMethod(typeId, codeAt,       &.{ bt.Any, bt.Integer }, bt.Any, stringCodeAt(tag));
-        try b.addMethod(typeId, concat,       &.{ bt.Any, bt.Any }, bt.Rawstring, stringConcat(tag));
-        try b.addMethod(typeId, endsWith,     &.{ bt.Any, bt.Any }, bt.Boolean, stringEndsWith(tag));
-        try b.addMethod(typeId, find,         &.{ bt.Any, bt.Any }, bt.Any, stringFind(tag));
-        try b.addMethod(typeId, findAnyRune,  &.{ bt.Any, bt.Any }, bt.Any, stringFindAnyRune(tag));
-        try b.addMethod(typeId, findRune,     &.{ bt.Any, bt.Integer }, bt.Any, stringFindRune(tag));
-        try b.addMethod(typeId, insert,       &.{ bt.Any, bt.Integer, bt.Any }, bt.Any, stringInsert(tag));
-        try b.addMethod(typeId, insertByte,   &.{ bt.Any, bt.Integer, bt.Integer }, bt.Any,
-            if (tag == .rawstring) rawStringInsertByte else rawStringSliceInsertByte);
-        try b.addMethod(typeId, isAscii,      &.{ bt.Any }, bt.Boolean, stringIsAscii(tag));
-        try b.addMethod(typeId, len,          &.{ bt.Any }, bt.Integer, stringLen(tag));
-        try b.addMethod(typeId, less,         &.{ bt.Any, bt.Any }, bt.Boolean, stringLess(tag));
-        try b.addMethod(typeId, lower,        &.{ bt.Any }, bt.Rawstring, stringLower(tag));
-        try b.addMethod(typeId, repeat,       &.{ bt.Any, bt.Integer }, bt.Any, stringRepeat(tag));
-        try b.addMethod(typeId, replace,      &.{ bt.Any, bt.Any, bt.Any }, bt.Rawstring, stringReplace(tag));
-        try b.addMethod(typeId, runeAt,       &.{ bt.Any, bt.Integer }, bt.Any, stringRuneAt(tag));
-        try b.addMethod(typeId, slice,        &.{ bt.Any, bt.Integer, bt.Integer }, bt.Any, stringSlice(tag));
-        try b.addMethod(typeId, self.sliceMGID, &.{ bt.Any, bt.Integer, bt.Any }, bt.Any, stringSlice(tag));
-        try b.addMethod(typeId, sliceAt,      &.{ bt.Any, bt.Integer }, bt.Any, stringSliceAt(tag));
-        try b.addMethod(typeId, self.indexMGID, &.{ bt.Any, bt.Integer }, bt.Any, stringSliceAt(tag));
-        try b.addMethod(typeId, split,        &.{ bt.Any, bt.Any }, bt.List, stringSplit(tag));
-        try b.addMethod(typeId, startsWith,   &.{ bt.Any, bt.Any }, bt.Boolean, stringStartsWith(tag));
-        try b.addMethod(typeId, toString,     &.{ bt.Any }, bt.Any,
-            if (tag == .rawstring) rawStringToString else rawStringSliceToString);
-        try b.addMethod(typeId, trim,         &.{ bt.Any, bt.Symbol, bt.Any }, bt.Any, stringTrim(tag));
-        try b.addMethod(typeId, upper,        &.{ bt.Any }, bt.Rawstring, stringUpper(tag));
-        try b.addMethod(typeId, utf8,         &.{ bt.Any }, bt.Any,
-            if (tag == .rawstring) rawStringUtf8 else rawStringSliceUtf8);
-    }
-
-    id = try self.addBuiltinType("Fiber", bt.Fiber);
-    std.debug.assert(id == rt.FiberT);
-    try b.addMethod(rt.FiberT, status, &.{ bt.Any }, bt.Symbol, fiberStatus);
-
-    id = try self.addBuiltinType("Box", cy.NullId);
-    std.debug.assert(id == rt.BoxT);
-
-    id = try self.addBuiltinType("NativeFunc1", cy.NullId);
-    std.debug.assert(id == rt.NativeFuncT);
-
-    id = try self.addBuiltinType("TccState", cy.NullId);
-    std.debug.assert(id == rt.TccStateT);
-
-    id = try self.addBuiltinType("pointer", bt.Pointer);
-    std.debug.assert(id == rt.PointerT);
-
-    id = try self.addBuiltinType("MetaType", bt.MetaType);
-    std.debug.assert(id == rt.MetaTypeT);
-    try b.addMethod(rt.MetaTypeT, idSym, &.{ bt.Any }, bt.Integer, metatypeId);
-
-    id = try self.addBuiltinType("any", bt.Any);
-    std.debug.assert(id == rt.AnyT);
-
-    id = try self.addBuiltinType("string", bt.String);
-    std.debug.assert(id == rt.StringUnionT);
-
-    id = try self.addBuiltinType("rawstring", bt.Rawstring);
-    std.debug.assert(id == rt.RawstringUnionT);
 
     try ensureSymbol(self, "bool", .bool);
     try ensureSymbol(self, "char", .char);
@@ -400,6 +131,9 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureSymbol(self, "right", .right);
     try ensureSymbol(self, "ends", .ends);
 
+    try ensureSymbol(self, "utf8", .utf8);
+    try ensureSymbol(self, "bytes", .bytes);
+
     try ensureSymbol(self, "AssertError", .AssertError);
     try ensureSymbol(self, "FileNotFound", .FileNotFound);
     try ensureSymbol(self, "MissingSymbol", .MissingSymbol);
@@ -413,12 +147,12 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureSymbol(self, "Closed", .Closed);
     try ensureSymbol(self, "PermissionDenied", .PermissionDenied);
     try ensureSymbol(self, "UnknownError", .UnknownError);
+    try ensureSymbol(self, "Unicode", .Unicode);
 
     try ensureSymbol(self, "running", .running);
     try ensureSymbol(self, "paused", .paused);
     try ensureSymbol(self, "done", .done);
 
-    try ensureSymbol(self, "boolean", .boolean);
     try ensureSymbol(self, "error", .err);
     try ensureSymbol(self, "float", .float);
     try ensureSymbol(self, "object", .object);
@@ -427,7 +161,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureSymbol(self, "function", .function);
     try ensureSymbol(self, "fiber", .fiber);
     try ensureSymbol(self, "string", .string);
-    try ensureSymbol(self, "rawstring", .rawstring);
+    try ensureSymbol(self, "array", .array);
     try ensureSymbol(self, "none", .none);
     try ensureSymbol(self, "symbol", .symbol);
     try ensureSymbol(self, "pointer", .pointer);
@@ -448,6 +182,8 @@ fn ensureSymbol(vm: *cy.VM, name: []const u8, sym: Symbol) !void {
     std.debug.assert(id == @intFromEnum(sym));
 }
 
+// TODO: Provide sort where the sort fields and compare strategy are provided instead of a lessFn,
+//       since Cyber's VM is non reentrant.
 pub fn listSort(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
@@ -555,10 +291,10 @@ pub fn listJoinString(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(c
         var buf: []u8 = undefined;
         if (charLenSum == byteLen) {
             newObj = vm.allocUnsetAstringObject(byteLen) catch fatal();
-            buf = newObj.astring.getSlice();
+            buf = newObj.astring.getMutSlice();
         } else {
             newObj = vm.allocUnsetUstringObject(byteLen, charLenSum) catch fatal();
-            buf = newObj.ustring.getSlice();
+            buf = newObj.ustring.getMutSlice();
         }
         const slices = @as([*][]const u8, @ptrCast(tempSlices.buf.ptr))[0..items.len];
         std.mem.copy(u8, buf[0..slices[0].len], slices[0]);
@@ -571,8 +307,9 @@ pub fn listJoinString(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(c
         }
         return Value.initNoCycPtr(newObj);
     } else {
-        // Empty string.
-        return Value.initStaticAstring(0, 0);
+        const empty = vm.internal().emptyString;
+        vm.retain(empty);
+        return empty;
     }
 }
 
@@ -584,18 +321,6 @@ pub fn listConcat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.St
         obj.list.append(vm.allocator(), it);
     }
     return Value.None;
-}
-
-pub fn listIteratorNextSeq(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = args[0].asHeapObject();
-    const list = obj.listIter.list;
-    if (obj.listIter.nextIdx < list.list.len) {
-        defer obj.listIter.nextIdx += 1;
-        const val = list.list.ptr[obj.listIter.nextIdx];
-        vm.retain(val);
-        const idx = Value.initInt(@intCast(obj.listIter.nextIdx));
-        return cy.heap.allocTuple(vm.internal(), &.{idx, val}) catch cy.fatal();
-    } else return Value.None;
 }
 
 pub fn listIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
@@ -642,22 +367,13 @@ pub fn mapIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(Sect
     return vm.allocMapIterator(&obj.map) catch fatal();
 }
 
-pub fn mapIteratorNextSeq(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(Section) Value {
+pub fn mapIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(Section) Value {
     const obj = args[0].asHeapObject();
     const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.inner);
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
         vm.retain(entry.key);
         vm.retain(entry.value);
         return cy.heap.allocTuple(vm.internal(), &.{entry.key, entry.value}) catch cy.fatal();
-    } else return Value.None;
-}
-
-pub fn mapIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = args[0].asHeapObject();
-    const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.inner);
-    if (map.next(&obj.mapIter.nextIdx)) |entry| {
-        vm.retain(entry.value);
-        return entry.value;
     } else return Value.None;
 }
 
@@ -705,1191 +421,6 @@ pub fn listLen(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Sectio
 //     return Value.None;
 // }
 
-pub fn errorValue(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const recv = args[0];
-    const enumId = (recv.val & 0xFF00) >> 8;
-    if (enumId == cy.NullU8) {
-        return Value.initSymbol(recv.asErrorSymbol());
-    } else {
-        log.debug("TODO: error.value() for enums.", .{});
-        return prepareThrowSymbol(vm, .InvalidArgument);
-    }
-}
-
-pub fn pointerValue(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    return Value.initInt(@bitCast(@as(u48, (@intCast(@intFromPtr(obj.pointer.ptr))))));
-}
-
-fn fiberStatus(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const fiber = args[0].asPointer(*vmc.Fiber);
-
-    if (vm.internal().curFiber == fiber) {
-        return Value.initSymbol(@intFromEnum(Symbol.running));
-    } else {
-        // Check if done.
-        if (fiber.pcOffset == NullId) {
-            return Value.initSymbol(@intFromEnum(Symbol.done));
-        } else {
-            return Value.initSymbol(@intFromEnum(Symbol.paused));
-        }
-    }
-}
-
-pub fn stringUpper(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-            if (isAstringObject(T, obj)) {
-                const new = vm.allocUnsetAstringObject(str.len) catch fatal();
-                const newBuf = new.astring.getSlice();
-                _ = std.ascii.upperString(newBuf, str);
-                return vm.allocOwnedAstring(new) catch fatal();
-            } else if (isUstringObject(T, obj)) {
-                const new = vm.allocUnsetUstringObject(str.len, getStringCharLen(T, vm, obj)) catch fatal();
-                const newBuf = new.ustring.getSlice();
-                _ = std.ascii.upperString(newBuf, str);
-                return vm.allocOwnedUstring(new) catch fatal();
-            } else if (isRawStringObject(T)) {
-                const new = vm.allocUnsetRawStringObject(str.len) catch fatal();
-                const newBuf = new.rawstring.getSlice();
-                _ = std.ascii.upperString(newBuf, str);
-                return Value.initNoCycPtr(new);
-            } else fatal();
-        }
-    };
-    return S.inner;
-}
-
-pub fn stringLower(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-            if (isAstringObject(T, obj)) {
-                const new = vm.allocUnsetAstringObject(str.len) catch fatal();
-                const newBuf = new.astring.getSlice();
-                _ = std.ascii.lowerString(newBuf, str);
-                return vm.allocOwnedAstring(new) catch fatal();
-            } else if (isUstringObject(T, obj)) {
-                const new = vm.allocUnsetUstringObject(str.len, getStringCharLen(T, vm, obj)) catch fatal();
-                const newBuf = new.ustring.getSlice();
-                _ = std.ascii.lowerString(newBuf, str);
-                return vm.allocOwnedUstring(new) catch fatal();
-            } else if (isRawStringObject(T)) {
-                const new = vm.allocUnsetRawStringObject(str.len) catch fatal();
-                const newBuf = new.rawstring.getSlice();
-                _ = std.ascii.lowerString(newBuf, str);
-                return Value.initNoCycPtr(new);
-            } else fatal();
-        }
-    };
-    return S.inner;
-}
-
-pub fn stringLess(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-            if (isRawStringObject(T)) {
-                var right: []const u8 = undefined;
-                if (args[1].isRawString()) {
-                    right = args[1].asRawString();
-                } else {
-                    right = vm.valueToTempString(args[1]);
-                }
-                return Value.initBool(std.mem.lessThan(u8, str, right));
-            } else {
-                const right = vm.valueToTempString(args[1]);
-                return Value.initBool(std.mem.lessThan(u8, str, right));
-            }
-        }
-    };
-    return S.inner;
-}
-
-pub fn stringLen(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-            const obj = getStringObject(T, args[0]);
-            if (isAstringObject(T, obj)) {
-                if (T == .astring) {
-                    return Value.initInt(@intCast(obj.astring.len));
-                } else if (T == .staticAstring) {
-                    return Value.initInt(@intCast(obj.len()));
-                } else if (T == .slice) {
-                    return Value.initInt(@intCast(obj.stringSlice.len));
-                } else fatal();
-            } else if (isUstringObject(T, obj)) {
-                return Value.initInt(@intCast(getStringCharLen(T, vm, obj)));
-            } else if (T == .rawstring) {
-                return Value.initInt(@intCast(obj.rawstring.len));
-            } else if (T == .rawSlice) {
-                return Value.initInt(@intCast(obj.rawstringSlice.len));
-            } else fatal();
-        }
-    };
-    return S.inner;
-}
-
-fn stringCharAt(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-            fmt.printDeprecated("string.charAt()", "0.2", "Use string.sliceAt() instead.", &.{});
-            return @call(.never_inline, stringSliceAt(T), .{vm, args, nargs});
-        }
-    };
-    return S.inner;
-}
-
-pub fn stringSliceAt(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-            var idx = args[1].asInteger();
-
-            if (isAstringObject(T, obj)) {
-                if (idx < 0) {
-                    idx = @as(i48, @intCast(str.len)) + idx;
-                }
-                if (idx < 0 or idx >= str.len) {
-                    return prepareThrowSymbol(vm, .OutOfBounds);
-                }
-                const uidx: u32 = @intCast(idx);
-                if (T == .staticAstring) {
-                    return Value.initStaticAstring(obj.start + uidx, 1);
-                } else {
-                    // TODO: return slice.
-                    return vm.allocAstring(str[uidx..uidx + 1]) catch fatal();
-                }
-            } else if (isUstringObject(T, obj)) {
-                if (idx < 0) {
-                    idx = @as(i48, @intCast(getStringCharLen(T, vm, obj))) + idx;
-                }
-                if (idx < 0 or idx >= getStringCharLen(T, vm, obj)) {
-                    return prepareThrowSymbol(vm, .OutOfBounds);
-                }
-                const uidx: u32 = @intCast(idx);
-                const mru = getUstringMruChar(T, vm, obj);
-                const start: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
-                const slice = cy.string.utf8CharSliceAtNoCheck(str, start);
-
-                setUstringMruChar(T, vm, obj, uidx, start);
-                if (slice.len == 1) {
-                    if (T == .staticUstring) {
-                        return Value.initStaticAstring(obj.start + start, 1);
-                    } else {
-                        return vm.allocAstring(slice) catch fatal();
-                    }
-                } else {
-                    return vm.allocUstring(slice, 1) catch fatal();
-                }
-            } else if (isRawStringObject(T)) {
-                if (idx < 0) {
-                    idx = @as(i48, @intCast(str.len)) + idx;
-                }
-                if (idx < 0 or idx >= str.len) {
-                    return prepareThrowSymbol(vm, .OutOfBounds);
-                }
-                const uidx: u32 = @intCast(idx);
-                if (cy.utf8CharSliceAt(str, uidx)) |slice| {
-                    if (slice.len == 1) {
-                        return vm.allocAstring(slice) catch fatal();
-                    } else {
-                        return vm.allocUstring(slice, 1) catch fatal();
-                    }
-                } else {
-                    return prepareThrowSymbol(vm, .InvalidRune);
-                }
-            } else fatal();
-        }
-    };
-    return S.inner;
-}
-
-pub fn stringCodeAt(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-            fmt.printDeprecated("string.codeAt()", "0.2", "Use string.runeAt() instead.", &.{});
-            return @call(.never_inline, stringRuneAt(T), .{vm, args, nargs});
-        }
-    };
-    return S.inner;
-}
-
-fn stringRuneAt(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-            const idx = args[1].asInteger();
-            if (isAstringObject(T, obj)) {
-                if (idx < 0 or idx >= str.len) {
-                    return prepareThrowSymbol(vm, .OutOfBounds);
-                }
-                return Value.initInt(@intCast(str[@intCast(idx)]));
-            } else if (isUstringObject(T, obj)) {
-                if (idx < 0 or idx >= getStringCharLen(T, vm, obj)) {
-                    return prepareThrowSymbol(vm, .OutOfBounds);
-                }
-                const uidx: u32 = @intCast(idx);
-                const mru = getUstringMruChar(T, vm, obj);
-                const start: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
-                const slice = cy.string.utf8CharSliceAtNoCheck(str, start);
-
-                const cp = std.unicode.utf8Decode(slice) catch cy.fatal();
-                setUstringMruChar(T, vm, obj, uidx, start);
-                return Value.initInt(@intCast(cp));
-            } else if (isRawStringObject(T)) {
-                if (idx < 0 or idx >= str.len) {
-                    return prepareThrowSymbol(vm, .OutOfBounds);
-                }
-                const uidx: u32 = @intCast(idx);
-                if (cy.utf8CharSliceAt(str, uidx)) |slice| {
-                    const cp = std.unicode.utf8Decode(slice) catch cy.fatal();
-                    return Value.initInt(@intCast(cp));
-                } else {
-                    return prepareThrowSymbol(vm, .InvalidRune);
-                }
-            } else fatal();
-        }
-    };
-    return S.inner;
-}
-
-fn rawStringInsertByteCommon(vm: *cy.UserVM, str: []const u8, indexv: Value, val: Value) Value {
-    const index: i48 = indexv.asInteger();
-    if (index < 0 or index > str.len) {
-        return prepareThrowSymbol(vm, .OutOfBounds);
-    } 
-    const byte: u8 = @intCast(val.asInteger());
-    const new = vm.allocUnsetRawStringObject(str.len + 1) catch cy.fatal();
-    const buf = new.rawstring.getSlice();
-    const uidx: usize = @intCast(index);
-    std.mem.copy(u8, buf[0..uidx], str[0..uidx]);
-    buf[uidx] = byte;
-    std.mem.copy(u8, buf[uidx+1..], str[uidx..]);
-    return Value.initNoCycPtr(new);
-}
-
-fn rawStringInsertByte(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.rawstring.getConstSlice();
-    return rawStringInsertByteCommon(vm, str, args[1], args[2]);
-}
-
-fn rawStringSliceInsertByte(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.rawstringSlice.getConstSlice();
-    return rawStringInsertByteCommon(vm, str, args[1], args[2]);
-}
-
-fn ustringReplaceCommon(vm: *cy.UserVM, str: []const u8, needlev: Value, replacev: Value) linksection(cy.StdSection) ?Value {
-    var ncharLen: u32 = undefined;
-    const needle = vm.valueToTempString2(needlev, &ncharLen);
-    var rcharLen: u32 = undefined;
-    const replacement = vm.valueToNextTempString2(replacev, &rcharLen);
-
-    const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
-    idxBuf.clearRetainingCapacity();
-    defer idxBuf.ensureMaxCapOrClear(vm.allocator(), 4096) catch fatal();
-    const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.allocator())) catch fatal();
-    const numIdxes = @divExact(idxBuf.len, 4);
-    if (numIdxes > 0) {
-        const new = vm.allocUnsetUstringObject(newLen, @intCast(str.len + idxBuf.len * rcharLen - idxBuf.len * ncharLen)) catch fatal();
-        const newBuf = new.ustring.getSlice();
-        const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
-        cy.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
-        return vm.allocOwnedUstring(new) catch fatal();
-    } else {
-        return null;
-    }
-}
-
-inline fn isRawStringObject(comptime T: cy.StringType) bool {
-    return T == .rawstring or T == .rawSlice;
-}
-
-inline fn isUstringObject(comptime T: cy.StringType, obj: StringObject(T)) bool {
-    return T == .staticUstring or T == .ustring or (T == .slice and !cy.heap.StringSlice.isAstring(obj.stringSlice));
-}
-
-inline fn isAstringObject(comptime T: cy.StringType, obj: StringObject(T)) bool {
-    return T == .staticAstring or T == .astring or (T == .slice and cy.heap.StringSlice.isAstring(obj.stringSlice));
-}
-
-fn stringRepeat(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-
-            const n = args[1].asInteger();
-            if (n < 0) {
-                return prepareThrowSymbol(vm, .InvalidArgument);
-            }
-
-            var un: u32 = @intCast(n);
-            const len = un * str.len;
-            if (un > 1 and len > 0) {
-                var new: *cy.HeapObject = undefined;
-                var buf: []u8 = undefined;
-                if (isAstringObject(T, obj)) {
-                    new = vm.allocUnsetAstringObject(len) catch fatal();
-                    buf = new.astring.getSlice();
-                } else if (isUstringObject(T, obj)) {
-                    const charLen = getStringCharLen(T, vm, obj);
-                    new = vm.allocUnsetUstringObject(len, charLen) catch fatal();
-                    buf = new.ustring.getSlice();
-                } else if (isRawStringObject(T)) {
-                    new = vm.allocUnsetRawStringObject(len) catch fatal();
-                    buf = new.rawstring.getSlice();
-                } else fatal();
-                // This is already quite fast since it has good cache locality.
-                // Might be faster if the front of the buffer up to a certain size was used to memcpy instead of just 1 `str`.
-                var i: u32 = 0;
-                var dst: u32 = 0;
-                while (i < un) : (i += 1) {
-                    std.mem.copy(u8, buf[dst..dst + str.len], str);
-                    dst += @intCast(str.len);
-                }
-
-                return Value.initNoCycPtr(new);
-            } else {
-                if (un == 0) {
-                    if (isRawStringObject(T)) {
-                        return vm.allocRawString("") catch fatal();
-                    } else {
-                        return Value.initStaticAstring(0, 0);
-                    }
-                } else {
-                    if (isHeapString(T)) {
-                        vm.retainObject(obj);
-                        return Value.initNoCycPtr(obj);
-                    } else {
-                        return args[0];
-                    }
-                }
-            }
-        }
-    };
-    return S.inner;
-}
-
-inline fn isHeapString(comptime T: cy.StringType) bool {
-    return T == .astring or T == .ustring or T == .rawstring or T == .slice or T == .rawSlice;
-}
-
-fn StringObject(comptime T: cy.StringType) type {
-    return switch (T) {
-        .staticAstring,
-        .staticUstring => cy.IndexSlice(u32),
-        .astring,
-        .ustring,
-        .slice,
-        .rawSlice,
-        .rawstring => *cy.HeapObject,
-    };
-}
-
-inline fn releaseStringObject(comptime T: cy.StringType, vm: *cy.UserVM, obj: StringObject(T)) void {
-    if (StringObject(T) == *cy.HeapObject) {
-        vm.releaseObject(obj);
-    }
-}
-
-inline fn getStringObject(comptime T: cy.StringType, recv: Value) StringObject(T) {
-    switch (StringObject(T)) {
-        *cy.HeapObject => {
-            return recv.asHeapObject();
-        },
-        cy.IndexSlice(u32) => {
-            return recv.asStaticStringSlice();
-        },
-        else => @compileError("Unexpected type: " ++ @typeName(StringObject(T))),
-    }
-}
-
-const UstringMruChar = struct {
-    charIdx: u32,
-    byteIdx: u32,
-};
-
-inline fn setUstringMruChar(comptime T: cy.StringType, vm: *cy.UserVM, obj: StringObject(T), charIdx: u32, byteIdx: u32) void {
-    if (T == .ustring) {
-        obj.ustring.mruCharIdx = charIdx;
-        obj.ustring.mruIdx = byteIdx;
-    } else if (T == .slice) {
-        obj.stringSlice.uMruCharIdx = charIdx;
-        obj.stringSlice.uMruIdx = byteIdx;
-    } else if (T == .staticUstring) {
-        const header = vm.getStaticUstringHeader(obj.start);
-        header.mruCharIdx = charIdx;
-        header.mruIdx = byteIdx;
-    } else @compileError("Unexpected " ++ @tagName(T));
-}
-
-inline fn getUstringMruChar(comptime T: cy.StringType, vm: *cy.UserVM, obj: StringObject(T)) UstringMruChar {
-    if (T == .ustring) {
-        return .{
-            .charIdx = obj.ustring.mruCharIdx,
-            .byteIdx = obj.ustring.mruIdx,
-        };
-    } else if (T == .slice) {
-        return .{
-            .charIdx = obj.stringSlice.uMruCharIdx,
-            .byteIdx = obj.stringSlice.uMruIdx,
-        };
-    } else if (T == .staticUstring) {
-        const header = vm.getStaticUstringHeader(obj.start);
-        return .{
-            .charIdx = header.mruCharIdx,
-            .byteIdx = header.mruIdx,
-        };
-    } else @compileError("Unexpected " ++ @tagName(T));
-}
-
-inline fn getStringCharLen(comptime T: cy.StringType, vm: *cy.UserVM, obj: StringObject(T)) u32 {
-    if (T == .ustring) {
-        return obj.ustring.charLen;
-    } else if (T == .slice) {
-        return obj.stringSlice.uCharLen;
-    } else if (T == .staticUstring) {
-        return vm.getStaticUstringHeader(obj.start).charLen;
-    } else @compileError("Unexpected " ++ @tagName(T));
-}
-
-inline fn getStringSlice(comptime T: cy.StringType, vm: *cy.UserVM, obj: StringObject(T)) []const u8 {
-    switch (T) {
-        .staticAstring,
-        .staticUstring => {
-            return vm.getStaticString(obj.start, obj.end);
-        },
-        .astring => {
-            return obj.astring.getConstSlice();
-        },
-        .ustring => {
-            return obj.ustring.getConstSlice();
-        },
-        .slice => {
-            return cy.heap.StringSlice.getConstSlice(obj.stringSlice);
-        },
-        .rawstring => {
-            return obj.rawstring.getConstSlice();
-        },
-        .rawSlice => {
-            return obj.rawstringSlice.getConstSlice();
-        },
-    }
-}
-
-fn stringSplit(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-            const delim = vm.valueToTempString(args[1]);
-
-            const res = vm.allocEmptyList() catch fatal();
-            if (delim.len == 0) {
-                return res;
-            }
-            const list = res.asHeapObject();
-
-            var iter = std.mem.split(u8, str, delim);
-            while (iter.next()) |part| {
-                switch (T) {
-                    .rawstring,
-                    .rawSlice => {
-                        vm.retainObject(obj);
-                        const slice = vm.allocRawStringSlice(part, obj) catch fatal();
-                        list.list.append(vm.allocator(), slice);
-                    },
-                    .staticAstring => {
-                        const offset: u32 = @intCast(@intFromPtr(part.ptr) - @intFromPtr(str.ptr));
-                        const partv = Value.initStaticAstring(obj.start + offset, @intCast(part.len));
-                        list.list.append(vm.allocator(), partv);
-                    },
-                    .astring => {
-                        vm.retainObject(obj);
-                        const partv = vm.allocAstringSlice(part, obj) catch fatal();
-                        list.list.append(vm.allocator(), partv);
-                    },
-                    .staticUstring => {
-                        const runeLen: u32 = @intCast(cy.string.utf8Len(part));
-                        const partv = vm.allocUstringSlice(part, runeLen, null) catch fatal();
-                        list.list.append(vm.allocator(), partv);
-                    },
-                    .ustring => {
-                        vm.retainObject(obj);
-                        const runeLen: u32 = @intCast(cy.string.utf8Len(part));
-                        const partv = vm.allocUstringSlice(part, runeLen, obj) catch fatal();
-                        list.list.append(vm.allocator(), partv);
-                    },
-                    .slice => {
-                        if (cy.heap.StringSlice.isAstring(obj.stringSlice)) {
-                            vm.retainObject(obj);
-                            const partv = vm.allocAstringSlice(part, obj) catch fatal();
-                            list.list.append(vm.allocator(), partv);
-                        } else {
-                            const runeLen: u32 = @intCast(cy.string.utf8Len(part));
-                            vm.retainObject(obj);
-                            const partv = vm.allocUstringSlice(part, runeLen, obj) catch fatal();
-                            list.list.append(vm.allocator(), partv);
-                        }
-                    }
-                }
-            }
-            return res;
-        }
-    };
-    return S.inner;
-}
-
-fn stringTrim(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-
-            const str = getStringSlice(T, vm, obj);
-            const trimRunes = vm.valueToTempString(args[2]);
-
-            var res: []const u8 = undefined;
-            const mode = getBuiltinSymbol(args[1].asSymbolId()) orelse {
-                return prepareThrowSymbol(vm, .InvalidArgument);
-            };
-            switch (mode) {
-                .left => res = std.mem.trimLeft(u8, str, trimRunes),
-                .right => res = std.mem.trimRight(u8, str, trimRunes),
-                .ends => res = std.mem.trim(u8, str, trimRunes),
-                else => {
-                    return prepareThrowSymbol(vm, .InvalidArgument);
-                }
-            }
-
-            if (isAstringObject(T, obj)) {
-                return vm.allocAstring(res) catch fatal();
-            } else if (isUstringObject(T, obj)) {
-                const runeLen: u32 = @intCast(cy.string.utf8Len(res));
-                return vm.allocUstring(res, runeLen) catch fatal();
-            } else if (isRawStringObject(T)) {
-                return vm.allocRawString(res) catch fatal();
-            } else fatal();
-        }
-    };
-    return S.inner;
-}
-
-fn stringReplace(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-            if (isAstringObject(T, obj)) {
-                if (astringReplaceCommon(vm, str, args[1], args[2])) |val| {
-                    return val;
-                } else {
-                    if (T != .staticAstring) {
-                        vm.retainObject(obj);
-                        return Value.initNoCycPtr(obj);
-                    } else {
-                        return args[0];
-                    }
-                }
-            } else if (isUstringObject(T, obj)) {
-                if (ustringReplaceCommon(vm, str, args[1], args[2])) |val| {
-                    return val;
-                } else {
-                    if (T != .staticUstring) {
-                        vm.retainObject(obj);
-                        return Value.initNoCycPtr(obj);
-                    } else {
-                        return args[0];
-                    }
-                }
-            } else if (isRawStringObject(T)) {
-                const needle = vm.valueToTempString(args[1]);
-                const replacement = vm.valueToNextTempString(args[2]);
-
-                const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
-                idxBuf.clearRetainingCapacity();
-                defer idxBuf.ensureMaxCapOrClear(vm.allocator(), 4096) catch fatal();
-                const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.allocator())) catch fatal();
-                const numIdxes = @divExact(idxBuf.len, 4);
-                if (numIdxes > 0) {
-                    const new = vm.allocUnsetRawStringObject(newLen) catch fatal();
-                    const newBuf = new.rawstring.getSlice();
-                    const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
-                    cy.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
-                    return Value.initNoCycPtr(new);
-                } else {
-                    vm.retainObject(obj);
-                    return Value.initNoCycPtr(obj);
-                }
-            } else fatal();
-        }
-    };
-    return S.inner;
-}
-
-fn astringReplaceCommon(vm: *cy.UserVM, str: []const u8, needlev: Value, replacev: Value) linksection(cy.StdSection) ?Value {
-    const needle = vm.valueToTempString(needlev);
-    var rcharLen: u32 = undefined;
-    const replacement = vm.valueToNextTempString2(replacev, &rcharLen);
-    const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
-    idxBuf.clearRetainingCapacity();
-    defer idxBuf.ensureMaxCapOrClear(vm.allocator(), 4096) catch fatal();
-    const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.allocator())) catch fatal();
-    const numIdxes = @divExact(idxBuf.len, 4);
-    if (numIdxes > 0) {
-        if (rcharLen == replacement.len) {
-            const new = vm.allocUnsetAstringObject(newLen) catch fatal();
-            const newBuf = new.astring.getSlice();
-            const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
-            cy.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
-            return vm.allocOwnedAstring(new) catch fatal();
-        } else {
-            const new = vm.allocUnsetUstringObject(newLen, @intCast(str.len + idxBuf.len * rcharLen - idxBuf.len * needle.len)) catch fatal();
-            const newBuf = new.ustring.getSlice();
-            const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
-            cy.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
-            return vm.allocOwnedUstring(new) catch fatal();
-        }
-    } else {
-        return null;
-    }
-}
-
-pub fn stringSlice(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-
-            if (isAstringObject(T, obj)) {
-                var start = args[1].asInteger();
-                if (start < 0) {
-                    start = @as(i48, @intCast(str.len)) + start;
-                }
-                var end: i48 = undefined;
-                if (args[2].isNone()) {
-                    end = @intCast(str.len);
-                } else if (args[2].isInteger()) {
-                    end = args[2].asInteger();
-                } else {
-                    return prepareThrowSymbol(vm, .InvalidArgument);
-                }
-                if (end < 0) {
-                    end = @as(i48, @intCast(str.len)) + end;
-                }
-                if (start < 0 or end > str.len or end < start) {
-                    return prepareThrowSymbol(vm, .OutOfBounds);
-                }
-                const ustart: u32 = @intCast(start);
-                const uend: u32 = @intCast(end);
-
-                if (T == .staticAstring) {
-                    return Value.initStaticAstring(obj.start + ustart, @intCast(uend - ustart));
-                } else {
-                    vm.retainObject(obj);
-                    return vm.allocAstringSlice(str[ustart..uend], obj) catch fatal();
-                }
-            } else if (isUstringObject(T, obj)) {
-                const charLen = getStringCharLen(T, vm, obj);
-                var start: i48 = args[1].asInteger();
-                if (start < 0) {
-                    start = @as(i48, @intCast(charLen)) + start;
-                }
-                var end: i48 = if (args[2].isNone()) @intCast(charLen) else args[2].asInteger();
-                if (end < 0) {
-                    end = @as(i48, @intCast(charLen)) + end;
-                }
-                if (start < 0 or end > charLen or end < start) {
-                    return prepareThrowSymbol(vm, .OutOfBounds);
-                }
-                const ustart: u32 = @intCast(start);
-                const uend: u32 = @intCast(end);
-
-                const mru = getUstringMruChar(T, vm, obj);
-                const startByteIdx: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, ustart));
-                setUstringMruChar(T, vm, obj, ustart, startByteIdx);
-                const endByteIdx: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, startByteIdx, ustart, uend));
-
-                if (T == .staticUstring) {
-                    return vm.allocUstringSlice(str[startByteIdx..endByteIdx], uend - ustart, null) catch fatal();
-                } else {
-                    vm.retainObject(obj);
-                    return vm.allocUstringSlice(str[startByteIdx..endByteIdx], uend - ustart, obj) catch fatal();
-                }
-            } else if (isRawStringObject(T)) {
-                var start: i48 = args[1].asInteger();
-                if (start < 0) {
-                    start = @as(i48, @intCast(str.len)) + start;
-                }
-                var end: i48 = if (args[2].isNone()) @intCast(str.len) else args[2].asInteger();
-                if (end < 0) {
-                    end = @as(i48, @intCast(str.len)) + end;
-                }
-                if (start < 0 or end > str.len or end < start) {
-                    return prepareThrowSymbol(vm, .OutOfBounds);
-                }
-
-                vm.retainObject(obj);
-                return vm.allocRawStringSlice(str[@intCast(start)..@intCast(end)], obj) catch fatal();
-            } else fatal();
-        }
-    };
-    return S.inner;
-}
-
-fn stringAppend(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-            fmt.printDeprecated("string.append()", "0.1", "Use string.concat() instead.", &.{});
-            return stringConcat(T)(vm, args, nargs);
-        }
-    };
-    return S.inner;
-}
-
-fn stringConcat(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-            if (isAstringObject(T, obj)) {
-                if (args[1].isRawString()) {
-                    const rstr = vm.valueToTempRawString(args[1]);
-                    return vm.allocRawStringConcat(str, rstr) catch fatal();
-                }
-                var rcharLen: u32 = undefined;
-                const rstr = vm.valueToTempString2(args[1], &rcharLen);
-                if (rcharLen == rstr.len) {
-                    return vm.allocAstringConcat(str, rstr) catch fatal();
-                } else {
-                    return vm.allocUstringConcat(str, rstr, @intCast(str.len + rcharLen)) catch fatal();
-                }
-            } else if (isUstringObject(T, obj)) {
-                if (args[1].isRawString()) {
-                    const rstr = vm.valueToTempRawString(args[1]);
-                    return vm.allocRawStringConcat(str, rstr) catch fatal();
-                }
-                var rcharLen: u32 = undefined;
-                const rstr = vm.valueToTempString2(args[1], &rcharLen);
-                const charLen = getStringCharLen(T, vm, obj);
-                return vm.allocUstringConcat(str, rstr, charLen + rcharLen) catch fatal();
-            } else if (isRawStringObject(T)) {
-                const rstr = vm.valueToTempRawString(args[1]);
-                return vm.allocRawStringConcat(str, rstr) catch fatal();
-            } else fatal();
-        }
-    };
-    return S.inner;
-}
-
-fn stringInsert(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-            const idx = args[1].asInteger();
-            if (isAstringObject(T, obj)) {
-                if (idx < 0 or idx > str.len) {
-                    return prepareThrowSymbol(vm, .OutOfBounds);
-                }
-                var insertCharLen: u32 = undefined;
-                const insert = vm.valueToTempString2(args[2], &insertCharLen);
-                const uidx: u32 = @intCast(idx);
-                if (insertCharLen == insert.len) {
-                    return vm.allocAstringConcat3(str[0..uidx], insert, str[uidx..]) catch fatal();
-                } else {
-                    return vm.allocUstringConcat3(str[0..uidx], insert, str[uidx..], @intCast(str.len + insertCharLen)) catch fatal();
-                }
-            } else if (isUstringObject(T, obj)) {
-                const charLen = getStringCharLen(T, vm, obj);
-                if (idx < 0 or idx > charLen) {
-                    return prepareThrowSymbol(vm, .OutOfBounds);
-                }
-                var insertCharLen: u32 = undefined;
-                const insert = vm.valueToTempString2(args[2], &insertCharLen);
-                const uidx: u32 = @intCast(idx);
-                const mru = getUstringMruChar(T, vm, obj);
-                const start: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
-
-                setUstringMruChar(T, vm, obj, uidx, start);
-                return vm.allocUstringConcat3(str[0..start], insert, str[start..], @intCast(charLen + insertCharLen)) catch fatal();
-            } else if (isRawStringObject(T)) {
-                if (idx < 0 or idx > str.len) {
-                    return prepareThrowSymbol(vm, .OutOfBounds);
-                } 
-                const insert = vm.valueToTempString(args[2]);
-                const new = vm.allocUnsetRawStringObject(str.len + insert.len) catch cy.fatal();
-                const buf = new.rawstring.getSlice();
-                const uidx: u32 = @intCast(idx);
-                std.mem.copy(u8, buf[0..uidx], str[0..uidx]);
-                std.mem.copy(u8, buf[uidx..uidx+insert.len], insert);
-                std.mem.copy(u8, buf[uidx+insert.len..], str[uidx..]);
-                return Value.initNoCycPtr(new);
-            } else fatal();
-        }
-    };
-    return S.inner;
-}
-
-fn stringFind(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-            const needle = vm.valueToTempString(args[1]);
-            if (needle.len > 0 and needle.len <= str.len) {
-                if (needle.len == 1) {
-                    // One ascii char special case. Perform indexOfChar.
-                    if (cy.string.indexOfChar(str, needle[0])) |idx| {
-                        if (isUstringObject(T, obj)) {
-                            const charIdx = cy.toUtf8CharIdx(str, idx);
-                            return Value.initInt(@intCast(charIdx));
-                        } else {
-                            return Value.initInt(@intCast(idx));
-                        }
-                    }
-                }
-                if (cy.string.indexOf(str, needle)) |idx| {
-                    if (isUstringObject(T, obj)) {
-                        const charIdx = cy.toUtf8CharIdx(str, idx);
-                        return Value.initInt(@intCast(charIdx));
-                    } else {
-                        return Value.initInt(@intCast(idx));
-                    }
-                }
-            }
-            return Value.None;
-        }
-    };
-    return S.inner;
-}
-
-fn stringStartsWith(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-            const needle = vm.valueToTempString(args[1]);
-            return Value.initBool(std.mem.startsWith(u8, str, needle));
-        }
-    };
-    return S.inner;
-}
-
-fn stringEndsWith(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-            const needle = vm.valueToTempString(args[1]);
-            return Value.initBool(std.mem.endsWith(u8, str, needle));
-        }
-    };
-    return S.inner;
-}
-
-fn rawStringSliceToString(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    fmt.printDeprecated("rawstring.toString()", "0.1", "Use rawstring.utf8() instead.", &.{});
-    return rawStringSliceUtf8(vm, args, nargs);
-}
-
-fn rawStringSliceUtf8(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.rawstringSlice.getConstSlice();
-    if (cy.validateUtf8(str)) |size| {
-        if (size == str.len) {
-            return vm.allocAstring(str) catch fatal();
-        } else {
-            return vm.allocUstring(str, @intCast(size)) catch fatal();
-        }
-    } else {
-        return prepareThrowSymbol(vm, .InvalidRune);
-    }
-}
-
-fn rawStringToString(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    fmt.printDeprecated("rawstring.toString()", "0.1", "Use rawstring.utf8() instead.", &.{});
-    return rawStringUtf8(vm, args, nargs);
-}
-
-fn rawStringUtf8(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.rawstring.getConstSlice();
-    if (cy.validateUtf8(str)) |size| {
-        if (size == str.len) {
-            return vm.allocAstring(str) catch fatal();
-        } else {
-            return vm.allocUstring(str, @intCast(size)) catch fatal();
-        }
-    } else {
-        return prepareThrowSymbol(vm, .InvalidRune);
-    }
-}
-
-fn rawStringSliceByteAt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = args[0].asHeapObject();
-    const idx: i48 = args[1].asInteger();
-    if (idx < 0 or idx >= obj.rawstringSlice.len) {
-        return prepareThrowSymbol(vm, .OutOfBounds);
-    }
-    const str = obj.rawstringSlice.getConstSlice();
-    const uidx: usize = @intCast(idx);
-    return Value.initInt(@intCast(str[uidx]));
-}
-
-fn rawStringByteAt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = args[0].asHeapObject();
-    const idx: i48 = args[1].asInteger();
-    if (idx < 0 or idx >= obj.rawstring.len) {
-        return prepareThrowSymbol(vm, .OutOfBounds);
-    }
-    const str = obj.rawstring.getConstSlice();
-    const uidx: usize = @intCast(idx);
-    return Value.initInt(@intCast(str[uidx]));
-}
-
-fn valueToChar(vm: *cy.UserVM, val: Value) u8 {
-    if (val.isString()) {
-        const needle = vm.valueToTempString(val);
-        if (needle.len > 0) {
-            return needle[0];
-        } else {
-            return 0;
-        }
-    } else {
-       return @intFromFloat(val.toF64());
-    }
-}
-
-fn stringIsAscii(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            if (T == .staticAstring) {
-                return Value.True;
-            } else if (T == .staticUstring) {
-                return Value.False;
-            } else {
-                const obj = getStringObject(T, args[0]);
-                if (isAstringObject(T, obj)) {
-                    return Value.True;
-                } else if (isUstringObject(T, obj)) {
-                    return Value.False;
-                } else if (isRawStringObject(T)) {
-                    return Value.initBool(cy.isAstring(obj.rawstring.getConstSlice()));
-                } else fatal();
-            }
-        }
-    };
-    return S.inner;
-}
-
-fn stringFindAnyRune(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-            var setCharLen: u32 = undefined;
-            const set = vm.valueToTempString2(args[1], &setCharLen);
-            const setIsAscii = setCharLen == set.len;
-
-            if (set.len > 0) {
-                if (isAstringObject(T, obj)) {
-                    if (setIsAscii) {
-                        if (@call(.never_inline, cy.indexOfAsciiSet, .{str, set})) |idx| {
-                            return Value.initInt(@intCast(idx));
-                        }
-                    } else {
-                        // Filter ascii codepoints.
-                        const alloc = vm.allocator();
-                        const tempBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
-                        tempBuf.clearRetainingCapacity();
-                        defer tempBuf.ensureMaxCapOrClear(alloc, 4096) catch fatal();
-                        var iter = std.unicode.Utf8Iterator{
-                            .bytes = set,
-                            .i = 0,
-                        };
-                        while (iter.nextCodepoint()) |cp| {
-                            if (cp < 128) {
-                                tempBuf.append(alloc, @intCast(cp)) catch fatal();
-                            }
-                        }
-                        if (tempBuf.len > 0) {
-                            if (cy.indexOfAsciiSet(str, tempBuf.items())) |idx| {
-                                return Value.initInt(@intCast(idx));
-                            }
-                        }
-                    }
-                } else if (isUstringObject(T, obj)) {
-                    if (setIsAscii) {
-                        if (cy.indexOfAsciiSet(str, set)) |idx| {
-                            const charIdx = cy.toUtf8CharIdx(str, idx);
-                            return Value.initInt(@intCast(charIdx));
-                        }
-                    } else {
-                        // Slow. Checks every utf8 code and applies min.
-                        var minIndex: u32 = NullId;
-                        var iter = std.unicode.Utf8Iterator{
-                            .bytes = set,
-                            .i = 0,
-                        };
-                        while (iter.nextCodepoint()) |cp| {
-                            if (cy.charIndexOfCodepoint(str, cp)) |idx| {
-                                if (idx < minIndex) {
-                                    minIndex = @intCast(idx);
-                                }
-                            }
-                        }
-                        if (minIndex != NullId) {
-                            return Value.initInt(@intCast(minIndex));
-                        }
-                    }
-                } else if (isRawStringObject(T)) {
-                    if (setIsAscii) {
-                        if (cy.indexOfAsciiSet(str, set)) |idx| {
-                            return Value.initInt(@intCast(idx));
-                        }
-                    } else {
-                        // Slow. Checks every utf8 code and applies min.
-                        var minIndex: u32 = NullId;
-                        var iter = std.unicode.Utf8Iterator{
-                            .bytes = set,
-                            .i = 0,
-                        };
-                        while (iter.nextCodepointSlice()) |slice| {
-                            if (std.mem.indexOf(u8, str, slice)) |idx| {
-                                if (idx < minIndex) {
-                                    minIndex = @intCast(idx);
-                                }
-                            }
-                        }
-                        if (minIndex != NullId) {
-                            return Value.initInt(@intCast(minIndex));
-                        }
-                    }
-                } else fatal();
-            }
-            return Value.None;
-        }
-    };
-    return S.inner;
-}
-
-fn stringFindRune(comptime T: cy.StringType) cy.ZHostFuncFn {
-    const S = struct {
-        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, args[0]);
-            const str = getStringSlice(T, vm, obj);
-            const needle = args[1].asInteger();
-
-            if (needle > 0) {
-                const code: u21 = @intCast(needle);
-                const needleIsAscii = code < 128;
-                if (isAstringObject(T, obj)) {
-                    if (needleIsAscii) {
-                        if (cy.string.indexOfChar(str, @intCast(code))) |idx| {
-                            return Value.initInt(@intCast(idx));
-                        }
-                    }
-                } else if (isUstringObject(T, obj)) {
-                    if (needleIsAscii) {
-                        if (cy.string.indexOfChar(str, @intCast(code))) |idx| {
-                            const charIdx = cy.toUtf8CharIdx(str, idx);
-                            return Value.initInt(@intCast(charIdx));
-                        }
-                    } else {
-                        var slice: [4]u8 = undefined;
-                        _ = std.unicode.utf8Encode(code, &slice) catch fatal();
-                        if (cy.string.indexOf(str, &slice)) |idx| {
-                            const charIdx = cy.toUtf8CharIdx(str, idx);
-                            return Value.initInt(@intCast(charIdx));
-                        }
-                    }
-                } else if (isRawStringObject(T)) {
-                    if (needleIsAscii) {
-                        if (cy.indexOfChar(str, @intCast(code))) |idx| {
-                            return Value.initInt(@intCast(idx));
-                        }
-                    } else {
-                        var slice: [4]u8 = undefined;
-                        _ = std.unicode.utf8Encode(code, &slice) catch fatal();
-                        if (cy.string.indexOf(str, &slice)) |idx| {
-                            return Value.initInt(@intCast(idx));
-                        }
-                    }
-                } else fatal();
-            }
-            return Value.None;
-        }
-    };
-    return S.inner;
-}
-
-pub fn metatypeId(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = args[0].asHeapObject();
-    return Value.initInt(obj.metatype.symId);
-}
-
-pub fn booleanCall(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    return Value.initBool(args[0].toBool());
-}
-
-pub fn integerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const val = args[0];
-    switch (val.getUserTag()) {
-        .float => {
-            return Value.initInt(@intFromFloat(@trunc(val.asF64())));
-        },
-        .string => {
-            var str = vm.valueToTempString(val);
-            if (std.mem.indexOfScalar(u8, str, '.')) |idx| {
-                str = str[0..idx];
-            }
-            const res = std.fmt.parseInt(i32, str, 10) catch {
-                return Value.initInt(0);
-            };
-            return Value.initInt(res);
-        },
-        .enumT => return Value.initInt(@intCast(val.val & @as(u64, 0xFF))),
-        .symbol => return Value.initInt(@intCast(val.val & @as(u64, 0xFF))),
-        .int => {
-            return val;
-        },
-        else => {
-            return Value.initInt(0);
-        }
-    }
-}
-
-pub fn floatCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const val = args[0];
-    switch (val.getUserTag()) {
-        .float => return val,
-        .string => {
-            const res = std.fmt.parseFloat(f64, vm.valueToTempString(val)) catch {
-                return Value.initF64(0);
-            };
-            return Value.initF64(res);
-        },
-        .enumT => return Value.initF64(@floatFromInt(val.val & @as(u64, 0xFF))),
-        .symbol => return Value.initF64(@floatFromInt(val.val & @as(u64, 0xFF))),
-        .int => return Value.initF64(@floatFromInt(val.asInteger())),
-        .none => return Value.initF64(0),
-        .boolean => return Value.initF64(if (val.asBool()) 1 else 0),
-        else => {
-            vm.release(val);
-            return vm.returnPanic("Not a type that can be converted to `float`.");
-        }
-    }
-}
-
 inline fn inlineUnaryOp(pc: [*]cy.Inst, code: cy.OpCode) void {
     const startLocal = pc[1].val;
     // Save callObjSym data.
@@ -1914,7 +445,7 @@ pub fn floatNeg(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void  {
     inlineUnaryOp(pc, .negFloat);
 }
 
-pub fn inlineTernNoRetOp(comptime code: cy.OpCode) cy.QuickenFuncFn {
+pub fn inlineTernNoRetOp(comptime code: cy.OpCode) cy.InlineFuncFn {
     const S = struct {
         pub fn method(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void {
             const startLocal = pc[1].val;
@@ -1924,9 +455,9 @@ pub fn inlineTernNoRetOp(comptime code: cy.OpCode) cy.QuickenFuncFn {
             pc[10] = pc[3];
 
             pc[0] = cy.Inst.initOpCode(code);
-            pc[1].val = startLocal + 4;
-            pc[2].val = startLocal + 5;
-            pc[3].val = startLocal + 6;
+            pc[1].val = startLocal + cy.vm.CallArgStart;
+            pc[2].val = startLocal + cy.vm.CallArgStart + 1;
+            pc[3].val = startLocal + cy.vm.CallArgStart + 2;
         }
     };
     return S.method;
@@ -1957,37 +488,39 @@ fn saveInst(vm: *cy.UserVM, qtype: QuickenType, pc: [*]cy.Inst) !void {
     }
     data[0] = @intFromEnum(qtype);
     const pcOff = @intFromPtr(pc) - @intFromPtr(vm.internal().ops.ptr);
-    try vm.internal().quickenSaves.put(vm.allocator(), @intCast(pcOff), data.ptr);
+    try vm.internal().inlineSaves.put(vm.allocator(), @intCast(pcOff), data.ptr);
 }
 
-pub fn inlineBinOp(comptime code: cy.OpCode) cy.QuickenFuncFn {
+pub fn inlineBinOp(comptime code: cy.OpCode) cy.InlineFuncFn {
     const S = struct {
         pub fn method(vm: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void {
-            if (pc[7].val == 1) {
+            // Lower bits contain op inlining type.
+            const inlineType = pc[7].val & 0x7f;
+            if (inlineType == 1) {
                 saveInst(vm, .binOpOneCopy, pc) catch @panic("error");
 
-                const startLocal = pc[1].val;
+                const ret = pc[1].val;
                 pc[0] = cy.Inst.initOpCode(code);
-                if (startLocal + 4 == (pc-3)[2].val) {
+                if (ret + cy.vm.CallArgStart == (pc-3)[2].val) {
                     pc[1].val = (pc-3)[1].val;
-                    pc[2].val = startLocal + 5;
+                    pc[2].val = ret + cy.vm.CallArgStart + 1;
                 } else {
-                    pc[1].val = startLocal + 4;
+                    pc[1].val = ret + cy.vm.CallArgStart;
                     pc[2].val = (pc-3)[1].val;
                 }
-                pc[3].val = startLocal;
+                pc[3].val = ret;
 
                 (pc-3)[0] = cy.Inst.initOpCode(.jump);
                 @as(*align(1) i16, @ptrCast(pc-2)).* = 3;
-            } else if (pc[7].val == 2) {
+            } else if (inlineType == 2) {
                 saveInst(vm, .binOpBothCopies, pc) catch @panic("error");
 
-                const startLocal = pc[1].val;
+                const ret = pc[1].val;
                 pc[0] = cy.Inst.initOpCode(code);
                 // Lhs copy is always the last inst.
                 pc[1].val = (pc-6)[4].val;
                 pc[2].val = (pc-6)[1].val;
-                pc[3].val = startLocal;
+                pc[3].val = ret;
 
                 (pc-6)[0] = cy.Inst.initOpCode(.jump);
                 @as(*align(1) i16, @ptrCast(pc-5)).* = 6;
@@ -1995,59 +528,15 @@ pub fn inlineBinOp(comptime code: cy.OpCode) cy.QuickenFuncFn {
                 saveInst(vm, .binOp, pc) catch @panic("error");
 
                 // Inline bin op.
-                const startLocal = pc[1].val;
+                const ret = pc[1].val;
                 pc[0] = cy.Inst.initOpCode(code);
-                pc[1].val = startLocal + 4;
-                pc[2].val = startLocal + 5;
-                pc[3].val = startLocal;
+                pc[1].val = ret + cy.vm.CallArgStart;
+                pc[2].val = ret + cy.vm.CallArgStart + 1;
+                pc[3].val = ret;
             }
         }
     };
     return S.method;
-}
-
-pub fn pointerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const val = args[0];
-    if (val.isPointerT()) {
-        vm.retain(val);
-        return val;
-    } else if (val.isInteger()) {
-        const i: usize = @intCast(val.asInteger());
-        return cy.heap.allocPointer(vm.internal(), @ptrFromInt(i)) catch fatal();
-    } else {
-        return vm.returnPanic("Not a `pointer`.");
-    }
-}
-
-pub fn rawstringCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const str = vm.valueToTempRawString(args[0]);
-    return vm.allocRawString(str) catch cy.fatal();
-}
-
-pub fn stringCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const val = args[0];
-    if (val.isString()) {
-        return val; 
-    } else {
-        const str = vm.valueToTempString(val);
-        return vm.allocStringInfer(str) catch cy.fatal();
-    }
-}
-
-pub fn errorCall(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = args[0];
-    if (val.isPointer()) {
-        return prepareThrowSymbol(vm, .InvalidArgument);
-    } else {
-        if (val.assumeNotPtrIsSymbol()) {
-            return Value.initErrorSymbol(@intCast(val.asSymbolId()));
-        } else if (val.assumeNotPtrIsEnum()) {
-            const enumv = val.asEnum();
-            return Value.initErrorEnum(@intCast(enumv.enumId), @intCast(enumv.memberId));
-        } else {
-            return prepareThrowSymbol(vm, .InvalidArgument);
-        }
-    }
 }
 
 pub fn nop(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -2068,24 +557,32 @@ pub fn fromUnsupportedError(vm: *cy.UserVM, msg: []const u8, err: anyerror, trac
 }
 
 pub const ModuleBuilder = struct {
-    modId: cy.ModuleId,
+    sym: *cy.Sym,
+    chunk: *cy.Chunk,
     compiler: *cy.VMcompiler,
     vm: *cy.VM,
 
-    pub fn init(c: *cy.VMcompiler, modId: cy.ModuleId) ModuleBuilder {
-        return .{
-            .modId = modId,
+    pub fn init(c: *cy.VMcompiler, symOpt: ?*cy.Sym) ModuleBuilder {
+        var new = ModuleBuilder{
+            .sym = undefined,
             .compiler = c,
+            .chunk = undefined,
             .vm = c.vm,
         };
+        if (symOpt) |sym| {
+            const chunk = sym.getMod().?.chunk;
+            new.chunk = chunk;
+            new.sym = sym;
+        }
+        return new;
     }
 
-    pub fn setVar(self: *const ModuleBuilder, name: []const u8, typeSymId: sema.SymbolId, val: Value) !void {
-        try self.getMod().setTypedVar(self.compiler, name, typeSymId, val);
+    pub fn setVar(self: *const ModuleBuilder, name: []const u8, typeId: types.TypeId, val: Value) !void {
+        try self.getMod().setTypedVar(self.compiler, name, typeId, val);
     }
 
-    pub fn setFunc(self: *const ModuleBuilder, name: []const u8, params: []const sema.SymbolId, ret: sema.SymbolId, ptr: cy.ZHostFuncFn) !void {
-        try self.getMod().setNativeTypedFunc(self.compiler, name, params, ret, ptr);
+    pub fn declareFuncSig(self: *const ModuleBuilder, name: []const u8, params: []const types.TypeId, ret: types.TypeId, ptr: cy.ZHostFuncFn) !void {
+        _ = try self.chunk.declareHostFuncSig(self.sym, name, params, ret, cy.NullId, ptr, false);
     }
 
     pub fn ensureMethodGroup(self: *const ModuleBuilder, name: []const u8) !vmc.MethodGroupId {
@@ -2093,7 +590,7 @@ pub const ModuleBuilder = struct {
     }
 
     pub fn addOptimizingMethod(
-        self: *const ModuleBuilder, typeId: rt.TypeId, mgId: vmc.MethodGroupId,
+        self: *const ModuleBuilder, typeId: cy.TypeId, mgId: vmc.MethodGroupId,
         params: []const types.TypeId, ret: types.TypeId, ptr: cy.QuickenFuncFn,
     ) !void {
         const funcSigId = try sema.ensureFuncSig(self.compiler, params, ret);
@@ -2105,10 +602,10 @@ pub const ModuleBuilder = struct {
     }
 
     pub fn addMethod(
-        self: *const ModuleBuilder, typeId: rt.TypeId, mgId: vmc.MethodGroupId,
+        self: *const ModuleBuilder, typeId: cy.TypeId, mgId: vmc.MethodGroupId,
         params: []const types.TypeId, ret: types.TypeId, ptr: cy.ZHostFuncFn,
     ) !void {
-        const funcSigId = try sema.ensureFuncSig(self.compiler, params, ret);
+        const funcSigId = try self.compiler.sema.ensureFuncSig(params, ret);
         const funcSig = self.compiler.sema.getFuncSig(funcSigId);
         if (funcSig.reqCallTypeCheck) {
             try self.vm.addMethod(typeId, mgId, rt.MethodInit.initHostTyped(funcSigId, ptr, @intCast(params.len)));
@@ -2121,30 +618,18 @@ pub const ModuleBuilder = struct {
         return self.compiler.sema.getModulePtr(self.modId);
     }
 
-    pub fn createAndSetTypeObject(self: *const ModuleBuilder, name: []const u8, fields: []const []const u8) !rt.TypeId {
-        const nameId = try cy.sema.ensureNameSym(self.compiler, name);
-        const key = sema.ResolvedSymKey{
-            .resolvedSymKey = .{
-                .parentSymId = self.getMod().resolvedRootSymId,
-                .nameId = nameId,
-            },
-        };
-        const modId = try cy.module.declareTypeObject(self.compiler, self.modId, name, cy.NullId, cy.NullId);
-        const res = try cy.sema.resolveObjectSym(self.compiler, key, modId);
-        const sym = self.compiler.sema.getSymbol(res.sTypeId);
-        const typeId = sym.inner.object.typeId;
+    pub fn createAndSetTypeObject(self: *const ModuleBuilder, name: []const u8, fields: []const []const u8) !cy.TypeId {
+        const sym = try self.chunk.declareObjectType(self.sym, name, cy.NullId);
 
-        const mod = self.compiler.sema.getModulePtr(modId);
-        const modFields = try self.compiler.alloc.alloc(cy.module.FieldInfo, fields.len);
+        const modFields = try self.compiler.alloc.alloc(cy.sym.FieldInfo, fields.len);
 
         for (fields, 0..) |field, i| {
             const id = try self.vm.ensureFieldSym(field);
-            try self.vm.addFieldSym(typeId, id, @intCast(i), bt.Any);
-            const fieldNameId = try cy.sema.ensureNameSym(self.compiler, field);
-            try cy.module.setField(mod, self.compiler.alloc, fieldNameId, @intCast(i), bt.Any);
+            try self.vm.addFieldSym(sym.type, id, @intCast(i), bt.Any);
+            _ = try self.chunk.declareField(@ptrCast(sym), field, @intCast(i), bt.Any, cy.NullId);
         }
-        mod.fields = modFields;
-        self.vm.types.buf[typeId].data.object.numFields = @intCast(fields.len);
-        return typeId;
+        sym.fields = modFields.ptr;
+        sym.numFields = @intCast(modFields.len);
+        return sym.type;
     }
 };

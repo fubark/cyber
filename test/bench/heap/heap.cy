@@ -1,112 +1,112 @@
 type Node object:
-    left
-    right
-    parent
-    value
+    my left
+    my right
+    my parent
+    my value
 
-    func getLeftmost(self):
+    func getLeftmost():
         if self.left is none:
             return self
         return self.left.getLeftmost()
 
-    func getRightmost(self):
+    func getRightmost():
         if self.right is none:
             return self
         return self.right.getRightmost()
 
-    func getLeftSibling(self):
+    func getLeftSibling():
         if self.parent.right is self:
             return self.parent.left
         else:
             return self.parent.getLeftSibling2(1)
 
-    func getLeftSibling2(self, height):
+    func getLeftSibling2(height):
         if self.parent.right is self:
             return self.parent.left.getRightN(height)
         else:
             return self.parent.getLeftSibling2(height + 1)
 
-    func getRightSibling(self):
+    func getRightSibling():
         if self.parent.left is self:
             return self.parent.right
         else:
             return self.parent.getRightSibling2(1)
 
-    func getRightSibling2(self, height):
+    func getRightSibling2(height):
         if self.parent.left is self:
             return self.parent.right.getLeftN(height)
         else:
             return self.parent.getRightSibling2(height + 1)
 
-    func getRightN(self, n):
+    func getRightN(n):
         if n is 1:
             return self.right
         else:
             return self.right.getRightN(n - 1)
 
-    func getLeftN(self, n):
+    func getLeftN(n):
         if n is 1:
             return self.left
         else:
             return self.left.getLeftN(n - 1)
 
-type Heap object:
-    root
-    size
-    last
+func Heap.new():
+    return [Heap root: none, size: 0, last: none]
 
-    func new():
-        return Heap{ root: none, size: 0, last: none }
-    
-    func insert(self, value):
+type Heap object:
+    my root
+    my size
+    my last
+
+    func insert(value):
         if self.root is none:
-            self.root = Node{ left: none, right: none, parent: none, value: value }
+            self.root = [Node left: none, right: none, parent: none, value: value]
             self.last = self.root
             self.size = 1
             return
-        var new = none
+        my new = none
         if int(self.size + 1) & int(self.size) is 0:
             -- Insert at left most node.
-            var parent = self.root.getLeftmost()
-            new = Node{
-                left: none
-                right: none
-                parent: parent
-                value: value
-            }
+            my parent = self.root.getLeftmost()
+            new = [Node
+                left: none,
+                right: none,
+                parent: parent,
+                value: value,
+            ]
             parent.left = new
             self.last = new
         else:
             -- Insert after last node.
             if self.size % 2 is 0:
-                new = Node{
-                    left: none
-                    right: none
-                    parent: self.last.parent
-                    value: value
-                }
+                new = [Node
+                    left: none,
+                    right: none,
+                    parent: self.last.parent,
+                    value: value,
+                ]
                 self.last.parent.right = new
                 self.last = new
             else:
-                var sibling = self.last.parent.getRightSibling()
-                new = Node{
-                    left: none
-                    right: none
-                    parent: sibling
-                    value: value
-                }
+                my sibling = self.last.parent.getRightSibling()
+                new = [Node
+                    left: none,
+                    right: none,
+                    parent: sibling,
+                    value: value,
+                ]
                 sibling.left = new
                 self.last = new
         self.size = self.size + 1
         self.siftUp(new)
 
-    func swapUp(self, node):
+    func swapUp(node):
         if self.last is node:
             self.last = node.parent
-        var parentSave = node.parent
-        var parentLeft = parentSave.left
-        var parentRight = parentSave.right
-        var parentParent = parentSave.parent
+        my parentSave = node.parent
+        my parentLeft = parentSave.left
+        my parentRight = parentSave.right
+        my parentParent = parentSave.parent
 
         parentSave.left = node.left
         if node.left is not none:
@@ -136,7 +136,7 @@ type Heap object:
             else:
                 parentParent.right = node
 
-    func siftUp(self, node):
+    func siftUp(node):
         if node.parent is none:
             return
         if node.value > node.parent.value:
@@ -144,7 +144,7 @@ type Heap object:
             if self.root is not node:
                 self.siftUp(node)
 
-    func siftDown(self, node):
+    func siftDown(node):
         if (node.left is not none) and node.left.value > node.value:
             self.swapUp(node.left)
             self.siftDown(node)
@@ -152,7 +152,7 @@ type Heap object:
             self.swapUp(node.right)
             self.siftDown(node)
 
-    func popTop(self):
+    func popTop():
         if self.size is 1:
             var res = self.root
             self.root = none
@@ -161,7 +161,7 @@ type Heap object:
             return res
 
         if self.size <= 3:
-            var top = self.root
+            my top = self.root
             self.swapUp(self.last)
             top.parent = none
             if self.size == 3:
@@ -200,11 +200,11 @@ type Heap object:
         return top
 
 var h = Heap.new()
-for 1..20000 each i:
+for 1..20000 -> i:
     h.insert(i) 
 
 var sum = 0
-for 1..20000 each i:
+for 1..20000 -> i:
     sum = sum + h.popTop().value
 
 print(sum)

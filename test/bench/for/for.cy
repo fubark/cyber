@@ -1,10 +1,10 @@
 var list = []
 
-for 0..1000000 each i:
+for 0..1000000 -> i:
     list.append(i)
 
 var sum = 0
-for list each i:
+for list -> i:
     sum += i
 
 print(sum)

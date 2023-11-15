@@ -66,10 +66,6 @@ pub const UserVM = struct {
         self.constInternal().compiler.moduleResolver = resolver;
     }
 
-    pub fn ensureUntypedFuncSig(self: *UserVM, numParams: u32) !cy.sema.FuncSigId {
-        return cy.sema.ensureResolvedUntypedFuncSig(self.internal().compiler, numParams);
-    }
-
     pub fn getUserData(self: *UserVM) ?*anyopaque {
         return self.internal().userData;
     }
@@ -194,43 +190,43 @@ pub const UserVM = struct {
         return cy.heap.allocUnsetAstringObject(self.internal(), len);
     }
 
-    pub inline fn allocUnsetRawStringObject(self: *UserVM, len: usize) !*cy.HeapObject {
-        return cy.heap.allocUnsetRawStringObject(self.internal(), len);
+    pub inline fn allocUnsetArrayObject(self: *UserVM, len: usize) !*cy.HeapObject {
+        return cy.heap.allocUnsetArrayObject(self.internal(), len);
     }
 
-    pub inline fn allocRawString(self: *UserVM, str: []const u8) !Value {
-        return cy.heap.allocRawString(self.internal(), str);
+    pub inline fn allocArray(self: *UserVM, str: []const u8) !Value {
+        return cy.heap.allocArray(self.internal(), str);
     }
 
-    pub inline fn allocAstring(self: *UserVM, str: []const u8) !Value {
-        return cy.heap.getOrAllocAstring(self.internal(), str);
+    pub inline fn retainOrAllocAstring(self: *UserVM, str: []const u8) !Value {
+        return cy.heap.retainOrAllocAstring(self.internal(), str);
     }
 
-    pub inline fn allocUstring(self: *UserVM, str: []const u8, charLen: u32) !Value {
-        return cy.heap.getOrAllocUstring(self.internal(), str, charLen);
+    pub inline fn retainOrAllocUstring(self: *UserVM, str: []const u8, charLen: u32) !Value {
+        return cy.heap.retainOrAllocUstring(self.internal(), str, charLen);
     }
 
     pub inline fn allocStringNoIntern(self: *UserVM, str: []const u8, utf8: bool) !Value {
         return cy.heap.allocString(self.internal(), str, utf8);
     }
 
-    pub inline fn allocStringInfer(self: *UserVM, str: []const u8) !Value {
-        return cy.heap.getOrAllocStringInfer(self.internal(), str);
+    pub inline fn retainOrAllocString(self: *UserVM, str: []const u8) !Value {
+        return cy.heap.retainOrAllocPreferString(self.internal(), str);
     }
 
-    pub inline fn allocRawStringSlice(self: *UserVM, slice: []const u8, parent: *cy.HeapObject) !Value {
-        return cy.heap.allocRawStringSlice(self.internal(), slice, parent);
+    pub inline fn allocArraySlice(self: *UserVM, slice: []const u8, parent: *cy.HeapObject) !Value {
+        return cy.heap.allocArraySlice(self.internal(), slice, parent);
     }
 
-    pub inline fn allocStringOrRawstring(self: *UserVM, str: []const u8) !Value {
+    pub inline fn allocStringOrByteArray(self: *UserVM, str: []const u8) !Value {
         if (cy.string.validateUtf8(str)) |runeLen| {
             if (runeLen == str.len) {
-                return self.allocAstring(str);
+                return self.retainOrAllocAstring(str);
             } else {
-                return self.allocUstring(str, @intCast(runeLen));
+                return self.retainOrAllocUstring(str, @intCast(runeLen));
             }
         } else {
-            return self.allocRawString(str);
+            return self.allocArray(str);
         }
     }
 
@@ -250,8 +246,8 @@ pub const UserVM = struct {
         return cy.heap.getOrAllocOwnedUstring(self.internal(), str);
     }
 
-    pub inline fn allocRawStringConcat(self: *UserVM, left: []const u8, right: []const u8) !Value {
-        return cy.heap.allocRawStringConcat(self.internal(), left, right);
+    pub inline fn allocArrayConcat(self: *UserVM, left: []const u8, right: []const u8) !Value {
+        return cy.heap.allocArrayConcat(self.internal(), left, right);
     }
 
     pub inline fn allocAstringConcat3(self: *UserVM, str1: []const u8, str2: []const u8, str3: []const u8) !Value {
@@ -270,11 +266,11 @@ pub const UserVM = struct {
         return cy.heap.getOrAllocUstringConcat(self.internal(), left, right, charLen);
     }
 
-    pub inline fn allocObjectSmall(self: *UserVM, sid: rt.TypeId, fields: []const Value) !Value {
+    pub inline fn allocObjectSmall(self: *UserVM, sid: cy.TypeId, fields: []const Value) !Value {
         return cy.heap.allocObjectSmall(self.internal(), sid, fields);
     }
 
-    pub inline fn allocObject(self: *UserVM, sid: rt.TypeId, fields: []const Value) !Value {
+    pub inline fn allocObject(self: *UserVM, sid: cy.TypeId, fields: []const Value) !Value {
         return self.internal().allocObject(sid, fields);
     }
 
@@ -298,16 +294,12 @@ pub const UserVM = struct {
         return fs.allocFile(self.internal(), fd);
     }
 
-    pub inline fn valueAsString(self: *UserVM, val: Value) []const u8 {
-        return @as(*const VM, @ptrCast(self)).valueAsString(val);
-    }
-
     pub inline fn getOrWriteValueString(self: *UserVM, writer: anytype, val: Value, charLen: *u32) []const u8 {
         return self.internal().getOrWriteValueString(writer, val, charLen, true);
     }
 
-    pub inline fn valueToTempRawString(self: *const UserVM, val: Value) []const u8 {
-        return self.constInternal().valueToTempRawString(val);
+    pub inline fn valueToTempByteArray(self: *const UserVM, val: Value) []const u8 {
+        return self.constInternal().valueToTempByteArray(val);
     }
 
     pub inline fn valueToTempString(self: *UserVM, val: Value) []const u8 {
@@ -331,7 +323,7 @@ pub const UserVM = struct {
     }
 
     pub inline fn mapRawSet(self: *UserVM, map: cy.Value, key: cy.Value, value: cy.Value) !void {
-        try map.asHeapObject().map.map().put(self.allocator(), self.internal(), key, value);
+        try map.asHeapObject().map.map().put(self.allocator(), key, value);
     }
 
     pub inline fn listAppend(self: *UserVM, list: cy.Value, value: cy.Value) !void {
@@ -353,18 +345,6 @@ pub const UserVM = struct {
         vm.curFiber.panicPayload = Value.initErrorSymbol(id).val;
         vm.curFiber.panicType = vmc.PANIC_NATIVE_THROW;
         return Value.Interrupt;
-    }
-
-    pub inline fn getStaticUstringHeader(self: *UserVM, start: u32) *align (1) cy.StaticUstringHeader {
-        return cy.string.getStaticUstringHeader(self.internal(), start);
-    }
-
-    pub inline fn getStaticString(self: *UserVM, start: u32, end: u32) []const u8 {
-        return self.internal().strBuf[start..end];
-    }
-
-    pub inline fn getStaticStringChar(self: *UserVM, idx: u32) u8 {
-        return self.internal().strBuf[idx];
     }
 
     pub fn getNewFramePtrOffset(self: *UserVM, args: [*]const Value, nargs: u8) u32 {

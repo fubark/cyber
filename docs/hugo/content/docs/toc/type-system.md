@@ -10,11 +10,16 @@ Cyber supports the use of both dynamically and statically typed code.
 ## Dynamic typing.
 Dynamic typing can reduce the amount of friction when writing code, but it can also result in more runtime errors.
 
+### `my` declaration.
+Variables declared with `my` are assigned the `dynamic` type:
+```cy
+my a = 123
+```
+
 ### `dynamic` vs `any`
-Variables without a type specifier are implicitly assigned the `dynamic` type.
 `dynamic` values can be freely used and copied without any compile errors (if there is a chance it can succeed at runtime, see [Recent type inference](#recent-type-inference)):
 ```cy
-var a = 123
+my a = 123
 
 func getFirstRune(s string):
     return s[0]
@@ -23,7 +28,7 @@ getFirstRune(a)       -- RuntimeError. Expected `string`.
 ```
 Since `a` is dynamic, passing it to a typed function parameter is allowed at compile-time, but will fail when the function is invoked at runtime.
 
-The `any` type on the otherhand is a **static type** and must be explicitly declared as a variable's type specifier:
+The `any` type on the otherhand is a **static type** and must be explicitly declared using `var`:
 ```cy
 var a any = 123
 
@@ -41,7 +46,7 @@ A `dynamic` value can be used in any operation. It can be invoked as the callee,
 ### Invoking `dynamic` values.
 When a `dynamic` value is invoked, checks on whether the callee is a function is deferred to runtime. 
 ```cy
-var op = 123
+my op = 123
 print op(1, 2, 3)      -- RuntimeError. Expected a function.
 ```
 
@@ -66,13 +71,13 @@ The compiler keeps a running record of a `dynamic` variable's most **recent type
 
 When a `dynamic` variable is first initialized, it has a recent type inferred from its initializer. In the following, `a` has the recent type of `int` at compile-time because numeric literals default to the `int` type:
 ```cy
-var a = 123
+my a = 123
 ```
 
 The recent type can change at compile-time from another assignment. 
 If `a` is then assigned to a string literal, `a` from that point on has the recent type of `string` at compile-time:
 ```cy
-var a = 123
+my a = 123
 foo(a)           -- Valid call expression.
 a = 'hello'
 foo(a)           -- CompileError. Expected `int` argument, got `string`.
@@ -84,7 +89,7 @@ Even though `a` is `dynamic` and is usually allowed to defer type checking to ru
 
 The recent type of `a` can also change in branches. However, after the branch block, `a` will have a recent type after merging the types assigned to `a` from the two branched code paths. Currently, the `any` type is used if the types from the two branches differ. At the end of the following `if` block, `a` has the recent type of `any` type after merging the `int` and `string` types:
 ```cy
-var a = 123
+my a = 123
 if a > 20:
     a = 'hello'
     foo(a)       -- Valid call expression. `foo` can be called without type casting.
@@ -98,14 +103,29 @@ func foo(s string):
 ## Static typing.
 Static typing can be incrementally applied which provides compile-time guarantees and prevents runtime errors.
 Static typing also makes it easier to maintain and refactor your code.
-> _Incomplete: Static types in general is in development. One of the goals of Cyber is to let dynamic code mix with typed code seamlessly. At the moment, there are places where it works and other places where it won't. Keep that in mind when using types._
+> _Incomplete: There are some cases where calling static functions with dynamic values doesn't do a runtime type check._
 
 ### Builtin types.
-The following builtin types are available in every module: `boolean`, `float`, `int`, `string`, `List`, `Map`, `error`, `fiber`, `any`.
+The following builtin types are available in every module: `bool`, `float`, `int`, `string`, `List`, `Map`, `error`, `fiber`, `any`.
+
+### `var` declaration.
+A `var` declaration automatically infers the type from the initializer:
+```cy
+-- Initialized as an `int` variable.
+var a = 123
+```
+
+`var` declarations are strictly for static typing. If the assigned value's type is `dynamic`, the variable's type becomes `any`.
+```cy
+func getValue():
+    return ['a', 'list']
+
+-- Initialized as an `any` variable.
+var a = getValue()
+```
 
 ### Typed variables.
 A typed local variable can be declared by attaching a type specifier after its name. The value assigned to the variable must satisfy the type constraint or a compile error is issued.
-> _Incomplete: Only function parameter and object field type specifiers have meaning to the VM at the moment. Variable type specifiers have no meaning and will be discarded._
 ```cy
 var a float = 123
 
@@ -117,45 +137,28 @@ Any operation afterwards that violates the type constraint of the variable will 
 a = 'hello'          -- CompileError. Expected `float`, got `string`.
 ```
 
-Static variables are declared in a similar way except `:` is used instead of `=`:
-```cy
-var global Map: {}
-```
-
 Type specifiers must be resolved at compile-time.
 ```cy
 var foo Foo = none   -- CompileError. Type `Foo` is not declared.
 ```
 
-### `auto` declarations.
-The `auto` declaration creates a new variable with the type inferred from the initializer. 
-> _Planned Feature_
+Static variables are declared in a similar way:
 ```cy
--- Initialized as an `int` variable.
-auto a = 123     
-```
-
-`auto` declarations are strictly for static typing. If the assigned value's type is `dynamic`, the variable's type becomes `any`.
-```cy
-func getValue():
-    return ['a', 'list']
-
--- Initialized as an `any` variable.
-auto a = getValue()
+var Root.global Map = [:]
 ```
 
 ### Object types.
 A `type object` declaration creates a new object type. Field types are optional and declared with a type specifier after their name.
 ```cy
 type Student object:    -- Creates a new type named `Student`
-    name string
-    age  int
-    gpa  float
+    var name string
+    var age  int
+    var gpa  float
 ```
 
 Instantiating a new object does not require typed fields to be initialized. Missing field values will default to their [zero value](#zero-values):
 ```cy
-var s = Student{}
+var s = [Student:]
 print s.name       -- Prints ""
 print s.age        -- Prints "0"
 print s.gpa        -- Prints "0.0"
@@ -165,18 +168,18 @@ Circular type dependencies are allowed if the object can be initialized:
 > _Planned Feature: Optional types are not currently supported._
 ```cy
 type Node object:
-    val  any
-    next Node?     -- Valid type specifier.
+    var val  any
+    var next Node?     -- Valid type specifier.
 ```
 In this example, `next` has an optional `Node?` type so it can be initialized to `none` when creating a new `Node` object.
 
 The following example will fail because this version of `Node` can not be initialized:
 ```cy
 type Node object:
-    val  any
-    next Node
+    var val  any
+    var next Node
 
-var n = Node{}     -- CompileError. Can not zero initialize `next`
+var n = [Node:]    -- CompileError. Can not zero initialize `next`
                    -- because of circular dependency.
 ```
 
@@ -190,8 +193,8 @@ The following shows the zero values of builtin or created types.
 |`string`|`''`|
 |`rawstring`|`''`|
 |`List`|`[]`|
-|`Map`|`{}`|
-|`type S object`|`S{}`|
+|`Map`|`[:]`|
+|`type S object`|`[S:]`|
 |`@host type S object`|`S.$zero()`|
 |`dynamic`|`none`|
 |`any`|`none`|
@@ -204,7 +207,7 @@ import util './util.cy'
 
 type Vec3 util.Vec3
 
-var v = Vec3{ x: 3, y: 4, z: 5 }
+var v = [Vec3 x: 3, y: 4, z: 5]
 ```
 
 ### Functions.

@@ -139,6 +139,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     defer vm.deinit(false);
 
     const res = vm.compile(path, src, .{
+        .singleRun = builtin.mode == .ReleaseFast,
         .enableFileModules = true,
         .genDebugFuncMarkers = true,
         .aot = aot,
@@ -187,12 +188,17 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
                     defer alloc.free(report);
                     cy.writeStderr(report);
                 }
-                exit(1);
             },
             else => {
-                fmt.panic("unexpected {}\n", &.{fmt.v(err)});
+                std.debug.print("unexpected {}\n", .{err});
             },
         }
+        if (cy.Trace) {
+            vm.deinit(false);
+            cy.heap.deinitAllocator();
+        }
+        
+        exit(1);
     };
     if (verbose) {
         std.debug.print("\n==VM Info==\n", .{});

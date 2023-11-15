@@ -32,14 +32,19 @@ typedef struct IndexSlice {
 
 // 0111111111111100 (7FFC): QNAN and one extra bit to the right.
 #define TAGGED_VALUE_MASK ((u64)0x7ffc000000000000)
+// 1111111111111111 (FFFF): Tagged pointers, integers, and enums.
+#define TAGGED_UPPER_VALUE_MASK ((u64)0xffff000000000000)
+
+// 0000000000000010
+#define INTEGER_MASK ((u64)1 << 49)
 
 // 0000000000000001
-#define INTEGER_MASK ((u64)1 << 48)
+#define ENUM_MASK ((u64)1 << 48)
 
-// 0111111111111101 0000000000000111
+// 0111111111111111 0000000000000111
 #define TAGGED_PRIMITIVE_MASK (TAGGED_VALUE_MASK | PRIMITIVE_MASK)
-// 0000000000000001 0000000000000111: Bits relevant to the primitive's type.
-#define PRIMITIVE_MASK (TAGGED_VALUE_MASK | ((u64)TAG_MASK << 32) | INTEGER_MASK)
+// 0000000000000011 0000000000000111: Bits relevant to the primitive's type.
+#define PRIMITIVE_MASK (TAGGED_VALUE_MASK | ((u64)TAG_MASK << 32) | INTEGER_MASK | ENUM_MASK)
 
 // 1111111111111100: TaggedMask + Sign bit indicates a pointer value.
 #define NOCYC_POINTER_MASK (TAGGED_VALUE_MASK | SIGN_MASK)
@@ -55,8 +60,11 @@ typedef struct IndexSlice {
     #define POINTER_PAYLOAD_MASK 0xFFFFFFFFFFFF
 #endif
 
-// 0111111111111101 
+// 0111111111111110(7FFE) 0...
 #define TAGGED_INTEGER_MASK (TAGGED_VALUE_MASK | INTEGER_MASK)
+
+// 0111111111111101(7FFD) 0...
+#define TAGGED_ENUM_MASK (TAGGED_VALUE_MASK | ENUM_MASK)
 
 // 0111111111111100 0000000000000000
 #define NONE_MASK (TAGGED_VALUE_MASK | ((u64)TAG_NONE << 32))
@@ -68,19 +76,13 @@ typedef struct IndexSlice {
 #define TAG_NONE ((uint8_t)0)
 #define TAG_BOOLEAN ((uint8_t)1)
 #define TAG_ERROR ((uint8_t)2)
-#define TAG_STATIC_ASTRING ((uint8_t)3)
-#define TAG_STATIC_USTRING ((uint8_t)4)
-#define TAG_ENUM ((uint8_t)5)
 #define TAG_SYMBOL ((uint8_t)6)
 #define FALSE_MASK BOOLEAN_MASK
 #define TRUE_BIT_MASK ((uint64_t)1)
 #define TRUE_MASK (BOOLEAN_MASK | TRUE_BIT_MASK)
 
 #define ERROR_MASK (TAGGED_VALUE_MASK | ((u64)TAG_ERROR << 32))
-#define ENUM_MASK (TAGGED_VALUE_MASK | ((u64)TAG_ENUM << 32))
 #define SYMBOL_MASK (TAGGED_VALUE_MASK | ((u64)TAG_SYMBOL << 32))
-#define STATIC_ASTRING_MASK (TAGGED_VALUE_MASK | ((u64)TAG_STATIC_ASTRING << 32))
-#define STATIC_USTRING_MASK (TAGGED_VALUE_MASK | ((u64)TAG_STATIC_USTRING << 32))
 #define BEFORE_TAG_MASK ((u32)(0x00007fff << 3))
 #define NULL_U32 UINT32_MAX
 #define NULL_U8 UINT8_MAX
@@ -94,7 +96,7 @@ typedef struct IndexSlice {
 // 0100000000000000: Cyclable type bit. Currently has two purposes.
 //                   1. Since heap pages don't segregate non-cyc from cyc, it's used
 //                      to check which objects to visit.
-//                   2. Re-encapsulate an object pointer back to a Value.
+//                   2. Re-encapsulate an object pointer back to a cyc/non-cyc Value.
 #define CYC_TYPE_MASK ((u32)0x40000000)
 
 // 1000000000000000: Mark bit.
@@ -142,9 +144,15 @@ typedef struct FmtValue {
 #define CALL_OBJ_SYM_INST_LEN 16
 #define CALL_SYM_INST_LEN 12
 #define CALL_INST_LEN 4
+#define INST_COINIT_LEN 7
+
+#define CALL_ARG_START 5
+#define CALLEE_START 4
 
 typedef enum {
     CodeConstOp = 0,
+
+    CodeConstRetain,
     
     /// Sets an immediate i8 value as an integer to a dst local.
     CodeConstI8,
@@ -161,6 +169,8 @@ typedef enum {
     CodeNot,
     CodeCopy,
     CodeCopyReleaseDst,
+    CodeCopyRetainSrc,
+    CodeCopyRetainRelease,
 
     /// [listReg] [indexReg] [rightReg]
     /// Releases existing value and retains right.
@@ -168,8 +178,8 @@ typedef enum {
 
     CodeSetIndexMap,
 
-    CodeCopyRetainSrc,
     CodeIndexList,
+    CodeIndexTuple,
     CodeIndexMap,
     CodeList,
     CodeMap,
@@ -180,7 +190,12 @@ typedef enum {
     CodeJump,
     CodeRelease,
     CodeReleaseN,
+
+    // [ret] [numArgs] [hasRet] [symId] [callSig u16] [metadata]
+    // Lower bits of metadata contains info relevant for operator inlining.
+    // Most significant bit indicates whether it has attempted to do func ptr inlining.
     CodeCallObjSym,
+    // [ret] [numArgs] [hasRet] [symId] [callSig u16] [metadata] [ptr u48] [recvT u16]
     CodeCallObjNativeFuncIC,
     CodeCallObjFuncIC,
     CodeCallTypeCheck,
@@ -190,8 +205,9 @@ typedef enum {
     CodeRet1,
     CodeRet0,
     CodeCall,
-    CodeFieldRetain,
-    CodeFieldRetainIC,
+    CodeObjectField,
+    CodeField,
+    CodeFieldIC,
     CodeLambda,
     CodeClosure,
     CodeCompare,
@@ -217,10 +233,15 @@ typedef enum {
     CodeObjectTypeCheck,
     CodeObjectSmall,
     CodeObject,
+
+    /// Set field with runtime type check.
     CodeSetField,
-    CodeSetFieldRelease,
-    CodeSetFieldReleaseIC,
-    CodeSetCheckFieldRelease,
+    CodeSetFieldIC,
+
+    /// Set field with predetermined field index.
+    CodeSetObjectField,
+    CodeSetObjectFieldCheck,
+    
     CodePushTry,
     CodePopTry,
     CodeThrow,
@@ -229,13 +250,13 @@ typedef enum {
     CodeCoresume,
     CodeCoreturn,
     CodeRetain,
-    CodeCopyRetainRelease,
     CodeBox,
     CodeSetBoxValue,
     CodeSetBoxValueRelease,
     CodeBoxValue,
     CodeBoxValueRetain,
     CodeCaptured,
+    CodeSetCaptured,
     CodeTag,
     CodeTagLiteral,
     CodeCast,
@@ -271,15 +292,18 @@ typedef enum {
 
 typedef uint32_t TypeId;
 enum {
+    // The order of the first 9 primitive types are required for the VM.
     TYPE_NONE = 0,
     TYPE_BOOLEAN = 1,
     TYPE_ERROR = 2,
-    TYPE_STATIC_ASTRING = 3,
-    TYPE_STATIC_USTRING = 4,
-    TYPE_ENUM = 5,
+    TYPE_PLACEHOLDER1 = 3,
+    TYPE_PLACEHOLDER2 = 4,
+    TYPE_PLACEHOLDER3 = 5,
     TYPE_SYMBOL = 6,
     TYPE_INTEGER = 7,
     TYPE_FLOAT = 8,
+
+    // Builtin concrete types.
     TYPE_TUPLE = 9,
     TYPE_LIST = 10,
     TYPE_LIST_ITER = 11,
@@ -287,45 +311,22 @@ enum {
     TYPE_MAP_ITER = 13,
     TYPE_CLOSURE = 14,
     TYPE_LAMBDA = 15,
-    TYPE_ASTRING = 16,
-    TYPE_USTRING = 17,
-    TYPE_STRING_SLICE = 18,
-    TYPE_RAWSTRING = 19,
-    TYPE_RAWSTRING_SLICE = 20,
-    TYPE_FIBER = 21,
-    TYPE_BOX = 22,
-    TYPE_NATIVE_FUNC = 23,
-    TYPE_TCC_STATE = 24,
-    TYPE_POINTER = 25,
-    TYPE_METATYPE = 26,
+    TYPE_STRING = 16,
+    TYPE_ARRAY = 17,
+    TYPE_FIBER = 18,
+    TYPE_BOX = 19,
+    TYPE_NATIVE_FUNC = 20,
+    TYPE_TCC_STATE = 21,
+    TYPE_POINTER = 22,
+    TYPE_METATYPE = 23,
+
+    // Builtin abstract types.
+    TYPE_DYNAMIC = 24,
+    TYPE_ANY = 25,
+    // TYPE_UNDEFINED = 17,
 };
 
-typedef uint32_t SemaTypeId;
-typedef enum {
-    SEMA_TYPE_ANY = 0,
-    SEMA_TYPE_BOOLEAN = 1,
-    SEMA_TYPE_FLOAT = 2,
-    SEMA_TYPE_INTEGER = 3,
-    SEMA_TYPE_STRING = 4,
-    SEMA_TYPE_RAWSTRING = 5,
-    SEMA_TYPE_SYMBOL = 6,
-    SEMA_TYPE_TUPLE = 7,
-    SEMA_TYPE_LIST = 8,
-    SEMA_TYPE_LIST_ITER = 9,
-    SEMA_TYPE_MAP = 10,
-    SEMA_TYPE_MAP_ITER = 11,
-    SEMA_TYPE_POINTER = 12,
-    SEMA_TYPE_NONE = 13,
-    SEMA_TYPE_ERROR = 14,
-    SEMA_TYPE_FIBER = 15,
-    SEMA_TYPE_METATYPE = 16,
-
-    SEMA_TYPE_UNDEFINED = 17,
-    SEMA_TYPE_STATICSTRING = 18,
-
-    SEMA_TYPE_DYNAMIC = 19,
-    NumSemaTypes = 20,
-} SemaType;
+#define PrimitiveEnd 9
 
 typedef uint8_t Inst;
 typedef uint64_t Value;
@@ -345,27 +346,22 @@ typedef u32 TypeMethodGroupId;
 typedef u32 SymbolId;
 typedef u32 FuncSigId;
 typedef u32 ModuleId;
+typedef u32 ModuleSymId;
 typedef u32 NameId;
 
+typedef struct SemaSym {
+    struct SemaSym* parent;
+    u8 type;
+    u16 metadata;
+    u16 nameLen;
+    char* namePtr;
+} SemaSym;
+
 typedef struct Name {
-    char* ptr;
+    const char* ptr;
     u32 len;
     bool owned;
 } Name;
-
-typedef struct AbsResolvedSymKey {
-    u32 rParentSymId;
-    u32 nameId;
-} AbsResolvedSymKey;
-
-typedef struct Symbol {
-    AbsResolvedSymKey key;
-    u64 data;
-    u32 padding2;
-    u8 symT;
-    u8 exported;
-    u8 genStaticInitVisited;
-} Symbol;
 
 typedef struct FuncSig {
     SymbolId* paramPtr;
@@ -408,6 +404,7 @@ typedef struct TryFrame {
     Value* fp;
     u32 catchPc;
     u8 catchErrDst;
+    bool releaseDst;
 } TryFrame;
 
 /// Minimal stack frame to reconstruct a `StackFrame`.
@@ -446,6 +443,9 @@ typedef struct Fiber {
     /// Where coyield and coreturn should copy the return value to.
     /// If this is the NullByteId, no value is copied and instead released.
     u8 parentDstLocal;
+
+    u8 argStart;
+    u8 numArgs;
 } Fiber;
 
 /// One data structure for astring/ustring slice it can fit into a pool object
@@ -595,23 +595,8 @@ typedef struct FieldSymbolMap {
     uint32_t nameId;
 } FieldSymbolMap;
 
-// TODO: One idea to make the `Type` array more compact is to make @host objects take
-// up two slots, thereby skipping a typeId.
-typedef struct Type {
-    const char* namePtr;
-    SemaTypeId semaTypeId;
-    uint16_t nameLen;
-    bool isHostObject;
-    union {
-        struct {
-            const void* getChildren;
-            const void* finalizer;
-        } hostObject;
-        struct {
-            u32 numFields;
-        } object;
-    } data;
-} Type;
+typedef struct VM VM;
+typedef struct Compiler Compiler;
 
 typedef struct ByteCodeBuffer {
     ZAllocator alloc;
@@ -621,8 +606,7 @@ typedef struct ByteCodeBuffer {
     void* mconsts_buf;
     size_t mconsts_len;
 
-    ZList strBuf;
-    ZHashMap strMap;
+    VM* vm;
 
     ZList debugTable;
     ZList debugReleaseTable;
@@ -638,30 +622,30 @@ typedef struct ByteCodeBuffer {
     u32 mainStackSize;
 } ByteCodeBuffer;
 
-typedef struct VM VM;
-typedef struct Compiler Compiler;
+typedef struct Module {
+    ZList syms;
+    ZHashMap symMap;
 
-typedef struct SemaModel {
+    ZList funcs;
+    ZHashMap overloadedFuncMap;
+
+    ZList retainedVars;
+
+    void* chunk;
+} Module;
+
+typedef struct Sema {
     ZAllocator alloc;
     Compiler* compiler;
 
-    ZList nameSyms;
-    ZHashMap nameSymMap;
+    ZList types;
 
-    ZList resolvedSyms;
-    ZHashMap resolvedSymMap;
-
-    ZList resolvedFuncSyms;
-    ZHashMap resolvedFuncSymMap;
-
-    ZList resolvedFuncSigs;
-    ZHashMap resolvedFuncSigMap;
-
-    ZList resolvedUntypedFuncSigs;
+    ZList funcSigs;
+    ZHashMap funcSigMap;
 
     ZList modules;
     ZHashMap moduleMap;
-} SemaModel;
+} Sema;
 
 typedef struct Compiler {
     ZAllocator alloc;
@@ -671,7 +655,7 @@ typedef struct Compiler {
     char* lastErrPtr;
     size_t lastErrLen;
 
-    SemaModel sema;
+    Sema sema;
 
     NodeId lastErrNode;
     ChunkId lastErrChunk;
@@ -697,9 +681,11 @@ typedef struct TraceInfo {
 } TraceInfo;
 
 typedef enum {
-    FUNC_SYM_NATIVEFUNC1,
     FUNC_SYM_FUNC,
+    FUNC_SYM_HOSTFUNC,
+    FUNC_SYM_INLINEFUNC,
     FUNC_SYM_CLOSURE,
+    FUNC_SYM_NONE,
 } FuncSymbolType;
 
 typedef struct FuncSymbol {
@@ -734,6 +720,8 @@ typedef struct StaticVar {
 typedef struct VM {
 #if IS_32BIT
     Fiber mainFiber;
+    Value emptyString;
+    Value emptyArray;
 #endif
     ZAllocator alloc;
 
@@ -750,9 +738,6 @@ typedef struct VM {
 
     Const* constPtr;
     size_t constLen;
-
-    char* strBufPtr;
-    size_t strBufLen;
 
     ZHashMap strInterns;
 
@@ -778,26 +763,26 @@ typedef struct VM {
     ZHashMap typeMethodGroupKeys;
 
     ZCyList funcSyms; // FuncSymbol
-    ZHashMap funcSymSigs;
     ZCyList funcSymDetails;
 
     ZCyList varSyms; // StaticVar
-    ZHashMap varSymSigs;
 
     ZCyList fieldSyms;
     ZHashMap fieldTable;
     ZHashMap fieldSymSignatures;
 
-    ZCyList types; // Type
-    ZHashMap typeSignatures;
+    void* typesPtr;
+    size_t typesLen;
 
-    ZHashMap quickenSaves;
-
-    ZCyList enums;
-    ZHashMap enumSignatures;
+    ZHashMap inlineSaves;
 
     ZCyList syms;
     ZHashMap symSignatures;
+
+    ZList names;
+    ZHashMap nameMap;
+
+    ZList staticStrings;
 
     ZCyList u8Buf;
     ZCyList u8Buf2;
@@ -826,6 +811,7 @@ typedef struct VM {
     TraceInfo* trace;
 #endif
     Compiler* compiler;
+    Sema* sema;
     void* userData;
     void* print;
 #if TRACE
@@ -842,22 +828,22 @@ typedef struct VM {
         void* vtable;
     } httpClient;
     void* stdHttpClient;
-    MethodGroupId padding[24];
     size_t expGlobalRC;
-    ZHashMap varSymExtras;
+    ZList varSymExtras;
 #else
     struct {
         void* ptr;
         void* vtable;
     } httpClient;
     void* stdHttpClient;
+    Value emptyString;
+    Value emptyArray;
     size_t expGlobalRC;
-    ZHashMap varSymExtras;
+    ZCyList varSymExtras;
 
     #if TRACE
     u32 debugPc;
     #endif
-    MethodGroupId padding[24];
 #endif
 
 } VM;
@@ -929,13 +915,13 @@ void zEnd(VM* vm, Inst* pc);
 ValueResult zAllocList(VM* vm, Value* elemStart, uint8_t nelems);
 double zOtherToF64(Value val);
 CallObjSymResult zCallObjSym(VM* vm, Inst* pc, Value* stack, Value recv, TypeId typeId, uint8_t mgId, u8 startLocal, u8 numArgs, u8 numRet, u16 anySelfFuncSigId);
-ValueResult zAllocFiber(VM* vm, uint32_t pc, Value* args, uint8_t nargs, uint8_t initialStackSize);
+ValueResult zAllocFiber(VM* vm, uint32_t pc, Value* args, uint8_t nargs, uint8_t argDst, uint8_t initialStackSize);
 PcSp zPushFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Fiber* fiber, uint8_t parentDstLocal);
 PcSp zPopFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Value retValue);
 ValueResult zAllocObjectSmall(VM* vm, TypeId typeId, Value* fields, uint8_t nfields);
 uint8_t zGetFieldOffsetFromTable(VM* vm, TypeId typeId, uint32_t symId);
-Value zEvalCompare(VM* vm, Value left, Value right);
-Value zEvalCompareNot(VM* vm, Value left, Value right);
+Value zEvalCompare(Value left, Value right);
+Value zEvalCompareNot(Value left, Value right);
 PcSpResult zCall(VM* vm, Inst* pc, Value* stack, Value callee, uint8_t startLocal, uint8_t numArgs, Value retInfo);
 HeapObjectResult zAllocPoolObject(VM* vm);
 HeapObjectResult zAllocExternalObject(VM* vm, size_t size);
@@ -947,11 +933,12 @@ void zPanicIncompatibleFuncSig(VM* vm, FuncId funcId, Value* args, size_t numArg
 ResultCode zSetStaticFunc(VM* vm, FuncId funcId, Value val);
 ResultCode zGrowTryStackTotalCapacity(ZCyList* list, ZAllocator alloc, size_t minCap);
 PcSpResult zThrow(VM* vm, Value* startFp, const Inst* pc, Value err);
-u16 zOpMatch(VM* vm, const Inst* pc, Value* framePtr);
+u16 zOpMatch(const Inst* pc, Value* framePtr);
 void zPrintStderr(const char* fmt, const FmtValue* vals, size_t len);
 void zCheckDoubleFree(VM* vm, HeapObject* obj);
 void zCheckRetainDanglingPointer(VM* vm, HeapObject* obj);
 void zPanicFmt(VM* vm, const char* format, FmtValue* args, size_t numArgs);
-Value zValueMapGet(VM* vm, ValueMap* map, Value key, bool* found);
+Value zValueMapGet(ValueMap* map, Value key, bool* found);
 ResultCode zMapSet(VM* vm, Map* map, Value key, Value val);
 Inst* zDeoptBinOp(VM* vm, Inst* pc);
+Str zGetTypeName(VM* vm, TypeId id);

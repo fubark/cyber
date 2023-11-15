@@ -1,15 +1,15 @@
-var varInt: 123
-var varTypedInt int: 123
-var varList: [1, 2, 3]
-var varMap: { a: 1, b: 2, c: 3 }
-var varFunc: func():
+var Root.varInt = 123
+var Root.varTypedInt int = 123
+var Root.varList = [1, 2, 3]
+var Root.varMap = [a: 1, b: 2, c: 3]
+var Root.varFunc = func():
     return 345
-var varFunc1: func(a):
+var Root.varFunc1 = func(a):
     return a + 1
-var varFunc2: func(a, b):
+var Root.varFunc2 = func(a, b):
     return a + b
 
-var varNoExport: 123
+var Root.varNoExport = 123
 
 func fn():
     return 234
@@ -24,22 +24,18 @@ func barNoExport():
 -- Test that there is no main block execution for imported modules.
 panic(.ExecutedModuleMain)
 
-func declAssign(val) int = toInt
 func toInt(val) int:
     return int(val)
 
-var initOnce: incInitOnce(initOnceCount)
-var initOnceCount: 0
+var Root.initOnce = incInitOnce(initOnceCount)
+var Root.initOnceCount = 0
 func incInitOnce(cur):
     initOnceCount = cur + 1
     return initOnceCount
 
 -- Tests dependency generation, so set resulting symbol's natural order before the dependency.
-var varDepRes: varDep
-var varDep: 123
-func funcDepRes() = funcDep
-var funcDep: func ():
-    return 123
+var Root.varDepRes = varDep
+var Root.varDep = 123
 
 func sameFuncName():
     return 123
@@ -48,12 +44,12 @@ func useInt(a):
     return toInt(a)
 
 type Vec2 object:
-    x float
-    y float
+    var x float
+    var y float
 
-    func new(x float, y float):
-        return Vec2{ x: x, y: y }
+func Vec2.new(x float, y float):
+    return [Vec2 x: x, y: y]
 type Vec2Alias Vec2
 
 type Bar object:
-    a float
+    var a float

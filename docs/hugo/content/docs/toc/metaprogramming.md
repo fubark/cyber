@@ -15,35 +15,35 @@ Normally this would impact performance, but Cyber generates specialized bytecode
 To overload an operator for an object type, declare `$prefix`, `$infix`, `$postfix` methods. See the available [builtin operators](#builtin-operators). Since operator names aren't allowed as standard identifiers, they are contained in a string literal.
 ```cy
 type Vec2 object:
-  x float
-  y float
+    var x float
+    var y float
 
-  meth '$infix+'(o):
-    return Vec2{
-      x: x + o.x,
-      y: y + o.y,
-    }
+    func '$infix+'(o):
+        return [Vec2
+            x: x + o.x,
+            y: y + o.y,
+        ]
 
-  meth '$prefix-'():
-    return Vec2{ x: -x, y: -y }
+    func '$prefix-'():
+        return [Vec2 x: -x, y: -y]
 
-var a = Vec2{ x: 1, y: 2 }
-var b = a + Vec2{ x: 3, y: 4 }
+var a = [Vec2 x: 1, y: 2]
+var b = a + [Vec2 x: 3, y: 4]
 var c = -a
 ```
 
 Some special operators have their own name. This example overloads the `index` operator and the `set index` operator:
 ```cy
 type MyCollection object:
-  arr List
+    var arr List
 
-  meth '$index'(idx):
-    return arr[idx * 2]
+    func '$index'(idx):
+        return arr[idx * 2]
 
-  meth '$setIndex'(idx, val):
-    arr[idx * 2] = val 
+    func '$setIndex'(idx, val):
+        arr[idx * 2] = val 
 
-var a = MyCollection{ arr: [1, 2, 3, 4] }
+var a = [MyCollection arr: [1, 2, 3, 4]]
 print a[1]        -- Prints `3`
 ```
 
@@ -83,11 +83,11 @@ Declare a `$call` function to allow invoking a module as a function.
 ```cy
 -- Object types are also modules.
 type Vec2 object:
-  x float
-  y float
+    var x float
+    var y float
 
-  func '$call'(x float, y float) Vec2:
-    return Vec2{ x: x, y: y }
+    func '$call'(x float, y float) Vec2:
+        return [Vec2 x: x, y: y]
 
 var v = Vec2(1, 2)
 ```
@@ -100,28 +100,23 @@ Declare a `$missing` method as a fallback when a method was not found in an inst
 > _Planned Feature_
 ```cy
 type A object:
-  meth '$missing'(args...):
-    return args.len
 
-var a = A{};
+    func '$missing'(args...):
+        return args.len
+
+var a = [A:]
 print a.foo()      -- Output: '0'
 print a.bar(1, 2)  -- Output: '2'
 ```
 
 ## Reflection.
-A `metatype` object references an internal type. Use the `typeof` builtin to get the `metatype` of a value.
+A [`metatype`]({{<relref "/docs/toc/modules#metatype">}}) object references an internal type. Use the `typeof` builtin to get the `metatype` of a value.
 ```cy
 var val = 123
 print typeof(val)   -- 'type: float'
 
 -- Referencing a type as a value also returns its `metatype`.
-print boolean       -- 'type: boolean'
-```
-
-### `type metatype`
-```cy
-meth id() int
--- Returns the type ID as an `int`.
+print bool          -- 'type: bool'
 ```
 
 ## Annotations.

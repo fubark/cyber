@@ -6,7 +6,10 @@ const t = stdx.testing;
 const IsWasm = builtin.target.isWasm();
 
 const MeasureMemory = false;
-var gpa: ?std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = MeasureMemory }) = null;
+var gpa: ?std.heap.GeneralPurposeAllocator(.{
+    .stack_trace_frames = if (builtin.mode == .Debug) 10 else 0,
+    .enable_memory_limit = MeasureMemory
+}) = null;
 var wasm_gpa: WasmDefaultAllocator = undefined;
 var wasm_gpa_inited = false;
 

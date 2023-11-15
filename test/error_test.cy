@@ -8,8 +8,8 @@ t.eq(err, error.FileNotFound)
 
 -- error.value()
 err = error.Oops
-t.eq(err.value(), .Oops)
+t.eq(err.sym(), .Oops)
 
 -- error.<call>()
 err = error(.Oops)
-t.eq(err.value(), .Oops)
+t.eq(err.sym(), .Oops)

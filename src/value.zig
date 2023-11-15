@@ -7,13 +7,17 @@ const debug = builtin.mode == .Debug;
 const log = cy.log.scoped(.value);
 const cy = @import("cyber.zig");
 const rt = cy.rt;
+const bt = cy.types.BuiltinTypes;
 const fmt = @import("fmt.zig");
 const vmc = @import("vm_c.zig");
 
 const SignMask: u64 = 1 << 63;
 const TaggedValueMask: u64 = 0x7ffc000000000000;
-const IntegerMask: u64 = 1 << 48;
-const TaggedIntegerMask: u64 = TaggedValueMask | IntegerMask;
+const IntegerMask: u64 = vmc.INTEGER_MASK;
+const TaggedIntegerMask: u64 = vmc.TAGGED_INTEGER_MASK;
+const TaggedUpperValueMask: u64 = vmc.TAGGED_UPPER_VALUE_MASK;
+const EnumMask: u64 = vmc.ENUM_MASK;
+const TaggedEnumMask: u64 = vmc.TAGGED_ENUM_MASK;
 
 const BooleanMask: u64 = TaggedValueMask | (@as(u64, TagBoolean) << 32);
 const FalseMask: u64 = BooleanMask;
@@ -21,13 +25,10 @@ const TrueMask: u64 = BooleanMask | TrueBitMask;
 const TrueBitMask: u64 = 1;
 const NoneMask: u64 = TaggedValueMask | (@as(u64, TagNone) << 32);
 const ErrorMask: u64 = TaggedValueMask | (@as(u64, TagError) << 32);
-const StaticAstringMask: u64 = TaggedValueMask | (@as(u64, TagStaticAstring) << 32);
-const StaticUstringMask: u64 = TaggedValueMask | (@as(u64, TagStaticUstring) << 32);
-const EnumMask: u64 = TaggedValueMask | (@as(u64, TagEnum) << 32);
 const SymbolMask: u64 = TaggedValueMask | (@as(u64, TagSymbol) << 32);
 
 const TagMask: u32 = (1 << 3) - 1;
-const PrimitiveMask: u64 = TaggedValueMask | (@as(u64, TagMask) << 32) | IntegerMask;
+const PrimitiveMask: u64 = TaggedValueMask | (@as(u64, TagMask) << 32) | IntegerMask | EnumMask;
 const TaggedPrimitiveMask = TaggedValueMask | PrimitiveMask;
 const BeforeTagMask: u32 = 0x7fff << 3;
 
@@ -36,17 +37,9 @@ const TagId = u3;
 pub const TagNone: TagId = 0;
 pub const TagBoolean: TagId = 1;
 pub const TagError: TagId = 2;
-pub const TagStaticAstring: TagId = 3;
-pub const TagStaticUstring: TagId = 4;
-pub const TagEnum: TagId = 5;
+// pub const TagEnum: TagId = 5;
 pub const TagSymbol: TagId = 6;
 pub const TagInteger: TagId = 7;
-
-pub const StaticUstringHeader = struct {
-    charLen: u32,
-    mruIdx: u32,
-    mruCharIdx: u32,
-};
 
 /// NaN tagging over a f64 value.
 /// Represents a f64 value if not a quiet nan.
@@ -132,6 +125,30 @@ pub const Value = packed union {
         return @intCast(self.val & @as(u64, 0xFFFFFFFF));
     }
 
+    pub inline fn asArray(self: *const Value) []const u8 {
+        if (cy.Trace) {
+            if (!self.isArray()) cy.panic("Not an array.");
+        }
+        const obj = self.asHeapObject();
+        return obj.array.getSlice();
+    }
+
+    pub fn asString(val: Value) []const u8 {
+        if (cy.Trace) {
+            if (!val.isString()) cy.panic("Not a string.");
+        }
+        const obj = val.asHeapObject();
+        return obj.string.getSlice();
+    }
+
+    pub fn asString2(val: Value, outCharLen: *u32) []const u8 {
+        if (cy.Trace) {
+            if (!val.isString()) cy.panic("Not a string.");
+        }
+        const obj = val.asHeapObject();
+        return obj.string.getSlice2(outCharLen);
+    }
+
     pub inline fn toF64(self: *const Value) linksection(cy.HotSection) f64 {
         @setRuntimeSafety(debug);
         if (self.isFloat()) {
@@ -144,14 +161,8 @@ pub const Value = packed union {
     pub fn otherToF64(self: *const Value) linksection(cy.HotSection) !f64 {
         if (self.isPointer()) {
             const obj = self.asHeapObject();
-            if (obj.getTypeId() == rt.AstringT) {
-                const str = obj.astring.getConstSlice();
-                return std.fmt.parseFloat(f64, str) catch 0;
-            } else if (obj.getTypeId() == rt.UstringT) {
-                const str = obj.ustring.getConstSlice();
-                return std.fmt.parseFloat(f64, str) catch 0;
-            } else if (obj.getTypeId() == rt.StringSliceT) {
-                const str = cy.heap.StringSlice.getConstSlice(obj.stringSlice);
+            if (obj.getTypeId() == bt.String) {
+                const str = obj.string.getSlice();
                 return std.fmt.parseFloat(f64, str) catch 0;
             } else {
                 log.debug("unsupported conv to number: {}", .{obj.getTypeId()});
@@ -181,21 +192,12 @@ pub const Value = packed union {
         return !self.isNone();
     }
 
-    pub inline fn isRawString(self: *const Value) bool {
-        if (!self.isPointer()) {
-            return false;
-        }
-        const typeId = self.asHeapObject().getTypeId();
-        return typeId == rt.RawstringT or typeId == rt.RawstringSliceT;
+    pub inline fn isArray(self: *const Value) bool {
+        return self.isPointer() and self.asHeapObject().getTypeId() == bt.Array;
     }
 
-    pub fn isString(self: *const Value) linksection(cy.HotSection) bool {
-        if (self.isPointer()) {
-            const obj = self.asHeapObject();
-            return obj.getTypeId() == rt.AstringT or obj.getTypeId() == rt.UstringT or obj.getTypeId() == rt.StringSliceT;
-        } else {
-            return self.assumeNotPtrIsStaticString();
-        }
+    pub inline fn isString(self: *const Value) bool {
+        return self.isPointer() and self.asHeapObject().getTypeId() == bt.String;
     }
 
     pub inline fn bothFloats(a: Value, b: Value) bool {
@@ -203,46 +205,16 @@ pub const Value = packed union {
     }
 
     pub inline fn bothIntegers(a: Value, b: Value) bool {
-        return a.val & b.val & (TaggedPrimitiveMask | SignMask) == IntegerMask;
-    }
-
-    pub inline fn isStaticString(self: *const Value) bool {
-        const mask = self.val & (TaggedPrimitiveMask | SignMask);
-        return mask == StaticAstringMask or mask == StaticUstringMask;
-    }
-
-    pub inline fn isStaticAstring(self: *const Value) bool {
-        return self.val & (TaggedPrimitiveMask | SignMask) == StaticAstringMask;
-    }
-
-    pub inline fn isStaticUstring(self: *const Value) bool {
-        return self.val & (TaggedPrimitiveMask | SignMask) == StaticUstringMask;
-    }
-
-    pub inline fn assumeNotPtrIsStaticString(self: *const Value) bool {
-        const mask = self.val & TaggedPrimitiveMask;
-        return mask == StaticAstringMask or mask == StaticUstringMask;
+        return a.val & b.val & TaggedUpperValueMask == IntegerMask;
     }
 
     pub inline fn isError(self: *const Value) bool {
         return self.val & (TaggedPrimitiveMask | SignMask) == ErrorMask;
     }
 
-    pub inline fn assumeNotPtrIsError(self: *const Value) bool {
-        return self.val & TaggedPrimitiveMask == ErrorMask;
-    }
-
-    pub inline fn assumeNotPtrIsSymbol(self: *const Value) bool {
-        return self.val & TaggedPrimitiveMask == SymbolMask;
-    }
-
-    pub inline fn assumeNotPtrIsEnum(self: *const Value) bool {
-        return self.val & TaggedPrimitiveMask == EnumMask;
-    }
-
     pub inline fn getPrimitiveTypeId(self: *const Value) u32 {
         if (self.isFloat()) {
-            return rt.FloatT;
+            return bt.Float;
         } else {
             return self.getTag();
         }
@@ -255,13 +227,15 @@ pub const Value = packed union {
                 return self.asHeapObject().getTypeId();
             } else {
                 if (bits >= TaggedIntegerMask) {
-                    return rt.IntegerT;
+                    return bt.Integer;
+                } else if (bits >= TaggedEnumMask) {
+                    return @intCast(self.val & 0xffffffff);
                 } else {
                     return self.getTag();
                 }
             }
         } else {
-            return rt.FloatT;
+            return bt.Float;
         }
     }
 
@@ -276,7 +250,11 @@ pub const Value = packed union {
     }
 
     pub inline fn isInteger(self: *const Value) bool {
-        return self.val & (TaggedIntegerMask | SignMask) == TaggedIntegerMask;
+        return self.val & TaggedUpperValueMask == TaggedIntegerMask;
+    }
+
+    pub inline fn isEnum(self: *const Value) bool {
+        return self.val & TaggedUpperValueMask == TaggedEnumMask;
     }
 
     pub inline fn isPointer(self: *const Value) bool {
@@ -287,37 +265,28 @@ pub const Value = packed union {
         return self.val >= vmc.CYC_POINTER_MASK;
     }
 
-    pub inline fn isObjectType(self: *const Value, typeId: rt.TypeId) bool {
+    pub inline fn isObjectType(self: *const Value, typeId: cy.TypeId) bool {
         return isPointer(self) and self.asHeapObject().getTypeId() == typeId;
     }
 
     pub inline fn isPointerT(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().getTypeId() == rt.PointerT;
+        return self.isPointer() and self.asHeapObject().getTypeId() == bt.Pointer;
     }
 
     pub inline fn isMap(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().getTypeId() == rt.MapT;
+        return self.isPointer() and self.asHeapObject().getTypeId() == bt.Map;
     }
 
     pub inline fn isList(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().getTypeId() == rt.ListT;
+        return self.isPointer() and self.asHeapObject().getTypeId() == bt.List;
     }
 
     pub inline fn isBox(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().getTypeId() == rt.BoxT;
+        return self.isPointer() and self.asHeapObject().getTypeId() == bt.Box;
     }
 
     pub inline fn isClosure(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().getTypeId() == rt.ClosureT;
-    }
-
-    pub inline fn asRawString(self: *const Value) []const u8 {
-        const obj = self.asHeapObject();
-        if (obj.getTypeId() == rt.RawstringT) {
-            return obj.rawstring.getConstSlice();
-        } else if (obj.getTypeId() == rt.RawstringSliceT) {
-            return obj.rawstringSlice.getConstSlice();
-        } else unreachable;
+        return self.isPointer() and self.asHeapObject().getTypeId() == bt.Closure;
     }
 
     pub fn isGcConfirmedCyc(self: *const Value) bool {
@@ -371,22 +340,23 @@ pub const Value = packed union {
         return @intCast(@as(u32, @intCast(self.val >> 32)) & TagMask);
     }
 
-    pub inline fn initEnum(tag: u8, val: u8) Value {
-        return .{ .val = EnumMask | (@as(u32, tag) << 8) | val };
+    pub inline fn initEnum(typeId: cy.TypeId, val: u16) Value {
+        return .{ .val = TaggedEnumMask | (@as(u64, val) << 32) | typeId };
     }
 
-    pub inline fn asEnum(self: *const Value) EnumValue {
-        return .{
-            .enumId = @intCast((0xff00 & self.val) >> 8),
-            .memberId = @intCast(0xff & self.val),
-        };
+    pub inline fn getEnumType(self: *const Value) cy.TypeId {
+        return @intCast(self.val & 0xffffffff);
+    }
+
+    pub inline fn getEnumValue(self: *const Value) u16 {
+        return @intCast((self.val >> 32) & 0xff);
     }
 
     pub inline fn isSymbol(self: *const Value) bool {
         return self.val & (TaggedPrimitiveMask | SignMask) == SymbolMask;
     }
 
-    pub inline fn initSymbol(symId: u8) Value {
+    pub inline fn initSymbol(symId: u32) Value {
         return .{ .val = SymbolMask | symId };
     }
 
@@ -448,20 +418,6 @@ pub const Value = packed union {
         return .{ .val = vmc.CYC_POINTER_MASK | (@intFromPtr(ptr) & vmc.POINTER_PAYLOAD_MASK) };
     }
 
-    pub inline fn initStaticAstring(start: u32, len: u15) Value {
-        return .{ .val = StaticAstringMask | (@as(u64, len) << 35) | start };
-    }
-
-    pub inline fn initStaticUstring(start: u32, len: u15) Value {
-        return .{ .val = StaticUstringMask | (@as(u64, len) << 35) | start };
-    }
-
-    pub inline fn asStaticStringSlice(self: *const Value) cy.IndexSlice(u32) {
-        const len = (@as(u32, @intCast(self.val >> 32)) & BeforeTagMask) >> 3;
-        const start: u32 = @intCast(self.val & 0xffffffff);
-        return cy.IndexSlice(u32).init(start, start + len);
-    }
-
     pub inline fn floatIsSpecial(val: f64) bool {
         @setRuntimeSafety(debug);
         if (std.math.isInf(val)) return true;
@@ -476,77 +432,60 @@ pub const Value = packed union {
         return std.math.floor(val) == val;
     }
 
-    pub inline fn initErrorSymbol(id: u8) Value {
-        return .{ .val = ErrorMask | (@as(u32, 0xFF) << 8) | id };
+    pub inline fn initErrorSymbol(id: u32) Value {
+        return .{ .val = ErrorMask | id };
     }
 
-    pub inline fn initErrorEnum(enumId: u8, id: u8) Value {
-        return .{ .val = ErrorMask | (@as(u32, enumId) << 8) | id };
-    }
-
-    pub inline fn asErrorSymbol(self: *const Value) u8 {
-        return @intCast(self.val & 0xff);
+    pub inline fn asErrorSymbol(self: *const Value) u32 {
+        return @intCast(self.val & 0xffffffff);
     }
 
     pub fn dump(self: *const Value) void {
         switch (self.getTypeId()) {
-            rt.FloatT => {
+            bt.Float => {
                 log.info("Float {}", .{self.asF64()});
             },
-            rt.NoneT => {
+            bt.None => {
                 log.info("None", .{});
             },
-            rt.IntegerT => {
+            bt.Integer => {
                 log.info("Integer {}", .{self.asInteger()});
             },
-            rt.EnumT => {
-                const enumv = self.asEnum();
-                log.info("Enum {} {}", .{enumv.enumId, enumv.memberId});
-            },
-            rt.ErrorT => {
+            bt.Error => {
                 log.info("Error {}", .{self.asErrorSymbol()});
             },
-            rt.SymbolT => {
+            bt.Symbol => {
                 log.info("Symbol {}", .{self.asSymbolId()});
             },
-            rt.StaticUstringT,
-            rt.StaticAstringT => {
-                const slice = self.asStaticStringSlice();
-                log.info("Const String len={}", .{slice.len()});
-            },
-            else => {
+            else => |typeId| {
                 if (self.isPointer()) {
                     const obj = self.asHeapObject();
                     switch (obj.getTypeId()) {
-                        rt.ListT => log.info("List {*} len={}", .{obj, obj.list.list.len}),
-                        rt.MapT => log.info("Map {*} size={}", .{obj, obj.map.inner.size}),
-                        rt.AstringT => {
-                            const str = obj.astring.getConstSlice();
+                        bt.List => log.info("List {*} len={}", .{obj, obj.list.list.len}),
+                        bt.Map => log.info("Map {*} size={}", .{obj, obj.map.inner.size}),
+                        bt.String => {
+                            const str = obj.string.getSlice();
                             if (str.len > 20) {
                                 log.info("String {*} len={} str=\"{s}\"...", .{obj, str.len, str[0..20]});
                             } else {
                                 log.info("String {*} len={} str={s}", .{obj, str.len, str});
                             }
                         },
-                        rt.UstringT => {
-                            const str = obj.ustring.getConstSlice();
-                            if (str.len > 20) {
-                                log.info("String {*} len={} str=\"{s}\"...", .{obj, str.len, str[0..20]});
-                            } else {
-                                log.info("String {*} len={} str={s}", .{obj, str.len, str});
-                            }
-                        },
-                        rt.LambdaT => log.info("Lambda {*}", .{obj}),
-                        rt.ClosureT => log.info("Closure {*}", .{obj}),
-                        rt.FiberT => log.info("Fiber {*}", .{obj}),
-                        rt.NativeFuncT => return log.info("NativeFunc {*}", .{obj}),
-                        rt.PointerT => return log.info("Pointer {*} ptr={*}", .{obj, obj.pointer.ptr}),
+                        bt.Lambda => log.info("Lambda {*}", .{obj}),
+                        bt.Closure => log.info("Closure {*}", .{obj}),
+                        bt.Fiber => log.info("Fiber {*}", .{obj}),
+                        bt.HostFunc => return log.info("NativeFunc {*}", .{obj}),
+                        bt.Pointer => return log.info("Pointer {*} ptr={*}", .{obj, obj.pointer.ptr}),
                         else => {
                             log.info("HeapObject {*} {}", .{obj, obj.getTypeId()});
                         },
                     }
                 } else {
-                    log.info("Unknown {}", .{self.getTag()});
+                    if (self.isEnum()) {
+                        log.info("Enum {}", .{typeId});
+                    } else {
+                        log.info("Unknown {}", .{self.getTag()});
+                    }
                 }
             }
         }
@@ -555,56 +494,53 @@ pub const Value = packed union {
     pub fn getUserTag(self: *const Value) linksection(cy.Section) ValueUserTag {
         const typeId = self.getTypeId();
         switch (typeId) {
-            rt.FloatT => return .float,
-            rt.BooleanT => return .boolean,
-            rt.StaticAstringT => return .string,
-            rt.StaticUstringT => return .string,
-            rt.NoneT => return .none,
-            rt.EnumT => return .enumT,
-            rt.SymbolT => return .symbol,
-            rt.ErrorT => return .err,
-            rt.IntegerT => return .int,
-            else => {
-                switch (typeId) {
-                    rt.ListT => return .list,
-                    rt.MapT => return .map,
-                    rt.AstringT => return .string,
-                    rt.UstringT => return .string,
-                    rt.StringSliceT => return .string,
-                    rt.RawstringT => return .rawstring,
-                    rt.RawstringSliceT => return .rawstring,
-                    rt.ClosureT => return .closure,
-                    rt.LambdaT => return .lambda,
-                    rt.FiberT => return .fiber,
-                    rt.BoxT => return .box,
-                    rt.NativeFuncT => return .nativeFunc,
-                    rt.TccStateT => return .tccState,
-                    rt.PointerT => return .pointer,
-                    rt.MetaTypeT => return .metatype,
-                    cy.NullId => return .danglingObject,
-                    else => {
-                        return .object;
-                    },
-                }
+            bt.Float => return .float,
+            bt.Boolean => return .bool,
+            bt.None => return .none,
+            bt.Symbol => return .symbol,
+            bt.Error => return .err,
+            bt.Integer => return .int,
+            else => {} // Fall-through.
+        }
+
+        if (!self.isPointer()) {
+            if (self.isEnum()) {
+                return .enumT;
+            } else {
+                return .unknown;
             }
         }
-    }
-};
 
-const EnumValue = struct {
-    enumId: u16,
-    memberId: u16,
+        switch (typeId) {
+            bt.List => return .list,
+            bt.Map => return .map,
+            bt.String => return .string,
+            bt.Array => return .array,
+            bt.Closure => return .closure,
+            bt.Lambda => return .lambda,
+            bt.Fiber => return .fiber,
+            bt.Box => return .box,
+            bt.HostFunc => return .nativeFunc,
+            bt.TccState => return .tccState,
+            bt.Pointer => return .pointer,
+            bt.MetaType => return .metatype,
+            cy.NullId => return .danglingObject,
+            else => {
+                return .object;
+            },
+        }
+    }
 };
 
 pub const ValueUserTag = enum {
     float,
     int,
-    boolean,
+    bool,
     object,
     list,
     map,
     string,
-    rawstring,
+    array,
     closure,
     lambda,
     fiber,
@@ -617,6 +553,7 @@ pub const ValueUserTag = enum {
     err,
     metatype,
     danglingObject,
+    unknown,
     none,
 };
 
@@ -624,7 +561,7 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         switch (obj.getTypeId()) {
-            rt.ListT => {
+            bt.List => {
                 const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
                 const new = cy.heap.allocList(vm, list.items()) catch cy.fatal();
                 for (list.items()) |item| {
@@ -632,7 +569,7 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
                 }
                 return new;
             },
-            rt.MapT => {
+            bt.Map => {
                 const new = cy.heap.allocEmptyMap(vm) catch cy.fatal();
                 const newMap = cy.ptrAlignCast(*cy.MapInner, &(new.asHeapObject()).map.inner);
 
@@ -641,47 +578,43 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
                 while (iter.next()) |entry| {
                     cy.arc.retain(vm, entry.key);
                     cy.arc.retain(vm, entry.value);
-                    newMap.put(vm.alloc, @ptrCast(vm), entry.key, entry.value) catch cy.fatal();
+                    newMap.put(vm.alloc, entry.key, entry.value) catch cy.fatal();
                 }
                 return new;
             },
-            rt.ClosureT => {
+            bt.Closure => {
                 fmt.panic("Unsupported copy closure.", &.{});
             },
-            rt.LambdaT => {
+            bt.Lambda => {
                 fmt.panic("Unsupported copy closure.", &.{});
             },
-            rt.AstringT => {
+            bt.String => {
                 cy.arc.retainObject(vm, obj);
                 return val;
             },
-            rt.UstringT => {
+            bt.Array => {
                 cy.arc.retainObject(vm, obj);
                 return val;
             },
-            rt.RawstringT => {
-                cy.arc.retainObject(vm, obj);
-                return val;
-            },
-            rt.FiberT => {
+            bt.Fiber => {
                 fmt.panic("Unsupported copy fiber.", &.{});
             },
-            rt.BoxT => {
+            bt.Box => {
                 fmt.panic("Unsupported copy box.", &.{});
             },
-            rt.NativeFuncT => {
+            bt.HostFunc => {
                 fmt.panic("Unsupported copy native func.", &.{});
             },
-            rt.TccStateT => {
+            bt.TccState => {
                 fmt.panic("Unsupported copy tcc state.", &.{});
             },
-            rt.PointerT => {
+            bt.Pointer => {
                 fmt.panic("Unsupported copy pointer.", &.{});
             },
             else => {
-                const entry = &@as(*const cy.VM, @ptrCast(vm)).types.buf[obj.getTypeId()];
-                if (!entry.isHostObject) {
-                    const numFields = entry.data.object.numFields;
+                const entry = &@as(*const cy.VM, @ptrCast(vm)).types[obj.getTypeId()];
+                if (entry.symType != .hostObjectType) {
+                    const numFields = entry.data.numFields;
                     const fields = obj.object.getValuesConstPtr()[0..numFields];
                     var new: Value = undefined;
                     if (numFields <= 4) {
@@ -725,13 +658,11 @@ test "asF64" {
 test "value internals." {
     try t.eq(@sizeOf(Value), 8);
     try t.eq(@alignOf(Value), 8);
-    try t.eq(StaticAstringMask, 0x7FFC000300000000);
-    try t.eq(StaticUstringMask, 0x7FFC000400000000);
     try t.eq(NoneMask, 0x7FFC000000000000);
     try t.eq(TrueMask, 0x7FFC000100000001);
     try t.eq(FalseMask, 0x7FFC000100000000);
     try t.eq(vmc.POINTER_MASK, 0xFFFE000000000000);
-    try t.eq(Value.initInt(0).val, 0x7ffd000000000000);
+    try t.eq(Value.initInt(0).val, 0x7ffe000000000000);
 
     // Check Zig/C struct compat.
     try t.eq(@sizeOf(Value), @sizeOf(vmc.Value));

@@ -3,11 +3,11 @@
 import t 'test'
 
 type Animal enum:
-  Bear
-  Tiger
+    case Bear
+    case Tiger
 
 -- enum to int.
-var n = Animal.Tiger
+my n = Animal.Tiger
 t.eq(int(n), 1)
 
 -- Using enum declared afterwards.
@@ -20,6 +20,6 @@ n = .Dragon
 t.eq(int(n), 2)
 
 type Animal2 enum:
-  Bear
-  Tiger
-  Dragon
+    case Bear
+    case Tiger
+    case Dragon

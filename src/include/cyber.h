@@ -11,8 +11,9 @@ typedef struct CsValueSlice {
     size_t len;
 } CsValueSlice;
 
+typedef struct CsResolverResult CsResolverResult;
+typedef struct CsModuleLoaderResult CsModuleLoaderResult;
 typedef struct CsModule CsModule;
-typedef uint32_t CsModuleId;
 
 #define CS_NULLID UINT32_MAX
 
@@ -29,9 +30,9 @@ typedef enum {
     CS_TYPE_NONE = 0,
     CS_TYPE_BOOLEAN,
     CS_TYPE_ERROR,
-    CS_TYPE_STATICASTRING,
-    CS_TYPE_STATICUSTRING,
-    CS_TYPE_ENUM,
+    CS_TYPE_PLACEHOLDER1,
+    CS_TYPE_PLACEHOLDER2,
+    CS_TYPE_PLACEHOLDER3,
     CS_TYPE_SYMBOL,
     CS_TYPE_INTEGER,
     CS_TYPE_FLOAT,
@@ -42,11 +43,8 @@ typedef enum {
     CS_TYPE_MAPITER,
     CS_TYPE_CLOSURE,
     CS_TYPE_LAMBDA,
-    CS_TYPE_ASTRING,
-    CS_TYPE_USTRING,
-    CS_TYPE_STRINGSLICE,
-    CS_TYPE_RAWSTRING,
-    CS_TYPE_RAWSTRINGSLICE,
+    CS_TYPE_STRING,
+    CS_TYPE_ARRAY,
     CS_TYPE_FIBER,
     CS_TYPE_BOX,
     CS_TYPE_NATIVEFUNC1,
@@ -55,14 +53,12 @@ typedef enum {
     CS_TYPE_METATYPE,
 } CsType;
 typedef uint32_t CsTypeId;
-typedef uint32_t CsSemaTypeId;
 
 // Cyber deals with string slices internally for efficiency.
-// Although some API functions could accept a null terminated string,
-// it's more consistent to use CsStr everywhere.
+// Some API functions may require you to use slices rather than a null terminated string.
 // Creating a CsStr can be simplified with a macro:
 // #define str(x) ((CsStr){ x, strlen(x) })
-// NOTE: Returned `CsStr`s do not always end with a null char.
+// NOTE: Returned `CsStr`s are not always null terminated.
 typedef struct CsStr {
     const char* buf;
     size_t len;
@@ -74,29 +70,47 @@ CsStr csGetVersion();
 CsStr csGetBuild();
 CsStr csGetCommit();
 
+typedef struct CsModule {
+    void* sym;
+} CsModule;
+
 // @host func is binded to this function pointer signature.
 typedef CsValue (*CsFuncFn)(CsVM* vm, const CsValue* args, uint8_t nargs);
 
 // Internal @host func used to do inline caching.
-typedef void (*CsQuickenFuncFn)(CsVM* vm, uint8_t* pc, const CsValue* args, uint8_t nargs);
+typedef void (*CsInlineFuncFn)(CsVM* vm, uint8_t* pc, const CsValue* args, uint8_t nargs);
+
+// This callback is invoked after receiving the resolver result.
+// If `res->uri` was allocated, this can be a good time to free the memory.
+typedef bool (*CsResolverOnReceiptFn)(CsVM* vm, CsResolverResult* res);
+
+typedef struct CsResolverResult {
+    // Resolved uri.
+    const char* uri;
+    // If `uri` is not null terminated, `uriLen` needs to be set.
+    // Defaults to 0 which indicates that `uri` is null terminated.
+    size_t uriLen;
+    // Pointer to callback or null.
+    CsResolverOnReceiptFn onReceipt;
+} CsResolverResult;
 
 // Given the current module's resolved URI and the "to be" imported module specifier,
-// write the resolved specifier in `outUri` and return true, or return false.
+// set the resolved uri in `res->uri` and return true, or return false.
 // Most embedders do not need a resolver and can rely on the default resolver which
-// simply returns `spec` without any adjustments.
-typedef bool (*CsModuleResolverFn)(CsVM* vm, uint32_t chunkId, CsStr curUri, CsStr spec, CsStr* outUri);
+// simply writes `spec` into `outUri` without any adjustments.
+typedef bool (*CsResolverFn)(CsVM* vm, uint32_t chunkId, CsStr curUri, CsStr spec, CsResolverResult* res);
 
 // Callback invoked after all type symbols in the module's src are loaded.
 // This could be used to set up an array or hashmap for binding @host vars.
-typedef void (*CsPostTypeLoadModuleFn)(CsVM* vm, uint32_t modId);
+typedef void (*CsModuleOnTypeLoadFn)(CsVM* vm, CsModule mod);
 
 // Callback invoked after all symbols in the module's src are loaded.
 // This could be used to inject symbols not declared in the module's src.
-typedef void (*CsPostLoadModuleFn)(CsVM* vm, uint32_t modId);
+typedef void (*CsModuleOnLoadFn)(CsVM* vm, CsModule mod);
 
 // Callback invoked just before the module is destroyed.
 // This could be used to cleanup (eg. release) injected symbols from `CsPostLoadModuleFn`,
-typedef void (*CsModuleDestroyFn)(CsVM* vm, uint32_t modId);
+typedef void (*CsModuleOnDestroyFn)(CsVM* vm, uint32_t modId);
 
 // Info about a @host func.
 typedef struct CsFuncInfo {
@@ -115,12 +129,12 @@ typedef enum {
     // Most @host funcs have this type.
     CS_FUNC_STANDARD,
     // Some internal functions need this to perform inline caching.
-    CS_FUNC_QUICKEN,
+    CS_FUNC_INLINE,
 } CsFuncType;
 
 // Result given to Cyber when binding a @host func.
 typedef struct CsFuncResult {
-    // Pointer to the binded function. (CsFuncFn/CsQuickenFuncFn)
+    // Pointer to the binded function. (CsFuncFn/CsInlineFuncFn)
     void* ptr;
     // `CsFuncType`. By default, this is `CS_FUNC_STANDARD`.
     uint8_t type;
@@ -160,7 +174,7 @@ typedef struct CsTypeInfo {
 typedef enum {
     // @host object type that needs to be created.
     CS_TYPE_OBJECT,
-    // @host object type that is hardcoded into the VM and already has a semantic and runtime type id.
+    // @host object type that is hardcoded into the VM and already has a type id.
     CS_TYPE_CORE_OBJECT,
 } CsTypeType;
 
@@ -184,13 +198,10 @@ typedef void (*CsObjectFinalizerFn)(CsVM* vm, void* obj);
 typedef struct CsTypeResult {
     union {
         struct {
-            // The created runtime type id will be written to `outTypeId`.
+            // If not null, the created runtime type id will be written to `outTypeId`.
             // This typeId is then used to allocate a new instance of the object.
-            CsTypeId* outTypeId;
-
-            // The created semantic type id will be written to `outSemaTypeId`.
             // Defaults to null.
-            CsSemaTypeId* outSemaTypeId;
+            CsTypeId* outTypeId;
 
             // Pointer to callback or null.
             CsObjectGetChildrenFn getChildren;
@@ -198,10 +209,8 @@ typedef struct CsTypeResult {
             CsObjectFinalizerFn finalizer;
         } object;
         struct {
-            // Existing runtime typeId.
+            // Existing typeId.
             CsTypeId typeId;
-            // Existing semantic typeId.
-            CsSemaTypeId semaTypeId;
         } coreObject;
     } data;
     // `CsTypeType`. By default, this is `CS_TYPE_OBJECT`.
@@ -211,12 +220,17 @@ typedef struct CsTypeResult {
 // Given info about a @host type, write the result to `out` and return true, or return false.
 typedef bool (*CsTypeLoaderFn)(CsVM* vm, CsTypeInfo typeInfo, CsTypeResult* out);
 
+// This callback is invoked after receiving the module loader's result.
+// If `res->src` was allocated, this can be a good time to free the memory.
+typedef bool (*CsModuleOnReceiptFn)(CsVM* vm, CsModuleLoaderResult* res);
+
 // Module loader config.
 typedef struct CsModuleLoaderResult {
     // The Cyber source code for the module.
-    CsStr src;
-    // Whether the provided `src` is from static memory or heap memory.
-    bool srcIsStatic;
+    const char* src;
+    // If `src` is not null terminated, `srcLen` needs to be set.
+    // Defaults to 0 which indicates that `src` is null terminated.
+    size_t srcLen;
     // Pointer to callback or null.
     CsFuncLoaderFn funcLoader;
     // Pointer to callback or null.
@@ -224,15 +238,17 @@ typedef struct CsModuleLoaderResult {
     // Pointer to callback or null.
     CsTypeLoaderFn typeLoader;
     // Pointer to callback or null.
-    CsPostTypeLoadModuleFn preLoad;
+    CsModuleOnTypeLoadFn onTypeLoad;
     // Pointer to callback or null.
-    CsPostLoadModuleFn postLoad;
+    CsModuleOnLoadFn onLoad;
     // Pointer to callback or null.
-    CsModuleDestroyFn destroy;
+    CsModuleOnDestroyFn onDestroy;
+    // Pointer to callback or null.
+    CsModuleOnReceiptFn onReceipt;
 } CsModuleLoaderResult;
 
-// Given the resolved import specifier of the module, write the loader details in `out`
-// and return true, or return false.
+// Given the resolved import specifier of the module, set the module's src in `res->src`,
+// set symbol loaders, and return true. Otherwise, return false.
 typedef bool (*CsModuleLoaderFn)(CsVM* vm, CsStr resolvedSpec, CsModuleLoaderResult* out);
 
 // Override the behavior of `print` from the `builtins` module.
@@ -252,11 +268,11 @@ void csDeinit(CsVM* vm);
 // Deinitializes the VM and frees all memory associated with it. Any operation on `vm` afterwards is undefined.
 void csDestroy(CsVM* vm);
 
-CsModuleResolverFn csGetModuleResolver(CsVM* vm);
-void csSetModuleResolver(CsVM* vm, CsModuleResolverFn resolver);
+CsResolverFn csGetResolver(CsVM* vm);
+void csSetResolver(CsVM* vm, CsResolverFn resolver);
 
 // The default module resolver. It returns `spec`.
-bool csDefaultModuleResolver(CsVM* vm, uint32_t chunkId, CsStr curUri, CsStr spec, CsStr* outUri);
+bool csDefaultResolver(CsVM* vm, uint32_t chunkId, CsStr curUri, CsStr spec, CsStr* outUri);
 
 CsModuleLoaderFn csGetModuleLoader(CsVM* vm);
 void csSetModuleLoader(CsVM* vm, CsModuleLoaderFn loader);
@@ -282,9 +298,16 @@ void csSetUserData(CsVM* vm, void* userData);
 // Verbose flag. In a debug build, this would print more logs.
 extern bool csVerbose;
 
-// Modules.
-void csSetModuleFunc(CsVM* vm, CsModuleId modId, CsStr name, uint32_t numParams, CsFuncFn func);
-void csSetModuleVar(CsVM* vm, CsModuleId modId, CsStr name, CsValue val);
+//
+// [ Modules ]
+//
+
+// Declares a function in a module.
+void csDeclareUntypedFunc(CsModule mod, const char* name, uint32_t numParams, CsFuncFn fn);
+void csDeclareFunc(CsModule mod, const char* name, const CsTypeId* params, uint32_t numParams, CsTypeId retType, CsFuncFn fn);
+
+// Declares a variable in a module.
+void csDeclareVar(CsModule mod, const char* name, CsValue val);
 
 // 
 // [ Memory ]
@@ -355,7 +378,8 @@ CsValue csNewTuple(CsVM* vm, const CsValue* vals, size_t len);
 CsValue csNewEmptyList(CsVM* vm);
 CsValue csNewList(CsVM* vm, const CsValue* vals, size_t len);
 CsValue csNewEmptyMap(CsVM* vm);
-CsValue csNewFunc(CsVM* vm, CsFuncFn func, uint32_t numParams);
+CsValue csNewUntypedFunc(CsVM* vm, uint32_t numParams, CsFuncFn func);
+CsValue csNewFunc(CsVM* vm, const CsTypeId* params, uint32_t numParams, CsTypeId retType, CsFuncFn func);
 CsValue csNewPointer(CsVM* vm, void* ptr);
 
 // Instantiating a `@host type object` requires the `typeId` obtained from `CsTypeLoader` and

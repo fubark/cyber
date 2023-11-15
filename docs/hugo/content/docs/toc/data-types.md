@@ -4,18 +4,23 @@ weight: 2
 ---
 
 # Data Types.
-In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts. Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integers), [Enums](#enums), [Symbols](#symbols), [Errors]({{<relref "/docs/toc/errors">}}), [Static Strings](#strings), and the `none` value. Object types include [Lists](#lists), [Tuples](#tuples), [Maps](#maps), [Strings](#strings), [Custom Objects](#objects), [Lambdas]({{<relref "/docs/toc/functions#lambdas">}}), [Fibers]({{<relref "/docs/toc/concurrency#fibers">}}), [Errors with payloads]({{<relref "/docs/toc/errors">}}), [Pointers]({{<relref "/docs/toc/ffi#pointers">}}), and several internal object types.
+In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts.
 
+Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integers), [Enums](#enums), [Symbols](#symbols), [Error Symbols]({{<relref "/docs/toc/errors">}}), and the `none` value.
+
+Object types include [Lists](#lists), [Tuples](#tuples), [Maps](#maps), [Strings](#strings), [Arrays](#arrays), [User Objects](#objects), [Lambdas]({{<relref "/docs/toc/functions#lambdas">}}), [Fibers]({{<relref "/docs/toc/concurrency#fibers">}}), [Enums with payloads](#enums), [Pointers]({{<relref "/docs/toc/ffi#pointers">}}), and several internal object types.
+
+## None.
 The `none` value represents an empty value. This is similar to null in other languages.
 
 ## Booleans.
-Booleans can be `true` or `false`. See [`type boolean`]({{<relref "/docs/toc/modules#type-boolean">}}).
+Booleans can be `true` or `false`. See [`type bool`]({{<relref "/docs/toc/modules#type-bool">}}).
 ```cy
 var a = true
 if a:
     print 'a is true'
 ```
-When other value types are coerced to the boolean type, the truthy value is determined as follows.
+When other value types are coerced to the bool type, the truthy value is determined as follows.
 - The `none` value is `false`.
 - Other objects and values are always `true`.
 
@@ -73,14 +78,13 @@ var b = float(a)
 ## Strings.
 The `string` type represents a sequence of UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as an `int`. See [`type string`]({{<relref "/docs/toc/modules#type-string-trait">}}).
 
-Under the hood, Cyber implements 5 different internal string types to optimize string operations.
+Under the hood, there are multiple string implementations to make operations faster by default.
 
 Strings are **immutable**, so operations that do string manipulation return a new string. By default, small strings are interned to reduce memory footprint.
 
-To mutate an existing string, use the [StringBuffer](#string-buffer).
-> _Planned Feature_
+To mutate an existing string, use [MutString](#mutstring). {{<todo "*Planned Feature">}}
 
-A string is always UTF-8 validated. [rawstrings](#rawstring) outperform strings but you'll have to validate them and take care of indexing yourself.
+A string is always UTF-8 validated. Using an [Array](#array) to represent raw bytes of a string is faster but you'll have to validate them and take care of indexing.
 
 A single line string literal is surrounded in single quotes.
 ```cy
@@ -135,7 +139,7 @@ The following escape sequences are supported:
 | \t | 0x09 | Horizontal tab character. |
 
 The boundary of each line can be set with a vertical line character. This makes it easier to see the whitespace.
-> _Planned Feature_
+{{<todo "*Planned Feature">}}
 ```cy
 var poem = "line a
        |  two spaces from the left
@@ -149,7 +153,7 @@ print str[1]     -- "b"
 print str[-1]    -- "d"
 ```
 
-Using the slice index operator will return a view of the string at the given start and end (exclusive) indexes. The start index defaults to 0 and the end index defaults to the string's length.
+Using the slice operator will return a view of the string at the given start and end (exclusive) indexes. The start index defaults to 0 and the end index defaults to the string's length.
 ```cy
 var str = 'abcxyz'
 var sub = str[0..3]
@@ -181,15 +185,23 @@ var str = 'Scoreboard: \{ Bob \} {points}'
 ```
 String templates can not contain nested string templates.
 
-### rawstring.
-A `rawstring` does not automatically validate the string and is indexed by bytes and not UTF-8 runes. See [`type rawstring`]({{<relref "/docs/toc/modules#type-rawstring-trait">}}).
+## Arrays.
+An `array` is an immutable sequence of bytes. It can be used to represent strings but it won't automatically validate their encoding and indexing returns the n'th byte rather than a UTF-8 rune. See [`type array`]({{<relref "/docs/toc/modules#type-array">}}).
 
-Using the index operator will return the UTF-8 rune starting at the given byte index as a slice. If the index does not begin a valid UTF-8 rune, `error.InvalidRune` is returned. This is equivalent to calling the method `sliceAt()`.
 ```cy
-var str = rawstring('abcd').insertByte(1, 255)
-print str[0]     -- "a"
-print str[1]     -- error.InvalidRune
-print str[-1]    -- "d"
+var a = array('abcd')
+str = a.insertByte(1, 255)
+print a[0]     -- "97"
+print a[1]     -- "255"
+print a[-1]    -- "100"
+```
+
+## Bracket literals.
+Bracket literals is delimited with brackets `[]`. Bracket literals are used to initialize Lists, Maps, and Objects:
+```cy
+var list = [1, 2, 3]
+var map = [ a: 123, b: 234 ]
+var obj = [MyObject a: 123, b: 234]
 ```
 
 ## Lists.
@@ -205,14 +217,20 @@ print list[0]    -- Prints '1'
 print list[-1]   -- Prints '3'
 ```
 
-Lists can be sliced with the range `..` clause. The sliced list becomes a new list that you can modify without affecting the original list. The end index is non-inclusive. Negative start or end values count from the end of the list.
+Lists can be sliced with the range `..` clause. The sliced list becomes a new list that you can modify without affecting the original list. The end index is non-inclusive.
 ```cy
 var list = [ 1, 2, 3, 4, 5 ]
-list[0..0]  -- []          Empty list.
-list[0..3]  -- [ 1, 2, 3 ] From start to end index.
-list[3..]   -- [ 4, 5 ]    From start index to end of list. 
-list[..3]   -- [ 1, 2, 3 ] From start of list to end index.
-list[2..+2] -- [ 3, 4 ]    From start index to start index + amount.
+list[0..0]    -- []          
+list[0..3]    -- [ 1, 2, 3 ] 
+list[3..]     -- [ 4, 5 ]    
+list[..3]     -- [ 1, 2, 3 ] 
+```
+
+The `+..` invokes the slice operator with an end position that is an increment from the start: {{<todo "*Planned Feature">}}
+
+```cy
+var list = [ 1, 2, 3, 4, 5 ]
+list[2+..2]   -- [ 3, 4 ]
 ```
 
 List operations.
@@ -232,7 +250,7 @@ print list.len()  -- Prints '2'
 list.sort((a, b) => a < b)
 
 -- Iterating a list.
-for list each it:
+for list -> it:
     print it
 
 -- Remove an element at a specific index.
@@ -244,40 +262,39 @@ list.remove(1)
 
 ## Maps.
 Maps are a builtin type that store key value pairs in dictionaries. See [`type Map`]({{<relref "/docs/toc/modules#type-map">}}).
+
+### Create map.
+Create a map using key value pairs inside a collection literal:
 ```cy
-var map = { a: 123, b: () => 5 }
+var map = [ a: 123, b: () => 5 ]
+```
+
+Maps entries can be listed in multiple lines:
+```cy
+map = [
+    foo: 1,
+    bar: 2,
+]
+```
+
+### Empty map.
+The empty map is initialized using `[:]`:
+```cy
+var empty = [:]
+```
+
+### Map indexing.
+Get a value from the map using the index operator:
+```cy
 print map['a']
-
--- You can also access the map using an access expression.
-print map.a
-
--- Map entries can be separated by the new line.
-map = {
-    foo: 1
-    bar: 2
-}
 ```
-Entries can also follow a `{}:` block.
-This gives structure to the entries and has
-the added benefit of allowing multi-line lambdas.
-> _Planned Feature_
+
+Maps can be accessed with the `.` dot operator as well:
 ```cy
-var colors = {}:
-    red: 0xFF0000
-    green: 0x00FF00
-    blue: 0x0000FF
-    dump func (c):
-        print c.red
-        print c.green
-        print c.blue
-
-    -- Nested map.
-    darker {}: 
-        red: 0xAA0000
-        green: 0x00AA00
-        blue: 0x0000AA
+print map.a
 ```
-Map operations.
+
+### Map operations.
 ```cy
 var map = {}
 -- Set a key value pair.
@@ -289,9 +306,31 @@ print map.size()
 -- Remove an entry by key.
 map.remove 123
 
--- Iterating a list.
-for map each [val, key]:
+-- Iterating a map.
+for map -> [val, key]:
     print '{key} -> {value}'
+```
+
+### Map block.
+Entries can also follow a collection literal block.
+This gives structure to the entries and has
+the added benefit of allowing multi-line lambdas.
+{{<todo "*Planned Feature">}}
+```cy
+var colors = []:
+    red: 0xFF0000
+    green: 0x00FF00
+    blue: 0x0000FF
+    dump func (c):
+        print c.red
+        print c.green
+        print c.blue
+
+    -- Nested map.
+    darker []: 
+        red: 0xAA0000
+        green: 0x00AA00
+        blue: 0x0000AA
 ```
 
 ## Objects.
@@ -300,58 +339,73 @@ Object types are similar to structs and classes in other languages.
 Unlike classes, there is no concept of inheritance at the language level.
 
 ### Fields.
-Fields must be declared at the top of the `type object` block:
+Fields must be declared at the top of the `type object` block using `var` or `my`:
 ```cy
 type Node object:
-    value
-    next
+    var value int
+    var next  any
+```
+When fields are declared with `my` instead, they become dynamically typed.
 
-var node = Node{ value: 123, next: none }
+### Instantiation.
+New object instances are created using a leading type name and the field values in a collection literal:
+```cy
+var node = [Node value: 123, next: none]
 print node.value       -- Prints "123"
 ```
-New instances of an object template are created using the type name and braces that surround the initial field values. These fields were declared with the `dynamic` type. See how to declare [typed fields]({{<relref "/docs/toc/type-system#object-types">}}).
 
 ### Methods.
-Methods allow invoking a function using the `.` operator after an object instance. Since the behavior of methods is closely tied to object instances, they are declared with the `meth` keyword:
+Methods allow invoking a function on an object instance using the `.` operator:
 ```cy
 type Node object:
-    value
-    next
+    var value int
+    var next  any
 
-    meth inc(n):
+    func inc(n):
         value += n
 
-    meth incAndPrint():
+    func incAndPrint():
         inc(321)
         print value
 
-var node = Node{ value: 123, next: none }
+var node = [Node value: 123, next: none]
 n.incAndPrint()         -- Prints "444"
 ```
-Type members can be implicitly referenced inside the method.
-> _Incomplete: Only the type's fields can be referenced this way._
+
+### `self` variable.
+Type members can be implicitly referenced inside the method. {{<todo "*Incomplete: Only the type's fields can be referenced this way.">}}
 
 To reference members explicitly inside a method, use the builtin `self`:
 ```cy
 type Node object:
-    value
+    var value int
+    var next  any
 
-    meth double():
+    func double():
         return self.value * 2
 ```
 
-### Functions.
-Regular functions are invoked from the type's namespace:
+### Type functions.
+Type functions are declared outside of the `type` block with an explicit namespace path:
 ```cy
 type Node object:
-    value
-    next
+    var value int
+    var next  any
 
-    -- A function.
-    func create():
-        return Node{ value: 123, next: none }
+-- Declare namespace function inside `Node`.
+func Node.new():
+    return [Node value: 123, next: none]
 
-var n = Node.create()
+var n = Node.new()
+```
+
+### Type variables.
+Similarily, type variables are declared outside of the `type` block:
+```cy
+-- Declare inside the `Node` namespace.
+var Node.DefaultValue = 100
+
+print Node.DefaultValue    -- Prints "100"
 ```
 
 ## Enums.
@@ -360,10 +414,10 @@ An enum value can only be one of the unique symbols declared in the enum type.
 By default, the symbols generate unique ids starting from 0.
 ```cy
 type Fruit enum:
-    apple
-    orange
-    banana
-    kiwi
+    case apple
+    case orange
+    case banana
+    case kiwi
 
 var fruit = Fruit.kiwi
 print fruit       -- 'Fruit.kiwi'

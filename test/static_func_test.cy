@@ -46,22 +46,28 @@ t.eqList(list, [1, 2, 3])
 func foo5(): return 2 + 2
 t.eq(foo5(), 4)
 
--- Static func initializer assigns static function value.
+-- Static func can be reassigned.
 func foo6a(val) int:
     return val as int
-func foo6(val) int = foo6a
+func foo6(val) int:
+    pass
+foo6 = foo6a
 t.eq(foo6(123), 123)
 
--- Static func initializer assigns function value.
-func foo7() = foo7dep
-var foo7dep: func ():
+-- Reassign with lambda.
+func foo7():
+    pass
+var Root.foo7dep = func ():
     return 123
+foo7 = foo7dep
 t.eq(foo7(), 123)
 
--- Static func initializer assigns closure value.
-func foo8() = foo8dep()
-var foo8dep: func ():
+-- Reassign with closure.
+func foo8():
+    pass
+var Root.foo8dep = func ():
     var local = 123
     return func():
         return local
+foo8 = foo8dep()
 t.eq(foo8(), 123)

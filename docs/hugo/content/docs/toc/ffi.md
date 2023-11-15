@@ -12,7 +12,7 @@ Cyber uses `libtcc` to JIT compile the bindings so function calls are fast. `bin
 import os
 
 var lib = os.bindLib('mylib.so', [
-    os.CFunc{ sym: 'add', args: [.int, .int], ret: .int }
+    [os.CFunc sym: 'add', args: [.int, .int], ret: .int]
 ])
 lib.add(123, 321)
 ```
@@ -69,15 +69,15 @@ After adding a `CStruct` declaration, you can use the object type symbol in CFun
 import os
 
 type MyObject object:
-    a float
-    b pointer
-    c bool
+    var a float
+    var b pointer
+    var c bool
 
 var lib = os.bindLib('mylib.so', [
-    os.CFunc{ sym: 'foo', args: [MyObject], ret: MyObject }
-    os.CStruct{ fields: [.double, .charPtr, .bool], type: MyObject }
+    [os.CFunc sym: 'foo', args: [MyObject], ret: MyObject]
+    [os.CStruct fields: [.double, .charPtr, .bool], type: MyObject]
 ])
-var res = lib.foo(MyObject{ a: 123.0, b: os.cstr('foo'), c: true })
+var res = lib.foo([MyObject a: 123.0, b: os.cstr('foo'), c: true])
 ```
 The example above maps to these C declarations in `mylib.so`:
 ```text
@@ -97,10 +97,10 @@ MyObject foo(MyObject o) {
 import os
 
 var lib = os.bindLib('mylib.so', [
-    os.CFunc{ sym: 'foo', args: [MyObject], ret: .voidPtr }
-    os.CStruct{ fields: [.double, .charPtr, .bool], type: MyObject }
+    [os.CFunc sym: 'foo', args: [MyObject], ret: .voidPtr]
+    [os.CStruct fields: [.double, .charPtr, .bool], type: MyObject]
 ])
-var ptr = lib.foo(MyObject{ a: 123, b: os.cstr('foo'), c: true })
+var ptr = lib.foo([MyObject a: 123, b: os.cstr('foo'), c: true])
 var res = lib.ptrToMyObject(ptr)
 ```
 

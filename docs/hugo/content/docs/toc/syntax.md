@@ -24,7 +24,7 @@ if true:
 Subsequent statements in the block must follow the same indentation.
 The block ends when a statement recedes from this indentation.
 ```cy
-for items each it:
+for items -> it:
     if it == 20:
         print it
         print it + 10
@@ -46,113 +46,99 @@ func foo():
 ```
 
 ## Variables.
-In Cyber, there are local variables and static variables. The following sections show how variables are declared with the dynamic type.
 
-For declaring typed variables, see [Typed variables]({{<relref "/docs/toc/type-system#typed-variables">}}) and [`auto` declarations]({{<relref "/docs/toc/type-system#auto-declarations">}}).
-
-### Local Variables.
+### Local variables.
 Local variables exist until the end of their scope.
-They are declared and initialized using the `var` keyword.
+They are declared and initialized using the `var` keyword:
 ```cy
--- Declaration.
 var a = 123
+```
+When declared without a type specifier next to the variable, it infers the type from the right initializer.
+To declare variables for a specific type, see [Typed variables]({{<relref "/docs/toc/type-system#typed-variables">}}). 
 
--- Subsequent assignment.
+Variables can be set afterwards using the `=` operator:
+```cy
 a = 234
 ```
 
-Blocks create a new variable scope. Variables declared in the current scope will take precedence over any parent variables with the same name. 
+### Dynamically typed.
+Dynamically typed variables are easier to work with and there is no friction when using them. They are declared using the `my` keyword:
+```cy
+my a = 123
+```
+To understand more about dynamically and statically typed code, see [Type System]({{<relref "/docs/toc/type-system">}}).
+
+### Variable scopes.
+Blocks create a new variable scope. Variables declared in the current scope will take precedence over any parent variables with the same name:
 ```cy
 func foo():
-    -- `a` declared inside `foo`.
     var a = 234
 
     if true:
-        -- A new `a` declared inside `if`.
-        var a = 345
+        var a = 345     -- New `a` declared.
         print a         -- Prints "345"
 
     print a             -- Prints "234"
-```
-
-When a parent local is referenced in a [lambda function]({{<relref "/docs/toc/functions#lambdas">}}), the variable is automatically captured. Note that [static functions]({{<relref "/docs/toc/functions#static-functions">}}) can not capture parent locals.
-
-> _Incomplete: Only variables one parent block away can be captured._
-
-```cy
-var a = 123
-var foo = func():
-    a = 234
-foo()
-print a      -- '234'
 ```
 
 ### Static Variables.
 Static variables live until the end of the script.
 They act as global variables and are visible from anywhere in the script. 
 
-Static variables are also declared with `var` but `:` is used instead of `=` to initialize a value to them.
+They are declared with `var` but a namespace must be provided before the variable name:
 ```cy
-var a: 123
+var Root.a = 123
+
 func foo():
     print a     -- '123'
 ```
+The `Root` symbol is used to reference the current module's namespace.
 
-Static variables are always exported from the current script. You can read more about exports and [Modules]({{<relref "/docs/toc/modules">}}).
 
-When declared in functions, static variables are initialized once and continue to exist for subsequent function calls.
-> _Planned Feature_
+Since static variables are initialized outside of a fiber's execution flow, they can not reference any local variables:
 ```cy
-func add(a):
-    var sum: 0
-    sum += a
-    return sum
-print add(5)     -- '5'
-print add(5)     -- '10'
+-- Static declaration.
+var Root.b = a   -- Compile error, initializer can not reference a local variable.
+
+-- Main execution.
+var a = 123
 ```
 
-Since static variable declarations are initialized outside of a fiber's execution flow, they can not reference any local variables.
+However, they can be reassigned after initialization:
 ```cy
-var a = 123
-var b: a      -- Compile error, initializer can not reference a local variable.
-```
+var Root.b = 0
 
-However, you can reassign any value to them with an assignment statement.
-```cy
 var a = 123
-var b: 0
-b = a         -- Reassigning can reference a local variable.
+b = a            -- Reassigning after initializing.
 ```
 
 Static variable initializers have a natural order based on when it was encountered by the compiler.
 In the case of [imported]({{<relref "/docs/toc/modules#importing">}}) variables, the order of the import would affect this order.
-The following would print '123' before '234'
+The following would print '123' before '234':
 ```cy
-var a: print(123)
-var b: print(234)
+var Root.a = print(123)
+var Root.b = print(234)
 ```
 
 When the initializers reference other static variables, those child references are initialized first in DFS order and supersede the natural ordering. The following initializes `b` before `a`.
 ```cy
-var a: b + 321
-var b: 123
+var Root.a = b + 321
+var Root.b = 123
+
 print a        -- '444'
 ```
 
-Circular references in initializers are allowed.
-When initialization encounters a reference that creates this circular dependency, that reference evaluates to `none`.
-In the following, `a` attempts to initialize first because of its natural ordering. Since `b` is a dependency, it supersedes the natural ordering.
-When `b` is found to reference an already visited `a` (causing the circular dependency), it evaluatues to `a`'s current value which is `none`. At the end of initialization, both `a` and `b` have the value `none`.
+Circular references in initializers are not allowed.
+When initialization encounters a reference that creates a circular dependency an error is reported.
 ```cy
-var a: b
-var b: a
+var Root.a = b
+var Root.b = a       -- CompileError. Referencing `a` creates a circular dependency.
 ```
 
 Sometimes, you may want to initialize a static variable by executing multiple statements in order.
-For this use case, you can use a declaration block.
-> _Planned Feature_
+For this use case, you can use a declaration block. {{<todo "*Planned Feature">}}
 ```cy
-var myImage:
+var Root.myImage =:
     var img = loadImage('me.png')
     img.resize(100, 100)
     img.filter(.blur, 5)
@@ -160,17 +146,35 @@ var myImage:
 ```
 The final resulting value that is assigned to the static variable is provided by a `break` statement. If a `break` statement is not provided, `none` is assigned instead.
 
-## Keywords.
-There are currently `35` keywords in Cyber. This list categorizes them and shows you when you might need them.
+## Reserved identifiers.
 
-- [Control Flow]({{<relref "/docs/toc/control-flow">}}): `if` `else` `match` `case` `while` `for` `each` `break` `continue` `pass` `some`
+### Keywords.
+There are `26` general keywords. This list categorizes them:
+
+- [Control Flow]({{<relref "/docs/toc/control-flow">}}): `if` `else` `switch` `case` `while` `for` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not` `is`
-- [Variables](#variables): `var` `as` `auto`
-- [Functions]({{<relref "/docs/toc/functions">}}): `func` `meth` `return`
+- [Variables](#variables): `var` `my`
+- [Functions]({{<relref "/docs/toc/functions">}}): `func` `return`
 - [Coroutines]({{<relref "/docs/toc/concurrency#fibers">}}): `coinit` `coyield`, `coresume`
-- [Data Types]({{<relref "/docs/toc/data-types">}}): `type` `object` `enum` `true` `false` `none`
-- [Error Handling]({{<relref "/docs/toc/errors">}}): `try` `catch` `error` `throw`
+- [Data Types]({{<relref "/docs/toc/data-types">}}): `type` `as`
+- [Error Handling]({{<relref "/docs/toc/errors">}}): `try` `catch` `throw`
 - [Modules]({{<relref "/docs/toc/modules">}}): `import`
+
+### Contextual keywords.
+These keywords only have meaning in a certain context.
+- [Methods]({{<relref "/docs/toc/data-types#methods">}}): `self`, `Self`
+- [Catching Errors]({{<relref "/docs/toc/errors#caught-variable">}}): `caught`
+- [Object Type]({{<relref "/docs/toc/data-types#objects">}}): `object`
+- [Enum Type]({{<relref "/docs/toc/data-types#enums">}}): `enum`
+- [Function Throws]({{<relref "/docs/toc/errors#throws-specifier">}}): `throws`
+
+### Symbols.
+- [Modules]({{<relref "/docs/toc/modules">}}): `Root`
+
+### Literals.
+- [Booleans]({{<relref "/docs/toc/data-types#booleans">}}): `true` `false`
+- [Error Values]({{<relref "/docs/toc/errors#error-value">}}): `error`
+- [None]({{<relref "/docs/toc/data-types#none">}}): `none`
 
 ## Operators.
 Cyber supports the following operators. They are ordered from highest to lowest precedence.

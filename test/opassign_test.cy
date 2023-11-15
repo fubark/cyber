@@ -1,7 +1,7 @@
 import t 'test'
 
 -- Op assign to variable.
-var a = 1
+my a = 1
 a += 10
 t.eq(a, 11)
 
@@ -15,8 +15,8 @@ t.eq(a, 49)
 
 -- Op assign to field.
 type S object:
-  foo
-var s = S{ foo: 1 }
+    var foo
+var s = [S foo: 1]
 s.foo += 10
 t.eq(s.foo, 11)
 

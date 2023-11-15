@@ -19,10 +19,7 @@ pub const ByteCodeBuffer = struct {
     /// This should be used by the interpreter to read const values.
     mconsts: []const Const,
 
-    /// Contiguous constant strings in a buffer.
-    strBuf: std.ArrayListUnmanaged(u8),
-    /// Tracks the start index of strings that are already in strBuf.
-    strMap: std.HashMapUnmanaged(cy.IndexSlice(u32), u32, StringIndexContext, std.hash_map.default_max_load_percentage),
+    vm: *cy.VM,
 
     /// Maps bytecode insts back to source code.
     /// Contains entries ordered by `pc`. 
@@ -43,14 +40,13 @@ pub const ByteCodeBuffer = struct {
     /// The required stack size for the main frame.
     mainStackSize: u32,
 
-    pub fn init(alloc: std.mem.Allocator) !ByteCodeBuffer {
+    pub fn init(alloc: std.mem.Allocator, vm: *cy.VM) !ByteCodeBuffer {
         var new = ByteCodeBuffer{
             .alloc = alloc,
             .mainStackSize = 0,
             .ops = .{},
+            .vm = vm,
             .consts = .{},
-            .strBuf = .{},
-            .strMap = .{},
             .debugTable = .{},
             .debugTempIndexTable = .{},
             .debugMarkers = .{},
@@ -68,8 +64,6 @@ pub const ByteCodeBuffer = struct {
     pub fn deinit(self: *ByteCodeBuffer) void {
         self.ops.deinit(self.alloc);
         self.consts.deinit(self.alloc);
-        self.strBuf.deinit(self.alloc);
-        self.strMap.deinit(self.alloc);
         self.debugTable.deinit(self.alloc);
         self.debugTempIndexTable.deinit(self.alloc);
         self.debugMarkers.deinit(self.alloc);
@@ -87,8 +81,6 @@ pub const ByteCodeBuffer = struct {
     pub fn clear(self: *ByteCodeBuffer) void {
         self.ops.clearRetainingCapacity();
         self.consts.clearRetainingCapacity();
-        self.strBuf.clearRetainingCapacity();
-        self.strMap.clearRetainingCapacity();
         self.debugTable.clearRetainingCapacity();
         self.debugTempIndexTable.clearRetainingCapacity();
         self.debugMarkers.clearRetainingCapacity();
@@ -114,31 +106,29 @@ pub const ByteCodeBuffer = struct {
         return start;
     }
 
-    pub fn pushDebugFuncStart(self: *ByteCodeBuffer, declId: cy.sema.FuncDeclId, chunkId: u32) !void {
+    pub fn pushDebugFuncStart(self: *ByteCodeBuffer, func: *cy.Func, chunkId: u32) !void {
         try self.debugMarkers.append(self.alloc, .{
             .type = @intFromEnum(DebugMarkerType.funcStart),
             .pc = @intCast(self.ops.items.len),
             .data = .{
                 .funcStart = .{
-                    .declId = declId,
+                    .func = func,
                     .chunkId = chunkId,
                 },
             },
-            .data2 = undefined,
         });
     }
 
-    pub fn pushDebugFuncEnd(self: *ByteCodeBuffer, declId: cy.sema.FuncDeclId, chunkId: u32) !void {
+    pub fn pushDebugFuncEnd(self: *ByteCodeBuffer, func: *cy.Func, chunkId: u32) !void {
         try self.debugMarkers.append(self.alloc, .{
             .type = @intFromEnum(DebugMarkerType.funcEnd),
             .pc = @intCast(self.ops.items.len),
             .data = .{
                 .funcEnd = .{
-                    .declId = declId,
+                    .func = func,
                     .chunkId = chunkId,
                 },
             },
-            .data2 = undefined,
         });
     }
 
@@ -149,10 +139,6 @@ pub const ByteCodeBuffer = struct {
             .data = .{
                 .label = .{
                     .namePtr = name.ptr,
-                },
-            },
-            .data2 = .{
-                .label = .{
                     .nameLen = @intCast(name.len),
                 },
             },
@@ -259,6 +245,12 @@ pub const ByteCodeBuffer = struct {
         }
     }
 
+    pub fn reserveData(self: *ByteCodeBuffer, size: usize) !usize {
+        const start = self.ops.items.len;
+        try self.ops.resize(self.alloc, self.ops.items.len + size);
+        return start;
+    }
+
     pub fn pushOperands(self: *ByteCodeBuffer, operands: []const u8) !void {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + operands.len);
@@ -279,55 +271,38 @@ pub const ByteCodeBuffer = struct {
         self.ops.items[idx].val = arg;
     }
 
-    pub fn getOrPushStringConst(self: *ByteCodeBuffer, str: []const u8) !u32 {
-        const val = try self.getOrPushStringValue(str);
+    pub fn getOrPushStaticStringConst(self: *ByteCodeBuffer, str: []const u8) !u32 {
+        const val = try self.getOrPushStaticStringValue(str);
         const idx: u32 = @intCast(self.consts.items.len);
+        // TODO: Reuse the same const.
         try self.consts.append(self.alloc, Const.init(val.val));
         return idx;
     }
 
-    pub fn getOrPushUstring(self: *ByteCodeBuffer, str: []const u8, charLen: u32) !cy.IndexSlice(u32) {
-        const ctx = StringIndexContext{ .buf = &self.strBuf };
-        const insertCtx = StringIndexInsertContext{ .buf = &self.strBuf };
-        const res = try self.strMap.getOrPutContextAdapted(self.alloc, str, insertCtx, ctx);
-        if (res.found_existing) {
-            return res.key_ptr.*;
-        } else {
-            // Reserve 12 bytes for charLen, mruIdx, mruCharIdx.
-            try self.strBuf.ensureUnusedCapacity(self.alloc, 12);
-            const start: u32 = @intCast(self.strBuf.items.len);
-            @as(*align(1) u32, @ptrCast(self.strBuf.items.ptr + start)).* = charLen;
-            @as(*align(1) u32, @ptrCast(self.strBuf.items.ptr + start + 4)).* = 0;
-            @as(*align(1) u32, @ptrCast(self.strBuf.items.ptr + start + 8)).* = 0;
-            self.strBuf.items.len += 12;
-            try self.strBuf.appendSlice(self.alloc, str);
-            res.key_ptr.* = cy.IndexSlice(u32).init(start + 12, @intCast(self.strBuf.items.len));
-            return res.key_ptr.*;
+    pub fn getOrPushStaticUstring(self: *ByteCodeBuffer, str: []const u8, charLen: u32) !cy.Value {
+        var allocated: bool = undefined;
+        const val = try cy.heap.getOrAllocUstring(self.vm, str, charLen, &allocated);
+        if (allocated) {
+            try self.vm.staticObjects.append(self.alloc, @ptrCast(val.asHeapObject()));
         }
+        return val;
     }
 
-    pub fn getOrPushAstring(self: *ByteCodeBuffer, str: []const u8) !cy.IndexSlice(u32) {
-        const ctx = StringIndexContext{ .buf = &self.strBuf };
-        const insertCtx = StringIndexInsertContext{ .buf = &self.strBuf };
-        const res = try self.strMap.getOrPutContextAdapted(self.alloc, str, insertCtx, ctx);
-        if (res.found_existing) {
-            return res.key_ptr.*;
-        } else {
-            const start: u32 = @intCast(self.strBuf.items.len);
-            try self.strBuf.appendSlice(self.alloc, str);
-            res.key_ptr.* = cy.IndexSlice(u32).init(start, @intCast(self.strBuf.items.len));
-            return res.key_ptr.*;
+    pub fn getOrPushStaticAstring(self: *ByteCodeBuffer, str: []const u8) !cy.Value {
+        var allocated: bool = undefined;
+        const val = try cy.heap.getOrAllocAstring(self.vm, str, &allocated);
+        if (allocated) {
+            try self.vm.staticObjects.append(self.alloc, @ptrCast(val.asHeapObject()));
         }
+        return val;
     }
 
-    pub fn getOrPushStringValue(self: *ByteCodeBuffer, str: []const u8) linksection(cy.CompilerSection) !cy.Value {
+    pub fn getOrPushStaticStringValue(self: *ByteCodeBuffer, str: []const u8) !cy.Value {
         if (cy.validateUtf8(str)) |charLen| {
             if (charLen == str.len) {
-                const slice = try self.getOrPushAstring(str);
-                return cy.Value.initStaticAstring(slice.start, @intCast(slice.end - slice.start));
+                return try self.getOrPushStaticAstring(str);
             } else {
-                const slice = try self.getOrPushUstring(str, @intCast(charLen));
-                return cy.Value.initStaticUstring(slice.start, @intCast(slice.end - slice.start));
+                return try self.getOrPushStaticUstring(str, @intCast(charLen));
             }
         } else {
             return error.InvalidUtf8;
@@ -340,7 +315,7 @@ pub const InstDescExtra = struct {
 };
 
 pub const InstDesc = struct {
-    chunkId: cy.NodeId = cy.NullId,
+    chunkId: cy.ChunkId = cy.NullId,
     nodeId: cy.NodeId = cy.NullId,
     extraIdx: u32 = cy.NullId,
 };
@@ -387,6 +362,21 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const dst = pc[2].val;
             len += try fmt.printStderrCount("local={}, dst={}", &.{v(local), v(dst)});
         },
+        .negFloat,
+        .negInt => {
+            const child = pc[1].val;
+            const dst = pc[2].val;
+            len += try printInstArgs(&.{"child", "dst"},
+                &.{v(child), v(dst) });
+        },
+        .lessInt,
+        .lessFloat,
+        .lessEqualInt,
+        .lessEqualFloat,
+        .greaterInt,
+        .greaterFloat,
+        .greaterEqualInt,
+        .greaterEqualFloat,
         .divFloat,
         .divInt,
         .mulFloat,
@@ -421,7 +411,7 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const numArgs = pc[2].val;
             const numRet = pc[3].val;
             const symId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
-            len += try fmt.printStderrCount("ret={}, nargs={}, nret={}, sym={}", &.{v(ret), v(numArgs), v(numRet), v(symId)});
+            len += try fmt.printStderrCount("ret={}, narg={}, nret={}, sym={}", &.{v(ret), v(numArgs), v(numRet), v(symId)});
         },
         .callFuncIC => {
             const ret = pc[1].val;
@@ -433,12 +423,20 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const startLocal = pc[1].val;
             const numArgs = pc[2].val;
             const numRet = pc[3].val;
-            len += try fmt.printStderrCount("startLocal={}, numArgs={}, numRet={}", &.{v(startLocal), v(numArgs), v(numRet)});
+            len += try fmt.printStderrCount("ret={}, narg={}, nret={}", &.{v(startLocal), v(numArgs), v(numRet)});
         },
         .setBoxValue => {
             const box = pc[1].val;
             const rhs = pc[2].val;
             len += try printInstArgs(&.{"box", "rhs"}, &.{v(box), v(rhs)});
+        },
+        .lambda => {
+            const negFuncPcOffset = pc[1].val;
+            const numParams = pc[2].val;
+            const numLocals = pc[3].val;
+            const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
+            const dst = pc[6].val;
+            len += try fmt.printStderrCount("off={}, nparam={}, nlocal={}, fsigId={}, dst={}", &.{v(negFuncPcOffset), v(numParams), v(numLocals), v(funcSigId), v(dst)});
         },
         .closure => {
             const negFuncPcOffset = pc[1].val;
@@ -448,39 +446,39 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
             const local = pc[7].val;
             const dst = pc[8].val;
-            len += try fmt.printStderrCount("negFuncPcOffset={}, numParams={}, numCaptured={}, numLocals={}, funcSigId={}, closureLocal={}, dst={} {}", &.{
+            len += try fmt.printStderrCount("off={}, nparam={}, ncap={}, nlocal={}, fsigId={}, closure={}, dst={} {}", &.{
                 v(negFuncPcOffset), v(numParams), v(numCaptured), v(numLocals),
                 v(funcSigId), v(local), v(dst), fmt.sliceU8(std.mem.sliceAsBytes(pc[9..9+numCaptured])),
             });
+        },
+        .true,
+        .false,
+        .none => {
+            const dst = pc[1].val;
+            len += try fmt.printStderrCount("dst={}", &.{v(dst)});
         },
         .constI8 => {
             const val: i8 = @bitCast(pc[1].val);
             const dst = pc[2].val;
             len += try fmt.printStderrCount("val={} dst={}", &.{v(val), v(dst)});
         },
+        .constRetain,
         .constOp => {
             const idx = @as(*const align (1) u16, @ptrCast(pc + 1)).*;
             const dst = pc[3].val;
             len += try fmt.printStderrCount("constIdx={} dst={}", &.{v(idx), v(dst)});
         },
-        .copy => {
-            const src = pc[1].val;
-            const dst = pc[2].val;
-            len += try fmt.printStderrCount("src={} dst={}", &.{v(src), v(dst)});
-        },
-        .copyReleaseDst => {
-            const src = pc[1].val;
-            const dst = pc[2].val;
-            len += try fmt.printStderrCount("src={} dst={}", &.{v(src), v(dst)});
-        },
-        .copyRetainSrc => {
+        .copy,
+        .copyReleaseDst,
+        .copyRetainSrc,
+        .copyRetainRelease => {
             const src = pc[1].val;
             const dst = pc[2].val;
             len += try fmt.printStderrCount("src={} dst={}", &.{v(src), v(dst)});
         },
         .end => {
             const endLocal = pc[1].val;
-            len += try fmt.printStderrCount("endLocal={}", &.{v(endLocal) });
+            len += try fmt.printStderrCount("endLocal={}", &.{ v(endLocal) });
         },
         .compare => {
             const left = pc[1].val;
@@ -488,7 +486,14 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const dst = pc[3].val;
             len += try fmt.printStderrCount("left={}, right={}, dst={}", &.{v(left), v(right), v(dst)});
         },
-        .fieldRetain => {
+        .objectField => {
+            const recv = pc[1].val;
+            const fieldIdx = pc[2].val;
+            const dst = pc[3].val;
+            len += try printInstArgs(&.{"recv", "fidx", "dst"}, 
+                &.{v(recv), v(fieldIdx), v(dst) });
+        },
+        .field => {
             const recv = pc[1].val;
             const dst = pc[2].val;
             const symId = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
@@ -497,18 +502,20 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
         .forRangeInit => {
             const start = pc[1].val;
             const end = pc[2].val;
-            const step = pc[3].val;
+            const inc = pc[3].val;
+            const cnt = pc[4].val;
+            const each = pc[5].val;
             const forRangeInstOffset = @as(*const align(1) u16, @ptrCast(pc + 6)).*;
-            len += try fmt.printStderrCount("start={}, end={}, step={}, off={}", &.{v(start), v(end), v(step), v(forRangeInstOffset)});
+            len += try printInstArgs(&.{"start", "end", "inc", "cnt", "each", "off"}, 
+                &.{v(start), v(end), v(inc), v(cnt), v(each), v(forRangeInstOffset)});
         },
         .forRangeReverse,
         .forRange => {
             const counter = pc[1].val;
-            const step = pc[2].val;
-            const end = pc[3].val;
-            const userCounter = pc[4].val;
-            const negOffset = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
-            len += try fmt.printStderrCount("counter={}, step={}, end={}, userCounter={}, negOffset={}", &.{v(counter), v(step), v(end), v(userCounter), v(negOffset)});
+            const end = pc[2].val;
+            const userCounter = pc[3].val;
+            const negOffset = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
+            len += try fmt.printStderrCount("counter={}, end={}, userCounter={}, negOffset={}", &.{v(counter), v(end), v(userCounter), v(negOffset)});
         },
         .indexList => {
             const recv = pc[1].val;
@@ -520,6 +527,7 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const jump = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
             len += try fmt.printStderrCount("offset={}", &.{v(jump)});
         },
+        .jumpCond,
         .jumpNotCond => {
             const jump = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
             len += try fmt.printStderrCount("cond={}, offset={}", &.{v(pc[1].val), v(jump)});
@@ -532,19 +540,18 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const jump = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
             len += try fmt.printStderrCount("offset={}, cond={}", &.{v(jump), v(pc[3].val)});
         },
-        .lambda => {
-            const negFuncPcOffset = pc[1].val;
-            const numParams = pc[2].val;
-            const numLocals = pc[3].val;
-            const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
-            const dst = pc[6].val;
-            len += try fmt.printStderrCount("negFuncPcOffset={}, numParams={}, numLocals={}, funcSigId={}, dst={}", &.{v(negFuncPcOffset), v(numParams), v(numLocals), v(funcSigId), v(dst)});
-        },
         .list => {
             const startLocal = pc[1].val;
             const numElems = pc[2].val;
             const dst = pc[3].val;
             len += try fmt.printStderrCount("startLocal={}, numElems={}, dst={}", &.{v(startLocal), v(numElems), v(dst)});
+        },
+        .seqDestructure => {
+            const src = pc[1].val;
+            const numLocals = pc[2].val;
+            const locals = std.mem.sliceAsBytes(pc[3..3+numLocals]);
+            len += try fmt.printStderrCount("src={}, nlocals={}, {}", &.{
+                v(src), v(numLocals), fmt.sliceU8(locals)});
         },
         .map => {
             const startLocal = pc[1].val;
@@ -559,7 +566,7 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const startLocal = pc[3].val;
             const numFields = pc[4].val;
             const dst = pc[5].val;
-            len += try fmt.printStderrCount("typeId={}, startLocal={}, numFields={}, dst={}", &.{
+            len += try fmt.printStderrCount("type={}, args={}, nargs={}, dst={}", &.{
                 v(typeId), v(startLocal), v(numFields), v(dst),
             });
         },
@@ -568,7 +575,7 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const startLocal = pc[3].val;
             const numFields = pc[4].val;
             const dst = pc[5].val;
-            len += try fmt.printStderrCount("typeId={}, startLocal={}, numFields={}, dst={}", &.{
+            len += try fmt.printStderrCount("type={}, args={}, nargs={}, dst={}", &.{
                 v(typeId), v(startLocal), v(numFields), v(dst)});
         },
         .release => {
@@ -580,12 +587,25 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const regs = std.mem.sliceAsBytes(pc[2..2+numRegs]);
             len += try fmt.printStderrCount("{}", &.{fmt.sliceU8(regs)});
         },
-        .setField,
-        .setFieldRelease => {
-            const symId = pc[1].val;
-            const recv = pc[2].val;
+        .setObjectFieldCheck => {
+            const recv = pc[1].val;
+            const fieldT = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
+            const val = pc[4].val;
+            const idx = pc[5].val;
+            len += try fmt.printStderrCount("recv={}, idx={}, rhs={}, ftype={}", &.{v(recv), v(idx), v(val), v(fieldT)});
+        },
+        .setObjectField => {
+            const recv = pc[1].val;
+            const idx = pc[2].val;
             const val = pc[3].val;
-            len += try fmt.printStderrCount("recv={}, val={}, sym={}", &.{v(recv), v(val), v(symId)});
+            len += try fmt.printStderrCount("recv={}, idx={}, rhs={}", &.{v(recv), v(idx), v(val)});
+        },
+        .setField,
+        .setFieldIC => {
+            const recv = pc[1].val;
+            const fieldId = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
+            const val = pc[4].val;
+            len += try fmt.printStderrCount("recv={}, fid={}, rhs={}", &.{v(recv), v(fieldId), v(val)});
         },
         .setIndexList => {
             const list = pc[1].val;
@@ -596,10 +616,12 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
         .coinit => {
             const startArgs = pc[1].val;
             const numArgs = pc[2].val;
-            const jump = pc[3].val;
-            const initialStackSize = pc[4].val;
-            const dst = pc[5].val;
-            len += try fmt.printStderrCount("startArgs={}, numArgs={}, jump={}, initialStackSize={}, dst={}", &.{v(startArgs), v(numArgs), v(jump), v(initialStackSize), v(dst)});
+            const argDst = pc[3].val;
+            const jump = pc[4].val;
+            const initialStackSize = pc[5].val;
+            const dst = pc[6].val;
+            len += try fmt.printStderrCount("startArgs={}, numArgs={}, argDst={}, jump={}, initStack={}, dst={}",
+                &.{v(startArgs), v(numArgs), v(argDst), v(jump), v(initialStackSize), v(dst)});
         },
         .coresume => {
             const fiberLocal = pc[1].val;
@@ -613,21 +635,42 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const dst = pc[4].val;
             len += try fmt.printStderrCount("recv={}, start={}, end={}, dst={}", &.{v(recv), v(start), v(end), v(dst)});
         },
+        .staticFunc => {
+            const id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const dst = pc[3].val;
+            len += try fmt.printStderrCount("id={} dst={}", &.{v(id), v(dst)});
+        },
         .staticVar => {
             const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
             const dst = pc[3].val;
             len += try fmt.printStderrCount("sym={} dst={}", &.{v(symId), v(dst)});
         },
+        .setStaticVar => {
+            const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const src = pc[3].val;
+            len += try fmt.printStderrCount("sym={} src={}", &.{v(symId), v(src)});
+        },
         .pushTry => {
             const errDst = pc[1].val;
-            const catchPcOffset = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
-            len += try fmt.printStderrCount("errDst={} catchPcOffset={}", &.{v(errDst), v(catchPcOffset)});
+            const dstIsRetained = pc[2].val;
+            const catchPcOffset = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            len += try fmt.printStderrCount("errDst={} dstIsRetained={} catchOff={}", &.{v(errDst), v(dstIsRetained), v(catchPcOffset)});
+        },
+        .popTry => {
+            const endOffset = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            len += try fmt.printStderrCount("endOff={}", &.{v(endOffset)});
         },
         .stringTemplate => {
             const startLocal = pc[1].val;
             const exprCount = pc[2].val;
             const dst = pc[3].val;
             len += try fmt.printStderrCount("startLocal={}, exprCount={}, dst={}", &.{v(startLocal), v(exprCount), v(dst)});
+        },
+        .callTypeCheck => {
+            const arg = pc[1].val;
+            const numArgs = pc[2].val;
+            const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            len += try fmt.printStderrCount("arg={}, nargs={}, sigId={}", &.{v(arg), v(numArgs), v(funcSigId)});
         },
         else => {},
     }
@@ -708,7 +751,7 @@ pub const DebugSym = extern struct {
     /// Points to a cy.NodeId.
     loc: u32,
 
-    /// Points to the parent function decl's cy.NodeId or NullId if it's in the main block.
+    /// Points to the parent function or coinit declaration node. 0 if it's in the main block.
     frameLoc: u32,
 
     /// CompileChunkId.
@@ -736,30 +779,24 @@ const DebugMarker = extern struct {
         label: extern struct {
             /// Unowned.
             namePtr: [*]const u8,
+            nameLen: u16,
         },
         funcStart: extern struct {
             chunkId: u32,
-            declId: cy.sema.FuncDeclId,
+            func: *cy.Func,
         },
         funcEnd: extern struct {
             chunkId: u32,
-            declId: cy.sema.FuncDeclId,
+            func: *cy.Func,
         },
     },
 
     /// Inst position of marker.
     pc: u32,
-
-    data2: extern union {
-        label: extern struct {
-            nameLen: u16,
-        },
-    },
-
     type: u8,
 
     pub fn getLabelName(self: DebugMarker) []const u8 {
-        return self.data.label.namePtr[0..self.data2.label.nameLen];
+        return self.data.label.namePtr[0..self.data.label.nameLen];
     }
 
     pub fn etype(self: *const DebugMarker) DebugMarkerType {
@@ -783,7 +820,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .coreturn => {
             return 1;
         },
-        .not,
         .throw,
         .retain,
         .end,
@@ -798,6 +834,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numVars = pc[1].val;
             return 2 + numVars;
         },
+        .not,
         .popTry,
         .copy,
         .copyRetainSrc,
@@ -824,21 +861,23 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .call,
         .captured,
         .constOp,
+        .constRetain,
         .staticVar,
         .setStaticVar,
         .staticFunc,
+        .objectField,
         .setStaticFunc,
-        .pushTry,
+        .setObjectField,
         .jumpNotNone,
         .jumpNone,
         .jumpCond,
-        .setField,
         .compare,
         .compareNot,
         .list,
         .tag,
         .cast,
         .castAbstract,
+        .setCaptured,
         .jumpNotCond => {
             return 4;
         },
@@ -850,6 +889,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numEntries = pc[2].val;
             return 4 + numEntries * 2;
         },
+        .pushTry,
         .callTypeCheck => {
             return 5;
         },
@@ -857,28 +897,30 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numConds = pc[2].val;
             return 5 + numConds * 3;
         },
+        .setObjectFieldCheck,
         .object,
         .objectSmall,
-        .coinit => {
+        .forRange,
+        .forRangeReverse => {
             return 6;
         },
+        .coinit,
         .lambda,
-        .sym,
-        .forRange,
-        .forRangeReverse,
-        .setCheckFieldRelease,
-        .setFieldRelease,
-        .setFieldReleaseIC => {
+        .sym => {
             return 7;
         },
-        .fieldRetain,
-        .fieldRetainIC,
+        .field,
+        .fieldIC,
         .forRangeInit => {
             return 8;
         },
         .closure => {
             const numCaptured = pc[3].val;
             return 9 + numCaptured;
+        },
+        .setField,
+        .setFieldIC => {
+            return 10;
         },
         .callSym,
         .callNativeFuncIC,
@@ -895,6 +937,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .greaterEqualInt,
         .sliceList,
         .indexList,
+        .indexTuple,
         .indexMap,
         .addFloat,
         .subFloat,
@@ -930,6 +973,7 @@ pub const OpCode = enum(u8) {
     /// Copies a constant value from `consts` to a dst local.
     /// [constIdx u16] [dst]
     constOp = vmc.CodeConstOp,
+    constRetain = vmc.CodeConstRetain,
     constI8 = vmc.CodeConstI8,
     addFloat = vmc.CodeAddFloat,
     subFloat = vmc.CodeSubFloat,
@@ -943,12 +987,14 @@ pub const OpCode = enum(u8) {
     /// Copies a local from src to dst.
     copy = vmc.CodeCopy,
     copyReleaseDst = vmc.CodeCopyReleaseDst,
+    copyRetainSrc = vmc.CodeCopyRetainSrc,
+    copyRetainRelease = vmc.CodeCopyRetainRelease,
+
     setIndexList = vmc.CodeSetIndexList,
     setIndexMap = vmc.CodeSetIndexMap,
 
-    copyRetainSrc = vmc.CodeCopyRetainSrc,
-
     indexList = vmc.CodeIndexList,
+    indexTuple = vmc.CodeIndexTuple,
     indexMap = vmc.CodeIndexMap,
 
     /// First operand points the first elem and also the dst local. Second operand contains the number of elements.
@@ -986,8 +1032,9 @@ pub const OpCode = enum(u8) {
     /// [calleeLocal] [numArgs] [numRet=0/1]
     call = vmc.CodeCall,
 
-    fieldRetain = vmc.CodeFieldRetain,
-    fieldRetainIC = vmc.CodeFieldRetainIC,
+    objectField = vmc.CodeObjectField,
+    field = vmc.CodeField,
+    fieldIC = vmc.CodeFieldIC,
     lambda = vmc.CodeLambda,
     closure = vmc.CodeClosure,
     compare = vmc.CodeCompare,
@@ -1015,18 +1062,15 @@ pub const OpCode = enum(u8) {
     objectSmall = vmc.CodeObjectSmall,
     object = vmc.CodeObject,
     setField = vmc.CodeSetField,
-    setFieldRelease = vmc.CodeSetFieldRelease,
-    setFieldReleaseIC = vmc.CodeSetFieldReleaseIC,
-
-    /// set field with runtime type check.
-    setCheckFieldRelease = vmc.CodeSetCheckFieldRelease,
+    setFieldIC = vmc.CodeSetFieldIC,
+    setObjectField = vmc.CodeSetObjectField,
+    setObjectFieldCheck = vmc.CodeSetObjectFieldCheck,
 
     coinit = vmc.CodeCoinit,
     coyield = vmc.CodeCoyield,
     coresume = vmc.CodeCoresume,
     coreturn = vmc.CodeCoreturn,
     retain = vmc.CodeRetain,
-    copyRetainRelease = vmc.CodeCopyRetainRelease,
 
     /// Lifts a source local to a box object and stores the result in `dstLocal`.
     /// The source local is also retained.
@@ -1038,6 +1082,7 @@ pub const OpCode = enum(u8) {
     boxValue = vmc.CodeBoxValue,
     boxValueRetain = vmc.CodeBoxValueRetain,
     captured = vmc.CodeCaptured,
+    setCaptured = vmc.CodeSetCaptured,
     /// TODO: Rename to enumOp.
     tag = vmc.CodeTag,
     /// TODO: Rename to symbol.
@@ -1101,20 +1146,23 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 106);
+    try t.eq(std.enums.values(OpCode).len, 110);
     try t.eq(@sizeOf(Inst), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);
-    try t.eq(@sizeOf(DebugMarker), 16);
+    if (cy.is32Bit) {
+        try t.eq(@sizeOf(DebugMarker), 16);
+    } else {
+        try t.eq(@sizeOf(DebugMarker), 24);
+    }
     try t.eq(@sizeOf(DebugSym), 16);
 
     try t.eq(@offsetOf(ByteCodeBuffer, "alloc"), @offsetOf(vmc.ByteCodeBuffer, "alloc"));
-    try t.eq(@offsetOf(ByteCodeBuffer, "mainStackSize"), @offsetOf(vmc.ByteCodeBuffer, "mainStackSize"));
     try t.eq(@offsetOf(ByteCodeBuffer, "ops"), @offsetOf(vmc.ByteCodeBuffer, "ops"));
     try t.eq(@offsetOf(ByteCodeBuffer, "consts"), @offsetOf(vmc.ByteCodeBuffer, "consts"));
     try t.eq(@offsetOf(ByteCodeBuffer, "mconsts"), @offsetOf(vmc.ByteCodeBuffer, "mconsts_buf"));
-    try t.eq(@offsetOf(ByteCodeBuffer, "strBuf"), @offsetOf(vmc.ByteCodeBuffer, "strBuf"));
-    try t.eq(@offsetOf(ByteCodeBuffer, "strMap"), @offsetOf(vmc.ByteCodeBuffer, "strMap"));
+    try t.eq(@offsetOf(ByteCodeBuffer, "vm"), @offsetOf(vmc.ByteCodeBuffer, "vm"));
     try t.eq(@offsetOf(ByteCodeBuffer, "debugTable"), @offsetOf(vmc.ByteCodeBuffer, "debugTable"));
     try t.eq(@offsetOf(ByteCodeBuffer, "debugMarkers"), @offsetOf(vmc.ByteCodeBuffer, "debugMarkers"));
+    try t.eq(@offsetOf(ByteCodeBuffer, "mainStackSize"), @offsetOf(vmc.ByteCodeBuffer, "mainStackSize"));
 }

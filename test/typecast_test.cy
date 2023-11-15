@@ -7,27 +7,27 @@ func foo1(a int):
     return true
 
 -- Cast to exact object type.
-a = Foo{ a: 123 }
+a = [Foo a: 123]
 t.eq(foo2(a as Foo), true)
 type Foo object:
-    a int
+    var a int
 func foo2(a Foo):
     return true
 
--- Cast to abstract string type.
+-- Cast to exact string type.
 a = 'abc'
 t.eq(foo3(a as string), true)
 func foo3(a string):
     return true
 
--- Cast to abstract rawstring type.
-a = rawstring('abc')
-t.eq(foo4(a as rawstring), true)
-func foo4(a rawstring):
+-- Cast to exact array type.
+a = array('abc')
+t.eq(foo4(a as array), true)
+func foo4(a array):
     return true
 
 -- Cast to abstract any type.
-a = rawstring('abc')
+a = array('abc')
 t.eq(foo5(a as any), true)
 func foo5(a any):
     return true

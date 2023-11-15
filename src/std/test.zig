@@ -9,8 +9,9 @@ const fmt = @import("../fmt.zig");
 const bindings = @import("../builtins/bindings.zig");
 const Symbol = bindings.Symbol;
 const prepareThrowSymbol = bindings.prepareThrowSymbol;
-const bt = cy.types.BuiltinTypeSymIds;
+const bt = cy.types.BuiltinTypes;
 const v = fmt.v;
+const log = cy.log.scoped(.testmod);
 
 pub const Src = @embedFile("test.cy");
 pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo, out: *cy.HostFuncResult) callconv(.C) bool {
@@ -29,11 +30,11 @@ const funcs = [_]NameHostFunc{
     .{"fail", fail},
 };
 
-pub fn postLoad(vm: *cy.UserVM, modId: cy.ModuleId) callconv(.C) void {
-    const b = bindings.ModuleBuilder.init(vm.internal().compiler, modId);
+pub fn postLoad(vm: *cy.UserVM, mod: cy.ApiModule) callconv(.C) void {
+    const b = bindings.ModuleBuilder.init(vm.internal().compiler, @ptrCast(mod.sym));
     if (builtin.is_test) {
         // Only available for zig test, until `any` local type specifier is implemented.
-        b.setFunc("erase", &.{bt.Any}, bt.Any, erase) catch cy.fatal();
+        b.declareFuncSig("erase", &.{bt.Any}, bt.Dynamic, erase) catch cy.fatal();
     }
 }
 
@@ -73,8 +74,8 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 }
             },
             .string => {
-                const actStr = vm.valueAsString(act);
-                const expStr = vm.valueAsString(exp);
+                const actStr = act.asString();
+                const expStr = exp.asString();
                 if (std.mem.eql(u8, actStr, expStr)) {
                     return true;
                 } else {
@@ -82,9 +83,9 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                     return false;
                 }
             },
-            .rawstring => {
-                const actStr = act.asRawString();
-                const expStr = exp.asRawString();
+            .array => {
+                const actStr = act.asArray();
+                const expStr = exp.asArray();
                 if (std.mem.eql(u8, actStr, expStr)) {
                     return true;
                 } else {
@@ -102,7 +103,7 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                     return false;
                 }
             },
-            .boolean => {
+            .bool => {
                 const actv = act.asBool();
                 const expv = exp.asBool();
                 if (actv == expv) {

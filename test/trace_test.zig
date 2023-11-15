@@ -7,298 +7,318 @@ const cy = @import("../src/cyber.zig");
 const vmc = @import("../src/vm_c.zig");
 const log = cy.log.scoped(.trace_test);
 
+const setup = @import("setup.zig");
+const evalPass = setup.evalPass;
+const eval = setup.eval;
+const Runner = setup.VMrunner;
+const EvalResult = setup.EvalResult;
+
 test {
     // Include exports for C vm.
     std.testing.refAllDecls(cy.vm);
 }
 
 test "ARC." {
-    var run: VMrunner = undefined;
-    try run.init();
-    defer run.deinit();
-
-    // Code is still generated for unused expr stmt.
-    var val = try run.eval(
-        \\[1, 2]
-        \\return
-    );
-    var trace = run.getTrace();
-    try t.eq(trace.numRetains, 1);
-    try t.eq(trace.numReleases, 1);
-
-    // List literal is assigned to a local. Increase ref count.
-    val = try run.eval(
-        \\var a = [1, 2]
-    );
-    trace = run.getTrace();
-    try t.eq(trace.numRetains, 1);
-    try t.eq(trace.numReleases, 1);
-
     // Assigning to another variable increases the ref count.
-    val = try run.eval(
+    try eval(.{},
         \\var a = [1, 2]
         \\var b = a
-    );
-    trace = run.getTrace();
-    try t.eq(trace.numRetains, 2);
-    try t.eq(trace.numReleases, 2);
-
-    // Object is retained when assigned to struct literal.
-    _ = try run.eval(
-        \\import t 'test'
-        \\type S object:
-        \\  value
-        \\var a = [123]
-        \\var s = S{ value: a }
-        \\t.eq(s.value[0], 123)
-    );
-    trace = run.getTrace();
-    try t.eq(trace.numRetains, 4);
-    try t.eq(trace.numReleases, 4);
-
-    // Object is released when returned rvalue field access.
-    val = try run.eval(
-        \\type S object:
-        \\  value
-        \\1 + S{ value: 123 }.value
-    );
-    trace = run.getTrace();
-    try t.eq(val.asInteger(), 124);
-    try t.eq(trace.numRetains, 1);
-    try t.eq(trace.numReleases, 1);
-
-    // Map entry access expression retains the entry.
-    val = try run.eval(
-        \\var a = { foo: 'abc{123}' }
-        \\var b = a.foo
-    );
-    trace = run.getTrace();
-    try t.eq(trace.numRetains, 3);
-    try t.eq(trace.numReleases, 3);
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetains, 2);
+        try t.eq(trace.numReleases, 2);
+    }}.func);
 
     // Non-initializer expr in if expr true branch is retained.
-    val = try run.eval(
+    try eval(.{},
         \\var a = [ 123 ]
-        \\var b = a if true else 234
-    );
-    trace = run.getTrace();
-    try t.eq(trace.numRetains, 2);
-    try t.eq(trace.numReleases, 2);
+        \\var b = true ? a else 234
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetains, 2);
+        try t.eq(trace.numReleases, 2);
+    }}.func);
+
+    // Code is still generated for unused expr stmt.
+    try eval(.{},
+        \\[1, 2]
+        \\return
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetains, 1);
+        try t.eq(trace.numReleases, 1);
+    }}.func);
+
+    // List literal is assigned to a local. Increase ref count.
+    try eval(.{},
+        \\var a = [1, 2]
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetains, 1);
+        try t.eq(trace.numReleases, 1);
+    }}.func);
+
+    // Object is retained when assigned to struct literal.
+    try eval(.{},
+        \\import t 'test'
+        \\type S object:
+        \\  var value
+        \\var a = [123]
+        \\var s = [S value: a]
+        \\t.eq(s.value[0], 123)
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetains, 4);
+        try t.eq(trace.numReleases, 4);
+    }}.func);
+
+    // Object is released when returned rvalue field access.
+    try eval(.{},
+        \\type S object:
+        \\  var value
+        \\1 + [S value: 123].value
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        const val = try res;
+        var trace = run.getTrace();
+        try t.eq(val.asInteger(), 124);
+        try t.eq(trace.numRetains, 1);
+        try t.eq(trace.numReleases, 1);
+    }}.func);
+
+    // Map entry access expression retains the entry.
+    try eval(.{},
+        \\var a = [ foo: 'abc\(123)' ]
+        \\var b = a.foo
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetains, 4);
+        try t.eq(trace.numReleases, 4);
+    }}.func);
 
     // Non-initializer expr in if expr false branch is retained.
-    val = try run.eval(
+    try eval(.{},
         \\var a = [ 123 ]
-        \\var b = 234 if false else a
-    );
-    trace = run.getTrace();
-    try t.eq(trace.numRetains, 2);
-    try t.eq(trace.numReleases, 2);
+        \\var b = false ? 234 else a
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetains, 2);
+        try t.eq(trace.numReleases, 2);
+    }}.func);
 }
 
 test "ARC for static variable declarations." {
-    var run: VMrunner = undefined;
-    try run.init();
-    defer run.deinit();
-
     // Static variable is freed on vm end.
-    _ = try run.eval(
+    try eval(.{},
         \\import t 'test'
-        \\var a: [123]
+        \\var Root.a = [123]
         \\t.eq(a[0], 123)
-    );
-    run.vm.internal().deinit(true);
-    const trace = run.getTrace();
-    try t.eq(trace.numRetainAttempts, 3);
-    try t.eq(trace.numReleaseAttempts, 5);
-    try t.eq(trace.numRetains, 2);
-    try t.eq(trace.numReleases, 2);
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        run.vm.internal().deinitRtObjects();
+        var trace = run.getTrace();
+        try t.eq(trace.numRetainAttempts, 3);
+        try t.eq(trace.numRetains, 2);
+    }}.func);
 }
 
 test "ARC assignments." {
-    var run: VMrunner = undefined;
-    try run.init();
-    defer run.deinit();
-
     // Set index on rc-candidate child to primitive.
-    _ = try run.eval(
+    try eval(.{},
         \\import t 'test'
         \\var a = [123]
         \\var b = 234
         \\a[0] = b
         \\t.eq(a[0], 234)
-    );
-    var trace = run.getTrace();
-    try t.eq(trace.numRetainAttempts, 3);
-    try t.eq(trace.numReleaseAttempts, 4);
-    try t.eq(trace.numRetains, 1);
-    try t.eq(trace.numReleases, 1);
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetainAttempts, 3);
+        try t.eq(trace.numReleaseAttempts, 4);
+        try t.eq(trace.numRetains, 1);
+        try t.eq(trace.numReleases, 1);
+    }}.func);
 
     // Set index on rc-candidate child to rc-candidate.
-    _ = try run.eval(
+    try eval(.{},
         \\import t 'test'
         \\var a = [123]
-        \\var b = {}
+        \\var b = [:]
         \\a[0] = b
         \\t.eq(typesym(a[0]), .map)
-    );
-    trace = run.getTrace();
-    try t.eq(trace.numRetainAttempts, 4);
-    try t.eq(trace.numReleaseAttempts, 5);
-    try t.eq(trace.numRetains, 4);
-    try t.eq(trace.numReleases, 4);
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetainAttempts, 4);
+        try t.eq(trace.numReleaseAttempts, 5);
+        try t.eq(trace.numRetains, 4);
+        try t.eq(trace.numReleases, 4);
+    }}.func);
 }
 
 test "ARC for passing call args." {
-    var run: VMrunner = undefined;
-    try run.init();
-    defer run.deinit();
-
     // Temp list is retained when passed into function.
-    _ = try run.eval(
+    try eval(.{},
         \\import t 'test'
         \\func foo(list):
         \\  return list[0]
         \\t.eq(foo([1]), 1)
-    );
-    const trace = run.getTrace();
-    try t.eq(trace.numRetains, 1);
-    try t.eq(trace.numReleases, 1);
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetains, 1);
+        try t.eq(trace.numReleases, 1);
+    }}.func);
 }
 
 test "ARC for function return values." {
-    var run: VMrunner = undefined;
-    try run.init();
-    defer run.deinit();
-
     // Local object is retained when returned.
-    _ = try run.eval(
+    try eval(.{},
         \\import t 'test'
         \\type S object:
-        \\  value
+        \\  var value
         \\func foo():
-        \\  var a = S{ value: 123 }
+        \\  var a = [S value: 123]
         \\  return a
-        \\var s = foo()
+        \\my s = foo()
         \\t.eq(s.value, 123)
-    );
-    var trace = run.getTrace();
-    try t.eq(trace.numRetains, 2);
-    try t.eq(trace.numReleases, 2);
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetains, 2);
+        try t.eq(trace.numReleases, 2);
+    }}.func);
 
     // Object is released when returned from a function if no followup assignment.
-    _ = try run.eval(
+    try eval(.{},
         \\type S object:
-        \\  value
+        \\  var value
         \\func foo():
-        \\  return S{ value: 123 }
+        \\  return [S value: 123]
         \\foo()
         \\return
-    );
-    trace = run.getTrace();
-    try t.eq(trace.numRetains, 1);
-    try t.eq(trace.numReleases, 1);
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetains, 1);
+        try t.eq(trace.numReleases, 1);
+    }}.func);
 }
 
 test "ARC on temp locals in expressions." {
-    var run: VMrunner = undefined;
-    try run.init();
-    defer run.deinit();
-
     // Only the map literal is retained and released at the end of the arc expression.
-    var val = try run.eval(
-        \\{ a: [123] }.a[0]
+    try evalPass(.{},
+        \\import test
+        \\var ret = traceRetains()
+        \\var rel = traceReleases()
+        \\var res = [ a: [123] ].a[0]
+        \\test.eq(traceRetains() - ret, 4)
+        \\test.eq(traceReleases() - rel, 4)
+        \\test.eq(res, 123)
     );
-    var trace = run.getTrace();
-    try t.eq(val.asInteger(), 123);
-    try t.eq(trace.numRetains, 3);
-    try t.eq(trace.numReleases, 3);
 
     // The string template literal is released at the end of the arc expression.
-    val = try run.eval(
+    try eval(.{},
         \\var foo = 'World'
         \\'Hello {foo} {123}'
-    );
-    trace = run.getTrace();
-    try run.valueIsString(val, "Hello World 123");
-    run.deinitValue(val);
-    try t.eq(trace.numRetains, 1);
-    try t.eq(trace.numRetains, 1);
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        const val = try res;
+        try run.valueIsString(val, "Hello World 123");
+        run.vm.release(val);
+        var trace = run.getTrace();
+        try t.eq(trace.numRetains, 2);
+        try t.eq(trace.numReleases, 2);
+    }}.func);
 }
 
 test "ARC in loops." {
-    var run: VMrunner = undefined;
-    try run.init();
-    defer run.deinit();
-
     // A non-rcCandidate var is reassigned to a rcCandidate var inside a loop.
-    _ = try run.eval(
-        \\var a = 123
+    try eval(.{},
+        \\my a = 123
         \\for 0..3:
         \\  a = 'abc{123}'   -- copyReleaseDst
-    );
-    var trace = run.getTrace();
-    try t.eq(trace.numRetains, 3);
-    try t.eq(trace.numReleases, 3);
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetains, 3);
+        try t.eq(trace.numReleases, 3);
+    }}.func);
 
     // A non-rcCandidate var is reassigned to a rcCandidate var inside a loop and if branch.
-    _ = try run.eval(
-        \\var a = 123
+    try eval(.{},
+        \\my a = 123
         \\for 0..3:
         \\  if true:
         \\    a = 'abc{123}'    -- copyReleaseDst
-    );
-    trace = run.getTrace();
-    try t.eq(trace.numRetains, 3);
-    try t.eq(trace.numReleases, 3);
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetains, 3);
+        try t.eq(trace.numReleases, 3);
+    }}.func);
 
     // A non-rcCandidate var is reassigned to a rcCandidate var (field access on the right) inside a loop.
-    _ = try run.eval(
+    try eval(.{},
         \\type S object:
-        \\  foo
-        \\var a = 123
+        \\  var foo
+        \\my a = 123
         \\for 0..3:
-        \\  a = S{ foo: 123 }.foo
-    );
-    trace = run.getTrace();
-    try t.eq(trace.numRetainAttempts, 6);
-    try t.eq(trace.numRetains, 3);
-    try t.eq(trace.numReleaseAttempts, 10);
-    try t.eq(trace.numReleases, 3);
+        \\  a = [S foo: 123].foo
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetainAttempts, 6);
+        try t.eq(trace.numRetains, 3);
+        try t.eq(trace.numReleaseAttempts, 10);
+        try t.eq(trace.numReleases, 3);
+    }}.func);
 
     // An rc var first used inside a loop.
-    _ = try run.eval(
+    try eval(.{},
         \\for 0..3:
         \\  var a = 'abc{123}'
-    );
-    trace = run.getTrace();
-    try t.eq(trace.numRetains, 3);
-    // The inner set inst should be a releaseSet.
-    try t.eq(trace.numReleases, 3);
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetains, 3);
+        // The inner set inst should be a releaseSet.
+        try t.eq(trace.numReleases, 3);
+    }}.func);
 
     // For iter initializes the temp value as the `any` type if the iterator has an `any` type,
     // so using it as a call arg will attempt to retain it.
-    _ = try run.eval(
+    try eval(.{},
         \\func foo(it):
         \\  pass
         \\var list = [123, 234] -- +1a +1 
-        \\for list each it:     -- +7a +5 (iterator is retained once, list is retained four times: one for iterator and others for calls to next(), and 2 retains for next() returning the child item.)
-        \\  foo(it)             -- +2a
-    );
-    trace = run.getTrace();
-    try t.eq(trace.numRetainAttempts, 11);
-    try t.eq(trace.numRetains, 7);
+        \\for list -> it:       -- +4a +4 (iterator is retained once, list is retained for iterator, and 2 retains for next() returning the child item.)
+        \\  foo(it)             -- +0a +0
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetainAttempts, 5);
+        try t.eq(trace.numRetains, 3);
+    }}.func);
 
     // For iter with `any` temp value, the last temp value is released at the end of the block.
-    _ = try run.eval(
-        \\var list = [{a: 123}, {a: 234}] -- +3a +3
-        \\for list each it:               -- +7a +7 -2
+    try eval(.{},
+        \\var list = [[a: 123], [a: 234]] -- +3a +3
+        \\for list -> it:                 -- +7a +7 -2
         \\  pass                      
         \\                                --        -8
-    );
-    trace = run.getTrace();
-    try t.eq(trace.numRetainAttempts, 11);
-    try t.eq(trace.numRetains, 11);
-    try t.eq(trace.numReleases, 11);
+    , struct { fn func(run: *Runner, res: EvalResult) !void {
+        _ = try res;
+        var trace = run.getTrace();
+        try t.eq(trace.numRetainAttempts, 9);
+        try t.eq(trace.numRetains, 9);
+        try t.eq(trace.numReleases, 9);
+    }}.func);
 }
 
 var testVm: cy.VM = undefined;

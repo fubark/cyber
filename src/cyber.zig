@@ -20,12 +20,20 @@ pub const TokenizeState = parser.TokenizeState;
 pub const TokenType = parser.TokenType;
 
 pub const sema = @import("sema.zig");
+pub const Sema = sema.Sema;
 pub const unescapeString = sema.unescapeString;
 
+pub const ir = @import("ir.zig");
+
 pub const types = @import("types.zig");
+pub const TypeId = types.TypeId;
+
 pub const module = @import("module.zig");
-pub const ModuleId = module.ModuleId;
 pub const Module = module.Module;
+
+pub const sym = @import("sym.zig");
+pub const Sym = sym.Sym;
+pub const Func = sym.Func;
 
 pub const vm_compiler = @import("vm_compiler.zig");
 pub const VMcompiler = vm_compiler.VMcompiler;
@@ -46,11 +54,8 @@ pub const hash = @import("hash.zig");
 pub const rt = @import("runtime.zig");
 pub const fmt = @import("fmt.zig");
 
-pub const codegen = @import("codegen.zig");
-
 pub const value = @import("value.zig");
 pub const Value = value.Value;
-pub const StaticUstringHeader = value.StaticUstringHeader;
 
 pub const ValueUserTag = value.ValueUserTag;
 
@@ -61,7 +66,6 @@ pub const EvalError = vm.EvalError;
 pub const buildReturnInfo = vm.buildReturnInfo;
 pub const getStackOffset = vm.getStackOffset;
 pub const getInstOffset = vm.getInstOffset;
-pub const StringType = vm.StringType;
 
 const api = @import("api.zig");
 pub const UserVM = api.UserVM;
@@ -74,9 +78,9 @@ pub const CyList = heap.List;
 pub const Closure = heap.Closure;
 pub const Pointer = heap.Pointer;
 pub const Astring = heap.Astring;
-pub const RawString = heap.RawString;
+pub const Array = heap.Array;
 pub const MaxPoolObjectStringByteLen = heap.MaxPoolObjectAstringByteLen;
-pub const MaxPoolObjectRawStringByteLen = heap.MaxPoolObjectRawStringByteLen;
+pub const MaxPoolObjectArrayByteLen = heap.MaxPoolObjectArrayByteLen;
 
 pub const fiber = @import("fiber.zig");
 
@@ -99,7 +103,7 @@ pub const StackFrame = debug.StackFrame;
 
 pub const string = @import("string.zig");
 pub const HeapStringBuilder = string.HeapStringBuilder;
-pub const HeapRawStringBuilder = string.HeapRawStringBuilder;
+pub const HeapArrayBuilder = string.HeapArrayBuilder;
 pub const isAstring = string.isAstring;
 pub const validateUtf8 = string.validateUtf8;
 pub const utf8CharSliceAt = string.utf8CharSliceAt;
@@ -167,6 +171,7 @@ pub const Trace = build_options.trace;
 pub const TraceNewObject = Trace and false;
 pub const TrackGlobalRC = build_options.trackGlobalRC;
 pub const Malloc = build_options.malloc;
+pub var tempBuf: [1000]u8 align(4) = undefined;
 
 const std = @import("std");
 pub const NullId = std.math.maxInt(u32);
@@ -178,7 +183,7 @@ pub fn Nullable(comptime T: type) type {
     return T;
 }
 
-pub const QuickenFuncFn = *const fn (*UserVM, pc: [*]Inst, [*]const Value, u8) void;
+pub const InlineFuncFn = *const fn (*UserVM, pc: [*]Inst, [*]const Value, u8) void;
 pub const ZHostFuncFn = *const fn (*UserVM, [*]const Value, u8) Value;
 pub const ZHostFuncCFn = *const fn (*UserVM, [*]const Value, u8) callconv(.C) Value;
 
@@ -198,30 +203,40 @@ pub const Str = extern struct {
         return self.buf[0..self.len];
     }
 };
-pub const PostTypeLoadModuleFn = *const fn (*UserVM, modId: vmc.ModuleId) callconv(.C) void;
-pub const PostLoadModuleFn = *const fn (*UserVM, modId: vmc.ModuleId) callconv(.C) void;
-pub const ModuleDestroyFn = *const fn (*UserVM, modId: vmc.ModuleId) callconv(.C) void;
-pub const ModuleResolverFn = *const fn (*UserVM, ChunkId, curUri: Str, spec: Str, outUri: *Str) callconv(.C) bool;
+pub const PostTypeLoadModuleFn = *const fn (*UserVM, mod: ApiModule) callconv(.C) void;
+pub const PostLoadModuleFn = *const fn (*UserVM, mod: ApiModule) callconv(.C) void;
+pub const ModuleDestroyFn = *const fn (*UserVM, mod: ApiModule) callconv(.C) void;
+
+pub const ResolverOnReceiptFn = *const fn (*UserVM, res: *ResolverResult) callconv(.C) void;
+pub const ResolverResult = struct {
+    uri: [*]const u8,
+    uriLen: usize = 0,
+    onReceipt: ?ResolverOnReceiptFn = null,
+};
+pub const ModuleResolverFn = *const fn (*UserVM, ChunkId, curUri: Str, spec: Str, res: *ResolverResult) callconv(.C) bool;
+
+pub const ModuleOnReceiptFn = *const fn (*UserVM, res: *ModuleLoaderResult) callconv(.C) void;
 pub const ModuleLoaderResult = extern struct {
-    src: Str,
-    srcIsStatic: bool,
+    src: [*]const u8,
+    srcLen: usize = 0,
     funcLoader: ?FuncLoaderFn = null,
     varLoader: ?VarLoaderFn = null,
     typeLoader: ?TypeLoaderFn = null,
     postTypeLoad: ?PostTypeLoadModuleFn = null,
     postLoad: ?PostLoadModuleFn = null,
     destroy: ?ModuleDestroyFn = null,
+    onReceipt: ?ModuleOnReceiptFn = null,
 };
 pub const ModuleLoaderFn = *const fn (*UserVM, Str, out: *ModuleLoaderResult) callconv(.C) bool;
 pub const HostFuncInfo = extern struct {
-    modId: vmc.ModuleId,
+    mod: ApiModule,
     name: Str,
     funcSigId: vmc.FuncSigId,
     idx: u32,
 };
 pub const HostFuncType = enum(u8) {
     standard,
-    quicken,
+    inlinec,
 };
 pub const HostFuncResult = extern struct {
     ptr: vmc.HostFuncFn,
@@ -229,7 +244,7 @@ pub const HostFuncResult = extern struct {
 };
 pub const FuncLoaderFn = *const fn (*UserVM, HostFuncInfo, *HostFuncResult) callconv(.C) bool;
 pub const HostVarInfo = extern struct {
-    modId: vmc.ModuleId,
+    mod: ApiModule,
     name: Str,
     idx: u32,
 };
@@ -238,22 +253,23 @@ pub const HostTypeType = enum(u8) {
     object,
     coreObject,
 };
+pub const ApiModule = extern struct {
+    sym: *Sym,
+};
 pub const HostTypeInfo = extern struct {
-    modId: vmc.ModuleId,
+    mod: ApiModule,
     name: Str,
     idx: u32,
 };
 pub const HostTypeResult = extern struct {
     data: extern union {
         object: extern struct {
-            typeId: *rt.TypeId,
-            semaTypeId: ?*types.TypeId,
+            outTypeId: ?*TypeId,
             getChildren: ?ObjectGetChildrenFn,
             finalizer: ?ObjectFinalizerFn,
         },
         coreObject: extern struct {
-            typeId: rt.TypeId,
-            semaTypeId: types.TypeId,
+            typeId: TypeId,
         },
     },
     type: HostTypeType,

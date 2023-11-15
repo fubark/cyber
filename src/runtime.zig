@@ -1,3 +1,4 @@
+const std = @import("std");
 const stdx = @import("stdx");
 const build_options = @import("build_options");
 const t = stdx.testing;
@@ -5,49 +6,12 @@ const cy = @import("cyber.zig");
 const sema = cy.sema;
 const vmc = @import("vm_c.zig");
 
-pub const TypeId = u32;
-
-pub const NoneT: TypeId = vmc.TYPE_NONE;
-pub const BooleanT: TypeId = vmc.TYPE_BOOLEAN;
-pub const ErrorT: TypeId = vmc.TYPE_ERROR;
-pub const StaticAstringT: TypeId = vmc.TYPE_STATIC_ASTRING; // ASCII string.
-pub const StaticUstringT: TypeId = vmc.TYPE_STATIC_USTRING; // UTF8 string.
-pub const EnumT: TypeId = vmc.TYPE_ENUM;
-pub const SymbolT: TypeId = vmc.TYPE_SYMBOL;
-pub const IntegerT: TypeId = vmc.TYPE_INTEGER;
-pub const FloatT: TypeId = vmc.TYPE_FLOAT;
-
-/// Reserved object types known at comptime.
-/// Starts at 9 since primitive types go up to 8.
-pub const TupleT: TypeId = vmc.TYPE_TUPLE;
-pub const ListT: TypeId = vmc.TYPE_LIST;
-pub const ListIteratorT: TypeId = vmc.TYPE_LIST_ITER;
-pub const MapT: TypeId = vmc.TYPE_MAP;
-pub const MapIteratorT: TypeId = vmc.TYPE_MAP_ITER;
-pub const ClosureT: TypeId = vmc.TYPE_CLOSURE;
-pub const LambdaT: TypeId = vmc.TYPE_LAMBDA;
-pub const AstringT: TypeId = vmc.TYPE_ASTRING;
-pub const UstringT: TypeId = vmc.TYPE_USTRING;
-pub const StringSliceT: TypeId = vmc.TYPE_STRING_SLICE;
-pub const RawstringT: TypeId = vmc.TYPE_RAWSTRING;
-pub const RawstringSliceT: TypeId = vmc.TYPE_RAWSTRING_SLICE;
-pub const FiberT: TypeId = vmc.TYPE_FIBER;
-pub const BoxT: TypeId = vmc.TYPE_BOX;
-pub const NativeFuncT: TypeId = vmc.TYPE_NATIVE_FUNC;
-pub const TccStateT: TypeId = vmc.TYPE_TCC_STATE;
-pub const PointerT: TypeId = vmc.TYPE_POINTER;
-pub const MetaTypeT: TypeId = vmc.TYPE_METATYPE;
-pub const AnyT: TypeId = 27;
-pub const StringUnionT: TypeId = 28;
-pub const RawstringUnionT: TypeId = 29;
-pub const NumBuiltinTypes: TypeId = 30;
-
 pub const TypeKey = cy.hash.KeyU64;
 
 pub const FieldTableKey = cy.hash.KeyU64;
 pub const FieldId = u32;
 
-pub const MethodGroupKey = sema.NameSymId;
+pub const MethodGroupKey = vmc.NameId;
 pub const TypeMethodGroupKey = cy.hash.KeyU64;
 
 pub const MethodType = enum {
@@ -76,7 +40,7 @@ pub const MethodData = extern union {
         numParams: u8,
     },
     optimizing: extern struct {
-        ptr: cy.QuickenFuncFn,
+        ptr: cy.InlineFuncFn,
         numParams: u8,
     },
     typed: extern struct {
@@ -159,7 +123,7 @@ pub const MethodInit = struct {
         };
     }
 
-    pub fn initHostQuicken(funcSigId: sema.FuncSigId, func: cy.QuickenFuncFn, numParams: u8) MethodInit {
+    pub fn initHostInline(funcSigId: sema.FuncSigId, func: cy.InlineFuncFn, numParams: u8) MethodInit {
         return .{
             .type = .optimizing,
             .data = .{
@@ -194,7 +158,7 @@ pub const TypeMethodGroup = struct {
 /// Secondary symbol data should be moved to `methodGroupExts`.
 pub const MethodGroup = struct {
     /// Most recent type  is cached to avoid hashmap lookup. 
-    mruTypeId: TypeId,
+    mruTypeId: cy.TypeId,
 
     mruMethodType: MethodType,
     mruMethodData: MethodData,
@@ -220,20 +184,17 @@ pub const MethodGroupExt = struct {
 pub const FuncId = u32;
 
 pub const FuncSymbolType = enum {
-    hostFunc,
     func,
+    hostFunc,
+    hostInlineFunc,
     closure,
-    hostQuickenFunc,
-
-    /// Placeholder for a func symbol that contains a linked list of overloaded functions.
-    /// The arg types are checked at runtime.
-    // multiple,
-
     none,
 };
 
 pub const FuncSymDetail = struct {
-    nameId: sema.NameSymId,
+    namePtr: [*]const u8,
+    nameLen: u32,
+    funcSigId: sema.FuncSigId,
 };
 
 pub const FuncSymbol = extern struct {
@@ -257,7 +218,7 @@ pub const FuncSymbol = extern struct {
         },
     } = undefined,
     inner: extern union {
-        hostQuickenFunc: cy.QuickenFuncFn,
+        hostInlineFunc: cy.InlineFuncFn,
         hostFunc: vmc.HostFuncFn,
         func: extern struct {
             pc: u32,
@@ -269,10 +230,17 @@ pub const FuncSymbol = extern struct {
         closure: *cy.Closure,
     },
 
-    pub fn initHostQuickenFunc(func: cy.QuickenFuncFn, isTyped: bool, numParams: u32, funcSigId: sema.FuncSigId) FuncSymbol {
+    pub fn initNone() FuncSymbol {
+        return .{
+            .entryT = @intFromEnum(FuncSymbolType.none),
+            .inner = undefined,
+        };
+    }
+
+    pub fn initHostInlineFunc(func: cy.InlineFuncFn, isTyped: bool, numParams: u32, funcSigId: sema.FuncSigId) FuncSymbol {
         const isTypedMask: u16 = if (isTyped) 1 << 15 else 0;
         return .{
-            .entryT = @intFromEnum(FuncSymbolType.hostQuickenFunc),
+            .entryT = @intFromEnum(FuncSymbolType.hostInlineFunc),
             .innerExtra = .{
                 .hostFunc = .{
                     .typedFlagNumParams = isTypedMask | @as(u16, @intCast(numParams)),
@@ -280,7 +248,7 @@ pub const FuncSymbol = extern struct {
                 }
             },
             .inner = .{
-                .hostQuickenFunc = func,
+                .hostInlineFunc = func,
             },
         };
     }
@@ -329,8 +297,6 @@ pub const FuncSymbol = extern struct {
     }
 };
 
-pub const VarKey = cy.hash.KeyU64;
-
 pub const VarSym = struct {
     value: cy.Value,
 
@@ -342,6 +308,41 @@ pub const VarSym = struct {
 };
 
 pub const FieldSymbolMap = vmc.FieldSymbolMap;
+
+pub fn getName(vm: *const cy.VM, nameId: vmc.NameId) []const u8 {
+    const name = vm.names.buf[nameId];
+    return name.ptr[0..name.len];
+}
+
+pub fn ensureNameSym(c: *cy.VM, name: []const u8) !vmc.NameId {
+    return ensureNameSymExt(c, name, false);
+}
+
+pub fn ensureNameSymExt(vm: *cy.VM, name: []const u8, dupe: bool) !vmc.NameId {
+    const res = try @call(.never_inline, std.StringHashMapUnmanaged(vmc.NameId).getOrPut, .{ &vm.nameMap, vm.alloc, name});
+    if (res.found_existing) {
+        return res.value_ptr.*;
+    } else {
+        const id: u32 = @intCast(vm.names.len);
+        if (dupe) {
+            const new = try vm.alloc.dupe(u8, name);
+            try vm.names.append(vm.alloc, .{
+                .ptr = new.ptr,
+                .len = @intCast(new.len),
+                .owned = true,
+            });
+            res.key_ptr.* = new;
+        } else {
+            try vm.names.append(vm.alloc, .{
+                .ptr = @ptrCast(name.ptr),
+                .len = @intCast(name.len),
+                .owned = false,
+            });
+        }
+        res.value_ptr.* = id;
+        return id;
+    }
+}
 
 test "runtime internals." {
     try t.eq(@sizeOf(MethodData), 16);
@@ -361,10 +362,8 @@ test "runtime internals." {
     if (cy.is32Bit) {
         try t.eq(@alignOf(MethodGroup), 4);
         try t.eq(@sizeOf(MethodGroupExt), 20);
-        try t.eq(@sizeOf(vmc.Type), 20);
     } else {
         try t.eq(@alignOf(MethodGroup), 8);
         try t.eq(@sizeOf(MethodGroupExt), 24);
-        try t.eq(@sizeOf(vmc.Type), 32);
     }
 }

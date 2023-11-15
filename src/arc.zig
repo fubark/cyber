@@ -9,6 +9,7 @@ const log = cy.log.scoped(.arc);
 const cy = @import("cyber.zig");
 const vmc = cy.vmc;
 const rt = cy.rt;
+const bt = cy.types.BuiltinTypes;
 
 pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
     if (cy.Trace) {
@@ -79,8 +80,8 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
     if (cy.Trace) {
         checkDoubleFree(vm, obj);
     }
-    obj.head.rc -= 1;
     log.tracev("release {} rc={}", .{obj.getUserTag(), obj.head.rc});
+    obj.head.rc -= 1;
     if (cy.TrackGlobalRC) {
         vm.refCounts -= 1;
     }
@@ -109,6 +110,7 @@ pub fn runTempReleaseOps(vm: *cy.VM, fp: [*]const cy.Value, tempIdx: u32) void {
 }
 
 pub fn releaseLocals(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, locals: cy.IndexSlice(u8)) void {
+    log.tracev("release locals: {}-{}", .{locals.start, locals.end});
     for (stack[framePtr+locals.start..framePtr+locals.end]) |val| {
         release(vm, val);
     }
@@ -196,7 +198,7 @@ const GCResult = struct {
 ///    Only cyclable objects that aren't marked are visited.
 /// 2. Sweep iterates all cyclable objects.
 ///    If the mark flag is not set:
-///       - the object's children are released exlcuding confirmed child cyc objects.
+///       - the object's children are released excluding confirmed child cyc objects.
 ///       - the object is queued to be freed later.
 ///    If the mark flag is set, reset the flag for the next gc run.
 ///    TODO: Allocate using separate pages for cyclable and non-cyclable objects,
@@ -206,7 +208,7 @@ pub fn performGC(vm: *cy.VM) !GCResult {
     try performMark(vm);
 
     // Make sure dummy node has mark bit.
-    cy.vm.dummyCyclableHead.typeId = vmc.GC_MARK_MASK | rt.NoneT;
+    cy.vm.dummyCyclableHead.typeId = vmc.GC_MARK_MASK | bt.None;
 
     return try performSweep(vm);
 }
@@ -357,7 +359,7 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
     // Visit children.
     const typeId = obj.getTypeId();
     switch (typeId) {
-        rt.ListT => {
+        bt.List => {
             const items = obj.list.items();
             for (items) |it| {
                 if (it.isCycPointer()) {
@@ -365,7 +367,7 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
                 }
             }
         },
-        rt.MapT => {
+        bt.Map => {
             const map = obj.map.map();
             var iter = map.iterator();
             while (iter.next()) |entry| {
@@ -377,13 +379,13 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
                 }
             }
         },
-        rt.ListIteratorT => {
+        bt.ListIter => {
             markValue(vm, cy.Value.initNoCycPtr(obj.listIter.list));
         },
-        rt.MapIteratorT => {
+        bt.MapIter => {
             markValue(vm, cy.Value.initNoCycPtr(obj.mapIter.map));
         },
-        rt.ClosureT => {
+        bt.Closure => {
             const vals = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
             for (vals) |val| {
                 // TODO: Can this be assumed to always be a Box value?
@@ -392,20 +394,20 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
                 }
             }
         },
-        rt.BoxT => {
+        bt.Box => {
             if (obj.box.val.isCycPointer()) {
                 markValue(vm, obj.box.val);
             }
         },
-        rt.FiberT => {
+        bt.Fiber => {
             // TODO: Visit other fiber stacks.
         },
         else => {
             // Assume caller used isCycPointer and obj is cyclable.
-            const entry = &vm.types.buf[typeId];
-            if (!entry.isHostObject) {
+            const entry = vm.types[typeId];
+            if (entry.symType != .hostObjectType) {
                 // User type.
-                const members = obj.object.getValuesConstPtr()[0..entry.data.object.numFields];
+                const members = obj.object.getValuesConstPtr()[0..entry.data.numFields];
                 for (members) |m| {
                     if (m.isCycPointer()) {
                         markValue(vm, m);
@@ -413,7 +415,7 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
                 }
             } else {
                 // Host type.
-                if (entry.data.hostObject.getChildren) |getChildren| {
+                if (entry.sym.cast(.hostObjectType).getChildrenFn) |getChildren| {
                     const children = @as(cy.ObjectGetChildrenFn, @ptrCast(@alignCast(getChildren)))(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
                     for (children.slice()) |child| {
                         if (child.isCycPointer()) {

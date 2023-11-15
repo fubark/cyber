@@ -8,13 +8,14 @@ t.eq(3 is 3, true)
 t.eq(3 == 2, false)
 t.eq(3 == 3, true)
 
--- Const string equals.
+-- strings.
 t.eq('foo' == 'bar', false)
 t.eq('foo' == 'foo', true)
 
--- string matches rawstring contents.
-t.eq('foo' == rawstring('foo'), true)
-t.eq('foo' == rawstring('bar'), false)
+t.eq(array('foo') == array('foo'), true)
+t.eq(array('foo') == array('bar'), false)
+
+-- arrays.
 
 -- Heap string equals.
 var foo = '{'fo'}{'o'}'
@@ -24,9 +25,9 @@ t.eq(foo == 'foo', true)
 
 -- Object equals.
 type S object:
-  value
-var s = S{ value: 123 }
-var a = S{ value: 123 }
+    var value
+var s = [S value: 123]
+var a = [S value: 123]
 t.eq(a == s, false)
 a = s
 t.eq(a == s, true)

@@ -6,7 +6,7 @@ func fail():
 func happy(a):
     return a
 
-var a = none
+my a = none
 
 -- No error.
 try:

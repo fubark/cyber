@@ -32,5 +32,5 @@ t.eq(a, 1)
 
 -- Right function call.
 func foo():
-  return 123
+    return 123
 t.eq(1 + foo(), 124)

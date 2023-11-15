@@ -6,12 +6,9 @@ const log = cy.log.scoped(.fs);
 const cy = @import("../cyber.zig");
 const Value = cy.Value;
 
-pub var FileT: cy.rt.TypeId = undefined;
-pub var SemaFileT: cy.types.TypeId = undefined;
-pub var DirT: cy.rt.TypeId = undefined;
-pub var SemaDirT: cy.types.TypeId = undefined;
-pub var DirIterT: cy.rt.TypeId = undefined;
-pub var SemaDirIterT: cy.types.TypeId = undefined;
+pub var FileT: cy.TypeId = undefined;
+pub var DirT: cy.TypeId = undefined;
+pub var DirIterT: cy.TypeId = undefined;
 
 pub const File = extern struct {
     readBuf: [*]u8,
@@ -310,7 +307,7 @@ pub fn fileWrite(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
         return prepareThrowSymbol(vm, .Closed);
     }
 
-    var buf = vm.valueToTempRawString(args[1]);
+    var buf = vm.valueToTempByteArray(args[1]);
     const file = fileo.getStdFile();
     const numWritten = file.write(buf) catch |err| {
         return cy.apiUnsupportedError(vm, "write", err, @errorReturnTrace());
@@ -353,7 +350,7 @@ pub fn fileRead(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
         return cy.apiUnsupportedError(vm, "read", err, @errorReturnTrace());
     };
     // Can return empty string when numRead == 0.
-    return vm.allocRawString(tempBuf.buf[0..numRead]) catch cy.fatal();
+    return vm.allocArray(tempBuf.buf[0..numRead]) catch cy.fatal();
 }
 
 pub fn fileReadToEnd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -385,7 +382,7 @@ pub fn fileReadToEnd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy
             // Done.
             const all = tempBuf.items();
             // Can return empty string.
-            return vm.allocRawString(all) catch cy.fatal();
+            return vm.allocArray(all) catch cy.fatal();
         } else {
             tempBuf.ensureUnusedCapacity(alloc, MinReadBufSize) catch cy.fatal();
         }
@@ -421,12 +418,12 @@ pub fn fileOrDirStat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy
     const ivm = vm.internal();
 
     const map = vm.allocEmptyMap() catch cy.fatal();
-    const sizeKey = vm.allocAstring("size") catch cy.fatal();
-    const modeKey = vm.allocAstring("mode") catch cy.fatal();
-    const typeKey = vm.allocAstring("type") catch cy.fatal();
-    const atimeKey = vm.allocAstring("atime") catch cy.fatal();
-    const ctimeKey = vm.allocAstring("ctime") catch cy.fatal();
-    const mtimeKey = vm.allocAstring("mtime") catch cy.fatal();
+    const sizeKey = vm.retainOrAllocAstring("size") catch cy.fatal();
+    const modeKey = vm.retainOrAllocAstring("mode") catch cy.fatal();
+    const typeKey = vm.retainOrAllocAstring("type") catch cy.fatal();
+    const atimeKey = vm.retainOrAllocAstring("atime") catch cy.fatal();
+    const ctimeKey = vm.retainOrAllocAstring("ctime") catch cy.fatal();
+    const mtimeKey = vm.retainOrAllocAstring("mtime") catch cy.fatal();
     defer {
         vm.release(sizeKey);
         vm.release(modeKey);
@@ -458,7 +455,7 @@ pub fn fileNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
         const readBuf = fileo.readBuf[0..fileo.readBufCap];
         if (cy.getLineEnd(readBuf[fileo.curPos..fileo.readBufEnd])) |end| {
             // Found new line.
-            const line = vm.allocRawString(readBuf[fileo.curPos..fileo.curPos+end]) catch cy.fatal();
+            const line = vm.allocArray(readBuf[fileo.curPos..fileo.curPos+end]) catch cy.fatal();
 
             // Advance pos.
             fileo.curPos += @intCast(end);
@@ -466,7 +463,7 @@ pub fn fileNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
             return line;
         }
 
-        var lineBuf = cy.HeapRawStringBuilder.init(@ptrCast(vm)) catch cy.fatal();
+        var lineBuf = cy.HeapArrayBuilder.init(@ptrCast(vm)) catch cy.fatal();
         defer lineBuf.deinit();
         // Start with previous string without line delimiter.
         lineBuf.appendString(alloc, readBuf[fileo.curPos..fileo.readBufEnd]) catch cy.fatal();
@@ -520,16 +517,16 @@ pub fn dirIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(
         };
         if (entryOpt) |entry| {
             const map = vm.allocEmptyMap() catch cy.fatal();
-            const pathKey = vm.allocAstring("path") catch cy.fatal();
-            const nameKey = vm.allocAstring("name") catch cy.fatal();
-            const typeKey = vm.allocAstring("type") catch cy.fatal();
+            const pathKey = vm.retainOrAllocAstring("path") catch cy.fatal();
+            const nameKey = vm.retainOrAllocAstring("name") catch cy.fatal();
+            const typeKey = vm.retainOrAllocAstring("type") catch cy.fatal();
             defer {
                 vm.release(pathKey);
                 vm.release(nameKey);
                 vm.release(typeKey);
             }
-            const entryPath = vm.allocRawString(entry.path) catch cy.fatal();
-            const entryName = vm.allocRawString(entry.basename) catch cy.fatal();
+            const entryPath = cy.heap.retainOrAllocPreferString(ivm, entry.path) catch cy.fatal();
+            const entryName = cy.heap.retainOrAllocPreferString(ivm, entry.basename) catch cy.fatal();
             defer {
                 vm.release(entryPath);
                 vm.release(entryName);
@@ -553,9 +550,9 @@ pub fn dirIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(
         };
         if (entryOpt) |entry| {
             const map = vm.allocEmptyMap() catch cy.fatal();
-            const nameKey = vm.allocAstring("name") catch cy.fatal();
-            const typeKey = vm.allocAstring("type") catch cy.fatal();
-            const entryName = vm.allocRawString(entry.name) catch cy.fatal();
+            const nameKey = vm.retainOrAllocAstring("name") catch cy.fatal();
+            const typeKey = vm.retainOrAllocAstring("type") catch cy.fatal();
+            const entryName = cy.heap.retainOrAllocPreferString(ivm, entry.name) catch cy.fatal();
             defer {
                 vm.release(nameKey);
                 vm.release(typeKey);

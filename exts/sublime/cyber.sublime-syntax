@@ -27,16 +27,16 @@ contexts:
       scope: punctuation.definition.comment.cyber
       push: line_comment
 
-    - match: '\b(if|else|match|while|for|each|break|continue|pass|some|case)\b'
+    - match: '\b(if|else|switch|while|for|break|continue|pass|case)\b'
       scope: keyword.control.cyber
 
     - match: '\b(or|and|not|is)\b'
       scope: keyword.operator.cyber
 
-    - match: '\b(var|as|auto)\b'
+    - match: '\b(var|as|my)\b'
       scope: keyword.variable.cyber
 
-    - match: '\b(func|meth|return)\b'
+    - match: '\b(func|return|self)\b'
       scope: keyword.function.cyber
 
     - match: '\b(coyield|coresume|coinit)\b'

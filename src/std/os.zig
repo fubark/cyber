@@ -12,7 +12,7 @@ const bindings = @import("../builtins/bindings.zig");
 const Symbol = bindings.Symbol;
 const prepareThrowSymbol = bindings.prepareThrowSymbol;
 const fromUnsupportedError = bindings.fromUnsupportedError;
-const bt = cy.types.BuiltinTypeSymIds;
+const bt = cy.types.BuiltinTypes;
 const ffi = @import("os_ffi.zig");
 const http = @import("../http.zig");
 const cache = @import("../cache.zig");
@@ -20,9 +20,10 @@ const fs = @import("fs.zig");
 
 const log = cy.log.scoped(.os);
 
-pub var CFuncT: rt.TypeId = undefined;
-pub var CStructT: rt.TypeId = undefined;
-pub var CArrayT: rt.TypeId = undefined;
+pub var CFuncT: cy.TypeId = undefined;
+pub var CStructT: cy.TypeId = undefined;
+pub var CArrayT: cy.TypeId = undefined;
+pub var nextUniqId: u32 = undefined;
 
 pub const Src = @embedFile("os.cy");
 pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo, out: *cy.HostFuncResult) callconv(.C) bool {
@@ -55,6 +56,7 @@ const funcs = [_]NameFunc{
     .{"fromCstr", fromCstr},
     .{"getEnv", getEnv},
     .{"getEnvAll", getEnvAll},
+    .{"getAllInput", getAllInput},
     .{"getInput", getInput},
     .{"malloc", malloc},
     .{"milliTime", milliTime},
@@ -62,9 +64,7 @@ const funcs = [_]NameFunc{
     .{"openDir", openDir2},
     .{"openFile", openFile},
     .{"parseArgs", parseArgs},
-    .{"readAll", readAll},
     .{"readFile", readFile},
-    .{"readLine", readLine},
     .{"realPath", realPath},
     .{"removeDir", removeDir},
     .{"removeFile", removeFile},
@@ -106,78 +106,84 @@ pub fn varLoader(_: *cy.UserVM, v: cy.HostVarInfo, out: *cy.Value) callconv(.C) 
     return false;
 }
 
-const NameType = struct { []const u8, *cy.rt.TypeId, *cy.types.TypeId, ?cy.ObjectGetChildrenFn, cy.ObjectFinalizerFn };
+const NameType = struct { []const u8, *cy.TypeId, ?cy.ObjectGetChildrenFn, ?cy.ObjectFinalizerFn };
 const types = [_]NameType{
-    .{"File", &fs.FileT, &fs.SemaFileT, null, fs.fileFinalizer },
-    .{"Dir", &fs.DirT, &fs.SemaDirT, null, fs.dirFinalizer },
-    .{"DirIterator", &fs.DirIterT, &fs.SemaDirIterT, fs.dirIteratorGetChildren, fs.dirIteratorFinalizer },
+    .{"File", &fs.FileT, null, fs.fileFinalizer },
+    .{"Dir", &fs.DirT, null, fs.dirFinalizer },
+    .{"DirIterator", &fs.DirIterT, fs.dirIteratorGetChildren, fs.dirIteratorFinalizer },
 };
 
 pub fn typeLoader(_: *cy.UserVM, info: cy.HostTypeInfo, out: *cy.HostTypeResult) callconv(.C) bool {
     if (std.mem.eql(u8, types[info.idx].@"0", info.name.slice())) {
         out.type = .object;
         out.data.object = .{
-            .typeId = types[info.idx].@"1",
-            .semaTypeId = types[info.idx].@"2",
-            .getChildren = types[info.idx].@"3",
-            .finalizer = types[info.idx].@"4",
+            .outTypeId = types[info.idx].@"1",
+            .getChildren = types[info.idx].@"2",
+            .finalizer = types[info.idx].@"3",
         };
         return true;
     }
     return false;
 }
 
-pub fn postTypeLoad(vm: *cy.UserVM, modId: cy.ModuleId) callconv(.C) void {
-    zPostTypeLoad(vm.internal().compiler, modId) catch |err| {
+pub fn postTypeLoad(vm: *cy.UserVM, mod: cy.ApiModule) callconv(.C) void {
+    zPostTypeLoad(vm.internal().compiler, mod) catch |err| {
         cy.panicFmt("os module: {}", .{err});
     };
 }
 
-pub fn zPostTypeLoad(c: *cy.VMcompiler, modId: cy.ModuleId) !void {
-    _ = modId;
-    vars[0] = .{ "cpu", try c.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)) };
+pub fn zPostTypeLoad(c: *cy.VMcompiler, mod: cy.ApiModule) !void {
+    vars[0] = .{ "Root.cpu", try cy.heap.retainOrAllocPreferString(c.vm, @tagName(builtin.cpu.arch)) };
     if (builtin.cpu.arch.endian() == .Little) {
-        vars[1] = .{ "endian", cy.Value.initSymbol(@intFromEnum(Symbol.little)) };
+        vars[1] = .{ "Root.endian", cy.Value.initSymbol(@intFromEnum(Symbol.little)) };
     } else {
-        vars[1] = .{ "endian", cy.Value.initSymbol(@intFromEnum(Symbol.big)) };
+        vars[1] = .{ "Root.endian", cy.Value.initSymbol(@intFromEnum(Symbol.big)) };
     }
     if (cy.hasStdFiles) {
         const stderr = try fs.allocFile(c.vm, std.io.getStdErr().handle);
         stderr.asHostObject(*fs.File).closeOnFree = false;
-        vars[2] = .{ "stderr", stderr };
+        vars[2] = .{ "Root.stderr", stderr };
         const stdin = try fs.allocFile(c.vm, std.io.getStdIn().handle);
         stdin.asHostObject(*fs.File).closeOnFree = false;
-        vars[3] = .{ "stdin", stdin };
+        vars[3] = .{ "Root.stdin", stdin };
         const stdout = try fs.allocFile(c.vm, std.io.getStdOut().handle);
         stdout.asHostObject(*fs.File).closeOnFree = false;
-        vars[4] = .{ "stdout", stdout };
+        vars[4] = .{ "Root.stdout", stdout };
     } else {
-        vars[2] = .{ "stderr", Value.None };
-        vars[3] = .{ "stdin", Value.None };
-        vars[4] = .{ "stdout", Value.None };
+        vars[2] = .{ "Root.stderr", Value.None };
+        vars[3] = .{ "Root.stdin", Value.None };
+        vars[4] = .{ "Root.stdout", Value.None };
     }
-    vars[5] = .{ "system", try c.buf.getOrPushStringValue(@tagName(builtin.os.tag)) };
+    vars[5] = .{ "Root.system", try cy.heap.retainOrAllocPreferString(c.vm, @tagName(builtin.os.tag)) };
     
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
-        vars[6] = .{ "vecBitSize", cy.Value.initI32(VecSize * 8) };
+        vars[6] = .{ "Root.vecBitSize", cy.Value.initI32(VecSize * 8) };
     } else {
-        vars[6] = .{ "vecBitSize", cy.Value.initI32(0) };
+        vars[6] = .{ "Root.vecBitSize", cy.Value.initI32(0) };
     }
+
+    const chunkMod = mod.sym.getMod().?;
+    CFuncT = chunkMod.getSym("CFunc").?.cast(.object).type;
+    CStructT = chunkMod.getSym("CStruct").?.cast(.object).type;
+    CArrayT = chunkMod.getSym("CArray").?.cast(.object).type;
+    nextUniqId = 1;
 }
 
-pub fn postLoad(vm: *cy.UserVM, modId: cy.ModuleId) callconv(.C) void {
-    zPostLoad(vm.internal().compiler, modId) catch |err| {
+pub fn postLoad(vm: *cy.UserVM, mod: cy.ApiModule) callconv(.C) void {
+    zPostLoad(vm.internal().compiler, mod) catch |err| {
         cy.panicFmt("os module: {}", .{err});
     };
 }
 
-fn zPostLoad(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitSection) anyerror!void {
-    const b = bindings.ModuleBuilder.init(self, modId);
+fn zPostLoad(self: *cy.VMcompiler, mod: cy.ApiModule) linksection(cy.InitSection) anyerror!void {
+    const b = bindings.ModuleBuilder.init(self, @ptrCast(mod.sym));
+    _ = b;
 
-    // Object Types.
-    CFuncT = try b.createAndSetTypeObject("CFunc", &.{"sym", "args", "ret"});
-    CStructT = try b.createAndSetTypeObject("CStruct", &.{"fields", "type"});
-    CArrayT = try b.createAndSetTypeObject("CArray", &.{"n", "elem"});
+    // Free vars since they are managed by the module now.
+    log.tracev("os post load", .{});
+    for (vars) |entry| {
+        cy.arc.release(self.vm, entry.@"1");
+    }
 }
 
 fn openDir(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
@@ -187,7 +193,7 @@ fn openDir(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSe
 
 fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
-    const path = vm.valueToTempRawString(args[0]);
+    const path = args[0].asString();
     const iterable = args[1].asBool();
     var fd: std.os.fd_t = undefined;
     if (iterable) {
@@ -214,7 +220,7 @@ fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 
 fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
-    const path = vm.valueToTempRawString(args[0]);
+    const path = args[0].asString();
     std.fs.cwd().deleteDir(path) catch |err| {
         if (err == error.FileNotFound) {
             return prepareThrowSymbol(vm, .FileNotFound);
@@ -222,18 +228,18 @@ fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
             return fromUnsupportedError(vm, "removeDir", err, @errorReturnTrace());
         }
     };
-    return Value.True;
+    return Value.None;
 }
 
 fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (cy.isWasm) {
         return vm.returnPanic("Unsupported.");
     }
-    const src = vm.valueToTempRawString(args[0]);
+    const src = args[0].asString();
     const alloc = vm.allocator();
     const srcDupe = alloc.dupe(u8, src) catch fatal();
     defer alloc.free(srcDupe);
-    const dst = vm.valueToTempRawString(args[1]);
+    const dst = args[1].asString();
     std.fs.cwd().copyFile(srcDupe, std.fs.cwd(), dst, .{}) catch |err| {
         if (err == error.FileNotFound) {
             return prepareThrowSymbol(vm, .FileNotFound);
@@ -241,12 +247,12 @@ fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
             return fromUnsupportedError(vm, "copyFile", err, @errorReturnTrace());
         }
     };
-    return Value.True;
+    return Value.None;
 }
 
 fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
-    const path = vm.valueToTempRawString(args[0]);
+    const path = args[0].asString();
     std.fs.cwd().deleteFile(path) catch |err| {
         if (err == error.FileNotFound) {
             return prepareThrowSymbol(vm, .FileNotFound);
@@ -254,21 +260,21 @@ fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
             return fromUnsupportedError(vm, "removeFile", err, @errorReturnTrace());
         }
     };
-    return Value.True;
+    return Value.None;
 }
 
 fn createDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
-    const path = vm.valueToTempRawString(args[0]);
+    const path = args[0].asString();
     std.fs.cwd().makeDir(path) catch |err| {
         return fromUnsupportedError(vm, "createDir", err, @errorReturnTrace());
     };
-    return Value.True;
+    return Value.None;
 }
 
 fn createFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
-    const path = vm.valueToTempRawString(args[0]);
+    const path = args[0].asString();
     const truncate = args[1].asBool();
     const file = std.fs.cwd().createFile(path, .{ .truncate = truncate }) catch |err| {
         return fromUnsupportedError(vm, "createFile", err, @errorReturnTrace());
@@ -281,7 +287,7 @@ pub fn access(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         return vm.returnPanic("Unsupported.");
     }
 
-    const path = vm.valueToTempRawString(args[0]);
+    const path = args[0].asString();
 
     const mode: Symbol = @enumFromInt(args[1].asSymbolId());
     const zmode: std.fs.File.OpenMode = switch (mode) {
@@ -289,7 +295,7 @@ pub fn access(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         .write => .write_only,
         .readWrite => .read_write,
         else => {
-            return Value.None;
+            return prepareThrowSymbol(vm, .InvalidArgument);
         }
     };
     std.fs.cwd().access(path, .{ .mode = zmode }) catch |err| {
@@ -301,19 +307,19 @@ pub fn access(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
             return fromUnsupportedError(vm, "access", err, @errorReturnTrace());
         }
     };
-    return Value.True;
+    return Value.None;
 }
 
 fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
-    const path = vm.valueToTempRawString(args[0]);
+    const path = args[0].asString();
     const mode: Symbol = @enumFromInt(args[1].asSymbolId());
     const zmode: std.fs.File.OpenMode = switch (mode) {
         .read => .read_only,
         .write => .write_only,
         .readWrite => .read_write,
         else => {
-            return Value.None;
+            return prepareThrowSymbol(vm, .InvalidArgument);
         }
     };
     const file = std.fs.cwd().openFile(path, .{ .mode = zmode }) catch |err| {
@@ -329,6 +335,7 @@ fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 fn parseArgs(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const ivm = vm.internal();
+    _ = ivm;
     const alloc = vm.allocator();
 
     const list = args[0].asHeapObject().list.items();
@@ -336,8 +343,8 @@ fn parseArgs(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     // Build options map.
     const OptionType = enum {
         string,
-        number,
-        boolean,
+        float,
+        bool,
     };
     const Option = struct {
         name: Value,
@@ -349,33 +356,33 @@ fn parseArgs(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     var optionMap: std.StringHashMapUnmanaged(Option) = .{};
     defer optionMap.deinit(alloc);
     for (list) |opt| {
-        if (opt.isObjectType(rt.MapT)) {
+        if (opt.isObjectType(bt.Map)) {
             const entry = opt.asHeapObject().map.map();
-            const name = entry.getByString(ivm, "name") orelse return prepareThrowSymbol(vm, .InvalidArgument);
+            const name = entry.getByString("name") orelse return prepareThrowSymbol(vm, .InvalidArgument);
             if (!name.isString()) {
                 return prepareThrowSymbol(vm, .InvalidArgument);
             }
-            const entryType = entry.getByString(ivm, "type") orelse return prepareThrowSymbol(vm, .InvalidArgument);
-            if (!entryType.isObjectType(rt.MetaTypeT)) {
+            const entryType = entry.getByString("type") orelse return prepareThrowSymbol(vm, .InvalidArgument);
+            if (!entryType.isObjectType(bt.MetaType)) {
                 return prepareThrowSymbol(vm, .InvalidArgument);
             }
             var optType: OptionType = undefined;
             switch (entryType.asHeapObject().metatype.symId) {
-                rt.StringUnionT => {
+                bt.String => {
                     optType = .string;
                 },
-                rt.FloatT => {
-                    optType = .number;
+                bt.Float => {
+                    optType = .float;
                 },
-                rt.BooleanT => {
-                    optType = .boolean;
+                bt.Boolean => {
+                    optType = .bool;
                 },
                 else => {
                     return prepareThrowSymbol(vm, .InvalidArgument);
                 },
             }
-            const default = entry.getByString(ivm, "default") orelse Value.None;
-            optionMap.put(alloc, vm.valueAsString(name), .{
+            const default = entry.getByString("default") orelse Value.None;
+            optionMap.put(alloc, name.asString(), .{
                 .name = name,
                 .type = optType,
                 .default = default,
@@ -403,36 +410,36 @@ fn parseArgs(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
                 switch (opt.type) {
                     .string => {
                         if (iter.next()) |nextArg| {
-                            const val = vm.allocStringInfer(nextArg) catch fatal();
+                            const val = vm.retainOrAllocString(nextArg) catch fatal();
                             vm.retain(opt.name);
-                            map.put(alloc, ivm, opt.name, val) catch fatal();
+                            map.put(alloc, opt.name, val) catch fatal();
                             opt.found = true;
                         } else {
                             return prepareThrowSymbol(vm, .InvalidArgument);
                         }
                     },
-                    .number => {
+                    .float => {
                         if (iter.next()) |nextArg| {
                             const num = std.fmt.parseFloat(f64, nextArg) catch {
                                 return prepareThrowSymbol(vm, .InvalidArgument);
                             };
                             vm.retain(opt.name);
-                            map.put(alloc, ivm, opt.name, Value.initF64(num)) catch fatal();
+                            map.put(alloc, opt.name, Value.initF64(num)) catch fatal();
                             opt.found = true;
                         } else {
                             return prepareThrowSymbol(vm, .InvalidArgument);
                         }
                     },
-                    .boolean => {
+                    .bool => {
                         vm.retain(opt.name);
-                        map.put(alloc, ivm, opt.name, Value.True) catch fatal();
+                        map.put(alloc, opt.name, Value.True) catch fatal();
                         opt.found = true;
                     }
                 }
             }
             continue;
         }
-        const str = vm.allocStringOrRawstring(arg) catch fatal();
+        const str = vm.allocStringOrByteArray(arg) catch fatal();
         restList.append(alloc, str) catch fatal();
     }
 
@@ -442,11 +449,11 @@ fn parseArgs(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
         if (!opt.*.found) {
             vm.retain(opt.*.name);
             vm.retain(opt.*.default);
-            map.put(alloc, ivm, opt.*.name, opt.*.default) catch fatal();
+            map.put(alloc, opt.*.name, opt.*.default) catch fatal();
         }
     }
 
-    map.put(alloc, ivm, vm.allocAstring("rest") catch fatal(), rest) catch fatal();
+    map.put(alloc, vm.retainOrAllocAstring("rest") catch fatal(), rest) catch fatal();
     return res;
 }
 
@@ -460,7 +467,7 @@ fn osArgs(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) V
     const listv = vm.allocEmptyList() catch fatal();
     const listo = listv.asHeapObject();
     while (iter.next()) |arg| {
-        const str = vm.allocStringOrRawstring(arg) catch fatal();
+        const str = vm.allocStringOrByteArray(arg) catch fatal();
         listo.list.append(vm.allocator(), str);
     }
     return listv;
@@ -471,7 +478,7 @@ pub fn cwd(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) 
     const res = std.process.getCwdAlloc(vm.allocator()) catch fatal();
     defer vm.allocator().free(res);
     // TODO: Use allocOwnedString
-    return vm.allocStringInfer(res) catch fatal();
+    return vm.retainOrAllocString(res) catch fatal();
 }
 
 pub fn exePath(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
@@ -479,14 +486,14 @@ pub fn exePath(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
     const path = std.fs.selfExePathAlloc(vm.allocator()) catch fatal();
     defer vm.allocator().free(path);
     // TODO: Use allocOwnedString
-    return vm.allocStringInfer(path) catch fatal();
+    return vm.retainOrAllocString(path) catch fatal();
 }
 
 pub fn getEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     if (cy.isWasm or builtin.os.tag == .windows) return vm.returnPanic("Unsupported.");
-    const key = vm.valueToTempRawString(args[0]);
+    const key = args[0].asString();
     const res = std.os.getenv(key) orelse return Value.None;
-    return vm.allocStringInfer(res) catch cy.fatal();
+    return vm.retainOrAllocString(res) catch cy.fatal();
 }
 
 pub fn getEnvAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
@@ -497,8 +504,8 @@ pub fn getEnvAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
     const map = vm.allocEmptyMap() catch cy.fatal();
     var iter = env.iterator();
     while (iter.next()) |entry| {
-        const key = vm.allocStringInfer(entry.key_ptr.*) catch cy.fatal();
-        const val = vm.allocStringInfer(entry.value_ptr.*) catch cy.fatal();
+        const key = vm.retainOrAllocString(entry.key_ptr.*) catch cy.fatal();
+        const val = vm.retainOrAllocString(entry.value_ptr.*) catch cy.fatal();
         defer {
             vm.release(key);
             vm.release(val);
@@ -525,12 +532,12 @@ pub fn malloc(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
 fn fromCstr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const bytes = std.mem.span(@as([*:0]const u8, @ptrCast(args[0].asHeapObject().pointer.ptr)));
-    return vm.allocRawString(bytes) catch fatal();
+    return vm.allocArray(bytes) catch fatal();
 }
 
 fn cstr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
-    const bytes = vm.valueToTempRawString(args[0]);
+    const bytes = vm.valueToTempByteArray(args[0]);
     const new: [*]u8 = @ptrCast(std.c.malloc(bytes.len + 1));
     @memcpy(new[0..bytes.len], bytes);
     new[bytes.len] = 0;
@@ -543,9 +550,9 @@ pub fn milliTime(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSect
 
 pub fn dirName(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
-    const path = vm.valueToTempRawString(args[0]);
+    const path = args[0].asString();
     if (std.fs.path.dirname(path)) |res| {
-        return vm.allocStringInfer(res) catch cy.fatal();
+        return vm.retainOrAllocString(res) catch cy.fatal();
     } else {
         return Value.None;
     }
@@ -553,22 +560,22 @@ pub fn dirName(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 
 pub fn realPath(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
-    const path = vm.valueToTempRawString(args[0]);
+    const path = args[0].asString();
     const res = std.fs.cwd().realpathAlloc(vm.allocator(), path) catch |err| {
         return fromUnsupportedError(vm, "realPath", err, @errorReturnTrace());
     };
     defer vm.allocator().free(res);
     // TODO: Use allocOwnedString.
-    return vm.allocStringInfer(res) catch cy.fatal();
+    return vm.retainOrAllocString(res) catch cy.fatal();
 }
 
 pub fn setEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     if (cy.isWasm or builtin.os.tag == .windows) return vm.returnPanic("Unsupported.");
-    const key = vm.valueToTempRawString(args[0]);
+    const key = args[0].asString();
     const keyz = vm.allocator().dupeZ(u8, key) catch cy.fatal();
     defer vm.allocator().free(keyz);
 
-    const value = vm.valueToTempRawString(args[1]);
+    const value = args[1].asString();
     const valuez = vm.allocator().dupeZ(u8, value) catch cy.fatal();
     defer vm.allocator().free(valuez);
     _ = setenv(keyz, valuez, 1);
@@ -597,7 +604,7 @@ extern fn hostSleep(secs: u64, nsecs: u64) void;
 
 pub fn unsetEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     if (cy.isWasm or builtin.os.tag == .windows) return vm.returnPanic("Unsupported.");
-    const key = vm.valueToTempRawString(args[0]);
+    const key = args[0].asString();
     const keyz = vm.allocator().dupeZ(u8, key) catch cy.fatal();
     defer vm.allocator().free(keyz);
     _ = unsetenv(keyz);
@@ -626,11 +633,10 @@ pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.St
         return vm.returnPanic("Unsupported.");
     }
     var configV = args[2];
-    const ivm = vm.internal();
-    const genMapV = vm.allocAstring("genMap") catch cy.fatal();
+    const genMapV = vm.retainOrAllocAstring("genMap") catch cy.fatal();
     defer vm.release(genMapV);
     var config: ffi.BindLibConfig = .{};
-    const val = configV.asHeapObject().map.map().get(ivm, genMapV) orelse Value.False;
+    const val = configV.asHeapObject().map.map().get(genMapV) orelse Value.False;
     if (val.isTrue()) {
         config.genMap = true;
     }
@@ -651,7 +657,7 @@ pub extern fn hostFileWrite(fid: u32, str: [*]const u8, strLen: usize) void;
 fn cacheUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const alloc = vm.allocator();
-    const url = vm.valueToTempString(args[0]);
+    const url = args[0].asString();
 
     const specGroup = cache.getSpecHashGroup(alloc, url) catch cy.fatal();
     defer specGroup.deinit(alloc);
@@ -663,7 +669,7 @@ fn cacheUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
         if (specGroup.findEntryBySpec(url) catch cy.fatal()) |entry| {
             const path = cache.allocSpecFilePath(alloc, entry) catch cy.fatal();
             defer alloc.free(path);
-            return vm.allocStringInfer(path) catch cy.fatal();
+            return vm.retainOrAllocString(path) catch cy.fatal();
         }
     }
 
@@ -680,7 +686,7 @@ fn cacheUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
         defer entry.deinit(alloc);
         const path = cache.allocSpecFilePath(alloc, entry) catch cy.fatal();
         defer alloc.free(path);
-        return vm.allocStringInfer(path) catch cy.fatal();
+        return vm.retainOrAllocString(path) catch cy.fatal();
     }
 }
 
@@ -718,8 +724,8 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     };
 
     const map = vm.allocEmptyMap() catch cy.fatal();
-    const outKey = vm.allocAstring("out") catch cy.fatal();
-    const errKey = vm.allocAstring("err") catch cy.fatal();
+    const outKey = vm.retainOrAllocAstring("out") catch cy.fatal();
+    const errKey = vm.retainOrAllocAstring("err") catch cy.fatal();
     defer {
         vm.release(outKey);
         vm.release(errKey);
@@ -727,16 +733,16 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
 
     // TODO: Use allocOwnedString
     defer alloc.free(res.stdout);
-    const out = vm.allocStringInfer(res.stdout) catch cy.fatal();
+    const out = vm.retainOrAllocString(res.stdout) catch cy.fatal();
     defer vm.release(out);
     map.asHeapObject().map.set(ivm, outKey, out) catch cy.fatal();
     // TODO: Use allocOwnedString
     defer alloc.free(res.stderr);
-    const err = vm.allocStringInfer(res.stderr) catch cy.fatal();
+    const err = vm.retainOrAllocString(res.stderr) catch cy.fatal();
     defer vm.release(err);
     map.asHeapObject().map.set(ivm, errKey, err) catch cy.fatal();
     if (res.term == .Exited) {
-        const exitedKey = vm.allocAstring("exited") catch cy.fatal();
+        const exitedKey = vm.retainOrAllocAstring("exited") catch cy.fatal();
         defer vm.release(exitedKey);
         map.asHeapObject().map.set(ivm, exitedKey, Value.initF64(@floatFromInt(res.term.Exited))) catch cy.fatal();
     }
@@ -762,7 +768,7 @@ pub fn fetchUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         };
         defer alloc.free(resp.body);
         // TODO: Use allocOwnedString
-        return vm.allocRawString(resp.body) catch cy.fatal();
+        return vm.allocArray(resp.body) catch cy.fatal();
     }
 }
 
@@ -777,20 +783,33 @@ pub fn getInput(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSect
     };
     defer vm.allocator().free(input);
     // TODO: Use allocOwnedString
-    return vm.allocRawString(input) catch cy.fatal();
+    return stringOrThrow(vm, input);
 }
 
-pub fn readAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
+pub fn getAllInput(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
     const input = std.io.getStdIn().readToEndAlloc(vm.allocator(), 10e8) catch cy.fatal();
     defer vm.allocator().free(input);
     // TODO: Use allocOwnString.
-    return vm.allocRawString(input) catch cy.fatal();
+    return stringOrThrow(vm, input);
+}
+
+fn stringOrThrow(vm: *cy.UserVM, slice: []const u8) Value {
+    if (cy.validateUtf8(slice)) |size| {
+        if (size == slice.len) {
+            return vm.retainOrAllocAstring(slice) catch cy.fatal();
+        } else {
+            return vm.retainOrAllocUstring(slice, @intCast(size)) catch cy.fatal();
+        }
+    } else {
+        return prepareThrowSymbol(vm, .Unicode);
+    }
 }
 
 pub fn readFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
-    const path = vm.valueToTempRawString(args[0]);
+
+    const path = args[0].asString();
     const content = std.fs.cwd().readFileAlloc(vm.allocator(), path, 10e8) catch |err| {
         if (err == error.FileNotFound) {
             return prepareThrowSymbol(vm, .FileNotFound);
@@ -800,21 +819,13 @@ pub fn readFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     };
     defer vm.allocator().free(content);
     // TODO: Use allocOwnedString.
-    return vm.allocRawString(content) catch cy.fatal();
-}
-
-pub fn readLine(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
-    fmt.printDeprecated("readLine", "0.1", "Use getInput() instead.", &.{});
-    return getInput(vm, args, nargs);
+    return stringOrThrow(vm, content);
 }
 
 pub fn writeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
-    const path = vm.valueToTempRawString(args[0]);
-    const pathDupe = vm.allocator().dupe(u8, path) catch fatal();
-    defer vm.allocator().free(pathDupe);
-    const content = vm.valueToTempRawString(args[1]);
+    const path = args[0].asString();
+    const content = vm.valueToTempByteArray(args[1]);
     std.fs.cwd().writeFile(path, content) catch cy.fatal();
     return Value.None;
 }

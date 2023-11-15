@@ -8,57 +8,24 @@ const vmc = cy.vmc;
 
 pub const KeyU64 = extern union {
     val: u64,
-    objectMemberKey: extern struct {
-        objSymId: sema.SymbolId,
-        memberNameId: sema.NameSymId,
-    },
-    resolvedSymKey: extern struct {
-        parentSymId: u32,
-        nameId: u32,
-    },
-    resolvedFuncSymKey: extern struct {
-        symId: sema.SymbolId,
+    modFuncKey: extern struct {
+        modSymId: cy.module.ModuleSymId,
         funcSigId: sema.FuncSigId,
-    },
-    localSymKey: extern struct {
-        nameId: sema.NameSymId,
-        funcSigId: cy.Nullable(sema.FuncSigId),
-    },
-    moduleSymKey: extern struct {
-        nameId: sema.NameSymId,
-        funcSigId: sema.FuncSigId,
-    },
-    rtVarKey: extern struct {
-        parentSymId: sema.SymbolId,
-        nameId: sema.NameSymId,
-    },
-    rtTypeKey: extern struct {
-        parentSymId: sema.SymbolId,
-        nameId: sema.NameSymId,
     },
     rtTypeMethodGroupKey: extern struct {
-        typeId: rt.TypeId,
+        typeId: cy.TypeId,
         mgId: vmc.MethodGroupId,
     },
     rtFieldTableKey: extern struct {
-        typeId: rt.TypeId,
+        typeId: cy.TypeId,
         fieldId: rt.FieldId,
     },
 
-    pub fn initModuleSymKey(nameId: sema.NameSymId, funcSigId: ?sema.FuncSigId) KeyU64 {
+    pub fn initModFuncKey(modSymId: cy.module.ModuleSymId, funcSigId: sema.FuncSigId) KeyU64 {
         return .{
-            .moduleSymKey = .{
-                .nameId = nameId,
-                .funcSigId = funcSigId orelse cy.NullId,
-            },
-        };
-    }
-
-    pub fn initLocalSymKey(nameId: sema.NameSymId, funcSigId: ?sema.FuncSigId) KeyU64 {
-        return .{
-            .localSymKey = .{
-                .nameId = nameId,
-                .funcSigId = funcSigId orelse cy.NullId,
+            .modFuncKey = .{
+                .modSymId = modSymId,
+                .funcSigId = funcSigId,
             },
         };
     }
@@ -81,7 +48,7 @@ pub const KeyU64 = extern union {
         };
     }
 
-    pub fn initTypeMethodGroupKey(typeId: rt.TypeId, mgId: vmc.MethodGroupId) KeyU64 {
+    pub fn initTypeMethodGroupKey(typeId: cy.TypeId, mgId: vmc.MethodGroupId) KeyU64 {
         return .{
             .rtTypeMethodGroupKey = .{
                 .typeId = typeId,
@@ -99,16 +66,7 @@ pub const KeyU64 = extern union {
         };
     }
 
-    pub fn initTypeKey(parentSymId: sema.SymbolId, nameId: sema.NameSymId) KeyU64 {
-        return .{
-            .rtTypeKey = .{
-                .parentSymId = parentSymId,
-                .nameId = nameId,
-            },
-        };
-    }
-
-    pub fn initFieldTableKey(typeId: rt.TypeId, fieldId: rt.FieldId) KeyU64 {
+    pub fn initFieldTableKey(typeId: cy.TypeId, fieldId: rt.FieldId) KeyU64 {
         return .{
             .rtFieldTableKey = .{
                 .typeId = typeId,
@@ -124,6 +82,32 @@ pub const KeyU64Context = struct {
     }
     pub fn eql(_: @This(), a: KeyU64, b: KeyU64) linksection(cy.Section) bool {
         return a.val == b.val;
+    }
+};
+
+pub const KeyU96 = extern union {
+    val: extern struct {
+        a: u64,
+        b: u32,
+    },
+
+    pub fn initModFuncSigKey(sym: *cy.Sym, funcSigId: cy.sema.FuncSigId) KeyU96 {
+        return .{ .val = .{
+            .a = @intFromPtr(sym),
+            .b = funcSigId,
+        }};
+    }
+};
+
+pub const KeyU96Context = struct {
+    pub fn hash(_: @This(), key: KeyU96) u64 {
+        var hasher = std.hash.Wyhash.init(0);
+        @call(.always_inline, std.hash.Wyhash.update, .{&hasher, std.mem.asBytes(&key.val.a)});
+        @call(.always_inline, std.hash.Wyhash.update, .{&hasher, std.mem.asBytes(&key.val.b)});
+        return hasher.final();
+    }
+    pub fn eql(_: @This(), a: KeyU96, b: KeyU96) bool {
+        return a.val.a == b.val.a and a.val.b == b.val.b;
     }
 };
 

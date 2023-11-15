@@ -4,8 +4,8 @@ import t 'test'
 
 -- Omits last comma for multiline initializer.
 var a = [
-  1,
-  2,
+    1,
+    2,
 ]
 t.eq(a.len(), 2)
 
@@ -127,7 +127,7 @@ t.eq(a[1], 2)
 a = [3, 1, 2]
 a.sort((a, b) => a < b)
 t.eqList(a, [1, 2, 3])
-a = [[3], [1], [2]]
+a = [ [3], [1], [2] ]
 a.sort((a, b) => a[0] < b[0])
 t.eq(a[0][0], 1)
 t.eq(a[1][0], 2)
@@ -136,41 +136,41 @@ t.eq(a[2][0], 3)
 -- Iteration.
 a = [1, 2, 3, 4, 5]
 var sum = 0
-for a each it:
-  sum += it
+for a -> it:
+    sum += it
 t.eq(sum, 15)
 
 -- Pair iteration.
 a = [10, 20, 30]
 sum = 0
 var idxSum = 0
-for a each [idx, it]:
-  sum += it
-  idxSum += idx
+for a -> it, idx:
+    sum += it
+    idxSum += idx
 t.eq(sum, 60)
 t.eq(idxSum, 3)
 
 -- Nested iteration.
 a = [1, 2, 3]
 var res = 0
-for a each n:
-  var innerSum = 0
-  for a each m:
-    innerSum += m
-  res += n * innerSum
+for a -> n:
+    var innerSum = 0
+    for a -> m:
+        innerSum += m
+    res += n * innerSum
 t.eq(res, 36)
 
 -- Nested pair iteration.
 a = [1, 2, 3]
 res = 0
 var idxRes = 0
-for a each [i, n]:
-  var innerSum = 0
-  idxSum = 0
-  for a each [j, m]:
-    innerSum += m
-    idxSum += j
-  res += n * innerSum
-  idxRes += i * idxSum
+for a -> n, i:
+    var innerSum = 0
+    idxSum = 0
+    for a -> m, j:
+        innerSum += m
+        idxSum += j
+    res += n * innerSum
+    idxRes += i * idxSum 
 t.eq(res, 36)
 t.eq(idxRes, 9)

@@ -10,7 +10,8 @@ const prepareThrowSymbol = bindings.prepareThrowSymbol;
 const Symbol = bindings.Symbol;
 const os = @import("os.zig");
 const sema = cy.sema;
-const bt = cy.types.BuiltinTypeSymIds;
+const bt = cy.types.BuiltinTypes;
+const types = cy.types;
 
 const log = cy.log.scoped(.ffi);
 
@@ -33,6 +34,8 @@ const Context = struct {
 
     arrays: std.StringHashMapUnmanaged(cy.Value),
 
+    tempTypes: std.ArrayListUnmanaged(types.TypeId),
+
     config: BindLibConfig,
     nField: u32,
     elemField: u32,
@@ -44,6 +47,7 @@ const Context = struct {
             self.alloc.free(key.*);
         }
         self.arrays.deinit(self.alloc);
+        self.tempTypes.deinit(self.alloc);
     }
 
     fn ensureArray(self: *Context, bindT: Value) !void {
@@ -72,7 +76,7 @@ const Context = struct {
     }
 
     fn genCType(self: *Context, w: anytype, val: Value) !void {
-        if (val.isObjectType(rt.MetaTypeT)) {
+        if (val.isObjectType(bt.MetaType)) {
             const objType = val.asPointer(*cy.heap.MetaType);
             if (self.symToCStructFields.contains(objType.symId)) {
                 try w.print("Struct{}", .{objType.symId});
@@ -123,7 +127,7 @@ const Context = struct {
         const S = struct {
             var buf: [16]u8 = undefined;
         };
-        if (val.isObjectType(rt.MetaTypeT)) {
+        if (val.isObjectType(bt.MetaType)) {
             const objType = val.asPointer(*cy.heap.MetaType);
             if (self.symToCStructFields.contains(objType.symId)) {
                 return std.fmt.bufPrint(&S.buf, "Struct{}", .{objType.symId});
@@ -163,7 +167,7 @@ const Context = struct {
     }
 
     fn genToCyValue(self: *Context, w: anytype, argType: Value, cval: []const u8) !void {
-        if (argType.isObjectType(rt.MetaTypeT)) {
+        if (argType.isObjectType(bt.MetaType)) {
             const objType = argType.asPointer(*cy.heap.MetaType);
             try w.print("fromStruct{}(vm, {s})", .{ objType.symId, cval });
         } else if (argType.isObjectType(os.CArrayT)) {
@@ -180,12 +184,12 @@ const Context = struct {
                 .long,
                 .ulong,
                 .usize => {
-                    try w.print("(0x7FFD000000000000 | ({s} & 0xFFFFFFFFFFFF))", .{cval});
+                    try w.print("(0x7FFE000000000000 | ({s} & 0xFFFFFFFFFFFF))", .{cval});
                 },
                 .uchar,
                 .ushort,
                 .uint => {
-                    try w.print("(0x7FFD000000000000 | {s})", .{cval});
+                    try w.print("(0x7FFE000000000000 | {s})", .{cval});
                 },
                 .float,
                 .double => {
@@ -214,7 +218,7 @@ const Context = struct {
 
     /// Assumes `uint64_t* args` is available in the scope.
     fn genToCValueFromArg(self: *Context, w: anytype, argType: Value, i: usize) !void {
-        if (argType.isObjectType(rt.MetaTypeT)) {
+        if (argType.isObjectType(bt.MetaType)) {
             const objType = argType.asPointer(*cy.heap.MetaType);
             try w.print("toStruct{}(vm, args[{}])", .{objType.symId, i});
         } else {
@@ -277,7 +281,7 @@ const Context = struct {
     }
 };
 
-fn toResolvedTypeSymId(ivm: *cy.VM, val: Value) !cy.sema.SymbolId {
+fn toSemaType(ivm: *cy.VM, val: Value) !types.TypeId {
     if (val.isSymbol()) {
         const tag = val.asSymbolId();
         switch (@as(Symbol, @enumFromInt(tag))) {
@@ -330,7 +334,8 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             lib.* = try dlopen("");
         }
     } else {
-        lib.* = dlopen(vm.valueToTempRawString(path)) catch |err| {
+        log.tracev("bindLib {s}", .{vm.valueToTempString(path)});
+        lib.* = dlopen(vm.valueToTempString(path)) catch |err| {
             if (err == error.FileNotFound) {
                 return prepareThrowSymbol(vm, .FileNotFound);
             } else {
@@ -344,6 +349,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         .alloc = alloc,
         .symToCStructFields = .{},
         .arrays = .{},
+        .tempTypes = .{},
         .config = config,
         .nField = try ivm.ensureFieldSym("n"),
         .elemField = try ivm.ensureFieldSym("elem"),
@@ -369,23 +375,22 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             defer alloc.free(symz);
             if (lib.lookup(*anyopaque, symz)) |ptr| {
                 // Build function signature.
-                ivm.compiler.tempSyms.clearRetainingCapacity();
+                ctx.tempTypes.clearRetainingCapacity();
                 if (!ctx.config.genMap) {
                     // Self param.
-                    try ivm.compiler.tempSyms.append(ctx.alloc, bt.Any);
+                    try ctx.tempTypes.append(ctx.alloc, bt.Any);
                 }
 
                 const ret = try ivm.getField(decl, retf);
-                var retTypeSymId: sema.SymbolId = undefined;
-                if (ret.isObjectType(rt.MetaTypeT)) {
+                var retType: types.TypeId = undefined;
+                if (ret.isObjectType(bt.MetaType)) {
                     const objType = ret.asPointer(*cy.heap.MetaType);
-                    const rtType = ivm.types.buf[objType.symId];
-                    retTypeSymId = rtType.semaTypeId;
+                    retType = objType.symId;
                 } else if (ret.isObjectType(os.CArrayT)) {
                     try ctx.ensureArray(ret);
-                    retTypeSymId = bt.List;
+                    retType = bt.List;
                 } else {
-                    retTypeSymId = try toResolvedTypeSymId(ivm, ret);
+                    retType = try toSemaType(ivm, ret);
                 }
 
                 const cargsv = try ivm.getField(decl, argsf);
@@ -393,21 +398,19 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
 
                 if (cargs.len > 0) {
                     for (cargs) |carg| {
-                        if (carg.isObjectType(rt.MetaTypeT)) {
+                        if (carg.isObjectType(bt.MetaType)) {
                             const objType = carg.asPointer(*cy.heap.MetaType);
-
-                            const rtType = ivm.types.buf[objType.symId];
-                            try ivm.compiler.tempSyms.append(ctx.alloc, rtType.semaTypeId);
+                            try ctx.tempTypes.append(ctx.alloc, objType.symId);
                         } else if (carg.isObjectType(os.CArrayT)) {
                             try ctx.ensureArray(carg);
-                            try ivm.compiler.tempSyms.append(ctx.alloc, bt.List);
+                            try ctx.tempTypes.append(ctx.alloc, bt.List);
                         } else {
-                            try ivm.compiler.tempSyms.append(ctx.alloc, try toResolvedTypeSymId(ivm, carg));
+                            try ctx.tempTypes.append(ctx.alloc, try toSemaType(ivm, carg));
                         }
                     }
                 }
 
-                const funcSigId = try sema.ensureFuncSig(ivm.compiler, ivm.compiler.tempSyms.items, retTypeSymId);
+                const funcSigId = try ivm.sema.ensureFuncSig(ctx.tempTypes.items, retType);
                 try cfuncs.append(alloc, .{
                     .decl = decl,
                     .symPtr = ptr,
@@ -419,26 +422,23 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             }
         } else if (decl.isObjectType(os.CStructT)) {
             const val = try ivm.getField(decl, typeF);
-            if (val.isObjectType(rt.MetaTypeT)) {
-                const objType = val.asPointer(*cy.heap.MetaType);
-                if (objType.type == @intFromEnum(cy.heap.MetaTypeKind.object)) {
-                    if (!ctx.symToCStructFields.contains(objType.symId)) {
-                        const fields = try ivm.getField(decl, fieldsF);
-                        try ctx.symToCStructFields.put(alloc, objType.symId, fields.asPointer(*cy.CyList));
-                    } else {
-                        log.debug("Object type already declared.", .{});
-                        return error.InvalidArgument;
-                    }
-                } else {
-                    log.debug("Not an object Symbol", .{});
-                    return error.InvalidArgument;
-                }
-            } else {
+            if (!val.isObjectType(bt.MetaType)) {
                 log.debug("Not a Symbol", .{});
                 return error.InvalidArgument;
+            } 
+            const objType = val.asPointer(*cy.heap.MetaType);
+            if (objType.type != @intFromEnum(cy.heap.MetaTypeKind.object)) {
+                log.debug("Not an object Symbol", .{});
+                return error.InvalidArgument;
             }
+            if (ctx.symToCStructFields.contains(objType.symId)) {
+                log.debug("Object type already declared.", .{});
+                return error.InvalidArgument;
+            }
+            const fields = try ivm.getField(decl, fieldsF);
+            try ctx.symToCStructFields.put(alloc, objType.symId, fields.asPointer(*cy.CyList));
         } else {
-            log.debug("Not a CFunc or CStruct", .{});
+            log.tracev("Not a CFunc or CStruct {} {} {}", .{decl.getTypeId(), os.CFuncT, os.CStructT});
             return error.InvalidArgument;
         }
     }
@@ -678,6 +678,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         cy.panic("Failed to relocate compiled code.");
     }
 
+
     if (config.genMap) {
         // Create map with binded C-functions as functions.
         const map = vm.allocEmptyMap() catch cy.fatal();
@@ -693,12 +694,12 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
                 cy.panic("Failed to get symbol.");
             };
 
-            const symKey = vm.allocAstring(sym) catch cy.fatal();
+            const symKey = vm.retainOrAllocAstring(sym) catch cy.fatal();
             const cargsv = try ivm.getField2(cfunc.decl, argsf);
             const cargs = cargsv.asPointer(*cy.CyList).items();
             const func = cy.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
 
-            const funcVal = cy.heap.allocNativeFunc1(ivm, func, @intCast(cargs.len),
+            const funcVal = cy.heap.allocHostFunc(ivm, func, @intCast(cargs.len),
                 cfunc.funcSigId, cyState) catch cy.fatal();
             map.asHeapObject().map.set(ivm, symKey, funcVal) catch cy.fatal();
             vm.release(symKey);
@@ -717,8 +718,8 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             const symKey = vm.allocAstringConcat("ptrTo", typeName) catch cy.fatal();
             const func = cy.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
 
-            const funcSigId = try vm.ensureUntypedFuncSig(1);
-            const funcVal = cy.heap.allocNativeFunc1(ivm, func, 1, funcSigId, cyState) catch cy.fatal();
+            const funcSigId = try ivm.sema.ensureFuncSig(&.{bt.Dynamic}, bt.Dynamic);
+            const funcVal = cy.heap.allocHostFunc(ivm, func, 1, funcSigId, cyState) catch cy.fatal();
             map.asHeapObject().map.set(ivm, symKey, funcVal) catch cy.fatal();
             vm.release(symKey);
             vm.release(funcVal);
@@ -727,9 +728,10 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         return map;
     } else {
         // Create anonymous struct with binded C-functions as methods.
-        const sid = try ivm.addAnonymousStruct("BindLib");
+        const osSym = ivm.compiler.chunkMap.get("os").?.sym;
+        const sid = try ivm.addAnonymousStruct(@ptrCast(osSym), "BindLib", os.nextUniqId, &.{ "tcc" });
+        os.nextUniqId += 1;
         const tccField = try ivm.ensureFieldSym("tcc");
-        ivm.types.buf[sid].data.object.numFields = 1;
         try ivm.addFieldSym(sid, tccField, 0, bt.Any);
 
         const cyState = try cy.heap.allocTccState(ivm, state.?, lib);
@@ -752,19 +754,19 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         var iter = ctx.symToCStructFields.iterator();
         while (iter.next()) |e| {
             const objSymId = e.key_ptr.*;
-            const rtType = ivm.types.buf[objSymId];
-            const rtTypeName = rtType.namePtr[0..rtType.nameLen];
-            const symGen = try std.fmt.allocPrint(alloc, "cyPtrTo{s}{u}", .{rtTypeName, 0});
+            const entry = ivm.types[objSymId];
+            const typeName = entry.sym.name();
+            const symGen = try std.fmt.allocPrint(alloc, "cyPtrTo{s}{u}", .{typeName, 0});
             defer alloc.free(symGen);
             const funcPtr = tcc.tcc_get_symbol(state, symGen.ptr) orelse {
                 cy.panic("Failed to get symbol.");
             };
             const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
 
-            const methodName = try std.fmt.allocPrint(alloc, "ptrTo{s}", .{rtTypeName});
+            const methodName = try std.fmt.allocPrint(alloc, "ptrTo{s}", .{typeName});
             defer alloc.free(methodName);
             const mgId = try ivm.ensureMethodGroup2(methodName, true);
-            const funcSigId = try sema.ensureFuncSig(ivm.compiler, &.{ bt.Any, bt.Pointer }, rtType.semaTypeId);
+            const funcSigId = try ivm.sema.ensureFuncSig(&.{ bt.Any, bt.Pointer }, objSymId);
             try @call(.never_inline, cy.VM.addMethod, .{ivm, sid, mgId, rt.MethodInit.initHostTyped(funcSigId, func, 2) });
         }
         success = true;
@@ -833,7 +835,7 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     }
 
     // Gen call.
-    if (ret.isObjectType(rt.MetaTypeT)) {
+    if (ret.isObjectType(bt.MetaType)) {
         const objType = ret.asPointer(*cy.heap.MetaType);
         if (ctx.symToCStructFields.contains(objType.symId)) {
             try w.print("  Struct{} res = {s}(", .{objType.symId, sym});
@@ -953,10 +955,12 @@ fn cAllocCyPointer(vm: *cy.UserVM, ptr: ?*anyopaque) callconv(.C) Value {
 
 fn cAllocObject(vm: *cy.UserVM, id: u32) callconv(.C) Value {
     const ivm = vm.internal();
-    if (ivm.types.buf[id].data.object.numFields <= 4) {
+
+    const numFields = ivm.compiler.sema.types.items[id].data.numFields;
+    if (numFields <= 4) {
         return cy.heap.allocEmptyObjectSmall(ivm, id) catch cy.fatal();
     } else {
-        return cy.heap.allocEmptyObject(ivm, id, ivm.types.buf[id].data.object.numFields) catch cy.fatal();
+        return cy.heap.allocEmptyObject(ivm, id, numFields) catch cy.fatal();
     }
 }
 

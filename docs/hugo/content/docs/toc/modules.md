@@ -36,11 +36,11 @@ print a.foo
 
 -- foo.cy
 import 'bar.cy'
-var foo: 123
+var Root.foo = 123
 print foo         -- Statement is ignored.
 
 -- bar.cy
-var bar: 321
+var Root.bar = 321
 print bar         -- Statement is ignored.
 ```
 You can have circular imports in Cyber. In the following example, `main.cy` and `foo.cy` import each other without any problems.
@@ -77,10 +77,10 @@ All static declarations are exported when the script's module is loaded.
 func foo():         -- Exported static function.
     print 123
 
-var bar: 234        -- Exported static variable.
+var Root.bar = 234  -- Exported static variable.
 
 type Thing object:  -- Exported type.
-    a float
+    var a float
 ```
 
 ## Module URI.
@@ -313,137 +313,6 @@ print typeof('my str').id()
 > Returns the memory address as an `int`. The value may be negative since it's  bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
 
 <!-- builtins.end -->
-
-### `type string trait`
-> `func $call(val any) string`  
-> Converts a value to a string.
-
-> `func concat(self, str string) string | rawstring`  
-> Returns a new string that concats this string and `str`.
-
-> `func endsWith(self, suffix string) bool`  
-> Returns whether the string ends with `suffix`.
-
-> `func find(self, needle string) int?`  
-> Returns the first index of substring `needle` in the string or `none` if not found.
-
-> `func findAnyRune(self, set string) int?`  
-> Returns the first index of any UTF-8 rune in `set` or `none` if not found.
-
-> `func findRune(self, needle int) int?`  
-> Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
-
-> `func insert(self, idx int, str string) string`  
-> Returns a new string with `str` inserted at index `idx`.
-
-> `func isAscii(self) bool`  
-> Returns whether the string contains all ASCII runes.
-
-> `func len(self) int`  
-> Returns the number of UTF-8 runes in the string.
-
-> `func less(self, str string) bool`  
-> Returns whether this string is lexicographically before `str`.
-
-> `func lower(self) string`  
-> Returns this string in lowercase.
-
-> `func replace(self, needle string, replacement string) string`  
-> Returns a new string with all occurrences of `needle` replaced with `replacement`.
-
-> `func repeat(self, n int) string`  
-> Returns a new string with this string repeated `n` times.
-
-> `func runeAt(self, idx int) int`  
-> Returns the UTF-8 rune at index `idx`.
-
-> `func slice(self, start int, end int) string`  
-> Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
-
-> `func sliceAt(self, idx int) string`  
-> Returns the UTF-8 rune at index `idx` as a single rune string.
-
-> `func split(self, delim string) List`  
-> Returns a list of UTF-8 strings split at occurrences of `delim`.
-
-> `func startsWith(self, prefix string) bool`  
-> Returns whether the string starts with `prefix`.
-
-> `func trim(self, mode symbol, trimRunes any) string`  
-> Returns the string with ends trimmed from runes in `trimRunes`. `mode` can be .left, .right, or .ends.
-
-> `func upper(self) string`  
-> Returns this string in uppercase.
-
-### `type rawstring trait`
-> `func $call(str string) rawstring`  
-> Converts a string to a `rawstring`.
-
-> `func byteAt(self, idx int) int`  
-> Returns the byte value (0-255) at the given index `idx`.
-
-> `func concat(self, str string | rawstring) rawstring`  
-> Returns a new rawstring that concats this rawstring and `str`.
-
-> `func endsWith(self, suffix string | rawstring) bool`  
-> Returns whether the string ends with `suffix`.
-
-> `func find(self, needle string | rawstring) int?`  
-> Returns the first index of substring `needle` in the string or `none` if not found.
-
-> `func findAnyRune(self, set string | rawstring) int?`  
-> Returns the first index of any UTF-8 rune in `set` or `none` if not found.
-
-> `func findRune(self, needle int) int?`  
-> Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
-
-> `func insert(self, idx int, str string | rawstring) rawstring`  
-> Returns a new string with `str` inserted at index `idx`.
-
-> `func insertByte(self, idx int, byte int) rawstring`  
-> Returns a new string with `byte` inserted at index `idx`.
-
-> `func isAscii(self) bool`  
-> Returns whether the string contains all ASCII runes.
-
-> `func len(self) int`  
-> Returns the number of bytes in the string.
-
-> `func less(self, str rawstring) bool`  
-> Returns whether this rawstring is lexicographically before `str`.
-
-> `func lower(self) rawstring`  
-> Returns this string in lowercase.
-
-> `func repeat(self, n int) rawstring`  
-> Returns a new rawstring with this rawstring repeated `n` times.
-
-> `func replace(self, needle string | rawstring, replacement string | rawstring) rawstring`  
-> Returns a new string with all occurrences of `needle` replaced with `replacement`.
-
-> `func runeAt(self, idx int) int`  
-> Returns the UTF-8 rune at index `idx`. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
-
-> `func slice(self, start int, end int) rawstring`  
-> Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
-
-> `func sliceAt(self, idx int) rawstring`  
-> Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
-
-> `func split(self, delim string) List`  
-> Returns a list of rawstrings split at occurrences of `delim`.
-
-> `func startsWith(self, prefix string | rawstring) bool`  
-> Returns whether the string starts with `prefix`.
-
-> `func upper(self) rawstring`  
-> Returns this string in uppercase.
-
-> `func trim(self, mode symbol, trimRunes any) rawstring`  
-> Returns the string with ends trimmed from runes in `trimRunes`. `mode` can be .left, .right, or .ends.
-
-> `func utf8(self) string`  
-> Returns a valid UTF-8 string or returns `error.InvalidRune`.
 
 ## math.
 The math module contains commonly used math constants and functions.

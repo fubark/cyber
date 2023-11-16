@@ -141,12 +141,13 @@ a {
 }
 
 div.api-header {
-    margin-top: 40px;
+    margin-top: 45px;
 }
 
 div.api-desc {
     padding: 0 0 0 15px;
     border-left: 0.15rem solid var(--gray-200);
+    color: #bbbbbb;
     margin-top: 13px;
 }
 
@@ -158,7 +159,7 @@ div.api-desc {
 
 .markdown pre.inline code {
     display: inline;
-    font-size: 17px;
+    font-size: 18px;
     background: none;
 }
 

@@ -18,9 +18,9 @@ t.eq(array('foo') == array('bar'), false)
 -- arrays.
 
 -- Heap string equals.
-var foo = '{'fo'}{'o'}'
+var foo = '$('fo')$('o')'
 t.eq(foo == 'bar', false)
-foo = '{'fo'}{'o'}'
+foo = '$('fo')$('o')'
 t.eq(foo == 'foo', true)
 
 -- Object equals.

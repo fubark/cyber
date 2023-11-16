@@ -336,7 +336,7 @@ import os
 
 var map = os.getEnvAll()
 for map each [k, v]:
-    print '{k} -> {v}'
+    print '$(k) -> $(v)'
 ```
 
 <!-- os.start -->
@@ -349,7 +349,7 @@ for map each [k, v]:
 {{<cy "var vecBitSize int">}}Default SIMD vector bit size.{{</cy>}}
 {{<cy "func access(path string, mode symbol) any">}}Attempts to access a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.  Return true or an error.{{</cy>}}
 {{<cy "func args() List">}}Returns the command line arguments in a `List`.  Each argument is validated and returned as a UTF-8 `string` or `array` if the validation failed.{{</cy>}}
-{{<cy "func bindLib(path any, decls List) any">}}Calls `bindLib(path, decls, {})`.{{</cy>}}
+{{<cy "func bindLib(path any, decls List) any">}}Calls `bindLib(path, decls, [:])`.{{</cy>}}
 {{<cy "func bindLib(path any, decls List, config Map) any">}}Creates an FFI binding to a dynamic library and it's symbols.  By default, an anonymous object is returned with the C-functions binded as the object's methods.  If `config` contains `genMap: true`, a `Map` is returned instead with C-functions  binded as function values.{{</cy>}}
 {{<cy "func cacheUrl(url string) any">}}Returns the path of a locally cached file of `url`.  If no such file exists locally, it's fetched from `url`.{{</cy>}}
 {{<cy "func copyFile(srcPath string, dstPath string) none">}}Copies a file to a destination path.{{</cy>}}

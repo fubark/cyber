@@ -51,7 +51,7 @@ The `CFunc` object lets you bind to a C-function. The `sym` field maps to the C-
 import os
 
 var lib = os.bindLib('mylib.so', [
-    os.CFunc{ sym: 'add', args: [.int, .int], ret: .int }
+    [os.CFunc sym: 'add', args: [.int, .int], ret: .int]
 ])
 lib.add(123, 321)
 ```

@@ -111,7 +111,7 @@ for map -> entry:
 Use the destructure syntax to extract the key and value into two separate variables:
 ```cy
 for map -> [ key, val ]:
-    print 'key {key} -> value {val}'
+    print 'key $(key) -> value $(val)'
 ```
 
 ### For each with index.
@@ -120,7 +120,7 @@ A counting index can be declared after the each variable. The count starts at 0 
 var list = [1, 2, 3, 4, 5]
 
 for list -> val, i:
-    print 'index {i}, value {val}'
+    print 'index $(i), value $(val)'
 ```
 
 ### Exit loop.
@@ -155,7 +155,7 @@ case 200:
 case 300, 400:
     print 'combined case'
 else:
-    print 'val is {val}'
+    print 'val is $(val)'
 ```
 Note that the `switch` block must be empty and requires at least one `case` block or an `else` block to come after it.
 

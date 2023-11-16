@@ -37,9 +37,9 @@ Functions can only return one value. However, the value can be destructured: {{<
 import {cos, sin} 'math'
 
 func compute(rad):
-    return { cos(rad), sin(rad) }
+    return [ cos(rad), sin(rad) ]
 
-var { x, y } = compute(pi)
+var [ x, y ] = compute(pi)
 ```
 
 ## Function Overloading.

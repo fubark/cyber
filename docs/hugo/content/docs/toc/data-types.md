@@ -171,17 +171,11 @@ print(i + str[i..].findRune(0u'c'))  -- "5"
 
 ### String Interpolation.
 
-You can embed expressions into string templates using braces.
+You can embed expressions into string templates with `$()`:
 ```cy
 var name = 'Bob'
 var points = 123
-var str = 'Scoreboard: {name} {points}'
-```
-
-Escape braces with a backslash.
-```cy
-var points = 123
-var str = 'Scoreboard: \{ Bob \} {points}'
+var str = 'Scoreboard: $(name) $(points)'
 ```
 String templates can not contain nested string templates.
 
@@ -197,7 +191,7 @@ print a[-1]    -- "100"
 ```
 
 ## Bracket literals.
-Bracket literals is delimited with brackets `[]`. Bracket literals are used to initialize Lists, Maps, and Objects:
+Bracket literals are delimited with brackets `[]`. They are used to initialize Lists, Maps, and Objects:
 ```cy
 var list = [1, 2, 3]
 var map = [ a: 123, b: 234 ]
@@ -296,7 +290,7 @@ print map.a
 
 ### Map operations.
 ```cy
-var map = {}
+var map = [:]
 -- Set a key value pair.
 map[123] = 234
 
@@ -308,7 +302,7 @@ map.remove 123
 
 -- Iterating a map.
 for map -> [val, key]:
-    print '{key} -> {value}'
+    print '$(key) -> $(value)'
 ```
 
 ### Map block.

@@ -27,7 +27,7 @@
 --| Each argument is validated and returned as a UTF-8 `string` or `array` if the validation failed.
 @host func args() List
 
---| Calls `bindLib(path, decls, {})`. 
+--| Calls `bindLib(path, decls, [:])`. 
 @host func bindLib(path any, decls List) any
 
 --| Creates an FFI binding to a dynamic library and it's symbols.

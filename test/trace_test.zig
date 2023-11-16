@@ -226,7 +226,7 @@ test "ARC on temp locals in expressions." {
     // The string template literal is released at the end of the arc expression.
     try eval(.{},
         \\var foo = 'World'
-        \\'Hello {foo} {123}'
+        \\'Hello $(foo) $(123)'
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         const val = try res;
         try run.valueIsString(val, "Hello World 123");

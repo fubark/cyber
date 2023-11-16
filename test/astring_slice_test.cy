@@ -5,13 +5,13 @@
 import t 'test'
 
 var pre = 'abc'
-var str = '{pre}xyz'
+var str = '$(pre)xyz'
 str = str[0..]  -- Sets up the slice.
 t.eq(str, 'abcxyz')
 
 -- Sets up the slice.
-var lstr = '{'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'}'[0..]
-var upper = '{'ABCXYZ'}'[0..]
+var lstr = '$('aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza')'[0..]
+var upper = '$('ABCXYZ')'[0..]
 
 -- index operator
 t.eq(str[-1], 'z')

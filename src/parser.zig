@@ -2355,8 +2355,8 @@ pub const Parser = struct {
                     return self.reportParseError("Expected expression.", &.{});
                 };
                 token = self.peekToken();
-                if (token.tag() != .right_brace) {
-                    return self.reportParseError("Expected right brace.", &.{});
+                if (token.tag() != .right_paren) {
+                    return self.reportParseError("Expected right paren.", &.{});
                 }
                 if (firstExpr == cy.NullId) {
                     firstExpr = expr;
@@ -3737,8 +3737,8 @@ const StringDelim = enum(u2) {
 pub const TokenizeState = struct {
     stateT: TokenizeStateTag,
 
-    /// For string interpolation, open braces can accumulate so the end of a template expression can be determined.
-    openBraces: u8 = 0,
+    /// For string interpolation, open parens can accumulate so the end of a template expression can be determined.
+    openParens: u8 = 0,
 
     /// For string interpolation, if true the delim is a double quote otherwise it's a backtick.
     stringDelim: StringDelim = .single,
@@ -3749,7 +3749,6 @@ pub const TokenizeStateTag = enum {
     start,
     token,
     templateString,
-    templateExpr,
     templateExprToken,
     end,
 };
@@ -3846,31 +3845,31 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             switch (ch) {
                 '(' => {
                     try p.pushToken(.left_paren, start);
-                },
-                ')' => {
-                    try p.pushToken(.right_paren, start);
-                },
-                '{' => {
-                    try p.pushToken(.left_brace, start);
                     if (state.stateT == .templateExprToken) {
                         var next = state;
-                        next.openBraces += 1;
+                        next.openParens += 1;
                         return next;
                     }
                 },
-                '}' => {
-                    try p.pushToken(.right_brace, start);
+                ')' => {
+                    try p.pushToken(.right_paren, start);
                     if (state.stateT == .templateExprToken) {
                         var next = state;
-                        if (state.openBraces == 0) {
+                        if (state.openParens == 0) {
                             next.stateT = .templateString;
-                            next.openBraces = 0;
+                            next.openParens = 0;
                             return next;
                         } else {
-                            next.openBraces -= 1;
+                            next.openParens -= 1;
                             return next;
                         }
                     }
+                },
+                '{' => {
+                    try p.pushToken(.left_brace, start);
+                },
+                '}' => {
+                    try p.pushToken(.right_brace, start);
                 },
                 '[' => try p.pushToken(.left_bracket, start),
                 ']' => try p.pushToken(.right_bracket, start),
@@ -4178,9 +4177,6 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     .templateString => {
                         state = try tokenizeTemplateStringOne(p, state);
                     },
-                    .templateExpr => {
-                        state = try tokenizeTemplateExprOne(p, state);
-                    },
                     .templateExprToken => {
                         while (true) {
                             const nextState = try tokenizeOne(p, state);
@@ -4194,21 +4190,6 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                         break;
                     },
                 }
-            }
-        }
-
-        fn tokenizeTemplateExprOne(p: *Parser, state: TokenizeState) !TokenizeState {
-            var ch = peekChar(p);
-            if (ch == '{') {
-                advanceChar(p);
-                try p.pushToken(.templateExprStart, p.next_pos);
-                var next = state;
-                next.stateT = .templateExprToken;
-                next.openBraces = 0;
-                next.hadTemplateExpr = 1;
-                return next;
-            } else {
-                cy.panicFmt("Expected template expr '{{'", .{});
             }
         }
 
@@ -4268,13 +4249,21 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                             _ = consumeChar(p);
                         }
                     },
-                    '{' => {
-                        try p.pushTemplateStringToken(start, p.next_pos);
-                        var next = state;
-                        next.stateT = .templateExpr;
-                        next.openBraces = 0;
-                        next.hadTemplateExpr = 1;
-                        return next;
+                    '$' => {
+                        const ch2 = peekCharAhead(p, 1) orelse 0;
+                        if (ch2 == '(') {
+                            try p.pushTemplateStringToken(start, p.next_pos);
+                            try p.pushToken(.templateExprStart, p.next_pos);
+                            advanceChar(p);
+                            advanceChar(p);
+                            var next = state;
+                            next.stateT = .templateExprToken;
+                            next.openParens = 0;
+                            next.hadTemplateExpr = 1;
+                            return next;
+                        } else {
+                            advanceChar(p);
+                        }
                     },
                     '\\' => {
                         // Escape the next character.

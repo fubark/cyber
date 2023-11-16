@@ -9,6 +9,7 @@ const t = stdx.testing;
 const cy = @import("cyber.zig");
 const rt = cy.rt;
 const bt = cy.types.BuiltinTypes;
+const log = cy.log.scoped(.string);
 
 /// Like `ArrayList` except the buffer is allocated as a `Astring` or `Ustring`.
 /// TODO: Might not need the Astring -> Ustring upgrade logic now that there is HeapArrayBuilder.
@@ -863,7 +864,7 @@ pub fn replaceAtIdxes(dst: []u8, src: []const u8, needleLen: u32, replacement: [
         // Copy replacement.
         std.mem.copy(u8, dst[dstIdx..dstIdx + replacement.len], replacement);
         dstIdx += replacement.len;
-        srcIdx += idx + needleLen;
+        srcIdx = idx + needleLen;
     }
     // Copy end segment.
     std.mem.copy(u8, dst[dstIdx..], src[srcIdx..]);

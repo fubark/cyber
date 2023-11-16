@@ -254,7 +254,7 @@ func add(a int, b int) int:
 var op any = add
 print op(1, 2)         -- CompileError. Expected `func (int, int) any`
 
-auto opFunc = op as (func (int, int) int)
+var opFunc = op as (func (int, int) int)
 print opFunc(1, 2)     -- Prints "3".
 ```
 

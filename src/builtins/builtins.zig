@@ -485,18 +485,18 @@ fn genTypeSpecString(vm: *cy.UserVM, parser: *const cy.Parser, headId: cy.NodeId
     }
 }
 
-fn genNodeValue(vm: *cy.UserVM, parser: *const cy.Parser, nodeId: cy.NodeId) !cy.Value {
+fn genNodeValue(vm: *cy.UserVM, parser: *const cy.Parser, ast: cy.ast.Source, nodeId: cy.NodeId) !cy.Value {
     const node = parser.nodes.items[nodeId];
     const res = try vm.allocEmptyMap();
     switch (node.node_t) {
         .funcHeader => {
-            const name = cy.parser.getNodeString(parser, node.head.funcHeader.name);
+            const name = ast.getNamePathStr(node.head.funcHeader.name);
             try vm.mapRawSet(res, try vm.retainOrAllocAstring("name"), try vm.retainOrAllocString(name));
 
             const params = try vm.allocEmptyList();
             var paramId = node.head.funcHeader.paramHead;
             while (paramId != cy.NullId) {
-                const param = try genNodeValue(vm, parser, paramId);
+                const param = try genNodeValue(vm, parser, ast, paramId);
                 try vm.listAppend(params, param);
                 paramId = parser.nodes.items[paramId].next;
             }
@@ -542,9 +542,9 @@ fn genDeclEntry(vm: *cy.UserVM, parser: *const cy.Parser, ast: cy.ast.Source, de
         },
         .funcInit => {
             const header = nodes[node.head.func.header];
-            name = cy.parser.getNodeString(parser, header.head.funcHeader.name);
+            name = ast.getNamePathStr(header.head.funcHeader.name);
 
-            const headerv = try genNodeValue(vm, parser, node.head.func.header);
+            const headerv = try genNodeValue(vm, parser, ast, node.head.func.header);
             try vm.mapRawSet(entry, try vm.retainOrAllocAstring("header"), headerv);
         },
         .import => {

@@ -2146,6 +2146,10 @@ test "Escape sequence." {
     try evalPass(.{}, @embedFile("escape_seq_test.cy"));
 }
 
+test "String cases." {
+    try evalPass(.{}, @embedFile("string_test.cy"));
+}
+
 test "ASCII strings." {
     try evalPass(.{}, @embedFile("astring_test.cy"));
 }
@@ -2546,14 +2550,14 @@ test "Local variable assignment." {
     );
 }
 
-test "if expression" {
+test "Cond expression" {
     try evalPass(.{},
         \\import test
         \\var foo = true
         \\test.eq(foo ? 123 else 456, 123)
         \\foo = false
         \\test.eq(foo ? 123 else 456, 456)
-
+        \\
         \\-- Types are merged.
         \\var a = false ? 123 else '{123}456'
         \\test.eq(a, '123456')

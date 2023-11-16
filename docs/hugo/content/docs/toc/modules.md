@@ -111,207 +111,150 @@ print 'hello'
 print typeof('my str').id()
 ```
 <!-- builtins.start -->
-> `func arrayFill(val any, n int) List`  
-> Creates a list with initial capacity of `n` and values set to `val`.  If the value is an object, it is shallow copied `n` times.
+{{<cy "func arrayFill(val any, n int) List">}}Creates a list with initial capacity of `n` and values set to `val`.  If the value is an object, it is shallow copied `n` times.{{</cy>}}
+{{<cy "func copy(val any) any">}}Copies a primitive value or creates a shallow copy of an object value.{{</cy>}}
+{{<cy "func dump(val any) string">}}Prints the result of `toCyon` on a value.{{</cy>}}
+{{<cy "func errorReport() string">}}{{</cy>}}
+{{<cy "func isAlpha(val int) bool">}}Returns whether a rune is an alphabetic letter.{{</cy>}}
+{{<cy "func isDigit(val int) bool">}}Returns whether a rune is a digit.{{</cy>}}
+{{<cy "func must(val any) any">}}If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned.{{</cy>}}
+{{<cy "func panic(err any) none">}}Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}).{{</cy>}}
+{{<cy "func parseCyber(src string) Map">}}Parses Cyber source string into structured map object.  Currently, only metadata about static declarations is made available but this will be extended to include an AST.{{</cy>}}
+{{<cy "func parseCyon(src string) any">}}Parses a CYON string into a value.{{</cy>}}
+{{<cy "func performGC() Map">}}Runs the garbage collector once to detect reference cycles and abandoned objects.  Returns the statistics of the run in a map value.{{</cy>}}
+{{<cy "func print(str any) none">}}Prints a value. The host determines how it is printed.{{</cy>}}
+{{<cy "func runestr(val int) string">}}Converts a rune to a string.{{</cy>}}
+{{<cy "func toCyon(val any) string">}}Encodes a value to CYON string.{{</cy>}}
+{{<cy "func typeof(val any) metatype">}}Returns the value's type as a `metatype` object.{{</cy>}}
+{{<cy "func typesym(val any) symbol">}}Returns the value's type as one of the predefined symbols:  .float, .int, .bool, .object, .list, .map, .string, .rawstring, .function, .fiber, .pointer, .symbol, .metatype, .none, .error{{</cy>}}
+### `type bool`
 
-> `func copy(val any) any`  
-> Copies a primitive value or creates a shallow copy of an object value.
-
-> `func dump(val any) string`  
-> Prints the result of `toCyon` on a value.
-
-> `func errorReport() string`  
-
-> `func isAlpha(val int) boolean`  
-> Returns whether a rune is an alphabetic letter.
-
-> `func isDigit(val int) boolean`  
-> Returns whether a rune is a digit.
-
-> `func must(val any) any`  
-> If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned.
-
-> `func panic(err any) none`  
-> Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}).
-
-> `func parseCyber(src any) Map`  
-> Parses Cyber source string into structured map object.  Currently, only metadata about static declarations is made available but this will be extended to include an AST.
-
-> `func parseCyon(src any) any`  
-> Parses a CYON string into a value.
-
-> `func performGC() Map`  
-> Runs the garbage collector once to detect reference cycles and abandoned objects.  Returns the statistics of the run in a map value.
-
-> `func print(str any) none`  
-> Prints a value. The host determines how it is printed.
-
-> `func runestr(val int) string`  
-> Converts a rune to a string.
-
-> `func toCyon(val any) string`  
-> Encodes a value to CYON string.
-
-> `func typeof(val any) metatype`  
-> Returns the value's type as a `metatype` object.
-
-> `func typesym(val any) symbol`  
-> Returns the value's type as one of the predefined symbols:  .float, .int, .boolean, .object, .list, .map, .string, .rawstring, .function, .fiber, .pointer, .symbol, .metatype, .none, .error
-
-### `type boolean`
-
-> `func $call(val any) boolean`  
-> Converts a value to either `true` or `false`.
-
+{{<cy "func bool.'$call'(val any) bool">}}Converts a value to either `true` or `false`.{{</cy>}}
 ### `type error`
 
-> `func $call(val any) error`  
-> Create an error from an enum or symbol.
-
-> `func value(self any) any`  
-
+{{<cy "func sym() any">}}Return the underlying `symbol`.{{</cy>}}
+{{<cy "func error.'$call'(val any) error">}}Create an error from an enum or symbol.{{</cy>}}
 ### `type int`
 
-> `func $call(val any) int`  
-> Converts a value to an 48-bit integer.
-
-> `func $prefix~(self any) int`  
-
-> `func $prefix-(self any) int`  
-
-> `func $infix<(self any, o any) boolean`  
-
-> `func $infix<=(self any, o any) boolean`  
-
-> `func $infix>(self any, o any) boolean`  
-
-> `func $infix>=(self any, o any) boolean`  
-
-> `func $infix+(self any, o any) int`  
-
-> `func $infix-(self any, o any) int`  
-
-> `func $infix*(self any, o any) int`  
-
-> `func $infix/(self any, o any) int`  
-
-> `func $infix%(self any, o any) int`  
-
-> `func $infix^(self any, o any) int`  
-
-> `func $infix&(self any, o any) int`  
-
-> `func $infix|(self any, o any) int`  
-
-> `func $infix||(self any, o any) int`  
-
-> `func $infix<<(self any, o any) int`  
-
-> `func $infix>>(self any, o any) int`  
-
+{{<cy "func $prefix~() int">}}{{</cy>}}
+{{<cy "func $prefix-() int">}}{{</cy>}}
+{{<cy "func $infix<(o any) bool">}}{{</cy>}}
+{{<cy "func $infix<=(o any) bool">}}{{</cy>}}
+{{<cy "func $infix>(o any) bool">}}{{</cy>}}
+{{<cy "func $infix>=(o any) bool">}}{{</cy>}}
+{{<cy "func $infix+(o any) int">}}{{</cy>}}
+{{<cy "func $infix-(o any) int">}}{{</cy>}}
+{{<cy "func $infix*(o any) int">}}{{</cy>}}
+{{<cy "func $infix/(o any) int">}}{{</cy>}}
+{{<cy "func $infix%(o any) int">}}{{</cy>}}
+{{<cy "func $infix^(o any) int">}}{{</cy>}}
+{{<cy "func $infix&(o any) int">}}{{</cy>}}
+{{<cy "func $infix|(o any) int">}}{{</cy>}}
+{{<cy "func $infix||(o any) int">}}{{</cy>}}
+{{<cy "func $infix<<(o any) int">}}{{</cy>}}
+{{<cy "func $infix>>(o any) int">}}{{</cy>}}
+{{<cy "func int.'$call'(val any) int">}}Converts a value to an 48-bit integer.{{</cy>}}
 ### `type float`
 
-> `func $call(val any) float`  
-> Converts the value to a `float`. Panics if type conversion fails.
-
-> `func $prefix-(self any) float`  
-
-> `func $infix<(self any, o any) boolean`  
-
-> `func $infix<=(self any, o any) boolean`  
-
-> `func $infix>(self any, o any) boolean`  
-
-> `func $infix>=(self any, o any) boolean`  
-
-> `func $infix+(self any, o any) float`  
-
-> `func $infix-(self any, o any) float`  
-
-> `func $infix*(self any, o any) float`  
-
-> `func $infix/(self any, o any) float`  
-
-> `func $infix%(self any, o any) float`  
-
-> `func $infix^(self any, o any) float`  
-
+{{<cy "func $prefix-() float">}}{{</cy>}}
+{{<cy "func $infix<(o any) bool">}}{{</cy>}}
+{{<cy "func $infix<=(o any) bool">}}{{</cy>}}
+{{<cy "func $infix>(o any) bool">}}{{</cy>}}
+{{<cy "func $infix>=(o any) bool">}}{{</cy>}}
+{{<cy "func $infix+(o any) float">}}{{</cy>}}
+{{<cy "func $infix-(o any) float">}}{{</cy>}}
+{{<cy "func $infix*(o any) float">}}{{</cy>}}
+{{<cy "func $infix/(o any) float">}}{{</cy>}}
+{{<cy "func $infix%(o any) float">}}{{</cy>}}
+{{<cy "func $infix^(o any) float">}}{{</cy>}}
+{{<cy "func float.'$call'(val any) float">}}Converts the value to a `float`. Panics if type conversion fails.{{</cy>}}
 ### `type List`
 
-> `func $index(self any, idx any) any`  
-
-> `func $setIndex(self any, idx any, val any) none`  
-
-> `func add(self any, val any) none`  
-
-> `func append(self any, val any) none`  
-> Appends a value to the end of the list.
-
-> `func concat(self any, list List) none`  
-> Concats the elements of another list to the end of this list.
-
-> `func insert(self any, idx int, val any) any`  
-> Inserts a value at index `idx`.
-
-> `func iterator(self any) any`  
-> Returns a new iterator over the list elements.
-
-> `func joinString(self any, sep any) string`  
-> Returns a new string that joins the elements with `separator`.
-
-> `func len(self any) int`  
-> Returns the number of elements in the list.
-
-> `func seqIterator(self any) any`  
-> Returns a new sequence iterator over the list elements.
-
-> `func remove(self any, idx int) any`  
-> Removes an element at index `idx`.
-
-> `func resize(self any, size int) any`  
-> Resizes the list to `len` elements. If the new size is bigger, `none` values  are appended to the list. If the new size is smaller, elements at the end of the list are removed.
-
-> `func sort(self any, lessFn any) any`  
-> Sorts the list with the given `less` function.  If element `a` should be ordered before `b`, the function should return `true` otherwise `false`.
-
+{{<cy "func $index(idx any) any">}}{{</cy>}}
+{{<cy "func $setIndex(idx any, val any) none">}}{{</cy>}}
+{{<cy "func add(val any) none">}}{{</cy>}}
+{{<cy "func append(val any) none">}}Appends a value to the end of the list.{{</cy>}}
+{{<cy "func concat(list List) none">}}Concats the elements of another list to the end of this list.{{</cy>}}
+{{<cy "func insert(idx int, val any) any">}}Inserts a value at index `idx`.{{</cy>}}
+{{<cy "func iterator() any">}}Returns a new iterator over the list elements.{{</cy>}}
+{{<cy "func joinString(sep any) string">}}Returns a new string that joins the elements with `separator`.{{</cy>}}
+{{<cy "func len() int">}}Returns the number of elements in the list.{{</cy>}}
+{{<cy "func remove(idx int) any">}}Removes an element at index `idx`.{{</cy>}}
+{{<cy "func resize(size int) any">}}Resizes the list to `len` elements. If the new size is bigger, `none` values  are appended to the list. If the new size is smaller, elements at the end of the list are removed.{{</cy>}}
 ### `type ListIterator`
 
-> `func next(self any) any`  
+{{<cy "func next() any">}}{{</cy>}}
+### `type tuple`
 
-> `func nextSeq(self any) any`  
-
+{{<cy "func $index(idx int) any">}}{{</cy>}}
 ### `type Map`
 
-> `func $index(self any, key any) any`  
-
-> `func $setIndex(self any, key any, val any) none`  
-
-> `func remove(self any, key any) none`  
-> Removes the element with the given key `key`.
-
-> `func size(self any) int`  
-> Returns the number of key-value pairs in the map.
-
-> `func iterator(self any) any`  
-> Returns a new iterator over the map elements.
-
-> `func seqIterator(self any) any`  
-> Returns a new sequence iterator over the map elements.
-
+{{<cy "func $index(key any) any">}}{{</cy>}}
+{{<cy "func $setIndex(key any, val any) none">}}{{</cy>}}
+{{<cy "func remove(key any) none">}}Removes the element with the given key `key`.{{</cy>}}
+{{<cy "func size() int">}}Returns the number of key-value pairs in the map.{{</cy>}}
+{{<cy "func iterator() any">}}Returns a new iterator over the map elements.{{</cy>}}
 ### `type MapIterator`
 
-> `func next(self any) any`  
+{{<cy "func next() any">}}{{</cy>}}
+### `type string`
 
-> `func nextSeq(self any) any`  
+{{<cy "func $infix+(o any) any">}}{{</cy>}}
+{{<cy "func concat(o string) any">}}Returns a new string that concats this string and `str`.{{</cy>}}
+{{<cy "func endsWith(suffix string) bool">}}Returns whether the string ends with `suffix`.{{</cy>}}
+{{<cy "func find(needle string) any">}}Returns the first index of substring `needle` in the string or `none` if not found.{{</cy>}}
+{{<cy "func findAnyRune(runes string) any">}}Returns the first index of any UTF-8 rune in `runes` or `none` if not found.{{</cy>}}
+{{<cy "func findRune(rune int) int">}}Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.{{</cy>}}
+{{<cy "func insert(idx int, str string) string">}}Returns a new string with `str` inserted at index `idx`.{{</cy>}}
+{{<cy "func isAscii() bool">}}Returns whether the string contains all ASCII runes.{{</cy>}}
+{{<cy "func len() int">}}Returns the number of UTF-8 runes in the string.{{</cy>}}
+{{<cy "func less(other string) bool">}}Returns whether this string is lexicographically before `other`.{{</cy>}}
+{{<cy "func lower() string">}}Returns this string in lowercase.{{</cy>}}
+{{<cy "func replace(needle string, replacement string) string">}}Returns a new string with all occurrences of `needle` replaced with `replacement`.{{</cy>}}
+{{<cy "func repeat(n int) any">}}Returns a new string with this string repeated `n` times.{{</cy>}}
+{{<cy "func runeAt(n int) any">}}Returns the UTF-8 rune at index `idx`.{{</cy>}}
+{{<cy "func slice(start any, end any) any">}}Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.{{</cy>}}
+{{<cy "func $slice(start any, end any) any">}}{{</cy>}}
+{{<cy "func sliceAt(idx int) any">}}Returns the UTF-8 rune at index `idx` as a single rune string.{{</cy>}}
+{{<cy "func $index(idx int) any">}}{{</cy>}}
+{{<cy "func split(sep string) List">}}Returns a list of UTF-8 strings split at occurrences of `sep`.{{</cy>}}
+{{<cy "func startsWith(prefix string) bool">}}Returns whether the string starts with `prefix`.{{</cy>}}
+{{<cy "func trim(mode symbol, delims string) any">}}Returns the string with ends trimmed from runes in `delims`. `mode` can be .left, .right, or .ends.{{</cy>}}
+{{<cy "func upper() string">}}Returns this string in uppercase.{{</cy>}}
+{{<cy "func string.'$call'(val any) string">}}Converts a value to a string.{{</cy>}}
+### `type array`
 
+{{<cy "func $infix+(o any) any">}}{{</cy>}}
+{{<cy "func byteAt(idx int) int">}}Returns the byte value (0-255) at the given index `idx`.{{</cy>}}
+{{<cy "func concat(other array) array">}}Returns a new array that concats this array and `other`.{{</cy>}}
+{{<cy "func decode() any">}}Calls decode(.utf8){{</cy>}}
+{{<cy "func decode(encoding symbol) string">}}Decodes the array based on an `encoding`. Supported encodings: `.utf8`.  Returns the decoded string or throws `error.Decode`.{{</cy>}}
+{{<cy "func endsWith(suffix array) bool">}}Returns whether the array ends with `suffix`.{{</cy>}}
+{{<cy "func find(needle array) any">}}Returns the first index of `needle` in the array or `none` if not found.{{</cy>}}
+{{<cy "func findAnyByte(bytes array) any">}}Returns the first index of any `bytes` in `arrays` or `none` if not found.{{</cy>}}
+{{<cy "func findByte(byte int) any">}}Returns the first index of `byte` in the array or `none` if not found.{{</cy>}}
+{{<cy "func insert(idx int, arr array) any">}}Returns a new array with `arr` inserted at index `idx`.{{</cy>}}
+{{<cy "func insertByte(idx int, byte int) any">}}Returns a new array with `byte` inserted at index `idx`.{{</cy>}}
+{{<cy "func len() int">}}Returns the number of bytes in the array.{{</cy>}}
+{{<cy "func repeat(n int) any">}}Returns a new array with this array repeated `n` times.{{</cy>}}
+{{<cy "func replace(needle array, replacement array) array">}}Returns a new array with all occurrences of `needle` replaced with `replacement`.{{</cy>}}
+{{<cy "func slice(start any, end any) any">}}Returns a slice into this array from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.{{</cy>}}
+{{<cy "func $slice(start any, end any) any">}}{{</cy>}}
+{{<cy "func $index(idx int) int">}}{{</cy>}}
+{{<cy "func split(sep array) List">}}Returns a list of arrays split at occurrences of `sep`.{{</cy>}}
+{{<cy "func startsWith(prefix array) bool">}}Returns whether the array starts with `prefix`.{{</cy>}}
+{{<cy "func trim(mode symbol, delims array) any">}}Returns the array with ends trimmed from runes in `delims`. `mode` can be .left, .right, or .ends.{{</cy>}}
+{{<cy "func array.'$call'(val any) array">}}Converts a string to an byte `array`.{{</cy>}}
 ### `type pointer`
 
-> `func $call(val any) pointer`  
-> Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI.
+{{<cy "func value() int">}}Returns the memory address as an `int`. The value may be negative since it's  bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.{{</cy>}}
+{{<cy "func pointer.'$call'(val any) pointer">}}Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI.{{</cy>}}
+### `type Fiber`
 
-> `func value(self any) int`  
-> Returns the memory address as an `int`. The value may be negative since it's  bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
+{{<cy "func status() symbol">}}{{</cy>}}
+### `type metatype`
 
+{{<cy "func id() int">}}{{</cy>}}
 <!-- builtins.end -->
 
 ## math.
@@ -326,159 +269,57 @@ print(math.pi * r^2)
 ```
 
 <!-- math.start -->
-> `var e float`  
-> Euler's number and the base of natural logarithms; approximately 2.718.
-
-> `var inf float`  
-> Infinity.
-
-> `var log10e float`  
-> Base-10 logarithm of E; approximately 0.434.
-
-> `var log2e float`  
-> Base-2 logarithm of E; approximately 1.443.
-
-> `var ln10 float`  
-> Natural logarithm of 10; approximately 2.303.
-
-> `var ln2 float`  
-> Natural logarithm of 2; approximately 0.693.
-
-> `var maxSafeInt float`  
-> The maximum integer value that can be safely represented as a float. 2^53-1 or 9007199254740991.
-
-> `var minSafeInt float`  
-> The minumum integer value that can be safely represented as a float. -(2^53-1) or -9007199254740991.
-
-> `var nan float`  
-> Not a number. Note that nan == nan.  However, if a nan came from an arithmetic operation, the comparison is undefined.  Use `isNaN` instead.
-
-> `var neginf float`  
-> Negative infinity.
-
-> `var pi float`  
-> Ratio of a circle's circumference to its diameter; approximately 3.14159.
-
-> `var sqrt1_2 float`  
-> Square root of ½; approximately 0.707.
-
-> `var sqrt2 float`  
-> Square root of 2; approximately 1.414.
-
-> `func abs(a float) float`  
-> Returns the absolute value of x.
-
-> `func acos(a float) float`  
-> Returns the arccosine of x.
-
-> `func acosh(a float) float`  
-> Returns the hyperbolic arccosine of x.
-
-> `func asin(a float) float`  
-> Returns the arcsine of x.
-
-> `func asinh(a float) float`  
-> Returns the hyperbolic arcsine of a number.
-
-> `func atan(a float) float`  
-> Returns the arctangent of x.
-
-> `func atan2(a float, b float) float`  
-> Returns the arctangent of the quotient of its arguments.
-
-> `func atanh(a float) float`  
-> Returns the hyperbolic arctangent of x.
-
-> `func cbrt(a float) float`  
-> Returns the cube root of x.
-
-> `func ceil(a float) float`  
-> Returns the smallest integer greater than or equal to x.
-
-> `func clz32(a float) float`  
-> Returns the number of leading zero bits of the 32-bit integer x.
-
-> `func cos(a float) float`  
-> Returns the cosine of x.
-
-> `func cosh(a float) float`  
-> Returns the hyperbolic cosine of x.
-
-> `func exp(a float) float`  
-> Returns e^x, where x is the argument, and e is Euler's number (2.718…, the base of the natural logarithm).
-
-> `func expm1(a float) float`  
-> Returns subtracting 1 from exp(x).
-
-> `func floor(a float) float`  
-> Returns the largest integer less than or equal to x.
-
-> `func frac(a float) float`  
-> Returns the fractional or decimal part of a float value.
-
-> `func hypot(a float, b float) float`  
-> Returns the square root of the sum of squares of its arguments.
-
-> `func isInt(a float) boolean`  
-> Returns true if the float has no fractional part, otherwise false.
-
-> `func isNaN(a float) boolean`  
-> Returns whether x is not a number.
-
-> `func ln(a float) float`  
-> Returns the natural logarithm (㏒e; also, ㏑) of x.
-
-> `func log(a float, b float) float`  
-> Returns the logarithm of y with base x.
-
-> `func log10(a float) float`  
-> Returns the base-10 logarithm of x.
-
-> `func log1p(a float) float`  
-> Returns the natural logarithm (㏒e; also ㏑) of 1 + x for the number x.
-
-> `func log2(a float) float`  
-> Returns the base-2 logarithm of x.
-
-> `func max(a float, b float) float`  
-> Returns the largest of two numbers.
-
-> `func min(a float, b float) float`  
-> Returns the smallest of two numbers.
-
-> `func mul32(a float, b float) float`  
-> Returns the result of the 32-bit integer multiplication of x and y. Integer overflow is allowed.
-
-> `func pow(a float, b float) float`  
-> Returns base x to the exponent power y (that is, x^y).
-
-> `func random() float`  
-> Returns a pseudo-random number between 0 and 1.
-
-> `func round(a float) float`  
-> Returns the value of the number x rounded to the nearest integer.
-
-> `func sign(a float) float`  
-> Returns the sign of the x, indicating whether x is positive, negative, or zero.
-
-> `func sin(a float) float`  
-> Returns the sine of x.
-
-> `func sinh(a float) float`  
-> Returns the hyperbolic sine of x.
-
-> `func sqrt(a float) float`  
-> Returns the positive square root of x.
-
-> `func tan(a float) float`  
-> Returns the tangent of x.
-
-> `func tanh(a float) float`  
-> Returns the hyperbolic tangent of x.
-
-> `func trunc(a float) float`  
-> Returns the integer portion of x, removing any fractional digits.
-
+{{<cy "var e float">}}Euler's number and the base of natural logarithms; approximately 2.718.{{</cy>}}
+{{<cy "var inf float">}}Infinity.{{</cy>}}
+{{<cy "var log10e float">}}Base-10 logarithm of E; approximately 0.434.{{</cy>}}
+{{<cy "var log2e float">}}Base-2 logarithm of E; approximately 1.443.{{</cy>}}
+{{<cy "var ln10 float">}}Natural logarithm of 10; approximately 2.303.{{</cy>}}
+{{<cy "var ln2 float">}}Natural logarithm of 2; approximately 0.693.{{</cy>}}
+{{<cy "var maxSafeInt float">}}The maximum integer value that can be safely represented as a float. 2^53-1 or 9007199254740991.{{</cy>}}
+{{<cy "var minSafeInt float">}}The minumum integer value that can be safely represented as a float. -(2^53-1) or -9007199254740991.{{</cy>}}
+{{<cy "var nan float">}}Not a number. Note that nan == nan.  However, if a nan came from an arithmetic operation, the comparison is undefined.  Use `isNaN` instead.{{</cy>}}
+{{<cy "var neginf float">}}Negative infinity.{{</cy>}}
+{{<cy "var pi float">}}Ratio of a circle's circumference to its diameter; approximately 3.14159.{{</cy>}}
+{{<cy "var sqrt1_2 float">}}Square root of ½; approximately 0.707.{{</cy>}}
+{{<cy "var sqrt2 float">}}Square root of 2; approximately 1.414.{{</cy>}}
+{{<cy "func abs(a float) float">}}Returns the absolute value of x.{{</cy>}}
+{{<cy "func acos(a float) float">}}Returns the arccosine of x.{{</cy>}}
+{{<cy "func acosh(a float) float">}}Returns the hyperbolic arccosine of x.{{</cy>}}
+{{<cy "func asin(a float) float">}}Returns the arcsine of x.{{</cy>}}
+{{<cy "func asinh(a float) float">}}Returns the hyperbolic arcsine of a number.{{</cy>}}
+{{<cy "func atan(a float) float">}}Returns the arctangent of x.{{</cy>}}
+{{<cy "func atan2(a float, b float) float">}}Returns the arctangent of the quotient of its arguments.{{</cy>}}
+{{<cy "func atanh(a float) float">}}Returns the hyperbolic arctangent of x.{{</cy>}}
+{{<cy "func cbrt(a float) float">}}Returns the cube root of x.{{</cy>}}
+{{<cy "func ceil(a float) float">}}Returns the smallest integer greater than or equal to x.{{</cy>}}
+{{<cy "func clz32(a float) float">}}Returns the number of leading zero bits of the 32-bit integer x.{{</cy>}}
+{{<cy "func cos(a float) float">}}Returns the cosine of x.{{</cy>}}
+{{<cy "func cosh(a float) float">}}Returns the hyperbolic cosine of x.{{</cy>}}
+{{<cy "func exp(a float) float">}}Returns e^x, where x is the argument, and e is Euler's number (2.718…, the base of the natural logarithm).{{</cy>}}
+{{<cy "func expm1(a float) float">}}Returns subtracting 1 from exp(x).{{</cy>}}
+{{<cy "func floor(a float) float">}}Returns the largest integer less than or equal to x.{{</cy>}}
+{{<cy "func frac(a float) float">}}Returns the fractional or decimal part of a float value.{{</cy>}}
+{{<cy "func hypot(a float, b float) float">}}Returns the square root of the sum of squares of its arguments.{{</cy>}}
+{{<cy "func isInt(a float) bool">}}Returns true if the float has no fractional part, otherwise false.{{</cy>}}
+{{<cy "func isNaN(a float) bool">}}Returns whether x is not a number.{{</cy>}}
+{{<cy "func ln(a float) float">}}Returns the natural logarithm (㏒e; also, ㏑) of x.{{</cy>}}
+{{<cy "func log(a float, b float) float">}}Returns the logarithm of y with base x.{{</cy>}}
+{{<cy "func log10(a float) float">}}Returns the base-10 logarithm of x.{{</cy>}}
+{{<cy "func log1p(a float) float">}}Returns the natural logarithm (㏒e; also ㏑) of 1 + x for the number x.{{</cy>}}
+{{<cy "func log2(a float) float">}}Returns the base-2 logarithm of x.{{</cy>}}
+{{<cy "func max(a float, b float) float">}}Returns the largest of two numbers.{{</cy>}}
+{{<cy "func min(a float, b float) float">}}Returns the smallest of two numbers.{{</cy>}}
+{{<cy "func mul32(a float, b float) float">}}Returns the result of the 32-bit integer multiplication of x and y. Integer overflow is allowed.{{</cy>}}
+{{<cy "func pow(a float, b float) float">}}Returns base x to the exponent power y (that is, x^y).{{</cy>}}
+{{<cy "func random() float">}}Returns a pseudo-random number between 0 and 1.{{</cy>}}
+{{<cy "func round(a float) float">}}Returns the value of the number x rounded to the nearest integer.{{</cy>}}
+{{<cy "func sign(a float) float">}}Returns the sign of the x, indicating whether x is positive, negative, or zero.{{</cy>}}
+{{<cy "func sin(a float) float">}}Returns the sine of x.{{</cy>}}
+{{<cy "func sinh(a float) float">}}Returns the hyperbolic sine of x.{{</cy>}}
+{{<cy "func sqrt(a float) float">}}Returns the positive square root of x.{{</cy>}}
+{{<cy "func tan(a float) float">}}Returns the tangent of x.{{</cy>}}
+{{<cy "func tanh(a float) float">}}Returns the hyperbolic tangent of x.{{</cy>}}
+{{<cy "func trunc(a float) float">}}Returns the integer portion of x, removing any fractional digits.{{</cy>}}
 <!-- math.end -->
 
 ## Std Modules.
@@ -499,184 +340,75 @@ for map each [k, v]:
 ```
 
 <!-- os.start -->
-> `var cpu string`  
-> The current cpu arch's tag name.
-
-> `var endian symbol`  
-> The current arch's endianness: .little, .big
-
-> `var stderr any`  
-> Standard error file descriptor.
-
-> `var stdin any`  
-> Standard input file descriptor.
-
-> `var stdout any`  
-> Standard output file descriptor.
-
-> `var system string`  
-> The current operating system's tag name.
-
-> `var vecBitSize int`  
-> Default SIMD vector bit size.
-
-> `func access(path any, mode symbol) any`  
-> Attempts to access a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.  Return true or an error.
-
-> `func args() List`  
-> Returns the command line arguments as a list.  Each argument is validated and returned as a UTF-8 `string` or `rawstring` if the validation failed.
-
-> `func bindLib(path any, decls List) any`  
-> Calls `bindLib(path, decls, {})`.
-
-> `func bindLib(path any, decls List, config Map) any`  
-> Creates an FFI binding to a dynamic library and it's symbols.  By default, an anonymous object is returned with the C-functions binded as the object's methods.  If `config` contains `genMap: true`, a `Map` is returned instead with C-functions  binded as function values.
-
-> `func cacheUrl(url any) any`  
-> Returns the path of a locally cached file of `url`.  If no such file exists locally, it's fetched from `url`.
-
-> `func copyFile(srcPath any, dstPath any) any`  
-> Copies a file to a destination path.
-
-> `func createDir(path any) any`  
-> Creates the directory at `path`. Returns `true` if successful.
-
-> `func createFile(path any, truncate boolean) any`  
-> Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated.
-
-> `func cstr(s any) pointer`  
-> Returns a null terminated C string.
-
-> `func cwd() string`  
-> Returns the current working directory.
-
-> `func dirName(path any) any`  
-> Returns the given path with its last component removed.
-
-> `func execCmd(args List) any`  
-> Runs a shell command and returns the stdout/stderr.
-
-> `func exePath() string`  
-> Returns the current executable's path.
-
-> `func exit(status int) none`  
-> Exits the program with a status code.
-
-> `func fetchUrl(url any) any`  
-> Fetches the contents at `url` using the HTTP GET request method.
-
-> `func free(ptr pointer) none`  
-> Frees the memory located at `ptr`.
-
-> `func fromCstr(ptr pointer) rawstring`  
-> Returns a `rawstring` from a null terminated C string.
-
-> `func getEnv(key any) any`  
-> Returns an environment value by key.
-
-> `func getEnvAll() Map`  
-> Returns all environment entries as a `Map`.
-
-> `func getInput() any`  
-> Reads stdin until a new line is reached. This is intended to read user input from the command line.  For bulk reads from stdin, use `os.stdin`.
-
-> `func malloc(size int) pointer`  
-> Allocates `size` bytes of memory and returns a pointer.
-
-> `func milliTime() float`  
-> Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01.
-
-> `func openDir(path any) any`  
-> Invokes `openDir(path, false)`.
-
-> `func openDir(path any, iterable boolean) any`  
-> Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated.
-
-> `func openFile(path any, mode symbol) any`  
-> Opens a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.
-
-> `func parseArgs(options List) Map`  
-> Given expected `ArgOption`s, returns a map of the options and a `rest` entry which contains the non-option arguments. |
-
-> `func readAll() any`  
-> Reads stdin to the EOF as a `rawstring`.
-
-> `func readFile(path any) any`  
-> Reads the file contents into a `rawstring` value.
-
-> `func readLine() any`  
-
-> `func realPath(path any) any`  
-> Returns the absolute path of the given path.
-
-> `func removeDir(path any) any`  
-> Removes an empty directory at `path`. Returns `true` if successful.
-
-> `func removeFile(path any) any`  
-> Removes the file at `path`. Returns `true` if successful.
-
-> `func setEnv(key any, val any) none`  
-> Sets an environment value by key.
-
-> `func sleep(ms float) none`  
-> Pauses the current thread for given milliseconds.
-
-> `func unsetEnv(key any) none`  
-> Removes an environment value by key.
-
-> `func writeFile(path any, contents any) any`  
-> Writes a string value to a file.
-
+{{<cy "var cpu string">}}The current cpu arch's tag name.{{</cy>}}
+{{<cy "var endian symbol">}}The current arch's endianness: .little, .big{{</cy>}}
+{{<cy "var stderr any">}}Standard error file descriptor.{{</cy>}}
+{{<cy "var stdin any">}}Standard input file descriptor.{{</cy>}}
+{{<cy "var stdout any">}}Standard output file descriptor.{{</cy>}}
+{{<cy "var system string">}}The current operating system's tag name.{{</cy>}}
+{{<cy "var vecBitSize int">}}Default SIMD vector bit size.{{</cy>}}
+{{<cy "func access(path string, mode symbol) any">}}Attempts to access a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.  Return true or an error.{{</cy>}}
+{{<cy "func args() List">}}Returns the command line arguments in a `List`.  Each argument is validated and returned as a UTF-8 `string` or `array` if the validation failed.{{</cy>}}
+{{<cy "func bindLib(path any, decls List) any">}}Calls `bindLib(path, decls, {})`.{{</cy>}}
+{{<cy "func bindLib(path any, decls List, config Map) any">}}Creates an FFI binding to a dynamic library and it's symbols.  By default, an anonymous object is returned with the C-functions binded as the object's methods.  If `config` contains `genMap: true`, a `Map` is returned instead with C-functions  binded as function values.{{</cy>}}
+{{<cy "func cacheUrl(url string) any">}}Returns the path of a locally cached file of `url`.  If no such file exists locally, it's fetched from `url`.{{</cy>}}
+{{<cy "func copyFile(srcPath string, dstPath string) none">}}Copies a file to a destination path.{{</cy>}}
+{{<cy "func createDir(path string) none">}}Creates the directory at `path`. Returns `true` if successful.{{</cy>}}
+{{<cy "func createFile(path string, truncate bool) File">}}Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated.{{</cy>}}
+{{<cy "func cstr(s any) pointer">}}Returns a null terminated C string.{{</cy>}}
+{{<cy "func cwd() string">}}Returns the current working directory.{{</cy>}}
+{{<cy "func dirName(path string) any">}}Returns the given path with its last component removed.{{</cy>}}
+{{<cy "func execCmd(args List) any">}}Runs a shell command and returns the stdout/stderr.{{</cy>}}
+{{<cy "func exePath() string">}}Returns the current executable's path.{{</cy>}}
+{{<cy "func exit(status int) none">}}Exits the program with a status code.{{</cy>}}
+{{<cy "func fetchUrl(url any) any">}}Fetches the contents at `url` using the HTTP GET request method.{{</cy>}}
+{{<cy "func free(ptr pointer) none">}}Frees the memory located at `ptr`.{{</cy>}}
+{{<cy "func fromCstr(ptr pointer) array">}}Returns an `array` from a null terminated C string.{{</cy>}}
+{{<cy "func getEnv(key string) any">}}Returns an environment value by key.{{</cy>}}
+{{<cy "func getEnvAll() Map">}}Returns all environment entries as a `Map`.{{</cy>}}
+{{<cy "func getAllInput() string">}}Reads stdin to the EOF as a `string`.{{</cy>}}
+{{<cy "func getInput() string">}}Reads stdin until a new line as a `string`. This is intended to read user input from the command line.  For bulk reads from stdin, use `os.stdin`.{{</cy>}}
+{{<cy "func malloc(size int) pointer">}}Allocates `size` bytes of memory and returns a pointer.{{</cy>}}
+{{<cy "func milliTime() float">}}Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01.{{</cy>}}
+{{<cy "func openDir(path string) any">}}Invokes `openDir(path, false)`.{{</cy>}}
+{{<cy "func openDir(path string, iterable bool) Dir">}}Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated.{{</cy>}}
+{{<cy "func openFile(path string, mode symbol) File">}}Opens a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.{{</cy>}}
+{{<cy "func parseArgs(options List) Map">}}Given expected `ArgOption`s, returns a map of the options and a `rest` entry which contains the non-option arguments. |{{</cy>}}
+{{<cy "func readFile(path string) string">}}Reads the file contents from `path` with UTF-8 encoding.{{</cy>}}
+{{<cy "func realPath(path string) any">}}Returns the absolute path of the given path.{{</cy>}}
+{{<cy "func removeDir(path string) none">}}Removes an empty directory at `path`. Returns `true` if successful.{{</cy>}}
+{{<cy "func removeFile(path string) none">}}Removes the file at `path`. Returns `true` if successful.{{</cy>}}
+{{<cy "func setEnv(key string, val string) none">}}Sets an environment value by key.{{</cy>}}
+{{<cy "func sleep(ms float) none">}}Pauses the current thread for given milliseconds.{{</cy>}}
+{{<cy "func unsetEnv(key string) none">}}Removes an environment value by key.{{</cy>}}
+{{<cy "func writeFile(path string, contents any) none">}}Writes a string value to a file.{{</cy>}}
 ### `type File`
 
-> `func close(self any) none`  
-> Closes the file handle. File ops invoked afterwards will return `error.Closed`.
-
-> `func iterator(self any) any`  
-
-> `func next(self any) any`  
-
-> `func read(self any, n int) any`  
-> Reads at most `n` bytes as a `rawstring`. `n` must be at least 1.  A result with length 0 indicates the end of file was reached.
-
-> `func readToEnd(self any) any`  
-> Reads to the end of the file and returns the content as a `rawstring`.
-
-> `func seek(self any, n int) any`  
-> Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.
-
-> `func seekFromCur(self any, n int) any`  
-> Seeks the read/write position by `pos` bytes from the current position.
-
-> `func seekFromEnd(self any, n int) any`  
-> Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid.
-
-> `func stat(self any) any`  
-> Returns info about the file as a `Map`.
-
-> `func streamLines(self any) any`  
-> Equivalent to `streamLines(4096)`.
-
-> `func streamLines(self any, bufSize int) any`  
-> Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`.  The lines returned include the new line character(s).  A buffer size of `bufSize` bytes is allocated for reading.  If `\r` is found at the end of the read buffer, the line is returned instead of  waiting to see if the next read has a connecting `\n`.
-
-> `func write(self any, val any) any`  
-> Writes a `string` or `rawstring` at the current file position.  The number of bytes written is returned.
-
+{{<cy "func close() none">}}Closes the file handle. File ops invoked afterwards will return `error.Closed`.{{</cy>}}
+{{<cy "func iterator() any">}}{{</cy>}}
+{{<cy "func next() any">}}{{</cy>}}
+{{<cy "func read(n int) any">}}Reads at most `n` bytes as an `array`. `n` must be at least 1.  A result with length 0 indicates the end of file was reached.{{</cy>}}
+{{<cy "func readToEnd() any">}}Reads to the end of the file and returns the content as an `array`.{{</cy>}}
+{{<cy "func seek(n int) any">}}Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.{{</cy>}}
+{{<cy "func seekFromCur(n int) any">}}Seeks the read/write position by `pos` bytes from the current position.{{</cy>}}
+{{<cy "func seekFromEnd(n int) any">}}Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid.{{</cy>}}
+{{<cy "func stat() any">}}Returns info about the file as a `Map`.{{</cy>}}
+{{<cy "func streamLines() any">}}Equivalent to `streamLines(4096)`.{{</cy>}}
+{{<cy "func streamLines(bufSize int) any">}}Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`.  The lines returned include the new line character(s).  A buffer size of `bufSize` bytes is allocated for reading.  If `\r` is found at the end of the read buffer, the line is returned instead of  waiting to see if the next read has a connecting `\n`.{{</cy>}}
+{{<cy "func write(val any) any">}}Writes a `string` or `array` at the current file position.  The number of bytes written is returned.{{</cy>}}
 ### `type Dir`
 
-> `func iterator(self any) any`  
-> Returns a new iterator over the directory entries.  If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
-
-> `func stat(self any) any`  
-> Returns info about the file as a `Map`.
-
-> `func walk(self any) any`  
-> Returns a new iterator over the directory recursive entries.  If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
-
+{{<cy "func iterator() any">}}Returns a new iterator over the directory entries.  If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.{{</cy>}}
+{{<cy "func stat() any">}}Returns info about the file as a `Map`.{{</cy>}}
+{{<cy "func walk() any">}}Returns a new iterator over the directory recursive entries.  If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.{{</cy>}}
 ### `type DirIterator`
 
-> `func next(self any) any`  
+{{<cy "func next() any">}}{{</cy>}}
+### `type CFunc`
+
+### `type CStruct`
+
+### `type CArray`
 
 <!-- os.end -->
 ### `map DirEntry`
@@ -711,15 +443,8 @@ t.eq(a, 444)
 ```
 
 <!-- test.start -->
-> `func eq(a any, b any) any`  
-> Returns whether two values are equal.  Panics with `error.AssertError` if types or values do not match up.
-
-> `func eqList(a any, b any) any`  
-> Returns true if two lists have the same size and the elements are equal  as if `eq` was called on those corresponding elements.
-
-> `func eqNear(a any, b any) any`  
-> Returns two numbers are near each other within epsilon 1e-5.
-
-> `func fail() any`  
-
+{{<cy "func eq(a any, b any) any">}}Returns whether two values are equal.  Panics with `error.AssertError` if types or values do not match up.{{</cy>}}
+{{<cy "func eqList(a any, b any) any">}}Returns true if two lists have the same size and the elements are equal  as if `eq` was called on those corresponding elements.{{</cy>}}
+{{<cy "func eqNear(a any, b any) any">}}Returns two numbers are near each other within epsilon 1e-5.{{</cy>}}
+{{<cy "func fail() any">}}{{</cy>}}
 <!-- test.end -->

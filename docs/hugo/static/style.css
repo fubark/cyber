@@ -140,6 +140,28 @@ a {
     font-family: var(--mono-font);
 }
 
+div.api-header {
+    margin-top: 40px;
+}
+
+div.api-desc {
+    padding: 0 0 0 15px;
+    border-left: 0.15rem solid var(--gray-200);
+    margin-top: 13px;
+}
+
+.markdown pre.inline {
+    display: inline;
+    padding: 0px;
+    background: none;
+}
+
+.markdown pre.inline code {
+    display: inline;
+    font-size: 17px;
+    background: none;
+}
+
 pre {
     padding: 10px;
     font-size: 15px;

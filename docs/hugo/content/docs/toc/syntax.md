@@ -303,14 +303,14 @@ There will be multi-line comments in Cyber but the syntax has not been determine
 ## CYON.
 CYON or the Cyber object notation is similar to JSON. The format uses the same literal value semantics as Cyber.
 ```cy
-{
-    name: 'John Doe'
-    'age': 25
+[
+    name: 'John Doe',
+    'age': 25,
     -- This is a comment
     cities: [
-        'New York'
-        'San Francisco'
-        'Tokyo'
-    ]
-}
+        'New York',
+        'San Francisco',
+        'Tokyo',
+    ],
+]
 ```

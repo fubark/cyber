@@ -49,102 +49,102 @@ export fn csFree(vm: *cy.UserVM, ptr: [*]const align(8) u8, size: usize) void {
     vm.allocator().free(ptr[0..size]);
 }
 
-export fn csFreeStr(vm: *cy.UserVM, str: cy.Str) void {
-    vm.allocator().free(str.slice());
+export fn csFreeStr(vm: *cy.UserVM, str: c.Str) void {
+    vm.allocator().free(c.strSlice(str));
 }
 
-export fn csEval(vm: *cy.UserVM, src: cy.Str, outVal: *cy.Value) c.CsResultCode {
-    outVal.* = vm.eval("main", src.slice(), .{
+export fn csEval(vm: *cy.UserVM, src: c.Str, outVal: *cy.Value) c.ResultCode {
+    outVal.* = vm.eval("main", c.strSlice(src), .{
         .singleRun = false,
     }) catch |err| {
         switch (err) {
             error.TokenError => {
-                return c.CS_ERROR_TOKEN;
+                return c.ErrorToken;
             },
             error.ParseError => {
-                return c.CS_ERROR_PARSE;
+                return c.ErrorParse;
             },
             error.CompileError => {
-                return c.CS_ERROR_COMPILE;
+                return c.ErrorCompile;
             },
             error.Panic => {
-                return c.CS_ERROR_PANIC;
+                return c.ErrorPanic;
             },
             else => {
-                return c.CS_ERROR_UNKNOWN;
+                return c.ErrorUnknown;
             },
         }
     };
-    return c.CS_SUCCESS;
+    return c.Success;
 }
 
-export fn csValidate(vm: *cy.UserVM, src: cy.Str) c.CsResultCode {
-    const res = vm.internal().validate("main", src.slice(), .{}) catch |err| {
+export fn csValidate(vm: *cy.UserVM, src: c.Str) c.ResultCode {
+    const res = vm.internal().validate("main", c.strSlice(src), .{}) catch |err| {
         log.debug("validate error: {}", .{err});
-        return c.CS_ERROR_UNKNOWN;
+        return c.ErrorUnknown;
     };
     if (res.err) |err| {
         switch (err) {
             .tokenize => {
-                return c.CS_ERROR_TOKEN;
+                return c.ErrorToken;
             },
             .parse => {
-                return c.CS_ERROR_PARSE;
+                return c.ErrorParse;
             },
             .compile => {
-                return c.CS_ERROR_COMPILE;
+                return c.ErrorCompile;
             },
         }
     }
-    return c.CS_SUCCESS;
+    return c.Success;
 }
 
 test "csValidate()" {
-    const vm = c.csCreate();
-    defer c.csDestroy(vm);
+    const vm = c.create();
+    defer c.destroy(vm);
 
     cy.silentError = true;
     defer cy.silentError = false;
 
-    var res = c.csValidate(vm, initStrSlice("1 + 2"));
-    try t.eq(res, c.CS_SUCCESS);
+    var res = c.validate(vm, c.initStr("1 + 2"));
+    try t.eq(res, c.Success);
 
-    res = c.csValidate(vm, initStrSlice("1 +"));
-    try t.eq(res, c.CS_ERROR_PARSE);
+    res = c.validate(vm, c.initStr("1 +"));
+    try t.eq(res, c.ErrorParse);
 }
 
 var tempBuf: [1024]u8 align(8) = undefined;
 
-export fn csNewLastErrorReport(vm: *cy.UserVM) cy.Str {
+export fn csNewLastErrorReport(vm: *cy.UserVM) c.Str {
     const report = vm.allocLastErrorReport() catch fatal();
-    return cy.Str.initSlice(report);
+    return c.initStr(report);
 }
 
-export fn csGetResolver(vm: *cy.UserVM) c.CsResolverFn {
+export fn csGetResolver(vm: *cy.UserVM) c.ResolverFn {
     return @ptrCast(vm.getModuleResolver());
 }
 
-export fn csSetResolver(vm: *cy.UserVM, resolver: c.CsResolverFn) void {
+export fn csSetResolver(vm: *cy.UserVM, resolver: c.ResolverFn) void {
     vm.setModuleResolver(@ptrCast(resolver));
 }
 
-export fn csGetModuleLoader(vm: *cy.UserVM) c.CsModuleLoaderFn {
+export fn csGetModuleLoader(vm: *cy.UserVM) c.ModuleLoaderFn {
     return @ptrCast(vm.getModuleLoader());
 }
 
-export fn csSetModuleLoader(vm: *cy.UserVM, loader: c.CsModuleLoaderFn) void {
+export fn csSetModuleLoader(vm: *cy.UserVM, loader: c.ModuleLoaderFn) void {
     vm.setModuleLoader(@ptrCast(loader));
 }
 
-export fn csGetPrint(vm: *cy.UserVM) c.CsPrintFn {
+export fn csGetPrint(vm: *cy.UserVM) c.PrintFn {
     return @ptrCast(vm.getPrint());
 }
 
-export fn csSetPrint(vm: *cy.UserVM, print: c.CsPrintFn) void {
+export fn csSetPrint(vm: *cy.UserVM, print: c.PrintFn) void {
     vm.setPrint(@ptrCast(print));
 }
 
-export fn csPerformGC(vm: *cy.UserVM) c.CsGCResult {
+export fn csPerformGC(vm: *cy.UserVM) c.GCResult {
     const res = cy.arc.performGC(vm.internal()) catch cy.fatal();
     return .{
         .numCycFreed = res.numCycFreed,
@@ -152,47 +152,50 @@ export fn csPerformGC(vm: *cy.UserVM) c.CsGCResult {
     };
 }
 
-export fn csDeclareUntypedFunc(mod: cy.ApiModule, name: [*:0]const u8, numParams: u32, funcPtr: c.CsFuncFn) void {
+export fn csDeclareUntypedFunc(mod: c.ApiModule, name: [*:0]const u8, numParams: u32, funcPtr: c.FuncFn) void {
+    const modSym: *cy.Sym = @ptrCast(@alignCast(mod.sym));
     var symName: []const u8 = std.mem.sliceTo(name, 0);
     var nameOwned = false;
-    const chunk = mod.sym.cast(.chunk).getMod().chunk;
+    const chunk = modSym.cast(.chunk).getMod().chunk;
     const funcSigId = chunk.sema.ensureUntypedFuncSig(numParams) catch fatal();
-    if (mod.sym.getMod().?.getSym(symName) == null) {
+    if (modSym.getMod().?.getSym(symName) == null) {
         symName = chunk.alloc.dupe(u8, symName) catch fatal();
         nameOwned = true;
     }
-    const func = chunk.declareHostFunc(mod.sym, symName, funcSigId, cy.NullId, @ptrCast(funcPtr), false) catch cy.fatal();
+    const func = chunk.declareHostFunc(modSym, symName, funcSigId, cy.NullId, @ptrCast(funcPtr), false) catch cy.fatal();
     if (nameOwned) {
         const sym = func.sym.?;
         sym.head.setNameOwned(true);
     }
 }
 
-export fn csDeclareFunc(mod: cy.ApiModule, name: [*:0]const u8, params: [*]const cy.TypeId, numParams: u32, retType: cy.TypeId, funcPtr: c.CsFuncFn) void {
+export fn csDeclareFunc(mod: c.ApiModule, name: [*:0]const u8, params: [*]const cy.TypeId, numParams: u32, retType: cy.TypeId, funcPtr: c.FuncFn) void {
+    const modSym: *cy.Sym = @ptrCast(@alignCast(mod.sym));
     var symName: []const u8 = std.mem.sliceTo(name, 0);
     var nameOwned = false;
-    const chunk = mod.sym.cast(.chunk).getMod().chunk;
+    const chunk = modSym.cast(.chunk).getMod().chunk;
     const funcSigId = chunk.sema.ensureFuncSig(params[0..numParams], retType) catch cy.fatal();
-    if (mod.sym.getMod().?.getSym(symName) == null) {
+    if (modSym.getMod().?.getSym(symName) == null) {
         symName = chunk.alloc.dupe(u8, symName) catch fatal();
         nameOwned = true;
     }
-    const func = chunk.declareHostFunc(mod.sym, symName, funcSigId, cy.NullId, @ptrCast(funcPtr), false) catch cy.fatal();
+    const func = chunk.declareHostFunc(modSym, symName, funcSigId, cy.NullId, @ptrCast(funcPtr), false) catch cy.fatal();
     if (nameOwned) {
         const sym = func.sym.?;
         sym.head.setNameOwned(true);
     }
 }
 
-export fn csDeclareVar(mod: cy.ApiModule, name: [*:0]const u8, typeId: cy.TypeId, val: c.CsValue) void {
+export fn csDeclareVar(mod: c.ApiModule, name: [*:0]const u8, typeId: cy.TypeId, val: c.Value) void {
+    const modSym: *cy.Sym = @ptrCast(@alignCast(mod.sym));
     var symName: []const u8 = std.mem.sliceTo(name, 0);
     var nameOwned = false;
-    const chunk = mod.sym.cast(.chunk).getMod().chunk;
-    if (mod.sym.getMod().?.getSym(symName) == null) {
+    const chunk = modSym.cast(.chunk).getMod().chunk;
+    if (modSym.getMod().?.getSym(symName) == null) {
         symName = chunk.alloc.dupe(u8, symName) catch fatal();
         nameOwned = true;
     }
-    const sym = chunk.declareHostVar(mod.sym, symName, cy.NullId, typeId, @bitCast(val)) catch cy.fatal();
+    const sym = chunk.declareHostVar(modSym, symName, cy.NullId, typeId, @bitCast(val)) catch cy.fatal();
     if (nameOwned) {
         sym.head.setNameOwned(true);
     }
@@ -250,16 +253,16 @@ export fn csVmObject(ptr: *anyopaque) Value {
     return Value.initPtr(ptr);
 }
 
-export fn csNewString(vm: *cy.UserVM, cstr: cy.Str) Value {
-    return vm.retainOrAllocString(cstr.slice()) catch fatal();
+export fn csNewString(vm: *cy.UserVM, cstr: c.Str) Value {
+    return vm.retainOrAllocString(c.strSlice(cstr)) catch fatal();
 }
 
-export fn csNewAstring(vm: *cy.VM, cstr: cy.Str) Value {
-    return vm.retainOrAllocAstring(cstr.slice()) catch fatal();
+export fn csNewAstring(vm: *cy.VM, cstr: c.Str) Value {
+    return vm.retainOrAllocAstring(c.strSlice(cstr)) catch fatal();
 }
 
-export fn csNewUstring(vm: *cy.UserVM, cstr: cy.Str, charLen: u32) Value {
-    return vm.retainOrAllocUstring(cstr.slice(), charLen) catch fatal();
+export fn csNewUstring(vm: *cy.UserVM, cstr: c.Str, charLen: u32) Value {
+    return vm.retainOrAllocUstring(c.strSlice(cstr), charLen) catch fatal();
 }
 
 export fn csNewTuple(vm: *cy.UserVM, ptr: [*]const Value, len: usize) Value {
@@ -286,22 +289,22 @@ export fn csNewEmptyMap(vm: *cy.UserVM) Value {
     return vm.allocEmptyMap() catch fatal();
 }
 
-export fn csNewUntypedFunc(vm: *cy.VM, numParams: u32, func: c.CsFuncFn) Value {
+export fn csNewUntypedFunc(vm: *cy.VM, numParams: u32, func: c.FuncFn) Value {
     const funcSigId = vm.sema.ensureUntypedFuncSig(numParams) catch fatal();
     return vm.allocHostFunc(@ptrCast(func), numParams, funcSigId, null) catch fatal();
 }
 
-export fn csNewFunc(vm: *cy.VM, params: [*]const cy.TypeId, numParams: u32, retType: cy.TypeId, func: c.CsFuncFn) Value {
+export fn csNewFunc(vm: *cy.VM, params: [*]const cy.TypeId, numParams: u32, retType: cy.TypeId, func: c.FuncFn) Value {
     const funcSigId = vm.sema.ensureFuncSig(params[0..numParams], retType) catch fatal();
     return vm.allocHostFunc(@ptrCast(func), numParams, funcSigId, null) catch fatal();
 }
 
 test "csNewFunc()" {
-    const vm = c.csCreate();
-    defer c.csDestroy(vm);
+    const vm = c.create();
+    defer c.destroy(vm);
 
-    const val = c.csNewFunc(vm, &[_]cy.TypeId{}, 0, bt.Dynamic, @ptrFromInt(8));
-    try t.eq(c.csGetTypeId(val), bt.HostFunc);
+    const val = c.newFunc(vm, &[_]cy.TypeId{}, 0, bt.Dynamic, @ptrFromInt(8));
+    try t.eq(c.getTypeId(val), bt.HostFunc);
 }
 
 export fn csNewHostObject(vm: *cy.UserVM, typeId: cy.TypeId, size: usize) Value {
@@ -329,8 +332,8 @@ export fn csNewVmObject(vm: *cy.VM, typeId: cy.TypeId, argsPtr: [*]const Value, 
     }
 }
 
-export fn csSymbol(vm: *cy.UserVM, str: cy.Str) Value {
-    const id = vm.internal().ensureSymbolExt(str.slice(), true) catch fatal();
+export fn csSymbol(vm: *cy.UserVM, str: c.Str) Value {
+    const id = vm.internal().ensureSymbolExt(c.strSlice(str), true) catch fatal();
     return Value.initSymbol(@intCast(id));
 }
 
@@ -339,11 +342,11 @@ export fn csNewPointer(vm: *cy.UserVM, ptr: ?*anyopaque) Value {
 }
 
 test "csNewPointer()" {
-    const vm = c.csCreate();
-    defer c.csDestroy(vm);
+    const vm = c.create();
+    defer c.destroy(vm);
 
-    const val = c.csNewPointer(vm, @ptrFromInt(123));
-    try t.eq(c.csGetTypeId(val), bt.Pointer);
+    const val = c.newPointer(vm, @ptrFromInt(123));
+    try t.eq(c.getTypeId(val), bt.Pointer);
 
     const obj = (Value{.val = val}).asHeapObject();
     try t.eq(@intFromPtr(obj.pointer.ptr), 123);
@@ -354,7 +357,7 @@ export fn csAsFloat(val: Value) f64 {
 }
 
 test "csAsFloat()" {
-    try t.eq(c.csAsFloat(c.csFloat(123.0)), 123);
+    try t.eq(c.asFloat(c.float(123.0)), 123);
 }
 
 export fn csToBool(val: Value) bool {
@@ -362,11 +365,11 @@ export fn csToBool(val: Value) bool {
 }
 
 test "csToBool()" {
-    try t.eq(c.csToBool(c.csFloat(123.0)), true);
-    try t.eq(c.csToBool(c.csFloat(0)), true);
-    try t.eq(c.csToBool(c.csTrue()), true);
-    try t.eq(c.csToBool(c.csNone()), false);
-    try t.eq(c.csToBool(c.csFalse()), false);
+    try t.eq(c.toBool(c.float(123.0)), true);
+    try t.eq(c.toBool(c.float(0)), true);
+    try t.eq(c.toBool(c.csTrue()), true);
+    try t.eq(c.toBool(c.none()), false);
+    try t.eq(c.toBool(c.csFalse()), false);
 }
 
 export fn csAsBool(val: Value) bool {
@@ -374,8 +377,8 @@ export fn csAsBool(val: Value) bool {
 }
 
 test "csAsBool()" {
-    try t.eq(c.csAsBool(c.csTrue()), true);
-    try t.eq(c.csAsBool(c.csFalse()), false);
+    try t.eq(c.asBool(c.csTrue()), true);
+    try t.eq(c.asBool(c.csFalse()), false);
 }
 
 export fn csAsInteger(val: Value) i64 {
@@ -383,7 +386,7 @@ export fn csAsInteger(val: Value) i64 {
 }
 
 test "csAsInteger()" {
-    try t.eq(c.csAsInteger(c.csInteger(123)), 123);
+    try t.eq(c.asInteger(c.integer(123)), 123);
 }
 
 export fn csAsSymbolId(val: Value) u32 {
@@ -391,66 +394,66 @@ export fn csAsSymbolId(val: Value) u32 {
 }
 
 test "csAsSymbolId()" {
-    const vm = c.csCreate();
-    defer c.csDestroy(vm);
+    const vm = c.create();
+    defer c.destroy(vm);
 
-    var str = initStrSlice("foo");
-    var val = c.csSymbol(vm, str);
-    try t.eq(c.csAsSymbolId(val), 0);
+    var str = c.initStr("foo");
+    var val = c.symbol(vm, str);
+    try t.eq(c.asSymbolId(val), 0);
 
-    str = initStrSlice("bar");
-    val = c.csSymbol(vm, str);
-    try t.eq(c.csAsSymbolId(val), 1);
+    str = c.initStr("bar");
+    val = c.symbol(vm, str);
+    try t.eq(c.asSymbolId(val), 1);
 
-    str = initStrSlice("foo");
-    val = c.csSymbol(vm, str);
-    try t.eq(c.csAsSymbolId(val), 0);
+    str = c.initStr("foo");
+    val = c.symbol(vm, str);
+    try t.eq(c.asSymbolId(val), 0);
 }
 
-export fn csToTempString(vm: *cy.UserVM, val: Value) cy.Str {
+export fn csToTempString(vm: *cy.UserVM, val: Value) c.Str {
     const str = vm.valueToTempString(val);
-    return cy.Str.initSlice(str);
+    return c.initStr(str);
 }
 
-export fn csToTempByteArray(vm: *cy.UserVM, val: Value) cy.Str {
+export fn csToTempByteArray(vm: *cy.UserVM, val: Value) c.Str {
     const str = vm.valueToTempByteArray(val);
-    return cy.Str.initSlice(str);
+    return c.initStr(str);
 }
 
 test "Constants." {
-    try t.eq(c.CS_TYPE_NONE, bt.None);
-    try t.eq(c.CS_TYPE_BOOLEAN, bt.Boolean);
-    try t.eq(c.CS_TYPE_ERROR, bt.Error);
-    try t.eq(c.CS_TYPE_SYMBOL, bt.Symbol);
-    try t.eq(c.CS_TYPE_INTEGER, bt.Integer);
-    try t.eq(c.CS_TYPE_FLOAT, bt.Float);
-    try t.eq(c.CS_TYPE_LIST, bt.List);
-    try t.eq(c.CS_TYPE_LISTITER, bt.ListIter);
-    try t.eq(c.CS_TYPE_MAP, bt.Map);
-    try t.eq(c.CS_TYPE_MAPITER, bt.MapIter);
-    try t.eq(c.CS_TYPE_CLOSURE, bt.Closure);
-    try t.eq(c.CS_TYPE_LAMBDA, bt.Lambda);
-    try t.eq(c.CS_TYPE_STRING, bt.String);
-    try t.eq(c.CS_TYPE_ARRAY, bt.Array);
-    try t.eq(c.CS_TYPE_FIBER, bt.Fiber);
-    try t.eq(c.CS_TYPE_BOX, bt.Box);
-    try t.eq(c.CS_TYPE_NATIVEFUNC1, bt.HostFunc);
-    try t.eq(c.CS_TYPE_TCCSTATE, bt.TccState);
-    try t.eq(c.CS_TYPE_POINTER, bt.Pointer);
-    try t.eq(c.CS_TYPE_TUPLE, bt.Tuple);
-    try t.eq(c.CS_TYPE_METATYPE, bt.MetaType);
+    try t.eq(c.TypeNone, bt.None);
+    try t.eq(c.TypeBoolean, bt.Boolean);
+    try t.eq(c.TypeError, bt.Error);
+    try t.eq(c.TypeSymbol, bt.Symbol);
+    try t.eq(c.TypeInteger, bt.Integer);
+    try t.eq(c.TypeFloat, bt.Float);
+    try t.eq(c.TypeList, bt.List);
+    try t.eq(c.TypeListIter, bt.ListIter);
+    try t.eq(c.TypeMap, bt.Map);
+    try t.eq(c.TypeMapIter, bt.MapIter);
+    try t.eq(c.TypeClosure, bt.Closure);
+    try t.eq(c.TypeLambda, bt.Lambda);
+    try t.eq(c.TypeString, bt.String);
+    try t.eq(c.TypeArray, bt.Array);
+    try t.eq(c.TypeFiber, bt.Fiber);
+    try t.eq(c.TypeBox, bt.Box);
+    try t.eq(c.TypeHostFunc, bt.HostFunc);
+    try t.eq(c.TypeTccState, bt.TccState);
+    try t.eq(c.TypePointer, bt.Pointer);
+    try t.eq(c.TypeTuple, bt.Tuple);
+    try t.eq(c.TypeMetaType, bt.MetaType);
 }
 
 export fn csAsHostObject(val: Value) *anyopaque {
-    return val.asHostObject(*anyopaque);
+    return val.castHostObject(*anyopaque);
 }
 
-export fn csGetTypeId(val: Value) c.CsTypeId {
+export fn csGetTypeId(val: Value) c.TypeId {
     return val.getTypeId();
 }
 
 test "csGetTypeId()" {
-    try t.eq(c.csGetTypeId(c.csFloat(123)), bt.Float);
+    try t.eq(c.getTypeId(c.float(123)), bt.Float);
 }
 
 export fn csListLen(list: Value) usize {
@@ -486,78 +489,71 @@ export fn csListAppend(vm: *cy.UserVM, list: Value, val: Value) void {
 }
 
 test "List ops." {
-    const vm = c.csCreate();
-    defer c.csDestroy(vm);
+    const vm = c.create();
+    defer c.destroy(vm);
 
-    var list: c.CsValue = undefined;
-    _ = c.csEval(vm, initStrSlice("[1, 2, 3]"), &list);
+    var list: c.Value = undefined;
+    _ = c.eval(vm, c.initStr("[1, 2, 3]"), &list);
 
     // Initial cap.
-    try t.eq(c.csListLen(list), 3);
-    try t.eq(c.csListCap(list), 3);
+    try t.eq(c.listLen(list), 3);
+    try t.eq(c.listCap(list), 3);
 
     // Append.
-    c.csListAppend(vm, list, c.csFloat(4));
-    var res = c.csListGet(vm, list, 3);
-    try t.eq(c.csAsFloat(res), 4);
-    try t.eq(c.csListLen(list), 4);
-    try t.eq(c.csListCap(list), 12);
+    c.listAppend(vm, list, c.float(4));
+    var res = c.listGet(vm, list, 3);
+    try t.eq(c.asFloat(res), 4);
+    try t.eq(c.listLen(list), 4);
+    try t.eq(c.listCap(list), 12);
 
     // Get.
-    res = c.csListGet(vm, list, 1);
-    try t.eq(c.csAsInteger(res), 2);
+    res = c.listGet(vm, list, 1);
+    try t.eq(c.asInteger(res), 2);
 
     // Set.
-    c.csListSet(vm, list, 1, c.csFloat(100));
-    res = c.csListGet(vm, list, 1);
-    try t.eq(c.csAsFloat(res), 100);
+    c.listSet(vm, list, 1, c.float(100));
+    res = c.listGet(vm, list, 1);
+    try t.eq(c.asFloat(res), 100);
 
     // Insert.
-    c.csListInsert(vm, list, 0, c.csFloat(123));
-    res = c.csListGet(vm, list, 0);
-    try t.eq(c.csAsFloat(res), 123);
-    try t.eq(c.csListLen(list), 5);
+    c.listInsert(vm, list, 0, c.float(123));
+    res = c.listGet(vm, list, 0);
+    try t.eq(c.asFloat(res), 123);
+    try t.eq(c.listLen(list), 5);
 }
 
-export fn csGetFullVersion() cy.Str {
-    return cy.Str.initSlice(build_options.full_version.ptr[0..build_options.full_version.len]);
+export fn csGetFullVersion() c.Str {
+    return c.initStr(build_options.full_version.ptr[0..build_options.full_version.len]);
 }
 
 test "csGetFullVersion()" {
-    const str = c.csGetFullVersion();
+    const str = c.getFullVersion();
     try t.eqStr(str.buf[0..str.len], build_options.full_version);
 }
 
-export fn csGetVersion() cy.Str {
-    return cy.Str.initSlice(build_options.version.ptr[0..build_options.version.len]);
+export fn csGetVersion() c.Str {
+    return c.initStr(build_options.version.ptr[0..build_options.version.len]);
 }
 
 test "csGetVersion()" {
-    const str = c.csGetVersion();
+    const str = c.getVersion();
     try t.eqStr(str.buf[0..str.len], build_options.version);
 }
 
-export fn csGetBuild() cy.Str {
-    return cy.Str.initSlice(build_options.build.ptr[0..build_options.build.len]);
+export fn csGetBuild() c.Str {
+    return c.initStr(build_options.build.ptr[0..build_options.build.len]);
 }
 
 test "csGetBuild()" {
-    const str = c.csGetBuild();
+    const str = c.getBuild();
     try t.eqStr(str.buf[0..str.len], build_options.build);
 }
 
-export fn csGetCommit() cy.Str {
-    return cy.Str.initSlice(build_options.commit.ptr[0..build_options.commit.len]);
+export fn csGetCommit() c.Str {
+    return c.initStr(build_options.commit.ptr[0..build_options.commit.len]);
 }
 
 test "csGetCommit()" {
-    const str = c.csGetCommit();
+    const str = c.getCommit();
     try t.eqStr(str.buf[0..str.len], build_options.commit);
-}
-
-fn initStrSlice(s: []const u8) c.CsStr {
-    return .{
-        .buf = s.ptr,
-        .len = s.len,
-    };
 }

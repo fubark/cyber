@@ -11,6 +11,7 @@ const vmc = @import("vm_c.zig");
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const cy = @import("cyber.zig");
+const cc = @import("clib.zig");
 const bt = cy.types.BuiltinTypes;
 const rt = cy.rt;
 const sema = cy.sema;
@@ -139,7 +140,7 @@ pub const VM = struct {
     userData: ?*anyopaque,
 
     /// Host print callback.
-    print: cy.PrintFn,
+    print: cc.PrintFn,
 
     /// Object to pc of instruction that allocated it.
     objectTraceMap: if (cy.Trace) std.AutoHashMapUnmanaged(*HeapObject, debug.ObjectTrace) else void,
@@ -1474,6 +1475,12 @@ pub const VM = struct {
     pub fn writeValueToString(self: *const VM, writer: anytype, val: Value) void {
         const str = self.valueToTempString(val);
         _ = writer.write(str) catch cy.fatal();
+    }
+
+    pub fn setApiError(self: *const VM, str: []const u8) !void {
+        self.compiler.hasApiError = true;
+        self.alloc.free(self.compiler.apiError);
+        self.compiler.apiError = try self.alloc.dupe(u8, str);
     }
 
     pub usingnamespace cy.heap.VmExt;
@@ -4666,7 +4673,7 @@ pub var dummyCyclableHead = DummyCyclableNode{
     .typeId = vmc.GC_MARK_MASK | bt.None,
 };
 
-pub fn defaultPrint(_: *UserVM, _: cy.Str) callconv(.C) void {
+pub fn defaultPrint(_: ?*cc.VM, _: cc.Str) callconv(.C) void {
     // Default print is a nop.
 }
 

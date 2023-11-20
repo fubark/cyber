@@ -4,6 +4,7 @@ const build_options = @import("build_options");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const cc = @import("clib.zig");
 const sema = cy.sema;
 const types = cy.types;
 const bt = types.BuiltinTypes;
@@ -374,7 +375,7 @@ pub const ChunkExt = struct {
 
     pub fn declareHostObjectType(
         c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId,
-        getChildrenFn: ?cy.ObjectGetChildrenFn, finalizerFn: ?cy.ObjectFinalizerFn,
+        getChildrenFn: cc.ObjectGetChildrenFn, finalizerFn: cc.ObjectFinalizerFn,
     ) !*cy.sym.HostObjectType {
         const mod = parent.getMod().?;
         try checkUniqueSym(c, mod, name, declId);

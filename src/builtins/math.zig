@@ -1,20 +1,25 @@
 const std = @import("std");
 const cy = @import("../cyber.zig");
+const cc = @import("../clib.zig");
 const vmc = cy.vmc;
 const Value = cy.Value;
 const bt = cy.types.BuiltinTypes;
 
 pub const Src = @embedFile("math.cy");
-pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo, out: *cy.HostFuncResult) callconv(.C) bool {
-    if (std.mem.eql(u8, funcs[func.idx].@"0", func.name.slice())) {
+pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callconv(.C) bool {
+    const out: *cc.FuncResult = out_;
+    const name = cc.strSlice(func.name);
+    if (std.mem.eql(u8, funcs[func.idx].@"0", name)) {
         out.ptr = @ptrCast(funcs[func.idx].@"1");
         return true;
     }
     return false;
 }
-pub fn varLoader(_: *cy.UserVM, v: cy.HostVarInfo, out: *cy.Value) callconv(.C) bool {
-    if (std.mem.eql(u8, vars[v.idx].@"0", v.name.slice())) {
-        out.* = vars[v.idx].@"1";
+pub fn varLoader(_: ?*cc.VM, v: cc.VarInfo, out_: [*c]cc.Value) callconv(.C) bool {
+    const out: *cc.Value = out_;
+    const name = cc.strSlice(v.name);
+    if (std.mem.eql(u8, vars[v.idx].@"0", name)) {
+        out.* = vars[v.idx].@"1".val;
         return true;
     }
     return false;

@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const cc = @import("clib.zig");
 const rt = cy.rt;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
@@ -44,10 +45,10 @@ pub const VMcompiler = struct {
     errorPayload: cy.NodeId,
 
     /// Determines how modules are loaded.
-    moduleLoader: cy.ModuleLoaderFn,
+    moduleLoader: cc.ModuleLoaderFn,
 
     /// Determines how module uris are resolved.
-    moduleResolver: cy.ModuleResolverFn,
+    moduleResolver: cc.ResolverFn,
 
     /// Compilation units for iteration.
     chunks: std.ArrayListUnmanaged(*cy.Chunk),
@@ -151,8 +152,8 @@ pub const VMcompiler = struct {
 
         for (self.chunks.items) |chunk| {
             log.tracev("Deinit chunk `{s}`", .{chunk.srcUri});
-            if (chunk.destroy) |destroy| {
-                destroy(@ptrCast(self.vm), cy.ApiModule{ .sym = @ptrCast(chunk.sym) });
+            if (chunk.onDestroy) |onDestroy| {
+                onDestroy(@ptrCast(self.vm), cc.ApiModule{ .sym = @ptrCast(chunk.sym) });
             }
             chunk.deinit();
             self.alloc.destroy(chunk);
@@ -441,14 +442,22 @@ fn performChunkCodegen(self: *VMcompiler, chunk: *cy.Chunk) !void {
 
 fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
     // Initialize defaults.
-    var res: cy.ModuleLoaderResult = .{
+    var res: cc.ModuleLoaderResult = .{
         .src = "",
         .srcLen = 0,
+        .funcLoader = null,
+        .varLoader = null,
+        .typeLoader = null,
+        .onTypeLoad = null,
+        .onLoad = null,
+        .onDestroy = null,
+        .onReceipt = null,
     };
 
     self.hasApiError = false;
     log.tracev("Invoke module loader: {s}", .{task.absSpec});
-    if (!self.moduleLoader(@ptrCast(self.vm), cy.Str.initSlice(task.absSpec), &res)) {
+
+    if (!self.moduleLoader.?(@ptrCast(self.vm), cc.initStr(task.absSpec), &res)) {
         const chunk = task.fromChunk;
         if (task.nodeId == cy.NullId) {
             if (self.hasApiError) {
@@ -488,10 +497,10 @@ fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
     newChunk.funcLoader = res.funcLoader;
     newChunk.varLoader = res.varLoader;
     newChunk.typeLoader = res.typeLoader;
-    newChunk.postTypeLoad = res.postTypeLoad;
-    newChunk.postLoad = res.postLoad;
+    newChunk.onTypeLoad = res.onTypeLoad;
+    newChunk.onLoad = res.onLoad;
     newChunk.srcOwned = true;
-    newChunk.destroy = res.destroy;
+    newChunk.onDestroy = res.onDestroy;
 
     try self.chunks.append(self.alloc, newChunk);
     try self.chunkMap.put(self.alloc, task.absSpec, newChunk);
@@ -556,8 +565,8 @@ fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
                 }
             }
 
-            if (chunk.postTypeLoad) |postTypeLoad| {
-                postTypeLoad(@ptrCast(self.vm), cy.ApiModule{ .sym = @ptrCast(chunk.sym) });
+            if (chunk.onTypeLoad) |onTypeLoad| {
+                onTypeLoad(@ptrCast(self.vm), cc.ApiModule{ .sym = @ptrCast(chunk.sym) });
             }
         }
 
@@ -686,8 +695,8 @@ fn declareSymbols(self: *VMcompiler) !void {
             }
         }
 
-        if (chunk.postLoad) |postLoad| {
-            postLoad(@ptrCast(self.vm), cy.ApiModule{ .sym = @ptrCast(chunk.sym) });
+        if (chunk.onLoad) |onLoad| {
+            onLoad(@ptrCast(self.vm), cc.ApiModule{ .sym = @ptrCast(chunk.sym) });
         }
     }
 }
@@ -975,28 +984,40 @@ pub const ValidateConfig = struct {
     enableFileModules: bool = false,
 };
 
-pub fn defaultModuleResolver(_: *cy.UserVM, _: cy.ChunkId, _: cy.Str, spec_: cy.Str, res: *cy.ResolverResult) callconv(.C) bool {
+pub fn defaultModuleResolver(_: ?*cc.VM, _: cy.ChunkId, _: cc.Str, spec_: cc.Str, res_: [*c]cc.ResolverResult) callconv(.C) bool {
+    const res: *cc.ResolverResult = res_;
     res.uri = spec_.buf;
     res.uriLen = spec_.len;
     return true;
 }
 
-pub fn defaultModuleLoader(_: *cy.UserVM, spec: cy.Str, out: *cy.ModuleLoaderResult) callconv(.C) bool {
-    if (std.mem.eql(u8, spec.slice(), "builtins")) {
+pub fn defaultModuleLoader(_: ?*cc.VM, spec: cc.Str, out_: [*c]cc.ModuleLoaderResult) callconv(.C) bool {
+    const out: *cc.ModuleLoaderResult = out_;
+    const name = cc.strSlice(spec);
+    if (std.mem.eql(u8, name, "builtins")) {
         out.* = .{
             .src = cy_mod.Src,
             .srcLen = cy_mod.Src.len,
             .funcLoader = cy_mod.funcLoader,
             .typeLoader = cy_mod.typeLoader,
-            .postLoad = cy_mod.postLoad,
+            .onLoad = cy_mod.onLoad,
+            .onReceipt = null,
+            .varLoader = null,
+            .onTypeLoad = null,
+            .onDestroy = null,
         };
         return true;
-    } else if (std.mem.eql(u8, spec.slice(), "math")) {
+    } else if (std.mem.eql(u8, name, "math")) {
         out.* = .{
             .src = math_mod.Src,
             .srcLen = math_mod.Src.len,
             .funcLoader = math_mod.funcLoader,
             .varLoader = math_mod.varLoader,
+            .typeLoader = null,
+            .onLoad = null,
+            .onReceipt = null,
+            .onTypeLoad = null,
+            .onDestroy = null,
         };
         return true;
     }

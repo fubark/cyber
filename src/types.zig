@@ -1,6 +1,7 @@
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const cc = @import("clib.zig");
 const rt = cy.rt;
 const sema = cy.sema;
 const fmt = @import("fmt.zig");
@@ -22,8 +23,8 @@ pub const Type = struct {
         // Even though this increases the size of other type entries, it might not be worth
         // separating into another table since it would add another indirection.
         hostObject: struct {
-            getChildrenFn: ?cy.ObjectGetChildrenFn,
-            finalizerFn: ?cy.ObjectFinalizerFn,
+            getChildrenFn: cc.ObjectGetChildrenFn,
+            finalizerFn: cc.ObjectFinalizerFn,
         },
     },
 };
@@ -100,7 +101,7 @@ pub const BuiltinTypes = struct {
     pub const Closure: TypeId = vmc.TYPE_CLOSURE;
     pub const Lambda: TypeId = vmc.TYPE_LAMBDA;
     pub const Box: TypeId = vmc.TYPE_BOX;
-    pub const HostFunc: TypeId = vmc.TYPE_NATIVE_FUNC;
+    pub const HostFunc: TypeId = vmc.TYPE_HOST_FUNC;
     pub const TccState: TypeId = vmc.TYPE_TCC_STATE;
 
     /// Used to indicate no type value.

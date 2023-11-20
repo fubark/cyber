@@ -7,6 +7,7 @@ const std = @import("std");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const c = @import("clib.zig");
 const vmc = cy.vmc;
 const rt = cy.rt;
 const fmt = @import("fmt.zig");
@@ -14,6 +15,8 @@ const debug = @import("debug.zig");
 const VM = cy.VM;
 const Value = cy.Value;
 const fs = @import("std/fs.zig");
+const bt = cy.types.BuiltinTypes;
+const log = cy.log.scoped(.api);
 
 /// A simplified VM handle.
 pub const UserVM = struct {
@@ -35,34 +38,27 @@ pub const UserVM = struct {
         return @ptrCast(self);
     }
 
-    pub fn setApiError(self: *const UserVM, str: []const u8) void {
-        const vm = self.constInternal();
-        vm.compiler.hasApiError = true;
-        vm.alloc.free(vm.compiler.apiError);
-        vm.compiler.apiError = vm.alloc.dupe(u8, str) catch cy.fatal();
-    }
-
-    pub fn getPrint(self: *UserVM) cy.PrintFn {
+    pub fn getPrint(self: *UserVM) c.PrintFn {
         return self.internal().print;
     }
 
-    pub fn setPrint(self: *UserVM, print: cy.PrintFn) void {
+    pub fn setPrint(self: *UserVM, print: c.PrintFn) void {
         self.internal().print = print;
     }
 
-    pub fn getModuleLoader(self: *const UserVM) cy.ModuleLoaderFn {
+    pub fn getModuleLoader(self: *const UserVM) c.ModuleLoaderFn {
         return self.constInternal().compiler.moduleLoader;
     }
 
-    pub fn setModuleLoader(self: *const UserVM, loader: cy.ModuleLoaderFn) void {
+    pub fn setModuleLoader(self: *const UserVM, loader: c.ModuleLoaderFn) void {
         self.constInternal().compiler.moduleLoader = loader;
     }
 
-    pub fn getModuleResolver(self: *const UserVM) cy.ModuleResolverFn {
+    pub fn getModuleResolver(self: *const UserVM) c.ResolverFn {
         return self.constInternal().compiler.moduleResolver;
     }
 
-    pub fn setModuleResolver(self: *const UserVM, resolver: cy.ModuleResolverFn) void {
+    pub fn setModuleResolver(self: *const UserVM, resolver: c.ResolverFn) void {
         self.constInternal().compiler.moduleResolver = resolver;
     }
 

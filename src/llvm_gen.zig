@@ -1018,7 +1018,6 @@ const GenBinExprOptions = struct {
     rightId: cy.NodeId,
     debugNodeId: cy.NodeId,
     op: cy.BinaryExprOp,
-    genStrat: cy.GenBinExprStrategy,
 
     /// Whether to use an existing leftv managed by the caller.
     leftv: ?Value = null,

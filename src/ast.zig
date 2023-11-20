@@ -361,18 +361,6 @@ pub const UnaryOp = enum(u8) {
     dummy,
 };
 
-pub const GenUnaryExprStrategy = enum {
-    none,
-    specialized,
-    generic,
-};
-
-pub const GenBinExprStrategy = enum {
-    none,
-    specialized,
-    generic,
-};
-
 test "ast internals." {
     if (builtin.mode == .ReleaseFast) {
         try t.eq(@sizeOf(Node), 28);

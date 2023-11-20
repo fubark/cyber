@@ -3,6 +3,7 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 const builtin = @import("builtin");
 const cy = @import("cyber.zig");
+const cc = @import("clib.zig");
 const fmt = cy.fmt;
 const v = fmt.v;
 const sema = cy.sema;
@@ -139,17 +140,17 @@ pub const Chunk = struct {
     sym: *cy.sym.Chunk,
 
     /// For binding @host func declarations.
-    funcLoader: ?cy.FuncLoaderFn = null,
+    funcLoader: cc.FuncLoaderFn = null,
     /// For binding @host var declarations.
-    varLoader: ?cy.VarLoaderFn = null,
+    varLoader: cc.VarLoaderFn = null,
     /// For binding @host type declarations.
-    typeLoader: ?cy.TypeLoaderFn = null,
+    typeLoader: cc.TypeLoaderFn = null,
     /// Run after type declarations are loaded.
-    postTypeLoad: ?cy.PostLoadModuleFn = null,
+    onTypeLoad: cc.ModuleOnTypeLoadFn = null,
     /// Run after declarations have been loaded.
-    postLoad: ?cy.PostLoadModuleFn = null,
+    onLoad: cc.ModuleOnLoadFn = null,
     /// Run before chunk is destroyed.
-    destroy: ?cy.ModuleDestroyFn = null,
+    onDestroy: cc.ModuleOnDestroyFn = null,
     /// Counter for loading @host funcs.
     curHostFuncIdx: u32,
     /// Counter for loading @host vars.

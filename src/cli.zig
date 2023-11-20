@@ -5,6 +5,7 @@ const bindings = @import("builtins/bindings.zig");
 const os_mod = @import("std/os.zig");
 const test_mod = @import("std/test.zig");
 const cache = @import("cache.zig");
+const cc = @import("clib.zig");
 const bt = cy.types.BuiltinTypes;
 const v = cy.fmt.v;
 const log = cy.log.scoped(.cli);
@@ -14,21 +15,28 @@ const builtins = std.ComptimeStringMap(void, .{
     .{"math"},
 });
 
-const stdMods = std.ComptimeStringMap(cy.ModuleLoaderResult, .{
-    .{"os", cy.ModuleLoaderResult{
+const stdMods = std.ComptimeStringMap(cc.ModuleLoaderResult, .{
+    .{"os", cc.ModuleLoaderResult{
         .src = os_mod.Src,
         .srcLen = os_mod.Src.len,
         .varLoader = os_mod.varLoader,
         .funcLoader = os_mod.funcLoader,
         .typeLoader = os_mod.typeLoader,
-        .postTypeLoad = os_mod.postTypeLoad,
-        .postLoad = os_mod.postLoad,
+        .onTypeLoad = os_mod.onTypeLoad,
+        .onLoad = os_mod.onLoad,
+        .onReceipt = null,
+        .onDestroy = null,
     }},
-    .{"test", cy.ModuleLoaderResult{
+    .{"test", cc.ModuleLoaderResult{
         .src = test_mod.Src,
         .srcLen = test_mod.Src.len,
         .funcLoader = test_mod.funcLoader,
-        .postLoad = test_mod.postLoad,
+        .onLoad = test_mod.onLoad,
+        .onReceipt = null,
+        .varLoader = null,
+        .typeLoader = null,
+        .onDestroy = null,
+        .onTypeLoad = null,
     }},
 });
 
@@ -38,21 +46,24 @@ pub fn setupVMForCLI(vm: *cy.UserVM) void {
     vm.setPrint(print);
 }
 
-fn print(_: *cy.UserVM, str: cy.Str) callconv(.C) void {
+fn print(_: ?*cc.VM, str: cc.Str) callconv(.C) void {
     if (cy.isWasmFreestanding) {
         os_mod.hostFileWrite(1, str.buf, str.len);
         os_mod.hostFileWrite(1, "\n", 1);
     } else {
         const w = std.io.getStdOut().writer();
-        w.writeAll(str.slice()) catch cy.fatal();
+        const slice = cc.strSlice(str);
+        w.writeAll(slice) catch cy.fatal();
         w.writeByte('\n') catch cy.fatal();
     }
 }
 
-pub fn loader(uvm: *cy.UserVM, spec_: cy.Str, out: *cy.ModuleLoaderResult) callconv(.C) bool {
-    const spec = spec_.slice();
+pub fn loader(vm_: ?*cc.VM, spec_: cc.Str, out_: [*c]cc.ModuleLoaderResult) callconv(.C) bool {
+    const vm: *cy.VM = @ptrCast(@alignCast(vm_));
+    const out: *cc.ModuleLoaderResult = out_;
+    const spec = cc.strSlice(spec_);
     if (builtins.get(spec) != null) {
-        return cy.vm_compiler.defaultModuleLoader(uvm, spec_, out);
+        return cy.vm_compiler.defaultModuleLoader(vm_, spec_, out);
     }
     if (stdMods.get(spec)) |res| {
         out.* = res;
@@ -63,18 +74,16 @@ pub fn loader(uvm: *cy.UserVM, spec_: cy.Str, out: *cy.ModuleLoaderResult) callc
         return false;
     }
 
-    const vm = uvm.internal();
-
     // Load from file or http.
     var src: []const u8 = undefined;
     if (std.mem.startsWith(u8, spec, "http://") or std.mem.startsWith(u8, spec, "https://")) {
-        src = loadUrl(uvm, spec) catch |err| {
+        src = loadUrl(@ptrCast(vm), spec) catch |err| {
             if (err == error.HandledError) {
                 return false;
             } else {
                 const msg = cy.fmt.allocFormat(vm.alloc, "Can not load `{}`. {}", &.{v(spec), v(err)}) catch return false;
                 defer vm.alloc.free(msg);
-                uvm.setApiError(msg);
+                vm.setApiError(msg) catch cy.fatal();
                 return false;
             }
         };
@@ -82,26 +91,27 @@ pub fn loader(uvm: *cy.UserVM, spec_: cy.Str, out: *cy.ModuleLoaderResult) callc
         src = std.fs.cwd().readFileAlloc(vm.alloc, spec, 1e10) catch |err| {
             const msg = cy.fmt.allocFormat(vm.alloc, "Can not load `{}`. {}", &.{v(spec), v(err)}) catch return false;
             defer vm.alloc.free(msg);
-            uvm.setApiError(msg);
+            vm.setApiError(msg) catch cy.fatal();
             return false;
         };
     }
 
-    out.* = .{
-        .src = src.ptr,
-        .srcLen = src.len,
-        .onReceipt = onModuleReceipt,
-    };
+    out.*.src = src.ptr;
+    out.*.srcLen = src.len;
+    out.*.onReceipt = onModuleReceipt;
     return true;
 }
 
-fn onModuleReceipt(uvm: *cy.UserVM, res: *cy.ModuleLoaderResult) callconv(.C) void {
-    const alloc = uvm.allocator();
-    alloc.free(res.src[0..res.srcLen]);
+fn onModuleReceipt(vm_: ?*cc.VM, res_: [*c]cc.ModuleLoaderResult) callconv(.C) void {
+    const vm: *cy.VM = @ptrCast(@alignCast(vm_));
+    const res: *cc.ModuleLoaderResult = res_;
+    vm.alloc.free(res.src[0..res.srcLen]);
 }
 
-fn resolve(uvm: *cy.UserVM, chunkId: cy.ChunkId, curUri: cy.Str, spec_: cy.Str, res: *cy.ResolverResult) callconv(.C) bool {
-    const spec = spec_.slice();
+fn resolve(vm_: ?*cc.VM, chunkId: cy.ChunkId, curUri: cc.Str, spec_: cc.Str, res_: [*c]cc.ResolverResult) callconv(.C) bool {
+    const vm: *cy.VM = @ptrCast(@alignCast(vm_));
+    const res: *cc.ResolverResult = res_;
+    const spec = cc.strSlice(spec_);
     if (builtins.get(spec) != null) {
         res.uri = spec_.buf;
         res.uriLen = spec_.len;
@@ -117,15 +127,13 @@ fn resolve(uvm: *cy.UserVM, chunkId: cy.ChunkId, curUri: cy.Str, spec_: cy.Str, 
         return false;
     }
 
-    const vm = uvm.internal();
-
-    const uri = zResolve(uvm, chunkId, curUri.slice(), spec) catch |err| {
+    const uri = zResolve(@ptrCast(vm), chunkId, cc.strSlice(curUri), spec) catch |err| {
         if (err == error.HandledError) {
             return false;
         } else {
             const msg = cy.fmt.allocFormat(vm.alloc, "Resolve module `{}`, error: `{}`", &.{v(spec), v(err)}) catch return false;
             defer vm.alloc.free(msg);
-            uvm.setApiError(msg);
+            vm.setApiError(msg) catch cy.fatal();
             return false;
         }
     };
@@ -171,7 +179,7 @@ fn zResolve(uvm: *cy.UserVM, chunkId: cy.ChunkId, curUri: []const u8, spec: []co
         if (err == error.FileNotFound) {
             const msg = try cy.fmt.allocFormat(vm.alloc, "Import path does not exist: `{}`", &.{v(path)});
             defer vm.alloc.free(msg);
-            uvm.setApiError(msg);
+            try vm.setApiError(msg);
             return error.HandledError;
         } else {
             return err;
@@ -215,7 +223,7 @@ fn loadUrl(uvm: *cy.UserVM, url: []const u8) ![]const u8 {
         if (err == error.UnknownHostName) {
             const msg = try cy.fmt.allocFormat(vm.alloc, "Can not connect to `{}`.", &.{v(uri.host.?)});
             defer vm.alloc.free(msg);
-            uvm.setApiError(msg);
+            try vm.setApiError(msg);
             return error.HandledError;
         } else {
             return err;
@@ -234,7 +242,7 @@ fn loadUrl(uvm: *cy.UserVM, url: []const u8) ![]const u8 {
             // Stop immediately.
             const err = try cy.fmt.allocFormat(vm.alloc, "Can not load `{}`. Response code: {}", &.{v(url), v(req.response.status)});
             defer vm.alloc.free(err);
-            uvm.setApiError(err);
+            try vm.setApiError(err);
             return error.HandledError;
         },
     }

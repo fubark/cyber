@@ -3,6 +3,7 @@
 /// Heap objects, object allocation and deinitializers.
 
 const cy = @import("cyber.zig");
+const cc = @import("clib.zig");
 const vmc = cy.vmc;
 const rt = cy.rt;
 const bt = cy.types.BuiltinTypes;
@@ -1997,8 +1998,8 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             } else {
                 if (releaseChildren) {
                     if (entry.data.hostObject.getChildrenFn) |getChildren| {
-                        const children = @as(cy.ObjectGetChildrenFn, @ptrCast(@alignCast(getChildren)))(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                        for (children.slice()) |child| {
+                        const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
+                        for (cc.valueSlice(children)) |child| {
                             if (skipCycChildren and child.isGcConfirmedCyc()) {
                                 continue;
                             }
@@ -2008,7 +2009,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                 }
                 if (free) {
                     if (entry.data.hostObject.finalizerFn) |finalizer| {
-                        @as(cy.ObjectFinalizerFn, @ptrCast(@alignCast(finalizer)))(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
+                        finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
                         if (obj.isPoolObject()) {
                             freePoolObject(vm, obj);
                         } else {

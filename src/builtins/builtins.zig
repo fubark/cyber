@@ -3,8 +3,8 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const fatal = cy.fatal;
 const cy = @import("../cyber.zig");
+const cc = @import("../clib.zig");
 const Value = cy.Value;
-const vm_ = @import("../vm.zig");
 const bindings = @import("bindings.zig");
 const Symbol = bindings.Symbol;
 const prepareThrowSymbol = bindings.prepareThrowSymbol;
@@ -17,16 +17,18 @@ const string = @import("string.zig");
 const log = cy.log.scoped(.core);
 
 pub const Src = @embedFile("builtins.cy");
-pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo, out: *cy.HostFuncResult) callconv(.C) bool {
-    if (std.mem.eql(u8, funcs[func.idx].@"0", func.name.slice())) {
+pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callconv(.C) bool {
+    const out: *cc.FuncResult = out_;
+    const name = cc.strSlice(func.name);
+    if (std.mem.eql(u8, funcs[func.idx].@"0", name)) {
         out.ptr = @ptrCast(@alignCast(funcs[func.idx].@"1"));
-        out.type = funcs[func.idx].@"2";
+        out.type = @intFromEnum(funcs[func.idx].@"2");
         return true;
     }
     return false;
 }
 
-const NameFunc = struct { []const u8, ?*const anyopaque, cy.HostFuncType };
+const NameFunc = struct { []const u8, ?*const anyopaque, cc.FuncEnumType };
 const funcs = [_]NameFunc{
     // Utils.
     .{"arrayFill", arrayFill, .standard},
@@ -196,9 +198,11 @@ const types = [_]NameType{
     .{"metatype", bt.MetaType },
 };
 
-pub fn typeLoader(_: *cy.UserVM, info: cy.HostTypeInfo, out: *cy.HostTypeResult) callconv(.C) bool {
-    if (std.mem.eql(u8, types[info.idx].@"0", info.name.slice())) {
-        out.type = .coreObject;
+pub fn typeLoader(_: ?*cc.VM, info: cc.TypeInfo, out_: [*c]cc.TypeResult) callconv(.C) bool {
+    const out: *cc.TypeResult = out_;
+    const name = cc.strSlice(info.name);
+    if (std.mem.eql(u8, types[info.idx].@"0", name)) {
+        out.type = cc.TypeKindCoreObject;
         out.data.coreObject = .{
             .typeId = types[info.idx].@"1",
         };
@@ -207,8 +211,9 @@ pub fn typeLoader(_: *cy.UserVM, info: cy.HostTypeInfo, out: *cy.HostTypeResult)
     return false;
 }
 
-pub fn postLoad(vm: *cy.UserVM, mod: cy.ApiModule) callconv(.C) void {
-    const b = bindings.ModuleBuilder.init(vm.internal().compiler, @ptrCast(mod.sym));
+pub fn onLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
+    const vm: *cy.VM = @ptrCast(@alignCast(vm_));
+    const b = bindings.ModuleBuilder.init(vm.compiler, @ptrCast(@alignCast(mod.sym)));
     if (cy.Trace) {
         b.declareFuncSig("traceRetains", &.{}, bt.Integer, traceRetains) catch cy.fatal();
         b.declareFuncSig("traceReleases", &.{}, bt.Integer, traceRetains) catch cy.fatal();
@@ -316,7 +321,7 @@ pub fn dump(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     const alloc = vm.allocator();
     const res = allocToCyon(vm, alloc, args[0]) catch cy.fatal();
     defer alloc.free(res);
-    vm.internal().print(vm, cy.Str.initSlice(res));
+    vm.internal().print.?(@ptrCast(vm), cc.initStr(res));
     return Value.None;
 }
 
@@ -793,7 +798,7 @@ pub fn performGC(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSec
 
 pub fn print(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const str = vm.valueToTempString(args[0]);
-    vm.internal().print(vm, cy.Str.initSlice(str));
+    vm.internal().print.?(@ptrCast(vm), cc.initStr(str));
     return Value.None;
 }
 
@@ -1130,7 +1135,7 @@ fn arrayCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 }
 
 fn fiberStatus(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const fiber = args[0].asPointer(*vmc.Fiber);
+    const fiber = args[0].castHeapObject(*vmc.Fiber);
 
     if (vm.internal().curFiber == fiber) {
         return Value.initSymbol(@intFromEnum(Symbol.running));

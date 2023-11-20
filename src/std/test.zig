@@ -2,9 +2,9 @@ const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
 const cy = @import("../cyber.zig");
+const cc = @import("../clib.zig");
 const vmc = cy.vmc;
 const Value = cy.Value;
-const vm_ = @import("../vm.zig");
 const fmt = @import("../fmt.zig");
 const bindings = @import("../builtins/bindings.zig");
 const Symbol = bindings.Symbol;
@@ -14,8 +14,10 @@ const v = fmt.v;
 const log = cy.log.scoped(.testmod);
 
 pub const Src = @embedFile("test.cy");
-pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo, out: *cy.HostFuncResult) callconv(.C) bool {
-    if (std.mem.eql(u8, funcs[func.idx].@"0", func.name.slice())) {
+pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callconv(.C) bool {
+    const out: *cc.FuncResult = out_;
+    const name = cc.strSlice(func.name);
+    if (std.mem.eql(u8, funcs[func.idx].@"0", name)) {
         out.ptr = @ptrCast(funcs[func.idx].@"1");
         return true;
     }
@@ -30,8 +32,9 @@ const funcs = [_]NameHostFunc{
     .{"fail", fail},
 };
 
-pub fn postLoad(vm: *cy.UserVM, mod: cy.ApiModule) callconv(.C) void {
-    const b = bindings.ModuleBuilder.init(vm.internal().compiler, @ptrCast(mod.sym));
+pub fn onLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
+    const vm: *cy.VM = @ptrCast(@alignCast(vm_));
+    const b = bindings.ModuleBuilder.init(vm.compiler, @ptrCast(@alignCast(mod.sym)));
     if (builtin.is_test) {
         // Only available for zig test, until `any` local type specifier is implemented.
         b.declareFuncSig("erase", &.{bt.Any}, bt.Dynamic, erase) catch cy.fatal();
@@ -94,8 +97,8 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 }
             },
             .pointer => {
-                const actPtr = act.asPointer(*cy.Pointer).ptr;
-                const expPtr = exp.asPointer(*cy.Pointer).ptr;
+                const actPtr = act.castHeapObject(*cy.Pointer).ptr;
+                const expPtr = exp.castHeapObject(*cy.Pointer).ptr;
                 if (actPtr == expPtr) {
                     return true;
                 } else {

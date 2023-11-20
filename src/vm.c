@@ -374,7 +374,7 @@ static inline ValueResult allocMetaType(VM* vm, uint8_t symType, uint32_t symId)
 static inline ValueResult allocHostFunc(VM* vm, void* func, u32 numParams, u32 rFuncSigId) {
     HeapObjectResult res = zAllocPoolObject(vm);
     res.obj->hostFunc = (HostFunc){
-        .typeId = TYPE_NATIVE_FUNC,
+        .typeId = TYPE_HOST_FUNC,
         .rc = 1,
         .func = func,
         .numParams = numParams,

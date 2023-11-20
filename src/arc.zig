@@ -7,6 +7,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const log = cy.log.scoped(.arc);
 const cy = @import("cyber.zig");
+const cc = @import("clib.zig");
 const vmc = cy.vmc;
 const rt = cy.rt;
 const bt = cy.types.BuiltinTypes;
@@ -17,7 +18,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        log.tracev("release obj: {}, rc={}", .{val.getUserTag(), obj.head.rc});
+        log.tracev("release obj: {s}, rc={}", .{@tagName(val.getUserTag()), obj.head.rc});
         if (cy.Trace) {
             checkDoubleFree(vm, obj);
         }
@@ -80,7 +81,7 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
     if (cy.Trace) {
         checkDoubleFree(vm, obj);
     }
-    log.tracev("release {} rc={}", .{obj.getUserTag(), obj.head.rc});
+    log.tracev("release {s} rc={}", .{@tagName(obj.getUserTag()), obj.head.rc});
     obj.head.rc -= 1;
     if (cy.TrackGlobalRC) {
         vm.refCounts -= 1;
@@ -416,8 +417,8 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
             } else {
                 // Host type.
                 if (entry.sym.cast(.hostObjectType).getChildrenFn) |getChildren| {
-                    const children = @as(cy.ObjectGetChildrenFn, @ptrCast(@alignCast(getChildren)))(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                    for (children.slice()) |child| {
+                    const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
+                    for (cc.valueSlice(children)) |child| {
                         if (child.isCycPointer()) {
                             markValue(vm, child);
                         }

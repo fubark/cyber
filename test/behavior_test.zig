@@ -6,7 +6,6 @@ const fatal = cy.fatal;
 const t = stdx.testing;
 const zeroInit = std.mem.zeroInit;
 
-const vm_ = @import("../src/vm.zig");
 const cy = @import("../src/cyber.zig");
 const bt = cy.types.BuiltinTypes;
 const vmc = cy.vmc;
@@ -570,37 +569,40 @@ test "Custom modules." {
             count_.* += 3;
             return cy.Value.None;
         }
-        fn postLoadMod2(_: *cy.UserVM, mod: c.CsModule) callconv(.C) void {
+        fn postLoadMod2(_: ?*c.VM, mod: c.ApiModule) callconv(.C) void {
             // Test dangling pointer.
             const s1 = allocString("test\x00");
             defer t.alloc.free(s1);
-            c.csDeclareUntypedFunc(mod, s1.ptr, 0, @ptrCast(&test3));
+            c.declareUntypedFunc(mod, s1.ptr, 0, @ptrCast(&test3));
         }
-        fn postLoadMod1(_: *cy.UserVM, mod: c.CsModule) callconv(.C) void {
+        fn postLoadMod1(_: ?*c.VM, mod: c.ApiModule) callconv(.C) void {
             // Test dangling pointer.
             const s1 = allocString("test\x00");
             const s2 = allocString("test2\x00");
             defer t.alloc.free(s1);
             defer t.alloc.free(s2);
 
-            c.csDeclareUntypedFunc(mod, s1.ptr, 0, @ptrCast(&test1));
-            c.csDeclareUntypedFunc(mod, s2.ptr, 0, @ptrCast(&test2));
+            c.declareUntypedFunc(mod, s1.ptr, 0, @ptrCast(&test1));
+            c.declareUntypedFunc(mod, s2.ptr, 0, @ptrCast(&test2));
         }
-        fn loader(vm: *cy.UserVM, spec: cy.Str, out: *c.CsModuleLoaderResult) callconv(.C) bool {
-            if (std.mem.eql(u8, spec.slice(), "builtins")) {
+        fn loader(vm_: ?*c.VM, spec: c.Str, out_: [*c]c.ModuleLoaderResult) callconv(.C) bool {
+            const out: *c.ModuleLoaderResult = out_;
+
+            const name = c.strSlice(spec);
+            if (std.mem.eql(u8, name, "builtins")) {
                 const defaultLoader = cy.vm_compiler.defaultModuleLoader;
-                return defaultLoader(vm, spec, @ptrCast(out));
+                return defaultLoader(vm_, spec, @ptrCast(out));
             }
-            if (std.mem.eql(u8, spec.slice(), "mod1")) {
-                out.* = zeroInit(c.CsModuleLoaderResult, .{
+            if (std.mem.eql(u8, name, "mod1")) {
+                out.* = zeroInit(c.ModuleLoaderResult, .{
                     .src = "",
-                    .onLoad = @as(c.CsModuleOnLoadFn, @ptrCast(&postLoadMod1)),
+                    .onLoad = &postLoadMod1,
                 });
                 return true;
-            } else if (std.mem.eql(u8, spec.slice(), "mod2")) {
-                out.* = zeroInit(c.CsModuleLoaderResult, .{
+            } else if (std.mem.eql(u8, name, "mod2")) {
+                out.* = zeroInit(c.ModuleLoaderResult, .{
                     .src = "",
-                    .onLoad = @as(c.CsModuleOnLoadFn, @ptrCast(&postLoadMod2)),
+                    .onLoad = &postLoadMod2,
                 });
                 return true;
             }
@@ -646,17 +648,20 @@ test "Multiple evals persisting state." {
 
     run.vm.setModuleResolver(cy.vm_compiler.defaultModuleResolver);
     run.vm.setModuleLoader(struct {
-        fn postLoad(vm: *cy.UserVM, mod: cy.ApiModule) callconv(.C) void {
-            const g = cy.ptrAlignCast(*cy.Value, vm.getUserData()).*;
-            const chunk = mod.sym.getMod().?.chunk;
-            _ = chunk.declareHostVar(mod.sym, "g", cy.NullId, bt.Dynamic, g) catch fatal();
+        fn onLoad(vm_: ?*c.VM, mod: c.ApiModule) callconv(.C) void {
+            const vm: *cy.VM = @ptrCast(@alignCast(vm_));
+            const sym: *cy.Sym = @ptrCast(@alignCast(mod.sym));
+            const g = cy.ptrAlignCast(*cy.Value, vm.userData).*;
+            const chunk = sym.getMod().?.chunk;
+            _ = chunk.declareHostVar(sym, "g", cy.NullId, bt.Dynamic, g) catch fatal();
         }
-        fn loader(vm: *cy.UserVM, spec: cy.Str, out: *cy.ModuleLoaderResult) callconv(.C) bool {
-            if (std.mem.eql(u8, spec.slice(), "mod")) {
-                out.* = .{
+        fn loader(vm: ?*c.VM, spec: c.Str, out_: [*c]c.ModuleLoaderResult) callconv(.C) bool {
+            const out: *c.ModuleLoaderResult = out_;
+            if (std.mem.eql(u8, c.strSlice(spec), "mod")) {
+                out.* = zeroInit(c.ModuleLoaderResult, .{
                     .src = "",
-                    .postLoad = postLoad,
-                };
+                    .onLoad = onLoad,
+                });
                 return true;
             } else {
                 return cy.cli.loader(vm, spec, out);

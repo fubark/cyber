@@ -47,7 +47,7 @@ typedef enum {
     CS_TYPE_ARRAY,
     CS_TYPE_FIBER,
     CS_TYPE_BOX,
-    CS_TYPE_NATIVEFUNC1,
+    CS_TYPE_HOSTFUNC,
     CS_TYPE_TCCSTATE,
     CS_TYPE_POINTER,
     CS_TYPE_METATYPE,
@@ -82,7 +82,7 @@ typedef void (*CsInlineFuncFn)(CsVM* vm, uint8_t* pc, const CsValue* args, uint8
 
 // This callback is invoked after receiving the resolver result.
 // If `res->uri` was allocated, this can be a good time to free the memory.
-typedef bool (*CsResolverOnReceiptFn)(CsVM* vm, CsResolverResult* res);
+typedef void (*CsResolverOnReceiptFn)(CsVM* vm, CsResolverResult* res);
 
 typedef struct CsResolverResult {
     // Resolved uri.
@@ -110,12 +110,12 @@ typedef void (*CsModuleOnLoadFn)(CsVM* vm, CsModule mod);
 
 // Callback invoked just before the module is destroyed.
 // This could be used to cleanup (eg. release) injected symbols from `CsPostLoadModuleFn`,
-typedef void (*CsModuleOnDestroyFn)(CsVM* vm, uint32_t modId);
+typedef void (*CsModuleOnDestroyFn)(CsVM* vm, CsModule mod);
 
 // Info about a @host func.
 typedef struct CsFuncInfo {
     // The module it belongs to.
-    uint32_t modId;
+    CsModule mod;
     // The name of the func.
     CsStr name;
     // The function's signature.
@@ -135,7 +135,7 @@ typedef enum {
 // Result given to Cyber when binding a @host func.
 typedef struct CsFuncResult {
     // Pointer to the binded function. (CsFuncFn/CsInlineFuncFn)
-    void* ptr;
+    const void* ptr;
     // `CsFuncType`. By default, this is `CS_FUNC_STANDARD`.
     uint8_t type;
 } CsFuncResult;
@@ -147,7 +147,7 @@ typedef bool (*CsFuncLoaderFn)(CsVM* vm, CsFuncInfo funcInfo, CsFuncResult* out)
 // Info about a @host var.
 typedef struct CsVarInfo {
     // The module it belongs to.
-    uint32_t modId;
+    CsModule mod;
     // The name of the var.
     CsStr name;
     // A counter that tracks it's current position among all @host vars in the module.
@@ -163,7 +163,7 @@ typedef bool (*CsVarLoaderFn)(CsVM* vm, CsVarInfo funcInfo, CsValue* out);
 // Info about a @host type.
 typedef struct CsTypeInfo {
     // The module it belongs to.
-    uint32_t modId;
+    CsModule mod;
     // The name of the type.
     CsStr name;
     // A counter that tracks it's current position among all @host types in the module.
@@ -222,29 +222,24 @@ typedef bool (*CsTypeLoaderFn)(CsVM* vm, CsTypeInfo typeInfo, CsTypeResult* out)
 
 // This callback is invoked after receiving the module loader's result.
 // If `res->src` was allocated, this can be a good time to free the memory.
-typedef bool (*CsModuleOnReceiptFn)(CsVM* vm, CsModuleLoaderResult* res);
+typedef void (*CsModuleOnReceiptFn)(CsVM* vm, CsModuleLoaderResult* res);
 
 // Module loader config.
 typedef struct CsModuleLoaderResult {
     // The Cyber source code for the module.
     const char* src;
+
     // If `src` is not null terminated, `srcLen` needs to be set.
     // Defaults to 0 which indicates that `src` is null terminated.
     size_t srcLen;
-    // Pointer to callback or null.
-    CsFuncLoaderFn funcLoader;
-    // Pointer to callback or null.
-    CsVarLoaderFn varLoader;
-    // Pointer to callback or null.
-    CsTypeLoaderFn typeLoader;
-    // Pointer to callback or null.
-    CsModuleOnTypeLoadFn onTypeLoad;
-    // Pointer to callback or null.
-    CsModuleOnLoadFn onLoad;
-    // Pointer to callback or null.
-    CsModuleOnDestroyFn onDestroy;
-    // Pointer to callback or null.
-    CsModuleOnReceiptFn onReceipt;
+
+    CsModuleOnReceiptFn onReceipt;   // Pointer to callback or null.
+    CsFuncLoaderFn funcLoader;       // Pointer to callback or null.
+    CsVarLoaderFn varLoader;         // Pointer to callback or null.
+    CsTypeLoaderFn typeLoader;       // Pointer to callback or null.
+    CsModuleOnTypeLoadFn onTypeLoad; // Pointer to callback or null.
+    CsModuleOnLoadFn onLoad;         // Pointer to callback or null.
+    CsModuleOnDestroyFn onDestroy;   // Pointer to callback or null.
 } CsModuleLoaderResult;
 
 // Given the resolved import specifier of the module, set the module's src in `res->src`,

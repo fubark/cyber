@@ -315,7 +315,7 @@ enum {
     TYPE_ARRAY = 17,
     TYPE_FIBER = 18,
     TYPE_BOX = 19,
-    TYPE_NATIVE_FUNC = 20,
+    TYPE_HOST_FUNC = 20,
     TYPE_TCC_STATE = 21,
     TYPE_POINTER = 22,
     TYPE_METATYPE = 23,

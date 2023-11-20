@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const cy = @import("cyber.zig");
+const cc = @import("clib.zig");
 const vmc = cy.vmc;
 const bt = cy.types.BuiltinTypes;
 const stdx = @import("stdx");
@@ -329,8 +330,8 @@ pub const HostObjectType = extern struct {
     head: Sym,
     type: cy.TypeId,
     declId: cy.NodeId,
-    getChildrenFn: ?cy.ObjectGetChildrenFn,
-    finalizerFn: ?cy.ObjectFinalizerFn,
+    getChildrenFn: cc.ObjectGetChildrenFn,
+    finalizerFn: cc.ObjectFinalizerFn,
     mod: vmc.Module,
 };
 

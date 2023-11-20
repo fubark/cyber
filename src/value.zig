@@ -296,7 +296,7 @@ pub const Value = packed union {
         return false;
     }
 
-    pub inline fn asHostObject(self: *const Value, comptime T: type) T {
+    pub inline fn castHostObject(self: *const Value, comptime T: type) T {
         return @ptrFromInt(@as(usize, @intCast(self.val & ~vmc.POINTER_MASK)) + 8);
     }
 
@@ -304,7 +304,7 @@ pub const Value = packed union {
         return @ptrFromInt(@as(usize, @intCast(self.val & ~vmc.POINTER_MASK)));
     }
 
-    pub inline fn asPointer(self: *const Value, comptime Ptr: type) Ptr {
+    pub inline fn castHeapObject(self: *const Value, comptime Ptr: type) Ptr {
         return @ptrFromInt(@as(usize, @intCast(self.val & ~vmc.POINTER_MASK)));
     }
 

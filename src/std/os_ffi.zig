@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const tcc = @import("tcc");
 const cy = @import("../cyber.zig");
+const cc = @import("../clib.zig");
 const rt = cy.rt;
 const Value = cy.Value;
 const bindings = @import("../builtins/bindings.zig");

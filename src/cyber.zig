@@ -8,7 +8,6 @@ pub const NodeType = ast.NodeType;
 pub const NodeId = ast.NodeId;
 pub const BinaryExprOp = ast.BinaryExprOp;
 pub const UnaryOp = ast.UnaryOp;
-pub const GenBinExprStrategy = ast.GenBinExprStrategy;
 
 pub const parser = @import("parser.zig");
 pub const Parser = parser.Parser;
@@ -186,106 +185,6 @@ pub fn Nullable(comptime T: type) type {
 pub const InlineFuncFn = *const fn (*UserVM, pc: [*]Inst, [*]const Value, u8) void;
 pub const ZHostFuncFn = *const fn (*UserVM, [*]const Value, u8) Value;
 pub const ZHostFuncCFn = *const fn (*UserVM, [*]const Value, u8) callconv(.C) Value;
-
-/// Overlap with `include/cyber.h` for Cyber types.
-pub const Str = extern struct {
-    buf: [*]const u8,
-    len: usize,
-
-    pub fn initSlice(s: []const u8) Str {
-        return .{
-            .buf = s.ptr,
-            .len = s.len,
-        };
-    }
-
-    pub fn slice(self: Str) []const u8 {
-        return self.buf[0..self.len];
-    }
-};
-pub const PostTypeLoadModuleFn = *const fn (*UserVM, mod: ApiModule) callconv(.C) void;
-pub const PostLoadModuleFn = *const fn (*UserVM, mod: ApiModule) callconv(.C) void;
-pub const ModuleDestroyFn = *const fn (*UserVM, mod: ApiModule) callconv(.C) void;
-
-pub const ResolverOnReceiptFn = *const fn (*UserVM, res: *ResolverResult) callconv(.C) void;
-pub const ResolverResult = struct {
-    uri: [*]const u8,
-    uriLen: usize = 0,
-    onReceipt: ?ResolverOnReceiptFn = null,
-};
-pub const ModuleResolverFn = *const fn (*UserVM, ChunkId, curUri: Str, spec: Str, res: *ResolverResult) callconv(.C) bool;
-
-pub const ModuleOnReceiptFn = *const fn (*UserVM, res: *ModuleLoaderResult) callconv(.C) void;
-pub const ModuleLoaderResult = extern struct {
-    src: [*]const u8,
-    srcLen: usize = 0,
-    funcLoader: ?FuncLoaderFn = null,
-    varLoader: ?VarLoaderFn = null,
-    typeLoader: ?TypeLoaderFn = null,
-    postTypeLoad: ?PostTypeLoadModuleFn = null,
-    postLoad: ?PostLoadModuleFn = null,
-    destroy: ?ModuleDestroyFn = null,
-    onReceipt: ?ModuleOnReceiptFn = null,
-};
-pub const ModuleLoaderFn = *const fn (*UserVM, Str, out: *ModuleLoaderResult) callconv(.C) bool;
-pub const HostFuncInfo = extern struct {
-    mod: ApiModule,
-    name: Str,
-    funcSigId: vmc.FuncSigId,
-    idx: u32,
-};
-pub const HostFuncType = enum(u8) {
-    standard,
-    inlinec,
-};
-pub const HostFuncResult = extern struct {
-    ptr: vmc.HostFuncFn,
-    type: HostFuncType,
-};
-pub const FuncLoaderFn = *const fn (*UserVM, HostFuncInfo, *HostFuncResult) callconv(.C) bool;
-pub const HostVarInfo = extern struct {
-    mod: ApiModule,
-    name: Str,
-    idx: u32,
-};
-pub const VarLoaderFn = *const fn (*UserVM, HostVarInfo, *Value) callconv(.C) bool; 
-pub const HostTypeType = enum(u8) {
-    object,
-    coreObject,
-};
-pub const ApiModule = extern struct {
-    sym: *Sym,
-};
-pub const HostTypeInfo = extern struct {
-    mod: ApiModule,
-    name: Str,
-    idx: u32,
-};
-pub const HostTypeResult = extern struct {
-    data: extern union {
-        object: extern struct {
-            outTypeId: ?*TypeId,
-            getChildren: ?ObjectGetChildrenFn,
-            finalizer: ?ObjectFinalizerFn,
-        },
-        coreObject: extern struct {
-            typeId: TypeId,
-        },
-    },
-    type: HostTypeType,
-};
-pub const ValueSlice = extern struct {
-    ptr: [*]Value,
-    len: usize,
-
-    pub fn slice(self: *const ValueSlice) []Value {
-        return self.ptr[0..self.len];
-    }
-};
-pub const TypeLoaderFn = *const fn (*UserVM, HostTypeInfo, *HostTypeResult) callconv(.C) bool;
-pub const ObjectGetChildrenFn = *const fn (*UserVM, ?*anyopaque) callconv (.C) ValueSlice;
-pub const ObjectFinalizerFn = *const fn (*UserVM, ?*anyopaque) callconv (.C) void;
-pub const PrintFn = *const fn (*UserVM, str: Str) callconv(.C) void;
 
 pub const cli = @import("cli.zig");
 pub const log = @import("log.zig");

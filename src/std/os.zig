@@ -3,10 +3,10 @@ const stdx = @import("stdx");
 const fatal = cy.fatal;
 const builtin = @import("builtin");
 const cy = @import("../cyber.zig");
+const cc = @import("../clib.zig");
 const vmc = cy.vmc;
 const rt = cy.rt;
 const Value = cy.Value;
-const vm_ = @import("../vm.zig");
 const fmt = @import("../fmt.zig");
 const bindings = @import("../builtins/bindings.zig");
 const Symbol = bindings.Symbol;
@@ -26,8 +26,10 @@ pub var CArrayT: cy.TypeId = undefined;
 pub var nextUniqId: u32 = undefined;
 
 pub const Src = @embedFile("os.cy");
-pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo, out: *cy.HostFuncResult) callconv(.C) bool {
-    if (std.mem.eql(u8, funcs[func.idx].@"0", func.name.slice())) {
+pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callconv(.C) bool {
+    const out: *cc.FuncResult = out_;
+    const name = cc.strSlice(func.name);
+    if (std.mem.eql(u8, funcs[func.idx].@"0", name)) {
         out.ptr = @ptrCast(funcs[func.idx].@"1");
         return true;
     }
@@ -98,24 +100,27 @@ const funcs = [_]NameFunc{
 
 const NameValue = struct { []const u8, cy.Value };
 var vars: [7]NameValue = undefined;
-pub fn varLoader(_: *cy.UserVM, v: cy.HostVarInfo, out: *cy.Value) callconv(.C) bool {
-    if (std.mem.eql(u8, vars[v.idx].@"0", v.name.slice())) {
-        out.* = vars[v.idx].@"1";
+pub fn varLoader(_: ?*cc.VM, v: cc.VarInfo, out: [*c]cc.Value) callconv(.C) bool {
+    const name = cc.strSlice(v.name);
+    if (std.mem.eql(u8, vars[v.idx].@"0", name)) {
+        out.* = vars[v.idx].@"1".val;
         return true;
     }
     return false;
 }
 
-const NameType = struct { []const u8, *cy.TypeId, ?cy.ObjectGetChildrenFn, ?cy.ObjectFinalizerFn };
+const NameType = struct { []const u8, *cy.TypeId, cc.ObjectGetChildrenFn, cc.ObjectFinalizerFn };
 const types = [_]NameType{
     .{"File", &fs.FileT, null, fs.fileFinalizer },
     .{"Dir", &fs.DirT, null, fs.dirFinalizer },
     .{"DirIterator", &fs.DirIterT, fs.dirIteratorGetChildren, fs.dirIteratorFinalizer },
 };
 
-pub fn typeLoader(_: *cy.UserVM, info: cy.HostTypeInfo, out: *cy.HostTypeResult) callconv(.C) bool {
-    if (std.mem.eql(u8, types[info.idx].@"0", info.name.slice())) {
-        out.type = .object;
+pub fn typeLoader(_: ?*cc.VM, info: cc.TypeInfo, out_: [*c]cc.TypeResult) callconv(.C) bool {
+    const out: *cc.TypeResult = out_;
+    const name = cc.strSlice(info.name);
+    if (std.mem.eql(u8, types[info.idx].@"0", name)) {
+        out.type = cc.TypeKindObject;
         out.data.object = .{
             .outTypeId = types[info.idx].@"1",
             .getChildren = types[info.idx].@"2",
@@ -126,13 +131,14 @@ pub fn typeLoader(_: *cy.UserVM, info: cy.HostTypeInfo, out: *cy.HostTypeResult)
     return false;
 }
 
-pub fn postTypeLoad(vm: *cy.UserVM, mod: cy.ApiModule) callconv(.C) void {
-    zPostTypeLoad(vm.internal().compiler, mod) catch |err| {
+pub fn onTypeLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
+    const vm: *cy.VM = @ptrCast(@alignCast(vm_));
+    zPostTypeLoad(vm.compiler, mod) catch |err| {
         cy.panicFmt("os module: {}", .{err});
     };
 }
 
-pub fn zPostTypeLoad(c: *cy.VMcompiler, mod: cy.ApiModule) !void {
+pub fn zPostTypeLoad(c: *cy.VMcompiler, mod: cc.ApiModule) !void {
     vars[0] = .{ "Root.cpu", try cy.heap.retainOrAllocPreferString(c.vm, @tagName(builtin.cpu.arch)) };
     if (builtin.cpu.arch.endian() == .Little) {
         vars[1] = .{ "Root.endian", cy.Value.initSymbol(@intFromEnum(Symbol.little)) };
@@ -141,13 +147,13 @@ pub fn zPostTypeLoad(c: *cy.VMcompiler, mod: cy.ApiModule) !void {
     }
     if (cy.hasStdFiles) {
         const stderr = try fs.allocFile(c.vm, std.io.getStdErr().handle);
-        stderr.asHostObject(*fs.File).closeOnFree = false;
+        stderr.castHostObject(*fs.File).closeOnFree = false;
         vars[2] = .{ "Root.stderr", stderr };
         const stdin = try fs.allocFile(c.vm, std.io.getStdIn().handle);
-        stdin.asHostObject(*fs.File).closeOnFree = false;
+        stdin.castHostObject(*fs.File).closeOnFree = false;
         vars[3] = .{ "Root.stdin", stdin };
         const stdout = try fs.allocFile(c.vm, std.io.getStdOut().handle);
-        stdout.asHostObject(*fs.File).closeOnFree = false;
+        stdout.castHostObject(*fs.File).closeOnFree = false;
         vars[4] = .{ "Root.stdout", stdout };
     } else {
         vars[2] = .{ "Root.stderr", Value.None };
@@ -162,21 +168,23 @@ pub fn zPostTypeLoad(c: *cy.VMcompiler, mod: cy.ApiModule) !void {
         vars[6] = .{ "Root.vecBitSize", cy.Value.initI32(0) };
     }
 
-    const chunkMod = mod.sym.getMod().?;
+    const sym: *cy.Sym = @ptrCast(@alignCast(mod.sym));
+    const chunkMod = sym.getMod().?;
     CFuncT = chunkMod.getSym("CFunc").?.cast(.object).type;
     CStructT = chunkMod.getSym("CStruct").?.cast(.object).type;
     CArrayT = chunkMod.getSym("CArray").?.cast(.object).type;
     nextUniqId = 1;
 }
 
-pub fn postLoad(vm: *cy.UserVM, mod: cy.ApiModule) callconv(.C) void {
-    zPostLoad(vm.internal().compiler, mod) catch |err| {
+pub fn onLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
+    const vm: *cy.VM = @ptrCast(@alignCast(vm_));
+    zPostLoad(vm.compiler, mod) catch |err| {
         cy.panicFmt("os module: {}", .{err});
     };
 }
 
-fn zPostLoad(self: *cy.VMcompiler, mod: cy.ApiModule) linksection(cy.InitSection) anyerror!void {
-    const b = bindings.ModuleBuilder.init(self, @ptrCast(mod.sym));
+fn zPostLoad(self: *cy.VMcompiler, mod: cc.ApiModule) linksection(cy.InitSection) anyerror!void {
+    const b = bindings.ModuleBuilder.init(self, @ptrCast(@alignCast(mod.sym)));
     _ = b;
 
     // Free vars since they are managed by the module now.

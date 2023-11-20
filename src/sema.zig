@@ -4,6 +4,7 @@ const build_options = @import("build_options");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const cc = @import("clib.zig");
 const ir = cy.ir;
 const vmc = @import("vm_c.zig");
 const rt = cy.rt;
@@ -784,8 +785,12 @@ pub fn declareTypeAlias(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 pub fn getOrInitModule(self: *cy.Chunk, spec: []const u8, nodeId: cy.NodeId) !*cy.sym.Chunk {
     self.compiler.hasApiError = false;
 
-    var res: cy.ResolverResult = .{ .uri = undefined };
-    if (!self.compiler.moduleResolver(@ptrCast(self.compiler.vm), self.id, cy.Str.initSlice(self.srcUri), cy.Str.initSlice(spec), &res)) {
+    var res: cc.ResolverResult = .{
+        .uri = undefined,
+        .uriLen = 0,
+        .onReceipt = null,
+    };
+    if (!self.compiler.moduleResolver.?(@ptrCast(self.compiler.vm), self.id, cc.initStr(self.srcUri), cc.initStr(spec), @ptrCast(&res))) {
         if (self.compiler.hasApiError) {
             return self.reportError(self.compiler.apiError, &.{});
         } else {
@@ -874,13 +879,13 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.HostObjectTyp
         return c.reportErrorAt("No object type loader set for `{}`.", &.{v(name)}, nodeId);
     };
 
-    const info = cy.HostTypeInfo{
-        .mod = cy.ApiModule{ .sym = @ptrCast(c.sym) },
-        .name = cy.Str.initSlice(name),
+    const info = cc.TypeInfo{
+        .mod = cc.ApiModule{ .sym = @ptrCast(c.sym) },
+        .name = cc.initStr(name),
         .idx = c.curHostTypeIdx,
     };
     c.curHostTypeIdx += 1;
-    var res: cy.HostTypeResult = .{
+    var res: cc.TypeResult = .{
         .data = .{
             .object = .{
                 .outTypeId = null,
@@ -888,14 +893,14 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.HostObjectTyp
                 .finalizer = null,
             },
         },
-        .type = .object,
+        .type = cc.TypeKindObject,
     };
     log.tracev("Invoke type loader for: {s}", .{name});
     if (!typeLoader(@ptrCast(c.compiler.vm), info, &res)) {
         return c.reportErrorAt("@host type `{}` object failed to load.", &.{v(name)}, nodeId);
     }
 
-    switch (res.type) {
+    switch (@as(cc.TypeEnumKind, @enumFromInt(res.type))) {
         .object => {
             const sym = try c.declareHostObjectType(@ptrCast(c.sym), name, nodeId,
                 res.data.object.getChildren, res.data.object.finalizer);
@@ -1072,9 +1077,9 @@ pub fn declareHostFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, isMetho
         decl = try resolveFuncDecl(c, parent, nodeId);
     }
 
-    const info = cy.HostFuncInfo{
-        .mod = cy.ApiModule{ .sym = parent },
-        .name = cy.Str.initSlice(decl.namePath),
+    const info = cc.FuncInfo{
+        .mod = cc.ApiModule{ .sym = parent },
+        .name = cc.initStr(decl.namePath),
         .funcSigId = decl.funcSigId,
         .idx = c.curHostFuncIdx,
     };
@@ -1084,22 +1089,22 @@ pub fn declareHostFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, isMetho
     };
 
     log.tracev("Invoke func loader for: {s}", .{decl.name});
-    var res: cy.HostFuncResult = .{
+    var res: cc.FuncResult = .{
         .ptr = null,
-        .type = .standard,
+        .type = cc.FuncTypeStandard,
     };
-    if (!funcLoader(@ptrCast(c.compiler.vm), info, &res)) {
+    if (!funcLoader(@ptrCast(c.compiler.vm), info, @ptrCast(&res))) {
         return c.reportErrorAt("Host func `{}` failed to load.", &.{v(decl.name)}, nodeId);
     }
 
-    if (res.type == .standard) {
-        return try c.declareHostFunc(decl.parent, decl.name, decl.funcSigId, nodeId, @ptrCast(res.ptr), isMethod);
-    } else if (res.type == .inlinec) {
+    if (res.type == cc.FuncTypeStandard) {
+        return try c.declareHostFunc(decl.parent, decl.name, decl.funcSigId, nodeId, @ptrCast(@alignCast(res.ptr)), isMethod);
+    } else if (res.type == cc.FuncTypeInline) {
         // const funcSig = c.compiler.sema.getFuncSig(func.funcSigId);
         // if (funcSig.reqCallTypeCheck) {
         //     return c.reportErrorAt("Failed to load: {}, Only untyped quicken func is supported.", &.{v(name)}, nodeId);
         // }
-        return try c.declareHostInlineFunc(decl.parent, decl.name, decl.funcSigId, nodeId, @ptrCast(res.ptr), isMethod);
+        return try c.declareHostInlineFunc(decl.parent, decl.name, decl.funcSigId, nodeId, @ptrCast(@alignCast(res.ptr)), isMethod);
     } else {
         return error.Unexpected;
     }
@@ -1151,9 +1156,9 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
     const varSpec = c.nodes[node.head.staticDecl.varSpec];
     const decl = try resolveLocalDeclNamePath(c, varSpec.head.varSpec.name);
 
-    const info = cy.HostVarInfo{
-        .mod = cy.ApiModule{ .sym = @ptrCast(c.sym) },
-        .name = cy.Str.initSlice(decl.namePath),
+    const info = cc.VarInfo{
+        .mod = cc.ApiModule{ .sym = @ptrCast(c.sym) },
+        .name = cc.initStr(decl.namePath),
         .idx = c.curHostVarIdx,
     };
     c.curHostVarIdx += 1;
@@ -1162,7 +1167,7 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
     };
     log.tracev("Invoke var loader for: {s}", .{decl.namePath});
     var out: cy.Value = cy.Value.None;
-    if (!varLoader(@ptrCast(c.compiler.vm), info, &out)) {
+    if (!varLoader(@ptrCast(c.compiler.vm), info, @ptrCast(&out))) {
         return c.reportErrorAt("Host var `{}` failed to load.", &.{v(decl.namePath)}, nodeId);
     }
     // var type.

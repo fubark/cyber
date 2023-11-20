@@ -187,6 +187,11 @@ type DirIterator object:
 @host
 type FFI object:
 
+    --| Creates an `ExternFunc` that contains a C function pointer with the given signature.
+    --| The extern function is a wrapper that calls the provided user function.
+    --| Once created, the extern function is retained and managed by the FFI context.
+    @host func addCallback(fn any, params List, ret symbol) pointer
+
     --| Calls `bindLib(path, [:])`. 
     @host func bindLib(path any) any
 

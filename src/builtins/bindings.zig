@@ -35,6 +35,7 @@ pub const Symbol = enum {
     double,
     charPtr,
     voidPtr,
+    funcPtr,
     void,
 
     little,
@@ -122,6 +123,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureSymbol(self, "double", .double);
     try ensureSymbol(self, "charPtr", .charPtr);
     try ensureSymbol(self, "voidPtr", .voidPtr);
+    try ensureSymbol(self, "funcPtr", .funcPtr);
     try ensureSymbol(self, "void", .void);
 
     try ensureSymbol(self, "little", .little);

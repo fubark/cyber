@@ -140,27 +140,18 @@ a {
     font-family: var(--mono-font);
 }
 
+div.api-entry {
+    border-left: 0.15rem solid var(--gray-200);
+    margin-top: 30px;
+}
+
 div.api-header {
-    margin-top: 45px;
+    padding: 0 0 0 10px;
 }
 
 div.api-desc {
-    padding: 0 0 0 15px;
-    border-left: 0.15rem solid var(--gray-200);
+    padding: 5px 0 0 15px;
     color: #bbbbbb;
-    margin-top: 13px;
-}
-
-.markdown pre.inline {
-    display: inline;
-    padding: 0px;
-    background: none;
-}
-
-.markdown pre.inline code {
-    display: inline;
-    font-size: 18px;
-    background: none;
 }
 
 pre {

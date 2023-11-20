@@ -520,6 +520,12 @@ static void panicCastFail(VM* vm, TypeId actTypeId, TypeId expTypeId) {
         return code; \
     } while (false)
 
+#define SAVE_STATE(code) \
+    do { \
+        vm->curPc = pc; \
+        vm->curStack = stack; \
+    } while (false)
+
 #define INTEGER_UNOP(...) \
     Value val = stack[pc[1]]; \
     if (VALUE_IS_INTEGER(val)) { \
@@ -1094,15 +1100,14 @@ beginSwitch:
         NEXT();
     }
     CASE(CallObjNativeFuncIC): {
-        uint8_t ret = pc[1];
-        uint8_t numArgs = pc[2];
+        u8 ret = pc[1];
+        u8 numArgs = pc[2];
         Value recv = stack[ret + CALL_ARG_START];
         TypeId typeId = getTypeId(recv);
 
         TypeId cachedTypeId = READ_U16(14);
         if (typeId == cachedTypeId) {
-            // const newFramePtr = framePtr + ret;
-            vm->curStack = stack;
+            SAVE_STATE();
             HostFuncFn fn = (HostFuncFn)READ_U48(8);
             Value res = fn(vm, stack + ret + CALL_ARG_START, numArgs);
             if (res == VALUE_INTERRUPT) {
@@ -1177,10 +1182,10 @@ beginSwitch:
         NEXT();
     }
     CASE(CallSym): {
-        u8 startLocal = pc[1];
+        u8 ret = pc[1];
         u8 numArgs = pc[2];
         u16 symId = READ_U16(4);
-        PcSpResult res = zCallSym(vm, pc, stack, symId, startLocal, numArgs);
+        PcSpResult res = zCallSym(vm, pc, stack, symId, ret, numArgs);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
@@ -1189,14 +1194,14 @@ beginSwitch:
         NEXT();
     }
     CASE(CallFuncIC): {
-        uint8_t startLocal = pc[1];
-        uint8_t numLocals = pc[4];
-        if (stack + startLocal + numLocals >= vm->stackEndPtr) {
+        u8 ret = pc[1];
+        u8 numLocals = pc[4];
+        if (stack + ret + numLocals >= vm->stackEndPtr) {
             RETURN(RES_CODE_STACK_OVERFLOW);
         }
 
         Value retFramePtr = (uintptr_t)stack;
-        stack += startLocal;
+        stack += ret;
         stack[1] = VALUE_RETINFO(false, CALL_SYM_INST_LEN);
         stack[2] = (uintptr_t)(pc + CALL_SYM_INST_LEN);
         stack[3] = retFramePtr;
@@ -1204,11 +1209,11 @@ beginSwitch:
         NEXT();
     }
     CASE(CallNativeFuncIC): {
-        uint8_t ret = pc[1];
-        uint8_t numArgs = pc[2];
+        u8 ret = pc[1];
+        u8 numArgs = pc[2];
 
-        Value* newStack = stack + startLocal;
-        vm->curStack = newStack;
+        SAVE_STATE();
+        Value* newStack = stack + ret;
         HostFuncFn fn = (HostFuncFn)READ_U48(6);
         Value res = fn(vm, newStack + CALL_ARG_START, numArgs);
         if (res == VALUE_INTERRUPT) {

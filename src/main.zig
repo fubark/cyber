@@ -56,11 +56,15 @@ pub fn main() !void {
                     std.debug.print("Missing pc arg.\n", .{});
                     exit(1);
                 }
-            }
-            if (cy.Trace) {
-                if (std.mem.eql(u8, arg, "-stats")) {
-                    dumpStats = true;
+            } else {
+                if (cy.Trace) {
+                    if (std.mem.eql(u8, arg, "-stats")) {
+                        dumpStats = true;
+                        continue;
+                    }
                 }
+                std.debug.print("Unrecognized option: {s}\n", .{arg});
+                exit(1);
             }
         } else {
             if (cmd == .none) {

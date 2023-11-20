@@ -347,33 +347,6 @@ pub const UserVM = struct {
         const vm: *const VM = @ptrCast(self);
         return @intCast(cy.fiber.getStackOffset(vm.stack.ptr, args + nargs));
     }
-
-    pub fn callFunc(self: *UserVM, framePtr: u32, func: Value, args: []const Value) !Value {
-        const vm = self.internal();
-
-        try cy.fiber.ensureTotalStackCapacity(vm, framePtr + args.len + 1 + 4);
-        vm.framePtr = vm.stack.ptr + framePtr;
-
-        self.retain(func);
-        vm.framePtr[4 + args.len] = func;
-        for (args, 0..) |arg, i| {
-            self.retain(arg);
-            vm.framePtr[4 + i] = arg;
-        }
-        defer {
-            self.release(func);
-            for (args) |arg| {
-                self.release(arg);
-            }
-        }
-
-        const retInfo = cy.vm.buildReturnInfo(1, false, 0);
-        try cy.vm.callNoInline(vm, &vm.pc, &vm.framePtr, func, 0, @intCast(args.len), retInfo);
-        try @call(.never_inline, cy.vm.evalLoopGrowStack, .{vm});
-
-        const res = vm.framePtr[0];
-        return res;
-    }
 };
 
 test "api internals." {

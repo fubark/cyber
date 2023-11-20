@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const tcc = @import("tcc");
 const cy = @import("../cyber.zig");
-const cc = @import("../clib.zig");
+const c = @import("../clib.zig");
 const rt = cy.rt;
 const Value = cy.Value;
 const builtins = @import("../builtins/builtins.zig");
@@ -52,6 +52,8 @@ pub const FFI = struct {
     carrayMap: std.StringHashMapUnmanaged(u32),
 
     cfuncs: std.ArrayListUnmanaged(CFuncData),
+
+    callbacks: std.ArrayListUnmanaged(Value),
 
     fn toCType(self: *FFI, vm: *cy.VM, spec: Value) !CType {
         if (spec.isObjectType(os.CArrayT)) {
@@ -107,15 +109,23 @@ pub fn allocFFI(vm: *cy.VM) linksection(cy.StdSection) !Value {
         .carrays = .{},
         .carrayMap = .{},
         .cfuncs = .{},
+        .callbacks = .{},
     };
     return Value.initHostNoCycPtr(ffi);
 }
 
-pub fn ffiFinalizer(vm_: ?*cc.VM, obj: ?*anyopaque) callconv(.C) void {
+pub fn ffiGetChildren(_: ?*c.VM, obj: ?*anyopaque) callconv(.C) c.ValueSlice {
+    var ffi: *FFI = @ptrCast(@alignCast(obj));
+    return c.initValueSlice(ffi.callbacks.items);
+}
+
+pub fn ffiFinalizer(vm_: ?*c.VM, obj: ?*anyopaque) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     log.tracev("ffi finalize", .{});
+
     const alloc = vm.alloc;
     var ffi: *FFI = @ptrCast(@alignCast(obj));
+
     for (ffi.cstructs.items) |cstruct| {
         alloc.free(cstruct.fields);
     }
@@ -138,6 +148,8 @@ pub fn ffiFinalizer(vm_: ?*cc.VM, obj: ?*anyopaque) callconv(.C) void {
         alloc.free(func.params);
     }
     ffi.cfuncs.deinit(alloc);
+
+    ffi.callbacks.deinit(alloc);
 }
 
 const CGen = struct {
@@ -1032,6 +1044,18 @@ fn cAllocList(vm: *cy.UserVM, elems: [*]Value, n: u32) callconv(.C) Value {
     return cy.heap.allocList(ivm, elems[0..n]) catch cy.fatal();
 }
 
+fn cyCallFunc(vm: *cy.VM, func: Value, args: [*]const Value, nargs: u8) callconv(.C) Value {
+    return vm.callFunc(func, args[0..nargs]) catch |err| {
+        if (err == error.Panic) {
+            // Fail fast for now.
+            cy.vm.handleInterrupt(vm) catch {
+                cy.debug.printLastUserPanicError(vm) catch cy.fatal();
+            };
+        }
+        return builtins.throwZError(@ptrCast(vm), err, @errorReturnTrace());
+    };
+}
+
 fn cPrintValue(val: u64) void {
     const v: Value = @bitCast(val);
     v.dump();
@@ -1039,4 +1063,127 @@ fn cPrintValue(val: u64) void {
 
 fn breakpoint() callconv(.C) void {
     @breakpoint();
+}
+
+pub fn ffiAddCallback(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
+    if (!cy.hasFFI) return vm.returnPanic("Unsupported.");
+
+    const ivm = vm.internal();
+
+    const ffi = args[0].castHostObject(*FFI);
+    const func = args[1];
+    const params = args[2].asHeapObject().list.items();
+    const ret = try ffi.toCType(ivm, args[3]);
+
+    var csrc: std.ArrayListUnmanaged(u8) = .{};
+    defer csrc.deinit(ivm.alloc);
+    const w = csrc.writer(ivm.alloc);
+
+    const cgen = CGen{ .ffi = ffi };
+    try cgen.genHeaders(w);
+    try cgen.genStructDecls(w);
+    try cgen.genArrayConvDecls(w);
+    try cgen.genStructConvs(w);
+    try cgen.genArrayConvs(w);
+
+    // Emit C func declaration.
+    try writeCType(w, ret);
+    try w.print(" cyExternFunc(", .{});
+    if (params.len > 0) {
+        var ctype = try ffi.toCType(ivm, params[0]);
+        try writeCType(w, ctype);
+        try w.print(" p0", .{});
+
+        if (params.len > 1) {
+            for (params[1..], 1..) |param, i| {
+                try w.print(", ", .{});
+                ctype = try ffi.toCType(ivm, param);
+                try writeCType(w, ctype);
+                try w.print(" p{}", .{i});
+            }
+        }
+    }
+    try w.print(") {{\n", .{});
+
+    try w.print("  UserVM* vm = (UserVM*)0x{X};\n", .{@intFromPtr(vm)});
+    try w.print("  int64_t args[{}];\n", .{params.len});
+    for (params, 0..) |param, i| {
+        var ctype = try ffi.toCType(ivm, param);
+        try w.print("  args[{}] = ", .{i});
+        const cval = try std.fmt.bufPrint(&cy.tempBuf, "p{}", .{i});
+        try writeToCyValue(w, cval, ctype);
+        try w.print(";\n", .{});
+    }
+
+    try w.print("  int64_t res = _cyCallFunc(vm, 0x{X}, &args[0], {});\n", .{
+        func.val,
+        params.len,
+    });
+
+    // Release temp args.
+    for (params, 0..) |_, i| {
+        try w.print("  _cyRelease(vm, args[{}]);\n", .{i});
+    }
+
+    try w.print("  return ", .{});
+    try writeToCValue(w, "res", ret);
+    try w.print(";\n", .{});
+
+    try w.print("}}\n", .{});
+
+    try w.writeByte(0);
+    if (DumpCGen) {
+        log.debug("{s}", .{csrc.items});
+    }
+
+    const state = tcc.tcc_new();
+    // Don't include libtcc1.a.
+    tcc.tcc_set_options(state, "-nostdlib");
+    _ = tcc.tcc_set_output_type(state, tcc.TCC_OUTPUT_MEMORY);
+
+    if (tcc.tcc_compile_string(state, csrc.items.ptr) == -1) {
+        cy.panic("Failed to compile c source.");
+    }
+
+    // const __floatundisf = @extern(*anyopaque, .{ .name = "__floatundisf", .linkage = .Strong });
+    if (builtin.cpu.arch != .aarch64) {
+        _ = tcc.tcc_add_symbol(state, "__fixunsdfdi", __fixunsdfdi);
+        _ = tcc.tcc_add_symbol(state, "__floatundidf", __floatundidf);
+    }
+    // _ = tcc.tcc_add_symbol(state, "__floatundisf", __floatundisf);
+    _ = tcc.tcc_add_symbol(state, "printf", std.c.printf);
+    // _ = tcc.tcc_add_symbol(state, "exit", std.c.exit);
+    // _ = tcc.tcc_add_symbol(state, "breakpoint", breakpoint);
+    _ = tcc.tcc_add_symbol(state, "icyGetPtr", cGetPtr);
+    _ = tcc.tcc_add_symbol(state, "icyAllocCyPointer", cAllocCyPointer);
+    _ = tcc.tcc_add_symbol(state, "icyAllocObject", cAllocObject);
+    _ = tcc.tcc_add_symbol(state, "icyAllocList", cAllocList);
+    _ = tcc.tcc_add_symbol(state, "_cyCallFunc", cyCallFunc);
+    _ = tcc.tcc_add_symbol(state, "_cyRelease", cyRelease);
+    // _ = tcc.tcc_add_symbol(state, "printValue", cPrintValue);
+    if (builtin.cpu.arch == .aarch64) {
+        _ = tcc.tcc_add_symbol(state, "memmove", memmove);
+    }
+
+    if (tcc.tcc_relocate(state, tcc.TCC_RELOCATE_AUTO) < 0) {
+        cy.panic("Failed to relocate compiled code.");
+    }
+
+    const tccState = try cy.heap.allocTccState(ivm, state.?, null);
+
+    const funcPtr = tcc.tcc_get_symbol(state, "cyExternFunc") orelse {
+        cy.panic("Failed to get symbol.");
+    };
+
+    // Extern func consumes tcc state and retains func.
+    vm.retain(func);
+
+    // Create extern func.
+    const res = try cy.heap.allocExternFunc(ivm, func, funcPtr, tccState);
+
+    // ffi manages the extern func. (So it does not get freed).
+    vm.retain(res);
+    try ffi.callbacks.append(ivm.alloc, res);
+
+    return res;
 }

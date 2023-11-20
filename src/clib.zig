@@ -50,6 +50,12 @@ pub const ValueSlice = c.CsValueSlice;
 pub fn valueSlice(self: ValueSlice) []const cy.Value {
     return @ptrCast(self.ptr[0..self.len]);
 }
+pub fn initValueSlice(slice: []const cy.Value) ValueSlice {
+    return .{
+        .ptr = @ptrCast(slice.ptr),
+        .len = slice.len,
+    };
+}
 
 pub const FuncFn = c.CsFuncFn;
 pub const PrintFn = c.CsPrintFn;

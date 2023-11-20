@@ -103,6 +103,7 @@ pub const BuiltinTypes = struct {
     pub const Box: TypeId = vmc.TYPE_BOX;
     pub const HostFunc: TypeId = vmc.TYPE_HOST_FUNC;
     pub const TccState: TypeId = vmc.TYPE_TCC_STATE;
+    pub const ExternFunc: TypeId = vmc.TYPE_EXTERN_FUNC;
 
     /// Used to indicate no type value.
     // pub const Undefined: TypeId = vmc.TYPE_UNDEFINED;

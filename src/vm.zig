@@ -712,6 +712,72 @@ pub const VM = struct {
         }
     }
 
+    fn getNewCallFuncRet(vm: *VM) u8 {
+        const fpOff = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
+        if (fpOff == 0 or cy.fiber.isVmFrame(vm, fpOff)) {
+            // Vm frame. Obtain current stack top from looking at the current inst.
+            switch (vm.pc[0].opcode()) {
+                .callSym,
+                .callNativeFuncIC,
+                .call,
+                .callObjNativeFuncIC,
+                .callObjSym => {
+                    const ret = vm.pc[1];
+                    const numArgs = vm.pc[2];
+                    return ret.val + CallArgStart + numArgs.val;
+                },
+                else => {
+                    cy.panicFmt("TODO: getNewCallFuncFp {}", .{vm.pc[0].opcode()});
+                }
+            }
+        } else {
+            // Host frame.
+            cy.panic("TODO getNewCallFuncFp");
+        }
+    }
+
+    pub fn callFunc(vm: *VM, func: Value, args: []const Value) !Value {
+        const ret = vm.getNewCallFuncRet();
+
+        const fpOff = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
+        const pc = vm.pc;
+
+        // Since the compiler isn't aware of a re-entry call, it can not predetermine the stack size required
+        // for the arguments.
+        try cy.fiber.ensureTotalStackCapacity(vm, fpOff + ret + CallArgStart + args.len);
+        // Should the stack grow, update pointer.
+        vm.framePtr = vm.stack.ptr + fpOff;
+
+        // Create a new frame so that this root callsite can be reported.
+        const retInfo = buildReturnInfoForRoot(false);
+        const retFramePtr = Value{ .retFramePtr = vm.framePtr };
+        vm.framePtr += ret;
+        vm.framePtr[1] = retInfo;
+        // Repurpose return pc for getting info about the call.
+        vm.framePtr[2] = func;
+        vm.framePtr[3] = retFramePtr;
+
+        // Copy callee + args.
+        vm.framePtr[CalleeStart] = func;
+        @memcpy(vm.framePtr[CallArgStart..CallArgStart+args.len], args);
+
+        const callRet: u8 = 0;
+        const pcsp = try call(vm, vm.pc, vm.framePtr, func, callRet, @intCast(args.len), undefined, false);
+        vm.framePtr = pcsp.sp;
+        vm.pc = pcsp.pc;
+
+        // Only user funcs start eval loop.
+        if (!func.isObjectType(bt.HostFunc)) {
+            try @call(.never_inline, evalLoopGrowStack, .{vm});
+        }
+        
+        // Restore pc/sp.
+        vm.pc = pc;
+        vm.framePtr = vm.stack.ptr + fpOff;
+
+        return vm.framePtr[ret];
+    }
+
     pub fn allocLastErrorReport(self: *VM) ![]const u8 {
         if (self.lastError) |err| {
             switch (err) {
@@ -1694,9 +1760,29 @@ pub const SymbolId = u32;
 
 const Root = @This();
 
+/// If successful, execution should continue.
+pub fn handleInterrupt(vm: *VM) !void {
+    if (vm.curFiber.panicType == vmc.PANIC_NATIVE_THROW) {
+        if (try @call(.never_inline, cy.fiber.throw, .{vm, vm.framePtr, vm.pc, Value.initRaw(vm.curFiber.panicPayload) })) |res| {
+            vm.pc = res.pc;
+            vm.framePtr = res.sp;
+            return;
+        } else {
+            vm.curFiber.panicType = vmc.PANIC_UNCAUGHT_ERROR;
+        }
+    }
+    if (try @call(.never_inline, panicCurFiber, .{ vm })) |cont| {
+        vm.pc = cont.pc;
+        vm.framePtr = cont.sp;
+        return;
+    }
+    return error.Panic;
+}
+
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM, assuming pc, framePtr, and virtual registers are already set.
-pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, End}!void {
+pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, Unexpected, End}!void {
+    log.tracev("begin eval loop", .{});
     if (comptime build_options.vmEngine == .zig) {
         while (true) {
             @call(.always_inline, evalLoop, .{vm}) catch |err| {
@@ -1707,17 +1793,8 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
                 } else if (err == error.End) {
                     return;
                 } else if (err == error.Panic) {
-                    if (vm.curFiber.panicType == vmc.PANIC_NATIVE_THROW) {
-                        if (try @call(.never_inline, cy.fiber.throw, .{vm, vm.framePtr, vm.pc, Value.initRaw(vm.curFiber.panicPayload) })) |res| {
-                            vm.pc = res.pc;
-                            vm.framePtr = res.sp;
-                            continue;
-                        } else {
-                            vm.curFiber.panicType = vmc.PANIC_UNCAUGHT_ERROR;
-                        }
-                    }
-                    try @call(.never_inline, debug.buildStackTrace, .{vm});
-                    return error.Panic;
+                    try handleInterrupt(vm);
+                    continue;
                 } else return err;
             };
             return;
@@ -1726,20 +1803,8 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
         while (true) {
             const res = vmc.execBytecode(@ptrCast(vm));
             if (res == vmc.RES_CODE_PANIC) {
-                if (vm.curFiber.panicType == vmc.PANIC_NATIVE_THROW) {
-                    if (try @call(.never_inline, cy.fiber.throw, .{vm, vm.framePtr, vm.pc, Value.initRaw(vm.curFiber.panicPayload) })) |throwRes| {
-                        vm.pc = throwRes.pc;
-                        vm.framePtr = throwRes.sp;
-                        continue;
-                    } else {
-                        vm.curFiber.panicType = vmc.PANIC_UNCAUGHT_ERROR;
-                    }
-                }
-                if (try @call(.never_inline, panicCurFiber, .{ vm })) |cont| {
-                    vm.pc = cont.pc;
-                    vm.framePtr = cont.sp;
-                    continue;
-                } else return error.Panic;
+                try handleInterrupt(vm);
+                continue;
             } else if (res == vmc.RES_CODE_STACK_OVERFLOW) {
                 log.tracev("grow stack", .{});
                 try @call(.never_inline, cy.fiber.growStackAuto, .{vm});
@@ -3383,20 +3448,22 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                     return vm.interruptThrowSymbol(.InvalidSignature);
                 }
 
-                if (@intFromPtr(framePtr + startLocal + obj.closure.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
+                if (@intFromPtr(framePtr + ret + obj.closure.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
-                const retFramePtr = Value{ .retFramePtr = framePtr };
-                framePtr[startLocal + 1] = retInfo;
-                framePtr[startLocal + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
-                framePtr[startLocal + 3] = retFramePtr;
+                if (buildFrame) {
+                    const retFramePtr = Value{ .retFramePtr = framePtr };
+                    framePtr[ret + 1] = retInfo;
+                    framePtr[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
+                    framePtr[ret + 3] = retFramePtr;
+                }
 
                 // Copy closure to local.
-                framePtr[startLocal + obj.closure.local] = callee;
+                framePtr[ret + obj.closure.local] = callee;
                 return cy.fiber.PcSp{
                     .pc = cy.fiber.toVmPc(vm, obj.closure.funcPc),
-                    .sp = framePtr + startLocal,
+                    .sp = framePtr + ret,
                 };
             },
             bt.Lambda => {
@@ -3405,17 +3472,19 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                     return vm.interruptThrowSymbol(.InvalidSignature);
                 }
 
-                if (@intFromPtr(framePtr + startLocal + obj.lambda.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
+                if (@intFromPtr(framePtr + ret + obj.lambda.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
-                const retFramePtr = Value{ .retFramePtr = framePtr };
-                framePtr[startLocal + 1] = retInfo;
-                framePtr[startLocal + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
-                framePtr[startLocal + 3] = retFramePtr;
+                if (buildFrame) {
+                    const retFramePtr = Value{ .retFramePtr = framePtr };
+                    framePtr[ret + 1] = retInfo;
+                    framePtr[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
+                    framePtr[ret + 3] = retFramePtr;
+                }
                 return cy.fiber.PcSp{
                     .pc = cy.fiber.toVmPc(vm, obj.lambda.funcPc),
-                    .sp = framePtr + startLocal,
+                    .sp = framePtr + ret,
                 };
             },
             bt.HostFunc => {
@@ -3425,8 +3494,8 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                 }
 
                 vm.pc = pc;
-                const newFramePtr = framePtr + startLocal;
-                vm.framePtr = newFramePtr;
+                vm.framePtr = framePtr;
+                const newFramePtr = framePtr + ret;
                 const res = obj.nativeFunc1.func.?(@ptrCast(vm), @ptrCast(newFramePtr + CallArgStart), numArgs);
                 newFramePtr[0] = @bitCast(res);
                 return cy.fiber.PcSp{
@@ -3440,60 +3509,6 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
         }
     } else {
         return vm.interruptThrowSymbol(.InvalidArgument);
-    }
-}
-
-pub fn callNoInline(vm: *VM, pc: *[*]cy.Inst, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
-    if (callee.isPointer()) {
-        const obj = callee.asHeapObject();
-        switch (obj.getTypeId()) {
-            bt.Closure => {
-                if (numArgs != obj.closure.numParams) {
-                    cy.panic("params/args mismatch");
-                }
-
-                if (@intFromPtr(framePtr.* + startLocal + obj.closure.stackSize) >= @intFromPtr(vm.stack.ptr) + (vm.stack.len << 3)) {
-                    return error.StackOverflow;
-                }
-
-                pc.* = cy.fiber.toVmPc(vm, obj.closure.funcPc);
-                framePtr.* += startLocal;
-                framePtr.*[1] = retInfo;
-
-                // Copy over captured vars to new call stack locals.
-                const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
-                std.mem.copy(Value, framePtr.*[numArgs + 4 + 1..numArgs + 4 + 1 + obj.closure.numCaptured], src);
-            },
-            bt.Lambda => {
-                if (numArgs != obj.lambda.numParams) {
-                    log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
-                    cy.fatal();
-                }
-
-                if (@intFromPtr(framePtr.* + startLocal + obj.lambda.stackSize) >= @intFromPtr(vm.stack.ptr) + (vm.stack.len << 3)) {
-                    return error.StackOverflow;
-                }
-
-                const retFramePtr = Value{ .retFramePtr = framePtr.* };
-                framePtr.* += startLocal;
-                framePtr.*[1] = retInfo;
-                framePtr.*[2] = Value{ .retPcPtr = pc.* + 14 };
-                framePtr.*[3] = retFramePtr;
-                pc.* = cy.fiber.toVmPc(vm, obj.lambda.funcPc);
-            },
-            bt.HostFunc => {
-                vm.pc = pc.*;
-                const newFramePtr = framePtr.* + startLocal;
-                vm.framePtr = newFramePtr;
-                const res = obj.nativeFunc1.func.?(@ptrCast(vm), @ptrCast(newFramePtr + 4), numArgs);
-                newFramePtr[0] = @bitCast(res);
-                cy.arc.releaseObject(vm, obj);
-                pc.* += 14;
-            },
-            else => {},
-        }
-    } else {
-        cy.panic("not a function");
     }
 }
 
@@ -3722,6 +3737,12 @@ pub inline fn buildReturnInfo(comptime cont: bool, comptime callInstOffset: u8) 
     //         .callInstOffset = callInstOffset,
     //     },
     // };
+}
+
+pub inline fn buildReturnInfoForRoot(comptime cont: bool) Value {
+    return .{
+        .val = 0 | (@as(u32, @intFromBool(!cont)) << 8),
+    };
 }
 
 pub inline fn getInstOffset(vm: *const VM, to: [*]const cy.Inst) u32 {
@@ -4155,6 +4176,7 @@ fn callMethod(
                 }
             }
 
+            vm.pc = pc;
             vm.framePtr = sp;
             const res: Value = @bitCast(data.typedHost.ptr.?(@ptrCast(vm), @ptrCast(sp + ret + CallArgStart), numArgs));
             if (res.isInterrupt()) {

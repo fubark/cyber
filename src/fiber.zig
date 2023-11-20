@@ -202,6 +202,11 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
     vm.alloc.free(stack);
 }
 
+// Determine whether it's a vm or host frame.
+pub fn isVmFrame(vm: *cy.VM, fpOff: u32) bool {
+    return vm.stack[fpOff+1].retInfoCallInstOffset() > 0;
+}
+
 /// Unwind given stack starting at a pc, framePtr and release all locals.
 /// TODO: See if releaseFiberStack can resuse the same code.
 pub fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]const Value, startPc: [*]const cy.Inst) !void {
@@ -210,26 +215,31 @@ pub fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]co
     var fpOffset = getStackOffset(stack.ptr, startFramePtr);
 
     while (true) {
-        const symIdx = cy.debug.indexOfDebugSym(vm, pcOffset) orelse return error.NoDebugSym;
-        const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
-        const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
-        const locals = sym.getLocals();
-        log.debug("release frame: {} {} {}, locals: {}-{}", .{pcOffset, vm.ops[pcOffset].opcode(), tempIdx, locals.start, locals.end});
+        if (fpOffset == 0 or isVmFrame(vm, fpOffset)) {
+            const symIdx = cy.debug.indexOfDebugSym(vm, pcOffset) orelse return error.NoDebugSym;
+            const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
+            const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
+            const locals = sym.getLocals();
+            log.debug("release frame: {} {} {}, locals: {}-{}", .{pcOffset, vm.ops[pcOffset].opcode(), tempIdx, locals.start, locals.end});
 
-        // Release temporaries in the current frame.
-        if (tempIdx != cy.NullId) {
-            cy.arc.runTempReleaseOps(vm, vm.stack.ptr + fpOffset, tempIdx);
-        }
+            // Release temporaries in the current frame.
+            if (tempIdx != cy.NullId) {
+                cy.arc.runTempReleaseOps(vm, vm.stack.ptr + fpOffset, tempIdx);
+            }
 
-        if (locals.len() > 0) {
-            cy.arc.releaseLocals(vm, stack, fpOffset, locals);
-        }
-        if (fpOffset == 0) {
-            // Done, at main block.
-            return;
+            if (locals.len() > 0) {
+                cy.arc.releaseLocals(vm, stack, fpOffset, locals);
+            }
+            if (fpOffset == 0) {
+                // Done, at main block.
+                return;
+            } else {
+                // Unwind.
+                pcOffset = getInstOffset(vm.ops.ptr, stack[fpOffset + 2].retPcPtr) - stack[fpOffset + 1].retInfoCallInstOffset();
+                fpOffset = getStackOffset(stack.ptr, stack[fpOffset + 3].retFramePtr);
+            }
         } else {
             // Unwind.
-            pcOffset = getInstOffset(vm.ops.ptr, stack[fpOffset + 2].retPcPtr) - stack[fpOffset + 1].retInfoCallInstOffset();
             fpOffset = getStackOffset(stack.ptr, stack[fpOffset + 3].retFramePtr);
         }
     }

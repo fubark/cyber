@@ -7,7 +7,7 @@ typedef struct CsVM CsVM;
 
 typedef uint64_t CsValue;
 typedef struct CsValueSlice {
-    CsValue* ptr;
+    const CsValue* ptr;
     size_t len;
 } CsValueSlice;
 

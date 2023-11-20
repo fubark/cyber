@@ -110,8 +110,12 @@ pub const HeapObject = extern union {
     listIter: ListIterator,
     map: Map,
     mapIter: MapIterator,
+
+    // Functions.
     closure: Closure,
     lambda: Lambda,
+    nativeFunc1: NativeFunc1,
+    externFunc: ExternFunc,
 
     // Strings.
     string: String,
@@ -126,7 +130,6 @@ pub const HeapObject = extern union {
 
     object: Object,
     box: Box,
-    nativeFunc1: NativeFunc1,
     tccState: if (cy.hasFFI) TccState else void,
     pointer: Pointer,
     metatype: MetaType,
@@ -292,10 +295,8 @@ pub const Map = extern struct {
         const m = cy.ptrAlignCast(*cy.MapInner, &self.inner);
         const res = try m.getOrPut(vm.alloc, index);
         if (res.foundExisting) {
-            log.tracev("found existing", .{});
             cy.arc.release(vm, res.valuePtr.*);
         } else {
-            log.tracev("no previous", .{});
             // No previous entry, retain key.
             cy.arc.retain(vm, index);
         }
@@ -672,12 +673,21 @@ const TccState = extern struct {
     rc: u32,
     state: *tcc.TCCState,
     lib: *std.DynLib,
+    hasDynLib: bool,
 };
 
 pub const Pointer = extern struct {
     typeId: cy.TypeId align(8),
     rc: u32,
     ptr: ?*anyopaque,
+};
+
+pub const ExternFunc = extern struct {
+    typeId: cy.TypeId align(8),
+    rc: u32,
+    ptr: ?*anyopaque,
+    func: Value,
+    tccState: Value,
 };
 
 /// Initializes the page with freed object slots and returns the pointer to the first slot.
@@ -1585,6 +1595,23 @@ pub fn allocBox(vm: *cy.VM, val: Value) !Value {
     return Value.initCycPtr(obj);
 }
 
+pub fn allocExternFunc(self: *cy.VM, cyFunc: Value, funcPtr: *anyopaque, tccState: Value) !Value {
+    const obj = try allocPoolObject(self);
+    obj.externFunc = .{
+        .typeId = bt.ExternFunc,
+        .rc = 1,
+        .func = cyFunc,
+        .ptr = funcPtr,
+        .tccState = tccState,
+    };
+    const cyclable = cyFunc.isCycPointer();
+    if (cyclable) {
+        return Value.initCycPtr(obj);
+    } else {
+        return Value.initNoCycPtr(obj);
+    }
+}
+
 pub fn allocHostFunc(self: *cy.VM, func: cy.ZHostFuncFn, numParams: u32, funcSigId: cy.sema.FuncSigId, tccState: ?Value) !Value {
     const obj = try allocPoolObject(self);
     obj.nativeFunc1 = .{
@@ -1603,14 +1630,19 @@ pub fn allocHostFunc(self: *cy.VM, func: cy.ZHostFuncFn, numParams: u32, funcSig
     return Value.initNoCycPtr(obj);
 }
 
-pub fn allocTccState(self: *cy.VM, state: *tcc.TCCState, lib: *std.DynLib) linksection(cy.StdSection) !Value {
+pub fn allocTccState(self: *cy.VM, state: *tcc.TCCState, optLib: ?*std.DynLib) linksection(cy.StdSection) !Value {
     const obj = try allocPoolObject(self);
     obj.tccState = .{
         .typeId = bt.TccState,
         .rc = 1,
         .state = state,
-        .lib = lib,
+        .lib = undefined,
+        .hasDynLib = false,
     };
+    if (optLib) |lib| {
+        obj.tccState.lib = lib;
+        obj.tccState.hasDynLib = true;
+    }
     return Value.initNoCycPtr(obj);
 }
 
@@ -1712,7 +1744,8 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             });
         }
     }
-    switch (obj.getTypeId()) {
+    const typeId = obj.getTypeId();
+    switch (typeId) {
         bt.Tuple => {
             if (releaseChildren) {
                 for (obj.tuple.getElemsPtr()[0..obj.tuple.len]) |it| {
@@ -1929,6 +1962,15 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                 freePoolObject(vm, obj);
             }
         },
+        bt.ExternFunc => {
+            if (releaseChildren) {
+                cy.arc.releaseObject(vm, obj.externFunc.tccState.asHeapObject());
+                cy.arc.releaseObject(vm, obj.externFunc.func.asHeapObject());
+            }
+            if (free) {
+                freePoolObject(vm, obj);
+            }
+        },
         bt.HostFunc => {
             if (releaseChildren) {
                 if (obj.nativeFunc1.hasTccState) {
@@ -1943,8 +1985,10 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             if (cy.hasFFI) {
                 if (free) {
                     tcc.tcc_delete(obj.tccState.state);
-                    obj.tccState.lib.close();
-                    vm.alloc.destroy(obj.tccState.lib);
+                    if (obj.tccState.hasDynLib) {
+                        obj.tccState.lib.close();
+                        vm.alloc.destroy(obj.tccState.lib);
+                    }
                     freePoolObject(vm, obj);
                 }
             } else {
@@ -1965,19 +2009,19 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             // Struct deinit.
             if (cy.Trace) {
                 if (cy.verbose) {
-                    log.debug("free {s}", .{vm.getTypeName(obj.getTypeId())});
+                    log.debug("free {s}", .{vm.getTypeName(typeId)});
                 }
 
                 // Check range.
-                if (obj.getTypeId() >= vm.types.len) {
-                    log.debug("unsupported struct type {}", .{obj.getTypeId()});
+                if (typeId >= vm.types.len) {
+                    log.debug("unsupported struct type {}", .{typeId});
                     cy.fatal();
                 }
             }
             // TODO: Determine isHostObject from object to avoid extra read from `rt.Type`
             // TODO: Use a dispatch table for host objects only.
-            const entry = vm.types[obj.getTypeId()];
-            log.tracev("free {}", .{entry.symType});
+            const entry = vm.types[typeId];
+            log.tracev("free {s} {}", .{@tagName(entry.symType), typeId});
             if (entry.symType != .hostObjectType) {
                 const numFields = entry.data.numFields;
                 if (releaseChildren) {
@@ -2122,7 +2166,7 @@ test "heap internals." {
         try t.eq(@sizeOf(NativeFunc1), 40);
         try t.eq(@sizeOf(MetaType), 16);
         if (cy.hasFFI) {
-            try t.eq(@sizeOf(TccState), 24);
+            try t.eq(@sizeOf(TccState), 32);
         }
     }
 

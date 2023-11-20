@@ -11,7 +11,7 @@ const fmt = @import("../fmt.zig");
 const bindings = @import("../builtins/bindings.zig");
 const builtins = @import("../builtins/builtins.zig");
 const throwZError = builtins.throwZError;
-const zThrowsFunc = builtins.zThrowsFunc;
+const zErrFunc = builtins.zErrFunc;
 const Symbol = bindings.Symbol;
 const prepareThrowSymbol = bindings.prepareThrowSymbol;
 const bt = cy.types.BuiltinTypes;
@@ -100,10 +100,11 @@ const funcs = [_]NameFunc{
     .{"next", fs.dirIteratorNext},
 
     // FFI
+    .{"addCallback", zErrFunc(ffi.ffiAddCallback)},
     .{"bindLib", bindLib},
     .{"bindLib", bindLibExt},
-    .{"cbind", zThrowsFunc(ffi.ffiCbind)},
-    .{"cfunc", zThrowsFunc(ffi.ffiCfunc)},
+    .{"cbind", zErrFunc(ffi.ffiCbind)},
+    .{"cfunc", zErrFunc(ffi.ffiCfunc)},
 };
 
 const NameValue = struct { []const u8, cy.Value };
@@ -122,7 +123,7 @@ const types = [_]NameType{
     .{"File", &fs.FileT, null, fs.fileFinalizer },
     .{"Dir", &fs.DirT, null, fs.dirFinalizer },
     .{"DirIterator", &fs.DirIterT, fs.dirIteratorGetChildren, fs.dirIteratorFinalizer },
-    .{"FFI", &ffi.FFIT, null, ffi.ffiFinalizer },
+    .{"FFI", &ffi.FFIT, ffi.ffiGetChildren, ffi.ffiFinalizer },
 };
 
 pub fn typeLoader(_: ?*cc.VM, info: cc.TypeInfo, out_: [*c]cc.TypeResult) callconv(.C) bool {

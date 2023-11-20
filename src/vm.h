@@ -319,10 +319,11 @@ enum {
     TYPE_TCC_STATE = 21,
     TYPE_POINTER = 22,
     TYPE_METATYPE = 23,
+    TYPE_EXTERN_FUNC = 24,
 
     // Builtin abstract types.
-    TYPE_DYNAMIC = 24,
-    TYPE_ANY = 25,
+    TYPE_DYNAMIC = 25,
+    TYPE_ANY = 26,
     // TYPE_UNDEFINED = 17,
 };
 

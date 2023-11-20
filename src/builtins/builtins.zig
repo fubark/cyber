@@ -221,7 +221,7 @@ pub fn onLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
     }
 }
 
-pub fn zThrowsFunc(comptime func: fn (vm: *cy.UserVM, args: [*]const Value, nargs: u8) anyerror!Value) cy.ZHostFuncFn {
+pub fn zErrFunc(comptime func: fn (vm: *cy.UserVM, args: [*]const Value, nargs: u8) anyerror!Value) cy.ZHostFuncFn {
     const S = struct {
         pub fn genFunc(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
             return func(vm, args, nargs) catch |err| {

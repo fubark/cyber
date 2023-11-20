@@ -1451,7 +1451,7 @@ pub const VM = struct {
                 const symType: cy.heap.MetaTypeKind = @enumFromInt(obj.metatype.type);
                 var slice: []const u8 = undefined;
                 if (symType == .object) {
-                    const name = self.compiler.sema.getTypeName(obj.metatype.symId);
+                    const name = self.compiler.sema.getTypeName(obj.metatype.type);
                     std.fmt.format(writer, "type: {s}", .{name}) catch cy.fatal();
                     slice = writer.sliceFrom(start);
                 } else {
@@ -1506,7 +1506,7 @@ fn evalCompareBool(left: Value, right: Value) linksection(cy.HotSection) bool {
             if (right.getTypeId() == bt.MetaType) {
                 const l = left.asHeapObject().metatype;
                 const r = right.asHeapObject().metatype;
-                return l.type == r.type and l.symId == r.symId;
+                return l.typeKind == r.typeKind and l.type == r.type;
             }
         },
         else => {},
@@ -1534,7 +1534,7 @@ fn evalCompare(left: Value, right: Value) linksection(cy.HotSection) Value {
             if (right.getTypeId() == bt.MetaType) {
                 const l = left.asHeapObject().metatype;
                 const r = right.asHeapObject().metatype;
-                return Value.initBool(l.type == r.type and l.symId == r.symId);
+                return Value.initBool(l.typeKind == r.typeKind and l.type == r.type);
             }
         },
         else => {},
@@ -1562,7 +1562,7 @@ fn evalCompareNot(left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy
             if (right.getTypeId() == bt.MetaType) {
                 const l = left.asHeapObject().metatype;
                 const r = right.asHeapObject().metatype;
-                return Value.initBool(l.type != r.type or l.symId != r.symId);
+                return Value.initBool(l.typeKind != r.typeKind or l.type != r.type);
             }
         },
         else => {},
@@ -3968,7 +3968,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                 vm.funcSyms.buf[symId] = .{
                     .entryT = @intFromEnum(rt.FuncSymbolType.closure),
                     .inner = .{
-                        .closure = val.asPointer(*cy.heap.Closure),
+                        .closure = val.castHeapObject(*cy.heap.Closure),
                     },
                 };
                 // Don't set func sym dep since the closure is assigned into the func sym entry.

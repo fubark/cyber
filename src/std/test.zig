@@ -161,7 +161,7 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 if (std.meta.eql(actv, expv)) {
                     return true;
                 } else {
-                    printStderr("actual: {} != {}\n", &.{v(actv.symId), v(expv.symId)});
+                    printStderr("actual: {} != {}\n", &.{v(actv.type), v(expv.type)});
                     return false;
                 }
             },

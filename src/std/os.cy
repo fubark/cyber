@@ -27,15 +27,6 @@
 --| Each argument is validated and returned as a UTF-8 `string` or `array` if the validation failed.
 @host func args() List
 
---| Calls `bindLib(path, decls, [:])`. 
-@host func bindLib(path any, decls List) any
-
---| Creates an FFI binding to a dynamic library and it's symbols.
---| By default, an anonymous object is returned with the C-functions binded as the object's methods.
---| If `config` contains `genMap: true`, a `Map` is returned instead with C-functions
---| binded as function values.
-@host func bindLib(path any, decls List, config Map) any
-
 --| Returns the path of a locally cached file of `url`.
 --| If no such file exists locally, it's fetched from `url`.
 @host func cacheUrl(url string) any
@@ -95,6 +86,9 @@
 --| Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01.
 @host func milliTime() float
 
+--| Returns a new FFI context for declaring C mappings and binding a dynamic library.
+@host func newFFI() FFI
+
 --| Invokes `openDir(path, false)`.
 @host func openDir(path string) any
 
@@ -104,7 +98,7 @@
 --| Opens a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.
 @host func openFile(path string, mode symbol) File
 
---| Given expected `ArgOption`s, returns a map of the options and a `rest` entry which contains the non-option arguments. |
+--| Given expected `ArgOption`s, returns a map of the options and a `rest` entry which contains the non-option arguments.
 @host func parseArgs(options List) Map
 
 --| Reads the file contents from `path` with UTF-8 encoding.
@@ -133,6 +127,7 @@
 
 @host
 type File object:
+
     --| Closes the file handle. File ops invoked afterwards will return `error.Closed`.
     @host func close() none
     @host func iterator() any
@@ -173,6 +168,7 @@ type File object:
 
 @host
 type Dir object:
+
     --| Returns a new iterator over the directory entries.
     --| If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
     @host func iterator() any
@@ -188,6 +184,24 @@ type Dir object:
 type DirIterator object:
     @host func next() any
 
+@host
+type FFI object:
+
+    --| Calls `bindLib(path, [:])`. 
+    @host func bindLib(path any) any
+
+    --| Creates a handle to a dynamic library and functions declared from `cfunc`.
+    --| By default, an anonymous object is returned with the C-functions binded as the object's methods.
+    --| If `config` contains `genMap: true`, a `Map` is returned instead with C-functions
+    --| binded as function values.
+    @host func bindLib(path any, config Map) any
+
+    --| Binds a Cyber type to a C struct.
+    @host func cbind(mt metatype, fields List) none
+
+    --| Declares a C function which will get binded to the library handle created from `bindLib`.
+    @host func cfunc(name string, params List, ret any) none
+
 type CFunc object:
     var sym
     var args
@@ -198,5 +212,9 @@ type CStruct object:
     var type 
 
 type CArray object:
-    var n
     var elem
+    var n
+
+type CDimArray object:
+    var elem
+    var dims

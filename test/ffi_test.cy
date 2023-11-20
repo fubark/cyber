@@ -4,7 +4,8 @@ import t 'test'
 import os
 
 -- Not found.
-var lib = try os.bindLib('xyz123.so', [])
+var ffi = os.newFFI()
+my lib = try ffi.bindLib('xyz123.so')
 t.eq(lib, error.FileNotFound)
 
 my libPath = none
@@ -17,7 +18,9 @@ else:
     libPath = none
 
 -- Missing symbol.
-lib = try os.bindLib(libPath, [ [os.CFunc sym: 'missing123', args: [], ret: .int ] ])
+ffi = os.newFFI()
+ffi.cfunc('missing123', [], .int)
+lib = try ffi.bindLib(libPath)
 t.eq(lib, error.MissingSymbol)
 
 type MyObject object:
@@ -26,28 +29,29 @@ type MyObject object:
     var c pointer
     var d bool
 
-lib = os.bindLib(libPath, [
-    [os.CFunc sym: 'testAdd', args: [.int, .int], ret: .int],
-    [os.CFunc sym: 'testI8', args: [.char], ret: .char],
-    [os.CFunc sym: 'testU8', args: [.uchar], ret: .uchar],
-    [os.CFunc sym: 'testI16', args: [.short], ret: .short],
-    [os.CFunc sym: 'testU16', args: [.ushort], ret: .ushort],
-    [os.CFunc sym: 'testI32', args: [.int], ret: .int],
-    [os.CFunc sym: 'testU32', args: [.uint], ret: .uint],
-    [os.CFunc sym: 'testI64', args: [.long], ret: .long],
-    [os.CFunc sym: 'testU64', args: [.ulong], ret: .ulong],
-    [os.CFunc sym: 'testUSize', args: [.usize], ret: .usize],
-    [os.CFunc sym: 'testF32', args: [.float], ret: .float],
-    [os.CFunc sym: 'testF64', args: [.double], ret: .double],
-    [os.CFunc sym: 'testCharPtr', args: [.charPtr], ret: .charPtr],
-    [os.CFunc sym: 'testVoidPtr', args: [.voidPtr], ret: .voidPtr],
-    [os.CFunc sym: 'testVoid', args: [], ret: .void],
-    [os.CFunc sym: 'testBool', args: [.bool], ret: .bool],
-    [os.CFunc sym: 'testObject', args: [MyObject], ret: MyObject],
-    [os.CFunc sym: 'testRetObjectPtr', args: [MyObject], ret: .voidPtr],
-    [os.CFunc sym: 'testArray', args: [[os.CArray n: 2, elem: .double]], ret: .double],
-    [os.CStruct fields: [.double, .int, .charPtr, .bool], type: MyObject],
-])
+ffi = os.newFFI()
+ffi.cbind(MyObject, [.double, .int, .charPtr, .bool])
+ffi.cfunc('testAdd', [.int, .int], .int)
+ffi.cfunc('testI8', [.char], .char)
+ffi.cfunc('testU8', [.uchar], .uchar)
+ffi.cfunc('testI16', [.short], .short)
+ffi.cfunc('testU16', [.ushort], .ushort)
+ffi.cfunc('testI32', [.int], .int)
+ffi.cfunc('testU32', [.uint], .uint)
+ffi.cfunc('testI64', [.long], .long)
+ffi.cfunc('testU64', [.ulong], .ulong)
+ffi.cfunc('testUSize', [.usize], .usize)
+ffi.cfunc('testF32', [.float], .float)
+ffi.cfunc('testF64', [.double], .double)
+ffi.cfunc('testCharPtr', [.charPtr], .charPtr)
+ffi.cfunc('testVoidPtr', [.voidPtr], .voidPtr)
+ffi.cfunc('testVoid', [], .void)
+ffi.cfunc('testBool', [.bool], .bool)
+ffi.cfunc('testObject', [MyObject], MyObject)
+ffi.cfunc('testRetObjectPtr', [MyObject], .voidPtr)
+ffi.cfunc('testArray', [[os.CArray n: 2, elem: .double]], .double)
+lib = ffi.bindLib(libPath)
+
 t.eq(lib.testAdd(123, 321), 444)
 t.eq(lib.testI8(-128), -128)
 t.eq(lib.testU8(255), 255)
@@ -89,6 +93,7 @@ os.free(cstr)
 
 -- testVoidPtr
 t.eq(lib.testVoidPtr(pointer(123)), pointer(123))
+t.eq(lib.testVoidPtr(none), pointer(0))
 
 -- void return and no args.
 t.eq(lib.testVoid(), none)
@@ -98,28 +103,22 @@ t.eq(lib.testBool(true), true)
 t.eq(lib.testBool(false), false)
 
 -- bindLib that returns a map of functions.
-lib = try os.bindLib(libPath, [
-    [os.CFunc sym: 'testAdd', args: [.int, .int], ret: .int],
-], [ genMap: true ])
+ffi = os.newFFI()
+ffi.cfunc('testAdd', [.int, .int], .int)
+lib = ffi.bindLib(libPath, [genMap: true])
 var testAdd = lib['testAdd']
 t.eq(testAdd(123, 321), 444)
 
 -- Reassign a binded function to a static function.
 -- TODO: Use statements once initializer block is done.
-var Root.staticLibPath = switch os.system: 
-case 'macos' => 'test/macos_lib.dylib'
-case 'windows' => 'test/win_lib.dll'
-else => none
-
-var Root.staticLib = os.bindLib(staticLibPath, [
-    [os.CFunc sym: 'testAdd', args: [.int, .int], ret: .int]
-], [ genMap: true ])
-
+ffi = os.newFFI()
+ffi.cfunc('testAdd', [.int, .int], .int)
+lib = ffi.bindLib(libPath, [genMap: true])
+staticAdd = lib.testAdd
 func staticAdd(a int, b int) int:
     pass
 
-staticAdd = staticLib.testAdd
 t.eq(staticAdd(123, 321), 444)
 -- Freeing the lib reference should not affect `staticAdd`
-staticLib = none
+lib = none
 t.eq(staticAdd(123, 321), 444)

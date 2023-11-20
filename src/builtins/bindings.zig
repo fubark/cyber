@@ -545,11 +545,13 @@ pub fn nop(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) 
 
 /// In debug mode, the unsupported error's stack trace is dumped and program panics.
 /// In release mode, the error is logged and UnknownError is returned.
-pub fn fromUnsupportedError(vm: *cy.UserVM, msg: []const u8, err: anyerror, trace: ?*std.builtin.StackTrace) Value {
+pub fn fromUnsupportedError(vm: *cy.UserVM, msg: []const u8, err: anyerror, optTrace: ?*std.builtin.StackTrace) Value {
     fmt.printStderr("{}: {}\n", &.{fmt.v(msg), fmt.v(err)});
     if (builtin.mode == .Debug) {
         if (!cy.silentError) {
-            std.debug.dumpStackTrace(trace.?.*);
+            if (optTrace) |trace| {
+                std.debug.dumpStackTrace(trace.*);
+            }
         }
         fatal();
     }

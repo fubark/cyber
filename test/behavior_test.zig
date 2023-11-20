@@ -1189,9 +1189,9 @@ test "FFI." {
         \\else:
         \\  libPath = none
         \\
-        \\var lib = os.bindLib(libPath, [
-        \\  [os.CFunc sym: 'testAdd', args: [.int, .int], ret: .int]
-        \\])
+        \\var ffi = os.newFFI()
+        \\ffi.cfunc('testAdd', [.int, .int], .int)
+        \\var lib = ffi.bindLib(libPath)
         \\lib.testAdd(123, '321')
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
@@ -1217,9 +1217,9 @@ test "FFI." {
         \\else:
         \\  libPath = none
         \\
-        \\var lib = os.bindLib(libPath, [
-        \\  [os.CFunc sym: 'testAdd', args: [.int, .int], ret: .int]
-        \\])
+        \\var ffi = os.newFFI()
+        \\ffi.cfunc('testAdd', [.int, .int], .int)
+        \\var lib = ffi.bindLib(libPath)
         \\lib.testAdd(123, 234, 345)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,

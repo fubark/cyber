@@ -8,6 +8,7 @@ const Value = cy.Value;
 const bindings = @import("bindings.zig");
 const Symbol = bindings.Symbol;
 const prepareThrowSymbol = bindings.prepareThrowSymbol;
+const fromUnsupportedError = bindings.fromUnsupportedError;
 const fmt = @import("../fmt.zig");
 const rt = cy.rt;
 const bt = cy.types.BuiltinTypes;
@@ -171,6 +172,7 @@ const funcs = [_]NameFunc{
 
     // pointer
     .{"value", pointerValue, .standard},
+    .{"writeAt", pointerWriteAt, .standard},
     .{"pointer.'$call'", pointerCall, .standard},
 
     // Fiber
@@ -217,6 +219,30 @@ pub fn onLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
     if (cy.Trace) {
         b.declareFuncSig("traceRetains", &.{}, bt.Integer, traceRetains) catch cy.fatal();
         b.declareFuncSig("traceReleases", &.{}, bt.Integer, traceRetains) catch cy.fatal();
+    }
+}
+
+pub fn zThrowsFunc(comptime func: fn (vm: *cy.UserVM, args: [*]const Value, nargs: u8) anyerror!Value) cy.ZHostFuncFn {
+    const S = struct {
+        pub fn genFunc(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+            return func(vm, args, nargs) catch |err| {
+                return throwZError(vm, err, @errorReturnTrace());
+            };
+        }
+    };
+    return S.genFunc;
+}
+
+pub fn throwZError(vm: *cy.UserVM, err: anyerror, trace: ?*std.builtin.StackTrace) Value {
+    if (builtin.mode == .Debug) {
+        std.debug.dumpStackTrace(trace.?.*);
+    }
+    switch (err) {
+        error.InvalidArgument   => return prepareThrowSymbol(vm, .InvalidArgument),
+        error.InvalidEnumTag    => return prepareThrowSymbol(vm, .InvalidArgument),
+        error.FileNotFound      => return prepareThrowSymbol(vm, .FileNotFound),
+        error.PermissionDenied  => return prepareThrowSymbol(vm, .PermissionDenied),
+        else                    => return fromUnsupportedError(vm, "", err, @errorReturnTrace()),
     }
 }
 
@@ -1151,11 +1177,29 @@ fn fiberStatus(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 
 fn metatypeId(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
-    return Value.initInt(obj.metatype.symId);
+    return Value.initInt(obj.metatype.type);
 }
 
 fn pointerValue(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
+    return Value.initInt(@bitCast(@as(u48, (@intCast(@intFromPtr(obj.pointer.ptr))))));
+}
+
+fn pointerWriteAt(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const obj = args[0].asHeapObject();
+    const idx = args[1].asInteger();
+    const val = args[2];
+    const rawPtr = obj.pointer.ptr;
+    const valT = val.getTypeId();
+    const uidx: u48 = @bitCast(idx);
+    switch (valT) {
+        bt.Pointer => {
+            @as(*?*anyopaque, @ptrFromInt(@intFromPtr(rawPtr) + uidx)).* = val.asHeapObject().pointer.ptr;
+        },
+        else => {
+            return prepareThrowSymbol(vm, .InvalidArgument);
+        }
+    }
     return Value.initInt(@bitCast(@as(u48, (@intCast(@intFromPtr(obj.pointer.ptr))))));
 }
 

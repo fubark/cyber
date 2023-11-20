@@ -208,8 +208,10 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
         vm.dumpStats();
     }
     if (cy.TrackGlobalRC) {
-        vm.deinit(true);
+        vm.deinitRtObjects();
+        vm.compiler.deinitModRetained();
         try cy.arc.checkGlobalRC(&vm);
+        vm.deinit(true);
     }
 }
 

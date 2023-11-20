@@ -9,9 +9,11 @@ const rt = cy.rt;
 const Value = cy.Value;
 const fmt = @import("../fmt.zig");
 const bindings = @import("../builtins/bindings.zig");
+const builtins = @import("../builtins/builtins.zig");
+const throwZError = builtins.throwZError;
+const zThrowsFunc = builtins.zThrowsFunc;
 const Symbol = bindings.Symbol;
 const prepareThrowSymbol = bindings.prepareThrowSymbol;
-const fromUnsupportedError = bindings.fromUnsupportedError;
 const bt = cy.types.BuiltinTypes;
 const ffi = @import("os_ffi.zig");
 const http = @import("../http.zig");
@@ -23,6 +25,7 @@ const log = cy.log.scoped(.os);
 pub var CFuncT: cy.TypeId = undefined;
 pub var CStructT: cy.TypeId = undefined;
 pub var CArrayT: cy.TypeId = undefined;
+pub var CDimArrayT: cy.TypeId = undefined;
 pub var nextUniqId: u32 = undefined;
 
 pub const Src = @embedFile("os.cy");
@@ -41,8 +44,6 @@ const funcs = [_]NameFunc{
     // Top level
     .{"access", access},
     .{"args", osArgs},
-    .{"bindLib", bindLib},
-    .{"bindLib", bindLibExt},
     .{"cacheUrl", cacheUrl},
     .{"copyFile", copyFile},
     .{"createDir", createDir},
@@ -62,6 +63,7 @@ const funcs = [_]NameFunc{
     .{"getInput", getInput},
     .{"malloc", malloc},
     .{"milliTime", milliTime},
+    .{"newFFI", newFFI},
     .{"openDir", openDir},
     .{"openDir", openDir2},
     .{"openFile", openFile},
@@ -96,6 +98,12 @@ const funcs = [_]NameFunc{
 
     // DirIterator
     .{"next", fs.dirIteratorNext},
+
+    // FFI
+    .{"bindLib", bindLib},
+    .{"bindLib", bindLibExt},
+    .{"cbind", zThrowsFunc(ffi.ffiCbind)},
+    .{"cfunc", zThrowsFunc(ffi.ffiCfunc)},
 };
 
 const NameValue = struct { []const u8, cy.Value };
@@ -114,6 +122,7 @@ const types = [_]NameType{
     .{"File", &fs.FileT, null, fs.fileFinalizer },
     .{"Dir", &fs.DirT, null, fs.dirFinalizer },
     .{"DirIterator", &fs.DirIterT, fs.dirIteratorGetChildren, fs.dirIteratorFinalizer },
+    .{"FFI", &ffi.FFIT, null, ffi.ffiFinalizer },
 };
 
 pub fn typeLoader(_: ?*cc.VM, info: cc.TypeInfo, out_: [*c]cc.TypeResult) callconv(.C) bool {
@@ -173,6 +182,7 @@ pub fn zPostTypeLoad(c: *cy.VMcompiler, mod: cc.ApiModule) !void {
     CFuncT = chunkMod.getSym("CFunc").?.cast(.object).type;
     CStructT = chunkMod.getSym("CStruct").?.cast(.object).type;
     CArrayT = chunkMod.getSym("CArray").?.cast(.object).type;
+    CDimArrayT = chunkMod.getSym("CDimArray").?.cast(.object).type;
     nextUniqId = 1;
 }
 
@@ -206,20 +216,12 @@ fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     var fd: std.os.fd_t = undefined;
     if (iterable) {
         const dir = std.fs.cwd().openIterableDir(path, .{}) catch |err| {
-            if (err == error.FileNotFound) {
-                return prepareThrowSymbol(vm, .FileNotFound);
-            } else {
-                return fromUnsupportedError(vm, "openDir", err, @errorReturnTrace());
-            }
+            return throwZError(vm, err, @errorReturnTrace());
         };
         fd = dir.dir.fd;
     } else {
         const dir = std.fs.cwd().openDir(path, .{}) catch |err| {
-            if (err == error.FileNotFound) {
-                return prepareThrowSymbol(vm, .FileNotFound);
-            } else {
-                return fromUnsupportedError(vm, "openDir", err, @errorReturnTrace());
-            }
+            return throwZError(vm, err, @errorReturnTrace());
         };
         fd = dir.fd;
     }
@@ -230,11 +232,7 @@ fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const path = args[0].asString();
     std.fs.cwd().deleteDir(path) catch |err| {
-        if (err == error.FileNotFound) {
-            return prepareThrowSymbol(vm, .FileNotFound);
-        } else {
-            return fromUnsupportedError(vm, "removeDir", err, @errorReturnTrace());
-        }
+        return throwZError(vm, err, @errorReturnTrace());
     };
     return Value.None;
 }
@@ -249,11 +247,7 @@ fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     defer alloc.free(srcDupe);
     const dst = args[1].asString();
     std.fs.cwd().copyFile(srcDupe, std.fs.cwd(), dst, .{}) catch |err| {
-        if (err == error.FileNotFound) {
-            return prepareThrowSymbol(vm, .FileNotFound);
-        } else {
-            return fromUnsupportedError(vm, "copyFile", err, @errorReturnTrace());
-        }
+        return throwZError(vm, err, @errorReturnTrace());
     };
     return Value.None;
 }
@@ -262,11 +256,7 @@ fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const path = args[0].asString();
     std.fs.cwd().deleteFile(path) catch |err| {
-        if (err == error.FileNotFound) {
-            return prepareThrowSymbol(vm, .FileNotFound);
-        } else {
-            return fromUnsupportedError(vm, "removeFile", err, @errorReturnTrace());
-        }
+        return throwZError(vm, err, @errorReturnTrace());
     };
     return Value.None;
 }
@@ -275,7 +265,7 @@ fn createDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const path = args[0].asString();
     std.fs.cwd().makeDir(path) catch |err| {
-        return fromUnsupportedError(vm, "createDir", err, @errorReturnTrace());
+        return throwZError(vm, err, @errorReturnTrace());
     };
     return Value.None;
 }
@@ -285,7 +275,7 @@ fn createFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     const path = args[0].asString();
     const truncate = args[1].asBool();
     const file = std.fs.cwd().createFile(path, .{ .truncate = truncate }) catch |err| {
-        return fromUnsupportedError(vm, "createFile", err, @errorReturnTrace());
+        return throwZError(vm, err, @errorReturnTrace());
     };
     return vm.allocFile(file.handle) catch fatal();
 }
@@ -307,13 +297,7 @@ pub fn access(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         }
     };
     std.fs.cwd().access(path, .{ .mode = zmode }) catch |err| {
-        if (err == error.FileNotFound) {
-            return prepareThrowSymbol(vm, .FileNotFound);
-        } else if (err == error.PermissionDenied) {
-            return prepareThrowSymbol(vm, .PermissionDenied);
-        } else {
-            return fromUnsupportedError(vm, "access", err, @errorReturnTrace());
-        }
+        return throwZError(vm, err, @errorReturnTrace());
     };
     return Value.None;
 }
@@ -331,11 +315,7 @@ fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
         }
     };
     const file = std.fs.cwd().openFile(path, .{ .mode = zmode }) catch |err| {
-        if (err == error.FileNotFound) {
-            return prepareThrowSymbol(vm, .FileNotFound);
-        } else {
-            return fromUnsupportedError(vm, "openFile", err, @errorReturnTrace());
-        }
+        return throwZError(vm, err, @errorReturnTrace());
     };
     return vm.allocFile(file.handle) catch fatal();
 }
@@ -375,7 +355,7 @@ fn parseArgs(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
                 return prepareThrowSymbol(vm, .InvalidArgument);
             }
             var optType: OptionType = undefined;
-            switch (entryType.asHeapObject().metatype.symId) {
+            switch (entryType.asHeapObject().metatype.type) {
                 bt.String => {
                     optType = .string;
                 },
@@ -570,7 +550,7 @@ pub fn realPath(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const path = args[0].asString();
     const res = std.fs.cwd().realpathAlloc(vm.allocator(), path) catch |err| {
-        return fromUnsupportedError(vm, "realPath", err, @errorReturnTrace());
+        return throwZError(vm, err, @errorReturnTrace());
     };
     defer vm.allocator().free(res);
     // TODO: Use allocOwnedString.
@@ -620,19 +600,16 @@ pub fn unsetEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 }
 pub extern "c" fn unsetenv(name: [*:0]const u8) c_int;
 
+fn newFFI(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    _ = args;
+    if (!cy.hasFFI) return vm.returnPanic("Unsupported.");
+    return ffi.allocFFI(vm.internal()) catch fatal();
+}
+
 pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    if (!cy.hasFFI) {
-        return vm.returnPanic("Unsupported.");
-    }
-    return @call(.never_inline, ffi.bindLib, .{vm, args, .{}}) catch |err| {
-        if (builtin.mode == .Debug) {
-            std.debug.dumpStackTrace(@errorReturnTrace().?.*);
-        }
-        if (err == error.InvalidArgument) {
-            return prepareThrowSymbol(vm, .InvalidArgument);
-        } else {
-            return fromUnsupportedError(vm, "bindLib", err, @errorReturnTrace());
-        }
+    if (!cy.hasFFI) return vm.returnPanic("Unsupported.");
+    return @call(.never_inline, ffi.ffiBindLib, .{vm, args, .{}}) catch |err| {
+        return throwZError(vm, err, @errorReturnTrace());
     };
 }
 
@@ -648,15 +625,8 @@ pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.St
     if (val.isTrue()) {
         config.genMap = true;
     }
-    return @call(.never_inline, ffi.bindLib, .{vm, args, config}) catch |err| {
-        if (builtin.mode == .Debug) {
-            std.debug.dumpStackTrace(@errorReturnTrace().?.*);
-        }
-        if (err == error.InvalidArgument) {
-            return prepareThrowSymbol(vm, .InvalidArgument);
-        } else {
-            return fromUnsupportedError(vm, "bindLib", err, @errorReturnTrace());
-        }
+    return @call(.never_inline, ffi.ffiBindLib, .{vm, args, config}) catch |err| {
+        return throwZError(vm, err, @errorReturnTrace());
     };
 }
 

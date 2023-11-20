@@ -199,8 +199,8 @@ pub const MetaTypeKind = enum {
 pub const MetaType = extern struct {
     typeId: cy.TypeId,
     rc: u32,
+    typeKind: u32,
     type: u32,
-    symId: u32,
 };
 
 pub const Tuple = extern struct {
@@ -652,13 +652,13 @@ pub const Object = extern struct {
 };
 
 const Box = extern struct {
-    typeId: cy.TypeId,
+    typeId: cy.TypeId align(8),
     rc: u32,
     val: Value,
 };
 
 const NativeFunc1 = extern struct {
-    typeId: cy.TypeId,
+    typeId: cy.TypeId align(8),
     rc: u32,
     func: vmc.HostFuncFn,
     numParams: u32,
@@ -668,14 +668,14 @@ const NativeFunc1 = extern struct {
 };
 
 const TccState = extern struct {
-    typeId: cy.TypeId,
+    typeId: cy.TypeId align(8),
     rc: u32,
     state: *tcc.TCCState,
     lib: *std.DynLib,
 };
 
 pub const Pointer = extern struct {
-    typeId: cy.TypeId,
+    typeId: cy.TypeId align(8),
     rc: u32,
     ptr: ?*anyopaque,
 };
@@ -910,13 +910,13 @@ pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) v
     }
 }
 
-pub fn allocMetaType(self: *cy.VM, symType: u8, symId: u32) !Value {
+pub fn allocMetaType(self: *cy.VM, typeKind: u8, typeId: cy.TypeId) !Value {
     const obj = try allocPoolObject(self);
     obj.metatype = .{
         .typeId = bt.MetaType,
         .rc = 1,
-        .type = symType,
-        .symId = symId,
+        .typeKind = typeKind,
+        .type = typeId,
     };
     return Value.initNoCycPtr(obj);
 }
@@ -975,7 +975,7 @@ pub fn allocListFill(self: *cy.VM, val: Value, n: u32) linksection(cy.StdSection
     return Value.initCycPtr(obj);
 }
 
-pub fn allocHostNoCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) linksection(cy.HotSection) !*anyopaque {
+pub fn allocHostNoCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) linksection(cy.HotSection) !*align(8) anyopaque {
     if (numBytes <= MaxPoolObjectUserBytes) {
         const obj = try allocPoolObject(vm);
         obj.head = .{

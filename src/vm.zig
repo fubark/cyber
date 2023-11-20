@@ -1110,8 +1110,7 @@ pub const VM = struct {
 
     /// startLocal points to the first arg in the current stack frame.
     fn callSym(
-        self: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: SymbolId, ret: u8,
-        numArgs: u8, reqNumRetVals: u2
+        self: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: SymbolId, ret: u8, numArgs: u8,
     ) linksection(cy.HotSection) !cy.fiber.PcSp {
         const sym = self.funcSyms.buf[symId];
         switch (@as(rt.FuncSymbolType, @enumFromInt(sym.entryT))) {
@@ -1128,11 +1127,7 @@ pub const VM = struct {
                 if (res.isInterrupt()) {
                     return error.Panic;
                 }
-                if (reqNumRetVals == 1) {
-                    newFramePtr[0] = @bitCast(res);
-                } else {
-                    // Nop.
-                }
+                newFramePtr[0] = @bitCast(res);
                 return cy.fiber.PcSp{
                     .pc = pc + cy.bytecode.CallSymInstLen,
                     .sp = framePtr,
@@ -1157,7 +1152,7 @@ pub const VM = struct {
                 @as(*align(1) u48, @ptrCast(pc + 6)).* = @intCast(@intFromPtr(cy.fiber.toVmPc(self, sym.inner.func.pc)));
 
                 const newFramePtr = framePtr + ret;
-                newFramePtr[1] = buildReturnInfo(reqNumRetVals, true, cy.bytecode.CallSymInstLen);
+                newFramePtr[1] = buildReturnInfo(true, cy.bytecode.CallSymInstLen);
                 newFramePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
                 newFramePtr[3] = Value{ .retFramePtr = framePtr };
                 return cy.fiber.PcSp{
@@ -1171,7 +1166,7 @@ pub const VM = struct {
                 }
 
                 const newFp = framePtr + ret;
-                newFp[1] = buildReturnInfo(reqNumRetVals, true, cy.bytecode.CallSymInstLen);
+                newFp[1] = buildReturnInfo(true, cy.bytecode.CallSymInstLen);
                 newFp[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
                 newFp[3] = Value{ .retFramePtr = framePtr };
 
@@ -3378,7 +3373,7 @@ const FieldEntry = struct {
 
 /// See `reserveFuncParams` for stack layout.
 /// numArgs does not include the callee.
-pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !cy.fiber.PcSp {
+pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8, retInfo: Value, comptime buildFrame: bool) !cy.fiber.PcSp {
     if (callee.isPointer()) {
         const obj = callee.asHeapObject();
         switch (obj.getTypeId()) {
@@ -3705,20 +3700,19 @@ fn getObjectFunctionFallback(
 /// Use new pc local to avoid deoptimization.
 fn callObjSymFallback(
     vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, recv: Value, typeId: u32, mgId: vmc.MethodGroupId, 
-    ret: u8, numArgs: u8, reqNumRetVals: u8
+    ret: u8, numArgs: u8,
 ) linksection(cy.Section) !cy.fiber.PcSp {
     @setCold(true);
     // const func = try @call(.never_inline, getObjectFunctionFallback, .{obj, symId});
     const vals = framePtr[ret+CallArgStart+1..ret+CallArgStart+1+numArgs-1];
     const func = try getObjectFunctionFallback(vm, pc, recv, typeId, mgId, vals);
-    _ = reqNumRetVals;
     _ = func;
     return vm.panic("Missing method.");
 }
 
-pub inline fn buildReturnInfo(numRetVals: u8, comptime cont: bool, comptime callInstOffset: u8) Value {
+pub inline fn buildReturnInfo(comptime cont: bool, comptime callInstOffset: u8) Value {
     return .{
-        .val = numRetVals | (@as(u32, @intFromBool(!cont)) << 8) | (@as(u32, callInstOffset) << 16),
+        .val = 0 | (@as(u32, @intFromBool(!cont)) << 8) | (@as(u32, callInstOffset) << 16),
     };
     // return .{
     //     .retInfo = .{
@@ -4004,9 +3998,9 @@ fn getFuncSigIdOfSym(vm: *const VM, symId: SymbolId) sema.FuncSigId {
 
 fn callMethodNoInline(
     vm: *VM, pc: [*]cy.Inst, sp: [*]cy.Value, methodType: rt.MethodType, data: rt.MethodData,
-    typeId: vmc.TypeId, startLocal: u8, numArgs: u8, reqNumRetVals: u8, anySelfFuncSigId: sema.FuncSigId,
+    typeId: vmc.TypeId, startLocal: u8, numArgs: u8, anySelfFuncSigId: sema.FuncSigId,
 ) !?cy.fiber.PcSp {
-    return @call(.always_inline, callMethod, .{vm, pc, sp, methodType, data, typeId, startLocal, numArgs, reqNumRetVals, anySelfFuncSigId});
+    return @call(.always_inline, callMethod, .{vm, pc, sp, methodType, data, typeId, startLocal, numArgs, anySelfFuncSigId});
 }
 
 pub const CallArgStart: u8 = vmc.CALL_ARG_START;
@@ -4029,7 +4023,7 @@ inline fn canInlineCallObjSym(vm: *VM, callSigId: u32, targetSigId: u32, targetS
 
 fn callMethod(
     vm: *VM, pc: [*]cy.Inst, sp: [*]cy.Value, methodType: rt.MethodType, data: rt.MethodData,
-    typeId: vmc.TypeId, ret: u8, numArgs: u8, reqNumRetVals: u8, anySelfFuncSigId: sema.FuncSigId,
+    typeId: vmc.TypeId, ret: u8, numArgs: u8, anySelfFuncSigId: sema.FuncSigId,
 ) !?cy.fiber.PcSp {
     switch (methodType) {
         .untyped => {
@@ -4047,7 +4041,7 @@ fn callMethod(
             @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
 
             const newFp = sp + ret;
-            newFp[1] = buildReturnInfo(reqNumRetVals, true, cy.bytecode.CallObjSymInstLen);
+            newFp[1] = buildReturnInfo(true, cy.bytecode.CallObjSymInstLen);
             newFp[2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen };
             newFp[3] = Value{ .retFramePtr = sp };
             return cy.fiber.PcSp{
@@ -4069,11 +4063,7 @@ fn callMethod(
             if (res.isInterrupt()) {
                 return error.Panic;
             }
-            if (reqNumRetVals == 1) {
-                sp[ret] = res;
-            } else {
-                // Nop.
-            }
+            sp[ret] = res;
             return cy.fiber.PcSp{
                 .pc = pc + cy.bytecode.CallObjSymInstLen,
                 .sp = sp,
@@ -4129,7 +4119,7 @@ fn callMethod(
             }
 
             const newFp = sp + ret;
-            newFp[1] = buildReturnInfo(reqNumRetVals, true, cy.bytecode.CallObjSymInstLen);
+            newFp[1] = buildReturnInfo(true, cy.bytecode.CallObjSymInstLen);
             newFp[2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen };
             newFp[3] = Value{ .retFramePtr = sp };
             return cy.fiber.PcSp{
@@ -4170,11 +4160,7 @@ fn callMethod(
             if (res.isInterrupt()) {
                 return error.Panic;
             }
-            if (reqNumRetVals == 1) {
-                sp[ret] = res;
-            } else {
-                // Nop.
-            }
+            sp[ret] = res;
             return cy.fiber.PcSp{
                 .pc = pc + cy.bytecode.CallObjSymInstLen,
                 .sp = sp,
@@ -4186,7 +4172,7 @@ fn callMethod(
 /// Assumes there are overloaded methods.
 fn callFirstOverloadedMethod(
     vm: *VM, pc: [*]cy.Inst, sp: [*]Value, mgId: vmc.MethodGroupId,
-    typeId: vmc.TypeId, ret: u8, numArgs: u8, reqNumRetVals: u8, anySelfFuncSigId: sema.FuncSigId,
+    typeId: vmc.TypeId, ret: u8, numArgs: u8, anySelfFuncSigId: sema.FuncSigId,
 ) !?cy.fiber.PcSp {
     const mgExt = &vm.methodGroupExts.buf[mgId];
     std.debug.assert(mgExt.mruTypeMethodGroupId != cy.NullId);
@@ -4202,7 +4188,7 @@ fn callFirstOverloadedMethod(
             methodId = method.next;
             continue;
         }
-        if (try @call(.never_inline, callMethodNoInline, .{vm, pc, sp, method.type, method.data, typeId, ret, numArgs, reqNumRetVals, anySelfFuncSigId})) |res| {
+        if (try @call(.never_inline, callMethodNoInline, .{vm, pc, sp, method.type, method.data, typeId, ret, numArgs, anySelfFuncSigId})) |res| {
             // Update MethodGroup cache.
             // TypeMethodGroup is updated on MethodGroup cache miss.
             const mgPtr = &vm.methodGroups.buf[mgId];
@@ -4220,13 +4206,13 @@ fn callFirstOverloadedMethod(
 /// Assumes cache hit on TypeMethodGroup.
 fn callMethodGroup(
     vm: *VM, pc: [*]cy.Inst, sp: [*]Value, mgId: vmc.MethodGroupId, mg: rt.MethodGroup,
-    typeId: vmc.TypeId, startLocal: u8, numArgs: u8, reqNumRetVals: u8, anySelfFuncSigId: sema.FuncSigId,
+    typeId: vmc.TypeId, startLocal: u8, numArgs: u8, anySelfFuncSigId: sema.FuncSigId,
 ) linksection(cy.HotSection) !?cy.fiber.PcSp {
-    if (try @call(.always_inline, callMethod, .{vm, pc, sp, mg.mruMethodType, mg.mruMethodData, typeId, startLocal, numArgs, reqNumRetVals, anySelfFuncSigId})) |res| {
+    if (try @call(.always_inline, callMethod, .{vm, pc, sp, mg.mruMethodType, mg.mruMethodData, typeId, startLocal, numArgs, anySelfFuncSigId})) |res| {
         return res;
     }
     if (mg.mruTypeMethodOverloaded) {
-        return @call(.never_inline, callFirstOverloadedMethod, .{vm, pc, sp, mgId, typeId, startLocal, numArgs, reqNumRetVals, anySelfFuncSigId});
+        return @call(.never_inline, callFirstOverloadedMethod, .{vm, pc, sp, mgId, typeId, startLocal, numArgs, anySelfFuncSigId});
     }
     return null;
 }
@@ -4252,9 +4238,8 @@ export fn zOpCodeName(code: vmc.OpCode) [*:0]const u8 {
     return @tagName(ecode);
 }
 
-export fn zCallSym(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8, numArgs: u8, reqNumRetVals: u8) callconv(.C) vmc.PcSpResult {
-    const numRetVals: u2 = @intCast(reqNumRetVals);
-    const res = @call(.always_inline, VM.callSym, .{vm, pc, framePtr, @as(u32, @intCast(symId)), ret, numArgs, numRetVals}) catch |err| {
+export fn zCallSym(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8, numArgs: u8) callconv(.C) vmc.PcSpResult {
+    const res = @call(.always_inline, VM.callSym, .{vm, pc, framePtr, @as(u32, @intCast(symId)), ret, numArgs}) catch |err| {
         if (err == error.Panic) {
             return .{
                 .pc = undefined,
@@ -4314,7 +4299,7 @@ export fn zOtherToF64(val: Value) f64 {
 
 export fn zCallObjSym(
     vm: *cy.VM, pc: [*]cy.Inst, stack: [*]Value, recv: Value,
-    typeId: cy.TypeId, mgId: u8, startLocal: u8, numArgs: u8, numRet: u8, anySelfFuncSigId: u16,
+    typeId: cy.TypeId, mgId: u8, startLocal: u8, numArgs: u8, anySelfFuncSigId: u16,
 ) vmc.CallObjSymResult {
     const mbMethodGroup = vm.getCachedMethodGroupForType(typeId, mgId) catch {
         return .{
@@ -4325,7 +4310,7 @@ export fn zCallObjSym(
     };
     if (mbMethodGroup) |sym| {
         const mb_res = @call(.always_inline, callMethodGroup, .{
-            vm, pc, stack, mgId, sym, typeId, startLocal, numArgs, numRet, anySelfFuncSigId,
+            vm, pc, stack, mgId, sym, typeId, startLocal, numArgs, anySelfFuncSigId,
         }) catch |err| {
             if (err == error.Panic) {
                 return .{
@@ -4349,7 +4334,7 @@ export fn zCallObjSym(
             };
         }
     }
-    const res = @call(.never_inline, callObjSymFallback, .{vm, pc, stack, recv, typeId, mgId, startLocal, numArgs, numRet}) catch |err| {
+    const res = @call(.never_inline, callObjSymFallback, .{vm, pc, stack, recv, typeId, mgId, startLocal, numArgs}) catch |err| {
         if (err == error.Panic) {
             return .{
                 .pc = undefined,
@@ -4426,7 +4411,7 @@ export fn zEvalCompareNot(left: Value, right: Value) vmc.Value {
 }
 
 export fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8, retInfo: Value) vmc.PcSpResult {
-    const res = call(vm, pc, framePtr, callee, ret, numArgs, retInfo) catch |err| {
+    const res = call(vm, pc, framePtr, callee, ret, numArgs, retInfo, true) catch |err| {
         if (err == error.Panic) {
             return .{
                 .pc = undefined,

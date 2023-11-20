@@ -1173,6 +1173,11 @@ test "FFI." {
         export fn testArray(arr: [*c]f64) f64 {
             return arr[0] + arr[1];
         }
+
+        export fn testCallback(a: i32, b: i32, add: *const fn (i32, i32) callconv(.C) i32) i32 {
+            return add(a, b);
+        }
+
         var temp: MyObject = undefined;
     };
     _ = S;
@@ -1232,6 +1237,10 @@ test "FFI." {
             \\
         );
     }}.func);
+
+    // TODO: Test callback failure and verify stack trace.
+    // Currently, the VM aborts when encountering a callback error.
+    // A config could be added to make the initial FFI call detect an error and throw a panic instead.
 
     try evalPass(.{}, @embedFile("ffi_test.cy"));
 }
@@ -1782,7 +1791,7 @@ test "Stack trace unwinding." {
                 \\@AbsPath(test/test_mods/init_throw_error.cy):1:16 init:
                 \\var Root.foo = throw error.boom
                 \\               ^
-                \\./test/main.cy main:
+                \\./test/main.cy: main
                 \\
             );
             const trace_ = run_.getStackTrace();
@@ -1928,6 +1937,15 @@ test "bool" {
 //     try t.eq(val.asF64toI32(), 234);
 //     run.deinitValue(val);
 // }
+
+test "Expression statement." {
+    // Releases returned value from call expression.
+    try evalPass(.{},
+        \\var a = 'abc'
+        \\a.concat('xyz')
+        \\pass
+    );
+}
 
 test "Statements." {
     try evalPass(.{},

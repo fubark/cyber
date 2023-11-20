@@ -578,7 +578,7 @@ fn setCallObjSymTern(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     const inst = try beginCall(c, RegisterCstr.none, false);
 
-    var args: [3]GenValue = undefined;
+    var args: [4]GenValue = undefined;
     const recIdx = c.irAdvanceStmt(idx, .setCallObjSymTern);
     var temp = try c.rega.consumeNextTemp();
     args[0] = try genExpr(c, recIdx, RegisterCstr.exact(temp));
@@ -588,10 +588,15 @@ fn setCallObjSymTern(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     args[2] = try genExpr(c, data.right, RegisterCstr.exact(temp));
 
     const mgId = try c.compiler.vm.ensureMethodGroup(data.name);
-    try pushCallObjSym(c, inst.ret, 3, false,
+    try pushCallObjSym(c, inst.ret, 3,
         @intCast(mgId), @intCast(data.funcSigId), nodeId);
 
-    const retained = unwindTemps(c, &args);
+    var retained = unwindTemps(c, &args);
+
+    // Include ret value for release.
+    retained.len += 1;
+    retained[retained.len-1] = GenValue.initTempValue(inst.ret, true);
+
     try pushReleaseVals(c, retained, nodeId);
 
     // Unwind return temp as well.
@@ -606,6 +611,8 @@ fn setIndex(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     // None of the operands force a retain since it must mimic the generic $setIndex.
     const valsStart = c.genValueStack.items.len;
+
+    const noneRet = try c.rega.consumeNextTemp();
 
     // Recv.
     const recIdx = c.irAdvanceStmt(idx, .setIndex);
@@ -625,13 +632,13 @@ fn setIndex(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const rightv = argvs[2];
 
     if (data.recvT == bt.List) {
-        // Reuse binExpr layout since there is no dst.
-        try pushInlineBinExpr(c, .setIndexList, recv.local, indexv.local, rightv.local, nodeId);
+        try pushInlineTernExpr(c, .setIndexList, recv.local, indexv.local, rightv.local, noneRet, nodeId);
     } else if (data.recvT == bt.Map) {
-        try pushInlineBinExpr(c, .setIndexMap, recv.local, indexv.local, rightv.local, nodeId);
+        try pushInlineTernExpr(c, .setIndexMap, recv.local, indexv.local, rightv.local, noneRet, nodeId);
     } else return error.Unexpected;
 
     const retained = unwindTemps(c, argvs);
+    c.rega.freeTemps(1);
 
     // ARC cleanup.
     try pushReleaseVals(c, retained, nodeId);
@@ -935,7 +942,7 @@ fn genCallObjSym(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !
     }
 
     const methodSymId = try c.compiler.vm.ensureMethodGroup(data.name);
-    try pushCallObjSym(c, inst.ret, data.numArgs + 1, true,
+    try pushCallObjSym(c, inst.ret, data.numArgs + 1,
         @intCast(methodSymId), @intCast(data.funcSigId), nodeId);
 
     const argvs = popValues(c, data.numArgs+1);
@@ -1065,7 +1072,7 @@ fn genCallObjSymBinOp(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.Node
     const mgId = getInfixMGID(c, data.op);
 
     const start = c.buf.len();
-    try pushCallObjSym(c, inst.ret, 2, true, @intCast(mgId), @intCast(data.funcSigId), nodeId);
+    try pushCallObjSym(c, inst.ret, 2, @intCast(mgId), @intCast(data.funcSigId), nodeId);
     // Provide hint to inlining that one or both args were copies.
     if (hasLeftCopy or hasRightCopy) {
         if (hasLeftCopy and hasRightCopy) {
@@ -2104,7 +2111,7 @@ fn forIterStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any }, bt.Any);
     var extraIdx = try c.fmtExtraDesc("iterator()", .{});
-    try pushCallObjSymExt(c, iterTemp, 1, true,
+    try pushCallObjSymExt(c, iterTemp, 1,
         @intCast(c.compiler.iteratorMGID), @intCast(funcSigId),
         iterNodeId, extraIdx);
     _ = try c.pushRetainedTemp(iterTemp);
@@ -2168,7 +2175,7 @@ fn genIterNext(c: *Chunk, iterTemp: u8, hasCounter: bool, iterNodeId: cy.NodeId)
 
     const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any }, bt.Any);
     extraIdx = try c.fmtExtraDesc("next()", .{});
-    try pushCallObjSymExt(c, iterTemp + 1, 1, true,
+    try pushCallObjSymExt(c, iterTemp + 1, 1,
         @intCast(c.compiler.nextMGID), @intCast(funcSigId),
         iterNodeId, extraIdx);
 
@@ -3092,6 +3099,7 @@ fn exprStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     if (unwindAndFreeTemp(c, exprv)) {
         // ARC cleanup.
         if (!data.returnMain) {
+            // TODO: Merge with previous release inst.
             try pushRelease(c, exprv.local, nodeId);
         }
     }
@@ -3287,15 +3295,15 @@ fn reserveLocalReg(c: *Chunk, irVarId: u8, declType: types.TypeId, boxed: bool, 
     return c.curBlock.nextLocalReg;
 }
 
-fn pushCallObjSym(chunk: *cy.Chunk, startLocal: u8, numArgs: u8, expectReturn: bool, symId: u8, callSigId: u16, nodeId: cy.NodeId) !void {
-    try pushCallObjSymExt(chunk, startLocal, numArgs, expectReturn, symId, callSigId, nodeId, cy.NullId);
+fn pushCallObjSym(chunk: *cy.Chunk, ret: u8, numArgs: u8, symId: u8, callSigId: u16, nodeId: cy.NodeId) !void {
+    try pushCallObjSymExt(chunk, ret, numArgs, symId, callSigId, nodeId, cy.NullId);
 }
 
-fn pushCallObjSymExt(chunk: *cy.Chunk, startLocal: u8, numArgs: u8, expectReturn: bool, symId: u8, callSigId: u16, nodeId: cy.NodeId, extraIdx: u32) !void {
+fn pushCallObjSymExt(chunk: *cy.Chunk, ret: u8, numArgs: u8, symId: u8, callSigId: u16, nodeId: cy.NodeId, extraIdx: u32) !void {
     try chunk.pushFailableDebugSym(nodeId);
     const start = chunk.buf.ops.items.len;
     try chunk.buf.pushOpSliceExt(.callObjSym, &.{
-        startLocal, numArgs, @as(u8, if (expectReturn) 1 else 0), symId, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ret, numArgs, 0, symId, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
     }, chunk.descExtra(nodeId, extraIdx));
     chunk.buf.setOpArgU16(start + 5, callSigId);
 }

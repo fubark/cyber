@@ -65,6 +65,11 @@ bool testBool(bool b) {
     return b;
 }
 
+typedef int (*CallbackFn)(int, int);
+int testCallback(int a, int b, CallbackFn add) {
+    return add(a, b);
+}
+
 typedef struct MyObject{
     double a;
     int b;

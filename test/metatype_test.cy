@@ -20,7 +20,7 @@ var foo = [Foo a: 123]
 t.eq(typeof(foo), Foo)
 
 -- Referencing builtin types.
-t.eq((any).id(), 25)
+t.eq((any).id(), 26)
 t.eq((bool).id(), 1)
 t.eq((float).id(), 8)
 t.eq((int).id(), 7)

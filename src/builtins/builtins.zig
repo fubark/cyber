@@ -94,8 +94,7 @@ const funcs = [_]NameFunc{
 
     // List
     .{"$index", bindings.inlineBinOp(.indexList), .inlinec},
-    .{"$setIndex", bindings.inlineTernNoRetOp(.setIndexList), .inlinec},
-    .{"add", bindings.listAdd, .standard},
+    .{"$setIndex", bindings.inlineTernOp(.setIndexList), .inlinec},
     .{"append", bindings.listAppend, .standard},
     .{"concat", bindings.listConcat, .standard},
     .{"insert", bindings.listInsert, .standard},
@@ -114,7 +113,7 @@ const funcs = [_]NameFunc{
 
     // Map
     .{"$index", bindings.inlineBinOp(.indexMap), .inlinec},
-    .{"$setIndex", bindings.inlineTernNoRetOp(.setIndexMap), .inlinec},
+    .{"$setIndex", bindings.inlineTernOp(.setIndexMap), .inlinec},
     .{"remove", bindings.mapRemove, .standard},
     .{"size", bindings.mapSize, .standard},
     .{"iterator", bindings.mapIterator, .standard},
@@ -235,14 +234,14 @@ pub fn zThrowsFunc(comptime func: fn (vm: *cy.UserVM, args: [*]const Value, narg
 
 pub fn throwZError(vm: *cy.UserVM, err: anyerror, trace: ?*std.builtin.StackTrace) Value {
     if (builtin.mode == .Debug) {
-        std.debug.dumpStackTrace(trace.?.*);
+        // std.debug.dumpStackTrace(trace.?.*);
     }
     switch (err) {
         error.InvalidArgument   => return prepareThrowSymbol(vm, .InvalidArgument),
         error.InvalidEnumTag    => return prepareThrowSymbol(vm, .InvalidArgument),
         error.FileNotFound      => return prepareThrowSymbol(vm, .FileNotFound),
         error.PermissionDenied  => return prepareThrowSymbol(vm, .PermissionDenied),
-        else                    => return fromUnsupportedError(vm, "", err, @errorReturnTrace()),
+        else                    => return fromUnsupportedError(vm, "", err, trace),
     }
 }
 

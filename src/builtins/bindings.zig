@@ -236,11 +236,6 @@ pub fn listInsert(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Se
     return Value.None;
 }
 
-pub fn listAdd(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.Section) Value {
-    fmt.printDeprecated("list.add()", "0.1", "Use list.append() instead.", &.{});
-    return listAppend(vm, args, nargs);
-}
-
 pub fn listAppend(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = args[0].asHeapObject();
     vm.retain(args[1]);
@@ -445,19 +440,21 @@ pub fn floatNeg(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void  {
     inlineUnaryOp(pc, .negFloat);
 }
 
-pub fn inlineTernNoRetOp(comptime code: cy.OpCode) cy.InlineFuncFn {
+pub fn inlineTernOp(comptime code: cy.OpCode) cy.InlineFuncFn {
     const S = struct {
         pub fn method(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void {
-            const startLocal = pc[1].val;
+            const ret = pc[1].val;
             // Save callObjSym data.
-            pc[8].val = startLocal;
+            pc[8].val = ret;
             pc[9] = pc[2];
             pc[10] = pc[3];
+            pc[11] = pc[4];
 
             pc[0] = cy.Inst.initOpCode(code);
-            pc[1].val = startLocal + cy.vm.CallArgStart;
-            pc[2].val = startLocal + cy.vm.CallArgStart + 1;
-            pc[3].val = startLocal + cy.vm.CallArgStart + 2;
+            pc[1].val = ret + cy.vm.CallArgStart;
+            pc[2].val = ret + cy.vm.CallArgStart + 1;
+            pc[3].val = ret + cy.vm.CallArgStart + 2;
+            pc[4].val = ret;
         }
     };
     return S.method;

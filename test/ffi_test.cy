@@ -122,3 +122,12 @@ t.eq(staticAdd(123, 321), 444)
 -- Freeing the lib reference should not affect `staticAdd`
 lib = none
 t.eq(staticAdd(123, 321), 444)
+
+-- Callback.
+ffi = os.newFFI()
+ffi.cfunc('testCallback', [.int, .int, .funcPtr], .int)
+var add = func(a, b):
+    return a + b
+lib = ffi.bindLib(libPath)
+var cadd = ffi.addCallback(add, [.int, .int], .int)
+t.eq(lib.testCallback(10, 20, cadd), 30)

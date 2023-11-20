@@ -107,7 +107,7 @@ pub const Allocator = struct {
             .exact => {
                 return .{
                     .dst = cstr.data.exact,
-                    .retainSrc = cstr.mustRetain,
+                    .retainSrc = cstr.mustRetain and localRetained,
                     .releaseDst = cstr.dstRetained,
                     .finalDst = null,
                 };

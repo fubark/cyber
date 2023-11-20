@@ -616,6 +616,7 @@ fn loadPredefinedTypes(self: *VMcompiler, parent: *cy.Sym) !void {
         .{"TccState", bt.TccState},
         .{"pointer", bt.Pointer},
         .{"metatype", bt.MetaType},
+        .{"ExternFunc", bt.ExternFunc},
 
         .{"dynamic", bt.Dynamic},
         .{"any", bt.Any},

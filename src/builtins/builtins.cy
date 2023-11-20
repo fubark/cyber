@@ -107,7 +107,6 @@ type float object:
 type List object:
     @host func '$index'(idx any) any
     @host func '$setIndex'(idx any, val any) none
-    @host func add(val any) none
 
     --| Appends a value to the end of the list.
     @host func append(val any) none
@@ -310,6 +309,9 @@ type pointer object:
     --| Returns the memory address as an `int`. The value may be negative since it's
     --| bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
     @host func value() int
+
+    --| Converts the value to a compatible C value and writes it to a byte offset from this pointer.
+    @host func writeAt(idx int, val any) none
 
 --| Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI.
 @host func pointer.'$call'(val any) pointer

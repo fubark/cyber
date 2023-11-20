@@ -29,7 +29,7 @@
 #define VALUE_NONE NONE_MASK
 #define VALUE_FLOAT(n) ((ValueUnion){ .d = n }.u)
 #define VALUE_ENUM(tag, val) ((Value)(ENUM_MASK | tag << 8 | val ))
-#define VALUE_RETINFO(nrv, rf, cio) ((Value)(nrv | ((u32)rf << 8) | ((u32)cio << 16)))
+#define VALUE_RETINFO(rf, cio) ((Value)(0 | ((u32)rf << 8) | ((u32)cio << 16)))
 #define VALUE_TRUE TRUE_MASK
 #define VALUE_FALSE FALSE_MASK
 #define VALUE_INTERRUPT (ERROR_MASK | 0xffff) 
@@ -49,7 +49,7 @@
 #define VALUE_AS_BOOLEAN(v) (v == TRUE_MASK)
 #define VALUE_ASSUME_NOT_BOOL_TO_BOOL(v) (!VALUE_IS_NONE(v))
 #define VALUE_GET_TAG(v) ((BITCAST(u32, v >> 32)) & TAG_MASK)
-#define VALUE_RETINFO_NUMRETVALS(v) (v & 0xff)
+// #define VALUE_RETINFO_NUMRETVALS(v) (v & 0xff)
 #define VALUE_RETINFO_RETFLAG(v) ((v & 0xff00) >> 8)
 
 #define VALUE_IS_BOOLEAN(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == BOOLEAN_MASK)
@@ -835,6 +835,7 @@ beginSwitch:
                 release(vm, existing);
                 retain(vm, right);
                 ((Value*)listo->list.list.buf)[idx] = right;
+                stack[pc[4]] = VALUE_NONE;
                 pc += CALL_OBJ_SYM_INST_LEN;
                 NEXT();
             } else {
@@ -843,8 +844,7 @@ beginSwitch:
             }
         } else {
             if (!VALUE_IS_LIST(listv)) {
-                // Reuse binop layout because of no dst.
-                DEOPTIMIZE_BINOP2();
+                DEOPTIMIZE_TERNOP();
                 NEXT();
             }
             panicExpectedInteger(vm);
@@ -859,13 +859,13 @@ beginSwitch:
             Map* mapo = (Map*)VALUE_AS_HEAPOBJECT(mapv);
             ResultCode code = zMapSet(vm, mapo, index, right);
             if (LIKELY(code == RES_CODE_SUCCESS)) {
+                stack[pc[4]] = VALUE_NONE;
                 pc += CALL_OBJ_SYM_INST_LEN;
                 NEXT();
             }
             RETURN(code);
         } else {
-            // Reuse binop layout because of no dst.
-            DEOPTIMIZE_BINOP2();
+            DEOPTIMIZE_TERNOP();
             NEXT();
         }
     }
@@ -1079,14 +1079,13 @@ beginSwitch:
     CASE(CallObjSym): {
         u8 ret = pc[1];
         u8 numArgs = pc[2];
-        u8 numRet = pc[3];
         u8 mgId = pc[4];
         u16 anySelfFuncSigId = READ_U16(5);
 
         Value recv = stack[ret + CALL_ARG_START];
         TypeId typeId = getTypeId(recv);
 
-        CallObjSymResult res = zCallObjSym(vm, pc, stack, recv, typeId, mgId, ret, numArgs, numRet, anySelfFuncSigId);
+        CallObjSymResult res = zCallObjSym(vm, pc, stack, recv, typeId, mgId, ret, numArgs, anySelfFuncSigId);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
@@ -1109,21 +1108,7 @@ beginSwitch:
             if (res == VALUE_INTERRUPT) {
                 RETURN(RES_CODE_PANIC);
             }
-            uint8_t numRet = pc[3];
-            if (numRet == 1) {
-                stack[ret] = res;
-            } else {
-                switch (numRet) {
-                    case 0: 
-                        // Nop.
-                        break;
-                    case 1:
-                        // Not possible.
-                        zFatal();
-                    default:
-                        zFatal();
-                }
-            }
+            stack[ret] = res;
             pc += CALL_OBJ_SYM_INST_LEN;
             // In the future, we might allow native functions to change the pc and framePtr.
             // pc = vm.pc;
@@ -1194,9 +1179,8 @@ beginSwitch:
     CASE(CallSym): {
         u8 startLocal = pc[1];
         u8 numArgs = pc[2];
-        u8 numRet = pc[3];
         u16 symId = READ_U16(4);
-        PcSpResult res = zCallSym(vm, pc, stack, symId, startLocal, numArgs, numRet);
+        PcSpResult res = zCallSym(vm, pc, stack, symId, startLocal, numArgs);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
@@ -1213,14 +1197,14 @@ beginSwitch:
 
         Value retFramePtr = (uintptr_t)stack;
         stack += startLocal;
-        stack[1] = VALUE_RETINFO(pc[3], false, CALL_SYM_INST_LEN);
+        stack[1] = VALUE_RETINFO(false, CALL_SYM_INST_LEN);
         stack[2] = (uintptr_t)(pc + CALL_SYM_INST_LEN);
         stack[3] = retFramePtr;
         pc = (Inst*)READ_U48(6);
         NEXT();
     }
     CASE(CallNativeFuncIC): {
-        uint8_t startLocal = pc[1];
+        uint8_t ret = pc[1];
         uint8_t numArgs = pc[2];
 
         Value* newStack = stack + startLocal;
@@ -1230,83 +1214,37 @@ beginSwitch:
         if (res == VALUE_INTERRUPT) {
             RETURN(RES_CODE_PANIC);
         }
-        uint8_t numRet = pc[3];
-        if (numRet == 1) {
-            newStack[0] = res;
-        } else {
-            // Nop.
-        }
+        newStack[0] = res;
         pc += CALL_SYM_INST_LEN;
         NEXT();
     }
     CASE(Ret1): {
-        uint8_t reqNumArgs = VALUE_RETINFO_NUMRETVALS(stack[1]);
-        uint8_t retFlag = VALUE_RETINFO_RETFLAG(stack[1]);
-        if (reqNumArgs == 1) {
+        u8 retFlag = VALUE_RETINFO_RETFLAG(stack[1]);
+        if (retFlag == 0) {
             pc = (Inst*)stack[2];
             stack = (Value*)stack[3];
-            if (retFlag == 0) {
-                NEXT();
-            } else {
-                RETURN(RES_CODE_SUCCESS);
-            }
+            NEXT();
         } else {
-            switch (reqNumArgs) {
-                case 0: {
-                    release(vm, stack[0]);
-                    break;
-                }
-                case 1:
-                    zFatal();
-                default:
-                    zFatal();
-            }
-            pc = (Inst*)stack[2];
-            stack = (Value*)stack[3];
-            if (retFlag == 0) {
-                NEXT();
-            } else {
-                RETURN(RES_CODE_SUCCESS);
-            }
+            RETURN(RES_CODE_SUCCESS);
         }
     }
     CASE(Ret0): {
-        uint8_t reqNumArgs = VALUE_RETINFO_NUMRETVALS(stack[1]);
         uint8_t retFlag = VALUE_RETINFO_RETFLAG(stack[1]);
-        if (reqNumArgs == 0) {
+        stack[0] = VALUE_NONE;
+        if (retFlag == 0) {
             pc = (Inst*)stack[2];
             stack = (Value*)stack[3];
-            if (retFlag == 0) {
-                NEXT();
-            } else {
-                RETURN(RES_CODE_SUCCESS);
-            }
+            NEXT();
         } else {
-            switch (reqNumArgs) {
-                case 0:
-                    zFatal();
-                case 1:
-                    stack[0] = VALUE_NONE;
-                    break;
-                default:
-                    zFatal();
-            }
-            pc = (Inst*)stack[2];
-            stack = (Value*)stack[3];
-            if (retFlag == 0) {
-                NEXT();
-            } else {
-                RETURN(RES_CODE_SUCCESS);
-            }
+            RETURN(RES_CODE_SUCCESS);
         }
     }
     CASE(Call): {
         u8 ret = pc[1];
         u8 numArgs = pc[2];
-        u8 numRet = pc[3];
 
         Value callee = stack[ret + CALLEE_START];
-        Value retInfo = VALUE_RETINFO(numRet, false, CALL_INST_LEN);
+        Value retInfo = VALUE_RETINFO(false, CALL_INST_LEN);
         PcSpResult res = zCall(vm, pc, stack, callee, ret, numArgs, retInfo);
         if (LIKELY(res.code == RES_CODE_SUCCESS)) {
             pc = res.pc;

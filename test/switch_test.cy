@@ -19,7 +19,7 @@ case 10 : res = 2
 case 123: res = 3
 t.eq(res, 3)
 
--- Match else case.
+-- Switch else case.
 a = 123
 res = 0
 switch a:
@@ -28,12 +28,22 @@ case 10 : res = 2
 else    : res = 3
 t.eq(res, 3)
 
--- Match group case.
+-- Switch mulitple conds.
 a = 123
 res = 0
 switch a:
 case 0       : res = 1
 case 10, 123 : res = 2
+else         : res = 3
+t.eq(res, 2)
+
+-- Switch multiple conds new line.
+a = 123
+res = 0
+switch a:
+case 0       : res = 1
+case 10,
+    123      : res = 2
 else         : res = 3
 t.eq(res, 2)
 
@@ -59,7 +69,7 @@ func foo():
     t.eq(res, 0)
 foo()
 
--- Match assign block.
+-- Switch assign block.
 res = switch 'one':
 case 'one' => 1
 case 'two' => 2
@@ -75,7 +85,7 @@ case 'one' => 1
 case 'two' => 2
 t.eq(res, none)
 
--- var match assign block.
+-- Assign switch to static var.
 var Root.varRes = switch 'one':
 case 'one' => 1
 case 'two' => 2

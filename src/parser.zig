@@ -1470,6 +1470,7 @@ pub const Parser = struct {
                     break;
                 } else if (token.tag() == .comma) {
                     self.advanceToken();
+                    self.consumeWhitespaceTokens();
                     const cond = (try self.parseTightTermExpr()) orelse {
                         return self.reportParseError("Expected case condition.", &.{});
                     };

@@ -112,7 +112,6 @@ pub fn main() !void {
         },
         .none => {
             help();
-            exit(1);
         },
     }
 }
@@ -197,12 +196,13 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
                 std.debug.print("unexpected {}\n", .{err});
             },
         }
-        if (cy.Trace) {
-            vm.deinit(false);
-            cy.heap.deinitAllocator();
+        if (builtin.mode == .Debug) {
+            // Report error trace.
+            return err;
+        } else {
+            // Exit early.
+            exit(1);
         }
-        
-        exit(1);
     };
     if (verbose) {
         std.debug.print("\n==VM Info==\n", .{});
@@ -215,7 +215,6 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
         vm.deinitRtObjects();
         vm.compiler.deinitModRetained();
         try cy.arc.checkGlobalRC(&vm);
-        vm.deinit(true);
     }
 }
 

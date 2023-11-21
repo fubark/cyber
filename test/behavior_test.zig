@@ -909,7 +909,8 @@ test "Imports." {
         \\var b = a.missing
     , struct { fn func(runner: *VMrunner, evalRes: EvalResult) !void {
         try runner.expectErrorReport(evalRes, error.CompileError,
-            \\CompileError: Can not find the symbol `missing` in `@AbsPath(test/test_mods/a.cy)`.
+            \\CompileError: Can not find the symbol `missing` in `a`.
+            \\`a` resolves to `@AbsPath(test/test_mods/a.cy)`.
             \\
             \\@AbsPath(test/import_test.cy):2:11:
             \\var b = a.missing

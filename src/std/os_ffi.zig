@@ -1049,7 +1049,7 @@ fn cyCallFunc(vm: *cy.VM, func: Value, args: [*]const Value, nargs: u8) callconv
                 cy.debug.printLastUserPanicError(vm) catch cy.fatal();
             };
         }
-        return builtins.throwZError(@ptrCast(vm), err, @errorReturnTrace());
+        return builtins.prepThrowZError(@ptrCast(vm), err, @errorReturnTrace());
     };
 }
 

@@ -225,7 +225,7 @@ pub fn zErrFunc2(comptime func: fn (vm: *cy.VM, args: [*]const Value, nargs: u8)
     const S = struct {
         pub fn genFunc(vm: *cy.VM, args: [*]const Value, nargs: u8) Value {
             return func(vm, args, nargs) catch |err| {
-                return throwZError(vm, err, @errorReturnTrace());
+                return prepThrowZError(vm, err, @errorReturnTrace());
             };
         }
     };
@@ -236,16 +236,18 @@ pub fn zErrFunc(comptime func: fn (vm: *cy.UserVM, args: [*]const Value, nargs: 
     const S = struct {
         pub fn genFunc(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
             return func(vm, args, nargs) catch |err| {
-                return throwZError(@ptrCast(vm), err, @errorReturnTrace());
+                return prepThrowZError(@ptrCast(vm), err, @errorReturnTrace());
             };
         }
     };
     return S.genFunc;
 }
 
-pub fn throwZError(vm: *cy.VM, err: anyerror, trace: ?*std.builtin.StackTrace) Value {
-    if (builtin.mode == .Debug) {
-        // std.debug.dumpStackTrace(trace.?.*);
+pub fn prepThrowZError(vm: *cy.VM, err: anyerror, optTrace: ?*std.builtin.StackTrace) Value {
+    if (cy.verbose) {
+        if (optTrace) |trace| {
+            std.debug.dumpStackTrace(trace.*);
+        }
     }
     switch (err) {
         error.InvalidArgument       => return vm.prepThrowError(.InvalidArgument),
@@ -254,7 +256,7 @@ pub fn throwZError(vm: *cy.VM, err: anyerror, trace: ?*std.builtin.StackTrace) V
         error.PermissionDenied      => return vm.prepThrowError(.PermissionDenied),
         error.StdoutStreamTooLong   => return vm.prepThrowError(.StreamTooLong),
         error.StderrStreamTooLong   => return vm.prepThrowError(.StreamTooLong),
-        else                    => return fromUnsupportedError(@ptrCast(vm), "", err, trace),
+        else                        => return fromUnsupportedError(@ptrCast(vm), "", err, optTrace),
     }
 }
 

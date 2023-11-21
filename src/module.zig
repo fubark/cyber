@@ -504,7 +504,10 @@ pub const ChunkExt = struct {
         const symId = mod.symMap.get(name) orelse {
             if (must) {
                 const symPath = try modSym.resolved().formatAbsPath(&cy.tempBuf);
-                return c.reportErrorAt("Can not find the symbol `{}` in `{}`.", &.{v(name), v(symPath)}, nodeId);
+                return c.reportErrorAt(
+                    \\Can not find the symbol `{}` in `{}`.
+                    \\`{}` resolves to `{}`.
+                , &.{v(name), v(modSym.name()), v(modSym.name()), v(symPath)}, nodeId);
             } else {
                 return null;
             }

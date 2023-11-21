@@ -10,7 +10,7 @@ const Value = cy.Value;
 const fmt = @import("../fmt.zig");
 const bindings = @import("../builtins/bindings.zig");
 const builtins = @import("../builtins/builtins.zig");
-const throwZError = builtins.throwZError;
+const prepThrowZError = builtins.prepThrowZError;
 const zErrFunc = builtins.zErrFunc;
 const zErrFunc2 = builtins.zErrFunc2;
 const Symbol = bindings.Symbol;
@@ -102,8 +102,8 @@ const funcs = [_]NameFunc{
 
     // FFI
     .{"addCallback",    zErrFunc(ffi.ffiAddCallback)},
-    .{"bindLib",        bindLib},
-    .{"bindLib",        bindLibExt},
+    .{"bindLib",        zErrFunc(bindLib)},
+    .{"bindLib",        zErrFunc(bindLibExt)},
     .{"cbind",          zErrFunc(ffi.ffiCbind)},
     .{"cfunc",          zErrFunc2(ffi.ffiCfunc)},
 };
@@ -582,28 +582,24 @@ fn newFFI(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection
     return ffi.allocFFI(vm.internal()) catch fatal();
 }
 
-pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     if (!cy.hasFFI) return vm.returnPanic("Unsupported.");
-    return @call(.never_inline, ffi.ffiBindLib, .{vm, args, .{}}) catch |err| {
-        return throwZError(@ptrCast(vm), err, @errorReturnTrace());
-    };
+
+    return @call(.never_inline, ffi.ffiBindLib, .{vm, args, .{}});
 }
 
-pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    if (!cy.hasFFI) {
-        return vm.returnPanic("Unsupported.");
-    }
+pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (!cy.hasFFI) return vm.returnPanic("Unsupported.");
+
     var configV = args[2];
-    const genMapV = vm.retainOrAllocAstring("genMap") catch cy.fatal();
+    const genMapV = try vm.retainOrAllocAstring("genMap");
     defer vm.release(genMapV);
     var config: ffi.BindLibConfig = .{};
     const val = configV.asHeapObject().map.map().get(genMapV) orelse Value.False;
     if (val.isTrue()) {
         config.genMap = true;
     }
-    return @call(.never_inline, ffi.ffiBindLib, .{vm, args, config}) catch |err| {
-        return throwZError(@ptrCast(vm), err, @errorReturnTrace());
-    };
+    return @call(.never_inline, ffi.ffiBindLib, .{vm, args, config});
 }
 
 pub extern fn hostFileWrite(fid: u32, str: [*]const u8, strLen: usize) void;

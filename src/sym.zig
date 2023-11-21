@@ -400,7 +400,7 @@ pub const Func = struct {
             ptr: cy.ZHostFuncFn,
         },
         hostInlineFunc: struct {
-            ptr: cy.InlineFuncFn,
+            ptr: cy.ZHostFuncFn,
         },
     },
 

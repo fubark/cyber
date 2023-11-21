@@ -411,19 +411,23 @@ pub fn trim(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     }
 }
 
-pub fn replace(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn stringReplace(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const stype = obj.string.getType();
+
+    const needle = args[1].castHeapObject(*cy.heap.String);
+    const replace = args[2].castHeapObject(*cy.heap.String);
+
     if (stype.isAstring()) {
-        if (astringReplace(vm, str, args[1], args[2])) |val| {
+        if (astringReplace(vm, str, needle, replace)) |val| {
             return val;
         } else {
             vm.retainObject(obj);
             return Value.initNoCycPtr(obj);
         }
     } else {
-        if (ustringReplace(vm, str, args[1], args[2])) |val| {
+        if (ustringReplace(vm, str, needle, replace)) |val| {
             return val;
         } else {
             vm.retainObject(obj);
@@ -432,10 +436,11 @@ pub fn replace(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     }
 }
 
-fn astringReplace(vm: *cy.UserVM, str: []const u8, needlev: Value, replacev: Value) linksection(cy.StdSection) ?Value {
-    const needle = vm.valueToTempString(needlev);
-    var rcharLen: u32 = undefined;
-    const replacement = vm.valueToNextTempString2(replacev, &rcharLen);
+fn astringReplace(vm: *cy.UserVM, str: []const u8, needlev: *cy.heap.String, replacev: *cy.heap.String) linksection(cy.StdSection) ?Value {
+    const needle = needlev.getSlice();
+    const replacement = replacev.getSlice();
+    const rcharLen = replacev.getCharLen();
+
     const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
     idxBuf.clearRetainingCapacity();
     defer idxBuf.ensureMaxCapOrClear(vm.allocator(), 4096) catch fatal();
@@ -460,11 +465,11 @@ fn astringReplace(vm: *cy.UserVM, str: []const u8, needlev: Value, replacev: Val
     }
 }
 
-fn ustringReplace(vm: *cy.UserVM, str: []const u8, needlev: Value, replacev: Value) linksection(cy.StdSection) ?Value {
+fn ustringReplace(vm: *cy.UserVM, str: []const u8, needlev: *cy.heap.String, replacev: *cy.heap.String) linksection(cy.StdSection) ?Value {
     var ncharLen: u32 = undefined;
-    const needle = needlev.asString2(&ncharLen);
+    const needle = needlev.getSlice2(&ncharLen);
     var rcharLen: u32 = undefined;
-    const replacement = replacev.asString2(&rcharLen);
+    const replacement = replacev.getSlice2(&rcharLen);
 
     const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
     idxBuf.clearRetainingCapacity();
@@ -556,13 +561,18 @@ pub fn split(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     return res;
 }
 
-pub fn stringCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn stringCall(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const val = args[0];
     if (val.isString()) {
         vm.retain(val);
         return val; 
     } else {
-        const str = vm.valueToTempString(val);
-        return vm.retainOrAllocString(str) catch cy.fatal();
+        var charLen: u32 = undefined;
+        const str = try vm.getOrBufPrintValueStr2(&cy.tempBuf, val, &charLen);
+        if (charLen == str.len) {
+            return vm.retainOrAllocAstring(str);
+        } else {
+            return vm.retainOrAllocUstring(str, charLen);
+        }
     }
 }

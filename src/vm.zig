@@ -32,11 +32,6 @@ const log = cy.log.scoped(.vm);
 const UseGlobalVM = true;
 const StdSection = cy.StdSection;
 
-/// Temp buf for toString conversions when the len is known to be small.
-var tempU8Buf: [256]u8 = undefined;
-var tempU8BufIdx: u32 = undefined;
-var tempU8Writer = SliceWriter{ .buf = &tempU8Buf, .idx = &tempU8BufIdx };
-
 pub const VM = struct {
     alloc: std.mem.Allocator,
 
@@ -1201,7 +1196,8 @@ pub const VM = struct {
             },
             .hostInlineFunc => {
                 const newFramePtr = framePtr + ret;
-                sym.inner.hostInlineFunc(@ptrCast(self), pc, @ptrCast(newFramePtr + CallArgStart), numArgs);
+                self.pc = pc;
+                _ = sym.inner.hostInlineFunc.?(@ptrCast(self), @ptrCast(newFramePtr + CallArgStart), numArgs);
                 return cy.fiber.PcSp{
                     .pc = pc,
                     .sp = framePtr,
@@ -1302,240 +1298,155 @@ pub const VM = struct {
         return &self.stackTrace;
     }
 
-    pub fn valueToString(self: *const VM, val: Value) ![]const u8 {
-        const str = self.valueToTempString(val);
+    pub fn allocValueStr(self: *const VM, val: Value) ![]const u8 {
+        const str = try self.getOrBufPrintValueStr(&cy.tempBuf, val);
         return try self.alloc.dupe(u8, str);
     }
 
-    /// Like valueToTempString but does not guarantee a valid string.
-    pub fn valueToTempByteArray(self: *const VM, val: Value) linksection(cy.StdSection) []const u8 {
+    /// Not guaranteed to be valid UTF-8. Returns `array` bytes.
+    pub fn getOrBufPrintValueRawStr(self: *const VM, buf: []u8, val: Value) linksection(cy.StdSection) ![]const u8 {
         if (val.isArray()) {
             return val.asArray();
         } else {
-            return self.valueToTempString(val);
-        }
-    }
-
-    pub fn valueToTempRawString2(self: *const VM, val: Value, isRaw: *bool) linksection(cy.StdSection) []const u8 {
-        if (val.isArray()) {
-            isRaw.* = true;
-            return val.asArray();
-        } else {
-            isRaw.* = false;
-            return self.valueToTempString(val);
+            return self.getOrBufPrintValueStr(buf, val);
         }
     }
 
     /// String is guaranteed to be valid UTF-8.
-    /// Uses a short desc for rawstring instead of performing validation.
-    pub fn valueToTempString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {
-        tempU8Writer.reset();
-        return self.getOrWriteValueString(tempU8Writer, val, undefined, false);
+    pub fn bufPrintValueShortStr(self: *const VM, buf: []u8, val: Value) ![]const u8 {
+        var fbuf = std.io.fixedBufferStream(buf);
+        var w = fbuf.writer();
+
+        if (val.isString()) {
+            const str = val.asString();
+            if (str.len > 20) {
+                try w.print("String({}) {s}...", .{str.len, str});
+            } else {
+                try w.print("String({}) {s}", .{str.len, str});
+            }
+        } else {
+            _ = try self.writeValue(w, val);
+        }
+        return fbuf.getWritten();
     }
 
-    pub fn valueToTempString2(self: *const VM, val: Value, outCharLen: *u32) linksection(cy.Section) []const u8 {
-        tempU8Writer.reset();
-        return self.getOrWriteValueString(tempU8Writer, val, outCharLen, true);
+    /// String is guaranteed to be valid UTF-8.
+    pub fn getOrBufPrintValueStr(self: *const VM, buf: []u8, val: Value) linksection(cy.StdSection) ![]const u8 {
+        var fbuf = std.io.fixedBufferStream(buf);
+        var w = fbuf.writer();
+
+        if (val.isString()) {
+            return val.asString();
+        } else {
+            _ = try self.writeValue(w, val);
+        }
+        return fbuf.getWritten();
     }
 
-    pub fn valueToNextTempString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {
-        return self.getOrWriteValueString(tempU8Writer, val, undefined, false);
+    pub fn getOrBufPrintValueStr2(self: *const VM, buf: []u8, val: Value, outCharLen: *u32) linksection(cy.StdSection) ![]const u8 {
+        var fbuf = std.io.fixedBufferStream(buf);
+        var w = fbuf.writer();
+
+        if (val.isString()) {
+            return val.asString2(outCharLen);
+        } else {
+            _ = try self.writeValue(w, val);
+        }
+        const res = fbuf.getWritten();
+        outCharLen.* = @intCast(res.len);
+        return res;
     }
 
-    pub fn valueToNextTempString2(self: *const VM, val: Value, outCharLen: *u32) linksection(cy.Section) []const u8 {
-        return self.getOrWriteValueString(tempU8Writer, val, outCharLen, true);
-    }
-
-    /// Conversion goes into a temporary buffer. Must use the result before a subsequent call.
-    pub fn getOrWriteValueString(self: *const VM, writer: anytype, val: Value, outCharLen: *u32, comptime getCharLen: bool) linksection(cy.Section) []const u8 {
+    pub fn writeValue(self: *const VM, w: anytype, val: Value) linksection(cy.StdSection) !void {
         const typeId = val.getTypeId();
         
         switch (typeId) {
             bt.Float => {
                 const f = val.asF64();
-                const start = writer.pos();
                 if (Value.floatIsSpecial(f)) {
-                    std.fmt.format(writer, "{}", .{f}) catch cy.fatal();
+                    try std.fmt.format(w, "{}", .{f});
                 } else {
                     if (Value.floatCanBeInteger(f)) {
-                        std.fmt.format(writer, "{d:.0}", .{f}) catch cy.fatal();
+                        try std.fmt.format(w, "{d:.0}", .{f});
                     } else {
-                        std.fmt.format(writer, "{d}", .{f}) catch cy.fatal();
+                        try std.fmt.format(w, "{d}", .{f});
                     }
                 }
-                const slice = writer.sliceFrom(start);
-                if (getCharLen) {
-                    outCharLen.* = @intCast(slice.len);
-                }
-                return slice;
+                return;
             },
             bt.None => {
-                if (getCharLen) {
-                    outCharLen.* = "none".len;
-                }
-                return "none";
+                try w.writeAll("none");
+                return;
             },
             bt.Boolean => {
                 if (val.asBool()) {
-                    if (getCharLen) {
-                        outCharLen.* = "true".len;
-                    }
-                    return "true";
+                    try w.writeAll("true");
                 } else {
-                    if (getCharLen) {
-                        outCharLen.* = "false".len;
-                    }
-                    return "false";
+                    try w.writeAll("false");
                 }
+                return;
             },
             bt.Error => {
-                const start = writer.pos();
                 const symId = val.asErrorSymbol();
-                std.fmt.format(writer, "error.{s}", .{self.getSymbolName(symId)}) catch cy.fatal();
-                const slice = writer.sliceFrom(start);
-                if (getCharLen) {
-                    outCharLen.* = @intCast(slice.len);
-                }
-                return slice;
+                try std.fmt.format(w, "error.{s}", .{self.getSymbolName(symId)});
+                return;
             },
             bt.Symbol => {
-                const start = writer.pos();
                 const litId = val.asSymbolId();
-                std.fmt.format(writer, ".{s}", .{self.getSymbolName(litId)}) catch cy.fatal();
-                const slice = writer.sliceFrom(start);
-                if (getCharLen) {
-                    outCharLen.* = @intCast(slice.len);
-                }
-                return slice;
+                try std.fmt.format(w, ".{s}", .{self.getSymbolName(litId)});
+                return;
             },
             bt.Integer => {
-                const start = writer.pos();
-                std.fmt.format(writer, "{}", .{val.asInteger()}) catch cy.fatal();
-                const slice = writer.sliceFrom(start);
-                if (getCharLen) {
-                    outCharLen.* = @intCast(slice.len);
-                }
-                return slice;
+                try std.fmt.format(w, "{}", .{val.asInteger()});
+                return;
             },
             else => {}, // Fall-through.
         }
 
         if (!val.isPointer()) {
             if (val.isEnum()) {
-                const start = writer.pos();
                 const sym = self.types[typeId].sym;
                 const enumv = val.getEnumValue();
                 const name = sym.cast(.enumType).getValueSym(enumv).name();
-                std.fmt.format(writer, "{s}.{s}", .{sym.name(), name}) catch cy.fatal();
-                const slice = writer.sliceFrom(start);
-                if (getCharLen) {
-                    outCharLen.* = @intCast(slice.len);
-                }
-                return slice;
+                try std.fmt.format(w, "{s}.{s}", .{sym.name(), name});
             } else {
-                return "Unknown";
+                try w.writeAll("Unknown");
             }
+            return;
         }
 
         const obj = val.asHeapObject();
         switch (typeId) {
             bt.String => {
-                switch (obj.string.getType()) {
-                    .astring => {
-                        const res = obj.astring.getSlice();
-                        if (getCharLen) {
-                            outCharLen.* = @intCast(res.len);
-                        }
-                        return res;
-                    },
-                    .ustring => {
-                        if (getCharLen) {
-                            outCharLen.* = obj.ustring.charLen;
-                        }
-                        return obj.ustring.getSlice();
-                    },
-                    .aslice => {
-                        const res = obj.aslice.getSlice();
-                        if (getCharLen) {
-                            outCharLen.* = @intCast(res.len);
-                        }
-                        return res;
-                    },
-                    .uslice => {
-                        if (getCharLen) {
-                            outCharLen.* = obj.uslice.charLen;
-                        }
-                        return obj.uslice.getSlice();
-                    },
-                }
+                try w.writeAll(obj.string.getSlice());
             },
             bt.Array => {
                 if (obj.array.isSlice()) {
-                    const start = writer.pos();
-                    std.fmt.format(writer, "array ({})", .{obj.array.len()}) catch cy.fatal();
-                    const slice = writer.sliceFrom(start);
-                    if (getCharLen) {
-                        outCharLen.* = @intCast(slice.len);
-                    }
-                    return slice;
-
+                    try std.fmt.format(w, "array ({})", .{obj.array.len()});
                 } else {
-                    const start = writer.pos();
-                    std.fmt.format(writer, "array ({})", .{obj.array.len()}) catch cy.fatal();
-                    const slice = writer.sliceFrom(start);
-                    if (getCharLen) {
-                        outCharLen.* = @intCast(slice.len);
-                    }
-                    return slice;
+                    try std.fmt.format(w, "array ({})", .{obj.array.len()});
                 }
             },
             bt.List => {
-                const start = writer.pos();
-                std.fmt.format(writer, "List ({})", .{obj.list.list.len}) catch cy.fatal();
-                const slice = writer.sliceFrom(start);
-                if (getCharLen) {
-                    outCharLen.* = @intCast(slice.len);
-                }
-                return slice;
+                try std.fmt.format(w, "List ({})", .{obj.list.list.len});
             },
             bt.Map => {
-                const start = writer.pos();
-                std.fmt.format(writer, "Map ({})", .{obj.map.inner.size}) catch cy.fatal();
-                const slice = writer.sliceFrom(start);
-                if (getCharLen) {
-                    outCharLen.* = @intCast(slice.len);
-                }
-                return slice;
+                try std.fmt.format(w, "Map ({})", .{obj.map.inner.size});
             },
             bt.MetaType => {
-                const start = writer.pos();
                 const symType: cy.heap.MetaTypeKind = @enumFromInt(obj.metatype.type);
-                var slice: []const u8 = undefined;
                 if (symType == .object) {
                     const name = self.compiler.sema.getTypeName(obj.metatype.type);
-                    std.fmt.format(writer, "type: {s}", .{name}) catch cy.fatal();
-                    slice = writer.sliceFrom(start);
+                    try std.fmt.format(w, "type: {s}", .{name});
                 } else {
-                    slice = "Unknown Symbol";
+                    try w.writeAll("Unknown Symbol");
                 }
-                if (getCharLen) {
-                    outCharLen.* = @intCast(slice.len);
-                }
-                return slice;
             },
             else => {
                 const name = self.compiler.sema.getTypeName(obj.getTypeId());
-                if (getCharLen) {
-                    outCharLen.* = @intCast(name.len);
-                }
-                return name;
+                try w.writeAll(name);
             }
         }
-    }
-
-    pub fn writeValueToString(self: *const VM, writer: anytype, val: Value) void {
-        const str = self.valueToTempString(val);
-        _ = writer.write(str) catch cy.fatal();
     }
 
     pub fn setApiError(self: *const VM, str: []const u8) !void {
@@ -1544,7 +1455,23 @@ pub const VM = struct {
         self.compiler.apiError = try self.alloc.dupe(u8, str);
     }
 
+    pub fn prepPanic(vm: *VM, msg: []const u8) Value {
+        @setCold(true);
+        const dupe = vm.alloc.dupe(u8, msg) catch cy.fatal();
+        vm.curFiber.panicPayload = @as(u64, @intCast(@intFromPtr(dupe.ptr))) | (@as(u64, dupe.len) << 48);
+        vm.curFiber.panicType = vmc.PANIC_MSG;
+        return Value.Interrupt;
+    }
+
+    pub fn prepThrowError(vm: *VM, sym: bindings.Symbol) Value {
+        const id: u8 = @intFromEnum(sym);
+        vm.curFiber.panicPayload = Value.initErrorSymbol(id).val;
+        vm.curFiber.panicType = vmc.PANIC_NATIVE_THROW;
+        return Value.Interrupt;
+    }
+
     pub usingnamespace cy.heap.VmExt;
+    pub usingnamespace cy.arc.VmExt;
 };
 
 fn evalCompareBool(left: Value, right: Value) linksection(cy.HotSection) bool {
@@ -3396,7 +3323,9 @@ fn dumpEvalOp(vm: *const VM, pc: [*]const cy.Inst) !void {
             const dst = pc[3].val;
             _ = dst;
             const val = Value{ .val = vm.consts[idx].val };
-            extra = try std.fmt.bufPrint(&S.buf, "rt: constVal={s}", .{vm.valueToTempString(val)});
+            extra = try std.fmt.bufPrint(&S.buf, "rt: constVal={s}", .{
+                try vm.getOrBufPrintValueStr(&cy.tempBuf, val)
+            });
         },
         .callObjNativeFuncIC => {
             const symId = pc[4].val;
@@ -3798,50 +3727,6 @@ const RtFuncSymKey = cy.hash.KeyU96;
 /// Absolute func symbol signature key.
 pub const AbsFuncSigKey = cy.hash.KeyU96;
 
-const SliceWriter = struct {
-    buf: []u8,
-    idx: *u32,
-
-    pub const Error = error{OutOfMemory};
-
-    fn reset(self: *SliceWriter) void {
-        self.idx.* = 0;
-    }
-
-    inline fn pos(self: *const SliceWriter) u32 {
-        return self.idx.*;
-    }
-
-    inline fn sliceFrom(self: *const SliceWriter, start: u32) []const u8 {
-        return self.buf[start..self.idx.*];
-    }
-
-    pub fn write(self: SliceWriter, data: []const u8) linksection(cy.Section) Error!usize {
-        if (builtin.mode != .ReleaseFast) {
-            if (self.idx.* + data.len > self.buf.len) {
-                return Error.OutOfMemory;
-            }
-        }
-        std.mem.copy(u8, self.buf[self.idx.*..self.idx.*+data.len], data);
-        self.idx.* += @intCast(data.len);
-        return data.len;
-    }
-
-    pub fn writeAll(self: SliceWriter, data: []const u8) linksection(cy.Section) Error!void {
-        _ = try self.write(data);
-    }
-
-    pub fn writeByteNTimes(self: SliceWriter, byte: u8, n: usize) linksection(cy.Section) Error!void {
-        if (builtin.mode != .ReleaseFast) {
-            if (self.idx.* + n > self.buf.len) {
-                return Error.OutOfMemory;
-            }
-        }
-        @memset(self.buf[self.idx.*..self.idx.*+n], byte);
-        self.idx.* += @intCast(n);
-    }
-};
-
 pub const EvalConfig = struct {
     /// Whether this process intends to perform eval once and exit.
     /// In that scenario, the compiler can skip generating the final release ops for the main block.
@@ -4079,6 +3964,7 @@ fn callMethod(
             @as(*align(1) u48, @ptrCast(pc + 8)).* = @intCast(@intFromPtr(data.untypedHost.ptr));
             @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
 
+            vm.pc = pc;
             vm.framePtr = sp;
             const res: Value = @bitCast(data.untypedHost.ptr.?(@ptrCast(vm), @ptrCast(sp + ret + CallArgStart), numArgs));
             if (res.isInterrupt()) {
@@ -4100,7 +3986,8 @@ fn callMethod(
             @as(*align(1) u48, @ptrCast(pc + 8)).* = @intCast(@intFromPtr(data.optimizing.ptr));
             @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
 
-            data.optimizing.ptr(@ptrCast(vm), pc, @ptrCast(sp + ret + CallArgStart), numArgs);
+            vm.pc = pc;
+            _ = data.optimizing.ptr.?(@ptrCast(vm), @ptrCast(sp + ret + CallArgStart), numArgs);
             return cy.fiber.PcSp{
                 .pc = pc,
                 .sp = sp,

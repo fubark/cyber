@@ -449,7 +449,7 @@ pub const ChunkExt = struct {
 
     pub fn declareHostInlineFunc(
         c: *cy.Chunk, parent: *cy.Sym, name: []const u8, funcSigId: sema.FuncSigId,
-        nodeId: cy.NodeId, funcPtr: cy.InlineFuncFn, isMethod: bool,
+        nodeId: cy.NodeId, funcPtr: cy.ZHostFuncFn, isMethod: bool,
     ) !*cy.Func {
         const mod = parent.getMod().?;
         const res = try prepareFuncSym(c, parent, mod, name, funcSigId, nodeId);

@@ -190,10 +190,6 @@ pub const UserVM = struct {
         return cy.heap.allocUnsetArrayObject(self.internal(), len);
     }
 
-    pub inline fn allocArray(self: *UserVM, str: []const u8) !Value {
-        return cy.heap.allocArray(self.internal(), str);
-    }
-
     pub inline fn retainOrAllocAstring(self: *UserVM, str: []const u8) !Value {
         return cy.heap.retainOrAllocAstring(self.internal(), str);
     }
@@ -222,7 +218,7 @@ pub const UserVM = struct {
                 return self.retainOrAllocUstring(str, @intCast(runeLen));
             }
         } else {
-            return self.allocArray(str);
+            return self.internal().allocArray(str);
         }
     }
 
@@ -288,34 +284,6 @@ pub const UserVM = struct {
 
     pub inline fn allocFile(self: *UserVM, fd: std.os.fd_t) !Value {
         return fs.allocFile(self.internal(), fd);
-    }
-
-    pub inline fn getOrWriteValueString(self: *UserVM, writer: anytype, val: Value, charLen: *u32) []const u8 {
-        return self.internal().getOrWriteValueString(writer, val, charLen, true);
-    }
-
-    pub inline fn valueToTempByteArray(self: *const UserVM, val: Value) []const u8 {
-        return self.constInternal().valueToTempByteArray(val);
-    }
-
-    pub inline fn valueToTempString(self: *UserVM, val: Value) []const u8 {
-        return self.constInternal().valueToTempString(val);
-    }
-
-    pub inline fn valueToTempString2(self: *UserVM, val: Value, outCharLen: *u32) []const u8 {
-        return @as(*const VM, @ptrCast(self)).valueToTempString2(val, outCharLen);
-    }
-
-    pub inline fn valueToNextTempString(self: *UserVM, val: Value) []const u8 {
-        return @as(*const VM, @ptrCast(self)).valueToNextTempString(val);
-    }
-
-    pub inline fn valueToNextTempString2(self: *UserVM, val: Value, outCharLen: *u32) []const u8 {
-        return @as(*const VM, @ptrCast(self)).valueToNextTempString2(val, outCharLen);
-    }
-
-    pub inline fn valueToString(self: *UserVM, val: Value) ![]const u8 {
-        return @as(*const VM, @ptrCast(self)).valueToString(val);
     }
 
     pub inline fn mapRawSet(self: *UserVM, map: cy.Value, key: cy.Value, value: cy.Value) !void {

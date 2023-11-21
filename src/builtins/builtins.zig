@@ -29,7 +29,7 @@ pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callco
     return false;
 }
 
-const NameFunc = struct { []const u8, ?*const anyopaque, cc.FuncEnumType };
+const NameFunc = struct { []const u8, cy.ZHostFuncFn, cc.FuncEnumType };
 const funcs = [_]NameFunc{
     // Utils.
     .{"arrayFill", arrayFill, .standard},
@@ -38,12 +38,12 @@ const funcs = [_]NameFunc{
     .{"errorReport", errorReport, .standard},
     .{"isAlpha", isAlpha, .standard},
     .{"isDigit", isDigit, .standard},
-    .{"must", must, .standard},
-    .{"panic", panic, .standard},
+    .{"must", zErrFunc2(must), .standard},
+    .{"panic", zErrFunc2(panic), .standard},
     .{"parseCyber", parseCyber, .standard},
     .{"parseCyon", parseCyon, .standard},
     .{"performGC", performGC, .standard},
-    .{"print", print, .standard},
+    .{"print", zErrFunc2(print), .standard},
     .{"runestr", runestr, .standard},
     .{"toCyon", toCyon, .standard},
     .{"typeof", typeof, .standard},
@@ -99,7 +99,7 @@ const funcs = [_]NameFunc{
     .{"concat", bindings.listConcat, .standard},
     .{"insert", bindings.listInsert, .standard},
     .{"iterator", bindings.listIterator, .standard},
-    .{"joinString", bindings.listJoinString, .standard},
+    .{"joinString", zErrFunc2(bindings.listJoinString), .standard},
     .{"len", bindings.listLen, .standard},
     .{"remove", bindings.listRemove, .standard},
     .{"resize", bindings.listResize, .standard},
@@ -133,7 +133,7 @@ const funcs = [_]NameFunc{
     .{"len", string.lenFn, .standard},
     .{"less", string.less, .standard},
     .{"lower", string.lower, .standard},
-    .{"replace", string.replace, .standard},
+    .{"replace", string.stringReplace, .standard},
     .{"repeat", string.repeat, .standard},
     .{"runeAt", string.runeAt, .standard},
     .{"slice", string.sliceFn, .standard},
@@ -144,7 +144,7 @@ const funcs = [_]NameFunc{
     .{"startsWith", string.startsWith, .standard},
     .{"trim", string.trim, .standard},
     .{"upper", string.upper, .standard},
-    .{"string.'$call'", string.stringCall, .standard},
+    .{"string.'$call'", zErrFunc2(string.stringCall), .standard},
 
     // array
     .{"$infix+", arrayConcat, .standard},
@@ -159,15 +159,15 @@ const funcs = [_]NameFunc{
     .{"insert", arrayInsert, .standard},
     .{"insertByte", arrayInsertByte, .standard},
     .{"len", arrayLen, .standard},
-    .{"repeat", arrayRepeat, .standard},
+    .{"repeat", zErrFunc2(arrayRepeat), .standard},
     .{"replace", arrayReplace, .standard},
     .{"slice", arraySlice, .standard},
     .{"$slice", arraySlice, .standard},
     .{"$index", arrayByteAt, .standard},
     .{"split", arraySplit, .standard},
     .{"startsWith", arrayStartsWith, .standard},
-    .{"trim", arrayTrim, .standard},
-    .{"array.'$call'", arrayCall, .standard},
+    .{"trim", zErrFunc2(arrayTrim), .standard},
+    .{"array.'$call'", zErrFunc2(arrayCall), .standard},
 
     // pointer
     .{"value", pointerValue, .standard},
@@ -221,27 +221,40 @@ pub fn onLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
     }
 }
 
+pub fn zErrFunc2(comptime func: fn (vm: *cy.VM, args: [*]const Value, nargs: u8) anyerror!Value) cy.ZHostFuncFn {
+    const S = struct {
+        pub fn genFunc(vm: *cy.VM, args: [*]const Value, nargs: u8) Value {
+            return func(vm, args, nargs) catch |err| {
+                return throwZError(vm, err, @errorReturnTrace());
+            };
+        }
+    };
+    return @ptrCast(&S.genFunc);
+}
+
 pub fn zErrFunc(comptime func: fn (vm: *cy.UserVM, args: [*]const Value, nargs: u8) anyerror!Value) cy.ZHostFuncFn {
     const S = struct {
         pub fn genFunc(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
             return func(vm, args, nargs) catch |err| {
-                return throwZError(vm, err, @errorReturnTrace());
+                return throwZError(@ptrCast(vm), err, @errorReturnTrace());
             };
         }
     };
     return S.genFunc;
 }
 
-pub fn throwZError(vm: *cy.UserVM, err: anyerror, trace: ?*std.builtin.StackTrace) Value {
+pub fn throwZError(vm: *cy.VM, err: anyerror, trace: ?*std.builtin.StackTrace) Value {
     if (builtin.mode == .Debug) {
         // std.debug.dumpStackTrace(trace.?.*);
     }
     switch (err) {
-        error.InvalidArgument   => return prepareThrowSymbol(vm, .InvalidArgument),
-        error.InvalidEnumTag    => return prepareThrowSymbol(vm, .InvalidArgument),
-        error.FileNotFound      => return prepareThrowSymbol(vm, .FileNotFound),
-        error.PermissionDenied  => return prepareThrowSymbol(vm, .PermissionDenied),
-        else                    => return fromUnsupportedError(vm, "", err, trace),
+        error.InvalidArgument       => return vm.prepThrowError(.InvalidArgument),
+        error.InvalidEnumTag        => return vm.prepThrowError(.InvalidArgument),
+        error.FileNotFound          => return vm.prepThrowError(.FileNotFound),
+        error.PermissionDenied      => return vm.prepThrowError(.PermissionDenied),
+        error.StdoutStreamTooLong   => return vm.prepThrowError(.StreamTooLong),
+        error.StderrStreamTooLong   => return vm.prepThrowError(.StreamTooLong),
+        else                    => return fromUnsupportedError(@ptrCast(vm), "", err, trace),
     }
 }
 
@@ -290,7 +303,7 @@ pub fn errorReport(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdS
     return vm.retainOrAllocString(buf.items) catch fatal();
 }
 
-pub fn must(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+pub fn must(vm: *cy.VM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) anyerror!Value {
     if (!args[0].isError()) {
         return args[0];
     } else {
@@ -298,9 +311,9 @@ pub fn must(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdS
     }
 }
 
-pub fn panic(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const str = vm.valueToTempString(args[0]);
-    return vm.returnPanic(str);
+pub fn panic(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    const str = try vm.getOrBufPrintValueStr(&cy.tempBuf, args[0]);
+    return vm.prepPanic(str);
 }
 
 pub fn isAlpha(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -360,10 +373,10 @@ pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
 fn allocToCyon(vm: *cy.UserVM, alloc: std.mem.Allocator, root: Value) ![]const u8 {
     const S = struct {
         fn encodeMap(ctx: *cy.EncodeMapContext, val: cy.Value) anyerror!void {
-            const uservm = cy.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
+            const uservm = cy.ptrAlignCast(*cy.VM, ctx.user_ctx);
             var iter = val.asHeapObject().map.map().iterator();
             while (iter.next()) |e| {
-                const key = uservm.valueToTempString(e.key);
+                const key = try uservm.getOrBufPrintValueStr(&cy.tempBuf, e.key);
                 switch (e.value.getUserTag()) {
                     .float => {
                         try ctx.encodeFloat(key, e.value.asF64());
@@ -372,9 +385,9 @@ fn allocToCyon(vm: *cy.UserVM, alloc: std.mem.Allocator, root: Value) ![]const u
                         try ctx.encodeInt(key, e.value.asInteger());
                     },
                     .string => {
-                        const keyDupe = try uservm.allocator().dupe(u8, key);
-                        defer uservm.allocator().free(keyDupe);
-                        const str = uservm.valueToTempString(e.value);
+                        const keyDupe = try uservm.alloc.dupe(u8, key);
+                        defer uservm.alloc.free(keyDupe);
+                        const str = try uservm.getOrBufPrintValueStr(&cy.tempBuf, e.value);
                         try ctx.encodeString(keyDupe, str);
                     },
                     .bool => {
@@ -404,8 +417,8 @@ fn allocToCyon(vm: *cy.UserVM, alloc: std.mem.Allocator, root: Value) ![]const u
                         _ = try ctx.writer.write(",\n");
                     },
                     .string => {
-                        const uservm = cy.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
-                        const str = uservm.valueToTempString(it);
+                        const uservm = cy.ptrAlignCast(*cy.VM, ctx.user_ctx);
+                        const str = try uservm.getOrBufPrintValueStr(&cy.tempBuf, it);
                         try ctx.encodeString(str);
                         _ = try ctx.writer.write(",\n");
                     },
@@ -436,8 +449,8 @@ fn allocToCyon(vm: *cy.UserVM, alloc: std.mem.Allocator, root: Value) ![]const u
                         try ctx.encodeInt(val.asInteger());
                     },
                     .string => {
-                        const uservm = cy.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
-                        const str = uservm.valueToTempString(val);
+                        const uservm = cy.ptrAlignCast(*cy.VM, ctx.user_ctx);
+                        const str = try uservm.getOrBufPrintValueStr(&cy.tempBuf, val);
                         try ctx.encodeString(str);
                     },
                     .bool => {
@@ -821,9 +834,9 @@ pub fn performGC(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSec
     return map;
 }
 
-pub fn print(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const str = vm.valueToTempString(args[0]);
-    vm.internal().print.?(@ptrCast(vm), cc.initStr(str));
+pub fn print(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    const str = try vm.getOrBufPrintValueStr(&cy.tempBuf, args[0]);
+    vm.print.?(@ptrCast(vm), cc.initStr(str));
     return Value.None;
 }
 
@@ -1035,7 +1048,7 @@ fn arrayLen(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) 
     return Value.initInt(@intCast(obj.array.getSlice().len));
 }
 
-fn arrayTrim(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn arrayTrim(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const obj = args[0].asHeapObject();
     const slice = obj.array.getSlice();
 
@@ -1043,18 +1056,18 @@ fn arrayTrim(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
 
     var res: []const u8 = undefined;
     const mode = bindings.getBuiltinSymbol(args[1].asSymbolId()) orelse {
-        return prepareThrowSymbol(vm, .InvalidArgument);
+        return vm.prepThrowError(.InvalidArgument);
     };
     switch (mode) {
         .left => res = std.mem.trimLeft(u8, slice, trimRunes),
         .right => res = std.mem.trimRight(u8, slice, trimRunes),
         .ends => res = std.mem.trim(u8, slice, trimRunes),
         else => {
-            return prepareThrowSymbol(vm, .InvalidArgument);
+            return vm.prepThrowError(.InvalidArgument);
         }
     }
 
-    return vm.allocArray(res) catch fatal();
+    return vm.allocArray(res);
 }
 
 fn arrayReplace(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -1098,19 +1111,19 @@ fn arrayInsertByte(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.S
     return Value.initNoCycPtr(new);
 }
 
-fn arrayRepeat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn arrayRepeat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const obj = args[0].asHeapObject();
     const slice = obj.array.getSlice();
 
     const n = args[1].asInteger();
     if (n < 0) {
-        return prepareThrowSymbol(vm, .InvalidArgument);
+        return vm.prepThrowError(.InvalidArgument);
     }
 
     var un: u32 = @intCast(n);
     const len = un * slice.len;
     if (un > 1 and len > 0) {
-        const new = vm.allocUnsetArrayObject(len) catch fatal();
+        const new = try vm.allocUnsetArrayObject(len);
         const buf = new.array.getMutSlice();
 
         // This is already quite fast since it has good cache locality.
@@ -1125,7 +1138,7 @@ fn arrayRepeat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
         return Value.initNoCycPtr(new);
     } else {
         if (un == 0) {
-            return vm.allocArray("") catch fatal();
+            return vm.allocArray("");
         } else {
             vm.retainObject(obj);
             return Value.initNoCycPtr(obj);
@@ -1154,9 +1167,9 @@ fn arraySplit(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     return res;
 }
 
-fn arrayCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const str = vm.valueToTempByteArray(args[0]);
-    return vm.allocArray(str) catch cy.fatal();
+fn arrayCall(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const str = try vm.getOrBufPrintValueRawStr(&cy.tempBuf, args[0]);
+    return vm.allocArray(str);
 }
 
 fn fiberStatus(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
@@ -1239,14 +1252,14 @@ fn errorCall(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     }
 }
 
-fn intCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+fn intCall(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     switch (val.getUserTag()) {
         .float => {
             return Value.initInt(@intFromFloat(@trunc(val.asF64())));
         },
         .string => {
-            var str = vm.valueToTempString(val);
+            var str = val.asString();
             if (std.mem.indexOfScalar(u8, str, '.')) |idx| {
                 str = str[0..idx];
             }
@@ -1275,7 +1288,7 @@ fn floatCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     switch (val.getUserTag()) {
         .float => return val,
         .string => {
-            const res = std.fmt.parseFloat(f64, vm.valueToTempString(val)) catch {
+            const res = std.fmt.parseFloat(f64, val.asString()) catch {
                 return Value.initF64(0);
             };
             return Value.initF64(res);

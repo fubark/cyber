@@ -50,7 +50,7 @@
 @host func dirName(path string) any
 
 --| Runs a shell command and returns the stdout/stderr.
-@host func execCmd(args List) any
+@host func execCmd(args List) Map
 
 --| Returns the current executable's path.
 @host func exePath() string
@@ -59,7 +59,7 @@
 @host func exit(status int) none
 
 --| Fetches the contents at `url` using the HTTP GET request method.
-@host func fetchUrl(url any) any
+@host func fetchUrl(url string) any
 
 --| Frees the memory located at `ptr`.
 @host func free(ptr pointer) none

@@ -245,38 +245,26 @@ pub fn listAppend(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Se
     return Value.None;
 }
 
-pub fn listJoinString(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn listJoinString(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const obj = args[0].asHeapObject();
     const items = obj.list.items();
     if (items.len > 0) {
         var sepCharLen: u32 = undefined;
-        const sep = vm.valueToTempString2(args[1], &sepCharLen);
+        const sep = args[1].asString2(&sepCharLen);
 
-        const alloc = vm.allocator();
-        const tempSlices = &@as(*cy.VM, @ptrCast(vm)).u8Buf2;
-        tempSlices.clearRetainingCapacity();
-        const tempBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
-        tempBuf.clearRetainingCapacity();
-        const tempBufWriter = tempBuf.writer(alloc);
-        defer {
-            tempSlices.ensureMaxCapOrClear(alloc, 4096) catch fatal();
-            tempBuf.ensureMaxCapOrClear(alloc, 4096) catch fatal();
-        }
-
+        // First record length.
         var charLenSum: u32 = 0;
         var byteLen: u32 = 0;
         var charLen: u32 = undefined;
 
         // Record first string part.
-        var str = vm.getOrWriteValueString(tempBufWriter, items[0], &charLen);
-        tempSlices.appendSlice(alloc, std.mem.asBytes(&str)) catch fatal();
+        var str = try vm.getOrBufPrintValueStr2(&cy.tempBuf, items[0], &charLen);
         charLenSum += charLen;
         byteLen += @intCast(str.len);
 
         // Record other string parts.
         for (items[1..]) |item| {
-            str = vm.getOrWriteValueString(tempBufWriter, item, &charLen);
-            tempSlices.appendSlice(alloc, std.mem.asBytes(&str)) catch fatal();
+            str = try vm.getOrBufPrintValueStr2(&cy.tempBuf, item, &charLen);
             charLenSum += charLen;
             byteLen += @intCast(str.len);
         }
@@ -287,24 +275,29 @@ pub fn listJoinString(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(c
         var newObj: *cy.HeapObject = undefined;
         var buf: []u8 = undefined;
         if (charLenSum == byteLen) {
-            newObj = vm.allocUnsetAstringObject(byteLen) catch fatal();
+            newObj = try vm.allocUnsetAstringObject(byteLen);
             buf = newObj.astring.getMutSlice();
         } else {
-            newObj = vm.allocUnsetUstringObject(byteLen, charLenSum) catch fatal();
+            newObj = try vm.allocUnsetUstringObject(byteLen, charLenSum);
             buf = newObj.ustring.getMutSlice();
         }
-        const slices = @as([*][]const u8, @ptrCast(tempSlices.buf.ptr))[0..items.len];
-        std.mem.copy(u8, buf[0..slices[0].len], slices[0]);
-        var dst: usize = slices[0].len;
-        for (slices[1..]) |slice| {
+
+        // Copy.
+        str = try vm.getOrBufPrintValueStr(&cy.tempBuf, items[0]);
+        std.mem.copy(u8, buf[0..str.len], str);
+
+        var dst: usize = str.len;
+        for (items[1..]) |item| {
             std.mem.copy(u8, buf[dst..dst+sep.len], sep);
             dst += sep.len;
-            std.mem.copy(u8, buf[dst..dst+slice.len], slice);
-            dst += slice.len;
+
+            str = try vm.getOrBufPrintValueStr(&cy.tempBuf, item);
+            std.mem.copy(u8, buf[dst..dst+str.len], str);
+            dst += str.len;
         }
         return Value.initNoCycPtr(newObj);
     } else {
-        const empty = vm.internal().emptyString;
+        const empty = vm.emptyString;
         vm.retain(empty);
         return empty;
     }
@@ -430,21 +423,25 @@ inline fn inlineUnaryOp(pc: [*]cy.Inst, code: cy.OpCode) void {
     pc[2].val = startLocal;
 }
 
-pub fn intBitwiseNot(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void {
-    inlineUnaryOp(pc, .bitwiseNot);
+pub fn intBitwiseNot(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
+    inlineUnaryOp(vm.internal().pc, .bitwiseNot);
+    return Value.None;
 }
 
-pub fn intNeg(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void {
-    inlineUnaryOp(pc, .negInt);
+pub fn intNeg(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
+    inlineUnaryOp(vm.internal().pc, .negInt);
+    return Value.None;
 }
 
-pub fn floatNeg(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void  {
-    inlineUnaryOp(pc, .negFloat);
+pub fn floatNeg(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
+    inlineUnaryOp(vm.internal().pc, .negFloat);
+    return Value.None;
 }
 
-pub fn inlineTernOp(comptime code: cy.OpCode) cy.InlineFuncFn {
+pub fn inlineTernOp(comptime code: cy.OpCode) cy.ZHostFuncFn {
     const S = struct {
-        pub fn method(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void {
+        pub fn method(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
+            const pc = vm.internal().pc;
             const ret = pc[1].val;
             // Save callObjSym data.
             pc[8].val = ret;
@@ -457,6 +454,7 @@ pub fn inlineTernOp(comptime code: cy.OpCode) cy.InlineFuncFn {
             pc[2].val = ret + cy.vm.CallArgStart + 1;
             pc[3].val = ret + cy.vm.CallArgStart + 2;
             pc[4].val = ret;
+            return Value.None;
         }
     };
     return S.method;
@@ -490,9 +488,10 @@ fn saveInst(vm: *cy.UserVM, qtype: QuickenType, pc: [*]cy.Inst) !void {
     try vm.internal().inlineSaves.put(vm.allocator(), @intCast(pcOff), data.ptr);
 }
 
-pub fn inlineBinOp(comptime code: cy.OpCode) cy.InlineFuncFn {
+pub fn inlineBinOp(comptime code: cy.OpCode) cy.ZHostFuncFn {
     const S = struct {
-        pub fn method(vm: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void {
+        pub fn method(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
+            const pc = vm.internal().pc;
             // Lower bits contain op inlining type.
             const inlineType = pc[7].val & 0x7f;
             if (inlineType == 1) {
@@ -533,6 +532,7 @@ pub fn inlineBinOp(comptime code: cy.OpCode) cy.InlineFuncFn {
                 pc[2].val = ret + cy.vm.CallArgStart + 1;
                 pc[3].val = ret;
             }
+            return Value.None;
         }
     };
     return S.method;

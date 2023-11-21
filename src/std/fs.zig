@@ -301,20 +301,17 @@ pub fn fileSeek(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
     return Value.None;
 }
 
-pub fn fileWrite(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+pub fn fileWrite(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
     if (fileo.closed) {
-        return prepareThrowSymbol(vm, .Closed);
+        return vm.prepThrowError(.Closed);
     }
 
-    var buf = vm.valueToTempByteArray(args[1]);
+    var buf = try vm.getOrBufPrintValueRawStr(&cy.tempBuf, args[1]);
     const file = fileo.getStdFile();
-    const numWritten = file.write(buf) catch |err| {
-        return cy.apiUnsupportedError(vm, "write", err, @errorReturnTrace());
-    };
-
+    const numWritten = try file.write(buf);
     return Value.initInt(@intCast(numWritten));
 }
 
@@ -326,67 +323,59 @@ pub fn fileClose(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
     return Value.None;
 }
 
-pub fn fileRead(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+pub fn fileRead(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
     if (fileo.closed) {
-        return prepareThrowSymbol(vm, .Closed);
+        return vm.prepThrowError(.Closed);
     }
 
     const numBytes = args[1].asInteger();
     if (numBytes <= 0) {
-        return prepareThrowSymbol(vm, .InvalidArgument);
+        return error.InvalidArgument;
     }
     const unumBytes: usize = @intCast(numBytes);
     const file = fileo.getStdFile();
 
-    const alloc = vm.allocator();
-    const ivm: *cy.VM = @ptrCast(vm);
-    const tempBuf = &ivm.u8Buf;
+    const tempBuf = &vm.u8Buf;
     tempBuf.clearRetainingCapacity();
-    defer tempBuf.ensureMaxCapOrClear(alloc, 4096) catch cy.fatal();
-    tempBuf.ensureTotalCapacityPrecise(alloc, unumBytes) catch cy.fatal();
+    defer tempBuf.ensureMaxCapOrClear(vm.alloc, 4096) catch cy.fatal();
+    try tempBuf.ensureTotalCapacityPrecise(vm.alloc, unumBytes);
 
-    const numRead = file.read(tempBuf.buf[0..unumBytes]) catch |err| {
-        return cy.apiUnsupportedError(vm, "read", err, @errorReturnTrace());
-    };
+    const numRead = try file.read(tempBuf.buf[0..unumBytes]);
     // Can return empty string when numRead == 0.
-    return vm.allocArray(tempBuf.buf[0..numRead]) catch cy.fatal();
+    return vm.allocArray(tempBuf.buf[0..numRead]);
 }
 
-pub fn fileReadToEnd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn fileReadToEnd(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
     if (fileo.closed) {
-        return prepareThrowSymbol(vm, .Closed);
+        return vm.prepThrowError(.Closed);
     }
 
     const file = fileo.getStdFile();
 
-    const alloc = vm.allocator();
-    const ivm: *cy.VM = @ptrCast(vm);
-    const tempBuf = &ivm.u8Buf;
+    const tempBuf = &vm.u8Buf;
     tempBuf.clearRetainingCapacity();
-    defer tempBuf.ensureMaxCapOrClear(alloc, 4096) catch cy.fatal();
+    defer tempBuf.ensureMaxCapOrClear(vm.alloc, 4096) catch cy.fatal();
 
     const MinReadBufSize = 4096;
-    tempBuf.ensureTotalCapacity(alloc, MinReadBufSize) catch cy.fatal();
+    tempBuf.ensureTotalCapacity(vm.alloc, MinReadBufSize) catch cy.fatal();
 
     while (true) {
         const buf = tempBuf.buf[tempBuf.len .. tempBuf.buf.len];
-        const numRead = file.readAll(buf) catch |err| {
-            return cy.apiUnsupportedError(vm, "readToEnd", err, @errorReturnTrace());
-        };
+        const numRead = try file.readAll(buf);
         tempBuf.len += numRead;
         if (numRead < buf.len) {
             // Done.
             const all = tempBuf.items();
             // Can return empty string.
-            return vm.allocArray(all) catch cy.fatal();
+            return vm.allocArray(all);
         } else {
-            tempBuf.ensureUnusedCapacity(alloc, MinReadBufSize) catch cy.fatal();
+            try tempBuf.ensureUnusedCapacity(vm.alloc, MinReadBufSize);
         }
     }
 }
@@ -448,16 +437,15 @@ pub fn fileOrDirStat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy
     return map;
 }
 
-pub fn fileNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn fileNext(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
     if (fileo.iterLines) {
-        const alloc = vm.allocator();
         const readBuf = fileo.readBuf[0..fileo.readBufCap];
         if (cy.getLineEnd(readBuf[fileo.curPos..fileo.readBufEnd])) |end| {
             // Found new line.
-            const line = vm.allocArray(readBuf[fileo.curPos..fileo.curPos+end]) catch cy.fatal();
+            const line = try vm.allocArray(readBuf[fileo.curPos..fileo.curPos+end]);
 
             // Advance pos.
             fileo.curPos += @intCast(end);
@@ -465,37 +453,37 @@ pub fn fileNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
             return line;
         }
 
-        var lineBuf = cy.HeapArrayBuilder.init(@ptrCast(vm)) catch cy.fatal();
+        var lineBuf = try cy.HeapArrayBuilder.init(vm);
         defer lineBuf.deinit();
         // Start with previous string without line delimiter.
-        lineBuf.appendString(alloc, readBuf[fileo.curPos..fileo.readBufEnd]) catch cy.fatal();
+        try lineBuf.appendString(vm.alloc, readBuf[fileo.curPos..fileo.readBufEnd]);
 
         // Read into buffer.
         const file = fileo.getStdFile();
         const reader = file.reader();
 
         while (true) {
-            const bytesRead = reader.read(readBuf) catch cy.fatal();
+            const bytesRead = try reader.read(readBuf);
             if (bytesRead == 0) {
                 // End of stream.
                 fileo.iterLines = false;
                 if (lineBuf.len > 0) {
-                    return Value.initNoCycPtr(lineBuf.ownObject(alloc));
+                    return Value.initNoCycPtr(lineBuf.ownObject(vm.alloc));
                 } else {
                     return Value.None;
                 }
             }
             if (cy.getLineEnd(readBuf[0..bytesRead])) |end| {
                 // Found new line.
-                lineBuf.appendString(alloc, readBuf[0..end]) catch cy.fatal();
+                try lineBuf.appendString(vm.alloc, readBuf[0..end]);
 
                 // Advance pos.
                 fileo.curPos = @intCast(end);
                 fileo.readBufEnd = @intCast(bytesRead);
 
-                return Value.initNoCycPtr(lineBuf.ownObject(alloc));
+                return Value.initNoCycPtr(lineBuf.ownObject(vm.alloc));
             } else {
-                lineBuf.appendString(alloc, readBuf[0..bytesRead]) catch cy.fatal();
+                try lineBuf.appendString(vm.alloc, readBuf[0..bytesRead]);
 
                 // Advance pos.
                 fileo.curPos = @intCast(bytesRead);

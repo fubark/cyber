@@ -40,7 +40,7 @@ pub const MethodData = extern union {
         numParams: u8,
     },
     optimizing: extern struct {
-        ptr: cy.InlineFuncFn,
+        ptr: vmc.HostFuncFn,
         numParams: u8,
     },
     typed: extern struct {
@@ -123,12 +123,12 @@ pub const MethodInit = struct {
         };
     }
 
-    pub fn initHostInline(funcSigId: sema.FuncSigId, func: cy.InlineFuncFn, numParams: u8) MethodInit {
+    pub fn initHostInline(funcSigId: sema.FuncSigId, func: cy.ZHostFuncFn, numParams: u8) MethodInit {
         return .{
             .type = .optimizing,
             .data = .{
                 .optimizing = .{
-                    .ptr = func,
+                    .ptr = @ptrCast(func),
                     .numParams = numParams,
                 },
             },
@@ -218,7 +218,7 @@ pub const FuncSymbol = extern struct {
         },
     } = undefined,
     inner: extern union {
-        hostInlineFunc: cy.InlineFuncFn,
+        hostInlineFunc: vmc.HostFuncFn,
         hostFunc: vmc.HostFuncFn,
         func: extern struct {
             pc: u32,
@@ -237,7 +237,7 @@ pub const FuncSymbol = extern struct {
         };
     }
 
-    pub fn initHostInlineFunc(func: cy.InlineFuncFn, isTyped: bool, numParams: u32, funcSigId: sema.FuncSigId) FuncSymbol {
+    pub fn initHostInlineFunc(func: vmc.HostFuncFn, isTyped: bool, numParams: u32, funcSigId: sema.FuncSigId) FuncSymbol {
         const isTypedMask: u16 = if (isTyped) 1 << 15 else 0;
         return .{
             .entryT = @intFromEnum(FuncSymbolType.hostInlineFunc),

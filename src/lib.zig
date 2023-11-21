@@ -410,13 +410,13 @@ test "csAsSymbolId()" {
     try t.eq(c.asSymbolId(val), 0);
 }
 
-export fn csToTempString(vm: *cy.UserVM, val: Value) c.Str {
-    const str = vm.valueToTempString(val);
+export fn csToTempString(vm: *cy.VM, val: Value) c.Str {
+    const str = vm.getOrBufPrintValueStr(&cy.tempBuf, val) catch cy.fatal();
     return c.initStr(str);
 }
 
-export fn csToTempByteArray(vm: *cy.UserVM, val: Value) c.Str {
-    const str = vm.valueToTempByteArray(val);
+export fn csToTempByteArray(vm: *cy.VM, val: Value) c.Str {
+    const str = vm.getOrBufPrintValueRawStr(&cy.tempBuf, val) catch cy.fatal();
     return c.initStr(str);
 }
 

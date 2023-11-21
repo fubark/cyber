@@ -77,7 +77,7 @@ pub const FFI = struct {
             if (self.typeToCStruct.contains(typeId)) {
                 return CType{ .object = typeId };
             } else {
-                const name = vm.valueToTempString(spec);
+                const name = try vm.getOrBufPrintValueStr(&cy.tempBuf, spec);
                 log.debug("CStruct not declared for: {s}", .{name});
                 return error.InvalidArgument;
             }
@@ -462,27 +462,23 @@ pub fn ffiCbind(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
     return Value.None;
 }
 
-pub fn ffiCfunc(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    const ivm = vm.internal();
-
+pub fn ffiCfunc(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const ffi = args[0].castHostObject(*FFI);
 
-    const symName = vm.valueToTempString(args[1]);
-
-    const alloc = vm.allocator();
     const funcArgs = args[2].asHeapObject().list.items();
 
-    const ctypes = try alloc.alloc(CType, funcArgs.len);
+    const ctypes = try vm.alloc.alloc(CType, funcArgs.len);
     if (funcArgs.len > 0) {
         for (funcArgs, 0..) |arg, i| {
-            ctypes[i] = try ffi.toCType(ivm, arg);
+            ctypes[i] = try ffi.toCType(vm, arg);
         }
     }
 
-    const retType = try ffi.toCType(ivm, args[3]);
+    const retType = try ffi.toCType(vm, args[3]);
 
-    try ffi.cfuncs.append(alloc, .{
-        .namez = try alloc.dupeZ(u8, symName),
+    const symName = try vm.getOrBufPrintValueStr(&cy.tempBuf, args[1]);
+    try ffi.cfuncs.append(vm.alloc, .{
+        .namez = try vm.alloc.dupeZ(u8, symName),
         .params = ctypes,
         .ret = retType,
         .ptr = undefined,
@@ -767,8 +763,9 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
             lib.* = try dlopen("");
         }
     } else {
-        log.tracev("bindLib {s}", .{vm.valueToTempString(path)});
-        lib.* = dlopen(vm.valueToTempString(path)) catch |err| {
+        const pathStr = try ivm.getOrBufPrintValueStr(&cy.tempBuf, path);
+        log.tracev("bindLib {s}", .{pathStr});
+        lib.* = dlopen(pathStr) catch |err| {
             if (err == error.FileNotFound) {
                 return prepareThrowSymbol(vm, .FileNotFound);
             } else {

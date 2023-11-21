@@ -1189,7 +1189,7 @@ pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.Inst, vals: []const Va
     var finalCharLen: u32 = firstStr.string.getCharLen();
     for (vals, 0..) |val, i| {
         var charLen: u32 = undefined;
-        const valstr = self.valueToTempString2(val, &charLen);
+        const valstr = try self.getOrBufPrintValueStr2(&cy.tempBuf, val, &charLen);
         finalCharLen += charLen;
         _ = try writer.write(valstr);
 
@@ -1392,10 +1392,15 @@ pub fn getOrAllocOwnedString(self: *cy.VM, obj: *HeapObject, str: []const u8) li
 
 const Root = @This();
 pub const VmExt = struct {
-    pub const retainOrAllocString = Root.retainOrAllocString;
+    pub const retainOrAllocPreferString = Root.retainOrAllocPreferString;
     pub const retainOrAllocAstring = Root.retainOrAllocAstring;
     pub const retainOrAllocUstring = Root.retainOrAllocUstring;
     pub const allocHostFunc = Root.allocHostFunc;
+
+    pub const allocArray = Root.allocArray;
+    pub const allocUnsetArrayObject = Root.allocUnsetArrayObject;
+    pub const allocUnsetAstringObject = Root.allocUnsetAstringObject;
+    pub const allocUnsetUstringObject = Root.allocUnsetUstringObject;
 };
 
 pub fn retainOrAllocPreferString(self: *cy.VM, str: []const u8) linksection(cy.Section) !Value {
@@ -1406,7 +1411,7 @@ pub fn retainOrAllocPreferString(self: *cy.VM, str: []const u8) linksection(cy.S
             return try retainOrAllocUstring(self, str, @intCast(charLen));
         }
     } else {
-        return allocArray(self, str);
+        return self.allocArray(str);
     }
 }
 
@@ -1566,8 +1571,8 @@ pub fn allocUnsetArrayObject(self: *cy.VM, len: usize) !*HeapObject {
     return obj;
 }
 
-pub fn allocArray(self: *cy.VM, buf: []const u8) !Value {
-    const obj = try allocUnsetArrayObject(self, buf.len);
+pub fn allocArray(vm: *cy.VM, buf: []const u8) !Value {
+    const obj = try allocUnsetArrayObject(vm, buf.len);
     const dst = @as([*]u8, @ptrCast(&obj.array.bufStart))[0..buf.len];
     std.mem.copy(u8, dst, buf);
     return Value.initNoCycPtr(obj);
@@ -1738,7 +1743,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
         if (obj.isFreed()) {
             cy.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});
         } else {
-            const desc = vm.valueToTempString(Value.initPtr(obj));
+            const desc = vm.getOrBufPrintValueStr(&cy.tempBuf, Value.initPtr(obj)) catch cy.fatal();
             log.tracev("free type={}({s}) {*}: `{s}`", .{
                 obj.getTypeId(), vm.getTypeName(obj.getTypeId()), obj, desc,
             });

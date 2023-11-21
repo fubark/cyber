@@ -888,7 +888,7 @@ fn prepareFunc(c: *VMcompiler, func: *cy.Func) !void {
         }
     } else if (func.type == .hostInlineFunc) {
         const funcSig = c.sema.getFuncSig(func.funcSigId);
-        const rtFunc = rt.FuncSymbol.initHostInlineFunc(func.data.hostInlineFunc.ptr, funcSig.reqCallTypeCheck, funcSig.numParams(), func.funcSigId);
+        const rtFunc = rt.FuncSymbol.initHostInlineFunc(@ptrCast(func.data.hostInlineFunc.ptr), funcSig.reqCallTypeCheck, funcSig.numParams(), func.funcSigId);
         _ = try addVmFunc(c, func, rtFunc);
         if (func.isMethod) {
             log.tracev("ismethod", .{});

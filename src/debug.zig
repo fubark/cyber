@@ -284,7 +284,7 @@ pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []co
 pub fn allocPanicMsg(vm: *const cy.VM) ![]const u8 {
     switch (@as(cy.fiber.PanicType, @enumFromInt(vm.curFiber.panicType))) {
         .uncaughtError => {
-            const str = vm.valueToTempString(cy.Value{ .val = vm.curFiber.panicPayload });
+            const str = try vm.getOrBufPrintValueStr(&cy.tempBuf, cy.Value{ .val = vm.curFiber.panicPayload });
             return try fmt.allocFormat(vm.alloc, "{}", &.{v(str)});
         },
         .msg => {

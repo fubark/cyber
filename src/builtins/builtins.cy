@@ -121,7 +121,7 @@ type List object:
     @host func iterator() any
 
     --| Returns a new string that joins the elements with `separator`.
-    @host func joinString(sep any) string
+    @host func joinString(sep string) string
 
     --| Returns the number of elements in the list.
     @host func len() int

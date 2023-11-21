@@ -182,7 +182,6 @@ pub fn Nullable(comptime T: type) type {
     return T;
 }
 
-pub const InlineFuncFn = *const fn (*UserVM, pc: [*]Inst, [*]const Value, u8) void;
 pub const ZHostFuncFn = *const fn (*UserVM, [*]const Value, u8) Value;
 pub const ZHostFuncCFn = *const fn (*UserVM, [*]const Value, u8) callconv(.C) Value;
 

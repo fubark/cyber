@@ -134,6 +134,13 @@ pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) linksection(cy.Hot
     }
 }
 
+const Root = @This();
+
+pub const VmExt = struct {
+    pub const retainObject = Root.retainObject;
+    pub const retain = Root.retain;
+};
+
 pub fn checkRetainDanglingPointer(vm: *cy.VM, obj: *cy.HeapObject) void {
     if (isObjectAlreadyFreed(vm, obj)) {
         cy.panic("Retaining dangling pointer.");
@@ -470,9 +477,11 @@ pub fn checkGlobalRC(vm: *cy.VM) !void {
                 const trace = it.value_ptr.*;
                 if (trace.freePc == cy.NullId) {
                     const typeName = vm.getTypeName(it.key_ptr.*.getTypeId());
+
+                    var valBuf: [256]u8 = undefined;
+                    const valStr = try vm.bufPrintValueShortStr(&valBuf, cy.Value.initNoCycPtr(it.key_ptr.*));
                     const msg = try std.fmt.bufPrint(&buf, "Init alloc: {*}, type: {s}, rc: {} at pc: {}\nval={s}", .{
-                        it.key_ptr.*, typeName, it.key_ptr.*.head.rc, trace.allocPc,
-                        vm.valueToTempString(cy.Value.initNoCycPtr(it.key_ptr.*)),
+                        it.key_ptr.*, typeName, it.key_ptr.*.head.rc, trace.allocPc, valStr,
                     });
                     try cy.debug.printTraceAtPc(vm, trace.allocPc, msg);
                 }

@@ -2828,22 +2828,24 @@ fn genLambda(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenV
 
     const stackSize = c.getMaxUsedRegisters();
     try popFuncBlockCommon(c, func, skipJump);
-    const offset: u8 = @intCast(c.buf.ops.items.len - funcPc);
+    const offset: u16 = @intCast(c.buf.ops.items.len - funcPc);
 
     if (data.numCaptures == 0) {
         const start = c.buf.ops.items.len;
         try c.pushOptionalDebugSym(func.declId);
-        try c.buf.pushOpSliceExt(.lambda, &.{ offset, func.numParams, stackSize, 0, 0, inst.dst }, c.desc(nodeId));
-        c.buf.setOpArgU16(start + 4, @intCast(func.funcSigId));
+        try c.buf.pushOpSliceExt(.lambda, &.{ 0, 0, func.numParams, stackSize, 0, 0, inst.dst }, c.desc(nodeId));
+        c.buf.setOpArgU16(start + 1, offset);
+        c.buf.setOpArgU16(start + 5, @intCast(func.funcSigId));
     } else {
         const captures = c.irGetArray(data.captures, u8, data.numCaptures);
         const start = c.buf.ops.items.len;
         try c.pushOptionalDebugSym(func.declId);
         try c.buf.pushOpSlice(.closure, &.{
-            offset, func.numParams, @as(u8, @intCast(captures.len)), stackSize, 
+            0, 0, func.numParams, @as(u8, @intCast(captures.len)), stackSize, 
             0, 0, cy.vm.CalleeStart, inst.dst
         });
-        c.buf.setOpArgU16(start + 5, @intCast(func.funcSigId));
+        c.buf.setOpArgU16(start + 1, offset);
+        c.buf.setOpArgU16(start + 6, @intCast(func.funcSigId));
 
         const operandStart = try c.buf.reserveData(captures.len);
         for (captures, 0..) |irVar, i| {

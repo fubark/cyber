@@ -1311,34 +1311,36 @@ beginSwitch:
         }
     }
     CASE(Lambda): {
-        uint32_t funcPc = ((uint32_t)getInstOffset(vm, pc)) - pc[1];
-        uint8_t numParams = pc[2];
-        uint8_t stackSize = pc[3];
-        uint16_t rFuncSigId = READ_U16(4);
+        u16 funcOff = READ_U16(1);
+        u32 funcPc = ((uint32_t)getInstOffset(vm, pc)) - funcOff;
+        u8 numParams = pc[3];
+        u8 stackSize = pc[4];
+        u16 rFuncSigId = READ_U16(5);
         ValueResult res = allocLambda(vm, funcPc, numParams, stackSize, rFuncSigId);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
-        stack[pc[6]] = res.val;
-        pc += 7;
+        stack[pc[7]] = res.val;
+        pc += 8;
         NEXT();
     }
     CASE(Closure): {
-        u32 funcPc = getInstOffset(vm, pc) - pc[1];
-        u8 numParams = pc[2];
-        u8 numCaptured = pc[3];
-        u8 stackSize = pc[4];
-        u16 rFuncSigId = READ_U16(5);
-        u8 local = pc[7];
-        u8 dst = pc[8];
-        Inst* capturedVals = pc + 9;
+        u16 funcOff = READ_U16(1);
+        u32 funcPc = getInstOffset(vm, pc) - funcOff;
+        u8 numParams = pc[3];
+        u8 numCaptured = pc[4];
+        u8 stackSize = pc[5];
+        u16 rFuncSigId = READ_U16(6);
+        u8 local = pc[8];
+        u8 dst = pc[9];
+        Inst* capturedVals = pc + 10;
 
         ValueResult res = allocClosure(vm, stack, funcPc, numParams, stackSize, rFuncSigId, capturedVals, numCaptured, local);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
         stack[dst] = res.val;
-        pc += 9 + numCaptured;
+        pc += 10 + numCaptured;
         NEXT();
     }
     CASE(Compare): {

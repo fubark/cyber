@@ -1067,6 +1067,7 @@ pub const Parser = struct {
             indent = (try self.consumeIndentBeforeStmt()) orelse break;
             if (self.cur_indent == indent) {
                 const case = (try self.parseCaseBlock()) orelse {
+                    self.next_pos = save;
                     break;
                 };
                 numCases += 1;

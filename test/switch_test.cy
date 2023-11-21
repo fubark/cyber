@@ -47,6 +47,18 @@ case 10:
     res = 3
 t.eq(res, 2)
 
+-- Switch in a nested block. Tests parsing.
+func foo():
+    var a = 123
+    my res = 0
+    switch a:
+    case 0 :
+        res = 1
+    case 10:
+        res = 2
+    t.eq(res, 0)
+foo()
+
 -- Match assign block.
 res = switch 'one':
 case 'one' => 1

@@ -101,12 +101,13 @@ const funcs = [_]NameFunc{
     .{"next", fs.dirIteratorNext},
 
     // FFI
-    .{"addCallback",    zErrFunc(ffi.ffiAddCallback)},
-    .{"addObjPtr",      zErrFunc2(ffi.ffiAddObjPtr)},
+    .{"bindCallback",   zErrFunc(ffi.ffiBindCallback)},
     .{"bindLib",        zErrFunc(bindLib)},
     .{"bindLib",        zErrFunc(bindLibExt)},
+    .{"bindObjPtr",     zErrFunc2(ffi.ffiBindObjPtr)},
     .{"cbind",          zErrFunc(ffi.ffiCbind)},
     .{"cfunc",          zErrFunc2(ffi.ffiCfunc)},
+    .{"unbindObjPtr",   zErrFunc2(ffi.ffiUnbindObjPtr)},
 };
 
 const NameValue = struct { []const u8, cy.Value };

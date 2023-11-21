@@ -129,12 +129,12 @@ ffi.cfunc('testCallback', [.int, .int, .funcPtr], .int)
 var add = func(a, b):
     return a + b
 lib = ffi.bindLib(libPath)
-var cadd = ffi.addCallback(add, [.int, .int], .int)
+var cadd = ffi.bindCallback(add, [.int, .int], .int)
 t.eq(lib.testCallback(10, 20, cadd), 30)
 
--- addObjPtr.
+-- bindObjPtr.
 ffi = os.newFFI()
 var obj = [a: 123]
-var objPtr = ffi.addObjPtr(obj)
+var objPtr = ffi.bindObjPtr(obj)
 var obj2 = objPtr.asObject()
 t.eq(obj, obj2)

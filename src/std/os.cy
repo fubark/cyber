@@ -190,12 +190,7 @@ type FFI object:
     --| Creates an `ExternFunc` that contains a C function pointer with the given signature.
     --| The extern function is a wrapper that calls the provided user function.
     --| Once created, the extern function is retained and managed by the FFI context.
-    @host func addCallback(fn any, params List, ret symbol) ExternFunc
-
-    --| Returns a Cyber object's pointer. Operations on the pointer is unsafe,
-    --| but it can be useful when passing it to C as an opaque pointer.
-    --| The object is also retained and managed by the FFI context.
-    @host func addObjPtr(obj any) pointer
+    @host func bindCallback(fn any, params List, ret symbol) ExternFunc
 
     --| Calls `bindLib(path, [:])`. 
     @host func bindLib(path any) any
@@ -206,11 +201,21 @@ type FFI object:
     --| binded as function values.
     @host func bindLib(path any, config Map) any
 
+    --| Returns a Cyber object's pointer. Operations on the pointer is unsafe,
+    --| but it can be useful when passing it to C as an opaque pointer.
+    --| The object is also retained and managed by the FFI context.
+    @host func bindObjPtr(obj any) pointer
+
     --| Binds a Cyber type to a C struct.
     @host func cbind(mt metatype, fields List) none
 
     --| Declares a C function which will get binded to the library handle created from `bindLib`.
     @host func cfunc(name string, params List, ret any) none
+
+    --| Releases the object from the FFI context.
+    --| External code should no longer use the object's pointer since it's not guaranteed to exist
+    --| or point to the correct object.
+    @host func unbindObjPtr(obj any) none
 
 type CFunc object:
     var sym

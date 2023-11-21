@@ -1063,7 +1063,7 @@ fn breakpoint() callconv(.C) void {
     @breakpoint();
 }
 
-pub fn ffiAddCallback(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn ffiBindCallback(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasFFI) return vm.returnPanic("Unsupported.");
 
     const ivm = vm.internal();
@@ -1186,7 +1186,7 @@ pub fn ffiAddCallback(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Valu
     return res;
 }
 
-pub fn ffiAddObjPtr(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn ffiBindObjPtr(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!args[1].isPointer()) return error.InvalidArgument;
 
     const ffi = args[0].castHostObject(*FFI);
@@ -1198,4 +1198,22 @@ pub fn ffiAddObjPtr(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     try ffi.managed.append(vm.alloc, args[1]);
     
     return res;
+}
+
+pub fn ffiUnbindObjPtr(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    if (!args[1].isPointer()) return error.InvalidArgument;
+
+    const ffi = args[0].castHostObject(*FFI);
+    const obj = args[1].asHeapObject();
+
+    // Linear scan for now.
+    for (ffi.managed.items, 0..) |ffiObj, i| {
+        if (args[1].val == ffiObj.val) {
+            vm.releaseObject(obj);
+            _ = ffi.managed.swapRemove(i);
+            break;
+        }
+    }
+
+    return Value.None;
 }

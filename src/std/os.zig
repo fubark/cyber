@@ -102,6 +102,7 @@ const funcs = [_]NameFunc{
 
     // FFI
     .{"addCallback",    zErrFunc(ffi.ffiAddCallback)},
+    .{"addObjPtr",      zErrFunc2(ffi.ffiAddObjPtr)},
     .{"bindLib",        zErrFunc(bindLib)},
     .{"bindLib",        zErrFunc(bindLibExt)},
     .{"cbind",          zErrFunc(ffi.ffiCbind)},

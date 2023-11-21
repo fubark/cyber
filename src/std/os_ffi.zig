@@ -53,7 +53,8 @@ pub const FFI = struct {
 
     cfuncs: std.ArrayListUnmanaged(CFuncData),
 
-    callbacks: std.ArrayListUnmanaged(Value),
+    /// Managed ExternFunc or Objects.
+    managed: std.ArrayListUnmanaged(Value),
 
     fn toCType(self: *FFI, vm: *cy.VM, spec: Value) !CType {
         if (spec.isObjectType(os.CArrayT)) {
@@ -109,14 +110,14 @@ pub fn allocFFI(vm: *cy.VM) linksection(cy.StdSection) !Value {
         .carrays = .{},
         .carrayMap = .{},
         .cfuncs = .{},
-        .callbacks = .{},
+        .managed = .{},
     };
     return Value.initHostNoCycPtr(ffi);
 }
 
 pub fn ffiGetChildren(_: ?*c.VM, obj: ?*anyopaque) callconv(.C) c.ValueSlice {
     var ffi: *FFI = @ptrCast(@alignCast(obj));
-    return c.initValueSlice(ffi.callbacks.items);
+    return c.initValueSlice(ffi.managed.items);
 }
 
 pub fn ffiFinalizer(vm_: ?*c.VM, obj: ?*anyopaque) callconv(.C) void {
@@ -149,7 +150,7 @@ pub fn ffiFinalizer(vm_: ?*c.VM, obj: ?*anyopaque) callconv(.C) void {
     }
     ffi.cfuncs.deinit(alloc);
 
-    ffi.callbacks.deinit(alloc);
+    ffi.managed.deinit(alloc);
 }
 
 const CGen = struct {
@@ -1180,7 +1181,21 @@ pub fn ffiAddCallback(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Valu
 
     // ffi manages the extern func. (So it does not get freed).
     vm.retain(res);
-    try ffi.callbacks.append(ivm.alloc, res);
+    try ffi.managed.append(ivm.alloc, res);
 
+    return res;
+}
+
+pub fn ffiAddObjPtr(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    if (!args[1].isPointer()) return error.InvalidArgument;
+
+    const ffi = args[0].castHostObject(*FFI);
+    const obj = args[1].asHeapObject();
+    const res = vm.allocPointer(@ptrCast(obj));
+
+    // Retain and managed by FFI context.
+    vm.retainObject(obj);
+    try ffi.managed.append(vm.alloc, args[1]);
+    
     return res;
 }

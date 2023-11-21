@@ -306,6 +306,9 @@ type array object:
 
 @host
 type pointer object:
+    --| Unsafe. Casts the pointer to a Cyber object. The object is retained before it's returned.
+    @host func asObject() any
+
     --| Returns the memory address as an `int`. The value may be negative since it's
     --| bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
     @host func value() int

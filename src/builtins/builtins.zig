@@ -170,6 +170,7 @@ const funcs = [_]NameFunc{
     .{"array.'$call'", zErrFunc2(arrayCall), .standard},
 
     // pointer
+    .{"asObject", pointerAsObject, .standard},
     .{"value", pointerValue, .standard},
     .{"writeAt", pointerWriteAt, .standard},
     .{"pointer.'$call'", pointerCall, .standard},
@@ -1192,6 +1193,12 @@ fn fiberStatus(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 fn metatypeId(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     return Value.initInt(obj.metatype.type);
+}
+
+fn pointerAsObject(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const ptr = args[0].asHeapObject().pointer.ptr;
+    vm.retainObject(@ptrCast(@alignCast(ptr)));
+    return Value.initPtr(ptr);
 }
 
 fn pointerValue(_: *cy.UserVM, args: [*]const Value, _: u8) Value {

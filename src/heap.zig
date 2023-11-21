@@ -1398,6 +1398,7 @@ pub const VmExt = struct {
     pub const allocHostFunc = Root.allocHostFunc;
 
     pub const allocArray = Root.allocArray;
+    pub const allocPointer = Root.allocPointer;
     pub const allocUnsetArrayObject = Root.allocUnsetArrayObject;
     pub const allocUnsetAstringObject = Root.allocUnsetAstringObject;
     pub const allocUnsetUstringObject = Root.allocUnsetUstringObject;

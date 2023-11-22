@@ -37,6 +37,7 @@
 #define VALUE_NOCYC_PTR(ptr) (NOCYC_POINTER_MASK | ((size_t)ptr & POINTER_PAYLOAD_MASK))
 #define VALUE_CYC_PTR(ptr) (CYC_POINTER_MASK | ((size_t)ptr & POINTER_PAYLOAD_MASK))
 #define VALUE_SYMBOL(symId) (SYMBOL_MASK | symId)
+#define VALUE_ERROR(symId) (ERROR_MASK | symId)
 
 // Value ops.
 #define VALUE_AS_HEAPOBJECT(v) ((HeapObject*)(v & ~POINTER_MASK))
@@ -77,6 +78,10 @@
 #define FMT_U32(v) ((FmtValue){ .type = FMT_TYPE_U32, .data = { .u32 = v }})
 
 static inline TypeId getTypeId(Value val);
+
+static inline uintptr_t getStackOffset(VM* vm, Value* to) {
+    return (((uintptr_t)to) - ((uintptr_t)vm->stackPtr)) >> 3;
+}
 
 static inline uintptr_t getInstOffset(VM* vm, Inst* to) {
     return ((uintptr_t)to) - ((uintptr_t)vm->instPtr);
@@ -1554,7 +1559,7 @@ beginSwitch:
             }
         }
         ((TryFrame*)vm->tryStack.buf)[vm->tryStack.len] = (TryFrame){
-            .fp = stack,
+            .fp = getStackOffset(vm, stack),
             .catchPc = getInstOffset(vm, pc) + catchPcOffset,
             .catchErrDst = errDst,
             .releaseDst = releaseDst,
@@ -1571,13 +1576,9 @@ beginSwitch:
     CASE(Throw): {
         Value err = stack[pc[1]];
         if (VALUE_IS_ERROR(err)) {
-            PcSpResult res = zThrow(vm, stack, pc, err);
-            if (res.code != RES_CODE_SUCCESS) {
-                RETURN(res.code);
-            }
-            stack = res.sp;
-            pc = res.pc;
-            NEXT();
+            vm->curFiber->panicPayload = err;
+            vm->curFiber->panicType = PANIC_NATIVE_THROW;
+            RETURN(RES_CODE_PANIC);
         } else {
             panicStaticMsg(vm, "Not an error.");
             RETURN(RES_CODE_PANIC);
@@ -1601,9 +1602,9 @@ beginSwitch:
     }
     CASE(Coyield):
         if (vm->curFiber != &vm->mainFiber) {
-            PcSp res = zPopFiber(vm, pcOffset(vm, pc), stack, VALUE_NONE);
-            pc = res.pc;
-            stack = res.sp;
+            PcSpOff res = zPopFiber(vm, pcOffset(vm, pc), stack, VALUE_NONE);
+            pc = vm->instPtr + res.pc;
+            stack = vm->stackPtr + res.sp;
         } else {
             pc += 3;
         }
@@ -1630,9 +1631,9 @@ beginSwitch:
     CASE(Coreturn): {
         pc += 1;
         if (vm->curFiber != &vm->mainFiber) {
-            PcSp res = zPopFiber(vm, NULL_U32, stack, stack[1]);
-            pc = res.pc;
-            stack = res.sp;
+            PcSpOff res = zPopFiber(vm, NULL_U32, stack, stack[1]);
+            pc = vm->instPtr + res.pc;
+            stack = vm->stackPtr + res.sp;
         }
         NEXT();
     }

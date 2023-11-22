@@ -224,9 +224,9 @@ pub fn onLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
 
 pub fn zErrFunc2(comptime func: fn (vm: *cy.VM, args: [*]const Value, nargs: u8) anyerror!Value) cy.ZHostFuncFn {
     const S = struct {
-        pub fn genFunc(vm: *cy.VM, args: [*]const Value, nargs: u8) Value {
-            return func(vm, args, nargs) catch |err| {
-                return prepThrowZError(vm, err, @errorReturnTrace());
+        pub fn genFunc(vm: *cy.VM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+            return @call(.always_inline, func, .{vm, args, nargs}) catch |err| {
+                return @call(.never_inline, prepThrowZError, .{vm, err, @errorReturnTrace()});
             };
         }
     };
@@ -235,9 +235,9 @@ pub fn zErrFunc2(comptime func: fn (vm: *cy.VM, args: [*]const Value, nargs: u8)
 
 pub fn zErrFunc(comptime func: fn (vm: *cy.UserVM, args: [*]const Value, nargs: u8) anyerror!Value) cy.ZHostFuncFn {
     const S = struct {
-        pub fn genFunc(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
-            return func(vm, args, nargs) catch |err| {
-                return prepThrowZError(@ptrCast(vm), err, @errorReturnTrace());
+        pub fn genFunc(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+            return @call(.always_inline, func, .{vm, args, nargs}) catch |err| {
+                return @call(.never_inline, prepThrowZError, .{@as(*cy.VM, @ptrCast(vm)), err, @errorReturnTrace()});
             };
         }
     };
@@ -281,32 +281,27 @@ pub fn copy(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     return cy.value.shallowCopy(@ptrCast(@alignCast(vm)), val);
 }
 
-pub fn errorReport(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const ivm = vm.internal();
+pub fn errorReport(vm: *cy.VM, _: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    const curFrameLen = vm.compactTrace.len;
 
-    cy.debug.buildStackTrace(ivm) catch |err| {
-        log.debug("unexpected {}", .{err});
-        fatal();
-    };
+    // Append frames from current call-site.
+    try cy.fiber.recordCurFrames(vm);
 
-    var frames = ivm.alloc.alloc(cy.StackFrame, ivm.stackTrace.frames.len-1 + ivm.throwTrace.len) catch fatal();
-    defer ivm.alloc.free(frames);
-    for (ivm.throwTrace.items(), 0..) |tframe, i| {
-        const frame = cy.debug.compactToStackFrame(ivm, tframe) catch fatal();
-        frames[i] = frame;
+    // Remove top frame since it contains the `errorReport` call.
+    if (vm.compactTrace.len > curFrameLen) {
+        vm.compactTrace.remove(curFrameLen);
     }
-    // Skip the current callsite frame.
-    for (ivm.stackTrace.frames[1..], 0..) |frame, i| {
-        frames[ivm.throwTrace.len + i] = frame;
-    }
+
+    const trace = try cy.debug.allocStackTrace(vm, vm.stack, vm.compactTrace.items());
+    defer vm.alloc.free(trace);
 
     var buf: std.ArrayListUnmanaged(u8) = .{};
-    defer buf.deinit(ivm.alloc);
+    defer buf.deinit(vm.alloc);
 
-    const w = buf.writer(ivm.alloc);
-    cy.debug.writeStackFrames(ivm, w, frames) catch fatal();
+    const w = buf.writer(vm.alloc);
+    try cy.debug.writeStackFrames(vm, w, trace);
 
-    return vm.retainOrAllocString(buf.items) catch fatal();
+    return vm.allocStringInternOrArray(buf.items);
 }
 
 pub fn must(vm: *cy.VM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) anyerror!Value {

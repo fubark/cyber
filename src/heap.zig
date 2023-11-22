@@ -1408,7 +1408,7 @@ pub const VmExt = struct {
     pub const allocUnsetUstringObject = Root.allocUnsetUstringObject;
 
     pub fn mapSet(vm: *cy.VM, map: *Map, key: Value, val: Value) !void {
-        try map.set(vm, key, val);
+        try map.map().put(vm.alloc, key, val);
     }
 };
 

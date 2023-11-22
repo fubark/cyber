@@ -402,7 +402,7 @@ typedef enum {
 
 /// Holds info about a runtime try block.
 typedef struct TryFrame {
-    Value* fp;
+    u32 fp;
     u32 catchPc;
     u8 catchErrDst;
     bool releaseDst;
@@ -807,7 +807,7 @@ typedef struct VM {
     Fiber mainFiber;
 #endif
 
-    ZCyList throwTrace;
+    ZCyList compactTrace;
 #if TRACE
     TraceInfo* trace;
 #endif
@@ -890,6 +890,11 @@ typedef struct PcSp {
     Value* sp;
 } PcSp;
 
+typedef struct PcSpOff {
+    u32 pc;
+    u32 sp;
+} PcSpOff;
+
 typedef struct PcSpResult {
     Inst* pc;
     Value* sp;
@@ -918,7 +923,7 @@ double zOtherToF64(Value val);
 CallObjSymResult zCallObjSym(VM* vm, Inst* pc, Value* stack, Value recv, TypeId typeId, uint8_t mgId, u8 startLocal, u8 numArgs, u16 anySelfFuncSigId);
 ValueResult zAllocFiber(VM* vm, uint32_t pc, Value* args, uint8_t nargs, uint8_t argDst, uint8_t initialStackSize);
 PcSp zPushFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Fiber* fiber, uint8_t parentDstLocal);
-PcSp zPopFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Value retValue);
+PcSpOff zPopFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Value retValue);
 ValueResult zAllocObjectSmall(VM* vm, TypeId typeId, Value* fields, uint8_t nfields);
 uint8_t zGetFieldOffsetFromTable(VM* vm, TypeId typeId, uint32_t symId);
 Value zEvalCompare(Value left, Value right);
@@ -933,7 +938,6 @@ Value zGetFieldFallback(VM* vm, HeapObject* obj, NameId nameId);
 void zPanicIncompatibleFuncSig(VM* vm, FuncId funcId, Value* args, size_t numArgs, FuncSigId targetFuncSigId);
 ResultCode zSetStaticFunc(VM* vm, FuncId funcId, Value val);
 ResultCode zGrowTryStackTotalCapacity(ZCyList* list, ZAllocator alloc, size_t minCap);
-PcSpResult zThrow(VM* vm, Value* startFp, const Inst* pc, Value err);
 u16 zOpMatch(const Inst* pc, Value* framePtr);
 void zPrintStderr(const char* fmt, const FmtValue* vals, size_t len);
 void zCheckDoubleFree(VM* vm, HeapObject* obj);

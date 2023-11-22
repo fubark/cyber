@@ -237,14 +237,14 @@ pub fn listInsert(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Se
     return Value.None;
 }
 
-pub fn listAppend(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) anyerror!Value {
+pub fn listAppend(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const obj = args[0].asHeapObject();
     vm.retain(args[1]);
     try obj.list.append(vm.alloc, args[1]);
     return Value.None;
 }
 
-pub fn listJoinString(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn listJoinString(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const obj = args[0].asHeapObject();
     const items = obj.list.items();
     if (items.len > 0) {
@@ -302,7 +302,7 @@ pub fn listJoinString(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.St
     }
 }
 
-pub fn listConcat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn listConcat(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const obj = args[0].asHeapObject();
     const list = args[1].asHeapObject();
     for (list.list.items()) |it| {

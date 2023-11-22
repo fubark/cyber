@@ -379,14 +379,42 @@ test "debug internals." {
     try t.eq(@sizeOf(vmc.CompactFrame), 8);
 }
 
-pub fn compactToStackFrame(vm: *cy.VM, cframe: vmc.CompactFrame) !StackFrame {
-    const sym = getDebugSymByPc(vm, cframe.pcOffset) orelse return error.NoDebugSym;
-    return getStackFrame(vm, sym);
+pub fn compactToStackFrame(vm: *cy.VM, stack: []const cy.Value, frame: vmc.CompactFrame) !StackFrame {
+    if (frame.fpOffset == 0 or cy.fiber.isVmFrame(vm, stack, frame.fpOffset)) {
+        const sym = getDebugSymByPc(vm, frame.pcOffset) orelse return error.NoDebugSym;
+        return getStackFrame(vm, sym);
+    } else {
+        const func = stack[frame.fpOffset+2];
+        if (func.isObjectType(bt.HostFunc)) {
+            return StackFrame{
+                .name = "call host func",
+                .chunkId = cy.NullId,
+                .line = 0,
+                .col = 0,
+                .lineStartPos = cy.NullId,
+            };
+        } else {
+            var funcPc: u32 = undefined; 
+            if (func.isObjectType(bt.Lambda)) {
+                funcPc = func.asHeapObject().lambda.funcPc;
+            } else if (func.isObjectType(bt.Closure)) {
+                funcPc = func.asHeapObject().closure.funcPc;
+            } else return error.Unexpected;
+
+            // TODO: Determine lambda source from inspecting callee value.
+            return StackFrame{
+                .name = "call lambda",
+                .chunkId = cy.NullId,
+                .line = 0,
+                .col = 0,
+                .lineStartPos = cy.NullId,
+            };
+        }
+    }
 }
 
 fn getStackFrame(vm: *cy.VM, sym: cy.DebugSym) StackFrame {
     if (sym.frameLoc == 0) {
-        log.tracev("frame in main", .{});
         const chunk = vm.compiler.chunks.items[sym.file];
         if (sym.loc != cy.NullId) {
             const node = chunk.nodes[sym.loc];
@@ -447,64 +475,14 @@ fn getStackFrame(vm: *cy.VM, sym: cy.DebugSym) StackFrame {
     }
 }
 
-pub fn buildStackTrace(self: *cy.VM) !void {
+pub fn allocStackTrace(vm: *cy.VM, stack: []const cy.Value, cframes: []const vmc.CompactFrame) ![]const cy.StackFrame {
     @setCold(true);
-    self.stackTrace.deinit(self.alloc);
-    var frames: std.ArrayListUnmanaged(StackFrame) = .{};
     log.tracev("build stacktrace", .{});
-
-    var fpOffset = cy.getStackOffset(self, self.framePtr);
-    var pcOffset = cy.getInstOffset(self, self.pc);
-    while (true) {
-        log.tracev("pc: {}, fp: {}", .{pcOffset, fpOffset});
-
-        if (fpOffset == 0 or cy.fiber.isVmFrame(self, fpOffset)) {
-            const sym = getDebugSymByPc(self, pcOffset) orelse return error.NoDebugSym;
-            const frame = getStackFrame(self, sym);
-            try frames.append(self.alloc, frame);
-
-            if (fpOffset == 0) {
-                // Main.
-                break;
-            } else {
-                pcOffset = cy.getInstOffset(self, self.stack[fpOffset + 2].retPcPtr) - self.stack[fpOffset + 1].retInfoCallInstOffset();
-                fpOffset = cy.getStackOffset(self, self.stack[fpOffset + 3].retFramePtr);
-            }
-        } else {
-            var frame: StackFrame = undefined;
-            const func = self.stack[fpOffset+2];
-            if (func.isObjectType(bt.HostFunc)) {
-                frame = StackFrame{
-                    .name = "call host func",
-                    .chunkId = cy.NullId,
-                    .line = 0,
-                    .col = 0,
-                    .lineStartPos = cy.NullId,
-                };
-            } else {
-                var funcPc: u32 = undefined; 
-                if (func.isObjectType(bt.Lambda)) {
-                    funcPc = func.asHeapObject().lambda.funcPc;
-                } else if (func.isObjectType(bt.Closure)) {
-                    funcPc = func.asHeapObject().closure.funcPc;
-                } else return error.Unexpected;
-
-                // TODO: Determine lambda source from inspecting callee value.
-                frame = StackFrame{
-                    .name = "call lambda",
-                    .chunkId = cy.NullId,
-                    .line = 0,
-                    .col = 0,
-                    .lineStartPos = cy.NullId,
-                };
-            }
-            try frames.append(self.alloc, frame);
-
-            fpOffset = cy.getStackOffset(self, self.stack[fpOffset + 3].retFramePtr);
-        }
+    var frames = try vm.alloc.alloc(cy.StackFrame, cframes.len);
+    for (cframes, 0..) |cframe, i| {
+        frames[i] = try cy.debug.compactToStackFrame(vm, stack, cframe);
     }
-
-    self.stackTrace.frames = try frames.toOwnedSlice(self.alloc);
+    return frames;
 }
 
 pub const ObjectTrace = struct {

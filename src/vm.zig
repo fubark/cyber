@@ -122,10 +122,9 @@ pub const VM = struct {
     curFiber: *cy.Fiber,
     mainFiber: cy.Fiber,
 
-    /// Records a minimal trace during stack unwinding.
-    /// Only includes frames visited during stack unwinding.
-    /// Further frames would need to be queried when building a full stack trace.
-    throwTrace: cy.List(vmc.CompactFrame),
+    /// Records a minimal trace when walking the stack.
+    /// Stack frames are then constructed from them.
+    compactTrace: cy.List(vmc.CompactFrame),
 
     trace: if (cy.Trace) *vmc.TraceInfo else void,
 
@@ -219,7 +218,7 @@ pub const VM = struct {
             .unwindTempRegs = undefined,
             .unwindTempPrevIndexes = undefined,
             .refCounts = if (cy.TrackGlobalRC) 0 else undefined,
-            .throwTrace = .{},
+            .compactTrace = .{},
             .mainFiber = undefined,
             .curFiber = undefined,
             .endLocal = undefined,
@@ -343,10 +342,10 @@ pub const VM = struct {
 
         if (reset) {
             self.tryStack.clearRetainingCapacity();
-            self.throwTrace.clearRetainingCapacity();
+            self.compactTrace.clearRetainingCapacity();
         } else {
             self.tryStack.deinit(self.alloc);
-            self.throwTrace.deinit(self.alloc);
+            self.compactTrace.deinit(self.alloc);
         }
 
         for (self.methodGroupExts.items()) |extra| {
@@ -634,6 +633,13 @@ pub const VM = struct {
         }
     }
 
+    pub fn getFiberContext(vm: *const cy.VM) cy.fiber.PcSpOff {
+        return .{
+            .pc = cy.fiber.getInstOffset(vm.ops.ptr, vm.pc),
+            .sp = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr),
+        };
+    }
+
     pub fn getTypeName(vm: *const cy.VM, typeId: cy.TypeId) []const u8 {
         if (typeId == cy.NullId >> 2) {
             return "danglingObject";
@@ -710,7 +716,7 @@ pub const VM = struct {
 
     fn getNewCallFuncRet(vm: *VM) u8 {
         const fpOff = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
-        if (fpOff == 0 or cy.fiber.isVmFrame(vm, fpOff)) {
+        if (fpOff == 0 or cy.fiber.isVmFrame(vm, vm.stack, fpOff)) {
             // Vm frame. Obtain current stack top from looking at the current inst.
             switch (vm.pc[0].opcode()) {
                 .callSym,
@@ -764,7 +770,19 @@ pub const VM = struct {
 
         // Only user funcs start eval loop.
         if (!func.isObjectType(bt.HostFunc)) {
-            try @call(.never_inline, evalLoopGrowStack, .{vm});
+            @call(.never_inline, evalLoopGrowStack, .{vm}) catch |err| {
+                if (err == error.Panic) {
+                    // Dump for now.
+                    const frames = try cy.debug.allocStackTrace(vm, vm.stack, vm.compactTrace.items());
+                    defer vm.alloc.free(frames);
+
+                    const w = cy.fmt.lockStderrWriter();
+                    defer cy.fmt.unlockPrint();
+                    try fmt.format(w, "uncaught throw:\n\n", &.{});
+                    try cy.debug.writeStackFrames(vm, w, frames);
+                }
+                return builtins.prepThrowZError(@ptrCast(vm), err, @errorReturnTrace());
+            };
         }
         
         // Restore pc/sp.
@@ -1469,7 +1487,7 @@ pub const VM = struct {
         vm.curFiber.panicPayload = Value.initErrorSymbol(id).val;
         vm.curFiber.panicType = vmc.PANIC_NATIVE_THROW;
         return Value.Interrupt;
-    }
+    }    
 
     pub usingnamespace cy.heap.VmExt;
     pub usingnamespace cy.arc.VmExt;
@@ -1665,7 +1683,7 @@ test "vm internals." {
     try t.eq(@offsetOf(VM, "unwindTempPrevIndexes"), @offsetOf(vmc.VM, "unwindTempPrevIndexesPtr"));
     try t.eq(@offsetOf(VM, "curFiber"), @offsetOf(vmc.VM, "curFiber"));
     try t.eq(@offsetOf(VM, "mainFiber"), @offsetOf(vmc.VM, "mainFiber"));
-    try t.eq(@offsetOf(VM, "throwTrace"), @offsetOf(vmc.VM, "throwTrace"));
+    try t.eq(@offsetOf(VM, "compactTrace"), @offsetOf(vmc.VM, "compactTrace"));
     try t.eq(@offsetOf(VM, "compiler"), @offsetOf(vmc.VM, "compiler"));
     try t.eq(@offsetOf(VM, "userData"), @offsetOf(vmc.VM, "userData"));
     try t.eq(@offsetOf(VM, "print"), @offsetOf(vmc.VM, "print"));
@@ -1689,28 +1707,28 @@ pub const SymbolId = u32;
 const Root = @This();
 
 /// If successful, execution should continue.
-pub fn handleInterrupt(vm: *VM) !void {
+pub fn handleInterrupt(vm: *VM, rootFp: u32) !void {
     if (vm.curFiber.panicType == vmc.PANIC_NATIVE_THROW) {
-        if (try @call(.never_inline, cy.fiber.throw, .{vm, vm.framePtr, vm.pc, Value.initRaw(vm.curFiber.panicPayload) })) |res| {
-            vm.pc = res.pc;
-            vm.framePtr = res.sp;
-            return;
-        } else {
-            vm.curFiber.panicType = vmc.PANIC_UNCAUGHT_ERROR;
-        }
+        const res = try @call(.never_inline, cy.fiber.throw, .{
+            vm, rootFp, vm.getFiberContext(), Value.initRaw(vm.curFiber.panicPayload) });
+        vm.pc = vm.ops.ptr + res.pc;
+        vm.framePtr = vm.stack.ptr + res.sp;
+    } else {
+        const res = try @call(.never_inline, panicCurFiber, .{ vm });
+        vm.pc = vm.ops.ptr + res.pc;
+        vm.framePtr = vm.stack.ptr + res.sp;
     }
-    if (try @call(.never_inline, panicCurFiber, .{ vm })) |cont| {
-        vm.pc = cont.pc;
-        vm.framePtr = cont.sp;
-        return;
-    }
-    return error.Panic;
 }
 
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM, assuming pc, framePtr, and virtual registers are already set.
 pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, Unexpected, End}!void {
     log.tracev("begin eval loop", .{});
+
+    // Record the start fp offset, so that stack unwinding knows when to stop.
+    // This is useful for having nested eval stacks.
+    const startFp = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
+
     if (comptime build_options.vmEngine == .zig) {
         while (true) {
             @call(.always_inline, evalLoop, .{vm}) catch |err| {
@@ -1721,7 +1739,7 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
                 } else if (err == error.End) {
                     return;
                 } else if (err == error.Panic) {
-                    try handleInterrupt(vm);
+                    try @call(.never_inline, handleInterrupt, .{vm});
                     continue;
                 } else return err;
             };
@@ -1730,40 +1748,41 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
     } else if (comptime build_options.vmEngine == .c) {
         while (true) {
             const res = vmc.execBytecode(@ptrCast(vm));
-            if (res == vmc.RES_CODE_PANIC) {
-                try handleInterrupt(vm);
-                continue;
-            } else if (res == vmc.RES_CODE_STACK_OVERFLOW) {
-                log.tracev("grow stack", .{});
-                try @call(.never_inline, cy.fiber.growStackAuto, .{vm});
-                continue;
-            } else if (res == vmc.RES_CODE_UNKNOWN) {
-                log.tracev("Unknown error.", .{});
-                if (try @call(.never_inline, panicCurFiber, .{ vm })) |cont| {
-                    vm.pc = cont.pc;
-                    vm.framePtr = cont.sp;
-                    continue;
-                } else return error.Panic;
-                return vm.panic("Unknown error code.");
+            if (res == vmc.RES_CODE_SUCCESS) {
+                break;
             }
-            return;
+            try @call(.never_inline, handleExecResult, .{vm, res, startFp});
         }
     } else {
         @compileError("Unsupported engine.");
     }
 }
 
-fn panicCurFiber(vm: *VM) !?cy.fiber.PcSp {
-    try debug.buildStackTrace(vm);
-    try cy.fiber.unwindReleaseStack(vm, vm.stack, vm.framePtr, vm.pc);
-    if (vm.curFiber != &vm.mainFiber) {
-        if (cy.Trace) {
-            // Print fiber panic.
-            cy.debug.printLastUserPanicError(vm) catch cy.fatal();
-        }
-        const pc = cy.fiber.getInstOffset(vm.ops.ptr, vm.pc);
-        return cy.fiber.popFiber(vm, pc, vm.framePtr, Value.None);
-    } else return null;
+fn handleExecResult(vm: *VM, res: u32, fpStart: u32) linksection(cy.HotSection) !void {
+    if (res == vmc.RES_CODE_PANIC) {
+        try handleInterrupt(vm, fpStart);
+    } else if (res == vmc.RES_CODE_STACK_OVERFLOW) {
+        log.tracev("grow stack", .{});
+        try @call(.never_inline, cy.fiber.growStackAuto, .{vm});
+    } else if (res == vmc.RES_CODE_UNKNOWN) {
+        log.tracev("Unknown error code.", .{});
+        const cont = try @call(.never_inline, panicCurFiber, .{ vm });
+        vm.pc = vm.ops.ptr + cont.pc;
+        vm.framePtr = vm.stack.ptr + cont.sp;
+    }
+}
+
+fn panicCurFiber(vm: *VM) !cy.fiber.PcSpOff {
+    var ctx = vm.getFiberContext();
+    ctx = try cy.fiber.unwindStack(vm, vm.stack, ctx);
+
+    const frames = try debug.allocStackTrace(vm, vm.stack, vm.compactTrace.items());
+    vm.stackTrace.deinit(vm.alloc);
+    vm.stackTrace.frames = frames;
+
+    return cy.fiber.fiberEnd(vm, ctx) orelse {
+        return error.Panic;
+    };
 }
 
 /// Generate assembly labels to find sections easier.
@@ -4287,11 +4306,12 @@ export fn zPushFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, fiber
     };
 }
 
-export fn zPopFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, retValue: Value) vmc.PcSp {
-    const res = cy.fiber.popFiber(vm, curFiberEndPc, curStack, retValue);
+export fn zPopFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, retValue: Value) vmc.PcSpOff {
+    const fp = cy.fiber.getStackOffset(vm.stack.ptr, curStack);
+    const res = cy.fiber.popFiber(vm, .{ .pc = @intCast(curFiberEndPc), .sp = fp }, retValue);
     return .{
-        .pc = @ptrCast(res.pc),
-        .sp = @ptrCast(res.sp),
+        .pc = res.pc,
+        .sp = res.sp,
     };
 }
 
@@ -4459,30 +4479,6 @@ export fn zGrowTryStackTotalCapacity(list: *cy.List(vmc.TryFrame), alloc: vmc.ZA
         return vmc.RES_CODE_UNKNOWN;
     };
     return vmc.RES_CODE_SUCCESS;
-}
-
-export fn zThrow(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.Inst, err: Value) vmc.PcSpResult {
-    const mbRes = cy.fiber.throw(vm, startFp, pc, err) catch {
-        return .{
-            .pc = undefined,
-            .sp = undefined,
-            .code = vmc.RES_CODE_UNKNOWN,
-        };
-    };
-    if (mbRes) |res| {
-        return .{
-            .pc = @ptrCast(res.pc),
-            .sp = @ptrCast(res.sp),
-            .code = vmc.RES_CODE_SUCCESS,
-        };
-    } else {
-        vm.panicWithUncaughtError(err) catch {};
-        return .{
-            .pc = undefined,
-            .sp = undefined,
-            .code = vmc.RES_CODE_PANIC,
-        };
-    }
 }
 
 export fn zOpMatch(pc: [*]const cy.Inst, framePtr: [*]const Value) u16 {

@@ -1043,15 +1043,7 @@ fn cAllocList(vm: *cy.UserVM, elems: [*]Value, n: u32) callconv(.C) Value {
 }
 
 fn cyCallFunc(vm: *cy.VM, func: Value, args: [*]const Value, nargs: u8) callconv(.C) Value {
-    return vm.callFunc(func, args[0..nargs]) catch |err| {
-        if (err == error.Panic) {
-            // Fail fast for now.
-            cy.vm.handleInterrupt(vm) catch {
-                cy.debug.printLastUserPanicError(vm) catch cy.fatal();
-            };
-        }
-        return builtins.prepThrowZError(@ptrCast(vm), err, @errorReturnTrace());
-    };
+    return vm.callFunc(func, args[0..nargs]) catch cy.fatal();
 }
 
 fn cPrintValue(val: u64) void {

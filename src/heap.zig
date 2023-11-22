@@ -236,16 +236,16 @@ pub const List = extern struct {
     }
 
     /// Assumes `val` is retained.
-    pub fn append(self: *List, alloc: std.mem.Allocator, val: Value) linksection(cy.Section) void {
+    pub fn append(self: *List, alloc: std.mem.Allocator, val: Value) linksection(cy.Section) !void {
         const list = cy.ptrAlignCast(*cy.List(Value), &self.list);
         if (list.len == list.buf.len) {
             // After reaching a certain size, use power of two ceil.
             // This reduces allocations for big lists while not over allocating for smaller lists.
             if (list.len > 512) {
                 const newCap = std.math.ceilPowerOfTwo(u32, @as(u32, @intCast(list.len)) + 1) catch cy.fatal();
-                list.growTotalCapacityPrecise(alloc, newCap) catch cy.fatal();
+                try list.growTotalCapacityPrecise(alloc, newCap);
             } else {
-                list.growTotalCapacity(alloc, list.len + 1) catch cy.fatal();
+                try list.growTotalCapacity(alloc, list.len + 1);
             }
         }
         list.appendAssumeCapacity(val);
@@ -1392,19 +1392,27 @@ pub fn getOrAllocOwnedString(self: *cy.VM, obj: *HeapObject, str: []const u8) li
 
 const Root = @This();
 pub const VmExt = struct {
-    pub const retainOrAllocPreferString = Root.retainOrAllocPreferString;
+    pub const allocStringInternOrArray = Root.allocStringInternOrArray;
     pub const retainOrAllocAstring = Root.retainOrAllocAstring;
     pub const retainOrAllocUstring = Root.retainOrAllocUstring;
+    pub const allocAstringSlice = Root.allocAstringSlice;
+    pub const allocUstringSlice = Root.allocUstringSlice;
+    pub const allocArraySlice = Root.allocArraySlice;
     pub const allocHostFunc = Root.allocHostFunc;
-
+    pub const allocEmptyMap = Root.allocEmptyMap;
+    pub const allocEmptyList = Root.allocEmptyList;
     pub const allocArray = Root.allocArray;
     pub const allocPointer = Root.allocPointer;
     pub const allocUnsetArrayObject = Root.allocUnsetArrayObject;
     pub const allocUnsetAstringObject = Root.allocUnsetAstringObject;
     pub const allocUnsetUstringObject = Root.allocUnsetUstringObject;
+
+    pub fn mapSet(vm: *cy.VM, map: *Map, key: Value, val: Value) !void {
+        try map.set(vm, key, val);
+    }
 };
 
-pub fn retainOrAllocPreferString(self: *cy.VM, str: []const u8) linksection(cy.Section) !Value {
+pub fn allocStringInternOrArray(self: *cy.VM, str: []const u8) linksection(cy.Section) !Value {
     if (cy.validateUtf8(str)) |charLen| {
         if (str.len == charLen) {
             return try retainOrAllocAstring(self, str);

@@ -532,14 +532,14 @@ pub fn repeat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     }
 }
 
-pub fn split(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn split(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const stype = obj.string.getType();
     const parent = obj.string.getParentByType(stype);
     const delim = args[1].asString();
 
-    const res = vm.allocEmptyList() catch fatal();
+    const res = try vm.allocEmptyList();
     if (delim.len == 0) {
         return res;
     }
@@ -549,13 +549,13 @@ pub fn split(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     while (iter.next()) |part| {
         if (stype.isAstring()) {
             vm.retainObject(parent);
-            const partv = vm.allocAstringSlice(part, parent) catch fatal();
-            list.list.append(vm.allocator(), partv);
+            const partv = try vm.allocAstringSlice(part, parent);
+            try list.list.append(vm.alloc, partv);
         } else {
             vm.retainObject(parent);
             const runeLen: u32 = @intCast(cy.string.utf8Len(part));
-            const partv = vm.allocUstringSlice(part, runeLen, parent) catch fatal();
-            list.list.append(vm.allocator(), partv);
+            const partv = try vm.allocUstringSlice(part, runeLen, parent);
+            try list.list.append(vm.alloc, partv);
         }
     }
     return res;

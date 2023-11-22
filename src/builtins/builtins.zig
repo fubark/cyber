@@ -32,22 +32,22 @@ pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callco
 const NameFunc = struct { []const u8, cy.ZHostFuncFn, cc.FuncEnumType };
 const funcs = [_]NameFunc{
     // Utils.
-    .{"arrayFill", arrayFill, .standard},
-    .{"copy", copy, .standard},
-    .{"dump", dump, .standard},
-    .{"errorReport", errorReport, .standard},
-    .{"isAlpha", isAlpha, .standard},
-    .{"isDigit", isDigit, .standard},
-    .{"must", zErrFunc2(must), .standard},
-    .{"panic", zErrFunc2(panic), .standard},
-    .{"parseCyber", parseCyber, .standard},
-    .{"parseCyon", parseCyon, .standard},
-    .{"performGC", performGC, .standard},
-    .{"print", zErrFunc2(print), .standard},
-    .{"runestr", runestr, .standard},
-    .{"toCyon", toCyon, .standard},
-    .{"typeof", typeof, .standard},
-    .{"typesym", typesym, .standard},
+    .{"arrayFill",      arrayFill, .standard},
+    .{"copy",           copy, .standard},
+    .{"dump",           zErrFunc2(dump), .standard},
+    .{"errorReport",    zErrFunc2(errorReport), .standard},
+    .{"isAlpha",        isAlpha, .standard},
+    .{"isDigit",        isDigit, .standard},
+    .{"must",           zErrFunc2(must), .standard},
+    .{"panic",          zErrFunc2(panic), .standard},
+    .{"parseCyber",     zErrFunc2(parseCyber), .standard},
+    .{"parseCyon",      zErrFunc2(parseCyon), .standard},
+    .{"performGC",      zErrFunc2(performGC), .standard},
+    .{"print",          zErrFunc2(print), .standard},
+    .{"runestr",        zErrFunc2(runestr), .standard},
+    .{"toCyon",         zErrFunc2(toCyon), .standard},
+    .{"typeof",         typeof, .standard},
+    .{"typesym",        typesym, .standard},
 
     // bool
     .{"bool.'$call'", boolCall, .standard},
@@ -93,16 +93,16 @@ const funcs = [_]NameFunc{
     .{"float.'$call'", floatCall, .standard},
 
     // List
-    .{"$index", bindings.inlineBinOp(.indexList), .inlinec},
-    .{"$setIndex", bindings.inlineTernOp(.setIndexList), .inlinec},
-    .{"append", bindings.listAppend, .standard},
-    .{"concat", bindings.listConcat, .standard},
-    .{"insert", bindings.listInsert, .standard},
-    .{"iterator", bindings.listIterator, .standard},
+    .{"$index",     bindings.inlineBinOp(.indexList), .inlinec},
+    .{"$setIndex",  bindings.inlineTernOp(.setIndexList), .inlinec},
+    .{"append",     zErrFunc2(bindings.listAppend), .standard},
+    .{"concat",     zErrFunc2(bindings.listConcat), .standard},
+    .{"insert",     bindings.listInsert, .standard},
+    .{"iterator",   bindings.listIterator, .standard},
     .{"joinString", zErrFunc2(bindings.listJoinString), .standard},
-    .{"len", bindings.listLen, .standard},
-    .{"remove", bindings.listRemove, .standard},
-    .{"resize", bindings.listResize, .standard},
+    .{"len",        bindings.listLen, .standard},
+    .{"remove",     bindings.listRemove, .standard},
+    .{"resize",     bindings.listResize, .standard},
     // .{"sort", bindings.listSort, .standard},
 
     // ListIterator
@@ -140,34 +140,34 @@ const funcs = [_]NameFunc{
     .{"$slice", string.sliceFn, .standard},
     .{"sliceAt", string.sliceAt, .standard},
     .{"$index", string.sliceAt, .standard},
-    .{"split", string.split, .standard},
+    .{"split", zErrFunc2(string.split), .standard},
     .{"startsWith", string.startsWith, .standard},
     .{"trim", string.trim, .standard},
     .{"upper", string.upper, .standard},
     .{"string.'$call'", zErrFunc2(string.stringCall), .standard},
 
     // array
-    .{"$infix+", arrayConcat, .standard},
-    .{"byteAt", arrayByteAt, .standard},
-    .{"concat", arrayConcat, .standard},
-    .{"decode", arrayDecode, .standard},
-    .{"decode", arrayDecode1, .standard},
-    .{"endsWith", arrayEndsWith, .standard},
-    .{"find", arrayFind, .standard},
-    .{"findAnyByte", arrayFindAnyByte, .standard},
-    .{"findByte", arrayFindByte, .standard},
-    .{"insert", arrayInsert, .standard},
-    .{"insertByte", arrayInsertByte, .standard},
-    .{"len", arrayLen, .standard},
-    .{"repeat", zErrFunc2(arrayRepeat), .standard},
-    .{"replace", arrayReplace, .standard},
-    .{"slice", arraySlice, .standard},
-    .{"$slice", arraySlice, .standard},
-    .{"$index", arrayByteAt, .standard},
-    .{"split", arraySplit, .standard},
-    .{"startsWith", arrayStartsWith, .standard},
-    .{"trim", zErrFunc2(arrayTrim), .standard},
-    .{"array.'$call'", zErrFunc2(arrayCall), .standard},
+    .{"$infix+",        arrayConcat, .standard},
+    .{"byteAt",         arrayByteAt, .standard},
+    .{"concat",         arrayConcat, .standard},
+    .{"decode",         arrayDecode, .standard},
+    .{"decode",         arrayDecode1, .standard},
+    .{"endsWith",       arrayEndsWith, .standard},
+    .{"find",           arrayFind, .standard},
+    .{"findAnyByte",    arrayFindAnyByte, .standard},
+    .{"findByte",       arrayFindByte, .standard},
+    .{"insert",         arrayInsert, .standard},
+    .{"insertByte",     arrayInsertByte, .standard},
+    .{"len",            arrayLen, .standard},
+    .{"repeat",         zErrFunc2(arrayRepeat), .standard},
+    .{"replace",        arrayReplace, .standard},
+    .{"slice",          arraySlice, .standard},
+    .{"$slice",         arraySlice, .standard},
+    .{"$index",         arrayByteAt, .standard},
+    .{"split",          zErrFunc2(arraySplit), .standard},
+    .{"startsWith",     arrayStartsWith, .standard},
+    .{"trim",           zErrFunc2(arrayTrim), .standard},
+    .{"array.'$call'",  zErrFunc2(arrayCall), .standard},
 
     // pointer
     .{"asObject", pointerAsObject, .standard},
@@ -257,7 +257,10 @@ pub fn prepThrowZError(vm: *cy.VM, err: anyerror, optTrace: ?*std.builtin.StackT
         error.PermissionDenied      => return vm.prepThrowError(.PermissionDenied),
         error.StdoutStreamTooLong   => return vm.prepThrowError(.StreamTooLong),
         error.StderrStreamTooLong   => return vm.prepThrowError(.StreamTooLong),
-        else                        => return fromUnsupportedError(@ptrCast(vm), "", err, optTrace),
+        else                        => {
+            fmt.printStderr("UnknownError: {}\n", &.{fmt.v(err)});
+            return vm.prepThrowError(.UnknownError);
+        }
     }
 }
 
@@ -343,37 +346,35 @@ pub fn isDigit(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     }
 }
 
-pub fn runestr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn runestr(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const num = args[0].asInteger();
     if (num < 0 or num >= 2 << 21) {
-        return prepareThrowSymbol(vm, .InvalidRune);
+        return vm.prepThrowError(.InvalidRune);
     }
     const rune: u21 = @intCast(num);
     if (std.unicode.utf8ValidCodepoint(rune)) {
         var buf: [4]u8 = undefined;
-        const len = std.unicode.utf8Encode(rune, &buf) catch fatal();
-        return vm.retainOrAllocString(buf[0..len]) catch fatal();
+        const len = try std.unicode.utf8Encode(rune, &buf);
+        return vm.allocStringInternOrArray(buf[0..len]);
     } else {
-        return prepareThrowSymbol(vm, .InvalidRune);
+        return vm.prepThrowError(.InvalidRune);
     }
 }
 
-pub fn dump(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const alloc = vm.allocator();
-    const res = allocToCyon(vm, alloc, args[0]) catch cy.fatal();
-    defer alloc.free(res);
-    vm.internal().print.?(@ptrCast(vm), cc.initStr(res));
+pub fn dump(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    const res = try allocToCyon(vm, vm.alloc, args[0]);
+    defer vm.alloc.free(res);
+    vm.print.?(@ptrCast(vm), cc.initStr(res));
     return Value.None;
 }
 
-pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const alloc = vm.allocator();
-    const res = allocToCyon(vm, alloc, args[0]) catch cy.fatal();
-    defer alloc.free(res);
-    return vm.retainOrAllocString(res) catch fatal();
+pub fn toCyon(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    const res = try allocToCyon(vm, vm.alloc, args[0]);
+    defer vm.alloc.free(res);
+    return vm.allocStringInternOrArray(res);
 }
 
-fn allocToCyon(vm: *cy.UserVM, alloc: std.mem.Allocator, root: Value) ![]const u8 {
+fn allocToCyon(vm: *cy.VM, alloc: std.mem.Allocator, root: Value) ![]const u8 {
     const S = struct {
         fn encodeMap(ctx: *cy.EncodeMapContext, val: cy.Value) anyerror!void {
             const uservm = cy.ptrAlignCast(*cy.VM, ctx.user_ctx);
@@ -483,22 +484,15 @@ fn allocToCyon(vm: *cy.UserVM, alloc: std.mem.Allocator, root: Value) ![]const u
     return try cy.encodeCyon(alloc, vm, root, S.encodeRoot);
 }
 
-pub fn parseCyber(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn parseCyber(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const src = args[0].asString();
 
-    const alloc = vm.allocator();
-    var parser = cy.Parser.init(alloc);
+    var parser = cy.Parser.init(vm.alloc);
     parser.parseComments = true;
     defer parser.deinit();
-    _ = parser.parse(src) catch |err| {
-        log.debug("parseCyber: {}", .{err});
-        return prepareThrowSymbol(vm, .UnknownError);
-    };
+    _ = try parser.parse(src);
 
-    return parseCyberGenResult(vm, &parser) catch |err| {
-        log.debug("parseCyber: {}", .{err});
-        return prepareThrowSymbol(vm, .UnknownError);
-    };
+    return parseCyberGenResult(vm, &parser);
 }
 
 const ParseCyberState = struct {
@@ -508,20 +502,19 @@ const ParseCyberState = struct {
     node: cy.Node,
 };
 
-fn genTypeSpecString(vm: *cy.UserVM, parser: *const cy.Parser, headId: cy.NodeId) !cy.Value {
-    const alloc = vm.allocator();
+fn genTypeSpecString(vm: *cy.VM, parser: *const cy.Parser, headId: cy.NodeId) !cy.Value {
     if (headId != cy.NullId) {
         var sb: std.ArrayListUnmanaged(u8) = .{};
-        defer sb.deinit(alloc);
+        defer sb.deinit(vm.alloc);
 
         var name = cy.parser.getNodeString(parser, headId);
-        try sb.appendSlice(alloc, name);
+        try sb.appendSlice(vm.alloc, name);
 
         var curId = parser.nodes.items[headId].next;
         while (curId != cy.NullId) {
-            try sb.append(alloc, '.');
+            try sb.append(vm.alloc, '.');
             name = cy.parser.getNodeString(parser, curId);
-            try sb.appendSlice(alloc, name);
+            try sb.appendSlice(vm.alloc, name);
             curId = parser.nodes.items[curId].next;
         }
 
@@ -531,44 +524,45 @@ fn genTypeSpecString(vm: *cy.UserVM, parser: *const cy.Parser, headId: cy.NodeId
     }
 }
 
-fn genNodeValue(vm: *cy.UserVM, parser: *const cy.Parser, ast: cy.ast.Source, nodeId: cy.NodeId) !cy.Value {
+fn genNodeValue(vm: *cy.VM, parser: *const cy.Parser, ast: cy.ast.Source, nodeId: cy.NodeId) !cy.Value {
     const node = parser.nodes.items[nodeId];
     const res = try vm.allocEmptyMap();
+    const map = res.castHeapObject(*cy.heap.Map);
     switch (node.node_t) {
         .funcHeader => {
             const name = ast.getNamePathStr(node.head.funcHeader.name);
-            try vm.mapRawSet(res, try vm.retainOrAllocAstring("name"), try vm.retainOrAllocString(name));
+            try vm.mapSet(map, try vm.retainOrAllocAstring("name"), try vm.allocStringInternOrArray(name));
 
             const params = try vm.allocEmptyList();
             var paramId = node.head.funcHeader.paramHead;
             while (paramId != cy.NullId) {
                 const param = try genNodeValue(vm, parser, ast, paramId);
-                try vm.listAppend(params, param);
+                try params.asHeapObject().list.append(vm.alloc, param);
                 paramId = parser.nodes.items[paramId].next;
             }
-            try vm.mapRawSet(res, try vm.retainOrAllocAstring("params"), params);
+            try vm.mapSet(map, try vm.retainOrAllocAstring("params"), params);
 
             const ret = try genTypeSpecString(vm, parser, node.head.funcHeader.ret);
-            try vm.mapRawSet(res, try vm.retainOrAllocAstring("ret"), ret);
+            try vm.mapSet(map, try vm.retainOrAllocAstring("ret"), ret);
         },
         .funcParam => {
             var name = cy.parser.getNodeString(parser, node.head.funcParam.name);
-            try vm.mapRawSet(res, try vm.retainOrAllocAstring("name"), try vm.retainOrAllocString(name));
+            try vm.mapSet(map, try vm.retainOrAllocAstring("name"), try vm.allocStringInternOrArray(name));
 
             const typeSpec = try genTypeSpecString(vm, parser, node.head.funcParam.typeSpecHead);
-            try vm.mapRawSet(res, try vm.retainOrAllocAstring("typeSpec"), typeSpec);
+            try vm.mapSet(map, try vm.retainOrAllocAstring("typeSpec"), typeSpec);
         },
         else => {},
     }
     return res;
 }
 
-fn genDeclEntry(vm: *cy.UserVM, parser: *const cy.Parser, ast: cy.ast.Source, decl: cy.parser.StaticDecl, state: *ParseCyberState) !Value {
-    const alloc = vm.allocator();
+fn genDeclEntry(vm: *cy.VM, parser: *const cy.Parser, ast: cy.ast.Source, decl: cy.parser.StaticDecl, state: *ParseCyberState) !Value {
     const nodes = parser.nodes.items;
     const tokens = parser.tokens.items;
-    const entry = try vm.allocEmptyMap();
-    try vm.mapRawSet(entry, try vm.retainOrAllocAstring("type"), try vm.retainOrAllocAstring(@tagName(decl.declT)));
+    const entryv = try vm.allocEmptyMap();
+    const entry = entryv.castHeapObject(*cy.heap.Map);
+    try vm.mapSet(entry, try vm.retainOrAllocAstring("type"), try vm.retainOrAllocAstring(@tagName(decl.declT)));
     var name: []const u8 = undefined;
     var node = nodes[decl.nodeId];
     switch (decl.declT) {
@@ -577,7 +571,7 @@ fn genDeclEntry(vm: *cy.UserVM, parser: *const cy.Parser, ast: cy.ast.Source, de
             name = ast.getNamePathStr(varSpec.head.varSpec.name);
 
             const typeSpec = try genTypeSpecString(vm, parser, varSpec.head.varSpec.typeSpecHead);
-            try vm.mapRawSet(entry, try vm.retainOrAllocAstring("typeSpec"), typeSpec);
+            try vm.mapSet(entry, try vm.retainOrAllocAstring("typeSpec"), typeSpec);
         },
         .typeAlias => {
             name = cy.parser.getNodeString(parser, node.head.typeAliasDecl.name);
@@ -591,7 +585,7 @@ fn genDeclEntry(vm: *cy.UserVM, parser: *const cy.Parser, ast: cy.ast.Source, de
             name = ast.getNamePathStr(header.head.funcHeader.name);
 
             const headerv = try genNodeValue(vm, parser, ast, node.head.func.header);
-            try vm.mapRawSet(entry, try vm.retainOrAllocAstring("header"), headerv);
+            try vm.mapSet(entry, try vm.retainOrAllocAstring("header"), headerv);
         },
         .import => {
             name = cy.parser.getNodeString(parser, node.head.left_right.left);
@@ -613,11 +607,11 @@ fn genDeclEntry(vm: *cy.UserVM, parser: *const cy.Parser, ast: cy.ast.Source, de
                     else => return error.Unsupported,
                 }
 
-                try children.append(alloc, try genDeclEntry(vm, parser, ast, childDecl, state));
+                try children.append(vm.alloc, try genDeclEntry(vm, parser, ast, childDecl, state));
                 funcId = funcN.next;
             }
 
-            try vm.mapRawSet(entry, try vm.retainOrAllocAstring("children"), childrenv);
+            try vm.mapSet(entry, try vm.retainOrAllocAstring("children"), childrenv);
         },
         .enumT => {
             name = cy.parser.getNodeString(parser, node.head.enumDecl.name);
@@ -629,16 +623,15 @@ fn genDeclEntry(vm: *cy.UserVM, parser: *const cy.Parser, ast: cy.ast.Source, de
 
     // Find doc comments.
     if (try genDocComment(vm, parser, decl, state)) |docStr| {
-        try vm.mapRawSet(entry, try vm.retainOrAllocAstring("docs"), docStr);
+        try vm.mapSet(entry, try vm.retainOrAllocAstring("docs"), docStr);
     }
 
-    try vm.mapRawSet(entry, try vm.retainOrAllocAstring("name"), try vm.retainOrAllocAstring(name));
-    try vm.mapRawSet(entry, try vm.retainOrAllocAstring("pos"), Value.initInt(@intCast(pos)));
-    return entry;
+    try vm.mapSet(entry, try vm.retainOrAllocAstring("name"), try vm.retainOrAllocAstring(name));
+    try vm.mapSet(entry, try vm.retainOrAllocAstring("pos"), Value.initInt(@intCast(pos)));
+    return entryv;
 }
 
-fn genDocComment(vm: *cy.UserVM, parser: *const cy.Parser, decl: cy.parser.StaticDecl, state: *ParseCyberState) !?cy.Value {
-    const alloc = vm.allocator();
+fn genDocComment(vm: *cy.VM, parser: *const cy.Parser, decl: cy.parser.StaticDecl, state: *ParseCyberState) !?cy.Value {
     const nodes = parser.nodes.items;
     const tokens = parser.tokens.items;
     if (state.commentIdx < parser.comments.items.len) {
@@ -698,12 +691,12 @@ fn genDocComment(vm: *cy.UserVM, parser: *const cy.Parser, decl: cy.parser.Stati
 
             if (linesConnected(parser.src, last.end, posWithModifiers)) {
                 for (parser.comments.items[docStartIdx..docEndIdx]) |docPos| {
-                    try state.sb.appendSlice(alloc, parser.src[docPos.start+3..docPos.end]);
-                    try state.sb.append(alloc, ' ');
+                    try state.sb.appendSlice(vm.alloc, parser.src[docPos.start+3..docPos.end]);
+                    try state.sb.append(vm.alloc, ' ');
                 }
                 const finalStr = std.mem.trim(u8, state.sb.items, " ");
                 defer state.sb.clearRetainingCapacity();
-                return try vm.retainOrAllocString(finalStr);
+                return try vm.allocStringInternOrArray(finalStr);
             }
         }
     }
@@ -733,8 +726,7 @@ fn linesConnected(src: []const u8, aEnd: u32, bStart: u32) bool {
     return true;
 }
 
-fn parseCyberGenResult(vm: *cy.UserVM, parser: *const cy.Parser) !Value {
-    const alloc = vm.allocator();
+fn parseCyberGenResult(vm: *cy.VM, parser: *const cy.Parser) !Value {
     const root = try vm.allocEmptyMap();
     const map = root.asHeapObject().map.map();
 
@@ -747,7 +739,7 @@ fn parseCyberGenResult(vm: *cy.UserVM, parser: *const cy.Parser) !Value {
         .pos = undefined,
         .node = undefined,
     };
-    defer state.sb.deinit(alloc);
+    defer state.sb.deinit(vm.alloc);
 
     const ast = cy.ast.Source{
         .src = parser.src,
@@ -757,46 +749,44 @@ fn parseCyberGenResult(vm: *cy.UserVM, parser: *const cy.Parser) !Value {
 
     for (parser.staticDecls.items) |decl| {
         const entry = try genDeclEntry(vm, parser, ast, decl, &state);
-        try declsList.append(alloc, entry);
+        try declsList.append(vm.alloc, entry);
     }
-    try map.put(alloc, try vm.retainOrAllocAstring("decls"), decls);
+    try map.put(vm.alloc, try vm.retainOrAllocAstring("decls"), decls);
 
     return root;
 }
 
-pub fn parseCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn parseCyon(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const src = args[0].asString();
 
-    const alloc = vm.allocator();
-    var parser = cy.Parser.init(alloc);
+    var parser = cy.Parser.init(vm.alloc);
     defer parser.deinit();
-    const val = cy.decodeCyon(alloc, &parser, src) catch cy.fatal();
-    return fromCyonValue(vm, val) catch cy.fatal();
+    const val = try cy.decodeCyon(vm.alloc, &parser, src);
+    return fromCyonValue(vm, val);
 }
 
-fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
-    const ivm = self.internal();
+fn fromCyonValue(vm: *cy.VM, val: cy.DecodeValueIR) !Value {
     switch (val.getValueType()) {
         .list => {
-            var dlist = val.getList() catch cy.fatal();
+            var dlist = try val.getList();
             defer dlist.deinit();
-            const elems = try ivm.alloc.alloc(Value, dlist.arr.len);
+            const elems = try vm.alloc.alloc(Value, dlist.arr.len);
             for (elems, 0..) |*elem, i| {
-                elem.* = try fromCyonValue(self, dlist.getIndex(i));
+                elem.* = try fromCyonValue(vm, dlist.getIndex(i));
             }
-            return try cy.heap.allocOwnedList(ivm, elems);
+            return try cy.heap.allocOwnedList(vm, elems);
         },
         .map => {
-            var dmap = val.getMap() catch cy.fatal();
+            var dmap = try val.getMap();
             defer dmap.deinit();
             var iter = dmap.iterator();
 
-            const mapVal = try self.allocEmptyMap();
+            const mapVal = try vm.allocEmptyMap();
             const map = mapVal.asHeapObject();
             while (iter.next()) |entry| {
-                const child = try fromCyonValue(self, dmap.getValue(entry.key_ptr.*));
-                const key = try self.retainOrAllocString(entry.key_ptr.*);
-                stdMapPut(self, map, key, child);
+                const child = try fromCyonValue(vm, dmap.getValue(entry.key_ptr.*));
+                const key = try vm.allocStringInternOrArray(entry.key_ptr.*);
+                stdMapPut(vm, map, key, child);
             }
             return mapVal;
         },
@@ -804,7 +794,7 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
             const str = try val.allocString();
             defer val.alloc.free(str);
             // TODO: Use allocOwnedString
-            return try self.retainOrAllocString(str);
+            return try vm.allocStringInternOrArray(str);
         },
         .integer => {
             return Value.initInt(try val.getInt());
@@ -818,22 +808,22 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
     }
 }
 
-fn stdMapPut(vm: *cy.UserVM, obj: *cy.HeapObject, key: Value, value: Value) void {
+fn stdMapPut(vm: *cy.VM, obj: *cy.HeapObject, key: Value, value: Value) void {
     const map = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner); 
-    map.put(vm.allocator(), key, value) catch cy.fatal();
+    map.put(vm.alloc, key, value) catch cy.fatal();
 }
 
-pub fn performGC(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const res = cy.arc.performGC(vm.internal()) catch cy.fatal();
-    const map = vm.allocEmptyMap() catch cy.fatal();
-    const cycKey = vm.retainOrAllocAstring("numCycFreed") catch cy.fatal();
-    const objKey = vm.retainOrAllocAstring("numObjFreed") catch cy.fatal();
+pub fn performGC(vm: *cy.VM, _: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    const res = try cy.arc.performGC(vm);
+    const map = try vm.allocEmptyMap();
+    const cycKey = try vm.retainOrAllocAstring("numCycFreed");
+    const objKey = try vm.retainOrAllocAstring("numObjFreed");
     defer {
         vm.release(cycKey);
         vm.release(objKey);
     }
-    map.asHeapObject().map.set(vm.internal(), cycKey, Value.initInt(@intCast(res.numCycFreed))) catch cy.fatal();
-    map.asHeapObject().map.set(vm.internal(), objKey, Value.initInt(@intCast(res.numObjFreed))) catch cy.fatal();
+    try map.asHeapObject().map.set(vm, cycKey, Value.initInt(@intCast(res.numCycFreed)));
+    try map.asHeapObject().map.set(vm, objKey, Value.initInt(@intCast(res.numObjFreed)));
     return map;
 }
 
@@ -1149,12 +1139,12 @@ fn arrayRepeat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
     }
 }
 
-fn arraySplit(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn arraySplit(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const obj = args[0].asHeapObject();
     const slice = obj.array.getSlice();
     const delim = args[1].asArray();
 
-    const res = vm.allocEmptyList() catch fatal();
+    const res = try vm.allocEmptyList();
     if (delim.len == 0) {
         return res;
     }
@@ -1164,8 +1154,8 @@ fn arraySplit(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     var iter = std.mem.split(u8, slice, delim);
     while (iter.next()) |part| {
         vm.retainObject(parent);
-        const new = vm.allocArraySlice(part, parent) catch fatal();
-        list.list.append(vm.allocator(), new);
+        const new = try vm.allocArraySlice(part, parent);
+        try list.list.append(vm.alloc, new);
     }
     return res;
 }

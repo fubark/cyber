@@ -215,5 +215,3 @@ pub inline fn unsupported() noreturn {
 pub inline fn fatal() noreturn {
     panic("error");
 }
-
-pub const apiUnsupportedError = bindings.fromUnsupportedError;

@@ -44,22 +44,22 @@ const NameFunc = struct { []const u8, cy.ZHostFuncFn };
 const funcs = [_]NameFunc{
     // Top level
     .{"access",         zErrFunc(access)},
-    .{"args",           zErrFunc(osArgs)},
-    .{"cacheUrl",       cacheUrl},
+    .{"args",           zErrFunc2(osArgs)},
+    .{"cacheUrl",       zErrFunc2(cacheUrl)},
     .{"copyFile",       zErrFunc(copyFile)},
     .{"createDir",      zErrFunc(createDir)},
     .{"createFile",     zErrFunc(createFile)},
     .{"cstr",           zErrFunc2(cstr)},
-    .{"cwd",            zErrFunc(cwd)},
-    .{"dirName",        zErrFunc(dirName)},
-    .{"execCmd",        zErrFunc(execCmd)},
-    .{"exePath",        zErrFunc(exePath)},
+    .{"cwd",            zErrFunc2(cwd)},
+    .{"dirName",        zErrFunc2(dirName)},
+    .{"execCmd",        zErrFunc2(execCmd)},
+    .{"exePath",        zErrFunc2(exePath)},
     .{"exit",           exit},
     .{"fetchUrl",       zErrFunc2(fetchUrl)},
     .{"free",           free},
     .{"fromCstr",       zErrFunc2(fromCstr)},
-    .{"getEnv",         zErrFunc(getEnv)},
-    .{"getEnvAll",      zErrFunc(getEnvAll)},
+    .{"getEnv",         zErrFunc2(getEnv)},
+    .{"getEnvAll",      zErrFunc2(getEnvAll)},
     .{"getAllInput",    zErrFunc(getAllInput)},
     .{"getInput",       getInput},
     .{"malloc",         zErrFunc(malloc)},
@@ -68,9 +68,9 @@ const funcs = [_]NameFunc{
     .{"openDir",        zErrFunc(openDir)},
     .{"openDir",        zErrFunc(openDir2)},
     .{"openFile",       zErrFunc(openFile)},
-    .{"parseArgs",      zErrFunc(parseArgs)},
+    .{"parseArgs",      zErrFunc2(parseArgs)},
     .{"readFile",       zErrFunc(readFile)},
-    .{"realPath",       zErrFunc(realPath)},
+    .{"realPath",       zErrFunc2(realPath)},
     .{"removeDir",      zErrFunc(removeDir)},
     .{"removeFile",     zErrFunc(removeFile)},
     .{"setEnv",         zErrFunc(setEnv)},
@@ -84,21 +84,21 @@ const funcs = [_]NameFunc{
     .{"next",           zErrFunc2(fs.fileNext)},
     .{"read",           zErrFunc2(fs.fileRead)},
     .{"readToEnd",      zErrFunc2(fs.fileReadToEnd)},
-    .{"seek",           fs.fileSeek},
-    .{"seekFromCur",    fs.fileSeekFromCur},
-    .{"seekFromEnd",    fs.fileSeekFromEnd},
-    .{"stat",           fs.fileOrDirStat},
+    .{"seek",           zErrFunc2(fs.fileSeek)},
+    .{"seekFromCur",    zErrFunc2(fs.fileSeekFromCur)},
+    .{"seekFromEnd",    zErrFunc2(fs.fileSeekFromEnd)},
+    .{"stat",           zErrFunc2(fs.fileOrDirStat)},
     .{"streamLines",    fs.fileStreamLines},
     .{"streamLines",    fs.fileStreamLines1},
     .{"write",          zErrFunc2(fs.fileWrite)},
 
     // Dir
     .{"iterator",   fs.dirIterator},
-    .{"stat",       fs.fileOrDirStat},
+    .{"stat",       zErrFunc2(fs.fileOrDirStat)},
     .{"walk",       fs.dirWalk},
 
     // DirIterator
-    .{"next", fs.dirIteratorNext},
+    .{"next", zErrFunc2(fs.dirIteratorNext)},
 
     // FFI
     .{"bindCallback",   zErrFunc(ffi.ffiBindCallback)},
@@ -152,7 +152,7 @@ pub fn onTypeLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
 }
 
 pub fn zPostTypeLoad(c: *cy.VMcompiler, mod: cc.ApiModule) !void {
-    vars[0] = .{ "Root.cpu", try cy.heap.retainOrAllocPreferString(c.vm, @tagName(builtin.cpu.arch)) };
+    vars[0] = .{ "Root.cpu", try cy.heap.allocStringInternOrArray(c.vm, @tagName(builtin.cpu.arch)) };
     if (builtin.cpu.arch.endian() == .Little) {
         vars[1] = .{ "Root.endian", cy.Value.initSymbol(@intFromEnum(Symbol.little)) };
     } else {
@@ -173,7 +173,7 @@ pub fn zPostTypeLoad(c: *cy.VMcompiler, mod: cc.ApiModule) !void {
         vars[3] = .{ "Root.stdin", Value.None };
         vars[4] = .{ "Root.stdout", Value.None };
     }
-    vars[5] = .{ "Root.system", try cy.heap.retainOrAllocPreferString(c.vm, @tagName(builtin.os.tag)) };
+    vars[5] = .{ "Root.system", try cy.heap.allocStringInternOrArray(c.vm, @tagName(builtin.os.tag)) };
     
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
         vars[6] = .{ "Root.vecBitSize", cy.Value.initI32(VecSize * 8) };
@@ -302,11 +302,8 @@ fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     return vm.allocFile(file.handle);
 }
 
-fn parseArgs(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
-    const ivm = vm.internal();
-    _ = ivm;
-    const alloc = vm.allocator();
+fn parseArgs(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
 
     const list = args[0].asHeapObject().list.items();
 
@@ -324,17 +321,17 @@ fn parseArgs(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
         found: bool,
     };
     var optionMap: std.StringHashMapUnmanaged(Option) = .{};
-    defer optionMap.deinit(alloc);
+    defer optionMap.deinit(vm.alloc);
     for (list) |opt| {
         if (opt.isObjectType(bt.Map)) {
             const entry = opt.asHeapObject().map.map();
-            const name = entry.getByString("name") orelse return prepareThrowSymbol(vm, .InvalidArgument);
+            const name = entry.getByString("name") orelse return vm.prepThrowError(.InvalidArgument);
             if (!name.isString()) {
-                return prepareThrowSymbol(vm, .InvalidArgument);
+                return vm.prepThrowError(.InvalidArgument);
             }
-            const entryType = entry.getByString("type") orelse return prepareThrowSymbol(vm, .InvalidArgument);
+            const entryType = entry.getByString("type") orelse return vm.prepThrowError(.InvalidArgument);
             if (!entryType.isObjectType(bt.MetaType)) {
-                return prepareThrowSymbol(vm, .InvalidArgument);
+                return vm.prepThrowError(.InvalidArgument);
             }
             var optType: OptionType = undefined;
             switch (entryType.asHeapObject().metatype.type) {
@@ -348,25 +345,25 @@ fn parseArgs(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
                     optType = .bool;
                 },
                 else => {
-                    return prepareThrowSymbol(vm, .InvalidArgument);
+                    return vm.prepThrowError(.InvalidArgument);
                 },
             }
             const default = entry.getByString("default") orelse Value.None;
-            try optionMap.put(alloc, name.asString(), .{
+            try optionMap.put(vm.alloc, name.asString(), .{
                 .name = name,
                 .type = optType,
                 .default = default,
                 .found = false,
             });
         } else {
-            return prepareThrowSymbol(vm, .InvalidArgument);
+            return vm.prepThrowError(.InvalidArgument);
         }
     }
 
     const res = try vm.allocEmptyMap();
     const map = res.asHeapObject().map.map();
 
-    var iter = try std.process.argsWithAllocator(alloc);
+    var iter = try std.process.argsWithAllocator(vm.alloc);
     defer iter.deinit();
     const rest = try vm.allocEmptyList();
     const restList = rest.asHeapObject().list.getList();
@@ -380,37 +377,37 @@ fn parseArgs(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
                 switch (opt.type) {
                     .string => {
                         if (iter.next()) |nextArg| {
-                            const val = try vm.retainOrAllocString(nextArg);
+                            const val = try vm.allocStringInternOrArray(nextArg);
                             vm.retain(opt.name);
-                            try map.put(alloc, opt.name, val);
+                            try map.put(vm.alloc, opt.name, val);
                             opt.found = true;
                         } else {
-                            return prepareThrowSymbol(vm, .InvalidArgument);
+                            return vm.prepThrowError(.InvalidArgument);
                         }
                     },
                     .float => {
                         if (iter.next()) |nextArg| {
                             const num = std.fmt.parseFloat(f64, nextArg) catch {
-                                return prepareThrowSymbol(vm, .InvalidArgument);
+                                return vm.prepThrowError(.InvalidArgument);
                             };
                             vm.retain(opt.name);
-                            try map.put(alloc, opt.name, Value.initF64(num));
+                            try map.put(vm.alloc, opt.name, Value.initF64(num));
                             opt.found = true;
                         } else {
-                            return prepareThrowSymbol(vm, .InvalidArgument);
+                            return vm.prepThrowError(.InvalidArgument);
                         }
                     },
                     .bool => {
                         vm.retain(opt.name);
-                        try map.put(alloc, opt.name, Value.True);
+                        try map.put(vm.alloc, opt.name, Value.True);
                         opt.found = true;
                     }
                 }
             }
             continue;
         }
-        const str = try vm.allocStringOrByteArray(arg);
-        try restList.append(alloc, str);
+        const str = try vm.allocStringInternOrArray(arg);
+        try restList.append(vm.alloc, str);
     }
 
     // Fill missing with defaults.
@@ -419,66 +416,65 @@ fn parseArgs(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
         if (!opt.*.found) {
             vm.retain(opt.*.name);
             vm.retain(opt.*.default);
-            try map.put(alloc, opt.*.name, opt.*.default);
+            try map.put(vm.alloc, opt.*.name, opt.*.default);
         }
     }
 
-    try map.put(alloc, try vm.retainOrAllocAstring("rest"), rest);
+    try map.put(vm.alloc, try vm.retainOrAllocAstring("rest"), rest);
     return res;
 }
 
-fn osArgs(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
-    const alloc = vm.allocator();
-    var iter = try std.process.argsWithAllocator(alloc);
+fn osArgs(vm: *cy.VM, _: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
+    var iter = try std.process.argsWithAllocator(vm.alloc);
     defer iter.deinit();
     const listv = try vm.allocEmptyList();
     const listo = listv.asHeapObject();
     while (iter.next()) |arg| {
-        const str = try vm.allocStringOrByteArray(arg);
-        listo.list.append(vm.allocator(), str);
+        const str = try vm.allocStringInternOrArray(arg);
+        try listo.list.append(vm.alloc, str);
     }
     return listv;
 }
 
-pub fn cwd(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
-    const res = try std.process.getCwdAlloc(vm.allocator());
-    defer vm.allocator().free(res);
+pub fn cwd(vm: *cy.VM, _: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
+    const res = try std.process.getCwdAlloc(vm.alloc);
+    defer vm.alloc.free(res);
     // TODO: Use allocOwnedString
-    return vm.retainOrAllocString(res);
+    return vm.allocStringInternOrArray(res);
 }
 
-pub fn exePath(vm: *cy.UserVM, _: [*]const Value, _: u8) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
-    const path = try std.fs.selfExePathAlloc(vm.allocator());
-    defer vm.allocator().free(path);
+pub fn exePath(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
+    const path = try std.fs.selfExePathAlloc(vm.alloc);
+    defer vm.alloc.free(path);
     // TODO: Use allocOwnedString
-    return vm.retainOrAllocString(path);
+    return vm.allocStringInternOrArray(path);
 }
 
-pub fn getEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn getEnv(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm or builtin.os.tag == .windows) return vm.returnPanic("Unsupported.");
     const key = args[0].asString();
     const res = std.os.getenv(key) orelse return Value.None;
-    return vm.retainOrAllocString(res);
+    return vm.allocStringInternOrArray(res);
 }
 
-pub fn getEnvAll(vm: *cy.UserVM, _: [*]const Value, _: u8) anyerror!Value {
-    if (cy.isWasm or builtin.os.tag == .windows) return vm.returnPanic("Unsupported.");
-    var env = try std.process.getEnvMap(vm.allocator());
+pub fn getEnvAll(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
+    if (cy.isWasm or builtin.os.tag == .windows) return vm.prepPanic("Unsupported.");
+    var env = try std.process.getEnvMap(vm.alloc);
     defer env.deinit();
 
-    const map = vm.allocEmptyMap() catch cy.fatal();
+    const map = try vm.allocEmptyMap();
     var iter = env.iterator();
     while (iter.next()) |entry| {
-        const key = try vm.retainOrAllocString(entry.key_ptr.*);
-        const val = try vm.retainOrAllocString(entry.value_ptr.*);
+        const key = try vm.allocStringInternOrArray(entry.key_ptr.*);
+        const val = try vm.allocStringInternOrArray(entry.value_ptr.*);
         defer {
             vm.release(key);
             vm.release(val);
         }
-        try map.asHeapObject().map.set(vm.internal(), key, val);
+        try map.asHeapObject().map.set(vm, key, val);
     }
     return map;
 }
@@ -516,23 +512,23 @@ pub fn milliTime(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSect
     return Value.initF64(@floatFromInt(stdx.time.getMilliTimestamp()));
 }
 
-pub fn dirName(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
+pub fn dirName(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const path = args[0].asString();
     if (std.fs.path.dirname(path)) |res| {
-        return vm.retainOrAllocString(res);
+        return vm.allocStringInternOrArray(res);
     } else {
         return Value.None;
     }
 }
 
-pub fn realPath(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
+pub fn realPath(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const path = args[0].asString();
-    const res = try std.fs.cwd().realpathAlloc(vm.allocator(), path);
-    defer vm.allocator().free(res);
+    const res = try std.fs.cwd().realpathAlloc(vm.alloc, path);
+    defer vm.alloc.free(res);
     // TODO: Use allocOwnedString.
-    return vm.retainOrAllocString(res);
+    return vm.allocStringInternOrArray(res);
 }
 
 pub fn setEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
@@ -606,62 +602,56 @@ pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.St
 
 pub extern fn hostFileWrite(fid: u32, str: [*]const u8, strLen: usize) void;
 
-fn cacheUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
-    const alloc = vm.allocator();
+fn cacheUrl(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const url = args[0].asString();
 
-    const specGroup = cache.getSpecHashGroup(alloc, url) catch cy.fatal();
-    defer specGroup.deinit(alloc);
+    const specGroup = try cache.getSpecHashGroup(vm.alloc, url);
+    defer specGroup.deinit(vm.alloc);
 
-    if (vm.internal().config.reload) {
-        specGroup.markEntryBySpecForRemoval(url) catch cy.fatal();
+    if (vm.config.reload) {
+        try specGroup.markEntryBySpecForRemoval(url);
     } else {
         // First check local cache.
-        if (specGroup.findEntryBySpec(url) catch cy.fatal()) |entry| {
-            const path = cache.allocSpecFilePath(alloc, entry) catch cy.fatal();
-            defer alloc.free(path);
-            return vm.retainOrAllocString(path) catch cy.fatal();
+        if (try specGroup.findEntryBySpec(url)) |entry| {
+            const path = try cache.allocSpecFilePath(vm.alloc, entry);
+            defer vm.alloc.free(path);
+            return vm.allocStringInternOrArray(path);
         }
     }
 
-    const resp = http.get(alloc, vm.internal().httpClient, url) catch |err| {
-        log.debug("cacheUrl error: {}", .{err});
-        return prepareThrowSymbol(vm, .UnknownError);
-    };
-    defer alloc.free(resp.body);
+    const resp = try http.get(vm.alloc, vm.httpClient, url);
+    defer vm.alloc.free(resp.body);
     if (resp.status != .ok) {
         log.debug("cacheUrl response status: {}", .{resp.status});
-        return prepareThrowSymbol(vm, .UnknownError);
+        return vm.prepThrowError(.UnknownError);
     } else {
-        const entry = cache.saveNewSpecFile(alloc, specGroup, url, resp.body) catch cy.fatal();
-        defer entry.deinit(alloc);
-        const path = cache.allocSpecFilePath(alloc, entry) catch cy.fatal();
-        defer alloc.free(path);
-        return vm.retainOrAllocString(path) catch cy.fatal();
+        const entry = try cache.saveNewSpecFile(vm.alloc, specGroup, url, resp.body);
+        defer entry.deinit(vm.alloc);
+        const path = try cache.allocSpecFilePath(vm.alloc, entry);
+        defer vm.alloc.free(path);
+        return vm.allocStringInternOrArray(path);
     }
 }
 
-pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
-    const alloc = vm.allocator();
-    const ivm = vm.internal();
+pub fn execCmd(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
 
     const obj = args[0].asHeapObject();
     var buf: std.ArrayListUnmanaged([]const u8) = .{};
     defer {
         for (buf.items) |arg| {
-            alloc.free(arg);
+            vm.alloc.free(arg);
         }
-        buf.deinit(alloc);
+        buf.deinit(vm.alloc);
     }
     for (obj.list.items()) |arg| {
-        const str = try ivm.allocValueStr(arg);
-        try buf.append(alloc, str);
+        const str = try vm.allocValueStr(arg);
+        try buf.append(vm.alloc, str);
     }
 
     const res = try std.ChildProcess.exec(.{
-        .allocator = alloc,
+        .allocator = vm.alloc,
         .argv = buf.items,
         .max_output_bytes = 1024 * 1024 * 10,
     });
@@ -675,19 +665,19 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     }
 
     // TODO: Use allocOwnedString
-    defer alloc.free(res.stdout);
-    const out = try vm.retainOrAllocString(res.stdout);
+    defer vm.alloc.free(res.stdout);
+    const out = try vm.allocStringInternOrArray(res.stdout);
     defer vm.release(out);
-    try map.asHeapObject().map.set(ivm, outKey, out);
+    try map.asHeapObject().map.set(vm, outKey, out);
     // TODO: Use allocOwnedString
-    defer alloc.free(res.stderr);
-    const err = try vm.retainOrAllocString(res.stderr);
+    defer vm.alloc.free(res.stderr);
+    const err = try vm.allocStringInternOrArray(res.stderr);
     defer vm.release(err);
-    try map.asHeapObject().map.set(ivm, errKey, err);
+    try map.asHeapObject().map.set(vm, errKey, err);
     if (res.term == .Exited) {
         const exitedKey = try vm.retainOrAllocAstring("exited");
         defer vm.release(exitedKey);
-        try map.asHeapObject().map.set(ivm, exitedKey, Value.initF64(@floatFromInt(res.term.Exited)));
+        try map.asHeapObject().map.set(vm, exitedKey, Value.initF64(@floatFromInt(res.term.Exited)));
     }
     return map;
 }

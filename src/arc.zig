@@ -140,6 +140,7 @@ pub const VmExt = struct {
     pub const retainObject = Root.retainObject;
     pub const retain = Root.retain;
     pub const releaseObject = Root.releaseObject;
+    pub const release = Root.release;
 };
 
 pub fn checkRetainDanglingPointer(vm: *cy.VM, obj: *cy.HeapObject) void {

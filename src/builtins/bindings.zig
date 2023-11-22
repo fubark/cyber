@@ -202,8 +202,7 @@ pub fn listSort(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.
 
     const S = struct {
         fn less(ctx_: *LessContext, a: Value, b: Value) bool {
-            const res = ctx_.vm.callFunc(ctx_.newFramePtr, ctx_.lessFn, &.{a, b}) catch |err| {
-                _ = fromUnsupportedError(ctx_.vm, "less", err, @errorReturnTrace());
+            const res = ctx_.vm.callFunc(ctx_.newFramePtr, ctx_.lessFn, &.{a, b}) catch {
                 return false;
             };
             return res.toBool();
@@ -238,10 +237,10 @@ pub fn listInsert(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Se
     return Value.None;
 }
 
-pub fn listAppend(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listAppend(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) anyerror!Value {
     const obj = args[0].asHeapObject();
     vm.retain(args[1]);
-    obj.list.append(vm.allocator(), args[1]);
+    try obj.list.append(vm.alloc, args[1]);
     return Value.None;
 }
 
@@ -303,12 +302,12 @@ pub fn listJoinString(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.St
     }
 }
 
-pub fn listConcat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn listConcat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const obj = args[0].asHeapObject();
     const list = args[1].asHeapObject();
     for (list.list.items()) |it| {
         vm.retain(it);
-        obj.list.append(vm.allocator(), it);
+        try obj.list.append(vm.alloc, it);
     }
     return Value.None;
 }
@@ -540,21 +539,6 @@ pub fn inlineBinOp(comptime code: cy.OpCode) cy.ZHostFuncFn {
 
 pub fn nop(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     return vm.returnPanic("Unsupported.");
-}
-
-/// In debug mode, the unsupported error's stack trace is dumped and program panics.
-/// In release mode, the error is logged and UnknownError is returned.
-pub fn fromUnsupportedError(vm: *cy.UserVM, msg: []const u8, err: anyerror, optTrace: ?*std.builtin.StackTrace) Value {
-    fmt.printStderr("{}: {}\n", &.{fmt.v(msg), fmt.v(err)});
-    if (builtin.mode == .Debug) {
-        if (!cy.silentError) {
-            if (optTrace) |trace| {
-                std.debug.dumpStackTrace(trace.*);
-            }
-        }
-        fatal();
-    }
-    return prepareThrowSymbol(vm, .UnknownError);
 }
 
 pub const ModuleBuilder = struct {

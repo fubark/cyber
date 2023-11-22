@@ -243,61 +243,55 @@ pub fn fileIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.
     return args[0];
 }
 
-pub fn fileSeekFromEnd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+pub fn fileSeekFromEnd(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
     if (fileo.closed) {
-        return prepareThrowSymbol(vm, .Closed);
+        return vm.prepThrowError(.Closed);
     }
 
     const numBytes = args[1].asInteger();
     if (numBytes > 0) {
-        return prepareThrowSymbol(vm, .InvalidArgument);
+        return vm.prepThrowError(.InvalidArgument);
     }
 
     const file = fileo.getStdFile();
-    file.seekFromEnd(numBytes) catch |err| {
-        return cy.apiUnsupportedError(vm, "seekFromEnd", err, @errorReturnTrace());
-    };
+    try file.seekFromEnd(numBytes);
     return Value.None;
 }
 
-pub fn fileSeekFromCur(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+pub fn fileSeekFromCur(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
     if (fileo.closed) {
-        return prepareThrowSymbol(vm, .Closed);
+        return vm.prepThrowError(.Closed);
     }
 
     const numBytes = args[1].asInteger();
 
     const file = fileo.getStdFile();
-    file.seekBy(numBytes) catch |err| {
-        return cy.apiUnsupportedError(vm, "seekFromCur", err, @errorReturnTrace());
-    };
+    try file.seekBy(numBytes);
     return Value.None;
 }
 
-pub fn fileSeek(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+pub fn fileSeek(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
     if (fileo.closed) {
-        return prepareThrowSymbol(vm, .Closed);
+        return vm.prepThrowError(.Closed);
     }
 
     const numBytes = args[1].asInteger();
     if (numBytes < 0) {
-        return prepareThrowSymbol(vm, .InvalidArgument);
+        return vm.prepThrowError(.InvalidArgument);
     }
 
     const file = fileo.getStdFile();
     const unumBytes: u32 = @intCast(numBytes);
-    file.seekTo(unumBytes) catch |err| {
-        return cy.apiUnsupportedError(vm, "seek", err, @errorReturnTrace());
-    };
+    try file.seekTo(unumBytes);
     return Value.None;
 }
 
@@ -380,41 +374,37 @@ pub fn fileReadToEnd(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Std
     }
 }
 
-pub fn fileOrDirStat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+pub fn fileOrDirStat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const obj = args[0].asHeapObject();
     const typeId = obj.getTypeId();
     if (typeId == FileT) {
         const file = args[0].castHostObject(*File);
         if (file.closed) {
-            return prepareThrowSymbol(vm, .Closed);
+            return vm.prepThrowError(.Closed);
         }
     } else if (typeId == DirT) {
         const dir = args[0].castHostObject(*Dir);
         if (dir.closed) {
-            return prepareThrowSymbol(vm, .Closed);
+            return vm.prepThrowError(.Closed);
         }
-    } else {
-        cy.unexpected();
-    }
+    } else return error.Unexpected;
 
     // File/Dir share the same fd member offset.
     const fileo = args[0].castHostObject(*File);
     const file = fileo.getStdFile();
-    const stat = file.stat() catch |err| {
-        return cy.apiUnsupportedError(vm, "stat", err, @errorReturnTrace());
-    };
+    const stat = try file.stat();
 
-    const ivm = vm.internal();
+    const mapv = try vm.allocEmptyMap();
+    const map = mapv.castHeapObject(*cy.heap.Map);
 
-    const map = vm.allocEmptyMap() catch cy.fatal();
-    const sizeKey = vm.retainOrAllocAstring("size") catch cy.fatal();
-    const modeKey = vm.retainOrAllocAstring("mode") catch cy.fatal();
-    const typeKey = vm.retainOrAllocAstring("type") catch cy.fatal();
-    const atimeKey = vm.retainOrAllocAstring("atime") catch cy.fatal();
-    const ctimeKey = vm.retainOrAllocAstring("ctime") catch cy.fatal();
-    const mtimeKey = vm.retainOrAllocAstring("mtime") catch cy.fatal();
+    const sizeKey = try vm.retainOrAllocAstring("size");
+    const modeKey = try vm.retainOrAllocAstring("mode");
+    const typeKey = try vm.retainOrAllocAstring("type");
+    const atimeKey = try vm.retainOrAllocAstring("atime");
+    const ctimeKey = try vm.retainOrAllocAstring("ctime");
+    const mtimeKey = try vm.retainOrAllocAstring("mtime");
     defer {
         vm.release(sizeKey);
         vm.release(modeKey);
@@ -423,18 +413,18 @@ pub fn fileOrDirStat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy
         vm.release(ctimeKey);
         vm.release(mtimeKey);
     }
-    map.asHeapObject().map.set(ivm, sizeKey, Value.initF64(@floatFromInt(stat.size))) catch cy.fatal();
-    map.asHeapObject().map.set(ivm, modeKey, Value.initF64(@floatFromInt(stat.mode))) catch cy.fatal();
+    try map.set(vm, sizeKey, Value.initF64(@floatFromInt(stat.size)));
+    try map.set(vm, modeKey, Value.initF64(@floatFromInt(stat.mode)));
     const typeTag: cy.bindings.Symbol = switch (stat.kind) {
         .file => .file,
         .directory => .dir,
         else => .unknown,
     };
-    map.asHeapObject().map.set(ivm, typeKey, Value.initSymbol(@intFromEnum(typeTag))) catch cy.fatal();
-    map.asHeapObject().map.set(ivm, atimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.atime, 1000000)))) catch cy.fatal();
-    map.asHeapObject().map.set(ivm, ctimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.ctime, 1000000)))) catch cy.fatal();
-    map.asHeapObject().map.set(ivm, mtimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.mtime, 1000000)))) catch cy.fatal();
-    return map;
+    try map.set(vm, typeKey, Value.initSymbol(@intFromEnum(typeTag)));
+    try map.set(vm, atimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.atime, 1000000))));
+    try map.set(vm, ctimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.ctime, 1000000))));
+    try map.set(vm, mtimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.mtime, 1000000))));
+    return mapv;
 }
 
 pub fn fileNext(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
@@ -495,73 +485,69 @@ pub fn fileNext(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     }
 }
 
-pub fn dirIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+pub fn dirIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
-    const ivm = vm.internal();
     const iter = args[0].castHostObject(*DirIterator);
     if (iter.recursive) {
         const walker = cy.ptrAlignCast(*std.fs.IterableDir.Walker, &iter.inner.walker);
-        const entryOpt = walker.next() catch |err| {
-            return cy.apiUnsupportedError(vm, "next", err, @errorReturnTrace());
-        };
+        const entryOpt = try walker.next();
         if (entryOpt) |entry| {
-            const map = vm.allocEmptyMap() catch cy.fatal();
-            const pathKey = vm.retainOrAllocAstring("path") catch cy.fatal();
-            const nameKey = vm.retainOrAllocAstring("name") catch cy.fatal();
-            const typeKey = vm.retainOrAllocAstring("type") catch cy.fatal();
+            const mapv = try vm.allocEmptyMap();
+            const map = mapv.castHeapObject(*cy.heap.Map);
+            const pathKey = try vm.retainOrAllocAstring("path");
+            const nameKey = try vm.retainOrAllocAstring("name");
+            const typeKey = try vm.retainOrAllocAstring("type");
             defer {
                 vm.release(pathKey);
                 vm.release(nameKey);
                 vm.release(typeKey);
             }
-            const entryPath = cy.heap.retainOrAllocPreferString(ivm, entry.path) catch cy.fatal();
-            const entryName = cy.heap.retainOrAllocPreferString(ivm, entry.basename) catch cy.fatal();
+            const entryPath = try cy.heap.allocStringInternOrArray(vm, entry.path);
+            const entryName = try cy.heap.allocStringInternOrArray(vm, entry.basename);
             defer {
                 vm.release(entryPath);
                 vm.release(entryName);
             }
-            map.asHeapObject().map.set(ivm, pathKey, entryPath) catch cy.fatal();
-            map.asHeapObject().map.set(ivm, nameKey, entryName) catch cy.fatal();
+            try map.set(vm, pathKey, entryPath);
+            try map.set(vm, nameKey, entryName);
             const typeTag: cy.bindings.Symbol = switch (entry.kind) {
                 .file => .file,
                 .directory => .dir,
                 else => .unknown,
             };
-            map.asHeapObject().map.set(ivm, typeKey, Value.initSymbol(@intFromEnum(typeTag))) catch cy.fatal();
-            return map;
+            try map.set(vm, typeKey, Value.initSymbol(@intFromEnum(typeTag)));
+            return mapv;
         } else {
             return Value.None;
         }
     } else {
         const stdIter = cy.ptrAlignCast(*std.fs.IterableDir.Iterator, &iter.inner.iter);
-        const entryOpt = stdIter.next() catch |err| {
-            return cy.apiUnsupportedError(vm, "next", err, @errorReturnTrace());
-        };
+        const entryOpt = try stdIter.next();
         if (entryOpt) |entry| {
-            const map = vm.allocEmptyMap() catch cy.fatal();
-            const nameKey = vm.retainOrAllocAstring("name") catch cy.fatal();
-            const typeKey = vm.retainOrAllocAstring("type") catch cy.fatal();
-            const entryName = cy.heap.retainOrAllocPreferString(ivm, entry.name) catch cy.fatal();
+            const mapv = try vm.allocEmptyMap();
+            const map = mapv.castHeapObject(*cy.heap.Map);
+            const nameKey = try vm.retainOrAllocAstring("name");
+            const typeKey = try vm.retainOrAllocAstring("type");
+            const entryName = try cy.heap.allocStringInternOrArray(vm, entry.name);
             defer {
                 vm.release(nameKey);
                 vm.release(typeKey);
                 vm.release(entryName);
             }
-            map.asHeapObject().map.set(ivm, nameKey, entryName) catch cy.fatal();
+            try map.set(vm, nameKey, entryName);
             const typeTag: cy.bindings.Symbol = switch (entry.kind) {
                 .file => .file,
                 .directory => .dir,
                 else => .unknown,
             };
-            map.asHeapObject().map.set(ivm, typeKey, Value.initSymbol(@intFromEnum(typeTag))) catch cy.fatal();
-            return map;
+            try map.set(vm, typeKey, Value.initSymbol(@intFromEnum(typeTag)));
+            return mapv;
         } else {
             return Value.None;
         }
     }
 }
-
 
 pub fn prepareThrowSymbol(vm: *cy.UserVM, sym: cy.bindings.Symbol) Value {
     return vm.prepareThrowSymbol(@intFromEnum(sym));

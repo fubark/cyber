@@ -16,6 +16,7 @@ const bt = cy.types.BuiltinTypes;
 const rt = cy.rt;
 const sema = cy.sema;
 const types = cy.types;
+const builtins = @import("builtins/builtins.zig");
 const bindings = @import("builtins/bindings.zig");
 const math_mod = @import("builtins/math.zig");
 const Value = cy.Value;

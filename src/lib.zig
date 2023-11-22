@@ -253,8 +253,8 @@ export fn csVmObject(ptr: *anyopaque) Value {
     return Value.initPtr(ptr);
 }
 
-export fn csNewString(vm: *cy.UserVM, cstr: c.Str) Value {
-    return vm.retainOrAllocString(c.strSlice(cstr)) catch fatal();
+export fn csNewString(vm: *cy.VM, cstr: c.Str) Value {
+    return vm.allocStringInternOrArray(c.strSlice(cstr)) catch fatal();
 }
 
 export fn csNewAstring(vm: *cy.VM, cstr: c.Str) Value {
@@ -483,9 +483,9 @@ export fn csListInsert(vm: *cy.UserVM, list: Value, idx: usize, val: Value) void
     inner.insertAssumeCapacity(idx, val);
 }
 
-export fn csListAppend(vm: *cy.UserVM, list: Value, val: Value) void {
+export fn csListAppend(vm: *cy.VM, list: Value, val: Value) void {
     vm.retain(val);
-    return list.asHeapObject().list.append(vm.allocator(), val);
+    return list.asHeapObject().list.append(vm.alloc, val) catch cy.fatal();
 }
 
 test "List ops." {

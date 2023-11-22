@@ -202,24 +202,8 @@ pub const UserVM = struct {
         return cy.heap.allocString(self.internal(), str, utf8);
     }
 
-    pub inline fn retainOrAllocString(self: *UserVM, str: []const u8) !Value {
-        return cy.heap.retainOrAllocPreferString(self.internal(), str);
-    }
-
     pub inline fn allocArraySlice(self: *UserVM, slice: []const u8, parent: *cy.HeapObject) !Value {
         return cy.heap.allocArraySlice(self.internal(), slice, parent);
-    }
-
-    pub inline fn allocStringOrByteArray(self: *UserVM, str: []const u8) !Value {
-        if (cy.string.validateUtf8(str)) |runeLen| {
-            if (runeLen == str.len) {
-                return self.retainOrAllocAstring(str);
-            } else {
-                return self.retainOrAllocUstring(str, @intCast(runeLen));
-            }
-        } else {
-            return self.internal().allocArray(str);
-        }
     }
 
     pub inline fn allocAstringSlice(self: *UserVM, slice: []const u8, parent: *cy.HeapObject) !Value {

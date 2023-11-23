@@ -487,6 +487,7 @@ pub fn ffiCfunc(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
         .ret = retType,
         .ptr = undefined,
         .funcSigId = undefined,
+        .skip = false,
     });
 
     return Value.None;
@@ -800,9 +801,12 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
     var tempTypes: std.BoundedArray(cy.TypeId, 16) = .{};
     for (ffi.cfuncs.items) |*cfunc| {
         // Check that symbol exists.
+        cfunc.skip = false;
         const ptr = lib.lookup(*anyopaque, cfunc.namez) orelse {
-            log.debug("Missing sym: '{s}'", .{cfunc.namez});
-            return prepareThrowSymbol(vm, .MissingSymbol);
+            log.tracev("Missing sym: '{s}'", .{cfunc.namez});
+            // Don't generate function if it is missing from the lib.
+            cfunc.skip = true;
+            continue;
         };
 
         // Build function signature.
@@ -874,6 +878,7 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
 
     // Add binded symbols.
     for (ffi.cfuncs.items) |cfunc| {
+        if (cfunc.skip) continue;
         _ = tcc.tcc_add_symbol(state, cfunc.namez.ptr, cfunc.ptr);
     }
 
@@ -889,6 +894,7 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
         cy.arc.retainInc(ivm, cyState, @intCast(ffi.cfuncs.items.len + ffi.cstructs.items.len - 1));
 
         for (ffi.cfuncs.items) |cfunc| {
+            if (cfunc.skip) continue;
             const symGen = try std.fmt.allocPrint(alloc, "cy{s}\x00", .{cfunc.namez});
             defer alloc.free(symGen);
             const funcPtr = tcc.tcc_get_symbol(state, symGen.ptr) orelse {
@@ -933,6 +939,7 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
 
         const cyState = try cy.heap.allocTccState(ivm, state.?, lib);
         for (ffi.cfuncs.items) |cfunc| {
+            if (cfunc.skip) continue;
             const cySym = try std.fmt.allocPrint(alloc, "cy{s}\x00", .{cfunc.namez});
             defer alloc.free(cySym);
             const funcPtr = tcc.tcc_get_symbol(state, cySym.ptr) orelse {
@@ -969,6 +976,7 @@ const CFuncData = struct {
     ret: CType,
     ptr: *anyopaque,
     funcSigId: cy.sema.FuncSigId,
+    skip: bool,
 };
 
 fn dlopen(path: []const u8) !std.DynLib {

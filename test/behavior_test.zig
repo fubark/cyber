@@ -2391,6 +2391,16 @@ test "Static variable declaration." {
         \\test.eq(b, 234)
     );
 
+    // Static vars are loaded even if they are not referenced.
+    try evalPass(.{},
+        \\import test
+        \\var Root.b = 123
+        \\var Root.a = load()
+        \\func load():
+        \\  b = 234
+        \\test.eq(b, 234)
+    );
+
     try evalPass(.{}, @embedFile("staticvar_decl_test.cy"));
 }
 

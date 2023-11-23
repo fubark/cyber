@@ -5,35 +5,35 @@ type Node object:
     my value
 
     func getLeftmost():
-        if isNone(self.left):
+        if self.left == none:
             return self
         return self.left.getLeftmost()
 
     func getRightmost():
-        if isNone(self.right):
+        if self.right == none:
             return self
         return self.right.getRightmost()
 
     func getLeftSibling():
-        if is(self.parent.right, self):
+        if self.parent.right == self:
             return self.parent.left
         else:
             return self.parent.getLeftSibling2(1)
 
     func getLeftSibling2(height):
-        if is(self.parent.right, self):
+        if self.parent.right == self:
             return self.parent.left.getRightN(height)
         else:
             return self.parent.getLeftSibling2(height + 1)
 
     func getRightSibling():
-        if is(self.parent.left, self):
+        if self.parent.left == self:
             return self.parent.right
         else:
             return self.parent.getRightSibling2(1)
 
     func getRightSibling2(height):
-        if is(self.parent.left, self):
+        if self.parent.left == self:
             return self.parent.right.getLeftN(height)
         else:
             return self.parent.getRightSibling2(height + 1)
@@ -59,7 +59,7 @@ type Heap object:
     my last
 
     func insert(value):
-        if isNone(self.root):
+        if self.root == none:
             self.root = [Node left: none, right: none, parent: none, value: value]
             self.last = self.root
             self.size = 1
@@ -109,26 +109,26 @@ type Heap object:
         my parentParent = parentSave.parent
 
         parentSave.left = node.left
-        if !isNone(node.left):
+        if node.left != none:
             node.left.parent = parentSave
         parentSave.right = node.right
-        if !isNone(node.right):
+        if node.right != none:
             node.right.parent = parentSave
         parentSave.parent = node
 
         if parentLeft == node:
             node.left = parentSave
             node.right = parentRight
-            if !isNone(parentRight):
+            if parentRight != none:
                 parentRight.parent = node
         else:
             node.left = parentLeft
             node.right = parentSave
-            if !isNone(parentLeft):
+            if parentLeft != none:
                 parentLeft.parent = node
         node.parent = parentParent
 
-        if isNone(parentParent):
+        if parentParent == none:
             self.root = node
         else:
             if parentParent.left == parentSave:
@@ -137,7 +137,7 @@ type Heap object:
                 parentParent.right = node
 
     func siftUp(node):
-        if isNone(node.parent):
+        if node.parent == none:
             return
         if node.value > node.parent.value:
             self.swapUp(node)
@@ -145,10 +145,10 @@ type Heap object:
                 self.siftUp(node)
 
     func siftDown(node):
-        if !isNone(node.left) and node.left.value > node.value:
+        if node.left != none and node.left.value > node.value:
             self.swapUp(node.left)
             self.siftDown(node)
-        else !isNone(node.right) and node.right.value > node.value:
+        else node.right != none and node.right.value > node.value:
             self.swapUp(node.right)
             self.siftDown(node)
 

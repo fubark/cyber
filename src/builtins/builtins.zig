@@ -39,7 +39,6 @@ const funcs = [_]NameFunc{
     .{"is",             is, .standard},
     .{"isAlpha",        isAlpha, .standard},
     .{"isDigit",        isDigit, .standard},
-    .{"isNone",         isNone, .standard},
     .{"must",           zErrFunc2(must), .standard},
     .{"panic",          zErrFunc2(panic), .standard},
     .{"parseCyber",     zErrFunc2(parseCyber), .standard},
@@ -345,10 +344,6 @@ pub fn isDigit(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     } else {
         return Value.initBool(std.ascii.isDigit(@intCast(num)));
     }
-}
-
-pub fn isNone(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    return Value.initBool(args[0].isNone());
 }
 
 pub fn runestr(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {

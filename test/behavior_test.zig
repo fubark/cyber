@@ -1852,40 +1852,10 @@ test "Compare numbers." {
 }
 
 test "Compare equals." {
-    // Panics if not the same type.
-    try eval(.{ .silent = true },
-        \\var a = 0 == 'foo'
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Types do not match.
-            \\Operands should be the same type. For a loose comparison, use `is`.
-            \\
-            \\main:1:11 main:
-            \\var a = 0 == 'foo'
-            \\          ^
-            \\
-        );
-    }}.func);
-
     try evalPass(.{}, @embedFile("compare_eq_test.cy"));
 }
 
 test "Compare not equals." {
-    // Panics if not the same type.
-    try eval(.{ .silent = true },
-        \\var a = 0 != 'foo'
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Types do not match.
-            \\Operands should be the same type. For a loose comparison, use `is`.
-            \\
-            \\main:1:11 main:
-            \\var a = 0 != 'foo'
-            \\          ^
-            \\
-        );
-    }}.func);
-
     try evalPass(.{}, @embedFile("compare_neq_test.cy"));
 }
 

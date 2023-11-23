@@ -18,12 +18,12 @@ my existing = none
 
 -- Determine where in the output file to emit generated bindings.
 -- Also collect existing symbols that should be skipped.
-if !isNone(args.o):
+if args.o != none:
     -- Build skip map.
     existing = try os.readFile(args.o) catch ''
 
     markerPos = existing.find('\n-- CBINDGEN MARKER')
-    if isNone(markerPos):
+    if markerPos == none:
         markerPos = existing.len()
 
     var res = parseCyber(existing)
@@ -99,7 +99,7 @@ out += "    return lib\n\n"
 genMacros(headerPath)
 
 -- Final output.
-if !isNone(args.o):
+if args.o != none:
     out = existing[0..markerPos] + '\n-- CBINDGEN MARKER\n' + out
 
 os.writeFile('bindings.cy', out)

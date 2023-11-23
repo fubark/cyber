@@ -458,10 +458,6 @@ static inline void panicExpectedInteger(VM* vm) {
     panicStaticMsg(vm, "Expected integer operand.");
 }
 
-static inline void panicTypeMismatch(VM* vm) {
-    panicStaticMsg(vm, "Types do not match.\nOperands should be the same type. For a loose comparison, use `is`.");
-}
-
 static inline void panicExpectedFloat(VM* vm) {
     panicStaticMsg(vm, "Expected float operand.");
 }
@@ -1358,14 +1354,7 @@ beginSwitch:
         if (left == right) {
             stack[pc[3]] = VALUE_TRUE;
         } else {
-            TypeId leftT = getTypeId(left);
-            TypeId rightT = getTypeId(right);
-            if (leftT == rightT) {
-                stack[pc[3]] = zEvalCompare(left, right);
-            } else {
-                panicTypeMismatch(vm);
-                RETURN(RES_CODE_PANIC);
-            }
+            stack[pc[3]] = zEvalCompare(left, right);
         }
         pc += 4;
         NEXT();
@@ -1412,14 +1401,7 @@ beginSwitch:
         if (left == right) {
             stack[pc[3]] = VALUE_FALSE;
         } else {
-            TypeId leftT = getTypeId(left);
-            TypeId rightT = getTypeId(right);
-            if (leftT == rightT) {
-                stack[pc[3]] = zEvalCompareNot(left, right);
-            } else {
-                panicTypeMismatch(vm);
-                RETURN(RES_CODE_PANIC);
-            }
+            stack[pc[3]] = zEvalCompareNot(left, right);
         }
         pc += 4;
         NEXT();

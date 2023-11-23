@@ -10,9 +10,7 @@
 
 @host func errorReport() string
 
---| Returns whether two values are loosely equal to each other.
---| Returns false if the types of the values do not match.
---| When comparing objects, this returns true if the two values point to the same object.
+--| Returns whether two values refer to the same instance.
 @host func is(a any, b any) bool
 
 --| Returns whether a rune is an alphabetic letter.
@@ -20,9 +18,6 @@
 
 --| Returns whether a rune is a digit.
 @host func isDigit(val int) bool
-
---| Returns whether a value is `none`.
-@host func isNone(val any) bool
 
 --| If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned.
 @host func must(val any) any

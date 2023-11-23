@@ -170,6 +170,8 @@ pub const VM = struct {
     deinited: bool,
     deinitedRtObjects: bool, 
 
+    tempBuf: [128]u8 align(4),
+
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
             .alloc = alloc,
@@ -238,6 +240,7 @@ pub const VM = struct {
             .print = defaultPrint,
             .countFrees = if (cy.Trace) false else {},
             .numFreed = if (cy.Trace) 0 else {},
+            .tempBuf = undefined,
         };
         self.mainFiber.panicType = vmc.PANIC_NONE;
         self.curFiber = &self.mainFiber;
@@ -781,7 +784,9 @@ pub const VM = struct {
                     try fmt.format(w, "uncaught throw:\n\n", &.{});
                     try cy.debug.writeStackFrames(vm, w, frames);
                 }
-                return builtins.prepThrowZError(@ptrCast(vm), err, @errorReturnTrace());
+                log.tracev("{}", .{err});
+                return error.Panic;
+                // return builtins.prepThrowZError(@ptrCast(vm), err, @errorReturnTrace());
             };
         }
         

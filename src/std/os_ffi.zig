@@ -128,14 +128,14 @@ pub fn ffiFinalizer(vm_: ?*c.VM, obj: ?*anyopaque) callconv(.C) void {
     var ffi: *FFI = @ptrCast(@alignCast(obj));
 
     for (ffi.cstructs.items) |cstruct| {
+        for (cstruct.fields) |field| {
+            field.deinit(alloc);
+        }
         alloc.free(cstruct.fields);
     }
     ffi.cstructs.deinit(alloc);
     ffi.typeToCStruct.deinit(alloc);
 
-    for (ffi.carrays.items) |carr| {
-        carr.deinit(alloc);
-    }
     ffi.carrays.deinit(alloc);
 
     var iter = ffi.carrayMap.keyIterator();
@@ -146,6 +146,9 @@ pub fn ffiFinalizer(vm_: ?*c.VM, obj: ?*anyopaque) callconv(.C) void {
 
     for (ffi.cfuncs.items) |func| {
         alloc.free(func.namez);
+        for (func.params) |param| {
+            param.deinit(alloc);
+        }
         alloc.free(func.params);
     }
     ffi.cfuncs.deinit(alloc);

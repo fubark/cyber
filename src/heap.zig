@@ -1277,17 +1277,16 @@ fn allocAstringConcatObject(self: *cy.VM, str1: []const u8, str2: []const u8) li
 
 pub fn getOrAllocAstringConcat(self: *cy.VM, str: []const u8, str2: []const u8) linksection(cy.Section) !Value {
     if (str.len + str2.len <= DefaultStringInternMaxByteLen) {
-        const ctx = cy.string.StringConcatContext{};
-        const concat = cy.string.StringConcat{
-            .left = str,
-            .right = str2,
-        };
-        const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
+        const concat = self.tempBuf[0..str.len+str2.len];
+        @memcpy(concat[0..str.len], str);
+        @memcpy(concat[str.len..], str2);
+
+        const res = try self.strInterns.getOrPut(self.alloc, concat);
         if (res.found_existing) {
             cy.arc.retainObject(self, res.value_ptr.*);
             return Value.initNoCycPtr(res.value_ptr.*);
         } else {
-            const obj = try allocAstringConcatObject(self, str, str2);
+            const obj = try allocAstringObject(self, concat);
             res.key_ptr.* = obj.astring.getSlice();
             res.value_ptr.* = obj;
             return Value.initNoCycPtr(obj);
@@ -1300,18 +1299,17 @@ pub fn getOrAllocAstringConcat(self: *cy.VM, str: []const u8, str2: []const u8) 
 
 pub fn getOrAllocAstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8) linksection(cy.Section) !Value {
     if (str1.len + str2.len + str3.len <= DefaultStringInternMaxByteLen) {
-        const ctx = cy.string.StringConcat3Context{};
-        const concat = cy.string.StringConcat3{
-            .str1 = str1,
-            .str2 = str2,
-            .str3 = str3,
-        };
-        const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
+        const concat = self.tempBuf[0..str1.len+str2.len+str3.len];
+        @memcpy(concat[0..str1.len], str1);
+        @memcpy(concat[str1.len..str1.len+str2.len], str2);
+        @memcpy(concat[str1.len+str2.len..], str3);
+
+        const res = try self.strInterns.getOrPut(self.alloc, concat);
         if (res.found_existing) {
             cy.arc.retainObject(self, res.value_ptr.*);
             return Value.initNoCycPtr(res.value_ptr.*);
         } else {
-            const obj = try allocAstringConcat3Object(self, str1, str2, str3);
+            const obj = try allocAstringObject(self, concat);
             res.key_ptr.* = obj.astring.getSlice();
             res.value_ptr.* = obj;
             return Value.initNoCycPtr(obj);
@@ -1324,18 +1322,17 @@ pub fn getOrAllocAstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8
 
 pub fn getOrAllocUstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8, charLen: u32) linksection(cy.Section) !Value {
     if (str1.len + str2.len + str3.len <= DefaultStringInternMaxByteLen) {
-        const ctx = cy.string.StringConcat3Context{};
-        const concat = cy.string.StringConcat3{
-            .str1 = str1,
-            .str2 = str2,
-            .str3 = str3,
-        };
-        const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
+        const concat = self.tempBuf[0..str1.len+str2.len+str3.len];
+        @memcpy(concat[0..str1.len], str1);
+        @memcpy(concat[str1.len..str1.len+str2.len], str2);
+        @memcpy(concat[str1.len+str2.len..], str3);
+
+        const res = try self.strInterns.getOrPut(self.alloc, concat);
         if (res.found_existing) {
             cy.arc.retainObject(self, res.value_ptr.*);
             return Value.initNoCycPtr(res.value_ptr.*);
         } else {
-            const obj = try allocUstringConcat3Object(self, str1, str2, str3, charLen);
+            const obj = try allocUstringObject(self, concat, charLen);
             res.key_ptr.* = obj.ustring.getSlice();
             res.value_ptr.* = obj;
             return Value.initNoCycPtr(obj);
@@ -1348,17 +1345,16 @@ pub fn getOrAllocUstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8
 
 pub fn getOrAllocUstringConcat(self: *cy.VM, str: []const u8, str2: []const u8, charLen: u32) linksection(cy.Section) !Value {
     if (str.len + str2.len <= DefaultStringInternMaxByteLen) {
-        const ctx = cy.string.StringConcatContext{};
-        const concat = cy.string.StringConcat{
-            .left = str,
-            .right = str2,
-        };
-        const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
+        const concat = self.tempBuf[0..str.len+str2.len];
+        @memcpy(concat[0..str.len], str);
+        @memcpy(concat[str.len..], str2);
+
+        const res = try self.strInterns.getOrPut(self.alloc, concat);
         if (res.found_existing) {
             cy.arc.retainObject(self, res.value_ptr.*);
             return Value.initNoCycPtr(res.value_ptr.*);
         } else {
-            const obj = try allocUstringConcatObject(self, str, str2, charLen);
+            const obj = try allocUstringObject(self, concat, charLen);
             res.key_ptr.* = obj.ustring.getSlice();
             res.value_ptr.* = obj;
             return Value.initNoCycPtr(obj);
@@ -1872,6 +1868,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                     if (free) {
                         const len = obj.string.len();
                         if (len <= DefaultStringInternMaxByteLen) {
+
                             // Check both the key and value to make sure this object is the intern entry.
                             // TODO: Use a flag bit instead of a map query.
                             const key = obj.astring.getSlice();

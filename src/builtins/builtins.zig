@@ -36,8 +36,10 @@ const funcs = [_]NameFunc{
     .{"copy",           copy, .standard},
     .{"dump",           zErrFunc2(dump), .standard},
     .{"errorReport",    zErrFunc2(errorReport), .standard},
+    .{"is",             is, .standard},
     .{"isAlpha",        isAlpha, .standard},
     .{"isDigit",        isDigit, .standard},
+    .{"isNone",         isNone, .standard},
     .{"must",           zErrFunc2(must), .standard},
     .{"panic",          zErrFunc2(panic), .standard},
     .{"parseCyber",     zErrFunc2(parseCyber), .standard},
@@ -317,6 +319,10 @@ pub fn panic(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection)
     return vm.prepPanic(str);
 }
 
+pub fn is(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    return Value.initBool(args[0].val == args[1].val);
+}
+
 pub fn isAlpha(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const num = args[0].asInteger();
     if (num < 0 or num >= 2 << 21) {
@@ -339,6 +345,10 @@ pub fn isDigit(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     } else {
         return Value.initBool(std.ascii.isDigit(@intCast(num)));
     }
+}
+
+pub fn isNone(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    return Value.initBool(args[0].isNone());
 }
 
 pub fn runestr(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {

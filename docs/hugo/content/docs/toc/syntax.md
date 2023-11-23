@@ -149,10 +149,10 @@ The final resulting value that is assigned to the static variable is provided by
 ## Reserved identifiers.
 
 ### Keywords.
-There are `26` general keywords. This list categorizes them:
+There are `25` general keywords. This list categorizes them:
 
 - [Control Flow]({{<relref "/docs/toc/control-flow">}}): `if` `else` `switch` `case` `while` `for` `break` `continue` `pass`
-- [Operators](#operators): `or` `and` `not` `is`
+- [Operators](#operators): `or` `and` `not`
 - [Variables](#variables): `var` `my`
 - [Functions]({{<relref "/docs/toc/functions">}}): `func` `return`
 - [Coroutines]({{<relref "/docs/toc/concurrency#fibers">}}): `coinit` `coyield`, `coresume`

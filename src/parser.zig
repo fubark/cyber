@@ -39,7 +39,6 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "func", .func_k },
     .{ "if", .if_k },
     .{ "import", .import_k },
-    .{ "is", .is_k },
     .{ "switch", .switch_k },
     .{ "none", .none_k },
     .{ "object", .object_k },
@@ -2831,7 +2830,6 @@ pub const Parser = struct {
                 .catch_k,
                 .comma,
                 .colon,
-                .is_k,
                 .equal,
                 .operator,
                 .or_k,
@@ -2973,26 +2971,6 @@ pub const Parser = struct {
                 },
                 .or_k => {
                     left_id = try self.parseBinExpr(left_id, .or_op);
-                },
-                .is_k => {
-                    self.advanceToken();
-                    token = self.peekToken();
-                    var binOp = cy.ast.BinaryExprOp.equal_equal;
-                    if (token.tag() == .not_k) {
-                        binOp = cy.ast.BinaryExprOp.bang_equal;
-                        self.advanceToken();
-                    }
-                    const right_id = try self.parseRightExpression(binOp);
-
-                    const bin_expr = try self.pushNode(.binExpr, start);
-                    self.nodes.items[bin_expr].head = .{
-                        .binExpr = .{
-                            .left = left_id,
-                            .right = right_id,
-                            .op = binOp,
-                        },
-                    };
-                    left_id = bin_expr;
                 },
                 .question => {
                     left_id = try self.parseCondExpr(left_id, start);
@@ -3434,7 +3412,6 @@ pub const TokenType = enum(u8) {
     enum_k,
     error_k,
     func_k,
-    is_k,
     coinit_k,
     coyield_k,
     coresume_k,
@@ -4553,8 +4530,8 @@ test "parser internals." {
     try t.eq(@alignOf(Token), 4);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 63);
-    try t.eq(keywords.kvs.len, 32);
+    try t.eq(std.enums.values(TokenType).len, 62);
+    try t.eq(keywords.kvs.len, 31);
 }
 
 fn isRecedingIndent(p: *Parser, prevIndent: u32, curIndent: u32, indent: u32) !bool {

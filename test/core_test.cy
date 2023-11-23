@@ -83,6 +83,14 @@ t.eq(int(100.1), 100)
 t.eq(int('100'), 100)
 t.eq(int('100.1'), 100)
 
+-- is()
+t.eq(is(1, 2), false)
+t.eq(is(2, 2), true)
+t.eq(is([], []), false)
+var list = []
+var list2 = list
+t.eq(is(list, list2), true)
+
 -- isAlpha()
 t.eq(isAlpha(0u'3'), false)
 t.eq(isAlpha(0u'a'), true)
@@ -92,6 +100,14 @@ t.eq(isAlpha(0u'A'), true)
 t.eq(isDigit(0u'3'), true)
 t.eq(isDigit(0u'a'), false)
 t.eq(isDigit(0u'A'), false)
+
+-- isNone()
+t.eq(isNone(none), true)
+my val = none
+t.eq(isNone(val), true)
+t.eq(isNone(123), false)
+t.eq(isNone(''), false)
+t.eq(isNone([]), false)
 
 -- parseCyber()
 res = parseCyber('var Root.foo = 123')
@@ -119,7 +135,7 @@ t.eq(res['decls'][0].type, 'enumT')
 t.eq(res['decls'][0].name, 'foo')
 
 -- parseCyon()
-var val = parseCyon('123')
+val = parseCyon('123')
 t.eq(val, 123)
 val = parseCyon('"foo"')
 t.eq(val, 'foo')

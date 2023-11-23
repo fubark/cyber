@@ -1,8 +1,8 @@
 import t 'test'
 
--- Using `is not` op.
-t.eq(3 is not 2, true)
-t.eq(3 is not 3, false)
+-- Integers.
+t.eq(3 != 2, true)
+t.eq(3 != 3, false)
 
 -- strings.
 t.eq('foo' != 'foo', false)

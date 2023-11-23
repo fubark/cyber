@@ -458,7 +458,7 @@ static inline void panicExpectedInteger(VM* vm) {
 }
 
 static inline void panicTypeMismatch(VM* vm) {
-    panicStaticMsg(vm, "Types do not match.");
+    panicStaticMsg(vm, "Types do not match.\nOperands should be the same type. For a loose comparison, use `is`.");
 }
 
 static inline void panicExpectedFloat(VM* vm) {

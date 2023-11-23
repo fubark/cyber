@@ -1,10 +1,6 @@
 import t 'test'
 
--- Using `is` keyword.
-t.eq(3 is 2, false)
-t.eq(3 is 3, true)
-
--- Number equals.
+-- Integers equals.
 t.eq(3 == 2, false)
 t.eq(3 == 3, true)
 

@@ -1858,6 +1858,7 @@ test "Compare equals." {
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Types do not match.
+            \\Operands should be the same type. For a loose comparison, use `is`.
             \\
             \\main:1:11 main:
             \\var a = 0 == 'foo'
@@ -1876,6 +1877,7 @@ test "Compare not equals." {
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Types do not match.
+            \\Operands should be the same type. For a loose comparison, use `is`.
             \\
             \\main:1:11 main:
             \\var a = 0 != 'foo'

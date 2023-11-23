@@ -30,7 +30,7 @@ contexts:
     - match: '\b(if|else|switch|while|for|break|continue|pass|case)\b'
       scope: keyword.control.cyber
 
-    - match: '\b(or|and|not|is)\b'
+    - match: '\b(or|and|not)\b'
       scope: keyword.operator.cyber
 
     - match: '\b(var|as|my)\b'

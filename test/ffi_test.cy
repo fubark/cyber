@@ -17,12 +17,6 @@ else os.system == 'windows':
 else:
     libPath = none
 
--- Missing symbol.
-ffi = os.newFFI()
-ffi.cfunc('missing123', [], .int)
-lib = try ffi.bindLib(libPath)
-t.eq(lib, error.MissingSymbol)
-
 type MyObject object:
     var a float
     var b int

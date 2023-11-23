@@ -891,8 +891,8 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
         const map = vm.allocEmptyMap() catch cy.fatal();
 
         const cyState = try cy.heap.allocTccState(ivm, state.?, lib);
-        cy.arc.retainInc(ivm, cyState, @intCast(ffi.cfuncs.items.len + ffi.cstructs.items.len - 1));
 
+        var numGenFuncs: u32 = 0;
         for (ffi.cfuncs.items) |cfunc| {
             if (cfunc.skip) continue;
             const symGen = try std.fmt.allocPrint(alloc, "cy{s}\x00", .{cfunc.namez});
@@ -909,7 +909,9 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
             map.asHeapObject().map.set(ivm, symKey, funcVal) catch cy.fatal();
             vm.release(symKey);
             vm.release(funcVal);
+            numGenFuncs += 1;
         }
+        cy.arc.retainInc(ivm, cyState, @intCast(numGenFuncs + ffi.cstructs.items.len - 1));
         for (ffi.cstructs.items) |cstruct| {
             const typeName = ivm.getTypeName(cstruct.type);
             const symGen = try std.fmt.allocPrint(alloc, "cyPtrTo{s}{u}", .{typeName, 0});

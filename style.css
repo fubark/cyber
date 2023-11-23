@@ -140,6 +140,20 @@ a {
     font-family: var(--mono-font);
 }
 
+div.api-entry {
+    border-left: 0.15rem solid var(--gray-200);
+    margin-top: 30px;
+}
+
+div.api-header {
+    padding: 0 0 0 10px;
+}
+
+div.api-desc {
+    padding: 5px 0 0 15px;
+    color: #bbbbbb;
+}
+
 pre {
     padding: 10px;
     font-size: 15px;

@@ -5,7 +5,7 @@ None. # The none value represents an empty value."><meta name=theme-color media=
 Primitives include Booleans, Floats, Integers, Enums, Symbols, Error Symbols, and the none value.
 Object types include Lists, Tuples, Maps, Strings, Arrays, User Objects, Lambdas, Fibers, Enums with payloads, Pointers, and several internal object types.
 None. # The none value represents an empty value."><meta property="og:type" content="article"><meta property="og:url" content="https://fubark.github.io/cyber/docs/toc/data-types/"><meta property="article:section" content="docs"><title>Data Types | Cyber Docs v0.2</title>
-<link rel=manifest href=/cyber/manifest.json><link rel=icon href=/cyber/favicon.png><link rel=stylesheet href=/cyber/book.min.4f0117e74e5337280f18eb9641eae520cb4b25adcf5dd64fafad4664145a5957.css integrity="sha256-TwEX505TNygPGOuWQerlIMtLJa3PXdZPr61GZBRaWVc=" crossorigin=anonymous><script defer src=/cyber/flexsearch.min.js></script><script defer src=/cyber/en.search.min.c97b7e9d6d7ecdde305d5ebc7d07e2caf6b0d6e43c2fd47e02abf0ada4934c54.js integrity="sha256-yXt+nW1+zd4wXV68fQfiyvaw1uQ8L9R+AqvwraSTTFQ=" crossorigin=anonymous></script><link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel=stylesheet><link rel=stylesheet href=/cyber/hljs.min.css><link rel=stylesheet href=/cyber/style.css></head><body dir=ltr><input type=checkbox class="hidden toggle" id=menu-control>
+<link rel=manifest href=/cyber/manifest.json><link rel=icon href=/cyber/favicon.png><link rel=stylesheet href=/cyber/book.min.4f0117e74e5337280f18eb9641eae520cb4b25adcf5dd64fafad4664145a5957.css integrity="sha256-TwEX505TNygPGOuWQerlIMtLJa3PXdZPr61GZBRaWVc=" crossorigin=anonymous><script defer src=/cyber/flexsearch.min.js></script><script defer src=/cyber/en.search.min.16a0c212d091ac94711b99740966ee2bf81ec561fa2587f103df100866cbc3e0.js integrity="sha256-FqDCEtCRrJRxG5l0CWbuK/gexWH6JYfxA98QCGbLw+A=" crossorigin=anonymous></script><link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel=stylesheet><link rel=stylesheet href=/cyber/hljs.min.css><link rel=stylesheet href=/cyber/style.css></head><body dir=ltr><input type=checkbox class="hidden toggle" id=menu-control>
 <input type=checkbox class="hidden toggle" id=toc-control><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/cyber/><span>Cyber Docs v0.2</span></a></h2><div class=book-search><input type=text id=book-search-input placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><ul><li><a href=https://cyberscript.dev target=_blank rel=noopener>Homepage</a></li><li><a href=https://cyberscript.dev/play.html target=_blank rel=noopener>Playground</a></li></ul><ul><li class=book-section-flat><span>Table of Contents</span><ul><li><a href=/cyber/docs/toc/syntax/>Syntax</a></li><li><a href=/cyber/docs/toc/data-types/ class=active>Data Types</a></li><li><a href=/cyber/docs/toc/control-flow/>Control Flow</a></li><li><a href=/cyber/docs/toc/functions/>Functions</a></li><li><a href=/cyber/docs/toc/modules/>Modules</a></li><li><a href=/cyber/docs/toc/ffi/>FFI</a></li><li><a href=/cyber/docs/toc/errors/>Error Handling</a></li><li><a href=/cyber/docs/toc/concurrency/>Concurrency</a></li><li><a href=/cyber/docs/toc/type-system/>Type System</a></li><li><a href=/cyber/docs/toc/metaprogramming/>Metaprogramming</a></li><li><a href=/cyber/docs/toc/embedding/>Embedding</a></li><li><a href=/cyber/docs/toc/memory/>Memory</a></li><li><a href=/cyber/docs/toc/aot-jit/>AOT/JIT</a></li></ul></li></ul></nav><script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script></div></aside><div class=book-page><header class=book-header><div class="flex align-center justify-between"><label for=menu-control><img src=/cyber/svg/menu.svg class=book-icon alt=Menu>
 </label><strong>Data Types</strong>
 <label for=toc-control><img src=/cyber/svg/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class="hidden clearfix"><nav id=TableOfContents><ul><li><a href=#none>None.</a></li><li><a href=#booleans>Booleans.</a></li><li><a href=#numbers>Numbers.</a><ul><li><a href=#integers>Integers.</a></li><li><a href=#floats>Floats.</a></li><li><a href=#big-numbers>Big Numbers.</a></li></ul></li><li><a href=#strings>Strings.</a><ul><li><a href=#string-interpolation>String Interpolation.</a></li></ul></li><li><a href=#arrays>Arrays.</a></li><li><a href=#bracket-literals>Bracket literals.</a></li><li><a href=#lists>Lists.</a></li><li><a href=#tuples>Tuples.</a></li><li><a href=#maps>Maps.</a><ul><li><a href=#create-map>Create map.</a></li><li><a href=#empty-map>Empty map.</a></li><li><a href=#map-indexing>Map indexing.</a></li><li><a href=#map-operations>Map operations.</a></li><li><a href=#map-block>Map block.</a></li></ul></li><li><a href=#objects>Objects.</a><ul><li><a href=#fields>Fields.</a></li><li><a href=#instantiation>Instantiation.</a></li><li><a href=#methods>Methods.</a></li><li><a href=#self-variable><code>self</code> variable.</a></li><li><a href=#type-functions>Type functions.</a></li><li><a href=#type-variables>Type variables.</a></li></ul></li><li><a href=#enums>Enums.</a></li><li><a href=#symbols>Symbols.</a></li></ul></nav></aside></header><article class=markdown><h1 id=data-types>Data Types.
@@ -69,11 +69,9 @@ print(i)                            -- &#34;2&#34;
 i += 1
 print(i + str[i..].findRune(0u&#39;c&#39;))  -- &#34;5&#34;
 </code></pre><h3 id=string-interpolation>String Interpolation.
-<a class=anchor href=#string-interpolation>#</a></h3><p>You can embed expressions into string templates using braces.</p><pre tabindex=0><code class=language-cy data-lang=cy>var name = &#39;Bob&#39;
+<a class=anchor href=#string-interpolation>#</a></h3><p>You can embed expressions into string templates with <code>$()</code>:</p><pre tabindex=0><code class=language-cy data-lang=cy>var name = &#39;Bob&#39;
 var points = 123
-var str = &#39;Scoreboard: {name} {points}&#39;
-</code></pre><p>Escape braces with a backslash.</p><pre tabindex=0><code class=language-cy data-lang=cy>var points = 123
-var str = &#39;Scoreboard: \{ Bob \} {points}&#39;
+var str = &#39;Scoreboard: $(name) $(points)&#39;
 </code></pre><p>String templates can not contain nested string templates.</p><h2 id=arrays>Arrays.
 <a class=anchor href=#arrays>#</a></h2><p>An <code>array</code> is an immutable sequence of bytes. It can be used to represent strings but it won&rsquo;t automatically validate their encoding and indexing returns the n&rsquo;th byte rather than a UTF-8 rune. See <a href=/cyber/docs/toc/modules/#type-array><code>type array</code></a>.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = array(&#39;abcd&#39;)
 str = a.insertByte(1, 255)
@@ -81,7 +79,7 @@ print a[0]     -- &#34;97&#34;
 print a[1]     -- &#34;255&#34;
 print a[-1]    -- &#34;100&#34;
 </code></pre><h2 id=bracket-literals>Bracket literals.
-<a class=anchor href=#bracket-literals>#</a></h2><p>Bracket literals is delimited with brackets <code>[]</code>. Bracket literals are used to initialize Lists, Maps, and Objects:</p><pre tabindex=0><code class=language-cy data-lang=cy>var list = [1, 2, 3]
+<a class=anchor href=#bracket-literals>#</a></h2><p>Bracket literals are delimited with brackets <code>[]</code>. They are used to initialize Lists, Maps, and Objects:</p><pre tabindex=0><code class=language-cy data-lang=cy>var list = [1, 2, 3]
 var map = [ a: 123, b: 234 ]
 var obj = [MyObject a: 123, b: 234]
 </code></pre><h2 id=lists>Lists.
@@ -134,7 +132,7 @@ list.remove(1)
 <a class=anchor href=#map-indexing>#</a></h3><p>Get a value from the map using the index operator:</p><pre tabindex=0><code class=language-cy data-lang=cy>print map[&#39;a&#39;]
 </code></pre><p>Maps can be accessed with the <code>.</code> dot operator as well:</p><pre tabindex=0><code class=language-cy data-lang=cy>print map.a
 </code></pre><h3 id=map-operations>Map operations.
-<a class=anchor href=#map-operations>#</a></h3><pre tabindex=0><code class=language-cy data-lang=cy>var map = {}
+<a class=anchor href=#map-operations>#</a></h3><pre tabindex=0><code class=language-cy data-lang=cy>var map = [:]
 -- Set a key value pair.
 map[123] = 234
 
@@ -146,7 +144,7 @@ map.remove 123
 
 -- Iterating a map.
 for map -&gt; [val, key]:
-    print &#39;{key} -&gt; {value}&#39;
+    print &#39;$(key) -&gt; $(value)&#39;
 </code></pre><h3 id=map-block>Map block.
 <a class=anchor href=#map-block>#</a></h3><p>Entries can also follow a collection literal block.
 This gives structure to the entries and has

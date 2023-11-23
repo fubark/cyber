@@ -591,7 +591,7 @@ fn setCallObjSymTern(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     try pushCallObjSym(c, inst.ret, 3,
         @intCast(mgId), @intCast(data.funcSigId), nodeId);
 
-    var retained = unwindTemps(c, &args);
+    var retained = unwindTemps(c, args[0..3]);
 
     // Include ret value for release.
     retained.len += 1;

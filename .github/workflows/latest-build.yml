@@ -189,12 +189,12 @@ jobs:
         if: env.BUILD_TARGET != 'aarch64-macos-none' && env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD == 'lib'
         run: zig build test-lib ${{ env.ZIG_TARGET_FLAG }} 
 
-      # - name: Run tests.
-      #   if: env.BUILD_TARGET == 'wasm32-freestanding'
-      #   run: |
-      #     zig build build-test -Dtarget=wasm32-wasi ${{ env.ZIG_MODE_FLAG }} 
-      #     wasm3/build/wasm3 zig-out/bin/test.wasm
-      #     wasm3/build/wasm3 zig-out/bin/trace_test.wasm
+      - name: Run tests.
+        if: env.BUILD_TARGET == 'wasm32-freestanding'
+        run: |
+          zig build build-test -Dtarget=wasm32-wasi ${{ env.ZIG_MODE_FLAG }} 
+          wasm3/build/wasm3 zig-out/bin/test.wasm
+          wasm3/build/wasm3 zig-out/bin/trace_test.wasm
 
       - name: Build.
         run: zig build ${{ env.BUILD_CMD }} ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }}

@@ -343,7 +343,7 @@ pub fn fileRead(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 }
 
 pub fn fileReadToEnd(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
     if (fileo.closed) {
@@ -428,7 +428,7 @@ pub fn fileOrDirStat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Std
 }
 
 pub fn fileNext(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
     if (fileo.iterLines) {

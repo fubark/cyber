@@ -2145,7 +2145,7 @@ test "heap internals." {
         try t.eq(@sizeOf(Map), 32);
         try t.eq(@sizeOf(MapIterator), 16);
         try t.eq(@sizeOf(ArraySlice), 24);
-        try t.eq(@sizeOf(Pointer), 12);
+        try t.eq(@sizeOf(Pointer), 16);
     } else {
         try t.eq(@sizeOf(MapInner), 32);
         try t.eq(@alignOf(List), 8);

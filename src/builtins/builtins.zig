@@ -1210,7 +1210,8 @@ fn pointerWriteAt(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const uidx: u48 = @bitCast(idx);
     switch (valT) {
         bt.Pointer => {
-            @as(*?*anyopaque, @ptrFromInt(@intFromPtr(rawPtr) + uidx)).* = val.asHeapObject().pointer.ptr;
+            const addr: usize = @intFromPtr(rawPtr) + @as(usize, @intCast(uidx));
+            @as(*?*anyopaque, @ptrFromInt(addr)).* = val.asHeapObject().pointer.ptr;
         },
         else => {
             return prepareThrowSymbol(vm, .InvalidArgument);

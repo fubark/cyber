@@ -2381,6 +2381,16 @@ test "Static variable declaration." {
         \\var Root.print = 123
     );
 
+    // Dependent read runs after initial declaration.
+    try evalPass(.{},
+        \\import test
+        \\var Root.a = load(b)
+        \\var Root.b = 123
+        \\func load(arg):
+        \\  b = 234
+        \\test.eq(b, 234)
+    );
+
     try evalPass(.{}, @embedFile("staticvar_decl_test.cy"));
 }
 

@@ -397,7 +397,7 @@ fn performChunkInitSema(_: *VMcompiler, c: *cy.Chunk) !void {
                 const node = c.nodes[sdecl.nodeId];
                 if (node.node_t == .staticDecl) {
                     const info = c.symInitInfos.getPtr(sdecl.data.sym).?;
-                    try appendSymInitIrDFS(c, info, cy.NullId);
+                    try appendSymInitIrDFS(c, sdecl.data.sym, info, cy.NullId);
                 }
             },
             else => {},
@@ -407,14 +407,12 @@ fn performChunkInitSema(_: *VMcompiler, c: *cy.Chunk) !void {
     try sema.popStaticFuncBlock(c);
 }
 
-fn appendSymInitIrDFS(c: *cy.Chunk, info: *cy.chunk.SymInitInfo, refNodeId: cy.NodeId) !void {
+fn appendSymInitIrDFS(c: *cy.Chunk, sym: *cy.Sym, info: *cy.chunk.SymInitInfo, refNodeId: cy.NodeId) !void {
     if (info.visited) {
         return;
     }
     if (info.visiting) {
-        const node = c.nodes[refNodeId];
-        const name = c.getNodeString(node);
-        return c.reportErrorAt("Referencing `{}` creates a circular dependency in the module.", &.{v(name)}, refNodeId);
+        return c.reportErrorAt("Referencing `{}` creates a circular dependency in the module.", &.{v(sym.name())}, refNodeId);
     }
     info.visiting = true;
 
@@ -422,7 +420,7 @@ fn appendSymInitIrDFS(c: *cy.Chunk, info: *cy.chunk.SymInitInfo, refNodeId: cy.N
     if (deps.len > 0) {
         for (deps) |dep| {
             if (c.symInitInfos.getPtr(dep.sym)) |depInfo| {
-                try appendSymInitIrDFS(c, depInfo, dep.refNodeId);
+                try appendSymInitIrDFS(c, dep.sym, depInfo, dep.refNodeId);
             }
         }
     }

@@ -454,7 +454,7 @@ pub fn exePath(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
 }
 
 pub fn getEnv(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    if (cy.isWasm or builtin.os.tag == .windows) return vm.returnPanic("Unsupported.");
+    if (cy.isWasm or builtin.os.tag == .windows) return vm.prepPanic("Unsupported.");
     const key = args[0].asString();
     const res = std.os.getenv(key) orelse return Value.None;
     return vm.allocStringInternOrArray(res);
@@ -746,7 +746,7 @@ pub fn readFile(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
 }
 
 pub fn writeFile(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
     const path = args[0].asString();
     const content = try vm.getOrBufPrintValueRawStr(&cy.tempBuf, args[1]);
     try std.fs.cwd().writeFile(path, content);

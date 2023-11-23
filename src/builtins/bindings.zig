@@ -411,15 +411,15 @@ pub fn listLen(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Sectio
 // }
 
 inline fn inlineUnaryOp(pc: [*]cy.Inst, code: cy.OpCode) void {
-    const startLocal = pc[1].val;
+    const ret = pc[1].val;
     // Save callObjSym data.
-    pc[8].val = startLocal;
+    pc[8].val = ret;
     pc[9] = pc[2];
 
     // Inline bin op.
     pc[0] = cy.Inst.initOpCode(code);
-    pc[1].val = startLocal + 4;
-    pc[2].val = startLocal;
+    pc[1].val = ret + cy.vm.CallArgStart;
+    pc[2].val = ret;
 }
 
 pub fn intBitwiseNot(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {

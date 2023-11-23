@@ -477,7 +477,7 @@ pub const Value = packed union {
                         bt.HostFunc => return log.info("NativeFunc {*}", .{obj}),
                         bt.Pointer => return log.info("Pointer {*} ptr={*}", .{obj, obj.pointer.ptr}),
                         else => {
-                            log.info("HeapObject {*} {}", .{obj, obj.getTypeId()});
+                            log.info("HeapObject {*} type={} rc={}", .{obj, obj.getTypeId(), obj.head.rc});
                         },
                     }
                 } else {

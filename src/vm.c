@@ -29,7 +29,7 @@
 #define VALUE_NONE NONE_MASK
 #define VALUE_FLOAT(n) ((ValueUnion){ .d = n }.u)
 #define VALUE_ENUM(tag, val) ((Value)(ENUM_MASK | tag << 8 | val ))
-#define VALUE_RETINFO(rf, cio) ((Value)(0 | ((u32)rf << 8) | ((u32)cio << 16)))
+#define VALUE_RETINFO(retFlag, callInstOff) ((Value)(0 | ((u32)retFlag << 8) | ((u32)callInstOff << 16)))
 #define VALUE_TRUE TRUE_MASK
 #define VALUE_FALSE FALSE_MASK
 #define VALUE_INTERRUPT (ERROR_MASK | 0xffff) 
@@ -76,6 +76,7 @@
 #define FMT_STR(s) ((FmtValue){ .type = FMT_TYPE_STRING, .data = { .string = s.ptr }, .data2 = { .string = s.len }})
 #define FMT_STRLEN(s, len) ((FmtValue){ .type = FMT_TYPE_STRING, .data = { .string = s }, .data2 = { .string = len }})
 #define FMT_U32(v) ((FmtValue){ .type = FMT_TYPE_U32, .data = { .u32 = v }})
+#define FMT_PTR(v) ((FmtValue){ .type = FMT_TYPE_PTR, .data = { .ptr = v }})
 
 static inline TypeId getTypeId(Value val);
 
@@ -179,7 +180,7 @@ static inline void retain(VM* vm, Value val) {
 #endif
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
-        VLOG("retain obj: {}, rc={}\n", FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_U32(obj->head.rc));
+        VLOG("retain: {}, {}, rc={}\n", FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_PTR(obj), FMT_U32(obj->head.rc));
         obj->head.rc += 1;
 #if TRACE
         zCheckRetainDanglingPointer(vm, obj);
@@ -1135,21 +1136,20 @@ beginSwitch:
         NEXT();
     }
     CASE(CallObjFuncIC): {
-        uint8_t ret = pc[1];
+        u8 ret = pc[1];
         Value recv = stack[ret + CALL_ARG_START];
         TypeId typeId = getTypeId(recv);
 
         TypeId cachedTypeId = READ_U16(14);
         if (typeId == cachedTypeId) {
-            uint8_t numLocals = pc[7];
+            u8 numLocals = pc[7];
             if (stack + ret + numLocals >= vm->stackEndPtr) {
                 RETURN(RES_CODE_STACK_OVERFLOW);
             }
             Value retFramePtr = (uintptr_t)stack;
             stack += ret;
-            *(uint8_t*)(stack + 1) = pc[3];
-            *((uint8_t*)(stack + 1) + 1) = 0;
-            stack[2] = (uintptr_t)(pc + 16);
+            stack[1] = VALUE_RETINFO(false, CALL_OBJ_SYM_INST_LEN);
+            stack[2] = (uintptr_t)(pc + CALL_OBJ_SYM_INST_LEN);
             stack[3] = retFramePtr;
             pc = vm->instPtr + READ_U32(8);
             NEXT();

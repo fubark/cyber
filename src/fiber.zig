@@ -210,7 +210,7 @@ pub fn isVmFrame(_: *cy.VM, stack: []const Value, fpOff: u32) bool {
 /// Unwind from `ctx` and release each frame.
 /// TODO: See if releaseFiberStack can resuse the same code.
 pub fn unwindStack(vm: *cy.VM, stack: []const Value, ctx: PcSpOff) !PcSpOff {
-    log.tracev("panic unwind", .{});
+    log.tracev("panic unwind {*}", .{stack.ptr + ctx.sp});
     var pc = ctx.pc;
     var fp = ctx.sp;
 
@@ -230,6 +230,7 @@ pub fn unwindStack(vm: *cy.VM, stack: []const Value, ctx: PcSpOff) !PcSpOff {
                 fp = prev.sp;
             }
         } else {
+            log.tracev("Skip host frame.", .{});
             fp = getPrevFp(vm, stack, fp);
         }
     }

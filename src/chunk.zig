@@ -658,7 +658,7 @@ pub const Chunk = struct {
     }
 
     pub fn pushRetainedTemp(c: *Chunk, reg: u8) !void {
-        log.tracev("push unwind temp {} +1", .{c.unwindTempIndexStack.items.len});
+        log.tracev("push unwind temp {} +1 ({})", .{c.unwindTempIndexStack.items.len, reg});
         try c.unwindTempIndexStack.append(c.alloc, .{
             .created = false,
         });

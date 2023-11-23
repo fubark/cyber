@@ -18,7 +18,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        log.tracev("release obj: {s}, rc={}", .{@tagName(val.getUserTag()), obj.head.rc});
+        log.tracev("release: {s}, {*}, rc={}", .{@tagName(val.getUserTag()), obj, obj.head.rc});
         if (cy.Trace) {
             checkDoubleFree(vm, obj);
         }
@@ -46,7 +46,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
             }
         }
     } else {
-        log.tracev("release: {}, nop", .{val.getUserTag()});
+        log.tracev("release: {s}, nop", .{@tagName(val.getUserTag())});
     }
 }
 
@@ -101,10 +101,10 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
 }
 
 pub fn runTempReleaseOps(vm: *cy.VM, fp: [*]const cy.Value, tempIdx: u32) void {
-    log.tracev("unwind release temps", .{});
+    log.tracev("release temps", .{});
     var curIdx = tempIdx;
     while (curIdx != cy.NullId) {
-        log.tracev("unwind release: {}", .{vm.unwindTempRegs[curIdx]});
+        log.tracev("release temp: {}", .{vm.unwindTempRegs[curIdx]});
         release(vm, fp[vm.unwindTempRegs[curIdx]]);
         curIdx = vm.unwindTempPrevIndexes[curIdx];
     }

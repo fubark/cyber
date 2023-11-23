@@ -611,7 +611,7 @@ pub fn dumpBytecode(vm: *cy.VM, optPcContext: ?u32) !void {
         var nextMarkerPc: u32 = if (curMarkerIdx == 0) vm.compiler.buf.debugMarkers.items[curMarkerIdx].pc else cy.NullId;
 
         while (pcOffset < opsLen) {
-            if (pcOffset == nextMarkerPc) {
+            while (pcOffset == nextMarkerPc) {
                 dumpMarkerAdvance(vm, &curMarkerIdx, &nextMarkerPc);
             }
 

@@ -404,17 +404,23 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
         .callObjNativeFuncIC => {
             const ret = pc[1].val;
             const numArgs = pc[2].val;
-            const numRet = pc[3].val;
-            len += try printInstArgs(&.{"ret", "nargs", "nret"}, &.{v(ret), v(numArgs), v(numRet)});
+            len += try printInstArgs(&.{"ret", "nargs", "nret"}, &.{v(ret), v(numArgs)});
+        },
+        .callObjFuncIC => {
+            const ret = pc[1].val;
+            const funcPc = @as(*const align(1) u32, @ptrCast(pc + 8)).*;
+            const typeId = @as(*const align(1) u16, @ptrCast(pc + 14)).*;
+            const numLocals = pc[7].val;
+            len += try printInstArgs(&.{"ret", "pc", "type", "nlocals"},
+                &.{v(ret), v(funcPc), v(typeId), v(numLocals)});
         },
         .callObjSym => {
             const ret = pc[1].val;
             const numArgs = pc[2].val;
-            const numRet = pc[3].val;
             const symId = pc[4].val;
             const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
-            len += try printInstArgs(&.{"ret", "narg", "nret", "sym", "sig"},
-                &.{v(ret), v(numArgs), v(numRet), v(symId), v(funcSigId)});
+            len += try printInstArgs(&.{"ret", "narg", "sym", "sig"},
+                &.{v(ret), v(numArgs), v(symId), v(funcSigId)});
         },
         .callSym => {
             const ret = pc[1].val;
@@ -508,6 +514,13 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const dst = pc[2].val;
             const symId = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
             len += try fmt.printStderrCount("recv={}, dst={}, sym={}", &.{v(recv), v(dst), v(symId)});
+        },
+        .fieldIC => {
+            const recv = pc[1].val;
+            const dst = pc[2].val;
+            const typeId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            const idx = pc[7].val;
+            len += try fmt.printStderrCount("recv={}, dst={}, type={}, idx={}", &.{v(recv), v(dst), v(typeId), v(idx)});
         },
         .forRangeInit => {
             const start = pc[1].val;

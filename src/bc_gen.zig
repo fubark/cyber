@@ -221,7 +221,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: RegisterCstr) anyerror!GenValue {
         .preCallFuncSym     => genCallFuncSym(c, idx, cstr, nodeId),
         .preCallObjSym      => genCallObjSym(c, idx, cstr, nodeId),
         .preCallObjSymBinOp => genCallObjSymBinOp(c, idx, cstr, nodeId),
-        // TODO: preCallObjSymUnOp
+        .preCallObjSymUnOp  => genCallObjSymUnOp(c, idx, cstr, nodeId),
         .condExpr           => genCondExpr(c, idx, cstr, nodeId),
         .coinitCall         => genCoinitCall(c, idx, cstr, nodeId),
         .coresume           => genCoresume(c, idx, cstr, nodeId),
@@ -883,12 +883,6 @@ fn genSlice(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenVa
     return finishInst(c, val, inst.finalDst);
 }
 
-// if (op == .minus) {
-//     return callObjSymUnaryExpr(c, c.compiler.vm.@"prefix-MGID", node.head.unary.child, cstr, nodeId);
-// } else {
-//     return callObjSymUnaryExpr(c, c.compiler.vm.@"prefix~MGID", node.head.unary.child, cstr, nodeId);
-// }
-
 fn genUnOp(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
     const data = c.irGetExprData(idx, .preUnOp).unOp;
     const childIdx = c.irAdvanceExpr(idx, .preUnOp);
@@ -1039,6 +1033,26 @@ fn extractIfCopyInst(c: *Chunk, leftPc: usize) ?CopyInstSave {
     return null;
 }
 
+fn genCallObjSymUnOp(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
+    const data = c.irGetExprData(idx, .preCallObjSymUnOp).callObjSymUnOp;
+    const inst = try beginCall(c, cstr, false);
+
+    const childIdx = c.irAdvanceExpr(idx, .preCallObjSymUnOp);
+
+    var temp = try c.rega.consumeNextTemp();
+    const childv = try genExpr(c, childIdx, RegisterCstr.exact(temp));
+
+    const mgId = try getUnMGID(c, data.op);
+
+    try pushCallObjSym(c, inst.ret, 1, @intCast(mgId), @intCast(data.funcSigId), nodeId);
+
+    if (unwindAndFreeTemp(c, childv)) {
+        try pushRelease(c, childv.local, nodeId);
+    }
+
+    return endCall(c, inst, true);
+}
+
 fn genCallObjSymBinOp(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
     const data = c.irGetExprData(idx, .preCallObjSymBinOp).callObjSymBinOp;
     const inst = try beginCall(c, cstr, false);
@@ -1069,7 +1083,7 @@ fn genCallObjSymBinOp(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.Node
         try c.buf.pushOp2Ext(.copy, save.src, save.dst, desc);
     }
 
-    const mgId = getInfixMGID(c, data.op);
+    const mgId = try getInfixMGID(c, data.op);
 
     const start = c.buf.len();
     try pushCallObjSym(c, inst.ret, 2, @intCast(mgId), @intCast(data.funcSigId), nodeId);
@@ -1089,7 +1103,15 @@ fn genCallObjSymBinOp(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.Node
     return endCall(c, inst, true);
 }
 
-fn getInfixMGID(c: *Chunk, op: cy.BinaryExprOp) vmc.MethodGroupId {
+fn getUnMGID(c: *Chunk, op: cy.UnaryOp) !vmc.MethodGroupId {
+    return switch (op) {
+        .minus => c.compiler.@"prefix-MGID",
+        .bitwiseNot => c.compiler.@"prefix~MGID",
+        else => return error.Unexpected,
+    };
+}
+
+fn getInfixMGID(c: *Chunk, op: cy.BinaryExprOp) !vmc.MethodGroupId {
     return switch (op) {
         .index => c.compiler.indexMGID,
         .less => c.compiler.@"infix<MGID",
@@ -1107,7 +1129,7 @@ fn getInfixMGID(c: *Chunk, op: cy.BinaryExprOp) vmc.MethodGroupId {
         .bitwiseXor => c.compiler.@"infix||MGID",
         .bitwiseLeftShift => c.compiler.@"infix<<MGID",
         .bitwiseRightShift => c.compiler.@"infix>>MGID",
-        else => cy.fatal(),
+        else => return error.Unexpected,
     };
 }
 

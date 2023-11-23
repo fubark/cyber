@@ -3444,9 +3444,10 @@ pub const ChunkExt = struct {
                     return ExprResult.initStatic(irIdx, child.type.id);
                 } else {
                     // Generic callObjSym.
+                    const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any }, bt.Any);
                     c.irSetExprCode(irIdx, .preCallObjSymUnOp);
                     c.irSetExprData(irIdx, .preCallObjSymUnOp, .{ .callObjSymUnOp = .{
-                        .op = op,
+                        .op = op, .funcSigId = funcSigId,
                     }});
                     return ExprResult.initDynamic(irIdx, bt.Any);
                 }
@@ -3473,9 +3474,10 @@ pub const ChunkExt = struct {
                     }});
                     return ExprResult.initStatic(irIdx, bt.Float);
                 } else {
+                    const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any }, bt.Any);
                     c.irSetExprCode(irIdx, .preCallObjSymUnOp);
                     c.irSetExprData(irIdx, .preCallObjSymUnOp, .{ .callObjSymUnOp = .{
-                        .op = op,
+                        .op = op, .funcSigId = funcSigId,
                     }});
                     return ExprResult.initDynamic(irIdx, bt.Any);
                 }

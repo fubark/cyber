@@ -389,6 +389,7 @@ pub const CallObjSymBinOp = struct {
 
 pub const CallObjSymUnOp = struct {
     op: cy.UnaryOp,
+    funcSigId: sema.FuncSigId,
 };
 
 pub const CallFuncSym = struct {

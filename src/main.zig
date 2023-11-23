@@ -63,8 +63,7 @@ pub fn main() !void {
                         continue;
                     }
                 }
-                std.debug.print("Unrecognized option: {s}\n", .{arg});
-                exit(1);
+                // Ignore unrecognized options so a script can use them.
             }
         } else {
             if (cmd == .none) {

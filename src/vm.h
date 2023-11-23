@@ -603,6 +603,7 @@ typedef struct ByteCodeBuffer {
     ZAllocator alloc;
     ZList ops;
     ZList consts;
+    ZHashMap constMap;
 
     void* mconsts_buf;
     size_t mconsts_len;

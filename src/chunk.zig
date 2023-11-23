@@ -857,7 +857,7 @@ pub const TypeDepNode = struct {
 pub const ListData = union {
     pc: u32,
     nodeId: cy.NodeId,
-    constIdx: u8,
+    constIdx: u16,
     jumpToEndPc: u32,
 };
 

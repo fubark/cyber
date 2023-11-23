@@ -46,7 +46,7 @@ pub const VM = struct {
     stackEndPtr: [*]const Value,
 
     ops: []cy.Inst,
-    consts: []const cy.Const,
+    consts: []const Value,
 
     /// Holds unique heap string interns (*Astring, *Ustring).
     /// By default, small strings (at most 64 bytes) are interned.
@@ -781,7 +781,9 @@ pub const VM = struct {
 
                     const w = cy.fmt.lockStderrWriter();
                     defer cy.fmt.unlockPrint();
-                    try fmt.format(w, "uncaught throw:\n\n", &.{});
+                    const msg = try cy.debug.allocPanicMsg(vm);
+                    defer vm.alloc.free(msg);
+                    try fmt.format(w, "{}\n\n", &.{v(msg)});
                     try cy.debug.writeStackFrames(vm, w, frames);
                 }
                 log.tracev("{}", .{err});

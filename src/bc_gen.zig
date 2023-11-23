@@ -741,7 +741,7 @@ fn genError(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenVa
 
     const symId = try c.compiler.vm.ensureSymbol(data.name);
     const errval = cy.Value.initErrorSymbol(@intCast(symId));
-    const constIdx = try c.buf.pushConst(cy.Const.init(errval.val));
+    const constIdx = try c.buf.getOrPushConst(errval);
 
     const inst = try c.rega.selectForNoErrInst(cstr, false);
     if (inst.requiresPreRelease) {
@@ -1297,7 +1297,7 @@ fn genEnumMemberSym(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId
     }
 
     const val = cy.Value.initEnum(@intCast(data.type), @intCast(data.val));
-    const constIdx = try c.buf.pushConst(cy.Const.init(val.val));
+    const constIdx = try c.buf.getOrPushConst(val);
     try genConst(c, constIdx, inst.dst, false, nodeId);
 
     const resv = genValue(c, inst.dst, false);
@@ -3021,7 +3021,7 @@ pub const GenBlock = struct {
 };
 
 fn genConstFloat(c: *Chunk, val: f64, dst: LocalId, nodeId: cy.NodeId) !GenValue {
-    const idx = try c.buf.pushConst(cy.Const.init(@bitCast(val)));
+    const idx = try c.buf.getOrPushConst(cy.Value.initF64(val));
     try genConst(c, idx, dst, false, nodeId);
     return genValue(c, dst, false);
 }
@@ -3250,7 +3250,7 @@ fn genConstIntExt(c: *Chunk, val: u48, dst: LocalId, desc: cy.bytecode.InstDesc)
         try c.buf.pushOp2Ext(.constI8, @bitCast(@as(i8, @intCast(val))), dst, desc);
         return genValue(c, dst, false);
     }
-    const idx = try c.buf.pushConst(cy.Const.init(cy.Value.initInt(@intCast(val)).val));
+    const idx = try c.buf.getOrPushConst(cy.Value.initInt(@intCast(val)));
     try genConst(c, idx, dst, false, desc.nodeId);
     return genValue(c, dst, false);
 }

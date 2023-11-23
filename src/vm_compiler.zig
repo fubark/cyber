@@ -778,14 +778,14 @@ fn genBytecode(c: *VMcompiler) !void {
     }
 
     // Merge inst and const buffers.
-    var reqLen = c.buf.ops.items.len + c.buf.consts.items.len * @sizeOf(cy.Const) + @alignOf(cy.Const) - 1;
+    var reqLen = c.buf.ops.items.len + c.buf.consts.items.len * @sizeOf(cy.Value) + @alignOf(cy.Value) - 1;
     if (c.buf.ops.capacity < reqLen) {
         try c.buf.ops.ensureTotalCapacityPrecise(c.alloc, reqLen);
     }
-    const constAddr = std.mem.alignForward(usize, @intFromPtr(c.buf.ops.items.ptr) + c.buf.ops.items.len, @alignOf(cy.Const));
-    const constDst = @as([*]cy.Const, @ptrFromInt(constAddr))[0..c.buf.consts.items.len];
+    const constAddr = std.mem.alignForward(usize, @intFromPtr(c.buf.ops.items.ptr) + c.buf.ops.items.len, @alignOf(cy.Value));
+    const constDst = @as([*]cy.Value, @ptrFromInt(constAddr))[0..c.buf.consts.items.len];
     const constSrc = try c.buf.consts.toOwnedSlice(c.alloc);
-    std.mem.copy(cy.Const, constDst, constSrc);
+    std.mem.copy(cy.Value, constDst, constSrc);
     c.alloc.free(constSrc);
     c.buf.mconsts = constDst;
 

@@ -13,11 +13,14 @@ const vmc = @import("vm_c.zig");
 pub const ByteCodeBuffer = struct {
     alloc: std.mem.Allocator,
     ops: std.ArrayListUnmanaged(Inst),
-    consts: std.ArrayListUnmanaged(Const),
+    consts: std.ArrayListUnmanaged(cy.Value),
+
+    /// Const map for deduping.
+    constMap: std.AutoHashMapUnmanaged(u64, u32),
 
     /// After compilation, consts is merged into the ops buffer.
     /// This should be used by the interpreter to read const values.
-    mconsts: []const Const,
+    mconsts: []const cy.Value,
 
     vm: *cy.VM,
 
@@ -47,6 +50,7 @@ pub const ByteCodeBuffer = struct {
             .ops = .{},
             .vm = vm,
             .consts = .{},
+            .constMap = .{},
             .debugTable = .{},
             .debugTempIndexTable = .{},
             .debugMarkers = .{},
@@ -64,6 +68,7 @@ pub const ByteCodeBuffer = struct {
     pub fn deinit(self: *ByteCodeBuffer) void {
         self.ops.deinit(self.alloc);
         self.consts.deinit(self.alloc);
+        self.constMap.deinit(self.alloc);
         self.debugTable.deinit(self.alloc);
         self.debugTempIndexTable.deinit(self.alloc);
         self.debugMarkers.deinit(self.alloc);
@@ -99,11 +104,18 @@ pub const ByteCodeBuffer = struct {
         return self.ops.items.len;
     }
 
-    pub fn pushConst(self: *ByteCodeBuffer, val: Const) !u32 {
-        const start: u32 = @intCast(self.consts.items.len);
-        try self.consts.resize(self.alloc, self.consts.items.len + 1);
-        self.consts.items[start] = val;
-        return start;
+    pub fn getOrPushConst(self: *ByteCodeBuffer, val: cy.Value) !u32 {
+        const res = try self.constMap.getOrPut(self.alloc, val.val);
+        if (res.found_existing) {
+            return res.value_ptr.*;
+        } else {
+            const idx: u32 = @intCast(self.consts.items.len);
+            try self.consts.resize(self.alloc, self.consts.items.len + 1);
+            self.consts.items[idx] = val;
+            res.key_ptr.* = val.val;
+            res.value_ptr.* = idx;
+            return idx;
+        }
     }
 
     pub fn pushDebugFuncStart(self: *ByteCodeBuffer, func: *cy.Func, chunkId: u32) !void {
@@ -273,10 +285,8 @@ pub const ByteCodeBuffer = struct {
 
     pub fn getOrPushStaticStringConst(self: *ByteCodeBuffer, str: []const u8) !u32 {
         const val = try self.getOrPushStaticStringValue(str);
-        const idx: u32 = @intCast(self.consts.items.len);
         // TODO: Reuse the same const.
-        try self.consts.append(self.alloc, Const.init(val.val));
-        return idx;
+        return self.getOrPushConst(val);
     }
 
     pub fn getOrPushStaticUstring(self: *ByteCodeBuffer, str: []const u8, charLen: u32) !cy.Value {
@@ -712,18 +722,6 @@ pub const StringIndexInsertContext = struct {
     }
 };
 
-pub const Const = extern union {
-    val: u64,
-    two: extern struct {
-        lower: u32,
-        upper: u32,
-    },
-
-    pub fn init(val: u64) Const {
-        return .{ .val = val };
-    }
-};
-
 pub const Inst = packed struct {
     val: u8,
 
@@ -1148,8 +1146,6 @@ pub const OpCode = enum(u8) {
 test "bytecode internals." {
     try t.eq(std.enums.values(OpCode).len, 110);
     try t.eq(@sizeOf(Inst), 1);
-    try t.eq(@sizeOf(Const), 8);
-    try t.eq(@alignOf(Const), 8);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);
     } else {
@@ -1160,6 +1156,7 @@ test "bytecode internals." {
     try t.eq(@offsetOf(ByteCodeBuffer, "alloc"), @offsetOf(vmc.ByteCodeBuffer, "alloc"));
     try t.eq(@offsetOf(ByteCodeBuffer, "ops"), @offsetOf(vmc.ByteCodeBuffer, "ops"));
     try t.eq(@offsetOf(ByteCodeBuffer, "consts"), @offsetOf(vmc.ByteCodeBuffer, "consts"));
+    try t.eq(@offsetOf(ByteCodeBuffer, "constMap"), @offsetOf(vmc.ByteCodeBuffer, "constMap"));
     try t.eq(@offsetOf(ByteCodeBuffer, "mconsts"), @offsetOf(vmc.ByteCodeBuffer, "mconsts_buf"));
     try t.eq(@offsetOf(ByteCodeBuffer, "vm"), @offsetOf(vmc.ByteCodeBuffer, "vm"));
     try t.eq(@offsetOf(ByteCodeBuffer, "debugTable"), @offsetOf(vmc.ByteCodeBuffer, "debugTable"));

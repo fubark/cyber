@@ -119,7 +119,6 @@ pub const bytecode = @import("bytecode.zig");
 pub const ByteCodeBuffer = bytecode.ByteCodeBuffer;
 pub const OpCode = bytecode.OpCode;
 pub const Inst = bytecode.Inst;
-pub const Const = bytecode.Const;
 pub const DebugSym = bytecode.DebugSym;
 pub const getInstLenAt = bytecode.getInstLenAt;
 

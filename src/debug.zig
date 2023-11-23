@@ -509,7 +509,7 @@ fn getOpCodeAtPc(ops: []const cy.Inst, atPc: u32) ?cy.OpCode {
 
 /// When `optPcContext` is null, all the bytecode is dumped along with constants.
 /// When `optPcContext` is non null, it will dump a trace at `optPcContext` and the surrounding bytecode with extra details.
-pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
+pub fn dumpBytecode(vm: *cy.VM, optPcContext: ?u32) !void {
     var pcOffset: u32 = 0;
     var opsLen = vm.compiler.buf.ops.items.len;
     var pc = vm.compiler.buf.ops.items.ptr;
@@ -623,14 +623,11 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
             instIdx += 1;
         }
 
-        fmt.printStderr("\nConstants:\n", &.{});
+        fmt.printStderr("\nConstants ({}):\n", &.{v(vm.compiler.buf.mconsts.len)});
         for (vm.compiler.buf.mconsts) |extra| {
             const val = cy.Value{ .val = extra.val };
-            if (val.isFloat()) {
-                fmt.printStderr("{}\n", &.{v(val.asF64())});
-            } else {
-                fmt.printStderr("{}\n", &.{v(extra.val)});
-            }
+            const str = try vm.bufPrintValueShortStr(&vm.tempBuf, val);
+            fmt.printStderr("{}\n", &.{v(str)});
         }
     }
 }

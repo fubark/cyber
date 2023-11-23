@@ -1212,11 +1212,11 @@ fn genBinOp(c: *Chunk, idx: usize, cstr: RegisterCstr, opts: BinOpOptions, nodeI
             } else return error.Unexpected;
         },
         .equal_equal => {
-            try c.pushOptionalDebugSym(nodeId);
+            try c.pushFailableDebugSym(nodeId);
             try c.buf.pushOp3Ext(.compare, leftv.local, rightv.local, inst.dst, c.desc(nodeId));
         },
         .bang_equal => {
-            try c.pushOptionalDebugSym(nodeId);
+            try c.pushFailableDebugSym(nodeId);
             try c.buf.pushOp3Ext(.compareNot, leftv.local, rightv.local, inst.dst, c.desc(nodeId));
         },
         else => {

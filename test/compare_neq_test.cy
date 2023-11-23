@@ -16,7 +16,7 @@ t.eq(array('foo') != array('bar'), true)
 type S object:
     var value
 var o = [S value: 3]
-t.eq(o != 123, true)
+t.eq(o != [S value: 3], true)
 var o2 = o
 t.eq(o != o2, false)
 

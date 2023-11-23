@@ -146,6 +146,8 @@ pub const Sym = extern struct {
     pub fn resolved(self: *Sym) *Sym {
         if (self.type == .import) {
             return self.cast(.import).sym;
+        } else if (self.type == .typeAlias) {
+            return self.cast(.typeAlias).sym;
         } else {
             return self;
         }
@@ -295,7 +297,7 @@ pub const FuncSym = extern struct {
 };
 
 /// Type aliases are lazily loaded.
-const TypeAlias = extern struct {
+pub const TypeAlias = extern struct {
     head: Sym,
     declId: cy.NodeId,
     type: cy.TypeId,

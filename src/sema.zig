@@ -1589,8 +1589,7 @@ fn resolveLocalRootSym(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId, distin
             return res;
         }
     } else {
-        const chunkMod = c.sym.head.getMod().?;
-        if (chunkMod.getSym(name)) |sym| {
+        if (try c.getOptResolvedSym(@ptrCast(c.sym), name)) |sym| {
             // Cache to local syms.
             try c.localSymMap.putNoClobber(c.alloc, name, sym);
             return sym;
@@ -1631,7 +1630,7 @@ pub fn resolveTypeFromSpecNode(c: *cy.Chunk, head: cy.NodeId) !types.TypeId {
     }
 }
 
-pub fn resolveLocalNamePathSym(c: *cy.Chunk, head: cy.NodeId, end: cy.NodeId) !*Sym {
+pub fn resolveLocalNamePathSym(c: *cy.Chunk, head: cy.NodeId, end: cy.NodeId) anyerror!*Sym {
     var nodeId = head;
     var node = c.nodes[nodeId];
     var name = c.getNodeString(node);
@@ -2635,7 +2634,7 @@ pub const ChunkExt = struct {
             return c.reportErrorAt("Object type `{}` does not exist.", &.{v(name)}, node.head.objectInit.name);
         }
 
-        const sym = left.data.sym;
+        const sym = left.data.sym.resolved();
         if (sym.type != .object) {
             const name = c.getNodeStringById(node.head.objectInit.name);
             return c.reportErrorAt("`{}` is not an object type.", &.{v(name)}, node.head.objectInit.name);

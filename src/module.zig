@@ -483,15 +483,44 @@ pub const ChunkExt = struct {
         return declareHostFunc(c, parent, name, funcSigId, nodeId, funcPtr, isMethod);
     }
 
+    pub fn getOptResolvedSym(_: *cy.Chunk, modSym: *cy.Sym, name: []const u8) !?*cy.Sym {
+        const mod = modSym.getMod() orelse {
+            return null;
+        };
+        const sym = mod.getSym(name) orelse {
+            return null;
+        };
+        switch (sym.type) {
+            .typeAlias => {
+                const alias = sym.cast(.typeAlias);
+                try ensureTypeAliasIsResolved(mod, alias);
+                return alias.sym;
+            },
+            else => {
+                return sym;
+            }
+        }
+    }
+
     pub fn mustFindSym(c: *cy.Chunk, modSym: *cy.Sym, name: []const u8, nodeId: cy.NodeId) !*cy.Sym {
         const mod = modSym.getMod() orelse {
             const symPath = try modSym.formatAbsPath(&cy.tempBuf);
             return c.reportErrorAt("Can not access `{}` from parent `{}`. Parent is not a module.", &.{v(name), v(symPath)}, nodeId);
         };
-        return mod.getSym(name) orelse {
+        const sym = mod.getSym(name) orelse {
             const symPath = try modSym.resolved().formatAbsPath(&cy.tempBuf);
             return c.reportErrorAt("Can not find the symbol `{}` in `{}`.", &.{v(name), v(symPath)}, nodeId);
         };
+        switch (sym.type) {
+            .typeAlias => {
+                const alias = sym.cast(.typeAlias);
+                try ensureTypeAliasIsResolved(mod, alias);
+                return alias.sym;
+            },
+            else => {
+                return sym;
+            }
+        }
     }
 
     pub fn findDistinctSym(
@@ -528,12 +557,7 @@ pub const ChunkExt = struct {
             },
             .typeAlias => {
                 const alias = sym.cast(.typeAlias);
-                if (alias.type == cy.NullId) {
-                    const srcChunk = mod.chunk;
-                    const node = srcChunk.nodes[alias.declId];
-                    alias.type = try cy.sema.resolveTypeFromSpecNode(srcChunk, node.head.typeAliasDecl.typeSpecHead);
-                    alias.sym = c.compiler.sema.types.items[alias.type].sym;
-                }
+                try ensureTypeAliasIsResolved(mod, alias);
                 return alias.sym;
             },
             .func => {
@@ -560,6 +584,15 @@ pub const ChunkExt = struct {
         }
     }
 };
+
+fn ensureTypeAliasIsResolved(mod: *Module, alias: *cy.sym.TypeAlias) !void {
+    if (alias.type == cy.NullId) {
+        const srcChunk = mod.chunk;
+        const node = srcChunk.nodes[alias.declId];
+        alias.type = try cy.sema.resolveTypeFromSpecNode(srcChunk, node.head.typeAliasDecl.typeSpecHead);
+        alias.sym = mod.chunk.compiler.sema.types.items[alias.type].sym;
+    }
+}
 
 test "module internals" {
     try t.eq(@offsetOf(Module, "syms"), @offsetOf(vmc.Module, "syms"));

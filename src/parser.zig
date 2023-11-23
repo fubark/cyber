@@ -604,6 +604,9 @@ pub const Parser = struct {
         } else if (token.tag() == .type_k) {
             self.advanceToken();
             return try self.pushIdentNode(start);
+        } else if (token.tag() == .enum_k) {
+            self.advanceToken();
+            return try self.pushIdentNode(start);
         } else if (token.tag() == .string) {
             self.advanceToken();
             return try self.pushIdentNode(start);
@@ -640,11 +643,10 @@ pub const Parser = struct {
             return self.reportParseError("Expected case keyword.", &.{});
         }
         self.advanceToken();
-        if (self.peekToken().tag() != .ident) {
+
+        const name = (try self.parseOptName()) orelse {
             return self.reportParseError("Expected member identifier.", &.{});
-        }
-        const name = try self.pushIdentNode(self.next_pos);
-        self.advanceToken();
+        };
 
         try self.consumeNewLineOrEnd();
 
@@ -2576,14 +2578,11 @@ pub const Parser = struct {
             },
             .dot => {
                 self.advanceToken();
-                token = self.peekToken();
-                if (token.tag() == .ident or token.tag() == .error_k) {
-                    const sym = try self.pushNode(.symbolLit, self.next_pos);
-                    self.advanceToken();
-                    return sym;
-                } else {
+                const name = (try self.parseOptName()) orelse {
                     return self.reportParseError("Expected symbol identifier.", &.{});
-                }
+                };
+                self.nodes.items[name].node_t = .symbolLit;
+                return name;
             },
             .true_k => {
                 self.advanceToken();
@@ -2724,25 +2723,19 @@ pub const Parser = struct {
                 .dot => {
                     // Access expr.
                     self.advanceToken();
-                    switch (self.peekToken().tag()) {
-                        .ident,
-                        .type_k => {
-                            const right_id = try self.pushIdentNode(self.next_pos);
-                            const expr_id = try self.pushNode(.accessExpr, start);
-                            self.nodes.items[expr_id].head = .{
-                                .accessExpr = .{
-                                    .left = left_id,
-                                    .right = right_id,
-                                },
-                            };
-                            left_id = expr_id;
-                            self.advanceToken();
-                            start = self.next_pos;
+
+                    const right = (try self.parseOptName()) orelse {
+                        return self.reportParseError("Expected ident", &.{});
+                    };
+
+                    const expr_id = try self.pushNode(.accessExpr, start);
+                    self.nodes.items[expr_id].head = .{
+                        .accessExpr = .{
+                            .left = left_id,
+                            .right = right,
                         },
-                        else => {
-                            return self.reportParseError("Expected ident", &.{});
-                        }
-                    }
+                    };
+                    left_id = expr_id;
                 },
                 .left_bracket => {
                     // index expr, slice expr.

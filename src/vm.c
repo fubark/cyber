@@ -1763,7 +1763,8 @@ beginSwitch:
         Value val = stack[pc[1]];
         u16 expTypeId = READ_U16(2);
         if (getTypeId(val) == expTypeId) {
-            pc += 4;
+            stack[pc[4]] = val;
+            pc += 5;
             NEXT();
         } else {
             panicCastFail(vm, getTypeId(val), expTypeId);
@@ -1774,11 +1775,13 @@ beginSwitch:
         Value val = stack[pc[1]];
         u16 expTypeId = READ_U16(2);
         if (expTypeId == TYPE_ANY) {
-            pc += 4;
+            stack[pc[4]] = val;
+            pc += 5;
             NEXT();
+        } else {
+            panicCastFail(vm, getTypeId(val), expTypeId);
+            RETURN(RES_CODE_PANIC);
         }
-        panicCastFail(vm, getTypeId(val), expTypeId);
-        RETURN(RES_CODE_PANIC);
     }
     CASE(BitwiseAnd): {
         INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) & VALUE_AS_INTEGER(right)))

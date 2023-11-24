@@ -408,33 +408,39 @@ fn genCoinitCall(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !
 fn genCast(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
     const data = c.irGetExprData(idx, .cast);
 
+    const inst = try c.rega.selectForDstInst(cstr, true);
+
     const childIdx = c.irAdvanceExpr(idx, .cast);
-    const childv = try genExpr(c, childIdx, cstr);
+    // TODO: If inst.dst is a temp, this should have a cstr of localOrExact.
+    const childv = try genExpr(c, childIdx, RegisterCstr.initSimple(cstr.mustRetain));
 
     const sym = c.sema.getTypeSym(data.typeId);
     if (sym.type == .object) {
         try c.pushFailableDebugSym(nodeId);
         const pc = c.buf.ops.items.len;
-        try c.buf.pushOpSlice(.cast, &.{ childv.local, 0, 0 });
+        try c.buf.pushOpSlice(.cast, &.{ childv.local, 0, 0, inst.dst });
         c.buf.setOpArgU16(pc + 2, @intCast(data.typeId));
     } else if (sym.type == .predefinedType) {
         if (types.toRtConcreteType(data.typeId)) |tId| {
             try c.pushFailableDebugSym(nodeId);
             const pc = c.buf.ops.items.len;
-            try c.buf.pushOpSlice(.cast, &.{ childv.local, 0, 0 });
+            try c.buf.pushOpSlice(.cast, &.{ childv.local, 0, 0, inst.dst });
             c.buf.setOpArgU16(pc + 2, @intCast(tId));
         } else {
             // Cast to abstract type.
             try c.pushFailableDebugSym(nodeId);
             const pc = c.buf.ops.items.len;
-            try c.buf.pushOpSlice(.castAbstract, &.{ childv.local, 0, 0 });
+            try c.buf.pushOpSlice(.castAbstract, &.{ childv.local, 0, 0, inst.dst });
             c.buf.setOpArgU16(pc + 2, @intCast(data.typeId));
         }
     } else {
         return error.TODO;
     }
 
-    return childv;
+    _ = unwindAndFreeTemp(c, childv);
+
+    const val = genValue(c, inst.dst, childv.retained);
+    return finishInst(c, val, inst.finalDst);
 } 
 
 const FieldOptions = struct {
@@ -3183,7 +3189,7 @@ pub const GenValue = extern struct {
 
     fn initRetained(retained: bool) GenValue {
         return .{
-            .local = 0,
+            .local = 255,
             .isTempLocal = false,
             .retained = retained,
         };
@@ -3191,7 +3197,7 @@ pub const GenValue = extern struct {
 
     fn initNoValue() GenValue {
         return .{
-            .local = 0,
+            .local = 255,
             .isTempLocal = false,
             .retained = false,
         };

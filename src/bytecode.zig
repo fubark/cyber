@@ -658,6 +658,13 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const dst = pc[4].val;
             len += try fmt.printStderrCount("recv={}, start={}, end={}, dst={}", &.{v(recv), v(start), v(end), v(dst)});
         },
+        .castAbstract,
+        .cast => {
+            const child = pc[1].val;
+            const expTypeId = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
+            const dst = pc[3].val;
+            len += try fmt.printStderrCount("child={}, exptype={}, dst={}", &.{v(child), v(expTypeId), v(dst)});
+        },
         .staticFunc => {
             const id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
             const dst = pc[3].val;
@@ -886,8 +893,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .compareNot,
         .list,
         .tag,
-        .cast,
-        .castAbstract,
         .setCaptured,
         .jumpNotCond => {
             return 4;
@@ -900,6 +905,8 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numEntries = pc[2].val;
             return 4 + numEntries * 2;
         },
+        .cast,
+        .castAbstract,
         .pushTry,
         .callTypeCheck => {
             return 5;

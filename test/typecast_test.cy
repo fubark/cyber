@@ -31,3 +31,10 @@ a = array('abc')
 t.eq(foo5(a as any), true)
 func foo5(a any):
     return true
+
+-- Cast for interim dst to local.
+a = t.erase(1) as int
+
+-- Cast for interim dst to static var.
+var Root.sa any = none
+sa = t.erase(1) as int

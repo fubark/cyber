@@ -354,6 +354,8 @@ fn performChunkSemaDecls(c: *cy.Chunk) !void {
     for (c.parser.staticDecls.items) |decl| {
         switch (decl.declT) {
             .func => {
+                // Skip flat method decls since they are processed in objectDecl.
+                if (decl.data.func.isMethod) continue;
                 try sema.funcDecl(c, decl.data.func, decl.nodeId);
             },
             .object => {

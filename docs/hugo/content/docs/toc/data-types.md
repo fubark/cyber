@@ -366,6 +366,12 @@ var node = [Node value: 123, next: none]
 n.incAndPrint()         -- Prints "444"
 ```
 
+Methods can also be declared outside of the type declaration. To distinguish a method from a type function, `self` must be provided as a parameter:
+```cy
+func Node.getNext(self):
+    return self.next
+```
+
 ### `self` variable.
 Type members can be implicitly referenced inside the method. {{<todo "*Incomplete: Only the type's fields can be referenced this way.">}}
 

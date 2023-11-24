@@ -975,13 +975,13 @@ pub fn declareObjectMembers(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !v
         c.sema.types.items[obj.type].data = .{
             .numFields = @intCast(obj.numFields),
         };
-    }
+    } 
 
     var funcId = body.head.objectDeclBody.funcsHead;
     while (funcId != cy.NullId) {
-        try declareMethod(c, modSym, funcId);
-        const funcN = c.nodes[funcId];
-        funcId = funcN.next;
+        const decl = try resolveImplicitMethodDecl(c, modSym, funcId);
+        _ = try declareMethod(c, modSym, funcId, decl);
+        funcId = c.nodes[funcId].next;
     }
 }
 
@@ -1023,7 +1023,8 @@ pub fn declareFuncInit(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId) !void {
     if (modifierId != cy.NullId) {
         const modifier = c.nodes[modifierId];
         if (modifier.head.annotation.type == .host) {
-            _ = try declareHostFunc(c, parent, nodeId, false);
+            const decl = try resolveFuncDecl(c, parent, nodeId);
+            _ = try declareHostFunc(c, parent, nodeId, decl);
             return;
         }
     }
@@ -1044,13 +1045,10 @@ fn declareGenericFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId) !void {
     }
 }
 
-fn declareMethod(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId) !void {
+fn declareMethod(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: FuncDecl) !*cy.Func {
     const node = c.nodes[nodeId];
     if (node.head.func.bodyHead != cy.NullId) {
-        const parentT = parent.getStaticType().?;
-        const decl = try resolveMethodDecl(c, parentT, nodeId);
-        _ = try c.declareUserFunc(parent, decl.name, decl.funcSigId, nodeId, true);
-        return;
+        return c.declareUserFunc(parent, decl.name, decl.funcSigId, nodeId, true);
     }
 
     // No initializer. Check if @host func.
@@ -1058,24 +1056,14 @@ fn declareMethod(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId) !void {
     if (modifierId != cy.NullId) {
         const modifier = c.nodes[modifierId];
         if (modifier.head.annotation.type == .host) {
-            _ = try declareHostFunc(c, parent, nodeId, true);
-            return;
+            return declareHostFunc(c, parent, nodeId, decl);
         }
     }
-    const name = c.getNodeString(c.nodes[c.nodes[node.head.func.header].head.funcHeader.name]);
-    return c.reportErrorAt("`{}` does not have an initializer.", &.{v(name)}, nodeId);
+    return c.reportErrorAt("`{}` does not have an initializer.", &.{v(decl.name)}, nodeId);
 }
 
-pub fn declareHostFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, isMethod: bool) !*cy.Func {
+pub fn declareHostFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: FuncDecl) !*cy.Func {
     c.nodes[nodeId].node_t = .hostFuncDecl;
-
-    var decl: FuncDecl = undefined;
-    if (isMethod) {
-        const parentT = parent.getStaticType().?;
-        decl = try resolveMethodDecl(c, parentT, nodeId);
-    } else {
-        decl = try resolveFuncDecl(c, parent, nodeId);
-    }
 
     const info = cc.FuncInfo{
         .mod = cc.ApiModule{ .sym = parent },
@@ -1098,13 +1086,13 @@ pub fn declareHostFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, isMetho
     }
 
     if (res.type == cc.FuncTypeStandard) {
-        return try c.declareHostFunc(decl.parent, decl.name, decl.funcSigId, nodeId, @ptrCast(@alignCast(res.ptr)), isMethod);
+        return try c.declareHostFunc(decl.parent, decl.name, decl.funcSigId, nodeId, @ptrCast(@alignCast(res.ptr)), decl.isMethod);
     } else if (res.type == cc.FuncTypeInline) {
         // const funcSig = c.compiler.sema.getFuncSig(func.funcSigId);
         // if (funcSig.reqCallTypeCheck) {
         //     return c.reportErrorAt("Failed to load: {}, Only untyped quicken func is supported.", &.{v(name)}, nodeId);
         // }
-        return try c.declareHostInlineFunc(decl.parent, decl.name, decl.funcSigId, nodeId, @ptrCast(@alignCast(res.ptr)), isMethod);
+        return try c.declareHostInlineFunc(decl.parent, decl.name, decl.funcSigId, nodeId, @ptrCast(@alignCast(res.ptr)), decl.isMethod);
     } else {
         return error.Unexpected;
     }
@@ -1113,7 +1101,11 @@ pub fn declareHostFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, isMetho
 /// Declares a bytecode function in a given module.
 pub fn declareFunc(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !*cy.Func {
     const decl = try resolveFuncDecl(c, parent, nodeId);
-    return try c.declareUserFunc(decl.parent, decl.name, decl.funcSigId, nodeId, false);
+    if (!decl.isMethod) {
+        return try c.declareUserFunc(decl.parent, decl.name, decl.funcSigId, nodeId, false);
+    } else {
+        return try declareMethod(c, decl.parent, nodeId, decl);
+    }
 }
 
 pub fn funcDecl(c: *cy.Chunk, func: *cy.Func, nodeId: cy.NodeId) !void {
@@ -1654,18 +1646,20 @@ const FuncDecl = struct {
     name: []const u8,
     parent: *Sym,
     funcSigId: FuncSigId,
+    isMethod: bool,
 };
 
-fn resolveMethodDecl(c: *cy.Chunk, objectT: TypeId, nodeId: cy.NodeId) !FuncDecl {
+fn resolveImplicitMethodDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !FuncDecl {
     const func = c.nodes[nodeId];
     const header = c.nodes[func.head.func.header];
+    const name = c.getNodeStringById(header.head.funcHeader.name);
 
     // Get params, build func signature.
     const start = c.typeStack.items.len;
     defer c.typeStack.items.len = start;
 
     // First param is always `self`.
-    try c.typeStack.append(c.alloc, objectT);
+    try c.typeStack.append(c.alloc, parent.getStaticType().?);
 
     var curParamId = header.head.funcHeader.paramHead;
     while (curParamId != cy.NullId) {
@@ -1678,15 +1672,14 @@ fn resolveMethodDecl(c: *cy.Chunk, objectT: TypeId, nodeId: cy.NodeId) !FuncDecl
     // Get return type.
     const retType = try resolveTypeFromSpecNode(c, header.head.funcHeader.ret);
 
-    var res = FuncDecl{
-        .namePath = undefined,
-        .name = undefined,
-        .funcSigId = try c.sema.ensureFuncSig(c.typeStack.items[start..], retType),
-        .parent = undefined,
+    const funcSigId = try c.sema.ensureFuncSig(c.typeStack.items[start..], retType);
+    return FuncDecl{
+        .namePath = name,
+        .name = name,
+        .parent = parent,
+        .funcSigId = funcSigId,
+        .isMethod = true,
     };
-    const parent = c.sema.types.items[objectT].sym;
-    try updateFuncDeclNamePath(c, &res, parent, header.head.funcHeader.name);
-    return res;
 }
 
 fn resolveFuncDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !FuncDecl {
@@ -1697,24 +1690,29 @@ fn resolveFuncDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !FuncDecl {
     const start = c.typeStack.items.len;
     defer c.typeStack.items.len = start;
 
+    var res: FuncDecl = undefined;
+    try updateFuncDeclNamePath(c, &res, parent, header.head.funcHeader.name);
+
+    var isMethod = false;
     var curParamId = header.head.funcHeader.paramHead;
     while (curParamId != cy.NullId) {
         const param = c.nodes[curParamId];
-        const typeId = try resolveTypeFromSpecNode(c, param.head.funcParam.typeSpecHead);
-        try c.typeStack.append(c.alloc, typeId);
+        const paramName = c.getNodeStringById(param.head.funcParam.name);
+        if (std.mem.eql(u8, paramName, "self")) {
+            isMethod = true;
+            try c.typeStack.append(c.alloc, res.parent.getStaticType().?);
+        } else {
+            const typeId = try resolveTypeFromSpecNode(c, param.head.funcParam.typeSpecHead);
+            try c.typeStack.append(c.alloc, typeId);
+        }
         curParamId = param.next;
     }
 
     // Get return type.
     const retType = try resolveTypeFromSpecNode(c, header.head.funcHeader.ret);
 
-    var res = FuncDecl{
-        .namePath = undefined,
-        .name = undefined,
-        .funcSigId = try c.sema.ensureFuncSig(c.typeStack.items[start..], retType),
-        .parent = undefined,
-    };
-    try updateFuncDeclNamePath(c, &res, parent, header.head.funcHeader.name);
+    res.funcSigId = try c.sema.ensureFuncSig(c.typeStack.items[start..], retType);
+    res.isMethod = isMethod;
     return res;
 }
 
@@ -2010,19 +2008,43 @@ fn pushMethodParamVars(c: *cy.Chunk, objectT: TypeId, func: *const cy.Func) !voi
     const rFuncSig = c.compiler.sema.funcSigs.items[func.funcSigId];
     const params = rFuncSig.params();
 
-    // Add self receiver param.
-    try declareParam(c, cy.NullId, true, 0, objectT);
+    const funcN = c.nodes[func.declId];
+    const header = c.nodes[funcN.head.func.header];
+    var curNode = header.head.funcHeader.paramHead;
+    if (curNode != cy.NullId) {
+        var param = c.nodes[curNode];
+        const name = c.getNodeStringById(param.head.funcParam.name);
+        if (std.mem.eql(u8, name, "self")) {
+            try declareParam(c, curNode, false, 0, objectT);
 
-    if (func.numParams > 1) {
-        const funcN = c.nodes[func.declId];
-        const header = c.nodes[funcN.head.func.header];
-        var curNode = header.head.funcHeader.paramHead;
-        for (params[1..], 1..) |paramT, idx| {
-            try declareParam(c, curNode, false, @intCast(idx), paramT);
+            if (param.next != cy.NullId) {
+                curNode = param.next;
+                for (params[1..], 1..) |paramT, idx| {
+                    try declareParam(c, curNode, false, @intCast(idx), paramT);
 
-            const param = c.nodes[curNode];
-            curNode = param.next;
+                    param = c.nodes[curNode];
+                    curNode = param.next;
+                }
+            }
+        } else {
+            // Implicit `self` param.
+            try declareParam(c, cy.NullId, true, 0, objectT);
+            // First param.
+            try declareParam(c, curNode, false, 1, objectT);
+
+            if (param.next != cy.NullId) {
+                curNode = param.next;
+                for (params[2..], 2..) |paramT, idx| {
+                    try declareParam(c, curNode, false, @intCast(idx), paramT);
+
+                    param = c.nodes[curNode];
+                    curNode = param.next;
+                }
+            }
         }
+    } else {
+        // Implicit `self` param.
+        try declareParam(c, cy.NullId, true, 0, objectT);
     }
 }
 

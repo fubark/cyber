@@ -1,5 +1,8 @@
 import t 'test'
 
+func Node.flatGet2(self):
+    return 123
+
 type Node object:
     var value
 
@@ -56,7 +59,14 @@ func Node.getFn2(param):
 func Node.getFn3(param, param2):
     return 123 + param - param2
 
+func Node.flatGet(self):
+    return 123
+
 var n = [Node value: 123]
+
+-- Flat method declaration.
+t.eq(n.flatGet(), 123)
+t.eq(n.flatGet2(), 123)
 
 -- Explicit get.
 t.eq(n.getEx(), 123)

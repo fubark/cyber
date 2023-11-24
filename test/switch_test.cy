@@ -47,15 +47,15 @@ case 10,
 else         : res = 3
 t.eq(res, 2)
 
--- Switch break.
-res = 0
-switch 10:
-case 0 : res = 1
-case 10:
-    res = 2
-    if res == 2: break
-    res = 3
-t.eq(res, 2)
+-- -- Switch break.
+-- res = 0
+-- switch 10:
+-- case 0 : res = 1
+-- case 10:
+--     res = 2
+--     if res == 2: break case
+--     res = 3
+-- t.eq(res, 2)
 
 -- Switch in a nested block. Tests parsing.
 func foo():

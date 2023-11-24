@@ -51,10 +51,16 @@ t.eq(sum, 55)
 -- Break.
 iters = 0
 for 0..10 -> i:
-   if i == 2:
-       break
-   iters += 1
+    if i == 2:
+         break
+    iters += 1
 t.eq(iters, 2)
+
+-- Break releases current block vars.
+for 0..10 -> i:
+    if i == 2:
+        my a = []
+        break
 
 -- Continue.
 iters = 0
@@ -63,6 +69,12 @@ for 0..10 -> i:
        continue
    iters += 1
 t.eq(iters, 9)
+
+-- Continue releases current block vars.
+for 0..10 -> i:
+    if i == 2:
+        my a = []
+        continue
 
 -- Single line block.
 iters = 0

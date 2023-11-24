@@ -404,7 +404,7 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
         .callObjNativeFuncIC => {
             const ret = pc[1].val;
             const numArgs = pc[2].val;
-            len += try printInstArgs(&.{"ret", "nargs", "nret"}, &.{v(ret), v(numArgs)});
+            len += try printInstArgs(&.{"ret", "nargs"}, &.{v(ret), v(numArgs)});
         },
         .callObjFuncIC => {
             const ret = pc[1].val;

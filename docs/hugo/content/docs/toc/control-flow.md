@@ -171,13 +171,13 @@ case 'serrano'  => 10000
 When declaring an assignable switch, the cases must have a return value using the syntax `case {cond} => {expr}` or `else => {expr}`.
 
 ### Switch break.
-A `break` statement exits the current case block and resumes execution after the end of the switch statement:
+A `break` statement exits the current case block and resumes execution after the end of the switch statement: {{<todo "*Planned Feature">}}
 ```cy
 switch value:
 case 0..5:
     print value
     if value == 3:
-        break       
+        break case
     print value    -- Skips second print if `value` is 3.
 ```
 

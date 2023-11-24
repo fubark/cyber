@@ -66,11 +66,11 @@ pub fn isObjectAlreadyFreed(vm: *cy.VM, obj: *cy.HeapObject) bool {
 
 pub fn checkDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) void {
     if (isObjectAlreadyFreed(vm, obj)) {
-        const msg = std.fmt.allocPrint(vm.alloc, "Double free object: {*} at pc: {}({s})", .{
+        const msg = std.fmt.allocPrint(vm.alloc, "{*} at pc: {}({s})", .{
             obj, vm.debugPc, @tagName(vm.ops[vm.debugPc].opcode()),
         }) catch cy.fatal();
         defer vm.alloc.free(msg);
-        cy.debug.printTraceAtPc(vm, vm.debugPc, msg) catch cy.fatal();
+        cy.debug.printTraceAtPc(vm, vm.debugPc, "double free", msg) catch cy.fatal();
 
         cy.debug.dumpObjectTrace(vm, obj) catch cy.fatal();
         cy.fatal();
@@ -145,7 +145,16 @@ pub const VmExt = struct {
 
 pub fn checkRetainDanglingPointer(vm: *cy.VM, obj: *cy.HeapObject) void {
     if (isObjectAlreadyFreed(vm, obj)) {
-        cy.panic("Retaining dangling pointer.");
+        const msg = std.fmt.allocPrint(vm.alloc, "{*} at pc: {}({s})", .{
+            obj, vm.debugPc, @tagName(vm.ops[vm.debugPc].opcode()),
+        }) catch cy.fatal();
+        defer vm.alloc.free(msg);
+        cy.debug.printTraceAtPc(vm, vm.debugPc, "retain dangling ptr", msg) catch cy.fatal();
+
+        if (cy.Trace) {
+            cy.debug.dumpObjectTrace(vm, obj) catch cy.fatal();
+        }
+        cy.fatal();
     }
 }
 
@@ -473,23 +482,26 @@ pub fn checkGlobalRC(vm: *cy.VM) !void {
         std.debug.print("unreleased refcount: {}, expected: {}\n", .{rc, vm.expGlobalRC});
 
         if (cy.Trace) {
-            var buf: [256]u8 = undefined;
             var iter = vm.objectTraceMap.iterator();
             while (iter.next()) |it| {
                 const trace = it.value_ptr.*;
                 if (trace.freePc == cy.NullId) {
-                    const typeName = vm.getTypeName(it.key_ptr.*.getTypeId());
-
-                    var valBuf: [256]u8 = undefined;
-                    const valStr = try vm.bufPrintValueShortStr(&valBuf, cy.Value.initNoCycPtr(it.key_ptr.*));
-                    const msg = try std.fmt.bufPrint(&buf, "Init alloc: {*}, type: {s}, rc: {} at pc: {}\nval={s}", .{
-                        it.key_ptr.*, typeName, it.key_ptr.*.head.rc, trace.allocPc, valStr,
-                    });
-                    try cy.debug.printTraceAtPc(vm, trace.allocPc, msg);
+                    try dumpObjectAllocTrace(vm, it.key_ptr.*, trace.allocPc);
                 }
             }
         }
 
         return error.UnreleasedReferences;
     }
+}
+
+fn dumpObjectAllocTrace(vm: *cy.VM, obj: *cy.HeapObject, allocPc: u32) !void {
+    var buf: [256]u8 = undefined;
+    const typeId = obj.getTypeId();
+    const typeName = vm.getTypeName(typeId);
+    const valStr = try vm.bufPrintValueShortStr(&vm.tempBuf, cy.Value.initNoCycPtr(obj));
+    const msg = try std.fmt.bufPrint(&buf, "{*}, type: {s}, rc: {} at pc: {}\nval={s}", .{
+        obj, typeName, obj.head.rc, allocPc, valStr,
+    });
+    try cy.debug.printTraceAtPc(vm, allocPc, "alloced", msg);
 }

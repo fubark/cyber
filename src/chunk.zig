@@ -471,6 +471,12 @@ pub const Chunk = struct {
         return start;
     }
 
+    pub fn pushEmptyJumpExt(self: *Chunk, desc_: cy.bytecode.InstDesc) !u32 {
+        const start: u32 = @intCast(self.buf.ops.items.len);
+        try self.buf.pushOp2Ext(.jump, 0, 0, desc_);
+        return start;
+    }
+
     pub fn pushEmptyJumpCond(self: *Chunk, condLocal: LocalId) !u32 {
         const start: u32 = @intCast(self.buf.ops.items.len);
         try self.buf.pushOp3(.jumpCond, condLocal, 0, 0);

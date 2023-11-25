@@ -6,16 +6,18 @@
 @host func copy(val any) any
 
 --| Prints the result of `toCyon` on a value.
-@host func dump(val any) string
+@host func dump(val any) none
 
 @host func errorReport() string
+
+--| Returns the current reference count of an object.
+@host func getObjectRc(val any) none
 
 --| Returns whether two values refer to the same instance.
 @host func is(a any, b any) bool
 
 --| Returns whether a rune is an alphabetic letter.
 @host func isAlpha(val int) bool
-
 --| Returns whether a rune is a digit.
 @host func isDigit(val int) bool
 

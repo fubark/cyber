@@ -36,6 +36,7 @@ const funcs = [_]NameFunc{
     .{"copy",           copy, .standard},
     .{"dump",           zErrFunc2(dump), .standard},
     .{"errorReport",    zErrFunc2(errorReport), .standard},
+    .{"getObjectRc",    zErrFunc2(getObjectRc), .standard},
     .{"is",             is, .standard},
     .{"isAlpha",        isAlpha, .standard},
     .{"isDigit",        isDigit, .standard},
@@ -56,7 +57,7 @@ const funcs = [_]NameFunc{
     // error
     .{"sym", errorSym, .standard},
     .{"error.'$call'", errorCall, .standard},
-
+    
     // int
     .{"$prefix~", bindings.intBitwiseNot, .inlinec},
     .{"$prefix-", bindings.intNeg, .inlinec},
@@ -365,6 +366,15 @@ pub fn dump(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) 
     const res = try allocToCyon(vm, vm.alloc, args[0]);
     defer vm.alloc.free(res);
     vm.print.?(@ptrCast(vm), cc.initStr(res));
+    return Value.None;
+}
+
+pub fn getObjectRc(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (args[0].isPointer()) {
+        return Value.initInt(@intCast(args[0].asHeapObject().head.rc));
+    } else {
+        return Value.initInt(-1);
+    }
     return Value.None;
 }
 

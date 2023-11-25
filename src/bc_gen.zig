@@ -561,18 +561,15 @@ fn breakStmt(c: *Chunk, nodeId: cy.NodeId) !void {
 }
 
 fn contStmt(c: *Chunk, nodeId: cy.NodeId) !void {
-    // Release from startLocal of the sblock after the first parent loop block.
+    // Release from startLocal of the first parent loop block.
     var idx = c.subBlocks.items.len-1;
-    if (!c.subBlocks.items[idx].isLoopBlock) {
-        idx -= 1;
-        while (true) {
-            const sblock = c.subBlocks.items[idx];
-            if (sblock.isLoopBlock) {
-                try genReleaseLocals(c, c.subBlocks.items[idx+1].nextLocalReg, nodeId);
-                break;
-            }
-            idx -= 1;
+    while (true) {
+        const sblock = c.subBlocks.items[idx];
+        if (sblock.isLoopBlock) {
+            try genReleaseLocals(c, sblock.nextLocalReg, nodeId);
+            break;
         }
+        idx -= 1;
     }
 
     const pc = try c.pushEmptyJumpExt(c.desc(nodeId));

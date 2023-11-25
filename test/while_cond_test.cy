@@ -25,6 +25,14 @@ while i != 10:
   count += 1
 t.eq(count, 9)
 
+-- continue releases locals.
+i = 0
+while i != 10:
+  var a = []
+  i += 1
+  if i == 2:
+    continue
+
 -- Single line block.
 i = 0
 while i != 10: i += 1

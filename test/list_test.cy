@@ -24,6 +24,9 @@ t.eqList(a[1..4], [2, 3, 4])
 t.eqList(a[3..], [4, 5])
 -- Start of list to end index.
 t.eqList(a[..3], [1, 2, 3])
+-- Dynamic invocation.
+my b = t.erase(a)
+t.eqList(b[0..2], [1, 2])
 
 --| Slice retains rc elems.
 a = [string(1), string(2), string(3)]

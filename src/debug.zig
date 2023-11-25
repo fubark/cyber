@@ -478,7 +478,7 @@ fn getStackFrame(vm: *cy.VM, sym: cy.DebugSym) StackFrame {
 
 pub fn allocStackTrace(vm: *cy.VM, stack: []const cy.Value, cframes: []const vmc.CompactFrame) ![]const cy.StackFrame {
     @setCold(true);
-    log.tracev("build stacktrace", .{});
+    log.tracev("build stacktrace {}", .{cframes.len});
     var frames = try vm.alloc.alloc(cy.StackFrame, cframes.len);
     for (cframes, 0..) |cframe, i| {
         frames[i] = try cy.debug.compactToStackFrame(vm, stack, cframe);

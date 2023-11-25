@@ -214,6 +214,8 @@ pub fn unwindStack(vm: *cy.VM, stack: []const Value, ctx: PcSpOff) !PcSpOff {
     var pc = ctx.pc;
     var fp = ctx.sp;
 
+    vm.compactTrace.clearRetainingCapacity();
+
     while (true) {
         try vm.compactTrace.append(vm.alloc, .{
             .pcOffset = pc,

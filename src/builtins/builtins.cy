@@ -119,6 +119,7 @@ type float object:
 type List object:
     @host func '$index'(idx any) any
     @host func '$setIndex'(idx any, val any) none
+    @host func '$slice'(start any, end any) List
 
     --| Appends a value to the end of the list.
     @host func append(val any) none
@@ -144,6 +145,8 @@ type List object:
     --| Resizes the list to `len` elements. If the new size is bigger, `none` values
     --| are appended to the list. If the new size is smaller, elements at the end of the list are removed.
     @host func resize(size int) any
+
+    @host func slice(start any, end any) List
 
     --| Sorts the list with the given `less` function.
     --| If element `a` should be ordered before `b`, the function should return `true` otherwise `false`.
@@ -229,9 +232,9 @@ type string object:
     @host func runeAt(n int) any
 
     --| Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
-    @host func slice(start any, end any) any
+    @host func slice(start any, end any) string
 
-    @host func '$slice'(start any, end any) any
+    @host func '$slice'(start any, end any) string
 
     --| Returns the UTF-8 rune at index `idx` as a single rune string.
     @host func sliceAt(idx int) any
@@ -303,9 +306,9 @@ type array object:
     @host func replace(needle array, replacement array) array
 
     --| Returns a slice into this array from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
-    @host func slice(start any, end any) any
+    @host func slice(start any, end any) array
 
-    @host func '$slice'(start any, end any) any
+    @host func '$slice'(start any, end any) array
 
     @host func '$index'(idx int) int
 

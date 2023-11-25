@@ -99,6 +99,7 @@ const funcs = [_]NameFunc{
     // List
     .{"$index",     bindings.inlineBinOp(.indexList), .inlinec},
     .{"$setIndex",  bindings.inlineTernOp(.setIndexList), .inlinec},
+    .{"$slice",     bindings.inlineTernOp(.sliceList), .inlinec},
     .{"append",     zErrFunc2(bindings.listAppend), .standard},
     .{"concat",     zErrFunc2(bindings.listConcat), .standard},
     .{"insert",     bindings.listInsert, .standard},
@@ -107,6 +108,7 @@ const funcs = [_]NameFunc{
     .{"len",        bindings.listLen, .standard},
     .{"remove",     bindings.listRemove, .standard},
     .{"resize",     bindings.listResize, .standard},
+    .{"slice",      bindings.inlineTernOp(.sliceList), .inlinec},
     // .{"sort", bindings.listSort, .standard},
 
     // ListIterator

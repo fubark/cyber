@@ -135,10 +135,10 @@ type File object:
 
     --| Reads at most `n` bytes as an `array`. `n` must be at least 1.
     --| A result with length 0 indicates the end of file was reached.
-    @host func read(n int) any
+    @host func read(n int) array
 
     --| Reads to the end of the file and returns the content as an `array`.
-    @host func readToEnd() any
+    @host func readToEnd() array
 
     --| Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.
     @host func seek(n int) any

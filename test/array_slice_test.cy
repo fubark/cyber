@@ -74,9 +74,9 @@ t.eq(arr.findAnyByte(array('xy')), 7)
 t.eq(arr.findAnyByte(array('ef')), none)
 
 -- findByte()
-t.eq(arr.findByte(0u'a'), 0)
-t.eq(arr.findByte(0u'x'), 7)
-t.eq(arr.findByte(0u'd'), none)
+t.eq(arr.findByte(`a`), 0)
+t.eq(arr.findByte(`x`), 7)
+t.eq(arr.findByte(`d`), none)
 t.eq(arr.findByte(97), 0)
 t.eq(arr.findByte(100), none)
 

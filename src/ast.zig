@@ -28,6 +28,7 @@ pub const NodeType = enum {
     false_literal,
     none,
     string,
+    runeLit,
     stringTemplate,
     await_expr,
     accessExpr,

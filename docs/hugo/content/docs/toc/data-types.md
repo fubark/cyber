@@ -39,7 +39,7 @@ Integer notations always produce a `int` value:
 var a = 0xFF     -- hex.
 a = 0o17         -- octal.
 a = 0b1010       -- binary.
-a = 0u'🐶'       -- UTF-8 rune.
+a = `🐶`         -- UTF-8 rune.
 ```
 
 Arbitrary values can be converted to a `int` using the type as a function.
@@ -163,10 +163,10 @@ print str[1..]   -- "bcxyz"
 
 -- One way to use slices is to continue a string operation.
 str = 'abcabcabc'
-var i = str.findRune(0u'c')
+var i = str.findRune(`c`)
 print(i)                            -- "2"
 i += 1
-print(i + str[i..].findRune(0u'c'))  -- "5"
+print(i + str[i..].findRune(`c`))  -- "5"
 ```
 
 ### String Interpolation.

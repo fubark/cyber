@@ -92,14 +92,14 @@ var list2 = list
 t.eq(is(list, list2), true)
 
 -- isAlpha()
-t.eq(isAlpha(0u'3'), false)
-t.eq(isAlpha(0u'a'), true)
-t.eq(isAlpha(0u'A'), true)
+t.eq(isAlpha(`3`), false)
+t.eq(isAlpha(`a`), true)
+t.eq(isAlpha(`A`), true)
 
 -- isDigit()
-t.eq(isDigit(0u'3'), true)
-t.eq(isDigit(0u'a'), false)
-t.eq(isDigit(0u'A'), false)
+t.eq(isDigit(`3`), true)
+t.eq(isDigit(`a`), false)
+t.eq(isDigit(`A`), false)
 
 -- parseCyber()
 res = parseCyber('var Root.foo = 123')
@@ -150,8 +150,8 @@ var ptr = pointer(0xDEADBEEF)
 t.eq(ptr.value(), 3735928559)
 
 -- runestr()
-t.eq(runestr(0u'a'), 'a')
-t.eq(runestr(0u'🦊'), '🦊')
+t.eq(runestr(`a`), 'a')
+t.eq(runestr(`🦊`), '🦊')
 t.eq(try runestr(2 ^ 22), error.InvalidRune)
 t.eq(try runestr(-1), error.InvalidRune)
 

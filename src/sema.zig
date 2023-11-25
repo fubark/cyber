@@ -2936,30 +2936,6 @@ pub const ChunkExt = struct {
                     val = try std.fmt.parseInt(u48, literal[2..], 8);
                 } else if (literal[1] == 'b') {
                     val = try std.fmt.parseInt(u48, literal[2..], 2);
-                } else if (literal[1] == 'u') {
-                    if (literal[3] == '\\') {
-                        if (unescapeAsciiChar(literal[4])) |ch| {
-                            val = ch;
-                        } else {
-                            val = literal[4];
-                            if (val > 128) {
-                                return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
-                            }
-                        }
-                        if (literal.len != 6) {
-                            return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
-                        }
-                    } else {
-                        const len = std.unicode.utf8ByteSequenceLength(literal[3]) catch {
-                            return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
-                        };
-                        if (literal.len != @as(usize, 4) + len) {
-                            return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
-                        }
-                        val = std.unicode.utf8Decode(literal[3..3+len]) catch {
-                            return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
-                        };
-                    }
                 } else {
                     const char: []const u8 = &[_]u8{literal[1]};
                     return c.reportErrorAt("Unsupported integer notation: {}", &.{v(char)}, nodeId);
@@ -2972,6 +2948,38 @@ pub const ChunkExt = struct {
                 return try semaIdent(c, nodeId, true);
             },
             .string => return c.semaString(c.getNodeString(node), nodeId),
+            .runeLit => {
+                const literal = c.getNodeString(node);
+                if (literal.len == 0) {
+                    return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
+                }
+                var val: u48 = undefined;
+                if (literal[0] == '\\') {
+                    if (unescapeAsciiChar(literal[1])) |ch| {
+                        val = ch;
+                    } else {
+                        val = literal[1];
+                        if (val > 128) {
+                            return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
+                        }
+                    }
+                    if (literal.len != 2) {
+                        return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
+                    }
+                } else {
+                    const len = std.unicode.utf8ByteSequenceLength(literal[0]) catch {
+                        return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
+                    };
+                    if (literal.len != len) {
+                        return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
+                    }
+                    val = std.unicode.utf8Decode(literal[0..0+len]) catch {
+                        return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
+                    };
+                }
+                const irIdx = try c.irPushExpr(.int, nodeId, .{ .val = val });
+                return ExprResult.initStatic(irIdx, bt.Integer);
+            },
             .condExpr => {
                 const irIdx = try c.irPushEmptyExpr(.condExpr, nodeId);
 

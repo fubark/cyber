@@ -2089,42 +2089,42 @@ test "Integers." {
 
     // Empty char is not allowed.
     try eval(.{ .silent = true },
-        \\var a = 0u''
+        \\var a = ``
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: Invalid UTF-8 Rune.
             \\
-            \\main:1:9:
-            \\var a = 0u''
-            \\        ^
+            \\main:1:10:
+            \\var a = ``
+            \\         ^
             \\
         );
     }}.func);
 
     // More than one rune in literal. 
     try eval(.{ .silent = true },
-        \\var a = 0u'🦊a'
+        \\var a = `🦊a`
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: Invalid UTF-8 Rune.
             \\
-            \\main:1:9:
-            \\var a = 0u'🦊a'
-            \\        ^
+            \\main:1:10:
+            \\var a = `🦊a`
+            \\         ^
             \\
         );
     }}.func);
 
     // More than one rune in literal. (Grapheme cluster)
     try eval(.{ .silent = true },
-        \\var a = 0u'👨‍👨‍👦‍👦'
+        \\var a = `👨‍👨‍👦‍👦`
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: Invalid UTF-8 Rune.
             \\
-            \\main:1:9:
-            \\var a = 0u'👨‍👨‍👦‍👦'
-            \\        ^
+            \\main:1:10:
+            \\var a = `👨‍👨‍👦‍👦`
+            \\         ^
             \\
         );
     }}.func);

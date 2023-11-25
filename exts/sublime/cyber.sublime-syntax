@@ -19,6 +19,10 @@ contexts:
       scope: punctuation.definition.string.begin.cyber
       push: single_quoted_string
 
+    - match: '`'
+      scope: punctuation.definition.string.begin.cyber
+      push: backtick_string
+
     - match: '"'
       scope: punctuation.definition.string.begin.cyber
       push: double_quoted_string
@@ -60,6 +64,15 @@ contexts:
     - match: '\\.'
       scope: constant.character.escape.cyber
     - match: ''''
+      scope: punctuation.definition.string.end.cyber
+      pop: true
+
+  backtick_string:
+    - meta_scope: string.quoted.single.cyber
+    # Uses backslashes as an escape character.
+    - match: '\\.'
+      scope: constant.character.escape.cyber
+    - match: '`'
       scope: punctuation.definition.string.end.cyber
       pop: true
 

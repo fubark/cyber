@@ -2607,6 +2607,10 @@ pub const Parser = struct {
                 self.advanceToken();
                 break :b try self.pushNode(.nonDecInt, start);
             },
+            .rune => b: {
+                self.advanceToken();
+                break :b try self.pushNode(.runeLit, start);
+            },
             .string => b: {
                 self.advanceToken();
                 break :b try self.pushNode(.string, start);
@@ -3282,6 +3286,10 @@ pub const Parser = struct {
         try self.tokens.append(self.alloc, Token.init(.string, start_pos, .{ .end_pos = end_pos }));
     }
 
+    inline fn pushRuneToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
+        try self.tokens.append(self.alloc, Token.init(.rune, start_pos, .{ .end_pos = end_pos }));
+    }
+
     inline fn pushOpToken(self: *Parser, operator_t: OperatorType, start_pos: u32) !void {
         try self.tokens.append(self.alloc, Token.init(.operator, start_pos, .{
             .operator_t = operator_t,
@@ -3366,6 +3374,7 @@ pub const TokenType = enum(u8) {
     float,
     nonDecInt,
     string,
+    rune,
     templateString,
     templateExprStart,
     operator,
@@ -3813,7 +3822,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             }
 
             const start = p.next_pos;
-            const ch = consumeChar(p);
+            var ch = consumeChar(p);
             switch (ch) {
                 '(' => {
                     try p.pushToken(.left_paren, start);
@@ -3982,6 +3991,31 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 '\n' => {
                     try p.pushToken(.new_line, start);
                     return .{ .stateT = .start };
+                },
+                '`' => {
+                    // UTF-8 codepoint literal (rune).
+                    if (isAtEndChar(p)) {
+                        return p.reportTokenError("Expected UTF-8 rune.", &.{});
+                    }
+                    while (true) {
+                        if (isAtEndChar(p)) {
+                            return p.reportTokenError("Expected UTF-8 rune.", &.{});
+                        }
+                        ch = peekChar(p);
+                        if (ch == '\\') {
+                            advanceChar(p);
+                            if (isAtEndChar(p)) {
+                                return p.reportTokenError("Expected back tick or backslash.", &.{});
+                            }
+                            advanceChar(p);
+                        } else {
+                            advanceChar(p);
+                            if (ch == '`') {
+                                break;
+                            }
+                        }
+                    }
+                    try p.pushRuneToken(start+1, p.next_pos-1);
                 },
                 '"' => {
                     return tokenizeTemplateStringOne(p, .{
@@ -4458,37 +4492,6 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     }
                     try p.pushNonDecimalIntegerToken(start, p.next_pos);
                     return;
-                } else if (ch == 'u') {
-                    // UTF-8 codepoint literal (rune).
-                    advanceChar(p);
-                    if (isAtEndChar(p)) {
-                        return p.reportTokenError("Expected UTF-8 rune.", &.{});
-                    }
-                    ch = peekChar(p);
-                    if (ch != '\'') {
-                        return p.reportTokenError("Expected single quote.", &.{});
-                    }
-                    advanceChar(p);
-                    while (true) {
-                        if (isAtEndChar(p)) {
-                            return p.reportTokenError("Expected UTF-8 rune.", &.{});
-                        }
-                        ch = peekChar(p);
-                        if (ch == '\\') {
-                            advanceChar(p);
-                            if (isAtEndChar(p)) {
-                                return p.reportTokenError("Expected single quote or backslash.", &.{});
-                            }
-                            advanceChar(p);
-                        } else {
-                            advanceChar(p);
-                            if (ch == '\'') {
-                                break;
-                            }
-                        }
-                    }
-                    try p.pushNonDecimalIntegerToken(start, p.next_pos);
-                    return;
                 } else {
                     if (std.ascii.isAlphabetic(ch)) {
                         const char: []const u8 = &[_]u8{ ch };
@@ -4539,7 +4542,7 @@ test "parser internals." {
     try t.eq(@alignOf(Token), 4);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 62);
+    try t.eq(std.enums.values(TokenType).len, 63);
     try t.eq(keywords.kvs.len, 31);
 }
 

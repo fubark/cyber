@@ -3,10 +3,10 @@ import t 'test'
 -- Single quote literal with escaped single quote.
 var str = 'ab\'c'
 t.eq(str.len(), 4)
-t.eq(str.runeAt(0), 0u'a')
-t.eq(str.runeAt(1), 0u'b')
-t.eq(str.runeAt(2), 0u'\'')
-t.eq(str.runeAt(3), 0u'c')
+t.eq(str.runeAt(0), `a`)
+t.eq(str.runeAt(1), `b`)
+t.eq(str.runeAt(2), `'`)
+t.eq(str.runeAt(3), `c`)
 
 -- Single quote literal with new line escape sequence.
 t.eq('ab\nc', "ab
@@ -33,4 +33,4 @@ t.eq('ab\tc'.runeAt(2), 9)
 
 -- Escaped backslash.
 t.eq('ab\\nc'.runeAt(2), 92)
-t.eq('ab\\nc'.runeAt(3), 0u'n')
+t.eq('ab\\nc'.runeAt(3), `n`)

@@ -22,6 +22,12 @@ const log = cy.log.scoped(.bindings);
 const NullId = std.math.maxInt(u32);
 
 pub const Symbol = enum {
+    b,
+    o,
+    d,
+    x,
+    c,
+
     bool,
     char,
     uchar,
@@ -109,6 +115,12 @@ const Section = cy.Section;
 
 pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     @setCold(true);
+
+    try ensureSymbol(self, "b", .b);
+    try ensureSymbol(self, "o", .o);
+    try ensureSymbol(self, "d", .d);
+    try ensureSymbol(self, "x", .x);
+    try ensureSymbol(self, "c", .c);
 
     try ensureSymbol(self, "bool", .bool);
     try ensureSymbol(self, "char", .char);

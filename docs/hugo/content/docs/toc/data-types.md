@@ -170,14 +170,23 @@ print(i + str[i..].findRune(0u'c'))  -- "5"
 ```
 
 ### String Interpolation.
-
-You can embed expressions into string templates with `$()`:
+Expressions can be embedded into string templates with `$()`:
 ```cy
 var name = 'Bob'
 var points = 123
 var str = 'Scoreboard: $(name) $(points)'
 ```
 String templates can not contain nested string templates.
+
+### String formatting.
+Values that can be formatted into a string will have a `fmt` method:
+```cy
+var file = os.openFile('data.bin', .read)
+var bytes = file.readToEnd()
+
+-- Dump contents in hex.
+print '$(bytes.fmt(.x))' 
+```
 
 ## Arrays.
 An `array` is an immutable sequence of bytes. It can be used to represent strings but it won't automatically validate their encoding and indexing returns the n'th byte rather than a UTF-8 rune. See [`type array`]({{<relref "/docs/toc/modules#type-array">}}).

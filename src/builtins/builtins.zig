@@ -78,6 +78,8 @@ const funcs = [_]NameFunc{
     .{"$infix||", bindings.inlineBinOp(.bitwiseXor), .inlinec},
     .{"$infix<<", bindings.inlineBinOp(.bitwiseLeftShift), .inlinec},
     .{"$infix>>", bindings.inlineBinOp(.bitwiseRightShift), .inlinec},
+    .{"fmt", zErrFunc2(intFmt), .standard},
+    .{"fmt", zErrFunc2(intFmt2), .standard},
     .{"int.'$call'", intCall, .standard},
 
     // float
@@ -158,6 +160,7 @@ const funcs = [_]NameFunc{
     .{"find",           arrayFind, .standard},
     .{"findAnyByte",    arrayFindAnyByte, .standard},
     .{"findByte",       arrayFindByte, .standard},
+    .{"fmt",            zErrFunc2(arrayFmt), .standard},
     .{"insert",         arrayInsert, .standard},
     .{"insertByte",     arrayInsertByte, .standard},
     .{"len",            arrayLen, .standard},
@@ -1046,6 +1049,52 @@ fn arrayFindByte(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
     return Value.None;
 }
 
+fn arrayFmt(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    const arr = args[0].asArray();
+    const kind = try std.meta.intToEnum(Symbol, args[1].asSymbolId());
+    if (kind == .c) {
+        var buf: std.ArrayListUnmanaged(u8) = .{};
+        defer buf.deinit(vm.alloc);
+
+        for (arr) |byte| {
+            if (byte < 0 or byte > 127) {
+                return error.InvalidArgument;
+            }
+        }
+        return vm.retainOrAllocAstring(arr);
+    } else {
+        var base: u8 = undefined;
+        var width: u8 = undefined;
+        switch (kind) {
+            .b => {
+                base = 2;
+                width = 8;
+            },
+            .o => {
+                base = 8;
+                width = 3;
+            },
+            .d => {
+                base = 10;
+                width = 3;
+            },
+            .x => {
+                base = 16;
+                width = 2;
+            },
+            else => return error.InvalidArgument,
+        }
+
+        var buf: std.ArrayListUnmanaged(u8) = .{};
+        defer buf.deinit(vm.alloc);
+        var w = buf.writer(vm.alloc);
+        for (arr) |byte| {
+            try std.fmt.formatInt(byte, base, .lower, .{ .width = width, .fill = '0' }, w);
+        }
+        return vm.retainOrAllocAstring(buf.items);
+    }
+}
+
 fn arrayLen(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = args[0].asHeapObject();
     return Value.initInt(@intCast(obj.array.getSlice().len));
@@ -1259,6 +1308,63 @@ fn errorCall(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
         } else {
             return prepareThrowSymbol(vm, .InvalidArgument);
         }
+    }
+}
+
+fn intFmt(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const val = args[0].asInteger();
+    const kind = try std.meta.intToEnum(Symbol, args[1].asSymbolId());
+    return intFmtExt(vm, val, kind, .{});
+}
+
+fn intFmt2(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const val = args[0].asInteger();
+    const kind = try std.meta.intToEnum(Symbol, args[1].asSymbolId());
+    const optsv = args[2].castHeapObject(*cy.heap.Map);
+    var opts: IntFmtOptions = .{};
+    if (optsv.map().getByString("pad")) |pad| {
+        if (!pad.isInteger()) return error.InvalidArgument;
+        const padv = pad.asInteger();
+        if (padv < 0 or padv > 127) return error.InvalidArgument;
+        opts.pad = @intCast(padv);
+    }
+    if (optsv.map().getByString("width")) |width| {
+        if (!width.isInteger()) return error.InvalidArgument;
+        const widthv = width.asInteger();
+        if (widthv < 0) return error.InvalidArgument;
+        opts.width = @intCast(widthv);
+    }
+    return intFmtExt(vm, val, kind, opts);
+}
+
+const IntFmtOptions = struct {
+    pad: ?u8 = null,
+    width: ?usize = null,
+};
+
+fn intFmtExt(vm: *cy.VM, val: i48, kind: Symbol, opts: IntFmtOptions) !Value {
+    if (kind == .c) {
+        if (val < 0 or val > 127) {
+            return error.InvalidArgument;
+        }
+        const uchar: u8 = @intCast(val);
+        return vm.retainOrAllocAstring(&.{uchar});
+    } else {
+        const base: u8 = switch (kind) {
+            .b => 2,
+            .o => 8,
+            .d => 10,
+            .x => 16,
+            else => return error.InvalidArgument,
+        };
+        var buf: [48]u8 = undefined;
+        var fb = std.io.fixedBufferStream(&buf);
+        if (val < 0) {
+            try std.fmt.formatInt(val, base, .lower, .{ .fill = opts.pad orelse ' ', .width = opts.width }, fb.writer());
+        } else {
+            try std.fmt.formatInt(@as(u48, @bitCast(val)), base, .lower, .{ .fill = opts.pad orelse ' ', .width = opts.width }, fb.writer());
+        }
+        return vm.retainOrAllocAstring(fb.getWritten());
     }
 }
 

@@ -76,6 +76,16 @@ t.eq(arr.findByte(0u'd'), none)
 t.eq(arr.findByte(97), 0)
 t.eq(arr.findByte(100), none)
 
+-- fmt()
+t.eq(array('z').fmt(.b), '01111010')
+t.eq(array('z').fmt(.o), '172')
+t.eq(array('z').fmt(.d), '122')
+t.eq(array('z').fmt(.x), '7a')
+t.eq(arr.fmt(.b), '0110000101100010011000111111000010011111101001101000101001111000011110010111101011110000100111111001000010110110')
+t.eq(arr.fmt(.o), '141142143360237246212170171172360237220266')
+t.eq(arr.fmt(.d), '097098099240159166138120121122240159144182')
+t.eq(arr.fmt(.x), '616263f09fa68a78797af09f90b6')
+
 -- insertByte()
 t.eq(arr.insertByte(2, 97), array('abac🦊xyz🐶'))
 

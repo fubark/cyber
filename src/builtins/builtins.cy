@@ -88,6 +88,13 @@ type int object:
     @host func '$infix<<'(o any) int
     @host func '$infix>>'(o any) int
 
+    --| Formats the integer using a kind specifier which can be binary `.b`,
+    --| octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.
+    @host func fmt(kind symbol) any
+
+    --| `opts.pad` provides the ASCII rune that is used for padding with a string length of `opts.width`.
+    @host func fmt(kind symbol, opts Map) any
+
 --| Converts a value to an 48-bit integer.
 @host func int.'$call'(val any) int
 
@@ -274,6 +281,11 @@ type array object:
 
     --| Returns the first index of `byte` in the array or `none` if not found.
     @host func findByte(byte int) any
+
+    --| Formats each byte in the array using a kind specifier which can be binary `.b`,
+    --| octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.
+    --| Each byte is zero padded.
+    @host func fmt(kind symbol) any
 
     --| Returns a new array with `arr` inserted at index `idx`.
     @host func insert(idx int, arr array) any

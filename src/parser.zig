@@ -4351,21 +4351,27 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 try p.pushNumberToken(start, p.next_pos);
                 return;
             }
+
             var ch = peekChar(p);
-            if ((ch >= '0' and ch <= '9') or ch == 'e' or ch == '.') {
-                // Common path.
+            if ((ch >= '0' and ch <= '9') or ch == '.' or ch == 'e') {
                 consumeDigits(p);
                 if (isAtEndChar(p)) {
                     try p.pushNumberToken(start, p.next_pos);
                     return;
                 }
 
-                // Check for decimal notation.
                 var isFloat = false;
                 ch = peekChar(p);
-                const ch2 = peekCharAhead(p, 1) orelse 0;
-                if (ch == '.' and ch2 != '.') {
-                    // Differentiate decimal from range operator.
+                if (ch == '.') {
+                    const next = peekCharAhead(p, 1) orelse {
+                        try p.pushNumberToken(start, p.next_pos);
+                        return;
+                    };
+                    if (next < '0' or next > '9') {
+                        try p.pushNumberToken(start, p.next_pos);
+                        return;
+                    } 
+                    advanceChar(p);
                     advanceChar(p);
                     consumeDigits(p);
                     if (isAtEndChar(p)) {
@@ -4375,6 +4381,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     ch = peekChar(p);
                     isFloat = true;
                 }
+
                 if (ch == 'e') {
                     advanceChar(p);
                     if (isAtEndChar(p)) {
@@ -4391,9 +4398,11 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     if (ch < '0' and ch > '9') {
                         return p.reportTokenError("Expected number.", &.{});
                     }
+
                     consumeDigits(p);
                     isFloat = true;
                 }
+
                 if (isFloat) {
                     try p.pushFloatToken(start, p.next_pos);
                 } else {

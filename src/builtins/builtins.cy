@@ -326,15 +326,24 @@ type array object:
 
 @host
 type pointer object:
+    --| Returns the memory address as an `int`. The value may be negative since it's
+    --| bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
+    @host func addr() int
+
     --| Unsafe. Casts the pointer to a Cyber object. The object is retained before it's returned.
     @host func asObject() any
 
-    --| Returns the memory address as an `int`. The value may be negative since it's
-    --| bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
-    @host func value() int
+    --| Unsafe. Returns an `array` from a null terminated C string.
+    @host func fromCstr(offset int) array
 
-    --| Converts the value to a compatible C value and writes it to a byte offset from this pointer.
-    @host func writeAt(idx int, val any) none
+    --| Unsafe. Dereferences the pointer at a byte offset and returns the C value converted to Cyber.
+    @host func get(offset int, ctype symbol) any
+
+    --| Unsafe. Converts the value to a compatible C value and writes it to a byte offset from this pointer.
+    @host func set(offset int, val any) none
+
+    --| Unsafe. Returns an `array` with a copy of the byte data starting from an offset to the specified length.
+    @host func toArray(offset int, len int) array
 
 --| Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI.
 @host func pointer.'$call'(val any) pointer

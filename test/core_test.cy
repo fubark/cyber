@@ -147,7 +147,7 @@ t.eq(val['a'], 123)
 
 -- pointer()
 var ptr = pointer(0xDEADBEEF)
-t.eq(ptr.value(), 3735928559)
+t.eq(ptr.addr(), 3735928559)
 
 -- runestr()
 t.eq(runestr(`a`), 'a')

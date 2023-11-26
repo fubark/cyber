@@ -493,6 +493,16 @@ pub fn ffiCfunc(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     return Value.None;
 }
 
+pub fn ffiNew(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    // const ffi = args[0].castHostObject(*FFI);
+
+    const csym = try std.meta.intToEnum(Symbol, args[1].asSymbolId());
+    const size = try sizeOf(csym);
+
+    const ptr = std.c.malloc(size);
+    return cy.heap.allocPointer(vm, ptr);
+}
+
 /// Returns the name of a base type. No arrays.
 fn fmtBaseTypeName(buf: []u8, ctype: CType) ![]const u8 {
     switch (ctype) {
@@ -704,6 +714,30 @@ fn writeCTypeForCSym(w: anytype, ctype: Symbol) !void {
         },
     };
     try w.writeAll(str);
+}
+
+fn sizeOf(ctype: Symbol) !usize {
+    return switch (ctype) {
+        .bool => 1,
+        .char => 1,
+        .uchar => 1,
+        .short => 2,
+        .ushort => 2,
+        .int => 4,
+        .uint => 4,
+        .long => 8,
+        .ulong => 8,
+        .usize => 8,
+        .float => 4,
+        .double => 8,
+        .charPtr => 8,
+        .voidPtr => 8,
+        .funcPtr => 8,
+        else => {
+            std.debug.print("Unsupported type: {s}\n", .{ @tagName(ctype) });
+            return error.InvalidArgument;
+        }
+    };
 }
 
 fn toCyType(ctype: CType, forRet: bool) !types.TypeId {

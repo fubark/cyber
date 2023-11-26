@@ -64,9 +64,6 @@
 --| Frees the memory located at `ptr`.
 @host func free(ptr pointer) none
 
---| Returns an `array` from a null terminated C string.
-@host func fromCstr(ptr pointer) array
-
 --| Returns an environment value by key.
 @host func getEnv(key string) any
 
@@ -211,6 +208,11 @@ type FFI object:
 
     --| Declares a C function which will get binded to the library handle created from `bindLib`.
     @host func cfunc(name string, params List, ret any) none
+
+    --| Allocates memory for a C struct or primitive with the given C type specifier.
+    --| A `pointer` to the allocated memory is returned.
+    --| Eventually this will return a `cpointer` instead which will be more idiomatic to use.
+    @host func new(ctype symbol) pointer
 
     --| Releases the object from the FFI context.
     --| External code should no longer use the object's pointer since it's not guaranteed to exist

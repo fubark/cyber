@@ -65,7 +65,7 @@ var cstr = os.cstr('foo')
 my res = lib.testObject([MyObject a: 123.0, b: 10, c: cstr, d: true])
 t.eq(res.a, 123.0)
 t.eq(res.b, 10)
-t.eq(os.fromCstr(res.c as pointer), array('foo'))
+t.eq(res.c.fromCstr(0), array('foo'))
 t.eq(res.d, true)
 os.free(cstr)
 
@@ -76,13 +76,13 @@ t.eq(typesym(ptr), .pointer)
 res = lib.ptrToMyObject(pointer(ptr))
 t.eq(res.a, 123.0)
 t.eq(res.b, 10)
-t.eq(os.fromCstr(res.c as pointer), array('foo'))
+t.eq(res.c.fromCstr(0), array('foo'))
 t.eq(res.d, true)
 os.free(cstr)
 
 -- testCharPtr
 cstr = os.cstr('foo')
-t.eq(os.fromCstr(lib.testCharPtr(cstr) as pointer), array('foo'))
+t.eq(lib.testCharPtr(cstr).fromCstr(0), array('foo'))
 os.free(cstr)
 
 -- testVoidPtr

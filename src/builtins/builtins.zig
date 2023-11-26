@@ -177,9 +177,12 @@ const funcs = [_]NameFunc{
     .{"array.'$call'",  zErrFunc2(arrayCall), .standard},
 
     // pointer
+    .{"addr", pointerAddr, .standard},
     .{"asObject", pointerAsObject, .standard},
-    .{"value", pointerValue, .standard},
-    .{"writeAt", pointerWriteAt, .standard},
+    .{"fromCstr", zErrFunc2(pointerFromCstr), .standard},
+    .{"get", zErrFunc2(pointerGet), .standard},
+    .{"set", zErrFunc2(pointerSet), .standard},
+    .{"toArray", zErrFunc2(pointerToArray), .standard},
     .{"pointer.'$call'", pointerCall, .standard},
 
     // Fiber
@@ -1252,12 +1255,40 @@ fn pointerAsObject(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     return Value.initPtr(ptr);
 }
 
-fn pointerValue(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+fn pointerAddr(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
     return Value.initInt(@bitCast(@as(u48, (@intCast(@intFromPtr(obj.pointer.ptr))))));
 }
 
-fn pointerWriteAt(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+fn pointerFromCstr(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
+    const obj = args[0].asHeapObject();
+    const raw: [*]const u8 = @ptrCast(obj.pointer.ptr);
+    const off: u48 = @bitCast(args[1].asInteger());
+    const bytes = std.mem.span(@as([*:0]const u8, @ptrCast(raw + off)));
+    return vm.allocArray(bytes);
+}
+
+fn pointerGet(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const obj = args[0].asHeapObject();
+    const off = args[1].asInteger();
+    const ctype = try std.meta.intToEnum(Symbol, args[2].asSymbolId());
+
+    const raw = obj.pointer.ptr;
+    const uoff: u48 = @bitCast(off);
+    switch (ctype) {
+        .voidPtr => {
+            const addr: usize = @intFromPtr(raw) + @as(usize, @intCast(uoff));
+            const val = @as(*?*anyopaque, @ptrFromInt(addr)).*;
+            return vm.allocPointer(val);
+        },
+        else => {
+            return error.InvalidArgument;
+        }
+    }
+}
+
+fn pointerSet(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const obj = args[0].asHeapObject();
     const idx = args[1].asInteger();
     const val = args[2];
@@ -1268,12 +1299,21 @@ fn pointerWriteAt(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         bt.Pointer => {
             const addr: usize = @intFromPtr(rawPtr) + @as(usize, @intCast(uidx));
             @as(*?*anyopaque, @ptrFromInt(addr)).* = val.asHeapObject().pointer.ptr;
+            return Value.None;
         },
         else => {
-            return prepareThrowSymbol(vm, .InvalidArgument);
+            return error.InvalidArgument;
         }
     }
-    return Value.initInt(@bitCast(@as(u48, (@intCast(@intFromPtr(obj.pointer.ptr))))));
+}
+
+fn pointerToArray(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const obj = args[0].asHeapObject();
+    const off = args[1].asInteger();
+    const len: u48 = @bitCast(args[2].asInteger());
+    const raw: [*]const u8 = @ptrCast(obj.pointer.ptr);
+    const uoff: u48 = @bitCast(off);
+    return vm.allocArray(raw[uoff..uoff+len]);
 }
 
 fn pointerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {

@@ -57,7 +57,6 @@ const funcs = [_]NameFunc{
     .{"exit",           exit},
     .{"fetchUrl",       zErrFunc2(fetchUrl)},
     .{"free",           free},
-    .{"fromCstr",       zErrFunc2(fromCstr)},
     .{"getEnv",         zErrFunc2(getEnv)},
     .{"getEnvAll",      zErrFunc2(getEnvAll)},
     .{"getAllInput",    zErrFunc(getAllInput)},
@@ -107,6 +106,7 @@ const funcs = [_]NameFunc{
     .{"bindObjPtr",     zErrFunc2(ffi.ffiBindObjPtr)},
     .{"cbind",          zErrFunc(ffi.ffiCbind)},
     .{"cfunc",          zErrFunc2(ffi.ffiCfunc)},
+    .{"new",            zErrFunc2(ffi.ffiNew)},
     .{"unbindObjPtr",   zErrFunc2(ffi.ffiUnbindObjPtr)},
 };
 
@@ -403,8 +403,8 @@ fn parseArgs(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection)
                         opt.found = true;
                     }
                 }
+                continue;
             }
-            continue;
         }
         const str = try vm.allocStringInternOrArray(arg);
         try restList.append(vm.alloc, str);
@@ -491,12 +491,6 @@ pub fn malloc(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     const size: usize = @intCast(args[0].asInteger());
     const ptr = std.c.malloc(size);
     return cy.heap.allocPointer(vm.internal(), ptr);
-}
-
-fn fromCstr(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    if (cy.isWasm) return vm.prepPanic("Unsupported.");
-    const bytes = std.mem.span(@as([*:0]const u8, @ptrCast(args[0].asHeapObject().pointer.ptr)));
-    return vm.allocArray(bytes);
 }
 
 fn cstr(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {

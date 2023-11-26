@@ -104,7 +104,7 @@ const funcs = [_]NameFunc{
     .{"concat",     zErrFunc2(bindings.listConcat), .standard},
     .{"insert",     bindings.listInsert, .standard},
     .{"iterator",   bindings.listIterator, .standard},
-    .{"joinString", zErrFunc2(bindings.listJoinString), .standard},
+    .{"join",       zErrFunc2(bindings.listJoin), .standard},
     .{"len",        bindings.listLen, .standard},
     .{"remove",     bindings.listRemove, .standard},
     .{"resize",     bindings.listResize, .standard},

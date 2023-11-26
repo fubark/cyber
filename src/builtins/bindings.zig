@@ -256,7 +256,7 @@ pub fn listAppend(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return Value.None;
 }
 
-pub fn listJoinString(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn listJoin(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const obj = args[0].asHeapObject();
     const items = obj.list.items();
     if (items.len > 0) {

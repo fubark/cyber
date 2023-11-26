@@ -134,7 +134,7 @@ type List object:
     @host func iterator() any
 
     --| Returns a new string that joins the elements with `separator`.
-    @host func joinString(sep string) string
+    @host func join(sep string) string
 
     --| Returns the number of elements in the list.
     @host func len() int
@@ -296,6 +296,10 @@ type array object:
     --| Returns a new array with `byte` inserted at index `idx`.
     @host func insertByte(idx int, byte int) any
 
+    --| Returns a new iterator over the array bytes.
+    @host func iterator() arrayIterator:
+        return [arrayIterator arr: self, nextIdx: 0]
+
     --| Returns the number of bytes in the array.
     @host func len() int
 
@@ -323,6 +327,17 @@ type array object:
 
 --| Converts a string to an byte `array`.
 @host func array.'$call'(val any) array
+
+type arrayIterator object:
+    var arr array
+    var nextIdx int
+
+    func next() any:
+        if nextIdx >= self.arr.len():
+            return none
+        var res = self.arr[nextIdx]
+        nextIdx += 1
+        return res
 
 @host
 type pointer object:

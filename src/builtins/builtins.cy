@@ -1,7 +1,3 @@
---| Creates a list with initial capacity of `n` and values set to `val`.
---| If the value is an object, it is shallow copied `n` times.
-@host func arrayFill(val any, n int) List
-
 --| Copies a primitive value or creates a shallow copy of an object value.
 @host func copy(val any) any
 
@@ -162,6 +158,10 @@ type List object:
                 else: break
             self[j + 1] = cur
 
+--| Creates a list with initial capacity of `n` and values set to `val`.
+--| If the value is an object, it is shallow copied `n` times.
+@host func List.fill(val any, n int) List
+
 @host
 type ListIterator object:
     @host func next() any
@@ -260,9 +260,6 @@ type string object:
 type array object:
     @host func '$infix+'(o any) any
 
-    --| Returns the byte value (0-255) at the given index `idx`.
-    @host func byteAt(idx int) int
-
     --| Returns a new array that concats this array and `other`.
     @host func concat(other array) array
 
@@ -289,6 +286,15 @@ type array object:
     --| octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.
     --| Each byte is zero padded.
     @host func fmt(kind symbol) any
+
+    --| Returns the byte value (0-255) at the given index `idx`.
+    @host func getByte(idx int) int
+
+    --| Returns the int value of the 6 bytes starting from `idx` with the given endianness (.little or .big).
+    @host func getInt(idx int, endian symbol) int
+
+    --| Returns the int value of the 4 bytes starting from `idx` with the given endianness (.little or .big).
+    @host func getInt32(idx int, endian symbol) int
 
     --| Returns a new array with `arr` inserted at index `idx`.
     @host func insert(idx int, arr array) any

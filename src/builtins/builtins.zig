@@ -32,7 +32,6 @@ pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callco
 const NameFunc = struct { []const u8, cy.ZHostFuncFn, cc.FuncEnumType };
 const funcs = [_]NameFunc{
     // Utils.
-    .{"arrayFill",      arrayFill, .standard},
     .{"copy",           copy, .standard},
     .{"dump",           zErrFunc2(dump), .standard},
     .{"errorReport",    zErrFunc2(errorReport), .standard},
@@ -110,6 +109,7 @@ const funcs = [_]NameFunc{
     .{"resize",     bindings.listResize, .standard},
     .{"slice",      bindings.inlineTernOp(.sliceList), .inlinec},
     // .{"sort", bindings.listSort, .standard},
+    .{"List.fill",  listFill, .standard},
 
     // ListIterator
     .{"next", bindings.listIteratorNext, .standard},
@@ -154,7 +154,6 @@ const funcs = [_]NameFunc{
 
     // array
     .{"$infix+",        arrayConcat, .standard},
-    .{"byteAt",         arrayByteAt, .standard},
     .{"concat",         arrayConcat, .standard},
     .{"decode",         arrayDecode, .standard},
     .{"decode",         arrayDecode1, .standard},
@@ -163,6 +162,9 @@ const funcs = [_]NameFunc{
     .{"findAnyByte",    arrayFindAnyByte, .standard},
     .{"findByte",       arrayFindByte, .standard},
     .{"fmt",            zErrFunc2(arrayFmt), .standard},
+    .{"getByte",        zErrFunc2(arrayGetByte), .standard},
+    .{"getInt",         zErrFunc2(arrayGetInt), .standard},
+    .{"getInt32",       zErrFunc2(arrayGetInt32), .standard},
     .{"insert",         arrayInsert, .standard},
     .{"insertByte",     arrayInsertByte, .standard},
     .{"len",            arrayLen, .standard},
@@ -170,7 +172,7 @@ const funcs = [_]NameFunc{
     .{"replace",        arrayReplace, .standard},
     .{"slice",          arraySlice, .standard},
     .{"$slice",         arraySlice, .standard},
-    .{"$index",         arrayByteAt, .standard},
+    .{"$index",         zErrFunc2(arrayGetByte), .standard},
     .{"split",          zErrFunc2(arraySplit), .standard},
     .{"startsWith",     arrayStartsWith, .standard},
     .{"trim",           zErrFunc2(arrayTrim), .standard},
@@ -264,6 +266,7 @@ pub fn prepThrowZError(vm: *cy.VM, err: anyerror, optTrace: ?*std.builtin.StackT
         error.InvalidArgument       => return vm.prepThrowError(.InvalidArgument),
         error.InvalidEnumTag        => return vm.prepThrowError(.InvalidArgument),
         error.FileNotFound          => return vm.prepThrowError(.FileNotFound),
+        error.OutOfBounds           => return vm.prepThrowError(.OutOfBounds),
         error.PermissionDenied      => return vm.prepThrowError(.PermissionDenied),
         error.StdoutStreamTooLong   => return vm.prepThrowError(.StreamTooLong),
         error.StderrStreamTooLong   => return vm.prepThrowError(.StreamTooLong),
@@ -282,7 +285,7 @@ fn traceReleases(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSec
     return Value.initInt(vm.internal().trace.numReleases);
 }
 
-pub fn arrayFill(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn listFill(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     return vm.allocListFill(args[0], @intCast(args[1].asInteger())) catch cy.fatal();
 }
 
@@ -1003,18 +1006,49 @@ fn arrayDecode1(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
     }
 }
 
-fn arrayByteAt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn arrayGetByte(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const obj = args[0].asHeapObject();
     const slice = obj.array.getSlice();
-    var idx = args[1].asInteger();
+    const idx = args[1].asInteger();
 
-    if (idx < 0) {
-        idx = @as(i48, @intCast(slice.len)) + idx;
-    }
-    if (idx < 0 or idx >= slice.len) {
-        return prepareThrowSymbol(vm, .OutOfBounds);
-    }
+    if (idx < 0 or idx >= slice.len) return error.OutOfBounds;
     return Value.initInt(@intCast(slice[@intCast(idx)]));
+}
+
+fn arrayGetInt(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const obj = args[0].asHeapObject();
+
+    const slice = obj.array.getSlice();
+    const idx = args[1].asInteger();
+    const sym = try std.meta.intToEnum(Symbol, args[2].asSymbolId());
+    const endian: std.builtin.Endian = switch (sym) {
+        .little => .little,
+        .big => .big,
+        else => return error.InvalidArgument,
+    };
+
+    if (idx < 0 or idx + 6 > slice.len) return error.OutOfBounds;
+    const uidx: u48 = @intCast(idx);
+    const val = std.mem.readVarInt(u48, slice[uidx..uidx+6], endian);
+    return Value.initInt(@bitCast(val));
+}
+
+fn arrayGetInt32(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const obj = args[0].asHeapObject();
+
+    const slice = obj.array.getSlice();
+    const idx = args[1].asInteger();
+    const sym = try std.meta.intToEnum(Symbol, args[2].asSymbolId());
+    const endian: std.builtin.Endian = switch (sym) {
+        .little => .little,
+        .big => .big,
+        else => return error.InvalidArgument,
+    };
+
+    if (idx < 0 or idx + 4 > slice.len) return error.OutOfBounds;
+    const uidx: u48 = @intCast(idx);
+    const val = std.mem.readVarInt(u48, slice[uidx..uidx+4], endian);
+    return Value.initInt(@intCast(val));
 }
 
 fn arrayFindAnyByte(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {

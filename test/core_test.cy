@@ -29,17 +29,6 @@ foo()
 ")
 foo()
 
--- arrayFill with primitive.
-var a = arrayFill(123, 10)
-t.eq(a.len(), 10)
-for 0..10 -> i:
-    t.eq(a[i], 123)
-
--- arrayFill with object performs shallow copy.
-a = arrayFill([], 2)
-t.eq(a.len(), 2)
-t.eq(a[0] == a[1], false)
-
 -- bool(), see truthy_test.cy
 
 -- copy()

@@ -151,4 +151,4 @@ if os.cpu != 'wasm32':
     var file = os.openFile('test.txt', .read)
     var bytes = file.readToEnd()
     t.eq(bytes.len(), 1)
-    t.eq(bytes.byteAt(0), 255)
+    t.eq(bytes.getByte(0), 255)

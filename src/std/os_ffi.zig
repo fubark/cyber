@@ -116,7 +116,7 @@ pub fn allocFFI(vm: *cy.VM) linksection(cy.StdSection) !Value {
 }
 
 pub fn ffiGetChildren(_: ?*c.VM, obj: ?*anyopaque) callconv(.C) c.ValueSlice {
-    var ffi: *FFI = @ptrCast(@alignCast(obj));
+    const ffi: *FFI = @ptrCast(@alignCast(obj));
     return c.initValueSlice(ffi.managed.items);
 }
 
@@ -1145,7 +1145,7 @@ pub fn ffiBindCallback(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Val
     try w.print("  UserVM* vm = (UserVM*)0x{X};\n", .{@intFromPtr(vm)});
     try w.print("  int64_t args[{}];\n", .{params.len});
     for (params, 0..) |param, i| {
-        var ctype = try ffi.toCType(ivm, param);
+        const ctype = try ffi.toCType(ivm, param);
         try w.print("  args[{}] = ", .{i});
         const cval = try std.fmt.bufPrint(&cy.tempBuf, "p{}", .{i});
         try writeToCyValue(w, cval, ctype);

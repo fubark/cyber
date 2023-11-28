@@ -153,7 +153,7 @@ pub fn onTypeLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
 
 pub fn zPostTypeLoad(c: *cy.VMcompiler, mod: cc.ApiModule) !void {
     vars[0] = .{ "Root.cpu", try cy.heap.allocStringInternOrArray(c.vm, @tagName(builtin.cpu.arch)) };
-    if (builtin.cpu.arch.endian() == .Little) {
+    if (builtin.cpu.arch.endian() == .little) {
         vars[1] = .{ "Root.endian", cy.Value.initSymbol(@intFromEnum(Symbol.little)) };
     } else {
         vars[1] = .{ "Root.endian", cy.Value.initSymbol(@intFromEnum(Symbol.big)) };
@@ -217,14 +217,8 @@ fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const path = args[0].asString();
     const iterable = args[1].asBool();
-    var fd: std.os.fd_t = undefined;
-    if (iterable) {
-        const dir = try std.fs.cwd().openIterableDir(path, .{});
-        fd = dir.dir.fd;
-    } else {
-        const dir = try std.fs.cwd().openDir(path, .{});
-        fd = dir.fd;
-    }
+    const dir = try std.fs.cwd().openDir(path, .{ .iterate = iterable });
+    const fd = dir.fd;
     return vm.allocDir(fd, iterable) catch fatal();
 }
 
@@ -644,7 +638,7 @@ pub fn execCmd(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
         try buf.append(vm.alloc, str);
     }
 
-    const res = try std.ChildProcess.exec(.{
+    const res = try std.ChildProcess.run(.{
         .allocator = vm.alloc,
         .argv = buf.items,
         .max_output_bytes = 1024 * 1024 * 10,

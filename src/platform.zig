@@ -120,7 +120,7 @@ fn getPathXdg(allocator: std.mem.Allocator, arena: *std.heap.ArenaAllocator, fol
                     return error.ParseError;
                 }
 
-                var subdir = line[start..end];
+                const subdir = line[start..end];
 
                 env_opt = try std.mem.concatWithSentinel(arena.allocator(), u8, &[_][]const u8{ home, subdir }, 0);
                 break;
@@ -217,7 +217,7 @@ const XdgFolderSpec = struct {
 
 test "query each known folders" {
     inline for (std.meta.fields(KnownFolder)) |fld| {
-        var path_or_null = try getPath(std.testing.allocator, @field(KnownFolder, fld.name));
+        const path_or_null = try getPath(std.testing.allocator, @field(KnownFolder, fld.name));
         if (path_or_null) |path| {
             // TODO: Remove later
             // std.debug.print("{s} => '{s}'\n", .{ fld.name, path });

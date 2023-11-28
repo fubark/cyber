@@ -1067,7 +1067,7 @@ fn genCallObjSymUnOp(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeI
 
     const childIdx = c.irAdvanceExpr(idx, .preCallObjSymUnOp);
 
-    var temp = try c.rega.consumeNextTemp();
+    const temp = try c.rega.consumeNextTemp();
     const childv = try genExpr(c, childIdx, RegisterCstr.exact(temp));
 
     const mgId = try getUnMGID(c, data.op);
@@ -2015,7 +2015,7 @@ fn beginCall(c: *Chunk, cstr: RegisterCstr, hasCalleeValue: bool) !CallInst {
     }
 
     // Compute the number of preludes to be unwinded after the call inst.
-    var numPreludeTemps = c.rega.nextTemp - tempStart;
+    const numPreludeTemps = c.rega.nextTemp - tempStart;
     var finalDst: ?RegisterCstr = null;
     switch (cstr.type) {
         .local => {
@@ -2509,12 +2509,12 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     var condIdx = c.irAdvanceStmt(idx, .ifStmt);
     var condNodeId = c.irGetNode(condIdx);
+
     var condv = try genExpr(c, condIdx, RegisterCstr.simple);
 
     var prevCaseMissJump = try c.pushEmptyJumpNotCond(condv.local);
 
     // ARC cleanup for true case.
-    log.tracev("unwind if cond", .{});
     if (unwindAndFreeTemp(c, condv)) {
         try pushRelease(c, condv.local, condNodeId);
     }

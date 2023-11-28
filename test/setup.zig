@@ -355,7 +355,7 @@ pub fn eqUserError(alloc: std.mem.Allocator, act: []const u8, expTmpl: []const u
     var curTmpl = expTmpl;
     while (true) {
         var found = false;
-        var pos: usize = 0;
+        const pos: usize = 0;
         if (!cy.isWasm) {
             if (std.mem.indexOfPos(u8, curTmpl, pos, "@AbsPath(")) |idx| {
                 if (std.mem.indexOfScalarPos(u8, curTmpl, idx, ')')) |endIdx| {

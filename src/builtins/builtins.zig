@@ -564,7 +564,7 @@ fn genNodeValue(vm: *cy.VM, parser: *const cy.Parser, ast: cy.ast.Source, nodeId
             try vm.mapSet(map, try vm.retainOrAllocAstring("ret"), ret);
         },
         .funcParam => {
-            var name = cy.parser.getNodeString(parser, node.head.funcParam.name);
+            const name = cy.parser.getNodeString(parser, node.head.funcParam.name);
             try vm.mapSet(map, try vm.retainOrAllocAstring("name"), try vm.allocStringInternOrArray(name));
 
             const typeSpec = try genTypeSpecString(vm, parser, node.head.funcParam.typeSpecHead);
@@ -582,7 +582,7 @@ fn genDeclEntry(vm: *cy.VM, parser: *const cy.Parser, ast: cy.ast.Source, decl: 
     const entry = entryv.castHeapObject(*cy.heap.Map);
     try vm.mapSet(entry, try vm.retainOrAllocAstring("type"), try vm.retainOrAllocAstring(@tagName(decl.declT)));
     var name: []const u8 = undefined;
-    var node = nodes[decl.nodeId];
+    const node = nodes[decl.nodeId];
     switch (decl.declT) {
         .variable => {
             const varSpec = nodes[node.head.staticDecl.varSpec];
@@ -1092,7 +1092,7 @@ fn arrayFmt(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) 
 
         var buf: std.ArrayListUnmanaged(u8) = .{};
         defer buf.deinit(vm.alloc);
-        var w = buf.writer(vm.alloc);
+        const w = buf.writer(vm.alloc);
         for (arr) |byte| {
             try std.fmt.formatInt(byte, base, .lower, .{ .width = width, .fill = '0' }, w);
         }
@@ -1177,7 +1177,7 @@ fn arrayRepeat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
         return vm.prepThrowError(.InvalidArgument);
     }
 
-    var un: u32 = @intCast(n);
+    const un: u32 = @intCast(n);
     const len = un * slice.len;
     if (un > 1 and len > 0) {
         const new = try vm.allocUnsetArrayObject(len);

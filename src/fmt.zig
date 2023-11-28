@@ -371,7 +371,7 @@ pub fn allocFormat(alloc: std.mem.Allocator, fmt: []const u8, vals: []const FmtV
     @setCold(true);
     var buf: std.ArrayListUnmanaged(u8) = .{};
     defer buf.deinit(alloc);
-    var w = buf.writer(alloc);
+    const w = buf.writer(alloc);
     try format(w, fmt, vals);
     return buf.toOwnedSlice(alloc);
 }

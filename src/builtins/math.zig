@@ -35,7 +35,7 @@ const vars = [_]NameVar{
     .{"Root.ln2", Value.initF64(std.math.ln2)},
     .{"Root.maxSafeInt", Value.initF64(9007199254740991)},
     .{"Root.minSafeInt", Value.initF64(-9007199254740991)},
-    .{"Root.nan", Value.initF64(std.math.nan_f64)},
+    .{"Root.nan", Value.initF64(std.math.nan(f64))},
     .{"Root.neginf", Value.initF64(-std.math.inf(f64))},
     .{"Root.pi", Value.initF64(std.math.pi)},
     .{"Root.sqrt1_2", Value.initF64(std.math.sqrt1_2)},
@@ -86,7 +86,7 @@ const funcs = [_]NameFunc{
 
 /// Returns the absolute value of x.
 pub fn abs(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(@fabs(args[0].asF64()));
+    return Value.initF64(@abs(args[0].asF64()));
 }
 
 /// Returns the arccosine of x.

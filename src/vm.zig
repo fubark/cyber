@@ -4562,12 +4562,14 @@ comptime {
 const DummyCyclableNode = extern struct {
     prev: ?*cy.heap.DListNode align(@alignOf(HeapObject)), // Ensure same alignment as a heap object.
     next: ?*cy.heap.DListNode,
+    len: if (cy.Malloc == .zig) u64 else void,
     typeId: u32,
 };
 pub var dummyCyclableHead = DummyCyclableNode{
     .prev = null,
     .next = null,
     // This will be marked automatically before sweep, so it's never considered as a cyc object.
+    .len = if (cy.Malloc == .zig) 0 else {},
     .typeId = vmc.GC_MARK_MASK | bt.None,
 };
 

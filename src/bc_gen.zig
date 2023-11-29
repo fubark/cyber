@@ -2514,7 +2514,6 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     var prevCaseMissJump = try c.pushEmptyJumpNotCond(condv.local);
 
     // ARC cleanup for true case.
-    log.tracev("unwind if cond", .{});
     if (unwindAndFreeTemp(c, condv)) {
         try pushRelease(c, condv.local, condNodeId);
     }

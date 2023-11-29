@@ -496,7 +496,7 @@ pub fn repeat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
         return prepareThrowSymbol(vm, .InvalidArgument);
     }
 
-    const un: u32 = @intCast(n);
+    var un: u32 = @intCast(n);
     const len = un * str.len;
     if (un > 1 and len > 0) {
         var new: *cy.HeapObject = undefined;

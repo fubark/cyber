@@ -335,7 +335,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 }
             }
 
-            const irIdx = try c.irPushStmt(.opSet, nodeId, {});
+            const irIdx = try c.irPushStmt(.opSet, nodeId, .{ .op = op });
 
             const leftId = node.head.opAssignStmt.left;
             try assignStmt(c, nodeId, leftId, nodeId, .{ .rhsOpAssignBinExpr = true });
@@ -1862,7 +1862,7 @@ pub fn pushBlock(self: *cy.Chunk, func: ?*cy.Func) !BlockId {
         nodeId = self.parserAstRootId;
     }
 
-    const new = Block.init(nodeId, func, @intCast(self.semaSubBlocks.items.len), isStaticFuncBlock, @intCast(self.varStack.items.len));
+    var new = Block.init(nodeId, func, @intCast(self.semaSubBlocks.items.len), isStaticFuncBlock, @intCast(self.varStack.items.len));
     const idx = self.semaBlocks.items.len;
     try self.semaBlocks.append(self.alloc, new);
     try pushSubBlock(self, nodeId);
@@ -2258,7 +2258,7 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool, nodeId:
         if (res.isObjectField) {
             const parentBlock = &self.semaBlocks.items[res.blockIdx];
             const selfId = parentBlock.nameToVar.get("self").?.varId;
-            const resVarId = res.varId;
+            var resVarId = res.varId;
             const selfVar = &self.varStack.items[selfId];
             if (!selfVar.inner.local.isParamCopied) {
                 selfVar.inner.local.isParamCopied = true;
@@ -2609,7 +2609,7 @@ pub const ChunkExt = struct {
         const irIdx = try c.irPushEmptyExpr(.switchCase, nodeId);
 
         if (numConds > 0) {
-            const irCondsIdx = try c.irPushEmptyArray(u32, numConds);
+            var irCondsIdx = try c.irPushEmptyArray(u32, numConds);
             var condId = case.head.caseBlock.condHead;
             var i: u32 = 0;
             while (condId != cy.NullId) {
@@ -2677,7 +2677,7 @@ pub const ChunkExt = struct {
 
         var entryId = initializer.head.recordLiteral.argHead;
         while (entryId != cy.NullId) {
-            const entry = c.nodes[entryId];
+            var entry = c.nodes[entryId];
 
             const fieldN = c.nodes[entry.head.keyValue.left];
             const fieldName = c.getNodeString(fieldN);
@@ -2704,7 +2704,7 @@ pub const ChunkExt = struct {
                 c.irSetArrayItem(irArgsIdx, u32, i, arg.irIdx);
                 try c.typeStack.append(c.alloc, @bitCast(arg.type));
             } else {
-                const preferT = if (fieldT == bt.Dynamic) bt.Any else fieldT;
+                var preferT = if (fieldT == bt.Dynamic) bt.Any else fieldT;
 
                 const arg = try c.semaExprPrefer(item.nodeId, preferT);
                 c.irSetArrayItem(irArgsIdx, u32, i, arg.irIdx);
@@ -3099,7 +3099,7 @@ pub const ChunkExt = struct {
                 var argId = node.head.arrayLiteral.argHead;
                 var i: u32 = 0;
                 while (argId != cy.NullId) {
-                    const arg = c.nodes[argId];
+                    var arg = c.nodes[argId];
                     const argRes = try c.semaExpr(argId, .{});
                     c.irSetArrayItem(irArgsIdx, u32, i, argRes.irIdx);
                     argId = arg.next;
@@ -3158,7 +3158,7 @@ pub const ChunkExt = struct {
                 i = 0;
                 curId = node.head.stringTemplate.exprHead;
                 while (curId != cy.NullId) {
-                    const exprN = c.nodes[curId];
+                    var exprN = c.nodes[curId];
                     const argRes = try c.semaExpr(curId, .{});
                     c.irSetArrayItem(irArgsIdx, u32, i, argRes.irIdx);
                     curId = exprN.next;
@@ -3667,7 +3667,7 @@ pub const ChunkExt = struct {
             return error.Unexpected;
         }
 
-        const left = c.nodes[node.head.accessExpr.left];
+        var left = c.nodes[node.head.accessExpr.left];
         if (left.node_t == .ident) {
             const name = c.getNodeString(left);
             const vres = try getOrLookupVar(c, name, true, node.head.accessExpr.left);
@@ -4043,13 +4043,13 @@ pub const Sema = struct {
             if (ctype.dynamic) {
                 try w.writeAll("dyn ");
             }
-            const name = s.getTypeName(ctype.id);
+            var name = s.getTypeName(ctype.id);
             try w.writeAll(name);
         } else {
             if (ctype.dynamic) {
                 try w.writeAll("dynamic");
             } else {
-                const name = s.getTypeName(ctype.id);
+                var name = s.getTypeName(ctype.id);
                 try w.writeAll(name);
             }
         }
@@ -4072,7 +4072,7 @@ pub const Sema = struct {
         }
         try w.writeAll(") ");
 
-        const name = s.getTypeName(ret);
+        var name = s.getTypeName(ret);
         try w.writeAll(name);
 
         return fbuf.getWritten();
@@ -4126,7 +4126,7 @@ pub const Sema = struct {
         }
         try w.writeAll(") ");
 
-        const name = m.getTypeName(ret);
+        var name = m.getTypeName(ret);
         try w.writeAll(name);
     }
 

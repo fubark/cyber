@@ -1359,7 +1359,7 @@ pub const VM = struct {
     /// String is guaranteed to be valid UTF-8.
     pub fn getOrBufPrintValueStr(self: *const VM, buf: []u8, val: Value) linksection(cy.StdSection) ![]const u8 {
         var fbuf = std.io.fixedBufferStream(buf);
-        const w = fbuf.writer();
+        var w = fbuf.writer();
 
         if (val.isString()) {
             return val.asString();
@@ -1371,7 +1371,7 @@ pub const VM = struct {
 
     pub fn getOrBufPrintValueStr2(self: *const VM, buf: []u8, val: Value, outCharLen: *u32) linksection(cy.StdSection) ![]const u8 {
         var fbuf = std.io.fixedBufferStream(buf);
-        const w = fbuf.writer();
+        var w = fbuf.writer();
 
         if (val.isString()) {
             return val.asString2(outCharLen);
@@ -4562,14 +4562,12 @@ comptime {
 const DummyCyclableNode = extern struct {
     prev: ?*cy.heap.DListNode align(@alignOf(HeapObject)), // Ensure same alignment as a heap object.
     next: ?*cy.heap.DListNode,
-    len: if (cy.Malloc == .zig) u64 else void,
     typeId: u32,
 };
 pub var dummyCyclableHead = DummyCyclableNode{
     .prev = null,
     .next = null,
     // This will be marked automatically before sweep, so it's never considered as a cyc object.
-    .len = if (cy.Malloc == .zig) 0 else {},
     .typeId = vmc.GC_MARK_MASK | bt.None,
 };
 

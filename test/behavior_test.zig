@@ -874,7 +874,7 @@ test "Imports." {
     defer run.destroy();
 
     // Import missing file.
-    const res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
+    var res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'test_mods/missing.cy'
         \\var b = a
     );
@@ -1000,7 +1000,7 @@ test "os module" {
         \\os.endian
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         const val = try res;
-        if (builtin.cpu.arch.endian() == .little) {
+        if (builtin.cpu.arch.endian() == .Little) {
             try t.eq(val.asSymbolId(), @intFromEnum(bindings.Symbol.little));
         } else {
             try t.eq(val.asSymbolId(), @intFromEnum(bindings.Symbol.big));
@@ -1606,12 +1606,12 @@ test "must()" {
         \\t.eq(must(a), 123)
     );
 
-    const res = run.evalExt(.{ .silent = true },
+    var res = run.evalExt(.{ .silent = true },
         \\var a = error.boom
         \\must(a)
     );
     try t.expectError(res, error.Panic);
-    const trace = run.getStackTrace();
+    var trace = run.getStackTrace();
     try run.assertPanicMsg("error.boom");
     try t.eq(trace.frames.len, 1);
     try eqStackFrame(trace.frames[0], .{
@@ -1627,12 +1627,12 @@ test "panic()" {
     const run = VMrunner.create();
     defer run.destroy();
 
-    const res = run.evalExt(.{ .silent = true },
+    var res = run.evalExt(.{ .silent = true },
         \\var a = 123
         \\1 + panic(.boom)
     );
     try t.expectError(res, error.Panic);
-    const trace = run.getStackTrace();
+    var trace = run.getStackTrace();
     try run.assertPanicMsg(".boom");
     try t.eq(trace.frames.len, 1);
     try eqStackFrame(trace.frames[0], .{

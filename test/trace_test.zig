@@ -25,7 +25,7 @@ test "ARC." {
         \\var b = a
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetains, 2);
         try t.eq(trace.numReleases, 2);
     }}.func);
@@ -36,7 +36,7 @@ test "ARC." {
         \\var b = true ? a else 234
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetains, 2);
         try t.eq(trace.numReleases, 2);
     }}.func);
@@ -47,7 +47,7 @@ test "ARC." {
         \\return
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetains, 1);
         try t.eq(trace.numReleases, 1);
     }}.func);
@@ -57,7 +57,7 @@ test "ARC." {
         \\var a = [1, 2]
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetains, 1);
         try t.eq(trace.numReleases, 1);
     }}.func);
@@ -72,7 +72,7 @@ test "ARC." {
         \\t.eq(s.value[0], 123)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetains, 4);
         try t.eq(trace.numReleases, 4);
     }}.func);
@@ -84,7 +84,7 @@ test "ARC." {
         \\1 + [S value: 123].value
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         const val = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(val.asInteger(), 124);
         try t.eq(trace.numRetains, 1);
         try t.eq(trace.numReleases, 1);
@@ -96,7 +96,7 @@ test "ARC." {
         \\var b = a.foo
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetains, 4);
         try t.eq(trace.numReleases, 4);
     }}.func);
@@ -107,7 +107,7 @@ test "ARC." {
         \\var b = false ? 234 else a
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetains, 2);
         try t.eq(trace.numReleases, 2);
     }}.func);
@@ -122,7 +122,7 @@ test "ARC for static variable declarations." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
         run.vm.internal().deinitRtObjects();
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetainAttempts, 3);
         try t.eq(trace.numRetains, 2);
     }}.func);
@@ -138,7 +138,7 @@ test "ARC assignments." {
         \\t.eq(a[0], 234)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetainAttempts, 3);
         try t.eq(trace.numReleaseAttempts, 4);
         try t.eq(trace.numRetains, 1);
@@ -154,7 +154,7 @@ test "ARC assignments." {
         \\t.eq(typesym(a[0]), .map)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetainAttempts, 4);
         try t.eq(trace.numReleaseAttempts, 5);
         try t.eq(trace.numRetains, 4);
@@ -171,7 +171,7 @@ test "ARC for passing call args." {
         \\t.eq(foo([1]), 1)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetains, 1);
         try t.eq(trace.numReleases, 1);
     }}.func);
@@ -190,7 +190,7 @@ test "ARC for function return values." {
         \\t.eq(s.value, 123)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetains, 2);
         try t.eq(trace.numReleases, 2);
     }}.func);
@@ -205,7 +205,7 @@ test "ARC for function return values." {
         \\return
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetains, 1);
         try t.eq(trace.numReleases, 1);
     }}.func);
@@ -231,7 +231,7 @@ test "ARC on temp locals in expressions." {
         const val = try res;
         try run.valueIsString(val, "Hello World 123");
         run.vm.release(val);
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetains, 2);
         try t.eq(trace.numReleases, 2);
     }}.func);
@@ -245,7 +245,7 @@ test "ARC in loops." {
         \\  a = 'abc{123}'   -- copyReleaseDst
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetains, 3);
         try t.eq(trace.numReleases, 3);
     }}.func);
@@ -258,7 +258,7 @@ test "ARC in loops." {
         \\    a = 'abc{123}'    -- copyReleaseDst
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetains, 3);
         try t.eq(trace.numReleases, 3);
     }}.func);
@@ -272,7 +272,7 @@ test "ARC in loops." {
         \\  a = [S foo: 123].foo
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetainAttempts, 6);
         try t.eq(trace.numRetains, 3);
         try t.eq(trace.numReleaseAttempts, 10);
@@ -285,7 +285,7 @@ test "ARC in loops." {
         \\  var a = 'abc{123}'
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetains, 3);
         // The inner set inst should be a releaseSet.
         try t.eq(trace.numReleases, 3);
@@ -301,7 +301,7 @@ test "ARC in loops." {
         \\  foo(it)             -- +0a +0
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetainAttempts, 5);
         try t.eq(trace.numRetains, 3);
     }}.func);
@@ -314,7 +314,7 @@ test "ARC in loops." {
         \\                                --        -8
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        const trace = run.getTrace();
+        var trace = run.getTrace();
         try t.eq(trace.numRetainAttempts, 9);
         try t.eq(trace.numRetains, 9);
         try t.eq(trace.numReleases, 9);

@@ -332,7 +332,7 @@ fn markMainStackRoots(vm: *cy.VM) !void {
         const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
         const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
         const locals = sym.getLocals();
-        log.tracev("mark frame: pc={} {s} fp={} {}, locals={}..{}", .{pcOff, @tagName(vm.ops[pcOff].opcode()), fpOff, tempIdx, locals.start, locals.end});
+        log.tracev("mark frame: pc={} {} fp={} {}, locals={}..{}", .{pcOff, vm.ops[pcOff].opcode(), fpOff, tempIdx, locals.start, locals.end});
 
         if (tempIdx != cy.NullId) {
             const fp = vm.stack.ptr + fpOff;

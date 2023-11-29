@@ -244,7 +244,7 @@ pub const VMcompiler = struct {
         // Main chunk.
         const mainSym = try self.sema.createChunkSym();
         const nextId: u32 = @intCast(self.chunks.items.len);
-        const mainChunk = try self.alloc.create(cy.Chunk);
+        var mainChunk = try self.alloc.create(cy.Chunk);
         mainChunk.* = try cy.Chunk.init(self, nextId, finalSrcUri, srcDup, mainSym);
         mainSym.mod.chunk = mainChunk;
         mainSym.head.namePtr = finalSrcUri.ptr;
@@ -778,7 +778,7 @@ fn genBytecode(c: *VMcompiler) !void {
     }
 
     // Merge inst and const buffers.
-    const reqLen = c.buf.ops.items.len + c.buf.consts.items.len * @sizeOf(cy.Value) + @alignOf(cy.Value) - 1;
+    var reqLen = c.buf.ops.items.len + c.buf.consts.items.len * @sizeOf(cy.Value) + @alignOf(cy.Value) - 1;
     if (c.buf.ops.capacity < reqLen) {
         try c.buf.ops.ensureTotalCapacityPrecise(c.alloc, reqLen);
     }

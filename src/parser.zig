@@ -320,7 +320,7 @@ pub const Parser = struct {
         self.cur_indent = reqIndent;
         defer self.cur_indent = prevIndent;
 
-        const first = try self.parseStatement();
+        var first = try self.parseStatement();
         var last = first;
 
         // Parse body statements until indentation goes back to at least the previous indent.
@@ -753,7 +753,7 @@ pub const Parser = struct {
         self.cur_indent = reqIndent;
         defer self.cur_indent = prevIndent;
 
-        const firstMember = try self.parseEnumMember();
+        var firstMember = try self.parseEnumMember();
         var lastMember = firstMember;
         var numMembers: u32 = 1;
 
@@ -835,7 +835,7 @@ pub const Parser = struct {
         self.cur_indent = reqIndent;
         defer self.cur_indent = prevIndent;
 
-        const firstField = (try self.parseObjectField()) orelse NullId;
+        var firstField = (try self.parseObjectField()) orelse NullId;
         var numFields: u32 = 1;
         if (firstField != NullId) {
             var lastField = firstField;
@@ -1056,7 +1056,7 @@ pub const Parser = struct {
             return self.reportParseError("Expected case or else block.", &.{});
         }
 
-        const firstCase = (try self.parseCaseBlock()) orelse {
+        var firstCase = (try self.parseCaseBlock()) orelse {
             return self.reportParseError("Expected case or else block.", &.{});
         };
         var lastCase = firstCase;
@@ -1154,7 +1154,7 @@ pub const Parser = struct {
 
         const ifStmt = try self.pushNode(.ifStmt, start);
 
-        const res = try self.parseSingleOrIndentedBodyStmts();
+        var res = try self.parseSingleOrIndentedBodyStmts();
 
         var numElseBlocks: u32 = 0;
         const elseBlock = try self.parseElseStmt(&numElseBlocks);
@@ -1686,7 +1686,7 @@ pub const Parser = struct {
     }
 
     fn consumeNewLineOrEnd(self: *Parser) !void {
-        const tag = self.peekToken().tag();
+        var tag = self.peekToken().tag();
         if (tag == .new_line) {
             self.advanceToken();
             return;
@@ -1878,7 +1878,7 @@ pub const Parser = struct {
         const first = arg;
         var last: NodeId = first;
         var numArgs: u32 = 1;
-        const isRecord: bool = isRecordArg;
+        var isRecord: bool = isRecordArg;
 
         while (true) {
             self.consumeWhitespaceTokens();
@@ -2070,7 +2070,7 @@ pub const Parser = struct {
                 const name = try self.pushIdentNode(start);
                 _ = self.consumeToken();
                 _ = self.consumeToken();
-                const arg = (try self.parseExpr(.{})) orelse {
+                var arg = (try self.parseExpr(.{})) orelse {
                     return self.reportParseError("Expected arg expression.", &.{});
                 };
                 const named_arg = try self.pushNode(.named_arg, start);
@@ -3978,7 +3978,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 '\t' => {
                     // Consume whitespace.
                     while (!isAtEndChar(p)) {
-                        const ch2 = peekChar(p);
+                        var ch2 = peekChar(p);
                         switch (ch2) {
                             ' ',
                             '\r',

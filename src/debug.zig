@@ -512,7 +512,7 @@ fn getOpCodeAtPc(ops: []const cy.Inst, atPc: u32) ?cy.OpCode {
 /// When `optPcContext` is non null, it will dump a trace at `optPcContext` and the surrounding bytecode with extra details.
 pub fn dumpBytecode(vm: *cy.VM, optPcContext: ?u32) !void {
     var pcOffset: u32 = 0;
-    const opsLen = vm.compiler.buf.ops.items.len;
+    var opsLen = vm.compiler.buf.ops.items.len;
     var pc = vm.compiler.buf.ops.items.ptr;
     var instIdx: u32 = 0;
     const debugTable = vm.compiler.buf.debugTable.items;

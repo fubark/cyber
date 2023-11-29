@@ -87,7 +87,7 @@ pub const StdHttpClient = struct {
     }
 
     fn startRequest(_: *anyopaque, req: *Request) anyerror!void {
-        try req.send(.{});
+        try req.start();
     }
 
     fn waitRequest(_: *anyopaque, req: *Request) anyerror!void {
@@ -130,7 +130,7 @@ pub const MockHttpClient = struct {
             return err;
         } else {
             self.retBodyIdx = 0;
-            const options: std.http.Client.RequestOptions = .{};
+            const options: std.http.Client.Options = .{};
             var req = Request{
                 .uri = uri,
                 .client = &self.client,
@@ -139,7 +139,6 @@ pub const MockHttpClient = struct {
                 .headers = headers,
                 .method = method,
                 .handle_redirects = undefined,
-                .handle_continue = undefined,
                 .arena = undefined,
                 .response = .{
                     .status = undefined,
@@ -227,7 +226,7 @@ pub fn get(alloc: std.mem.Allocator, client: HttpClient, url: []const u8) !Respo
 }
 
 /// std/http/Client.request
-fn stdRequest(client: *std.http.Client, method: std.http.Method, uri: std.Uri, headers: std.http.Headers, options: std.http.Client.RequestOptions) !std.http.Client.Request {
+fn stdRequest(client: *std.http.Client, method: std.http.Method, uri: std.Uri, headers: std.http.Headers, options: std.http.Client.Options) !std.http.Client.Request {
     const protocol = std.http.Client.protocol_map.get(uri.scheme) orelse return error.UnsupportedUrlScheme;
 
     const port: u16 = uri.port orelse switch (protocol) {
@@ -258,7 +257,6 @@ fn stdRequest(client: *std.http.Client, method: std.http.Method, uri: std.Uri, h
         .version = options.version,
         .redirects_left = options.max_redirects,
         .handle_redirects = options.handle_redirects,
-        .handle_continue = options.handle_continue,
         .response = .{
             .status = undefined,
             .reason = undefined,

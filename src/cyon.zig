@@ -640,7 +640,7 @@ const TestMapItem = struct {
 };
 
 test "encode" {
-    const root = TestRoot{
+    var root = TestRoot{
         .name = "project",
         .list = &.{
             .{ .field = 1 },

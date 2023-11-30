@@ -2412,6 +2412,14 @@ test "Typed local variable." {
         \\var a float = 123 
         \\a = 234
     );
+
+    // `none` inferred as `any` for declaration.
+    try evalPass(.{},
+        \\var a = none
+        \\a = 234
+        \\a = none
+        \\a = []
+    );
 }
 
 test "Local variable declaration." {

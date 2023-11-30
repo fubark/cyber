@@ -1287,13 +1287,19 @@ fn localDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const right = try c.semaExprCstr(node.head.localDecl.right, typeId);
 
     if (inferType) {
-        const rightT = right.type.toStaticDeclType();
-        c.varStack.items[varId].declT = rightT;
-        c.varStack.items[varId].vtype.id = right.type.id;
+        var declType = right.type.toStaticDeclType();
+        var recentType = right.type.id;
+        if (declType == bt.None) {
+            declType = bt.Any;
+            recentType = bt.Any;
+        }
+
+        c.varStack.items[varId].declT = declType;
+        c.varStack.items[varId].vtype.id = @intCast(recentType);
         // Patch IR.
         const irIdx = c.varStack.items[varId].inner.local.declIrStart;
         var data = c.irGetStmtData(irIdx, .declareLocal);
-        data.declType = rightT;
+        data.declType = declType;
         c.irSetStmtData(irIdx, .declareLocal, data);
     } else if (typeId == bt.Dynamic) {
         // Update recent static type.

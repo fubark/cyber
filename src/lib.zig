@@ -45,12 +45,16 @@ export fn csAlloc(vm: *cy.UserVM, size: usize) [*]const align(8) u8 {
     return slice.ptr;
 }
 
-export fn csFree(vm: *cy.UserVM, ptr: [*]const align(8) u8, size: usize) void {
-    vm.allocator().free(ptr[0..size]);
+export fn csFree(vm: *cy.VM, ptr: [*]const align(8) u8, size: usize) void {
+    vm.alloc.free(ptr[0..size]);
 }
 
-export fn csFreeStr(vm: *cy.UserVM, str: c.Str) void {
-    vm.allocator().free(c.strSlice(str));
+export fn csFreeStr(vm: *cy.VM, str: c.Str) void {
+    vm.alloc.free(c.strSlice(str));
+}
+
+export fn csFreeStrZ(vm: *cy.VM, str: [*:0]const u8) void {
+    vm.alloc.free(std.mem.sliceTo(str, 0));
 }
 
 export fn csEval(vm: *cy.UserVM, src: c.Str, outVal: *cy.Value) c.ResultCode {
@@ -115,33 +119,32 @@ test "csValidate()" {
 
 var tempBuf: [1024]u8 align(8) = undefined;
 
-export fn csNewLastErrorReport(vm: *cy.UserVM) c.Str {
-    const report = vm.allocLastErrorReport() catch fatal();
-    return c.initStr(report);
+export fn csNewLastErrorReport(vm: *cy.VM) [*:0]const u8 {
+    return vm.allocLastErrorReport() catch fatal();
 }
 
-export fn csGetResolver(vm: *cy.UserVM) c.ResolverFn {
-    return @ptrCast(vm.getModuleResolver());
+export fn csGetResolver(vm: *cy.VM) c.ResolverFn {
+    return vm.compiler.moduleResolver;
 }
 
-export fn csSetResolver(vm: *cy.UserVM, resolver: c.ResolverFn) void {
-    vm.setModuleResolver(@ptrCast(resolver));
+export fn csSetResolver(vm: *cy.VM, resolver: c.ResolverFn) void {
+    vm.compiler.moduleResolver = resolver;
 }
 
-export fn csGetModuleLoader(vm: *cy.UserVM) c.ModuleLoaderFn {
-    return @ptrCast(vm.getModuleLoader());
+export fn csGetModuleLoader(vm: *cy.VM) c.ModuleLoaderFn {
+    return vm.compiler.moduleLoader;
 }
 
-export fn csSetModuleLoader(vm: *cy.UserVM, loader: c.ModuleLoaderFn) void {
-    vm.setModuleLoader(@ptrCast(loader));
+export fn csSetModuleLoader(vm: *cy.VM, loader: c.ModuleLoaderFn) void {
+    vm.compiler.moduleLoader = loader;
 }
 
-export fn csGetPrint(vm: *cy.UserVM) c.PrintFn {
-    return @ptrCast(vm.getPrint());
+export fn csGetPrint(vm: *cy.VM) c.PrintFn {
+    return vm.print;
 }
 
-export fn csSetPrint(vm: *cy.UserVM, print: c.PrintFn) void {
-    vm.setPrint(@ptrCast(print));
+export fn csSetPrint(vm: *cy.VM, print: c.PrintFn) void {
+    vm.print = print;
 }
 
 export fn csPerformGC(vm: *cy.UserVM) c.GCResult {
@@ -209,12 +212,12 @@ export fn csRetain(vm: *cy.UserVM, val: Value) void {
     vm.retain(val);
 }
 
-export fn csGetUserData(vm: *cy.UserVM) ?*anyopaque {
-    return vm.getUserData();
+export fn csGetUserData(vm: *cy.VM) ?*anyopaque {
+    return vm.userData;
 }
 
-export fn csSetUserData(vm: *cy.UserVM, userData: ?*anyopaque) void {
-    vm.setUserData(userData);
+export fn csSetUserData(vm: *cy.VM, userData: ?*anyopaque) void {
+    vm.userData = userData;
 }
 
 export fn csNone() Value {

@@ -550,22 +550,22 @@ test "Custom modules." {
     defer run.destroy();
 
     var count: usize = 0;
-    run.vm.setUserData(&count);
+    c.setUserData(@ptrCast(run.vm), &count);
 
-    run.vm.setModuleResolver(cy.vm_compiler.defaultModuleResolver);
+    c.setResolver(@ptrCast(run.vm), cy.vm_compiler.defaultModuleResolver);
     const S = struct {
-        fn test1(vm: *cy.UserVM, _: [*]const cy.Value, _: u8) cy.Value {
-            const count_ = cy.ptrAlignCast(*usize, vm.getUserData());
+        fn test1(vm: *cy.VM, _: [*]const cy.Value, _: u8) cy.Value {
+            const count_ = cy.ptrAlignCast(*usize, vm.userData);
             count_.* += 1;
             return cy.Value.None;
         }
-        fn test2(vm: *cy.UserVM, _: [*]const cy.Value, _: u8) cy.Value {
-            const count_ = cy.ptrAlignCast(*usize, vm.getUserData());
+        fn test2(vm: *cy.VM, _: [*]const cy.Value, _: u8) cy.Value {
+            const count_ = cy.ptrAlignCast(*usize, vm.userData);
             count_.* += 2;
             return cy.Value.None;
         }
-        fn test3(vm: *cy.UserVM, _: [*]const cy.Value, _: u8) cy.Value {
-            const count_ = cy.ptrAlignCast(*usize, vm.getUserData());
+        fn test3(vm: *cy.VM, _: [*]const cy.Value, _: u8) cy.Value {
+            const count_ = cy.ptrAlignCast(*usize, vm.userData);
             count_.* += 3;
             return cy.Value.None;
         }
@@ -609,7 +609,7 @@ test "Custom modules." {
             return false;
         }
     };
-    run.vm.setModuleLoader(@ptrCast(&S.loader));
+    c.setModuleLoader(@ptrCast(run.vm), @ptrCast(&S.loader));
 
     const src1 = try t.alloc.dupe(u8, 
         \\import m 'mod1'
@@ -644,10 +644,10 @@ test "Multiple evals persisting state." {
 
     var global = run.vm.allocEmptyMap() catch fatal();
     defer run.vm.release(global);
-    run.vm.setUserData(&global);
+    c.setUserData(@ptrCast(run.vm), &global);
 
-    run.vm.setModuleResolver(cy.vm_compiler.defaultModuleResolver);
-    run.vm.setModuleLoader(struct {
+    c.setResolver(@ptrCast(run.vm), cy.vm_compiler.defaultModuleResolver);
+    c.setModuleLoader(@ptrCast(run.vm), struct {
         fn onLoad(vm_: ?*c.VM, mod: c.ApiModule) callconv(.C) void {
             const vm: *cy.VM = @ptrCast(@alignCast(vm_));
             const sym: *cy.Sym = @ptrCast(@alignCast(mod.sym));
@@ -725,7 +725,7 @@ test "Debug labels." {
         \\a = 1
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         _ = try res;
-        const vm = run.vm.internal();
+        const vm = run.vm;
         for (vm.compiler.buf.debugMarkers.items) |marker| {
             if (marker.pc == 3) {
                 try t.eqStr(marker.getLabelName(), "MyLabel");
@@ -815,13 +815,13 @@ test "Import http spec." {
     try run.resetEnv();
     var client = http.MockHttpClient.init(t.alloc);
     client.retReqError = error.UnknownHostName;
-    run.vm.internal().httpClient = client.iface();
+    run.vm.httpClient = client.iface();
     var res = run.evalExtNoReset(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'https://doesnotexist123.com/'
         \\b = a
     );
     try t.expectError(res, error.CompileError);
-    var err = try run.vm.allocLastUserCompileError();
+    var err = try cy.debug.allocLastUserCompileError(run.vm);
     try eqUserError(t.alloc, err,
         \\CompileError: Can not connect to `doesnotexist123.com`.
         \\
@@ -835,13 +835,13 @@ test "Import http spec." {
     try run.resetEnv();
     client = http.MockHttpClient.init(t.alloc);
     client.retStatusCode = std.http.Status.not_found;
-    run.vm.internal().httpClient = client.iface();
+    run.vm.httpClient = client.iface();
     res = run.evalExtNoReset(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'https://exists.com/missing'
         \\b = a
     );
     try t.expectError(res, error.CompileError);
-    err = try run.vm.allocLastUserCompileError();
+    err = try cy.debug.allocLastUserCompileError(run.vm);
     try eqUserError(t.alloc, err,
         \\CompileError: Can not load `https://exists.com/missing`. Response code: not_found
         \\
@@ -857,7 +857,7 @@ test "Import http spec." {
     client.retBody =
         \\var Root.foo = 123
         ;
-    run.vm.internal().httpClient = client.iface();
+    run.vm.httpClient = client.iface();
     _ = try run.evalExtNoReset(Config.initFileModules("./test/import_test.cy"),
         \\import a 'https://exists.com/a.cy'
         \\import t 'test'
@@ -870,20 +870,18 @@ test "Imports." {
         return;
     }
 
-    const run = VMrunner.create();
-    defer run.destroy();
-
     // Import missing file.
-    var res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
+    try eval(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'test_mods/missing.cy'
         \\var b = a
-    );
-    try t.expectError(res, error.CompileError);
-    const errMsg = run.vm.getCompileErrorMsg();
-    try t.expect(std.mem.startsWith(u8, errMsg, "Import path does not exist:"));
-    try t.expect(std.mem.indexOf(u8, errMsg, "test/test_mods/missing.cy") != null);
-
-    run.deinit();
+    , struct { fn func(runner: *VMrunner, evalRes: EvalResult) !void {
+        try runner.expectErrorReport(evalRes, error.CompileError,
+            \\CompileError: Import path does not exist: `@AbsPath(test/test_mods/missing.cy)`
+            \\
+            \\in @AbsPath(test/import_test.cy)
+            \\
+        );
+    }}.func);
 
     // TODO: Not needed for @hidden
     // // Using unexported func symbol.
@@ -1253,7 +1251,7 @@ test "Symbols." {
         \\int(n)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         const val = try res;
-        const id = try run.vm.internal().ensureSymbol("Tiger");
+        const id = try run.vm.ensureSymbol("Tiger");
         try t.eq(val.asInteger(), @as(i48, @intCast(id)));
     }}.func);
 }
@@ -1351,7 +1349,7 @@ test "Object fields." {
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         _ = try res;
 
-        const ops = run.vm.internal().ops;
+        const ops = run.vm.ops;
         var pc: u32 = 0;
         while (pc < ops.len) {
             if (@as(cy.OpCode, @enumFromInt(ops[pc].val)) == .objectTypeCheck) {
@@ -1369,7 +1367,7 @@ test "Object fields." {
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         _ = try res;
 
-        const ops = run.vm.internal().ops;
+        const ops = run.vm.ops;
         var pc: u32 = 0;
         while (pc < ops.len) {
             if (@as(cy.OpCode, @enumFromInt(ops[pc].val)) == .objectTypeCheck) {

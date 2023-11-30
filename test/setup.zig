@@ -51,7 +51,7 @@ pub const Config = struct {
 var testVm: cy.VM = undefined;
 
 pub const VMrunner = struct {
-    vm: *cy.UserVM,
+    vm: *cy.VM,
 
     pub fn create() *VMrunner {
         var new = t.alloc.create(VMrunner) catch fatal();
@@ -77,9 +77,9 @@ pub const VMrunner = struct {
     }
 
     pub fn deinitExt(self: *VMrunner, checkGlobalRC: bool) void {
-        self.vm.deinit();
+        self.vm.deinit(false);
         if (checkGlobalRC) {
-            cy.arc.checkGlobalRC(self.vm.internal()) catch cy.panic("unreleased refcount");
+            cy.arc.checkGlobalRC(self.vm) catch cy.panic("unreleased refcount");
         }
     }
 
@@ -100,17 +100,17 @@ pub const VMrunner = struct {
     }
 
     pub fn getTrace(self: *VMrunner) *vmc.TraceInfo {
-        return self.vm.internal().trace;
+        return self.vm.trace;
     }
 
     pub fn assertPanicMsg(self: *VMrunner, exp: []const u8) !void {
         const msg = try self.allocPanicMsg();
-        defer self.vm.allocator().free(msg);
+        defer self.vm.alloc.free(msg);
         try t.eqStr(msg, exp);
     }
 
     fn allocPanicMsg(self: *VMrunner) ![]const u8 {
-        return self.vm.allocPanicMsg();
+        return cy.debug.allocPanicMsg(self.vm);
     }
 
     pub fn expectErrorReport(self: *VMrunner, val: anytype, expErr: UserError, expReport: []const u8) !void {
@@ -196,8 +196,8 @@ pub const VMrunner = struct {
     }
 
     pub fn resetEnv(self: *VMrunner) !void {
-        self.vm.deinit();
-        const rc = self.vm.getGlobalRC();
+        self.vm.deinit(false);
+        const rc = cy.arc.getGlobalRC(self.vm);
         if (rc != 0) {
             log.debug("{} unreleased refcount from previous eval", .{rc});
             return error.UnreleasedObjects;
@@ -279,7 +279,7 @@ pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalR
             t.setLogLevel(.warn);
         }
     }
-    errdefer run.vm.deinit();
+    errdefer run.vm.deinit(false);
     var checkGlobalRC = true;
 
     if (config.silent) {
@@ -316,21 +316,21 @@ pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalR
     }
 
     // Deinit, so global objects from builtins are released.
-    run.vm.internal().deinitRtObjects();
-    run.vm.internal().compiler.deinitModRetained();
+    run.vm.deinitRtObjects();
+    run.vm.compiler.deinitModRetained();
 
     // Run GC after runtime syms are released.
     if (config.cleanupGC) {
-        _ = try cy.arc.performGC(run.vm.internal());
+        _ = try cy.arc.performGC(run.vm);
     }
 
     if (config.checkGlobalRc) {
-        try cy.arc.checkGlobalRC(run.vm.internal());
+        try cy.arc.checkGlobalRC(run.vm);
     }
-    run.vm.deinit();
+    run.vm.deinit(false);
 }
 
-fn printErrorReport(vm: *cy.UserVM, err: anyerror) !void {
+fn printErrorReport(vm: *cy.VM, err: anyerror) !void {
     switch (err) {
         error.Panic,
         error.TokenError,
@@ -351,7 +351,7 @@ pub fn evalPass(config: Config, src: []const u8) !void {
 }
 
 /// relPath does not have to physically exist.
-pub fn eqUserError(alloc: std.mem.Allocator, act: []const u8, expTmpl: []const u8) !void {
+pub fn eqUserError(alloc: std.mem.Allocator, act: [:0]const u8, expTmpl: []const u8) !void {
     defer alloc.free(act);
     var exp: std.ArrayListUnmanaged(u8) = .{};
     defer exp.deinit(alloc);

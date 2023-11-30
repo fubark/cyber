@@ -5,7 +5,7 @@ const bindings = @import("builtins/bindings.zig");
 const os_mod = @import("std/os.zig");
 const test_mod = @import("std/test.zig");
 const cache = @import("cache.zig");
-const cc = @import("clib.zig");
+const c = @import("clib.zig");
 const bt = cy.types.BuiltinTypes;
 const v = cy.fmt.v;
 const log = cy.log.scoped(.cli);
@@ -15,8 +15,8 @@ const builtins = std.ComptimeStringMap(void, .{
     .{"math"},
 });
 
-const stdMods = std.ComptimeStringMap(cc.ModuleLoaderResult, .{
-    .{"os", cc.ModuleLoaderResult{
+const stdMods = std.ComptimeStringMap(c.ModuleLoaderResult, .{
+    .{"os", c.ModuleLoaderResult{
         .src = os_mod.Src,
         .srcLen = os_mod.Src.len,
         .varLoader = os_mod.varLoader,
@@ -27,7 +27,7 @@ const stdMods = std.ComptimeStringMap(cc.ModuleLoaderResult, .{
         .onReceipt = null,
         .onDestroy = null,
     }},
-    .{"test", cc.ModuleLoaderResult{
+    .{"test", c.ModuleLoaderResult{
         .src = test_mod.Src,
         .srcLen = test_mod.Src.len,
         .funcLoader = test_mod.funcLoader,
@@ -40,28 +40,28 @@ const stdMods = std.ComptimeStringMap(cc.ModuleLoaderResult, .{
     }},
 });
 
-pub fn setupVMForCLI(vm: *cy.UserVM) void {
-    vm.setModuleResolver(resolve);
-    vm.setModuleLoader(loader);
-    vm.setPrint(print);
+pub fn setupVMForCLI(vm: *cy.VM) void {
+    c.setResolver(@ptrCast(vm), resolve);
+    c.setModuleLoader(@ptrCast(vm), loader);
+    c.setPrint(@ptrCast(vm), print);
 }
 
-fn print(_: ?*cc.VM, str: cc.Str) callconv(.C) void {
+fn print(_: ?*c.VM, str: c.Str) callconv(.C) void {
     if (cy.isWasmFreestanding) {
         os_mod.hostFileWrite(1, str.buf, str.len);
         os_mod.hostFileWrite(1, "\n", 1);
     } else {
         const w = std.io.getStdOut().writer();
-        const slice = cc.strSlice(str);
+        const slice = c.strSlice(str);
         w.writeAll(slice) catch cy.fatal();
         w.writeByte('\n') catch cy.fatal();
     }
 }
 
-pub fn loader(vm_: ?*cc.VM, spec_: cc.Str, out_: [*c]cc.ModuleLoaderResult) callconv(.C) bool {
+pub fn loader(vm_: ?*c.VM, spec_: c.Str, out_: [*c]c.ModuleLoaderResult) callconv(.C) bool {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const out: *cc.ModuleLoaderResult = out_;
-    const spec = cc.strSlice(spec_);
+    const out: *c.ModuleLoaderResult = out_;
+    const spec = c.strSlice(spec_);
     if (builtins.get(spec) != null) {
         return cy.vm_compiler.defaultModuleLoader(vm_, spec_, out);
     }
@@ -102,16 +102,16 @@ pub fn loader(vm_: ?*cc.VM, spec_: cc.Str, out_: [*c]cc.ModuleLoaderResult) call
     return true;
 }
 
-fn onModuleReceipt(vm_: ?*cc.VM, res_: [*c]cc.ModuleLoaderResult) callconv(.C) void {
+fn onModuleReceipt(vm_: ?*c.VM, res_: [*c]c.ModuleLoaderResult) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const res: *cc.ModuleLoaderResult = res_;
+    const res: *c.ModuleLoaderResult = res_;
     vm.alloc.free(res.src[0..res.srcLen]);
 }
 
-fn resolve(vm_: ?*cc.VM, chunkId: cy.ChunkId, curUri: cc.Str, spec_: cc.Str, res_: [*c]cc.ResolverResult) callconv(.C) bool {
+fn resolve(vm_: ?*c.VM, chunkId: cy.ChunkId, curUri: c.Str, spec_: c.Str, res_: [*c]c.ResolverResult) callconv(.C) bool {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const res: *cc.ResolverResult = res_;
-    const spec = cc.strSlice(spec_);
+    const res: *c.ResolverResult = res_;
+    const spec = c.strSlice(spec_);
     if (builtins.get(spec) != null) {
         res.uri = spec_.buf;
         res.uriLen = spec_.len;
@@ -127,7 +127,7 @@ fn resolve(vm_: ?*cc.VM, chunkId: cy.ChunkId, curUri: cc.Str, spec_: cc.Str, res
         return false;
     }
 
-    const uri = zResolve(@ptrCast(vm), chunkId, cc.strSlice(curUri), spec) catch |err| {
+    const uri = zResolve(@ptrCast(vm), chunkId, c.strSlice(curUri), spec) catch |err| {
         if (err == error.HandledError) {
             return false;
         } else {

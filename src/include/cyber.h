@@ -284,7 +284,7 @@ CsResultCode csEval(CsVM* vm, CsStr src, CsValue* outVal);
 CsResultCode csValidate(CsVM* vm, CsStr src);
 
 /// After receiving an error CsResultCode, this returns the error report. Call `csFreeStr` afterwards.
-CsStr csNewLastErrorReport(CsVM* vm);
+const char* csNewLastErrorReport(CsVM* vm);
 
 // Attach a userdata pointer inside the VM.
 void* csGetUserData(CsVM* vm);
@@ -342,6 +342,7 @@ void* csAlloc(CsVM* vm, size_t size);
 // For all other allocators, use 1 for `len`.
 void csFree(CsVM* vm, void* ptr, size_t len);
 void csFreeStr(CsVM* vm, CsStr str);
+void csFreeStrZ(CsVM* vm, const char* str);
 
 //
 // [ Values ]

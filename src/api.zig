@@ -19,6 +19,7 @@ const bt = cy.types.BuiltinTypes;
 const log = cy.log.scoped(.api);
 
 /// A simplified VM handle.
+/// TODO: Remove
 pub const UserVM = struct {
     dummy: u64 = undefined,
 
@@ -36,38 +37,6 @@ pub const UserVM = struct {
 
     pub inline fn constInternal(self: *const UserVM) *const cy.VM {
         return @ptrCast(self);
-    }
-
-    pub fn getPrint(self: *UserVM) c.PrintFn {
-        return self.internal().print;
-    }
-
-    pub fn setPrint(self: *UserVM, print: c.PrintFn) void {
-        self.internal().print = print;
-    }
-
-    pub fn getModuleLoader(self: *const UserVM) c.ModuleLoaderFn {
-        return self.constInternal().compiler.moduleLoader;
-    }
-
-    pub fn setModuleLoader(self: *const UserVM, loader: c.ModuleLoaderFn) void {
-        self.constInternal().compiler.moduleLoader = loader;
-    }
-
-    pub fn getModuleResolver(self: *const UserVM) c.ResolverFn {
-        return self.constInternal().compiler.moduleResolver;
-    }
-
-    pub fn setModuleResolver(self: *const UserVM, resolver: c.ResolverFn) void {
-        self.constInternal().compiler.moduleResolver = resolver;
-    }
-
-    pub fn getUserData(self: *UserVM) ?*anyopaque {
-        return self.internal().userData;
-    }
-
-    pub fn setUserData(self: *UserVM, userData: ?*anyopaque) void {
-        self.internal().userData = userData;
     }
 
     pub fn getStackTrace(self: *UserVM) *const cy.StackTrace {
@@ -90,20 +59,8 @@ pub const UserVM = struct {
         return chunk.parser.last_err_pos;
     }
 
-    pub fn allocLastErrorReport(self: *UserVM) ![]const u8 {
-        return self.internal().allocLastErrorReport();
-    }
-
-    pub fn allocLastUserCompileError(self: *const UserVM) ![]const u8 {
-        return debug.allocLastUserCompileError(self.constInternal());
-    }
-
     pub fn getCompileErrorMsg(self: *const UserVM) []const u8 {
         return self.constInternal().compiler.lastErr;
-    }
-
-    pub fn allocPanicMsg(self: *const UserVM) ![]const u8 {
-        return cy.debug.allocPanicMsg(self.constInternal());
     }
 
     pub fn allocLastUserPanicError(self: *const UserVM) ![]const u8 {
@@ -122,10 +79,6 @@ pub const UserVM = struct {
         self.internal().dumpStats();
     }
 
-    pub fn fillUndefinedStackSpace(self: *UserVM, val: Value) void {
-        @memset(self.internal().stack, val);
-    }
-
     pub inline fn releaseObject(self: *UserVM, obj: *cy.HeapObject) void {
         cy.arc.releaseObject(self.internal(), obj);
     }
@@ -140,10 +93,6 @@ pub const UserVM = struct {
 
     pub inline fn retainObject(self: *UserVM, obj: *cy.HeapObject) void {
         cy.arc.retainObject(self.internal(), obj);
-    }
-
-    pub inline fn getGlobalRC(self: *const UserVM) usize {
-        return cy.arc.getGlobalRC(@ptrCast(self));
     }
 
     pub inline fn validate(self: *UserVM, srcUri: []const u8, src: []const u8) !cy.ValidateResult {

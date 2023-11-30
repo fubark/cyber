@@ -16,6 +16,9 @@ const EvalResult = setup.EvalResult;
 test {
     // Include exports for C vm.
     std.testing.refAllDecls(cy.vm);
+
+    const lib = @import("../src/lib.zig");
+    std.testing.refAllDecls(lib);
 }
 
 test "ARC." {
@@ -121,7 +124,7 @@ test "ARC for static variable declarations." {
         \\t.eq(a[0], 123)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
-        run.vm.internal().deinitRtObjects();
+        run.vm.deinitRtObjects();
         var trace = run.getTrace();
         try t.eq(trace.numRetainAttempts, 3);
         try t.eq(trace.numRetains, 2);

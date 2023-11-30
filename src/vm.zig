@@ -711,6 +711,10 @@ pub const VM = struct {
         }
     }
 
+    pub fn fillUndefinedStackSpace(self: *VM, val: Value) void {
+        @memset(self.stack, val);
+    }
+
     pub fn evalByteCode(self: *VM, buf: cy.ByteCodeBuffer) !Value {
         if (buf.ops.items.len == 0) {
             return error.NoEndOp;
@@ -831,7 +835,7 @@ pub const VM = struct {
         return vm.framePtr[ret];
     }
 
-    pub fn allocLastErrorReport(self: *VM) ![]const u8 {
+    pub fn allocLastErrorReport(self: *VM) ![:0]const u8 {
         if (self.lastError) |err| {
             switch (err) {
                 error.TokenError => return debug.allocLastUserParseError(self),

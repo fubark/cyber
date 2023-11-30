@@ -34,6 +34,12 @@ pub const asBool = c.csAsBool;
 pub const toBool = c.csToBool;
 pub const none = c.csNone;
 pub const declareUntypedFunc = c.csDeclareUntypedFunc;
+pub const setResolver = c.csSetResolver;
+pub const setModuleLoader = c.csSetModuleLoader;
+pub const setPrint = c.csSetPrint;
+pub const setUserData = c.csSetUserData;
+pub const getUserData = c.csGetUserData;
+pub const getGlobalRC = c.csGetGlobalRC;
 
 pub const Str = c.CsStr;
 pub fn strSlice(str: Str) []const u8 {

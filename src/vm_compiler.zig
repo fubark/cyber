@@ -676,7 +676,7 @@ fn declareSymbols(self: *VMcompiler) !void {
     for (self.chunks.items) |chunk| {
         // Process static declarations.
         for (chunk.parser.staticDecls.items) |*decl| {
-            log.tracev("Load {}", .{decl.declT});
+            log.tracev("Load {s}", .{@tagName(decl.declT)});
             switch (decl.declT) {
                 .variable => {
                     const sym = try sema.declareVar(chunk, decl.nodeId);

@@ -140,11 +140,11 @@ pub fn printTraceAtPc(vm: *const cy.VM, pc: u32, title: []const u8, msg: []const
     }
 }
 
-pub fn allocLastUserPanicError(vm: *const cy.VM) ![]const u8 {
+pub fn allocLastUserPanicError(vm: *const cy.VM) ![:0]const u8 {
     var buf: std.ArrayListUnmanaged(u8) = .{};
     const w = buf.writer(vm.alloc);
     try writeLastUserPanicError(vm, w);
-    return buf.toOwnedSlice(vm.alloc);
+    return buf.toOwnedSliceSentinel(vm.alloc, 0);
 }
 
 pub fn printLastUserPanicError(vm: *const cy.VM) !void {
@@ -165,11 +165,11 @@ fn writeLastUserPanicError(vm: *const cy.VM, w: anytype) !void {
     try writeStackFrames(vm, w, trace.frames);
 }
 
-pub fn allocLastUserCompileError(vm: *const cy.VM) ![]const u8 {
+pub fn allocLastUserCompileError(vm: *const cy.VM) ![:0]const u8 {
     var buf: std.ArrayListUnmanaged(u8) = .{};
     const w = buf.writer(vm.alloc);
     try writeLastUserCompileError(vm, w);
-    return buf.toOwnedSlice(vm.alloc);
+    return buf.toOwnedSliceSentinel(vm.alloc, 0);
 }
 
 pub fn printLastUserCompileError(vm: *const cy.VM) !void {
@@ -196,18 +196,18 @@ fn writeLastUserCompileError(vm: *const cy.VM, w: anytype) !void {
     }
 }
 
-pub fn allocLastUserParseError(vm: *const cy.VM) ![]const u8 {
+pub fn allocLastUserParseError(vm: *const cy.VM) ![:0]const u8 {
     var buf: std.ArrayListUnmanaged(u8) = .{};
     const w = buf.writer(vm.alloc);
     try writeLastUserParseError(vm, w);
-    return buf.toOwnedSlice(vm.alloc);
+    return buf.toOwnedSliceSentinel(vm.alloc, 0);
 }
 
-pub fn allocLastUserTokenError(vm: *const cy.VM) ![]const u8 {
+pub fn allocLastUserTokenError(vm: *const cy.VM) ![:0]const u8 {
     var buf: std.ArrayListUnmanaged(u8) = .{};
     const w = buf.writer(vm.alloc);
     try writeLastUserTokenError(vm, w);
-    return buf.toOwnedSlice(vm.alloc);
+    return buf.toOwnedSliceSentinel(vm.alloc, 0);
 }
 
 fn writeLastUserTokenError(vm: *const cy.VM, w: anytype) !void {

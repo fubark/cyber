@@ -1,5 +1,7 @@
 import os
 
+-- Manual bindings for clang. This is used to bootstrap cbindgen.
+
 var Root.CXEval_UnExposed = 0
 var Root.CXEval_Int = 1
 var Root.CXEval_Float = 2
@@ -9,13 +11,19 @@ var Root.CXType_Void = 2
 var Root.CXType_Bool = 3
 var Root.CXType_UChar = 5
 var Root.CXType_UInt = 9
+var Root.CXType_ULongLong = 11
 var Root.CXType_Char_S = 13
 var Root.CXType_Int = 17
 var Root.CXType_Long = 18
+var Root.CXType_LongLong = 19
 var Root.CXType_Float = 21
 var Root.CXType_Double = 22
 var Root.CXType_Pointer = 101
+var Root.CXType_Record = 105
+var Root.CXType_Enum = 106
+var Root.CXType_Typedef = 107
 var Root.CXType_ConstantArray = 112
+var Root.CXType_IncompleteArray = 114
 var Root.CXType_Elaborated = 119
 var Root.CXCursor_CXXFunctionalCastExpr = 128
 
@@ -36,6 +44,7 @@ var Root.CXCursor_InclusionDirective = 503
 
 var Root.CXTranslationUnit_DetailedPreprocessingRecord = 0x01
 var Root.CXTranslationUnit_SkipFunctionBodies = 0x40
+var Root.CXTranslationUnit_KeepGoing = 0x200
 var Root.CXTranslationUnit_SingleFileParse = 0x400
 
 var Root.CXChildVisit_Break = 0
@@ -179,6 +188,9 @@ func load(dummy):
 
     -- CXType (CXCursor C)
     ffi.cfunc('clang_Cursor_getReceiverType', [CXCursor], CXType)
+
+    -- CXType clang_Type_getNamedType(CXType T);
+    ffi.cfunc('clang_Type_getNamedType', [CXType], CXType)
 
     return ffi.bindLib('/opt/homebrew/Cellar/llvm/17.0.5/lib/libclang.dylib')
     -- return ffi.bindLib('/Library/Developer/CommandLineTools/usr/lib/libclang.dylib')

@@ -3039,6 +3039,9 @@ pub const Parser = struct {
         if (isStatic) {
             decl = try self.pushNode(.staticDecl, start);
         } else {
+            if (modifierHead != cy.NullId) {
+                return self.reportParseErrorAt("Annotations are not allowed for local var declarations.", &.{}, start);
+            }
             decl = try self.pushNode(.localDecl, start);
         }
 

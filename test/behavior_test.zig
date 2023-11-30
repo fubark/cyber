@@ -2423,6 +2423,20 @@ test "Typed local variable." {
 }
 
 test "Local variable declaration." {
+    // Can't have annotations.    
+    try eval(.{ .silent = true },
+        \\@host var a
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.ParseError,
+            \\ParseError: Annotations are not allowed for local var declarations.
+            \\
+            \\main:1:7:
+            \\@host var a
+            \\      ^
+            \\
+        );
+    }}.func);
+
     // Can't redeclare var.    
     try eval(.{ .silent = true },
         \\var a = 1

@@ -1,5 +1,6 @@
 const std = @import("std");
 const cy = @import("cyber.zig");
+const jitgen = @import("jit/gen.zig");
 const log = cy.log.scoped(.bc_gen);
 const ir = cy.ir;
 const rt = cy.rt;
@@ -15,7 +16,7 @@ const TypeId = types.TypeId;
 
 const Chunk = cy.chunk.Chunk;
 
-fn unwindTemp(c: *cy.Chunk, val: GenValue) bool {
+pub fn unwindTemp(c: *cy.Chunk, val: GenValue) bool {
     if (val.isRetainedTemp()) {
         _ = c.popRetainedTemp();
         return true;
@@ -24,7 +25,7 @@ fn unwindTemp(c: *cy.Chunk, val: GenValue) bool {
 }
 
 /// Returns whether value is a retained temp.
-fn unwindAndFreeTemp(c: *cy.Chunk, val: GenValue) bool {
+pub fn unwindAndFreeTemp(c: *cy.Chunk, val: GenValue) bool {
     if (val.isTempLocal) {
         c.rega.freeTemps(1);
         if (val.retained) {
@@ -35,7 +36,7 @@ fn unwindAndFreeTemp(c: *cy.Chunk, val: GenValue) bool {
     return false;
 }
 
-fn unwindTempKeepDst(c: *cy.Chunk, val: GenValue, dst: RegisterId) bool {
+pub fn unwindTempKeepDst(c: *cy.Chunk, val: GenValue, dst: RegisterId) bool {
     if (val.isTempLocal) {
         if (val.local != dst) {
             c.rega.freeTemps(1);
@@ -49,7 +50,7 @@ fn unwindTempKeepDst(c: *cy.Chunk, val: GenValue, dst: RegisterId) bool {
 }
 
 /// Returns modified slice of retained temps.
-fn unwindTemps(c: *cy.Chunk, vals: []GenValue) []GenValue {
+pub fn unwindTemps(c: *cy.Chunk, vals: []GenValue) []GenValue {
     var i: u32 = 0;
     for (vals) |val| {
         if (val.isTempLocal) {
@@ -64,7 +65,7 @@ fn unwindTemps(c: *cy.Chunk, vals: []GenValue) []GenValue {
     return vals[0..i];
 }
 
-fn popValues(c: *Chunk, n: u32) []GenValue {
+pub fn popValues(c: *Chunk, n: u32) []GenValue {
     const vals = c.genValueStack.items[c.genValueStack.items.len-n..];
     c.genValueStack.items.len = c.genValueStack.items.len-n;
     return vals;
@@ -97,40 +98,40 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         log.tracev("----{s}: {{{s}}}", .{@tagName(code), contextStr});
     }
     switch (code) {
-        .mainBlock          => try mainBlock(c, idx, nodeId),
-        .declareLocal       => try declareLocal(c, idx, nodeId),
-        .exprStmt           => try exprStmt(c, idx, nodeId),
-        .funcDecl           => try funcDecl(c, idx, nodeId),
-        .forRangeStmt       => try forRangeStmt(c, idx, nodeId),
-        .forIterStmt        => try forIterStmt(c, idx, nodeId),
         .breakStmt          => try breakStmt(c, nodeId),
         .contStmt           => try contStmt(c, nodeId),
-        .whileInfStmt       => try whileInfStmt(c, idx, nodeId),
-        .whileCondStmt      => try whileCondStmt(c, idx, nodeId),
-        .whileOptStmt       => try whileOptStmt(c, idx, nodeId),
-        .ifStmt             => try ifStmt(c, idx, nodeId),
-        .tryStmt            => try tryStmt(c, idx, nodeId),
+        .declareLocal       => try declareLocal(c, idx, nodeId),
         .destrElemsStmt     => try destrElemsStmt(c, idx, nodeId),
-        .setIndex           => try setIndex(c, idx, nodeId),
+        .exprStmt           => try exprStmt(c, idx, nodeId),
+        .forIterStmt        => try forIterStmt(c, idx, nodeId),
+        .forRangeStmt       => try forRangeStmt(c, idx, nodeId),
+        .funcDecl           => try funcDecl(c, idx, nodeId),
+        .ifStmt             => try ifStmt(c, idx, nodeId),
+        .mainBlock          => try mainBlock(c, idx, nodeId),
         .opSet              => try opSet(c, idx, nodeId),
-        .setLocal           => try irSetLocal(c, idx, nodeId),
-        .setCaptured        => try setCaptured(c, idx, nodeId),
-        .setVarSym          => try setVarSym(c, idx, nodeId),
-        .setFuncSym         => try setFuncSym(c, idx, nodeId),
-        .setField           => try setField(c, idx, .{}, nodeId),
-        .setObjectField     => try setObjectField(c, idx, .{}, nodeId),
-        .setCallObjSymTern  => try setCallObjSymTern(c, idx, nodeId),
-        .setLocalType       => try setLocalType(c, idx),
-        .switchStmt         => try switchStmt(c, idx, nodeId),
+        .pushDebugLabel     => try pushDebugLabel(c, idx),
         .retExprStmt        => try retExprStmt(c, idx, nodeId),
         .retStmt            => try retStmt(c),
-        .pushDebugLabel     => try pushDebugLabel(c, idx),
+        .setCallObjSymTern  => try setCallObjSymTern(c, idx, nodeId),
+        .setCaptured        => try setCaptured(c, idx, nodeId),
+        .setField           => try setField(c, idx, .{}, nodeId),
+        .setFuncSym         => try setFuncSym(c, idx, nodeId),
+        .setIndex           => try setIndex(c, idx, nodeId),
+        .setLocal           => try irSetLocal(c, idx, nodeId),
+        .setObjectField     => try setObjectField(c, idx, .{}, nodeId),
+        .setVarSym          => try setVarSym(c, idx, nodeId),
+        .setLocalType       => try setLocalType(c, idx),
+        .switchStmt         => try switchStmt(c, idx, nodeId),
+        .tryStmt            => try tryStmt(c, idx, nodeId),
         .verbose            => {
             if (cy.Trace and !cy.verbose) {
                 cy.verbose = true;
                 c.curBlock.resetVerboseOnBlockEnd = true;
             }
         },
+        .whileCondStmt      => try whileCondStmt(c, idx, nodeId),
+        .whileInfStmt       => try whileInfStmt(c, idx, nodeId),
+        .whileOptStmt       => try whileOptStmt(c, idx, nodeId),
         // TODO: Specialize op assign.
         // .opSetLocal => try opSetLocal(c, getData(pc, .opSetLocal), nodeId),
         // .opSetObjectField => try opSetObjectField(c, getData(pc, .opSetObjectField), nodeId),
@@ -187,45 +188,45 @@ fn genExpr(c: *Chunk, idx: usize, cstr: RegisterCstr) anyerror!GenValue {
         const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
         log.tracev("{s}: {{{s}}} {s}", .{@tagName(code), contextStr, @tagName(cstr.type)});
     }
-    const res = switch (code) {
-        .none               => genNone(c, cstr, nodeId),
-        .truev              => genTrue(c, cstr, nodeId),
-        .falsev             => genFalse(c, cstr, nodeId),
-        .int                => genInt(c, idx, cstr, nodeId),
-        .float              => genFloat(c, idx, cstr, nodeId),
-        .errorv             => genError(c, idx, cstr, nodeId),
-        .string             => genString(c, idx, cstr, nodeId),
-        .stringTemplate     => genStringTemplate(c, idx, cstr, nodeId),
-        .tagSym             => genTagSym(c, idx, cstr, nodeId),
-        .local              => genLocal(c, idx, cstr, nodeId),
+    const res = try switch (code) {
         .captured           => genCaptured(c, idx, cstr, nodeId),
-        .fieldStatic        => genFieldStatic(c, idx, cstr, .{}, nodeId),
-        .fieldDynamic       => genFieldDynamic(c, idx, cstr, .{}, nodeId),
-        .varSym             => genVarSym(c, idx, cstr, nodeId),
-        .funcSym            => genFuncSym(c, idx, cstr, nodeId),
-        .typeSym            => genTypeSym(c, idx, cstr, nodeId),
-        .enumMemberSym      => genEnumMemberSym(c, idx, cstr, nodeId),
-        .list               => genList(c, idx, cstr, nodeId),
-        .map                => genMap(c, idx, cstr, nodeId),
-        .objectInit         => genObjectInit(c, idx, cstr, nodeId),
-        .lambda             => genLambda(c, idx, cstr, nodeId),
-        .switchBlock        => genSwitchBlock(c, idx, cstr, nodeId),
         .cast               => genCast(c, idx, cstr, nodeId),
-        .tryExpr            => genTryExpr(c, idx, cstr, nodeId),
-        .throw              => genThrow(c, idx, nodeId),
+        .coinitCall         => genCoinitCall(c, idx, cstr, nodeId),
+        .condExpr           => genCondExpr(c, idx, cstr, nodeId),
+        .coresume           => genCoresume(c, idx, cstr, nodeId),
+        .coyield            => genCoyield(c, idx, cstr, nodeId),
+        .enumMemberSym      => genEnumMemberSym(c, idx, cstr, nodeId),
+        .errorv             => genError(c, idx, cstr, nodeId),
+        .falsev             => genFalse(c, cstr, nodeId),
+        .fieldDynamic       => genFieldDynamic(c, idx, cstr, .{}, nodeId),
+        .fieldStatic        => genFieldStatic(c, idx, cstr, .{}, nodeId),
+        .float              => genFloat(c, idx, cstr, nodeId),
+        .funcSym            => genFuncSym(c, idx, cstr, nodeId),
+        .int                => genInt(c, idx, cstr, nodeId),
+        .lambda             => genLambda(c, idx, cstr, nodeId),
+        .list               => genList(c, idx, cstr, nodeId),
+        .local              => genLocal(c, idx, cstr, nodeId),
+        .map                => genMap(c, idx, cstr, nodeId),
+        .none               => genNone(c, cstr, nodeId),
+        .objectInit         => genObjectInit(c, idx, cstr, nodeId),
         .pre                => return error.Unexpected,
-        .preUnOp            => genUnOp(c, idx, cstr, nodeId),
         .preBinOp           => genBinOp(c, idx, cstr, .{}, nodeId),
-        .preSlice           => genSlice(c, idx, cstr, nodeId),
         .preCall            => genCall(c, idx, cstr, nodeId),
         .preCallFuncSym     => genCallFuncSym(c, idx, cstr, nodeId),
         .preCallObjSym      => genCallObjSym(c, idx, cstr, nodeId),
         .preCallObjSymBinOp => genCallObjSymBinOp(c, idx, cstr, nodeId),
         .preCallObjSymUnOp  => genCallObjSymUnOp(c, idx, cstr, nodeId),
-        .condExpr           => genCondExpr(c, idx, cstr, nodeId),
-        .coinitCall         => genCoinitCall(c, idx, cstr, nodeId),
-        .coresume           => genCoresume(c, idx, cstr, nodeId),
-        .coyield            => genCoyield(c, idx, cstr, nodeId),
+        .preSlice           => genSlice(c, idx, cstr, nodeId),
+        .preUnOp            => genUnOp(c, idx, cstr, nodeId),
+        .string             => genString(c, idx, cstr, nodeId),
+        .stringTemplate     => genStringTemplate(c, idx, cstr, nodeId),
+        .switchBlock        => genSwitchBlock(c, idx, cstr, nodeId),
+        .tagSym             => genTagSym(c, idx, cstr, nodeId),
+        .throw              => genThrow(c, idx, nodeId),
+        .truev              => genTrue(c, cstr, nodeId),
+        .tryExpr            => genTryExpr(c, idx, cstr, nodeId),
+        .typeSym            => genTypeSym(c, idx, cstr, nodeId),
+        .varSym             => genVarSym(c, idx, cstr, nodeId),
         else => return error.TODO,
     };
     log.tracev("{s}: end", .{@tagName(code)});
@@ -304,7 +305,8 @@ fn funcDecl(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
         }
     }
 
-    try popFuncBlockCommon(c, func, skipJump);
+    try popFuncBlockCommon(c, func);
+    c.patchJumpToCurPc(skipJump);
 }
 
 fn genCoresume(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
@@ -815,6 +817,7 @@ fn genFalse(c: *Chunk, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
 
 fn genInt(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
     const data = c.irGetExprData(idx, .int);
+
     const inst = try c.rega.selectForNoErrInst(cstr, false);
     if (inst.requiresPreRelease) {
         try pushRelease(c, inst.dst, nodeId);
@@ -998,6 +1001,7 @@ fn genCallFuncSym(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) 
 
     const argvs = popValues(c, data.numArgs);
     try checkArgs(argStart, argvs);
+
     const retained = unwindTemps(c, argvs);
     try pushReleaseVals(c, retained, nodeId);
 
@@ -1275,15 +1279,15 @@ fn genCaptured(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !Ge
     return finishInst(c, val, inst.finalDst);
 }
 
-fn getLocalInfo(c: *Chunk, reg: u8) Local {
+pub fn getLocalInfo(c: *Chunk, reg: u8) Local {
     return c.genLocalStack.items[c.curBlock.localStart + reg];
 }
 
-fn getLocalInfoPtr(c: *Chunk, reg: u8) *Local {
+pub fn getLocalInfoPtr(c: *Chunk, reg: u8) *Local {
     return &c.genLocalStack.items[c.curBlock.localStart + reg];
 }
 
-fn toLocalReg(c: *Chunk, irVarId: u8) RegisterId {
+pub fn toLocalReg(c: *Chunk, irVarId: u8) RegisterId {
     return c.genIrLocalMapStack.items[c.curBlock.irLocalMapStart + irVarId];
 }
 
@@ -1949,8 +1953,11 @@ fn reserveFiberCallRegs(c: *Chunk, numArgs: u8) !void {
     try initBlockLocals(c, c.rega.nextTemp);
 }
 
-fn reserveMainRegs(c: *Chunk, maxLocals: u8) !void {
+pub fn reserveMainRegs(c: *Chunk, maxLocals: u8) !void {
     var nextReg: u8 = 0;
+
+    // Reserve the first slot for a JIT return addr.
+    nextReg += 1;
 
     c.curBlock.startLocalReg = nextReg;
     c.curBlock.nextLocalReg = nextReg;
@@ -1975,7 +1982,7 @@ pub const CallInst = struct {
 };
 
 /// Returns gen strategy and advances the temp local.
-fn beginCall(c: *Chunk, cstr: RegisterCstr, hasCalleeValue: bool) !CallInst {
+pub fn beginCall(c: *Chunk, cstr: RegisterCstr, hasCalleeValue: bool) !CallInst {
     var ret: RegisterId = undefined;
     var allocTempRet = true;
 
@@ -2110,7 +2117,7 @@ fn genToFinalDst(c: *Chunk, val: GenValue, dst: RegisterCstr) !GenValue {
     return res;
 }
 
-fn endCall(c: *Chunk, inst: CallInst, retained: bool) !GenValue {
+pub fn endCall(c: *Chunk, inst: CallInst, retained: bool) !GenValue {
     c.rega.freeTemps(inst.numPreludeTemps);
     const val = genValue(c, inst.ret, retained);
     return finishInst(c, val, inst.finalDst);
@@ -2523,6 +2530,7 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     try popSubBlock(c);
 
     var hasElse = false;
+
     if (data.numElseBlocks > 0) {
         const elseBlocks = c.irGetArray(data.elseBlocks, u32, data.numElseBlocks);
 
@@ -2801,19 +2809,24 @@ pub const Sym = union {
     },
     funcSym: struct {
         id: u32,
+
+        // Used by jit.
+        pc: u32,
+    },
+    hostFuncSym: struct {
+        id: u32,
+        ptr: vmc.HostFuncFn,
     },
 };
 
-fn pushFuncBlock(c: *Chunk, data: ir.FuncDecl, params: []align(1) const ir.FuncParam, nodeId: cy.NodeId) !void {
+pub fn pushFuncBlock(c: *Chunk, data: ir.FuncDecl, params: []align(1) const ir.FuncParam, nodeId: cy.NodeId) !void {
     log.tracev("push func block: {}, {}, {}, {}", .{data.func.numParams, data.maxLocals, data.func.isMethod, nodeId});
     try pushFuncBlockCommon(c, data.maxLocals, data.numParamCopies, params, data.func, nodeId);
 }
 
-fn popFuncBlockCommon(c: *Chunk, func: *cy.Func, skipFuncJump: u32) !void {
+pub fn popFuncBlockCommon(c: *Chunk, func: *cy.Func) !void {
     // TODO: Check last statement to skip adding ret.
     try genFuncEnd(c);
-
-    c.patchJumpToCurPc(skipFuncJump);
 
     // Pop the null boundary index.
     _ = c.popRetainedTemp();
@@ -2859,7 +2872,8 @@ fn genLambda(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenV
     try genStmts(c, data.bodyHead);
 
     const stackSize = c.getMaxUsedRegisters();
-    try popFuncBlockCommon(c, func, skipJump);
+    try popFuncBlockCommon(c, func);
+    c.patchJumpToCurPc(skipJump);
     const offset: u16 = @intCast(c.buf.ops.items.len - funcPc);
 
     if (data.numCaptures == 0) {
@@ -2890,11 +2904,11 @@ fn genLambda(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenV
     return finishInst(c, val, inst.finalDst);
 }
 
-fn shouldGenMainScopeReleaseOps(c: *cy.VMcompiler) bool {
+pub fn shouldGenMainScopeReleaseOps(c: *cy.VMcompiler) bool {
     return !c.vm.config.singleRun;
 }
 
-fn pushBlock(c: *Chunk, btype: BlockType, debugNodeId: cy.NodeId) !void {
+pub fn pushBlock(c: *Chunk, btype: BlockType, debugNodeId: cy.NodeId) !void {
     // Save register allocator state.
     if (c.blocks.items.len > 0) {
         c.curBlock.regaTempStart = c.rega.tempStart;
@@ -2914,7 +2928,7 @@ fn pushBlock(c: *Chunk, btype: BlockType, debugNodeId: cy.NodeId) !void {
     }
 }
 
-fn popBlock(c: *Chunk) !void {
+pub fn popBlock(c: *Chunk) !void {
     log.tracev("pop gen block", .{});
     c.genIrLocalMapStack.items.len = c.curBlock.irLocalMapStart;
     c.genLocalStack.items.len = c.curBlock.localStart;
@@ -2939,8 +2953,8 @@ fn popBlock(c: *Chunk) !void {
     }
 }
 
-fn pushSubBlock(c: *Chunk, isLoop: bool, nodeId: cy.NodeId) !void {
-    log.tracev("push sblock {}", .{c.curBlock.sBlockDepth});
+pub fn pushSubBlock(c: *Chunk, isLoop: bool, nodeId: cy.NodeId) !void {
+    log.tracev("push sblock {} nextTemp: {}", .{c.curBlock.sBlockDepth, c.rega.nextTemp});
     c.curBlock.sBlockDepth += 1;
 
     const idx = c.subBlocks.items.len;
@@ -2956,7 +2970,7 @@ fn pushSubBlock(c: *Chunk, isLoop: bool, nodeId: cy.NodeId) !void {
     }
 }
 
-fn popSubBlock(c: *Chunk) !void {
+pub fn popSubBlock(c: *Chunk) !void {
     log.tracev("pop sblock {}", .{c.curBlock.sBlockDepth});
 
     const sblock = c.subBlocks.pop();
@@ -2969,7 +2983,7 @@ fn popSubBlock(c: *Chunk) !void {
     c.curBlock.nextLocalReg = sblock.nextLocalReg;
 }
 
-fn popLoopSubBlock(c: *Chunk) !void {
+pub fn popLoopSubBlock(c: *Chunk) !void {
     const sblock = c.subBlocks.pop();
     c.curBlock.sBlockDepth -= 1;
 
@@ -3070,7 +3084,7 @@ fn genConst(c: *cy.Chunk, idx: usize, dst: u8, retain: bool, nodeId: cy.NodeId) 
     c.buf.setOpArgU16(pc + 1, @intCast(idx));
 }
 
-fn checkArgs(start: RegisterId, argvs: []const GenValue) !void {
+pub fn checkArgs(start: RegisterId, argvs: []const GenValue) !void {
     if (cy.Trace) {
         for (argvs, 0..) |argv, i| {
             if (argv.local != start + i) {
@@ -3102,7 +3116,7 @@ fn decTraceTempStart(c: *Chunk) void {
 }
 
 /// Check stack after statement.
-fn checkStack(c: *Chunk, nodeId: cy.NodeId) !void {
+pub fn checkStack(c: *Chunk, nodeId: cy.NodeId) !void {
     if (cy.Trace) {
         var retainedTempStart: usize = undefined;
         var tempStart: usize = undefined;
@@ -3157,7 +3171,7 @@ pub fn releaseIfRetainedTemp(c: *cy.Chunk, val: GenValue) !void {
 
 const LocalId = u8;
 
-fn pushOptUnwindableTemp(c: *Chunk, val: GenValue) !void {
+pub fn pushOptUnwindableTemp(c: *Chunk, val: GenValue) !void {
     if (val.isRetainedTemp()) {
         try c.pushRetainedTemp(val.local);
     }
@@ -3177,7 +3191,7 @@ fn pushValue(c: *Chunk, reg: RegisterId, retained: bool) !GenValue {
     }
 }
 
-fn genValue(c: *const Chunk, local: LocalId, retained: bool) GenValue {
+pub fn genValue(c: *const Chunk, local: LocalId, retained: bool) GenValue {
     if (c.isTempLocal(local)) {
         return GenValue.initTempValue(local, retained);
     } else {
@@ -3185,7 +3199,13 @@ fn genValue(c: *const Chunk, local: LocalId, retained: bool) GenValue {
     }
 }
 
-pub const GenValue = extern struct {
+const GenValueType = enum {
+    generic,
+    jitCondFlag,
+};
+
+pub const GenValue = struct {
+    type: GenValueType,
     /// TODO: Rename to reg.
     local: LocalId,
     isTempLocal: bool,
@@ -3193,8 +3213,24 @@ pub const GenValue = extern struct {
     /// Whether this value was retained by 1 refcount.
     retained: bool,
 
+    data: union {
+        jitCondFlag: struct {
+            type: jitgen.JitCondFlagType,
+        },
+    } = undefined,
+
+    fn initJitCondFlag(condt: jitgen.JitCondFlagType) GenValue {
+        return .{ .type = .jitCondFlag,
+            .local = undefined, .isTempLocal = false, .retained = false,
+            .data = .{ .jitCondFlag = .{
+                .type = condt,
+            }},
+        };
+    }
+
     fn initRetained(retained: bool) GenValue {
         return .{
+            .type = .generic,
             .local = 255,
             .isTempLocal = false,
             .retained = retained,
@@ -3203,6 +3239,7 @@ pub const GenValue = extern struct {
 
     fn initNoValue() GenValue {
         return .{
+            .type = .generic,
             .local = 255,
             .isTempLocal = false,
             .retained = false,
@@ -3211,6 +3248,7 @@ pub const GenValue = extern struct {
 
     pub fn initLocalValue(local: LocalId, retained: bool) GenValue {
         return .{
+            .type = .generic,
             .local = local,
             .isTempLocal = false,
             .retained = retained,
@@ -3219,6 +3257,7 @@ pub const GenValue = extern struct {
 
     pub fn initTempValue(local: LocalId, retained: bool) GenValue {
         return .{
+            .type = .generic,
             .local = local,
             .isTempLocal = true,
             .retained = retained,
@@ -3321,7 +3360,7 @@ fn reserveLocalRegAt(c: *Chunk, irLocalId: u8, declType: types.TypeId, boxed: bo
     }
 }
 
-fn reserveLocalReg(c: *Chunk, irVarId: u8, declType: types.TypeId, boxed: bool, nodeId: cy.NodeId, advanceNext: bool) !RegisterId {
+pub fn reserveLocalReg(c: *Chunk, irVarId: u8, declType: types.TypeId, boxed: bool, nodeId: cy.NodeId, advanceNext: bool) !RegisterId {
     try reserveLocalRegAt(c, irVarId, declType, boxed, c.curBlock.nextLocalReg, nodeId);
     defer {
         if (advanceNext) {
@@ -3445,7 +3484,7 @@ pub const PreferDst = struct {
     dst: RegisterId,
     canUseDst: bool,
 
-    fn nextCstr(self: *PreferDst, val: GenValue) RegisterCstr {
+    pub fn nextCstr(self: *PreferDst, val: GenValue) RegisterCstr {
         if (val.local == self.dst) {
             self.canUseDst = false;
         }

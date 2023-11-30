@@ -12,6 +12,7 @@ const log = cy.log.scoped(.chunk);
 const llvm = @import("llvm.zig");
 const llvm_gen = @import("llvm_gen.zig");
 const bc_gen = @import("bc_gen.zig");
+const jitgen = @import("jit/gen.zig");
 
 pub const ChunkId = u32;
 
@@ -127,6 +128,7 @@ pub const Chunk = struct {
 
     /// Shared final code buffer.
     buf: *cy.ByteCodeBuffer,
+    jitBuf: *jitgen.CodeBuffer,
 
     nodes: []cy.Node,
     tokens: []const cy.Token,
@@ -213,6 +215,7 @@ pub const Chunk = struct {
             .curBlock = undefined,
             .curObjectSym = null,
             .buf = undefined,
+            .jitBuf = undefined,
             .curNodeId = cy.NullId,
             .symInitDeps = .{},
             .symInitInfos = .{},
@@ -802,6 +805,7 @@ pub const Chunk = struct {
     pub usingnamespace cy.types.ChunkExt;
     pub usingnamespace cy.sema.ChunkExt;
     pub usingnamespace cy.ir.ChunkExt;
+    pub usingnamespace jitgen.ChunkExt;
 };
 
 test "chunk internals." {

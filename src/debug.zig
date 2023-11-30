@@ -115,6 +115,14 @@ pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) !void {
     }
 }
 
+pub fn printTraceAtNode(c: *cy.Chunk, nodeId: cy.NodeId) !void {
+    const token = c.nodes[nodeId].start_token;
+    const pos = c.tokens[token].pos();
+    const w = fmt.lockStderrWriter();
+    defer fmt.unlockPrint();
+    try writeUserError(c.compiler.vm, w, "Trace", "", c.id, pos);
+}
+
 pub fn printTraceAtPc(vm: *const cy.VM, pc: u32, title: []const u8, msg: []const u8) !void {
     if (pc == cy.NullId) {
         fmt.printStderr("{}: {} (external)\n", &.{v(title), v(msg)});

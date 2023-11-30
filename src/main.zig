@@ -9,6 +9,7 @@ const fmt = @import("fmt.zig");
 var verbose = false;
 var reload = false;
 var aot = false;
+var jit = false;
 var dumpStats = false; // Only for trace build.
 var pc: ?u32 = null;
 
@@ -48,6 +49,8 @@ pub fn main() !void {
                 reload = true;
             } else if (std.mem.eql(u8, arg, "-aot")) {
                 aot = true;
+            } else if (std.mem.eql(u8, arg, "-jit")) {
+                jit = true;
             } else if (std.mem.eql(u8, arg, "-pc")) {
                 i += 1;
                 if (i < args.len) {
@@ -144,7 +147,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
         .singleRun = builtin.mode == .ReleaseFast,
         .enableFileModules = true,
         .genDebugFuncMarkers = true,
-        .aot = aot,
+        .preJit = jit,
     }) catch |err| {
         fmt.panic("unexpected {}\n", &.{fmt.v(err)});
     };
@@ -179,6 +182,7 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
         .singleRun = builtin.mode == .ReleaseFast,
         .enableFileModules = true,
         .reload = reload,
+        .preJit = jit,
     }) catch |err| {
         switch (err) {
             error.Panic,
@@ -244,4 +248,10 @@ fn help() void {
 
 fn version() void {
     std.debug.print("{s}\n", .{build_options.full_version});
+}
+
+pub fn panic(msg: []const u8, errRetTrace: ?*std.builtin.StackTrace, _: ?usize) noreturn {
+    const ret = @returnAddress();
+    // TODO: Print something useful if caused by script execution.
+    std.debug.panicImpl(errRetTrace, ret, msg);
 }

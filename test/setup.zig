@@ -22,6 +22,8 @@ pub const Config = struct {
     // Whether to performGC at end of eval.
     cleanupGC: bool = false,
 
+    preJit: bool = false,
+
     preEval: ?*const fn (run: *VMrunner) void = null,
 
     debug: bool = false,
@@ -296,6 +298,7 @@ pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalR
         .singleRun = false,
         .enableFileModules = config.enableFileModules,
         .genAllDebugSyms = config.debug,
+        .preJit = config.preJit,
     });
 
     if (optCb) |cb| {

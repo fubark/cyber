@@ -400,6 +400,9 @@ pub const RegisterCstr = struct {
             retained: bool,
         },
         uninit: void,
+        simple: struct {
+            jitPreferCondFlag: bool = false,
+        },
     } = .{ .uninit = {} },
 
     /// TODO: provide hint whether the allocated reill be used or not.
@@ -414,11 +417,13 @@ pub const RegisterCstr = struct {
     pub const simple = RegisterCstr{
         .type = .simple,
         .mustRetain = false,
+        .data = .{ .simple = .{} }
     };
 
     pub const simpleMustRetain = RegisterCstr{
         .type = .simple,
         .mustRetain = true,
+        .data = .{ .simple = .{} }
     };
 
     pub const temp = RegisterCstr{
@@ -451,6 +456,7 @@ pub const RegisterCstr = struct {
         return .{
             .type = .simple,
             .mustRetain = mustRetain,
+            .data = .{ .simple = .{} }
         };
     }
 

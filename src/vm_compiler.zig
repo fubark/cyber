@@ -15,7 +15,9 @@ const bt = types.BuiltinTypes;
 const cy_mod = @import("builtins/builtins.zig");
 const math_mod = @import("builtins/math.zig");
 const llvm_gen = @import("llvm_gen.zig");
-const bc_gen = @import("bc_gen.zig");
+const bcgen = @import("bc_gen.zig");
+const jitgen = @import("jit/gen.zig");
+const assembler = @import("jit/assembler.zig");
 const bindings = cy.bindings;
 const module = cy.module;
 
@@ -32,6 +34,7 @@ pub const VMcompiler = struct {
     alloc: std.mem.Allocator,
     vm: *cy.VM,
     buf: cy.ByteCodeBuffer,
+    jitBuf: jitgen.CodeBuffer,
 
     lastErr: []const u8,
     
@@ -57,7 +60,7 @@ pub const VMcompiler = struct {
     chunkMap: std.StringHashMapUnmanaged(*cy.Chunk),
 
     /// Key is either a *Sym or *Func.
-    genSymMap: std.AutoHashMapUnmanaged(*anyopaque, bc_gen.Sym),
+    genSymMap: std.AutoHashMapUnmanaged(*anyopaque, bcgen.Sym),
 
     /// Imports are queued.
     importTasks: std.ArrayListUnmanaged(ImportTask),
@@ -101,6 +104,7 @@ pub const VMcompiler = struct {
             .alloc = vm.alloc,
             .vm = vm,
             .buf = try cy.ByteCodeBuffer.init(vm.alloc, vm),
+            .jitBuf = jitgen.CodeBuffer.init(),
             .lastErr = "",
             .lastErrNode = undefined,
             .lastErrChunk = undefined,
@@ -137,8 +141,10 @@ pub const VMcompiler = struct {
 
         if (reset) {
             self.buf.clear();
+            self.jitBuf.clear();
         } else {
             self.buf.deinit();
+            self.jitBuf.deinit(self.alloc);
         }
 
         // Retained vars are deinited first since they can depend on types/syms.
@@ -192,11 +198,13 @@ pub const VMcompiler = struct {
             if (err == error.TokenError) {
                 return CompileResultView{
                     .buf = self.buf,
+                    .jitBuf = self.jitBuf,
                     .err = .tokenize,
                 };
             } else if (err == error.ParseError) {
                 return CompileResultView{
                     .buf = self.buf,
+                    .jitBuf = self.jitBuf,
                     .err = .parse,
                 };
             } else {
@@ -214,12 +222,14 @@ pub const VMcompiler = struct {
                 }
                 return CompileResultView{
                     .buf = self.buf,
+                    .jitBuf = self.jitBuf,
                     .err = .compile,
                 };
             }
         };
         return CompileResultView{
             .buf = self.buf,
+            .jitBuf = self.jitBuf,
             .err = null,
         };
     }
@@ -437,7 +447,7 @@ fn appendSymInitIrDFS(c: *cy.Chunk, sym: *cy.Sym, info: *cy.chunk.SymInitInfo, r
 
 fn performChunkCodegen(self: *VMcompiler, chunk: *cy.Chunk) !void {
     chunk.buf = &self.buf;
-    try bc_gen.genChunk(chunk);
+    try bcgen.genChunk(chunk);
 }
 
 fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
@@ -705,14 +715,63 @@ fn declareSymbols(self: *VMcompiler) !void {
 fn performCodegen(self: *VMcompiler) !void {
     log.tracev("Perform codegen.", .{});
 
-    if (cy.hasJIT) {
-        if (self.config.aot) {
-            try llvm_gen.genNativeBinary(self);
-            return;
-        }
-    }
+    // if (cy.hasAOT) {
+    //     if (self.config.aot) {
+    //         try llvm_gen.genNativeBinary(self);
+    //         return;
+    //     }
+    // }
 
-    try genBytecode(self);
+    if (self.config.preJit) {
+        // Prepare host funcs.
+        for (self.chunks.items) |chunk| {
+            const mod = chunk.sym.getMod();
+            for (mod.funcs.items) |func| {
+                try jitgen.prepareFunc(self, func);
+            }
+
+            for (chunk.modSyms.items) |modSym| {
+                const mod2 = modSym.getMod().?;
+                for (mod2.funcs.items) |func| {
+                    try jitgen.prepareFunc(self, func);
+                }
+            }
+        }
+
+        for (self.chunks.items) |chunk| {
+            if (chunk.id != 0) {
+                // Skip other chunks for now.
+                continue;
+            }
+
+            log.tracev("Perform codegen for chunk{}: {s}", .{chunk.id, chunk.srcUri});
+            chunk.buf = &self.buf;
+            chunk.jitBuf = &self.jitBuf;
+            try jitgen.genChunk(chunk);
+            log.tracev("Done. performChunkCodegen {s}", .{chunk.srcUri});
+        }
+
+        // Perform relocation.
+        for (self.jitBuf.relocs.items) |reloc| {
+            switch (reloc.type) {
+                .jumpToFunc => {
+                    const jumpPc = reloc.data.jumpToFunc.pc;
+                    const func = reloc.data.jumpToFunc.func;
+                    if (func.type == .hostFunc) {
+                        return error.Unexpected;
+                    } else {
+                        const targetPc = self.genSymMap.get(func).?.funcSym.pc;
+                        const offset: i28 = @intCast(@as(i32, @bitCast(targetPc -% jumpPc)));
+                        var inst: *assembler.A64.BrImm = @ptrCast(@alignCast(&self.jitBuf.buf.items[jumpPc]));
+                        inst.setOffset(offset);
+                    }
+                }
+            }
+        }
+
+    } else {
+        try genBytecode(self);
+    }
     log.tracev("Done. Perform codegen.", .{});
 }
 
@@ -824,7 +883,7 @@ fn addVmFunc(c: *VMcompiler, func: *cy.Func, rtFunc: rt.FuncSymbol) !u32 {
         .namePtr = name.ptr, .nameLen = @intCast(name.len), .funcSigId = func.funcSigId,
     });
 
-    try c.genSymMap.putNoClobber(c.alloc, func, .{ .funcSym = .{ .id = @intCast(id) }});
+    try c.genSymMap.putNoClobber(c.alloc, func, .{ .funcSym = .{ .id = @intCast(id), .pc = 0 }});
     return @intCast(id);
 }
 
@@ -917,6 +976,7 @@ pub const CompileErrorType = enum {
 
 pub const CompileResultView = struct {
     buf: cy.ByteCodeBuffer,
+    jitBuf: jitgen.CodeBuffer,
     err: ?CompileErrorType,
 };
 
@@ -978,7 +1038,7 @@ pub const CompileConfig = struct {
     skipCodegen: bool = false,
     enableFileModules: bool = false,
     genDebugFuncMarkers: bool = false,
-    aot: bool = false,
+    preJit: bool = false,
 };
 
 pub const ValidateConfig = struct {

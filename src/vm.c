@@ -5,8 +5,6 @@
 #include "vm.h"
 
 #define STATIC_ASSERT(cond, msg) typedef char static_assertion_##msg[(cond)?1:-1]
-#define LIKELY(x)   __builtin_expect(!!(x), 1)
-#define UNLIKELY(x) __builtin_expect(!!(x), 0)
 
 #define VLOG(msg, ...) \
     do { if (TRACE && verbose) zPrintStderr(msg, (FmtValue[]){__VA_ARGS__}, sizeof((FmtValue[]){__VA_ARGS__})/sizeof(FmtValue)); } while (false)
@@ -17,60 +15,6 @@
 
 #define ASSERT(cond) \
     do { if (!(cond)) zFatal(); } while (false)
-#define BITCAST(type, x) (((union {typeof(x) src; type dst;})(x)).dst)
-
-// Construct value.
-
-// _BitInt zeroes padding bits after cast.
-#define VALUE_INTEGER_CAST(n) (TAGGED_INTEGER_MASK | (_BitInt(48))n)
-// Assumes _BitInt(48) param. `or` op automatically generates trunc on n's undefined padding bits.
-#define VALUE_INTEGER(n) (TAGGED_INTEGER_MASK | BITCAST(unsigned _BitInt(48), n))
-#define VALUE_BOOLEAN(b) (b ? TRUE_MASK : FALSE_MASK)
-#define VALUE_NONE NONE_MASK
-#define VALUE_FLOAT(n) ((ValueUnion){ .d = n }.u)
-#define VALUE_ENUM(tag, val) ((Value)(ENUM_MASK | tag << 8 | val ))
-#define VALUE_RETINFO(retFlag, callInstOff) ((Value)(0 | ((u32)retFlag << 8) | ((u32)callInstOff << 16)))
-#define VALUE_TRUE TRUE_MASK
-#define VALUE_FALSE FALSE_MASK
-#define VALUE_INTERRUPT (ERROR_MASK | 0xffff) 
-#define VALUE_RAW(u) u
-#define VALUE_NOCYC_PTR(ptr) (NOCYC_POINTER_MASK | ((size_t)ptr & POINTER_PAYLOAD_MASK))
-#define VALUE_CYC_PTR(ptr) (CYC_POINTER_MASK | ((size_t)ptr & POINTER_PAYLOAD_MASK))
-#define VALUE_SYMBOL(symId) (SYMBOL_MASK | symId)
-#define VALUE_ERROR(symId) (ERROR_MASK | symId)
-
-// Value ops.
-#define VALUE_AS_HEAPOBJECT(v) ((HeapObject*)(v & ~POINTER_MASK))
-#define VALUE_AS_INTEGER(v) BITCAST(_BitInt(48), v) // Padding bits returned are undefined.
-#define VALUE_AS_UINTEGER(v) BITCAST(unsigned _BitInt(48), v) // Padding bits returned are undefined.
-#define VALUE_AS_U32(v) ((u32)(v & 0xffffffff))
-#define VALUE_AS_FLOAT(v) ((ValueUnion){ .u = v }.d)
-#define VALUE_AS_FLOAT_TO_INT(v) ((int32_t)VALUE_AS_FLOAT(v))
-#define VALUE_AS_FLOAT_TO_INT64(v) ((int64_t)VALUE_AS_FLOAT(v))
-#define VALUE_AS_BOOLEAN(v) (v == TRUE_MASK)
-#define VALUE_ASSUME_NOT_BOOL_TO_BOOL(v) (!VALUE_IS_NONE(v))
-#define VALUE_GET_TAG(v) ((BITCAST(u32, v >> 32)) & TAG_MASK)
-// #define VALUE_RETINFO_NUMRETVALS(v) (v & 0xff)
-#define VALUE_RETINFO_RETFLAG(v) ((v & 0xff00) >> 8)
-
-#define VALUE_IS_BOOLEAN(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == BOOLEAN_MASK)
-#define VALUE_IS_POINTER(v) (v >= NOCYC_POINTER_MASK)
-#define VALUE_IS_CLOSURE(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_CLOSURE))
-#define VALUE_IS_BOX(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_BOX))
-#define VALUE_IS_NONE(v) (v == NONE_MASK)
-#define VALUE_IS_FLOAT(v) ((v & TAGGED_VALUE_MASK) != TAGGED_VALUE_MASK)
-#define VALUE_IS_ERROR(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == ERROR_MASK)
-
-#define VALUE_IS_ARRAY(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_ARRAY))
-#define VALUE_IS_STRING(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_STRING))
-#define VALUE_IS_LIST(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_LIST))
-#define VALUE_IS_TUPLE(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_TUPLE))
-#define VALUE_IS_MAP(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_MAP))
-#define VALUE_BOTH_FLOATS(a, b) (VALUE_IS_FLOAT(a) && VALUE_IS_FLOAT(b))
-#define VALUE_IS_INTEGER(v) ((v & TAGGED_UPPER_VALUE_MASK) == TAGGED_INTEGER_MASK)
-#define VALUE_BOTH_INTEGERS(a, b) ((a & b & TAGGED_UPPER_VALUE_MASK) == TAGGED_INTEGER_MASK)
-#define VALUE_ALL3_INTEGERS(a, b, c) ((a & b & c & TAGGED_UPPER_VALUE_MASK) == TAGGED_INTEGER_MASK)
-#define OBJ_TYPEID(o) (o->head.typeId & TYPE_MASK)
 
 #define FMT_STRZ(s) ((FmtValue){ .type = FMT_TYPE_STRING, .data = { .string = s }, .data2 = { .string = strlen(s) }})
 #define FMT_STR(s) ((FmtValue){ .type = FMT_TYPE_STRING, .data = { .string = s.ptr }, .data2 = { .string = s.len }})

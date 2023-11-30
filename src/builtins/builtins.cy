@@ -14,6 +14,7 @@
 
 --| Returns whether a rune is an alphabetic letter.
 @host func isAlpha(val int) bool
+
 --| Returns whether a rune is a digit.
 @host func isDigit(val int) bool
 

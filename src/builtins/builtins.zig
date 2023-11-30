@@ -1022,13 +1022,13 @@ fn arrayGetInt(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const idx = args[1].asInteger();
     const sym = try std.meta.intToEnum(Symbol, args[2].asSymbolId());
     const endian: std.builtin.Endian = switch (sym) {
-        .little => .little,
-        .big => .big,
+        .little => .Little,
+        .big => .Big,
         else => return error.InvalidArgument,
     };
 
     if (idx < 0 or idx + 6 > slice.len) return error.OutOfBounds;
-    const uidx: u48 = @intCast(idx);
+    const uidx: usize = @intCast(idx);
     const val = std.mem.readVarInt(u48, slice[uidx..uidx+6], endian);
     return Value.initInt(@bitCast(val));
 }
@@ -1040,13 +1040,13 @@ fn arrayGetInt32(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const idx = args[1].asInteger();
     const sym = try std.meta.intToEnum(Symbol, args[2].asSymbolId());
     const endian: std.builtin.Endian = switch (sym) {
-        .little => .little,
-        .big => .big,
+        .little => .Little,
+        .big => .Big,
         else => return error.InvalidArgument,
     };
 
     if (idx < 0 or idx + 4 > slice.len) return error.OutOfBounds;
-    const uidx: u48 = @intCast(idx);
+    const uidx: usize = @intCast(idx);
     const val = std.mem.readVarInt(u48, slice[uidx..uidx+4], endian);
     return Value.initInt(@intCast(val));
 }
@@ -1343,11 +1343,11 @@ fn pointerSet(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 
 fn pointerToArray(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const obj = args[0].asHeapObject();
-    const off = args[1].asInteger();
+    const off: u48 = @bitCast(args[1].asInteger());
     const len: u48 = @bitCast(args[2].asInteger());
     const raw: [*]const u8 = @ptrCast(obj.pointer.ptr);
-    const uoff: u48 = @bitCast(off);
-    return vm.allocArray(raw[uoff..uoff+len]);
+    const uoff: usize = @intCast(off);
+    return vm.allocArray(raw[uoff..@intCast(uoff+len)]);
 }
 
 fn pointerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {

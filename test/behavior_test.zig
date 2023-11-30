@@ -301,7 +301,7 @@ test "Typed pointer." {
         \\import t 'test'
         \\
         \\func foo(a pointer):
-        \\  return a.value() == 123
+        \\  return a.addr() == 123
         \\
         \\-- From var.
         \\var ptr = pointer(123)

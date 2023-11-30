@@ -31,7 +31,7 @@ pub fn build(b: *std.build.Builder) !void {
     optFFI = b.option(bool, "ffi", "Override default FFI: true, false");
     optStatic = b.option(bool, "static", "Override default lib build type: true=static, false=dynamic");
     trace = b.option(bool, "trace", "Enable tracing features.") orelse (optimize == .Debug);
-    optJIT = b.option(bool, "jit", "Build with AOT/JIT.");
+    optJIT = b.option(bool, "jit", "Build with JIT.");
 
     stdx = b.createModule(.{
         .source_file = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
@@ -268,9 +268,9 @@ pub fn buildAndLinkDeps(step: *std.build.Step.Compile, opts: Options) !void {
     }
 
     if (opts.jit) {
-        step.addIncludePath(.{ .path = "/opt/homebrew/Cellar/llvm/17.0.1/include" });
-        step.addLibraryPath(.{ .path = "/opt/homebrew/Cellar/llvm/17.0.1/lib" });
-        step.linkSystemLibrary("LLVM-17");
+        // step.addIncludePath(.{ .path = "/opt/homebrew/Cellar/llvm/17.0.1/include" });
+        // step.addLibraryPath(.{ .path = "/opt/homebrew/Cellar/llvm/17.0.1/lib" });
+        // step.linkSystemLibrary("LLVM-17");
     }
 }
 

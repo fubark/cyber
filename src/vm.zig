@@ -155,11 +155,11 @@ pub const VM = struct {
 
     varSymExtras: cy.List(*cy.Sym),
 
-    config: EvalConfig,
-
     /// Local to be returned back to eval caller.
     /// 255 indicates no return value.
-    endLocal: u8,
+    endLocal: usize,
+
+    config: EvalConfig,
 
     lastError: ?error{TokenError, ParseError, CompileError, Panic},
 
@@ -544,6 +544,7 @@ pub const VM = struct {
             .singleRun = config.singleRun,
             .enableFileModules = config.enableFileModules,
             .genDebugFuncMarkers = cy.Trace,
+            .preJit = config.preJit,
         });
         if (res.err) |err| {
             switch (err) {
@@ -563,30 +564,61 @@ pub const VM = struct {
         }
         tt.endPrint("compile");
 
-        if (cy.verbose) {
-            try debug.dumpBytecode(self, null);
-        }
-
-        if (cy.Trace) {
-            var i: u32 = 0;
-            while (i < self.trace.opCounts.len) : (i += 1) {
-                self.trace.opCounts[i] = .{
-                    .code = i,
-                    .count = 0,
-                };
+        if (config.preJit) {
+            if (cy.isWasm) {
+                return error.Unsupported;
             }
-            self.trace.totalOpCounts = 0;
-            self.trace.numReleases = 0;
-            self.trace.numReleaseAttempts = 0;
-            self.trace.numRetains = 0;
-            self.trace.numRetainAttempts = 0;
-            self.trace.numCycFrees = 0;
+
+            try cy.fiber.stackEnsureTotalCapacity(self, res.buf.mainStackSize);
+            self.framePtr = @ptrCast(self.stack.ptr);
+
+            // Mark code executable.
+            const PROT_READ = 1;
+            const PROT_WRITE = 2;
+            const PROT_EXEC = 4;
+            try std.os.mprotect(res.jitBuf.buf.items.ptr[0..res.jitBuf.buf.capacity], PROT_READ | PROT_EXEC);
+            
+            // Memory must be reset to original setting in order to be freed.
+            defer std.os.mprotect(res.jitBuf.buf.items.ptr[0..res.jitBuf.buf.capacity], PROT_WRITE) catch cy.fatal();
+
+            if (res.jitBuf.buf.items.len > 100*4) {
+                log.tracev("jit code (size: {}) {}...", .{res.jitBuf.buf.items.len, std.fmt.fmtSliceHexLower(res.jitBuf.buf.items[0..100*4])});
+            } else {
+                log.tracev("jit code (size: {}) {}", .{res.jitBuf.buf.items.len, std.fmt.fmtSliceHexLower(res.jitBuf.buf.items)});
+            }
+
+            const bytes = res.jitBuf.buf.items[res.jitBuf.mainPc..res.jitBuf.mainPc+12*4];
+            log.tracev("main start {}", .{std.fmt.fmtSliceHexLower(bytes)});
+
+            const main: *const fn(*VM, [*]Value) callconv(.C) void = @ptrCast(@alignCast(res.jitBuf.buf.items.ptr + res.jitBuf.mainPc));
+            main(self, self.framePtr);
+            return Value.None;
+        } else {
+            if (cy.verbose) {
+                try debug.dumpBytecode(self, null);
+            }
+
+            if (cy.Trace) {
+                var i: u32 = 0;
+                while (i < self.trace.opCounts.len) : (i += 1) {
+                    self.trace.opCounts[i] = .{
+                        .code = i,
+                        .count = 0,
+                    };
+                }
+                self.trace.totalOpCounts = 0;
+                self.trace.numReleases = 0;
+                self.trace.numReleaseAttempts = 0;
+                self.trace.numRetains = 0;
+                self.trace.numRetainAttempts = 0;
+                self.trace.numCycFrees = 0;
+            }
+
+            tt = cy.debug.timer();
+            defer tt.endPrint("eval");
+
+            return self.evalByteCode(res.buf);
         }
-
-        tt = cy.debug.timer();
-        defer tt.endPrint("eval");
-
-        return self.evalByteCode(res.buf);
     }
 
     pub fn dumpStats(self: *const VM) void {
@@ -1701,6 +1733,7 @@ test "vm internals." {
     try t.eq(@offsetOf(VM, "expGlobalRC"), @offsetOf(vmc.VM, "expGlobalRC"));
 
     try t.eq(@offsetOf(VM, "varSymExtras"), @offsetOf(vmc.VM, "varSymExtras"));
+    try t.eq(@offsetOf(VM, "endLocal"), @offsetOf(vmc.VM, "endLocal"));
 
     if (cy.Trace) {
         try t.eq(@offsetOf(VM, "trace"), @offsetOf(vmc.VM, "trace"));
@@ -3766,6 +3799,8 @@ pub const EvalConfig = struct {
 
     /// By default, debug syms are only generated for insts that can potentially fail.
     genAllDebugSyms: bool = false,
+
+    preJit: bool = false,
 };
 
 fn opMatch(pc: [*]const cy.Inst, framePtr: [*]const Value) u16 {

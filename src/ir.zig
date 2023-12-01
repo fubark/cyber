@@ -396,6 +396,7 @@ pub const CallFuncSym = struct {
     func: *cy.Func,
     hasDynamicArg: bool,
     numArgs: u8,
+    args: u32,
 };
 
 pub const Call = struct {

@@ -1439,6 +1439,22 @@ fn toTypes(ctypes: []CompactType) []const TypeId {
     return @ptrCast(ctypes);
 }
 
+fn callSymWithRecv(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.NodeId, recv: ExprResult, argHead: cy.NodeId) !ExprResult {
+    try referenceSym(c, sym, symNodeId);
+    if (sym.type != .func) {
+        return error.Unexpected;
+    }
+
+    const funcSym = sym.cast(.func);
+    const funcSigId = getFuncSigHint(funcSym, numArgs);
+    const funcSig = c.compiler.sema.getFuncSig(funcSigId);
+    const preferParamTypes = funcSig.params();
+
+    const res = try c.semaPushFirstAndArgsInfer(recv, argHead, numArgs, preferParamTypes);
+    defer c.typeStack.items.len = res.start;
+    return c.semaCallFuncSym(preIdx, symNodeId, funcSym, res);
+}
+
 fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.NodeId, argHead: cy.NodeId) !ExprResult {
     try referenceSym(c, sym, symNodeId);
     switch (sym.type) {
@@ -1851,7 +1867,7 @@ fn visitChunkInit(self: *cy.VMcompiler, c: *cy.Chunk) !void {
     const func = c.sym.getMod().getSym("$init").?.cast(.func).first;
     _ = try mainChunk.irPushStmt(.exprStmt, cy.NullId, .{ .returnMain = false });
     _ = try mainChunk.irPushExpr(.preCallFuncSym, cy.NullId, .{ .callFuncSym = .{
-        .func = func, .hasDynamicArg = false, .numArgs = 0,
+        .func = func, .hasDynamicArg = false, .numArgs = 0, .args = 0,
     }});
 
     c.initializerVisiting = false;
@@ -2742,7 +2758,76 @@ pub const ChunkExt = struct {
     pub fn semaPushCallArgsInfer(c: *cy.Chunk, argHead: cy.NodeId, numArgs: u8, preferTypes: []const types.TypeId) !StackTypesResult {
         const start = c.typeStack.items.len;
         const irIdx = try c.irPushEmptyArray(u32, numArgs);
+        const hasDynamicArg = try semaPushArgsInferInner(c, irIdx, argHead, preferTypes);
+        return StackTypesResult{
+            .hasDynamicArg = hasDynamicArg,
+            .types = @ptrCast(c.typeStack.items[start..start+numArgs]),
+            .start = @intCast(start),
+            .irArgsIdx = irIdx,
+        };
+    }
 
+    pub fn semaPushFirstAndArgsInfer(c: *cy.Chunk, recv: ExprResult, argHead: cy.NodeId, numArgs: u8, preferTypes: []const cy.TypeId) !StackTypesResult {
+        const start = c.typeStack.items.len;
+        try c.typeStack.append(c.alloc, @bitCast(recv.type));
+        const irIdx = try c.irPushEmptyArray(u32, numArgs + 1);
+        c.irSetArrayItem(irIdx, u32, 0, recv.irIdx);
+
+        var effPreferTypes = preferTypes;
+        if (effPreferTypes.len == 0) {
+            effPreferTypes = &.{bt.Any};
+        }
+        const hasDynamicArg = try semaPushArgsInferInner(c, irIdx + @sizeOf(u32), argHead, preferTypes[1..]);
+        return StackTypesResult{
+            .hasDynamicArg = hasDynamicArg,
+            .types = @ptrCast(c.typeStack.items[start..start+numArgs + 1]),
+            .start = @intCast(start),
+            .irArgsIdx = irIdx,
+        };
+    }
+
+    pub fn semaPushRecvAndArgs(c: *cy.Chunk, recv: ExprResult, argHead: cy.NodeId, numArgs: u8) !StackTypesResult {
+        const start = c.typeStack.items.len;
+        try c.typeStack.append(c.alloc, @bitCast(recv.type));
+        const irIdx = try c.irPushEmptyArray(u32, numArgs);
+        const hasDynamicArg = try semaPushArgsInner(c, irIdx, argHead);
+        return StackTypesResult{
+            .types = @ptrCast(c.typeStack.items[start..start+numArgs+1]),
+            .start = @intCast(start),
+            .hasDynamicArg = hasDynamicArg,
+            .irArgsIdx = irIdx,
+        };
+    }
+
+    pub fn semaPushCallArgs(c: *cy.Chunk, argHead: cy.NodeId, numArgs: u8) !StackTypesResult {
+        const start = c.typeStack.items.len;
+        const irIdx = try c.irPushEmptyArray(u32, numArgs);
+        const hasDynamicArg = try semaPushArgsInner(c, irIdx, argHead);
+        return StackTypesResult{
+            .hasDynamicArg = hasDynamicArg,
+            .types = @ptrCast(c.typeStack.items[start..start+numArgs]),
+            .start = @intCast(start),
+            .irArgsIdx = irIdx,
+        };
+    }
+
+    fn semaPushArgsInner(c: *cy.Chunk, irIdx: u32, argHead: cy.NodeId) !bool {
+        var hasDynamicArg: bool = false;
+        var nodeId = argHead;
+        var i: u32 = 0;
+        while (nodeId != cy.NullId) {
+            const arg = c.nodes[nodeId];
+            const argRes = try c.semaExpr(nodeId, .{});
+            c.irSetArrayItem(irIdx, u32, i, argRes.irIdx);
+            hasDynamicArg = hasDynamicArg or argRes.type.dynamic;
+            try c.typeStack.append(c.alloc, @bitCast(argRes.type));
+            i += 1;
+            nodeId = arg.next;
+        }
+        return hasDynamicArg;
+    }
+
+    fn semaPushArgsInferInner(c: *cy.Chunk, irIdx: u32, argHead: cy.NodeId, preferTypes: []const TypeId) !bool {
         var nodeId = argHead;
         var i: u32 = 0;
         var hasDynamicArg: bool = false;
@@ -2759,61 +2844,7 @@ pub const ChunkExt = struct {
             i += 1;
             nodeId = arg.next;
         }
-        return StackTypesResult{
-            .hasDynamicArg = hasDynamicArg,
-            .types = @ptrCast(c.typeStack.items[start..start+numArgs]),
-            .start = @intCast(start),
-            .irArgsIdx = irIdx,
-        };
-    }
-
-    pub fn semaPushCalleeAndArgs(c: *cy.Chunk, callee: ExprResult, argHead: cy.NodeId, numArgs: u8) !StackTypesResult {
-        const start = c.typeStack.items.len;
-        try c.typeStack.append(c.alloc, @bitCast(callee.type));
-        const irIdx = try c.irPushEmptyArray(u32, numArgs);
-
-        var hasDynamicArg: bool = false;
-        var nodeId = argHead;
-        var i: u32 = 0;
-        while (nodeId != cy.NullId) {
-            const arg = c.nodes[nodeId];
-            const argRes = try c.semaExpr(nodeId, .{});
-            c.irSetArrayItem(irIdx, u32, i, argRes.irIdx);
-            hasDynamicArg = hasDynamicArg or argRes.type.dynamic;
-            try c.typeStack.append(c.alloc, @bitCast(argRes.type));
-            i += 1;
-            nodeId = arg.next;
-        }
-        return StackTypesResult{
-            .types = @ptrCast(c.typeStack.items[start..start+numArgs+1]),
-            .start = @intCast(start),
-            .hasDynamicArg = hasDynamicArg,
-            .irArgsIdx = irIdx,
-        };
-    }
-
-    pub fn semaPushCallArgs(c: *cy.Chunk, argHead: cy.NodeId, numArgs: u8) !StackTypesResult {
-        const start = c.typeStack.items.len;
-        const irIdx = try c.irPushEmptyArray(u32, numArgs);
-
-        var nodeId = argHead;
-        var hasDynamicArg: bool = false;
-        var i: u32 = 0;
-        while (nodeId != cy.NullId) {
-            const arg = c.nodes[nodeId];
-            const argRes = try c.semaExpr(nodeId, .{});
-            c.irSetArrayItem(irIdx, u32, i, argRes.irIdx);
-            try c.typeStack.append(c.alloc, @bitCast(argRes.type));
-            hasDynamicArg = hasDynamicArg or argRes.type.dynamic;
-            i += 1;
-            nodeId = arg.next;
-        }
-        return StackTypesResult{
-            .hasDynamicArg = hasDynamicArg,
-            .types = @ptrCast(c.typeStack.items[start..start+numArgs]),
-            .start = @intCast(start),
-            .irArgsIdx = irIdx,
-        };
+        return hasDynamicArg;
     }
 
     /// Skips emitting IR for a sym.
@@ -3328,17 +3359,28 @@ pub const ChunkExt = struct {
 
                 if (leftRes.type.dynamic) {
                     // Runtime method call.
-                    const calleeRes = try semaSym(c, leftSym, callee.head.accessExpr.left, true);
-                    const res = try c.semaPushCalleeAndArgs(calleeRes, node.head.callExpr.arg_head, numArgs);
+                    const recv = try semaSym(c, leftSym, callee.head.accessExpr.left, true);
+                    const res = try c.semaPushRecvAndArgs(recv, node.head.callExpr.arg_head, numArgs);
                     defer c.typeStack.items.len = res.start;
                     return c.semaCallObjSym(preIdx, rightId, res.types, res.irArgsIdx);
                 }
 
-                const rightSym = try c.mustFindSym(leftSym, rightName, rightId);
-                return try callSym(c, preIdx, rightSym, numArgs, rightId, node.head.callExpr.arg_head);
+                if (leftSym.isVariable()) {
+                    // Look for sym under left type's module.
+                    const leftTypeSym = c.sema.getTypeSym(leftRes.type.id);
+                    const rightSym = try c.mustFindSym(leftTypeSym, rightName, rightId);
+
+                    const recv = try semaSym(c, leftSym, callee.head.accessExpr.left, true);
+
+                    return try callSymWithRecv(c, preIdx, rightSym, numArgs, rightId, recv, node.head.callExpr.arg_head);
+                } else {
+                    // Look for sym under left module.
+                    const rightSym = try c.mustFindSym(leftSym, rightName, rightId);
+                    return try callSym(c, preIdx, rightSym, numArgs, rightId, node.head.callExpr.arg_head);
+                }
             } else {
                 // preCallObjSym.
-                const res = try c.semaPushCalleeAndArgs(leftRes, node.head.callExpr.arg_head, numArgs);
+                const res = try c.semaPushRecvAndArgs(leftRes, node.head.callExpr.arg_head, numArgs);
                 defer c.typeStack.items.len = res.start;
                 return c.semaCallObjSym(preIdx, rightId, res.types, res.irArgsIdx);
             }
@@ -3428,7 +3470,7 @@ pub const ChunkExt = struct {
 
         c.irSetExprCode(preIdx, .preCallFuncSym);
         c.irSetExprData(preIdx, .preCallFuncSym, .{ .callFuncSym = .{
-            .func = func, .hasDynamicArg = args.hasDynamicArg, .numArgs = @as(u8, @intCast(args.types.len)),
+            .func = func, .hasDynamicArg = args.hasDynamicArg, .numArgs = @as(u8, @intCast(args.types.len)), .args = args.irArgsIdx,
         }});
         return ExprResult.init(preIdx, CompactType.init(func.retType));
     }

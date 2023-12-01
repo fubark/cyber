@@ -982,8 +982,7 @@ fn genCallFuncSym(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) 
     const data = c.irGetExprData(idx, .preCallFuncSym).callFuncSym;
     const inst = try beginCall(c, cstr, false);
 
-    const argsIdx = c.irAdvanceExpr(idx, .preCallFuncSym);
-    const args = c.irGetArray(argsIdx, u32, data.numArgs);
+    const args = c.irGetArray(data.args, u32, data.numArgs);
 
     const argStart = c.rega.nextTemp;
     for (args, 0..) |argIdx, i| {

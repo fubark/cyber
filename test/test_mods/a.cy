@@ -1,7 +1,8 @@
 var Root.varInt = 123
 var Root.varTypedInt int = 123
-var Root.varList = [1, 2, 3]
-var Root.varMap = [a: 1, b: 2, c: 3]
+var Root.varAny = [1, 2, 3]
+var Root.varList List = [1, 2, 3]
+var Root.varMap Map = [a: 1, b: 2, c: 3]
 var Root.varFunc = func():
     return 345
 var Root.varFunc1 = func(a):

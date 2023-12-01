@@ -461,21 +461,21 @@ pub const Value = packed union {
                 if (self.isPointer()) {
                     const obj = self.asHeapObject();
                     switch (obj.getTypeId()) {
-                        bt.List => log.info("List {*} len={}", .{obj, obj.list.list.len}),
-                        bt.Map => log.info("Map {*} size={}", .{obj, obj.map.inner.size}),
+                        bt.List => log.info("List {*} rc={} len={}", .{obj, obj.head.rc, obj.list.list.len}),
+                        bt.Map => log.info("Map {*} rc={} size={}", .{obj, obj.head.rc, obj.map.inner.size}),
                         bt.String => {
                             const str = obj.string.getSlice();
                             if (str.len > 20) {
-                                log.info("String {*} len={} str=\"{s}\"...", .{obj, str.len, str[0..20]});
+                                log.info("String {*} rc={} len={} str=\"{s}\"...", .{obj, obj.head.rc, str.len, str[0..20]});
                             } else {
-                                log.info("String {*} len={} str={s}", .{obj, str.len, str});
+                                log.info("String {*} rc={} len={} str={s}", .{obj, obj.head.rc, str.len, str});
                             }
                         },
-                        bt.Lambda => log.info("Lambda {*}", .{obj}),
-                        bt.Closure => log.info("Closure {*}", .{obj}),
-                        bt.Fiber => log.info("Fiber {*}", .{obj}),
-                        bt.HostFunc => return log.info("NativeFunc {*}", .{obj}),
-                        bt.Pointer => return log.info("Pointer {*} ptr={*}", .{obj, obj.pointer.ptr}),
+                        bt.Lambda => log.info("Lambda {*} rc={}", .{obj, obj.head.rc}),
+                        bt.Closure => log.info("Closure {*} rc={}", .{obj, obj.head.rc}),
+                        bt.Fiber => log.info("Fiber {*} rc={}", .{obj, obj.head.rc}),
+                        bt.HostFunc => return log.info("NativeFunc {*} rc={}", .{obj, obj.head.rc}),
+                        bt.Pointer => return log.info("Pointer {*} rc={} ptr={*}", .{obj, obj.head.rc, obj.pointer.ptr}),
                         else => {
                             log.info("HeapObject {*} type={} rc={}", .{obj, obj.getTypeId(), obj.head.rc});
                         },

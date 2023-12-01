@@ -1,24 +1,33 @@
 #include <stdio.h>
+#include <string.h>
 #include "cyber.h"
 
 // Compile this program with a C compiler. `zig cc` is used here as an example.
-// zig cc main.c -I src -lcyber -L <Path to cyber.dll/so/dylib> -o main.exe
+// zig cc main.c -I ../../src/include ../../zig-out/lib/libcyber.a -o main
+
+#define STR(s) ((CsStr){ s, strlen(s) })
+
+void print(CsVM* vm, CsStr str) {
+    printf("My print: %.*s\n", (int)str.len, str.buf);
+}
 
 int main() {
-    CyVM* vm = cyVmCreate();
-    CStr src = cstr(
-        "a = 2\n"
-        "print a"
+    CsVM* vm = csCreate();
+    csSetPrint(vm, print);
+
+    CsStr src = STR(
+        "var a = 1\n"
+        "print(a + 2)\n"
     );
-    CyValue val;
-    int res = cyVmEval(vm, src, &val);
-    if (res == CY_Success) {
+    CsValue val;
+    int res = csEval(vm, src, &val);
+    if (res == CS_SUCCESS) {
         printf("Success!\n");
-        cyVmRelease(vm, val);
+        csRelease(vm, val);
     } else {
-        CStr err = cyVmGetLastErrorReport(vm);
-        printf("%s\n", err.charz);
+        const char* report = csNewLastErrorReport(vm);
+        printf("%s\n", report);
     }
-    cyVmDestroy(vm);
+    csDestroy(vm);
     return 0;
 }

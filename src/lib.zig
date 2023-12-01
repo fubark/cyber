@@ -19,9 +19,9 @@ export fn csCreate() *cy.UserVM {
     return @ptrCast(vm);
 }
 
-export fn csDeinit(uvm: *cy.UserVM) void {
+export fn csDeinit(vm: *cy.VM) void {
     // Reset VM, don't free heap pages to allow object counting.
-    uvm.internal().deinit(true);
+    vm.deinit(true);
 }
 
 export fn csDestroy(uvm: *cy.UserVM) void {

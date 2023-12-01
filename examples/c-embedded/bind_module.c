@@ -7,11 +7,10 @@
 // To see how to inject symbols programmatically, see `inject_module.c`.
 
 // Compile this program with a C compiler. `zig cc` is used here as an example.
-// zig cc bind_module.c -I ../../src/include ../../zig-out/lib/libcyber.a -o main.exe
+// zig cc bind_module.c -I ../../src/include ../../zig-out/lib/libcyber.a -o main
 
 // Convenience macros to deal with Cyber string slices.
 #define STR(s) ((CsStr){ s, strlen(s) })
-#define PRINTS(s) (printf("%.*s\n", (int)s.len, s.buf))
 
 CsValue add(CsVM* vm, const CsValue* args, uint8_t nargs) {
     double res = csAsFloat(args[0]) + csAsFloat(args[1]);
@@ -24,8 +23,8 @@ CsValue myCollectionAsList(CsVM* vm, const CsValue* args, uint8_t nargs);
 
 struct { char* n; CsFuncFn fn; } funcs[] = {
     {"add", add},
-    {"new", myCollectionNew},
     {"asList", myCollectionAsList},
+    {"MyCollection.new", myCollectionNew},
 };
 
 bool funcLoader(CsVM* vm, CsFuncInfo info, CsFuncResult* out) {
@@ -70,8 +69,7 @@ CsValue myCollectionNew(CsVM* vm, const CsValue* args, uint8_t nargs) {
     CsValue new = csNewHostObject(vm, myCollectionId, sizeof(MyCollection));
     MyCollection* my = (MyCollection*)csAsHostObject(new);
 
-    // Assign the constructor args passed in and retain them since our object now
-    // has shared ownership.
+    // Assign the constructor args passed in and retain them since the new object now references them.
     csRetain(vm, args[0]);
     my->val1 = args[0];
     csRetain(vm, args[1]);
@@ -103,6 +101,7 @@ void myCollectionFinalizer(CsVM* vm, void* obj) {
 
 bool typeLoader(CsVM* vm, CsTypeInfo info, CsTypeResult* out) {
     if (strncmp("MyCollection", info.name.buf, info.name.len) == 0) {
+        out->type = CS_TYPE_OBJECT;
         out->data.object.outTypeId = &myCollectionId;
         out->data.object.getChildren = myCollectionGetChildren;
         out->data.object.finalizer = myCollectionFinalizer;
@@ -114,18 +113,17 @@ bool typeLoader(CsVM* vm, CsTypeInfo info, CsTypeResult* out) {
 
 // This module loader provides the source code and callbacks to load @host funcs, vars, and types.
 bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
-    if (strncmp("my_engine", spec.buf, spec.len) == 0) {
-        out->src = STR(
+    if (strncmp("my_mod", spec.buf, spec.len) == 0) {
+        out->src =
             "@host func add(a float, b float) float\n"
-            "@host var MyConstant float\n"
-            "@host var MyList List\n"
+            "@host var Root.MyConstant float\n"
+            "@host var Root.MyList     List\n"
             "\n"
             "@host\n"
             "type MyCollection object:\n"
-            "  @host func new(a, b) MyCollection\n"
-            "  @host func asList(self) any"
-        );
-        out->srcIsStatic = true;
+            "    @host func asList() any"
+            "\n"
+            "@host func MyCollection.new(a, b) MyCollection\n";
         out->funcLoader = funcLoader;
         out->varLoader = varLoader;
         out->typeLoader = typeLoader;
@@ -137,7 +135,7 @@ bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
 }
 
 void print(CsVM* vm, CsStr str) {
-    printf("MY_VM: %.*s\n", (int)str.len, str.buf);
+    printf("My print: %.*s\n", (int)str.len, str.buf);
 }
 
 int main() {
@@ -147,22 +145,22 @@ int main() {
     csSetPrint(vm, print);
 
     // Initialize var array for loader.
-    vars[0] = (NameValue){"MyConstant", csFloat(1.23)};
+    vars[0] = (NameValue){"Root.MyConstant", csFloat(1.23)};
     CsValue myInt = csInteger(123);
-    vars[1] = (NameValue){"MyList", csNewList(vm, &myInt, 1)};
+    vars[1] = (NameValue){"Root.MyList", csNewList(vm, &myInt, 1)};
 
     CsStr main = STR(
-        "import eng 'my_engine'\n"
+        "import mod 'my_mod'\n"
         "\n"
         "var a = 1.0\n"
-        "print eng.add(a, 2)\n"
-        "print(-eng.MyConstant)\n"
+        "print mod.add(a, 2)\n"
+        "print(-mod.MyConstant)\n"
         "\n"
-        "eng.MyList.append(3)\n"
-        "print eng.MyList.len()\n"
+        "mod.MyList.append(3)\n"
+        "print mod.MyList.len()\n"
         "\n"
         "-- Instantiate a new MyCollection.\n"
-        "var myc = eng.MyCollection.new(1, 2)\n"
+        "var myc = mod.MyCollection.new(1, 2)\n"
         "dump myc.asList()"
     );
     CsValue resv;
@@ -170,10 +168,11 @@ int main() {
     if (res == CS_SUCCESS) {
         printf("Success!\n");
     } else {
-        CsStr err = csNewLastErrorReport(vm);
-        PRINTS(err);
-        csFreeStr(vm, err);
+        const char* report = csNewLastErrorReport(vm);
+        printf("%s\n", report);
+        csFreeStrZ(vm, report);
     }
+    csRelease(vm, vars[1].v);
     csDeinit(vm);
 
     // Check that all references were accounted for. (Should be 0)

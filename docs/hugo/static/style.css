@@ -172,6 +172,10 @@ pre code.hljs {
     color: #919aff;
     font-weight: normal;
 }
+.hljs-title {
+    color: var(--text);
+    font-weight: normal;
+}
 .hljs-keyword {
     color: var(--accent-light);
     font-weight: normal;

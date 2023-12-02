@@ -155,6 +155,7 @@ pub const SemaExt = struct {
             bt.Fiber,
             bt.MetaType,
             bt.Dynamic,
+            bt.ExternFunc,
             bt.Any => return true,
             bt.Integer,
             bt.Float,

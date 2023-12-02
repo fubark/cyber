@@ -194,7 +194,7 @@ type string object:
     @host func '$infix+'(o any) any
 
     --| Returns a new string that concats this string and `str`.
-    @host func concat(o string) any
+    @host func concat(o string) string
 
     --| Returns whether the string ends with `suffix`.
     @host func endsWith(suffix string) bool
@@ -227,10 +227,10 @@ type string object:
     @host func replace(needle string, replacement string) string
 
     --| Returns a new string with this string repeated `n` times.
-    @host func repeat(n int) any
+    @host func repeat(n int) string
 
     --| Returns the UTF-8 rune at index `idx`.
-    @host func runeAt(n int) any
+    @host func runeAt(n int) int
 
     --| Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
     @host func slice(start any, end any) string
@@ -238,9 +238,9 @@ type string object:
     @host func '$slice'(start any, end any) string
 
     --| Returns the UTF-8 rune at index `idx` as a single rune string.
-    @host func sliceAt(idx int) any
+    @host func sliceAt(idx int) string
 
-    @host func '$index'(idx int) any
+    @host func '$index'(idx int) string
 
     --| Returns a list of UTF-8 strings split at occurrences of `sep`.
     @host func split(sep string) List
@@ -249,7 +249,7 @@ type string object:
     @host func startsWith(prefix string) bool
 
     --| Returns the string with ends trimmed from runes in `delims`. `mode` can be .left, .right, or .ends.
-    @host func trim(mode symbol, delims string) any
+    @host func trim(mode symbol, delims string) string
 
     --| Returns this string in uppercase.
     @host func upper() string
@@ -265,7 +265,7 @@ type array object:
     @host func concat(other array) array
 
     --| Calls decode(.utf8)
-    @host func decode() any
+    @host func decode() string
 
     --| Decodes the array based on an `encoding`. Supported encodings: `.utf8`.
     --| Returns the decoded string or throws `error.Decode`.
@@ -298,10 +298,10 @@ type array object:
     @host func getInt32(idx int, endian symbol) int
 
     --| Returns a new array with `arr` inserted at index `idx`.
-    @host func insert(idx int, arr array) any
+    @host func insert(idx int, arr array) array
 
     --| Returns a new array with `byte` inserted at index `idx`.
-    @host func insertByte(idx int, byte int) any
+    @host func insertByte(idx int, byte int) array
 
     --| Returns a new iterator over the array bytes.
     @host func iterator() arrayIterator:
@@ -311,7 +311,7 @@ type array object:
     @host func len() int
 
     --| Returns a new array with this array repeated `n` times.
-    @host func repeat(n int) any
+    @host func repeat(n int) array
 
     --| Returns a new array with all occurrences of `needle` replaced with `replacement`.
     @host func replace(needle array, replacement array) array

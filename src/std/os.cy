@@ -87,7 +87,7 @@
 @host func newFFI() FFI
 
 --| Invokes `openDir(path, false)`.
-@host func openDir(path string) any
+@host func openDir(path string) Dir
 
 --| Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated.
 @host func openDir(path string, iterable bool) Dir
@@ -147,7 +147,7 @@ type File object:
     @host func seekFromEnd(n int) any
 
     --| Returns info about the file as a `Map`.
-    @host func stat() any
+    @host func stat() Map
 
     --| Equivalent to `streamLines(4096)`.
     @host func streamLines() any
@@ -168,14 +168,14 @@ type Dir object:
 
     --| Returns a new iterator over the directory entries.
     --| If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
-    @host func iterator() any
+    @host func iterator() DirIterator
 
     --| Returns info about the file as a `Map`.
-    @host func stat() any
+    @host func stat() Map
 
     --| Returns a new iterator over the directory recursive entries.
     --| If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
-    @host func walk() any
+    @host func walk() DirIterator
 
 @host
 type DirIterator object:

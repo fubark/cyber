@@ -38,7 +38,7 @@ type S object:
     var bar
 var s = [S:]
 var oldList = [123, s]
-var newList = copy(oldList)
+my newList = copy(oldList)
 t.eq(newList == oldList, false)
 t.eq(newList.len(), 2)
 t.eq(newList[0], 123)
@@ -116,7 +116,7 @@ t.eq(res['decls'][0].type, 'enumT')
 t.eq(res['decls'][0].name, 'foo')
 
 -- parseCyon()
-var val = parseCyon('123')
+my val = parseCyon('123')
 t.eq(val, 123)
 val = parseCyon('"foo"')
 t.eq(val, 'foo')

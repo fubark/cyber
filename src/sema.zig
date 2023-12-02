@@ -2052,7 +2052,7 @@ fn pushMethodParamVars(c: *cy.Chunk, objectT: TypeId, func: *const cy.Func) !voi
             // Implicit `self` param.
             try declareParam(c, cy.NullId, true, 0, objectT);
             // First param.
-            try declareParam(c, curNode, false, 1, objectT);
+            try declareParam(c, curNode, false, 1, params[1]);
 
             if (param.next != cy.NullId) {
                 curNode = param.next;
@@ -3105,20 +3105,37 @@ pub const ChunkExt = struct {
                             .right = right.irIdx,
                         },
                     });
+                    return ExprResult.initStatic(preIdx, bt.List);
                 } else {
-                    const irExtraIdx = try c.irPushEmptyArray(u32, 2);
-                    c.irSetArrayItem(irExtraIdx, u32, 0, left.irIdx);
-                    c.irSetArrayItem(irExtraIdx, u32, 1, right.irIdx);
-                    const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, left.type.id, right.type.id }, bt.Any);
-                    c.irSetExprCode(preIdx, .preCallObjSym);
-                    c.irSetExprData(preIdx, .preCallObjSym, .{ .callObjSym = .{
-                        .name = "$slice",
-                        .funcSigId = funcSigId,
-                        .numArgs = 2,
-                        .args = irExtraIdx,
-                    }});
+                    if (recv.type.dynamic) {
+                        const irExtraIdx = try c.irPushEmptyArray(u32, 2);
+                        c.irSetArrayItem(irExtraIdx, u32, 0, left.irIdx);
+                        c.irSetArrayItem(irExtraIdx, u32, 1, right.irIdx);
+                        const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, left.type.id, right.type.id }, bt.Any);
+                        c.irSetExprCode(preIdx, .preCallObjSym);
+                        c.irSetExprData(preIdx, .preCallObjSym, .{ .callObjSym = .{
+                            .name = "$slice",
+                            .funcSigId = funcSigId,
+                            .numArgs = 2,
+                            .args = irExtraIdx,
+                        }});
+                        return ExprResult.initDynamic(preIdx, bt.Any);
+                    } else {
+                        // Look for sym under left type's module.
+                        const recvTypeSym = c.sema.getTypeSym(recv.type.id);
+                        const sym = try c.mustFindSym(recvTypeSym, "$slice", nodeId);
+                        const irArgsIdx = try c.irPushEmptyArray(u32, 3);
+                        c.irSetArrayItem(irArgsIdx, u32, 0, recv.irIdx);
+                        c.irSetArrayItem(irArgsIdx, u32, 1, left.irIdx);
+                        c.irSetArrayItem(irArgsIdx, u32, 2, right.irIdx);
+                        return c.semaCallFuncSym(preIdx, nodeId, sym.cast(.func), .{
+                            .types = @constCast(&[_]CompactType{ recv.type, left.type, right.type }),
+                            .start = 0,
+                            .hasDynamicArg = left.type.dynamic or right.type.dynamic,
+                            .irArgsIdx = irArgsIdx,
+                        });
+                    }
                 }
-                return ExprResult.initDynamic(preIdx, bt.Any);
             },
             .binExpr => {
                 const left = node.head.binExpr.left;
@@ -3379,10 +3396,18 @@ pub const ChunkExt = struct {
                     return try callSym(c, preIdx, rightSym, numArgs, rightId, node.head.callExpr.arg_head);
                 }
             } else {
-                // preCallObjSym.
-                const res = try c.semaPushRecvAndArgs(leftRes, node.head.callExpr.arg_head, numArgs);
-                defer c.typeStack.items.len = res.start;
-                return c.semaCallObjSym(preIdx, rightId, res.types, res.irArgsIdx);
+                if (leftRes.type.dynamic) {
+                    // preCallObjSym.
+                    const res = try c.semaPushRecvAndArgs(leftRes, node.head.callExpr.arg_head, numArgs);
+                    defer c.typeStack.items.len = res.start;
+                    return c.semaCallObjSym(preIdx, rightId, res.types, res.irArgsIdx);
+                } else {
+                    // Look for sym under left type's module.
+                    const rightName = c.getNodeStringById(rightId);
+                    const leftTypeSym = c.sema.getTypeSym(leftRes.type.id);
+                    const rightSym = try c.mustFindSym(leftTypeSym, rightName, rightId);
+                    return try callSymWithRecv(c, preIdx, rightSym, numArgs, rightId, leftRes, node.head.callExpr.arg_head);
+                }
             }
         } else if (callee.node_t == .ident) {
             const name = c.getNodeString(callee);

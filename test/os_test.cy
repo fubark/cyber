@@ -8,7 +8,7 @@ if os.system != 'windows':
     t.eq(os.getEnv('testfoo'), none)
 
 -- access()
-var res = try os.access('test/assets/missing.txt', .read)
+my res = try os.access('test/assets/missing.txt', .read)
 t.eq(res, error.FileNotFound)
 res = os.access('test/assets/file.txt', .read)
 t.eq(res, none)
@@ -18,13 +18,13 @@ res = os.args()
 t.eq(res.len() > 0, true)
 
 -- createDir()
-try os.removeDir('test/assets/tempdir')
+os.removeDir('test/assets/tempdir')
 t.eq(os.createDir('test/assets/tempdir'), none)
 var dir = os.openDir('test/assets/tempdir')
 t.eq(dir.stat().type, .dir)
 
 -- createFile() new file.
-try os.removeFile('test/assets/write.txt')
+os.removeFile('test/assets/write.txt')
 var file = os.createFile('test/assets/write.txt', false)
 file.write('foobar')
 t.eq(os.readFile('test/assets/write.txt'), 'foobar')

@@ -1195,7 +1195,7 @@ test "FFI." {
         \\
         \\var ffi = os.newFFI()
         \\ffi.cfunc('testAdd', [.int, .int], .int)
-        \\var lib = ffi.bindLib(libPath)
+        \\my lib = ffi.bindLib(libPath)
         \\lib.testAdd(123, '321')
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
@@ -1223,7 +1223,7 @@ test "FFI." {
         \\
         \\var ffi = os.newFFI()
         \\ffi.cfunc('testAdd', [.int, .int], .int)
-        \\var lib = ffi.bindLib(libPath)
+        \\my lib = ffi.bindLib(libPath)
         \\lib.testAdd(123, 234, 345)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
@@ -1553,11 +1553,11 @@ test "Typed object fields." {
 }
 
 test "Object funcs/methods." {
-    // Calling a missing method name.
+    // Calling a missing method from untyped variable.
     try eval(.{ .silent = true },
         \\type S object:
         \\  var a
-        \\var o = [S:]
+        \\my o = [S:]
         \\o.foo()
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
@@ -1570,13 +1570,30 @@ test "Object funcs/methods." {
         );
     }}.func);
 
-    // Calling a method with the wrong signature.
+    // Calling a missing method from typed variable.
+    try eval(.{ .silent = true },
+        \\type S object:
+        \\  var a
+        \\var o = [S:]
+        \\o.foo()
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find the symbol `foo` in `main.S`.
+            \\
+            \\main:4:3:
+            \\o.foo()
+            \\  ^
+            \\
+        );
+    }}.func);
+
+    // Dynamic dispatch with the wrong signature.
     try eval(.{ .silent = true },
         \\type S object:
         \\  var a
         \\  func foo():
         \\    return 123
-        \\var o = [S:]
+        \\my o = [S:]
         \\o.foo(234)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
@@ -1586,6 +1603,27 @@ test "Object funcs/methods." {
             \\main:6:1 main:
             \\o.foo(234)
             \\^
+            \\
+        );
+    }}.func);
+
+    // Method dispatch with the wrong signature.
+    try eval(.{ .silent = true },
+        \\type S object:
+        \\  var a
+        \\  func foo():
+        \\    return 123
+        \\var o = [S:]
+        \\o.foo(234)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function for call signature: `foo(S, int) any`.
+            \\Functions named `foo` in `S`:
+            \\    func foo(S) dynamic
+            \\
+            \\main:6:3:
+            \\o.foo(234)
+            \\  ^
             \\
         );
     }}.func);

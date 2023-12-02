@@ -1259,7 +1259,10 @@ pub const VM = struct {
             .hostInlineFunc => {
                 const newFramePtr = framePtr + ret;
                 self.pc = pc;
-                _ = sym.inner.hostInlineFunc.?(@ptrCast(self), @ptrCast(newFramePtr + CallArgStart), numArgs);
+                const res: Value = @bitCast(sym.inner.hostInlineFunc.?(@ptrCast(self), @ptrCast(newFramePtr + CallArgStart), numArgs));
+                if (res.isInterrupt()) {
+                    return error.Panic;
+                }
                 return cy.fiber.PcSp{
                     .pc = pc,
                     .sp = framePtr,
@@ -4047,13 +4050,11 @@ fn callMethod(
                 return null;
             }
 
-            // Optimize.
-            pc[0] = cy.Inst.initOpCode(.callObjNativeFuncIC);
-            @as(*align(1) u48, @ptrCast(pc + 8)).* = @intCast(@intFromPtr(data.optimizing.ptr));
-            @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
-
             vm.pc = pc;
-            _ = data.optimizing.ptr.?(@ptrCast(vm), @ptrCast(sp + ret + CallArgStart), numArgs);
+            const res: Value = @bitCast(data.optimizing.ptr.?(@ptrCast(vm), @ptrCast(sp + ret + CallArgStart), numArgs));
+            if (res.isInterrupt()) {
+                return error.Panic;
+            }
             return cy.fiber.PcSp{
                 .pc = pc,
                 .sp = sp,
@@ -4621,20 +4622,23 @@ export fn zDeoptBinOp(vm: *VM, pc: [*]cy.Inst) [*]cy.Inst {
     const data = vm.inlineSaves.get(@intCast(pcOff)).?;
     _ = vm.inlineSaves.remove(@intCast(pcOff));
     const pcPtr: [*]u8 = @ptrCast(pc);
+
+    const instLen = vmc.CALL_OBJ_SYM_INST_LEN;
+
     switch (@as(cy.bindings.QuickenType, @enumFromInt(data[0]))) {
         .binOp => {
-            @memcpy(pcPtr[0..vmc.CALL_OBJ_SYM_INST_LEN], data[1..vmc.CALL_OBJ_SYM_INST_LEN+1]);
-            vm.alloc.free(data[0..vmc.CALL_OBJ_SYM_INST_LEN + 1]);
+            @memcpy(pcPtr[0..instLen], data[1..instLen+1]);
+            vm.alloc.free(data[0..instLen + 1]);
             return pc;
         },
         .binOpOneCopy => {
-            @memcpy((pcPtr-3)[0..vmc.CALL_OBJ_SYM_INST_LEN+3], data[1..vmc.CALL_OBJ_SYM_INST_LEN+1+3]);
-            vm.alloc.free(data[0..vmc.CALL_OBJ_SYM_INST_LEN + 1 + 3]);
+            @memcpy((pcPtr-3)[0..instLen+3], data[1..instLen+1+3]);
+            vm.alloc.free(data[0..instLen + 1 + 3]);
             return pc - 3;
         },
         .binOpBothCopies => {
-            @memcpy((pcPtr-6)[0..vmc.CALL_OBJ_SYM_INST_LEN+6], data[1..vmc.CALL_OBJ_SYM_INST_LEN+1+6]);
-            vm.alloc.free(data[0..vmc.CALL_OBJ_SYM_INST_LEN + 1 + 6]);
+            @memcpy((pcPtr-6)[0..instLen+6], data[1..instLen+1+6]);
+            vm.alloc.free(data[0..instLen + 1 + 6]);
             return pc - 6;
         },
     }
@@ -4651,4 +4655,11 @@ export fn zGetTypeName(vm: *VM, id: cy.TypeId) vmc.Str {
         .ptr = name.ptr,
         .len = name.len,
     };
+}
+
+export fn zEnsureListCap(vm: *VM, list: *cy.List(Value), cap: usize) vmc.ResultCode {
+    list.ensureTotalCapacity(vm.alloc, cap) catch {
+        return vmc.RES_CODE_UNKNOWN;
+    };
+    return vmc.RES_CODE_SUCCESS;
 }

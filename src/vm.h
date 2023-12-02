@@ -238,6 +238,7 @@ typedef enum {
     CodeIndexList,
     CodeIndexTuple,
     CodeIndexMap,
+    CodeAppendList,
     CodeList,
     CodeMap,
     CodeMapEmpty,
@@ -262,6 +263,7 @@ typedef enum {
     CodeRet1,
     CodeRet0,
     CodeCall,
+    CodeTypeCheck,
     CodeObjectField,
     CodeField,
     CodeFieldIC,
@@ -1015,3 +1017,4 @@ Value zValueMapGet(ValueMap* map, Value key, bool* found);
 ResultCode zMapSet(VM* vm, Map* map, Value key, Value val);
 Inst* zDeoptBinOp(VM* vm, Inst* pc);
 Str zGetTypeName(VM* vm, TypeId id);
+ResultCode zEnsureListCap(VM* vm, ZCyList* list, size_t cap);

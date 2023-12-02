@@ -410,6 +410,14 @@ static inline void panicFieldMissing(VM* vm) {
     panicStaticMsg(vm, "Field not found in value.");
 }
 
+static void panicIncompatibleType(VM* vm, TypeId actType, TypeId expType) {
+    Str actTypeName = zGetTypeName(vm, actType);
+    Str expTypeName = zGetTypeName(vm, expType);
+    zPanicFmt(vm, "Expected type `{}`, got `{}` instead.", (FmtValue[]){
+        FMT_STR(expTypeName), FMT_STR(actTypeName)
+    }, 2);
+}
+
 static void panicIncompatibleFieldType(VM* vm, TypeId fieldTypeId, TypeId rightTypeId) {
     Str fieldTypeName = zGetTypeName(vm, fieldTypeId);
     Str rightTypeName = zGetTypeName(vm, rightTypeId);
@@ -446,14 +454,6 @@ static void panicCastFail(VM* vm, TypeId actTypeId, TypeId expTypeId) {
 #define DEOPTIMIZE_BINOP() \
     do { \
         pc = zDeoptBinOp(vm, pc); \
-    } while (false)
-
-#define DEOPTIMIZE_BINOP2() \
-    do { \
-        pc[0] = CodeCallObjSym; \
-        pc[1] = pc[8]; \
-        pc[2] = pc[9]; \
-        pc[3] = pc[10]; \
     } while (false)
 
 #define DEOPTIMIZE_UNARYOP() \
@@ -579,6 +579,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(IndexList),
         JENTRY(IndexTuple),
         JENTRY(IndexMap),
+        JENTRY(AppendList),
         JENTRY(List),
         JENTRY(Map),
         JENTRY(MapEmpty),
@@ -598,6 +599,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Ret1),
         JENTRY(Ret0),
         JENTRY(Call),
+        JENTRY(TypeCheck),
         JENTRY(ObjectField),
         JENTRY(Field),
         JENTRY(FieldIC),
@@ -898,6 +900,33 @@ beginSwitch:
             } else {
                 stack[pc[3]] = VALUE_NONE;
             }
+            pc += CALL_OBJ_SYM_INST_LEN;
+            NEXT();
+        } else {
+            DEOPTIMIZE_BINOP();
+            NEXT();
+        }
+    }
+    CASE(AppendList): {
+        Value listv = stack[pc[1]];
+        Value itemv = stack[pc[2]];
+        if (VALUE_IS_LIST(listv)) {
+            HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
+
+            size_t len = listo->list.list.len;
+            if (len == listo->list.list.cap) {
+                // ensure cap.
+                ResultCode code = zEnsureListCap(vm, &listo->list.list, len + 1);
+                if (code != RES_CODE_SUCCESS) {
+                    RETURN(code);
+                }
+            }
+
+            retain(vm, itemv);
+            ((Value*)listo->list.list.buf)[len] = itemv;
+            listo->list.list.len = len + 1;
+            stack[pc[3]] = VALUE_NONE;
+
             pc += CALL_OBJ_SYM_INST_LEN;
             NEXT();
         } else {
@@ -1206,6 +1235,17 @@ beginSwitch:
             NEXT();
         }
         RETURN(res.code);
+    }
+    CASE(TypeCheck): {
+        Value val = stack[pc[1]];
+        TypeId expType = (TypeId)READ_U16(2);
+        TypeId actType = getTypeId(val);
+        if (!isTypeCompat(actType, expType)) {
+            panicIncompatibleType(vm, actType, expType);
+            RETURN(RES_CODE_PANIC);
+        }
+        pc += 4;
+        NEXT();
     }
     CASE(ObjectField): {
         Value recv = stack[pc[1]];

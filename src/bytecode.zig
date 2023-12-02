@@ -379,6 +379,7 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             len += try printInstArgs(&.{"child", "dst"},
                 &.{v(child), v(dst) });
         },
+        .appendList,
         .lessInt,
         .lessFloat,
         .lessEqualInt,
@@ -876,6 +877,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .objectTypeCheck => {
             return 3 + pc[2].val * 5;
         },
+        .typeCheck,
         .call,
         .captured,
         .constOp,
@@ -945,6 +947,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .callFuncIC => {
             return CallSymInstLen;
         },
+        .appendList,
         .lessFloat,
         .greaterFloat,
         .lessEqualFloat,
@@ -1015,6 +1018,8 @@ pub const OpCode = enum(u8) {
     indexTuple = vmc.CodeIndexTuple,
     indexMap = vmc.CodeIndexMap,
 
+    appendList = vmc.CodeAppendList,
+
     /// First operand points the first elem and also the dst local. Second operand contains the number of elements.
     list = vmc.CodeList,
     /// First operand points the first entry value and also the dst local. Second operand contains the number of elements.
@@ -1049,6 +1054,8 @@ pub const OpCode = enum(u8) {
     /// Calls a lambda.
     /// [calleeLocal] [numArgs] [numRet=0/1]
     call = vmc.CodeCall,
+
+    typeCheck = vmc.CodeTypeCheck,
 
     objectField = vmc.CodeObjectField,
     field = vmc.CodeField,
@@ -1164,7 +1171,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 110);
+    try t.eq(std.enums.values(OpCode).len, 112);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

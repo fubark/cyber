@@ -950,6 +950,7 @@ fn genUnOp(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenVal
 
 fn genCallObjSym(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
     const data = c.irGetExprData(idx, .preCallObjSym).callObjSym;
+
     const inst = try beginCall(c, cstr, false);
 
     // Receiver.
@@ -966,9 +967,9 @@ fn genCallObjSym(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !
         try genAndPushExpr(c, argIdx, RegisterCstr.exact(temp));
     }
 
-    const methodSymId = try c.compiler.vm.ensureMethodGroup(data.name);
+    const mgId = try c.compiler.vm.ensureMethodGroup(data.name);
     try pushCallObjSym(c, inst.ret, data.numArgs + 1,
-        @intCast(methodSymId), @intCast(data.funcSigId), nodeId);
+        @intCast(mgId), @intCast(data.funcSigId), nodeId);
 
     const argvs = popValues(c, data.numArgs+1);
     try checkArgs(argStart, argvs);
@@ -980,32 +981,60 @@ fn genCallObjSym(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !
 
 fn genCallFuncSym(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
     const data = c.irGetExprData(idx, .preCallFuncSym).callFuncSym;
-    const inst = try beginCall(c, cstr, false);
 
-    const args = c.irGetArray(data.args, u32, data.numArgs);
+    if (data.func.type == .hostInlineFunc) {
+        // TODO: Make this handle all host inline funcs.
+        if (@intFromPtr(data.func.data.hostInlineFunc.ptr) == @intFromPtr(cy.builtins.appendList)) {
+            const inst = try c.rega.selectForDstInst(cstr, false);
+            const args = c.irGetArray(data.args, u32, data.numArgs);
+            const recv = try genExpr(c, args[0], RegisterCstr.simple);
+            const itemv = try genExpr(c, args[1], RegisterCstr.simple);
 
-    const argStart = c.rega.nextTemp;
-    for (args, 0..) |argIdx, i| {
-        const temp = try c.rega.consumeNextTemp();
-        if (cy.Trace and temp != argStart + i) return error.Unexpected;
-        try genAndPushExpr(c, argIdx, RegisterCstr.exact(temp));
+            if (data.hasDynamicArg) {
+                try pushTypeCheck(c, recv.local, bt.List, nodeId);
+            }
+
+            try pushInlineBinExpr(c, .appendList, recv.local, itemv.local, inst.dst, nodeId);
+
+            const recvRetained = unwindAndFreeTemp(c, recv);
+            const itemvRetained = unwindAndFreeTemp(c, itemv);
+
+            // ARC cleanup.
+            try pushReleaseOpt2(c, recvRetained, recv.local, itemvRetained, itemv.local, nodeId);
+
+            const val = genValue(c, inst.dst, false);
+            return finishInst(c, val, inst.finalDst);
+        } else {
+            return error.UnsupportedInline;
+        }
+    } else {
+        const inst = try beginCall(c, cstr, false);
+
+        const args = c.irGetArray(data.args, u32, data.numArgs);
+
+        const argStart = c.rega.nextTemp;
+        for (args, 0..) |argIdx, i| {
+            const temp = try c.rega.consumeNextTemp();
+            if (cy.Trace and temp != argStart + i) return error.Unexpected;
+            try genAndPushExpr(c, argIdx, RegisterCstr.exact(temp));
+        }
+
+        if (data.hasDynamicArg) {
+            try genCallTypeCheck(c, inst.ret + cy.vm.CallArgStart, data.numArgs, data.func.funcSigId, nodeId);
+        }
+
+        const rtId = c.compiler.genSymMap.get(data.func).?.funcSym.id;
+        try pushCallSym(c, inst.ret, data.numArgs, 1, rtId, nodeId);
+
+        const argvs = popValues(c, data.numArgs);
+        try checkArgs(argStart, argvs);
+
+        const retained = unwindTemps(c, argvs);
+        try pushReleaseVals(c, retained, nodeId);
+
+        const retRetained = c.sema.isRcCandidateType(data.func.retType);
+        return endCall(c, inst, retRetained);
     }
-
-    if (data.hasDynamicArg) {
-        try genCallTypeCheck(c, inst.ret + cy.vm.CallArgStart, data.numArgs, data.func.funcSigId, nodeId);
-    }
-
-    const rtId = c.compiler.genSymMap.get(data.func).?.funcSym.id;
-    try pushCallSym(c, inst.ret, data.numArgs, 1, rtId, nodeId);
-
-    const argvs = popValues(c, data.numArgs);
-    try checkArgs(argStart, argvs);
-
-    const retained = unwindTemps(c, argvs);
-    try pushReleaseVals(c, retained, nodeId);
-
-    const retRetained = c.sema.isRcCandidateType(data.func.retType);
-    return endCall(c, inst, retRetained);
 }
 
 fn genCall(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
@@ -1086,11 +1115,12 @@ fn genCallObjSymUnOp(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeI
 
 fn genCallObjSymBinOp(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
     const data = c.irGetExprData(idx, .preCallObjSymBinOp).callObjSymBinOp;
+    const leftIdx = c.irAdvanceExpr(idx, .preCallObjSymBinOp);
+
     const inst = try beginCall(c, cstr, false);
 
     const leftPc = c.buf.ops.items.len;
     // copy inst doesn't create a debug symbol, otherwise that needs to be moved as well.
-    const leftIdx = c.irAdvanceExpr(idx, .preCallObjSymBinOp);
 
     var temp = try c.rega.consumeNextTemp();
     const leftv = try genExpr(c, leftIdx, RegisterCstr.exact(temp));
@@ -1115,7 +1145,6 @@ fn genCallObjSymBinOp(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.Node
     }
 
     const mgId = try getInfixMGID(c, data.op);
-
     const start = c.buf.len();
     try pushCallObjSym(c, inst.ret, 2, @intCast(mgId), @intCast(data.funcSigId), nodeId);
     // Provide hint to inlining that one or both args were copies.
@@ -3325,6 +3354,13 @@ fn genConstIntExt(c: *Chunk, val: u48, dst: LocalId, desc: cy.bytecode.InstDesc)
     const idx = try c.buf.getOrPushConst(cy.Value.initInt(@intCast(val)));
     try genConst(c, idx, dst, false, desc.nodeId);
     return genValue(c, dst, false);
+}
+
+fn pushTypeCheck(c: *cy.Chunk, local: RegisterId, typeId: cy.TypeId, nodeId: cy.NodeId) !void {
+    try c.pushFailableDebugSym(nodeId);
+    const start = c.buf.ops.items.len;
+    try c.buf.pushOpSlice(.typeCheck, &[_]u8{ local, 0, 0, });
+    c.buf.setOpArgU16(start + 2, @intCast(typeId));
 }
 
 fn genCallTypeCheck(c: *cy.Chunk, startLocal: u8, numArgs: u32, funcSigId: sema.FuncSigId, nodeId: cy.NodeId) !void {

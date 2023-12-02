@@ -249,13 +249,6 @@ pub fn listInsert(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Se
     return Value.None;
 }
 
-pub fn listAppend(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const obj = args[0].asHeapObject();
-    vm.retain(args[1]);
-    try obj.list.append(vm.alloc, args[1]);
-    return Value.None;
-}
-
 pub fn listJoin(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const obj = args[0].asHeapObject();
     const items = obj.list.items();
@@ -477,36 +470,39 @@ pub const QuickenType = enum(u8) {
     binOpBothCopies,
 };
 
-fn saveInst(vm: *cy.UserVM, qtype: QuickenType, pc: [*]cy.Inst) !void {
+fn saveInst(vm: *cy.VM, qtype: QuickenType, pc: [*]cy.Inst) !void {
     var data: []u8 = undefined;
     const pcPtr: [*]const u8 = @ptrCast(pc);
+    const instLen = vmc.CALL_OBJ_SYM_INST_LEN;
+
     switch (qtype) {
         .binOp => {
-            data = try vm.allocator().alloc(u8, vmc.CALL_OBJ_SYM_INST_LEN + 1);
-            @memcpy(data[1..], pcPtr[0..vmc.CALL_OBJ_SYM_INST_LEN]);
+            data = try vm.alloc.alloc(u8, instLen + 1);
+            @memcpy(data[1..], pcPtr[0..instLen]);
         },
         .binOpOneCopy => {
-            data = try vm.allocator().alloc(u8, vmc.CALL_OBJ_SYM_INST_LEN + 3 + 1);
-            @memcpy(data[1..], (pcPtr - 3)[0..vmc.CALL_OBJ_SYM_INST_LEN+3]);
+            data = try vm.alloc.alloc(u8, instLen + 3 + 1);
+            @memcpy(data[1..], (pcPtr - 3)[0..instLen+3]);
         },
         .binOpBothCopies => {
-            data = try vm.allocator().alloc(u8, vmc.CALL_OBJ_SYM_INST_LEN + 6 + 1);
-            @memcpy(data[1..], (pcPtr - 6)[0..vmc.CALL_OBJ_SYM_INST_LEN+6]);
+            data = try vm.alloc.alloc(u8, instLen + 6 + 1);
+            @memcpy(data[1..], (pcPtr - 6)[0..instLen + 6]);
         },
     }
     data[0] = @intFromEnum(qtype);
-    const pcOff = @intFromPtr(pc) - @intFromPtr(vm.internal().ops.ptr);
-    try vm.internal().inlineSaves.put(vm.allocator(), @intCast(pcOff), data.ptr);
+    const pcOff = @intFromPtr(pc) - @intFromPtr(vm.ops.ptr);
+    try vm.inlineSaves.put(vm.alloc, @intCast(pcOff), data.ptr);
 }
 
-pub fn inlineBinOp(comptime code: cy.OpCode) cy.ZHostFuncFn {
+pub fn inlineBinOp(comptime code: cy.OpCode) fn (*cy.VM, [*]const Value, u8) anyerror!Value {
     const S = struct {
-        pub fn method(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
-            const pc = vm.internal().pc;
+        pub fn method(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
+            const pc = vm.pc;
+
             // Lower bits contain op inlining type.
             const inlineType = pc[7].val & 0x7f;
             if (inlineType == 1) {
-                saveInst(vm, .binOpOneCopy, pc) catch @panic("error");
+                try saveInst(vm, .binOpOneCopy, pc);
 
                 const ret = pc[1].val;
                 pc[0] = cy.Inst.initOpCode(code);
@@ -522,7 +518,7 @@ pub fn inlineBinOp(comptime code: cy.OpCode) cy.ZHostFuncFn {
                 (pc-3)[0] = cy.Inst.initOpCode(.jump);
                 @as(*align(1) i16, @ptrCast(pc-2)).* = 3;
             } else if (inlineType == 2) {
-                saveInst(vm, .binOpBothCopies, pc) catch @panic("error");
+                try saveInst(vm, .binOpBothCopies, pc);
 
                 const ret = pc[1].val;
                 pc[0] = cy.Inst.initOpCode(code);
@@ -534,7 +530,7 @@ pub fn inlineBinOp(comptime code: cy.OpCode) cy.ZHostFuncFn {
                 (pc-6)[0] = cy.Inst.initOpCode(.jump);
                 @as(*align(1) i16, @ptrCast(pc-5)).* = 6;
             } else {
-                saveInst(vm, .binOp, pc) catch @panic("error");
+                try saveInst(vm, .binOp, pc);
 
                 // Inline bin op.
                 const ret = pc[1].val;

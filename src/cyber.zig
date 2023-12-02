@@ -47,6 +47,7 @@ pub const ChunkId = chunk.ChunkId;
 
 pub const register = @import("register.zig");
 
+pub const builtins = @import("builtins/builtins.zig");
 pub const bindings = @import("builtins/bindings.zig");
 
 pub const hash = @import("hash.zig");

@@ -14,6 +14,7 @@ const rt = cy.rt;
 const bt = cy.types.BuiltinTypes;
 const vmc = cy.vmc;
 const string = @import("string.zig");
+const inlineBinOp = bindings.inlineBinOp;
 
 const log = cy.log.scoped(.core);
 
@@ -28,6 +29,8 @@ pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callco
     }
     return false;
 }
+
+pub const appendList = zErrFunc2(inlineBinOp(.appendList));
 
 const NameFunc = struct { []const u8, cy.ZHostFuncFn, cc.FuncEnumType };
 const funcs = [_]NameFunc{
@@ -62,44 +65,44 @@ const funcs = [_]NameFunc{
     .{"$prefix-", bindings.intNeg, .inlinec},
     // Inlined opcodes allow the right arg to be dynamic so the compiler can gen more of those.
     // So for now, the runtime signature reflects that.
-    .{"$infix<", bindings.inlineBinOp(.lessInt), .inlinec},
-    .{"$infix<=", bindings.inlineBinOp(.lessEqualInt), .inlinec},
-    .{"$infix>", bindings.inlineBinOp(.greaterInt), .inlinec},
-    .{"$infix>=", bindings.inlineBinOp(.greaterEqualInt), .inlinec},
-    .{"$infix+", bindings.inlineBinOp(.addInt), .inlinec},
-    .{"$infix-", bindings.inlineBinOp(.subInt), .inlinec},
-    .{"$infix*", bindings.inlineBinOp(.mulInt), .inlinec},
-    .{"$infix/", bindings.inlineBinOp(.divInt), .inlinec},
-    .{"$infix%", bindings.inlineBinOp(.modInt), .inlinec},
-    .{"$infix^", bindings.inlineBinOp(.powInt), .inlinec},
-    .{"$infix&", bindings.inlineBinOp(.bitwiseAnd), .inlinec},
-    .{"$infix|", bindings.inlineBinOp(.bitwiseOr), .inlinec},
-    .{"$infix||", bindings.inlineBinOp(.bitwiseXor), .inlinec},
-    .{"$infix<<", bindings.inlineBinOp(.bitwiseLeftShift), .inlinec},
-    .{"$infix>>", bindings.inlineBinOp(.bitwiseRightShift), .inlinec},
+    .{"$infix<", zErrFunc2(inlineBinOp(.lessInt)), .inlinec},
+    .{"$infix<=", zErrFunc2(inlineBinOp(.lessEqualInt)), .inlinec},
+    .{"$infix>", zErrFunc2(inlineBinOp(.greaterInt)), .inlinec},
+    .{"$infix>=", zErrFunc2(inlineBinOp(.greaterEqualInt)), .inlinec},
+    .{"$infix+", zErrFunc2(inlineBinOp(.addInt)), .inlinec},
+    .{"$infix-", zErrFunc2(inlineBinOp(.subInt)), .inlinec},
+    .{"$infix*", zErrFunc2(inlineBinOp(.mulInt)), .inlinec},
+    .{"$infix/", zErrFunc2(inlineBinOp(.divInt)), .inlinec},
+    .{"$infix%", zErrFunc2(inlineBinOp(.modInt)), .inlinec},
+    .{"$infix^", zErrFunc2(inlineBinOp(.powInt)), .inlinec},
+    .{"$infix&", zErrFunc2(inlineBinOp(.bitwiseAnd)), .inlinec},
+    .{"$infix|", zErrFunc2(inlineBinOp(.bitwiseOr)), .inlinec},
+    .{"$infix||", zErrFunc2(inlineBinOp(.bitwiseXor)), .inlinec},
+    .{"$infix<<", zErrFunc2(inlineBinOp(.bitwiseLeftShift)), .inlinec},
+    .{"$infix>>", zErrFunc2(inlineBinOp(.bitwiseRightShift)), .inlinec},
     .{"fmt", zErrFunc2(intFmt), .standard},
     .{"fmt", zErrFunc2(intFmt2), .standard},
     .{"int.'$call'", intCall, .standard},
 
     // float
     .{"$prefix-", bindings.floatNeg, .inlinec},
-    .{"$infix<", bindings.inlineBinOp(.lessFloat), .inlinec},
-    .{"$infix<=", bindings.inlineBinOp(.lessEqualFloat), .inlinec},
-    .{"$infix>", bindings.inlineBinOp(.greaterFloat), .inlinec},
-    .{"$infix>=", bindings.inlineBinOp(.greaterEqualFloat), .inlinec},
-    .{"$infix+", bindings.inlineBinOp(.addFloat), .inlinec},
-    .{"$infix-", bindings.inlineBinOp(.subFloat), .inlinec},
-    .{"$infix*", bindings.inlineBinOp(.mulFloat), .inlinec},
-    .{"$infix/", bindings.inlineBinOp(.divFloat), .inlinec},
-    .{"$infix%", bindings.inlineBinOp(.modFloat), .inlinec},
-    .{"$infix^", bindings.inlineBinOp(.powFloat), .inlinec},
+    .{"$infix<", zErrFunc2(inlineBinOp(.lessFloat)), .inlinec},
+    .{"$infix<=", zErrFunc2(inlineBinOp(.lessEqualFloat)), .inlinec},
+    .{"$infix>", zErrFunc2(inlineBinOp(.greaterFloat)), .inlinec},
+    .{"$infix>=", zErrFunc2(inlineBinOp(.greaterEqualFloat)), .inlinec},
+    .{"$infix+", zErrFunc2(inlineBinOp(.addFloat)), .inlinec},
+    .{"$infix-", zErrFunc2(inlineBinOp(.subFloat)), .inlinec},
+    .{"$infix*", zErrFunc2(inlineBinOp(.mulFloat)), .inlinec},
+    .{"$infix/", zErrFunc2(inlineBinOp(.divFloat)), .inlinec},
+    .{"$infix%", zErrFunc2(inlineBinOp(.modFloat)), .inlinec},
+    .{"$infix^", zErrFunc2(inlineBinOp(.powFloat)), .inlinec},
     .{"float.'$call'", floatCall, .standard},
 
     // List
-    .{"$index",     bindings.inlineBinOp(.indexList), .inlinec},
+    .{"$index",     zErrFunc2(inlineBinOp(.indexList)), .inlinec},
     .{"$setIndex",  bindings.inlineTernOp(.setIndexList), .inlinec},
     .{"$slice",     bindings.inlineTernOp(.sliceList), .inlinec},
-    .{"append",     zErrFunc2(bindings.listAppend), .standard},
+    .{"append",     appendList, .inlinec},
     .{"concat",     zErrFunc2(bindings.listConcat), .standard},
     .{"insert",     bindings.listInsert, .standard},
     .{"iterator",   bindings.listIterator, .standard},
@@ -115,10 +118,10 @@ const funcs = [_]NameFunc{
     .{"next", bindings.listIteratorNext, .standard},
 
     // tuple
-    .{"$index", bindings.inlineBinOp(.indexTuple), .inlinec},
+    .{"$index", zErrFunc2(inlineBinOp(.indexTuple)), .inlinec},
 
     // Map
-    .{"$index", bindings.inlineBinOp(.indexMap), .inlinec},
+    .{"$index", zErrFunc2(inlineBinOp(.indexMap)), .inlinec},
     .{"$setIndex", bindings.inlineTernOp(.setIndexMap), .inlinec},
     .{"remove", bindings.mapRemove, .standard},
     .{"size", bindings.mapSize, .standard},

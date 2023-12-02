@@ -1385,7 +1385,7 @@ pub const VM = struct {
         if (val.isString()) {
             const str = val.asString();
             if (str.len > 20) {
-                try w.print("String({}) {s}...", .{str.len, str});
+                try w.print("String({}) {s}...", .{str.len, str[0..20]});
             } else {
                 try w.print("String({}) {s}", .{str.len, str});
             }

@@ -84,13 +84,13 @@ pub fn pushFiber(vm: *cy.VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber:
     vm.stackEndPtr = vm.stack.ptr + fiber.stackLen;
     // Check if fiber was previously yielded.
     if (vm.ops[fiber.pcOffset].opcode() == .coyield) {
-        log.debug("fiber set to {} {*}", .{fiber.pcOffset + 3, vm.framePtr});
+        log.tracev("fiber set to {} {*}", .{fiber.pcOffset + 3, vm.framePtr});
         return .{
             .pc = toVmPc(vm, fiber.pcOffset + 3),
             .sp = @ptrCast(fiber.stackPtr + fiber.stackOffset),
         };
     } else {
-        log.debug("fiber set to {} {*}", .{fiber.pcOffset, vm.framePtr});
+        log.tracev("fiber set to {} {*}", .{fiber.pcOffset, vm.framePtr});
         return .{
             .pc = toVmPc(vm, fiber.pcOffset),
             .sp = @ptrCast(fiber.stackPtr + fiber.stackOffset),
@@ -121,7 +121,7 @@ pub fn popFiber(vm: *cy.VM, cur: PcSpOff, retValue: Value) PcSpOff {
 
     vm.stack = @as([*]Value, @ptrCast(vm.curFiber.stackPtr))[0..vm.curFiber.stackLen];
     vm.stackEndPtr = vm.stack.ptr + vm.curFiber.stackLen;
-    log.debug("fiber set to {} {*}", .{vm.curFiber.pcOffset, vm.framePtr});
+    log.tracev("fiber set to {} {*}", .{vm.curFiber.pcOffset, vm.framePtr});
     return PcSpOff{
         .pc = vm.curFiber.pcOffset,
         .sp = vm.curFiber.stackOffset,

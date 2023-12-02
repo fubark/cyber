@@ -5,6 +5,10 @@ const cy = @import("cyber.zig");
 const log = cy.log.scoped(.main);
 const build_options = @import("build_options");
 const fmt = @import("fmt.zig");
+comptime {
+    const lib = @import("lib.zig");
+    std.testing.refAllDecls(lib);
+}
 
 var verbose = false;
 var reload = false;

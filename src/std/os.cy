@@ -86,6 +86,9 @@
 --| Returns a new FFI context for declaring C mappings and binding a dynamic library.
 @host func newFFI() FFI
 
+--| Returns the current time (in seconds) since a fixed start time in high resolution.
+@host func now() float
+
 --| Invokes `openDir(path, false)`.
 @host func openDir(path string) Dir
 

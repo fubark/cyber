@@ -64,6 +64,7 @@ const funcs = [_]NameFunc{
     .{"malloc",         zErrFunc(malloc)},
     .{"milliTime",      milliTime},
     .{"newFFI",         newFFI},
+    .{"now",            zErrFunc2(now)},
     .{"openDir",        zErrFunc(openDir)},
     .{"openDir",        zErrFunc(openDir2)},
     .{"openFile",       zErrFunc(openFile)},
@@ -500,6 +501,33 @@ fn cstr(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anye
     @memcpy(new[0..bytes.len], bytes);
     new[bytes.len] = 0;
     return cy.heap.allocPointer(vm, new);
+}
+
+pub fn now(_: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
+    const i = try std.time.Instant.now();
+    if (builtin.os.tag == .windows) {
+        const qpf = std.os.windows.QueryPerformanceFrequency();
+
+        const common_qpf = 10_000_000;
+        if (qpf == common_qpf) {
+            const ns = i.timestamp * (std.time.ns_per_s / common_qpf);
+            return Value.initF64(@as(f64, @floatFromInt(ns)) / @as(f64, std.time.ns_per_s));
+        }
+
+        // Convert to ns using fixed point.
+        const scale = @as(u64, std.time.ns_per_s << 32) / @as(u32, @intCast(qpf));
+        const ns = (@as(u96, i.timestamp) * scale) >> 32;
+        return Value.initF64(@as(f64, @floatFromInt(ns)) / @as(f64, std.time.ns_per_s));
+    }
+
+    // WASI timestamps are directly in nanoseconds
+    if (builtin.os.tag == .wasi and !builtin.link_libc) {
+        return Value.initF64(@as(f64, @floatFromInt(i.timestamp)) / @as(f64, std.time.ns_per_s));
+    }
+
+    const seconds = @as(u64, @intCast(i.timestamp.tv_sec));
+    const ns = (seconds * std.time.ns_per_s) + @as(u32, @intCast(i.timestamp.tv_nsec));
+    return Value.initF64(@as(f64, @floatFromInt(ns)) / @as(f64, std.time.ns_per_s));
 }
 
 pub fn milliTime(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {

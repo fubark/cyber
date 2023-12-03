@@ -713,9 +713,9 @@ fn genAndPushExpr(c: *cy.Chunk, idx: usize, cstr: RegisterCstr) !void {
 }
 
 fn zDumpJitSection(vm: *cy.VM, fp: [*]const cy.Value, chunkId: u64, irIdx: u64, startPc: [*]const u8, endPc: [*]const u8) void {
-    const c = vm.compiler.chunks.items[chunkId];
-    const code = c.irGetExprCode(irIdx);
-    const nodeId = c.irGetNode(irIdx);
+    const c = vm.compiler.chunks.items[@intCast(chunkId)];
+    const code = c.irGetExprCode(@intCast(irIdx));
+    const nodeId = c.irGetNode(@intCast(irIdx));
 
     const mc = startPc[0..@intFromPtr(endPc)-@intFromPtr(startPc)];
     const contextStr = c.encoder.formatNode(nodeId, &cy.tempBuf) catch cy.fatal();
@@ -1052,7 +1052,7 @@ fn genChunkInner(c: *cy.Chunk) !void {
         return c.reportErrorAt("Remaining unwind temp reg: {}", &.{v(c.unwindTempRegStack.items.len)}, cy.NullId);
     }
 
-    if (cy.Trace) {
+    if (cy.Trace and !cy.isWasm) {
         if (DumpCodeFrom) |start| {
             var codeBuf = c.jitBuf.buf.items[start..];
             if (codeBuf.len > 4 * 20) {

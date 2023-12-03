@@ -103,10 +103,6 @@ pub const UserVM = struct {
         return self.internal().compile(srcUri, src, .{ .enableFileModules = true });
     }
 
-    pub inline fn eval(self: *UserVM, srcUri: []const u8, src: []const u8, config: cy.EvalConfig) !Value {
-        return self.internal().eval(srcUri, src, config);
-    }
-
     pub inline fn allocator(self: *const UserVM) std.mem.Allocator {
         return @as(*const VM, @ptrCast(self)).alloc;
     }

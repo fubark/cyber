@@ -10,9 +10,9 @@ comptime {
     }
 }
 
-export fn csSetupForWeb(vm: *cy.UserVM) void {
-    vm.setModuleLoader(loader);
-    vm.setPrint(print);
+export fn csSetupForWeb(vm: *cy.VM) void {
+    c.setModuleLoader(@ptrCast(vm), loader);
+    c.setPrint(@ptrCast(vm), print);
 }
 
 pub fn loader(vm: ?*c.VM, spec_: c.Str, out_: [*c]c.ModuleLoaderResult) callconv(.C) bool {
@@ -50,7 +50,7 @@ fn print(_: ?*c.VM, str: c.Str) callconv(.C) void {
 }
 
 extern fn hostEvalJS(ptr: [*]const u8, len: usize) void;
-pub fn eval(vm: *cy.VM, args: [*]const cy.Value, _: u8) linksection(cy.StdSection) cy.Value {
+pub fn eval(vm: *cy.VM, args: [*]const cy.Value, _: u8) cy.Value {
     const str = vm.getOrBufPrintValueStr(&cy.tempBuf, args[0]) catch cy.fatal();
     hostEvalJS(str.ptr, str.len);
     return cy.Value.None;

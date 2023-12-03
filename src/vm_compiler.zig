@@ -194,7 +194,6 @@ pub const VMcompiler = struct {
             self.vm.types = self.sema.types.items;
         }
         self.compileInner(srcUri, src, config) catch |err| {
-
             if (err == error.TokenError) {
                 return CompileResultView{
                     .buf = self.buf,
@@ -767,7 +766,6 @@ fn performCodegen(self: *VMcompiler) !void {
                 }
             }
         }
-
     } else {
         try genBytecode(self);
     }

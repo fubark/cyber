@@ -57,7 +57,7 @@ export fn csFreeStrZ(vm: *cy.VM, str: [*:0]const u8) void {
     vm.alloc.free(std.mem.sliceTo(str, 0));
 }
 
-export fn csEval(vm: *cy.UserVM, src: c.Str, outVal: *cy.Value) c.ResultCode {
+export fn csEval(vm: *cy.VM, src: c.Str, outVal: *cy.Value) c.ResultCode {
     outVal.* = vm.eval("main", c.strSlice(src), .{
         .singleRun = false,
     }) catch |err| {

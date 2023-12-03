@@ -2726,9 +2726,7 @@ pub const ChunkExt = struct {
                 c.irSetArrayItem(irArgsIdx, u32, i, arg.irIdx);
                 try c.typeStack.append(c.alloc, @bitCast(arg.type));
             } else {
-                var preferT = if (fieldT == bt.Dynamic) bt.Any else fieldT;
-
-                const arg = try c.semaExprPrefer(item.nodeId, preferT);
+                const arg = try c.semaExprCstr(item.nodeId, fieldT);
                 c.irSetArrayItem(irArgsIdx, u32, i, arg.irIdx);
                 try c.typeStack.append(c.alloc, @bitCast(arg.type));
             }

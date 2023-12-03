@@ -494,6 +494,10 @@ fn genFieldStatic(c: *Chunk, idx: usize, cstr: RegisterCstr, opts: FieldOptions,
         recv = try genExpr(c, recIdx, RegisterCstr.simple);
     }
 
+    // Prereleasing seems it could be problematic for code like:
+    // var node = [Node ...]
+    // node = node.next
+    // But you can't initialize a Node if the type of next is also Node.
     if (inst.requiresPreRelease) {
         try pushRelease(c, inst.dst, nodeId);
     }

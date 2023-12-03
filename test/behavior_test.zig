@@ -1420,6 +1420,24 @@ test "Typed object fields." {
         \\test.eq(s.x, 123.0)
     );
 
+    // Initialize field with incompatible static value.
+    try eval(.{ .silent = true },
+        \\type S object:
+        \\  var a float
+        \\func foo():
+        \\  return 123
+        \\var s = [S a: none]
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Expected type `float`, got `none`.
+            \\
+            \\main:5:15:
+            \\var s = [S a: none]
+            \\              ^
+            \\
+        );
+    }}.func);
+
     // Initialize field with incompatible dynamic value.
     try eval(.{ .silent = true },
         \\type S object:

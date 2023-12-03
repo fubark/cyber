@@ -3039,8 +3039,17 @@ pub const ChunkExt = struct {
             },
             .castExpr => {
                 const typeId = try resolveTypeFromSpecNode(c, node.head.castExpr.typeSpecHead);
-                const irIdx = try c.irPushExpr(.cast, nodeId, .{ .typeId = typeId });
-                _ = try c.semaExpr(node.head.castExpr.expr, .{});
+                const irIdx = try c.irPushExpr(.cast, nodeId, .{ .typeId = typeId, .isRtCast = true });
+                const child = try c.semaExpr(node.head.castExpr.expr, .{});
+                if (!child.type.dynamic) {
+                    // Compile-time cast.
+                    if (!types.isTypeSymCompat(c.compiler, child.type.id, typeId)) {
+                        const actTypeName = c.sema.getTypeName(child.type.id);
+                        const expTypeName = c.sema.getTypeName(typeId);
+                        return c.reportErrorAt("Cast expects `{}`, got `{}`.", &.{v(expTypeName), v(actTypeName)}, nodeId);
+                    }
+                    c.irSetExprData(irIdx, .cast, .{ .typeId = typeId, .isRtCast = false });
+                }
                 return ExprResult.init(irIdx, CompactType.init(typeId));
             },
             .callExpr => {

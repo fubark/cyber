@@ -191,6 +191,7 @@ pub const Error = struct {
 
 pub const Cast = struct {
     typeId: TypeId,
+    isRtCast: bool,
 };
 
 pub const Field = union {

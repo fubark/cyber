@@ -409,10 +409,14 @@ fn genCoinitCall(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !
 
 fn genCast(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
     const data = c.irGetExprData(idx, .cast);
+    const childIdx = c.irAdvanceExpr(idx, .cast);
+
+    if (!data.isRtCast) {
+        return genExpr(c, childIdx, cstr);
+    }
 
     const inst = try c.rega.selectForDstInst(cstr, true);
 
-    const childIdx = c.irAdvanceExpr(idx, .cast);
     // TODO: If inst.dst is a temp, this should have a cstr of localOrExact.
     const childv = try genExpr(c, childIdx, RegisterCstr.initSimple(cstr.mustRetain));
 

@@ -52,9 +52,24 @@ test "Specific ARC cases." {
 }
 
 test "Type casting." {
-    // Failed to cast to exact type at runtime.
+    // Compile-time casting fails.
     try eval(.{ .silent = true },
         \\var a = 123
+        \\print(a as pointer)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Cast expects `pointer`, got `int`.
+            \\
+            \\main:2:9:
+            \\print(a as pointer)
+            \\        ^
+            \\
+        );
+    }}.func);
+
+    // Failed to cast to exact type at runtime.
+    try eval(.{ .silent = true },
+        \\my a = 123
         \\print(a as pointer)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
@@ -71,10 +86,10 @@ test "Type casting." {
     try eval(.{ .silent = true },
         \\123 as symbol
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not cast `int` to `symbol`.
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Cast expects `symbol`, got `int`.
             \\
-            \\main:1:5 main:
+            \\main:1:5:
             \\123 as symbol
             \\    ^
             \\
@@ -85,10 +100,10 @@ test "Type casting." {
     try eval(.{ .silent = true },
         \\123 as List
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not cast `int` to `List`.
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Cast expects `List`, got `int`.
             \\
-            \\main:1:5 main:
+            \\main:1:5:
             \\123 as List
             \\    ^
             \\
@@ -97,7 +112,7 @@ test "Type casting." {
 
     // Failed to cast to abstract type at runtime.
     try eval(.{ .silent = true },
-        \\var a = 123
+        \\my a = 123
         \\print(a as string)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,

@@ -1,3 +1,5 @@
+const start = Date.now()
+
 let list = []
 
 for (let i = 0; i < 1000000; i += 1) {
@@ -9,4 +11,5 @@ for (let i of list) {
     sum += i
 }
 
+console.log(`time: ${Date.now() - start}`)
 console.log(sum)

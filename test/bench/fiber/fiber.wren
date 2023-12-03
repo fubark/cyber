@@ -1,3 +1,4 @@
+var start = System.clock
 var count = 0
 
 var list = []
@@ -15,4 +16,5 @@ for (f in list) {
     f.call()
 }
 
+System.print("time: %((System.clock - start) * 1000)")
 System.print(count)

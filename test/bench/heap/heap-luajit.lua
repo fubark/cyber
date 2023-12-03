@@ -1,3 +1,5 @@
+local start = os.clock()
+
 local bit = require("bit")
 Node = {}
 Node.__index = Node
@@ -245,4 +247,5 @@ for i = 1, 20000-1 do
     sum = sum + h:popTop().value
 end
 
+io.write("time: ", (os.clock() - start) * 1000, "\n")
 io.write(sum .. "\n")

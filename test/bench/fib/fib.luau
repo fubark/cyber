@@ -5,5 +5,5 @@ local function fib(n)
 end
 
 local res = fib(30)
-io.write("time: ", (os.clock() - start) * 1000, "\n")
-io.write(res, "\n")
+print("time: ", (os.clock() - start) * 1000, "\n")
+print(res, "\n")

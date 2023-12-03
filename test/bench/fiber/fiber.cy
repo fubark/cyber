@@ -1,3 +1,7 @@
+import os
+
+var start = os.now()
+
 var Root.count = 0
 
 func inc():
@@ -14,4 +18,5 @@ for 0..100000:
 for fibers -> f:
     coresume f
 
+print('time: $((os.now() - start) * 1000)')
 print(count)

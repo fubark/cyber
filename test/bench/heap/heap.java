@@ -239,6 +239,8 @@ class Heap {
 
 class HeapMain {
     public static void main(String args[]) {
+        long start = System.currentTimeMillis();
+
         Heap h = new Heap(null, 0, null);
         for (int i = 1; i < 20000; i++) {
             h.insert(i);
@@ -247,6 +249,8 @@ class HeapMain {
         for (var i = 1; i < 20000; i++) {
             sum = sum + h.popTop().value;
         }
+        
+        System.out.println("time: " + (System.currentTimeMillis() - start));
         System.out.println(sum);
     }
 }

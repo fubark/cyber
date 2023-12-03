@@ -1,3 +1,4 @@
+const start = Date.now()
 let count = 0
 
 function* inc() {
@@ -17,4 +18,5 @@ for (let fiber of fibers) {
     fiber.next()
 }
 
+console.log(`time: ${Date.now() - start}`)
 console.log(count)

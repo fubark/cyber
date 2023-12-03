@@ -1,3 +1,7 @@
+import os
+
+var start = os.now()
+
 type Node object:
     my left
     my right
@@ -50,7 +54,7 @@ type Node object:
         else:
             return self.left.getLeftN(n - 1)
 
-func Heap.new():
+func Heap.new() Heap:
     return [Heap root: none, size: 0, last: none]
 
 type Heap object:
@@ -207,4 +211,5 @@ var sum = 0
 for 1..20000 -> i:
     sum = sum + h.popTop().value
 
+print('time: $((os.now() - start) * 1000)')
 print(sum)

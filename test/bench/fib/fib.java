@@ -7,6 +7,9 @@ class Fib {
     }
   
     public static void main(String args[]) {
-        System.out.println(fib(30));
+        long start = System.currentTimeMillis();
+        int res = fib(30);
+        System.out.println("time: " + (System.currentTimeMillis() - start));
+        System.out.println(res);
     }
 }

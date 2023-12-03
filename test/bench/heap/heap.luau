@@ -93,7 +93,7 @@ function Heap:insert(value)
         return
     end
     local newN
-    if ((self.size + 1) & self.size == 0) then
+    if (bit32.band(self.size + 1, self.size) == 0) then
         -- Insert at left most node.
         local parent = self.root:getLeftmost()
         newN = Node:new(null, null, parent, value)
@@ -208,7 +208,7 @@ function Heap:popTop()
     end
 
     local newLast
-    if (self.size & (self.size - 1) == 0) then
+    if (bit32.band(self.size, self.size - 1) == 0) then
         newLast = self.root:getRightmost()
     else
         newLast = self.last:getLeftSibling()
@@ -246,5 +246,5 @@ for i = 1, 20000-1 do
     sum = sum + h:popTop().value
 end
 
-io.write("time: ", (os.clock() - start) * 1000, "\n")
-io.write(sum .. "\n")
+print("time: ", (os.clock() - start) * 1000, "\n")
+print(sum .. "\n")

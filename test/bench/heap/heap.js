@@ -1,3 +1,5 @@
+const start = Date.now()
+
 class Node {
     left
     right
@@ -245,4 +247,5 @@ for (var i = 1; i < 20000; i++) {
     sum = sum + h.popTop().value
 }
 
+console.log(`time: ${Date.now() - start}`)
 console.log(sum)

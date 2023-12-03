@@ -9,5 +9,5 @@ for k, i in pairs(list) do
   sum = sum + i
 end
 
-io.write("time: ", (os.clock() - start) * 1000, "\n")
-io.write(sum .. "\n")
+print("time: ", (os.clock() - start) * 1000, "\n")
+print(sum .. "\n")

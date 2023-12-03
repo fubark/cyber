@@ -1,3 +1,5 @@
+var start = System.clock
+
 class Node {
     left { _left }
     left=(v) { _left = v}
@@ -254,4 +256,5 @@ for (i in 1...20000) {
     sum = sum + h.popTop().value
 }
 
+System.print("time: %((System.clock - start) * 1000)")
 System.print(sum)

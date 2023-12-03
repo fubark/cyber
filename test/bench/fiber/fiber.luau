@@ -21,5 +21,5 @@ for _, f in ipairs(list) do
     coresume(f)
 end
 
-io.write("time: ", (os.clock() - start) * 1000, "\n")
-io.write(count, "\n")
+print("time: ", (os.clock() - start) * 1000, "\n")
+print(count, "\n")

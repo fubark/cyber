@@ -1,3 +1,7 @@
+import time
+
+start = time.process_time()
+
 class Node:
     def __init__(self, left, right, parent, value):
         self.left = left
@@ -190,4 +194,5 @@ sum = 0
 for i in range(1, 20000):
     sum = sum + h.popTop().value
 
+print("time: " + str((time.process_time() - start)*1000))
 print(sum)

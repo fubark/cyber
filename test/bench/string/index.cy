@@ -1,9 +1,12 @@
 import os
 
-str = 'abcdefghijklmnopqrstuvwxyz123456'.repeat(1000000)
+var str = 'abcdefghijklmnopqrstuvwxyz123456'.repeat(1000000)
 str = str.concat('waldo')
 
-start = os.milliTime()
+var start = os.now()
+my idx = 0
 for 0..50:
-    idx = str.index('waldo')
-print 'idx: {idx} ms: {os.milliTime() - start}'
+    idx = str.find('waldo')
+
+print 'time: $((os.now() - start) * 1000)'
+print idx

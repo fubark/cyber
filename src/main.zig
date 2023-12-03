@@ -84,12 +84,13 @@ pub fn main() !void {
                     cmd = .eval;
                     if (arg0 == null) {
                         arg0 = arg;
+                        break;
                     }
                 }
-
             } else {
                 if (arg0 == null) {
                     arg0 = arg;
+                    break;
                 }
             }
         }

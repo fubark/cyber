@@ -12,9 +12,9 @@ type Account object:
             balance -= amt
 
     func show(title):
-        print '{title or ''}, {name}, {balance}'
+        print '$(title or ''), $(name), $(balance)'
 
-func Account.new(name):  
+func Account.new(name) Account:
     return [Account name: name, balance: 0.0]
 
 var a = Account.new('Savings')

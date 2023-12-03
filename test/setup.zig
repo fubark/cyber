@@ -265,6 +265,44 @@ pub const VMrunner = struct {
     }
 };
 
+pub fn compile(config: Config, src: []const u8) !void {
+    const run = VMrunner.create();
+    defer t.alloc.destroy(run);
+    defer {
+        if (config.silent) {
+            cy.silentError = false;
+        }
+        if (config.debug) {
+            cy.verbose = false;
+            t.setLogLevel(.warn);
+        }
+    }
+    errdefer run.vm.deinit(false);
+    var checkGlobalRC = true;
+
+    if (config.silent) {
+        cy.silentError = true;
+    }
+    if (config.debug) {
+        cy.verbose = true;
+        t.setLogLevel(.debug);
+    }
+
+    const res = try run.vm.compile(config.uri, src, .{ 
+        .singleRun = false,
+        .enableFileModules = config.enableFileModules,
+        // .genAllDebugSyms = config.debug,
+        .preJit = config.preJit,
+    });
+    if (res.err) |_| {
+        try printErrorReport(run.vm, error.CompileError);
+        checkGlobalRC = false;
+        return error.CompileError;
+    }
+
+    run.vm.deinit(false);
+}
+
 pub const EvalResult = anyerror!cy.Value;
 
 pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalResult) anyerror!void) !void {

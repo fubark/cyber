@@ -19,6 +19,7 @@ comptime {
 }
 const setup = @import("setup.zig");
 const eval = setup.eval;
+const compile = setup.compile;
 const evalPass = setup.evalPass;
 const VMrunner = setup.VMrunner;
 const Config = setup.Config;
@@ -3152,4 +3153,28 @@ test "ARC cycles." {
         \\var res = performGC()
         \\t.eq(res['numCycFreed'], 2)
     );
+}
+
+test "examples" {
+    try compile(.{}, @embedFile("../examples/fiber.cy"));
+    try compile(.{}, @embedFile("../examples/fizzbuzz.cy"));
+    try compile(.{}, @embedFile("../examples/hello.cy"));
+    try compile(.{}, @embedFile("../examples/ffi.cy"));
+    try compile(.{}, @embedFile("../examples/account.cy"));
+    try compile(.{}, @embedFile("../examples/fibonacci.cy"));
+}
+
+test "tools" {
+    try compile(.{}, @embedFile("../src/tools/bench.cy"));
+    try compile(Config.initFileModules("./src/tools/cbindgen.cy"), @embedFile("../src/tools/cbindgen.cy"));
+    try compile(Config.initFileModules("./src/jit/gen-stencils.cy"), @embedFile("../src/jit/gen-stencils.cy"));
+    try compile(.{}, @embedFile("../docs/gen-modules.cy"));
+}
+
+test "benchmarks" {
+    try compile(.{}, @embedFile("bench/fib/fib.cy"));
+    try compile(.{}, @embedFile("bench/fiber/fiber.cy"));
+    try compile(.{}, @embedFile("bench/for/for.cy"));
+    try compile(.{}, @embedFile("bench/heap/heap.cy"));
+    try compile(.{}, @embedFile("bench/string/index.cy"));
 }

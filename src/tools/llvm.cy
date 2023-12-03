@@ -1093,7 +1093,7 @@ func GetSymbols(ObjectFile any) pointer: pass
 func IsSymbolIteratorAtEnd(ObjectFile any, SI any) int: pass
 
 import os
-var Root.ffi = none
+my Root.ffi = none
 my Root.lib = load()
 func load():
     ffi = os.newFFI()

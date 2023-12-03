@@ -78,12 +78,12 @@ clang.lib.clang_visitChildren(cursor, cvisitor, cstate)
 
 -- Generate ffi init.
 out += "\nimport os\n"
-out += "var Root.ffi = none\n"
+out += "my Root.ffi = none\n"
 out += "my Root.lib = load()\n"
 out += "func load():\n"
 out += "    ffi = os.newFFI()\n"
 for structs -> name:
-    var fieldTypes = structMap[name].fieldTypes
+    var fieldTypes = structMap[name].fieldTypes as List
     out += "    ffi.cbind($(name), [$(fieldTypes.join(', '))])\n"
 for funcs -> fn:
     out += "    ffi.cfunc('$(fn.name)', [$(fn.params.join(', '))], $(fn.ret))\n"
@@ -124,7 +124,7 @@ var Root.funcs = []
 -- var vars = [:]            -- varName -> bindingType
 
 func getTranslationUnit(headerPath):
-    var rest = args.rest[3..]
+    var rest List = args.rest[3..]
 
     var cargs = os.malloc(8 * rest.len())
     for rest -> arg, i:
@@ -138,7 +138,7 @@ func getTranslationUnit(headerPath):
         clang.CXTranslationUnit_DetailedPreprocessingRecord | clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_KeepGoing)
 
 func getMacrosTranslationUnit(hppPath):
-    var rest = args.rest[3..]
+    var rest List = args.rest[3..]
 
     var cargs = os.malloc(8 * rest.len())
     for rest -> arg, i:
@@ -243,7 +243,7 @@ func rootVisitor(cursor, parent, state):
             if skipChildren:
                 out += '-- '
 
-            var fieldt = struct.fieldTypes[i]
+            my fieldt = struct.fieldTypes[i]
             out += '    var $(name) $(toCyType(fieldt, false))'
             if is(fieldt, .voidPtr) or
                 (typeof(fieldt) == string and fieldt.startsWith('[os.CArray')):

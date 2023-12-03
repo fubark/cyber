@@ -7,7 +7,8 @@
 
 import os
 
-var lib = os.bindLib('./libfoo.so', [
-    [os.CFunc sym: 'add', args: [.int, .int], ret: .int]
-])
+var ffi = os.newFFI()
+ffi.cfunc('add', [.int, .int], .int)
+-- my lib = ffi.bindLib('./libfoo.so')
+my lib = ffi.bindLib('./libfoo.dylib')
 print lib.add(123, 321)

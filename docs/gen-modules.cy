@@ -29,12 +29,12 @@ for modules -> mod:
             for decl.header.params -> param:
                 var typeSpec = (param.typeSpec != '') ? param.typeSpec else 'any'
                 params.append('$(param.name) $(typeSpec)')
-            var paramsStr = params.joinString(', ')
+            var paramsStr = params.join(', ')
             gen = gen + '{{<cy "func $(decl.header.name)($(paramsStr)) $(decl.header.ret)">}}$(docLine){{</cy>}}\n'
         case 'variable':
             var docLine = decl.docs ? decl.docs else ''
             var typeSpec = (decl.typeSpec != '') ? decl.typeSpec else 'any'
-            var idx = decl.name.findRune(0u'.')
+            var idx = decl.name.findRune(`.`)
             gen = gen + '{{<cy "var $(decl.name[idx+1..]) $(typeSpec)">}}$(docLine){{</cy>}}\n'
         case 'object':
             gen = gen + '### `type $(decl.name)`\n\n'
@@ -45,7 +45,7 @@ for modules -> mod:
                     for child.header.params -> param:
                         var typeSpec = (param.typeSpec != '') ? param.typeSpec else 'any'
                         params.append('$(param.name) $(typeSpec)')
-                    var paramsStr = params.joinString(', ')
+                    var paramsStr = params.join(', ')
                     gen = gen + '{{<cy "func $(child.header.name)($(paramsStr)) $(child.header.ret)">}}$(docLine){{</cy>}}\n'
 
     -- Replace section in modules.md.

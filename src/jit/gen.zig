@@ -71,14 +71,21 @@ pub const ChunkExt = struct {
     pub const jitEnsureCap = ensureCap;
     pub const jitCopyAdvance = copyAdvance;
     pub const jitPush = push;
+    pub const jitPushU32 = pushU32;
+    pub const jitPushU64 = pushU64;
     pub const jitPushStencil = pushStencil;
-    pub const jitPushCopyImm = pushCopyImm;
+    pub const jitPushCopyImmToSlot = pushCopyImmToSlot;
     pub const jitGetPos = getPos;
     pub const jitGetA64Inst = getA64Inst;
 };
 
-pub fn getA64Inst(c: *cy.Chunk, pos: usize, comptime T: type) *align(1)T {
-    return @ptrCast(&c.jitBuf.buf.items[pos]);
+pub fn getA64Inst(c: *cy.Chunk, pos: usize, comptime T: type) *align(4)T {
+    if (cy.Trace) {
+        if (pos % 4 != 0) {
+            cy.panic("Unaligned inst access.");
+        }
+    }
+    return @ptrCast(@alignCast(&c.jitBuf.buf.items[pos]));
 }
 
 pub fn getPos(c: *cy.Chunk) usize {
@@ -100,6 +107,20 @@ pub fn copyAdvance(c: *cy.Chunk, dst: usize, src: []const u8) void {
     const to: []u8 = @ptrCast(c.jitBuf.buf.items.ptr[dst..dst+src.len]);
     @memcpy(to, src);
     c.jitBuf.buf.items.len = dst+src.len;
+}
+
+pub fn pushU32(c: *cy.Chunk, code: u32) !void {
+    const start = try ensureCap(c, @sizeOf(u32));
+    c.jitBuf.buf.items.len += @sizeOf(u32);
+    const dst: []u8 = @ptrCast(c.jitBuf.buf.items.ptr[start..start+@sizeOf(u32)]);
+    @memcpy(dst, std.mem.asBytes(&code));
+}
+
+pub fn pushU64(c: *cy.Chunk, code: u64) !void {
+    const start = try ensureCap(c, @sizeOf(u64));
+    c.jitBuf.buf.items.len += @sizeOf(u64);
+    const dst: []u8 = @ptrCast(c.jitBuf.buf.items.ptr[start..start+@sizeOf(u64)]);
+    @memcpy(dst, std.mem.asBytes(&code));
 }
 
 pub fn push(c: *cy.Chunk, code: []const u8) !void {
@@ -126,12 +147,12 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
         log.tracev("----{s}: {{{s}}}", .{@tagName(code), contextStr});
 
         if (GenNopDebugMarkers) {
-            try assembler.A64.copyImm64(c, .xzr, GenNextMarkerId);
+            try A64.copyImm64(c, .xzr, GenNextMarkerId);
             if (GenBreakpointAtMarker) |id| {
                 if (id == GenNextMarkerId) {
                     DumpCodeFrom = c.jitGetPos();
                     try cy.debug.printTraceAtNode(c, nodeId);
-                    try assembler.A64.breakpoint(c);
+                    try A64.breakpoint(c);
                 }
             }
             GenNextMarkerId += 1;
@@ -330,15 +351,12 @@ fn genBinOp(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, opts: BinOpOptions, no
                 // try pushInlineBinExpr(c, getIntOpCode(data.op), leftv.local, rightv.local, inst.dst, nodeId);
                 if (cstr.type == .simple and cstr.data.simple.jitPreferCondFlag)  {
                     // Load operands.
-                    const lefti = A64.LoadStore.ldrImmOff(FpReg, leftv.local, .x2);
-                    try c.jitPush(std.mem.asBytes(&lefti));
-                    const righti = A64.LoadStore.ldrImmOff(FpReg, rightv.local, .x3);
-                    try c.jitPush(std.mem.asBytes(&righti));
+                    try c.jitPushU32(A64.LoadStore.ldrImmOff(FpReg, leftv.local, .x2).bitCast());
+                    try c.jitPushU32(A64.LoadStore.ldrImmOff(FpReg, rightv.local, .x3).bitCast());
                     try c.jitPush(&stencils.intPair);
 
                     // Compare.
-                    const cmpi = A64.AddSubShifted.cmp(.x2, .x3);
-                    try c.jitPush(std.mem.asBytes(&cmpi));
+                    try c.jitPushU32(A64.AddSubShifted.cmp(.x2, .x3).bitCast());
                     optCondFlag = .lt;
                 } else {
                     return error.TODO;
@@ -353,27 +371,46 @@ fn genBinOp(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, opts: BinOpOptions, no
         .minus => {
             if (data.leftT == bt.Float) {
                 // try pushInlineBinExpr(c, getFloatOpCode(data.op), leftv.local, rightv.local, inst.dst, nodeId);
-                return error.TODO;
-            } else if (data.leftT == bt.Integer) {
-                // try pushInlineBinExpr(c, getIntOpCode(data.op), leftv.local, rightv.local, inst.dst, nodeId);
 
                 // Load operands.
-                const lefti = A64.LoadStore.ldrImmOff(FpReg, leftv.local, .x2);
-                try c.jitPush(std.mem.asBytes(&lefti));
-                const righti = A64.LoadStore.ldrImmOff(FpReg, rightv.local, .x3);
-                try c.jitPush(std.mem.asBytes(&righti));
+                try c.jitPushU32(A64.LoadStore.ldrImmOff(FpReg, leftv.local, .x2).bitCast());
+                try c.jitPushU32(A64.LoadStore.ldrImmOff(FpReg, rightv.local, .x3).bitCast());
 
                 if (data.op == .minus) {
-                    try c.jitPush(std.mem.asBytes(&stencils.subInt));
+                    try c.jitPush(&stencils.subFloat);
                 } else if (data.op == .plus) {
-                    try c.jitPush(std.mem.asBytes(&stencils.addInt));
+                    try c.jitPush(&stencils.addFloat);
+                } else if (data.op == .star) {
+                    try c.jitPush(&stencils.mulFloat);
+                } else if (data.op == .slash) {
+                    try c.jitPush(&stencils.divFloat);
                 } else {
                     return error.TODO;
                 }
 
                 // Save result.
-                const storei = A64.LoadStore.strImmOff(FpReg, inst.dst, .x2);
-                try c.jitPush(std.mem.asBytes(&storei));
+                try c.jitPushU32(A64.LoadStore.strImmOff(FpReg, inst.dst, .x2).bitCast());
+            } else if (data.leftT == bt.Integer) {
+                // try pushInlineBinExpr(c, getIntOpCode(data.op), leftv.local, rightv.local, inst.dst, nodeId);
+
+                // Load operands.
+                try c.jitPushU32(A64.LoadStore.ldrImmOff(FpReg, leftv.local, .x2).bitCast());
+                try c.jitPushU32(A64.LoadStore.ldrImmOff(FpReg, rightv.local, .x3).bitCast());
+
+                if (data.op == .minus) {
+                    try c.jitPush(&stencils.subInt);
+                } else if (data.op == .plus) {
+                    try c.jitPush(&stencils.addInt);
+                } else if (data.op == .star) {
+                    try c.jitPush(&stencils.mulInt);
+                } else if (data.op == .slash) {
+                    try c.jitPush(&stencils.divInt);
+                } else {
+                    return error.TODO;
+                }
+
+                // Save result.
+                try c.jitPushU32(A64.LoadStore.strImmOff(FpReg, inst.dst, .x2).bitCast());
             } else return error.Unexpected;
         },
         // .equal_equal => {
@@ -426,8 +463,7 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
         prevCaseMissJump = c.jitGetPos();
         prevCaseMissJumpFromCondFlag = true;
         if (condv.data.jitCondFlag.type == .lt) {
-            const inst = A64.BrCond.init(.ge, 0);
-            try c.jitPush(std.mem.asBytes(&inst));
+            try c.jitPushU32(A64.BrCond.init(.ge, 0).bitCast());
         } else {
             return error.TODO;
         }
@@ -499,6 +535,21 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     }
 }
 
+fn genFloat(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
+    _ = nodeId;
+    const data = c.irGetExprData(idx, .float);
+    const inst = try c.rega.selectForNoErrInst(cstr, false);
+    if (inst.requiresPreRelease) {
+        // try pushRelease(c, inst.dst, nodeId);
+    }
+
+    const val = cy.Value.initF64(data.val);
+    try c.jitPushCopyImmToSlot(inst.dst, val);
+
+    const value = genValue(c, inst.dst, false);
+    return finishInst(c, value, inst.finalDst);
+}
+
 fn genInt(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
     _ = nodeId;
     const data = c.irGetExprData(idx, .int);
@@ -509,7 +560,7 @@ fn genInt(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenV
     }
 
     const val = cy.Value.initInt(@intCast(data.val));
-    try c.jitPushCopyImm(inst.dst, val);
+    try c.jitPushCopyImmToSlot(inst.dst, val);
 
     const value = genValue(c, inst.dst, false);
     return finishInst(c, value, inst.finalDst);
@@ -538,21 +589,22 @@ fn genToFinalDst(c: *cy.Chunk, val: GenValue, dst: RegisterCstr) !GenValue {
 }
 
 fn genToDst(c: *cy.Chunk, val: GenValue, dst: RegisterCstr, desc: cy.bytecode.InstDesc) !GenValue {
-    _ = c;
-    _ = val;
     _ = desc;
     switch (dst.type) {
-        // .local => {
-        //     const local = dst.data.local;
-        //     if (val.local == local.reg) return error.Unexpected;
-        //     if (local.retained) {
-        //         try c.buf.pushOp2Ext(.copyReleaseDst, val.local, local.reg, desc);
-        //     } else {
-        //         try c.buf.pushOp2Ext(.copy, val.local, local.reg, desc);
-        //     }
-        //     // Parent only cares about the retained property.
-        //     return GenValue.initRetained(val.retained);
-        // },
+        .local => {
+            const local = dst.data.local;
+            if (val.local == local.reg) return error.Unexpected;
+            if (local.retained) {
+                // try c.buf.pushOp2Ext(.copyReleaseDst, val.local, local.reg, desc);
+                return error.TODO;
+            } else {
+                // try c.buf.pushOp2Ext(.copy, val.local, local.reg, desc);
+                try c.jitPushU32(A64.LoadStore.ldrImmOff(FpReg, val.local, .x8).bitCast());
+                try c.jitPushU32(A64.LoadStore.strImmOff(FpReg, local.reg, .x8).bitCast());
+            }
+            // Parent only cares about the retained property.
+            return GenValue.initRetained(val.retained);
+        },
         // .boxedLocal => {
         //     const boxed = dst.data.boxedLocal;
         //     if (val.local == boxed.reg) return error.Unexpected;
@@ -608,35 +660,35 @@ fn genCallFuncSym(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeI
 
     if (data.func.type == .hostFunc) {
         // Populate callHost stencil args.
-        const argsi = A64.AddSubImm.add(.x2, FpReg, 8 * (inst.ret + cy.vm.CallArgStart));
-        try c.jitPush(std.mem.asBytes(&argsi));
+        try c.jitPushU32(A64.AddSubImm.add(.x2, FpReg, 8 * (inst.ret + cy.vm.CallArgStart)).bitCast());
 
-        try assembler.A64.copyImm64(c, .x3, data.numArgs);
+        try A64.copyImm64(c, .x3, data.numArgs);
 
         try c.jitPush(stencils.callHost[0..stencils.callHost_hostFunc]);
         // No reloc needed, copy address to x30 (since it's already spilled) and invoke with blr.
-        try assembler.A64.copyImm64(c, .x30, @intFromPtr(data.func.data.hostFunc.ptr));
-        const calli = A64.Br.blr(.x30);
-        try c.jitPush(std.mem.asBytes(&calli));
+        try A64.copyImm64(c, .x30, @intFromPtr(data.func.data.hostFunc.ptr));
+        try c.jitPushU32(A64.Br.blr(.x30).bitCast());
+
         try c.jitPush(stencils.callHost[stencils.callHost_hostFunc+4..]);
+
+        // Copy result to ret.
+        // TODO: Copy directly to final dst.
+        try c.jitPushU32(A64.LoadStore.strImmOff(FpReg, inst.ret, .x4).bitCast());
     } else if (data.func.type == .userFunc) {
         // Skip ret info.
         // Skip bc pc slot.
-        const saveFp = A64.LoadStore.strImmOff(FpReg, inst.ret + 3, FpReg);
-        try c.jitPush(std.mem.asBytes(&saveFp));
+        try c.jitPushU32(A64.LoadStore.strImmOff(FpReg, inst.ret + 3, FpReg).bitCast());
 
         // Advance fp.
-        const advFp = A64.AddSubImm.add(FpReg, FpReg, 8 * inst.ret);
-        try c.jitPush(std.mem.asBytes(&advFp));
+        try c.jitPushU32(A64.AddSubImm.add(FpReg, FpReg, 8 * inst.ret).bitCast());
 
         // Push empty branch.
         const jumpPc = c.jitGetPos();
-        const jumpInst = A64.BrImm.bl(0);
         try c.jitBuf.relocs.append(c.alloc, .{ .type = .jumpToFunc, .data = .{ .jumpToFunc = .{
             .func = data.func,
             .pc = @intCast(jumpPc),
         }}});
-        try c.jitPush(std.mem.asBytes(&jumpInst));
+        try c.jitPushU32(A64.BrImm.bl(0).bitCast());
     } else return error.TODO;
 
     const argvs = bcgen.popValues(c, data.numArgs);
@@ -646,7 +698,13 @@ fn genCallFuncSym(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeI
     // try pushReleaseVals(c, retained, nodeId);
 
     const retRetained = c.sema.isRcCandidateType(data.func.retType);
-    return bcgen.endCall(c, inst, retRetained);
+    return endCall(c, inst, retRetained);
+}
+
+fn endCall(c: *cy.Chunk, inst: bcgen.CallInst, retained: bool) !GenValue {
+    c.rega.freeTemps(inst.numPreludeTemps);
+    const val = genValue(c, inst.ret, retained);
+    return finishInst(c, val, inst.finalDst);
 }
 
 fn genAndPushExpr(c: *cy.Chunk, idx: usize, cstr: RegisterCstr) !void {
@@ -654,23 +712,51 @@ fn genAndPushExpr(c: *cy.Chunk, idx: usize, cstr: RegisterCstr) !void {
     try c.genValueStack.append(c.alloc, val);
 }
 
+fn zDumpJitSection(vm: *cy.VM, fp: [*]const cy.Value, chunkId: u64, irIdx: u64, startPc: [*]const u8, endPc: [*]const u8) void {
+    const c = vm.compiler.chunks.items[chunkId];
+    const code = c.irGetExprCode(irIdx);
+    const nodeId = c.irGetNode(irIdx);
+
+    const mc = startPc[0..@intFromPtr(endPc)-@intFromPtr(startPc)];
+    const contextStr = c.encoder.formatNode(nodeId, &cy.tempBuf) catch cy.fatal();
+    log.tracev("{s} {{{s}}} {*} {}", .{@tagName(code), contextStr, fp, std.fmt.fmtSliceHexLower(mc)});
+}
+
 fn genExpr(c: *cy.Chunk, idx: usize, cstr: RegisterCstr) anyerror!GenValue {
     const code = c.irGetExprCode(idx);
     const nodeId = c.irGetNode(idx);
+
+    var dumpEndPc: usize = undefined;
     if (cy.Trace) {
         const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
         log.tracev("{s}: {{{s}}} {s}", .{@tagName(code), contextStr, @tagName(cstr.type)});
 
         if (GenNopDebugMarkers) {
-            try assembler.A64.copyImm64(c, .xzr, GenNextMarkerId);
+            try A64.copyImm64(c, .xzr, GenNextMarkerId);
             if (GenBreakpointAtMarker) |id| {
                 if (id == GenNextMarkerId) {
                     DumpCodeFrom = c.jitGetPos();
                     try cy.debug.printTraceAtNode(c, nodeId);
-                    try assembler.A64.breakpoint(c);
+                    try A64.breakpoint(c);
                 }
             }
             GenNextMarkerId += 1;
+        }
+
+        if (cy.verbose) {
+            try A64.copyImm64(c, .x2, c.id);
+            try A64.copyImm64(c, .x3, idx);
+            const dumpStartPc = c.jitGetPos();
+            try c.jitPushU32(A64.PcRelAddr.adr(.x4, 0).bitCast());
+            dumpEndPc = c.jitGetPos();
+            try c.jitPushU32(A64.PcRelAddr.adr(.x5, 0).bitCast());
+            try c.jitPush(stencils.dumpJitSection[0..stencils.dumpJitSection_zDumpJitSection]);
+            try A64.copyImm64(c, .x30, @intFromPtr(&zDumpJitSection));
+            try c.jitPushU32(A64.Br.blr(.x30).bitCast());
+            try c.jitPush(stencils.dumpJitSection[stencils.dumpJitSection_zDumpJitSection+4..]);
+
+            const adr = c.jitGetA64Inst(dumpStartPc, A64.PcRelAddr);
+            adr.setOffsetFrom(dumpStartPc, c.jitGetPos());
         }
     }
     const res = try switch (code) {
@@ -685,7 +771,7 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: RegisterCstr) anyerror!GenValue {
         // .falsev             => genFalse(c, cstr, nodeId),
         // .fieldDynamic       => genFieldDynamic(c, idx, cstr, .{}, nodeId),
         // .fieldStatic        => genFieldStatic(c, idx, cstr, .{}, nodeId),
-        // .float              => genFloat(c, idx, cstr, nodeId),
+        .float              => genFloat(c, idx, cstr, nodeId),
         // .funcSym            => genFuncSym(c, idx, cstr, nodeId),
         .int                => genInt(c, idx, cstr, nodeId),
         // .lambda             => genLambda(c, idx, cstr, nodeId),
@@ -704,7 +790,7 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: RegisterCstr) anyerror!GenValue {
         // .preSlice           => genSlice(c, idx, cstr, nodeId),
         // .preUnOp            => genUnOp(c, idx, cstr, nodeId),
         // .string             => genString(c, idx, cstr, nodeId),
-        // .stringTemplate     => genStringTemplate(c, idx, cstr, nodeId),
+        .stringTemplate     => genStringTemplate(c, idx, cstr, nodeId),
         // .switchBlock        => genSwitchBlock(c, idx, cstr, nodeId),
         // .tagSym             => genTagSym(c, idx, cstr, nodeId),
         // .throw              => genThrow(c, idx, nodeId),
@@ -715,6 +801,14 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: RegisterCstr) anyerror!GenValue {
         else => return error.TODO,
     };
     log.tracev("{s}: end", .{@tagName(code)});
+
+    if (cy.Trace) {
+        if (cy.verbose) {
+            const adr = c.jitGetA64Inst(dumpEndPc, A64.PcRelAddr);
+            adr.setOffsetFrom(dumpEndPc, c.jitGetPos());
+        }
+    }
+
     return res;
 }
 
@@ -738,8 +832,7 @@ fn mainBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     c.jitBuf.mainPc = @intCast(c.jitGetPos());
 
     // Spill return addr to slot 0.
-    const inst = A64.LoadStore.strImmOff(FpReg, 0, .x30);
-    try c.jitPush(std.mem.asBytes(&inst));
+    try c.jitPushU32(A64.LoadStore.strImmOff(FpReg, 0, .x30).bitCast());
 
     var child = data.bodyHead;
     while (child != cy.NullId) {
@@ -766,16 +859,96 @@ fn mainBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
 fn mainEnd(c: *cy.Chunk, optReg: ?u8) !void {
     const retSlot = optReg orelse cy.NullU8;
 
-    try assembler.A64.copyImm64(c, .x2, retSlot);
-    try c.jitPush(std.mem.asBytes(&stencils.end));
+    try A64.copyImm64(c, .x2, retSlot);
+    try c.jitPush(&stencils.end);
 
     // Load ret addr back into x30.
-    const loadRet = A64.LoadStore.ldrImmOff(FpReg, 0, .x30);
-    try c.jitPush(std.mem.asBytes(&loadRet));
+    try c.jitPushU32(A64.LoadStore.ldrImmOff(FpReg, 0, .x30).bitCast());
 
     // Return.
-    const reti = A64.Br.ret();
-    try c.jitPush(std.mem.asBytes(&reti));
+    try c.jitPushU32(A64.Br.ret().bitCast());
+}
+
+fn genStringTemplate(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
+    const data = c.irGetExprData(idx, .stringTemplate);
+    const strsIdx = c.irAdvanceExpr(idx, .stringTemplate);
+    const strs = c.irGetArray(strsIdx, []const u8, data.numExprs+1);
+    const args = c.irGetArray(data.args, u32, data.numExprs);
+
+    const inst = try c.rega.selectForDstInst(cstr, true); 
+    const argStart = c.rega.getNextTemp();
+
+    for (args, 0..) |argIdx, i| {
+        const temp = try c.rega.consumeNextTemp();
+        if (cy.Trace and temp != argStart + i) return error.Unexpected;
+        try genAndPushExpr(c, argIdx, RegisterCstr.exact(temp));
+    }
+    if (cy.Trace and c.rega.nextTemp != argStart + data.numExprs) return error.Unexpected;
+
+    // Inline const strings.
+    const skipPc = c.jitGetPos();
+    try c.jitPushU32(@bitCast(A64.BrImm.b(0)));
+
+    const strsPc = c.jitGetPos();
+    for (strs) |str| {
+        const ustr = try c.unescapeString(str);
+        const constIdx = try c.buf.getOrPushStaticStringConst(ustr);
+        const constStr = c.buf.consts.items[constIdx];
+        try c.jitPushU64(@bitCast(constStr));
+    }
+
+    const skipi = c.jitGetA64Inst(skipPc, A64.BrImm);
+    skipi.setOffsetFrom(skipPc, c.jitGetPos());
+
+    // try c.pushOptionalDebugSym(nodeId);
+    // try c.buf.pushOp3(.stringTemplate, argStart, data.numExprs, inst.dst);
+
+    // Load strs.
+    try c.jitPushU32(A64.PcRelAddr.adrFrom(.x2, c.jitGetPos(), strsPc).bitCast());
+
+    // Load exprs.
+    try c.jitPushU32(A64.AddSubImm.add(.x3, FpReg, 8 * argStart).bitCast());
+
+    // Load expr count.
+    try A64.copyImm64(c, .x4, data.numExprs);
+
+    try c.jitPush(stencils.stringTemplate[0..stencils.stringTemplate_zAllocStringTemplate2]);
+    // No reloc needed, copy address to x30 (since it's already spilled) and invoke with blr.
+    try A64.copyImm64(c, .x30, @intFromPtr(&cy.vm.zAllocStringTemplate2));
+    try c.jitPushU32(A64.Br.blr(.x30).bitCast());
+    try c.jitPush(stencils.stringTemplate[stencils.stringTemplate_zAllocStringTemplate2+4..]);
+
+    // Save result.
+    try c.jitPushU32(A64.LoadStore.strImmOff(FpReg, inst.dst, .x5).bitCast());
+
+    const argvs = bcgen.popValues(c, data.numExprs);
+    try bcgen.checkArgs(argStart, argvs);
+    const retained = bcgen.unwindTemps(c, argvs);
+    try pushReleaseVals(c, retained, nodeId);
+
+    const val = genValue(c, inst.dst, true);
+    return finishInst(c, val, inst.finalDst);
+}
+
+fn pushReleaseVals(c: *cy.Chunk, vals: []const GenValue, debugNodeId: cy.NodeId) !void {
+    _ = debugNodeId;
+    if (vals.len > 1) {
+        // try self.pushOptionalDebugSym(debugNodeId);
+        // try self.buf.pushOp1(.releaseN, @intCast(vals.len));
+
+        // const start = self.buf.ops.items.len;
+        // try self.buf.ops.resize(self.alloc, self.buf.ops.items.len + vals.len);
+        // for (vals, 0..) |val, i| {
+        //     self.buf.ops.items[start+i] = .{ .val = val.local };
+        // }
+        return error.TODO;
+    } else if (vals.len == 1) {
+        // try pushRelease(self, vals[0].local, debugNodeId);
+        try c.jitPush(stencils.release[0..stencils.release_zFreeObject]);
+        try A64.copyImm64(c, .x30, @intFromPtr(&cy.vm.zFreeObject));
+        try c.jitPushU32(A64.Br.blr(.x30).bitCast());
+        try c.jitPush(stencils.release[stencils.release_zFreeObject+4..]);
+    }
 }
 
 fn declareLocal(c: *cy.Chunk, idx: u32, nodeId: cy.NodeId) !void {
@@ -913,10 +1086,8 @@ fn genLocalReg(c: *cy.Chunk, reg: RegisterId, cstr: RegisterCstr, nodeId: cy.Nod
                     return error.TODO;
                 } else {
                     // try c.buf.pushOp2Ext(.copy, reg, inst.dst, c.desc(nodeId));
-                    const loadi = A64.LoadStore.ldrImmOff(FpReg, reg, .x8);
-                    try c.jitPush(std.mem.asBytes(&loadi));
-                    const storei = A64.LoadStore.strImmOff(FpReg, inst.dst, .x8);
-                    try c.jitPush(std.mem.asBytes(&storei));
+                    try c.jitPushU32(A64.LoadStore.ldrImmOff(FpReg, reg, .x8).bitCast());
+                    try c.jitPushU32(A64.LoadStore.strImmOff(FpReg, inst.dst, .x8).bitCast());
                 }
             }
         } else {
@@ -987,7 +1158,7 @@ fn retExprStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     }
 }
 
-fn pushCopyImm(c: *cy.Chunk, dst: RegisterId, val: cy.Value) !void {
-    try assembler.A64.copyImm64(c, .x8, val.val);
-    try assembler.A64.copyToPtrImmOff(c, FpReg, dst, .x8);
+fn pushCopyImmToSlot(c: *cy.Chunk, dst: RegisterId, val: cy.Value) !void {
+    try A64.copyImm64(c, .x8, val.val);
+    try A64.copyToPtrImmOff(c, FpReg, dst, .x8);
 }

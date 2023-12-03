@@ -8,7 +8,7 @@ import os
 var out = ''
 var curDir = os.dirName(#ModUri)
 
-var outLLBuf = llvm.ffi.new(.voidPtr)
+my outLLBuf = llvm.ffi.new(.voidPtr)
 var outMsg = llvm.ffi.new(.charPtr)
 if llvm.CreateMemoryBufferWithContentsOfFile(os.cstr('$(curDir)/stencils.o'), outLLBuf, outMsg) != 0:
     throw error.Unexpected
@@ -21,7 +21,7 @@ var buf = cbuf.toArray(0, size)
 var llBin = llvm.CreateBinary(llBuf, none, outMsg)
 
 -- Find text section.
-var codeBuf any = none
+my codeBuf = none
 var llSectIter = llvm.ObjectFileCopySectionIterator(llBin)
 while llvm.ObjectFileIsSectionIteratorAtEnd(llBin, llSectIter) == 0:
     var cname = llvm.GetSectionName(llSectIter)
@@ -71,7 +71,7 @@ for syms -> sym, i:
     -- Skip ltmp0.
     if len == 0: continue 
 
-    var bin = codeBuf[sym.addr..sym.addr+len] 
+    my bin = codeBuf[sym.addr..sym.addr+len] 
 
     -- Remove ending continuation branch.
     if bin[bin.len()-4..].getInt32(0, .little) == 0x14000000:
@@ -107,7 +107,7 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
     my found = none
     for syms -> sym, i:
         if offset >= sym.addr:
-            if i < syms.len() and offset >= syms[i+1].addr:
+            if i < syms.len()-1 and offset >= syms[i+1].addr:
                 continue
             found = sym
             break

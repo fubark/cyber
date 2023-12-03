@@ -581,7 +581,7 @@ pub const VM = struct {
             // Memory must be reset to original setting in order to be freed.
             defer std.os.mprotect(res.jitBuf.buf.items.ptr[0..res.jitBuf.buf.capacity], PROT_WRITE) catch cy.fatal();
 
-            if (res.jitBuf.buf.items.len > 100*4) {
+            if (res.jitBuf.buf.items.len > 500*4) {
                 log.tracev("jit code (size: {}) {}...", .{res.jitBuf.buf.items.len, std.fmt.fmtSliceHexLower(res.jitBuf.buf.items[0..100*4])});
             } else {
                 log.tracev("jit code (size: {}) {}", .{res.jitBuf.buf.items.len, std.fmt.fmtSliceHexLower(res.jitBuf.buf.items)});
@@ -676,7 +676,7 @@ pub const VM = struct {
     }
 
     pub fn getTypeName(vm: *const cy.VM, typeId: cy.TypeId) []const u8 {
-        if (typeId == cy.NullId >> 2) {
+        if (typeId == cy.NullId >> 3) {
             return "danglingObject";
         }
         return vm.compiler.sema.types.items[typeId].sym.name();
@@ -1508,7 +1508,11 @@ pub const VM = struct {
                 }
             },
             else => {
-                const name = self.compiler.sema.getTypeName(obj.getTypeId());
+                if (typeId == cy.NullId >> 3) {
+                    try w.writeAll("danglingObject");
+                    return;
+                }
+                const name = self.compiler.sema.getTypeName(typeId);
                 try w.writeAll(name);
             }
         }
@@ -4247,7 +4251,7 @@ export fn zDumpEvalOp(vm: *const VM, pc: [*]const cy.Inst) void {
     dumpEvalOp(vm, pc) catch cy.fatal();
 }
 
-export fn zFreeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
+pub export fn zFreeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
     cy.heap.freeObject(vm, obj, true, false, true);
 } 
 
@@ -4451,6 +4455,19 @@ export fn zAllocExternalObject(vm: *cy.VM, size: usize) vmc.HeapObjectResult {
 
 export fn zAllocStringTemplate(vm: *cy.VM, strs: [*]cy.Inst, strCount: u8, vals: [*]Value, valCount: u8) vmc.ValueResult {
     const val = cy.heap.allocStringTemplate(vm, strs[0..strCount], vals[0..valCount]) catch {
+        return .{
+            .val = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .val = @bitCast(val),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
+pub export fn zAllocStringTemplate2(vm: *cy.VM, strs: [*]cy.Value, strCount: u8, vals: [*]Value, valCount: u8) vmc.ValueResult {
+    const val = cy.heap.allocStringTemplate2(vm, strs[0..strCount], vals[0..valCount]) catch {
         return .{
             .val = undefined,
             .code = vmc.RES_CODE_UNKNOWN,

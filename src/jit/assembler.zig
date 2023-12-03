@@ -3,6 +3,7 @@ const stdx = @import("stdx");
 const cy = @import("../cyber.zig");
 const gen = @import("gen.zig");
 const t = stdx.testing;
+const log = cy.log.scoped(.assembler);
 
 /// Assembler for basic operations such as copying immediates, load/store regs to memory.
 /// Most machine code is still being generated from stencils.
@@ -39,6 +40,53 @@ pub const A64 = struct {
         }
     };
 
+    pub const NoOp = packed struct {
+        fixed: u32 = 0b1101010100_0_00_011_0010_0000_000_11111,
+
+        pub fn bitCast(self: NoOp) u32 {
+            return @bitCast(self);
+        }
+
+        pub fn init() NoOp {
+            return NoOp{};
+        }
+    };
+
+    pub const PcRelAddr = packed struct {
+        rd: u5,
+        immhi: u19,
+        fixed: u5 = 0b10000,
+        immlo: u2,
+        op: u1,
+
+        pub fn bitCast(self: PcRelAddr) u32 {
+            return @bitCast(self);
+        }
+
+        pub fn adrFrom(rd: Register, from: usize, to: usize) PcRelAddr {
+            const offset: i21 = @intCast(@as(isize, @bitCast(to -% from)));
+            return adr(rd, offset);
+        }
+
+        pub fn adr(rd: Register, imm21: i21) PcRelAddr {
+            std.debug.assert(rd.bitSize() == 64);
+            const imm21_u = @as(u21, @bitCast(imm21));
+            return PcRelAddr{
+                .rd = rd.enc(),
+                .immlo = @as(u2, @truncate(imm21_u)),
+                .immhi = @as(u19, @truncate(imm21_u >> 2)),
+                .op = 0b0,
+            };
+        }
+
+        pub fn setOffsetFrom(self: *PcRelAddr, from: usize, to: usize) void {
+            const offset: i21 = @intCast(@as(isize, @bitCast(to -% from)));
+            const imm21_u: u21 = @bitCast(offset);
+            self.immlo = @truncate(imm21_u);
+            self.immhi = @truncate(imm21_u >> 2);
+        }
+    };
+
     pub const Cond = enum(u4) {
         eq = 0,
         ne = 1,
@@ -57,6 +105,10 @@ pub const A64 = struct {
         s: u1,
         op: u1,
         sf: u1,
+
+        pub fn bitCast(self: AddSubShifted) u32 {
+            return @bitCast(self);
+        }
 
         pub fn cmp(rn: Register, rm: Register) AddSubShifted {
             return .{
@@ -82,6 +134,10 @@ pub const A64 = struct {
         op: u1,
         sf: u1,
 
+        pub fn bitCast(self: AddSubImm) u32 {
+            return @bitCast(self);
+        }
+
         pub fn add(rd: Register, rn: Register, imm: u12) AddSubImm {
             return .{
                 .rd = rd.enc(),
@@ -100,8 +156,17 @@ pub const A64 = struct {
         fixed: u5 = 0b00101,
         op: u1,
 
+        pub fn bitCast(self: BrImm) u32 {
+            return @bitCast(self);
+        }
+
         pub fn setOffset(self: *BrImm, offset: i28) void {
             self.imm26 = @bitCast(@as(i26, @intCast(offset >> 2)));
+        }
+
+        pub fn setOffsetFrom(self: *BrImm, from: usize, to: usize) void {
+            const offset: i26 = @intCast(@as(isize, @bitCast(to -% from)) >> 2);
+            self.imm26 = @bitCast(offset);
         }
 
         pub fn b(offset: i28) BrImm {
@@ -122,6 +187,10 @@ pub const A64 = struct {
         op2: u5,
         opc: u4,
         fixed: u7 = 0b1101_011,
+
+        pub fn bitCast(self: Br) u32 {
+            return @bitCast(self);
+        }
 
         pub fn ret() Br {
             return .{
@@ -160,6 +229,10 @@ pub const A64 = struct {
         imm19: u19,
         o1: u1 = 0,
         fixed: u7 = 0b0101010,
+
+        pub fn bitCast(self: BrCond) u32 {
+            return @bitCast(self);
+        }
 
         pub fn init(cond: Cond, imm: u19) BrCond {
             return .{ .cond = @intFromEnum(cond), .imm19 = imm };
@@ -278,6 +351,10 @@ pub const A64 = struct {
         fixed: u3 = 0b111,
         size: u2,
 
+        pub fn bitCast(self: LoadStore) u32 {
+            return @bitCast(self);
+        }
+
         pub fn strImmOff(rn: Register, off: u12, rt: Register) LoadStore {
             return .{
                 .rt = rt.enc(),
@@ -310,6 +387,10 @@ pub const A64 = struct {
         opc: u3,
         fixed: u8 = 0b1101_0100,
 
+        pub fn bitCast(self: Exception) u32 {
+            return @bitCast(self);
+        }
+
         pub fn brk(imm16: u16) Exception {
             return .{
                 .ll = 0b00,
@@ -321,13 +402,11 @@ pub const A64 = struct {
     };
 
     pub fn breakpoint(c: *cy.Chunk) !void {
-        const inst = Exception.brk(0xf000);
-        try c.jitPush(std.mem.asBytes(&inst));
+        try c.jitPushU32(Exception.brk(0xf000).bitCast());
     }
 
     pub fn copyToPtrImmOff(c: *cy.Chunk, ptrReg: Register, off: usize, reg: Register) !void {
-        const inst = LoadStore.strImmOff(ptrReg, @intCast(off), reg);
-        try c.jitPush(std.mem.asBytes(&inst));
+        try c.jitPushU32(LoadStore.strImmOff(ptrReg, @intCast(off), reg).bitCast());
     }
 
     /// Ported from https://github.com/llvm-mirror/llvm/blob/master/lib/Target/AArch64/AArch64ExpandImm.cpp
@@ -1060,3 +1139,8 @@ pub const A64 = struct {
 // }
     }
 };
+
+test "A64 insts" {
+    const inst = A64.PcRelAddr.adr(.x2, 0x8).bitCast();
+    try t.eq(inst, 0b0_00_10000_0000000000000000010_00010);
+}

@@ -1206,6 +1206,33 @@ pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.Inst, vals: []const Va
     }
 }
 
+pub fn allocStringTemplate2(self: *cy.VM, strs: []const Value, vals: []const Value) !Value {
+    const firstStr = strs[0].asHeapObject();
+    const firstSlice = firstStr.string.getSlice();
+    try self.u8Buf.resize(self.alloc, firstSlice.len);
+    std.mem.copy(u8, self.u8Buf.items(), firstSlice);
+
+    const writer = self.u8Buf.writer(self.alloc);
+    var finalCharLen: u32 = firstStr.string.getCharLen();
+    for (vals, 0..) |val, i| {
+        var charLen: u32 = undefined;
+        const valstr = try self.getOrBufPrintValueStr2(&cy.tempBuf, val, &charLen);
+        finalCharLen += charLen;
+        _ = try writer.write(valstr);
+
+        const str = strs[i+1].asHeapObject();
+        finalCharLen += str.string.getCharLen();
+
+        try self.u8Buf.appendSlice(self.alloc, str.string.getSlice());
+    }
+
+    if (self.u8Buf.len != finalCharLen) {
+        return retainOrAllocUstring(self, self.u8Buf.items(), finalCharLen);
+    } else {
+        return retainOrAllocAstring(self, self.u8Buf.items());
+    }
+}
+
 pub fn getOrAllocOwnedAstring(self: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) !Value {
     return getOrAllocOwnedString(self, obj, obj.astring.getSlice());
 }

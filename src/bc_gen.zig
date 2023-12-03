@@ -3256,7 +3256,7 @@ pub const GenValue = struct {
         };
     }
 
-    fn initRetained(retained: bool) GenValue {
+    pub fn initRetained(retained: bool) GenValue {
         return .{
             .type = .generic,
             .local = 255,

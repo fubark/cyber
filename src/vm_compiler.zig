@@ -761,9 +761,8 @@ fn performCodegen(self: *VMcompiler) !void {
                         return error.Unexpected;
                     } else {
                         const targetPc = self.genSymMap.get(func).?.funcSym.pc;
-                        const offset: i28 = @intCast(@as(i32, @bitCast(targetPc -% jumpPc)));
                         var inst: *assembler.A64.BrImm = @ptrCast(@alignCast(&self.jitBuf.buf.items[jumpPc]));
-                        inst.setOffset(offset);
+                        inst.setOffsetFrom(jumpPc, targetPc);
                     }
                 }
             }

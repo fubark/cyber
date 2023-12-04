@@ -139,7 +139,7 @@ const Command = enum {
 };
 
 fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
-    const src = try std.fs.cwd().readFileAlloc(alloc, path, 1e10);
+    const src = try std.fs.cwd().readFileAlloc(alloc, path, 1e9);
     defer alloc.free(src);
     
     cy.verbose = verbose;
@@ -174,7 +174,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
 }
 
 fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
-    const src = try std.fs.cwd().readFileAllocOptions(alloc, path, 1e10, 4096, @alignOf(u8), null);
+    const src = try std.fs.cwd().readFileAllocOptions(alloc, path, 1e9, 4096, @alignOf(u8), null);
     defer alloc.free(src);
 
     cy.verbose = verbose;

@@ -19,7 +19,7 @@ Cyber is a fast, efficient, and concurrent scripting language. You can embed it 
 - macOS arm64 (Manually tested.)
 - Windows x64
 - WASM Web
-- WASM WASI (soon)
+- WASM WASI
 
 ### Install
 - Install using the command prompt (Linux, macOS)

@@ -59,6 +59,10 @@ jobs:
             mode: release
             cmd: web-lib
           - host: ubuntu-22.04
+            target: wasm32-wasi
+            mode: release
+            cmd: cli
+          - host: ubuntu-22.04
             target: x86_64-linux-gnu
             mode: release
             cmd: lib
@@ -78,7 +82,8 @@ jobs:
           "x86_64-selinux-gnu": "cyber-selinux-x64.tar.gz",
           "x86_64-macos-none": "cyber-macos-x64.tar.gz",
           "aarch64-macos-none": "cyber-macos-arm64.tar.gz",
-          "wasm32-freestanding": "cyber.wasm",
+          "wasm32-freestanding": "cyber-web.wasm",
+          "wasm32-wasi": "cyber-wasi.wasm",
         }')[matrix.config.target] }}
       ZIG_TARGET_FLAG: >-
         ${{ fromJson('{
@@ -88,6 +93,7 @@ jobs:
           "x86_64-macos-none": "-Dtarget=x86_64-macos-none -Dcpu=baseline",
           "aarch64-macos-none": "-Dtarget=aarch64-macos-none -Dcpu=baseline",
           "wasm32-freestanding": "-Dtarget=wasm32-freestanding",
+          "wasm32-wasi": "-Dtarget=wasm32-wasi",
         }')[matrix.config.target] }}
       BUILD_HOST: ${{ matrix.config.host }}
       BUILD_TARGET: ${{ matrix.config.target }}
@@ -118,7 +124,7 @@ jobs:
           wget -c https://ziglang.org/builds/zig-linux-x86_64-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
 
       - name: Install wasm3.
-        if: env.BUILD_HOST == 'ubuntu-22.04' && env.BUILD_TARGET == 'wasm32-freestanding'
+        if: env.BUILD_HOST == 'ubuntu-22.04' && (env.BUILD_TARGET == 'wasm32-freestanding' || env.BUILD_TARGET == 'wasm32-wasi')
         run: |
           git clone --depth=1 https://github.com/wasm3/wasm3.git
           cd wasm3
@@ -182,7 +188,7 @@ jobs:
             build-${{ env.BUILD_TARGET }}-${{ env.BUILD_MODE }}-1
 
       - name: Run tests.
-        if: env.BUILD_TARGET != 'aarch64-macos-none' && env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD != 'lib'
+        if: env.BUILD_TARGET != 'aarch64-macos-none' && env.BUILD_TARGET != 'wasm32-wasi' && env.BUILD_CMD == 'cli'
         run: zig build test ${{ env.ZIG_TARGET_FLAG }} 
 
       - name: Run tests.
@@ -190,7 +196,7 @@ jobs:
         run: zig build test-lib ${{ env.ZIG_TARGET_FLAG }} 
 
       - name: Run tests.
-        if: env.BUILD_TARGET == 'wasm32-freestanding'
+        if: env.BUILD_TARGET == 'wasm32-freestanding' || env.BUILD_TARGET == 'wasm32-wasi'
         run: |
           zig build build-test -Dtarget=wasm32-wasi ${{ env.ZIG_MODE_FLAG }} 
           wasm3/build/wasm3 zig-out/bin/test.wasm
@@ -225,7 +231,7 @@ jobs:
       #     zig-out/${{ env.BUILD_TARGET }}/main/cosmic${{ env.BIN_EXT }}
 
       - name: Zip. (linux/macos)
-        if: (env.BUILD_HOST == 'ubuntu-22.04' || env.BUILD_HOST == 'macos-12') && env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD == 'cli'
+        if: (env.BUILD_HOST == 'ubuntu-22.04' || env.BUILD_HOST == 'macos-12') && env.BUILD_TARGET != 'wasm32-wasi' && env.BUILD_CMD == 'cli'
         run: |
            tar -C zig-out/bin -czvf ${{ env.BIN_ZIP }} cyber
 
@@ -259,6 +265,11 @@ jobs:
         if: env.BUILD_TARGET == 'wasm32-freestanding'
         run: |
           mv zig-out/lib/cyber-web.wasm ${{ env.BIN_ZIP }}
+
+      - name: Move. (wasi)
+        if: env.BUILD_TARGET == 'wasm32-wasi'
+        run: |
+          mv zig-out/bin/cyber.wasm ${{ env.BIN_ZIP }}
 
       - name: Save artifact.
         if: env.BUILD_CMD == 'cli'
@@ -313,6 +324,7 @@ jobs:
             libcyber-macos-x64.a
             libcyber-macos-arm64.a
             cyber-web.wasm
+            cyber-wasi.wasm
 
       # Auto dispatch.
       - name: Github Release.
@@ -331,3 +343,4 @@ jobs:
             libcyber-macos-x64.a
             libcyber-macos-arm64.a
             cyber-web.wasm
+            cyber-wasi.wasm

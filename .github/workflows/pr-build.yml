@@ -48,6 +48,10 @@ jobs:
             target: wasm32-freestanding
             mode: release
             cmd: web-lib
+          - host: ubuntu-22.04
+            target: wasm32-wasi
+            mode: release
+            cmd: cli
           - host: windows-2022
             target: x86_64-windows-gnu
             mode: release
@@ -73,6 +77,7 @@ jobs:
           "x86_64-macos-none": "-Dtarget=x86_64-macos-none -Dcpu=baseline",
           "aarch64-macos-none": "-Dtarget=aarch64-macos-none -Dcpu=baseline",
           "wasm32-freestanding": "-Dtarget=wasm32-freestanding",
+          "wasm32-wasi": "-Dtarget=wasm32-wasi",
         }')[matrix.config.target] }}
       BUILD_HOST: ${{ matrix.config.host }}
       BUILD_TARGET: ${{ matrix.config.target }}
@@ -101,7 +106,7 @@ jobs:
           wget -c https://ziglang.org/builds/zig-linux-x86_64-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
 
       - name: Install wasm3.
-        if: env.BUILD_HOST == 'ubuntu-22.04' && env.BUILD_TARGET == 'wasm32-freestanding'
+        if: env.BUILD_HOST == 'ubuntu-22.04' && (env.BUILD_TARGET == 'wasm32-freestanding' || env.BUILD_TARGET == 'wasm32-wasi')
         run: |
           git clone --depth=1 https://github.com/wasm3/wasm3.git
           cd wasm3
@@ -137,7 +142,7 @@ jobs:
             pr-build-${{ env.BUILD_TARGET }}-${{ env.BUILD_MODE }}-1
 
       - name: Run tests.
-        if: env.BUILD_TARGET != 'aarch64-macos-none' && env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD != 'lib'
+        if: env.BUILD_TARGET != 'aarch64-macos-none' && env.BUILD_TARGET != 'wasm32-wasi' && env.BUILD_CMD == 'cli'
         run: zig build test ${{ env.ZIG_TARGET_FLAG }} 
 
       - name: Run tests.
@@ -145,7 +150,7 @@ jobs:
         run: zig build test-lib ${{ env.ZIG_TARGET_FLAG }} 
 
       - name: Run tests.
-        if: env.BUILD_TARGET == 'wasm32-freestanding'
+        if: env.BUILD_TARGET == 'wasm32-freestanding' || env.BUILD_TARGET == 'wasm32-wasi'
         run: |
           zig build build-test -Dtarget=wasm32-wasi ${{ env.ZIG_MODE_FLAG }} 
           wasm3/build/wasm3 zig-out/bin/test.wasm

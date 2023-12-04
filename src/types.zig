@@ -225,7 +225,10 @@ pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const CompactType, ret: Ty
             continue;
         }
         if (argType.dynamic) {
-            continue;
+            if (isTypeSymCompat(c, cstrType, argType.id)) {
+                // Only defer to runtime type check if arg type is a parent type of cstrType.
+                continue;
+            }
         }
         log.tracev("`{s}` not compatible with param `{s}`", .{c.sema.getTypeName(argType.id), c.sema.getTypeName(cstrType)});
         return false;

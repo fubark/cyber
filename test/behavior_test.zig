@@ -2296,6 +2296,28 @@ test "String interpolation." {
     try evalPass(.{}, @embedFile("string_interpolation_test.cy"));
 }
 
+test "Dynamic value, recent type check." {
+    // CompileError when calling with dynamic value but the recent type can not be casted to the constraint type.
+    try eval(.{ .silent = true },
+        \\my a = 123
+        \\a = 'hello'
+        \\foo(a)
+        \\func foo(n int):
+        \\    pass
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function for call signature: `foo(dynamic) any`.
+            \\Functions named `foo` in `main`:
+            \\    func foo(int) dynamic
+            \\
+            \\main:3:1:
+            \\foo(a)
+            \\^
+            \\
+        );
+    }}.func);
+}
+
 test "Lists" {
     try evalPass(.{}, @embedFile("list_test.cy"));
 }

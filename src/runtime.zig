@@ -225,7 +225,8 @@ pub const FuncSymbol = extern struct {
             /// Stack size required by the func.
             stackSize: u16,
             /// Num params used to wrap as function value.
-            numParams: u16,
+            numParams: u8,
+            reqCallTypeCheck: bool,
         },
         closure: *cy.Closure,
     },
@@ -269,7 +270,7 @@ pub const FuncSymbol = extern struct {
         };
     }
 
-    pub fn initFunc(pc: usize, stackSize: u16, numParams: u16, funcSigId: cy.sema.FuncSigId) FuncSymbol {
+    pub fn initFunc(pc: usize, stackSize: u16, numParams: u16, funcSigId: cy.sema.FuncSigId, reqCallTypeCheck: bool) FuncSymbol {
         return .{
             .entryT = @intFromEnum(FuncSymbolType.func),
             .innerExtra = .{
@@ -281,7 +282,8 @@ pub const FuncSymbol = extern struct {
                 .func = .{
                     .pc = @intCast(pc),
                     .stackSize = stackSize,
-                    .numParams = numParams,
+                    .numParams = @intCast(numParams),
+                    .reqCallTypeCheck = reqCallTypeCheck,
                 },
             },
         };

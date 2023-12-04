@@ -451,9 +451,11 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const funcOff = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
             const numParams = pc[3].val;
             const numLocals = pc[4].val;
-            const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
-            const dst = pc[7].val;
-            len += try fmt.printStderrCount("off={}, nparam={}, nlocal={}, fsigId={}, dst={}", &.{v(funcOff), v(numParams), v(numLocals), v(funcSigId), v(dst)});
+            const reqCallTypeCheck = pc[5].val;
+            const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 6)).*;
+            const dst = pc[8].val;
+            len += try fmt.printStderrCount("off={}, nparam={}, nlocal={}, typechk={}, fsigId={}, dst={}", &.{
+                v(funcOff), v(numParams), v(numLocals), v(reqCallTypeCheck), v(funcSigId), v(dst)});
         },
         .closure => {
             const funcOff = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
@@ -462,10 +464,11 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, extra: []const u
             const numLocals = pc[5].val;
             const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 6)).*;
             const local = pc[8].val;
-            const dst = pc[9].val;
-            len += try fmt.printStderrCount("off={}, nparam={}, ncap={}, nlocal={}, fsigId={}, closure={}, dst={} {}", &.{
+            const reqCallTypeCheck = pc[9].val;
+            const dst = pc[10].val;
+            len += try fmt.printStderrCount("off={}, nparam={}, ncap={}, nlocal={}, fsigId={}, closure={}, typechk={}, dst={} {}", &.{
                 v(funcOff), v(numParams), v(numCaptured), v(numLocals),
-                v(funcSigId), v(local), v(dst), fmt.sliceU8(std.mem.sliceAsBytes(pc[9..9+numCaptured])),
+                v(funcSigId), v(local), v(reqCallTypeCheck), v(dst), fmt.sliceU8(std.mem.sliceAsBytes(pc[11..11+numCaptured])),
             });
         },
         .true,
@@ -930,9 +933,11 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         },
         .field,
         .fieldIC,
-        .lambda,
         .forRangeInit => {
             return 8;
+        },
+        .lambda => {
+            return 9;
         },
         .setField,
         .setFieldIC => {
@@ -940,7 +945,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         },
         .closure => {
             const numCaptured = pc[4].val;
-            return 10 + numCaptured;
+            return 11 + numCaptured;
         },
         .callSym,
         .callNativeFuncIC,

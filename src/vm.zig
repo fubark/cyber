@@ -77,6 +77,8 @@ pub const VM = struct {
     typeMethodGroupKeys: std.HashMapUnmanaged(rt.TypeMethodGroupKey, vmc.TypeMethodGroupId, cy.hash.KeyU64Context, 80),
 
     /// Regular function symbol table.
+    /// TODO: The only reason this exists right now is for FFI to dynamically set binded functions to empty static functions.
+    ///       Once func types, and var func pointers are done this can be removed.
     funcSyms: cy.List(rt.FuncSymbol),
     funcSymDetails: cy.List(rt.FuncSymDetail),
 
@@ -3444,8 +3446,21 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
         switch (obj.getTypeId()) {
             bt.Closure => {
                 if (numArgs != obj.closure.numParams) {
-                    log.tracev("closure params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
+                    log.tracev("closure params/args mismatch {} {}", .{numArgs, obj.closure.numParams});
                     return vm.interruptThrowSymbol(.InvalidSignature);
+                }
+
+                if (obj.closure.reqCallTypeCheck) {
+                    // Perform type check on args.
+                    const args = framePtr[ret+CallArgStart..ret+CallArgStart+numArgs];
+                    const cstrFuncSig = vm.compiler.sema.getFuncSig(obj.closure.funcSigId);
+                    for (args, 0..) |arg, i| {
+                        const cstrType = cstrFuncSig.paramPtr[i];
+                        const argType = arg.getTypeId();
+                        if (!types.isTypeSymCompat(vm.compiler, argType, cstrType)) {
+                            return panicIncompatibleLambdaSig(vm, args, obj.closure.funcSigId);
+                        }
+                    }
                 }
 
                 if (@intFromPtr(framePtr + ret + obj.closure.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
@@ -3472,6 +3487,19 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                     return vm.interruptThrowSymbol(.InvalidSignature);
                 }
 
+                if (obj.lambda.reqCallTypeCheck) {
+                    // Perform type check on args.
+                    const args = framePtr[ret+CallArgStart..ret+CallArgStart+numArgs];
+                    const cstrFuncSig = vm.compiler.sema.getFuncSig(obj.lambda.funcSigId);
+                    for (args, 0..) |arg, i| {
+                        const cstrType = cstrFuncSig.paramPtr[i];
+                        const argType = arg.getTypeId();
+                        if (!types.isTypeSymCompat(vm.compiler, argType, cstrType)) {
+                            return panicIncompatibleLambdaSig(vm, args, obj.lambda.funcSigId);
+                        }
+                    }
+                }
+
                 if (@intFromPtr(framePtr + ret + obj.lambda.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
                     return error.StackOverflow;
                 }
@@ -3488,15 +3516,28 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                 };
             },
             bt.HostFunc => {
-                if (numArgs != obj.nativeFunc1.numParams) {
-                    log.tracev("hostfunc params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
+                if (numArgs != obj.hostFunc.numParams) {
+                    log.tracev("hostfunc params/args mismatch {} {}", .{numArgs, obj.hostFunc.numParams});
                     return vm.interruptThrowSymbol(.InvalidSignature);
+                }
+
+                if (obj.hostFunc.reqCallTypeCheck) {
+                    // Perform type check on args.
+                    const args = framePtr[ret+CallArgStart..ret+CallArgStart+numArgs];
+                    const cstrFuncSig = vm.compiler.sema.getFuncSig(obj.hostFunc.funcSigId);
+                    for (args, 0..) |arg, i| {
+                        const cstrType = cstrFuncSig.paramPtr[i];
+                        const argType = arg.getTypeId();
+                        if (!types.isTypeSymCompat(vm.compiler, argType, cstrType)) {
+                            return panicIncompatibleLambdaSig(vm, args, obj.hostFunc.funcSigId);
+                        }
+                    }
                 }
 
                 vm.pc = pc;
                 vm.framePtr = framePtr;
                 const newFramePtr = framePtr + ret;
-                const res = obj.nativeFunc1.func.?(@ptrCast(vm), @ptrCast(newFramePtr + CallArgStart), numArgs);
+                const res = obj.hostFunc.func.?(@ptrCast(vm), @ptrCast(newFramePtr + CallArgStart), numArgs);
                 newFramePtr[0] = @bitCast(res);
                 return cy.fiber.PcSp{
                     .pc = pc + cy.bytecode.CallInstLen,
@@ -3526,7 +3567,7 @@ fn panicCastError(vm: *cy.VM, val: Value, expTypeId: cy.TypeId) !void {
     });
 }
 
-fn allocFuncCallTypeIds(vm: *cy.VM, vals: []const Value) ![]const cy.TypeId {
+fn allocValueTypeIds(vm: *cy.VM, vals: []const Value) ![]const cy.TypeId {
     const typeIds = try vm.alloc.alloc(cy.TypeId, vals.len);
     for (vals, 0..) |val, i| {
         typeIds[i] = val.getTypeId();
@@ -3559,7 +3600,7 @@ fn panicIncompatibleFieldType(vm: *cy.VM, fieldSemaTypeId: types.TypeId, rightv:
 }
 
 fn panicIncompatibleFuncSig(vm: *cy.VM, funcId: rt.FuncId, args: []const Value, targetFuncSigId: sema.FuncSigId) error{Panic} {
-    const typeIds = allocFuncCallTypeIds(vm, args) catch {
+    const typeIds = allocValueTypeIds(vm, args) catch {
         vm.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
         return error.Panic;
     };
@@ -3596,6 +3637,23 @@ pub fn getMruFuncSigId(vm: *cy.VM, mgExt: rt.MethodGroupExt) sema.FuncSigId {
     } else {
         return vm.methodExts.buf[mgExt.mruMethodId].funcSigId;
     }
+}
+
+fn panicIncompatibleLambdaSig(vm: *cy.VM, args: []const Value, cstrFuncSigId: sema.FuncSigId) error{Panic, OutOfMemory} {
+    const cstrFuncSigStr = try vm.compiler.sema.allocFuncSigStr(cstrFuncSigId);
+    defer vm.alloc.free(cstrFuncSigStr);
+    const argTypes = try allocValueTypeIds(vm, args);
+    defer vm.alloc.free(argTypes);
+    const argsSigStr = try vm.compiler.sema.allocFuncSigTypesStr(argTypes, bt.Any);
+    defer vm.alloc.free(argsSigStr);
+
+    return vm.panicFmt(
+        \\Incompatible call arguments `{}`
+        \\to the lambda `func {}`.
+        , &.{
+            v(argsSigStr), v(cstrFuncSigStr),
+        },
+    );
 }
 
 /// TODO: Once methods are recorded in the object/builtin type's module, this should look there instead of the rt table.
@@ -3892,8 +3950,8 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
         switch (obj.getTypeId()) {
             bt.HostFunc => {
                 const dstRFuncSigId = getFuncSigIdOfSym(vm, symId);
-                if (!isAssignFuncSigCompat(vm, obj.nativeFunc1.funcSigId, dstRFuncSigId)) {
-                    return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, obj.nativeFunc1.funcSigId, dstRFuncSigId});
+                if (!isAssignFuncSigCompat(vm, obj.hostFunc.funcSigId, dstRFuncSigId)) {
+                    return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, obj.hostFunc.funcSigId, dstRFuncSigId});
                 }
                 releaseFuncSymDep(vm, symId);
 
@@ -3907,7 +3965,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                         }
                     },
                     .inner = .{
-                        .hostFunc = obj.nativeFunc1.func,
+                        .hostFunc = obj.hostFunc.func,
                     },
                 };
                 vm.funcSymDeps.put(vm.alloc, symId, val) catch cy.fatal();
@@ -3926,6 +3984,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                             .pc = obj.lambda.funcPc,
                             .stackSize = obj.lambda.stackSize,
                             .numParams = obj.lambda.numParams,
+                            .reqCallTypeCheck = obj.lambda.reqCallTypeCheck,
                         },
                     },
                 };

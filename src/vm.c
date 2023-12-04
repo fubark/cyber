@@ -242,7 +242,7 @@ static inline ValueResult allocEmptyMap(VM* vm) {
 
 static inline ValueResult allocClosure(
     VM* vm, Value* fp, size_t funcPc, u8 numParams, u8 stackSize,
-    u16 rFuncSigId, const Inst* capturedVals, u8 numCapturedVals, u8 closureLocal
+    u16 rFuncSigId, const Inst* capturedVals, u8 numCapturedVals, u8 closureLocal, bool reqCallTypeCheck
 ) {
     HeapObjectResult res;
     if (numCapturedVals <= 2) {
@@ -261,6 +261,7 @@ static inline ValueResult allocClosure(
         .stackSize = stackSize,
         .numCaptured = numCapturedVals,
         .local = closureLocal,
+        .reqCallTypeCheck = reqCallTypeCheck,
         .rFuncSigId = rFuncSigId,
     };
     Value* dst = closureGetCapturedValuesPtr(&res.obj->closure);
@@ -278,7 +279,7 @@ static inline ValueResult allocClosure(
     return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
-static inline ValueResult allocLambda(VM* vm, uint32_t funcPc, uint8_t numParams, uint8_t stackSize, uint16_t rFuncSigId) {
+static inline ValueResult allocLambda(VM* vm, u32 funcPc, u8 numParams, u8 stackSize, u16 rFuncSigId, bool reqCallTypeCheck) {
     HeapObjectResult res = zAllocPoolObject(vm);
     if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
         return (ValueResult){ .code = res.code };
@@ -289,6 +290,7 @@ static inline ValueResult allocLambda(VM* vm, uint32_t funcPc, uint8_t numParams
         .funcPc = funcPc,
         .numParams = numParams,
         .stackSize = stackSize,
+        .reqCallTypeCheck = reqCallTypeCheck,
         .rFuncSigId = rFuncSigId,
     };
     return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
@@ -321,7 +323,7 @@ static inline ValueResult allocMetaType(VM* vm, uint8_t symType, uint32_t symId)
     return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
-static inline ValueResult allocHostFunc(VM* vm, void* func, u32 numParams, u32 rFuncSigId) {
+static inline ValueResult allocHostFunc(VM* vm, void* func, u32 numParams, u32 rFuncSigId, bool reqCallTypeCheck) {
     HeapObjectResult res = zAllocPoolObject(vm);
     res.obj->hostFunc = (HostFunc){
         .typeId = TYPE_HOST_FUNC,
@@ -330,6 +332,7 @@ static inline ValueResult allocHostFunc(VM* vm, void* func, u32 numParams, u32 r
         .numParams = numParams,
         .rFuncSigId = rFuncSigId,
         .hasTccState = false,
+        .reqCallTypeCheck = reqCallTypeCheck,
     };
     return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
@@ -340,13 +343,15 @@ static inline ValueResult allocFuncFromSym(VM* vm, FuncId funcId) {
         case FUNC_SYM_HOSTFUNC: {
             u32 rFuncSigId = sym.innerExtra.nativeFunc1.rFuncSigId;
             u16 numParams = sym.innerExtra.nativeFunc1.typedFlagNumParams & ~((u16)1 << 15);
-            return allocHostFunc(vm, sym.inner.nativeFunc1, numParams, rFuncSigId);
+            bool reqCallTypeCheck = (sym.innerExtra.nativeFunc1.typedFlagNumParams & 0x8000) > 0;
+            return allocHostFunc(vm, sym.inner.nativeFunc1, numParams, rFuncSigId, reqCallTypeCheck);
         }
         case FUNC_SYM_FUNC: {
             return allocLambda(vm, sym.inner.func.pc,
                 sym.inner.func.numParams,
                 sym.inner.func.stackSize,
-                sym.innerExtra.func.rFuncSigId
+                sym.innerExtra.func.rFuncSigId,
+                sym.inner.func.reqCallTypeCheck
             );
         }
         case FUNC_SYM_CLOSURE: {
@@ -1304,13 +1309,14 @@ beginSwitch:
         u32 funcPc = ((uint32_t)getInstOffset(vm, pc)) - funcOff;
         u8 numParams = pc[3];
         u8 stackSize = pc[4];
-        u16 rFuncSigId = READ_U16(5);
-        ValueResult res = allocLambda(vm, funcPc, numParams, stackSize, rFuncSigId);
+        bool reqCallTypeCheck = pc[5];
+        u16 rFuncSigId = READ_U16(6);
+        ValueResult res = allocLambda(vm, funcPc, numParams, stackSize, rFuncSigId, reqCallTypeCheck);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
-        stack[pc[7]] = res.val;
-        pc += 8;
+        stack[pc[8]] = res.val;
+        pc += 9;
         NEXT();
     }
     CASE(Closure): {
@@ -1321,15 +1327,16 @@ beginSwitch:
         u8 stackSize = pc[5];
         u16 rFuncSigId = READ_U16(6);
         u8 local = pc[8];
-        u8 dst = pc[9];
-        Inst* capturedVals = pc + 10;
+        bool reqCallTypeCheck = pc[9];
+        u8 dst = pc[10];
+        Inst* capturedVals = pc + 11;
 
-        ValueResult res = allocClosure(vm, stack, funcPc, numParams, stackSize, rFuncSigId, capturedVals, numCaptured, local);
+        ValueResult res = allocClosure(vm, stack, funcPc, numParams, stackSize, rFuncSigId, capturedVals, numCaptured, local, reqCallTypeCheck);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
         stack[dst] = res.val;
-        pc += 10 + numCaptured;
+        pc += 11 + numCaptured;
         NEXT();
     }
     CASE(Compare): {

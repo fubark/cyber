@@ -13,7 +13,7 @@ Static functions are declared with the `func` keyword and must have a name.
 ```cy
 import math
 
-func dist(x0, y0, x1, y1):
+func dist(x0 float, y0 float, x1 float, y1 float) float:
     var dx = x0-x1
     var dy = y0-y1
     return math.sqrt(dx^2 + dy^2)
@@ -27,9 +27,9 @@ var bar = dist
 
 -- Passing `dist` as an argument.
 func squareDist(dist, size):
-    return dist(0, 0, size, size)
+    return dist(0.0, 0.0, size, size)
     
-print squareDist(dist, 30)
+print squareDist(dist, 30.0)
 ```
 
 Functions can only return one value. However, the value can be destructured: {{<todo "*Planned Feature">}}

@@ -114,7 +114,7 @@ pub const HeapObject = extern union {
     // Functions.
     closure: Closure,
     lambda: Lambda,
-    nativeFunc1: NativeFunc1,
+    hostFunc: HostFunc,
     externFunc: ExternFunc,
 
     // Strings.
@@ -313,7 +313,7 @@ pub const MapIterator = extern struct {
 };
 
 pub const Closure = extern struct {
-    typeId: cy.TypeId,
+    typeId: cy.TypeId align (8),
     rc: u32,
     funcPc: u32, 
     numParams: u8,
@@ -321,7 +321,8 @@ pub const Closure = extern struct {
     stackSize: u8,
     /// Closure value is copied to this local to provide captured var lookup.
     local: u8,
-    funcSigId: u64,
+    funcSigId: u32,
+    reqCallTypeCheck: bool,
 
     // Begins array of `Box` values.
     firstCapturedVal: Value,
@@ -332,13 +333,14 @@ pub const Closure = extern struct {
 };
 
 const Lambda = extern struct {
-    typeId: cy.TypeId,
+    typeId: cy.TypeId align(8),
     rc: u32,
     funcPc: u32, 
     numParams: u8,
     stackSize: u8,
-    padding: u16 = 0,
-    funcSigId: u64,
+    reqCallTypeCheck: bool,
+    padding: u8 = 0,
+    funcSigId: u32,
 };
 
 const UstringMruChar = struct {
@@ -658,7 +660,7 @@ const Box = extern struct {
     val: Value,
 };
 
-const NativeFunc1 = extern struct {
+const HostFunc = extern struct {
     typeId: cy.TypeId align(8),
     rc: u32,
     func: vmc.HostFuncFn,
@@ -666,6 +668,7 @@ const NativeFunc1 = extern struct {
     funcSigId: u32,
     tccState: Value,
     hasTccState: bool,
+    reqCallTypeCheck: bool,
 };
 
 const TccState = extern struct {
@@ -1649,9 +1652,9 @@ pub fn allocExternFunc(self: *cy.VM, cyFunc: Value, funcPtr: *anyopaque, tccStat
     }
 }
 
-pub fn allocHostFunc(self: *cy.VM, func: cy.ZHostFuncFn, numParams: u32, funcSigId: cy.sema.FuncSigId, tccState: ?Value) !Value {
+pub fn allocHostFunc(self: *cy.VM, func: cy.ZHostFuncFn, numParams: u32, funcSigId: cy.sema.FuncSigId, tccState: ?Value, reqCallTypeCheck: bool) !Value {
     const obj = try allocPoolObject(self);
-    obj.nativeFunc1 = .{
+    obj.hostFunc = .{
         .typeId = bt.HostFunc,
         .rc = 1,
         .func = @ptrCast(func),
@@ -1659,10 +1662,11 @@ pub fn allocHostFunc(self: *cy.VM, func: cy.ZHostFuncFn, numParams: u32, funcSig
         .funcSigId = funcSigId,
         .tccState = undefined,
         .hasTccState = false,
+        .reqCallTypeCheck = reqCallTypeCheck,
     };
     if (tccState) |state| {
-        obj.nativeFunc1.tccState = state;
-        obj.nativeFunc1.hasTccState = true;
+        obj.hostFunc.tccState = state;
+        obj.hostFunc.hasTccState = true;
     }
     return Value.initNoCycPtr(obj);
 }
@@ -2011,8 +2015,8 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
         },
         bt.HostFunc => {
             if (releaseChildren) {
-                if (obj.nativeFunc1.hasTccState) {
-                    cy.arc.releaseObject(vm, obj.nativeFunc1.tccState.asHeapObject());
+                if (obj.hostFunc.hasTccState) {
+                    cy.arc.releaseObject(vm, obj.hostFunc.tccState.asHeapObject());
                 }
             }
             if (free) {
@@ -2201,7 +2205,7 @@ test "heap internals." {
         try t.eq(@sizeOf(Array), 16);
         try t.eq(@sizeOf(Object), 16);
         try t.eq(@sizeOf(Box), 16);
-        try t.eq(@sizeOf(NativeFunc1), 40);
+        try t.eq(@sizeOf(HostFunc), 40);
         try t.eq(@sizeOf(MetaType), 16);
         if (cy.hasFFI) {
             try t.eq(@sizeOf(TccState), 32);

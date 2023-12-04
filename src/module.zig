@@ -180,6 +180,7 @@ fn createFunc(c: *cy.Chunk, ftype: cy.sym.FuncType, sym: ?*cy.sym.FuncSym, funcS
         .type = ftype,
         .funcSigId = funcSigId,
         .retType = funcSig.getRetType(),
+        .reqCallTypeCheck = funcSig.reqCallTypeCheck,
         .sym = sym,
         .isMethod = isMethod,
         .numParams = @intCast(funcSig.paramLen),

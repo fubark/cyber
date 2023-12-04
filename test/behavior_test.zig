@@ -2811,6 +2811,34 @@ test "Native function call." {
     );
 }
 
+test "Typed closures." {
+    // Incompatible argument type.
+    try eval(.{ .silent = true },
+        \\var b = 2
+        \\var foo = func (a int):
+        \\  return a + b
+        \\foo(1.0)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Incompatible call arguments `(float) any`
+            \\to the lambda `func (int) dynamic`.
+            \\
+            \\main:4:1 main:
+            \\foo(1.0)
+            \\^
+            \\
+        );
+    }}.func);
+
+    try evalPass(.{},
+        \\import test
+        \\var b = 2
+        \\var foo = func (a int):
+        \\    return a + b
+        \\test.eq(foo(1), 3)
+    );
+}
+
 test "Closures." {
     try evalPass(.{}, @embedFile("closure_test.cy"));
 }
@@ -2821,6 +2849,24 @@ test "Function recursion." {
 
 test "Function overloading." {
     try evalPass(.{}, @embedFile("function_overload_test.cy"));
+}
+
+test "Typed host function." {
+    // Incompatible argument type when invoking lambda wrapper.
+    try eval(.{ .silent = true },
+        \\var foo = isDigit
+        \\foo(1.0)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Incompatible call arguments `(float) any`
+            \\to the lambda `func (int) bool`.
+            \\
+            \\main:2:1 main:
+            \\foo(1.0)
+            \\^
+            \\
+        );
+    }}.func);
 }
 
 test "Typed static functions." {
@@ -2850,6 +2896,24 @@ test "Typed static functions." {
             \\main:1:12:
             \\func foo(a Vec2):
             \\           ^
+            \\
+        );
+    }}.func);
+
+    // Incompatible argument type when invoking lambda wrapper.
+    try eval(.{ .silent = true },
+        \\func foo(a int):
+        \\  return a
+        \\var bar = foo
+        \\bar(1.0)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Incompatible call arguments `(float) any`
+            \\to the lambda `func (int) dynamic`.
+            \\
+            \\main:4:1 main:
+            \\bar(1.0)
+            \\^
             \\
         );
     }}.func);
@@ -2987,6 +3051,32 @@ test "Static functions." {
     }}.func);
 
     try evalPass(.{}, @embedFile("static_func_test.cy"));
+}
+
+test "Typed lambdas." {
+    // Incompatible argument type.
+    try eval(.{ .silent = true },
+        \\var foo = func (a int):
+        \\  return a
+        \\foo(1.0)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Incompatible call arguments `(float) any`
+            \\to the lambda `func (int) dynamic`.
+            \\
+            \\main:3:1 main:
+            \\foo(1.0)
+            \\^
+            \\
+        );
+    }}.func);
+
+    try evalPass(.{},
+        \\import test
+        \\var foo = func (a int):
+        \\    return a
+        \\test.eq(foo(1), 1)
+    );
 }
 
 test "Lambdas." {

@@ -289,7 +289,7 @@ fn funcDecl(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     // Patch empty func sym slot.
     const rtId = c.compiler.genSymMap.get(func).?.funcSym.id;
-    const rtFunc = rt.FuncSymbol.initFunc(funcPc, stackSize, func.numParams, func.funcSigId);
+    const rtFunc = rt.FuncSymbol.initFunc(funcPc, stackSize, func.numParams, func.funcSigId, func.reqCallTypeCheck);
     c.compiler.vm.funcSyms.buf[rtId] = rtFunc;
 
     // Add method entry.
@@ -2915,16 +2915,17 @@ fn genLambda(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenV
     if (data.numCaptures == 0) {
         const start = c.buf.ops.items.len;
         try c.pushOptionalDebugSym(func.declId);
-        try c.buf.pushOpSliceExt(.lambda, &.{ 0, 0, func.numParams, stackSize, 0, 0, inst.dst }, c.desc(nodeId));
+        try c.buf.pushOpSliceExt(.lambda, &.{
+            0, 0, func.numParams, stackSize, @intFromBool(func.reqCallTypeCheck), 0, 0, inst.dst }, c.desc(nodeId));
         c.buf.setOpArgU16(start + 1, offset);
-        c.buf.setOpArgU16(start + 5, @intCast(func.funcSigId));
+        c.buf.setOpArgU16(start + 6, @intCast(func.funcSigId));
     } else {
         const captures = c.irGetArray(data.captures, u8, data.numCaptures);
         const start = c.buf.ops.items.len;
         try c.pushOptionalDebugSym(func.declId);
         try c.buf.pushOpSlice(.closure, &.{
             0, 0, func.numParams, @as(u8, @intCast(captures.len)), stackSize, 
-            0, 0, cy.vm.CalleeStart, inst.dst
+            0, 0, cy.vm.CalleeStart, @intFromBool(func.reqCallTypeCheck), inst.dst
         });
         c.buf.setOpArgU16(start + 1, offset);
         c.buf.setOpArgU16(start + 6, @intCast(func.funcSigId));

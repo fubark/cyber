@@ -393,6 +393,7 @@ pub const Func = struct {
     next: ?*Func,
     sym: ?*FuncSym,
     funcSigId: cy.sema.FuncSigId,
+    reqCallTypeCheck: bool,
     numParams: u8,
     isMethod: bool,
     declId: cy.NodeId,

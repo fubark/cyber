@@ -294,12 +294,13 @@ export fn csNewEmptyMap(vm: *cy.UserVM) Value {
 
 export fn csNewUntypedFunc(vm: *cy.VM, numParams: u32, func: c.FuncFn) Value {
     const funcSigId = vm.sema.ensureUntypedFuncSig(numParams) catch fatal();
-    return vm.allocHostFunc(@ptrCast(func), numParams, funcSigId, null) catch fatal();
+    return vm.allocHostFunc(@ptrCast(func), numParams, funcSigId, null, false) catch fatal();
 }
 
 export fn csNewFunc(vm: *cy.VM, params: [*]const cy.TypeId, numParams: u32, retType: cy.TypeId, func: c.FuncFn) Value {
     const funcSigId = vm.sema.ensureFuncSig(params[0..numParams], retType) catch fatal();
-    return vm.allocHostFunc(@ptrCast(func), numParams, funcSigId, null) catch fatal();
+    const funcSig = vm.sema.funcSigs.items[funcSigId];
+    return vm.allocHostFunc(@ptrCast(func), numParams, funcSigId, null, funcSig.reqCallTypeCheck) catch fatal();
 }
 
 test "csNewFunc()" {

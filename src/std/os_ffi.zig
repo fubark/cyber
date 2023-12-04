@@ -937,9 +937,9 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
 
             const symKey = vm.retainOrAllocAstring(cfunc.namez) catch cy.fatal();
             const func = cy.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
-
+            const funcSig = ivm.compiler.sema.getFuncSig(cfunc.funcSigId);
             const funcVal = cy.heap.allocHostFunc(ivm, func, @intCast(cfunc.params.len),
-                cfunc.funcSigId, cyState) catch cy.fatal();
+                cfunc.funcSigId, cyState, funcSig.reqCallTypeCheck) catch cy.fatal();
             map.asHeapObject().map.set(ivm, symKey, funcVal) catch cy.fatal();
             vm.release(symKey);
             vm.release(funcVal);
@@ -958,7 +958,7 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
             const func = cy.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
 
             const funcSigId = try ivm.sema.ensureFuncSig(&.{bt.Dynamic}, bt.Dynamic);
-            const funcVal = cy.heap.allocHostFunc(ivm, func, 1, funcSigId, cyState) catch cy.fatal();
+            const funcVal = cy.heap.allocHostFunc(ivm, func, 1, funcSigId, cyState, false) catch cy.fatal();
             map.asHeapObject().map.set(ivm, symKey, funcVal) catch cy.fatal();
             vm.release(symKey);
             vm.release(funcVal);

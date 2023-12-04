@@ -438,6 +438,7 @@ typedef struct HostFunc {
     u32 rFuncSigId;
     Value tccState;
     bool hasTccState;
+    bool reqCallTypeCheck;
 } HostFunc;
 
 typedef enum {
@@ -552,18 +553,20 @@ typedef struct Closure {
     u8 numCaptured;
     u8 stackSize;
     u8 local;
-    u64 rFuncSigId;
+    u32 rFuncSigId;
+    bool reqCallTypeCheck;
     Value firstCapturedVal;
 } Closure;
 
 typedef struct Lambda {
     TypeId typeId;
-    uint32_t rc;
-    uint32_t funcPc;
-    uint8_t numParams;
-    uint8_t stackSize;
-    uint16_t padding;
-    uint64_t rFuncSigId;
+    u32 rc;
+    u32 funcPc;
+    u8 numParams;
+    u8 stackSize;
+    bool reqCallTypeCheck;
+    u8 padding;
+    u32 rFuncSigId;
 } Lambda;
 
 typedef struct MetaType {
@@ -775,7 +778,8 @@ typedef struct FuncSymbol {
         struct {
             u32 pc;
             u16 stackSize;
-            u16 numParams;
+            u8 numParams;
+            bool reqCallTypeCheck;
         } func;
         void* closure;
     } inner;

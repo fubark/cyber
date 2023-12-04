@@ -103,7 +103,6 @@ func foo(s string):
 ## Static typing.
 Static typing can be incrementally applied which provides compile-time guarantees and prevents runtime errors.
 Static typing also makes it easier to maintain and refactor your code.
-> _Incomplete: There are some cases where calling static functions with dynamic values doesn't do a runtime type check._
 
 ### Builtin types.
 The following builtin types are available in every module: `bool`, `float`, `int`, `string`, `List`, `Map`, `error`, `fiber`, `any`.

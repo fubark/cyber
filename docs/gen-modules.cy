@@ -34,7 +34,7 @@ for modules -> mod:
         case 'variable':
             var docLine = decl.docs ? decl.docs else ''
             var typeSpec = (decl.typeSpec != '') ? decl.typeSpec else 'any'
-            var idx = decl.name.findRune(`.`)
+            var idx = decl.name.findRune(`.`) as int
             gen = gen + '{{<cy "var $(decl.name[idx+1..]) $(typeSpec)">}}$(docLine){{</cy>}}\n'
         case 'object':
             gen = gen + '### `type $(decl.name)`\n\n'
@@ -50,7 +50,7 @@ for modules -> mod:
 
     -- Replace section in modules.md.
     var needle = '<!-- $(mod.section).start -->'
-    var startIdx = md.find(needle) + needle.len()
+    var startIdx = (md.find(needle) as int) + needle.len()
     var endIdx = md.find('<!-- $(mod.section).end -->')
     md = md[0..startIdx] + gen + md[endIdx..]
 

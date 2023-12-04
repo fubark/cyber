@@ -1,6 +1,6 @@
 type Account object:
-    var name
-    var balance
+    var name    string
+    var balance float
 
     func deposit(amt):
         balance += amt

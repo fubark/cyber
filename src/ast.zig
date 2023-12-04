@@ -348,6 +348,28 @@ pub const BinaryExprOp = enum(u8) {
     or_op,
     cast,
     dummy,
+
+    pub fn name(self: BinaryExprOp) []const u8 {
+        return switch (self) {
+            .index => "$index",
+            .less => "$infix<",
+            .greater => "$infix>",
+            .less_equal => "$infix<=",
+            .greater_equal => "$infix>=",
+            .minus => "$infix-",
+            .plus => "$infix+",
+            .star => "$infix*",
+            .slash => "$infix/",
+            .percent => "$infix%",
+            .caret => "$infix^",
+            .bitwiseAnd => "$infix&",
+            .bitwiseOr => "$infix|",
+            .bitwiseXor => "$infix||",
+            .bitwiseLeftShift => "$infix<<",
+            .bitwiseRightShift => "$infix>>",
+            else => "unknown",
+        };
+    }
 };
 
 pub const AnnotationType = enum {

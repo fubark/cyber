@@ -3674,15 +3674,28 @@ pub const ChunkExt = struct {
                     }});
                     return ExprResult.initStatic(preIdx, bt.Boolean);
                 } else {
-                    // Generic callObjSym.
-                    const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, right.type.id }, bt.Any);
-                    c.irSetExprCode(preIdx, .preCallObjSymBinOp);
-                    c.irSetExprData(preIdx, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
-                        .op = op, .funcSigId = funcSigId, .right = right.irIdx,
-                    }});
-
-                    // TODO: Check func syms.
-                    return ExprResult.initDynamic(preIdx, bt.Any);
+                    if (left.type.dynamic) {
+                        // Generic callObjSym.
+                        const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, right.type.id }, bt.Any);
+                        c.irSetExprCode(preIdx, .preCallObjSymBinOp);
+                        c.irSetExprData(preIdx, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
+                            .op = op, .funcSigId = funcSigId, .right = right.irIdx,
+                        }});
+                        return ExprResult.initDynamic(preIdx, bt.Any);
+                    } else {
+                        // Look for sym under left type's module.
+                        const leftTypeSym = c.sema.getTypeSym(left.type.id);
+                        const sym = try c.mustFindSym(leftTypeSym, op.name(), nodeId);
+                        const irArgsIdx = try c.irPushEmptyArray(u32, 2);
+                        c.irSetArrayItem(irArgsIdx, u32, 0, left.irIdx);
+                        c.irSetArrayItem(irArgsIdx, u32, 1, right.irIdx);
+                        return c.semaCallFuncSym(preIdx, nodeId, sym.cast(.func), .{
+                            .types = @constCast(&[_]CompactType{ left.type, right.type }),
+                            .start = 0,
+                            .hasDynamicArg = right.type.dynamic,
+                            .irArgsIdx = irArgsIdx,
+                        });
+                    }
                 }
             },
             .star,
@@ -3708,15 +3721,28 @@ pub const ChunkExt = struct {
                     }});
                     return ExprResult.initStatic(preIdx, left.type.id);
                 } else {
-                    // Generic callObjSym.
-                    const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, right.type.id }, bt.Any);
-                    c.irSetExprCode(preIdx, .preCallObjSymBinOp);
-                    c.irSetExprData(preIdx, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
-                        .op = op, .funcSigId = funcSigId, .right = right.irIdx,
-                    }});
-
-                    // TODO: Check func syms.
-                    return ExprResult.initDynamic(preIdx, bt.Any);
+                    if (left.type.dynamic) {
+                        // Generic callObjSym.
+                        const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, right.type.id }, bt.Any);
+                        c.irSetExprCode(preIdx, .preCallObjSymBinOp);
+                        c.irSetExprData(preIdx, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
+                            .op = op, .funcSigId = funcSigId, .right = right.irIdx,
+                        }});
+                        return ExprResult.initDynamic(preIdx, bt.Any);
+                    } else {
+                        // Look for sym under left type's module.
+                        const leftTypeSym = c.sema.getTypeSym(left.type.id);
+                        const sym = try c.mustFindSym(leftTypeSym, op.name(), nodeId);
+                        const irArgsIdx = try c.irPushEmptyArray(u32, 2);
+                        c.irSetArrayItem(irArgsIdx, u32, 0, left.irIdx);
+                        c.irSetArrayItem(irArgsIdx, u32, 1, right.irIdx);
+                        return c.semaCallFuncSym(preIdx, nodeId, sym.cast(.func), .{
+                            .types = @constCast(&[_]CompactType{ left.type, right.type }),
+                            .start = 0,
+                            .hasDynamicArg = right.type.dynamic,
+                            .irArgsIdx = irArgsIdx,
+                        });
+                    }
                 }
             },
             .bang_equal,

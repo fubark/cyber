@@ -20,7 +20,7 @@ for 0..MaxRuns:
 
     var res = os.execCmd(cmd)
     var out = res.out as string
-    var idx = out.find('time:')
+    var idx = out.find('time:') as int
     if idx == none:
         throw error.NoTimeOutput
     out = out[idx + 'time:'.len()..]

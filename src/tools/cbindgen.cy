@@ -279,7 +279,7 @@ func rootVisitor(cursor, parent, state):
 
         -- Parse params.
         var fnParamTypes = []
-        var numParams = clang.lib.clang_getNumArgTypes(cxFunc)
+        var numParams int = clang.lib.clang_getNumArgTypes(cxFunc)
         for 0..numParams -> i:
             var cxParam = clang.lib.clang_Cursor_getArgument(cursor, i)
             var cxParamName = clang.lib.clang_getCursorSpelling(cxParam)

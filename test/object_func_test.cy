@@ -4,7 +4,7 @@ func Node.flatGet2(self):
     return 123
 
 type Node object:
-    var value
+    var value int
 
     func getEx():
         return self.value

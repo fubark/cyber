@@ -1,7 +1,7 @@
 import t 'test'
 
 type Node object:
-    var value
+    var value int
 
 var Root.snode = [Node value: 123]
 
@@ -10,11 +10,14 @@ my n = [Node value: 123]
 t.eq(n.value, 123)
 
 -- Init and default field to none.
-n = [Node:]
+n = [NodeHeap:]
 t.eq(n.value, none)
 
+type NodeHeap object:
+    var value any
+
 -- Init with heap value.
-n = [Node value: [123]]
+n = [NodeHeap value: [123]]
 t.eq(n.value[0], 123)
 
 -- Get field from declared static var.
@@ -52,7 +55,7 @@ f()
 t.eq(snode.value, 234)
 
 -- Set to field with heap value.
-n = [Node value: [123]]
+n = [NodeHeap value: [123]]
 n.value = 234
 t.eq(n.value, 234)
 

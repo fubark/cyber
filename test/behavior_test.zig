@@ -2221,6 +2221,15 @@ test "Floats." {
     try evalPass(.{}, @embedFile("float_test.cy"));
 }
 
+test "Typed operator function." {
+    // Invoking operator function returns a typed value.
+    try evalPass(.{},
+        \\var a = 'hello' + 'world'
+        \\-- `a` should be string type.
+        \\var b = a.concat('123')
+    );
+}
+
 test "Operator precedence." {
     try evalPass(.{}, @embedFile("op_precedence_test.cy"));
 }
@@ -3146,10 +3155,10 @@ test "Arithmetic operators." {
         \\var a = [S a: 123] + 123
         \\
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: `func $infix+(any, int) any` can not be found in `S`.
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find the symbol `$infix+` in `main.S`.
             \\
-            \\main:3:20 main:
+            \\main:3:20:
             \\var a = [S a: 123] + 123
             \\                   ^
             \\
@@ -3160,10 +3169,10 @@ test "Arithmetic operators." {
     try eval(.{ .silent = true },
         \\var a = 'foo' - 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: `func $infix-(any, int) any` can not be found in `string`.
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find the symbol `$infix-` in `builtins.string`.
             \\
-            \\main:1:15 main:
+            \\main:1:15:
             \\var a = 'foo' - 123
             \\              ^
             \\
@@ -3174,10 +3183,10 @@ test "Arithmetic operators." {
     try eval(.{ .silent = true },
         \\var a = 'foo' * 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: `func $infix*(any, int) any` can not be found in `string`.
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find the symbol `$infix*` in `builtins.string`.
             \\
-            \\main:1:15 main:
+            \\main:1:15:
             \\var a = 'foo' * 123
             \\              ^
             \\
@@ -3188,10 +3197,10 @@ test "Arithmetic operators." {
     try eval(.{ .silent = true },
         \\var a = 'foo' / 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: `func $infix/(any, int) any` can not be found in `string`.
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find the symbol `$infix/` in `builtins.string`.
             \\
-            \\main:1:15 main:
+            \\main:1:15:
             \\var a = 'foo' / 123
             \\              ^
             \\
@@ -3202,10 +3211,10 @@ test "Arithmetic operators." {
     try eval(.{ .silent = true },
         \\var a = 'foo' % 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: `func $infix%(any, int) any` can not be found in `string`.
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find the symbol `$infix%` in `builtins.string`.
             \\
-            \\main:1:15 main:
+            \\main:1:15:
             \\var a = 'foo' % 123
             \\              ^
             \\
@@ -3216,10 +3225,10 @@ test "Arithmetic operators." {
     try eval(.{ .silent = true },
         \\var a = 'foo' ^ 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: `func $infix^(any, int) any` can not be found in `string`.
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find the symbol `$infix^` in `builtins.string`.
             \\
-            \\main:1:15 main:
+            \\main:1:15:
             \\var a = 'foo' ^ 123
             \\              ^
             \\

@@ -111,10 +111,11 @@ print 'hello'
 print typeof('my str').id()
 ```
 <!-- builtins.start -->
-{{<cy "func arrayFill(val any, n int) List">}}Creates a list with initial capacity of `n` and values set to `val`.  If the value is an object, it is shallow copied `n` times.{{</cy>}}
 {{<cy "func copy(val any) any">}}Copies a primitive value or creates a shallow copy of an object value.{{</cy>}}
-{{<cy "func dump(val any) string">}}Prints the result of `toCyon` on a value.{{</cy>}}
+{{<cy "func dump(val any) none">}}Prints the result of `toCyon` on a value.{{</cy>}}
 {{<cy "func errorReport() string">}}{{</cy>}}
+{{<cy "func getObjectRc(val any) none">}}Returns the current reference count of an object.{{</cy>}}
+{{<cy "func is(a any, b any) bool">}}Returns whether two values refer to the same instance.{{</cy>}}
 {{<cy "func isAlpha(val int) bool">}}Returns whether a rune is an alphabetic letter.{{</cy>}}
 {{<cy "func isDigit(val int) bool">}}Returns whether a rune is a digit.{{</cy>}}
 {{<cy "func must(val any) any">}}If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned.{{</cy>}}
@@ -153,6 +154,8 @@ print typeof('my str').id()
 {{<cy "func $infix||(o any) int">}}{{</cy>}}
 {{<cy "func $infix<<(o any) int">}}{{</cy>}}
 {{<cy "func $infix>>(o any) int">}}{{</cy>}}
+{{<cy "func fmt(kind symbol) any">}}Formats the integer using a kind specifier which can be binary `.b`,  octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.{{</cy>}}
+{{<cy "func fmt(kind symbol, opts Map) any">}}`opts.pad` provides the ASCII rune that is used for padding with a string length of `opts.width`.{{</cy>}}
 {{<cy "func int.'$call'(val any) int">}}Converts a value to an 48-bit integer.{{</cy>}}
 ### `type float`
 
@@ -172,15 +175,17 @@ print typeof('my str').id()
 
 {{<cy "func $index(idx any) any">}}{{</cy>}}
 {{<cy "func $setIndex(idx any, val any) none">}}{{</cy>}}
-{{<cy "func add(val any) none">}}{{</cy>}}
+{{<cy "func $slice(start any, end any) List">}}{{</cy>}}
 {{<cy "func append(val any) none">}}Appends a value to the end of the list.{{</cy>}}
 {{<cy "func concat(list List) none">}}Concats the elements of another list to the end of this list.{{</cy>}}
 {{<cy "func insert(idx int, val any) any">}}Inserts a value at index `idx`.{{</cy>}}
 {{<cy "func iterator() any">}}Returns a new iterator over the list elements.{{</cy>}}
-{{<cy "func joinString(sep any) string">}}Returns a new string that joins the elements with `separator`.{{</cy>}}
+{{<cy "func join(sep string) string">}}Returns a new string that joins the elements with `separator`.{{</cy>}}
 {{<cy "func len() int">}}Returns the number of elements in the list.{{</cy>}}
 {{<cy "func remove(idx int) any">}}Removes an element at index `idx`.{{</cy>}}
 {{<cy "func resize(size int) any">}}Resizes the list to `len` elements. If the new size is bigger, `none` values  are appended to the list. If the new size is smaller, elements at the end of the list are removed.{{</cy>}}
+{{<cy "func slice(start any, end any) List">}}{{</cy>}}
+{{<cy "func List.fill(val any, n int) List">}}Creates a list with initial capacity of `n` and values set to `val`.  If the value is an object, it is shallow copied `n` times.{{</cy>}}
 ### `type ListIterator`
 
 {{<cy "func next() any">}}{{</cy>}}
@@ -200,7 +205,7 @@ print typeof('my str').id()
 ### `type string`
 
 {{<cy "func $infix+(o any) any">}}{{</cy>}}
-{{<cy "func concat(o string) any">}}Returns a new string that concats this string and `str`.{{</cy>}}
+{{<cy "func concat(o string) string">}}Returns a new string that concats this string and `str`.{{</cy>}}
 {{<cy "func endsWith(suffix string) bool">}}Returns whether the string ends with `suffix`.{{</cy>}}
 {{<cy "func find(needle string) any">}}Returns the first index of substring `needle` in the string or `none` if not found.{{</cy>}}
 {{<cy "func findAnyRune(runes string) any">}}Returns the first index of any UTF-8 rune in `runes` or `none` if not found.{{</cy>}}
@@ -211,43 +216,53 @@ print typeof('my str').id()
 {{<cy "func less(other string) bool">}}Returns whether this string is lexicographically before `other`.{{</cy>}}
 {{<cy "func lower() string">}}Returns this string in lowercase.{{</cy>}}
 {{<cy "func replace(needle string, replacement string) string">}}Returns a new string with all occurrences of `needle` replaced with `replacement`.{{</cy>}}
-{{<cy "func repeat(n int) any">}}Returns a new string with this string repeated `n` times.{{</cy>}}
-{{<cy "func runeAt(n int) any">}}Returns the UTF-8 rune at index `idx`.{{</cy>}}
-{{<cy "func slice(start any, end any) any">}}Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.{{</cy>}}
-{{<cy "func $slice(start any, end any) any">}}{{</cy>}}
-{{<cy "func sliceAt(idx int) any">}}Returns the UTF-8 rune at index `idx` as a single rune string.{{</cy>}}
-{{<cy "func $index(idx int) any">}}{{</cy>}}
+{{<cy "func repeat(n int) string">}}Returns a new string with this string repeated `n` times.{{</cy>}}
+{{<cy "func runeAt(n int) int">}}Returns the UTF-8 rune at index `idx`.{{</cy>}}
+{{<cy "func slice(start any, end any) string">}}Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.{{</cy>}}
+{{<cy "func $slice(start any, end any) string">}}{{</cy>}}
+{{<cy "func sliceAt(idx int) string">}}Returns the UTF-8 rune at index `idx` as a single rune string.{{</cy>}}
+{{<cy "func $index(idx int) string">}}{{</cy>}}
 {{<cy "func split(sep string) List">}}Returns a list of UTF-8 strings split at occurrences of `sep`.{{</cy>}}
 {{<cy "func startsWith(prefix string) bool">}}Returns whether the string starts with `prefix`.{{</cy>}}
-{{<cy "func trim(mode symbol, delims string) any">}}Returns the string with ends trimmed from runes in `delims`. `mode` can be .left, .right, or .ends.{{</cy>}}
+{{<cy "func trim(mode symbol, delims string) string">}}Returns the string with ends trimmed from runes in `delims`. `mode` can be .left, .right, or .ends.{{</cy>}}
 {{<cy "func upper() string">}}Returns this string in uppercase.{{</cy>}}
 {{<cy "func string.'$call'(val any) string">}}Converts a value to a string.{{</cy>}}
 ### `type array`
 
 {{<cy "func $infix+(o any) any">}}{{</cy>}}
-{{<cy "func byteAt(idx int) int">}}Returns the byte value (0-255) at the given index `idx`.{{</cy>}}
 {{<cy "func concat(other array) array">}}Returns a new array that concats this array and `other`.{{</cy>}}
-{{<cy "func decode() any">}}Calls decode(.utf8){{</cy>}}
+{{<cy "func decode() string">}}Calls decode(.utf8){{</cy>}}
 {{<cy "func decode(encoding symbol) string">}}Decodes the array based on an `encoding`. Supported encodings: `.utf8`.  Returns the decoded string or throws `error.Decode`.{{</cy>}}
 {{<cy "func endsWith(suffix array) bool">}}Returns whether the array ends with `suffix`.{{</cy>}}
 {{<cy "func find(needle array) any">}}Returns the first index of `needle` in the array or `none` if not found.{{</cy>}}
 {{<cy "func findAnyByte(bytes array) any">}}Returns the first index of any `bytes` in `arrays` or `none` if not found.{{</cy>}}
 {{<cy "func findByte(byte int) any">}}Returns the first index of `byte` in the array or `none` if not found.{{</cy>}}
-{{<cy "func insert(idx int, arr array) any">}}Returns a new array with `arr` inserted at index `idx`.{{</cy>}}
-{{<cy "func insertByte(idx int, byte int) any">}}Returns a new array with `byte` inserted at index `idx`.{{</cy>}}
+{{<cy "func fmt(kind symbol) any">}}Formats each byte in the array using a kind specifier which can be binary `.b`,  octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.  Each byte is zero padded.{{</cy>}}
+{{<cy "func getByte(idx int) int">}}Returns the byte value (0-255) at the given index `idx`.{{</cy>}}
+{{<cy "func getInt(idx int, endian symbol) int">}}Returns the int value of the 6 bytes starting from `idx` with the given endianness (.little or .big).{{</cy>}}
+{{<cy "func getInt32(idx int, endian symbol) int">}}Returns the int value of the 4 bytes starting from `idx` with the given endianness (.little or .big).{{</cy>}}
+{{<cy "func insert(idx int, arr array) array">}}Returns a new array with `arr` inserted at index `idx`.{{</cy>}}
+{{<cy "func insertByte(idx int, byte int) array">}}Returns a new array with `byte` inserted at index `idx`.{{</cy>}}
 {{<cy "func len() int">}}Returns the number of bytes in the array.{{</cy>}}
-{{<cy "func repeat(n int) any">}}Returns a new array with this array repeated `n` times.{{</cy>}}
+{{<cy "func repeat(n int) array">}}Returns a new array with this array repeated `n` times.{{</cy>}}
 {{<cy "func replace(needle array, replacement array) array">}}Returns a new array with all occurrences of `needle` replaced with `replacement`.{{</cy>}}
-{{<cy "func slice(start any, end any) any">}}Returns a slice into this array from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.{{</cy>}}
-{{<cy "func $slice(start any, end any) any">}}{{</cy>}}
+{{<cy "func slice(start any, end any) array">}}Returns a slice into this array from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.{{</cy>}}
+{{<cy "func $slice(start any, end any) array">}}{{</cy>}}
 {{<cy "func $index(idx int) int">}}{{</cy>}}
 {{<cy "func split(sep array) List">}}Returns a list of arrays split at occurrences of `sep`.{{</cy>}}
 {{<cy "func startsWith(prefix array) bool">}}Returns whether the array starts with `prefix`.{{</cy>}}
 {{<cy "func trim(mode symbol, delims array) any">}}Returns the array with ends trimmed from runes in `delims`. `mode` can be .left, .right, or .ends.{{</cy>}}
 {{<cy "func array.'$call'(val any) array">}}Converts a string to an byte `array`.{{</cy>}}
+### `type arrayIterator`
+
 ### `type pointer`
 
-{{<cy "func value() int">}}Returns the memory address as an `int`. The value may be negative since it's  bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.{{</cy>}}
+{{<cy "func addr() int">}}Returns the memory address as an `int`. The value may be negative since it's  bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.{{</cy>}}
+{{<cy "func asObject() any">}}Unsafe. Casts the pointer to a Cyber object. The object is retained before it's returned.{{</cy>}}
+{{<cy "func fromCstr(offset int) array">}}Unsafe. Returns an `array` from a null terminated C string.{{</cy>}}
+{{<cy "func get(offset int, ctype symbol) any">}}Unsafe. Dereferences the pointer at a byte offset and returns the C value converted to Cyber.{{</cy>}}
+{{<cy "func set(offset int, val any) none">}}Unsafe. Converts the value to a compatible C value and writes it to a byte offset from this pointer.{{</cy>}}
+{{<cy "func toArray(offset int, len int) array">}}Unsafe. Returns an `array` with a copy of the byte data starting from an offset to the specified length.{{</cy>}}
 {{<cy "func pointer.'$call'(val any) pointer">}}Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI.{{</cy>}}
 ### `type Fiber`
 
@@ -349,8 +364,6 @@ for map each [k, v]:
 {{<cy "var vecBitSize int">}}Default SIMD vector bit size.{{</cy>}}
 {{<cy "func access(path string, mode symbol) any">}}Attempts to access a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.  Return true or an error.{{</cy>}}
 {{<cy "func args() List">}}Returns the command line arguments in a `List`.  Each argument is validated and returned as a UTF-8 `string` or `array` if the validation failed.{{</cy>}}
-{{<cy "func bindLib(path any, decls List) any">}}Calls `bindLib(path, decls, [:])`.{{</cy>}}
-{{<cy "func bindLib(path any, decls List, config Map) any">}}Creates an FFI binding to a dynamic library and it's symbols.  By default, an anonymous object is returned with the C-functions binded as the object's methods.  If `config` contains `genMap: true`, a `Map` is returned instead with C-functions  binded as function values.{{</cy>}}
 {{<cy "func cacheUrl(url string) any">}}Returns the path of a locally cached file of `url`.  If no such file exists locally, it's fetched from `url`.{{</cy>}}
 {{<cy "func copyFile(srcPath string, dstPath string) none">}}Copies a file to a destination path.{{</cy>}}
 {{<cy "func createDir(path string) none">}}Creates the directory at `path`. Returns `true` if successful.{{</cy>}}
@@ -358,22 +371,23 @@ for map each [k, v]:
 {{<cy "func cstr(s any) pointer">}}Returns a null terminated C string.{{</cy>}}
 {{<cy "func cwd() string">}}Returns the current working directory.{{</cy>}}
 {{<cy "func dirName(path string) any">}}Returns the given path with its last component removed.{{</cy>}}
-{{<cy "func execCmd(args List) any">}}Runs a shell command and returns the stdout/stderr.{{</cy>}}
+{{<cy "func execCmd(args List) Map">}}Runs a shell command and returns the stdout/stderr.{{</cy>}}
 {{<cy "func exePath() string">}}Returns the current executable's path.{{</cy>}}
 {{<cy "func exit(status int) none">}}Exits the program with a status code.{{</cy>}}
-{{<cy "func fetchUrl(url any) any">}}Fetches the contents at `url` using the HTTP GET request method.{{</cy>}}
+{{<cy "func fetchUrl(url string) any">}}Fetches the contents at `url` using the HTTP GET request method.{{</cy>}}
 {{<cy "func free(ptr pointer) none">}}Frees the memory located at `ptr`.{{</cy>}}
-{{<cy "func fromCstr(ptr pointer) array">}}Returns an `array` from a null terminated C string.{{</cy>}}
 {{<cy "func getEnv(key string) any">}}Returns an environment value by key.{{</cy>}}
 {{<cy "func getEnvAll() Map">}}Returns all environment entries as a `Map`.{{</cy>}}
 {{<cy "func getAllInput() string">}}Reads stdin to the EOF as a `string`.{{</cy>}}
 {{<cy "func getInput() string">}}Reads stdin until a new line as a `string`. This is intended to read user input from the command line.  For bulk reads from stdin, use `os.stdin`.{{</cy>}}
 {{<cy "func malloc(size int) pointer">}}Allocates `size` bytes of memory and returns a pointer.{{</cy>}}
 {{<cy "func milliTime() float">}}Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01.{{</cy>}}
-{{<cy "func openDir(path string) any">}}Invokes `openDir(path, false)`.{{</cy>}}
+{{<cy "func newFFI() FFI">}}Returns a new FFI context for declaring C mappings and binding a dynamic library.{{</cy>}}
+{{<cy "func now() float">}}Returns the current time (in high resolution seconds) since an arbitrary point in time.{{</cy>}}
+{{<cy "func openDir(path string) Dir">}}Invokes `openDir(path, false)`.{{</cy>}}
 {{<cy "func openDir(path string, iterable bool) Dir">}}Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated.{{</cy>}}
 {{<cy "func openFile(path string, mode symbol) File">}}Opens a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.{{</cy>}}
-{{<cy "func parseArgs(options List) Map">}}Given expected `ArgOption`s, returns a map of the options and a `rest` entry which contains the non-option arguments. |{{</cy>}}
+{{<cy "func parseArgs(options List) Map">}}Given expected `ArgOption`s, returns a map of the options and a `rest` entry which contains the non-option arguments.{{</cy>}}
 {{<cy "func readFile(path string) string">}}Reads the file contents from `path` with UTF-8 encoding.{{</cy>}}
 {{<cy "func realPath(path string) any">}}Returns the absolute path of the given path.{{</cy>}}
 {{<cy "func removeDir(path string) none">}}Removes an empty directory at `path`. Returns `true` if successful.{{</cy>}}
@@ -387,28 +401,40 @@ for map each [k, v]:
 {{<cy "func close() none">}}Closes the file handle. File ops invoked afterwards will return `error.Closed`.{{</cy>}}
 {{<cy "func iterator() any">}}{{</cy>}}
 {{<cy "func next() any">}}{{</cy>}}
-{{<cy "func read(n int) any">}}Reads at most `n` bytes as an `array`. `n` must be at least 1.  A result with length 0 indicates the end of file was reached.{{</cy>}}
-{{<cy "func readToEnd() any">}}Reads to the end of the file and returns the content as an `array`.{{</cy>}}
+{{<cy "func read(n int) array">}}Reads at most `n` bytes as an `array`. `n` must be at least 1.  A result with length 0 indicates the end of file was reached.{{</cy>}}
+{{<cy "func readToEnd() array">}}Reads to the end of the file and returns the content as an `array`.{{</cy>}}
 {{<cy "func seek(n int) any">}}Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.{{</cy>}}
 {{<cy "func seekFromCur(n int) any">}}Seeks the read/write position by `pos` bytes from the current position.{{</cy>}}
 {{<cy "func seekFromEnd(n int) any">}}Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid.{{</cy>}}
-{{<cy "func stat() any">}}Returns info about the file as a `Map`.{{</cy>}}
+{{<cy "func stat() Map">}}Returns info about the file as a `Map`.{{</cy>}}
 {{<cy "func streamLines() any">}}Equivalent to `streamLines(4096)`.{{</cy>}}
 {{<cy "func streamLines(bufSize int) any">}}Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`.  The lines returned include the new line character(s).  A buffer size of `bufSize` bytes is allocated for reading.  If `\r` is found at the end of the read buffer, the line is returned instead of  waiting to see if the next read has a connecting `\n`.{{</cy>}}
 {{<cy "func write(val any) any">}}Writes a `string` or `array` at the current file position.  The number of bytes written is returned.{{</cy>}}
 ### `type Dir`
 
-{{<cy "func iterator() any">}}Returns a new iterator over the directory entries.  If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.{{</cy>}}
-{{<cy "func stat() any">}}Returns info about the file as a `Map`.{{</cy>}}
-{{<cy "func walk() any">}}Returns a new iterator over the directory recursive entries.  If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.{{</cy>}}
+{{<cy "func iterator() DirIterator">}}Returns a new iterator over the directory entries.  If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.{{</cy>}}
+{{<cy "func stat() Map">}}Returns info about the file as a `Map`.{{</cy>}}
+{{<cy "func walk() DirIterator">}}Returns a new iterator over the directory recursive entries.  If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.{{</cy>}}
 ### `type DirIterator`
 
 {{<cy "func next() any">}}{{</cy>}}
+### `type FFI`
+
+{{<cy "func bindCallback(fn any, params List, ret symbol) ExternFunc">}}Creates an `ExternFunc` that contains a C function pointer with the given signature.  The extern function is a wrapper that calls the provided user function.  Once created, the extern function is retained and managed by the FFI context.{{</cy>}}
+{{<cy "func bindLib(path any) any">}}Calls `bindLib(path, [:])`.{{</cy>}}
+{{<cy "func bindLib(path any, config Map) any">}}Creates a handle to a dynamic library and functions declared from `cfunc`.  By default, an anonymous object is returned with the C-functions binded as the object's methods.  If `config` contains `genMap: true`, a `Map` is returned instead with C-functions  binded as function values.{{</cy>}}
+{{<cy "func bindObjPtr(obj any) pointer">}}Returns a Cyber object's pointer. Operations on the pointer is unsafe,  but it can be useful when passing it to C as an opaque pointer.  The object is also retained and managed by the FFI context.{{</cy>}}
+{{<cy "func cbind(mt metatype, fields List) none">}}Binds a Cyber type to a C struct.{{</cy>}}
+{{<cy "func cfunc(name string, params List, ret any) none">}}Declares a C function which will get binded to the library handle created from `bindLib`.{{</cy>}}
+{{<cy "func new(ctype symbol) pointer">}}Allocates memory for a C struct or primitive with the given C type specifier.  A `pointer` to the allocated memory is returned.  Eventually this will return a `cpointer` instead which will be more idiomatic to use.{{</cy>}}
+{{<cy "func unbindObjPtr(obj any) none">}}Releases the object from the FFI context.  External code should no longer use the object's pointer since it's not guaranteed to exist  or point to the correct object.{{</cy>}}
 ### `type CFunc`
 
 ### `type CStruct`
 
 ### `type CArray`
+
+### `type CDimArray`
 
 <!-- os.end -->
 ### `map DirEntry`

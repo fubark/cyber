@@ -46,6 +46,7 @@ func foo():
 ```
 
 ## Variables.
+Cyber supports dynamic and static typing. If you're used to a dynamic language such as Python, JavaScript, or Lua, use `my` to declare your variables and object fields. If you're used to a static language then use `var` instead. The documentation will use static typing by default.
 
 ### Local variables.
 Local variables exist until the end of their scope.

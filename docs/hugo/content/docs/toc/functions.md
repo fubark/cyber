@@ -85,7 +85,7 @@ canvas.onUpdate():
     ..func (delta_ms):
         print delta_ms
 ```
-Passing a lambda block as a call argument is only possible in a call block. See [Function Calls](#function-calls).
+Passing a lambda block as a call argument is only possible in a call block. {{<todo "*Planned Feature">}} See [Function Calls](#function-calls).
 
 ## Closures.
 Lambdas can capture local variables from parent blocks. This example shows the lambda `f` capturing `a` from the main scope: {{<todo "*Incomplete, only variables one parent block away can be captured.">}}

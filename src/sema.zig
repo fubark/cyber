@@ -3041,12 +3041,16 @@ pub const ChunkExt = struct {
                 const child = try c.semaExpr(node.head.castExpr.expr, .{});
                 if (!child.type.dynamic) {
                     // Compile-time cast.
-                    if (!types.isTypeSymCompat(c.compiler, child.type.id, typeId)) {
-                        const actTypeName = c.sema.getTypeName(child.type.id);
-                        const expTypeName = c.sema.getTypeName(typeId);
-                        return c.reportErrorAt("Cast expects `{}`, got `{}`.", &.{v(expTypeName), v(actTypeName)}, nodeId);
+                    if (types.isTypeSymCompat(c.compiler, child.type.id, typeId)) {
+                        c.irSetExprData(irIdx, .cast, .{ .typeId = typeId, .isRtCast = false });
+                    } else {
+                        // Check if it's a narrowing cast (deferred to runtime).
+                        if (!types.isTypeSymCompat(c.compiler, typeId, child.type.id)) {
+                            const actTypeName = c.sema.getTypeName(child.type.id);
+                            const expTypeName = c.sema.getTypeName(typeId);
+                            return c.reportErrorAt("Cast expects `{}`, got `{}`.", &.{v(expTypeName), v(actTypeName)}, nodeId);
+                        }
                     }
-                    c.irSetExprData(irIdx, .cast, .{ .typeId = typeId, .isRtCast = false });
                 }
                 return ExprResult.init(irIdx, CompactType.init(typeId));
             },

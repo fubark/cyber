@@ -67,6 +67,21 @@ test "Type casting." {
         );
     }}.func);
 
+    // Narrow cast defers to runtime cast.
+    try eval(.{ .silent = true },
+        \\var a any = 123
+        \\print(a as pointer)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Can not cast `int` to `pointer`.
+            \\
+            \\main:2:9 main:
+            \\print(a as pointer)
+            \\        ^
+            \\
+        );
+    }}.func);
+
     // Failed to cast to exact type at runtime.
     try eval(.{ .silent = true },
         \\my a = 123

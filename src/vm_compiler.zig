@@ -18,6 +18,7 @@ const llvm_gen = @import("llvm_gen.zig");
 const bcgen = @import("bc_gen.zig");
 const jitgen = @import("jit/gen.zig");
 const assembler = @import("jit/assembler.zig");
+const A64 = @import("jit/a64.zig");
 const bindings = cy.bindings;
 const module = cy.module;
 
@@ -759,9 +760,14 @@ fn performCodegen(self: *VMcompiler) !void {
                     if (func.type == .hostFunc) {
                         return error.Unexpected;
                     } else {
-                        const targetPc = self.genSymMap.get(func).?.funcSym.pc;
-                        var inst: *assembler.A64.BrImm = @ptrCast(@alignCast(&self.jitBuf.buf.items[jumpPc]));
-                        inst.setOffsetFrom(jumpPc, targetPc);
+                        switch (builtin.cpu.arch) {
+                            .aarch64 => {
+                                const targetPc = self.genSymMap.get(func).?.funcSym.pc;
+                                var inst: *A64.BrImm = @ptrCast(@alignCast(&self.jitBuf.buf.items[jumpPc]));
+                                inst.setOffsetFrom(jumpPc, targetPc);
+                            },
+                            else => return error.Unsupported,
+                        }
                     }
                 }
             }

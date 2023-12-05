@@ -101,7 +101,7 @@ void stringTemplate(VM* vm, Value* fp, u64 strs, u64 exprs, u64 exprCount) {
     if (res.code != RES_CODE_SUCCESS) {
         [[clang::musttail]] return interrupt5(vm, fp, strs, exprs, res.code);
     }
-    [[clang::musttail]] return cont5(vm, fp, strs, exprs, res.val);
+    [[clang::musttail]] return cont5(vm, fp, res.val, exprs, exprCount);
 }
 
 void dumpJitSection(VM* vm, Value* fp, u64 chunkId, u64 irIdx, u64 startPc, u64 endPc) {

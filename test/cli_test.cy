@@ -7,22 +7,22 @@ if os.system == 'windows':
 else:
     printCmd = 'printf'
 
--- os.getInput() returns error.EndOfStream
+-- os.readLine() returns error.EndOfStream
 runPipeInput('$(printCmd) "abc"', "
 import test
 import os
 if os.system == 'windows':
-  test.eq(os.getInput(), 'abc\\r')
-  test.eq(try os.getInput(), error.EndOfStream)
+  test.eq(os.readLine(), 'abc\\r')
+  test.eq(try os.readLine(), error.EndOfStream)
 else:
-  test.eq(try os.getInput(), error.EndOfStream)
+  test.eq(try os.readLine(), error.EndOfStream)
 ")
 
--- os.getInput() returns user input before new line.
+-- os.readLine() returns user input before new line.
 runPipeInput('$(printCmd) "abc\n"', "
 import test
 import os
-test.eq(os.getInput(), 'abc')
+test.eq(os.readLine(), 'abc')
 ")
 
 -- os.stdin.streamLines()

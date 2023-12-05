@@ -20,16 +20,16 @@
 @host var Root.vecBitSize int
 
 --| Attempts to access a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.
---| Return true or an error.
-@host func access(path string, mode symbol) any
+--| Throws an error if unsuccessful.
+@host func access(path string, mode symbol) none
 
 --| Returns the command line arguments in a `List`.
---| Each argument is validated and returned as a UTF-8 `string` or `array` if the validation failed.
+--| Each argument is converted to a `string`.
 @host func args() List
 
 --| Returns the path of a locally cached file of `url`.
 --| If no such file exists locally, it's fetched from `url`.
-@host func cacheUrl(url string) any
+@host func cacheUrl(url string) string
 
 --| Copies a file to a destination path.
 @host func copyFile(srcPath string, dstPath string) none
@@ -47,7 +47,7 @@
 @host func cwd() string
 
 --| Returns the given path with its last component removed.
-@host func dirName(path string) any
+@host func dirName(path string) string
 
 --| Runs a shell command and returns the stdout/stderr.
 @host func execCmd(args List) Map
@@ -59,28 +59,22 @@
 @host func exit(status int) none
 
 --| Fetches the contents at `url` using the HTTP GET request method.
-@host func fetchUrl(url string) any
+@host func fetchUrl(url string) array
 
 --| Frees the memory located at `ptr`.
 @host func free(ptr pointer) none
 
---| Returns an environment value by key.
-@host func getEnv(key string) any
+--| Returns an environment variable by key.
+@host func getEnv(key string) string
 
---| Returns all environment entries as a `Map`.
+--| Returns all environment variables as a `Map`.
 @host func getEnvAll() Map
-
---| Reads stdin to the EOF as a `string`.
-@host func getAllInput() string
-
---| Reads stdin until a new line as a `string`. This is intended to read user input from the command line.
---| For bulk reads from stdin, use `os.stdin`.
-@host func getInput() string
 
 --| Allocates `size` bytes of memory and returns a pointer.
 @host func malloc(size int) pointer
 
 --| Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01.
+--| For an high resolution timestamp, use `now()`.
 @host func milliTime() float
 
 --| Returns a new FFI context for declaring C mappings and binding a dynamic library.
@@ -101,11 +95,20 @@
 --| Given expected `ArgOption`s, returns a map of the options and a `rest` entry which contains the non-option arguments.
 @host func parseArgs(options List) Map
 
---| Reads the file contents from `path` with UTF-8 encoding.
+--| Reads stdin to the EOF as a UTF-8 string.
+--| To return the bytes instead, use `stdin.readAll()`.
+@host func readAll() string
+
+--| Reads the file contents from `path` as a UTF-8 string.
+--| To return the bytes instead, use `File.readAll()`.
 @host func readFile(path string) string
 
+--| Reads stdin until a new line as a `string`. This is intended to read user input from the command line.
+--| For bulk reads from stdin, use `stdin`.
+@host func readLine() string
+
 --| Returns the absolute path of the given path.
-@host func realPath(path string) any
+@host func realPath(path string) string
 
 --| Removes an empty directory at `path`. Returns `true` if successful.
 @host func removeDir(path string) none
@@ -113,16 +116,16 @@
 --| Removes the file at `path`. Returns `true` if successful.
 @host func removeFile(path string) none
 
---| Sets an environment value by key.
+--| Sets an environment variable by key.
 @host func setEnv(key string, val string) none
 
 --| Pauses the current thread for given milliseconds.
 @host func sleep(ms float) none
 
---| Removes an environment value by key.
+--| Removes an environment variable by key.
 @host func unsetEnv(key string) none
 
---| Writes a string value to a file.
+--| Writes `contents` as a string or bytes to a file.
 @host func writeFile(path string, contents any) none
 
 @host
@@ -138,33 +141,33 @@ type File object:
     @host func read(n int) array
 
     --| Reads to the end of the file and returns the content as an `array`.
-    @host func readToEnd() array
+    @host func readAll() array
 
     --| Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.
-    @host func seek(n int) any
+    @host func seek(n int) none
 
     --| Seeks the read/write position by `pos` bytes from the current position.
-    @host func seekFromCur(n int) any
+    @host func seekFromCur(n int) none
 
     --| Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid.
-    @host func seekFromEnd(n int) any
+    @host func seekFromEnd(n int) none
 
     --| Returns info about the file as a `Map`.
     @host func stat() Map
 
     --| Equivalent to `streamLines(4096)`.
-    @host func streamLines() any
+    @host func streamLines() File
 
     --| Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`.
     --| The lines returned include the new line character(s).
     --| A buffer size of `bufSize` bytes is allocated for reading.
     --| If `\r` is found at the end of the read buffer, the line is returned instead of
     --| waiting to see if the next read has a connecting `\n`.
-    @host func streamLines(bufSize int) any
+    @host func streamLines(bufSize int) File
 
     --| Writes a `string` or `array` at the current file position.
     --| The number of bytes written is returned.
-    @host func write(val any) any
+    @host func write(val any) int
 
 @host
 type Dir object:

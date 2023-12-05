@@ -7,7 +7,7 @@
 @host func errorReport() string
 
 --| Returns the current reference count of an object.
-@host func getObjectRc(val any) none
+@host func getObjectRc(val any) int
 
 --| Returns whether two values refer to the same instance.
 @host func is(a any, b any) bool
@@ -60,7 +60,7 @@ type bool object
 @host
 type error object:
     --| Return the underlying `symbol`.
-    @host func sym() any
+    @host func sym() symbol
 
 --| Create an error from an enum or symbol.
 @host func error.'$call'(val any) error
@@ -87,10 +87,10 @@ type int object:
 
     --| Formats the integer using a kind specifier which can be binary `.b`,
     --| octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.
-    @host func fmt(kind symbol) any
+    @host func fmt(kind symbol) string
 
     --| `opts.pad` provides the ASCII rune that is used for padding with a string length of `opts.width`.
-    @host func fmt(kind symbol, opts Map) any
+    @host func fmt(kind symbol, opts Map) string
 
 --| Converts a value to an 48-bit integer.
 @host func int.'$call'(val any) int
@@ -125,10 +125,10 @@ type List object:
     @host func concat(list List) none
 
     --| Inserts a value at index `idx`.
-    @host func insert(idx int, val any) any
+    @host func insert(idx int, val any) none
 
     --| Returns a new iterator over the list elements.
-    @host func iterator() any
+    @host func iterator() ListIterator
 
     --| Returns a new string that joins the elements with `separator`.
     @host func join(sep string) string
@@ -137,11 +137,11 @@ type List object:
     @host func len() int
 
     --| Removes an element at index `idx`.
-    @host func remove(idx int) any
+    @host func remove(idx int) none
 
     --| Resizes the list to `len` elements. If the new size is bigger, `none` values
     --| are appended to the list. If the new size is smaller, elements at the end of the list are removed.
-    @host func resize(size int) any
+    @host func resize(size int) none
 
     @host func slice(start any, end any) List
 
@@ -183,7 +183,7 @@ type Map object:
     @host func size() int
 
     --| Returns a new iterator over the map elements.
-    @host func iterator() any
+    @host func iterator() MapIterator
 
 @host
 type MapIterator object:
@@ -259,7 +259,7 @@ type string object:
 
 @host
 type array object:
-    @host func '$infix+'(o any) any
+    @host func '$infix+'(o any) array
 
     --| Returns a new array that concats this array and `other`.
     @host func concat(other array) array
@@ -286,7 +286,7 @@ type array object:
     --| Formats each byte in the array using a kind specifier which can be binary `.b`,
     --| octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.
     --| Each byte is zero padded.
-    @host func fmt(kind symbol) any
+    @host func fmt(kind symbol) string
 
     --| Returns the byte value (0-255) at the given index `idx`.
     @host func getByte(idx int) int
@@ -330,7 +330,7 @@ type array object:
     @host func startsWith(prefix array) bool
 
     --| Returns the array with ends trimmed from runes in `delims`. `mode` can be .left, .right, or .ends.
-    @host func trim(mode symbol, delims array) any
+    @host func trim(mode symbol, delims array) array
 
 --| Converts a string to an byte `array`.
 @host func array.'$call'(val any) array

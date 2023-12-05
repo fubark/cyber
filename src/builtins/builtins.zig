@@ -266,6 +266,7 @@ pub fn prepThrowZError(vm: *cy.VM, err: anyerror, optTrace: ?*std.builtin.StackT
         }
     }
     switch (err) {
+        error.Unicode               => return vm.prepThrowError(.Unicode),
         error.InvalidArgument       => return vm.prepThrowError(.InvalidArgument),
         error.InvalidEnumTag        => return vm.prepThrowError(.InvalidArgument),
         error.FileNotFound          => return vm.prepThrowError(.FileNotFound),
@@ -273,6 +274,7 @@ pub fn prepThrowZError(vm: *cy.VM, err: anyerror, optTrace: ?*std.builtin.StackT
         error.PermissionDenied      => return vm.prepThrowError(.PermissionDenied),
         error.StdoutStreamTooLong   => return vm.prepThrowError(.StreamTooLong),
         error.StderrStreamTooLong   => return vm.prepThrowError(.StreamTooLong),
+        error.EndOfStream           => return vm.prepThrowError(.EndOfStream),
         else                        => {
             fmt.printStderr("UnknownError: {}\n", &.{fmt.v(err)});
             return vm.prepThrowError(.UnknownError);
@@ -389,7 +391,6 @@ pub fn getObjectRc(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSec
     } else {
         return Value.initInt(-1);
     }
-    return Value.None;
 }
 
 pub fn toCyon(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {

@@ -246,7 +246,7 @@ pub fn fileIterator(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return args[0];
 }
 
-pub fn fileSeekFromEnd(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn fileSeekFromEnd(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
@@ -264,7 +264,7 @@ pub fn fileSeekFromEnd(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.S
     return Value.None;
 }
 
-pub fn fileSeekFromCur(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn fileSeekFromCur(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
@@ -279,7 +279,7 @@ pub fn fileSeekFromCur(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.S
     return Value.None;
 }
 
-pub fn fileSeek(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn fileSeek(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
@@ -298,7 +298,7 @@ pub fn fileSeek(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     return Value.None;
 }
 
-pub fn fileWrite(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn fileWrite(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
@@ -345,7 +345,7 @@ pub fn fileRead(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     return vm.allocArray(tempBuf.buf[0..numRead]);
 }
 
-pub fn fileReadToEnd(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn fileReadAll(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);

@@ -18,7 +18,7 @@ type Vec2 object:
     var x float
     var y float
 
-    func '$infix+'(o) Vec2:
+    func '$infix+'(o Vec2) Vec2:
         return [Vec2
             x: x + o.x,
             y: y + o.y,

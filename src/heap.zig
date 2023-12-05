@@ -1435,11 +1435,24 @@ pub const VmExt = struct {
     pub const allocUnsetArrayObject = Root.allocUnsetArrayObject;
     pub const allocUnsetAstringObject = Root.allocUnsetAstringObject;
     pub const allocUnsetUstringObject = Root.allocUnsetUstringObject;
+    pub const allocStringOrFail = Root.allocStringOrFail;
 
     pub fn mapSet(vm: *cy.VM, map: *Map, key: Value, val: Value) !void {
         try map.map().put(vm.alloc, key, val);
     }
 };
+
+pub fn allocStringOrFail(self: *cy.VM, str: []const u8) linksection(cy.Section) !Value {
+    if (cy.validateUtf8(str)) |charLen| {
+        if (str.len == charLen) {
+            return try retainOrAllocAstring(self, str);
+        } else {
+            return try retainOrAllocUstring(self, str, @intCast(charLen));
+        }
+    } else {
+        return error.Unicode;
+    }
+}
 
 pub fn allocStringInternOrArray(self: *cy.VM, str: []const u8) linksection(cy.Section) !Value {
     if (cy.validateUtf8(str)) |charLen| {

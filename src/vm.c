@@ -789,10 +789,6 @@ beginSwitch:
             HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
 
             _BitInt(48) idx = VALUE_AS_INTEGER(index);
-            if (idx < 0) {
-                // Reverse index.
-                idx = listo->list.list.len + idx;
-            }
             if (idx >= 0 && idx < listo->list.list.len) {
                 Value existing = ((Value*)listo->list.list.buf)[idx];
                 release(vm, existing);
@@ -839,10 +835,6 @@ beginSwitch:
             HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
 
             _BitInt(48) idx = VALUE_AS_INTEGER(index);
-            if (idx < 0) {
-                // Reverse index.
-                idx = listo->list.list.len + idx;
-            }
             if (idx >= 0 && idx < listo->list.list.len) {
                 Value val = ((Value*)listo->list.list.buf)[idx];
                 retain(vm, val);

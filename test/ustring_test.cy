@@ -7,12 +7,12 @@ var str = 'abc🦊xyz🐶'
 t.eq(str, 'abc🦊xyz🐶')
 
 -- index operator
-t.eq(str[-1], '🐶')
 t.eq(str[0], 'a')
 t.eq(str[0].isAscii(), true)
 t.eq(str[3], '🦊')
 t.eq(str[3].isAscii(), false)
 t.eq(str[7], '🐶')
+t.eq(try str[-1], error.OutOfBounds) 
 t.eq(try str[8], error.OutOfBounds)
 
 -- slice operator

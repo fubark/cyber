@@ -2319,6 +2319,21 @@ test "Dynamic value, recent type check." {
 }
 
 test "Lists" {
+    // Negative index.
+    try eval(.{ .silent = true },
+        \\var a = [1, 2, 3]
+        \\a[-1]
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Out of bounds.
+            \\
+            \\main:2:1 main:
+            \\a[-1]
+            \\^
+            \\
+        );
+    }}.func);
+
     try evalPass(.{}, @embedFile("list_test.cy"));
 }
 

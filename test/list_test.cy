@@ -13,9 +13,6 @@ t.eq(a.len(), 2)
 a = [1, 2, 3]
 t.eq(a[0], 1)
 
--- Reverse index access.
-t.eq(a[-1], 3)
-
 --| Slice operator.
 -- Start to end index slice.
 a = [1, 2, 3, 4, 5]

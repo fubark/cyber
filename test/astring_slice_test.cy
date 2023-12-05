@@ -14,10 +14,10 @@ var lstr = '$('aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 var upper = '$('ABCXYZ')'[0..]
 
 -- index operator
-t.eq(str[-1], 'z')
 t.eq(str[0], 'a')
 t.eq(str[3], 'x')
 t.eq(str[5], 'z')
+t.eq(try str[-1], error.OutOfBounds)
 t.eq(try str[6], error.OutOfBounds)
 
 -- slice operator

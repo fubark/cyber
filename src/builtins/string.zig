@@ -327,9 +327,6 @@ pub fn sliceAt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     var idx = args[1].asInteger();
 
     if (stype.isAstring()) {
-        if (idx < 0) {
-            idx = @as(i48, @intCast(str.len)) + idx;
-        }
         if (idx < 0 or idx >= str.len) {
             return prepareThrowSymbol(vm, .OutOfBounds);
         }
@@ -338,9 +335,6 @@ pub fn sliceAt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
         return vm.retainOrAllocAstring(str[uidx..uidx + 1]) catch fatal();
     } else {
         const charLen = obj.string.getUstringCharLen();
-        if (idx < 0) {
-            idx = @as(i48, @intCast(charLen)) + idx;
-        }
         if (idx < 0 or idx >= charLen) {
             return prepareThrowSymbol(vm, .OutOfBounds);
         }

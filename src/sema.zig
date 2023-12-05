@@ -1455,6 +1455,22 @@ fn callSymWithRecv(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId:
     return c.semaCallFuncSym(preIdx, symNodeId, funcSym, res);
 }
 
+// Invoke a type's sym as the callee.
+fn callTypeSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.NodeId, argHead: cy.NodeId, typeId: cy.TypeId) !ExprResult {
+    const typeCallSym = try c.findDistinctSym(sym, "$call", cy.NullId, true);
+    if (typeCallSym.type != .func) {
+        const typeName = c.sema.getTypeName(typeId);
+        return c.reportErrorAt("Can not find `$call` function for `{}`.", &.{v(typeName)}, symNodeId);
+    }
+    const funcSym = typeCallSym.cast(.func);
+    const funcSigId = getFuncSigHint(funcSym, numArgs);
+    const funcSig = c.compiler.sema.getFuncSig(funcSigId);
+    const preferParamTypes = funcSig.params();
+    const res = try c.semaPushCallArgsInfer(argHead, numArgs, preferParamTypes);
+    defer c.typeStack.items.len = res.start;
+    return c.semaCallFuncSym(preIdx, symNodeId, funcSym, res);
+}
+
 fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.NodeId, argHead: cy.NodeId) !ExprResult {
     try referenceSym(c, sym, symNodeId);
     switch (sym.type) {
@@ -1469,19 +1485,13 @@ fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.Node
             return c.semaCallFuncSym(preIdx, symNodeId, funcSym, res);
         },
         .predefinedType => {
-            const typeCallSym = try c.findDistinctSym(sym, "$call", cy.NullId, true);
-            if (typeCallSym.type != .func) {
-                const typeName = c.sema.getTypeName(sym.cast(.predefinedType).type);
-                return c.reportErrorAt("Can not find `$call` function for `{}`.", &.{v(typeName)}, symNodeId);
-            }
-            const funcSym = typeCallSym.cast(.func);
-            const funcSigId = getFuncSigHint(funcSym, numArgs);
-            const funcSig = c.compiler.sema.getFuncSig(funcSigId);
-            const preferParamTypes = funcSig.params();
-            const res = try c.semaPushCallArgsInfer(argHead, numArgs, preferParamTypes);
-            defer c.typeStack.items.len = res.start;
-            return c.semaCallFuncSym(preIdx, symNodeId, funcSym, res);
+            const typeId = sym.cast(.predefinedType).type;
+            return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, typeId);
         }, 
+        .object => {
+            const typeId = sym.cast(.object).type;
+            return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, typeId);
+        },
         .userVar,
         .hostVar => {
             // preCall.
@@ -1492,6 +1502,7 @@ fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.Node
         },
         else => {
             // try pushCallArgs(c, node.head.callExpr.arg_head, numArgs, true);
+            log.tracev("{}", .{sym.type});
             return error.TODO;
         },
     }
@@ -2458,7 +2469,7 @@ fn reportIncompatibleCallSig(c: *cy.Chunk, sym: *cy.sym.FuncSym, args: []const C
     const name = sym.head.name();
     var msg: std.ArrayListUnmanaged(u8) = .{};
     const w = msg.writer(c.alloc);
-    const callSigStr = try c.sema.formatArgsRet(args, retType, &cy.tempBuf, false);
+    const callSigStr = try c.sema.formatArgsRet(args, retType, &cy.tempBuf, true);
     try w.print("Can not find compatible function for call signature: `{s}{s}`.\n", .{name, callSigStr});
     try w.print("Functions named `{s}` in `{s}`:\n", .{name, sym.head.parent.?.name() });
 
@@ -3557,13 +3568,27 @@ pub const ChunkExt = struct {
                     }});
                     return ExprResult.initStatic(irIdx, child.type.id);
                 } else {
-                    // Generic callObjSym.
-                    const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any }, bt.Any);
-                    c.irSetExprCode(irIdx, .preCallObjSymUnOp);
-                    c.irSetExprData(irIdx, .preCallObjSymUnOp, .{ .callObjSymUnOp = .{
-                        .op = op, .funcSigId = funcSigId,
-                    }});
-                    return ExprResult.initDynamic(irIdx, bt.Any);
+                    if (child.type.dynamic) {
+                        // Generic callObjSym.
+                        const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any }, bt.Any);
+                        c.irSetExprCode(irIdx, .preCallObjSymUnOp);
+                        c.irSetExprData(irIdx, .preCallObjSymUnOp, .{ .callObjSymUnOp = .{
+                            .op = op, .funcSigId = funcSigId,
+                        }});
+                        return ExprResult.initDynamic(irIdx, bt.Any);
+                    } else {
+                        // Look for sym under child type's module.
+                        const childTypeSym = c.sema.getTypeSym(child.type.id);
+                        const sym = try c.mustFindSym(childTypeSym, op.name(), nodeId);
+                        const irArgsIdx = try c.irPushEmptyArray(u32, 1);
+                        c.irSetArrayItem(irArgsIdx, u32, 0, child.irIdx);
+                        return c.semaCallFuncSym(irIdx, nodeId, sym.cast(.func), .{
+                            .types = @constCast(&[_]CompactType{ child.type }),
+                            .start = 0,
+                            .hasDynamicArg = false,
+                            .irArgsIdx = irArgsIdx,
+                        });
+                    }
                 }
             },
             .not => {

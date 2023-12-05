@@ -5,13 +5,13 @@
 @host var Root.endian symbol
 
 --| Standard error file descriptor.
-@host var Root.stderr any
+@host var Root.stderr File
 
 --| Standard input file descriptor.
-@host var Root.stdin any
+@host var Root.stdin File
 
 --| Standard output file descriptor.
-@host var Root.stdout any
+@host var Root.stdout File
 
 --| The current operating system's tag name.
 @host var Root.system string
@@ -221,15 +221,6 @@ type FFI object:
     --| External code should no longer use the object's pointer since it's not guaranteed to exist
     --| or point to the correct object.
     @host func unbindObjPtr(obj any) none
-
-type CFunc object:
-    var sym
-    var args
-    var ret
-
-type CStruct object:
-    var fields
-    var type 
 
 type CArray object:
     var elem

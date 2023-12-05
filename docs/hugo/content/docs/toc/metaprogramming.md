@@ -18,13 +18,13 @@ type Vec2 object:
     var x float
     var y float
 
-    func '$infix+'(o):
+    func '$infix+'(o) Vec2:
         return [Vec2
             x: x + o.x,
             y: y + o.y,
         ]
 
-    func '$prefix-'():
+    func '$prefix-'() Vec2:
         return [Vec2 x: -x, y: -y]
 
 var a = [Vec2 x: 1, y: 2]
@@ -86,8 +86,8 @@ type Vec2 object:
     var x float
     var y float
 
-    func '$call'(x float, y float) Vec2:
-        return [Vec2 x: x, y: y]
+func Vec2.'$call'(x float, y float) Vec2:
+    return [Vec2 x: x, y: y]
 
 var v = Vec2(1, 2)
 ```

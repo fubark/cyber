@@ -48,7 +48,7 @@
 @host func typeof(val any) metatype
 
 --| Returns the value's type as one of the predefined symbols:
---| .float, .int, .bool, .object, .list, .map, .string, .rawstring, .function, .fiber, .pointer, .symbol, .metatype, .none, .error
+--| .float, .int, .bool, .object, .list, .map, .string, .array, .function, .fiber, .pointer, .symbol, .metatype, .none, .error
 @host func typesym(val any) symbol
 
 @host
@@ -191,7 +191,7 @@ type MapIterator object:
   
 @host
 type string object:
-    @host func '$infix+'(o any) any
+    @host func '$infix+'(o any) string
 
     --| Returns a new string that concats this string and `str`.
     @host func concat(o string) string

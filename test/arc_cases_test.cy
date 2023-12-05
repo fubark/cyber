@@ -30,5 +30,5 @@ f()
 
 -- if expr returns rcCandidate value if else clause is a RC string and if clause is a non-RC string.
 b = 123
-a = false ? 'abc' else '{b}'
-var c = '{a}'  -- If `a` isn't marked as a rcCandidate, `a` would be freed here and at the end of the block.
+a = false ? 'abc' else '$(b)'
+var c = '$(a)'  -- If `a` isn't marked as a rcCandidate, `a` would be freed here and at the end of the block.

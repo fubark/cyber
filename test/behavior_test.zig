@@ -2306,7 +2306,7 @@ test "Dynamic value, recent type check." {
         \\    pass
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(dynamic) any`.
+            \\CompileError: Can not find compatible function for call signature: `foo(dyn string) any`.
             \\Functions named `foo` in `main`:
             \\    func foo(int) dynamic
             \\

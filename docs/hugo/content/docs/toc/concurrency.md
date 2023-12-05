@@ -38,7 +38,7 @@ var count = 0
 var increment = func (inc):
     count += inc
 
-var create = coinit(increment, 5)
+var fiber = coinit(increment, 5)
 coresume fiber
 print count          -- '5'
 ```
@@ -114,7 +114,7 @@ func bar():
     coyield
     print 'bar'
 
-var fiber = coinit foo()
+var fiber = coinit(foo)
 coresume fiber
 ```
 `coresume` also returns the resulting value.

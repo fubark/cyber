@@ -786,6 +786,9 @@ pub fn allocExternalObject(vm: *cy.VM, size: usize, comptime cyclable: bool) !*H
     if (cy.Malloc == .zig) {
         @as(*u64, @ptrCast(slice.ptr + PayloadSize - ZigLenSize)).* = size;
     }
+    if (cy.TraceRC) {
+        cy.arc.log.tracev("0 +1 alloc external object: {*}", .{slice.ptr + PayloadSize});
+    }
     if (cy.TrackGlobalRC) {
         vm.refCounts += 1;
     }
@@ -814,8 +817,8 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
                 self.heapFreeTail = self.heapFreeHead;
             }
         }
-        if (cy.TraceNewObject) {
-            log.tracev("Alloc pool object: {*}", .{ptr});
+        if (cy.TraceRC) {
+            cy.arc.log.tracev("0 +1 alloc pool object: {*}", .{ptr});
         }
         if (cy.TrackGlobalRC) {
             self.refCounts += 1;

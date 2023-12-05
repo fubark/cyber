@@ -7,6 +7,7 @@ weight: 6
 Cyber supports binding to an existing C ABI compatible library at runtime.
 This allows you to call into dynamic libraries created in C or other languages.
 Cyber uses `libtcc` to JIT compile the bindings so function calls are fast.
+The example shown below can be found in [Examples](https://github.com/fubark/cyber/blob/master/examples/ffi.cy).
 
 ## FFI context.
 An FFI context contains declarations that map C to Cyber. Afterwards, it allows you to bind to a dynamic library or create interoperable objects. To create a new `FFI` context:
@@ -49,7 +50,7 @@ By default `bindLib` returns an anonymous object with the binded C-functions as 
 The resulting object of `bindLib` holds a reference to an internal TCCState which owns the loaded JIT code.
 Once the object is released by ARC, the TCCState is also released which removes the JIT code from memory.
 
-## Mappings
+## Mappings.
 When using `cfunc` or `cbind` declarations, [symbols]({{<relref "/docs/toc/data-types#symbols">}}) are used to represent default type mappings from Cyber to C and back:
 > _Incomplete: This is not the final API for dynamically loading and interfacing with C libraries. The plan is to parse a subset of C headers to bind to Cyber types and functions._
 
@@ -110,7 +111,7 @@ var ptr = lib.foo([MyObject a: 123, b: os.cstr('foo'), c: true])
 var res = lib.ptrToMyObject(ptr)
 ```
 
-## Pointers
+## Pointers.
 A `pointer` is used to read or write to an exact memory address. This is typically used for FFI to manually map Cyber types to C, and back. See [`type pointer`]({{<relref "/docs/toc/modules#type-pointer">}}).
 
 A new pointer can be created with the builtin `pointer`.
@@ -118,3 +119,6 @@ A new pointer can be created with the builtin `pointer`.
 var ptr = pointer(0xDEADBEEF)
 print ptr.value()     --'3735928559'
 ```
+
+## cbindgen.cy
+[cbindgen.cy]("https://github.com/fubark/cyber/blob/master/src/tools/cbindgen.cy") is a Cyber script that automatically generates bindings given a C header file. Some example bindings that were generated include: [Raylib](https://github.com/fubark/ray-cyber) and [LLVM](https://github.com/fubark/cyber/blob/master/src/tools/llvm.cy).

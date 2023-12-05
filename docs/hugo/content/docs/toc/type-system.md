@@ -87,7 +87,7 @@ func foo(n int):
 ```
 Even though `a` is `dynamic` and is usually allowed to defer type checking to runtime, the compiler knows that doing so in this context would **always** result in a runtime error, so it provides a compile error instead. This provides a quicker feedback to fix the problem.
 
-The recent type of `a` can also change in branches. However, after the branch block, `a` will have a recent type after merging the types assigned to `a` from the two branched code paths. Currently, the `any` type is used if the types from the two branches differ. At the end of the following `if` block, `a` has the recent type of `any` type after merging the `int` and `string` types:
+The recent type of `a` can also change in branches. However, after the branch block, `a` will have a recent type after merging the types assigned to `a` from the two branched code paths. Currently, the `any` type is used if the types from the two branches differ. At the end of the following `if` block, `a` has the recent type of `any` type after merging the `int` and `string` types: {{<todo "*Planned Feature">}}
 ```cy
 my a = 123
 if a > 20:
@@ -136,15 +136,11 @@ Any operation afterwards that violates the type constraint of the variable will 
 a = 'hello'          -- CompileError. Expected `float`, got `string`.
 ```
 
-Type specifiers must be resolved at compile-time.
-```cy
-var foo Foo = none   -- CompileError. Type `Foo` is not declared.
-```
-
 Static variables are declared in a similar way:
 ```cy
 var Root.global Map = [:]
 ```
+Unlike local variables, static variable declarations do not infer the type from the right hand side. A specific type must be specified or it will default to the `any` type.
 
 ### Object types.
 A `type object` declaration creates a new object type. Field types are optional and declared with a type specifier after their name.
@@ -190,7 +186,7 @@ The following shows the zero values of builtin or created types.
 |`int`|`0`|
 |`float`|`0.0`|
 |`string`|`''`|
-|`rawstring`|`''`|
+|`array`|`array('')`|
 |`List`|`[]`|
 |`Map`|`[:]`|
 |`type S object`|`[S:]`|

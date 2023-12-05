@@ -46,7 +46,7 @@ pub const HeapStringBuilder = struct {
         if (self.hasObject) {
             const obj = self.getHeapObject();
             obj.astring.len = self.len;
-            self.vm.freeObject(obj);
+            self.vm.releaseObject(obj);
             self.hasObject = false;
         }
     }
@@ -163,19 +163,18 @@ pub const HeapArrayBuilder = struct {
         if (self.hasObject) {
             const obj = self.getHeapObject();
             obj.array.headerAndLen = self.len;
-            cy.heap.freeObject(self.vm, obj, true, false, true);
+            self.vm.releaseObject(obj);
             self.hasObject = false;
         }
     }
 
     pub fn ownObject(self: *HeapArrayBuilder, alloc: std.mem.Allocator) *cy.HeapObject {
+        _ = alloc;
+    
         const obj = self.getHeapObject();
         obj.array.headerAndLen = self.len;
 
-        // Shrink.
-        const objBuf = (self.buf.ptr - 12)[0..self.buf.len + 12];
-        _ = alloc.resize(objBuf, self.len + 12);
-
+        // TODO: Shrink.
         self.hasObject = false;
         return obj;
     }

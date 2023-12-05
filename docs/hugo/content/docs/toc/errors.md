@@ -73,7 +73,7 @@ catch err:
 ```
 
 ### `caught` variable.
-The contextual `caught` variable is used to reference the caught error:
+The contextual `caught` variable is used to reference the caught error: {{<todo "*Planned Feature">}}
 ```cy
 try:
     funcThatCanFail()

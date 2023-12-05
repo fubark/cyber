@@ -23,8 +23,6 @@ const fs = @import("fs.zig");
 
 const log = cy.log.scoped(.os);
 
-pub var CFuncT: cy.TypeId = undefined;
-pub var CStructT: cy.TypeId = undefined;
 pub var CArrayT: cy.TypeId = undefined;
 pub var CDimArrayT: cy.TypeId = undefined;
 pub var nextUniqId: u32 = undefined;
@@ -80,7 +78,7 @@ const funcs = [_]NameFunc{
 
     // File
     .{"close",          fs.fileClose},
-    .{"iterator",       fs.fileIterator},
+    .{"iterator",       zErrFunc2(fs.fileIterator)},
     .{"next",           zErrFunc2(fs.fileNext)},
     .{"read",           zErrFunc2(fs.fileRead)},
     .{"readToEnd",      zErrFunc2(fs.fileReadToEnd)},
@@ -88,8 +86,8 @@ const funcs = [_]NameFunc{
     .{"seekFromCur",    zErrFunc2(fs.fileSeekFromCur)},
     .{"seekFromEnd",    zErrFunc2(fs.fileSeekFromEnd)},
     .{"stat",           zErrFunc2(fs.fileOrDirStat)},
-    .{"streamLines",    fs.fileStreamLines},
-    .{"streamLines",    fs.fileStreamLines1},
+    .{"streamLines",    zErrFunc2(fs.fileStreamLines)},
+    .{"streamLines",    zErrFunc2(fs.fileStreamLines1)},
     .{"write",          zErrFunc2(fs.fileWrite)},
 
     // Dir
@@ -184,8 +182,6 @@ pub fn zPostTypeLoad(c: *cy.VMcompiler, mod: cc.ApiModule) !void {
 
     const sym: *cy.Sym = @ptrCast(@alignCast(mod.sym));
     const chunkMod = sym.getMod().?;
-    CFuncT = chunkMod.getSym("CFunc").?.cast(.object).type;
-    CStructT = chunkMod.getSym("CStruct").?.cast(.object).type;
     CArrayT = chunkMod.getSym("CArray").?.cast(.object).type;
     CDimArrayT = chunkMod.getSym("CDimArray").?.cast(.object).type;
     nextUniqId = 1;
@@ -699,7 +695,7 @@ pub fn execCmd(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
     if (res.term == .Exited) {
         const exitedKey = try vm.retainOrAllocAstring("exited");
         defer vm.release(exitedKey);
-        try map.asHeapObject().map.set(vm, exitedKey, Value.initF64(@floatFromInt(res.term.Exited)));
+        try map.asHeapObject().map.set(vm, exitedKey, Value.initInt(@intCast(res.term.Exited)));
     }
     return map;
 }

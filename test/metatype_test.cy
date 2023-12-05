@@ -36,4 +36,4 @@ t.eq((metatype).id(), 23)
 
 -- Referencing type name path.
 import os
-t.eq(typesym(os.CFunc), .metatype)
+t.eq(typesym(os.CArray), .metatype)

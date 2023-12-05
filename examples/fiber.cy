@@ -2,7 +2,7 @@ func go():
     print 'start'
     coyield
     for 0..100 -> i:
-        print '{i}'
+        print i
         coyield
 
 var f = coinit(go)

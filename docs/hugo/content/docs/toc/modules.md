@@ -17,7 +17,7 @@ import math
 print math.cos(0)
 ```
 
-When the alias needs to be renamed, the import specifier comes after the alias name and must be a string literal.
+When the imported alias needs to be renamed, the import specifier comes after the alias name and must be a string literal.
 ```cy
 import m 'math'
 print m.random()
@@ -127,7 +127,7 @@ print typeof('my str').id()
 {{<cy "func runestr(val int) string">}}Converts a rune to a string.{{</cy>}}
 {{<cy "func toCyon(val any) string">}}Encodes a value to CYON string.{{</cy>}}
 {{<cy "func typeof(val any) metatype">}}Returns the value's type as a `metatype` object.{{</cy>}}
-{{<cy "func typesym(val any) symbol">}}Returns the value's type as one of the predefined symbols:  .float, .int, .bool, .object, .list, .map, .string, .rawstring, .function, .fiber, .pointer, .symbol, .metatype, .none, .error{{</cy>}}
+{{<cy "func typesym(val any) symbol">}}Returns the value's type as one of the predefined symbols:  .float, .int, .bool, .object, .list, .map, .string, .array, .function, .fiber, .pointer, .symbol, .metatype, .none, .error{{</cy>}}
 ### `type bool`
 
 {{<cy "func bool.'$call'(val any) bool">}}Converts a value to either `true` or `false`.{{</cy>}}
@@ -204,7 +204,7 @@ print typeof('my str').id()
 {{<cy "func next() any">}}{{</cy>}}
 ### `type string`
 
-{{<cy "func $infix+(o any) any">}}{{</cy>}}
+{{<cy "func $infix+(o any) string">}}{{</cy>}}
 {{<cy "func concat(o string) string">}}Returns a new string that concats this string and `str`.{{</cy>}}
 {{<cy "func endsWith(suffix string) bool">}}Returns whether the string ends with `suffix`.{{</cy>}}
 {{<cy "func find(needle string) any">}}Returns the first index of substring `needle` in the string or `none` if not found.{{</cy>}}
@@ -279,7 +279,7 @@ Sample usage:
 ```cy
 import math
 
-var r = 10
+var r = 10.0
 print(math.pi * r^2)
 ```
 
@@ -350,16 +350,16 @@ Sample usage:
 import os
 
 var map = os.getEnvAll()
-for map each [k, v]:
+for map -> [k, v]:
     print '$(k) -> $(v)'
 ```
 
 <!-- os.start -->
 {{<cy "var cpu string">}}The current cpu arch's tag name.{{</cy>}}
 {{<cy "var endian symbol">}}The current arch's endianness: .little, .big{{</cy>}}
-{{<cy "var stderr any">}}Standard error file descriptor.{{</cy>}}
-{{<cy "var stdin any">}}Standard input file descriptor.{{</cy>}}
-{{<cy "var stdout any">}}Standard output file descriptor.{{</cy>}}
+{{<cy "var stderr File">}}Standard error file descriptor.{{</cy>}}
+{{<cy "var stdin File">}}Standard input file descriptor.{{</cy>}}
+{{<cy "var stdout File">}}Standard output file descriptor.{{</cy>}}
 {{<cy "var system string">}}The current operating system's tag name.{{</cy>}}
 {{<cy "var vecBitSize int">}}Default SIMD vector bit size.{{</cy>}}
 {{<cy "func access(path string, mode symbol) any">}}Attempts to access a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.  Return true or an error.{{</cy>}}
@@ -428,10 +428,6 @@ for map each [k, v]:
 {{<cy "func cfunc(name string, params List, ret any) none">}}Declares a C function which will get binded to the library handle created from `bindLib`.{{</cy>}}
 {{<cy "func new(ctype symbol) pointer">}}Allocates memory for a C struct or primitive with the given C type specifier.  A `pointer` to the allocated memory is returned.  Eventually this will return a `cpointer` instead which will be more idiomatic to use.{{</cy>}}
 {{<cy "func unbindObjPtr(obj any) none">}}Releases the object from the FFI context.  External code should no longer use the object's pointer since it's not guaranteed to exist  or point to the correct object.{{</cy>}}
-### `type CFunc`
-
-### `type CStruct`
-
 ### `type CArray`
 
 ### `type CDimArray`
@@ -440,14 +436,14 @@ for map each [k, v]:
 ### `map DirEntry`
 | Entry | Summary |
 | -- | -- |
-| `'name' -> rawstring` | The name of the file or directory. |
+| `'name' -> array` | The name of the file or directory. |
 | `'type' -> #file \| #dir \| #unknown` | The type of the entry. |
 
 ### `map DirWalkEntry`
 | Entry | Summary |
 | -- | -- |
-| `'name' -> rawstring` | The name of the file or directory. |
-| `'path' -> rawstring` | The path of the file or directory relative to the walker's root directory. |
+| `'name' -> array` | The name of the file or directory. |
+| `'path' -> array` | The path of the file or directory relative to the walker's root directory. |
 | `'type' -> #file \| #dir \| #unknown` | The type of the entry. |
 
 ### `map ArgOption`

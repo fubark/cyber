@@ -181,12 +181,12 @@ test "fs internals" {
     try t.eq(@offsetOf(File, "fd"), @offsetOf(Dir, "fd"));
 }
 
-pub fn fileStreamLines(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+pub fn fileStreamLines(vm: *cy.VM, args: [*]const Value, nargs: u8) anyerror!Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
-    return fileStreamLines1(vm, &[_]Value{ args[0], Value.initF64(@floatFromInt(4096)) }, nargs);
+    return fileStreamLines1(vm, &[_]Value{ args[0], Value.initInt(4096) }, nargs);
 }
 
-pub fn fileStreamLines1(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn fileStreamLines1(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
     // Don't need to release obj since it's being returned.
     const file = args[0].castHostObject(*File);
@@ -195,7 +195,7 @@ pub fn fileStreamLines1(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection
     if (file.hasReadBuf) {
         if (bufSize != file.readBufCap) {
             // Cleanup previous buffer.
-            vm.allocator().free(file.readBuf[0..file.readBufCap]);
+            vm.alloc.free(file.readBuf[0..file.readBufCap]);
         } else {
             createReadBuf = false;
         }
@@ -203,11 +203,13 @@ pub fn fileStreamLines1(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection
     // Allocate read buffer.
     file.iterLines = true;
     if (createReadBuf) {
-        const readBuf = vm.allocator().alloc(u8, bufSize) catch cy.fatal();
+        const readBuf = vm.alloc.alloc(u8, bufSize) catch cy.fatal();
         file.readBuf = readBuf.ptr;
         file.readBufCap = @intCast(readBuf.len);
         file.hasReadBuf = true;
     }
+
+    vm.retain(args[0]);
     return args[0];
 }
 
@@ -233,13 +235,14 @@ pub fn dirIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.S
     }
 }
 
-pub fn fileIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn fileIterator(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
 
     // Don't need to release obj since it's being returned.
     const file = args[0].castHostObject(*File);
     file.curPos = 0;
     file.readBufEnd = 0;
+    vm.retain(args[0]);
     return args[0];
 }
 
@@ -413,21 +416,21 @@ pub fn fileOrDirStat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Std
         vm.release(ctimeKey);
         vm.release(mtimeKey);
     }
-    try map.set(vm, sizeKey, Value.initF64(@floatFromInt(stat.size)));
-    try map.set(vm, modeKey, Value.initF64(@floatFromInt(stat.mode)));
+    try map.set(vm, sizeKey, Value.initInt(@intCast(stat.size)));
+    try map.set(vm, modeKey, Value.initInt(@intCast(stat.mode)));
     const typeTag: cy.bindings.Symbol = switch (stat.kind) {
         .file => .file,
         .directory => .dir,
         else => .unknown,
     };
     try map.set(vm, typeKey, Value.initSymbol(@intFromEnum(typeTag)));
-    try map.set(vm, atimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.atime, 1000000))));
-    try map.set(vm, ctimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.ctime, 1000000))));
-    try map.set(vm, mtimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.mtime, 1000000))));
+    try map.set(vm, atimeKey, Value.initInt(@intCast(@divTrunc(stat.atime, 1000000))));
+    try map.set(vm, ctimeKey, Value.initInt(@intCast(@divTrunc(stat.ctime, 1000000))));
+    try map.set(vm, mtimeKey, Value.initInt(@intCast(@divTrunc(stat.mtime, 1000000))));
     return mapv;
 }
 
-pub fn fileNext(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn fileNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
@@ -485,7 +488,7 @@ pub fn fileNext(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     }
 }
 
-pub fn dirIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn dirIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const iter = args[0].castHostObject(*DirIterator);

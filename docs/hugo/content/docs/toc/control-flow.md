@@ -52,9 +52,12 @@ while:
 ### Conditional loop.
 When the `while` clause contains a condition, the loop continues to run until the condition is evaluated to `false`:
 ```cy
--- Keep looping until `keepRunning()` returns false.
-while keepRunning():
-    pass
+var running = true
+var count = 0
+while running:
+    if count > 100:
+        running = false
+    count += 1
 ```
 
 ### Unwrapping loop. 

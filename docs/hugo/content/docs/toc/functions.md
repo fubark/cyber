@@ -109,7 +109,7 @@ Like static variables, static functions can not reference local variables outsid
 ```cy
 var a = 1
 func foo():
-    print a       -- Compile Error: Can't reference local from static function.
+    print a       -- CompileError: Undeclared variable `a`.
 ```
 
 ## Named Parameters.
@@ -140,11 +140,12 @@ The shorthand method for calling functions omits parentheses and commas. This on
 ```cy
 var d = dist 100 100 200 200  -- Calls the function `dist`.
 
-func random():            -- Function with no parameters.
+func random():       -- Function with no parameters.
     return 4
 
-var r = random                -- Returns the function itself as a value. Does not call the function `random`.
-r = random()              -- Calls the function `random`.
+var r = random       -- Returns the function itself as a value.
+                     -- Does not call the function `random`.
+r = random()         -- Calls the function `random`.
 ```
 
 The top level arguments for the shorthand convention must be separated by whitespace. A string can contain whitespace since it's surrounded by delimiters. 

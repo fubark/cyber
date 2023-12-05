@@ -150,7 +150,6 @@ Using the index operator will return the UTF-8 rune at the given index as a slic
 ```cy
 var str = 'abcd'
 print str[1]     -- "b"
-print str[-1]    -- "d"
 ```
 
 Using the slice operator will return a view of the string at the given start and end (exclusive) indexes. The start index defaults to 0 and the end index defaults to the string's length.
@@ -166,7 +165,7 @@ str = 'abcabcabc'
 var i = str.findRune(`c`)
 print(i)                            -- "2"
 i += 1
-print(i + str[i..].findRune(`c`))  -- "5"
+print(i + str[i..].findRune(`c`))   -- "5"
 ```
 
 ### String Interpolation.
@@ -193,10 +192,9 @@ An `array` is an immutable sequence of bytes. It can be used to represent string
 
 ```cy
 var a = array('abcd')
-str = a.insertByte(1, 255)
+a = a.insertByte(1, 255)
 print a[0]     -- "97"
 print a[1]     -- "255"
-print a[-1]    -- "100"
 ```
 
 ## Bracket literals.
@@ -215,9 +213,6 @@ var list = [1, 2, 3]
 
 -- The first element of the list starts at index 0.
 print list[0]    -- Prints '1'
-
--- Using a negative index starts at the back of the list.
-print list[-1]   -- Prints '3'
 ```
 
 Lists can be sliced with the range `..` clause. The sliced list becomes a new list that you can modify without affecting the original list. The end index is non-inclusive.
@@ -239,9 +234,9 @@ list[2+..2]   -- [ 3, 4 ]
 List operations.
 ```cy
 var list = [234]
+
 -- Append a value.
 list.append 123
-print list[-1]     -- Prints '123'
 
 -- Inserting a value at an index.
 list.insert(1, 345)
@@ -274,7 +269,7 @@ var map = [ a: 123, b: () => 5 ]
 
 Maps entries can be listed in multiple lines:
 ```cy
-map = [
+var map = [
     foo: 1,
     bar: 2,
 ]
@@ -300,6 +295,7 @@ print map.a
 ### Map operations.
 ```cy
 var map = [:]
+
 -- Set a key value pair.
 map[123] = 234
 
@@ -311,7 +307,7 @@ map.remove 123
 
 -- Iterating a map.
 for map -> [val, key]:
-    print '$(key) -> $(value)'
+    print '$(key) -> $(val)'
 ```
 
 ### Map block.
@@ -368,10 +364,10 @@ type Node object:
         value += n
 
     func incAndPrint():
-        inc(321)
+        self.inc(321)
         print value
 
-var node = [Node value: 123, next: none]
+var n = [Node value: 123, next: none]
 n.incAndPrint()         -- Prints "444"
 ```
 

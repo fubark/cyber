@@ -5,7 +5,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
-const log = cy.log.scoped(.arc);
+pub const log = cy.log.scoped(.arc);
 const cy = @import("cyber.zig");
 const cc = @import("clib.zig");
 const vmc = cy.vmc;
@@ -18,7 +18,9 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        log.tracev("release: {s}, {*}, rc={}", .{@tagName(val.getUserTag()), obj, obj.head.rc});
+        if (cy.TraceRC) {
+            log.tracev("{} -1 release: {s}, {*}", .{obj.head.rc, @tagName(val.getUserTag()), obj});
+        }
         if (cy.Trace) {
             checkDoubleFree(vm, obj);
         }
@@ -81,7 +83,9 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
     if (cy.Trace) {
         checkDoubleFree(vm, obj);
     }
-    log.tracev("release {s} rc={}", .{@tagName(obj.getUserTag()), obj.head.rc});
+    if (cy.TraceRC) {
+        log.tracev("{} -1 release: {s}", .{obj.head.rc, @tagName(obj.getUserTag())});
+    }
     obj.head.rc -= 1;
     if (cy.TrackGlobalRC) {
         vm.refCounts -= 1;
@@ -121,8 +125,8 @@ pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) linksection(cy.Hot
     obj.head.rc += 1;
     if (cy.Trace) {
         checkRetainDanglingPointer(self, obj);
-        if (cy.verbose) {
-            log.debug("retain {} rc={}", .{obj.getUserTag(), obj.head.rc});
+        if (cy.TraceRC) {
+            log.tracev("{} +1 retain: {}", .{obj.head.rc, obj.getUserTag()});
         }
     }
     if (cy.TrackGlobalRC) {
@@ -166,7 +170,9 @@ pub inline fn retain(self: *cy.VM, val: cy.Value) linksection(cy.HotSection) voi
         const obj = val.asHeapObject();
         if (cy.Trace) {
             checkRetainDanglingPointer(self, obj);
-            log.tracev("retain {} {}", .{obj.getUserTag(), obj.head.rc});
+            if (cy.TraceRC) {
+                log.tracev("{} +1 retain: {}", .{obj.head.rc, obj.getUserTag()});
+            }
         }
         obj.head.rc += 1;
         if (cy.TrackGlobalRC) {
@@ -186,7 +192,9 @@ pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) linksection(cy.Ho
         const obj = val.asHeapObject();
         if (cy.Trace) {
             checkRetainDanglingPointer(self, obj);
-            log.tracev("retain {} {}", .{obj.getUserTag(), obj.head.rc});
+            if (cy.TraceRC) {
+                log.tracev("{} +{} retain: {}", .{obj.head.rc, inc, obj.getUserTag()});
+            }
         }
         obj.head.rc += inc;
         if (cy.TrackGlobalRC) {

@@ -24,10 +24,10 @@ if true:
 Subsequent statements in the block must follow the same indentation.
 The block ends when a statement recedes from this indentation.
 ```cy
+var items = [10, 20, 30]
 for items -> it:
     if it == 20:
         print it
-        print it + 10
     print it      -- This is the first statement outside of the `if` block.
 ```
 Single-line blocks allow only one statement after a starting block.
@@ -215,11 +215,11 @@ The equals operator returns true if the two values are equal. For primitive type
 1 == 2      -- Evaluates to `false`
 1 == true   -- Evaluates to `false`
 
-var a = 'abc'
+my a = 'abc'
 a == 'abc'  -- Evaluates to `true`
 
 a = []
-b = a
+my b = a
 a == b      -- Evaluates to `true`
 a == []     -- Evaluates to `false`
 ```

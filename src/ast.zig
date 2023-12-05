@@ -382,6 +382,15 @@ pub const UnaryOp = enum(u8) {
     not,
     bitwiseNot,
     dummy,
+
+    pub fn name(self: UnaryOp) []const u8 {
+        return switch (self) {
+            .minus => "$prefix-",
+            .not => "$prefix!",
+            .bitwiseNot => "$prefix~",
+            else => "unknown",
+        };
+    }
 };
 
 test "ast internals." {

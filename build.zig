@@ -57,7 +57,14 @@ pub fn build(b: *std.build.Builder) !void {
         exe.addIncludePath(.{ .path = thisDir() ++ "/src" });
 
         // Allow dynamic libraries to be loaded by filename in the cwd.
-        exe.addRPath(.{ .path = "." });
+        if (target.getOsTag() == .linux) {
+            exe.addRPath(.{ .path = ":$ORIGIN"});
+            if (target.getCpuArch() == .x86_64) {
+                exe.addRPath(.{ .path = "/usr/lib/x86_64-linux-gnu"});
+            }
+        } else if (target.getOsTag() == .macos) {
+            exe.addRPath(.{ .path = "@loader_path"});
+        }
 
         // Allow exported symbols in exe to be visible to dlopen.
         exe.rdynamic = true;

@@ -114,7 +114,7 @@ print typeof('my str').id()
 {{<cy "func copy(val any) any">}}Copies a primitive value or creates a shallow copy of an object value.{{</cy>}}
 {{<cy "func dump(val any) none">}}Prints the result of `toCyon` on a value.{{</cy>}}
 {{<cy "func errorReport() string">}}{{</cy>}}
-{{<cy "func getObjectRc(val any) none">}}Returns the current reference count of an object.{{</cy>}}
+{{<cy "func getObjectRc(val any) int">}}Returns the current reference count of an object.{{</cy>}}
 {{<cy "func is(a any, b any) bool">}}Returns whether two values refer to the same instance.{{</cy>}}
 {{<cy "func isAlpha(val int) bool">}}Returns whether a rune is an alphabetic letter.{{</cy>}}
 {{<cy "func isDigit(val int) bool">}}Returns whether a rune is a digit.{{</cy>}}
@@ -133,7 +133,7 @@ print typeof('my str').id()
 {{<cy "func bool.'$call'(val any) bool">}}Converts a value to either `true` or `false`.{{</cy>}}
 ### `type error`
 
-{{<cy "func sym() any">}}Return the underlying `symbol`.{{</cy>}}
+{{<cy "func sym() symbol">}}Return the underlying `symbol`.{{</cy>}}
 {{<cy "func error.'$call'(val any) error">}}Create an error from an enum or symbol.{{</cy>}}
 ### `type int`
 
@@ -154,8 +154,8 @@ print typeof('my str').id()
 {{<cy "func $infix||(o any) int">}}{{</cy>}}
 {{<cy "func $infix<<(o any) int">}}{{</cy>}}
 {{<cy "func $infix>>(o any) int">}}{{</cy>}}
-{{<cy "func fmt(kind symbol) any">}}Formats the integer using a kind specifier which can be binary `.b`,  octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.{{</cy>}}
-{{<cy "func fmt(kind symbol, opts Map) any">}}`opts.pad` provides the ASCII rune that is used for padding with a string length of `opts.width`.{{</cy>}}
+{{<cy "func fmt(kind symbol) string">}}Formats the integer using a kind specifier which can be binary `.b`,  octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.{{</cy>}}
+{{<cy "func fmt(kind symbol, opts Map) string">}}`opts.pad` provides the ASCII rune that is used for padding with a string length of `opts.width`.{{</cy>}}
 {{<cy "func int.'$call'(val any) int">}}Converts a value to an 48-bit integer.{{</cy>}}
 ### `type float`
 
@@ -178,12 +178,12 @@ print typeof('my str').id()
 {{<cy "func $slice(start any, end any) List">}}{{</cy>}}
 {{<cy "func append(val any) none">}}Appends a value to the end of the list.{{</cy>}}
 {{<cy "func concat(list List) none">}}Concats the elements of another list to the end of this list.{{</cy>}}
-{{<cy "func insert(idx int, val any) any">}}Inserts a value at index `idx`.{{</cy>}}
-{{<cy "func iterator() any">}}Returns a new iterator over the list elements.{{</cy>}}
+{{<cy "func insert(idx int, val any) none">}}Inserts a value at index `idx`.{{</cy>}}
+{{<cy "func iterator() ListIterator">}}Returns a new iterator over the list elements.{{</cy>}}
 {{<cy "func join(sep string) string">}}Returns a new string that joins the elements with `separator`.{{</cy>}}
 {{<cy "func len() int">}}Returns the number of elements in the list.{{</cy>}}
-{{<cy "func remove(idx int) any">}}Removes an element at index `idx`.{{</cy>}}
-{{<cy "func resize(size int) any">}}Resizes the list to `len` elements. If the new size is bigger, `none` values  are appended to the list. If the new size is smaller, elements at the end of the list are removed.{{</cy>}}
+{{<cy "func remove(idx int) none">}}Removes an element at index `idx`.{{</cy>}}
+{{<cy "func resize(size int) none">}}Resizes the list to `len` elements. If the new size is bigger, `none` values  are appended to the list. If the new size is smaller, elements at the end of the list are removed.{{</cy>}}
 {{<cy "func slice(start any, end any) List">}}{{</cy>}}
 {{<cy "func List.fill(val any, n int) List">}}Creates a list with initial capacity of `n` and values set to `val`.  If the value is an object, it is shallow copied `n` times.{{</cy>}}
 ### `type ListIterator`
@@ -198,7 +198,7 @@ print typeof('my str').id()
 {{<cy "func $setIndex(key any, val any) none">}}{{</cy>}}
 {{<cy "func remove(key any) none">}}Removes the element with the given key `key`.{{</cy>}}
 {{<cy "func size() int">}}Returns the number of key-value pairs in the map.{{</cy>}}
-{{<cy "func iterator() any">}}Returns a new iterator over the map elements.{{</cy>}}
+{{<cy "func iterator() MapIterator">}}Returns a new iterator over the map elements.{{</cy>}}
 ### `type MapIterator`
 
 {{<cy "func next() any">}}{{</cy>}}
@@ -229,7 +229,7 @@ print typeof('my str').id()
 {{<cy "func string.'$call'(val any) string">}}Converts a value to a string.{{</cy>}}
 ### `type array`
 
-{{<cy "func $infix+(o any) any">}}{{</cy>}}
+{{<cy "func $infix+(o any) array">}}{{</cy>}}
 {{<cy "func concat(other array) array">}}Returns a new array that concats this array and `other`.{{</cy>}}
 {{<cy "func decode() string">}}Calls decode(.utf8){{</cy>}}
 {{<cy "func decode(encoding symbol) string">}}Decodes the array based on an `encoding`. Supported encodings: `.utf8`.  Returns the decoded string or throws `error.Decode`.{{</cy>}}
@@ -237,7 +237,7 @@ print typeof('my str').id()
 {{<cy "func find(needle array) any">}}Returns the first index of `needle` in the array or `none` if not found.{{</cy>}}
 {{<cy "func findAnyByte(bytes array) any">}}Returns the first index of any `bytes` in `arrays` or `none` if not found.{{</cy>}}
 {{<cy "func findByte(byte int) any">}}Returns the first index of `byte` in the array or `none` if not found.{{</cy>}}
-{{<cy "func fmt(kind symbol) any">}}Formats each byte in the array using a kind specifier which can be binary `.b`,  octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.  Each byte is zero padded.{{</cy>}}
+{{<cy "func fmt(kind symbol) string">}}Formats each byte in the array using a kind specifier which can be binary `.b`,  octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.  Each byte is zero padded.{{</cy>}}
 {{<cy "func getByte(idx int) int">}}Returns the byte value (0-255) at the given index `idx`.{{</cy>}}
 {{<cy "func getInt(idx int, endian symbol) int">}}Returns the int value of the 6 bytes starting from `idx` with the given endianness (.little or .big).{{</cy>}}
 {{<cy "func getInt32(idx int, endian symbol) int">}}Returns the int value of the 4 bytes starting from `idx` with the given endianness (.little or .big).{{</cy>}}
@@ -251,7 +251,7 @@ print typeof('my str').id()
 {{<cy "func $index(idx int) int">}}{{</cy>}}
 {{<cy "func split(sep array) List">}}Returns a list of arrays split at occurrences of `sep`.{{</cy>}}
 {{<cy "func startsWith(prefix array) bool">}}Returns whether the array starts with `prefix`.{{</cy>}}
-{{<cy "func trim(mode symbol, delims array) any">}}Returns the array with ends trimmed from runes in `delims`. `mode` can be .left, .right, or .ends.{{</cy>}}
+{{<cy "func trim(mode symbol, delims array) array">}}Returns the array with ends trimmed from runes in `delims`. `mode` can be .left, .right, or .ends.{{</cy>}}
 {{<cy "func array.'$call'(val any) array">}}Converts a string to an byte `array`.{{</cy>}}
 ### `type arrayIterator`
 
@@ -362,54 +362,54 @@ for map -> [k, v]:
 {{<cy "var stdout File">}}Standard output file descriptor.{{</cy>}}
 {{<cy "var system string">}}The current operating system's tag name.{{</cy>}}
 {{<cy "var vecBitSize int">}}Default SIMD vector bit size.{{</cy>}}
-{{<cy "func access(path string, mode symbol) any">}}Attempts to access a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.  Return true or an error.{{</cy>}}
-{{<cy "func args() List">}}Returns the command line arguments in a `List`.  Each argument is validated and returned as a UTF-8 `string` or `array` if the validation failed.{{</cy>}}
-{{<cy "func cacheUrl(url string) any">}}Returns the path of a locally cached file of `url`.  If no such file exists locally, it's fetched from `url`.{{</cy>}}
+{{<cy "func access(path string, mode symbol) none">}}Attempts to access a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.  Throws an error if unsuccessful.{{</cy>}}
+{{<cy "func args() List">}}Returns the command line arguments in a `List`.  Each argument is converted to a `string`.{{</cy>}}
+{{<cy "func cacheUrl(url string) string">}}Returns the path of a locally cached file of `url`.  If no such file exists locally, it's fetched from `url`.{{</cy>}}
 {{<cy "func copyFile(srcPath string, dstPath string) none">}}Copies a file to a destination path.{{</cy>}}
 {{<cy "func createDir(path string) none">}}Creates the directory at `path`. Returns `true` if successful.{{</cy>}}
 {{<cy "func createFile(path string, truncate bool) File">}}Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated.{{</cy>}}
 {{<cy "func cstr(s any) pointer">}}Returns a null terminated C string.{{</cy>}}
 {{<cy "func cwd() string">}}Returns the current working directory.{{</cy>}}
-{{<cy "func dirName(path string) any">}}Returns the given path with its last component removed.{{</cy>}}
+{{<cy "func dirName(path string) string">}}Returns the given path with its last component removed.{{</cy>}}
 {{<cy "func execCmd(args List) Map">}}Runs a shell command and returns the stdout/stderr.{{</cy>}}
 {{<cy "func exePath() string">}}Returns the current executable's path.{{</cy>}}
 {{<cy "func exit(status int) none">}}Exits the program with a status code.{{</cy>}}
-{{<cy "func fetchUrl(url string) any">}}Fetches the contents at `url` using the HTTP GET request method.{{</cy>}}
+{{<cy "func fetchUrl(url string) array">}}Fetches the contents at `url` using the HTTP GET request method.{{</cy>}}
 {{<cy "func free(ptr pointer) none">}}Frees the memory located at `ptr`.{{</cy>}}
-{{<cy "func getEnv(key string) any">}}Returns an environment value by key.{{</cy>}}
-{{<cy "func getEnvAll() Map">}}Returns all environment entries as a `Map`.{{</cy>}}
-{{<cy "func getAllInput() string">}}Reads stdin to the EOF as a `string`.{{</cy>}}
-{{<cy "func getInput() string">}}Reads stdin until a new line as a `string`. This is intended to read user input from the command line.  For bulk reads from stdin, use `os.stdin`.{{</cy>}}
+{{<cy "func getEnv(key string) string">}}Returns an environment variable by key.{{</cy>}}
+{{<cy "func getEnvAll() Map">}}Returns all environment variables as a `Map`.{{</cy>}}
 {{<cy "func malloc(size int) pointer">}}Allocates `size` bytes of memory and returns a pointer.{{</cy>}}
-{{<cy "func milliTime() float">}}Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01.{{</cy>}}
+{{<cy "func milliTime() float">}}Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01.  For an high resolution timestamp, use `now()`.{{</cy>}}
 {{<cy "func newFFI() FFI">}}Returns a new FFI context for declaring C mappings and binding a dynamic library.{{</cy>}}
 {{<cy "func now() float">}}Returns the current time (in high resolution seconds) since an arbitrary point in time.{{</cy>}}
 {{<cy "func openDir(path string) Dir">}}Invokes `openDir(path, false)`.{{</cy>}}
 {{<cy "func openDir(path string, iterable bool) Dir">}}Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated.{{</cy>}}
 {{<cy "func openFile(path string, mode symbol) File">}}Opens a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.{{</cy>}}
 {{<cy "func parseArgs(options List) Map">}}Given expected `ArgOption`s, returns a map of the options and a `rest` entry which contains the non-option arguments.{{</cy>}}
-{{<cy "func readFile(path string) string">}}Reads the file contents from `path` with UTF-8 encoding.{{</cy>}}
-{{<cy "func realPath(path string) any">}}Returns the absolute path of the given path.{{</cy>}}
+{{<cy "func readAll() string">}}Reads stdin to the EOF as a UTF-8 string.  To return the bytes instead, use `stdin.readAll()`.{{</cy>}}
+{{<cy "func readFile(path string) string">}}Reads the file contents from `path` as a UTF-8 string.  To return the bytes instead, use `File.readAll()`.{{</cy>}}
+{{<cy "func readLine() string">}}Reads stdin until a new line as a `string`. This is intended to read user input from the command line.  For bulk reads from stdin, use `stdin`.{{</cy>}}
+{{<cy "func realPath(path string) string">}}Returns the absolute path of the given path.{{</cy>}}
 {{<cy "func removeDir(path string) none">}}Removes an empty directory at `path`. Returns `true` if successful.{{</cy>}}
 {{<cy "func removeFile(path string) none">}}Removes the file at `path`. Returns `true` if successful.{{</cy>}}
-{{<cy "func setEnv(key string, val string) none">}}Sets an environment value by key.{{</cy>}}
+{{<cy "func setEnv(key string, val string) none">}}Sets an environment variable by key.{{</cy>}}
 {{<cy "func sleep(ms float) none">}}Pauses the current thread for given milliseconds.{{</cy>}}
-{{<cy "func unsetEnv(key string) none">}}Removes an environment value by key.{{</cy>}}
-{{<cy "func writeFile(path string, contents any) none">}}Writes a string value to a file.{{</cy>}}
+{{<cy "func unsetEnv(key string) none">}}Removes an environment variable by key.{{</cy>}}
+{{<cy "func writeFile(path string, contents any) none">}}Writes `contents` as a string or bytes to a file.{{</cy>}}
 ### `type File`
 
 {{<cy "func close() none">}}Closes the file handle. File ops invoked afterwards will return `error.Closed`.{{</cy>}}
 {{<cy "func iterator() any">}}{{</cy>}}
 {{<cy "func next() any">}}{{</cy>}}
 {{<cy "func read(n int) array">}}Reads at most `n` bytes as an `array`. `n` must be at least 1.  A result with length 0 indicates the end of file was reached.{{</cy>}}
-{{<cy "func readToEnd() array">}}Reads to the end of the file and returns the content as an `array`.{{</cy>}}
-{{<cy "func seek(n int) any">}}Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.{{</cy>}}
-{{<cy "func seekFromCur(n int) any">}}Seeks the read/write position by `pos` bytes from the current position.{{</cy>}}
-{{<cy "func seekFromEnd(n int) any">}}Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid.{{</cy>}}
+{{<cy "func readAll() array">}}Reads to the end of the file and returns the content as an `array`.{{</cy>}}
+{{<cy "func seek(n int) none">}}Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.{{</cy>}}
+{{<cy "func seekFromCur(n int) none">}}Seeks the read/write position by `pos` bytes from the current position.{{</cy>}}
+{{<cy "func seekFromEnd(n int) none">}}Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid.{{</cy>}}
 {{<cy "func stat() Map">}}Returns info about the file as a `Map`.{{</cy>}}
-{{<cy "func streamLines() any">}}Equivalent to `streamLines(4096)`.{{</cy>}}
-{{<cy "func streamLines(bufSize int) any">}}Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`.  The lines returned include the new line character(s).  A buffer size of `bufSize` bytes is allocated for reading.  If `\r` is found at the end of the read buffer, the line is returned instead of  waiting to see if the next read has a connecting `\n`.{{</cy>}}
-{{<cy "func write(val any) any">}}Writes a `string` or `array` at the current file position.  The number of bytes written is returned.{{</cy>}}
+{{<cy "func streamLines() File">}}Equivalent to `streamLines(4096)`.{{</cy>}}
+{{<cy "func streamLines(bufSize int) File">}}Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`.  The lines returned include the new line character(s).  A buffer size of `bufSize` bytes is allocated for reading.  If `\r` is found at the end of the read buffer, the line is returned instead of  waiting to see if the next read has a connecting `\n`.{{</cy>}}
+{{<cy "func write(val any) int">}}Writes a `string` or `array` at the current file position.  The number of bytes written is returned.{{</cy>}}
 ### `type Dir`
 
 {{<cy "func iterator() DirIterator">}}Returns a new iterator over the directory entries.  If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.{{</cy>}}

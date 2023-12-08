@@ -590,9 +590,10 @@ pub const VM = struct {
             }
 
             const bytes = res.jitBuf.buf.items[res.jitBuf.mainPc..res.jitBuf.mainPc+12*4];
-            log.tracev("main start {}", .{std.fmt.fmtSliceHexLower(bytes)});
+            log.tracev("main start {}: {}", .{res.jitBuf.mainPc, std.fmt.fmtSliceHexLower(bytes)});
 
             const main: *const fn(*VM, [*]Value) callconv(.C) void = @ptrCast(@alignCast(res.jitBuf.buf.items.ptr + res.jitBuf.mainPc));
+            // @breakpoint();
             main(self, self.framePtr);
             return Value.None;
         } else {

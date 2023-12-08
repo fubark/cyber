@@ -17,7 +17,7 @@ const math_mod = @import("builtins/math.zig");
 const llvm_gen = @import("llvm_gen.zig");
 const bcgen = @import("bc_gen.zig");
 const jitgen = @import("jit/gen.zig");
-const assembler = @import("jit/assembler.zig");
+const assm = @import("jit/assembler.zig");
 const A64 = @import("jit/a64.zig");
 const bindings = cy.bindings;
 const module = cy.module;
@@ -752,6 +752,7 @@ fn performCodegen(self: *VMcompiler) !void {
         }
 
         // Perform relocation.
+        const mainChunk = self.chunks.items[0];
         for (self.jitBuf.relocs.items) |reloc| {
             switch (reloc.type) {
                 .jumpToFunc => {
@@ -760,14 +761,8 @@ fn performCodegen(self: *VMcompiler) !void {
                     if (func.type == .hostFunc) {
                         return error.Unexpected;
                     } else {
-                        switch (builtin.cpu.arch) {
-                            .aarch64 => {
-                                const targetPc = self.genSymMap.get(func).?.funcSym.pc;
-                                var inst: *A64.BrImm = @ptrCast(@alignCast(&self.jitBuf.buf.items[jumpPc]));
-                                inst.setOffsetFrom(jumpPc, targetPc);
-                            },
-                            else => return error.Unsupported,
-                        }
+                        const targetPc = self.genSymMap.get(func).?.funcSym.pc;
+                        assm.patchJumpRel(mainChunk, jumpPc, targetPc);
                     }
                 }
             }

@@ -227,8 +227,8 @@ pub const BrCond = packed struct {
         return @bitCast(self);
     }
 
-    pub fn init(cond: Cond, imm: u19) BrCond {
-        return .{ .cond = @intFromEnum(cond), .imm19 = imm };
+    pub fn init(cond: Cond, imm: i19) BrCond {
+        return .{ .cond = @intFromEnum(cond), .imm19 = @bitCast(imm) };
     }
 };
 

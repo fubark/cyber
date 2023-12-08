@@ -13,6 +13,7 @@ const llvm = @import("llvm.zig");
 const llvm_gen = @import("llvm_gen.zig");
 const bc_gen = @import("bc_gen.zig");
 const jitgen = @import("jit/gen.zig");
+const X64 = @import("jit/x64.zig");
 
 pub const ChunkId = u32;
 
@@ -129,6 +130,7 @@ pub const Chunk = struct {
     /// Shared final code buffer.
     buf: *cy.ByteCodeBuffer,
     jitBuf: *jitgen.CodeBuffer,
+    x64Enc: X64.Encoder,
 
     nodes: []cy.Node,
     tokens: []const cy.Token,
@@ -216,6 +218,7 @@ pub const Chunk = struct {
             .curObjectSym = null,
             .buf = undefined,
             .jitBuf = undefined,
+            .x64Enc = undefined,
             .curNodeId = cy.NullId,
             .symInitDeps = .{},
             .symInitInfos = .{},

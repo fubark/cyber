@@ -3,35 +3,61 @@ const stdx = @import("stdx");
 const cy = @import("../cyber.zig");
 const t = stdx.testing;
 const Slot = cy.register.RegisterId;
-const sasm = @import("assembler.zig");
+const assm = @import("assembler.zig");
 const A64 = @import("a64.zig");
-const VRegister = sasm.VRegister;
+const LRegister = assm.LRegister;
 const Register = A64.Register;
 const gen = @import("gen.zig");
 
 pub const FpReg: A64.Register = .x1;
 
-pub fn genLoadSlot(c: *cy.Chunk, dst: VRegister, src: Slot) !void {
-    try c.jitPushU32(A64.LoadStore.ldrImmOff(FpReg, src, fromVReg(dst)).bitCast());
+pub fn genLoadSlot(c: *cy.Chunk, dst: LRegister, src: Slot) !void {
+    try c.jitPushU32(A64.LoadStore.ldrImmOff(FpReg, src, toReg(dst)).bitCast());
 }
 
-pub fn genStoreSlot(c: *cy.Chunk, dst: Slot, src: VRegister) !void {
-    try c.jitPushU32(A64.LoadStore.strImmOff(FpReg, dst, fromVReg(src)).bitCast());
+pub fn genStoreSlot(c: *cy.Chunk, dst: Slot, src: LRegister) !void {
+    try c.jitPushU32(A64.LoadStore.strImmOff(FpReg, dst, toReg(src)).bitCast());
 }
 
-pub fn genAddImm(c: *cy.Chunk, dst: VRegister, src: VRegister, imm: u64) !void {
-    try c.jitPushU32(A64.AddSubImm.add(fromVReg(dst), fromVReg(src), @intCast(imm)).bitCast());
+pub fn genAddImm(c: *cy.Chunk, dst: LRegister, src: LRegister, imm: u64) !void {
+    try c.jitPushU32(A64.AddSubImm.add(toReg(dst), toReg(src), @intCast(imm)).bitCast());
 }
 
-pub fn genMovImm(c: *cy.Chunk, dst: VRegister, imm: u64) !void {
-    try copyImm64(c, fromVReg(dst), imm);
+pub fn genMovImm(c: *cy.Chunk, dst: LRegister, imm: u64) !void {
+    try copyImm64(c, toReg(dst), imm);
 }
 
-pub fn genMovPcRel(c: *cy.Chunk, dst: VRegister, offset: i32) !void {
-    try c.jitPushU32(A64.PcRelAddr.adr(fromVReg(dst), @intCast(offset)).bitCast());
+pub fn genPatchableJumpRel(c: *cy.Chunk) !void {
+    try c.jitPushU32(A64.BrImm.bl(0).bitCast());
 }
 
-pub fn patchMovPcRelTo(c: *cy.Chunk, pc: usize, to: usize) !void {
+pub fn patchJumpRel(c: *cy.Chunk, pc: usize, to: usize) void {
+    var inst: *A64.BrImm = @ptrCast(@alignCast(&c.jitBuf.buf.items[pc]));
+    inst.setOffsetFrom(pc, to);
+}
+
+pub fn genCmp(c: *cy.Chunk, left: LRegister, right: LRegister) !void {
+    try c.jitPushU32(A64.AddSubShifted.cmp(toReg(left), toReg(right)).bitCast());
+}
+
+pub fn genJumpCond(c: *cy.Chunk, cond: assm.LCond, offset: i32) !void {
+    try c.jitPushU32(A64.BrCond.init(toCond(cond), offset).bitCast());
+}
+
+pub fn patchJumpCond(c: *cy.Chunk, pc: usize, to: usize) void {
+    const inst = c.jitGetA64Inst(pc, A64.BrCond);
+    inst.imm19 = @intCast((to - pc) >> 2);
+}
+
+pub fn genMovPcRel(c: *cy.Chunk, dst: LRegister, to: usize) !void {
+    try c.jitPushU32(A64.PcRelAddr.adrFrom(toReg(dst), c.jitGetPos(), to).bitCast());
+}
+
+pub fn genPatchableMovPcRel(c: *cy.Chunk, dst: LRegister) !void {
+    try c.jitPushU32(A64.PcRelAddr.adr(toReg(dst), 0).bitCast());
+}
+
+pub fn patchMovPcRelTo(c: *cy.Chunk, pc: usize, to: usize) void {
     const adr = c.jitGetA64Inst(pc, A64.PcRelAddr);
     adr.setOffsetFrom(pc, to);
 }
@@ -47,6 +73,23 @@ pub fn genMainReturn(c: *cy.Chunk) !void {
 
     // Return.
     try c.jitPushU32(A64.Br.ret().bitCast());
+}
+
+pub fn genCallFunc(c: *cy.Chunk, ret: Slot, func: *cy.Func) !void {
+    // Skip ret info.
+    // Skip bc pc slot.
+    try genStoreSlot(c, ret + 3, .fp);
+
+    // Advance fp.
+    try genAddImm(c, .fp, .fp, 8 * ret);
+
+    // Push empty branch.
+    const jumpPc = c.jitGetPos();
+    try c.jitBuf.relocs.append(c.alloc, .{ .type = .jumpToFunc, .data = .{ .jumpToFunc = .{
+        .func = func,
+        .pc = @intCast(jumpPc),
+    }}});
+    try assm.genPatchableJumpRel(c);
 }
 
 pub fn genCallFuncPtr(c: *cy.Chunk, ptr: *const anyopaque) !void {
@@ -70,13 +113,20 @@ pub fn genBreakpoint(c: *cy.Chunk) !void {
     try c.jitPushU32(A64.Exception.brk(0xf000).bitCast());
 }
 
-fn fromVReg(arg: VRegister) Register {
-    return switch (arg) {
+fn toCond(cond: LRegister) A64.Cond {
+    return switch (cond) {
+        .ge => .ge,
+        else => unreachable,
+    };
+}
+
+fn toReg(reg: LRegister) Register {
+    return switch (reg) {
         .arg0 => .x2,
         .arg1 => .x3,
         .arg2 => .x4,
         .arg3 => .x5,
-        .fp => .x1,
+        .fp => FpReg,
         .temp => .x8,
     };
 }

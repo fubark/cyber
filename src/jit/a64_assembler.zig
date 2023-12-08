@@ -41,7 +41,7 @@ pub fn genCmp(c: *cy.Chunk, left: LRegister, right: LRegister) !void {
 }
 
 pub fn genJumpCond(c: *cy.Chunk, cond: assm.LCond, offset: i32) !void {
-    try c.jitPushU32(A64.BrCond.init(toCond(cond), offset).bitCast());
+    try c.jitPushU32(A64.BrCond.init(toCond(cond), @intCast(offset)).bitCast());
 }
 
 pub fn patchJumpCond(c: *cy.Chunk, pc: usize, to: usize) void {
@@ -113,7 +113,7 @@ pub fn genBreakpoint(c: *cy.Chunk) !void {
     try c.jitPushU32(A64.Exception.brk(0xf000).bitCast());
 }
 
-fn toCond(cond: LRegister) A64.Cond {
+fn toCond(cond: assm.LCond) A64.Cond {
     return switch (cond) {
         .ge => .ge,
         else => unreachable,

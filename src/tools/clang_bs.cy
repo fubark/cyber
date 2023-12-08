@@ -192,5 +192,5 @@ func load(dummy):
     -- CXType clang_Type_getNamedType(CXType T);
     ffi.cfunc('clang_Type_getNamedType', [CXType], CXType)
 
-    return ffi.bindLib('/opt/homebrew/Cellar/llvm/17.0.5/lib/libclang.dylib')
+    return ffi.bindLib('libclang.dylib')
     -- return ffi.bindLib('/Library/Developer/CommandLineTools/usr/lib/libclang.dylib')

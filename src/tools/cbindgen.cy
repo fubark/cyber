@@ -1,7 +1,7 @@
 #!cyber
 import os
 
--- ./cbindgen [header] -I/opt/homebrew/Cellar/llvm/17.0.5/lib/clang/17/include
+-- ./cbindgen.cy [header] -I/opt/homebrew/Cellar/llvm/17.0.6/include -libpath 'libLLVM.dylib' -stripPrefix LLVM
 
 import clang 'clang_bs.cy'
 

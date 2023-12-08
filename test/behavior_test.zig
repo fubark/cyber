@@ -3351,7 +3351,8 @@ test "examples" {
 test "tools" {
     try compile(.{}, @embedFile("../src/tools/bench.cy"));
     try compile(Config.initFileModules("./src/tools/cbindgen.cy"), @embedFile("../src/tools/cbindgen.cy"));
-    try compile(Config.initFileModules("./src/jit/gen-stencils.cy"), @embedFile("../src/jit/gen-stencils.cy"));
+    try compile(Config.initFileModules("./src/jit/gen-stencils-a64.cy"), @embedFile("../src/jit/gen-stencils-a64.cy"));
+    try compile(Config.initFileModules("./src/jit/gen-stencils-x64.cy"), @embedFile("../src/jit/gen-stencils-x64.cy"));
     try compile(.{}, @embedFile("../docs/gen-modules.cy"));
 }
 

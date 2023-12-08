@@ -1842,7 +1842,7 @@ func load():
     ffi.cfunc('LLVMIsSectionIteratorAtEnd', [.voidPtr, .voidPtr], .int)
     ffi.cfunc('LLVMGetSymbols', [.voidPtr], .voidPtr)
     ffi.cfunc('LLVMIsSymbolIteratorAtEnd', [.voidPtr, .voidPtr], .int)
-    my lib = ffi.bindLib('/opt/homebrew/Cellar/llvm/17.0.5/lib/libLLVM.dylib', [genMap: true])
+    my lib = ffi.bindLib('libLLVM.dylib', [genMap: true])
     InstallFatalErrorHandler = lib.LLVMInstallFatalErrorHandler
     ResetFatalErrorHandler = lib.LLVMResetFatalErrorHandler
     EnablePrettyStackTrace = lib.LLVMEnablePrettyStackTrace
@@ -2602,8 +2602,8 @@ var Root.USE_OPROFILE int = 0
 var Root.USE_PERF int = 0
 var Root.VERSION_MAJOR int = 17
 var Root.VERSION_MINOR int = 0
-var Root.VERSION_PATCH int = 5
-var Root.VERSION_STRING string = "17.0.5"
+var Root.VERSION_PATCH int = 6
+var Root.VERSION_STRING string = "17.0.6"
 var Root.FORCE_ENABLE_STATS int = 0
 var Root.WITH_Z3 int = 1
 var Root.ENABLE_ZLIB int = 1

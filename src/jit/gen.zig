@@ -127,7 +127,7 @@ pub fn copyAdvance(c: *cy.Chunk, dst: usize, src: []const u8) void {
 }
 
 pub fn pushU32(c: *cy.Chunk, code: u32) !void {
-    const start = try ensureUnusedCap(c, @sizeOf(u32));
+    const start = try c.jitEnsureUnusedCap(@sizeOf(u32));
     c.jitBuf.buf.items.len += @sizeOf(u32);
     const dst: []u8 = @ptrCast(c.jitBuf.buf.items.ptr[start..start+@sizeOf(u32)]);
     @memcpy(dst, std.mem.asBytes(&code));

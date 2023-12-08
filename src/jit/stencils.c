@@ -5,6 +5,9 @@
 // clang-wasm: clang -c stencil.c -I../ -O2 --target=wasm32 -mtail-call -o stencils.o
 // zig: zig cc -c stencils.c -fdouble-square-bracket-attributes -O2 -I../ -o stencils.o
 
+// For x86_64 only the linux target seems to omit the function call prelude:
+// clang -c stencils.c -o stencils.o -I../ -O2 -target x86_64-linux 
+
 Value hostFunc(VM* vm, const Value* args, u8 nargs);
 void zDumpJitSection(VM* vm, Value* fp, u64 chunkId, u64 irIdx, u8* startPc, u8* endPc);
 void cont(Value* fp);
@@ -119,3 +122,7 @@ void release(VM* vm, Value* fp, Value val) {
     }
     [[clang::musttail]] return cont3(vm, fp, val);
 }
+
+// void test(VM* vm, Value* fp, Value a, Value b) {
+//     // [[clang::musttail]] return cont4(vm+1, fp, a, b);
+// }

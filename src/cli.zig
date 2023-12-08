@@ -210,13 +210,21 @@ fn loadUrl(uvm: *cy.UserVM, url: []const u8) ![]const u8 {
                 }
             };
             if (found) {
-                log.debug("Using cached {s}", .{url});
+                if (cy.verbose) {
+                    const cachePath = try cache.allocSpecFilePath(vm.alloc, entry);
+                    defer vm.alloc.free(cachePath);
+                    log.err("Using cached `{s}` at `{s}`", .{url, cachePath});
+                }
                 return src;
             }
         }
     }
 
     const client = vm.httpClient;
+
+    if (cy.verbose) {
+        log.err("Fetching `{s}`.", .{url});
+    }
 
     const uri = try std.Uri.parse(url);
     var req = client.request(.GET, uri, .{ .allocator = vm.alloc }) catch |err| {

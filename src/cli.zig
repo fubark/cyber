@@ -177,7 +177,10 @@ fn zResolve(uvm: *cy.UserVM, chunkId: cy.ChunkId, curUri: []const u8, spec: []co
     chunk.tempBufU8.items.len += std.fs.MAX_PATH_BYTES;
     const absPath = std.fs.cwd().realpath(path, chunk.tempBufU8.items[path.len..]) catch |err| {
         if (err == error.FileNotFound) {
-            const msg = try cy.fmt.allocFormat(vm.alloc, "Import path does not exist: `{}`", &.{v(path)});
+            var msg = try cy.fmt.allocFormat(vm.alloc, "Import path does not exist: `{}`", &.{v(path)});
+            if (builtin.os.tag == .windows) {
+                _ = std.mem.replaceScalar(u8, msg, '/', '\\');
+            }
             defer vm.alloc.free(msg);
             try vm.setApiError(msg);
             return error.HandledError;

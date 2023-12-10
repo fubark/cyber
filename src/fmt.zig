@@ -367,7 +367,7 @@ pub fn format(writer: anytype, fmt: []const u8, vals: []const FmtValue) !void {
     }
 }
 
-pub fn allocFormat(alloc: std.mem.Allocator, fmt: []const u8, vals: []const FmtValue) ![]const u8 {
+pub fn allocFormat(alloc: std.mem.Allocator, fmt: []const u8, vals: []const FmtValue) ![]u8 {
     @setCold(true);
     var buf: std.ArrayListUnmanaged(u8) = .{};
     defer buf.deinit(alloc);

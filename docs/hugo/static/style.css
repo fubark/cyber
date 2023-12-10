@@ -11,6 +11,7 @@
     --accent: #ffa430;
     --marked: #ffa430;
     --mono-font: Consolas, Menlo, Monaco, "Andale Mono", "Ubuntu Mono", monospace;
+    --keyword: #ff7d67;
 
     /* Hugo Book */
     --body-background: var(--bg);
@@ -120,13 +121,12 @@ a {
 }
 
 .markdown pre {
-    background-color: #1a1a1a;
+    background-color: #171717;
 }
 
 /* inline code */
 .markdown code {
     font-size: 17px;
-/*    background-color: #1a1a1a;*/
     background: none;
     color: var(--accent-light);
     padding: 2px 6px;
@@ -177,7 +177,7 @@ pre code.hljs {
     font-weight: normal;
 }
 .hljs-keyword {
-    color: var(--accent-light);
+    color: var(--keyword);
     font-weight: normal;
 }
 .hljs-symbol,

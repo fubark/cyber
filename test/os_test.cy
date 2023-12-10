@@ -18,13 +18,13 @@ res = os.args()
 t.eq(res.len() > 0, true)
 
 -- createDir()
-os.removeDir('test/assets/tempdir')
+try os.removeDir('test/assets/tempdir')
 t.eq(os.createDir('test/assets/tempdir'), none)
 var dir = os.openDir('test/assets/tempdir')
 t.eq(dir.stat().type, .dir)
 
 -- createFile() new file.
-os.removeFile('test/assets/write.txt')
+try os.removeFile('test/assets/write.txt')
 var file = os.createFile('test/assets/write.txt', false)
 file.write('foobar')
 t.eq(os.readFile('test/assets/write.txt'), 'foobar')

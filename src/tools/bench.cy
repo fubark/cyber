@@ -8,7 +8,7 @@
 
 import os
 
-var MaxRuns = 30
+var MaxRuns = 50
 
 var cmd = os.args()[2..]
 

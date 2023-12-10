@@ -3239,6 +3239,7 @@ pub fn genValue(c: *const Chunk, local: LocalId, retained: bool) GenValue {
 const GenValueType = enum {
     generic,
     jitCondFlag,
+    constant,
 };
 
 pub const GenValue = struct {
@@ -3254,7 +3255,19 @@ pub const GenValue = struct {
         jitCondFlag: struct {
             type: jitgen.JitCondFlagType,
         },
+        constant: struct {
+            val: cy.Value,
+        },
     } = undefined,
+
+    pub fn initConstant(val: cy.Value) GenValue {
+        return .{ .type = .constant, 
+            .local = undefined, .isTempLocal = false, .retained = false,
+            .data = .{ .constant = .{
+                .val = val,
+            }
+        }};
+    }
 
     fn initJitCondFlag(condt: jitgen.JitCondFlagType) GenValue {
         return .{ .type = .jitCondFlag,
@@ -3529,8 +3542,10 @@ pub const PreferDst = struct {
     canUseDst: bool,
 
     pub fn nextCstr(self: *PreferDst, val: GenValue) RegisterCstr {
-        if (val.local == self.dst) {
-            self.canUseDst = false;
+        if (val.type == .generic) {
+            if (val.local == self.dst) {
+                self.canUseDst = false;
+            }
         }
         return RegisterCstr.preferIf(self.dst, self.canUseDst);
     }

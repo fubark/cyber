@@ -335,11 +335,15 @@ fn genBinOp(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, opts: BinOpOptions, no
         leftv = left;
     } else {
         const leftIdx = c.irAdvanceExpr(idx, .preBinOp);
-        leftv = try genExpr(c, leftIdx, RegisterCstr.preferIf(prefer.dst, prefer.canUseDst));
+        var lcstr = RegisterCstr.preferIf(prefer.dst, prefer.canUseDst);
+        lcstr.jitPreferConstant = true;
+        leftv = try genExpr(c, leftIdx, lcstr);
     }
 
     // Rhs.
-    const rightv = try genExpr(c, data.right, prefer.nextCstr(leftv));
+    var rcstr = prefer.nextCstr(leftv);
+    rcstr.jitPreferConstant = true;
+    const rightv = try genExpr(c, data.right, rcstr);
 
     var optCondFlag: ?JitCondFlagType = null;
     const retained = false;
@@ -372,10 +376,18 @@ fn genBinOp(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, opts: BinOpOptions, no
                 return error.TODO;
             } else if (data.leftT == bt.Integer) {
                 // try pushInlineBinExpr(c, getIntOpCode(data.op), leftv.local, rightv.local, inst.dst, nodeId);
-                if (cstr.type == .simple and cstr.data.simple.jitPreferCondFlag)  {
+                if (cstr.type == .simple and cstr.jitPreferCondFlag)  {
                     // Load operands.
-                    try assm.genLoadSlot(c, .arg0, leftv.local);
-                    try assm.genLoadSlot(c, .arg1, rightv.local);
+                    if (leftv.type == .constant) {
+                        try assm.genMovImm(c, .arg0, leftv.data.constant.val.val);
+                    } else {
+                        try assm.genLoadSlot(c, .arg0, leftv.local);
+                    }
+                    if (rightv.type == .constant) {
+                        try assm.genMovImm(c, .arg1, rightv.data.constant.val.val);
+                    } else {
+                        try assm.genLoadSlot(c, .arg1, rightv.local);
+                    }
                     try c.jitPush(&stencils.intPair);
 
                     // Compare.
@@ -396,8 +408,17 @@ fn genBinOp(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, opts: BinOpOptions, no
                 // try pushInlineBinExpr(c, getFloatOpCode(data.op), leftv.local, rightv.local, inst.dst, nodeId);
 
                 // Load operands.
-                try assm.genLoadSlot(c, .arg0, leftv.local);
-                try assm.genLoadSlot(c, .arg1, rightv.local);
+                if (leftv.type == .constant) {
+                    try assm.genMovImm(c, .arg0, leftv.data.constant.val.val);
+                } else {
+                    try assm.genLoadSlot(c, .arg0, leftv.local);
+                }
+
+                if (rightv.type == .constant) {
+                    try assm.genMovImm(c, .arg1, rightv.data.constant.val.val);
+                } else {
+                    try assm.genLoadSlot(c, .arg1, rightv.local);
+                }
 
                 if (data.op == .minus) {
                     try c.jitPush(&stencils.subFloat);
@@ -417,8 +438,17 @@ fn genBinOp(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, opts: BinOpOptions, no
                 // try pushInlineBinExpr(c, getIntOpCode(data.op), leftv.local, rightv.local, inst.dst, nodeId);
 
                 // Load operands.
-                try assm.genLoadSlot(c, .arg0, leftv.local);
-                try assm.genLoadSlot(c, .arg1, rightv.local);
+                if (leftv.type == .constant) {
+                    try assm.genMovImm(c, .arg0, leftv.data.constant.val.val);
+                } else {
+                    try assm.genLoadSlot(c, .arg0, leftv.local);
+                }
+
+                if (rightv.type == .constant) {
+                    try assm.genMovImm(c, .arg1, rightv.data.constant.val.val);
+                } else {
+                    try assm.genLoadSlot(c, .arg1, rightv.local);
+                }
 
                 if (data.op == .minus) {
                     try c.jitPush(&stencils.subInt);
@@ -477,7 +507,7 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     // var condNodeId = c.irGetNode(condIdx);
 
     var cstr = RegisterCstr.simple;
-    cstr.data.simple.jitPreferCondFlag = true;
+    cstr.jitPreferCondFlag = true;
     const condv = try genExpr(c, condIdx, cstr);
 
     var prevCaseMissJump: usize = undefined;
@@ -576,12 +606,16 @@ fn genInt(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenV
     _ = nodeId;
     const data = c.irGetExprData(idx, .int);
 
+    const val = cy.Value.initInt(@intCast(data.val));
+    if (cstr.jitPreferConstant) {
+        return GenValue.initConstant(val);
+    }
+
     const inst = try c.rega.selectForNoErrInst(cstr, false);
     if (inst.requiresPreRelease) {
         // try pushRelease(c, inst.dst, nodeId);
     }
 
-    const val = cy.Value.initInt(@intCast(data.val));
     try assm.genStoreSlotValue(c, inst.dst, val);
 
     const value = genValue(c, inst.dst, false);

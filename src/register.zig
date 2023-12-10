@@ -400,10 +400,12 @@ pub const RegisterCstr = struct {
             retained: bool,
         },
         uninit: void,
-        simple: struct {
-            jitPreferCondFlag: bool = false,
-        },
+        simple: void,
     } = .{ .uninit = {} },
+
+    /// Only relevant for constraints that allow temps: prefer, exact, simple
+    jitPreferCondFlag: bool = false,
+    jitPreferConstant: bool = false,
 
     /// TODO: provide hint whether the allocated reill be used or not.
     /// eg. For expr statements, the top level expr reg isn't used.
@@ -417,13 +419,13 @@ pub const RegisterCstr = struct {
     pub const simple = RegisterCstr{
         .type = .simple,
         .mustRetain = false,
-        .data = .{ .simple = .{} }
+        .data = .{ .simple = {} }
     };
 
     pub const simpleMustRetain = RegisterCstr{
         .type = .simple,
         .mustRetain = true,
-        .data = .{ .simple = .{} }
+        .data = .{ .simple = {} }
     };
 
     pub const temp = RegisterCstr{
@@ -456,7 +458,7 @@ pub const RegisterCstr = struct {
         return .{
             .type = .simple,
             .mustRetain = mustRetain,
-            .data = .{ .simple = .{} }
+            .data = .{ .simple = {} }
         };
     }
 

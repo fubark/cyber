@@ -235,6 +235,7 @@ fn help() void {
         \\
         \\Commands:
         \\  cyber [source]            Compile and run a script.
+        \\        -jit [source]       Use jit compiler. Experimental.
         \\  cyber compile [source]    Compile script and dump the bytecode.
         \\  cyber help                Print usage.
         \\  cyber version             Print version number.
@@ -245,8 +246,6 @@ fn help() void {
         \\                            
         \\cyber compile Options:
         \\  -pc     Next arg is the pc to dump detailed bytecode at.
-        \\  -aot    Ahead-of-time compilation.
-        \\          Enabled if CLI was built with `-Djit`.
         \\
     , .{build_options.version});
 }

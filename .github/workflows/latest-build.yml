@@ -272,7 +272,7 @@ jobs:
           mv zig-out/bin/cyber.wasm ${{ env.BIN_ZIP }}
 
       - name: Save artifact.
-        if: env.BUILD_CMD == 'cli'
+        if: env.BUILD_CMD == 'cli' || env.BUILD_CMD == 'web-lib'
         uses: actions/upload-artifact@v2
         with:
           name: bin

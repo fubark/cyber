@@ -118,7 +118,7 @@ pub const DirIterator = extern struct {
     recursive: bool,
 };
 
-pub fn allocFile(vm: *cy.VM, fd: std.os.fd_t) linksection(cy.StdSection) !Value {
+pub fn allocFile(vm: *cy.VM, fd: if (cy.hasStdFiles) std.os.fd_t else u32) linksection(cy.StdSection) !Value {
     const file: *File = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, FileT, @sizeOf(File))));
     file.* = .{
         .fd = fd,
@@ -182,12 +182,12 @@ test "fs internals" {
 }
 
 pub fn fileStreamLines(vm: *cy.VM, args: [*]const Value, nargs: u8) anyerror!Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
     return fileStreamLines1(vm, &[_]Value{ args[0], Value.initInt(4096) }, nargs);
 }
 
 pub fn fileStreamLines1(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
     // Don't need to release obj since it's being returned.
     const file = args[0].castHostObject(*File);
     const bufSize: usize = @intCast(args[1].asInteger());
@@ -236,7 +236,7 @@ pub fn dirIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.S
 }
 
 pub fn fileIterator(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     // Don't need to release obj since it's being returned.
     const file = args[0].castHostObject(*File);

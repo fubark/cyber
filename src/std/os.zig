@@ -168,9 +168,18 @@ pub fn zPostTypeLoad(c: *cy.VMcompiler, mod: cc.ApiModule) !void {
         stdout.castHostObject(*fs.File).closeOnFree = false;
         vars[4] = .{ "Root.stdout", stdout };
     } else {
-        vars[2] = .{ "Root.stderr", Value.None };
-        vars[3] = .{ "Root.stdin", Value.None };
-        vars[4] = .{ "Root.stdout", Value.None };
+        const stderr = try fs.allocFile(c.vm, 0);
+        stderr.castHostObject(*fs.File).closeOnFree = false;
+        stderr.castHostObject(*fs.File).closed = true;
+        vars[2] = .{ "Root.stderr", stderr };
+        const stdin = try fs.allocFile(c.vm, 0);
+        stdin.castHostObject(*fs.File).closeOnFree = false;
+        stdin.castHostObject(*fs.File).closed = true;
+        vars[3] = .{ "Root.stdin", stdin };
+        const stdout = try fs.allocFile(c.vm, 0);
+        stdout.castHostObject(*fs.File).closeOnFree = false;
+        stdout.castHostObject(*fs.File).closed = true;
+        vars[4] = .{ "Root.stdout", stdout };
     }
     vars[5] = .{ "Root.system", try cy.heap.allocStringOrFail(c.vm, @tagName(builtin.os.tag)) };
     
@@ -266,7 +275,7 @@ fn createFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
 }
 
 pub fn access(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
 
     const path = args[0].asString();
 
@@ -722,7 +731,7 @@ pub fn fetchUrl(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 extern fn hostFetchUrl(url: [*]const u8, urlLen: usize) void;
 
 pub fn readLine(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
     const input = try std.io.getStdIn().reader().readUntilDelimiterAlloc(vm.alloc, '\n', 10e8);
     defer vm.alloc.free(input);
     // TODO: Use allocOwnedString
@@ -730,7 +739,7 @@ pub fn readLine(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
 }
 
 pub fn readAll(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
     const input = try std.io.getStdIn().readToEndAlloc(vm.alloc, 10e8);
     defer vm.alloc.free(input);
     // TODO: Use allocOwnString.
@@ -738,7 +747,7 @@ pub fn readAll(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
 }
 
 pub fn readFile(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const path = args[0].asString();
     const content = try std.fs.cwd().readFileAlloc(vm.alloc, path, 10e8);

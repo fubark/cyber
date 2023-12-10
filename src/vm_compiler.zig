@@ -722,7 +722,7 @@ fn performCodegen(self: *VMcompiler) !void {
     //     }
     // }
 
-    if (self.config.preJit) {
+    if (!cy.isWasm and self.config.preJit) {
         // Prepare host funcs.
         for (self.chunks.items) |chunk| {
             const mod = chunk.sym.getMod();

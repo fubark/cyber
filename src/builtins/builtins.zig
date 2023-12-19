@@ -603,7 +603,7 @@ fn genDeclEntry(vm: *cy.VM, parser: *const cy.Parser, ast: cy.ast.Source, decl: 
         },
         .func => {
             const header = nodes[node.head.func.header];
-            name = cy.parser.getNodeString(parser, header.head.funcHeader.name);
+            name = ast.getNamePathStr(header.head.funcHeader.name);
         },
         .funcInit => {
             const header = nodes[node.head.func.header];

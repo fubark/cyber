@@ -103,6 +103,10 @@ res = parseCyber('func foo(): pass')
 t.eq(res['decls'][0].type, 'func')
 t.eq(res['decls'][0].name, 'foo')
 
+res = parseCyber('func Foo.foo(): pass')
+t.eq(res['decls'][0].type, 'func')
+t.eq(res['decls'][0].name, 'Foo.foo')
+
 res = parseCyber('import foo \'bar\'')
 t.eq(res['decls'][0].type, 'import')
 t.eq(res['decls'][0].name, 'foo')

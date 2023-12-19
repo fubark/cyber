@@ -199,13 +199,13 @@ type string object:
     --| Returns whether the string ends with `suffix`.
     @host func endsWith(suffix string) bool
 
-    --| Returns the first index of substring `needle` in the string or `none` if not found.
+    --| Returns the first index of substring `needle` in the string or `none` if not found. SIMD enabled.
     @host func find(needle string) any
 
-    --| Returns the first index of any UTF-8 rune in `runes` or `none` if not found.
+    --| Returns the first index of any UTF-8 rune in `runes` or `none` if not found. SIMD enabled.
     @host func findAnyRune(runes string) any
 
-    --| Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
+    --| Returns the first index of UTF-8 rune `needle` in the string or `none` if not found. SIMD enabled.
     @host func findRune(rune int) int
 
     --| Returns a new string with `str` inserted at index `idx`.

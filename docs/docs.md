@@ -1742,8 +1742,8 @@ Once the object is released by ARC, the TCCState is also released which removes 
 When using `cfunc` or `cbind` declarations, [symbols](#symbols-1) are used to represent default type mappings from Cyber to C and back:
 > _Incomplete: This is not the final API for dynamically loading and interfacing with C libraries. The plan is to parse a subset of C headers to bind to Cyber types and functions._
 
-| Binding | Cyber | C | Details |
-| -- | -- | -- | -- |
+| Binding | Cyber | C |
+| --- | --- | --- |
 | .bool | bool | bool |
 | .char | int | int8_t, signed char | 
 | .uchar | int | uint8_t, unsigned char | 
@@ -1756,9 +1756,12 @@ When using `cfunc` or `cbind` declarations, [symbols](#symbols-1) are used to re
 | .usize | int | size_t, uintptr_t | 
 | .float | float | float |
 | .double | float | double |
-| .charPtr | pointer | char* | Use `os.cstr()` and `pointer.fromCstr()` to convert between a Cyber string and a null terminated C string.
+| (1) .charPtr | pointer | char* |
 | .voidPtr | pointer | void* |
-| type {S} object | type {S} object | struct | The mapping from a Cyber object type `S` and the C-struct can be declared with `cbind`. |
+| (2) type {S} object | type {S} object | struct |
+
+1. Use `os.cstr()` and `pointer.fromCstr()` to convert between a Cyber string and a null terminated C string.
+2. The mapping from a Cyber object type `S` and the C-struct can be declared with `cbind`.
 
 [parent](#ffi)
 

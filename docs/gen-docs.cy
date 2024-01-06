@@ -12,6 +12,7 @@ import md '../src/tools/md4c.cy'
 
 var args = os.parseArgs([
     [ name: 'version', type: string, default: 'dev' ],
+    [ name: 'import-style', type: bool, default: false ],
 ])
 
 genDocsModules()
@@ -50,7 +51,11 @@ for tocLinks -> link:
 var simpleCSS = os.readFile('$(curDir)/simple.css')
 var hljsCSS = os.readFile('$(curDir)/hljs.min.css')
 var hljsJS = os.readFile('$(curDir)/highlight.min.js')
-var styleCSS = os.readFile('$(curDir)/style.css')
+
+var stylePart = '<link rel="stylesheet" href="./style.css">'
+if !args['import-style']:
+    var styleCSS = os.readFile('$(curDir)/style.css')
+    stylePart = '<style>$(styleCSS)</style>'
 
 var html = '''<html lang="en">
 <head>
@@ -59,7 +64,7 @@ var html = '''<html lang="en">
     <title>Cyber Docs</title>
     <style>$(simpleCSS)</style>
     <style>$(hljsCSS)</style>
-    <style>$(styleCSS)</style>
+    $(stylePart)
 </head>
 <body id="table-of-contents">
 <header>
@@ -203,6 +208,9 @@ func enterBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
     case md.BLOCK_UL:
         out += '<ul>\n'
         return 0
+    case md.BLOCK_OL:
+        out += '<ol>\n'
+        return 0
     case md.BLOCK_LI:
         out += '<li>'
         return 0
@@ -274,6 +282,9 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         return 0
     case md.BLOCK_UL:
         out += '</ul>\n'
+        return 0
+    case md.BLOCK_OL:
+        out += '</ol>\n'
         return 0
     case md.BLOCK_LI:
         out += '</li>\n'

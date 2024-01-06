@@ -1,6 +1,6 @@
 :root {
     --bg: #0c0c0c;
-    --accent-bg: #111;
+    --accent-bg: #0d0707;
     --border: #614721;
 /*    --text: #d2d2d2;*/
     --text: #fff;
@@ -61,12 +61,7 @@ h1:hover a, h2:hover a, h3:hover a, h4:hover a, h5:hover a, h6:hover a {
 
 h1.title {
     color: var(--accent);
-    padding-left: 40px;
     margin-bottom: 10px;
-}
-
-div.sub-title {
-    padding-left: 40px;
 }
 
 html, body {
@@ -82,17 +77,23 @@ html, body {
 
 header ul {
     list-style-type: none;
+    padding-left: 0px;
+}
+
+header a {
+    white-space: nowrap;
 }
 
 body > header {
     height: 100%;
     width: var(--nav-width);
-    padding-left: 0px;
+    padding-left: 40px;
     text-align: left;
     position: fixed;
     top: 0;
     left: 0;
     overflow-y: auto;
+    background-color: var(--bg);
 }
 
 header ul li {
@@ -121,14 +122,27 @@ em {
         display: grid;
     }
 
+    /* Make 2 column navs fit */
+    table ul {
+        padding-left: 20px;
+    }
+    table ul ul {
+        padding-left: 0px;
+    }
+    table td {
+        padding: 0.5rem 0 0.5rem 0;
+    }
+
     body > header {
         position: static;
+        padding-left: 0px;
         height: initial;
         width: initial;
         top: initial;
         left: initial;
         text-align: center;
         overflow-y: visible;
+        background-color: var(--accent-bg);
     }
 
     main {
@@ -342,5 +356,5 @@ table td {
 }
 
 table tbody tr:nth-child(even) {
-    background-color: var(--accent-bg);
+    background-color: #111;
 }

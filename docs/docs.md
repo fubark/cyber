@@ -2,6 +2,17 @@
 - [Introduction.](#introduction)
 - [Syntax.](#syntax)
 - [Data Types.](#data-types)
+- [Control Flow.](#control-flow)
+- [Functions.](#functions)
+- [Modules.](#modules)
+- [FFI.](#ffi)
+- [Error Handling.](#error-handling)
+- [Concurrency.](#concurrency)
+- [Type System.](#type-system)
+- [Metaprogramming.](#metaprogramming)
+- [Embedding.](#embedding)
+- [Memory.](#memory)
+- [Backends.](#backends)
 
 <!--TOC-END-->
 
@@ -24,7 +35,9 @@ for worlds -> w:
 ```
 
 # Syntax.
-Cyber's syntax is concise and easy to read.
+
+<table><tr>
+<td valign="top">
 
 * [Statements.](#statements)
 * [Blocks.](#blocks)
@@ -38,6 +51,8 @@ Cyber's syntax is concise and easy to read.
   * [Contextual keywords.](#contextual-keywords)
   * [Symbols.](#symbols)
   * [Literals.](#literals)
+</td><td valign="top">
+
 * [Operators.](#operators)
   * [Arithmetic operators.](#arithmetic-operators)
   * [Comparison operators.](#comparison-operators)
@@ -46,8 +61,12 @@ Cyber's syntax is concise and easy to read.
   * [Operator overloading.](#operator-overloading)
 * [Comments.](#comments)
 * [CYON.](#cyon)
+</td>
+</tr></table>
 
 [top](#table-of-contents)
+
+Cyber's syntax is concise and easy to read.
 
 ## Statements.
 A statement ends with the new line.
@@ -242,8 +261,9 @@ These keywords only have meaning in a certain context.
 
 ## Operators.
 Cyber supports the following operators. They are ordered from highest to lowest precedence.
+
 |Operator|Description|
-|--|--|
+|---|---|
 | `<<` `>>` | Bitwise left shift, right shift. |
 | `&` | Bitwise and. |
 | `\|` `\|\|` | Bitwise or, exclusive or. |
@@ -362,8 +382,8 @@ a << b
 
 [parent](#syntax)
 
-### Operator Overloading.
-See [Operator Overloading](#operator-overloading) in Metaprogramming.
+### Operator overloading.
+See [Operator overloading](#operator-overloading-1) in Metaprogramming.
 
 [parent](#syntax)
 
@@ -396,11 +416,6 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
 [parent](#syntax)
 
 # Data Types.
-In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts.
-
-Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integers), [Enums](#enums), [Symbols](#symbols-1), [Error Symbols](#errors), and the `none` value.
-
-Object types include [Lists](#lists), [Tuples](#tuples), [Maps](#maps), [Strings](#strings), [Arrays](#arrays), [User Objects](#objects), [Lambdas](#lambdas), [Fibers](#fibers), [Enums with payloads](#enums), [Pointers](#pointers), and several internal object types.
 
 <table><tr>
 <td valign="top">
@@ -438,6 +453,14 @@ Object types include [Lists](#lists), [Tuples](#tuples), [Maps](#maps), [Strings
 * [Symbols.](#symbols-1)
 </td>
 </tr></table>
+
+[top](#table-of-contents)
+
+In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts.
+
+Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integers), [Enums](#enums), [Symbols](#symbols-1), [Error Symbols](#errors), and the `none` value.
+
+Object types include [Lists](#lists), [Tuples](#tuples), [Maps](#maps), [Strings](#strings), [Arrays](#arrays), [User Objects](#objects), [Lambdas](#lambdas), [Fibers](#fibers), [Enums with payloads](#enums), [Pointers](#pointers), and several internal object types.
 
 ## None.
 The `none` value represents an empty value. This is similar to null in other languages.
@@ -926,3 +949,2192 @@ print int(currency)       -- '123' or some arbitrary id.
 ```
 
 [parent](#data-types)
+
+# Control Flow.
+<table><tr>
+<td valign="top">
+
+* [Branching.](#branching)
+  * [`if` statement.](#if-statement)
+  * [Conditional expression.](#conditional-expression)
+  * [and/or.](#andor)
+* [Iterations.](#iterations)
+  * [Infinite loop.](#infinite-loop)
+  * [Conditional loop.](#conditional-loop)
+  * [Unwrapping loop.](#unwrapping-loop)
+  * [`for` range.](#for-range)
+  * [`for` each.](#for-each)
+  * [`for` each with index.](#for-each-with-index)
+  * [Exit loop.](#exit-loop)
+  * [Next iteration.](#next-iteration)
+</td><td valign="top">
+
+* [`switch` matching.](#switch-matching)
+  * [`switch` assignment.](#switch-assignment)
+  * [`switch` break.](#switch-break)
+* [Try/Catch.](#trycatch)
+* [Deferred Execution.](#deferred-execution)
+</td>
+</tr></table>
+
+[top](#table-of-contents)
+
+Cyber provides the common constructs to branch and enter loops.
+
+## Branching.
+
+### `if` statement.
+Use `if` and `else` statements to branch the execution of your code depending on conditions. The `else` clause can contain a condition which is only evaluated if the previous if or conditional else clause was `false`. 
+```cy
+var a = 10
+if a == 10:
+    print 'a is 10'
+else a == 20:
+    print 'a is 20'
+else:
+    print 'neither 10 nor 20'
+```
+
+[parent](#control-flow)
+
+### Conditional expression.
+A conditional branch expression evaluates a condition and returns either the true value or false value:
+```cy
+var a = 10
+var str = a == 10 ? 'red' else 'blue'
+```
+
+[parent](#control-flow)
+
+### `and`/`or`
+Use `and` and `or` logical operators to combine conditions:
+```cy
+var a = 10
+if a > 5 and a < 15:
+    print 'a is between 5 and 15'
+if a == 20 or a == 10: 
+    print 'a is 10 or 20'
+```
+
+[parent](#control-flow)
+
+## Iterations.
+
+### Infinite loop.
+The `while` keyword starts an infinite loop which continues to run the code in the block until a `break` or `return` is reached.
+```cy
+var count = 0
+while:
+    if count > 100:
+        break
+    count += 1
+```
+
+[parent](#control-flow)
+
+### Conditional loop.
+When the `while` clause contains a condition, the loop continues to run until the condition is evaluated to `false`:
+```cy
+var running = true
+var count = 0
+while running:
+    if count > 100:
+        running = false
+    count += 1
+```
+
+[parent](#control-flow)
+
+### Unwrapping loop. 
+Using the capture operator `->` unwraps the left optional value to the right variable declaration. The loop exits when the left value is `none`:
+```cy
+var iter = dir.walk()
+while iter.next() -> entry:
+    print entry.name
+```
+
+[parent](#control-flow)
+
+### `for` range.
+`for` loops can iterate over a range that starts at an `int` (inclusive) to a target `int` (exclusive).
+The capture operator `->` is used to capture the loop's counter variable:
+```cy
+for 0..4:
+    performAction() 
+
+for 0..100 -> i:
+    print i    -- 0, 1, 2, ... , 99
+```
+
+To decrement the counter instead, use `-..`:
+```cy
+for 100-..0 -> i:
+    print i    -- 100, 99, 98, ... , 1
+```
+
+When the range operator `..` is replaced with `..=`, the target `int` is inclusive: *Planned Feature*
+```cy
+for 0..=100 -> i:
+    print i    -- 0, 1, 2, ... , 100
+```
+
+[parent](#control-flow)
+
+### `for` each.
+The `for` clause can iterate over any type that implements the `Iterable` trait. An Iterable contains an `iterator()` method which returns an `Iterator` object. The for loop continually invokes the Iterator's `next()` method until `none` is returned.
+
+Lists can be iterated since they implement the Iterable trait. The capture operator `->` is used to capture the value returned from an iterator's `next()`:
+```cy
+var list = [1, 2, 3, 4, 5]
+
+for list -> n:
+    print n
+```
+
+Maps can be iterated. `next()` returns a key and value tuple:
+```cy
+var map = [ a: 123, b: 234 ]
+
+for map -> entry:
+    print entry[0]
+    print entry[1]
+```
+
+Use the destructure syntax to extract the key and value into two separate variables:
+```cy
+for map -> [ key, val ]:
+    print 'key $(key) -> value $(val)'
+```
+
+[parent](#control-flow)
+
+### `for` each with index.
+A counting index can be declared after the each variable. The count starts at 0 for the first value:
+```cy
+var list = [1, 2, 3, 4, 5]
+
+for list -> val, i:
+    print 'index $(i), value $(val)'
+```
+
+[parent](#control-flow)
+
+### Exit loop.
+Use `break` to exit a loop. This loop stops printing once `i` reaches 4:
+```cy
+for 0..10 -> i:
+    if i == 4:
+        break
+    print i
+```
+
+[parent](#control-flow)
+
+### Next iteration.
+Use `continue` to skip the rest of the loop and go to the next iteration.
+This loop prints 0 through 9 but skips 4:
+```cy
+for 0..10 -> i:
+    if i == 4:
+        continue
+    print i
+```
+
+[parent](#control-flow)
+
+## `switch` matching.
+The `switch` statement branches to a case block from a matching case condition. The expression that is matched against comes after switch statement. Multiple cases can be grouped together using a comma separator. An optional `else` fallback case is executed when no other cases were matched.
+*Incomplete: Not all types can be used in the case conditions such as ranges.*
+```cy
+var val = 1000
+switch val:
+case 0..100: print 'at or between 0 and 99'
+case 100   : print 'val is 100'
+case 200:
+    print 'val is 200'
+case 300, 400:
+    print 'combined case'
+else:
+    print 'val is $(val)'
+```
+Note that the `switch` block must be empty and requires at least one `case` block or an `else` block to come after it.
+
+[parent](#control-flow)
+
+### `switch` assignment.
+Although `switch` can not be used freely as an expression, it can be assigned to a left variable or destination:
+```cy
+var shu = switch pepper:
+case 'bell'     => 0
+case 'anaheim'  => 500
+case 'jalapeño' => 2000
+case 'serrano'  => 10000
+```
+When declaring an assignable switch, the cases must have a return value using the syntax `case {cond} => {expr}` or `else => {expr}`.
+
+[parent](#control-flow)
+
+### `switch` break.
+A `break` statement exits the current case block and resumes execution after the end of the switch statement: *Planned Feature*
+```cy
+switch value:
+case 0..5:
+    print value
+    if value == 3:
+        break case
+    print value    -- Skips second print if `value` is 3.
+```
+
+[parent](#control-flow)
+
+## Try/Catch.
+The `try catch` statement, `try else` and `try` expressions provide a way to catch a throwing error and resume execution in a different branch. Learn more about [Error Handling](#errors).
+
+[parent](#control-flow)
+
+## Deferred Execution.
+> _Planned Feature_
+
+[parent](#control-flow)
+
+# Functions.
+
+* [Static functions.](#static-functions)
+* [Function overloading.](#function-overloading)
+* [Lambdas.](#lambdas)
+* [Closures.](#closures)
+* [Named parameters.](#named-parameters)
+* [Optional parameters.](#optional-parameters)
+* [Variadic parameters.](#variadic-parameters)
+* [Function calls.](#function-calls)
+  * [Shorthand syntax.](#shorthand-syntax)
+  * [Call block syntax.](#call-block-syntax)
+
+[top](#table-of-contents)
+
+In Cyber, there are first-class functions (or function values) and static functions.
+
+## Static functions.
+Static functions are not initially values themselves. They allow function calls to be optimal since they don't need to resolve a dynamic value.
+
+Static functions are declared with the `func` keyword and must have a name.
+```cy
+import math
+
+func dist(x0 float, y0 float, x1 float, y1 float) float:
+    var dx = x0-x1
+    var dy = y0-y1
+    return math.sqrt(dx^2 + dy^2)
+```
+Calling static functions is straightforward. You can also reassign or pass them around as function values.
+```cy
+print dist(0, 0, 10, 20)
+
+-- Assigning to a local variable.
+var bar = dist
+
+-- Passing `dist` as an argument.
+func squareDist(dist, size):
+    return dist(0.0, 0.0, size, size)
+    
+print squareDist(dist, 30.0)
+```
+
+Functions can only return one value. However, the value can be destructured: *Planned Feature*
+```cy
+import {cos, sin} 'math'
+
+func compute(rad):
+    return [ cos(rad), sin(rad) ]
+
+var [ x, y ] = compute(pi)
+```
+
+[parent](#functions)
+
+## Function overloading.
+Functions can be overloaded by the number of parameters in its signature. [Typed functions](#static-typing) are further overloaded by their type signatures. 
+```cy
+func foo():
+    return 2 + 2
+
+func foo(n):
+    return 10 + n
+
+func foo(n, m):
+    return n * m
+
+print foo()         -- "4"
+print foo(2)        -- "12"
+print foo(20, 5)    -- "100"
+```
+
+[parent](#functions)
+
+## Lambdas.
+Lambdas or function values can be assigned to variables or passed as arguments into other constructs.
+
+When a lambda only returns an expression, it can be declared with a simplified syntax.
+```cy
+-- Passing simple lambda as an argument.
+foo(word => toUpper(word))
+
+-- A simple lambda with multiple arguments.
+foo((word, prefix) => prefix + toUpper(word))
+
+-- Assigning a simple lambda.
+canvas.onUpdate = delta_ms => print delta_ms
+```
+
+Lambdas that need a block of statements can be declared with the `func` keyword without a name.
+```cy
+-- Assigning lambda block to a variable.
+var add = func (a, b):
+    return a + b
+
+-- Passing a lambda block as an argument.
+canvas.onUpdate():
+    ..func (delta_ms):
+        print delta_ms
+```
+Passing a lambda block as a call argument is only possible in a call block. *Planned Feature* See [Function Calls](#function-calls).
+
+[parent](#functions)
+
+## Closures.
+Lambdas can capture local variables from parent blocks. This example shows the lambda `f` capturing `a` from the main scope: *Incomplete, only variables one parent block away can be captured.*
+```cy
+var a = 1
+var f = func():
+    return a + 2
+print f()         -- "3"
+```
+
+The following lambda expression captures `a` from the function `add`:
+```cy
+func add():
+    var a = 123
+    return b => a + b
+var addTo = add()
+print addTo(10)   -- "133"
+```
+
+Like static variables, static functions can not reference local variables outside of their scope:
+```cy
+var a = 1
+func foo():
+    print a       -- CompileError: Undeclared variable `a`.
+```
+
+[parent](#functions)
+
+## Named parameters.
+> _Planned Feature_
+
+[parent](#functions)
+
+## Optional parameters.
+> _Planned Feature_
+
+[parent](#functions)
+
+## Variadic parameters.
+> _Planned Feature_
+
+[parent](#functions)
+
+## Function calls.
+The straightforward way to call a function is to use parentheses.
+
+```cy
+var d = dist(100, 100, 200, 200)
+```
+
+You can call functions with named parameters.
+> _Planned Feature_
+```cy
+var d = dist(x0: 10, x1: 20, y0: 30, y1: 40)
+```
+
+[parent](#functions)
+
+### Shorthand syntax.
+The shorthand method for calling functions omits parentheses and commas. This only works for functions that accept parameters:
+> _Incomplete: Only the most trivial cases work with the shorthand method. The case with operators being separated by spaces might not end up being implemented._
+```cy
+var d = dist 100 100 200 200  -- Calls the function `dist`.
+
+func random():       -- Function with no parameters.
+    return 4
+
+var r = random       -- Returns the function itself as a value.
+                     -- Does not call the function `random`.
+r = random()         -- Calls the function `random`.
+```
+
+The top level arguments for the shorthand convention must be separated by whitespace. A string can contain whitespace since it's surrounded by delimiters. 
+```cy
+var a = myFunc 'cyber script'
+```
+
+The following has a binary expression with spaces inbetween which is not allowed. Removing that whitespace fixes the call expression.
+
+```cy
+var a = myFunc 1 + 2     -- Not allowed.
+a = myFunc 1+2       -- Correct.
+```
+
+Wrapping arguments in parentheses allows you to keep the whitespace in the sub-expression.
+```cy
+-- This calls the function `myFunc` with 2 arguments.
+var a = myFunc 'hello' (1 + 2 * 3)
+
+-- Nested function call using the shorthand convention.
+a = myFunc 'hello' (otherFunc 1+2 'world')
+```
+
+[parent](#functions)
+
+### Call block syntax.
+The call expression block continues to add arguments from the block's body. If arguments are omitted from the initial call expression they can be added inside using the `..` syntax. Arguments mapped to named parameters have a key value syntax separated by a `:`. All other arguments are added into a list and passed as the last argument.
+> _Planned Feature_
+```cy
+foo(123):
+    ..func ():
+        return 123
+    param3: 123
+    234
+    bar()
+    'hello'
+```
+In the example above, the function `foo` is called with 4 arguments. The first argument `123` is included in the starting call expression. The second argument is a function value inside the call expression block. The third argument is mapped to the param `param3`. Finally, the fourth argument is a list that contains `234`, `bar()`, and `'hello'`. 
+
+[parent](#functions)
+
+# Modules.
+<table><tr>
+<td valign="top">
+
+* [Importing.](#importing)
+* [Exporting.](#exporting)
+* [Module URI.](#module-uri)
+* [Visibility.](#visibility)
+* [Builtin modules.](#builtin-modules)
+* [builtins.](#builtins)
+  * [`type bool`](#type-bool)
+  * [`type error`](#type-error)
+  * [`type int`](#type-int)
+  * [`type float`](#type-float)
+  * [`type List`](#type-list)
+  * [`type ListIterator`](#type-listiterator)
+  * [`type tuple`](#type-tuple)
+  * [`type Map`](#type-map)
+  * [`type MapIterator`](#type-mapiterator)
+  * [`type string`](#type-string)
+  * [`type array`](#type-array)
+  * [`type arrayIterator`](#type-arrayiterator)
+  * [`type pointer`](#type-pointer)
+  * [`type Fiber`](#type-fiber)
+  * [`type metatype`](#type-metatype)
+
+</td><td valign="top">
+
+* [math.](#math)
+* [Std modules.](#std-modules)
+* [os.](#os)
+  * [`type File`](#type-file)
+  * [`type Dir`](#type-dir)
+  * [`type DirIterator`](#type-diriterator)
+  * [`type FFI`](#type-ffi)
+  * [`type CArray`](#type-carray)
+  * [`type CDimArray`](#type-cdimarray)
+  * [`type DirEntry`](#type-direntry)
+  * [`type DirWalkEntry`](#type-dirwalkentry)
+  * [`type ArgOption`](#type-argoption)
+  * [`map DirEntry`](#map-direntry)
+  * [`map DirWalkEntry`](#map-dirwalkentry)
+  * [`map ArgOption`](#map-argoption)
+* [test.](#test)
+</td>
+</tr></table>
+
+[top](#table-of-contents)
+
+Modules have their own namespace and contain accessible static symbols. By default, importing another Cyber script returns a module with its declared symbols.
+
+## Importing.
+Import declarations create a local alias to the module referenced by the import specifier. The Cyber CLI comes with some builtin modules like `math` and `test`. If the specifier does not refer to a builtin module, it looks for a Cyber script file relative to the current script's directory. An embedder can integrate their own module loader and resolver.
+```cy
+import test
+test.eq(123, 123)
+
+-- Imports are static declarations so they can be anywhere in the script.
+import math
+print math.cos(0)
+```
+
+When the imported alias needs to be renamed, the import specifier comes after the alias name and must be a string literal.
+```cy
+import m 'math'
+print m.random()
+
+-- Loading a Cyber module from the local directory.
+import foo 'bar.cy'
+print foo.myFunc()
+print foo.myVar
+```
+
+A Cyber script that is imported doesn't evaluate its main block. Only static declarations are effectively loaded. If there is code in the main block, it will skip evaluation. In the following, only the `print` statement in the `main.cy` is evaluated.
+```cy
+-- main.cy
+import a 'foo.cy'
+print a.foo
+
+-- foo.cy
+import 'bar.cy'
+var Root.foo = 123
+print foo         -- Statement is ignored.
+
+-- bar.cy
+var Root.bar = 321
+print bar         -- Statement is ignored.
+```
+You can have circular imports in Cyber. In the following example, `main.cy` and `foo.cy` import each other without any problems.
+```cy
+-- main.cy
+import foo 'foo.cy'
+
+func printB():
+    foo.printC()
+
+foo.printA()
+
+-- foo.cy
+import main 'main.cy'
+
+func printA():
+    main.printB()
+
+func printC():
+    print 'done'
+```
+Static variable declarations from imports can have circular references. Read more about this in [Static Variables](#static-variables).
+
+Modules can also be destructured using the following syntax:
+> _Planned Feature_
+```cy
+import { cos, pi } 'math'
+print cos(pi)
+```
+
+[parent](#modules)
+
+## Exporting.
+All static declarations are exported when the script's module is loaded.
+```cy
+func foo():         -- Exported static function.
+    print 123
+
+var Root.bar = 234  -- Exported static variable.
+
+type Thing object:  -- Exported type.
+    var a float
+```
+
+[parent](#modules)
+
+## Module URI.
+To get the absolute path of the current module, reference the compile-time variable `ModUri`.
+This can be used with `os.dirName` to get the current module directory.
+```cy
+print #ModUri              -- Prints '/some/path/foo.cy'
+
+import os
+print os.dirName(#ModUri)  -- Prints '/some/path'
+```
+
+[parent](#modules)
+
+## Visibility.
+The annotation `@hide` provides a hint to editors that a static symbol should not appear in the auto-complete. Despite this, the symbol is still reachable.
+
+[parent](#modules)
+
+## Builtin modules.
+Builtin modules are the bare minimum that comes with Cyber. The [embeddable library](#embedding) contains these modules and nothing more. They include:
+- [builtins](#builtins): Cyber related functions and commonly used utilities.
+- [math](#math): Math constants and functions.
+
+[parent](#modules)
+
+## builtins.
+The `builtins` module contains functions related to Cyber and common utilities. It is automatically imported into each script's namespace. 
+
+Sample usage:
+```cy
+-- `print` and `typeof` are available without imports.
+print 'hello'
+print typeof('my str').id()
+```
+
+[parent](#modules)
+
+<!-- builtins.start -->
+<!-- builtins.end -->
+
+## math.
+The math module contains commonly used math constants and functions.
+
+Sample usage:
+```cy
+import math
+
+var r = 10.0
+print(math.pi * r^2)
+```
+
+[parent](#modules)
+
+<!-- math.start -->
+<!-- math.end -->
+
+## Std modules.
+Std modules come with Cyber's CLI. They include:
+- [os](#os): System level functions.
+- [test](#test): Utilities for testing.
+
+[parent](#modules)
+
+## os.
+Cyber's os module contains system level functions. It's still undecided as to how much should be included here so it's incomplete. You can still access os and libc functions yourself using Cyber's FFI or embedding API.
+
+Sample usage:
+```cy
+import os
+
+var map = os.getEnvAll()
+for map -> [k, v]:
+    print '$(k) -> $(v)'
+```
+
+[parent](#modules)
+
+<!-- os.start -->
+<!-- os.end -->
+### `map DirEntry`
+| key | summary |
+| -- | -- |
+| `'name' -> array` | The name of the file or directory. |
+| `'type' -> #file | #dir | #unknown` | The type of the entry. |
+
+[parent](#modules)
+
+### `map DirWalkEntry`
+| key | summary |
+| -- | -- |
+| `'name' -> array` | The name of the file or directory. |
+| `'path' -> array` | The path of the file or directory relative to the walker's root directory. |
+| `'type' -> #file | #dir | #unknown` | The type of the entry. |
+
+[parent](#modules)
+
+### `map ArgOption`
+| key | summary |
+| -- | -- |
+| `'name' -> string` | The name of the option to match excluding the hyphen prefix. eg. `-path` |
+| `'type' -> metatype(string | float | boolean)` | Parse as given value type. |
+| `'default' -> any` | Optional: Default value if option is missing. `none` is used if this is not provided. |
+
+[parent](#modules)
+
+## test.
+The `test` module contains utilities for testing.
+
+Sample usage:
+```cy
+import t 'test'
+
+var a = 123 + 321
+t.eq(a, 444)
+```
+
+[parent](#modules)
+
+<!-- test.start -->
+<!-- test.end -->
+
+# FFI.
+
+* [FFI context.](#ffi-context)
+* [Declare functions.](#declare-functions)
+* [Bind library.](#bind-library)
+  * [Search path.](#search-path)
+  * [Configuration.](#configuration)
+  * [Finalizer.](#finalizer)
+* [Mappings.](#mappings)
+* [Bind to Cyber type.](#bind-to-cyber-type)
+* [Pointers.](#pointers)
+* [cbindgen.cy](#cbindgency)
+
+[top](#table-of-contents)
+
+Cyber supports binding to an existing C ABI compatible library at runtime.
+This allows you to call into dynamic libraries created in C or other languages.
+Cyber uses `libtcc` to JIT compile the bindings so function calls are fast.
+The example shown below can be found in [Examples](https://github.com/fubark/cyber/blob/master/examples/ffi.cy).
+
+## FFI context.
+An FFI context contains declarations that map C to Cyber. Afterwards, it allows you to bind to a dynamic library or create interoperable objects. To create a new `FFI` context:
+```cy
+import os
+
+var ffi = os.newFFI()
+```
+
+[parent](#ffi)
+
+## Declare functions.
+Functions from a library are first declared using `cfunc` which accepts C types in the form of symbols. In a future update they will accept C syntax instead.
+```cy
+ffi.cfunc('add', [.int, .int], .int)
+```
+The first argument refers to the symbol's name in the dynamic library. 
+The second argument contains the function's parameter types and finally the last argument is the function's return type.
+
+The example above maps to this C function:
+```c
+int add(int a, int b) {
+    return a + b;
+}
+```
+
+[parent](#ffi)
+
+## Bind library.
+`bindLib` accepts the path to the library and returns a object which can be used to invoke the functions declared from `cfunc`:
+```cy
+my lib = ffi.bindLib('./mylib.so')
+lib.add(123, 321)
+```
+Note that `my` is used to allow `lib` to be used dynamically since the type is unknown at compile-time.
+
+[parent](#ffi)
+
+### Search path.
+If the path argument to `bindLib` is just a filename, the search steps for the library is specific to the operating system. Provide an absolute (eg. '/foo/mylib.so') or relative (eg. './mylib.so') path to load from a direct location instead. When the path argument is `none`, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own application/runtime.
+
+[parent](#ffi)
+
+### Configuration.
+By default `bindLib` returns an anonymous object with the binded C-functions as methods. This is convenient for invoking functions using the method call syntax. If a config is passed into `bindLib` as the second argument, `genMap: true` makes `bindLib` return a map instead with the binded C-functions as Cyber functions.
+
+[parent](#ffi)
+
+### Finalizer.
+The resulting object of `bindLib` holds a reference to an internal TCCState which owns the loaded JIT code.
+Once the object is released by ARC, the TCCState is also released which removes the JIT code from memory.
+
+[parent](#ffi)
+
+## Mappings.
+When using `cfunc` or `cbind` declarations, [symbols](#symbols) are used to represent default type mappings from Cyber to C and back:
+> _Incomplete: This is not the final API for dynamically loading and interfacing with C libraries. The plan is to parse a subset of C headers to bind to Cyber types and functions._
+
+| Binding | Cyber | C | Details |
+| -- | -- | -- | -- |
+| .bool | bool | bool |
+| .char | int | int8_t, signed char | 
+| .uchar | int | uint8_t, unsigned char | 
+| .short | int | int16_t, short | 
+| .ushort | int | uint16_t, unsigned short | 
+| .int | int | int32_t, int |
+| .uint | int | uint32_t, unsigned int |
+| .long | int | int64_t, long long | 
+| .ulong | int | uint64_t, unsigned long long | 
+| .usize | int | size_t, uintptr_t | 
+| .float | float | float |
+| .double | float | double |
+| .charPtr | pointer | char* | Use `os.cstr()` and `pointer.fromCstr()` to convert between a Cyber string and a null terminated C string.
+| .voidPtr | pointer | void* |
+| type {S} object | type {S} object | struct | The mapping from a Cyber object type `S` and the C-struct can be declared with `cbind`. |
+
+[parent](#ffi)
+
+## Bind to Cyber type.
+`cbind` is used to bind a C struct to a Cyber object type. Once declared, the Cyber type can be used as a binding type in function declarations:
+```cy
+import os
+
+type MyObject object:
+    var a float
+    var b pointer
+    var c bool
+
+ffi.cbind(MyObject, [.float, .voidPtr, .bool])
+ffi.cfunc('foo', [MyObject], MyObject)
+my lib = ffi.bindLib('./mylib.so')
+
+var res = lib.foo([MyObject a: 123.0, b: os.cstr('foo'), c: true])
+```
+
+The example above maps to these C declarations in `mylib.so`:
+```c
+typedef struct MyObject {
+    double a;
+    char* b;
+    bool c;
+} MyObject;
+
+MyObject foo(MyObject o) {
+    // Do something.
+}
+```
+
+`cbind` also generates `ptrTo[Type]` as a helper function to dereference an opaque ptr to a new Cyber object:
+```cy
+ffi.cfunc('foo', [MyObject], .voidPtr)
+my lib = ffi.bindLib('./mylib.so')
+
+var ptr = lib.foo([MyObject a: 123, b: os.cstr('foo'), c: true])
+var res = lib.ptrToMyObject(ptr)
+```
+
+[parent](#ffi)
+
+## Pointers.
+A `pointer` is used to read or write to an exact memory address. This is typically used for FFI to manually map Cyber types to C, and back. See [`type pointer`](#type-pointer).
+
+A new pointer can be created with the builtin `pointer`.
+```cy
+var ptr = pointer(0xDEADBEEF)
+print ptr.value()     --'3735928559'
+```
+
+[parent](#ffi)
+
+## cbindgen.cy
+[cbindgen.cy]("https://github.com/fubark/cyber/blob/master/src/tools/cbindgen.cy") is a Cyber script that automatically generates bindings given a C header file. Some example bindings that were generated include: [Raylib](https://github.com/fubark/ray-cyber) and [LLVM](https://github.com/fubark/cyber/blob/master/src/tools/llvm.cy).
+
+[parent](#ffi)
+
+# Error Handling.
+<table><tr>
+<td valign="top">
+
+* [Error trait.](#error-trait)
+  * [`error` value.](#error-value)
+  * [Enum error.](#enum-error)
+* [Throwing errors.](#throwing-errors)
+* [Catching errors.](#catching-errors)
+  * [`try` block.](#try-block)
+  * [`caught` variable.](#caught-variable)
+  * [`catch` matching.](#catch-matching)
+  * [`try` expression.](#try-expression)
+  * [Value or error.](#value-or-error)
+</td><td valign="top">
+
+* [Semantic checks.](#semantic-checks)
+  * [`throws` specifier.](#throws-specifier)
+  * [Requiring `throws`.](#requiring-throws)
+* [Stack trace.](#stack-trace)
+* [Unexpected errors.](#unexpected-errors)
+  * [Panics.](#panics)
+</td>
+</tr></table>
+
+[top](#table-of-contents)
+
+Cyber provides a throw/catch mechanism to handle expected errors. For unexpected errors, panics can be used as a fail-fast mechanism to abort the currently running fiber.
+
+## Error trait.
+Only types that implement the `Error` trait can be thrown or attached to a panic.
+Since the `Error` trait is empty, it's simple to turn any type into a throwable type.
+
+[parent](#error-handling)
+
+### `error` value.
+An `error` value contains a `symbol` and implements the `Error` trait. They can be created without a declaration using the error literal:
+```cy
+var err = error.Oops
+```
+
+Use `sym()` to obtain the underlying symbol:
+```cy
+print err.sym()   -- Prints ".Oops"
+```
+
+Since `error` is a primitive value, it can be compared using the `==` operator.
+```cy
+if err == error.Oops:
+    handleOops()
+
+-- Alternatively.
+if err.sym() == .Oops:
+    handleOops()
+```
+
+[parent](#error-handling)
+
+### Enum error.
+By implementing the `Error` trait, an enum type can be throwable: *Planned Feature*
+```cy
+type MyError enum:
+    with Error
+    boom
+    badArgument
+    nameTooLong
+
+var err = MyError.nameTooLong
+```
+
+[parent](#error-handling)
+
+## Throwing errors.
+Use the `throw` keyword to throw errors. 
+A thrown error continues to bubble up the call stack until it is caught by a `try` block or expression.
+```cy
+func fail():
+    throw error.Oops      -- Throws an error with the symbol `#Oops`
+
+func fail2():
+    throw 123             -- Panic. Can only throw an error
+                          -- that implement the `Error` trait.
+```
+
+`throw` can also be used as an expression.
+```cy
+func fail():
+    var a = false or throw error.False
+```
+
+[parent](#error-handling)
+
+## Catching errors.
+
+### `try` block.
+The `try` block catches thrown errors and resumes execution in a followup `catch` block:
+```cy
+try:
+    funcThatCanFail()
+catch err:
+    print err      -- 'error.Failed'
+```
+
+[parent](#error-handling)
+
+### `caught` variable.
+The contextual `caught` variable is used to reference the caught error: *Planned Feature*
+```cy
+try:
+    funcThatCanFail()
+catch:
+    print caught   -- 'error.Failed'
+```
+
+[parent](#error-handling)
+
+### `catch` matching.
+An inner `catch` block contains a matching clause: *Planned Feature*
+```cy
+try:
+    funcThatCanFail()
+catch error.BadDay:
+    eatSnack()
+catch:
+    print caught
+```
+
+Enum errors can be matched: *Planned Feature*
+```cy
+try:
+    funcThatCanFail()
+catch MyError.Boom:
+    print 'Kaboom!'
+catch:
+    print caught
+```
+
+[parent](#error-handling)
+
+### `try` expression.
+The `try` expression either returns a non-error result or the default value from the `catch` clause:
+```cy
+var res = try funcThatCanFail() catch 123
+print res         -- '123'
+```
+
+Since errors bubble up automatically, any errors thrown from sub-expressions are also caught:
+```cy
+var res = try happyFunc(funcThatCanFail()) catch 123
+print res         -- '123'
+```
+
+[parent](#error-handling)
+
+### Value or error.
+When the `catch` clause is omitted, the `try` expression will return either the value or the error:
+```cy
+var res = try funcThatCanFail()
+if res == error.Failed:
+    print 'Result is an error.'
+```
+
+[parent](#error-handling)
+
+## Semantic checks.
+### `throws` specifier.
+The `throws` specifier indicates that a function contains a throwing expression that was not caught with `try catch`.
+
+When a function does not have a return specifier, it's implicitly given the `throws` specifier:
+```cy
+func foo():
+    throw error.Failure
+
+func bar() throws:
+    throw error.Failure
+
+-- `foo` and `bar` both have the same return specifier.
+```
+
+Return types for typed functions are declared after `throws` using a comma separator:
+```cy
+func result(cond bool) throws, int:
+    if cond:
+        return 123
+    else:
+        throw error.Failure
+```
+
+[parent](#error-handling)
+
+### Requiring `throws`.
+A compile-time error is issued when a typed function without a `throws` specifier contains an uncaught throwing expression: *Planned Feature*
+```cy
+func foo(a int) int:
+    if a == 10:
+        throw error.Failure -- CompileError. `foo` requires the `throws`
+    else:                   -- specifier or any throwing expression must
+        return a * 2        -- be caught with `try catch`.
+```
+
+[parent](#error-handling)
+
+## Stack trace.
+When an uncaught error bubbles up to the top, its stack trace from the `throw` callsite is dumped to the console. The builtin `errorTrace()` and `errorReport()` are used to obtain the stack trace info.
+```cy
+try:
+    funcThatCanFail()
+catch:
+    -- Prints the stack trace summary of the caught error.
+    print errorReport()
+
+    -- Provides structured info about the stack trace.
+    var info = errorTrace()
+    print info.frames.len()
+```
+
+[parent](#error-handling)
+
+## Unexpected errors.
+An unexpected error is an error that is not meant to be handled at runtime.
+
+[parent](#error-handling)
+
+### Panics.
+The builtin `panic` is used as a fail-fast mechanism to quickly exit the current fiber with an error payload:
+```cy
+func kaboom():
+    panic(error.danger)
+
+kaboom()     -- Script ends and prints the stack trace.
+```
+Panics can not be caught using `try catch`. Once `panic` is invoked, the current fiber stops execution and begins to unwind its call stack. Once the error is propagated to the root, the fiber ends and transitions to a panic state. If the main fiber ends this way, the VM begins to shutdown. Otherwise, execution resumes on the next fiber which allows recovery from a panic.
+
+[parent](#error-handling)
+
+# Concurrency.
+
+* [Fibers.](#fibers)
+  * [Creating fibers.](#creating-fibers)
+  * [Passing arguments.](#passing-arguments)
+  * [Reset state.](#reset-state)
+  * [Rebinding arguments.](#rebinding-arguments)
+  * [Fiber block.](#fiber-block)
+  * [Pause and resume.](#pause-and-resume)
+  * [Fiber state.](#fiber-state)
+* [Gas mileage.](#gas-mileage)
+* [Async.](#async)
+* [Multi-thread.](#multi-thread)
+
+[top](#table-of-contents)
+
+Cyber supports fibers as a concurrency mechanism. There are plans to support preemptive concurrency with async/await as well as multithreading.
+
+## Fibers.
+A fiber represents a separate execution context as a first-class value. It contains it's own call stack and program counter. Fibers by themselves do not enable parallelism.
+
+[parent](#concurrency)
+
+### Creating fibers.
+The `coinit` keyword creates and returns a new fiber using a function as the entry point:
+```cy
+var count = 0
+
+var foo = func ():
+    count += 1
+    coyield
+    count += 1
+
+var fiber = coinit(foo)
+
+print count          -- '0'
+coresume fiber
+print count          -- '1'
+coresume fiber
+print count          -- '2'
+```
+A fiber does not start execution until `coresume` is invoked on it.
+`coyield` pauses the current fiber and execution is returned to the previous fiber that invoked `coresume`.
+
+[parent](#concurrency)
+
+### Passing arguments.
+Arguments after the callee are passed into the entry function:
+```cy
+var count = 0
+
+var increment = func (inc):
+    count += inc
+
+var fiber = coinit(increment, 5)
+coresume fiber
+print count          -- '5'
+```
+When the fiber is created, the arguments are saved inside the fiber's stack. Once the first `coresume` is invoked, the entry function is invoked with the saved arguments.
+
+[parent](#concurrency)
+
+### Reset state.
+To reset a fiber to its initial state, invoke `reset()`. *Planned Feature*
+When reset, the existing stack is unwinded, the program counter returns to the starting point, and the state is set to `.init`:
+```cy
+func fib(n int) int:
+    coyield n
+    if n < 2:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+var task = coinit(fib, 10)
+
+-- Progress the fiber...
+print(coresume task)    -- Prints "10"
+print(coresume task)    -- Prints "9"
+print(coresume task)    -- Prints "8"
+
+-- Reset back to the start with the `.init` state.
+fiber.reset()
+print(coresume task)    -- Prints "10"
+```
+
+[parent](#concurrency)
+
+### Rebinding arguments.
+Arguments attached to the fiber can be rebinded with a different set of values. *Planned Feature*
+This allows fiber reuse, instead of creating a new fiber:
+```cy
+var task = coinit(fib, 10)
+
+-- Run task to completion.
+var res = 0
+while fiber.status() != .done:
+    res = coresume fiber
+print res
+
+fiber.reset()
+fiber.bindArgs(20)
+
+-- Run task again with the new argument...
+```
+
+[parent](#concurrency)
+
+### Fiber block.
+A fiber block is used to construct a fiber without an entry function. *Planned Feature* The counting example can be rewritten to:
+```cy
+var count = 0
+
+var fiber = coinit:
+    count += 1       -- `count is captured`
+    coyield
+    count += 1
+
+print count          -- '0'
+coresume fiber
+print count          -- '1'
+coresume fiber
+print count          -- '2'
+```
+Referencing parent variables from the fiber block automatically captures them just like a function closure.
+
+[parent](#concurrency)
+
+### Pause and resume.
+`coyield` can be used anywhere in a fiber's call stack to pause execution and return to the previous fiber.
+```cy
+func foo():
+    print 'foo'
+    bar()
+
+func bar():
+    -- Nested coyield in call stack.
+    coyield
+    print 'bar'
+
+var fiber = coinit(foo)
+coresume fiber
+```
+`coresume` also returns the resulting value.
+```cy
+func foo():
+    return 123
+
+var fiber = coinit(foo)
+print(coresume fiber)    -- '123'
+```
+
+`coyield` can return a value back to `coresume`. *Planned Feature*
+
+[parent](#concurrency)
+
+### Fiber state.
+Use `Fiber.status()` to get the current state of the fiber.
+```cy
+func foo():
+    coyield
+    print 'done'
+
+var fiber = coinit(foo)
+print fiber.status()   -- '.paused'
+coresume fiber
+print fiber.status()   -- '.paused'
+coresume fiber
+print fiber.status()   -- '.done'
+```
+The main execution context is a fiber as well. Once the main fiber has finished, the VM is done and control is returned to the host.
+
+[parent](#concurrency)
+
+## Gas mileage.
+> _Planned Feature_
+
+[parent](#concurrency)
+
+## Async.
+> _Planned Feature_
+
+[parent](#concurrency)
+
+## Multi-thread.
+> _Planned Feature_
+
+[parent](#concurrency)
+
+# Type System.
+
+<table><tr>
+<td valign="top">
+
+* [Dynamic typing.](#dynamic-typing)
+  * [`my` declaration.](#my-declaration)
+  * [`dynamic` vs `any`.](#dynamic-vs-any)
+  * [Invoking dynamic values.](#invoking-dynamic-values)
+  * [Dynamic return value.](#dynamic-return-value)
+  * [Recent type inference.](#recent-type-inference)
+</td><td valign="top">
+
+* [Static typing.](#static-typing)
+  * [Builtin types.](#builtin-types)
+  * [`var` declaration.](#var-declaration)
+  * [Typed variables.](#typed-variables)
+  * [Object types.](#object-types)
+  * [Zero values.](#zero-values)
+  * [Type aliases.](#type-aliases)
+  * [Functions.](#functions-1)
+  * [Traits.](#traits)
+  * [Union types.](#union-types)
+  * [`any` type.](#any-type)
+  * [Invoking any values.](#invoking-any-values)
+  * [Type casting.](#type-casting)
+</td>
+</tr></table>
+
+[top](#table-of-contents)
+
+Cyber supports the use of both dynamically and statically typed code.
+
+## Dynamic typing.
+Dynamic typing can reduce the amount of friction when writing code, but it can also result in more runtime errors.
+
+[parent](#type-system)
+
+### `my` declaration.
+Variables declared with `my` are assigned the `dynamic` type:
+```cy
+my a = 123
+```
+
+[parent](#type-system)
+
+### `dynamic` vs `any`
+`dynamic` values can be freely used and copied without any compile errors (if there is a chance it can succeed at runtime, see [Recent type inference](#recent-type-inference)):
+```cy
+my a = 123
+
+func getFirstRune(s string):
+    return s[0]
+
+getFirstRune(a)       -- RuntimeError. Expected `string`.
+```
+Since `a` is dynamic, passing it to a typed function parameter is allowed at compile-time, but will fail when the function is invoked at runtime.
+
+The `any` type on the otherhand is a **static type** and must be explicitly declared using `var`:
+```cy
+var a any = 123
+
+func getFirstRune(s string):
+    return s[0]
+
+getFirstRune(a)       -- CompileError. Expected `string`.
+```
+This same setup will now fail at compile-time because `any` does not satisfy the destination's `string` type constraint.
+
+The use of the `dynamic` type effectively defers type checking to runtime while `any` is a static type and must adhere to type constraints at compile-time.
+
+A `dynamic` value can be used in any operation. It can be invoked as the callee, invoked as the receiver of a method call, or used with operators.
+
+[parent](#type-system)
+
+### Invoking `dynamic` values.
+When a `dynamic` value is invoked, checks on whether the callee is a function is deferred to runtime. 
+```cy
+my op = 123
+print op(1, 2, 3)      -- RuntimeError. Expected a function.
+```
+
+[parent](#type-system)
+
+### Dynamic return value.
+When the return type of a function is not specified, it defaults to the `dynamic` type.
+This allows copying the return value to a typed destination without casting:
+```cy
+func getValue():
+    return 123
+
+func add(a int, b int):
+    return a + b
+
+print add(getValue(), 2)    -- Prints "125"
+```
+The `add` function defers type checking of `getValue()` to runtime because it has the `dynamic` type.
+
+[parent](#type-system)
+
+### Recent type inference.
+Although a `dynamic` variable has the most flexibility, in some situations it is advantageous to know what type it could be.
+
+The compiler keeps a running record of a `dynamic` variable's most **recent type** to gain additional compile-time features without sacrificing flexibility. It can prevent inevitable runtime errors and avoid unnecessary type casts.
+
+When a `dynamic` variable is first initialized, it has a recent type inferred from its initializer. In the following, `a` has the recent type of `int` at compile-time because numeric literals default to the `int` type:
+```cy
+my a = 123
+```
+
+The recent type can change at compile-time from another assignment. 
+If `a` is then assigned to a string literal, `a` from that point on has the recent type of `string` at compile-time:
+```cy
+my a = 123
+foo(a)           -- Valid call expression.
+a = 'hello'
+foo(a)           -- CompileError. Expected `int` argument, got `string`.
+
+func foo(n int):
+    pass
+```
+Even though `a` is `dynamic` and is usually allowed to defer type checking to runtime, the compiler knows that doing so in this context would **always** result in a runtime error, so it provides a compile error instead. This provides a quicker feedback to fix the problem.
+
+The recent type of `a` can also change in branches. However, after the branch block, `a` will have a recent type after merging the types assigned to `a` from the two branched code paths. Currently, the `any` type is used if the types from the two branches differ. At the end of the following `if` block, `a` has the recent type of `any` type after merging the `int` and `string` types: *Planned Feature*
+```cy
+my a = 123
+if a > 20:
+    a = 'hello'
+    foo(a)       -- Valid call expression. `foo` can be called without type casting.
+
+foo(a)           -- CompileError. Expected `string` argument, got `any`.
+
+func foo(s string):
+    pass
+```
+
+[parent](#type-system)
+
+## Static typing.
+Static typing can be incrementally applied which provides compile-time guarantees and prevents runtime errors.
+Static typing also makes it easier to maintain and refactor your code.
+
+[parent](#type-system)
+
+### Builtin types.
+The following builtin types are available in every module: `bool`, `float`, `int`, `string`, `List`, `Map`, `error`, `fiber`, `any`.
+
+[parent](#type-system)
+
+### `var` declaration.
+A `var` declaration automatically infers the type from the initializer:
+```cy
+-- Initialized as an `int` variable.
+var a = 123
+```
+
+`var` declarations are strictly for static typing. If the assigned value's type is `dynamic`, the variable's type becomes `any`.
+```cy
+func getValue():
+    return ['a', 'list']
+
+-- Initialized as an `any` variable.
+var a = getValue()
+```
+
+[parent](#type-system)
+
+### Typed variables.
+A typed local variable can be declared by attaching a type specifier after its name. The value assigned to the variable must satisfy the type constraint or a compile error is issued.
+```cy
+var a float = 123
+
+var b int = 123.0    -- CompileError. Expected `int`, got `float`.
+```
+
+Any operation afterwards that violates the type constraint of the variable will result in a compile error.
+```cy
+a = 'hello'          -- CompileError. Expected `float`, got `string`.
+```
+
+Static variables are declared in a similar way:
+```cy
+var Root.global Map = [:]
+```
+Unlike local variables, static variable declarations do not infer the type from the right hand side. A specific type must be specified or it will default to the `any` type.
+
+[parent](#type-system)
+
+### Object types.
+A `type object` declaration creates a new object type. Field types are optional and declared with a type specifier after their name.
+```cy
+type Student object:    -- Creates a new type named `Student`
+    var name string
+    var age  int
+    var gpa  float
+```
+
+Instantiating a new object does not require typed fields to be initialized. Missing field values will default to their [zero value](#zero-values):
+```cy
+var s = [Student:]
+print s.name       -- Prints ""
+print s.age        -- Prints "0"
+print s.gpa        -- Prints "0.0"
+```
+
+Circular type dependencies are allowed if the object can be initialized:
+> _Planned Feature: Optional types are not currently supported._
+```cy
+type Node object:
+    var val  any
+    var next Node?     -- Valid type specifier.
+```
+In this example, `next` has an optional `Node?` type so it can be initialized to `none` when creating a new `Node` object.
+
+The following example will fail because this version of `Node` can not be initialized:
+```cy
+type Node object:
+    var val  any
+    var next Node
+
+var n = [Node:]    -- CompileError. Can not zero initialize `next`
+                   -- because of circular dependency.
+```
+
+[parent](#type-system)
+
+### Zero values.
+The following shows the zero values of builtin or created types.
+
+|Type|Zero value|
+|---|---|
+|`boolean`|`false`|
+|`int`|`0`|
+|`float`|`0.0`|
+|`string`|`''`|
+|`array`|`array('')`|
+|`List`|`[]`|
+|`Map`|`[:]`|
+|`type S object`|`[S:]`|
+|`@host type S object`|`S.$zero()`|
+|`dynamic`|`none`|
+|`any`|`none`|
+|`S?`|`none`|
+
+[parent](#type-system)
+
+### Type aliases.
+A type alias is declared from a single line `type` statement. This creates a new type symbol for an existing data type.
+```cy
+import util './util.cy'
+
+type Vec3 util.Vec3
+
+var v = [Vec3 x: 3, y: 4, z: 5]
+```
+
+[parent](#type-system)
+
+### Functions.
+Function parameter and return type specifiers follows a similiar syntax.
+```cy
+func mul(a float, b float) float:
+    return a * b
+
+print mul(3, 4)
+print mul(3, '4')  -- CompileError. Function signature mismatch.
+```
+
+[parent](#type-system)
+
+### Traits.
+> _Planned Feature_
+
+[parent](#type-system)
+
+### Union types.
+> _Planned Feature_
+
+[parent](#type-system)
+
+### `any` type.
+A variable with the `any` type can hold any value, but copying it to narrowed type destination will result in a compile error:
+```cy
+func square(i int):
+    return i * i
+
+var a any = 123
+a = ['a', 'list']         -- Valid assignment to a value with a different type.
+a = 10
+
+print square(a)           -- CompileError. Expected `int`, got `any`.
+```
+`a` must be explicitly casted to satisfy the type constraint:
+```cy
+print square(a as int)    -- Prints "100".
+```
+
+[parent](#type-system)
+
+### Invoking `any` values.
+Since `any` is a static type, invoking an `any` value must be explicitly casted to the appropriate function type.
+> _Planned Feature: Casting to a function type is not currently supported._
+
+```cy
+func add(a int, b int) int:
+    return a + b
+
+var op any = add
+print op(1, 2)         -- CompileError. Expected `func (int, int) any`
+
+var opFunc = op as (func (int, int) int)
+print opFunc(1, 2)     -- Prints "3".
+```
+
+[parent](#type-system)
+
+### Type casting.
+The `as` keyword can be used to cast a value to a specific type. Casting lets the compiler know what the expected type is and does not perform any conversions.
+
+If the compiler knows the cast will always fail at runtime, a compile error is returned instead.
+```cy
+print('123' as int)       -- CompileError. Can not cast `string` to `int`.
+```
+
+If the cast fails at runtime, a panic is returned.
+```cy
+var erased any = 123
+add(1, erased as int)     -- Success.
+print(erased as string)   -- Panic. Can not cast `int` to `string`.
+
+func add(a int, b int):
+    return a + b
+```
+
+[parent](#type-system)
+
+# Metaprogramming.
+
+<table><tr>
+<td valign="top">
+
+* [Operator overloading.](#operator-overloading-1)
+  * [Builtin operators.](#builtin-operators)
+  * [Custom operators.](#custom-operators)
+* [Magic functions.](#magic-functions)
+  * [Call module.](#call-module)
+  * [Getter/Setter.](#gettersetter)
+  * [Missing method.](#missing-method)
+</td><td valign="top">
+
+* [Reflection.](#reflection)
+* [Annotations.](#annotations)
+* [Runtime eval.](#runtime-eval)
+* [Generics.](#generics)
+* [Compile-time.](#compile-time)
+</td>
+</tr></table>
+
+[top](#table-of-contents)
+
+## Operator overloading.
+All operators are implemented as object methods.
+> _Incomplete: Not all operators have transitioned to the method paradigm._ 
+
+Normally this would impact performance, but Cyber generates specialized bytecode for builtin types like `int` and `float`. The VM performs inline caching at runtime to eliminate the overhead of evaluating on dynamic operands.
+
+To overload an operator for an object type, declare `$prefix`, `$infix`, `$postfix` methods. See the available [builtin operators](#builtin-operators). Since operator names aren't allowed as standard identifiers, they are contained in a string literal.
+```cy
+type Vec2 object:
+    var x float
+    var y float
+
+    func '$infix+'(o Vec2) Vec2:
+        return [Vec2
+            x: x + o.x,
+            y: y + o.y,
+        ]
+
+    func '$prefix-'() Vec2:
+        return [Vec2 x: -x, y: -y]
+
+var a = [Vec2 x: 1, y: 2]
+var b = a + [Vec2 x: 3, y: 4]
+var c = -a
+```
+
+Some special operators have their own name. This example overloads the `index` operator and the `set index` operator:
+```cy
+type MyCollection object:
+    var arr List
+
+    func '$index'(idx):
+        return arr[idx * 2]
+
+    func '$setIndex'(idx, val):
+        arr[idx * 2] = val 
+
+var a = [MyCollection arr: [1, 2, 3, 4]]
+print a[1]        -- Prints `3`
+```
+
+[parent](#metaprogramming)
+
+### Builtin operators.
+A list of all supported operators:
+
+| Operator | Name |
+| --- | --- |
+| Bitwise not | `$prefix~` |
+| Minus | `$prefix-` |
+| Greater | `$infix>` |
+| Greater equal | `$infix>=` |
+| Less | `$infix<` |
+| Less equal | `$infix<=` |
+| Add | `$infix+` |
+| Subtract | `$infix-` |
+| Multiply | `$infix*` |
+| Divide | `$infix/` |
+| Modulus | `$infix%` |
+| Power | `$infix^` |
+| Bitwise and | `$infix&` |
+| Bitwise or | `$infix\|` |
+| Bitwise xor | `$infix\|\|` |
+| Bitwise left shift | `$infix<<` |
+| Bitwise right shift | `$infix>>` |
+| Index | `$index` |
+| Set index | `$setIndex` |
+| Slice | `$slice` |
+
+[parent](#metaprogramming)
+
+### Custom operators.
+> _Planned Feature_
+
+[parent](#metaprogramming)
+
+## Magic functions.
+
+### Call module.
+Declare a `$call` function to allow invoking a module as a function.
+> _Incomplete: Although $call function is supported in the VM and builtin modules use it, it is not currently enabled for user modules._ 
+```cy
+-- Object types are also modules.
+type Vec2 object:
+    var x float
+    var y float
+
+func Vec2.'$call'(x float, y float) Vec2:
+    return [Vec2 x: x, y: y]
+
+var v = Vec2(1, 2)
+```
+
+[parent](#metaprogramming)
+
+### Getter/Setter.
+> _Planned Feature_
+
+[parent](#metaprogramming)
+
+### Missing method.
+Declare a `$missing` method as a fallback when a method was not found in an instance.
+> _Planned Feature_
+```cy
+type A object:
+
+    func '$missing'(args...):
+        return args.len
+
+var a = [A:]
+print a.foo()      -- Output: '0'
+print a.bar(1, 2)  -- Output: '2'
+```
+
+[parent](#metaprogramming)
+
+## Reflection.
+A [`metatype`](#metatype) object references an internal type. Use the `typeof` builtin to get the `metatype` of a value.
+```cy
+var val = 123
+print typeof(val)   -- 'type: float'
+
+-- Referencing a type as a value also returns its `metatype`.
+print bool          -- 'type: bool'
+```
+
+[parent](#metaprogramming)
+
+## Annotations.
+Annotations are used to attach modifiers to declarative statements. The `@host` annotation is used for [embedding](#embedding) to bind a host function to a Cyber function:
+```cy
+@host func compute() float
+```
+
+Custom annotations.
+> _Planned Feature_
+
+[parent](#metaprogramming)
+
+## Runtime eval.
+> _Planned Feature_
+
+[parent](#metaprogramming)
+
+## Generics.
+> _Planned Feature_
+
+[parent](#metaprogramming)
+
+## Compile-time.
+> _Planned Feature_
+
+[parent](#metaprogramming)
+
+# Embedding.
+
+<table><tr>
+<td valign="top">
+
+* [Getting started.](#getting-started)
+  * [Create VM.](#create-vm)
+  * [Override `print`.](#override-print)
+  * [Eval script.](#eval-script)
+* [Module Loader.](#module-loader)
+  * [Default module loader.](#default-module-loader)
+  * [Function loader.](#function-loader)
+  * [Variable loader.](#variable-loader)
+  * [Type loader.](#type-loader)
+</td><td valign="top">
+
+* [Host functions.](#host-functions)
+* [Host types.](#host-types)
+  * [`getChildren`](#getchildren)
+  * [`finalizer`](#finalizer-1)
+</td>
+</tr></table>
+
+[top](#table-of-contents)
+
+The Embed API allows embedding the Cyber compiler and VM as a library into applications. Cyber's core types and the CLI app were built using the Embed API.
+
+The API is defined in the [C header file](https://github.com/fubark/cyber/blob/master/src/include/cyber.h).
+The examples shown below can be found in the repository under [c-embedded](https://github.com/fubark/cyber/blob/master/examples/c-embedded). C is used as the host language, but it can be easily translated to C++ or any C-ABI compatible language.
+
+Types from the Embed API begin with `Cs`, constants begin with `CS`, and functions begin with `cs`.
+
+## Getting started.
+
+### Create VM.
+Most operations are tied to a VM handle. To create a new VM instance, call `csCreate`:
+```c
+#include "cyber.h"
+
+int main() {
+    CsVM* vm = csCreate();
+    // ...
+    csDestroy(vm);
+    return 0;
+}
+```
+
+[parent](#embedding)
+
+### Override `print`.
+The builtin `print` function does nothing by default, so it needs to be overrided to print to stdout for example:
+```c
+void print(CsVM* vm, CsStr str) {
+    printf("My print: %.*s\n", (int)str.len, str.buf);
+}
+
+int main() {
+    // ...
+    csSetPrint(vm, print);
+    // ...
+}
+```
+
+[parent](#embedding)
+
+### Eval script.
+`csEval` compiles and evaluates a script:
+```c
+CsStr src = STR(
+    "var a = 1\n"
+    "print(a + 2)\n"
+);
+
+CsValue val;
+int res = csEval(vm, src, &val);
+if (res == CS_SUCCESS) {
+    printf("Success!\n");
+    csRelease(vm, val);
+} else {
+    const char* report = csNewLastErrorReport(vm);
+    printf("%s\n", report);
+    csFreeStrZ(report);
+}
+```
+If a value is returned from the main block of the script, it's saved to the result value argument.
+Memory is managed by ARC so a value that points to a heap object requires a `csRelease` when it's no longer needed.
+
+`csEval` returns a result code that indicates whether it was successful.
+
+[parent](#embedding)
+
+## Module Loader.
+A module loader describes how a module is loaded when an `import` statement is encountered during script execution.
+Only one module loader can be active and is set using `csSetModuleLoader`:
+```c
+bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
+    if (strncmp("my_mod", spec.buf, spec.len) == 0) {
+        out->src =
+            "@host func add(a float, b float) float\n"
+            "@host var Root.MyConstant float\n"
+            "@host var Root.MyList     List\n"
+            "\n"
+            "@host\n"
+            "type MyCollection object:\n"
+            "    @host func asList() any"
+            "\n"
+            "@host func MyCollection.new(a, b) MyCollection\n";
+        out->funcLoader = funcLoader;
+        out->varLoader = varLoader;
+        out->typeLoader = typeLoader;
+        return true;
+    } else {
+        // Fallback to the default module loader to load `builtins`.
+        return csDefaultModuleLoader(vm, spec, out);
+    }
+}
+
+int main() {
+    //...
+    csSetModuleLoader(vm, modLoader);
+    //...
+}
+```
+The above example checks whether "my_mod" was imported and returns it's source code. Additional loaders are returned to load the functions, variables, and types from the source code.
+
+[parent](#embedding)
+
+### Default module loader.
+Since only one module loader can be set to the VM instance, a custom loader is required to handle the "builtins" import which contains all of the core types and functions in Cyber. This can simply be delegated to `csDefaultModuleLoader`.
+
+[parent](#embedding)
+
+### Function loader.
+A function loader describes how to load a `@host` function when it's encountered by the compiler.
+The loader can bind functions and type methods:
+```c
+struct { char* n; CsFuncFn fn; } funcs[] = {
+    {"add", add},
+    {"asList", myCollectionAsList},
+    {"MyCollection.new", myCollectionNew},
+};
+
+bool funcLoader(CsVM* vm, CsFuncInfo info, CsFuncResult* out) {
+    // Check that the name matches before setting the function pointer.
+    if (strncmp(funcs[info.idx].n, info.name.buf, info.name.len) == 0) {
+        out->ptr = funcs[info.idx].fn;
+        return true;
+    } else {
+        return false;
+    }
+}
+```
+This example uses the `CsFuncInfo.idx` of a @host function to index into an array and return a [Host function](#host-functions) pointer. The name is also compared to ensure it's binding to the correct pointer.
+
+This is an efficient way to map Cyber functions to host functions. A different implementation might use a hash table to map the name of the function to it's pointer.
+
+[parent](#embedding)
+
+### Variable loader.
+A variable loader describes how to load a `@host` variable when it's encountered by the compiler:
+```c
+// C has limited static initializers (and objects require a vm instance) so initialize them in `main`.
+typedef struct { char* n; CsValue v; } NameValue;
+NameValue vars[2];
+
+bool varLoader(CsVM* vm, CsVarInfo info, CsValue* out) {
+    // Check that the name matches before setting the value.
+    if (strncmp(vars[info.idx].n, info.name.buf, info.name.len) == 0) {
+        // Objects are consumed by the module.
+        *out = vars[info.idx].v;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+int main() {
+    // ...
+
+    // Initialize var array for loader.
+    vars[0] = (NameValue){"Root.MyConstant", csFloat(1.23)};
+    CsValue myInt = csInteger(123);
+    vars[1] = (NameValue){"Root.MyList", csNewList(vm, &myInt, 1)};
+
+    // ...
+}
+```
+This example uses the same technique as the function loader, but it can be much simpler. It doesn't matter how the mapping is done as long as the variable loader returns a `CsValue`.
+
+[parent](#embedding)
+
+### Type loader.
+A type loader describes how to load a `@host` type when it's encountered by the compiler:
+```c
+CsTypeId myCollectionId;
+
+bool typeLoader(CsVM* vm, CsTypeInfo info, CsTypeResult* out) {
+    if (strncmp("MyCollection", info.name.buf, info.name.len) == 0) {
+        out->type = CS_TYPE_OBJECT;
+        out->data.object.outTypeId = &myCollectionId;
+        out->data.object.getChildren = myCollectionGetChildren;
+        out->data.object.finalizer = myCollectionFinalizer;
+        return true;
+    } else {
+        return false;
+    }
+}
+```
+When binding to the "MyCollection" type, it's typeId is saved to `outTypeId`. This id is then used to create new instances of this type. See [Host types](#host-types).
+
+[parent](#embedding)
+
+## Host functions.
+A host function requires a specific function signature:
+```c
+CsValue add(CsVM* vm, const CsValue* args, uint8_t nargs) {
+    double res = csAsFloat(args[0]) + csAsFloat(args[1]);
+    return csFloat(res);
+}
+```
+A host function should always return a `CsValue`. `csNone()` can be returned if the function does not intend to return any value.
+
+[parent](#embedding)
+
+## Host types.
+A host type are types that are opaque to Cyber scripts but still behave like an object. They can have type functions and methods.
+
+Only the host application can directly create new instances of them, so usually a function is binded to expose a constructor to the user script:
+```c
+// Binding a C struct with it's own children and finalizer.
+// This struct retains 2 VM values and has 2 arbitrary data values unrelated to the VM.
+typedef struct MyCollection {
+    CsValue val1;
+    CsValue val2;
+    int a;
+    double b;
+} MyCollection;
+
+// Implement the `new` function in MyCollection.
+CsValue myCollectionNew(CsVM* vm, const CsValue* args, uint8_t nargs) {
+    // Instantiate our object.
+    CsValue new = csNewHostObject(vm, myCollectionId, sizeof(MyCollection));
+    MyCollection* my = (MyCollection*)csAsHostObject(new);
+
+    // Assign the constructor args passed in and retain them since the new object now references them.
+    csRetain(vm, args[0]);
+    my->val1 = args[0];
+    csRetain(vm, args[1]);
+    my->val2 = args[1];
+
+    // Assign non VM values.
+    my->a = 123;
+    my->b = 9999.999;
+    return new;
+}
+```
+`csNewHostObject` takes the type id (returned from the [Type loader](#type-loader)) and size (in bytes) and returns a new heap object. Note that the size is allowed to vary. Different instances of the same type can occupy different amounts of memory.
+
+[parent](#embedding)
+
+### `getChildren`
+Since `MyCollection` contains `CsValue` children, the [Type loader](#type-loader) requires a `getChildren` callback so that memory management can reach them:
+```c
+CsValueSlice myCollectionGetChildren(CsVM* vm, void* obj) {
+    MyCollection* my = (MyCollection*)obj;
+    return (CsValueSlice){ .ptr = &my->val1, .len = 2 };
+}
+```
+
+[parent](#embedding)
+
+### `finalizer`
+A type finalizer is optional since the memory and children of an instance will be freed automatically by ARC.
+However, it can be useful to perform additional cleanup tasks for instances that contain external resources.
+```c
+void myCollectionFinalizer(CsVM* vm, void* obj) {
+    printf("MyCollection finalizer was called.\n");
+}
+```
+
+[parent](#embedding)
+
+# Memory.
+
+* [ARC.](#arc)
+  * [Reference counting.](#reference-counting)
+  * [Optimizations.](#optimizations)
+  * [Closures.](#closures-1)
+  * [Fibers.](#fibers-1)
+* [Heap.](#heap)
+  * [Weak references.](#weak-references)
+  * [Cycle detection.](#cycle-detection)
+
+[top](#table-of-contents)
+
+Cyber provides memory safety by default.
+
+## ARC.
+Cyber uses ARC or automatic reference counting to manage memory.
+ARC is deterministic and has less overhead compared to a tracing garbage collector. Reference counting distributes memory management, which reduces GC pauses and makes ARC suitable for realtime applications. One common issue in ARC implementations is reference cycles which Cyber addresses with [Weak References](#weak-references) and it's very own [Cycle Detection](#cycle-detection).
+
+[parent](#memory)
+
+### Reference counting.
+In Cyber, there are [primitive and object](#data-types) values. Primitives don't need any memory management, since they are copied by value and no heap allocation is required (with the exception of primitives being captured by a [closure]("#closures-1"). 
+
+Objects are managed by ARC. Each object has its own reference counter. Upon creating a new object, it receives a reference count of 1. When the object is copied, it's **retained** and the reference count increments by 1. When an object value is removed from it's parent or is no longer reachable in the current stack frame, it is **released** and the reference count decrements by 1.
+
+Once the reference count reaches 0 the object begins its destruction procedure. First, child references are released thereby decrementing their reference counts by 1. If the object is a host object, it will invoke its `finalizer` function. Afterwards, the object is freed from memory.
+
+[parent](#memory)
+
+### Optimizations.
+The compiler can reduce the number of retain/release ops since it can infer value types even though they are dynamically typed to the user. Arguments passed to functions are only retained depending on the analysis from the callsite.
+
+[parent](#memory)
+
+### Closures.
+When primitive variables are captured by a [closure](#closures), they are boxed and allocated on the heap. This means they are managed by ARC and cleaned up when there are no more references to them.
+
+[parent](#memory)
+
+### Fibers.
+[Fibers](#fibers) are freed by ARC just like any other object. Once there are no references to the fiber, it begins to release it's child references by unwinding it's call stack.
+
+[parent](#memory)
+
+## Heap.
+Many object types in Cyber are small enough to be at or under 40 bytes. To take advantage of this, Cyber can reserve object pools to quickly allocate and free these small objects with very little bookkeeping. Bigger objects are allocated and managed by `mimalloc` which has proven to be a fast and reliable general-purpose heap allocator.
+
+[parent](#memory)
+
+## Weak references.
+> _Planned Feature_
+
+[parent](#memory)
+
+## Cycle detection.
+The cycle detector is also considered a GC and frees abandoned objects managed by ARC. Although weak references can remove cycles altogether, Cyber does not force you to use them and provides a manual GC as a one-time catch all solution.
+> _Incomplete Feature: Only the main fiber stack is cleaned up at the moment._
+
+To invoke the GC, call the builtin function: `performGC`.
+```cy
+func foo():
+    -- Create a reference cycle.
+    var a = []
+    var b = []
+    a.append(b)
+    b.append(a)
+
+    -- Cycle still alive in the current stack so no cleanup is done.
+    var res = performGC()
+    print res['numCycFreed']    -- Output: 0
+    print res['numObjFreed']    -- Output: 0
+
+foo()
+-- `a` and `b` are no longer reachable, so the GC does work.
+var res = performGC()
+print res['numCycFreed']      -- Output: 2
+print res['numObjFreed']      -- Output: 2
+```
+
+[parent](#memory)
+
+# Backends.
+
+* [JIT.](#jit)
+* [AOT.](#aot)
+
+[top](#table-of-contents)
+
+## JIT.
+Cyber's just-in-time compiler is incomplete and unstable. To run your script with JIT enabled:
+```bash
+cyber -jit &lt;script&gt;
+```
+
+The JIT compiler is just as fast as the bytecode generation so when it's enabled, the entire script is compiled from the start.
+
+[parent](#backends)
+
+## AOT
+Work on the ahead-of-time compiler has not begun.
+
+[parent](#backends)

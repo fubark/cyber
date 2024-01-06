@@ -204,6 +204,22 @@ static inline FuncSig getResolvedFuncSig(VM* vm, FuncSigId id) {
     return ((FuncSig*)vm->compiler->sema.funcSigs.buf)[id];
 }
 
+static inline ValueResult allocObjectSmall(VM* vm, TypeId typeId, Value* fields, u8 numFields) {
+    HeapObjectResult res = zAllocPoolObject(vm);
+    if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
+        return (ValueResult){ .code = res.code };
+    }
+    res.obj->object = (Object){
+        .typeId = typeId | CYC_TYPE_MASK,
+        .rc = 1,
+    };
+
+    Value* dst = objectGetValuesPtr(&res.obj->object);
+    memcpy(dst, fields, numFields * sizeof(Value));
+
+    return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
+}
+
 static inline ValueResult allocObject(VM* vm, TypeId typeId, Value* fields, u8 numFields) {
     // First slot holds the typeId and rc.
     HeapObjectResult res = zAllocExternalCycObject(vm, (1 + numFields) * sizeof(Value));
@@ -1430,7 +1446,7 @@ beginSwitch:
         u16 typeId = READ_U16(1);
         u8 startLocal = pc[3];
         u8 numFields = pc[4];
-        ValueResult res = zAllocObjectSmall(vm, typeId, stack + startLocal, numFields);
+        ValueResult res = allocObjectSmall(vm, typeId, stack + startLocal, numFields);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }

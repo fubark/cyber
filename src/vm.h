@@ -998,7 +998,6 @@ CallObjSymResult zCallObjSym(VM* vm, Inst* pc, Value* stack, Value recv, TypeId 
 ValueResult zAllocFiber(VM* vm, uint32_t pc, Value* args, uint8_t nargs, uint8_t argDst, uint8_t initialStackSize);
 PcSp zPushFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Fiber* fiber, uint8_t parentDstLocal);
 PcSpOff zPopFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Value retValue);
-ValueResult zAllocObjectSmall(VM* vm, TypeId typeId, Value* fields, uint8_t nfields);
 uint8_t zGetFieldOffsetFromTable(VM* vm, TypeId typeId, uint32_t symId);
 Value zEvalCompare(Value left, Value right);
 Value zEvalCompareNot(Value left, Value right);

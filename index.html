@@ -635,7 +635,7 @@ progress:indeterminate::-moz-progress-bar {
 */pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}.hljs{background:#f3f3f3;color:#444}.hljs-comment{color:#697070}.hljs-punctuation,.hljs-tag{color:#444a}.hljs-tag .hljs-attr,.hljs-tag .hljs-name{color:#444}.hljs-attribute,.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-name,.hljs-selector-tag{font-weight:700}.hljs-deletion,.hljs-number,.hljs-quote,.hljs-selector-class,.hljs-selector-id,.hljs-string,.hljs-template-tag,.hljs-type{color:#800}.hljs-section,.hljs-title{color:#800;font-weight:700}.hljs-link,.hljs-operator,.hljs-regexp,.hljs-selector-attr,.hljs-selector-pseudo,.hljs-symbol,.hljs-template-variable,.hljs-variable{color:#ab5656}.hljs-literal{color:#695}.hljs-addition,.hljs-built_in,.hljs-bullet,.hljs-code{color:#397300}.hljs-meta{color:#1f7199}.hljs-meta .hljs-string{color:#38a}.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}</style>
     <style>:root {
     --bg: #0c0c0c;
-    --accent-bg: #111;
+    --accent-bg: #0d0707;
     --border: #614721;
 /*    --text: #d2d2d2;*/
     --text: #fff;
@@ -696,12 +696,7 @@ h1:hover a, h2:hover a, h3:hover a, h4:hover a, h5:hover a, h6:hover a {
 
 h1.title {
     color: var(--accent);
-    padding-left: 40px;
     margin-bottom: 10px;
-}
-
-div.sub-title {
-    padding-left: 40px;
 }
 
 html, body {
@@ -717,12 +712,17 @@ html, body {
 
 header ul {
     list-style-type: none;
+    padding-left: 0px;
+}
+
+header a {
+    white-space: nowrap;
 }
 
 body > header {
     height: 100%;
     width: var(--nav-width);
-    padding-left: 0px;
+    padding-left: 40px;
     text-align: left;
     position: fixed;
     top: 0;
@@ -756,8 +756,20 @@ em {
         display: grid;
     }
 
+    /* Make 2 column navs fit */
+    table ul {
+        padding-left: 20px;
+    }
+    table ul ul {
+        padding-left: 0px;
+    }
+    table td {
+        padding: 0.5rem 0 0.5rem 0;
+    }
+
     body > header {
         position: static;
+        padding-left: 0px;
         height: initial;
         width: initial;
         top: initial;
@@ -977,14 +989,14 @@ table td {
 }
 
 table tbody tr:nth-child(even) {
-    background-color: var(--accent-bg);
+    background-color: #111;
 }
 </style>
 </head>
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 11-3d0d00c</div>
+    <div class="sub-title">v0.4-dev 12-2f26e63</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -2816,7 +2828,11 @@ Once the object is released by ARC, the TCCState is also released which removes 
 <h2 id="mappings">Mappings. <a href="#mappings">#</a></h2>
 <p>When using <code>cfunc</code> or <code>cbind</code> declarations, <a href="#symbols-1" title="">symbols</a> are used to represent default type mappings from Cyber to C and back:</p>
 <blockquote><p><em>Incomplete: This is not the final API for dynamically loading and interfacing with C libraries. The plan is to parse a subset of C headers to bind to Cyber types and functions.</em></p>
-</blockquote><table><thead><tr><th>Binding</th><th>Cyber</th><th>C</th><th>Details</th></tr></thead><tbody><tr><td>.bool</td><td>bool</td><td>bool</td><td></td></tr><tr><td>.char</td><td>int</td><td>int8_t, signed char</td><td></td></tr><tr><td>.uchar</td><td>int</td><td>uint8_t, unsigned char</td><td></td></tr><tr><td>.short</td><td>int</td><td>int16_t, short</td><td></td></tr><tr><td>.ushort</td><td>int</td><td>uint16_t, unsigned short</td><td></td></tr><tr><td>.int</td><td>int</td><td>int32_t, int</td><td></td></tr><tr><td>.uint</td><td>int</td><td>uint32_t, unsigned int</td><td></td></tr><tr><td>.long</td><td>int</td><td>int64_t, long long</td><td></td></tr><tr><td>.ulong</td><td>int</td><td>uint64_t, unsigned long long</td><td></td></tr><tr><td>.usize</td><td>int</td><td>size_t, uintptr_t</td><td></td></tr><tr><td>.float</td><td>float</td><td>float</td><td></td></tr><tr><td>.double</td><td>float</td><td>double</td><td></td></tr><tr><td>.charPtr</td><td>pointer</td><td>char*</td><td>Use <code>os.cstr()</code> and <code>pointer.fromCstr()</code> to convert between a Cyber string and a null terminated C string.</td></tr><tr><td>.voidPtr</td><td>pointer</td><td>void*</td><td></td></tr><tr><td>type {S} object</td><td>type {S} object</td><td>struct</td><td>The mapping from a Cyber object type <code>S</code> and the C-struct can be declared with <code>cbind</code>.</td></tr></tbody></table><p><a href="#ffi" title="">parent</a></p>
+</blockquote><table><thead><tr><th>Binding</th><th>Cyber</th><th>C</th></tr></thead><tbody><tr><td>.bool</td><td>bool</td><td>bool</td></tr><tr><td>.char</td><td>int</td><td>int8_t, signed char</td></tr><tr><td>.uchar</td><td>int</td><td>uint8_t, unsigned char</td></tr><tr><td>.short</td><td>int</td><td>int16_t, short</td></tr><tr><td>.ushort</td><td>int</td><td>uint16_t, unsigned short</td></tr><tr><td>.int</td><td>int</td><td>int32_t, int</td></tr><tr><td>.uint</td><td>int</td><td>uint32_t, unsigned int</td></tr><tr><td>.long</td><td>int</td><td>int64_t, long long</td></tr><tr><td>.ulong</td><td>int</td><td>uint64_t, unsigned long long</td></tr><tr><td>.usize</td><td>int</td><td>size_t, uintptr_t</td></tr><tr><td>.float</td><td>float</td><td>float</td></tr><tr><td>.double</td><td>float</td><td>double</td></tr><tr><td>(1) .charPtr</td><td>pointer</td><td>char*</td></tr><tr><td>.voidPtr</td><td>pointer</td><td>void*</td></tr><tr><td>(2) type {S} object</td><td>type {S} object</td><td>struct</td></tr></tbody></table><ol>
+<li>Use <code>os.cstr()</code> and <code>pointer.fromCstr()</code> to convert between a Cyber string and a null terminated C string.</li>
+<li>The mapping from a Cyber object type <code>S</code> and the C-struct can be declared with <code>cbind</code>.</li>
+</ol>
+<p><a href="#ffi" title="">parent</a></p>
 <h2 id="bind-to-cyber-type">Bind to Cyber type. <a href="#bind-to-cyber-type">#</a></h2>
 <p><code>cbind</code> is used to bind a C struct to a Cyber object type. Once declared, the Cyber type can be used as a binding type in function declarations:</p>
 <pre><code class="language-cy">import os

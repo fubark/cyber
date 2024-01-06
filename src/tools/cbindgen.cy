@@ -1,7 +1,8 @@
 #!cyber
 import os
 
--- ./cbindgen.cy [header] -I/opt/homebrew/Cellar/llvm/17.0.6/include -libpath 'libLLVM.dylib' -stripPrefix LLVM
+-- usage: ./cbindgen.cy -o llvm.cy /path/to/LLVM.h -libpath 'libLLVM.dylib' -stripPrefix LLVM
+-- `-I/opt/homebrew/Cellar/llvm/17.0.6/lib/clang/17/include` if missing libc headers.
 
 import clang 'clang_bs.cy'
 
@@ -84,9 +85,24 @@ out += "func load():\n"
 out += "    ffi = os.newFFI()\n"
 for structs -> name:
     var fieldTypes = structMap[name].fieldTypes as List
-    out += "    ffi.cbind($(name), [$(fieldTypes.join(', '))])\n"
+    var finalFieldTypes = []
+    for fieldTypes -> ftype:
+        ftype = ensureBindType(ftype)
+        if typeof(ftype) == string:
+            finalFieldTypes.append(getApiName(ftype))
+        else:
+            finalFieldTypes.append(ftype)
+
+    out += "    ffi.cbind($(getApiName(name)), [$(finalFieldTypes.join(', '))])\n"
 for funcs -> fn:
-    out += "    ffi.cfunc('$(fn.name)', [$(fn.params.join(', '))], $(fn.ret))\n"
+    var finalParams = []
+    for fn.params -> param:
+        param = ensureBindType(param)
+        if typeof(param) == string:
+            finalParams.append(getApiName(param))
+        else:
+            finalParams.append(param)
+    out += "    ffi.cfunc('$(fn.name)', [$(finalParams.join(', '))], $(fn.ret))\n"
 var libPath = existingLibPath ? 'libPath' else "'$(args.libpath)'"
 out += "    my lib = ffi.bindLib($(libPath), [genMap: true])\n"
 
@@ -219,9 +235,10 @@ func rootVisitor(cursor, parent, state):
 
     case clang.CXCursor_StructDecl:
         -- print 'struct $(name)'
+        var effName = name + '_S'
 
         struct = [Struct fieldTypes: [], fieldNames: [], cxFieldTypes: []]
-        structMap[name] = struct
+        structMap[effName] = struct
 
         var newState = [State type: .struct]
         var cnewState = clang.ffi.bindObjPtr(newState)
@@ -232,12 +249,12 @@ func rootVisitor(cursor, parent, state):
             -- Empty struct, skip.
             return clang.CXChildVisit_Continue
 
-        structs.append(name)
-        if skipMap[name]:
-            out += '-- type $(getApiName(name)) object:\n'
+        structs.append(effName)
+        if skipMap[effName]:
+            out += '-- type $(getApiName(effName)) object:\n'
             skipChildren = true
         else:
-            out += 'type $(getApiName(name)) object:\n'
+            out += 'type $(getApiName(effName)) object:\n'
 
         for struct.fieldNames -> name, i:
             if skipChildren:
@@ -256,6 +273,7 @@ func rootVisitor(cursor, parent, state):
     case clang.CXCursor_EnumDecl:
         -- print 'enum $(name)'
 
+        out += 'type $(getApiName(name)) int\n'
         aliases[name] = .int
 
         var newState = [State type: .enum]
@@ -499,6 +517,16 @@ func toCyType(nameOrSym, forRet):
     else:
         if nameOrSym.startsWith('[os.CArray'):
             return 'List'
+        return getApiName(nameOrSym)
+
+func ensureBindType(nameOrSym):
+    if typeof(nameOrSym) == symbol:
+        return nameOrSym
+    else:
+        if aliases[nameOrSym]:
+            var og = aliases[nameOrSym]
+            if typeof(og) == symbol:
+                return og
         return nameOrSym
 
 func toBindType(cxType):
@@ -529,7 +557,7 @@ func toBindType(cxType):
                 return name
             else aliases[name]:
                 -- Valid alias.
-                return aliases[name]
+                return name
             else enumMap[name]:
                 return name
 
@@ -543,8 +571,8 @@ func toBindType(cxType):
         if declType.kind == clang.CXType_Typedef:
             return toBindType(declType)
         else declType.kind == clang.CXType_Record:
-            -- opaque alias?
-            return name
+            -- struct Foo
+            return name + '_S'
         else declType.kind == clang.CXType_Enum:
             return name
 

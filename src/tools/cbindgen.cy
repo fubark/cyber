@@ -145,7 +145,7 @@ func getTranslationUnit(headerPath):
     var cargs = os.malloc(8 * rest.len())
     for rest -> arg, i:
         print 'clang arg: $(arg)'
-        cargs.set(i * 8, os.cstr(arg))
+        cargs.set(i * 8, .voidPtr, os.cstr(arg))
 
     var cpath = os.cstr(headerPath)
     var index = clang.lib.clang_createIndex(0, 0)
@@ -158,7 +158,7 @@ func getMacrosTranslationUnit(hppPath):
 
     var cargs = os.malloc(8 * rest.len())
     for rest -> arg, i:
-        cargs.set(i * 8, os.cstr(arg))
+        cargs.set(i * 8, .voidPtr, os.cstr(arg))
 
     var cpath = os.cstr(hppPath)
     var index = clang.lib.clang_createIndex(0, 0)

@@ -922,7 +922,7 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
 
     if (config.genMap) {
         // Create map with binded C-functions as functions.
-        const map = vm.allocEmptyMap() catch cy.fatal();
+        const map = try vm.allocEmptyMap();
 
         const cyState = try cy.heap.allocTccState(ivm, state.?, lib);
 
@@ -935,12 +935,12 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
                 cy.panic("Failed to get symbol.");
             };
 
-            const symKey = vm.retainOrAllocAstring(cfunc.namez) catch cy.fatal();
+            const symKey = try vm.retainOrAllocAstring(cfunc.namez);
             const func = cy.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
             const funcSig = ivm.compiler.sema.getFuncSig(cfunc.funcSigId);
-            const funcVal = cy.heap.allocHostFunc(ivm, func, @intCast(cfunc.params.len),
-                cfunc.funcSigId, cyState, funcSig.reqCallTypeCheck) catch cy.fatal();
-            map.asHeapObject().map.set(ivm, symKey, funcVal) catch cy.fatal();
+            const funcVal = try cy.heap.allocHostFunc(ivm, func, @intCast(cfunc.params.len),
+                cfunc.funcSigId, cyState, funcSig.reqCallTypeCheck);
+            try map.asHeapObject().map.set(ivm, symKey, funcVal);
             vm.release(symKey);
             vm.release(funcVal);
             numGenFuncs += 1;
@@ -954,12 +954,12 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
                 cy.panic("Failed to get symbol.");
             };
 
-            const symKey = vm.allocAstringConcat("ptrTo", typeName) catch cy.fatal();
+            const symKey = try vm.allocAstringConcat("ptrTo", typeName);
             const func = cy.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
 
             const funcSigId = try ivm.sema.ensureFuncSig(&.{bt.Dynamic}, bt.Dynamic);
-            const funcVal = cy.heap.allocHostFunc(ivm, func, 1, funcSigId, cyState, false) catch cy.fatal();
-            map.asHeapObject().map.set(ivm, symKey, funcVal) catch cy.fatal();
+            const funcVal = try cy.heap.allocHostFunc(ivm, func, 1, funcSigId, cyState, false);
+            try map.asHeapObject().map.set(ivm, symKey, funcVal);
             vm.release(symKey);
             vm.release(funcVal);
         }

@@ -21,7 +21,7 @@
 --| If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned.
 @host func must(val any) any
 
---| Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}).
+--| Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors](#unexpected-errors).
 @host func panic(err any) none
 
 --| Parses Cyber source string into structured map object.
@@ -362,13 +362,19 @@ type pointer object:
     @host func get(offset int, ctype symbol) any
 
     --| Unsafe. Converts the value to a compatible C value and writes it to a byte offset from this pointer.
-    @host func set(offset int, val any) none
+    @host func set(offset int, ctype symbol, val any) none
 
     --| Unsafe. Returns an `array` with a copy of the byte data starting from an offset to the specified length.
     @host func toArray(offset int, len int) array
 
 --| Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI.
 @host func pointer.'$call'(val any) pointer
+
+@host
+type ExternFunc object:
+    --| Returns the memory address as an `int`. The value may be negative since it's
+    --| bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
+    @host func addr() int
 
 @host
 type Fiber object:

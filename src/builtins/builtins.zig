@@ -190,6 +190,9 @@ const funcs = [_]NameFunc{
     .{"toArray", zErrFunc2(pointerToArray), .standard},
     .{"pointer.'$call'", pointerCall, .standard},
 
+    // ExternFunc
+    .{"addr", externFuncAddr, .standard},
+
     // Fiber
     .{"status", fiberStatus, .standard},
 
@@ -211,6 +214,7 @@ const types = [_]NameType{
     .{"string", bt.String },
     .{"array", bt.Array },
     .{"pointer", bt.Pointer },
+    .{"ExternFunc", bt.ExternFunc },
     .{"Fiber", bt.Fiber },
     .{"metatype", bt.MetaType },
 };
@@ -1329,15 +1333,40 @@ fn pointerGet(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 fn pointerSet(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const obj = args[0].asHeapObject();
     const idx = args[1].asInteger();
-    const val = args[2];
+    const ctype = try std.meta.intToEnum(Symbol, args[2].asSymbolId());
+    const val = args[3];
     const rawPtr = obj.pointer.ptr;
     const valT = val.getTypeId();
     const uidx: u48 = @bitCast(idx);
-    switch (valT) {
-        bt.Pointer => {
-            const addr: usize = @intFromPtr(rawPtr) + @as(usize, @intCast(uidx));
-            @as(*?*anyopaque, @ptrFromInt(addr)).* = val.asHeapObject().pointer.ptr;
-            return Value.None;
+    switch (ctype) {
+        .int => {
+            switch (valT) {
+                bt.Integer => {
+                    const addr: usize = @intFromPtr(rawPtr) + @as(usize, @intCast(uidx));
+                    @as(*i32, @ptrFromInt(addr)).* = @intCast(val.asInteger());
+                    return Value.None;
+                },
+                else => {
+                    return error.InvalidArgument;
+                }
+            }
+        },
+        .voidPtr => {
+            switch (valT) {
+                bt.Pointer => {
+                    const addr: usize = @intFromPtr(rawPtr) + @as(usize, @intCast(uidx));
+                    @as(*?*anyopaque, @ptrFromInt(addr)).* = val.asHeapObject().pointer.ptr;
+                    return Value.None;
+                },
+                bt.ExternFunc => {
+                    const addr: usize = @intFromPtr(rawPtr) + @as(usize, @intCast(uidx));
+                    @as(*?*anyopaque, @ptrFromInt(addr)).* = val.asHeapObject().externFunc.ptr;
+                    return Value.None;
+                },
+                else => {
+                    return error.InvalidArgument;
+                }
+            }
         },
         else => {
             return error.InvalidArgument;
@@ -1365,6 +1394,11 @@ fn pointerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     } else {
         return vm.returnPanic("Not a `pointer`.");
     }
+}
+
+fn externFuncAddr(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const obj = args[0].asHeapObject();
+    return Value.initInt(@bitCast(@as(u48, (@intCast(@intFromPtr(obj.externFunc.ptr))))));
 }
 
 fn errorSym(_: *cy.UserVM, args: [*]const Value, _: u8) Value {

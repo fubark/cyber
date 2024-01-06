@@ -1,0 +1,346 @@
+:root {
+    --bg: #0c0c0c;
+    --accent-bg: #111;
+    --border: #614721;
+/*    --text: #d2d2d2;*/
+    --text: #fff;
+    --text-light: #888888;
+    --accent-light: #ffc57b;
+/*    --header: #c4beb9;*/
+    --header: #b5aea8;
+    /* --accent-light: #fab760; */
+    --accent: #ffa430;
+    --marked: #ffa430;
+    --mono-font: Consolas, Menlo, Monaco, "Andale Mono", "Ubuntu Mono", monospace;
+    --keyword: #ff7d67;
+
+    --header-line: #333;
+
+    --nav-width: 15em;
+}
+
+html {
+    scroll-behavior: auto;
+}
+
+h1 {
+    font-size: 2em;
+    font-weight: normal;
+    margin-top: 1.5em;
+}
+
+h2 {
+    font-size: 1.5em;
+    font-weight: normal;
+}
+
+h3 {
+    font-weight: normal;
+}
+
+h4 {
+    font-weight: normal;
+}
+
+h5 {
+    font-weight: normal;
+}
+
+h6 {
+    font-weight: normal;
+}
+
+h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
+    opacity: 0;
+    text-decoration: none
+}
+
+h1:hover a, h2:hover a, h3:hover a, h4:hover a, h5:hover a, h6:hover a {
+    opacity: initial
+}
+
+h1.title {
+    color: var(--accent);
+    padding-left: 40px;
+    margin-bottom: 10px;
+}
+
+div.sub-title {
+    padding-left: 40px;
+}
+
+html, body {
+    font-size: 18px;
+
+    /* Reset to defaults */ 
+    letter-spacing: normal;
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: auto;
+    background-color: var(--bg);
+    color: var(--text);
+}
+
+header ul {
+    list-style-type: none;
+}
+
+body > header {
+    height: 100%;
+    width: var(--nav-width);
+    padding-left: 0px;
+    text-align: left;
+    position: fixed;
+    top: 0;
+    left: 0;
+    overflow-y: auto;
+}
+
+header ul li {
+    display: list-item;
+    margin-right: 0px;
+}
+
+body {
+    display: block;
+}
+
+main {
+    padding-top: 0px;
+    padding-left: calc(var(--nav-width) + 20px);
+    padding-right: 20px;
+}
+
+em {
+    font-style: normal;
+    color: #fb6767;
+}
+
+/* mobile */
+@media screen and (max-width: 720px) {
+    body {
+        display: grid;
+    }
+
+    body > header {
+        position: static;
+        height: initial;
+        width: initial;
+        top: initial;
+        left: initial;
+        text-align: center;
+        overflow-y: visible;
+    }
+
+    main {
+        padding-left: 0px;
+        padding-right: 0px;
+    }
+
+    header ul {
+        margin-top: 0px;
+        margin-bottom: 0px;
+    }
+
+    header ul li {
+        display: inline;
+        margin-right: 5px;
+    }
+}
+
+a.current {
+    text-decoration: none;
+}
+
+h1 {
+/*    color: var(--accent);*/
+/*    font-weight: bold;*/
+}
+
+.markdown h2 {
+    color: var(--header);
+    font-weight: bold; 
+    margin-top: 60px;
+}
+
+h3 {
+    color: var(--header);
+/*    font-weight: bold; */
+    font-size: 1.2em;
+    margin-top: 2.2em;
+
+    padding: 0.5rem 1rem 0.7rem 0.75rem;
+    border-bottom: 0.15rem solid var(--header-line);
+    border-radius: 0rem;
+}
+
+.markdown h3 > code {
+    color: var(--header);
+    font-size: 0.9em;
+    background-color: transparent;
+}
+
+.markdown table tr th {
+    text-align: left;
+    color: var(--text-light);
+    font-weight: normal;
+}
+
+.markdown table tr th, .markdown table tr td {
+    border: 3px solid #222;
+}
+
+.markdown table tr td:first-child code {
+    font-size: 15px;
+}
+
+.book-search input {
+    background-color: var(--bg);
+    border: 3px solid #222;
+}
+
+.book-menu .book-brand a {
+    color: var(--accent);
+    font-weight: bold;
+}
+
+.book-menu a {
+    color: var(--accent-light);
+}
+.book-menu a:hover {
+    opacity: 1;
+    color: var(--accent-light);
+    text-decoration: underline;
+}
+
+.book-menu a.active {
+    color: var(--accent);
+    font-weight: bold;
+    text-decoration: underline;
+}
+
+ul a {
+    color: var(--accent-light);
+}
+
+a {
+    color: var(--accent);
+}
+
+.markdown a:visited {
+    color: var(--accent);
+    text-decoration: underline;
+}
+.markdown a {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+:focus {
+    outline-style: none;
+}
+
+/* inline code */
+main code {
+    font-size: 17px;
+    background: none;
+    color: var(--accent-light);
+    padding: 2px 6px;
+}
+
+/* block code */
+main pre code {
+    font-size: 15px;
+    color: var(--text);
+    font-weight: normal;
+    font-family: var(--mono-font);
+}
+
+pre {
+/*    padding: 10px;*/
+    font-size: 15px;
+    border: 0px solid var(--border);
+    background-color: #171717;
+}
+
+pre code.hljs {
+    padding: 0px;
+    white-space: pre-wrap;
+}
+
+.hljs {
+/*    background-color: var(--accent-bg);*/
+    background-color: transparent;
+    color: var(--text);
+}
+.hljs-type {
+    color: #919aff;
+    font-weight: normal;
+}
+.hljs-title {
+    color: var(--text);
+    font-weight: normal;
+}
+.hljs-keyword {
+    color: var(--keyword);
+    font-weight: normal;
+}
+.hljs-symbol,
+.hljs-number,
+.hljs-string {
+    color: rgb(120, 206, 120);
+}
+.hljs-built_in {
+    color: var(--text);
+}
+.hljs-comment {
+    color: var(--text-light);
+}
+
+blockquote {
+    margin: 20px 0 20px 0;
+    font-style: normal;
+    border-left: 3px solid var(--header-line);
+    padding: 3px 0px 3px 15px;
+    color: var(--text);
+}
+
+blockquote p:nth-child(2) {
+    margin-top: 5px;
+}
+
+blockquote p {
+    margin: 0px;
+    padding: 0px;
+}
+
+blockquote em {
+    color: #fb6767;
+}
+
+table {
+    font-size: 18px;
+    width: auto;
+    line-height: 1.5em;
+    display: table;
+    margin: 0 0;
+}
+
+table thead {
+    border-bottom: 0.15rem solid var(--header-line);
+    width: auto;
+}
+
+table th {
+    border: 0px solid var(--border);
+    width: auto;
+    background-color: transparent;
+}
+
+table td {
+    border: 0px solid var(--border);
+    width: auto;
+}
+
+table tbody tr:nth-child(even) {
+    background-color: var(--accent-bg);
+}

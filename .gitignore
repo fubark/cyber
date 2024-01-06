@@ -4,10 +4,8 @@
 /todo.md
 /site
 /docs-todo.md
-/docs/hugo/themes
-/docs/hugo/resources
-/docs/hugo/.hugo_build.lock
-/docs/hugo/public
+/docs/docs-modules.md
+/docs/docs.html
 /temp.cy
 /test.txt
 /test/assets/write.txt
@@ -19,6 +17,7 @@
 /scratch.zig
 /scratch
 /scratch.o
+/macros.hpp
 *.class
 .DS_Store
 /cyber.sublime-project

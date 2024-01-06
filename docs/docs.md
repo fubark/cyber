@@ -16,6 +16,8 @@
 
 <!--TOC-END-->
 
+<!--This does not contain module docs. Use docs.md from releases instead or generate it by using docs/gen-docs.cy -->
+
 # Introduction.
 
 Cyber is a fast, efficient, and concurrent scripting language. The landing page is at [cyberscript.dev](https://cyberscript.dev) and contains performance metrics and release notes.
@@ -232,7 +234,7 @@ There are `25` general keywords. This list categorizes them:
 - [Functions](#functions): `func` `return`
 - [Coroutines](#fibers): `coinit` `coyield`, `coresume`
 - [Data Types](#data-types): `type` `as`
-- [Error Handling](#errors): `try` `catch` `throw`
+- [Error Handling](#error-handling): `try` `catch` `throw`
 - [Modules](#modules): `import`
 
 [parent](#syntax)
@@ -458,7 +460,7 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
 
 In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts.
 
-Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integers), [Enums](#enums), [Symbols](#symbols-1), [Error Symbols](#errors), and the `none` value.
+Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integers), [Enums](#enums), [Symbols](#symbols-1), [Error Values](#error-value), and the `none` value.
 
 Object types include [Lists](#lists), [Tuples](#tuples), [Maps](#maps), [Strings](#strings), [Arrays](#arrays), [User Objects](#objects), [Lambdas](#lambdas), [Fibers](#fibers), [Enums with payloads](#enums), [Pointers](#pointers), and several internal object types.
 
@@ -511,7 +513,7 @@ In addition to arithmetic operations, integers can also perform [bitwise operati
 ### Floats.
 `float` is the default floating point type. It has a (IEEE 754) 64-bit floating point format. See [`type float`](#type-float).
 
-Although a `float` represents a decimal number, it can also represent integers between -(2{{<sup "53">}}-1) and (2{{<sup "53">}}-1). Any integers beyond the safe integer range is not guaranteed to have a unique representation.
+Although a `float` represents a decimal number, it can also represent integers between -(2<sup>53</sup>-1) and (2<sup>53</sup>-1). Any integers beyond the safe integer range is not guaranteed to have a unique representation.
 
 A numeric literal can be used to create a `float` if the inferred type is a `float`:
 ```cy
@@ -538,7 +540,7 @@ var b = float(a)
 [parent](#data-types)
 
 ## Strings.
-The `string` type represents a sequence of UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as an `int`. See [`type string`](#type-string-trait).
+The `string` type represents a sequence of UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as an `int`. See [`type string`](#type-string).
 
 Under the hood, there are multiple string implementations to make operations faster by default.
 
@@ -546,7 +548,7 @@ Strings are **immutable**, so operations that do string manipulation return a ne
 
 To mutate an existing string, use [MutString](#mutstring). *Planned Feature*
 
-A string is always UTF-8 validated. Using an [Array](#array) to represent raw bytes of a string is faster but you'll have to validate them and take care of indexing.
+A string is always UTF-8 validated. Using an [Array](#arrays) to represent raw bytes of a string is faster but you'll have to validate them and take care of indexing.
 
 A single line string literal is surrounded in single quotes.
 ```cy
@@ -1188,7 +1190,7 @@ case 0..5:
 [parent](#control-flow)
 
 ## Try/Catch.
-The `try catch` statement, `try else` and `try` expressions provide a way to catch a throwing error and resume execution in a different branch. Learn more about [Error Handling](#errors).
+The `try catch` statement, `try else` and `try` expressions provide a way to catch a throwing error and resume execution in a different branch. Learn more about [Error Handling](#error-handling).
 
 [parent](#control-flow)
 
@@ -1253,7 +1255,7 @@ var [ x, y ] = compute(pi)
 [parent](#functions)
 
 ## Function overloading.
-Functions can be overloaded by the number of parameters in its signature. [Typed functions](#static-typing) are further overloaded by their type signatures. 
+Functions can be overloaded by the number of parameters in its signature. [Typed functions](#functions-1) are further overloaded by their type signatures. 
 ```cy
 func foo():
     return 2 + 2
@@ -1297,7 +1299,7 @@ canvas.onUpdate():
     ..func (delta_ms):
         print delta_ms
 ```
-Passing a lambda block as a call argument is only possible in a call block. *Planned Feature* See [Function Calls](#function-calls).
+Passing a lambda block as a call argument is only possible in a call block. *Planned Feature* See [Function calls](#function-calls).
 
 [parent](#functions)
 
@@ -1737,7 +1739,7 @@ Once the object is released by ARC, the TCCState is also released which removes 
 [parent](#ffi)
 
 ## Mappings.
-When using `cfunc` or `cbind` declarations, [symbols](#symbols) are used to represent default type mappings from Cyber to C and back:
+When using `cfunc` or `cbind` declarations, [symbols](#symbols-1) are used to represent default type mappings from Cyber to C and back:
 > _Incomplete: This is not the final API for dynamically loading and interfacing with C libraries. The plan is to parse a subset of C headers to bind to Cyber types and functions._
 
 | Binding | Cyber | C | Details |
@@ -1813,7 +1815,7 @@ print ptr.value()     --'3735928559'
 [parent](#ffi)
 
 ## cbindgen.cy
-[cbindgen.cy]("https://github.com/fubark/cyber/blob/master/src/tools/cbindgen.cy") is a Cyber script that automatically generates bindings given a C header file. Some example bindings that were generated include: [Raylib](https://github.com/fubark/ray-cyber) and [LLVM](https://github.com/fubark/cyber/blob/master/src/tools/llvm.cy).
+[cbindgen.cy](https://github.com/fubark/cyber/blob/master/src/tools/cbindgen.cy) is a Cyber script that automatically generates bindings given a C header file. Some example bindings that were generated include: [Raylib](https://github.com/fubark/ray-cyber) and [LLVM](https://github.com/fubark/cyber/blob/master/src/tools/llvm.cy).
 
 [parent](#ffi)
 
@@ -2679,7 +2681,6 @@ A list of all supported operators:
 
 ### Call module.
 Declare a `$call` function to allow invoking a module as a function.
-> _Incomplete: Although $call function is supported in the VM and builtin modules use it, it is not currently enabled for user modules._ 
 ```cy
 -- Object types are also modules.
 type Vec2 object:
@@ -2716,7 +2717,7 @@ print a.bar(1, 2)  -- Output: '2'
 [parent](#metaprogramming)
 
 ## Reflection.
-A [`metatype`](#metatype) object references an internal type. Use the `typeof` builtin to get the `metatype` of a value.
+A [`type metatype`](#type-metatype) object references an internal type. Use the `typeof` builtin to get the `metatype` of a value.
 ```cy
 var val = 123
 print typeof(val)   -- 'type: float'
@@ -3057,7 +3058,7 @@ ARC is deterministic and has less overhead compared to a tracing garbage collect
 [parent](#memory)
 
 ### Reference counting.
-In Cyber, there are [primitive and object](#data-types) values. Primitives don't need any memory management, since they are copied by value and no heap allocation is required (with the exception of primitives being captured by a [closure]("#closures-1"). 
+In Cyber, there are [primitive and object](#data-types) values. Primitives don't need any memory management, since they are copied by value and no heap allocation is required (with the exception of primitives being captured by a [closure](#closures-1). 
 
 Objects are managed by ARC. Each object has its own reference counter. Upon creating a new object, it receives a reference count of 1. When the object is copied, it's **retained** and the reference count increments by 1. When an object value is removed from it's parent or is no longer reachable in the current stack frame, it is **released** and the reference count decrements by 1.
 

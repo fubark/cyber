@@ -11,7 +11,7 @@ import os
 import md '../src/tools/md4c.cy'
 
 var args = os.parseArgs([
-    [ name: 'version', type: string, default: 'v0.4-dev' ],
+    [ name: 'version', type: string, default: 'dev' ],
 ])
 
 genDocsModules()

@@ -6,35 +6,85 @@ on:
     branches:
       - master
     paths:
-      - 'docs/hugo/**'
+      - 'docs/**'
+      - 'src/builtins/**'
 jobs:
   deploy:
     runs-on: ubuntu-22.04
+    env:
+      ZIG_VERSION: 0.11.0
     steps:
-      - uses: actions/checkout@v3
+      - name: Clone repo.
+        uses: actions/checkout@v3
         with:
           submodules: false
           fetch-depth: 0    # Fetch all history for .GitInfo and .Lastmod
 
-      - name: Install theme.
+      - name: Install zig.
         run: |
-          git clone --depth=1 https://github.com/alex-shpak/hugo-book docs/hugo/themes/hugo-book
+          wget -c https://ziglang.org/builds/zig-linux-x86_64-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
 
-      - name: Install Hugo.
-        uses: peaceiris/actions-hugo@v2
+      - name: Build md4c.
+        run: |
+          git clone --depth=1 https://github.com/mity/md4c.git
+          cd md4c
+          mkdir build
+          cd build
+          cmake ..
+          make
+
+      - name: Setup script.
+        uses: actions/github-script@v5
         with:
-          hugo-version: 'latest'
-          # Needed to build SCSS/SASS with transpiler set to 'libsass'
-          extended: true
+          script: |
+            async function execCmd(name, args) {
+              const opts = {};
+              let out = '';
+              let err = '';
+              opts.listeners = {
+                stdout: (data) => {
+                  out += data.toString();
+                },
+                stderr: (data) => {
+                  process.stderr.write(data.toString());
+                }
+              };
+              // opt.cwd = './lib';
+              await exec.exec(name, args, opts);
+              return out;
+            }
+            const version = await execCmd('zig', ['build', 'version']);
+            const parts = version.split('.')
+            const last_version = parts[0] + '.' + (parseInt(parts[1])-1)
+            core.exportVariable('SHORT_VERSION', version);
+            await execCmd('git', ['fetch', '--all', '--tags']);
+            const build = await execCmd('git', ['rev-list', '--count', `${last_version}..${context.sha}`])
+            core.exportVariable('BUILD', build.trim());
+            core.exportVariable('COMMIT', context.sha.substring(0, 7));
 
-      - name: Generate.
+      - name: Cache.
+        uses: actions/cache@v2
+        with:
+          path: |-
+            ~/.cache/zig
+            zig-cache
+          key:
+            build-1
+          restore-keys:
+            build-1
+
+      - name: Build Cyber.
+        run: zig build cli
+
+      - name: Generate docs.
         run: |
-          cd docs/hugo
-          hugo --minify
+          LD_LIBRARY_PATH=`pwd`/md4c/build/src zig-out/bin/cyber docs/gen-docs.cy -version "${{ format('v{0}-dev {1}-{2}', env.SHORT_VERSION, env.BUILD, env.COMMIT) }}"
+          mkdir -p docs/public
+          mv docs/docs.html docs/public/index.html
 
       - name: Deploy.
         uses: peaceiris/actions-gh-pages@v3
         if: github.ref == 'refs/heads/master'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs/hugo/public
+          publish_dir: ./docs/public

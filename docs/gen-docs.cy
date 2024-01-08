@@ -134,6 +134,8 @@ var Root.state = State.main
 var Root.parsingToc = false
 var Root.tocLinks = []
 var Root.bufContent = false
+var Root.lastTopicId = ''
+var Root.lastHLevel = 1
 
 -- Maps id names to the next unique count from 1.
 -- Mimics Githubs duplicate header id generation.
@@ -270,6 +272,11 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         if id == 'table-of-contents':
             parsingToc = true
         else:
+            if lastHLevel > 1:
+                out += '<a href="#$(lastTopicId)">^topic</a>\n'
+            if detail.level == 1:
+                lastTopicId = id
+            lastHLevel = detail.level
             out += '<h$(detail.level) id="$(id)">$(htmlContent) <a href="#$(id)">#</a></h$(detail.level)>\n'
 
         resetState()

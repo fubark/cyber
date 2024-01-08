@@ -66,7 +66,7 @@ for worlds -> w:
 </td>
 </tr></table>
 
-[top](#table-of-contents)
+[^top](#table-of-contents)
 
 Cyber's syntax is concise and easy to read.
 
@@ -76,7 +76,6 @@ A statement ends with the new line.
 -- An assignment statement.
 var a = 123
 ```
-[parent](#syntax)
 
 ## Blocks.
 Some statements can start a new block with a colon.
@@ -110,12 +109,9 @@ Since blocks require at least one statement, use `pass` as a placeholder stateme
 func foo():
     pass
 ```
-[parent](#syntax)
 
 ## Variables.
 Cyber supports dynamic and static typing. If you're used to a dynamic language such as Python, JavaScript, or Lua, use `my` to declare your variables and object fields. If you're used to a static language then use `var` instead. The documentation will use static typing by default.
-
-[parent](#syntax)
 
 ### Local variables.
 Local variables exist until the end of their scope.
@@ -131,16 +127,12 @@ Variables can be set afterwards using the `=` operator:
 a = 234
 ```
 
-[parent](#syntax)
-
 ### Dynamic variables.
 Dynamically typed variables are easier to work with and there is no friction when using them. They are declared using the `my` keyword:
 ```cy
 my a = 123
 ```
 To understand more about dynamically and statically typed code, see [Type System](#type-system).
-
-[parent](#syntax)
 
 ### Variable scopes.
 Blocks create a new variable scope. Variables declared in the current scope will take precedence over any parent variables with the same name:
@@ -154,8 +146,6 @@ func foo():
 
     print a             -- Prints "234"
 ```
-
-[parent](#syntax)
 
 ### Static Variables.
 Static variables live until the end of the script.
@@ -221,8 +211,6 @@ var Root.myImage =:
 ```
 The final resulting value that is assigned to the static variable is provided by a `break` statement. If a `break` statement is not provided, `none` is assigned instead.
 
-[parent](#syntax)
-
 ## Reserved identifiers.
 
 ### Keywords.
@@ -237,8 +225,6 @@ There are `25` general keywords. This list categorizes them:
 - [Error Handling](#error-handling): `try` `catch` `throw`
 - [Modules](#modules): `import`
 
-[parent](#syntax)
-
 ### Contextual keywords.
 These keywords only have meaning in a certain context.
 - [Methods](#methods): `self`, `Self`
@@ -247,19 +233,13 @@ These keywords only have meaning in a certain context.
 - [Enum Type](#enums): `enum`
 - [Function Throws](#throws-specifier): `throws`
 
-[parent](#syntax)
-
 ### Symbols.
 - [Modules](#modules): `Root`
-
-[parent](#syntax)
 
 ### Literals.
 - [Booleans](#booleans): `true` `false`
 - [Error Values](#error-value): `error`
 - [None](#none): `none`
-
-[parent](#syntax)
 
 ## Operators.
 Cyber supports the following operators. They are ordered from highest to lowest precedence.
@@ -277,8 +257,6 @@ Cyber supports the following operators. They are ordered from highest to lowest 
 | `and` | Logical and. |
 | `or` | Logical or. |
 
-[parent](#syntax)
-
 ### Arithmetic Operators.
 The following arithmetic operators are supported for the [numeric data types](#numbers).
 ```cy
@@ -290,8 +268,6 @@ The following arithmetic operators are supported for the [numeric data types](#n
 12 % 5    -- Modulus remainder, evaluates to 2.
 -(10)     -- Apply negative, evaluates to -10.
 ```
-
-[parent](#syntax)
 
 ### Comparison Operators.
 
@@ -327,8 +303,6 @@ a < b    -- `true` if a is less than b
 a <= b   -- `true` if a is less than or equal to b
 ```
 
-[parent](#syntax)
-
 ### Logic Operators.
 
 The logical operators `and`, `or`, and `not` are supported.
@@ -357,8 +331,6 @@ not 123       -- Evaluates to false
 !true         -- Evaluates to false
 ```
 
-[parent](#syntax)
-
 ### Bitwise Operators.
 
 The following bitwise operators are supported for `int` number values.
@@ -382,12 +354,8 @@ a << b
 ~a
 ```
 
-[parent](#syntax)
-
 ### Operator overloading.
 See [Operator overloading](#operator-overloading-1) in Metaprogramming.
-
-[parent](#syntax)
 
 ## Comments.
 A single line comment starts with two hyphens and ends at the end of the line.
@@ -397,8 +365,6 @@ A single line comment starts with two hyphens and ends at the end of the line.
 var a = 123   -- This is a comment on the same line as a statement.
 ```
 There will be multi-line comments in Cyber but the syntax has not been determined.
-
-[parent](#syntax)
 
 ## CYON.
 CYON or the Cyber object notation is similar to JSON. The format uses the same literal value semantics as Cyber.
@@ -414,8 +380,6 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
     ],
 ]
 ```
-
-[parent](#syntax)
 
 # Data Types.
 
@@ -456,7 +420,7 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
 </td>
 </tr></table>
 
-[top](#table-of-contents)
+[^top](#table-of-contents)
 
 In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts.
 
@@ -466,8 +430,6 @@ Object types include [Lists](#lists), [Tuples](#tuples), [Maps](#maps), [Strings
 
 ## None.
 The `none` value represents an empty value. This is similar to null in other languages.
-
-[parent](#data-types)
 
 ## Booleans.
 Booleans can be `true` or `false`. See [`type bool`](#type-bool).
@@ -479,8 +441,6 @@ if a:
 When other value types are coerced to the bool type, the truthy value is determined as follows.
 - The `none` value is `false`.
 - Other objects and values are always `true`.
-
-[parent](#data-types)
 
 ## Numbers.
 
@@ -508,8 +468,6 @@ var b = int(a)
 
 In addition to arithmetic operations, integers can also perform [bitwise operations](#bitwise-operators).
 
-[parent](#data-types)
-
 ### Floats.
 `float` is the default floating point type. It has a (IEEE 754) 64-bit floating point format. See [`type float`](#type-float).
 
@@ -532,12 +490,8 @@ var a = '12.3'
 var b = float(a) 
 ```
 
-[parent](#data-types)
-
 ### Big Numbers.
 > _Planned Feature_
-
-[parent](#data-types)
 
 ## Strings.
 The `string` type represents a sequence of UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as an `int`. See [`type string`](#type-string).
@@ -633,8 +587,6 @@ i += 1
 print(i + str[i..].findRune(`c`))   -- "5"
 ```
 
-[parent](#data-types)
-
 ### String Interpolation.
 Expressions can be embedded into string templates with `$()`:
 ```cy
@@ -643,8 +595,6 @@ var points = 123
 var str = 'Scoreboard: $(name) $(points)'
 ```
 String templates can not contain nested string templates.
-
-[parent](#data-types)
 
 ### String formatting.
 Values that can be formatted into a string will have a `fmt` method:
@@ -656,8 +606,6 @@ var bytes = file.readToEnd()
 print '$(bytes.fmt(.x))' 
 ```
 
-[parent](#data-types)
-
 ## Arrays.
 An `array` is an immutable sequence of bytes. It can be used to represent strings but it won't automatically validate their encoding and indexing returns the n'th byte rather than a UTF-8 rune. See [`type array`](#type-array).
 
@@ -668,8 +616,6 @@ print a[0]     -- "97"
 print a[1]     -- "255"
 ```
 
-[parent](#data-types)
-
 ## Bracket literals.
 Bracket literals are delimited with brackets `[]`. They are used to initialize Lists, Maps, and Objects:
 ```cy
@@ -677,8 +623,6 @@ var list = [1, 2, 3]
 var map = [ a: 123, b: 234 ]
 var obj = [MyObject a: 123, b: 234]
 ```
-
-[parent](#data-types)
 
 ## Lists.
 Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements. See [`type List`](#type-list).
@@ -730,17 +674,11 @@ for list -> it:
 list.remove(1)
 ```
 
-[parent](#data-types)
-
 ## Tuples.
 > _Incomplete: Tuples can only be created from @host funcs at the moment._
 
-[parent](#data-types)
-
 ## Maps.
 Maps are a builtin type that store key value pairs in dictionaries. See [`type Map`](#type-map).
-
-[parent](#data-types)
 
 ### Create map.
 Create a map using key value pairs inside a collection literal:
@@ -756,15 +694,11 @@ var map = [
 ]
 ```
 
-[parent](#data-types)
-
 ### Empty map.
 The empty map is initialized using `[:]`:
 ```cy
 var empty = [:]
 ```
-
-[parent](#data-types)
 
 ### Map indexing.
 Get a value from the map using the index operator:
@@ -776,8 +710,6 @@ Maps can be accessed with the `.` dot operator as well:
 ```cy
 print map.a
 ```
-
-[parent](#data-types)
 
 ### Map operations.
 ```cy
@@ -796,8 +728,6 @@ map.remove 123
 for map -> [val, key]:
     print '$(key) -> $(val)'
 ```
-
-[parent](#data-types)
 
 ### Map block.
 Entries can also follow a collection literal block.
@@ -821,14 +751,10 @@ var colors = []:
         blue: 0x0000AA
 ```
 
-[parent](#data-types)
-
 ## Objects.
 Any value that isn't a primitive is an object. You can declare your own object types using the `type object` declaration.
 Object types are similar to structs and classes in other languages.
 Unlike classes, there is no concept of inheritance at the language level.
-
-[parent](#data-types)
 
 ### Fields.
 Fields must be declared at the top of the `type object` block using `var` or `my`:
@@ -839,16 +765,12 @@ type Node object:
 ```
 When fields are declared with `my` instead, they become dynamically typed.
 
-[parent](#data-types)
-
 ### Instantiation.
 New object instances are created using a leading type name and the field values in a collection literal:
 ```cy
 var node = [Node value: 123, next: none]
 print node.value       -- Prints "123"
 ```
-
-[parent](#data-types)
 
 ### Methods.
 Methods allow invoking a function on an object instance using the `.` operator:
@@ -874,8 +796,6 @@ func Node.getNext(self):
     return self.next
 ```
 
-[parent](#data-types)
-
 ### `self` variable.
 Type members can be implicitly referenced inside the method. *Incomplete: Only the type's fields can be referenced this way.*
 
@@ -888,8 +808,6 @@ type Node object:
     func double():
         return self.value * 2
 ```
-
-[parent](#data-types)
 
 ### Type functions.
 Type functions are declared outside of the `type` block with an explicit namespace path:
@@ -905,8 +823,6 @@ func Node.new():
 var n = Node.new()
 ```
 
-[parent](#data-types)
-
 ### Type variables.
 Similarily, type variables are declared outside of the `type` block:
 ```cy
@@ -915,8 +831,6 @@ var Node.DefaultValue = 100
 
 print Node.DefaultValue    -- Prints "100"
 ```
-
-[parent](#data-types)
 
 ## Enums.
 A new enum type can be declared with the `type enum` declaration.
@@ -940,8 +854,6 @@ fruit = .orange
 print(fruit == Fruit.orange)   -- 'true'
 ```
 
-[parent](#data-types)
-
 ## Symbols.
 Symbol literals begin with `.`, followed by an identifier. They have their own global unique id.
 ```cy
@@ -949,8 +861,6 @@ var currency = .usd
 print(currency == .usd)   -- 'true'
 print int(currency)       -- '123' or some arbitrary id.
 ```
-
-[parent](#data-types)
 
 # Control Flow.
 <table><tr>
@@ -979,7 +889,7 @@ print int(currency)       -- '123' or some arbitrary id.
 </td>
 </tr></table>
 
-[top](#table-of-contents)
+[^top](#table-of-contents)
 
 Cyber provides the common constructs to branch and enter loops.
 
@@ -997,16 +907,12 @@ else:
     print 'neither 10 nor 20'
 ```
 
-[parent](#control-flow)
-
 ### Conditional expression.
 A conditional branch expression evaluates a condition and returns either the true value or false value:
 ```cy
 var a = 10
 var str = a == 10 ? 'red' else 'blue'
 ```
-
-[parent](#control-flow)
 
 ### `and`/`or`
 Use `and` and `or` logical operators to combine conditions:
@@ -1017,8 +923,6 @@ if a > 5 and a < 15:
 if a == 20 or a == 10: 
     print 'a is 10 or 20'
 ```
-
-[parent](#control-flow)
 
 ## Iterations.
 
@@ -1032,8 +936,6 @@ while:
     count += 1
 ```
 
-[parent](#control-flow)
-
 ### Conditional loop.
 When the `while` clause contains a condition, the loop continues to run until the condition is evaluated to `false`:
 ```cy
@@ -1045,8 +947,6 @@ while running:
     count += 1
 ```
 
-[parent](#control-flow)
-
 ### Unwrapping loop. 
 Using the capture operator `->` unwraps the left optional value to the right variable declaration. The loop exits when the left value is `none`:
 ```cy
@@ -1054,8 +954,6 @@ var iter = dir.walk()
 while iter.next() -> entry:
     print entry.name
 ```
-
-[parent](#control-flow)
 
 ### `for` range.
 `for` loops can iterate over a range that starts at an `int` (inclusive) to a target `int` (exclusive).
@@ -1079,8 +977,6 @@ When the range operator `..` is replaced with `..=`, the target `int` is inclusi
 for 0..=100 -> i:
     print i    -- 0, 1, 2, ... , 100
 ```
-
-[parent](#control-flow)
 
 ### `for` each.
 The `for` clause can iterate over any type that implements the `Iterable` trait. An Iterable contains an `iterator()` method which returns an `Iterator` object. The for loop continually invokes the Iterator's `next()` method until `none` is returned.
@@ -1108,8 +1004,6 @@ for map -> [ key, val ]:
     print 'key $(key) -> value $(val)'
 ```
 
-[parent](#control-flow)
-
 ### `for` each with index.
 A counting index can be declared after the each variable. The count starts at 0 for the first value:
 ```cy
@@ -1118,8 +1012,6 @@ var list = [1, 2, 3, 4, 5]
 for list -> val, i:
     print 'index $(i), value $(val)'
 ```
-
-[parent](#control-flow)
 
 ### Exit loop.
 Use `break` to exit a loop. This loop stops printing once `i` reaches 4:
@@ -1130,8 +1022,6 @@ for 0..10 -> i:
     print i
 ```
 
-[parent](#control-flow)
-
 ### Next iteration.
 Use `continue` to skip the rest of the loop and go to the next iteration.
 This loop prints 0 through 9 but skips 4:
@@ -1141,8 +1031,6 @@ for 0..10 -> i:
         continue
     print i
 ```
-
-[parent](#control-flow)
 
 ## `switch` matching.
 The `switch` statement branches to a case block from a matching case condition. The expression that is matched against comes after switch statement. Multiple cases can be grouped together using a comma separator. An optional `else` fallback case is executed when no other cases were matched.
@@ -1161,8 +1049,6 @@ else:
 ```
 Note that the `switch` block must be empty and requires at least one `case` block or an `else` block to come after it.
 
-[parent](#control-flow)
-
 ### `switch` assignment.
 Although `switch` can not be used freely as an expression, it can be assigned to a left variable or destination:
 ```cy
@@ -1173,8 +1059,6 @@ case 'jalapeño' => 2000
 case 'serrano'  => 10000
 ```
 When declaring an assignable switch, the cases must have a return value using the syntax `case {cond} => {expr}` or `else => {expr}`.
-
-[parent](#control-flow)
 
 ### `switch` break.
 A `break` statement exits the current case block and resumes execution after the end of the switch statement: *Planned Feature*
@@ -1187,17 +1071,11 @@ case 0..5:
     print value    -- Skips second print if `value` is 3.
 ```
 
-[parent](#control-flow)
-
 ## Try/Catch.
 The `try catch` statement, `try else` and `try` expressions provide a way to catch a throwing error and resume execution in a different branch. Learn more about [Error Handling](#error-handling).
 
-[parent](#control-flow)
-
 ## Deferred Execution.
 > _Planned Feature_
-
-[parent](#control-flow)
 
 # Functions.
 
@@ -1212,7 +1090,7 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
   * [Shorthand syntax.](#shorthand-syntax)
   * [Call block syntax.](#call-block-syntax)
 
-[top](#table-of-contents)
+[^top](#table-of-contents)
 
 In Cyber, there are first-class functions (or function values) and static functions.
 
@@ -1252,8 +1130,6 @@ func compute(rad):
 var [ x, y ] = compute(pi)
 ```
 
-[parent](#functions)
-
 ## Function overloading.
 Functions can be overloaded by the number of parameters in its signature. [Typed functions](#functions-1) are further overloaded by their type signatures. 
 ```cy
@@ -1270,8 +1146,6 @@ print foo()         -- "4"
 print foo(2)        -- "12"
 print foo(20, 5)    -- "100"
 ```
-
-[parent](#functions)
 
 ## Lambdas.
 Lambdas or function values can be assigned to variables or passed as arguments into other constructs.
@@ -1301,8 +1175,6 @@ canvas.onUpdate():
 ```
 Passing a lambda block as a call argument is only possible in a call block. *Planned Feature* See [Function calls](#function-calls).
 
-[parent](#functions)
-
 ## Closures.
 Lambdas can capture local variables from parent blocks. This example shows the lambda `f` capturing `a` from the main scope: *Incomplete, only variables one parent block away can be captured.*
 ```cy
@@ -1328,22 +1200,14 @@ func foo():
     print a       -- CompileError: Undeclared variable `a`.
 ```
 
-[parent](#functions)
-
 ## Named parameters.
 > _Planned Feature_
-
-[parent](#functions)
 
 ## Optional parameters.
 > _Planned Feature_
 
-[parent](#functions)
-
 ## Variadic parameters.
 > _Planned Feature_
-
-[parent](#functions)
 
 ## Function calls.
 The straightforward way to call a function is to use parentheses.
@@ -1357,8 +1221,6 @@ You can call functions with named parameters.
 ```cy
 var d = dist(x0: 10, x1: 20, y0: 30, y1: 40)
 ```
-
-[parent](#functions)
 
 ### Shorthand syntax.
 The shorthand method for calling functions omits parentheses and commas. This only works for functions that accept parameters:
@@ -1395,8 +1257,6 @@ var a = myFunc 'hello' (1 + 2 * 3)
 a = myFunc 'hello' (otherFunc 1+2 'world')
 ```
 
-[parent](#functions)
-
 ### Call block syntax.
 The call expression block continues to add arguments from the block's body. If arguments are omitted from the initial call expression they can be added inside using the `..` syntax. Arguments mapped to named parameters have a key value syntax separated by a `:`. All other arguments are added into a list and passed as the last argument.
 > _Planned Feature_
@@ -1410,8 +1270,6 @@ foo(123):
     'hello'
 ```
 In the example above, the function `foo` is called with 4 arguments. The first argument `123` is included in the starting call expression. The second argument is a function value inside the call expression block. The third argument is mapped to the param `param3`. Finally, the fourth argument is a list that contains `234`, `bar()`, and `'hello'`. 
-
-[parent](#functions)
 
 # Modules.
 <table><tr>
@@ -1460,7 +1318,7 @@ In the example above, the function `foo` is called with 4 arguments. The first a
 </td>
 </tr></table>
 
-[top](#table-of-contents)
+[^top](#table-of-contents)
 
 Modules have their own namespace and contain accessible static symbols. By default, importing another Cyber script returns a module with its declared symbols.
 
@@ -1529,8 +1387,6 @@ import { cos, pi } 'math'
 print cos(pi)
 ```
 
-[parent](#modules)
-
 ## Exporting.
 All static declarations are exported when the script's module is loaded.
 ```cy
@@ -1543,8 +1399,6 @@ type Thing object:  -- Exported type.
     var a float
 ```
 
-[parent](#modules)
-
 ## Module URI.
 To get the absolute path of the current module, reference the compile-time variable `ModUri`.
 This can be used with `os.dirName` to get the current module directory.
@@ -1555,19 +1409,13 @@ import os
 print os.dirName(#ModUri)  -- Prints '/some/path'
 ```
 
-[parent](#modules)
-
 ## Visibility.
 The annotation `@hide` provides a hint to editors that a static symbol should not appear in the auto-complete. Despite this, the symbol is still reachable.
-
-[parent](#modules)
 
 ## Builtin modules.
 Builtin modules are the bare minimum that comes with Cyber. The [embeddable library](#embedding) contains these modules and nothing more. They include:
 - [builtins](#builtins): Cyber related functions and commonly used utilities.
 - [math](#math): Math constants and functions.
-
-[parent](#modules)
 
 ## builtins.
 The `builtins` module contains functions related to Cyber and common utilities. It is automatically imported into each script's namespace. 
@@ -1578,8 +1426,6 @@ Sample usage:
 print 'hello'
 print typeof('my str').id()
 ```
-
-[parent](#modules)
 
 <!-- builtins.start -->
 <!-- builtins.end -->
@@ -1595,8 +1441,6 @@ var r = 10.0
 print(math.pi * r^2)
 ```
 
-[parent](#modules)
-
 <!-- math.start -->
 <!-- math.end -->
 
@@ -1604,8 +1448,6 @@ print(math.pi * r^2)
 Std modules come with Cyber's CLI. They include:
 - [os](#os): System level functions.
 - [test](#test): Utilities for testing.
-
-[parent](#modules)
 
 ## os.
 Cyber's os module contains system level functions. It's still undecided as to how much should be included here so it's incomplete. You can still access os and libc functions yourself using Cyber's FFI or embedding API.
@@ -1619,8 +1461,6 @@ for map -> [k, v]:
     print '$(k) -> $(v)'
 ```
 
-[parent](#modules)
-
 <!-- os.start -->
 <!-- os.end -->
 ### `map DirEntry`
@@ -1629,8 +1469,6 @@ for map -> [k, v]:
 | `'name' -> array` | The name of the file or directory. |
 | `'type' -> #file | #dir | #unknown` | The type of the entry. |
 
-[parent](#modules)
-
 ### `map DirWalkEntry`
 | key | summary |
 | -- | -- |
@@ -1638,16 +1476,12 @@ for map -> [k, v]:
 | `'path' -> array` | The path of the file or directory relative to the walker's root directory. |
 | `'type' -> #file | #dir | #unknown` | The type of the entry. |
 
-[parent](#modules)
-
 ### `map ArgOption`
 | key | summary |
 | -- | -- |
 | `'name' -> string` | The name of the option to match excluding the hyphen prefix. eg. `-path` |
 | `'type' -> metatype(string | float | boolean)` | Parse as given value type. |
 | `'default' -> any` | Optional: Default value if option is missing. `none` is used if this is not provided. |
-
-[parent](#modules)
 
 ## test.
 The `test` module contains utilities for testing.
@@ -1659,8 +1493,6 @@ import t 'test'
 var a = 123 + 321
 t.eq(a, 444)
 ```
-
-[parent](#modules)
 
 <!-- test.start -->
 <!-- test.end -->
@@ -1678,7 +1510,7 @@ t.eq(a, 444)
 * [Pointers.](#pointers)
 * [cbindgen.cy](#cbindgency)
 
-[top](#table-of-contents)
+[^top](#table-of-contents)
 
 Cyber supports binding to an existing C ABI compatible library at runtime.
 This allows you to call into dynamic libraries created in C or other languages.
@@ -1692,8 +1524,6 @@ import os
 
 var ffi = os.newFFI()
 ```
-
-[parent](#ffi)
 
 ## Declare functions.
 Functions from a library are first declared using `cfunc` which accepts C types in the form of symbols. In a future update they will accept C syntax instead.
@@ -1710,8 +1540,6 @@ int add(int a, int b) {
 }
 ```
 
-[parent](#ffi)
-
 ## Bind library.
 `bindLib` accepts the path to the library and returns a object which can be used to invoke the functions declared from `cfunc`:
 ```cy
@@ -1720,23 +1548,15 @@ lib.add(123, 321)
 ```
 Note that `my` is used to allow `lib` to be used dynamically since the type is unknown at compile-time.
 
-[parent](#ffi)
-
 ### Search path.
 If the path argument to `bindLib` is just a filename, the search steps for the library is specific to the operating system. Provide an absolute (eg. '/foo/mylib.so') or relative (eg. './mylib.so') path to load from a direct location instead. When the path argument is `none`, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own application/runtime.
-
-[parent](#ffi)
 
 ### Configuration.
 By default `bindLib` returns an anonymous object with the binded C-functions as methods. This is convenient for invoking functions using the method call syntax. If a config is passed into `bindLib` as the second argument, `genMap: true` makes `bindLib` return a map instead with the binded C-functions as Cyber functions.
 
-[parent](#ffi)
-
 ### Finalizer.
 The resulting object of `bindLib` holds a reference to an internal TCCState which owns the loaded JIT code.
 Once the object is released by ARC, the TCCState is also released which removes the JIT code from memory.
-
-[parent](#ffi)
 
 ## Mappings.
 When using `cfunc` or `cbind` declarations, [symbols](#symbols-1) are used to represent default type mappings from Cyber to C and back:
@@ -1762,8 +1582,6 @@ When using `cfunc` or `cbind` declarations, [symbols](#symbols-1) are used to re
 
 1. Use `os.cstr()` and `pointer.fromCstr()` to convert between a Cyber string and a null terminated C string.
 2. The mapping from a Cyber object type `S` and the C-struct can be declared with `cbind`.
-
-[parent](#ffi)
 
 ## Bind to Cyber type.
 `cbind` is used to bind a C struct to a Cyber object type. Once declared, the Cyber type can be used as a binding type in function declarations:
@@ -1804,8 +1622,6 @@ var ptr = lib.foo([MyObject a: 123, b: os.cstr('foo'), c: true])
 var res = lib.ptrToMyObject(ptr)
 ```
 
-[parent](#ffi)
-
 ## Pointers.
 A `pointer` is used to read or write to an exact memory address. This is typically used for FFI to manually map Cyber types to C, and back. See [`type pointer`](#type-pointer).
 
@@ -1815,12 +1631,8 @@ var ptr = pointer(0xDEADBEEF)
 print ptr.value()     --'3735928559'
 ```
 
-[parent](#ffi)
-
 ## cbindgen.cy
 [cbindgen.cy](https://github.com/fubark/cyber/blob/master/src/tools/cbindgen.cy) is a Cyber script that automatically generates bindings given a C header file. Some example bindings that were generated include: [Raylib](https://github.com/fubark/ray-cyber) and [LLVM](https://github.com/fubark/cyber/blob/master/src/tools/llvm.cy).
-
-[parent](#ffi)
 
 # Error Handling.
 <table><tr>
@@ -1847,15 +1659,13 @@ print ptr.value()     --'3735928559'
 </td>
 </tr></table>
 
-[top](#table-of-contents)
+[^top](#table-of-contents)
 
 Cyber provides a throw/catch mechanism to handle expected errors. For unexpected errors, panics can be used as a fail-fast mechanism to abort the currently running fiber.
 
 ## Error trait.
 Only types that implement the `Error` trait can be thrown or attached to a panic.
 Since the `Error` trait is empty, it's simple to turn any type into a throwable type.
-
-[parent](#error-handling)
 
 ### `error` value.
 An `error` value contains a `symbol` and implements the `Error` trait. They can be created without a declaration using the error literal:
@@ -1878,8 +1688,6 @@ if err.sym() == .Oops:
     handleOops()
 ```
 
-[parent](#error-handling)
-
 ### Enum error.
 By implementing the `Error` trait, an enum type can be throwable: *Planned Feature*
 ```cy
@@ -1891,8 +1699,6 @@ type MyError enum:
 
 var err = MyError.nameTooLong
 ```
-
-[parent](#error-handling)
 
 ## Throwing errors.
 Use the `throw` keyword to throw errors. 
@@ -1912,8 +1718,6 @@ func fail():
     var a = false or throw error.False
 ```
 
-[parent](#error-handling)
-
 ## Catching errors.
 
 ### `try` block.
@@ -1925,8 +1729,6 @@ catch err:
     print err      -- 'error.Failed'
 ```
 
-[parent](#error-handling)
-
 ### `caught` variable.
 The contextual `caught` variable is used to reference the caught error: *Planned Feature*
 ```cy
@@ -1935,8 +1737,6 @@ try:
 catch:
     print caught   -- 'error.Failed'
 ```
-
-[parent](#error-handling)
 
 ### `catch` matching.
 An inner `catch` block contains a matching clause: *Planned Feature*
@@ -1959,8 +1759,6 @@ catch:
     print caught
 ```
 
-[parent](#error-handling)
-
 ### `try` expression.
 The `try` expression either returns a non-error result or the default value from the `catch` clause:
 ```cy
@@ -1974,8 +1772,6 @@ var res = try happyFunc(funcThatCanFail()) catch 123
 print res         -- '123'
 ```
 
-[parent](#error-handling)
-
 ### Value or error.
 When the `catch` clause is omitted, the `try` expression will return either the value or the error:
 ```cy
@@ -1983,8 +1779,6 @@ var res = try funcThatCanFail()
 if res == error.Failed:
     print 'Result is an error.'
 ```
-
-[parent](#error-handling)
 
 ## Semantic checks.
 ### `throws` specifier.
@@ -2010,8 +1804,6 @@ func result(cond bool) throws, int:
         throw error.Failure
 ```
 
-[parent](#error-handling)
-
 ### Requiring `throws`.
 A compile-time error is issued when a typed function without a `throws` specifier contains an uncaught throwing expression: *Planned Feature*
 ```cy
@@ -2021,8 +1813,6 @@ func foo(a int) int:
     else:                   -- specifier or any throwing expression must
         return a * 2        -- be caught with `try catch`.
 ```
-
-[parent](#error-handling)
 
 ## Stack trace.
 When an uncaught error bubbles up to the top, its stack trace from the `throw` callsite is dumped to the console. The builtin `errorTrace()` and `errorReport()` are used to obtain the stack trace info.
@@ -2038,12 +1828,8 @@ catch:
     print info.frames.len()
 ```
 
-[parent](#error-handling)
-
 ## Unexpected errors.
 An unexpected error is an error that is not meant to be handled at runtime.
-
-[parent](#error-handling)
 
 ### Panics.
 The builtin `panic` is used as a fail-fast mechanism to quickly exit the current fiber with an error payload:
@@ -2054,8 +1840,6 @@ func kaboom():
 kaboom()     -- Script ends and prints the stack trace.
 ```
 Panics can not be caught using `try catch`. Once `panic` is invoked, the current fiber stops execution and begins to unwind its call stack. Once the error is propagated to the root, the fiber ends and transitions to a panic state. If the main fiber ends this way, the VM begins to shutdown. Otherwise, execution resumes on the next fiber which allows recovery from a panic.
-
-[parent](#error-handling)
 
 # Concurrency.
 
@@ -2071,14 +1855,12 @@ Panics can not be caught using `try catch`. Once `panic` is invoked, the current
 * [Async.](#async)
 * [Multi-thread.](#multi-thread)
 
-[top](#table-of-contents)
+[^top](#table-of-contents)
 
 Cyber supports fibers as a concurrency mechanism. There are plans to support preemptive concurrency with async/await as well as multithreading.
 
 ## Fibers.
 A fiber represents a separate execution context as a first-class value. It contains it's own call stack and program counter. Fibers by themselves do not enable parallelism.
-
-[parent](#concurrency)
 
 ### Creating fibers.
 The `coinit` keyword creates and returns a new fiber using a function as the entry point:
@@ -2101,8 +1883,6 @@ print count          -- '2'
 A fiber does not start execution until `coresume` is invoked on it.
 `coyield` pauses the current fiber and execution is returned to the previous fiber that invoked `coresume`.
 
-[parent](#concurrency)
-
 ### Passing arguments.
 Arguments after the callee are passed into the entry function:
 ```cy
@@ -2116,8 +1896,6 @@ coresume fiber
 print count          -- '5'
 ```
 When the fiber is created, the arguments are saved inside the fiber's stack. Once the first `coresume` is invoked, the entry function is invoked with the saved arguments.
-
-[parent](#concurrency)
 
 ### Reset state.
 To reset a fiber to its initial state, invoke `reset()`. *Planned Feature*
@@ -2141,8 +1919,6 @@ fiber.reset()
 print(coresume task)    -- Prints "10"
 ```
 
-[parent](#concurrency)
-
 ### Rebinding arguments.
 Arguments attached to the fiber can be rebinded with a different set of values. *Planned Feature*
 This allows fiber reuse, instead of creating a new fiber:
@@ -2161,8 +1937,6 @@ fiber.bindArgs(20)
 -- Run task again with the new argument...
 ```
 
-[parent](#concurrency)
-
 ### Fiber block.
 A fiber block is used to construct a fiber without an entry function. *Planned Feature* The counting example can be rewritten to:
 ```cy
@@ -2180,8 +1954,6 @@ coresume fiber
 print count          -- '2'
 ```
 Referencing parent variables from the fiber block automatically captures them just like a function closure.
-
-[parent](#concurrency)
 
 ### Pause and resume.
 `coyield` can be used anywhere in a fiber's call stack to pause execution and return to the previous fiber.
@@ -2209,8 +1981,6 @@ print(coresume fiber)    -- '123'
 
 `coyield` can return a value back to `coresume`. *Planned Feature*
 
-[parent](#concurrency)
-
 ### Fiber state.
 Use `Fiber.status()` to get the current state of the fiber.
 ```cy
@@ -2227,22 +1997,14 @@ print fiber.status()   -- '.done'
 ```
 The main execution context is a fiber as well. Once the main fiber has finished, the VM is done and control is returned to the host.
 
-[parent](#concurrency)
-
 ## Gas mileage.
 > _Planned Feature_
-
-[parent](#concurrency)
 
 ## Async.
 > _Planned Feature_
 
-[parent](#concurrency)
-
 ## Multi-thread.
 > _Planned Feature_
-
-[parent](#concurrency)
 
 # Type System.
 
@@ -2273,22 +2035,18 @@ The main execution context is a fiber as well. Once the main fiber has finished,
 </td>
 </tr></table>
 
-[top](#table-of-contents)
+[^top](#table-of-contents)
 
 Cyber supports the use of both dynamically and statically typed code.
 
 ## Dynamic typing.
 Dynamic typing can reduce the amount of friction when writing code, but it can also result in more runtime errors.
 
-[parent](#type-system)
-
 ### `my` declaration.
 Variables declared with `my` are assigned the `dynamic` type:
 ```cy
 my a = 123
 ```
-
-[parent](#type-system)
 
 ### `dynamic` vs `any`
 `dynamic` values can be freely used and copied without any compile errors (if there is a chance it can succeed at runtime, see [Recent type inference](#recent-type-inference)):
@@ -2317,16 +2075,12 @@ The use of the `dynamic` type effectively defers type checking to runtime while 
 
 A `dynamic` value can be used in any operation. It can be invoked as the callee, invoked as the receiver of a method call, or used with operators.
 
-[parent](#type-system)
-
 ### Invoking `dynamic` values.
 When a `dynamic` value is invoked, checks on whether the callee is a function is deferred to runtime. 
 ```cy
 my op = 123
 print op(1, 2, 3)      -- RuntimeError. Expected a function.
 ```
-
-[parent](#type-system)
 
 ### Dynamic return value.
 When the return type of a function is not specified, it defaults to the `dynamic` type.
@@ -2341,8 +2095,6 @@ func add(a int, b int):
 print add(getValue(), 2)    -- Prints "125"
 ```
 The `add` function defers type checking of `getValue()` to runtime because it has the `dynamic` type.
-
-[parent](#type-system)
 
 ### Recent type inference.
 Although a `dynamic` variable has the most flexibility, in some situations it is advantageous to know what type it could be.
@@ -2380,18 +2132,12 @@ func foo(s string):
     pass
 ```
 
-[parent](#type-system)
-
 ## Static typing.
 Static typing can be incrementally applied which provides compile-time guarantees and prevents runtime errors.
 Static typing also makes it easier to maintain and refactor your code.
 
-[parent](#type-system)
-
 ### Builtin types.
 The following builtin types are available in every module: `bool`, `float`, `int`, `string`, `List`, `Map`, `error`, `fiber`, `any`.
-
-[parent](#type-system)
 
 ### `var` declaration.
 A `var` declaration automatically infers the type from the initializer:
@@ -2408,8 +2154,6 @@ func getValue():
 -- Initialized as an `any` variable.
 var a = getValue()
 ```
-
-[parent](#type-system)
 
 ### Typed variables.
 A typed local variable can be declared by attaching a type specifier after its name. The value assigned to the variable must satisfy the type constraint or a compile error is issued.
@@ -2429,8 +2173,6 @@ Static variables are declared in a similar way:
 var Root.global Map = [:]
 ```
 Unlike local variables, static variable declarations do not infer the type from the right hand side. A specific type must be specified or it will default to the `any` type.
-
-[parent](#type-system)
 
 ### Object types.
 A `type object` declaration creates a new object type. Field types are optional and declared with a type specifier after their name.
@@ -2468,8 +2210,6 @@ var n = [Node:]    -- CompileError. Can not zero initialize `next`
                    -- because of circular dependency.
 ```
 
-[parent](#type-system)
-
 ### Zero values.
 The following shows the zero values of builtin or created types.
 
@@ -2488,8 +2228,6 @@ The following shows the zero values of builtin or created types.
 |`any`|`none`|
 |`S?`|`none`|
 
-[parent](#type-system)
-
 ### Type aliases.
 A type alias is declared from a single line `type` statement. This creates a new type symbol for an existing data type.
 ```cy
@@ -2499,8 +2237,6 @@ type Vec3 util.Vec3
 
 var v = [Vec3 x: 3, y: 4, z: 5]
 ```
-
-[parent](#type-system)
 
 ### Functions.
 Function parameter and return type specifiers follows a similiar syntax.
@@ -2512,17 +2248,11 @@ print mul(3, 4)
 print mul(3, '4')  -- CompileError. Function signature mismatch.
 ```
 
-[parent](#type-system)
-
 ### Traits.
 > _Planned Feature_
 
-[parent](#type-system)
-
 ### Union types.
 > _Planned Feature_
-
-[parent](#type-system)
 
 ### `any` type.
 A variable with the `any` type can hold any value, but copying it to narrowed type destination will result in a compile error:
@@ -2541,8 +2271,6 @@ print square(a)           -- CompileError. Expected `int`, got `any`.
 print square(a as int)    -- Prints "100".
 ```
 
-[parent](#type-system)
-
 ### Invoking `any` values.
 Since `any` is a static type, invoking an `any` value must be explicitly casted to the appropriate function type.
 > _Planned Feature: Casting to a function type is not currently supported._
@@ -2557,8 +2285,6 @@ print op(1, 2)         -- CompileError. Expected `func (int, int) any`
 var opFunc = op as (func (int, int) int)
 print opFunc(1, 2)     -- Prints "3".
 ```
-
-[parent](#type-system)
 
 ### Type casting.
 The `as` keyword can be used to cast a value to a specific type. Casting lets the compiler know what the expected type is and does not perform any conversions.
@@ -2577,8 +2303,6 @@ print(erased as string)   -- Panic. Can not cast `int` to `string`.
 func add(a int, b int):
     return a + b
 ```
-
-[parent](#type-system)
 
 # Metaprogramming.
 
@@ -2602,7 +2326,7 @@ func add(a int, b int):
 </td>
 </tr></table>
 
-[top](#table-of-contents)
+[^top](#table-of-contents)
 
 ## Operator overloading.
 All operators are implemented as object methods.
@@ -2645,8 +2369,6 @@ var a = [MyCollection arr: [1, 2, 3, 4]]
 print a[1]        -- Prints `3`
 ```
 
-[parent](#metaprogramming)
-
 ### Builtin operators.
 A list of all supported operators:
 
@@ -2673,12 +2395,8 @@ A list of all supported operators:
 | Set index | `$setIndex` |
 | Slice | `$slice` |
 
-[parent](#metaprogramming)
-
 ### Custom operators.
 > _Planned Feature_
-
-[parent](#metaprogramming)
 
 ## Magic functions.
 
@@ -2696,12 +2414,8 @@ func Vec2.'$call'(x float, y float) Vec2:
 var v = Vec2(1, 2)
 ```
 
-[parent](#metaprogramming)
-
 ### Getter/Setter.
 > _Planned Feature_
-
-[parent](#metaprogramming)
 
 ### Missing method.
 Declare a `$missing` method as a fallback when a method was not found in an instance.
@@ -2717,8 +2431,6 @@ print a.foo()      -- Output: '0'
 print a.bar(1, 2)  -- Output: '2'
 ```
 
-[parent](#metaprogramming)
-
 ## Reflection.
 A [`type metatype`](#type-metatype) object references an internal type. Use the `typeof` builtin to get the `metatype` of a value.
 ```cy
@@ -2729,8 +2441,6 @@ print typeof(val)   -- 'type: float'
 print bool          -- 'type: bool'
 ```
 
-[parent](#metaprogramming)
-
 ## Annotations.
 Annotations are used to attach modifiers to declarative statements. The `@host` annotation is used for [embedding](#embedding) to bind a host function to a Cyber function:
 ```cy
@@ -2740,22 +2450,14 @@ Annotations are used to attach modifiers to declarative statements. The `@host` 
 Custom annotations.
 > _Planned Feature_
 
-[parent](#metaprogramming)
-
 ## Runtime eval.
 > _Planned Feature_
-
-[parent](#metaprogramming)
 
 ## Generics.
 > _Planned Feature_
 
-[parent](#metaprogramming)
-
 ## Compile-time.
 > _Planned Feature_
-
-[parent](#metaprogramming)
 
 # Embedding.
 
@@ -2780,7 +2482,7 @@ Custom annotations.
 </td>
 </tr></table>
 
-[top](#table-of-contents)
+[^top](#table-of-contents)
 
 The Embed API allows embedding the Cyber compiler and VM as a library into applications. Cyber's core types and the CLI app were built using the Embed API.
 
@@ -2804,8 +2506,6 @@ int main() {
 }
 ```
 
-[parent](#embedding)
-
 ### Override `print`.
 The builtin `print` function does nothing by default, so it needs to be overrided to print to stdout for example:
 ```c
@@ -2819,8 +2519,6 @@ int main() {
     // ...
 }
 ```
-
-[parent](#embedding)
 
 ### Eval script.
 `csEval` compiles and evaluates a script:
@@ -2845,8 +2543,6 @@ If a value is returned from the main block of the script, it's saved to the resu
 Memory is managed by ARC so a value that points to a heap object requires a `csRelease` when it's no longer needed.
 
 `csEval` returns a result code that indicates whether it was successful.
-
-[parent](#embedding)
 
 ## Module Loader.
 A module loader describes how a module is loaded when an `import` statement is encountered during script execution.
@@ -2882,12 +2578,8 @@ int main() {
 ```
 The above example checks whether "my_mod" was imported and returns it's source code. Additional loaders are returned to load the functions, variables, and types from the source code.
 
-[parent](#embedding)
-
 ### Default module loader.
 Since only one module loader can be set to the VM instance, a custom loader is required to handle the "builtins" import which contains all of the core types and functions in Cyber. This can simply be delegated to `csDefaultModuleLoader`.
-
-[parent](#embedding)
 
 ### Function loader.
 A function loader describes how to load a `@host` function when it's encountered by the compiler.
@@ -2912,8 +2604,6 @@ bool funcLoader(CsVM* vm, CsFuncInfo info, CsFuncResult* out) {
 This example uses the `CsFuncInfo.idx` of a @host function to index into an array and return a [Host function](#host-functions) pointer. The name is also compared to ensure it's binding to the correct pointer.
 
 This is an efficient way to map Cyber functions to host functions. A different implementation might use a hash table to map the name of the function to it's pointer.
-
-[parent](#embedding)
 
 ### Variable loader.
 A variable loader describes how to load a `@host` variable when it's encountered by the compiler:
@@ -2946,8 +2636,6 @@ int main() {
 ```
 This example uses the same technique as the function loader, but it can be much simpler. It doesn't matter how the mapping is done as long as the variable loader returns a `CsValue`.
 
-[parent](#embedding)
-
 ### Type loader.
 A type loader describes how to load a `@host` type when it's encountered by the compiler:
 ```c
@@ -2967,8 +2655,6 @@ bool typeLoader(CsVM* vm, CsTypeInfo info, CsTypeResult* out) {
 ```
 When binding to the "MyCollection" type, it's typeId is saved to `outTypeId`. This id is then used to create new instances of this type. See [Host types](#host-types).
 
-[parent](#embedding)
-
 ## Host functions.
 A host function requires a specific function signature:
 ```c
@@ -2978,8 +2664,6 @@ CsValue add(CsVM* vm, const CsValue* args, uint8_t nargs) {
 }
 ```
 A host function should always return a `CsValue`. `csNone()` can be returned if the function does not intend to return any value.
-
-[parent](#embedding)
 
 ## Host types.
 A host type are types that are opaque to Cyber scripts but still behave like an object. They can have type functions and methods.
@@ -3015,8 +2699,6 @@ CsValue myCollectionNew(CsVM* vm, const CsValue* args, uint8_t nargs) {
 ```
 `csNewHostObject` takes the type id (returned from the [Type loader](#type-loader)) and size (in bytes) and returns a new heap object. Note that the size is allowed to vary. Different instances of the same type can occupy different amounts of memory.
 
-[parent](#embedding)
-
 ### `getChildren`
 Since `MyCollection` contains `CsValue` children, the [Type loader](#type-loader) requires a `getChildren` callback so that memory management can reach them:
 ```c
@@ -3026,8 +2708,6 @@ CsValueSlice myCollectionGetChildren(CsVM* vm, void* obj) {
 }
 ```
 
-[parent](#embedding)
-
 ### `finalizer`
 A type finalizer is optional since the memory and children of an instance will be freed automatically by ARC.
 However, it can be useful to perform additional cleanup tasks for instances that contain external resources.
@@ -3036,8 +2716,6 @@ void myCollectionFinalizer(CsVM* vm, void* obj) {
     printf("MyCollection finalizer was called.\n");
 }
 ```
-
-[parent](#embedding)
 
 # Memory.
 
@@ -3050,15 +2728,13 @@ void myCollectionFinalizer(CsVM* vm, void* obj) {
   * [Weak references.](#weak-references)
   * [Cycle detection.](#cycle-detection)
 
-[top](#table-of-contents)
+[^top](#table-of-contents)
 
 Cyber provides memory safety by default.
 
 ## ARC.
 Cyber uses ARC or automatic reference counting to manage memory.
 ARC is deterministic and has less overhead compared to a tracing garbage collector. Reference counting distributes memory management, which reduces GC pauses and makes ARC suitable for realtime applications. One common issue in ARC implementations is reference cycles which Cyber addresses with [Weak References](#weak-references) and it's very own [Cycle Detection](#cycle-detection).
-
-[parent](#memory)
 
 ### Reference counting.
 In Cyber, there are [primitive and object](#data-types) values. Primitives don't need any memory management, since they are copied by value and no heap allocation is required (with the exception of primitives being captured by a [closure](#closures-1). 
@@ -3067,32 +2743,20 @@ Objects are managed by ARC. Each object has its own reference counter. Upon crea
 
 Once the reference count reaches 0 the object begins its destruction procedure. First, child references are released thereby decrementing their reference counts by 1. If the object is a host object, it will invoke its `finalizer` function. Afterwards, the object is freed from memory.
 
-[parent](#memory)
-
 ### Optimizations.
 The compiler can reduce the number of retain/release ops since it can infer value types even though they are dynamically typed to the user. Arguments passed to functions are only retained depending on the analysis from the callsite.
-
-[parent](#memory)
 
 ### Closures.
 When primitive variables are captured by a [closure](#closures), they are boxed and allocated on the heap. This means they are managed by ARC and cleaned up when there are no more references to them.
 
-[parent](#memory)
-
 ### Fibers.
 [Fibers](#fibers) are freed by ARC just like any other object. Once there are no references to the fiber, it begins to release it's child references by unwinding it's call stack.
-
-[parent](#memory)
 
 ## Heap.
 Many object types in Cyber are small enough to be at or under 40 bytes. To take advantage of this, Cyber can reserve object pools to quickly allocate and free these small objects with very little bookkeeping. Bigger objects are allocated and managed by `mimalloc` which has proven to be a fast and reliable general-purpose heap allocator.
 
-[parent](#memory)
-
 ## Weak references.
 > _Planned Feature_
-
-[parent](#memory)
 
 ## Cycle detection.
 The cycle detector is also considered a GC and frees abandoned objects managed by ARC. Although weak references can remove cycles altogether, Cyber does not force you to use them and provides a manual GC as a one-time catch all solution.
@@ -3119,14 +2783,12 @@ print res['numCycFreed']      -- Output: 2
 print res['numObjFreed']      -- Output: 2
 ```
 
-[parent](#memory)
-
 # Backends.
 
 * [JIT.](#jit)
 * [AOT.](#aot)
 
-[top](#table-of-contents)
+[^top](#table-of-contents)
 
 ## JIT.
 Cyber's just-in-time compiler is incomplete and unstable. To run your script with JIT enabled:
@@ -3136,9 +2798,5 @@ cyber -jit &lt;script&gt;
 
 The JIT compiler is just as fast as the bytecode generation so when it's enabled, the entire script is compiled from the start.
 
-[parent](#backends)
-
 ## AOT
 Work on the ahead-of-time compiler has not begun.
-
-[parent](#backends)

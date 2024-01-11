@@ -71,10 +71,28 @@ for worlds -> w:
 Cyber's syntax is concise and easy to read.
 
 ## Statements.
-A statement ends with the new line.
+A statement ends with the new line:
 ```cy
--- An assignment statement.
 var a = 123
+```
+
+To wrap a statement to the next line, the last token before the new line must be an operator or a separator:
+```cy
+var gameover = health <= 0 or
+    player.collidesWith(spikes)
+
+if year > 2020 and year <= 2030 and
+    month > 0 and month <= 11:
+    print 'Valid'
+```
+
+Any token inside a delimited syntax (such as parentheses or brackets) can be wrapped to the next line:
+```cy
+var sum = add(1, 2, 3, 4,
+    100, 200, 300, 400)
+
+var colors = ['red', 'blue', 'green',
+    'purple', 'orange', 'yellow']
 ```
 
 ## Blocks.

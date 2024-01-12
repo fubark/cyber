@@ -28,6 +28,10 @@ pub const Config = struct {
 
     debug: bool = false,
 
+    ctx: ?*anyopaque = null,
+
+    chdir: ?[]const u8 = null,
+
     pub fn withSilent(self: Config) Config {
         var new = self;
         new.silent = true;
@@ -37,6 +41,12 @@ pub const Config = struct {
     pub fn withDebug(self: Config) Config {
         var new = self;
         new.debug = true;
+        return new;
+    }
+
+    pub fn withChdir(self: Config, dir: []const u8) Config {
+        var new = self;
+        new.chdir = dir;
         return new;
     }
 
@@ -52,6 +62,7 @@ var testVm: cy.VM = undefined;
 
 pub const VMrunner = struct {
     vm: *cy.VM,
+    ctx: ?*anyopaque = null,
 
     pub fn create() *VMrunner {
         var new = t.alloc.create(VMrunner) catch fatal();
@@ -124,6 +135,22 @@ pub const VMrunner = struct {
                 errorMismatch = true;
                 // Continue to compare report.
             }
+        }
+        const report = try self.vm.allocLastErrorReport();
+        try eqUserError(t.alloc, report, expReport);
+
+        if (errorMismatch) {
+            return error.TestUnexpectedError;
+        }
+    }
+
+    pub fn expectErrorReport2(self: *VMrunner, val: anytype, expReport: []const u8) !void {
+        var errorMismatch = false;
+        if (val) |actual_payload| {
+            std.debug.print("expected error, found {any}\n", .{ actual_payload });
+            return error.TestUnexpectedError;
+        } else |_| {
+            // Continue to compare report.
         }
         const report = try self.vm.allocLastErrorReport();
         try eqUserError(t.alloc, report, expReport);
@@ -271,6 +298,7 @@ pub fn compile(config: Config, src: []const u8) !void {
     defer {
         if (config.silent) {
             cy.silentError = false;
+            cy.silentInternal = false;
         }
         if (config.debug) {
             cy.verbose = false;
@@ -282,6 +310,7 @@ pub fn compile(config: Config, src: []const u8) !void {
 
     if (config.silent) {
         cy.silentError = true;
+        cy.silentInternal = true;
     }
     if (config.debug) {
         cy.verbose = true;
@@ -311,6 +340,7 @@ pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalR
     defer {
         if (config.silent) {
             cy.silentError = false;
+            cy.silentInternal = false;
         }
         if (config.debug) {
             cy.verbose = false;
@@ -322,12 +352,26 @@ pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalR
 
     if (config.silent) {
         cy.silentError = true;
+        cy.silentInternal = true;
     }
     if (config.debug) {
         cy.verbose = true;
         t.setLogLevel(.debug);
     }
 
+    // Set and restore cwd.
+    var cwdBuf: [1024]u8 = undefined;
+    const cwd = try std.os.getcwd(&cwdBuf);
+    if (config.chdir) |chdir| {
+        try std.os.chdir(chdir);
+    }
+    defer {
+        if (config.chdir != null) {
+            std.os.chdir(cwd) catch @panic("error");
+        }
+    }
+
+    run.ctx = config.ctx;
     if (config.preEval) |preEval| {
         preEval(run);
     }

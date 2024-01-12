@@ -26,554 +26,260 @@ const Config = setup.Config;
 const eqUserError = setup.eqUserError;
 const EvalResult = setup.EvalResult;
 
-test "Call typed function with dynamic arg." {
-    // Runtime type check.
-    try eval(.{ .silent = true },
-        \\import t 'test'
-        \\my a = foo(123)
-        \\a = foo(a)
-        \\func foo(a float):
-        \\  return 'foo'
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not find compatible function for `foo(string) any`.
-            \\Only `func foo(float) dynamic` exists.
-            \\
-            \\main:3:5 main:
-            \\a = foo(a)
-            \\    ^
-            \\
-        );
-    }}.func);
+test "Tests." {
+    try case("syntax/adjacent_stmt_error.cy");
+    try case("syntax/block_no_stmt_error.cy");
+    try case("syntax/change_to_spaces_error.cy");
+    try case("syntax/change_to_tabs_error.cy");
+    try case("syntax/comment_first_line.cy");
+    try case("syntax/comment_last_line.cy");
+    try case("syntax/comment_multiple.cy");
+    try case("syntax/compact_block_error.cy");
+    try case("syntax/indentation.cy");
+    try case("syntax/last_line_empty_indent.cy");
+    try case("syntax/no_stmts.cy");
+    try case("syntax/object_decl_eof.cy");
+    try case("syntax/object_decl_typespec_eof.cy");
+    try case("syntax/object_missing_semicolon_error.cy");
+    try case("syntax/parse_end_error.cy");
+    try case("syntax/parse_middle_error.cy");
+    try case("syntax/parse_skip_shebang_error.cy");
+    try case("syntax/parse_skip_shebang_panic.cy");
+    try case("syntax/parse_start_error.cy");
+    try case("syntax/stmt_end_error.cy");
+    try case("syntax/tabs_spaces_error.cy");
+    try case("syntax/wrap_stmts.cy");
+
+    try case("functions/assign_capture_local_error.cy");
+    try case("functions/assign_panic.cy");
+    try case("functions/call_bool_param_error.cy");
+    try case("functions/call_closure.cy");
+    try case("functions/call_closure_param_panic.cy");
+    try case("functions/call_excess_args_error.cy");
+    try case("functions/call_excess_args_overloaded_error.cy");
+    try case("functions/call_fiber_param.cy");
+    try case("functions/call_fiber_param_error.cy");
+    try case("functions/call_float_param_error.cy");
+    try case("functions/call_lambda.cy");
+    try case("functions/call_lambda_incompat_arg_panic.cy");
+    try case("functions/call_list_param_error.cy");
+    try case("functions/call_map_param_error.cy");
+    try case("functions/call_metatype_param.cy");
+    try case("functions/call_metatype_param_error.cy");
+    try case("functions/call_method_missing_error.cy");
+    try case("functions/call_method_missing_panic.cy");
+    try case("functions/call_method_sig_error.cy");
+    try case("functions/call_method_sig_panic.cy");
+    try case("functions/call_host.cy");
+    try case("functions/call_host_param_panic.cy");
+    try case("functions/call_none_param_error.cy");
+    try case("functions/call_object_param.cy");
+    try case("functions/call_object_param_error.cy");
+    try case("functions/call_op.cy");
+    try case("functions/call_param_panic.cy");
+    try case("functions/call_pointer_param_error.cy");
+    try case("functions/call_recursive.cy");
+    try case("functions/call_recursive_dyn.cy");
+    try case("functions/call_static_lambda_incompat_arg_panic.cy");
+    try case("functions/call_string_param_error.cy");
+    try case("functions/call_symbol_param_error.cy");
+    try case("functions/call_typed_param.cy");
+    try case("functions/call_undeclared_error.cy");   
+    try case("functions/declare_over_builtin.cy");
+    try case("functions/object_funcs.cy");
+    try case("functions/overload.cy");
+    try case("functions/read_capture_local_error.cy");
+    try case("functions/static.cy");
+
+    try case("memory/arc_cases.cy");
+    try case("memory/gc_reference_cycle_unreachable.cy");
+    try case2(.{ .cleanupGC = true }, "memory/gc_reference_cycle_reachable.cy");
+    try case("memory/release_expr_stmt_return.cy");
+    try case("memory/release_scope_end.cy");
+
+    try case("types/cast.cy");
+    try case("types/cast_error.cy");
+    try case("types/cast_narrow_panic.cy");
+    try case("types/cast_panic.cy");
+    // try case("types/cast_union_panic.cy")
+    // // Failed to cast to abstract type at runtime.
+    // try eval(.{ .silent = true },
+    //     \\my a = 123
+    //     \\print(a as string)
+    // , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+    //     try run.expectErrorReport(res, error.Panic,
+    //         \\panic: Can not cast `int` to `string`.
+    //         \\
+    //         \\main:2:9 main:
+    //         \\print(a as string)
+    //         \\        ^
+    //         \\
+    //     );
+    // }}.func);
+    try case("types/dyn_recent_type_error.cy");
+    try case("types/func_return_type_error.cy");
+    try case("types/func_param_type_undeclared_error.cy");
+    try case("types/object_init_dyn_field.cy");
+    try case("types/object_init_field.cy");
+    try case("types/object_init_field_error.cy");
+    try case("types/object_init_field_panic.cy");
+    try case("types/object_init_undeclared_field_error.cy");
+    try case("types/object_set_field.cy");
+    try case("types/object_set_field_dyn_recv_panic.cy");
+    try case("types/object_set_field_error.cy");
+    try case("types/object_set_field_panic.cy");
+    try case("types/object_set_undeclared_field_error.cy");
+    try case("types/object_zero_init.cy");
+    try case("types/object_zero_init_error.cy");
+    try case("types/objects.cy");
+    try case("types/type_alias.cy");
+    try case("types/type_spec.cy");
+
+    if (!cy.isWasm) {
+        try case2(Config.initFileModules("./test/modules/type_spec.cy"), "modules/type_spec.cy");
+        try case2(Config.initFileModules("./test/modules/type_alias.cy"), "modules/type_alias.cy");
+        try case2(Config.initFileModules("./test/modules/import_not_found_error.cy").withSilent(), "modules/import_not_found_error.cy");
+        try case2(Config.initFileModules("./test/modules/import_missing_sym_error.cy").withSilent(), "modules/import_missing_sym_error.cy");
+        try case2(Config.initFileModules("./test/modules/import_rel_path.cy"), "modules/import_rel_path.cy");
+        try case2(Config.initFileModules("./test/modules/import_implied_rel_path.cy"), "modules/import_implied_rel_path.cy");
+        try case2(Config.initFileModules("./test/modules/import_unresolved_rel_path.cy"), "modules/import_unresolved_rel_path.cy");
+        
+        // Import when running main script in the cwd.
+        try case2(Config.initFileModules("./import_rel_path.cy").withChdir("./test/modules"), "modules/import_rel_path.cy");
+        // Import when running main script in a child directory.
+        try case2(Config.initFileModules("../import_rel_path.cy").withChdir("./test/modules/test_mods"), "modules/import_rel_path.cy");
+
+        try case2(Config.initFileModules("./test/modules/import.cy"), "modules/import.cy");
+    }
+    try case("modules/core.cy");
+    try case("modules/math.cy");
+    try case("modules/test_eq_panic.cy");
+    try case("modules/test.cy");
+    if (!cy.isWasm) {
+        try case("modules/os.cy");
+    }
+
+    try case2(.{ .silent = true }, "meta/dump_locals.cy");
+    try case("meta/metatype.cy");
+
+    try case("concurrency/fibers.cy");
+
+    try case("errors/error_values.cy");
+    try case("errors/throw.cy");
+    try case("errors/throw_func_panic.cy");
+    try case("errors/throw_main_panic.cy");
+    try case("errors/throw_nested_func_panic.cy");
+    try case("errors/try_catch.cy");
+    try case("errors/try_catch_expr.cy");
+    try case("errors/try_expr.cy");
+
+    try case("builtins/arithmetic_ops.cy");
+    try case("builtins/arithmetic_unsupported_panic.cy");
+    try case("builtins/arrays.cy");
+    try case("builtins/array_slices.cy");
+    try case("builtins/bitwise_ops.cy");
+    try case("builtins/bools.cy");
+    try case("builtins/compare_eq.cy");
+    try case("builtins/compare_neq.cy");
+    try case("builtins/compare_numbers.cy");
+    try case("builtins/enums.cy");
+    try case("builtins/escape_sequences.cy");
+    try case("builtins/floats.cy");
+    try case("builtins/ints.cy");
+    try case("builtins/int_unsupported_notation_error.cy");
+    try case("builtins/list_neg_index_oob_panic.cy");
+    try case("builtins/lists.cy");
+    try case("builtins/logic_ops.cy");
+    try case("builtins/maps.cy");
+    try case("builtins/must.cy");
+    try case("builtins/must_panic.cy");
+    try case("builtins/optionals.cy");
+    try case("builtins/op_precedence.cy");
+    try case("builtins/panic_panic.cy");
+    try case("builtins/rune_empty_lit_error.cy");
+    try case("builtins/rune_multiple_lit_error.cy");
+    try case("builtins/rune_grapheme_cluster_lit_error.cy");
+    try case("builtins/set_index_unsupported_panic.cy");
+    try case("builtins/string_interpolation.cy");
+    try case("builtins/strings.cy");
+    try case("builtins/strings_ascii.cy");
+    try case("builtins/strings_utf8.cy");
+    try case("builtins/string_slices_ascii.cy");
+    try case("builtins/string_slices_utf8.cy");
+    try case("builtins/symbols.cy");
+    try case("builtins/truthy.cy");
+
+    try case("vars/local_annotate_error.cy");
+    try case("vars/local_assign_error.cy");
+    try case("vars/local_assign.cy");
+    try case("vars/local_dup_captured_error.cy");
+    try case("vars/local_dup_error.cy");
+    try case("vars/local_dup_static_error.cy");
+    try case("vars/local_init_error.cy");
+    try case("vars/local_init.cy");
+    try case("vars/op_assign.cy");
+    try case("vars/read_undeclared_error.cy");
+    try case("vars/read_undeclared_error.cy");
+    try case("vars/read_undeclared_diff_scope_error.cy");
+    try case("vars/read_outside_if_var_error.cy");
+    try case("vars/read_outside_for_iter_error.cy");
+    try case("vars/read_outside_for_var_error.cy");
+    try case("vars/set_undeclared_error.cy");
+    try case("vars/static_assign.cy");
+    try case("vars/static_init.cy");
+    try case("vars/static_init_capture_error.cy");
+    try case("vars/static_init_circular_ref_error.cy");
+    try case("vars/static_init_dependencies.cy");
+    try case("vars/static_init_error.cy");
+    try case("vars/static_init_read_self_error.cy");
+
+    try case("control_flow/cond_expr.cy");
+    try case("control_flow/for_iter.cy");
+    try case("control_flow/for_iter_unsupported_panic.cy");
+    try case("control_flow/for_range.cy");
+    try case("control_flow/if_stmt.cy");
+    try case("control_flow/switch.cy");
+    try case("control_flow/return.cy");
+    try case("control_flow/while_cond.cy");
+    try case("control_flow/while_inf.cy");
+    try case("control_flow/while_unwrap_opt.cy");
 }
 
-test "Specific ARC cases." {
-    try evalPass(.{}, @embedFile("arc_cases_test.cy"));
+test "Compile." {
+    // examples.
+    try compileCase(.{}, "../examples/fiber.cy");
+    try compileCase(.{}, "../examples/fizzbuzz.cy");
+    try compileCase(.{}, "../examples/hello.cy");
+    try compileCase(.{}, "../examples/ffi.cy");
+    try compileCase(.{}, "../examples/account.cy");
+    try compileCase(.{}, "../examples/fibonacci.cy");
+
+    // tools.
+    try compileCase(.{}, "../src/tools/bench.cy");
+    try compileCase(.{}, "../src/tools/llvm.cy");
+    try compileCase(.{}, "../src/tools/clang_bs.cy");
+    try compileCase(.{}, "../src/tools/md4c.cy");
+    if (!cy.isWasm) {
+        try compileCase(Config.initFileModules("./src/tools/cbindgen.cy"), "../src/tools/cbindgen.cy");
+        try compileCase(Config.initFileModules("./docs/gen-docs.cy"), "../docs/gen-docs.cy");
+        try compileCase(Config.initFileModules("./src/jit/gen-stencils-a64.cy"), "../src/jit/gen-stencils-a64.cy");
+        try compileCase(Config.initFileModules("./src/jit/gen-stencils-x64.cy"), "../src/jit/gen-stencils-x64.cy");
+    }
+
+    // benchmarks.
+    try compileCase(.{}, "bench/fib/fib.cy");
+    try compileCase(.{}, "bench/fiber/fiber.cy");
+    try compileCase(.{}, "bench/for/for.cy");
+    try compileCase(.{}, "bench/heap/heap.cy");
+    try compileCase(.{}, "bench/string/index.cy");
 }
 
-test "Type casting." {
-    // Compile-time casting fails.
-    try eval(.{ .silent = true },
-        \\var a = 123
-        \\print(a as pointer)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Cast expects `pointer`, got `int`.
-            \\
-            \\main:2:9:
-            \\print(a as pointer)
-            \\        ^
-            \\
-        );
-    }}.func);
-
-    // Narrow cast defers to runtime cast.
-    try eval(.{ .silent = true },
-        \\var a any = 123
-        \\print(a as pointer)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not cast `int` to `pointer`.
-            \\
-            \\main:2:9 main:
-            \\print(a as pointer)
-            \\        ^
-            \\
-        );
-    }}.func);
-
-    // Failed to cast to exact type at runtime.
-    try eval(.{ .silent = true },
-        \\my a = 123
-        \\print(a as pointer)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not cast `int` to `pointer`.
-            \\
-            \\main:2:9 main:
-            \\print(a as pointer)
-            \\        ^
-            \\
-        );
-    }}.func);
-
-    // symbol cast fails.
-    try eval(.{ .silent = true },
-        \\123 as symbol
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Cast expects `symbol`, got `int`.
-            \\
-            \\main:1:5:
-            \\123 as symbol
-            \\    ^
-            \\
-        );
-    }}.func);
-
-    // list cast fails.
-    try eval(.{ .silent = true },
-        \\123 as List
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Cast expects `List`, got `int`.
-            \\
-            \\main:1:5:
-            \\123 as List
-            \\    ^
-            \\
-        );
-    }}.func);
-
-    // Failed to cast to abstract type at runtime.
-    try eval(.{ .silent = true },
-        \\my a = 123
-        \\print(a as string)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not cast `int` to `string`.
-            \\
-            \\main:2:9 main:
-            \\print(a as string)
-            \\        ^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{}, @embedFile("typecast_test.cy"));
-}
-
-test "Typed object." {
-    // Wrong param type.
-    try eval(.{ .silent = true },
-        \\type Foo object:
-        \\  var a float
-        \\func foo(a Foo):
-        \\  pass
-        \\foo(123)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(int) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo(Foo) dynamic
-            \\
-            \\main:5:1:
-            \\foo(123)
-            \\^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{},
-        \\import t 'test'
-        \\
-        \\type Foo object:
-        \\  var a int
-        \\
-        \\func foo(a Foo):
-        \\  return a.a == 123
-        \\
-        \\-- Literal.
-        \\t.eq(foo([Foo a: 123]), true)
-        \\        
-        \\-- From var.
-        \\var o = [Foo a: 123]
-        \\t.eq(foo(o), true)
-        \\
-        \\-- Cast erased type.
-        \\o = t.erase([Foo a: 123])
-        \\t.eq(foo(o as Foo), true)
-    );
-}
-
-test "metatype" {
-    try evalPass(.{}, @embedFile("metatype_test.cy"));
-}
-
-test "Typed metatype." {
-    // Wrong param type.
-    try eval(.{ .silent = true },
-        \\func foo(a metatype):
-        \\  pass
-        \\foo(true)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(bool) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo(metatype) dynamic
-            \\
-            \\main:3:1:
-            \\foo(true)
-            \\^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{},
-        \\import t 'test'
-        \\
-        \\func foo(a metatype):
-        \\  return a == float
-        \\
-        \\-- Literal.
-        \\t.eq(foo(float), true)
-        \\        
-        \\-- From var.
-        \\var mt = float
-        \\t.eq(foo(mt), true)
-        \\
-        \\-- Cast erased type.
-        \\mt = t.erase(float)
-        \\t.eq(foo(mt as metatype), true)
-    );
-}
-
-test "Typed fiber." {
-    // Wrong param type.
-    try eval(.{ .silent = true },
-        \\func foo(a Fiber):
-        \\  pass
-        \\foo(true)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(bool) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo(Fiber) dynamic
-            \\
-            \\main:3:1:
-            \\foo(true)
-            \\^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{},
-        \\import t 'test'
-        \\
-        \\func foo(a Fiber):
-        \\  return typesym(a) == .fiber
-        \\
-        \\func start():
-        \\  pass
-        \\
-        \\-- Literal.
-        \\t.eq(foo(coinit(start)), true)
-        \\        
-        \\-- From var.
-        \\var f = coinit(start)
-        \\t.eq(foo(f), true)
-        \\
-        \\-- Cast erased type.
-        \\f = t.erase(coinit(start))
-        \\t.eq(foo(f as Fiber), true)
-    );
-}
-
-test "Type constraints." {
-    try evalPass(.{}, @embedFile("typeconstraint_test.cy"));
-
-    // Wrong arg type to number param.
-    try eval(.{ .silent = true },
-        \\func foo(a float):
-        \\  pass
-        \\foo(true)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(bool) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo(float) dynamic
-            \\
-            \\main:3:1:
-            \\foo(true)
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Wrong arg type to none param.
-    try eval(.{ .silent = true },
-        \\func foo(a none):
-        \\  pass
-        \\foo(123)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(int) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo(none) dynamic
-            \\
-            \\main:3:1:
-            \\foo(123)
-            \\^
-            \\
-        );
-    }}.func);
-}
-
-test "Typed pointer." {
-    // Wrong param type.
-    try eval(.{ .silent = true },
-        \\func foo(a pointer):
-        \\  pass
-        \\foo(123)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(int) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo(pointer) dynamic
-            \\
-            \\main:3:1:
-            \\foo(123)
-            \\^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{},
-        \\import t 'test'
-        \\
-        \\func foo(a pointer):
-        \\  return a.addr() == 123
-        \\
-        \\-- From var.
-        \\var ptr = pointer(123)
-        \\t.eq(foo(ptr), true)
-        \\
-        \\-- Cast erased type.
-        \\ptr = t.erase(pointer(123))
-        \\t.eq(foo(pointer(ptr)), true)
-    );
-}
-
-test "Typed string." {
-    // Wrong param type.
-    try eval(.{ .silent = true },
-        \\func foo(a string):
-        \\  pass
-        \\foo(123)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(int) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo(string) dynamic
-            \\
-            \\main:3:1:
-            \\foo(123)
-            \\^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{},
-        \\import t 'test'
-        \\
-        \\func foo(a string):
-        \\  return a == 'true'
-        \\
-        \\-- Literal.
-        \\t.eq(foo('true'), true)
-        \\
-        \\-- From var.
-        \\var str = 'true'
-        \\t.eq(foo(str), true)
-        \\
-        \\-- Cast erased type.
-        \\str = t.erase('true')
-        \\t.eq(foo(string(str)), true)
-    );
-}
-
-test "Typed bool." {
-    // Wrong param type.
-    try eval(.{ .silent = true },
-        \\func foo(a bool):
-        \\  pass
-        \\foo(123)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(int) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo(bool) dynamic
-            \\
-            \\main:3:1:
-            \\foo(123)
-            \\^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{},
-        \\import t 'test'
-        \\
-        \\func foo(a bool):
-        \\  return a
-        \\
-        \\-- Literal.
-        \\t.eq(foo(true), true)
-        \\
-        \\-- From var.
-        \\var b = true
-        \\t.eq(foo(b), true)
-        \\
-        \\-- Cast erased type.
-        \\b = t.erase(true)
-        \\t.eq(foo(bool(b)), true)
-    );
-}
-
-test "Typed Map." {
-    // Wrong param type.
-    try eval(.{ .silent = true },
-        \\func foo(a Map):
-        \\  pass
-        \\foo(123)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(int) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo(Map) dynamic
-            \\
-            \\main:3:1:
-            \\foo(123)
-            \\^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{},
-        \\import t 'test'
-        \\
-        \\func foo(a Map):
-        \\  return a['a'] == 123
-        \\
-        \\-- Literal.
-        \\t.eq(foo([a: 123]), true)
-        \\
-        \\-- From var.
-        \\var map = [a: 123]
-        \\t.eq(foo(map), true)
-        \\
-        \\-- Cast erased type.
-        \\map = t.erase([a: 123])
-        \\t.eq(foo(map as Map), true)
-    );
-}
-
-test "Typed List." {
-    // Wrong param type.
-    try eval(.{ .silent = true },
-        \\func foo(a List):
-        \\  pass
-        \\foo(123)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(int) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo(List) dynamic
-            \\
-            \\main:3:1:
-            \\foo(123)
-            \\^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{},
-        \\import t 'test'
-        \\
-        \\func foo(a List):
-        \\  return a[0] == 123
-        \\
-        \\-- Literal.
-        \\t.eq(foo([123]), true)
-        \\
-        \\-- From var.
-        \\var list = [123]
-        \\t.eq(foo(list), true)
-        \\
-        \\-- Cast erased type.
-        \\list = t.erase([123])
-        \\t.eq(foo(list as List), true)
-    );
-}
-
-test "Typed symbol." {
-    // Wrong param type.
-    try eval(.{ .silent = true },
-        \\func foo(a symbol):
-        \\  pass
-        \\foo(123)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(int) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo(symbol) dynamic
-            \\
-            \\main:3:1:
-            \\foo(123)
-            \\^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{},
-        \\import t 'test'
-        \\
-        \\func foo(a symbol):
-        \\  return a == .sometag
-        \\
-        \\-- Literal.
-        \\t.eq(foo(.sometag), true)
-        \\
-        \\-- From var.
-        \\var tag = .sometag
-        \\t.eq(foo(tag), true)
-        \\
-        \\-- Cast erased type.
-        \\tag = t.erase(.sometag)
-        \\t.eq(foo(tag as symbol), true)
-    );
-}
-
-test "Compile-time typed function calls." {
-    // Error from param type mismatch.
-    try eval(.{ .silent = true },
-        \\func foo(a float):
-        \\  return a + 3
-        \\foo(none)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(none) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo(float) dynamic
-            \\
-            \\main:3:1:
-            \\foo(none)
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Error from different number of params.
-    try eval(.{ .silent = true },
-        \\func foo(a int):
-        \\  return a + 3
-        \\foo(1, 2)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(int, int) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo(int) dynamic
-            \\
-            \\main:3:1:
-            \\foo(1, 2)
-            \\^
-            \\
-        );
-    }}.func);
-}
-
-test "Typed recursive function." {
-    try evalPass(.{}, @embedFile("typed_recursion_test.cy"));
+fn compileCase(config: Config, path: []const u8) !void {
+    const fpath = try std.mem.concat(t.alloc, u8, &.{ thisDir(), "/", path });
+    defer t.alloc.free(fpath);
+    const contents = try std.fs.cwd().readFileAlloc(t.alloc, fpath, 1e9);
+    defer t.alloc.free(contents);
+    try compile(config, contents);
 }
 
 test "Custom modules." {
@@ -767,70 +473,6 @@ test "Debug labels." {
     }}.func);
 }
 
-test "User parse errors." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    // Test parse error on first line.
-    var val = run.evalExt(.{ .silent = true },
-        \\var
-        \\var Root.a = 123
-        \\var Root.b = 234
-    );
-    try run.expectErrorReport(val, error.ParseError,
-        \\ParseError: Expected local name identifier.
-        \\
-        \\main:1:4:
-        \\var
-        \\   ^
-        \\
-    );
-
-    // Test parse error on middle line.
-    val = run.evalExt(.{ .silent = true },
-        \\var Root.a = 123
-        \\var
-        \\var Root.b = 234
-    );
-    try run.expectErrorReport(val, error.ParseError,
-        \\ParseError: Expected local name identifier.
-        \\
-        \\main:2:4:
-        \\var
-        \\   ^
-        \\
-    );
-
-    // Test parse error on last line.
-    val = run.evalExt(.{ .silent = true },
-        \\var Root.a = 123
-        \\var Root.b = 234
-        \\var
-    );
-    try run.expectErrorReport(val, error.ParseError,
-        \\ParseError: Expected local name identifier.
-        \\
-        \\main:3:4:
-        \\var
-        \\   ^
-        \\
-    );
-}
-
-test "Type specifiers." {
-    if (cy.isWasm) {
-        return;
-    }
-    try evalPass(Config.initFileModules("./test/typespec_test.cy"), @embedFile("typespec_test.cy"));
-}
-
-test "Type alias." {
-    if (cy.isWasm) {
-        return;
-    }
-    try evalPass(Config.initFileModules("./test/typealias_test.cy"), @embedFile("typealias_test.cy"));
-}
-
 test "Import http spec." {
     if (cy.isWasm) {
         return;
@@ -847,7 +489,7 @@ test "Import http spec." {
     var client = http.MockHttpClient.init(t.alloc);
     client.retReqError = error.UnknownHostName;
     run.vm.httpClient = client.iface();
-    var res = run.evalExtNoReset(Config.initFileModules("./test/import_test.cy").withSilent(),
+    var res = run.evalExtNoReset(Config.initFileModules("./test/modules/import.cy").withSilent(),
         \\import a 'https://doesnotexist123.com/'
         \\b = a
     );
@@ -856,7 +498,7 @@ test "Import http spec." {
     try eqUserError(t.alloc, err,
         \\CompileError: Can not connect to `doesnotexist123.com`.
         \\
-        \\@AbsPath(test/import_test.cy):1:11:
+        \\@AbsPath(test/modules/import.cy):1:11:
         \\import a 'https://doesnotexist123.com/'
         \\          ^
         \\
@@ -867,7 +509,7 @@ test "Import http spec." {
     client = http.MockHttpClient.init(t.alloc);
     client.retStatusCode = std.http.Status.not_found;
     run.vm.httpClient = client.iface();
-    res = run.evalExtNoReset(Config.initFileModules("./test/import_test.cy").withSilent(),
+    res = run.evalExtNoReset(Config.initFileModules("./test/modules/import.cy").withSilent(),
         \\import a 'https://exists.com/missing'
         \\b = a
     );
@@ -876,7 +518,7 @@ test "Import http spec." {
     try eqUserError(t.alloc, err,
         \\CompileError: Can not load `https://exists.com/missing`. Response code: not_found
         \\
-        \\@AbsPath(test/import_test.cy):1:11:
+        \\@AbsPath(test/modules/import.cy):1:11:
         \\import a 'https://exists.com/missing'
         \\          ^
         \\
@@ -889,123 +531,14 @@ test "Import http spec." {
         \\var Root.foo = 123
         ;
     run.vm.httpClient = client.iface();
-    _ = try run.evalExtNoReset(Config.initFileModules("./test/import_test.cy"),
+    _ = try run.evalExtNoReset(Config.initFileModules("./test/modules/import.cy"),
         \\import a 'https://exists.com/a.cy'
         \\import t 'test'
         \\t.eq(a.foo, 123)
     );
 }
 
-test "Imports." {
-    if (cy.isWasm) {
-        return;
-    }
-
-    // Import missing file.
-    try eval(Config.initFileModules("./test/import_test.cy").withSilent(),
-        \\import a 'test_mods/missing.cy'
-        \\var b = a
-    , struct { fn func(runner: *VMrunner, evalRes: EvalResult) !void {
-        try runner.expectErrorReport(evalRes, error.CompileError,
-            \\CompileError: Import path does not exist: `@AbsPath(test/test_mods/missing.cy)`
-            \\
-            \\in @AbsPath(test/import_test.cy)
-            \\
-        );
-    }}.func);
-
-    // TODO: Not needed for @hidden
-    // // Using unexported func symbol.
-    // res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
-    //     \\import a 'test_mods/a.cy'
-    //     \\b = a.barNoExport
-    // );
-    // try t.expectError(res, error.CompileError);
-    // try t.eqStr(run.vm.getCompileErrorMsg(), "Symbol is not exported: `barNoExport`");
-
-    // TODO: Not needed for @hidden
-    // // Using unexported var symbol.
-    // res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
-    //     \\import a 'test_mods/a.cy'
-    //     \\b = a.varNoExport
-    // );
-    // try t.expectError(res, error.CompileError);
-    // try t.eqStr(run.vm.getCompileErrorMsg(), "Symbol is not exported: `varNoExport`");
-
-    // Using missing symbol.
-    try eval(Config.initFileModules("./test/import_test.cy").withSilent(),
-        \\import a 'test_mods/a.cy'
-        \\var b = a.missing
-    , struct { fn func(runner: *VMrunner, evalRes: EvalResult) !void {
-        try runner.expectErrorReport(evalRes, error.CompileError,
-            \\CompileError: Can not find the symbol `missing` in `a`.
-            \\`a` resolves to `@AbsPath(test/test_mods/a.cy)`.
-            \\
-            \\@AbsPath(test/import_test.cy):2:11:
-            \\var b = a.missing
-            \\          ^
-            \\
-        );
-    }}.func);
-
-    // Import using relative path prefix.
-    try evalPass(Config.initFileModules("./test/import_test.cy"),
-        \\import a './test_mods/a.cy'
-        \\import t 'test'
-        \\t.eq(a.varInt, 123)
-    );
-
-    // Import using implied relative path prefix.
-    try evalPass(Config.initFileModules("./test/import_test.cy"),
-        \\import a 'test_mods/a.cy'
-        \\import t 'test'
-        \\t.eq(a.varInt, 123)
-    );
-
-    // Import using unresolved relative path.
-    try evalPass(Config.initFileModules("./test/import_test.cy"),
-        \\import a './test_mods/../test_mods/a.cy'
-        \\import t 'test'
-        \\t.eq(a.varInt, 123)
-    );
-
-    // Import when running main script in the cwd.
-    try std.os.chdir("./test");
-    try evalPass(Config.initFileModules("./import_test.cy"),
-        \\import a 'test_mods/a.cy'
-        \\import t 'test'
-        \\t.eq(a.varInt, 123)
-    );
-
-    // Import when running main script in a child directory.
-    try std.os.chdir("./test_mods");
-    try evalPass(Config.initFileModules("../import_test.cy"),
-        \\import a 'test_mods/a.cy'
-        \\import t 'test'
-        \\t.eq(a.varInt, 123)
-    );
-
-    try std.os.chdir("../..");
-    try evalPass(Config.initFileModules("./test/import_test.cy"), @embedFile("import_test.cy"));
-}
-
-test "Dump locals." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    cy.silentInternal = true;
-    defer cy.silentInternal = false;
-    _ = try run.eval(
-        \\func foo(a):
-        \\  #dumpLocals()
-    );
-}
-
-test "core module" {
-    try evalPass(.{}, @embedFile("core_test.cy"));
-}
-
-test "os module" {
+test "os constants" {
     try eval(.{},
         \\import os
         \\os.system
@@ -1036,93 +569,6 @@ test "os module" {
         }
         run.vm.release(val);
     }}.func);
-
-    if (cy.isWasm) {
-        return;
-    }
-
-    try evalPass(.{}, @embedFile("os_test.cy"));
-}
-
-test "Fibers" {
-    try evalPass(.{}, @embedFile("fiber_test.cy"));
-}
-
-test "throw." {
-    // Uncaught in main scope.
-    try eval(.{ .silent = true },
-        \\throw error.boom
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: error.boom
-            \\
-            \\main:1:1 main:
-            \\throw error.boom
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Uncaught from function call.
-    try eval(.{ .silent = true },
-        \\func foo():
-        \\  throw error.boom
-        \\foo()
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: error.boom
-            \\
-            \\main:2:3 foo:
-            \\  throw error.boom
-            \\  ^
-            \\main:3:1 main:
-            \\foo()
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Uncaught from nested function call.
-    try eval(.{ .silent = true },
-        \\func bar():
-        \\  throw error.boom
-        \\func foo():
-        \\  bar()
-        \\foo()
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: error.boom
-            \\
-            \\main:2:3 bar:
-            \\  throw error.boom
-            \\  ^
-            \\main:4:3 foo:
-            \\  bar()
-            \\  ^
-            \\main:5:1 main:
-            \\foo()
-            \\^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{}, @embedFile("throw_test.cy"));
-}
-
-test "try expression." {
-    try evalPass(.{}, @embedFile("try_expr_test.cy"));
-}
-
-test "try catch expr." {
-    try evalPass(.{}, @embedFile("try_catch_expr_test.cy"));
-}
-
-test "try catch." {
-    try evalPass(.{}, @embedFile("try_catch_test.cy"));
-}
-
-test "Errors." {
-    try evalPass(.{}, @embedFile("error_test.cy"));
 }
 
 test "FFI." {
@@ -1212,189 +658,25 @@ test "FFI." {
     };
     _ = S;
 
-    // Wrong param type.
-    try eval(.{ .silent = true },
-        \\import os 'os'
-        \\my libPath = none
-        \\if os.system == 'macos':
-        \\  -- rdynamic doesn't work atm for MacOS.
-        \\  libPath = 'test/macos_lib.dylib'
-        \\else os.system == 'windows':
-        \\  libPath = 'test/win_lib.dll'
-        \\else:
-        \\  libPath = none
-        \\
-        \\var ffi = os.newFFI()
-        \\ffi.cfunc('testAdd', [.int, .int], .int)
-        \\my lib = ffi.bindLib(libPath)
-        \\lib.testAdd(123, '321')
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not find compatible function for `testAdd(any, int, string) any` in `BindLib1`.
-            \\Only `func testAdd(any, int, int) int` exists for the symbol `testAdd`.
-            \\
-            \\main:14:1 main:
-            \\lib.testAdd(123, '321')
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Wrong num params.
-    try eval(.{ .silent = true },
-        \\import os 'os'
-        \\my libPath = none
-        \\if os.system == 'macos':
-        \\  -- rdynamic doesn't work atm for MacOS.
-        \\  libPath = 'test/macos_lib.dylib'
-        \\else os.system == 'windows':
-        \\  libPath = 'test/win_lib.dll'
-        \\else:
-        \\  libPath = none
-        \\
-        \\var ffi = os.newFFI()
-        \\ffi.cfunc('testAdd', [.int, .int], .int)
-        \\my lib = ffi.bindLib(libPath)
-        \\lib.testAdd(123, 234, 345)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not find compatible function for `testAdd(any, int, int, int) any` in `BindLib1`.
-            \\Only `func testAdd(any, int, int) int` exists for the symbol `testAdd`.
-            \\
-            \\main:14:1 main:
-            \\lib.testAdd(123, 234, 345)
-            \\^
-            \\
-        );
-    }}.func);
+    try case("ffi/call_incompat_arg_panic.cy");
+    try case("ffi/call_excess_args_panic.cy");
 
     // TODO: Test callback failure and verify stack trace.
     // Currently, the VM aborts when encountering a callback error.
     // A config could be added to make the initial FFI call detect an error and throw a panic instead.
 
-    try evalPass(.{}, @embedFile("ffi_test.cy"));
+    try case("ffi/ffi.cy");
 }
 
-test "Symbols." {
-    // Literal.
-    try eval(.{},
-        \\var n = .Tiger
-        \\int(n)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        const val = try res;
-        const id = try run.vm.ensureSymbol("Tiger");
-        try t.eq(val.asInteger(), @as(i48, @intCast(id)));
-    }}.func);
-}
-
-test "Enum types." {
-    try evalPass(.{}, @embedFile("enum_test.cy"));
-}
-
-test "test module" {
-    try eval(.{ .silent = true },
-        \\import t 'test'
-        \\t.eq(123, 234)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: error.AssertError
-            \\
-            \\main:2:1 main:
-            \\t.eq(123, 234)
-            \\^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{}, @embedFile("test_mod_test.cy"));
-}
-
-test "Objects." {
-    try evalPass(.{}, @embedFile("object_test.cy"));
-
-    // Missing semicolon.
-    try eval(.{ .silent = true },
-        \\type Vec2 object
-        \\  var x
-        \\  var y
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.ParseError,
-            \\ParseError: Unexpected indentation.
-            \\
-            \\main:2:3:
-            \\  var x
-            \\  ^
-            \\
-        );
-    }}.func);
-
-    // Field declaration ends the file without parser error.
-    try evalPass(.{}, 
-        \\type Vec2 object:
-        \\  var x
-        \\  var y
-    );
-
-    // Initialize with undeclared field.
-    try eval(.{ .silent = true },
-        \\type S object:
-        \\  var a
-        \\var o = [S b: 100]
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Field `b` does not exist in `S`.
-            \\
-            \\main:3:12:
-            \\var o = [S b: 100]
-            \\           ^
-            \\
-        );
-    }}.func);
-
-    // Write to undeclared field.
-    try eval(.{ .silent = true },
-        \\type S object:
-        \\  var a
-        \\var o = [S a: 100]
-        \\o.b = 200
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Field `b` does not exist in `S`.
-            \\
-            \\main:4:3:
-            \\o.b = 200
-            \\  ^
-            \\
-        );
-    }}.func);
-}
-
-test "Object fields." {
-    // Initialize field with dynamic value does not gen `objectTypeCheck`.
+test "object_init_dyn_field_gen" {
+    // Initialize field with dynamic/typed value does not gen `objectTypeCheck`.
     try eval(.{ .silent = true },
         \\type S object:
         \\  my a
         \\func foo():
         \\  return 123
         \\var s = [S a: foo()]
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        _ = try res;
-
-        const ops = run.vm.ops;
-        var pc: u32 = 0;
-        while (pc < ops.len) {
-            if (@as(cy.OpCode, @enumFromInt(ops[pc].val)) == .objectTypeCheck) {
-                return error.Failed;
-            }
-            pc += cy.bytecode.getInstLenAt(ops.ptr + pc);
-        }
-    }}.func);
-
-    // Initialize field with typed value does not gen `objectTypeCheck`.
-    try eval(.{ .silent = true },
-        \\type S object:
-        \\  my a
-        \\var s = [S a: 123]
+        \\var t = [S a: 123]
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         _ = try res;
 
@@ -1409,358 +691,7 @@ test "Object fields." {
     }}.func);
 }
 
-test "Typed object fields." {
-    // Field declaration ends the file without parser error.
-    try evalPass(.{},
-        \\type Vec2 object:
-        \\  var x float
-        \\  var y float
-    );
-
-    // Initialize field with exact type match.
-    try evalPass(.{},
-        \\import test
-        \\type S object:
-        \\  var x float
-        \\var s = [S x: 1.23]
-        \\test.eq(s.x, 1.23)
-    );
-
-    // Inferred initializer to field type.
-    try evalPass(.{},
-        \\import test
-        \\type S object:
-        \\  var x float
-        \\var s = [S x: 123]
-        \\test.eq(s.x, 123.0)
-    );
-
-    // Initialize field with incompatible static value.
-    try eval(.{ .silent = true },
-        \\type S object:
-        \\  var a float
-        \\func foo():
-        \\  return 123
-        \\var s = [S a: none]
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Expected type `float`, got `none`.
-            \\
-            \\main:5:15:
-            \\var s = [S a: none]
-            \\              ^
-            \\
-        );
-    }}.func);
-
-    // Initialize field with incompatible dynamic value.
-    try eval(.{ .silent = true },
-        \\type S object:
-        \\  var a float
-        \\func foo():
-        \\  return 123
-        \\var s = [S a: foo()]
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Initializing `float` field with incompatible type `int`.
-            \\
-            \\main:5:9 main:
-            \\var s = [S a: foo()]
-            \\        ^
-            \\
-        );
-    }}.func);
-
-    // Zero initialize missing field.
-    try evalPass(.{},
-        \\import test
-        \\type S object:
-        \\  var a float
-        \\var o = [S:]
-        \\test.eq(o.a, 0.0)
-    );
-
-    // Zero initialize missing field. Nested object.
-    try evalPass(.{},
-        \\import test
-        \\type T object:
-        \\  var a float
-        \\type S object:
-        \\  var a T
-        \\var o = [S:]
-        \\test.eq(o.a.a, 0.0)
-    );
-
-    // Zero initialize field with circular dep.
-    try eval(.{ .silent = true },
-        \\type S object:
-        \\  var a S
-        \\var o = [S:]
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not zero initialize `S` because of circular dependency.
-            \\
-            \\main:3:9:
-            \\var o = [S:]
-            \\        ^
-            \\
-        );
-    }}.func);
-
-    // No such field.
-    try eval(.{ .silent = true },
-        \\type S object:
-        \\  var a float
-        \\var o = [S b: 123]
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Field `b` does not exist in `S`.
-            \\
-            \\main:3:12:
-            \\var o = [S b: 123]
-            \\           ^
-            \\
-        );
-    }}.func);
-
-    // Set field with exact type.
-    try evalPass(.{},
-        \\type S object:
-        \\  var a float
-        \\var o = [S a: 123.0]
-        \\o.a = 234.0
-    );
-
-    // Set field inferring rhs type.
-    try evalPass(.{},
-        \\type S object:
-        \\  var a float
-        \\var o = [S a: 123.0]
-        \\o.a = 234
-    );
-
-    // Op set field inferring rhs type.
-    try evalPass(.{},
-        \\type S object:
-        \\  var a float
-        \\var o = [S a: 123.0]
-        \\o.a += 234
-    );
-
-    // Set field with incompatible type. Static rhs.
-    try eval(.{ .silent = true },
-        \\type S object:
-        \\  var a float
-        \\var o = [S a: 123]
-        \\o.a = []
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Expected type `float`, got `List`.
-            \\
-            \\main:4:7:
-            \\o.a = []
-            \\      ^
-            \\
-        );
-    }}.func);
-
-    // Set field with incompatiable type. Dynamic rhs.
-    try eval(.{ .silent = true },
-        \\type S object:
-        \\  var a float
-        \\func foo(): return []
-        \\var o = [S a: 123]
-        \\o.a = foo()
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Assigning to `float` field with incompatible type `List`.
-            \\
-            \\main:5:1 main:
-            \\o.a = foo()
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Set field with incompatible type. Dynamic lhs.
-    try eval(.{ .silent = true },
-        \\import t 'test'
-        \\type S object:
-        \\  var a float
-        \\my o = t.erase([S a: 123])
-        \\o.a = []
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Assigning to `float` field with incompatible type `List`.
-            \\
-            \\main:5:1 main:
-            \\o.a = []
-            \\^
-            \\
-        );
-    }}.func);
-}
-
-test "Object funcs/methods." {
-    // Calling a missing method from untyped variable.
-    try eval(.{ .silent = true },
-        \\type S object:
-        \\  var a
-        \\my o = [S:]
-        \\o.foo()
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: `func foo(any) any` can not be found in `S`.
-            \\
-            \\main:4:1 main:
-            \\o.foo()
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Calling a missing method from typed variable.
-    try eval(.{ .silent = true },
-        \\type S object:
-        \\  var a
-        \\var o = [S:]
-        \\o.foo()
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find the symbol `foo` in `main.S`.
-            \\
-            \\main:4:3:
-            \\o.foo()
-            \\  ^
-            \\
-        );
-    }}.func);
-
-    // Dynamic dispatch with the wrong signature.
-    try eval(.{ .silent = true },
-        \\type S object:
-        \\  var a
-        \\  func foo():
-        \\    return 123
-        \\my o = [S:]
-        \\o.foo(234)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not find compatible function for `foo(any, int) any` in `S`.
-            \\Only `func foo(S) dynamic` exists for the symbol `foo`.
-            \\
-            \\main:6:1 main:
-            \\o.foo(234)
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Method dispatch with the wrong signature.
-    try eval(.{ .silent = true },
-        \\type S object:
-        \\  var a
-        \\  func foo():
-        \\    return 123
-        \\var o = [S:]
-        \\o.foo(234)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(S, int) any`.
-            \\Functions named `foo` in `S`:
-            \\    func foo(S) dynamic
-            \\
-            \\main:6:3:
-            \\o.foo(234)
-            \\  ^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{}, @embedFile("object_func_test.cy"));
-}
-
-test "must()" {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    _ = try run.eval(
-        \\import t 'test'
-        \\var a = 123
-        \\-- no error, must returns argument.
-        \\t.eq(must(a), 123)
-    );
-
-    var res = run.evalExt(.{ .silent = true },
-        \\var a = error.boom
-        \\must(a)
-    );
-    try t.expectError(res, error.Panic);
-    var trace = run.getStackTrace();
-    try run.assertPanicMsg("error.boom");
-    try t.eq(trace.frames.len, 1);
-    try eqStackFrame(trace.frames[0], .{
-        .name = "main",
-        .chunkId = 0,
-        .line = 1,
-        .col = 0,
-        .lineStartPos = 19,
-    });
-}
-
-test "panic()" {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    var res = run.evalExt(.{ .silent = true },
-        \\var a = 123
-        \\1 + panic(.boom)
-    );
-    try t.expectError(res, error.Panic);
-    var trace = run.getStackTrace();
-    try run.assertPanicMsg(".boom");
-    try t.eq(trace.frames.len, 1);
-    try eqStackFrame(trace.frames[0], .{
-        .name = "main",
-        .chunkId = 0,
-        .line = 1,
-        .col = 4,
-        .lineStartPos = 12,
-    });
-}
-
-test "Error reporting." {
-    // Parse error considers shebang line.
-    try eval(.{ .silent = true },
-        \\#!cyber
-        \\import
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.ParseError,
-            \\ParseError: Expected import clause.
-            \\
-            \\main:2:7:
-            \\import
-            \\      ^
-            \\
-        );
-    }}.func);
-
-    // Panic error considers shebang line.
-    try eval(.{ .silent = true },
-        \\#!cyber
-        \\throw error.Boom
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: error.Boom
-            \\
-            \\main:2:1 main:
-            \\throw error.Boom
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Windows new lines in source code.
+test "windows new lines" {
     try eval(.{ .silent = true }, "a = 123\r\nb = 234\r\nc =",
     struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.ParseError,
@@ -1841,7 +772,7 @@ test "Stack trace unwinding." {
     
         // panic from another module.
         res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
-            \\import a 'test_mods/init_panic_error.cy'
+            \\import a 'modules/test_mods/init_panic_error.cy'
             \\import t 'test'
             \\t.eq(a.foo, 123)
         );
@@ -1867,14 +798,14 @@ test "Stack trace unwinding." {
 
         // `throw` from another module's var initializer.
         try eval(.{ .silent = true, .uri = "./test/main.cy" },
-            \\import a 'test_mods/init_throw_error.cy'
+            \\import a 'modules/test_mods/init_throw_error.cy'
             \\import t 'test'
             \\t.eq(a.foo, 123)
         , struct { fn func(run_: *VMrunner, res_: EvalResult) !void {
             try run_.expectErrorReport(res_, error.Panic,
                 \\panic: error.boom
                 \\
-                \\@AbsPath(test/test_mods/init_throw_error.cy):1:16 init:
+                \\@AbsPath(test/modules/test_mods/init_throw_error.cy):1:16 init:
                 \\var Root.foo = throw error.boom
                 \\               ^
                 \\./test/main.cy: main
@@ -1908,64 +839,38 @@ fn eqStackFrame(act: cy.StackFrame, exp: cy.StackFrame) !void {
     try t.eq(act.lineStartPos, exp.lineStartPos);
 }
 
-test "Optionals." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    var val = try run.eval(
-        \\var foo = none
-        \\foo
-    );
-    try t.eq(val.isNone(), true);
-}
-
-// test "Binary expr with generator function call." {
+// test "Function named parameters call." {
 //     const run = VMrunner.create();
 //     defer run.destroy();
 
-//     var val = try run.eval2(
-//         \\func foo():
-//         \\  return 1
-//         \\foo() + 2
-//     , true);
-//     try t.eq(val.asF64toI32(), 3);
+//     var val = try run.eval(
+//         \\func foo(a, b):
+//         \\  return a - b
+//         \\foo(a: 3, b: 1)
+//     );
+//     try t.eq(val.asF64toI32(), 2);
+//     run.deinitValue(val);
+
+//     val = try run.eval(
+//         \\func foo(a, b):
+//         \\  return a - b
+//         \\foo(a: 1, b: 3)
+//     );
+//     try t.eq(val.asF64toI32(), -2);
+//     run.deinitValue(val);
+
+//     // New line as arg separation.
+//     val = try run.eval(
+//         \\func foo(a, b):
+//         \\  return a - b
+//         \\foo(
+//         \\  a: 3
+//         \\  b: 1
+//         \\)
+//     );
+//     try t.eq(val.asF64toI32(), 2);
 //     run.deinitValue(val);
 // }
-
-test "Compare numbers." {
-    try evalPass(.{}, @embedFile("compare_num_test.cy"));
-}
-
-test "Compare equals." {
-    try evalPass(.{}, @embedFile("compare_eq_test.cy"));
-}
-
-test "Compare not equals." {
-    try evalPass(.{}, @embedFile("compare_neq_test.cy"));
-}
-
-test "Truthy evaluation." {
-    try evalPass(.{}, @embedFile("truthy_test.cy"));
-}
-
-test "Logic operators" {
-    try evalPass(.{}, @embedFile("logic_op_test.cy"));
-}
-
-test "bool" {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    var val = try run.eval(
-        \\true
-    );
-    try t.eq(val.asBool(), true);
-
-    val = try run.eval(
-        \\false
-    );
-    try t.eq(val.asBool(), false);
-}
 
 // test "@name" {
 //     const run = VMrunner.create();
@@ -2024,1347 +929,74 @@ test "bool" {
 //     run.deinitValue(val);
 // }
 
-test "Expression statement." {
-    // Releases returned value from call expression.
-    try evalPass(.{},
-        \\var a = 'abc'
-        \\a.concat('xyz')
-        \\pass
-    );
-}
-
-test "Statements." {
-    try evalPass(.{},
-        \\import t 'test'
-        \\
-        \\-- Expressions are allowed to wrap to the next line.
-        \\var a = 0
-        \\if true or
-        \\   true:
-        \\  a = 10
-        \\t.eq(a, 10)
-    );
-
-    // Invalid single line block.
-    try eval(.{ .silent = true },
-        \\if true: foo = 123 foo = 234
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.ParseError,
-            \\ParseError: Expected end of line or file. Got ident.
-            \\
-            \\main:1:20:
-            \\if true: foo = 123 foo = 234
-            \\                   ^
-            \\
-        );
-    }}.func);
-    try eval(.{ .silent = true },
-        \\if true: foo = 123: foo = 234
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.ParseError,
-            \\ParseError: Expected end of line or file. Got colon.
-            \\
-            \\main:1:19:
-            \\if true: foo = 123: foo = 234
-            \\                  ^
-            \\
-        );
-    }}.func);
-    try eval(.{ .silent = true },
-        \\if true: foo = 123
-        \\  foo = 234
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.ParseError,
-            \\ParseError: Unexpected indentation.
-            \\
-            \\main:2:3:
-            \\  foo = 234
-            \\  ^
-            \\
-        );
-    }}.func);
-
-    // Allows compiling without any statements.
-    try evalPass(.{}, "   ");
-}
-
-test "Indentation." {
-    try evalPass(.{}, @embedFile("indentation_test.cy"));
-
-    // Mixing tabs and spaces is an error.
-    try eval(.{ .silent = true },
-         \\if true:
-         \\	 return 123
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.ParseError,
-            \\ParseError: Can not mix tabs and spaces for indentation.
-            \\
-            \\main:2:2:
-            \\	 return 123
-            \\ ^
-            \\
-        );
-    }}.func);
-
-    // Changing to tabs is not allowed.
-    try eval(.{ .silent = true },
-        \\if true:
-        \\  if true:
-        \\      -- Previously spaces, now tabs.
-        \\		return 123
-        \\
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.ParseError,
-            \\ParseError: Expected spaces for indentation.
-            \\
-            \\main:4:3:
-            \\		return 123
-            \\  ^
-            \\
-        );
-    }}.func);
-
-    // Changing to spaces is not allowed.
-    try eval(.{ .silent = true },
-        \\if true:
-        \\	if true:
-        \\     -- Previously tabs, now spaces.
-        \\     return 123
-        \\
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.ParseError,
-            \\ParseError: Expected tabs for indentation.
-            \\
-            \\main:4:6:
-            \\     return 123
-            \\     ^
-            \\
-        );
-    }}.func);
-
-    // Last line with just indents.
-    try evalPass(.{},
-        \\pass
-        \\      
-    );
-
-    // New block requires at least one statement.
-    // const parse_res = try run.parse(
-    //     \\if true:
-    //     \\return 123 
-    // );
-    // try t.eq(parse_res.has_error, true);
-    // try t.expect(std.mem.indexOf(u8, parse_res.err_msg, "Block requires at least one statement. Use the `pass` statement as a placeholder.") != null);
-}
-
-test "Integers." {
-    // Unsupported integer notation.
-    try eval(.{ .silent = true },
-        \\var a = 0z000
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.TokenError,
-            \\ParseError: Unsupported integer notation: z
-            \\
-            \\main:1:10:
-            \\var a = 0z000
-            \\         ^
-            \\
-        );
-    }}.func);
-
-    // Empty char is not allowed.
-    try eval(.{ .silent = true },
-        \\var a = ``
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Invalid UTF-8 Rune.
-            \\
-            \\main:1:10:
-            \\var a = ``
-            \\         ^
-            \\
-        );
-    }}.func);
-
-    // More than one rune in literal. 
-    try eval(.{ .silent = true },
-        \\var a = `🦊a`
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Invalid UTF-8 Rune.
-            \\
-            \\main:1:10:
-            \\var a = `🦊a`
-            \\         ^
-            \\
-        );
-    }}.func);
-
-    // More than one rune in literal. (Grapheme cluster)
-    try eval(.{ .silent = true },
-        \\var a = `👨‍👨‍👦‍👦`
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Invalid UTF-8 Rune.
-            \\
-            \\main:1:10:
-            \\var a = `👨‍👨‍👦‍👦`
-            \\         ^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{}, @embedFile("int_test.cy"));
-}
-
-test "Floats." {
-    try evalPass(.{}, @embedFile("float_test.cy"));
-}
-
-test "Typed operator function." {
-    // Invoking operator function returns a typed value.
-    try evalPass(.{},
-        \\var a = 'hello' + 'world'
-        \\-- `a` should be string type.
-        \\var b = a.concat('123')
-    );
-}
-
-test "Operator precedence." {
-    try evalPass(.{}, @embedFile("op_precedence_test.cy"));
-}
-
-test "Comments" {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    // Single line comment.
-    var val = try run.eval(
-        \\-- 1
-        \\2
-    );
-    try t.eq(val.asInteger(), 2);
-    val = try run.eval(
-        \\2
-        \\-- 1
-    );
-    try t.eq(val.asInteger(), 2);
-
-    // Multiple single line comments.
-    val = try run.eval(
-        \\-- 1
-        \\-- 2
-        \\-- 3
-        \\4
-    );
-    try t.eq(val.asInteger(), 4);
-}
-
-test "Escape sequence." {
-    try evalPass(.{}, @embedFile("escape_seq_test.cy"));
-}
-
-test "String cases." {
-    try evalPass(.{}, @embedFile("string_test.cy"));
-}
-
-test "ASCII strings." {
-    try evalPass(.{}, @embedFile("astring_test.cy"));
-}
-
-test "UTF-8 strings." {
-    try evalPass(.{}, @embedFile("ustring_test.cy"));
-}
-
-test "ASCII string slice." {
-    try evalPass(.{}, @embedFile("astring_slice_test.cy"));
-}
-
-test "UTF-8 string slice." {
-    try evalPass(.{}, @embedFile("ustring_slice_test.cy"));
-}
-
-test "Array." {
-    try evalPass(.{}, @embedFile("array_test.cy"));
-}
-
-test "Array slice." {
-    try evalPass(.{}, @embedFile("array_slice_test.cy"));
-}
-
-test "String interpolation." {
-    try evalPass(.{}, @embedFile("string_interpolation_test.cy"));
-}
-
-test "Dynamic value, recent type check." {
-    // CompileError when calling with dynamic value but the recent type can not be casted to the constraint type.
-    try eval(.{ .silent = true },
-        \\my a = 123
-        \\a = 'hello'
-        \\foo(a)
-        \\func foo(n int):
-        \\    pass
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(dyn string) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo(int) dynamic
-            \\
-            \\main:3:1:
-            \\foo(a)
-            \\^
-            \\
-        );
+test "Return from main." {
+    try eval(.{},
+        \\return 123
+    , struct { fn func(_: *VMrunner, res: EvalResult) !void {
+        const val = try res;
+        try t.eq(val.asInteger(), 123);
     }}.func);
 }
 
-test "Lists" {
-    // Negative index.
-    try eval(.{ .silent = true },
-        \\var a = [1, 2, 3]
-        \\a[-1]
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Out of bounds.
-            \\
-            \\main:2:1 main:
-            \\a[-1]
-            \\^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{}, @embedFile("list_test.cy"));
+inline fn thisDir() []const u8 {
+    return comptime std.fs.path.dirname(@src().file) orelse @panic("error");
 }
 
-test "Maps" {
-    try evalPass(.{}, @embedFile("map_test.cy"));
+fn case(path: []const u8) !void {
+    try case2(null, path);
 }
 
-test "Op assignment statement." {
-    try evalPass(.{}, @embedFile("opassign_test.cy"));
-}
+fn case2(config: ?Config, path: []const u8) !void {
+    const fpath = try std.mem.concat(t.alloc, u8, &.{ thisDir(), "/", path });
+    defer t.alloc.free(fpath);
+    const contents = try std.fs.cwd().readFileAlloc(t.alloc, fpath, 1e9);
+    defer t.alloc.free(contents);
 
-test "Undeclared variable references." {
-    // Reading an undeclared variable is a compile error.
-    try eval(.{ .silent = true },
-        \\import t 'test'
-        \\t.eq(a, 123)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Undeclared variable `a`.
-            \\
-            \\main:2:6:
-            \\t.eq(a, 123)
-            \\     ^
-            \\
-        );
-    }}.func);
+    var idx = std.mem.indexOf(u8, contents, "cytest:") orelse {
+        return error.MissingCyTest;
+    };
 
-    // Reading an undeclared variable from unrelated block is a compile error.
-    try eval(.{ .silent = true },
-        \\if true:
-        \\  var a = 123
-        \\func foo():
-        \\  return a
-        \\
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Undeclared variable `a`.
-            \\
-            \\main:4:10:
-            \\  return a
-            \\         ^
-            \\
-        );
-    }}.func);
+    var rest = contents[idx+7..];
+    idx = std.mem.indexOfScalar(u8, rest, '\n') orelse rest.len;
+    const test_t = std.mem.trim(u8, rest[0..idx], " ");
 
-    // Using an undeclared variable as a callee is a compile error.
-    try eval(.{ .silent = true },
-        \\a()
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Undeclared variable `a`.
-            \\
-            \\main:1:1:
-            \\a()
-            \\^
-            \\
-        );
-    }}.func);
-}
-
-test "Typed static variable declaration." {
-    // Type check on initializer.
-    try eval(.{ .silent = true },
-        \\var Root.a float = []
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Expected type `float`, got `List`.
-            \\
-            \\main:1:20:
-            \\var Root.a float = []
-            \\                   ^
-            \\
-        );
-    }}.func);
-}
-
-test "Static variable declaration." {
-    // Capturing a local variable in a static var initializer is not allowed.
-    try eval(.{ .silent = true },
-        \\var b = 123
-        \\var Root.a = b
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Could not find the symbol `b`.
-            \\
-            \\main:2:14:
-            \\var Root.a = b
-            \\             ^
-            \\
-        );
-    }}.func);
-
-    // Can't reference self.
-    try eval(.{ .silent = true },
-        \\var Root.c = c
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Reference to `c` creates a circular dependency.
-            \\
-            \\main:1:14:
-            \\var Root.c = c
-            \\             ^
-            \\
-        );
-    }}.func);
-
-    // Can't have circular reference.
-    try eval(.{ .silent = true },
-        \\var Root.a = b
-        \\var Root.b = a
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Referencing `a` creates a circular dependency in the module.
-            \\
-            \\main:2:14:
-            \\var Root.b = a
-            \\             ^
-            \\
-        );
-    }}.func);
-
-    // Declaration that depends on another.
-    _ = try evalPass(.{}, 
-        \\import t 'test'
-        \\var Root.a = 123
-        \\var Root.b = a + 321
-        \\var Root.c = a + b
-        \\t.eq(a, 123) 
-        \\t.eq(b, 444) 
-        \\t.eq(c, 567) 
-    );
-
-    // Depends on and declared before another.
-    _ = try evalPass(.{}, 
-        \\import t 'test'
-        \\var Root.c = a + b
-        \\var Root.b = a + 321
-        \\var Root.a = 123
-        \\t.eq(a, 123) 
-        \\t.eq(b, 444) 
-        \\t.eq(c, 567) 
-    );
-
-    // Declaration over using builtin module. 
-    try evalPass(.{},
-        \\var Root.print = 123
-    );
-
-    // Dependent read runs after initial declaration.
-    try evalPass(.{},
-        \\import test
-        \\var Root.a = load(b)
-        \\var Root.b = 123
-        \\func load(arg):
-        \\  b = 234
-        \\test.eq(b, 234)
-    );
-
-    // Static vars are loaded even if they are not referenced.
-    try evalPass(.{},
-        \\import test
-        \\var Root.b = 123
-        \\var Root.a = load()
-        \\func load():
-        \\  b = 234
-        \\test.eq(b, 234)
-    );
-
-    try evalPass(.{}, @embedFile("staticvar_decl_test.cy"));
-}
-
-test "Static variable assignment." {
-    try evalPass(.{}, @embedFile("staticvar_assign_test.cy"));
-}
-
-test "Typed local variable." {
-    try eval(.{ .silent = true },
-        \\var a float = "123"
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Expected type `float`, got `string`.
-            \\
-            \\main:1:16:
-            \\var a float = "123"
-            \\               ^
-            \\
-        );
-    }}.func);
-
-    // Reassign with incompatible type.
-    try eval(.{ .silent = true },
-        \\var a float = 123 
-        \\a = "123"
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Expected type `float`, got `string`.
-            \\
-            \\main:2:6:
-            \\a = "123"
-            \\     ^
-            \\
-        );
-    }}.func);
-
-    // Reassign with compatible type.
-    try evalPass(.{},
-        \\var a float = 123 
-        \\a = 234
-    );
-
-    // `none` inferred as `any` for declaration.
-    try evalPass(.{},
-        \\var a = none
-        \\a = 234
-        \\a = none
-        \\a = []
-    );
-}
-
-test "Local variable declaration." {
-    // Can't have annotations.    
-    try eval(.{ .silent = true },
-        \\@host var a
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.ParseError,
-            \\ParseError: Annotations are not allowed for local var declarations.
-            \\
-            \\main:1:7:
-            \\@host var a
-            \\      ^
-            \\
-        );
-    }}.func);
-
-    // Can't redeclare var.    
-    try eval(.{ .silent = true },
-        \\var a = 1
-        \\var a = 2
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Variable `a` is already declared in the block.
-            \\
-            \\main:2:5:
-            \\var a = 2
-            \\    ^
-            \\
-        );
-    }}.func);
-
-    // Declaring a var that is already referencing a parent local.
-    try eval(.{ .silent = true },
-        \\var a = 1
-        \\var foo = func():
-        \\  -- Captured for read.
-        \\  print a
-        \\  -- Attempting to declare `a`.
-        \\  var a = 3
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: `a` already references a parent local variable.
-            \\
-            \\main:6:7:
-            \\  var a = 3
-            \\      ^
-            \\
-        );
-    }}.func);
-
-    // Declaring a var that is already referencing a static var.
-    try eval(.{ .silent = true },
-        \\var Root.a = 1
-        \\var foo = func():
-        \\  print a
-        \\  -- Attempting to declare `a`.
-        \\  var a = 3
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: `a` already references a static variable.
-            \\
-            \\main:5:7:
-            \\  var a = 3
-            \\      ^
-            \\
-        );
-    }}.func);
-
-    // New local inside sub-block.
-    try evalPass(.{},
-        \\import test
-        \\var a = 1
-        \\if true:
-        \\  var a = 2
-        \\  test.eq(a, 2)
-        \\test.eq(a, 1)
-    );
-
-    // Can't reference var from non parent if block.
-    try eval(.{ .silent = true },
-        \\if true:
-        \\  var a = 1
-        \\a
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Undeclared variable `a`.
-            \\
-            \\main:3:1:
-            \\a
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Can't reference iter var from non parent for block.
-    try eval(.{ .silent = true },
-        \\for 0..10 -> i:
-        \\  pass
-        \\i
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Undeclared variable `i`.
-            \\
-            \\main:3:1:
-            \\i
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Can't reference var from non parent for block.
-    try eval(.{ .silent = true },
-        \\for 0..10:
-        \\  var i = 0
-        \\i
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Undeclared variable `i`.
-            \\
-            \\main:3:1:
-            \\i
-            \\^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{}, @embedFile("localvar_decl_test.cy"));
-}
-
-test "Local variable assignment." {
-    try evalPass(.{}, @embedFile("localvar_assign_test.cy"));
-
-    // Assign to missing $setIndex method.
-    try eval(.{ .silent = true },
-        \\1[0] = 2
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: `func $setIndex(any, int, int) any` can not be found in `int`.
-            \\
-            \\main:1:1 main:
-            \\1[0] = 2
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Assign to undeclared var.
-    try eval(.{ .silent = true },
-        \\foo = 1
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Undeclared variable `foo`.
-            \\
-            \\main:1:1:
-            \\foo = 1
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Initializing an object in a branch will auto generate initializers at the start of
-    // the function. This test sets freed object values along the undefined stack space.
-    // If the initializers were generated, the release on `a` would succeed.
-    // If not `a` would refer to a freed object value and fail the release op.
-    try evalPass(.{
-        .preEval = struct {
-            fn func(run: *VMrunner) void {
-                run.vm.fillUndefinedStackSpace(cy.Value.initNoCycPtr(null));
+    if (std.mem.eql(u8, test_t, "error")) {
+        // Find end of last comment.
+        const start = idx+1;
+        while (true) {
+            if (rest[idx..].len >= 3 and rest[idx] == '\n' and rest[idx+1] == '-' and rest[idx+2] == '-') {
+                idx += 1;
+                if (std.mem.indexOfScalarPos(u8, rest, idx, '\n')) |nl| {
+                    idx = nl;
+                } else {
+                    idx = rest.len;
+                }
+            } else {
+                break;
             }
-        }.func,
-    },
-        \\type S object:
-        \\  var value
-        \\if false:
-        \\  var a = [S value: 123]
-    );
+        }
 
-    // Same test in method scope.
-    try evalPass(.{
-        .preEval = struct {
-            fn func(run: *VMrunner) void {
-                run.vm.fillUndefinedStackSpace(cy.Value.initNoCycPtr(null));
-            }
-        }.func,
-    },
-        \\type S object:
-        \\  var value
-        \\  func foo():
-        \\    if false:
-        \\      var a = [S value: 123]
-        \\var s = [S value: 234]
-        \\s.foo()
-    );
-}
+        const exp = rest[start..idx];
 
-test "Cond expression" {
-    try evalPass(.{},
-        \\import test
-        \\var foo = true
-        \\test.eq(foo ? 123 else 456, 123)
-        \\foo = false
-        \\test.eq(foo ? 123 else 456, 456)
-        \\
-        \\-- Types are merged.
-        \\var a = false ? 123 else '$(123)456'
-        \\test.eq(a, '123456')
-        \\-- `a` should be released since else returns a heap string.
-    );
-}
+        var buf: [1024]u8 = undefined;
+        const len = std.mem.replacementSize(u8, exp, "--", "");
+        _ = std.mem.replace(u8, exp, "--", "", &buf);
 
-test "Return statement." {
-    // return multi-line lambda
-    try evalPass(.{},
-        \\import t 'test'
-        \\func foo():
-        \\  return func():
-        \\    return 123
-        \\t.eq(foo()(), 123)
-    );
+        const Context = struct {
+            exp: []const u8,
+        };
+        var ctx = Context{ .exp = buf[0..len]};
+        var fconfig: Config = config orelse .{ .silent = true };
+        fconfig.ctx = &ctx;
 
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    // If/else.
-    var val = try run.eval(
-        \\var foo = true
-        \\if foo:
-        \\  return 123
-    );
-    try t.eq(val.asInteger(), 123);
-
-    val = try run.eval(
-        \\var foo = false
-        \\if foo:
-        \\  return 123
-        \\else:
-        \\  return 456
-    );
-    try t.eq(val.asInteger(), 456);
-
-    // else if condition.
-    val = try run.eval(
-        \\if false:
-        \\  return 456
-        \\else true:
-        \\  return 123
-        \\else:
-        \\  return 456
-    );
-    try t.eq(val.asInteger(), 123);
-}
-
-test "Switch." {
-    try evalPass(.{}, @embedFile("switch_test.cy"));
-}
-
-test "If statement." {
-    try evalPass(.{}, @embedFile("if_test.cy"));
-}
-
-test "Infinite while loop." {
-    try evalPass(.{}, @embedFile("while_inf_test.cy"));
-}
-
-test "While conditional." {
-    try evalPass(.{}, @embedFile("while_cond_test.cy"));
-}
-
-test "While optional." {
-    try evalPass(.{}, @embedFile("while_opt_test.cy"));
-}
-
-test "For iterator." {
-    // Iterable does not have iterator().
-    try eval(.{ .silent = true },
-        \\for 123 -> i:
-        \\  print i
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: `func iterator(any) any` can not be found in `int`.
-            \\
-            \\main:1:5 main:
-            \\for 123 -> i:
-            \\    ^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{}, @embedFile("for_iter_test.cy"));
-}
-
-test "For loop over range." {
-    try evalPass(.{}, @embedFile("for_range_test.cy"));
-}
-
-test "Native function call." {
-    try evalPass(.{},
-        \\import t 'test'
-        \\var list = []
-        \\for 0..10 -> i:
-        \\   list.append(i)
-        \\t.eq(list[9], 9)
-    );
-}
-
-test "Typed closures." {
-    // Incompatible argument type.
-    try eval(.{ .silent = true },
-        \\var b = 2
-        \\var foo = func (a int):
-        \\  return a + b
-        \\foo(1.0)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Incompatible call arguments `(float) any`
-            \\to the lambda `func (int) dynamic`.
-            \\
-            \\main:4:1 main:
-            \\foo(1.0)
-            \\^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{},
-        \\import test
-        \\var b = 2
-        \\var foo = func (a int):
-        \\    return a + b
-        \\test.eq(foo(1), 3)
-    );
-}
-
-test "Closures." {
-    try evalPass(.{}, @embedFile("closure_test.cy"));
-}
-
-test "Function recursion." {
-    try evalPass(.{}, @embedFile("recursion_test.cy"));
-}
-
-test "Function overloading." {
-    try evalPass(.{}, @embedFile("function_overload_test.cy"));
-}
-
-test "Typed host function." {
-    // Incompatible argument type when invoking lambda wrapper.
-    try eval(.{ .silent = true },
-        \\var foo = isDigit
-        \\foo(1.0)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Incompatible call arguments `(float) any`
-            \\to the lambda `func (int) bool`.
-            \\
-            \\main:2:1 main:
-            \\foo(1.0)
-            \\^
-            \\
-        );
-    }}.func);
-}
-
-test "Typed static functions." {
-    // Check return type. 
-    try eval(.{ .silent = true },
-        \\func foo() int:
-        \\  return 1.2
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Expected type `int`, got `float`.
-            \\
-            \\main:2:10:
-            \\  return 1.2
-            \\         ^
-            \\
-        );
-    }}.func);
-
-    // Can't resolve param type.
-    try eval(.{ .silent = true },
-        \\func foo(a Vec2):
-        \\  pass
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Could not find the symbol `Vec2`.
-            \\
-            \\main:1:12:
-            \\func foo(a Vec2):
-            \\           ^
-            \\
-        );
-    }}.func);
-
-    // Incompatible argument type when invoking lambda wrapper.
-    try eval(.{ .silent = true },
-        \\func foo(a int):
-        \\  return a
-        \\var bar = foo
-        \\bar(1.0)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Incompatible call arguments `(float) any`
-            \\to the lambda `func (int) dynamic`.
-            \\
-            \\main:4:1 main:
-            \\bar(1.0)
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Infer type from param.
-    try evalPass(.{},
-        \\import test
-        \\func foo(a float):
-        \\  return a
-        \\test.eq(foo(2), 2.0)
-    );
-
-    // Infer type from object func param. 
-    try evalPass(.{},
-        \\import test
-        \\type S object
-        \\func S.foo(a float):
-        \\  return a
-        \\test.eq(S.foo(2), 2.0)
-    );
-}
-
-test "Static functions." {
-    // Call with missing func sym.
-    try eval(.{ .silent = true },
-        \\foo(1)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Undeclared variable `foo`.
-            \\
-            \\main:1:1:
-            \\foo(1)
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Call with wrong number of arguments.
-    try eval(.{ .silent = true },
-        \\func foo():
-        \\  return 1
-        \\foo(1)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(int) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo() dynamic
-            \\
-            \\main:3:1:
-            \\foo(1)
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Call with wrong number of arguments for overloaded function.
-    try eval(.{ .silent = true },
-        \\func foo():
-        \\  return 1
-        \\func foo(n):
-        \\  return n
-        \\foo(1, 2)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function for call signature: `foo(int, int) any`.
-            \\Functions named `foo` in `main`:
-            \\    func foo() dynamic
-            \\    func foo(dynamic) dynamic
-            \\
-            \\main:5:1:
-            \\foo(1, 2)
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Reassign to a function with a different signature.
-    try eval(.{ .silent = true },
-        \\func toNum(a):
-        \\    pass
-        \\func foo():
-        \\    pass
-        \\foo = toNum
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Assigning to static function `func () dynamic` with a different function signature `func (dynamic) dynamic`.
-            \\
-            \\main:5:1 main:
-            \\foo = toNum
-            \\^
-            \\
-        );
-    }}.func);
-
-    // Allow declaring over using builtins namespace.
-    try evalPass(.{},
-        \\import t 'test'
-        \\func print(v):
-        \\  return v + 2
-        \\t.eq(print(1), 3)
-    );
-
-    // Capture local from static function is not allowed.
-    // TODO: Provide better error message. Since function declarations are now analyzed separately this info
-    //       isn't available but the parser could accumulate local var decls.
-    try eval(.{ .silent = true },
-        \\var a = 123
-        \\func foo():
-        \\  return a
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Undeclared variable `a`.
-            \\
-            \\main:3:10:
-            \\  return a
-            \\         ^
-            \\
-        );
-    }}.func);
-
-    // Capturing from static function is not allowed.
-    try eval(.{ .silent = true },
-        \\var a = 123
-        \\func foo():
-        \\  a = 234
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Undeclared variable `a`.
-            \\
-            \\main:3:3:
-            \\  a = 234
-            \\  ^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{}, @embedFile("static_func_test.cy"));
-}
-
-test "Typed lambdas." {
-    // Incompatible argument type.
-    try eval(.{ .silent = true },
-        \\var foo = func (a int):
-        \\  return a
-        \\foo(1.0)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Incompatible call arguments `(float) any`
-            \\to the lambda `func (int) dynamic`.
-            \\
-            \\main:3:1 main:
-            \\foo(1.0)
-            \\^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{},
-        \\import test
-        \\var foo = func (a int):
-        \\    return a
-        \\test.eq(foo(1), 1)
-    );
-}
-
-test "Lambdas." {
-    _ = try evalPass(.{}, @embedFile("lambda_test.cy"));
-}
-
-// test "Function named parameters call." {
-//     const run = VMrunner.create();
-//     defer run.destroy();
-
-//     var val = try run.eval(
-//         \\func foo(a, b):
-//         \\  return a - b
-//         \\foo(a: 3, b: 1)
-//     );
-//     try t.eq(val.asF64toI32(), 2);
-//     run.deinitValue(val);
-
-//     val = try run.eval(
-//         \\func foo(a, b):
-//         \\  return a - b
-//         \\foo(a: 1, b: 3)
-//     );
-//     try t.eq(val.asF64toI32(), -2);
-//     run.deinitValue(val);
-
-//     // New line as arg separation.
-//     val = try run.eval(
-//         \\func foo(a, b):
-//         \\  return a - b
-//         \\foo(
-//         \\  a: 3
-//         \\  b: 1
-//         \\)
-//     );
-//     try t.eq(val.asF64toI32(), 2);
-//     run.deinitValue(val);
-// }
-
-test "access expression" {
-    try evalPass(.{},
-        \\import t 'test'
-        \\
-        \\-- One level of access from parent.
-        \\var map = [ a: 5 ]
-        \\t.eq(map.a, 5)
-        \\
-        \\-- Multiple levels of access from parent.
-        \\map = [ a: [ b: 5 ] ]
-        \\t.eq(map.a.b, 5)
-    );
-}
-
-test "Math module." {
-    try evalPass(.{}, @embedFile("math_test.cy"));
-}
-
-test "Bitwise operators." {
-    try evalPass(.{}, @embedFile("bitwise_op_test.cy"));
-}
-
-test "Arithmetic operators." {
-    // Can't add objects by default.
-    try eval(.{ .silent = true },
-        \\type S object:
-        \\  var a any
-        \\var a = [S a: 123] + 123
-        \\
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find the symbol `$infix+` in `main.S`.
-            \\
-            \\main:3:20:
-            \\var a = [S a: 123] + 123
-            \\                   ^
-            \\
-        );
-    }}.func);
-
-    // Can only subtract numbers.
-    try eval(.{ .silent = true },
-        \\var a = 'foo' - 123
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find the symbol `$infix-` in `builtins.string`.
-            \\
-            \\main:1:15:
-            \\var a = 'foo' - 123
-            \\              ^
-            \\
-        );
-    }}.func);
-
-    // Can only multiply numbers.
-    try eval(.{ .silent = true },
-        \\var a = 'foo' * 123
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find the symbol `$infix*` in `builtins.string`.
-            \\
-            \\main:1:15:
-            \\var a = 'foo' * 123
-            \\              ^
-            \\
-        );
-    }}.func);
-
-    // Can only divide numbers.
-    try eval(.{ .silent = true },
-        \\var a = 'foo' / 123
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find the symbol `$infix/` in `builtins.string`.
-            \\
-            \\main:1:15:
-            \\var a = 'foo' / 123
-            \\              ^
-            \\
-        );
-    }}.func);
-
-    // Can not mod string
-    try eval(.{ .silent = true },
-        \\var a = 'foo' % 123
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find the symbol `$infix%` in `builtins.string`.
-            \\
-            \\main:1:15:
-            \\var a = 'foo' % 123
-            \\              ^
-            \\
-        );
-    }}.func);
-
-    // Can not pow string.
-    try eval(.{ .silent = true },
-        \\var a = 'foo' ^ 123
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find the symbol `$infix^` in `builtins.string`.
-            \\
-            \\main:1:15:
-            \\var a = 'foo' ^ 123
-            \\              ^
-            \\
-        );
-    }}.func);
-
-    try evalPass(.{}, @embedFile("arithmetic_op_test.cy"));
-}
-
-test "ARC cycles." {
-    // GC is able to detect reference cycle.
-    _ = try evalPass(.{},
-        \\import t 'test'
-        \\func foo():
-        \\  var a = []
-        \\  var b = []
-        \\  a.append(b)
-        \\  b.append(a)
-        \\  var res = performGC()
-        \\  -- Cycle still alive in the current stack so no gc.
-        \\  t.eq(res['numCycFreed'], 0)
-        \\foo()
-        \\var res = performGC()
-        \\t.eq(res['numCycFreed'], 2)
-    );
-
-    // Reference cycle but still reachable from a root value.
-    _ = try evalPass(.{ .cleanupGC = true }, 
-        \\import t 'test'
-        \\var Root.g = none
-        \\var a = []
-        \\var b = []
-        \\a.append(b)
-        \\b.append(a)
-        \\g = a
-        \\var res = performGC()
-        \\t.eq(res['numCycFreed'], 0)
-    );
-
-    // Reference cycle with child non cyclable.
-    _ = try evalPass(.{}, 
-        \\import t 'test'
-        \\func foo():
-        \\  var a = []
-        \\  var b = []
-        \\  a.append(b)
-        \\  b.append(a)
-        \\  a.append(pointer(1))
-        \\foo()
-        \\var res = performGC()
-        \\t.eq(res['numCycFreed'], 2)
-    );
-
-    // Reference cycle with non pool objects.
-    _ = try evalPass(.{}, 
-        \\import t 'test'
-        \\type T object:
-        \\  var a
-        \\  var b
-        \\  var c
-        \\  var d
-        \\  var e
-        \\func foo():
-        \\  var a = [T:]
-        \\  var b = [T:]
-        \\  a.c = b
-        \\  b.c = a
-        \\foo()
-        \\var res = performGC()
-        \\t.eq(res['numCycFreed'], 2)
-    );
-}
-
-test "examples" {
-    try compile(.{}, @embedFile("../examples/fiber.cy"));
-    try compile(.{}, @embedFile("../examples/fizzbuzz.cy"));
-    try compile(.{}, @embedFile("../examples/hello.cy"));
-    try compile(.{}, @embedFile("../examples/ffi.cy"));
-    try compile(.{}, @embedFile("../examples/account.cy"));
-    try compile(.{}, @embedFile("../examples/fibonacci.cy"));
-}
-
-test "tools" {
-    try compile(.{}, @embedFile("../src/tools/bench.cy"));
-    try compile(.{}, @embedFile("../src/tools/llvm.cy"));
-    try compile(.{}, @embedFile("../src/tools/clang_bs.cy"));
-    try compile(.{}, @embedFile("../src/tools/md4c.cy"));
-    if (!cy.isWasm) {
-        try compile(Config.initFileModules("./src/tools/cbindgen.cy"), @embedFile("../src/tools/cbindgen.cy"));
-        try compile(Config.initFileModules("./docs/gen-docs.cy"), @embedFile("../docs/gen-docs.cy"));
-        try compile(Config.initFileModules("./src/jit/gen-stencils-a64.cy"), @embedFile("../src/jit/gen-stencils-a64.cy"));
-        try compile(Config.initFileModules("./src/jit/gen-stencils-x64.cy"), @embedFile("../src/jit/gen-stencils-x64.cy"));
+        try eval(fconfig, contents
+        , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+            var ctx_: *Context = @ptrCast(@alignCast(run.ctx));
+            try run.expectErrorReport2(res, ctx_.exp);
+        }}.func);
+    } else if (std.mem.eql(u8, test_t, "pass")) {
+        try evalPass(config orelse .{}, contents);
+    } else {
+        return error.UnsupportedTestType;
     }
-}
-
-test "benchmarks" {
-    try compile(.{}, @embedFile("bench/fib/fib.cy"));
-    try compile(.{}, @embedFile("bench/fiber/fiber.cy"));
-    try compile(.{}, @embedFile("bench/for/for.cy"));
-    try compile(.{}, @embedFile("bench/heap/heap.cy"));
-    try compile(.{}, @embedFile("bench/string/index.cy"));
 }

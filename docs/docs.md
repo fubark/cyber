@@ -105,7 +105,7 @@ if true:
     var a = 234
 ```
 Subsequent statements in the block must follow the same indentation.
-The block ends when a statement recedes from this indentation.
+The block ends when a statement recedes from this indentation:
 ```cy
 var items = [10, 20, 30]
 for items -> it:
@@ -113,16 +113,16 @@ for items -> it:
         print it
     print it      -- This is the first statement outside of the `if` block.
 ```
-Single-line blocks allow only one statement after a starting block.
+Compact blocks allow only one statement after the starting block:
 ```cy
 -- A single line block.
 if true: print 123
 
 if true: print 123
-    -- This is an indentation error since the single-line block is already consumed.
+    -- This is an indentation error since the compact block is already consumed.
     print 234
 ```
-Since blocks require at least one statement, use `pass` as a placeholder statement.
+Since blocks require at least one statement, use `pass` as a placeholder statement:
 ```cy
 func foo():
     pass

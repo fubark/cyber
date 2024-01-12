@@ -1,0 +1,2 @@
+--cytest: pass
+    

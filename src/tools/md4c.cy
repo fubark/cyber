@@ -60,7 +60,7 @@ var .ALIGN_LEFT int = 1
 var .ALIGN_CENTER int = 2
 var .ALIGN_RIGHT int = 3
 
-type ATTRIBUTE_S object:
+type ATTRIBUTE_S:
     var text any -- const MD_CHAR *
     var size SIZE
     var substr_types any -- const MD_TEXTTYPE *
@@ -68,68 +68,68 @@ type ATTRIBUTE_S object:
 
 type ATTRIBUTE ATTRIBUTE_S
 
-type BLOCK_UL_DETAIL_S object:
+type BLOCK_UL_DETAIL_S:
     var is_tight int
     var mark CHAR
 
 type BLOCK_UL_DETAIL BLOCK_UL_DETAIL_S
 
-type BLOCK_OL_DETAIL_S object:
+type BLOCK_OL_DETAIL_S:
     var start int
     var is_tight int
     var mark_delimiter CHAR
 
 type BLOCK_OL_DETAIL BLOCK_OL_DETAIL_S
 
-type BLOCK_LI_DETAIL_S object:
+type BLOCK_LI_DETAIL_S:
     var is_task int
     var task_mark CHAR
     var task_mark_offset OFFSET
 
 type BLOCK_LI_DETAIL BLOCK_LI_DETAIL_S
 
-type BLOCK_H_DETAIL_S object:
+type BLOCK_H_DETAIL_S:
     var level int
 
 type BLOCK_H_DETAIL BLOCK_H_DETAIL_S
 
-type BLOCK_CODE_DETAIL_S object:
+type BLOCK_CODE_DETAIL_S:
     var info ATTRIBUTE
     var lang ATTRIBUTE
     var fence_char CHAR
 
 type BLOCK_CODE_DETAIL BLOCK_CODE_DETAIL_S
 
-type BLOCK_TABLE_DETAIL_S object:
+type BLOCK_TABLE_DETAIL_S:
     var col_count int
     var head_row_count int
     var body_row_count int
 
 type BLOCK_TABLE_DETAIL BLOCK_TABLE_DETAIL_S
 
-type BLOCK_TD_DETAIL_S object:
+type BLOCK_TD_DETAIL_S:
     var align ALIGN
 
 type BLOCK_TD_DETAIL BLOCK_TD_DETAIL_S
 
-type SPAN_A_DETAIL_S object:
+type SPAN_A_DETAIL_S:
     var href ATTRIBUTE
     var title ATTRIBUTE
 
 type SPAN_A_DETAIL SPAN_A_DETAIL_S
 
-type SPAN_IMG_DETAIL_S object:
+type SPAN_IMG_DETAIL_S:
     var src ATTRIBUTE
     var title ATTRIBUTE
 
 type SPAN_IMG_DETAIL SPAN_IMG_DETAIL_S
 
-type SPAN_WIKILINK_S object:
+type SPAN_WIKILINK_S:
     var target ATTRIBUTE
 
 type SPAN_WIKILINK_DETAIL SPAN_WIKILINK_S
 
-type PARSER_S object:
+type PARSER_S:
     var abi_version int
     var flags int
     var enter_block any -- int (*)(MD_BLOCKTYPE, void *, void *)

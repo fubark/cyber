@@ -1,4 +1,4 @@
-type Account object:
+type Account:
     var name    string
     var balance float
 

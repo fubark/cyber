@@ -47,7 +47,7 @@ if codeBuf == none:
 
 var llSymIter = llvm.ObjectFileCopySymbolIterator(llBin)
 
-type Sym object:
+type Sym:
     var name string
     var addr int
 

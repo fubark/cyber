@@ -146,7 +146,7 @@ type State enum:
     case header
     case html
 
-type Link object:
+type Link:
     var href  string
     var title string
     var text  string
@@ -374,7 +374,7 @@ func getAttrText(attr) string:
         return ''
     return (attr.text as pointer).toArray(0, attr.size).decode()
 
-type ModulePair object:
+type ModulePair:
     var path    string
     var section string
 

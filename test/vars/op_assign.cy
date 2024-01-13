@@ -14,7 +14,7 @@ a -= 1
 t.eq(a, 49)
 
 -- Op assign to field.
-type S object:
+type S:
     var foo int
 var s = [S foo: 1]
 s.foo += 10

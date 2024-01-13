@@ -15,7 +15,7 @@ t.eq(bool(''), true)
 -- Heap objects evaluate to true.
 t.eq(bool([:]), true)
 t.eq(bool([]), true)
-type S object:
+type S:
     var a
 t.eq(bool([S a: 0]), true)
 

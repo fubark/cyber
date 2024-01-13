@@ -5,7 +5,7 @@ import t 'test'
 type Vec2 a.Vec2
 
 -- Using alias as type spec.
-type Parent object:
+type Parent:
     var v Vec2
 
 var v = [Vec2 x: 1, y: 2]
@@ -19,7 +19,7 @@ func foo(v Vec2):
 v = [a.Vec2Alias x: 1, y: 2]
 
 -- Using alias from imported module as type spec.
-type Parent2 object:
+type Parent2:
     var v a.Vec2Alias
 
 --cytest: pass

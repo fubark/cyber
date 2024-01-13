@@ -33,7 +33,7 @@ foo()
 
 -- copy()
 t.eq(copy(123), 123)
-type S object:
+type S:
     var foo
     var bar
 var s = [S:]
@@ -111,7 +111,7 @@ res = parseCyber('import foo \'bar\'')
 t.eq(res['decls'][0].type, 'import')
 t.eq(res['decls'][0].name, 'foo')
 
-res = parseCyber('type foo object:\n  var a')
+res = parseCyber('type foo:\n  var a')
 t.eq(res['decls'][0].type, 'object')
 t.eq(res['decls'][0].name, 'foo')
 

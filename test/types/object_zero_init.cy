@@ -1,13 +1,13 @@
 import test
 
-type S object:
+type S:
     var a float
 
 -- Zero initialize missing field.
 var o = [S:]
 test.eq(o.a, 0.0)
 
-type T object:
+type T:
   var a S
   var b float
 

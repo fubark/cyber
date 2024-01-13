@@ -68,7 +68,7 @@ test "ARC." {
     // Object is retained when assigned to struct literal.
     try eval(.{},
         \\import t 'test'
-        \\type S object:
+        \\type S:
         \\  var value
         \\var a = [123]
         \\var s = [S value: a]
@@ -82,7 +82,7 @@ test "ARC." {
 
     // Object is released when returned rvalue field access.
     try eval(.{},
-        \\type S object:
+        \\type S:
         \\  var value
         \\1 + [S value: 123].value
     , struct { fn func(run: *Runner, res: EvalResult) !void {
@@ -184,7 +184,7 @@ test "ARC for function return values." {
     // Local object is retained when returned.
     try eval(.{},
         \\import t 'test'
-        \\type S object:
+        \\type S:
         \\  var value
         \\func foo():
         \\  var a = [S value: 123]
@@ -200,7 +200,7 @@ test "ARC for function return values." {
 
     // Object is released when returned from a function if no followup assignment.
     try eval(.{},
-        \\type S object:
+        \\type S:
         \\  var value
         \\func foo():
         \\  return [S value: 123]
@@ -268,7 +268,7 @@ test "ARC in loops." {
 
     // A non-rcCandidate var is reassigned to a rcCandidate var (field access on the right) inside a loop.
     try eval(.{},
-        \\type S object:
+        \\type S:
         \\  var foo
         \\my a = 123
         \\for 0..3:

@@ -247,7 +247,6 @@ There are `25` general keywords. This list categorizes them:
 These keywords only have meaning in a certain context.
 - [Methods](#methods): `self`, `Self`
 - [Catching Errors](#caught-variable): `caught`
-- [Object Type](#objects): `object`
 - [Enum Type](#enums): `enum`
 - [Function Throws](#throws-specifier): `throws`
 
@@ -767,14 +766,14 @@ var colors = []:
 ```
 
 ## Objects.
-Any value that isn't a primitive is an object. You can declare your own object types using the `type object` declaration.
+Any value that isn't a primitive is an object. You can declare your own object types using the `type` declaration.
 Object types are similar to structs and classes in other languages.
 Unlike classes, there is no concept of inheritance at the language level.
 
 ### Fields.
-Fields must be declared at the top of the `type object` block using `var` or `my`:
+Fields must be declared at the top of the `type` block using `var` or `my`:
 ```cy
-type Node object:
+type Node:
     var value int
     var next  any
 ```
@@ -790,7 +789,7 @@ print node.value       -- Prints "123"
 ### Methods.
 Methods allow invoking a function on an object instance using the `.` operator:
 ```cy
-type Node object:
+type Node:
     var value int
     var next  any
 
@@ -816,7 +815,7 @@ Type members can be implicitly referenced inside the method. *Incomplete: Only t
 
 To reference members explicitly inside a method, use the builtin `self`:
 ```cy
-type Node object:
+type Node:
     var value int
     var next  any
 
@@ -827,7 +826,7 @@ type Node object:
 ### Type functions.
 Type functions are declared outside of the `type` block with an explicit namespace path:
 ```cy
-type Node object:
+type Node:
     var value int
     var next  any
 
@@ -1410,7 +1409,7 @@ func foo():         -- Exported static function.
 
 var .bar = 234      -- Exported static variable.
 
-type Thing object:  -- Exported type.
+type Thing:  -- Exported type.
     var a float
 ```
 
@@ -1593,7 +1592,7 @@ When using `cfunc` or `cbind` declarations, [symbols](#symbols-1) are used to re
 | .double | float | double |
 | (1) .charPtr | pointer | char* |
 | .voidPtr | pointer | void* |
-| (2) type {S} object | type {S} object | struct |
+| (2) type {S} | type {S} | struct |
 
 1. Use `os.cstr()` and `pointer.fromCstr()` to convert between a Cyber string and a null terminated C string.
 2. The mapping from a Cyber object type `S` and the C-struct can be declared with `cbind`.
@@ -1603,7 +1602,7 @@ When using `cfunc` or `cbind` declarations, [symbols](#symbols-1) are used to re
 ```cy
 import os
 
-type MyObject object:
+type MyObject:
     var a float
     var b pointer
     var c bool
@@ -2190,9 +2189,9 @@ var .global Map = [:]
 Unlike local variables, static variable declarations do not infer the type from the right hand side. A specific type must be specified or it will default to the `any` type.
 
 ### Object types.
-A `type object` declaration creates a new object type. Field types are optional and declared with a type specifier after their name.
+A `type` declaration creates a new object type. Field types are optional and declared with a type specifier after their name.
 ```cy
-type Student object:    -- Creates a new type named `Student`
+type Student:    -- Creates a new type named `Student`
     var name string
     var age  int
     var gpa  float
@@ -2209,7 +2208,7 @@ print s.gpa        -- Prints "0.0"
 Circular type dependencies are allowed if the object can be initialized:
 > _Planned Feature: Optional types are not currently supported._
 ```cy
-type Node object:
+type Node:
     var val  any
     var next Node?     -- Valid type specifier.
 ```
@@ -2217,7 +2216,7 @@ In this example, `next` has an optional `Node?` type so it can be initialized to
 
 The following example will fail because this version of `Node` can not be initialized:
 ```cy
-type Node object:
+type Node:
     var val  any
     var next Node
 
@@ -2237,8 +2236,8 @@ The following shows the zero values of builtin or created types.
 |`array`|`array('')`|
 |`List`|`[]`|
 |`Map`|`[:]`|
-|`type S object`|`[S:]`|
-|`@host type S object`|`S.$zero()`|
+|`type S`|`[S:]`|
+|`@host type S`|`S.$zero()`|
 |`dynamic`|`none`|
 |`any`|`none`|
 |`S?`|`none`|
@@ -2351,7 +2350,7 @@ Normally this would impact performance, but Cyber generates specialized bytecode
 
 To overload an operator for an object type, declare `$prefix`, `$infix`, `$postfix` methods. See the available [builtin operators](#builtin-operators). Since operator names aren't allowed as standard identifiers, they are contained in a string literal.
 ```cy
-type Vec2 object:
+type Vec2:
     var x float
     var y float
 
@@ -2371,7 +2370,7 @@ var c = -a
 
 Some special operators have their own name. This example overloads the `index` operator and the `set index` operator:
 ```cy
-type MyCollection object:
+type MyCollection:
     var arr List
 
     func '$index'(idx):
@@ -2419,7 +2418,7 @@ A list of all supported operators:
 Declare a `$call` function to allow invoking a module as a function.
 ```cy
 -- Object types are also modules.
-type Vec2 object:
+type Vec2:
     var x float
     var y float
 
@@ -2436,7 +2435,7 @@ var v = Vec2(1, 2)
 Declare a `$missing` method as a fallback when a method was not found in an instance.
 > _Planned Feature_
 ```cy
-type A object:
+type A:
 
     func '$missing'(args...):
         return args.len
@@ -2571,7 +2570,7 @@ bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
             "@host var .MyList     List\n"
             "\n"
             "@host\n"
-            "type MyCollection object:\n"
+            "type MyCollection:\n"
             "    @host func asList() any"
             "\n"
             "@host func MyCollection.new(a, b) MyCollection\n";

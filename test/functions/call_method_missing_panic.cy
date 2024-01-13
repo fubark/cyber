@@ -1,4 +1,4 @@
-type S object:
+type S:
     var a
 
 my o = [S:]

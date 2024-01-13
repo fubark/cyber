@@ -52,13 +52,13 @@
 @host func typesym(val any) symbol
 
 @host
-type bool object
+type bool
 
 --| Converts a value to either `true` or `false`.
 @host func bool.'$call'(val any) bool
 
 @host
-type error object:
+type error:
     --| Return the underlying `symbol`.
     @host func sym() symbol
 
@@ -66,7 +66,7 @@ type error object:
 @host func error.'$call'(val any) error
 
 @host
-type int object:
+type int:
     @host func '$prefix~'() int
     @host func '$prefix-'() int
     @host func '$infix<'(o any) bool
@@ -96,7 +96,7 @@ type int object:
 @host func int.'$call'(val any) int
 
 @host
-type float object:
+type float:
     @host func '$prefix-'() float
     @host func '$infix<'(o any) bool
     @host func '$infix<='(o any) bool
@@ -113,7 +113,7 @@ type float object:
 @host func float.'$call'(val any) float
 
 @host
-type List object:
+type List:
     @host func '$index'(idx any) any
     @host func '$setIndex'(idx any, val any) none
     @host func '$slice'(start any, end any) List
@@ -164,15 +164,15 @@ type List object:
 @host func List.fill(val any, n int) List
 
 @host
-type ListIterator object:
+type ListIterator:
     @host func next() any
 
 @host
-type tuple object:
+type tuple:
     @host func '$index'(idx int) any
 
 @host
-type Map object:
+type Map:
     @host func '$index'(key any) any
     @host func '$setIndex'(key any, val any) none
 
@@ -186,11 +186,11 @@ type Map object:
     @host func iterator() MapIterator
 
 @host
-type MapIterator object:
+type MapIterator:
     @host func next() any
   
 @host
-type string object:
+type string:
     @host func '$infix+'(o any) string
 
     --| Returns a new string that concats this string and `str`.
@@ -258,7 +258,7 @@ type string object:
 @host func string.'$call'(val any) string
 
 @host
-type array object:
+type array:
     @host func '$infix+'(o any) array
 
     --| Returns a new array that concats this array and `other`.
@@ -335,7 +335,7 @@ type array object:
 --| Converts a string to an byte `array`.
 @host func array.'$call'(val any) array
 
-type arrayIterator object:
+type arrayIterator:
     var arr array
     var nextIdx int
 
@@ -347,7 +347,7 @@ type arrayIterator object:
         return res
 
 @host
-type pointer object:
+type pointer:
     --| Returns the memory address as an `int`. The value may be negative since it's
     --| bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
     @host func addr() int
@@ -371,15 +371,15 @@ type pointer object:
 @host func pointer.'$call'(val any) pointer
 
 @host
-type ExternFunc object:
+type ExternFunc:
     --| Returns the memory address as an `int`. The value may be negative since it's
     --| bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
     @host func addr() int
 
 @host
-type Fiber object:
+type Fiber:
     @host func status() symbol
 
 @host
-type metatype object:
+type metatype:
     @host func id() int

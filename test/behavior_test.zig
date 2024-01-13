@@ -701,7 +701,7 @@ test "FFI." {
 test "object_init_dyn_field_gen" {
     // Initialize field with dynamic/typed value does not gen `objectTypeCheck`.
     try eval(.{ .silent = true },
-        \\type S object:
+        \\type S:
         \\  my a
         \\func foo():
         \\  return 123

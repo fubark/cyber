@@ -13,7 +13,7 @@ t.eq(array('foo') != array('foo'), false)
 t.eq(array('foo') != array('bar'), true)
 
 -- Comparing objects.
-type S object:
+type S:
     var value
 var o = [S value: 3]
 t.eq(o != [S value: 3], true)

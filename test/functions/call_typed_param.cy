@@ -7,7 +7,7 @@ import t 'test'
 func staticPrim(a float):
 	return a == 123.0
 
-type PrimType object:
+type PrimType:
 	var a float
 
 -- Call static function with literal.

@@ -43,7 +43,7 @@ t.eq(a.sameFuncName(), sameFuncName())
 t.eq(int(1), 1)
 t.eq(a.useInt(1), 1)
 
-type Vec2 object:
+type Vec2:
     var x float
     var y float
 -- Same name, different object types.

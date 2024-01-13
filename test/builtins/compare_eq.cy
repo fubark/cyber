@@ -20,7 +20,7 @@ foo = '$('fo')$('o')'
 t.eq(foo == 'foo', true)
 
 -- Object equals.
-type S object:
+type S:
     var value
 var s = [S value: 123]
 var a = [S value: 123]

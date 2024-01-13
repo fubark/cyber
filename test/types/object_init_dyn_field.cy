@@ -1,4 +1,4 @@
-type S object:
+type S:
     my a
 
 func foo():

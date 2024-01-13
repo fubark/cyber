@@ -26,7 +26,7 @@ a4.append(4)
 t.eq(a4.len(), 4)
 
 -- Using object initializer.
-type Object object:
+type Object:
     var foo
 var .a5 = [Object foo: 123]
 t.eq(a5.foo, 123)

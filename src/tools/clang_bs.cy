@@ -51,20 +51,20 @@ var .CXChildVisit_Break = 0
 var .CXChildVisit_Continue = 1
 var .CXChildVisit_Recurse = 2
 
-type CXSourceLocation object:
+type CXSourceLocation:
     var ptr_data List
     var int_data int
 
-type CXString object:
+type CXString:
     var data pointer 
     var private_flags int
 
-type CXCursor object:
+type CXCursor:
     var kind int
     var xdata int
     var data List
 
-type CXType object:
+type CXType:
     var kind int
     var data List
  

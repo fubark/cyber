@@ -15,7 +15,7 @@ else os.system == 'windows':
 else:
     libPath = none
 
-type MyObject object:
+type MyObject:
     var a float
     var b int
     var c pointer

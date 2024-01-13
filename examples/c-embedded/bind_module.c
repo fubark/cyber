@@ -120,7 +120,7 @@ bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
             "@host var .MyList     List\n"
             "\n"
             "@host\n"
-            "type MyCollection object:\n"
+            "type MyCollection:\n"
             "    @host func asList() any"
             "\n"
             "@host func MyCollection.new(a, b) MyCollection\n";

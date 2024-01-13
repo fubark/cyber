@@ -1,6 +1,6 @@
 import t 'test'
 
-type S object:
+type S:
   var a float
 
 my o = t.erase([S a: 123])

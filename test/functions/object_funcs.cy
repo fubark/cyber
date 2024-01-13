@@ -3,7 +3,7 @@ import t 'test'
 func Node.flatGet2(self):
     return 123
 
-type Node object:
+type Node:
     var value int
 
     func getEx():
@@ -133,7 +133,7 @@ t.eq(Node.getFn2(321), 444)
 -- Static func, many params.
 t.eq(Node.getFn3(321, 1), 443)
 
-type S object
+type S
 func S.foo(a float):
     return a
 

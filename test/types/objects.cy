@@ -1,6 +1,6 @@
 import t 'test'
 
-type Node object:
+type Node:
     var value int
 
 var .snode = [Node value: 123]
@@ -13,7 +13,7 @@ t.eq(n.value, 123)
 n = [NodeHeap:]
 t.eq(n.value, none)
 
-type NodeHeap object:
+type NodeHeap:
     var value any
 
 -- Init with heap value.
@@ -63,7 +63,7 @@ t.eq(n.value, 234)
 n = [Node value: 123]
 t.eq(string(n), 'Node')
 
-type W object:
+type W:
     var a
     var b
 
@@ -81,7 +81,7 @@ t.eq(w.a, 1)
 t.eq(w.b, 2)
 
 -- Big structs (allocated outside of heap pages).
-type BigNode object:
+type BigNode:
     var a
     var b
     var c
@@ -95,13 +95,13 @@ t.eq(n.d, 4)
 t.eq(n.e, 5)
 
 -- Multiple structs with the same field names but different offsets.
-type Node1 object:
+type Node1:
     var a
     var b
-type Node2 object:
+type Node2:
     var b
     var a
-type Node3 object:
+type Node3:
     var a
     var b
 var n1 = [Node1 a: 1, b: 2]

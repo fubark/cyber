@@ -1,6 +1,6 @@
 import t 'test'
 
-type Foo object:
+type Foo:
     var a int
 
 func foo(a Foo):

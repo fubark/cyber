@@ -1,4 +1,4 @@
-type S object:
+type S:
     var a float
 
 var o = [S a: 123]

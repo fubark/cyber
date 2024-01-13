@@ -1,6 +1,6 @@
 import t 'test'
 
-type Vec2 object:
+type Vec2:
     var x float
     var y float
 

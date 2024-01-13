@@ -7,7 +7,7 @@ func foo(n):
 t.eq(foo(10), 55)
 
 -- Recursion with long lived object.
-type S object:
+type S:
     var n
 func foo2(o):
     if o.n == 0:

@@ -1,6 +1,6 @@
 import test
 
-type S object:
+type S:
   var x float
 
 -- Exact field type.

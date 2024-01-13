@@ -1,4 +1,4 @@
-type S object:
+type S:
     var a any
 
 var a = [S a: 123] + 123

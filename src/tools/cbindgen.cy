@@ -167,7 +167,7 @@ func getMacrosTranslationUnit(hppPath):
     return clang.lib.clang_parseTranslationUnit(index, cpath, cargs, rest.len(), none, 0,
         clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_KeepGoing)
 
-type Struct object:
+type Struct:
     var fieldTypes List
     var fieldNames List
     var cxFieldTypes List
@@ -180,7 +180,7 @@ type StateType enum:
     case initVar
     case initListExpr
 
-type State object:
+type State:
     var type StateType
     my data
 
@@ -253,10 +253,10 @@ func rootVisitor(cursor, parent, state):
 
         structs.append(effName)
         if skipMap[effName]:
-            out += '-- type $(getApiName(effName)) object:\n'
+            out += '-- type $(getApiName(effName)):\n'
             skipChildren = true
         else:
-            out += 'type $(getApiName(effName)) object:\n'
+            out += 'type $(getApiName(effName)):\n'
 
         for struct.fieldNames -> name, i:
             if skipChildren:

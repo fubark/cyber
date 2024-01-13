@@ -1,7 +1,7 @@
-type Bar object:
+type Bar:
     var b float
 
-type Foo object:
+type Foo:
     var field Bar
 
 func foo(a Foo):

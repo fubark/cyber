@@ -9,7 +9,7 @@ func foo1(a int):
 -- Cast to exact object type.
 a = [Foo a: 123]
 t.eq(foo2(a as Foo), true)
-type Foo object:
+type Foo:
     var a int
 func foo2(a Foo):
     return true

@@ -1,4 +1,4 @@
-type Foo object:
+type Foo:
     var a float
 
 func foo(a Foo):

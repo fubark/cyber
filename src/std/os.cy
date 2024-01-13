@@ -129,7 +129,7 @@
 @host func writeFile(path string, contents any) none
 
 @host
-type File object:
+type File:
 
     --| Closes the file handle. File ops invoked afterwards will return `error.Closed`.
     @host func close() none
@@ -170,7 +170,7 @@ type File object:
     @host func write(val any) int
 
 @host
-type Dir object:
+type Dir:
 
     --| Returns a new iterator over the directory entries.
     --| If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
@@ -184,11 +184,11 @@ type Dir object:
     @host func walk() DirIterator
 
 @host
-type DirIterator object:
+type DirIterator:
     @host func next() any
 
 @host
-type FFI object:
+type FFI:
 
     --| Creates an `ExternFunc` that contains a C function pointer with the given signature.
     --| The extern function is a wrapper that calls the provided user function.
@@ -225,10 +225,10 @@ type FFI object:
     --| or point to the correct object.
     @host func unbindObjPtr(obj any) none
 
-type CArray object:
+type CArray:
     var elem
     var n
 
-type CDimArray object:
+type CDimArray:
     var elem
     var dims

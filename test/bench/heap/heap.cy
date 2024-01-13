@@ -2,7 +2,7 @@ import os
 
 var start = os.now()
 
-type Node object:
+type Node:
     my left
     my right
     my parent
@@ -57,7 +57,7 @@ type Node object:
 func Heap.new() Heap:
     return [Heap root: none, size: 0, last: none]
 
-type Heap object:
+type Heap:
     my root
     my size
     my last

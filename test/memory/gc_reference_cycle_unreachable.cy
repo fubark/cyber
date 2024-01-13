@@ -25,7 +25,7 @@ res = performGC()
 t.eq(res['numCycFreed'], 2)
 
 -- Reference cycle with non pool objects.
-type T object:
+type T:
     var a
     var b
     var c

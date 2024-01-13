@@ -95,7 +95,7 @@ test "ARC." {
 
     // Map entry access expression retains the entry.
     try eval(.{},
-        \\var a = [ foo: 'abc\(123)' ]
+        \\var a = [ foo: "abc$(123)" ]
         \\var b = a.foo
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
@@ -229,7 +229,7 @@ test "ARC on temp locals in expressions." {
     // The string template literal is released at the end of the arc expression.
     try eval(.{},
         \\var foo = 'World'
-        \\'Hello $(foo) $(123)'
+        \\"Hello $(foo) $(123)"
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         const val = try res;
         try run.valueIsString(val, "Hello World 123");
@@ -258,7 +258,7 @@ test "ARC in loops." {
         \\my a = 123
         \\for 0..3:
         \\  if true:
-        \\    a = 'abc{123}'    -- copyReleaseDst
+        \\    a = "abc$(123)"    -- copyReleaseDst
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
         var trace = run.getTrace();
@@ -285,7 +285,7 @@ test "ARC in loops." {
     // An rc var first used inside a loop.
     try eval(.{},
         \\for 0..3:
-        \\  var a = 'abc{123}'
+        \\  var a = "abc$(123)"
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
         var trace = run.getTrace();

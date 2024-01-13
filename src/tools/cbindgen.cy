@@ -6,8 +6,8 @@ import os
 
 import clang 'clang_bs.cy'
 
-var POST_HEADER = "
-"
+var POST_HEADER = '''
+'''
 
 var .args = os.parseArgs([
     -- Output cy path.

@@ -33,7 +33,7 @@ import math
 var worlds = ['World', '世界', 'दुनिया', 'mundo']
 worlds.append(math.random())
 for worlds -> w:
-    print 'Hello, $(w)!'
+    print "Hello, $(w)!"
 ```
 
 # Syntax.
@@ -407,8 +407,14 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
   * [Floats.](#floats)
   * [Big Numbers.](#big-numbers)
 * [Strings.](#strings)
+  * [Raw string literal.](#raw-string-literal)
+  * [String literal.](#string-literal)
+  * [Escape sequences.](#escape-sequences)
+  * [String operations.](#string-operations)
   * [String interpolation.](#string-interpolation)
   * [String formatting.](#string-formatting)
+  * [Line-join literal.](#line-join-literal)
+  * [Mutable strings.](#mutable-strings)
 * [Arrays.](#arrays)
 * [Bracket literals.](#bracket-literals)
 * [Lists.](#lists)
@@ -508,59 +514,55 @@ var b = float(a)
 > _Planned Feature_
 
 ## Strings.
-The `string` type represents a sequence of UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as an `int`. See [`type string`](#type-string).
+The `string` type represents a sequence of validated UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as an `int`. See [`type string`](#type-string).
 
-Under the hood, there are multiple string implementations to make operations faster by default.
+Strings are **immutable**, so operations that do string manipulation return a new string. By default, short strings are interned to reduce memory footprint.
 
-Strings are **immutable**, so operations that do string manipulation return a new string. By default, small strings are interned to reduce memory footprint.
+Under the hood, there are multiple string implementations to make operations faster by default using SIMD.
 
-To mutate an existing string, use [MutString](#mutstring). *Planned Feature*
+### Raw string literal.
+A raw string doesn't allow any escape sequences or string interpolation.
 
-A string is always UTF-8 validated. Using an [Array](#arrays) to represent raw bytes of a string is faster but you'll have to validate them and take care of indexing.
-
-A single line string literal is surrounded in single quotes.
+Single quotes are used to delimit a single line literal:
 ```cy
-var apple = 'a fruit'
-```
-
-You can escape the single quote inside the literal or use double quotes.
-```cy
-var apple = 'Bob\'s fruit'
-apple = "Bob's fruit"
-```
-
-Concatenate two strings together with the `+` operator or the method `concat`. 
-```cy
-var res = 'abc' + 'xyz'
-res = res.concat('end')
-```
-
-Strings are UTF-8 encoded.
-```cy
+var fruit = 'apple'
 var str = 'abc🦊xyz🐶'
 ```
 
-Use double quotes to surround a multi-line string.
+Since raw strings interprets the sequence of characters as is, a single quote character can not be escaped:
 ```cy
-var str = "line a
-line b
-line c"
+var fruit = 'Miso's apple'    -- ParseError.
 ```
 
-You can escape double quotes inside the literal or use triple quotes.
+Triple single quotes are used to delimit a multi-line literal. It also allows single quotes and double single quotes in the string:
 ```cy
-var str = "line a
-line \"b\"
-line c"
+var fruit = '''Miso's apple'''
+var greet = '''Hello
+World'''
+```
 
--- Using triple quotes.
-str = '''line a
+### String literal.
+A string literal allows escape sequences and string interpolation.
+
+Double quotes are used to delimit a single line literal:
+```cy
+var fruit = "apple"
+var sentence = "The $(fruit) is tasty."
+var doc = "A double quote can be escaped: \""
+```
+
+Triple double quotes are used to delimit a multi-line literal:
+```cy
+var title = "last"
+var doc = """A double quote " doesn't need to be escaped."""
+str = """line a
 line "b"
-line c
-'''
+line $(title)
+"""
 ```
 
-The following escape sequences are supported:
+### Escape sequences.
+The following escape sequences are supported in string literals:
 
 | Escape Sequence | Code | Description |
 | --- | --- | --- |
@@ -571,12 +573,13 @@ The following escape sequences are supported:
 | \r | 0x0d | Carriage return character. |
 | \t | 0x09 | Horizontal tab character. |
 
-The boundary of each line can be set with a vertical line character. This makes it easier to see the whitespace.
-*Planned Feature*
+### String operations.
+See [`type string`](#type-string) for all available methods.
+
+Concatenate two strings together with the `+` operator or the method `concat`. 
 ```cy
-var poem = "line a
-       |  two spaces from the left
-       |     indented further"
+var res = 'abc' + 'xyz'
+res = res.concat('end')
 ```
 
 Using the index operator will return the UTF-8 rune at the given index as a slice. This is equivalent to calling the method `sliceAt()`.
@@ -601,12 +604,12 @@ i += 1
 print(i + str[i..].findRune(`c`))   -- "5"
 ```
 
-### String Interpolation.
+### String interpolation.
 Expressions can be embedded into string templates with `$()`:
 ```cy
 var name = 'Bob'
 var points = 123
-var str = 'Scoreboard: $(name) $(points)'
+var str = "Scoreboard: $(name) $(points)"
 ```
 String templates can not contain nested string templates.
 
@@ -617,11 +620,36 @@ var file = os.openFile('data.bin', .read)
 var bytes = file.readToEnd()
 
 -- Dump contents in hex.
-print '$(bytes.fmt(.x))' 
+print "$(bytes.fmt(.x))"
 ```
 
+### Line-join literal.
+The line-join literal joins string literals with the new line character `\n`. *Planned Feature*
+
+This has several properties:
+* Ensures the use of a consistent line separator: `\n`
+* Allows lines to have a mix of raw string or string literals.
+* Single quotes and double quotes do not need to be escaped.
+* Allows each line to be indented along with the surrounding syntax.
+* The starting whitespace for each line is made explicit.
+
+```cy
+var paragraph = [
+    \'the line-join literal
+    \'hello\nworld
+    \"hello $(name)
+    \'last line
+    \'
+]
+```
+
+### Mutable strings.
+To mutate an existing string, use [type MutString](#mutstring). *Planned Feature*
+
 ## Arrays.
-An `array` is an immutable sequence of bytes. It can be used to represent strings but it won't automatically validate their encoding and indexing returns the n'th byte rather than a UTF-8 rune. See [`type array`](#type-array).
+An `array` is an immutable sequence of bytes.
+It can be a more performant way to represent strings but it won't automatically validate their encoding and indexing returns the n'th byte rather than a UTF-8 rune.
+See [`type array`](#type-array).
 
 ```cy
 var a = array('abcd')
@@ -740,7 +768,7 @@ map.remove 123
 
 -- Iterating a map.
 for map -> [val, key]:
-    print '$(key) -> $(val)'
+    print "$(key) -> $(val)"
 ```
 
 ### Map block.
@@ -1015,7 +1043,7 @@ for map -> entry:
 Use the destructure syntax to extract the key and value into two separate variables:
 ```cy
 for map -> [ key, val ]:
-    print 'key $(key) -> value $(val)'
+    print "key $(key) -> value $(val)"
 ```
 
 ### `for` each with index.
@@ -1024,7 +1052,7 @@ A counting index can be declared after the each variable. The count starts at 0 
 var list = [1, 2, 3, 4, 5]
 
 for list -> val, i:
-    print 'index $(i), value $(val)'
+    print "index $(i), value $(val)"
 ```
 
 ### Exit loop.
@@ -1059,7 +1087,7 @@ case 200:
 case 300, 400:
     print 'combined case'
 else:
-    print 'val is $(val)'
+    print "val is $(val)"
 ```
 Note that the `switch` block must be empty and requires at least one `case` block or an `else` block to come after it.
 
@@ -1472,7 +1500,7 @@ import os
 
 var map = os.getEnvAll()
 for map -> [k, v]:
-    print '$(k) -> $(v)'
+    print "$(k) -> $(v)"
 ```
 
 <!-- os.start -->

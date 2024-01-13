@@ -4,15 +4,15 @@ import t 'test'
 var str = 'abc'
 t.eq(str, 'abc')
 
--- Const string multi-line double quote literal.
-str = "abc
-abc"
-t.eq(str, 'abc\nabc')
-
--- Const string multi-line triple quote literal.
+-- Multi-line raw string literal.
 str = '''abc
 abc'''
-t.eq(str, 'abc\nabc')
+t.eq(str, "abc\nabc")
+
+-- Multi-line string literal.
+str = """abc
+abc"""
+t.eq(str, "abc\nabc")
 
 str = 'abcxyz'
 var lstr = 'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'

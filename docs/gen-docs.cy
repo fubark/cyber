@@ -18,7 +18,7 @@ var args = os.parseArgs([
 genDocsModules()
 
 var curDir = os.dirName(#modUri)
-var src = os.readFile('$(curDir)/docs-modules.md')
+var src = os.readFile("$(curDir)/docs-modules.md")
 var csrc = os.cstr(src)
 var csrcLen = array(src).len()
 
@@ -41,23 +41,23 @@ parser.set(56, .voidPtr, nullptr)
 
 var res = md.md_parse(csrc, csrcLen, parser, none)
 if res != 0:
-    print 'parse error: $(res)'
+    print "parse error: $(res)"
     os.exit(1)
 
 var tocLinksHtml = []
 for tocLinks -> link:
-    tocLinksHtml.append('<li><a href="$(link.href)">$(link.text)</a></li>')
+    tocLinksHtml.append("""<li><a href="$(link.href)">$(link.text)</a></li>""")
 
-var simpleCSS = os.readFile('$(curDir)/simple.css')
-var hljsCSS = os.readFile('$(curDir)/hljs.min.css')
-var hljsJS = os.readFile('$(curDir)/highlight.min.js')
+var simpleCSS = os.readFile("$(curDir)/simple.css")
+var hljsCSS = os.readFile("$(curDir)/hljs.min.css")
+var hljsJS = os.readFile("$(curDir)/highlight.min.js")
 
 var stylePart = '<link rel="stylesheet" href="./style.css">'
 if !args['import-style']:
-    var styleCSS = os.readFile('$(curDir)/style.css')
-    stylePart = '<style>$(styleCSS)</style>'
+    var styleCSS = os.readFile("$(curDir)/style.css")
+    stylePart = "<style>$(styleCSS)</style>"
 
-var html = '''<html lang="en">
+var html = """<html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -122,10 +122,10 @@ hljs.registerLanguage('cy', function() {
 hljs.highlightAll();
 </script>
 </body>
-</html>'''
+</html>"""
 -- print out
 print 'Done.'
-os.writeFile('$(curDir)/docs.html', html)
+os.writeFile("$(curDir)/docs.html", html)
 
 var .out = ''
 var .htmlContent = ''
@@ -165,7 +165,7 @@ func enterBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         case md.BLOCK_UL: return 0
         case md.BLOCK_LI: return 0
         else:
-            print 'unsupported enter block $(block_t)'
+            print "unsupported enter block $(block_t)"
             return 1
         return 0
 
@@ -205,7 +205,7 @@ func enterBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
     case md.BLOCK_CODE:
         my detail = md.lib['ptrToBLOCK_CODE_DETAIL_S'](detail_p)
         var lang = getAttrText(detail.lang)
-        out += '<pre><code class="language-$(lang)">'
+        out += """<pre><code class="language-$(lang)">"""
         return 0
     case md.BLOCK_UL:
         out += '<ul>\n'
@@ -219,7 +219,7 @@ func enterBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
     case md.BLOCK_HTML:
         return 0
     else:
-        print 'unsupported enter block $(block_t)'
+        print "unsupported enter block $(block_t)"
         return 1
 
 func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
@@ -263,7 +263,7 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         id = id.replace('/', '')
         id = id.lower()
         if idCounts[id]:
-            var newId = '$(id)-$(string(idCounts[id]))'
+            var newId = "$(id)-$(string(idCounts[id]))"
             idCounts[id] += 1
             id = newId
         else:
@@ -273,11 +273,11 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
             parsingToc = true
         else:
             if lastHLevel > 1:
-                out += '<a href="#$(lastTopicId)">^topic</a>\n'
+                out += """<a href="#$(lastTopicId)">^topic</a>\n"""
             if detail.level == 1:
                 lastTopicId = id
             lastHLevel = detail.level
-            out += '<h$(detail.level) id="$(id)">$(htmlContent) <a href="#$(id)">#</a></h$(detail.level)>\n'
+            out += """<h$(detail.level) id="$(id)">$(htmlContent) <a href="#$(id)">#</a></h$(detail.level)>\n"""
 
         resetState()
         return 0
@@ -299,7 +299,7 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
     case md.BLOCK_HTML:
         return 0
     else:
-        print 'unsupported leave block $(block_t)'
+        print "unsupported leave block $(block_t)"
         return 1
 
 func enterSpan(span_t md.SPANTYPE, detail_p pointer, userdata pointer) int:
@@ -328,10 +328,10 @@ func enterSpan(span_t md.SPANTYPE, detail_p pointer, userdata pointer) int:
             bufContent = true
             return 0
 
-        out += '<a href="$(href)" title="$(title)">'
+        out += """<a href="$(href)" title="$(title)">"""
         return 0
     else:
-        print 'unsupported enter span $(span_t)'
+        print "unsupported enter span $(span_t)"
         return 1
 
 func leaveSpan(span_t md.SPANTYPE, detail pointer, userdata pointer) int:
@@ -357,7 +357,7 @@ func leaveSpan(span_t md.SPANTYPE, detail pointer, userdata pointer) int:
         out += '</a>'
         return 0
     else:
-        print 'unsupported leave span $(span_t)'
+        print "unsupported leave span $(span_t)"
         return 1
 
 func text(text_t md.SPANTYPE, ptr pointer, len int, userdata pointer) int:
@@ -387,11 +387,11 @@ func genDocsModules():
     ]
 
     var curDir = os.dirName(#modUri)
-    -- var md = os.readFile('$(curDir)/../modules.md')
-    var md = os.readFile('$(curDir)/docs.md')
+    -- var md = os.readFile("$(curDir)/../modules.md")
+    var md = os.readFile("$(curDir)/docs.md")
 
     for modules -> mod:
-        var src = os.readFile('$(curDir)/$(mod.path)')
+        var src = os.readFile("$(curDir)/$(mod.path)")
         var decls = parseCyber(src)['decls']
         var gen = '\n'
         for decls -> decl:
@@ -401,29 +401,29 @@ func genDocsModules():
                 var params = []
                 for decl.header.params -> param:
                     var typeSpec = (param.typeSpec != '') ? param.typeSpec else 'any'
-                    params.append('$(param.name) $(typeSpec)')
+                    params.append("$(param.name) $(typeSpec)")
                 var paramsStr = params.join(', ')
-                gen = gen + '> `func $(decl.header.name)($(paramsStr)) $(decl.header.ret)`\n>\n>$(docLine)\n\n'
+                gen = gen + "> `func $(decl.header.name)($(paramsStr)) $(decl.header.ret)`\n>\n>$(docLine)\n\n"
             case 'variable':
                 var docLine = decl.docs ? decl.docs else ''
                 var typeSpec = (decl.typeSpec != '') ? decl.typeSpec else 'any'
-                gen = gen + '> `var $(decl.name) $(typeSpec)`\n>\n>$(docLine)\n\n'
+                gen = gen + "> `var $(decl.name) $(typeSpec)`\n>\n>$(docLine)\n\n"
             case 'object':
-                gen = gen + '### `type $(decl.name)`\n\n'
+                gen = gen + "### `type $(decl.name)`\n\n"
                 for decl.children -> child:
                     if child.type == 'funcInit':
                         var docLine = child.docs ? child.docs else ''
                         var params = []
                         for child.header.params -> param:
                             var typeSpec = (param.typeSpec != '') ? param.typeSpec else 'any'
-                            params.append('$(param.name) $(typeSpec)')
+                            params.append("$(param.name) $(typeSpec)")
                         var paramsStr = params.join(', ')
-                        gen = gen + '> `func $(child.header.name)($(paramsStr)) $(child.header.ret)`\n>\n>$(docLine)\n\n'
+                        gen = gen + "> `func $(child.header.name)($(paramsStr)) $(child.header.ret)`\n>\n>$(docLine)\n\n"
 
         -- Replace section in modules.md.
-        var needle = '<!-- $(mod.section).start -->'
+        var needle = "<!-- $(mod.section).start -->"
         var startIdx = (md.find(needle) as int) + needle.len()
-        var endIdx = md.find('<!-- $(mod.section).end -->')
+        var endIdx = md.find("<!-- $(mod.section).end -->")
         md = md[0..startIdx] + gen + md[endIdx..]
 
-    os.writeFile('$(curDir)/docs-modules.md', md)
+    os.writeFile("$(curDir)/docs-modules.md", md)

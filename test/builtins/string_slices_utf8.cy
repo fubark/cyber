@@ -3,12 +3,12 @@
 import t 'test'
 
 var pre = 'abc🦊'
-var str = '$(pre)xyz🐶'
+var str = "$(pre)xyz🐶"
 str = str[0..]  -- Sets up the slice.
 t.eq(str, 'abc🦊xyz🐶')
 
 -- Sets up the slice.
-var upper = '$('abc🦊xyz🐶')'[0..]
+var upper = "$('abc🦊xyz🐶')"[0..]
 
 -- index operator
 t.eq(str[0], 'a')

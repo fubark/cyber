@@ -10,7 +10,7 @@ var curDir = os.dirName(#modUri)
 
 my outLLBuf = llvm.ffi.new(.voidPtr)
 var outMsg = llvm.ffi.new(.charPtr)
-if llvm.CreateMemoryBufferWithContentsOfFile(os.cstr('$(curDir)/stencils.o'), outLLBuf, outMsg) != 0:
+if llvm.CreateMemoryBufferWithContentsOfFile(os.cstr("$(curDir)/stencils.o"), outLLBuf, outMsg) != 0:
     throw error.Unexpected
 
 var llBuf = outLLBuf.get(0, .voidPtr)
@@ -130,18 +130,18 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
         llvm.MoveToNextRelocation(llRelocIter)
         continue
 
-    out += 'pub const $(found.name)_$(symName) = $(roffset);\n'
+    out += "pub const $(found.name)_$(symName) = $(roffset);\n"
 
     llvm.MoveToNextRelocation(llRelocIter)
 
 -- After continuations are removed, gen sym's code.
 for syms -> sym, i:
-    print '$(sym.name) $(sym.addr) $(sym.code.fmt(.x))'
+    print "$(sym.name) $(sym.addr) $(sym.code.fmt(.x))"
 
     var bytes = []
     for sym.code -> byte:
-        bytes.append('0x$(byte.fmt(.x, [pad: `0`, width: 2]))')
+        bytes.append("0x$(byte.fmt(.x, [pad: `0`, width: 2]))")
 
-    out += 'pub const $(sym.name) = [_]u8{ $(bytes.join(', ')) };\n'
+    out += "pub const $(sym.name) = [_]u8{ $(bytes.join(', ')) };\n"
 
-os.writeFile('$(curDir)/x64_stencils.zig', out)
+os.writeFile("$(curDir)/x64_stencils.zig", out)

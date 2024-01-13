@@ -216,10 +216,13 @@ test "Tests." {
     run.case("builtins/optionals.cy");
     run.case("builtins/op_precedence.cy");
     run.case("builtins/panic_panic.cy");
+    run.case("builtins/raw_string_single_quote_error.cy");
+    run.case("builtins/raw_string_new_line_error.cy");
     run.case("builtins/rune_empty_lit_error.cy");
     run.case("builtins/rune_multiple_lit_error.cy");
     run.case("builtins/rune_grapheme_cluster_lit_error.cy");
     run.case("builtins/set_index_unsupported_panic.cy");
+    run.case("builtins/string_new_line_error.cy");
     run.case("builtins/string_interpolation.cy");
     run.case("builtins/strings.cy");
     run.case("builtins/strings_ascii.cy");
@@ -273,6 +276,9 @@ test "Tests." {
         numPassed += 1;
     }
     std.debug.print("Tests: {}/{}\n", .{numPassed, run.cases.items.len});
+    if (numPassed < run.cases.items.len) {
+        return error.Failed;
+    }
 }
 
 test "Compile." {

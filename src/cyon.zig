@@ -746,21 +746,16 @@ test "decodeMap" {
         \\[
         \\    name: 'project',
         \\    list: [
-        \\        [
-        \\            field: 1
-        \\        ],
-        \\        [
-        \\            field: 2
-        \\        ]
+        \\        [ field: 1 ],
+        \\        [ field: 2 ],
         \\    ],
         \\    map: [
         \\        1: 'foo',
         \\        2: 'bar',
-        \\        3: 'ba\'r',
-        \\        4: "bar
-        \\bar",
-        \\        5: "bar `bar`
-        \\bar"
+        \\        3: "ba\"r",
+        \\        4: """ba"r""",
+        \\        5: """bar `bar`
+        \\bar"""
         \\    ]
         \\]
     );
@@ -782,9 +777,9 @@ test "decodeMap" {
     try t.eq(root.map[1].id, 2);
     try t.eqStr(root.map[1].val, "bar");
     try t.eq(root.map[2].id, 3);
-    try t.eqStr(root.map[2].val, "ba'r");
+    try t.eqStr(root.map[2].val, "ba\"r");
     try t.eq(root.map[3].id, 4);
-    try t.eqStr(root.map[3].val, "bar\nbar");
+    try t.eqStr(root.map[3].val, "ba\"r");
     try t.eq(root.map[4].id, 5);
     try t.eqStr(root.map[4].val, "bar `bar`\nbar");
 }

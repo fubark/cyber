@@ -5,10 +5,10 @@ import t 'test'
 try:
     throw error.Boom
 catch:
-    t.eq(errorReport(), "main:6:5 main:
+    t.eq(errorReport(), '''main:6:5 main:
     throw error.Boom
     ^
-")
+''')
 
 -- errorReport(), one frame before and one frame after.
 func foo2():
@@ -17,7 +17,7 @@ func foo():
     try:
         foo2()
     catch:
-        t.eq(errorReport(), "main:15:5 foo2:
+        t.eq(errorReport(), '''main:15:5 foo2:
     throw error.Boom
     ^
 main:18:9 foo:
@@ -26,7 +26,7 @@ main:18:9 foo:
 main:30:1 main:
 foo()
 ^
-")
+''')
 foo()
 
 -- bool(), see truthy_test.cy
@@ -107,15 +107,15 @@ res = parseCyber('func Foo.foo(): pass')
 t.eq(res['decls'][0].type, 'func')
 t.eq(res['decls'][0].name, 'Foo.foo')
 
-res = parseCyber('import foo \'bar\'')
+res = parseCyber("import foo 'bar'")
 t.eq(res['decls'][0].type, 'import')
 t.eq(res['decls'][0].name, 'foo')
 
-res = parseCyber('type foo:\n  var a')
+res = parseCyber("type foo:\n  var a")
 t.eq(res['decls'][0].type, 'object')
 t.eq(res['decls'][0].name, 'foo')
 
-res = parseCyber('type foo enum:\n  case a')
+res = parseCyber("type foo enum:\n  case a")
 t.eq(res['decls'][0].type, 'enumT')
 t.eq(res['decls'][0].name, 'foo')
 
@@ -178,17 +178,17 @@ t.eq(cyon, 'false')
 cyon = toCyon([])
 t.eq(cyon, '[]')
 cyon = toCyon([1, 2, 3])
-t.eq(cyon, "[
+t.eq(cyon, '''[
     1,
     2,
     3,
-]")
+]''')
 cyon = toCyon([:])
-t.eq(cyon, "[:]")
+t.eq(cyon, '[:]')
 cyon = toCyon([ a: 123 ])
-t.eq(cyon, "[
+t.eq(cyon, '''[
     a: 123,
-]")
+]''')
 
 -- typeof()
 t.eq(typeof(true), bool)

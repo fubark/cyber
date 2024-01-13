@@ -1,4 +1,4 @@
-var Root.a = 1
+var .a = 1
 var foo = func():
     print a
     -- Attempting to declare `a`.

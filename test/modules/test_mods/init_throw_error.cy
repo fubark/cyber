@@ -1,1 +1,1 @@
-var Root.foo = throw error.boom
+var .foo = throw error.boom

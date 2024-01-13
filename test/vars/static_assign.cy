@@ -1,6 +1,6 @@
 import t 'test'
 
-var Root.a = 123
+var .a = 123
 
 -- Assignment to a static variable.
 a = 234
@@ -39,7 +39,7 @@ f = func():
     t.eq(b, 234)
 try f()
 t.eq(b, 234)
-var Root.b = 123
+var .b = 123
 
 -- Operator assignment to a static variable.
 a = 123

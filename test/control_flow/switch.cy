@@ -84,17 +84,17 @@ case 'two' => 2
 t.eq(res, none)
 
 -- Assign switch to static var.
-var Root.varRes = switch 'one':
+var .varRes = switch 'one':
 case 'one' => 1
 case 'two' => 2
 t.eq(varRes, 1)
 
-var Root.varRes2 = switch 'two':
+var .varRes2 = switch 'two':
 case 'one' => 1
 case 'two' => 2
 t.eq(varRes2, 2)
 
-var Root.varRes3 = switch 'three':
+var .varRes3 = switch 'three':
 case 'one' => 1
 case 'two' => 2
 t.eq(varRes3, none)

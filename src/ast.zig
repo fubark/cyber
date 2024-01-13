@@ -254,6 +254,8 @@ pub const Node = struct {
             varSpec: NodeId,
             right: NodeId,
             typed: bool,
+            // Declared with `.` prefix.
+            root: bool,
         },
         localDecl: struct {
             varSpec: NodeId,

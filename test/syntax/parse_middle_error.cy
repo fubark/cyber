@@ -1,6 +1,6 @@
-var Root.a = 123
+var .a = 123
 var
-var Root.b = 234
+var .b = 234
 
 --cytest: error
 --ParseError: Expected local name identifier.

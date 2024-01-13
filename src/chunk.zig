@@ -249,7 +249,6 @@ pub const Chunk = struct {
             .initializerVisiting = false,
             .encoder = undefined,
         };
-        try new.localSymMap.putNoClobber(c.alloc, "Root", @ptrCast(sym));
 
         if (cy.hasJIT) {
             new.tempTypeRefs = .{};

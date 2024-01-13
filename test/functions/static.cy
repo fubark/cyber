@@ -55,7 +55,7 @@ t.eq(foo6(123), 123)
 -- Reassign with lambda.
 func foo7():
     pass
-var Root.foo7dep = func ():
+var .foo7dep = func ():
     return 123
 foo7 = foo7dep
 t.eq(foo7(), 123)
@@ -63,7 +63,7 @@ t.eq(foo7(), 123)
 -- Reassign with closure.
 func foo8():
     pass
-var Root.foo8dep = func ():
+var .foo8dep = func ():
     var local = 123
     return func():
         return local

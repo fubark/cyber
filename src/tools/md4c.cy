@@ -1,6 +1,6 @@
 -- ./src/tools/cbindgen.cy -o src/tools/md4c.cy ~/repos/md4c/src/md4c.h -I/opt/homebrew/Cellar/llvm/17.0.5/include -libpath libmd4c.dylib -stripPrefix MD
 
-var Root.libPath = switch os.system:
+var .libPath = switch os.system:
 case 'linux' => 'libmd4c.so'
 case 'windows' => 'md4c.dll'
 case 'macos' => 'libmd4c.dylib'
@@ -15,50 +15,50 @@ type SIZE int
 type OFFSET int
 
 type BLOCKTYPE int
-var Root.BLOCK_DOC int = 0
-var Root.BLOCK_QUOTE int = 1
-var Root.BLOCK_UL int = 2
-var Root.BLOCK_OL int = 3
-var Root.BLOCK_LI int = 4
-var Root.BLOCK_HR int = 5
-var Root.BLOCK_H int = 6
-var Root.BLOCK_CODE int = 7
-var Root.BLOCK_HTML int = 8
-var Root.BLOCK_P int = 9
-var Root.BLOCK_TABLE int = 10
-var Root.BLOCK_THEAD int = 11
-var Root.BLOCK_TBODY int = 12
-var Root.BLOCK_TR int = 13
-var Root.BLOCK_TH int = 14
-var Root.BLOCK_TD int = 15
+var .BLOCK_DOC int = 0
+var .BLOCK_QUOTE int = 1
+var .BLOCK_UL int = 2
+var .BLOCK_OL int = 3
+var .BLOCK_LI int = 4
+var .BLOCK_HR int = 5
+var .BLOCK_H int = 6
+var .BLOCK_CODE int = 7
+var .BLOCK_HTML int = 8
+var .BLOCK_P int = 9
+var .BLOCK_TABLE int = 10
+var .BLOCK_THEAD int = 11
+var .BLOCK_TBODY int = 12
+var .BLOCK_TR int = 13
+var .BLOCK_TH int = 14
+var .BLOCK_TD int = 15
 
 type SPANTYPE int
-var Root.SPAN_EM int = 0
-var Root.SPAN_STRONG int = 1
-var Root.SPAN_A int = 2
-var Root.SPAN_IMG int = 3
-var Root.SPAN_CODE int = 4
-var Root.SPAN_DEL int = 5
-var Root.SPAN_LATEXMATH int = 6
-var Root.SPAN_LATEXMATH_DISPLAY int = 7
-var Root.SPAN_WIKILINK int = 8
-var Root.SPAN_U int = 9
+var .SPAN_EM int = 0
+var .SPAN_STRONG int = 1
+var .SPAN_A int = 2
+var .SPAN_IMG int = 3
+var .SPAN_CODE int = 4
+var .SPAN_DEL int = 5
+var .SPAN_LATEXMATH int = 6
+var .SPAN_LATEXMATH_DISPLAY int = 7
+var .SPAN_WIKILINK int = 8
+var .SPAN_U int = 9
 
 type TEXTTYPE int
-var Root.TEXT_NORMAL int = 0
-var Root.TEXT_NULLCHAR int = 1
-var Root.TEXT_BR int = 2
-var Root.TEXT_SOFTBR int = 3
-var Root.TEXT_ENTITY int = 4
-var Root.TEXT_CODE int = 5
-var Root.TEXT_HTML int = 6
-var Root.TEXT_LATEXMATH int = 7
+var .TEXT_NORMAL int = 0
+var .TEXT_NULLCHAR int = 1
+var .TEXT_BR int = 2
+var .TEXT_SOFTBR int = 3
+var .TEXT_ENTITY int = 4
+var .TEXT_CODE int = 5
+var .TEXT_HTML int = 6
+var .TEXT_LATEXMATH int = 7
 
 type ALIGN int
-var Root.ALIGN_DEFAULT int = 0
-var Root.ALIGN_LEFT int = 1
-var Root.ALIGN_CENTER int = 2
-var Root.ALIGN_RIGHT int = 3
+var .ALIGN_DEFAULT int = 0
+var .ALIGN_LEFT int = 1
+var .ALIGN_CENTER int = 2
+var .ALIGN_RIGHT int = 3
 
 type ATTRIBUTE_S object:
     var text any -- const MD_CHAR *
@@ -147,8 +147,8 @@ type RENDERER PARSER
 func md_parse(text any, size SIZE, parser any, userdata any) int: pass
 
 import os
-my Root.ffi = none
-my Root.lib = load()
+my .ffi = none
+my .lib = load()
 func load():
     ffi = os.newFFI()
     ffi.cbind(ATTRIBUTE_S, [.voidPtr, .uint, .voidPtr, .voidPtr])
@@ -169,22 +169,22 @@ func load():
     return lib
 
 -- Macros
-var Root.GCC_HAVE_DWARF2_CFI_ASM int = 1
-var Root.FLAG_COLLAPSEWHITESPACE int = 1
-var Root.FLAG_PERMISSIVEATXHEADERS int = 2
-var Root.FLAG_PERMISSIVEURLAUTOLINKS int = 4
-var Root.FLAG_PERMISSIVEEMAILAUTOLINKS int = 8
-var Root.FLAG_NOINDENTEDCODEBLOCKS int = 16
-var Root.FLAG_NOHTMLBLOCKS int = 32
-var Root.FLAG_NOHTMLSPANS int = 64
-var Root.FLAG_TABLES int = 256
-var Root.FLAG_STRIKETHROUGH int = 512
-var Root.FLAG_PERMISSIVEWWWAUTOLINKS int = 1024
-var Root.FLAG_TASKLISTS int = 2048
-var Root.FLAG_LATEXMATHSPANS int = 4096
-var Root.FLAG_WIKILINKS int = 8192
-var Root.FLAG_UNDERLINE int = 16384
-var Root.FLAG_PERMISSIVEAUTOLINKS int = 1036
-var Root.FLAG_NOHTML int = 96
-var Root.DIALECT_COMMONMARK int = 0
-var Root.DIALECT_GITHUB int = 3852
+var .GCC_HAVE_DWARF2_CFI_ASM int = 1
+var .FLAG_COLLAPSEWHITESPACE int = 1
+var .FLAG_PERMISSIVEATXHEADERS int = 2
+var .FLAG_PERMISSIVEURLAUTOLINKS int = 4
+var .FLAG_PERMISSIVEEMAILAUTOLINKS int = 8
+var .FLAG_NOINDENTEDCODEBLOCKS int = 16
+var .FLAG_NOHTMLBLOCKS int = 32
+var .FLAG_NOHTMLSPANS int = 64
+var .FLAG_TABLES int = 256
+var .FLAG_STRIKETHROUGH int = 512
+var .FLAG_PERMISSIVEWWWAUTOLINKS int = 1024
+var .FLAG_TASKLISTS int = 2048
+var .FLAG_LATEXMATHSPANS int = 4096
+var .FLAG_WIKILINKS int = 8192
+var .FLAG_UNDERLINE int = 16384
+var .FLAG_PERMISSIVEAUTOLINKS int = 1036
+var .FLAG_NOHTML int = 96
+var .DIALECT_COMMONMARK int = 0
+var .DIALECT_GITHUB int = 3852

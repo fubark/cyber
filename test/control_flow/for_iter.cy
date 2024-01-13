@@ -8,7 +8,7 @@ for list -> it:
 t.eq(sum, 6)
 
 -- From static iterable.
-var Root.sList = [1, 2, 3]
+var .sList = [1, 2, 3]
 sum = 0
 for sList -> it:
     sum += it

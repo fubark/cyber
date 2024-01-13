@@ -120,7 +120,7 @@ test "ARC for static variable declarations." {
     // Static variable is freed on vm end.
     try eval(.{},
         \\import t 'test'
-        \\var Root.a = [123]
+        \\var .a = [123]
         \\t.eq(a[0], 123)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;

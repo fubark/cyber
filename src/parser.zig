@@ -3015,11 +3015,17 @@ pub const Parser = struct {
         const start = self.next_pos;
         self.advanceToken();
 
+        const root = self.peekToken().tag() == .dot;
+        if (root) {
+            self.advanceToken();
+        }
+
         // Var name.
         const name = (try self.parseOptNamePath()) orelse {
             return self.reportParseError("Expected local name identifier.", &.{});
         };
-        const isStatic = self.nodes.items[name].next != cy.NullId;
+        const hasNamePath = self.nodes.items[name].next != cy.NullId;
+        const isStatic = hasNamePath or root;
 
         var typeSpecHead: cy.NodeId = cy.NullId;
         if (typed) {
@@ -3080,6 +3086,7 @@ pub const Parser = struct {
                     .varSpec = varSpec,
                     .right = right,
                     .typed = typed,
+                    .root = root,
                 },
             };
             try self.staticDecls.append(self.alloc, .{

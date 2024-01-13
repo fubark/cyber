@@ -127,19 +127,19 @@ hljs.highlightAll();
 print 'Done.'
 os.writeFile('$(curDir)/docs.html', html)
 
-var Root.out = ''
-var Root.htmlContent = ''
-var Root.textContent = ''
-var Root.state = State.main
-var Root.parsingToc = false
-var Root.tocLinks = []
-var Root.bufContent = false
-var Root.lastTopicId = ''
-var Root.lastHLevel = 1
+var .out = ''
+var .htmlContent = ''
+var .textContent = ''
+var .state = State.main
+var .parsingToc = false
+var .tocLinks = []
+var .bufContent = false
+var .lastTopicId = ''
+var .lastHLevel = 1
 
 -- Maps id names to the next unique count from 1.
 -- Mimics Githubs duplicate header id generation.
-var Root.idCounts = [:] 
+var .idCounts = [:] 
 
 type State enum:
     case main
@@ -407,8 +407,7 @@ func genDocsModules():
             case 'variable':
                 var docLine = decl.docs ? decl.docs else ''
                 var typeSpec = (decl.typeSpec != '') ? decl.typeSpec else 'any'
-                var idx = decl.name.findRune(`.`) as int
-                gen = gen + '> `var $(decl.name[idx+1..]) $(typeSpec)`\n>\n>$(docLine)\n\n'
+                gen = gen + '> `var $(decl.name) $(typeSpec)`\n>\n>$(docLine)\n\n'
             case 'object':
                 gen = gen + '### `type $(decl.name)`\n\n'
                 for decl.children -> child:

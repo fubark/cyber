@@ -3,7 +3,7 @@ import t 'test'
 type Node object:
     var value int
 
-var Root.snode = [Node value: 123]
+var .snode = [Node value: 123]
 
 -- Initialization.
 my n = [Node value: 123]

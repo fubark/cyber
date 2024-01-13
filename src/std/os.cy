@@ -1,23 +1,23 @@
 --| The current cpu arch's tag name.
-@host var Root.cpu string
+@host var .cpu string
 
 --| The current arch's endianness: .little, .big
-@host var Root.endian symbol
+@host var .endian symbol
 
 --| Standard error file descriptor.
-@host var Root.stderr File
+@host var .stderr File
 
 --| Standard input file descriptor.
-@host var Root.stdin File
+@host var .stdin File
 
 --| Standard output file descriptor.
-@host var Root.stdout File
+@host var .stdout File
 
 --| The current operating system's tag name.
-@host var Root.system string
+@host var .system string
 
 --| Default SIMD vector bit size.
-@host var Root.vecBitSize int
+@host var .vecBitSize int
 
 --| Attempts to access a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.
 --| Throws an error if unsuccessful.

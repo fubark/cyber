@@ -11,7 +11,7 @@ t.eq(str, 'cyber')
 -- or with retained local.
 t.eq(str or 'false', 'cyber')
 
-var Root.called = false
+var .called = false
 func foo():
     called = true
 

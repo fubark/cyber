@@ -1,6 +1,6 @@
 import t 'test'
 
-var Root.g = none
+var .g = none
 var a = []
 var b = []
 a.append(b)

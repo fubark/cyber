@@ -1,16 +1,16 @@
-var Root.varInt = 123
-var Root.varTypedInt int = 123
-var Root.varAny = [1, 2, 3]
-var Root.varList List = [1, 2, 3]
-var Root.varMap Map = [a: 1, b: 2, c: 3]
-var Root.varFunc = func():
+var .varInt = 123
+var .varTypedInt int = 123
+var .varAny = [1, 2, 3]
+var .varList List = [1, 2, 3]
+var .varMap Map = [a: 1, b: 2, c: 3]
+var .varFunc = func():
     return 345
-var Root.varFunc1 = func(a):
+var .varFunc1 = func(a):
     return a + 1
-var Root.varFunc2 = func(a, b):
+var .varFunc2 = func(a, b):
     return a + b
 
-var Root.varNoExport = 123
+var .varNoExport = 123
 
 func fn():
     return 234
@@ -28,15 +28,15 @@ panic(.ExecutedModuleMain)
 func toInt(val) int:
     return int(val)
 
-var Root.initOnce = incInitOnce(initOnceCount)
-var Root.initOnceCount = 0
+var .initOnce = incInitOnce(initOnceCount)
+var .initOnceCount = 0
 func incInitOnce(cur):
     initOnceCount = cur + 1
     return initOnceCount
 
 -- Tests dependency generation, so set resulting symbol's natural order before the dependency.
-var Root.varDepRes = varDep
-var Root.varDep = 123
+var .varDepRes = varDep
+var .varDep = 123
 
 func sameFuncName():
     return 123

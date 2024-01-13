@@ -116,8 +116,8 @@ bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
     if (strncmp("my_mod", spec.buf, spec.len) == 0) {
         out->src =
             "@host func add(a float, b float) float\n"
-            "@host var Root.MyConstant float\n"
-            "@host var Root.MyList     List\n"
+            "@host var .MyConstant float\n"
+            "@host var .MyList     List\n"
             "\n"
             "@host\n"
             "type MyCollection object:\n"

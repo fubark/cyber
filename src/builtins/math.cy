@@ -1,43 +1,43 @@
 --| Euler's number and the base of natural logarithms; approximately 2.718.
-@host var Root.e float
+@host var .e float
 
 --| Infinity.
-@host var Root.inf float
+@host var .inf float
 
 --| Base-10 logarithm of E; approximately 0.434.
-@host var Root.log10e float
+@host var .log10e float
 
 --| Base-2 logarithm of E; approximately 1.443.
-@host var Root.log2e float
+@host var .log2e float
 
 --| Natural logarithm of 10; approximately 2.303.
-@host var Root.ln10 float
+@host var .ln10 float
 
 --| Natural logarithm of 2; approximately 0.693.
-@host var Root.ln2 float
+@host var .ln2 float
 
 --| The maximum integer value that can be safely represented as a float. 2^53-1 or 9007199254740991.
-@host var Root.maxSafeInt float
+@host var .maxSafeInt float
 
 --| The minumum integer value that can be safely represented as a float. -(2^53-1) or -9007199254740991.
-@host var Root.minSafeInt float
+@host var .minSafeInt float
 
 --| Not a number. Note that nan == nan.
 --| However, if a nan came from an arithmetic operation, the comparison is undefined.
 --| Use `isNaN` instead.
-@host var Root.nan float
+@host var .nan float
 
 --| Negative infinity.
-@host var Root.neginf float
+@host var .neginf float
 
 --| Ratio of a circle's circumference to its diameter; approximately 3.14159.
-@host var Root.pi float
+@host var .pi float
 
 --| Square root of ½; approximately 0.707.
-@host var Root.sqrt1_2 float
+@host var .sqrt1_2 float
 
 --| Square root of 2; approximately 1.414.
-@host var Root.sqrt2 float
+@host var .sqrt2 float
 
 --| Returns the absolute value of x.
 @host func abs(a float) float

@@ -9,7 +9,7 @@ import clang 'clang_bs.cy'
 var POST_HEADER = "
 "
 
-var Root.args = os.parseArgs([
+var .args = os.parseArgs([
     -- Output cy path.
     [ name: 'o', type: string, default: 'bindings.cy' ],
     [ name: 'libpath', type: string, default: 'lib.dll' ],
@@ -29,7 +29,8 @@ if existing != '':
     if markerPos == none:
         markerPos = existing.len()
 
-    var res = parseCyber(existing)
+    -- Only parse section before the marker since the gen part could contain bad syntax.
+    var res = parseCyber(existing[..markerPos])
     for res.decls -> decl:
         if decl.pos < markerPos:
             switch decl.type:
@@ -40,7 +41,7 @@ if existing != '':
             case 'object':
                 skipMap[decl.name] = true
             case 'variable':
-                if decl.name == 'Root.libPath':
+                if decl.name == 'libPath':
                     existingLibPath = true
 
 if args.rest.len() <= 2:
@@ -79,8 +80,8 @@ clang.lib.clang_visitChildren(cursor, cvisitor, cstate)
 
 -- Generate ffi init.
 out += "\nimport os\n"
-out += "my Root.ffi = none\n"
-out += "my Root.lib = load()\n"
+out += "my .ffi = none\n"
+out += "my .lib = load()\n"
 out += "func load():\n"
 out += "    ffi = os.newFFI()\n"
 for structs -> name:
@@ -102,7 +103,8 @@ for funcs -> fn:
             finalParams.append(getApiName(param))
         else:
             finalParams.append(param)
-    out += "    ffi.cfunc('$(fn.name)', [$(finalParams.join(', '))], $(fn.ret))\n"
+    var finalRet = ensureBindType(fn.ret)
+    out += "    ffi.cfunc('$(fn.name)', [$(finalParams.join(', '))], $(finalRet))\n"
 var libPath = existingLibPath ? 'libPath' else "'$(args.libpath)'"
 out += "    my lib = ffi.bindLib($(libPath), [genMap: true])\n"
 
@@ -124,19 +126,19 @@ os.writeFile(args.o, out)
 
 -- Declarations.
 
-var Root.skipMap = [:]
-var Root.macros = []
-var Root.cvisitor = none
+var .skipMap = [:]
+var .macros = []
+var .cvisitor = none
 -- Build output string.
-var Root.out = ''
-var Root.skipChildren = false
-var Root.aliases = [:]    -- aliasName -> structName or binding symbol (eg: .voidPtr)
-my Root.struct = none
-var Root.structMap = [:]  -- structName -> list of fields (symOrName)
-var Root.enumMap = [:]
-var Root.structs = []
-var Root.funcs = []
--- var Root.arrays = [:]     -- [n]typeName -> true
+var .out = ''
+var .skipChildren = false
+var .aliases = [:]    -- aliasName -> structName or binding symbol (eg: .voidPtr)
+my .struct = none
+var .structMap = [:]  -- structName -> list of fields (symOrName)
+var .enumMap = [:]
+var .structs = []
+var .funcs = []
+-- var .arrays = [:]     -- [n]typeName -> true
 -- var vars = [:]            -- varName -> bindingType
 
 func getTranslationUnit(headerPath):
@@ -273,8 +275,10 @@ func rootVisitor(cursor, parent, state):
     case clang.CXCursor_EnumDecl:
         -- print 'enum $(name)'
 
-        out += 'type $(getApiName(name)) int\n'
-        aliases[name] = .int
+        -- Skip unnamed enum.
+        if !name.startsWith('enum '):
+            out += 'type $(getApiName(name)) int\n'
+            aliases[name] = .int
 
         var newState = [State type: .enum]
         var cnewState = clang.ffi.bindObjPtr(newState)
@@ -359,7 +363,7 @@ func enumVisitor(cursor, parent, state):
     var name = fromCXString(cxName)
     var val = clang.lib.clang_getEnumConstantDeclValue(cursor)
         
-    out += 'var Root.$(getApiName(name)) int = $(val)\n'
+    out += 'var .$(getApiName(name)) int = $(val)\n'
     return clang.CXChildVisit_Continue
 
 func genMacros(headerPath):
@@ -468,20 +472,20 @@ func macrosRootVisitor(cursor, parent, state):
                 var kvs = []
                 for struct.fieldNames -> fieldn, i:
                     kvs.append('$(fieldn): $(state.data.args[i])')
-                out += 'var Root.$(finalName) $(initT) = [$(initT) $(kvs.join(", "))]\n'
+                out += 'var .$(finalName) $(initT) = [$(initT) $(kvs.join(", "))]\n'
             else:
                 print 'init $(initName) $(initCur.kind)'
                 throw error.Unsupported
         case clang.CXEval_Int:
             var val = clang.lib.clang_EvalResult_getAsLongLong(eval)
-            out += 'var Root.$(finalName) int = $(val)\n'
+            out += 'var .$(finalName) int = $(val)\n'
         case clang.CXEval_Float:
             var val = clang.lib.clang_EvalResult_getAsDouble(eval)
-            out += 'var Root.$(finalName) float = $(val)\n'
+            out += 'var .$(finalName) float = $(val)\n'
         case clang.CXEval_StrLiteral:
             my strz = clang.lib.clang_EvalResult_getAsStr(eval)
             var str = strz.fromCstr(0).decode()
-            out += 'var Root.$(finalName) string = "$(str)"\n'
+            out += 'var .$(finalName) string = "$(str)"\n'
         else:
             print '$(kind)'
             throw error.Unsupported
@@ -517,6 +521,9 @@ func toCyType(nameOrSym, forRet):
     else:
         if nameOrSym.startsWith('[os.CArray'):
             return 'List'
+        if !forRet and aliases[nameOrSym]:
+            if aliases[nameOrSym] == .voidPtr:
+                return 'any'
         return getApiName(nameOrSym)
 
 func ensureBindType(nameOrSym):

@@ -91,9 +91,9 @@ t.eq(isDigit(`a`), false)
 t.eq(isDigit(`A`), false)
 
 -- parseCyber()
-res = parseCyber('var Root.foo = 123')
+res = parseCyber('var .foo = 123')
 t.eq(res['decls'][0].type, 'variable')
-t.eq(res['decls'][0].name, 'Root.foo')
+t.eq(res['decls'][0].name, 'foo')
 
 res = parseCyber('type foo bar')
 t.eq(res['decls'][0].type, 'typeAlias')

@@ -171,17 +171,17 @@ They act as global variables and are visible from anywhere in the script.
 
 They are declared with `var` but a namespace must be provided before the variable name:
 ```cy
-var Root.a = 123
+var .a = 123
 
 func foo():
     print a     -- '123'
 ```
-The `Root` symbol is used to reference the current module's namespace.
+The `.` prefix is used to reference the current module's namespace.
 
 Since static variables are initialized outside of a fiber's execution flow, they can not reference any local variables:
 ```cy
 -- Static declaration.
-var Root.b = a   -- Compile error, initializer can not reference a local variable.
+var .b = a   -- Compile error, initializer can not reference a local variable.
 
 -- Main execution.
 var a = 123
@@ -189,7 +189,7 @@ var a = 123
 
 However, they can be reassigned after initialization:
 ```cy
-var Root.b = 0
+var .b = 0
 
 var a = 123
 b = a            -- Reassigning after initializing.
@@ -199,14 +199,14 @@ Static variable initializers have a natural order based on when it was encounter
 In the case of [imported](#importing) variables, the order of the import would affect this order.
 The following would print '123' before '234':
 ```cy
-var Root.a = print(123)
-var Root.b = print(234)
+var .a = print(123)
+var .b = print(234)
 ```
 
 When the initializers reference other static variables, those child references are initialized first in DFS order and supersede the natural ordering. The following initializes `b` before `a`.
 ```cy
-var Root.a = b + 321
-var Root.b = 123
+var .a = b + 321
+var .b = 123
 
 print a        -- '444'
 ```
@@ -214,14 +214,14 @@ print a        -- '444'
 Circular references in initializers are not allowed.
 When initialization encounters a reference that creates a circular dependency an error is reported.
 ```cy
-var Root.a = b
-var Root.b = a       -- CompileError. Referencing `a` creates a circular dependency.
+var .a = b
+var .b = a       -- CompileError. Referencing `a` creates a circular dependency.
 ```
 
 Sometimes, you may want to initialize a static variable by executing multiple statements in order.
 For this use case, you can use a declaration block. *Planned Feature*
 ```cy
-var Root.myImage =:
+var .myImage =:
     var img = loadImage('me.png')
     img.resize(100, 100)
     img.filter(.blur, 5)
@@ -250,9 +250,6 @@ These keywords only have meaning in a certain context.
 - [Object Type](#objects): `object`
 - [Enum Type](#enums): `enum`
 - [Function Throws](#throws-specifier): `throws`
-
-### Symbols.
-- [Modules](#modules): `Root`
 
 ### Literals.
 - [Booleans](#booleans): `true` `false`
@@ -1370,11 +1367,11 @@ print a.foo
 
 -- foo.cy
 import 'bar.cy'
-var Root.foo = 123
+var .foo = 123
 print foo         -- Statement is ignored.
 
 -- bar.cy
-var Root.bar = 321
+var .bar = 321
 print bar         -- Statement is ignored.
 ```
 You can have circular imports in Cyber. In the following example, `main.cy` and `foo.cy` import each other without any problems.
@@ -1411,7 +1408,7 @@ All static declarations are exported when the script's module is loaded.
 func foo():         -- Exported static function.
     print 123
 
-var Root.bar = 234  -- Exported static variable.
+var .bar = 234      -- Exported static variable.
 
 type Thing object:  -- Exported type.
     var a float
@@ -2188,7 +2185,7 @@ a = 'hello'          -- CompileError. Expected `float`, got `string`.
 
 Static variables are declared in a similar way:
 ```cy
-var Root.global Map = [:]
+var .global Map = [:]
 ```
 Unlike local variables, static variable declarations do not infer the type from the right hand side. A specific type must be specified or it will default to the `any` type.
 
@@ -2570,8 +2567,8 @@ bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
     if (strncmp("my_mod", spec.buf, spec.len) == 0) {
         out->src =
             "@host func add(a float, b float) float\n"
-            "@host var Root.MyConstant float\n"
-            "@host var Root.MyList     List\n"
+            "@host var .MyConstant float\n"
+            "@host var .MyList     List\n"
             "\n"
             "@host\n"
             "type MyCollection object:\n"
@@ -2645,9 +2642,9 @@ int main() {
     // ...
 
     // Initialize var array for loader.
-    vars[0] = (NameValue){"Root.MyConstant", csFloat(1.23)};
+    vars[0] = (NameValue){".MyConstant", csFloat(1.23)};
     CsValue myInt = csInteger(123);
-    vars[1] = (NameValue){"Root.MyList", csNewList(vm, &myInt, 1)};
+    vars[1] = (NameValue){".MyList", csNewList(vm, &myInt, 1)};
 
     // ...
 }

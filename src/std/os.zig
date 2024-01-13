@@ -151,42 +151,42 @@ pub fn onTypeLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
 }
 
 pub fn zPostTypeLoad(c: *cy.VMcompiler, mod: cc.ApiModule) !void {
-    vars[0] = .{ "Root.cpu", try cy.heap.allocStringOrFail(c.vm, @tagName(builtin.cpu.arch)) };
+    vars[0] = .{ "cpu", try cy.heap.allocStringOrFail(c.vm, @tagName(builtin.cpu.arch)) };
     if (builtin.cpu.arch.endian() == .Little) {
-        vars[1] = .{ "Root.endian", cy.Value.initSymbol(@intFromEnum(Symbol.little)) };
+        vars[1] = .{ "endian", cy.Value.initSymbol(@intFromEnum(Symbol.little)) };
     } else {
-        vars[1] = .{ "Root.endian", cy.Value.initSymbol(@intFromEnum(Symbol.big)) };
+        vars[1] = .{ "endian", cy.Value.initSymbol(@intFromEnum(Symbol.big)) };
     }
     if (cy.hasStdFiles) {
         const stderr = try fs.allocFile(c.vm, std.io.getStdErr().handle);
         stderr.castHostObject(*fs.File).closeOnFree = false;
-        vars[2] = .{ "Root.stderr", stderr };
+        vars[2] = .{ "stderr", stderr };
         const stdin = try fs.allocFile(c.vm, std.io.getStdIn().handle);
         stdin.castHostObject(*fs.File).closeOnFree = false;
-        vars[3] = .{ "Root.stdin", stdin };
+        vars[3] = .{ "stdin", stdin };
         const stdout = try fs.allocFile(c.vm, std.io.getStdOut().handle);
         stdout.castHostObject(*fs.File).closeOnFree = false;
-        vars[4] = .{ "Root.stdout", stdout };
+        vars[4] = .{ "stdout", stdout };
     } else {
         const stderr = try fs.allocFile(c.vm, 0);
         stderr.castHostObject(*fs.File).closeOnFree = false;
         stderr.castHostObject(*fs.File).closed = true;
-        vars[2] = .{ "Root.stderr", stderr };
+        vars[2] = .{ "stderr", stderr };
         const stdin = try fs.allocFile(c.vm, 0);
         stdin.castHostObject(*fs.File).closeOnFree = false;
         stdin.castHostObject(*fs.File).closed = true;
-        vars[3] = .{ "Root.stdin", stdin };
+        vars[3] = .{ "stdin", stdin };
         const stdout = try fs.allocFile(c.vm, 0);
         stdout.castHostObject(*fs.File).closeOnFree = false;
         stdout.castHostObject(*fs.File).closed = true;
-        vars[4] = .{ "Root.stdout", stdout };
+        vars[4] = .{ "stdout", stdout };
     }
-    vars[5] = .{ "Root.system", try cy.heap.allocStringOrFail(c.vm, @tagName(builtin.os.tag)) };
+    vars[5] = .{ "system", try cy.heap.allocStringOrFail(c.vm, @tagName(builtin.os.tag)) };
     
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
-        vars[6] = .{ "Root.vecBitSize", cy.Value.initI32(VecSize * 8) };
+        vars[6] = .{ "vecBitSize", cy.Value.initI32(VecSize * 8) };
     } else {
-        vars[6] = .{ "Root.vecBitSize", cy.Value.initI32(0) };
+        vars[6] = .{ "vecBitSize", cy.Value.initI32(0) };
     }
 
     const sym: *cy.Sym = @ptrCast(@alignCast(mod.sym));

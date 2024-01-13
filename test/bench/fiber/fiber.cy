@@ -2,7 +2,7 @@ import os
 
 var start = os.now()
 
-var Root.count = 0
+var .count = 0
 
 func inc():
     count += 1

@@ -6,7 +6,7 @@ import os
 --|
 
 var out = ''
-var curDir = os.dirName(#ModUri)
+var curDir = os.dirName(#modUri)
 
 my outLLBuf = llvm.ffi.new(.voidPtr)
 var outMsg = llvm.ffi.new(.charPtr)

@@ -143,11 +143,11 @@ pub const Chunk = struct {
     mod: *cy.Module,
     sym: *cy.sym.Chunk,
 
-    /// For binding @host func declarations.
+    /// For binding #host func declarations.
     funcLoader: cc.FuncLoaderFn = null,
-    /// For binding @host var declarations.
+    /// For binding #host var declarations.
     varLoader: cc.VarLoaderFn = null,
-    /// For binding @host type declarations.
+    /// For binding #host type declarations.
     typeLoader: cc.TypeLoaderFn = null,
     /// Run after type declarations are loaded.
     onTypeLoad: cc.ModuleOnTypeLoadFn = null,
@@ -155,11 +155,11 @@ pub const Chunk = struct {
     onLoad: cc.ModuleOnLoadFn = null,
     /// Run before chunk is destroyed.
     onDestroy: cc.ModuleOnDestroyFn = null,
-    /// Counter for loading @host funcs.
+    /// Counter for loading #host funcs.
     curHostFuncIdx: u32,
-    /// Counter for loading @host vars.
+    /// Counter for loading #host vars.
     curHostVarIdx: u32,
-    /// Counter for loading @host types.
+    /// Counter for loading #host types.
     curHostTypeIdx: u32,
 
     hasStaticInit: bool,

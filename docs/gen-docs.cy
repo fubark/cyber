@@ -17,7 +17,7 @@ var args = os.parseArgs([
 
 genDocsModules()
 
-var curDir = os.dirName(#ModUri)
+var curDir = os.dirName(#modUri)
 var src = os.readFile('$(curDir)/docs-modules.md')
 var csrc = os.cstr(src)
 var csrcLen = array(src).len()
@@ -386,7 +386,7 @@ func genDocsModules():
         [ModulePair path: '../src/std/test.cy', section: 'test'],
     ]
 
-    var curDir = os.dirName(#ModUri)
+    var curDir = os.dirName(#modUri)
     -- var md = os.readFile('$(curDir)/../modules.md')
     var md = os.readFile('$(curDir)/docs.md')
 

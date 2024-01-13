@@ -111,19 +111,19 @@ bool typeLoader(CsVM* vm, CsTypeInfo info, CsTypeResult* out) {
     }
 }
 
-// This module loader provides the source code and callbacks to load @host funcs, vars, and types.
+// This module loader provides the source code and callbacks to load #host funcs, vars, and types.
 bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
     if (strncmp("my_mod", spec.buf, spec.len) == 0) {
         out->src =
-            "@host func add(a float, b float) float\n"
-            "@host var .MyConstant float\n"
-            "@host var .MyList     List\n"
+            "#host func add(a float, b float) float\n"
+            "#host var .MyConstant float\n"
+            "#host var .MyList     List\n"
             "\n"
-            "@host\n"
+            "#host\n"
             "type MyCollection:\n"
-            "    @host func asList() any"
+            "    #host func asList() any"
             "\n"
-            "@host func MyCollection.new(a, b) MyCollection\n";
+            "#host func MyCollection.new(a, b) MyCollection\n";
         out->funcLoader = funcLoader;
         out->varLoader = varLoader;
         out->typeLoader = typeLoader;

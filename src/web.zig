@@ -21,7 +21,7 @@ pub fn loader(vm: ?*c.VM, spec_: c.Str, out_: [*c]c.ModuleLoaderResult) callconv
     if (std.mem.eql(u8, "web", spec)) {
         const src = (
             \\--| Evals JS from the host environment.
-            \\@host func eval(val any) none
+            \\#host func eval(val any) none
         );
         out.* = std.mem.zeroInit(c.ModuleLoaderResult, .{
             .src = src,

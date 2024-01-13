@@ -22,7 +22,7 @@ pub const NodeType = enum {
     return_expr_stmt,
     comptimeExpr,
     comptimeStmt,
-    annotation,
+    dirModifier,
     ident,
     true_literal,
     false_literal,
@@ -90,6 +90,10 @@ pub const NodeType = enum {
     castExpr,
 };
 
+pub const DirModifierType = enum(u8) {
+    host,
+};
+
 pub const Node = struct {
     /// TODO: Since type is often accessed before visiting a node, it should go into a separate array.
     node_t: NodeType,
@@ -148,8 +152,8 @@ pub const Node = struct {
             caseHead: NodeId,
             numCases: u8,
         },
-        annotation: struct {
-            type: AnnotationType,
+        dirModifier: struct {
+            type: DirModifierType,
         },
         ifStmt: struct {
             cond: NodeId,
@@ -248,7 +252,7 @@ pub const Node = struct {
             name: NodeId,
             typeSpecHead: cy.Nullable(NodeId),
             modifierHead: cy.Nullable(NodeId),
-            // `next` contains TypeId for @host var
+            // `next` contains TypeId for #host var
         },
         staticDecl: struct {
             varSpec: NodeId,
@@ -372,11 +376,6 @@ pub const BinaryExprOp = enum(u8) {
             else => "unknown",
         };
     }
-};
-
-pub const AnnotationType = enum {
-    host,
-    custom,
 };
 
 pub const UnaryOp = enum(u8) {

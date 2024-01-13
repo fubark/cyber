@@ -15,10 +15,6 @@ const IndexSlice = cy.IndexSlice(u32);
 
 const dumpParseErrorStackTrace = builtin.mode == .Debug and !cy.isWasm and true;
 
-const annotations = std.ComptimeStringMap(cy.ast.AnnotationType, .{
-    .{ "host", .host },
-});
-
 const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "and", .and_k },
     .{ "as", .as_k },
@@ -51,6 +47,10 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "type", .type_k },
     .{ "var", .var_k },
     .{ "while", .while_k },
+});
+
+const dirModifiers = std.ComptimeStringMap(cy.ast.DirModifierType, .{
+    .{ "host", .host },
 });
 
 const Block = struct {
@@ -1537,30 +1537,7 @@ pub const Parser = struct {
                 token = self.peekToken();
 
                 if (token.tag() == .ident) {
-                    const identName = self.src[token.pos()..token.data.end_pos];
-
-                    const modifier = try self.pushNode(.annotation, self.next_pos);
-                    const atype = annotations.get(identName) orelse .custom;
-                    self.nodes.items[modifier].head = .{
-                        .annotation = .{
-                            .type = atype,
-                        }
-                    };
-                    self.advanceToken();
-                    self.consumeWhitespaceTokens();
-
-                    if (self.peekToken().tag() == .func_k) {
-                        return try self.parseFuncDecl(modifier);
-                    } else if (self.peekToken().tag() == .var_k) {
-                        return try self.parseVarDecl(modifier, true);
-                    } else if (self.peekToken().tag() == .my_k) {
-                        return try self.parseVarDecl(modifier, false);
-                    } else if (self.peekToken().tag() == .type_k) {
-                        return try self.parseTypeDecl(modifier);
-                    } else {
-                        return self.reportParseError("Expected declaration statement.", &.{});
-                    }
-
+                    return self.reportParseError("Unsupported @.", &.{});
                 } else {
                     return self.reportParseError("Expected ident after @.", &.{});
                 }
@@ -1571,23 +1548,48 @@ pub const Parser = struct {
                 token = self.peekToken();
 
                 if (token.tag() == .ident) {
-                    const ident = try self.pushIdentNode(self.next_pos);
-                    self.advanceToken();
+                    const name = self.src[token.pos()..token.data.end_pos];
 
-                    if (self.peekToken().tag() != .left_paren) {
-                        return self.reportParseError("Expected ( after ident.", &.{});
+                    if (dirModifiers.get(name)) |dir| {
+                        const modifier = try self.pushNode(.dirModifier, self.next_pos);
+                        self.nodes.items[modifier].head = .{
+                            .dirModifier = .{
+                                .type = dir,
+                            }
+                        };
+                        self.advanceToken();
+                        self.consumeWhitespaceTokens();
+
+                        if (self.peekToken().tag() == .func_k) {
+                            return try self.parseFuncDecl(modifier);
+                        } else if (self.peekToken().tag() == .var_k) {
+                            return try self.parseVarDecl(modifier, true);
+                        } else if (self.peekToken().tag() == .my_k) {
+                            return try self.parseVarDecl(modifier, false);
+                        } else if (self.peekToken().tag() == .type_k) {
+                            return try self.parseTypeDecl(modifier);
+                        } else {
+                            return self.reportParseError("Expected declaration statement.", &.{});
+                        }
+                    } else {
+                        const ident = try self.pushIdentNode(self.next_pos);
+                        self.advanceToken();
+
+                        if (self.peekToken().tag() != .left_paren) {
+                            return self.reportParseError("Expected ( after ident.", &.{});
+                        }
+
+                        const callExpr = try self.parseCallExpression(ident);
+                        try self.consumeNewLineOrEnd();
+
+                        const stmt = try self.pushNode(.comptimeStmt, start);
+                        self.nodes.items[stmt].head = .{
+                            .comptimeStmt = .{
+                                .expr = callExpr,
+                            },
+                        };
+                        return stmt;
                     }
-
-                    const callExpr = try self.parseCallExpression(ident);
-                    try self.consumeNewLineOrEnd();
-
-                    const stmt = try self.pushNode(.comptimeStmt, start);
-                    self.nodes.items[stmt].head = .{
-                        .comptimeStmt = .{
-                            .expr = callExpr,
-                        },
-                    };
-                    return stmt;
                 } else {
                     return self.reportParseError("Expected ident after #.", &.{});
                 }
@@ -3312,7 +3314,7 @@ pub const Parser = struct {
         try self.tokens.append(self.alloc, Token.init(token_t, start_pos, .{ .end_pos = NullId }));
     }
 
-    inline fn pushKeywordToken(self: *Parser, token_t: TokenType, startPos: u32, endPos: u32) !void {
+    inline fn pushSpanToken(self: *Parser, token_t: TokenType, startPos: u32, endPos: u32) !void {
         try self.tokens.append(self.alloc, Token.init(token_t, startPos, .{ .end_pos = endPos }));
     }
 
@@ -4306,15 +4308,10 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             }
         }
 
-        fn tokenizeKeywordOrIdent(p: *Parser, start: u32) !void {
+        fn consumeIdent(p: *Parser) void {
             // Consume alpha.
             while (true) {
                 if (isAtEndChar(p)) {
-                    if (keywords.get(getSubStrFrom(p, start))) |token_t| {
-                        try p.pushKeywordToken(token_t, start, p.next_pos);
-                    } else {
-                        try p.pushIdentToken(start, p.next_pos);
-                    }
                     return;
                 }
                 const ch = peekChar(p);
@@ -4327,11 +4324,6 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             // Consume alpha, numeric, underscore.
             while (true) {
                 if (isAtEndChar(p)) {
-                    if (keywords.get(getSubStrFrom(p, start))) |token_t| {
-                        try p.pushKeywordToken(token_t, start, p.next_pos);
-                    } else {
-                        try p.pushIdentToken(start, p.next_pos);
-                    }
                     return;
                 }
                 const ch = peekChar(p);
@@ -4343,12 +4335,16 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     advanceChar(p);
                     continue;
                 }
-                if (keywords.get(getSubStrFrom(p, start))) |token_t| {
-                    try p.pushKeywordToken(token_t, start, p.next_pos);
-                } else {
-                    try p.pushIdentToken(start, p.next_pos);
-                }
                 return;
+            }
+        }
+
+        fn tokenizeKeywordOrIdent(p: *Parser, start: u32) !void {
+            consumeIdent(p);
+            if (keywords.get(getSubStrFrom(p, start))) |token_t| {
+                try p.pushSpanToken(token_t, start, p.next_pos);
+            } else {
+                try p.pushIdentToken(start, p.next_pos);
             }
         }
 

@@ -262,7 +262,7 @@ Cyber supports the following operators. They are ordered from highest to lowest 
 |---|---|
 | `<<` `>>` | Bitwise left shift, right shift. |
 | `&` | Bitwise and. |
-| `\|` `\|\|` | Bitwise or, exclusive or. |
+| `|` `||` | Bitwise or, exclusive or. |
 | `^` | Power. |
 | `/` `%` `*` | Division, modulus, multiplication. |
 | `+` `-` | Addition, subtraction. |
@@ -689,7 +689,7 @@ list.remove(1)
 ```
 
 ## Tuples.
-> _Incomplete: Tuples can only be created from @host funcs at the moment._
+> _Incomplete: Tuples can only be created from #host funcs at the moment._
 
 ## Maps.
 Maps are a builtin type that store key value pairs in dictionaries. See [`type Map`](#type-map).
@@ -1414,13 +1414,13 @@ type Thing:  -- Exported type.
 ```
 
 ## Module URI.
-To get the absolute path of the current module, reference the compile-time variable `ModUri`.
+To get the absolute path of the current module, reference the compile-time constant `#modUri`.
 This can be used with `os.dirName` to get the current module directory.
 ```cy
-print #ModUri              -- Prints '/some/path/foo.cy'
+print #modUri              -- Prints '/some/path/foo.cy'
 
 import os
-print os.dirName(#ModUri)  -- Prints '/some/path'
+print os.dirName(#modUri)  -- Prints '/some/path'
 ```
 
 ## Visibility.
@@ -2237,7 +2237,7 @@ The following shows the zero values of builtin or created types.
 |`List`|`[]`|
 |`Map`|`[:]`|
 |`type S`|`[S:]`|
-|`@host type S`|`S.$zero()`|
+|`#host type S`|`S.$zero()`|
 |`dynamic`|`none`|
 |`any`|`none`|
 |`S?`|`none`|
@@ -2333,7 +2333,7 @@ func add(a int, b int):
 </td><td valign="top">
 
 * [Reflection.](#reflection)
-* [Annotations.](#annotations)
+* [Directives.](#directives)
 * [Runtime eval.](#runtime-eval)
 * [Generics.](#generics)
 * [Compile-time.](#compile-time)
@@ -2401,8 +2401,8 @@ A list of all supported operators:
 | Modulus | `$infix%` |
 | Power | `$infix^` |
 | Bitwise and | `$infix&` |
-| Bitwise or | `$infix\|` |
-| Bitwise xor | `$infix\|\|` |
+| Bitwise or | `$infix|` |
+| Bitwise xor | `$infix||` |
 | Bitwise left shift | `$infix<<` |
 | Bitwise right shift | `$infix>>` |
 | Index | `$index` |
@@ -2455,14 +2455,24 @@ print typeof(val)   -- 'type: float'
 print bool          -- 'type: bool'
 ```
 
-## Annotations.
-Annotations are used to attach modifiers to declarative statements. The `@host` annotation is used for [embedding](#embedding) to bind a host function to a Cyber function:
-```cy
-@host func compute() float
-```
+## Directives.
+Directives start with `#` and are used as modifiers or to invoke compile-time features.
 
-Custom annotations.
-> _Planned Feature_
+> `#genLabel(name string)`
+>
+>Emits a label during codegen for debugging.
+
+> `#host`
+>
+>Modifier to bind a function, variable, or type to the host. See [Embedding](#embedding).
+
+> `#modUri`
+>
+>Evaluates to the module's URI as a string. See [Module URI](#module-uri).
+
+> `#with`
+>
+>Modifier for custom annotations. *Planned Feature*
 
 ## Runtime eval.
 > _Planned Feature_
@@ -2565,15 +2575,15 @@ Only one module loader can be active and is set using `csSetModuleLoader`:
 bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
     if (strncmp("my_mod", spec.buf, spec.len) == 0) {
         out->src =
-            "@host func add(a float, b float) float\n"
-            "@host var .MyConstant float\n"
-            "@host var .MyList     List\n"
+            "#host func add(a float, b float) float\n"
+            "#host var .MyConstant float\n"
+            "#host var .MyList     List\n"
             "\n"
-            "@host\n"
+            "#host\n"
             "type MyCollection:\n"
-            "    @host func asList() any"
+            "    #host func asList() any"
             "\n"
-            "@host func MyCollection.new(a, b) MyCollection\n";
+            "#host func MyCollection.new(a, b) MyCollection\n";
         out->funcLoader = funcLoader;
         out->varLoader = varLoader;
         out->typeLoader = typeLoader;
@@ -2596,7 +2606,7 @@ The above example checks whether "my_mod" was imported and returns it's source c
 Since only one module loader can be set to the VM instance, a custom loader is required to handle the "builtins" import which contains all of the core types and functions in Cyber. This can simply be delegated to `csDefaultModuleLoader`.
 
 ### Function loader.
-A function loader describes how to load a `@host` function when it's encountered by the compiler.
+A function loader describes how to load a `#host` function when it's encountered by the compiler.
 The loader can bind functions and type methods:
 ```c
 struct { char* n; CsFuncFn fn; } funcs[] = {
@@ -2615,12 +2625,12 @@ bool funcLoader(CsVM* vm, CsFuncInfo info, CsFuncResult* out) {
     }
 }
 ```
-This example uses the `CsFuncInfo.idx` of a @host function to index into an array and return a [Host function](#host-functions) pointer. The name is also compared to ensure it's binding to the correct pointer.
+This example uses the `CsFuncInfo.idx` of a #host function to index into an array and return a [Host function](#host-functions) pointer. The name is also compared to ensure it's binding to the correct pointer.
 
 This is an efficient way to map Cyber functions to host functions. A different implementation might use a hash table to map the name of the function to it's pointer.
 
 ### Variable loader.
-A variable loader describes how to load a `@host` variable when it's encountered by the compiler:
+A variable loader describes how to load a `#host` variable when it's encountered by the compiler:
 ```c
 // C has limited static initializers (and objects require a vm instance) so initialize them in `main`.
 typedef struct { char* n; CsValue v; } NameValue;
@@ -2651,7 +2661,7 @@ int main() {
 This example uses the same technique as the function loader, but it can be much simpler. It doesn't matter how the mapping is done as long as the variable loader returns a `CsValue`.
 
 ### Type loader.
-A type loader describes how to load a `@host` type when it's encountered by the compiler:
+A type loader describes how to load a `#host` type when it's encountered by the compiler:
 ```c
 CsTypeId myCollectionId;
 

@@ -897,7 +897,7 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.HostObjectTyp
     };
     log.tracev("Invoke type loader for: {s}", .{name});
     if (!typeLoader(@ptrCast(c.compiler.vm), info, &res)) {
-        return c.reportErrorAt("@host type `{}` object failed to load.", &.{v(name)}, nodeId);
+        return c.reportErrorAt("#host type `{}` object failed to load.", &.{v(name)}, nodeId);
     }
 
     switch (@as(cc.TypeEnumKind, @enumFromInt(res.type))) {
@@ -919,10 +919,10 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.HostObjectTyp
 
 pub fn declareObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym{
     const node = c.nodes[nodeId];
-    // Check for @host modifier.
+    // Check for #host modifier.
     if (node.head.objectDecl.modifierHead != cy.NullId) {
         const modifier = c.nodes[node.head.objectDecl.modifierHead];
-        if (modifier.head.annotation.type == .host) {
+        if (modifier.head.dirModifier.type == .host) {
             return @ptrCast(try declareHostObject(c, nodeId));
         }
     }
@@ -1018,11 +1018,11 @@ pub fn declareFuncInit(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId) !void {
     if (node.head.func.bodyHead != cy.NullId) {
         return error.Unexpected;
     }
-    // Check if @host func.
+    // Check if #host func.
     const modifierId = c.nodes[node.head.func.header].next;
     if (modifierId != cy.NullId) {
         const modifier = c.nodes[modifierId];
-        if (modifier.head.annotation.type == .host) {
+        if (modifier.head.dirModifier.type == .host) {
             const decl = try resolveFuncDecl(c, parent, nodeId);
             _ = try declareHostFunc(c, parent, nodeId, decl);
             return;
@@ -1051,11 +1051,11 @@ fn declareMethod(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: FuncDec
         return c.declareUserFunc(parent, decl.name, decl.funcSigId, nodeId, true);
     }
 
-    // No initializer. Check if @host func.
+    // No initializer. Check if #host func.
     const modifierId = c.nodes[node.head.func.header].next;
     if (modifierId != cy.NullId) {
         const modifier = c.nodes[modifierId];
-        if (modifier.head.annotation.type == .host) {
+        if (modifier.head.dirModifier.type == .host) {
             return declareHostFunc(c, parent, nodeId, decl);
         }
     }
@@ -1123,11 +1123,11 @@ pub fn declareVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
 
     const varSpec = c.nodes[node.head.staticDecl.varSpec];
     if (node.head.staticDecl.right == cy.NullId) {
-        // No initializer. Check if @host var.
+        // No initializer. Check if #host var.
         const modifierId = varSpec.head.varSpec.modifierHead;
         if (modifierId != cy.NullId) {
             const modifier = c.nodes[modifierId];
-            if (modifier.head.annotation.type == .host) {
+            if (modifier.head.dirModifier.type == .host) {
                 return try declareHostVar(c, nodeId);
             }
         }
@@ -3316,7 +3316,7 @@ pub const ChunkExt = struct {
                 const child = c.nodes[node.head.comptimeExpr.child];
                 if (child.node_t == .ident) {
                     const name = c.getNodeString(child);
-                    if (std.mem.eql(u8, name, "ModUri")) {
+                    if (std.mem.eql(u8, name, "modUri")) {
                         const irIdx = try c.irPushExpr(.string, nodeId, .{ .literal = c.srcUri });
                         return ExprResult.initStatic(irIdx, bt.String);
                     } else {

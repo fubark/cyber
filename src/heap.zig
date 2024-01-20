@@ -3,7 +3,7 @@
 /// Heap objects, object allocation and deinitializers.
 
 const cy = @import("cyber.zig");
-const cc = @import("clib.zig");
+const cc = @import("capi.zig");
 const vmc = cy.vmc;
 const rt = cy.rt;
 const bt = cy.types.BuiltinTypes;

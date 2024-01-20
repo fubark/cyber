@@ -1,6 +1,6 @@
 const std = @import("std");
 const cy = @import("../cyber.zig");
-const cc = @import("../clib.zig");
+const cc = @import("../capi.zig");
 const vmc = cy.vmc;
 const Value = cy.Value;
 const bt = cy.types.BuiltinTypes;

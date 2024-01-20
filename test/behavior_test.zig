@@ -13,7 +13,7 @@ const vmc = cy.vmc;
 const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = cy.log.scoped(.behavior_test);
-const c = @import("../src/clib.zig");
+const c = @import("../src/capi.zig");
 comptime {
     const lib = @import("../src/lib.zig");
     std.testing.refAllDecls(lib);

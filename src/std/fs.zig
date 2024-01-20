@@ -5,7 +5,7 @@ const t = stdx.testing;
 const log = cy.log.scoped(.fs);
 const cy = @import("../cyber.zig");
 const Value = cy.Value;
-const cc = @import("../clib.zig");
+const cc = @import("../capi.zig");
 
 pub var FileT: cy.TypeId = undefined;
 pub var DirT: cy.TypeId = undefined;

@@ -10,7 +10,7 @@ const Value = cy.Value;
 const t = stdx.testing;
 const log = cy.log.scoped(.lib);
 const bt = cy.types.BuiltinTypes;
-const c = @import("clib.zig");
+const c = @import("capi.zig");
 
 export fn csCreate() *cy.UserVM {
     const alloc = cy.heap.getAllocator();

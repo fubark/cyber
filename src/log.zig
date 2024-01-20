@@ -74,7 +74,7 @@ pub fn scoped(comptime Scope: @Type(.EnumLiteral)) type {
     };
 }
 
-const c = @import("clib.zig");
+const c = @import("capi.zig");
 pub export var logFn: c.GlobalLogFn = defaultGlobalLog;
 var logBuf: [1024]u8 = undefined;
 

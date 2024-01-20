@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const cy = @import("cyber.zig");
 const log = cy.log.scoped(.main);
+const cli = @import("cli.zig");
 const build_options = @import("build_options");
 const fmt = @import("fmt.zig");
 comptime {
@@ -145,7 +146,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     cy.verbose = verbose;
 
     try vm.init(alloc);
-    cy.cli.setupVMForCLI(@ptrCast(&vm));
+    cli.setupVMForCLI(@ptrCast(&vm));
     defer vm.deinit(false);
 
     const res = vm.compile(path, src, .{
@@ -164,7 +165,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
                 if (!cy.silentError) {
                     const report = try vm.allocLastErrorReport();
                     defer alloc.free(report);
-                    cy.writeStderr(report);
+                    cli.writeStderr(report);
                 }
                 exit(1);
             },
@@ -180,7 +181,7 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     cy.verbose = verbose;
 
     try vm.init(alloc);
-    cy.cli.setupVMForCLI(@ptrCast(&vm));
+    cli.setupVMForCLI(@ptrCast(&vm));
     defer vm.deinit(false);
 
     _ = vm.eval(path, src, .{

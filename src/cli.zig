@@ -40,6 +40,16 @@ const stdMods = std.ComptimeStringMap(c.ModuleLoaderResult, .{
     }},
 });
 
+pub fn writeStderr(s: []const u8) void {
+    @setCold(true);
+    const w = cy.fmt.lockStderrWriter();
+    defer cy.fmt.unlockPrint();
+    _ = w.writeAll(s) catch |err| {
+        log.gtracev("{}", .{err});
+        cy.fatal();
+    };
+}
+
 pub fn setupVMForCLI(vm: *cy.VM) void {
     c.setResolver(@ptrCast(vm), resolve);
     c.setModuleLoader(@ptrCast(vm), loader);

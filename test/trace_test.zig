@@ -4,6 +4,7 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 
 const cy = @import("../src/cyber.zig");
+const cli = @import("../src/cli.zig");
 const vmc = @import("../src/vm_c.zig");
 const log = cy.log.scoped(.trace_test);
 
@@ -334,7 +335,7 @@ const VMrunner = struct {
             .vm = @ptrCast(&testVm),
         };
         self.vm.init(t.alloc) catch cy.fatal();
-        cy.cli.setupVMForCLI(self.vm);
+        cli.setupVMForCLI(self.vm);
     }
 
     fn deinit(self: *VMrunner) void {

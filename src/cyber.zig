@@ -185,7 +185,6 @@ pub fn Nullable(comptime T: type) type {
 pub const ZHostFuncFn = *const fn (*VM, [*]const Value, u8) Value;
 pub const ZHostFuncCFn = *const fn (*VM, [*]const Value, u8) callconv(.C) Value;
 
-pub const cli = @import("cli.zig");
 pub const log = @import("log.zig");
 pub const utils = @import("utils.zig");
 pub const IndexSlice = utils.IndexSlice;
@@ -193,16 +192,6 @@ pub const ptrAlignCast = utils.ptrAlignCast;
 pub const panic = utils.panic;
 pub const panicFmt = utils.panicFmt;
 pub const dassert = utils.dassert;
-
-pub fn writeStderr(s: []const u8) void {
-    @setCold(true);
-    const w = fmt.lockStderrWriter();
-    defer fmt.unlockPrint();
-    _ = w.writeAll(s) catch |err| {
-        log.debug("{}", .{err});
-        fatal();
-    };
-}
 
 pub inline fn unexpected() noreturn {
     panic("unexpected");

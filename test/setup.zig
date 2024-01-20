@@ -4,6 +4,7 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 const fatal = cy.fatal;
 const cy = @import("../src/cyber.zig");
+const cli = @import("../src/cli.zig");
 const vmc = cy.vmc;
 const log = cy.log.scoped(.setup);
 
@@ -80,7 +81,7 @@ pub const VMrunner = struct {
             .vm = @ptrCast(&testVm),
         };
         self.vm.init(t.alloc) catch fatal();
-        cy.cli.setupVMForCLI(self.vm);
+        cli.setupVMForCLI(self.vm);
     }
 
     pub fn deinit(self: *VMrunner) void {
@@ -230,7 +231,7 @@ pub const VMrunner = struct {
             return error.UnreleasedObjects;
         }
         try self.vm.init(t.alloc);
-        cy.cli.setupVMForCLI(self.vm);
+        cli.setupVMForCLI(self.vm);
     }
 
     fn evalNoReset(self: *VMrunner, src: []const u8) !cy.Value {

@@ -7,6 +7,7 @@ const t = stdx.testing;
 const zeroInit = std.mem.zeroInit;
 
 const cy = @import("../src/cyber.zig");
+const cli = @import("../src/cli.zig");
 const bt = cy.types.BuiltinTypes;
 const vmc = cy.vmc;
 const http = @import("../src/http.zig");
@@ -437,7 +438,7 @@ test "Multiple evals persisting state." {
                 });
                 return true;
             } else {
-                return cy.cli.loader(vm, spec, out);
+                return cli.loader(vm, spec, out);
             }
         }
     }.loader);

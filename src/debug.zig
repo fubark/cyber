@@ -262,6 +262,7 @@ pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []co
                 \\
                 \\{}:{}:{}:
                 \\{}
+                \\
             , &.{
                 v(title), v(msg), v(chunk.srcUri),
                 v(line+1), v(col+1),
@@ -274,6 +275,7 @@ pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []co
                 \\{}: {}
                 \\
                 \\in {}
+                \\
             , &.{
                 v(title), v(msg), v(chunk.srcUri),
             });
@@ -281,6 +283,7 @@ pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []co
     } else {
         try fmt.format(w,
             \\{}: {}
+            \\
         , &.{
             v(title), v(msg),
         });
@@ -713,14 +716,14 @@ const TimerTrace = struct {
     timer: if (EnableTimerTrace) stdx.time.Timer else void,
 
     pub fn end(self: *TimerTrace) void {
-        if (EnableTimerTrace) {
+        if (EnableTimerTrace and cy.verbose) {
             const now = self.timer.read();
             cy.log.zfmt("time: {d:.3}ms", .{ @as(f32, @floatFromInt(now)) / 1e6 });
         }
     }
 
     pub fn endPrint(self: *TimerTrace, msg: []const u8) void {
-        if (EnableTimerTrace) {
+        if (EnableTimerTrace and cy.verbose) {
             const now = self.timer.read();
             cy.log.zfmt("{s}: {d:.3}ms", .{ msg, @as(f32, @floatFromInt(now)) / 1e6 });
         }

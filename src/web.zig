@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("clib.zig");
+const c = @import("capi.zig");
 const cy = @import("cyber.zig");
 
 comptime {
@@ -12,7 +12,7 @@ comptime {
 
 export fn csSetupForWeb(vm: *cy.VM) void {
     c.setModuleLoader(@ptrCast(vm), loader);
-    c.setPrint(@ptrCast(vm), print);
+    c.setPrinter(@ptrCast(vm), print);
 }
 
 pub fn loader(vm: ?*c.VM, spec_: c.Str, out_: [*c]c.ModuleLoaderResult) callconv(.C) bool {

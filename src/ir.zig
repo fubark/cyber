@@ -11,7 +11,7 @@ const log = cy.log.scoped(.ir);
 /// 1. Since there is static symbol resolution, some statements and expressions become irrelevant.
 /// 2. Type inference, an operation's invocation may be patched:
 ///    Bin-exprs could be inlined rather than invoking an operator function.
-/// 3. Boxed vars/param copies can be patched as sema discovers them.
+/// 3. Lifted vars/param copies can be patched as sema discovers them.
 /// 4. Additional IR can be added that have no source attribution such as
 ///    static variable initializers and zero values.
 /// 5. Makes bc codegen simpler, creating additional backends should also be simpler.
@@ -94,7 +94,7 @@ pub const ExprCode = enum(u8) {
     truev,
     falsev,
     errorv,
-    tagSym,
+    symbol,
     float,
     int,
     unOpEnd,
@@ -181,7 +181,7 @@ pub const TryExpr = struct {
     catchBody: u32,
 };
 
-pub const TagSym = struct {
+pub const Symbol = struct {
     name: []const u8,
 };
 
@@ -288,16 +288,28 @@ pub const MainBlock = struct {
 };
 
 pub const FuncParam = struct {
+    namePtr: [*]const u8,
+    nameLen: u16,
     declType: TypeId,
     isCopy: bool,
-    isBoxed: bool,
+    lifted: bool,
+
+    pub fn name(self: FuncParam) []const u8 {
+        return self.namePtr[0..self.nameLen];
+    }
 };
 
 pub const DeclareLocal = struct {
+    namePtr: [*]const u8,
+    nameLen: u16,
     declType: TypeId,
     id: u8,
-    isBoxed: bool,
+    lifted: bool,
     assign: bool,
+
+    pub fn name(self: DeclareLocal) []const u8 {
+        return self.namePtr[0..self.nameLen];
+    }
 };
 
 /// Several pre codes share a union so that sema
@@ -329,6 +341,7 @@ pub const Slice = struct {
 
 pub const BinOp = struct {
     leftT: TypeId,
+    rightT: TypeId,
     op: cy.BinaryExprOp,
     right: u32,
 };
@@ -521,7 +534,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .cast => Cast,
         .errorv => Error,
         .captured => Captured,
-        .tagSym => TagSym,
+        .symbol => Symbol,
         else => void,
     };
 }
@@ -640,12 +653,12 @@ pub const Buffer = struct {
         @as(*align(1) cy.NodeId, @ptrCast(self.buf.items.ptr + idx + 1)).* = nodeId;
     }
 
-    pub fn setNextStmt(self: *Buffer, idx: usize, nextIdx: u32) void {
-        @as(*align(1) cy.NodeId, @ptrCast(self.buf.items.ptr + idx + 1 + 4)).* = nextIdx;
+    pub fn setStmtNext(self: *Buffer, idx: usize, nextIdx: u32) void {
+        @as(*align(1) u32, @ptrCast(self.buf.items.ptr + idx + 1 + 4)).* = nextIdx;
     }
 
-    pub fn getNextStmt(self: *Buffer, idx: usize) u32 {
-        return @as(*align(1) cy.NodeId, @ptrCast(self.buf.items.ptr + idx + 1 + 4)).*;
+    pub fn getStmtNext(self: *Buffer, idx: usize) u32 {
+        return @as(*align(1) u32, @ptrCast(self.buf.items.ptr + idx + 1 + 4)).*;
     }
 
     pub fn pushEmptyStmt(self: *Buffer, alloc: std.mem.Allocator, comptime code: StmtCode, nodeId: cy.NodeId) !u32 {
@@ -660,7 +673,7 @@ pub const Buffer = struct {
             list.last = idx;
         } else {
             // Attach to last.
-            self.setNextStmt(list.last, idx);
+            self.setStmtNext(list.last, idx);
             list.last = idx;
         }
     }
@@ -671,7 +684,7 @@ pub const Buffer = struct {
         try self.buf.resize(alloc, self.buf.items.len + 1 + 4 + 4 + @sizeOf(StmtData(code)));
         self.buf.items[start] = @intFromEnum(code);
         self.setNode(start, nodeId);
-        self.setNextStmt(start, cy.NullId);
+        self.setStmtNext(start, cy.NullId);
 
         if (appendToParent_) {
             self.appendToParent(start);

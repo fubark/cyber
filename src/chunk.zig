@@ -600,17 +600,17 @@ pub const Chunk = struct {
                 const params = sema.getBlockParams(self, block);
                 for (params) |svar| {
                     const typeId: types.TypeId = svar.vtype.id;
-                    self.vm.logFmt("{} (param), local: {}, dyn: {}, rtype: {}, boxed: {}", &.{
+                    self.vm.logFmt("{} (param), local: {}, dyn: {}, rtype: {}, lifted: {}", &.{
                         v(svar.name()), v(svar.local), v(svar.vtype.dynamic), v(typeId),
-                        v(svar.inner.local.isBoxed),
+                        v(svar.inner.local.lifted),
                     });
                 }
                 const locals = sema.getBlockLocals(self, block);
                 for (locals) |svar| {
                     const typeId: types.TypeId = svar.vtype.id;
-                    self.vm.logFmt("{}, local: {}, dyn: {}, rtype: {}, boxed: {}", &.{
+                    self.vm.logFmt("{}, local: {}, dyn: {}, rtype: {}, lifted: {}", &.{
                         v(svar.name()), v(svar.local), v(svar.vtype.dynamic), v(typeId),
-                        v(svar.inner.local.isBoxed),
+                        v(svar.inner.local.lifted),
                     });
                 }
             }

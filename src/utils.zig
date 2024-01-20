@@ -12,15 +12,15 @@ pub fn dassert(pred: bool) void {
 
 pub fn panicFmt(comptime format: []const u8, args: anytype) noreturn {
     if (cy.isWasm) {
-        log.err(format, args);
+        cy.rt.glogZFmt(format, args);
     }
     std.debug.panic(format, args);
 }
 
 pub fn panic(comptime msg: []const u8) noreturn {
     if (cy.isWasm) {
-        // @panic can't print message in wasm so we use a logger that can.
-        log.err(msg, .{});
+        // @panic doesn't know how to print in wasm.
+        cy.rt.glog(msg);
     }
     @panic(msg);
 }

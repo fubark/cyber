@@ -11,6 +11,7 @@ const Symbol = bindings.Symbol;
 const prepareThrowSymbol = bindings.prepareThrowSymbol;
 const bt = cy.types.BuiltinTypes;
 const v = fmt.v;
+const rt = cy.rt;
 const log = cy.log.scoped(.testmod);
 
 pub const Src = @embedFile("test.cy");
@@ -25,11 +26,12 @@ pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callco
 }
 
 const zErrFunc = cy.builtins.zErrFunc2;
+const cFunc = cy.builtins.cFunc;
 
 const NameHostFunc = struct { []const u8, cy.ZHostFuncFn };
 const funcs = [_]NameHostFunc{
     .{"assert", zErrFunc(assert)},
-    .{"eq", zErrFunc(eq)},
+    .{"eq", cFunc(eq)},
     .{"eqList", zErrFunc(eqList)},
     .{"eqNear", zErrFunc(eqNear)},
     .{"fail", fail},
@@ -45,7 +47,7 @@ pub fn onLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
 }
 
 fn fail(vm: *cy.VM, _: [*]const Value, _: u8) Value {
-    return vm.prepThrowError(.AssertError);
+    return rt.prepThrowError(vm, .AssertError);
 }
 
 /// Simply returns the value so the caller get's an erased `any` type.
@@ -58,7 +60,15 @@ fn getComparableTag(val: Value) cy.ValueUserTag {
     return val.getUserTag();
 }
 
-fn eq2(vm: *cy.VM, act: Value, exp: Value) linksection(cy.StdSection) bool {
+pub fn eq(c: cy.Context, args: [*]const Value, _: u8) callconv(.C) Value {
+    if (eq2(c, args[0], args[1])) {
+        return Value.True;
+    } else {
+        return rt.prepThrowError(c, .AssertError);
+    }
+}
+
+fn eq2(c: cy.Context, act: Value, exp: Value) linksection(cy.StdSection) bool {
     const actType = getComparableTag(act);
     const expType = getComparableTag(exp);
     if (actType == expType) {
@@ -67,7 +77,7 @@ fn eq2(vm: *cy.VM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 if (act.asInteger() == exp.asInteger()) {
                     return true;
                 } else {
-                    logErr(vm, "actual: {} != {}", &.{v(act.asInteger()), v(exp.asInteger())});
+                    logErr(c, "actual: {} != {}", &.{v(act.asInteger()), v(exp.asInteger())});
                     return false;
                 }
             },
@@ -75,7 +85,7 @@ fn eq2(vm: *cy.VM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 if (act.asF64() == exp.asF64()) {
                     return true;
                 } else {
-                    logErr(vm, "actual: {} != {}", &.{v(act.asF64()), v(exp.asF64())});
+                    logErr(c, "actual: {} != {}", &.{v(act.asF64()), v(exp.asF64())});
                     return false;
                 }
             },
@@ -85,7 +95,7 @@ fn eq2(vm: *cy.VM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 if (std.mem.eql(u8, actStr, expStr)) {
                     return true;
                 } else {
-                    logErr(vm, "actual: '{}' != '{}'", &.{v(actStr), v(expStr)});
+                    logErr(c, "actual: '{}' != '{}'", &.{v(actStr), v(expStr)});
                     return false;
                 }
             },
@@ -95,7 +105,7 @@ fn eq2(vm: *cy.VM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 if (std.mem.eql(u8, actStr, expStr)) {
                     return true;
                 } else {
-                    logErr(vm, "actual: '{}' != '{}'", &.{v(actStr), v(expStr)});
+                    logErr(c, "actual: '{}' != '{}'", &.{v(actStr), v(expStr)});
                     return false;
                 }
             },
@@ -105,7 +115,7 @@ fn eq2(vm: *cy.VM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 if (actPtr == expPtr) {
                     return true;
                 } else {
-                    logErr(vm, "actual: {} != {}", &.{v(actPtr), v(expPtr)});
+                    logErr(c, "actual: {} != {}", &.{v(actPtr), v(expPtr)});
                     return false;
                 }
             },
@@ -115,7 +125,7 @@ fn eq2(vm: *cy.VM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 if (actv == expv) {
                     return true;
                 } else {
-                    logErr(vm, "actual: {} != {}", &.{v(actv), v(expv)});
+                    logErr(c, "actual: {} != {}", &.{v(actv), v(expv)});
                     return false;
                 }
             },
@@ -125,7 +135,7 @@ fn eq2(vm: *cy.VM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 if (actv == expv) {
                     return true;
                 } else {
-                    logErr(vm, "actual: {} != {}", &.{v(vm.syms.buf[actv].name), v(vm.syms.buf[expv].name)});
+                    logErr(c, "actual: {} != {}", &.{v(rt.getSymName(c, actv)), v(rt.getSymName(c, expv))});
                     return false;
                 }
             },
@@ -138,9 +148,9 @@ fn eq2(vm: *cy.VM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 if (actv == expv) {
                     return true;
                 } else {
-                    const actName: []const u8 = if (act.isInterrupt()) "Interrupt" else vm.syms.buf[actv].name;
-                    const expName: []const u8 = if (exp.isInterrupt()) "Interrupt" else vm.syms.buf[expv].name;
-                    logErr(vm, "actual: error.{} != error.{}", &.{v(actName), v(expName)});
+                    const actName: []const u8 = if (act.isInterrupt()) "Interrupt" else rt.getSymName(c, actv);
+                    const expName: []const u8 = if (exp.isInterrupt()) "Interrupt" else rt.getSymName(c, expv);
+                    logErr(c, "actual: error.{} != error.{}", &.{v(actName), v(expName)});
                     return false;
                 }
             },
@@ -152,7 +162,7 @@ fn eq2(vm: *cy.VM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 if (actv == expv) {
                     return true;
                 } else {
-                    logErr(vm, "actual: {} != {}", &.{v(actv), v(expv)});
+                    logErr(c, "actual: {} != {}", &.{v(actv), v(expv)});
                     return false;
                 }
             },
@@ -162,7 +172,7 @@ fn eq2(vm: *cy.VM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 if (std.meta.eql(actv, expv)) {
                     return true;
                 } else {
-                    logErr(vm, "actual: {} != {}", &.{v(actv.type), v(expv.type)});
+                    logErr(c, "actual: {} != {}", &.{v(actv.type), v(expv.type)});
                     return false;
                 }
             },
@@ -171,8 +181,8 @@ fn eq2(vm: *cy.VM, act: Value, exp: Value) linksection(cy.StdSection) bool {
             }
         }
     } else {
-        logErr(vm, "Types do not match:", &.{});
-        logErr(vm, "actual: {} != {}", &.{v(actType), v(expType)});
+        logErr(c, "Types do not match:", &.{});
+        logErr(c, "actual: {} != {}", &.{v(actType), v(expType)});
         return false;
     }
 }
@@ -181,16 +191,8 @@ pub fn assert(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection
     if (args[0].toBool()) {
         return Value.None;
     } else {
-        printStderr("Assertion failed.\n", &.{});
-        return vm.prepThrowError(.AssertError);
-    }
-}
-
-pub fn eq(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    if (eq2(vm, args[0], args[1])) {
-        return Value.True;
-    } else {
-        return vm.prepThrowError(.AssertError);
+        logErr(vm, "Assertion failed.", &.{});
+        return rt.prepThrowError(vm, .AssertError);
     }
 }
 
@@ -206,16 +208,16 @@ pub fn eqNear(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
                 return Value.True;
             } else {
                 logErr(vm, "actual: {} != {}", &.{v(act.asF64()), v(exp.asF64())});
-                return vm.prepThrowError(.AssertError);
+                return rt.prepThrowError(vm, .AssertError);
             }
         } else {
             logErr(vm, "Expected float, actual: {}", &.{v(actType)});
-            return vm.prepThrowError(.AssertError);
+            return rt.prepThrowError(vm, .AssertError);
         }
     } else {
         logErr(vm, "Types do not match:", &.{});
         logErr(vm, "actual: {} != {}", &.{v(actType), v(expType)});
-        return vm.prepThrowError(.AssertError);
+        return rt.prepThrowError(vm, .AssertError);
     }
 }
 
@@ -236,27 +238,27 @@ pub fn eqList(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
                 while (i < acto.list.list.len) : (i += 1) {
                     if (!eq2(vm, actItems[i], expItems[i])) {
                         logErr(vm, "Item mismatch at idx: {}", &.{v(i)});
-                        return vm.prepThrowError(.AssertError);
+                        return rt.prepThrowError(vm, .AssertError);
                     }
                 }
                 return Value.True;
             } else {
                 logErr(vm, "actual list len: {} != {}", &.{v(acto.list.list.len), v(expo.list.list.len)});
-                return vm.prepThrowError(.AssertError);
+                return rt.prepThrowError(vm, .AssertError);
             }
         } else {
             logErr(vm, "Expected list, actual: {}", &.{v(actType)});
-            return vm.prepThrowError(.AssertError);
+            return rt.prepThrowError(vm, .AssertError);
         }
     } else {
         logErr(vm, "Types do not match:", &.{});
         logErr(vm, "actual: {} != {}", &.{v(actType), v(expType)});
-        return vm.prepThrowError(.AssertError);
+        return rt.prepThrowError(vm, .AssertError);
     }
 }
 
-fn logErr(vm: *cy.VM, format: []const u8, vals: []const fmt.FmtValue) void {
+fn logErr(c: cy.Context, format: []const u8, vals: []const fmt.FmtValue) void {
     if (!cy.silentError) {
-        vm.logFmt(format, vals);
+        rt.logFmt(c, format, vals);
     }
 }

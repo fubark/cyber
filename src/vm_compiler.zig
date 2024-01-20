@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
@@ -15,6 +16,7 @@ const bt = types.BuiltinTypes;
 const cy_mod = @import("builtins/builtins.zig");
 const math_mod = @import("builtins/math.zig");
 const llvm_gen = @import("llvm_gen.zig");
+const cgen = @import("cgen.zig");
 const bcgen = @import("bc_gen.zig");
 const jitgen = @import("jit/gen.zig");
 const assm = @import("jit/assembler.zig");
@@ -189,22 +191,20 @@ pub const VMcompiler = struct {
         self.lastErrChunk = cy.NullId;
     }
 
-    pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileResultView {
+    pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileResult {
         defer {
             // Update VM types view.
             self.vm.types = self.sema.types.items;
         }
-        self.compileInner(srcUri, src, config) catch |err| {
+        const res = self.compileInner(srcUri, src, config) catch |err| {
             if (err == error.TokenError) {
-                return CompileResultView{
-                    .buf = self.buf,
-                    .jitBuf = self.jitBuf,
+                return CompileResult{
+                    .inner = undefined,
                     .err = .tokenize,
                 };
             } else if (err == error.ParseError) {
-                return CompileResultView{
-                    .buf = self.buf,
-                    .jitBuf = self.jitBuf,
+                return CompileResult{
+                    .inner = undefined,
                     .err = .parse,
                 };
             } else {
@@ -220,22 +220,20 @@ pub const VMcompiler = struct {
                         return err;
                     }
                 }
-                return CompileResultView{
-                    .buf = self.buf,
-                    .jitBuf = self.jitBuf,
+                return CompileResult{
+                    .inner = undefined,
                     .err = .compile,
                 };
             }
         };
-        return CompileResultView{
-            .buf = self.buf,
-            .jitBuf = self.jitBuf,
+        return CompileResult{
+            .inner = res,
             .err = null,
         };
     }
 
     /// Wrap compile so all errors can be handled in one place.
-    fn compileInner(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !void {
+    fn compileInner(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileInnerResult {
         self.config = config;
 
         var finalSrcUri: []const u8 = undefined;
@@ -298,8 +296,37 @@ pub const VMcompiler = struct {
         }
 
         if (!config.skipCodegen) {
-            try performCodegen(self);
+            log.tracev(self.vm, "Perform codegen.", .{});
+
+            switch (self.config.backend) {
+                .jit => {
+                    if (cy.isWasm) return error.Unsupported;
+                    try jitgen.gen(self);
+                    return .{ .jit = .{
+                        .mainStackSize = self.buf.mainStackSize,
+                        .buf = self.jitBuf,
+                    }};
+                },
+                .tcc, .cc => {
+                    if (cy.isWasm or !cy.hasCLI) return error.Unsupported;
+                    const res = try cgen.gen(self);
+                    return .{ .aot = res };
+                },
+                .llvm => {
+                    // try llvm_gen.genNativeBinary(self);
+                    return error.TODO;
+                },
+                .vm => {
+                    try genBytecode(self);
+                    return .{
+                        .vm = self.buf,
+                    };
+                },
+            }
+            log.tracev(self.vm, "Done. Perform codegen.", .{});
         }
+
+        return CompileInnerResult{ .vm = undefined };
     }
 
     /// If `chunkId` is NullId, then the error comes from an aggregate step.
@@ -317,6 +344,14 @@ pub const VMcompiler = struct {
         self.lastErr = msg;
         self.lastErrChunk = chunkId;
         self.lastErrNode = nodeId;
+    }
+};
+
+pub const AotCompileResult = struct {
+    exePath: [:0]const u8,
+
+    pub fn deinit(self: AotCompileResult, alloc: std.mem.Allocator) void {
+        alloc.free(self.exePath);
     }
 };
 
@@ -440,7 +475,7 @@ fn appendSymInitIrDFS(c: *cy.Chunk, sym: *cy.Sym, info: *cy.chunk.SymInitInfo, r
     // Append stmt in the correct order.
     c.ir.appendToParent(info.irStart);
     // Reset this stmt's next or it can end up creating a cycle list.
-    c.ir.setNextStmt(info.irStart, cy.NullId);
+    c.ir.setStmtNext(info.irStart, cy.NullId);
 
     info.visited = true;
 }
@@ -712,67 +747,6 @@ fn declareSymbols(self: *VMcompiler) !void {
     }
 }
 
-fn performCodegen(self: *VMcompiler) !void {
-    log.tracev(self.vm, "Perform codegen.", .{});
-
-    // if (cy.hasAOT) {
-    //     if (self.config.aot) {
-    //         try llvm_gen.genNativeBinary(self);
-    //         return;
-    //     }
-    // }
-
-    if (!cy.isWasm and self.config.preJit) {
-        // Prepare host funcs.
-        for (self.chunks.items) |chunk| {
-            const mod = chunk.sym.getMod();
-            for (mod.funcs.items) |func| {
-                try jitgen.prepareFunc(self, func);
-            }
-
-            for (chunk.modSyms.items) |modSym| {
-                const mod2 = modSym.getMod().?;
-                for (mod2.funcs.items) |func| {
-                    try jitgen.prepareFunc(self, func);
-                }
-            }
-        }
-
-        for (self.chunks.items) |chunk| {
-            if (chunk.id != 0) {
-                // Skip other chunks for now.
-                continue;
-            }
-
-            log.tracev("Perform codegen for chunk{}: {s}", .{chunk.id, chunk.srcUri});
-            chunk.buf = &self.buf;
-            chunk.jitBuf = &self.jitBuf;
-            try jitgen.genChunk(chunk);
-            log.tracev("Done. performChunkCodegen {s}", .{chunk.srcUri});
-        }
-
-        // Perform relocation.
-        const mainChunk = self.chunks.items[0];
-        for (self.jitBuf.relocs.items) |reloc| {
-            switch (reloc.type) {
-                .jumpToFunc => {
-                    const jumpPc = reloc.data.jumpToFunc.pc;
-                    const func = reloc.data.jumpToFunc.func;
-                    if (func.type == .hostFunc) {
-                        return error.Unexpected;
-                    } else {
-                        const targetPc = self.genSymMap.get(func).?.funcSym.pc;
-                        assm.patchJumpRel(mainChunk, jumpPc, targetPc);
-                    }
-                }
-            }
-        }
-    } else {
-        try genBytecode(self);
-    }
-    log.tracev(self.vm, "Done. Perform codegen.", .{});
-}
-
 fn genBytecode(c: *VMcompiler) !void {
     // Constants.
     c.vm.emptyString = try c.buf.getOrPushStaticAstring("");
@@ -972,10 +946,18 @@ pub const CompileErrorType = enum {
     compile,
 };
 
-pub const CompileResultView = struct {
-    buf: cy.ByteCodeBuffer,
-    jitBuf: jitgen.CodeBuffer,
+pub const CompileResult = struct {
+    inner: CompileInnerResult,
     err: ?CompileErrorType,
+};
+
+const CompileInnerResult = union {
+    vm: cy.ByteCodeBuffer,
+    jit: struct {
+        mainStackSize: u32,
+        buf: jitgen.CodeBuffer,
+    },
+    aot: AotCompileResult,
 };
 
 const VarInfo = struct {
@@ -1031,12 +1013,29 @@ pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *VMc
     }.initCompat;
 }
 
+pub const Backend = enum(u8) {
+    vm,
+    jit,
+    tcc,
+    cc,
+    llvm,
+
+    pub fn fromTestBackend(backend: @TypeOf(build_options.testBackend)) Backend {
+        return std.meta.stringToEnum(Backend, @tagName(backend)).?;
+    }
+
+    pub fn isAot(self: Backend) bool {
+        return self == .tcc or self == .cc or self == .llvm;
+    }
+};
+
 pub const CompileConfig = struct {
     singleRun: bool = false,
     skipCodegen: bool = false,
     enableFileModules: bool = false,
     genDebugFuncMarkers: bool = false,
-    preJit: bool = false,
+    backend: Backend = .vm,
+    emitSourceMap: bool = false,
 };
 
 pub const ValidateConfig = struct {

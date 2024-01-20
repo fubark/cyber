@@ -75,9 +75,9 @@ pub const LocalVar = struct {
             /// If a param is written to or turned into a Box, `copied` becomes true.
             isParamCopied: bool,
 
-            /// Currently a captured var always needs to be boxed.
+            /// Currently a captured var always needs to be lifted.
             /// In the future, the concept of a immutable variable could change this.
-            isBoxed: bool,
+            lifted: bool,
 
             /// For locals this points to a ir.DeclareLocal.
             /// This is NullId for params.
@@ -341,7 +341,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             try assignStmt(c, nodeId, leftId, nodeId, .{ .rhsOpAssignBinExpr = true });
 
             // Reset `opSet`'s next since pushed statements are appended to the top StmtBlock.
-            c.ir.setNextStmt(irIdx, cy.NullId);
+            c.ir.setStmtNext(irIdx, cy.NullId);
             c.ir.stmtBlockStack.items[c.ir.stmtBlockStack.items.len-1].last = irIdx;
         },
         .assign_stmt => {
@@ -1201,7 +1201,7 @@ fn declareParam(c: *cy.Chunk, paramId: cy.NodeId, isSelf: bool, paramIdx: u32, d
             .id = @intCast(paramIdx),
             .isParam = true,
             .isParamCopied = false,
-            .isBoxed = false,
+            .lifted = false,
             .declIrStart = cy.NullId,
         },
     };
@@ -1237,17 +1237,19 @@ fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, assign: bo
 
     const irId = block.curNumLocals;
     const irIdx = try c.ir.pushStmt(c.alloc, .declareLocal, nodeId, .{
+        .namePtr = name.ptr,
+        .nameLen = @as(u16, @intCast(name.len)),
         .declType = declType,
         .id = irId,
         .assign = assign,
-        .isBoxed = false,
+        .lifted = false,
     });
 
     svar.inner = .{ .local = .{
         .id = irId,
         .isParam = false,
         .isParamCopied = false,
-        .isBoxed = false,
+        .lifted = false,
         .declIrStart = @intCast(irIdx),
     }};
 
@@ -2144,7 +2146,7 @@ fn pushCapturedObjectMemberAlias(self: *cy.Chunk, name: []const u8, parentVarId:
     }};
 
     const pvar = &self.varStack.items[parentVarId];
-    pvar.inner.local.isBoxed = true;
+    pvar.inner.local.lifted = true;
 
     try self.capVarDescs.put(self.alloc, id, .{
         .user = parentVarId,
@@ -2166,13 +2168,13 @@ fn pushCapturedVar(c: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, vtyp
     c.varStack.items[id].vtype = vtype;
 
     const pvar = &c.varStack.items[parentVarId];
-    pvar.inner.local.isBoxed = true;
+    pvar.inner.local.lifted = true;
 
     // Patch local IR.
     if (!pvar.inner.local.isParam) {
         const declIrStart = pvar.inner.local.declIrStart;
         var data = c.ir.getStmtData(declIrStart, .declareLocal);
-        data.isBoxed = true;
+        data.lifted = true;
         c.ir.setStmtData(declIrStart, .declareLocal, data);
     }
 
@@ -2948,7 +2950,7 @@ pub const ChunkExt = struct {
                         }
                     }
                 }
-                const irIdx = try c.ir.pushExpr(c.alloc, .tagSym, nodeId, .{ .name = name });
+                const irIdx = try c.ir.pushExpr(c.alloc, .symbol, nodeId, .{ .name = name });
                 return ExprResult.initStatic(irIdx, bt.Symbol);
             },
             .true_literal => {
@@ -3082,13 +3084,12 @@ pub const ChunkExt = struct {
                 if (leftT == bt.List or leftT == bt.Tuple or leftT == bt.Map) {
                     // Specialized.
                     c.ir.setExprCode(preIdx, .preBinOp);
-                    c.ir.setExprData(preIdx, .preBinOp, .{
-                        .binOp = .{
-                            .leftT = leftT,
-                            .op = .index,
-                            .right = index.irIdx,
-                        },
-                    });
+                    c.ir.setExprData(preIdx, .preBinOp, .{ .binOp = .{
+                        .leftT = leftT,
+                        .rightT = index.type.id,
+                        .op = .index,
+                        .right = index.irIdx,
+                    }});
                 } else {
                     const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, index.type.id }, bt.Any);
                     c.ir.setExprCode(preIdx, .preCallObjSymBinOp);
@@ -3636,6 +3637,7 @@ pub const ChunkExt = struct {
                 const right = try c.semaExpr(rightId, .{});
                 c.ir.setExprData(preIdx, .preBinOp, .{ .binOp = .{
                     .leftT = left.type.id,
+                    .rightT = right.type.id,
                     .op = op,
                     .right = right.irIdx,
                 }});
@@ -3661,6 +3663,7 @@ pub const ChunkExt = struct {
                     c.ir.setExprCode(preIdx, .preBinOp);
                     c.ir.setExprData(preIdx, .preBinOp, .{ .binOp = .{
                         .leftT = bt.Integer,
+                        .rightT = right.type.id,
                         .op = op,
                         .right = right.irIdx,
                     }});
@@ -3694,6 +3697,7 @@ pub const ChunkExt = struct {
                     c.ir.setExprCode(preIdx, .preBinOp);
                     c.ir.setExprData(preIdx, .preBinOp, .{ .binOp = .{
                         .leftT = left.type.id,
+                        .rightT = right.type.id,
                         .op = op,
                         .right = right.irIdx,
                     }});
@@ -3741,6 +3745,7 @@ pub const ChunkExt = struct {
                     c.ir.setExprCode(preIdx, .preBinOp);
                     c.ir.setExprData(preIdx, .preBinOp, .{ .binOp = .{
                         .leftT = left.type.id,
+                        .rightT = right.type.id,
                         .op = op,
                         .right = right.irIdx,
                     }});
@@ -3784,6 +3789,7 @@ pub const ChunkExt = struct {
                 c.ir.setExprData(preIdx, .preBinOp, .{
                     .binOp = .{
                         .leftT = left.type.id,
+                        .rightT = right.type.id,
                         .op = op,
                         .right = right.irIdx,
                     },
@@ -3966,9 +3972,11 @@ fn popLambdaBlock(c: *cy.Chunk) !void {
     const paramData = c.ir.getArray(paramIrStart, ir.FuncParam, params.len);
     for (params, 0..) |param, i| {
         paramData[i] = .{
+            .namePtr = param.namePtr,
+            .nameLen = param.nameLen,
             .declType = param.declT,
             .isCopy = param.inner.local.isParamCopied,
-            .isBoxed = param.inner.local.isBoxed,
+            .lifted = param.inner.local.lifted,
         };
         if (param.inner.local.isParamCopied) {
             numParamCopies += 1;
@@ -4018,9 +4026,11 @@ pub fn popStaticFuncBlock(c: *cy.Chunk) !void {
     const paramData = c.ir.getArray(paramIrStart, ir.FuncParam, params.len);
     for (params, 0..) |param, i| {
         paramData[i] = .{
+            .namePtr = param.namePtr,
+            .nameLen = param.nameLen,
             .declType = param.declT,
             .isCopy = param.inner.local.isParamCopied,
-            .isBoxed = param.inner.local.isBoxed,
+            .lifted = param.inner.local.lifted,
         };
         if (param.inner.local.isParamCopied) {
             numParamCopies += 1;

@@ -842,7 +842,7 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: RegisterCstr) anyerror!GenValue {
         // .string             => genString(c, idx, cstr, nodeId),
         .stringTemplate     => genStringTemplate(c, idx, cstr, nodeId),
         // .switchBlock        => genSwitchBlock(c, idx, cstr, nodeId),
-        // .tagSym             => genTagSym(c, idx, cstr, nodeId),
+        // .symbol             => genSymbol(c, idx, cstr, nodeId),
         // .throw              => genThrow(c, idx, nodeId),
         // .truev              => genTrue(c, cstr, nodeId),
         // .tryExpr            => genTryExpr(c, idx, cstr, nodeId),
@@ -865,7 +865,7 @@ fn genStmts(c: *cy.Chunk, idx: u32) !void {
     var stmt = idx;
     while (stmt != cy.NullId) {
         try genStmt(c, stmt);
-        stmt = c.ir.getNextStmt(stmt);
+        stmt = c.ir.getStmtNext(stmt);
     }
 }
 
@@ -892,7 +892,7 @@ fn mainBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     var child = data.bodyHead;
     while (child != cy.NullId) {
         try genStmt(c, child);
-        child = c.ir.getNextStmt(child);
+        child = c.ir.getStmtNext(child);
     }
 
     if (bcgen.shouldGenMainScopeReleaseOps(c.compiler)) {
@@ -1007,7 +1007,7 @@ fn declareLocal(c: *cy.Chunk, idx: u32, nodeId: cy.NodeId) !void {
     if (data.assign) {
         // Don't advance nextLocalReg yet since the rhs hasn't generated so the
         // alive locals should not include this declaration.
-        const reg = try bcgen.reserveLocalReg(c, data.id, data.declType, data.isBoxed, nodeId, false);
+        const reg = try bcgen.reserveLocalReg(c, data.id, data.declType, data.lifted, nodeId, false);
 
         const exprIdx = c.ir.advanceStmt(idx, .declareLocal);
         const val = try genExpr(c, exprIdx, RegisterCstr.toLocal(reg, false));
@@ -1024,7 +1024,7 @@ fn declareLocal(c: *cy.Chunk, idx: u32, nodeId: cy.NodeId) !void {
         c.curBlock.nextLocalReg += 1;
         log.tracev(c.vm, "declare {}, rced: {} ", .{val.local, local.some.rcCandidate});
     } else {
-        const reg = try bcgen.reserveLocalReg(c, data.id, data.declType, data.isBoxed, nodeId, true);
+        const reg = try bcgen.reserveLocalReg(c, data.id, data.declType, data.lifted, nodeId, true);
 
         // Not yet initialized, so it does not have a refcount.
         bcgen.getLocalInfoPtr(c, reg).some.rcCandidate = false;
@@ -1073,7 +1073,54 @@ fn funcDecl(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     try bcgen.popFuncBlockCommon(c, func);
 }
 
-pub fn genChunk(c: *cy.Chunk) !void {
+pub fn gen(self: *cy.VMcompiler) !void {
+    // Prepare host funcs.
+    for (self.chunks.items) |chunk| {
+        const mod = chunk.sym.getMod();
+        for (mod.funcs.items) |func| {
+            try prepareFunc(self, func);
+        }
+
+        for (chunk.modSyms.items) |modSym| {
+            const mod2 = modSym.getMod().?;
+            for (mod2.funcs.items) |func| {
+                try prepareFunc(self, func);
+            }
+        }
+    }
+
+    for (self.chunks.items) |chunk| {
+        if (chunk.id != 0) {
+            // Skip other chunks for now.
+            continue;
+        }
+
+        log.tracev(self.vm, "Perform codegen for chunk{}: {s}", .{chunk.id, chunk.srcUri});
+        chunk.buf = &self.buf;
+        chunk.jitBuf = &self.jitBuf;
+        try genChunk(chunk);
+        log.tracev(self.vm, "Done. performChunkCodegen {s}", .{chunk.srcUri});
+    }
+
+    // Perform relocation.
+    const mainChunk = self.chunks.items[0];
+    for (self.jitBuf.relocs.items) |reloc| {
+        switch (reloc.type) {
+            .jumpToFunc => {
+                const jumpPc = reloc.data.jumpToFunc.pc;
+                const func = reloc.data.jumpToFunc.func;
+                if (func.type == .hostFunc) {
+                    return error.Unexpected;
+                } else {
+                    const targetPc = self.genSymMap.get(func).?.funcSym.pc;
+                    assm.patchJumpRel(mainChunk, jumpPc, targetPc);
+                }
+            }
+        }
+    }
+}
+
+fn genChunk(c: *cy.Chunk) !void {
     if (builtin.cpu.arch == .x86_64) {
         c.x64Enc = X64.Encoder{ .buf = &c.jitBuf.buf, .alloc = c.alloc };
     }
@@ -1128,7 +1175,7 @@ fn genLocalReg(c: *cy.Chunk, reg: RegisterId, cstr: RegisterCstr, nodeId: cy.Nod
     _ = nodeId;
     const local = bcgen.getLocalInfo(c, reg);
 
-    if (!local.some.boxed) {
+    if (!local.some.lifted) {
         const inst = try c.rega.selectForLocalInst(cstr, reg, local.some.rcCandidate);
         if (inst.dst != reg) {
             if (inst.retainSrc) {

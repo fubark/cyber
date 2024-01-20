@@ -211,5 +211,5 @@ var sum = 0
 for 1..20000 -> i:
     sum = sum + h.popTop().value
 
-print('time: $((os.now() - start) * 1000)')
+print("time: $((os.now() - start) * 1000)")
 print(sum)

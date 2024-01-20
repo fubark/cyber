@@ -803,7 +803,7 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
         log.tracev(vm, "bindLib {s}", .{pathStr});
         lib.* = dlopen(pathStr) catch |err| {
             if (err == error.FileNotFound) {
-                return vm.prepThrowError(.FileNotFound);
+                return rt.prepThrowError(vm, .FileNotFound);
             } else {
                 return err;
             }

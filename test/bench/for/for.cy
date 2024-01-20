@@ -11,5 +11,5 @@ var sum = 0
 for list -> i:
     sum += i
 
-print('time: $((os.now() - start) * 1000)')
+print("time: $((os.now() - start) * 1000)")
 print(sum)

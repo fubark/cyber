@@ -11,10 +11,12 @@ var optMalloc: ?config.Allocator = undefined;
 var selinux: bool = undefined;
 var vmEngine: config.Engine = undefined;
 var testFilter: ?[]const u8 = undefined;
+var testBackend: config.TestBackend = undefined;
 var trace: bool = undefined;
 var optFFI: ?bool = undefined; 
 var optStatic: ?bool = undefined; 
 var optJIT: ?bool = undefined;
+var runtime: config.Runtime = undefined;
 
 var stdx: *std.build.Module = undefined;
 var tcc: *std.build.Module = undefined;
@@ -26,12 +28,14 @@ pub fn build(b: *std.build.Builder) !void {
 
     selinux = b.option(bool, "selinux", "Whether you are building on linux distro with selinux. eg. Fedora.") orelse false;
     testFilter = b.option([]const u8, "test-filter", "Test filter.");
+    testBackend = b.option(config.TestBackend, "test-backend", "Test compiler backend.") orelse .vm;
     vmEngine = b.option(config.Engine, "vm", "Build with `zig` or `c` VM.") orelse .c;
     optMalloc = b.option(config.Allocator, "malloc", "Override default allocator: `malloc`, `mimalloc`, `zig`");
     optFFI = b.option(bool, "ffi", "Override default FFI: true, false");
     optStatic = b.option(bool, "static", "Override default lib build type: true=static, false=dynamic");
     trace = b.option(bool, "trace", "Enable tracing features.") orelse (optimize == .Debug);
     optJIT = b.option(bool, "jit", "Build with JIT.");
+    runtime = b.option(config.Runtime, "rt", "Runtime.") orelse .vm;
 
     stdx = b.createModule(.{
         .source_file = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
@@ -369,6 +373,8 @@ fn createBuildOptions(b: *std.build.Builder, opts: Options) !*std.build.Step.Opt
     build_options.addOption(bool, "ffi", opts.ffi);
     build_options.addOption(bool, "cli", opts.cli);
     build_options.addOption(bool, "jit", opts.jit);
+    build_options.addOption(config.TestBackend, "testBackend", testBackend);
+    build_options.addOption(config.Runtime, "rt", runtime);
     build_options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
     return build_options;
 }

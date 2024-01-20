@@ -8,5 +8,5 @@ func fib(n int) int:
     return fib(n - 1) + fib(n - 2)
 
 var res = fib(30)
-print('time: $((os.now() - start) * 1000)')
+print("time: $((os.now() - start) * 1000)")
 print res

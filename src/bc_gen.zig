@@ -85,7 +85,7 @@ fn genStmts(c: *Chunk, idx: u32) !void {
     var stmt = idx;
     while (stmt != cy.NullId) {
         try genStmt(c, stmt);
-        stmt = c.ir.getNextStmt(stmt);
+        stmt = c.ir.getStmtNext(stmt);
     }
 }
 
@@ -221,7 +221,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: RegisterCstr) anyerror!GenValue {
         .string             => genString(c, idx, cstr, nodeId),
         .stringTemplate     => genStringTemplate(c, idx, cstr, nodeId),
         .switchBlock        => genSwitchBlock(c, idx, cstr, nodeId),
-        .tagSym             => genTagSym(c, idx, cstr, nodeId),
+        .symbol             => genSymbol(c, idx, cstr, nodeId),
         .throw              => genThrow(c, idx, nodeId),
         .truev              => genTrue(c, cstr, nodeId),
         .tryExpr            => genTryExpr(c, idx, cstr, nodeId),
@@ -250,7 +250,7 @@ fn mainBlock(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     var child = data.bodyHead;
     while (child != cy.NullId) {
         try genStmt(c, child);
-        child = c.ir.getNextStmt(child);
+        child = c.ir.getStmtNext(child);
     }
 
     if (shouldGenMainScopeReleaseOps(c.compiler)) {
@@ -790,8 +790,8 @@ fn genError(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenVa
     return finishInst(c, val, inst.finalDst);
 }
 
-fn genTagSym(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
-    const data = c.ir.getExprData(idx, .tagSym);
+fn genSymbol(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
+    const data = c.ir.getExprData(idx, .symbol);
 
     const symId = try c.compiler.vm.ensureSymbol(data.name);
     const inst = try c.rega.selectForNoErrInst(cstr, false);
@@ -1330,7 +1330,7 @@ pub fn toLocalReg(c: *Chunk, irVarId: u8) RegisterId {
 fn genLocalReg(c: *Chunk, reg: RegisterId, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
     const local = getLocalInfo(c, reg);
 
-    if (!local.some.boxed) {
+    if (!local.some.lifted) {
         const inst = try c.rega.selectForLocalInst(cstr, reg, local.some.rcCandidate);
         if (inst.dst != reg) {
             if (inst.retainSrc) {
@@ -1475,12 +1475,12 @@ fn reserveFuncRegs(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []ali
                 .some = .{
                     .owned = true,
                     .rcCandidate = c.sema.isRcCandidateType(param.declType),
-                    .boxed = param.isBoxed,
+                    .lifted = param.lifted,
                 },
             };
 
             // Copy param to local.
-            if (param.isBoxed) {
+            if (param.lifted) {
                 try c.pushFailableDebugSym(c.curBlock.debugNodeId);
                 // Retain param and box.
                 try c.buf.pushOp1(.retain, nextReg);
@@ -1496,7 +1496,7 @@ fn reserveFuncRegs(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []ali
                 .some = .{
                     .owned = false,
                     .rcCandidate = c.sema.isRcCandidateType(param.declType),
-                    .boxed = false,
+                    .lifted = false,
                 },
             };
         }
@@ -1545,14 +1545,14 @@ fn declareLocal(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
     if (data.assign) {
         // Don't advance nextLocalReg yet since the rhs hasn't generated so the
         // alive locals should not include this declaration.
-        const reg = try reserveLocalReg(c, data.id, data.declType, data.isBoxed, nodeId, false);
+        const reg = try reserveLocalReg(c, data.id, data.declType, data.lifted, nodeId, false);
 
         const exprIdx = c.ir.advanceStmt(idx, .declareLocal);
         const val = try genExpr(c, exprIdx, RegisterCstr.toLocal(reg, false));
 
         const local = getLocalInfoPtr(c, reg);
 
-        if (local.some.boxed) {
+        if (local.some.lifted) {
             try c.pushOptionalDebugSym(nodeId);
             try c.buf.pushOp2(.box, reg, reg);
         }
@@ -1562,7 +1562,7 @@ fn declareLocal(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
         c.curBlock.nextLocalReg += 1;
         log.tracev(c.vm, "declare {}, rced: {} ", .{val.local, local.some.rcCandidate});
     } else {
-        const reg = try reserveLocalReg(c, data.id, data.declType, data.isBoxed, nodeId, true);
+        const reg = try reserveLocalReg(c, data.id, data.declType, data.lifted, nodeId, true);
 
         // Not yet initialized, so it does not have a refcount.
         getLocalInfoPtr(c, reg).some.rcCandidate = false;
@@ -1597,7 +1597,7 @@ fn setLocal(c: *Chunk, data: ir.Local, rightIdx: u32, nodeId: cy.NodeId, opts: S
     const local = getLocalInfo(c, reg);
 
     var dst: RegisterCstr = undefined;
-    if (local.some.boxed) {
+    if (local.some.lifted) {
         dst = RegisterCstr.toBoxedLocal(reg, local.some.rcCandidate);
     } else {
         dst = RegisterCstr.toLocal(reg, local.some.rcCandidate);
@@ -1910,7 +1910,7 @@ pub const Local = union {
         /// Whether the local is owned by the block. eg. Read-only func params would not be owned.
         owned: bool,
 
-        boxed: bool,
+        lifted: bool,
     },
     uninited: void,
 };
@@ -1936,7 +1936,7 @@ fn genReleaseLocals(c: *Chunk, startLocalReg: u8, debugNodeId: cy.NodeId) !void 
     log.tracev(c.vm, "Generate release locals: start={}, count={}", .{startLocalReg, locals.len});
     for (locals, 0..) |local, i| {
         if (local.some.owned) {
-            if (local.some.rcCandidate or local.some.boxed) {
+            if (local.some.rcCandidate or local.some.lifted) {
                 try c.operandStack.append(c.alloc, @intCast(startLocalReg + i));
             }
         }
@@ -3399,7 +3399,7 @@ fn pushCallSym(c: *cy.Chunk, startLocal: u8, numArgs: u32, numRet: u8, symId: u3
     c.buf.setOpArgU16(start + 4, @intCast(symId));
 }
 
-fn reserveLocalRegAt(c: *Chunk, irLocalId: u8, declType: types.TypeId, boxed: bool, reg: u8, nodeId: cy.NodeId) !void {
+fn reserveLocalRegAt(c: *Chunk, irLocalId: u8, declType: types.TypeId, lifted: bool, reg: u8, nodeId: cy.NodeId) !void {
     // Stacks are always big enough because of pushBlock.
     log.tracev(c.vm, "reserve {} {} {*} {} {}", .{ irLocalId, reg, c.curBlock, c.curBlock.irLocalMapStart, c.curBlock.localStart });
     log.tracev(c.vm, "local stacks {} {}", .{ c.genIrLocalMapStack.items.len, c.genLocalStack.items.len });
@@ -3408,7 +3408,7 @@ fn reserveLocalRegAt(c: *Chunk, irLocalId: u8, declType: types.TypeId, boxed: bo
         .some = .{
             .owned = true,
             .rcCandidate = c.sema.isRcCandidateType(declType),
-            .boxed = boxed,
+            .lifted = lifted,
         },
     };
     if (cy.Trace) {
@@ -3417,8 +3417,8 @@ fn reserveLocalRegAt(c: *Chunk, irLocalId: u8, declType: types.TypeId, boxed: bo
     }
 }
 
-pub fn reserveLocalReg(c: *Chunk, irVarId: u8, declType: types.TypeId, boxed: bool, nodeId: cy.NodeId, advanceNext: bool) !RegisterId {
-    try reserveLocalRegAt(c, irVarId, declType, boxed, c.curBlock.nextLocalReg, nodeId);
+pub fn reserveLocalReg(c: *Chunk, irVarId: u8, declType: types.TypeId, lifted: bool, nodeId: cy.NodeId, advanceNext: bool) !RegisterId {
+    try reserveLocalRegAt(c, irVarId, declType, lifted, c.curBlock.nextLocalReg, nodeId);
     defer {
         if (advanceNext) {
             c.curBlock.nextLocalReg += 1;

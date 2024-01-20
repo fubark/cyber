@@ -5,6 +5,9 @@ const t = stdx.testing;
 const cy = @import("cyber.zig");
 const sema = cy.sema;
 const vmc = @import("vm_c.zig");
+const pmc = @import("pm_c.zig");
+const api = @import("capi.zig");
+const logger = cy.log.scoped(.runtime);
 
 pub const TypeKey = cy.hash.KeyU64;
 
@@ -368,4 +371,111 @@ test "runtime internals." {
         try t.eq(@alignOf(MethodGroup), 8);
         try t.eq(@sizeOf(MethodGroupExt), 24);
     }
+}
+
+pub const Context = *align(8) anyopaque;
+
+pub fn prepThrowError(ctx: Context, tag: cy.bindings.Symbol) cy.Value {
+    if (build_options.rt == .vm) {
+        const vm: *cy.VM = @ptrCast(ctx);
+        const id: u8 = @intFromEnum(tag);
+        vm.curFiber.panicPayload = cy.Value.initErrorSymbol(id).val;
+        vm.curFiber.panicType = vmc.PANIC_NATIVE_THROW;
+        return cy.Value.Interrupt;
+    } else {
+        const f: *pmc.Fiber = @ptrCast(ctx);
+        const id: u8 = @intFromEnum(tag);
+        f.panicPayload = cy.Value.initErrorSymbol(id).val;
+        f.panicType = vmc.PANIC_NATIVE_THROW;
+        return cy.Value.Interrupt;
+    }
+}
+
+pub fn getSymName(c: Context, id: u32) []const u8 {
+    if (build_options.rt == .vm) {
+        const vm: *cy.VM = @ptrCast(c);
+        return vm.syms.buf[id].name;
+    } else {
+        const f: *pmc.Fiber = @ptrCast(c);
+        const tag = f.pm[0].syms[id];
+        return tag.name.buf[0..tag.name.len];
+    }
+}
+
+pub fn print(c: Context, str: []const u8) void {
+    if (build_options.rt == .vm) {
+        const vm: *cy.VM = @ptrCast(c);
+        vm.printFn.?(@ptrCast(vm), api.initStr(str));
+    } else {
+        const w = std.io.getStdOut().writer();
+        w.writeAll(str) catch cy.fatal();
+        w.writeByte('\n') catch cy.fatal();
+    }
+}
+
+pub fn glog(str: []const u8) void {
+    if (build_options.rt == .vm) {
+        cy.log.logFn.?(api.initStr(str));
+    } else {
+        const w = std.io.getStdErr().writer();
+        w.writeAll(str) catch cy.fatal();
+        w.writeByte('\n') catch cy.fatal();
+    }
+}
+
+pub fn glogZFmt(comptime format: []const u8, args: anytype) void {
+    if (build_options.rt == .vm) {
+        cy.log.zfmt(format, args);
+    } else {
+        const w = std.io.getStdErr().writer();
+        w.print(format, args) catch cy.fatal();
+        w.writeByte('\n') catch cy.fatal();
+    }
+}
+
+pub fn log(c: Context, str: []const u8) void {
+    if (build_options.rt == .vm) {
+        const vm: *cy.VM = @ptrCast(c);
+        vm.logFn.?(@ptrCast(vm), api.initStr(str));
+    } else {
+        const w = std.io.getStdErr().writer();
+        w.writeAll(str) catch cy.fatal();
+        w.writeByte('\n') catch cy.fatal();
+    }
+}
+
+pub fn logFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) void {
+    if (build_options.rt == .vm) {
+        const vm: *cy.VM = @ptrCast(c);
+        const w = vm.clearTempString();
+        cy.fmt.print(w, format, args);
+        vm.log(vm.getTempString());
+    } else {
+        const w = std.io.getStdErr().writer();
+        cy.fmt.print(w, format, args);
+        w.writeByte('\n') catch cy.fatal();
+    }
+}
+
+pub fn logZFmt(c: Context, comptime format: []const u8, args: anytype) void {
+    if (build_options.rt == .vm) {
+        const vm: *cy.VM = @ptrCast(c);
+        const w = vm.clearTempString();
+        std.fmt.format(w, format, args) catch cy.fatal();
+        vm.log(vm.getTempString());
+    } else {
+        const w = std.io.getStdErr().writer();
+        w.print(format, args) catch cy.fatal();
+        w.writeByte('\n') catch cy.fatal();
+    }
+}
+
+pub fn writeStderr(s: []const u8) void {
+    @setCold(true);
+    const w = cy.fmt.lockStderrWriter();
+    defer cy.fmt.unlockPrint();
+    _ = w.writeAll(s) catch |err| {
+        logger.gtracev("{}", .{err});
+        cy.fatal();
+    };
 }

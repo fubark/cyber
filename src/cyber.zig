@@ -35,8 +35,9 @@ pub const Sym = sym.Sym;
 pub const Func = sym.Func;
 
 pub const vm_compiler = @import("vm_compiler.zig");
+pub const Backend = vm_compiler.Backend;
 pub const VMcompiler = vm_compiler.VMcompiler;
-pub const CompileResultView = vm_compiler.CompileResultView;
+pub const CompileResult = vm_compiler.CompileResult;
 pub const CompileConfig = vm_compiler.CompileConfig;
 pub const ValidateConfig = vm_compiler.ValidateConfig;
 pub const CompileErrorType = vm_compiler.CompileErrorType;
@@ -52,6 +53,7 @@ pub const bindings = @import("builtins/bindings.zig");
 
 pub const hash = @import("hash.zig");
 pub const rt = @import("runtime.zig");
+pub const Context = rt.Context;
 pub const fmt = @import("fmt.zig");
 
 pub const value = @import("value.zig");
@@ -138,8 +140,6 @@ pub const DecodeValueIR = cyon.DecodeValueIR;
 pub const HotSection = if (builtin.os.tag == .macos) "__TEXT,.eval" else ".eval";
 pub const Section = if (builtin.os.tag == .macos) "__TEXT,.eval2" else ".eval2";
 pub const StdSection = if (builtin.os.tag == .macos) "__TEXT,.eval.std" else ".eval.std";
-pub const CompilerSection = if (builtin.os.tag == .macos) "__TEXT,.compiler" else ".compiler";
-pub const InitSection = if (builtin.os.tag == .macos) "__TEXT,.cyInit" else ".cyInit";
 
 /// Whether to print verbose logs.
 pub export var verbose = false;

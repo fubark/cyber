@@ -4,6 +4,7 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 const log = cy.log.scoped(.fs);
 const cy = @import("../cyber.zig");
+const rt = cy.rt;
 const Value = cy.Value;
 const cc = @import("../capi.zig");
 
@@ -220,7 +221,7 @@ pub fn dirWalk(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
         vm.retain(args[0]);
         return allocDirIterator(vm, args[0], true) catch cy.fatal();
     } else {
-        return vm.prepThrowError(.NotAllowed);
+        return rt.prepThrowError(vm, .NotAllowed);
     }
 }
 
@@ -231,7 +232,7 @@ pub fn dirIterator(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSe
         vm.retain(args[0]);
         return allocDirIterator(vm, args[0], false) catch cy.fatal();
     } else {
-        return vm.prepThrowError(.NotAllowed);
+        return rt.prepThrowError(vm, .NotAllowed);
     }
 }
 
@@ -251,12 +252,12 @@ pub fn fileSeekFromEnd(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 
     const fileo = args[0].castHostObject(*File);
     if (fileo.closed) {
-        return vm.prepThrowError(.Closed);
+        return rt.prepThrowError(vm, .Closed);
     }
 
     const numBytes = args[1].asInteger();
     if (numBytes > 0) {
-        return vm.prepThrowError(.InvalidArgument);
+        return rt.prepThrowError(vm, .InvalidArgument);
     }
 
     const file = fileo.getStdFile();
@@ -269,7 +270,7 @@ pub fn fileSeekFromCur(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 
     const fileo = args[0].castHostObject(*File);
     if (fileo.closed) {
-        return vm.prepThrowError(.Closed);
+        return rt.prepThrowError(vm, .Closed);
     }
 
     const numBytes = args[1].asInteger();
@@ -284,12 +285,12 @@ pub fn fileSeek(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 
     const fileo = args[0].castHostObject(*File);
     if (fileo.closed) {
-        return vm.prepThrowError(.Closed);
+        return rt.prepThrowError(vm, .Closed);
     }
 
     const numBytes = args[1].asInteger();
     if (numBytes < 0) {
-        return vm.prepThrowError(.InvalidArgument);
+        return rt.prepThrowError(vm, .InvalidArgument);
     }
 
     const file = fileo.getStdFile();
@@ -303,7 +304,7 @@ pub fn fileWrite(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 
     const fileo = args[0].castHostObject(*File);
     if (fileo.closed) {
-        return vm.prepThrowError(.Closed);
+        return rt.prepThrowError(vm, .Closed);
     }
 
     var buf = try vm.getOrBufPrintValueRawStr(&cy.tempBuf, args[1]);
@@ -325,7 +326,7 @@ pub fn fileRead(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 
     const fileo = args[0].castHostObject(*File);
     if (fileo.closed) {
-        return vm.prepThrowError(.Closed);
+        return rt.prepThrowError(vm, .Closed);
     }
 
     const numBytes = args[1].asInteger();
@@ -350,7 +351,7 @@ pub fn fileReadAll(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSe
 
     const fileo = args[0].castHostObject(*File);
     if (fileo.closed) {
-        return vm.prepThrowError(.Closed);
+        return rt.prepThrowError(vm, .Closed);
     }
 
     const file = fileo.getStdFile();
@@ -385,12 +386,12 @@ pub fn fileOrDirStat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Std
     if (typeId == FileT) {
         const file = args[0].castHostObject(*File);
         if (file.closed) {
-            return vm.prepThrowError(.Closed);
+            return rt.prepThrowError(vm, .Closed);
         }
     } else if (typeId == DirT) {
         const dir = args[0].castHostObject(*Dir);
         if (dir.closed) {
-            return vm.prepThrowError(.Closed);
+            return rt.prepThrowError(vm, .Closed);
         }
     } else return error.Unexpected;
 

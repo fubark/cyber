@@ -1,9 +1,9 @@
 const std = @import("std");
 const cy = @import("../cyber.zig");
+const rt = cy.rt;
 const Value = cy.Value;
 const fatal = cy.fatal;
 const bindings = @import("bindings.zig");
-const prepareThrowSymbol = bindings.prepareThrowSymbol;
 
 pub fn concat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
@@ -37,10 +37,10 @@ pub fn sliceFn(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
     } else if (args[1].isInteger()) {
         start = args[1].asInteger();
     } else {
-        return vm.prepThrowError(.InvalidArgument);
+        return rt.prepThrowError(vm, .InvalidArgument);
     }
     if (start < 0) {
-        return vm.prepThrowError(.OutOfBounds);
+        return rt.prepThrowError(vm, .OutOfBounds);
     }
 
     if (stype.isAstring()) {
@@ -50,13 +50,13 @@ pub fn sliceFn(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
         } else if (args[2].isInteger()) {
             end = args[2].asInteger();
         } else {
-            return vm.prepThrowError(.InvalidArgument);
+            return rt.prepThrowError(vm, .InvalidArgument);
         }
         if (end > str.len) {
-            return vm.prepThrowError(.OutOfBounds);
+            return rt.prepThrowError(vm, .OutOfBounds);
         }
         if (end < start) {
-            return vm.prepThrowError(.OutOfBounds);
+            return rt.prepThrowError(vm, .OutOfBounds);
         }
         const ustart: u32 = @intCast(start);
         const uend: u32 = @intCast(end);
@@ -71,13 +71,13 @@ pub fn sliceFn(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
         } else if (args[2].isInteger()) {
             end = args[2].asInteger();
         } else {
-            return vm.prepThrowError(.InvalidArgument);
+            return rt.prepThrowError(vm, .InvalidArgument);
         }
         if (end > charLen) {
-            return vm.prepThrowError(.OutOfBounds);
+            return rt.prepThrowError(vm, .OutOfBounds);
         }
         if (end < start) {
-            return vm.prepThrowError(.OutOfBounds);
+            return rt.prepThrowError(vm, .OutOfBounds);
         }
         const ustart: u32 = @intCast(start);
         const uend: u32 = @intCast(end);
@@ -99,7 +99,7 @@ pub fn insertFn(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     const stype = obj.string.getType();
     if (stype.isAstring()) {
         if (idx < 0 or idx > str.len) {
-            return vm.prepThrowError(.OutOfBounds);
+            return rt.prepThrowError(vm, .OutOfBounds);
         }
         var insertCharLen: u32 = undefined;
         const insert = args[2].asString2(&insertCharLen);
@@ -112,7 +112,7 @@ pub fn insertFn(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     } else {
         const charLen = obj.string.getCharLen();
         if (idx < 0 or idx > charLen) {
-            return vm.prepThrowError(.OutOfBounds);
+            return rt.prepThrowError(vm, .OutOfBounds);
         }
         var insertCharLen: u32 = undefined;
         const insert = args[2].asString2(&insertCharLen);
@@ -328,7 +328,7 @@ pub fn sliceAt(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
 
     if (stype.isAstring()) {
         if (idx < 0 or idx >= str.len) {
-            return vm.prepThrowError(.OutOfBounds);
+            return rt.prepThrowError(vm, .OutOfBounds);
         }
         const uidx: u32 = @intCast(idx);
         // TODO: return slice.
@@ -336,7 +336,7 @@ pub fn sliceAt(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
     } else {
         const charLen = obj.string.getUstringCharLen();
         if (idx < 0 or idx >= charLen) {
-            return vm.prepThrowError(.OutOfBounds);
+            return rt.prepThrowError(vm, .OutOfBounds);
         }
         const uidx: u32 = @intCast(idx);
         const mru = obj.string.getUstringMruChar();
@@ -359,12 +359,12 @@ pub fn runeAt(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection
     const stype = obj.string.getType();
     if (stype.isAstring()) {
         if (idx < 0 or idx >= str.len) {
-            return vm.prepThrowError(.OutOfBounds);
+            return rt.prepThrowError(vm, .OutOfBounds);
         }
         return Value.initInt(@intCast(str[@intCast(idx)]));
     } else {
         if (idx < 0 or idx >= obj.string.getUstringCharLen()) {
-            return vm.prepThrowError(.OutOfBounds);
+            return rt.prepThrowError(vm, .OutOfBounds);
         }
         const uidx: u32 = @intCast(idx);
         const mru = obj.string.getUstringMruChar();
@@ -386,14 +386,14 @@ pub fn trim(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) 
 
     var res: []const u8 = undefined;
     const mode = bindings.getBuiltinSymbol(args[1].asSymbolId()) orelse {
-        return vm.prepThrowError(.InvalidArgument);
+        return rt.prepThrowError(vm, .InvalidArgument);
     };
     switch (mode) {
         .left => res = std.mem.trimLeft(u8, str, trimRunes),
         .right => res = std.mem.trimRight(u8, str, trimRunes),
         .ends => res = std.mem.trim(u8, str, trimRunes),
         else => {
-            return vm.prepThrowError(.InvalidArgument);
+            return rt.prepThrowError(vm, .InvalidArgument);
         }
     }
 
@@ -487,7 +487,7 @@ pub fn repeat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection
 
     const n = args[1].asInteger();
     if (n < 0) {
-        return vm.prepThrowError(.InvalidArgument);
+        return rt.prepThrowError(vm, .InvalidArgument);
     }
 
     var un: u32 = @intCast(n);

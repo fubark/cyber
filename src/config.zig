@@ -5,6 +5,18 @@ pub const Engine = enum {
     c,
 };
 
+pub const TestBackend = enum {
+    vm,
+    jit,
+    tcc,
+    cc,
+};
+
+pub const Runtime = enum {
+    vm,
+    pm,
+};
+
 pub const Allocator = enum {
     zig,
     malloc,

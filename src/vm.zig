@@ -163,7 +163,7 @@ pub const VM = struct {
 
     config: EvalConfig,
 
-    lastError: ?error{TokenError, ParseError, CompileError, Panic},
+    lastError: ?error{TokenError, ParseError, CompileError, Panic, ExePanic},
 
     countFrees: if (cy.Trace) bool else void,
     numFreed: if (cy.Trace) u32 else void,
@@ -173,6 +173,8 @@ pub const VM = struct {
     deinitedRtObjects: bool, 
 
     tempBuf: [128]u8 align(4),
+
+    lastExeError: []const u8,
 
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
@@ -243,6 +245,7 @@ pub const VM = struct {
             .countFrees = if (cy.Trace) false else {},
             .numFreed = if (cy.Trace) 0 else {},
             .tempBuf = undefined,
+            .lastExeError = "",
         };
         self.mainFiber.panicType = vmc.PANIC_NONE;
         self.curFiber = &self.mainFiber;
@@ -486,6 +489,9 @@ pub const VM = struct {
         if (!reset) {
             self.deinited = true;
         }
+
+        self.alloc.free(self.lastExeError);
+        self.lastExeError = "";
     }
 
     pub fn validate(self: *VM, srcUri: []const u8, src: []const u8, config: cy.ValidateConfig) !ValidateResult {
@@ -498,7 +504,7 @@ pub const VM = struct {
         };
     }
 
-    pub fn compile(self: *VM, srcUri: []const u8, src: []const u8, config: cy.CompileConfig) !cy.CompileResultView {
+    pub fn compile(self: *VM, srcUri: []const u8, src: []const u8, config: cy.CompileConfig) !cy.CompileResult {
         try self.resetVM();
         self.config = .{
             .singleRun = config.singleRun,
@@ -544,7 +550,7 @@ pub const VM = struct {
             .singleRun = config.singleRun,
             .enableFileModules = config.enableFileModules,
             .genDebugFuncMarkers = cy.Trace,
-            .preJit = config.preJit,
+            .backend = config.backend,
         });
         if (res.err) |err| {
             switch (err) {
@@ -565,36 +571,37 @@ pub const VM = struct {
         tt.endPrint("compile");
 
         if (config.backend == .jit) {
-            if (cy.isFreestanding) {
+            if (cy.isFreestanding or cy.isWasm) {
                 return error.Unsupported;
             }
 
-            try cy.fiber.stackEnsureTotalCapacity(self, res.buf.mainStackSize);
+            const jitRes = res.inner.jit.buf;
+            try cy.fiber.stackEnsureTotalCapacity(self, res.inner.jit.mainStackSize);
             self.framePtr = @ptrCast(self.stack.ptr);
 
             // Mark code executable.
             const PROT_READ = 1;
             const PROT_WRITE = 2;
             const PROT_EXEC = 4;
-            try std.os.mprotect(res.jitBuf.buf.items.ptr[0..res.jitBuf.buf.capacity], PROT_READ | PROT_EXEC);
+            try std.os.mprotect(jitRes.buf.items.ptr[0..jitRes.buf.capacity], PROT_READ | PROT_EXEC);
             
             // Memory must be reset to original setting in order to be freed.
-            defer std.os.mprotect(res.jitBuf.buf.items.ptr[0..res.jitBuf.buf.capacity], PROT_WRITE) catch cy.fatal();
+            defer std.os.mprotect(jitRes.buf.items.ptr[0..jitRes.buf.capacity], PROT_WRITE) catch cy.fatal();
 
-            if (res.jitBuf.buf.items.len > 500*4) {
-                logger.tracev(self, "jit code (size: {}) {}...", .{res.jitBuf.buf.items.len, std.fmt.fmtSliceHexLower(res.jitBuf.buf.items[0..100*4])});
+            if (jitRes.buf.items.len > 500*4) {
+                logger.tracev(self, "jit code (size: {}) {}...", .{jitRes.buf.items.len, std.fmt.fmtSliceHexLower(jitRes.buf.items[0..100*4])});
             } else {
-                logger.tracev(self, "jit code (size: {}) {}", .{res.jitBuf.buf.items.len, std.fmt.fmtSliceHexLower(res.jitBuf.buf.items)});
+                logger.tracev(self, "jit code (size: {}) {}", .{jitRes.buf.items.len, std.fmt.fmtSliceHexLower(jitRes.buf.items)});
             }
 
-            const bytes = res.jitBuf.buf.items[res.jitBuf.mainPc..res.jitBuf.mainPc+12*4];
-            logger.tracev(self, "main start {}: {}", .{res.jitBuf.mainPc, std.fmt.fmtSliceHexLower(bytes)});
+            const bytes = jitRes.buf.items[jitRes.mainPc..jitRes.mainPc+12*4];
+            logger.tracev(self, "main start {}: {}", .{jitRes.mainPc, std.fmt.fmtSliceHexLower(bytes)});
 
-            const main: *const fn(*VM, [*]Value) callconv(.C) void = @ptrCast(@alignCast(res.jitBuf.buf.items.ptr + res.jitBuf.mainPc));
+            const main: *const fn(*VM, [*]Value) callconv(.C) void = @ptrCast(@alignCast(jitRes.buf.items.ptr + jitRes.mainPc));
             // @breakpoint();
             main(self, self.framePtr);
             return Value.None;
-        } else {
+        } else if (config.backend == .vm) {
             if (cy.verbose) {
                 try debug.dumpBytecode(self, null);
             }
@@ -618,7 +625,38 @@ pub const VM = struct {
             tt = cy.debug.timer();
             defer tt.endPrint("eval");
 
-            return self.evalByteCode(res.buf);
+            return self.evalByteCode(res.inner.vm);
+        } else {
+            defer res.inner.aot.deinit(self.alloc);
+            if (cy.isFreestanding or cy.isWasm) {
+                return error.Unsupported;
+            }
+
+            if (self.config.spawnExe) {
+                const term = try spawn(.{
+                    .allocator = self.alloc,
+                    .argv = &.{res.inner.aot.exePath},
+                });
+                if (term != .Exited or term.Exited != 0) {
+                    self.lastError = error.ExePanic;
+                    self.alloc.free(self.lastExeError);
+                    self.lastExeError = "";
+                    return error.ExePanic;
+                }
+            } else {
+                const exeRes = try std.ChildProcess.exec(.{
+                    .allocator = self.alloc,
+                    .argv = &.{res.inner.aot.exePath},
+                });
+                self.alloc.free(exeRes.stdout);
+                if (exeRes.term != .Exited or exeRes.term.Exited != 0) {
+                    self.lastError = error.ExePanic;
+                    self.alloc.free(self.lastExeError);
+                    self.lastExeError = exeRes.stderr;
+                    return error.ExePanic;
+                }
+            }
+            return Value.None;
         }
     }
 
@@ -841,6 +879,7 @@ pub const VM = struct {
                 error.ParseError => return debug.allocLastUserParseError(self),
                 error.CompileError => return debug.allocLastUserCompileError(self),
                 error.Panic => return debug.allocLastUserPanicError(self),
+                error.ExePanic => return error.Unexpected,
             }
         } else {
             return error.NoLastError;
@@ -1531,13 +1570,6 @@ pub const VM = struct {
         return Value.Interrupt;
     }
 
-    pub fn prepThrowError(vm: *VM, sym: bindings.Symbol) Value {
-        const id: u8 = @intFromEnum(sym);
-        vm.curFiber.panicPayload = Value.initErrorSymbol(id).val;
-        vm.curFiber.panicType = vmc.PANIC_NATIVE_THROW;
-        return Value.Interrupt;
-    }    
-
     pub fn clearTempString(vm: *VM) cy.ListAligned(u8, 8).Writer {
         vm.u8Buf.clearRetainingCapacity();
         return vm.u8Buf.writer(vm.alloc);
@@ -1547,20 +1579,19 @@ pub const VM = struct {
         return vm.u8Buf.items();
     }
 
+    // TODO: Remove.
     pub fn log(vm: *VM, str: []const u8) void {
-        vm.logFn.?(@ptrCast(vm), cc.initStr(str));
+        rt.log(vm, str);
     }
 
+    // TODO: Remove.
     pub fn logFmt(vm: *VM, format: []const u8, args: []const fmt.FmtValue) void {
-        const w = vm.clearTempString();
-        fmt.print(w, format, args);
-        vm.log(vm.getTempString());
+        rt.logFmt(vm, format, args);
     }
 
+    // TODO: Remove.
     pub fn logZFmt(vm: *VM, comptime format: []const u8, args: anytype) void {
-        const w = vm.clearTempString();
-        std.fmt.format(w, format, args) catch cy.fatal();
-        vm.log(vm.getTempString());
+        rt.logZFmt(vm, format, args);
     }
 
     pub usingnamespace cy.heap.VmExt;
@@ -1759,7 +1790,8 @@ test "vm internals." {
     try t.eq(@offsetOf(VM, "compactTrace"), @offsetOf(vmc.VM, "compactTrace"));
     try t.eq(@offsetOf(VM, "compiler"), @offsetOf(vmc.VM, "compiler"));
     try t.eq(@offsetOf(VM, "userData"), @offsetOf(vmc.VM, "userData"));
-    try t.eq(@offsetOf(VM, "print"), @offsetOf(vmc.VM, "print"));
+    try t.eq(@offsetOf(VM, "printFn"), @offsetOf(vmc.VM, "printFn"));
+    try t.eq(@offsetOf(VM, "logFn"), @offsetOf(vmc.VM, "logFn"));
     try t.eq(@offsetOf(VM, "httpClient"), @offsetOf(vmc.VM, "httpClient"));
     try t.eq(@offsetOf(VM, "stdHttpClient"), @offsetOf(vmc.VM, "stdHttpClient"));
     try t.eq(@offsetOf(VM, "emptyString"), @offsetOf(vmc.VM, "emptyString"));
@@ -1772,6 +1804,11 @@ test "vm internals." {
     if (cy.Trace) {
         try t.eq(@offsetOf(VM, "trace"), @offsetOf(vmc.VM, "trace"));
         try t.eq(@offsetOf(VM, "objectTraceMap"), @offsetOf(vmc.VM, "objectTraceMap"));
+    }
+
+    try t.eq(@offsetOf(VM, "lastExeError"), @offsetOf(vmc.VM, "lastExeError"));
+
+    if (cy.Trace) {
         try t.eq(@offsetOf(VM, "debugPc"), @offsetOf(vmc.VM, "debugPc"));
     }
 }
@@ -3890,7 +3927,9 @@ pub const EvalConfig = struct {
     /// By default, debug syms are only generated for insts that can potentially fail.
     genAllDebugSyms: bool = false,
 
-    preJit: bool = false,
+    backend: cy.Backend = .vm,
+
+    spawnExe: bool = false,
 };
 
 fn opMatch(pc: [*]const cy.Inst, framePtr: [*]const Value) u16 {
@@ -4763,4 +4802,26 @@ export fn zEnsureListCap(vm: *VM, list: *cy.List(Value), cap: usize) vmc.ResultC
         return vmc.RES_CODE_UNKNOWN;
     };
     return vmc.RES_CODE_SUCCESS;
+}
+
+fn spawn(args: struct {
+    allocator: std.mem.Allocator,
+    argv: []const []const u8,
+    cwd: ?[]const u8 = null,
+    cwd_dir: ?std.fs.Dir = null,
+    env_map: ?*const std.process.EnvMap = null,
+    max_output_bytes: usize = 50 * 1024,
+    expand_arg0: std.os.Arg0Expand = .no_expand,
+}) !std.ChildProcess.Term {
+    var child = std.ChildProcess.init(args.argv, args.allocator);
+    child.stdin_behavior = .Ignore;
+    child.stdout_behavior = .Inherit;
+    child.stderr_behavior = .Inherit;
+    child.cwd = args.cwd;
+    child.cwd_dir = args.cwd_dir;
+    child.env_map = args.env_map;
+    child.expand_arg0 = args.expand_arg0;
+
+    try child.spawn();
+    return try child.wait();
 }

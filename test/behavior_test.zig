@@ -44,9 +44,18 @@ const Runner = struct {
     }
 };
 
+// const caseFilter: ?[]const u8 = "call_recursive";
+const caseFilter: ?[]const u8 = null;
+
+// TODO: This could be split into compiler only tests and backend tests.
+//       Compiler tests would only need to be run once.
+//       Right now we just run everything again since it's not that much.
 test "Tests." {
     var run = Runner{ .cases = .{} };
     defer run.cases.deinit(t.alloc);
+
+    const backend = cy.Backend.fromTestBackend(build_options.testBackend);
+    const aot = backend.isAot();
 
     run.case("syntax/adjacent_stmt_error.cy");
     run.case("syntax/block_no_stmt_error.cy");
@@ -56,7 +65,9 @@ test "Tests." {
     run.case("syntax/comment_last_line.cy");
     run.case("syntax/comment_multiple.cy");
     run.case("syntax/compact_block_error.cy");
+if (!aot) {
     run.case("syntax/indentation.cy");
+}
     run.case("syntax/last_line_empty_indent.cy");
     run.case("syntax/no_stmts.cy");
     run.case("syntax/object_decl_eof.cy");
@@ -65,6 +76,7 @@ test "Tests." {
     run.case("syntax/parse_end_error.cy");
     run.case("syntax/parse_middle_error.cy");
     run.case("syntax/parse_skip_shebang_error.cy");
+if (!aot) {
     run.case("syntax/parse_skip_shebang_panic.cy");
     run.case("syntax/parse_start_error.cy");
     run.case("syntax/stmt_end_error.cy");
@@ -73,33 +85,51 @@ test "Tests." {
 
     run.case("functions/assign_capture_local_error.cy");
     run.case("functions/assign_panic.cy");
+}
     run.case("functions/call_bool_param_error.cy");
+if (!aot) {
     run.case("functions/call_closure.cy");
     run.case("functions/call_closure_param_panic.cy");
+}
     run.case("functions/call_excess_args_error.cy");
     run.case("functions/call_excess_args_overloaded_error.cy");
+if (!aot) {
     run.case("functions/call_fiber_param.cy");
+}
     run.case("functions/call_fiber_param_error.cy");
     run.case("functions/call_float_param_error.cy");
+if (!aot) {
     run.case("functions/call_lambda.cy");
     run.case("functions/call_lambda_incompat_arg_panic.cy");
+}
     run.case("functions/call_list_param_error.cy");
     run.case("functions/call_map_param_error.cy");
+if (!aot) {
     run.case("functions/call_metatype_param.cy");
+}
     run.case("functions/call_metatype_param_error.cy");
     run.case("functions/call_method_missing_error.cy");
+if (!aot) {
     run.case("functions/call_method_missing_panic.cy");
+}
     run.case("functions/call_method_sig_error.cy");
+if (!aot) {
     run.case("functions/call_method_sig_panic.cy");
     run.case("functions/call_host.cy");
     run.case("functions/call_host_param_panic.cy");
+}
     run.case("functions/call_none_param_error.cy");
+if (!aot) {
     run.case("functions/call_object_param.cy");
+}
     run.case("functions/call_object_param_error.cy");
+if (!aot) {
     run.case("functions/call_op.cy");
     run.case("functions/call_param_panic.cy");
+}
     run.case("functions/call_pointer_param_error.cy");
     run.case("functions/call_recursive.cy");
+if (!aot) {
     run.case("functions/call_recursive_dyn.cy");
     run.case("functions/call_static_lambda_incompat_arg_panic.cy");
     run.case("functions/call_string_param_error.cy");
@@ -137,9 +167,11 @@ test "Tests." {
     //         \\
     //     );
     // }}.func);
+}
     run.case("types/dyn_recent_type_error.cy");
     run.case("types/func_return_type_error.cy");
     run.case("types/func_param_type_undeclared_error.cy");
+if (!aot) {
     run.case("types/object_init_dyn_field.cy");
     run.case("types/object_init_field.cy");
     run.case("types/object_init_field_error.cy");
@@ -232,16 +264,21 @@ test "Tests." {
     run.case("builtins/string_slices_utf8.cy");
     run.case("builtins/symbols.cy");
     run.case("builtins/truthy.cy");
+}
 
     run.case("vars/local_annotate_error.cy");
     run.case("vars/local_assign_error.cy");
+if (!aot) {
     run.case("vars/local_assign.cy");
+}
     run.case("vars/local_dup_captured_error.cy");
     run.case("vars/local_dup_error.cy");
     run.case("vars/local_dup_static_error.cy");
     run.case("vars/local_init_error.cy");
+if (!aot) {
     run.case("vars/local_init.cy");
     run.case("vars/op_assign.cy");
+}
     run.case("vars/read_undeclared_error.cy");
     run.case("vars/read_undeclared_error.cy");
     run.case("vars/read_undeclared_diff_scope_error.cy");
@@ -249,10 +286,13 @@ test "Tests." {
     run.case("vars/read_outside_for_iter_error.cy");
     run.case("vars/read_outside_for_var_error.cy");
     run.case("vars/set_undeclared_error.cy");
+if (!aot) {
     run.case("vars/static_assign.cy");
     run.case("vars/static_init.cy");
+}
     run.case("vars/static_init_capture_error.cy");
     run.case("vars/static_init_circular_ref_error.cy");
+if (!aot) {
     run.case("vars/static_init_dependencies.cy");
     run.case("vars/static_init_error.cy");
     run.case("vars/static_init_read_self_error.cy");
@@ -267,9 +307,15 @@ test "Tests." {
     run.case("control_flow/while_cond.cy");
     run.case("control_flow/while_inf.cy");
     run.case("control_flow/while_unwrap_opt.cy");
+}
 
     var numPassed: u32 = 0;
     for (run.cases.items) |run_case| {
+        if (caseFilter) |filter| {
+            if (std.mem.indexOf(u8, run_case.path, filter) == null) {
+                continue;
+            }
+        }
         case2(run_case.config, run_case.path) catch {
             std.debug.print("Failed: {s}\n", .{run_case.path});
             continue;
@@ -1025,14 +1071,14 @@ fn case2(config: ?Config, path: []const u8) !void {
         var ctx = Context{ .exp = buf[0..len]};
         var fconfig: Config = config orelse .{ .silent = true };
         fconfig.ctx = &ctx;
-
         try eval(fconfig, contents
         , struct { fn func(run: *VMrunner, res: EvalResult) !void {
             var ctx_: *Context = @ptrCast(@alignCast(run.ctx));
             try run.expectErrorReport2(res, ctx_.exp);
         }}.func);
     } else if (std.mem.eql(u8, test_t, "pass")) {
-        try evalPass(config orelse .{}, contents);
+        var fconfig: Config = config orelse .{};
+        try evalPass(fconfig, contents);
     } else {
         return error.UnsupportedTestType;
     }

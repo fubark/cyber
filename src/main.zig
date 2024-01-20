@@ -13,8 +13,7 @@ comptime {
 
 var verbose = false;
 var reload = false;
-var aot = false;
-var jit = false;
+var backend: cy.Backend = .vm;
 var dumpStats = false; // Only for trace build.
 var pc: ?u32 = null;
 
@@ -52,10 +51,14 @@ pub fn main() !void {
                 verbose = true;
             } else if (std.mem.eql(u8, arg, "-r")) {
                 reload = true;
-            } else if (std.mem.eql(u8, arg, "-aot")) {
-                aot = true;
+            } else if (std.mem.eql(u8, arg, "-vm")) {
+                backend = .vm;
+            } else if (std.mem.eql(u8, arg, "-cc")) {
+                backend = .cc;
+            } else if (std.mem.eql(u8, arg, "-tcc")) {
+                backend = .tcc;
             } else if (std.mem.eql(u8, arg, "-jit")) {
-                jit = true;
+                backend = .jit;
             } else if (std.mem.eql(u8, arg, "-pc")) {
                 i += 1;
                 if (i < args.len) {
@@ -153,7 +156,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
         .singleRun = builtin.mode == .ReleaseFast,
         .enableFileModules = true,
         .genDebugFuncMarkers = true,
-        .preJit = jit,
+        .backend = backend,
     }) catch |err| {
         fmt.panic("unexpected {}\n", &.{fmt.v(err)});
     };
@@ -165,7 +168,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
                 if (!cy.silentError) {
                     const report = try vm.allocLastErrorReport();
                     defer alloc.free(report);
-                    cli.writeStderr(report);
+                    cy.rt.writeStderr(report);
                 }
                 exit(1);
             },
@@ -188,7 +191,8 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
         .singleRun = builtin.mode == .ReleaseFast,
         .enableFileModules = true,
         .reload = reload,
-        .preJit = jit,
+        .backend = backend,
+        .spawnExe = true,
     }) catch |err| {
         switch (err) {
             error.Panic,
@@ -198,7 +202,7 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
                 if (!cy.silentError) {
                     const report = try vm.allocLastErrorReport();
                     defer alloc.free(report);
-                    cy.writeStderr(report);
+                    cy.rt.writeStderr(report);
                 }
             },
             else => {
@@ -231,21 +235,29 @@ fn help() void {
     std.debug.print(
         \\Cyber {s}
         \\
-        \\Usage: cyber [source]
-        \\       cyber [command] ...
+        \\Usage: cyber [command?] [options] [source]
         \\
         \\Commands:
-        \\  cyber [source]            Compile and run a script.
-        \\        -jit [source]       Use jit compiler. Experimental.
-        \\  cyber compile [source]    Compile script and dump the bytecode.
-        \\  cyber help                Print usage.
-        \\  cyber version             Print version number.
-        \\  
-        \\General Options:
+        \\  cyber [source]          Compile and run.
+        \\  cyber compile [source]  Compile and dump the code.
+        \\  cyber help              Print usage.
+        \\  cyber version           Print version number.
+        \\
+        \\Backend options:
+        \\  -vm     Compile to bytecode. (Default)
+        \\          Fast build, slow perf.
+        \\  -cc     Compile to C with optimizations. Experimental.
+        \\          Slow build, fast perf.
+        \\  -tcc    Compile to C with builtin TinyC compiler. Experimental.
+        \\          Mid build, mid perf.
+        \\  -jit    Compile to machine code based on bytecode. Experimental.
+        \\          Fast build, mid perf.
+        \\
+        \\General options:
         \\  -r      Refetch url imports and cached assets.
         \\  -v      Verbose.
         \\                            
-        \\cyber compile Options:
+        \\`cyber compile` options:
         \\  -pc     Next arg is the pc to dump detailed bytecode at.
         \\
     , .{build_options.version});

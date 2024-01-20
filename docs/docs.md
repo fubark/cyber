@@ -555,7 +555,7 @@ Triple double quotes are used to delimit a multi-line literal:
 ```cy
 var title = "last"
 var doc = """A double quote " doesn't need to be escaped."""
-str = """line a
+var str = """line a
 line "b"
 line $(title)
 """

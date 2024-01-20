@@ -884,7 +884,8 @@ typedef struct VM {
     Compiler* compiler;
     Sema* sema;
     void* userData;
-    void* print;
+    void* printFn;
+    void* logFn;
 #if TRACE
     ZHashMap objectTraceMap;
 #endif
@@ -902,6 +903,11 @@ typedef struct VM {
     size_t expGlobalRC;
     ZList varSymExtras;
     size_t endLocal;
+
+    #if TRACE
+    u32 padding;
+    #endif
+    Str lastExeError;
 #else
     struct {
         void* ptr;
@@ -914,6 +920,8 @@ typedef struct VM {
     ZCyList varSymExtras;
 
     size_t endLocal;
+
+    Str lastExeError;
 
     #if TRACE
     u32 debugPc;

@@ -74,7 +74,7 @@ pub const Symbol = enum {
     paused,
     done,
 
-    err,
+    @"error",
     float,
     object,
     map,
@@ -113,82 +113,11 @@ pub fn prepareThrowSymbol(vm: *cy.UserVM, sym: Symbol) Value {
 const StdSection = cy.StdSection;
 const Section = cy.Section;
 
-pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
+pub fn bindCore(self: *cy.VM) !void {
     @setCold(true);
-
-    try ensureSymbol(self, "b", .b);
-    try ensureSymbol(self, "o", .o);
-    try ensureSymbol(self, "d", .d);
-    try ensureSymbol(self, "x", .x);
-    try ensureSymbol(self, "c", .c);
-
-    try ensureSymbol(self, "bool", .bool);
-    try ensureSymbol(self, "char", .char);
-    try ensureSymbol(self, "uchar", .uchar);
-    try ensureSymbol(self, "short", .short);
-    try ensureSymbol(self, "ushort", .ushort);
-    try ensureSymbol(self, "int", .int);
-    try ensureSymbol(self, "uint", .uint);
-    try ensureSymbol(self, "long", .long);
-    try ensureSymbol(self, "ulong", .ulong);
-    try ensureSymbol(self, "usize", .usize);
-    try ensureSymbol(self, "double", .double);
-    try ensureSymbol(self, "charPtr", .charPtr);
-    try ensureSymbol(self, "voidPtr", .voidPtr);
-    try ensureSymbol(self, "funcPtr", .funcPtr);
-    try ensureSymbol(self, "void", .void);
-
-    try ensureSymbol(self, "little", .little);
-    try ensureSymbol(self, "big", .big);
-
-    try ensureSymbol(self, "left", .left);
-    try ensureSymbol(self, "right", .right);
-    try ensureSymbol(self, "ends", .ends);
-
-    try ensureSymbol(self, "utf8", .utf8);
-    try ensureSymbol(self, "bytes", .bytes);
-
-    try ensureSymbol(self, "AssertError", .AssertError);
-    try ensureSymbol(self, "FileNotFound", .FileNotFound);
-    try ensureSymbol(self, "MissingSymbol", .MissingSymbol);
-    try ensureSymbol(self, "EndOfStream", .EndOfStream);
-    try ensureSymbol(self, "OutOfBounds", .OutOfBounds);
-    try ensureSymbol(self, "InvalidArgument", .InvalidArgument);
-    try ensureSymbol(self, "InvalidSignature", .InvalidSignature);
-    try ensureSymbol(self, "InvalidRune", .InvalidRune);
-    try ensureSymbol(self, "SteamTooLong", .StreamTooLong);
-    try ensureSymbol(self, "NotAllowed", .NotAllowed);
-    try ensureSymbol(self, "Closed", .Closed);
-    try ensureSymbol(self, "PermissionDenied", .PermissionDenied);
-    try ensureSymbol(self, "UnknownError", .UnknownError);
-    try ensureSymbol(self, "Unicode", .Unicode);
-
-    try ensureSymbol(self, "running", .running);
-    try ensureSymbol(self, "paused", .paused);
-    try ensureSymbol(self, "done", .done);
-
-    try ensureSymbol(self, "error", .err);
-    try ensureSymbol(self, "float", .float);
-    try ensureSymbol(self, "object", .object);
-    try ensureSymbol(self, "map", .map);
-    try ensureSymbol(self, "list", .list);
-    try ensureSymbol(self, "function", .function);
-    try ensureSymbol(self, "fiber", .fiber);
-    try ensureSymbol(self, "string", .string);
-    try ensureSymbol(self, "array", .array);
-    try ensureSymbol(self, "none", .none);
-    try ensureSymbol(self, "symbol", .symbol);
-    try ensureSymbol(self, "pointer", .pointer);
-    try ensureSymbol(self, "metatype", .metatype);
-
-    try ensureSymbol(self, "read", .read);
-    try ensureSymbol(self, "write", .write);
-    try ensureSymbol(self, "readWrite", .readWrite);
-
-    try ensureSymbol(self, "file", .file);
-    try ensureSymbol(self, "dir", .dir);
-
-    try ensureSymbol(self, "unknown", .unknown);
+    for (std.enums.values(Symbol)) |sym| {
+        try ensureSymbol(self, @tagName(sym), sym);
+    }
 }
 
 fn ensureSymbol(vm: *cy.VM, name: []const u8, sym: Symbol) !void {
@@ -229,7 +158,7 @@ pub fn listRemove(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Sectio
     const list = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index >= inner.len) {
-        return vm.prepThrowError(.OutOfBounds);
+        return rt.prepThrowError(vm, .OutOfBounds);
     } 
     vm.release(inner.buf[@intCast(index)]);
     inner.remove(@intCast(index));
@@ -242,7 +171,7 @@ pub fn listInsert(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Sectio
     const list = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index > inner.len) {
-        return vm.prepThrowError(.OutOfBounds);
+        return rt.prepThrowError(vm, .OutOfBounds);
     } 
     inner.growTotalCapacity(vm.alloc, inner.len + 1) catch cy.fatal();
     inner.insertAssumeCapacity(@intCast(index), value);

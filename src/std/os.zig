@@ -203,7 +203,7 @@ pub fn onLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
     };
 }
 
-fn zPostLoad(self: *cy.VMcompiler, mod: cc.ApiModule) linksection(cy.InitSection) anyerror!void {
+fn zPostLoad(self: *cy.VMcompiler, mod: cc.ApiModule) anyerror!void {
     const b = bindings.ModuleBuilder.init(self, @ptrCast(@alignCast(mod.sym)));
     _ = b;
 
@@ -608,13 +608,13 @@ fn newFFI(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Va
 }
 
 pub fn bindLib(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    if (!cy.hasFFI) return vm.returnPanic("Unsupported.");
+    if (!cy.hasFFI) return vm.prepPanic("Unsupported.");
 
     return @call(.never_inline, ffi.ffiBindLib, .{vm, args, .{}});
 }
 
 pub fn bindLibExt(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    if (!cy.hasFFI) return vm.returnPanic("Unsupported.");
+    if (!cy.hasFFI) return vm.prepPanic("Unsupported.");
 
     var configV = args[2];
     const genMapV = try vm.retainOrAllocAstring("genMap");
@@ -651,7 +651,7 @@ fn cacheUrl(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     defer vm.alloc.free(resp.body);
     if (resp.status != .ok) {
         log.gtracev("cacheUrl response status: {}", .{resp.status});
-        return vm.prepThrowError(.UnknownError);
+        return rt.prepThrowError(vm, .UnknownError);
     } else {
         const entry = try cache.saveNewSpecFile(vm.alloc, specGroup, url, resp.body);
         defer entry.deinit(vm.alloc);

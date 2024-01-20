@@ -8,5 +8,5 @@ my idx = 0
 for 0..50:
     idx = str.find('waldo')
 
-print 'time: $((os.now() - start) * 1000)'
+print "time: $((os.now() - start) * 1000)"
 print idx

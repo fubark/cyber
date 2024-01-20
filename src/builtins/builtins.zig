@@ -7,8 +7,6 @@ const cc = @import("../capi.zig");
 const Value = cy.Value;
 const bindings = @import("bindings.zig");
 const Symbol = bindings.Symbol;
-const prepareThrowSymbol = bindings.prepareThrowSymbol;
-const fromUnsupportedError = bindings.fromUnsupportedError;
 const fmt = @import("../fmt.zig");
 const rt = cy.rt;
 const bt = cy.types.BuiltinTypes;
@@ -51,7 +49,7 @@ const funcs = [_]NameFunc{
     .{"runestr",        zErrFunc2(runestr), .standard},
     .{"toCyon",         zErrFunc2(toCyon), .standard},
     .{"typeof",         typeof, .standard},
-    .{"typesym",        typesym, .standard},
+    .{"typesym",        cFunc(typesym), .standard},
 
     // bool
     .{"bool.'$call'", boolCall, .standard},
@@ -241,9 +239,13 @@ pub fn onLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
     }
 }
 
+pub fn cFunc(func: *const fn (vm: cy.Context, args: [*]const Value, nargs: u8) callconv(.C) Value) cy.ZHostFuncFn {
+    return @ptrCast(func);
+}
+
 pub fn zErrFunc2(comptime func: fn (vm: *cy.VM, args: [*]const Value, nargs: u8) anyerror!Value) cy.ZHostFuncFn {
     const S = struct {
-        pub fn genFunc(vm: *cy.VM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+        pub fn genFunc(vm: *cy.VM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) callconv(.C) Value {
             return @call(.always_inline, func, .{vm, args, nargs}) catch |err| {
                 return @call(.never_inline, prepThrowZError, .{vm, err, @errorReturnTrace()});
             };
@@ -270,18 +272,18 @@ pub fn prepThrowZError(vm: *cy.VM, err: anyerror, optTrace: ?*std.builtin.StackT
         }
     }
     switch (err) {
-        error.Unicode               => return vm.prepThrowError(.Unicode),
-        error.InvalidArgument       => return vm.prepThrowError(.InvalidArgument),
-        error.InvalidEnumTag        => return vm.prepThrowError(.InvalidArgument),
-        error.FileNotFound          => return vm.prepThrowError(.FileNotFound),
-        error.OutOfBounds           => return vm.prepThrowError(.OutOfBounds),
-        error.PermissionDenied      => return vm.prepThrowError(.PermissionDenied),
-        error.StdoutStreamTooLong   => return vm.prepThrowError(.StreamTooLong),
-        error.StderrStreamTooLong   => return vm.prepThrowError(.StreamTooLong),
-        error.EndOfStream           => return vm.prepThrowError(.EndOfStream),
+        error.Unicode               => return rt.prepThrowError(vm, .Unicode),
+        error.InvalidArgument       => return rt.prepThrowError(vm, .InvalidArgument),
+        error.InvalidEnumTag        => return rt.prepThrowError(vm, .InvalidArgument),
+        error.FileNotFound          => return rt.prepThrowError(vm, .FileNotFound),
+        error.OutOfBounds           => return rt.prepThrowError(vm, .OutOfBounds),
+        error.PermissionDenied      => return rt.prepThrowError(vm, .PermissionDenied),
+        error.StdoutStreamTooLong   => return rt.prepThrowError(vm, .StreamTooLong),
+        error.StderrStreamTooLong   => return rt.prepThrowError(vm, .StreamTooLong),
+        error.EndOfStream           => return rt.prepThrowError(vm, .EndOfStream),
         else                        => {
             vm.logFmt("UnknownError: {}", &.{fmt.v(err)});
-            return vm.prepThrowError(.UnknownError);
+            return rt.prepThrowError(vm, .UnknownError);
         }
     }
 }
@@ -346,7 +348,7 @@ pub fn is(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Val
 pub fn isAlpha(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const num = args[0].asInteger();
     if (num < 0 or num >= 2 << 21) {
-        return vm.prepThrowError(.InvalidRune);
+        return rt.prepThrowError(vm, .InvalidRune);
     }
     if (num > 255) {
         return Value.False;
@@ -358,7 +360,7 @@ pub fn isAlpha(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
 pub fn isDigit(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const num = args[0].asInteger();
     if (num < 0 or num >= 2 << 21) {
-        return vm.prepThrowError(.InvalidRune);
+        return rt.prepThrowError(vm, .InvalidRune);
     }
     if (num > 255) {
         return Value.False;
@@ -370,7 +372,7 @@ pub fn isDigit(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
 pub fn runestr(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const num = args[0].asInteger();
     if (num < 0 or num >= 2 << 21) {
-        return vm.prepThrowError(.InvalidRune);
+        return rt.prepThrowError(vm, .InvalidRune);
     }
     const rune: u21 = @intCast(num);
     if (std.unicode.utf8ValidCodepoint(rune)) {
@@ -378,7 +380,7 @@ pub fn runestr(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
         const len = try std.unicode.utf8Encode(rune, &buf);
         return vm.allocStringInternOrArray(buf[0..len]);
     } else {
-        return vm.prepThrowError(.InvalidRune);
+        return rt.prepThrowError(vm, .InvalidRune);
     }
 }
 
@@ -858,7 +860,7 @@ pub fn performGC(vm: *cy.VM, _: [*]const Value, _: u8) linksection(cy.StdSection
 
 pub fn print(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const str = try vm.getOrBufPrintValueStr(&cy.tempBuf, args[0]);
-    vm.printFn.?(@ptrCast(vm), cc.initStr(str));
+    rt.print(vm, str);
     return Value.None;
 }
 
@@ -868,12 +870,12 @@ pub fn typeof(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     return cy.heap.allocMetaType(vm, @intFromEnum(cy.heap.MetaTypeKind.object), typeId) catch fatal();
 }
 
-pub fn typesym(_: *cy.VM, args: [*]const Value, _: u8) Value {
+pub fn typesym(_: cy.Context, args: [*]const Value, _: u8) callconv(.C) Value {
     const val = args[0];
     switch (val.getUserTag()) {
         .float => return Value.initSymbol(@intFromEnum(Symbol.float)),
         .object => return Value.initSymbol(@intFromEnum(Symbol.object)),
-        .err => return Value.initSymbol(@intFromEnum(Symbol.err)),
+        .err => return Value.initSymbol(@intFromEnum(Symbol.@"error")),
         .bool => return Value.initSymbol(@intFromEnum(Symbol.bool)),
         .map => return Value.initSymbol(@intFromEnum(Symbol.map)),
         .int => return Value.initSymbol(@intFromEnum(Symbol.int)),
@@ -909,10 +911,10 @@ fn arraySlice(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection
     } else if (args[1].isInteger()) {
         start = args[1].asInteger();
     } else {
-        return vm.prepThrowError(.InvalidArgument);
+        return rt.prepThrowError(vm, .InvalidArgument);
     }
     if (start < 0) {
-        return vm.prepThrowError(.OutOfBounds);
+        return rt.prepThrowError(vm, .OutOfBounds);
     }
 
     var end: i48 = undefined;
@@ -921,13 +923,13 @@ fn arraySlice(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection
     } else if (args[2].isInteger()) {
         end = args[2].asInteger();
     } else {
-        return vm.prepThrowError(.InvalidArgument);
+        return rt.prepThrowError(vm, .InvalidArgument);
     }
     if (end > slice.len) {
-        return vm.prepThrowError(.OutOfBounds);
+        return rt.prepThrowError(vm, .OutOfBounds);
     }
     if (end < start) {
-        return vm.prepThrowError(.OutOfBounds);
+        return rt.prepThrowError(vm, .OutOfBounds);
     }
 
     const parent = obj.array.getParent();
@@ -940,7 +942,7 @@ fn arrayInsert(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
     const slice = obj.array.getSlice();
     const idx = args[1].asInteger();
     if (idx < 0 or idx > slice.len) {
-        return vm.prepThrowError(.OutOfBounds);
+        return rt.prepThrowError(vm, .OutOfBounds);
     } 
     const insert = args[2].asArray();
     const new = vm.allocUnsetArrayObject(slice.len + insert.len) catch cy.fatal();
@@ -992,10 +994,10 @@ fn arrayDecode1(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     const obj = args[0].asHeapObject();
 
     const encoding = bindings.getBuiltinSymbol(args[1].asSymbolId()) orelse {
-        return vm.prepThrowError(.InvalidArgument);
+        return rt.prepThrowError(vm, .InvalidArgument);
     };
     if (encoding != Symbol.utf8) {
-        return vm.prepThrowError(.InvalidArgument);
+        return rt.prepThrowError(vm, .InvalidArgument);
     }
 
     const parent = obj.array.getParent();
@@ -1010,7 +1012,7 @@ fn arrayDecode1(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
             return vm.allocUstringSlice(slice, @intCast(size), parent) catch fatal();
         }
     } else {
-        return vm.prepThrowError(.Unicode);
+        return rt.prepThrowError(vm, .Unicode);
     }
 }
 
@@ -1155,14 +1157,14 @@ fn arrayTrim(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection)
 
     var res: []const u8 = undefined;
     const mode = bindings.getBuiltinSymbol(args[1].asSymbolId()) orelse {
-        return vm.prepThrowError(.InvalidArgument);
+        return rt.prepThrowError(vm, .InvalidArgument);
     };
     switch (mode) {
         .left => res = std.mem.trimLeft(u8, slice, trimRunes),
         .right => res = std.mem.trimRight(u8, slice, trimRunes),
         .ends => res = std.mem.trim(u8, slice, trimRunes),
         else => {
-            return vm.prepThrowError(.InvalidArgument);
+            return rt.prepThrowError(vm, .InvalidArgument);
         }
     }
 
@@ -1198,7 +1200,7 @@ fn arrayInsertByte(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSe
 
     const index: i48 = args[1].asInteger();
     if (index < 0 or index > str.len) {
-        return vm.prepThrowError(.OutOfBounds);
+        return rt.prepThrowError(vm, .OutOfBounds);
     } 
     const byte: u8 = @intCast(args[2].asInteger());
     const new = vm.allocUnsetArrayObject(str.len + 1) catch cy.fatal();
@@ -1216,7 +1218,7 @@ fn arrayRepeat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
 
     const n = args[1].asInteger();
     if (n < 0) {
-        return vm.prepThrowError(.InvalidArgument);
+        return rt.prepThrowError(vm, .InvalidArgument);
     }
 
     var un: u32 = @intCast(n);
@@ -1409,7 +1411,7 @@ fn errorSym(_: *cy.VM, args: [*]const Value, _: u8) Value {
 fn errorCall(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const val = args[0];
     if (val.isPointer()) {
-        return vm.prepThrowError(.InvalidArgument);
+        return rt.prepThrowError(vm, .InvalidArgument);
     } else {
         if (val.isSymbol()) {
             return Value.initErrorSymbol(@intCast(val.asSymbolId()));
@@ -1420,7 +1422,7 @@ fn errorCall(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection)
             const symId = vm.ensureSymbol(name) catch cy.unexpected();
             return Value.initErrorSymbol(symId);
         } else {
-            return vm.prepThrowError(.InvalidArgument);
+            return rt.prepThrowError(vm, .InvalidArgument);
         }
     }
 }

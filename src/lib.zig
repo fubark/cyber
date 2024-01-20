@@ -12,6 +12,30 @@ const log = cy.log.scoped(.lib);
 const bt = cy.types.BuiltinTypes;
 const c = @import("capi.zig");
 
+pub fn toCFunc(comptime func: fn (*cy.VM, [*]const Value, u8) anyerror!Value) fn (*cy.VM, [*]const Value, u8) callconv(.C) Value {
+    const S = struct {
+        pub fn genFunc(vm: *cy.VM, args: [*]const Value, nargs: u8) callconv(.C) Value {
+            return @call(.always_inline, func, .{vm, args, nargs}) catch |err| {
+                return @call(.never_inline, cy.builtins.prepThrowZError, .{vm, err, @errorReturnTrace()});
+            };
+        }
+    };
+    return S.genFunc;
+}
+
+comptime {
+    // Temporarily export for bootstrapping.
+    if (build_options.rt == .pm) {
+        const mtest = @import("std/test.zig");
+        @export(mtest.eq, .{ .name = "test_eq", .linkage = .Strong });
+
+        const mbuiltins = @import("builtins/builtins.zig");
+        @export(mbuiltins.typesym, .{ .name = "builtins_typesym", .linkage = .Strong });
+        const print = toCFunc(mbuiltins.print);
+        @export(print, .{ .name = "builtins_print", .linkage = .Strong });
+    }
+}
+
 export fn csCreate() *cy.UserVM {
     const alloc = cy.heap.getAllocator();
     const vm = alloc.create(cy.VM) catch fatal();
@@ -82,8 +106,8 @@ export fn csEval(vm: *cy.VM, src: c.Str, outVal: *cy.Value) c.ResultCode {
     return c.Success;
 }
 
-export fn csValidate(vm: *cy.UserVM, src: c.Str) c.ResultCode {
-    const res = vm.internal().validate("main", c.strSlice(src), .{}) catch |err| {
+export fn csValidate(vm: *cy.VM, src: c.Str) c.ResultCode {
+    const res = vm.validate("main", c.strSlice(src), .{}) catch |err| {
         log.gtracev("validate error: {}", .{err});
         return c.ErrorUnknown;
     };
@@ -352,13 +376,13 @@ export fn csNewVmObject(vm: *cy.VM, typeId: cy.TypeId, argsPtr: [*]const Value, 
     }
 }
 
-export fn csSymbol(vm: *cy.UserVM, str: c.Str) Value {
-    const id = vm.internal().ensureSymbolExt(c.strSlice(str), true) catch fatal();
+export fn csSymbol(vm: *cy.VM, str: c.Str) Value {
+    const id = vm.ensureSymbolExt(c.strSlice(str), true) catch fatal();
     return Value.initSymbol(@intCast(id));
 }
 
-export fn csNewPointer(vm: *cy.UserVM, ptr: ?*anyopaque) Value {
-    return cy.heap.allocPointer(vm.internal(), ptr) catch fatal();
+export fn csNewPointer(vm: *cy.VM, ptr: ?*anyopaque) Value {
+    return cy.heap.allocPointer(vm, ptr) catch fatal();
 }
 
 test "csNewPointer()" {

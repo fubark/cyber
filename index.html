@@ -998,7 +998,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 28-0a57ae4</div>
+    <div class="sub-title">v0.4-dev 31-d5de734</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -1720,7 +1720,7 @@ print node.value       -- Prints "123"
 var n = [Node value: 123, next: none]
 n.incAndPrint()         -- Prints "444"
 </code></pre>
-<p>Methods can also be declared outside of the type declaration. To distinguish a method from a type function, <code>self</code> must be provided as a parameter:</p>
+<p>Methods can be declared outside of the type declaration. When using the flat declaration style, <code>self</code> must be the first parameter to distinguish it from a type function:</p>
 <pre><code class="language-cy">func Node.getNext(self):
     return self.next
 </code></pre>

@@ -787,7 +787,7 @@ pub fn allocExternalObject(vm: *cy.VM, size: usize, comptime cyclable: bool) !*H
         @as(*u64, @ptrCast(slice.ptr + PayloadSize - ZigLenSize)).* = size;
     }
     if (cy.TraceRC) {
-        cy.arc.log.tracev(vm, "0 +1 alloc external object: {*}", .{slice.ptr + PayloadSize});
+        cy.arc.log.tracev("0 +1 alloc external object: {*}", .{slice.ptr + PayloadSize});
     }
     if (cy.TrackGlobalRC) {
         vm.refCounts += 1;
@@ -818,7 +818,7 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
             }
         }
         if (cy.TraceRC) {
-            cy.arc.log.tracev(self, "0 +1 alloc pool object: {*}", .{ptr});
+            cy.arc.log.tracev("0 +1 alloc pool object: {*}", .{ptr});
         }
         if (cy.TrackGlobalRC) {
             self.refCounts += 1;
@@ -869,7 +869,7 @@ fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize, comptime cyclabl
             trace.freePc = vm.debugPc;
             trace.freeTypeId = obj.getTypeId();
         } else {
-            log.trace(vm, "Missing object trace {*} {}", .{obj, obj.getTypeId()});
+            log.trace("Missing object trace {*} {}", .{obj, obj.getTypeId()});
         }
     }
     const ZigLenSize = if (cy.Malloc == .zig) @sizeOf(u64) else 0;
@@ -886,7 +886,7 @@ pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) v
             trace.freePc = vm.debugPc;
             trace.freeTypeId = obj.getTypeId();
         } else {
-            log.trace(vm, "Missing object trace {*} {}", .{obj, obj.getTypeId()});
+            log.trace("Missing object trace {*} {}", .{obj, obj.getTypeId()});
         }
     }
     const prev = &(@as([*]HeapObject, @ptrCast(obj)) - 1)[0];
@@ -1606,7 +1606,7 @@ pub fn allocUstringSlice(self: *cy.VM, slice: []const u8, charLen: u32, parent: 
 
 pub fn allocAstringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject) !Value {
     const obj = try allocPoolObject(self);
-    log.tracev(self, "{*} {*}", .{parent, slice.ptr});
+    log.tracev("{*} {*}", .{parent, slice.ptr});
     obj.aslice = .{
         .typeId = bt.String,
         .rc = 1,
@@ -1807,7 +1807,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             cy.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});
         } else {
             const desc = vm.getOrBufPrintValueStr(&cy.tempBuf, Value.initPtr(obj)) catch cy.fatal();
-            log.tracev(vm, "free type={}({s}) {*}: `{s}`", .{
+            log.tracev("free type={}({s}) {*}: `{s}`", .{
                 obj.getTypeId(), vm.getTypeName(obj.getTypeId()), obj, desc,
             });
         }
@@ -2077,18 +2077,18 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
         else => {
             // Struct deinit.
             if (cy.Trace) {
-                log.tracev(vm, "free {s}", .{vm.getTypeName(typeId)});
+                log.tracev("free {s}", .{vm.getTypeName(typeId)});
 
                 // Check range.
                 if (typeId >= vm.types.len) {
-                    log.tracev(vm, "unsupported struct type {}", .{typeId});
+                    log.tracev("unsupported struct type {}", .{typeId});
                     cy.fatal();
                 }
             }
             // TODO: Determine isHostObject from object to avoid extra read from `rt.Type`
             // TODO: Use a dispatch table for host objects only.
             const entry = vm.types[typeId];
-            log.tracev(vm, "free {s} {}", .{@tagName(entry.symType), typeId});
+            log.tracev("free {s} {}", .{@tagName(entry.symType), typeId});
             if (entry.symType != .hostObjectType) {
                 const numFields = entry.data.numFields;
                 if (releaseChildren) {
@@ -2151,7 +2151,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
 const MaxPoolObjectUserBytes = @sizeOf(HeapObject) - 8;
 
 pub fn traceAlloc(vm: *cy.VM, ptr: *HeapObject) void {
-    // log.tracev(vm, "alloc {*} {} {}", .{ptr, ptr.getTypeId(), vm.debugPc});
+    // log.tracev("alloc {*} {} {}", .{ptr, ptr.getTypeId(), vm.debugPc});
     vm.objectTraceMap.put(vm.alloc, ptr, .{
         .allocPc = vm.debugPc,
         .freePc = cy.NullId,

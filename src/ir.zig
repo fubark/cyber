@@ -608,7 +608,7 @@ pub const Buffer = struct {
     }
 
     pub fn pushEmptyExpr(self: *Buffer, alloc: std.mem.Allocator, comptime code: ExprCode, nodeId: cy.NodeId) !u32 {
-        log.gtracev("irPushExpr: {}", .{code});
+        log.tracev("irPushExpr: {}", .{code});
         const start = self.buf.items.len;
         try self.buf.resize(alloc, self.buf.items.len + 1 + 4 + @sizeOf(ExprData(code)));
         self.buf.items[start] = @intFromEnum(code);
@@ -679,7 +679,7 @@ pub const Buffer = struct {
     }
 
     pub fn pushEmptyStmt2(self: *Buffer, alloc: std.mem.Allocator, comptime code: StmtCode, nodeId: cy.NodeId, comptime appendToParent_: bool) !u32 {
-        log.gtracev("irPushStmt: {}", .{code});
+        log.tracev("irPushStmt: {}", .{code});
         const start: u32 = @intCast(self.buf.items.len);
         try self.buf.resize(alloc, self.buf.items.len + 1 + 4 + 4 + @sizeOf(StmtData(code)));
         self.buf.items[start] = @intFromEnum(code);

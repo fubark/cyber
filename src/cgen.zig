@@ -365,10 +365,10 @@ pub fn gen(self: *cy.VMcompiler) !cy.vm_compiler.AotCompileResult {
             continue;
         }
 
-        log.tracev(self.vm, "Perform codegen for chunk{}: {s}", .{chunk.id, chunk.srcUri});
+        log.tracev("Perform codegen for chunk{}: {s}", .{chunk.id, chunk.srcUri});
 
         try genChunk(&chunks[i]);
-        log.tracev(self.vm, "Done. performChunkCodegen {s}", .{chunk.srcUri});
+        log.tracev("Done. performChunkCodegen {s}", .{chunk.srcUri});
     }
 
     // All chunks are merged into one C output.
@@ -474,7 +474,7 @@ pub fn gen(self: *cy.VMcompiler) !cy.vm_compiler.AotCompileResult {
         defer self.alloc.free(res.stdout);
 
         if (res.term != .Exited or res.term.Exited != 0) {
-            rt.log(self.vm, res.stderr);
+            rt.errMsg(self.vm, res.stderr);
             return error.CCError;
         }
     }
@@ -539,9 +539,9 @@ fn genChunk(c: *Chunk) !void {
     genChunkInner(c) catch |err| {
         if (err != error.CompileError) {
             // Wrap all other errors as a CompileError.
-            log.tracev(c.vm, "{*}", .{c.base});
+            log.tracev("{*}", .{c.base});
             try c.base.setErrorFmtAt("error.{}", &.{v(err)}, c.errNodeId);
-            log.tracev(c.vm, "{*}", .{c.base});
+            log.tracev("{*}", .{c.base});
             return error.CompileError;
         } else return err;
     };
@@ -570,7 +570,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
 
     if (cy.Trace) {
         const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
-        log.tracev(c.vm, "----{s}: {{{s}}}", .{@tagName(code), contextStr});
+        log.tracev("----{s}: {{{s}}}", .{@tagName(code), contextStr});
     }
     switch (code) {
         // .breakStmt          => try breakStmt(c, nodeId),
@@ -612,7 +612,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         }
     }
 
-    log.tracev(c.vm, "----{s}: end", .{@tagName(code)});
+    log.tracev("----{s}: end", .{@tagName(code)});
 }
 
 fn genTopExpr(c: *Chunk, idx: usize, cstr: Cstr) !Value {
@@ -629,7 +629,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!Value {
 
     if (cy.Trace) {
         const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
-        log.tracev(c.vm, "{s}: {{{s}}}", .{@tagName(code), contextStr});
+        log.tracev("{s}: {{{s}}}", .{@tagName(code), contextStr});
     }
 
     const res = try switch (code) {
@@ -673,13 +673,13 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!Value {
         // .varSym             => genVarSym(c, idx, cstr, nodeId),
         else => return error.TODO,
     };
-    log.tracev(c.vm, "{s}: end", .{@tagName(code)});
+    log.tracev("{s}: end", .{@tagName(code)});
     return res;
 }
 
 fn mainBlock(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .mainBlock);
-    log.tracev(c.vm, "main block: {}", .{data.maxLocals});
+    log.tracev("main block: {}", .{data.maxLocals});
 
     try c.beginLine(nodeId);
     try c.pushSpanEnd("int main() {");
@@ -765,7 +765,7 @@ fn declareLocal(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
 
         // // rhs has generated, increase `nextLocalReg`.
         // c.curBlock.nextLocalReg += 1;
-        // log.tracev(c.vm, "declare {}, rced: {} ", .{val.local, local.some.rcCandidate});
+        // log.tracev("declare {}, rced: {} ", .{val.local, local.some.rcCandidate});
     } else {
         // const reg = try bcgen.reserveLocalReg(c, data.id, data.declType, data.isBoxed, nodeId, true);
 
@@ -945,7 +945,7 @@ fn genLocal(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !Value {
 
     const data = c.ir.getExprData(idx, .local);
     const b = c.block();
-    log.tracev(c.vm, "local: {}", .{data.id});
+    log.tracev("local: {}", .{data.id});
     const local = c.localStack.items[b.localStart + data.id];
 
     if (!local.some.boxed) {
@@ -1079,7 +1079,7 @@ fn funcDecl(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
                 },
             };
         }
-        log.tracev(c.vm, "reserve param: {}", .{i});
+        log.tracev("reserve param: {}", .{i});
     }
 
     try genStmts(c, data.bodyHead);
@@ -1187,7 +1187,7 @@ const BinOpOptions = struct {
 fn genBinOp(c: *Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy.NodeId) !Value {
     _ = cstr;
     const data = c.ir.getExprData(idx, .preBinOp).binOp;
-    log.tracev(c.vm, "binop {} {}", .{data.op, data.leftT});
+    log.tracev("binop {} {}", .{data.op, data.leftT});
 
     if (data.op == .and_op) {
         return error.TODO;
@@ -1339,7 +1339,7 @@ fn cTypeName(sema: *cy.Sema, id: cy.TypeId) ![]const u8 {
         //     }
         // }
         else => {
-            rt.logZFmt(sema.compiler.vm, "Unsupported sym type: {}", .{id});
+            rt.errZFmt(sema.compiler.vm, "Unsupported sym type: {}", .{id});
             return error.TODO;
         }
     };

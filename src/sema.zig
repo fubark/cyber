@@ -304,7 +304,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         var buf: [1024]u8 = undefined;
         var fbuf = std.io.fixedBufferStream(&buf);
         try c.encoder.writeNode(fbuf.writer(), nodeId);
-        log.tracev(c.vm, "stmt.{s}: \"{s}\"", .{@tagName(c.nodes[nodeId].node_t), fbuf.getWritten()});
+        log.tracev("stmt.{s}: \"{s}\"", .{@tagName(c.nodes[nodeId].node_t), fbuf.getWritten()});
     }
     switch (node.node_t) {
         .exprStmt => {
@@ -733,7 +733,7 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId, leftId: cy.NodeId, rightId: cy.No
                 .local          => c.ir.setStmtCode(irStart, .setLocal),
                 .capturedLocal  => c.ir.setStmtCode(irStart, .setCaptured),
                 else => {
-                    log.tracev(c.vm, "leftRes {s} {}", .{@tagName(leftRes.resType), leftRes.type});
+                    log.tracev("leftRes {s} {}", .{@tagName(leftRes.resType), leftRes.type});
                     return c.reportErrorAt("Assignment to the left `{}` is unsupported.", &.{v(left.node_t)}, nodeId);
                 }
             }
@@ -895,7 +895,7 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.HostObjectTyp
         },
         .type = cc.TypeKindObject,
     };
-    log.tracev(c.vm, "Invoke type loader for: {s}", .{name});
+    log.tracev("Invoke type loader for: {s}", .{name});
     if (!typeLoader(@ptrCast(c.compiler.vm), info, &res)) {
         return c.reportErrorAt("#host type `{}` object failed to load.", &.{v(name)}, nodeId);
     }
@@ -905,7 +905,7 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.HostObjectTyp
             const sym = try c.declareHostObjectType(@ptrCast(c.sym), name, nodeId,
                 res.data.object.getChildren, res.data.object.finalizer);
             if (res.data.object.outTypeId) |outTypeId| {
-                log.tracev(c.vm, "output typeId: {}", .{sym.type});
+                log.tracev("output typeId: {}", .{sym.type});
                 outTypeId.* = sym.type;
             }
             return sym;
@@ -1076,7 +1076,7 @@ pub fn declareHostFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: F
         return c.reportErrorAt("No function loader set for `{}`.", &.{v(decl.name)}, nodeId);
     };
 
-    log.tracev(c.vm, "Invoke func loader for: {s}", .{decl.name});
+    log.tracev("Invoke func loader for: {s}", .{decl.name});
     var res: cc.FuncResult = .{
         .ptr = null,
         .type = cc.FuncTypeStandard,
@@ -1157,7 +1157,7 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
     const varLoader = c.varLoader orelse {
         return c.reportErrorAt("No var loader set for `{}`.", &.{v(decl.namePath)}, nodeId);
     };
-    log.tracev(c.vm, "Invoke var loader for: {s}", .{decl.namePath});
+    log.tracev("Invoke var loader for: {s}", .{decl.namePath});
     var out: cy.Value = cy.Value.None;
     if (!varLoader(@ptrCast(c.compiler.vm), info, @ptrCast(&out))) {
         return c.reportErrorAt("Host var `{}` failed to load.", &.{v(decl.namePath)}, nodeId);
@@ -1504,7 +1504,7 @@ fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.Node
         },
         else => {
             // try pushCallArgs(c, node.head.callExpr.arg_head, numArgs, true);
-            log.tracev(c.vm, "{}", .{sym.type});
+            log.tracev("{}", .{sym.type});
             return error.TODO;
         },
     }
@@ -1851,7 +1851,7 @@ pub fn semaMainBlock(compiler: *cy.VMcompiler, mainc: *cy.Chunk) !u32 {
 
     // Pop block first to obtain the max locals.
     const stmtBlock = try popBlock(mainc);
-    log.tracev(compiler.vm, "pop main block: {}", .{block.maxLocals});
+    log.tracev("pop main block: {}", .{block.maxLocals});
 
     mainc.ir.setStmtData(irIdx, .mainBlock, .{
         .maxLocals = block.maxLocals,
@@ -1953,7 +1953,7 @@ fn popSubBlockCommon(c: *cy.Chunk) !cy.ir.StmtBlock {
         // Merge types to parent sub block.
         for (curAssignedVars) |varId| {
             const svar = &c.varStack.items[varId];
-            // log.gtracev("merging {s}", .{self.getVarName(varId)});
+            // log.tracev("merging {s}", .{self.getVarName(varId)});
             if (sblock.prevVarTypes.get(varId)) |prevt| {
                 // Merge recent static type.
                 if (svar.vtype.id != prevt.id) {
@@ -2439,7 +2439,7 @@ const FuncCallResult = struct {
 fn resolveSymFuncCall(
     c: *cy.Chunk, sym: *Sym, args: []const CompactType, ret: TypeId,
 ) !?FuncCallResult {
-    log.tracev(c.vm, "resolveSymFuncCall {s}, arg sig: {s}", .{
+    log.tracev("resolveSymFuncCall {s}, arg sig: {s}", .{
         sym.name(), try c.sema.formatArgsRet(@ptrCast(args), ret, &cy.tempBuf, true)} );
 
     // TODO: Use func check cache.
@@ -2921,7 +2921,7 @@ pub const ChunkExt = struct {
         if (cy.Trace) {
             const nodeId = expr.nodeId;
             const nodeStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
-            log.tracev(c.vm, "expr.{s}: \"{s}\"", .{@tagName(c.nodes[nodeId].node_t), nodeStr});
+            log.tracev("expr.{s}: \"{s}\"", .{@tagName(c.nodes[nodeId].node_t), nodeStr});
         }
 
         const nodeId = expr.nodeId;

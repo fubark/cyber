@@ -23,62 +23,44 @@ fn printStderr(comptime format: []const u8, args: anytype) void {
 
 pub fn scoped(comptime Scope: @Type(.EnumLiteral)) type {
     return struct {
-        pub fn trace(vm: *cy.VM, comptime format: []const u8, args: anytype) void {
+        pub fn trace(comptime format: []const u8, args: anytype) void {
             if (!cy.Trace) {
                 return;
             }
-            trace_(vm, format, args);
+            trace_(format, args);
         }
 
-        pub fn tracev(vm: *cy.VM, comptime format: []const u8, args: anytype) void {
+        pub fn tracev(comptime format: []const u8, args: anytype) void {
             if (!cy.Trace) {
                 return;
             }
             if (!cy.verbose) {
                 return;
             }
-            trace_(vm, format, args);
+            trace_(format, args);
         }
 
-        inline fn trace_(vm: *cy.VM, comptime format: []const u8, args: anytype) void {
+        inline fn trace_(comptime format: []const u8, args: anytype) void {
             if (UseTimer) {
                 initTimerOnce();
                 const elapsed = timer.?.read();
                 const secs = elapsed / 1000000000;
                 const msecs = (elapsed % 1000000000)/1000000;
                 const prefix = @tagName(Scope) ++ ": {}.{}: ";
-                vm.logZFmt(prefix ++ format, .{secs, msecs} ++ args);
+                zfmt(prefix ++ format, .{secs, msecs} ++ args);
             } else {
                 const prefix = @tagName(Scope) ++ ": ";
-                vm.logZFmt(prefix ++ format, args);
-            }
-        }
-
-        pub fn gtracev(comptime format: []const u8, args: anytype) void {
-            if (cy.Trace) {
-                if (cy.verbose) {
-                    if (UseTimer) {
-                        initTimerOnce();
-                        const elapsed = timer.?.read();
-                        const secs = elapsed / 1000000000;
-                        const msecs = (elapsed % 1000000000)/1000000;
-                        const prefix = @tagName(Scope) ++ ": {}.{}: ";
-                        zfmt(prefix ++ format, .{secs, msecs} ++ args);
-                    } else {
-                        const prefix = @tagName(Scope) ++ ": ";
-                        zfmt(prefix ++ format, args);
-                    }
-                }
+                zfmt(prefix ++ format, args);
             }
         }
     };
 }
 
 const c = @import("capi.zig");
-pub export var logFn: c.GlobalLogFn = defaultGlobalLog;
+pub export var logFn: c.LogFn = defaultLog;
 var logBuf: [1024]u8 = undefined;
 
-pub fn defaultGlobalLog(_: c.Str) callconv(.C) void {
+pub fn defaultLog(_: c.Str) callconv(.C) void {
     // Default log is a nop.
 }
 
@@ -111,9 +93,9 @@ pub fn err(comptime format: []const u8, args: anytype) void {
 /// Used in C/C++ code to log synchronously.
 const c_log = scoped(.c);
 pub export fn zig_log(buf: [*c]const u8) void {
-    c_log.gtracev("{s}", .{ buf });
+    c_log.tracev("{s}", .{ buf });
 }
 
 pub export fn zig_log_u32(buf: [*c]const u8, val: u32) void {
-    c_log.gtracev("{s}: {}", .{ buf, val });
+    c_log.tracev("{s}: {}", .{ buf, val });
 }

@@ -347,7 +347,7 @@ pub fn format(writer: anytype, fmt: []const u8, vals: []const FmtValue) !void {
             if (i + 1 < fmt.len) {
                 if (fmt[i + 1] == '}') {
                     if (valIdx == vals.len) {
-                        log.gtracev("Format expected {}th value, got {} values", .{valIdx + 1, vals.len});
+                        log.tracev("Format expected {}th value, got {} values", .{valIdx + 1, vals.len});
                         return error.FormatError;
                     }
                     try formatValue(writer, vals[valIdx]);
@@ -362,7 +362,7 @@ pub fn format(writer: anytype, fmt: []const u8, vals: []const FmtValue) !void {
         continue;
     }
     if (valIdx < vals.len) {
-        log.gtracev("Format had {} placeholders, got {} values", .{valIdx + 1, vals.len});
+        log.tracev("Format had {} placeholders, got {} values", .{valIdx + 1, vals.len});
         return error.FormatError;
     }
 }
@@ -380,7 +380,7 @@ var printMutex = std.Thread.Mutex{};
 
 pub fn printStdout(fmt: []const u8, vals: []const FmtValue) void {
     printStdoutOrErr(fmt, vals) catch |err| {
-        log.gtracev("{}", .{err});
+        log.tracev("{}", .{err});
         cy.fatal();
     };
 }
@@ -407,14 +407,14 @@ pub fn printDeprecated(name: []const u8, sinceVersion: []const u8, fmt: []const 
 
 pub fn print(w: anytype, fmt: []const u8, vals: []const FmtValue) void {
     format(w, fmt, vals) catch |err| {
-        log.gtracev("{}", .{err});
+        log.tracev("{}", .{err});
         cy.fatal();
     };
 }
 
 pub fn printStderr(fmt: []const u8, vals: []const FmtValue) void {
     printStderrOrErr(fmt, vals) catch |err| {
-        log.gtracev("{}", .{err});
+        log.tracev("{}", .{err});
         cy.fatal();
     };
 }

@@ -165,7 +165,7 @@ pub const Value = packed union {
                 const str = obj.string.getSlice();
                 return std.fmt.parseFloat(f64, str) catch 0;
             } else {
-                log.gtracev("unsupported conv to number: {}", .{obj.getTypeId()});
+                log.tracev("unsupported conv to number: {}", .{obj.getTypeId()});
                 return error.Unsupported;
             }
         } else {
@@ -174,7 +174,7 @@ pub const Value = packed union {
                 TagBoolean => return if (self.asBool()) 1 else 0,
                 TagInteger => return @floatFromInt(self.asInteger()),
                 else => {
-                    log.gtracev("unsupported conv to number: {}", .{self.getTag()});
+                    log.tracev("unsupported conv to number: {}", .{self.getTag()});
                     return error.Unsupported;
                 }
             }
@@ -443,48 +443,48 @@ pub const Value = packed union {
     pub fn dump(self: *const Value) void {
         switch (self.getTypeId()) {
             bt.Float => {
-                log.gtracev("Float {}", .{self.asF64()});
+                log.tracev("Float {}", .{self.asF64()});
             },
             bt.None => {
-                log.gtracev("None", .{});
+                log.tracev("None", .{});
             },
             bt.Integer => {
-                log.gtracev("Integer {}", .{self.asInteger()});
+                log.tracev("Integer {}", .{self.asInteger()});
             },
             bt.Error => {
-                log.gtracev("Error {}", .{self.asErrorSymbol()});
+                log.tracev("Error {}", .{self.asErrorSymbol()});
             },
             bt.Symbol => {
-                log.gtracev("Symbol {}", .{self.asSymbolId()});
+                log.tracev("Symbol {}", .{self.asSymbolId()});
             },
             else => |typeId| {
                 if (self.isPointer()) {
                     const obj = self.asHeapObject();
                     switch (obj.getTypeId()) {
-                        bt.List => log.gtracev("List {*} rc={} len={}", .{obj, obj.head.rc, obj.list.list.len}),
-                        bt.Map => log.gtracev("Map {*} rc={} size={}", .{obj, obj.head.rc, obj.map.inner.size}),
+                        bt.List => log.tracev("List {*} rc={} len={}", .{obj, obj.head.rc, obj.list.list.len}),
+                        bt.Map => log.tracev("Map {*} rc={} size={}", .{obj, obj.head.rc, obj.map.inner.size}),
                         bt.String => {
                             const str = obj.string.getSlice();
                             if (str.len > 20) {
-                                log.gtracev("String {*} rc={} len={} str=\"{s}\"...", .{obj, obj.head.rc, str.len, str[0..20]});
+                                log.tracev("String {*} rc={} len={} str=\"{s}\"...", .{obj, obj.head.rc, str.len, str[0..20]});
                             } else {
-                                log.gtracev("String {*} rc={} len={} str={s}", .{obj, obj.head.rc, str.len, str});
+                                log.tracev("String {*} rc={} len={} str={s}", .{obj, obj.head.rc, str.len, str});
                             }
                         },
-                        bt.Lambda => log.gtracev("Lambda {*} rc={}", .{obj, obj.head.rc}),
-                        bt.Closure => log.gtracev("Closure {*} rc={}", .{obj, obj.head.rc}),
-                        bt.Fiber => log.gtracev("Fiber {*} rc={}", .{obj, obj.head.rc}),
-                        bt.HostFunc => return log.gtracev("NativeFunc {*} rc={}", .{obj, obj.head.rc}),
-                        bt.Pointer => return log.gtracev("Pointer {*} rc={} ptr={*}", .{obj, obj.head.rc, obj.pointer.ptr}),
+                        bt.Lambda => log.tracev("Lambda {*} rc={}", .{obj, obj.head.rc}),
+                        bt.Closure => log.tracev("Closure {*} rc={}", .{obj, obj.head.rc}),
+                        bt.Fiber => log.tracev("Fiber {*} rc={}", .{obj, obj.head.rc}),
+                        bt.HostFunc => return log.tracev("NativeFunc {*} rc={}", .{obj, obj.head.rc}),
+                        bt.Pointer => return log.tracev("Pointer {*} rc={} ptr={*}", .{obj, obj.head.rc, obj.pointer.ptr}),
                         else => {
-                            log.gtracev("HeapObject {*} type={} rc={}", .{obj, obj.getTypeId(), obj.head.rc});
+                            log.tracev("HeapObject {*} type={} rc={}", .{obj, obj.getTypeId(), obj.head.rc});
                         },
                     }
                 } else {
                     if (self.isEnum()) {
-                        log.gtracev("Enum {}", .{typeId});
+                        log.tracev("Enum {}", .{typeId});
                     } else {
-                        log.gtracev("Unknown {}", .{self.getTag()});
+                        log.tracev("Unknown {}", .{self.getTag()});
                     }
                 }
             }

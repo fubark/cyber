@@ -108,7 +108,7 @@ export fn csEval(vm: *cy.VM, src: c.Str, outVal: *cy.Value) c.ResultCode {
 
 export fn csValidate(vm: *cy.VM, src: c.Str) c.ResultCode {
     const res = vm.validate("main", c.strSlice(src), .{}) catch |err| {
-        log.gtracev("validate error: {}", .{err});
+        log.tracev("validate error: {}", .{err});
         return c.ErrorUnknown;
     };
     if (res.err) |err| {
@@ -171,19 +171,19 @@ export fn csSetPrinter(vm: *cy.VM, print: c.PrintFn) void {
     vm.printFn = print;
 }
 
-export fn csGetLogger(vm: *cy.VM) c.LogFn {
-    return vm.logFn;
+export fn csGetErrorFn(vm: *cy.VM) c.ErrorFn {
+    return vm.errorFn;
 }
 
-export fn csSetLogger(vm: *cy.VM, logger: c.LogFn) void {
-    vm.logFn = logger;
+export fn csSetErrorFn(vm: *cy.VM, errorFn: c.ErrorFn) void {
+    vm.errorFn = errorFn;
 }
 
-export fn csGetGlobalLogger() c.GlobalLogFn {
+export fn csGetLogger() c.LogFn {
     return cy.log.logFn;
 }
 
-export fn csSetGlobalLogger(logger: c.GlobalLogFn) void {
+export fn csSetLogger(logger: c.LogFn) void {
     cy.log.logFn = logger;
 }
 

@@ -9,6 +9,7 @@ const c = @import("capi.zig");
 const bt = cy.types.BuiltinTypes;
 const v = cy.fmt.v;
 const log = cy.log.scoped(.cli);
+const rt = cy.rt;
 
 const builtins = std.ComptimeStringMap(void, .{
     .{"builtins"},
@@ -44,11 +45,11 @@ pub fn setupVMForCLI(vm: *cy.VM) void {
     c.setResolver(@ptrCast(vm), resolve);
     c.setModuleLoader(@ptrCast(vm), loader);
     c.setPrinter(@ptrCast(vm), print);
-    c.setLogger(@ptrCast(vm), logFn);
-    c.setGlobalLogger(globalLog);
+    c.setErrorFn(@ptrCast(vm), errorFn);
+    c.setLogger(logFn);
 }
 
-fn globalLog(str: c.Str) callconv(.C) void {
+fn logFn(str: c.Str) callconv(.C) void {
     if (cy.isWasmFreestanding) {
         os_mod.hostFileWrite(2, str.buf, str.len);
         os_mod.hostFileWrite(2, "\n", 1);
@@ -59,7 +60,10 @@ fn globalLog(str: c.Str) callconv(.C) void {
     }
 }
 
-fn logFn(_: ?*c.VM, str: c.Str) callconv(.C) void {
+fn errorFn(_: ?*c.VM, str: c.Str) callconv(.C) void {
+    if (cy.silentError) {
+        return;
+    }
     if (cy.isWasmFreestanding) {
         os_mod.hostFileWrite(2, str.buf, str.len);
         os_mod.hostFileWrite(2, "\n", 1);
@@ -239,7 +243,7 @@ fn loadUrl(vm: *cy.VM, url: []const u8) ![]const u8 {
                 if (cy.verbose) {
                     const cachePath = try cache.allocSpecFilePath(vm.alloc, entry);
                     defer vm.alloc.free(cachePath);
-                    vm.logZFmt("Using cached `{s}` at `{s}`", .{url, cachePath});
+                    rt.logZFmt("Using cached `{s}` at `{s}`", .{url, cachePath});
                 }
                 return src;
             }
@@ -249,7 +253,7 @@ fn loadUrl(vm: *cy.VM, url: []const u8) ![]const u8 {
     const client = vm.httpClient;
 
     if (cy.verbose) {
-        vm.logZFmt("Fetching `{s}`.", .{url});
+        rt.logZFmt("Fetching `{s}`.", .{url});
     }
 
     const uri = try std.Uri.parse(url);

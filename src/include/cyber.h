@@ -244,13 +244,13 @@ typedef bool (*CsModuleLoaderFn)(CsVM* vm, CsStr resolvedSpec, CsModuleLoaderRes
 // The default behavior is a no-op.
 typedef void (*CsPrintFn)(CsVM* vm, CsStr str);
 
+// Handler for VM errors.
+// The default behavior is a no-op.
+typedef void (*CsErrorFn)(CsVM* vm, CsStr str);
+
 // Handler for compiler and runtime logs.
 // The default behavior is a no-op.
-typedef void (*CsLogFn)(CsVM* vm, CsStr str);
-
-// Handler for logs that isn't associated to a VM instance.
-// The default behavior is a no-op.
-typedef void (*CsGlobalLogFn)(CsStr str);
+typedef void (*CsLogFn)(CsStr str);
 
 //
 // [ Top level ]
@@ -259,8 +259,8 @@ CsStr csGetFullVersion();
 CsStr csGetVersion();
 CsStr csGetBuild();
 CsStr csGetCommit();
-CsGlobalLogFn csGetGlobalLogger();
-void csSetGlobalLogger(CsGlobalLogFn log);
+CsLogFn csGetLogger();
+void csSetLogger(CsLogFn log);
 
 //
 // [ VM ]
@@ -289,8 +289,8 @@ bool csDefaultModuleLoader(CsVM* vm, CsStr resolvedSpec, CsModuleLoaderResult* o
 
 CsPrintFn csGetPrinter(CsVM* vm);
 void csSetPrinter(CsVM* vm, CsPrintFn print);
-CsLogFn csGetLogger(CsVM* vm);
-void csSetLogger(CsVM* vm, CsLogFn log);
+CsErrorFn csGetErrorFn(CsVM* vm);
+void csSetErrorFn(CsVM* vm, CsErrorFn errorFn);
 
 // Evalutes the source code and returns the result code.
 // If the last statement of the script is an expression, `outVal` will contain the value.

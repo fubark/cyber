@@ -282,7 +282,7 @@ pub fn prepThrowZError(vm: *cy.VM, err: anyerror, optTrace: ?*std.builtin.StackT
         error.StderrStreamTooLong   => return rt.prepThrowError(vm, .StreamTooLong),
         error.EndOfStream           => return rt.prepThrowError(vm, .EndOfStream),
         else                        => {
-            vm.logFmt("UnknownError: {}", &.{fmt.v(err)});
+            rt.errFmt(vm, "UnknownError: {}", &.{fmt.v(err)});
             return rt.prepThrowError(vm, .UnknownError);
         }
     }
@@ -387,7 +387,7 @@ pub fn runestr(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
 pub fn dump(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const res = try allocToCyon(vm, vm.alloc, args[0]);
     defer vm.alloc.free(res);
-    vm.printFn.?(@ptrCast(vm), cc.initStr(res));
+    rt.print(vm, res);
     return Value.None;
 }
 

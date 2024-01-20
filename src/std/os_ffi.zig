@@ -79,7 +79,7 @@ pub const FFI = struct {
                 return CType{ .object = typeId };
             } else {
                 const name = try vm.getOrBufPrintValueStr(&cy.tempBuf, spec);
-                log.gtracev("CStruct not declared for: {s}", .{name});
+                log.tracev("CStruct not declared for: {s}", .{name});
                 return error.InvalidArgument;
             }
         } else if (spec.isSymbol()) {
@@ -122,7 +122,7 @@ pub fn ffiGetChildren(_: ?*c.VM, obj: ?*anyopaque) callconv(.C) c.ValueSlice {
 
 pub fn ffiFinalizer(vm_: ?*c.VM, obj: ?*anyopaque) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    log.tracev(vm, "ffi finalize", .{});
+    log.tracev("ffi finalize", .{});
 
     const alloc = vm.alloc;
     var ffi: *FFI = @ptrCast(@alignCast(obj));
@@ -441,14 +441,14 @@ pub fn ffiCbind(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
     const ffi = args[0].castHostObject(*FFI);
     const mt = args[1].asHeapObject();
     if (mt.metatype.typeKind != @intFromEnum(cy.heap.MetaTypeKind.object)) {
-        log.gtracev("Not an object Symbol", .{});
+        log.tracev("Not an object Symbol", .{});
         return error.InvalidArgument;
     }
     const typeId = mt.metatype.type;
     const fieldsList = &args[2].asHeapObject().list;
 
     if (ffi.typeToCStruct.contains(typeId)) {
-        log.gtracev("Object type already declared.", .{});
+        log.tracev("Object type already declared.", .{});
         return error.InvalidArgument;
     }
     const id = ffi.cstructs.items.len;
@@ -800,7 +800,7 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
         }
     } else {
         const pathStr = try vm.getOrBufPrintValueStr(&cy.tempBuf, path);
-        log.tracev(vm, "bindLib {s}", .{pathStr});
+        log.tracev("bindLib {s}", .{pathStr});
         lib.* = dlopen(pathStr) catch |err| {
             if (err == error.FileNotFound) {
                 return rt.prepThrowError(vm, .FileNotFound);
@@ -834,7 +834,7 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
         // Check that symbol exists.
         cfunc.skip = false;
         const ptr = lib.lookup(*anyopaque, cfunc.namez) orelse {
-            log.tracev(vm, "Missing sym: '{s}'", .{cfunc.namez});
+            log.tracev("Missing sym: '{s}'", .{cfunc.namez});
             // Don't generate function if it is missing from the lib.
             cfunc.skip = true;
             continue;
@@ -875,7 +875,7 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
 
     try w.writeByte(0);
     if (DumpCGen) {
-        log.gtracev("{s}", .{csrc.items});
+        log.tracev("{s}", .{csrc.items});
     }
 
     const state = tcc.tcc_new();
@@ -1167,7 +1167,7 @@ pub fn ffiBindCallback(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Val
 
     try w.writeByte(0);
     if (DumpCGen) {
-        log.gtracev("{s}", .{csrc.items});
+        log.tracev("{s}", .{csrc.items});
     }
 
     const state = tcc.tcc_new();

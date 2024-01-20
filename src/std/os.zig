@@ -208,7 +208,7 @@ fn zPostLoad(self: *cy.VMcompiler, mod: cc.ApiModule) anyerror!void {
     _ = b;
 
     // Free vars since they are managed by the module now.
-    log.tracev(self.vm, "os post load", .{});
+    log.tracev("os post load", .{});
     for (vars) |entry| {
         cy.arc.release(self.vm, entry.@"1");
     }
@@ -650,7 +650,7 @@ fn cacheUrl(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const resp = try http.get(vm.alloc, vm.httpClient, url);
     defer vm.alloc.free(resp.body);
     if (resp.status != .ok) {
-        log.gtracev("cacheUrl response status: {}", .{resp.status});
+        log.tracev("cacheUrl response status: {}", .{resp.status});
         return rt.prepThrowError(vm, .UnknownError);
     } else {
         const entry = try cache.saveNewSpecFile(vm.alloc, specGroup, url, resp.body);

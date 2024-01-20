@@ -163,7 +163,7 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
     var dumpEndPc: usize = undefined;
     if (cy.Trace) {
         const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
-        log.tracev(c.vm, "----{s}: {{{s}}}", .{@tagName(code), contextStr});
+        log.tracev("----{s}: {{{s}}}", .{@tagName(code), contextStr});
 
         if (cy.verbose) {
             dumpEndPc = try genCallDumpJitSection(c, idx, true);
@@ -219,7 +219,7 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
         // Must have a block to check against expected stack starts.
         try bcgen.checkStack(c, nodeId);
     }
-    log.tracev(c.vm, "----{s}: end", .{@tagName(code)});
+    log.tracev("----{s}: end", .{@tagName(code)});
 
     if (cy.Trace) {
         if (cy.verbose) {
@@ -256,7 +256,7 @@ pub fn prepareFunc(c: *cy.VMcompiler, func: *cy.Func) !void {
     if (cy.Trace) {
         const symPath = try func.sym.?.head.allocAbsPath(c.alloc);
         defer c.alloc.free(symPath);
-        log.tracev(c.vm, "jit prepare func: {s}", .{symPath});
+        log.tracev("jit prepare func: {s}", .{symPath});
     }
     if (func.type == .hostFunc) {
         const funcSig = c.sema.getFuncSig(func.funcSigId);
@@ -281,11 +281,11 @@ pub fn prepareFunc(c: *cy.VMcompiler, func: *cy.Func) !void {
         // const rtFunc = rt.FuncSymbol.initHostInlineFunc(@ptrCast(func.data.hostInlineFunc.ptr), funcSig.reqCallTypeCheck, funcSig.numParams(), func.funcSigId);
         // _ = try addVmFunc(c, func, rtFunc);
         // if (func.isMethod) {
-        //     log.tracev(c.vm, "ismethod", .{});
+        //     log.tracev("ismethod", .{});
         //     const name = func.name();
         //     const mgId = try c.vm.ensureMethodGroup(name);
         //     const parentT = func.sym.?.head.parent.?.getStaticType().?;
-        //     log.tracev(c.vm, "host inline method: {s}.{s} {} {}", .{c.sema.getTypeName(parentT), name, parentT, mgId});
+        //     log.tracev("host inline method: {s}.{s} {} {}", .{c.sema.getTypeName(parentT), name, parentT, mgId});
         //     const m = rt.MethodInit.initHostInline(func.funcSigId, func.data.hostInlineFunc.ptr, func.numParams);
         //     try c.vm.addMethod(parentT, mgId, m);
         // }
@@ -293,7 +293,7 @@ pub fn prepareFunc(c: *cy.VMcompiler, func: *cy.Func) !void {
         // Func is patched later once funcPc and stackSize is obtained.
         // Method entry is also added later.
     } else {
-        log.tracev(c.vm, "{}", .{func.type});
+        log.tracev("{}", .{func.type});
         return error.Unsupported;
     }
 }
@@ -304,7 +304,7 @@ const BinOpOptions = struct {
 
 fn genBinOp(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, opts: BinOpOptions, nodeId: cy.NodeId) !GenValue {
     const data = c.ir.getExprData(idx, .preBinOp).binOp;
-    log.tracev(c.vm, "binop {} {}", .{data.op, data.leftT});
+    log.tracev("binop {} {}", .{data.op, data.leftT});
 
     if (data.op == .and_op) {
         // return genAndOp(c, idx, data, cstr, nodeId, jit);
@@ -634,7 +634,7 @@ fn finishInst(c: *cy.Chunk, val: GenValue, optDst: ?RegisterCstr) !GenValue {
 }
 
 fn genToFinalDst(c: *cy.Chunk, val: GenValue, dst: RegisterCstr) !GenValue {
-    log.tracev(c.vm, "genToFinalDst src: {} dst: {s}", .{val.local, @tagName(dst.type)});
+    log.tracev("genToFinalDst src: {} dst: {s}", .{val.local, @tagName(dst.type)});
 
     const desc = cy.bytecode.InstDesc{};
     const res = try genToDst(c, val, dst, desc);
@@ -689,7 +689,7 @@ fn genToDst(c: *cy.Chunk, val: GenValue, dst: RegisterCstr, desc: cy.bytecode.In
         //     return genValue(c, dst.data.exact, val.retained);
         // },
         else => {
-            log.tracev(c.vm, "{}", .{dst.type});
+            log.tracev("{}", .{dst.type});
             return error.TODO;
         },
     }
@@ -731,7 +731,7 @@ fn genCallFuncSym(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeI
     } else return error.TODO;
 
     const argvs = bcgen.popValues(c, data.numArgs);
-    try bcgen.checkArgs(c, argStart, argvs);
+    try bcgen.checkArgs(argStart, argvs);
     const retained = bcgen.unwindTemps(c, argvs);
     _ = retained;
     // try pushReleaseVals(c, retained, nodeId);
@@ -758,7 +758,7 @@ fn zDumpJitStmtSection(vm: *cy.VM, fp: [*]const cy.Value, chunkId: u64, irIdx: u
 
     const mc = startPc[0..@intFromPtr(endPc)-@intFromPtr(startPc)];
     const contextStr = c.encoder.formatNode(nodeId, &cy.tempBuf) catch cy.fatal();
-    log.tracev(c.vm, "{s} {{{s}}} {*} {} ({}:{})", .{@tagName(code), contextStr, fp, std.fmt.fmtSliceHexLower(mc), chunkId, irIdx});
+    log.tracev("{s} {{{s}}} {*} {} ({}:{})", .{@tagName(code), contextStr, fp, std.fmt.fmtSliceHexLower(mc), chunkId, irIdx});
 }
 
 fn zDumpJitExprSection(vm: *cy.VM, fp: [*]const cy.Value, chunkId: u64, irIdx: u64, startPc: [*]const u8, endPc: [*]const u8) void {
@@ -768,7 +768,7 @@ fn zDumpJitExprSection(vm: *cy.VM, fp: [*]const cy.Value, chunkId: u64, irIdx: u
 
     const mc = startPc[0..@intFromPtr(endPc)-@intFromPtr(startPc)];
     const contextStr = c.encoder.formatNode(nodeId, &cy.tempBuf) catch cy.fatal();
-    log.tracev(c.vm, "{s} {{{s}}} {*} {} ({}:{})", .{@tagName(code), contextStr, fp, std.fmt.fmtSliceHexLower(mc), chunkId, irIdx});
+    log.tracev("{s} {{{s}}} {*} {} ({}:{})", .{@tagName(code), contextStr, fp, std.fmt.fmtSliceHexLower(mc), chunkId, irIdx});
 }
 
 fn genCallDumpJitSection(c: *cy.Chunk, idx: usize, isStmt: bool) !usize {
@@ -797,7 +797,7 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: RegisterCstr) anyerror!GenValue {
     var dumpEndPc: usize = undefined;
     if (cy.Trace) {
         const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
-        log.tracev(c.vm, "{s}: {{{s}}} {s}", .{@tagName(code), contextStr, @tagName(cstr.type)});
+        log.tracev("{s}: {{{s}}} {s}", .{@tagName(code), contextStr, @tagName(cstr.type)});
 
         if (cy.verbose) {
             dumpEndPc = try genCallDumpJitSection(c, idx, false);
@@ -850,7 +850,7 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: RegisterCstr) anyerror!GenValue {
         // .varSym             => genVarSym(c, idx, cstr, nodeId),
         else => return error.TODO,
     };
-    log.tracev(c.vm, "{s}: end", .{@tagName(code)});
+    log.tracev("{s}: end", .{@tagName(code)});
 
     if (cy.Trace) {
         if (cy.verbose) {
@@ -871,7 +871,7 @@ fn genStmts(c: *cy.Chunk, idx: u32) !void {
 
 fn mainBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .mainBlock);
-    log.tracev(c.vm, "main block: {}", .{data.maxLocals});
+    log.tracev("main block: {}", .{data.maxLocals});
 
     try bcgen.pushBlock(c, .main, nodeId);
     c.curBlock.frameLoc = 0;
@@ -974,7 +974,7 @@ fn genStringTemplate(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.No
     try assm.genStoreSlot(c, inst.dst, .arg0);
 
     const argvs = bcgen.popValues(c, data.numExprs);
-    try bcgen.checkArgs(c, argStart, argvs);
+    try bcgen.checkArgs(argStart, argvs);
     const retained = bcgen.unwindTemps(c, argvs);
     try pushReleaseVals(c, retained, nodeId);
 
@@ -1022,7 +1022,7 @@ fn declareLocal(c: *cy.Chunk, idx: u32, nodeId: cy.NodeId) !void {
 
         // rhs has generated, increase `nextLocalReg`.
         c.curBlock.nextLocalReg += 1;
-        log.tracev(c.vm, "declare {}, rced: {} ", .{val.local, local.some.rcCandidate});
+        log.tracev("declare {}, rced: {} ", .{val.local, local.some.rcCandidate});
     } else {
         const reg = try bcgen.reserveLocalReg(c, data.id, data.declType, data.lifted, nodeId, true);
 
@@ -1095,11 +1095,11 @@ pub fn gen(self: *cy.VMcompiler) !void {
             continue;
         }
 
-        log.tracev(self.vm, "Perform codegen for chunk{}: {s}", .{chunk.id, chunk.srcUri});
+        log.tracev("Perform codegen for chunk{}: {s}", .{chunk.id, chunk.srcUri});
         chunk.buf = &self.buf;
         chunk.jitBuf = &self.jitBuf;
         try genChunk(chunk);
-        log.tracev(self.vm, "Done. performChunkCodegen {s}", .{chunk.srcUri});
+        log.tracev("Done. performChunkCodegen {s}", .{chunk.srcUri});
     }
 
     // Perform relocation.
@@ -1164,8 +1164,8 @@ fn genChunkInner(c: *cy.Chunk) !void {
             if (codeBuf.len > 4 * 20) {
                 codeBuf = codeBuf[0..4*20];
             }
-            log.trace(c.vm, "Dump at marker: {}\n", .{std.fmt.fmtSliceHexLower(codeBuf)});
-            log.trace(c.vm, "Dump all: {}\n", .{std.fmt.fmtSliceHexLower(c.jitBuf.buf.items)});
+            log.trace("Dump at marker: {}\n", .{std.fmt.fmtSliceHexLower(codeBuf)});
+            log.trace("Dump all: {}\n", .{std.fmt.fmtSliceHexLower(c.jitBuf.buf.items)});
             DumpCodeFrom = null;
         }
     }

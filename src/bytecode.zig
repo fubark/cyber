@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const rt = cy.rt;
 const log = cy.log.scoped(.bytecode);
 const fmt = @import("fmt.zig");
 const debug = @import("debug.zig");
@@ -718,13 +719,13 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
     if (opts.extra) |extra| {
         const ExtraStartCol = 60;
         if (len > ExtraStartCol) {
-            vm.log(vm.getTempString());
-            vm.logFmt("{}| {}", &.{fmt.repeat(' ', ExtraStartCol), v(extra)});
+            rt.print(vm, vm.getTempString());
+            rt.printFmt(vm, "{}| {}", &.{fmt.repeat(' ', ExtraStartCol), v(extra)});
         } else {
-            vm.logFmt("{}| {}", &.{fmt.repeat(' ', @intCast(ExtraStartCol-len)), v(extra)});
+            rt.printFmt(vm, "{}| {}", &.{fmt.repeat(' ', @intCast(ExtraStartCol-len)), v(extra)});
         }
     } else {
-        vm.log(vm.getTempString());
+        rt.print(vm, vm.getTempString());
     }
 }
 

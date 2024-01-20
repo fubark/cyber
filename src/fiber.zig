@@ -84,13 +84,13 @@ pub fn pushFiber(vm: *cy.VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber:
     vm.stackEndPtr = vm.stack.ptr + fiber.stackLen;
     // Check if fiber was previously yielded.
     if (vm.ops[fiber.pcOffset].opcode() == .coyield) {
-        log.tracev(vm, "fiber set to {} {*}", .{fiber.pcOffset + 3, vm.framePtr});
+        log.tracev("fiber set to {} {*}", .{fiber.pcOffset + 3, vm.framePtr});
         return .{
             .pc = toVmPc(vm, fiber.pcOffset + 3),
             .sp = @ptrCast(fiber.stackPtr + fiber.stackOffset),
         };
     } else {
-        log.tracev(vm, "fiber set to {} {*}", .{fiber.pcOffset, vm.framePtr});
+        log.tracev("fiber set to {} {*}", .{fiber.pcOffset, vm.framePtr});
         return .{
             .pc = toVmPc(vm, fiber.pcOffset),
             .sp = @ptrCast(fiber.stackPtr + fiber.stackOffset),
@@ -121,7 +121,7 @@ pub fn popFiber(vm: *cy.VM, cur: PcSpOff, retValue: Value) PcSpOff {
 
     vm.stack = @as([*]Value, @ptrCast(vm.curFiber.stackPtr))[0..vm.curFiber.stackLen];
     vm.stackEndPtr = vm.stack.ptr + vm.curFiber.stackLen;
-    log.tracev(vm, "fiber set to {} {*}", .{vm.curFiber.pcOffset, vm.framePtr});
+    log.tracev("fiber set to {} {*}", .{vm.curFiber.pcOffset, vm.framePtr});
     return PcSpOff{
         .pc = vm.curFiber.pcOffset,
         .sp = vm.curFiber.stackOffset,
@@ -131,8 +131,8 @@ pub fn popFiber(vm: *cy.VM, cur: PcSpOff, retValue: Value) PcSpOff {
 /// Unwinds the stack and releases the locals.
 /// This also releases the initial captured vars since it's on the stack.
 pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
-    log.tracev(vm, "release fiber stack, start", .{});
-    defer log.tracev(vm, "release fiber stack, end", .{});
+    log.tracev("release fiber stack, start", .{});
+    defer log.tracev("release fiber stack, end", .{});
     var stack = @as([*]Value, @ptrCast(fiber.stackPtr))[0..fiber.stackLen];
     var framePtr = fiber.stackOffset;
     var pc = fiber.pcOffset;
@@ -143,7 +143,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
             // The yield statement contains the alive locals.
             const localsStart = vm.ops[pc+1].val;
             const localsEnd = vm.ops[pc+2].val;
-            log.gtracev("release on frame {} {} localsEnd: {}", .{framePtr, pc, localsEnd});
+            log.tracev("release on frame {} {} localsEnd: {}", .{framePtr, pc, localsEnd});
             for (stack[framePtr+localsStart..framePtr+localsEnd]) |val| {
                 cy.arc.release(vm, val);
             }
@@ -159,7 +159,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
                 const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
 
                 const locals = sym.getLocals();
-                log.gtracev("release on frame {} {}, locals: {}-{}", .{framePtr, pc, locals.start, locals.end});
+                log.tracev("release on frame {} {}, locals: {}-{}", .{framePtr, pc, locals.start, locals.end});
 
                 if (tempIdx != cy.NullId) {
                     cy.arc.runTempReleaseOps(vm, stack.ptr + framePtr, tempIdx);
@@ -193,7 +193,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
     // Release any binded args.
     if (fiber.numArgs > 0) {
         for (stack[fiber.argStart..fiber.argStart+fiber.numArgs]) |arg| {
-            log.tracev(vm, "release fiber arg", .{});
+            log.tracev("release fiber arg", .{});
             cy.arc.release(vm, arg);
         }
     }
@@ -210,7 +210,7 @@ pub fn isVmFrame(_: *cy.VM, stack: []const Value, fpOff: u32) bool {
 /// Unwind from `ctx` and release each frame.
 /// TODO: See if releaseFiberStack can resuse the same code.
 pub fn unwindStack(vm: *cy.VM, stack: []const Value, ctx: PcSpOff) !PcSpOff {
-    log.tracev(vm, "panic unwind {*}", .{stack.ptr + ctx.sp});
+    log.tracev("panic unwind {*}", .{stack.ptr + ctx.sp});
     var pc = ctx.pc;
     var fp = ctx.sp;
 
@@ -232,7 +232,7 @@ pub fn unwindStack(vm: *cy.VM, stack: []const Value, ctx: PcSpOff) !PcSpOff {
                 fp = prev.sp;
             }
         } else {
-            log.tracev(vm, "Skip host frame.", .{});
+            log.tracev("Skip host frame.", .{});
             fp = getPrevFp(vm, stack, fp);
         }
     }
@@ -241,12 +241,12 @@ pub fn unwindStack(vm: *cy.VM, stack: []const Value, ctx: PcSpOff) !PcSpOff {
 /// Walks the stack and records each frame.
 pub fn recordCurFrames(vm: *cy.VM) !void {
     @setCold(true);
-    log.tracev(vm, "recordCompactFrames", .{});
+    log.tracev("recordCompactFrames", .{});
 
     var fp = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
     var pc = cy.fiber.getInstOffset(vm.ops.ptr, vm.pc);
     while (true) {
-        log.tracev(vm, "pc: {}, fp: {}", .{pc, fp});
+        log.tracev("pc: {}, fp: {}", .{pc, fp});
 
         try vm.compactTrace.append(vm.alloc, .{
             .pcOffset = pc,
@@ -272,7 +272,7 @@ fn releaseFrame(vm: *cy.VM, fp: u32, pc: u32) !void {
     const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
     const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
     const locals = sym.getLocals();
-    log.tracev(vm, "release frame: {} {}, tempIdx: {}, locals: {}-{}", .{pc, vm.ops[pc].opcode(), tempIdx, locals.start, locals.end});
+    log.tracev("release frame: {} {}, tempIdx: {}, locals: {}-{}", .{pc, vm.ops[pc].opcode(), tempIdx, locals.start, locals.end});
 
     // Release temps.
     if (tempIdx != cy.NullId) {
@@ -288,7 +288,7 @@ fn releaseFrame(vm: *cy.VM, fp: u32, pc: u32) !void {
 fn releaseFrameTemps(vm: *cy.VM, fp: u32, pc: u32) !void {
     const symIdx = cy.debug.indexOfDebugSym(vm, pc) orelse return error.NoDebugSym;
     const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
-    log.tracev(vm, "release frame temps: {} {}, tempIdx: {}", .{pc, vm.ops[pc].opcode(), tempIdx});
+    log.tracev("release frame temps: {} {}, tempIdx: {}", .{pc, vm.ops[pc].opcode(), tempIdx});
 
     // Release temps.
     cy.arc.runTempReleaseOps(vm, vm.stack.ptr + fp, tempIdx);
@@ -320,7 +320,7 @@ pub fn fiberEnd(vm: *cy.VM, ctx: PcSpOff) ?PcSpOff {
 /// If the main rootFp is reached without a catch block, the error is elevated to an uncaught panic error.
 /// Records frames in `compactTrace`.
 pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcSpOff, err: Value) !PcSpOff {
-    log.tracev(vm, "throw", .{});
+    log.tracev("throw", .{});
     var tframe: vmc.TryFrame = undefined;
     var hasTryFrame = false;
 
@@ -351,7 +351,7 @@ pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcSpOff, err: Value) !PcSpOff {
                 pc = prev.pc;
             } else {
                 if (cy.Trace and fp != tframe.fp) {
-                    log.tracev(vm, "{} {}", .{fp, tframe.fp});
+                    log.tracev("{} {}", .{fp, tframe.fp});
                     return error.Unexpected;
                 }
 
@@ -380,7 +380,7 @@ pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcSpOff, err: Value) !PcSpOff {
                 pc = prev.pc;
             } else {
                 if (cy.Trace and fp != endFp) {
-                    log.tracev(vm, "{} {}", .{fp, endFp});
+                    log.tracev("{} {}", .{fp, endFp});
                     return error.Unexpected;
                 }
                 

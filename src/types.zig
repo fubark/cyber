@@ -139,7 +139,7 @@ pub const SemaExt = struct {
         if (typeId < PrimitiveEnd) {
             return false;
         }
-        log.tracev(s.compiler.vm, "{}", .{s.types.items[typeId].symType});
+        log.tracev("{}", .{s.types.items[typeId].symType});
         return s.types.items[typeId].symType == .enumType;
     }
 
@@ -211,7 +211,7 @@ pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const CompactType, ret: Ty
     const target = c.sema.getFuncSig(targetId);
     if (cy.Trace) {
         const sigStr = c.sema.formatFuncSig(targetId, &cy.tempBuf) catch cy.fatal();
-        log.tracev(c.vm, "matching against: {s}", .{sigStr});
+        log.tracev("matching against: {s}", .{sigStr});
     }
 
     // First check params length.
@@ -230,7 +230,7 @@ pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const CompactType, ret: Ty
                 continue;
             }
         }
-        log.tracev(c.vm, "`{s}` not compatible with param `{s}`", .{c.sema.getTypeName(argType.id), c.sema.getTypeName(cstrType)});
+        log.tracev("`{s}` not compatible with param `{s}`", .{c.sema.getTypeName(argType.id), c.sema.getTypeName(cstrType)});
         return false;
     }
 

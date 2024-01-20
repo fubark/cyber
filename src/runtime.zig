@@ -402,6 +402,43 @@ pub fn getSymName(c: Context, id: u32) []const u8 {
     }
 }
 
+pub fn errMsg(c: Context, str: []const u8) void {
+    if (build_options.rt == .vm) {
+        const vm: *cy.VM = @ptrCast(c);
+        vm.errorFn.?(@ptrCast(vm), api.initStr(str));
+    } else {
+        const w = std.io.getStdErr().writer();
+        w.writeAll(str) catch cy.fatal();
+        w.writeByte('\n') catch cy.fatal();
+    }
+}
+
+pub fn errFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) void {
+    if (build_options.rt == .vm) {
+        const vm: *cy.VM = @ptrCast(c);
+        const w = vm.clearTempString();
+        cy.fmt.print(w, format, args);
+        vm.errorFn.?(@ptrCast(vm), api.initStr(vm.getTempString()));
+    } else {
+        const w = std.io.getStdErr().writer();
+        cy.fmt.print(w, format, args);
+        w.writeByte('\n') catch cy.fatal();
+    }
+}
+
+pub fn errZFmt(c: Context, comptime format: []const u8, args: anytype) void {
+    if (build_options.rt == .vm) {
+        const vm: *cy.VM = @ptrCast(c);
+        const w = vm.clearTempString();
+        std.fmt.format(w, format, args) catch cy.fatal();
+        vm.errorFn.?(@ptrCast(vm), api.initStr(vm.getTempString()));
+    } else {
+        const w = std.io.getStdErr().writer();
+        std.fmt.format(w, format, args);
+        w.writeByte('\n') catch cy.fatal();
+    }
+}
+
 pub fn print(c: Context, str: []const u8) void {
     if (build_options.rt == .vm) {
         const vm: *cy.VM = @ptrCast(c);
@@ -413,7 +450,33 @@ pub fn print(c: Context, str: []const u8) void {
     }
 }
 
-pub fn glog(str: []const u8) void {
+pub fn printFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) void {
+    if (build_options.rt == .vm) {
+        const vm: *cy.VM = @ptrCast(c);
+        const w = vm.clearTempString();
+        cy.fmt.print(w, format, args);
+        vm.printFn.?(@ptrCast(vm), api.initStr(vm.getTempString()));
+    } else {
+        const w = std.io.getStdOut().writer();
+        cy.fmt.print(w, format, args);
+        w.writeByte('\n') catch cy.fatal();
+    }
+}
+
+pub fn printZFmt(c: Context, comptime format: []const u8, args: anytype) void {
+    if (build_options.rt == .vm) {
+        const vm: *cy.VM = @ptrCast(c);
+        const w = vm.clearTempString();
+        std.fmt.format(w, format, args);
+        vm.printFn.?(@ptrCast(vm), api.initStr(vm.getTempString()));
+    } else {
+        const w = std.io.getStdOut().writer();
+        std.fmt.format(w, format, args);
+        w.writeByte('\n') catch cy.fatal();
+    }
+}
+
+pub fn log(str: []const u8) void {
     if (build_options.rt == .vm) {
         cy.log.logFn.?(api.initStr(str));
     } else {
@@ -423,7 +486,7 @@ pub fn glog(str: []const u8) void {
     }
 }
 
-pub fn glogZFmt(comptime format: []const u8, args: anytype) void {
+pub fn logZFmt(comptime format: []const u8, args: anytype) void {
     if (build_options.rt == .vm) {
         cy.log.zfmt(format, args);
     } else {
@@ -433,39 +496,12 @@ pub fn glogZFmt(comptime format: []const u8, args: anytype) void {
     }
 }
 
-pub fn log(c: Context, str: []const u8) void {
+pub fn logFmt(format: []const u8, args: []const cy.fmt.FmtValue) void {
     if (build_options.rt == .vm) {
-        const vm: *cy.VM = @ptrCast(c);
-        vm.logFn.?(@ptrCast(vm), api.initStr(str));
-    } else {
-        const w = std.io.getStdErr().writer();
-        w.writeAll(str) catch cy.fatal();
-        w.writeByte('\n') catch cy.fatal();
-    }
-}
-
-pub fn logFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) void {
-    if (build_options.rt == .vm) {
-        const vm: *cy.VM = @ptrCast(c);
-        const w = vm.clearTempString();
-        cy.fmt.print(w, format, args);
-        vm.log(vm.getTempString());
+        cy.log.fmt(format, args);
     } else {
         const w = std.io.getStdErr().writer();
         cy.fmt.print(w, format, args);
-        w.writeByte('\n') catch cy.fatal();
-    }
-}
-
-pub fn logZFmt(c: Context, comptime format: []const u8, args: anytype) void {
-    if (build_options.rt == .vm) {
-        const vm: *cy.VM = @ptrCast(c);
-        const w = vm.clearTempString();
-        std.fmt.format(w, format, args) catch cy.fatal();
-        vm.log(vm.getTempString());
-    } else {
-        const w = std.io.getStdErr().writer();
-        w.print(format, args) catch cy.fatal();
         w.writeByte('\n') catch cy.fatal();
     }
 }
@@ -475,7 +511,7 @@ pub fn writeStderr(s: []const u8) void {
     const w = cy.fmt.lockStderrWriter();
     defer cy.fmt.unlockPrint();
     _ = w.writeAll(s) catch |err| {
-        logger.gtracev("{}", .{err});
+        logger.tracev("{}", .{err});
         cy.fatal();
     };
 }

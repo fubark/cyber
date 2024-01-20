@@ -137,7 +137,7 @@ pub const VM = struct {
 
     /// Host print callback.
     printFn: cc.PrintFn,
-    logFn: cc.LogFn,
+    errorFn: cc.ErrorFn,
 
     /// Object to pc of instruction that allocated it.
     objectTraceMap: if (cy.Trace) std.AutoHashMapUnmanaged(*HeapObject, debug.ObjectTrace) else void,
@@ -241,7 +241,7 @@ pub const VM = struct {
             .expGlobalRC = 0,
             .varSymExtras = .{},
             .printFn = defaultPrint,
-            .logFn = defaultLog,
+            .errorFn = defaultErrorFn,
             .countFrees = if (cy.Trace) false else {},
             .numFreed = if (cy.Trace) 0 else {},
             .tempBuf = undefined,
@@ -288,21 +288,21 @@ pub const VM = struct {
             return;
         }
 
-        logger.tracev(self, "release funcSyms", .{});
+        logger.tracev("release funcSyms", .{});
         for (self.funcSyms.items()) |sym| {
             if (sym.entryT == @intFromEnum(rt.FuncSymbolType.closure)) {
                 cy.arc.releaseObject(self, @ptrCast(sym.inner.closure));
             }
         }
 
-        logger.tracev(self, "release varSyms", .{});
+        logger.tracev("release varSyms", .{});
         for (self.varSyms.items()) |vsym| {
             release(self, vsym.value);
         }
         self.varSyms.clearRetainingCapacity();
 
         {
-            logger.tracev(self, "release funcSymDeps", .{});
+            logger.tracev("release funcSymDeps", .{});
             var iter = self.funcSymDeps.iterator();
             while (iter.next()) |e| {
                 release(self, e.value_ptr.*);
@@ -310,12 +310,12 @@ pub const VM = struct {
         }
 
         // Release static strings.
-        logger.tracev(self, "release static objects {}", .{self.staticObjects.len});
+        logger.tracev("release static objects {}", .{self.staticObjects.len});
         for (self.staticObjects.items()) |obj| {
-            logger.tracev(self, "release static object", .{});
+            logger.tracev("release static object", .{});
             cy.arc.releaseObject(self, obj);
         }
-        logger.tracev(self, "release static objects end", .{});
+        logger.tracev("release static objects end", .{});
 
         // No need to release `emptyString` since it is owned by `staticObjects`.
 
@@ -589,13 +589,13 @@ pub const VM = struct {
             defer std.os.mprotect(jitRes.buf.items.ptr[0..jitRes.buf.capacity], PROT_WRITE) catch cy.fatal();
 
             if (jitRes.buf.items.len > 500*4) {
-                logger.tracev(self, "jit code (size: {}) {}...", .{jitRes.buf.items.len, std.fmt.fmtSliceHexLower(jitRes.buf.items[0..100*4])});
+                logger.tracev("jit code (size: {}) {}...", .{jitRes.buf.items.len, std.fmt.fmtSliceHexLower(jitRes.buf.items[0..100*4])});
             } else {
-                logger.tracev(self, "jit code (size: {}) {}", .{jitRes.buf.items.len, std.fmt.fmtSliceHexLower(jitRes.buf.items)});
+                logger.tracev("jit code (size: {}) {}", .{jitRes.buf.items.len, std.fmt.fmtSliceHexLower(jitRes.buf.items)});
             }
 
             const bytes = jitRes.buf.items[jitRes.mainPc..jitRes.mainPc+12*4];
-            logger.tracev(self, "main start {}: {}", .{jitRes.mainPc, std.fmt.fmtSliceHexLower(bytes)});
+            logger.tracev("main start {}: {}", .{jitRes.mainPc, std.fmt.fmtSliceHexLower(bytes)});
 
             const main: *const fn(*VM, [*]Value) callconv(.C) void = @ptrCast(@alignCast(jitRes.buf.items.ptr + jitRes.mainPc));
             // @breakpoint();
@@ -781,7 +781,7 @@ pub const VM = struct {
             }
             return err;
         };
-        logger.tracev(self, "main stack size: {}", .{buf.mainStackSize});
+        logger.tracev("main stack size: {}", .{buf.mainStackSize});
 
         if (self.endLocal == 255) {
             return Value.None;
@@ -859,7 +859,7 @@ pub const VM = struct {
                     try fmt.format(w, "{}\n\n", &.{v(msg)});
                     try cy.debug.writeStackFrames(vm, w, frames);
                 }
-                logger.tracev(vm, "{}", .{err});
+                logger.tracev("{}", .{err});
                 return error.Panic;
                 // return builtins.prepThrowZError(@ptrCast(vm), err, @errorReturnTrace());
             };
@@ -1128,7 +1128,7 @@ pub const VM = struct {
         };
         self.curFiber.panicPayload = @as(u64, @intFromPtr(msg.ptr)) | (@as(u64, msg.len) << 48);
         self.curFiber.panicType = vmc.PANIC_MSG;
-        logger.tracev(self, "{s}", .{msg});
+        logger.tracev("{s}", .{msg});
         return error.Panic;
     }
 
@@ -1150,7 +1150,7 @@ pub const VM = struct {
         const dupe = try self.alloc.dupe(u8, msg);
         self.curFiber.panicPayload = @as(u64, @intFromPtr(dupe.ptr)) | (@as(u64, dupe.len) << 48);
         self.curFiber.panicType = vmc.PANIC_MSG;
-        logger.tracev(self, "{s}", .{dupe});
+        logger.tracev("{s}", .{dupe});
         return error.Panic;
     }
 
@@ -1264,7 +1264,7 @@ pub const VM = struct {
                 return val;
             } else return Value.None;
         } else {
-            logger.tracev(self, "Missing symbol for object: {}", .{obj.getTypeId()});
+            logger.tracev("Missing symbol for object: {}", .{obj.getTypeId()});
             return Value.None;
         }
     }
@@ -1579,21 +1579,6 @@ pub const VM = struct {
         return vm.u8Buf.items();
     }
 
-    // TODO: Remove.
-    pub fn log(vm: *VM, str: []const u8) void {
-        rt.log(vm, str);
-    }
-
-    // TODO: Remove.
-    pub fn logFmt(vm: *VM, format: []const u8, args: []const fmt.FmtValue) void {
-        rt.logFmt(vm, format, args);
-    }
-
-    // TODO: Remove.
-    pub fn logZFmt(vm: *VM, comptime format: []const u8, args: anytype) void {
-        rt.logZFmt(vm, format, args);
-    }
-
     pub usingnamespace cy.heap.VmExt;
     pub usingnamespace cy.arc.VmExt;
 };
@@ -1740,7 +1725,7 @@ test "vm internals." {
 
     // cy.verbose = true;
     // inline for (std.meta.fields(VM)) |field| {
-    //     logger.tracev(vm, "{s} {}", .{field.name, @offsetOf(VM, field.name)});
+    //     logger.tracev("{s} {}", .{field.name, @offsetOf(VM, field.name)});
     // }
 
     try t.eq(@offsetOf(VM, "alloc"), @offsetOf(vmc.VM, "alloc"));
@@ -1791,7 +1776,7 @@ test "vm internals." {
     try t.eq(@offsetOf(VM, "compiler"), @offsetOf(vmc.VM, "compiler"));
     try t.eq(@offsetOf(VM, "userData"), @offsetOf(vmc.VM, "userData"));
     try t.eq(@offsetOf(VM, "printFn"), @offsetOf(vmc.VM, "printFn"));
-    try t.eq(@offsetOf(VM, "logFn"), @offsetOf(vmc.VM, "logFn"));
+    try t.eq(@offsetOf(VM, "errorFn"), @offsetOf(vmc.VM, "errorFn"));
     try t.eq(@offsetOf(VM, "httpClient"), @offsetOf(vmc.VM, "httpClient"));
     try t.eq(@offsetOf(VM, "stdHttpClient"), @offsetOf(vmc.VM, "stdHttpClient"));
     try t.eq(@offsetOf(VM, "emptyString"), @offsetOf(vmc.VM, "emptyString"));
@@ -1834,7 +1819,7 @@ pub fn handleInterrupt(vm: *VM, rootFp: u32) !void {
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM, assuming pc, framePtr, and virtual registers are already set.
 pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, Unexpected, End}!void {
-    logger.tracev(vm, "begin eval loop", .{});
+    logger.tracev("begin eval loop", .{});
 
     // Record the start fp offset, so that stack unwinding knows when to stop.
     // This is useful for having nested eval stacks.
@@ -1873,10 +1858,10 @@ fn handleExecResult(vm: *VM, res: u32, fpStart: u32) linksection(cy.HotSection) 
     if (res == vmc.RES_CODE_PANIC) {
         try handleInterrupt(vm, fpStart);
     } else if (res == vmc.RES_CODE_STACK_OVERFLOW) {
-        logger.tracev(vm, "grow stack", .{});
+        logger.tracev("grow stack", .{});
         try @call(.never_inline, cy.fiber.growStackAuto, .{vm});
     } else if (res == vmc.RES_CODE_UNKNOWN) {
-        logger.tracev(vm, "Unknown error code.", .{});
+        logger.tracev("Unknown error code.", .{});
         const cont = try @call(.never_inline, panicCurFiber, .{ vm });
         vm.pc = vm.ops.ptr + cont.pc;
         vm.framePtr = vm.stack.ptr + cont.sp;
@@ -3504,7 +3489,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
         switch (obj.getTypeId()) {
             bt.Closure => {
                 if (numArgs != obj.closure.numParams) {
-                    logger.tracev(vm, "closure params/args mismatch {} {}", .{numArgs, obj.closure.numParams});
+                    logger.tracev("closure params/args mismatch {} {}", .{numArgs, obj.closure.numParams});
                     return vm.interruptThrowSymbol(.InvalidSignature);
                 }
 
@@ -3541,7 +3526,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
             },
             bt.Lambda => {
                 if (numArgs != obj.lambda.numParams) {
-                    logger.tracev(vm, "lambda params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
+                    logger.tracev("lambda params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
                     return vm.interruptThrowSymbol(.InvalidSignature);
                 }
 
@@ -3575,7 +3560,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
             },
             bt.HostFunc => {
                 if (numArgs != obj.hostFunc.numParams) {
-                    logger.tracev(vm, "hostfunc params/args mismatch {} {}", .{numArgs, obj.hostFunc.numParams});
+                    logger.tracev("hostfunc params/args mismatch {} {}", .{numArgs, obj.hostFunc.numParams});
                     return vm.interruptThrowSymbol(.InvalidSignature);
                 }
 
@@ -4668,10 +4653,10 @@ export fn zOpMatch(pc: [*]const cy.Inst, framePtr: [*]const Value) u16 {
     return opMatch(pc, framePtr);
 }
 
-export fn zLog(vm: *cy.VM, fmtz: [*:0]const u8, valsPtr: [*]const fmt.FmtValue, len: usize) void {
+export fn zLog(fmtz: [*:0]const u8, valsPtr: [*]const fmt.FmtValue, len: usize) void {
     const format = std.mem.sliceTo(fmtz, 0);
     const vals = valsPtr[0..len];
-    vm.logFmt(format, vals);
+    rt.logFmt(format, vals);
 }
 
 export fn zCheckDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) void {
@@ -4700,7 +4685,7 @@ export fn zPanicFmt(vm: *VM, formatz: [*:0]const u8, argsPtr: [*]const fmt.FmtVa
     };
     vm.curFiber.panicPayload = @as(u64, @intFromPtr(msg.ptr)) | (@as(u64, msg.len) << 48);
     vm.curFiber.panicType = vmc.PANIC_MSG;
-    logger.tracev(vm, "{s}", .{msg});
+    logger.tracev("{s}", .{msg});
 }
 
 export fn zMapSet(vm: *VM, map: *cy.heap.Map, key: Value, val: Value) vmc.ResultCode {
@@ -4753,8 +4738,8 @@ pub fn defaultPrint(_: ?*cc.VM, _: cc.Str) callconv(.C) void {
     // Default print is a nop.
 }
 
-pub fn defaultLog(_: ?*cc.VM, _: cc.Str) callconv(.C) void {
-    // Default log is a nop.
+pub fn defaultErrorFn(_: ?*cc.VM, _: cc.Str) callconv(.C) void {
+    // Default errorFn is a nop.
 }
 
 export fn zDeoptBinOp(vm: *VM, pc: [*]cy.Inst) [*]cy.Inst {

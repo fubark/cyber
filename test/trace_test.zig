@@ -361,7 +361,7 @@ const VMrunner = struct {
     fn eval(self: *VMrunner, src: []const u8) !cy.Value {
         const rc = self.vm.getGlobalRC();
         if (rc != 0) {
-            log.gtracev("{} unreleased objects from previous eval", .{rc});
+            log.tracev("{} unreleased objects from previous eval", .{rc});
             return error.UnreleasedObjects;
         }
         // Eval with new env.

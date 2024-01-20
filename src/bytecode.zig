@@ -719,14 +719,12 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
     if (opts.extra) |extra| {
         const ExtraStartCol = 60;
         if (len > ExtraStartCol) {
-            rt.print(vm, vm.getTempString());
-            rt.printFmt(vm, "{}| {}", &.{fmt.repeat(' ', ExtraStartCol), v(extra)});
+            fmt.print(w, "\n{}| {}", &.{fmt.repeat(' ', ExtraStartCol), v(extra)});
         } else {
-            rt.printFmt(vm, "{}| {}", &.{fmt.repeat(' ', @intCast(ExtraStartCol-len)), v(extra)});
+            fmt.print(w, "{}| {}", &.{fmt.repeat(' ', @intCast(ExtraStartCol-len)), v(extra)});
         }
-    } else {
-        rt.print(vm, vm.getTempString());
     }
+    rt.print(vm, vm.getTempString());
 }
 
 pub const StringIndexContext = struct {

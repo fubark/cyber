@@ -79,6 +79,15 @@ fn print(_: ?*c.VM, str: c.Str) callconv(.C) void {
         os_mod.hostFileWrite(1, str.buf, str.len);
         os_mod.hostFileWrite(1, "\n", 1);
     } else {
+        // Temporarily redirect to error for tests to avoid hanging the Zig runner.
+        if (builtin.is_test) {
+            const w = std.io.getStdErr().writer();
+            const slice = c.strSlice(str);
+            w.writeAll(slice) catch cy.fatal();
+            w.writeByte('\n') catch cy.fatal();
+            return;
+        }
+
         const w = std.io.getStdOut().writer();
         const slice = c.strSlice(str);
         w.writeAll(slice) catch cy.fatal();

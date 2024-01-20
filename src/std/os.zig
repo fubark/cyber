@@ -46,7 +46,7 @@ const funcs = [_]NameFunc{
     .{"cacheUrl",       zErrFunc2(cacheUrl)},
     .{"copyFile",       zErrFunc(copyFile)},
     .{"createDir",      zErrFunc(createDir)},
-    .{"createFile",     zErrFunc(createFile)},
+    .{"createFile",     zErrFunc2(createFile)},
     .{"cstr",           zErrFunc2(cstr)},
     .{"cwd",            zErrFunc2(cwd)},
     .{"dirName",        zErrFunc2(dirName)},
@@ -61,9 +61,9 @@ const funcs = [_]NameFunc{
     .{"milliTime",      milliTime},
     .{"newFFI",         newFFI},
     .{"now",            zErrFunc2(now)},
-    .{"openDir",        zErrFunc(openDir)},
-    .{"openDir",        zErrFunc(openDir2)},
-    .{"openFile",       zErrFunc(openFile)},
+    .{"openDir",        zErrFunc2(openDir)},
+    .{"openDir",        zErrFunc2(openDir2)},
+    .{"openFile",       zErrFunc2(openFile)},
     .{"parseArgs",      zErrFunc2(parseArgs)},
     .{"readAll",        zErrFunc2(readAll)},
     .{"readFile",       zErrFunc2(readFile)},
@@ -101,7 +101,7 @@ const funcs = [_]NameFunc{
     // FFI
     .{"bindCallback",   zErrFunc(ffi.ffiBindCallback)},
     .{"bindLib",        zErrFunc(bindLib)},
-    .{"bindLib",        zErrFunc(bindLibExt)},
+    .{"bindLib",        zErrFunc2(bindLibExt)},
     .{"bindObjPtr",     zErrFunc2(ffi.ffiBindObjPtr)},
     .{"cbind",          zErrFunc(ffi.ffiCbind)},
     .{"cfunc",          zErrFunc2(ffi.ffiCfunc)},
@@ -214,13 +214,13 @@ fn zPostLoad(self: *cy.VMcompiler, mod: cc.ApiModule) linksection(cy.InitSection
     }
 }
 
-fn openDir(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
+fn openDir(vm: *cy.VM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
     return openDir2(vm, &[_]Value{ args[0], Value.False }, nargs);
 }
 
-fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
+fn openDir2(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const path = args[0].asString();
     const iterable = args[1].asBool();
     var fd: std.os.fd_t = undefined;
@@ -231,7 +231,7 @@ fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
         const dir = try std.fs.cwd().openDir(path, .{});
         fd = dir.fd;
     }
-    return vm.allocDir(fd, iterable) catch fatal();
+    return fs.allocDir(vm, fd, iterable) catch fatal();
 }
 
 fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
@@ -266,12 +266,12 @@ fn createDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     return Value.None;
 }
 
-fn createFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
+fn createFile(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const path = args[0].asString();
     const truncate = args[1].asBool();
     const file = try std.fs.cwd().createFile(path, .{ .truncate = truncate });
-    return vm.allocFile(file.handle) catch fatal();
+    return fs.allocFile(vm, file.handle) catch fatal();
 }
 
 pub fn access(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
@@ -292,8 +292,8 @@ pub fn access(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return Value.None;
 }
 
-fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
+fn openFile(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const path = args[0].asString();
     const mode: Symbol = @enumFromInt(args[1].asSymbolId());
     const zmode: std.fs.File.OpenMode = switch (mode) {
@@ -305,7 +305,7 @@ fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
         }
     };
     const file = try std.fs.cwd().openFile(path, .{ .mode = zmode });
-    return vm.allocFile(file.handle);
+    return fs.allocFile(vm, file.handle);
 }
 
 fn parseArgs(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
@@ -485,8 +485,8 @@ pub fn getEnvAll(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
     return map;
 }
 
-pub fn free(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
+pub fn free(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const ptr = args[0].asHeapObject().pointer.ptr;
     std.c.free(ptr);
     return Value.None;
@@ -535,7 +535,7 @@ pub fn now(_: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
     return Value.initF64(@as(f64, @floatFromInt(ns)) / @as(f64, std.time.ns_per_s));
 }
 
-pub fn milliTime(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn milliTime(_: *cy.VM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     return Value.initF64(@floatFromInt(stdx.time.getMilliTimestamp()));
 }
 
@@ -572,7 +572,7 @@ pub fn setEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
 }
 pub extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 
-pub fn sleep(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn sleep(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (builtin.os.tag == .windows) {
         const ms: u32 = @intFromFloat(args[0].asF64());
         std.os.windows.kernel32.Sleep(ms);
@@ -591,20 +591,20 @@ pub fn sleep(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 
 extern fn hostSleep(secs: u64, nsecs: u64) void;
 
-pub fn unsetEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    if (cy.isWasm or builtin.os.tag == .windows) return vm.returnPanic("Unsupported.");
+pub fn unsetEnv(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+    if (cy.isWasm or builtin.os.tag == .windows) return vm.prepPanic("Unsupported.");
     const key = args[0].asString();
-    const keyz = vm.allocator().dupeZ(u8, key) catch cy.fatal();
-    defer vm.allocator().free(keyz);
+    const keyz = vm.alloc.dupeZ(u8, key) catch cy.fatal();
+    defer vm.alloc.free(keyz);
     _ = unsetenv(keyz);
     return Value.None;
 }
 pub extern "c" fn unsetenv(name: [*:0]const u8) c_int;
 
-fn newFFI(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn newFFI(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     _ = args;
-    if (!cy.hasFFI) return vm.returnPanic("Unsupported.");
-    return ffi.allocFFI(vm.internal()) catch fatal();
+    if (!cy.hasFFI) return vm.prepPanic("Unsupported.");
+    return ffi.allocFFI(vm) catch fatal();
 }
 
 pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
@@ -613,7 +613,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     return @call(.never_inline, ffi.ffiBindLib, .{vm, args, .{}});
 }
 
-pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn bindLibExt(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     if (!cy.hasFFI) return vm.returnPanic("Unsupported.");
 
     var configV = args[2];
@@ -624,7 +624,7 @@ pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.St
     if (val.isTrue()) {
         config.genMap = true;
     }
-    return @call(.never_inline, ffi.ffiBindLib, .{vm, args, config});
+    return @call(.never_inline, ffi.ffiBindLib, .{@as(*cy.UserVM, @ptrCast(vm)), args, config});
 }
 
 pub extern fn hostFileWrite(fid: u32, str: [*]const u8, strLen: usize) void;
@@ -709,7 +709,7 @@ pub fn execCmd(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
     return map;
 }
 
-pub fn exit(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn exit(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const status: u8 = @intCast(args[0].asInteger());
     std.os.exit(status);
 }

@@ -224,27 +224,27 @@ pub fn listSort(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.
     return Value.None;
 }
 
-pub fn listRemove(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listRemove(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const index: i64 = @intCast(args[1].asInteger());
     const list = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index >= inner.len) {
-        return prepareThrowSymbol(vm, .OutOfBounds);
+        return vm.prepThrowError(.OutOfBounds);
     } 
     vm.release(inner.buf[@intCast(index)]);
     inner.remove(@intCast(index));
     return Value.None;
 }
 
-pub fn listInsert(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listInsert(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const index: i64 = @intCast(args[1].asInteger());
     const value = args[2];
     const list = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index > inner.len) {
-        return prepareThrowSymbol(vm, .OutOfBounds);
+        return vm.prepThrowError(.OutOfBounds);
     } 
-    inner.growTotalCapacity(vm.allocator(), inner.len + 1) catch cy.fatal();
+    inner.growTotalCapacity(vm.alloc, inner.len + 1) catch cy.fatal();
     inner.insertAssumeCapacity(@intCast(index), value);
     return Value.None;
 }
@@ -317,7 +317,7 @@ pub fn listConcat(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return Value.None;
 }
 
-pub fn listIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = args[0].asHeapObject();
     const list = obj.listIter.list;
     if (obj.listIter.nextIdx < list.list.len) {
@@ -328,20 +328,20 @@ pub fn listIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection
     } else return Value.None;
 }
 
-pub fn listIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listIterator(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = args[0].asHeapObject();
     vm.retainObject(obj);
     return vm.allocListIterator(&obj.list) catch fatal();
 }
 
-pub fn listResize(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn listResize(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const recv = args[0];
     const list = recv.asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     const size: u32 = @intCast(args[1].asInteger());
     if (inner.len < size) {
         const oldLen = inner.len;
-        inner.resize(vm.allocator(), size) catch cy.fatal();
+        inner.resize(vm.alloc, size) catch cy.fatal();
         for (inner.items()[oldLen..size]) |*item| {
             item.* = Value.None;
         }
@@ -350,41 +350,41 @@ pub fn listResize(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.St
         for (inner.items()[size..inner.len]) |item| {
             vm.release(item);
         }
-        inner.resize(vm.allocator(), size) catch cy.fatal();
+        inner.resize(vm.alloc, size) catch cy.fatal();
     }
     return Value.None;
 }
 
-pub fn mapIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(Section) Value {
+pub fn mapIterator(vm: *cy.VM, args: [*]const Value, _: u8) linksection(Section) Value {
     const obj = args[0].asHeapObject();
     vm.retainObject(obj);
     return vm.allocMapIterator(&obj.map) catch fatal();
 }
 
-pub fn mapIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(Section) Value {
+pub fn mapIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) linksection(Section) Value {
     const obj = args[0].asHeapObject();
     const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.inner);
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
         vm.retain(entry.key);
         vm.retain(entry.value);
-        return cy.heap.allocTuple(vm.internal(), &.{entry.key, entry.value}) catch cy.fatal();
+        return cy.heap.allocTuple(vm, &.{entry.key, entry.value}) catch cy.fatal();
     } else return Value.None;
 }
 
-pub fn mapSize(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn mapSize(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     return Value.initInt(@intCast(inner.size));
 }
 
-pub fn mapRemove(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn mapRemove(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-    _ = inner.remove(@ptrCast(vm), args[1]);
+    _ = inner.remove(vm, args[1]);
     return Value.None;
 }
 
-pub fn listLen(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listLen(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const list = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     return Value.initInt(@intCast(inner.len));
@@ -427,25 +427,25 @@ inline fn inlineUnaryOp(pc: [*]cy.Inst, code: cy.OpCode) void {
     pc[2].val = ret;
 }
 
-pub fn intBitwiseNot(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
-    inlineUnaryOp(vm.internal().pc, .bitwiseNot);
+pub fn intBitwiseNot(vm: *cy.VM, _: [*]const Value, _: u8) Value {
+    inlineUnaryOp(vm.pc, .bitwiseNot);
     return Value.None;
 }
 
-pub fn intNeg(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
-    inlineUnaryOp(vm.internal().pc, .negInt);
+pub fn intNeg(vm: *cy.VM, _: [*]const Value, _: u8) Value {
+    inlineUnaryOp(vm.pc, .negInt);
     return Value.None;
 }
 
-pub fn floatNeg(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
-    inlineUnaryOp(vm.internal().pc, .negFloat);
+pub fn floatNeg(vm: *cy.VM, _: [*]const Value, _: u8) Value {
+    inlineUnaryOp(vm.pc, .negFloat);
     return Value.None;
 }
 
 pub fn inlineTernOp(comptime code: cy.OpCode) cy.ZHostFuncFn {
     const S = struct {
-        pub fn method(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
-            const pc = vm.internal().pc;
+        pub fn method(vm: *cy.VM, _: [*]const Value, _: u8) Value {
+            const pc = vm.pc;
             const ret = pc[1].val;
             // Save callObjSym data.
             pc[8].val = ret;

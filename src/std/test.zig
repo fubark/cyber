@@ -44,12 +44,12 @@ pub fn onLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
     }
 }
 
-fn fail(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
-    return prepareThrowSymbol(vm, .AssertError);
+fn fail(vm: *cy.VM, _: [*]const Value, _: u8) Value {
+    return vm.prepThrowError(.AssertError);
 }
 
 /// Simply returns the value so the caller get's an erased `any` type.
-fn erase(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+fn erase(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     vm.retain(args[0]);
     return args[0];
 }

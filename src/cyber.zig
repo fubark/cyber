@@ -182,8 +182,8 @@ pub fn Nullable(comptime T: type) type {
     return T;
 }
 
-pub const ZHostFuncFn = *const fn (*UserVM, [*]const Value, u8) Value;
-pub const ZHostFuncCFn = *const fn (*UserVM, [*]const Value, u8) callconv(.C) Value;
+pub const ZHostFuncFn = *const fn (*VM, [*]const Value, u8) Value;
+pub const ZHostFuncCFn = *const fn (*VM, [*]const Value, u8) callconv(.C) Value;
 
 pub const cli = @import("cli.zig");
 pub const log = @import("log.zig");

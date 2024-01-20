@@ -1424,9 +1424,16 @@ pub const VmExt = struct {
     pub const allocStringInternOrArray = Root.allocStringInternOrArray;
     pub const retainOrAllocAstring = Root.retainOrAllocAstring;
     pub const retainOrAllocUstring = Root.retainOrAllocUstring;
+    pub const allocAstringConcat = Root.getOrAllocAstringConcat;
+    pub const allocUstringConcat = Root.getOrAllocUstringConcat;
+    pub const allocAstringConcat3 = Root.getOrAllocAstringConcat3;
+    pub const allocUstringConcat3 = Root.getOrAllocUstringConcat3;
+    pub const allocOwnedAstring = Root.getOrAllocOwnedAstring;
+    pub const allocOwnedUstring = Root.getOrAllocOwnedUstring;
     pub const allocAstringSlice = Root.allocAstringSlice;
     pub const allocUstringSlice = Root.allocUstringSlice;
     pub const allocArraySlice = Root.allocArraySlice;
+    pub const allocArrayConcat = Root.allocArrayConcat;
     pub const allocHostFunc = Root.allocHostFunc;
     pub const allocEmptyMap = Root.allocEmptyMap;
     pub const allocEmptyList = Root.allocEmptyList;
@@ -1436,6 +1443,9 @@ pub const VmExt = struct {
     pub const allocUnsetAstringObject = Root.allocUnsetAstringObject;
     pub const allocUnsetUstringObject = Root.allocUnsetUstringObject;
     pub const allocStringOrFail = Root.allocStringOrFail;
+    pub const allocListFill = Root.allocListFill;
+    pub const allocListIterator = Root.allocListIterator;
+    pub const allocMapIterator = Root.allocMapIterator;
 
     pub fn mapSet(vm: *cy.VM, map: *Map, key: Value, val: Value) !void {
         try map.map().put(vm.alloc, key, val);

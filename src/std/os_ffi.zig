@@ -883,7 +883,7 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
 
     const state = tcc.tcc_new();
     // Don't include libtcc1.a.
-    tcc.tcc_set_options(state, "-nostdlib");
+    _ = tcc.tcc_set_options(state, "-nostdlib");
     _ = tcc.tcc_set_output_type(state, tcc.TCC_OUTPUT_MEMORY);
 
     if (tcc.tcc_compile_string(state, csrc.items.ptr) == -1) {
@@ -922,7 +922,7 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
 
     if (config.genMap) {
         // Create map with binded C-functions as functions.
-        const map = try vm.allocEmptyMap();
+        const map = try ivm.allocEmptyMap();
 
         const cyState = try cy.heap.allocTccState(ivm, state.?, lib);
 
@@ -935,8 +935,8 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
                 cy.panic("Failed to get symbol.");
             };
 
-            const symKey = try vm.retainOrAllocAstring(cfunc.namez);
-            const func = cy.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
+            const symKey = try ivm.retainOrAllocAstring(cfunc.namez);
+            const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
             const funcSig = ivm.compiler.sema.getFuncSig(cfunc.funcSigId);
             const funcVal = try cy.heap.allocHostFunc(ivm, func, @intCast(cfunc.params.len),
                 cfunc.funcSigId, cyState, funcSig.reqCallTypeCheck);
@@ -954,8 +954,8 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
                 cy.panic("Failed to get symbol.");
             };
 
-            const symKey = try vm.allocAstringConcat("ptrTo", typeName);
-            const func = cy.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
+            const symKey = try ivm.allocAstringConcat("ptrTo", typeName);
+            const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
 
             const funcSigId = try ivm.sema.ensureFuncSig(&.{bt.Dynamic}, bt.Dynamic);
             const funcVal = try cy.heap.allocHostFunc(ivm, func, 1, funcSigId, cyState, false);
@@ -1175,7 +1175,7 @@ pub fn ffiBindCallback(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Val
 
     const state = tcc.tcc_new();
     // Don't include libtcc1.a.
-    tcc.tcc_set_options(state, "-nostdlib");
+    _ = tcc.tcc_set_options(state, "-nostdlib");
     _ = tcc.tcc_set_output_type(state, tcc.TCC_OUTPUT_MEMORY);
 
     if (tcc.tcc_compile_string(state, csrc.items.ptr) == -1) {

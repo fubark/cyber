@@ -107,40 +107,8 @@ pub const UserVM = struct {
         return @as(*const VM, @ptrCast(self)).alloc;
     }
 
-    pub inline fn allocEmptyList(self: *UserVM) !Value {
-        return cy.heap.allocEmptyList(self.internal());
-    }
-
-    pub inline fn allocEmptyMap(self: *UserVM) !Value {
-        return cy.heap.allocEmptyMap(self.internal());
-    }
-
     pub inline fn allocList(self: *UserVM, elems: []const Value) !Value {
         return cy.heap.allocList(self.internal(), elems);
-    }
-
-    pub inline fn allocListFill(self: *UserVM, val: Value, n: u32) !Value {
-        return cy.heap.allocListFill(self.internal(), val, n);
-    }
-
-    pub inline fn allocUnsetUstringObject(self: *UserVM, len: usize, charLen: u32) !*cy.HeapObject {
-        return cy.heap.allocUnsetUstringObject(self.internal(), len, charLen);
-    }
-
-    pub inline fn allocUnsetAstringObject(self: *UserVM, len: usize) !*cy.HeapObject {
-        return cy.heap.allocUnsetAstringObject(self.internal(), len);
-    }
-
-    pub inline fn allocUnsetArrayObject(self: *UserVM, len: usize) !*cy.HeapObject {
-        return cy.heap.allocUnsetArrayObject(self.internal(), len);
-    }
-
-    pub inline fn retainOrAllocAstring(self: *UserVM, str: []const u8) !Value {
-        return cy.heap.retainOrAllocAstring(self.internal(), str);
-    }
-
-    pub inline fn retainOrAllocUstring(self: *UserVM, str: []const u8, charLen: u32) !Value {
-        return cy.heap.retainOrAllocUstring(self.internal(), str, charLen);
     }
 
     pub inline fn allocStringNoIntern(self: *UserVM, str: []const u8, utf8: bool) !Value {
@@ -151,40 +119,8 @@ pub const UserVM = struct {
         return cy.heap.allocArraySlice(self.internal(), slice, parent);
     }
 
-    pub inline fn allocAstringSlice(self: *UserVM, slice: []const u8, parent: *cy.HeapObject) !Value {
-        return cy.heap.allocAstringSlice(self.internal(), slice, parent);
-    }
-
-    pub inline fn allocUstringSlice(self: *UserVM, slice: []const u8, charLen: u32, parent: ?*cy.HeapObject) !Value {
-        return cy.heap.allocUstringSlice(self.internal(), slice, charLen, parent);
-    }
-
-    pub inline fn allocOwnedAstring(self: *UserVM, str: *cy.HeapObject) !Value {
-        return cy.heap.getOrAllocOwnedAstring(self.internal(), str);
-    }
-
-    pub inline fn allocOwnedUstring(self: *UserVM, str: *cy.HeapObject) !Value {
-        return cy.heap.getOrAllocOwnedUstring(self.internal(), str);
-    }
-
     pub inline fn allocArrayConcat(self: *UserVM, left: []const u8, right: []const u8) !Value {
         return cy.heap.allocArrayConcat(self.internal(), left, right);
-    }
-
-    pub inline fn allocAstringConcat3(self: *UserVM, str1: []const u8, str2: []const u8, str3: []const u8) !Value {
-        return cy.heap.getOrAllocAstringConcat3(self.internal(), str1, str2, str3);
-    }
-
-    pub inline fn allocUstringConcat3(self: *UserVM, str1: []const u8, str2: []const u8, str3: []const u8, charLen: u32) !Value {
-        return cy.heap.getOrAllocUstringConcat3(self.internal(), str1, str2, str3, charLen);
-    }
-
-    pub inline fn allocAstringConcat(self: *UserVM, left: []const u8, right: []const u8) !Value {
-        return cy.heap.getOrAllocAstringConcat(self.internal(), left, right);
-    }
-
-    pub inline fn allocUstringConcat(self: *UserVM, left: []const u8, right: []const u8, charLen: u32) !Value {
-        return cy.heap.getOrAllocUstringConcat(self.internal(), left, right, charLen);
     }
 
     pub inline fn allocObjectSmall(self: *UserVM, sid: cy.TypeId, fields: []const Value) !Value {
@@ -193,26 +129,6 @@ pub const UserVM = struct {
 
     pub inline fn allocObject(self: *UserVM, sid: cy.TypeId, fields: []const Value) !Value {
         return self.internal().allocObject(sid, fields);
-    }
-
-    pub inline fn allocListIterator(self: *UserVM, list: *cy.CyList) !Value {
-        return cy.heap.allocListIterator(self.internal(), list);
-    }
-
-    pub inline fn allocMapIterator(self: *UserVM, map: *cy.Map) !Value {
-        return cy.heap.allocMapIterator(self.internal(), map);
-    }
-
-    pub inline fn allocDir(self: *UserVM, fd: std.os.fd_t, iterable: bool) !Value {
-        return fs.allocDir(self.internal(), fd, iterable);
-    }
-
-    pub inline fn allocDirIterator(self: *UserVM, dir: Value, recursive: bool) !Value {
-        return fs.allocDirIterator(self.internal(), dir, recursive);
-    }
-
-    pub inline fn allocFile(self: *UserVM, fd: std.os.fd_t) !Value {
-        return fs.allocFile(self.internal(), fd);
     }
 
     pub inline fn mapRawSet(self: *UserVM, map: cy.Value, key: cy.Value, value: cy.Value) !void {
@@ -227,10 +143,7 @@ pub const UserVM = struct {
     pub fn returnPanic(self: *UserVM, msg: []const u8) Value {
         @setCold(true);
         const vm = self.internal();
-        const dupe = vm.alloc.dupe(u8, msg) catch cy.fatal();
-        vm.curFiber.panicPayload = @as(u64, @intCast(@intFromPtr(dupe.ptr))) | (@as(u64, dupe.len) << 48);
-        vm.curFiber.panicType = vmc.PANIC_MSG;
-        return Value.Interrupt;
+        return vm.prepPanic(msg);
     }
 
     pub fn prepareThrowSymbol(self: *UserVM, id: u8) Value {

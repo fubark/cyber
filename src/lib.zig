@@ -264,7 +264,7 @@ export fn csNewAstring(vm: *cy.VM, cstr: c.Str) Value {
     return vm.retainOrAllocAstring(c.strSlice(cstr)) catch fatal();
 }
 
-export fn csNewUstring(vm: *cy.UserVM, cstr: c.Str, charLen: u32) Value {
+export fn csNewUstring(vm: *cy.VM, cstr: c.Str, charLen: u32) Value {
     return vm.retainOrAllocUstring(c.strSlice(cstr), charLen) catch fatal();
 }
 
@@ -276,7 +276,7 @@ export fn csNewTuple(vm: *cy.UserVM, ptr: [*]const Value, len: usize) Value {
     return cy.heap.allocTuple(vm.internal(), elems) catch fatal();
 }
 
-export fn csNewEmptyList(vm: *cy.UserVM) Value {
+export fn csNewEmptyList(vm: *cy.VM) Value {
     return vm.allocEmptyList() catch fatal();
 }
 
@@ -288,7 +288,7 @@ export fn csNewList(vm: *cy.UserVM, ptr: [*]const Value, len: usize) Value {
     return vm.allocList(elems) catch fatal();
 }
 
-export fn csNewEmptyMap(vm: *cy.UserVM) Value {
+export fn csNewEmptyMap(vm: *cy.VM) Value {
     return vm.allocEmptyMap() catch fatal();
 }
 

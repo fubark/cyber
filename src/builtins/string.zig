@@ -5,7 +5,7 @@ const fatal = cy.fatal;
 const bindings = @import("bindings.zig");
 const prepareThrowSymbol = bindings.prepareThrowSymbol;
 
-pub fn concat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn concat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const stype = obj.string.getType();
     const str = obj.string.getSlice();
@@ -25,7 +25,7 @@ pub fn concat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     }
 }
 
-pub fn sliceFn(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn sliceFn(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const stype = obj.string.getType();
     const str = obj.string.getSlice();
@@ -37,10 +37,10 @@ pub fn sliceFn(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     } else if (args[1].isInteger()) {
         start = args[1].asInteger();
     } else {
-        return prepareThrowSymbol(vm, .InvalidArgument);
+        return vm.prepThrowError(.InvalidArgument);
     }
     if (start < 0) {
-        return prepareThrowSymbol(vm, .OutOfBounds);
+        return vm.prepThrowError(.OutOfBounds);
     }
 
     if (stype.isAstring()) {
@@ -50,13 +50,13 @@ pub fn sliceFn(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
         } else if (args[2].isInteger()) {
             end = args[2].asInteger();
         } else {
-            return prepareThrowSymbol(vm, .InvalidArgument);
+            return vm.prepThrowError(.InvalidArgument);
         }
         if (end > str.len) {
-            return prepareThrowSymbol(vm, .OutOfBounds);
+            return vm.prepThrowError(.OutOfBounds);
         }
         if (end < start) {
-            return prepareThrowSymbol(vm, .OutOfBounds);
+            return vm.prepThrowError(.OutOfBounds);
         }
         const ustart: u32 = @intCast(start);
         const uend: u32 = @intCast(end);
@@ -71,13 +71,13 @@ pub fn sliceFn(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
         } else if (args[2].isInteger()) {
             end = args[2].asInteger();
         } else {
-            return prepareThrowSymbol(vm, .InvalidArgument);
+            return vm.prepThrowError(.InvalidArgument);
         }
         if (end > charLen) {
-            return prepareThrowSymbol(vm, .OutOfBounds);
+            return vm.prepThrowError(.OutOfBounds);
         }
         if (end < start) {
-            return prepareThrowSymbol(vm, .OutOfBounds);
+            return vm.prepThrowError(.OutOfBounds);
         }
         const ustart: u32 = @intCast(start);
         const uend: u32 = @intCast(end);
@@ -92,14 +92,14 @@ pub fn sliceFn(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     }
 }
 
-pub fn insertFn(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn insertFn(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const idx = args[1].asInteger();
     const stype = obj.string.getType();
     if (stype.isAstring()) {
         if (idx < 0 or idx > str.len) {
-            return prepareThrowSymbol(vm, .OutOfBounds);
+            return vm.prepThrowError(.OutOfBounds);
         }
         var insertCharLen: u32 = undefined;
         const insert = args[2].asString2(&insertCharLen);
@@ -112,7 +112,7 @@ pub fn insertFn(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
     } else {
         const charLen = obj.string.getCharLen();
         if (idx < 0 or idx > charLen) {
-            return prepareThrowSymbol(vm, .OutOfBounds);
+            return vm.prepThrowError(.OutOfBounds);
         }
         var insertCharLen: u32 = undefined;
         const insert = args[2].asString2(&insertCharLen);
@@ -125,7 +125,7 @@ pub fn insertFn(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
     }
 }
 
-pub fn find(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn find(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const needle = args[1].asString();
@@ -155,7 +155,7 @@ pub fn find(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSectio
     return Value.None;
 }
 
-pub fn startsWith(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn startsWith(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const needle = args[1].asString();
@@ -163,20 +163,20 @@ pub fn startsWith(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
 }
 
 
-pub fn endsWith(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn endsWith(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const str = args[0].asHeapObject().string.getSlice();
     const needle = args[1].asString();
     return Value.initBool(std.mem.endsWith(u8, str, needle));
 }
 
 
-pub fn isAscii(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn isAscii(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const stype = obj.string.getType();
     return Value.initBool(stype.isAstring());
 }
 
-pub fn findAnyRune(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn findAnyRune(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     var setCharLen: u32 = undefined;
@@ -192,8 +192,8 @@ pub fn findAnyRune(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.S
                 }
             } else {
                 // Reduce search set to just ASCII codepoints.
-                const alloc = vm.allocator();
-                const tempBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
+                const alloc = vm.alloc;
+                const tempBuf = &vm.u8Buf;
                 tempBuf.clearRetainingCapacity();
                 defer tempBuf.ensureMaxCapOrClear(alloc, 4096) catch fatal();
                 var iter = std.unicode.Utf8Iterator{
@@ -240,7 +240,7 @@ pub fn findAnyRune(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.S
     return Value.None;
 }
 
-pub fn findRune(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn findRune(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const needle = args[1].asInteger();
@@ -274,7 +274,7 @@ pub fn findRune(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     return Value.None;
 }
 
-pub fn upper(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn upper(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const stype = obj.string.getType();
@@ -291,7 +291,7 @@ pub fn upper(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     }
 }
 
-pub fn lower(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn lower(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const stype = obj.string.getType();
@@ -308,19 +308,19 @@ pub fn lower(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     }
 }
 
-pub fn less(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn less(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const right = args[1].asString();
     return Value.initBool(std.mem.lessThan(u8, str, right));
 }
 
-pub fn lenFn(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn lenFn(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = args[0].asHeapObject();
     return Value.initInt(obj.string.getCharLen());
 }
 
-pub fn sliceAt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn sliceAt(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const stype = obj.string.getType();
@@ -328,7 +328,7 @@ pub fn sliceAt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
 
     if (stype.isAstring()) {
         if (idx < 0 or idx >= str.len) {
-            return prepareThrowSymbol(vm, .OutOfBounds);
+            return vm.prepThrowError(.OutOfBounds);
         }
         const uidx: u32 = @intCast(idx);
         // TODO: return slice.
@@ -336,7 +336,7 @@ pub fn sliceAt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     } else {
         const charLen = obj.string.getUstringCharLen();
         if (idx < 0 or idx >= charLen) {
-            return prepareThrowSymbol(vm, .OutOfBounds);
+            return vm.prepThrowError(.OutOfBounds);
         }
         const uidx: u32 = @intCast(idx);
         const mru = obj.string.getUstringMruChar();
@@ -352,19 +352,19 @@ pub fn sliceAt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     }
 }
 
-pub fn runeAt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn runeAt(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const idx = args[1].asInteger();
     const stype = obj.string.getType();
     if (stype.isAstring()) {
         if (idx < 0 or idx >= str.len) {
-            return prepareThrowSymbol(vm, .OutOfBounds);
+            return vm.prepThrowError(.OutOfBounds);
         }
         return Value.initInt(@intCast(str[@intCast(idx)]));
     } else {
         if (idx < 0 or idx >= obj.string.getUstringCharLen()) {
-            return prepareThrowSymbol(vm, .OutOfBounds);
+            return vm.prepThrowError(.OutOfBounds);
         }
         const uidx: u32 = @intCast(idx);
         const mru = obj.string.getUstringMruChar();
@@ -377,7 +377,7 @@ pub fn runeAt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     }
 }
 
-pub fn trim(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn trim(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const stype = obj.string.getType();
@@ -386,14 +386,14 @@ pub fn trim(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 
     var res: []const u8 = undefined;
     const mode = bindings.getBuiltinSymbol(args[1].asSymbolId()) orelse {
-        return prepareThrowSymbol(vm, .InvalidArgument);
+        return vm.prepThrowError(.InvalidArgument);
     };
     switch (mode) {
         .left => res = std.mem.trimLeft(u8, str, trimRunes),
         .right => res = std.mem.trimRight(u8, str, trimRunes),
         .ends => res = std.mem.trim(u8, str, trimRunes),
         else => {
-            return prepareThrowSymbol(vm, .InvalidArgument);
+            return vm.prepThrowError(.InvalidArgument);
         }
     }
 
@@ -405,7 +405,7 @@ pub fn trim(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     }
 }
 
-pub fn stringReplace(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn stringReplace(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const stype = obj.string.getType();
@@ -430,15 +430,15 @@ pub fn stringReplace(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy
     }
 }
 
-fn astringReplace(vm: *cy.UserVM, str: []const u8, needlev: *cy.heap.String, replacev: *cy.heap.String) linksection(cy.StdSection) ?Value {
+fn astringReplace(vm: *cy.VM, str: []const u8, needlev: *cy.heap.String, replacev: *cy.heap.String) linksection(cy.StdSection) ?Value {
     const needle = needlev.getSlice();
     const replacement = replacev.getSlice();
     const rcharLen = replacev.getCharLen();
 
     const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
     idxBuf.clearRetainingCapacity();
-    defer idxBuf.ensureMaxCapOrClear(vm.allocator(), 4096) catch fatal();
-    const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.allocator())) catch fatal();
+    defer idxBuf.ensureMaxCapOrClear(vm.alloc, 4096) catch fatal();
+    const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.alloc)) catch fatal();
     const numIdxes = @divExact(idxBuf.len, 4);
     if (numIdxes > 0) {
         if (rcharLen == replacement.len) {
@@ -459,7 +459,7 @@ fn astringReplace(vm: *cy.UserVM, str: []const u8, needlev: *cy.heap.String, rep
     }
 }
 
-fn ustringReplace(vm: *cy.UserVM, str: []const u8, needlev: *cy.heap.String, replacev: *cy.heap.String) linksection(cy.StdSection) ?Value {
+fn ustringReplace(vm: *cy.VM, str: []const u8, needlev: *cy.heap.String, replacev: *cy.heap.String) linksection(cy.StdSection) ?Value {
     var ncharLen: u32 = undefined;
     const needle = needlev.getSlice2(&ncharLen);
     var rcharLen: u32 = undefined;
@@ -467,8 +467,8 @@ fn ustringReplace(vm: *cy.UserVM, str: []const u8, needlev: *cy.heap.String, rep
 
     const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
     idxBuf.clearRetainingCapacity();
-    defer idxBuf.ensureMaxCapOrClear(vm.allocator(), 4096) catch fatal();
-    const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.allocator())) catch fatal();
+    defer idxBuf.ensureMaxCapOrClear(vm.alloc, 4096) catch fatal();
+    const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.alloc)) catch fatal();
     const numIdxes = @divExact(idxBuf.len, 4);
     if (numIdxes > 0) {
         const new = vm.allocUnsetUstringObject(newLen, @intCast(str.len + idxBuf.len * rcharLen - idxBuf.len * ncharLen)) catch fatal();
@@ -481,13 +481,13 @@ fn ustringReplace(vm: *cy.UserVM, str: []const u8, needlev: *cy.heap.String, rep
     }
 }
 
-pub fn repeat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn repeat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
 
     const n = args[1].asInteger();
     if (n < 0) {
-        return prepareThrowSymbol(vm, .InvalidArgument);
+        return vm.prepThrowError(.InvalidArgument);
     }
 
     var un: u32 = @intCast(n);
@@ -516,7 +516,7 @@ pub fn repeat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
         return Value.initNoCycPtr(new);
     } else {
         if (un == 0) {
-            const empty = vm.internal().emptyString;
+            const empty = vm.emptyString;
             vm.retain(empty);
             return empty;
         } else {

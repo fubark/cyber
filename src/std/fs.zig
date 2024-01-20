@@ -213,25 +213,25 @@ pub fn fileStreamLines1(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value 
     return args[0];
 }
 
-pub fn dirWalk(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+pub fn dirWalk(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
     const dir = args[0].castHostObject(*Dir);
     if (dir.iterable) {
         vm.retain(args[0]);
-        return vm.allocDirIterator(args[0], true) catch cy.fatal();
+        return allocDirIterator(vm, args[0], true) catch cy.fatal();
     } else {
-        return prepareThrowSymbol(vm, .NotAllowed);
+        return vm.prepThrowError(.NotAllowed);
     }
 }
 
-pub fn dirIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+pub fn dirIterator(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
     const dir = args[0].castHostObject(*Dir);
     if (dir.iterable) {
         vm.retain(args[0]);
-        return vm.allocDirIterator(args[0], false) catch cy.fatal();
+        return allocDirIterator(vm, args[0], false) catch cy.fatal();
     } else {
-        return prepareThrowSymbol(vm, .NotAllowed);
+        return vm.prepThrowError(.NotAllowed);
     }
 }
 
@@ -312,8 +312,8 @@ pub fn fileWrite(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return Value.initInt(@intCast(numWritten));
 }
 
-pub fn fileClose(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    if (!cy.hasStdFiles) return vm.returnPanic("Unsupported.");
+pub fn fileClose(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const file = args[0].castHostObject(*File);
     file.close();

@@ -264,7 +264,7 @@ pub const EncodeMapContext = struct {
                 _ = try self.writer.print("{}: ", .{key});
             },
             else => {
-                log.debug("unsupported: {s}", .{@typeName(T)});
+                log.gtracev("unsupported: {s}", .{@typeName(T)});
                 return error.Unsupported;
             },
         }
@@ -512,7 +512,7 @@ const NullId = std.math.maxInt(u32);
 pub fn decodeMap(alloc: std.mem.Allocator, parser: *Parser, ctx: anytype, out: anytype, decode_map: fn (DecodeMapIR, @TypeOf(ctx), @TypeOf(out)) anyerror!void, cdata: []const u8) !void {
     const res = try parser.parse(cdata);
     if (res.has_error) {
-        log.debug("Parse Error: {s}", .{res.err_msg});
+        log.gtracev("Parse Error: {s}", .{res.err_msg});
         return error.ParseError;
     }
 
@@ -533,7 +533,7 @@ pub fn decodeMap(alloc: std.mem.Allocator, parser: *Parser, ctx: anytype, out: a
 pub fn decode(alloc: std.mem.Allocator, parser: *Parser, cyon: []const u8) !DecodeValueIR {
     const res = try parser.parse(cyon);
     if (res.has_error) {
-        log.debug("Parse Error: {s}", .{res.err_msg});
+        log.gtracev("Parse Error: {s}", .{res.err_msg});
         return error.ParseError;
     }
 

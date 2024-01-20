@@ -88,7 +88,7 @@ pub fn indexOfDebugSymFromTable(table: []const cy.DebugSym, pc: usize) ?usize {
     return null;
 }
 
-pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) !void {
+pub fn dumpObjectTrace(vm: *cy.VM, obj: *cy.HeapObject) !void {
     if (vm.objectTraceMap.get(obj)) |trace| {
         if (trace.allocPc != cy.NullId) {
             const msg = try std.fmt.allocPrint(vm.alloc, "{*} at pc: {}({s})", .{
@@ -111,7 +111,7 @@ pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) !void {
             try printTraceAtPc(vm, trace.freePc, "freed", "");
         }
     } else {
-        log.debug("No trace for {*}.", .{obj});
+        log.gtracev("No trace for {*}.", .{obj});
     }
 }
 
@@ -123,9 +123,9 @@ pub fn printTraceAtNode(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     try writeUserError(c.compiler.vm, w, "Trace", "", c.id, pos);
 }
 
-pub fn printTraceAtPc(vm: *const cy.VM, pc: u32, title: []const u8, msg: []const u8) !void {
+pub fn printTraceAtPc(vm: *cy.VM, pc: u32, title: []const u8, msg: []const u8) !void {
     if (pc == cy.NullId) {
-        fmt.printStderr("{}: {} (external)\n", &.{v(title), v(msg)});
+        vm.logFmt("{}: {} (external)", &.{v(title), v(msg)});
         return;
     }
     if (indexOfDebugSym(vm, pc)) |idx| {
@@ -135,7 +135,7 @@ pub fn printTraceAtPc(vm: *const cy.VM, pc: u32, title: []const u8, msg: []const
         const token = chunk.tokens[node.start_token];
         try printUserError(vm, title, msg, sym.file, token.pos());
     } else {
-        fmt.printStderr("{}: {}\nMissing debug sym for {}, pc: {}.\n", &.{
+        vm.logFmt("{}: {}\nMissing debug sym for {}, pc: {}.", &.{
             v(title), v(msg), v(vm.ops[pc].opcode()), v(pc)});
     }
 }
@@ -147,13 +147,13 @@ pub fn allocLastUserPanicError(vm: *const cy.VM) ![:0]const u8 {
     return buf.toOwnedSliceSentinel(vm.alloc, 0);
 }
 
-pub fn printLastUserPanicError(vm: *const cy.VM) !void {
+pub fn printLastUserPanicError(vm: *cy.VM) !void {
     if (cy.silentError) {
         return;
     }
-    const w = fmt.lockStderrWriter();
-    defer fmt.unlockPrint();
+    const w = vm.clearTempString();
     try writeLastUserPanicError(vm, w);
+    vm.log(vm.getTempString());
 }
 
 fn writeLastUserPanicError(vm: *const cy.VM, w: anytype) !void {
@@ -238,13 +238,13 @@ pub fn printLastUserParseError(vm: *const cy.VM) !void {
     try writeLastUserParseError(vm, w);
 }
 
-pub fn printUserError(vm: *const cy.VM, title: []const u8, msg: []const u8, chunkId: u32, pos: u32) linksection(cy.Section) !void {
+pub fn printUserError(vm: *cy.VM, title: []const u8, msg: []const u8, chunkId: u32, pos: u32) linksection(cy.Section) !void {
     if (cy.silentError) {
         return;
     }
-    const w = fmt.lockStderrWriter();
-    defer fmt.unlockPrint();
+    const w = vm.clearTempString();
     try writeUserError(vm, w, title, msg, chunkId, pos);
+    vm.log(vm.getTempString());
 }
 
 /// Reduced to using writer so printed errors can be tested.
@@ -262,7 +262,6 @@ pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []co
                 \\
                 \\{}:{}:{}:
                 \\{}
-                \\
             , &.{
                 v(title), v(msg), v(chunk.srcUri),
                 v(line+1), v(col+1),
@@ -275,7 +274,6 @@ pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []co
                 \\{}: {}
                 \\
                 \\in {}
-                \\
             , &.{
                 v(title), v(msg), v(chunk.srcUri),
             });
@@ -283,7 +281,6 @@ pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []co
     } else {
         try fmt.format(w,
             \\{}: {}
-            \\
         , &.{
             v(title), v(msg),
         });
@@ -486,7 +483,7 @@ fn getStackFrame(vm: *cy.VM, sym: cy.DebugSym) StackFrame {
 
 pub fn allocStackTrace(vm: *cy.VM, stack: []const cy.Value, cframes: []const vmc.CompactFrame) ![]const cy.StackFrame {
     @setCold(true);
-    log.tracev("build stacktrace {}", .{cframes.len});
+    log.tracev(vm, "build stacktrace {}", .{cframes.len});
     var frames = try vm.alloc.alloc(cy.StackFrame, cframes.len);
     for (cframes, 0..) |cframe, i| {
         frames[i] = try cy.debug.compactToStackFrame(vm, stack, cframe);
@@ -537,7 +534,7 @@ pub fn dumpBytecode(vm: *cy.VM, optPcContext: ?u32) !void {
         const chunk = vm.compiler.chunks.items[sym.file];
 
         if (sym.frameLoc == 0) {
-            fmt.printStderr("Block: main\n", &.{});
+            vm.log("Block: main");
             const sblock = &chunk.semaBlocks.items[chunk.mainSemaBlockId];
             try chunk.dumpLocals(sblock);
         } else {
@@ -553,7 +550,7 @@ pub fn dumpBytecode(vm: *cy.VM, optPcContext: ?u32) !void {
             // const sblock = &chunk.semaBlocks.items[funcDecl.semaBlockId];
             // try chunk.dumpLocals(sblock);
         }
-        fmt.printStderr("\n", &.{});
+        vm.log("");
 
         const node = chunk.nodes[sym.loc];
         const token = chunk.tokens[node.start_token];
@@ -561,7 +558,7 @@ pub fn dumpBytecode(vm: *cy.VM, optPcContext: ?u32) !void {
         defer vm.alloc.free(msg);
         try printUserError(vm, "Trace", msg, sym.file, token.pos());
 
-        fmt.printStderr("Bytecode:\n", &.{});
+        vm.log("Bytecode:");
         const ContextSize = 40;
         const startSymIdx = if (idx >= ContextSize) idx - ContextSize else 0;
         pcOffset = debugTable[startSymIdx].pc;
@@ -578,7 +575,7 @@ pub fn dumpBytecode(vm: *cy.VM, optPcContext: ?u32) !void {
 
             const code = pc[0].opcode();
             const len = bytecode.getInstLenAt(pc);
-            try dumpInst(vm, pcOffset, code, pc, instIdx);
+            try dumpInst(vm, pcOffset, code, pc, instIdx, null);
             pcOffset += len;
             pc += len;
             instIdx += 1;
@@ -588,10 +585,9 @@ pub fn dumpBytecode(vm: *cy.VM, optPcContext: ?u32) !void {
             dumpMarkerAdvance(vm, &curMarkerIdx, &nextMarkerPc);
         }
         // Special marker for requested inst.
-        fmt.printStderr("--", &.{});
         var code = pc[0].opcode();
         var len = bytecode.getInstLenAt(pc);
-        try dumpInst(vm, pcOffset, code, pc, instIdx);
+        try dumpInst(vm, pcOffset, code, pc, instIdx, "--");
         pcOffset += len;
         pc += len;
         instIdx += 1;
@@ -604,7 +600,7 @@ pub fn dumpBytecode(vm: *cy.VM, optPcContext: ?u32) !void {
             }
             code = pc[0].opcode();
             len = bytecode.getInstLenAt(pc);
-            try dumpInst(vm, pcOffset, code, pc, instIdx);
+            try dumpInst(vm, pcOffset, code, pc, instIdx, null);
             pcOffset += len;
             pc += len;
             instIdx += 1;
@@ -614,7 +610,7 @@ pub fn dumpBytecode(vm: *cy.VM, optPcContext: ?u32) !void {
             }
         }
     } else {
-        fmt.printStderr("Bytecode:\n", &.{});
+        vm.log("Bytecode:");
 
         var curMarkerIdx: u32 = if (vm.compiler.buf.debugMarkers.items.len > 0) 0 else cy.NullId;
         var nextMarkerPc: u32 = if (curMarkerIdx == 0) vm.compiler.buf.debugMarkers.items[curMarkerIdx].pc else cy.NullId;
@@ -626,32 +622,32 @@ pub fn dumpBytecode(vm: *cy.VM, optPcContext: ?u32) !void {
 
             const code = pc[0].opcode();
             const len = bytecode.getInstLenAt(pc);
-            try dumpInst(vm, pcOffset, code, pc, instIdx);
+            try dumpInst(vm, pcOffset, code, pc, instIdx, null);
             pcOffset += len;
             pc += len;
             instIdx += 1;
         }
 
-        fmt.printStderr("\nConstants ({}):\n", &.{v(vm.compiler.buf.mconsts.len)});
+        vm.logFmt("\nConstants ({}):", &.{v(vm.compiler.buf.mconsts.len)});
         for (vm.compiler.buf.mconsts) |extra| {
             const val = cy.Value{ .val = extra.val };
             const str = try vm.bufPrintValueShortStr(&vm.tempBuf, val);
-            fmt.printStderr("{}\n", &.{v(str)});
+            vm.logFmt("{}", &.{v(str)});
         }
     }
 }
 
-fn dumpMarkerAdvance(vm: *const cy.VM, curMarkerIdx: *u32, nextMarkerPc: *u32) void {
+fn dumpMarkerAdvance(vm: *cy.VM, curMarkerIdx: *u32, nextMarkerPc: *u32) void {
     const marker = vm.compiler.buf.debugMarkers.items[curMarkerIdx.*];
     switch (marker.etype()) {
         .label => {
-            fmt.printStderr("{}:\n", &.{v(marker.getLabelName())});
+            vm.logFmt("{}:", &.{v(marker.getLabelName())});
         },
         .funcStart => {
-            fmt.printStderr("---- func begin: {}\n", &.{v(marker.data.funcStart.func.name())});
+            vm.logFmt("---- func begin: {}", &.{v(marker.data.funcStart.func.name())});
         },
         .funcEnd => {
-            fmt.printStderr("---- func end: {}\n", &.{v(marker.data.funcEnd.func.name())});
+            vm.logFmt("---- func end: {}", &.{v(marker.data.funcEnd.func.name())});
         },
     }
     curMarkerIdx.* += 1;
@@ -662,7 +658,7 @@ fn dumpMarkerAdvance(vm: *const cy.VM, curMarkerIdx: *u32, nextMarkerPc: *u32) v
     }
 }
 
-pub fn dumpInst(vm: *const cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const cy.Inst, instIdx: u32) !void {
+pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const cy.Inst, instIdx: u32, prefix: ?[]const u8) !void {
     var buf: [1024]u8 = undefined;
     var extra: []const u8 = "";
     switch (code) {
@@ -708,10 +704,10 @@ pub fn dumpInst(vm: *const cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const c
             }
         },
     }
-    try bytecode.dumpInst(pcOffset, code, pc, extra);
+    try bytecode.dumpInst(vm, pcOffset, code, pc, .{ .extra = extra, .prefix = prefix });
 }
 
-const EnableTimerTrace = builtin.mode == .Debug;
+const EnableTimerTrace = builtin.os.tag != .freestanding and builtin.mode == .Debug;
 
 const TimerTrace = struct {
     timer: if (EnableTimerTrace) stdx.time.Timer else void,
@@ -719,18 +715,14 @@ const TimerTrace = struct {
     pub fn end(self: *TimerTrace) void {
         if (EnableTimerTrace) {
             const now = self.timer.read();
-            log.info("time: {d:.3}ms", .{ @as(f32, @floatFromInt(now)) / 1e6 });
+            cy.log.zfmt("time: {d:.3}ms", .{ @as(f32, @floatFromInt(now)) / 1e6 });
         }
     }
 
     pub fn endPrint(self: *TimerTrace, msg: []const u8) void {
         if (EnableTimerTrace) {
             const now = self.timer.read();
-            if (builtin.mode == .ReleaseFast) {
-                std.debug.print("{s}: {d:.3}ms\n", .{ msg, @as(f32, @floatFromInt(now)) / 1e6 });
-            } else {
-                log.info("{s}: {d:.3}ms", .{ msg, @as(f32, @floatFromInt(now)) / 1e6 });
-            }
+            cy.log.zfmt("{s}: {d:.3}ms", .{ msg, @as(f32, @floatFromInt(now)) / 1e6 });
         }
     }
 };

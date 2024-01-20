@@ -128,7 +128,7 @@ pub fn ListAligned(comptime T: type, comptime Align: ?u29) type {
             try self.growTotalCapacityPrecise(alloc, betterCap);
         }
 
-        const Writer = struct {
+        pub const Writer = struct {
             list: *ListT,
             alloc: std.mem.Allocator,
 
@@ -142,16 +142,20 @@ pub fn ListAligned(comptime T: type, comptime Align: ?u29) type {
                 return self.list.buf[idx..self.list.len];
             }
 
-            pub fn write(self: WriterT, data: []const u8) linksection(cy.Section) Error!usize {
+            pub fn write(self: WriterT, data: []const u8) Error!usize {
                 try self.list.appendSlice(self.alloc, data);
                 return data.len;
             }
 
-            pub fn writeAll(self: WriterT, data: []const u8) linksection(cy.Section) Error!void {
+            pub fn writeAll(self: WriterT, data: []const u8) Error!void {
                 _ = try self.write(data);
             }
 
-            pub fn writeByteNTimes(self: WriterT, byte: u8, n: usize) linksection(cy.Section) Error!void {
+            pub fn writeByte(self: WriterT, b: u8) Error!void {
+                try self.list.append(self.alloc, b);
+            }
+
+            pub fn writeByteNTimes(self: WriterT, byte: u8, n: usize) Error!void {
                 var bytes: [256]u8 = undefined;
                 @memset(bytes[0..], byte);
 

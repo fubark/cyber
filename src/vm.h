@@ -857,7 +857,6 @@ typedef struct VM {
     ZList staticStrings;
 
     ZCyList u8Buf;
-    ZCyList u8Buf2;
 
     StackTrace stackTrace;
 
@@ -1013,7 +1012,7 @@ void zPanicIncompatibleFuncSig(VM* vm, FuncId funcId, Value* args, size_t numArg
 ResultCode zSetStaticFunc(VM* vm, FuncId funcId, Value val);
 ResultCode zGrowTryStackTotalCapacity(ZCyList* list, ZAllocator alloc, size_t minCap);
 u16 zOpMatch(const Inst* pc, Value* framePtr);
-void zPrintStderr(const char* fmt, const FmtValue* vals, size_t len);
+void zLog(VM* vm, const char* fmt, const FmtValue* vals, size_t len);
 void zCheckDoubleFree(VM* vm, HeapObject* obj);
 void zCheckRetainDanglingPointer(VM* vm, HeapObject* obj);
 void zPanicFmt(VM* vm, const char* format, FmtValue* args, size_t numArgs);

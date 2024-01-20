@@ -36,7 +36,9 @@ pub const none = c.csNone;
 pub const declareUntypedFunc = c.csDeclareUntypedFunc;
 pub const setResolver = c.csSetResolver;
 pub const setModuleLoader = c.csSetModuleLoader;
-pub const setPrint = c.csSetPrint;
+pub const setPrinter = c.csSetPrinter;
+pub const setLogger = c.csSetLogger;
+pub const setGlobalLogger = c.csSetGlobalLogger;
 pub const setUserData = c.csSetUserData;
 pub const getUserData = c.csGetUserData;
 pub const getGlobalRC = c.csGetGlobalRC;
@@ -65,6 +67,8 @@ pub fn initValueSlice(slice: []const cy.Value) ValueSlice {
 
 pub const FuncFn = c.CsFuncFn;
 pub const PrintFn = c.CsPrintFn;
+pub const LogFn = c.CsLogFn;
+pub const GlobalLogFn = c.CsGlobalLogFn;
 pub const FuncInfo = c.CsFuncInfo;
 pub const FuncResult = c.CsFuncResult;
 pub const ModuleLoaderFn = c.CsModuleLoaderFn;

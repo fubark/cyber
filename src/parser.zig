@@ -13,7 +13,7 @@ const NullId = cy.NullId;
 const log = cy.log.scoped(.parser);
 const IndexSlice = cy.IndexSlice(u32);
 
-const dumpParseErrorStackTrace = builtin.mode == .Debug and !cy.isWasm and true;
+const dumpParseErrorStackTrace = !cy.isFreestanding and builtin.mode == .Debug and !cy.isWasm and true;
 
 const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "and", .and_k },
@@ -144,14 +144,14 @@ pub const Parser = struct {
 
     fn dumpTokensToCurrent(self: *Parser) void {
         for (self.tokens.items[0..self.next_pos+1]) |token| {
-            log.debug("{}", .{token.tag()});
+            log.gtracev("{}", .{token.tag()});
         }
     }
 
     pub fn parseNoErr(self: *Parser, src: []const u8) !ResultView {
         const res = try self.parse(src);
         if (res.has_error) {
-            log.debug("{s}", .{res.err_msg});
+            log.gtracev("{s}", .{res.err_msg});
             return error.ParseError;
         }
         return res;
@@ -166,7 +166,7 @@ pub const Parser = struct {
             .ignoreErrors = false,
         };
         Tokenizer(.{ .user = false }).tokenize(self, tokenizeOpts) catch |err| {
-            log.debug("tokenize error: {}", .{err});
+            log.gtracev("tokenize error: {}", .{err});
             if (dumpParseErrorStackTrace and !cy.silentError) {
                 std.debug.dumpStackTrace(@errorReturnTrace().?.*);
             }
@@ -183,7 +183,7 @@ pub const Parser = struct {
             };
         };
         const root_id = self.parseRoot() catch |err| {
-            log.debug("parse error: {} {s}", .{err, self.last_err});
+            log.gtracev("parse error: {} {s}", .{err, self.last_err});
             // self.dumpTokensToCurrent();
             logSrcPos(self.src, self.last_err_pos, 20);
             if (dumpParseErrorStackTrace and !cy.silentError) {
@@ -3710,9 +3710,9 @@ test "Parse dependency variables" {
 
 pub fn logSrcPos(src: []const u8, start: u32, len: u32) void {
     if (start + len > src.len) {
-        log.debug("{s}", .{ src[start..] });
+        log.gtracev("{s}", .{ src[start..] });
     } else {
-        log.debug("{s}", .{ src[start..start+len] });
+        log.gtracev("{s}", .{ src[start..start+len] });
     }
 }
 

@@ -227,7 +227,7 @@ pub const VMrunner = struct {
         self.vm.deinit(false);
         const rc = cy.arc.getGlobalRC(self.vm);
         if (rc != 0) {
-            log.debug("{} unreleased refcount from previous eval", .{rc});
+            log.gtracev("{} unreleased refcount from previous eval", .{rc});
             return error.UnreleasedObjects;
         }
         try self.vm.init(t.alloc);

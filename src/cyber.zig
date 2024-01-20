@@ -156,6 +156,7 @@ pub var silentInternal = false;
 
 pub const simd = @import("simd.zig");
 
+pub const isFreestanding = builtin.os.tag == .freestanding;
 pub const isWasm = builtin.cpu.arch.isWasm();
 pub const isWasmFreestanding = isWasm and builtin.os.tag == .freestanding;
 pub const is32Bit = build_options.is32Bit;

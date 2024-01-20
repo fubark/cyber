@@ -347,7 +347,7 @@ pub fn format(writer: anytype, fmt: []const u8, vals: []const FmtValue) !void {
             if (i + 1 < fmt.len) {
                 if (fmt[i + 1] == '}') {
                     if (valIdx == vals.len) {
-                        log.debug("Format expected {}th value, got {} values", .{valIdx + 1, vals.len});
+                        log.gtracev("Format expected {}th value, got {} values", .{valIdx + 1, vals.len});
                         return error.FormatError;
                     }
                     try formatValue(writer, vals[valIdx]);
@@ -362,7 +362,7 @@ pub fn format(writer: anytype, fmt: []const u8, vals: []const FmtValue) !void {
         continue;
     }
     if (valIdx < vals.len) {
-        log.debug("Format had {} placeholders, got {} values", .{valIdx + 1, vals.len});
+        log.gtracev("Format had {} placeholders, got {} values", .{valIdx + 1, vals.len});
         return error.FormatError;
     }
 }
@@ -380,7 +380,7 @@ var printMutex = std.Thread.Mutex{};
 
 pub fn printStdout(fmt: []const u8, vals: []const FmtValue) void {
     printStdoutOrErr(fmt, vals) catch |err| {
-        log.debug("{}", .{err});
+        log.gtracev("{}", .{err});
         cy.fatal();
     };
 }
@@ -405,19 +405,24 @@ pub fn printDeprecated(name: []const u8, sinceVersion: []const u8, fmt: []const 
     printStderr("\n", &.{});
 }
 
-pub fn printStderr(fmt: []const u8, vals: []const FmtValue) void {
-    printStderrOrErr(fmt, vals) catch |err| {
-        log.debug("{}", .{err});
+pub fn print(w: anytype, fmt: []const u8, vals: []const FmtValue) void {
+    format(w, fmt, vals) catch |err| {
+        log.gtracev("{}", .{err});
         cy.fatal();
     };
 }
 
-pub fn printStderrCount(fmt: []const u8, vals: []const FmtValue) !u64 {
-    @setCold(true);
+pub fn printStderr(fmt: []const u8, vals: []const FmtValue) void {
+    printStderrOrErr(fmt, vals) catch |err| {
+        log.gtracev("{}", .{err});
+        cy.fatal();
+    };
+}
+
+pub fn printCount(w: anytype, fmt: []const u8, vals: []const FmtValue) !u64 {
     var numBytesWritten: u64 = undefined;
-    const w = countingWriter(&numBytesWritten, lockStderrWriter());
-    defer unlockPrint();
-    try format(w, fmt, vals);
+    const cw = countingWriter(&numBytesWritten, w);
+    try format(cw, fmt, vals);
     return numBytesWritten;
 }
 
@@ -526,6 +531,6 @@ fn countingWriter(numBytesWritten: *u64, child: anytype) CountingWriter(@TypeOf(
 
 pub fn panic(fmt: []const u8, vals: []const FmtValue) noreturn {
     @setCold(true);
-    printStderr(fmt, vals);
+    cy.log.fmt(fmt, vals);
     @panic("");
 }

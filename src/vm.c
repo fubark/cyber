@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
 #include <math.h>
@@ -6,12 +5,12 @@
 
 #define STATIC_ASSERT(cond, msg) typedef char static_assertion_##msg[(cond)?1:-1]
 
-#define VLOG(msg, ...) \
-    do { if (TRACE && verbose) zPrintStderr(msg, (FmtValue[]){__VA_ARGS__}, sizeof((FmtValue[]){__VA_ARGS__})/sizeof(FmtValue)); } while (false)
-#define LOG(msg, ...) \
-    do { if (TRACE) zPrintStderr(msg, (FmtValue[]){__VA_ARGS__}, sizeof((FmtValue[]){__VA_ARGS__})/sizeof(FmtValue)); } while (false)
-#define PRINT(msg, ...) \
-    do { zPrintStderr(msg, (FmtValue[]){__VA_ARGS__}, sizeof((FmtValue[]){__VA_ARGS__})/sizeof(FmtValue)); } while (false)
+#define TRACEV(vm, msg, ...) \
+    do { if (TRACE && verbose) zLog(vm, msg, (FmtValue[]){__VA_ARGS__}, sizeof((FmtValue[]){__VA_ARGS__})/sizeof(FmtValue)); } while (false)
+#define LTRACE(vm, msg, ...) \
+    do { if (TRACE) zLog(vm, msg, (FmtValue[]){__VA_ARGS__}, sizeof((FmtValue[]){__VA_ARGS__})/sizeof(FmtValue)); } while (false)
+#define LOG(vm, msg, ...) \
+    do { zLog(vm, msg, (FmtValue[]){__VA_ARGS__}, sizeof((FmtValue[]){__VA_ARGS__})/sizeof(FmtValue)); } while (false)
 
 #define ASSERT(cond) \
     do { if (!(cond)) zFatal(); } while (false)
@@ -54,7 +53,7 @@ static inline void release(VM* vm, Value val) {
 #endif
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
-        VLOG("release obj: {}, rc={}\n", FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_U32(obj->head.rc));
+        TRACEV(vm, "release obj: {}, rc={}\n", FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_U32(obj->head.rc));
 #if TRACE
         zCheckDoubleFree(vm, obj);
 #endif
@@ -62,7 +61,7 @@ static inline void release(VM* vm, Value val) {
 #if TRACK_GLOBAL_RC
     #if TRACE
         if (vm->refCounts == 0) {
-            PRINT("Double free. {}\n", FMT_U32(getTypeId(val)));
+            LOG(vm, "Double free. {}\n", FMT_U32(getTypeId(val)));
             zFatal();
         }
     #endif
@@ -75,12 +74,12 @@ static inline void release(VM* vm, Value val) {
             zFreeObject(vm, obj);
         }
     } else {
-        VLOG("release: {}, nop\n", FMT_STR(zGetTypeName(vm, getTypeId(val))));
+        TRACEV(vm, "release: {}, nop\n", FMT_STR(zGetTypeName(vm, getTypeId(val))));
     }
 }
 
 static inline void releaseObject(VM* vm, HeapObject* obj) {
-    VLOG("release obj: {}, rc={}\n", FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
+    TRACEV(vm, "release obj: {}, rc={}\n", FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
 #if (TRACE)
     zCheckDoubleFree(vm, obj);
 #endif
@@ -88,7 +87,7 @@ static inline void releaseObject(VM* vm, HeapObject* obj) {
 #if TRACK_GLOBAL_RC
     #if TRACE
     if (vm->refCounts == 0) {
-        PRINT("Double free. {}\n", FMT_U32(OBJ_TYPEID(obj)));
+        LOG(vm, "Double free. {}\n", FMT_U32(OBJ_TYPEID(obj)));
         zFatal();
     }
     #endif
@@ -104,7 +103,7 @@ static inline void releaseObject(VM* vm, HeapObject* obj) {
 }
 
 static inline void retainObject(VM* vm, HeapObject* obj) {
-    VLOG("retain {} rc={}\n", FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
+    TRACEV(vm, "retain {} rc={}\n", FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
     obj->head.rc += 1;
 #if TRACE
     zCheckRetainDanglingPointer(vm, obj);
@@ -124,7 +123,7 @@ static inline void retain(VM* vm, Value val) {
 #endif
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
-        VLOG("retain: {}, {}, rc={}\n", FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_PTR(obj), FMT_U32(obj->head.rc));
+        TRACEV(vm, "retain: {}, {}, rc={}\n", FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_PTR(obj), FMT_U32(obj->head.rc));
         obj->head.rc += 1;
 #if TRACE
         zCheckRetainDanglingPointer(vm, obj);
@@ -136,7 +135,7 @@ static inline void retain(VM* vm, Value val) {
         vm->trace->numRetains += 1;
 #endif
     } else {
-        VLOG("retain: {}, nop\n", FMT_STR(zGetTypeName(vm, getTypeId(val))));
+        TRACEV(vm, "retain: {}, nop\n", FMT_STR(zGetTypeName(vm, getTypeId(val))));
     }
 }
 
@@ -285,7 +284,7 @@ static inline ValueResult allocClosure(
         Inst local = capturedVals[i];
 #if TRACE
         if (!VALUE_IS_BOX(fp[local])) {
-            VLOG("Expected box value.");
+            TRACEV(vm, "Expected box value.");
             zFatal();
         }
 #endif
@@ -408,7 +407,7 @@ static _BitInt(48) ipow(_BitInt(48) b, _BitInt(48) e) {
 static void panicStaticMsg(VM* vm, const char* msg) {
     vm->curFiber->panicPayload = (u64)msg | (((u64)(strlen(msg))) << 48);
     vm->curFiber->panicType = PANIC_STATIC_MSG;
-    VLOG("{}", FMT_STRZ(msg));
+    TRACEV(vm, "{}", FMT_STRZ(msg));
 }
 
 static inline void panicDivisionByZero(VM* vm) {
@@ -1068,7 +1067,7 @@ beginSwitch:
         u8 numLocals = pc[1];
         u8 i;
         for (i = 2; i < 2 + numLocals; i += 1) {
-            VLOG("release reg {}\n", FMT_U32(pc[i]));
+            TRACEV(vm, "release reg {}\n", FMT_U32(pc[i]));
             release(vm, stack[pc[i]]);
         }
         pc += 2 + numLocals;
@@ -1684,7 +1683,7 @@ beginSwitch:
         Value box = stack[pc[1]];
 #if TRACE
         if (!VALUE_IS_BOX(box)) {
-            VLOG("Expected box value.");
+            TRACEV(vm, "Expected box value.");
             zFatal();
         }
 #endif
@@ -1696,7 +1695,7 @@ beginSwitch:
         Value box = stack[pc[1]];
 #if TRACE
         if (!VALUE_IS_BOX(box)) {
-            VLOG("Expected box value.");
+            TRACEV(vm, "Expected box value.");
             zFatal();
         }
 #endif
@@ -1710,14 +1709,14 @@ beginSwitch:
         Value closure = stack[pc[1]];
 #if TRACE
         if (!VALUE_IS_CLOSURE(closure)) {
-            VLOG("Expected closure value.");
+            TRACEV(vm, "Expected closure value.");
             zFatal();
         }
 #endif
         Value box = closureGetCapturedValuesPtr(&VALUE_AS_HEAPOBJECT(closure)->closure)[pc[2]];
 #if TRACE
         if (!VALUE_IS_BOX(box)) {
-            VLOG("Expected box value.");
+            TRACEV(vm, "Expected box value.");
             zFatal();
         }
 #endif
@@ -1731,7 +1730,7 @@ beginSwitch:
         Value closure = stack[pc[1]];
 #if TRACE
         if (!VALUE_IS_CLOSURE(closure)) {
-            VLOG("Expected closure value.");
+            TRACEV(vm, "Expected closure value.");
             zFatal();
         }
 #endif

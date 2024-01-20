@@ -53,12 +53,12 @@ pub const Module = struct {
 
     pub fn deinitRetained(self: *Module, vm: *cy.VM) void {
         if (cy.Trace and self.retainedVars.items.len > 0) {
-            log.tracev("deinit retained: {}", .{self.retainedVars.items.len});
+            log.tracev(vm, "deinit retained: {}", .{self.retainedVars.items.len});
         }
         for (self.retainedVars.items) |sym| {
             switch (sym.type) {
                 .hostVar => {
-                    log.tracev("release {s}", .{sym.name()});
+                    log.tracev(vm, "release {s}", .{sym.name()});
                     const hostVar = sym.cast(.hostVar);
                     cy.arc.release(vm, hostVar.val);
                 },

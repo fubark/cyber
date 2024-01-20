@@ -211,7 +211,7 @@ const WasmDefaultAllocator = struct {
         const req_num_bytes = payload_size + @sizeOf(Node) + alignment - 1;
 
         const seg_size = @divTrunc(req_num_bytes - 1, WordSize) + 1;
-        // log.debug("alloc len={} align={} lalign={} => seg={}", .{len, alignment, len_align, seg_size});
+        // log.gtracev("alloc len={} align={} lalign={} => seg={}", .{len, alignment, len_align, seg_size});
         if (seg_size <= NumSegments) {
             // Small allocation.
             if (self.segments[seg_size-1]) |free_node| {
@@ -304,13 +304,13 @@ const WasmDefaultAllocator = struct {
                 .seg_size = seg_size,
             },
         };
-        // log.debug("returned memory {}", .{user_addr});
+        // log.gtracev("returned memory {}", .{user_addr});
         return @as([*]u8, @ptrFromInt(user_addr))[0..payload_size];
     }
 
     /// Grows the wasm memory by number of pages.
     fn growMemory(self: *WasmDefaultAllocator, num_pages: u32) !void {
-        // log.debug("new memory page size {}", .{self.reserved_pages + num_pages});
+        // log.gtracev("new memory page size {}", .{self.reserved_pages + num_pages});
         const res = self.wasmMemoryGrow(self.next_page_idx + num_pages);
         if (res == -1) {
             return error.OutOfMemory;
@@ -425,7 +425,7 @@ const WasmDefaultAllocator = struct {
         const user_node_addr = @intFromPtr(buf.ptr) - @sizeOf(Node);
         const user_node: *Node = @ptrFromInt(user_node_addr);
 
-        // log.debug("resize {} {} {} {}", .{@intFromPtr(buf.ptr), buf_align, new_len, len_align});
+        // log.gtracev("resize {} {} {} {}", .{@intFromPtr(buf.ptr), buf_align, new_len, len_align});
 
         if (new_payload_size <= user_node.user_size) {
             // TODO: If this is a big allocation, check to free unused pages.
@@ -461,7 +461,7 @@ const WasmDefaultAllocator = struct {
 
             const frame_size = seg_size * WordSize;
             const frame_idx = @divTrunc(@intFromPtr(buf.ptr) - page_addr - @sizeOf(PageHeader), frame_size);
-            // log.debug("free small {} {} {}", .{@intFromPtr(buf.ptr), page_idx, frame_idx});
+            // log.gtracev("free small {} {} {}", .{@intFromPtr(buf.ptr), page_idx, frame_idx});
 
             const node_addr = page_addr + @sizeOf(PageHeader) + frame_idx * frame_size;
             const node: *Node = @ptrFromInt(node_addr);
@@ -500,7 +500,7 @@ const WasmDefaultAllocator = struct {
             const base_node_addr = page_idx * PageSize;
             const base_node: *Node = @ptrFromInt(base_node_addr);
             const num_pages = @divTrunc(seg_size - 1, PageWordSize) + 1;
-            // log.debug("large free {} {} {} {}", .{@intFromPtr(buf.ptr), buf.len, page_idx, num_pages});
+            // log.gtracev("large free {} {} {} {}", .{@intFromPtr(buf.ptr), buf.len, page_idx, num_pages});
 
             // Find the prev node to insert in order.
             var mb_prev: ?*Node = null;

@@ -142,7 +142,7 @@ int main() {
     // csVerbose = true;
     CsVM* vm = csCreate();
     csSetModuleLoader(vm, modLoader);
-    csSetPrint(vm, print);
+    csSetPrinter(vm, print);
 
     // Initialize var array for loader.
     vars[0] = (NameValue){"Root.MyConstant", csFloat(1.23)};

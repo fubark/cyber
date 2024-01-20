@@ -53,7 +53,31 @@ pub fn writeStderr(s: []const u8) void {
 pub fn setupVMForCLI(vm: *cy.VM) void {
     c.setResolver(@ptrCast(vm), resolve);
     c.setModuleLoader(@ptrCast(vm), loader);
-    c.setPrint(@ptrCast(vm), print);
+    c.setPrinter(@ptrCast(vm), print);
+    c.setLogger(@ptrCast(vm), logFn);
+    c.setGlobalLogger(globalLog);
+}
+
+fn globalLog(str: c.Str) callconv(.C) void {
+    if (cy.isWasmFreestanding) {
+        os_mod.hostFileWrite(2, str.buf, str.len);
+        os_mod.hostFileWrite(2, "\n", 1);
+    } else {
+        const w = std.io.getStdErr().writer();
+        w.writeAll(c.strSlice(str)) catch cy.fatal();
+        w.writeByte('\n') catch cy.fatal();
+    }
+}
+
+fn logFn(_: ?*c.VM, str: c.Str) callconv(.C) void {
+    if (cy.isWasmFreestanding) {
+        os_mod.hostFileWrite(2, str.buf, str.len);
+        os_mod.hostFileWrite(2, "\n", 1);
+    } else {
+        const w = std.io.getStdErr().writer();
+        w.writeAll(c.strSlice(str)) catch cy.fatal();
+        w.writeByte('\n') catch cy.fatal();
+    }
 }
 
 fn print(_: ?*c.VM, str: c.Str) callconv(.C) void {
@@ -201,8 +225,7 @@ fn zResolve(uvm: *cy.UserVM, chunkId: cy.ChunkId, curUri: []const u8, spec: []co
     return absPath;
 }
 
-fn loadUrl(uvm: *cy.UserVM, url: []const u8) ![]const u8 {
-    const vm = uvm.internal();
+fn loadUrl(vm: *cy.VM, url: []const u8) ![]const u8 {
     const specGroup = try cache.getSpecHashGroup(vm.alloc, url);
     defer specGroup.deinit(vm.alloc);
 
@@ -226,7 +249,7 @@ fn loadUrl(uvm: *cy.UserVM, url: []const u8) ![]const u8 {
                 if (cy.verbose) {
                     const cachePath = try cache.allocSpecFilePath(vm.alloc, entry);
                     defer vm.alloc.free(cachePath);
-                    log.err("Using cached `{s}` at `{s}`", .{url, cachePath});
+                    vm.logZFmt("Using cached `{s}` at `{s}`", .{url, cachePath});
                 }
                 return src;
             }
@@ -236,7 +259,7 @@ fn loadUrl(uvm: *cy.UserVM, url: []const u8) ![]const u8 {
     const client = vm.httpClient;
 
     if (cy.verbose) {
-        log.err("Fetching `{s}`.", .{url});
+        vm.logZFmt("Fetching `{s}`.", .{url});
     }
 
     const uri = try std.Uri.parse(url);

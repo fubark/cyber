@@ -297,7 +297,7 @@ pub const Allocator = struct {
 
     // Encapsulate to attach logging.
     pub fn freeTemps(self: *Allocator, n: u8) void {
-        log.tracev("free temps: {} -{}", .{self.nextTemp, n});
+        log.gtracev("free temps: {} -{}", .{self.nextTemp, n});
         self.nextTemp -= n;
     }
 
@@ -307,7 +307,7 @@ pub const Allocator = struct {
         }
         defer {
             // Advance to the next free temp.
-            log.tracev("consume temp: {} +1", .{self.nextTemp});
+            log.gtracev("consume temp: {} +1", .{self.nextTemp});
             self.nextTemp += 1;
             if (self.nextTemp > self.maxTemp) {
                 self.maxTemp = self.nextTemp;

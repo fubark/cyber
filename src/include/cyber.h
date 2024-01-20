@@ -64,12 +64,6 @@ typedef struct CsStr {
     size_t len;
 } CsStr;
 
-// Top level.
-CsStr csGetFullVersion();
-CsStr csGetVersion();
-CsStr csGetBuild();
-CsStr csGetCommit();
-
 typedef struct CsModule {
     void* sym;
 } CsModule;
@@ -246,9 +240,27 @@ typedef struct CsModuleLoaderResult {
 // set symbol loaders, and return true. Otherwise, return false.
 typedef bool (*CsModuleLoaderFn)(CsVM* vm, CsStr resolvedSpec, CsModuleLoaderResult* out);
 
-// Override the behavior of `print` from the `builtins` module.
+// Handler for the builtin `print`.
 // The default behavior is a no-op.
 typedef void (*CsPrintFn)(CsVM* vm, CsStr str);
+
+// Handler for compiler and runtime logs.
+// The default behavior is a no-op.
+typedef void (*CsLogFn)(CsVM* vm, CsStr str);
+
+// Handler for logs that isn't associated to a VM instance.
+// The default behavior is a no-op.
+typedef void (*CsGlobalLogFn)(CsStr str);
+
+//
+// [ Top level ]
+//
+CsStr csGetFullVersion();
+CsStr csGetVersion();
+CsStr csGetBuild();
+CsStr csGetCommit();
+CsGlobalLogFn csGetGlobalLogger();
+void csSetGlobalLogger(CsGlobalLogFn log);
 
 //
 // [ VM ]
@@ -275,8 +287,10 @@ void csSetModuleLoader(CsVM* vm, CsModuleLoaderFn loader);
 // The default module loader. It knows how to load the `builtins` module.
 bool csDefaultModuleLoader(CsVM* vm, CsStr resolvedSpec, CsModuleLoaderResult* out);
 
-CsPrintFn csGetPrint(CsVM* vm);
-void csSetPrint(CsVM* vm, CsPrintFn print);
+CsPrintFn csGetPrinter(CsVM* vm);
+void csSetPrinter(CsVM* vm, CsPrintFn print);
+CsLogFn csGetLogger(CsVM* vm);
+void csSetLogger(CsVM* vm, CsLogFn log);
 
 // Evalutes the source code and returns the result code.
 // If the last statement of the script is an expression, `outVal` will contain the value.

@@ -100,7 +100,7 @@ const funcs = [_]NameFunc{
 
     // FFI
     .{"bindCallback",   zErrFunc(ffi.ffiBindCallback)},
-    .{"bindLib",        zErrFunc(bindLib)},
+    .{"bindLib",        zErrFunc2(bindLib)},
     .{"bindLib",        zErrFunc2(bindLibExt)},
     .{"bindObjPtr",     zErrFunc2(ffi.ffiBindObjPtr)},
     .{"cbind",          zErrFunc(ffi.ffiCbind)},
@@ -208,7 +208,7 @@ fn zPostLoad(self: *cy.VMcompiler, mod: cc.ApiModule) linksection(cy.InitSection
     _ = b;
 
     // Free vars since they are managed by the module now.
-    log.tracev("os post load", .{});
+    log.tracev(self.vm, "os post load", .{});
     for (vars) |entry| {
         cy.arc.release(self.vm, entry.@"1");
     }
@@ -607,7 +607,7 @@ fn newFFI(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Va
     return ffi.allocFFI(vm) catch fatal();
 }
 
-pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn bindLib(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     if (!cy.hasFFI) return vm.returnPanic("Unsupported.");
 
     return @call(.never_inline, ffi.ffiBindLib, .{vm, args, .{}});
@@ -624,7 +624,7 @@ pub fn bindLibExt(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSec
     if (val.isTrue()) {
         config.genMap = true;
     }
-    return @call(.never_inline, ffi.ffiBindLib, .{@as(*cy.UserVM, @ptrCast(vm)), args, config});
+    return @call(.never_inline, ffi.ffiBindLib, .{vm, args, config});
 }
 
 pub extern fn hostFileWrite(fid: u32, str: [*]const u8, strLen: usize) void;
@@ -650,7 +650,7 @@ fn cacheUrl(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const resp = try http.get(vm.alloc, vm.httpClient, url);
     defer vm.alloc.free(resp.body);
     if (resp.status != .ok) {
-        log.debug("cacheUrl response status: {}", .{resp.status});
+        log.gtracev("cacheUrl response status: {}", .{resp.status});
         return vm.prepThrowError(.UnknownError);
     } else {
         const entry = try cache.saveNewSpecFile(vm.alloc, specGroup, url, resp.body);

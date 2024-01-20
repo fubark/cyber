@@ -19,7 +19,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         if (cy.TraceRC) {
-            log.tracev("{} -1 release: {s}, {*}", .{obj.head.rc, @tagName(val.getUserTag()), obj});
+            log.tracev(vm, "{} -1 release: {s}, {*}", .{obj.head.rc, @tagName(val.getUserTag()), obj});
         }
         if (cy.Trace) {
             checkDoubleFree(vm, obj);
@@ -28,7 +28,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
         if (cy.TrackGlobalRC) {
             if (cy.Trace) {
                 if (vm.refCounts == 0) {
-                    cy.fmt.printStderr("Double free. {}\n", &.{cy.fmt.v(obj.getTypeId())});
+                    vm.logFmt("Double free. {}", &.{cy.fmt.v(obj.getTypeId())});
                     cy.fatal();
                 }
             }
@@ -48,7 +48,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
             }
         }
     } else {
-        log.tracev("release: {s}, nop", .{@tagName(val.getUserTag())});
+        log.tracev(vm, "release: {s}, nop", .{@tagName(val.getUserTag())});
     }
 }
 
@@ -84,7 +84,7 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
         checkDoubleFree(vm, obj);
     }
     if (cy.TraceRC) {
-        log.tracev("{} -1 release: {s}", .{obj.head.rc, @tagName(obj.getUserTag())});
+        log.tracev(vm, "{} -1 release: {s}", .{obj.head.rc, @tagName(obj.getUserTag())});
     }
     obj.head.rc -= 1;
     if (cy.TrackGlobalRC) {
@@ -105,17 +105,17 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
 }
 
 pub fn runTempReleaseOps(vm: *cy.VM, fp: [*]const cy.Value, tempIdx: u32) void {
-    log.tracev("release temps", .{});
+    log.tracev(vm, "release temps", .{});
     var curIdx = tempIdx;
     while (curIdx != cy.NullId) {
-        log.tracev("release temp: {}", .{vm.unwindTempRegs[curIdx]});
+        log.tracev(vm, "release temp: {}", .{vm.unwindTempRegs[curIdx]});
         release(vm, fp[vm.unwindTempRegs[curIdx]]);
         curIdx = vm.unwindTempPrevIndexes[curIdx];
     }
 }
 
 pub fn releaseLocals(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, locals: cy.IndexSlice(u8)) void {
-    log.tracev("release locals: {}-{}", .{locals.start, locals.end});
+    log.tracev(vm, "release locals: {}-{}", .{locals.start, locals.end});
     for (stack[framePtr+locals.start..framePtr+locals.end]) |val| {
         release(vm, val);
     }
@@ -126,7 +126,7 @@ pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) linksection(cy.Hot
     if (cy.Trace) {
         checkRetainDanglingPointer(self, obj);
         if (cy.TraceRC) {
-            log.tracev("{} +1 retain: {}", .{obj.head.rc, obj.getUserTag()});
+            log.tracev(self, "{} +1 retain: {}", .{obj.head.rc, obj.getUserTag()});
         }
     }
     if (cy.TrackGlobalRC) {
@@ -171,7 +171,7 @@ pub inline fn retain(self: *cy.VM, val: cy.Value) linksection(cy.HotSection) voi
         if (cy.Trace) {
             checkRetainDanglingPointer(self, obj);
             if (cy.TraceRC) {
-                log.tracev("{} +1 retain: {}", .{obj.head.rc, obj.getUserTag()});
+                log.tracev(self, "{} +1 retain: {}", .{obj.head.rc, obj.getUserTag()});
             }
         }
         obj.head.rc += 1;
@@ -193,7 +193,7 @@ pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) linksection(cy.Ho
         if (cy.Trace) {
             checkRetainDanglingPointer(self, obj);
             if (cy.TraceRC) {
-                log.tracev("{} +{} retain: {}", .{obj.head.rc, inc, obj.getUserTag()});
+                log.tracev(self, "{} +{} retain: {}", .{obj.head.rc, inc, obj.getUserTag()});
             }
         }
         obj.head.rc += inc;
@@ -231,7 +231,7 @@ const GCResult = struct {
 ///    TODO: Allocate using separate pages for cyclable and non-cyclable objects,
 ///          so only cyclable objects are iterated.
 pub fn performGC(vm: *cy.VM) !GCResult {
-    log.tracev("Run gc.", .{});
+    log.tracev(vm, "Run gc.", .{});
     try performMark(vm);
 
     // Make sure dummy node has mark bit.
@@ -241,7 +241,7 @@ pub fn performGC(vm: *cy.VM) !GCResult {
 }
 
 fn performMark(vm: *cy.VM) !void {
-    log.tracev("Perform mark.", .{});
+    log.tracev(vm, "Perform mark.", .{});
     try markMainStackRoots(vm);
 
     // Mark globals.
@@ -253,7 +253,7 @@ fn performMark(vm: *cy.VM) !void {
 }
 
 fn performSweep(vm: *cy.VM) !GCResult {
-    log.tracev("Perform sweep.", .{});
+    log.tracev(vm, "Perform sweep.", .{});
     // Collect cyc nodes and release their children (child cyc nodes are skipped).
     if (cy.Trace) {
         vm.countFrees = true;
@@ -267,7 +267,7 @@ fn performSweep(vm: *cy.VM) !GCResult {
     var cycObjs: std.ArrayListUnmanaged(*cy.HeapObject) = .{};
     defer cycObjs.deinit(vm.alloc);
 
-    log.tracev("Sweep heap pages.", .{});
+    log.tracev(vm, "Sweep heap pages.", .{});
     for (vm.heapPages.items()) |page| {
         var i: u32 = 1;
         while (i < page.objects.len) {
@@ -288,7 +288,7 @@ fn performSweep(vm: *cy.VM) !GCResult {
     }
 
     // Traverse non-pool cyc nodes.
-    log.tracev("Sweep non-pool cyc nodes.", .{});
+    log.tracev(vm, "Sweep non-pool cyc nodes.", .{});
     var mbNode: ?*cy.heap.DListNode = vm.cyclableHead;
     while (mbNode) |node| {
         const obj = node.getHeapObject();
@@ -303,7 +303,7 @@ fn performSweep(vm: *cy.VM) !GCResult {
 
     // Free cyc nodes.
     for (cycObjs.items) |obj| {
-        log.tracev("cyc free: {s}, rc={}", .{vm.getTypeName(obj.getTypeId()), obj.head.rc});
+        log.tracev(vm, "cyc free: {s}, rc={}", .{vm.getTypeName(obj.getTypeId()), obj.head.rc});
         if (cy.Trace) {
             checkDoubleFree(vm, obj);
         }
@@ -323,7 +323,7 @@ fn performSweep(vm: *cy.VM) !GCResult {
         .numCycFreed = @intCast(cycObjs.items.len),
         .numObjFreed = if (cy.Trace) vm.numFreed else 0,
     };
-    log.tracev("gc result: num cyc {}, num obj {}", .{res.numCycFreed, res.numObjFreed});
+    log.tracev(vm, "gc result: num cyc {}, num obj {}", .{res.numCycFreed, res.numObjFreed});
     return res;
 }
 
@@ -340,14 +340,14 @@ fn markMainStackRoots(vm: *cy.VM) !void {
         const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
         const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
         const locals = sym.getLocals();
-        log.tracev("mark frame: pc={} {s} fp={} {}, locals={}..{}", .{pcOff, @tagName(vm.ops[pcOff].opcode()), fpOff, tempIdx, locals.start, locals.end});
+        log.tracev(vm, "mark frame: pc={} {s} fp={} {}, locals={}..{}", .{pcOff, @tagName(vm.ops[pcOff].opcode()), fpOff, tempIdx, locals.start, locals.end});
 
         if (tempIdx != cy.NullId) {
             const fp = vm.stack.ptr + fpOff;
-            log.tracev("mark temps", .{});
+            log.tracev(vm, "mark temps", .{});
             var curIdx = tempIdx;
             while (curIdx != cy.NullId) {
-                log.tracev("mark reg: {}", .{vm.unwindTempRegs[curIdx]});
+                log.tracev(vm, "mark reg: {}", .{vm.unwindTempRegs[curIdx]});
                 const v = fp[vm.unwindTempRegs[curIdx]];
                 if (v.isCycPointer()) {
                     markValue(vm, v);

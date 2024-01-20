@@ -79,7 +79,7 @@ pub const FFI = struct {
                 return CType{ .object = typeId };
             } else {
                 const name = try vm.getOrBufPrintValueStr(&cy.tempBuf, spec);
-                log.debug("CStruct not declared for: {s}", .{name});
+                log.gtracev("CStruct not declared for: {s}", .{name});
                 return error.InvalidArgument;
             }
         } else if (spec.isSymbol()) {
@@ -122,7 +122,7 @@ pub fn ffiGetChildren(_: ?*c.VM, obj: ?*anyopaque) callconv(.C) c.ValueSlice {
 
 pub fn ffiFinalizer(vm_: ?*c.VM, obj: ?*anyopaque) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    log.tracev("ffi finalize", .{});
+    log.tracev(vm, "ffi finalize", .{});
 
     const alloc = vm.alloc;
     var ffi: *FFI = @ptrCast(@alignCast(obj));
@@ -296,11 +296,10 @@ const CGen = struct {
         }
     }
 
-    fn genFunc(self: *CGen, vm: *cy.UserVM, w: anytype, funcInfo: CFuncData, config: BindLibConfig) !void {
+    fn genFunc(self: *CGen, vm: *cy.VM, w: anytype, funcInfo: CFuncData, config: BindLibConfig) !void {
+        _ = vm;
         var buf: [16]u8 = undefined;
         _ = self;
-        const ivm = vm.internal();
-        _ = ivm;
         const params = funcInfo.params;
         const sym = funcInfo.namez;
         const ret = funcInfo.ret;
@@ -442,14 +441,14 @@ pub fn ffiCbind(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
     const ffi = args[0].castHostObject(*FFI);
     const mt = args[1].asHeapObject();
     if (mt.metatype.typeKind != @intFromEnum(cy.heap.MetaTypeKind.object)) {
-        log.debug("Not an object Symbol", .{});
+        log.gtracev("Not an object Symbol", .{});
         return error.InvalidArgument;
     }
     const typeId = mt.metatype.type;
     const fieldsList = &args[2].asHeapObject().list;
 
     if (ffi.typeToCStruct.contains(typeId)) {
-        log.debug("Object type already declared.", .{});
+        log.gtracev("Object type already declared.", .{});
         return error.InvalidArgument;
     }
     const id = ffi.cstructs.items.len;
@@ -778,35 +777,33 @@ fn toCyType(ctype: CType, forRet: bool) !types.TypeId {
     }
 }
 
-pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value {
+pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Value {
     const ffi = args[0].castHostObject(*FFI);
     const path = args[1];
-    const alloc = vm.allocator();
-    const ivm: *cy.VM = @ptrCast(vm);
 
     var success = false;
 
-    var lib = try alloc.create(std.DynLib);
+    var lib = try vm.alloc.create(std.DynLib);
     defer {
         if (!success) {
-            alloc.destroy(lib);
+            vm.alloc.destroy(lib);
         }
     }
 
     if (path.isNone()) {
         if (builtin.os.tag == .macos) {
-            const exe = try std.fs.selfExePathAlloc(alloc);
-            defer alloc.free(exe);
+            const exe = try std.fs.selfExePathAlloc(vm.alloc);
+            defer vm.alloc.free(exe);
             lib.* = try dlopen(exe);
         } else {
             lib.* = try dlopen("");
         }
     } else {
-        const pathStr = try ivm.getOrBufPrintValueStr(&cy.tempBuf, path);
-        log.tracev("bindLib {s}", .{pathStr});
+        const pathStr = try vm.getOrBufPrintValueStr(&cy.tempBuf, path);
+        log.tracev(vm, "bindLib {s}", .{pathStr});
         lib.* = dlopen(pathStr) catch |err| {
             if (err == error.FileNotFound) {
-                return prepareThrowSymbol(vm, .FileNotFound);
+                return vm.prepThrowError(.FileNotFound);
             } else {
                 return err;
             }
@@ -815,8 +812,8 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
 
     // Generate c code.
     var csrc: std.ArrayListUnmanaged(u8) = .{};
-    defer csrc.deinit(alloc);
-    const w = csrc.writer(alloc);
+    defer csrc.deinit(vm.alloc);
+    const w = csrc.writer(vm.alloc);
 
     var cgen = CGen{ .ffi = ffi };
 
@@ -837,7 +834,7 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
         // Check that symbol exists.
         cfunc.skip = false;
         const ptr = lib.lookup(*anyopaque, cfunc.namez) orelse {
-            log.tracev("Missing sym: '{s}'", .{cfunc.namez});
+            log.tracev(vm, "Missing sym: '{s}'", .{cfunc.namez});
             // Don't generate function if it is missing from the lib.
             cfunc.skip = true;
             continue;
@@ -855,7 +852,7 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
         }
 
         const retType = try toCyType(cfunc.ret, true);
-        const funcSigId = try ivm.sema.ensureFuncSig(tempTypes.slice(), retType);
+        const funcSigId = try vm.sema.ensureFuncSig(tempTypes.slice(), retType);
 
         cfunc.ptr = ptr;
         cfunc.funcSigId = funcSigId;
@@ -865,7 +862,7 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
     for (ffi.cstructs.items) |cstruct| {
         // Generate ptrTo[Object].
         const isMethod = !config.genMap;
-        try w.print("uint64_t cyPtrTo{s}(UserVM* vm, uint64_t* args, char numArgs) {{\n", .{ivm.getTypeName(cstruct.type)});
+        try w.print("uint64_t cyPtrTo{s}(UserVM* vm, uint64_t* args, char numArgs) {{\n", .{vm.getTypeName(cstruct.type)});
         if (isMethod) {
             try w.print("  uint64_t ptr = *((uint64_t*)(args[1] & ~PointerMask) + 1);\n", .{});
         } else {
@@ -878,7 +875,7 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
 
     try w.writeByte(0);
     if (DumpCGen) {
-        log.debug("{s}", .{csrc.items});
+        log.gtracev("{s}", .{csrc.items});
     }
 
     const state = tcc.tcc_new();
@@ -922,44 +919,44 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
 
     if (config.genMap) {
         // Create map with binded C-functions as functions.
-        const map = try ivm.allocEmptyMap();
+        const map = try vm.allocEmptyMap();
 
-        const cyState = try cy.heap.allocTccState(ivm, state.?, lib);
+        const cyState = try cy.heap.allocTccState(vm, state.?, lib);
 
         var numGenFuncs: u32 = 0;
         for (ffi.cfuncs.items) |cfunc| {
             if (cfunc.skip) continue;
-            const symGen = try std.fmt.allocPrint(alloc, "cy{s}\x00", .{cfunc.namez});
-            defer alloc.free(symGen);
+            const symGen = try std.fmt.allocPrint(vm.alloc, "cy{s}\x00", .{cfunc.namez});
+            defer vm.alloc.free(symGen);
             const funcPtr = tcc.tcc_get_symbol(state, symGen.ptr) orelse {
                 cy.panic("Failed to get symbol.");
             };
 
-            const symKey = try ivm.retainOrAllocAstring(cfunc.namez);
+            const symKey = try vm.retainOrAllocAstring(cfunc.namez);
             const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
-            const funcSig = ivm.compiler.sema.getFuncSig(cfunc.funcSigId);
-            const funcVal = try cy.heap.allocHostFunc(ivm, func, @intCast(cfunc.params.len),
+            const funcSig = vm.compiler.sema.getFuncSig(cfunc.funcSigId);
+            const funcVal = try cy.heap.allocHostFunc(vm, func, @intCast(cfunc.params.len),
                 cfunc.funcSigId, cyState, funcSig.reqCallTypeCheck);
-            try map.asHeapObject().map.set(ivm, symKey, funcVal);
+            try map.asHeapObject().map.set(vm, symKey, funcVal);
             vm.release(symKey);
             vm.release(funcVal);
             numGenFuncs += 1;
         }
-        cy.arc.retainInc(ivm, cyState, @intCast(numGenFuncs + ffi.cstructs.items.len - 1));
+        cy.arc.retainInc(vm, cyState, @intCast(numGenFuncs + ffi.cstructs.items.len - 1));
         for (ffi.cstructs.items) |cstruct| {
-            const typeName = ivm.getTypeName(cstruct.type);
-            const symGen = try std.fmt.allocPrint(alloc, "cyPtrTo{s}{u}", .{typeName, 0});
-            defer alloc.free(symGen);
+            const typeName = vm.getTypeName(cstruct.type);
+            const symGen = try std.fmt.allocPrint(vm.alloc, "cyPtrTo{s}{u}", .{typeName, 0});
+            defer vm.alloc.free(symGen);
             const funcPtr = tcc.tcc_get_symbol(state, symGen.ptr) orelse {
                 cy.panic("Failed to get symbol.");
             };
 
-            const symKey = try ivm.allocAstringConcat("ptrTo", typeName);
+            const symKey = try vm.allocAstringConcat("ptrTo", typeName);
             const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
 
-            const funcSigId = try ivm.sema.ensureFuncSig(&.{bt.Dynamic}, bt.Dynamic);
-            const funcVal = try cy.heap.allocHostFunc(ivm, func, 1, funcSigId, cyState, false);
-            try map.asHeapObject().map.set(ivm, symKey, funcVal);
+            const funcSigId = try vm.sema.ensureFuncSig(&.{bt.Dynamic}, bt.Dynamic);
+            const funcVal = try cy.heap.allocHostFunc(vm, func, 1, funcSigId, cyState, false);
+            try map.asHeapObject().map.set(vm, symKey, funcVal);
             vm.release(symKey);
             vm.release(funcVal);
         }
@@ -967,39 +964,39 @@ pub fn ffiBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !
         return map;
     } else {
         // Create anonymous struct with binded C-functions as methods.
-        const osSym = ivm.compiler.chunkMap.get("os").?.sym;
-        const sid = try ivm.addAnonymousStruct(@ptrCast(osSym), "BindLib", os.nextUniqId, &.{ "tcc" });
+        const osSym = vm.compiler.chunkMap.get("os").?.sym;
+        const sid = try vm.addAnonymousStruct(@ptrCast(osSym), "BindLib", os.nextUniqId, &.{ "tcc" });
         os.nextUniqId += 1;
-        const tccField = try ivm.ensureFieldSym("tcc");
-        try ivm.addFieldSym(sid, tccField, 0, bt.Any);
+        const tccField = try vm.ensureFieldSym("tcc");
+        try vm.addFieldSym(sid, tccField, 0, bt.Any);
 
-        const cyState = try cy.heap.allocTccState(ivm, state.?, lib);
+        const cyState = try cy.heap.allocTccState(vm, state.?, lib);
         for (ffi.cfuncs.items) |cfunc| {
             if (cfunc.skip) continue;
-            const cySym = try std.fmt.allocPrint(alloc, "cy{s}\x00", .{cfunc.namez});
-            defer alloc.free(cySym);
+            const cySym = try std.fmt.allocPrint(vm.alloc, "cy{s}\x00", .{cfunc.namez});
+            defer vm.alloc.free(cySym);
             const funcPtr = tcc.tcc_get_symbol(state, cySym.ptr) orelse {
                 cy.panic("Failed to get symbol.");
             };
 
             const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
-            const mgId = try ivm.ensureMethodGroup(cfunc.namez);
-            try @call(.never_inline, cy.VM.addMethod, .{ivm, sid, mgId, rt.MethodInit.initHostTyped(cfunc.funcSigId, func, @as(u8, @intCast(cfunc.params.len)) + 1) });
+            const mgId = try vm.ensureMethodGroup(cfunc.namez);
+            try @call(.never_inline, cy.VM.addMethod, .{vm, sid, mgId, rt.MethodInit.initHostTyped(cfunc.funcSigId, func, @as(u8, @intCast(cfunc.params.len)) + 1) });
         }
         for (ffi.cstructs.items) |cstruct| {
-            const typeName = ivm.getTypeName(cstruct.type);
-            const symGen = try std.fmt.allocPrint(alloc, "cyPtrTo{s}{u}", .{typeName, 0});
-            defer alloc.free(symGen);
+            const typeName = vm.getTypeName(cstruct.type);
+            const symGen = try std.fmt.allocPrint(vm.alloc, "cyPtrTo{s}{u}", .{typeName, 0});
+            defer vm.alloc.free(symGen);
             const funcPtr = tcc.tcc_get_symbol(state, symGen.ptr) orelse {
                 cy.panic("Failed to get symbol.");
             };
             const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
 
-            const methodName = try std.fmt.allocPrint(alloc, "ptrTo{s}", .{typeName});
-            defer alloc.free(methodName);
-            const mgId = try ivm.ensureMethodGroup2(methodName, true);
-            const funcSigId = try ivm.sema.ensureFuncSig(&.{ bt.Any, bt.Pointer }, cstruct.type);
-            try @call(.never_inline, cy.VM.addMethod, .{ivm, sid, mgId, rt.MethodInit.initHostTyped(funcSigId, func, 2) });
+            const methodName = try std.fmt.allocPrint(vm.alloc, "ptrTo{s}", .{typeName});
+            defer vm.alloc.free(methodName);
+            const mgId = try vm.ensureMethodGroup2(methodName, true);
+            const funcSigId = try vm.sema.ensureFuncSig(&.{ bt.Any, bt.Pointer }, cstruct.type);
+            try @call(.never_inline, cy.VM.addMethod, .{vm, sid, mgId, rt.MethodInit.initHostTyped(funcSigId, func, 2) });
         }
         success = true;
         return try vm.allocObjectSmall(sid, &.{cyState});
@@ -1170,7 +1167,7 @@ pub fn ffiBindCallback(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Val
 
     try w.writeByte(0);
     if (DumpCGen) {
-        log.debug("{s}", .{csrc.items});
+        log.gtracev("{s}", .{csrc.items});
     }
 
     const state = tcc.tcc_new();

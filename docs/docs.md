@@ -2567,7 +2567,7 @@ void print(CsVM* vm, CsStr str) {
 
 int main() {
     // ...
-    csSetPrint(vm, print);
+    csSetPrinter(vm, print);
     // ...
 }
 ```

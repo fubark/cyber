@@ -264,7 +264,7 @@ pub fn zErrFunc(comptime func: fn (vm: *cy.UserVM, args: [*]const Value, nargs: 
 }
 
 pub fn prepThrowZError(vm: *cy.VM, err: anyerror, optTrace: ?*std.builtin.StackTrace) Value {
-    if (cy.verbose) {
+    if (!cy.isFreestanding and cy.verbose) {
         if (optTrace) |trace| {
             std.debug.dumpStackTrace(trace.*);
         }
@@ -280,7 +280,7 @@ pub fn prepThrowZError(vm: *cy.VM, err: anyerror, optTrace: ?*std.builtin.StackT
         error.StderrStreamTooLong   => return vm.prepThrowError(.StreamTooLong),
         error.EndOfStream           => return vm.prepThrowError(.EndOfStream),
         else                        => {
-            fmt.printStderr("UnknownError: {}\n", &.{fmt.v(err)});
+            vm.logFmt("UnknownError: {}", &.{fmt.v(err)});
             return vm.prepThrowError(.UnknownError);
         }
     }
@@ -385,7 +385,7 @@ pub fn runestr(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
 pub fn dump(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const res = try allocToCyon(vm, vm.alloc, args[0]);
     defer vm.alloc.free(res);
-    vm.print.?(@ptrCast(vm), cc.initStr(res));
+    vm.printFn.?(@ptrCast(vm), cc.initStr(res));
     return Value.None;
 }
 
@@ -858,7 +858,7 @@ pub fn performGC(vm: *cy.VM, _: [*]const Value, _: u8) linksection(cy.StdSection
 
 pub fn print(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const str = try vm.getOrBufPrintValueStr(&cy.tempBuf, args[0]);
-    vm.print.?(@ptrCast(vm), cc.initStr(str));
+    vm.printFn.?(@ptrCast(vm), cc.initStr(str));
     return Value.None;
 }
 

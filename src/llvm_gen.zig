@@ -63,7 +63,7 @@ pub fn genNativeBinary(self: *cy.VMcompiler) !void {
 
 fn genChunk(self: *cy.VMcompiler, id: cy.ChunkId) !void {
     const chunk = &self.chunks.items[id];
-    log.tracev("Perform codegen for chunk{}: {s}", .{id, chunk.srcUri});
+    log.tracev(self.vm, "Perform codegen for chunk{}: {s}", .{id, chunk.srcUri});
 
     if (id == 0) {
         // Main script performs gen for decls and the main block.
@@ -151,7 +151,7 @@ fn genTopDeclStatements(c: *cy.Chunk, head: cy.NodeId) !void {
 
 fn genStatement(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
-    // log.debug("gen stmt {}", .{node.node_t});
+    // log.gtracev("gen stmt {}", .{node.node_t});
     c.curNodeId = nodeId;
 
     // const tempStart = c.rega.getNextTemp();
@@ -597,7 +597,7 @@ fn pushExprChildren(c: *cy.Chunk, nodeId: cy.NodeId) !bool {
 }
 
 fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
-    // // log.debug("gen expr: {}", .{node.node_t});
+    // // log.gtracev("gen expr: {}", .{node.node_t});
     // c.curNodeId = nodeId;
     const node = c.nodes[nodeId];
     switch (node.node_t) {

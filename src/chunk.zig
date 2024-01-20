@@ -24,6 +24,7 @@ pub const Chunk = struct {
     alloc: std.mem.Allocator,
     compiler: *cy.VMcompiler,
     sema: *cy.Sema,
+    vm: *cy.VM,
 
     /// Source code.
     src: []const u8,
@@ -182,6 +183,7 @@ pub const Chunk = struct {
             .alloc = c.alloc,
             .compiler = c,
             .sema = &c.sema,
+            .vm = c.vm,
             .src = src,
             .ast = undefined,
             .srcUri = srcUri,
@@ -594,11 +596,11 @@ pub const Chunk = struct {
     pub fn dumpLocals(self: *const Chunk, block: *sema.Block) !void {
         if (cy.Trace) {
             if (!cy.silentInternal) {
-                fmt.printStderr("Locals:\n", &.{});
+                self.vm.log("Locals:");
                 const params = sema.getBlockParams(self, block);
                 for (params) |svar| {
                     const typeId: types.TypeId = svar.vtype.id;
-                    fmt.printStderr("{} (param), local: {}, dyn: {}, rtype: {}, boxed: {}\n", &.{
+                    self.vm.logFmt("{} (param), local: {}, dyn: {}, rtype: {}, boxed: {}", &.{
                         v(svar.name()), v(svar.local), v(svar.vtype.dynamic), v(typeId),
                         v(svar.inner.local.isBoxed),
                     });
@@ -606,7 +608,7 @@ pub const Chunk = struct {
                 const locals = sema.getBlockLocals(self, block);
                 for (locals) |svar| {
                     const typeId: types.TypeId = svar.vtype.id;
-                    fmt.printStderr("{}, local: {}, dyn: {}, rtype: {}, boxed: {}\n", &.{
+                    self.vm.logFmt("{}, local: {}, dyn: {}, rtype: {}, boxed: {}", &.{
                         v(svar.name()), v(svar.local), v(svar.vtype.dynamic), v(typeId),
                         v(svar.inner.local.isBoxed),
                     });
@@ -666,7 +668,7 @@ pub const Chunk = struct {
     }
 
     pub fn pushRetainedTemp(c: *Chunk, reg: u8) !void {
-        log.tracev("push unwind temp {} +1 ({})", .{c.unwindTempIndexStack.items.len, reg});
+        log.tracev(c.vm, "push unwind temp {} +1 ({})", .{c.unwindTempIndexStack.items.len, reg});
         try c.unwindTempIndexStack.append(c.alloc, .{
             .created = false,
         });
@@ -685,14 +687,14 @@ pub const Chunk = struct {
     }
 
     pub fn popRetainedTemps(self: *Chunk, n: usize) []const cy.register.RegisterId {
-        log.tracev("pop unwind temps: {} -{}", .{self.unwindTempIndexStack.items.len, n});
+        log.tracev(self.vm, "pop unwind temps: {} -{}", .{self.unwindTempIndexStack.items.len, n});
         self.unwindTempIndexStack.items.len -= n;
         defer self.unwindTempRegStack.items.len -= n;
         return self.unwindTempRegStack.items[self.unwindTempRegStack.items.len-n..];
     }
 
     pub fn popRetainedTemp(self: *Chunk) cy.register.RegisterId {
-        log.tracev("pop unwind temp: {} -1", .{self.unwindTempIndexStack.items.len});
+        log.tracev(self.vm, "pop unwind temp: {} -1", .{self.unwindTempIndexStack.items.len});
         _ = self.unwindTempIndexStack.pop();
         return self.unwindTempRegStack.pop();
     }

@@ -84,7 +84,7 @@ export fn csEval(vm: *cy.VM, src: c.Str, outVal: *cy.Value) c.ResultCode {
 
 export fn csValidate(vm: *cy.UserVM, src: c.Str) c.ResultCode {
     const res = vm.internal().validate("main", c.strSlice(src), .{}) catch |err| {
-        log.debug("validate error: {}", .{err});
+        log.gtracev("validate error: {}", .{err});
         return c.ErrorUnknown;
     };
     if (res.err) |err| {
@@ -139,12 +139,28 @@ export fn csSetModuleLoader(vm: *cy.VM, loader: c.ModuleLoaderFn) void {
     vm.compiler.moduleLoader = loader;
 }
 
-export fn csGetPrint(vm: *cy.VM) c.PrintFn {
-    return vm.print;
+export fn csGetPrinter(vm: *cy.VM) c.PrintFn {
+    return vm.printFn;
 }
 
-export fn csSetPrint(vm: *cy.VM, print: c.PrintFn) void {
-    vm.print = print;
+export fn csSetPrinter(vm: *cy.VM, print: c.PrintFn) void {
+    vm.printFn = print;
+}
+
+export fn csGetLogger(vm: *cy.VM) c.LogFn {
+    return vm.logFn;
+}
+
+export fn csSetLogger(vm: *cy.VM, logger: c.LogFn) void {
+    vm.logFn = logger;
+}
+
+export fn csGetGlobalLogger() c.GlobalLogFn {
+    return cy.log.logFn;
+}
+
+export fn csSetGlobalLogger(logger: c.GlobalLogFn) void {
+    cy.log.logFn = logger;
 }
 
 export fn csPerformGC(vm: *cy.UserVM) c.GCResult {

@@ -27,7 +27,7 @@ const log = cy.log.scoped(.vm_compiler);
 const f64NegOne = cy.Value.initF64(-1);
 const f64One = cy.Value.initF64(1);
 
-const dumpCompileErrorStackTrace = builtin.mode == .Debug and !cy.isWasm and true;
+const dumpCompileErrorStackTrace = !cy.isFreestanding and builtin.mode == .Debug and !cy.isWasm and true;
 
 const Root = @This();
 
@@ -158,7 +158,7 @@ pub const VMcompiler = struct {
         }
 
         for (self.chunks.items) |chunk| {
-            log.tracev("Deinit chunk `{s}`", .{chunk.srcUri});
+            log.tracev(self.vm, "Deinit chunk `{s}`", .{chunk.srcUri});
             if (chunk.onDestroy) |onDestroy| {
                 onDestroy(@ptrCast(self.vm), cc.ApiModule{ .sym = @ptrCast(chunk.sym) });
             }
@@ -239,10 +239,10 @@ pub const VMcompiler = struct {
         self.config = config;
 
         var finalSrcUri: []const u8 = undefined;
-        if (!cy.isWasm and config.enableFileModules) {
+        if (!cy.isWasm and builtin.os.tag != .freestanding and config.enableFileModules) {
             // Ensure that `srcUri` is resolved.
             finalSrcUri = std.fs.cwd().realpathAlloc(self.alloc, srcUri) catch |err| {
-                log.debug("Could not resolve main src uri: {s}", .{srcUri});
+                log.gtracev("Could not resolve main src uri: {s}", .{srcUri});
                 return err;
             };
         } else {
@@ -269,7 +269,7 @@ pub const VMcompiler = struct {
         try declareSymbols(self);
 
         // Perform sema on static initializers.
-        log.tracev("Perform init sema.", .{});
+        log.tracev(self.vm, "Perform init sema.", .{});
         for (self.chunks.items) |chunk| {
             // First stmt is root at index 0.
             _ = try chunk.ir.pushEmptyStmt2(chunk.alloc, .root, chunk.parserAstRootId, false);
@@ -283,7 +283,7 @@ pub const VMcompiler = struct {
         }
 
         // Perform sema on all chunks.
-        log.tracev("Perform sema.", .{});
+        log.tracev(self.vm, "Perform sema.", .{});
         for (self.chunks.items) |chunk| {
             performChunkSema(self, chunk) catch |err| {
                 if (err == error.CompileError) {
@@ -378,7 +378,7 @@ fn performChunkSemaDecls(c: *cy.Chunk) !void {
 
 /// Sema on static initializers.
 fn performChunkInitSema(_: *VMcompiler, c: *cy.Chunk) !void {
-    log.tracev("Perform init sema. {} {s}", .{c.id, c.srcUri});
+    log.tracev(c.vm, "Perform init sema. {} {s}", .{c.id, c.srcUri});
 
     const funcSigId = try c.sema.ensureFuncSig(&.{}, bt.None);
     const func = try c.declareUserFunc(@ptrCast(c.sym), "$init", funcSigId, cy.NullId, false);
@@ -465,7 +465,7 @@ fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
     };
 
     self.hasApiError = false;
-    log.tracev("Invoke module loader: {s}", .{task.absSpec});
+    log.tracev(self.vm, "Invoke module loader: {s}", .{task.absSpec});
 
     if (!self.moduleLoader.?(@ptrCast(self.vm), cc.initStr(task.absSpec), &res)) {
         const chunk = task.fromChunk;
@@ -520,7 +520,7 @@ fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
 }
 
 fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
-    log.tracev("Load imports and types.", .{});
+    log.tracev(self.vm, "Load imports and types.", .{});
 
     // Load core module first since the members are imported into each user module.
     var builtinSym: *cy.sym.Chunk = undefined;
@@ -544,7 +544,7 @@ fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
     while (true) {
         while (id < self.chunks.items.len) : (id += 1) {
             const chunk = self.chunks.items[id];
-            log.debug("chunk parse: {}", .{chunk.id});
+            log.gtracev("chunk parse: {}", .{chunk.id});
             try performChunkParse(self, chunk);
 
             if (self.importBuiltins) {
@@ -597,7 +597,7 @@ fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
 }
 
 fn loadPredefinedTypes(self: *VMcompiler, parent: *cy.Sym) !void {
-    log.tracev("Load predefined types", .{});
+    log.tracev(self.vm, "Load predefined types", .{});
     const Entry = struct { []const u8, cy.TypeId };
     const entries = &[_]Entry{
         .{"none", bt.None},
@@ -672,11 +672,11 @@ fn loadPredefinedTypes(self: *VMcompiler, parent: *cy.Sym) !void {
 }
 
 fn declareSymbols(self: *VMcompiler) !void {
-    log.tracev("Load module symbols.", .{});
+    log.tracev(self.vm, "Load module symbols.", .{});
     for (self.chunks.items) |chunk| {
         // Process static declarations.
         for (chunk.parser.staticDecls.items) |*decl| {
-            log.tracev("Load {s}", .{@tagName(decl.declT)});
+            log.tracev(self.vm, "Load {s}", .{@tagName(decl.declT)});
             switch (decl.declT) {
                 .variable => {
                     const sym = try sema.declareVar(chunk, decl.nodeId);
@@ -713,7 +713,7 @@ fn declareSymbols(self: *VMcompiler) !void {
 }
 
 fn performCodegen(self: *VMcompiler) !void {
-    log.tracev("Perform codegen.", .{});
+    log.tracev(self.vm, "Perform codegen.", .{});
 
     // if (cy.hasAOT) {
     //     if (self.config.aot) {
@@ -770,7 +770,7 @@ fn performCodegen(self: *VMcompiler) !void {
     } else {
         try genBytecode(self);
     }
-    log.tracev("Done. Perform codegen.", .{});
+    log.tracev(self.vm, "Done. Perform codegen.", .{});
 }
 
 fn genBytecode(c: *VMcompiler) !void {
@@ -781,7 +781,7 @@ fn genBytecode(c: *VMcompiler) !void {
 
     // Prepare types.
     for (c.sema.types.items, 0..) |stype, typeId| {
-        log.tracev("bc prepare type: {s}", .{stype.sym.name()});
+        log.tracev(c.vm, "bc prepare type: {s}", .{stype.sym.name()});
         const sym = stype.sym;
 
         if (sym.type == .object) {
@@ -799,7 +799,7 @@ fn genBytecode(c: *VMcompiler) !void {
         } else if (sym.type == .enumType) {
             // Nop.
         } else {
-            log.tracev("{}", .{sym.type});
+            log.tracev(c.vm, "{}", .{sym.type});
             return error.Unsupported;
         }
     }
@@ -829,9 +829,9 @@ fn genBytecode(c: *VMcompiler) !void {
     try @call(.never_inline, bindings.bindCore, .{c.vm});
 
     for (c.chunks.items) |chunk| {
-        log.tracev("Perform codegen for chunk{}: {s}", .{chunk.id, chunk.srcUri});
+        log.tracev(c.vm, "Perform codegen for chunk{}: {s}", .{chunk.id, chunk.srcUri});
         try performChunkCodegen(c, chunk);
-        log.tracev("Done. performChunkCodegen {s}", .{chunk.srcUri});
+        log.tracev(c.vm, "Done. performChunkCodegen {s}", .{chunk.srcUri});
     }
 
     // Merge inst and const buffers.
@@ -912,7 +912,7 @@ fn prepareSym(c: *VMcompiler, sym: *cy.Sym) !void {
         .enumMember,
         .import => {},
         else => {
-            log.tracev("{}", .{sym.type});
+            log.tracev(c.vm, "{}", .{sym.type});
             return error.Unsupported;
         }
     }
@@ -925,7 +925,7 @@ fn prepareFunc(c: *VMcompiler, func: *cy.Func) !void {
     if (cy.Trace) {
         const symPath = try func.sym.?.head.allocAbsPath(c.alloc);
         defer c.alloc.free(symPath);
-        log.tracev("bc prepare func: {s}", .{symPath});
+        log.tracev(c.vm, "bc prepare func: {s}", .{symPath});
     }
     if (func.type == .hostFunc) {
         const funcSig = c.sema.getFuncSig(func.funcSigId);
@@ -948,11 +948,11 @@ fn prepareFunc(c: *VMcompiler, func: *cy.Func) !void {
         const rtFunc = rt.FuncSymbol.initHostInlineFunc(@ptrCast(func.data.hostInlineFunc.ptr), funcSig.reqCallTypeCheck, funcSig.numParams(), func.funcSigId);
         _ = try addVmFunc(c, func, rtFunc);
         if (func.isMethod) {
-            log.tracev("ismethod", .{});
+            log.tracev(c.vm, "ismethod", .{});
             const name = func.name();
             const mgId = try c.vm.ensureMethodGroup(name);
             const parentT = func.sym.?.head.parent.?.getStaticType().?;
-            log.tracev("host inline method: {s}.{s} {} {}", .{c.sema.getTypeName(parentT), name, parentT, mgId});
+            log.tracev(c.vm, "host inline method: {s}.{s} {} {}", .{c.sema.getTypeName(parentT), name, parentT, mgId});
             const m = rt.MethodInit.initHostInline(func.funcSigId, func.data.hostInlineFunc.ptr, func.numParams);
             try c.vm.addMethod(parentT, mgId, m);
         }
@@ -961,7 +961,7 @@ fn prepareFunc(c: *VMcompiler, func: *cy.Func) !void {
         // Func is patched later once funcPc and stackSize is obtained.
         // Method entry is also added later.
     } else {
-        log.tracev("{}", .{func.type});
+        log.tracev(c.vm, "{}", .{func.type});
         return error.Unsupported;
     }
 }
@@ -1023,7 +1023,7 @@ pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *VMc
     return struct {
         fn initCompat(vm: *cy.UserVM, modId: cy.ModuleId) bool {
             initFn(vm.internal().compiler, modId) catch |err| {
-                log.debug("Init module `{s}` failed: {}", .{name, err});
+                log.gtracev("Init module `{s}` failed: {}", .{name, err});
                 return false;
             };
             return true;

@@ -832,7 +832,7 @@ var n = [Node value: 123, next: none]
 n.incAndPrint()         -- Prints "444"
 ```
 
-Methods can also be declared outside of the type declaration. To distinguish a method from a type function, `self` must be provided as a parameter:
+Methods can be declared outside of the type declaration. When using the flat declaration style, `self` must be the first parameter to distinguish it from a type function:
 ```cy
 func Node.getNext(self):
     return self.next

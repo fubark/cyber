@@ -44,7 +44,6 @@ const Runner = struct {
     }
 };
 
-// const caseFilter: ?[]const u8 = "call_recursive";
 const caseFilter: ?[]const u8 = null;
 
 // TODO: This could be split into compiler only tests and backend tests.
@@ -137,6 +136,7 @@ if (!aot) {
     run.case("functions/call_typed_param.cy");
     run.case("functions/call_undeclared_error.cy");   
     run.case("functions/declare_over_builtin.cy");
+    run.case("functions/method_self_param_error.cy");
     run.case("functions/object_funcs.cy");
     run.case("functions/overload.cy");
     run.case("functions/read_capture_local_error.cy");

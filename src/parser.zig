@@ -831,9 +831,10 @@ pub const Parser = struct {
         self.cur_indent = reqIndent;
         defer self.cur_indent = prevIndent;
 
+        var numFields: u32 = 0;
         var firstField = (try self.parseObjectField()) orelse NullId;
-        var numFields: u32 = 1;
         if (firstField != NullId) {
+            numFields += 1;
             var lastField = firstField;
 
             while (true) {

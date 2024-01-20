@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const cy = @import("cyber.zig");
+const rt = cy.rt;
 const log = cy.log.scoped(.utils);
 
 pub fn dassert(pred: bool) void {
@@ -12,7 +13,7 @@ pub fn dassert(pred: bool) void {
 
 pub fn panicFmt(comptime format: []const u8, args: anytype) noreturn {
     if (cy.isWasm) {
-        cy.rt.glogZFmt(format, args);
+        rt.logZFmt(format, args);
     }
     std.debug.panic(format, args);
 }
@@ -20,7 +21,7 @@ pub fn panicFmt(comptime format: []const u8, args: anytype) noreturn {
 pub fn panic(comptime msg: []const u8) noreturn {
     if (cy.isWasm) {
         // @panic doesn't know how to print in wasm.
-        cy.rt.glog(msg);
+        rt.log(msg);
     }
     @panic(msg);
 }

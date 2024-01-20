@@ -1699,6 +1699,10 @@ fn resolveImplicitMethodDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !Fun
     var curParamId = header.head.funcHeader.paramHead;
     while (curParamId != cy.NullId) {
         const param = c.nodes[curParamId];
+        const paramName = c.ast.getNodeStringById(param.head.funcParam.name);
+        if (std.mem.eql(u8, "self", paramName)) {
+            return c.reportErrorAt("`self` param is not allowed in an implicit method declaration.", &.{}, curParamId);
+        }
         const typeId = try resolveTypeFromSpecNode(c, param.head.funcParam.typeSpecHead);
         try c.typeStack.append(c.alloc, typeId);
         curParamId = param.next;

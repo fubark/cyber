@@ -156,8 +156,8 @@ pub fn pushStencil(c: *cy.Chunk, code: []const u8) !usize {
 }
 
 fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
-    const code = c.irGetStmtCode(idx);
-    const nodeId = c.irGetNode(idx);
+    const code = c.ir.getStmtCode(idx);
+    const nodeId = c.ir.getNode(idx);
     c.curNodeId = nodeId;
 
     var dumpEndPc: usize = undefined;
@@ -230,11 +230,11 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
 
 fn exprStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     _ = nodeId;
-    const data = c.irGetStmtData(idx, .exprStmt);
+    const data = c.ir.getStmtData(idx, .exprStmt);
 
     const cstr = RegisterCstr.initSimple(data.returnMain);
 
-    const expr = c.irAdvanceStmt(idx, .exprStmt);
+    const expr = c.ir.advanceStmt(idx, .exprStmt);
     const exprv = try genExpr(c, expr, cstr);
     if (bcgen.unwindAndFreeTemp(c, exprv)) {
         // ARC cleanup.
@@ -303,7 +303,7 @@ const BinOpOptions = struct {
 };
 
 fn genBinOp(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, opts: BinOpOptions, nodeId: cy.NodeId) !GenValue {
-    const data = c.irGetExprData(idx, .preBinOp).binOp;
+    const data = c.ir.getExprData(idx, .preBinOp).binOp;
     log.tracev("binop {} {}", .{data.op, data.leftT});
 
     if (data.op == .and_op) {
@@ -334,7 +334,7 @@ fn genBinOp(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, opts: BinOpOptions, no
     if (opts.left) |left| {
         leftv = left;
     } else {
-        const leftIdx = c.irAdvanceExpr(idx, .preBinOp);
+        const leftIdx = c.ir.advanceExpr(idx, .preBinOp);
         var lcstr = RegisterCstr.preferIf(prefer.dst, prefer.canUseDst);
         lcstr.jitPreferConstant = true;
         leftv = try genExpr(c, leftIdx, lcstr);
@@ -500,11 +500,11 @@ pub const JitCondFlagType = enum {
 };
 
 fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
-    const data = c.irGetStmtData(idx, .ifStmt);
+    const data = c.ir.getStmtData(idx, .ifStmt);
     const bodyEndJumpsStart = c.listDataStack.items.len;
 
-    const condIdx = c.irAdvanceStmt(idx, .ifStmt);
-    // var condNodeId = c.irGetNode(condIdx);
+    const condIdx = c.ir.advanceStmt(idx, .ifStmt);
+    // var condNodeId = c.ir.getNode(condIdx);
 
     var cstr = RegisterCstr.simple;
     cstr.jitPreferCondFlag = true;
@@ -536,11 +536,11 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const hasElse = false;
 
     // if (data.numElseBlocks > 0) {
-    //     const elseBlocks = c.irGetArray(data.elseBlocks, u32, data.numElseBlocks);
+    //     const elseBlocks = c.ir.getArray(data.elseBlocks, u32, data.numElseBlocks);
 
     //     for (elseBlocks) |elseIdx| {
-    //         const elseBlockNodeId = c.irGetNode(elseIdx);
-    //         const elseBlock = c.irGetExprData(elseIdx, .elseBlock);
+    //         const elseBlockNodeId = c.ir.getNode(elseIdx);
+    //         const elseBlock = c.ir.getExprData(elseIdx, .elseBlock);
 
     //         const bodyEndJump = try c.pushEmptyJump();
     //         try c.listDataStack.append(c.alloc, .{ .pc = bodyEndJump });
@@ -549,8 +549,8 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     //         c.patchJumpNotCondToCurPc(prevCaseMissJump);
 
     //         if (!elseBlock.isElse) {
-    //             condIdx = c.irAdvanceExpr(elseIdx, .elseBlock);
-    //             condNodeId = c.irGetNode(condIdx);
+    //             condIdx = c.ir.advanceExpr(elseIdx, .elseBlock);
+    //             condNodeId = c.ir.getNode(condIdx);
     //             condv = try genExpr(c, condIdx, RegisterCstr.simple, jit);
     //             prevCaseMissJump = try c.pushEmptyJumpNotCond(condv.local);
 
@@ -589,7 +589,7 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
 fn genFloat(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
     _ = nodeId;
-    const data = c.irGetExprData(idx, .float);
+    const data = c.ir.getExprData(idx, .float);
     const inst = try c.rega.selectForNoErrInst(cstr, false);
     if (inst.requiresPreRelease) {
         // try pushRelease(c, inst.dst, nodeId);
@@ -604,7 +604,7 @@ fn genFloat(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !Ge
 
 fn genInt(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
     _ = nodeId;
-    const data = c.irGetExprData(idx, .int);
+    const data = c.ir.getExprData(idx, .int);
 
     const val = cy.Value.initInt(@intCast(data.val));
     if (cstr.jitPreferConstant) {
@@ -697,11 +697,11 @@ fn genToDst(c: *cy.Chunk, val: GenValue, dst: RegisterCstr, desc: cy.bytecode.In
 
 fn genCallFuncSym(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
     _ = nodeId;
-    const data = c.irGetExprData(idx, .preCallFuncSym).callFuncSym;
+    const data = c.ir.getExprData(idx, .preCallFuncSym).callFuncSym;
     const inst = try bcgen.beginCall(c, cstr, false);
 
-    const argsIdx = c.irAdvanceExpr(idx, .preCallFuncSym);
-    const args = c.irGetArray(argsIdx, u32, data.numArgs);
+    const argsIdx = c.ir.advanceExpr(idx, .preCallFuncSym);
+    const args = c.ir.getArray(argsIdx, u32, data.numArgs);
 
     const argStart = c.rega.nextTemp;
     for (args, 0..) |argIdx, i| {
@@ -753,8 +753,8 @@ fn genAndPushExpr(c: *cy.Chunk, idx: usize, cstr: RegisterCstr) !void {
 
 fn zDumpJitStmtSection(vm: *cy.VM, fp: [*]const cy.Value, chunkId: u64, irIdx: u64, startPc: [*]const u8, endPc: [*]const u8) void {
     const c = vm.compiler.chunks.items[@intCast(chunkId)];
-    const code = c.irGetStmtCode(@intCast(irIdx));
-    const nodeId = c.irGetNode(@intCast(irIdx));
+    const code = c.ir.getStmtCode(@intCast(irIdx));
+    const nodeId = c.ir.getNode(@intCast(irIdx));
 
     const mc = startPc[0..@intFromPtr(endPc)-@intFromPtr(startPc)];
     const contextStr = c.encoder.formatNode(nodeId, &cy.tempBuf) catch cy.fatal();
@@ -763,8 +763,8 @@ fn zDumpJitStmtSection(vm: *cy.VM, fp: [*]const cy.Value, chunkId: u64, irIdx: u
 
 fn zDumpJitExprSection(vm: *cy.VM, fp: [*]const cy.Value, chunkId: u64, irIdx: u64, startPc: [*]const u8, endPc: [*]const u8) void {
     const c = vm.compiler.chunks.items[@intCast(chunkId)];
-    const code = c.irGetExprCode(@intCast(irIdx));
-    const nodeId = c.irGetNode(@intCast(irIdx));
+    const code = c.ir.getExprCode(@intCast(irIdx));
+    const nodeId = c.ir.getNode(@intCast(irIdx));
 
     const mc = startPc[0..@intFromPtr(endPc)-@intFromPtr(startPc)];
     const contextStr = c.encoder.formatNode(nodeId, &cy.tempBuf) catch cy.fatal();
@@ -791,8 +791,8 @@ fn genCallDumpJitSection(c: *cy.Chunk, idx: usize, isStmt: bool) !usize {
 }
 
 fn genExpr(c: *cy.Chunk, idx: usize, cstr: RegisterCstr) anyerror!GenValue {
-    const code = c.irGetExprCode(idx);
-    const nodeId = c.irGetNode(idx);
+    const code = c.ir.getExprCode(idx);
+    const nodeId = c.ir.getNode(idx);
 
     var dumpEndPc: usize = undefined;
     if (cy.Trace) {
@@ -865,12 +865,12 @@ fn genStmts(c: *cy.Chunk, idx: u32) !void {
     var stmt = idx;
     while (stmt != cy.NullId) {
         try genStmt(c, stmt);
-        stmt = c.irGetNextStmt(stmt);
+        stmt = c.ir.getNextStmt(stmt);
     }
 }
 
 fn mainBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
-    const data = c.irGetStmtData(idx, .mainBlock);
+    const data = c.ir.getStmtData(idx, .mainBlock);
     log.tracev("main block: {}", .{data.maxLocals});
 
     try bcgen.pushBlock(c, .main, nodeId);
@@ -892,7 +892,7 @@ fn mainBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     var child = data.bodyHead;
     while (child != cy.NullId) {
         try genStmt(c, child);
-        child = c.irGetNextStmt(child);
+        child = c.ir.getNextStmt(child);
     }
 
     if (bcgen.shouldGenMainScopeReleaseOps(c.compiler)) {
@@ -920,10 +920,10 @@ fn mainEnd(c: *cy.Chunk, optReg: ?u8) !void {
 }
 
 fn genStringTemplate(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
-    const data = c.irGetExprData(idx, .stringTemplate);
-    const strsIdx = c.irAdvanceExpr(idx, .stringTemplate);
-    const strs = c.irGetArray(strsIdx, []const u8, data.numExprs+1);
-    const args = c.irGetArray(data.args, u32, data.numExprs);
+    const data = c.ir.getExprData(idx, .stringTemplate);
+    const strsIdx = c.ir.advanceExpr(idx, .stringTemplate);
+    const strs = c.ir.getArray(strsIdx, []const u8, data.numExprs+1);
+    const args = c.ir.getArray(data.args, u32, data.numExprs);
 
     const inst = try c.rega.selectForDstInst(cstr, true); 
     const argStart = c.rega.getNextTemp();
@@ -1003,13 +1003,13 @@ fn pushReleaseVals(c: *cy.Chunk, vals: []const GenValue, debugNodeId: cy.NodeId)
 }
 
 fn declareLocal(c: *cy.Chunk, idx: u32, nodeId: cy.NodeId) !void {
-    const data = c.irGetStmtData(idx, .declareLocal);
+    const data = c.ir.getStmtData(idx, .declareLocal);
     if (data.assign) {
         // Don't advance nextLocalReg yet since the rhs hasn't generated so the
         // alive locals should not include this declaration.
         const reg = try bcgen.reserveLocalReg(c, data.id, data.declType, data.isBoxed, nodeId, false);
 
-        const exprIdx = c.irAdvanceStmt(idx, .declareLocal);
+        const exprIdx = c.ir.advanceStmt(idx, .declareLocal);
         const val = try genExpr(c, exprIdx, RegisterCstr.toLocal(reg, false));
 
         const local = bcgen.getLocalInfoPtr(c, reg);
@@ -1032,10 +1032,10 @@ fn declareLocal(c: *cy.Chunk, idx: u32, nodeId: cy.NodeId) !void {
 }
 
 fn funcDecl(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
-    const data = c.irGetStmtData(idx, .funcDecl);
+    const data = c.ir.getStmtData(idx, .funcDecl);
     const func = data.func;
-    const paramsIdx = c.irAdvanceStmt(idx, .funcDecl);
-    const params = c.irGetArray(paramsIdx, ir.FuncParam, func.numParams);
+    const paramsIdx = c.ir.advanceStmt(idx, .funcDecl);
+    const params = c.ir.getArray(paramsIdx, ir.FuncParam, func.numParams);
 
     const funcPc = c.jitGetPos();
 
@@ -1094,10 +1094,10 @@ fn genChunkInner(c: *cy.Chunk) !void {
 
     c.genValueStack.clearRetainingCapacity();
 
-    const code = c.irGetStmtCode(0);
+    const code = c.ir.getStmtCode(0);
     if (code != .root) return error.Unexpected;
 
-    const data = c.irGetStmtData(0, .root);
+    const data = c.ir.getStmtData(0, .root);
     try genStmts(c, data.bodyHead);
 
     // Ensure that all cstr and values were accounted for.
@@ -1178,14 +1178,14 @@ fn genLocalReg(c: *cy.Chunk, reg: RegisterId, cstr: RegisterCstr, nodeId: cy.Nod
 }
 
 fn genLocal(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
-    const data = c.irGetExprData(idx, .local);
+    const data = c.ir.getExprData(idx, .local);
     const reg = bcgen.toLocalReg(c, data.id);
     return genLocalReg(c, reg, cstr, nodeId);
 }
 
 fn retExprStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     _ = nodeId;
-    const childIdx = c.irAdvanceStmt(idx, .retExprStmt);
+    const childIdx = c.ir.advanceStmt(idx, .retExprStmt);
 
     // TODO: If the returned expr is a local, consume the local after copying to reg 0.
     var childv: GenValue = undefined;

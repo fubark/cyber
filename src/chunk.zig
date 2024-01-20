@@ -61,8 +61,7 @@ pub const Chunk = struct {
     /// Stack for building func signatures. (eg. for nested func calls)
     typeStack: std.ArrayListUnmanaged(types.TypeId),
 
-    irBuf: std.ArrayListUnmanaged(u8),
-    irStmtBlockStack: std.ArrayListUnmanaged(cy.ir.StmtBlock),
+    ir: cy.ir.Buffer,
 
     /// Maps a IR local to a VM local.
     genIrLocalMapStack: std.ArrayListUnmanaged(u8),
@@ -202,8 +201,7 @@ pub const Chunk = struct {
             .varStack = .{},
             .preLoopVarSaveStack = .{},
             .typeStack = .{},
-            .irBuf = .{},
-            .irStmtBlockStack = .{},
+            .ir = cy.ir.Buffer.init(),
             .genValueStack = .{},
             .genLocalStack = .{},
             .genIrLocalMapStack = .{},
@@ -294,8 +292,7 @@ pub const Chunk = struct {
         self.curInitingSymDeps.deinit(self.alloc);
 
         self.typeStack.deinit(self.alloc);
-        self.irBuf.deinit(self.alloc);
-        self.irStmtBlockStack.deinit(self.alloc);
+        self.ir.deinit(self.alloc);
         self.genValueStack.deinit(self.alloc);
         self.dataStack.deinit(self.alloc);
         self.dataU8Stack.deinit(self.alloc);
@@ -806,7 +803,6 @@ pub const Chunk = struct {
     pub usingnamespace cy.module.ChunkExt;
     pub usingnamespace cy.types.ChunkExt;
     pub usingnamespace cy.sema.ChunkExt;
-    pub usingnamespace cy.ir.ChunkExt;
     pub usingnamespace jitgen.ChunkExt;
 };
 

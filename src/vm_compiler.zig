@@ -272,8 +272,8 @@ pub const VMcompiler = struct {
         log.tracev("Perform init sema.", .{});
         for (self.chunks.items) |chunk| {
             // First stmt is root at index 0.
-            _ = try chunk.irPushEmptyStmt2(.root, chunk.parserAstRootId, false);
-            try chunk.irPushStmtBlock();
+            _ = try chunk.ir.pushEmptyStmt2(chunk.alloc, .root, chunk.parserAstRootId, false);
+            try chunk.ir.pushStmtBlock(chunk.alloc);
 
             chunk.initializerVisited = false;
             chunk.initializerVisiting = false;
@@ -356,8 +356,8 @@ fn performChunkSema(self: *VMcompiler, chunk: *cy.Chunk) !void {
     try performChunkSemaDecls(chunk);
 
     // End root.
-    const stmtBlock = chunk.irPopStmtBlock();
-    chunk.irSetStmtData(0, .root, .{ .bodyHead = stmtBlock.first });
+    const stmtBlock = chunk.ir.popStmtBlock();
+    chunk.ir.setStmtData(0, .root, .{ .bodyHead = stmtBlock.first });
 }
 
 fn performChunkSemaDecls(c: *cy.Chunk) !void {
@@ -398,9 +398,9 @@ fn performChunkInitSema(_: *VMcompiler, c: *cy.Chunk) !void {
     }
 
     // Pop unordered stmts list.
-    _ = c.irPopStmtBlock();
+    _ = c.ir.popStmtBlock();
     // Create a new stmt list.
-    try c.irPushStmtBlock();
+    try c.ir.pushStmtBlock(c.alloc);
 
     // Reorder local declarations in DFS order by patching next stmt IR.
     for (c.parser.staticDecls.items) |sdecl| {
@@ -438,9 +438,9 @@ fn appendSymInitIrDFS(c: *cy.Chunk, sym: *cy.Sym, info: *cy.chunk.SymInitInfo, r
     }
 
     // Append stmt in the correct order.
-    c.irAppendToParent(info.irStart);
+    c.ir.appendToParent(info.irStart);
     // Reset this stmt's next or it can end up creating a cycle list.
-    c.irSetNextStmt(info.irStart, cy.NullId);
+    c.ir.setNextStmt(info.irStart, cy.NullId);
 
     info.visited = true;
 }

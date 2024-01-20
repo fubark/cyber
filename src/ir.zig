@@ -527,147 +527,161 @@ pub fn ExprData(comptime code: ExprCode) type {
 }
 
 /// IR ops use an explicit index since the underlying buffer can grow.
-pub const ChunkExt = struct {
+pub const Buffer = struct {
+    buf: std.ArrayListUnmanaged(u8),
+    stmtBlockStack: std.ArrayListUnmanaged(StmtBlock),
 
-    pub fn irSetExprCode(c: *cy.Chunk, idx: usize, comptime code: ExprCode) void {
-        c.irBuf.items[idx] = @intFromEnum(code);
+    pub fn init() Buffer {
+        return .{
+            .buf = .{},
+            .stmtBlockStack = .{},
+        };
     }
 
-    pub fn irSetExprData(c: *cy.Chunk, idx: usize, comptime code: ExprCode, data: ExprData(code)) void {
+    pub fn deinit(self: *Buffer, alloc: std.mem.Allocator) void {
+        self.buf.deinit(alloc);
+        self.stmtBlockStack.deinit(alloc);
+    }
+
+    pub fn setExprCode(self: *Buffer, idx: usize, comptime code: ExprCode) void {
+        self.buf.items[idx] = @intFromEnum(code);
+    }
+
+    pub fn setExprData(self: *Buffer, idx: usize, comptime code: ExprCode, data: ExprData(code)) void {
         const bytes = std.mem.toBytes(data);
-        @memcpy(c.irBuf.items[idx+1+4..idx+1+4+bytes.len], &bytes);
+        @memcpy(self.buf.items[idx+1+4..idx+1+4+bytes.len], &bytes);
     }
 
-    pub fn irGetExprData(c: *cy.Chunk, idx: usize, comptime code: ExprCode) ExprData(code) {
-        const data = c.irBuf.items[idx+1+4..][0..@sizeOf(ExprData(code))];
+    pub fn getExprData(self: *Buffer, idx: usize, comptime code: ExprCode) ExprData(code) {
+        const data = self.buf.items[idx+1+4..][0..@sizeOf(ExprData(code))];
         return std.mem.bytesToValue(ExprData(code), data);
     }
 
-    pub fn irSetStmtCode(c: *cy.Chunk, idx: usize, comptime code: StmtCode) void {
-        c.irBuf.items[idx] = @intFromEnum(code);
+    pub fn setStmtCode(self: *Buffer, idx: usize, comptime code: StmtCode) void {
+        self.buf.items[idx] = @intFromEnum(code);
     }
 
-    pub fn irSetStmtData(c: *cy.Chunk, idx: usize, comptime code: StmtCode, data: StmtData(code)) void {
+    pub fn setStmtData(self: *Buffer, idx: usize, comptime code: StmtCode, data: StmtData(code)) void {
         const bytes = std.mem.toBytes(data);
-        @memcpy(c.irBuf.items[idx+1+4+4..idx+1+4+4+bytes.len], &bytes);
+        @memcpy(self.buf.items[idx+1+4+4..idx+1+4+4+bytes.len], &bytes);
     }
 
-    pub fn irGetStmtData(c: *cy.Chunk, idx: usize, comptime code: StmtCode) StmtData(code) {
-        const data = c.irBuf.items[idx+1+4+4..][0..@sizeOf(StmtData(code))];
+    pub fn getStmtData(self: *Buffer, idx: usize, comptime code: StmtCode) StmtData(code) {
+        const data = self.buf.items[idx+1+4+4..][0..@sizeOf(StmtData(code))];
         return std.mem.bytesToValue(StmtData(code), data);
     }
 
-    pub fn irAdvanceArray(_: *cy.Chunk, idx: usize, comptime T: type, arr: []align(1) const T) usize {
+    pub fn advanceArray(_: *Buffer, idx: usize, comptime T: type, arr: []align(1) const T) usize {
         return idx + arr.len * @sizeOf(T);
     }
 
-    pub fn irAdvanceExpr(_: *cy.Chunk, idx: usize, comptime code: ExprCode) usize {
+    pub fn advanceExpr(_: *Buffer, idx: usize, comptime code: ExprCode) usize {
         return idx + 1 + 4 + @sizeOf(ExprData(code));
     }
 
-    pub fn irAdvanceStmt(_: *cy.Chunk, idx: usize, comptime code: StmtCode) usize {
+    pub fn advanceStmt(_: *Buffer, idx: usize, comptime code: StmtCode) usize {
         return idx + 1 + 4 + 4 + @sizeOf(StmtData(code));
     }
 
-    pub fn irPushStmtBlock(c: *cy.Chunk) !void {
-        try c.irStmtBlockStack.append(c.alloc, .{
+    pub fn pushStmtBlock(self: *Buffer, alloc: std.mem.Allocator) !void {
+        try self.stmtBlockStack.append(alloc, .{
             .first = cy.NullId,
             .last = cy.NullId,
         });
     }
 
-    pub fn irPopStmtBlock(c: *cy.Chunk) StmtBlock {
-        return c.irStmtBlockStack.pop();
+    pub fn popStmtBlock(self: *Buffer) StmtBlock {
+        return self.stmtBlockStack.pop();
     }
 
-    pub fn irPushEmptyExpr(c: *cy.Chunk, comptime code: ExprCode, nodeId: cy.NodeId) !u32 {
+    pub fn pushEmptyExpr(self: *Buffer, alloc: std.mem.Allocator, comptime code: ExprCode, nodeId: cy.NodeId) !u32 {
         log.tracev("irPushExpr: {}", .{code});
-        const start = c.irBuf.items.len;
-        try c.irBuf.resize(c.alloc, c.irBuf.items.len + 1 + 4 + @sizeOf(ExprData(code)));
-        c.irBuf.items[start] = @intFromEnum(code);
-        irSetNode(c, start, nodeId);
+        const start = self.buf.items.len;
+        try self.buf.resize(alloc, self.buf.items.len + 1 + 4 + @sizeOf(ExprData(code)));
+        self.buf.items[start] = @intFromEnum(code);
+        self.setNode(start, nodeId);
         return @intCast(start);
     }
 
-    pub fn irPushEmptyArray(c: *cy.Chunk, comptime T: type, len: usize) !u32 {
-        const start = c.irBuf.items.len;
-        try c.irBuf.resize(c.alloc, c.irBuf.items.len + @sizeOf(T) * len);
+    pub fn pushEmptyArray(self: *Buffer, alloc: std.mem.Allocator, comptime T: type, len: usize) !u32 {
+        const start = self.buf.items.len;
+        try self.buf.resize(alloc, self.buf.items.len + @sizeOf(T) * len);
         return @intCast(start);
     }
 
-    pub fn irSetArrayItem(c: *cy.Chunk, idx: usize, comptime T: type, elemIdx: usize, elem: T) void {
-        @as(*align(1) T, @ptrCast(&c.irBuf.items[idx+@sizeOf(T)*elemIdx])).* = elem;
+    pub fn setArrayItem(self: *Buffer, idx: usize, comptime T: type, elemIdx: usize, elem: T) void {
+        @as(*align(1) T, @ptrCast(&self.buf.items[idx+@sizeOf(T)*elemIdx])).* = elem;
     }
 
-    pub fn irGetArray(c: *cy.Chunk, idx: usize, comptime T: type, len: usize) []align(1) T {
-        const data = c.irBuf.items[idx..idx + @sizeOf(T) * len];
+    pub fn getArray(self: *Buffer, idx: usize, comptime T: type, len: usize) []align(1) T {
+        const data = self.buf.items[idx..idx + @sizeOf(T) * len];
         return std.mem.bytesAsSlice(T, data);
     }
 
-    pub fn irPushExpr(c: *cy.Chunk, comptime code: ExprCode, nodeId: cy.NodeId, data: ExprData(code)) !u32 {
-        const idx = try c.irPushEmptyExpr(code, nodeId);
-        c.irSetExprData(idx, code, data);
+    pub fn pushExpr(self: *Buffer, alloc: std.mem.Allocator, comptime code: ExprCode, nodeId: cy.NodeId, data: ExprData(code)) !u32 {
+        const idx = try self.pushEmptyExpr(alloc, code, nodeId);
+        self.setExprData(idx, code, data);
         return idx;
     }
 
-    pub fn irGetExprCode(c: *cy.Chunk, idx: usize) ExprCode {
-        return @enumFromInt(c.irBuf.items[idx]);
+    pub fn getExprCode(self: *Buffer, idx: usize) ExprCode {
+        return @enumFromInt(self.buf.items[idx]);
     }
 
-    pub fn irGetStmtCode(c: *cy.Chunk, idx: usize) StmtCode {
-        return @enumFromInt(c.irBuf.items[idx]);
+    pub fn getStmtCode(self: *Buffer, idx: usize) StmtCode {
+        return @enumFromInt(self.buf.items[idx]);
     }
 
-    pub fn irGetNode(c: *cy.Chunk, idx: usize) cy.NodeId {
-        return @as(*align(1) cy.NodeId, @ptrCast(c.irBuf.items.ptr + idx + 1)).*;
+    pub fn getNode(self: *Buffer, idx: usize) cy.NodeId {
+        return @as(*align(1) cy.NodeId, @ptrCast(self.buf.items.ptr + idx + 1)).*;
     }
 
-    fn irSetNode(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) void {
-        @as(*align(1) cy.NodeId, @ptrCast(c.irBuf.items.ptr + idx + 1)).* = nodeId;
+    fn setNode(self: *Buffer, idx: usize, nodeId: cy.NodeId) void {
+        @as(*align(1) cy.NodeId, @ptrCast(self.buf.items.ptr + idx + 1)).* = nodeId;
     }
 
-    pub fn irSetNextStmt(c: *cy.Chunk, idx: usize, nextIdx: u32) void {
-        @as(*align(1) cy.NodeId, @ptrCast(c.irBuf.items.ptr + idx + 1 + 4)).* = nextIdx;
+    pub fn setNextStmt(self: *Buffer, idx: usize, nextIdx: u32) void {
+        @as(*align(1) cy.NodeId, @ptrCast(self.buf.items.ptr + idx + 1 + 4)).* = nextIdx;
     }
 
-    pub fn irGetNextStmt(c: *cy.Chunk, idx: usize) u32 {
-        return @as(*align(1) cy.NodeId, @ptrCast(c.irBuf.items.ptr + idx + 1 + 4)).*;
+    pub fn getNextStmt(self: *Buffer, idx: usize) u32 {
+        return @as(*align(1) cy.NodeId, @ptrCast(self.buf.items.ptr + idx + 1 + 4)).*;
     }
 
-    pub fn irPushEmptyStmt(c: *cy.Chunk, comptime code: StmtCode, nodeId: cy.NodeId) !u32 {
-        return c.irPushEmptyStmt2(code, nodeId, true);
+    pub fn pushEmptyStmt(self: *Buffer, alloc: std.mem.Allocator, comptime code: StmtCode, nodeId: cy.NodeId) !u32 {
+        return self.pushEmptyStmt2(alloc, code, nodeId, true);
     }
 
-    pub fn irAppendToParent(c: *cy.Chunk, idx: u32) void {
-        const list = &c.irStmtBlockStack.items[c.irStmtBlockStack.items.len-1];
+    pub fn appendToParent(self: *Buffer, idx: u32) void {
+        const list = &self.stmtBlockStack.items[self.stmtBlockStack.items.len-1];
         if (list.last == cy.NullId) {
             // Set head stmt.
             list.first = idx;
             list.last = idx;
         } else {
             // Attach to last.
-            irSetNextStmt(c, list.last, idx);
+            self.setNextStmt(list.last, idx);
             list.last = idx;
         }
     }
 
-    pub fn irPushEmptyStmt2(c: *cy.Chunk, comptime code: StmtCode, nodeId: cy.NodeId, comptime appendToParent: bool) !u32 {
+    pub fn pushEmptyStmt2(self: *Buffer, alloc: std.mem.Allocator, comptime code: StmtCode, nodeId: cy.NodeId, comptime appendToParent_: bool) !u32 {
         log.tracev("irPushStmt: {}", .{code});
-        const start: u32 = @intCast(c.irBuf.items.len);
-        try c.irBuf.resize(c.alloc, c.irBuf.items.len + 1 + 4 + 4 + @sizeOf(StmtData(code)));
-        c.irBuf.items[start] = @intFromEnum(code);
-        irSetNode(c, start, nodeId);
-        irSetNextStmt(c, start, cy.NullId);
+        const start: u32 = @intCast(self.buf.items.len);
+        try self.buf.resize(alloc, self.buf.items.len + 1 + 4 + 4 + @sizeOf(StmtData(code)));
+        self.buf.items[start] = @intFromEnum(code);
+        self.setNode(start, nodeId);
+        self.setNextStmt(start, cy.NullId);
 
-        if (appendToParent) {
-            c.irAppendToParent(start);
+        if (appendToParent_) {
+            self.appendToParent(start);
         }
         return @intCast(start);
     }
 
-    pub fn irPushStmt(c: *cy.Chunk, comptime code: StmtCode, nodeId: cy.NodeId, data: StmtData(code)) !u32 {
-        const idx = try c.irPushEmptyStmt(code, nodeId);
-        c.irSetStmtData(idx, code, data);
+    pub fn pushStmt(self: *Buffer, alloc: std.mem.Allocator, comptime code: StmtCode, nodeId: cy.NodeId, data: StmtData(code)) !u32 {
+        const idx = try self.pushEmptyStmt(alloc, code, nodeId);
+        self.setStmtData(idx, code, data);
         return idx;
     }
 };

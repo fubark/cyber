@@ -45,11 +45,9 @@ ST_DATA TokenSym **table_ident;
 static TokenSym *hash_ident[TOK_HASH_SIZE];
 static char token_buf[STRING_MAX_SIZE + 1];
 static CString cstr_buf;
-static CString macro_equal_buf;
 static TokenString tokstr_buf;
 static unsigned char isidnum_table[256 - CH_EOF];
 static int pp_debug_tok, pp_debug_symv;
-static int pp_once;
 static int pp_expr;
 static int pp_counter;
 static void tok_print(const char *msg, const int *str);
@@ -100,8 +98,11 @@ static void next_nomacro(void);
 
 ST_FUNC void skip(int c)
 {
-    if (tok != c)
-        tcc_error("'%c' expected (got \"%s\")", c, get_tok_str(tok, &tokc));
+    if (tok != c) {
+        char tmp[40];
+        pstrcpy(tmp, sizeof tmp, get_tok_str(c, &tokc));
+        tcc_error("'%s' expected (got \"%s\")", tmp, get_tok_str(tok, &tokc));
+	}
     next();
 }
 
@@ -399,7 +400,6 @@ ST_FUNC void cstr_new(CString *cstr)
 ST_FUNC void cstr_free(CString *cstr)
 {
     tcc_free(cstr->data);
-    cstr_new(cstr);
 }
 
 /* reset string to empty */
@@ -577,17 +577,13 @@ ST_FUNC const char *get_tok_str(int v, CValue *cv)
         break;
 
     case TOK_CFLOAT:
-        cstr_cat(&cstr_buf, "<float>", 0);
-        break;
+        return strcpy(p, "<float>");
     case TOK_CDOUBLE:
-	cstr_cat(&cstr_buf, "<double>", 0);
-	break;
+        return strcpy(p, "<double>");
     case TOK_CLDOUBLE:
-	cstr_cat(&cstr_buf, "<long double>", 0);
-	break;
+        return strcpy(p, "<long double>");
     case TOK_LINENUM:
-	cstr_cat(&cstr_buf, "<linenumber>", 0);
-	break;
+        return strcpy(p, "<linenumber");
 
     /* above tokens have value, the ones below don't */
     case TOK_LT:
@@ -604,6 +600,8 @@ ST_FUNC const char *get_tok_str(int v, CValue *cv)
         return strcpy(p, ">>=");
     case TOK_EOF:
         return strcpy(p, "<eof>");
+    case 0: /* anonymous nameless symbols */
+        return strcpy(p, "<no name>");
     default:
         if (v < TOK_IDENT) {
             /* search in two bytes table */
@@ -617,13 +615,12 @@ ST_FUNC const char *get_tok_str(int v, CValue *cv)
                 }
                 q += 3;
             }
-        if (v >= 127) {
-            sprintf(cstr_buf.data, "<%02x>", v);
-            return cstr_buf.data;
-        }
-        addv:
+            if (v >= 127 || (v < 32 && !is_space(v) && v != '\n')) {
+                sprintf(p, "<\\x%02x>", v);
+                break;
+            }
+    addv:
             *p++ = v;
-    case 0: /* nameless anonymous symbol */
             *p = '\0';
         } else if (v < tok_ident) {
             return table_ident[v - TOK_IDENT]->str;
@@ -1005,7 +1002,11 @@ static inline int tok_size(const int *p)
     case TOK_CULLONG:
         return 1 + 2;
     case TOK_CLDOUBLE:
+#ifdef TCC_USING_DOUBLE_FOR_LDOUBLE
+        return 1 + 8 / 4;
+#else
         return 1 + LDOUBLE_SIZE / 4;
+#endif
     default:
         return 1 + 0;
     }
@@ -1147,24 +1148,23 @@ static void tok_str_add2(TokenString *s, int t, CValue *cv)
     case TOK_CLONG:
     case TOK_CULONG:
 #endif
-#if LDOUBLE_SIZE == 8
-    case TOK_CLDOUBLE:
-#endif
         str[len++] = cv->tab[0];
         str[len++] = cv->tab[1];
         break;
-#if LDOUBLE_SIZE == 12
     case TOK_CLDOUBLE:
+#if LDOUBLE_SIZE == 8 || defined TCC_USING_DOUBLE_FOR_LDOUBLE
+        str[len++] = cv->tab[0];
+        str[len++] = cv->tab[1];
+#elif LDOUBLE_SIZE == 12
         str[len++] = cv->tab[0];
         str[len++] = cv->tab[1];
         str[len++] = cv->tab[2];
 #elif LDOUBLE_SIZE == 16
-    case TOK_CLDOUBLE:
         str[len++] = cv->tab[0];
         str[len++] = cv->tab[1];
         str[len++] = cv->tab[2];
         str[len++] = cv->tab[3];
-#elif LDOUBLE_SIZE != 8
+#else
 #error add long double size support
 #endif
         break;
@@ -1232,12 +1232,12 @@ static inline void tok_get(int *t, const int **pp, CValue *cv)
         n = 2;
         goto copy;
     case TOK_CLDOUBLE:
-#if LDOUBLE_SIZE == 16
-        n = 4;
+#if LDOUBLE_SIZE == 8 || defined TCC_USING_DOUBLE_FOR_LDOUBLE
+        n = 2;
 #elif LDOUBLE_SIZE == 12
         n = 3;
-#elif LDOUBLE_SIZE == 8
-        n = 2;
+#elif LDOUBLE_SIZE == 16
+        n = 4;
 #else
 # error add long double size support
 #endif
@@ -1273,12 +1273,11 @@ static int macro_is_equal(const int *a, const int *b)
         return 1;
 
     while (*a && *b) {
-        /* first time preallocate macro_equal_buf, next time only reset position to start */
-        cstr_reset(&macro_equal_buf);
+        cstr_reset(&tokcstr);
         TOK_GET(&t, &a, &cv);
-        cstr_cat(&macro_equal_buf, get_tok_str(t, &cv), 0);
+        cstr_cat(&tokcstr, get_tok_str(t, &cv), 0);
         TOK_GET(&t, &b, &cv);
-        if (strcmp(macro_equal_buf.data, get_tok_str(t, &cv)))
+        if (strcmp(tokcstr.data, get_tok_str(t, &cv)))
             return 0;
     }
     return !(*a || *b);
@@ -1327,63 +1326,6 @@ ST_FUNC void free_defines(Sym *b)
     }
 }
 
-/* label lookup */
-ST_FUNC Sym *label_find(int v)
-{
-    v -= TOK_IDENT;
-    if ((unsigned)v >= (unsigned)(tok_ident - TOK_IDENT))
-        return NULL;
-    return table_ident[v]->sym_label;
-}
-
-ST_FUNC Sym *label_push(Sym **ptop, int v, int flags)
-{
-    Sym *s, **ps;
-    s = sym_push2(ptop, v, VT_STATIC, 0);
-    s->r = flags;
-    ps = &table_ident[v - TOK_IDENT]->sym_label;
-    if (ptop == &global_label_stack) {
-        /* modify the top most local identifier, so that
-           sym_identifier will point to 's' when popped */
-        while (*ps != NULL)
-            ps = &(*ps)->prev_tok;
-    }
-    s->prev_tok = *ps;
-    *ps = s;
-    return s;
-}
-
-/* pop labels until element last is reached. Look if any labels are
-   undefined. Define symbols if '&&label' was used. */
-ST_FUNC void label_pop(Sym **ptop, Sym *slast, int keep)
-{
-    Sym *s, *s1;
-    for(s = *ptop; s != slast; s = s1) {
-        s1 = s->prev;
-        if (s->r == LABEL_DECLARED) {
-            tcc_warning_c(warn_all)("label '%s' declared but not used", get_tok_str(s->v, NULL));
-        } else if (s->r == LABEL_FORWARD) {
-                tcc_error("label '%s' used but not defined",
-                      get_tok_str(s->v, NULL));
-        } else {
-            if (s->c) {
-                /* define corresponding symbol. A size of
-                   1 is put. */
-                put_extern_sym(s, cur_text_section, s->jnext, 1);
-            }
-        }
-        /* remove label */
-        if (s->r != LABEL_GONE)
-            table_ident[s->v - TOK_IDENT]->sym_label = s->prev_tok;
-        if (!keep)
-            sym_free(s);
-        else
-            s->r = LABEL_GONE;
-    }
-    if (!keep)
-        *ptop = slast;
-}
-
 /* fake the nth "#if defined test_..." for tcc -dt -run */
 static void maybe_run_test(TCCState *s)
 {
@@ -1405,14 +1347,15 @@ search_cached_include(TCCState *s1, const char *filename, int add);
 static int parse_include(TCCState *s1, int do_next, int test)
 {
     int c, i;
-    CString cs;
     char name[1024], buf[1024], *p;
     CachedInclude *e;
 
-    cstr_new(&cs);
     c = skip_spaces();
     if (c == '<' || c == '\"') {
-        file->buf_ptr = parse_pp_string(file->buf_ptr, c == '<' ? '>' : c, &cs);
+        cstr_reset(&tokcstr);
+        file->buf_ptr = parse_pp_string(file->buf_ptr, c == '<' ? '>' : c, &tokcstr);
+        i = tokcstr.size;
+        pstrncpy(name, tokcstr.data, i >= sizeof name ? sizeof name - 1 : i);
         next_nomacro();
     } else {
         /* computed #include : concatenate tokens until result is one of
@@ -1420,24 +1363,22 @@ static int parse_include(TCCState *s1, int do_next, int test)
 	parse_flags = PARSE_FLAG_PREPROCESS
                     | PARSE_FLAG_LINEFEED
                     | (parse_flags & PARSE_FLAG_ASM_FILE);
+        name[0] = 0;
         for (;;) {
             next();
-            p = cs.data, i = cs.size - 1;
+            p = name, i = strlen(p) - 1;
             if (i > 0
                 && ((p[0] == '"' && p[i] == '"')
                  || (p[0] == '<' && p[i] == '>')))
                 break;
             if (tok == TOK_LINEFEED)
                 tcc_error("'#include' expects \"FILENAME\" or <FILENAME>");
-            cstr_cat(&cs, get_tok_str(tok, &tokc), -1);
+            pstrcat(name, sizeof name, get_tok_str(tok, &tokc));
 	}
         c = p[0];
         /* remove '<>|""' */
-        memmove(p, p + 1, cs.size -= 2);
+        memmove(p, p + 1, i - 1), p[i - 1] = 0;
     }
-    cstr_ccat(&cs, '\0');
-    pstrcpy(name, sizeof name, cs.data);
-    cstr_free(&cs);
 
     i = do_next ? file->include_next_index : -1;
     for (;;) {
@@ -1468,7 +1409,7 @@ static int parse_include(TCCState *s1, int do_next, int test)
         }
         pstrcat(buf, sizeof buf, name);
         e = search_cached_include(s1, buf, 0);
-        if (e && (define_find(e->ifndef_macro) || e->once == pp_once)) {
+        if (e && (define_find(e->ifndef_macro) || e->once)) {
             /* no need to parse the include because the 'ifndef macro'
                is defined (or had #pragma once) */
 #ifdef INC_DEBUG
@@ -1519,7 +1460,10 @@ static int expr_preprocess(TCCState *s1)
     while (tok != TOK_LINEFEED && tok != TOK_EOF) {
         next(); /* do macro subst */
       redo:
-        if (tok == TOK_DEFINED) {
+        if (tok < TOK_IDENT) {
+            if (tok >= TOK_STR && tok <= TOK_CLDOUBLE)
+                tcc_error("invalid constant in preprocessor expression");
+        } else if (tok == TOK_DEFINED) {
             next_nomacro();
             t = tok;
             if (t == '(') 
@@ -1551,7 +1495,7 @@ static int expr_preprocess(TCCState *s1)
                 expect("')'");
             tok = TOK_CINT;
             tokc.i = c;
-        } else if (tok >= TOK_IDENT) {
+        } else {
             /* if undefined macro, replace with zero, check for func-like */
             t = tok;
             tok = TOK_CINT;
@@ -1670,18 +1614,18 @@ bad_twosharp:
 
 static CachedInclude *search_cached_include(TCCState *s1, const char *filename, int add)
 {
-    const unsigned char *s;
+    const char *s, *basename;
     unsigned int h;
     CachedInclude *e;
-    int i;
+    int c, i, len;
 
+    s = basename = tcc_basename(filename);
     h = TOK_HASH_INIT;
-    s = (unsigned char *) filename;
-    while (*s) {
+    while ((c = (unsigned char)*s) != 0) {
 #ifdef _WIN32
-        h = TOK_HASH_FUNC(h, toup(*s));
+        h = TOK_HASH_FUNC(h, toup(c));
 #else
-        h = TOK_HASH_FUNC(h, *s);
+        h = TOK_HASH_FUNC(h, c);
 #endif
         s++;
     }
@@ -1692,15 +1636,20 @@ static CachedInclude *search_cached_include(TCCState *s1, const char *filename, 
         if (i == 0)
             break;
         e = s1->cached_includes[i - 1];
-        if (0 == PATHCMP(e->filename, filename))
+        if (0 == PATHCMP(filename, e->filename))
+            return e;
+        if (e->once
+            && 0 == PATHCMP(basename, tcc_basename(e->filename))
+            && 0 == normalized_PATHCMP(filename, e->filename)
+            )
             return e;
         i = e->hash_next;
     }
     if (!add)
         return NULL;
 
-    e = tcc_malloc(sizeof(CachedInclude) + strlen(filename));
-    strcpy(e->filename, filename);
+    e = tcc_malloc(sizeof(CachedInclude) + (len = strlen(filename)));
+    memcpy(e->filename, filename, len + 1);
     e->ifndef_macro = e->once = 0;
     dynarray_add(&s1->cached_includes, &s1->nb_cached_includes, e);
     /* add in hash table */
@@ -1744,7 +1693,7 @@ static void pragma_parse(TCCState *s1)
         pp_debug_tok = t, pp_debug_symv = v;
 
     } else if (tok == TOK_once) {
-        search_cached_include(s1, file->filename, 1)->once = pp_once;
+        search_cached_include(s1, file->filename, 1)->once = 1;
 
     } else if (s1->output_type == TCC_OUTPUT_PREPROCESS) {
         /* tcc -E: keep pragmas below unchanged */
@@ -2394,11 +2343,10 @@ static void parse_number(const char *p)
                 tokc.f = (float)d;
             } else if (t == 'L') {
                 ch = *p++;
+                tok = TOK_CLDOUBLE;
 #ifdef TCC_USING_DOUBLE_FOR_LDOUBLE
-                tok = TOK_CDOUBLE;
                 tokc.d = d;
 #else
-                tok = TOK_CLDOUBLE;
                 /* XXX: not large enough */
                 tokc.ld = (long double)d;
 #endif
@@ -2450,11 +2398,10 @@ static void parse_number(const char *p)
                 tokc.f = strtof(token_buf, NULL);
             } else if (t == 'L') {
                 ch = *p++;
+                tok = TOK_CLDOUBLE;
 #ifdef TCC_USING_DOUBLE_FOR_LDOUBLE
-                tok = TOK_CDOUBLE;
                 tokc.d = strtod(token_buf, NULL);
 #else
-                tok = TOK_CLDOUBLE;
                 tokc.ld = strtold(token_buf, NULL);
 #endif
             } else {
@@ -2993,7 +2940,6 @@ static int *macro_arg_subst(Sym **nested_list, const int *macro_str, Sym *args)
     Sym *s;
     CValue cval;
     TokenString str;
-    CString cstr;
 
     tok_str_new(&str);
     t0 = t1 = 0;
@@ -3008,8 +2954,8 @@ static int *macro_arg_subst(Sym **nested_list, const int *macro_str, Sym *args)
                 goto bad_stringy;
             s = sym_find2(args, t);
             if (s) {
-                cstr_new(&cstr);
-                cstr_ccat(&cstr, '\"');
+                cstr_reset(&tokcstr);
+                cstr_ccat(&tokcstr, '\"');
                 st = s->d;
                 spc = 0;
                 while (*st >= 0) {
@@ -3020,24 +2966,23 @@ static int *macro_arg_subst(Sym **nested_list, const int *macro_str, Sym *args)
                         const char *s = get_tok_str(t, &cval);
                         while (*s) {
                             if (t == TOK_PPSTR && *s != '\'')
-                                add_char(&cstr, *s);
+                                add_char(&tokcstr, *s);
                             else
-                                cstr_ccat(&cstr, *s);
+                                cstr_ccat(&tokcstr, *s);
                             ++s;
                         }
                     }
                 }
-                cstr.size -= spc;
-                cstr_ccat(&cstr, '\"');
-                cstr_ccat(&cstr, '\0');
+                tokcstr.size -= spc;
+                cstr_ccat(&tokcstr, '\"');
+                cstr_ccat(&tokcstr, '\0');
 #ifdef PP_DEBUG
-                printf("\nstringize: <%s>\n", (char *)cstr.data);
+                printf("\nstringize: <%s>\n", (char *)tokcstr.data);
 #endif
                 /* add string */
-                cval.str.size = cstr.size;
-                cval.str.data = cstr.data;
+                cval.str.size = tokcstr.size;
+                cval.str.data = tokcstr.data;
                 tok_str_add2(&str, TOK_PPSTR, &cval);
-                cstr_free(&cstr);
             } else {
         bad_stringy:
                 expect("macro parameter after '#'");
@@ -3045,7 +2990,6 @@ static int *macro_arg_subst(Sym **nested_list, const int *macro_str, Sym *args)
         } else if (t >= TOK_IDENT) {
             s = sym_find2(args, t);
             if (s) {
-                int l0 = str.len;
                 st = s->d;
                 /* if '##' is present before or after, no arg substitution */
                 if (*macro_str == TOK_PPJOIN || t1 == TOK_PPJOIN) {
@@ -3077,15 +3021,17 @@ static int *macro_arg_subst(Sym **nested_list, const int *macro_str, Sym *args)
 		    }
 		    st = s->next->d;
                 }
-                for(;;) {
+                if (*st <= 0) {
+                    /* expanded to empty string */
+		    if (str.len)
+                        tok_str_add(&str, TOK_PLCHLDR);
+                } else for (;;) {
                     int t2;
                     TOK_GET(&t2, &st, &cval);
                     if (t2 <= 0)
                         break;
                     tok_str_add2(&str, t2, &cval);
                 }
-                if (str.len == l0) /* expanded to empty string */
-                    tok_str_add(&str, TOK_PLCHLDR);
             } else {
                 tok_str_add(&str, t);
             }
@@ -3106,19 +3052,19 @@ static char const ab_month_name[12][4] =
 
 static int paste_tokens(int t1, CValue *v1, int t2, CValue *v2)
 {
-    CString cstr;
     int n, ret = 1;
 
-    cstr_new(&cstr);
+    cstr_reset(&tokcstr);
     if (t1 != TOK_PLCHLDR)
-        cstr_cat(&cstr, get_tok_str(t1, v1), -1);
-    n = cstr.size;
+        cstr_cat(&tokcstr, get_tok_str(t1, v1), -1);
+    n = tokcstr.size;
     if (t2 != TOK_PLCHLDR)
-        cstr_cat(&cstr, get_tok_str(t2, v2), -1);
-    cstr_ccat(&cstr, '\0');
+        cstr_cat(&tokcstr, get_tok_str(t2, v2), -1);
+    cstr_ccat(&tokcstr, '\0');
+    //printf("paste <%s>\n", (char*)tokcstr.data);
 
-    tcc_open_bf(tcc_state, ":paste:", cstr.size);
-    memcpy(file->buffer, cstr.data, cstr.size);
+    tcc_open_bf(tcc_state, ":paste:", tokcstr.size);
+    memcpy(file->buffer, tokcstr.data, tokcstr.size);
     tok_flags = 0;
     for (;;) {
         next_nomacro1();
@@ -3127,13 +3073,11 @@ static int paste_tokens(int t1, CValue *v1, int t2, CValue *v2)
         if (is_space(tok))
             continue;
         tcc_warning("pasting \"%.*s\" and \"%s\" does not give a valid"
-            " preprocessing token", n, (char *)cstr.data, (char*)cstr.data + n);
+            " preprocessing token", n, file->buffer, file->buffer + n);
         ret = 0;
         break;
     }
     tcc_close();
-    //printf("paste <%s>\n", (char*)cstr.data);
-    cstr_free(&cstr);
     return ret;
 }
 
@@ -3273,7 +3217,6 @@ static int macro_subst_tok(
     TokenString str;
     char *cstrval;
     CValue cval;
-    CString cstr;
     char buf[32];
 
     /* if symbol is a macro, prepare substitution */
@@ -3304,12 +3247,11 @@ static int macro_subst_tok(
     add_cstr:
         t1 = TOK_STR;
     add_cstr1:
-        cstr_new(&cstr);
-        cstr_cat(&cstr, cstrval, 0);
-        cval.str.size = cstr.size;
-        cval.str.data = cstr.data;
+        cstr_reset(&tokcstr);
+        cstr_cat(&tokcstr, cstrval, 0);
+        cval.str.size = tokcstr.size;
+        cval.str.data = tokcstr.data;
         tok_str_add2(tok_str, t1, &cval);
-        cstr_free(&cstr);
     } else if (s->d) {
         int saved_parse_flags = parse_flags;
 	int *joined_str = NULL;
@@ -3657,6 +3599,14 @@ static void tcc_predefs(TCCState *s1, CString *cs, int is_asm)
       putdef(cs, "__TCC_PP__");
     if (s1->output_type == TCC_OUTPUT_MEMORY)
       putdef(cs, "__TCC_RUN__");
+#ifdef CONFIG_TCC_BACKTRACE
+    if (s1->do_backtrace)
+      putdef(cs, "__TCC_BACKTRACE__");
+#endif
+#ifdef CONFIG_TCC_BCHECK
+    if (s1->do_bounds_check)
+      putdef(cs, "__TCC_BCHECK__");
+#endif
     if (s1->char_is_unsigned)
       putdef(cs, "__CHAR_UNSIGNED__");
     if (s1->optimize > 0)
@@ -3665,14 +3615,6 @@ static void tcc_predefs(TCCState *s1, CString *cs, int is_asm)
       putdef(cs, "_REENTRANT");
     if (s1->leading_underscore)
       putdef(cs, "__leading_underscore");
-#ifdef CONFIG_TCC_BCHECK
-    if (s1->do_bounds_check)
-      putdef(cs, "__BOUNDS_CHECKING_ON");
-#endif
-#ifdef CONFIG_TCC_BACKTRACE
-    if (s1->do_backtrace)
-      putdef(cs, "__TCC_BACKTRACE_ENABLED__");
-#endif
     cstr_printf(cs, "#define __SIZEOF_POINTER__ %d\n", PTR_SIZE);
     cstr_printf(cs, "#define __SIZEOF_LONG__ %d\n", LONG_SIZE);
     if (!is_asm) {
@@ -3693,7 +3635,6 @@ static void tcc_predefs(TCCState *s1, CString *cs, int is_asm)
 ST_FUNC void preprocess_start(TCCState *s1, int filetype)
 {
     int is_asm = !!(filetype & (AFF_TYPE_ASM|AFF_TYPE_ASMPP));
-    CString cstr;
 
     tccpp_new(s1);
 
@@ -3703,7 +3644,6 @@ ST_FUNC void preprocess_start(TCCState *s1, int filetype)
     pp_expr = 0;
     pp_counter = 0;
     pp_debug_tok = pp_debug_symv = 0;
-    pp_once++;
     s1->pack_stack[0] = 0;
     s1->pack_stack_ptr = s1->pack_stack;
 
@@ -3711,6 +3651,7 @@ ST_FUNC void preprocess_start(TCCState *s1, int filetype)
     set_idnum('.', is_asm ? IS_ID : 0);
 
     if (!(filetype & AFF_TYPE_ASM)) {
+        CString cstr;
         cstr_new(&cstr);
         tcc_predefs(s1, &cstr, is_asm);
         if (s1->cmdline_defs.size)
@@ -3769,6 +3710,7 @@ ST_FUNC void tccpp_new(TCCState *s)
     memset(hash_ident, 0, TOK_HASH_SIZE * sizeof(TokenSym *));
     memset(s->cached_includes_hash, 0, sizeof s->cached_includes_hash);
 
+    cstr_new(&tokcstr);
     cstr_new(&cstr_buf);
     cstr_realloc(&cstr_buf, STRING_MAX_SIZE);
     tok_str_new(&tokstr_buf);
@@ -3814,7 +3756,6 @@ ST_FUNC void tccpp_delete(TCCState *s)
     /* free static buffers */
     cstr_free(&tokcstr);
     cstr_free(&cstr_buf);
-    cstr_free(&macro_equal_buf);
     tok_str_free_str(tokstr_buf.str);
 
     /* free allocators */

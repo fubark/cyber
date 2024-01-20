@@ -1,2 +1,2 @@
 tcc: https://github.com/mirror/tinycc
-bdec3c534583066cf097543f265ad620a8baa30d
+04365dd4c91f78361c7cf3169fe5fab3ccb9bfbf

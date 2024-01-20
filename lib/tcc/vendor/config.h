@@ -8,7 +8,7 @@
 #ifndef CONFIG_TCC_PREDEFS
 # define CONFIG_TCC_PREDEFS 1
 #endif
-#define TCC_VERSION "0.9.27"
-#define GCC_MAJOR 14
+#define TCC_VERSION "0.9.28rc"
+#define GCC_MAJOR 17
 #define GCC_MINOR 0
 #define CC_NAME CC_clang

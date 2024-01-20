@@ -889,8 +889,12 @@ ST_FUNC void tcc_debug_start(TCCState *s1)
 /* put end of translation unit info */
 ST_FUNC void tcc_debug_end(TCCState *s1)
 {
-    if (!s1->do_debug)
+    if (!s1->do_debug || debug_next_type == 0)
         return;
+
+    if (debug_info_root)
+        tcc_debug_funcend(s1, 0); /* free stuff in case of errors */
+
     if (s1->dwarf) {
 	int i, j;
 	int start_aranges;
@@ -1019,6 +1023,7 @@ ST_FUNC void tcc_debug_end(TCCState *s1)
                     text_section->data_offset, text_section, section_sym);
     }
     tcc_free(debug_hash);
+    debug_next_type = 0;
 }
 
 static BufferedFile* put_new_file(TCCState *s1)
@@ -1081,7 +1086,7 @@ ST_FUNC void tcc_debug_line(TCCState *s1)
 
     if (!s1->do_debug)
         return;
-    if (cur_text_section != text_section)
+    if (cur_text_section != text_section || nocode_wanted)
         return;
     f = put_new_file(s1);
     if (!f)
@@ -1240,8 +1245,9 @@ ST_FUNC void tcc_debug_fix_anon(TCCState *s1, CType *t)
 {
     int i, j, debug_type;
 
-    if (!s1->do_debug || !s1->dwarf || debug_info)
+    if (!(s1->do_debug & 2) || !s1->dwarf || debug_info)
 	return;
+
     if ((t->t & VT_BTYPE) == VT_STRUCT && t->ref->c != -1)
 	for (i = 0; i < n_debug_anon_hash; i++)
 	    if (t->ref == debug_anon_hash[i].type) {
@@ -1285,6 +1291,15 @@ static void tcc_debug_remove(TCCState *s1, Sym *t)
 	}
 }
 
+#define	STRUCT_NODEBUG(s) 			       \
+    (s->a.nodebug ||                           \
+     ((s->v & ~SYM_FIELD) >= SYM_FIRST_ANOM && \
+      ((s->type.t & VT_BTYPE) == VT_BYTE ||    \
+       (s->type.t & VT_BTYPE) == VT_BOOL ||    \
+       (s->type.t & VT_BTYPE) == VT_SHORT ||   \
+       (s->type.t & VT_BTYPE) == VT_INT ||     \
+       (s->type.t & VT_BTYPE) == VT_LLONG)))
+
 static void tcc_get_debug_info(TCCState *s1, Sym *s, CString *result)
 {
     int type;
@@ -1320,9 +1335,10 @@ static void tcc_get_debug_info(TCCState *s1, Sym *s, CString *result)
                 int pos, size, align;
 
                 t = t->next;
+		if (STRUCT_NODEBUG(t))
+		    continue;
                 cstr_printf (&str, "%s:",
-                             (t->v & ~SYM_FIELD) >= SYM_FIRST_ANOM
-                             ? "" : get_tok_str(t->v & ~SYM_FIELD, NULL));
+                             get_tok_str(t->v & ~SYM_FIELD, NULL));
                 tcc_get_debug_info (s1, t, &str);
                 if (t->type.t & VT_BITFIELD) {
                     pos = t->c * 8 + BIT_POS(t->type.t);
@@ -1430,6 +1446,8 @@ static int tcc_get_dwarf_info(TCCState *s1, Sym *s)
 	    i = 0;
 	    while (e->next) {
 		e = e->next;
+		if (STRUCT_NODEBUG(e))
+		    continue;
 		i++;
 	    }
 	    pos_type = (int *) tcc_malloc(i * sizeof(int));
@@ -1453,12 +1471,13 @@ static int tcc_get_dwarf_info(TCCState *s1, Sym *s)
 	    i = 0;
             while (e->next) {
                 e = e->next;
+		if (STRUCT_NODEBUG(e))
+		    continue;
 	        dwarf_data1(dwarf_info_section,
 			    e->type.t & VT_BITFIELD ? DWARF_ABBREV_MEMBER_BF
 						    : DWARF_ABBREV_MEMBER);
 		dwarf_strp(dwarf_info_section,
-			   (e->v & ~SYM_FIELD) >= SYM_FIRST_ANOM
-			   ? "" : get_tok_str(e->v & ~SYM_FIELD, NULL));
+			   get_tok_str(e->v & ~SYM_FIELD, NULL));
 		dwarf_uleb128(dwarf_info_section, dwarf_line.cur_file);
 		dwarf_uleb128(dwarf_info_section, file->line_num);
 		pos_type[i++] = dwarf_info_section->data_offset;
@@ -1482,6 +1501,8 @@ static int tcc_get_dwarf_info(TCCState *s1, Sym *s)
 	    i = 0;
 	    while (e->next) {
 		e = e->next;
+		if (STRUCT_NODEBUG(e))
+		    continue;
 		type = tcc_get_dwarf_info(s1, e);
 		tcc_debug_check_anon(s1, e, pos_type[i]);
 		write32le(dwarf_info_section->data + pos_type[i++],
@@ -1769,8 +1790,10 @@ static void tcc_debug_finish (TCCState *s1, struct _debug_info *cur)
 ST_FUNC void tcc_add_debug_info(TCCState *s1, int param, Sym *s, Sym *e)
 {
     CString debug_str;
-    if (!s1->do_debug)
+
+    if (!(s1->do_debug & 2))
         return;
+
     cstr_new (&debug_str);
     for (; s != e; s = s->prev) {
         if (!s->v || (s->r & VT_VALMASK) != VT_LOCAL)
@@ -1905,13 +1928,15 @@ ST_FUNC void tcc_debug_funcend(TCCState *s1, int size)
     {
         tcc_debug_finish (s1, debug_info_root);
     }
+    debug_info_root = 0;
 }
 
 
 ST_FUNC void tcc_debug_extern_sym(TCCState *s1, Sym *sym, int sh_num, int sym_bind, int sym_type)
 {
-    if (!s1->do_debug)
+    if (!(s1->do_debug & 2))
         return;
+
     if (sym_type == STT_FUNC || sym->v >= SYM_FIRST_ANOM)
         return;
     if (s1->dwarf) {
@@ -1963,8 +1988,9 @@ ST_FUNC void tcc_debug_extern_sym(TCCState *s1, Sym *sym, int sh_num, int sym_bi
 
 ST_FUNC void tcc_debug_typedef(TCCState *s1, Sym *sym)
 {
-    if (!s1->do_debug)
+    if (!(s1->do_debug & 2))
         return;
+
     if (s1->dwarf) {
 	int debug_type;
 

@@ -23,9 +23,9 @@
 /* only native compiler supports -run */
 #ifdef TCC_IS_NATIVE
 
-#ifdef CONFIG_TCC_BACKTRACE
 typedef struct rt_context
 {
+#ifdef CONFIG_TCC_BACKTRACE
     /* --> tccelf.c:tcc_add_btstub wants those below in that order: */
     union {
 	struct {
@@ -46,14 +46,27 @@ typedef struct rt_context
     int num_callers;
     addr_t ip, fp, sp;
     void *top_func;
-    jmp_buf jmp_buf;
-    char do_jmp;
+#endif
+    jmp_buf jb;
+    int do_jmp;
+# define NR_AT_EXIT 32
+    int nr_exit;
+    void *exitfunc[NR_AT_EXIT];
+    void *exitarg[NR_AT_EXIT];
 } rt_context;
 
 static rt_context g_rtctxt;
+static void rt_exit(int code)
+{
+    rt_context *rc = &g_rtctxt;
+    if (rc->do_jmp)
+        longjmp(rc->jb, code ? code : 256);
+    exit(code);
+}
+
+#ifdef CONFIG_TCC_BACKTRACE
 static void set_exception_handler(void);
 static int _rt_error(void *fp, void *ip, const char *fmt, va_list ap);
-static void rt_exit(int code);
 #endif /* CONFIG_TCC_BACKTRACE */
 
 /* defined when included from lib/bt-exe.c */
@@ -63,7 +76,7 @@ static void rt_exit(int code);
 # include <sys/mman.h>
 #endif
 
-static void set_pages_executable(TCCState *s1, int mode, void *ptr, unsigned long length);
+static int set_pages_executable(TCCState *s1, int mode, void *ptr, unsigned long length);
 static int tcc_relocate_ex(TCCState *s1, void *ptr, addr_t ptr_diff);
 
 #ifdef _WIN64
@@ -100,16 +113,17 @@ LIBTCCAPI int tcc_relocate(TCCState *s1, void *ptr)
     ptr = mmap(NULL, size * 2, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     /* mmap RX memory at a fixed distance */
     prx = mmap((char*)ptr + size, size, PROT_READ|PROT_EXEC, MAP_SHARED|MAP_FIXED, fd, 0);
-    if (ptr == MAP_FAILED || prx == MAP_FAILED)
-	tcc_error("tccrun: could not map memory");
-    ptr_diff = (char*)prx - (char*)ptr;
     close(fd);
+    if (ptr == MAP_FAILED || prx == MAP_FAILED)
+	return tcc_error_noabort("tccrun: could not map memory");
+    ptr_diff = (char*)prx - (char*)ptr;
     //printf("map %p %p %p\n", ptr, prx, (void*)ptr_diff);
 }
 #else
     ptr = tcc_malloc(size);
 #endif
-    tcc_relocate_ex(s1, ptr, ptr_diff); /* no more errors expected */
+    if (tcc_relocate_ex(s1, ptr, ptr_diff))
+        return -1;
     dynarray_add(&s1->runtime_mem, &s1->nb_runtime_mem, (void*)(addr_t)size);
     dynarray_add(&s1->runtime_mem, &s1->nb_runtime_mem, ptr);
     return 0;
@@ -145,79 +159,35 @@ static void run_cdtors(TCCState *s1, const char *start, const char *end,
         ((void(*)(int, char **, char **))*a++)(argc, argv, envp);
 }
 
-#define	NR_AT_EXIT	32
-
-static struct exit_context {
-    int exit_called;
-    int nr_exit;
-    void (*exitfunc[NR_AT_EXIT])(int, void *);
-    void *exitarg[NR_AT_EXIT];
-#ifndef CONFIG_TCC_BACKTRACE
-    jmp_buf run_jmp_buf;
-#endif
-} g_exit_context;
-
-static void init_exit(void)
+static void run_on_exit(int ret)
 {
-    struct exit_context *e = &g_exit_context;
-
-    e->exit_called = 0;
-    e->nr_exit = 0;
+    rt_context *rc = &g_rtctxt;
+    int n = rc->nr_exit;
+    while (n)
+	--n, ((void(*)(int,void*))rc->exitfunc[n])(ret, rc->exitarg[n]);
 }
 
-static void call_exit(int ret)
+static int rt_on_exit(void *function, void *arg)
 {
-    struct exit_context *e = &g_exit_context;
-
-    while (e->nr_exit) {
-	e->nr_exit--;
-	e->exitfunc[e->nr_exit](ret, e->exitarg[e->nr_exit]);
-    }
-}
-
-static int rt_atexit(void (*function)(void))
-{
-    struct exit_context *e = &g_exit_context;
-
-    if (e->nr_exit < NR_AT_EXIT) {
-	e->exitfunc[e->nr_exit] = (void (*)(int, void *))function;
-	e->exitarg[e->nr_exit++] = NULL;
+    rt_context *rc = &g_rtctxt;
+    if (rc->nr_exit < NR_AT_EXIT) {
+	rc->exitfunc[rc->nr_exit] = function;
+	rc->exitarg[rc->nr_exit++] = arg;
         return 0;
     }
     return 1;
 }
 
-static int rt_on_exit(void (*function)(int, void *), void *arg)
+static int rt_atexit(void *function)
 {
-    struct exit_context *e = &g_exit_context;
-
-    if (e->nr_exit < NR_AT_EXIT) {
-	e->exitfunc[e->nr_exit] = function;
-	e->exitarg[e->nr_exit++] = arg;
-        return 0;
-    }
-    return 1;
-}
-
-static void run_exit(int code)
-{
-    struct exit_context *e = &g_exit_context;
-
-    e->exit_called = 1;
-#ifdef CONFIG_TCC_BACKTRACE
-    longjmp((&g_rtctxt)->jmp_buf, code ? code : 256);
-#else
-    longjmp(e->run_jmp_buf, code ? code : 256);
-#endif
+    return rt_on_exit(function, NULL);
 }
 
 /* launch the compiled program with the given arguments */
 LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
 {
     int (*prog_main)(int, char **, char **), ret;
-#ifdef CONFIG_TCC_BACKTRACE
     rt_context *rc = &g_rtctxt;
-#endif
 
 #if defined(__APPLE__) || defined(__FreeBSD__)
     char **envp = NULL;
@@ -231,15 +201,21 @@ LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
     s1->runtime_main = s1->nostdlib ? "_start" : "main";
     if ((s1->dflag & 16) && (addr_t)-1 == get_sym_addr(s1, s1->runtime_main, 0, 1))
         return 0;
-    tcc_add_symbol(s1, "exit", run_exit);
+
+    tcc_add_symbol(s1, "exit", rt_exit);
     tcc_add_symbol(s1, "atexit", rt_atexit);
     tcc_add_symbol(s1, "on_exit", rt_on_exit);
     if (tcc_relocate(s1, TCC_RELOCATE_AUTO) < 0)
         return -1;
+
     prog_main = (void*)get_sym_addr(s1, s1->runtime_main, 1, 1);
+    if ((addr_t)-1 == (addr_t)prog_main)
+        return -1;
+
+    memset(rc, 0, sizeof *rc);
+    rc->do_jmp = 1;
 
 #ifdef CONFIG_TCC_BACKTRACE
-    memset(rc, 0, sizeof *rc);
     if (s1->do_debug) {
         void *p;
 	if (s1->dwarf) {
@@ -268,7 +244,6 @@ LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
 #endif
         rc->top_func = tcc_get_symbol(s1, "main");
         rc->num_callers = s1->rt_num_callers;
-        rc->do_jmp = 1;
         if ((p = tcc_get_symbol(s1, "__rt_error")))
             *(void**)p = _rt_error;
 #ifdef CONFIG_TCC_BCHECK
@@ -285,23 +260,15 @@ LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
     errno = 0; /* clean errno value */
     fflush(stdout);
     fflush(stderr);
-    init_exit();
+
     /* These aren't C symbols, so don't need leading underscore handling.  */
     run_cdtors(s1, "__init_array_start", "__init_array_end", argc, argv, envp);
-#ifdef CONFIG_TCC_BACKTRACE
-    if (!(ret = setjmp(rc->jmp_buf)))
-#else
-    if (!(ret = setjmp((&g_exit_context)->run_jmp_buf)))
-#endif
-    {
+    if (!(ret = setjmp(rc->jb)))
         ret = prog_main(argc, argv, envp);
-    }
     run_cdtors(s1, "__fini_array_start", "__fini_array_end", 0, NULL, NULL);
-    call_exit(ret);
-    if ((s1->dflag & 16) && ret)
+    run_on_exit(ret);
+    if (s1->dflag & 16 && ret) /* tcc -dt -run ... */
         fprintf(s1->ppfp, "[returns %d]\n", ret), fflush(s1->ppfp);
-    if ((s1->dflag & 16) == 0 && (&g_exit_context)->exit_called)
-	exit(ret);
     return ret;
 }
 
@@ -409,8 +376,10 @@ redo:
 #if DEBUG_RUNMEN
             printf("protect %d %p %04x\n", f, (void*)addr, n);
 #endif
-            if (n)
-                set_pages_executable(s1, f, (void*)addr, n);
+            if (n) {
+                if (set_pages_executable(s1, f, (void*)addr, n))
+                    return -1;
+            }
         }
     }
 
@@ -440,7 +409,7 @@ redo:
 /* ------------------------------------------------------------- */
 /* allow to run code in memory */
 
-static void set_pages_executable(TCCState *s1, int mode, void *ptr, unsigned long length)
+static int set_pages_executable(TCCState *s1, int mode, void *ptr, unsigned long length)
 {
 #ifdef _WIN32
     static const unsigned char protect[] = {
@@ -450,7 +419,9 @@ static void set_pages_executable(TCCState *s1, int mode, void *ptr, unsigned lon
         PAGE_EXECUTE_READWRITE
         };
     DWORD old;
-    VirtualProtect(ptr, length, protect[mode], &old);
+    if (!VirtualProtect(ptr, length, protect[mode], &old))
+        return -1;
+    return 0;
 #else
     static const unsigned char protect[] = {
         PROT_READ | PROT_EXEC,
@@ -463,8 +434,7 @@ static void set_pages_executable(TCCState *s1, int mode, void *ptr, unsigned lon
     end = (addr_t)ptr + length;
     end = (end + PAGESIZE - 1) & ~(PAGESIZE - 1);
     if (mprotect((void *)start, end - start, protect[mode]))
-        tcc_error("mprotect failed: did you mean to configure --with-selinux?");
-
+        return tcc_error_noabort("mprotect failed: did you mean to configure --with-selinux?");
 /* XXX: BSD sometimes dump core with bad system call */
 # if (defined TCC_TARGET_ARM && !TARGETOS_BSD) || defined TCC_TARGET_ARM64
     if (mode == 0 || mode == 3) {
@@ -472,7 +442,7 @@ static void set_pages_executable(TCCState *s1, int mode, void *ptr, unsigned lon
         __clear_cache(ptr, (char *)ptr + length);
     }
 # endif
-
+    return 0;
 #endif
 }
 
@@ -535,7 +505,6 @@ static char *rt_elfsym(rt_context *rc, addr_t wanted_pc, addr_t *func_addr)
     return NULL;
 }
 
-#define INCLUDE_STACK_SIZE 32
 
 /* print the position in the source file of PC value 'pc' by reading
    the stabs debug information */
@@ -1036,7 +1005,7 @@ static int _rt_error(void *fp, void *ip, const char *fmt, va_list ap)
     rt_context *rc = &g_rtctxt;
     addr_t pc = 0;
     char skip[100];
-    int i, level, ret, n;
+    int i, level, ret, n, one;
     const char *a, *b, *msg;
 
     if (fp) {
@@ -1055,6 +1024,10 @@ static int _rt_error(void *fp, void *ip, const char *fmt, va_list ap)
         memcpy(skip, a, b - a), skip[b - a] = 0;
         fmt = b + 1;
     }
+    one = 0;
+    /* hack for bcheck.c:dprintf(): one level, no newline */
+    if (fmt[0] == '\001')
+        ++fmt, one = 1;
 
     n = rc->num_callers ? rc->num_callers : 6;
     for (i = level = 0; level < n; i++) {
@@ -1073,6 +1046,8 @@ static int _rt_error(void *fp, void *ip, const char *fmt, va_list ap)
             rt_printf(a, msg);
             rt_vprintf(fmt, ap);
         } else if (ret == -1)
+            break;
+        if (one)
             break;
         rt_printf("\n");
         if (ret == -1 || (pc == (addr_t)rc->top_func && pc))
@@ -1093,14 +1068,6 @@ static int rt_error(const char *fmt, ...)
     ret = _rt_error(0, 0, fmt, ap);
     va_end(ap);
     return ret;
-}
-
-static void rt_exit(int code)
-{
-    rt_context *rc = &g_rtctxt;
-    if (rc->do_jmp)
-        longjmp(rc->jmp_buf, code ? code : 256);
-    exit(code);
 }
 
 /* ------------------------------------------------------------- */

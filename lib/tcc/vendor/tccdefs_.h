@@ -18,7 +18,7 @@
 
 #if PTR_SIZE == 4
     /* 32bit systems. */
-#if defined TARGETOS_OpenBSD
+#if defined  TARGETOS_OpenBSD
     "#define __SIZE_TYPE__ unsigned long\n"
     "#define __PTRDIFF_TYPE__ long\n"
 #else
@@ -68,7 +68,7 @@
     "#define __WINT_TYPE__ int\n"
 #endif
 
-    "#if __STDC_VERSION__==201112L\n"
+    "#if __STDC_VERSION__>=201112L\n"
     "#define __STDC_NO_ATOMICS__ 1\n"
     "#define __STDC_NO_COMPLEX__ 1\n"
     "#define __STDC_NO_THREADS__ 1\n"
@@ -124,11 +124,13 @@
     /* avoids usage of GCC/clang specific builtins in libc-headerfiles: */
     "#define __FINITE_MATH_ONLY__ 1\n"
     "#define _FORTIFY_SOURCE 0\n"
+    "#define __has_builtin(x) 0\n"
 
 #elif defined TARGETOS_ANDROID
     "#define BIONIC_IOCTL_NO_SIGNEDNESS_OVERLOAD\n"
     "#define __PRETTY_FUNCTION__ __FUNCTION__\n"
     "#define __has_builtin(x) 0\n"
+    "#define __has_feature(x) 0\n"
     "#define _Nonnull\n"
     "#define _Nullable\n"
 
@@ -144,9 +146,10 @@
     "#define __INT32_TYPE__ int\n"
 
 #if !defined TCC_TARGET_PE
-    /* glibc defines */
+    /* glibc defines. We do not support __USER_NAME_PREFIX__ */
     "#define __REDIRECT(name,proto,alias) name proto __asm__(#alias)\n"
     "#define __REDIRECT_NTH(name,proto,alias) name proto __asm__(#alias)__THROW\n"
+    "#define __REDIRECT_NTHNL(name,proto,alias) name proto __asm__(#alias)__THROWNL\n"
 #endif
 
     /* skip __builtin... with -E */
@@ -238,7 +241,7 @@
     "#define __RENAME(X) __asm__(X)\n"
     "#endif\n"
 
-    "#ifdef __BOUNDS_CHECKING_ON\n"
+    "#ifdef __TCC_BCHECK__\n"
     "#define __BUILTINBC(ret,name,params) ret __builtin_##name params __RENAME(\"__bound_\"#name);\n"
     "#define __BOUND(ret,name,params) ret name params __RENAME(\"__bound_\"#name);\n"
     "#else\n"
@@ -303,9 +306,7 @@
     "#undef __MAYBE_REDIR\n"
     "#undef __RENAME\n"
 
-#if !defined TCC_TARGET_PE
     "#define __BUILTIN_EXTERN(name,u) int __builtin_##name(u int);int __builtin_##name##l(u long);int __builtin_##name##ll(u long long);\n"
-
     "__BUILTIN_EXTERN(ffs,)\n"
     "__BUILTIN_EXTERN(clz,unsigned)\n"
     "__BUILTIN_EXTERN(ctz,unsigned)\n"
@@ -313,6 +314,5 @@
     "__BUILTIN_EXTERN(popcount,unsigned)\n"
     "__BUILTIN_EXTERN(parity,unsigned)\n"
     "#undef __BUILTIN_EXTERN\n"
-#endif
 
     "#endif\n" /* ndef __TCC_PP__ */

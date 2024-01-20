@@ -301,8 +301,7 @@ enum {
     sec_pdata ,
     sec_other ,
     sec_rsrc ,
-    sec_stab ,
-    sec_stabstr ,
+    sec_debug ,
     sec_reloc ,
     sec_last
 };
@@ -475,9 +474,9 @@ struct pe_file {
     unsigned pos;
 };
 
-static int pe_fwrite(void *data, int len, struct pe_file *pf)
+static int pe_fwrite(const void *data, int len, struct pe_file *pf)
 {
-    WORD *p = data;
+    const WORD *p = data;
     DWORD sum;
     int ret, i;
     pf->pos += (ret = fwrite(data, 1, len, pf->op));
@@ -500,6 +499,51 @@ static void pe_fpad(struct pe_file *pf, DWORD new_pos)
         fwrite(buf, n, 1, pf->op);
     }
     pf->pos = new_pos;
+}
+
+/*----------------------------------------------------------------------------*/
+/* PE-DWARF/COFF support
+   does not work with a mingw-gdb really but works with cv2pdb
+   (https://github.com/rainers/cv2pdb) */
+
+#define N_COFF_SYMS 0
+
+static const char dwarf_secs[] =
+{
+    ".debug_info\0"
+    ".debug_abbrev\0"
+    ".debug_line\0"
+    ".debug_aranges\0"
+    ".debug_str\0"
+    ".debug_line_str\0"
+};
+
+static const unsigned coff_strtab_size = 4 + sizeof dwarf_secs - 1;
+
+static int pe_put_long_secname(char *secname, const char *name)
+{
+    const char *d = dwarf_secs;
+    do {
+        if (0 == strcmp(d, name)) {
+            sprintf(secname, "/%d", (int)(d - dwarf_secs + 4));
+            return 1;
+        }
+        d = strchr(d, 0) + 1;
+    } while (*d);
+    return 0;
+}
+
+static void pe_create_pdb(TCCState *s1, const char *exename)
+{
+    char buf[300]; int r;
+    snprintf(buf, sizeof buf, "cv2pdb.exe %s", exename);
+    r = system(buf);
+    strcpy(tcc_fileextension(strcpy(buf, exename)), ".pdb");
+    if (r) {
+        tcc_error_noabort("could not create '%s'\n(need working cv2pdb from https://github.com/rainers/cv2pdb)", buf);
+    } else if (s1->verbose) {
+        printf("<- %s\n", buf);
+    }
 }
 
 /*----------------------------------------------------------------------------*/
@@ -616,12 +660,11 @@ static int pe_write(struct pe_info *pe)
     struct section_info *si;
     IMAGE_SECTION_HEADER *psh;
     TCCState *s1 = pe->s1;
+    int need_strtab = 0;
 
     pf.op = fopen(pe->filename, "wb");
-    if (NULL == pf.op) {
-        tcc_error_noabort("could not write '%s': %s", pe->filename, strerror(errno));
-        return -1;
-    }
+    if (NULL == pf.op)
+        return tcc_error_noabort("could not write '%s': %s", pe->filename, strerror(errno));
 
     pe->sizeofheaders = pe_file_align(pe,
         sizeof (struct pe_header)
@@ -688,6 +731,8 @@ static int pe_write(struct pe_info *pe)
         }
 
         memcpy(psh->Name, sh_name, umin(strlen(sh_name), sizeof psh->Name));
+        if (si->cls == sec_debug)
+            need_strtab += pe_put_long_secname(psh->Name, sh_name);
 
         psh->Characteristics = si->pe_flags;
         psh->VirtualAddress = addr;
@@ -717,7 +762,10 @@ static int pe_write(struct pe_info *pe)
     if (PE_DLL == pe->type)
         pe_header.filehdr.Characteristics = CHARACTERISTICS_DLL;
     pe_header.filehdr.Characteristics |= pe->s1->pe_characteristics;
-
+    if (need_strtab) {
+        pe_header.filehdr.PointerToSymbolTable = file_offset;
+        pe_header.filehdr.NumberOfSymbols = N_COFF_SYMS;
+    }
     pe_fwrite(&pe_header, sizeof pe_header, &pf);
     for (i = 0; i < pe->sec_count; ++i)
         pe_fwrite(&pe->sec_info[i]->ish, sizeof(IMAGE_SECTION_HEADER), &pf);
@@ -738,6 +786,13 @@ static int pe_write(struct pe_info *pe)
         pe_fpad(&pf, file_offset);
     }
 
+    if (need_strtab) {
+        /* create a tiny COFF string table with the long section names */
+        pe_fwrite(&coff_strtab_size, sizeof coff_strtab_size, &pf);
+        pe_fwrite(dwarf_secs, sizeof dwarf_secs - 1, &pf);
+        file_offset = pf.pos;
+    }
+
     pf.sum += file_offset;
     fseek(pf.op, offsetof(struct pe_header, opthdr.CheckSum), SEEK_SET);
     pe_fwrite(&pf.sum, sizeof (DWORD), &pf);
@@ -752,6 +807,8 @@ static int pe_write(struct pe_info *pe)
     if (pe->s1->verbose)
         printf("<- %s (%u bytes)\n", pe->filename, (unsigned)file_offset);
 
+    if (s1->do_debug & 16)
+        pe_create_pdb(s1, pe->filename);
     return 0;
 }
 
@@ -1074,12 +1131,12 @@ static int pe_section_class(Section *s)
     type = s->sh_type;
     flags = s->sh_flags;
     name = s->name;
-    if (0 == memcmp(name, ".stab", 5)) {
-        if (0 == s->s1->do_debug)
-            return sec_last;
-        return name[5] ? sec_stabstr : sec_stab;
-    }
-    if (flags & SHF_ALLOC) {
+
+    if (0 == memcmp(name, ".stab", 5) || 0 == memcmp(name, ".debug_", 7)) {
+        if (s->s1->do_debug)
+            return sec_debug;
+
+    } else if (flags & SHF_ALLOC) {
         if (type == SHT_PROGBITS
          || type == SHT_INIT_ARRAY
          || type == SHT_FINI_ARRAY) {
@@ -1137,7 +1194,7 @@ static int pe_assign_addresses (struct pe_info *pe)
         if (PE_MERGE_DATA && c == sec_bss)
             c = sec_data;
 
-        if (si && c == si->cls) {
+        if (si && c == si->cls && c != sec_debug) {
             /* merge with previous section */
             s->sh_addr = addr = ((addr - 1) | (16 - 1)) + 1;
         } else {
@@ -1337,9 +1394,8 @@ static int pe_check_symbols(struct pe_info *pe)
             if (ELFW(ST_BIND)(sym->st_info) == STB_WEAK)
                 /* STB_WEAK undefined symbols are accepted */
                 continue;
-            tcc_error_noabort("undefined symbol '%s'%s", name,
+            ret = tcc_error_noabort("undefined symbol '%s'%s", name,
                 imp_sym < 0 ? ", missing __declspec(dllimport)?":"");
-            ret = -1;
 
         } else if (pe->s1->rdynamic
                    && ELFW(ST_BIND)(sym->st_info) != STB_LOCAL) {
@@ -1990,7 +2046,6 @@ static void pe_set_options(TCCState * s1, struct pe_info *pe)
 
 ST_FUNC int pe_output_file(TCCState *s1, const char *filename)
 {
-    int ret;
     struct pe_info pe;
 
     memset(&pe, 0, sizeof pe);
@@ -2005,9 +2060,9 @@ ST_FUNC int pe_output_file(TCCState *s1, const char *filename)
     pe_add_runtime(s1, &pe);
     resolve_common_syms(s1);
     pe_set_options(s1, &pe);
+    pe_check_symbols(&pe);
 
-    ret = pe_check_symbols(&pe);
-    if (ret)
+    if (s1->nb_errors)
         ;
     else if (filename) {
         pe_assign_addresses(&pe);
@@ -2016,10 +2071,8 @@ ST_FUNC int pe_output_file(TCCState *s1, const char *filename)
         relocate_sections(s1);
         pe.start_addr = (DWORD)
             (get_sym_addr(s1, pe.start_symbol, 1, 1) - pe.imagebase);
-        if (s1->nb_errors)
-            ret = -1;
-        else
-            ret = pe_write(&pe);
+        if (0 == s1->nb_errors)
+            pe_write(&pe);
         dynarray_reset(&pe.sec_info, &pe.sec_count);
     } else {
 #ifdef TCC_IS_NATIVE
@@ -2031,15 +2084,12 @@ ST_FUNC int pe_output_file(TCCState *s1, const char *filename)
 #endif
 #endif
     }
-
     pe_free_imports(&pe);
-
 #if PE_PRINT_SECTIONS
     if (s1->g_debug & 8)
         pe_print_sections(s1, "tcc.log");
 #endif
-    return ret;
+    return s1->nb_errors ? -1 : 0;
 }
 
 /* ------------------------------------------------------------- */
-

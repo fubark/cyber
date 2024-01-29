@@ -998,7 +998,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 31-0913ce2</div>
+    <div class="sub-title">v0.4-dev 47-c3dba43</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -1008,7 +1008,8 @@ table tbody tr:nth-child(even) {
     <ul>
         <li><a href="#introduction">Introduction.</a></li>
 <li><a href="#syntax">Syntax.</a></li>
-<li><a href="#data-types">Data Types.</a></li>
+<li><a href="#basic-types">Basic Types.</a></li>
+<li><a href="#custom-types">Custom Types.</a></li>
 <li><a href="#control-flow">Control Flow.</a></li>
 <li><a href="#functions">Functions.</a></li>
 <li><a href="#modules">Modules.</a></li>
@@ -1209,14 +1210,14 @@ For this use case, you can use a declaration block. <em>Planned Feature</em></p>
 <h2 id="reserved-identifiers">Reserved identifiers. <a href="#reserved-identifiers">#</a></h2>
 <a href="#syntax">^topic</a>
 <h3 id="keywords">Keywords. <a href="#keywords">#</a></h3>
-<p>There are <code>25</code> general keywords. This list categorizes them:</p>
+<p>There are <code>27</code> general keywords. This list categorizes them:</p>
 <ul>
 <li><a href="#control-flow" title="">Control Flow</a>: <code>if</code> <code>else</code> <code>switch</code> <code>case</code> <code>while</code> <code>for</code> <code>break</code> <code>continue</code> <code>pass</code></li>
 <li><a href="#operators" title="">Operators</a>: <code>or</code> <code>and</code> <code>not</code></li>
 <li><a href="#variables" title="">Variables</a>: <code>var</code> <code>my</code></li>
 <li><a href="#functions" title="">Functions</a>: <code>func</code> <code>return</code></li>
 <li><a href="#fibers" title="">Coroutines</a>: <code>coinit</code> <code>coyield</code>, <code>coresume</code></li>
-<li><a href="#data-types" title="">Data Types</a>: <code>type</code> <code>as</code></li>
+<li><a href="#custom-types" title="">Types</a>: <code>type</code> <a href="#objects" title=""><code>object</code></a> <a href="#enums" title=""><code>enum</code></a> <code>as</code></li>
 <li><a href="#error-handling" title="">Error Handling</a>: <code>try</code> <code>catch</code> <code>throw</code></li>
 <li><a href="#modules" title="">Modules</a>: <code>import</code></li>
 </ul>
@@ -1226,7 +1227,6 @@ For this use case, you can use a declaration block. <em>Planned Feature</em></p>
 <ul>
 <li><a href="#methods" title="">Methods</a>: <code>self</code>, <code>Self</code></li>
 <li><a href="#caught-variable" title="">Catching Errors</a>: <code>caught</code></li>
-<li><a href="#enums" title="">Enum Type</a>: <code>enum</code></li>
 <li><a href="#throws-specifier" title="">Function Throws</a>: <code>throws</code></li>
 </ul>
 <a href="#syntax">^topic</a>
@@ -1346,11 +1346,10 @@ var a = 123   -- This is a comment on the same line as a statement.
 ]
 </code></pre>
 <a href="#syntax">^topic</a>
-<h1 id="data-types">Data Types. <a href="#data-types">#</a></h1>
+<h1 id="basic-types">Basic Types. <a href="#basic-types">#</a></h1>
 <table><tr>
 <td valign="top">
 <ul>
-<li><a href="#none" title="">None.</a></li>
 <li><a href="#booleans" title="">Booleans.</a></li>
 <li><a href="#numbers" title="">Numbers.</a><ul>
 <li><a href="#integers" title="">Integers.</a></li>
@@ -1369,14 +1368,13 @@ var a = 123   -- This is a comment on the same line as a statement.
 <li><a href="#mutable-strings" title="">Mutable strings.</a></li>
 </ul>
 </li>
-<li><a href="#arrays" title="">Arrays.</a></li>
-<li><a href="#bracket-literals" title="">Bracket literals.</a></li>
-<li><a href="#lists" title="">Lists.</a></li>
-<li><a href="#tuples" title="">Tuples.</a></li>
 </ul>
 </td>
 <td valign="top">
 <ul>
+<li><a href="#arrays" title="">Arrays.</a></li>
+<li><a href="#lists" title="">Lists.</a></li>
+<li><a href="#tuples" title="">Tuples.</a></li>
 <li><a href="#maps" title="">Maps.</a><ul>
 <li><a href="#create-map" title="">Create map.</a></li>
 <li><a href="#empty-map" title="">Empty map.</a></li>
@@ -1385,27 +1383,14 @@ var a = 123   -- This is a comment on the same line as a statement.
 <li><a href="#map-block" title="">Map block.</a></li>
 </ul>
 </li>
-<li><a href="#objects" title="">Objects.</a><ul>
-<li><a href="#fields" title="">Fields.</a></li>
-<li><a href="#instantiation" title="">Instantiation.</a></li>
-<li><a href="#methods" title="">Methods.</a></li>
-<li><a href="#self-variable" title=""><code>self</code> variable.</a></li>
-<li><a href="#type-functions" title="">Type functions.</a></li>
-<li><a href="#type-variables" title="">Type variables.</a></li>
-</ul>
-</li>
-<li><a href="#enums" title="">Enums.</a></li>
 <li><a href="#symbols-1" title="">Symbols.</a></li>
 </ul>
 </td>
 </tr></table>
 <p><a href="#table-of-contents" title="">^top</a></p>
-<p>In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts.</p>
-<p>Primitives include <a href="#booleans" title="">Booleans</a>, <a href="#floats" title="">Floats</a>, <a href="#integers" title="">Integers</a>, <a href="#enums" title="">Enums</a>, <a href="#symbols-1" title="">Symbols</a>, <a href="#error-value" title="">Error Values</a>, and the <code>none</code> value.</p>
-<p>Object types include <a href="#lists" title="">Lists</a>, <a href="#tuples" title="">Tuples</a>, <a href="#maps" title="">Maps</a>, <a href="#strings" title="">Strings</a>, <a href="#arrays" title="">Arrays</a>, <a href="#objects" title="">User Objects</a>, <a href="#lambdas" title="">Lambdas</a>, <a href="#fibers" title="">Fibers</a>, <a href="#enums" title="">Enums with payloads</a>, <a href="#pointers" title="">Pointers</a>, and several internal object types.</p>
-<h2 id="none">None. <a href="#none">#</a></h2>
-<p>The <code>none</code> value represents an empty value. This is similar to null in other languages.</p>
-<a href="#data-types">^topic</a>
+<p>In Cyber, there are primitive types and object types. By default, primitives are copied around by value and don't need additional heap memory or reference counts.</p>
+<p>Primitives include <a href="#booleans" title="">Booleans</a>, <a href="#floats" title="">Floats</a>, <a href="#integers" title="">Integers</a>, <a href="#enums" title="">Enums</a>, <a href="#symbols-1" title="">Symbols</a>, and <a href="#error-value" title="">Error Values</a>.</p>
+<p>Object types include <a href="#lists" title="">Lists</a>, <a href="#tuples" title="">Tuples</a>, <a href="#maps" title="">Maps</a>, <a href="#strings" title="">Strings</a>, <a href="#arrays" title="">Arrays</a>, <a href="#objects" title="">Objects</a>, <a href="#lambdas" title="">Lambdas</a>, <a href="#fibers" title="">Fibers</a>, <a href="#choices" title="">Choices</a>, <a href="#optionals" title="">Optionals</a>, <a href="#pointers" title="">Pointers</a>, and several internal object types.</p>
 <h2 id="booleans">Booleans. <a href="#booleans">#</a></h2>
 <p>Booleans can be <code>true</code> or <code>false</code>. See <a href="#type-bool" title=""><code>type bool</code></a>.</p>
 <pre><code class="language-cy">var a = true
@@ -1417,9 +1402,9 @@ if a:
 <li>The <code>none</code> value is <code>false</code>.</li>
 <li>Other objects and values are always <code>true</code>.</li>
 </ul>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h2 id="numbers">Numbers. <a href="#numbers">#</a></h2>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h3 id="integers">Integers. <a href="#integers">#</a></h3>
 <p><code>int</code> is the default integer type. It has 48-bits and can represent integers in the range -(2<sup>47</sup>) to 2<sup>47</sup>-1. See <a href="#type-int" title=""><code>type int</code></a>.</p>
 <p>When a numeric literal is used and the type can not be inferred, it will default to the <code>int</code> type:</p>
@@ -1436,7 +1421,7 @@ a = `🐶`         -- UTF-8 rune.
 var b = int(a) 
 </code></pre>
 <p>In addition to arithmetic operations, integers can also perform <a href="#bitwise-operators" title="">bitwise operations</a>.</p>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h3 id="floats">Floats. <a href="#floats">#</a></h3>
 <p><code>float</code> is the default floating point type. It has a (IEEE 754) 64-bit floating point format. See <a href="#type-float" title=""><code>type float</code></a>.</p>
 <p>Although a <code>float</code> represents a decimal number, it can also represent integers between -(2<sup>53</sup>-1) and (2<sup>53</sup>-1). Any integers beyond the safe integer range is not guaranteed to have a unique representation.</p>
@@ -1451,15 +1436,15 @@ var b = 123.0e4
 <pre><code class="language-cy">var a = '12.3'
 var b = float(a) 
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h3 id="big-numbers">Big Numbers. <a href="#big-numbers">#</a></h3>
 <blockquote><p><em>Planned Feature</em></p>
-</blockquote><a href="#data-types">^topic</a>
+</blockquote><a href="#basic-types">^topic</a>
 <h2 id="strings">Strings. <a href="#strings">#</a></h2>
-<p>The <code>string</code> type represents a sequence of validated UTF-8 codepoints, also known as <code>runes</code>. Each rune is stored internally as 1-4 bytes and can be represented as an <code>int</code>. See <a href="#type-string" title=""><code>type string</code></a>.</p>
+<p>The <code>String</code> type represents a sequence of validated UTF-8 codepoints, also known as <code>runes</code>. Each rune is stored internally as 1-4 bytes and can be represented as an <code>int</code>. See <a href="#type-string" title=""><code>type String</code></a>.</p>
 <p>Strings are <strong>immutable</strong>, so operations that do string manipulation return a new string. By default, short strings are interned to reduce memory footprint.</p>
 <p>Under the hood, there are multiple string implementations to make operations faster by default using SIMD.</p>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h3 id="raw-string-literal">Raw string literal. <a href="#raw-string-literal">#</a></h3>
 <p>A raw string doesn't allow any escape sequences or string interpolation.</p>
 <p>Single quotes are used to delimit a single line literal:</p>
@@ -1474,7 +1459,7 @@ var str = 'abc🦊xyz🐶'
 var greet = '''Hello
 World'''
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h3 id="string-literal">String literal. <a href="#string-literal">#</a></h3>
 <p>A string literal allows escape sequences and string interpolation.</p>
 <p>Double quotes are used to delimit a single line literal:</p>
@@ -1490,12 +1475,12 @@ line "b"
 line $(title)
 """
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h3 id="escape-sequences">Escape sequences. <a href="#escape-sequences">#</a></h3>
 <p>The following escape sequences are supported in string literals:</p>
-<table><thead><tr><th>Escape Sequence</th><th>Code</th><th>Description</th></tr></thead><tbody><tr><td>\a</td><td>0x07</td><td>Terminal bell.</td></tr><tr><td>\b</td><td>0x08</td><td>Backspace.</td></tr><tr><td>\e</td><td>0x1b</td><td>Escape character.</td></tr><tr><td>\n</td><td>0x0a</td><td>Line feed character.</td></tr><tr><td>\r</td><td>0x0d</td><td>Carriage return character.</td></tr><tr><td>\t</td><td>0x09</td><td>Horizontal tab character.</td></tr></tbody></table><a href="#data-types">^topic</a>
+<table><thead><tr><th>Escape Sequence</th><th>Code</th><th>Description</th></tr></thead><tbody><tr><td>\a</td><td>0x07</td><td>Terminal bell.</td></tr><tr><td>\b</td><td>0x08</td><td>Backspace.</td></tr><tr><td>\e</td><td>0x1b</td><td>Escape character.</td></tr><tr><td>\n</td><td>0x0a</td><td>Line feed character.</td></tr><tr><td>\r</td><td>0x0d</td><td>Carriage return character.</td></tr><tr><td>\t</td><td>0x09</td><td>Horizontal tab character.</td></tr></tbody></table><a href="#basic-types">^topic</a>
 <h3 id="string-operations">String operations. <a href="#string-operations">#</a></h3>
-<p>See <a href="#type-string" title=""><code>type string</code></a> for all available methods.</p>
+<p>See <a href="#type-string" title=""><code>type String</code></a> for all available methods.</p>
 <p>Concatenate two strings together with the <code>+</code> operator or the method <code>concat</code>.</p>
 <pre><code class="language-cy">var res = 'abc' + 'xyz'
 res = res.concat('end')
@@ -1518,7 +1503,7 @@ print(i)                            -- "2"
 i += 1
 print(i + str[i..].findRune(`c`))   -- "5"
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h3 id="string-interpolation">String interpolation. <a href="#string-interpolation">#</a></h3>
 <p>Expressions can be embedded into string templates with <code>$()</code>:</p>
 <pre><code class="language-cy">var name = 'Bob'
@@ -1526,7 +1511,7 @@ var points = 123
 var str = "Scoreboard: $(name) $(points)"
 </code></pre>
 <p>String templates can not contain nested string templates.</p>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h3 id="string-formatting">String formatting. <a href="#string-formatting">#</a></h3>
 <p>Values that can be formatted into a string will have a <code>fmt</code> method:</p>
 <pre><code class="language-cy">var file = os.openFile('data.bin', .read)
@@ -1535,7 +1520,7 @@ var bytes = file.readToEnd()
 -- Dump contents in hex.
 print "$(bytes.fmt(.x))"
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h3 id="line-join-literal">Line-join literal. <a href="#line-join-literal">#</a></h3>
 <p>The line-join literal joins string literals with the new line character <code>\n</code>. <em>Planned Feature</em></p>
 <p>This has several properties:</p>
@@ -1554,27 +1539,20 @@ print "$(bytes.fmt(.x))"
     \'
 ]
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h3 id="mutable-strings">Mutable strings. <a href="#mutable-strings">#</a></h3>
 <p>To mutate an existing string, use <a href="#mutstring" title="">type MutString</a>. <em>Planned Feature</em></p>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h2 id="arrays">Arrays. <a href="#arrays">#</a></h2>
-<p>An <code>array</code> is an immutable sequence of bytes.
+<p>An <code>Array</code> is an immutable sequence of bytes.
 It can be a more performant way to represent strings but it won't automatically validate their encoding and indexing returns the n'th byte rather than a UTF-8 rune.
-See <a href="#type-array" title=""><code>type array</code></a>.</p>
-<pre><code class="language-cy">var a = array('abcd')
+See <a href="#type-array" title=""><code>type Array</code></a>.</p>
+<pre><code class="language-cy">var a = Array('abcd')
 a = a.insertByte(1, 255)
 print a[0]     -- "97"
 print a[1]     -- "255"
 </code></pre>
-<a href="#data-types">^topic</a>
-<h2 id="bracket-literals">Bracket literals. <a href="#bracket-literals">#</a></h2>
-<p>Bracket literals are delimited with brackets <code>[]</code>. They are used to initialize Lists, Maps, and Objects:</p>
-<pre><code class="language-cy">var list = [1, 2, 3]
-var map = [ a: 123, b: 234 ]
-var obj = [MyObject a: 123, b: 234]
-</code></pre>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h2 id="lists">Lists. <a href="#lists">#</a></h2>
 <p>Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements. See <a href="#type-list" title=""><code>type List</code></a>.</p>
 <pre><code class="language-cy">-- Construct a new list.
@@ -1616,13 +1594,13 @@ for list -> it:
 -- Remove an element at a specific index.
 list.remove(1)
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h2 id="tuples">Tuples. <a href="#tuples">#</a></h2>
 <blockquote><p><em>Incomplete: Tuples can only be created from #host funcs at the moment.</em></p>
-</blockquote><a href="#data-types">^topic</a>
+</blockquote><a href="#basic-types">^topic</a>
 <h2 id="maps">Maps. <a href="#maps">#</a></h2>
 <p>Maps are a builtin type that store key value pairs in dictionaries. See <a href="#type-map" title=""><code>type Map</code></a>.</p>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h3 id="create-map">Create map. <a href="#create-map">#</a></h3>
 <p>Create a map using key value pairs inside a collection literal:</p>
 <pre><code class="language-cy">var map = [ a: 123, b: () => 5 ]
@@ -1633,12 +1611,12 @@ list.remove(1)
     bar: 2,
 ]
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h3 id="empty-map">Empty map. <a href="#empty-map">#</a></h3>
 <p>The empty map is initialized using <code>[:]</code>:</p>
 <pre><code class="language-cy">var empty = [:]
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h3 id="map-indexing">Map indexing. <a href="#map-indexing">#</a></h3>
 <p>Get a value from the map using the index operator:</p>
 <pre><code class="language-cy">print map['a']
@@ -1646,7 +1624,7 @@ list.remove(1)
 <p>Maps can be accessed with the <code>.</code> dot operator as well:</p>
 <pre><code class="language-cy">print map.a
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h3 id="map-operations">Map operations. <a href="#map-operations">#</a></h3>
 <pre><code class="language-cy">var map = [:]
 
@@ -1663,7 +1641,7 @@ map.remove 123
 for map -> [val, key]:
     print "$(key) -> $(val)"
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
 <h3 id="map-block">Map block. <a href="#map-block">#</a></h3>
 <p>Entries can also follow a collection literal block.
 This gives structure to the entries and has
@@ -1684,31 +1662,131 @@ the added benefit of allowing multi-line lambdas.
         green: 0x00AA00
         blue: 0x0000AA
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#basic-types">^topic</a>
+<h2 id="symbols">Symbols. <a href="#symbols">#</a></h2>
+<p>Symbol literals begin with <code>.</code>, followed by an identifier. They have their own global unique id.</p>
+<pre><code class="language-cy">var currency = .usd
+print(currency == .usd)   -- 'true'
+print int(currency)       -- '123' or some arbitrary id.
+</code></pre>
+<a href="#basic-types">^topic</a>
+<h1 id="custom-types">Custom Types. <a href="#custom-types">#</a></h1>
+<table><tr>
+<td valign="top">
+<ul>
+<li><a href="#objects" title="">Objects.</a><ul>
+<li><a href="#fields" title="">Fields.</a></li>
+<li><a href="#instantiate" title="">Instantiate.</a></li>
+<li><a href="#default-field-values" title="">Default field values.</a></li>
+<li><a href="#circular-references" title="">Circular references.</a></li>
+<li><a href="#unnamed-object" title="">Unnamed object.</a></li>
+<li><a href="#methods" title="">Methods.</a></li>
+<li><a href="#self-variable" title=""><code>self</code> variable.</a></li>
+<li><a href="#type-functions" title="">Type functions.</a></li>
+<li><a href="#type-variables" title="">Type variables.</a></li>
+</ul>
+</li>
+<li><a href="#enums" title="">Enums.</a></li>
+<li><a href="#choices" title="">Choices.</a><ul>
+<li><a href="#initialize-choice" title="">Initialize choice.</a></li>
+<li><a href="#choice-switch" title="">Choice <code>switch</code>.</a></li>
+<li><a href="#access-choice" title="">Access choice.</a></li>
+</ul>
+</li>
+</ul>
+</td><td valign="top">
+<ul>
+<li><a href="#optionals" title="">Optionals.</a></li>
+<li><a href="#type-aliases" title="">Type aliases.</a></li>
+<li><a href="#traits" title="">Traits.</a></li>
+<li><a href="#union-types" title="">Union types.</a></li>
+</ul>
+</td>
+</tr></table>
+<p><a href="#table-of-contents" title="">^top</a></p>
 <h2 id="objects">Objects. <a href="#objects">#</a></h2>
-<p>Any value that isn't a primitive is an object. You can declare your own object types using the <code>type</code> declaration.
-Object types are similar to structs and classes in other languages.
-Unlike classes, there is no concept of inheritance at the language level.</p>
-<a href="#data-types">^topic</a>
+<p>An object type contains field and function members. New instances can be created from them similar to a struct or class in other languages. Unlike classes, there is no builtin concept of inheritance but a similar effect can be achieved using composition and embedding.</p>
+<p>Object types are declared with <code>type object</code>. The <code>object</code> keyword is optional when using a <code>type</code> declaration. These two declarations are equivalent:</p>
+<pre><code class="language-cy">type A object:
+    var b int
+
+type A:
+    var b int
+</code></pre>
+<a href="#custom-types">^topic</a>
 <h3 id="fields">Fields. <a href="#fields">#</a></h3>
 <p>Fields must be declared at the top of the <code>type</code> block using <code>var</code> or <code>my</code>:</p>
 <pre><code class="language-cy">type Node:
     var value int
-    var next  any
+    var next  ?Node
 </code></pre>
-<p>When fields are declared with <code>my</code> instead, they become dynamically typed.</p>
-<a href="#data-types">^topic</a>
-<h3 id="instantiation">Instantiation. <a href="#instantiation">#</a></h3>
-<p>New object instances are created using a leading type name and the field values in a collection literal:</p>
+<p>Field types are optional for <code>var</code> declarations and defaults to the <code>any</code> type.
+When fields are declared with <code>my</code> instead, they become dynamically typed and do not accept a type specifier.</p>
+<a href="#custom-types">^topic</a>
+<h3 id="instantiate">Instantiate. <a href="#instantiate">#</a></h3>
+<p>New object instances are created using a record literal with a leading type name:</p>
 <pre><code class="language-cy">var node = [Node value: 123, next: none]
 print node.value       -- Prints "123"
 </code></pre>
-<a href="#data-types">^topic</a>
+<p>A record literal can also initialize to the inferred object type:</p>
+<pre><code class="language-cy">var node Node = [value: 234, next: none]
+print node.value       -- Prints "234"
+</code></pre>
+<a href="#custom-types">^topic</a>
+<h3 id="default-field-values">Default field values. <a href="#default-field-values">#</a></h3>
+<p>When a field is omitted in the record literal, it gets initialized to its <a href="#zero-values" title="">zero value</a>:</p>
+<pre><code class="language-cy">var node Node = [value: 234]
+print node.next       -- Prints "Option.none"
+
+type Student:
+    var name string
+    var age  int
+    var gpa  float
+
+var s = [Student:]
+print s.name       -- Prints ""
+print s.age        -- Prints "0"
+print s.gpa        -- Prints "0.0"
+</code></pre>
+<a href="#custom-types">^topic</a>
+<h3 id="circular-references">Circular references. <a href="#circular-references">#</a></h3>
+<p>Circular type references are allowed if the object can be initialized:</p>
+<blockquote><p><em>Planned Feature: Optional types are not currently supported.</em></p>
+</blockquote><pre><code class="language-cy">type Node:
+    var val  any
+    var next ?Node
+
+var n = [Node:]    -- Initializes.
+</code></pre>
+<p>In this example, <code>next</code> has an optional <code>?Node</code> type so it can be initialized to <code>none</code> when creating a new <code>Node</code> object.</p>
+<p>The following example will fail because this version of <code>Node</code> can not be initialized:</p>
+<pre><code class="language-cy">type Node:
+    var val  any
+    var next Node
+
+var n = [Node:]    -- CompileError. Can not zero initialize `next`
+                   -- because of circular dependency.
+</code></pre>
+<a href="#custom-types">^topic</a>
+<h3 id="unnamed-object">Unnamed object. <a href="#unnamed-object">#</a></h3>
+<p>Unnamed object types can be declared and used without an explicit <code>type</code> declaration:</p>
+<pre><code class="language-cy">type Node:
+    var value object:
+        var a  int
+        var b  float
+    var next ?Node
+
+var node = [Node
+    value: [a: 123, b: 100.0],
+    next: none,
+]
+</code></pre>
+<a href="#custom-types">^topic</a>
 <h3 id="methods">Methods. <a href="#methods">#</a></h3>
 <p>Methods allow invoking a function on an object instance using the <code>.</code> operator:</p>
 <pre><code class="language-cy">type Node:
     var value int
-    var next  any
+    var next  ?Node
 
     func inc(n):
         value += n
@@ -1724,23 +1802,23 @@ n.incAndPrint()         -- Prints "444"
 <pre><code class="language-cy">func Node.getNext(self):
     return self.next
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#custom-types">^topic</a>
 <h3 id="self-variable"><code>self</code> variable. <a href="#self-variable">#</a></h3>
 <p>Type members can be implicitly referenced inside the method. <em>Incomplete: Only the type's fields can be referenced this way.</em></p>
 <p>To reference members explicitly inside a method, use the builtin <code>self</code>:</p>
 <pre><code class="language-cy">type Node:
     var value int
-    var next  any
+    var next  ?Node
 
     func double():
         return self.value * 2
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#custom-types">^topic</a>
 <h3 id="type-functions">Type functions. <a href="#type-functions">#</a></h3>
 <p>Type functions are declared outside of the <code>type</code> block with an explicit namespace path:</p>
 <pre><code class="language-cy">type Node:
     var value int
-    var next  any
+    var next  ?Node
 
 -- Declare namespace function inside `Node`.
 func Node.new():
@@ -1748,7 +1826,7 @@ func Node.new():
 
 var n = Node.new()
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#custom-types">^topic</a>
 <h3 id="type-variables">Type variables. <a href="#type-variables">#</a></h3>
 <p>Similarily, type variables are declared outside of the <code>type</code> block:</p>
 <pre><code class="language-cy">-- Declare inside the `Node` namespace.
@@ -1756,7 +1834,7 @@ var Node.DefaultValue = 100
 
 print Node.DefaultValue    -- Prints "100"
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#custom-types">^topic</a>
 <h2 id="enums">Enums. <a href="#enums">#</a></h2>
 <p>A new enum type can be declared with the <code>type enum</code> declaration.
 An enum value can only be one of the unique symbols declared in the enum type.
@@ -1776,14 +1854,79 @@ print int(fruit)  -- '3'
 fruit = .orange
 print(fruit == Fruit.orange)   -- 'true'
 </code></pre>
-<a href="#data-types">^topic</a>
-<h2 id="symbols">Symbols. <a href="#symbols">#</a></h2>
-<p>Symbol literals begin with <code>.</code>, followed by an identifier. They have their own global unique id.</p>
-<pre><code class="language-cy">var currency = .usd
-print(currency == .usd)   -- 'true'
-print int(currency)       -- '123' or some arbitrary id.
+<a href="#custom-types">^topic</a>
+<h2 id="choices">Choices. <a href="#choices">#</a></h2>
+<p>Choices are enums with payloads (also known as sum types or tagged unions). An enum declaration becomes a choice type if one of the cases has a payload type specifier:</p>
+<pre><code class="language-cy">type Shape enum:
+    case rectangle Rectangle
+    case circle    object:
+        var radius float
+    case triangle  object:
+        var base   float
+        var height float
+    case line      float
+    case point 
+
+type Rectangle:
+    var width  float
+    var height float
 </code></pre>
-<a href="#data-types">^topic</a>
+<a href="#custom-types">^topic</a>
+<h3 id="initialize-choice">Initialize choice. <a href="#initialize-choice">#</a></h3>
+<p>If the payload is an object type, the choice can be initialized with a simplified record literal:</p>
+<pre><code class="language-cy">var s = [Shape.rectangle width: 10, height: 20]
+</code></pre>
+<p>The general way to initialize a choice is to pass the payload as an argument:</p>
+<pre><code class="language-cy">var rect = [Rectangle width: 10, height: 20]
+s = [Shape rectangle: rect]
+
+s = [Shape line: 20]
+</code></pre>
+<p>A choice without a payload is initialized with an empty record literal:</p>
+<pre><code class="language-cy">var s = [Shape.point:]
+</code></pre>
+<a href="#custom-types">^topic</a>
+<h3 id="choice-switch">Choice <code>switch</code>. <a href="#choice-switch">#</a></h3>
+<p><code>case</code> clauses can match choices and capture the payload:</p>
+<pre><code class="language-cy">switch s:
+case .rectangle -> r:
+    print "$(r.width) $(r.height)"
+case .circle -> c:
+    print "$(c.radius)"
+case .triangle -> t:
+    print "$(t.base) $(t.height)"
+case .line -> len:
+    print "$(len)"
+case .point:
+    print "a point"
+else:
+    print "Unsupported."
+</code></pre>
+<a href="#custom-types">^topic</a>
+<h3 id="access-choice">Access choice. <a href="#access-choice">#</a></h3>
+<p>A choice can be accessed by specifying the access operator <code>.!</code> before the tagged member name. This will either return the payload or panic at runtime: <em>Planned Feature</em></p>
+<pre><code class="language-cy">var s = [Shape line: 20]
+print s.!line     -- Prints '20'
+</code></pre>
+<a href="#custom-types">^topic</a>
+<h2 id="optionals">Optionals. <a href="#optionals">#</a></h2>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#custom-types">^topic</a>
+<h2 id="type-aliases">Type aliases. <a href="#type-aliases">#</a></h2>
+<p>A type alias is declared from a single line <code>type</code> statement. This creates a new type symbol for an existing data type.</p>
+<pre><code class="language-cy">import util './util.cy'
+
+type Vec3 util.Vec3
+
+var v = [Vec3 x: 3, y: 4, z: 5]
+</code></pre>
+<a href="#custom-types">^topic</a>
+<h2 id="traits">Traits. <a href="#traits">#</a></h2>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#custom-types">^topic</a>
+<h2 id="union-types">Union types. <a href="#union-types">#</a></h2>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#custom-types">^topic</a>
 <h1 id="control-flow">Control Flow. <a href="#control-flow">#</a></h1>
 <table><tr>
 <td valign="top">
@@ -1795,9 +1938,8 @@ print int(currency)       -- '123' or some arbitrary id.
 </ul>
 </li>
 <li><a href="#iterations" title="">Iterations.</a><ul>
-<li><a href="#infinite-loop" title="">Infinite loop.</a></li>
-<li><a href="#conditional-loop" title="">Conditional loop.</a></li>
-<li><a href="#unwrapping-loop" title="">Unwrapping loop.</a></li>
+<li><a href="#infinite-while" title="">Infinite <code>while</code>.</a></li>
+<li><a href="#conditional-while" title="">Conditional <code>while</code>.</a></li>
 <li><a href="#for-range" title=""><code>for</code> range.</a></li>
 <li><a href="#for-each" title=""><code>for</code> each.</a></li>
 <li><a href="#for-each-with-index" title=""><code>for</code> each with index.</a></li>
@@ -1850,7 +1992,7 @@ if a == 20 or a == 10:
 <a href="#control-flow">^topic</a>
 <h2 id="iterations">Iterations. <a href="#iterations">#</a></h2>
 <a href="#control-flow">^topic</a>
-<h3 id="infinite-loop">Infinite loop. <a href="#infinite-loop">#</a></h3>
+<h3 id="infinite-while">Infinite <code>while</code>. <a href="#infinite-while">#</a></h3>
 <p>The <code>while</code> keyword starts an infinite loop which continues to run the code in the block until a <code>break</code> or <code>return</code> is reached.</p>
 <pre><code class="language-cy">var count = 0
 while:
@@ -1859,7 +2001,7 @@ while:
     count += 1
 </code></pre>
 <a href="#control-flow">^topic</a>
-<h3 id="conditional-loop">Conditional loop. <a href="#conditional-loop">#</a></h3>
+<h3 id="conditional-while">Conditional <code>while</code>. <a href="#conditional-while">#</a></h3>
 <p>When the <code>while</code> clause contains a condition, the loop continues to run until the condition is evaluated to <code>false</code>:</p>
 <pre><code class="language-cy">var running = true
 var count = 0
@@ -1867,13 +2009,6 @@ while running:
     if count > 100:
         running = false
     count += 1
-</code></pre>
-<a href="#control-flow">^topic</a>
-<h3 id="unwrapping-loop">Unwrapping loop. <a href="#unwrapping-loop">#</a></h3>
-<p>Using the capture operator <code>-></code> unwraps the left optional value to the right variable declaration. The loop exits when the left value is <code>none</code>:</p>
-<pre><code class="language-cy">var iter = dir.walk()
-while iter.next() -> entry:
-    print entry.name
 </code></pre>
 <a href="#control-flow">^topic</a>
 <h3 id="for-range"><code>for</code> range. <a href="#for-range">#</a></h3>
@@ -2166,9 +2301,9 @@ a = myFunc 'hello' (otherFunc 1+2 'world')
 <li><a href="#type-tuple" title=""><code>type tuple</code></a></li>
 <li><a href="#type-map" title=""><code>type Map</code></a></li>
 <li><a href="#type-mapiterator" title=""><code>type MapIterator</code></a></li>
-<li><a href="#type-string" title=""><code>type string</code></a></li>
-<li><a href="#type-array" title=""><code>type array</code></a></li>
-<li><a href="#type-arrayiterator" title=""><code>type arrayIterator</code></a></li>
+<li><a href="#type-string" title=""><code>type String</code></a></li>
+<li><a href="#type-array" title=""><code>type Array</code></a></li>
+<li><a href="#type-arrayiterator" title=""><code>type ArrayIterator</code></a></li>
 <li><a href="#type-pointer" title=""><code>type pointer</code></a></li>
 <li><a href="#type-fiber" title=""><code>type Fiber</code></a></li>
 <li><a href="#type-metatype" title=""><code>type metatype</code></a></li>
@@ -2299,7 +2434,7 @@ print typeof('my str').id()
 <p>Copies a primitive value or creates a shallow copy of an object value.</p>
 </blockquote><blockquote><p><code>func dump(val any) none</code></p>
 <p>Prints the result of <code>toCyon</code> on a value.</p>
-</blockquote><blockquote><p><code>func errorReport() string</code></p>
+</blockquote><blockquote><p><code>func errorReport() String</code></p>
 </blockquote><blockquote><p><code>func getObjectRc(val any) int</code></p>
 <p>Returns the current reference count of an object.</p>
 </blockquote><blockquote><p><code>func is(a any, b any) bool</code></p>
@@ -2312,17 +2447,17 @@ print typeof('my str').id()
 <p>If <code>val</code> is an error, <code>panic(val)</code> is invoked. Otherwise, <code>val</code> is returned.</p>
 </blockquote><blockquote><p><code>func panic(err any) none</code></p>
 <p>Stop execution in the current fiber and starts unwinding the call stack. See <a href="#unexpected-errors" title="">Unexpected Errors</a>.</p>
-</blockquote><blockquote><p><code>func parseCyber(src string) Map</code></p>
+</blockquote><blockquote><p><code>func parseCyber(src String) Map</code></p>
 <p>Parses Cyber source string into structured map object.  Currently, only metadata about static declarations is made available but this will be extended to include an AST.</p>
-</blockquote><blockquote><p><code>func parseCyon(src string) any</code></p>
+</blockquote><blockquote><p><code>func parseCyon(src String) any</code></p>
 <p>Parses a CYON string into a value.</p>
 </blockquote><blockquote><p><code>func performGC() Map</code></p>
 <p>Runs the garbage collector once to detect reference cycles and abandoned objects.  Returns the statistics of the run in a map value.</p>
 </blockquote><blockquote><p><code>func print(str any) none</code></p>
 <p>Prints a value. The host determines how it is printed.</p>
-</blockquote><blockquote><p><code>func runestr(val int) string</code></p>
+</blockquote><blockquote><p><code>func runestr(val int) String</code></p>
 <p>Converts a rune to a string.</p>
-</blockquote><blockquote><p><code>func toCyon(val any) string</code></p>
+</blockquote><blockquote><p><code>func toCyon(val any) String</code></p>
 <p>Encodes a value to CYON string.</p>
 </blockquote><blockquote><p><code>func typeof(val any) metatype</code></p>
 <p>Returns the value's type as a <code>metatype</code> object.</p>
@@ -2357,9 +2492,9 @@ print typeof('my str').id()
 </blockquote><blockquote><p><code>func $infix||(o any) int</code></p>
 </blockquote><blockquote><p><code>func $infix<<(o any) int</code></p>
 </blockquote><blockquote><p><code>func $infix>>(o any) int</code></p>
-</blockquote><blockquote><p><code>func fmt(kind symbol) string</code></p>
+</blockquote><blockquote><p><code>func fmt(kind symbol) String</code></p>
 <p>Formats the integer using a kind specifier which can be binary <code>.b</code>,  octal <code>.o</code>, decimal <code>.d</code>, hexadecimal <code>.x</code>, ASCII <code>.c</code>.</p>
-</blockquote><blockquote><p><code>func fmt(kind symbol, opts Map) string</code></p>
+</blockquote><blockquote><p><code>func fmt(kind symbol, opts Map) String</code></p>
 <p><code>opts.pad</code> provides the ASCII rune that is used for padding with a string length of <code>opts.width</code>.</p>
 </blockquote><blockquote><p><code>func int.'$call'(val any) int</code></p>
 <p>Converts a value to an 48-bit integer.</p>
@@ -2391,7 +2526,7 @@ print typeof('my str').id()
 <p>Inserts a value at index <code>idx</code>.</p>
 </blockquote><blockquote><p><code>func iterator() ListIterator</code></p>
 <p>Returns a new iterator over the list elements.</p>
-</blockquote><blockquote><p><code>func join(sep string) string</code></p>
+</blockquote><blockquote><p><code>func join(sep String) String</code></p>
 <p>Returns a new string that joins the elements with <code>separator</code>.</p>
 </blockquote><blockquote><p><code>func len() int</code></p>
 <p>Returns the number of elements in the list.</p>
@@ -2422,68 +2557,68 @@ print typeof('my str').id()
 <h3 id="type-mapiterator"><code>type MapIterator</code> <a href="#type-mapiterator">#</a></h3>
 <blockquote><p><code>func next() any</code></p>
 </blockquote><a href="#modules">^topic</a>
-<h3 id="type-string"><code>type string</code> <a href="#type-string">#</a></h3>
-<blockquote><p><code>func $infix+(o any) string</code></p>
-</blockquote><blockquote><p><code>func concat(o string) string</code></p>
+<h3 id="type-string"><code>type String</code> <a href="#type-string">#</a></h3>
+<blockquote><p><code>func $infix+(o any) String</code></p>
+</blockquote><blockquote><p><code>func concat(o String) String</code></p>
 <p>Returns a new string that concats this string and <code>str</code>.</p>
-</blockquote><blockquote><p><code>func endsWith(suffix string) bool</code></p>
+</blockquote><blockquote><p><code>func endsWith(suffix String) bool</code></p>
 <p>Returns whether the string ends with <code>suffix</code>.</p>
-</blockquote><blockquote><p><code>func find(needle string) any</code></p>
+</blockquote><blockquote><p><code>func find(needle String) any</code></p>
 <p>Returns the first index of substring <code>needle</code> in the string or <code>none</code> if not found. SIMD enabled.</p>
-</blockquote><blockquote><p><code>func findAnyRune(runes string) any</code></p>
+</blockquote><blockquote><p><code>func findAnyRune(runes String) any</code></p>
 <p>Returns the first index of any UTF-8 rune in <code>runes</code> or <code>none</code> if not found. SIMD enabled.</p>
 </blockquote><blockquote><p><code>func findRune(rune int) int</code></p>
 <p>Returns the first index of UTF-8 rune <code>needle</code> in the string or <code>none</code> if not found. SIMD enabled.</p>
-</blockquote><blockquote><p><code>func insert(idx int, str string) string</code></p>
+</blockquote><blockquote><p><code>func insert(idx int, str String) String</code></p>
 <p>Returns a new string with <code>str</code> inserted at index <code>idx</code>.</p>
 </blockquote><blockquote><p><code>func isAscii() bool</code></p>
 <p>Returns whether the string contains all ASCII runes.</p>
 </blockquote><blockquote><p><code>func len() int</code></p>
 <p>Returns the number of UTF-8 runes in the string.</p>
-</blockquote><blockquote><p><code>func less(other string) bool</code></p>
+</blockquote><blockquote><p><code>func less(other String) bool</code></p>
 <p>Returns whether this string is lexicographically before <code>other</code>.</p>
-</blockquote><blockquote><p><code>func lower() string</code></p>
+</blockquote><blockquote><p><code>func lower() String</code></p>
 <p>Returns this string in lowercase.</p>
-</blockquote><blockquote><p><code>func replace(needle string, replacement string) string</code></p>
+</blockquote><blockquote><p><code>func replace(needle String, replacement String) String</code></p>
 <p>Returns a new string with all occurrences of <code>needle</code> replaced with <code>replacement</code>.</p>
-</blockquote><blockquote><p><code>func repeat(n int) string</code></p>
+</blockquote><blockquote><p><code>func repeat(n int) String</code></p>
 <p>Returns a new string with this string repeated <code>n</code> times.</p>
 </blockquote><blockquote><p><code>func runeAt(n int) int</code></p>
 <p>Returns the UTF-8 rune at index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func slice(start any, end any) string</code></p>
+</blockquote><blockquote><p><code>func slice(start any, end any) String</code></p>
 <p>Returns a slice into this string from <code>start</code> to <code>end</code> (exclusive) indexes. This is equivalent to using the slice index operator <code>[start..end]</code>.</p>
-</blockquote><blockquote><p><code>func $slice(start any, end any) string</code></p>
-</blockquote><blockquote><p><code>func sliceAt(idx int) string</code></p>
+</blockquote><blockquote><p><code>func $slice(start any, end any) String</code></p>
+</blockquote><blockquote><p><code>func sliceAt(idx int) String</code></p>
 <p>Returns the UTF-8 rune at index <code>idx</code> as a single rune string.</p>
-</blockquote><blockquote><p><code>func $index(idx int) string</code></p>
-</blockquote><blockquote><p><code>func split(sep string) List</code></p>
+</blockquote><blockquote><p><code>func $index(idx int) String</code></p>
+</blockquote><blockquote><p><code>func split(sep String) List</code></p>
 <p>Returns a list of UTF-8 strings split at occurrences of <code>sep</code>.</p>
-</blockquote><blockquote><p><code>func startsWith(prefix string) bool</code></p>
+</blockquote><blockquote><p><code>func startsWith(prefix String) bool</code></p>
 <p>Returns whether the string starts with <code>prefix</code>.</p>
-</blockquote><blockquote><p><code>func trim(mode symbol, delims string) string</code></p>
+</blockquote><blockquote><p><code>func trim(mode symbol, delims String) String</code></p>
 <p>Returns the string with ends trimmed from runes in <code>delims</code>. <code>mode</code> can be .left, .right, or .ends.</p>
-</blockquote><blockquote><p><code>func upper() string</code></p>
+</blockquote><blockquote><p><code>func upper() String</code></p>
 <p>Returns this string in uppercase.</p>
-</blockquote><blockquote><p><code>func string.'$call'(val any) string</code></p>
+</blockquote><blockquote><p><code>func String.'$call'(val any) String</code></p>
 <p>Converts a value to a string.</p>
 </blockquote><a href="#modules">^topic</a>
-<h3 id="type-array"><code>type array</code> <a href="#type-array">#</a></h3>
-<blockquote><p><code>func $infix+(o any) array</code></p>
-</blockquote><blockquote><p><code>func concat(other array) array</code></p>
+<h3 id="type-array"><code>type Array</code> <a href="#type-array">#</a></h3>
+<blockquote><p><code>func $infix+(o any) Array</code></p>
+</blockquote><blockquote><p><code>func concat(other Array) Array</code></p>
 <p>Returns a new array that concats this array and <code>other</code>.</p>
-</blockquote><blockquote><p><code>func decode() string</code></p>
+</blockquote><blockquote><p><code>func decode() String</code></p>
 <p>Calls decode(.utf8)</p>
-</blockquote><blockquote><p><code>func decode(encoding symbol) string</code></p>
+</blockquote><blockquote><p><code>func decode(encoding symbol) String</code></p>
 <p>Decodes the array based on an <code>encoding</code>. Supported encodings: <code>.utf8</code>.  Returns the decoded string or throws <code>error.Decode</code>.</p>
-</blockquote><blockquote><p><code>func endsWith(suffix array) bool</code></p>
+</blockquote><blockquote><p><code>func endsWith(suffix Array) bool</code></p>
 <p>Returns whether the array ends with <code>suffix</code>.</p>
-</blockquote><blockquote><p><code>func find(needle array) any</code></p>
+</blockquote><blockquote><p><code>func find(needle Array) any</code></p>
 <p>Returns the first index of <code>needle</code> in the array or <code>none</code> if not found.</p>
-</blockquote><blockquote><p><code>func findAnyByte(bytes array) any</code></p>
+</blockquote><blockquote><p><code>func findAnyByte(bytes Array) any</code></p>
 <p>Returns the first index of any <code>bytes</code> in <code>arrays</code> or <code>none</code> if not found.</p>
 </blockquote><blockquote><p><code>func findByte(byte int) any</code></p>
 <p>Returns the first index of <code>byte</code> in the array or <code>none</code> if not found.</p>
-</blockquote><blockquote><p><code>func fmt(kind symbol) string</code></p>
+</blockquote><blockquote><p><code>func fmt(kind symbol) String</code></p>
 <p>Formats each byte in the array using a kind specifier which can be binary <code>.b</code>,  octal <code>.o</code>, decimal <code>.d</code>, hexadecimal <code>.x</code>, ASCII <code>.c</code>.  Each byte is zero padded.</p>
 </blockquote><blockquote><p><code>func getByte(idx int) int</code></p>
 <p>Returns the byte value (0-255) at the given index <code>idx</code>.</p>
@@ -2491,44 +2626,44 @@ print typeof('my str').id()
 <p>Returns the int value of the 6 bytes starting from <code>idx</code> with the given endianness (.little or .big).</p>
 </blockquote><blockquote><p><code>func getInt32(idx int, endian symbol) int</code></p>
 <p>Returns the int value of the 4 bytes starting from <code>idx</code> with the given endianness (.little or .big).</p>
-</blockquote><blockquote><p><code>func insert(idx int, arr array) array</code></p>
+</blockquote><blockquote><p><code>func insert(idx int, arr Array) Array</code></p>
 <p>Returns a new array with <code>arr</code> inserted at index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func insertByte(idx int, byte int) array</code></p>
+</blockquote><blockquote><p><code>func insertByte(idx int, byte int) Array</code></p>
 <p>Returns a new array with <code>byte</code> inserted at index <code>idx</code>.</p>
 </blockquote><blockquote><p><code>func len() int</code></p>
 <p>Returns the number of bytes in the array.</p>
-</blockquote><blockquote><p><code>func repeat(n int) array</code></p>
+</blockquote><blockquote><p><code>func repeat(n int) Array</code></p>
 <p>Returns a new array with this array repeated <code>n</code> times.</p>
-</blockquote><blockquote><p><code>func replace(needle array, replacement array) array</code></p>
+</blockquote><blockquote><p><code>func replace(needle Array, replacement Array) Array</code></p>
 <p>Returns a new array with all occurrences of <code>needle</code> replaced with <code>replacement</code>.</p>
-</blockquote><blockquote><p><code>func slice(start any, end any) array</code></p>
+</blockquote><blockquote><p><code>func slice(start any, end any) Array</code></p>
 <p>Returns a slice into this array from <code>start</code> to <code>end</code> (exclusive) indexes. This is equivalent to using the slice index operator <code>[start..end]</code>.</p>
-</blockquote><blockquote><p><code>func $slice(start any, end any) array</code></p>
+</blockquote><blockquote><p><code>func $slice(start any, end any) Array</code></p>
 </blockquote><blockquote><p><code>func $index(idx int) int</code></p>
-</blockquote><blockquote><p><code>func split(sep array) List</code></p>
+</blockquote><blockquote><p><code>func split(sep Array) List</code></p>
 <p>Returns a list of arrays split at occurrences of <code>sep</code>.</p>
-</blockquote><blockquote><p><code>func startsWith(prefix array) bool</code></p>
+</blockquote><blockquote><p><code>func startsWith(prefix Array) bool</code></p>
 <p>Returns whether the array starts with <code>prefix</code>.</p>
-</blockquote><blockquote><p><code>func trim(mode symbol, delims array) array</code></p>
+</blockquote><blockquote><p><code>func trim(mode symbol, delims Array) Array</code></p>
 <p>Returns the array with ends trimmed from runes in <code>delims</code>. <code>mode</code> can be .left, .right, or .ends.</p>
-</blockquote><blockquote><p><code>func array.'$call'(val any) array</code></p>
-<p>Converts a string to an byte <code>array</code>.</p>
+</blockquote><blockquote><p><code>func Array.'$call'(val any) Array</code></p>
+<p>Converts a string to an byte <code>Array</code>.</p>
 </blockquote><a href="#modules">^topic</a>
-<h3 id="type-arrayiterator"><code>type arrayIterator</code> <a href="#type-arrayiterator">#</a></h3>
+<h3 id="type-arrayiterator"><code>type ArrayIterator</code> <a href="#type-arrayiterator">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-pointer"><code>type pointer</code> <a href="#type-pointer">#</a></h3>
 <blockquote><p><code>func addr() int</code></p>
 <p>Returns the memory address as an <code>int</code>. The value may be negative since it's  bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.</p>
 </blockquote><blockquote><p><code>func asObject() any</code></p>
 <p>Unsafe. Casts the pointer to a Cyber object. The object is retained before it's returned.</p>
-</blockquote><blockquote><p><code>func fromCstr(offset int) array</code></p>
-<p>Unsafe. Returns an <code>array</code> from a null terminated C string.</p>
+</blockquote><blockquote><p><code>func fromCstr(offset int) Array</code></p>
+<p>Unsafe. Returns an <code>Array</code> from a null terminated C string.</p>
 </blockquote><blockquote><p><code>func get(offset int, ctype symbol) any</code></p>
 <p>Unsafe. Dereferences the pointer at a byte offset and returns the C value converted to Cyber.</p>
 </blockquote><blockquote><p><code>func set(offset int, ctype symbol, val any) none</code></p>
 <p>Unsafe. Converts the value to a compatible C value and writes it to a byte offset from this pointer.</p>
-</blockquote><blockquote><p><code>func toArray(offset int, len int) array</code></p>
-<p>Unsafe. Returns an <code>array</code> with a copy of the byte data starting from an offset to the specified length.</p>
+</blockquote><blockquote><p><code>func toArray(offset int, len int) Array</code></p>
+<p>Unsafe. Returns an <code>Array</code> with a copy of the byte data starting from an offset to the specified length.</p>
 </blockquote><blockquote><p><code>func pointer.'$call'(val any) pointer</code></p>
 <p>Converts a <code>int</code> to a <code>pointer</code> value, or casts to a <code>pointer</code>. This is usually used with FFI.</p>
 </blockquote><a href="#modules">^topic</a>
@@ -2673,7 +2808,7 @@ for map -> [k, v]:
     print "$(k) -> $(v)"
 </code></pre>
 <!-- os.start -->
-<blockquote><p><code>var cpu string</code></p>
+<blockquote><p><code>var cpu String</code></p>
 <p>The current cpu arch's tag name.</p>
 </blockquote><blockquote><p><code>var endian symbol</code></p>
 <p>The current arch's endianness: .little, .big</p>
@@ -2683,39 +2818,39 @@ for map -> [k, v]:
 <p>Standard input file descriptor.</p>
 </blockquote><blockquote><p><code>var stdout File</code></p>
 <p>Standard output file descriptor.</p>
-</blockquote><blockquote><p><code>var system string</code></p>
+</blockquote><blockquote><p><code>var system String</code></p>
 <p>The current operating system's tag name.</p>
 </blockquote><blockquote><p><code>var vecBitSize int</code></p>
 <p>Default SIMD vector bit size.</p>
-</blockquote><blockquote><p><code>func access(path string, mode symbol) none</code></p>
+</blockquote><blockquote><p><code>func access(path String, mode symbol) none</code></p>
 <p>Attempts to access a file at the given <code>path</code> with the <code>.read</code>, <code>.write</code>, or <code>.readWrite</code> mode.  Throws an error if unsuccessful.</p>
 </blockquote><blockquote><p><code>func args() List</code></p>
-<p>Returns the command line arguments in a <code>List</code>.  Each argument is converted to a <code>string</code>.</p>
-</blockquote><blockquote><p><code>func cacheUrl(url string) string</code></p>
+<p>Returns the command line arguments in a <code>List</code>.  Each argument is converted to a <code>String</code>.</p>
+</blockquote><blockquote><p><code>func cacheUrl(url String) String</code></p>
 <p>Returns the path of a locally cached file of <code>url</code>.  If no such file exists locally, it's fetched from <code>url</code>.</p>
-</blockquote><blockquote><p><code>func copyFile(srcPath string, dstPath string) none</code></p>
+</blockquote><blockquote><p><code>func copyFile(srcPath String, dstPath String) none</code></p>
 <p>Copies a file to a destination path.</p>
-</blockquote><blockquote><p><code>func createDir(path string) none</code></p>
+</blockquote><blockquote><p><code>func createDir(path String) none</code></p>
 <p>Creates the directory at <code>path</code>. Returns <code>true</code> if successful.</p>
-</blockquote><blockquote><p><code>func createFile(path string, truncate bool) File</code></p>
+</blockquote><blockquote><p><code>func createFile(path String, truncate bool) File</code></p>
 <p>Creates and opens the file at <code>path</code>. If <code>truncate</code> is true, an existing file will be truncated.</p>
 </blockquote><blockquote><p><code>func cstr(s any) pointer</code></p>
 <p>Returns a null terminated C string.</p>
-</blockquote><blockquote><p><code>func cwd() string</code></p>
+</blockquote><blockquote><p><code>func cwd() String</code></p>
 <p>Returns the current working directory.</p>
-</blockquote><blockquote><p><code>func dirName(path string) string</code></p>
+</blockquote><blockquote><p><code>func dirName(path String) String</code></p>
 <p>Returns the given path with its last component removed.</p>
 </blockquote><blockquote><p><code>func execCmd(args List) Map</code></p>
 <p>Runs a shell command and returns the stdout/stderr.</p>
-</blockquote><blockquote><p><code>func exePath() string</code></p>
+</blockquote><blockquote><p><code>func exePath() String</code></p>
 <p>Returns the current executable's path.</p>
 </blockquote><blockquote><p><code>func exit(status int) none</code></p>
 <p>Exits the program with a status code.</p>
-</blockquote><blockquote><p><code>func fetchUrl(url string) array</code></p>
+</blockquote><blockquote><p><code>func fetchUrl(url String) Array</code></p>
 <p>Fetches the contents at <code>url</code> using the HTTP GET request method.</p>
 </blockquote><blockquote><p><code>func free(ptr pointer) none</code></p>
 <p>Frees the memory located at <code>ptr</code>.</p>
-</blockquote><blockquote><p><code>func getEnv(key string) string</code></p>
+</blockquote><blockquote><p><code>func getEnv(key String) String</code></p>
 <p>Returns an environment variable by key.</p>
 </blockquote><blockquote><p><code>func getEnvAll() Map</code></p>
 <p>Returns all environment variables as a <code>Map</code>.</p>
@@ -2727,33 +2862,33 @@ for map -> [k, v]:
 <p>Returns a new FFI context for declaring C mappings and binding a dynamic library.</p>
 </blockquote><blockquote><p><code>func now() float</code></p>
 <p>Returns the current time (in high resolution seconds) since an arbitrary point in time.</p>
-</blockquote><blockquote><p><code>func openDir(path string) Dir</code></p>
+</blockquote><blockquote><p><code>func openDir(path String) Dir</code></p>
 <p>Invokes <code>openDir(path, false)</code>.</p>
-</blockquote><blockquote><p><code>func openDir(path string, iterable bool) Dir</code></p>
+</blockquote><blockquote><p><code>func openDir(path String, iterable bool) Dir</code></p>
 <p>Opens a directory at the given <code>path</code>. <code>iterable</code> indicates that the directory's entries can be iterated.</p>
-</blockquote><blockquote><p><code>func openFile(path string, mode symbol) File</code></p>
+</blockquote><blockquote><p><code>func openFile(path String, mode symbol) File</code></p>
 <p>Opens a file at the given <code>path</code> with the <code>.read</code>, <code>.write</code>, or <code>.readWrite</code> mode.</p>
 </blockquote><blockquote><p><code>func parseArgs(options List) Map</code></p>
 <p>Given expected <code>ArgOption</code>s, returns a map of the options and a <code>rest</code> entry which contains the non-option arguments.</p>
-</blockquote><blockquote><p><code>func readAll() string</code></p>
+</blockquote><blockquote><p><code>func readAll() String</code></p>
 <p>Reads stdin to the EOF as a UTF-8 string.  To return the bytes instead, use <code>stdin.readAll()</code>.</p>
-</blockquote><blockquote><p><code>func readFile(path string) string</code></p>
+</blockquote><blockquote><p><code>func readFile(path String) String</code></p>
 <p>Reads the file contents from <code>path</code> as a UTF-8 string.  To return the bytes instead, use <code>File.readAll()</code>.</p>
-</blockquote><blockquote><p><code>func readLine() string</code></p>
-<p>Reads stdin until a new line as a <code>string</code>. This is intended to read user input from the command line.  For bulk reads from stdin, use <code>stdin</code>.</p>
-</blockquote><blockquote><p><code>func realPath(path string) string</code></p>
+</blockquote><blockquote><p><code>func readLine() String</code></p>
+<p>Reads stdin until a new line as a <code>String</code>. This is intended to read user input from the command line.  For bulk reads from stdin, use <code>stdin</code>.</p>
+</blockquote><blockquote><p><code>func realPath(path String) String</code></p>
 <p>Returns the absolute path of the given path.</p>
-</blockquote><blockquote><p><code>func removeDir(path string) none</code></p>
+</blockquote><blockquote><p><code>func removeDir(path String) none</code></p>
 <p>Removes an empty directory at <code>path</code>. Returns <code>true</code> if successful.</p>
-</blockquote><blockquote><p><code>func removeFile(path string) none</code></p>
+</blockquote><blockquote><p><code>func removeFile(path String) none</code></p>
 <p>Removes the file at <code>path</code>. Returns <code>true</code> if successful.</p>
-</blockquote><blockquote><p><code>func setEnv(key string, val string) none</code></p>
+</blockquote><blockquote><p><code>func setEnv(key String, val String) none</code></p>
 <p>Sets an environment variable by key.</p>
 </blockquote><blockquote><p><code>func sleep(ms float) none</code></p>
 <p>Pauses the current thread for given milliseconds.</p>
-</blockquote><blockquote><p><code>func unsetEnv(key string) none</code></p>
+</blockquote><blockquote><p><code>func unsetEnv(key String) none</code></p>
 <p>Removes an environment variable by key.</p>
-</blockquote><blockquote><p><code>func writeFile(path string, contents any) none</code></p>
+</blockquote><blockquote><p><code>func writeFile(path String, contents any) none</code></p>
 <p>Writes <code>contents</code> as a string or bytes to a file.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-file"><code>type File</code> <a href="#type-file">#</a></h3>
@@ -2761,10 +2896,10 @@ for map -> [k, v]:
 <p>Closes the file handle. File ops invoked afterwards will return <code>error.Closed</code>.</p>
 </blockquote><blockquote><p><code>func iterator() any</code></p>
 </blockquote><blockquote><p><code>func next() any</code></p>
-</blockquote><blockquote><p><code>func read(n int) array</code></p>
-<p>Reads at most <code>n</code> bytes as an <code>array</code>. <code>n</code> must be at least 1.  A result with length 0 indicates the end of file was reached.</p>
-</blockquote><blockquote><p><code>func readAll() array</code></p>
-<p>Reads to the end of the file and returns the content as an <code>array</code>.</p>
+</blockquote><blockquote><p><code>func read(n int) Array</code></p>
+<p>Reads at most <code>n</code> bytes as an <code>Array</code>. <code>n</code> must be at least 1.  A result with length 0 indicates the end of file was reached.</p>
+</blockquote><blockquote><p><code>func readAll() Array</code></p>
+<p>Reads to the end of the file and returns the content as an <code>Array</code>.</p>
 </blockquote><blockquote><p><code>func seek(n int) none</code></p>
 <p>Seeks the read/write position to <code>pos</code> bytes from the start. Negative <code>pos</code> is invalid.</p>
 </blockquote><blockquote><p><code>func seekFromCur(n int) none</code></p>
@@ -2778,7 +2913,7 @@ for map -> [k, v]:
 </blockquote><blockquote><p><code>func streamLines(bufSize int) File</code></p>
 <p>Returns an iterable that streams lines ending in <code>\n</code>, <code>\r</code>, <code>\r\n</code>, or the <code>EOF</code>.  The lines returned include the new line character(s).  A buffer size of <code>bufSize</code> bytes is allocated for reading.  If <code>\r</code> is found at the end of the read buffer, the line is returned instead of  waiting to see if the next read has a connecting <code>\n</code>.</p>
 </blockquote><blockquote><p><code>func write(val any) int</code></p>
-<p>Writes a <code>string</code> or <code>array</code> at the current file position.  The number of bytes written is returned.</p>
+<p>Writes a <code>String</code> or <code>Array</code> at the current file position.  The number of bytes written is returned.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-dir"><code>type Dir</code> <a href="#type-dir">#</a></h3>
 <blockquote><p><code>func iterator() DirIterator</code></p>
@@ -2802,7 +2937,7 @@ for map -> [k, v]:
 <p>Returns a Cyber object's pointer. Operations on the pointer is unsafe,  but it can be useful when passing it to C as an opaque pointer.  The object is also retained and managed by the FFI context.</p>
 </blockquote><blockquote><p><code>func cbind(mt metatype, fields List) none</code></p>
 <p>Binds a Cyber type to a C struct.</p>
-</blockquote><blockquote><p><code>func cfunc(name string, params List, ret any) none</code></p>
+</blockquote><blockquote><p><code>func cfunc(name String, params List, ret any) none</code></p>
 <p>Declares a C function which will get binded to the library handle created from <code>bindLib</code>.</p>
 </blockquote><blockquote><p><code>func new(ctype symbol) pointer</code></p>
 <p>Allocates memory for a C struct or primitive with the given C type specifier.  A <code>pointer</code> to the allocated memory is returned.  Eventually this will return a <code>cpointer</code> instead which will be more idiomatic to use.</p>
@@ -2815,11 +2950,11 @@ for map -> [k, v]:
 <!-- os.end -->
 <a href="#modules">^topic</a>
 <h3 id="map-direntry"><code>map DirEntry</code> <a href="#map-direntry">#</a></h3>
-<table><thead><tr><th>key</th><th>summary</th></tr></thead><tbody><tr><td><code>'name' -> array</code></td><td>The name of the file or directory.</td></tr><tr><td><code>'type' -> #file | #dir | #unknown</code></td><td>The type of the entry.</td></tr></tbody></table><a href="#modules">^topic</a>
+<table><thead><tr><th>key</th><th>summary</th></tr></thead><tbody><tr><td><code>'name' -> Array</code></td><td>The name of the file or directory.</td></tr><tr><td><code>'type' -> #file | #dir | #unknown</code></td><td>The type of the entry.</td></tr></tbody></table><a href="#modules">^topic</a>
 <h3 id="map-dirwalkentry"><code>map DirWalkEntry</code> <a href="#map-dirwalkentry">#</a></h3>
-<table><thead><tr><th>key</th><th>summary</th></tr></thead><tbody><tr><td><code>'name' -> array</code></td><td>The name of the file or directory.</td></tr><tr><td><code>'path' -> array</code></td><td>The path of the file or directory relative to the walker's root directory.</td></tr><tr><td><code>'type' -> #file | #dir | #unknown</code></td><td>The type of the entry.</td></tr></tbody></table><a href="#modules">^topic</a>
+<table><thead><tr><th>key</th><th>summary</th></tr></thead><tbody><tr><td><code>'name' -> Array</code></td><td>The name of the file or directory.</td></tr><tr><td><code>'path' -> Array</code></td><td>The path of the file or directory relative to the walker's root directory.</td></tr><tr><td><code>'type' -> #file | #dir | #unknown</code></td><td>The type of the entry.</td></tr></tbody></table><a href="#modules">^topic</a>
 <h3 id="map-argoption"><code>map ArgOption</code> <a href="#map-argoption">#</a></h3>
-<table><thead><tr><th>key</th><th>summary</th></tr></thead><tbody><tr><td><code>'name' -> string</code></td><td>The name of the option to match excluding the hyphen prefix. eg. <code>-path</code></td></tr><tr><td><code>'type' -> metatype(string | float | boolean)</code></td><td>Parse as given value type.</td></tr><tr><td><code>'default' -> any</code></td><td>Optional: Default value if option is missing. <code>none</code> is used if this is not provided.</td></tr></tbody></table><a href="#modules">^topic</a>
+<table><thead><tr><th>key</th><th>summary</th></tr></thead><tbody><tr><td><code>'name' -> String</code></td><td>The name of the option to match excluding the hyphen prefix. eg. <code>-path</code></td></tr><tr><td><code>'type' -> metatype(String | float | boolean)</code></td><td>Parse as given value type.</td></tr><tr><td><code>'default' -> any</code></td><td>Optional: Default value if option is missing. <code>none</code> is used if this is not provided.</td></tr></tbody></table><a href="#modules">^topic</a>
 <h2 id="test">test. <a href="#test">#</a></h2>
 <p>The <code>test</code> module contains utilities for testing.</p>
 <p>Sample usage:</p>
@@ -3310,15 +3445,11 @@ print fiber.status()   -- '.done'
 </td><td valign="top">
 <ul>
 <li><a href="#static-typing" title="">Static typing.</a><ul>
-<li><a href="#builtin-types" title="">Builtin types.</a></li>
 <li><a href="#var-declaration" title=""><code>var</code> declaration.</a></li>
 <li><a href="#typed-variables" title="">Typed variables.</a></li>
-<li><a href="#object-types" title="">Object types.</a></li>
+<li><a href="#null-safety" title="">Null safety.</a></li>
 <li><a href="#zero-values" title="">Zero values.</a></li>
-<li><a href="#type-aliases" title="">Type aliases.</a></li>
 <li><a href="#functions-1" title="">Functions.</a></li>
-<li><a href="#traits" title="">Traits.</a></li>
-<li><a href="#union-types" title="">Union types.</a></li>
 <li><a href="#any-type" title=""><code>any</code> type.</a></li>
 <li><a href="#invoking-any-values" title="">Invoking any values.</a></li>
 <li><a href="#type-casting" title="">Type casting.</a></li>
@@ -3341,21 +3472,21 @@ print fiber.status()   -- '.done'
 <p><code>dynamic</code> values can be freely used and copied without any compile errors (if there is a chance it can succeed at runtime, see <a href="#recent-type-inference" title="">Recent type inference</a>):</p>
 <pre><code class="language-cy">my a = 123
 
-func getFirstRune(s string):
+func getFirstRune(s String):
     return s[0]
 
-getFirstRune(a)       -- RuntimeError. Expected `string`.
+getFirstRune(a)       -- RuntimeError. Expected `String`.
 </code></pre>
 <p>Since <code>a</code> is dynamic, passing it to a typed function parameter is allowed at compile-time, but will fail when the function is invoked at runtime.</p>
 <p>The <code>any</code> type on the otherhand is a <strong>static type</strong> and must be explicitly declared using <code>var</code>:</p>
 <pre><code class="language-cy">var a any = 123
 
-func getFirstRune(s string):
+func getFirstRune(s String):
     return s[0]
 
-getFirstRune(a)       -- CompileError. Expected `string`.
+getFirstRune(a)       -- CompileError. Expected `String`.
 </code></pre>
-<p>This same setup will now fail at compile-time because <code>any</code> does not satisfy the destination's <code>string</code> type constraint.</p>
+<p>This same setup will now fail at compile-time because <code>any</code> does not satisfy the destination's <code>String</code> type constraint.</p>
 <p>The use of the <code>dynamic</code> type effectively defers type checking to runtime while <code>any</code> is a static type and must adhere to type constraints at compile-time.</p>
 <p>A <code>dynamic</code> value can be used in any operation. It can be invoked as the callee, invoked as the receiver of a method call, or used with operators.</p>
 <a href="#type-system">^topic</a>
@@ -3385,34 +3516,32 @@ print add(getValue(), 2)    -- Prints "125"
 <pre><code class="language-cy">my a = 123
 </code></pre>
 <p>The recent type can change at compile-time from another assignment.
-If <code>a</code> is then assigned to a string literal, <code>a</code> from that point on has the recent type of <code>string</code> at compile-time:</p>
+If <code>a</code> is then assigned to a string literal, <code>a</code> from that point on has the recent type of <code>String</code> at compile-time:</p>
 <pre><code class="language-cy">my a = 123
 foo(a)           -- Valid call expression.
 a = 'hello'
-foo(a)           -- CompileError. Expected `int` argument, got `string`.
+foo(a)           -- CompileError. Expected `int` argument, got `String`.
 
 func foo(n int):
     pass
 </code></pre>
 <p>Even though <code>a</code> is <code>dynamic</code> and is usually allowed to defer type checking to runtime, the compiler knows that doing so in this context would <strong>always</strong> result in a runtime error, so it provides a compile error instead. This provides a quicker feedback to fix the problem.</p>
-<p>The recent type of <code>a</code> can also change in branches. However, after the branch block, <code>a</code> will have a recent type after merging the types assigned to <code>a</code> from the two branched code paths. Currently, the <code>any</code> type is used if the types from the two branches differ. At the end of the following <code>if</code> block, <code>a</code> has the recent type of <code>any</code> type after merging the <code>int</code> and <code>string</code> types: <em>Planned Feature</em></p>
+<p>The recent type of <code>a</code> can also change in branches. However, after the branch block, <code>a</code> will have a recent type after merging the types assigned to <code>a</code> from the two branched code paths. Currently, the <code>any</code> type is used if the types from the two branches differ. At the end of the following <code>if</code> block, <code>a</code> has the recent type of <code>any</code> type after merging the <code>int</code> and <code>String</code> types: <em>Planned Feature</em></p>
 <pre><code class="language-cy">my a = 123
 if a > 20:
     a = 'hello'
     foo(a)       -- Valid call expression. `foo` can be called without type casting.
 
-foo(a)           -- CompileError. Expected `string` argument, got `any`.
+foo(a)           -- CompileError. Expected `String` argument, got `any`.
 
-func foo(s string):
+func foo(s String):
     pass
 </code></pre>
 <a href="#type-system">^topic</a>
 <h2 id="static-typing">Static typing. <a href="#static-typing">#</a></h2>
 <p>Static typing can be incrementally applied which provides compile-time guarantees and prevents runtime errors.
 Static typing also makes it easier to maintain and refactor your code.</p>
-<a href="#type-system">^topic</a>
-<h3 id="builtin-types">Builtin types. <a href="#builtin-types">#</a></h3>
-<p>The following builtin types are available in every module: <code>bool</code>, <code>float</code>, <code>int</code>, <code>string</code>, <code>List</code>, <code>Map</code>, <code>error</code>, <code>fiber</code>, <code>any</code>.</p>
+<p>There are <a href="#basic-types" title="">basic types</a> that are built into Cyber and <code>type</code> declarations to create <a href="#custom-types" title="">custom types</a>.</p>
 <a href="#type-system">^topic</a>
 <h3 id="var-declaration"><code>var</code> declaration. <a href="#var-declaration">#</a></h3>
 <p>A <code>var</code> declaration automatically infers the type from the initializer:</p>
@@ -3434,54 +3563,19 @@ var a = getValue()
 var b int = 123.0    -- CompileError. Expected `int`, got `float`.
 </code></pre>
 <p>Any operation afterwards that violates the type constraint of the variable will result in a compile error.</p>
-<pre><code class="language-cy">a = 'hello'          -- CompileError. Expected `float`, got `string`.
+<pre><code class="language-cy">a = 'hello'          -- CompileError. Expected `float`, got `String`.
 </code></pre>
 <p>Static variables are declared in a similar way:</p>
 <pre><code class="language-cy">var .global Map = [:]
 </code></pre>
 <p>Unlike local variables, static variable declarations do not infer the type from the right hand side. A specific type must be specified or it will default to the <code>any</code> type.</p>
 <a href="#type-system">^topic</a>
-<h3 id="object-types">Object types. <a href="#object-types">#</a></h3>
-<p>A <code>type</code> declaration creates a new object type. Field types are optional and declared with a type specifier after their name.</p>
-<pre><code class="language-cy">type Student:    -- Creates a new type named `Student`
-    var name string
-    var age  int
-    var gpa  float
-</code></pre>
-<p>Instantiating a new object does not require typed fields to be initialized. Missing field values will default to their <a href="#zero-values" title="">zero value</a>:</p>
-<pre><code class="language-cy">var s = [Student:]
-print s.name       -- Prints ""
-print s.age        -- Prints "0"
-print s.gpa        -- Prints "0.0"
-</code></pre>
-<p>Circular type dependencies are allowed if the object can be initialized:</p>
-<blockquote><p><em>Planned Feature: Optional types are not currently supported.</em></p>
-</blockquote><pre><code class="language-cy">type Node:
-    var val  any
-    var next Node?     -- Valid type specifier.
-</code></pre>
-<p>In this example, <code>next</code> has an optional <code>Node?</code> type so it can be initialized to <code>none</code> when creating a new <code>Node</code> object.</p>
-<p>The following example will fail because this version of <code>Node</code> can not be initialized:</p>
-<pre><code class="language-cy">type Node:
-    var val  any
-    var next Node
-
-var n = [Node:]    -- CompileError. Can not zero initialize `next`
-                   -- because of circular dependency.
-</code></pre>
+<h3 id="null-safety">Null safety. <a href="#null-safety">#</a></h3>
+<p>The type checker does not allow using <code>none</code> with an operation. Instead, <a href="#optionals" title="">Optionals</a> must be unwrapped to access the payload value.</p>
 <a href="#type-system">^topic</a>
 <h3 id="zero-values">Zero values. <a href="#zero-values">#</a></h3>
 <p>The following shows the zero values of builtin or created types.</p>
-<table><thead><tr><th>Type</th><th>Zero value</th></tr></thead><tbody><tr><td><code>boolean</code></td><td><code>false</code></td></tr><tr><td><code>int</code></td><td><code>0</code></td></tr><tr><td><code>float</code></td><td><code>0.0</code></td></tr><tr><td><code>string</code></td><td><code>''</code></td></tr><tr><td><code>array</code></td><td><code>array('')</code></td></tr><tr><td><code>List</code></td><td><code>[]</code></td></tr><tr><td><code>Map</code></td><td><code>[:]</code></td></tr><tr><td><code>type S</code></td><td><code>[S:]</code></td></tr><tr><td><code>#host type S</code></td><td><code>S.$zero()</code></td></tr><tr><td><code>dynamic</code></td><td><code>none</code></td></tr><tr><td><code>any</code></td><td><code>none</code></td></tr><tr><td><code>S?</code></td><td><code>none</code></td></tr></tbody></table><a href="#type-system">^topic</a>
-<h3 id="type-aliases">Type aliases. <a href="#type-aliases">#</a></h3>
-<p>A type alias is declared from a single line <code>type</code> statement. This creates a new type symbol for an existing data type.</p>
-<pre><code class="language-cy">import util './util.cy'
-
-type Vec3 util.Vec3
-
-var v = [Vec3 x: 3, y: 4, z: 5]
-</code></pre>
-<a href="#type-system">^topic</a>
+<table><thead><tr><th>Type</th><th>Zero value</th></tr></thead><tbody><tr><td><code>boolean</code></td><td><code>false</code></td></tr><tr><td><code>int</code></td><td><code>0</code></td></tr><tr><td><code>float</code></td><td><code>0.0</code></td></tr><tr><td><code>String</code></td><td><code>''</code></td></tr><tr><td><code>Array</code></td><td><code>Array('')</code></td></tr><tr><td><code>List</code></td><td><code>[]</code></td></tr><tr><td><code>Map</code></td><td><code>[:]</code></td></tr><tr><td><code>type S</code></td><td><code>[S:]</code></td></tr><tr><td><code>#host type S</code></td><td><code>S.$zero()</code></td></tr><tr><td><code>dynamic</code></td><td><code>Option.none</code></td></tr><tr><td><code>any</code></td><td><code>Option.none</code></td></tr><tr><td><code>?S</code></td><td><code>Option(S).none</code></td></tr></tbody></table><a href="#type-system">^topic</a>
 <h3 id="functions-1">Functions. <a href="#functions-1">#</a></h3>
 <p>Function parameter and return type specifiers follows a similiar syntax.</p>
 <pre><code class="language-cy">func mul(a float, b float) float:
@@ -3491,12 +3585,6 @@ print mul(3, 4)
 print mul(3, '4')  -- CompileError. Function signature mismatch.
 </code></pre>
 <a href="#type-system">^topic</a>
-<h3 id="traits">Traits. <a href="#traits">#</a></h3>
-<blockquote><p><em>Planned Feature</em></p>
-</blockquote><a href="#type-system">^topic</a>
-<h3 id="union-types">Union types. <a href="#union-types">#</a></h3>
-<blockquote><p><em>Planned Feature</em></p>
-</blockquote><a href="#type-system">^topic</a>
 <h3 id="any-type"><code>any</code> type. <a href="#any-type">#</a></h3>
 <p>A variable with the <code>any</code> type can hold any value, but copying it to narrowed type destination will result in a compile error:</p>
 <pre><code class="language-cy">func square(i int):
@@ -3528,12 +3616,12 @@ print opFunc(1, 2)     -- Prints "3".
 <h3 id="type-casting">Type casting. <a href="#type-casting">#</a></h3>
 <p>The <code>as</code> keyword can be used to cast a value to a specific type. Casting lets the compiler know what the expected type is and does not perform any conversions.</p>
 <p>If the compiler knows the cast will always fail at runtime, a compile error is returned instead.</p>
-<pre><code class="language-cy">print('123' as int)       -- CompileError. Can not cast `string` to `int`.
+<pre><code class="language-cy">print('123' as int)       -- CompileError. Can not cast `String` to `int`.
 </code></pre>
 <p>If the cast fails at runtime, a panic is returned.</p>
 <pre><code class="language-cy">var erased any = 123
 add(1, erased as int)     -- Success.
-print(erased as string)   -- Panic. Can not cast `int` to `string`.
+print(erased as String)   -- Panic. Can not cast `int` to `String`.
 
 func add(a int, b int):
     return a + b
@@ -3650,7 +3738,7 @@ print bool          -- 'type: bool'
 <a href="#metaprogramming">^topic</a>
 <h2 id="directives">Directives. <a href="#directives">#</a></h2>
 <p>Directives start with <code>#</code> and are used as modifiers or to invoke compile-time features.</p>
-<blockquote><p><code>#genLabel(name string)</code></p>
+<blockquote><p><code>#genLabel(name String)</code></p>
 <p>Emits a label during codegen for debugging.</p>
 </blockquote><blockquote><p><code>#host</code></p>
 <p>Modifier to bind a function, variable, or type to the host. See <a href="#embedding" title="">Embedding</a>.</p>
@@ -3936,7 +4024,7 @@ However, it can be useful to perform additional cleanup tasks for instances that
 ARC is deterministic and has less overhead compared to a tracing garbage collector. Reference counting distributes memory management, which reduces GC pauses and makes ARC suitable for realtime applications. One common issue in ARC implementations is reference cycles which Cyber addresses with <a href="#weak-references" title="">Weak References</a> and it's very own <a href="#cycle-detection" title="">Cycle Detection</a>.</p>
 <a href="#memory">^topic</a>
 <h3 id="reference-counting">Reference counting. <a href="#reference-counting">#</a></h3>
-<p>In Cyber, there are <a href="#data-types" title="">primitive and object</a> values. Primitives don't need any memory management, since they are copied by value and no heap allocation is required (with the exception of primitives being captured by a <a href="#closures-1" title="">closure</a>.</p>
+<p>In Cyber, there are <a href="#basic-types" title="">primitive and object</a> values. Primitives don't need any memory management, since they are copied by value and no heap allocation is required (with the exception of primitives being captured by a <a href="#closures-1" title="">closure</a>.</p>
 <p>Objects are managed by ARC. Each object has its own reference counter. Upon creating a new object, it receives a reference count of 1. When the object is copied, it's <strong>retained</strong> and the reference count increments by 1. When an object value is removed from it's parent or is no longer reachable in the current stack frame, it is <strong>released</strong> and the reference count decrements by 1.</p>
 <p>Once the reference count reaches 0 the object begins its destruction procedure. First, child references are released thereby decrementing their reference counts by 1. If the object is a host object, it will invoke its <code>finalizer</code> function. Afterwards, the object is freed from memory.</p>
 <a href="#memory">^topic</a>
@@ -5207,10 +5295,14 @@ hljs.registerLanguage('cy', function() {
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case'
         ],
         type: [
-            'float', 'string', 'bool', 'any', 'int', 'List', 'Map', 'rawstring', 'symbol', 'pointer', 'dynamic'
+            'float', 'String', 'Array', 'bool', 'any', 'int', 'List', 'Map', 'symbol', 'pointer', 'dynamic'
         ],
     },
     contains: [
+        {
+            scope: 'string',
+            begin: "\"", end: "\""
+        },
         {
             scope: 'string',
             begin: "'", end: "'"

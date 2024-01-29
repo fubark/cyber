@@ -40,6 +40,19 @@ pub fn scoped(comptime Scope: @Type(.EnumLiteral)) type {
             trace_(format, args);
         }
 
+        pub fn tracevIf(cond: bool, comptime format: []const u8, args: anytype) void {
+            if (!cy.Trace) {
+                return;
+            }
+            if (!cy.verbose) {
+                return;
+            }
+            if (!cond) {
+                return;
+            }
+            trace_(format, args);
+        }
+
         inline fn trace_(comptime format: []const u8, args: anytype) void {
             if (UseTimer) {
                 initTimerOnce();

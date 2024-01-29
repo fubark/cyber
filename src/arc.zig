@@ -19,7 +19,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         if (cy.TraceRC) {
-            log.tracev("{} -1 release: {s}, {*}", .{obj.head.rc, @tagName(val.getUserTag()), obj});
+            log.tracevIf(cy.logMemory, "{} -1 release: {s}, {*}", .{obj.head.rc, @tagName(val.getUserTag()), obj});
         }
         if (cy.Trace) {
             checkDoubleFree(vm, obj);
@@ -48,7 +48,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
             }
         }
     } else {
-        log.tracev("release: {s}, nop", .{@tagName(val.getUserTag())});
+        log.tracevIf(cy.logMemory, "release: {s}, nop", .{@tagName(val.getUserTag())});
     }
 }
 
@@ -84,7 +84,7 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
         checkDoubleFree(vm, obj);
     }
     if (cy.TraceRC) {
-        log.tracev("{} -1 release: {s}", .{obj.head.rc, @tagName(obj.getUserTag())});
+        log.tracevIf(cy.logMemory, "{} -1 release: {s}", .{obj.head.rc, @tagName(obj.getUserTag())});
     }
     obj.head.rc -= 1;
     if (cy.TrackGlobalRC) {

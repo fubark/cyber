@@ -312,7 +312,7 @@ pub const VM = struct {
         // Release static strings.
         logger.tracev("release static objects {}", .{self.staticObjects.len});
         for (self.staticObjects.items()) |obj| {
-            logger.tracev("release static object", .{});
+            logger.tracevIf(cy.logMemory, "release static object", .{});
             cy.arc.releaseObject(self, obj);
         }
         logger.tracev("release static objects end", .{});

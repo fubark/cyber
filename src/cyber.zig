@@ -143,6 +143,7 @@ pub const StdSection = if (builtin.os.tag == .macos) "__TEXT,.eval.std" else ".e
 
 /// Whether to print verbose logs.
 pub export var verbose = false;
+pub var logMemory = false;
 
 comptime {
     @export(verbose, .{ .name = "csVerbose", .linkage = .Strong });

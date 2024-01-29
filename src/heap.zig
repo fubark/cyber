@@ -1807,7 +1807,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             cy.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});
         } else {
             const desc = vm.getOrBufPrintValueStr(&cy.tempBuf, Value.initPtr(obj)) catch cy.fatal();
-            log.tracev("free type={}({s}) {*}: `{s}`", .{
+            log.tracevIf(cy.logMemory, "free type={}({s}) {*}: `{s}`", .{
                 obj.getTypeId(), vm.getTypeName(obj.getTypeId()), obj, desc,
             });
         }

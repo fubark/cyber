@@ -657,12 +657,21 @@ pub const Parser = struct {
             return self.reportParseError("Expected member identifier.", &.{});
         };
 
-        try self.consumeNewLineOrEnd();
+        var typeSpec: cy.NodeId = cy.NullId;
+        const token = self.peekToken();
+        if (token.tag() != .new_line and token.tag() != .none) {
+            if (try self.parseTypeSpec(true)) |res| {
+                typeSpec = res;
+            }
+        } else {
+            try self.consumeNewLineOrEnd();
+        }
 
         const field = try self.pushNode(.enumMember, start);
         self.nodes.items[field].head = .{
             .enumMember = .{
                 .name = name,
+                .typeSpec = typeSpec,
             },
         };
         return field;
@@ -781,12 +790,18 @@ pub const Parser = struct {
         var firstMember = try self.parseEnumMember();
         var lastMember = firstMember;
         var numMembers: u32 = 1;
+        var isChoiceType = false;
 
         while (true) {
             const start2 = self.next_pos;
             const indent = (try self.consumeIndentBeforeStmt()) orelse break;
             if (indent == reqIndent) {
                 const id = try self.parseEnumMember();
+                if (!isChoiceType) {
+                    if (self.nodes.items[id].head.enumMember.typeSpec != cy.NullId) {
+                        isChoiceType = true;
+                    }
+                }
                 self.nodes.items[lastMember].next = id;
                 lastMember = id;
                 numMembers += 1;
@@ -803,6 +818,7 @@ pub const Parser = struct {
                 .name = name,
                 .memberHead = firstMember,
                 .numMembers = @intCast(numMembers),
+                .isChoiceType = isChoiceType,
             },
         };
         try self.staticDecls.append(self.alloc, .{
@@ -1071,7 +1087,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseSwitchStatement(self: *Parser) !NodeId {
+    fn parseSwitch(self: *Parser, isStmt: bool) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `switch` keyword.
         self.advanceToken();
@@ -1115,7 +1131,8 @@ pub const Parser = struct {
             }
         }
 
-        const switchBlock = try self.pushNode(.switchBlock, start);
+        const nodet: cy.NodeType = if (isStmt) .switchStmt else .switchExpr;
+        const switchBlock = try self.pushNode(nodet, start);
         self.nodes.items[switchBlock].head = .{
             .switchBlock = .{
                 .expr = expr,
@@ -1308,7 +1325,7 @@ pub const Parser = struct {
                 .whileOptStmt = .{
                     .opt = expr_id,
                     .bodyHead = res.first,
-                    .some = ident,
+                    .capture = ident,
                 },
             };
             return whileStmt;
@@ -1487,6 +1504,7 @@ pub const Parser = struct {
         var isElse: bool = false;
         var numConds: u32 = 0;
         var bodyExpr: bool = false;
+        var capture: cy.NodeId = cy.NullId;
         if (token.tag() == .case_k) {
             self.advanceToken();
             firstCond = (try self.parseTightTermExpr()) orelse {
@@ -1513,6 +1531,23 @@ pub const Parser = struct {
                     self.nodes.items[lastCond].next = cond;
                     lastCond = cond;
                     numConds += 1;
+                } else if (token.tag() == .capture) {
+                    self.advanceToken();
+
+                    // Parse next token as expression.
+                    capture = try self.parseTermExpr();
+
+                    token = self.peekToken();
+                    if (token.tag() == .colon) {
+                        self.advanceToken();
+                        break;
+                    } else if (token.tag() == .equal_greater) {
+                        self.advanceToken();
+                        bodyExpr = true;
+                        break;
+                    } else {
+                        return self.reportParseError("Expected comma or colon.", &.{});
+                    }
                 } else {
                     return self.reportParseError("Expected comma or colon.", &.{});
                 }
@@ -1548,6 +1583,7 @@ pub const Parser = struct {
             .caseBlock = .{
                 .condHead = firstCond,
                 .bodyHead = bodyHead,
+                .capture = capture,
                 .numConds = @intCast(numConds),
                 .isElseCase = isElse,
                 .bodyIsExpr = bodyExpr,
@@ -1648,7 +1684,7 @@ pub const Parser = struct {
                 }
             },
             .switch_k => {
-                return try self.parseSwitchStatement();
+                return try self.parseSwitch(true);
             },
             .for_k => {
                 return try self.parseForStatement();
@@ -3048,6 +3084,23 @@ pub const Parser = struct {
         return left_id;
     }
 
+    /// Consumes the an expression or a expression block.
+    fn parseEndingExpr(self: *Parser) anyerror!cy.NodeId {
+        switch (self.peekToken().tag()) {
+            .func_k => {
+                return self.parseMultilineLambdaFunction();
+            },
+            .switch_k => {
+                return self.parseSwitch(false);
+            },
+            else => {
+                return (try self.parseExpr(.{})) orelse {
+                    return self.reportParseError("Expected expression.", &.{});
+                };
+            },
+        }
+    }
+
     fn parseVarDecl(self: *Parser, modifierHead: cy.NodeId, typed: bool) !cy.NodeId {
         const start = self.next_pos;
         self.advanceToken();
@@ -3101,19 +3154,7 @@ pub const Parser = struct {
             self.advanceToken();
 
             // Continue parsing right expr.
-            switch (self.peekToken().tag()) {
-                .func_k => {
-                    right = try self.parseMultilineLambdaFunction();
-                },
-                .switch_k => {
-                    right = try self.parseStatement();
-                },
-                else => {
-                    right = (try self.parseExpr(.{})) orelse {
-                        return self.reportParseError("Expected right expression for assignment statement.", &.{});
-                    };
-                },
-            }
+            right = try self.parseEndingExpr();
             self.nodes.items[right].hasParentAssignStmt = true;
         }
 
@@ -3197,24 +3238,11 @@ pub const Parser = struct {
 
             // Right can be an expr or stmt.
             var right: NodeId = undefined;
-            var rightIsStmt = false;
             switch (assignTag) {
                 .equal => {
                     assignStmt = try self.pushNode(.assign_stmt, start);
-                    switch (self.peekToken().tag()) {
-                        .func_k => {
-                            right = try self.parseMultilineLambdaFunction();
-                        },
-                        .switch_k => {
-                            right = try self.parseStatement();
-                            rightIsStmt = true;
-                        },
-                        else => {
-                            right = (try self.parseExpr(.{})) orelse {
-                                return self.reportParseError("Expected right expression for assignment statement.", &.{});
-                            };
-                        }
-                    }
+
+                    right = try self.parseEndingExpr();
                     self.nodes.items[assignStmt].head = .{
                         .left_right = .{
                             .left = expr_id,
@@ -3264,9 +3292,7 @@ pub const Parser = struct {
 
             if (self.nodes.items[right].node_t != .lambda_multi) {
                 token = self.peekToken();
-                if (!rightIsStmt) {
-                    try self.consumeNewLineOrEnd();
-                }
+                try self.consumeNewLineOrEnd();
                 return assignStmt;
             } else {
                 return assignStmt;

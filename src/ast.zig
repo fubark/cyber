@@ -86,7 +86,8 @@ pub const NodeType = enum {
     throwExpr,
     group,
     caseBlock,
-    switchBlock,
+    switchStmt,
+    switchExpr,
     castExpr,
 };
 
@@ -142,6 +143,7 @@ pub const Node = struct {
         caseBlock: struct {
             // Null when `isElseCase` is true.
             condHead: cy.Nullable(NodeId),
+            capture: cy.Nullable(NodeId),
             bodyHead: NodeId,
             numConds: u8,
             isElseCase: bool,
@@ -271,11 +273,14 @@ pub const Node = struct {
         },
         enumMember: struct {
             name: NodeId,
+            /// Type spec path head (linked by `next`) or unnamed type decl.
+            typeSpec: cy.Nullable(NodeId),
         },
         enumDecl: struct {
             name: NodeId,
             memberHead: NodeId,
             numMembers: u8,
+            isChoiceType: bool,
         },
         whileCondStmt: struct {
             cond: NodeId,

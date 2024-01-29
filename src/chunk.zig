@@ -343,6 +343,10 @@ pub const Chunk = struct {
         }
     }
 
+    pub fn genBlock(self: *cy.Chunk) *bc_gen.Block {
+        return &self.blocks.items[self.blocks.items.len-1];
+    }
+
     pub fn block(self: *cy.Chunk) *sema.Block {
         return &self.semaBlocks.items[self.semaBlocks.items.len-1];
     }

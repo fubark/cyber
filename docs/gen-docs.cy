@@ -101,6 +101,10 @@ hljs.registerLanguage('cy', function() {
     contains: [
         {
             scope: 'string',
+            begin: "\\"", end: "\\""
+        },
+        {
+            scope: 'string',
             begin: "'", end: "'"
         },
         {

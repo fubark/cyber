@@ -362,7 +362,7 @@ pub fn format(writer: anytype, fmt: []const u8, vals: []const FmtValue) !void {
         continue;
     }
     if (valIdx < vals.len) {
-        log.tracev("Format had {} placeholders, got {} values", .{valIdx + 1, vals.len});
+        log.tracev("Format had {} placeholders, got {} values", .{valIdx, vals.len});
         return error.FormatError;
     }
 }

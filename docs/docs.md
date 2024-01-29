@@ -1,7 +1,8 @@
 # Table of Contents.
 - [Introduction.](#introduction)
 - [Syntax.](#syntax)
-- [Data Types.](#data-types)
+- [Basic Types.](#basic-types)
+- [Custom Types.](#custom-types)
 - [Control Flow.](#control-flow)
 - [Functions.](#functions)
 - [Modules.](#modules)
@@ -239,7 +240,7 @@ There are `27` general keywords. This list categorizes them:
 - [Variables](#variables): `var` `my`
 - [Functions](#functions): `func` `return`
 - [Coroutines](#fibers): `coinit` `coyield`, `coresume`
-- [Data Types](#data-types): `type` [`object`](#objects) [`enum`](#enums) `as`
+- [Types](#custom-types): `type` [`object`](#objects) [`enum`](#enums) `as`
 - [Error Handling](#error-handling): `try` `catch` `throw`
 - [Modules](#modules): `import`
 
@@ -394,12 +395,11 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
 ]
 ```
 
-# Data Types.
+# Basic Types.
 
 <table><tr>
 <td valign="top">
 
-* [None.](#none)
 * [Booleans.](#booleans)
 * [Numbers.](#numbers)
   * [Integers.](#integers)
@@ -414,42 +414,29 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
   * [String formatting.](#string-formatting)
   * [Line-join literal.](#line-join-literal)
   * [Mutable strings.](#mutable-strings) 
-* [Arrays.](#arrays)
-* [Bracket literals.](#bracket-literals)
-* [Lists.](#lists)
-* [Tuples.](#tuples)
 </td>
 <td valign="top">
 
+* [Arrays.](#arrays)
+* [Lists.](#lists)
+* [Tuples.](#tuples)
 * [Maps.](#maps)
   * [Create map.](#create-map)
   * [Empty map.](#empty-map)
   * [Map indexing.](#map-indexing)
   * [Map operations.](#map-operations)
   * [Map block.](#map-block)
-* [Objects.](#objects)
-  * [Fields.](#fields)
-  * [Instantiate.](#instantiate)
-  * [Unnamed object.](#unnamed-object)
-  * [Methods.](#methods)
-  * [`self` variable.](#self-variable)
-  * [Type functions.](#type-functions)
-  * [Type variables.](#type-variables)
-* [Enums.](#enums)
 * [Symbols.](#symbols-1)
 </td>
 </tr></table>
 
 [^top](#table-of-contents)
 
-In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts.
+In Cyber, there are primitive types and object types. By default, primitives are copied around by value and don't need additional heap memory or reference counts.
 
-Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integers), [Enums](#enums), [Symbols](#symbols-1), [Error Values](#error-value), and the `none` value.
+Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integers), [Enums](#enums), [Symbols](#symbols-1), and [Error Values](#error-value).
 
-Object types include [Lists](#lists), [Tuples](#tuples), [Maps](#maps), [Strings](#strings), [Arrays](#arrays), [User Objects](#objects), [Lambdas](#lambdas), [Fibers](#fibers), [Enums with payloads](#enums), [Pointers](#pointers), and several internal object types.
-
-## None.
-The `none` value represents an empty value. This is similar to null in other languages.
+Object types include [Lists](#lists), [Tuples](#tuples), [Maps](#maps), [Strings](#strings), [Arrays](#arrays), [Objects](#objects), [Lambdas](#lambdas), [Fibers](#fibers), [Choices](#choices), [Optionals](#optionals), [Pointers](#pointers), and several internal object types.
 
 ## Booleans.
 Booleans can be `true` or `false`. See [`type bool`](#type-bool).
@@ -658,14 +645,6 @@ print a[0]     -- "97"
 print a[1]     -- "255"
 ```
 
-## Bracket literals.
-Bracket literals are delimited with brackets `[]`. They are used to initialize Lists, Maps, and Objects:
-```cy
-var list = [1, 2, 3]
-var map = [ a: 123, b: 234 ]
-var obj = [MyObject a: 123, b: 234]
-```
-
 ## Lists.
 Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements. See [`type List`](#type-list).
 ```cy
@@ -793,6 +772,44 @@ var colors = []:
         blue: 0x0000AA
 ```
 
+## Symbols.
+Symbol literals begin with `.`, followed by an identifier. They have their own global unique id.
+```cy
+var currency = .usd
+print(currency == .usd)   -- 'true'
+print int(currency)       -- '123' or some arbitrary id.
+```
+
+# Custom Types.
+<table><tr>
+<td valign="top">
+
+* [Objects.](#objects)
+  * [Fields.](#fields)
+  * [Instantiate.](#instantiate)
+  * [Default field values.](#default-field-values)
+  * [Circular references.](#circular-references)
+  * [Unnamed object.](#unnamed-object)
+  * [Methods.](#methods)
+  * [`self` variable.](#self-variable)
+  * [Type functions.](#type-functions)
+  * [Type variables.](#type-variables)
+* [Enums.](#enums)
+* [Choices.](#choices)
+  * [Initialize choice.](#initialize-choice)
+  * [Choice `switch`.](#choice-switch)
+  * [Access choice.](#access-choice)
+</td><td valign="top">
+
+* [Optionals.](#optionals)
+* [Type aliases.](#type-aliases)
+* [Traits.](#traits)
+* [Union types.](#union-types)
+</td>
+</tr></table>
+
+[^top](#table-of-contents)
+
 ## Objects.
 An object type contains field and function members. New instances can be created from them similar to a struct or class in other languages. Unlike classes, there is no builtin concept of inheritance but a similar effect can be achieved using composition and embedding.
 
@@ -810,9 +827,10 @@ Fields must be declared at the top of the `type` block using `var` or `my`:
 ```cy
 type Node:
     var value int
-    var next  any
+    var next  ?Node
 ```
-When fields are declared with `my` instead, they become dynamically typed.
+Field types are optional for `var` declarations and defaults to the `any` type.
+When fields are declared with `my` instead, they become dynamically typed and do not accept a type specifier.
 
 ### Instantiate.
 New object instances are created using a record literal with a leading type name:
@@ -827,10 +845,43 @@ var node Node = [value: 234, next: none]
 print node.value       -- Prints "234"
 ```
 
+### Default field values.
 When a field is omitted in the record literal, it gets initialized to its [zero value](#zero-values):
 ```cy
 var node Node = [value: 234]
 print node.next       -- Prints "Option.none"
+
+type Student:
+    var name string
+    var age  int
+    var gpa  float
+
+var s = [Student:]
+print s.name       -- Prints ""
+print s.age        -- Prints "0"
+print s.gpa        -- Prints "0.0"
+```
+
+### Circular references.
+Circular type references are allowed if the object can be initialized:
+> _Planned Feature: Optional types are not currently supported._
+```cy
+type Node:
+    var val  any
+    var next ?Node
+
+var n = [Node:]    -- Initializes.
+```
+In this example, `next` has an optional `?Node` type so it can be initialized to `none` when creating a new `Node` object.
+
+The following example will fail because this version of `Node` can not be initialized:
+```cy
+type Node:
+    var val  any
+    var next Node
+
+var n = [Node:]    -- CompileError. Can not zero initialize `next`
+                   -- because of circular dependency.
 ```
 
 ### Unnamed object.
@@ -853,7 +904,7 @@ Methods allow invoking a function on an object instance using the `.` operator:
 ```cy
 type Node:
     var value int
-    var next  any
+    var next  ?Node
 
     func inc(n):
         value += n
@@ -879,7 +930,7 @@ To reference members explicitly inside a method, use the builtin `self`:
 ```cy
 type Node:
     var value int
-    var next  any
+    var next  ?Node
 
     func double():
         return self.value * 2
@@ -890,7 +941,7 @@ Type functions are declared outside of the `type` block with an explicit namespa
 ```cy
 type Node:
     var value int
-    var next  any
+    var next  ?Node
 
 -- Declare namespace function inside `Node`.
 func Node.new():
@@ -930,13 +981,86 @@ fruit = .orange
 print(fruit == Fruit.orange)   -- 'true'
 ```
 
-## Symbols.
-Symbol literals begin with `.`, followed by an identifier. They have their own global unique id.
+## Choices.
+Choices are enums with payloads (also known as sum types or tagged unions). An enum declaration becomes a choice type if one of the cases has a payload type specifier:
 ```cy
-var currency = .usd
-print(currency == .usd)   -- 'true'
-print int(currency)       -- '123' or some arbitrary id.
+type Shape enum:
+    case rectangle Rectangle
+    case circle    object:
+        var radius float
+    case triangle  object:
+        var base   float
+        var height float
+    case line      float
+    case point 
+
+type Rectangle:
+    var width  float
+    var height float
 ```
+
+### Initialize choice.
+If the payload is an object type, the choice can be initialized with a simplified record literal:
+```cy
+var s = [Shape.rectangle width: 10, height: 20]
+```
+
+The general way to initialize a choice is to pass the payload as an argument:
+```cy
+var rect = [Rectangle width: 10, height: 20]
+s = [Shape rectangle: rect]
+
+s = [Shape line: 20]
+```
+
+A choice without a payload is initialized with an empty record literal:
+```cy
+var s = [Shape.point:]
+```
+
+### Choice `switch`.
+`case` clauses can match choices and capture the payload:
+```cy
+switch s:
+case .rectangle -> r:
+    print "$(r.width) $(r.height)"
+case .circle -> c:
+    print "$(c.radius)"
+case .triangle -> t:
+    print "$(t.base) $(t.height)"
+case .line -> len:
+    print "$(len)"
+case .point:
+    print "a point"
+else:
+    print "Unsupported."
+```
+
+### Access choice.
+A choice can be accessed by specifying the access operator `.!` before the tagged member name. This will either return the payload or panic at runtime: *Planned Feature*
+```cy
+var s = [Shape line: 20]
+print s.!line     -- Prints '20'
+```
+
+## Optionals.
+> _Planned Feature_
+
+## Type aliases.
+A type alias is declared from a single line `type` statement. This creates a new type symbol for an existing data type.
+```cy
+import util './util.cy'
+
+type Vec3 util.Vec3
+
+var v = [Vec3 x: 3, y: 4, z: 5]
+```
+
+## Traits.
+> _Planned Feature_
+
+## Union types.
+> _Planned Feature_
 
 # Control Flow.
 <table><tr>
@@ -947,9 +1071,8 @@ print int(currency)       -- '123' or some arbitrary id.
   * [Conditional expression.](#conditional-expression)
   * [and/or.](#andor)
 * [Iterations.](#iterations)
-  * [Infinite loop.](#infinite-loop)
-  * [Conditional loop.](#conditional-loop)
-  * [Unwrapping loop.](#unwrapping-loop)
+  * [Infinite `while`.](#infinite-while)
+  * [Conditional `while`.](#conditional-while)
   * [`for` range.](#for-range)
   * [`for` each.](#for-each)
   * [`for` each with index.](#for-each-with-index)
@@ -1002,7 +1125,7 @@ if a == 20 or a == 10:
 
 ## Iterations.
 
-### Infinite loop.
+### Infinite `while`.
 The `while` keyword starts an infinite loop which continues to run the code in the block until a `break` or `return` is reached.
 ```cy
 var count = 0
@@ -1012,7 +1135,7 @@ while:
     count += 1
 ```
 
-### Conditional loop.
+### Conditional `while`.
 When the `while` clause contains a condition, the loop continues to run until the condition is evaluated to `false`:
 ```cy
 var running = true
@@ -1021,14 +1144,6 @@ while running:
     if count > 100:
         running = false
     count += 1
-```
-
-### Unwrapping loop. 
-Using the capture operator `->` unwraps the left optional value to the right variable declaration. The loop exits when the left value is `none`:
-```cy
-var iter = dir.walk()
-while iter.next() -> entry:
-    print entry.name
 ```
 
 ### `for` range.
@@ -2096,15 +2211,11 @@ The main execution context is a fiber as well. Once the main fiber has finished,
 </td><td valign="top">
 
 * [Static typing.](#static-typing)
-  * [Builtin types.](#builtin-types)
   * [`var` declaration.](#var-declaration)
   * [Typed variables.](#typed-variables)
-  * [Object types.](#object-types)
+  * [Null safety.](#null-safety)
   * [Zero values.](#zero-values)
-  * [Type aliases.](#type-aliases)
   * [Functions.](#functions-1)
-  * [Traits.](#traits)
-  * [Union types.](#union-types)
   * [`any` type.](#any-type)
   * [Invoking any values.](#invoking-any-values)
   * [Type casting.](#type-casting)
@@ -2212,8 +2323,7 @@ func foo(s String):
 Static typing can be incrementally applied which provides compile-time guarantees and prevents runtime errors.
 Static typing also makes it easier to maintain and refactor your code.
 
-### Builtin types.
-The following builtin types are available in every module: `bool`, `float`, `int`, `String`, `List`, `Map`, `error`, `fiber`, `any`.
+There are [basic types](#basic-types) that are built into Cyber and `type` declarations to create [custom types](#custom-types).
 
 ### `var` declaration.
 A `var` declaration automatically infers the type from the initializer:
@@ -2250,41 +2360,8 @@ var .global Map = [:]
 ```
 Unlike local variables, static variable declarations do not infer the type from the right hand side. A specific type must be specified or it will default to the `any` type.
 
-### Object types.
-A `type` declaration creates a new object type. Field types are optional and declared with a type specifier after their name.
-```cy
-type Student:    -- Creates a new type named `Student`
-    var name String
-    var age  int
-    var gpa  float
-```
-
-Instantiating a new object does not require typed fields to be initialized. Missing field values will default to their [zero value](#zero-values):
-```cy
-var s = [Student:]
-print s.name       -- Prints ""
-print s.age        -- Prints "0"
-print s.gpa        -- Prints "0.0"
-```
-
-Circular type dependencies are allowed if the object can be initialized:
-> _Planned Feature: Optional types are not currently supported._
-```cy
-type Node:
-    var val  any
-    var next Node?     -- Valid type specifier.
-```
-In this example, `next` has an optional `Node?` type so it can be initialized to `none` when creating a new `Node` object.
-
-The following example will fail because this version of `Node` can not be initialized:
-```cy
-type Node:
-    var val  any
-    var next Node
-
-var n = [Node:]    -- CompileError. Can not zero initialize `next`
-                   -- because of circular dependency.
-```
+### Null safety.
+The type checker does not allow using `none` with an operation. Instead, [Optionals](#optionals) must be unwrapped to access the payload value.
 
 ### Zero values.
 The following shows the zero values of builtin or created types.
@@ -2300,19 +2377,9 @@ The following shows the zero values of builtin or created types.
 |`Map`|`[:]`|
 |`type S`|`[S:]`|
 |`#host type S`|`S.$zero()`|
-|`dynamic`|`none`|
-|`any`|`none`|
-|`S?`|`none`|
-
-### Type aliases.
-A type alias is declared from a single line `type` statement. This creates a new type symbol for an existing data type.
-```cy
-import util './util.cy'
-
-type Vec3 util.Vec3
-
-var v = [Vec3 x: 3, y: 4, z: 5]
-```
+|`dynamic`|`Option.none`|
+|`any`|`Option.none`|
+|`?S`|`Option(S).none`|
 
 ### Functions.
 Function parameter and return type specifiers follows a similiar syntax.
@@ -2323,12 +2390,6 @@ func mul(a float, b float) float:
 print mul(3, 4)
 print mul(3, '4')  -- CompileError. Function signature mismatch.
 ```
-
-### Traits.
-> _Planned Feature_
-
-### Union types.
-> _Planned Feature_
 
 ### `any` type.
 A variable with the `any` type can hold any value, but copying it to narrowed type destination will result in a compile error:
@@ -2823,7 +2884,7 @@ Cyber uses ARC or automatic reference counting to manage memory.
 ARC is deterministic and has less overhead compared to a tracing garbage collector. Reference counting distributes memory management, which reduces GC pauses and makes ARC suitable for realtime applications. One common issue in ARC implementations is reference cycles which Cyber addresses with [Weak References](#weak-references) and it's very own [Cycle Detection](#cycle-detection).
 
 ### Reference counting.
-In Cyber, there are [primitive and object](#data-types) values. Primitives don't need any memory management, since they are copied by value and no heap allocation is required (with the exception of primitives being captured by a [closure](#closures-1). 
+In Cyber, there are [primitive and object](#basic-types) values. Primitives don't need any memory management, since they are copied by value and no heap allocation is required (with the exception of primitives being captured by a [closure](#closures-1). 
 
 Objects are managed by ARC. Each object has its own reference counter. Upon creating a new object, it receives a reference count of 1. When the object is copied, it's **retained** and the reference count increments by 1. When an object value is removed from it's parent or is no longer reachable in the current stack frame, it is **released** and the reference count decrements by 1.
 

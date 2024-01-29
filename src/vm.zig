@@ -1719,8 +1719,6 @@ const Symbol = struct {
 test "vm internals." {
     try t.eq(@alignOf(VM), 8);
 
-    try t.eq(@sizeOf(AbsFuncSigKey), 16);
-
     // Check Zig/C structs.
 
     // cy.verbose = true;
@@ -3893,11 +3891,6 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
         }
     }
 }
-
-const RtFuncSymKey = cy.hash.KeyU96;
-
-/// Absolute func symbol signature key.
-pub const AbsFuncSigKey = cy.hash.KeyU96;
 
 pub const EvalConfig = struct {
     /// Whether this process intends to perform eval once and exit.

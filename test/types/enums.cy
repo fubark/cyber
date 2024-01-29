@@ -1,5 +1,3 @@
--- Copyright (c) 2023 Cyber (See LICENSE)
-
 import t 'test'
 
 type Animal enum:

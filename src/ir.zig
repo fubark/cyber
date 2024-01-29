@@ -111,7 +111,7 @@ pub const ExprCode = enum(u8) {
     condExpr,
     captured,
     throw,
-    switchBlock,
+    switchExpr,
     switchCase,
 
     /// Placeholder that is patched later to be `preCall`, `preBinOp`, `preUnOp`, etc.
@@ -144,15 +144,17 @@ pub const BlockExpr = struct {
 };
 
 pub const Switch = struct {
-    leftAssign: bool, 
+    expr: Loc,
     numCases: u8,
 };
+
+const Loc = u32;
 
 pub const SwitchCase = struct {
     // else case if `numConds` == 0.
     numConds: u8,
     bodyIsExpr: bool,
-    bodyHead: u32,
+    bodyHead: Loc,
 };
 
 pub const DestructureElems = struct {
@@ -536,7 +538,7 @@ pub fn StmtData(comptime code: StmtCode) type {
 pub fn ExprData(comptime code: ExprCode) type {
     return switch (code) {
         .lambda => Lambda,
-        .switchBlock => Switch,
+        .switchExpr => Switch,
         .switchCase => SwitchCase,
         .elseBlock => ElseBlock,
         .preCall,
@@ -606,6 +608,11 @@ pub const Buffer = struct {
         return std.mem.bytesToValue(ExprData(code), data);
     }
 
+    pub fn getExprDataPtr(self: *Buffer, idx: usize, comptime code: ExprCode) *align(1) ExprData(code) {
+        const data = self.buf.items[idx+1+4..][0..@sizeOf(ExprData(code))];
+        return std.mem.bytesAsValue(ExprData(code), data);
+    }
+
     pub fn setStmtCode(self: *Buffer, idx: usize, comptime code: StmtCode) void {
         self.buf.items[idx] = @intFromEnum(code);
     }
@@ -618,6 +625,11 @@ pub const Buffer = struct {
     pub fn getStmtData(self: *Buffer, idx: usize, comptime code: StmtCode) StmtData(code) {
         const data = self.buf.items[idx+1+4+4..][0..@sizeOf(StmtData(code))];
         return std.mem.bytesToValue(StmtData(code), data);
+    }
+
+    pub fn getStmtDataPtr(self: *Buffer, idx: usize, comptime code: StmtCode) *align(1) StmtData(code) {
+        const data = self.buf.items[idx+1+4+4..][0..@sizeOf(StmtData(code))];
+        return std.mem.bytesAsValue(StmtData(code), data);
     }
 
     pub fn advanceArray(_: *Buffer, idx: usize, comptime T: type, arr: []align(1) const T) usize {
@@ -699,6 +711,15 @@ pub const Buffer = struct {
 
     pub fn pushEmptyStmt(self: *Buffer, alloc: std.mem.Allocator, comptime code: StmtCode, nodeId: cy.NodeId) !u32 {
         return self.pushEmptyStmt2(alloc, code, nodeId, true);
+    }
+
+    pub fn getAndClearStmtBlock(self: *Buffer) u32 {
+        const b = &self.stmtBlockStack.items[self.stmtBlockStack.items.len-1];
+        defer {
+            b.first = cy.NullId;
+            b.last = cy.NullId;
+        }
+        return b.first;
     }
 
     pub fn appendToParent(self: *Buffer, idx: u32) void {

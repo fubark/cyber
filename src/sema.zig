@@ -410,10 +410,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 }
             }
 
-            // End decl statements and begin collecting body statements.
-            const declHead = c.ir.stmtBlockStack.getLast().first;
-            c.ir.stmtBlockStack.items[c.ir.stmtBlockStack.items.len-1].first = cy.NullId;
-            c.ir.stmtBlockStack.items[c.ir.stmtBlockStack.items.len-1].last = cy.NullId;
+            const declHead = c.ir.getAndClearStmtBlock();
 
             // Begin body code.
             if (hasSeqDestructure) {
@@ -462,9 +459,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 }
             }
 
-            const declHead = c.ir.stmtBlockStack.getLast().first;
-            c.ir.stmtBlockStack.items[c.ir.stmtBlockStack.items.len-1].first = cy.NullId;
-            c.ir.stmtBlockStack.items[c.ir.stmtBlockStack.items.len-1].last = cy.NullId;
+            const declHead = c.ir.getAndClearStmtBlock();
 
             try semaStmts(c, node.head.forRangeStmt.body_head);
             const stmtBlock = try popLoopBlock(c);
@@ -513,9 +508,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             const id = try declareLocal(c, node.head.whileOptStmt.capture, declT, false);
             const someLocal: u8 = @intCast(c.varStack.items[id].inner.local.id);
 
-            const declHead = c.ir.stmtBlockStack.getLast().first;
-            c.ir.stmtBlockStack.items[c.ir.stmtBlockStack.items.len-1].first = cy.NullId;
-            c.ir.stmtBlockStack.items[c.ir.stmtBlockStack.items.len-1].last = cy.NullId;
+            const declHead = c.ir.getAndClearStmtBlock();
 
             try semaStmts(c, node.head.whileOptStmt.bodyHead);
 
@@ -526,9 +519,8 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 .bodyHead = stmtBlock.first,
             });
         },
-        .switchBlock => {
-            _ = try c.ir.pushStmt(c.alloc, .switchStmt, nodeId, {});
-            _ = try c.semaSwitch(nodeId, false);
+        .switchStmt => {
+            try c.semaSwitchStmt(nodeId);
         },
         .ifStmt => {
             const irIdx = try c.ir.pushEmptyStmt(c.alloc, .ifStmt, nodeId);
@@ -851,12 +843,25 @@ pub fn declareImport(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     _ = try c.declareImport(@ptrCast(c.sym), name, @ptrCast(sym), nodeId);
 }
 
-pub fn declareEnum(c: *cy.Chunk, nodeId: cy.NodeId) !void {
+pub fn declareEnum(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.EnumType {
     const node = c.nodes[nodeId];
     const nameN = c.nodes[node.head.enumDecl.name];
     const name = c.getNodeString(nameN);
 
-    const sym = try c.declareEnumType(@ptrCast(c.sym), name, nodeId);
+    const isChoiceType = node.head.enumDecl.isChoiceType;
+
+    const enumt = try c.declareEnumType(@ptrCast(c.sym), name, isChoiceType, nodeId);
+    if (isChoiceType) {
+        c.sema.types.items[enumt.type].data = .{
+            .numFields = 2,
+        };
+    }
+    return enumt;
+}
+
+pub fn declareEnumMembers(c: *cy.Chunk, sym: *cy.sym.EnumType, nodeId: cy.NodeId) !void {
+    const node = c.nodes[nodeId];
+
     var i: u32 = 0;
     var cur = node.head.enumDecl.memberHead;
 
@@ -865,7 +870,11 @@ pub fn declareEnum(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         const member = c.nodes[cur];
         const memberNameN = c.nodes[member.head.enumMember.name];
         const mName = c.getNodeString(memberNameN);
-        const modSymId = try c.declareEnumMember(@ptrCast(sym), mName, sym.type, i, cur);
+        var payloadType: cy.TypeId = cy.NullId;
+        if (member.head.enumMember.typeSpec != cy.NullId) {
+            payloadType = try resolveTypeSpecNode(c, member.head.enumMember.typeSpec);
+        }
+        const modSymId = try c.declareEnumMember(@ptrCast(sym), mName, sym.type, i, payloadType, cur);
         members[i] = modSymId;
         cur = member.next;
     }
@@ -2688,48 +2697,196 @@ pub const ChunkExt = struct {
         }
     }
 
-    pub fn semaSwitch(c: *cy.Chunk, nodeId: cy.NodeId, leftAssign: bool) !ExprResult {
+    const SwitchInfo = struct {
+        exprType: CompactType,
+        exprTypeSym: *cy.Sym,
+        exprIsChoiceType: bool,
+        choiceIrVarId: u8,
+        isStmt: bool,
+
+        fn init(c: *cy.Chunk, expr: ExprResult, isStmt: bool) SwitchInfo {
+            var info = SwitchInfo{
+                .exprType = expr.type,
+                .exprTypeSym = c.sema.getTypeSym(expr.type.id),
+                .exprIsChoiceType = false,
+                .choiceIrVarId = undefined,
+                .isStmt = isStmt,
+            };
+
+            if (info.exprTypeSym.type == .enumType) {
+                if (info.exprTypeSym.cast(.enumType).isChoiceType) {
+                    info.exprIsChoiceType = true;
+                }
+            }
+            return info;
+        }
+    };
+
+    pub fn semaSwitchStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         const node = c.nodes[nodeId];
 
-        const irIdx = try c.ir.pushExpr(c.alloc, .switchBlock, nodeId, .{ .leftAssign = leftAssign, .numCases = node.head.switchBlock.numCases });
+        // Perform sema on expr first so it knows how to construct the rest of the switch.
+        const exprId = node.head.switchBlock.expr;
+        const expr = try c.semaExpr(exprId, .{});
+        var info = SwitchInfo.init(c, expr, true);
+
+        var blockLoc: u32 = undefined;
+        var exprLoc: u32 = undefined;
+        if (info.exprIsChoiceType) {
+            blockLoc = try c.ir.pushStmt(c.alloc, .block, nodeId, .{ .bodyHead = cy.NullId });
+            try pushBlock(c, nodeId);
+            exprLoc = try c.semaSwitchChoicePrologue(&info, expr, exprId);
+        } else {
+            exprLoc = expr.irIdx;
+        }
+
+        _ = try c.ir.pushStmt(c.alloc, .switchStmt, nodeId, {});
+        _ = try c.semaSwitchBody(info, nodeId, exprLoc);
+
+        if (info.exprIsChoiceType) {
+            const stmtBlock = try popBlock(c);
+            const block = c.ir.getStmtDataPtr(blockLoc, .block);
+            block.bodyHead = stmtBlock.first;
+        }
+    }
+
+    pub fn semaSwitchExpr(c: *cy.Chunk, nodeId: cy.NodeId) !ExprResult {
+        const node = c.nodes[nodeId];
+
+        // Perform sema on expr first so it knows how to construct the rest of the switch.
+        const exprId = node.head.switchBlock.expr;
+        const expr = try c.semaExpr(exprId, .{});
+        var info = SwitchInfo.init(c, expr, false);
+
+        var blockExprLoc: u32 = undefined;
+        var exprLoc: u32 = undefined;
+        if (info.exprIsChoiceType) {
+            blockExprLoc = try c.ir.pushExpr(c.alloc, .blockExpr, nodeId, .{ .bodyHead = cy.NullId });
+            try pushBlock(c, nodeId);
+
+            exprLoc = try c.semaSwitchChoicePrologue(&info, expr, exprId);
+        } else {
+            exprLoc = expr.irIdx;
+        }
+
+        if (info.exprIsChoiceType) {
+            _ = try c.ir.pushStmt(c.alloc, .exprStmt, nodeId, .{ .isBlockResult = true });
+        }
+        const irIdx = try c.semaSwitchBody(info, nodeId, exprLoc);
+
+        if (info.exprIsChoiceType) {
+            const stmtBlock = try popBlock(c);
+            const blockExpr = c.ir.getExprDataPtr(blockExprLoc, .blockExpr);
+            blockExpr.bodyHead = stmtBlock.first;
+            return ExprResult.initStatic(blockExprLoc, bt.Any);
+        } else {
+            return ExprResult.initStatic(irIdx, bt.Any);
+        }
+    }
+
+    /// Choice expr is assigned to a hidden local.
+    /// The choice tag is then used for the switch expr.
+    /// Choice payload is copied to case blocks that have a capture param.
+    pub fn semaSwitchChoicePrologue(c: *cy.Chunk, info: *SwitchInfo, expr: ExprResult, exprId: cy.NodeId) !u32 {
+        const choiceVarId = try declareLocalName2(c, "choice", expr.type.id, true, true, exprId);
+        const choiceVar = &c.varStack.items[choiceVarId];
+        info.choiceIrVarId = choiceVar.inner.local.id;
+        const declareLoc = choiceVar.inner.local.declIrStart;
+        const declare = c.ir.getStmtDataPtr(declareLoc, .declareLocalInit);
+        declare.init = expr.irIdx;
+
+        // Get choice tag for switch expr.
+        const exprLoc = try c.ir.pushExpr(c.alloc, .fieldStatic, exprId, .{ .static = .{
+            .idx = 0,
+            .typeId = bt.Integer,
+        }});
+        _ = try c.ir.pushExpr(c.alloc, .local, exprId, .{ .id = choiceVar.inner.local.id });
+        return exprLoc;
+    }
+
+    pub fn semaSwitchBody(c: *cy.Chunk, info: SwitchInfo, nodeId: cy.NodeId, exprLoc: u32) !u32 {
+        const node = c.nodes[nodeId];
+        const irIdx = try c.ir.pushExpr(c.alloc, .switchExpr, nodeId, .{
+            .numCases = node.head.switchBlock.numCases,
+            .expr = exprLoc,
+        });
         const irCasesIdx = try c.ir.pushEmptyArray(c.alloc, u32, node.head.switchBlock.numCases);
-        _ = try c.semaExpr(node.head.switchBlock.expr, .{});
 
         var caseId = node.head.switchBlock.caseHead;
         var i: u32 = 0;
         while (caseId != cy.NullId) {
-            const irCaseIdx = try semaSwitchCase(c, caseId, leftAssign);
+            const irCaseIdx = try semaSwitchCase(c, info, caseId);
             c.ir.setArrayItem(irCasesIdx, u32, i, irCaseIdx);
             caseId = c.nodes[caseId].next;
             i += 1;
         }
 
-        return ExprResult.initStatic(irIdx, bt.Any);
+        return irIdx;
     }
 
-    fn semaSwitchCase(c: *cy.Chunk, nodeId: cy.NodeId, leftAssign: bool) !u32 {
+    const CaseState = struct {
+        irCondsIdx: u32,
+        condId: cy.NodeId,
+        captureType: cy.TypeId = cy.NullId,
+        condIdx: u32,
+    };
+
+    fn semaSwitchCase(c: *cy.Chunk, info: SwitchInfo, nodeId: cy.NodeId) !u32 {
         const case = c.nodes[nodeId];
         const numConds = case.head.caseBlock.numConds;
         const irIdx = try c.ir.pushEmptyExpr(c.alloc, .switchCase, nodeId);
 
-        if (numConds > 0) {
-            var irCondsIdx = try c.ir.pushEmptyArray(c.alloc, u32, numConds);
-            var condId = case.head.caseBlock.condHead;
-            var i: u32 = 0;
-            while (condId != cy.NullId) {
-                const cond = c.nodes[condId];
-                const condRes = try c.semaExpr(condId, .{});
-                c.ir.setArrayItem(irCondsIdx, u32, i, condRes.irIdx);
-                condId = cond.next;
-                i += 1;
+        const hasCapture = case.head.caseBlock.capture != cy.NullId;
+        var state = CaseState{
+            .irCondsIdx = undefined,
+            .condId = case.head.caseBlock.condHead,
+            .condIdx = 0,
+            .captureType = cy.NullId,
+        };
+
+        if (state.condId != cy.NullId) {
+            state.irCondsIdx = try c.ir.pushEmptyArray(c.alloc, u32, numConds);
+            try c.semaCaseCond(info, &state);
+            if (state.condId != cy.NullId) {
+                while (state.condId != cy.NullId) {
+                    try c.semaCaseCond(info, &state);
+                }
             }
         }
+
         var bodyHead: u32 = undefined;
         if (case.head.caseBlock.bodyIsExpr) {
-            const body = try c.semaExpr(case.head.caseBlock.bodyHead, .{});
-            bodyHead = body.irIdx;
+            // Wrap in block expr.
+            bodyHead = try c.ir.pushExpr(c.alloc, .blockExpr, case.head.caseBlock.bodyHead, .{ .bodyHead = cy.NullId });
+            try pushBlock(c, nodeId);
         } else {
-            if (leftAssign) {
+            try pushBlock(c, nodeId);
+        }
+
+        if (hasCapture) {
+            const declT = if (info.exprType.dynamic) bt.Dynamic else state.captureType;
+            const capVarId = try declareLocal(c, case.head.caseBlock.capture, declT, true);
+            const declareLoc = c.varStack.items[capVarId].inner.local.declIrStart;
+
+            // Copy payload to captured var.
+            const fieldLoc = try c.ir.pushExpr(c.alloc, .fieldStatic, case.head.caseBlock.capture, .{ .static = .{
+                .idx = 1,
+                .typeId = declT,
+            }});
+            _ = try c.ir.pushExpr(c.alloc, .local, case.head.caseBlock.capture, .{ .id = info.choiceIrVarId });
+
+            const declare = c.ir.getStmtDataPtr(declareLoc, .declareLocalInit);
+            declare.init = fieldLoc;
+        }
+
+        if (case.head.caseBlock.bodyIsExpr) {
+            _ = try c.ir.pushStmt(c.alloc, .exprStmt, case.head.caseBlock.bodyHead, .{ .isBlockResult = true });
+            _ = try c.semaExpr(case.head.caseBlock.bodyHead, .{});
+            const stmtBlock = try popBlock(c);
+            const blockExpr = c.ir.getExprDataPtr(bodyHead, .blockExpr);
+            blockExpr.bodyHead = stmtBlock.first;
+        } else {
+            if (!info.isStmt) {
                 if (numConds > 0) {
                     return c.reportErrorAt("Assign switch statement requires a return case: `case {cond} => {expr}`", &.{}, nodeId);
                 } else {
@@ -2737,7 +2894,6 @@ pub const ChunkExt = struct {
                 }
             }
 
-            try pushSubBlock(c, nodeId);
             try semaStmts(c, case.head.caseBlock.bodyHead);
             const stmtBlock = try popBlock(c);
             bodyHead = stmtBlock.first;
@@ -2749,6 +2905,41 @@ pub const ChunkExt = struct {
             .bodyHead = bodyHead,
         });
         return irIdx;
+    }
+
+    pub fn semaCaseCond(c: *cy.Chunk, info: SwitchInfo, state: *CaseState) !void {
+        const cond = c.nodes[state.condId];
+
+        if (info.exprIsChoiceType) {
+            if (cond.node_t == .symbolLit) {
+                const name = c.ast.getNodeString(cond);
+                if (info.exprTypeSym.cast(.enumType).getMember(name)) |member| {
+                    const condRes = try c.semaInt(member.val, state.condId);
+                    c.ir.setArrayItem(state.irCondsIdx, u32, state.condIdx, condRes.irIdx);
+                    state.condId = cond.next;
+                    state.condIdx += 1;
+                    if (state.captureType == cy.NullId) {
+                        state.captureType = member.payloadType;
+                    } else {
+                        // TODO: Merge into compile-time union.
+                        state.captureType = bt.Any;
+                    }
+                    return;
+                } else {
+                    const targetTypeName = info.exprTypeSym.name();
+                    return c.reportErrorAt("`{}` is not a member of `{}`", &.{v(name), v(targetTypeName)}, state.condId);
+                }
+            } else {
+                const targetTypeName = info.exprTypeSym.name();
+                return c.reportErrorAt("Expected to match a member of `{}`", &.{v(targetTypeName)}, state.condId);
+            }
+        }
+
+        // General case.
+        const condRes = try c.semaExpr(state.condId, .{});
+        c.ir.setArrayItem(state.irCondsIdx, u32, state.condIdx, condRes.irIdx);
+        state.condId = cond.next;
+        state.condIdx += 1;
     }
 
     /// `initializerId` is a record literal node.
@@ -2829,13 +3020,85 @@ pub const ChunkExt = struct {
         }
 
         const sym = left.data.sym.resolved();
-        if (sym.type != .object) {
-            const name = c.getNodeStringById(node.head.objectInit.name);
-            return c.reportErrorAt("`{}` is not an object type.", &.{v(name)}, node.head.objectInit.name);
-        }
+        switch (sym.type) {
+            .object => {
+                const obj = sym.cast(.object);
+                return c.semaObjectInit2(obj, node.head.objectInit.initializer);
+            },
+            .enumType => {
+                const enumType = sym.cast(.enumType);
 
-        const obj = sym.cast(.object);
-        return c.semaObjectInit2(obj, node.head.objectInit.initializer);
+                const initializer = c.nodes[node.head.objectInit.initializer];
+                if (initializer.head.recordLiteral.numArgs != 1) {
+                    return c.reportErrorAt("Expected only one member to payload entry.", &.{}, node.head.objectInit.name);
+                }
+
+                const entryId = initializer.head.recordLiteral.argHead;
+                const entry = c.nodes[entryId];
+
+                const field = c.nodes[entry.head.keyValue.left];
+                const fieldName = c.getNodeString(field);
+
+                const member = enumType.getMember(fieldName) orelse {
+                    return c.reportErrorAt("`{}` is not a member of `{}`", &.{v(fieldName), v(enumType.head.name())}, entry.head.keyValue.left);
+                };
+
+                var b: ObjectBuilder = .{ .c = c };
+                try b.begin(member.type, 2, expr.nodeId);
+                const tag = try c.semaInt(member.val, expr.nodeId);
+                b.pushArg(tag);
+                const payload = try c.semaExprCstr(entry.head.keyValue.right, member.payloadType);
+                b.pushArg(payload);
+                const irIdx = b.end();
+                return ExprResult.initStatic(irIdx, member.type);
+            },
+            .enumMember => {
+                const member = sym.cast(.enumMember);
+                const enumSym = member.head.parent.?.cast(.enumType);
+                // Check if enum is choice type.
+                if (!enumSym.isChoiceType) {
+                    const name = c.getNodeStringById(node.head.objectInit.name);
+                    return c.reportErrorAt("Can not initialize `{}`. It is not a choice type.", &.{v(name)}, node.head.objectInit.name);
+                }
+
+                if (member.payloadType == cy.NullId) {
+                    // No payload type. Ensure empty record literal.
+                    const initializer = c.nodes[node.head.objectInit.initializer];
+                    if (initializer.head.recordLiteral.numArgs != 0) {
+                        return c.reportErrorAt("Expected empty record literal.", &.{}, node.head.objectInit.name);
+                    }
+
+                    var b: ObjectBuilder = .{ .c = c };
+                    try b.begin(member.type, 2, expr.nodeId);
+                    const tag = try c.semaInt(member.val, expr.nodeId);
+                    b.pushArg(tag);
+                    const payload = try c.semaZeroInit(bt.Any, expr.nodeId);
+                    b.pushArg(payload);
+                    const irIdx = b.end();
+                    return ExprResult.initStatic(irIdx, member.type);
+                } else {
+                    if (!c.sema.isUserObjectType(member.payloadType)) {
+                        const payloadTypeName = c.sema.getTypeName(member.payloadType);
+                        return c.reportErrorAt("The payload type `{}` can not be initialized with key value pairs.", &.{v(payloadTypeName)}, node.head.objectInit.name);
+                    }
+
+                    const obj = c.sema.getTypeSym(member.payloadType).cast(.object);
+
+                    var b: ObjectBuilder = .{ .c = c };
+                    try b.begin(member.type, 2, expr.nodeId);
+                    const tag = try c.semaInt(member.val, expr.nodeId);
+                    b.pushArg(tag);
+                    const payload = try c.semaObjectInit2(obj, node.head.objectInit.initializer);
+                    b.pushArg(payload);
+                    const irIdx = b.end();
+                    return ExprResult.initStatic(irIdx, member.type);
+                }
+            },
+            else => {
+                const name = c.getNodeStringById(node.head.objectInit.name);
+                return c.reportErrorAt("Can not initialize `{}`.", &.{v(name)}, node.head.objectInit.name);
+            }
+        }
     }
 
     pub fn semaPushCallArgsInfer(c: *cy.Chunk, argHead: cy.NodeId, numArgs: u8, preferTypes: []const types.TypeId) !StackTypesResult {
@@ -3011,15 +3274,12 @@ pub const ChunkExt = struct {
                 const name = c.getNodeString(node);
                 if (c.sema.isEnumType(expr.preferType)) {
                     const sym = c.sema.getTypeSym(expr.preferType).cast(.enumType);
-                    if (sym.head.getMod().?.getSym(name)) |res| {
-                        if (res.type == .enumMember) {
-                            const val = res.cast(.enumMember).val;
-                            const irIdx = try c.ir.pushExpr(c.alloc, .enumMemberSym, nodeId, .{
-                                .type = expr.preferType,
-                                .val = @as(u8, @intCast(val)),
-                            });
-                            return ExprResult.initStatic(irIdx, expr.preferType);
-                        }
+                    if (sym.getMemberTag(name)) |tag| {
+                        const irIdx = try c.ir.pushExpr(c.alloc, .enumMemberSym, nodeId, .{
+                            .type = expr.preferType,
+                            .val = @as(u8, @intCast(tag)),
+                        });
+                        return ExprResult.initStatic(irIdx, expr.preferType);
                     }
                 }
                 const irIdx = try c.ir.pushExpr(c.alloc, .symbol, nodeId, .{ .name = name });
@@ -3439,8 +3699,8 @@ pub const ChunkExt = struct {
                 _ = try c.semaExpr(node.head.child_head, .{});
                 return ExprResult.initStatic(irIdx, bt.Any);
             },
-            .switchBlock => {
-                return try c.semaSwitch(nodeId, true);
+            .switchExpr => {
+                return c.semaSwitchExpr(nodeId);
             },
             else => {
                 return c.reportErrorAt("Unsupported node: {}", &.{v(node.node_t)}, nodeId);
@@ -4417,13 +4677,13 @@ pub fn unescapeAsciiChar(ch: u8) ?u8 {
 test "sema internals." {
     if (builtin.mode == .ReleaseFast) {
         if (cy.is32Bit) {
-            try t.eq(@sizeOf(LocalVar), 28);
+            try t.eq(@sizeOf(LocalVar), 32);
         } else {
             try t.eq(@sizeOf(LocalVar), 32);
         }
     } else {
         if (cy.is32Bit) {
-            try t.eq(@sizeOf(LocalVar), 28);
+            try t.eq(@sizeOf(LocalVar), 32);
         } else {
             try t.eq(@sizeOf(LocalVar), 40);
         }
@@ -4443,11 +4703,32 @@ test "sema internals." {
     try t.eq(@offsetOf(Sema, "funcSigMap"), @offsetOf(vmc.Sema, "funcSigMap"));
 }
 
-pub fn getBlockParams(c: *const cy.Chunk, block: *Block) []const LocalVar {
-    return c.varStack.items[block.varStart..block.varStart+block.numParams];
-}
+pub const ObjectBuilder = struct {
+    irIdx: u32 = undefined,
+    irArgsIdx: u32 = undefined,
 
-/// Includes aliases.
-pub fn getBlockLocals(c: *const cy.Chunk, block: *Block) []const LocalVar {
-    return c.varStack.items[block.varStart+block.numParams..];
-}
+    /// Generic typeId so choice types can also be instantiated.
+    typeId: cy.TypeId = undefined,
+
+    c: *cy.Chunk,
+    argIdx: u32 = undefined,
+
+    pub fn begin(b: *ObjectBuilder, typeId: cy.TypeId, numFields: u8, nodeId: cy.NodeId) !void {
+        b.typeId = typeId;
+        b.irIdx = try b.c.ir.pushExpr(b.c.alloc, .objectInit, nodeId, .{
+            .typeId = typeId, .numArgs = @as(u8, @intCast(numFields)),
+            .numFieldsToCheck = 0, .fieldsToCheck = 0,
+        });
+        b.irArgsIdx = try b.c.ir.pushEmptyArray(b.c.alloc, u32, numFields);
+        b.argIdx = 0;
+    }
+
+    pub fn pushArg(b: *ObjectBuilder, expr: ExprResult) void {
+        b.c.ir.setArrayItem(b.irArgsIdx, u32, b.argIdx, expr.irIdx);
+        b.argIdx += 1;
+    }
+
+    pub fn end(b: *ObjectBuilder) u32 {
+        return b.irIdx;
+    }
+};

@@ -45,6 +45,7 @@ const Runner = struct {
 };
 
 const caseFilter: ?[]const u8 = null;
+const failFast: bool = true;
 
 // TODO: This could be split into compiler only tests and backend tests.
 //       Compiler tests would only need to be run once.
@@ -168,8 +169,14 @@ if (!aot) {
     //         \\
     //     );
     // }}.func);
+    run.case("types/choice_access_error.cy");
+    run.case("types/choice_hidden_fields.cy");
+    run.case("types/choice_type.cy");
 }
     run.case("types/dyn_recent_type_error.cy");
+if (!aot) {
+    run.case("types/enums.cy");
+}
     run.case("types/func_return_type_error.cy");
     run.case("types/func_param_type_undeclared_error.cy");
 if (!aot) {
@@ -237,7 +244,7 @@ if (!aot) {
     run.case("builtins/compare_eq.cy");
     run.case("builtins/compare_neq.cy");
     run.case("builtins/compare_numbers.cy");
-    run.case("builtins/enums.cy");
+    run.case("builtins/dynamic_ops.cy");
     run.case("builtins/escape_sequences.cy");
     run.case("builtins/floats.cy");
     run.case("builtins/ints.cy");
@@ -321,7 +328,11 @@ if (!aot) {
         std.debug.print("test: {s}\n", .{run_case.path});
         case2(run_case.config, run_case.path) catch |err| {
             std.debug.print("Failed: {}\n", .{err});
-            continue;
+            if (failFast) {
+                return err;
+            } else {
+                continue;
+            }
         };
         numPassed += 1;
     }
@@ -781,7 +792,7 @@ test "windows new lines" {
     try eval(.{ .silent = true }, "a = 123\r\nb = 234\r\nc =",
     struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.ParseError,
-            \\ParseError: Expected right expression for assignment statement.
+            \\ParseError: Expected expression.
             \\
             \\main:3:4:
             \\c =

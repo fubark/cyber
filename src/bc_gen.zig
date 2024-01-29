@@ -182,7 +182,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: RegisterCstr) anyerror!GenValue {
         .preUnOp            => genUnOp(c, idx, cstr, nodeId),
         .string             => genString(c, idx, cstr, nodeId),
         .stringTemplate     => genStringTemplate(c, idx, cstr, nodeId),
-        .switchBlock        => genSwitchBlock(c, idx, cstr, nodeId),
+        .switchExpr         => genSwitch(c, idx, cstr, nodeId),
         .symbol             => genSymbol(c, idx, cstr, nodeId),
         .throw              => genThrow(c, idx, nodeId),
         .truev              => genTrue(c, cstr, nodeId),
@@ -493,22 +493,29 @@ fn genObjectInit(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !
         try pushUnwindTempValue(c, val);
     }
 
-    const sym = c.sema.getTypeSym(data.typeId).cast(.object);
+    const sym = c.sema.getTypeSym(data.typeId);
+    switch (sym.type) {
+        .object => {
+            const obj = sym.cast(.object);
+            if (data.numFieldsToCheck > 0) {
+                try c.pushFailableDebugSym(nodeId);
+                try c.buf.pushOp2(.objectTypeCheck, argStart, @intCast(data.numFieldsToCheck));
 
-    if (data.numFieldsToCheck > 0) {
-        try c.pushFailableDebugSym(nodeId);
-        try c.buf.pushOp2(.objectTypeCheck, argStart, @intCast(data.numFieldsToCheck));
+                const checkFields = c.ir.getArray(data.fieldsToCheck, u8, data.numFieldsToCheck);
 
-        const checkFields = c.ir.getArray(data.fieldsToCheck, u8, data.numFieldsToCheck);
-
-        for (checkFields) |fidx| {
-            const start = c.buf.ops.items.len;
-            try c.buf.pushOperands(&.{ @as(u8, @intCast(fidx)), 0, 0, 0, 0 });
-            c.buf.setOpArgU32(start + 1, sym.fields[fidx].type);
-        }
+                for (checkFields) |fidx| {
+                    const start = c.buf.ops.items.len;
+                    try c.buf.pushOperands(&.{ @as(u8, @intCast(fidx)), 0, 0, 0, 0 });
+                    c.buf.setOpArgU32(start + 1, obj.fields[fidx].type);
+                }
+            }
+        },
+        .enumType => {
+        },
+        else => return error.Unexpected,
     }
 
-    try pushObjectInit(c, data.typeId, argStart, @intCast(sym.numFields), inst.dst, nodeId);
+    try pushObjectInit(c, data.typeId, argStart, @intCast(data.numArgs), inst.dst, nodeId);
 
     const argvs = popValues(c, data.numArgs);
     try popTempValues(c, argvs);
@@ -2672,24 +2679,24 @@ fn genBlockExpr(c: *Chunk, loc: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !G
 }
 
 fn switchStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
-    const blockIdx = c.ir.advanceStmt(idx, .switchStmt);
-    _ = try genSwitchBlock(c, blockIdx, null, nodeId);
+    const switchLoc = c.ir.advanceStmt(idx, .switchStmt);
+    _ = try genSwitch(c, switchLoc, null, nodeId);
 }
 
-fn genSwitchBlock(c: *Chunk, idx: usize, cstr: ?RegisterCstr, nodeId: cy.NodeId) !GenValue {
-    const data = c.ir.getExprData(idx, .switchBlock);
+fn genSwitch(c: *Chunk, idx: usize, cstr: ?RegisterCstr, nodeId: cy.NodeId) !GenValue {
+    const data = c.ir.getExprData(idx, .switchExpr);
+    const isStmt = cstr == null;
 
     var childBreakJumpsStart: u32 = undefined;
-    if (!data.leftAssign) {
+    if (isStmt) {
         childBreakJumpsStart = @intCast(c.blockJumpStack.items.len);
     }
 
-    const casesIdx = c.ir.advanceExpr(idx, .switchBlock);
+    const casesIdx = c.ir.advanceExpr(idx, .switchExpr);
     const cases = c.ir.getArray(casesIdx, u32, data.numCases);
 
     // Expr.
-    const exprIdx = c.ir.advanceArray(casesIdx, u32, cases);
-    const exprv = try genExpr(c, exprIdx, RegisterCstr.simple);
+    const exprv = try genExpr(c, data.expr, RegisterCstr.simple);
 
     const caseBodyEndJumpsStart = c.listDataStack.items.len;
 
@@ -2764,7 +2771,7 @@ fn genSwitchBlock(c: *Chunk, idx: usize, cstr: ?RegisterCstr, nodeId: cy.NodeId)
         c.patchJumpToCurPc(prevCaseMissJump);
     }
 
-    if (data.leftAssign and !hasElse) {
+    if (!isStmt and !hasElse) {
         // Gen none return for missing else.
         _ = try genNone(c, cstr.?, nodeId);
     }
@@ -2776,7 +2783,7 @@ fn genSwitchBlock(c: *Chunk, idx: usize, cstr: ?RegisterCstr, nodeId: cy.NodeId)
     c.listDataStack.items.len = caseBodyEndJumpsStart;
 
     // Jump here from nested child breaks.
-    if (!data.leftAssign) {
+    if (isStmt) {
         const newLen = c.patchBreaks(childBreakJumpsStart, c.buf.ops.items.len);
         c.blockJumpStack.items.len = newLen;
     }

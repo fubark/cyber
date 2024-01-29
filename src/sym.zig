@@ -349,6 +349,7 @@ pub const EnumType = extern struct {
     members: [*]const cy.module.ModuleSymId,
     numMembers: u32,
     mod: vmc.Module,
+    isChoiceType: bool,
 
     pub fn getValueSym(self: *EnumType, val: u16) *Sym {
         const symId = self.members[val];
@@ -358,12 +359,28 @@ pub const EnumType = extern struct {
     pub fn getMod(self: *EnumType) *cy.Module {
         return @ptrCast(&self.mod);
     }
+
+    pub fn getMember(self: *EnumType, name: []const u8) ?*EnumMember {
+        const mod = self.head.getMod().?;
+        if (mod.getSym(name)) |res| {
+            if (res.type == .enumMember) {
+                return res.cast(.enumMember);
+            }
+        }
+        return null;
+    }
+
+    pub fn getMemberTag(self: *EnumType, name: []const u8) ?u32 {
+        const member = self.getMember(name) orelse return null;
+        return member.val;
+    }
 };
 
 pub const EnumMember = extern struct {
     head: Sym,
     type: cy.TypeId,
     val: u32,
+    payloadType: cy.Nullable(cy.TypeId),
 };
 
 const Import = extern struct {

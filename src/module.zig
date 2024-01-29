@@ -258,7 +258,7 @@ pub const ChunkExt = struct {
         _ = try addSym(c, mod, name, @ptrCast(sym));
     }
 
-    pub fn declareEnumType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId) !*cy.sym.EnumType {
+    pub fn declareEnumType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, isChoiceType: bool, declId: cy.NodeId) !*cy.sym.EnumType {
         const mod = parent.getMod().?;
         try checkUniqueSym(c, mod, name, declId);
 
@@ -268,6 +268,7 @@ pub const ChunkExt = struct {
             .type = typeId,
             .members = @as([*]const ModuleSymId, @ptrCast(@alignCast(&.{}))),
             .numMembers = 0,
+            .isChoiceType = isChoiceType,
             .mod = undefined,
         });
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
@@ -282,7 +283,7 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn declareEnumMember(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, typeId: types.TypeId, val: u32, declId: cy.NodeId) !ModuleSymId {
+    pub fn declareEnumMember(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, typeId: types.TypeId, val: u32, payloadType: cy.TypeId, declId: cy.NodeId) !ModuleSymId {
         const mod = parent.getMod().?;
         try checkUniqueSym(c, mod, name, declId);
 
@@ -290,6 +291,7 @@ pub const ChunkExt = struct {
             .head = cy.Sym.init(.enumMember, parent, name),
             .type = typeId,
             .val = val,
+            .payloadType = payloadType,
         });
         const id = try addSym(c, mod, name, @ptrCast(sym));
         return id;

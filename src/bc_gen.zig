@@ -78,12 +78,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .setLocalType       => try setLocalType(c, idx),
         .switchStmt         => try switchStmt(c, idx, nodeId),
         .tryStmt            => try tryStmt(c, idx, nodeId),
-        .verbose            => {
-            if (cy.Trace and !cy.verbose) {
-                cy.verbose = true;
-                c.curBlock.resetVerboseOnBlockEnd = true;
-            }
-        },
+        .verbose            => try verbose(c, idx, nodeId),
         .whileCondStmt      => try whileCondStmt(c, idx, nodeId),
         .whileInfStmt       => try whileInfStmt(c, idx, nodeId),
         .whileOptStmt       => try whileOptStmt(c, idx, nodeId),
@@ -2406,6 +2401,12 @@ fn forRangeStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     try popTemp(c, counter);
 }
 
+fn verbose(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
+    _ = nodeId;
+    const data = c.ir.getStmtData(idx, .verbose);
+    cy.verbose = data.verbose;
+}
+
 fn tryStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .tryStmt);
     const pushTryPc = c.buf.ops.items.len;
@@ -2830,9 +2831,6 @@ pub fn popFuncBlockCommon(c: *Chunk, func: *cy.Func) !void {
         if (c.rega.nextTemp > c.rega.tempStart) {
             return c.reportErrorAt("Temp registers were not reset. {} > {}", &.{v(c.rega.nextTemp), v(c.rega.tempStart)}, c.curBlock.debugNodeId);
         }
-        if (c.curBlock.resetVerboseOnBlockEnd) {
-            cy.verbose = false;
-        }
     }
 
     if (c.compiler.config.genDebugFuncMarkers) {
@@ -2945,9 +2943,6 @@ pub fn popProc(c: *Chunk) !void {
         if (c.rega.nextTemp > c.rega.tempStart) {
             return c.reportErrorAt("Temp registers were not reset. {} > {}", &.{v(c.rega.nextTemp), v(c.rega.tempStart)}, last.debugNodeId);
         }
-        if (c.curBlock.resetVerboseOnBlockEnd) {
-            cy.verbose = false;
-        }
     }
 
     last.deinit(c.alloc);
@@ -3048,8 +3043,6 @@ pub const Proc = struct {
 
     retainedTempStart: if (cy.Trace) u32 else void = undefined,
 
-    resetVerboseOnBlockEnd: bool,
-
     fn init(btype: ProcType) Proc {
         return .{
             .type = btype,
@@ -3064,7 +3057,6 @@ pub const Proc = struct {
             .nextLocalReg = 0,
             .debugNodeId = cy.NullId,
             .sBlockDepth = 0,
-            .resetVerboseOnBlockEnd = false,
         };
     }
 

@@ -209,12 +209,7 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
         // .setLocalType       => try setLocalType(c, idx),
         // .switchStmt         => try switchStmt(c, idx, nodeId),
         // .tryStmt            => try tryStmt(c, idx, nodeId),
-        .verbose            => {
-            if (cy.Trace and !cy.verbose) {
-                cy.verbose = true;
-                c.curBlock.resetVerboseOnBlockEnd = true;
-            }
-        },
+        .verbose            => try verbose(c, idx, nodeId),
         // .whileCondStmt      => try whileCondStmt(c, idx, nodeId),
         // .whileInfStmt       => try whileInfStmt(c, idx, nodeId),
         // .whileOptStmt       => try whileOptStmt(c, idx, nodeId),
@@ -1266,4 +1261,10 @@ fn retExprStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     } else {
         try assm.genFuncReturn(c);
     }
+}
+
+fn verbose(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
+    _ = nodeId;
+    const data = c.ir.getStmtData(idx, .verbose);
+    cy.verbose = data.verbose;
 }

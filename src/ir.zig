@@ -469,6 +469,10 @@ pub const IfStmt = struct {
     elseBlocks: u32,
 };
 
+pub const Verbose = struct {
+    verbose: bool,
+};
+
 pub fn StmtData(comptime code: StmtCode) type {
     return comptime switch (code) {
         .root => Root,
@@ -492,6 +496,7 @@ pub fn StmtData(comptime code: StmtCode) type {
         .pushDebugLabel => PushDebugLabel,
         .whileOptStmt => WhileOptStmt,
         .whileCondStmt => WhileCondStmt,
+        .verbose => Verbose,
         .whileInfStmt => WhileInfStmt,
         .destrElemsStmt => DestructureElems,
         .exprStmt => ExprStmt,

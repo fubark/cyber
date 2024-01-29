@@ -252,8 +252,6 @@ pub const Proc = struct {
 
     nodeId: cy.NodeId,
 
-    resetVerboseOnBlockEnd: bool,
-
     pub fn init(nodeId: cy.NodeId, func: ?*cy.Func, firstBlockId: BlockId, isStaticFuncBlock: bool, varStart: u32) Proc {
         return .{
             .nameToVar = .{},
@@ -268,7 +266,6 @@ pub const Proc = struct {
             .curNumLocals = 0,
             .varStart = varStart,
             .irStart = cy.NullId,
-            .resetVerboseOnBlockEnd = false,
         };
     }
 
@@ -640,11 +637,11 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 } else if (std.mem.eql(u8, "dumpBytecode", name)) {
                     _ = try c.ir.pushStmt(c.alloc, .dumpBytecode, nodeId, {});
                 } else if (std.mem.eql(u8, "verbose", name)) {
-                    if (cy.Trace and !cy.verbose) {
-                        cy.verbose = true;
-                        c.proc().resetVerboseOnBlockEnd = true;
-                    }
-                    _ = try c.ir.pushStmt(c.alloc, .verbose, nodeId, {});
+                    cy.verbose = true;
+                    _ = try c.ir.pushStmt(c.alloc, .verbose, nodeId, .{ .verbose = true });
+                } else if (std.mem.eql(u8, "verboseOff", name)) {
+                    cy.verbose = false;
+                    _ = try c.ir.pushStmt(c.alloc, .verbose, nodeId, .{ .verbose = false });
                 } else {
                     return c.reportErrorAt("Unsupported annotation: {}", &.{v(name)}, nodeId);
                 }
@@ -1839,9 +1836,6 @@ fn updateFuncDeclNamePath(c: *cy.Chunk, decl: *FuncDecl, parent: *Sym, nameId: c
 pub fn popProc(self: *cy.Chunk) !cy.ir.StmtBlock {
     const stmtBlock = try popBlock(self);
     const proc = self.proc();
-    if (cy.Trace and proc.resetVerboseOnBlockEnd) {
-        cy.verbose = false;
-    }
     proc.deinit(self.alloc);
     self.semaProcs.items.len -= 1;
     self.varStack.items.len = proc.varStart;

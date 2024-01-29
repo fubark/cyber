@@ -82,6 +82,9 @@ pub const LocalVar = struct {
             /// In the future, the concept of a immutable variable could change this.
             lifted: bool,
 
+            /// If var is hidden, user code can not reference it.
+            hidden: bool,
+
             /// For locals this points to a ir.DeclareLocal.
             /// This is NullId for params.
             declIrStart: u32,
@@ -1201,7 +1204,7 @@ fn declareParam(c: *cy.Chunk, paramId: cy.NodeId, isSelf: bool, paramIdx: u32, d
         }
     }
 
-    const id = try pushLocalVar(c, .local, name, declT);
+    const id = try pushLocalVar(c, .local, name, declT, false);
     var svar = &c.varStack.items[id];
     svar.inner = .{
         .local = .{
@@ -1211,6 +1214,7 @@ fn declareParam(c: *cy.Chunk, paramId: cy.NodeId, isSelf: bool, paramIdx: u32, d
             .hasInit = false,
             .lifted = false,
             .declIrStart = cy.NullId,
+            .hidden = false,
         },
     };
     proc.numParams += 1;
@@ -1240,7 +1244,12 @@ fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, hasInit: b
             });
         }
     }
-    const id = try pushLocalVar(c, .local, name, declType);
+
+    return try declareLocalName2(c, name, declType, false, hasInit, nodeId);
+}
+
+fn declareLocalName2(c: *cy.Chunk, name: []const u8, declType: TypeId, hidden: bool, hasInit: bool, nodeId: cy.NodeId) !LocalVarId {
+    const id = try pushLocalVar(c, .local, name, declType, hidden);
     var svar = &c.varStack.items[id];
 
     const proc = c.proc();
@@ -1273,6 +1282,7 @@ fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, hasInit: b
         .isParamCopied = false,
         .hasInit = hasInit,
         .lifted = false,
+        .hidden = hidden,
         .declIrStart = @intCast(irIdx),
     }};
 
@@ -2039,6 +2049,9 @@ fn popBlock(c: *cy.Chunk) !cy.ir.StmtBlock {
         // Remove dead vars.
         const varDecls = c.varStack.items[b.varStart..];
         for (varDecls) |decl| {
+            if (decl.type == .local and decl.inner.local.hidden) {
+                continue;
+            }
             const name = decl.namePtr[0..decl.nameLen];
             _ = proc.nameToVar.remove(name);
         }
@@ -2154,13 +2167,16 @@ fn appendFuncParamVars(c: *cy.Chunk, func: *const cy.Func) !void {
     }
 }
 
-fn pushLocalVar(c: *cy.Chunk, _type: LocalVarType, name: []const u8, declType: TypeId) !LocalVarId {
+fn pushLocalVar(c: *cy.Chunk, _type: LocalVarType, name: []const u8, declType: TypeId, hidden: bool) !LocalVarId {
     const proc = c.proc();
     const id: u32 = @intCast(c.varStack.items.len);
-    _ = try proc.nameToVar.put(c.alloc, name, .{
-        .varId = id,
-        .blockId = @intCast(c.semaBlocks.items.len-1),
-    });
+
+    if (!hidden) {
+        _ = try proc.nameToVar.put(c.alloc, name, .{
+            .varId = id,
+            .blockId = @intCast(c.semaBlocks.items.len-1),
+        });
+    }
     try c.varStack.append(c.alloc, .{
         .declT = declType,
         .type = _type,
@@ -2179,13 +2195,13 @@ fn getVarPtr(self: *cy.Chunk, name: []const u8) ?*LocalVar {
 }
 
 fn pushStaticVarAlias(c: *cy.Chunk, name: []const u8, sym: *Sym) !LocalVarId {
-    const id = try pushLocalVar(c, .staticAlias, name, bt.Any);
+    const id = try pushLocalVar(c, .staticAlias, name, bt.Any, false);
     c.varStack.items[id].inner = .{ .staticAlias = sym };
     return id;
 }
 
 fn pushObjectMemberAlias(c: *cy.Chunk, name: []const u8, idx: u8, typeId: TypeId) !LocalVarId {
-    const id = try pushLocalVar(c, .objectMemberAlias, name, typeId);
+    const id = try pushLocalVar(c, .objectMemberAlias, name, typeId, false);
     c.varStack.items[id].inner = .{ .objectMemberAlias = .{
         .fieldIdx = idx,
     }};
@@ -2194,7 +2210,7 @@ fn pushObjectMemberAlias(c: *cy.Chunk, name: []const u8, idx: u8, typeId: TypeId
 
 fn pushCapturedObjectMemberAlias(self: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, idx: u8, vtype: TypeId) !LocalVarId {
     const proc = self.proc();
-    const id = try pushLocalVar(self, .parentObjectMemberAlias, name, vtype);
+    const id = try pushLocalVar(self, .parentObjectMemberAlias, name, vtype, false);
     const capturedIdx: u8 = @intCast(proc.captures.items.len);
     self.varStack.items[id].inner = .{ .parentObjectMemberAlias = .{
         .selfCapturedIdx = capturedIdx,
@@ -2214,7 +2230,7 @@ fn pushCapturedObjectMemberAlias(self: *cy.Chunk, name: []const u8, parentVarId:
 
 fn pushCapturedVar(c: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, vtype: CompactType) !LocalVarId {
     const proc = c.proc();
-    const id = try pushLocalVar(c, .parentLocalAlias, name, vtype.id);
+    const id = try pushLocalVar(c, .parentLocalAlias, name, vtype.id, false);
     const capturedIdx: u8 = @intCast(proc.captures.items.len);
     c.varStack.items[id].inner = .{
         .parentLocalAlias = .{

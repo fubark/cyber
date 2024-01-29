@@ -516,6 +516,19 @@ fn getOpCodeAtPc(ops: []const cy.Inst, atPc: u32) ?cy.OpCode {
     return null;
 }
 
+fn getPcInstIdx(ops: []const cy.Inst, atPc: u32) ?usize {
+    var idx: usize = 0;
+    var i: usize = 0;
+    while (i < ops.len) {
+        if (i == atPc) {
+            return idx;
+        }
+        i += bytecode.getInstLenAt(ops.ptr + i);
+        idx += 1;
+    }
+    return null;
+}
+
 const DumpBytecodeOptions = struct {
     pcContext: ?u32 = null,
 };
@@ -541,12 +554,11 @@ pub fn dumpBytecode(vm: *cy.VM, opts: DumpBytecodeOptions) !void {
         const chunk = vm.compiler.chunks.items[sym.file];
 
         if (sym.frameLoc == 0) {
-            rt.print(vm, "Block: main");
-            const proc = &chunk.semaProcs.items[chunk.mainSemaProcId];
-            try chunk.dumpLocals(proc);
+            // rt.print(vm, "Block: main");
+            // const proc = &chunk.semaProcs.items[chunk.mainSemaProcId];
+            // try chunk.dumpLocals(proc);
         } else {
             // const funcNode = chunk.nodes[sym.frameLoc];
-            return error.TODO;
             // const funcDecl = chunk.semaFuncDecls.items[funcNode.head.func.semaDeclId];
             // const funcName = funcDecl.getName(&chunk);
             // if (funcName.len == 0) {
@@ -575,6 +587,7 @@ pub fn dumpBytecode(vm: *cy.VM, opts: DumpBytecodeOptions) !void {
 
         // Print until requested inst.
         pc += pcOffset;
+        instIdx = @intCast(getPcInstIdx(vm.compiler.buf.ops.items, pcOffset).?);
         while (pcOffset < pcContext) {
             if (pcOffset == nextMarkerPc) {
                 dumpMarkerAdvance(vm, &curMarkerIdx, &nextMarkerPc);

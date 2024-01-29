@@ -1,5 +1,6 @@
 #include <stdarg.h>
 #include <string.h>
+#include <stdio.h>
 #include <math.h>
 #include "vm.h"
 
@@ -53,7 +54,7 @@ static inline void release(VM* vm, Value val) {
 #endif
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
-        TRACEV("release obj: {}, rc={}\n", FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_U32(obj->head.rc));
+        TRACEV("release obj: {}, rc={}", FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_U32(obj->head.rc));
 #if TRACE
         zCheckDoubleFree(vm, obj);
 #endif
@@ -61,7 +62,7 @@ static inline void release(VM* vm, Value val) {
 #if TRACK_GLOBAL_RC
     #if TRACE
         if (vm->refCounts == 0) {
-            LOG("Double free. {}\n", FMT_U32(getTypeId(val)));
+            LOG("Double free. {}", FMT_U32(getTypeId(val)));
             zFatal();
         }
     #endif
@@ -74,12 +75,12 @@ static inline void release(VM* vm, Value val) {
             zFreeObject(vm, obj);
         }
     } else {
-        TRACEV("release: {}, nop\n", FMT_STR(zGetTypeName(vm, getTypeId(val))));
+        TRACEV("release: {}, nop", FMT_STR(zGetTypeName(vm, getTypeId(val))));
     }
 }
 
 static inline void releaseObject(VM* vm, HeapObject* obj) {
-    TRACEV("release obj: {}, rc={}\n", FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
+    TRACEV("release obj: {}, rc={}", FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
 #if (TRACE)
     zCheckDoubleFree(vm, obj);
 #endif
@@ -87,7 +88,7 @@ static inline void releaseObject(VM* vm, HeapObject* obj) {
 #if TRACK_GLOBAL_RC
     #if TRACE
     if (vm->refCounts == 0) {
-        LOG("Double free. {}\n", FMT_U32(OBJ_TYPEID(obj)));
+        LOG("Double free. {}", FMT_U32(OBJ_TYPEID(obj)));
         zFatal();
     }
     #endif
@@ -103,7 +104,7 @@ static inline void releaseObject(VM* vm, HeapObject* obj) {
 }
 
 static inline void retainObject(VM* vm, HeapObject* obj) {
-    TRACEV("retain {} rc={}\n", FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
+    TRACEV("retain {} rc={}", FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
     obj->head.rc += 1;
 #if TRACE
     zCheckRetainDanglingPointer(vm, obj);
@@ -123,7 +124,7 @@ static inline void retain(VM* vm, Value val) {
 #endif
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
-        TRACEV("retain: {}, {}, rc={}\n", FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_PTR(obj), FMT_U32(obj->head.rc));
+        TRACEV("retain: {}, {}, rc={}", FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_PTR(obj), FMT_U32(obj->head.rc));
         obj->head.rc += 1;
 #if TRACE
         zCheckRetainDanglingPointer(vm, obj);
@@ -135,7 +136,7 @@ static inline void retain(VM* vm, Value val) {
         vm->trace->numRetains += 1;
 #endif
     } else {
-        TRACEV("retain: {}, nop\n", FMT_STR(zGetTypeName(vm, getTypeId(val))));
+        TRACEV("retain: {}, nop", FMT_STR(zGetTypeName(vm, getTypeId(val))));
     }
 }
 
@@ -1067,7 +1068,7 @@ beginSwitch:
         u8 numLocals = pc[1];
         u8 i;
         for (i = 2; i < 2 + numLocals; i += 1) {
-            TRACEV("release reg {}\n", FMT_U32(pc[i]));
+            TRACEV("release reg {}", FMT_U32(pc[i]));
             release(vm, stack[pc[i]]);
         }
         pc += 2 + numLocals;
@@ -1958,7 +1959,7 @@ beginSwitch:
         NEXT();
     }
     CASE(StaticVar): {
-        uint16_t symId = READ_U16(1);
+        u16 symId = READ_U16(1);
         Value sym = ((StaticVar*)vm->varSyms.buf)[symId].value;
         retain(vm, sym);
         stack[pc[3]] = sym;
@@ -1966,7 +1967,7 @@ beginSwitch:
         NEXT();
     }
     CASE(SetStaticVar): {
-        uint16_t symId = READ_U16(1);
+        u16 symId = READ_U16(1);
         Value prev = ((StaticVar*)vm->varSyms.buf)[symId].value;
         ((StaticVar*)vm->varSyms.buf)[symId].value = stack[pc[3]];
         release(vm, prev);

@@ -522,6 +522,37 @@ pub const Encoder = struct {
     pub fn writeNode(self: Encoder, w: anytype, nodeId: cy.NodeId) !void {
         const node = self.src.nodes[nodeId];
         switch (node.node_t) {
+            .funcDecl => {
+                const header = self.src.nodes[node.head.func.header];
+                try w.writeAll("func ");
+                try self.writeNode(w, header.head.funcHeader.name);
+                try w.writeAll("(");
+                var paramId = header.head.funcHeader.paramHead;
+                if (paramId != cy.NullId) {
+                    try self.writeNode(w, paramId);
+                    paramId = self.src.nodes[paramId].next;
+
+                    while (paramId != cy.NullId) {
+                        try w.writeAll(", ");
+                        try self.writeNode(w, paramId);
+                        paramId = self.src.nodes[paramId].next;
+                    }
+                }
+                try w.writeAll(")");
+                if (header.head.funcHeader.ret != cy.NullId) {
+                    try w.writeAll(" ");
+                    try self.writeNode(w, header.head.funcHeader.ret);
+                }
+                // node.head.func.bodyHead
+            },
+            .funcParam => {
+                const param = self.src.nodes[nodeId];
+                try self.writeNode(w, param.head.funcParam.name);
+                if (param.head.funcParam.typeSpecHead != cy.NullId) {
+                    try w.writeAll(" ");
+                    try self.writeNode(w, param.head.funcParam.typeSpecHead);
+                }
+            },
             .assign_stmt => {
                 try self.writeNode(w, node.head.left_right.left);
                 try w.writeByte('=');
@@ -585,6 +616,10 @@ pub const Encoder = struct {
             .errorSymLit => {
                 try w.writeAll("error.");
                 try self.writeNode(w, node.head.errorSymLit.symbol);
+            },
+            .symbolLit => {
+                try w.writeAll(".");
+                try w.writeAll(self.src.getNodeString(node));
             },
             .number,
             .ident => {
@@ -651,7 +686,11 @@ pub const Encoder = struct {
                 }
             },
             .localDecl => {
-                try w.writeAll("var ");
+                if (node.head.localDecl.typed) {
+                    try w.writeAll("var ");
+                } else {
+                    try w.writeAll("my ");
+                }
                 try self.writeNode(w, node.head.localDecl.varSpec);
                 try w.writeByte('=');
                 try self.writeNode(w, node.head.localDecl.right);
@@ -665,6 +704,11 @@ pub const Encoder = struct {
                 try w.writeByte('[');
                 try w.writeAll("...");
                 try w.writeByte(']');
+            },
+            .objectInit => {
+                try w.writeByte('[');
+                try self.writeNode(w, node.head.objectInit.name);
+                try w.writeAll(" ...]");
             },
             .varSpec => {
                 try self.writeNode(w, node.head.varSpec.name);

@@ -174,7 +174,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
             },
         }
     }
-    try cy.debug.dumpBytecode(&vm, pc);
+    try cy.debug.dumpBytecode(&vm, .{ .pcContext = pc });
 }
 
 fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {

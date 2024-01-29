@@ -640,10 +640,10 @@ fn genInt(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenV
 fn finishInst(c: *cy.Chunk, val: GenValue, optDst: ?RegisterCstr) !GenValue {
     if (optDst) |dst| {
         const final = try genToFinalDst(c, val, dst);
-        try bcgen.pushOptUnwindableTemp(c, final);
+        try bcgen.pushUnwindTempValue(c, final);
         return final;
     } else {
-        try bcgen.pushOptUnwindableTemp(c, val);
+        try bcgen.pushUnwindTempValue(c, val);
         return val;
     }
 }
@@ -923,7 +923,7 @@ fn mainBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     c.buf.mainStackSize = c.getMaxUsedRegisters();
 
     // Pop boundary index.
-    _ = c.popRetainedTemp();
+    try bcgen.popUnwindTemp(c, cy.NullU8);
 }
 
 fn mainEnd(c: *cy.Chunk, optReg: ?u8) !void {

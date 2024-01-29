@@ -174,6 +174,8 @@ pub const Chunk = struct {
     /// before this id is used.
     nextUnnamedId: u32,
 
+    indent: u32,
+
     /// LLVM
     tempTypeRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.TypeRef) else void,
     tempValueRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.ValueRef) else void,
@@ -255,6 +257,7 @@ pub const Chunk = struct {
             .initializerVisiting = false,
             .encoder = undefined,
             .nextUnnamedId = 1,
+            .indent = 0,
         };
 
         if (cy.hasJIT) {
@@ -709,15 +712,15 @@ pub const Chunk = struct {
         try c.unwindTempRegStack.append(c.alloc, cy.NullU8);
     }
 
-    pub fn pushRetainedTemp(c: *Chunk, reg: u8) !void {
-        log.tracev("push unwind temp {} +1 ({})", .{c.unwindTempIndexStack.items.len, reg});
+    pub fn pushUnwindTemp(c: *Chunk, reg: u8) !void {
+        log.tracev("unwind temp {} +1 ({})", .{c.unwindTempIndexStack.items.len, reg});
         try c.unwindTempIndexStack.append(c.alloc, .{
             .created = false,
         });
         try c.unwindTempRegStack.append(c.alloc, reg);
     }
 
-    pub fn pushIfRetainedTemp(c: *Chunk, val: bc_gen.GenValue) !bool {
+    pub fn pushUnwindTempValue(c: *Chunk, val: bc_gen.GenValue) !bool {
         if (val.isRetainedTemp()) {
             try c.unwindTempIndexStack.append(c.alloc, .{
                 .created = false,
@@ -728,15 +731,8 @@ pub const Chunk = struct {
         return false;
     }
 
-    pub fn popRetainedTemps(self: *Chunk, n: usize) []const cy.register.RegisterId {
-        log.tracev("pop unwind temps: {} -{}", .{self.unwindTempIndexStack.items.len, n});
-        self.unwindTempIndexStack.items.len -= n;
-        defer self.unwindTempRegStack.items.len -= n;
-        return self.unwindTempRegStack.items[self.unwindTempRegStack.items.len-n..];
-    }
-
-    pub fn popRetainedTemp(self: *Chunk) cy.register.RegisterId {
-        log.tracev("pop unwind temp: {} -1", .{self.unwindTempIndexStack.items.len});
+    pub fn popUnwindTemp(self: *Chunk) cy.register.RegisterId {
+        log.tracev("unwind temp: {} -1", .{self.unwindTempIndexStack.items.len});
         _ = self.unwindTempIndexStack.pop();
         return self.unwindTempRegStack.pop();
     }

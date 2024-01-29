@@ -60,6 +60,7 @@ pub const Allocator = struct {
                 if (localRetained) {
                     return .{
                         .dst = local,
+                        .dstIsOwnedTemp = false,
                         .retainSrc = true,
                         .releaseDst = false,
                         .finalDst = cstr,
@@ -67,6 +68,7 @@ pub const Allocator = struct {
                 } else {
                     return .{
                         .dst = local,
+                        .dstIsOwnedTemp = false,
                         .retainSrc = false,
                         .releaseDst = false,
                         .finalDst = cstr,
@@ -76,6 +78,7 @@ pub const Allocator = struct {
             .captured => {
                 return .{
                     .dst = local,
+                    .dstIsOwnedTemp = false,
                     .retainSrc = localRetained,
                     .releaseDst = false,
                     .finalDst = cstr,
@@ -85,6 +88,7 @@ pub const Allocator = struct {
                 const retainSrc = cstr.data.local.reg != local and localRetained;
                 return .{
                     .dst = cstr.data.local.reg,
+                    .dstIsOwnedTemp = false,
                     .retainSrc = retainSrc,
                     .releaseDst = cstr.data.local.retained,
                     .finalDst = null,
@@ -94,6 +98,7 @@ pub const Allocator = struct {
                 const retainSrc = cstr.data.local.reg != local and localRetained;
                 return .{
                     .dst = local,
+                    .dstIsOwnedTemp = false,
                     .retainSrc = retainSrc,
                     .releaseDst = false,
                     .finalDst = cstr,
@@ -102,15 +107,18 @@ pub const Allocator = struct {
             .exact => {
                 return .{
                     .dst = cstr.data.exact,
+                    .dstIsOwnedTemp = false,
                     .retainSrc = cstr.mustRetain and localRetained,
                     .releaseDst = cstr.dstRetained,
                     .finalDst = null,
                 };
             },
+            .localOrExact,
             .simple,
             .prefer => {
                 return .{
                     .dst = local,
+                    .dstIsOwnedTemp = false,
                     .retainSrc = cstr.mustRetain,
                     .releaseDst = false,
                     .finalDst = null,
@@ -119,6 +127,7 @@ pub const Allocator = struct {
             .temp => {
                 return .{
                     .dst = try self.consumeNextTemp(),
+                    .dstIsOwnedTemp = true,
                     .retainSrc = cstr.mustRetain,
                     .releaseDst = false,
                     .finalDst = null,
@@ -151,9 +160,18 @@ pub const Allocator = struct {
     /// A required dst can be retained but `requiresPreRelease` will be set to true.
     pub fn selectForNoErrInst(self: *Allocator, cstr: RegisterCstr, instCouldRetain: bool) !NoErrInst {
         switch (cstr.type) {
+            .localOrExact => {
+                return .{
+                    .dst = cstr.data.localOrExact,
+                    .dstIsOwnedTemp = false,
+                    .requiresPreRelease = cstr.dstRetained,
+                    .finalDst = null,
+                };
+            },
             .exact => {
                 return .{
                     .dst = cstr.data.exact,
+                    .dstIsOwnedTemp = false,
                     .requiresPreRelease = cstr.dstRetained,
                     .finalDst = null,
                 };
@@ -161,6 +179,7 @@ pub const Allocator = struct {
             .varSym => {
                 return .{
                     .dst = try self.consumeNextTemp(),
+                    .dstIsOwnedTemp = true,
                     .requiresPreRelease = false,
                     .finalDst = cstr,
                 };
@@ -168,6 +187,7 @@ pub const Allocator = struct {
             .local => {
                 return .{
                     .dst = cstr.data.local.reg,
+                    .dstIsOwnedTemp = false,
                     .requiresPreRelease = cstr.data.local.retained,
                     .finalDst = null,
                 };
@@ -175,6 +195,7 @@ pub const Allocator = struct {
             .boxedLocal => {
                 return .{
                     .dst = try self.consumeNextTemp(),
+                    .dstIsOwnedTemp = true,
                     .requiresPreRelease = false,
                     .finalDst = cstr,
                 };
@@ -182,6 +203,7 @@ pub const Allocator = struct {
             .captured => {
                 return .{
                     .dst = try self.consumeNextTemp(),
+                    .dstIsOwnedTemp = true,
                     .requiresPreRelease = false,
                     .finalDst = cstr,
                 };
@@ -190,12 +212,14 @@ pub const Allocator = struct {
                 if (instCouldRetain) {
                     return .{
                         .dst = try self.consumeNextTemp(),
+                        .dstIsOwnedTemp = true,
                         .requiresPreRelease = false,
                         .finalDst = null,
                     };
                 }
                 return .{
                     .dst = cstr.data.prefer,
+                    .dstIsOwnedTemp = false,
                     .requiresPreRelease = cstr.dstRetained,
                     .finalDst = null,
                 };
@@ -204,6 +228,7 @@ pub const Allocator = struct {
             .simple => {
                 return .{
                     .dst = try self.consumeNextTemp(),
+                    .dstIsOwnedTemp = true,
                     .requiresPreRelease = false,
                     .finalDst = null,
                 };
@@ -219,18 +244,36 @@ pub const Allocator = struct {
             .varSym => {
                 return .{
                     .dst = try self.consumeNextTemp(),
+                    .dstIsOwnedTemp = true,
                     .finalDst = cstr,
                 };
+            },
+            .localOrExact => {
+                if (cstr.dstRetained) {
+                    return .{
+                        .dst = try self.consumeNextTemp(),
+                        .dstIsOwnedTemp = true,
+                        .finalDst = cstr,
+                    };
+                } else {
+                    return .{
+                        .dst = cstr.data.localOrExact,
+                        .dstIsOwnedTemp = false,
+                        .finalDst = null,
+                    };
+                }
             },
             .exact => {
                 if (cstr.dstRetained) {
                     return .{
                         .dst = try self.consumeNextTemp(),
+                        .dstIsOwnedTemp = true,
                         .finalDst = cstr,
                     };
                 } else {
                     return .{
                         .dst = cstr.data.exact,
+                        .dstIsOwnedTemp = false,
                         .finalDst = null,
                     };
                 }
@@ -238,6 +281,7 @@ pub const Allocator = struct {
             .captured => {
                 return .{
                     .dst = try self.consumeNextTemp(),
+                    .dstIsOwnedTemp = true,
                     .finalDst = cstr,
                 };
             },
@@ -245,11 +289,13 @@ pub const Allocator = struct {
                 if (!cstr.data.local.retained) {
                     return .{
                         .dst = cstr.data.local.reg,
+                        .dstIsOwnedTemp = false,
                         .finalDst = null,
                     };
                 } else {
                     return .{
                         .dst = try self.consumeNextTemp(),
+                        .dstIsOwnedTemp = true,
                         .finalDst = cstr,
                     };
                 }
@@ -257,6 +303,7 @@ pub const Allocator = struct {
             .boxedLocal => {
                 return .{
                     .dst = try self.consumeNextTemp(),
+                    .dstIsOwnedTemp = true,
                     .finalDst = cstr,
                 };
             },
@@ -264,17 +311,20 @@ pub const Allocator = struct {
                 if (instCouldRetain) {
                     return .{
                         .dst = try self.consumeNextTemp(),
+                        .dstIsOwnedTemp = true,
                         .finalDst = null,
                     };
                 }
                 if (cstr.dstRetained) {
                     return .{
                         .dst = try self.consumeNextTemp(),
+                        .dstIsOwnedTemp = true,
                         .finalDst = null,
                     };
                 } else {
                     return .{
                         .dst = cstr.data.prefer,
+                        .dstIsOwnedTemp = false,
                         .finalDst = null,
                     };
                 }
@@ -283,6 +333,7 @@ pub const Allocator = struct {
             .simple => {
                 return .{
                     .dst = try self.consumeNextTemp(),
+                    .dstIsOwnedTemp = true,
                     .finalDst = null,
                 };
             },
@@ -314,12 +365,14 @@ pub const Allocator = struct {
 
 pub const NoErrInst = struct {
     dst: RegisterId,
+    dstIsOwnedTemp: bool,
     requiresPreRelease: bool,
     finalDst: ?RegisterCstr,
 };
 
 pub const CopyInst = struct {
     dst: RegisterId,
+    dstIsOwnedTemp: bool,
     retainSrc: bool,
     releaseDst: bool,
     finalDst: ?RegisterCstr,
@@ -327,6 +380,7 @@ pub const CopyInst = struct {
 
 pub const DstInst = struct {
     dst: RegisterId,
+    dstIsOwnedTemp: bool,
     finalDst: ?RegisterCstr,
 };
 
@@ -345,6 +399,8 @@ const RegisterCstrType = enum(u8) {
 
     /// Must select given `RegisterCstr.reg`.
     exact,
+
+    localOrExact,
 
     /// Var sym.
     varSym,
@@ -380,6 +436,7 @@ pub const RegisterCstr = struct {
     data: union {
         prefer: RegisterId,
         exact: RegisterId,
+        localOrExact: RegisterId,
         // Runtime id.
         varSym: u32,
         local: struct {
@@ -506,6 +563,12 @@ pub const RegisterCstr = struct {
         };
     }
 
+    pub fn localOrExact(reg: u8, mustRetain: bool) RegisterCstr {
+        return .{ .type = .localOrExact, .mustRetain = mustRetain, .data = .{
+            .localOrExact = reg,
+        }};
+    }
+
     pub fn exactMustRetain(reg: u8) RegisterCstr {
         return .{
             .type = .exact,
@@ -528,5 +591,9 @@ pub const RegisterCstr = struct {
         } else {
             return simple;
         }
+    }
+
+    pub fn allowsTemp(self: RegisterCstr) bool {
+        return self.type == .simple or self.type == .prefer or self.type == .temp;
     }
 };

@@ -4175,14 +4175,23 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             p.tokens.clearRetainingCapacity();
             p.next_pos = 0;
 
-            if (p.src.len > 2 and p.src[0] == '#' and p.src[1] == '!') {
-                // Ignore shebang line.
-                while (!isAtEndChar(p)) {
-                    if (peekChar(p) == '\n') {
+            if (p.src.len >= 3) {
+                if (p.src[0] == 0xEF and p.src[1] == 0xBB and p.src[2] == 0xBF) {
+                    // Skip UTF-8 BOM.
+                    p.next_pos = 3;
+                }
+            }
+
+            if (p.src.len >= p.next_pos + 2) {
+                if (p.src[p.next_pos] == '#' and p.src[p.next_pos+1] == '!') {
+                    // Ignore shebang line.
+                    while (!isAtEndChar(p)) {
+                        if (peekChar(p) == '\n') {
+                            advanceChar(p);
+                            break;
+                        }
                         advanceChar(p);
-                        break;
                     }
-                    advanceChar(p);
                 }
             }
 

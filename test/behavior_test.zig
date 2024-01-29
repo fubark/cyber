@@ -78,6 +78,7 @@ if (!aot) {
 if (!aot) {
     run.case("syntax/parse_skip_shebang_panic.cy");
     run.case("syntax/parse_start_error.cy");
+    run.case("syntax/skip_utf8_bom.cy");
     run.case("syntax/stmt_end_error.cy");
     run.case("syntax/tabs_spaces_error.cy");
     run.case("syntax/wrap_stmts.cy");
@@ -316,8 +317,8 @@ if (!aot) {
                 continue;
             }
         }
-        case2(run_case.config, run_case.path) catch {
-            std.debug.print("Failed: {s}\n", .{run_case.path});
+        case2(run_case.config, run_case.path) catch |err| {
+            std.debug.print("Failed: {s} {}\n", .{run_case.path, err});
             continue;
         };
         numPassed += 1;

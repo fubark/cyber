@@ -387,6 +387,7 @@ enum {
 };
 
 #define PrimitiveEnd 9
+#define BuiltinEnd 27
 
 typedef uint8_t Inst;
 typedef uint64_t Value;

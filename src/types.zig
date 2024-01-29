@@ -75,6 +75,7 @@ pub const CompactType = packed struct {
 };
 
 pub const PrimitiveEnd: TypeId = vmc.PrimitiveEnd;
+const BuiltinEnd: TypeId = vmc.BuiltinEnd;
 
 const bt = BuiltinTypes;
 pub const BuiltinTypes = struct {
@@ -111,8 +112,6 @@ pub const BuiltinTypes = struct {
     /// A dynamic type does not have a static type.
     /// This is not the same as bt.Any which is a static type.
     pub const Dynamic: TypeId = vmc.TYPE_DYNAMIC;
-
-    // pub const End: TypeId = vmc.NumSemaTypes;
 };
 
 pub const SemaExt = struct {
@@ -133,6 +132,13 @@ pub const SemaExt = struct {
 
     pub fn getTypeSym(s: *cy.Sema, id: TypeId) *cy.Sym {
         return s.types.items[id].sym;
+    }
+
+    pub fn isUserObjectType(s: *cy.Sema, id: TypeId) bool {
+        if (id < BuiltinEnd) {
+            return false;
+        }
+        return s.types.items[id].symType == .object;
     }
 
     pub fn isEnumType(s: *cy.Sema, typeId: TypeId) bool {

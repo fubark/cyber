@@ -9,11 +9,15 @@ type NodeA object:
 
 var .snode = [Node value: 123]
 
--- Initialization.
+-- Initialize.
 my n = [Node value: 123]
 t.eq(n.value, 123)
 n = [NodeA value2: 234]
 t.eq(n.value2, 234)
+
+-- Initialize, infer type.
+var left Node = [value: 123]
+t.eq(left.value, 123)
 
 -- Init and default field to none.
 n = [NodeHeap:]

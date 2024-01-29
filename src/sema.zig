@@ -2686,23 +2686,8 @@ pub const ChunkExt = struct {
         return irIdx;
     }
 
-    pub fn semaObjectInit(c: *cy.Chunk, expr: Expr) !ExprResult {
-        const node = c.nodes[expr.nodeId];
-
-        const left = try c.semaExprSkipSym(node.head.objectInit.name);
-        if (left.resType != .sym) {
-            const name = c.getNodeStringById(node.head.objectInit.name);
-            return c.reportErrorAt("Object type `{}` does not exist.", &.{v(name)}, node.head.objectInit.name);
-        }
-
-        const sym = left.data.sym.resolved();
-        if (sym.type != .object) {
-            const name = c.getNodeStringById(node.head.objectInit.name);
-            return c.reportErrorAt("`{}` is not an object type.", &.{v(name)}, node.head.objectInit.name);
-        }
-
-        const obj = sym.cast(.object);
-
+    /// `initializerId` is a record literal node.
+    pub fn semaObjectInit2(c: *cy.Chunk, obj: *cy.sym.ObjectType, initializerId: cy.NodeId) !ExprResult {
         // Set up a temp buffer to map initializer entries to type fields.
         const fieldsDataStart = c.listDataStack.items.len;
         try c.listDataStack.resize(c.alloc, c.listDataStack.items.len + obj.numFields);
@@ -2712,8 +2697,7 @@ pub const ChunkExt = struct {
         const fieldNodes = c.listDataStack.items[fieldsDataStart..];
         @memset(fieldNodes, .{ .nodeId = cy.NullId });
 
-        const initializer = c.nodes[node.head.objectInit.initializer];
-
+        const initializer = c.nodes[initializerId];
         var entryId = initializer.head.recordLiteral.argHead;
         while (entryId != cy.NullId) {
             var entry = c.nodes[entryId];
@@ -2726,7 +2710,7 @@ pub const ChunkExt = struct {
             entryId = entry.next;
         }
 
-        const irIdx = try c.ir.pushEmptyExpr(c.alloc, .objectInit, expr.nodeId);
+        const irIdx = try c.ir.pushEmptyExpr(c.alloc, .objectInit, initializerId);
         const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, obj.numFields);
 
         const argStart = c.typeStack.items.len;
@@ -2737,9 +2721,9 @@ pub const ChunkExt = struct {
             const fieldT = obj.fields[fIdx].type;
             if (item.nodeId == cy.NullId) {
                 // Check that unset fields can be zero initialized.
-                try c.checkForZeroInit(fieldT, expr.nodeId);
+                try c.checkForZeroInit(fieldT, initializerId);
 
-                const arg = try c.semaZeroInit(fieldT, expr.nodeId);
+                const arg = try c.semaZeroInit(fieldT, initializerId);
                 c.ir.setArrayItem(irArgsIdx, u32, i, arg.irIdx);
                 try c.typeStack.append(c.alloc, @bitCast(arg.type));
             } else {
@@ -2768,6 +2752,25 @@ pub const ChunkExt = struct {
         c.ir.buf.items.len = irExtraIdx + numFieldsToCheck;
 
         return ExprResult.initStatic(irIdx, obj.type);
+    }
+
+    pub fn semaObjectInit(c: *cy.Chunk, expr: Expr) !ExprResult {
+        const node = c.nodes[expr.nodeId];
+
+        const left = try c.semaExprSkipSym(node.head.objectInit.name);
+        if (left.resType != .sym) {
+            const name = c.getNodeStringById(node.head.objectInit.name);
+            return c.reportErrorAt("Object type `{}` does not exist.", &.{v(name)}, node.head.objectInit.name);
+        }
+
+        const sym = left.data.sym.resolved();
+        if (sym.type != .object) {
+            const name = c.getNodeStringById(node.head.objectInit.name);
+            return c.reportErrorAt("`{}` is not an object type.", &.{v(name)}, node.head.objectInit.name);
+        }
+
+        const obj = sym.cast(.object);
+        return c.semaObjectInit2(obj, node.head.objectInit.initializer);
     }
 
     pub fn semaPushCallArgsInfer(c: *cy.Chunk, argHead: cy.NodeId, numArgs: u8, preferTypes: []const types.TypeId) !StackTypesResult {
@@ -3191,6 +3194,12 @@ pub const ChunkExt = struct {
                 return ExprResult.initStatic(irIdx, bt.List);
             },
             .recordLiteral => {
+                if (c.sema.isUserObjectType(expr.preferType)) {
+                    // Infer user object type.
+                    const obj = c.sema.getTypeSym(expr.preferType).cast(.object);
+                    return c.semaObjectInit2(obj, nodeId);
+                }
+
                 const numArgs = node.head.recordLiteral.numArgs;
                 const irIdx = try c.ir.pushEmptyExpr(c.alloc, .map, nodeId);
                 const irKeysIdx = try c.ir.pushEmptyArray(c.alloc, []const u8, numArgs);

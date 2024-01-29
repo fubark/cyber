@@ -429,7 +429,7 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
   * [Map block.](#map-block)
 * [Objects.](#objects)
   * [Fields.](#fields)
-  * [Instantiation.](#instantiation)
+  * [Instantiate.](#instantiate)
   * [Methods.](#methods)
   * [`self` variable.](#self-variable)
   * [Type functions.](#type-functions)
@@ -813,11 +813,23 @@ type Node:
 ```
 When fields are declared with `my` instead, they become dynamically typed.
 
-### Instantiation.
-New object instances are created using a leading type name and the field values in a collection literal:
+### Instantiate.
+New object instances are created using a record literal with a leading type name:
 ```cy
 var node = [Node value: 123, next: none]
 print node.value       -- Prints "123"
+```
+
+A record literal can also initialize to the inferred object type:
+```cy
+var node Node = [value: 234, next: none]
+print node.value       -- Prints "234"
+```
+
+When a field is omitted in the record literal, it gets initialized to its [zero value](#zero-values):
+```cy
+var node Node = [value: 234]
+print node.next       -- Prints "Option.none"
 ```
 
 ### Methods.

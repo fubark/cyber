@@ -232,14 +232,14 @@ The final resulting value that is assigned to the static variable is provided by
 ## Reserved identifiers.
 
 ### Keywords.
-There are `25` general keywords. This list categorizes them:
+There are `27` general keywords. This list categorizes them:
 
 - [Control Flow](#control-flow): `if` `else` `switch` `case` `while` `for` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not`
 - [Variables](#variables): `var` `my`
 - [Functions](#functions): `func` `return`
 - [Coroutines](#fibers): `coinit` `coyield`, `coresume`
-- [Data Types](#data-types): `type` `as`
+- [Data Types](#data-types): `type` [`object`](#objects) [`enum`](#enums) `as`
 - [Error Handling](#error-handling): `try` `catch` `throw`
 - [Modules](#modules): `import`
 
@@ -247,7 +247,6 @@ There are `25` general keywords. This list categorizes them:
 These keywords only have meaning in a certain context.
 - [Methods](#methods): `self`, `Self`
 - [Catching Errors](#caught-variable): `caught`
-- [Enum Type](#enums): `enum`
 - [Function Throws](#throws-specifier): `throws`
 
 ### Literals.
@@ -794,9 +793,16 @@ var colors = []:
 ```
 
 ## Objects.
-Any value that isn't a primitive is an object. You can declare your own object types using the `type` declaration.
-Object types are similar to structs and classes in other languages.
-Unlike classes, there is no concept of inheritance at the language level.
+An object type contains field and function members. New instances can be created from them similar to a struct or class in other languages. Unlike classes, there is no builtin concept of inheritance but a similar effect can be achieved using composition and embedding.
+
+Object types are declared with `type object`. The `object` keyword is optional when using a `type` declaration. These two declarations are equivalent:
+```cy
+type A object:
+    var b int
+
+type A:
+    var b int
+```
 
 ### Fields.
 Fields must be declared at the top of the `type` block using `var` or `my`:

@@ -37,6 +37,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "import", .import_k },
     .{ "switch", .switch_k },
     .{ "none", .none_k },
+    .{ "object", .object_k },
     .{ "or", .or_k },
     .{ "pass", .pass_k },
     .{ "not", .not_k },
@@ -705,6 +706,8 @@ pub const Parser = struct {
             .enum_k => {
                 return self.parseEnumDecl(start, name);
             },
+            // `object` is optional.
+            .object_k,
             .new_line,
             .colon => {
                 return self.parseObjectDecl(start, name, modifierHead);
@@ -819,6 +822,11 @@ pub const Parser = struct {
         defer self.inObjectDecl = false;
 
         var token = self.peekToken();
+        if (token.tag() == .object_k) {
+            self.advanceToken();
+        }
+
+        token = self.peekToken();
         if (token.tag() == .colon) {
             self.advanceToken();
         } else {
@@ -3427,6 +3435,7 @@ pub const TokenType = enum(u8) {
     none_k,
     type_k,
     enum_k,
+    object_k,
     error_k,
     func_k,
     coinit_k,
@@ -4578,8 +4587,8 @@ test "parser internals." {
     try t.eq(@alignOf(Token), 4);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 62);
-    try t.eq(keywords.kvs.len, 30);
+    try t.eq(std.enums.values(TokenType).len, 63);
+    try t.eq(keywords.kvs.len, 31);
 }
 
 fn isRecedingIndent(p: *Parser, prevIndent: u32, curIndent: u32, indent: u32) !bool {

@@ -3,11 +3,17 @@ import t 'test'
 type Node:
     var value int
 
+-- `object` keyword is optional.
+type NodeA object:
+    var value2 int
+
 var .snode = [Node value: 123]
 
 -- Initialization.
 my n = [Node value: 123]
 t.eq(n.value, 123)
+n = [NodeA value2: 234]
+t.eq(n.value2, 234)
 
 -- Init and default field to none.
 n = [NodeHeap:]

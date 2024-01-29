@@ -4,13 +4,13 @@ import t 'test'
 t.eq(3 != 2, true)
 t.eq(3 != 3, false)
 
--- strings.
+-- Strings.
 t.eq('foo' != 'foo', false)
 t.eq('foo' != 'bar', true)
 
--- arrays.
-t.eq(array('foo') != array('foo'), false)
-t.eq(array('foo') != array('bar'), true)
+-- Arrays.
+t.eq(Array('foo') != Array('foo'), false)
+t.eq(Array('foo') != Array('bar'), true)
 
 -- Comparing objects.
 type S:

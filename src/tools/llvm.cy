@@ -2611,10 +2611,10 @@ func load():
 
 -- Macros
 var .GCC_HAVE_DWARF2_CFI_ASM int = 1
-var .DEFAULT_TARGET_TRIPLE string = "arm64-apple-darwin22.6.0"
+var .DEFAULT_TARGET_TRIPLE String = "arm64-apple-darwin22.6.0"
 var .ENABLE_THREADS int = 1
 var .HAS_ATOMICS int = 1
-var .HOST_TRIPLE string = "arm64-apple-darwin22.6.0"
+var .HOST_TRIPLE String = "arm64-apple-darwin22.6.0"
 var .ON_UNIX int = 1
 var .USE_INTEL_JITEVENTS int = 0
 var .USE_OPROFILE int = 0
@@ -2622,7 +2622,7 @@ var .USE_PERF int = 0
 var .VERSION_MAJOR int = 17
 var .VERSION_MINOR int = 0
 var .VERSION_PATCH int = 6
-var .VERSION_STRING string = "17.0.6"
+var .VERSION_STRING String = "17.0.6"
 var .FORCE_ENABLE_STATS int = 0
 var .WITH_Z3 int = 1
 var .ENABLE_ZLIB int = 1

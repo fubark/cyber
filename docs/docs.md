@@ -414,7 +414,7 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
   * [String interpolation.](#string-interpolation)
   * [String formatting.](#string-formatting)
   * [Line-join literal.](#line-join-literal)
-  * [Mutable strings.](#mutable-strings)
+  * [Mutable strings.](#mutable-strings) 
 * [Arrays.](#arrays)
 * [Bracket literals.](#bracket-literals)
 * [Lists.](#lists)
@@ -514,7 +514,7 @@ var b = float(a)
 > _Planned Feature_
 
 ## Strings.
-The `string` type represents a sequence of validated UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as an `int`. See [`type string`](#type-string).
+The `String` type represents a sequence of validated UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as an `int`. See [`type String`](#type-string).
 
 Strings are **immutable**, so operations that do string manipulation return a new string. By default, short strings are interned to reduce memory footprint.
 
@@ -574,7 +574,7 @@ The following escape sequences are supported in string literals:
 | \t | 0x09 | Horizontal tab character. |
 
 ### String operations.
-See [`type string`](#type-string) for all available methods.
+See [`type String`](#type-string) for all available methods.
 
 Concatenate two strings together with the `+` operator or the method `concat`. 
 ```cy
@@ -647,12 +647,12 @@ var paragraph = [
 To mutate an existing string, use [type MutString](#mutstring). *Planned Feature*
 
 ## Arrays.
-An `array` is an immutable sequence of bytes.
+An `Array` is an immutable sequence of bytes.
 It can be a more performant way to represent strings but it won't automatically validate their encoding and indexing returns the n'th byte rather than a UTF-8 rune.
-See [`type array`](#type-array).
+See [`type Array`](#type-array).
 
 ```cy
-var a = array('abcd')
+var a = Array('abcd')
 a = a.insertByte(1, 255)
 print a[0]     -- "97"
 print a[1]     -- "255"
@@ -1332,9 +1332,9 @@ In the example above, the function `foo` is called with 4 arguments. The first a
   * [`type tuple`](#type-tuple)
   * [`type Map`](#type-map)
   * [`type MapIterator`](#type-mapiterator)
-  * [`type string`](#type-string)
-  * [`type array`](#type-array)
-  * [`type arrayIterator`](#type-arrayiterator)
+  * [`type String`](#type-string)
+  * [`type Array`](#type-array)
+  * [`type ArrayIterator`](#type-arrayiterator)
   * [`type pointer`](#type-pointer)
   * [`type Fiber`](#type-fiber)
   * [`type metatype`](#type-metatype)
@@ -1508,21 +1508,21 @@ for map -> [k, v]:
 ### `map DirEntry`
 | key | summary |
 | -- | -- |
-| `'name' -> array` | The name of the file or directory. |
+| `'name' -> Array` | The name of the file or directory. |
 | `'type' -> #file | #dir | #unknown` | The type of the entry. |
 
 ### `map DirWalkEntry`
 | key | summary |
 | -- | -- |
-| `'name' -> array` | The name of the file or directory. |
-| `'path' -> array` | The path of the file or directory relative to the walker's root directory. |
+| `'name' -> Array` | The name of the file or directory. |
+| `'path' -> Array` | The path of the file or directory relative to the walker's root directory. |
 | `'type' -> #file | #dir | #unknown` | The type of the entry. |
 
 ### `map ArgOption`
 | key | summary |
 | -- | -- |
-| `'name' -> string` | The name of the option to match excluding the hyphen prefix. eg. `-path` |
-| `'type' -> metatype(string | float | boolean)` | Parse as given value type. |
+| `'name' -> String` | The name of the option to match excluding the hyphen prefix. eg. `-path` |
+| `'type' -> metatype(String | float | boolean)` | Parse as given value type. |
 | `'default' -> any` | Optional: Default value if option is missing. `none` is used if this is not provided. |
 
 ## test.
@@ -2095,10 +2095,10 @@ my a = 123
 ```cy
 my a = 123
 
-func getFirstRune(s string):
+func getFirstRune(s String):
     return s[0]
 
-getFirstRune(a)       -- RuntimeError. Expected `string`.
+getFirstRune(a)       -- RuntimeError. Expected `String`.
 ```
 Since `a` is dynamic, passing it to a typed function parameter is allowed at compile-time, but will fail when the function is invoked at runtime.
 
@@ -2106,12 +2106,12 @@ The `any` type on the otherhand is a **static type** and must be explicitly decl
 ```cy
 var a any = 123
 
-func getFirstRune(s string):
+func getFirstRune(s String):
     return s[0]
 
-getFirstRune(a)       -- CompileError. Expected `string`.
+getFirstRune(a)       -- CompileError. Expected `String`.
 ```
-This same setup will now fail at compile-time because `any` does not satisfy the destination's `string` type constraint.
+This same setup will now fail at compile-time because `any` does not satisfy the destination's `String` type constraint.
 
 The use of the `dynamic` type effectively defers type checking to runtime while `any` is a static type and must adhere to type constraints at compile-time.
 
@@ -2149,28 +2149,28 @@ my a = 123
 ```
 
 The recent type can change at compile-time from another assignment. 
-If `a` is then assigned to a string literal, `a` from that point on has the recent type of `string` at compile-time:
+If `a` is then assigned to a string literal, `a` from that point on has the recent type of `String` at compile-time:
 ```cy
 my a = 123
 foo(a)           -- Valid call expression.
 a = 'hello'
-foo(a)           -- CompileError. Expected `int` argument, got `string`.
+foo(a)           -- CompileError. Expected `int` argument, got `String`.
 
 func foo(n int):
     pass
 ```
 Even though `a` is `dynamic` and is usually allowed to defer type checking to runtime, the compiler knows that doing so in this context would **always** result in a runtime error, so it provides a compile error instead. This provides a quicker feedback to fix the problem.
 
-The recent type of `a` can also change in branches. However, after the branch block, `a` will have a recent type after merging the types assigned to `a` from the two branched code paths. Currently, the `any` type is used if the types from the two branches differ. At the end of the following `if` block, `a` has the recent type of `any` type after merging the `int` and `string` types: *Planned Feature*
+The recent type of `a` can also change in branches. However, after the branch block, `a` will have a recent type after merging the types assigned to `a` from the two branched code paths. Currently, the `any` type is used if the types from the two branches differ. At the end of the following `if` block, `a` has the recent type of `any` type after merging the `int` and `String` types: *Planned Feature*
 ```cy
 my a = 123
 if a > 20:
     a = 'hello'
     foo(a)       -- Valid call expression. `foo` can be called without type casting.
 
-foo(a)           -- CompileError. Expected `string` argument, got `any`.
+foo(a)           -- CompileError. Expected `String` argument, got `any`.
 
-func foo(s string):
+func foo(s String):
     pass
 ```
 
@@ -2179,7 +2179,7 @@ Static typing can be incrementally applied which provides compile-time guarantee
 Static typing also makes it easier to maintain and refactor your code.
 
 ### Builtin types.
-The following builtin types are available in every module: `bool`, `float`, `int`, `string`, `List`, `Map`, `error`, `fiber`, `any`.
+The following builtin types are available in every module: `bool`, `float`, `int`, `String`, `List`, `Map`, `error`, `fiber`, `any`.
 
 ### `var` declaration.
 A `var` declaration automatically infers the type from the initializer:
@@ -2207,7 +2207,7 @@ var b int = 123.0    -- CompileError. Expected `int`, got `float`.
 
 Any operation afterwards that violates the type constraint of the variable will result in a compile error.
 ```cy
-a = 'hello'          -- CompileError. Expected `float`, got `string`.
+a = 'hello'          -- CompileError. Expected `float`, got `String`.
 ```
 
 Static variables are declared in a similar way:
@@ -2220,7 +2220,7 @@ Unlike local variables, static variable declarations do not infer the type from 
 A `type` declaration creates a new object type. Field types are optional and declared with a type specifier after their name.
 ```cy
 type Student:    -- Creates a new type named `Student`
-    var name string
+    var name String
     var age  int
     var gpa  float
 ```
@@ -2260,8 +2260,8 @@ The following shows the zero values of builtin or created types.
 |`boolean`|`false`|
 |`int`|`0`|
 |`float`|`0.0`|
-|`string`|`''`|
-|`array`|`array('')`|
+|`String`|`''`|
+|`Array`|`Array('')`|
 |`List`|`[]`|
 |`Map`|`[:]`|
 |`type S`|`[S:]`|
@@ -2333,14 +2333,14 @@ The `as` keyword can be used to cast a value to a specific type. Casting lets th
 
 If the compiler knows the cast will always fail at runtime, a compile error is returned instead.
 ```cy
-print('123' as int)       -- CompileError. Can not cast `string` to `int`.
+print('123' as int)       -- CompileError. Can not cast `String` to `int`.
 ```
 
 If the cast fails at runtime, a panic is returned.
 ```cy
 var erased any = 123
 add(1, erased as int)     -- Success.
-print(erased as string)   -- Panic. Can not cast `int` to `string`.
+print(erased as String)   -- Panic. Can not cast `int` to `String`.
 
 func add(a int, b int):
     return a + b
@@ -2486,7 +2486,7 @@ print bool          -- 'type: bool'
 ## Directives.
 Directives start with `#` and are used as modifiers or to invoke compile-time features.
 
-> `#genLabel(name string)`
+> `#genLabel(name String)`
 >
 >Emits a label during codegen for debugging.
 

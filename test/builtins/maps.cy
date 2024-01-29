@@ -40,11 +40,11 @@ t.eq(a['bc'], 123)
 -- ustring slice
 a['abc🦊'[1..]] = 123
 t.eq(a['bc🦊'], 123)
--- array
-a[array('abc')] = 123
+-- Array
+a[Array('abc')] = 123
 t.eq(a['abc'], 123)
--- array slice
-a[array('abc')[1..]] = 123
+-- Array slice
+a[Array('abc')[1..]] = 123
 t.eq(a['bc'], 123)
 
 -- Number key.
@@ -149,7 +149,7 @@ t.eq(m['c'], 4)
 
 -- Remove rc key from map.
 m = [:]
-m[string(1)] = 123
+m[String(1)] = 123
 m.remove('1')
 t.eq(m.size(), 0)
 

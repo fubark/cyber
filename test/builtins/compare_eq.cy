@@ -4,14 +4,14 @@ import t 'test'
 t.eq(3 == 2, false)
 t.eq(3 == 3, true)
 
--- strings.
+-- Strings.
 t.eq('foo' == 'bar', false)
 t.eq('foo' == 'foo', true)
 
-t.eq(array('foo') == array('foo'), true)
-t.eq(array('foo') == array('bar'), false)
+t.eq(Array('foo') == Array('foo'), true)
+t.eq(Array('foo') == Array('bar'), false)
 
--- arrays.
+-- Arrays.
 
 -- Heap string equals.
 var foo = "$('fo')$('o')"

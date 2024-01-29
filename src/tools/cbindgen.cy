@@ -11,9 +11,9 @@ var POST_HEADER = '''
 
 var .args = os.parseArgs([
     -- Output cy path.
-    [ name: 'o', type: string, default: 'bindings.cy' ],
-    [ name: 'libpath', type: string, default: 'lib.dll' ],
-    [ name: 'stripPrefix', type: string, default: 'DONT_MATCH' ],
+    [ name: 'o', type: String, default: 'bindings.cy' ],
+    [ name: 'libpath', type: String, default: 'lib.dll' ],
+    [ name: 'stripPrefix', type: String, default: 'DONT_MATCH' ],
 ])
 
 var existingLibPath = false
@@ -89,7 +89,7 @@ for structs -> name:
     var finalFieldTypes = []
     for fieldTypes -> ftype:
         ftype = ensureBindType(ftype)
-        if typeof(ftype) == string:
+        if typeof(ftype) == String:
             finalFieldTypes.append(getApiName(ftype))
         else:
             finalFieldTypes.append(ftype)
@@ -99,7 +99,7 @@ for funcs -> fn:
     var finalParams = []
     for fn.params -> param:
         param = ensureBindType(param)
-        if typeof(param) == string:
+        if typeof(param) == String:
             finalParams.append(getApiName(param))
         else:
             finalParams.append(param)
@@ -265,7 +265,7 @@ func rootVisitor(cursor, parent, state):
             my fieldt = struct.fieldTypes[i]
             out += '    var $(name) $(toCyType(fieldt, false))'
             if is(fieldt, .voidPtr) or
-                (typeof(fieldt) == string and fieldt.startsWith('[os.CArray')):
+                (typeof(fieldt) == String and fieldt.startsWith('[os.CArray')):
                 out += ' -- $(struct.cxFieldTypes[i])'
             out += '\n'
 
@@ -485,7 +485,7 @@ func macrosRootVisitor(cursor, parent, state):
         case clang.CXEval_StrLiteral:
             my strz = clang.lib.clang_EvalResult_getAsStr(eval)
             var str = strz.fromCstr(0).decode()
-            out += 'var .$(finalName) string = "$(str)"\n'
+            out += 'var .$(finalName) String = "$(str)"\n'
         else:
             print '$(kind)'
             throw error.Unsupported
@@ -496,7 +496,7 @@ func macrosRootVisitor(cursor, parent, state):
         throw error.Unsupported
     return clang.CXChildVisit_Continue
 
-func fromCXString(cxStr) string:
+func fromCXString(cxStr) String:
     my cname = clang.lib.clang_getCString(cxStr)
     return cname.fromCstr(0).decode()
 

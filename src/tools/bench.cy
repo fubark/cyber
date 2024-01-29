@@ -19,7 +19,7 @@ for 0..MaxRuns:
     var start = os.now()
 
     var res = os.execCmd(cmd)
-    var out = res.out as string
+    var out = res.out as String
     var idx = out.find('time:') as int
     if idx == none:
         throw error.NoTimeOutput
@@ -46,7 +46,7 @@ var totalTime = sum / float(totalTimes.len())
 cmd.insert(0, '/usr/bin/time')
 cmd.insert(1, '-l')
 var res = os.execCmd(cmd)
-var out = res.err as string
+var out = res.err as String
 var idx = out.find('maximum resident set size')
 if idx == none:
     throw error.NoMemoryOutput

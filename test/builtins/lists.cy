@@ -24,7 +24,7 @@ my b = t.erase(a)
 t.eqList(b[0..2], [1, 2])
 
 --| Slice retains rc elems.
-a = [string(1), string(2), string(3)]
+a = [String(1), String(2), String(3)]
 a = a[..1]
 t.eq(a[0], '1')
 

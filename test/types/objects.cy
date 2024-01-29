@@ -61,7 +61,7 @@ t.eq(n.value, 234)
 
 -- Struct to string returns struct's name. 
 n = [Node value: 123]
-t.eq(string(n), 'Node')
+t.eq(String(n), 'Node')
 
 type W:
     var a
@@ -117,6 +117,6 @@ t.eq(n3.b, 6)
 -- Using Object sym as a value.
 var sym = Node
 t.eq(typesym(sym), .metatype)
-t.eq(string(sym), 'type: Node')
+t.eq(String(sym), 'type: Node')
 
 --cytest: pass

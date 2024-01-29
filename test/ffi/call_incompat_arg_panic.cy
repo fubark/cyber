@@ -15,7 +15,7 @@ my lib = ffi.bindLib(libPath)
 lib.testAdd(123, '321')
 
 --cytest: error
---panic: Can not find compatible function for `testAdd(any, int, string) any` in `BindLib1`.
+--panic: Can not find compatible function for `testAdd(any, int, String) any` in `BindLib1`.
 --Only `func testAdd(any, int, int) int` exists for the symbol `testAdd`.
 --
 --main:15:1 main:

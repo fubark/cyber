@@ -1525,9 +1525,9 @@ pub const VM = struct {
             },
             bt.Array => {
                 if (obj.array.isSlice()) {
-                    try std.fmt.format(w, "array ({})", .{obj.array.len()});
+                    try std.fmt.format(w, "Array ({})", .{obj.array.len()});
                 } else {
-                    try std.fmt.format(w, "array ({})", .{obj.array.len()});
+                    try std.fmt.format(w, "Array ({})", .{obj.array.len()});
                 }
             },
             bt.List => {

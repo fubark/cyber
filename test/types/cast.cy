@@ -16,18 +16,18 @@ func foo2(a Foo):
 
 -- Cast to exact string type.
 a = 'abc'
-t.eq(foo3(a as string), true)
-func foo3(a string):
+t.eq(foo3(a as String), true)
+func foo3(a String):
     return true
 
 -- Cast to exact array type.
-a = array('abc')
-t.eq(foo4(a as array), true)
-func foo4(a array):
+a = Array('abc')
+t.eq(foo4(a as Array), true)
+func foo4(a Array):
     return true
 
 -- Cast to abstract any type.
-a = array('abc')
+a = Array('abc')
 t.eq(foo5(a as any), true)
 func foo5(a any):
     return true

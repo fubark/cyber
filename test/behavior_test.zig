@@ -156,13 +156,13 @@ if (!aot) {
     // // Failed to cast to abstract type at runtime.
     // try eval(.{ .silent = true },
     //     \\my a = 123
-    //     \\print(a as string)
+    //     \\print(a as String)
     // , struct { fn func(run: *VMrunner, res: EvalResult) !void {
     //     try run.expectErrorReport(res, error.Panic,
-    //         \\panic: Can not cast `int` to `string`.
+    //         \\panic: Can not cast `int` to `String`.
     //         \\
     //         \\main:2:9 main:
-    //         \\print(a as string)
+    //         \\print(a as String)
     //         \\        ^
     //         \\
     //     );

@@ -4,7 +4,7 @@
 --| Prints the result of `toCyon` on a value.
 #host func dump(val any) none
 
-#host func errorReport() string
+#host func errorReport() String
 
 --| Returns the current reference count of an object.
 #host func getObjectRc(val any) int
@@ -26,10 +26,10 @@
 
 --| Parses Cyber source string into structured map object.
 --| Currently, only metadata about static declarations is made available but this will be extended to include an AST.
-#host func parseCyber(src string) Map
+#host func parseCyber(src String) Map
 
 --| Parses a CYON string into a value.
-#host func parseCyon(src string) any
+#host func parseCyon(src String) any
 
 --| Runs the garbage collector once to detect reference cycles and abandoned objects.
 --| Returns the statistics of the run in a map value.
@@ -39,10 +39,10 @@
 #host func print(str any) none
 
 --| Converts a rune to a string.
-#host func runestr(val int) string
+#host func runestr(val int) String
 
 --| Encodes a value to CYON string.
-#host func toCyon(val any) string
+#host func toCyon(val any) String
 
 --| Returns the value's type as a `metatype` object.
 #host func typeof(val any) metatype
@@ -86,10 +86,10 @@ type int:
 
     --| Formats the integer using a kind specifier which can be binary `.b`,
     --| octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.
-    #host func fmt(kind symbol) string
+    #host func fmt(kind symbol) String
 
     --| `opts.pad` provides the ASCII rune that is used for padding with a string length of `opts.width`.
-    #host func fmt(kind symbol, opts Map) string
+    #host func fmt(kind symbol, opts Map) String
 
 --| Converts a value to an 48-bit integer.
 #host func int.'$call'(val any) int
@@ -130,7 +130,7 @@ type List:
     #host func iterator() ListIterator
 
     --| Returns a new string that joins the elements with `separator`.
-    #host func join(sep string) string
+    #host func join(sep String) String
 
     --| Returns the number of elements in the list.
     #host func len() int
@@ -189,26 +189,26 @@ type MapIterator:
     #host func next() any
   
 #host
-type string:
-    #host func '$infix+'(o any) string
+type String:
+    #host func '$infix+'(o any) String
 
     --| Returns a new string that concats this string and `str`.
-    #host func concat(o string) string
+    #host func concat(o String) String
 
     --| Returns whether the string ends with `suffix`.
-    #host func endsWith(suffix string) bool
+    #host func endsWith(suffix String) bool
 
     --| Returns the first index of substring `needle` in the string or `none` if not found. SIMD enabled.
-    #host func find(needle string) any
+    #host func find(needle String) any
 
     --| Returns the first index of any UTF-8 rune in `runes` or `none` if not found. SIMD enabled.
-    #host func findAnyRune(runes string) any
+    #host func findAnyRune(runes String) any
 
     --| Returns the first index of UTF-8 rune `needle` in the string or `none` if not found. SIMD enabled.
     #host func findRune(rune int) int
 
     --| Returns a new string with `str` inserted at index `idx`.
-    #host func insert(idx int, str string) string
+    #host func insert(idx int, str String) String
 
     --| Returns whether the string contains all ASCII runes.
     #host func isAscii() bool
@@ -217,67 +217,67 @@ type string:
     #host func len() int
 
     --| Returns whether this string is lexicographically before `other`.
-    #host func less(other string) bool
+    #host func less(other String) bool
 
     --| Returns this string in lowercase.
-    #host func lower() string
+    #host func lower() String
 
     --| Returns a new string with all occurrences of `needle` replaced with `replacement`.
-    #host func replace(needle string, replacement string) string
+    #host func replace(needle String, replacement String) String
 
     --| Returns a new string with this string repeated `n` times.
-    #host func repeat(n int) string
+    #host func repeat(n int) String
 
     --| Returns the UTF-8 rune at index `idx`.
     #host func runeAt(n int) int
 
     --| Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
-    #host func slice(start any, end any) string
+    #host func slice(start any, end any) String
 
-    #host func '$slice'(start any, end any) string
+    #host func '$slice'(start any, end any) String
 
     --| Returns the UTF-8 rune at index `idx` as a single rune string.
-    #host func sliceAt(idx int) string
+    #host func sliceAt(idx int) String
 
-    #host func '$index'(idx int) string
+    #host func '$index'(idx int) String
 
     --| Returns a list of UTF-8 strings split at occurrences of `sep`.
-    #host func split(sep string) List
+    #host func split(sep String) List
 
     --| Returns whether the string starts with `prefix`.
-    #host func startsWith(prefix string) bool
+    #host func startsWith(prefix String) bool
 
     --| Returns the string with ends trimmed from runes in `delims`. `mode` can be .left, .right, or .ends.
-    #host func trim(mode symbol, delims string) string
+    #host func trim(mode symbol, delims String) String
 
     --| Returns this string in uppercase.
-    #host func upper() string
+    #host func upper() String
 
 --| Converts a value to a string.
-#host func string.'$call'(val any) string
+#host func String.'$call'(val any) String
 
 #host
-type array:
-    #host func '$infix+'(o any) array
+type Array:
+    #host func '$infix+'(o any) Array
 
     --| Returns a new array that concats this array and `other`.
-    #host func concat(other array) array
+    #host func concat(other Array) Array
 
     --| Calls decode(.utf8)
-    #host func decode() string
+    #host func decode() String
 
     --| Decodes the array based on an `encoding`. Supported encodings: `.utf8`.
     --| Returns the decoded string or throws `error.Decode`.
-    #host func decode(encoding symbol) string
+    #host func decode(encoding symbol) String
 
     --| Returns whether the array ends with `suffix`.
-    #host func endsWith(suffix array) bool
+    #host func endsWith(suffix Array) bool
 
     --| Returns the first index of `needle` in the array or `none` if not found.
-    #host func find(needle array) any
+    #host func find(needle Array) any
 
     --| Returns the first index of any `bytes` in `arrays` or `none` if not found.
-    #host func findAnyByte(bytes array) any
+    #host func findAnyByte(bytes Array) any
 
     --| Returns the first index of `byte` in the array or `none` if not found.
     #host func findByte(byte int) any
@@ -285,7 +285,7 @@ type array:
     --| Formats each byte in the array using a kind specifier which can be binary `.b`,
     --| octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.
     --| Each byte is zero padded.
-    #host func fmt(kind symbol) string
+    #host func fmt(kind symbol) String
 
     --| Returns the byte value (0-255) at the given index `idx`.
     #host func getByte(idx int) int
@@ -297,45 +297,45 @@ type array:
     #host func getInt32(idx int, endian symbol) int
 
     --| Returns a new array with `arr` inserted at index `idx`.
-    #host func insert(idx int, arr array) array
+    #host func insert(idx int, arr Array) Array
 
     --| Returns a new array with `byte` inserted at index `idx`.
-    #host func insertByte(idx int, byte int) array
+    #host func insertByte(idx int, byte int) Array
 
     --| Returns a new iterator over the array bytes.
-    #host func iterator() arrayIterator:
-        return [arrayIterator arr: self, nextIdx: 0]
+    #host func iterator() ArrayIterator:
+        return [ArrayIterator arr: self, nextIdx: 0]
 
     --| Returns the number of bytes in the array.
     #host func len() int
 
     --| Returns a new array with this array repeated `n` times.
-    #host func repeat(n int) array
+    #host func repeat(n int) Array
 
     --| Returns a new array with all occurrences of `needle` replaced with `replacement`.
-    #host func replace(needle array, replacement array) array
+    #host func replace(needle Array, replacement Array) Array
 
     --| Returns a slice into this array from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
-    #host func slice(start any, end any) array
+    #host func slice(start any, end any) Array
 
-    #host func '$slice'(start any, end any) array
+    #host func '$slice'(start any, end any) Array
 
     #host func '$index'(idx int) int
 
     --| Returns a list of arrays split at occurrences of `sep`.
-    #host func split(sep array) List
+    #host func split(sep Array) List
 
     --| Returns whether the array starts with `prefix`.
-    #host func startsWith(prefix array) bool
+    #host func startsWith(prefix Array) bool
 
     --| Returns the array with ends trimmed from runes in `delims`. `mode` can be .left, .right, or .ends.
-    #host func trim(mode symbol, delims array) array
+    #host func trim(mode symbol, delims Array) Array
 
---| Converts a string to an byte `array`.
-#host func array.'$call'(val any) array
+--| Converts a string to an byte `Array`.
+#host func Array.'$call'(val any) Array
 
-type arrayIterator:
-    var arr array
+type ArrayIterator:
+    var arr Array
     var nextIdx int
 
     func next() any:
@@ -354,8 +354,8 @@ type pointer:
     --| Unsafe. Casts the pointer to a Cyber object. The object is retained before it's returned.
     #host func asObject() any
 
-    --| Unsafe. Returns an `array` from a null terminated C string.
-    #host func fromCstr(offset int) array
+    --| Unsafe. Returns an `Array` from a null terminated C string.
+    #host func fromCstr(offset int) Array
 
     --| Unsafe. Dereferences the pointer at a byte offset and returns the C value converted to Cyber.
     #host func get(offset int, ctype symbol) any
@@ -363,8 +363,8 @@ type pointer:
     --| Unsafe. Converts the value to a compatible C value and writes it to a byte offset from this pointer.
     #host func set(offset int, ctype symbol, val any) none
 
-    --| Unsafe. Returns an `array` with a copy of the byte data starting from an offset to the specified length.
-    #host func toArray(offset int, len int) array
+    --| Unsafe. Returns an `Array` with a copy of the byte data starting from an offset to the specified length.
+    #host func toArray(offset int, len int) Array
 
 --| Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI.
 #host func pointer.'$call'(val any) pointer

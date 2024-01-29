@@ -11,7 +11,7 @@ import os
 import md '../src/tools/md4c.cy'
 
 var args = os.parseArgs([
-    [ name: 'version', type: string, default: 'dev' ],
+    [ name: 'version', type: String, default: 'dev' ],
     [ name: 'import-style', type: bool, default: false ],
 ])
 
@@ -20,7 +20,7 @@ genDocsModules()
 var curDir = os.dirName(#modUri)
 var src = os.readFile("$(curDir)/docs-modules.md")
 var csrc = os.cstr(src)
-var csrcLen = array(src).len()
+var csrcLen = Array(src).len()
 
 var parser = os.malloc(64)
 var enterBlock_c = md.ffi.bindCallback(enterBlock, [.int, .voidPtr, .voidPtr], .int)
@@ -95,7 +95,7 @@ hljs.registerLanguage('cy', function() {
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case'
         ],
         type: [
-            'float', 'string', 'bool', 'any', 'int', 'List', 'Map', 'rawstring', 'symbol', 'pointer', 'dynamic'
+            'float', 'String', 'Array', 'bool', 'any', 'int', 'List', 'Map', 'symbol', 'pointer', 'dynamic'
         ],
     },
     contains: [
@@ -147,9 +147,9 @@ type State enum:
     case html
 
 type Link:
-    var href  string
-    var title string
-    var text  string
+    var href  String
+    var title String
+    var text  String
 
 func resetState():
     state = State.main
@@ -263,7 +263,7 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         id = id.replace('/', '')
         id = id.lower()
         if idCounts[id]:
-            var newId = "$(id)-$(string(idCounts[id]))"
+            var newId = "$(id)-$(String(idCounts[id]))"
             idCounts[id] += 1
             id = newId
         else:
@@ -369,14 +369,14 @@ func text(text_t md.SPANTYPE, ptr pointer, len int, userdata pointer) int:
         out += str
     return 0
 
-func getAttrText(attr) string:
+func getAttrText(attr) String:
     if attr.size == 0:
         return ''
     return (attr.text as pointer).toArray(0, attr.size).decode()
 
 type ModulePair:
-    var path    string
-    var section string
+    var path    String
+    var section String
 
 func genDocsModules():
     var modules = [

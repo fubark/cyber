@@ -4,7 +4,7 @@ func foo(a float):
     return 'foo'
 
 --cytest: error
---panic: Can not find compatible function for `foo(string) any`.
+--panic: Can not find compatible function for `foo(String) any`.
 --Only `func foo(float) dynamic` exists.
 --
 --main:2:5 main:

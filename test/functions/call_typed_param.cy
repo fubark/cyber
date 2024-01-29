@@ -73,9 +73,9 @@ ptr = t.erase(pointer(123))
 t.eq(fooPointer(pointer(ptr)), true)
 
 --|
---| string.
+--| String.
 --|
-func fooString(a string):
+func fooString(a String):
   return a == 'true'
 
 -- Literal.
@@ -87,7 +87,7 @@ t.eq(fooString(str), true)
 
 -- Cast erased type.
 str = t.erase('true')
-t.eq(fooString(string(str)), true)
+t.eq(fooString(String(str)), true)
 
 -- bool.
 func fooBool(a bool):

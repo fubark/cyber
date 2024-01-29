@@ -128,7 +128,7 @@ const funcs = [_]NameFunc{
     // MapIterator
     .{"next", bindings.mapIteratorNext, .standard},
 
-    // string
+    // String
     .{"$infix+", string.concat, .standard},
     .{"concat", string.concat, .standard},
     .{"endsWith", string.endsWith, .standard},
@@ -151,9 +151,9 @@ const funcs = [_]NameFunc{
     .{"startsWith", string.startsWith, .standard},
     .{"trim", string.trim, .standard},
     .{"upper", string.upper, .standard},
-    .{"string.'$call'", zErrFunc2(string.stringCall), .standard},
+    .{"String.'$call'", zErrFunc2(string.stringCall), .standard},
 
-    // array
+    // Array
     .{"$infix+",        arrayConcat, .standard},
     .{"concat",         arrayConcat, .standard},
     .{"decode",         arrayDecode, .standard},
@@ -177,7 +177,7 @@ const funcs = [_]NameFunc{
     .{"split",          zErrFunc2(arraySplit), .standard},
     .{"startsWith",     arrayStartsWith, .standard},
     .{"trim",           zErrFunc2(arrayTrim), .standard},
-    .{"array.'$call'",  zErrFunc2(arrayCall), .standard},
+    .{"Array.'$call'",  zErrFunc2(arrayCall), .standard},
 
     // pointer
     .{"addr", pointerAddr, .standard},
@@ -209,8 +209,8 @@ const types = [_]NameType{
     .{"tuple", bt.Tuple },
     .{"Map", bt.Map },
     .{"MapIterator", bt.MapIter },
-    .{"string", bt.String },
-    .{"array", bt.Array },
+    .{"String", bt.String },
+    .{"Array", bt.Array },
     .{"pointer", bt.Pointer },
     .{"ExternFunc", bt.ExternFunc },
     .{"Fiber", bt.Fiber },

@@ -1,5 +1,5 @@
 type Account:
-    var name    string
+    var name    String
     var balance float
 
     func deposit(amt):

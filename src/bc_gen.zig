@@ -61,8 +61,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .funcBlock          => try funcBlock(c, idx, nodeId),
         .ifStmt             => try ifStmt(c, idx, nodeId),
         .mainBlock          => try mainBlock(c, idx, nodeId),
-        .pushBlock          => try irPushBlock(c, idx, nodeId),
-        .popBlock           => try irPopBlock(c, idx, nodeId),
+        .block              => try genBlock(c, idx, nodeId),
         .opSet              => try opSet(c, idx, nodeId),
         .pushDebugLabel     => try pushDebugLabel(c, idx),
         .retExprStmt        => try retExprStmt(c, idx, nodeId),
@@ -185,7 +184,11 @@ fn genExpr(c: *Chunk, idx: usize, cstr: RegisterCstr) anyerror!GenValue {
         .tryExpr            => genTryExpr(c, idx, cstr, nodeId),
         .typeSym            => genTypeSym(c, idx, cstr, nodeId),
         .varSym             => genVarSym(c, idx, cstr, nodeId),
-        else => return error.TODO,
+        .blockExpr          => genBlockExpr(c, idx, cstr, nodeId),
+        else => {
+            rt.errZFmt(c.vm, "{}", .{code});
+            return error.TODO;
+        }
     };
     log.tracev("{s}: end", .{@tagName(code)});
     return res;
@@ -2578,6 +2581,27 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     }
 }
 
+fn genBlockExpr(c: *Chunk, loc: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenValue {
+    const data = c.ir.getExprData(loc, .blockExpr);
+
+    // Select merged dst.
+    const inst = try c.rega.selectForNoErrInst(cstr, true);
+    if (inst.requiresPreRelease) {
+        try pushRelease(c, inst.dst, nodeId);
+    }
+
+    try pushBlock(c, false, nodeId);
+    const b = c.genBlock();
+    b.blockExprCstr = RegisterCstr.initExact(inst.dst, true);
+
+    try genStmts(c, data.bodyHead);
+
+    try popBlock(c);
+
+    const val = genValue(c, inst.dst, true);
+    return finishInst(c, val, inst.finalDst);
+}
+
 fn switchStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const blockIdx = c.ir.advanceStmt(idx, .switchStmt);
     _ = try genSwitchBlock(c, blockIdx, null, nodeId);
@@ -2901,14 +2925,11 @@ pub fn shouldGenMainScopeReleaseOps(c: *cy.VMcompiler) bool {
     return !c.vm.config.singleRun;
 }
 
-fn irPushBlock(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
-    _ = idx;
-    try pushBlock(c, false, nodeId);
-}
+fn genBlock(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
+    const data = c.ir.getStmtData(idx, .block);
 
-fn irPopBlock(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
-    _ = nodeId;
-    _ = idx;
+    try pushBlock(c, false, nodeId);
+    try genStmts(c, data.bodyHead);
     try popBlock(c);
 }
 
@@ -2963,6 +2984,7 @@ pub fn pushBlock(c: *Chunk, isLoop: bool, nodeId: cy.NodeId) !void {
         .nodeId = nodeId,
         .isLoopBlock = isLoop,
         .nextLocalReg = c.curBlock.nextLocalReg,
+        .blockExprCstr = undefined,
     });
 
     if (cy.Trace) {
@@ -2996,6 +3018,9 @@ pub const Block = struct {
     nodeId: cy.NodeId,
     nextLocalReg: u8,
     isLoopBlock: bool,
+
+    /// Dst for block expression.
+    blockExprCstr: RegisterCstr,
 
     // Used to check the stack state after each stmt.
     retainedTempStart: if (cy.Trace) u32 else void = undefined,
@@ -3115,20 +3140,26 @@ fn decTraceTempStart(c: *Chunk) void {
 
 fn exprStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .exprStmt);
-
-    const cstr = RegisterCstr.initSimple(data.returnMain);
-
     const expr = c.ir.advanceStmt(idx, .exprStmt);
-    const exprv = try genExpr(c, expr, cstr);
 
-    if (!data.returnMain) {
+    if (data.isBlockResult) {
+        const inMain = c.curBlock.sBlockDepth == 0;
+        if (inMain) {
+            const exprv = try genExpr(c, expr, RegisterCstr.simpleMustRetain);
+            c.curBlock.endLocal = exprv.local;
+            try popTempValue(c, exprv);
+        } else {
+            // Return from block expression.
+            const b = c.blocks.getLast();
+            _ = try genExpr(c, expr, b.blockExprCstr);
+        }
+    } else {
+        const exprv = try genExpr(c, expr, RegisterCstr.simple);
+
         // TODO: Merge with previous release inst.
         try releaseTempValue(c, exprv, nodeId);
-    }
-    try popTempValue(c, exprv);
 
-    if (data.returnMain) {
-        c.curBlock.endLocal = exprv.local;
+        try popTempValue(c, exprv);
     }
 }
 

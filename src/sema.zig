@@ -307,7 +307,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     switch (node.node_t) {
         .exprStmt => {
             const returnMain = node.head.exprStmt.isLastRootStmt;
-            _ = try c.ir.pushStmt(c.alloc, .exprStmt, nodeId, .{ .returnMain = returnMain });
+            _ = try c.ir.pushStmt(c.alloc, .exprStmt, nodeId, .{ .isBlockResult = returnMain });
             _ = try c.semaExpr(node.head.exprStmt.child, .{});
         },
         .breakStmt => {
@@ -1911,7 +1911,7 @@ fn visitChunkInit(self: *cy.VMcompiler, c: *cy.Chunk) !void {
     const mainChunk = self.chunks.items[0];
 
     const func = c.sym.getMod().getSym("$init").?.cast(.func).first;
-    _ = try mainChunk.ir.pushStmt(c.alloc, .exprStmt, cy.NullId, .{ .returnMain = false });
+    _ = try mainChunk.ir.pushStmt(c.alloc, .exprStmt, cy.NullId, .{ .isBlockResult = false });
     _ = try mainChunk.ir.pushExpr(c.alloc, .preCallFuncSym, cy.NullId, .{ .callFuncSym = .{
         .func = func, .hasDynamicArg = false, .numArgs = 0, .args = 0,
     }});

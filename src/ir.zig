@@ -35,8 +35,7 @@ pub const StmtCode = enum(u8) {
 
     declareLocal,
 
-    pushBlock,
-    popBlock,
+    block,
 
     exprStmt,
     ifStmt,
@@ -130,8 +129,17 @@ pub const ExprCode = enum(u8) {
 
     tryExpr,
 
+    blockExpr,
     mainEnd,
     elseBlock,
+};
+
+pub const Block = struct {
+    bodyHead: Loc,
+};
+
+pub const BlockExpr = struct {
+    bodyHead: Loc,
 };
 
 pub const Switch = struct {
@@ -420,7 +428,9 @@ pub const Call = struct {
 };
 
 pub const ExprStmt = struct {
-    returnMain: bool,
+    /// If in a block expression, returns as the result of the expression.
+    /// If in the main block, can be used to return from an `eval`.
+    isBlockResult: bool,
 };
 
 pub const Map = struct {
@@ -500,6 +510,7 @@ pub fn StmtData(comptime code: StmtCode) type {
         .whileInfStmt => WhileInfStmt,
         .destrElemsStmt => DestructureElems,
         .exprStmt => ExprStmt,
+        .block => Block,
         else => void,
     };
 }
@@ -541,6 +552,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .errorv => Error,
         .captured => Captured,
         .symbol => Symbol,
+        .blockExpr => BlockExpr,
         else => void,
     };
 }

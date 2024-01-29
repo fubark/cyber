@@ -418,7 +418,7 @@ fn performChunkInitSema(_: *VMcompiler, c: *cy.Chunk) !void {
     const funcSigId = try c.sema.ensureFuncSig(&.{}, bt.None);
     const func = try c.declareUserFunc(@ptrCast(c.sym), "$init", funcSigId, cy.NullId, false);
 
-    _ = try sema.pushFuncBlock(c, func);
+    _ = try sema.pushFuncProc(c, func);
 
     for (c.parser.staticDecls.items) |sdecl| {
         switch (sdecl.declT) {
@@ -451,7 +451,7 @@ fn performChunkInitSema(_: *VMcompiler, c: *cy.Chunk) !void {
         }
     }
 
-    try sema.popStaticFuncBlock(c);
+    try sema.popFuncBlock(c);
 }
 
 fn appendSymInitIrDFS(c: *cy.Chunk, sym: *cy.Sym, info: *cy.chunk.SymInitInfo, refNodeId: cy.NodeId) !void {

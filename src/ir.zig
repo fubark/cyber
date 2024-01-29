@@ -31,9 +31,12 @@ pub const StmtCode = enum(u8) {
     /// A [numParams]u8 array follows.
     /// Each elem is a boolean indicating whether the respective param
     /// will be written to at some point in the function.
-    funcDecl,
+    funcBlock,
 
     declareLocal,
+
+    pushBlock,
+    popBlock,
 
     exprStmt,
     ifStmt,
@@ -69,11 +72,9 @@ pub const StmtCode = enum(u8) {
     pushDebugLabel,
     dumpBytecode,
     verbose,
-
 };
+
 pub const ExprCode = enum(u8) {
-    pushSubBlock,
-    popSubBlock,
     cast,
 
     coinitCall,
@@ -264,7 +265,7 @@ pub const Lambda = struct {
     captures: u32,
 };
 
-pub const FuncDecl = struct {
+pub const FuncBlock = struct {
     func: *cy.Func,
     maxLocals: u8,
     numParamCopies: u8,
@@ -472,7 +473,7 @@ pub fn StmtData(comptime code: StmtCode) type {
     return comptime switch (code) {
         .root => Root,
         .mainBlock => MainBlock,
-        .funcDecl => FuncDecl,
+        .funcBlock => FuncBlock,
         .declareLocal => DeclareLocal,
         .ifStmt => IfStmt,
         .tryStmt => TryStmt,

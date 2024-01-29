@@ -284,7 +284,7 @@ pub const Node = struct {
         whileOptStmt: struct {
             opt: NodeId,
             bodyHead: NodeId,
-            some: NodeId,
+            capture: NodeId,
         },
         forRange: struct {
             left: NodeId,

@@ -105,9 +105,11 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .exprStmt           => try exprStmt(c, idx, nodeId),
         .forIterStmt        => try forIterStmt(c, idx, nodeId),
         .forRangeStmt       => try forRangeStmt(c, idx, nodeId),
-        .funcDecl           => try funcDecl(c, idx, nodeId),
+        .funcBlock          => try funcBlock(c, idx, nodeId),
         .ifStmt             => try ifStmt(c, idx, nodeId),
         .mainBlock          => try mainBlock(c, idx, nodeId),
+        .pushBlock          => try irPushBlock(c, idx, nodeId),
+        .popBlock           => try irPopBlock(c, idx, nodeId),
         .opSet              => try opSet(c, idx, nodeId),
         .pushDebugLabel     => try pushDebugLabel(c, idx),
         .retExprStmt        => try retExprStmt(c, idx, nodeId),
@@ -144,7 +146,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         }
     }
 
-    if (c.blocks.items.len > 0) {
+    if (c.procs.items.len > 0) {
         // Must have a block to check against expected stack starts.
         try checkStack(c, nodeId);
     }
@@ -242,7 +244,7 @@ fn mainBlock(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .mainBlock);
     log.tracev("main block: {}", .{data.maxLocals});
 
-    try pushBlock(c, .main, nodeId);
+    try pushProc(c, .main, nodeId);
     c.curBlock.frameLoc = 0;
 
     try reserveMainRegs(c, data.maxLocals);
@@ -261,7 +263,7 @@ fn mainBlock(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     } else {
         try mainEnd(c, null);
     }
-    try popBlock(c);
+    try popProc(c);
 
     c.buf.mainStackSize = c.getMaxUsedRegisters();
 
@@ -269,10 +271,10 @@ fn mainBlock(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     _ = c.popRetainedTemp();
 }
 
-fn funcDecl(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
-    const data = c.ir.getStmtData(idx, .funcDecl);
+fn funcBlock(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
+    const data = c.ir.getStmtData(idx, .funcBlock);
     const func = data.func;
-    const paramsIdx = c.ir.advanceStmt(idx, .funcDecl);
+    const paramsIdx = c.ir.advanceStmt(idx, .funcBlock);
     const params = c.ir.getArray(paramsIdx, ir.FuncParam, func.numParams);
 
     // Reserve jump to skip the body.
@@ -556,34 +558,34 @@ fn genObjectInit(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !
 
 fn breakStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     // Release from startLocal of the first parent loop block.
-    var idx = c.subBlocks.items.len-1;
+    var idx = c.blocks.items.len-1;
     while (true) {
-        const sblock = c.subBlocks.items[idx];
-        if (sblock.isLoopBlock) {
-            try genReleaseLocals(c, sblock.nextLocalReg, nodeId);
+        const b = c.blocks.items[idx];
+        if (b.isLoopBlock) {
+            try genReleaseLocals(c, b.nextLocalReg, nodeId);
             break;
         }
         idx -= 1;
     }
 
     const pc = try c.pushEmptyJumpExt(c.desc(nodeId));
-    try c.subBlockJumpStack.append(c.alloc, .{ .jumpT = .brk, .pc = pc });
+    try c.blockJumpStack.append(c.alloc, .{ .jumpT = .brk, .pc = pc });
 }
 
 fn contStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     // Release from startLocal of the first parent loop block.
-    var idx = c.subBlocks.items.len-1;
+    var idx = c.blocks.items.len-1;
     while (true) {
-        const sblock = c.subBlocks.items[idx];
-        if (sblock.isLoopBlock) {
-            try genReleaseLocals(c, sblock.nextLocalReg, nodeId);
+        const b = c.blocks.items[idx];
+        if (b.isLoopBlock) {
+            try genReleaseLocals(c, b.nextLocalReg, nodeId);
             break;
         }
         idx -= 1;
     }
 
     const pc = try c.pushEmptyJumpExt(c.desc(nodeId));
-    try c.subBlockJumpStack.append(c.alloc, .{ .jumpT = .cont, .pc = pc });
+    try c.blockJumpStack.append(c.alloc, .{ .jumpT = .cont, .pc = pc });
 }
 
 fn genThrow(c: *Chunk, idx: usize, nodeId: cy.NodeId) !GenValue {
@@ -2197,7 +2199,7 @@ fn forIterStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
         try pushRelease(c, iterv.local, iterNodeId);
     }
 
-    try pushSubBlock(c, true, nodeId);
+    try pushBlock(c, true, nodeId);
     try genStmts(c, data.declHead);
 
     const bodyPc = c.buf.ops.items.len;
@@ -2218,21 +2220,21 @@ fn forIterStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     const resNoneJump = try c.pushEmptyJumpNone(iterTemp + 1);
 
-    const jumpStackSave: u32 = @intCast(c.subBlockJumpStack.items.len);
+    const jumpStackSave: u32 = @intCast(c.blockJumpStack.items.len);
 
     try genStmts(c, data.bodyHead);
 
-    const sblock = c.subBlocks.getLast();
-    try genReleaseLocals(c, sblock.nextLocalReg, sblock.nodeId);
+    const b = c.blocks.getLast();
+    try genReleaseLocals(c, b.nextLocalReg, b.nodeId);
     // Pop sub block.
-    try popLoopSubBlock(c);
+    try popLoopBlock(c);
 
     const contPc = c.buf.ops.items.len;
     try c.pushJumpBackTo(bodyPc);
     c.patchJumpNoneToCurPc(resNoneJump);
 
     c.patchForBlockJumps(jumpStackSave, c.buf.ops.items.len, contPc);
-    c.subBlockJumpStack.items.len = jumpStackSave;
+    c.blockJumpStack.items.len = jumpStackSave;
 
     // TODO: Iter local should be a reserved hidden local (instead of temp) so it can be cleaned up by endLocals when aborting the current fiber.
     try c.pushOptionalDebugSym(nodeId);
@@ -2264,9 +2266,9 @@ fn whileOptStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .whileOptStmt);
     const topPc = c.buf.ops.items.len;
 
-    const sblockJumpStart: u32 = @intCast(c.subBlockJumpStack.items.len);
+    const blockJumpStart: u32 = @intCast(c.blockJumpStack.items.len);
 
-    try pushSubBlock(c, true, nodeId);
+    try pushBlock(c, true, nodeId);
     try genStmt(c, data.capIdx);
 
     // Optional.
@@ -2283,17 +2285,17 @@ fn whileOptStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     try genStmts(c, data.bodyHead);
 
-    const sblock = c.subBlocks.getLast();
-    try genReleaseLocals(c, sblock.nextLocalReg, sblock.nodeId);
-    try popLoopSubBlock(c);
+    const b = c.blocks.getLast();
+    try genReleaseLocals(c, b.nextLocalReg, b.nodeId);
+    try popLoopBlock(c);
 
     try c.pushJumpBackTo(topPc);
     c.patchJumpNoneToCurPc(optNoneJump);
 
     // No need to free optv if it is none.
 
-    c.patchForBlockJumps(sblockJumpStart, c.buf.ops.items.len, topPc);
-    c.subBlockJumpStack.items.len = sblockJumpStart;
+    c.patchForBlockJumps(blockJumpStart, c.buf.ops.items.len, topPc);
+    c.blockJumpStack.items.len = blockJumpStart;
 }
 
 fn whileInfStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
@@ -2302,20 +2304,20 @@ fn whileInfStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     // Loop top.
     const topPc = c.buf.ops.items.len;
 
-    const sblockJumpStart: u32 = @intCast(c.subBlockJumpStack.items.len);
+    const blockJumpStart: u32 = @intCast(c.blockJumpStack.items.len);
 
-    try pushSubBlock(c, true, nodeId);
+    try pushBlock(c, true, nodeId);
 
     try genStmts(c, data.bodyHead);
 
-    const sblock = c.subBlocks.getLast();
-    try genReleaseLocals(c, sblock.nextLocalReg, sblock.nodeId);
-    try popLoopSubBlock(c);
+    const b = c.blocks.getLast();
+    try genReleaseLocals(c, b.nextLocalReg, b.nodeId);
+    try popLoopBlock(c);
 
     try c.pushJumpBackTo(topPc);
 
-    c.patchForBlockJumps(sblockJumpStart, c.buf.ops.items.len, topPc);
-    c.subBlockJumpStack.items.len = sblockJumpStart;
+    c.patchForBlockJumps(blockJumpStart, c.buf.ops.items.len, topPc);
+    c.blockJumpStack.items.len = blockJumpStart;
 }
 
 fn whileCondStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
@@ -2324,7 +2326,7 @@ fn whileCondStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     // Loop top.
     const topPc = c.buf.ops.items.len;
 
-    const sblockJumpStart: u32 = @intCast(c.subBlockJumpStack.items.len);
+    const blockJumpStart: u32 = @intCast(c.blockJumpStack.items.len);
 
     const condIdx = c.ir.advanceStmt(idx, .whileCondStmt);
     const condNodeId = c.ir.getNode(condIdx);
@@ -2337,22 +2339,22 @@ fn whileCondStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
         try pushRelease(c, condv.local, condNodeId);
     }
 
-    try pushSubBlock(c, true, nodeId);
+    try pushBlock(c, true, nodeId);
 
     // Enter while body.
     try genStmts(c, data.bodyHead);
 
-    const sblock = c.subBlocks.getLast();
-    try genReleaseLocals(c, sblock.nextLocalReg, sblock.nodeId);
-    try popLoopSubBlock(c);
+    const b = c.blocks.getLast();
+    try genReleaseLocals(c, b.nextLocalReg, b.nodeId);
+    try popLoopBlock(c);
 
     try c.pushJumpBackTo(topPc);
     c.patchJumpNotCondToCurPc(condMissJump);
 
     // No need to free cond if false.
 
-    c.patchForBlockJumps(sblockJumpStart, c.buf.ops.items.len, topPc);
-    c.subBlockJumpStack.items.len = sblockJumpStart;
+    c.patchForBlockJumps(blockJumpStart, c.buf.ops.items.len, topPc);
+    c.blockJumpStack.items.len = blockJumpStart;
 }
 
 fn destrElemsStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
@@ -2391,7 +2393,7 @@ fn forRangeStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const endv = try genExpr(c, data.rangeEnd, RegisterCstr.exact(rangeEnd));
 
     // Begin sub-block.
-    try pushSubBlock(c, true, nodeId);
+    try pushBlock(c, true, nodeId);
 
     // Copy counter to itself if no each clause
     var eachLocal: RegisterId = counter;
@@ -2416,14 +2418,14 @@ fn forRangeStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     }
 
     const bodyPc = c.buf.ops.items.len;
-    const jumpStackSave = c.subBlockJumpStack.items.len;
+    const jumpStackSave = c.blockJumpStack.items.len;
     try genStmts(c, data.bodyHead);
 
-    const sblock = c.subBlocks.getLast();
-    try genReleaseLocals(c, sblock.nextLocalReg, sblock.nodeId);
+    const b = c.blocks.getLast();
+    try genReleaseLocals(c, b.nextLocalReg, b.nodeId);
 
     // End sub-block.
-    try popLoopSubBlock(c);
+    try popLoopBlock(c);
 
     // Perform counter update and perform check against end range.
     const jumpBackOffset: u16 = @intCast(c.buf.ops.items.len - bodyPc);
@@ -2434,7 +2436,7 @@ fn forRangeStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     c.buf.setOpArgU16(forRangeOp + 4, jumpBackOffset);
 
     c.patchForBlockJumps(jumpStackSave, c.buf.ops.items.len, forRangeOp);
-    c.subBlockJumpStack.items.len = jumpStackSave;
+    c.blockJumpStack.items.len = jumpStackSave;
 
     c.rega.freeTemps(2);
 }
@@ -2444,21 +2446,21 @@ fn tryStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const pushTryPc = c.buf.ops.items.len;
     try c.buf.pushOpSlice(.pushTry, &.{0, 0, 0, 0});
 
-    try pushSubBlock(c, false, nodeId);
+    try pushBlock(c, false, nodeId);
     try genStmts(c, data.bodyHead);
-    try popSubBlock(c);
+    try popBlock(c);
 
     const popTryPc = c.buf.ops.items.len;
     try c.buf.pushOp2(.popTry, 0, 0);
     c.buf.setOpArgU16(pushTryPc + 3, @intCast(c.buf.ops.items.len - pushTryPc));
 
-    try pushSubBlock(c, false, nodeId);
+    try pushBlock(c, false, nodeId);
     try genStmts(c, data.catchBodyHead);
     var errReg: RegisterId = cy.NullU8;
     if (data.hasErrLocal) {
         errReg = toLocalReg(c, data.errLocal);
     }
-    try popSubBlock(c);
+    try popBlock(c);
 
     // Patch pushTry with errReg.
     c.buf.setOpArgs1(pushTryPc + 1, errReg);
@@ -2561,9 +2563,9 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
         try pushRelease(c, condv.local, condNodeId);
     }
 
-    try pushSubBlock(c, false, nodeId);
+    try pushBlock(c, false, nodeId);
     try genStmts(c, data.bodyHead);
-    try popSubBlock(c);
+    try popBlock(c);
 
     var hasElse = false;
 
@@ -2594,9 +2596,9 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
                 hasElse = true;
             }
 
-            try pushSubBlock(c, false, elseBlockNodeId);
+            try pushBlock(c, false, elseBlockNodeId);
             try genStmts(c, elseBlock.bodyHead);
-            try popSubBlock(c);
+            try popBlock(c);
         }
     }
 
@@ -2623,7 +2625,7 @@ fn genSwitchBlock(c: *Chunk, idx: usize, cstr: ?RegisterCstr, nodeId: cy.NodeId)
 
     var childBreakJumpsStart: u32 = undefined;
     if (!data.leftAssign) {
-        childBreakJumpsStart = @intCast(c.subBlockJumpStack.items.len);
+        childBreakJumpsStart = @intCast(c.blockJumpStack.items.len);
     }
 
     const casesIdx = c.ir.advanceExpr(idx, .switchBlock);
@@ -2697,9 +2699,9 @@ fn genSwitchBlock(c: *Chunk, idx: usize, cstr: ?RegisterCstr, nodeId: cy.NodeId)
         if (case.bodyIsExpr) {
             _ = try genExpr(c, case.bodyHead, cstr.?);
         } else {
-            try pushSubBlock(c, false, caseNodeId);
+            try pushBlock(c, false, caseNodeId);
             try genStmts(c, case.bodyHead);
-            try popSubBlock(c);
+            try popBlock(c);
         }
 
         const caseBodyEndJump = try c.pushEmptyJump();
@@ -2725,7 +2727,7 @@ fn genSwitchBlock(c: *Chunk, idx: usize, cstr: ?RegisterCstr, nodeId: cy.NodeId)
     // Jump here from nested child breaks.
     if (!data.leftAssign) {
         const newLen = c.patchBreaks(childBreakJumpsStart, c.buf.ops.items.len);
-        c.subBlockJumpStack.items.len = newLen;
+        c.blockJumpStack.items.len = newLen;
     }
 
     // Unwind switch expr.
@@ -2803,7 +2805,7 @@ fn genList(c: *Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeId) !GenVal
     return finishInst(c, val, inst.finalDst);
 }
 
-const BlockType = enum(u8) {
+const ProcType = enum(u8) {
     main,
     fiber,
     func,
@@ -2812,7 +2814,7 @@ const BlockType = enum(u8) {
 fn pushFiberBlock(c: *Chunk, numArgs: u8, nodeId: cy.NodeId) !void {
     log.tracev("push fiber block: {}", .{numArgs});
 
-    try pushBlock(c, .fiber, nodeId);
+    try pushProc(c, .fiber, nodeId);
     c.curBlock.frameLoc = nodeId;
 
     try reserveFiberCallRegs(c, numArgs);
@@ -2820,14 +2822,14 @@ fn pushFiberBlock(c: *Chunk, numArgs: u8, nodeId: cy.NodeId) !void {
 
 fn popFiberBlock(c: *Chunk) !void {
     try genBlockReleaseLocals(c);
-    try popBlock(c);
+    try popProc(c);
 
     // Pop boundary index.
     _ = c.popRetainedTemp();
 }
 
 fn pushFuncBlockCommon(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []align(1) const ir.FuncParam, func: *cy.Func, nodeId: cy.NodeId) !void {
-    try pushBlock(c, .func, nodeId);
+    try pushProc(c, .func, nodeId);
 
     c.curBlock.frameLoc = nodeId;
 
@@ -2855,7 +2857,7 @@ pub const Sym = union {
     },
 };
 
-pub fn pushFuncBlock(c: *Chunk, data: ir.FuncDecl, params: []align(1) const ir.FuncParam, nodeId: cy.NodeId) !void {
+pub fn pushFuncBlock(c: *Chunk, data: ir.FuncBlock, params: []align(1) const ir.FuncParam, nodeId: cy.NodeId) !void {
     log.tracev("push func block: {}, {}, {}, {}", .{data.func.numParams, data.maxLocals, data.func.isMethod, nodeId});
     try pushFuncBlockCommon(c, data.maxLocals, data.numParamCopies, params, data.func, nodeId);
 }
@@ -2881,9 +2883,9 @@ pub fn popFuncBlockCommon(c: *Chunk, func: *cy.Func) !void {
         try c.compiler.buf.pushDebugFuncEnd(func, c.id);
     }
 
-    c.blocks.items.len -= 1;
-    if (c.blocks.items.len > 0) {
-        c.curBlock = &c.blocks.items[c.blocks.items.len-1];
+    c.procs.items.len -= 1;
+    if (c.procs.items.len > 0) {
+        c.curBlock = &c.procs.items[c.procs.items.len-1];
 
         // Restore register allocator state.
         c.rega.restoreState(c.curBlock.regaTempStart, c.curBlock.regaNextTemp, c.curBlock.regaMaxTemp);
@@ -2945,16 +2947,27 @@ pub fn shouldGenMainScopeReleaseOps(c: *cy.VMcompiler) bool {
     return !c.vm.config.singleRun;
 }
 
-pub fn pushBlock(c: *Chunk, btype: BlockType, debugNodeId: cy.NodeId) !void {
+fn irPushBlock(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
+    _ = idx;
+    try pushBlock(c, false, nodeId);
+}
+
+fn irPopBlock(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
+    _ = nodeId;
+    _ = idx;
+    try popBlock(c);
+}
+
+pub fn pushProc(c: *Chunk, btype: ProcType, debugNodeId: cy.NodeId) !void {
     // Save register allocator state.
-    if (c.blocks.items.len > 0) {
+    if (c.procs.items.len > 0) {
         c.curBlock.regaTempStart = c.rega.tempStart;
         c.curBlock.regaNextTemp = c.rega.nextTemp;
         c.curBlock.regaMaxTemp = c.rega.maxTemp;
     }
 
-    try c.blocks.append(c.alloc, GenBlock.init(btype));
-    c.curBlock = &c.blocks.items[c.blocks.items.len-1];
+    try c.procs.append(c.alloc, Proc.init(btype));
+    c.curBlock = &c.procs.items[c.procs.items.len-1];
     c.curBlock.irLocalMapStart = @intCast(c.genIrLocalMapStack.items.len);
     c.curBlock.localStart = @intCast(c.genLocalStack.items.len);
     c.curBlock.debugNodeId = debugNodeId;
@@ -2965,11 +2978,11 @@ pub fn pushBlock(c: *Chunk, btype: BlockType, debugNodeId: cy.NodeId) !void {
     }
 }
 
-pub fn popBlock(c: *Chunk) !void {
+pub fn popProc(c: *Chunk) !void {
     log.tracev("pop gen block", .{});
     c.genIrLocalMapStack.items.len = c.curBlock.irLocalMapStart;
     c.genLocalStack.items.len = c.curBlock.localStart;
-    var last = c.blocks.pop();
+    var last = c.procs.pop();
 
     // Check that next temp is at the start which indicates it has been reset after statements.
     if (cy.Trace) {
@@ -2982,53 +2995,53 @@ pub fn popBlock(c: *Chunk) !void {
     }
 
     last.deinit(c.alloc);
-    if (c.blocks.items.len > 0) {
-        c.curBlock = &c.blocks.items[c.blocks.items.len-1];
+    if (c.procs.items.len > 0) {
+        c.curBlock = &c.procs.items[c.procs.items.len-1];
 
         // Restore register allocator state.
         c.rega.restoreState(c.curBlock.regaTempStart, c.curBlock.regaNextTemp, c.curBlock.regaMaxTemp);
     }
 }
 
-pub fn pushSubBlock(c: *Chunk, isLoop: bool, nodeId: cy.NodeId) !void {
-    log.tracev("push sblock {} nextTemp: {}", .{c.curBlock.sBlockDepth, c.rega.nextTemp});
+pub fn pushBlock(c: *Chunk, isLoop: bool, nodeId: cy.NodeId) !void {
+    log.tracev("push block {} nextTemp: {}", .{c.curBlock.sBlockDepth, c.rega.nextTemp});
     c.curBlock.sBlockDepth += 1;
 
-    const idx = c.subBlocks.items.len;
-    try c.subBlocks.append(c.alloc, .{
+    const idx = c.blocks.items.len;
+    try c.blocks.append(c.alloc, .{
         .nodeId = nodeId,
         .isLoopBlock = isLoop,
         .nextLocalReg = c.curBlock.nextLocalReg,
     });
 
     if (cy.Trace) {
-        c.subBlocks.items[idx].retainedTempStart = @intCast(c.getUnwindTempsLen());
-        c.subBlocks.items[idx].tempStart = @intCast(c.rega.nextTemp);
+        c.blocks.items[idx].retainedTempStart = @intCast(c.getUnwindTempsLen());
+        c.blocks.items[idx].tempStart = @intCast(c.rega.nextTemp);
     }
 }
 
-pub fn popSubBlock(c: *Chunk) !void {
-    log.tracev("pop sblock {}", .{c.curBlock.sBlockDepth});
+pub fn popBlock(c: *Chunk) !void {
+    log.tracev("pop block {}", .{c.curBlock.sBlockDepth});
 
-    const sblock = c.subBlocks.pop();
+    const b = c.blocks.pop();
 
     c.curBlock.sBlockDepth -= 1;
 
-    try genReleaseLocals(c, sblock.nextLocalReg, sblock.nodeId);
+    try genReleaseLocals(c, b.nextLocalReg, b.nodeId);
 
     // Restore nextLocalReg.
-    c.curBlock.nextLocalReg = sblock.nextLocalReg;
+    c.curBlock.nextLocalReg = b.nextLocalReg;
 }
 
-pub fn popLoopSubBlock(c: *Chunk) !void {
-    const sblock = c.subBlocks.pop();
+pub fn popLoopBlock(c: *Chunk) !void {
+    const b = c.blocks.pop();
     c.curBlock.sBlockDepth -= 1;
 
     // Restore nextLocalReg.
-    c.curBlock.nextLocalReg = sblock.nextLocalReg;
+    c.curBlock.nextLocalReg = b.nextLocalReg;
 }
 
-pub const GenSubBlock = struct {
+pub const Block = struct {
     nodeId: cy.NodeId,
     nextLocalReg: u8,
     isLoopBlock: bool,
@@ -3038,8 +3051,8 @@ pub const GenSubBlock = struct {
     tempStart: if (cy.Trace) u32 else void = undefined,
 };
 
-pub const GenBlock = struct {
-    type: BlockType,
+pub const Proc = struct {
+    type: ProcType,
     frameLoc: cy.NodeId = cy.NullId,
 
     /// Whether codegen should create an ending that returns 1 arg.
@@ -3081,7 +3094,7 @@ pub const GenBlock = struct {
 
     resetVerboseOnBlockEnd: bool,
 
-    fn init(btype: BlockType) GenBlock {
+    fn init(btype: ProcType) Proc {
         return .{
             .type = btype,
             .requiresEndingRet1 = false,
@@ -3099,7 +3112,7 @@ pub const GenBlock = struct {
         };
     }
 
-    fn deinit(self: *GenBlock, alloc: std.mem.Allocator) void {
+    fn deinit(self: *Proc, alloc: std.mem.Allocator) void {
         _ = self;
         _ = alloc;
     }
@@ -3135,7 +3148,7 @@ pub fn checkArgs(start: RegisterId, argvs: []const GenValue) !void {
 fn decTraceRetainedTempStart(c: *Chunk) void {
     if (cy.Trace) {
         if (c.curBlock.sBlockDepth > 0) {
-            c.subBlocks.items[c.subBlocks.items.len-1].retainedTempStart -= 1;
+            c.blocks.items[c.blocks.items.len-1].retainedTempStart -= 1;
         } else {
             c.curBlock.retainedTempStart -= 1;
         }
@@ -3145,7 +3158,7 @@ fn decTraceRetainedTempStart(c: *Chunk) void {
 fn decTraceTempStart(c: *Chunk) void {
     if (cy.Trace) {
         if (c.curBlock.sBlockDepth > 0) {
-            c.subBlocks.items[c.subBlocks.items.len-1].tempStart -= 1;
+            c.blocks.items[c.blocks.items.len-1].tempStart -= 1;
         } else {
             // Nop.
         }
@@ -3158,8 +3171,8 @@ pub fn checkStack(c: *Chunk, nodeId: cy.NodeId) !void {
         var retainedTempStart: usize = undefined;
         var tempStart: usize = undefined;
         if (c.curBlock.sBlockDepth > 0) {
-            retainedTempStart = c.subBlocks.getLast().retainedTempStart;
-            tempStart = c.subBlocks.getLast().tempStart;
+            retainedTempStart = c.blocks.getLast().retainedTempStart;
+            tempStart = c.blocks.getLast().tempStart;
         } else {
             retainedTempStart = c.curBlock.retainedTempStart;
             tempStart = c.rega.tempStart;
@@ -3400,7 +3413,7 @@ fn pushCallSym(c: *cy.Chunk, startLocal: u8, numArgs: u32, numRet: u8, symId: u3
 }
 
 fn reserveLocalRegAt(c: *Chunk, irLocalId: u8, declType: types.TypeId, lifted: bool, reg: u8, nodeId: cy.NodeId) !void {
-    // Stacks are always big enough because of pushBlock.
+    // Stacks are always big enough because of pushProc.
     log.tracev("reserve {} {} {*} {} {}", .{ irLocalId, reg, c.curBlock, c.curBlock.irLocalMapStart, c.curBlock.localStart });
     log.tracev("local stacks {} {}", .{ c.genIrLocalMapStack.items.len, c.genLocalStack.items.len });
     c.genIrLocalMapStack.items[c.curBlock.irLocalMapStart + irLocalId] = reg;

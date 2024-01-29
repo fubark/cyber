@@ -183,7 +183,7 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
         .exprStmt           => try exprStmt(c, idx, nodeId),
         // .forIterStmt        => try forIterStmt(c, idx, nodeId),
         // .forRangeStmt       => try forRangeStmt(c, idx, nodeId),
-        .funcDecl           => try funcDecl(c, idx, nodeId),
+        .funcBlock          => try funcBlock(c, idx, nodeId),
         .ifStmt             => try ifStmt(c, idx, nodeId),
         .mainBlock          => try mainBlock(c, idx, nodeId),
         // .opSet              => try opSet(c, idx, nodeId),
@@ -215,7 +215,7 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
         }
     }
 
-    if (c.blocks.items.len > 0) {
+    if (c.procs.items.len > 0) {
         // Must have a block to check against expected stack starts.
         try bcgen.checkStack(c, nodeId);
     }
@@ -529,9 +529,9 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
         // try pushRelease(c, condv.local, condNodeId);
     }
 
-    try bcgen.pushSubBlock(c, false, nodeId);
+    try bcgen.pushBlock(c, false, nodeId);
     try genStmts(c, data.bodyHead);
-    try bcgen.popSubBlock(c);
+    try bcgen.popBlock(c);
 
     const hasElse = false;
 
@@ -873,7 +873,7 @@ fn mainBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .mainBlock);
     log.tracev("main block: {}", .{data.maxLocals});
 
-    try bcgen.pushBlock(c, .main, nodeId);
+    try bcgen.pushProc(c, .main, nodeId);
     c.curBlock.frameLoc = 0;
 
     try bcgen.reserveMainRegs(c, data.maxLocals);
@@ -903,7 +903,7 @@ fn mainBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     } else {
         try mainEnd(c, null);
     }
-    try bcgen.popBlock(c);
+    try bcgen.popProc(c);
 
     c.buf.mainStackSize = c.getMaxUsedRegisters();
 
@@ -1031,10 +1031,10 @@ fn declareLocal(c: *cy.Chunk, idx: u32, nodeId: cy.NodeId) !void {
     }
 }
 
-fn funcDecl(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
-    const data = c.ir.getStmtData(idx, .funcDecl);
+fn funcBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
+    const data = c.ir.getStmtData(idx, .funcBlock);
     const func = data.func;
-    const paramsIdx = c.ir.advanceStmt(idx, .funcDecl);
+    const paramsIdx = c.ir.advanceStmt(idx, .funcBlock);
     const params = c.ir.getArray(paramsIdx, ir.FuncParam, func.numParams);
 
     const funcPc = c.jitGetPos();

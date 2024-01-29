@@ -580,7 +580,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .exprStmt           => try exprStmt(c, idx, nodeId),
         // .forIterStmt        => try forIterStmt(c, idx, nodeId),
         // .forRangeStmt       => try forRangeStmt(c, idx, nodeId),
-        .funcDecl           => try funcDecl(c, idx, nodeId),
+        .funcBlock          => try funcBlock(c, idx, nodeId),
         .ifStmt             => try ifStmt(c, idx, nodeId),
         .mainBlock          => try mainBlock(c, idx, nodeId),
         // .opSet              => try opSet(c, idx, nodeId),
@@ -665,7 +665,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!Value {
         // .string             => genString(c, idx, cstr, nodeId),
         // .stringTemplate     => genStringTemplate(c, idx, cstr, nodeId),
         // .switchBlock        => genSwitchBlock(c, idx, cstr, nodeId),
-        .symbol                => genSymbol(c, idx, cstr, nodeId),
+        .symbol             => genSymbol(c, idx, cstr, nodeId),
         // .throw              => genThrow(c, idx, nodeId),
         // .truev              => genTrue(c, cstr, nodeId),
         // .tryExpr            => genTryExpr(c, idx, cstr, nodeId),
@@ -1005,10 +1005,10 @@ fn genLocal(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !Value {
     }
 }
 
-fn funcDecl(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
-    const data = c.ir.getStmtData(idx, .funcDecl);
+fn funcBlock(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
+    const data = c.ir.getStmtData(idx, .funcBlock);
     const func = data.func;
-    const paramsIdx = c.ir.advanceStmt(idx, .funcDecl);
+    const paramsIdx = c.ir.advanceStmt(idx, .funcBlock);
     const params = c.ir.getArray(paramsIdx, ir.FuncParam, func.numParams);
 
     // try pushFuncBlock(c, data, params, nodeId);

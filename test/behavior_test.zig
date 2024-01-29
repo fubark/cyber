@@ -318,8 +318,9 @@ if (!aot) {
                 continue;
             }
         }
+        std.debug.print("test: {s}\n", .{run_case.path});
         case2(run_case.config, run_case.path) catch |err| {
-            std.debug.print("Failed: {s} {}\n", .{run_case.path, err});
+            std.debug.print("Failed: {}\n", .{err});
             continue;
         };
         numPassed += 1;

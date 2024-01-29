@@ -57,7 +57,7 @@ pub const LocalVar = struct {
     vtype: CompactType,
 
     /// Last sub-block that mutated the dynamic var.
-    dynamicLastMutSubBlockId: SubBlockId,
+    dynamicLastMutBlockId: BlockId,
 
     /// Local register offset assigned to this var.
     /// Locals are relative to the stack frame's start position.
@@ -118,16 +118,16 @@ pub const LocalVar = struct {
     }
 };
 
-const VarSubBlock = extern struct {
+const VarBlock = extern struct {
     varId: LocalVarId,
-    subBlockId: SubBlockId,
+    blockId: BlockId,
 };
 
 pub const VarShadow = extern struct {
     namePtr: [*]const u8,
     nameLen: u32,
     varId: LocalVarId,
-    subBlockId: SubBlockId,
+    blockId: BlockId,
 };
 
 pub const NameVar = extern struct {
@@ -151,9 +151,9 @@ pub const VarAndType = struct {
     vtype: TypeId,
 };
 
-pub const SubBlockId = u32;
+pub const BlockId = u32;
 
-pub const SubBlock = struct {
+pub const Block = struct {
     /// Track which vars were assigned to in the current sub block.
     /// If the var was first assigned in a parent sub block, the type is saved in the map to
     /// be merged later with the ending var type.
@@ -184,7 +184,7 @@ pub const SubBlock = struct {
     /// When the sub-block is popped, this is subtracted from the block's `curNumLocals`.
     numLocals: u8,
 
-    pub fn init(nodeId: cy.NodeId, assignedVarStart: usize, varStart: usize, varShadowStart: usize) SubBlock {
+    pub fn init(nodeId: cy.NodeId, assignedVarStart: usize, varStart: usize, varShadowStart: usize) Block {
         return .{
             .nodeId = nodeId,
             .assignedVarStart = @intCast(assignedVarStart),
@@ -196,14 +196,15 @@ pub const SubBlock = struct {
         };
     }
 
-    pub fn deinit(self: *SubBlock, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Block, alloc: std.mem.Allocator) void {
         self.prevVarTypes.deinit(alloc);
     }
 };
 
-pub const BlockId = u32;
+pub const ProcId = u32;
 
-pub const Block = struct {
+/// Container for main, fiber, function, and lambda blocks.
+pub const Proc = struct {
     /// `varStack[varStart]` is the start of params.
     numParams: u8,
 
@@ -211,18 +212,18 @@ pub const Block = struct {
     captures: std.ArrayListUnmanaged(LocalVarId),
 
     /// Maps a name to a var.
-    /// This is updated as sub-blocks declare their own locals and restored
-    /// when sub-blocks end.
+    /// This is updated as blocks declare their own locals and restored
+    /// when blocks end.
     /// This can be deinited after ending the sema block.
     /// TODO: Move to chunk level.
-    nameToVar: std.StringHashMapUnmanaged(VarSubBlock),
+    nameToVar: std.StringHashMapUnmanaged(VarBlock),
 
     /// First sub block id is recorded so the rest can be obtained by advancing
     /// the id in the same order it was traversed in the sema pass.
-    firstSubBlockId: SubBlockId,
+    firstBlockId: BlockId,
 
     /// Current sub block depth.
-    subBlockDepth: u32,
+    blockDepth: u32,
 
     /// Main block if `NullId`.
     func: ?*cy.Func,
@@ -253,13 +254,13 @@ pub const Block = struct {
 
     resetVerboseOnBlockEnd: bool,
 
-    pub fn init(nodeId: cy.NodeId, func: ?*cy.Func, firstSubBlockId: SubBlockId, isStaticFuncBlock: bool, varStart: u32) Block {
+    pub fn init(nodeId: cy.NodeId, func: ?*cy.Func, firstBlockId: BlockId, isStaticFuncBlock: bool, varStart: u32) Proc {
         return .{
             .nameToVar = .{},
             .numParams = 0,
-            .subBlockDepth = 0,
+            .blockDepth = 0,
             .func = func,
-            .firstSubBlockId = firstSubBlockId,
+            .firstBlockId = firstBlockId,
             .isStaticFuncBlock = isStaticFuncBlock,
             .nodeId = nodeId,
             .captures = .{},
@@ -271,12 +272,12 @@ pub const Block = struct {
         };
     }
 
-    pub fn deinit(self: *Block, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Proc, alloc: std.mem.Allocator) void {
         self.nameToVar.deinit(alloc);
         self.captures.deinit(alloc);
     }
 
-    fn getReturnType(self: *const Block) !TypeId {
+    fn getReturnType(self: *const Proc) !TypeId {
         if (self.func) |func| {
             return func.retType;
         } else {
@@ -365,7 +366,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             try preLoop(c, nodeId);
             const irIdx = try c.ir.pushEmptyStmt(c.alloc, .forIterStmt, nodeId);
             _ = try c.semaExpr(header.head.forIterHeader.iterable, .{});
-            try pushSubBlock(c, nodeId);
+            try pushBlock(c, nodeId);
 
             var eachLocal: ?u8 = null;
             var countLocal: ?u8 = null;
@@ -430,7 +431,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             }
 
             try semaStmts(c, node.head.forIterStmt.bodyHead);
-            const stmtBlock = try popLoopSubBlock(c);
+            const stmtBlock = try popLoopBlock(c);
 
             c.ir.setStmtData(irIdx, .forIterStmt, .{
                 .eachLocal = eachLocal, .countLocal = countLocal, .declHead = declHead, .bodyHead = stmtBlock.first,
@@ -444,7 +445,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             _ = try c.semaExpr(rangeClause.head.forRange.left, .{});
             const rangeEnd = try c.semaExpr(rangeClause.head.forRange.right, .{});
 
-            try pushSubBlock(c, nodeId);
+            try pushBlock(c, nodeId);
 
             const hasEach = node.head.forRangeStmt.eachClause != cy.NullId;
             var eachLocal: ?u8 = null;
@@ -463,7 +464,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             c.ir.stmtBlockStack.items[c.ir.stmtBlockStack.items.len-1].last = cy.NullId;
 
             try semaStmts(c, node.head.forRangeStmt.body_head);
-            const stmtBlock = try popLoopSubBlock(c);
+            const stmtBlock = try popLoopBlock(c);
             c.ir.setStmtData(irIdx, .forRangeStmt, .{
                 .eachLocal = eachLocal,
                 .rangeEnd = rangeEnd.irIdx,
@@ -475,9 +476,9 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         .whileInfStmt => {
             try preLoop(c, node.head.child_head);
             const irIdx = try c.ir.pushEmptyStmt(c.alloc, .whileInfStmt, nodeId);
-            try pushSubBlock(c, nodeId);
+            try pushBlock(c, nodeId);
             try semaStmts(c, node.head.child_head);
-            const stmtBlock = try popLoopSubBlock(c);
+            const stmtBlock = try popLoopBlock(c);
             c.ir.setStmtData(irIdx, .whileInfStmt, .{
                 .bodyHead = stmtBlock.first,
             });
@@ -487,11 +488,11 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             const irIdx = try c.ir.pushEmptyStmt(c.alloc, .whileCondStmt, nodeId);
 
             _ = try c.semaExpr(node.head.whileCondStmt.cond, .{});
-            try pushSubBlock(c, nodeId);
+            try pushBlock(c, nodeId);
 
             try semaStmts(c, node.head.whileCondStmt.bodyHead);
 
-            const stmtBlock = try popLoopSubBlock(c);
+            const stmtBlock = try popLoopBlock(c);
             c.ir.setStmtData(irIdx, .whileCondStmt, .{
                 .bodyHead = stmtBlock.first,
             });
@@ -501,12 +502,12 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             const irIdx = try c.ir.pushEmptyStmt(c.alloc, .whileOptStmt, nodeId);
             const opt = try c.semaExpr(node.head.whileOptStmt.opt, .{});
 
-            try pushSubBlock(c, nodeId);
-            if (node.head.whileOptStmt.some == cy.NullId) {
+            try pushBlock(c, nodeId);
+            if (node.head.whileOptStmt.capture == cy.NullId) {
                 return c.reportErrorAt("Missing variable declaration for `some`.", &.{}, nodeId);
             }
             const declT = if (opt.type.dynamic) bt.Dynamic else bt.Any;
-            const id = try declareLocal(c, node.head.whileOptStmt.some, declT, false);
+            const id = try declareLocal(c, node.head.whileOptStmt.capture, declT, false);
             const someLocal: u8 = @intCast(c.varStack.items[id].inner.local.id);
 
             const declHead = c.ir.stmtBlockStack.getLast().first;
@@ -515,7 +516,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             try semaStmts(c, node.head.whileOptStmt.bodyHead);
 
-            const stmtBlock = try popLoopSubBlock(c);
+            const stmtBlock = try popLoopBlock(c);
             c.ir.setStmtData(irIdx, .whileOptStmt, .{
                 .someLocal = someLocal,
                 .capIdx = declHead,
@@ -532,9 +533,9 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             const irElsesIdx = try c.ir.pushEmptyArray(c.alloc, u32, node.head.ifStmt.numElseBlocks);
 
-            try pushSubBlock(c, nodeId);
+            try pushBlock(c, nodeId);
             try semaStmts(c, node.head.ifStmt.bodyHead);
-            const ifStmtBlock = try popSubBlock(c);
+            const ifStmtBlock = try popBlock(c);
 
             var elseBlockId = node.head.ifStmt.elseHead;
             var i: u32 = 0;
@@ -545,9 +546,9 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 if (isElse) {
                     // hasElse = true;
                     const irElseIdx = try c.ir.pushEmptyExpr(c.alloc, .elseBlock, elseBlockId);
-                    try pushSubBlock(c, elseBlockId);
+                    try pushBlock(c, elseBlockId);
                     try semaStmts(c, elseBlock.head.elseBlock.bodyHead);
-                    const stmtBlock = try popSubBlock(c);
+                    const stmtBlock = try popBlock(c);
 
                     c.ir.setArrayItem(irElsesIdx, u32, i, irElseIdx);
                     c.ir.setExprData(irElseIdx, .elseBlock, .{ .isElse = true, .bodyHead = stmtBlock.first });
@@ -561,9 +562,9 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                     const irElseIdx = try c.ir.pushEmptyExpr(c.alloc, .elseBlock, elseBlockId);
                     _ = try c.semaExpr(elseBlock.head.elseBlock.cond, .{});
 
-                    try pushSubBlock(c, elseBlockId);
+                    try pushBlock(c, elseBlockId);
                     try semaStmts(c, elseBlock.head.elseBlock.bodyHead);
-                    const stmtBlock = try popSubBlock(c);
+                    const stmtBlock = try popBlock(c);
 
                     c.ir.setArrayItem(irElsesIdx, u32, i, irElseIdx);
                     c.ir.setExprData(irElseIdx, .elseBlock, .{ .isElse = false, .bodyHead = stmtBlock.first });
@@ -583,12 +584,12 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         .tryStmt => {
             var data: ir.TryStmt = undefined;
             const irIdx = try c.ir.pushEmptyStmt(c.alloc, .tryStmt, nodeId);
-            try pushSubBlock(c, nodeId);
+            try pushBlock(c, nodeId);
             try semaStmts(c, node.head.tryStmt.tryFirstStmt);
-            var stmtBlock = try popSubBlock(c);
+            var stmtBlock = try popBlock(c);
             data.bodyHead = stmtBlock.first;
 
-            try pushSubBlockCommon(c, nodeId);
+            try pushBlock(c, nodeId);
             if (node.head.tryStmt.errorVar != cy.NullId) {
                 const id = try declareLocal(c, node.head.tryStmt.errorVar, bt.Error, false);
                 data.hasErrLocal = true;
@@ -597,7 +598,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 data.hasErrLocal = false;
             }
             try semaStmts(c, node.head.tryStmt.catchFirstStmt);
-            stmtBlock = try popSubBlockCommon(c);
+            stmtBlock = try popBlock(c);
             data.catchBodyHead = stmtBlock.first;
 
             c.ir.setStmtData(irIdx, .tryStmt, data);
@@ -609,8 +610,8 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             _ = try c.ir.pushStmt(c.alloc, .retStmt, nodeId, {});
         },
         .return_expr_stmt => {
-            const block = curBlock(c);
-            const retType = try block.getReturnType();
+            const proc = c.proc();
+            const retType = try proc.getReturnType();
 
             _ = try c.ir.pushStmt(c.alloc, .retExprStmt, nodeId, {});
             _ = try c.semaExprCstr(node.head.child_head, retType);
@@ -634,14 +635,14 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                     const label = c.getNodeString(arg);
                     _ = try c.ir.pushStmt(c.alloc, .pushDebugLabel, nodeId, .{ .name = label });
                 } else if (std.mem.eql(u8, "dumpLocals", name)) {
-                    const block = curBlock(c);
-                    try c.dumpLocals(block);
+                    const proc = c.proc();
+                    try c.dumpLocals(proc);
                 } else if (std.mem.eql(u8, "dumpBytecode", name)) {
                     _ = try c.ir.pushStmt(c.alloc, .dumpBytecode, nodeId, {});
                 } else if (std.mem.eql(u8, "verbose", name)) {
                     if (cy.Trace and !cy.verbose) {
                         cy.verbose = true;
-                        curBlock(c).resetVerboseOnBlockEnd = true;
+                        c.proc().resetVerboseOnBlockEnd = true;
                     }
                     _ = try c.ir.pushStmt(c.alloc, .verbose, nodeId, {});
                 } else {
@@ -1008,12 +1009,12 @@ pub fn objectDecl(c: *cy.Chunk, obj: *cy.sym.ObjectType, nodeId: cy.NodeId) !voi
         const funcN = c.nodes[func.declId];
         if (func.isMethod and func.type == .userFunc) {
             // Object method.
-            const blockId = try pushFuncBlock(c, func);
-            c.semaBlocks.items[blockId].isMethodBlock = true;
+            const blockId = try pushFuncProc(c, func);
+            c.semaProcs.items[blockId].isMethodBlock = true;
 
             try pushMethodParamVars(c, obj.type, func);
             try semaStmts(c, funcN.head.func.bodyHead);
-            try popStaticFuncBlock(c);
+            try popFuncBlock(c);
         }
         i += 1;
     }
@@ -1117,11 +1118,11 @@ pub fn declareFunc(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !*cy.Func {
 pub fn funcDecl(c: *cy.Chunk, func: *cy.Func, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
 
-    _ = try pushFuncBlock(c, func);
+    _ = try pushFuncProc(c, func);
     try appendFuncParamVars(c, func);
     try semaStmts(c, node.head.func.bodyHead);
 
-    try popStaticFuncBlock(c);
+    try popFuncBlock(c);
 }
 
 pub fn declareVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
@@ -1191,10 +1192,10 @@ fn declareParam(c: *cy.Chunk, paramId: cy.NodeId, isSelf: bool, paramIdx: u32, d
         name = c.getNodeStringById(param.head.funcParam.name);
     }
 
-    const block = curBlock(c);
+    const proc = c.proc();
     if (!isSelf) {
-        if (block.nameToVar.get(name)) |varInfo| {
-            if (varInfo.subBlockId == c.semaSubBlocks.items.len - 1) {
+        if (proc.nameToVar.get(name)) |varInfo| {
+            if (varInfo.blockId == c.semaBlocks.items.len - 1) {
                 return c.reportErrorAt("Function param `{}` is already declared.", &.{v(name)}, paramId);
             }
         }
@@ -1211,15 +1212,15 @@ fn declareParam(c: *cy.Chunk, paramId: cy.NodeId, isSelf: bool, paramIdx: u32, d
             .declIrStart = cy.NullId,
         },
     };
-    block.numParams += 1;
+    proc.numParams += 1;
 
-    block.curNumLocals += 1;
+    proc.curNumLocals += 1;
 }
 
 fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, assign: bool, nodeId: cy.NodeId) !LocalVarId {
-    const block = curBlock(c);
-    if (block.nameToVar.get(name)) |varInfo| {
-        if (varInfo.subBlockId == c.semaSubBlocks.items.len - 1) {
+    const proc = c.proc();
+    if (proc.nameToVar.get(name)) |varInfo| {
+        if (varInfo.blockId == c.semaBlocks.items.len - 1) {
             const svar = &c.varStack.items[varInfo.varId];
             if (svar.isParentLocalAlias()) {
                 return c.reportErrorAt("`{}` already references a parent local variable.", &.{v(name)}, nodeId);
@@ -1234,14 +1235,14 @@ fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, assign: bo
                 .namePtr = name.ptr,
                 .nameLen = @intCast(name.len),
                 .varId = varInfo.varId,
-                .subBlockId = varInfo.subBlockId,
+                .blockId = varInfo.blockId,
             });
         }
     }
     const id = try pushLocalVar(c, .local, name, declType);
     var svar = &c.varStack.items[id];
 
-    const irId = block.curNumLocals;
+    const irId = proc.curNumLocals;
     const irIdx = try c.ir.pushStmt(c.alloc, .declareLocal, nodeId, .{
         .namePtr = name.ptr,
         .nameLen = @as(u16, @intCast(name.len)),
@@ -1259,10 +1260,10 @@ fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, assign: bo
         .declIrStart = @intCast(irIdx),
     }};
 
-    const sblock = curSubBlock(c);
-    sblock.numLocals += 1;
+    const b = c.block();
+    b.numLocals += 1;
 
-    block.curNumLocals += 1;
+    proc.curNumLocals += 1;
     return id;
 }
 
@@ -1835,23 +1836,43 @@ fn updateFuncDeclNamePath(c: *cy.Chunk, decl: *FuncDecl, parent: *Sym, nameId: c
     }
 }
 
-pub fn popBlock(self: *cy.Chunk) !cy.ir.StmtBlock {
-    const stmtBlock = try popSubBlock(self);
-    const block = curBlock(self);
-    if (cy.Trace and block.resetVerboseOnBlockEnd) {
+pub fn popProc(self: *cy.Chunk) !cy.ir.StmtBlock {
+    const stmtBlock = try popBlock(self);
+    const proc = self.proc();
+    if (cy.Trace and proc.resetVerboseOnBlockEnd) {
         cy.verbose = false;
     }
-    block.deinit(self.alloc);
-    self.semaBlocks.items.len -= 1;
-    self.varStack.items.len = block.varStart;
+    proc.deinit(self.alloc);
+    self.semaProcs.items.len -= 1;
+    self.varStack.items.len = proc.varStart;
     return stmtBlock;
+}
+
+pub fn pushLambdaProc(c: *cy.Chunk, func: *cy.Func) !ProcId {
+    const idx = try c.ir.pushEmptyExpr(c.alloc, .lambda, func.declId);
+    // Reserve param info.
+    _ = try c.ir.pushEmptyArray(c.alloc, ir.FuncParam, func.numParams);
+
+    const id = try pushProc(c, func);
+    c.proc().irStart = idx;
+    return id;
+}
+
+pub fn pushFuncProc(c: *cy.Chunk, func: *cy.Func) !ProcId {
+    const idx = try c.ir.pushEmptyStmt(c.alloc, .funcBlock, func.declId);
+    // Reserve param info.
+    _ = try c.ir.pushEmptyArray(c.alloc, ir.FuncParam, func.numParams);
+
+    const id = try pushProc(c, func);
+    c.proc().irStart = idx;
+    return id;
 }
 
 pub fn semaMainBlock(compiler: *cy.VMcompiler, mainc: *cy.Chunk) !u32 {
     const irIdx = try mainc.ir.pushEmptyStmt(compiler.alloc, .mainBlock, mainc.parserAstRootId);
 
-    const id = try pushBlock(mainc, null);
-    mainc.mainSemaBlockId = id;
+    const id = try pushProc(mainc, null);
+    mainc.mainSemaProcId = id;
 
     // Emit IR for initializers. DFS order. Stop at circular dependency.
     // TODO: Allow circular dependency between chunks but not symbols.
@@ -1865,14 +1886,14 @@ pub fn semaMainBlock(compiler: *cy.VMcompiler, mainc: *cy.Chunk) !u32 {
     const root = mainc.nodes[mainc.parserAstRootId];
     try semaStmts(mainc, root.head.root.headStmt);
 
-    const block = curBlock(mainc);
+    const proc = mainc.proc();
 
     // Pop block first to obtain the max locals.
-    const stmtBlock = try popBlock(mainc);
-    log.tracev("pop main block: {}", .{block.maxLocals});
+    const stmtBlock = try popProc(mainc);
+    log.tracev("pop main block: {}", .{proc.maxLocals});
 
     mainc.ir.setStmtData(irIdx, .mainBlock, .{
-        .maxLocals = block.maxLocals,
+        .maxLocals = proc.maxLocals,
         .bodyHead = stmtBlock.first,
     });
     return irIdx;
@@ -1905,7 +1926,7 @@ fn visitChunkInit(self: *cy.VMcompiler, c: *cy.Chunk) !void {
     c.initializerVisited = true;
 }
 
-pub fn pushBlock(self: *cy.Chunk, func: ?*cy.Func) !BlockId {
+pub fn pushProc(self: *cy.Chunk, func: ?*cy.Func) !ProcId {
     var isStaticFuncBlock = false;
     var nodeId: cy.NodeId = undefined;
     if (func != null) {
@@ -1915,20 +1936,21 @@ pub fn pushBlock(self: *cy.Chunk, func: ?*cy.Func) !BlockId {
         nodeId = self.parserAstRootId;
     }
 
-    var new = Block.init(nodeId, func, @intCast(self.semaSubBlocks.items.len), isStaticFuncBlock, @intCast(self.varStack.items.len));
-    const idx = self.semaBlocks.items.len;
-    try self.semaBlocks.append(self.alloc, new);
-    try pushSubBlock(self, nodeId);
+    var new = Proc.init(nodeId, func, @intCast(self.semaBlocks.items.len), isStaticFuncBlock, @intCast(self.varStack.items.len));
+    const idx = self.semaProcs.items.len;
+    try self.semaProcs.append(self.alloc, new);
+
+    try pushBlock(self, nodeId);
     return @intCast(idx);
 }
 
 fn preLoop(c: *cy.Chunk, nodeId: cy.NodeId) !void {
-    const block = curBlock(c);
-    const sblock = curSubBlock(c);
+    const proc = c.proc();
+    const b = c.block();
 
     // Scan for dynamic vars and prepare them for entering loop block.
     const start = c.preLoopVarSaveStack.items.len;
-    const vars = c.varStack.items[block.varStart..];
+    const vars = c.varStack.items[proc.varStart..];
     for (vars, 0..) |*svar, i| {
         if (svar.type == .local) {
             if (svar.isDynamic()) {
@@ -1937,7 +1959,7 @@ fn preLoop(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                     // since the rest of the loop hasn't been seen.
                     try c.preLoopVarSaveStack.append(c.alloc, .{
                         .vtype = svar.vtype,
-                        .varId = @intCast(block.varStart + i),
+                        .varId = @intCast(proc.varStart + i),
                     });
                     svar.vtype.id = bt.Any;
                     _ = try c.ir.pushStmt(c.alloc, .setLocalType, nodeId, .{ .local = svar.inner.local.id, .type = svar.vtype });
@@ -1945,113 +1967,106 @@ fn preLoop(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             }
         }
     }
-    sblock.preLoopVarSaveStart = @intCast(start);
+    b.preLoopVarSaveStart = @intCast(start);
 }
 
-fn popSubBlock(c: *cy.Chunk) !cy.ir.StmtBlock {
-    return popSubBlockCommon(c);
-}
-
-fn popSubBlockCommon(c: *cy.Chunk) !cy.ir.StmtBlock {
-    const block = curBlock(c);
-    const sblock = curSubBlock(c);
+fn popBlock(c: *cy.Chunk) !cy.ir.StmtBlock {
+    const proc = c.proc();
+    const b = c.block();
 
     // Update max locals and unwind.
-    if (block.curNumLocals > block.maxLocals) {
-        block.maxLocals = block.curNumLocals;
+    if (proc.curNumLocals > proc.maxLocals) {
+
+        proc.maxLocals = proc.curNumLocals;
     }
-    block.curNumLocals -= sblock.numLocals;
+    proc.curNumLocals -= b.numLocals;
 
-    const curAssignedVars = c.assignedVarStack.items[sblock.assignedVarStart..];
-    c.assignedVarStack.items.len = sblock.assignedVarStart;
+    const curAssignedVars = c.assignedVarStack.items[b.assignedVarStart..];
+    c.assignedVarStack.items.len = b.assignedVarStart;
 
-    if (block.subBlockDepth > 1) {
-        const psblock = c.semaSubBlocks.items[c.semaSubBlocks.items.len-2];
+    if (proc.blockDepth > 1) {
+        const pblock = c.semaBlocks.items[c.semaBlocks.items.len-2];
 
         // Merge types to parent sub block.
         for (curAssignedVars) |varId| {
             const svar = &c.varStack.items[varId];
             // log.tracev("merging {s}", .{self.getVarName(varId)});
-            if (sblock.prevVarTypes.get(varId)) |prevt| {
+            if (b.prevVarTypes.get(varId)) |prevt| {
                 // Merge recent static type.
                 if (svar.vtype.id != prevt.id) {
                     svar.vtype.id = bt.Any;
                     if (svar.type == .local) {
-                        _ = try c.ir.pushStmt(c.alloc, .setLocalType, sblock.nodeId, .{
+                        _ = try c.ir.pushStmt(c.alloc, .setLocalType, b.nodeId, .{
                             .local = svar.inner.local.id, .type = svar.vtype,
                         });
                     }
 
                     // Previous sub block hasn't recorded the var assignment.
-                    if (!psblock.prevVarTypes.contains(varId)) {
+                    if (!pblock.prevVarTypes.contains(varId)) {
                         try c.assignedVarStack.append(c.alloc, varId);
                     }
                 }
             }
         }
     }
-    sblock.prevVarTypes.deinit(c.alloc);
+    b.prevVarTypes.deinit(c.alloc);
 
     // Restore `nameToVar` to previous sub-block state.
-    if (block.subBlockDepth > 1) {
+    if (proc.blockDepth > 1) {
         // Remove dead vars.
-        const varDecls = c.varStack.items[sblock.varStart..];
+        const varDecls = c.varStack.items[b.varStart..];
         for (varDecls) |decl| {
             const name = decl.namePtr[0..decl.nameLen];
-            _ = block.nameToVar.remove(name);
+            _ = proc.nameToVar.remove(name);
         }
-        c.varStack.items.len = sblock.varStart;
+        c.varStack.items.len = b.varStart;
 
         // Restore shadowed vars.
-        const varShadows = c.varShadowStack.items[sblock.varShadowStart..];
+        const varShadows = c.varShadowStack.items[b.varShadowStart..];
         for (varShadows) |shadow| {
             const name = shadow.namePtr[0..shadow.nameLen];
-            try block.nameToVar.putNoClobber(c.alloc, name, .{
+            try proc.nameToVar.putNoClobber(c.alloc, name, .{
                 .varId = shadow.varId,
-                .subBlockId = shadow.subBlockId,
+                .blockId = shadow.blockId,
             });
         }
-        c.varShadowStack.items.len = sblock.varShadowStart;
+        c.varShadowStack.items.len = b.varShadowStart;
     }
 
-    block.subBlockDepth -= 1;
-    c.semaSubBlocks.items.len -= 1;
+    proc.blockDepth -= 1;
+    c.semaBlocks.items.len -= 1;
 
     return c.ir.popStmtBlock();
 }
 
-fn popLoopSubBlock(c: *cy.Chunk) !cy.ir.StmtBlock {
-    const psblock = curSubBlock(c);
-    const stmtBlock = try popSubBlockCommon(c);
+fn popLoopBlock(c: *cy.Chunk) !cy.ir.StmtBlock {
+    const pblock = c.block();
+    const stmtBlock = try popBlock(c);
 
-    const sblock = curSubBlock(c);
-    const varSaves = c.preLoopVarSaveStack.items[sblock.preLoopVarSaveStart..];
+    const b = c.block();
+    const varSaves = c.preLoopVarSaveStack.items[b.preLoopVarSaveStart..];
     for (varSaves) |save| {
         var svar = &c.varStack.items[save.varId];
-        if (svar.dynamicLastMutSubBlockId <= c.semaSubBlocks.items.len - 1) {
+        if (svar.dynamicLastMutBlockId <= c.semaBlocks.items.len - 1) {
             // Unused inside loop block. Restore type.
             svar.vtype = save.vtype;
-            _ = try c.ir.pushStmt(c.alloc, .setLocalType, psblock.nodeId, .{ .local = svar.inner.local.id, .type = svar.vtype });
+            _ = try c.ir.pushStmt(c.alloc, .setLocalType, pblock.nodeId, .{ .local = svar.inner.local.id, .type = svar.vtype });
         }
     }
-    c.preLoopVarSaveStack.items.len = sblock.preLoopVarSaveStart;
+    c.preLoopVarSaveStack.items.len = b.preLoopVarSaveStart;
     return stmtBlock;
 }
 
-fn pushSubBlock(c: *cy.Chunk, nodeId: cy.NodeId) !void {
-    try pushSubBlockCommon(c, nodeId);
-}
-
-fn pushSubBlockCommon(c: *cy.Chunk, nodeId: cy.NodeId) !void {
+fn pushBlock(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     try c.ir.pushStmtBlock(c.alloc);
-    curBlock(c).subBlockDepth += 1;
-    const new = SubBlock.init(
+    c.proc().blockDepth += 1;
+    const new = Block.init(
         nodeId,
         c.assignedVarStack.items.len,
         c.varStack.items.len,
         c.varShadowStack.items.len,
     );
-    try c.semaSubBlocks.append(c.alloc, new);
+    try c.semaBlocks.append(c.alloc, new);
 }
 
 fn pushMethodParamVars(c: *cy.Chunk, objectT: TypeId, func: *const cy.Func) !void {
@@ -2117,16 +2132,16 @@ fn appendFuncParamVars(c: *cy.Chunk, func: *const cy.Func) !void {
 }
 
 fn pushLocalVar(c: *cy.Chunk, _type: LocalVarType, name: []const u8, declType: TypeId) !LocalVarId {
-    const sblock = curBlock(c);
+    const proc = c.proc();
     const id: u32 = @intCast(c.varStack.items.len);
-    _ = try sblock.nameToVar.put(c.alloc, name, .{
+    _ = try proc.nameToVar.put(c.alloc, name, .{
         .varId = id,
-        .subBlockId = @intCast(c.semaSubBlocks.items.len-1),
+        .blockId = @intCast(c.semaBlocks.items.len-1),
     });
     try c.varStack.append(c.alloc, .{
         .declT = declType,
         .type = _type,
-        .dynamicLastMutSubBlockId = 0,
+        .dynamicLastMutBlockId = 0,
         .namePtr = name.ptr,
         .nameLen = @intCast(name.len),
         .vtype = CompactType.init(declType),
@@ -2135,7 +2150,7 @@ fn pushLocalVar(c: *cy.Chunk, _type: LocalVarType, name: []const u8, declType: T
 }
 
 fn getVarPtr(self: *cy.Chunk, name: []const u8) ?*LocalVar {
-    if (curBlock(self).nameToVar.get(name)) |varId| {
+    if (self.proc().nameToVar.get(name)) |varId| {
         return &self.vars.items[varId];
     } else return null;
 }
@@ -2155,9 +2170,9 @@ fn pushObjectMemberAlias(c: *cy.Chunk, name: []const u8, idx: u8, typeId: TypeId
 }
 
 fn pushCapturedObjectMemberAlias(self: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, idx: u8, vtype: TypeId) !LocalVarId {
-    const block = curBlock(self);
+    const proc = self.proc();
     const id = try pushLocalVar(self, .parentObjectMemberAlias, name, vtype);
-    const capturedIdx: u8 = @intCast(block.captures.items.len);
+    const capturedIdx: u8 = @intCast(proc.captures.items.len);
     self.varStack.items[id].inner = .{ .parentObjectMemberAlias = .{
         .selfCapturedIdx = capturedIdx,
         .fieldIdx = idx,
@@ -2170,14 +2185,14 @@ fn pushCapturedObjectMemberAlias(self: *cy.Chunk, name: []const u8, parentVarId:
         .user = parentVarId,
     });
 
-    try block.captures.append(self.alloc, id);
+    try proc.captures.append(self.alloc, id);
     return id;
 }
 
 fn pushCapturedVar(c: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, vtype: CompactType) !LocalVarId {
-    const block = curBlock(c);
+    const proc = c.proc();
     const id = try pushLocalVar(c, .parentLocalAlias, name, vtype.id);
-    const capturedIdx: u8 = @intCast(block.captures.items.len);
+    const capturedIdx: u8 = @intCast(proc.captures.items.len);
     c.varStack.items[id].inner = .{
         .parentLocalAlias = .{
             .capturedIdx = capturedIdx,
@@ -2200,7 +2215,7 @@ fn pushCapturedVar(c: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, vtyp
         .user = parentVarId,
     });
 
-    try block.captures.append(c.alloc, id);
+    try proc.captures.append(c.alloc, id);
     return id;
 }
 
@@ -2247,14 +2262,14 @@ const VarLookupResult = union(enum) {
 /// Static var lookup is skipped for callExpr since there is a chance it can fail on a
 /// symbol with overloaded signatures.
 fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool, nodeId: cy.NodeId) !VarLookupResult {
-    if (self.semaBlocks.items.len == 1 and self.isInStaticInitializer()) {
+    if (self.semaProcs.items.len == 1 and self.isInStaticInitializer()) {
         return (try lookupStaticVar(self, name, nodeId, staticLookup)) orelse {
             return self.reportErrorAt("Could not find the symbol `{}`.", &.{v(name)}, nodeId);
         };
     }
 
-    const block = curBlock(self);
-    if (block.nameToVar.get(name)) |varInfo| {
+    const proc = self.proc();
+    if (proc.nameToVar.get(name)) |varInfo| {
         const svar = self.varStack.items[varInfo.varId];
         if (svar.type == .staticAlias) {
             return VarLookupResult{
@@ -2285,7 +2300,7 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool, nodeId:
     }
 
     // Look for object member if inside method.
-    if (block.isMethodBlock) {
+    if (proc.isMethodBlock) {
         if (self.curObjectSym.?.head.getMod().?.getSym(name)) |sym| {
             if (sym.type == .field) {
                 const field = sym.cast(.field);
@@ -2300,16 +2315,16 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool, nodeId:
     if (try lookupParentLocal(self, name)) |res| {
         if (self.isInStaticInitializer()) {
             // Nop. Since static initializers are analyzed separately from the main block, it can capture any parent block local.
-        } else if (block.isStaticFuncBlock) {
+        } else if (proc.isStaticFuncBlock) {
             // Can not capture local before static function block.
-            const funcName = block.func.?.name();
+            const funcName = proc.func.?.name();
             return self.reportErrorAt("Can not capture the local variable `{}` from static function `{}`.\nOnly lambdas (anonymous functions) can capture local variables.", &.{v(name), v(funcName)}, self.curNodeId);
         }
 
         // Create a local captured variable.
         const parentVar = self.varStack.items[res.varId];
         if (res.isObjectField) {
-            const parentBlock = &self.semaBlocks.items[res.blockIdx];
+            const parentBlock = &self.semaProcs.items[res.blockIdx];
             const selfId = parentBlock.nameToVar.get("self").?.varId;
             var resVarId = res.varId;
             const selfVar = &self.varStack.items[selfId];
@@ -2362,14 +2377,14 @@ const LookupParentLocalResult = struct {
 fn lookupParentLocal(c: *cy.Chunk, name: []const u8) !?LookupParentLocalResult {
     // Only check one block above.
     if (c.semaBlockDepth() > 1) {
-        const prev = c.semaBlocks.items[c.semaBlocks.items.len - 2];
+        const prev = c.semaProcs.items[c.semaProcs.items.len - 2];
         if (prev.nameToVar.get(name)) |varInfo| {
             const svar = c.varStack.items[varInfo.varId];
             if (svar.isCapturable()) {
                 return .{
                     .isObjectField = false,
                     .varId = varInfo.varId,
-                    .blockIdx = @intCast(c.semaBlocks.items.len - 2),
+                    .blockIdx = @intCast(c.semaProcs.items.len - 2),
                     .fieldIdx = undefined,
                     .fieldT = undefined,
                 };
@@ -2383,7 +2398,7 @@ fn lookupParentLocal(c: *cy.Chunk, name: []const u8) !?LookupParentLocalResult {
                     const field = sym.cast(.field);
                     return .{
                         .varId = prev.nameToVar.get("self").?.varId,
-                        .blockIdx = @intCast(c.semaBlocks.items.len - 2),
+                        .blockIdx = @intCast(c.semaProcs.items.len - 2),
                         .fieldIdx = @intCast(field.idx),
                         .fieldT = field.type,
                         .isObjectField = true,
@@ -2533,14 +2548,6 @@ fn reportIncompatibleFuncSig(c: *cy.Chunk, name: []const u8, funcSigId: FuncSigI
     , &.{v(name), v(sigStr), v(name)});
 }
 
-pub fn curSubBlock(self: *cy.Chunk) *SubBlock {
-    return &self.semaSubBlocks.items[self.semaSubBlocks.items.len-1];
-}
-
-pub fn curBlock(self: *cy.Chunk) *Block {
-    return &self.semaBlocks.items[self.semaBlocks.items.len-1];
-}
-
 fn checkTypeCstr(c: *cy.Chunk, ctype: CompactType, cstrTypeId: TypeId, nodeId: cy.NodeId) !void {
     // Dynamic is allowed.
     if (!ctype.dynamic) {
@@ -2688,7 +2695,7 @@ pub const ChunkExt = struct {
 
             try pushSubBlock(c, nodeId);
             try semaStmts(c, case.head.caseBlock.bodyHead);
-            const stmtBlock = try popSubBlock(c);
+            const stmtBlock = try popBlock(c);
             bodyHead = stmtBlock.first;
         }
 
@@ -3278,7 +3285,8 @@ pub const ChunkExt = struct {
             .lambda_expr => {
                 const decl = try resolveFuncDecl(c, @ptrCast(c.sym), nodeId);
                 const func = try c.addUserLambda(@ptrCast(c.sym), decl.funcSigId, nodeId);
-                const irIdx = try pushLambdaBlock(c, func);
+                _ = try pushLambdaProc(c, func);
+                const irIdx = c.proc().irStart;
 
                 // Generate function body.
                 try appendFuncParamVars(c, func);
@@ -3286,20 +3294,21 @@ pub const ChunkExt = struct {
                 _ = try c.ir.pushStmt(c.alloc, .retExprStmt, nodeId, {});
                 _ = try c.semaExpr(node.head.func.bodyHead, .{});
 
-                try popLambdaBlock(c);
+                try popLambdaProc(c);
 
                 return ExprResult.initStatic(irIdx, bt.Any);
             },
             .lambda_multi => {
                 const decl = try resolveFuncDecl(c, @ptrCast(c.sym), nodeId);
                 const func = try c.addUserLambda(@ptrCast(c.sym), decl.funcSigId, nodeId);
-                const irIdx = try pushLambdaBlock(c, func);
+                _ = try pushLambdaProc(c, func);
+                const irIdx = c.proc().irStart;
 
                 // Generate function body.
                 try appendFuncParamVars(c, func);
                 try semaStmts(c, node.head.func.bodyHead);
 
-                try popLambdaBlock(c);
+                try popLambdaProc(c);
 
                 return ExprResult.initStatic(irIdx, bt.Any);
             },
@@ -3954,14 +3963,14 @@ fn assignToLocalVar(c: *cy.Chunk, localRes: ExprResult, rhs: cy.NodeId, opts: As
         }
     }
 
-    const sblock = curSubBlock(c);
-    if (!sblock.prevVarTypes.contains(id)) {
+    const b = c.block();
+    if (!b.prevVarTypes.contains(id)) {
         // Same variable but branched to sub block.
-        try sblock.prevVarTypes.put(c.alloc, id, svar.vtype);
+        try b.prevVarTypes.put(c.alloc, id, svar.vtype);
     }
 
     if (svar.isDynamic()) {
-        svar.dynamicLastMutSubBlockId = @intCast(c.semaSubBlocks.items.len-1);
+        svar.dynamicLastMutBlockId = @intCast(c.semaBlocks.items.len-1);
 
         // Update recent static type after checking for branched assignment.
         if (svar.vtype.id != right.type.id) {
@@ -3977,25 +3986,15 @@ pub fn declareUsingModule(c: *cy.Chunk, sym: *cy.Sym) !void {
     try c.usingModules.append(c.alloc, sym);
 }
 
-pub fn pushLambdaBlock(c: *cy.Chunk, func: *cy.Func) !u32 {
-    const idx = try c.ir.pushEmptyExpr(c.alloc, .lambda, func.declId);
-    // Reserve param info.
-    _ = try c.ir.pushEmptyArray(c.alloc, ir.FuncParam, func.numParams);
+fn popLambdaProc(c: *cy.Chunk) !void {
+    const proc = c.proc();
+    const params = c.getProcParams(proc);
 
-    _ = try pushBlock(c, func);
-    curBlock(c).irStart = idx;
-    return idx;
-}
-
-fn popLambdaBlock(c: *cy.Chunk) !void {
-    const block = curBlock(c);
-    const params = getBlockParams(c, block);
-
-    const captures = try block.captures.toOwnedSlice(c.alloc);
-    const stmtBlock = try popBlock(c);
+    const captures = try proc.captures.toOwnedSlice(c.alloc);
+    const stmtBlock = try popProc(c);
 
     var numParamCopies: u8 = 0;
-    const paramIrStart = c.ir.advanceExpr(block.irStart, .lambda);
+    const paramIrStart = c.ir.advanceExpr(proc.irStart, .lambda);
     const paramData = c.ir.getArray(paramIrStart, ir.FuncParam, params.len);
     for (params, 0..) |param, i| {
         paramData[i] = .{
@@ -4022,34 +4021,24 @@ fn popLambdaBlock(c: *cy.Chunk) !void {
     }
 
     // Patch `pushFuncBlock` with maxLocals and param copies.
-    c.ir.setExprData(block.irStart, .lambda, .{
-        .func = block.func.?,
+    c.ir.setExprData(proc.irStart, .lambda, .{
+        .func = proc.func.?,
         .numCaptures = @as(u8, @intCast(captures.len)),
-        .maxLocals = block.maxLocals,
+        .maxLocals = proc.maxLocals,
         .numParamCopies = numParamCopies,
         .bodyHead = stmtBlock.first,
         .captures = irCapturesIdx,
     });
 }
 
-pub fn pushFuncBlock(c: *cy.Chunk, func: *cy.Func) !BlockId {
-    const idx = try c.ir.pushEmptyStmt(c.alloc, .funcDecl, func.declId);
-    // Reserve param info.
-    _ = try c.ir.pushEmptyArray(c.alloc, ir.FuncParam, func.numParams);
+pub fn popFuncBlock(c: *cy.Chunk) !void {
+    const proc = c.proc();
+    const params = c.getProcParams(proc);
 
-    const id = try pushBlock(c, func);
-    curBlock(c).irStart = idx;
-    return id;
-}
-
-pub fn popStaticFuncBlock(c: *cy.Chunk) !void {
-    const block = curBlock(c);
-    const params = getBlockParams(c, block);
-
-    const stmtBlock = try popBlock(c);
+    const stmtBlock = try popProc(c);
 
     var numParamCopies: u8 = 0;
-    const paramIrStart = c.ir.advanceStmt(block.irStart, .funcDecl);
+    const paramIrStart = c.ir.advanceStmt(proc.irStart, .funcBlock);
     const paramData = c.ir.getArray(paramIrStart, ir.FuncParam, params.len);
     for (params, 0..) |param, i| {
         paramData[i] = .{
@@ -4064,14 +4053,14 @@ pub fn popStaticFuncBlock(c: *cy.Chunk) !void {
         }
     }
 
-    const func = block.func.?;
+    const func = proc.func.?;
     const parentType = if (func.isMethod) params[0].declT else cy.NullId;
 
     // Patch `pushFuncBlock` with maxLocals and param copies.
-    c.ir.setStmtData(block.irStart, .funcDecl, .{
-        .maxLocals = block.maxLocals,
+    c.ir.setStmtData(proc.irStart, .funcBlock, .{
+        .maxLocals = proc.maxLocals,
         .numParamCopies = numParamCopies,
-        .func = block.func.?,
+        .func = proc.func.?,
         .bodyHead = stmtBlock.first,
         .parentType = parentType,
     });

@@ -49,8 +49,8 @@ pub const Chunk = struct {
     ///
     /// Sema pass
     ///
+    semaProcs: std.ArrayListUnmanaged(sema.Proc),
     semaBlocks: std.ArrayListUnmanaged(sema.Block),
-    semaSubBlocks: std.ArrayListUnmanaged(sema.SubBlock),
     capVarDescs: std.AutoHashMapUnmanaged(sema.LocalVarId, sema.CapVarDesc),
 
     genValueStack: std.ArrayListUnmanaged(bc_gen.GenValue),
@@ -95,7 +95,7 @@ pub const Chunk = struct {
     symInitInfos: std.AutoHashMapUnmanaged(*cy.Sym, SymInitInfo),
 
     /// Main sema block id.
-    mainSemaBlockId: sema.BlockId,
+    mainSemaProcId: sema.ProcId,
 
     /// Local sym names to mod syms. eg. imports, type aliases.
     /// Most syms are cached while syms like `Root` are always included.
@@ -116,9 +116,9 @@ pub const Chunk = struct {
     /// Codegen pass
     ///
     rega: cy.register.Allocator,
-    blocks: std.ArrayListUnmanaged(bc_gen.GenBlock),
-    subBlocks: std.ArrayListUnmanaged(bc_gen.GenSubBlock),
-    subBlockJumpStack: std.ArrayListUnmanaged(SubBlockJump),
+    procs: std.ArrayListUnmanaged(bc_gen.Proc),
+    blocks: std.ArrayListUnmanaged(bc_gen.Block),
+    blockJumpStack: std.ArrayListUnmanaged(BlockJump),
 
     regStack: std.ArrayListUnmanaged(u8),
     operandStack: std.ArrayListUnmanaged(u8),
@@ -126,7 +126,7 @@ pub const Chunk = struct {
     unwindTempIndexStack: std.ArrayListUnmanaged(UnwindTempIndex),
     unwindTempRegStack: std.ArrayListUnmanaged(u8),
 
-    curBlock: *bc_gen.GenBlock,
+    curBlock: *bc_gen.Proc,
 
     /// Shared final code buffer.
     buf: *cy.ByteCodeBuffer,
@@ -198,12 +198,12 @@ pub const Chunk = struct {
             .parserAstRootId = cy.NullId,
             .nodes = undefined,
             .tokens = undefined,
+            .semaProcs = .{},
             .semaBlocks = .{},
-            .semaSubBlocks = .{},
             .capVarDescs = .{},
+            .procs = .{},
             .blocks = .{},
-            .subBlocks = .{},
-            .subBlockJumpStack = .{},
+            .blockJumpStack = .{},
             .assignedVarStack = .{},
             .varShadowStack = .{},
             .varStack = .{},
@@ -234,7 +234,7 @@ pub const Chunk = struct {
             .modSyms = .{},
             .tempBufU8 = .{},
             .srcOwned = true,
-            .mainSemaBlockId = cy.NullId,
+            .mainSemaProcId = cy.NullId,
             .localSymMap = .{},
             .funcCheckCache = .{},
             .rega = cy.register.Allocator.init(c, id),
@@ -272,20 +272,20 @@ pub const Chunk = struct {
     pub fn deinit(self: *Chunk) void {
         self.tempBufU8.deinit(self.alloc);
 
-        for (self.semaSubBlocks.items) |*block| {
-            block.deinit(self.alloc);
-        }
-        self.semaSubBlocks.deinit(self.alloc);
-
-        for (self.semaBlocks.items) |*sblock| {
-            sblock.deinit(self.alloc);
+        for (self.semaBlocks.items) |*b| {
+            b.deinit(self.alloc);
         }
         self.semaBlocks.deinit(self.alloc);
 
-        self.blocks.deinit(self.alloc);
-        self.subBlocks.deinit(self.alloc);
+        for (self.semaProcs.items) |*sproc| {
+            sproc.deinit(self.alloc);
+        }
+        self.semaProcs.deinit(self.alloc);
 
-        self.subBlockJumpStack.deinit(self.alloc);
+        self.procs.deinit(self.alloc);
+        self.blocks.deinit(self.alloc);
+
+        self.blockJumpStack.deinit(self.alloc);
         self.assignedVarStack.deinit(self.alloc);
         self.varShadowStack.deinit(self.alloc);
         self.varStack.deinit(self.alloc);
@@ -340,6 +340,23 @@ pub const Chunk = struct {
         }
     }
 
+    pub fn block(self: *cy.Chunk) *sema.Block {
+        return &self.semaBlocks.items[self.semaBlocks.items.len-1];
+    }
+
+    pub fn proc(self: *cy.Chunk) *sema.Proc {
+        return &self.semaProcs.items[self.semaProcs.items.len-1];
+    }
+
+    pub fn getProcParams(c: *const cy.Chunk, p: *sema.Proc) []const sema.LocalVar {
+        return c.varStack.items[p.varStart..p.varStart+p.numParams];
+    }
+
+    /// Includes aliases.
+    pub fn getProcVars(c: *const cy.Chunk, p: *sema.Proc) []const sema.LocalVar {
+        return c.varStack.items[p.varStart+p.numParams..];
+    }
+
     pub fn getNextUniqUnnamedIdent(c: *Chunk, buf: *[16]u8) []const u8 {
         const symMap = c.sym.getMod().symMap;
         var fbuf = std.io.fixedBufferStream(buf);
@@ -363,7 +380,7 @@ pub const Chunk = struct {
     }
 
     pub inline fn semaBlockDepth(self: *Chunk) u32 {
-        return @intCast(self.semaBlocks.items.len);
+        return @intCast(self.semaProcs.items.len);
     }
 
     pub fn reserveIfTempLocal(self: *Chunk, local: LocalId) !void {
@@ -377,7 +394,7 @@ pub const Chunk = struct {
     }
 
     pub inline fn isParamOrLocalVar(self: *const Chunk, reg: u8) bool {
-        if (self.blocks.items.len > 1) {
+        if (self.procs.items.len > 1) {
             return reg != 0 and reg < self.rega.tempStart;
         } else {
             return reg < self.rega.tempStart;
@@ -532,16 +549,16 @@ pub const Chunk = struct {
         self.buf.setOpArgU16(jumpPc + 1, @intCast(self.buf.ops.items.len - jumpPc));
     }
 
-    /// Patches sub block breaks. For `if` and `match` blocks.
+    /// Patches block breaks. For `if` and `match` blocks.
     /// All other jumps are propagated up the stack by copying to the front.
     /// Returns the adjusted jumpStackStart for this block.
     pub fn patchSubBlockBreakJumps(self: *Chunk, jumpStackStart: usize, breakPc: usize) usize {
         var keepIdx = jumpStackStart;
-        for (self.subBlockJumpStack.items[jumpStackStart..]) |jump| {
+        for (self.blockJumpStack.items[jumpStackStart..]) |jump| {
             if (jump.jumpT == .subBlockBreak) {
                 self.buf.setOpArgU16(jump.pc + 1, @intCast(breakPc - jump.pc));
             } else {
-                self.subBlockJumpStack.items[keepIdx] = jump;
+                self.blockJumpStack.items[keepIdx] = jump;
                 keepIdx += 1;
             }
         }
@@ -550,7 +567,7 @@ pub const Chunk = struct {
 
     pub fn patchBreaks(self: *Chunk, jumpStackStart: usize, breakPc: usize) usize {
         var keepIdx = jumpStackStart;
-        for (self.subBlockJumpStack.items[jumpStackStart..]) |jump| {
+        for (self.blockJumpStack.items[jumpStackStart..]) |jump| {
             switch (jump.jumpT) {
                 .brk => {
                     if (breakPc > jump.pc) {
@@ -560,7 +577,7 @@ pub const Chunk = struct {
                     }
                 },
                 else => {
-                    self.subBlockJumpStack.items[keepIdx] = jump;
+                    self.blockJumpStack.items[keepIdx] = jump;
                     keepIdx += 1;
                 },
             }
@@ -569,7 +586,7 @@ pub const Chunk = struct {
     }
 
     pub fn patchForBlockJumps(self: *Chunk, jumpStackStart: usize, breakPc: usize, contPc: usize) void {
-        for (self.subBlockJumpStack.items[jumpStackStart..]) |jump| {
+        for (self.blockJumpStack.items[jumpStackStart..]) |jump| {
             switch (jump.jumpT) {
                 .brk => {
                     if (breakPc > jump.pc) {
@@ -618,11 +635,11 @@ pub const Chunk = struct {
         return cy.sema.unescapeString(self.tempBufU8.items, literal);
     }
 
-    pub fn dumpLocals(self: *const Chunk, block: *sema.Block) !void {
+    pub fn dumpLocals(self: *const Chunk, sproc: *sema.Proc) !void {
         if (cy.Trace) {
             if (!cy.silentInternal) {
                 rt.print(self.vm, "Locals:");
-                const params = sema.getBlockParams(self, block);
+                const params = self.getProcParams(sproc);
                 for (params) |svar| {
                     const typeId: types.TypeId = svar.vtype.id;
                     rt.printFmt(self.vm, "{} (param), local: {}, dyn: {}, rtype: {}, lifted: {}", &.{
@@ -630,8 +647,8 @@ pub const Chunk = struct {
                         v(svar.inner.local.lifted),
                     });
                 }
-                const locals = sema.getBlockLocals(self, block);
-                for (locals) |svar| {
+                const vars = self.getProcVars(sproc);
+                for (vars) |svar| {
                     const typeId: types.TypeId = svar.vtype.id;
                     rt.printFmt(self.vm, "{}, local: {}, dyn: {}, rtype: {}, lifted: {}", &.{
                         v(svar.name()), v(svar.local), v(svar.vtype.dynamic), v(typeId),
@@ -841,15 +858,15 @@ test "chunk internals." {
     }
 }
 
-const SubBlockJumpType = enum {
+const BlockJumpType = enum {
     /// Breaks out of a for loop, while loop, or switch stmt.
     brk,
     /// Continues a for loop or while loop.
     cont,
 };
 
-const SubBlockJump = struct {
-    jumpT: SubBlockJumpType,
+const BlockJump = struct {
+    jumpT: BlockJumpType,
     pc: u32,
 };
 

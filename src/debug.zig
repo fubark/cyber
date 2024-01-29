@@ -538,8 +538,8 @@ pub fn dumpBytecode(vm: *cy.VM, optPcContext: ?u32) !void {
 
         if (sym.frameLoc == 0) {
             rt.print(vm, "Block: main");
-            const sblock = &chunk.semaBlocks.items[chunk.mainSemaBlockId];
-            try chunk.dumpLocals(sblock);
+            const proc = &chunk.semaProcs.items[chunk.mainSemaProcId];
+            try chunk.dumpLocals(proc);
         } else {
             // const funcNode = chunk.nodes[sym.frameLoc];
             return error.TODO;

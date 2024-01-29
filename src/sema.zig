@@ -75,6 +75,9 @@ pub const LocalVar = struct {
             /// If a param is written to or turned into a Box, `copied` becomes true.
             isParamCopied: bool,
 
+            /// If declaration has an initializer.
+            hasInit: bool,
+
             /// Currently a captured var always needs to be lifted.
             /// In the future, the concept of a immutable variable could change this.
             lifted: bool,
@@ -317,7 +320,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             _ = try c.ir.pushStmt(c.alloc, .contStmt, nodeId, {});
         },
         .localDecl => {
-            _ = try localDecl(c, nodeId);
+            try localDecl(c, nodeId);
         },
         .opAssignStmt => {
             const op = node.head.opAssignStmt.op;
@@ -1205,6 +1208,7 @@ fn declareParam(c: *cy.Chunk, paramId: cy.NodeId, isSelf: bool, paramIdx: u32, d
             .id = @intCast(paramIdx),
             .isParam = true,
             .isParamCopied = false,
+            .hasInit = false,
             .lifted = false,
             .declIrStart = cy.NullId,
         },
@@ -1214,7 +1218,7 @@ fn declareParam(c: *cy.Chunk, paramId: cy.NodeId, isSelf: bool, paramIdx: u32, d
     proc.curNumLocals += 1;
 }
 
-fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, assign: bool, nodeId: cy.NodeId) !LocalVarId {
+fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, hasInit: bool, nodeId: cy.NodeId) !LocalVarId {
     const proc = c.proc();
     if (proc.nameToVar.get(name)) |varInfo| {
         if (varInfo.blockId == c.semaBlocks.items.len - 1) {
@@ -1239,20 +1243,35 @@ fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, assign: bo
     const id = try pushLocalVar(c, .local, name, declType);
     var svar = &c.varStack.items[id];
 
+    const proc = c.proc();
     const irId = proc.curNumLocals;
-    const irIdx = try c.ir.pushStmt(c.alloc, .declareLocal, nodeId, .{
-        .namePtr = name.ptr,
-        .nameLen = @as(u16, @intCast(name.len)),
-        .declType = declType,
-        .id = irId,
-        .assign = assign,
-        .lifted = false,
-    });
+
+    var irIdx: u32 = undefined;
+    if (hasInit) {
+        irIdx = try c.ir.pushStmt(c.alloc, .declareLocalInit, nodeId, .{
+            .namePtr = name.ptr,
+            .nameLen = @as(u16, @intCast(name.len)),
+            .declType = declType,
+            .id = irId,
+            .lifted = false,
+            .init = cy.NullId,
+            .zeroMem = false,
+        });
+    } else {
+        irIdx = try c.ir.pushStmt(c.alloc, .declareLocal, nodeId, .{
+            .namePtr = name.ptr,
+            .nameLen = @as(u16, @intCast(name.len)),
+            .declType = declType,
+            .id = irId,
+            .lifted = false,
+        });
+    }
 
     svar.inner = .{ .local = .{
         .id = irId,
         .isParam = false,
         .isParamCopied = false,
+        .hasInit = hasInit,
         .lifted = false,
         .declIrStart = @intCast(irIdx),
     }};
@@ -1264,10 +1283,10 @@ fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, assign: bo
     return id;
 }
 
-fn declareLocal(c: *cy.Chunk, identId: cy.NodeId, declType: TypeId, assign: bool) !LocalVarId {
+fn declareLocal(c: *cy.Chunk, identId: cy.NodeId, declType: TypeId, hasInit: bool) !LocalVarId {
     const ident = c.nodes[identId];
     const name = c.getNodeString(ident);
-    return declareLocalName(c, name, declType, assign, identId);
+    return declareLocalName(c, name, declType, hasInit, identId);
 }
 
 fn localDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
@@ -1288,10 +1307,24 @@ fn localDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     }
 
     const varId = try declareLocal(c, varSpec.head.varSpec.name, typeId, true);
+    var svar = &c.varStack.items[varId];
+    const irIdx = svar.inner.local.declIrStart;
+
+    const maxLocalsBeforeInit = c.proc().curNumLocals;
 
     // Infer rhs type and enforce constraint.
     const right = try c.semaExprCstr(node.head.localDecl.right, typeId);
 
+    var data = c.ir.getStmtDataPtr(irIdx, .declareLocalInit);
+    data.init = right.irIdx;
+    if (maxLocalsBeforeInit < c.proc().maxLocals) {
+        // Initializer must have a declaration (in a block expr)
+        // since the number of locals increased.
+        // Local's memory must be zeroed.
+        data.zeroMem = true;
+    }
+
+    svar = &c.varStack.items[varId];
     if (inferType) {
         var declType = right.type.toStaticDeclType();
         var recentType = right.type.id;
@@ -1300,16 +1333,13 @@ fn localDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             recentType = bt.Any;
         }
 
-        c.varStack.items[varId].declT = declType;
-        c.varStack.items[varId].vtype.id = @intCast(recentType);
+        svar.declT = declType;
+        svar.vtype.id = @intCast(recentType);
         // Patch IR.
-        const irIdx = c.varStack.items[varId].inner.local.declIrStart;
-        var data = c.ir.getStmtData(irIdx, .declareLocal);
         data.declType = declType;
-        c.ir.setStmtData(irIdx, .declareLocal, data);
     } else if (typeId == bt.Dynamic) {
         // Update recent static type.
-        c.varStack.items[varId].vtype.id = right.type.id;
+        svar.vtype.id = right.type.id;
     }
 
     try c.assignedVarStack.append(c.alloc, varId);
@@ -1970,7 +2000,6 @@ fn popBlock(c: *cy.Chunk) !cy.ir.StmtBlock {
 
     // Update max locals and unwind.
     if (proc.curNumLocals > proc.maxLocals) {
-
         proc.maxLocals = proc.curNumLocals;
     }
     proc.curNumLocals -= b.numLocals;
@@ -2200,9 +2229,14 @@ fn pushCapturedVar(c: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, vtyp
     // Patch local IR.
     if (!pvar.inner.local.isParam) {
         const declIrStart = pvar.inner.local.declIrStart;
-        var data = c.ir.getStmtData(declIrStart, .declareLocal);
-        data.lifted = true;
-        c.ir.setStmtData(declIrStart, .declareLocal, data);
+
+        if (pvar.inner.local.hasInit) {
+            const data = c.ir.getStmtDataPtr(declIrStart, .declareLocalInit);
+            data.lifted = true;
+        } else {
+            const data = c.ir.getStmtDataPtr(declIrStart, .declareLocal);
+            data.lifted = true;
+        }
     }
 
     try c.capVarDescs.put(c.alloc, id, .{

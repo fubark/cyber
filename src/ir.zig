@@ -34,6 +34,7 @@ pub const StmtCode = enum(u8) {
     funcBlock,
 
     declareLocal,
+    declareLocalInit,
 
     block,
 
@@ -308,13 +309,29 @@ pub const FuncParam = struct {
     }
 };
 
+pub const DeclareLocalInit = struct {
+    namePtr: [*]const u8,
+    nameLen: u16,
+    declType: TypeId,
+    id: u8,
+    lifted: bool,
+
+    /// If the local depends on a child local (declared in a block expr),
+    /// the memory must be zeroed so unwinding doesn't end up using an undefined value.
+    zeroMem: bool,
+    init: Loc,
+
+    pub fn name(self: DeclareLocalInit) []const u8 {
+        return self.namePtr[0..self.nameLen];
+    }
+};
+
 pub const DeclareLocal = struct {
     namePtr: [*]const u8,
     nameLen: u16,
     declType: TypeId,
     id: u8,
     lifted: bool,
-    assign: bool,
 
     pub fn name(self: DeclareLocal) []const u8 {
         return self.namePtr[0..self.nameLen];
@@ -489,6 +506,7 @@ pub fn StmtData(comptime code: StmtCode) type {
         .mainBlock => MainBlock,
         .funcBlock => FuncBlock,
         .declareLocal => DeclareLocal,
+        .declareLocalInit => DeclareLocalInit,
         .ifStmt => IfStmt,
         .tryStmt => TryStmt,
         .forIterStmt => ForIterStmt,

@@ -786,6 +786,7 @@ pub const DebugSym = extern struct {
     file: u16,
 
     /// Which locals are alive before this instruction.
+    /// Not all locals in this range have a RC but they are guaranteed to have a defined value.
     localStart: u8,
     localEnd: u8,
 

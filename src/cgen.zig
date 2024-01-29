@@ -576,6 +576,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         // .breakStmt          => try breakStmt(c, nodeId),
         // .contStmt           => try contStmt(c, nodeId),
         .declareLocal       => try declareLocal(c, idx, nodeId),
+        .declareLocalInit   => try declareLocalInit(c, idx, nodeId),
         // .destrElemsStmt     => try destrElemsStmt(c, idx, nodeId),
         .exprStmt           => try exprStmt(c, idx, nodeId),
         // .forIterStmt        => try forIterStmt(c, idx, nodeId),
@@ -731,48 +732,52 @@ fn cBoxMacro(typeId: cy.TypeId) []const u8 {
     };
 }
 
+fn declareLocalInit(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
+    const data = c.ir.getStmtData(idx, .declareLocalInit);
+
+    // // Don't advance nextLocalReg yet since the rhs hasn't generated so the
+    // // alive locals should not include this declaration.
+    // const reg = try bcgen.reserveLocalReg(c, data.id, data.declType, data.isBoxed, nodeId, false);
+
+    const b = c.block();
+    c.localStack.items[b.localStart + data.id] = .{ .some = .{
+        .name = data.name(),
+        .owned = true,
+        .rcCandidate = c.sema.isRcCandidateType(data.declType),
+        .lifted = data.lifted,
+        .boxed = cIsBoxedType(data.declType),
+        .type = data.declType,
+    }};
+
+    try c.beginLine(nodeId);
+    try c.pushSpanFmt("{s} {s} = ", .{try cTypeName(c.sema, data.declType), data.name()});
+    const val = try genTopExpr(c, data.init, Cstr.init(data.declType));
+    _ = val;
+    try c.pushSpanEnd(";");
+
+    // const local = bcgen.getLocalInfoPtr(c, reg);
+
+    // // if (local.some.boxed) {
+    // //     try c.pushOptionalDebugSym(nodeId);
+    // //     try c.buf.pushOp2(.box, reg, reg);
+    // // }
+    // local.some.rcCandidate = val.retained;
+
+    // // rhs has generated, increase `nextLocalReg`.
+    // c.curBlock.nextLocalReg += 1;
+    // log.tracev("declare {}, rced: {} ", .{val.local, local.some.rcCandidate});
+}
+
 fn declareLocal(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
-    const data = c.ir.getStmtData(idx, .declareLocal);
-    if (data.assign) {
-        // // Don't advance nextLocalReg yet since the rhs hasn't generated so the
-        // // alive locals should not include this declaration.
-        // const reg = try bcgen.reserveLocalReg(c, data.id, data.declType, data.isBoxed, nodeId, false);
+    _ = c;
+    _ = idx;
+    _ = nodeId;
 
-        const b = c.block();
-        c.localStack.items[b.localStart + data.id] = .{ .some = .{
-            .name = data.name(),
-            .owned = true,
-            .rcCandidate = c.sema.isRcCandidateType(data.declType),
-            .lifted = data.lifted,
-            .boxed = cIsBoxedType(data.declType),
-            .type = data.declType,
-        }};
+    // const reg = try bcgen.reserveLocalReg(c, data.id, data.declType, data.isBoxed, nodeId, true);
 
-        try c.beginLine(nodeId);
-        try c.pushSpanFmt("{s} {s} = ", .{try cTypeName(c.sema, data.declType), data.name()});
-        const exprIdx = c.ir.advanceStmt(idx, .declareLocal);
-        const val = try genTopExpr(c, exprIdx, Cstr.init(data.declType));
-        _ = val;
-        try c.pushSpanEnd(";");
-
-        // const local = bcgen.getLocalInfoPtr(c, reg);
-
-        // // if (local.some.boxed) {
-        // //     try c.pushOptionalDebugSym(nodeId);
-        // //     try c.buf.pushOp2(.box, reg, reg);
-        // // }
-        // local.some.rcCandidate = val.retained;
-
-        // // rhs has generated, increase `nextLocalReg`.
-        // c.curBlock.nextLocalReg += 1;
-        // log.tracev("declare {}, rced: {} ", .{val.local, local.some.rcCandidate});
-    } else {
-        // const reg = try bcgen.reserveLocalReg(c, data.id, data.declType, data.isBoxed, nodeId, true);
-
-        // // Not yet initialized, so it does not have a refcount.
-        // bcgen.getLocalInfoPtr(c, reg).some.rcCandidate = false;
-        return error.TODO;
-    }
+    // // Not yet initialized, so it does not have a refcount.
+    // bcgen.getLocalInfoPtr(c, reg).some.rcCandidate = false;
+    return error.TODO;
 }
 
 fn genCallFuncSym(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !Value {

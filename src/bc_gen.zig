@@ -54,6 +54,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .breakStmt          => try breakStmt(c, nodeId),
         .contStmt           => try contStmt(c, nodeId),
         .declareLocal       => try declareLocal(c, idx, nodeId),
+        .declareLocalInit   => try declareLocalInit(c, idx, nodeId),
         .destrElemsStmt     => try destrElemsStmt(c, idx, nodeId),
         .exprStmt           => try exprStmt(c, idx, nodeId),
         .forIterStmt        => try forIterStmt(c, idx, nodeId),
@@ -1514,33 +1515,43 @@ fn setVarSym(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     if (rightv.isRetainedTemp()) _ = c.popRetainedTemp();
 }
 
-fn declareLocal(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
-    const data = c.ir.getStmtData(idx, .declareLocal);
-    if (data.assign) {
+fn declareLocalInit(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
+    const data = c.ir.getStmtData(idx, .declareLocalInit);
+
+    var reg: u8 = undefined;
+    if (!data.zeroMem) {
         // Don't advance nextLocalReg yet since the rhs hasn't generated so the
         // alive locals should not include this declaration.
-        const reg = try reserveLocalReg(c, data.id, data.declType, data.lifted, nodeId, false);
+        reg = try reserveLocalReg(c, data.id, data.declType, data.lifted, nodeId, false);
+    } else {
+        reg = try reserveLocalReg(c, data.id, data.declType, data.lifted, nodeId, true);
+        try c.buf.pushOp2Ext(.constI8, 0, reg, c.desc(nodeId));
+    }
 
-        const exprIdx = c.ir.advanceStmt(idx, .declareLocal);
-        const val = try genExpr(c, exprIdx, RegisterCstr.toLocal(reg, false));
+    const val = try genExpr(c, data.init, RegisterCstr.toLocal(reg, false));
 
-        const local = getLocalInfoPtr(c, reg);
+    const local = getLocalInfoPtr(c, reg);
 
-        if (local.some.lifted) {
-            try c.pushOptionalDebugSym(nodeId);
-            try c.buf.pushOp2(.box, reg, reg);
-        }
-        local.some.rcCandidate = val.retained;
+    if (local.some.lifted) {
+        try c.pushOptionalDebugSym(nodeId);
+        try c.buf.pushOp2(.box, reg, reg);
+    }
+    local.some.rcCandidate = val.retained;
 
+    if (!data.zeroMem) {
         // rhs has generated, increase `nextLocalReg`.
         c.curBlock.nextLocalReg += 1;
-        log.tracev("declare {}, rced: {} ", .{val.local, local.some.rcCandidate});
-    } else {
-        const reg = try reserveLocalReg(c, data.id, data.declType, data.lifted, nodeId, true);
-
-        // Not yet initialized, so it does not have a refcount.
-        getLocalInfoPtr(c, reg).some.rcCandidate = false;
     }
+    log.tracev("declare {}, rced: {} ", .{val.local, local.some.rcCandidate});
+}
+
+fn declareLocal(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
+    const data = c.ir.getStmtData(idx, .declareLocal);
+
+    const reg = try reserveLocalReg(c, data.id, data.declType, data.lifted, nodeId, true);
+
+    // Not yet initialized, so it does not have a refcount.
+    getLocalInfoPtr(c, reg).some.rcCandidate = false;
 }
 
 fn setCaptured(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {

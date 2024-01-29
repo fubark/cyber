@@ -374,6 +374,46 @@ pub const ChunkExt = struct {
         return sym;
     }
 
+    /// Declared at the chunk level.
+    /// TODO: Hash object members to avoid duplicate types at the chunk level.
+    ///       Actually, it might not even be worth it since it means the usual case requires
+    ///       iterating the members to create the hash.
+    pub fn declareUnnamedObjectType(c: *cy.Chunk, parent: *cy.Sym, declId: cy.NodeId) !*cy.sym.ObjectType {
+        const mod = parent.getMod().?;
+        var buf: [16]u8 = undefined;
+        const name = mod.chunk.getNextUniqUnnamedIdent(&buf);
+
+        const nameDup = try c.alloc.dupe(u8, name);
+        try c.parser.strs.append(c.alloc, nameDup);
+
+        const typeId = try c.sema.pushType();
+        const sym = try cy.sym.createSym(c.alloc, .object, .{
+            .head = cy.Sym.init(.object, parent, nameDup),
+            .declId = declId,
+            .type = typeId,
+            .fields = undefined,
+            .numFields = 0,
+            .mod = undefined,
+        });
+
+        @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
+        try mod.chunk.modSyms.append(c.alloc, @ptrCast(sym));
+
+        const symId = try addSym(c, mod, name, @ptrCast(sym));
+
+        // Update node's `name` so it can do a lookup during resolving.
+        mod.chunk.ast.nodes[declId].head.objectDecl.name = symId;
+
+        c.compiler.sema.types.items[typeId] = .{
+            .sym = @ptrCast(sym),
+            .symType = .object,
+            .data = .{
+                .numFields = 0,
+            }
+        };
+        return sym;
+    }
+
     pub fn declareHostObjectType(
         c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId,
         getChildrenFn: cc.ObjectGetChildrenFn, finalizerFn: cc.ObjectFinalizerFn,
@@ -590,7 +630,7 @@ fn ensureTypeAliasIsResolved(mod: *Module, alias: *cy.sym.TypeAlias) !void {
     if (alias.type == cy.NullId) {
         const srcChunk = mod.chunk;
         const node = srcChunk.nodes[alias.declId];
-        alias.type = try cy.sema.resolveTypeFromSpecNode(srcChunk, node.head.typeAliasDecl.typeSpecHead);
+        alias.type = try cy.sema.resolveTypeSpecNode(srcChunk, node.head.typeAliasDecl.typeSpecHead);
         alias.sym = mod.chunk.compiler.sema.types.items[alias.type].sym;
     }
 }

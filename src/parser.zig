@@ -70,8 +70,13 @@ pub const Parser = struct {
     src: []const u8,
     next_pos: u32,
     savePos: u32,
+
     tokens: std.ArrayListUnmanaged(Token),
     nodes: std.ArrayListUnmanaged(cy.Node),
+
+    /// Generated strings.
+    strs: std.ArrayListUnmanaged([]const u8),
+
     last_err: []const u8,
     /// The last error's src char pos.
     last_err_pos: u32,
@@ -115,6 +120,7 @@ pub const Parser = struct {
             .savePos = undefined,
             .tokens = .{},
             .nodes = .{},
+            .strs = .{},
             .last_err = "",
             .last_err_pos = 0,
             .blockStack = .{},
@@ -133,6 +139,10 @@ pub const Parser = struct {
     pub fn deinit(self: *Parser) void {
         self.tokens.deinit(self.alloc);
         self.nodes.deinit(self.alloc);
+        for (self.strs.items) |str| {
+            self.alloc.free(str);
+        }
+        self.strs.deinit(self.alloc);
         self.alloc.free(self.last_err);
         for (self.blockStack.items) |*block| {
             block.deinit(self.alloc);
@@ -658,6 +668,16 @@ pub const Parser = struct {
         return field;
     }
 
+    fn parseTypeSpec(self: *Parser, allowUnnamedType: bool) !?NodeId {
+        if (allowUnnamedType) {
+            const token = self.peekToken();
+            if (token.tag() == .object_k) {
+                return try self.parseObjectDecl(token.pos(), null, cy.NullId);
+            }
+        }
+        return self.parseOptNamePath();
+    }
+
     fn parseObjectField(self: *Parser) !?NodeId {
         const start = self.next_pos;
 
@@ -672,11 +692,13 @@ pub const Parser = struct {
             return self.reportParseError("Expected field identifier.", &.{});
         };
 
-        var typeSpecHead: cy.NodeId = cy.NullId;
+        var typeSpec: cy.NodeId = cy.NullId;
         if (typed) {
-            if (try self.parseOptNamePath()) |namePath| {
-                try self.consumeNewLineOrEnd();
-                typeSpecHead = namePath;
+            if (try self.parseTypeSpec(true)) |node| {
+                if (self.nodes.items[node].node_t != .objectDecl) {
+                    try self.consumeNewLineOrEnd();
+                }
+                typeSpec = node;
             }
         }
 
@@ -684,7 +706,7 @@ pub const Parser = struct {
         self.nodes.items[field].head = .{
             .objectField = .{
                 .name = name,
-                .typeSpecHead = typeSpecHead,
+                .typeSpec = typeSpec,
                 .typed = typed,
             },
         };
@@ -791,7 +813,7 @@ pub const Parser = struct {
         return id;
     }
 
-    fn pushObjectDecl(self: *Parser, start: TokenId, name: NodeId, modifierHead: NodeId, fieldsHead: NodeId, numFields: u32, funcsHead: NodeId) !NodeId {
+    fn pushObjectDecl(self: *Parser, start: TokenId, nameOpt: ?NodeId, modifierHead: NodeId, fieldsHead: NodeId, numFields: u32, funcsHead: NodeId) !NodeId {
         const body = try self.pushNode(.objectDeclBody, start);
         self.nodes.items[body].head = .{
             .objectDeclBody = .{
@@ -802,13 +824,21 @@ pub const Parser = struct {
         };
 
         const id = try self.pushNode(.objectDecl, start);
-        self.nodes.items[id].head = .{
-            .objectDecl = .{
+        if (nameOpt) |name| {
+            self.nodes.items[id].head = .{ .objectDecl = .{
                 .name = name,
                 .modifierHead = modifierHead,
                 .body = body,
-            },
-        };
+                .unnamed = false,
+            }};
+        } else {
+            self.nodes.items[id].head = .{ .objectDecl = .{
+                .name = cy.NullId,
+                .modifierHead = modifierHead,
+                .body = body,
+                .unnamed = true,
+            }};
+        }
         try self.staticDecls.append(self.alloc, .{
             .declT = .object,
             .nodeId = id,
@@ -817,7 +847,7 @@ pub const Parser = struct {
         return id;
     }
 
-    fn parseObjectDecl(self: *Parser, start: TokenId, name: NodeId, modifierHead: cy.NodeId) !NodeId {
+    fn parseObjectDecl(self: *Parser, start: TokenId, name: ?NodeId, modifierHead: cy.NodeId) anyerror!NodeId {
         self.inObjectDecl = true;
         defer self.inObjectDecl = false;
 

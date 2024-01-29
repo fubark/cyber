@@ -169,6 +169,11 @@ pub const Chunk = struct {
 
     encoder: cy.ast.Encoder,
 
+    /// For declaring unnamed types.
+    /// This does not mean that the id is unique since user defined types may have been declared
+    /// before this id is used.
+    nextUnnamedId: u32,
+
     /// LLVM
     tempTypeRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.TypeRef) else void,
     tempValueRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.ValueRef) else void,
@@ -249,6 +254,7 @@ pub const Chunk = struct {
             .initializerVisited = false,
             .initializerVisiting = false,
             .encoder = undefined,
+            .nextUnnamedId = 1,
         };
 
         if (cy.hasJIT) {
@@ -331,6 +337,24 @@ pub const Chunk = struct {
         self.parser.deinit();
         if (self.srcOwned) {
             self.alloc.free(self.src);
+        }
+    }
+
+    pub fn getNextUniqUnnamedIdent(c: *Chunk, buf: *[16]u8) []const u8 {
+        const symMap = c.sym.getMod().symMap;
+        var fbuf = std.io.fixedBufferStream(buf);
+        const w = fbuf.writer();
+        w.writeAll("unnamed") catch cy.fatal();
+        while (true) {
+            fbuf.pos = "unnamed".len;
+            std.fmt.formatInt(c.nextUnnamedId, 10, .lower, .{}, w) catch cy.fatal();
+            const name = fbuf.getWritten();
+            if (symMap.contains(name)) {
+                c.nextUnnamedId += 1;
+            } else {
+                defer c.nextUnnamedId += 1;
+                return name;
+            }
         }
     }
 

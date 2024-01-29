@@ -430,6 +430,7 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
 * [Objects.](#objects)
   * [Fields.](#fields)
   * [Instantiate.](#instantiate)
+  * [Unnamed object.](#unnamed-object)
   * [Methods.](#methods)
   * [`self` variable.](#self-variable)
   * [Type functions.](#type-functions)
@@ -830,6 +831,21 @@ When a field is omitted in the record literal, it gets initialized to its [zero 
 ```cy
 var node Node = [value: 234]
 print node.next       -- Prints "Option.none"
+```
+
+### Unnamed object.
+Unnamed object types can be declared and used without an explicit `type` declaration:
+```cy
+type Node:
+    var value object:
+        var a  int
+        var b  float
+    var next ?Node
+
+var node = [Node
+    value: [a: 123, b: 100.0],
+    next: none,
+]
 ```
 
 ### Methods.

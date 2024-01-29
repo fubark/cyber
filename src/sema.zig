@@ -926,11 +926,17 @@ pub fn declareObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym{
             return @ptrCast(try declareHostObject(c, nodeId));
         }
     }
-    const nameN = c.nodes[node.head.objectDecl.name];
-    const name = c.getNodeString(nameN);
-
-    const sym = try c.declareObjectType(@ptrCast(c.sym), name, nodeId);
-    return @ptrCast(sym);
+    const nameId = node.head.objectDecl.name;
+    if (nameId != cy.NullId) {
+        const nameN = c.nodes[nameId];
+        const name = c.getNodeString(nameN);
+        const sym = try c.declareObjectType(@ptrCast(c.sym), name, nodeId);
+        return @ptrCast(sym);
+    } else {
+        // Unnamed object.
+        const sym = try c.declareUnnamedObjectType(@ptrCast(c.sym), nodeId);
+        return @ptrCast(sym);
+    }
 }
 
 /// modSym can be an objectType or predefinedType.
@@ -953,10 +959,10 @@ pub fn declareObjectMembers(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !v
             const fieldName = c.getNodeStringById(field.head.objectField.name);
             var fieldType: cy.NodeId = cy.NullId;
             if (field.head.objectField.typed) {
-                if (field.head.objectField.typeSpecHead == cy.NullId) {
+                if (field.head.objectField.typeSpec == cy.NullId) {
                     fieldType = bt.Any;
                 } else {
-                    fieldType = try resolveTypeFromSpecNode(c, field.head.objectField.typeSpecHead);
+                    fieldType = try resolveTypeSpecNode(c, field.head.objectField.typeSpec);
                 }
             } else {
                 fieldType = bt.Dynamic;
@@ -1135,7 +1141,7 @@ pub fn declareVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
         return c.reportErrorAt("`{}` does not have an initializer.", &.{v(name)}, nodeId);
     } else {
         // var type.
-        const typeId = try resolveTypeFromSpecNode(c, varSpec.head.varSpec.typeSpecHead);
+        const typeId = try resolveTypeSpecNode(c, varSpec.head.varSpec.typeSpecHead);
 
         const decl = try resolveLocalDeclNamePath(c, varSpec.head.varSpec.name);
         return @ptrCast(try c.declareUserVar(decl.parent, decl.name, nodeId, typeId));
@@ -1163,7 +1169,7 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
         return c.reportErrorAt("Host var `{}` failed to load.", &.{v(decl.namePath)}, nodeId);
     }
     // var type.
-    const typeId = try resolveTypeFromSpecNode(c, varSpec.head.varSpec.typeSpecHead);
+    const typeId = try resolveTypeSpecNode(c, varSpec.head.varSpec.typeSpecHead);
     c.nodes[node.head.staticDecl.varSpec].next = typeId;
 
     const outTypeId = out.getTypeId();
@@ -1277,7 +1283,7 @@ fn localDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             inferType = true;
             typeId = bt.Any;
         } else {
-            typeId = try resolveTypeFromSpecNode(c, varSpec.head.varSpec.typeSpecHead);
+            typeId = try resolveTypeSpecNode(c, varSpec.head.varSpec.typeSpecHead);
         }
     } else {
         typeId = bt.Dynamic;
@@ -1645,11 +1651,19 @@ fn resolveLocalRootSym(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId, distin
 
 /// If no type spec, default to `dynamic` type.
 /// Recursively walks a type spec head node and returns the final resolved type sym.
-pub fn resolveTypeFromSpecNode(c: *cy.Chunk, head: cy.NodeId) !types.TypeId {
+pub fn resolveTypeSpecNode(c: *cy.Chunk, head: cy.NodeId) !types.TypeId {
     if (head == cy.NullId) {
         return bt.Dynamic;
     }
-    const sym = try resolveLocalNamePathSym(c, head, cy.NullId);
+
+    var sym: *Sym = undefined;
+    if (c.nodes[head].node_t == .objectDecl) {
+        // Unnamed object.
+        const symId = c.nodes[head].head.objectDecl.name;
+        sym = c.sym.getMod().syms.items[symId];
+    } else {
+        sym = try resolveLocalNamePathSym(c, head, cy.NullId);
+    }
     if (sym.getStaticType()) |typeId| {
         return typeId;
     } else {
@@ -1703,13 +1717,13 @@ fn resolveImplicitMethodDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !Fun
         if (std.mem.eql(u8, "self", paramName)) {
             return c.reportErrorAt("`self` param is not allowed in an implicit method declaration.", &.{}, curParamId);
         }
-        const typeId = try resolveTypeFromSpecNode(c, param.head.funcParam.typeSpecHead);
+        const typeId = try resolveTypeSpecNode(c, param.head.funcParam.typeSpecHead);
         try c.typeStack.append(c.alloc, typeId);
         curParamId = param.next;
     }
 
     // Get return type.
-    const retType = try resolveTypeFromSpecNode(c, header.head.funcHeader.ret);
+    const retType = try resolveTypeSpecNode(c, header.head.funcHeader.ret);
 
     const funcSigId = try c.sema.ensureFuncSig(c.typeStack.items[start..], retType);
     return FuncDecl{
@@ -1741,14 +1755,14 @@ fn resolveFuncDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !FuncDecl {
             isMethod = true;
             try c.typeStack.append(c.alloc, res.parent.getStaticType().?);
         } else {
-            const typeId = try resolveTypeFromSpecNode(c, param.head.funcParam.typeSpecHead);
+            const typeId = try resolveTypeSpecNode(c, param.head.funcParam.typeSpecHead);
             try c.typeStack.append(c.alloc, typeId);
         }
         curParamId = param.next;
     }
 
     // Get return type.
-    const retType = try resolveTypeFromSpecNode(c, header.head.funcHeader.ret);
+    const retType = try resolveTypeSpecNode(c, header.head.funcHeader.ret);
 
     res.funcSigId = try c.sema.ensureFuncSig(c.typeStack.items[start..], retType);
     res.isMethod = isMethod;
@@ -3056,7 +3070,7 @@ pub const ChunkExt = struct {
                 }
             },
             .castExpr => {
-                const typeId = try resolveTypeFromSpecNode(c, node.head.castExpr.typeSpecHead);
+                const typeId = try resolveTypeSpecNode(c, node.head.castExpr.typeSpecHead);
                 const irIdx = try c.ir.pushExpr(c.alloc, .cast, nodeId, .{ .typeId = typeId, .isRtCast = true });
                 const child = try c.semaExpr(node.head.castExpr.expr, .{});
                 if (!child.type.dynamic) {

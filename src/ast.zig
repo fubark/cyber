@@ -229,12 +229,12 @@ pub const Node = struct {
         },
         objectInit: struct {
             name: NodeId,
-            initializer: NodeId,
+            initializer: NodeId, // Record literal.
         },
         objectField: struct {
             name: NodeId,
-            /// Type spec consists of ident nodes linked by `next`.
-            typeSpecHead: cy.Nullable(NodeId),
+            /// Type spec path head (linked by `next`) or unnamed type decl.
+            typeSpec: cy.Nullable(NodeId),
             typed: bool,
         },
         objectDecl: struct {
@@ -242,6 +242,9 @@ pub const Node = struct {
             name: NodeId,
             modifierHead: cy.Nullable(NodeId),
             body: NodeId,
+
+            /// When true, a non null `name` references an unnamed `ModuleSymId`.
+            unnamed: bool,
         },
         objectDeclBody: struct {
             fieldsHead: NodeId,
@@ -404,7 +407,7 @@ test "ast internals." {
 
 pub const Source = struct {
     src: []const u8,
-    nodes: []const Node,
+    nodes: []Node,
     tokens: []const cy.Token,
 
     pub fn getParentAssignStmt(self: Source, nodeId: cy.NodeId) cy.NodeId {

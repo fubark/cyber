@@ -4782,6 +4782,25 @@ export fn zEnsureListCap(vm: *VM, list: *cy.List(Value), cap: usize) vmc.ResultC
     return vmc.RES_CODE_SUCCESS;
 }
 
+export fn zTraceRetain(vm: *VM, val: Value) void {
+    _ = vm;
+    _ = val;
+
+    // if (val.isString()) {
+    //     if (std.mem.eql(u8, val.asString(), "Color_S")) {
+    //         const res = traceObjRetains.getOrPut(vm.alloc, vm.debugPc) catch cy.fatal();
+    //         if (res.found_existing) {
+    //             res.value_ptr.* += 1;
+    //         } else {
+    //             res.value_ptr.* = 0;
+    //         }
+    //     }
+    // }
+}
+
+/// pc -> number of retains.
+pub var traceObjRetains: std.AutoHashMapUnmanaged(u32, u32) = .{};
+
 fn spawn(args: struct {
     allocator: std.mem.Allocator,
     argv: []const []const u8,

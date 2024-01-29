@@ -1030,3 +1030,4 @@ ResultCode zMapSet(VM* vm, Map* map, Value key, Value val);
 Inst* zDeoptBinOp(VM* vm, Inst* pc);
 Str zGetTypeName(VM* vm, TypeId id);
 ResultCode zEnsureListCap(VM* vm, ZCyList* list, size_t cap);
+void zTraceRetain(VM* vm, Value v);

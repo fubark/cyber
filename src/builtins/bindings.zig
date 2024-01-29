@@ -174,6 +174,7 @@ pub fn listInsert(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Sectio
         return rt.prepThrowError(vm, .OutOfBounds);
     } 
     inner.growTotalCapacity(vm.alloc, inner.len + 1) catch cy.fatal();
+    vm.retain(value);
     inner.insertAssumeCapacity(@intCast(index), value);
     return Value.None;
 }

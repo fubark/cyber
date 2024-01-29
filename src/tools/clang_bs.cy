@@ -22,6 +22,7 @@ var .CXType_Pointer = 101
 var .CXType_Record = 105
 var .CXType_Enum = 106
 var .CXType_Typedef = 107
+var .CXType_FunctionProto = 111
 var .CXType_ConstantArray = 112
 var .CXType_IncompleteArray = 114
 var .CXType_Elaborated = 119

@@ -56,7 +56,7 @@ while out.runeAt(i) != ` `:
     i -= 1
 var mem = float(out[i+1..])
 
-print 'Total: $(totalTime)ms'
-print 'Script: $(scriptTime)ms'
-print 'Load: $(totalTime - scriptTime)ms'
-print 'Peak Memory: $(mem / 1000000) MB'
+print "Total: $(totalTime)ms"
+print "Script: $(scriptTime)ms"
+print "Load: $(totalTime - scriptTime)ms"
+print "Peak Memory: $(mem / 1000000) MB"

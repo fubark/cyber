@@ -697,16 +697,6 @@ pub const Chunk = struct {
         return self.src[token.pos()..token.data.end_pos];
     }
 
-    /// An optional debug sym is only included in Trace builds.
-    pub fn pushOptionalDebugSym(c: *Chunk, nodeId: cy.NodeId) !void {
-        if (cy.Trace or c.compiler.vm.config.genAllDebugSyms) {
-            try c.buf.pushFailableDebugSym(
-                c.buf.ops.items.len, c.id, nodeId, c.curBlock.frameLoc,
-                cy.NullId, 0, 0,
-            );
-        }
-    }
-
     pub fn getUnwindTempsLen(c: *Chunk) usize {
         return c.unwindTempIndexStack.items.len;
     }
@@ -802,6 +792,16 @@ pub const Chunk = struct {
         }
     }
 
+    /// An optional debug sym is only included in Trace builds.
+    pub fn pushOptionalDebugSym(c: *Chunk, nodeId: cy.NodeId) !void {
+        if (cy.Trace or c.compiler.vm.config.genAllDebugSyms) {
+            try c.buf.pushFailableDebugSym(
+                c.buf.ops.items.len, c.id, nodeId, c.curBlock.frameLoc,
+                cy.NullId, 0, 0,
+            );
+        }
+    }
+
     pub fn pushFailableDebugSym(self: *Chunk, nodeId: cy.NodeId) !void {
         const unwindTempIdx = try self.getLastUnwindTempIndex();
         try self.buf.pushFailableDebugSym(
@@ -842,6 +842,16 @@ pub const Chunk = struct {
             .nodeId = nodeId,
             .extraIdx = extraIdx,
         };
+    }
+
+    pub fn pushOp(c: *Chunk, code: cy.OpCode, args: []const u8, nodeId: cy.NodeId) !void {
+        try c.pushOptionalDebugSym(nodeId);
+        try c.buf.pushOpSliceExt(code, args, c.desc(nodeId));
+    }
+
+    pub fn pushOpDesc(c: *Chunk, code: cy.OpCode, args: []const u8, nodeId: cy.NodeId, extraIdx: ?u32) !void {
+        try c.pushOptionalDebugSym(nodeId);
+        try c.buf.pushOpSliceExt(code, args, c.descExtra(nodeId, extraIdx orelse cy.NullId));
     }
 
     pub usingnamespace cy.module.ChunkExt;

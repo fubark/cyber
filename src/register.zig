@@ -54,90 +54,81 @@ pub const Allocator = struct {
         return self.nextTemp;
     }
 
-    pub fn selectForLocalInst(self: *Allocator, cstr: RegisterCstr, local: u8, localRetained: bool) !CopyInst {
+    pub fn selectForLocalInst(self: *Allocator, cstr: Cstr, local: u8, rcCandidate: bool, nodeId: cy.NodeId) !CopyInst {
+        _ = self;
         switch (cstr.type) {
             .varSym => {
-                if (localRetained) {
+                if (rcCandidate) {
                     return .{
                         .dst = local,
-                        .dstIsOwnedTemp = false,
                         .retainSrc = true,
                         .releaseDst = false,
                         .finalDst = cstr,
+                        .nodeId = nodeId,
                     };
                 } else {
                     return .{
                         .dst = local,
-                        .dstIsOwnedTemp = false,
                         .retainSrc = false,
                         .releaseDst = false,
                         .finalDst = cstr,
+                        .nodeId = nodeId,
                     };
                 }
             },
             .captured => {
                 return .{
                     .dst = local,
-                    .dstIsOwnedTemp = false,
-                    .retainSrc = localRetained,
+                    .retainSrc = rcCandidate,
                     .releaseDst = false,
                     .finalDst = cstr,
+                    .nodeId = nodeId,
                 };
             },
-            .local => {
-                const retainSrc = cstr.data.local.reg != local and localRetained;
-                return .{
-                    .dst = cstr.data.local.reg,
-                    .dstIsOwnedTemp = false,
-                    .retainSrc = retainSrc,
-                    .releaseDst = cstr.data.local.retained,
-                    .finalDst = null,
-                };
-            },
-            .boxedLocal => {
-                const retainSrc = cstr.data.local.reg != local and localRetained;
+            .liftedLocal => {
+                const retainSrc = cstr.data.reg.dst != local and rcCandidate;
                 return .{
                     .dst = local,
-                    .dstIsOwnedTemp = false,
                     .retainSrc = retainSrc,
                     .releaseDst = false,
                     .finalDst = cstr,
+                    .nodeId = nodeId,
                 };
             },
-            .exact => {
+            .localReg,
+            .tempReg => {
+                const retainSrc = cstr.data.reg.retain and cstr.data.reg.dst != local and rcCandidate;
                 return .{
-                    .dst = cstr.data.exact,
-                    .dstIsOwnedTemp = false,
-                    .retainSrc = cstr.mustRetain and localRetained,
-                    .releaseDst = cstr.dstRetained,
+                    .dst = cstr.data.reg.dst,
+                    .retainSrc = retainSrc,
+                    .releaseDst = cstr.data.reg.releaseDst,
                     .finalDst = null,
+                    .nodeId = nodeId,
                 };
             },
-            .localOrExact,
-            .simple,
-            .prefer => {
+            .simple => {
                 return .{
                     .dst = local,
-                    .dstIsOwnedTemp = false,
-                    .retainSrc = cstr.mustRetain,
+                    .retainSrc = cstr.data.simple.retain,
                     .releaseDst = false,
                     .finalDst = null,
+                    .nodeId = nodeId,
                 };
             },
-            .temp => {
+            .preferVolatile => {
                 return .{
-                    .dst = try self.consumeNextTemp(),
-                    .dstIsOwnedTemp = true,
-                    .retainSrc = cstr.mustRetain,
+                    .dst = local,
+                    .retainSrc = false,
                     .releaseDst = false,
                     .finalDst = null,
+                    .nodeId = nodeId,
                 };
             },
             .none => return error.NoneType,
         }
     }
 
-    pub fn selectForTemp(self: *Allocator, cstr: RegisterCstr) !CopyInst {
+    pub fn selectForTemp(self: *Allocator, cstr: Cstr) !CopyInst {
         _ = self;
         switch (cstr.type) {
             .exact => {
@@ -145,10 +136,10 @@ pub const Allocator = struct {
                     .dst = cstr,
                 };
             },
-            .prefer => {
+            .preferVolatile => {
                 return error.Unexpected;
             },
-            .simple,
+            .localOrTemp,
             .temp => {
                 return error.Unexpected;
             },
@@ -158,79 +149,63 @@ pub const Allocator = struct {
 
     /// Selecting for a non local inst that can not fail.
     /// A required dst can be retained but `requiresPreRelease` will be set to true.
-    pub fn selectForNoErrInst(self: *Allocator, cstr: RegisterCstr, instCouldRetain: bool) !NoErrInst {
+    pub fn selectForNoErrInst(self: *Allocator, cstr: Cstr, instCouldRetain: bool, nodeId: cy.NodeId) !NoErrInst {
         switch (cstr.type) {
-            .localOrExact => {
-                return .{
-                    .dst = cstr.data.localOrExact,
-                    .dstIsOwnedTemp = false,
-                    .requiresPreRelease = cstr.dstRetained,
-                    .finalDst = null,
-                };
-            },
-            .exact => {
-                return .{
-                    .dst = cstr.data.exact,
-                    .dstIsOwnedTemp = false,
-                    .requiresPreRelease = cstr.dstRetained,
-                    .finalDst = null,
-                };
-            },
             .varSym => {
                 return .{
                     .dst = try self.consumeNextTemp(),
-                    .dstIsOwnedTemp = true,
                     .requiresPreRelease = false,
                     .finalDst = cstr,
+                    .nodeId = nodeId,
                 };
             },
-            .local => {
+            .localReg,
+            .tempReg => {
                 return .{
-                    .dst = cstr.data.local.reg,
-                    .dstIsOwnedTemp = false,
-                    .requiresPreRelease = cstr.data.local.retained,
+                    .dst = cstr.data.reg.dst,
+                    .requiresPreRelease = cstr.data.reg.releaseDst,
                     .finalDst = null,
+                    .nodeId = nodeId,
                 };
             },
-            .boxedLocal => {
+            .liftedLocal => {
                 return .{
                     .dst = try self.consumeNextTemp(),
-                    .dstIsOwnedTemp = true,
                     .requiresPreRelease = false,
                     .finalDst = cstr,
+                    .nodeId = nodeId,
                 };
             },
             .captured => {
                 return .{
                     .dst = try self.consumeNextTemp(),
-                    .dstIsOwnedTemp = true,
                     .requiresPreRelease = false,
                     .finalDst = cstr,
+                    .nodeId = nodeId,
                 };
             },
-            .prefer => {
+            .preferVolatile => {
                 if (instCouldRetain) {
                     return .{
                         .dst = try self.consumeNextTemp(),
-                        .dstIsOwnedTemp = true,
                         .requiresPreRelease = false,
                         .finalDst = null,
+                        .nodeId = nodeId,
                     };
                 }
                 return .{
-                    .dst = cstr.data.prefer,
-                    .dstIsOwnedTemp = false,
-                    .requiresPreRelease = cstr.dstRetained,
+                    .dst = cstr.data.preferVolatile,
+                    .requiresPreRelease = false,
                     .finalDst = null,
+                    .nodeId = nodeId,
                 };
             },
-            .temp,
             .simple => {
                 return .{
                     .dst = try self.consumeNextTemp(),
-                    .dstIsOwnedTemp = true,
                     .requiresPreRelease = false,
                     .finalDst = null,
+                    .nodeId = nodeId,
                 };
             },
             .none => return error.NoneType,
@@ -239,102 +214,64 @@ pub const Allocator = struct {
 
     /// Selecting for a non local inst with a dst operand.
     /// A required dst can not be retained or a temp register is allocated and `requiresCopyRelease` will be set true.
-    pub fn selectForDstInst(self: *Allocator, cstr: RegisterCstr, instCouldRetain: bool) !DstInst {
+    pub fn selectForDstInst(self: *Allocator, cstr: Cstr, instCouldRetain: bool, nodeId: cy.NodeId) !DstInst {
         switch (cstr.type) {
             .varSym => {
                 return .{
                     .dst = try self.consumeNextTemp(),
-                    .dstIsOwnedTemp = true,
                     .finalDst = cstr,
+                    .nodeId = nodeId,
                 };
-            },
-            .localOrExact => {
-                if (cstr.dstRetained) {
-                    return .{
-                        .dst = try self.consumeNextTemp(),
-                        .dstIsOwnedTemp = true,
-                        .finalDst = cstr,
-                    };
-                } else {
-                    return .{
-                        .dst = cstr.data.localOrExact,
-                        .dstIsOwnedTemp = false,
-                        .finalDst = null,
-                    };
-                }
-            },
-            .exact => {
-                if (cstr.dstRetained) {
-                    return .{
-                        .dst = try self.consumeNextTemp(),
-                        .dstIsOwnedTemp = true,
-                        .finalDst = cstr,
-                    };
-                } else {
-                    return .{
-                        .dst = cstr.data.exact,
-                        .dstIsOwnedTemp = false,
-                        .finalDst = null,
-                    };
-                }
             },
             .captured => {
                 return .{
                     .dst = try self.consumeNextTemp(),
-                    .dstIsOwnedTemp = true,
                     .finalDst = cstr,
+                    .nodeId = nodeId,
                 };
             },
-            .local => {
-                if (!cstr.data.local.retained) {
+            .localReg,
+            .tempReg => {
+                if (cstr.data.reg.releaseDst or (cstr.data.reg.retain and !instCouldRetain)) {
                     return .{
-                        .dst = cstr.data.local.reg,
-                        .dstIsOwnedTemp = false,
-                        .finalDst = null,
+                        .dst = try self.consumeNextTemp(),
+                        .finalDst = cstr,
+                        .nodeId = nodeId,
                     };
                 } else {
                     return .{
-                        .dst = try self.consumeNextTemp(),
-                        .dstIsOwnedTemp = true,
-                        .finalDst = cstr,
+                        .dst = cstr.data.reg.dst,
+                        .finalDst = null,
+                        .nodeId = nodeId,
                     };
                 }
             },
-            .boxedLocal => {
+            .liftedLocal => {
                 return .{
                     .dst = try self.consumeNextTemp(),
-                    .dstIsOwnedTemp = true,
                     .finalDst = cstr,
+                    .nodeId = nodeId,
                 };
             },
-            .prefer => {
+            .preferVolatile => {
                 if (instCouldRetain) {
                     return .{
                         .dst = try self.consumeNextTemp(),
-                        .dstIsOwnedTemp = true,
                         .finalDst = null,
+                        .nodeId = nodeId,
                     };
                 }
-                if (cstr.dstRetained) {
-                    return .{
-                        .dst = try self.consumeNextTemp(),
-                        .dstIsOwnedTemp = true,
-                        .finalDst = null,
-                    };
-                } else {
-                    return .{
-                        .dst = cstr.data.prefer,
-                        .dstIsOwnedTemp = false,
-                        .finalDst = null,
-                    };
-                }
+                return .{
+                    .dst = cstr.data.preferVolatile,
+                    .finalDst = null,
+                    .nodeId = nodeId,
+                };
             },
-            .temp,
             .simple => {
                 return .{
                     .dst = try self.consumeNextTemp(),
-                    .dstIsOwnedTemp = true,
                     .finalDst = null,
+                    .nodeId = nodeId,
                 };
             },
             .none => return error.NoneType,
@@ -365,51 +302,47 @@ pub const Allocator = struct {
 
 pub const NoErrInst = struct {
     dst: RegisterId,
-    dstIsOwnedTemp: bool,
     requiresPreRelease: bool,
-    finalDst: ?RegisterCstr,
+    finalDst: ?Cstr,
+    nodeId: cy.NodeId,
 };
 
 pub const CopyInst = struct {
     dst: RegisterId,
-    dstIsOwnedTemp: bool,
     retainSrc: bool,
     releaseDst: bool,
-    finalDst: ?RegisterCstr,
+    finalDst: ?Cstr,
+    nodeId: cy.NodeId,
 };
 
 pub const DstInst = struct {
     dst: RegisterId,
-    dstIsOwnedTemp: bool,
-    finalDst: ?RegisterCstr,
+    finalDst: ?Cstr,
+    nodeId: cy.NodeId,
 };
 
-const RegisterCstrType = enum(u8) {
-    /// 1. Prefers local var register first.
-    /// 2. Prefers a given register if the inst does not result in a +1 retain.
-    /// 3. Allocates the next temp.
-    prefer,
-
-    /// 1. Prefers local var register first.
+const CstrType = enum(u8) {
+    /// 1. Prefers local register first.
     /// 2. Allocates the next temp.
-    simple, 
+    simple,
 
-    /// Allocates the next temp.
-    temp,
+    /// 1. Prefers local register first.
+    /// 2. Prefers a given register that will end up being overwritten.
+    ///    Only selected if this inst does not result in a +1 retain.
+    /// 3. Allocates the next temp.
+    preferVolatile,
 
-    /// Must select given `RegisterCstr.reg`.
-    exact,
+    /// To a temp register.
+    tempReg,
 
-    localOrExact,
+    /// To a local register.
+    localReg,
 
     /// Var sym.
     varSym,
 
-    /// Local.
-    local,
-
-    /// Boxed local.
-    boxedLocal,
+    /// Lifted local.
+    liftedLocal,
 
     /// Captured.
     captured,
@@ -418,44 +351,41 @@ const RegisterCstrType = enum(u8) {
     none,
 };
 
-/// TODO: Rename to DstCstr
-/// Preference on which register to use or allocate.
-pub const RegisterCstr = struct {
-    type: RegisterCstrType,
+/// Constraints on where a value should go to.
+///
+/// Some constraints have a `retain` flag.
+/// If `retain` is true, the caller expects the value to have increased it's RC by 1.
+///     * If the value already has a +1 retain (eg. map literal), the requirement is satisfied.
+///     * If the value comes from a local, then a retain copy is generated.
+///     * If the value does not have a RC, the requirement is satisfied.
+/// If `retain` is false, the value can still be retained by +1 to keep it alive.
+pub const Cstr = struct {
+    type: CstrType,
 
-    /// `mustRetain` indicates the value should be retained by 1 refcount.
-    /// If the expr already does a +1 retain (eg. map literal), then the requirement is satisfied.
-    /// If the expr does not result in +1 retain and is a non-rc value, then the requirement is satisfied.
-    /// If the expr is a local, then a copy inst variant is chosen to satisfy the requirement.
-    /// If `mustRetain` is false, the expr can still be retained by +1 if required
-    /// by the generated inst to stay alive.
-    mustRetain: bool, 
-
-    /// Whether the `dst` is retained.
-    dstRetained: bool = false,
     data: union {
-        prefer: RegisterId,
-        exact: RegisterId,
-        localOrExact: RegisterId,
+        simple: struct {
+            retain: bool,
+        },
+        preferVolatile: RegisterId,
+        reg: struct {
+            dst: RegisterId,
+            retain: bool,
+            releaseDst: bool,
+        },
         // Runtime id.
         varSym: u32,
-        local: struct {
+        liftedLocal: struct {
             reg: RegisterId,
-            retained: bool,
-        },
-        boxedLocal: struct {
-            reg: RegisterId,
-            retained: bool,
+            /// This shouldn't change after initialization.
+            rcCandidate: bool,
         },
         captured: struct {
             idx: u8,
-            retained: bool,
         },
         uninit: void,
-        simple: void,
     } = .{ .uninit = {} },
 
-    /// Only relevant for constraints that allow temps: prefer, exact, simple
+    /// Only relevant for constraints that allow temps: preferVolatile, exact, simple
     jitPreferCondFlag: bool = false,
     jitPreferConstant: bool = false,
 
@@ -463,137 +393,115 @@ pub const RegisterCstr = struct {
     /// eg. For expr statements, the top level expr reg isn't used.
     /// If it's not used and the current expr does not produce side-effects, it can omit generating its code.
 
-    pub const none = RegisterCstr{
+    pub const none = Cstr{
         .type = .none,
-        .mustRetain = false,
     };
 
-    pub const simple = RegisterCstr{
-        .type = .simple,
-        .mustRetain = false,
-        .data = .{ .simple = {} }
-    };
+    pub const simple = Cstr{ .type = .simple, .data = .{ .simple = .{
+        .retain = false,
+    }}};
 
-    pub const simpleMustRetain = RegisterCstr{
-        .type = .simple,
-        .mustRetain = true,
-        .data = .{ .simple = {} }
-    };
+    pub const simpleRetain = Cstr{ .type = .simple, .data = .{ .simple = .{
+        .retain = true,
+    }}};
 
-    pub const temp = RegisterCstr{
-        .type = .temp,
-        .mustRetain = false,
-    };
+    pub const ret = Cstr{ .type = .localReg, .data = .{ .reg = .{
+        .dst = 0,
+        .retain = true,
+        .releaseDst = false,
+    }}};
 
-    pub const tempMustRetain = RegisterCstr{
-        .type = .temp,
-        .mustRetain = true,
-    };
-
-    pub fn toCaptured(idx: u8, retained: bool) RegisterCstr {
-        return .{
-            .type = .captured,
-            .mustRetain = false,
-            .data = .{ .captured = .{ .idx = idx, .retained = retained } },
-        };
+    pub fn toCaptured(idx: u8) Cstr {
+        return .{ .type = .captured, .data = .{ .captured = .{
+            .idx = idx,
+        }}};
     }
 
-    pub fn toVarSym(id: u32) RegisterCstr {
-        return .{
-            .type = .varSym,
-            .mustRetain = true,
-            .data = .{ .varSym = id },
-        };
-    }
-
-    pub fn initSimple(mustRetain: bool) RegisterCstr {
-        return .{
-            .type = .simple,
-            .mustRetain = mustRetain,
-            .data = .{ .simple = {} }
-        };
-    }
-
-    pub fn initExact(reg: u8, mustRetain: bool) RegisterCstr {
-        return .{
-            .type = .exact,
-            .data = .{ .exact = reg },
-            .mustRetain = mustRetain,
-        };
-    }
-
-    pub fn toRetainedDst(reg: u8) RegisterCstr {
-        return .{
-            .type = .exact,
-            .data = .{ .exact = reg },
-            .mustRetain = true,
-            .dstRetained = true,
-        };
-    }
-
-    pub fn toLocal(reg: u8, retained: bool) RegisterCstr {
-        return .{
-            .type = .local,
-            .data = .{ .local = .{
-                .reg = reg,
-                .retained = retained,
-            }},
-            .mustRetain = true,
-            .dstRetained = retained,
-        };
-    }
-
-    pub fn toBoxedLocal(reg: u8, retained: bool) RegisterCstr {
-        return .{
-            .type = .boxedLocal,
-            .data = .{ .boxedLocal = .{
-                .reg = reg,
-                .retained = retained,
-            }},
-            .mustRetain = true,
-            .dstRetained = true,
-        };
-    }
-
-    pub fn exact(reg: u8) RegisterCstr {
-        return .{
-            .type = .exact,
-            .data = .{ .exact = reg },
-            .mustRetain = false,
-        };
-    }
-
-    pub fn localOrExact(reg: u8, mustRetain: bool) RegisterCstr {
-        return .{ .type = .localOrExact, .mustRetain = mustRetain, .data = .{
-            .localOrExact = reg,
+    pub fn toVarSym(id: u32) Cstr {
+        return .{ .type = .varSym, .data = .{
+            .varSym = id
         }};
     }
 
-    pub fn exactMustRetain(reg: u8) RegisterCstr {
+    pub fn toRetained(self: Cstr) Cstr {
+        switch (self.type) {
+            .simple => {
+                var res = self;
+                res.data.simple.retain = true;
+                return res;
+            },
+            .localReg, 
+            .tempReg => {
+                var res = self;
+                res.data.reg.retain = true;
+                return res;
+            },
+            else => {
+                return self;
+            },
+        }
+    }
+
+    pub fn initLocalOrTemp(mustRetain: bool) Cstr {
         return .{
-            .type = .exact,
-            .data = .{ .exact = reg },
-            .mustRetain = true,
+            .type = .localOrTemp,
+            .mustRetain = mustRetain,
+            .data = .{ .localOrTemp = {} }
         };
     }
 
-    pub fn prefer(reg: u8) RegisterCstr {
-        return .{
-            .type = .prefer,
-            .data = .{ .prefer = reg },
-            .mustRetain = false,
-        };
+    pub fn toTempRetain(reg: u8) Cstr {
+        return .{ .type = .tempReg, .data = .{ .reg = .{
+            .dst = reg,
+            .retain = true,
+            .releaseDst = false,
+        }}};
     }
 
-    pub fn preferIf(reg: u8, cond: bool) RegisterCstr {
+    pub fn toTemp(reg: u8) Cstr {
+        return .{ .type = .tempReg, .data = .{ .reg = .{
+            .dst = reg,
+            .retain = false,
+            .releaseDst = false,
+        }}};
+    }
+
+    pub fn toRetainedTemp(reg: u8) Cstr {
+        return .{ .type = .tempReg, .data = .{ .reg = .{
+            .dst = reg,
+            .retain = true,
+            .releaseDst = true,
+        }}};
+    }
+
+    pub fn toLocal(reg: u8, rcCandidate: bool) Cstr {
+        return .{ .type = .localReg, .data = .{ .reg = .{
+            .dst = reg,
+            .retain = true,
+            .releaseDst = rcCandidate,
+        }}};
+    }
+
+    pub fn toLiftedLocal(reg: u8, rcCandidate: bool) Cstr {
+        return .{ .type = .liftedLocal, .data = .{ .liftedLocal = .{
+            .reg = reg,
+            .rcCandidate = rcCandidate,
+        }}};
+    }
+
+    pub fn preferVolatile(reg: u8) Cstr {
+        return .{ .type = .preferVolatile, .data = .{ .preferVolatile = reg }};
+    }
+
+    pub fn preferVolatileIf(cond: bool, reg: u8) Cstr {
         if (cond) {
-            return prefer(reg);
+            return preferVolatile(reg);
         } else {
             return simple;
         }
     }
 
-    pub fn allowsTemp(self: RegisterCstr) bool {
-        return self.type == .simple or self.type == .prefer or self.type == .temp;
+    pub fn isExact(self: Cstr) bool {
+        return self.type != .simple and self.type != .preferVolatile;
     }
 };

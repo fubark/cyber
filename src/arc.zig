@@ -499,6 +499,12 @@ pub fn checkGlobalRC(vm: *cy.VM) !void {
             }
         }
 
+        // var iter = cy.vm.traceObjRetains.iterator();
+        // while (iter.next()) |e| {
+        //     const msg = std.fmt.bufPrint(&cy.tempBuf, "pc={} retains={}", .{e.key_ptr.*, e.value_ptr.*}) catch cy.fatal();
+        //     cy.debug.printTraceAtPc(vm, e.key_ptr.*, "retain", msg) catch cy.fatal();
+        // }
+
         return error.UnreleasedReferences;
     }
 }

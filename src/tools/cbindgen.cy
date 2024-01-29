@@ -146,7 +146,7 @@ func getTranslationUnit(headerPath):
 
     var cargs = os.malloc(8 * rest.len())
     for rest -> arg, i:
-        print 'clang arg: $(arg)'
+        print "clang arg: $(arg)"
         cargs.set(i * 8, .voidPtr, os.cstr(arg))
 
     var cpath = os.cstr(headerPath)
@@ -225,18 +225,18 @@ func rootVisitor(cursor, parent, state):
         clang.CXCursor_InclusionDirective: pass
 
     case clang.CXCursor_TypedefDecl: 
-        -- print 'typedef $(name)'
+        -- print "typedef $(name)"
         if skipMap[name]:
-            out += '-- typedef $(name)\n\n'
+            out += "-- typedef $(name)\n\n"
         else:
             var atype = clang.lib.clang_getTypedefDeclUnderlyingType(cursor)
             var bindType = toBindType(atype)
             if typeof(bindType) == symbol or bindType != name:
                 aliases[name] = bindType
-                out += 'type $(getApiName(name)) $(toCyType(bindType, true))\n\n'
+                out += "type $(getApiName(name)) $(toCyType(bindType, true))\n\n"
 
     case clang.CXCursor_StructDecl:
-        -- print 'struct $(name)'
+        -- print "struct $(name)"
         var effName = name + '_S'
 
         struct = [Struct fieldTypes: [], fieldNames: [], cxFieldTypes: []]
@@ -253,31 +253,31 @@ func rootVisitor(cursor, parent, state):
 
         structs.append(effName)
         if skipMap[effName]:
-            out += '-- type $(getApiName(effName)):\n'
+            out += "-- type $(getApiName(effName)):\n"
             skipChildren = true
         else:
-            out += 'type $(getApiName(effName)):\n'
+            out += "type $(getApiName(effName)):\n"
 
         for struct.fieldNames -> name, i:
             if skipChildren:
                 out += '-- '
 
             my fieldt = struct.fieldTypes[i]
-            out += '    var $(name) $(toCyType(fieldt, false))'
+            out += "    var $(name) $(toCyType(fieldt, false))"
             if is(fieldt, .voidPtr) or
                 (typeof(fieldt) == String and fieldt.startsWith('[os.CArray')):
-                out += ' -- $(struct.cxFieldTypes[i])'
+                out += " -- $(struct.cxFieldTypes[i])"
             out += '\n'
 
         out += '\n'
         skipChildren = false
 
     case clang.CXCursor_EnumDecl:
-        -- print 'enum $(name)'
+        -- print "enum $(name)"
 
         -- Skip unnamed enum.
         if !name.startsWith('enum '):
-            out += 'type $(getApiName(name)) int\n'
+            out += "type $(getApiName(name)) int\n"
             aliases[name] = .int
 
         var newState = [State type: .enum]
@@ -287,7 +287,7 @@ func rootVisitor(cursor, parent, state):
         out += '\n'
 
     case clang.CXCursor_FunctionDecl:
-        -- print 'func $(name)'
+        -- print "func $(name)"
 
         var cxName = clang.lib.clang_getCursorSpelling(cursor)
         var funcName = fromCXString(cxName)
@@ -297,7 +297,7 @@ func rootVisitor(cursor, parent, state):
         var cxFunc = clang.lib.clang_getCursorType(cursor)
         var cxRet = clang.lib.clang_getResultType(cxFunc)
 
-        var outFunc = 'func $(getApiName(funcName))('
+        var outFunc = "func $(getApiName(funcName))("
 
         -- Parse params.
         var fnParamTypes = []
@@ -306,11 +306,11 @@ func rootVisitor(cursor, parent, state):
             var cxParam = clang.lib.clang_Cursor_getArgument(cursor, i)
             var cxParamName = clang.lib.clang_getCursorSpelling(cxParam)
             var paramName = fromCXString(cxParamName)
-            if paramName == '': paramName = 'param$(i)'
+            if paramName == '': paramName = "param$(i)"
             var cxParamType = clang.lib.clang_getArgType(cxFunc, i)
             var paramT = toBindType(cxParamType)
 
-            outFunc += '$(paramName) $(toCyType(paramT, false))'
+            outFunc += "$(paramName) $(toCyType(paramT, false))"
             if i < numParams-1:
                 outFunc += ', '
 
@@ -319,23 +319,24 @@ func rootVisitor(cursor, parent, state):
         outFunc += ') '
 
         var retT = toBindType(cxRet)
-        outFunc += '$(toCyType(retT, true)): pass'
+        outFunc += "$(toCyType(retT, true)): pass"
 
         if skipMap[funcName]:
             outFunc = '-- ' + outFunc
 
-        out += '$(outFunc)\n'
+        out += "$(outFunc)\n"
 
         fn['params'] = fnParamTypes
         fn['ret'] = retT
         funcs.append(fn)
 
     case clang.CXCursor_VarDecl:
-        print 'TODO: var $(name)'
+        print "TODO: var $(name)"
 
     else:
-        print 'visitor invoked $(cursor.kind) $(name)'
+        print "visitor invoked $(cursor.kind) $(name)"
         throw error.Unsupported
+
     return clang.CXChildVisit_Continue
 
 func structVisitor(cursor, parent, state):
@@ -344,7 +345,7 @@ func structVisitor(cursor, parent, state):
 
     switch cursor.kind:
     case clang.CXCursor_FieldDecl:
-        -- print 'field $(cursor.kind) $(name)'
+        -- print "field $(cursor.kind) $(name)"
         my ftype = clang.lib.clang_getCursorType(cursor)
         var fsym = toBindType(ftype)
 
@@ -355,7 +356,7 @@ func structVisitor(cursor, parent, state):
         var typeName = fromCXString(cxTypeName)
         struct.cxFieldTypes.append(typeName)
     else: 
-        print 'unsupported $(cursor.kind) $(name)'
+        print "unsupported $(cursor.kind) $(name)"
     return clang.CXChildVisit_Continue
 
 func enumVisitor(cursor, parent, state):
@@ -363,16 +364,16 @@ func enumVisitor(cursor, parent, state):
     var name = fromCXString(cxName)
     var val = clang.lib.clang_getEnumConstantDeclValue(cursor)
         
-    out += 'var .$(getApiName(name)) int = $(val)\n'
+    out += "var .$(getApiName(name)) int = $(val)\n"
     return clang.CXChildVisit_Continue
 
 func genMacros(headerPath):
     var absPath = os.realPath(headerPath)
 
     var hpp = ''
-    hpp += '#include "$(absPath)"\n\n'
+    hpp += """#include "$(absPath)"\n\n"""
     for macros -> macro:
-        hpp += 'auto var_$(macro) = $(macro);\n'
+        hpp += "auto var_$(macro) = $(macro);\n"
     os.writeFile('macros.hpp', hpp)
 
     var unit = getMacrosTranslationUnit('macros.hpp')
@@ -396,7 +397,7 @@ func initListExpr(cursor, parent, state):
         var val = clang.lib.clang_EvalResult_getAsLongLong(eval)
         state.data.append(val)
     else:
-        print 'visitor invoked $(cursor.kind)'
+        print "visitor invoked $(cursor.kind)"
         throw error.Unsupported
 
     return clang.CXChildVisit_Continue
@@ -416,7 +417,7 @@ func initVarVisitor(cursor, parent, state):
         clang.ffi.unbindObjPtr(newState)
         state.data['args'] = args
     else:
-        print 'visitor invoked $(cursor.kind) $(name)'
+        print "visitor invoked $(cursor.kind) $(name)"
         throw error.Unsupported
 
     return clang.CXChildVisit_Continue
@@ -447,7 +448,7 @@ func macrosRootVisitor(cursor, parent, state):
         if skipMap[name[4..]]:
             out += '-- '
 
-        -- print 'var $(name)'
+        -- print "var $(name)"
         var eval = clang.lib.clang_Cursor_Evaluate(cursor)
         var kind = clang.lib.clang_EvalResult_getKind(eval)
 
@@ -468,31 +469,32 @@ func macrosRootVisitor(cursor, parent, state):
                 clang.ffi.unbindObjPtr(state)
 
                 var initT = state.data.type
-                my struct = structMap[initT]
+
+                my struct = getStruct(initT)
                 var kvs = []
                 for struct.fieldNames -> fieldn, i:
-                    kvs.append('$(fieldn): $(state.data.args[i])')
-                out += 'var .$(finalName) $(initT) = [$(initT) $(kvs.join(", "))]\n'
+                    kvs.append("$(fieldn): $(state.data.args[i])")
+                out += "var .$(finalName) $(initT) = [$(initT) $(kvs.join(', '))]\n"
             else:
-                print 'init $(initName) $(initCur.kind)'
+                print "init $(initName) $(initCur.kind)"
                 throw error.Unsupported
         case clang.CXEval_Int:
             var val = clang.lib.clang_EvalResult_getAsLongLong(eval)
-            out += 'var .$(finalName) int = $(val)\n'
+            out += "var .$(finalName) int = $(val)\n"
         case clang.CXEval_Float:
             var val = clang.lib.clang_EvalResult_getAsDouble(eval)
-            out += 'var .$(finalName) float = $(val)\n'
+            out += "var .$(finalName) float = $(val)\n"
         case clang.CXEval_StrLiteral:
             my strz = clang.lib.clang_EvalResult_getAsStr(eval)
             var str = strz.fromCstr(0).decode()
-            out += 'var .$(finalName) String = "$(str)"\n'
+            out += """var .$(finalName) String = "$(str)"\n"""
         else:
-            print '$(kind)'
+            print "$(kind)"
             throw error.Unsupported
 
         clang.lib.clang_EvalResult_dispose(eval)
     else:
-        print 'visitor invoked $(cursor.kind) $(name)'
+        print "visitor invoked $(cursor.kind) $(name)"
         throw error.Unsupported
     return clang.CXChildVisit_Continue
 
@@ -516,7 +518,7 @@ func toCyType(nameOrSym, forRet):
         case .voidPtr   : return 'pointer'
         case .void      : return 'none'
         else:
-            print 'Unsupported type $(nameOrSym)'
+            print "Unsupported type $(nameOrSym)"
             throw error.Unsupported
     else:
         if nameOrSym.startsWith('[os.CArray'):
@@ -536,6 +538,14 @@ func ensureBindType(nameOrSym):
                 return og
         return nameOrSym
 
+func getStruct(name):
+    if structMap[name]:
+        return structMap[name]
+    if aliases[name]:
+        var alias = aliases[name]
+        return structMap[alias]
+    return none
+
 func toBindType(cxType):
     switch cxType.kind:
     case clang.CXType_Float             : return .float
@@ -550,6 +560,7 @@ func toBindType(cxType):
     case clang.CXType_Char_S            : return .char
     case clang.CXType_UChar             : return .uchar
     case clang.CXType_Pointer           : return .voidPtr
+    case clang.CXType_FunctionProto     : return .voidPtr
     case clang.CXType_IncompleteArray   : return .voidPtr
     case clang.CXType_Typedef:
         var name = fromCXString(clang.lib.clang_getTypedefName(cxType))
@@ -583,15 +594,15 @@ func toBindType(cxType):
         else declType.kind == clang.CXType_Enum:
             return name
 
-        print 'Unsupported elaborated type: $(name) $(declType.kind)'
+        print "Unsupported elaborated type: $(name) $(declType.kind)"
         throw error.Unsupported
     case clang.CXType_ConstantArray:
         var n = clang.lib.clang_getNumElements(cxType)
         var cxElem = clang.lib.clang_getElementType(cxType)
         var elem = toBindType(cxElem)
-        return '[os.CArray n: $(n), elem: $(elem)]'
+        return "[os.CArray n: $(n), elem: $(elem)]"
     else:
-        print 'Unsupported type $(cxType.kind)'
+        print "Unsupported type $(cxType.kind)"
         throw error.Unsupported
 
 func getApiName(name):

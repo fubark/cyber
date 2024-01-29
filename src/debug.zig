@@ -516,16 +516,20 @@ fn getOpCodeAtPc(ops: []const cy.Inst, atPc: u32) ?cy.OpCode {
     return null;
 }
 
+const DumpBytecodeOptions = struct {
+    pcContext: ?u32 = null,
+};
+
 /// When `optPcContext` is null, all the bytecode is dumped along with constants.
 /// When `optPcContext` is non null, it will dump a trace at `optPcContext` and the surrounding bytecode with extra details.
-pub fn dumpBytecode(vm: *cy.VM, optPcContext: ?u32) !void {
+pub fn dumpBytecode(vm: *cy.VM, opts: DumpBytecodeOptions) !void {
     var pcOffset: u32 = 0;
     var opsLen = vm.compiler.buf.ops.items.len;
     var pc = vm.compiler.buf.ops.items.ptr;
     var instIdx: u32 = 0;
     const debugTable = vm.compiler.buf.debugTable.items;
 
-    if (optPcContext) |pcContext| {
+    if (opts.pcContext) |pcContext| {
         const idx = indexOfDebugSymFromTable(debugTable, pcContext) orelse {
             if (getOpCodeAtPc(vm.compiler.buf.ops.items, pcContext)) |code| {
                 return cy.panicFmt("Missing debug sym at {}, code={}", .{pcContext, code});

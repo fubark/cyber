@@ -54,11 +54,6 @@ pub const Allocator = struct {
         return self.nextTemp;
     }
 
-    pub fn setNextTemp2(self: *Allocator, nextTemp: u8) void {
-        cy.dassert(nextTemp >= self.tempStart);
-        self.nextTemp = nextTemp;
-    }
-
     pub fn selectForLocalInst(self: *Allocator, cstr: RegisterCstr, local: u8, localRetained: bool) !CopyInst {
         switch (cstr.type) {
             .varSym => {

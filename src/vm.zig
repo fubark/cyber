@@ -603,7 +603,7 @@ pub const VM = struct {
             return Value.None;
         } else if (config.backend == .vm) {
             if (cy.verbose) {
-                try debug.dumpBytecode(self, null);
+                try debug.dumpBytecode(self, .{});
             }
 
             if (cy.Trace) {

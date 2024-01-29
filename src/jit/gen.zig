@@ -175,6 +175,14 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
             }
         }
     }
+
+    var tempRetainedStart: usize = undefined;
+    var tempStart: usize = undefined;
+    if (cy.Trace and c.procs.items.len > 0) {
+        tempRetainedStart = @intCast(c.unwindTempIndexStack.items.len);
+        tempStart = c.rega.nextTemp;
+    }
+
     switch (code) {
         // .breakStmt          => try breakStmt(c, nodeId),
         // .contStmt           => try contStmt(c, nodeId),
@@ -215,9 +223,17 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
         }
     }
 
-    if (c.procs.items.len > 0) {
-        // Must have a block to check against expected stack starts.
-        try bcgen.checkStack(c, nodeId);
+    // Check stack after statement.
+    if (cy.Trace and c.procs.items.len > 0) {
+        if (c.unwindTempIndexStack.items.len != tempRetainedStart) {
+            return c.reportErrorAt("Expected {} unwindable retained temps, got {}",
+                &.{v(tempRetainedStart), v(c.unwindTempIndexStack.items.len)}, nodeId);
+        }
+
+        if (c.rega.nextTemp != tempStart) {
+            return c.reportErrorAt("Expected {} temp start, got {}",
+                &.{v(tempStart), v(c.rega.nextTemp)}, nodeId);
+        }
     }
     log.tracev("----{s}: end", .{@tagName(code)});
 
@@ -236,12 +252,11 @@ fn exprStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     const expr = c.ir.advanceStmt(idx, .exprStmt);
     const exprv = try genExpr(c, expr, cstr);
-    if (bcgen.unwindAndFreeTemp(c, exprv)) {
-        // ARC cleanup.
-        if (!data.returnMain) {
-            // TODO: Merge with previous release inst.
-            // try pushRelease(c, exprv.local, nodeId);
-        }
+    try bcgen.popTempValue(c, exprv);
+    // ARC cleanup.
+    if (!data.returnMain) {
+        // TODO: Merge with previous release inst.
+        // try bcgen.releaseTempValue(c, exprv, nodeId);
     }
 
     if (data.returnMain) {
@@ -479,12 +494,12 @@ fn genBinOp(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, opts: BinOpOptions, no
         },
     }
 
-    const leftRetained = if (opts.left == null) bcgen.unwindTempKeepDst(c, leftv, inst.dst) else false;
-    const rightRetained = bcgen.unwindTempKeepDst(c, rightv, inst.dst);
+    // const leftRetained = if (opts.left == null) bcgen.unwindTempKeepDst(c, leftv, inst.dst) else false;
+    // const rightRetained = bcgen.unwindTempKeepDst(c, rightv, inst.dst);
 
     // ARC cleanup.
-    _ = leftRetained;
-    _ = rightRetained;
+    // _ = leftRetained;
+    // _ = rightRetained;
     // try pushReleaseOpt2(c, leftRetained, leftv.local, rightRetained, rightv.local, nodeId);
 
     var val = genValue(c, inst.dst, retained);
@@ -525,9 +540,8 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     }
 
     // ARC cleanup for true case.
-    if (bcgen.unwindAndFreeTemp(c, condv)) {
-        // try pushRelease(c, condv.local, condNodeId);
-    }
+    try bcgen.popTempValue(c, condv);
+    // try bcgen.releaseTempValue(c, condv, condNodeId);
 
     try bcgen.pushBlock(c, false, nodeId);
     try genStmts(c, data.bodyHead);
@@ -640,7 +654,7 @@ fn genToFinalDst(c: *cy.Chunk, val: GenValue, dst: RegisterCstr) !GenValue {
     const res = try genToDst(c, val, dst, desc);
 
     // Check to remove the temp that is used to move to final dst.
-    if (val.isTempLocal) c.rega.freeTemps(1);
+    if (val.isTemp()) try bcgen.popTemp(c, val.data.temp);
     return res;
 }
 
@@ -732,7 +746,7 @@ fn genCallFuncSym(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.NodeI
 
     const argvs = bcgen.popValues(c, data.numArgs);
     try bcgen.checkArgs(argStart, argvs);
-    const retained = bcgen.unwindTemps(c, argvs);
+    const retained = try bcgen.popTempValuesGetRetained(c, argvs);
     _ = retained;
     // try pushReleaseVals(c, retained, nodeId);
 
@@ -975,7 +989,7 @@ fn genStringTemplate(c: *cy.Chunk, idx: usize, cstr: RegisterCstr, nodeId: cy.No
 
     const argvs = bcgen.popValues(c, data.numExprs);
     try bcgen.checkArgs(argStart, argvs);
-    const retained = bcgen.unwindTemps(c, argvs);
+    const retained = try bcgen.popTempValuesGetRetained(c, argvs);
     try pushReleaseVals(c, retained, nodeId);
 
     const val = genValue(c, inst.dst, true);
@@ -1243,7 +1257,7 @@ fn retExprStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
         childv = try genExpr(c, childIdx, RegisterCstr.exactMustRetain(0));
     }
 
-    _ = bcgen.unwindAndFreeTemp(c, childv);
+    try bcgen.popTempValue(c, childv);
 
     // try genBlockReleaseLocals(c);
     if (c.curBlock.type == .main) {

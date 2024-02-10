@@ -3,6 +3,12 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#ifndef CYBER_H
+#define CYBER_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 typedef struct CsVM CsVM;
 
 typedef uint64_t CsValue;
@@ -433,3 +439,9 @@ void csListInsert(CsVM* vm, CsValue list, size_t idx, CsValue val);
 // CsValue csMapGetStringKey(CsVM* vm, CsValue map, CsStr key);
 // void csMapSet(CsVM* vm, CsValue map, CsValue key, CsValue val);
 // void csMapSetStringKey(CsVM* vm, CsValue map, CsStr key, CsValue val);
+
+#ifdef __cplusplus
+} // extern "C"
+#endif // __cplusplus
+
+#endif // !CYBER_H

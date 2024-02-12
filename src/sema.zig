@@ -3720,10 +3720,15 @@ pub const ChunkExt = struct {
                 return ExprResult.initStatic(irIdx, bt.List);
             },
             .recordLit => {
-                if (c.sema.isUserObjectType(expr.preferType)) {
-                    // Infer user object type.
-                    const obj = c.sema.getTypeSym(expr.preferType).cast(.object_t);
-                    return c.semaObjectInit2(obj, nodeId);
+                if (expr.preferType != bt.Any) {
+                    if (c.sema.isUserObjectType(expr.preferType)) {
+                        // Infer user object type.
+                        const obj = c.sema.getTypeSym(expr.preferType).cast(.object_t);
+                        return c.semaObjectInit2(obj, nodeId);
+                    } else if (c.sema.isStructType(expr.preferType)) {
+                        const obj = c.sema.getTypeSym(expr.preferType).cast(.struct_t);
+                        return c.semaObjectInit2(obj, nodeId);
+                    }
                 }
 
                 const numArgs = node.data.recordLit.numArgs;

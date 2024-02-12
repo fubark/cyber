@@ -7,6 +7,10 @@ type Foo struct:
 var a = [Foo val: 123]
 test.eq(a.val, 123)
 
+-- Initalize with inferred type.
+var a2 Foo = [val: 123]
+test.eq(a2.val, 123)
+
 -- Set field.
 a.val = 234
 test.eq(a.val, 234)

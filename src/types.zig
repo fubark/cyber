@@ -199,6 +199,13 @@ pub const SemaExt = struct {
         return s.types.items[id].kind == .object;
     }
 
+    pub fn isStructType(s: *cy.Sema, id: TypeId) bool {
+        if (id < BuiltinEnd) {
+            return false;
+        }
+        return s.types.items[id].kind == .@"struct";
+    }
+
     pub fn isEnumType(s: *cy.Sema, typeId: TypeId) bool {
         if (typeId < PrimitiveEnd) {
             return false;

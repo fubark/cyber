@@ -533,21 +533,13 @@ const ParseCyberState = struct {
     node: cy.Node,
 };
 
-fn genTypeSpecString(vm: *cy.VM, ast: cy.ast.AstView, headId: cy.NodeId) !cy.Value {
-    if (headId != cy.NullNode) {
+fn genTypeSpecString(vm: *cy.VM, ast: cy.ast.AstView, exprId: cy.NodeId) !cy.Value {
+    if (exprId != cy.NullNode) {
         var sb: std.ArrayListUnmanaged(u8) = .{};
         defer sb.deinit(vm.alloc);
 
-        var name = ast.nodeStringById(headId);
-        try sb.appendSlice(vm.alloc, name);
-
-        var curId = ast.node(headId).next();
-        while (curId != cy.NullNode) {
-            try sb.append(vm.alloc, '.');
-            name = ast.nodeStringById(curId);
-            try sb.appendSlice(vm.alloc, name);
-            curId = ast.node(curId).next();
-        }
+        var enc = cy.ast.Encoder{ .ast = ast };
+        try enc.writeNode(sb.writer(vm.alloc), exprId);
 
         return try vm.retainOrAllocAstring(sb.items);
     } else {

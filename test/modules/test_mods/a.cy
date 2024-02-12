@@ -54,3 +54,7 @@ type Vec2Alias Vec2
 
 type Bar:
     var a float
+
+template(T type)
+type TFoo:
+    var a #T

@@ -968,16 +968,17 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.HostObjectTyp
 }
 
 pub fn declareTemplateVariant(c: *cy.Chunk, template: *cy.sym.TypeTemplate, variantId: u32) !*cy.sym.Sym {
+    const tchunk = template.chunk();
+    const template_n = tchunk.ast.node(template.declId);
     switch (template.kind) {
         .object_t => {
             const sym = try c.declareObjectVariantType(template, variantId);
 
             // Set variant in context chunk so sema ops know to swap nodes.
             const variant = template.variants.items[variantId];
-            c.patchTemplateNodes = variant.patchNodes;
+            tchunk.patchTemplateNodes = variant.patchNodes;
 
-            const template_n = c.ast.node(template.declId);
-            try declareObjectMembers(c, @ptrCast(sym), template_n.data.typeTemplate.typeDecl);
+            try declareObjectMembers(tchunk, @ptrCast(sym), template_n.data.typeTemplate.typeDecl);
 
             // Defer method sema.
             const mod = sym.getMod();
@@ -985,16 +986,15 @@ pub fn declareTemplateVariant(c: *cy.Chunk, template: *cy.sym.TypeTemplate, vari
             return @ptrCast(sym);
         },
         .enum_t => {
-            const template_n = c.ast.node(template.declId);
-            const enum_n = c.ast.node(template_n.data.typeTemplate.typeDecl);
+            const enum_n = tchunk.ast.node(template_n.data.typeTemplate.typeDecl);
             const isChoiceType = enum_n.data.enumDecl.isChoiceType;
             const sym = try c.declareEnumVariantType(template, isChoiceType, variantId);
 
             // Set variant in context chunk so sema ops know to swap nodes.
             const variant = template.variants.items[variantId];
-            c.patchTemplateNodes = variant.patchNodes;
+            tchunk.patchTemplateNodes = variant.patchNodes;
 
-            try declareEnumMembers(c, sym, template_n.data.typeTemplate.typeDecl);
+            try declareEnumMembers(tchunk, sym, template_n.data.typeTemplate.typeDecl);
             return @ptrCast(sym);
         },
     }

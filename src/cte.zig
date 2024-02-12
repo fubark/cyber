@@ -96,16 +96,17 @@ fn execTemplateCtNodes(c: *cy.Chunk, template: *cy.sym.TypeTemplate, params: []c
         try paramMap.put(c.alloc, param.name, params[i]);
     }
 
+    const tchunk = template.chunk();
     const res = try c.alloc.alloc(cy.NodeId, template.ctNodes.len);
     for (template.ctNodes, 0..) |ctNodeId, i| {
-        const node = c.ast.node(ctNodeId);
+        const node = tchunk.ast.node(ctNodeId);
 
         // Check for simple template param replacement.
-        const child = c.ast.node(node.data.comptimeExpr.child);
+        const child = tchunk.ast.node(node.data.comptimeExpr.child);
         if (child.type() == .ident) {
-            const name = c.ast.nodeString(child);
+            const name = tchunk.ast.nodeString(child);
             if (paramMap.get(name)) |param| {
-                res[i] = try cte.genNodeFromValue(c, param, node.srcPos);
+                res[i] = try cte.genNodeFromValue(tchunk, param, node.srcPos);
                 continue;
             }
         }
@@ -113,7 +114,7 @@ fn execTemplateCtNodes(c: *cy.Chunk, template: *cy.sym.TypeTemplate, params: []c
         return error.TODO;
     }
 
-    c.updateAstView(c.parser.ast.view());
+    tchunk.updateAstView(tchunk.parser.ast.view());
     return res;
 }
 

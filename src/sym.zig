@@ -415,6 +415,10 @@ pub const TypeTemplate = struct {
     /// This array allows each variant to build their replacement AST
     /// without scanning the entire template again for compile-time expressions.
     ctNodes: []const cy.NodeId,
+
+    pub fn chunk(self: *const TypeTemplate) *cy.Chunk {
+        return self.head.parent.?.getMod().?.chunk;
+    }
 };
 
 pub const TemplateParam = struct {

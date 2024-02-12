@@ -127,10 +127,12 @@ pub const TypeString = c.CS_TYPE_STRING;
 pub const TypeArray = c.CS_TYPE_ARRAY;
 pub const TypeFiber = c.CS_TYPE_FIBER;
 pub const TypeBox = c.CS_TYPE_BOX;
-pub const TypeHostFunc = c.CS_TYPE_HOSTFUNC;
+pub const TypeHostFunc = c.CS_TYPE_HOST_FUNC;
+pub const TypeExternFunc = c.CS_TYPE_EXTERN_FUNC;
 pub const TypeTccState = c.CS_TYPE_TCCSTATE;
 pub const TypePointer = c.CS_TYPE_POINTER;
 pub const TypeTuple = c.CS_TYPE_TUPLE;
+pub const TypeType = c.CS_TYPE_TYPE;
 pub const TypeMetaType = c.CS_TYPE_METATYPE;
 
 pub const ResultCode = c.CsResultCode;

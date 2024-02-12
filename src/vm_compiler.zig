@@ -607,6 +607,10 @@ fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
                     .typeAlias => {
                         try sema.declareTypeAlias(chunk, decl.nodeId);
                     },
+                    .typeTemplate => {
+                        const ctNodes = chunk.parser.ast.templateCtNodes.items[decl.data.typeTemplate.ctNodeStart..decl.data.typeTemplate.ctNodeEnd];
+                        try sema.declareTypeTemplate(chunk, decl.nodeId, ctNodes);
+                    },
                     .variable,
                     .func,
                     .funcInit => {},
@@ -656,15 +660,16 @@ fn loadPredefinedTypes(self: *VMcompiler, parent: *cy.Sym) !void {
         .{"MapIterator", bt.MapIter},
         .{"Closure", bt.Closure},
         .{"Lambda", bt.Lambda},
+        .{"HostFunc", bt.HostFunc},
+        .{"ExternFunc", bt.ExternFunc},
         .{"String", bt.String},
         .{"Array", bt.Array},
         .{"Fiber", bt.Fiber},
         .{"Box", bt.Box},
-        .{"HostFunc", bt.HostFunc},
         .{"TccState", bt.TccState},
         .{"pointer", bt.Pointer},
+        .{"type", bt.Type},
         .{"metatype", bt.MetaType},
-        .{"ExternFunc", bt.ExternFunc},
 
         .{"dynamic", bt.Dynamic},
         .{"any", bt.Any},
@@ -738,6 +743,7 @@ fn declareSymbols(self: *VMcompiler) !void {
                     try sema.declareEnumMembers(chunk, @ptrCast(decl.data.sym), decl.nodeId);
                 },
                 .import,
+                .typeTemplate,
                 .typeAlias => {},
             }
         }
@@ -875,6 +881,7 @@ fn prepareSym(c: *VMcompiler, sym: *cy.Sym) !void {
         .object,
         .func,
         .typeAlias,
+        .typeTemplate,
         .enumType,
         .enumMember,
         .import => {},

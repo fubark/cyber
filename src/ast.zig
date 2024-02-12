@@ -9,92 +9,94 @@ pub const NodeId = u32;
 
 pub const NodeType = enum(u8) {
     @"null",
-    root,
-    exprStmt,
+    accessExpr,
+    arrayLit,
     assignStmt,
-    opAssignStmt,
-    varSpec,
-    staticDecl,
-    localDecl,
-    passStmt,
+    await_expr,
+    binExpr,
+    binLit,
     breakStmt,
-    continueStmt,
-    returnStmt,
-    returnExprStmt,
+    caseBlock,
+    callExpr,
+    callTemplate,
+    castExpr,
+    caseHeader,
+    catchStmt,
+    coinit,
     comptimeExpr,
     comptimeStmt,
-    dirModifier,
-    ident,
-    trueLit,
-    falseLit,
-    noneLit,
-    stringLit,
-    runeLit,
-    stringTemplate,
-    await_expr,
-    accessExpr,
-    indexExpr,
-    sliceExpr,
-    range,
-    callExpr,
-    namedArg,
-    binExpr,
-    unary_expr,
-    binLit,
-    decLit,
-    octLit,
-    hexLit,
-    floatLit,
     condExpr,
-    ifStmt,
-    ifBranch,
+    continueStmt,
+    coresume,
+    coyield,
+    decLit,
+    dirModifier,
+    eachClause,
     elseBlock,
-    whileInfStmt,
-    whileCondStmt,
-    whileOptStmt,
-    whileOptHeader,
+    enumDecl,
+    enumMember,
+    errorSymLit,
+    exprStmt,
+    falseLit,
+    forIterHeader,
+    forIterStmt,
     forRangeHeader,
     forRangeStmt,
-    forIterStmt,
-    forIterHeader,
-    eachClause,
-    label_decl,
-    hostVarDecl,
-    hostFuncDecl,
+    floatLit,
     funcDecl,
     funcHeader,
     funcParam,
+    group,
+    hexLit,
+    hostFuncDecl,
     hostObjectDecl,
-    seqDestructure,
-    objectDecl,
-    objectHeader,
-    objectField,
-    objectInit,
-    typeAliasDecl,
-    enumDecl,
-    enumMember,
-    tagInit,
-    symbolLit,
-    errorSymLit,
+    hostVarDecl,
+    ident,
+    ifBranch,
+    ifStmt,
+    importStmt,
+    indexExpr,
+    keyValue,
+    label_decl,
     lambda_expr, 
     lambda_multi,
-    arrayLit,
+    localDecl,
+    namedArg,
+    noneLit,
+    objectDecl,
+    objectField,
+    objectHeader,
+    objectInit,
+    octLit,
+    opAssignStmt,
+    passStmt,
+    range,
     recordLit,
-    keyValue,
-    coinit,
-    coyield,
-    coresume,
-    importStmt,
+    returnExprStmt,
+    returnStmt,
+    root,
+    runeLit,
+    semaSym,
+    seqDestructure,
+    sliceExpr,
+    staticDecl,
+    stringLit,
+    stringTemplate,
+    switchExpr,
+    switchStmt,
+    symbolLit,
+    throwExpr,
+    trueLit,
     tryExpr,
     tryStmt,
-    catchStmt,
-    throwExpr,
-    group,
-    caseBlock,
-    caseHeader,
-    switchStmt,
-    switchExpr,
-    castExpr,
+    typeAliasDecl,
+    typeTemplate,
+    unary_expr,
+    varSpec,
+    whileCondStmt,
+    whileInfStmt,
+    whileOptHeader,
+    whileOptStmt,
 };
 
 pub const DirModifierType = enum(u8) {
@@ -241,6 +243,11 @@ const NodeData = union {
         argHead: u24,
         hasNamedArg: bool,
     },
+    callTemplate: packed struct {
+        callee: NodeId,
+        argHead: u24,
+        numArgs: u8,
+    },
     unary: struct {
         child: NodeId,
         op: UnaryOp,
@@ -263,6 +270,9 @@ const NodeData = union {
     },
     comptimeExpr: struct {
         child: NodeId,
+
+        /// Used for expanding templates to get the variant replacement node.
+        patchIdx: cy.Nullable(u32),
     },
     comptimeStmt: struct {
         expr: NodeId,
@@ -294,9 +304,10 @@ const NodeData = union {
         typeSpec: cy.Nullable(u24),
         typed: bool,
     },
-    objectDecl: struct {
+    objectDecl: packed struct {
         header: NodeId,
-        funcHead: NodeId,
+        funcHead: u24,
+        numFuncs: u8,
     },
     objectHeader: packed struct {
         name: u24,
@@ -360,6 +371,9 @@ const NodeData = union {
         iterable: NodeId,
         eachClause: NodeId,
     },
+    semaSym: struct {
+        sym: *cy.Sym,
+    },
     seqDestructure: struct {
         head: NodeId,
         numArgs: u8,
@@ -367,6 +381,11 @@ const NodeData = union {
     sliceExpr: struct {
         arr: NodeId,
         range: NodeId,
+    },
+    typeTemplate: packed struct {
+        paramHead: cy.Nullable(u24),
+        numParams: u8,
+        typeDecl: NodeId,
     },
     range: struct {
         start: NodeId,
@@ -529,6 +548,9 @@ pub const Ast = struct {
     /// Generated source literals from templates or CTE.
     srcGen: std.ArrayListUnmanaged(u8),
 
+    /// Collected ct nodes for templates.
+    templateCtNodes: std.ArrayListUnmanaged(NodeId),
+
     /// Heap generated strings, stable pointers unlike `srcGen`.
     strs: std.ArrayListUnmanaged([]const u8),
 
@@ -542,6 +564,7 @@ pub const Ast = struct {
             .srcGen = .{},
             .strs = .{},
             .comments = .{},
+            .templateCtNodes = .{},
         };
         try ast.clearNodes(alloc);
         return ast;
@@ -549,6 +572,7 @@ pub const Ast = struct {
 
     pub fn deinit(self: *Ast, alloc: std.mem.Allocator) void {
         self.nodes.deinit(alloc);
+        self.templateCtNodes.deinit(alloc);
         self.srcGen.deinit(alloc);
         for (self.strs.items) |str| {
             alloc.free(str);
@@ -559,6 +583,7 @@ pub const Ast = struct {
 
     pub fn clearNodes(self: *Ast, alloc: std.mem.Allocator) !void {
         self.nodes.clearRetainingCapacity();
+        self.templateCtNodes.clearRetainingCapacity();
         // Insert dummy for cy.NullNode.
         try self.nodes.append(alloc, .{
             .head = .{ .type = .null, .data = undefined },
@@ -1056,6 +1081,77 @@ pub const Encoder = struct {
                 try w.writeAll(@tagName(node.type()));
                 try w.writeByte('>');
             },
+        }
+    }
+};
+
+const VisitNode = packed struct {
+    nodeId: u31,
+    visited: bool,
+};
+
+pub const Visitor = struct {
+    alloc: std.mem.Allocator,
+    ast: AstView,
+    stack: std.ArrayListUnmanaged(VisitNode),
+
+    pub fn deinit(self: *Visitor) void {
+        self.stack.deinit(self.alloc);
+    }
+
+    pub fn visit(self: *Visitor, rootId: cy.NodeId,
+        comptime C: type, ctx: C, visitFn: *const fn(ctx: C, nodeId: NodeId, enter: bool) bool) !void {
+
+        self.stack.clearRetainingCapacity();
+        try self.pushNode(rootId);
+        while (self.stack.items.len > 0) {
+            const vnode = &self.stack.items[self.stack.items.len-1];
+            if (!vnode.visited) {
+                if (visitFn(ctx, vnode.nodeId, true)) {
+                    vnode.visited = true;
+                    const node = self.ast.node(vnode.nodeId);
+                    switch (node.type()) {
+                        .objectField => {},
+                        .objectDecl => {
+                            try self.pushNodeList(node.data.objectDecl.funcHead, node.data.objectDecl.numFuncs);
+                            const header = self.ast.node(node.data.objectDecl.header);
+                            try self.pushNodeList(header.data.objectHeader.fieldHead, header.data.objectHeader.numFields);
+                        },
+                        else => {
+                            cy.rt.logZFmt("TODO: {}", .{node.type()});
+                            return error.TODO;
+                        }
+                    }
+                } else {
+                    self.stack.items.len -= 1;
+                }
+            } else {
+                _ = visitFn(ctx, vnode.nodeId, false);
+                self.stack.items.len -= 1;
+            }
+        }
+    }
+
+    fn pushNode(self: *Visitor, nodeId: NodeId) !void {
+        try self.stack.append(self.alloc, .{
+            .nodeId = @intCast(nodeId),
+            .visited = false,
+        });
+    }
+
+    fn pushNodeList(self: *Visitor, head: NodeId, size: u32) !void {
+        try self.stack.ensureUnusedCapacity(self.alloc, size);
+        self.stack.items.len += size;
+
+        var i: u32 = 0;
+        var cur = head;
+        while (cur != cy.NullNode) {
+            self.stack.items[self.stack.items.len-1-i] = .{
+                .nodeId = @intCast(cur),
+                .visited = false,
+            };
+            i += 1;
+            cur = self.ast.node(cur).next();
         }
     }
 };

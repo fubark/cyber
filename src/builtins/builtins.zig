@@ -593,8 +593,20 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
     const entry = entryv.castHeapObject(*cy.heap.Map);
     try vm.mapSet(entry, try vm.retainOrAllocAstring("type"), try vm.retainOrAllocAstring(@tagName(decl.declT)));
     var name: []const u8 = undefined;
-    var node = ast.node(decl.nodeId);
+    const node = ast.node(decl.nodeId);
     switch (decl.declT) {
+        .typeTemplate => {
+            const typeDecl = ast.node(node.data.typeTemplate.typeDecl);
+            switch (typeDecl.type()) {
+                .objectDecl => {
+                    const header = ast.node(typeDecl.data.objectDecl.header);
+                    name = ast.nodeStringById(header.data.objectHeader.name);
+                },
+                else => {
+                    return error.Unsupported;
+                },
+            }
+        },
         .variable => {
             const varSpec = ast.node(node.data.staticDecl.varSpec);
             name = ast.getNamePathInfoById(varSpec.data.varSpec.name).namePath;
@@ -626,7 +638,7 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
             const childrenv = try vm.allocEmptyList();
             const children = childrenv.asHeapObject().list.getList();
 
-            var funcId = node.data.objectDecl.funcHead;
+            var funcId: cy.NodeId = node.data.objectDecl.funcHead;
             while (funcId != cy.NullNode) {
                 const funcN = ast.node(funcId);
                 var childDecl: cy.parser.StaticDecl = undefined;

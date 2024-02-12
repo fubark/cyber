@@ -89,7 +89,7 @@ hljs.registerLanguage('cy', function() {
     return {
     keywords: {
         keyword: [
-            'func', 'import', 'for', 'coinit', 'coresume', 'coyield',
+            'template', 'func', 'import', 'for', 'coinit', 'coresume', 'coyield',
             'return', 'if', 'else', 'as', 'while', 'var', 'my', 'object', 'with', 'caught',
             'break', 'continue', 'switch', 'pass', 'or', 'and', 'not', 'is', 'error', 'throws',
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case'
@@ -107,10 +107,11 @@ hljs.registerLanguage('cy', function() {
             scope: 'string',
             begin: "'", end: "'"
         },
+        /*
         {
             scope: 'symbol',
             begin: '#', end: /\w(?=[^\w])/
-        },
+        },*/
         hljs.COMMENT(
         '\\-\\-', // begin
         '\\n', // end

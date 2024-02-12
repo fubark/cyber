@@ -233,7 +233,7 @@ The final resulting value that is assigned to the static variable is provided by
 ## Reserved identifiers.
 
 ### Keywords.
-There are `27` general keywords. This list categorizes them:
+There are `28` general keywords. This list categorizes them:
 
 - [Control Flow](#control-flow): `if` `else` `switch` `case` `while` `for` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not`
@@ -241,6 +241,7 @@ There are `27` general keywords. This list categorizes them:
 - [Functions](#functions): `func` `return`
 - [Coroutines](#fibers): `coinit` `coyield`, `coresume`
 - [Types](#custom-types): `type` [`object`](#objects) [`enum`](#enums) `as`
+- [Metaprogramming](#metaprogramming): `template`
 - [Error Handling](#error-handling): `try` `catch` `throw`
 - [Modules](#modules): `import`
 
@@ -805,6 +806,8 @@ print int(currency)       -- '123' or some arbitrary id.
 * [Type aliases.](#type-aliases)
 * [Traits.](#traits)
 * [Union types.](#union-types)
+* [Generic types.](#generic-types)
+  * [Expand type template.](#expand-type-template)
 </td>
 </tr></table>
 
@@ -1062,6 +1065,33 @@ var v = [Vec3 x: 3, y: 4, z: 5]
 ## Union types.
 > _Planned Feature_
 
+## Generic types.
+Templates are used to specialize type declarations. Since template parameters only exist at compile-time, the `#` prefix is used to reference them in the template body:
+```cy
+template(T type)
+type MyContainer:
+    var id int
+    var value #T
+
+    func get() #T:
+        return self.value
+```
+
+### Expand type template.
+When the template is invoked with compile-time argument(s), a specialized version of the type is generated.
+
+Invoking a template requires a `#` before the call arguments. This indicates that the arguments are compile-time arguments. In this example, `String` can be used as an argument since it satisfies the `type` parameter constraint:
+```cy
+var a MyContainer#(String) = [id: 123, value: 'abc']
+print a.get()      -- Prints 'abc'
+```
+When there is only one template argument, the syntax can be simplified:
+```cy
+var a MyContainer#String = [id: 123, value: 'abc']
+print a.get()      -- Prints 'abc'
+```
+Note that invoking the template again with the same argument(s) returns the same generated type. In other words, the generated type is always memoized from the input parameters.
+
 # Control Flow.
 <table><tr>
 <td valign="top">
@@ -1287,6 +1317,7 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
 * [Function calls.](#function-calls)
   * [Shorthand syntax.](#shorthand-syntax)
   * [Call block syntax.](#call-block-syntax)
+* [Generic functions.](#generic-functions)
 
 [^top](#table-of-contents)
 
@@ -1468,6 +1499,9 @@ foo(123):
     'hello'
 ```
 In the example above, the function `foo` is called with 4 arguments. The first argument `123` is included in the starting call expression. The second argument is a function value inside the call expression block. The third argument is mapped to the param `param3`. Finally, the fourth argument is a list that contains `234`, `bar()`, and `'hello'`. 
+
+## Generic functions.
+> _Planned Feature_
 
 # Modules.
 <table><tr>
@@ -2464,9 +2498,12 @@ func add(a int, b int):
 
 * [Reflection.](#reflection)
 * [Directives.](#directives)
-* [Runtime eval.](#runtime-eval)
 * [Generics.](#generics)
-* [Compile-time.](#compile-time)
+* [Macros.](#macros)
+* [Compile-time execution.](#compile-time-execution)
+  * [Builtin functions.](#builtin-functions)
+  * [Builtin constants.](#builtin-constants)
+* [Runtime execution.](#runtime-execution)
 </td>
 </tr></table>
 
@@ -2586,31 +2623,33 @@ print bool          -- 'type: bool'
 ```
 
 ## Directives.
-Directives start with `#` and are used as modifiers or to invoke compile-time features.
-
-> `#genLabel(name String)`
->
->Emits a label during codegen for debugging.
-
+Directives start with `#` and are used as modifiers.
 > `#host`
 >
 >Modifier to bind a function, variable, or type to the host. See [Embedding](#embedding).
 
-> `#modUri`
+## Generics.
+Generics enables parametric polymorphism for types and functions. Compile-time arguments are passed to templates to generate specialized code. This facilitates developing container types and algorithms that operate on different types.
+
+See [Custom Types / Generic types](#generic-types) and [Functions / Generic functions](#generic-functions).
+
+## Macros.
+> _Planned Feature_
+
+## Compile-time execution.
+> _Planned Feature_
+
+### Builtin functions.
+> `func genLabel(name String)`
+>
+>Emits a label during codegen for debugging.
+
+### Builtin constants.
+> `var modUri String`
 >
 >Evaluates to the module's URI as a string. See [Module URI](#module-uri).
 
-> `#with`
->
->Modifier for custom annotations. *Planned Feature*
-
-## Runtime eval.
-> _Planned Feature_
-
-## Generics.
-> _Planned Feature_
-
-## Compile-time.
+## Runtime execution.
 > _Planned Feature_
 
 # Embedding.

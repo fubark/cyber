@@ -99,6 +99,7 @@ pub const BuiltinTypes = struct {
     pub const Error: TypeId = vmc.TYPE_ERROR;
     pub const Fiber: TypeId = vmc.TYPE_FIBER;
     pub const MetaType: TypeId = vmc.TYPE_METATYPE;
+    pub const Type: TypeId = vmc.TYPE_TYPE;
     pub const Closure: TypeId = vmc.TYPE_CLOSURE;
     pub const Lambda: TypeId = vmc.TYPE_LAMBDA;
     pub const Box: TypeId = vmc.TYPE_BOX;

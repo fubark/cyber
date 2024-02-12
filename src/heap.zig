@@ -132,6 +132,7 @@ pub const HeapObject = extern union {
     box: Box,
     tccState: if (cy.hasFFI) TccState else void,
     pointer: Pointer,
+    type: Type,
     metatype: MetaType,
 
     pub inline fn getTypeId(self: HeapObject) cy.TypeId {
@@ -194,13 +195,19 @@ pub const HeapObject = extern union {
     }
 };
 
+pub const Type = extern struct {
+    typeId: cy.TypeId align (8),
+    rc: u32,
+    type: cy.TypeId,
+};    
+
 pub const MetaTypeKind = enum {
     object,
 };
 
 /// MetaType needs a RC to prevent ARC cleanup of the internal type and source code.
 pub const MetaType = extern struct {
-    typeId: cy.TypeId,
+    typeId: cy.TypeId align (8),
     rc: u32,
     typeKind: u32,
     type: u32,
@@ -348,27 +355,27 @@ const UstringMruChar = struct {
     byteIdx: u32,
 };
 
+pub const StringType = enum(u2) {
+    ustring = 0,
+    uslice = 1,
+    astring = 2,
+    aslice = 3,
+
+    pub inline fn isUstring(self: StringType) bool {
+        return self == .ustring or self == .uslice;
+    }
+
+    pub inline fn isAstring(self: StringType) bool {
+        return self == .astring or self == .aslice;
+    }
+};
+
 pub const String = extern struct {
-    pub const Type = enum(u2) {
-        ustring = 0,
-        uslice = 1,
-        astring = 2,
-        aslice = 3,
-
-        pub inline fn isUstring(self: Type) bool {
-            return self == .ustring or self == .uslice;
-        }
-
-        pub inline fn isAstring(self: Type) bool {
-            return self == .astring or self == .aslice;
-        }
-    };
-
     typeId: cy.TypeId align(8),
     rc: u32,
     headerAndLen: u32,
 
-    pub fn getParentByType(self: *String, stype: Type) *cy.HeapObject {
+    pub fn getParentByType(self: *String, stype: StringType) *cy.HeapObject {
         switch (stype) {
             .ustring => return @ptrCast(self),
             .uslice => return @as(*const UstringSlice, @ptrCast(self)).getParentPtr().?,
@@ -459,7 +466,7 @@ pub const String = extern struct {
         }
     }
 
-    pub fn getType(self: *const String) Type {
+    pub fn getType(self: *const String) StringType {
         return @enumFromInt(self.headerAndLen >> 30);
     }
 
@@ -924,6 +931,16 @@ pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) v
             vm.heapFreeHead = obj;
         }
     }
+}
+
+pub fn allocType(self: *cy.VM, typeId: cy.TypeId) !Value {
+    const obj = try allocPoolObject(self);
+    obj.type = .{
+        .typeId = bt.Type,
+        .rc = 1,
+        .type = typeId,
+    };
+    return Value.initNoCycPtr(obj);
 }
 
 pub fn allocMetaType(self: *cy.VM, typeKind: u8, typeId: cy.TypeId) !Value {
@@ -1447,6 +1464,7 @@ pub const VmExt = struct {
     pub const allocListIterator = Root.allocListIterator;
     pub const allocMapIterator = Root.allocMapIterator;
     pub const allocObjectSmall = Root.allocObjectSmall;
+    pub const allocType = Root.allocType;
 
     pub fn mapSet(vm: *cy.VM, map: *Map, key: Value, val: Value) !void {
         try map.map().put(vm.alloc, key, val);
@@ -1494,7 +1512,7 @@ pub fn allocUnsetAstringObject(self: *cy.VM, len: usize) linksection(cy.Section)
     obj.astring = .{
         .typeId = bt.String,
         .rc = 1,
-        .headerAndLen = (@as(u32, @intFromEnum(String.Type.astring)) << 30) | @as(u32, @intCast(len)),
+        .headerAndLen = (@as(u32, @intFromEnum(StringType.astring)) << 30) | @as(u32, @intCast(len)),
         .bufStart = undefined,
     };
     return obj;
@@ -1580,7 +1598,7 @@ pub fn allocUnsetUstringObject(self: *cy.VM, len: usize, charLen: u32) linksecti
     obj.ustring = .{
         .typeId = bt.String,
         .rc = 1,
-        .headerAndLen = (@as(u32, @intFromEnum(String.Type.ustring)) << 30) | @as(u32, @intCast(len)),
+        .headerAndLen = (@as(u32, @intFromEnum(StringType.ustring)) << 30) | @as(u32, @intCast(len)),
         .charLen = charLen,
         .mruIdx = 0,
         .mruCharIdx = 0,
@@ -1595,7 +1613,7 @@ pub fn allocUstringSlice(self: *cy.VM, slice: []const u8, charLen: u32, parent: 
         .typeId = bt.String,
         .rc = 1,
         .buf = slice.ptr,
-        .headerAndLen = (@as(u32, @intFromEnum(String.Type.uslice)) << 30) | @as(u32, @intCast(slice.len)),
+        .headerAndLen = (@as(u32, @intFromEnum(StringType.uslice)) << 30) | @as(u32, @intCast(slice.len)),
         .charLen = charLen,
         .mruIdx = 0,
         .mruCharIdx = 0,
@@ -1610,7 +1628,7 @@ pub fn allocAstringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject) !
     obj.aslice = .{
         .typeId = bt.String,
         .rc = 1,
-        .headerAndLen = (@as(u32, @intFromEnum(String.Type.aslice)) << 30) | @as(u32, @intCast(slice.len)),
+        .headerAndLen = (@as(u32, @intFromEnum(StringType.aslice)) << 30) | @as(u32, @intCast(slice.len)),
         .buf = slice.ptr,
         .offset = @intCast(@intFromPtr(slice.ptr) - @intFromPtr(parent)),
     };
@@ -2069,6 +2087,11 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                 freePoolObject(vm, obj);
             }
         },
+        bt.Type => {
+            if (free) {
+                freePoolObject(vm, obj);
+            }
+        },
         bt.MetaType => {
             if (free) {
                 freePoolObject(vm, obj);
@@ -2260,7 +2283,7 @@ test "heap internals." {
     const astr = Astring{
         .typeId = bt.String,
         .rc = 1,
-        .headerAndLen = (@as(u32, @intFromEnum(String.Type.astring)) << 30) | @as(u32, 1),
+        .headerAndLen = (@as(u32, @intFromEnum(StringType.astring)) << 30) | @as(u32, 1),
         .bufStart = undefined,
     };
     try t.eq(@intFromPtr(&astr.typeId), @intFromPtr(&astr));
@@ -2272,7 +2295,7 @@ test "heap internals." {
     const ustr = Ustring{
         .typeId = bt.String,
         .rc = 1,
-        .headerAndLen = (@as(u32, @intFromEnum(String.Type.ustring)) << 30) | @as(u32, 1),
+        .headerAndLen = (@as(u32, @intFromEnum(StringType.ustring)) << 30) | @as(u32, 1),
         .charLen = 1,
         .mruIdx = 0,
         .mruCharIdx = 0,

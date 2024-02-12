@@ -7,7 +7,6 @@ const v = cy.fmt.v;
 const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "and", .and_k },
     .{ "as", .as_k },
-    .{ "my", .my_k },
     // .{ "await", .await_k },
     .{ "break", .break_k },
     .{ "case", .case_k },
@@ -24,13 +23,15 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "func", .func_k },
     .{ "if", .if_k },
     .{ "import", .import_k },
-    .{ "switch", .switch_k },
+    .{ "my", .my_k },
     .{ "none", .none_k },
+    .{ "not", .not_k },
     .{ "object", .object_k },
     .{ "or", .or_k },
     .{ "pass", .pass_k },
-    .{ "not", .not_k },
     .{ "return", .return_k },
+    .{ "switch", .switch_k },
+    .{ "template", .template_k },
     .{ "throw", .throw_k },
     .{ "true", .true_k },
     .{ "try", .try_k },
@@ -98,6 +99,7 @@ pub const TokenType = enum(u8) {
     coyield_k,
     coresume_k,
     import_k,
+    template_k,
     try_k,
     catch_k,
     throw_k,
@@ -1008,6 +1010,6 @@ test "tokenizer internals." {
     try tt.eq(@alignOf(Token), 4);
     try tt.eq(@sizeOf(TokenizeState), 4);
 
-    try tt.eq(std.enums.values(TokenType).len, 65);
-    try tt.eq(keywords.kvs.len, 31);
+    try tt.eq(std.enums.values(TokenType).len, 66);
+    try tt.eq(keywords.kvs.len, 32);
 }

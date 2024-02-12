@@ -370,24 +370,25 @@ enum {
     TYPE_MAP_ITER = 13,
     TYPE_CLOSURE = 14,
     TYPE_LAMBDA = 15,
-    TYPE_STRING = 16,
-    TYPE_ARRAY = 17,
-    TYPE_FIBER = 18,
-    TYPE_BOX = 19,
-    TYPE_HOST_FUNC = 20,
-    TYPE_TCC_STATE = 21,
-    TYPE_POINTER = 22,
-    TYPE_METATYPE = 23,
-    TYPE_EXTERN_FUNC = 24,
+    TYPE_HOST_FUNC = 16,
+    TYPE_EXTERN_FUNC = 17,
+    TYPE_STRING = 18,
+    TYPE_ARRAY = 19,
+    TYPE_FIBER = 20,
+    TYPE_BOX = 21,
+    TYPE_TCC_STATE = 22,
+    TYPE_POINTER = 23,
+    TYPE_TYPE = 24,
+    TYPE_METATYPE = 25,
 
     // Builtin abstract types.
-    TYPE_DYNAMIC = 25,
-    TYPE_ANY = 26,
+    TYPE_DYNAMIC = 26,
+    TYPE_ANY = 27,
     // TYPE_UNDEFINED = 17,
 };
 
 #define PrimitiveEnd 9
-#define BuiltinEnd 27
+#define BuiltinEnd 28
 
 typedef uint8_t Inst;
 typedef uint64_t Value;

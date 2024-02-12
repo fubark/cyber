@@ -22,6 +22,8 @@ pub const sema = @import("sema.zig");
 pub const Sema = sema.Sema;
 pub const unescapeString = sema.unescapeString;
 
+pub const cte = @import("cte.zig");
+
 pub const ir = @import("ir.zig");
 
 pub const types = @import("types.zig");

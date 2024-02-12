@@ -482,6 +482,8 @@ test "Constants." {
     try t.eq(c.TypeFiber, bt.Fiber);
     try t.eq(c.TypeBox, bt.Box);
     try t.eq(c.TypeHostFunc, bt.HostFunc);
+    try t.eq(c.TypeExternFunc, bt.ExternFunc);
+    try t.eq(c.TypeType, bt.Type);
     try t.eq(c.TypeTccState, bt.TccState);
     try t.eq(c.TypePointer, bt.Pointer);
     try t.eq(c.TypeTuple, bt.Tuple);

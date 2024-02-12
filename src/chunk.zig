@@ -64,6 +64,8 @@ pub const Chunk = struct {
     /// Stack for building func signatures. (eg. for nested func calls)
     typeStack: std.ArrayListUnmanaged(types.TypeId),
 
+    valueStack: std.ArrayListUnmanaged(cy.Value),
+
     ir: cy.ir.Buffer,
 
     /// Maps a IR local to a VM local.
@@ -172,6 +174,8 @@ pub const Chunk = struct {
 
     indent: u32,
 
+    patchTemplateNodes: []const cy.NodeId,
+
     /// LLVM
     tempTypeRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.TypeRef) else void,
     tempValueRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.ValueRef) else void,
@@ -205,6 +209,7 @@ pub const Chunk = struct {
             .varStack = .{},
             .preLoopVarSaveStack = .{},
             .typeStack = .{},
+            .valueStack = .{},
             .ir = cy.ir.Buffer.init(),
             .genValueStack = .{},
             .genLocalStack = .{},
@@ -251,6 +256,7 @@ pub const Chunk = struct {
             .encoder = undefined,
             .nextUnnamedId = 1,
             .indent = 0,
+            .patchTemplateNodes = &.{},
         };
 
         if (cy.hasJIT) {
@@ -295,6 +301,7 @@ pub const Chunk = struct {
         self.curInitingSymDeps.deinit(self.alloc);
 
         self.typeStack.deinit(self.alloc);
+        self.valueStack.deinit(self.alloc);
         self.ir.deinit(self.alloc);
         self.genValueStack.deinit(self.alloc);
         self.dataStack.deinit(self.alloc);

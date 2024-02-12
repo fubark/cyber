@@ -40,9 +40,26 @@ pub const Sym = extern struct {
         }
     }
 
+    /// This is mainly used at the end of execution to release values
+    /// so that the global rc can be compared against 0.
     pub fn deinitRetained(self: *Sym, vm: *cy.VM) void {
         if (self.getMod()) |mod| {
             mod.deinitRetained(vm);
+        }
+
+        switch (self.type) {
+            .typeTemplate => {
+                const template = self.cast(.typeTemplate);
+
+                for (template.variants.items) |*variant| {
+                    for (variant.params) |param| {
+                        cy.arc.release(vm, param);
+                    }
+                    vm.alloc.free(variant.params);
+                    variant.params = &.{};
+                }
+            },
+            else => {},
         }
     }
 
@@ -81,10 +98,11 @@ pub const Sym = extern struct {
                 const typeTemplate = self.cast(.typeTemplate);
 
                 for (typeTemplate.variants.items) |variant| {
-                    for (variant.args) |arg| {
-                        vm.release(arg);
+                    for (variant.params) |param| {
+                        vm.release(param);
                     }
-                    alloc.free(variant.args);
+                    alloc.free(variant.params);
+                    alloc.free(variant.patchNodes);
                     variant.sym.destroy(vm, alloc);
                 }
                 typeTemplate.variants.deinit(alloc);
@@ -285,6 +303,7 @@ fn SymChild(comptime symT: SymType) type {
         .enumType => EnumType,
         .enumMember => EnumMember,
         .typeAlias => TypeAlias,
+        .typeTemplate => TypeTemplate,
         .field => Field,
         .import => Import,
         .chunk => Chunk,
@@ -305,6 +324,7 @@ pub const SymType = enum(u8) {
     enumType,
     enumMember,
     typeAlias,
+    typeTemplate,
     field,
 
     // No sym.
@@ -346,6 +366,84 @@ pub const TypeAlias = extern struct {
     sym: *Sym,
 };
 
+pub const TypeTemplate = struct {
+    head: Sym,
+    declId: cy.NodeId,
+    sigId: cy.sema.FuncSigId,
+
+    /// Owned.
+    params: []const TemplateParam,
+
+    /// Template args to variant. Keys are not owned.
+    variantCache: std.HashMapUnmanaged([]const cy.Value, u32, VariantKeyContext, 80),
+
+    variants: std.ArrayListUnmanaged(Variant),
+
+    /// Unowned, tracked root nodes in this template that begin a compile-time expression.
+    /// This array allows each variant to build their replacement AST
+    /// without scanning the entire template again for compile-time expressions.
+    ctNodes: []const cy.NodeId,
+};
+
+pub const TemplateParam = struct {
+    name: []const u8,
+    type: cy.TypeId,
+};
+
+const Variant = struct {
+    /// Not used after the template expansion. Consider removing.
+    patchNodes: []const cy.NodeId,
+
+    /// Owned args. Can be used to print params along with the template type.
+    params: []const cy.Value,
+
+    sym: *Sym,
+};
+
+const VariantKeyContext = struct {
+    pub fn hash(_: VariantKeyContext, key: []const cy.Value) u64 {
+        var c = std.hash.Wyhash.init(0);
+        for (key) |val| {
+            switch (val.getTypeId()) {
+                bt.Type => {
+                    const typeId = val.asHeapObject().type.type;
+                    c.update(std.mem.asBytes(&typeId));
+                },
+                else => {
+                    cy.rt.logZFmt("Unsupported value hash: {}", .{val.getTypeId()});
+                    @panic("");
+                }
+            }
+        }
+        return c.final();
+    }
+
+    pub fn eql(_: VariantKeyContext, a: []const cy.Value, b: []const cy.Value) bool {
+        if (a.len != b.len) {
+            return false;
+        }
+        for (a, 0..) |av, i| {
+            const atype = av.getTypeId();
+            const btype = b[i].getTypeId();
+            if (atype != btype) {
+                return false;
+            }
+            switch (atype) {
+                bt.Type => {
+                    if (av.asHeapObject().type.type != b[i].asHeapObject().type.type) {
+                        return false;
+                    }
+                },
+                else => {
+                    cy.rt.logZFmt("Unsupported value comparison: {}", .{atype});
+                    @panic("");
+                },
+            }
+        }
+        return true;
+    }
+};
+
 pub const Field = extern struct {
     head: Sym,
     idx: u32,
@@ -363,6 +461,10 @@ pub const ObjectType = extern struct {
     declId: cy.NodeId,
     fields: [*]const FieldInfo,
     numFields: u32,
+
+    /// If not null, the parent points to TypeTemplate sym.
+    variantId: u32,
+
     mod: vmc.Module,
 
     pub fn getMod(self: *ObjectType) *cy.Module {
@@ -511,6 +613,8 @@ test "sym internals" {
             try t.eq(@sizeOf(Func), 48);
         }
     }
+
+    try t.eq(@offsetOf(TypeTemplate, "head"), 0);
 
     try t.eq(@offsetOf(Sym, "type"), @offsetOf(vmc.SemaSym, "type"));
     try t.eq(@offsetOf(Sym, "parent"), @offsetOf(vmc.SemaSym, "parent"));

@@ -193,6 +193,12 @@ if (!aot) {
     run.case("types/object_zero_init.cy");
     run.case("types/object_zero_init_error.cy");
     run.case("types/objects.cy");
+    // run.case("types/optionals.cy");
+    run.case("types/template_object_init_noexpand_error.cy");
+    run.case("types/template_object_spec_noexpand_error.cy");
+    run.case("types/template_object_expand_error.cy");
+    run.case("types/template_objects.cy");
+    
     run.case("types/type_alias.cy");
     run.case("types/type_spec.cy");
     run.case("types/unnamed_object.cy");

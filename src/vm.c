@@ -1270,13 +1270,13 @@ beginSwitch:
         NEXT();
     }
     CASE(Field): {
-        uint8_t left = pc[1];
-        uint8_t dst = pc[2];
-        uint16_t symId = READ_U16(3);
+        u8 left = pc[1];
+        u8 dst = pc[2];
+        u16 symId = READ_U16(3);
         Value recv = stack[left];
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            uint8_t offset = getFieldOffset(vm, obj, symId);
+            u8 offset = getFieldOffset(vm, obj, symId);
             if (offset != NULL_U8) {
                 stack[dst] = objectGetField((Object*)obj, offset);
                 pc[0] = CodeFieldIC;
@@ -1295,7 +1295,7 @@ beginSwitch:
     }
     CASE(FieldIC): {
         Value recv = stack[pc[1]];
-        uint8_t dst = pc[2];
+        u8 dst = pc[2];
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
             if (OBJ_TYPEID(obj) == READ_U16(5)) {

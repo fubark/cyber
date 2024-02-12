@@ -59,6 +59,11 @@ pub const Parser = struct {
 
     inObjectDecl: bool,
 
+    /// Whether to append to `ast.templateCtNodes` depending on the context.
+    inTemplate: bool,
+    collectCtNodes: bool,
+    ctNodePatchIdx: u32,
+
     /// For custom functions.
     user: struct {
         ctx: *anyopaque,
@@ -87,6 +92,9 @@ pub const Parser = struct {
             .user = undefined,
             .staticDecls = .{},
             .inObjectDecl = false,
+            .inTemplate = false,
+            .collectCtNodes = false,
+            .ctNodePatchIdx = 0,
         };
     }
 
@@ -643,7 +651,52 @@ pub const Parser = struct {
         return field;
     }
 
-    fn parseTypeDecl(self: *Parser, modifierHead: cy.NodeId) !NodeId {
+    fn parseTemplate(self: *Parser) !NodeId {
+        const start = self.next_pos;
+
+        // Assumes first token is the `template` keyword.
+        self.advance();
+
+        const params = try self.parseFuncParams();
+        self.consumeWhitespaceTokens();
+
+        const ctNodeStart = self.ast.templateCtNodes.items.len;
+        self.ctNodePatchIdx = 0;
+        self.inTemplate = true;
+        self.collectCtNodes = true;
+        defer {
+            self.inTemplate = false;
+            self.collectCtNodes = false;
+        }
+
+        const token = self.peek();
+        if (token.tag() == .type_k) {
+            const id = try self.pushNode(.typeTemplate, start);
+
+            const decl = try self.parseTypeDecl(cy.NullNode, false);
+            const ctNodeEnd = self.ast.templateCtNodes.items.len;
+
+            self.ast.setNodeData(id, .{ .typeTemplate = .{
+                .paramHead = @intCast(params.head),
+                .numParams = @intCast(params.len),
+                .typeDecl = decl,
+            }});
+
+            try self.staticDecls.append(self.alloc, .{
+                .declT = .typeTemplate,
+                .nodeId = id,
+                .data = .{ .typeTemplate = .{
+                    .ctNodeStart = @intCast(ctNodeStart),
+                    .ctNodeEnd = @intCast(ctNodeEnd),
+                }},
+            });
+            return id;
+        } else {
+            return self.reportError("Unsupported template declaration.", &.{});
+        }
+    }
+
+    fn parseTypeDecl(self: *Parser, modifierHead: cy.NodeId, appendDecl: bool) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `type` keyword.
         self.advance();
@@ -656,16 +709,40 @@ pub const Parser = struct {
         var token = self.peek();
         switch (token.tag()) {
             .enum_k => {
-                return self.parseEnumDecl(start, name);
+                const decl = try self.parseEnumDecl(start, name);
+                if (appendDecl) {
+                    try self.staticDecls.append(self.alloc, .{
+                        .declT = .enumT,
+                        .nodeId = decl,
+                        .data = undefined,
+                    });
+                }
+                return decl;
             },
             // `object` is optional.
             .object_k,
             .new_line,
             .colon => {
-                return self.parseObjectDecl(start, name, modifierHead);
+                const decl = try self.parseObjectDecl(start, name, modifierHead);
+                if (appendDecl) {
+                    try self.staticDecls.append(self.alloc, .{
+                        .declT = .object,
+                        .nodeId = decl,
+                        .data = undefined,
+                    });
+                }
+                return decl;
             },
             else => {
-                return self.parseTypeAliasDecl(start, name);
+                const decl = try self.parseTypeAliasDecl(start, name);
+                if (appendDecl) {
+                    try self.staticDecls.append(self.alloc, .{
+                        .declT = .typeAlias,
+                        .nodeId = decl,
+                        .data = undefined,
+                    });
+                }
+                return decl;
             }
         }
     }
@@ -709,13 +786,6 @@ pub const Parser = struct {
             .name = name,
             .typeSpec = typeSpec,
         }});
-
-        try self.staticDecls.append(self.alloc, .{
-            .declT = .typeAlias,
-            .nodeId = id,
-            .data = undefined,
-        });
-
         return id;
     }
 
@@ -768,15 +838,10 @@ pub const Parser = struct {
             .numMembers = @intCast(numMembers),
             .isChoiceType = isChoiceType,
         }});
-        try self.staticDecls.append(self.alloc, .{
-            .declT = .enumT,
-            .nodeId = id,
-            .data = undefined,
-        });
         return id;
     }
 
-    fn pushObjectDecl(self: *Parser, start: TokenId, nameOpt: ?NodeId, modifierHead: NodeId, fieldsHead: NodeId, numFields: u32, funcsHead: NodeId) !NodeId {
+    fn pushObjectDecl(self: *Parser, start: TokenId, nameOpt: ?NodeId, modifierHead: NodeId, fieldsHead: NodeId, numFields: u32, funcsHead: NodeId, numFuncs: u32) !NodeId {
         const id = try self.pushNode(.objectDecl, start);
 
         const header = try self.pushNode(.objectHeader, start);
@@ -799,14 +864,9 @@ pub const Parser = struct {
 
         self.ast.setNodeData(id, .{ .objectDecl = .{
             .header = header,
-            .funcHead = funcsHead,
+            .funcHead = @intCast(funcsHead),
+            .numFuncs = @intCast(numFuncs),
         }});
-
-        try self.staticDecls.append(self.alloc, .{
-            .declT = .object,
-            .nodeId = id,
-            .data = undefined,
-        });
         return id;
     }
 
@@ -824,7 +884,7 @@ pub const Parser = struct {
             self.advance();
         } else {
             // Only declaration. No members.
-            return self.pushObjectDecl(start, name, modifierHead, cy.NullNode, 0, cy.NullNode);
+            return self.pushObjectDecl(start, name, modifierHead, cy.NullNode, 0, cy.NullNode, 0);
         }
 
         const reqIndent = try self.parseFirstChildIndent(self.cur_indent);
@@ -841,7 +901,7 @@ pub const Parser = struct {
             while (true) {
                 const start2 = self.next_pos;
                 const indent = (try self.consumeIndentBeforeStmt()) orelse {
-                    return self.pushObjectDecl(start, name, modifierHead, firstField, numFields, cy.NullNode);
+                    return self.pushObjectDecl(start, name, modifierHead, firstField, numFields, cy.NullNode, 0);
                 };
                 if (indent == reqIndent) {
                     const id = (try self.parseObjectField()) orelse break;
@@ -850,7 +910,7 @@ pub const Parser = struct {
                     lastField = id;
                 } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
                     self.next_pos = start2;
-                    return self.pushObjectDecl(start, name, modifierHead, firstField, numFields, cy.NullNode);
+                    return self.pushObjectDecl(start, name, modifierHead, firstField, numFields, cy.NullNode, 0);
                 } else {
                     return self.reportError("Unexpected indentation.", &.{});
                 }
@@ -862,6 +922,7 @@ pub const Parser = struct {
         var nodeT = self.ast.nodeType(firstFunc);
         if (nodeT == .funcDecl) {
             var lastFunc = firstFunc;
+            var numFuncs: u32 = 1;
 
             while (true) {
                 const start2 = self.next_pos;
@@ -873,6 +934,7 @@ pub const Parser = struct {
                     if (nodeT == .funcDecl) {
                         self.ast.setNextNode(lastFunc, func);
                         lastFunc = func;
+                        numFuncs += 1;
                     } else return self.reportError("Expected function.", &.{});
                 } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
                     self.next_pos = start2;
@@ -881,7 +943,7 @@ pub const Parser = struct {
                     return self.reportError("Unexpected indentation.", &.{});
                 }
             }
-            return self.pushObjectDecl(start, name, modifierHead, firstField, numFields, firstFunc);
+            return self.pushObjectDecl(start, name, modifierHead, firstField, numFields, firstFunc, numFuncs);
         } else {
             return self.reportErrorAtSrc("Expected function.", &.{}, self.ast.nodePos(firstFunc));
         }
@@ -901,6 +963,11 @@ pub const Parser = struct {
         if (token.tag() == .left_paren) {
             const params = try self.parseFuncParams();
             const ret = try self.parseFuncReturn();
+
+            if (self.inTemplate) self.collectCtNodes = false;
+            defer {
+                if (self.inTemplate) self.collectCtNodes = true;
+            }
 
             const nameN = self.ast.nodePtr(name);
             const nameStr = self.ast.nodeString(nameN.*);
@@ -1618,8 +1685,11 @@ pub const Parser = struct {
                     return self.reportError("Expected ident after #.", &.{});
                 }
             },
+            .template_k => {
+                return self.parseTemplate();
+            },
             .type_k => {
-                return try self.parseTypeDecl(cy.NullNode);
+                return try self.parseTypeDecl(cy.NullNode, true);
             },
             .func_k => {
                 return try self.parseFuncDecl(cy.NullNode);
@@ -2097,12 +2167,9 @@ pub const Parser = struct {
         }
     }
 
-    fn parseCallExpression(self: *Parser, left_id: NodeId) !NodeId {
+    fn parseCallArgs(self: *Parser, hasNamedArg: *bool) !ListResult {
         // Assume first token is left paren.
         self.advance();
-
-        const expr_start = self.ast.nodePos(left_id);
-        const callExpr = try self.ast.pushNode(self.alloc, .callExpr, expr_start);
 
         var has_named_arg = false;
         var numArgs: u32 = 0;
@@ -2133,19 +2200,35 @@ pub const Parser = struct {
                 }
             }
         }
-        // Parse closing paren.
+
+        hasNamedArg.* = has_named_arg;
+
         self.consumeWhitespaceTokens();
-        const token = self.peek();
-        if (token.tag() == .right_paren) {
-            self.advance();
-            self.ast.setNodeData(callExpr, .{ .callExpr = .{
-                .callee = @intCast(left_id),
-                .argHead = @intCast(first),
-                .hasNamedArg = has_named_arg,
-                .numArgs = @intCast(numArgs),
-            }});
-            return callExpr;
-        } else return self.reportError("Expected closing parenthesis.", &.{});
+        if (self.peek().tag() != .right_paren) {
+            return self.reportError("Expected closing parenthesis.", &.{});
+        }
+        self.advance();
+
+        return ListResult{
+            .head = first,
+            .len = numArgs,
+        };
+    }
+
+    fn parseCallExpression(self: *Parser, left_id: NodeId) !NodeId {
+        const expr_start = self.ast.nodePos(left_id);
+        const callExpr = try self.ast.pushNode(self.alloc, .callExpr, expr_start);
+
+        var hasNamedArg: bool = undefined;
+        const res = try self.parseCallArgs(&hasNamedArg);
+
+        self.ast.setNodeData(callExpr, .{ .callExpr = .{
+            .callee = @intCast(left_id),
+            .argHead = @intCast(res.head),
+            .hasNamedArg = hasNamedArg,
+            .numArgs = @intCast(res.len),
+        }});
+        return callExpr;
     }
 
     /// Assumes first arg exists.
@@ -2614,19 +2697,7 @@ pub const Parser = struct {
                 break :b try self.parseStringTemplate();
             },
             .pound => b: {
-                self.advance();
-                token = self.peek();
-                if (token.tag() == .ident) {
-                    const ident = try self.pushSpanNode(.ident, self.next_pos);
-                    self.advance();
-                    const expr = try self.pushNode(.comptimeExpr, start);
-                    self.ast.setNodeData(expr, .{ .comptimeExpr = .{
-                        .child = ident,
-                    }});
-                    break :b expr;
-                } else {
-                    return self.reportError("Expected identifier.", &.{});
-                }
+                break :b try self.parseComptimeExpr();
             },
             .left_paren => b: {
                 _ = self.consume();
@@ -2724,6 +2795,27 @@ pub const Parser = struct {
                         .right = right,
                     }});
                     left_id = expr_id;
+                },
+                .pound => {
+                    self.advance();
+                    const call = try self.pushNode(.callTemplate, start);
+                    if (self.peek().tag() == .left_paren) {
+                        var hasNamedArg: bool = undefined;
+                        const args = try self.parseCallArgs(&hasNamedArg);
+                        self.ast.setNodeData(call, .{ .callTemplate = .{
+                            .callee = left_id,
+                            .argHead = @intCast(args.head),
+                            .numArgs = @intCast(args.len),
+                        }});
+                    } else {
+                        const arg = try self.parseTermExpr();
+                        self.ast.setNodeData(call, .{ .callTemplate = .{
+                            .callee = left_id,
+                            .argHead = @intCast(arg),
+                            .numArgs = 1,
+                        }});
+                    }
+                    left_id = call;
                 },
                 .left_bracket => {
                     // index expr, slice expr.
@@ -2843,7 +2935,6 @@ pub const Parser = struct {
                 .float,
                 .if_k,
                 .ident,
-                .pound,
                 .templateString,
                 .equal_greater,
                 .new_line,
@@ -2880,6 +2971,31 @@ pub const Parser = struct {
             .right = @intCast(right),
             .op = op,
         }});
+        return expr;
+    }
+
+    fn parseComptimeExpr(self: *Parser) !NodeId {
+        const start = self.next_pos;
+        // Assumes current token is `#`.
+        self.advance();
+
+        const expr = try self.pushNode(.comptimeExpr, start);
+        const child = (try self.parseExpr(.{})) orelse {
+            return self.reportError("Expected expression.", &.{});
+        };
+
+        var patchIdx: u32 = cy.NullId;
+        if (self.collectCtNodes) {
+            patchIdx = self.ctNodePatchIdx;
+            self.ctNodePatchIdx += 1;
+            try self.ast.templateCtNodes.append(self.alloc, expr);
+        }
+
+        self.ast.setNodeData(expr, .{ .comptimeExpr = .{
+            .child = child,
+            .patchIdx = patchIdx,
+        }});
+
         return expr;
     }
 
@@ -3489,6 +3605,7 @@ const StaticDeclType = enum {
     import,
     object,
     enumT,
+    typeTemplate,
 };
 
 pub const StaticDecl = struct {
@@ -3497,6 +3614,10 @@ pub const StaticDecl = struct {
     data: union {
         func: *cy.Func,
         sym: *cy.Sym,
+        typeTemplate: struct {
+            ctNodeStart: u32,
+            ctNodeEnd: u32,
+        },
     },
 };
 

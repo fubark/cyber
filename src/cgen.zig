@@ -1221,8 +1221,7 @@ fn genBinOp(c: *Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy.No
     if (opts.left) |left| {
         leftv = left;
     } else {
-        const leftIdx = c.ir.advanceExpr(idx, .preBinOp);
-        leftv = try genExpr(c, leftIdx, Cstr.init(data.leftT));
+        leftv = try genExpr(c, data.leftLoc, Cstr.init(data.leftT));
     }
 
     var retained = false;
@@ -1289,7 +1288,7 @@ fn genBinOp(c: *Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy.No
     }
 
     // Rhs.
-    const rightv = try genExpr(c, data.right, Cstr.init(data.rightT));
+    const rightv = try genExpr(c, data.rightLoc, Cstr.init(data.rightT));
     _ = rightv;
 
     // const leftRetained = if (opts.left == null) unwindTempKeepDst(c, leftv, inst.dst) else false;
@@ -1366,7 +1365,7 @@ fn cBinOpLit(op: cy.BinaryExprOp) []const u8 {
 }
 
 fn retExprStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
-    const childIdx = c.ir.advanceStmt(idx, .retExprStmt);
+    const data = c.ir.getStmtData(idx, .retExprStmt);
 
     // TODO: If the returned expr is a local, consume the local after copying to reg 0.
     try c.beginLine(nodeId);
@@ -1375,10 +1374,10 @@ fn retExprStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const b = c.block();
     if (b.type == .main) {
         // // Main block.
-        // childv = try genExpr(c, childIdx, RegisterCstr.simpleMustRetain);
+        // childv = try genExpr(c, data.exprLoc, RegisterCstr.simpleMustRetain);
         return error.TODO;
     } else {
-        childv = try genTopExpr(c, childIdx, Cstr.init(b.data.func.retType));
+        childv = try genTopExpr(c, data.exprLoc, Cstr.init(b.data.func.retType));
     }
     try c.pushSpanEnd(";");
 

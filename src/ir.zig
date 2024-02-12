@@ -59,7 +59,7 @@ pub const StmtCode = enum(u8) {
     set,
     setLocal,
     setCaptured,
-    setField,
+    setFieldDyn,
     setObjectField,
     setIndex,
     setCallObjSymTern,
@@ -84,9 +84,8 @@ pub const ExprCode = enum(u8) {
     local,
     objectInit,
 
+    fieldDyn,
     field,
-    fieldDynamic,
-    fieldStatic,
 
     list,
     map,
@@ -119,7 +118,7 @@ pub const ExprCode = enum(u8) {
     preBinOp,
     preUnOp,
     preSlice,
-    preCall,
+    preCallDyn,
     preCallObjSym,
     preCallObjSymUnOp,
     preCallObjSymBinOp,
@@ -133,6 +132,10 @@ pub const ExprCode = enum(u8) {
     blockExpr,
     mainEnd,
     elseBlock,
+};
+
+pub const Coresume = struct {
+    exprLoc: Loc,
 };
 
 pub const Block = struct {
@@ -163,13 +166,15 @@ pub const DestructureElems = struct {
 };
 
 pub const WhileOptStmt = struct {
-    someLocal: u8,
+    optLoc: Loc,
     capIdx: u32,
     bodyHead: u32,
+    someLocal: u8,
 };
 
 pub const WhileCondStmt = struct {
-    bodyHead: u32,
+    condLoc: Loc,
+    bodyHead: Loc,
 };
 
 pub const WhileInfStmt = struct {
@@ -189,7 +194,12 @@ pub const CondExpr = struct {
     elseBody: u32,
 };
 
+pub const ThrowExpr = struct {
+    exprLoc: Loc,
+};
+
 pub const TryExpr = struct {
+    exprLoc: Loc,
     catchBody: u32,
 };
 
@@ -202,22 +212,30 @@ pub const Error = struct {
 };
 
 pub const Cast = struct {
+    exprLoc: Loc,
     typeId: TypeId,
     isRtCast: bool,
 };
 
-pub const Field = union {
-    dynamic: FieldDynamic,
-    static: FieldStatic,
-};
-
-pub const FieldDynamic = struct {
+pub const FieldDyn = struct {
     name: []const u8,
+    recLoc: Loc,
 };
 
-pub const FieldStatic = struct {
+/// Can have a chain of nested struct field indexes.
+/// The array of nested indexes are located after this struct.
+pub const Field = struct {
+    /// Final field type returned.
     typeId: TypeId,
+
+    /// Receiver.
+    recLoc: Loc,
+
+    /// Field index of receiver.
     idx: u8,
+
+    /// Number of nested field indexes.
+    numNestedIdxes: u8,
 };
 
 pub const ObjectInit = struct {
@@ -237,6 +255,7 @@ pub const SetLocalType = struct {
 pub const ForIterStmt = struct {
     eachLocal: ?u8,
     countLocal: ?u8,
+    iterLoc: Loc,
     declHead: u32,
     bodyHead: u32,
 };
@@ -257,8 +276,9 @@ pub const TryStmt = struct {
 };
 
 pub const ElseBlock = struct {
-    isElse: bool,
+    condLoc: Loc,
     bodyHead: u32,
+    isElse: bool,
 };
 
 pub const Local = struct {
@@ -346,7 +366,7 @@ pub const DeclareLocal = struct {
 pub const Prepare = union {
     binOp: BinOp,
     slice: Slice,
-    call: Call,
+    callDyn: CallDyn,
     unOp: UnOp,
     callFuncSym: CallFuncSym,
     callObjSym: CallObjSym,
@@ -372,7 +392,8 @@ pub const BinOp = struct {
     leftT: TypeId,
     rightT: TypeId,
     op: cy.BinaryExprOp,
-    right: u32,
+    leftLoc: Loc,
+    rightLoc: Loc,
 };
 
 pub const Set = union {
@@ -384,20 +405,23 @@ pub const Set = union {
 pub const SetCallObjSymTern = struct {
     name: []const u8,
     funcSigId: sema.FuncSigId,
-    index: u32,
-    right: u32,
+    recLoc: Loc,
+    indexLoc: Loc,
+    rightLoc: Loc,
 };
 
 pub const SetGeneric = struct {
     left_t: CompactType,
     right_t: CompactType,
-    right: u32,
+    leftLoc: Loc,
+    rightLoc: Loc,
 };
 
 pub const SetIndex = struct {
     recvT: TypeId,
-    index: u32,
-    right: u32,
+    recLoc: Loc,
+    indexLoc: Loc,
+    rightLoc: Loc,
 };
 
 pub const VarSym = struct {
@@ -420,17 +444,20 @@ pub const TypeSym = struct {
 pub const CallObjSym = struct {
     name: []const u8,
     funcSigId: sema.FuncSigId,
+    recLoc: Loc,
+    argsLoc: Loc,
     numArgs: u8,
-    args: u32,
 };
 
 pub const CallObjSymBinOp = struct {
     op: cy.BinaryExprOp,
     funcSigId: sema.FuncSigId,
-    right: u32,
+    leftLoc: Loc,
+    rightLoc: Loc,
 };
 
 pub const CallObjSymUnOp = struct {
+    exprLoc: Loc,
     op: cy.UnaryOp,
     funcSigId: sema.FuncSigId,
 };
@@ -442,12 +469,18 @@ pub const CallFuncSym = struct {
     args: u32,
 };
 
-pub const Call = struct {
+pub const CallDyn = struct {
+    calleeLoc: Loc,
+    argsLoc: Loc,
     numArgs: u8,
-    args: u32,
+};
+
+pub const RetExprStmt = struct {
+    exprLoc: Loc,
 };
 
 pub const ExprStmt = struct {
+    exprLoc: Loc,
     /// If in a block expression, returns as the result of the expression.
     /// If in the main block, can be used to return from an `eval`.
     isBlockResult: bool,
@@ -484,6 +517,7 @@ pub const StringTemplate = struct {
 };
 
 pub const UnOp = struct {
+    exprLoc: Loc,
     childT: TypeId,
     op: cy.UnaryOp,
 };
@@ -494,9 +528,10 @@ pub const StmtBlock = struct {
 };
 
 pub const IfStmt = struct {
-    numElseBlocks: u8,
+    condLoc: Loc,
     bodyHead: u32,
     elseBlocks: u32,
+    numElseBlocks: u8,
 };
 
 pub const Verbose = struct {
@@ -518,7 +553,7 @@ pub fn StmtData(comptime code: StmtCode) type {
         .setIndex,
         .setCallObjSymTern,
         .setLocal,
-        .setField,
+        .setFieldDyn,
         .setCaptured,
         .setObjectField,
         .setFuncSym,
@@ -532,6 +567,7 @@ pub fn StmtData(comptime code: StmtCode) type {
         .destrElemsStmt => DestructureElems,
         .exprStmt => ExprStmt,
         .block => Block,
+        .retExprStmt => RetExprStmt,
         else => void,
     };
 }
@@ -542,7 +578,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .switchExpr => Switch,
         .switchCase => SwitchCase,
         .elseBlock => ElseBlock,
-        .preCall,
+        .preCallDyn,
         .preCallFuncSym,
         .preCallObjSym,
         .preCallObjSymBinOp,
@@ -560,20 +596,21 @@ pub fn ExprData(comptime code: ExprCode) type {
         .local => Local,
         .condExpr => CondExpr,
         .tryExpr => TryExpr,
+        .throw => ThrowExpr,
         .list => List,
         .map => Map,
         .array => Array,
         .string => String,
         .stringTemplate => StringTemplate,
         .objectInit => ObjectInit,
-        .field,
-        .fieldDynamic,
-        .fieldStatic => Field,
+        .fieldDyn => FieldDyn,
+        .field => Field,
         .cast => Cast,
         .errorv => Error,
         .captured => Captured,
         .symbol => Symbol,
         .blockExpr => BlockExpr,
+        .coresume => Coresume,
         else => void,
     };
 }

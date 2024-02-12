@@ -324,7 +324,7 @@ pub const VMcompiler = struct {
                     return error.TODO;
                 },
                 .vm => {
-                    try bcgen.gen(self);
+                    try bcgen.all(self);
                     return .{
                         .vm = self.buf,
                     };

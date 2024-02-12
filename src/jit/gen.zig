@@ -350,16 +350,15 @@ fn genBinOp(c: *cy.Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy
     if (opts.left) |left| {
         leftv = left;
     } else {
-        const leftIdx = c.ir.advanceExpr(idx, .preBinOp);
         var lcstr = Cstr.preferVolatileIf(prefer.canUseDst, prefer.dst);
         lcstr.jitPreferConstant = true;
-        leftv = try genExpr(c, leftIdx, lcstr);
+        leftv = try genExpr(c, data.leftLoc, lcstr);
     }
 
     // Rhs.
     var rcstr = prefer.nextCstr(leftv);
     rcstr.jitPreferConstant = true;
-    const rightv = try genExpr(c, data.right, rcstr);
+    const rightv = try genExpr(c, data.rightLoc, rcstr);
 
     var optCondFlag: ?JitCondFlagType = null;
     const retained = false;

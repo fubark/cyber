@@ -16,7 +16,195 @@ const TypeId = types.TypeId;
 
 const Chunk = cy.chunk.Chunk;
 
-pub fn genChunk(c: *Chunk) !void {
+pub fn gen(c: *cy.VMcompiler) !void {
+    // Constants.
+    c.vm.emptyString = try c.buf.getOrPushStaticAstring("");
+    c.vm.emptyArray = try cy.heap.allocArray(c.vm, "");
+    try c.vm.staticObjects.append(c.alloc, c.vm.emptyArray.asHeapObject());
+
+    // Prepare types.
+    for (c.sema.types.items, 0..) |stype, typeId| {
+        log.tracev("bc prepare type: {s}", .{stype.sym.name()});
+        const sym = stype.sym;
+
+        if (sym.type == .object) {
+            const obj = sym.cast(.object);
+            const mod = sym.getMod().?;
+            for (obj.fields[0..obj.numFields], 0..) |field, i| {
+                const fieldSym = mod.getSymById(field.symId);
+                const fieldSymId = try c.vm.ensureFieldSym(fieldSym.name());
+                try c.vm.addFieldSym(@intCast(typeId), fieldSymId, @intCast(i), field.type);
+            }
+        } else if (sym.type == .predefinedType) {
+            // Nop.
+        } else if (sym.type == .hostObjectType) {
+            // Nop.
+        } else if (sym.type == .enumType) {
+            // Nop.
+        } else {
+            log.tracev("{}", .{sym.type});
+            return error.Unsupported;
+        }
+    }
+
+    // Prepare funcs.
+    for (c.chunks.items) |chunk| {
+        for (chunk.modSyms.items) |modSym| {
+            log.tracev("prep module", .{});
+            const mod = modSym.getMod().?;
+            for (mod.syms.items) |sym| {
+                try prepareSym(c, sym);
+            }
+            for (mod.funcs.items) |func| {
+                try prepareFunc(c, func);
+            }
+        }
+    }
+
+    // Bind the rest that aren't in sema.
+    try @call(.never_inline, cy.bindings.bindCore, .{c.vm});
+
+    for (c.chunks.items) |chunk| {
+        log.tracev("Perform codegen for chunk{}: {s}", .{chunk.id, chunk.srcUri});
+        chunk.buf = &c.buf;
+        try genChunk(chunk);
+        log.tracev("Done. performChunkCodegen {s}", .{chunk.srcUri});
+    }
+
+    // Merge inst and const buffers.
+    var reqLen = c.buf.ops.items.len + c.buf.consts.items.len * @sizeOf(cy.Value) + @alignOf(cy.Value) - 1;
+    if (c.buf.ops.capacity < reqLen) {
+        try c.buf.ops.ensureTotalCapacityPrecise(c.alloc, reqLen);
+    }
+    const constAddr = std.mem.alignForward(usize, @intFromPtr(c.buf.ops.items.ptr) + c.buf.ops.items.len, @alignOf(cy.Value));
+    const constDst = @as([*]cy.Value, @ptrFromInt(constAddr))[0..c.buf.consts.items.len];
+    const constSrc = try c.buf.consts.toOwnedSlice(c.alloc);
+    std.mem.copy(cy.Value, constDst, constSrc);
+    c.alloc.free(constSrc);
+    c.buf.mconsts = constDst;
+
+    // Final op address is known. Patch pc offsets.
+    // for (c.vm.funcSyms.items()) |*sym| {
+    //     if (sym.entryT == .func) {
+    //         sym.inner.func.pc = .{ .ptr = c.buf.ops.items.ptr + sym.inner.func.pc.offset};
+    //     }
+    // }
+    // for (c.vm.methodGroups.items()) |*sym| {
+    //     if (sym.mapT == .one) {
+    //         if (sym.inner.one.sym.entryT == .func) {
+    //             sym.inner.one.sym.inner.func.pc = .{ .ptr = c.buf.ops.items.ptr + sym.inner.one.sym.inner.func.pc.offset };
+    //         }
+    //     } else if (sym.mapT == .many) {
+    //         if (sym.inner.many.mruSym.entryT == .func) {
+    //             sym.inner.many.mruSym.inner.func.pc = .{ .ptr = c.buf.ops.items.ptr + sym.inner.many.mruSym.inner.func.pc.offset };
+    //         }
+    //     }
+    // }
+    // var iter = c.vm.methodTable.iterator();
+    // while (iter.next()) |entry| {
+    //     const sym = entry.value_ptr;
+    //     if (sym.entryT == .func) {
+    //         sym.inner.func.pc = .{ .ptr = c.buf.ops.items.ptr + sym.inner.func.pc.offset };
+    //     }
+    // }
+}
+
+fn prepareSym(c: *cy.VMcompiler, sym: *cy.Sym) !void {
+    switch (sym.type) {
+        .hostVar => {
+            const id = c.vm.varSyms.len;
+            const rtVar = rt.VarSym.init(sym.cast(.hostVar).val);
+            cy.arc.retain(c.vm, rtVar.value);
+            try c.vm.varSyms.append(c.alloc, rtVar);
+            try c.vm.varSymExtras.append(c.alloc, sym);
+            try c.genSymMap.putNoClobber(c.alloc, sym, .{ .varSym = .{ .id = @intCast(id) }});
+        },
+        .userVar => {
+            const id = c.vm.varSyms.len;
+            const rtVar = rt.VarSym.init(cy.Value.None);
+            try c.vm.varSyms.append(c.alloc, rtVar);
+            try c.vm.varSymExtras.append(c.alloc, sym);
+            try c.genSymMap.putNoClobber(c.alloc, sym, .{ .varSym = .{ .id = @intCast(id) }});
+        },
+        .typeTemplate,
+        .hostObjectType,
+        .predefinedType,
+        .field,
+        .object,
+        .func,
+        .typeAlias,
+        .enumType,
+        .enumMember,
+        .import => {},
+        else => {
+            log.tracev("{}", .{sym.type});
+            return error.Unsupported;
+        }
+    }
+}
+
+fn prepareFunc(c: *cy.VMcompiler, func: *cy.Func) !void {
+    if (func.type == .userLambda) {
+        return;
+    }
+    if (cy.Trace) {
+        const symPath = try func.sym.?.head.allocAbsPath(c.alloc);
+        defer c.alloc.free(symPath);
+        log.tracev("bc prepare func: {s}", .{symPath});
+    }
+    if (func.type == .hostFunc) {
+        const funcSig = c.sema.getFuncSig(func.funcSigId);
+        const rtFunc = rt.FuncSymbol.initHostFunc(@ptrCast(func.data.hostFunc.ptr), funcSig.reqCallTypeCheck, funcSig.numParams(), func.funcSigId);
+        _ = try addVmFunc(c, func, rtFunc);
+        if (func.isMethod) {
+            const parentT = func.sym.?.head.parent.?.getStaticType().?;
+            const name = func.name();
+            const mgId = try c.vm.ensureMethodGroup(name);
+            if (funcSig.reqCallTypeCheck) {
+                const m = rt.MethodInit.initHostTyped(func.funcSigId, @ptrCast(func.data.hostFunc.ptr), func.numParams);
+                try c.vm.addMethod(parentT, mgId, m);
+            } else {
+                const m = rt.MethodInit.initHostUntyped(func.funcSigId, @ptrCast(func.data.hostFunc.ptr), func.numParams);
+                try c.vm.addMethod(parentT, mgId, m);
+            }
+        }
+    } else if (func.type == .hostInlineFunc) {
+        const funcSig = c.sema.getFuncSig(func.funcSigId);
+        const rtFunc = rt.FuncSymbol.initHostInlineFunc(@ptrCast(func.data.hostInlineFunc.ptr), funcSig.reqCallTypeCheck, funcSig.numParams(), func.funcSigId);
+        _ = try addVmFunc(c, func, rtFunc);
+        if (func.isMethod) {
+            log.tracev("ismethod", .{});
+            const name = func.name();
+            const mgId = try c.vm.ensureMethodGroup(name);
+            const parentT = func.sym.?.head.parent.?.getStaticType().?;
+            log.tracev("host inline method: {s}.{s} {} {}", .{c.sema.getTypeName(parentT), name, parentT, mgId});
+            const m = rt.MethodInit.initHostInline(func.funcSigId, func.data.hostInlineFunc.ptr, func.numParams);
+            try c.vm.addMethod(parentT, mgId, m);
+        }
+    } else if (func.type == .userFunc) {
+        _ = try addVmFunc(c, func, rt.FuncSymbol.initNone());
+        // Func is patched later once funcPc and stackSize is obtained.
+        // Method entry is also added later.
+    } else {
+        log.tracev("{}", .{func.type});
+        return error.Unsupported;
+    }
+}
+
+fn addVmFunc(c: *cy.VMcompiler, func: *cy.Func, rtFunc: rt.FuncSymbol) !u32 {
+    const id = c.vm.funcSyms.len;
+    try c.vm.funcSyms.append(c.alloc, rtFunc);
+
+    const name = func.name();
+    try c.vm.funcSymDetails.append(c.alloc, .{
+        .namePtr = name.ptr, .nameLen = @intCast(name.len), .funcSigId = func.funcSigId,
+    });
+
+    try c.genSymMap.putNoClobber(c.alloc, func, .{ .funcSym = .{ .id = @intCast(id), .pc = 0 }});
+    return @intCast(id);
+}
+
+fn genChunk(c: *Chunk) !void {
     genChunkInner(c) catch |err| {
         if (err != error.CompileError) {
             // Wrap all other errors as a CompileError.

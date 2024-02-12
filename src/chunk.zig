@@ -75,7 +75,7 @@ pub const Chunk = struct {
     /// which includes function prelude regs and params for simplicity.
     genLocalStack: std.ArrayListUnmanaged(bc_gen.Local),
 
-    curObjectSym: ?*cy.sym.ObjectType,
+    curSelfSym: ?*cy.Sym,
 
     /// Used to iterate module syms.
     modSyms: std.ArrayListUnmanaged(*cy.Sym),
@@ -176,6 +176,11 @@ pub const Chunk = struct {
 
     patchTemplateNodes: []const cy.NodeId,
 
+    /// Variant func syms are accumulated and processed after the initial sema pass.
+    variantFuncSyms: std.ArrayListUnmanaged(*cy.Func),
+
+    rootStmtBlock: cy.ir.StmtBlock,
+
     /// LLVM
     tempTypeRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.TypeRef) else void,
     tempValueRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.ValueRef) else void,
@@ -222,7 +227,7 @@ pub const Chunk = struct {
             .unwindTempIndexStack = .{},
             .unwindTempRegStack = .{},
             .curBlock = undefined,
-            .curObjectSym = null,
+            .curSelfSym = null,
             .buf = undefined,
             .jitBuf = undefined,
             .x64Enc = undefined,
@@ -257,6 +262,11 @@ pub const Chunk = struct {
             .nextUnnamedId = 1,
             .indent = 0,
             .patchTemplateNodes = &.{},
+            .variantFuncSyms = .{},
+            .rootStmtBlock = .{
+                .first = cy.NullId,
+                .last = cy.NullId,
+            },
         };
 
         if (cy.hasJIT) {
@@ -328,6 +338,8 @@ pub const Chunk = struct {
         (&self.sym.head).destroy(self.compiler.vm, self.alloc);
 
         self.modSyms.deinit(self.alloc);
+
+        self.variantFuncSyms.deinit(self.alloc);
 
         self.alloc.free(self.srcUri);
         self.parser.deinit();

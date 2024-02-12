@@ -538,7 +538,7 @@ pub const Parser = struct {
     }
 
     fn parseFuncReturn(self: *Parser) !?NodeId {
-        return self.parseOptNamePath();
+        return self.parseOptTypeSpec(false);
     }
 
     fn parseOptName(self: *Parser) !?NodeId {
@@ -750,13 +750,6 @@ pub const Parser = struct {
     fn parseOptTypeSpec(self: *Parser, allowUnnamedType: bool) !?NodeId {
         const token = self.peek();
         switch (token.tag()) {
-            .comma, 
-            .equal,
-            .right_paren,
-            .new_line,
-            .none => {
-                return null;
-            },
             .object_k => {
                 if (allowUnnamedType) {
                     const decl = try self.parseObjectDecl(token.pos(), null, cy.NullNode);
@@ -770,8 +763,14 @@ pub const Parser = struct {
                     return self.reportError("Unnamed type is not allowed in this context.", &.{});
                 }
             },
-            else => {
+            .pound,
+            .type_k,
+            .none_k,
+            .ident => {
                 return try self.parseTermExpr();
+            },
+            else => {
+                return null;
             },
         }
     }

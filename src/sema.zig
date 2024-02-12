@@ -954,6 +954,10 @@ pub fn declareTemplateVariant(c: *cy.Chunk, template: *cy.sym.TypeTemplate, vari
 
     const template_n = c.ast.node(template.declId);
     try declareObjectMembers(c, @ptrCast(sym), template_n.data.typeTemplate.typeDecl);
+
+    // Defer method sema.
+    const mod = sym.getMod();
+    try mod.chunk.variantFuncSyms.appendSlice(c.alloc, mod.funcs.items);
     return sym;
 }
 
@@ -1036,11 +1040,9 @@ pub fn declareObjectMembers(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !v
 }
 
 pub fn objectDecl(c: *cy.Chunk, obj: *cy.sym.ObjectType, nodeId: cy.NodeId) !void {
-    if (c.curObjectSym != null) {
+    if (c.curSelfSym != null) {
         return c.reportErrorAt("Nested types are not supported.", &.{}, nodeId);
     }
-    c.curObjectSym = obj;
-    defer c.curObjectSym = null;
 
     const mod = obj.head.getMod().?;
 
@@ -1049,15 +1051,9 @@ pub fn objectDecl(c: *cy.Chunk, obj: *cy.sym.ObjectType, nodeId: cy.NodeId) !voi
     const numFuncs = mod.funcs.items.len;
     while (i < numFuncs) {
         const func = mod.funcs.items[i];
-        const funcN = c.ast.node(func.declId);
         if (func.isMethod and func.type == .userFunc) {
             // Object method.
-            const blockId = try pushFuncProc(c, func);
-            c.semaProcs.items[blockId].isMethodBlock = true;
-
-            try pushMethodParamVars(c, obj.type, func);
-            try semaStmts(c, funcN.data.func.bodyHead);
-            try popFuncBlock(c);
+            try sema.methodDecl(c, func);
         }
         i += 1;
     }
@@ -1159,8 +1155,24 @@ pub fn declareFunc(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !*cy.Func {
     }
 }
 
-pub fn funcDecl(c: *cy.Chunk, func: *cy.Func, nodeId: cy.NodeId) !void {
-    const node = c.ast.node(nodeId);
+pub fn methodDecl(c: *cy.Chunk, func: *cy.Func) !void {
+    const parent = func.parent;
+
+    c.curSelfSym = parent;
+    defer c.curSelfSym = null;
+
+    // Object method.
+    const blockId = try pushFuncProc(c, func);
+    c.semaProcs.items[blockId].isMethodBlock = true;
+
+    try pushMethodParamVars(c, parent.getStaticType().?, func);
+    const funcN = c.ast.node(func.declId);
+    try semaStmts(c, funcN.data.func.bodyHead);
+    try popFuncBlock(c);
+}
+
+pub fn funcDecl(c: *cy.Chunk, func: *cy.Func) !void {
+    const node = c.ast.node(func.declId);
 
     _ = try pushFuncProc(c, func);
     try appendFuncParamVars(c, func);
@@ -2461,7 +2473,7 @@ pub fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool, nod
 
     // Look for object member if inside method.
     if (proc.isMethodBlock) {
-        if (self.curObjectSym.?.head.getMod().?.getSym(name)) |sym| {
+        if (self.curSelfSym.?.getMod().?.getSym(name)) |sym| {
             if (sym.type == .field) {
                 const field = sym.cast(.field);
                 const id = try pushObjectMemberAlias(self, name, @intCast(field.idx), field.type);
@@ -2553,7 +2565,7 @@ fn lookupParentLocal(c: *cy.Chunk, name: []const u8) !?LookupParentLocalResult {
 
         // Look for object member if inside method.
         if (prev.isMethodBlock) {
-            if (c.curObjectSym.?.head.getMod().?.getSym(name)) |sym| {
+            if (c.curSelfSym.?.getMod().?.getSym(name)) |sym| {
                 if (sym.type == .field) {
                     const field = sym.cast(.field);
                     return .{

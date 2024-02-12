@@ -651,6 +651,10 @@ pub const Buffer = struct {
         });
     }
 
+    pub fn pushStmtBlock2(self: *Buffer, alloc: std.mem.Allocator, block: StmtBlock) !void {
+        try self.stmtBlockStack.append(alloc, block);
+    }
+
     pub fn popStmtBlock(self: *Buffer) StmtBlock {
         return self.stmtBlockStack.pop();
     }

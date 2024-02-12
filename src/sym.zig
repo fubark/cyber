@@ -561,6 +561,10 @@ pub const Func = struct {
     type: FuncType,
     next: ?*Func,
     sym: ?*FuncSym,
+
+    /// For non-lambdas, this is equivalent to `sym.parent`.
+    parent: *Sym,
+
     funcSigId: cy.sema.FuncSigId,
     reqCallTypeCheck: bool,
     numParams: u8,

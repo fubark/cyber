@@ -170,7 +170,7 @@ fn prepareFuncSym(c: *cy.Chunk, parent: *cy.Sym, mod: *Module, name: []const u8,
     return .{ .sym = func, .symId = id };
 }
 
-fn createFunc(c: *cy.Chunk, ftype: cy.sym.FuncType, sym: ?*cy.sym.FuncSym, funcSigId: sema.FuncSigId, nodeId: cy.NodeId, isMethod: bool) !*cy.Func {
+fn createFunc(c: *cy.Chunk, ftype: cy.sym.FuncType, parent: *cy.Sym, sym: ?*cy.sym.FuncSym, funcSigId: sema.FuncSigId, nodeId: cy.NodeId, isMethod: bool) !*cy.Func {
     const funcSig = c.compiler.sema.getFuncSig(funcSigId);
     const func = try c.alloc.create(cy.Func);
     func.* = .{
@@ -179,6 +179,7 @@ fn createFunc(c: *cy.Chunk, ftype: cy.sym.FuncType, sym: ?*cy.sym.FuncSym, funcS
         .retType = funcSig.getRetType(),
         .reqCallTypeCheck = funcSig.reqCallTypeCheck,
         .sym = sym,
+        .parent = parent,
         .isMethod = isMethod,
         .numParams = @intCast(funcSig.paramLen),
         .declId = nodeId,
@@ -521,14 +522,14 @@ pub const ChunkExt = struct {
     ) !*cy.Func {
         const mod = parent.getMod().?;
         const res = try prepareFuncSym(c, parent, mod, name, funcSigId, declId);
-        const func = try createFunc(c, .userFunc, res.sym, funcSigId, declId, isMethod);
+        const func = try createFunc(c, .userFunc, parent, res.sym, funcSigId, declId, isMethod);
         try addFuncToSym(c, mod, res.symId, res.sym, func);
         return func;
     }
 
     pub fn addUserLambda(c: *cy.Chunk, parent: *cy.Sym, funcSigId: sema.FuncSigId, declId: cy.NodeId) !*cy.Func {
         const mod = parent.getMod().?;
-        const func = try createFunc(c, .userLambda, null, funcSigId, declId, false);
+        const func = try createFunc(c, .userLambda, parent, null, funcSigId, declId, false);
         try mod.funcs.append(c.alloc, func);
         return func;
     }
@@ -539,7 +540,7 @@ pub const ChunkExt = struct {
     ) !*cy.Func {
         const mod = parent.getMod().?;
         const res = try prepareFuncSym(c, parent, mod, name, funcSigId, nodeId);
-        const func = try createFunc(c, .hostInlineFunc, res.sym, funcSigId, nodeId, isMethod);
+        const func = try createFunc(c, .hostInlineFunc, parent, res.sym, funcSigId, nodeId, isMethod);
         func.data = .{ .hostInlineFunc = .{
             .ptr = funcPtr,
         }};
@@ -553,7 +554,7 @@ pub const ChunkExt = struct {
     ) !*cy.Func {
         const mod = parent.getMod().?;
         const res = try prepareFuncSym(c, parent, mod, name, funcSigId, nodeId);
-        const func = try createFunc(c, .hostFunc, res.sym, funcSigId, nodeId, isMethod);
+        const func = try createFunc(c, .hostFunc, parent, res.sym, funcSigId, nodeId, isMethod);
         func.data = .{ .hostFunc = .{
             .ptr = @ptrCast(funcPtr),
         }};

@@ -341,29 +341,29 @@ pub fn encode(alloc: std.mem.Allocator, user_ctx: ?*anyopaque, val: anytype, enc
 
 pub const DecodeListIR = struct {
     alloc: std.mem.Allocator,
-    res: cy.ParseResultView,
+    ast: cy.ast.AstView,
     arr: []const NodeId,
 
-    fn init(alloc: std.mem.Allocator, res: cy.ParseResultView, list_id: NodeId) !DecodeListIR {
-        const list = res.nodes.items[list_id];
-        if (list.node_t != .arrayLiteral) {
+    fn init(alloc: std.mem.Allocator, ast: cy.ast.AstView, list_id: NodeId) !DecodeListIR {
+        const list = ast.node(list_id);
+        if (list.type() != .arrayLit) {
             return error.NotAList;
         }
 
         var new = DecodeListIR{
             .alloc = alloc,
-            .res = res,
+            .ast = ast,
             .arr = &.{},
         };
 
         // Construct list.
         var buf: std.ArrayListUnmanaged(NodeId) = .{};
-        if (list.head.arrayLiteral.numArgs > 0) {
-            var item_id = list.head.arrayLiteral.argHead;
-            while (item_id != NullId) {
-                const item = res.nodes.items[item_id];
+        if (list.data.arrayLit.numArgs > 0) {
+            var item_id = list.data.arrayLit.argHead;
+            while (item_id != cy.NullNode) {
+                const item = ast.node(item_id);
                 try buf.append(alloc, item_id);
-                item_id = item.next;
+                item_id = item.next();
             }
         }
         new.arr = try buf.toOwnedSlice(alloc);
@@ -377,51 +377,55 @@ pub const DecodeListIR = struct {
     pub fn getIndex(self: DecodeListIR, idx: usize) DecodeValueIR {
         return DecodeValueIR{
             .alloc = self.alloc,
-            .res = self.res,
+            .ast = self.ast,
             .exprId = self.arr[idx],
         };
     }
 
     pub fn decodeMap(self: DecodeListIR, idx: u32) !DecodeMapIR {
         if (idx < self.arr.len) {
-            return try DecodeMapIR.init(self.alloc, self.res, self.arr[idx]);
+            return try DecodeMapIR.init(self.alloc, self.ast, self.arr[idx]);
         } else return error.NoSuchEntry;
     }
 };
 
 pub const DecodeMapIR = struct {
     alloc: std.mem.Allocator,
-    res: cy.ParseResultView,
+    ast: cy.ast.AstView,
 
     /// Preserve order of entries.
     map: std.StringArrayHashMapUnmanaged(NodeId),
 
-    fn init(alloc: std.mem.Allocator, res: cy.ParseResultView, map_id: NodeId) !DecodeMapIR {
-        const map = res.nodes.items[map_id];
-        if (map.node_t != .recordLiteral) {
+    fn init(alloc: std.mem.Allocator, ast: cy.ast.AstView, map_id: NodeId) !DecodeMapIR {
+        const map = ast.node(map_id);
+        if (map.type() != .recordLit) {
             return error.NotAMap;
         }
 
         var new = DecodeMapIR{
             .alloc = alloc,
-            .res = res,
+            .ast = ast,
             .map = .{},
         };
 
         // Parse literal into map.
-        var entry_id = map.head.recordLiteral.argHead;
-        while (entry_id != NullId) {
-            const entry = res.nodes.items[entry_id];
-            const key = res.nodes.items[entry.head.keyValue.left];
-            switch (key.node_t) {
-                .number,
+        var entry_id = map.recordLit_argHead();
+        while (entry_id != cy.NullNode) {
+            const entry = ast.node(entry_id);
+            const key = ast.node(entry.keyValue_key());
+            switch (key.type()) {
+                .binLit,
+                .octLit,
+                .hexLit,
+                .decLit,
+                .floatLit,
                 .ident => {
-                    const str = res.getTokenString(key.start_token);
-                    try new.map.put(alloc, str, entry.head.keyValue.right);
+                    const str = ast.nodeString(key);
+                    try new.map.put(alloc, str, entry.keyValue_value());
                 },
                 else => return error.Unsupported,
             }
-            entry_id = entry.next;
+            entry_id = entry.next();
         }
         return new;
     }
@@ -437,16 +441,16 @@ pub const DecodeMapIR = struct {
     pub fn getValue(self: DecodeMapIR, key: []const u8) DecodeValueIR {
         return DecodeValueIR{
             .alloc = self.alloc,
-            .res = self.res,
+            .ast = self.ast,
             .exprId = self.map.get(key).?,
         };
     }
     
     pub fn allocString(self: DecodeMapIR, key: []const u8) ![]const u8 {
         if (self.map.get(key)) |val_id| {
-            const val_n = self.res.nodes.items[val_id];
-            if (val_n.node_t == .string) {
-                const token_s = self.res.getTokenString(val_n.start_token);
+            const val_n = self.ast.node(val_id);
+            if (val_n.type() == .stringLit) {
+                const token_s = self.ast.nodeString(val_n);
                 var buf = std.ArrayList(u8).init(self.alloc);
                 defer buf.deinit();
 
@@ -454,10 +458,10 @@ pub const DecodeMapIR = struct {
                 const str = cy.unescapeString(buf.items, token_s);
                 buf.items.len = str.len;
                 return buf.toOwnedSlice();
-            } else if (val_n.node_t == .stringTemplate) {
-                const str = self.res.nodes.items[val_n.head.stringTemplate.strHead];
-                if (str.next == NullId) {
-                    const token_s = self.res.getTokenString(str.start_token);
+            } else if (val_n.type() == .stringTemplate) {
+                const str = self.ast.node(val_n.data.stringTemplate.strHead);
+                if (str.next() == cy.NullNode) {
+                    const token_s = self.ast.nodeString(str);
                     var buf = std.ArrayList(u8).init(self.alloc);
                     defer buf.deinit();
                     _ = replaceIntoList(u8, token_s, "\\`", "`", &buf);
@@ -470,11 +474,26 @@ pub const DecodeMapIR = struct {
 
     pub fn getU32(self: DecodeMapIR, key: []const u8) !u32 {
         if (self.map.get(key)) |val_id| {
-            const val_n = self.res.nodes.items[val_id];
-            if (val_n.node_t == .number) {
-                const token_s = self.res.getTokenString(val_n.start_token);
-                return try std.fmt.parseInt(u32, token_s, 10);
-            } else return error.NotANumber;
+            const val_n = self.ast.node(val_id);
+            switch (val_n.type()) {
+                .binLit => {
+                    const str = self.ast.nodeString(val_n)[2..];
+                    return try std.fmt.parseInt(u32, str, 2);
+                },
+                .octLit => {
+                    const str = self.ast.nodeString(val_n)[2..];
+                    return try std.fmt.parseInt(u32, str, 8);
+                },
+                .hexLit => {
+                    const str = self.ast.nodeString(val_n)[2..];
+                    return try std.fmt.parseInt(u32, str, 16);
+                },
+                .decLit => {
+                    const str = self.ast.nodeString(val_n);
+                    return try std.fmt.parseInt(u32, str, 10);
+                },
+                else => return error.NotANumber,
+            }
         } else return error.NoSuchEntry;
     }
 
@@ -484,10 +503,10 @@ pub const DecodeMapIR = struct {
 
     pub fn getBoolOpt(self: DecodeMapIR, key: []const u8) !?bool {
         if (self.map.get(key)) |val_id| {
-            const val_n = self.res.nodes.items[val_id];
-            if (val_n.node_t == .true_literal) {
+            const val_n = self.ast.node(val_id);
+            if (val_n.type() == .trueLit) {
                 return true;
-            } else if (val_n.node_t == .false_literal) {
+            } else if (val_n.type() == .falseLit) {
                 return false;
             } else return error.NotABool;
         } else return null;
@@ -495,61 +514,59 @@ pub const DecodeMapIR = struct {
 
     pub fn decodeList(self: DecodeMapIR, key: []const u8) !DecodeListIR {
         if (self.map.get(key)) |val_id| {
-            return DecodeListIR.init(self.alloc, self.res, val_id);
+            return DecodeListIR.init(self.alloc, self.ast, val_id);
         } else return error.NoSuchEntry;
     }
 
     pub fn decodeMap(self: DecodeMapIR, key: []const u8) !DecodeMapIR {
         if (self.map.get(key)) |val_id| {
-            return try DecodeMapIR.init(self.alloc, self.res, val_id);
+            return try DecodeMapIR.init(self.alloc, self.ast, val_id);
         } else return error.NoSuchEntry;
     }
 };
 
-const NullId = std.math.maxInt(u32);
-
 // Currently uses Cyber parser.
 pub fn decodeMap(alloc: std.mem.Allocator, parser: *Parser, ctx: anytype, out: anytype, decode_map: fn (DecodeMapIR, @TypeOf(ctx), @TypeOf(out)) anyerror!void, cdata: []const u8) !void {
-    const res = try parser.parse(cdata);
+    const res = try parser.parse(cdata, .{});
     if (res.has_error) {
         log.tracev("Parse Error: {s}", .{res.err_msg});
         return error.ParseError;
     }
 
-    const root = res.nodes.items[res.root_id];
-    if (root.head.root.headStmt == NullId) {
+    const root = res.ast.node(res.root_id);
+    if (root.data.root.bodyHead == cy.NullNode) {
         return error.NotAMap;
     }
-    const first_stmt = res.nodes.items[root.head.root.headStmt];
-    if (first_stmt.node_t != .exprStmt) {
+    const first_stmt = res.ast.node(root.root_bodyHead());
+    if (first_stmt.type() != .exprStmt) {
         return error.NotAMap;
     }
 
-    var map = try DecodeMapIR.init(alloc, res, first_stmt.head.exprStmt.child);
+    var map = try DecodeMapIR.init(alloc, res.ast, first_stmt.exprStmt_child());
     defer map.deinit();
     try decode_map(map, ctx, out);
 }
 
 pub fn decode(alloc: std.mem.Allocator, parser: *Parser, cyon: []const u8) !DecodeValueIR {
-    const res = try parser.parse(cyon);
+    const res = try parser.parse(cyon, .{});
     if (res.has_error) {
         log.tracev("Parse Error: {s}", .{res.err_msg});
         return error.ParseError;
     }
 
-    const root = res.nodes.items[res.root_id];
-    if (root.head.root.headStmt == NullId) {
+    const root = res.ast.node(res.root_id);
+    if (root.data.root.bodyHead == cy.NullNode) {
         return error.NotAValue;
     }
-    const first_stmt = res.nodes.items[root.head.root.headStmt];
-    if (first_stmt.node_t != .exprStmt) {
+    const first_stmt = res.ast.node(root.data.root.bodyHead);
+    if (first_stmt.type() != .exprStmt) {
         return error.NotAValue;
     }
 
     return DecodeValueIR{
         .alloc = alloc, 
-        .res = res,
-        .exprId = first_stmt.head.exprStmt.child,
+        .ast = res.ast,
+        .exprId = first_stmt.data.exprStmt.child,
     };
 }
 
@@ -564,34 +581,37 @@ const ValueType = enum {
 
 pub const DecodeValueIR = struct {
     alloc: std.mem.Allocator,
-    res: cy.ParseResultView,
+    ast: cy.ast.AstView,
     exprId: NodeId,
 
     pub fn getValueType(self: DecodeValueIR) ValueType {
-        const node = self.res.nodes.items[self.exprId];
-        switch (node.node_t) {
-            .arrayLiteral => return .list,
-            .recordLiteral => return .map,
-            .string => return .string,
-            .number => return .integer,
-            .float => return .float,
-            .true_literal => return .bool,
-            .false_literal => return .bool,
-            else => cy.panicFmt("unsupported {}", .{node.node_t}),
+        const node = self.ast.node(self.exprId);
+        switch (node.type()) {
+            .arrayLit => return .list,
+            .recordLit => return .map,
+            .stringLit => return .string,
+            .hexLit,
+            .binLit,
+            .octLit,
+            .decLit => return .integer,
+            .floatLit => return .float,
+            .trueLit => return .bool,
+            .falseLit => return .bool,
+            else => cy.panicFmt("unsupported {}", .{node.type()}),
         }
     }
 
     pub fn getList(self: DecodeValueIR) !DecodeListIR {
-        return DecodeListIR.init(self.alloc, self.res, self.exprId);
+        return DecodeListIR.init(self.alloc, self.ast, self.exprId);
     }
 
     pub fn getMap(self: DecodeValueIR) !DecodeMapIR {
-        return DecodeMapIR.init(self.alloc, self.res, self.exprId);
+        return DecodeMapIR.init(self.alloc, self.ast, self.exprId);
     }
 
     pub fn allocString(self: DecodeValueIR) ![]u8 {
-        const node = self.res.nodes.items[self.exprId];
-        const token_s = self.res.getTokenString(node.start_token);
+        const node = self.ast.node(self.exprId);
+        const token_s = self.ast.nodeString(node);
         var buf = std.ArrayList(u8).init(self.alloc);
         defer buf.deinit();
         try buf.resize(token_s.len);
@@ -601,25 +621,25 @@ pub const DecodeValueIR = struct {
     }
 
     pub fn getF64(self: DecodeValueIR) !f64 {
-        const node = self.res.nodes.items[self.exprId];
-        const token_s = self.res.getTokenString(node.start_token);
+        const node = self.ast.node(self.exprId);
+        const token_s = self.ast.nodeString(node);
         return try std.fmt.parseFloat(f64, token_s);
     }
 
     pub fn getInt(self: DecodeValueIR) !i48 {
-        const node = self.res.nodes.items[self.exprId];
-        const token_s = self.res.getTokenString(node.start_token);
+        const node = self.ast.node(self.exprId);
+        const token_s = self.ast.nodeString(node);
         return try std.fmt.parseInt(i48, token_s, 10);
     }
 
     pub fn getBool(self: DecodeValueIR) bool {
-        const node = self.res.nodes.items[self.exprId];
-        if (node.node_t == .true_literal) {
+        const node = self.ast.node(self.exprId);
+        if (node.type() == .trueLit) {
             return true;
-        } else if (node.node_t == .false_literal) {
+        } else if (node.type() == .falseLit) {
             return false;
         } else {
-            cy.panicFmt("Unsupported type: {}", .{node.node_t});
+            cy.panicFmt("Unsupported type: {}", .{node.type()});
         }
     }
 };
@@ -738,7 +758,7 @@ test "decodeMap" {
         }
     };
 
-    var parser = Parser.init(t.alloc);
+    var parser = try Parser.init(t.alloc);
     defer parser.deinit();
 
     var root: TestRoot = undefined;

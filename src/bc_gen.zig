@@ -352,8 +352,8 @@ fn genCoinitCall(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
         try pushUnwindValue(c, val);
     }
 
-    const node = c.nodes[nodeId];
-    const callExprId = node.head.child_head;
+    const node = c.ast.node(nodeId);
+    const callExprId = node.data.coinit.child;
 
     var numTotalArgs = numArgs;
     var argDst: u8 = undefined;
@@ -2250,10 +2250,10 @@ fn forIterStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const iterIdx = c.ir.advanceStmt(idx, .forIterStmt);
     const iterv = try genExpr(c, iterIdx, Cstr.toTemp(iterTemp + cy.vm.CallArgStart));
 
-    const node = c.nodes[nodeId];
-    const header = c.nodes[node.head.forIterStmt.header];
-    const iterNodeId = header.head.forIterHeader.iterable;
-    const eachNodeId = header.head.forIterHeader.eachClause;
+    const node = c.ast.node(nodeId);
+    const header = c.ast.node(node.data.forIterStmt.header);
+    const iterNodeId = header.data.forIterHeader.iterable;
+    const eachNodeId = header.data.forIterHeader.eachClause;
 
     const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any }, bt.Any);
     var extraIdx = try c.fmtExtraDesc("iterator()", .{});

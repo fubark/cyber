@@ -173,10 +173,10 @@ fn genStatement(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             _ = try genExprStmt(c, nodeId, false);
         },
         // .localDecl => {
-        //     if (node.head.localDecl.right != cy.NullId) {
+        //     if (node.data.localDecl.right != cy.NullId) {
         //         // Can assume left is .ident from sema.
-        //         const varSpec = c.nodes[node.head.localDecl.varSpec];
-        //         try assignExprToLocalVar(c, varSpec.head.varSpec.name, node.head.localDecl.right);
+        //         const varSpec = c.nodes[node.data.localDecl.varSpec];
+        //         try assignExprToLocalVar(c, varSpec.head.varSpec.name, node.data.localDecl.right);
         //     }
         // },
         // .assign_stmt => {
@@ -186,10 +186,10 @@ fn genStatement(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         //     try opAssignStmt(c, nodeId);
         // },
         // .importStmt => {
-        //     const ident = c.nodes[node.head.left_right.left];
+        //     const ident = c.nodes[node.data.left_right.left];
         //     const name = c.getNodeString(ident);
 
-        //     const spec = c.nodes[node.head.left_right.right];
+        //     const spec = c.nodes[node.data.left_right.right];
         //     const specPath = c.getNodeString(spec);
 
         //     _ = name;
@@ -212,14 +212,14 @@ fn genStatement(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         //     // Nop.
         // },
         // .objectDecl => {
-        //     const nameN = c.nodes[node.head.objectDecl.name];
+        //     const nameN = c.nodes[node.data.objectDecl.name];
         //     const name = c.getNodeString(nameN);
         //     const nameId = try sema.ensureNameSym(c.compiler, name);
         //     const crObjSymId = nameN.head.ident.sema_csymId;
         //     const robjSymId = crObjSymId.id;
         //     const sid = try c.compiler.vm.ensureObjectType(c.semaRootSymId, nameId, robjSymId);
 
-        //     const body = c.nodes[node.head.objectDecl.body];
+        //     const body = c.nodes[node.data.objectDecl.body];
         //     var funcId = body.head.objectDeclBody.funcsHead;
         //     var func: cy.Node = undefined;
         //     while (funcId != cy.NullId) : (funcId = func.next) {
@@ -257,8 +257,8 @@ fn genStatement(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         // .tryStmt => {
         //     // push try block.
         //     var errorVarLocal: u8 = cy.NullU8;
-        //     if (node.head.tryStmt.errorVar != cy.NullId) {
-        //         const errorVarN = c.nodes[node.head.tryStmt.errorVar];
+        //     if (node.data.tryStmt.errorVar != cy.NullId) {
+        //         const errorVarN = c.nodes[node.data.tryStmt.errorVar];
         //         errorVarLocal = c.genGetVar(errorVarN.head.ident.semaVarId).?.local;
         //     }
         //     const pushTryPc = c.buf.ops.items.len;
@@ -266,7 +266,7 @@ fn genStatement(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
         //     // try body.
         //     c.nextSemaSubBlock();
-        //     try genStatements(c, node.head.tryStmt.tryFirstStmt, false);
+        //     try genStatements(c, node.data.tryStmt.tryFirstStmt, false);
         //     c.prevSemaSubBlock();
 
         //     // pop try block.
@@ -276,7 +276,7 @@ fn genStatement(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
         //     // catch body.
         //     c.nextSemaSubBlock();
-        //     try genStatements(c, node.head.tryStmt.catchFirstStmt, false);
+        //     try genStatements(c, node.data.tryStmt.catchFirstStmt, false);
         //     c.prevSemaSubBlock();
 
         //     c.buf.setOpArgU16(popTryPc + 1, @intCast(c.buf.ops.items.len - popTryPc));
@@ -304,7 +304,7 @@ fn genStatement(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         //     //     }
         //     // }
 
-        //     try genStatements(c, node.head.child_head, false);
+        //     try genStatements(c, node.data.child_head, false);
         //     try c.pushJumpBackTo(pcSave);
 
         //     c.patchForBlockJumps(jumpStackSave, c.buf.ops.items.len, pcSave);
@@ -317,7 +317,7 @@ fn genStatement(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         //     const jumpStackSave: u32 = @intCast(c.subBlockJumpStack.items.len);
         //     defer c.subBlockJumpStack.items.len = jumpStackSave;
 
-        //     const condv = try expression(c, node.head.whileCondStmt.cond, RegisterCstr.simple);
+        //     const condv = try expression(c, node.data.whileCondStmt.cond, RegisterCstr.simple);
         //     const condLocal = condv.local;
 
         //     var jumpPc = try c.pushEmptyJumpNotCond(condLocal);
@@ -329,7 +329,7 @@ fn genStatement(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
         //     c.rega.setNextTemp(tempStart);
 
-        //     try genStatements(c, node.head.whileCondStmt.bodyHead, false);
+        //     try genStatements(c, node.data.whileCondStmt.bodyHead, false);
         //     try c.pushJumpBackTo(topPc);
 
         //     c.patchJumpNotCondToCurPc(jumpPc);
@@ -353,7 +353,7 @@ fn genStatement(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         //     }
         // },
         .return_expr_stmt => {
-            const val = try genExpr(c, node.head.child_head);
+            const val = try genExpr(c, node.data.child_head);
             // try c.endLocals();
             sema.curSubBlock(c).endReachable = false;
             _ = llvm.BuildRet(c.builder, val.val);
@@ -370,7 +370,7 @@ fn genStatement(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 fn genFuncDecl(self: *cy.Chunk, parentSymId: sema.SymbolId, nodeId: cy.NodeId) !void {
     _ = parentSymId;
     const node = self.nodes[nodeId];
-    const func = &self.semaFuncDecls.items[node.head.func.semaDeclId];
+    const func = &self.semaFuncDecls.items[node.data.func.semaDeclId];
     const name = func.getName(self);
     // const nameId = try sema.ensureNameSym(self.compiler, name);
     // const symId = try self.compiler.vm.ensureFuncSym(parentSymId, nameId, func.funcSigId);
@@ -378,7 +378,7 @@ fn genFuncDecl(self: *cy.Chunk, parentSymId: sema.SymbolId, nodeId: cy.NodeId) !
     const funcTypeRef = try toLLVM_FunctionType(self, func.funcSigId);
     const nameZ = try toTempStrZ(self, name);
     const funcRef = llvm.AddFunction(self.mod, nameZ, funcTypeRef);
-    self.llvmFuncs[node.head.func.semaDeclId] = .{
+    self.llvmFuncs[node.data.func.semaDeclId] = .{
         .typeRef = funcTypeRef,
         .funcRef = funcRef,
     };
@@ -390,7 +390,7 @@ fn genFuncDecl(self: *cy.Chunk, parentSymId: sema.SymbolId, nodeId: cy.NodeId) !
 
     try self.pushSemaBlock(func.semaBlockId);
     // if (self.compiler.config.genDebugFuncMarkers) {
-    //     try self.compiler.buf.pushDebugFuncStart(node.head.func.semaDeclId, self.id);
+    //     try self.compiler.buf.pushDebugFuncStart(node.data.func.semaDeclId, self.id);
     // }
     // self.curBlock.frameLoc = nodeId;
     self.curBlock.funcRef = funcRef;
@@ -403,7 +403,7 @@ fn genFuncDecl(self: *cy.Chunk, parentSymId: sema.SymbolId, nodeId: cy.NodeId) !
     // const opStart: u32 = @intCast(self.buf.ops.items.len);
     // try self.reserveFuncParams(func.numParams);
     // try initVarLocals(self);
-    try genStatements(self, node.head.func.bodyHead, false);
+    try genStatements(self, node.data.func.bodyHead, false);
     // // TODO: Check last statement to skip adding ret.
     // try self.genBlockEnding();
     // func.genEndLocalsPc = self.curBlock.endLocalsPc;
@@ -422,7 +422,7 @@ fn genFuncDecl(self: *cy.Chunk, parentSymId: sema.SymbolId, nodeId: cy.NodeId) !
     self.popSemaBlock();
 
     // if (self.compiler.config.genDebugFuncMarkers) {
-    //     try self.compiler.buf.pushDebugFuncEnd(node.head.func.semaDeclId, self.id);
+    //     try self.compiler.buf.pushDebugFuncEnd(node.data.func.semaDeclId, self.id);
     // }
     
     // const rtSym = rt.FuncSymbol.initFunc(opStart, @intCast(stackSize), func.numParams, func.funcSigId);
@@ -451,7 +451,7 @@ fn genIfStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     // const tempStart = c.rega.getNextTemp();
 
     const node = c.nodes[nodeId];
-    const condv = try genExpr(c, node.head.left_right.left);
+    const condv = try genExpr(c, node.data.left_right.left);
 
     const predv = try genPred(c, condv);
 
@@ -470,7 +470,7 @@ fn genIfStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
     c.nextSemaSubBlock();
     llvm.PositionBuilderAtEnd(c.builder, thenBlock);
-    try genStatements(c, node.head.left_right.right, false);
+    try genStatements(c, node.data.left_right.right, false);
 
     if (sema.curSubBlock(c).endReachable) {
         _ = llvm.BuildBr(c.builder, mergeBlock);
@@ -480,7 +480,7 @@ fn genIfStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     llvm.AppendExistingBasicBlock(c.curBlock.funcRef, mergeBlock);
     llvm.PositionBuilderAtEnd(c.builder, mergeBlock);
 
-    // var elseClauseId = node.head.left_right.extra;
+    // var elseClauseId = node.data.left_right.extra;
     // if (elseClauseId != cy.NullId) {
     //     var jumpsStart = c.subBlockJumpStack.items.len;
     //     defer c.subBlockJumpStack.items.len = jumpsStart;
@@ -559,14 +559,14 @@ fn pushExprChildren(c: *cy.Chunk, nodeId: cy.NodeId) !bool {
         .number,
         .ident => return false,
         .callExpr => {
-            const callee = c.nodes[node.head.callExpr.callee];
+            const callee = c.nodes[node.data.callExpr.callee];
             if (callee.node_t == .accessExpr) {
                 return error.Unsupported;
             } else if (callee.node_t == .ident) {
                 if (callee.head.ident.sema_csymId.isPresent()) {
                     // Symbol.
-                    try c.exprStack.resize(c.alloc, top + node.head.callExpr.numArgs);
-                    var curId = node.head.callExpr.arg_head;
+                    try c.exprStack.resize(c.alloc, top + node.data.callExpr.numArgs);
+                    var curId = node.data.callExpr.arg_head;
                     var i: usize = 1;
                     while (curId != cy.NullId) : (i += 1) {
                         c.exprStack.items[c.exprStack.items.len - i] = .{
@@ -586,8 +586,8 @@ fn pushExprChildren(c: *cy.Chunk, nodeId: cy.NodeId) !bool {
         },
         .binExpr => {
             try c.exprStack.resize(c.alloc, top + 2);
-            c.exprStack.items[top] = .{ .nodeId = node.head.binExpr.right, .previsited = false };
-            c.exprStack.items[top + 1] = .{ .nodeId = node.head.binExpr.left, .previsited = false };
+            c.exprStack.items[top] = .{ .nodeId = node.data.binExpr.right, .previsited = false };
+            c.exprStack.items[top + 1] = .{ .nodeId = node.data.binExpr.left, .previsited = false };
             return true;
         },
         else => {
@@ -634,7 +634,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //         return constNumber(c, val, dst);
     //     },
     //     .nonDecInt => {
-    //         const fval: f64 = @floatFromInt(node.head.nonDecInt.semaNumberVal);
+    //         const fval: f64 = @floatFromInt(node.data.nonDecInt.semaNumberVal);
     //         const dst = try c.rega.selectFromNonLocalVar(cstr, false);
     //         return try constInt(c, fval, dst);
     //     },
@@ -646,7 +646,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //         return c.initGenValue(dst, bt.Symbol, false);
     //     },
     //     .errorSymLit => {
-    //         const symN = c.nodes[node.head.errorSymLit.symbol];
+    //         const symN = c.nodes[node.data.errorSymLit.symbol];
     //         const name = c.getNodeString(symN);
     //         const symId = try c.compiler.vm.ensureSymbol(name);
     //         const val = cy.Value.initErrorSymbol(@intCast(symId));
@@ -669,7 +669,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //         return genNone(c, dst);
     //     },
     //     .group => {
-    //         return expression(c, node.head.child_head, cstr);
+    //         return expression(c, node.data.child_head, cstr);
     //     },
     //     .map_literal => {
     //         return mapInit(c, nodeId, cstr);
@@ -681,19 +681,19 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //         return ifExpr(c, nodeId, cstr);
     //     },
     //     .unary_expr => {
-    //         const op = node.head.unary.op;
+    //         const op = node.data.unary.op;
     //         switch (op) {
     //             .not => {
     //                 const dst = try c.rega.selectFromNonLocalVar(cstr, false);
-    //                 const child = try expression(c, node.head.unary.child, RegisterCstr.exact(dst));
+    //                 const child = try expression(c, node.data.unary.child, RegisterCstr.exact(dst));
     //                 try c.buf.pushOp1(.not, dst);
     //                 try releaseIfRetainedTemp(c, child);
     //                 return c.initGenValue(dst, bt.Boolean, false);
     //             },
     //             .minus,
     //             .bitwiseNot => {
-    //                 const childT = c.nodeTypes[node.head.unary.child];
-    //                 switch (node.head.unary.semaGenStrat) {
+    //                 const childT = c.nodeTypes[node.data.unary.child];
+    //                 switch (node.data.unary.semaGenStrat) {
     //                     .none => cy.fatal(),
     //                     .specialized => {
     //                         const dst = try c.rega.selectFromNonLocalVar(cstr, false);
@@ -702,7 +702,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //                         defer c.rega.setNextTemp(tempStart);
 
     //                         const canUseDst = !c.isParamOrLocalVar(dst);
-    //                         const childv = try expression(c, node.head.unary.child, RegisterCstr.preferIf(dst, canUseDst));
+    //                         const childv = try expression(c, node.data.unary.child, RegisterCstr.preferIf(dst, canUseDst));
 
     //                         if (childT == bt.Integer) {
     //                             try pushInlineUnaryExpr(c, getIntUnaryOpCode(op), childv.local, dst, nodeId);
@@ -719,9 +719,9 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //                     },
     //                     .generic => {
     //                         if (op == .minus) {
-    //                             return callObjSymUnaryExpr(c, c.compiler.vm.@"prefix-MGID", node.head.unary.child, cstr, nodeId);
+    //                             return callObjSymUnaryExpr(c, c.compiler.vm.@"prefix-MGID", node.data.unary.child, cstr, nodeId);
     //                         } else {
-    //                             return callObjSymUnaryExpr(c, c.compiler.vm.@"prefix~MGID", node.head.unary.child, cstr, nodeId);
+    //                             return callObjSymUnaryExpr(c, c.compiler.vm.@"prefix~MGID", node.data.unary.child, cstr, nodeId);
     //                         }
     //                     }
     //                 }
@@ -748,7 +748,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //         const tempStart = c.rega.getNextTemp();
     //         defer c.rega.setNextTemp(tempStart);
 
-    //         const fiber = try expression(c, node.head.child_head, RegisterCstr.tempMustRetain);
+    //         const fiber = try expression(c, node.data.child_head, RegisterCstr.tempMustRetain);
     //         try c.buf.pushOp2(.coresume, fiber.local, dst);
     //         return c.initGenValue(dst, bt.Any, true);
     //     },
@@ -762,7 +762,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //         return genNone(c, dst);
     //     },
     //     .coinit => {
-    //         return callExpr(c, node.head.child_head, cstr, true, nodeId);
+    //         return callExpr(c, node.data.child_head, cstr, true, nodeId);
     //     },
     //     .sliceExpr => {
     //         return sliceExpr(c, nodeId, cstr);
@@ -777,8 +777,8 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //         return objectInit(c, nodeId, cstr);
     //     },
     //     .castExpr => {
-    //         const child = try expression(c, node.head.castExpr.expr, cstr);
-    //         const tSymId = node.head.castExpr.semaTypeSymId;
+    //         const child = try expression(c, node.data.castExpr.expr, cstr);
+    //         const tSymId = node.data.castExpr.semaTypeSymId;
 
     //         const tSym = c.compiler.sema.getSymbol(tSymId);
     //         if (tSym.symT == .object) {
@@ -810,7 +810,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //         return c.initGenValue(child.local, tSymId, child.retained);
     //     },
     //     .throwExpr => {
-    //         const child = try expression(c, node.head.child_head, cstr);
+    //         const child = try expression(c, node.data.child_head, cstr);
 
     //         try c.pushFailableDebugSym(nodeId);
     //         try c.buf.pushOp1(.throw, child.local);
@@ -828,7 +828,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     //         const pushTryPc = c.buf.ops.items.len;
     //         try c.buf.pushOp3(.pushTry, 0, 0, 0);
 
-    //         const child = try expression(c, node.head.tryExpr.expr, RegisterCstr.initExact(dst, cstr.mustRetain));
+    //         const child = try expression(c, node.data.tryExpr.expr, RegisterCstr.initExact(dst, cstr.mustRetain));
 
     //         const popTryPc = c.buf.ops.items.len;
     //         try c.buf.pushOp2(.popTry, 0, 0);
@@ -836,10 +836,10 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
 
     //         // Generate else clause.
     //         var elsev: GenValue = undefined;
-    //         if (node.head.tryExpr.elseExpr != cy.NullId) {
+    //         if (node.data.tryExpr.elseExpr != cy.NullId) {
     //             // Error is not copied anywhere.
     //             c.buf.setOpArgs1(pushTryPc + 1, cy.NullU8);
-    //             elsev = try expression(c, node.head.tryExpr.elseExpr, RegisterCstr.initExact(dst, cstr.mustRetain));
+    //             elsev = try expression(c, node.data.tryExpr.elseExpr, RegisterCstr.initExact(dst, cstr.mustRetain));
     //         } else {
     //             // Error goes directly to dst.
     //             c.buf.setOpArgs1(pushTryPc + 1, dst);
@@ -858,7 +858,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
 
 fn genIdent(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     const node = c.nodes[nodeId];
-    if (c.genGetVar(node.head.ident.semaVarId)) |svar| {
+    if (c.genGetVar(node.data.ident.semaVarId)) |svar| {
         // csymId would be active instead.
         cy.dassert(svar.type != .staticAlias);
 
@@ -940,7 +940,7 @@ fn genIdent(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
         //     return c.initGenValue(dst, svar.vtype, false);
         // }
     } else {
-        return genSymbol(c, node.head.ident.sema_csymId);
+        return genSymbol(c, node.data.ident.sema_csymId);
     }
 }
 
@@ -1005,11 +1005,11 @@ fn genSymbol(self: *cy.Chunk, csymId: sema.CompactSymbolId) !Value {
 fn genBinExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
     const node = c.nodes[nodeId];
     return genBinExpr2(c, .{
-        .leftId = node.head.binExpr.left,
-        .rightId = node.head.binExpr.right,
+        .leftId = node.data.binExpr.left,
+        .rightId = node.data.binExpr.right,
         .debugNodeId = nodeId,
-        .op = node.head.binExpr.op,
-        .genStrat = node.head.binExpr.semaGenStrat,
+        .op = node.data.binExpr.op,
+        .genStrat = node.data.binExpr.semaGenStrat,
     });
 }
 
@@ -1197,8 +1197,8 @@ fn genCallExpr(c: *cy.Chunk, nodeId: cy.NodeId, comptime startFiber: bool, coini
     // }
 
     const node = c.nodes[nodeId];
-    const callee = c.nodes[node.head.callExpr.callee];
-    if (!node.head.callExpr.has_named_arg) {
+    const callee = c.nodes[node.data.callExpr.callee];
+    if (!node.data.callExpr.has_named_arg) {
         if (callee.node_t == .accessExpr) {
             // if (callee.head.accessExpr.sema_csymId.isPresent()) {
             //     const csymId = callee.head.accessExpr.sema_csymId;
@@ -1215,13 +1215,13 @@ fn genCallExpr(c: *cy.Chunk, nodeId: cy.NodeId, comptime startFiber: bool, coini
             //         var callArgsRes: CallArgsResult = undefined;
             //         if (funcSym.declId != cy.NullId) {
             //             const rFuncSig = self.compiler.sema.resolvedFuncSigs.items[funcSigId];
-            //             callArgsRes = try callArgs2(self, rFuncSig, node.head.callExpr.arg_head);
+            //             callArgsRes = try callArgs2(self, rFuncSig, node.data.callExpr.arg_head);
             //         } else {
-            //             callArgsRes = try callArgs(self, node.head.callExpr.arg_head);
+            //             callArgsRes = try callArgs(self, node.data.callExpr.arg_head);
             //         }
 
             //         if (callArgsRes.hasDynamicArgs) {
-            //             try genCallTypeCheck(self, callStartLocal + 4, node.head.callExpr.numArgs, funcSigId, nodeId);
+            //             try genCallTypeCheck(self, callStartLocal + 4, node.data.callExpr.numArgs, funcSigId, nodeId);
             //         }
 
             //         const key = rsym.key.resolvedSymKey;
@@ -1230,7 +1230,7 @@ fn genCallExpr(c: *cy.Chunk, nodeId: cy.NodeId, comptime startFiber: bool, coini
             //         const retainedTemps = self.operandStack.items[start..];
             //         defer self.popUnwindTempIndexN(@intCast(retainedTemps.len));
 
-            //         try pushCallSym(self, callStartLocal, node.head.callExpr.numArgs, 1, symId, nodeId);
+            //         try pushCallSym(self, callStartLocal, node.data.callExpr.numArgs, 1, symId, nodeId);
             //         try pushReleases(self, retainedTemps, nodeId);
 
             //         return GenValue.initTempValue(callStartLocal, funcSym.retType, true);
@@ -1251,7 +1251,7 @@ fn genCallExpr(c: *cy.Chunk, nodeId: cy.NodeId, comptime startFiber: bool, coini
                 // Symbol.
                 const csymId = callee.head.ident.sema_csymId;
                 if (csymId.isFuncSymId) {
-                    const numArgs = node.head.callExpr.numArgs;
+                    const numArgs = node.data.callExpr.numArgs;
 
                     const argvs = c.exprResStack.items[c.exprResStack.items.len-numArgs..];
                     c.exprResStack.items.len -= numArgs;
@@ -1285,13 +1285,13 @@ fn genCallExpr(c: *cy.Chunk, nodeId: cy.NodeId, comptime startFiber: bool, coini
                 //     var callArgsRes: CallArgsResult = undefined;
                 //     if (funcSym.declId != cy.NullId) {
                 //         const rFuncSig = self.compiler.sema.resolvedFuncSigs.items[funcSigId];
-                //         callArgsRes = try callArgs2(self, rFuncSig, node.head.callExpr.arg_head);
+                //         callArgsRes = try callArgs2(self, rFuncSig, node.data.callExpr.arg_head);
                 //     } else {
-                //         callArgsRes = try callArgs(self, node.head.callExpr.arg_head);
+                //         callArgsRes = try callArgs(self, node.data.callExpr.arg_head);
                 //     }
             
                 //     if (callArgsRes.hasDynamicArgs) {
-                //         try genCallTypeCheck(self, callStartLocal + 4, node.head.callExpr.numArgs, funcSigId, nodeId);
+                //         try genCallTypeCheck(self, callStartLocal + 4, node.data.callExpr.numArgs, funcSigId, nodeId);
                 //     }
                 // } else {
                 //     const rsym = self.compiler.sema.getSymbol(csymId.id);
@@ -1308,12 +1308,12 @@ fn genCallExpr(c: *cy.Chunk, nodeId: cy.NodeId, comptime startFiber: bool, coini
                 // if (startFiber) {
                 //     // Precompute first arg local since coinit doesn't need the startLocal.
                 //     // numArgs + 4 (ret slots) + 1 (min call start local for main block)
-                //     var initialStackSize = node.head.callExpr.numArgs + 4 + 1;
+                //     var initialStackSize = node.data.callExpr.numArgs + 4 + 1;
                 //     if (initialStackSize < 16) {
                 //         initialStackSize = 16;
                 //     }
                 //     try self.pushOptionalDebugSym(nodeId);
-                //     try self.buf.pushOpSlice(.coinit, &[_]u8{ fiberStartLocal, node.head.callExpr.numArgs, 0, @intCast(initialStackSize), fiberDst });
+                //     try self.buf.pushOpSlice(.coinit, &[_]u8{ fiberStartLocal, node.data.callExpr.numArgs, 0, @intCast(initialStackSize), fiberDst });
 
                 //     // TODO: Have an actual block for fiber.
                 //     frameLocSave = self.curBlock.frameLoc;
@@ -1335,7 +1335,7 @@ fn genCallExpr(c: *cy.Chunk, nodeId: cy.NodeId, comptime startFiber: bool, coini
                 //     }
                 //     defer if (startFiber) self.popUnwindTempIndexN(@intCast(retainedTemps.len + 1));
 
-                //     try pushCallSym(self, callStartLocal, node.head.callExpr.numArgs, 1, rtSymId, nodeId);
+                //     try pushCallSym(self, callStartLocal, node.data.callExpr.numArgs, 1, rtSymId, nodeId);
                 //     try pushReleases(self, retainedTemps, nodeId);
                 // } else {
                 //     return self.reportError("Unsupported coinit func call.", &.{});
@@ -1380,7 +1380,7 @@ fn genExprStmt(c: *cy.Chunk, stmtId: cy.NodeId, retain: bool) !void {
     _ = retain;
     const stmt = c.nodes[stmtId];
 
-    _ = try genExpr(c, stmt.head.child_head);
+    _ = try genExpr(c, stmt.data.child_head);
 
     // // ARC cleanup.
     // if (!retain) {

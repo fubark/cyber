@@ -13,26 +13,6 @@ const vmc = @import("vm_c.zig");
 
 const NullId = std.math.maxInt(u32);
 
-/// Find the line/col in `src` at `pos`.
-/// Iterating tokens could be faster but it would still require counting new lines for skipped segments like comments, multiline strings.
-pub fn computeLinePos(src: []const u8, pos: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) linksection(cy.Section) void {
-    var line: u32 = 0;
-    var lineStart: u32 = 0;
-    for (src, 0..) |ch, i| {
-        if (i == pos) {
-            break;
-        }
-        if (ch == '\n') {
-            line += 1;
-            lineStart = @intCast(i + 1);
-        }
-    }
-    // This also handles the case where target pos is at the end of source.
-    outLine.* = line;
-    outCol.* = pos - lineStart;
-    outLineStart.* = lineStart;
-}
-
 pub fn countNewLines(str: []const u8, outLastIdx: *u32) u32 {
     var count: u32 = 0;
     var i: u32 = 0;
@@ -131,9 +111,8 @@ pub fn printTraceAtPc(vm: *cy.VM, pc: u32, title: []const u8, msg: []const u8) !
     if (indexOfDebugSym(vm, pc)) |idx| {
         const sym = vm.debugTable[idx];
         const chunk = vm.compiler.chunks.items[sym.file];
-        const node = chunk.nodes[sym.loc];
-        const token = chunk.tokens[node.start_token];
-        try printUserError(vm, title, msg, sym.file, token.pos());
+        const node = chunk.ast.node(sym.loc);
+        try printUserError(vm, title, msg, sym.file, node.srcPos);
     } else {
         rt.errFmt(vm, "{}: {}\nMissing debug sym for {}, pc: {}.", &.{
             v(title), v(msg), v(vm.ops[pc].opcode()), v(pc)});
@@ -185,9 +164,8 @@ fn writeLastUserCompileError(vm: *const cy.VM, w: anytype) !void {
     if (vm.compiler.lastErrChunk != cy.NullId) {
         const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
         if (vm.compiler.lastErrNode != cy.NullId) {
-            const token = chunk.nodes[vm.compiler.lastErrNode].start_token;
-            const pos = chunk.tokens[token].pos();
-            try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, chunk.id, pos);
+            const node = chunk.ast.node(vm.compiler.lastErrNode);
+            try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, chunk.id, node.srcPos);
         } else {
             try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, chunk.id, cy.NullId);
         }
@@ -255,7 +233,7 @@ pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []co
             var line: u32 = undefined;
             var col: u32 = undefined;
             var lineStart: u32 = undefined;
-            computeLinePos(chunk.parser.src, pos, &line, &col, &lineStart);
+            chunk.ast.computeLinePos(pos, &line, &col, &lineStart);
             const lineEnd = std.mem.indexOfScalarPos(u8, chunk.src, lineStart, '\n') orelse chunk.src.len;
             try fmt.format(w,
                 \\{}: {}
@@ -423,15 +401,14 @@ pub fn compactToStackFrame(vm: *cy.VM, stack: []const cy.Value, frame: vmc.Compa
 }
 
 fn getStackFrame(vm: *cy.VM, sym: cy.DebugSym) StackFrame {
-    if (sym.frameLoc == 0) {
+    if (sym.frameLoc == cy.NullNode) {
         const chunk = vm.compiler.chunks.items[sym.file];
-        if (sym.loc != cy.NullId) {
-            const node = chunk.nodes[sym.loc];
+        if (sym.loc != cy.NullNode) {
+            const node = chunk.ast.node(sym.loc);
             var line: u32 = undefined;
             var col: u32 = undefined;
             var lineStart: u32 = undefined;
-            const pos = chunk.tokens[node.start_token].pos();
-            computeLinePos(chunk.parser.src, pos, &line, &col, &lineStart);
+            chunk.ast.computeLinePos(node.srcPos, &line, &col, &lineStart);
             return StackFrame{
                 .name = "main",
                 .chunkId = sym.file,
@@ -452,28 +429,23 @@ fn getStackFrame(vm: *cy.VM, sym: cy.DebugSym) StackFrame {
     } else {
         const chunk = vm.compiler.chunks.items[sym.file]; 
         var name: []const u8 = undefined;
-        if (sym.frameLoc != cy.NullId) {
-            const node = chunk.nodes[sym.frameLoc];
-            if (node.node_t == .coinit) {
-                name = "coroutine";
-            } else {
-                const header = chunk.nodes[node.head.func.header];
-                if (header.head.funcHeader.name == cy.NullId) {
-                    name = "lambda";
-                } else {
-                    name = chunk.getNodeStringById(header.head.funcHeader.name);
-                }
-            }
+        const proc = chunk.ast.node(sym.frameLoc);
+        if (proc.type() == .coinit) {
+            name = "coroutine";
         } else {
-            name = "init";
+            const header = chunk.ast.node(proc.data.func.header);
+            if (header.data.funcHeader.name == cy.NullNode) {
+                name = "lambda";
+            } else {
+                name = chunk.ast.nodeStringById(header.data.funcHeader.name);
+            }
         }
 
-        const node = chunk.nodes[sym.loc];
+        const node = chunk.ast.node(sym.loc);
         var line: u32 = undefined;
         var col: u32 = undefined;
         var lineStart: u32 = undefined;
-        const pos = chunk.tokens[node.start_token].pos();
-        computeLinePos(chunk.parser.src, pos, &line, &col, &lineStart);
+        chunk.ast.computeLinePos(node.srcPos, &line, &col, &lineStart);
         return StackFrame{
             .name = name,
             .chunkId = sym.file,
@@ -571,11 +543,10 @@ pub fn dumpBytecode(vm: *cy.VM, opts: DumpBytecodeOptions) !void {
         }
         rt.print(vm, "");
 
-        const node = chunk.nodes[sym.loc];
-        const token = chunk.tokens[node.start_token];
-        const msg = try std.fmt.allocPrint(vm.alloc, "pc={} op={s} node={s}", .{ pcContext, @tagName(pc[pcContext].opcode()), @tagName(node.node_t) });
+        const node = chunk.ast.node(sym.loc);
+        const msg = try std.fmt.allocPrint(vm.alloc, "pc={} op={s} node={s}", .{ pcContext, @tagName(pc[pcContext].opcode()), @tagName(node.type()) });
         defer vm.alloc.free(msg);
-        try printUserError(vm, "Trace", msg, sym.file, token.pos());
+        try printUserError(vm, "Trace", msg, sym.file, node.srcPos);
 
         rt.print(vm, "Bytecode:");
         const ContextSize = 40;
@@ -706,19 +677,10 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const cy.Inst
                     const chunk = vm.compiler.chunks.items[desc.chunkId];
 
                     const enc = cy.ast.Encoder{
-                        .src = .{
-                            .src = chunk.src,
-                            .nodes = chunk.nodes,
-                            .tokens = chunk.tokens,
-                        },
+                        .ast = chunk.ast,
                     };
 
-                    var nodeId = desc.nodeId;
-                    if (chunk.nodes[nodeId].hasParentAssignStmt) {
-                        // Print the entire statement instead.
-                        nodeId = enc.src.getParentAssignStmt(nodeId);
-                    }
-                    try enc.writeNode(w, nodeId);
+                    try enc.writeNode(w, desc.nodeId);
                     extra = fbuf.getWritten();
                 }
             }

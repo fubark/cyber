@@ -6,49 +6,14 @@ const fatal = cy.fatal;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const cy = @import("cyber.zig");
+const Token = cy.tokenizer.Token;
 
 const NodeId = cy.NodeId;
 const TokenId = u32;
-const NullId = cy.NullId;
 const log = cy.log.scoped(.parser);
 const IndexSlice = cy.IndexSlice(u32);
 
 const dumpParseErrorStackTrace = !cy.isFreestanding and builtin.mode == .Debug and !cy.isWasm and true;
-
-const keywords = std.ComptimeStringMap(TokenType, .{
-    .{ "and", .and_k },
-    .{ "as", .as_k },
-    .{ "my", .my_k },
-    // .{ "await", .await_k },
-    .{ "break", .break_k },
-    .{ "case", .case_k },
-    .{ "catch", .catch_k },
-    .{ "coinit", .coinit_k },
-    .{ "continue", .continue_k },
-    .{ "coresume", .coresume_k },
-    .{ "coyield", .coyield_k },
-    .{ "else", .else_k },
-    .{ "enum", .enum_k },
-    .{ "error", .error_k },
-    .{ "false", .false_k },
-    .{ "for", .for_k },
-    .{ "func", .func_k },
-    .{ "if", .if_k },
-    .{ "import", .import_k },
-    .{ "switch", .switch_k },
-    .{ "none", .none_k },
-    .{ "object", .object_k },
-    .{ "or", .or_k },
-    .{ "pass", .pass_k },
-    .{ "not", .not_k },
-    .{ "return", .return_k },
-    .{ "throw", .throw_k },
-    .{ "true", .true_k },
-    .{ "try", .try_k },
-    .{ "type", .type_k },
-    .{ "var", .var_k },
-    .{ "while", .while_k },
-});
 
 const dirModifiers = std.ComptimeStringMap(cy.ast.DirModifierType, .{
     .{ "host", .host },
@@ -62,20 +27,20 @@ const Block = struct {
     }
 };
 
+const ParseOptions = struct {
+    parseComments: bool = false,
+};
+
 /// Parses source code into AST.
 pub const Parser = struct {
     alloc: std.mem.Allocator,
 
     /// Context vars.
-    src: []const u8,
     next_pos: u32,
     savePos: u32,
 
-    tokens: std.ArrayListUnmanaged(Token),
-    nodes: std.ArrayListUnmanaged(cy.Node),
-
-    /// Generated strings.
-    strs: std.ArrayListUnmanaged([]const u8),
+    ast: cy.ast.Ast,
+    tokens: []const Token,
 
     last_err: []const u8,
     /// The last error's src char pos.
@@ -92,13 +57,7 @@ pub const Parser = struct {
     /// Variable dependencies.
     deps: std.StringHashMapUnmanaged(NodeId),
 
-    tokenizeOpts: TokenizeOptions,
-
     inObjectDecl: bool,
-
-    /// Whether to parse and accumulate comment tokens in `comments`.
-    parseComments: bool,
-    comments: std.ArrayListUnmanaged(cy.IndexSlice(u32)),
 
     /// For custom functions.
     user: struct {
@@ -112,15 +71,13 @@ pub const Parser = struct {
         restorePos: *const fn (*anyopaque) void,
     },
 
-    pub fn init(alloc: std.mem.Allocator) Parser {
+    pub fn init(alloc: std.mem.Allocator) !Parser {
         return .{
             .alloc = alloc,
-            .src = "",
+            .ast = try cy.ast.Ast.init(alloc, ""),
             .next_pos = undefined,
             .savePos = undefined,
-            .tokens = .{},
-            .nodes = .{},
-            .strs = .{},
+            .tokens = undefined,
             .last_err = "",
             .last_err_pos = 0,
             .blockStack = .{},
@@ -128,21 +85,13 @@ pub const Parser = struct {
             .name = "",
             .deps = .{},
             .user = undefined,
-            .tokenizeOpts = .{},
             .staticDecls = .{},
             .inObjectDecl = false,
-            .parseComments = false,
-            .comments = .{},
         };
     }
 
     pub fn deinit(self: *Parser) void {
-        self.tokens.deinit(self.alloc);
-        self.nodes.deinit(self.alloc);
-        for (self.strs.items) |str| {
-            self.alloc.free(str);
-        }
-        self.strs.deinit(self.alloc);
+        self.ast.deinit(self.alloc);
         self.alloc.free(self.last_err);
         for (self.blockStack.items) |*block| {
             block.deinit(self.alloc);
@@ -150,17 +99,16 @@ pub const Parser = struct {
         self.blockStack.deinit(self.alloc);
         self.deps.deinit(self.alloc);
         self.staticDecls.deinit(self.alloc);
-        self.comments.deinit(self.alloc);
     }
 
     fn dumpTokensToCurrent(self: *Parser) void {
-        for (self.tokens.items[0..self.next_pos+1]) |token| {
+        for (self.tokens[0..self.next_pos+1]) |token| {
             log.tracev("{}", .{token.tag()});
         }
     }
 
-    pub fn parseNoErr(self: *Parser, src: []const u8) !ResultView {
-        const res = try self.parse(src);
+    pub fn parseNoErr(self: *Parser, src: []const u8, opts: ParseOptions) !ResultView {
+        const res = try self.parse(src, opts);
         if (res.has_error) {
             log.tracev("{s}", .{res.err_msg});
             return error.ParseError;
@@ -168,35 +116,40 @@ pub const Parser = struct {
         return res;
     }
 
-    pub fn parse(self: *Parser, src: []const u8) !ResultView {
-        self.src = src;
+    pub fn parse(self: *Parser, src: []const u8, opts: ParseOptions) !ResultView {
+        self.ast.src = src;
         self.name = "";
         self.deps.clearRetainingCapacity();
 
-        const tokenizeOpts = TokenizeOptions{
-            .ignoreErrors = false,
-        };
-        Tokenizer(.{ .user = false }).tokenize(self, tokenizeOpts) catch |err| {
+        var tokenizer = cy.Tokenizer.init(self.alloc, src);
+        defer tokenizer.deinit();
+
+        tokenizer.parseComments = opts.parseComments;
+        try tokenizer.tokens.ensureTotalCapacityPrecise(self.alloc, 511);
+        tokenizer.tokenize() catch |err| {
             log.tracev("tokenize error: {}", .{err});
             if (dumpParseErrorStackTrace and !cy.silentError) {
                 std.debug.dumpStackTrace(@errorReturnTrace().?.*);
             }
+            self.last_err = tokenizer.consumeErr();
+            self.last_err_pos = tokenizer.lastErrPos;
             return ResultView{
                 .has_error = true,
                 .isTokenError = true,
                 .err_msg = self.last_err,
-                .root_id = NullId,
-                .nodes = &self.nodes,
-                .tokens = &.{},
-                .src = self.src,
+                .root_id = cy.NullNode,
+                .ast = self.ast.view(),
                 .name = self.name,
                 .deps = &self.deps,
             };
         };
+        self.ast.comments = tokenizer.consumeComments();
+        self.tokens = tokenizer.tokens.items;
+
         const root_id = self.parseRoot() catch |err| {
             log.tracev("parse error: {} {s}", .{err, self.last_err});
             // self.dumpTokensToCurrent();
-            logSrcPos(self.src, self.last_err_pos, 20);
+            logSrcPos(self.ast.src, self.last_err_pos, 20);
             if (dumpParseErrorStackTrace and !cy.silentError) {
                 std.debug.dumpStackTrace(@errorReturnTrace().?.*);
             }
@@ -204,10 +157,8 @@ pub const Parser = struct {
                 .has_error = true,
                 .isTokenError = false,
                 .err_msg = self.last_err,
-                .root_id = NullId,
-                .nodes = &self.nodes,
-                .tokens = &.{},
-                .src = self.src,
+                .root_id = cy.NullNode,
+                .ast = self.ast.view(),
                 .name = self.name,
                 .deps = &self.deps,
             };
@@ -217,9 +168,7 @@ pub const Parser = struct {
             .isTokenError = false,
             .err_msg = "",
             .root_id = root_id,
-            .nodes = &self.nodes,
-            .tokens = self.tokens.items,
-            .src = self.src,
+            .ast = self.ast.view(),
             .name = self.name,
             .deps = &self.deps,
         };
@@ -227,42 +176,39 @@ pub const Parser = struct {
 
     fn parseRoot(self: *Parser) !NodeId {
         self.next_pos = 0;
-        self.nodes.clearRetainingCapacity();
+        try self.ast.nodes.ensureTotalCapacityPrecise(self.alloc, 127);
+        try self.ast.clearNodes(self.alloc);
         self.blockStack.clearRetainingCapacity();
         self.cur_indent = 0;
 
-        const root_id = try self.pushNode(.root, 0);
+        const root_id = try self.ast.pushNode(self.alloc, .root, 0);
 
         const indent = (try self.consumeIndentBeforeStmt()) orelse {
-            self.nodes.items[root_id].head = .{
-                .root = .{
-                    .headStmt = cy.NullId,
-                },
-            };
-            return 0;
+            self.ast.setNodeData(root_id, .{ .root = .{
+                .bodyHead = cy.NullNode,
+            }});
+            return root_id;
         };
         if (indent != 0) {
-            return self.reportParseError("Unexpected indentation.", &.{});
+            return self.reportError("Unexpected indentation.", &.{});
         }
 
         try self.pushBlock();
         const res = try self.parseBodyStatements(0);
 
         // Mark last expression stmt.
-        const last = self.nodes.items[res.last];
-        if (last.node_t == .exprStmt) {
-            self.nodes.items[res.last].head.exprStmt.isLastRootStmt = true;
+        const last = self.ast.nodePtr(res.last);
+        if (last.type() == .exprStmt) {
+            last.data.exprStmt.isLastRootStmt = true;
         }
 
         const block = self.popBlock();
         _ = block;
 
-        self.nodes.items[root_id].head = .{
-            .root = .{
-                .headStmt = res.first,
-            },
-        };
-        return 0;
+        self.ast.setNodeData(root_id, .{ .root = .{
+            .bodyHead = res.first,
+        }});
+        return root_id;
     }
 
     /// Returns number of spaces that precedes a statement.
@@ -271,18 +217,18 @@ pub const Parser = struct {
         while (true) {
             // Spaces, count = 0.
             var res: u32 = 0;
-            var token = self.peekToken();
+            var token = self.peek();
             if (token.tag() == .indent) {
                 res = token.data.indent;
-                self.advanceToken();
-                token = self.peekToken();
+                self.advance();
+                token = self.peek();
             }
             if (token.tag() == .new_line) {
-                self.advanceToken();
+                self.advance();
                 continue;
             } else if (token.tag() == .indent) {
                 // If another indent token is encountered, it would be a different type.
-                return self.reportParseError("Can not mix tabs and spaces for indentation.", &.{});
+                return self.reportError("Can not mix tabs and spaces for indentation.", &.{});
             } else if (token.tag() == .none) {
                 return null;
             } else {
@@ -304,7 +250,7 @@ pub const Parser = struct {
     }
 
     fn parseSingleOrIndentedBodyStmts(self: *Parser) !FirstLastStmt {
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() != .new_line) {
             // Parse single statement only.
             const stmt = try self.parseStatement();
@@ -313,7 +259,7 @@ pub const Parser = struct {
                 .last = stmt,
             };
         } else {
-            self.advanceToken();
+            self.advance();
             return self.parseIndentedBodyStatements();
         }
     }
@@ -339,13 +285,13 @@ pub const Parser = struct {
             const indent = (try self.consumeIndentBeforeStmt()) orelse break;
             if (indent == reqIndent) {
                 const id = try self.parseStatement();
-                self.nodes.items[last].next = id;
+                self.ast.setNextNode(last, id);
                 last = id;
             } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
                 self.next_pos = start;
                 break;
             } else {
-                return self.reportParseError("Unexpected indentation.", &.{});
+                return self.reportError("Unexpected indentation.", &.{});
             }
         }
         return .{
@@ -357,20 +303,20 @@ pub const Parser = struct {
     /// Parses the first child indent and returns the indent size.
     fn parseFirstChildIndent(self: *Parser, fromIndent: u32) !u32 {
         const indent = (try self.consumeIndentBeforeStmt()) orelse {
-            return self.reportParseError("Block requires an indented child statement. Use the `pass` statement as a placeholder.", &.{});
+            return self.reportError("Block requires an indented child statement. Use the `pass` statement as a placeholder.", &.{});
         };
         if ((fromIndent ^ indent < 0x80000000) or fromIndent == 0) {
             // Either same indent style or indenting from root.
             if (indent > fromIndent) {
                 return indent;
             } else {
-                return self.reportParseError("Block requires an indented child statement. Use the `pass` statement as a placeholder.", &.{});
+                return self.reportError("Block requires an indented child statement. Use the `pass` statement as a placeholder.", &.{});
             }
         } else {
             if (fromIndent & 0x80000000 == 0x80000000) {
-                return self.reportParseError("Expected tabs for indentation.", &.{});
+                return self.reportError("Expected tabs for indentation.", &.{});
             } else {
-                return self.reportParseError("Expected spaces for indentation.", &.{});
+                return self.reportError("Expected spaces for indentation.", &.{});
             }
         }
     }
@@ -378,74 +324,64 @@ pub const Parser = struct {
     fn parseLambdaFuncWithParam(self: *Parser, paramIdent: NodeId) !NodeId {
         const start = self.next_pos;
         // Assumes first token is `=>`.
-        self.advanceToken();
+        self.advance();
         
         const id = try self.pushNode(.lambda_expr, start);
 
         // Parse body expr.
         try self.pushBlock();
         const expr = (try self.parseExpr(.{})) orelse {
-            return self.reportParseError("Expected lambda body expression.", &.{});
+            return self.reportError("Expected lambda body expression.", &.{});
         };
         const block = self.popBlock();
         _ = block;
 
-        const identPos = self.nodes.items[paramIdent].start_token;
-        const param = try self.pushNode(.funcParam, identPos);
-        self.nodes.items[param].head = .{
-            .funcParam = .{
-                .name = paramIdent,
-                .typeSpecHead = NullId,
-            },
-        };
+        const identPos = self.ast.nodePos(paramIdent);
+        const param = try self.ast.pushNode(self.alloc, .funcParam, identPos);
+        self.ast.setNodeData(param, .{ .funcParam = .{
+            .name = paramIdent,
+            .typeSpecHead = cy.NullNode,
+        }});
 
-        const header = try self.pushNode(.funcHeader, start);
-        self.nodes.items[header].head = .{
-            .funcHeader = .{
-                .name = cy.NullId,
-                .paramHead = param,
-                .ret = cy.NullId,
-            },
-        };
+        const ret = cy.NullNode;
+        const header = try self.ast.pushNode(self.alloc, .funcHeader, ret);
+        self.ast.setNodeData(header, .{ .funcHeader = .{
+            .name = cy.NullNode,
+            .paramHead = param,
+        }});
 
-        self.nodes.items[id].head = .{
-            .func = .{
-                .header = header,
-                .bodyHead = expr,
-            },
-        };
+        self.ast.setNodeData(id, .{ .func = .{
+            .header = header,
+            .bodyHead = expr,
+        }});
         return id;
     }
 
     fn parseNoParamLambdaFunc(self: *Parser) !NodeId {
         const start = self.next_pos;
         // Assumes first token is `=>`.
-        self.advanceToken();
+        self.advance();
 
         const id = try self.pushNode(.lambda_expr, start);
 
         // Parse body expr.
         try self.pushBlock();
         const expr = (try self.parseExpr(.{})) orelse {
-            return self.reportParseError("Expected lambda body expression.", &.{});
+            return self.reportError("Expected lambda body expression.", &.{});
         };
         _ = self.popBlock();
         
-        const header = try self.pushNode(.funcHeader, start);
-        self.nodes.items[header].head = .{
-            .funcHeader = .{
-                .name = cy.NullId,
-                .paramHead = cy.NullId,
-                .ret = cy.NullId,
-            },
-        };
+        const ret = cy.NullNode;
+        const header = try self.ast.pushNode(self.alloc, .funcHeader, ret);
+        self.ast.setNodeData(header, .{ .funcHeader = .{
+            .name = cy.NullNode,
+            .paramHead = cy.NullNode,
+        }});
 
-        self.nodes.items[id].head = .{
-            .func = .{
-                .header = header,
-                .bodyHead = expr,
-            },
-        };
+        self.ast.setNodeData(id, .{ .func = .{
+            .header = header,
+            .bodyHead = expr,
+        }});
         return id;
     }
 
@@ -453,15 +389,15 @@ pub const Parser = struct {
         const start = self.next_pos;
 
         // Assume first token is `func`.
-        self.advanceToken();
+        self.advance();
 
         const paramHead = try self.parseFuncParams();
         const ret = try self.parseFuncReturn();
 
-        if (self.peekToken().tag() == .colon) {
-            self.advanceToken();
+        if (self.peek().tag() == .colon) {
+            self.advance();
         } else {
-            return self.reportParseError("Expected colon.", &.{});
+            return self.reportError("Expected colon.", &.{});
         }
 
         const id = try self.pushNode(.lambda_multi, start);
@@ -470,21 +406,16 @@ pub const Parser = struct {
         const res = try self.parseSingleOrIndentedBodyStmts();
         _ = self.popBlock();
 
-        const header = try self.pushNode(.funcHeader, start);
-        self.nodes.items[header].head = .{
-            .funcHeader = .{
-                .name = cy.NullId,
-                .paramHead = paramHead orelse cy.NullId,
-                .ret = ret orelse cy.NullId,
-            },
-        };
+        const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
+        self.ast.setNodeData(header, .{ .funcHeader = .{
+            .name = cy.NullNode,
+            .paramHead = paramHead orelse cy.NullNode,
+        }});
 
-        self.nodes.items[id].head = .{
-            .func = .{
-                .header = header,
-                .bodyHead = res.first,
-            },
-        };
+        self.ast.setNodeData(id, .{ .func = .{
+            .header = header,
+            .bodyHead = res.first,
+        }});
         return id;
     }
 
@@ -494,104 +425,95 @@ pub const Parser = struct {
         const paramHead = try self.parseFuncParams();
         const ret = try self.parseFuncReturn();
 
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() != .equal_greater) {
-            return self.reportParseError("Expected =>.", &.{});
+            return self.reportError("Expected =>.", &.{});
         }
-        self.advanceToken();
+        self.advance();
 
         const id = try self.pushNode(.lambda_expr, start);
 
         // Parse body expr.
         try self.pushBlock();
         const expr = (try self.parseExpr(.{})) orelse {
-            return self.reportParseError("Expected lambda body expression.", &.{});
+            return self.reportError("Expected lambda body expression.", &.{});
         };
         const block = self.popBlock();
         _ = block;
 
-        const header = try self.pushNode(.funcHeader, start);
-        self.nodes.items[header].head = .{
-            .funcHeader = .{
-                .name = cy.NullId,
-                .paramHead = paramHead orelse cy.NullId,
-                .ret = ret orelse cy.NullId,
-            },
-        };
+        const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
+        self.ast.setNodeData(header, .{ .funcHeader = .{
+            .name = cy.NullNode,
+            .paramHead = paramHead orelse cy.NullNode,
+        }});
         
-        self.nodes.items[id].head = .{
-            .func = .{
-                .header = header,
-                .bodyHead = expr,
-            },
-        };
+        self.ast.setNodeData(id, .{ .func = .{
+            .header = header,
+            .bodyHead = expr,
+        }});
         return id;
     }
 
     fn parseFuncParams(self: *Parser) !?NodeId {
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() != .left_paren) {
-            return self.reportParseError("Expected open parenthesis.", &.{});
+            return self.reportError("Expected open parenthesis.", &.{});
         }
-        self.advanceToken();
+        self.advance();
 
         // Parse params.
-        token = self.peekToken();
+        token = self.peek();
         if (token.tag() == .ident) {
             var start = self.next_pos;
-            var name = try self.pushIdentNode(start);
+            var name = try self.pushSpanNode(.ident, start);
 
-            self.advanceToken();
-            var typeSpecHead = (try self.parseOptNamePath()) orelse cy.NullId;
+            self.advance();
+            var typeSpecHead = (try self.parseOptNamePath()) orelse cy.NullNode;
 
             const paramHead = try self.pushNode(.funcParam, start);
-            self.nodes.items[paramHead].head = .{
-                .funcParam = .{
-                    .name = name,
-                    .typeSpecHead = typeSpecHead,
-                },
-            };
+            self.ast.setNodeData(paramHead, .{ .funcParam = .{
+                .name = name,
+                .typeSpecHead = typeSpecHead,
+            }});
 
             var last = paramHead;
             while (true) {
-                token = self.peekToken();
+                token = self.peek();
                 switch (token.tag()) {
                     .comma => {
-                        self.advanceToken();
+                        self.advance();
                     },
                     .right_paren => {
-                        self.advanceToken();
+                        self.advance();
                         break;
                     },
-                    else => return self.reportParseError("Unexpected token {} in function param list.", &.{v(token.tag())}),
+                    else => return self.reportError("Unexpected token {} in function param list.", &.{v(token.tag())}),
                 }
 
-                token = self.peekToken();
+                token = self.peek();
                 start = self.next_pos;
                 if (token.tag() != .ident and token.tag() != .type_k) {
-                    return self.reportParseError("Expected param identifier.", &.{});
+                    return self.reportError("Expected param identifier.", &.{});
                 }
 
-                name = try self.pushIdentNode(start);
-                self.advanceToken();
+                name = try self.pushSpanNode(.ident, start);
+                self.advance();
 
-                typeSpecHead = (try self.parseOptNamePath()) orelse cy.NullId;
+                typeSpecHead = (try self.parseOptNamePath()) orelse cy.NullNode;
 
                 const param = try self.pushNode(.funcParam, start);
-                self.nodes.items[param].head = .{
-                    .funcParam = .{
-                        .name = name,
-                        .typeSpecHead = typeSpecHead,
-                    },
-                };
-                self.nodes.items[last].next = param;
+                self.ast.setNodeData(param, .{ .funcParam = .{
+                    .name = name,
+                    .typeSpecHead = typeSpecHead,
+                }});
+                self.ast.setNextNode(last, param);
                 last = param;
             }
             return paramHead;
         } else if (token.tag() == .right_paren) {
-            self.advanceToken();
+            self.advance();
             return null;
-        } else return self.reportParseError("Unexpected token in function param list.", &.{});
+        } else return self.reportError("Unexpected token in function param list.", &.{});
     }
 
     fn parseFuncReturn(self: *Parser) !?NodeId {
@@ -600,25 +522,25 @@ pub const Parser = struct {
 
     fn parseOptName(self: *Parser) !?NodeId {
         const start = self.next_pos;
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() == .ident) {
-            self.advanceToken();
-            return try self.pushIdentNode(start);
+            self.advance();
+            return try self.pushSpanNode(.ident, start);
         } else if (token.tag() == .none_k) {
-            self.advanceToken();
-            return try self.pushIdentNode(start);
+            self.advance();
+            return try self.pushSpanNode(.ident, start);
         } else if (token.tag() == .error_k) {
-            self.advanceToken();
-            return try self.pushIdentNode(start);
+            self.advance();
+            return try self.pushSpanNode(.ident, start);
         } else if (token.tag() == .type_k) {
-            self.advanceToken();
-            return try self.pushIdentNode(start);
+            self.advance();
+            return try self.pushSpanNode(.ident, start);
         } else if (token.tag() == .enum_k) {
-            self.advanceToken();
-            return try self.pushIdentNode(start);
+            self.advance();
+            return try self.pushSpanNode(.ident, start);
         } else if (token.tag() == .string) {
-            self.advanceToken();
-            return try self.pushIdentNode(start);
+            self.advance();
+            return try self.pushSpanNode(.stringLit, start);
         }
         return null;
     }
@@ -628,37 +550,37 @@ pub const Parser = struct {
             return null;
         };
 
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() != .dot) {
             return first;
         }
         
         var last = first;
         while (token.tag() == .dot) {
-            self.advanceToken();
+            self.advance();
             const name = (try self.parseOptName()) orelse {
-                return self.reportParseError("Expected name.", &.{});
+                return self.reportError("Expected name.", &.{});
             };
-            self.nodes.items[last].next = name;
+            self.ast.setNextNode(last, name);
             last = name;
-            token = self.peekToken();
+            token = self.peek();
         }
         return first;
     }
 
     fn parseEnumMember(self: *Parser) !NodeId {
         const start = self.next_pos;
-        if (self.peekToken().tag() != .case_k) {
-            return self.reportParseError("Expected case keyword.", &.{});
+        if (self.peek().tag() != .case_k) {
+            return self.reportError("Expected case keyword.", &.{});
         }
-        self.advanceToken();
+        self.advance();
 
         const name = (try self.parseOptName()) orelse {
-            return self.reportParseError("Expected member identifier.", &.{});
+            return self.reportError("Expected member identifier.", &.{});
         };
 
-        var typeSpec: cy.NodeId = cy.NullId;
-        const token = self.peekToken();
+        var typeSpec: cy.NodeId = cy.NullNode;
+        const token = self.peek();
         if (token.tag() != .new_line and token.tag() != .none) {
             if (try self.parseTypeSpec(true)) |res| {
                 typeSpec = res;
@@ -668,20 +590,18 @@ pub const Parser = struct {
         }
 
         const field = try self.pushNode(.enumMember, start);
-        self.nodes.items[field].head = .{
-            .enumMember = .{
-                .name = name,
-                .typeSpec = typeSpec,
-            },
-        };
+        self.ast.setNodeData(field, .{ .enumMember = .{
+            .name = name,
+            .typeSpec = typeSpec,
+        }});
         return field;
     }
 
     fn parseTypeSpec(self: *Parser, allowUnnamedType: bool) !?NodeId {
         if (allowUnnamedType) {
-            const token = self.peekToken();
+            const token = self.peek();
             if (token.tag() == .object_k) {
-                return try self.parseObjectDecl(token.pos(), null, cy.NullId);
+                return try self.parseObjectDecl(token.pos(), null, cy.NullNode);
             }
         }
         return self.parseOptNamePath();
@@ -690,21 +610,21 @@ pub const Parser = struct {
     fn parseObjectField(self: *Parser) !?NodeId {
         const start = self.next_pos;
 
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() != .var_k and token.tag() != .my_k) {
             return null;
         }
         const typed = token.tag() == .var_k;
-        self.advanceToken();
+        self.advance();
 
         const name = (try self.parseOptName()) orelse {
-            return self.reportParseError("Expected field identifier.", &.{});
+            return self.reportError("Expected field identifier.", &.{});
         };
 
-        var typeSpec: cy.NodeId = cy.NullId;
+        var typeSpec: cy.NodeId = cy.NullNode;
         if (typed) {
             if (try self.parseTypeSpec(true)) |node| {
-                if (self.nodes.items[node].node_t != .objectDecl) {
+                if (self.ast.nodeType(node) != .objectDecl) {
                     try self.consumeNewLineOrEnd();
                 }
                 typeSpec = node;
@@ -712,27 +632,25 @@ pub const Parser = struct {
         }
 
         const field = try self.pushNode(.objectField, start);
-        self.nodes.items[field].head = .{
-            .objectField = .{
-                .name = name,
-                .typeSpec = typeSpec,
-                .typed = typed,
-            },
-        };
+        self.ast.setNodeData(field, .{ .objectField = .{
+            .name = name,
+            .typeSpec = @intCast(typeSpec),
+            .typed = typed,
+        }});
         return field;
     }
 
     fn parseTypeDecl(self: *Parser, modifierHead: cy.NodeId) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `type` keyword.
-        self.advanceToken();
+        self.advance();
 
         // Parse name.
         const name = (try self.parseOptName()) orelse {
-            return self.reportParseError("Expected type name identifier.", &.{});
+            return self.reportError("Expected type name identifier.", &.{});
         };
 
-        var token = self.peekToken();
+        var token = self.peek();
         switch (token.tag()) {
             .enum_k => {
                 return self.parseEnumDecl(start, name);
@@ -751,16 +669,14 @@ pub const Parser = struct {
 
     fn parseTypeAliasDecl(self: *Parser, start: TokenId, name: NodeId) !NodeId {
         const typeSpecHead = (try self.parseOptNamePath()) orelse {
-            return self.reportParseError("Expected type specifier.", &.{});
+            return self.reportError("Expected type specifier.", &.{});
         };
 
         const id = try self.pushNode(.typeAliasDecl, start);
-        self.nodes.items[id].head = .{
-            .typeAliasDecl = .{
-                .name = name,
-                .typeSpecHead = typeSpecHead,
-            },
-        };
+        self.ast.setNodeData(id, .{ .typeAliasDecl = .{
+            .name = name,
+            .typeSpecHead = typeSpecHead,
+        }});
 
         try self.staticDecls.append(self.alloc, .{
             .declT = .typeAlias,
@@ -773,13 +689,13 @@ pub const Parser = struct {
 
     fn parseEnumDecl(self: *Parser, start: TokenId, name: NodeId) !NodeId {
         // Assumes first token is the `enum` keyword.
-        self.advanceToken();
+        self.advance();
 
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() == .colon) {
-            self.advanceToken();
+            self.advance();
         } else {
-            return self.reportParseError("Expected colon.", &.{});
+            return self.reportError("Expected colon.", &.{});
         }
 
         const reqIndent = try self.parseFirstChildIndent(self.cur_indent);
@@ -798,29 +714,28 @@ pub const Parser = struct {
             if (indent == reqIndent) {
                 const id = try self.parseEnumMember();
                 if (!isChoiceType) {
-                    if (self.nodes.items[id].head.enumMember.typeSpec != cy.NullId) {
+                    const member = self.ast.nodePtr(id);
+                    if (member.data.enumMember.typeSpec != cy.NullNode) {
                         isChoiceType = true;
                     }
                 }
-                self.nodes.items[lastMember].next = id;
+                self.ast.setNextNode(lastMember, id);
                 lastMember = id;
                 numMembers += 1;
             } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
                 self.next_pos = start2;
                 break;
             } else {
-                return self.reportParseError("Unexpected indentation.", &.{});
+                return self.reportError("Unexpected indentation.", &.{});
             }
         }
         const id = try self.pushNode(.enumDecl, start);
-        self.nodes.items[id].head = .{
-            .enumDecl = .{
-                .name = name,
-                .memberHead = firstMember,
-                .numMembers = @intCast(numMembers),
-                .isChoiceType = isChoiceType,
-            },
-        };
+        self.ast.setNodeData(id, .{ .enumDecl = .{
+            .name = @intCast(name),
+            .memberHead = @intCast(firstMember),
+            .numMembers = @intCast(numMembers),
+            .isChoiceType = isChoiceType,
+        }});
         try self.staticDecls.append(self.alloc, .{
             .declT = .enumT,
             .nodeId = id,
@@ -830,31 +745,31 @@ pub const Parser = struct {
     }
 
     fn pushObjectDecl(self: *Parser, start: TokenId, nameOpt: ?NodeId, modifierHead: NodeId, fieldsHead: NodeId, numFields: u32, funcsHead: NodeId) !NodeId {
-        const body = try self.pushNode(.objectDeclBody, start);
-        self.nodes.items[body].head = .{
-            .objectDeclBody = .{
-                .fieldsHead = fieldsHead,
-                .funcsHead = funcsHead,
-                .numFields = numFields,
-            },
-        };
-
         const id = try self.pushNode(.objectDecl, start);
+
+        const header = try self.pushNode(.objectHeader, start);
         if (nameOpt) |name| {
-            self.nodes.items[id].head = .{ .objectDecl = .{
-                .name = name,
-                .modifierHead = modifierHead,
-                .body = body,
+            self.ast.setNodeData(header, .{ .objectHeader = .{
+                .name = @intCast(name),
+                .fieldHead = @intCast(fieldsHead),
                 .unnamed = false,
-            }};
+                .numFields = @intCast(numFields),
+            }});
         } else {
-            self.nodes.items[id].head = .{ .objectDecl = .{
-                .name = cy.NullId,
-                .modifierHead = modifierHead,
-                .body = body,
+            self.ast.setNodeData(header, .{ .objectHeader = .{
+                .name = cy.NullNode,
+                .fieldHead = @intCast(fieldsHead),
                 .unnamed = true,
-            }};
+                .numFields = @intCast(numFields),
+            }});
         }
+        self.ast.nodePtr(header).head.data = .{ .objectHeader = .{ .modHead = @intCast(modifierHead) }};
+
+        self.ast.setNodeData(id, .{ .objectDecl = .{
+            .header = header,
+            .funcHead = funcsHead,
+        }});
+
         try self.staticDecls.append(self.alloc, .{
             .declT = .object,
             .nodeId = id,
@@ -867,17 +782,17 @@ pub const Parser = struct {
         self.inObjectDecl = true;
         defer self.inObjectDecl = false;
 
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() == .object_k) {
-            self.advanceToken();
+            self.advance();
         }
 
-        token = self.peekToken();
+        token = self.peek();
         if (token.tag() == .colon) {
-            self.advanceToken();
+            self.advance();
         } else {
             // Only declaration. No members.
-            return self.pushObjectDecl(start, name, modifierHead, cy.NullId, 0, cy.NullId);
+            return self.pushObjectDecl(start, name, modifierHead, cy.NullNode, 0, cy.NullNode);
         }
 
         const reqIndent = try self.parseFirstChildIndent(self.cur_indent);
@@ -886,105 +801,100 @@ pub const Parser = struct {
         defer self.cur_indent = prevIndent;
 
         var numFields: u32 = 0;
-        var firstField = (try self.parseObjectField()) orelse NullId;
-        if (firstField != NullId) {
+        var firstField = (try self.parseObjectField()) orelse cy.NullNode;
+        if (firstField != cy.NullNode) {
             numFields += 1;
             var lastField = firstField;
 
             while (true) {
                 const start2 = self.next_pos;
                 const indent = (try self.consumeIndentBeforeStmt()) orelse {
-                    return self.pushObjectDecl(start, name, modifierHead, firstField, numFields, NullId);
+                    return self.pushObjectDecl(start, name, modifierHead, firstField, numFields, cy.NullNode);
                 };
                 if (indent == reqIndent) {
                     const id = (try self.parseObjectField()) orelse break;
                     numFields += 1;
-                    self.nodes.items[lastField].next = id;
+                    self.ast.setNextNode(lastField, id);
                     lastField = id;
                 } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
                     self.next_pos = start2;
-                    return self.pushObjectDecl(start, name, modifierHead, firstField, numFields, NullId);
+                    return self.pushObjectDecl(start, name, modifierHead, firstField, numFields, cy.NullNode);
                 } else {
-                    return self.reportParseError("Unexpected indentation.", &.{});
+                    return self.reportError("Unexpected indentation.", &.{});
                 }
             }
         }
 
-        token = self.peekToken();
+        token = self.peek();
         const firstFunc = try self.parseStatement();
-        var nodeT = self.nodes.items[firstFunc].node_t;
-        if (nodeT == .funcDecl or nodeT == .funcDeclInit) {
+        var nodeT = self.ast.nodeType(firstFunc);
+        if (nodeT == .funcDecl) {
             var lastFunc = firstFunc;
 
             while (true) {
                 const start2 = self.next_pos;
                 const indent = (try self.consumeIndentBeforeStmt()) orelse break;
                 if (indent == reqIndent) {
-                    token = self.peekToken();
+                    token = self.peek();
                     const func = try self.parseStatement();
-                    nodeT = self.nodes.items[func].node_t;
-                    if (nodeT == .funcDecl or nodeT == .funcDeclInit) {
-                        self.nodes.items[lastFunc].next = func;
+                    nodeT = self.ast.nodeType(func);
+                    if (nodeT == .funcDecl) {
+                        self.ast.setNextNode(lastFunc, func);
                         lastFunc = func;
-                    } else return self.reportParseError("Expected function.", &.{});
+                    } else return self.reportError("Expected function.", &.{});
                 } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
                     self.next_pos = start2;
                     break;
                 } else {
-                    return self.reportParseError("Unexpected indentation.", &.{});
+                    return self.reportError("Unexpected indentation.", &.{});
                 }
             }
             return self.pushObjectDecl(start, name, modifierHead, firstField, numFields, firstFunc);
         } else {
-            return self.reportParseErrorAt("Expected function.", &.{}, self.nodes.items[firstFunc].start_token);
+            return self.reportErrorAtSrc("Expected function.", &.{}, self.ast.nodePos(firstFunc));
         }
     }
 
     fn parseFuncDecl(self: *Parser, modifierHead: cy.NodeId) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `func` keyword.
-        self.advanceToken();
+        self.advance();
 
         // Parse function name.
         const name = (try self.parseOptNamePath()) orelse {
-            return self.reportParseError("Expected function name identifier.", &.{});
+            return self.reportError("Expected function name identifier.", &.{});
         };
 
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() == .left_paren) {
             const paramHead = try self.parseFuncParams();
             const ret = try self.parseFuncReturn();
 
-            const nameToken = self.tokens.items[self.nodes.items[name].start_token];
-            const nameStr = self.src[nameToken.pos()..nameToken.data.end_pos];
+            const nameN = self.ast.nodePtr(name);
+            const nameStr = self.ast.nodeString(nameN.*);
             const block = &self.blockStack.items[self.blockStack.items.len-1];
             try block.vars.put(self.alloc, nameStr, {});
 
-            token = self.peekToken();
+            token = self.peek();
             if (token.tag() == .colon) {
-                self.advanceToken();
+                self.advance();
 
                 try self.pushBlock();
                 const res = try self.parseSingleOrIndentedBodyStmts();
                 _ = self.popBlock();
 
-                const header = try self.pushNode(.funcHeader, start);
-                self.nodes.items[header].head = .{
-                    .funcHeader = .{
-                        .name = name,
-                        .paramHead = paramHead orelse cy.NullId,
-                        .ret = ret orelse cy.NullId,
-                    },
-                };
-                self.nodes.items[header].next = modifierHead;
+                const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
+                self.ast.setNodeData(header, .{ .funcHeader = .{
+                    .name = name,
+                    .paramHead = paramHead orelse cy.NullNode,
+                }});
+                self.ast.setNextNode(header, modifierHead);
 
                 const id = try self.pushNode(.funcDecl, start);
-                self.nodes.items[id].head = .{
-                    .func = .{
-                        .header = header,
-                        .bodyHead = res.first,
-                    },
-                };
+                self.ast.setNodeData(id, .{ .func = .{
+                    .header = header,
+                    .bodyHead = res.first,
+                }});
 
                 if (!self.inObjectDecl) {
                     try self.staticDecls.append(self.alloc, .{
@@ -996,23 +906,18 @@ pub const Parser = struct {
                 return id;
             } else {
                 // Just a declaration, no body.
-                const header = try self.pushNode(.funcHeader, start);
-                self.nodes.items[header].head = .{
-                    .funcHeader = .{
-                        .name = name,
-                        .paramHead = paramHead orelse cy.NullId,
-                        .ret = ret orelse cy.NullId,
-                    },
-                };
-                self.nodes.items[header].next = modifierHead;
+                const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
+                self.ast.setNodeData(header, .{ .funcHeader = .{
+                    .name = name,
+                    .paramHead = paramHead orelse cy.NullNode,
+                }});
+                self.ast.nodePtr(header).head.data = .{ .funcHeader = .{ .modHead = @intCast(modifierHead) }};
 
-                const id = try self.pushNode(.funcDeclInit, start);
-                self.nodes.items[id].head = .{
-                    .func = .{
-                        .header = header,
-                        .bodyHead = cy.NullId,
-                    },
-                };
+                const id = try self.pushNode(.funcDecl, start);
+                self.ast.setNodeData(id, .{ .func = .{
+                    .header = header,
+                    .bodyHead = cy.NullNode,
+                }});
 
                 if (!self.inObjectDecl) {
                     try self.staticDecls.append(self.alloc, .{
@@ -1024,7 +929,7 @@ pub const Parser = struct {
                 return id;
             }
         } else {
-            return self.reportParseError("Expected left paren.", &.{});
+            return self.reportError("Expected left paren.", &.{});
         }
     }
 
@@ -1033,66 +938,62 @@ pub const Parser = struct {
         const indent = try self.consumeIndentBeforeStmt();
         if (indent != self.cur_indent) {
             self.next_pos = save;
-            return NullId;
+            return cy.NullNode;
         }
 
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() != .else_k) {
             self.next_pos = save;
-            return NullId;
+            return cy.NullNode;
         }
 
         const elseBlock = try self.pushNode(.elseBlock, self.next_pos);
         outNumElseBlocks.* += 1;
-        self.advanceToken();
+        self.advance();
 
-        token = self.peekToken();
+        token = self.peek();
         if (token.tag() == .colon) {
             // else block.
-            self.advanceToken();
+            self.advance();
 
             const res = try self.parseSingleOrIndentedBodyStmts();
-            self.nodes.items[elseBlock].head = .{
-                .elseBlock = .{
-                    .bodyHead = res.first,
-                    .cond = NullId,
-                },
-            };
+            self.ast.setNodeData(elseBlock, .{ .elseBlock = .{
+                .bodyHead = res.first,
+                .cond = cy.NullNode,
+            }});
             return elseBlock;
         } else {
             // else if block.
             const cond = (try self.parseExpr(.{})) orelse {
-                return self.reportParseError("Expected else if condition.", &.{});
+                return self.reportError("Expected else if condition.", &.{});
             };
-            token = self.peekToken();
+            token = self.peek();
             if (token.tag() == .colon) {
-                self.advanceToken();
+                self.advance();
 
                 const res = try self.parseSingleOrIndentedBodyStmts();
-                self.nodes.items[elseBlock].head = .{
-                    .elseBlock = .{
-                        .bodyHead = res.first,
-                        .cond = cond,
-                    },
-                };
+                self.ast.setNodeData(elseBlock, .{ .elseBlock = .{
+                    .bodyHead = res.first,
+                    .cond = cond,
+                }});
 
                 const nested_else = try self.parseElseStmt(outNumElseBlocks);
-                if (nested_else != NullId) {
-                    self.nodes.items[elseBlock].next = nested_else;
+                if (nested_else != cy.NullNode) {
+                    self.ast.setNextNode(elseBlock, nested_else);
                 }
                 return elseBlock;
             } else {
-                return self.reportParseError("Expected colon after else if condition.", &.{});
+                return self.reportError("Expected colon after else if condition.", &.{});
             }
         }
     }
 
     fn consumeStmtIndentTo(self: *Parser, reqIndent: u32) !void {
         const indent = (try self.consumeIndentBeforeStmt()) orelse {
-            return self.reportParseError("Expected statement.", &.{});
+            return self.reportError("Expected statement.", &.{});
         };
         if (reqIndent != indent) {
-            return self.reportParseError("Unexpected statement indentation.", &.{});
+            return self.reportError("Unexpected statement indentation.", &.{});
         }
     }
 
@@ -1109,26 +1010,26 @@ pub const Parser = struct {
     fn parseSwitch(self: *Parser, isStmt: bool) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `switch` keyword.
-        self.advanceToken();
+        self.advance();
 
         const expr = (try self.parseExpr(.{})) orelse {
-            return self.reportParseError("Expected switch expression.", &.{});
+            return self.reportError("Expected switch expression.", &.{});
         };
 
         var caseIndent = self.cur_indent;
         var isBlock = false;
-        if (self.peekToken().tag() == .colon) {
+        if (self.peek().tag() == .colon) {
             isBlock = true;
-            self.advanceToken();
+            self.advance();
             caseIndent = try self.parseFirstChildIndent(self.cur_indent);
-        } else if (self.peekToken().tag() == .new_line) {
+        } else if (self.peek().tag() == .new_line) {
             try self.consumeStmtIndentTo(caseIndent);
         } else {
-            return self.reportParseError("Expected colon after switch condition.", &.{});
+            return self.reportError("Expected colon after switch condition.", &.{});
         }
 
         var firstCase = (try self.parseCaseBlock()) orelse {
-            return self.reportParseError("Expected case or else block.", &.{});
+            return self.reportError("Expected case or else block.", &.{});
         };
         var lastCase = firstCase;
         var numCases: u32 = 1;
@@ -1141,34 +1042,32 @@ pub const Parser = struct {
             }
             const case = (try self.parseCaseBlock()) orelse {
                 if (isBlock) {
-                    return self.reportParseError("Expected case or else block.", &.{});
+                    return self.reportError("Expected case or else block.", &.{});
                 }
                 // Restore so that next statement outside switch can be parsed.
                 self.next_pos = save;
                 break;
             };
             numCases += 1;
-            self.nodes.items[lastCase].next = case;
+            self.ast.setNextNode(lastCase, case);
             lastCase = case;
         }
 
         const nodet: cy.NodeType = if (isStmt) .switchStmt else .switchExpr;
         const switchBlock = try self.pushNode(nodet, start);
-        self.nodes.items[switchBlock].head = .{
-            .switchBlock = .{
-                .expr = expr,
-                .caseHead = firstCase,
-                .numCases = @intCast(numCases),
-            },
-        };
+        self.ast.setNodeData(switchBlock, .{ .switchBlock = .{
+            .expr = expr,
+            .caseHead = @intCast(firstCase),
+            .numCases = @intCast(numCases),
+        }});
         return switchBlock;
     }
 
     fn parseTryStmt(self: *Parser) !NodeId {
         const start = self.next_pos;
         // Assumes first tokens are `try` and `:`.
-        self.advanceToken();
-        self.advanceToken();
+        self.advance();
+        self.advance();
 
         const stmt = try self.pushNode(.tryStmt, start);
 
@@ -1176,54 +1075,57 @@ pub const Parser = struct {
 
         const indent = try self.consumeIndentBeforeStmt();
         if (indent != self.cur_indent) {
-            return self.reportParseError("Expected catch block.", &.{});
+            return self.reportError("Expected catch block.", &.{});
         }
 
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() != .catch_k) {
-            return self.reportParseError("Expected catch block.", &.{});
+            return self.reportError("Expected catch block.", &.{});
         }
-        self.advanceToken();
+        const catchStmt = try self.pushNode(.catchStmt, self.next_pos);
+        self.advance();
 
-        token = self.peekToken();
-        var errorVar: NodeId = cy.NullId;
+        token = self.peek();
+        var errorVar: NodeId = cy.NullNode;
         if (token.tag() == .ident) {
-            errorVar = try self.pushIdentNode(self.next_pos);
-            self.advanceToken();
+            errorVar = try self.pushSpanNode(.ident, self.next_pos);
+            self.advance();
         }
 
-        token = self.peekToken();
+        token = self.peek();
         if (token.tag() != .colon) {
-            return self.reportParseError("Expected colon.", &.{});
+            return self.reportError("Expected colon.", &.{});
         }
-        self.advanceToken();
+        self.advance();
 
-        const catchStmts = try self.parseSingleOrIndentedBodyStmts();
+        const catchBody = try self.parseSingleOrIndentedBodyStmts();
 
-        self.nodes.items[stmt].head = .{
-            .tryStmt = .{
-                .tryFirstStmt = tryStmts.first,
-                .errorVar = errorVar,
-                .catchFirstStmt = catchStmts.first,
-            },
-        };
+        self.ast.setNodeData(catchStmt, .{ .catchStmt = .{
+            .errorVar = errorVar,
+            .bodyHead = catchBody.first,
+        }});
+
+        self.ast.setNodeData(stmt, .{ .tryStmt = .{
+            .bodyHead = tryStmts.first,
+            .catchStmt = catchStmt,
+        }});
         return stmt;
     }
 
     fn parseIfStatement(self: *Parser) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `if` keyword.
-        self.advanceToken();
+        self.advance();
 
-        const ifCond = (try self.parseExpr(.{})) orelse {
-            return self.reportParseError("Expected if condition.", &.{});
+        const cond = (try self.parseExpr(.{})) orelse {
+            return self.reportError("Expected if condition.", &.{});
         };
 
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() != .colon) {
-            return self.reportParseError("Expected colon after if condition.", &.{});
+            return self.reportError("Expected colon after if condition.", &.{});
         }
-        self.advanceToken();
+        self.advance();
 
         const ifStmt = try self.pushNode(.ifStmt, start);
 
@@ -1232,50 +1134,51 @@ pub const Parser = struct {
         var numElseBlocks: u32 = 0;
         const elseBlock = try self.parseElseStmt(&numElseBlocks);
 
-        self.nodes.items[ifStmt].head = .{
-            .ifStmt = .{
-                .cond = ifCond,
-                .bodyHead = res.first,
-                .elseHead = elseBlock,
-                .numElseBlocks = @intCast(numElseBlocks),
-            },
-        };
+        const ifBranch = try self.pushNode(.ifBranch, start);
+        self.ast.setNodeData(ifBranch, .{ .ifBranch = .{
+            .cond = cond,
+            .bodyHead = res.first,
+        }});
+
+        self.ast.setNodeData(ifStmt, .{ .ifStmt = .{
+            .ifBranch = ifBranch,
+            .elseHead = @intCast(elseBlock),
+            .numElseBlocks = @intCast(numElseBlocks),
+        }});
         return ifStmt;
     }
 
     fn parseImportStmt(self: *Parser) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `import` keyword.
-        self.advanceToken();
+        self.advance();
 
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() == .ident) {
-            const ident = try self.pushIdentNode(self.next_pos);
-            self.advanceToken();
+            const ident = try self.pushSpanNode(.ident, self.next_pos);
+            self.advance();
 
-            token = self.peekToken();
-            var spec: cy.NodeId = cy.NullId;
+            token = self.peek();
+            var spec: cy.NodeId = cy.NullNode;
             if (token.tag() != .new_line) {
                 spec = (try self.parseExpr(.{})) orelse {
-                    return self.reportParseError("Expected import specifier.", &.{});
+                    return self.reportError("Expected import specifier.", &.{});
                 };
-                const specN = self.nodes.items[spec];
-                if (specN.node_t == .string) {
+                const spec_t = self.ast.nodeType(spec);
+                if (spec_t == .stringLit) {
                     try self.consumeNewLineOrEnd();
                 } else {
-                    return self.reportParseError("Expected import specifier to be a string. {}", &.{fmt.v(specN.node_t)});
+                    return self.reportError("Expected import specifier to be a string. {}", &.{fmt.v(spec_t)});
                 }
             } else {
-                self.advanceToken();
+                self.advance();
             }
 
             const import = try self.pushNode(.importStmt, start);
-            self.nodes.items[import].head = .{
-                .left_right = .{
-                    .left = ident,
-                    .right = spec,
-                },
-            };
+            self.ast.setNodeData(import, .{ .importStmt = .{
+                .name = ident,
+                .spec = spec,
+            }});
 
             try self.staticDecls.append(self.alloc, .{
                 .declT = .import,
@@ -1284,307 +1187,297 @@ pub const Parser = struct {
             });
             return import;
         } else {
-            return self.reportParseError("Expected import clause.", &.{});
+            return self.reportError("Expected import clause.", &.{});
         }
     }
 
     fn parseWhileStatement(self: *Parser) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `while` keyword.
-        self.advanceToken();
+        self.advance();
 
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() == .colon) {
-            self.advanceToken();
+            self.advance();
 
             // Infinite loop.
             const res = try self.parseSingleOrIndentedBodyStmts();
 
             const whileStmt = try self.pushNode(.whileInfStmt, start);
-            self.nodes.items[whileStmt].head = .{
-                .child_head = res.first,
-            };
+            self.ast.setNodeData(whileStmt, .{ .whileInfStmt = .{
+                .bodyHead = res.first,
+            }});
             return whileStmt;
         }
 
         // Parse next token as expression.
         const expr_id = (try self.parseExpr(.{})) orelse {
-            return self.reportParseError("Expected condition expression.", &.{});
+            return self.reportError("Expected condition expression.", &.{});
         };
 
-        token = self.peekToken();
+        token = self.peek();
         if (token.tag() == .colon) {
-            self.advanceToken();
+            self.advance();
             const res = try self.parseSingleOrIndentedBodyStmts();
 
             const whileStmt = try self.pushNode(.whileCondStmt, start);
-            self.nodes.items[whileStmt].head = .{
-                .whileCondStmt = .{
-                    .cond = expr_id,
-                    .bodyHead = res.first,
-                },
-            };
+            self.ast.setNodeData(whileStmt, .{ .whileCondStmt = .{
+                .cond = expr_id,
+                .bodyHead = res.first,
+            }});
             return whileStmt;
         } else if (token.tag() == .capture) {
-            self.advanceToken();
-            token = self.peekToken();
+            self.advance();
+            token = self.peek();
             const ident = (try self.parseExpr(.{})) orelse {
-                return self.reportParseError("Expected ident.", &.{});
+                return self.reportError("Expected ident.", &.{});
             };
-            if (self.nodes.items[ident].node_t != .ident) {
-                return self.reportParseError("Expected ident.", &.{});
+            if (self.ast.nodeType(ident) != .ident) {
+                return self.reportError("Expected ident.", &.{});
             }
-            token = self.peekToken();
+            token = self.peek();
             if (token.tag() != .colon) {
-                return self.reportParseError("Expected :.", &.{});
+                return self.reportError("Expected :.", &.{});
             }
-            self.advanceToken();
+            self.advance();
             const res = try self.parseSingleOrIndentedBodyStmts();
 
             const whileStmt = try self.pushNode(.whileOptStmt, start);
-            self.nodes.items[whileStmt].head = .{
-                .whileOptStmt = .{
-                    .opt = expr_id,
-                    .bodyHead = res.first,
-                    .capture = ident,
-                },
-            };
+            const header = try self.pushNode(.whileOptHeader, start);
+            self.ast.setNodeData(header, .{ .whileOptHeader = .{
+                .opt = expr_id,
+                .capture = ident,
+            }});
+            self.ast.setNodeData(whileStmt, .{ .whileOptStmt = .{
+                .header = header,
+                .bodyHead = res.first,
+            }});
             return whileStmt;
         } else {
-            return self.reportParseError("Expected :.", &.{});
+            return self.reportError("Expected :.", &.{});
         }
     }
 
     fn parseForStatement(self: *Parser) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `for` keyword.
-        self.advanceToken();
+        self.advance();
 
-        var token = self.peekToken();
+        var token = self.peek();
         // Parse next token as expression.
         const expr_pos = self.next_pos;
         const expr_id = (try self.parseExpr(.{})) orelse {
-            return self.reportParseError("Expected condition expression.", &.{});
+            return self.reportError("Expected condition expression.", &.{});
         };
 
-        token = self.peekToken();
+        token = self.peek();
         if (token.tag() == .colon) {
-            self.advanceToken();
+            self.advance();
             const res = try self.parseSingleOrIndentedBodyStmts();
 
-            const forIterHeader = try self.pushNode(.forIterHeader, start);
-            self.nodes.items[forIterHeader].head = .{ .forIterHeader = .{
+            const header = try self.pushNode(.forIterHeader, start);
+            self.ast.setNodeData(header, .{ .forIterHeader = .{
                 .iterable = expr_id,
-                .eachClause = cy.NullId,
-                .count = cy.NullId,
-            }};
+                .eachClause = cy.NullNode,
+            }});
+            self.ast.nodePtr(header).head.data = .{ .forIterHeader = .{ .count = cy.NullNode }};
 
             const forStmt = try self.pushNode(.forIterStmt, start);
-            self.nodes.items[forStmt].head = .{
-                .forIterStmt = .{
-                    .header = forIterHeader,
-                    .bodyHead = res.first,
-                },
-            };
+            self.ast.setNodeData(forStmt, .{ .forIterStmt = .{
+                .header = header,
+                .bodyHead = res.first,
+            }});
             return forStmt;
         } else if (token.tag() == .dot_dot or token.tag() == .minusDotDot) {
-            self.advanceToken();
+            self.advance();
             const right_range_expr = (try self.parseExpr(.{})) orelse {
-                return self.reportParseError("Expected right range expression.", &.{});
+                return self.reportError("Expected right range expression.", &.{});
             };
-            const range_clause = try self.pushNode(.range_clause, expr_pos);
-            self.nodes.items[range_clause].head = .{
-                .forRange = .{
-                    .left = expr_id,
-                    .right = right_range_expr,
-                    .increment = token.tag() == .dot_dot,
-                },
-            };
+            const header = try self.pushNode(.forRangeHeader, expr_pos);
+            self.ast.setNodeData(header, .{ .forRangeHeader = .{
+                .start = expr_id,
+                .end = @intCast(right_range_expr),
+                .increment = token.tag() == .dot_dot,
+            }});
 
-            token = self.peekToken();
+            token = self.peek();
             if (token.tag() == .colon) {
-                self.advanceToken();
+                self.advance();
 
                 const res = try self.parseSingleOrIndentedBodyStmts();
 
                 const for_stmt = try self.pushNode(.forRangeStmt, start);
-                self.nodes.items[for_stmt].head = .{
-                    .forRangeStmt = .{
-                        .range_clause = range_clause,
-                        .body_head = res.first,
-                        .eachClause = NullId,
-                    },
-                };
+                self.ast.setNodeData(for_stmt, .{ .forRangeStmt = .{
+                    .header = header,
+                    .bodyHead = res.first,
+                }});
+                self.ast.nodePtr(header).head.data = .{ .forRangeHeader = .{ .eachClause = cy.NullNode }};
                 return for_stmt;
             } else if (token.tag() == .capture) {
-                self.advanceToken();
+                self.advance();
 
-                token = self.peekToken();
+                token = self.peek();
                 const ident = (try self.parseExpr(.{})) orelse {
-                    return self.reportParseError("Expected ident.", &.{});
+                    return self.reportError("Expected ident.", &.{});
                 };
-                if (self.nodes.items[ident].node_t != .ident) {
-                    return self.reportParseErrorAt("Expected ident.", &.{}, token.pos());
+                if (self.ast.nodeType(ident) != .ident) {
+                    return self.reportErrorAt("Expected ident.", &.{}, token.pos());
                 }
-                token = self.peekToken();
+                token = self.peek();
                 if (token.tag() != .colon) {
-                    return self.reportParseError("Expected :.", &.{});
+                    return self.reportError("Expected :.", &.{});
                 }
-                self.advanceToken();
+                self.advance();
 
                 const res = try self.parseSingleOrIndentedBodyStmts();
 
                 const for_stmt = try self.pushNode(.forRangeStmt, start);
-                self.nodes.items[for_stmt].head = .{
-                    .forRangeStmt = .{
-                        .range_clause = range_clause,
-                        .body_head = res.first,
-                        .eachClause = ident,
-                    },
-                };
+                self.ast.setNodeData(for_stmt, .{ .forRangeStmt = .{
+                    .header = header,
+                    .bodyHead = res.first,
+                }});
+                self.ast.nodePtr(header).head.data = .{ .forRangeHeader = .{ .eachClause = @intCast(ident) }};
                 return for_stmt;
             } else {
-                return self.reportParseError("Expected :.", &.{});
+                return self.reportError("Expected :.", &.{});
             }
         } else if (token.tag() == .capture) {
-            self.advanceToken();
-            token = self.peekToken();
+            self.advance();
+            token = self.peek();
             var eachClause: NodeId = undefined;
             if (token.tag() == .left_bracket) {
                 eachClause = try self.parseSeqDestructure();
             } else {
                 eachClause = (try self.parseExpr(.{})) orelse {
-                    return self.reportParseError("Expected each clause.", &.{});
+                    return self.reportError("Expected each clause.", &.{});
                 };
             }
 
             // Optional count var.
-            var count: NodeId = cy.NullId;
-            if (self.peekToken().tag() == .comma) {
-                self.advanceToken();
+            var count: NodeId = cy.NullNode;
+            if (self.peek().tag() == .comma) {
+                self.advance();
                 count = (try self.parseExpr(.{})) orelse {
-                    return self.reportParseError("Expected count declaration.", &.{});
+                    return self.reportError("Expected count declaration.", &.{});
                 };
             }
 
-            if (self.peekToken().tag() == .colon) {
-                self.advanceToken();
+            if (self.peek().tag() == .colon) {
+                self.advance();
             } else {
-                return self.reportParseError("Expected :.", &.{});
+                return self.reportError("Expected :.", &.{});
             }
 
             const res = try self.parseSingleOrIndentedBodyStmts();
 
-            const forIterHeader = try self.pushNode(.forIterHeader, start);
-            self.nodes.items[forIterHeader].head = .{ .forIterHeader = .{
+            const header = try self.pushNode(.forIterHeader, start);
+            self.ast.setNodeData(header, .{ .forIterHeader = .{
                 .iterable = expr_id,
                 .eachClause = eachClause,
-                .count = count,
-            }};
+            }});
+            self.ast.nodePtr(header).head.data = .{ .forIterHeader = .{ .count = @intCast(count) }};
 
             const forStmt = try self.pushNode(.forIterStmt, start);
-            self.nodes.items[forStmt].head = .{
-                .forIterStmt = .{
-                    .header = forIterHeader,
-                    .bodyHead = res.first,
-                },
-            };
+            self.ast.setNodeData(forStmt, .{ .forIterStmt = .{
+                .header = header,
+                .bodyHead = res.first,
+            }});
             return forStmt;
         } else {
-            return self.reportParseError("Expected :.", &.{});
+            return self.reportError("Expected :.", &.{});
         }
     }
 
-    fn parseBlock(self: *Parser) !NodeId {
-        const start = self.next_pos;
-        // Assumes first token is the ident.
-        const name = try self.pushIdentNode(start);
-        self.advanceToken();
-        // Assumes second token is colon.
-        self.advanceToken();
+    // fn parseBlock(self: *Parser) !NodeId {
+    //     const start = self.next_pos;
+    //     // Assumes first token is the ident.
+    //     const name = try self.pushSpanNode(.ident, start);
+    //     self.advance();
+    //     // Assumes second token is colon.
+    //     self.advance();
 
-        // Parse body.
-        try self.pushBlock();
-        const res = try self.parseIndentedBodyStatements();
-        _ = self.popBlock();
+    //     // Parse body.
+    //     try self.pushBlock();
+    //     const res = try self.parseIndentedBodyStatements();
+    //     _ = self.popBlock();
         
-        const id = try self.pushNode(.label_decl, start);
-        self.nodes.items[id].head = .{
-            .left_right = .{
-                .left = name,
-                .right = res.first,
-            },
-        };
-        return id;
-    }
+    //     const id = try self.pushNode(.label_decl, start);
+    //     self.nodes.items[id].head = .{
+    //         .left_right = .{
+    //             .left = name,
+    //             .right = res.first,
+    //         },
+    //     };
+    //     return id;
+    // }
 
     fn parseCaseBlock(self: *Parser) !?NodeId {
         const start = self.next_pos;
-        var token = self.peekToken();
+        var token = self.peek();
         var firstCond: NodeId = undefined;
         var isElse: bool = false;
         var numConds: u32 = 0;
         var bodyExpr: bool = false;
-        var capture: cy.NodeId = cy.NullId;
+        var capture: u24 = cy.NullNode;
         if (token.tag() == .case_k) {
-            self.advanceToken();
+            self.advance();
             firstCond = (try self.parseTightTermExpr()) orelse {
-                return self.reportParseError("Expected case condition.", &.{});
+                return self.reportError("Expected case condition.", &.{});
             };
             numConds += 1;
 
             var lastCond = firstCond;
             while (true) {
-                token = self.peekToken();
+                token = self.peek();
                 if (token.tag() == .colon) {
-                    self.advanceToken();
+                    self.advance();
                     break;
                 } else if (token.tag() == .equal_greater) {
-                    self.advanceToken();
+                    self.advance();
                     bodyExpr = true;
                     break;
                 } else if (token.tag() == .comma) {
-                    self.advanceToken();
+                    self.advance();
                     self.consumeWhitespaceTokens();
                     const cond = (try self.parseTightTermExpr()) orelse {
-                        return self.reportParseError("Expected case condition.", &.{});
+                        return self.reportError("Expected case condition.", &.{});
                     };
-                    self.nodes.items[lastCond].next = cond;
+                    self.ast.setNextNode(lastCond, cond);
                     lastCond = cond;
                     numConds += 1;
                 } else if (token.tag() == .capture) {
-                    self.advanceToken();
+                    self.advance();
 
                     // Parse next token as expression.
-                    capture = try self.parseTermExpr();
+                    capture = @intCast(try self.parseTermExpr());
 
-                    token = self.peekToken();
+                    token = self.peek();
                     if (token.tag() == .colon) {
-                        self.advanceToken();
+                        self.advance();
                         break;
                     } else if (token.tag() == .equal_greater) {
-                        self.advanceToken();
+                        self.advance();
                         bodyExpr = true;
                         break;
                     } else {
-                        return self.reportParseError("Expected comma or colon.", &.{});
+                        return self.reportError("Expected comma or colon.", &.{});
                     }
                 } else {
-                    return self.reportParseError("Expected comma or colon.", &.{});
+                    return self.reportError("Expected comma or colon.", &.{});
                 }
             }
         } else if (token.tag() == .else_k) {
-            self.advanceToken();
+            self.advance();
             isElse = true;
-            firstCond = cy.NullId;
+            firstCond = cy.NullNode;
 
-            if (self.peekToken().tag() == .colon) {
-                self.advanceToken();
-            } else if (self.peekToken().tag() == .equal_greater) {
-                self.advanceToken();
+            if (self.peek().tag() == .colon) {
+                self.advance();
+            } else if (self.peek().tag() == .equal_greater) {
+                self.advance();
                 bodyExpr = true;
             } else {
-                return self.reportParseError("Expected colon or `=>`.", &.{});
+                return self.reportError("Expected colon or `=>`.", &.{});
             }
         } else return null;
 
@@ -1592,7 +1485,7 @@ pub const Parser = struct {
         var bodyHead: cy.NodeId = undefined;
         if (bodyExpr) {
             bodyHead = (try self.parseExpr(.{})) orelse {
-                return self.reportParseError("Expected expression.", &.{});
+                return self.reportError("Expected expression.", &.{});
             };
         } else {
             const res = try self.parseSingleOrIndentedBodyStmts();
@@ -1600,26 +1493,33 @@ pub const Parser = struct {
         }
 
         const case = try self.pushNode(.caseBlock, start);
-        self.nodes.items[case].head = .{
-            .caseBlock = .{
+
+        var header: NodeId = cy.NullNode;
+        if (!isElse) {
+            header = try self.pushNode(.caseHeader, start);
+            self.ast.setNodeData(header, .{ .caseHeader = .{
                 .condHead = firstCond,
-                .bodyHead = bodyHead,
                 .capture = capture,
                 .numConds = @intCast(numConds),
-                .isElseCase = isElse,
-                .bodyIsExpr = bodyExpr,
-            },
-        };
+            }});
+        }
+
+        self.ast.setNodeData(case, .{ .caseBlock = .{
+            .header = header,
+            .bodyHead = @intCast(bodyHead),
+            .bodyIsExpr = bodyExpr,
+        }});
         return case;
     }
 
     fn parseStatement(self: *Parser) anyerror!NodeId {
-        var token = self.peekToken();
+        var token = self.peek();
         switch (token.tag()) {
             .ident => {
-                const token2 = self.peekTokenAhead(1);
+                const token2 = self.peekAhead(1);
                 if (token2.tag() == .colon) {
-                    return try self.parseBlock();
+                    // return try self.parseBlock();
+                    return self.reportError("Unsupported block statement.", &.{});
                 } else {
                     if (try self.parseExprOrAssignStatement()) |id| {
                         return id;
@@ -1629,78 +1529,74 @@ pub const Parser = struct {
             .at => {
                 const start = self.next_pos;
                 _ = start;
-                self.advanceToken();
-                token = self.peekToken();
+                self.advance();
+                token = self.peek();
 
                 if (token.tag() == .ident) {
-                    return self.reportParseError("Unsupported @.", &.{});
+                    return self.reportError("Unsupported @.", &.{});
                 } else {
-                    return self.reportParseError("Expected ident after @.", &.{});
+                    return self.reportError("Expected ident after @.", &.{});
                 }
             },
             .pound => {
                 const start = self.next_pos;
-                self.advanceToken();
-                token = self.peekToken();
+                self.advance();
+                token = self.peek();
 
                 if (token.tag() == .ident) {
-                    const name = self.src[token.pos()..token.data.end_pos];
+                    const name = self.ast.src[token.pos()..token.data.end_pos];
 
                     if (dirModifiers.get(name)) |dir| {
                         const modifier = try self.pushNode(.dirModifier, self.next_pos);
-                        self.nodes.items[modifier].head = .{
-                            .dirModifier = .{
-                                .type = dir,
-                            }
-                        };
-                        self.advanceToken();
+                        self.ast.setNodeData(modifier, .{ .dirModifier = .{
+                            .type = dir,
+                        }});
+                        self.advance();
                         self.consumeWhitespaceTokens();
 
-                        if (self.peekToken().tag() == .func_k) {
+                        if (self.peek().tag() == .func_k) {
                             return try self.parseFuncDecl(modifier);
-                        } else if (self.peekToken().tag() == .var_k) {
+                        } else if (self.peek().tag() == .var_k) {
                             return try self.parseVarDecl(modifier, true);
-                        } else if (self.peekToken().tag() == .my_k) {
+                        } else if (self.peek().tag() == .my_k) {
                             return try self.parseVarDecl(modifier, false);
-                        } else if (self.peekToken().tag() == .type_k) {
+                        } else if (self.peek().tag() == .type_k) {
                             return try self.parseTypeDecl(modifier);
                         } else {
-                            return self.reportParseError("Expected declaration statement.", &.{});
+                            return self.reportError("Expected declaration statement.", &.{});
                         }
                     } else {
-                        const ident = try self.pushIdentNode(self.next_pos);
-                        self.advanceToken();
+                        const ident = try self.pushSpanNode(.ident, self.next_pos);
+                        self.advance();
 
-                        if (self.peekToken().tag() != .left_paren) {
-                            return self.reportParseError("Expected ( after ident.", &.{});
+                        if (self.peek().tag() != .left_paren) {
+                            return self.reportError("Expected ( after ident.", &.{});
                         }
 
                         const callExpr = try self.parseCallExpression(ident);
                         try self.consumeNewLineOrEnd();
 
                         const stmt = try self.pushNode(.comptimeStmt, start);
-                        self.nodes.items[stmt].head = .{
-                            .comptimeStmt = .{
-                                .expr = callExpr,
-                            },
-                        };
+                        self.ast.setNodeData(stmt, .{ .comptimeStmt = .{
+                            .expr = callExpr,
+                        }});
                         return stmt;
                     }
                 } else {
-                    return self.reportParseError("Expected ident after #.", &.{});
+                    return self.reportError("Expected ident after #.", &.{});
                 }
             },
             .type_k => {
-                return try self.parseTypeDecl(cy.NullId);
+                return try self.parseTypeDecl(cy.NullNode);
             },
             .func_k => {
-                return try self.parseFuncDecl(cy.NullId);
+                return try self.parseFuncDecl(cy.NullNode);
             },
             .if_k => {
                 return try self.parseIfStatement();
             },
             .try_k => {
-                if (self.peekTokenAhead(1).tag() == .colon) {
+                if (self.peekAhead(1).tag() == .colon) {
                     return try self.parseTryStmt();
                 }
             },
@@ -1717,21 +1613,21 @@ pub const Parser = struct {
                 return try self.parseImportStmt();
             },
             .pass_k => {
-                const id = try self.pushNode(.pass_stmt, self.next_pos);
-                self.advanceToken();
-                token = self.peekToken();
+                const id = try self.pushNode(.passStmt, self.next_pos);
+                self.advance();
+                token = self.peek();
                 try self.consumeNewLineOrEnd();
                 return id;
             },
             .continue_k => {
                 const id = try self.pushNode(.continueStmt, self.next_pos);
-                self.advanceToken();
+                self.advance();
                 try self.consumeNewLineOrEnd();
                 return id;
             },
             .break_k => {
                 const id = try self.pushNode(.breakStmt, self.next_pos);
-                self.advanceToken();
+                self.advance();
                 try self.consumeNewLineOrEnd();
                 return id;
             },
@@ -1739,10 +1635,10 @@ pub const Parser = struct {
                 return try self.parseReturnStatement();
             },
             .var_k => {
-                return try self.parseVarDecl(cy.NullId, true);
+                return try self.parseVarDecl(cy.NullNode, true);
             },
             .my_k => {
-                return try self.parseVarDecl(cy.NullId, false);
+                return try self.parseVarDecl(cy.NullNode, false);
             },
             else => {},
         }
@@ -1753,52 +1649,47 @@ pub const Parser = struct {
         return error.UnknownToken;
     }
 
-    fn reportTokenError(self: *Parser, format: []const u8, args: []const fmt.FmtValue) error{TokenError} {
-        return self.reportTokenErrorAt(format, args, self.next_pos);
+    fn reportError(self: *Parser, format: []const u8, args: []const fmt.FmtValue) error{ParseError, FormatError, OutOfMemory} {
+        return self.reportErrorAt(format, args, self.next_pos);
     }
 
-    fn reportTokenErrorAt(self: *Parser, format: []const u8, args: []const fmt.FmtValue, pos: u32) error{TokenError} {
-        self.alloc.free(self.last_err);
-        self.last_err = fmt.allocFormat(self.alloc, format, args) catch fatal();
-        self.last_err_pos = pos;
-        return error.TokenError;
+    fn reportErrorAt(self: *Parser, format: []const u8, args: []const fmt.FmtValue, tokenPos: u32) error{ParseError, FormatError, OutOfMemory} {
+        var srcPos: u32 = undefined;
+        if (tokenPos >= self.tokens.len) {
+            srcPos = @intCast(self.ast.src.len);
+        } else {
+            srcPos = self.tokens[tokenPos].pos();
+        }
+        return self.reportErrorAtSrc(format, args, srcPos);
     }
 
-    fn reportParseError(self: *Parser, format: []const u8, args: []const fmt.FmtValue) error{ParseError, FormatError, OutOfMemory} {
-        return self.reportParseErrorAt(format, args, self.next_pos);
-    }
-
-    fn reportParseErrorAt(self: *Parser, format: []const u8, args: []const fmt.FmtValue, tokenPos: u32) error{ParseError, FormatError, OutOfMemory} {
+    fn reportErrorAtSrc(self: *Parser, format: []const u8, args: []const fmt.FmtValue, srcPos: u32) error{ParseError, FormatError, OutOfMemory} {
         self.alloc.free(self.last_err);
         self.last_err = try fmt.allocFormat(self.alloc, format, args);
-        if (tokenPos >= self.tokens.items.len) {
-            self.last_err_pos = @intCast(self.src.len);
-        } else {
-            self.last_err_pos = self.tokens.items[tokenPos].pos();
-        }
+        self.last_err_pos = srcPos;
         return error.ParseError;
     }
 
     fn consumeNewLineOrEnd(self: *Parser) !void {
-        var tag = self.peekToken().tag();
+        var tag = self.peek().tag();
         if (tag == .new_line) {
-            self.advanceToken();
+            self.advance();
             return;
         }
         if (tag == .none) {
             return;
         }
-        return self.reportParseError("Expected end of line or file. Got {}.", &.{v(tag)});
+        return self.reportError("Expected end of line or file. Got {}.", &.{v(tag)});
     }
 
     fn consumeWhitespaceTokens(self: *Parser) void {
-        var token = self.peekToken();
+        var token = self.peek();
         while (token.tag() != .none) {
             switch (token.tag()) {
                 .new_line,
                 .indent => {
-                    self.advanceToken();
-                    token = self.peekToken();
+                    self.advance();
+                    token = self.peek();
                     continue;
                 },
                 else => return,
@@ -1809,24 +1700,24 @@ pub const Parser = struct {
     fn parseSeqDestructure(self: *Parser) !NodeId {
         const start = self.next_pos;
         // Assume first token is left bracket.
-        self.advanceToken();
+        self.advance();
 
         var lastEntry: NodeId = undefined;
-        var firstEntry: NodeId = NullId;
+        var firstEntry: NodeId = cy.NullNode;
         var numArgs: u32 = 0;
         outer: {
             self.consumeWhitespaceTokens();
-            var token = self.peekToken();
+            var token = self.peek();
 
             if (token.tag() == .right_bracket) {
                 // Empty.
-                return self.reportParseError("Expected at least one identifier.", &.{});
+                return self.reportError("Expected at least one identifier.", &.{});
             } else {
                 firstEntry = (try self.parseExpr(.{})) orelse {
-                    return self.reportParseError("Expected array item.", &.{});
+                    return self.reportError("Expected array item.", &.{});
                 };
-                if (self.nodes.items[firstEntry].node_t != .ident) {
-                    return self.reportParseError("Expected ident.", &.{});
+                if (self.ast.nodeType(firstEntry) != .ident) {
+                    return self.reportError("Expected ident.", &.{});
                 }
                 lastEntry = firstEntry;
                 numArgs += 1;
@@ -1834,28 +1725,28 @@ pub const Parser = struct {
 
             while (true) {
                 self.consumeWhitespaceTokens();
-                token = self.peekToken();
+                token = self.peek();
                 if (token.tag() == .comma) {
-                    self.advanceToken();
-                    if (self.peekToken().tag() == .new_line) {
-                        self.advanceToken();
+                    self.advance();
+                    if (self.peek().tag() == .new_line) {
+                        self.advance();
                         self.consumeWhitespaceTokens();
                     }
                 } else if (token.tag() == .right_bracket) {
                     break :outer;
                 }
 
-                token = self.peekToken();
+                token = self.peek();
                 if (token.tag() == .right_bracket) {
                     break :outer;
                 } else {
                     const ident = (try self.parseExpr(.{})) orelse {
-                        return self.reportParseError("Expected array item.", &.{});
+                        return self.reportError("Expected array item.", &.{});
                     };
-                    if (self.nodes.items[ident].node_t != .ident) {
-                        return self.reportParseError("Expected ident.", &.{});
+                    if (self.ast.nodeType(ident) != .ident) {
+                        return self.reportError("Expected ident.", &.{});
                     }
-                    self.nodes.items[lastEntry].next = ident;
+                    self.ast.setNextNode(lastEntry, ident);
                     lastEntry = ident;
                     numArgs += 1;
                 }
@@ -1863,73 +1754,71 @@ pub const Parser = struct {
         }
 
         const seqDestr = try self.pushNode(.seqDestructure, start);
-        self.nodes.items[seqDestr].head = .{
-            .seqDestructure = .{
-                .head = firstEntry,
-                .numArgs = @intCast(numArgs),
-            },
-        };
+        self.ast.setNodeData(seqDestr, .{ .seqDestructure = .{
+            .head = firstEntry,
+            .numArgs = @intCast(numArgs),
+        }});
 
         // Parse closing bracket.
-        const token = self.peekToken();
+        const token = self.peek();
         if (token.tag() == .right_bracket) {
-            self.advanceToken();
+            self.advance();
             return seqDestr;
-        } else return self.reportParseError("Expected closing bracket.", &.{});
+        } else return self.reportError("Expected closing bracket.", &.{});
     }
 
     fn parseBracketLiteral(self: *Parser) !NodeId {
         const start = self.next_pos;
         // Assume first token is left bracket.
-        self.advanceToken();
+        self.advance();
 
         // Check for empty map literal.
-        if (self.peekToken().tag() == .colon) {
-            self.advanceToken();
-            if (self.peekToken().tag() != .right_bracket) {
-                return self.reportParseError("Expected closing bracket.", &.{});
+        if (self.peek().tag() == .colon) {
+            self.advance();
+            if (self.peek().tag() != .right_bracket) {
+                return self.reportError("Expected closing bracket.", &.{});
             }
 
-            self.advanceToken();
-            const record = try self.pushNode(.recordLiteral, start);
-            self.nodes.items[record].head = .{ .recordLiteral = .{
-                .argHead = cy.NullId,
+            self.advance();
+            const record = try self.pushNode(.recordLit, start);
+            self.ast.setNodeData(record, .{ .recordLit = .{
+                .argHead = cy.NullNode,
+                .argTail = cy.NullNode,
                 .numArgs = 0,
-            }};
+            }});
             return record;
-        } else if (self.peekToken().tag() == .right_bracket) {
-            self.advanceToken();
-            const array = try self.pushNode(.arrayLiteral, start);
-            self.nodes.items[array].head = .{ .arrayLiteral = .{
-                .argHead = cy.NullId,
+        } else if (self.peek().tag() == .right_bracket) {
+            self.advance();
+            const array = try self.pushNode(.arrayLit, start);
+            self.ast.setNodeData(array, .{ .arrayLit = .{
+                .argHead = cy.NullNode,
                 .numArgs = 0,
-            }};
+            }});
             return array;
         }
 
         // Assume there is at least one argument.
 
         // If `typeName` is set, then this is a object initializer.
-        var typeName: NodeId = cy.NullId;
+        var typeName: NodeId = cy.NullNode;
 
         self.consumeWhitespaceTokens();
 
         const res = try self.parseEmptyTypeInitOrBracketArg();
         if (res.isEmptyTypeInit) {
             // Empty object init. Can assume arg is the type name.
-            const dataLit = try self.pushNode(.recordLiteral, start);
-            self.nodes.items[dataLit].head = .{ .recordLiteral = .{
-                .argHead = cy.NullId,
+            const dataLit = try self.pushNode(.recordLit, start);
+            self.ast.setNodeData(dataLit, .{ .recordLit = .{
+                .argHead = cy.NullNode,
+                .argTail = cy.NullNode,
                 .numArgs = 0,
-            }};
+            }});
 
             const initN = try self.pushNode(.objectInit, start);
-            self.nodes.items[initN].head = .{
-                .objectInit = .{
-                    .name = res.res,
-                    .initializer = dataLit,
-                },
-            };
+            self.ast.setNodeData(initN, .{ .objectInit = .{
+                .name = res.res,
+                .initializer = dataLit,
+            }});
 
             return initN;
         }
@@ -1938,23 +1827,24 @@ pub const Parser = struct {
         var isRecordArg = res.isRecordArg;
 
         self.consumeWhitespaceTokens();
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() == .right_bracket) {
             // One arg literal.
-            self.advanceToken();
+            self.advance();
             if (isRecordArg) {
-                const record = try self.pushNode(.recordLiteral, start);
-                self.nodes.items[record].head = .{ .recordLiteral = .{
+                const record = try self.pushNode(.recordLit, start);
+                self.ast.setNodeData(record, .{ .recordLit = .{
                     .argHead = arg,
+                    .argTail = @intCast(arg),
                     .numArgs = 1,
-                }};
+                }});
                 return record;
             } else {
-                const array = try self.pushNode(.arrayLiteral, start);
-                self.nodes.items[array].head = .{ .arrayLiteral = .{
+                const array = try self.pushNode(.arrayLit, start);
+                self.ast.setNodeData(array, .{ .arrayLit = .{
                     .argHead = arg,
                     .numArgs = 1,
-                }};
+                }});
                 return array;
             }
         } else if (token.tag() == .comma) {
@@ -1965,7 +1855,7 @@ pub const Parser = struct {
                 typeName = arg;
                 arg = try self.parseBracketArg(&isRecordArg) orelse return error.Unexpected;
             } else {
-                return self.reportParseError("Expected comma or closing bracket.", &.{});
+                return self.reportError("Expected comma or closing bracket.", &.{});
             }
         }
 
@@ -1976,30 +1866,30 @@ pub const Parser = struct {
 
         while (true) {
             self.consumeWhitespaceTokens();
-            token = self.peekToken();
+            token = self.peek();
             if (token.tag() == .comma) {
-                self.advanceToken();
-                if (self.peekToken().tag() == .new_line) {
-                    self.advanceToken();
+                self.advance();
+                if (self.peek().tag() == .new_line) {
+                    self.advance();
                     self.consumeWhitespaceTokens();
                 }
             } else if (token.tag() == .right_bracket) {
                 break;
             } else {
-                return self.reportParseErrorAt("Expected comma or closing bracket.", &.{}, self.next_pos);
+                return self.reportErrorAt("Expected comma or closing bracket.", &.{}, self.next_pos);
             }
 
             if (try self.parseBracketArg(&isRecordArg)) |entry| {
                 // Check that arg kind is the same.
                 if (isRecord != isRecordArg) {
-                    const argStart = self.nodes.items[entry].start_token;
+                    const argStart = self.ast.nodePos(entry);
                     if (isRecord) {
-                        return self.reportParseErrorAt("Expected key/value pair.", &.{}, argStart);
+                        return self.reportErrorAtSrc("Expected key/value pair.", &.{}, argStart);
                     } else {
-                        return self.reportParseErrorAt("Expected data element.", &.{}, argStart);
+                        return self.reportErrorAtSrc("Expected data element.", &.{}, argStart);
                     }
                 }
-                self.nodes.items[last].next = entry;
+                self.ast.setNextNode(last, entry);
                 last = entry;
                 numArgs += 1;
             } else {
@@ -2008,46 +1898,45 @@ pub const Parser = struct {
         }
 
         // Parse closing bracket.
-        if (self.peekToken().tag() != .right_bracket) {
-            return self.reportParseError("Expected closing bracket.", &.{});
+        if (self.peek().tag() != .right_bracket) {
+            return self.reportError("Expected closing bracket.", &.{});
         }
-        self.advanceToken();
+        self.advance();
 
-
-        if (typeName == cy.NullId) {
+        if (typeName == cy.NullNode) {
             if (isRecord) {
-                const record = try self.pushNode(.recordLiteral, start);
-                self.nodes.items[record].head = .{ .recordLiteral = .{
+                const record = try self.pushNode(.recordLit, start);
+                self.ast.setNodeData(record, .{ .recordLit = .{
                     .argHead = first,
+                    .argTail = @intCast(last),
                     .numArgs = @intCast(numArgs),
-                }};
+                }});
                 return record;
             } else {
-                const array = try self.pushNode(.arrayLiteral, start);
-                self.nodes.items[array].head = .{ .arrayLiteral = .{
+                const array = try self.pushNode(.arrayLit, start);
+                self.ast.setNodeData(array, .{ .arrayLit = .{
                     .argHead = first,
                     .numArgs = @intCast(numArgs),
-                }};
+                }});
                 return array;
             }
         } else {
             if (!isRecord) {
-                return self.reportParseError("Expected map literal for object initializer.", &.{});
+                return self.reportError("Expected map literal for object initializer.", &.{});
             }
 
-            const record = try self.pushNode(.recordLiteral, start);
-            self.nodes.items[record].head = .{ .recordLiteral = .{
+            const record = try self.pushNode(.recordLit, start);
+            self.ast.setNodeData(record, .{ .recordLit = .{
                 .argHead = first,
+                .argTail = @intCast(last),
                 .numArgs = @intCast(numArgs),
-            }};
+            }});
 
             const initN = try self.pushNode(.objectInit, start);
-            self.nodes.items[initN].head = .{
-                .objectInit = .{
-                    .name = typeName,
-                    .initializer = record,
-                },
-            };
+            self.ast.setNodeData(initN, .{ .objectInit = .{
+                .name = typeName,
+                .initializer = record,
+            }});
             return initN;
         }
     }
@@ -2062,23 +1951,23 @@ pub const Parser = struct {
         const start = self.next_pos;
 
         const arg = (try self.parseExpr(.{ .parseShorthandCallExpr = false })) orelse {
-            return self.reportParseError("Expected data argument.", &.{});
+            return self.reportError("Expected data argument.", &.{});
         };
 
         self.consumeWhitespaceTokens();
 
-        if (self.peekToken().tag() != .colon) {
+        if (self.peek().tag() != .colon) {
             return EmptyTypeInitOrBracketArg{
                 .res = arg,
                 .isEmptyTypeInit = false,
                 .isRecordArg = false,
             };
         }
-        self.advanceToken();
+        self.advance();
 
         self.consumeWhitespaceTokens();
-        if (self.peekToken().tag() == .right_bracket) {
-            self.advanceToken();
+        if (self.peek().tag() == .right_bracket) {
+            self.advance();
             return EmptyTypeInitOrBracketArg{
                 .res = arg,
                 .isEmptyTypeInit = true,
@@ -2087,25 +1976,19 @@ pub const Parser = struct {
         }
 
         // Parse key value pair.
-        switch (self.nodes.items[arg].node_t) {
-            .ident,
-            .string,
-            .number => {},
-            else => {
-                return self.reportParseError("Expected map key.", &.{});
-            }
+        const arg_t = self.ast.nodeType(arg);
+        if (!isRecordKeyNodeType(arg_t)) {
+            return self.reportError("Expected map key.", &.{});
         }
 
         const val = (try self.parseExpr(.{})) orelse {
-            return self.reportParseError("Expected map value.", &.{});
+            return self.reportError("Expected map value.", &.{});
         };
         const pair = try self.pushNode(.keyValue, start);
-        self.nodes.items[pair].head = .{
-            .keyValue = .{
-                .left = arg,
-                .right = val,
-            }
-        };
+        self.ast.setNodeData(pair, .{ .keyValue = .{
+            .key = arg,
+            .value = val,
+        }});
         return EmptyTypeInitOrBracketArg{
             .res = pair,
             .isEmptyTypeInit = false,
@@ -2116,40 +1999,34 @@ pub const Parser = struct {
     fn parseBracketArg(self: *Parser, outIsPair: *bool) !?NodeId {
         const start = self.next_pos;
 
-        if (self.peekToken().tag() == .right_bracket) {
+        if (self.peek().tag() == .right_bracket) {
             return null;
         }
 
         const arg = (try self.parseTightTermExpr()) orelse {
-            return self.reportParseError("Expected data argument.", &.{});
+            return self.reportError("Expected data argument.", &.{});
         };
 
-        if (self.peekToken().tag() != .colon) {
+        if (self.peek().tag() != .colon) {
             outIsPair.* = false;
             return arg;
         }
-        self.advanceToken();
+        self.advance();
 
         // Parse key value pair.
-        switch (self.nodes.items[arg].node_t) {
-            .ident,
-            .string,
-            .number => {},
-            else => {
-                return self.reportParseError("Expected map key.", &.{});
-            }
+        const arg_t = self.ast.nodeType(arg);
+        if (!isRecordKeyNodeType(arg_t)) {
+            return self.reportError("Expected map key.", &.{});
         }
 
         const val = (try self.parseExpr(.{})) orelse {
-            return self.reportParseError("Expected map value.", &.{});
+            return self.reportError("Expected map value.", &.{});
         };
         const pair = try self.pushNode(.keyValue, start);
-        self.nodes.items[pair].head = .{
-            .keyValue = .{
-                .left = arg,
-                .right = val,
-            }
-        };
+        self.ast.setNodeData(pair, .{ .keyValue = .{
+            .key = arg,
+            .value = val,
+        }});
         outIsPair.* = true;
         return pair;
     }
@@ -2157,24 +2034,22 @@ pub const Parser = struct {
     fn parseCallArg(self: *Parser) !?NodeId {
         self.consumeWhitespaceTokens();
         const start = self.next_pos;
-        const token = self.peekToken();
+        const token = self.peek();
         if (token.tag() == .ident) {
-            if (self.peekTokenAhead(1).tag() == .colon) {
+            if (self.peekAhead(1).tag() == .colon) {
                 // Named arg.
-                const name = try self.pushIdentNode(start);
-                _ = self.consumeToken();
-                _ = self.consumeToken();
+                const name = try self.pushSpanNode(.ident, start);
+                _ = self.consume();
+                _ = self.consume();
                 var arg = (try self.parseExpr(.{})) orelse {
-                    return self.reportParseError("Expected arg expression.", &.{});
+                    return self.reportError("Expected arg expression.", &.{});
                 };
-                const named_arg = try self.pushNode(.named_arg, start);
-                self.nodes.items[named_arg].head = .{
-                    .left_right = .{
-                        .left = name,
-                        .right = arg,
-                    },
-                };
-                return named_arg;
+                const namedArg = try self.pushNode(.namedArg, start);
+                self.ast.setNodeData(namedArg, .{ .namedArg = .{
+                    .name = name,
+                    .arg = arg,
+                }});
+                return namedArg;
             } 
         }
 
@@ -2182,7 +2057,7 @@ pub const Parser = struct {
     }
 
     fn parseAnyCallExpr(self: *Parser, callee: NodeId) !NodeId {
-        const token = self.peekToken();
+        const token = self.peek();
         if (token.tag() == .left_paren) {
             return try self.parseCallExpression(callee);
         } else {
@@ -2192,112 +2067,108 @@ pub const Parser = struct {
 
     fn parseCallExpression(self: *Parser, left_id: NodeId) !NodeId {
         // Assume first token is left paren.
-        self.advanceToken();
+        self.advance();
 
-        const expr_start = self.nodes.items[left_id].start_token;
-        const callExpr = try self.pushNode(.callExpr, expr_start);
+        const expr_start = self.ast.nodePos(left_id);
+        const callExpr = try self.ast.pushNode(self.alloc, .callExpr, expr_start);
 
         var has_named_arg = false;
         var numArgs: u32 = 0;
-        var first: NodeId = NullId;
+        var first: NodeId = cy.NullNode;
         inner: {
             first = (try self.parseCallArg()) orelse {
                 break :inner;
             };
             numArgs += 1;
-            if (self.nodes.items[first].node_t == .named_arg) {
+            if (self.ast.nodeType(first) == .namedArg) {
                 has_named_arg = true;
             }
             var last_arg_id = first;
             while (true) {
-                const token = self.peekToken();
+                const token = self.peek();
                 if (token.tag() != .comma and token.tag() != .new_line) {
                     break;
                 }
-                self.advanceToken();
+                self.advance();
                 const arg_id = (try self.parseCallArg()) orelse {
                     break;
                 };
                 numArgs += 1;
-                self.nodes.items[last_arg_id].next = arg_id;
+                self.ast.setNextNode(last_arg_id, arg_id);
                 last_arg_id = arg_id;
-                if (self.nodes.items[last_arg_id].node_t == .named_arg) {
+                if (self.ast.nodeType(last_arg_id) == .namedArg) {
                     has_named_arg = true;
                 }
             }
         }
         // Parse closing paren.
         self.consumeWhitespaceTokens();
-        const token = self.peekToken();
+        const token = self.peek();
         if (token.tag() == .right_paren) {
-            self.advanceToken();
-            self.nodes.items[callExpr].head = .{
-                .callExpr = .{
-                    .callee = left_id,
-                    .arg_head = first,
-                    .has_named_arg = has_named_arg,
-                    .numArgs = @intCast(numArgs),
-                },
-            };
+            self.advance();
+            self.ast.setNodeData(callExpr, .{ .callExpr = .{
+                .callee = @intCast(left_id),
+                .argHead = @intCast(first),
+                .hasNamedArg = has_named_arg,
+                .numArgs = @intCast(numArgs),
+            }});
             return callExpr;
-        } else return self.reportParseError("Expected closing parenthesis.", &.{});
+        } else return self.reportError("Expected closing parenthesis.", &.{});
     }
 
     /// Assumes first arg exists.
     fn parseNoParenCallExpression(self: *Parser, left_id: NodeId) !NodeId {
-        const expr_start = self.nodes.items[left_id].start_token;
-        const callExpr = try self.pushNode(.callExpr, expr_start);
+        const expr_start = self.ast.nodePos(left_id);
+        const callExpr = try self.ast.pushNode(self.alloc, .callExpr, expr_start);
 
         const firstArg = (try self.parseTightTermExpr()) orelse {
-            return self.reportParseError("Expected call arg.", &.{});
+            return self.reportError("Expected call arg.", &.{});
         };
         var numArgs: u32 = 1;
         var last_arg_id = firstArg;
 
         while (true) {
-            const token = self.peekToken();
+            const token = self.peek();
             switch (token.tag()) {
                 .new_line => break,
                 .none => break,
                 else => {
                     const arg = (try self.parseTightTermExpr()) orelse {
-                        return self.reportParseError("Expected call arg.", &.{});
+                        return self.reportError("Expected call arg.", &.{});
                     };
-                    self.nodes.items[last_arg_id].next = arg;
+                    self.ast.setNextNode(last_arg_id, arg);
                     last_arg_id = arg;
                     numArgs += 1;
                 },
             }
         }
 
-        self.nodes.items[callExpr].head = .{
-            .callExpr = .{
-                .callee = left_id,
-                .arg_head = firstArg,
-                .has_named_arg = false,
-                .numArgs = @intCast(numArgs),
-            },
-        };
+        self.ast.setNodeData(callExpr, .{ .callExpr = .{
+            .callee = @intCast(left_id),
+            .argHead = @intCast(firstArg),
+            .hasNamedArg = false,
+            .numArgs = @intCast(numArgs),
+        }});
         return callExpr;
     }
 
     /// Parses the right expression of a BinaryExpression.
     fn parseRightExpression(self: *Parser, left_op: cy.ast.BinaryExprOp) anyerror!NodeId {
         var start = self.next_pos;
-        var token = self.peekToken();
+        var token = self.peek();
 
         switch (token.tag()) {
             .none => {
-                return self.reportParseError("Expected right operand.", &.{});
+                return self.reportError("Expected right operand.", &.{});
             },
             .indent,
             .new_line => {
-                self.advanceToken();
+                self.advance();
                 self.consumeWhitespaceTokens();
                 start = self.next_pos;
-                token = self.peekToken();
+                token = self.peek();
                 if (token.tag() == .none) {
-                    return self.reportParseError("Expected right operand.", &.{});
+                    return self.reportError("Expected right operand.", &.{});
                 }
             },
             else => {},
@@ -2306,7 +2177,7 @@ pub const Parser = struct {
         const expr_id = try self.parseTermExpr();
 
         // Check if next token is an operator with higher precedence.
-        token = self.peekToken();
+        token = self.peek();
 
         var rightOp: cy.ast.BinaryExprOp = undefined;
         switch (token.tag()) {
@@ -2320,18 +2191,16 @@ pub const Parser = struct {
         const right_op_prec = getBinOpPrecedence(rightOp);
         if (right_op_prec > op_prec) {
             // Continue parsing right.
-            _ = self.consumeToken();
+            _ = self.consume();
             start = self.next_pos;
             const right_id = try self.parseRightExpression(rightOp);
 
             const binExpr = try self.pushNode(.binExpr, start);
-            self.nodes.items[binExpr].head = .{
-                .binExpr = .{
-                    .left = expr_id,
-                    .right = right_id,
-                    .op = rightOp,
-                },
-            };
+            self.ast.setNodeData(binExpr, .{ .binExpr = .{
+                .left = expr_id,
+                .right = @intCast(right_id),
+                .op = rightOp,
+            }});
 
             // Before returning the expr, perform left recursion if the op prec greater than the starting op.
             // eg. a + b * c * d
@@ -2342,7 +2211,7 @@ pub const Parser = struct {
             // Returns ((b * c) - d).
             var left = binExpr;
             while (true) {
-                token = self.peekToken();
+                token = self.peek();
 
                 var rightOp2: cy.ast.BinaryExprOp = undefined;
                 switch (token.tag()) {
@@ -2353,16 +2222,14 @@ pub const Parser = struct {
                 }
                 const right2_op_prec = getBinOpPrecedence(rightOp2);
                 if (right2_op_prec > op_prec) {
-                    self.advanceToken();
+                    self.advance();
                     const rightExpr = try self.parseRightExpression(rightOp);
                     const newBinExpr = try self.pushNode(.binExpr, start);
-                    self.nodes.items[newBinExpr].head = .{
-                        .binExpr = .{
-                            .left = left,
-                            .right = rightExpr,
-                            .op = rightOp2,
-                        },
-                    };
+                    self.ast.setNodeData(newBinExpr, .{ .binExpr = .{
+                        .left = left,
+                        .right = @intCast(rightExpr),
+                        .op = rightOp2,
+                    }});
                     left = newBinExpr;
                     continue;
                 } else {
@@ -2386,29 +2253,33 @@ pub const Parser = struct {
 
     fn parseCondExpr(self: *Parser, cond: NodeId, start: u32) !NodeId {
         // Assume `?`.
-        self.advanceToken();
+        self.advance();
 
         const res = try self.pushNode(.condExpr, start);
 
         const body = (try self.parseExpr(.{})) orelse {
-            return self.reportParseError("Expected conditional true expression.", &.{});
-        };
-        self.nodes.items[res].head = .{
-            .condExpr = .{
-                .cond = cond,
-                .bodyExpr = body,
-                .elseExpr = NullId,
-            },
+            return self.reportError("Expected conditional true expression.", &.{});
         };
 
-        const token = self.peekToken();
+        const ifBranch = try self.pushNode(.ifBranch, start);
+        self.ast.setNodeData(ifBranch, .{ .ifBranch = .{
+            .cond = cond,
+            .bodyHead = body,
+        }});
+
+        self.ast.setNodeData(res, .{ .condExpr = .{
+            .ifBranch = ifBranch,
+            .elseExpr = cy.NullNode,
+        }});
+
+        const token = self.peek();
         if (token.tag() == .else_k) {
-            self.advanceToken();
+            self.advance();
 
             const elseExpr = (try self.parseExpr(.{})) orelse {
-                return self.reportParseError("Expected else body.", &.{});
+                return self.reportError("Expected else body.", &.{});
             };
-            self.nodes.items[res].head.condExpr.elseExpr = elseExpr;
+            self.ast.nodePtr(res).data.condExpr.elseExpr = elseExpr;
         }
         return res;
     }
@@ -2421,18 +2292,18 @@ pub const Parser = struct {
         const id = try self.pushNode(.stringTemplate, start);
 
         var firstString: NodeId = undefined;
-        var token = self.peekToken();
+        var token = self.peek();
         if (token.tag() == .templateString) {
-            firstString = try self.pushNode(.string, start);
-        } else return self.reportParseError("Expected template string or expression.", &.{});
+            firstString = try self.pushSpanNode(.stringLit, start);
+        } else return self.reportError("Expected template string or expression.", &.{});
 
         var lastWasStringPart = true;
         var lastString = firstString;
-        var firstExpr: NodeId = cy.NullId;
-        var lastExpr: NodeId = cy.NullId;
+        var firstExpr: NodeId = cy.NullNode;
+        var lastExpr: NodeId = cy.NullNode;
 
-        self.advanceToken();
-        token = self.peekToken();
+        self.advance();
+        token = self.peek();
 
         var numExprs: u32 = 0;
         while (true) {
@@ -2442,23 +2313,23 @@ pub const Parser = struct {
                     // End of this template.
                     break;
                 }
-                const str = try self.pushNode(.string, self.next_pos);
-                self.nodes.items[lastString].next = str;
+                const str = try self.pushSpanNode(.stringLit, self.next_pos);
+                self.ast.setNextNode(lastString, str);
                 lastString = str;
                 lastWasStringPart = true;
             } else if (tag == .templateExprStart) {
-                self.advanceToken();
+                self.advance();
                 const expr = (try self.parseExpr(.{})) orelse {
-                    return self.reportParseError("Expected expression.", &.{});
+                    return self.reportError("Expected expression.", &.{});
                 };
-                token = self.peekToken();
+                token = self.peek();
                 if (token.tag() != .right_paren) {
-                    return self.reportParseError("Expected right paren.", &.{});
+                    return self.reportError("Expected right paren.", &.{});
                 }
-                if (firstExpr == cy.NullId) {
+                if (firstExpr == cy.NullNode) {
                     firstExpr = expr;
                 } else {
-                    self.nodes.items[lastExpr].next = expr;
+                    self.ast.setNextNode(lastExpr, expr);
                 }
                 lastExpr = expr;
                 lastWasStringPart = false;
@@ -2466,29 +2337,27 @@ pub const Parser = struct {
             } else {
                 break;
             }
-            self.advanceToken();
-            token = self.peekToken();
+            self.advance();
+            token = self.peek();
         }
 
-        self.nodes.items[id].head = .{
-            .stringTemplate = .{
-                .strHead = firstString,
-                .exprHead = firstExpr,
-                .numExprs = @intCast(numExprs),
-            },
-        };
+        self.ast.setNodeData(id, .{ .stringTemplate = .{
+            .strHead = @intCast(firstString),
+            .exprHead = firstExpr,
+            .numExprs = @intCast(numExprs),
+        }});
         return id;
     }
 
     /// An expression term doesn't contain a binary expression at the top.
     fn parseTermExpr(self: *Parser) anyerror!NodeId {
         const start = self.next_pos;
-        var token = self.peekToken();
+        var token = self.peek();
         switch (token.tag()) {
             // .await_k => {
             //     // Await expression.
             //     const expr_id = try self.pushNode(.await_expr, start);
-            //     self.advanceToken();
+            //     self.advance();
             //     const term_id = try self.parseTermExpr();
             //     self.nodes.items[expr_id].head = .{
             //         .child_head = term_id,
@@ -2496,76 +2365,72 @@ pub const Parser = struct {
             //     return expr_id;
             // },
             .not_k => {
-                self.advanceToken();
+                self.advance();
                 const expr = try self.pushNode(.unary_expr, start);
                 const child = try self.parseTermExpr();
-                self.nodes.items[expr].head = .{
-                    .unary = .{
-                        .child = child,
-                        .op = .not,
-                    },
-                };
+                self.ast.setNodeData(expr, .{ .unary = .{
+                    .child = child,
+                    .op = .not,
+                }});
                 return expr;
             },
             .throw_k => {
-                self.advanceToken();
+                self.advance();
                 const child = try self.parseTermExpr();
                 const expr = try self.pushNode(.throwExpr, start);
-                self.nodes.items[expr].head = .{
-                    .child_head = child,
-                };
+                self.ast.setNodeData(expr, .{ .throwExpr = .{
+                    .child = child,
+                }});
                 return expr;
             },
             .try_k => {
-                self.advanceToken();
+                self.advance();
                 const tryExpr = try self.pushNode(.tryExpr, start);
                 const expr = try self.parseTermExpr();
 
-                token = self.peekToken();
-                var catchExpr: cy.NodeId = cy.NullId;
+                token = self.peek();
+                var catchExpr: cy.NodeId = cy.NullNode;
                 if (token.tag() == .catch_k) {
-                    self.advanceToken();
+                    self.advance();
                     catchExpr = try self.parseTermExpr();
                 }
 
-                self.nodes.items[tryExpr].head = .{
-                    .tryExpr = .{
-                        .expr = expr,
-                        .catchExpr = catchExpr,
-                    },
-                };
+                self.ast.setNodeData(tryExpr, .{ .tryExpr = .{
+                    .expr = expr,
+                    .catchExpr = catchExpr,
+                }});
                 return tryExpr;
             },
             .coresume_k => {
-                self.advanceToken();
+                self.advance();
                 const coresume = try self.pushNode(.coresume, start);
                 const fiberExpr = try self.parseTermExpr();
-                self.nodes.items[coresume].head = .{
-                    .child_head = fiberExpr,
-                };
+                self.ast.setNodeData(coresume, .{ .coresume = .{
+                    .child = fiberExpr,
+                }});
                 return coresume;
             },
             .coyield_k => {
-                self.advanceToken();
+                self.advance();
                 const coyield = try self.pushNode(.coyield, start);
                 return coyield;
             },
             .coinit_k => {
-                self.advanceToken();
+                self.advance();
 
-                if (self.peekToken().tag() != .left_paren) {
-                    return self.reportParseError("Expected ( after coinit.", &.{});
+                if (self.peek().tag() != .left_paren) {
+                    return self.reportError("Expected ( after coinit.", &.{});
                 }
-                self.advanceToken();
+                self.advance();
 
                 const callee = (try self.parseCallArg()) orelse {
-                    return self.reportParseError("Expected entry function callee.", &.{});
+                    return self.reportError("Expected entry function callee.", &.{});
                 };
 
                 var numArgs: u32 = 0;
-                var first: NodeId = NullId;
-                if (self.peekToken().tag() == .comma) {
-                    self.advanceToken();
+                var first: NodeId = cy.NullNode;
+                if (self.peek().tag() == .comma) {
+                    self.advance();
                     inner: {
                         first = (try self.parseCallArg()) orelse {
                             break :inner;
@@ -2575,46 +2440,44 @@ pub const Parser = struct {
                         while (true) {
                             self.consumeWhitespaceTokens();
 
-                            if (self.peekToken().tag() != .comma) {
+                            if (self.peek().tag() != .comma) {
                                 break;
                             }
-                            self.advanceToken();
+                            self.advance();
                             const arg = (try self.parseCallArg()) orelse {
                                 break;
                             };
                             numArgs += 1;
-                            self.nodes.items[last].next = arg;
+                            self.ast.setNextNode(last, arg);
                             last = arg;
                         }
                     }
                 }
 
                 self.consumeWhitespaceTokens();
-                token = self.peekToken();
+                token = self.peek();
                 if (token.tag() != .right_paren) {
-                    return self.reportParseError("Expected closing `)`.", &.{});
+                    return self.reportError("Expected closing `)`.", &.{});
                 }
-                self.advanceToken();
+                self.advance();
 
                 const callExpr = try self.pushNode(.callExpr, start);
-                self.nodes.items[callExpr].head = .{
-                    .callExpr = .{
-                        .callee = callee,
-                        .arg_head = first,
-                        .has_named_arg = false,
-                        .numArgs = @intCast(numArgs),
-                    },
-                };
+                self.ast.setNodeData(callExpr, .{ .callExpr = .{
+                    .callee = @intCast(callee),
+                    .argHead = @intCast(first),
+                    .hasNamedArg = false,
+                    .numArgs = @intCast(numArgs),
+                }});
 
                 const coinit = try self.pushNode(.coinit, start);
-                self.nodes.items[coinit].head = .{
-                    .child_head = callExpr,
-                };
+                self.ast.setNodeData(coinit, .{ .coinit = .{
+                    .child = callExpr,
+                }});
                 return coinit;
             },
             else => {
                 return (try self.parseTightTermExpr()) orelse {
-                    return self.reportParseError("Expected term expr. Got: {}.", &.{v(self.peekToken().tag())});
+                    return self.reportError("Expected term expr. Got: {}.", &.{v(self.peek().tag())});
                 };
             },
         }
@@ -2624,14 +2487,14 @@ pub const Parser = struct {
     /// that are separated by whitespace. eg. coinit <expr>
     fn parseTightTermExpr(self: *Parser) anyerror!?NodeId {
         var start = self.next_pos;
-        var token = self.peekToken();
+        var token = self.peek();
         var left_id = switch (token.tag()) {
             .ident => b: {
-                self.advanceToken();
-                const id = try self.pushIdentNode(start);
+                self.advance();
+                const id = try self.pushSpanNode(.ident, start);
 
-                const name_token = self.tokens.items[start];
-                const name = self.src[name_token.pos()..name_token.data.end_pos];
+                const name_token = self.tokens[start];
+                const name = self.ast.src[name_token.pos()..name_token.data.end_pos];
                 if (!self.isVarDeclaredFromScope(name)) {
                     try self.deps.put(self.alloc, name, id);
                 }
@@ -2639,134 +2502,138 @@ pub const Parser = struct {
                 break :b id;
             },
             .type_k => {
-                self.advanceToken();
-                const id = try self.pushIdentNode(start);
+                self.advance();
+                const id = try self.pushSpanNode(.ident, start);
                 return id;
             },
             .error_k => b: {
-                self.advanceToken();
-                token = self.peekToken();
+                self.advance();
+                token = self.peek();
                 if (token.tag() == .dot) {
                     // Error symbol literal.
-                    self.advanceToken();
-                    token = self.peekToken();
+                    self.advance();
+                    token = self.peek();
                     if (token.tag() == .ident) {
-                        const symbol = try self.pushIdentNode(self.next_pos);
-                        self.advanceToken();
+                        const symbol = try self.pushSpanNode(.ident, self.next_pos);
+                        self.advance();
                         const id = try self.pushNode(.errorSymLit, start);
-                        self.nodes.items[id].head = .{
-                            .errorSymLit = .{
-                                .symbol = symbol,
-                            },
-                        };
+                        self.ast.setNodeData(id, .{ .errorSymLit = .{
+                            .symbol = symbol,
+                        }});
                         break :b id;
                     } else {
-                        return self.reportParseError("Expected symbol identifier.", &.{});
+                        return self.reportError("Expected symbol identifier.", &.{});
                     }
                 } else {
                     // Becomes an ident.
-                    const id = try self.pushIdentNode(start);
+                    const id = try self.pushSpanNode(.ident, start);
                     break :b id;
                 }
             },
             .dot => {
-                self.advanceToken();
+                self.advance();
                 const name = (try self.parseOptName()) orelse {
-                    return self.reportParseError("Expected symbol identifier.", &.{});
+                    return self.reportError("Expected symbol identifier.", &.{});
                 };
-                self.nodes.items[name].node_t = .symbolLit;
+                self.ast.nodePtr(name).head.type = .symbolLit;
                 return name;
             },
             .true_k => {
-                self.advanceToken();
-                return try self.pushNode(.true_literal, start);
+                self.advance();
+                return try self.pushNode(.trueLit, start);
             },
             .false_k => {
-                self.advanceToken();
-                return try self.pushNode(.false_literal, start);
+                self.advance();
+                return try self.pushNode(.falseLit, start);
             },
             .none_k => {
-                self.advanceToken();
-                return try self.pushNode(.none, start);
+                self.advance();
+                return try self.pushNode(.noneLit, start);
             },
-            .number => b: {
-                self.advanceToken();
-                break :b try self.pushNode(.number, start);
+            .dec => b: {
+                self.advance();
+                break :b try self.pushSpanNode(.decLit, start);
             },
             .float => b: {
-                self.advanceToken();
-                break :b try self.pushNode(.float, start);
+                self.advance();
+                break :b try self.pushSpanNode(.floatLit, start);
             },
-            .nonDecInt => b: {
-                self.advanceToken();
-                break :b try self.pushNode(.nonDecInt, start);
+            .bin => b: {
+                self.advance();
+                break :b try self.pushSpanNode(.binLit, start);
+            },
+            .oct => b: {
+                self.advance();
+                break :b try self.pushSpanNode(.octLit, start);
+            },
+            .hex => b: {
+                self.advance();
+                break :b try self.pushSpanNode(.hexLit, start);
             },
             .rune => b: {
-                self.advanceToken();
-                break :b try self.pushNode(.runeLit, start);
+                self.advance();
+                break :b try self.pushSpanNode(.runeLit, start);
             },
             .string => b: {
-                self.advanceToken();
-                break :b try self.pushNode(.string, start);
+                self.advance();
+                break :b try self.pushSpanNode(.stringLit, start);
             },
             .templateString => b: {
                 break :b try self.parseStringTemplate();
             },
             .pound => b: {
-                self.advanceToken();
-                token = self.peekToken();
+                self.advance();
+                token = self.peek();
                 if (token.tag() == .ident) {
-                    const ident = try self.pushIdentNode(self.next_pos);
-                    self.advanceToken();
+                    const ident = try self.pushSpanNode(.ident, self.next_pos);
+                    self.advance();
                     const expr = try self.pushNode(.comptimeExpr, start);
-                    self.nodes.items[expr].head = .{
-                        .comptimeExpr = .{
-                            .child = ident,
-                        },
-                    };
+                    self.ast.setNodeData(expr, .{ .comptimeExpr = .{
+                        .child = ident,
+                    }});
                     break :b expr;
                 } else {
-                    return self.reportParseError("Expected identifier.", &.{});
+                    return self.reportError("Expected identifier.", &.{});
                 }
             },
             .left_paren => b: {
-                _ = self.consumeToken();
-                token = self.peekToken();
+                _ = self.consume();
+                token = self.peek();
 
                 const expr_id = (try self.parseExpr(.{})) orelse {
-                    token = self.peekToken();
+                    token = self.peek();
                     if (token.tag() == .right_paren) {
-                        _ = self.consumeToken();
+                        _ = self.consume();
                     } else {
-                        return self.reportParseError("Expected expression.", &.{});
+                        return self.reportError("Expected expression.", &.{});
                     }
                     // Assume empty args for lambda.
-                    token = self.peekToken();
+                    token = self.peek();
                     if (token.tag() == .equal_greater) {
                         return try self.parseNoParamLambdaFunc();
                     } else {
-                        return self.reportParseError("Unexpected paren.", &.{});
+                        return self.reportError("Unexpected paren.", &.{});
                     }
                 };
-                token = self.peekToken();
+                token = self.peek();
                 if (token.tag() == .right_paren) {
-                    _ = self.consumeToken();
+                    _ = self.consume();
 
-                    token = self.peekToken();
-                    if (self.nodes.items[expr_id].node_t == .ident and token.tag() == .equal_greater) {
+                    token = self.peek();
+                    if (self.ast.nodeType(expr_id) == .ident and token.tag() == .equal_greater) {
                         return try self.parseLambdaFuncWithParam(expr_id);
                     }
 
                     const group = try self.pushNode(.group, start);
-                    self.nodes.items[group].head = .{
-                        .child_head = expr_id,
-                    };
+                    self.ast.setNodeData(group, .{ .group = .{
+                        .child = expr_id,
+                    }});
                     break :b group;
                 } else if (token.tag() == .comma) {
                     self.next_pos = start;
                     return try self.parseLambdaFunction();
                 } else {
-                    return self.reportParseError("Expected right parenthesis.", &.{});
+                    return self.reportError("Expected right parenthesis.", &.{});
                 }
             },
             .left_bracket => b: {
@@ -2775,39 +2642,33 @@ pub const Parser = struct {
             },
             .operator => {
                 if (token.data.operator_t == .minus) {
-                    self.advanceToken();
+                    self.advance();
                     const expr_id = try self.pushNode(.unary_expr, start);
                     const term_id = try self.parseTermExpr();
-                    self.nodes.items[expr_id].head = .{
-                        .unary = .{
-                            .child = term_id,
-                            .op = .minus,
-                        },
-                    };
+                    self.ast.setNodeData(expr_id, .{ .unary = .{
+                        .child = term_id,
+                        .op = .minus,
+                    }});
                     return expr_id;
                 } else if (token.data.operator_t == .tilde) {
-                    self.advanceToken();
+                    self.advance();
                     const expr_id = try self.pushNode(.unary_expr, start);
                     const term_id = try self.parseTermExpr();
-                    self.nodes.items[expr_id].head = .{
-                        .unary = .{
-                            .child = term_id,
-                            .op = .bitwiseNot,
-                        },
-                    };
+                    self.ast.setNodeData(expr_id, .{ .unary = .{
+                        .child = term_id,
+                        .op = .bitwiseNot,
+                    }});
                     return expr_id;
                 } else if (token.data.operator_t == .bang) {
-                    self.advanceToken();
+                    self.advance();
                     const expr = try self.pushNode(.unary_expr, start);
                     const child = try self.parseTermExpr();
-                    self.nodes.items[expr].head = .{
-                        .unary = .{
-                            .child = child,
-                            .op = .not,
-                        },
-                    };
+                    self.ast.setNodeData(expr, .{ .unary = .{
+                        .child = child,
+                        .op = .not,
+                    }});
                     return expr;
-                } else return self.reportParseError("Unexpected operator.", &.{});
+                } else return self.reportError("Unexpected operator.", &.{});
             },
             else => {
                 return null;
@@ -2815,105 +2676,113 @@ pub const Parser = struct {
         };
 
         while (true) {
-            const next = self.peekToken();
+            const next = self.peek();
             switch (next.tag()) {
                 .dot => {
                     // Access expr.
-                    self.advanceToken();
+                    self.advance();
 
                     const right = (try self.parseOptName()) orelse {
-                        return self.reportParseError("Expected ident", &.{});
+                        return self.reportError("Expected ident", &.{});
                     };
 
                     const expr_id = try self.pushNode(.accessExpr, start);
-                    self.nodes.items[expr_id].head = .{
-                        .accessExpr = .{
-                            .left = left_id,
-                            .right = right,
-                        },
-                    };
+                    self.ast.setNodeData(expr_id, .{ .accessExpr = .{
+                        .left = left_id,
+                        .right = right,
+                    }});
                     left_id = expr_id;
                 },
                 .left_bracket => {
                     // index expr, slice expr.
-                    self.advanceToken();
-                    if (self.peekToken().tag() == .dot_dot) {
+                    self.advance();
+                    if (self.peek().tag() == .dot_dot) {
                         // Slice expr, start index omitted.
-                        self.advanceToken();
+                        self.advance();
                         const rightRange = (try self.parseExpr(.{})) orelse {
-                            return self.reportParseError("Expected expression.", &.{});
+                            return self.reportError("Expected expression.", &.{});
                         };
 
-                        if (self.peekToken().tag() != .right_bracket) {
-                            return self.reportParseError("Expected right bracket.", &.{});
+                        if (self.peek().tag() != .right_bracket) {
+                            return self.reportError("Expected right bracket.", &.{});
                         }
 
-                        self.advanceToken();
+                        self.advance();
+
+                        const range = try self.pushNode(.range, start);
+                        self.ast.setNodeData(range, .{ .range = .{
+                            .start = cy.NullNode,
+                            .end = rightRange,
+                        }});
+
                         const expr = try self.pushNode(.sliceExpr, start);
-                        self.nodes.items[expr].head = .{
-                            .sliceExpr = .{
-                                .arr = left_id,
-                                .left = cy.NullId,
-                                .right = rightRange,
-                            },
-                        };
+                        self.ast.setNodeData(expr, .{ .sliceExpr = .{
+                            .arr = left_id,
+                            .range = range,
+                        }});
                         left_id = expr;
                         start = self.next_pos;
                         continue;
                     }
                     const index = (try self.parseExpr(.{})) orelse {
-                        return self.reportParseError("Expected index.", &.{});
+                        return self.reportError("Expected index.", &.{});
                     };
 
-                    if (self.peekToken().tag() == .right_bracket) {
+                    if (self.peek().tag() == .right_bracket) {
                         // Index expr.
-                        self.advanceToken();
+                        self.advance();
                         const expr = try self.pushNode(.indexExpr, start);
-                        self.nodes.items[expr].head = .{
-                            .indexExpr = .{
-                                .left = left_id,
-                                .right = index,
-                            },
-                        };
+                        self.ast.setNodeData(expr, .{ .indexExpr = .{
+                            .left = left_id,
+                            .right = index,
+                        }});
                         left_id = expr;
                         start = self.next_pos;
-                    } else if (self.peekToken().tag() == .dot_dot) {
+                    } else if (self.peek().tag() == .dot_dot) {
                         // Slice expr.
-                        self.advanceToken();
-                        if (self.peekToken().tag() == .right_bracket) {
+                        self.advance();
+                        if (self.peek().tag() == .right_bracket) {
                             // End index omitted.
-                            self.advanceToken();
+                            self.advance();
+
+                            const range = try self.pushNode(.range, start);
+                            self.ast.setNodeData(range, .{ .range = .{
+                                .start = index,
+                                .end = cy.NullNode,
+                            }});
+
                             const expr = try self.pushNode(.sliceExpr, start);
-                            self.nodes.items[expr].head = .{
-                                .sliceExpr = .{
-                                    .arr = left_id,
-                                    .left = index,
-                                    .right = cy.NullId,
-                                },
-                            };
+                            self.ast.setNodeData(expr, .{ .sliceExpr = .{
+                                .arr = left_id,
+                                .range = range,
+                            }});
                             left_id = expr;
                             start = self.next_pos;
                         } else {
                             const right = (try self.parseExpr(.{})) orelse {
-                                return self.reportParseError("Expected end index.", &.{});
+                                return self.reportError("Expected end index.", &.{});
                             };
-                            if (self.peekToken().tag() != .right_bracket) {
-                                return self.reportParseError("Expected right bracket.", &.{});
+                            if (self.peek().tag() != .right_bracket) {
+                                return self.reportError("Expected right bracket.", &.{});
                             }
-                            self.advanceToken();
+                            self.advance();
+
+                            const range = try self.pushNode(.range, start);
+                            self.ast.setNodeData(range, .{ .range = .{
+                                .start = index,
+                                .end = right,
+                            }});
+
                             const expr = try self.pushNode(.sliceExpr, start);
-                            self.nodes.items[expr].head = .{
-                                .sliceExpr = .{
-                                    .arr = left_id,
-                                    .left = index,
-                                    .right = right,
-                                },
-                            };
+                            self.ast.setNodeData(expr, .{ .sliceExpr = .{
+                                .arr = left_id,
+                                .range = range,
+                            }});
                             left_id = expr;
                             start = self.next_pos;
                         }
                     } else {
-                        return self.reportParseError("Expected right bracket.", &.{});                            
+                        return self.reportError("Expected right bracket.", &.{});                            
                     }
                 },
                 .left_paren => {
@@ -2935,7 +2804,10 @@ pub const Parser = struct {
                 .as_k,
                 .capture,
                 .string,
-                .number,
+                .bin,
+                .oct,
+                .hex,
+                .dec,
                 .float,
                 .if_k,
                 .ident,
@@ -2951,7 +2823,7 @@ pub const Parser = struct {
     }
 
     fn returnLeftAssignExpr(self: *Parser, leftId: NodeId, outIsAssignStmt: *bool) !NodeId {
-        switch (self.nodes.items[leftId].node_t) {
+        switch (self.ast.nodeType(leftId)) {
             .accessExpr,
             .indexExpr,
             .ident => {
@@ -2959,7 +2831,7 @@ pub const Parser = struct {
                 return leftId;
             },
             else => {
-                return self.reportParseError("Expected variable to left of assignment operator.", &.{});
+                return self.reportError("Expected variable to left of assignment operator.", &.{});
             },
         }
     }
@@ -2967,17 +2839,15 @@ pub const Parser = struct {
     fn parseBinExpr(self: *Parser, left: NodeId, op: cy.ast.BinaryExprOp) !NodeId {
         const opStart = self.next_pos;
         // Assumes current token is the operator.
-        self.advanceToken();
+        self.advance();
 
         const right = try self.parseRightExpression(op);
         const expr = try self.pushNode(.binExpr, opStart);
-        self.nodes.items[expr].head = .{
-            .binExpr = .{
-                .left = left,
-                .right = right,
-                .op = op,
-            },
-        };
+        self.ast.setNodeData(expr, .{ .binExpr = .{
+            .left = left,
+            .right = @intCast(right),
+            .op = op,
+        }});
         return expr;
     }
 
@@ -2987,7 +2857,7 @@ pub const Parser = struct {
     /// a generic error message, it delegates that to the caller.
     fn parseExpr(self: *Parser, opts: ParseExprOptions) anyerror!?NodeId {
         var start = self.next_pos;
-        var token = self.peekToken();
+        var token = self.peek();
 
         var left_id: NodeId = undefined;
         switch (token.tag()) {
@@ -2996,10 +2866,10 @@ pub const Parser = struct {
             .right_bracket => return null,
             .indent,
             .new_line => {
-                self.advanceToken();
+                self.advance();
                 self.consumeWhitespaceTokens();
                 start = self.next_pos;
-                token = self.peekToken();
+                token = self.peek();
                 if (token.tag() == .none) {
                     return null;
                 }
@@ -3009,15 +2879,14 @@ pub const Parser = struct {
         left_id = try self.parseTermExpr();
 
         while (true) {
-            const next = self.peekToken();
+            const next = self.peek();
             switch (next.tag()) {
                 .equal_greater => {
-                    const left = self.nodes.items[left_id];
-                    if (left.node_t == .ident) {
+                    if (self.ast.nodeType(left_id) == .ident) {
                         // Lambda.
                         return try self.parseLambdaFuncWithParam(left_id);
                     } else {
-                        return self.reportParseError("Unexpected `=>` token", &.{});
+                        return self.reportError("Unexpected `=>` token", &.{});
                     }
                 },
                 .equal => {
@@ -3035,7 +2904,7 @@ pub const Parser = struct {
                         .minus,
                         .star,
                         .slash => {
-                            if (self.peekTokenAhead(1).tag() == .equal) {
+                            if (self.peekAhead(1).tag() == .equal) {
                                 if (opts.returnLeftAssignExpr) {
                                     return try self.returnLeftAssignExpr(left_id, opts.outIsAssignStmt);
                                 } else {
@@ -3050,18 +2919,16 @@ pub const Parser = struct {
                 },
                 .as_k => {
                     const opStart = self.next_pos;
-                    self.advanceToken();
+                    self.advance();
 
                     const typeSpecHead = (try self.parseOptNamePath()) orelse {
-                        return self.reportParseError("Expected type specifier.", &.{});
+                        return self.reportError("Expected type specifier.", &.{});
                     };
                     const expr = try self.pushNode(.castExpr, opStart);
-                    self.nodes.items[expr].head = .{
-                        .castExpr = .{
-                            .expr = left_id,
-                            .typeSpecHead = typeSpecHead,
-                        },
-                    };
+                    self.ast.setNodeData(expr, .{ .castExpr = .{
+                        .expr = left_id,
+                        .typeSpecHead = typeSpecHead,
+                    }});
                     left_id = expr;
                 },
                 .and_k => {
@@ -3089,8 +2956,7 @@ pub const Parser = struct {
                         return left_id;
                     }
                     // Attempt to parse as no paren call expr.
-                    const left = self.nodes.items[left_id];
-                    switch (left.node_t) {
+                    switch (self.ast.nodeType(left_id)) {
                         .accessExpr,
                         .ident => {
                             return try self.parseNoParenCallExpression(left_id);
@@ -3107,7 +2973,7 @@ pub const Parser = struct {
 
     /// Consumes the an expression or a expression block.
     fn parseEndingExpr(self: *Parser) anyerror!cy.NodeId {
-        switch (self.peekToken().tag()) {
+        switch (self.peek().tag()) {
             .func_k => {
                 return self.parseMultilineLambdaFunction();
             },
@@ -3116,7 +2982,7 @@ pub const Parser = struct {
             },
             else => {
                 return (try self.parseExpr(.{})) orelse {
-                    return self.reportParseError("Expected expression.", &.{});
+                    return self.reportError("Expected expression.", &.{});
                 };
             },
         }
@@ -3124,83 +2990,76 @@ pub const Parser = struct {
 
     fn parseVarDecl(self: *Parser, modifierHead: cy.NodeId, typed: bool) !cy.NodeId {
         const start = self.next_pos;
-        self.advanceToken();
+        self.advance();
 
-        const root = self.peekToken().tag() == .dot;
+        const root = self.peek().tag() == .dot;
         if (root) {
-            self.advanceToken();
+            self.advance();
         }
 
         // Var name.
         const name = (try self.parseOptNamePath()) orelse {
-            return self.reportParseError("Expected local name identifier.", &.{});
+            return self.reportError("Expected local name identifier.", &.{});
         };
-        const hasNamePath = self.nodes.items[name].next != cy.NullId;
+        const hasNamePath = self.ast.node(name).next() != cy.NullNode;
         const isStatic = hasNamePath or root;
 
-        var typeSpecHead: cy.NodeId = cy.NullId;
+        var typeSpecHead: cy.NodeId = cy.NullNode;
         if (typed) {
-            typeSpecHead = (try self.parseOptNamePath()) orelse cy.NullId;
+            typeSpecHead = (try self.parseOptNamePath()) orelse cy.NullNode;
         }
 
         const varSpec = try self.pushNode(.varSpec, start);
-        self.nodes.items[varSpec].head = .{
-            .varSpec = .{
-                .name = name,
-                .typeSpecHead = typeSpecHead,
-                .modifierHead = modifierHead,
-            },
-        };
+        self.ast.setNodeData(varSpec, .{ .varSpec = .{
+            .name = name,
+            .typeSpecHead = typeSpecHead,
+        }});
+        self.ast.nodePtr(varSpec).head.data = .{ .varSpec = .{ .modHead = @intCast(modifierHead) }};
 
         var decl: cy.NodeId = undefined;
         if (isStatic) {
             decl = try self.pushNode(.staticDecl, start);
         } else {
-            if (modifierHead != cy.NullId) {
-                return self.reportParseErrorAt("Annotations are not allowed for local var declarations.", &.{}, start);
+            if (modifierHead != cy.NullNode) {
+                return self.reportErrorAt("Annotations are not allowed for local var declarations.", &.{}, start);
             }
             decl = try self.pushNode(.localDecl, start);
         }
 
-        var right: NodeId = cy.NullId;
+        var right: cy.NodeId = cy.NullNode;
         inner: {
-            var token = self.peekToken();
+            var token = self.peek();
             if (token.tag() == .new_line or token.tag() == .none) {
                 break :inner;
             }
 
-            if (self.peekToken().tag() != .equal) {
-                return self.reportParseError("Expected `=` after variable name.", &.{});
+            if (self.peek().tag() != .equal) {
+                return self.reportError("Expected `=` after variable name.", &.{});
             }
-            self.advanceToken();
+            self.advance();
 
             // Continue parsing right expr.
             right = try self.parseEndingExpr();
-            self.nodes.items[right].hasParentAssignStmt = true;
         }
 
         if (isStatic) {
-            self.nodes.items[decl].head = .{
-                .staticDecl = .{
-                    .varSpec = varSpec,
-                    .right = right,
-                    .typed = typed,
-                    .root = root,
-                },
-            };
+            self.ast.setNodeData(decl, .{ .staticDecl = .{
+                .varSpec = varSpec,
+                .right = @intCast(right),
+                .typed = typed,
+                .root = root,
+            }});
             try self.staticDecls.append(self.alloc, .{
                 .declT = .variable,
                 .nodeId = decl,
                 .data = undefined,
             });
         } else {
-            self.nodes.items[decl].head = .{
-                .localDecl = .{
-                    .varSpec = varSpec,
-                    .right = right,
-                    .typed = typed,
-                },
-            };
+            self.ast.setNodeData(decl, .{ .localDecl = .{
+                .varSpec = varSpec,
+                .right = @intCast(right),
+                .typed = typed,
+            }});
         }
         return decl;
     }
@@ -3208,31 +3067,31 @@ pub const Parser = struct {
     /// Assumes next token is the return token.
     fn parseReturnStatement(self: *Parser) !NodeId {
         const start = self.next_pos;
-        self.advanceToken();
-        const token = self.peekToken();
+        self.advance();
+        const token = self.peek();
         switch (token.tag()) {
             .new_line,
             .none => {
-                return try self.pushNode(.return_stmt, start);
+                return try self.pushNode(.returnStmt, start);
             },
             .func_k => {
                 const lambda = try self.parseMultilineLambdaFunction();
-                const id = try self.pushNode(.return_expr_stmt, start);
-                self.nodes.items[id].head = .{
-                    .child_head = lambda,
-                };
+                const id = try self.pushNode(.returnExprStmt, start);
+                self.ast.setNodeData(id, .{ .returnExprStmt = .{
+                    .child = lambda,
+                }});
                 return id;
             },
             else => {
                 const expr = try self.parseExpr(.{}) orelse {
-                    return self.reportParseError("Expected expression.", &.{});
+                    return self.reportError("Expected expression.", &.{});
                 };
                 try self.consumeNewLineOrEnd();
 
-                const id = try self.pushNode(.return_expr_stmt, start);
-                self.nodes.items[id].head = .{
-                    .child_head = expr,
-                };
+                const id = try self.pushNode(.returnExprStmt, start);
+                self.ast.setNodeData(id, .{ .returnExprStmt = .{
+                    .child = expr,
+                }});
                 return id;
             }
         }
@@ -3248,28 +3107,26 @@ pub const Parser = struct {
         };
 
         if (is_assign_stmt) {
-            var token = self.peekToken();
+            var token = self.peek();
             const opStart = self.next_pos;
             const assignTag = token.tag();
             // Assumes next token is an assignment operator: =, +=.
-            self.advanceToken();
+            self.advance();
 
-            const start = self.nodes.items[expr_id].start_token;
+            const start = self.ast.nodePos(expr_id);
             var assignStmt: NodeId = undefined;
 
             // Right can be an expr or stmt.
             var right: NodeId = undefined;
             switch (assignTag) {
                 .equal => {
-                    assignStmt = try self.pushNode(.assign_stmt, start);
+                    assignStmt = try self.ast.pushNode(self.alloc, .assignStmt, start);
 
                     right = try self.parseEndingExpr();
-                    self.nodes.items[assignStmt].head = .{
-                        .left_right = .{
-                            .left = expr_id,
-                            .right = right,
-                        },
-                    };
+                    self.ast.setNodeData(assignStmt, .{ .assignStmt = .{
+                        .left = expr_id,
+                        .right = right,
+                    }});
                 },
                 .operator => {
                     const op_t = token.data.operator_t;
@@ -3278,29 +3135,26 @@ pub const Parser = struct {
                         .minus,
                         .star,
                         .slash => {
-                            self.advanceToken();
+                            self.advance();
                             right = (try self.parseExpr(.{})) orelse {
-                                return self.reportParseError("Expected right expression for assignment statement.", &.{});
+                                return self.reportError("Expected right expression for assignment statement.", &.{});
                             };
-                            assignStmt = try self.pushNode(.opAssignStmt, start);
-                            self.nodes.items[assignStmt].head = .{
-                                .opAssignStmt = .{
-                                    .left = expr_id,
-                                    .right = right,
-                                    .op = toBinExprOp(op_t),
-                                },
-                            };
+                            assignStmt = try self.ast.pushNode(self.alloc, .opAssignStmt, start);
+                            self.ast.setNodeData(assignStmt, .{ .opAssignStmt = .{
+                                .left = expr_id,
+                                .right = @intCast(right),
+                                .op = toBinExprOp(op_t),
+                            }});
                         },
                         else => fmt.panic("Unexpected operator assignment.", &.{}),
                     }
                 },
-                else => return self.reportParseErrorAt("Unsupported assignment operator.", &.{}, opStart),
+                else => return self.reportErrorAt("Unsupported assignment operator.", &.{}, opStart),
             }
 
-            const left = self.nodes.items[expr_id];
-            if (left.node_t == .ident) {
-                const name_token = self.tokens.items[left.start_token];
-                const name = self.src[name_token.pos()..name_token.data.end_pos];
+            const left = self.ast.nodePtr(expr_id);
+            if (left.type() == .ident) {
+                const name = self.ast.nodeString(left.*);
                 const block = &self.blockStack.items[self.blockStack.items.len-1];
                 if (self.deps.get(name)) |node_id| {
                     if (node_id == expr_id) {
@@ -3311,249 +3165,72 @@ pub const Parser = struct {
                 try block.vars.put(self.alloc, name, {});
             }
 
-            if (self.nodes.items[right].node_t != .lambda_multi) {
-                token = self.peekToken();
+            if (self.ast.nodeType(right) != .lambda_multi) {
+                token = self.peek();
                 try self.consumeNewLineOrEnd();
                 return assignStmt;
             } else {
                 return assignStmt;
             }
         } else {
-            const start = self.nodes.items[expr_id].start_token;
-            const id = try self.pushNode(.exprStmt, start);
-            self.nodes.items[id].head = .{
-                .exprStmt = .{
-                    .child = expr_id,
-                },
-            };
+            const start = self.ast.nodePos(expr_id);
+            const id = try self.ast.pushNode(self.alloc, .exprStmt, start);
+            self.ast.setNodeData(id, .{ .exprStmt = .{
+                .child = expr_id,
+            }});
 
-            const token = self.peekToken();
+            const token = self.peek();
             if (token.tag() == .new_line) {
-                self.advanceToken();
+                self.advance();
                 return id;
             } else if (token.tag() == .none) {
                 return id;
-            } else return self.reportParseError("Expected end of line or file", &.{});
+            } else return self.reportError("Expected end of line or file", &.{});
         }
     }
 
-    pub fn pushNode(self: *Parser, node_t: cy.NodeType, start: u32) !NodeId {
-        const id = self.nodes.items.len;
-        try self.nodes.append(self.alloc, .{
-            .node_t = node_t,
-            .start_token = start,
-            .next = NullId,
-            .head = undefined,
-        });
-        return @intCast(id);
+    fn pushNode(self: *Parser, node_t: cy.NodeType, start: u32) !NodeId {
+        return self.ast.pushNode(self.alloc, node_t, self.tokens[start].pos());
     }
 
-    fn pushIdentNode(self: *Parser, start: u32) !NodeId {
-        const id = try self.pushNode(.ident, start);
-        self.nodes.items[id].head = .{
-            .ident = .{},
-        };
-        return id;
+    fn pushSpanNode(self: *Parser, node_t: cy.NodeType, start: u32) !NodeId {
+        const token = self.tokens[start];
+        return self.ast.pushSpanNode(self.alloc, node_t, token.pos(), token.data.end_pos);
     }
 
-    inline fn pushIdentToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
-        try self.tokens.append(self.alloc, Token.init(.ident, start_pos, .{ .end_pos = end_pos }));
-    }
-
-    inline fn pushNonDecimalIntegerToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
-        try self.tokens.append(self.alloc, Token.init(.nonDecInt, start_pos, .{ .end_pos = end_pos }));
-    }
-
-    inline fn pushNumberToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
-        try self.tokens.append(self.alloc, Token.init(.number, start_pos, .{ .end_pos = end_pos }));
-    }
-
-    inline fn pushFloatToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
-        try self.tokens.append(self.alloc, Token.init(.float, start_pos, .{ .end_pos = end_pos }));
-    }
-
-    inline fn pushTemplateStringToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
-        try self.tokens.append(self.alloc, Token.init(.templateString, start_pos, .{ .end_pos = end_pos }));
-    }
-
-    inline fn pushStringToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
-        try self.tokens.append(self.alloc, Token.init(.string, start_pos, .{ .end_pos = end_pos }));
-    }
-
-    inline fn pushRuneToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
-        try self.tokens.append(self.alloc, Token.init(.rune, start_pos, .{ .end_pos = end_pos }));
-    }
-
-    inline fn pushOpToken(self: *Parser, operator_t: OperatorType, start_pos: u32) !void {
-        try self.tokens.append(self.alloc, Token.init(.operator, start_pos, .{
-            .operator_t = operator_t,
-        }));
-    }
-
-    inline fn pushIndentToken(self: *Parser, count: u32, start_pos: u32, spaces: bool) void {
-        self.tokens.append(self.alloc, Token.init(.indent, start_pos, .{
-            .indent = if (spaces) count else count | 0x80000000,
-        })) catch fatal();
-    }
-
-    inline fn pushToken(self: *Parser, token_t: TokenType, start_pos: u32) !void {
-        try self.tokens.append(self.alloc, Token.init(token_t, start_pos, .{ .end_pos = NullId }));
-    }
-
-    inline fn pushSpanToken(self: *Parser, token_t: TokenType, startPos: u32, endPos: u32) !void {
-        try self.tokens.append(self.alloc, Token.init(token_t, startPos, .{ .end_pos = endPos }));
-    }
-
-    /// When n=0, this is equivalent to peekToken.
-    inline fn peekTokenAhead(self: Parser, n: u32) Token {
-        if (self.next_pos + n < self.tokens.items.len) {
-            return self.tokens.items[self.next_pos + n];
+    /// When n=0, this is equivalent to peek.
+    inline fn peekAhead(self: Parser, n: u32) Token {
+        if (self.next_pos + n < self.tokens.len) {
+            return self.tokens[self.next_pos + n];
         } else {
             return Token.init(.none, self.next_pos, .{
-                .end_pos = NullId,
+                .end_pos = cy.NullNode,
             });
         }
     }
 
-    inline fn peekToken(self: Parser) Token {
-        if (!self.isAtEndToken()) {
-            return self.tokens.items[self.next_pos];
+    inline fn peek(self: Parser) Token {
+        if (!self.isAtEnd()) {
+            return self.tokens[self.next_pos];
         } else {
             return Token.init(.none, self.next_pos, .{
-                .end_pos = NullId,
+                .end_pos = cy.NullNode,
             });
         }
     }
 
-    inline fn advanceToken(self: *Parser) void {
+    inline fn advance(self: *Parser) void {
         self.next_pos += 1;
     }
 
-    inline fn isAtEndToken(self: Parser) bool {
-        return self.tokens.items.len == self.next_pos;
+    inline fn isAtEnd(self: Parser) bool {
+        return self.tokens.len == self.next_pos;
     }
 
-    inline fn consumeToken(self: *Parser) Token {
-        const token = self.tokens.items[self.next_pos];
+    inline fn consume(self: *Parser) Token {
+        const token = self.tokens[self.next_pos];
         self.next_pos += 1;
         return token;
-    }
-};
-
-pub const OperatorType = enum(u8) {
-    plus,
-    minus,
-    star,
-    caret,
-    slash,
-    percent,
-    ampersand,
-    verticalBar,
-    doubleVerticalBar,
-    tilde,
-    lessLess,
-    greaterGreater,
-    bang,
-    bang_equal,
-    less,
-    less_equal,
-    greater,
-    greater_equal,
-    equal_equal,
-};
-
-pub const TokenType = enum(u8) {
-    ident,
-    number,
-    float,
-    nonDecInt,
-    string,
-    rune,
-    templateString,
-    templateExprStart,
-    operator,
-    capture,
-    placeholder,
-    at,
-    pound,
-    question,
-    left_paren,
-    right_paren,
-    left_brace,
-    right_brace,
-    left_bracket,
-    right_bracket,
-    equal_greater,
-    comma,
-    colon,
-    dot,
-    dot_dot,
-    minusDotDot,
-    logic_op,
-    equal,
-    new_line,
-    indent,
-    return_k,
-    break_k,
-    case_k,
-    continue_k,
-    if_k,
-    else_k,
-    for_k,
-    while_k,
-    // await_k,
-    true_k,
-    false_k,
-    or_k,
-    and_k,
-    not_k,
-    as_k,
-    pass_k,
-    none_k,
-    type_k,
-    enum_k,
-    object_k,
-    error_k,
-    func_k,
-    coinit_k,
-    coyield_k,
-    coresume_k,
-    import_k,
-    try_k,
-    catch_k,
-    throw_k,
-    var_k,
-    switch_k,
-    my_k,
-    // Error token, returned if ignoreErrors = true.
-    err,
-    /// Used to indicate no token.
-    none,
-};
-
-pub const Token = extern struct {
-    // First 8 bits is the TokenType, last 24 bits is the start pos.
-    head: u32,
-    data: extern union {
-        end_pos: u32,
-        operator_t: OperatorType,
-        // Num indent spaces.
-        indent: u32,
-    },
-
-    pub fn init(ttype: TokenType, startPos: u32, data: std.meta.FieldType(Token, .data)) Token {
-        return .{
-            .head = (startPos << 8) | @intFromEnum(ttype),
-            .data = data,
-        };
-    }
-
-    pub inline fn tag(self: Token) TokenType {
-        return @enumFromInt(self.head & 0xff);
-    }
-
-    pub inline fn pos(self: Token) u32 {
-        return self.head >> 8;
     }
 };
 
@@ -3583,7 +3260,6 @@ pub const Result = struct {
                 .root_id = view.root_id,
                 .nodes = nodes,
                 .src = new_src,
-                .tokens = try alloc.dupe(Token, view.tokens),
                 .name = try alloc.dupe(u8, view.name),
                 .deps = deps,
             },
@@ -3605,12 +3281,6 @@ pub const Result = struct {
     }
 };
 
-pub fn getNodeString(p: *const Parser, nodeId: NodeId) []const u8 {
-    const node = p.nodes.items[nodeId];
-    const token = p.tokens.items[node.start_token];
-    return p.src[token.pos()..token.data.end_pos];
-}
-
 /// Result data is not owned.
 pub const ResultView = struct {
     root_id: NodeId,
@@ -3618,39 +3288,20 @@ pub const ResultView = struct {
     has_error: bool,
     isTokenError: bool,
 
-    /// ArrayList is returned so resulting ast can be modified.
-    nodes: *std.ArrayListUnmanaged(cy.Node),
-    tokens: []const Token,
-    src: []const u8,
+    ast: cy.ast.AstView,
 
     name: []const u8,
     deps: *std.StringHashMapUnmanaged(NodeId),
 
-    pub fn getFirstNodeString(self: ResultView, nodeId: NodeId) []const u8 {
-        const node = self.nodes.items[nodeId];
-        const token = self.tokens[node.start_token];
-        return self.src[token.pos()..token.data.end_pos];
-    }
-
-    pub fn getTokenString(self: ResultView, token_id: u32) []const u8 {
-        // Assumes token with end_pos.
-        const token = self.tokens[token_id];
-        return self.src[token.pos()..token.data.end_pos];
-    }
-
     pub fn dupe(self: ResultView, alloc: std.mem.Allocator) !Result {
         return try Result.init(alloc, self);
-    }
-
-    pub fn pushNode(self: ResultView, alloc: std.mem.Allocator, node_t: cy.NodeType, start: TokenId) NodeId {
-        return pushNodeToList(alloc, self.nodes, node_t, start);
     }
 
     pub fn assertOnlyOneStmt(self: ResultView, node_id: NodeId) ?NodeId {
         var count: u32 = 0;
         var stmt_id: NodeId = undefined;
         var cur_id = node_id;
-        while (cur_id != NullId) {
+        while (cur_id != cy.NullNode) {
             const cur = self.nodes.items[cur_id];
             if (cur.node_t == .at_stmt and cur.head.at_stmt.skip_compile) {
                 cur_id = cur.next;
@@ -3669,7 +3320,7 @@ pub const ResultView = struct {
     }
 };
 
-fn toBinExprOp(op: OperatorType) cy.ast.BinaryExprOp {
+fn toBinExprOp(op: cy.tokenizer.OperatorType) cy.ast.BinaryExprOp {
     return switch (op) {
         .plus => .plus,
         .minus => .minus,
@@ -3736,39 +3387,28 @@ pub fn getBinOpPrecedence(op: cy.ast.BinaryExprOp) u8 {
 }
 
 pub fn getLastStmt(nodes: []const cy.Node, head: NodeId, out_prev: *NodeId) NodeId {
-    var prev: NodeId = NullId;
+    var prev: NodeId = cy.NullNode;
     var cur_id = head;
-    while (cur_id != NullId) {
+    while (cur_id != cy.NullNode) {
         const node = nodes[cur_id];
-        if (node.next == NullId) {
+        if (node.next == cy.NullNode) {
             out_prev.* = prev;
             return cur_id;
         }
         prev = cur_id;
         cur_id = node.next;
     }
-    out_prev.* = NullId;
-    return NullId;
-}
-
-pub fn pushNodeToList(alloc: std.mem.Allocator, nodes: *std.ArrayListUnmanaged(cy.Node), node_t: cy.NodeType, start: u32) NodeId {
-    const id = nodes.items.len;
-    nodes.append(alloc, .{
-        .node_t = node_t,
-        .start_token = start,
-        .next = NullId,
-        .head = undefined,
-    }) catch fatal();
-    return @intCast(id);
+    out_prev.* = cy.NullNode;
+    return cy.NullNode;
 }
 
 test "Parse dependency variables" {
-    var parser = Parser.init(t.alloc);
+    var parser = try Parser.init(t.alloc);
     defer parser.deinit();
 
     var res = try parser.parseNoErr(
         \\foo
-    );
+    , .{});
     try t.eq(res.deps.size, 1);
     try t.eq(res.deps.contains("foo"), true);
 
@@ -3776,13 +3416,13 @@ test "Parse dependency variables" {
     res = try parser.parseNoErr(
         \\foo = 123
         \\foo
-    );
+    , .{});
     try t.eq(res.deps.size, 0);
 
     // Function call.
     res = try parser.parseNoErr(
         \\foo()
-    );
+    , .{});
     try t.eq(res.deps.size, 1);
     try t.eq(res.deps.contains("foo"), true);
 
@@ -3791,7 +3431,7 @@ test "Parse dependency variables" {
         \\func foo():
         \\  pass
         \\foo()
-    );
+    , .{});
     try t.eq(res.deps.size, 0);
 }
 
@@ -3802,846 +3442,6 @@ pub fn logSrcPos(src: []const u8, start: u32, len: u32) void {
         log.tracev("{s}", .{ src[start..start+len] });
     }
 }
-
-const StringDelim = enum(u2) {
-    single,
-    triple,
-};
-
-pub const TokenizeState = struct {
-    stateT: TokenizeStateTag,
-
-    /// For string interpolation, open parens can accumulate so the end of a template expression can be determined.
-    openParens: u8 = 0,
-
-    /// For string interpolation, if true the delim is a double quote otherwise it's a backtick.
-    stringDelim: StringDelim = .single,
-    hadTemplateExpr: u1 = 0,
-};
-
-pub const TokenizeStateTag = enum {
-    start,
-    token,
-    templateString,
-    templateExprToken,
-    end,
-};
-
-const TokenizerConfig = struct {
-    /// Use provided functions to read buffer and advance position.
-    user: bool,
-};
-
-/// Made generic in case there is a need to use a different src buffer. TODO: substring still needs to be abstracted into user fn.
-pub fn Tokenizer(comptime Config: TokenizerConfig) type {
-    return struct {
-        inline fn isAtEndChar(p: *const Parser) bool {
-            if (Config.user) {
-                return p.user.isAtEndChar(p.user.ctx);
-            } else {
-                return p.src.len == p.next_pos;
-            }
-        }
-
-        inline fn savePos(p: *Parser) void {
-            if (Config.user) {
-                p.user.savePos(p.user.ctx);
-            } else {
-                p.savePos = p.next_pos;
-            }
-        }
-
-        inline fn restorePos(p: *Parser) void {
-            if (Config.user) {
-                p.user.restorePos(p.user.ctx);
-            } else {
-                p.next_pos = p.savePos;
-            }
-        }
-
-        inline fn isNextChar(p: *const Parser, ch: u8) bool {
-            if (isAtEndChar(p)) {
-                return false;
-            }
-            return peekChar(p) == ch;
-        }
-
-        inline fn consumeChar(p: *Parser) u8 {
-            const ch = peekChar(p);
-            advanceChar(p);
-            return ch;
-        }
-
-        inline fn peekChar(p: *const Parser) u8 {
-            if (Config.user) {
-                return p.user.peekChar(p.user.ctx);
-            } else {
-                return p.src[p.next_pos];
-            }
-        }
-
-        inline fn getSubStrFrom(p: *const Parser, start: u32) []const u8 {
-            if (Config.user) {
-                return p.user.getSubStrFromDelta(p.user.ctx, p.next_pos - start);
-            } else {
-                return p.src[start..p.next_pos];
-            }
-        }
-
-        inline fn peekCharAhead(p: *const Parser, steps: u32) ?u8 {
-            if (Config.user) {
-                return p.user.peekCharAhead(p.user.ctx, steps);
-            } else {
-                if (p.next_pos < p.src.len - steps) {
-                    return p.src[p.next_pos + steps];
-                } else return null;
-            }
-        }
-
-        inline fn advanceChar(p: *Parser) void {
-            if (Config.user) {
-                p.user.advanceChar(p.user.ctx);
-            } else {
-                p.next_pos += 1;
-            }
-        }
-
-        /// Consumes the next token skipping whitespace and returns the next tokenizer state.
-        fn tokenizeOne(p: *Parser, state: TokenizeState) !TokenizeState {
-            if (isAtEndChar(p)) {
-                return .{
-                    .stateT = .end,
-                };
-            }
-
-            const start = p.next_pos;
-            var ch = consumeChar(p);
-            switch (ch) {
-                '(' => {
-                    try p.pushToken(.left_paren, start);
-                    if (state.stateT == .templateExprToken) {
-                        var next = state;
-                        next.openParens += 1;
-                        return next;
-                    }
-                },
-                ')' => {
-                    try p.pushToken(.right_paren, start);
-                    if (state.stateT == .templateExprToken) {
-                        var next = state;
-                        if (state.openParens == 0) {
-                            next.stateT = .templateString;
-                            next.openParens = 0;
-                            return next;
-                        } else {
-                            next.openParens -= 1;
-                            return next;
-                        }
-                    }
-                },
-                '{' => {
-                    try p.pushToken(.left_brace, start);
-                },
-                '}' => {
-                    try p.pushToken(.right_brace, start);
-                },
-                '[' => try p.pushToken(.left_bracket, start),
-                ']' => try p.pushToken(.right_bracket, start),
-                ',' => try p.pushToken(.comma, start),
-                '.' => {
-                    if (peekChar(p) == '.') {
-                        advanceChar(p);
-                        try p.pushToken(.dot_dot, start);
-                    } else {
-                        try p.pushToken(.dot, start);
-                    }
-                },
-                ':' => {
-                    try p.pushToken(.colon, start);
-                },
-                '@' => try p.pushToken(.at, start),
-                '-' => {
-                    if (peekChar(p) == '-') {
-                        advanceChar(p);
-                        // Single line comment. Ignore chars until eol.
-                        while (!isAtEndChar(p)) {
-                            if (peekChar(p) == '\n') {
-                                if (p.parseComments) {
-                                    try p.comments.append(p.alloc, cy.IndexSlice(u32).init(start, p.next_pos));
-                                }
-                                // Don't consume new line or the current indentation could augment with the next line.
-                                return tokenizeOne(p, state);
-                            }
-                            advanceChar(p);
-                        }
-                        if (p.parseComments) {
-                            try p.comments.append(p.alloc, cy.IndexSlice(u32).init(start, p.next_pos));
-                        }
-                        return .{ .stateT = .end };
-                    } else if (peekChar(p) == '>') {
-                        advanceChar(p);
-                        try p.pushToken(.capture, start);
-                    } else if (peekChar(p) == '.' and peekCharAhead(p, 1) == '.') {
-                        advanceChar(p);
-                        advanceChar(p);
-                        try p.pushToken(.minusDotDot, start);
-                    } else {
-                        try p.pushOpToken(.minus, start);
-                    }
-                },
-                '%' => try p.pushOpToken(.percent, start),
-                '&' => try p.pushOpToken(.ampersand, start),
-                '|' => {
-                    if (peekChar(p) == '|') {
-                        advanceChar(p);
-                        try p.pushOpToken(.doubleVerticalBar, start);
-                    } else {
-                        try p.pushOpToken(.verticalBar, start);
-                    }
-                },
-                '~' => try p.pushOpToken(.tilde, start),
-                '+' => {
-                    try p.pushOpToken(.plus, start);
-                },
-                '_' => {
-                    try p.pushToken(.placeholder, start);
-                },
-                '^' => {
-                    try p.pushOpToken(.caret, start);
-                },
-                '*' => {
-                    try p.pushOpToken(.star, start);
-                },
-                '/' => {
-                    try p.pushOpToken(.slash, start);
-                },
-                '!' => {
-                    if (isNextChar(p, '=')) {
-                        try p.pushOpToken(.bang_equal, start);
-                        advanceChar(p);
-                    } else {
-                        try p.pushOpToken(.bang, start);
-                    }
-                },
-                '=' => {
-                    if (!isAtEndChar(p)) {
-                        switch (peekChar(p)) {
-                            '=' => {
-                                advanceChar(p);
-                                try p.pushOpToken(.equal_equal, start);
-                            },
-                            '>' => {
-                                advanceChar(p);
-                                try p.pushToken(.equal_greater, start);
-                            },
-                            else => {
-                                try p.pushToken(.equal, start);
-                            }
-                        }
-                    } else {
-                        try p.pushToken(.equal, start);
-                    }
-                },
-                '<' => {
-                    const ch2 = peekChar(p);
-                    if (ch2 == '=') {
-                        try p.pushOpToken(.less_equal, start);
-                        advanceChar(p);
-                    } else if (ch2 == '<') {
-                        try p.pushOpToken(.lessLess, start);
-                        advanceChar(p);
-                    } else {
-                        try p.pushOpToken(.less, start);
-                    }
-                },
-                '>' => {
-                    const ch2 = peekChar(p);
-                    if (ch2 == '=') {
-                        try p.pushOpToken(.greater_equal, start);
-                        advanceChar(p);
-                    } else if (ch2 == '>') {
-                        try p.pushOpToken(.greaterGreater, start);
-                        advanceChar(p);
-                    } else {
-                        try p.pushOpToken(.greater, start);
-                    }
-                },
-                ' ',
-                '\r',
-                '\t' => {
-                    // Consume whitespace.
-                    while (!isAtEndChar(p)) {
-                        var ch2 = peekChar(p);
-                        switch (ch2) {
-                            ' ',
-                            '\r',
-                            '\t' => advanceChar(p),
-                            else => return tokenizeOne(p, state),
-                        }
-                    }
-                    return .{ .stateT = .end };
-                },
-                '\n' => {
-                    try p.pushToken(.new_line, start);
-                    return .{ .stateT = .start };
-                },
-                '`' => {
-                    // UTF-8 codepoint literal (rune).
-                    if (isAtEndChar(p)) {
-                        return p.reportTokenError("Expected UTF-8 rune.", &.{});
-                    }
-                    while (true) {
-                        if (isAtEndChar(p)) {
-                            return p.reportTokenError("Expected UTF-8 rune.", &.{});
-                        }
-                        ch = peekChar(p);
-                        if (ch == '\\') {
-                            advanceChar(p);
-                            if (isAtEndChar(p)) {
-                                return p.reportTokenError("Expected back tick or backslash.", &.{});
-                            }
-                            advanceChar(p);
-                        } else {
-                            advanceChar(p);
-                            if (ch == '`') {
-                                break;
-                            }
-                        }
-                    }
-                    try p.pushRuneToken(start+1, p.next_pos-1);
-                },
-                '"' => {
-                    if (state.stateT == .templateExprToken) {
-                        return p.reportTokenError("Nested string literal is not allowed.", &.{});
-                    } else {
-                        if (peekChar(p) == '"') {
-                            if (peekCharAhead(p, 1)) |ch2| {
-                                if (ch2 == '"') {
-                                    _ = consumeChar(p);
-                                    _ = consumeChar(p);
-                                    return tokenizeTemplateStringOne(p, .{
-                                        .stateT = state.stateT,
-                                        .stringDelim = .triple,
-                                    });
-                                }
-                            }
-                        }
-                        return tokenizeTemplateStringOne(p, .{
-                            .stateT = state.stateT,
-                            .stringDelim = .single,
-                        });
-                    }
-                },
-                '\'' => {
-                    if (state.stateT == .templateExprToken) {
-                        // Only allow raw-string literals inside template expressions.
-                        try tokenizeSingleLineRawString(p, p.next_pos);
-                        return state;
-                    } else {
-                        if (peekChar(p) == '\'') {
-                            if (peekCharAhead(p, 1)) |ch2| {
-                                if (ch2 == '\'') {
-                                    _ = consumeChar(p);
-                                    _ = consumeChar(p);
-                                    try tokenizeMultiLineRawString(p, p.next_pos);
-                                    return state;
-                                }
-                            }
-                        }
-                        try tokenizeSingleLineRawString(p, p.next_pos);
-                        return state;
-                    }
-                },
-                '#' => try p.pushToken(.pound, start),
-                '?' => try p.pushToken(.question, start),
-                else => {
-                    if (std.ascii.isAlphabetic(ch)) {
-                        try tokenizeKeywordOrIdent(p, start);
-                        return .{ .stateT = .token };
-                    }
-                    if (ch >= '0' and ch <= '9') {
-                        try tokenizeNumber(p, start);
-                        return .{ .stateT = .token };
-                    }
-                    if (p.tokenizeOpts.ignoreErrors) {
-                        try p.pushToken(.err, start);
-                        return .{ .stateT = .token };
-                    } else {
-                        return p.reportTokenErrorAt("unknown character: {} ({}) at {}", &.{fmt.char(ch), fmt.v(ch), fmt.v(start)}, start);
-                    }
-                }
-            }
-            return .{ .stateT = .token };
-        }
-
-        /// Returns true if an indent or new line token was parsed.
-        fn tokenizeIndentOne(p: *Parser) !bool {
-            if (isAtEndChar(p)) {
-                return false;
-            }
-            var ch = peekChar(p);
-            switch (ch) {
-                ' ' => {
-                    const start = p.next_pos;
-                    advanceChar(p);
-                    var count: u32 = 1;
-                    while (true) {
-                        if (isAtEndChar(p)) {
-                            break;
-                        }
-                        ch = peekChar(p);
-                        if (ch == ' ') {
-                            count += 1;
-                            advanceChar(p);
-                        } else break;
-                    }
-                    p.pushIndentToken(count, start, true);
-                    return true;
-                },
-                '\t' => {
-                    const start = p.next_pos;
-                    advanceChar(p);
-                    var count: u32 = 1;
-                    while (true) {
-                        if (isAtEndChar(p)) {
-                            break;
-                        }
-                        ch = peekChar(p);
-                        if (ch == '\t') {
-                            count += 1;
-                            advanceChar(p);
-                        } else break;
-                    }
-                    p.pushIndentToken(count, start, false);
-                    return true;
-                },
-                '\n' => {
-                    try p.pushToken(.new_line, p.next_pos);
-                    advanceChar(p);
-                    return true;
-                },
-                else => return false,
-            }
-        }
-
-        /// Step tokenizer with provided state.
-        pub fn tokenizeStep(p: *Parser, state: TokenizeState) anyerror!TokenizeState {
-            if (isAtEndChar(p)) {
-                return .end;
-            }
-            switch (state) {
-                .start => {
-                    if (tokenizeIndentOne(p)) {
-                        return .start;
-                    } else {
-                        return try tokenizeStep(p, .token);
-                    }
-                },
-                .token => {
-                    return tokenizeOne(p, state);
-                },
-                .templateToken => {
-                    return tokenizeOne(p, state);
-                },
-                .end => return error.AtEnd,
-            }
-        }
-
-        fn tokenize(p: *Parser, opts: TokenizeOptions) !void {
-            p.tokenizeOpts = opts;
-            p.tokens.clearRetainingCapacity();
-            p.next_pos = 0;
-
-            if (p.src.len >= 3) {
-                if (p.src[0] == 0xEF and p.src[1] == 0xBB and p.src[2] == 0xBF) {
-                    // Skip UTF-8 BOM.
-                    p.next_pos = 3;
-                }
-            }
-
-            if (p.src.len >= p.next_pos + 2) {
-                if (p.src[p.next_pos] == '#' and p.src[p.next_pos+1] == '!') {
-                    // Ignore shebang line.
-                    while (!isAtEndChar(p)) {
-                        if (peekChar(p) == '\n') {
-                            advanceChar(p);
-                            break;
-                        }
-                        advanceChar(p);
-                    }
-                }
-            }
-
-            var state = TokenizeState{
-                .stateT = .start,
-            };
-            while (true) {
-                switch (state.stateT) {
-                    .start => {
-                        // First parse indent spaces.
-                        while (true) {
-                            if (!(try tokenizeIndentOne(p))) {
-                                state.stateT = .token;
-                                break;
-                            }
-                        }
-                    },
-                    .token => {
-                        while (true) {
-                            state = try tokenizeOne(p, state);
-                            if (state.stateT != .token) {
-                                break;
-                            }
-                        }
-                    },
-                    .templateString => {
-                        state = try tokenizeTemplateStringOne(p, state);
-                    },
-                    .templateExprToken => {
-                        while (true) {
-                            const nextState = try tokenizeOne(p, state);
-                            if (nextState.stateT != .token) {
-                                state = nextState;
-                                break;
-                            }
-                        }
-                    },
-                    .end => {
-                        break;
-                    },
-                }
-            }
-        }
-
-        /// Returns the next tokenizer state.
-        fn tokenizeTemplateStringOne(p: *Parser, state: TokenizeState) !TokenizeState {
-            const start = p.next_pos;
-            savePos(p);
-
-            while (true) {
-                if (isAtEndChar(p)) {
-                    if (p.tokenizeOpts.ignoreErrors) {
-                        restorePos(p);
-                        try p.pushToken(.err, start);
-                        return .{ .stateT = .token };
-                    } else return p.reportTokenErrorAt("UnterminatedString", &.{}, start);
-                }
-                const ch = peekChar(p);
-                switch (ch) {
-                    '"' => {
-                        if (state.stringDelim == .single) {
-                            if (state.hadTemplateExpr == 1) {
-                                try p.pushTemplateStringToken(start, p.next_pos);
-                            } else {
-                                try p.pushStringToken(start, p.next_pos);
-                            }
-                            _ = consumeChar(p);
-                            return .{ .stateT = .token };
-                        } else if (state.stringDelim == .triple) {
-                            var ch2 = peekCharAhead(p, 1) orelse 0;
-                            if (ch2 == '"') {
-                                ch2 = peekCharAhead(p, 2) orelse 0;
-                                if (ch2 == '"') {
-                                    if (state.hadTemplateExpr == 1) {
-                                        try p.pushTemplateStringToken(start, p.next_pos);
-                                    } else {
-                                        try p.pushStringToken(start, p.next_pos);
-                                    }
-                                    _ = consumeChar(p);
-                                    _ = consumeChar(p);
-                                    _ = consumeChar(p);
-                                    return .{ .stateT = .token };
-                                }
-                            }
-                        }
-                        _ = consumeChar(p);
-                    },
-                    '$' => {
-                        const ch2 = peekCharAhead(p, 1) orelse 0;
-                        if (ch2 == '(') {
-                            try p.pushTemplateStringToken(start, p.next_pos);
-                            try p.pushToken(.templateExprStart, p.next_pos);
-                            advanceChar(p);
-                            advanceChar(p);
-                            var next = state;
-                            next.stateT = .templateExprToken;
-                            next.openParens = 0;
-                            next.hadTemplateExpr = 1;
-                            return next;
-                        } else {
-                            advanceChar(p);
-                        }
-                    },
-                    '\\' => {
-                        // Escape the next character.
-                        _ = consumeChar(p);
-                        if (isAtEndChar(p)) {
-                            if (p.tokenizeOpts.ignoreErrors) {
-                                restorePos(p);
-                                try p.pushToken(.err, start);
-                                return .{ .stateT = .token };
-                            } else return p.reportTokenErrorAt("UnterminatedString", &.{}, start);
-                        }
-                        _ = consumeChar(p);
-                        continue;
-                    },
-                    '\n' => {
-                        if (state.stringDelim == .single) {
-                            if (p.tokenizeOpts.ignoreErrors) {
-                                restorePos(p);
-                                try p.pushToken(.err, start);
-                                return .{ .stateT = .token };
-                            } else return p.reportTokenErrorAt("Encountered new line in single line literal.", &.{}, start);
-                        }
-                        _ = consumeChar(p);
-                    },
-                    else => {
-                        _ = consumeChar(p);
-                    },
-                }
-            }
-        }
-
-        fn consumeIdent(p: *Parser) void {
-            // Consume alpha.
-            while (true) {
-                if (isAtEndChar(p)) {
-                    return;
-                }
-                const ch = peekChar(p);
-                if (std.ascii.isAlphabetic(ch)) {
-                    advanceChar(p);
-                    continue;
-                } else break;
-            }
-
-            // Consume alpha, numeric, underscore.
-            while (true) {
-                if (isAtEndChar(p)) {
-                    return;
-                }
-                const ch = peekChar(p);
-                if (std.ascii.isAlphanumeric(ch)) {
-                    advanceChar(p);
-                    continue;
-                }
-                if (ch == '_') {
-                    advanceChar(p);
-                    continue;
-                }
-                return;
-            }
-        }
-
-        fn tokenizeKeywordOrIdent(p: *Parser, start: u32) !void {
-            consumeIdent(p);
-            if (keywords.get(getSubStrFrom(p, start))) |token_t| {
-                try p.pushSpanToken(token_t, start, p.next_pos);
-            } else {
-                try p.pushIdentToken(start, p.next_pos);
-            }
-        }
-
-        fn tokenizeSingleLineRawString(p: *Parser, start: u32) !void {
-            savePos(p);
-            while (true) {
-                if (isAtEndChar(p)) {
-                    if (p.tokenizeOpts.ignoreErrors) {
-                        restorePos(p);
-                        try p.pushToken(.err, start);
-                    } else return p.reportTokenErrorAt("UnterminatedString", &.{}, start);
-                }
-                if (peekChar(p) == '\'') {
-                    try p.pushStringToken(start, p.next_pos);
-                    advanceChar(p);
-                    return;
-                } else if (peekChar(p) == '\n') {
-                    return p.reportTokenErrorAt("Encountered new line in single line literal.", &.{}, start);
-                } else {
-                    advanceChar(p);
-                }
-            }
-        }
-
-        fn tokenizeMultiLineRawString(p: *Parser, start: u32) !void {
-            savePos(p);
-            while (true) {
-                if (isAtEndChar(p)) {
-                    if (p.tokenizeOpts.ignoreErrors) {
-                        restorePos(p);
-                        try p.pushToken(.err, start);
-                    } else return p.reportTokenErrorAt("UnterminatedString", &.{}, start);
-                }
-                if (peekChar(p) == '\'') {
-                    const ch = peekCharAhead(p, 1) orelse {
-                        advanceChar(p);
-                        continue;
-                    };
-                    const ch2 = peekCharAhead(p, 2) orelse {
-                        advanceChar(p);
-                        continue;
-                    };
-                    if (ch == '\'' and ch2 == '\'') {
-                        try p.pushStringToken(start, p.next_pos);
-                        advanceChar(p);
-                        advanceChar(p);
-                        advanceChar(p);
-                        return;
-                    } else {
-                        advanceChar(p);
-                        continue;
-                    }
-                } else {
-                    advanceChar(p);
-                }
-            }
-        }
-
-        fn consumeDigits(p: *Parser) void {
-            while (true) {
-                if (isAtEndChar(p)) {
-                    return;
-                }
-                const ch = peekChar(p);
-                if (ch >= '0' and ch <= '9') {
-                    advanceChar(p);
-                    continue;
-                } else break;
-            }
-        }
-
-        /// Assumes first digit is consumed.
-        fn tokenizeNumber(p: *Parser, start: u32) !void {
-            if (isAtEndChar(p)) {
-                try p.pushNumberToken(start, p.next_pos);
-                return;
-            }
-
-            var ch = peekChar(p);
-            if ((ch >= '0' and ch <= '9') or ch == '.' or ch == 'e') {
-                consumeDigits(p);
-                if (isAtEndChar(p)) {
-                    try p.pushNumberToken(start, p.next_pos);
-                    return;
-                }
-
-                var isFloat = false;
-                ch = peekChar(p);
-                if (ch == '.') {
-                    const next = peekCharAhead(p, 1) orelse {
-                        try p.pushNumberToken(start, p.next_pos);
-                        return;
-                    };
-                    if (next < '0' or next > '9') {
-                        try p.pushNumberToken(start, p.next_pos);
-                        return;
-                    } 
-                    advanceChar(p);
-                    advanceChar(p);
-                    consumeDigits(p);
-                    if (isAtEndChar(p)) {
-                        try p.pushFloatToken(start, p.next_pos);
-                        return;
-                    }
-                    ch = peekChar(p);
-                    isFloat = true;
-                }
-
-                if (ch == 'e') {
-                    advanceChar(p);
-                    if (isAtEndChar(p)) {
-                        return p.reportTokenError("Expected number.", &.{});
-                    }
-                    ch = peekChar(p);
-                    if (ch == '-') {
-                        advanceChar(p);
-                        if (isAtEndChar(p)) {
-                            return p.reportTokenError("Expected number.", &.{});
-                        }
-                        ch = peekChar(p);
-                    }
-                    if (ch < '0' and ch > '9') {
-                        return p.reportTokenError("Expected number.", &.{});
-                    }
-
-                    consumeDigits(p);
-                    isFloat = true;
-                }
-
-                if (isFloat) {
-                    try p.pushFloatToken(start, p.next_pos);
-                } else {
-                    try p.pushNumberToken(start, p.next_pos);
-                }
-                return;
-            }
-
-            if (p.src[p.next_pos-1] == '0') {
-                // Less common integer notation.
-                if (ch == 'x') {
-                    // Hex integer.
-                    advanceChar(p);
-                    while (true) {
-                        if (isAtEndChar(p)) {
-                            break;
-                        }
-                        ch = peekChar(p);
-                        if ((ch >= '0' and ch <= '9') or (ch >= 'A' and ch <= 'Z') or (ch >= 'a' and ch <= 'z')) {
-                            advanceChar(p);
-                            continue;
-                        } else break;
-                    }
-                    try p.pushNonDecimalIntegerToken(start, p.next_pos);
-                    return;
-                } else if (ch == 'o') {
-                    // Oct integer.
-                    advanceChar(p);
-                    while (true) {
-                        if (isAtEndChar(p)) {
-                            break;
-                        }
-                        ch = peekChar(p);
-                        if (ch >= '0' and ch <= '8') {
-                            advanceChar(p);
-                            continue;
-                        } else break;
-                    }
-                    try p.pushNonDecimalIntegerToken(start, p.next_pos);
-                    return;
-                } else if (ch == 'b') {
-                    // Bin integer.
-                    advanceChar(p);
-                    while (true) {
-                        if (isAtEndChar(p)) {
-                            break;
-                        }
-                        ch = peekChar(p);
-                        if (ch == '0' or ch == '1') {
-                            advanceChar(p);
-                            continue;
-                        } else break;
-                    }
-                    try p.pushNonDecimalIntegerToken(start, p.next_pos);
-                    return;
-                } else {
-                    if (std.ascii.isAlphabetic(ch)) {
-                        const char: []const u8 = &[_]u8{ ch };
-                        return p.reportTokenError("Unsupported integer notation: {}", &.{v(char)});
-                    }
-                }
-            }
-
-            // Push single digit number.
-            try p.pushNumberToken(start, p.next_pos);
-            return;
-        }
-    };
-}
-
-const TokenizeOptions = struct {
-    /// Used for syntax highlighting.
-    ignoreErrors: bool = false,
-};
 
 const ParseExprOptions = struct {
     returnLeftAssignExpr: bool = false,
@@ -4668,15 +3468,6 @@ pub const StaticDecl = struct {
     },
 };
 
-test "parser internals." {
-    try t.eq(@sizeOf(Token), 8);
-    try t.eq(@alignOf(Token), 4);
-    try t.eq(@sizeOf(TokenizeState), 4);
-
-    try t.eq(std.enums.values(TokenType).len, 63);
-    try t.eq(keywords.kvs.len, 31);
-}
-
 fn isRecedingIndent(p: *Parser, prevIndent: u32, curIndent: u32, indent: u32) !bool {
     if (indent ^ curIndent < 0x80000000) {
         return indent <= prevIndent;
@@ -4685,10 +3476,26 @@ fn isRecedingIndent(p: *Parser, prevIndent: u32, curIndent: u32, indent: u32) !b
             return true;
         } else {
             if (curIndent & 0x80000000 == 0x80000000) {
-                return p.reportParseError("Expected tabs for indentation.", &.{});
+                return p.reportError("Expected tabs for indentation.", &.{});
             } else {
-                return p.reportParseError("Expected spaces for indentation.", &.{});
+                return p.reportError("Expected spaces for indentation.", &.{});
             }
+        }
+    }
+}
+
+fn isRecordKeyNodeType(node_t: cy.NodeType) bool {
+    switch (node_t) {
+        .ident,
+        .stringLit,
+        .decLit,
+        .binLit,
+        .octLit,
+        .hexLit => {
+            return true;
+        },
+        else => {
+            return false;
         }
     }
 }

@@ -83,7 +83,7 @@ const Chunk = struct {
     tryStack: std.ArrayListUnmanaged(Try),
     indent: u32,
     emitSourceMap: bool,
-    ast: cy.ast.Source,
+    ast: cy.ast.AstView,
     srcUri: []const u8,
 
     fn deinit(c: *Chunk) void {
@@ -125,9 +125,8 @@ const Chunk = struct {
             var line: u32 = undefined;
             var col: u32 = undefined;
             var lineStart: u32 = undefined;
-            const node = c.ast.nodes[nodeId];
-            const token = c.ast.tokens[node.start_token];
-            cy.debug.computeLinePos(c.ast.src, token.pos(), &line, &col, &lineStart);
+            const node = c.ast.node(nodeId);
+            c.ast.computeLinePos(node.srcPos, &line, &col, &lineStart);
             try c.pushSpanFmtEnd("#line {} \"{s}\"", .{line, c.srcUri});
         }
         try c.pushIndent();

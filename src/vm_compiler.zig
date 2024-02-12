@@ -359,26 +359,19 @@ pub const AotCompileResult = struct {
 /// Parser pass collects static declaration info.
 fn performChunkParse(self: *VMcompiler, chunk: *cy.Chunk) !void {
     var tt = cy.debug.timer();
-    const ast = try chunk.parser.parse(chunk.src);
+    const res = try chunk.parser.parse(chunk.src, .{});
     tt.endPrint("parse");
     // Update buffer pointers so success/error paths can access them.
-    chunk.nodes = ast.nodes.items;
-    chunk.tokens = ast.tokens;
-    chunk.ast = .{
-        .nodes = ast.nodes.items,
-        .tokens = ast.tokens,
-        .src = ast.src,
-    };
-    chunk.encoder.src = chunk.ast;
-    if (ast.has_error) {
+    chunk.updateAstView(res.ast);
+    if (res.has_error) {
         self.lastErrChunk = chunk.id;
-        if (ast.isTokenError) {
+        if (res.isTokenError) {
             return error.TokenError;
         } else {
             return error.ParseError;
         }
     }
-    chunk.parserAstRootId = ast.root_id;
+    chunk.parserAstRootId = res.root_id;
 }
 
 /// Sema pass.
@@ -412,19 +405,33 @@ fn performChunkSemaDecls(c: *cy.Chunk) !void {
 }
 
 /// Sema on static initializers.
-fn performChunkInitSema(_: *VMcompiler, c: *cy.Chunk) !void {
+fn performChunkInitSema(self: *VMcompiler, c: *cy.Chunk) !void {
     log.tracev("Perform init sema. {} {s}", .{c.id, c.srcUri});
 
     const funcSigId = try c.sema.ensureFuncSig(&.{}, bt.None);
-    const func = try c.declareUserFunc(@ptrCast(c.sym), "$init", funcSigId, cy.NullId, false);
+
+    const decl = try c.parser.ast.pushNode(self.alloc, .funcDecl, cy.NullId);
+    const header = try c.parser.ast.pushNode(self.alloc, .funcHeader, cy.NullNode);
+    const name = try c.parser.ast.genSpanNode(self.alloc, .ident, "$init", null);
+    c.parser.ast.setNodeData(header, .{ .funcHeader = .{
+        .name = name,
+        .paramHead = cy.NullNode,
+    }});
+    c.parser.ast.setNodeData(decl, .{ .func = .{
+        .header = header,
+        .bodyHead = cy.NullNode,
+    }});
+    c.updateAstView(c.parser.ast.view());
+
+    const func = try c.declareUserFunc(@ptrCast(c.sym), "$init", funcSigId, decl, false);
 
     _ = try sema.pushFuncProc(c, func);
 
     for (c.parser.staticDecls.items) |sdecl| {
         switch (sdecl.declT) {
             .variable => {
-                const node = c.nodes[sdecl.nodeId];
-                if (node.node_t == .staticDecl) {
+                const node = c.ast.node(sdecl.nodeId);
+                if (node.type() == .staticDecl) {
                     try sema.staticDecl(c, sdecl.data.sym, sdecl.nodeId);
                 }
             },
@@ -441,10 +448,10 @@ fn performChunkInitSema(_: *VMcompiler, c: *cy.Chunk) !void {
     for (c.parser.staticDecls.items) |sdecl| {
         switch (sdecl.declT) {
             .variable => {
-                const node = c.nodes[sdecl.nodeId];
-                if (node.node_t == .staticDecl) {
+                const node = c.ast.node(sdecl.nodeId);
+                if (node.type() == .staticDecl) {
                     const info = c.symInitInfos.getPtr(sdecl.data.sym).?;
-                    try appendSymInitIrDFS(c, sdecl.data.sym, info, cy.NullId);
+                    try appendSymInitIrDFS(c, sdecl.data.sym, info, cy.NullNode);
                 }
             },
             else => {},
@@ -504,18 +511,18 @@ fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
 
     if (!self.moduleLoader.?(@ptrCast(self.vm), cc.initStr(task.absSpec), &res)) {
         const chunk = task.fromChunk;
-        if (task.nodeId == cy.NullId) {
+        if (task.nodeId == cy.NullNode) {
             if (self.hasApiError) {
                 return chunk.reportError(self.apiError, &.{});
             } else {
                 return chunk.reportError("Failed to load module: {}", &.{v(task.absSpec)});
             }
         } else {
-            const stmt = chunk.nodes[task.nodeId];
+            const stmt = chunk.ast.node(task.nodeId);
             if (self.hasApiError) {
-                return chunk.reportErrorAt(self.apiError, &.{}, stmt.head.left_right.right);
+                return chunk.reportErrorAt(self.apiError, &.{}, stmt.data.importStmt.spec);
             } else {
-                return chunk.reportErrorAt("Failed to load module: {}", &.{v(task.absSpec)}, stmt.head.left_right.right);
+                return chunk.reportErrorAt("Failed to load module: {}", &.{v(task.absSpec)}, stmt.data.importStmt.spec);
             }
         }
     }
@@ -563,7 +570,7 @@ fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
         builtinSym = try self.sema.createChunkSym();
         const importCore = ImportTask{
             .fromChunk = mainChunk,
-            .nodeId = cy.NullId,
+            .nodeId = cy.NullNode,
             .absSpec = try self.alloc.dupe(u8, "builtins"),
             .sym = builtinSym,
         };
@@ -717,8 +724,8 @@ fn declareSymbols(self: *VMcompiler) !void {
                 .variable => {
                     const sym = try sema.declareVar(chunk, decl.nodeId);
                     decl.data = .{ .sym = sym };
-                    const node = chunk.nodes[decl.nodeId];
-                    if (node.node_t == .staticDecl) {
+                    const node = chunk.ast.node(decl.nodeId);
+                    if (node.type() == .staticDecl) {
                         chunk.hasStaticInit = true;
                     }
                 },
@@ -728,10 +735,6 @@ fn declareSymbols(self: *VMcompiler) !void {
                 },
                 .funcInit => {
                     try sema.declareFuncInit(chunk, @ptrCast(chunk.sym), decl.nodeId);
-                    const node = chunk.nodes[decl.nodeId];
-                    if (node.node_t == .funcDeclInit) {
-                        chunk.hasStaticInit = true;
-                    }
                 },
                 .object => {
                     try sema.declareObjectMembers(chunk, decl.data.sym, decl.nodeId);

@@ -27,10 +27,11 @@ pub const Chunk = struct {
     sema: *cy.Sema,
     vm: *cy.VM,
 
-    /// Source code.
+    /// Source code. Can be owned depending on `srcOwned`
     src: []const u8,
 
-    ast: cy.ast.Source,
+    /// Read-only view of the AST.
+    ast: cy.ast.AstView,
 
     /// Owned, absolute path to source.
     srcUri: []const u8,
@@ -133,9 +134,6 @@ pub const Chunk = struct {
     jitBuf: *jitgen.CodeBuffer,
     x64Enc: X64.Encoder,
 
-    nodes: []cy.Node,
-    tokens: []const cy.Token,
-
     /// Whether the src is owned by the chunk.
     srcOwned: bool,
 
@@ -196,10 +194,8 @@ pub const Chunk = struct {
             .ast = undefined,
             .srcUri = srcUri,
             .sym = sym,
-            .parser = cy.Parser.init(c.alloc),
+            .parser = try cy.Parser.init(c.alloc),
             .parserAstRootId = cy.NullId,
-            .nodes = undefined,
-            .tokens = undefined,
             .semaProcs = .{},
             .semaBlocks = .{},
             .capVarDescs = .{},
@@ -267,8 +263,6 @@ pub const Chunk = struct {
             // new.exprStack = .{};
             new.llvmFuncs = &.{};
         }
-        try new.parser.tokens.ensureTotalCapacityPrecise(c.alloc, 511);
-        try new.parser.nodes.ensureTotalCapacityPrecise(c.alloc, 127);
         return new;
     }
 
@@ -341,6 +335,11 @@ pub const Chunk = struct {
         if (self.srcOwned) {
             self.alloc.free(self.src);
         }
+    }
+
+    pub fn updateAstView(self: *cy.Chunk, ast: cy.ast.AstView) void {
+        self.ast = ast;
+        self.encoder.ast = ast;
     }
 
     pub fn genBlock(self: *cy.Chunk) *bc_gen.Block {
@@ -459,19 +458,6 @@ pub const Chunk = struct {
         // If boxed, the var needs to be copied out of the box.
         // If static selected, the var needs to be copied to a local.
         return !svar.isBoxed and !svar.isStaticAlias;
-    }
-
-    /// Checks to see if the ident references a local to avoid a copy to dst.
-    fn userLocalOrDst(self: *Chunk, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool) LocalId {
-        if (self.nodes[nodeId].node_t == .ident) {
-            if (self.genGetVar(self.nodes[nodeId].head.ident.semaVarId)) |svar| {
-                if (canUseVarAsDst(svar)) {
-                    return svar.local;
-                }
-            }
-        }
-        usedDst.* = true;
-        return dst;
     }
 
     pub fn pushTempOperand(self: *Chunk, operand: u8) !void {
@@ -684,17 +670,6 @@ pub const Chunk = struct {
     pub fn reportErrorAt(self: *Chunk, format: []const u8, args: []const fmt.FmtValue, nodeId: cy.NodeId) error{CompileError, OutOfMemory, FormatError} {
         try self.setErrorFmtAt(format, args, nodeId);
         return error.CompileError;
-    }
-
-    pub fn getNodeStringById(self: *const Chunk, nodeId: cy.NodeId) []const u8 {
-        const node = self.nodes[nodeId];
-        const token = self.tokens[node.start_token];
-        return self.src[token.pos()..token.data.end_pos];
-    }
-
-    pub fn getNodeString(self: *const Chunk, node: cy.Node) []const u8 {
-        const token = self.tokens[node.start_token];
-        return self.src[token.pos()..token.data.end_pos];
     }
 
     pub fn getUnwindTempsLen(c: *Chunk) usize {

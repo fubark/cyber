@@ -47,9 +47,13 @@ t.eq(a['abc'], 123)
 a[Array('abc')[1..]] = 123
 t.eq(a['bc'], 123)
 
--- Number key.
-a[32] = 123
-t.eq(a[32], 123)
+-- Various key types.
+a[32] = 1
+t.eq(a[32], 1)
+a[1.02] = 2
+t.eq(a[1.02], 2)
+a[0xff] = 3
+t.eq(a[0xff], 3)
 
 -- Access expression. One level.
 a = [

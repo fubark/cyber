@@ -386,7 +386,7 @@ pub const ChunkExt = struct {
         const name = mod.chunk.getNextUniqUnnamedIdent(&buf);
 
         const nameDup = try c.alloc.dupe(u8, name);
-        try c.parser.strs.append(c.alloc, nameDup);
+        try c.parser.ast.strs.append(c.alloc, nameDup);
 
         const typeId = try c.sema.pushType();
         const sym = try cy.sym.createSym(c.alloc, .object, .{
@@ -404,7 +404,8 @@ pub const ChunkExt = struct {
         const symId = try addSym(c, mod, name, @ptrCast(sym));
 
         // Update node's `name` so it can do a lookup during resolving.
-        mod.chunk.ast.nodes[declId].head.objectDecl.name = symId;
+        const node = mod.chunk.ast.node(declId);
+        mod.chunk.parser.ast.nodePtr(node.data.objectDecl.header).data.objectHeader.name = @intCast(symId);
 
         c.compiler.sema.types.items[typeId] = .{
             .sym = @ptrCast(sym),
@@ -631,8 +632,8 @@ pub const ChunkExt = struct {
 fn ensureTypeAliasIsResolved(mod: *Module, alias: *cy.sym.TypeAlias) !void {
     if (alias.type == cy.NullId) {
         const srcChunk = mod.chunk;
-        const node = srcChunk.nodes[alias.declId];
-        alias.type = try cy.sema.resolveTypeSpecNode(srcChunk, node.head.typeAliasDecl.typeSpecHead);
+        const node = srcChunk.ast.node(alias.declId);
+        alias.type = try cy.sema.resolveTypeSpecNode(srcChunk, node.data.typeAliasDecl.typeSpecHead);
         alias.sym = mod.chunk.compiler.sema.types.items[alias.type].sym;
     }
 }

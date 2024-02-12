@@ -9,14 +9,14 @@ pub const NodeId = ast.NodeId;
 pub const BinaryExprOp = ast.BinaryExprOp;
 pub const UnaryOp = ast.UnaryOp;
 
+pub const tokenizer = @import("tokenizer.zig");
+pub const Tokenizer = tokenizer.Tokenizer;
+pub const TokenType = tokenizer.TokenType;
+
 pub const parser = @import("parser.zig");
 pub const Parser = parser.Parser;
 pub const ParseResultView = parser.ResultView;
 pub const ParseResult = parser.Result;
-pub const Token = parser.Token;
-pub const Tokenizer = parser.Tokenizer;
-pub const TokenizeState = parser.TokenizeState;
-pub const TokenType = parser.TokenType;
 
 pub const sema = @import("sema.zig");
 pub const Sema = sema.Sema;
@@ -175,9 +175,11 @@ pub const Malloc = build_options.malloc;
 pub var tempBuf: [1000]u8 align(4) = undefined;
 
 const std = @import("std");
+pub const NullNode: NodeId = 0;
 pub const NullId = std.math.maxInt(u32);
 pub const NullU8 = std.math.maxInt(u8);
 pub const NullU16 = std.math.maxInt(u16);
+pub const NullU24 = std.math.maxInt(u24);
 
 /// Document that a id type can contain NullId.
 pub fn Nullable(comptime T: type) type {

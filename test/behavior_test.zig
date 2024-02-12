@@ -877,7 +877,7 @@ test "Stack trace unwinding." {
         trace = run.getStackTrace();
         try t.eq(trace.frames.len, 2);
         try eqStackFrame(trace.frames[0], .{
-            .name = "init",
+            .name = "$init",
             .chunkId = 2,
             .line = 0,
             .col = 11,
@@ -902,7 +902,7 @@ test "Stack trace unwinding." {
             try run_.expectErrorReport(res_, error.Panic,
                 \\panic: error.boom
                 \\
-                \\@AbsPath(test/modules/test_mods/init_throw_error.cy):1:12 init:
+                \\@AbsPath(test/modules/test_mods/init_throw_error.cy):1:12 $init:
                 \\var .foo = throw error.boom
                 \\           ^
                 \\./test/main.cy: main
@@ -911,7 +911,7 @@ test "Stack trace unwinding." {
             const trace_ = run_.getStackTrace();
             try t.eq(trace_.frames.len, 2);
             try eqStackFrame(trace_.frames[0], .{
-                .name = "init",
+                .name = "$init",
                 .chunkId = 2,
                 .line = 0,
                 .col = 11,

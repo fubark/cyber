@@ -7,63 +7,67 @@ const log = cy.log.scoped(.ast);
 
 pub const NodeId = u32;
 
-pub const NodeType = enum {
+pub const NodeType = enum(u8) {
+    @"null",
     root,
     exprStmt,
-    assign_stmt,
+    assignStmt,
     opAssignStmt,
     varSpec,
     staticDecl,
     localDecl,
-    pass_stmt,
+    passStmt,
     breakStmt,
     continueStmt,
-    return_stmt,
-    return_expr_stmt,
+    returnStmt,
+    returnExprStmt,
     comptimeExpr,
     comptimeStmt,
     dirModifier,
     ident,
-    true_literal,
-    false_literal,
-    none,
-    string,
+    trueLit,
+    falseLit,
+    noneLit,
+    stringLit,
     runeLit,
     stringTemplate,
     await_expr,
     accessExpr,
     indexExpr,
     sliceExpr,
+    range,
     callExpr,
-    named_arg,
+    namedArg,
     binExpr,
     unary_expr,
-    number,
-    float,
-    nonDecInt,
+    binLit,
+    decLit,
+    octLit,
+    hexLit,
+    floatLit,
     condExpr,
     ifStmt,
+    ifBranch,
     elseBlock,
     whileInfStmt,
     whileCondStmt,
     whileOptStmt,
-    forRange,
+    whileOptHeader,
+    forRangeHeader,
     forRangeStmt,
     forIterStmt,
     forIterHeader,
-    range_clause,
     eachClause,
     label_decl,
     hostVarDecl,
     hostFuncDecl,
     funcDecl,
-    funcDeclInit,
     funcHeader,
     funcParam,
     hostObjectDecl,
     seqDestructure,
     objectDecl,
-    objectDeclBody,
+    objectHeader,
     objectField,
     objectInit,
     typeAliasDecl,
@@ -74,8 +78,8 @@ pub const NodeType = enum {
     errorSymLit,
     lambda_expr, 
     lambda_multi,
-    arrayLiteral,
-    recordLiteral,
+    arrayLit,
+    recordLit,
     keyValue,
     coinit,
     coyield,
@@ -83,9 +87,11 @@ pub const NodeType = enum {
     importStmt,
     tryExpr,
     tryStmt,
+    catchStmt,
     throwExpr,
     group,
     caseBlock,
+    caseHeader,
     switchStmt,
     switchExpr,
     castExpr,
@@ -95,248 +101,353 @@ pub const DirModifierType = enum(u8) {
     host,
 };
 
-pub const Node = struct {
-    /// TODO: Since type is often accessed before visiting a node, it should go into a separate array.
-    node_t: NodeType,
-    hasParentAssignStmt: bool = false,
-
-    /// TODO: Once tokenizer is merged into AST parser, this would become src start pos.
-    start_token: u32,
-
-    next: NodeId,
-    /// Fixed size. TODO: Rename to `data`.
-    head: union {
-        exprStmt: struct {
-            child: NodeId,
-            isLastRootStmt: bool = false, 
+const NodeHead = packed struct {
+    type: NodeType,
+    data: packed union {
+        // Statements use next to advance to the next statement.
+        // Expressions also use this for sequential arguments.
+        next: u24,
+        funcHeader: packed struct {
+            modHead: cy.Nullable(u24),
         },
-        tryStmt: struct {
-            tryFirstStmt: NodeId,
-            errorVar: cy.Nullable(NodeId),
-            catchFirstStmt: NodeId,
+        objectHeader: packed struct {
+            modHead: cy.Nullable(u24),
         },
-        tryExpr: struct {
-            expr: NodeId,
-            catchExpr: cy.Nullable(NodeId),
+        varSpec: packed struct {
+            modHead: cy.Nullable(u24),
         },
-        errorSymLit: struct {
-            symbol: NodeId,
+        forRangeHeader: packed struct {
+            eachClause: u24,
         },
-        castExpr: struct {
-            expr: NodeId,
-            typeSpecHead: NodeId,
-        },
-        indexExpr: struct {
-            left: NodeId,
-            right: NodeId,
-        },
-        binExpr: struct {
-            left: NodeId,
-            right: NodeId,
-            op: BinaryExprOp,
-        },
-        opAssignStmt: struct {
-            left: NodeId,
-            right: NodeId,
-            op: BinaryExprOp,
-        },
-        caseBlock: struct {
-            // Null when `isElseCase` is true.
-            condHead: cy.Nullable(NodeId),
-            capture: cy.Nullable(NodeId),
-            bodyHead: NodeId,
-            numConds: u8,
-            isElseCase: bool,
-            bodyIsExpr: bool,
-        },
-        switchBlock: struct {
-            expr: NodeId,
-            caseHead: NodeId,
-            numCases: u8,
-        },
-        dirModifier: struct {
-            type: DirModifierType,
-        },
-        ifStmt: struct {
-            cond: NodeId,
-            bodyHead: cy.Nullable(cy.NodeId),
-            elseHead: cy.Nullable(cy.NodeId),
-            numElseBlocks: u8,
-        },
-        left_right: struct {
-            left: NodeId,
-            right: NodeId,
-            extra: u32 = cy.NullId,
-        },
-        accessExpr: struct {
-            left: NodeId,
-            right: NodeId,
-        },
-        callExpr: struct {
-            callee: NodeId,
-            arg_head: NodeId,
-            numArgs: u8,
-            has_named_arg: bool,
-        },
-        ident: struct {
-            semaVarId: u32 = cy.NullId,
-            semaModSymId: cy.module.ModuleSymId = cy.NullId,
-        },
-        unary: struct {
-            child: NodeId,
-            op: UnaryOp,
-        },
-        root: struct {
-            headStmt: NodeId,
-        },
-        child_head: NodeId,
-        arrayLiteral: struct {
-            argHead: NodeId,
-            numArgs: u8,
-        },
-        recordLiteral: struct {
-            argHead: NodeId,
-            numArgs: u8,
-        },
-        keyValue: struct {
-            left: NodeId,
-            right: NodeId,
-        },
-        comptimeExpr: struct {
-            child: NodeId,
-        },
-        comptimeStmt: struct {
-            expr: NodeId,
-        },
-        func: struct {
-            header: NodeId,
-            bodyHead: NodeId,
-            semaModFuncId: cy.module.ModuleFuncId = cy.NullId,
-        },
-        funcHeader: struct {
-            /// Can be NullId for lambdas.
-            name: cy.Nullable(NodeId),
-            paramHead: cy.Nullable(NodeId),
-            ret: cy.Nullable(NodeId),
-            // modifierHead is stored in `next`.
-        },
-        funcParam: struct {
-            name: NodeId,
-            /// Type spec consists of ident nodes linked by `next`.
-            typeSpecHead: cy.Nullable(NodeId),
-        },
-        typeAliasDecl: struct {
-            name: NodeId,
-            typeSpecHead: NodeId,
-        },
-        objectInit: struct {
-            name: NodeId,
-            initializer: NodeId, // Record literal.
-        },
-        objectField: struct {
-            name: NodeId,
-            /// Type spec path head (linked by `next`) or unnamed type decl.
-            typeSpec: cy.Nullable(NodeId),
-            typed: bool,
-        },
-        objectDecl: struct {
-            // `name` is an ident token with a semaSymId.
-            name: NodeId,
-            modifierHead: cy.Nullable(NodeId),
-            body: NodeId,
-
-            /// When true, a non null `name` references an unnamed `ModuleSymId`.
-            unnamed: bool,
-        },
-        objectDeclBody: struct {
-            fieldsHead: NodeId,
-            funcsHead: NodeId,
-            numFields: u32,
-        },
-        varSpec: struct {
-            name: NodeId,
-            typeSpecHead: cy.Nullable(NodeId),
-            modifierHead: cy.Nullable(NodeId),
-            // `next` contains TypeId for #host var
-        },
-        staticDecl: struct {
-            varSpec: NodeId,
-            right: NodeId,
-            typed: bool,
-            // Declared with `.` prefix.
-            root: bool,
-        },
-        localDecl: struct {
-            varSpec: NodeId,
-            right: NodeId,
-            typed: bool,
-        },
-        enumMember: struct {
-            name: NodeId,
-            /// Type spec path head (linked by `next`) or unnamed type decl.
-            typeSpec: cy.Nullable(NodeId),
-        },
-        enumDecl: struct {
-            name: NodeId,
-            memberHead: NodeId,
-            numMembers: u8,
-            isChoiceType: bool,
-        },
-        whileCondStmt: struct {
-            cond: NodeId,
-            bodyHead: NodeId,
-        },
-        whileOptStmt: struct {
-            opt: NodeId,
-            bodyHead: NodeId,
-            capture: NodeId,
-        },
-        forRange: struct {
-            left: NodeId,
-            right: NodeId,
-            increment: bool,
-        },
-        forRangeStmt: struct {
-            range_clause: NodeId,
-            body_head: NodeId,
-            eachClause: NodeId,
-        },
-        forIterStmt: struct {
-            header: NodeId,
-            bodyHead: NodeId,
-        },
-        forIterHeader: struct {
-            iterable: NodeId,
-            eachClause: NodeId,
-            count: cy.Nullable(NodeId),
-        },
-        seqDestructure: struct {
-            head: NodeId,
-            numArgs: u8,
-        },
-        sliceExpr: struct {
-            arr: NodeId,
-            left: NodeId,
-            right: NodeId,
-        },
-        condExpr: struct {
-            cond: NodeId,
-            bodyExpr: NodeId,
-            elseExpr: NodeId,
-        },
-        elseBlock: struct {
-            bodyHead: NodeId,
-            // for else ifs only.
-            cond: NodeId,
-        },
-        stringTemplate: struct {
-            exprHead: NodeId,
-            strHead: NodeId,
-            numExprs: u8,
-        },
-        nonDecInt: struct {
+        forIterHeader: packed struct {
+            count: cy.Nullable(u24),
         },
     },
+};
+
+/// At most 16 bytes in release mode.
+const NodeData = union {
+    uninit: void,
+    exprStmt: struct {
+        child: NodeId,
+        isLastRootStmt: bool = false, 
+    },
+    returnExprStmt: struct {
+        child: NodeId,
+    },
+    importStmt: struct {
+        name: cy.NodeId,
+        spec: cy.Nullable(cy.NodeId),
+    },
+    // idents and literals.
+    span: struct {
+        // This can be different from Node.srcPos if the literal was generated.
+        pos: u32,
+        len: u16,
+        srcGen: bool,
+    },
+    namedArg: struct {
+        name: NodeId,
+        arg: NodeId,
+    },
+    tryStmt: struct {
+        bodyHead: NodeId,
+        catchStmt: NodeId,
+    },
+    catchStmt: struct {
+        errorVar: cy.Nullable(NodeId),
+        bodyHead: NodeId,
+    },
+    whileInfStmt: struct {
+        bodyHead: NodeId,
+    },
+    tryExpr: struct {
+        expr: NodeId,
+        catchExpr: cy.Nullable(NodeId),
+    },
+    errorSymLit: struct {
+        symbol: NodeId,
+    },
+    castExpr: struct {
+        expr: NodeId,
+        typeSpecHead: NodeId,
+    },
+    indexExpr: struct {
+        left: NodeId,
+        right: NodeId,
+    },
+    assignStmt: struct {
+        left: NodeId,
+        right: NodeId,
+    },
+    binExpr: packed struct {
+        left: NodeId,
+        right: u24,
+        op: BinaryExprOp,
+    },
+    opAssignStmt: packed struct {
+        left: NodeId,
+        right: u24,
+        op: BinaryExprOp,
+    },
+    caseBlock: packed struct {
+        // Null if `else` case.
+        header: NodeId,
+        bodyHead: u24,
+        bodyIsExpr: bool,
+    },
+    caseHeader: packed struct {
+        condHead: cy.Nullable(NodeId),
+        capture: cy.Nullable(u24),
+        numConds: u8,
+    },
+    switchBlock: packed struct {
+        expr: NodeId,
+        caseHead: u24,
+        numCases: u8,
+    },
+    dirModifier: struct {
+        type: DirModifierType,
+    },
+    throwExpr: struct {
+        child: NodeId,
+    },
+    group: struct {
+        child: NodeId,
+    },
+    coresume: struct {
+        child: NodeId,
+    },
+    coinit: struct {
+        child: NodeId,
+    },
+    ifStmt: packed struct {
+        ifBranch: NodeId,
+        elseHead: cy.Nullable(u24),
+        // if numElseBlocks > 0, `elseHead` points to first else block.
+        numElseBlocks: u8,
+    },
+    ifBranch: struct {
+        cond: NodeId,
+        bodyHead: NodeId,
+    },
+    accessExpr: struct {
+        left: NodeId,
+        right: NodeId,
+    },
+    callExpr: packed struct {
+        callee: u24,
+        numArgs: u8,
+        argHead: u24,
+        hasNamedArg: bool,
+    },
+    unary: struct {
+        child: NodeId,
+        op: UnaryOp,
+    },
+    root: struct {
+        bodyHead: NodeId,
+    },
+    arrayLit: struct {
+        argHead: NodeId,
+        numArgs: u8,
+    },
+    recordLit: packed struct {
+        argHead: NodeId,
+        argTail: u24, // For appending additional args from block syntax.
+        numArgs: u8,
+    },
+    keyValue: struct {
+        key: NodeId,
+        value: NodeId,
+    },
+    comptimeExpr: struct {
+        child: NodeId,
+    },
+    comptimeStmt: struct {
+        expr: NodeId,
+    },
+    func: struct {
+        header: NodeId,
+        bodyHead: NodeId,
+    },
+    funcHeader: struct {
+        /// Can be NullNode for lambdas.
+        name: cy.Nullable(NodeId),
+        /// Params.
+        paramHead: cy.Nullable(NodeId),
+    },
+    funcParam: struct {
+        name: NodeId,
+        /// Type spec consists of ident nodes linked by `next`.
+        typeSpecHead: cy.Nullable(NodeId),
+    },
+    typeAliasDecl: struct {
+        name: NodeId,
+        typeSpecHead: NodeId,
+    },
+    objectInit: struct {
+        name: NodeId,
+        initializer: NodeId, // Record literal.
+    },
+    objectField: packed struct {
+        name: NodeId,
+        /// Type spec path head (linked by `next`) or unnamed type decl.
+        typeSpec: cy.Nullable(u24),
+        typed: bool,
+    },
+    objectDecl: struct {
+        header: NodeId,
+        funcHead: NodeId,
+    },
+    objectHeader: packed struct {
+        name: u24,
+        /// When true, a non null `name` references an unnamed `ModuleSymId`.
+        unnamed: bool,
+        fieldHead: u24,
+        numFields: u8,
+    },
+    varSpec: struct {
+        name: NodeId,
+        typeSpecHead: cy.Nullable(NodeId),
+    },
+    staticDecl: packed struct {
+        varSpec: NodeId,
+        right: u24,
+        typed: bool,
+        // Declared with `.` prefix.
+        root: bool,
+    },
+    localDecl: packed struct {
+        varSpec: NodeId,
+        right: u24,
+        typed: bool,
+    },
+    enumMember: struct {
+        name: NodeId,
+        /// Type spec path head (linked by `next`) or unnamed type decl.
+        typeSpec: cy.Nullable(NodeId),
+    },
+    enumDecl: packed struct {
+        name: u24,
+        numMembers: u8,
+        memberHead: u24,
+        isChoiceType: bool,
+    },
+    whileCondStmt: struct {
+        cond: NodeId,
+        bodyHead: NodeId,
+    },
+    whileOptStmt: struct {
+        header: NodeId,
+        bodyHead: NodeId,
+    },
+    whileOptHeader: struct {
+        opt: NodeId,
+        capture: NodeId,
+    },
+    forRangeStmt: struct {
+        header: NodeId,
+        bodyHead: NodeId,
+    },
+    forRangeHeader: packed struct {
+        start: NodeId,
+        end: u24,
+        increment: bool,
+    },
+    forIterStmt: struct {
+        header: NodeId,
+        bodyHead: NodeId,
+    },
+    forIterHeader: struct {
+        iterable: NodeId,
+        eachClause: NodeId,
+    },
+    seqDestructure: struct {
+        head: NodeId,
+        numArgs: u8,
+    },
+    sliceExpr: struct {
+        arr: NodeId,
+        range: NodeId,
+    },
+    range: struct {
+        start: NodeId,
+        end: NodeId,
+    },
+    condExpr: struct {
+        ifBranch: NodeId,
+        elseExpr: NodeId,
+    },
+    elseBlock: struct {
+        bodyHead: NodeId,
+        // for else ifs only.
+        cond: NodeId,
+    },
+    stringTemplate: packed struct {
+        exprHead: NodeId,
+        strHead: u24,
+        numExprs: u8,
+    },
+};
+
+/// TODO: See if separating `head`, `srcPos`, and `data` improves perf for a large project.
+pub const Node = struct {
+    head: NodeHead,
+
+    // Can be repurposed for secondary node data:
+    // funcHeader.ret NodeId
+    srcPos: u32,
+
+    data: NodeData,
+
+    pub fn @"type"(self: Node) NodeType {
+        return self.head.type;
+    }
+
+    pub fn next(self: Node) NodeId {
+        return self.head.data.next;
+    }
+
+    pub fn forIterHeader_count(self: Node) NodeId {
+        return self.head.data.forIterHeader.count;
+    }
+
+    pub fn funcDecl_header(self: Node) NodeId {
+        return self.data.func.header;
+    }
+
+    pub fn funcHeader_name(self: Node) NodeId {
+        return self.data.funcHeader.name;
+    }
+
+    pub fn funcHeader_ret(self: Node) NodeId {
+        return self.srcPos;
+    }
+
+    pub fn funcHeader_modHead(self: Node) NodeId {
+        return self.head.data.funcHeader.modHead;
+    }
+
+    pub fn root_bodyHead(self: Node) NodeId {
+        return self.data.root.bodyHead;
+    }
+
+    pub fn exprStmt_child(self: Node) NodeId {
+        return self.data.exprStmt.child; 
+    }
+
+    pub fn recordLit_argHead(self: Node) NodeId {
+        return self.data.recordLit.argHead;
+    }
+
+    pub fn keyValue_key(self: Node) NodeId {
+        return self.data.keyValue.key;
+    }
+
+    pub fn keyValue_value(self: Node) NodeId {
+        return self.data.keyValue.value;
+    }
 };
 
 pub const BinaryExprOp = enum(u8) {
@@ -404,67 +515,276 @@ pub const UnaryOp = enum(u8) {
 
 test "ast internals." {
     if (builtin.mode == .ReleaseFast) {
-        try t.eq(@sizeOf(Node), 28);
+        try t.eq(@sizeOf(NodeHead), 4);
+        try t.eq(@sizeOf(NodeData), 8);
+        try t.eq(@sizeOf(Node), 16);
     } else {
-        try t.eq(@sizeOf(Node), 32);
+        try t.eq(@sizeOf(NodeHead), 4);
+        try t.eq(@sizeOf(NodeData), 16);
+        try t.eq(@sizeOf(Node), 24);
     }
 }
 
-pub const Source = struct {
+pub const Ast = struct {
     src: []const u8,
-    nodes: []Node,
-    tokens: []const cy.Token,
+    nodes: std.ArrayListUnmanaged(Node),
 
-    pub fn getParentAssignStmt(self: Source, nodeId: cy.NodeId) cy.NodeId {
-        var cur = nodeId;
-        while (true) {
-            cur -= 1;
-            const nodeT = self.nodes[cur].node_t;
-            if (nodeT == .localDecl or nodeT == .assign_stmt or nodeT == .staticDecl) {
-                return cur;
+    /// Generated source literals from templates or CTE.
+    srcGen: std.ArrayListUnmanaged(u8),
+
+    /// Heap generated strings, stable pointers unlike `srcGen`.
+    strs: std.ArrayListUnmanaged([]const u8),
+
+    /// Optionally parsed by tokenizer.
+    comments: std.ArrayListUnmanaged(cy.IndexSlice(u32)),
+
+    pub fn init(alloc: std.mem.Allocator, src: []const u8) !Ast {
+        var ast = Ast{
+            .src = src,
+            .nodes = .{},
+            .srcGen = .{},
+            .strs = .{},
+            .comments = .{},
+        };
+        try ast.clearNodes(alloc);
+        return ast;
+    }
+
+    pub fn deinit(self: *Ast, alloc: std.mem.Allocator) void {
+        self.nodes.deinit(alloc);
+        self.srcGen.deinit(alloc);
+        for (self.strs.items) |str| {
+            alloc.free(str);
+        }
+        self.strs.deinit(alloc);
+        self.comments.deinit(alloc);
+    }
+
+    pub fn clearNodes(self: *Ast, alloc: std.mem.Allocator) !void {
+        self.nodes.clearRetainingCapacity();
+        // Insert dummy for cy.NullNode.
+        try self.nodes.append(alloc, .{
+            .head = .{ .type = .null, .data = undefined },
+            .data = undefined,
+            .srcPos = 0,
+        });
+    }
+
+    pub fn view(self: *const Ast) AstView {
+        return .{
+            .src = self.src,
+            .srcGen = self.srcGen.items,
+            .nodes = self.nodes.items,
+        };
+    }
+
+    pub fn pushNode(self: *Ast, alloc: std.mem.Allocator, node_t: cy.NodeType, srcPos: u32) !NodeId {
+        const id = self.nodes.items.len;
+        try self.nodes.append(alloc, .{
+            .head = .{
+                .type = node_t,
+                .data = .{ .next = cy.NullNode },
+            }, 
+            .data = .{ .uninit = {} },
+            .srcPos = srcPos,
+        });
+        return @intCast(id);
+    }
+
+    pub fn genSpanNode(self: *Ast, alloc: std.mem.Allocator, node_t: cy.NodeType, str: []const u8, srcPos: ?u32) !NodeId {
+        const pos = self.srcGen.items.len;
+        try self.srcGen.appendSlice(alloc, str);
+        const id = self.nodes.items.len;
+        try self.nodes.append(alloc, .{
+            .head = .{
+                .type = node_t,
+                .data = .{ .next = cy.NullNode },
+            }, 
+            .data = .{ .span = .{
+                .pos = @intCast(pos),
+                .len = @intCast(str.len),
+                .srcGen = true,
+            }},
+            .srcPos = srcPos orelse cy.NullId,
+        });
+        return @intCast(id);
+    }
+
+    pub fn pushSpanNode(self: *Ast, alloc: std.mem.Allocator, node_t: cy.NodeType, srcPos: u32, srcEnd: u32) !NodeId {
+        const id = self.nodes.items.len;
+        try self.nodes.append(alloc, .{
+            .head = .{
+                .type = node_t,
+                .data = .{ .next = cy.NullNode },
+            }, 
+            .data = .{ .span = .{
+                .pos = srcPos,
+                .len = @intCast(srcEnd-srcPos),
+                .srcGen = false,
+            }},
+            .srcPos = srcPos,
+        });
+        return @intCast(id);
+    }
+
+    pub fn setNodeData(self: *Ast, id: NodeId, data: NodeData) void {
+        self.nodes.items[id].data = data;
+    }
+
+    pub fn setNextNode(self: *Ast, id: NodeId, next: NodeId) void {
+        self.nodes.items[id].head.data = .{ .next = @intCast(next) };
+    }
+    
+    pub fn node(self: Ast, nodeId: NodeId) Node {
+        return self.nodes.items[nodeId];
+    }
+
+    pub fn nodePtr(self: Ast, nodeId: NodeId) *Node {
+        return &self.nodes.items[nodeId];
+    }
+
+    pub fn nodeType(self: Ast, nodeId: NodeId) NodeType {
+        return self.nodes.items[nodeId].head.type;
+    }
+
+    pub fn nodePos(self: Ast, nodeId: NodeId) u32 {
+        return self.nodes.items[nodeId].srcPos;
+    }
+    
+    pub fn nodeString(self: Ast, n: Node) []const u8 {
+        if (n.data.span.srcGen) {
+            return self.srcGen.items[n.data.span.pos..n.data.span.pos+n.data.span.len];
+        } else {
+            return self.src[n.data.span.pos..n.data.span.pos+n.data.span.len];
+        }
+    }
+};
+
+pub const AstView = struct {
+    src: []const u8,
+    srcGen: []const u8,
+    nodes: []const Node,
+
+    /// Find the line/col in `src` at `pos`.
+    /// Iterating tokens could be faster but it would still require counting new lines for skipped segments like comments, multiline strings.
+    pub fn computeLinePos(self: AstView, pos: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) void {
+        var line: u32 = 0;
+        var lineStart: u32 = 0;
+        for (self.src, 0..) |ch, i| {
+            if (i == pos) {
+                break;
             }
+            if (ch == '\n') {
+                line += 1;
+                lineStart = @intCast(i + 1);
+            }
+        }
+        // This also handles the case where target pos is at the end of source.
+        outLine.* = line;
+        outCol.* = pos - lineStart;
+        outLineStart.* = lineStart;
+    }
+
+    pub fn node(self: AstView, nodeId: NodeId) Node {
+        return self.nodes[nodeId];
+    }
+
+    pub fn nodeType(self: AstView, nodeId: NodeId) NodeType {
+        return self.nodes[nodeId].head.type;
+    }
+
+    pub fn nodePos(self: AstView, nodeId: NodeId) u32 {
+        return self.nodes[nodeId].srcPos;
+    }
+
+    pub fn nodeStringById(self: AstView, nodeId: cy.NodeId) []const u8 {
+        return self.nodeString(self.nodes[nodeId]);
+    }
+
+    pub fn nodeString(self: AstView, n: cy.Node) []const u8 {
+        if (n.data.span.srcGen) {
+            return self.srcGen[n.data.span.pos..n.data.span.pos+n.data.span.len];
+        } else {
+            return self.src[n.data.span.pos..n.data.span.pos+n.data.span.len];
         }
     }
 
-    pub fn getNodeStringById(self: Source, nodeId: cy.NodeId) []const u8 {
-        return getNodeString(self, self.nodes[nodeId]);
-    }
-
-    pub fn getNodeString(self: Source, node: cy.Node) []const u8 {
-        const token = self.tokens[node.start_token];
-        return self.src[token.pos()..token.data.end_pos];
-    }
-
-    pub fn getNodeStringWithDelim(self: Source, node: cy.Node) []const u8 {
-        const token = self.tokens[node.start_token];
-        return self.src[token.pos()-1..token.data.end_pos+1];
-    }
-
-    pub fn getNamePathStr(self: Source, nameId: cy.NodeId) []const u8 {
-        const nameN = self.nodes[nameId];
-        if (nameN.next == cy.NullId) {
-            return self.getNodeString(nameN);
+    pub fn nodeStringAndDelim(self: AstView, n: cy.Node) []const u8 {
+        if (n.data.span.srcGen) {
+            return self.srcGen[n.data.span.pos-1..n.data.span.pos+n.data.span.len+1];
         } else {
-            const lastId = self.getLastNameNode(nameN.next);
+            return self.src[n.data.span.pos-1..n.data.span.pos+n.data.span.len+1];
+        }
+    }
+
+    const NamePathInfo = struct {
+        namePath: []const u8,
+        lastName: []const u8,
+        lastId: cy.NodeId,
+    };
+
+    pub fn getNamePathInfo(self: AstView, n: cy.Node, nameId: cy.NodeId) NamePathInfo {
+        if (n.next() == cy.NullNode) {
+            const name = self.nodeString(n);
+            return .{
+                .namePath = name,
+                .lastName = name,
+                .lastId = nameId,
+            };
+        } else {
+            const lastId = self.getLastNameNode(n.next());
             const last = self.nodes[lastId];
-            const startToken = self.tokens[nameN.start_token];
-            const lastToken = self.tokens[last.start_token];
-            var end = lastToken.data.end_pos;
-            if (lastToken.tag() == .string) {
+            const lastName = self.nodeString(last);
+
+            var end = last.srcPos + last.data.span.len;
+            log.tracev("{}", .{last.type()});
+            if (last.type() == .stringLit) {
                 end += 1;
             }
-            return self.src[startToken.pos()..end];
+            return .{
+                .namePath = self.src[n.srcPos..end],
+                .lastName = lastName,
+                .lastId = lastId,
+            };
         }
     }
 
-    pub fn getLastNameNode(self: Source, nameId: cy.NodeId) cy.NodeId {
+    pub fn getNamePathInfoById(self: AstView, nameId: cy.NodeId) NamePathInfo {
+        const n = self.nodes[nameId];
+        return self.getNamePathInfo(n, nameId);
+    }
+
+    pub fn getLastNameNode(self: AstView, nameId: cy.NodeId) cy.NodeId {
         var name = self.nodes[nameId];
         var curId = nameId;
-        while (name.next != cy.NullId) {
-            name = self.nodes[name.next];
-            curId = name.next;
+        while (name.next() != cy.NullNode) {
+            name = self.nodes[name.next()];
+            curId = name.next();
         }
         return curId;
+    }
+
+    // Returns whether two lines are connected by a new line and optional indentation.
+    pub fn isAdjacentLine(self: AstView, aEnd: u32, bStart: u32) bool {
+        var i = aEnd;
+        if (self.src[i] == '\r') {
+            i += 1;
+            if (self.src[i] != '\n') {
+                return false;
+            }
+            i += 1;
+        } else if (self.src[i] == '\n') {
+            i += 1;
+        } else {
+            return false;
+        }
+        while (i < bStart) {
+            if (self.src[i] != ' ' and self.src[i] != '\t') {
+                return false;
+            }
+            i += 1;
+        }
+        return true;
     }
 };
 
@@ -512,11 +832,11 @@ fn getBinOpStr(op: BinaryExprOp) []const u8 {
 /// The default encoder doesn't insert any formatting and is used to
 /// provide a quick context summary next to generated code.
 pub const Encoder = struct {
-    src: Source,
+    ast: AstView,
     eventHandler: ?*const fn (Encoder, EncodeEvent, cy.NodeId) void = null,
 
     pub fn formatNode(self: Encoder, nodeId: cy.NodeId, buf: []u8) ![]const u8 {
-        if (nodeId == cy.NullId) {
+        if (nodeId == cy.NullNode) {
             return "";
         }
         var fbuf = std.io.fixedBufferStream(buf);
@@ -525,212 +845,219 @@ pub const Encoder = struct {
     }
 
     pub fn writeNode(self: Encoder, w: anytype, nodeId: cy.NodeId) !void {
-        const node = self.src.nodes[nodeId];
-        switch (node.node_t) {
+        const node = self.ast.node(nodeId);
+        switch (node.type()) {
             .funcDecl => {
-                const header = self.src.nodes[node.head.func.header];
+                const header = self.ast.node(node.data.func.header);
                 try w.writeAll("func ");
-                try self.writeNode(w, header.head.funcHeader.name);
+                try self.writeNode(w, header.data.funcHeader.name);
                 try w.writeAll("(");
-                var paramId = header.head.funcHeader.paramHead;
-                if (paramId != cy.NullId) {
+                var paramId = header.data.funcHeader.paramHead;
+                if (paramId != cy.NullNode) {
                     try self.writeNode(w, paramId);
-                    paramId = self.src.nodes[paramId].next;
+                    paramId = self.ast.node(paramId).next();
 
-                    while (paramId != cy.NullId) {
+                    while (paramId != cy.NullNode) {
                         try w.writeAll(", ");
                         try self.writeNode(w, paramId);
-                        paramId = self.src.nodes[paramId].next;
+                        paramId = self.ast.node(paramId).next();
                     }
                 }
                 try w.writeAll(")");
-                if (header.head.funcHeader.ret != cy.NullId) {
+                if (header.funcHeader_ret() != cy.NullNode) {
                     try w.writeAll(" ");
-                    try self.writeNode(w, header.head.funcHeader.ret);
+                    try self.writeNode(w, header.funcHeader_ret());
                 }
-                // node.head.func.bodyHead
+                // node.data.func.bodyHead
             },
             .funcParam => {
-                const param = self.src.nodes[nodeId];
-                try self.writeNode(w, param.head.funcParam.name);
-                if (param.head.funcParam.typeSpecHead != cy.NullId) {
+                const param = self.ast.node(nodeId);
+                try self.writeNode(w, param.data.funcParam.name);
+                if (param.data.funcParam.typeSpecHead != cy.NullNode) {
                     try w.writeAll(" ");
-                    try self.writeNode(w, param.head.funcParam.typeSpecHead);
+                    try self.writeNode(w, param.data.funcParam.typeSpecHead);
                 }
             },
-            .assign_stmt => {
-                try self.writeNode(w, node.head.left_right.left);
+            .assignStmt => {
+                try self.writeNode(w, node.data.assignStmt.left);
                 try w.writeByte('=');
-                try self.writeNode(w, node.head.left_right.right);
+                try self.writeNode(w, node.data.assignStmt.right);
             },
             .opAssignStmt => {
-                try self.writeNode(w, node.head.opAssignStmt.left);
-                try w.writeAll(getBinOpStr(node.head.opAssignStmt.op));
+                try self.writeNode(w, node.data.opAssignStmt.left);
+                try w.writeAll(getBinOpStr(node.data.opAssignStmt.op));
                 try w.writeByte('=');
-                try self.writeNode(w, node.head.opAssignStmt.right);
+                try self.writeNode(w, node.data.opAssignStmt.right);
             },
             .unary_expr => {
-                const op = node.head.unary.op;
+                const op = node.data.unary.op;
                 try w.writeAll(getUnOpStr(op));
-                try self.writeNode(w, node.head.unary.child);
+                try self.writeNode(w, node.data.unary.child);
             },
             .binExpr => {
-                try self.writeNode(w, node.head.binExpr.left);
-                try w.writeAll(getBinOpStr(node.head.binExpr.op));
-                try self.writeNode(w, node.head.binExpr.right);
+                try self.writeNode(w, node.data.binExpr.left);
+                try w.writeAll(getBinOpStr(node.data.binExpr.op));
+                try self.writeNode(w, node.data.binExpr.right);
             },
             .exprStmt => {
-                try self.writeNode(w, node.head.exprStmt.child);
+                try self.writeNode(w, node.data.exprStmt.child);
             },
             .condExpr => {
-                try self.writeNode(w, node.head.condExpr.cond);
+                const ifBranch = self.ast.node(node.data.condExpr.ifBranch);
+                try self.writeNode(w, ifBranch.data.ifBranch.cond);
                 try w.writeAll("?");
-                try self.writeNode(w, node.head.condExpr.bodyExpr);
+                try self.writeNode(w, ifBranch.data.ifBranch.bodyHead);
                 try w.writeAll(" else ");
-                try self.writeNode(w, node.head.condExpr.elseExpr);
+                try self.writeNode(w, node.data.condExpr.elseExpr);
             },
             .caseBlock => {
-                if (node.head.caseBlock.isElseCase) {
+                if (node.data.caseBlock.header == cy.NullNode) {
                     try w.writeAll("else");
                 } else {
-                    var cond = node.head.caseBlock.condHead;
+                    const header = self.ast.node(node.data.caseBlock.header);
+                    var cond = header.data.caseHeader.condHead;
                     try self.writeNode(w, cond);
-                    cond = self.src.nodes[cond].next;
-                    while (cond != cy.NullId) {
+                    cond = self.ast.node(cond).next();
+                    while (cond != cy.NullNode) {
                         try w.writeByte(',');
                         try self.writeNode(w, cond);
-                        cond = self.src.nodes[cond].next;
+                        cond = self.ast.node(cond).next();
                     }
                 }
-                if (node.head.caseBlock.bodyIsExpr) {
+                if (node.data.caseBlock.bodyIsExpr) {
                     try w.writeAll("=>");
-                    try self.writeNode(w, node.head.caseBlock.bodyHead);
+                    try self.writeNode(w, node.data.caseBlock.bodyHead);
                 } else {
                     try w.writeAll(": ...");
                 }
             },
-            .none => {
+            .noneLit => {
                 try w.writeAll("none");
             },
-            .false_literal => {
+            .falseLit => {
                 try w.writeAll("false");
             },
-            .true_literal => {
+            .trueLit => {
                 try w.writeAll("true");
             },
             .errorSymLit => {
                 try w.writeAll("error.");
-                try self.writeNode(w, node.head.errorSymLit.symbol);
+                try self.writeNode(w, node.data.errorSymLit.symbol);
             },
             .symbolLit => {
                 try w.writeAll(".");
-                try w.writeAll(self.src.getNodeString(node));
+                try w.writeAll(self.ast.nodeString(node));
             },
-            .number,
+            .hexLit,
+            .binLit,
+            .octLit,
+            .decLit,
             .ident => {
-                try w.writeAll(self.src.getNodeString(node));
+                try w.writeAll(self.ast.nodeString(node));
             },
-            .string => {
-                try w.writeAll(self.src.getNodeStringWithDelim(node));
+            .stringLit => {
+                try w.writeAll(self.ast.nodeStringAndDelim(node));
             },
             .accessExpr => {
-                try self.writeNode(w, node.head.accessExpr.left);
+                try self.writeNode(w, node.data.accessExpr.left);
                 try w.writeByte('.');
-                try self.writeNode(w, node.head.accessExpr.right);
+                try self.writeNode(w, node.data.accessExpr.right);
             },
             .group => {
                 try w.writeByte('(');
-                try self.writeNode(w, node.head.child_head);
+                try self.writeNode(w, node.data.group.child);
                 try w.writeByte(')');
             },
             .sliceExpr => {
-                try self.writeNode(w, node.head.sliceExpr.arr);
+                try self.writeNode(w, node.data.sliceExpr.arr);
+
+                const range = self.ast.node(node.data.sliceExpr.range);
                 try w.writeByte('[');
-                if (node.head.sliceExpr.left != cy.NullId) {
-                    try self.writeNode(w, node.head.sliceExpr.left);
+                if (range.data.range.start != cy.NullNode) {
+                    try self.writeNode(w, range.data.range.start);
                 }
                 try w.writeAll("..");
-                if (node.head.sliceExpr.right != cy.NullId) {
-                    try self.writeNode(w, node.head.sliceExpr.right);
+                if (range.data.range.end != cy.NullNode) {
+                    try self.writeNode(w, range.data.range.end);
                 }
                 try w.writeByte(']');
             },
             .indexExpr => {
-                try self.writeNode(w, node.head.indexExpr.left);
+                try self.writeNode(w, node.data.indexExpr.left);
                 try w.writeByte('[');
-                try self.writeNode(w, node.head.indexExpr.right);
+                try self.writeNode(w, node.data.indexExpr.right);
                 try w.writeByte(']');
             },
             .throwExpr => {
                 try w.writeAll("throw ");
-                try self.writeNode(w, node.head.child_head);
+                try self.writeNode(w, node.data.throwExpr.child);
             },
             .callExpr => {
-                try self.writeNode(w, node.head.callExpr.callee);
+                try self.writeNode(w, node.data.callExpr.callee);
 
                 try w.writeByte('(');
-                if (node.head.callExpr.numArgs > 0) {
-                    var argId = node.head.callExpr.arg_head;
+                if (node.data.callExpr.numArgs > 0) {
+                    var argId: cy.NodeId = node.data.callExpr.argHead;
                     try self.writeNode(w, argId);
-                    argId = self.src.nodes[argId].next;
+                    argId = self.ast.node(argId).next();
 
-                    while (argId != cy.NullId) {
+                    while (argId != cy.NullNode) {
                         try w.writeAll(", ");
                         try self.writeNode(w, argId);
-                        argId = self.src.nodes[argId].next;
+                        argId = self.ast.node(argId).next();
                     }
                 }
                 try w.writeByte(')');
             },
             .tryExpr => {
                 try w.writeAll("try ");
-                try self.writeNode(w, node.head.tryExpr.expr);
-                if (node.head.tryExpr.catchExpr != cy.NullId) {
+                try self.writeNode(w, node.data.tryExpr.expr);
+                if (node.data.tryExpr.catchExpr != cy.NullNode) {
                     try w.writeAll(" catch ");
-                    try self.writeNode(w, node.head.tryExpr.catchExpr);
+                    try self.writeNode(w, node.data.tryExpr.catchExpr);
                 }
             },
             .localDecl => {
-                if (node.head.localDecl.typed) {
+                if (node.data.localDecl.typed) {
                     try w.writeAll("var ");
                 } else {
                     try w.writeAll("my ");
                 }
-                try self.writeNode(w, node.head.localDecl.varSpec);
+                try self.writeNode(w, node.data.localDecl.varSpec);
                 try w.writeByte('=');
-                try self.writeNode(w, node.head.localDecl.right);
+                try self.writeNode(w, node.data.localDecl.right);
             },
-            .arrayLiteral => {
+            .arrayLit => {
                 try w.writeByte('[');
                 try w.writeAll("...");
                 try w.writeByte(']');
             },
-            .recordLiteral => {
+            .recordLit => {
                 try w.writeByte('[');
                 try w.writeAll("...");
                 try w.writeByte(']');
             },
             .objectInit => {
                 try w.writeByte('[');
-                try self.writeNode(w, node.head.objectInit.name);
+                try self.writeNode(w, node.data.objectInit.name);
                 try w.writeAll(" ...]");
             },
             .varSpec => {
-                try self.writeNode(w, node.head.varSpec.name);
-                if (node.head.varSpec.typeSpecHead != cy.NullId) {
-                    var cur = node.head.varSpec.typeSpecHead;
+                try self.writeNode(w, node.data.varSpec.name);
+                if (node.data.varSpec.typeSpecHead != cy.NullNode) {
+                    var cur = node.data.varSpec.typeSpecHead;
                     try self.writeNode(w, cur);
-                    cur = self.src.nodes[cur].next;
-                    while (cur != cy.NullId) {
+                    cur = self.ast.node(cur).next();
+                    while (cur != cy.NullNode) {
                         try w.writeByte('.');
                         try self.writeNode(w, cur);
-                        cur = self.src.nodes[cur].next;
+                        cur = self.ast.node(cur).next();
                     }
                 }
             },
             else => {
                 try w.writeByte('<');
-                try w.writeAll(@tagName(node.node_t));
+                try w.writeAll(@tagName(node.type()));
                 try w.writeByte('>');
             },
         }

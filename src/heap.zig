@@ -2111,60 +2111,77 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             // TODO: Determine isHostObject from object to avoid extra read from `rt.Type`
             // TODO: Use a dispatch table for host objects only.
             const entry = vm.types[typeId];
-            log.tracev("free {s} {}", .{@tagName(entry.symType), typeId});
-            if (entry.symType != .hostObjectType) {
-                const numFields = entry.data.numFields;
-                if (releaseChildren) {
-                    for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
-                        if (skipCycChildren and child.isGcConfirmedCyc()) {
-                            continue;
-                        }
-                        cy.arc.release(vm, child);
-                    }
-                }
-                if (free) {
-                    if (numFields <= 4) {
-                        freePoolObject(vm, obj);
-                    } else {
-                        freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value), true);
-                    }
-                }
-            } else {
-                if (releaseChildren) {
-                    if (entry.data.hostObject.getChildrenFn) |getChildren| {
-                        const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                        for (cc.valueSlice(children)) |child| {
+            log.tracev("free {s} {}", .{@tagName(entry.kind), typeId});
+            switch (entry.kind) {
+                .object => {
+                    const numFields = entry.data.object.numFields;
+                    if (releaseChildren) {
+                        for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
                             if (skipCycChildren and child.isGcConfirmedCyc()) {
                                 continue;
                             }
                             cy.arc.release(vm, child);
                         }
                     }
-                }
-                if (free) {
-                    if (entry.data.hostObject.finalizerFn) |finalizer| {
-                        finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                        if (obj.isPoolObject()) {
+                    if (free) {
+                        if (numFields <= 4) {
                             freePoolObject(vm, obj);
                         } else {
-                            if (obj.isCyclable()) {
-                                if (cy.Malloc == .zig) {
-                                    const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
-                                    freeExternalObject(vm, obj, @intCast(size), true);
-                                } else {
-                                    freeExternalObject(vm, obj, 1, true);
+                            freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value), true);
+                        }
+                    }
+                },
+                .choice => {
+                    if (releaseChildren) {
+                        const value = obj.object.getValuesConstPtr()[1];
+                        if (skipCycChildren and value.isGcConfirmedCyc()) {
+                            // nop.
+                        } else {
+                            cy.arc.release(vm, value);
+                        }
+                    }
+                    if (free) {
+                        freePoolObject(vm, obj);
+                    }
+                },
+                .hostObject => {
+                    if (releaseChildren) {
+                        if (entry.data.hostObject.getChildrenFn) |getChildren| {
+                            const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
+                            for (cc.valueSlice(children)) |child| {
+                                if (skipCycChildren and child.isGcConfirmedCyc()) {
+                                    continue;
                                 }
+                                cy.arc.release(vm, child);
+                            }
+                        }
+                    }
+                    if (free) {
+                        if (entry.data.hostObject.finalizerFn) |finalizer| {
+                            finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
+                            if (obj.isPoolObject()) {
+                                freePoolObject(vm, obj);
                             } else {
-                                if (cy.Malloc == .zig) {
-                                    const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
-                                    freeExternalObject(vm, obj, @intCast(size), false);
+                                if (obj.isCyclable()) {
+                                    if (cy.Malloc == .zig) {
+                                        const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
+                                        freeExternalObject(vm, obj, @intCast(size), true);
+                                    } else {
+                                        freeExternalObject(vm, obj, 1, true);
+                                    }
                                 } else {
-                                    freeExternalObject(vm, obj, 1, false);
+                                    if (cy.Malloc == .zig) {
+                                        const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
+                                        freeExternalObject(vm, obj, @intCast(size), false);
+                                    } else {
+                                        freeExternalObject(vm, obj, 1, false);
+                                    }
                                 }
                             }
                         }
                     }
-                }
+                },
+                else => {},
             }
         },
     }

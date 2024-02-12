@@ -290,8 +290,8 @@ pub const ChunkExt = struct {
         _ = try addSym(c, mod, name, @ptrCast(sym));
         c.compiler.sema.types.items[typeId] = .{
             .sym = @ptrCast(sym),
-            .symType = .enumType,
-            .data = .{ .uninit = {}},
+            .kind = if (isChoiceType) .choice else .@"enum",
+            .data = undefined,
         };
         return sym;
     }
@@ -381,10 +381,10 @@ pub const ChunkExt = struct {
 
         c.compiler.sema.types.items[typeId] = .{
             .sym = @ptrCast(sym),
-            .symType = .object,
-            .data = .{
+            .kind = .object,
+            .data = .{ .object = .{
                 .numFields = 0,
-            }
+            }},
         };
         return sym;
     }
@@ -410,10 +410,10 @@ pub const ChunkExt = struct {
         _ = try addSym(c, mod, name, @ptrCast(sym));
         c.compiler.sema.types.items[typeId] = .{
             .sym = @ptrCast(sym),
-            .symType = .object,
-            .data = .{
+            .kind = .object,
+            .data = .{ .object = .{
                 .numFields = 0,
-            }
+            }},
         };
         return sym;
     }
@@ -452,10 +452,10 @@ pub const ChunkExt = struct {
 
         c.compiler.sema.types.items[typeId] = .{
             .sym = @ptrCast(sym),
-            .symType = .object,
-            .data = .{
+            .kind = .object,
+            .data = .{ .object = .{
                 .numFields = 0,
-            }
+            }},
         };
         return sym;
     }
@@ -484,13 +484,11 @@ pub const ChunkExt = struct {
         // c.vm.types.buf[rtTypeId].isHostObject = true;
         c.compiler.sema.types.items[typeId] = .{
             .sym = @ptrCast(sym),
-            .symType = .hostObjectType,
-            .data = .{
-                .hostObject = .{
-                    .getChildrenFn = getChildrenFn,
-                    .finalizerFn = finalizerFn,
-                },
-            }
+            .kind = .hostObject,
+            .data = .{ .hostObject = .{
+                .getChildrenFn = getChildrenFn,
+                .finalizerFn = finalizerFn,
+            }},
         };
         return sym;
     }
@@ -510,7 +508,7 @@ pub const ChunkExt = struct {
         _ = try addSym(c, mod, name, @ptrCast(sym));
         c.compiler.sema.types.items[typeId] = .{
             .sym = @ptrCast(sym),
-            .symType = .predefinedType,
+            .kind = .predefined,
             .data = undefined,
         };
         return sym;

@@ -763,6 +763,13 @@ pub const Parser = struct {
                     return self.reportError("Unnamed type is not allowed in this context.", &.{});
                 }
             },
+            .operator => {
+                if (token.data.operator_t == .plus) {
+                    return try self.parseTermExpr();
+                } else {
+                    return null;
+                }
+            },
             .pound,
             .type_k,
             .none_k,
@@ -2478,6 +2485,17 @@ pub const Parser = struct {
             //     };
             //     return expr_id;
             // },
+            .operator => {
+                if (token.data.operator_t == .plus) {
+                    self.advance();
+                    const expr = try self.pushNode(.valueTemplate, start);
+                    const typeParam = try self.parseTermExpr();
+                    self.ast.setNodeData(expr, .{ .valueTemplate = .{
+                        .typeParam = typeParam,
+                    }});
+                    return expr;
+                }
+            },
             .not_k => {
                 self.advance();
                 const expr = try self.pushNode(.unary_expr, start);
@@ -2589,12 +2607,11 @@ pub const Parser = struct {
                 }});
                 return coinit;
             },
-            else => {
-                return (try self.parseTightTermExpr()) orelse {
-                    return self.reportError("Expected term expr. Got: {}.", &.{v(self.peek().tag())});
-                };
-            },
+            else => {},
         }
+        return (try self.parseTightTermExpr()) orelse {
+            return self.reportError("Expected term expr. Got: {}.", &.{v(self.peek().tag())});
+        };
     }
 
     /// A tight term expr also doesn't include various top expressions

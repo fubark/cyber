@@ -795,6 +795,7 @@ print int(currency)       -- '123' or some arbitrary id.
   * [`self` variable.](#self-variable)
   * [Type functions.](#type-functions)
   * [Type variables.](#type-variables)
+* [Values.](#values)
 * [Enums.](#enums)
 * [Choices.](#choices)
   * [Initialize choice.](#initialize-choice)
@@ -962,6 +963,24 @@ var Node.DefaultValue = 100
 print Node.DefaultValue    -- Prints "100"
 ```
 
+## Values.
+Value types share the same field layout as object types, but their instances are copied by value rather than by reference. In that sense, they behave like primitive data types. Value types are created using the generic `+` prefix:
+```cy
+type Vec2:
+    var x float
+    var y float
+
+var v = [+Vec2 x: 30, y: 40]
+```
+
+Since values are not copied by reference, assigning a value to another variable creates a new value:
+```cy
+var w = v
+v.x = 100
+print w.x    -- Prints '30'
+print v.x    -- Prints '100'
+```
+
 ## Enums.
 A new enum type can be declared with the `type enum` declaration.
 An enum value can only be one of the unique symbols declared in the enum type.
@@ -1080,7 +1099,7 @@ type MyContainer:
 ### Expand type template.
 When the template is invoked with compile-time argument(s), a specialized version of the type is generated.
 
-Invoking a template requires a `#` before the call arguments. This indicates that the arguments are compile-time arguments. In this example, `String` can be used as an argument since it satisfies the `type` parameter constraint:
+Invoking a template requires a `#` before the call arguments. This indicates that they are compile-time arguments. In this example, `String` can be used as an argument since it satisfies the `type` parameter constraint:
 ```cy
 var a MyContainer#(String) = [id: 123, value: 'abc']
 print a.get()      -- Prints 'abc'

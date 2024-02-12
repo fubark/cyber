@@ -322,6 +322,7 @@ pub const DeclareLocalInit = struct {
     /// the memory must be zeroed so unwinding doesn't end up using an undefined value.
     zeroMem: bool,
     init: Loc,
+    initType: cy.TypeId,
 
     pub fn name(self: DeclareLocalInit) []const u8 {
         return self.namePtr[0..self.nameLen];
@@ -388,8 +389,8 @@ pub const SetCallObjSymTern = struct {
 };
 
 pub const SetGeneric = struct {
-    leftT: CompactType,
-    rightT: CompactType,
+    left_t: CompactType,
+    right_t: CompactType,
     right: u32,
 };
 

@@ -228,6 +228,8 @@ typedef enum {
     CodeCopyReleaseDst,
     CodeCopyRetainSrc,
     CodeCopyRetainRelease,
+    CodeCopyObject,
+    CodeCopyObjectDyn,
 
     /// [listReg] [indexReg] [rightReg]
     /// Releases existing value and retains right.
@@ -640,6 +642,23 @@ typedef struct ZList {
     size_t len;
     size_t cap;
 } ZList;
+
+typedef struct TypeEntry {
+    void* sym;
+    u8 kind;
+    union {
+        struct {
+            u16 numFields;
+        } object;
+        struct {
+            u16 numFields;
+        } value;
+        struct {
+            void* getChildrenFn;
+            void* finalizerFn;
+        } hostObject;
+    } data;
+} TypeEntry;
 
 typedef struct StackTrace {
     void* framePtr;

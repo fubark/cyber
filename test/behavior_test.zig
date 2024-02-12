@@ -201,6 +201,8 @@ if (!aot) {
     run.case("types/type_alias.cy");
     run.case("types/type_spec.cy");
     run.case("types/unnamed_object.cy");
+    run.case("types/value_assign_to_object_error.cy");
+    run.case("types/values.cy");
 
     if (!cy.isWasm) {
         run.case2(Config.initFileModules("./test/modules/type_spec.cy"), "modules/type_spec.cy");

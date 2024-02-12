@@ -1070,10 +1070,10 @@ fn cAllocCyPointer(vm: *cy.UserVM, ptr: ?*anyopaque) callconv(.C) Value {
     return cy.heap.allocPointer(vm.internal(), ptr) catch cy.fatal();
 }
 
-fn cAllocObject(vm: *cy.UserVM, id: u32) callconv(.C) Value {
+fn cAllocObject(vm: *cy.UserVM, id: cy.TypeId) callconv(.C) Value {
     const ivm = vm.internal();
 
-    const numFields = ivm.compiler.sema.types.items[id].data.numFields;
+    const numFields = ivm.compiler.sema.types.items[id].data.object.numFields;
     if (numFields <= 4) {
         return cy.heap.allocEmptyObjectSmall(ivm, id) catch cy.fatal();
     } else {

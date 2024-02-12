@@ -1,3 +1,4 @@
+const std = @import("std");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
@@ -11,23 +12,43 @@ const log = cy.log.scoped(.types);
 
 pub const TypeId = u32;
 
-pub const Type = struct {
-    sym: *cy.Sym,
-    // Duped to avoid lookup from `sym`.
-    symType: cy.sym.SymType,
-    data: union {
-        uninit: void,
-        // This is duped from ObjectType so that object creation/destruction avoids the lookup from `sym`.
-        numFields: u16,
+const TypeKind = enum(u8) {
+    null,
+    predefined,
+    object,
+    hostObject,
+    @"enum",
+    choice,
+    value,
+};
 
+pub const Type = extern struct {
+    sym: *cy.Sym,
+    kind: TypeKind,
+    // Duped to avoid lookup from `sym`.
+    // symType: cy.sym.SymType,
+    data: extern union {
+        // This is duped from ObjectType so that object creation/destruction avoids the lookup from `sym`.
+        object: extern struct {
+            numFields: u16,
+        },
         // Even though this increases the size of other type entries, it might not be worth
         // separating into another table since it would add another indirection.
-        hostObject: struct {
+        hostObject: extern struct {
             getChildrenFn: cc.ObjectGetChildrenFn,
             finalizerFn: cc.ObjectFinalizerFn,
         },
+        value: extern struct {
+            numFields: u16,
+        },
     },
 };
+
+test "types internals." {
+    try t.eq(@sizeOf(Type), @sizeOf(vmc.TypeEntry));
+    try t.eq(@offsetOf(Type, "sym"), @offsetOf(vmc.TypeEntry, "sym"));
+    try t.eq(@offsetOf(Type, "kind"), @offsetOf(vmc.TypeEntry, "kind"));
+}
 
 pub const CompactType = packed struct {
     /// Should always be a static typeId.
@@ -121,14 +142,56 @@ pub const SemaExt = struct {
         const typeId = s.types.items.len;
         try s.types.append(s.alloc, .{
             .sym = undefined,
-            .symType = .uninit,
-            .data = .{ .uninit = {}},
+            .kind = .null,
+            .data = undefined,
         });
         return @intCast(typeId);
     }
 
-    pub fn getTypeName(s: *cy.Sema, id: TypeId) []const u8 {
+    pub fn getTypeKind(s: *cy.Sema, id: TypeId) TypeKind {
+        return s.types.items[id].kind;
+    }
+
+    pub fn getTypeBaseName(s: *cy.Sema, id: TypeId) []const u8 {
         return s.types.items[id].sym.name();
+    }
+
+    pub fn allocTypeName(s: *cy.Sema, id: TypeId) ![]const u8 {
+        const typ = s.types.items[id];
+        switch (typ.kind) {
+            .value => {
+                return try std.fmt.allocPrint(s.alloc, "+{s}", .{typ.sym.name()});
+            },
+            else => {
+                return try s.alloc.dupe(u8, typ.sym.name());
+            }
+        }
+    }
+
+    pub fn writeTypeName(s: *cy.Sema, w: anytype, id: TypeId) !void {
+        const typ = s.types.items[id];
+        switch (typ.kind) {
+            .value => {
+                try w.writeByte('+');
+            },
+            else => {},
+        }
+        try w.writeAll(typ.sym.name());
+    }
+
+    pub fn writeCompactType(s: *cy.Sema, w: anytype, ctype: CompactType, comptime showRecentType: bool) !void {
+        if (showRecentType) {
+            if (ctype.dynamic) {
+                try w.writeAll("dyn ");
+            }
+            try s.writeTypeName(w, ctype.id);
+        } else {
+            if (ctype.dynamic) {
+                try w.writeAll("dynamic");
+            } else {
+                try s.writeTypeName(w, ctype.id);
+            }
+        }
     }
 
     pub fn getTypeSym(s: *cy.Sema, id: TypeId) *cy.Sym {
@@ -139,15 +202,14 @@ pub const SemaExt = struct {
         if (id < BuiltinEnd) {
             return false;
         }
-        return s.types.items[id].symType == .object;
+        return s.types.items[id].kind == .object;
     }
 
     pub fn isEnumType(s: *cy.Sema, typeId: TypeId) bool {
         if (typeId < PrimitiveEnd) {
             return false;
         }
-        log.tracev("{}", .{s.types.items[typeId].symType});
-        return s.types.items[typeId].symType == .enumType;
+        return s.types.items[typeId].kind == .@"enum";
     }
 
     pub fn isRcCandidateType(s: *cy.Sema, id: TypeId) bool {
@@ -198,11 +260,11 @@ pub const ChunkExt = struct {
             .hasZeroInit => return,
             .missingEntry => cy.unexpected(),
             .unsupported => {
-                const name = c.sema.getTypeName(typeId);
+                const name = c.sema.getTypeBaseName(typeId);
                 return c.reportErrorAt("Unsupported zero initializer for `{}`.", &.{v(name)}, nodeId);
             },
             .circularDep => {
-                const name = c.sema.getTypeName(typeId);
+                const name = c.sema.getTypeBaseName(typeId);
                 return c.reportErrorAt("Can not zero initialize `{}` because of circular dependency.", &.{v(name)}, nodeId);
             }
         }
@@ -237,7 +299,7 @@ pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const CompactType, ret: Ty
                 continue;
             }
         }
-        log.tracev("`{s}` not compatible with param `{s}`", .{c.sema.getTypeName(argType.id), c.sema.getTypeName(cstrType)});
+        log.tracev("`{s}` not compatible with param `{s}`", .{c.sema.getTypeBaseName(argType.id), c.sema.getTypeBaseName(cstrType)});
         return false;
     }
 

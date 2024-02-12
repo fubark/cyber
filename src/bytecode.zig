@@ -542,6 +542,17 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[2].val;
             len += try fmt.printCount(w, "%{} = %{}", &.{v(dst), v(src)});
         },
+        .copyObject => {
+            const src = pc[1].val;
+            const numFields = pc[2].val;
+            const dst = pc[3].val;
+            len += try fmt.printCount(w, "%{} = copy(%{}) nfields={}", &.{v(dst), v(src), v(numFields)});
+        },
+        .copyObjectDyn => {
+            const src = pc[1].val;
+            const dst = pc[2].val;
+            len += try fmt.printCount(w, "%{} = copy(%{})", &.{v(dst), v(src)});
+        },
         .end => {
             const endLocal = pc[1].val;
             len += try fmt.printCount(w, "endLocal={}", &.{ v(endLocal) });
@@ -916,6 +927,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .copyRetainSrc,
         .copyReleaseDst,
         .copyRetainRelease,
+        .copyObjectDyn,
         .constI8,
         .jump,
         .coyield,
@@ -934,6 +946,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .objectTypeCheck => {
             return 3 + pc[2].val * 5;
         },
+        .copyObject,
         .typeCheck,
         .call,
         .captured,
@@ -1069,6 +1082,8 @@ pub const OpCode = enum(u8) {
     copyReleaseDst = vmc.CodeCopyReleaseDst,
     copyRetainSrc = vmc.CodeCopyRetainSrc,
     copyRetainRelease = vmc.CodeCopyRetainRelease,
+    copyObject = vmc.CodeCopyObject,
+    copyObjectDyn = vmc.CodeCopyObjectDyn,
 
     setIndexList = vmc.CodeSetIndexList,
     setIndexMap = vmc.CodeSetIndexMap,
@@ -1230,7 +1245,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 112);
+    try t.eq(std.enums.values(OpCode).len, 114);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

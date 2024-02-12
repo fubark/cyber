@@ -362,9 +362,8 @@ export fn csNewHostObjectPtr(vm: *cy.UserVM, typeId: cy.TypeId, size: usize) *an
 
 export fn csNewVmObject(vm: *cy.VM, typeId: cy.TypeId, argsPtr: [*]const Value, numArgs: usize) Value {
     const entry = &vm.types[typeId];
-    std.debug.assert(entry.sym.type == .object);
-
-    std.debug.assert(numArgs == entry.data.numFields);
+    std.debug.assert(entry.kind == .object);
+    std.debug.assert(numArgs == entry.data.object.numFields);
     const args = argsPtr[0..numArgs];
     for (args) |arg| {
         cy.arc.retain(vm, arg);

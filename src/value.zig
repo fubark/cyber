@@ -613,8 +613,8 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
             },
             else => {
                 const entry = &@as(*const cy.VM, @ptrCast(vm)).types[obj.getTypeId()];
-                if (entry.symType != .hostObjectType) {
-                    const numFields = entry.data.numFields;
+                if (entry.kind == .object) {
+                    const numFields = entry.data.object.numFields;
                     const fields = obj.object.getValuesConstPtr()[0..numFields];
                     var new: Value = undefined;
                     if (numFields <= 4) {

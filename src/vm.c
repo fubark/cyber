@@ -238,6 +238,18 @@ static inline ValueResult allocObject(VM* vm, TypeId typeId, Value* fields, u8 n
     return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
+static inline ValueResult copyObject(VM* vm, HeapObject* obj, TypeId typeId, u8 numFields) {
+    Value* values = objectGetValuesPtr(&obj->object);
+    for (int i = 0; i < numFields; i += 1) {
+        retain(vm, values[i]);
+    }
+    if (numFields <= 4) {
+        return allocObjectSmall(vm, typeId, values, numFields);
+    } else {
+        return allocObject(vm, typeId, values, numFields);
+    }
+}
+
 static inline ValueResult allocEmptyMap(VM* vm) {
     HeapObjectResult res = zAllocPoolObject(vm);
     if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
@@ -596,6 +608,8 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CopyReleaseDst),
         JENTRY(CopyRetainSrc),
         JENTRY(CopyRetainRelease),
+        JENTRY(CopyObject),
+        JENTRY(CopyObjectDyn),
         JENTRY(SetIndexList),
         JENTRY(SetIndexMap),
         JENTRY(IndexList),
@@ -795,6 +809,37 @@ beginSwitch:
         retain(vm, stack[pc[1]]);
         release(vm, stack[pc[2]]);
         stack[pc[2]] = stack[pc[1]];
+        pc += 3;
+        NEXT();
+    }
+    CASE(CopyObject): {
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
+        TypeId typeId = OBJ_TYPEID(obj);
+        u8 numFields = pc[2];
+        ValueResult res = copyObject(vm, obj, typeId, numFields);
+        if (res.code != RES_CODE_SUCCESS) {
+            RETURN(res.code);
+        }
+        stack[pc[3]] = res.val;
+        pc += 4;
+        NEXT();
+    }
+    CASE(CopyObjectDyn): {
+        // Check that src is actually a value type.
+        Value src = stack[pc[1]];
+        TypeId typeId = getTypeId(src);
+        TypeEntry entry = ((TypeEntry*)vm->typesPtr)[typeId];
+        if (entry.kind == 6) {
+            u8 numFields = (u8)entry.data.object.numFields;
+            HeapObject* obj = VALUE_AS_HEAPOBJECT(src);
+            ValueResult res = copyObject(vm, obj, typeId, numFields);
+            if (res.code != RES_CODE_SUCCESS) {
+                RETURN(res.code);
+            }
+            stack[pc[2]] = res.val;
+        } else {
+            stack[pc[2]] = src;
+        }
         pc += 3;
         NEXT();
     }

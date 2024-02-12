@@ -133,7 +133,18 @@ pub const Sym = extern struct {
     }
 
     pub fn isType(self: Sym) bool {
-        return self.type == .object or self.type == .enumType;
+        switch (self.type) {
+            .hostObjectType,
+            .predefinedType,
+            .typeAlias,
+            .object,
+            .enumType => {
+                return true;
+            },
+            else => {
+                return false;
+            },
+        }
     }
 
     pub fn name(self: Sym) []const u8 {
@@ -216,6 +227,7 @@ pub const Sym = extern struct {
         switch (self.type) {
             .predefinedType => return self.cast(.predefinedType).type,
             .enumType       => return self.cast(.enumType).type,
+            .typeAlias      => return self.cast(.typeAlias).type,
             .object         => return self.cast(.object).type,
             .hostObjectType => return self.cast(.hostObjectType).type,
             else            => return null,
@@ -364,6 +376,10 @@ pub const TypeAlias = extern struct {
     declId: cy.NodeId,
     type: cy.TypeId,
     sym: *Sym,
+};
+
+pub const ValueType = extern struct {
+    head: Sym,
 };
 
 pub const TypeTemplate = struct {
@@ -614,7 +630,7 @@ test "sym internals" {
         if (cy.is32Bit) {
             try t.eq(@sizeOf(Func), 8);
         } else {
-            try t.eq(@sizeOf(Func), 48);
+            try t.eq(@sizeOf(Func), 56);
         }
     }
 

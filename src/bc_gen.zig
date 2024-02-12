@@ -177,7 +177,7 @@ fn prepareFunc(c: *cy.VMcompiler, func: *cy.Func) !void {
             const name = func.name();
             const mgId = try c.vm.ensureMethodGroup(name);
             const parentT = func.sym.?.head.parent.?.getStaticType().?;
-            log.tracev("host inline method: {s}.{s} {} {}", .{c.sema.getTypeName(parentT), name, parentT, mgId});
+            log.tracev("host inline method: {s}.{s} {} {}", .{c.sema.getTypeBaseName(parentT), name, parentT, mgId});
             const m = rt.MethodInit.initHostInline(func.funcSigId, func.data.hostInlineFunc.ptr, func.numParams);
             try c.vm.addMethod(parentT, mgId, m);
         }
@@ -703,10 +703,11 @@ fn genObjectInit(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
         try pushUnwindValue(c, val);
     }
 
-    const sym = c.sema.getTypeSym(data.typeId);
-    switch (sym.type) {
+    const typ = c.sema.types.items[data.typeId];
+    switch (typ.kind) {
+        .value,
         .object => {
-            const obj = sym.cast(.object);
+            const obj = typ.sym.cast(.object);
             if (data.numFieldsToCheck > 0) {
                 try c.pushFCode(.objectTypeCheck, &.{ argStart , @as(u8, @intCast(data.numFieldsToCheck)) }, nodeId);
 
@@ -719,7 +720,7 @@ fn genObjectInit(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
                 }
             }
         },
-        .enumType => {
+        .choice => {
         },
         else => return error.Unexpected,
     }
@@ -912,7 +913,7 @@ const SetObjectFieldOptions = struct {
 
 fn setObjectField(c: *Chunk, idx: usize, opts: SetObjectFieldOptions, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .setObjectField).generic;
-    const requireTypeCheck = data.leftT.id != bt.Any and data.rightT.dynamic;
+    const requireTypeCheck = data.left_t.id != bt.Any and data.right_t.dynamic;
     const fieldIdx = c.ir.advanceStmt(idx, .setObjectField);
     const fieldData = c.ir.getExprData(fieldIdx, .fieldStatic).static;
 
@@ -1529,10 +1530,37 @@ pub fn toLocalReg(c: *Chunk, irVarId: u8) RegisterId {
     return c.genIrLocalMapStack.items[c.curBlock.irLocalMapStart + irVarId];
 }
 
+fn genValueLocal(c: *Chunk, reg: RegisterId, local: Local, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+    if (!cstr.isExact()) {
+        // Prefer no copy.
+        const retain = cstr.type == .simple and cstr.data.simple.retain;
+        if (retain) {
+            try c.pushCode(.retain, &.{ reg }, nodeId);
+        }
+        return regValue(c, reg, retain);
+    }
+    const inst = try c.rega.selectForDstInst(cstr, true, nodeId);
+    const numFields: u8 = @intCast(c.sema.types.items[local.some.type].data.object.numFields);
+    try c.pushCode(.copyObject, &.{ reg, numFields, inst.dst }, nodeId);
+    return finishDstInst(c, inst, true);
+}
+
+fn genLiftedValueLocal(c: *Chunk, reg: RegisterId, local: Local, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+    const inst = try c.rega.selectForDstInst(cstr, true, nodeId);
+    try c.pushCode(.boxValue, &.{ reg, inst.dst }, nodeId);
+    const numFields: u8 = @intCast(c.sema.types.items[local.some.type].data.object.numFields);
+    try c.pushCode(.copyObject, &.{ inst.dst, numFields, inst.dst }, nodeId);
+    return finishDstInst(c, inst, true);
+}
+
 fn genLocalReg(c: *Chunk, reg: RegisterId, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const local = getLocalInfo(c, reg);
 
     if (!local.some.lifted) {
+        if (local.some.isObjectValue) {
+            return genValueLocal(c, reg, local, cstr, nodeId);
+        }
+
         const inst = try c.rega.selectForLocalInst(cstr, reg, local.some.rcCandidate, nodeId);
         if (inst.dst != reg) {
             if (inst.retainSrc) {
@@ -1558,6 +1586,10 @@ fn genLocalReg(c: *Chunk, reg: RegisterId, cstr: Cstr, nodeId: cy.NodeId) !GenVa
         }
         return finishCopyInst(c, inst, inst.retainSrc);
     } else {
+        if (local.some.isObjectValue) {
+            return genLiftedValueLocal(c, reg, local, cstr, nodeId);
+        }
+
         // Special case when src local is lifted.
         var retainSrc = false;
         if (local.some.rcCandidate) {
@@ -1694,6 +1726,9 @@ fn reserveFuncRegs(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []ali
                     .owned = true,
                     .rcCandidate = c.sema.isRcCandidateType(param.declType),
                     .lifted = param.lifted,
+                    .isDynamic = param.declType == bt.Dynamic,
+                    .type = param.declType,
+                    .isObjectValue = c.sema.getTypeKind(param.declType) == .value,
                 },
             };
 
@@ -1714,6 +1749,9 @@ fn reserveFuncRegs(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []ali
                     .owned = false,
                     .rcCandidate = c.sema.isRcCandidateType(param.declType),
                     .lifted = false,
+                    .isDynamic = param.declType == bt.Dynamic,
+                    .type = param.declType,
+                    .isObjectValue = c.sema.getTypeKind(param.declType) == .value,
                 },
             };
         }
@@ -1779,6 +1817,12 @@ fn declareLocalInit(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
         try c.buf.pushOp2(.box, reg, reg);
     }
     local.some.rcCandidate = val.retained;
+    if (local.some.isDynamic) {
+        local.some.type = data.declType;
+    } else {
+        local.some.type = data.initType;
+    }
+    local.some.isObjectValue = c.sema.getTypeKind(local.some.type) == .value;
 
     if (!data.zeroMem) {
         // rhs has generated, increase `nextLocalReg`.
@@ -1811,7 +1855,7 @@ fn irSetLocal(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .setLocal).generic;
     const localIdx = c.ir.advanceStmt(idx, .setLocal);
     const localData = c.ir.getExprData(localIdx, .local);
-    try setLocal(c, localData, data.right, nodeId, .{});
+    try setLocal(c, localData, data.right, data.right_t.id, nodeId, .{});
 }
 
 const SetLocalOptions = struct {
@@ -1819,9 +1863,9 @@ const SetLocalOptions = struct {
     extraIdx: ?u32 = null,
 };
 
-fn setLocal(c: *Chunk, data: ir.Local, rightIdx: u32, nodeId: cy.NodeId, opts: SetLocalOptions) !void {
+fn setLocal(c: *Chunk, data: ir.Local, rightIdx: u32, right_t: cy.TypeId, nodeId: cy.NodeId, opts: SetLocalOptions) !void {
     const reg = toLocalReg(c, data.id);
-    const local = getLocalInfo(c, reg);
+    const local = getLocalInfoPtr(c, reg);
 
     var dst: Cstr = undefined;
     if (local.some.lifted) {
@@ -1842,7 +1886,11 @@ fn setLocal(c: *Chunk, data: ir.Local, rightIdx: u32, nodeId: cy.NodeId, opts: S
     }
 
     // Update retained state.
-    getLocalInfoPtr(c, reg).some.rcCandidate = rightv.retained;
+    local.some.rcCandidate = rightv.retained;
+    if (local.some.isDynamic) {
+        local.some.type = right_t;
+        local.some.isObjectValue = c.sema.getTypeKind(right_t) == .value;
+    }
 }
 
 fn setLocalType(c: *Chunk, idx: usize) !void {
@@ -1850,6 +1898,10 @@ fn setLocalType(c: *Chunk, idx: usize) !void {
     const reg = toLocalReg(c, data.local);
     const local = getLocalInfoPtr(c, reg);
     local.some.rcCandidate = c.sema.isRcCandidateType(data.type.id);
+    if (local.some.isDynamic) {
+        local.some.type = data.type.id;
+        local.some.isObjectValue = c.sema.getTypeKind(data.type.id) == .value;
+    }
 }
 
 fn opSet(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
@@ -2131,6 +2183,11 @@ pub const Local = union {
         owned: bool,
 
         lifted: bool,
+
+        isObjectValue: bool,
+
+        isDynamic: bool,
+        type: cy.TypeId,
     },
     uninited: void,
 };
@@ -2462,12 +2519,12 @@ fn forIterStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     if (data.eachLocal) |eachLocal| {
         extraIdx = try c.fmtExtraDesc("copy next() to local", .{});
         const resTemp = regValue(c, iterTemp + 1, true);
-        try setLocal(c, .{ .id = eachLocal }, undefined, eachNodeId, .{ .rightv = resTemp, .extraIdx = extraIdx });
+        try setLocal(c, .{ .id = eachLocal }, undefined, bt.Any, eachNodeId, .{ .rightv = resTemp, .extraIdx = extraIdx });
     }
     if (data.countLocal) |countLocal| {
         extraIdx = try c.fmtExtraDesc("copy count to local", .{});
         const countTemp = regValue(c, iterTemp - 1, false);
-        try setLocal(c, .{ .id = countLocal }, undefined, eachNodeId, .{ .rightv = countTemp, .extraIdx = extraIdx });
+        try setLocal(c, .{ .id = countLocal }, undefined, bt.Integer, eachNodeId, .{ .rightv = countTemp, .extraIdx = extraIdx });
     }
     const hasCounter = data.countLocal != null;
 
@@ -2532,7 +2589,7 @@ fn whileOptStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const optNoneJump = try c.pushEmptyJumpNone(optv.local);
 
     // Copy to captured var.
-    try setLocal(c, .{ .id = data.someLocal }, undefined, nodeId, .{ .rightv = optv });
+    try setLocal(c, .{ .id = data.someLocal }, undefined, bt.Any, nodeId, .{ .rightv = optv });
 
     try popTempValue(c, optv);
     // No release, captured var consumes it.
@@ -3744,6 +3801,11 @@ fn reserveLocalRegAt(c: *Chunk, irLocalId: u8, declType: types.TypeId, lifted: b
             .owned = true,
             .rcCandidate = c.sema.isRcCandidateType(declType),
             .lifted = lifted,
+            .isDynamic = declType == bt.Dynamic,
+
+            // Updated when it's assigned.
+            .isObjectValue = false,
+            .type = cy.NullId,
         },
     };
     if (cy.Trace) {

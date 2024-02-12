@@ -92,6 +92,7 @@ pub const NodeType = enum(u8) {
     typeAliasDecl,
     typeTemplate,
     unary_expr,
+    valueTemplate,
     varSpec,
     whileCondStmt,
     whileInfStmt,
@@ -315,6 +316,9 @@ const NodeData = union {
         unnamed: bool,
         fieldHead: u24,
         numFields: u8,
+    },
+    valueTemplate: struct {
+        typeParam: NodeId,
     },
     varSpec: struct {
         name: NodeId,

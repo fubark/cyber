@@ -909,7 +909,7 @@ pub const VM = struct {
         }
         sym.fields = infos.ptr;
         sym.numFields = @intCast(infos.len);
-        c.sema.types.items[sym.type].data = .{
+        c.sema.types.items[sym.type].data.object = .{
             .numFields = @intCast(sym.numFields),
         };
 
@@ -1539,7 +1539,7 @@ pub const VM = struct {
             bt.MetaType => {
                 const symType: cy.heap.MetaTypeKind = @enumFromInt(obj.metatype.type);
                 if (symType == .object) {
-                    const name = self.compiler.sema.getTypeName(obj.metatype.type);
+                    const name = self.compiler.sema.getTypeBaseName(obj.metatype.type);
                     try std.fmt.format(w, "type: {s}", .{name});
                 } else {
                     try w.writeAll("Unknown Symbol");
@@ -1550,7 +1550,7 @@ pub const VM = struct {
                     try w.writeAll("danglingObject");
                     return;
                 }
-                const name = self.compiler.sema.getTypeName(typeId);
+                const name = self.compiler.sema.getTypeBaseName(typeId);
                 try w.writeAll(name);
             }
         }

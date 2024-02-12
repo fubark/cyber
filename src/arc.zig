@@ -432,9 +432,9 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
         else => {
             // Assume caller used isCycPointer and obj is cyclable.
             const entry = vm.types[typeId];
-            if (entry.symType != .hostObjectType) {
+            if (entry.kind == .object) {
                 // User type.
-                const members = obj.object.getValuesConstPtr()[0..entry.data.numFields];
+                const members = obj.object.getValuesConstPtr()[0..entry.data.object.numFields];
                 for (members) |m| {
                     if (m.isCycPointer()) {
                         markValue(vm, m);

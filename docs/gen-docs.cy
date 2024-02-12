@@ -49,7 +49,7 @@ for tocLinks -> link:
     tocLinksHtml.append("""<li><a href="$(link.href)">$(link.text)</a></li>""")
 
 var simpleCSS = os.readFile("$(curDir)/simple.css")
-var hljsCSS = os.readFile("$(curDir)/hljs.min.css")
+var hljsCSS = os.readFile("$(curDir)/github-dark.min.css")
 var hljsJS = os.readFile("$(curDir)/highlight.min.js")
 
 var stylePart = '<link rel="stylesheet" href="./style.css">'

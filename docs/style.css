@@ -284,30 +284,10 @@ pre code.hljs {
 .hljs {
 /*    background-color: var(--accent-bg);*/
     background-color: transparent;
-    color: var(--text);
 }
-.hljs-type {
-    color: #919aff;
-    font-weight: normal;
-}
-.hljs-title {
-    color: var(--text);
-    font-weight: normal;
-}
-.hljs-keyword {
-    color: var(--keyword);
-    font-weight: normal;
-}
-.hljs-symbol,
-.hljs-number,
-.hljs-string {
-    color: rgb(120, 206, 120);
-}
-.hljs-built_in {
-    color: var(--text);
-}
-.hljs-comment {
-    color: var(--text-light);
+
+.hljs-params {
+    color: #c9d1d9;
 }
 
 blockquote {

@@ -355,6 +355,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         },
         .hostObjectDecl,
         .objectDecl,
+        .structDecl,
         .passStmt,
         .hostVarDecl,
         .hostFuncDecl,
@@ -765,11 +766,14 @@ fn checkGetFieldFromObjMod(c: *cy.Chunk, obj: *cy.sym.ObjectType, fieldName: []c
 
 fn checkGetField(c: *cy.Chunk, recvT: TypeId, fieldName: []const u8, nodeId: cy.NodeId) !FieldResult {
     const sym = c.sema.getTypeSym(recvT);
-    if (sym.type != .object) {
+    if (sym.type == .object_t) {
+        return checkGetFieldFromObjMod(c, sym.cast(.object_t), fieldName, nodeId);
+    } else if (sym.type == .struct_t) {
+        return checkGetFieldFromObjMod(c, sym.cast(.struct_t), fieldName, nodeId);
+    } else {
         const name = c.sema.getTypeBaseName(recvT);
         return c.reportErrorAt("Type `{}` does not have a field named `{}`.", &.{v(name), v(fieldName)}, nodeId);
     }
-    return checkGetFieldFromObjMod(c, sym.cast(.object), fieldName, nodeId);
 }
 
 const FieldResult = struct {
@@ -956,27 +960,39 @@ pub fn declareTemplateVariant(c: *cy.Chunk, template: *cy.sym.TypeTemplate, vari
     return sym;
 }
 
-pub fn declareObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
+pub fn declareObject(c: *cy.Chunk, isStruct: bool, nodeId: cy.NodeId) !*cy.Sym {
     const node = c.ast.node(nodeId);
 
     const header = c.ast.node(node.data.objectDecl.header);
 
-    // Check for #host modifier.
-    if (header.head.data.objectHeader.modHead != cy.NullNode) {
-        const modifier = c.ast.node(header.head.data.objectHeader.modHead);
-        if (modifier.data.dirModifier.type == .host) {
-            return @ptrCast(try declareHostObject(c, nodeId));
+    if (!isStruct) {
+        // Check for #host modifier.
+        if (header.head.data.objectHeader.modHead != cy.NullNode) {
+            const modifier = c.ast.node(header.head.data.objectHeader.modHead);
+            if (modifier.data.dirModifier.type == .host) {
+                return @ptrCast(try declareHostObject(c, nodeId));
+            }
         }
     }
     const nameId = header.data.objectHeader.name;
     if (nameId != cy.NullNode) {
         const name = c.ast.nodeStringById(nameId);
-        const sym = try c.declareObjectType(@ptrCast(c.sym), name, nodeId);
-        return @ptrCast(sym);
+        if (isStruct) {
+            const sym = try c.declareStructType(@ptrCast(c.sym), name, nodeId);
+            return @ptrCast(sym);
+        } else {
+            const sym = try c.declareObjectType(@ptrCast(c.sym), name, nodeId);
+            return @ptrCast(sym);
+        }
     } else {
         // Unnamed object.
-        const sym = try c.declareUnnamedObjectType(@ptrCast(c.sym), nodeId);
-        return @ptrCast(sym);
+        if (isStruct) {
+            const sym = try c.declareUnnamedStructType(@ptrCast(c.sym), nodeId);
+            return @ptrCast(sym);
+        } else {
+            const sym = try c.declareUnnamedObjectType(@ptrCast(c.sym), nodeId);
+            return @ptrCast(sym);
+        }
     }
 }
 
@@ -989,9 +1005,9 @@ pub fn declareObjectMembers(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !v
 
     const header = c.ast.node(node.data.objectDecl.header);
 
-    if (modSym.type == .object) {
+    if (modSym.type == .object_t or modSym.type == .struct_t) {
         // Only object types can have fields.
-        const obj = modSym.cast(.object);
+        const obj: *cy.sym.ObjectType = if (modSym.type == .object_t) modSym.cast(.object_t) else modSym.cast(.struct_t);
 
         const fields = try c.alloc.alloc(cy.sym.FieldInfo, header.data.objectHeader.numFields);
         errdefer c.alloc.free(fields);
@@ -1584,8 +1600,9 @@ fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.Node
             const typeId = sym.cast(.predefinedType).type;
             return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, typeId);
         }, 
-        .object => {
-            const typeId = sym.cast(.object).type;
+        .struct_t,
+        .object_t => {
+            const typeId = sym.cast(.object_t).type;
             return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, typeId);
         },
         .userVar,
@@ -1621,8 +1638,13 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId, comptime symAsValue: b
                 const irIdx = try c.ir.pushExpr(c.alloc, .funcSym, nodeId, .{ .func = funcSym.first });
                 return ExprResult.initCustom(irIdx, .func, ctype, .{ .func = funcSym.first });
             },
-            .object => {
-                const objTypeId = sym.cast(.object).type;
+            .struct_t => {
+                const objTypeId = sym.cast(.struct_t).type;
+                const irIdx = try c.ir.pushExpr(c.alloc, .typeSym, nodeId, .{ .typeId = objTypeId });
+                return ExprResult.init(irIdx, ctype);
+            },
+            .object_t => {
+                const objTypeId = sym.cast(.object_t).type;
                 const irIdx = try c.ir.pushExpr(c.alloc, .typeSym, nodeId, .{ .typeId = objTypeId });
                 return ExprResult.init(irIdx, ctype);
             },
@@ -1831,14 +1853,6 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !TypeExprResult {
         .callTemplate => {
             const sym = try cte.callTemplate(c, exprId);
             return TypeExprResult{ .sym = sym, .type = sym.getStaticType() };
-        },
-        .valueTemplate => {
-            const child = try resolveTypeExpr(c, expr.data.valueTemplate.typeParam);
-            const child_t = child.type orelse {
-                return c.reportErrorAt("Expected a type param.", &.{}, expr.data.valueTemplate.typeParam);
-            };
-            const res = try sema.ensureValueType(c, child_t, expr.data.valueTemplate.typeParam);
-            return TypeExprResult{ .sym = res.sym, .type = res.type };
         },
         else => {
             return c.reportErrorAt("Unsupported type expr: `{}`", &.{v(expr.type())}, exprId);
@@ -2807,8 +2821,8 @@ const SwitchInfo = struct {
             .isStmt = isStmt,
         };
 
-        if (info.exprTypeSym.type == .enumType) {
-            if (info.exprTypeSym.cast(.enumType).isChoiceType) {
+        if (info.exprTypeSym.type == .enum_t) {
+            if (info.exprTypeSym.cast(.enum_t).isChoiceType) {
                 info.exprIsChoiceType = true;
             }
         }
@@ -3046,7 +3060,7 @@ fn semaCaseCond(c: *cy.Chunk, info: SwitchInfo, state: *CaseState) !void {
     if (info.exprIsChoiceType) {
         if (cond.type() == .symbolLit) {
             const name = c.ast.nodeString(cond);
-            if (info.exprTypeSym.cast(.enumType).getMember(name)) |member| {
+            if (info.exprTypeSym.cast(.enum_t).getMember(name)) |member| {
                 const condRes = try c.semaInt(member.val, state.condId);
                 c.ir.setArrayItem(state.irCondsIdx, u32, state.condIdx, condRes.irIdx);
                 state.condId = cond.next();
@@ -3091,11 +3105,11 @@ pub const ChunkExt = struct {
             bt.String   => return c.semaString("", nodeId),
             else => {
                 const sym = c.sema.getTypeSym(typeId);
-                if (sym.type != .object) {
+                if (sym.type != .object_t) {
                     return error.Unsupported;
                 }
 
-                const obj = sym.cast(.object);
+                const obj = sym.cast(.object_t);
                 const irIdx = try c.ir.pushExpr(c.alloc, .objectInit, nodeId, .{
                     .typeId = obj.type, .numArgs = @as(u8, @intCast(obj.numFields)),
                     .numFieldsToCheck = 0, .fieldsToCheck = 0,
@@ -3112,7 +3126,7 @@ pub const ChunkExt = struct {
 
     /// `initializerId` is a record literal node.
     /// Explicit `typeId` since it can initialize a RC object or a value object.
-    pub fn semaObjectInit2(c: *cy.Chunk, typeId: cy.TypeId, obj: *cy.sym.ObjectType, initializerId: cy.NodeId) !ExprResult {
+    pub fn semaObjectInit2(c: *cy.Chunk, obj: *cy.sym.ObjectType, initializerId: cy.NodeId) !ExprResult {
         // Set up a temp buffer to map initializer entries to type fields.
         const fieldsDataStart = c.listDataStack.items.len;
         try c.listDataStack.resize(c.alloc, c.listDataStack.items.len + obj.numFields);
@@ -3170,13 +3184,13 @@ pub const ChunkExt = struct {
             }
         }
         c.ir.setExprData(irIdx, .objectInit, .{
-            .typeId = typeId, .numArgs = @as(u8, @intCast(obj.numFields)),
+            .typeId = obj.type, .numArgs = @as(u8, @intCast(obj.numFields)),
             .numFieldsToCheck = @as(u8, @intCast(numFieldsToCheck)),
             .fieldsToCheck = irExtraIdx,
         });
         c.ir.buf.items.len = irExtraIdx + numFieldsToCheck;
 
-        return ExprResult.initStatic(irIdx, typeId);
+        return ExprResult.initStatic(irIdx, obj.type);
     }
 
     pub fn semaObjectInit(c: *cy.Chunk, expr: Expr) !ExprResult {
@@ -3190,13 +3204,16 @@ pub const ChunkExt = struct {
 
         const sym = left.data.sym.resolved();
         switch (sym.type) {
-            .object => {
-                const obj = sym.cast(.object);
-                // `left.type.id` determines whether it's a RC or value object.
-                return c.semaObjectInit2(left.type.id, obj, node.data.objectInit.initializer);
+            .struct_t => {
+                const obj = sym.cast(.struct_t);
+                return c.semaObjectInit2(obj, node.data.objectInit.initializer);
             },
-            .enumType => {
-                const enumType = sym.cast(.enumType);
+            .object_t => {
+                const obj = sym.cast(.object_t);
+                return c.semaObjectInit2(obj, node.data.objectInit.initializer);
+            },
+            .enum_t => {
+                const enumType = sym.cast(.enum_t);
 
                 const initializer = c.ast.node(node.data.objectInit.initializer);
                 if (initializer.data.recordLit.numArgs != 1) {
@@ -3224,7 +3241,7 @@ pub const ChunkExt = struct {
             },
             .enumMember => {
                 const member = sym.cast(.enumMember);
-                const enumSym = member.head.parent.?.cast(.enumType);
+                const enumSym = member.head.parent.?.cast(.enum_t);
                 // Check if enum is choice type.
                 if (!enumSym.isChoiceType) {
                     const name = c.ast.nodeStringById(node.data.objectInit.name);
@@ -3252,13 +3269,13 @@ pub const ChunkExt = struct {
                         return c.reportErrorAt("The payload type `{}` can not be initialized with key value pairs.", &.{v(payloadTypeName)}, node.data.objectInit.name);
                     }
 
-                    const obj = c.sema.getTypeSym(member.payloadType).cast(.object);
+                    const obj = c.sema.getTypeSym(member.payloadType).cast(.object_t);
 
                     var b: ObjectBuilder = .{ .c = c };
                     try b.begin(member.type, 2, expr.nodeId);
                     const tag = try c.semaInt(member.val, expr.nodeId);
                     b.pushArg(tag);
-                    const payload = try c.semaObjectInit2(obj.type, obj, node.data.objectInit.initializer);
+                    const payload = try c.semaObjectInit2(obj, node.data.objectInit.initializer);
                     b.pushArg(payload);
                     const irIdx = b.end();
                     return ExprResult.initStatic(irIdx, member.type);
@@ -3447,7 +3464,7 @@ pub const ChunkExt = struct {
             .symbolLit => {
                 const name = c.ast.nodeString(node);
                 if (c.sema.isEnumType(expr.preferType)) {
-                    const sym = c.sema.getTypeSym(expr.preferType).cast(.enumType);
+                    const sym = c.sema.getTypeSym(expr.preferType).cast(.enum_t);
                     if (sym.getMemberTag(name)) |tag| {
                         const irIdx = try c.ir.pushExpr(c.alloc, .enumMemberSym, nodeId, .{
                             .type = expr.preferType,
@@ -3584,18 +3601,6 @@ pub const ChunkExt = struct {
                 const ctype = CompactType.initStatic(sym.getStaticType().?);
                 return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = sym });
             },
-            .valueTemplate => {
-                const child = try c.semaExprSkipSym(node.data.valueTemplate.typeParam);
-                if (child.resType != .sym) {
-                    return c.reportErrorAt("Expected a type param.", &.{}, node.data.valueTemplate.typeParam);
-                }
-                const child_t = child.data.sym.getStaticType() orelse {
-                    return c.reportErrorAt("Expected a type param.", &.{}, node.data.valueTemplate.typeParam);
-                };
-                const res = try sema.ensureValueType(c, child_t, node.data.valueTemplate.typeParam);
-                const ctype = CompactType.initStatic(res.type);
-                return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = res.sym });
-            },
             .accessExpr => {
                 return try c.semaAccessExpr(expr, true);
             },
@@ -3717,8 +3722,8 @@ pub const ChunkExt = struct {
             .recordLit => {
                 if (c.sema.isUserObjectType(expr.preferType)) {
                     // Infer user object type.
-                    const obj = c.sema.getTypeSym(expr.preferType).cast(.object);
-                    return c.semaObjectInit2(obj.type, obj, nodeId);
+                    const obj = c.sema.getTypeSym(expr.preferType).cast(.object_t);
+                    return c.semaObjectInit2(obj, nodeId);
                 }
 
                 const numArgs = node.data.recordLit.numArgs;
@@ -4446,47 +4451,6 @@ pub const ChunkExt = struct {
         return ExprResult.initCustom(irIdx, .objectField, CompactType.init(field.typeId), undefined);
     }
 };
-
-const ValueType = struct {
-    sym: *cy.Sym,
-    type: cy.TypeId,
-};
-
-fn ensureValueType(c: *cy.Chunk, child_t: cy.TypeId, childNodeId: cy.NodeId) !ValueType {
-    const entry = c.sema.types.items[child_t];
-    if (entry.kind == .value) {
-        const name = try c.sema.allocTypeName(child_t);
-        defer c.alloc.free(name);
-        return c.reportErrorAt("`{}` is already a value type.", &.{v(name)}, childNodeId);
-    }
-
-    const res = try c.valueTypeCache.getOrPut(c.alloc, child_t);
-    if (!res.found_existing) {
-        const typeId = try c.sema.pushType();
-
-        var numFields: u16 = undefined;
-        if (entry.kind == .object) {
-            numFields = @intCast(entry.sym.cast(.object).numFields);
-        } else if (entry.kind == .choice) {
-            numFields = 2;
-        } else {
-            return c.reportErrorAt("Unsupported {}.", &.{v(entry.kind)}, childNodeId);
-        }
-
-        c.compiler.sema.types.items[typeId] = .{
-            .sym = entry.sym,
-            .kind = .value,
-            .data = .{ .value = .{
-                .numFields = numFields,
-            }},
-        };
-        res.value_ptr.* = typeId;
-    }
-    return ValueType{
-        .sym = entry.sym,
-        .type = res.value_ptr.*,
-    };
-}
 
 const VarResult = struct {
     id: LocalVarId,

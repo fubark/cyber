@@ -194,6 +194,7 @@ if (!aot) {
     run.case("types/object_zero_init_error.cy");
     run.case("types/objects.cy");
     // run.case("types/optionals.cy");
+    run.case("types/structs.cy");
     run.case("types/template_object_init_noexpand_error.cy");
     run.case("types/template_object_spec_noexpand_error.cy");
     run.case("types/template_object_expand_error.cy");
@@ -201,9 +202,6 @@ if (!aot) {
     run.case("types/type_alias.cy");
     run.case("types/type_spec.cy");
     run.case("types/unnamed_object.cy");
-    run.case("types/value_assign_to_object_error.cy");
-    run.case("types/value_already_value_type_error.cy");
-    run.case("types/values.cy");
 
     if (!cy.isWasm) {
         run.case2(Config.initFileModules("./test/modules/type_spec.cy"), "modules/type_spec.cy");

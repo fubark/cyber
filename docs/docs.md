@@ -233,21 +233,22 @@ The final resulting value that is assigned to the static variable is provided by
 ## Reserved identifiers.
 
 ### Keywords.
-There are `28` general keywords. This list categorizes them:
+There are `26` general keywords. This list categorizes them:
 
 - [Control Flow](#control-flow): `if` `else` `switch` `case` `while` `for` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not`
 - [Variables](#variables): `var` `my`
 - [Functions](#functions): `func` `return`
-- [Coroutines](#fibers): `coinit` `coyield`, `coresume`
-- [Types](#custom-types): `type` [`object`](#objects) [`enum`](#enums) `as`
+- [Coroutines](#fibers): `coinit` `coyield` `coresume`
+- [Types](#custom-types): `type`  `as`
 - [Metaprogramming](#metaprogramming): `template`
 - [Error Handling](#error-handling): `try` `catch` `throw`
 - [Modules](#modules): `import`
 
 ### Contextual keywords.
 These keywords only have meaning in a certain context.
-- [Methods](#methods): `self`, `Self`
+- [Methods](#methods): `self` `Self`
+- [Types](#custom-types): [`object`](#objects) [`struct`](#structs) [`enum`](#enums) 
 - [Catching Errors](#caught-variable): `caught`
 - [Function Throws](#throws-specifier): `throws`
 
@@ -795,7 +796,9 @@ print int(currency)       -- '123' or some arbitrary id.
   * [`self` variable.](#self-variable)
   * [Type functions.](#type-functions)
   * [Type variables.](#type-variables)
-* [Values.](#values)
+* [Structs.](#structs)
+  * [Declare struct type.](#declare-struct-type)
+  * [Copy structs.](#copy-structs)
 * [Enums.](#enums)
 * [Choices.](#choices)
   * [Initialize choice.](#initialize-choice)
@@ -963,18 +966,25 @@ var Node.DefaultValue = 100
 print Node.DefaultValue    -- Prints "100"
 ```
 
-## Values.
-Value types share the same field layout as object types, but their instances are copied by value rather than by reference. In that sense, they behave like primitive data types. Value types are created using the generic `+` prefix:
+## Structs.
+Struct types can contain field and method members just like object types, but their instances are copied by value rather than by reference. In that sense, they behave like primitive data types.
+
+Structs are not reference counted. There can only be one active reference to a struct when using the safe ownership model. However, multiple references to the same struct can be created when using unsafe pointers.
+
+### Declare struct type.
+Struct types are created using the `type struct` declaration:
 ```cy
-type Vec2:
+type Vec2 struct:
     var x float
     var y float
 
-var v = [+Vec2 x: 30, y: 40]
+var v = [Vec2 x: 30, y: 40]
 ```
 
-Since values are not copied by reference, assigning a value to another variable creates a new value:
+### Copy structs.
+Since structs are copied by value, assigning a struct to another variable creates a new struct:
 ```cy
+var v = [Vec2 x: 30, y: 40]
 var w = v
 v.x = 100
 print w.x    -- Prints '30'

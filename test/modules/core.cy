@@ -116,7 +116,7 @@ t.eq(res['decls'][0].type, 'object')
 t.eq(res['decls'][0].name, 'foo')
 
 res = parseCyber("type foo enum:\n  case a")
-t.eq(res['decls'][0].type, 'enumT')
+t.eq(res['decls'][0].type, 'enum_t')
 t.eq(res['decls'][0].name, 'foo')
 
 -- parseCyon()

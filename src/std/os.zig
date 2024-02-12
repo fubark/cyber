@@ -191,8 +191,8 @@ pub fn zPostTypeLoad(c: *cy.VMcompiler, mod: cc.ApiModule) !void {
 
     const sym: *cy.Sym = @ptrCast(@alignCast(mod.sym));
     const chunkMod = sym.getMod().?;
-    CArrayT = chunkMod.getSym("CArray").?.cast(.object).type;
-    CDimArrayT = chunkMod.getSym("CDimArray").?.cast(.object).type;
+    CArrayT = chunkMod.getSym("CArray").?.cast(.object_t).type;
+    CDimArrayT = chunkMod.getSym("CDimArray").?.cast(.object_t).type;
     nextUniqId = 1;
 }
 

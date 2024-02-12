@@ -27,23 +27,32 @@ pub fn gen(c: *cy.VMcompiler) !void {
         log.tracev("bc prepare type: {s}", .{stype.sym.name()});
         const sym = stype.sym;
 
-        if (sym.type == .object) {
-            const obj = sym.cast(.object);
-            const mod = sym.getMod().?;
-            for (obj.fields[0..obj.numFields], 0..) |field, i| {
-                const fieldSym = mod.getSymById(field.symId);
-                const fieldSymId = try c.vm.ensureFieldSym(fieldSym.name());
-                try c.vm.addFieldSym(@intCast(typeId), fieldSymId, @intCast(i), field.type);
-            }
-        } else if (sym.type == .predefinedType) {
-            // Nop.
-        } else if (sym.type == .hostObjectType) {
-            // Nop.
-        } else if (sym.type == .enumType) {
-            // Nop.
-        } else {
-            log.tracev("{}", .{sym.type});
-            return error.Unsupported;
+        switch (sym.type) {
+            .object_t => {
+                const obj = sym.cast(.object_t);
+                const mod = sym.getMod().?;
+                for (obj.fields[0..obj.numFields], 0..) |field, i| {
+                    const fieldSym = mod.getSymById(field.symId);
+                    const fieldSymId = try c.vm.ensureFieldSym(fieldSym.name());
+                    try c.vm.addFieldSym(@intCast(typeId), fieldSymId, @intCast(i), field.type);
+                }
+            },
+            .struct_t => {
+                const obj = sym.cast(.struct_t);
+                const mod = sym.getMod().?;
+                for (obj.fields[0..obj.numFields], 0..) |field, i| {
+                    const fieldSym = mod.getSymById(field.symId);
+                    const fieldSymId = try c.vm.ensureFieldSym(fieldSym.name());
+                    try c.vm.addFieldSym(@intCast(typeId), fieldSymId, @intCast(i), field.type);
+                }
+            },
+            .predefinedType,
+            .hostObjectType,
+            .enum_t => {},
+            else => {
+                log.tracev("{}", .{sym.type});
+                return error.Unsupported;
+            },
         }
     }
 
@@ -130,10 +139,11 @@ fn prepareSym(c: *cy.VMcompiler, sym: *cy.Sym) !void {
         .hostObjectType,
         .predefinedType,
         .field,
-        .object,
+        .struct_t,
+        .object_t,
         .func,
         .typeAlias,
-        .enumType,
+        .enum_t,
         .enumMember,
         .import => {},
         else => {
@@ -599,7 +609,7 @@ fn genCast(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     try pushUnwindValue(c, childv);
 
     const sym = c.sema.getTypeSym(data.typeId);
-    if (sym.type == .object) {
+    if (sym.type == .object_t) {
         const pc = c.buf.ops.items.len;
         try c.pushFCode(.cast, &.{ childv.local, 0, 0, inst.dst }, nodeId);
         c.buf.setOpArgU16(pc + 2, @intCast(data.typeId));
@@ -705,9 +715,9 @@ fn genObjectInit(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
 
     const typ = c.sema.types.items[data.typeId];
     switch (typ.kind) {
-        .value,
+        .@"struct",
         .object => {
-            const obj = typ.sym.cast(.object);
+            const obj: *cy.sym.ObjectType = if (typ.kind == .object) typ.sym.cast(.object_t) else typ.sym.cast(.struct_t);
             if (data.numFieldsToCheck > 0) {
                 try c.pushFCode(.objectTypeCheck, &.{ argStart , @as(u8, @intCast(data.numFieldsToCheck)) }, nodeId);
 
@@ -1557,7 +1567,7 @@ fn genLocalReg(c: *Chunk, reg: RegisterId, cstr: Cstr, nodeId: cy.NodeId) !GenVa
     const local = getLocalInfo(c, reg);
 
     if (!local.some.lifted) {
-        if (local.some.isObjectValue) {
+        if (local.some.isStructValue) {
             return genValueLocal(c, reg, local, cstr, nodeId);
         }
 
@@ -1586,7 +1596,7 @@ fn genLocalReg(c: *Chunk, reg: RegisterId, cstr: Cstr, nodeId: cy.NodeId) !GenVa
         }
         return finishCopyInst(c, inst, inst.retainSrc);
     } else {
-        if (local.some.isObjectValue) {
+        if (local.some.isStructValue) {
             return genLiftedValueLocal(c, reg, local, cstr, nodeId);
         }
 
@@ -1728,7 +1738,7 @@ fn reserveFuncRegs(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []ali
                     .lifted = param.lifted,
                     .isDynamic = param.declType == bt.Dynamic,
                     .type = param.declType,
-                    .isObjectValue = c.sema.getTypeKind(param.declType) == .value,
+                    .isStructValue = c.sema.getTypeKind(param.declType) == .@"struct",
                 },
             };
 
@@ -1751,7 +1761,7 @@ fn reserveFuncRegs(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []ali
                     .lifted = false,
                     .isDynamic = param.declType == bt.Dynamic,
                     .type = param.declType,
-                    .isObjectValue = c.sema.getTypeKind(param.declType) == .value,
+                    .isStructValue = c.sema.getTypeKind(param.declType) == .@"struct",
                 },
             };
         }
@@ -1822,7 +1832,7 @@ fn declareLocalInit(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
     } else {
         local.some.type = data.initType;
     }
-    local.some.isObjectValue = c.sema.getTypeKind(local.some.type) == .value;
+    local.some.isStructValue = c.sema.getTypeKind(local.some.type) == .@"struct";
 
     if (!data.zeroMem) {
         // rhs has generated, increase `nextLocalReg`.
@@ -1889,7 +1899,7 @@ fn setLocal(c: *Chunk, data: ir.Local, rightIdx: u32, right_t: cy.TypeId, nodeId
     local.some.rcCandidate = rightv.retained;
     if (local.some.isDynamic) {
         local.some.type = right_t;
-        local.some.isObjectValue = c.sema.getTypeKind(right_t) == .value;
+        local.some.isStructValue = c.sema.getTypeKind(right_t) == .@"struct";
     }
 }
 
@@ -1900,7 +1910,7 @@ fn setLocalType(c: *Chunk, idx: usize) !void {
     local.some.rcCandidate = c.sema.isRcCandidateType(data.type.id);
     if (local.some.isDynamic) {
         local.some.type = data.type.id;
-        local.some.isObjectValue = c.sema.getTypeKind(data.type.id) == .value;
+        local.some.isStructValue = c.sema.getTypeKind(data.type.id) == .@"struct";
     }
 }
 
@@ -2184,7 +2194,7 @@ pub const Local = union {
 
         lifted: bool,
 
-        isObjectValue: bool,
+        isStructValue: bool,
 
         isDynamic: bool,
         type: cy.TypeId,
@@ -3804,7 +3814,7 @@ fn reserveLocalRegAt(c: *Chunk, irLocalId: u8, declType: types.TypeId, lifted: b
             .isDynamic = declType == bt.Dynamic,
 
             // Updated when it's assigned.
-            .isObjectValue = false,
+            .isStructValue = false,
             .type = cy.NullId,
         },
     };

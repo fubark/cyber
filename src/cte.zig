@@ -153,8 +153,9 @@ fn nodeToCtValue(c: *cy.Chunk, nodeId: cy.NodeId) !CtValue {
                 .static => |csymId| {
                     const sym_r = try sema.symbol(c, csymId, nodeId, false);
                     switch (sym_r.data.sym.type) {
+                        .struct_t,
                         .predefinedType,
-                        .object => {
+                        .object_t => {
                             return CtValue{
                                 .type = bt.Type,
                                 .value = try c.vm.allocType(sym_r.data.sym.getStaticType().?),

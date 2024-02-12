@@ -19,7 +19,7 @@ const TypeKind = enum(u8) {
     hostObject,
     @"enum",
     choice,
-    value,
+    @"struct",
 };
 
 pub const Type = extern struct {
@@ -38,7 +38,7 @@ pub const Type = extern struct {
             getChildrenFn: cc.ObjectGetChildrenFn,
             finalizerFn: cc.ObjectFinalizerFn,
         },
-        value: extern struct {
+        @"struct": extern struct {
             numFields: u16,
         },
     },
@@ -159,9 +159,9 @@ pub const SemaExt = struct {
     pub fn allocTypeName(s: *cy.Sema, id: TypeId) ![]const u8 {
         const typ = s.types.items[id];
         switch (typ.kind) {
-            .value => {
-                return try std.fmt.allocPrint(s.alloc, "+{s}", .{typ.sym.name()});
-            },
+            // .value => {
+            //     return try std.fmt.allocPrint(s.alloc, "+{s}", .{typ.sym.name()});
+            // },
             else => {
                 return try s.alloc.dupe(u8, typ.sym.name());
             }
@@ -170,12 +170,6 @@ pub const SemaExt = struct {
 
     pub fn writeTypeName(s: *cy.Sema, w: anytype, id: TypeId) !void {
         const typ = s.types.items[id];
-        switch (typ.kind) {
-            .value => {
-                try w.writeByte('+');
-            },
-            else => {},
-        }
         try w.writeAll(typ.sym.name());
     }
 
@@ -237,8 +231,9 @@ pub const SemaExt = struct {
                 const sym = s.getTypeSym(id);
                 switch (sym.type) {
                     .hostObjectType,
-                    .object => return true,
-                    .enumType => return false,
+                    .struct_t,
+                    .object_t => return true,
+                    .enum_t => return false,
                     else => {
                         cy.panicFmt("Unexpected sym type: {} {}", .{id, sym.type});
                     }
@@ -254,7 +249,7 @@ pub const ChunkExt = struct {
         var res = hasZeroInit(c, typeId);
         if (res == .missingEntry) {
             const sym = c.sema.getTypeSym(typeId);
-            res = try visitTypeHasZeroInit(c, sym.cast(.object));
+            res = try visitTypeHasZeroInit(c, sym.cast(.object_t));
         }
         switch (res) {
             .hasZeroInit => return,
@@ -394,7 +389,7 @@ fn hasZeroInit(c: *cy.Chunk, typeId: TypeId) ZeroInitResult {
         bt.String => return .hasZeroInit,
         else => {
             const sym = c.sema.getTypeSym(typeId);
-            if (sym.type == .object) {
+            if (sym.type == .object_t or sym.type == .struct_t) {
                 if (c.typeDepsMap.get(sym)) |entryId| {
                     if (!c.typeDeps.items[entryId].visited) {
                         // Still being visited, which indicates a circular reference.
@@ -425,7 +420,7 @@ fn visitTypeHasZeroInit(c: *cy.Chunk, obj: *cy.sym.ObjectType) !ZeroInitResult {
     for (obj.fields[0..obj.numFields]) |field| {
         var res = hasZeroInit(c, field.type);
         if (res == .missingEntry) {
-            const childSym = c.sema.getTypeSym(field.type).cast(.object);
+            const childSym = c.sema.getTypeSym(field.type).cast(.object_t);
             res = try visitTypeHasZeroInit(c, childSym);
         }
         switch (res) {

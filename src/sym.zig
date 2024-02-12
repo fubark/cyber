@@ -82,14 +82,20 @@ pub const Sym = extern struct {
                 chunk.getMod().deinit(alloc);
                 alloc.destroy(chunk);
             },
-            .object => {
-                const obj = self.cast(.object);
+            .struct_t => {
+                const obj = self.cast(.struct_t);
                 obj.getMod().deinit(alloc);
                 alloc.free(obj.fields[0..obj.numFields]);
                 alloc.destroy(obj);
             },
-            .enumType => {
-                const enumType = self.cast(.enumType);
+            .object_t => {
+                const obj = self.cast(.object_t);
+                obj.getMod().deinit(alloc);
+                alloc.free(obj.fields[0..obj.numFields]);
+                alloc.destroy(obj);
+            },
+            .enum_t => {
+                const enumType = self.cast(.enum_t);
                 enumType.getMod().deinit(alloc);
                 alloc.free(enumType.members[0..enumType.numMembers]);
                 alloc.destroy(enumType);
@@ -137,8 +143,9 @@ pub const Sym = extern struct {
             .hostObjectType,
             .predefinedType,
             .typeAlias,
-            .object,
-            .enumType => {
+            .struct_t,
+            .object_t,
+            .enum_t => {
                 return true;
             },
             else => {
@@ -168,8 +175,9 @@ pub const Sym = extern struct {
     pub fn getMod(self: *Sym) ?*cy.Module {
         switch (self.type) {
             .chunk          => return @ptrCast(&self.cast(.chunk).mod),
-            .enumType       => return @ptrCast(&self.cast(.enumType).mod),
-            .object         => return @ptrCast(&self.cast(.object).mod),
+            .enum_t         => return @ptrCast(&self.cast(.enum_t).mod),
+            .struct_t       => return @ptrCast(&self.cast(.struct_t).mod),
+            .object_t       => return @ptrCast(&self.cast(.object_t).mod),
             .hostObjectType => return @ptrCast(&self.cast(.hostObjectType).mod),
             .predefinedType => return @ptrCast(&self.cast(.predefinedType).mod),
             .import,
@@ -182,7 +190,7 @@ pub const Sym = extern struct {
             .hostVar => {
                 return null;
             },
-            .uninit => cy.unexpected(),
+            .null => cy.unexpected(),
         }
     }
 
@@ -208,9 +216,10 @@ pub const Sym = extern struct {
             .userVar    => return self.cast(.userVar).type,
             .hostVar    => return self.cast(.hostVar).type,
             .enumMember => return self.cast(.enumMember).type,
+            .struct_t,
             .predefinedType,
             .typeAlias,
-            .object     => return bt.MetaType,
+            .object_t   => return bt.MetaType,
             .func => {
                 const func = self.cast(.func);
                 if (func.numFuncs == 1) {
@@ -226,9 +235,10 @@ pub const Sym = extern struct {
     pub fn getStaticType(self: *Sym) ?cy.TypeId {
         switch (self.type) {
             .predefinedType => return self.cast(.predefinedType).type,
-            .enumType       => return self.cast(.enumType).type,
+            .enum_t         => return self.cast(.enum_t).type,
             .typeAlias      => return self.cast(.typeAlias).type,
-            .object         => return self.cast(.object).type,
+            .struct_t       => return self.cast(.struct_t).type,
+            .object_t       => return self.cast(.object_t).type,
             .hostObjectType => return self.cast(.hostObjectType).type,
             else            => return null,
         }
@@ -309,38 +319,37 @@ fn SymChild(comptime symT: SymType) type {
         .func => FuncSym,
         .userVar => UserVar,
         .hostVar => HostVar,
-        .object => ObjectType,
+        .struct_t,
+        .object_t => ObjectType,
         .hostObjectType => HostObjectType,
         .predefinedType => PredefinedType,
-        .enumType => EnumType,
+        .enum_t => EnumType,
         .enumMember => EnumMember,
         .typeAlias => TypeAlias,
         .typeTemplate => TypeTemplate,
         .field => Field,
         .import => Import,
         .chunk => Chunk,
-        .uninit => void,
+        .null => void,
     };
 }
 
 pub const SymType = enum(u8) {
+    null,
     userVar,
     hostVar,
     func,
     hostObjectType,
-    // TODO: Rename to objectType.
-    object,
+    object_t,
+    struct_t,
     predefinedType,
     import,
     chunk,
-    enumType,
+    enum_t,
     enumMember,
     typeAlias,
     typeTemplate,
     field,
-
-    // No sym.
-    uninit,
 };
 
 pub const HostVar = extern struct {

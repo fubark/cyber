@@ -631,6 +631,7 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
         .import => {
             name = ast.nodeStringById(node.data.importStmt.name);
         },
+        .struct_t,
         .object => {
             const header = ast.node(node.data.objectDecl.header);
             name = ast.nodeStringById(header.data.objectHeader.name);
@@ -659,7 +660,7 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
 
             try vm.mapSet(entry, try vm.retainOrAllocAstring("children"), childrenv);
         },
-        .enumT => {
+        .enum_t => {
             name = ast.nodeStringById(node.data.enumDecl.name);
         }
     }
@@ -1406,7 +1407,7 @@ fn errorCall(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection)
         } else if (val.isEnum()) {
             const enumT = val.getEnumType();
             const enumv = val.getEnumValue();
-            const name = vm.types[enumT].sym.cast(.enumType).getValueSym(enumv).name();
+            const name = vm.types[enumT].sym.cast(.enum_t).getValueSym(enumv).name();
             const symId = vm.ensureSymbol(name) catch cy.unexpected();
             return Value.initErrorSymbol(symId);
         } else {

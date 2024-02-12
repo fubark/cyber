@@ -607,12 +607,16 @@ fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
                     .import => {
                         try sema.declareImport(chunk, decl.nodeId);
                     },
+                    .struct_t => {
+                        const sym = try sema.declareObject(chunk, true, decl.nodeId);
+                        decl.data = .{ .sym = @ptrCast(sym) };
+                    },
                     .object => {
-                        const sym = try sema.declareObject(chunk, decl.nodeId);
+                        const sym = try sema.declareObject(chunk, false, decl.nodeId);
                         // Persist for declareObjectMembers.
                         decl.data = .{ .sym = @ptrCast(sym) };
                     },
-                    .enumT => {
+                    .enum_t => {
                         const sym = try sema.declareEnum(chunk, decl.nodeId);
                         decl.data = .{ .sym = @ptrCast(sym) };
                     },
@@ -748,10 +752,11 @@ fn declareSymbols(self: *VMcompiler) !void {
                 .funcInit => {
                     try sema.declareFuncInit(chunk, @ptrCast(chunk.sym), decl.nodeId);
                 },
+                .struct_t,
                 .object => {
                     try sema.declareObjectMembers(chunk, decl.data.sym, decl.nodeId);
                 },
-                .enumT => {
+                .enum_t => {
                     try sema.declareEnumMembers(chunk, @ptrCast(decl.data.sym), decl.nodeId);
                 },
                 .import,

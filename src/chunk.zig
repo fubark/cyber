@@ -181,9 +181,6 @@ pub const Chunk = struct {
 
     rootStmtBlock: cy.ir.StmtBlock,
 
-    /// Type to value type.
-    valueTypeCache: std.AutoHashMapUnmanaged(cy.TypeId, cy.TypeId),
-
     /// LLVM
     tempTypeRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.TypeRef) else void,
     tempValueRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.ValueRef) else void,
@@ -270,7 +267,6 @@ pub const Chunk = struct {
                 .first = cy.NullId,
                 .last = cy.NullId,
             },
-            .valueTypeCache = .{},
         };
 
         if (cy.hasJIT) {
@@ -344,8 +340,6 @@ pub const Chunk = struct {
         self.modSyms.deinit(self.alloc);
 
         self.variantFuncSyms.deinit(self.alloc);
-
-        self.valueTypeCache.deinit(self.alloc);
 
         self.alloc.free(self.srcUri);
         self.parser.deinit();

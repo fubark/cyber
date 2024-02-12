@@ -276,8 +276,8 @@ pub const ChunkExt = struct {
         try checkUniqueSym(c, mod, name, declId);
 
         const typeId = try c.sema.pushType();
-        const sym = try cy.sym.createSym(c.alloc, .enumType, .{
-            .head = cy.Sym.init(.enumType, parent, name),
+        const sym = try cy.sym.createSym(c.alloc, .enum_t, .{
+            .head = cy.Sym.init(.enum_t, parent, name),
             .type = typeId,
             .members = @as([*]const ModuleSymId, @ptrCast(@alignCast(&.{}))),
             .numMembers = 0,
@@ -366,8 +366,8 @@ pub const ChunkExt = struct {
 
         const name = parent.head.name();
         const typeId = try c.sema.pushType();
-        const sym = try cy.sym.createSym(c.alloc, .object, .{
-            .head = cy.Sym.init(.object, @ptrCast(parent), name),
+        const sym = try cy.sym.createSym(c.alloc, .object_t, .{
+            .head = cy.Sym.init(.object_t, @ptrCast(parent), name),
             .declId = parent.declId,
             .type = typeId,
             .fields = undefined,
@@ -394,8 +394,8 @@ pub const ChunkExt = struct {
         try checkUniqueSym(c, mod, name, declId);
 
         const typeId = try c.sema.pushType();
-        const sym = try cy.sym.createSym(c.alloc, .object, .{
-            .head = cy.Sym.init(.object, parent, name),
+        const sym = try cy.sym.createSym(c.alloc, .object_t, .{
+            .head = cy.Sym.init(.object_t, parent, name),
             .declId = declId,
             .type = typeId,
             .fields = undefined,
@@ -418,6 +418,35 @@ pub const ChunkExt = struct {
         return sym;
     }
 
+    pub fn declareStructType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId) !*cy.sym.ObjectType {
+        const mod = parent.getMod().?;
+        try checkUniqueSym(c, mod, name, declId);
+
+        const typeId = try c.sema.pushType();
+        const sym = try cy.sym.createSym(c.alloc, .struct_t, .{
+            .head = cy.Sym.init(.struct_t, parent, name),
+            .declId = declId,
+            .type = typeId,
+            .fields = undefined,
+            .variantId = cy.NullId,
+            .numFields = 0,
+            .mod = undefined,
+        });
+
+        @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
+        try mod.chunk.modSyms.append(c.alloc, @ptrCast(sym));
+
+        _ = try addSym(c, mod, name, @ptrCast(sym));
+        c.compiler.sema.types.items[typeId] = .{
+            .sym = @ptrCast(sym),
+            .kind = .@"struct",
+            .data = .{ .@"struct" = .{
+                .numFields = 0,
+            }},
+        };
+        return sym;
+    }
+
     /// Declared at the chunk level.
     /// TODO: Hash object members to avoid duplicate types at the chunk level.
     ///       Actually, it might not even be worth it since it means the usual case requires
@@ -431,8 +460,8 @@ pub const ChunkExt = struct {
         try c.parser.ast.strs.append(c.alloc, nameDup);
 
         const typeId = try c.sema.pushType();
-        const sym = try cy.sym.createSym(c.alloc, .object, .{
-            .head = cy.Sym.init(.object, parent, nameDup),
+        const sym = try cy.sym.createSym(c.alloc, .object_t, .{
+            .head = cy.Sym.init(.object_t, parent, nameDup),
             .declId = declId,
             .type = typeId,
             .fields = undefined,
@@ -454,6 +483,44 @@ pub const ChunkExt = struct {
             .sym = @ptrCast(sym),
             .kind = .object,
             .data = .{ .object = .{
+                .numFields = 0,
+            }},
+        };
+        return sym;
+    }
+
+    pub fn declareUnnamedStructType(c: *cy.Chunk, parent: *cy.Sym, declId: cy.NodeId) !*cy.sym.ObjectType {
+        const mod = parent.getMod().?;
+        var buf: [16]u8 = undefined;
+        const name = mod.chunk.getNextUniqUnnamedIdent(&buf);
+
+        const nameDup = try c.alloc.dupe(u8, name);
+        try c.parser.ast.strs.append(c.alloc, nameDup);
+
+        const typeId = try c.sema.pushType();
+        const sym = try cy.sym.createSym(c.alloc, .struct_t, .{
+            .head = cy.Sym.init(.struct_t, parent, nameDup),
+            .declId = declId,
+            .type = typeId,
+            .fields = undefined,
+            .variantId = cy.NullId,
+            .numFields = 0,
+            .mod = undefined,
+        });
+
+        @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
+        try mod.chunk.modSyms.append(c.alloc, @ptrCast(sym));
+
+        const symId = try addSym(c, mod, name, @ptrCast(sym));
+
+        // Update node's `name` so it can do a lookup during resolving.
+        const node = mod.chunk.ast.node(declId);
+        mod.chunk.parser.ast.nodePtr(node.data.objectDecl.header).data.objectHeader.name = @intCast(symId);
+
+        c.compiler.sema.types.items[typeId] = .{
+            .sym = @ptrCast(sym),
+            .kind = .@"struct",
+            .data = .{ .@"struct" = .{
                 .numFields = 0,
             }},
         };
@@ -632,9 +699,10 @@ pub const ChunkExt = struct {
         switch (sym.type) {
             .userVar,
             .hostVar,
-            .object,
+            .struct_t,
+            .object_t,
             .hostObjectType,
-            .enumType,
+            .enum_t,
             .chunk,
             .predefinedType,
             .typeTemplate,
@@ -669,7 +737,7 @@ pub const ChunkExt = struct {
                     return null;
                 }
             },
-            .uninit => cy.unexpected(),
+            .null => cy.unexpected(),
         }
     }
 };

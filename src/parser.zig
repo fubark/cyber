@@ -340,7 +340,7 @@ pub const Parser = struct {
         const param = try self.ast.pushNode(self.alloc, .funcParam, identPos);
         self.ast.setNodeData(param, .{ .funcParam = .{
             .name = paramIdent,
-            .typeSpecHead = cy.NullNode,
+            .typeSpec = cy.NullNode,
         }});
 
         const ret = cy.NullNode;
@@ -391,7 +391,7 @@ pub const Parser = struct {
         // Assume first token is `func`.
         self.advance();
 
-        const paramHead = try self.parseFuncParams();
+        const params = try self.parseFuncParams();
         const ret = try self.parseFuncReturn();
 
         if (self.peek().tag() == .colon) {
@@ -409,7 +409,7 @@ pub const Parser = struct {
         const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
         self.ast.setNodeData(header, .{ .funcHeader = .{
             .name = cy.NullNode,
-            .paramHead = paramHead orelse cy.NullNode,
+            .paramHead = params.head,
         }});
 
         self.ast.setNodeData(id, .{ .func = .{
@@ -422,7 +422,7 @@ pub const Parser = struct {
     fn parseLambdaFunction(self: *Parser) !NodeId {
         const start = self.next_pos;
 
-        const paramHead = try self.parseFuncParams();
+        const params = try self.parseFuncParams();
         const ret = try self.parseFuncReturn();
 
         var token = self.peek();
@@ -444,7 +444,7 @@ pub const Parser = struct {
         const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
         self.ast.setNodeData(header, .{ .funcHeader = .{
             .name = cy.NullNode,
-            .paramHead = paramHead orelse cy.NullNode,
+            .paramHead = params.head,
         }});
         
         self.ast.setNodeData(id, .{ .func = .{
@@ -454,7 +454,12 @@ pub const Parser = struct {
         return id;
     }
 
-    fn parseFuncParams(self: *Parser) !?NodeId {
+    const ListResult = struct {
+        head: cy.NodeId,
+        len: u32,
+    };
+
+    fn parseFuncParams(self: *Parser) !ListResult {
         var token = self.peek();
         if (token.tag() != .left_paren) {
             return self.reportError("Expected open parenthesis.", &.{});
@@ -468,14 +473,15 @@ pub const Parser = struct {
             var name = try self.pushSpanNode(.ident, start);
 
             self.advance();
-            var typeSpecHead = (try self.parseOptNamePath()) orelse cy.NullNode;
+            var typeSpec = (try self.parseOptTypeSpec(false)) orelse cy.NullNode;
 
             const paramHead = try self.pushNode(.funcParam, start);
             self.ast.setNodeData(paramHead, .{ .funcParam = .{
                 .name = name,
-                .typeSpecHead = typeSpecHead,
+                .typeSpec = typeSpec,
             }});
 
+            var numParams: u32 = 1;
             var last = paramHead;
             while (true) {
                 token = self.peek();
@@ -499,20 +505,27 @@ pub const Parser = struct {
                 name = try self.pushSpanNode(.ident, start);
                 self.advance();
 
-                typeSpecHead = (try self.parseOptNamePath()) orelse cy.NullNode;
+                typeSpec = (try self.parseOptTypeSpec(false)) orelse cy.NullNode;
 
                 const param = try self.pushNode(.funcParam, start);
                 self.ast.setNodeData(param, .{ .funcParam = .{
                     .name = name,
-                    .typeSpecHead = typeSpecHead,
+                    .typeSpec = typeSpec,
                 }});
                 self.ast.setNextNode(last, param);
+                numParams += 1;
                 last = param;
             }
-            return paramHead;
+            return ListResult{
+                .head = paramHead,
+                .len = numParams,
+            };
         } else if (token.tag() == .right_paren) {
             self.advance();
-            return null;
+            return ListResult{
+                .head = cy.NullNode,
+                .len = 0,
+            };
         } else return self.reportError("Unexpected token in function param list.", &.{});
     }
 
@@ -582,7 +595,7 @@ pub const Parser = struct {
         var typeSpec: cy.NodeId = cy.NullNode;
         const token = self.peek();
         if (token.tag() != .new_line and token.tag() != .none) {
-            if (try self.parseTypeSpec(true)) |res| {
+            if (try self.parseOptTypeSpec(true)) |res| {
                 typeSpec = res;
             }
         } else {
@@ -595,16 +608,6 @@ pub const Parser = struct {
             .typeSpec = typeSpec,
         }});
         return field;
-    }
-
-    fn parseTypeSpec(self: *Parser, allowUnnamedType: bool) !?NodeId {
-        if (allowUnnamedType) {
-            const token = self.peek();
-            if (token.tag() == .object_k) {
-                return try self.parseObjectDecl(token.pos(), null, cy.NullNode);
-            }
-        }
-        return self.parseOptNamePath();
     }
 
     fn parseObjectField(self: *Parser) !?NodeId {
@@ -623,7 +626,7 @@ pub const Parser = struct {
 
         var typeSpec: cy.NodeId = cy.NullNode;
         if (typed) {
-            if (try self.parseTypeSpec(true)) |node| {
+            if (try self.parseOptTypeSpec(true)) |node| {
                 if (self.ast.nodeType(node) != .objectDecl) {
                     try self.consumeNewLineOrEnd();
                 }
@@ -667,15 +670,44 @@ pub const Parser = struct {
         }
     }
 
+    fn parseOptTypeSpec(self: *Parser, allowUnnamedType: bool) !?NodeId {
+        const token = self.peek();
+        switch (token.tag()) {
+            .comma, 
+            .equal,
+            .right_paren,
+            .new_line,
+            .none => {
+                return null;
+            },
+            .object_k => {
+                if (allowUnnamedType) {
+                    const decl = try self.parseObjectDecl(token.pos(), null, cy.NullNode);
+                    try self.staticDecls.append(self.alloc, .{
+                        .declT = .object,
+                        .nodeId = decl,
+                        .data = undefined,
+                    });
+                    return decl;
+                } else {
+                    return self.reportError("Unnamed type is not allowed in this context.", &.{});
+                }
+            },
+            else => {
+                return try self.parseTermExpr();
+            },
+        }
+    }
+
     fn parseTypeAliasDecl(self: *Parser, start: TokenId, name: NodeId) !NodeId {
-        const typeSpecHead = (try self.parseOptNamePath()) orelse {
+        const typeSpec = (try self.parseOptTypeSpec(false)) orelse {
             return self.reportError("Expected type specifier.", &.{});
         };
 
         const id = try self.pushNode(.typeAliasDecl, start);
         self.ast.setNodeData(id, .{ .typeAliasDecl = .{
             .name = name,
-            .typeSpecHead = typeSpecHead,
+            .typeSpec = typeSpec,
         }});
 
         try self.staticDecls.append(self.alloc, .{
@@ -867,7 +899,7 @@ pub const Parser = struct {
 
         var token = self.peek();
         if (token.tag() == .left_paren) {
-            const paramHead = try self.parseFuncParams();
+            const params = try self.parseFuncParams();
             const ret = try self.parseFuncReturn();
 
             const nameN = self.ast.nodePtr(name);
@@ -886,7 +918,7 @@ pub const Parser = struct {
                 const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
                 self.ast.setNodeData(header, .{ .funcHeader = .{
                     .name = name,
-                    .paramHead = paramHead orelse cy.NullNode,
+                    .paramHead = params.head,
                 }});
                 self.ast.nodePtr(header).head.data = .{ .funcHeader = .{ .modHead = @intCast(modifierHead) }};
 
@@ -909,7 +941,7 @@ pub const Parser = struct {
                 const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
                 self.ast.setNodeData(header, .{ .funcHeader = .{
                     .name = name,
-                    .paramHead = paramHead orelse cy.NullNode,
+                    .paramHead = params.head,
                 }});
                 self.ast.nodePtr(header).head.data = .{ .funcHeader = .{ .modHead = @intCast(modifierHead) }};
 
@@ -1561,7 +1593,7 @@ pub const Parser = struct {
                         } else if (self.peek().tag() == .my_k) {
                             return try self.parseVarDecl(modifier, false);
                         } else if (self.peek().tag() == .type_k) {
-                            return try self.parseTypeDecl(modifier);
+                            return try self.parseTypeDecl(modifier, true);
                         } else {
                             return self.reportError("Expected declaration statement.", &.{});
                         }
@@ -2921,13 +2953,13 @@ pub const Parser = struct {
                     const opStart = self.next_pos;
                     self.advance();
 
-                    const typeSpecHead = (try self.parseOptNamePath()) orelse {
+                    const typeSpec = (try self.parseOptTypeSpec(false)) orelse {
                         return self.reportError("Expected type specifier.", &.{});
                     };
                     const expr = try self.pushNode(.castExpr, opStart);
                     self.ast.setNodeData(expr, .{ .castExpr = .{
                         .expr = left_id,
-                        .typeSpecHead = typeSpecHead,
+                        .typeSpec = typeSpec,
                     }});
                     left_id = expr;
                 },
@@ -3004,15 +3036,15 @@ pub const Parser = struct {
         const hasNamePath = self.ast.node(name).next() != cy.NullNode;
         const isStatic = hasNamePath or root;
 
-        var typeSpecHead: cy.NodeId = cy.NullNode;
+        var typeSpec: cy.NodeId = cy.NullNode;
         if (typed) {
-            typeSpecHead = (try self.parseOptNamePath()) orelse cy.NullNode;
+            typeSpec = (try self.parseOptTypeSpec(false)) orelse cy.NullNode;
         }
 
         const varSpec = try self.pushNode(.varSpec, start);
         self.ast.setNodeData(varSpec, .{ .varSpec = .{
             .name = name,
-            .typeSpecHead = typeSpecHead,
+            .typeSpec = typeSpec,
         }});
         self.ast.nodePtr(varSpec).head.data = .{ .varSpec = .{ .modHead = @intCast(modifierHead) }};
 

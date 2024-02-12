@@ -633,7 +633,7 @@ fn ensureTypeAliasIsResolved(mod: *Module, alias: *cy.sym.TypeAlias) !void {
     if (alias.type == cy.NullId) {
         const srcChunk = mod.chunk;
         const node = srcChunk.ast.node(alias.declId);
-        alias.type = try cy.sema.resolveTypeSpecNode(srcChunk, node.data.typeAliasDecl.typeSpecHead);
+        alias.type = try cy.sema.resolveTypeSpecNode(srcChunk, node.data.typeAliasDecl.typeSpec);
         alias.sym = mod.chunk.compiler.sema.types.items[alias.type].sym;
     }
 }

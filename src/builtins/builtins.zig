@@ -580,7 +580,7 @@ fn genNodeValue(vm: *cy.VM, ast: cy.ast.AstView, nodeId: cy.NodeId) !cy.Value {
             var name = ast.nodeStringById(node.data.funcParam.name);
             try vm.mapSet(map, try vm.retainOrAllocAstring("name"), try vm.allocStringInternOrArray(name));
 
-            const typeSpec = try genTypeSpecString(vm, ast, node.data.funcParam.typeSpecHead);
+            const typeSpec = try genTypeSpecString(vm, ast, node.data.funcParam.typeSpec);
             try vm.mapSet(map, try vm.retainOrAllocAstring("typeSpec"), typeSpec);
         },
         else => {},
@@ -599,7 +599,7 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
             const varSpec = ast.node(node.data.staticDecl.varSpec);
             name = ast.getNamePathInfoById(varSpec.data.varSpec.name).namePath;
 
-            const typeSpec = try genTypeSpecString(vm, ast, varSpec.data.varSpec.typeSpecHead);
+            const typeSpec = try genTypeSpecString(vm, ast, varSpec.data.varSpec.typeSpec);
             try vm.mapSet(entry, try vm.retainOrAllocAstring("typeSpec"), typeSpec);
         },
         .typeAlias => {

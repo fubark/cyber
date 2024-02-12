@@ -170,7 +170,7 @@ const NodeData = union {
     },
     castExpr: struct {
         expr: NodeId,
-        typeSpecHead: NodeId,
+        typeSpec: NodeId,
     },
     indexExpr: struct {
         left: NodeId,
@@ -279,12 +279,11 @@ const NodeData = union {
     },
     funcParam: struct {
         name: NodeId,
-        /// Type spec consists of ident nodes linked by `next`.
-        typeSpecHead: cy.Nullable(NodeId),
+        typeSpec: cy.Nullable(NodeId),
     },
     typeAliasDecl: struct {
         name: NodeId,
-        typeSpecHead: NodeId,
+        typeSpec: NodeId,
     },
     objectInit: struct {
         name: NodeId,
@@ -292,7 +291,6 @@ const NodeData = union {
     },
     objectField: packed struct {
         name: NodeId,
-        /// Type spec path head (linked by `next`) or unnamed type decl.
         typeSpec: cy.Nullable(u24),
         typed: bool,
     },
@@ -309,7 +307,7 @@ const NodeData = union {
     },
     varSpec: struct {
         name: NodeId,
-        typeSpecHead: cy.Nullable(NodeId),
+        typeSpec: cy.Nullable(NodeId),
     },
     staticDecl: packed struct {
         varSpec: NodeId,
@@ -325,7 +323,6 @@ const NodeData = union {
     },
     enumMember: struct {
         name: NodeId,
-        /// Type spec path head (linked by `next`) or unnamed type decl.
         typeSpec: cy.Nullable(NodeId),
     },
     enumDecl: packed struct {
@@ -872,9 +869,9 @@ pub const Encoder = struct {
             .funcParam => {
                 const param = self.ast.node(nodeId);
                 try self.writeNode(w, param.data.funcParam.name);
-                if (param.data.funcParam.typeSpecHead != cy.NullNode) {
+                if (param.data.funcParam.typeSpec != cy.NullNode) {
                     try w.writeAll(" ");
-                    try self.writeNode(w, param.data.funcParam.typeSpecHead);
+                    try self.writeNode(w, param.data.funcParam.typeSpec);
                 }
             },
             .assignStmt => {
@@ -1043,8 +1040,8 @@ pub const Encoder = struct {
             },
             .varSpec => {
                 try self.writeNode(w, node.data.varSpec.name);
-                if (node.data.varSpec.typeSpecHead != cy.NullNode) {
-                    var cur = node.data.varSpec.typeSpecHead;
+                if (node.data.varSpec.typeSpec != cy.NullNode) {
+                    var cur = node.data.varSpec.typeSpec;
                     try self.writeNode(w, cur);
                     cur = self.ast.node(cur).next();
                     while (cur != cy.NullNode) {

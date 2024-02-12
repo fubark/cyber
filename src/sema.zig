@@ -1171,7 +1171,7 @@ pub fn declareVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
         return c.reportErrorAt("`{}` does not have an initializer.", &.{v(name)}, nodeId);
     } else {
         // var type.
-        const typeId = try resolveTypeSpecNode(c, varSpec.data.varSpec.typeSpecHead);
+        const typeId = try resolveTypeSpecNode(c, varSpec.data.varSpec.typeSpec);
 
         const decl = try resolveLocalDeclNamePath(c, varSpec.data.varSpec.name);
         return @ptrCast(try c.declareUserVar(decl.parent, decl.name, nodeId, typeId));
@@ -1199,7 +1199,7 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
         return c.reportErrorAt("Host var `{}` failed to load.", &.{v(decl.namePath)}, nodeId);
     }
     // var type.
-    const typeId = try resolveTypeSpecNode(c, varSpec.data.varSpec.typeSpecHead);
+    const typeId = try resolveTypeSpecNode(c, varSpec.data.varSpec.typeSpec);
     // c.ast.node(node.data.staticDecl.varSpec).next = typeId;
 
     const outTypeId = out.getTypeId();
@@ -1332,11 +1332,11 @@ fn localDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     var typeId: cy.TypeId = undefined;
     var inferType = false;
     if (node.data.localDecl.typed) {
-        if (varSpec.data.varSpec.typeSpecHead == cy.NullNode) {
+        if (varSpec.data.varSpec.typeSpec == cy.NullNode) {
             inferType = true;
             typeId = bt.Any;
         } else {
-            typeId = try resolveTypeSpecNode(c, varSpec.data.varSpec.typeSpecHead);
+            typeId = try resolveTypeSpecNode(c, varSpec.data.varSpec.typeSpec);
         }
     } else {
         typeId = bt.Dynamic;
@@ -1714,21 +1714,22 @@ fn resolveLocalRootSym(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId, distin
 }
 
 /// If no type spec, default to `dynamic` type.
-/// Recursively walks a type spec head node and returns the final resolved type sym.
-pub fn resolveTypeSpecNode(c: *cy.Chunk, head: cy.NodeId) !types.TypeId {
-    if (head == cy.NullNode) {
+/// Returns the final resolved type sym.
+pub fn resolveTypeSpecNode(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!types.TypeId {
+    if (nodeId == cy.NullNode) {
         return bt.Dynamic;
     }
 
     var sym: *Sym = undefined;
-    if (c.ast.node(head).type() == .objectDecl) {
+    if (c.ast.node(nodeId).type() == .objectDecl) {
         // Unnamed object.
-        const headN = c.ast.node(head);
-        const header = c.ast.node(headN.data.objectDecl.header);
+        const node = c.ast.node(nodeId);
+        const header = c.ast.node(node.data.objectDecl.header);
         const symId = header.data.objectHeader.name;
         sym = c.sym.getMod().syms.items[symId];
     } else {
-        sym = try resolveLocalNamePathSym(c, head, cy.NullNode);
+        const res = try resolveTypeExpr(c, nodeId);
+        sym = res.sym;
     }
     if (sym.getStaticType()) |typeId| {
         return typeId;
@@ -1754,6 +1755,42 @@ pub fn resolveLocalNamePathSym(c: *cy.Chunk, head: cy.NodeId, end: cy.NodeId) an
         nodeId = node.next();
     }
     return sym;
+}
+
+const TypeExprResult = struct {
+    sym: *cy.Sym,
+};
+
+fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !TypeExprResult {
+    const expr = c.ast.node(exprId);
+    switch (expr.type()) {
+        .noneLit => {
+            const sym = (try resolveLocalRootSym(c, "none", exprId, true)) orelse {
+                return c.reportErrorAt("Could not find the symbol `{}`.", &.{v("none")}, exprId);
+            };
+            return TypeExprResult{ .sym = sym };
+        },
+        .ident => {
+            const name = c.ast.nodeString(expr);
+            const sym = (try resolveLocalRootSym(c, name, exprId, true)) orelse {
+                return c.reportErrorAt("Could not find the symbol `{}`.", &.{v(name)}, exprId);
+            };
+            return TypeExprResult{ .sym = sym };
+        },
+        .accessExpr => {
+            const parent = try resolveTypeExpr(c, expr.data.accessExpr.left);
+            const right = c.ast.node(expr.data.accessExpr.right);
+            if (right.type() != .ident) {
+                return c.reportErrorAt("Expected identifier.", &.{}, expr.data.accessExpr.right);
+            }
+            const name = c.ast.nodeString(right);
+            const sym = try c.findDistinctSym(parent.sym, name, expr.data.accessExpr.right, true);
+            return TypeExprResult{ .sym = sym };
+        },
+        else => {
+            return c.reportErrorAt("Unsupported type expr: `{}`", &.{v(expr.type())}, exprId);
+        }
+    }
 }
 
 const FuncDecl = struct {
@@ -1783,7 +1820,7 @@ fn resolveImplicitMethodDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !Fun
         if (std.mem.eql(u8, "self", paramName)) {
             return c.reportErrorAt("`self` param is not allowed in an implicit method declaration.", &.{}, curParamId);
         }
-        const typeId = try resolveTypeSpecNode(c, param.data.funcParam.typeSpecHead);
+        const typeId = try resolveTypeSpecNode(c, param.data.funcParam.typeSpec);
         try c.typeStack.append(c.alloc, typeId);
         curParamId = param.next();
     }
@@ -1821,7 +1858,7 @@ fn resolveFuncDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !FuncDecl {
             isMethod = true;
             try c.typeStack.append(c.alloc, res.parent.getStaticType().?);
         } else {
-            const typeId = try resolveTypeSpecNode(c, param.data.funcParam.typeSpecHead);
+            const typeId = try resolveTypeSpecNode(c, param.data.funcParam.typeSpec);
             try c.typeStack.append(c.alloc, typeId);
         }
         curParamId = param.next();
@@ -3430,7 +3467,7 @@ pub const ChunkExt = struct {
                 }
             },
             .castExpr => {
-                const typeId = try resolveTypeSpecNode(c, node.data.castExpr.typeSpecHead);
+                const typeId = try resolveTypeSpecNode(c, node.data.castExpr.typeSpec);
                 const irIdx = try c.ir.pushExpr(c.alloc, .cast, nodeId, .{ .typeId = typeId, .isRtCast = true });
                 const child = try c.semaExpr(node.data.castExpr.expr, .{});
                 if (!child.type.dynamic) {

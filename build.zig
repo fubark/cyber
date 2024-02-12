@@ -73,10 +73,22 @@ pub fn build(b: *std.build.Builder) !void {
         // Allow exported symbols in exe to be visible to dlopen.
         exe.rdynamic = true;
 
-        // exe.emit_asm = .emit;
-        try buildAndLinkDeps(exe, opts);
+        // step.dependOn(&b.addInstallFileWithDir(
+        //     exe.getEmittedAsm(), .prefix, "cyber.s",
+        // ).step);
+        try buildAndLinkDeps(exe, opts);  
         step.dependOn(&exe.step);
         step.dependOn(&b.addInstallArtifact(exe, .{}).step);
+    }
+
+    {
+        const step = b.step("vm-lib", "Build vm as a library.");
+
+        var opts = getDefaultOptions(target, optimize);
+        const lib = try buildCVM(b, opts);
+
+        step.dependOn(&lib.step);
+        step.dependOn(&b.addInstallArtifact(lib, .{}).step);
     }
 
     {
@@ -262,7 +274,8 @@ pub fn buildAndLinkDeps(step: *std.build.Step.Compile, opts: Options) !void {
     }
 
     if (vmEngine == .c) {
-        try buildCVM(b.allocator, step, opts);
+        const lib = try buildCVM(b, opts);
+        step.linkLibrary(lib);
     }
 
     if (opts.ffi) {
@@ -324,7 +337,7 @@ fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.Optimize
     if (target.getCpuArch().isWasm()) {
         malloc = .zig;
     } else {
-        if (optimize == .ReleaseFast) {
+        if (optimize != .Debug) {
             malloc = .mimalloc;
         } else {
             malloc = .zig;
@@ -332,7 +345,7 @@ fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.Optimize
     }
     return .{
         .selinux = selinux,
-        .trackGlobalRc = optimize != .ReleaseFast,
+        .trackGlobalRc = optimize == .Debug,
         .trace = trace,
         .target = target,
         .optimize = optimize,
@@ -443,9 +456,15 @@ pub const PrintStep = struct {
     }
 };
 
-pub fn buildCVM(alloc: std.mem.Allocator, step: *std.build.CompileStep, opts: Options) !void {
-    var cflags = std.ArrayList([]const u8).init(alloc);
-    if (step.optimize == .Debug) {
+pub fn buildCVM(b: *std.Build, opts: Options) !*std.build.Step.Compile {
+    const lib = b.addStaticLibrary(.{
+        .name = "vm",
+        .target = opts.target,
+        .optimize = opts.optimize,
+    });
+
+    var cflags = std.ArrayList([]const u8).init(b.allocator);
+    if (opts.optimize == .Debug) {
         try cflags.append("-DDEBUG=1");
     } else {
         try cflags.append("-DDEBUG=0");
@@ -472,11 +491,12 @@ pub fn buildCVM(alloc: std.mem.Allocator, step: *std.build.CompileStep, opts: Op
 
     // Disable traps for arithmetic/bitshift overflows.
     // Note that changing this alone doesn't clear the build cache.
-    step.disable_sanitize_c = true;
+    lib.disable_sanitize_c = true;
 
-    step.addIncludePath(.{ .path = thisDir() ++ "/src"});
-    step.addCSourceFile(.{
+    lib.addIncludePath(.{ .path = thisDir() ++ "/src"});
+    lib.addCSourceFile(.{
         .file = .{ .path = thisDir() ++ "/src/vm.c" },
         .flags = cflags.items
     });
+    return lib;
 }

@@ -4,6 +4,9 @@
 #include <math.h>
 #include "vm.h"
 
+// Dump assembly.
+// zig cc -c src/vm.c -S -O2 -DDEBUG=0 -DCGOTO=1 -DTRACE=0 -DIS_32BIT=0 -DHAS_GC=1
+
 #define STATIC_ASSERT(cond, msg) typedef char static_assertion_##msg[(cond)?1:-1]
 
 #define TRACEV(msg, ...) \

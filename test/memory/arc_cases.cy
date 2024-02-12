@@ -33,4 +33,11 @@ b = 123
 a = false ? 'abc' else '$(b)'
 var c = '$(a)'  -- If `a` isn't marked as a rcCandidate, `a` would be freed here and at the end of the block.
 
+-- Field retains local rec so that noerr prerelease doesn't free the rec too early.
+type Node:
+    var val int
+my foo = [Node val: 123]
+foo = foo.val
+t.eq(foo, 123)
+
 --cytest: pass

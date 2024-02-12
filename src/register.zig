@@ -124,32 +124,13 @@ pub const Allocator = struct {
                     .nodeId = nodeId,
                 };
             },
-            .none => return error.NoneType,
-        }
-    }
-
-    pub fn selectForTemp(self: *Allocator, cstr: Cstr) !CopyInst {
-        _ = self;
-        switch (cstr.type) {
-            .exact => {
-                return .{
-                    .dst = cstr,
-                };
-            },
-            .preferVolatile => {
-                return error.Unexpected;
-            },
-            .localOrTemp,
-            .temp => {
-                return error.Unexpected;
-            },
-            .none => return error.NoneType,
+            .none => return error.Unsupported,
         }
     }
 
     /// Selecting for a non local inst that can not fail.
     /// A required dst can be retained but `requiresPreRelease` will be set to true.
-    pub fn selectForNoErrInst(self: *Allocator, cstr: Cstr, instCouldRetain: bool, nodeId: cy.NodeId) !NoErrInst {
+    pub fn selectForNoErrNoDepInst(self: *Allocator, cstr: Cstr, instCouldRetain: bool, nodeId: cy.NodeId) !NoErrInst {
         switch (cstr.type) {
             .varSym => {
                 return .{
@@ -208,12 +189,17 @@ pub const Allocator = struct {
                     .nodeId = nodeId,
                 };
             },
-            .none => return error.NoneType,
+            .none => return error.Unsupported,
         }
     }
 
     /// Selecting for a non local inst with a dst operand.
     /// A required dst can not be retained or a temp register is allocated and `requiresCopyRelease` will be set true.
+    ///
+    /// Handles the case where the inst depends and assigns to the same local:
+    /// > my node = [Node ...]
+    /// > node = node.val
+    /// `node` rec gets +1 retain and saves to temp since the `node` cstr has `releaseDst=true`.
     pub fn selectForDstInst(self: *Allocator, cstr: Cstr, instCouldRetain: bool, nodeId: cy.NodeId) !DstInst {
         switch (cstr.type) {
             .varSym => {
@@ -274,7 +260,7 @@ pub const Allocator = struct {
                     .nodeId = nodeId,
                 };
             },
-            .none => return error.NoneType,
+            .none => return error.Unsupported,
         }
     }
 

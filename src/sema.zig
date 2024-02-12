@@ -1834,7 +1834,10 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !TypeExprResult {
         },
         .valueTemplate => {
             const child = try resolveTypeExpr(c, expr.data.valueTemplate.typeParam);
-            const res = try sema.ensureValueType(c, child.sym, expr.data.valueTemplate.typeParam);
+            const child_t = child.type orelse {
+                return c.reportErrorAt("Expected a type param.", &.{}, expr.data.valueTemplate.typeParam);
+            };
+            const res = try sema.ensureValueType(c, child_t, expr.data.valueTemplate.typeParam);
             return TypeExprResult{ .sym = res.sym, .type = res.type };
         },
         else => {
@@ -3586,7 +3589,10 @@ pub const ChunkExt = struct {
                 if (child.resType != .sym) {
                     return c.reportErrorAt("Expected a type param.", &.{}, node.data.valueTemplate.typeParam);
                 }
-                const res = try sema.ensureValueType(c, child.data.sym, node.data.valueTemplate.typeParam);
+                const child_t = child.data.sym.getStaticType() orelse {
+                    return c.reportErrorAt("Expected a type param.", &.{}, node.data.valueTemplate.typeParam);
+                };
+                const res = try sema.ensureValueType(c, child_t, node.data.valueTemplate.typeParam);
                 const ctype = CompactType.initStatic(res.type);
                 return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = res.sym });
             },
@@ -4446,24 +4452,28 @@ const ValueType = struct {
     type: cy.TypeId,
 };
 
-fn ensureValueType(c: *cy.Chunk, child: *cy.Sym, childNodeId: cy.NodeId) !ValueType {
-    const child_t = child.getStaticType() orelse {
-        return c.reportErrorAt("Expected a type param.", &.{}, childNodeId);
-    };
+fn ensureValueType(c: *cy.Chunk, child_t: cy.TypeId, childNodeId: cy.NodeId) !ValueType {
+    const entry = c.sema.types.items[child_t];
+    if (entry.kind == .value) {
+        const name = try c.sema.allocTypeName(child_t);
+        defer c.alloc.free(name);
+        return c.reportErrorAt("`{}` is already a value type.", &.{v(name)}, childNodeId);
+    }
+
     const res = try c.valueTypeCache.getOrPut(c.alloc, child_t);
     if (!res.found_existing) {
         const typeId = try c.sema.pushType();
         c.compiler.sema.types.items[typeId] = .{
-            .sym = child,
+            .sym = entry.sym,
             .kind = .value,
             .data = .{ .value = .{
-                .numFields = @intCast(child.cast(.object).numFields),
+                .numFields = @intCast(entry.sym.cast(.object).numFields),
             }},
         };
         res.value_ptr.* = typeId;
     }
     return ValueType{
-        .sym = child,
+        .sym = entry.sym,
         .type = res.value_ptr.*,
     };
 }

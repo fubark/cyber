@@ -202,6 +202,7 @@ if (!aot) {
     run.case("types/type_spec.cy");
     run.case("types/unnamed_object.cy");
     run.case("types/value_assign_to_object_error.cy");
+    run.case("types/value_already_value_type_error.cy");
     run.case("types/values.cy");
 
     if (!cy.isWasm) {

@@ -30,8 +30,12 @@ pub fn buildAndLink(b: *std.Build, step: *std.build.CompileStep, opts: BuildOpti
     // c_flags.append("-D_GNU_SOURCE=1") catch @panic("error");
     if (lib.target.getOsTag() == .windows) {
     } else if (lib.target.getOsTag() == .macos) {
-        // Github macos-12 runner (https://github.com/actions/runner-images/blob/main/images/macos/macos-12-Readme.md).
-        lib.addSystemIncludePath(.{ .path = "/Applications/Xcode_14.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" });
+        if (lib.target.getCpuArch() == .aarch64) {
+            lib.addSystemIncludePath(.{ .path = "/Applications/Xcode_15.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" });
+        } else {
+            // Github macos-12 runner (https://github.com/actions/runner-images/blob/main/images/macos/macos-12-Readme.md).
+            lib.addSystemIncludePath(.{ .path = "/Applications/Xcode_14.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" });
+        }
         lib.addSystemIncludePath(.{ .path = "/Library/Developer/CommandLineTools/SDKs/MacOSX12.1.sdk/usr/include" });
         lib.addSystemIncludePath(.{ .path = "/Library/Developer/CommandLineTools/SDKs/MacOSX12.3.sdk/usr/include" });
     }

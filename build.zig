@@ -275,6 +275,9 @@ pub fn buildAndLinkDeps(step: *std.build.Step.Compile, opts: Options) !void {
 
     if (vmEngine == .c) {
         const lib = try buildCVM(b, opts);
+        if (opts.target.getCpuArch().isWasm()) {
+            step.stack_protector = false;
+        }
         step.linkLibrary(lib);
     }
 

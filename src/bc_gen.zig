@@ -1924,7 +1924,7 @@ const SetLocalOptions = struct {
 
 fn setLocal(c: *Chunk, data: ir.Local, rightIdx: u32, right_t: cy.TypeId, nodeId: cy.NodeId, opts: SetLocalOptions) !void {
     const reg = toLocalReg(c, data.id);
-    const local = getLocalInfoPtr(c, reg);
+    var local = getLocalInfoPtr(c, reg);
 
     var dst: Cstr = undefined;
     if (local.some.lifted) {
@@ -1944,7 +1944,8 @@ fn setLocal(c: *Chunk, data: ir.Local, rightIdx: u32, right_t: cy.TypeId, nodeId
         rightv = try genExpr(c, rightIdx, dst);
     }
 
-    // Update retained state.
+    // Update retained state. Refetch local.
+    local = getLocalInfoPtr(c, reg);
     local.some.rcCandidate = rightv.retained;
     if (local.some.isDynamic) {
         local.some.type = right_t;

@@ -35,7 +35,7 @@ jobs:
             target: x86_64-macos-none
             mode: release
             cmd: cli
-          - host: macos-12
+          - host: macos-14
             target: aarch64-macos-none
             mode: release
             cmd: cli
@@ -63,7 +63,7 @@ jobs:
             target: x86_64-macos-none
             mode: release
             cmd: lib
-          - host: macos-12
+          - host: macos-14
             target: aarch64-macos-none
             mode: release
             cmd: lib
@@ -121,6 +121,12 @@ jobs:
           xcode-select --print-path
 
       - name: Install zig.
+        if: env.BUILD_HOST == 'macos-14'
+        run: |
+          wget -c https://ziglang.org/builds/zig-macos-aarch64-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
+          xcode-select --print-path
+
+      - name: Install zig.
         if: env.BUILD_HOST == 'windows-2022'
         run: |
           Invoke-WebRequest -Uri 'https://ziglang.org/builds/zig-windows-x86_64-${{ env.ZIG_VERSION }}.zip' -OutFile 'C:\zig.zip'
@@ -141,11 +147,11 @@ jobs:
             pr-build-${{ env.BUILD_TARGET }}-${{ env.BUILD_MODE }}-1
 
       - name: Run tests.
-        if: env.BUILD_TARGET != 'aarch64-macos-none' && env.BUILD_TARGET != 'wasm32-wasi' && env.BUILD_CMD == 'cli'
+        if: env.BUILD_TARGET != 'wasm32-wasi' && env.BUILD_CMD == 'cli'
         run: zig build test ${{ env.ZIG_TARGET_FLAG }} 
 
       - name: Run tests.
-        if: env.BUILD_TARGET != 'aarch64-macos-none' && env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD == 'lib'
+        if: env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD == 'lib'
         run: zig build test-lib ${{ env.ZIG_TARGET_FLAG }} 
 
       - name: Run tests.

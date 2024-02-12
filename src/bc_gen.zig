@@ -1132,12 +1132,11 @@ fn genSlice(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     }
 
     var args: [3]GenValue = undefined;
-    const recIdx = c.ir.advanceExpr(idx, .preSlice);
-    args[0] = try genExpr(c, recIdx, Cstr.simple);
+    args[0] = try genExpr(c, data.recLoc, Cstr.simple);
     try pushUnwindValue(c, args[0]);
-    args[1] = try genExpr(c, data.left, Cstr.simple);
+    args[1] = try genExpr(c, data.leftLoc, Cstr.simple);
     try pushUnwindValue(c, args[1]);
-    args[2] = try genExpr(c, data.right, Cstr.simple);
+    args[2] = try genExpr(c, data.rightLoc, Cstr.simple);
     try pushUnwindValue(c, args[2]);
 
     try pushInlineTernExpr(c, .sliceList, args[0].reg, args[1].reg, args[2].reg, inst.dst, nodeId);
@@ -2880,8 +2879,7 @@ fn genTryExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
 fn genCondExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     _ = nodeId;
     const data = c.ir.getExprData(idx, .condExpr);
-    const condIdx = c.ir.advanceExpr(idx, .condExpr);
-    const condNodeId = c.ir.getNode(condIdx);
+    const condNodeId = c.ir.getNode(data.condLoc);
 
     var finalCstr = cstr;
     if (!finalCstr.isExact()) {
@@ -2890,7 +2888,7 @@ fn genCondExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     }
 
     // Cond.
-    const condv = try genExpr(c, condIdx, Cstr.simple);
+    const condv = try genExpr(c, data.condLoc, Cstr.simple);
 
     const condFalseJump = try c.pushEmptyJumpNotCond(condv.reg);
 

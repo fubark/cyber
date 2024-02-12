@@ -190,6 +190,7 @@ pub const Captured = struct {
 };
 
 pub const CondExpr = struct {
+    condLoc: Loc,
     body: u32,
     elseBody: u32,
 };
@@ -384,8 +385,9 @@ pub const Prepare = union {
 
 pub const Slice = struct {
     recvT: TypeId,
-    left: u32,
-    right: u32,
+    recLoc: Loc,
+    leftLoc: Loc,
+    rightLoc: Loc,
 };
 
 pub const BinOp = struct {

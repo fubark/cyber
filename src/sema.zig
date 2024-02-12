@@ -3621,7 +3621,7 @@ pub const ChunkExt = struct {
 
                 const ifBranch = c.ast.node(node.data.condExpr.ifBranch);
 
-                _ = try c.semaExpr(ifBranch.data.ifBranch.cond, .{});
+                const cond = try c.semaExpr(ifBranch.data.ifBranch.cond, .{});
                 const body = try c.semaExpr(ifBranch.data.ifBranch.bodyHead, .{});
                 var elseBody: ExprResult = undefined;
                 if (node.data.condExpr.elseExpr != cy.NullNode) {
@@ -3629,7 +3629,11 @@ pub const ChunkExt = struct {
                 } else {
                     elseBody = try c.semaNone(nodeId);
                 }
-                c.ir.setExprData(irIdx, .condExpr, .{ .body = body.irIdx, .elseBody = elseBody.irIdx });
+                c.ir.setExprData(irIdx, .condExpr, .{
+                    .condLoc = cond.irIdx,
+                    .body = body.irIdx,
+                    .elseBody = elseBody.irIdx,
+                });
 
                 const dynamic = body.type.dynamic or elseBody.type.dynamic;
                 if (body.type.id == elseBody.type.id) {
@@ -3726,8 +3730,9 @@ pub const ChunkExt = struct {
                     c.ir.setExprData(preIdx, .preSlice, .{
                         .slice = .{
                             .recvT = recv.type.id,
-                            .left = left.irIdx,
-                            .right = right.irIdx,
+                            .recLoc = recv.irIdx,
+                            .leftLoc = left.irIdx,
+                            .rightLoc = right.irIdx,
                         },
                     });
                     return ExprResult.initStatic(preIdx, bt.List);

@@ -53,10 +53,10 @@ jobs:
             target: x86_64-windows-gnu
             mode: release
             cmd: lib
-          - host: ubuntu-22.04
-            target: wasm32-freestanding
-            mode: release
-            cmd: web-lib
+          # - host: ubuntu-22.04
+          #   target: wasm32-freestanding
+          #   mode: release
+          #   cmd: web-lib
           - host: ubuntu-22.04
             target: wasm32-wasi
             mode: release

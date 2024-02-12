@@ -307,7 +307,7 @@ fn genCoresume(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const childIdx = c.ir.advanceExpr(idx, .coresume);
     const childv = try genExpr(c, childIdx, Cstr.simpleRetain);
 
-    try c.buf.pushOp2(.coresume, childv.local, inst.dst);
+    try c.pushCode(.coresume, &.{childv.local, inst.dst}, nodeId);
 
     try popTempAndUnwind(c, childv);
 
@@ -316,7 +316,7 @@ fn genCoresume(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
 
 fn genCoyield(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     _ = idx;
-    try c.buf.pushOp2(.coyield, c.curBlock.startLocalReg, c.curBlock.nextLocalReg);
+    try c.pushCode(.coyield, &.{c.curBlock.startLocalReg, c.curBlock.nextLocalReg}, nodeId);
     // TODO: return coyield expression.
     return genNone(c, cstr, nodeId);
 }
@@ -371,9 +371,8 @@ fn genCoinitCall(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
         initialStackSize = 16;
     }
     const coinitPc = c.buf.ops.items.len;
-    try c.pushOptionalDebugSym(nodeId);
-    try c.buf.pushOpSlice(.coinit, &[_]u8{
-        tempStart, @intCast(numTotalArgs), argDst, 0, @intCast(initialStackSize), inst.dst });
+    try c.pushCode(.coinit, &.{
+        tempStart, @as(u8, @intCast(numTotalArgs)), argDst, 0, @as(u8, @intCast(initialStackSize)), inst.dst }, nodeId);
 
     try pushFiberBlock(c, @intCast(numTotalArgs), nodeId);
 
@@ -386,7 +385,7 @@ fn genCoinitCall(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
         try pushCall(c, callRet, numArgs, 1, callExprId);
     } else return error.Unexpected;
 
-    try c.buf.pushOp(.coreturn);
+    try c.pushCode(.coreturn, &.{}, nodeId);
     c.buf.setOpArgs1(coinitPc + 4, @intCast(c.buf.ops.items.len - coinitPc));
 
     try popFiberBlock(c);
@@ -413,21 +412,18 @@ fn genCast(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
 
     const sym = c.sema.getTypeSym(data.typeId);
     if (sym.type == .object) {
-        try c.pushFailableDebugSym(nodeId);
         const pc = c.buf.ops.items.len;
-        try c.buf.pushOpSlice(.cast, &.{ childv.local, 0, 0, inst.dst });
+        try c.pushFCode(.cast, &.{ childv.local, 0, 0, inst.dst }, nodeId);
         c.buf.setOpArgU16(pc + 2, @intCast(data.typeId));
     } else if (sym.type == .predefinedType) {
         if (types.toRtConcreteType(data.typeId)) |tId| {
-            try c.pushFailableDebugSym(nodeId);
             const pc = c.buf.ops.items.len;
-            try c.buf.pushOpSlice(.cast, &.{ childv.local, 0, 0, inst.dst });
+            try c.pushFCode(.cast, &.{ childv.local, 0, 0, inst.dst }, nodeId);
             c.buf.setOpArgU16(pc + 2, @intCast(tId));
         } else {
             // Cast to abstract type.
-            try c.pushFailableDebugSym(nodeId);
             const pc = c.buf.ops.items.len;
-            try c.buf.pushOpSlice(.castAbstract, &.{ childv.local, 0, 0, inst.dst });
+            try c.pushFCode(.castAbstract, &.{ childv.local, 0, 0, inst.dst }, nodeId);
             c.buf.setOpArgU16(pc + 2, @intCast(data.typeId));
         }
     } else {
@@ -524,8 +520,7 @@ fn genObjectInit(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
         .object => {
             const obj = sym.cast(.object);
             if (data.numFieldsToCheck > 0) {
-                try c.pushFailableDebugSym(nodeId);
-                try c.buf.pushOp2(.objectTypeCheck, argStart, @intCast(data.numFieldsToCheck));
+                try c.pushFCode(.objectTypeCheck, &.{ argStart , @as(u8, @intCast(data.numFieldsToCheck)) }, nodeId);
 
                 const checkFields = c.ir.getArray(data.fieldsToCheck, u8, data.numFieldsToCheck);
 
@@ -585,8 +580,7 @@ fn genThrow(c: *Chunk, idx: usize, nodeId: cy.NodeId) !GenValue {
     const childIdx = c.ir.advanceExpr(idx, .throw);
     const childv = try genExpr(c, childIdx, Cstr.simple);
 
-    try c.pushFailableDebugSym(nodeId);
-    try c.buf.pushOp1(.throw, childv.local);
+    try c.pushFCode(.throw, &.{childv.local}, nodeId);
 
     try popTempAndUnwind(c, childv);
     return GenValue.initNoValue();
@@ -712,8 +706,7 @@ fn setField(c: *Chunk, idx: usize, opts: SetFieldOptions, nodeId: cy.NodeId) !vo
 
     // Performs runtime type check.
     const pc = c.buf.ops.items.len;
-    try c.pushFailableDebugSym(nodeId);
-    try c.buf.pushOpSlice(.setField, &.{ recv.local, 0, 0, rightv.local, 0, 0, 0, 0, 0 });
+    try c.pushFCode(.setField, &.{ recv.local, 0, 0, rightv.local, 0, 0, 0, 0, 0 }, nodeId);
     c.buf.setOpArgU16(pc + 2, @intCast(fieldId));
 
     try popTempAndUnwind(c, rightv);
@@ -757,11 +750,10 @@ fn setObjectField(c: *Chunk, idx: usize, opts: SetObjectFieldOptions, nodeId: cy
     const ownRecv = opts.recv == null;
     if (requireTypeCheck) {
         const pc = c.buf.ops.items.len;
-        try c.pushFailableDebugSym(nodeId);
-        try c.buf.pushOpSlice(.setObjectFieldCheck, &.{ recv.local, 0, 0, rightv.local, fieldData.idx });
+        try c.pushFCode(.setObjectFieldCheck, &.{ recv.local, 0, 0, rightv.local, fieldData.idx }, nodeId);
         c.buf.setOpArgU16(pc + 2, @intCast(fieldData.typeId));
     } else {
-        try c.buf.pushOpSlice(.setObjectField, &.{ recv.local, fieldData.idx, rightv.local });
+        try c.pushCode(.setObjectField, &.{ recv.local, fieldData.idx, rightv.local }, nodeId);
     }
 
     try popTempAndUnwind(c, rightv);
@@ -1075,8 +1067,7 @@ fn genCall(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const calleeAndArgvs = popValues(c, data.numArgs+1);
     try checkArgs(argStart, calleeAndArgvs);
 
-    try c.pushFailableDebugSym(nodeId);
-    try c.buf.pushOp3Ext(.call, inst.ret, data.numArgs, 1, c.desc(nodeId));
+    try c.pushFCode(.call, &.{inst.ret, data.numArgs, 1}, nodeId);
 
     const retained = try popTempAndUnwinds2(c, calleeAndArgvs);
     try pushReleaseVals(c, retained, nodeId);
@@ -1358,21 +1349,21 @@ fn genLocalReg(c: *Chunk, reg: RegisterId, cstr: Cstr, nodeId: cy.NodeId) !GenVa
         if (inst.dst != reg) {
             if (inst.retainSrc) {
                 if (inst.releaseDst) {
-                    try c.pushOp(.copyRetainRelease, &.{ reg, inst.dst }, nodeId);
+                    try c.pushCode(.copyRetainRelease, &.{ reg, inst.dst }, nodeId);
                 } else {
-                    try c.pushOp(.copyRetainSrc, &.{ reg, inst.dst }, nodeId);
+                    try c.pushCode(.copyRetainSrc, &.{ reg, inst.dst }, nodeId);
                 }
             } else {
                 if (inst.releaseDst) {
-                    try c.pushOp(.copyReleaseDst, &.{ reg, inst.dst }, nodeId);
+                    try c.pushCode(.copyReleaseDst, &.{ reg, inst.dst }, nodeId);
                 } else {
-                    try c.pushOp(.copy, &.{ reg, inst.dst }, nodeId);
+                    try c.pushCode(.copy, &.{ reg, inst.dst }, nodeId);
                 }
             }
         } else {
             // Nop. When the cstr allows returning the local itself.
             if (inst.retainSrc) {
-                try c.pushOp(.retain, &.{ reg }, nodeId);
+                try c.pushCode(.retain, &.{ reg }, nodeId);
             } else {
                 // Nop.
             }
@@ -1403,9 +1394,9 @@ fn genLocalReg(c: *Chunk, reg: RegisterId, cstr: Cstr, nodeId: cy.NodeId) !GenVa
         const inst = try c.rega.selectForDstInst(cstr, retainSrc, nodeId);
 
         if (retainSrc) {
-            try c.pushOp(.boxValueRetain, &.{ reg, inst.dst }, nodeId);
+            try c.pushCode(.boxValueRetain, &.{ reg, inst.dst }, nodeId);
         } else {
-            try c.pushOp(.boxValue, &.{ reg, inst.dst }, nodeId);
+            try c.pushCode(.boxValue, &.{ reg, inst.dst }, nodeId);
         }
 
         return finishDstInst(c, inst, retainSrc);
@@ -1520,12 +1511,11 @@ fn reserveFuncRegs(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []ali
 
             // Copy param to local.
             if (param.lifted) {
-                try c.pushFailableDebugSym(c.curBlock.debugNodeId);
                 // Retain param and box.
                 try c.buf.pushOp1(.retain, nextReg);
-                try c.buf.pushOp2(.box, nextReg, reg);
+                try c.pushFCode(.box, &.{nextReg, reg}, c.curBlock.debugNodeId);
             } else {
-                try c.pushOp(.copyRetainSrc, &.{ nextReg, reg }, c.curBlock.debugNodeId);
+                try c.pushCode(.copyRetainSrc, &.{ nextReg, reg }, c.curBlock.debugNodeId);
             }
 
             paramCopyIdx += 1;
@@ -1561,8 +1551,7 @@ fn setFuncSym(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     try pushUnwindValue(c, rightv);
 
     const pc = c.buf.len();
-    try c.pushFailableDebugSym(nodeId);
-    try c.buf.pushOp3(.setStaticFunc, 0, 0, rightv.local);
+    try c.pushFCode(.setStaticFunc, &.{0, 0, rightv.local}, nodeId);
     const rtId = c.compiler.genSymMap.get(data.func).?.funcSym.id;
     c.buf.setOpArgU16(pc + 1, @intCast(rtId));
 
@@ -2178,15 +2167,15 @@ fn genToExactDesc(c: *Chunk, src: GenValue, dst: Cstr, nodeId: cy.NodeId, extraI
             const retain = shouldRetain(c, reg.retain, src);
             if (reg.releaseDst) {
                 if (retain) {
-                    try c.pushOpDesc(.copyRetainRelease, &.{ src.local, reg.dst }, nodeId, extraIdx);
+                    try c.pushCodeExt(.copyRetainRelease, &.{ src.local, reg.dst }, nodeId, extraIdx);
                 } else {
-                    try c.pushOpDesc(.copyReleaseDst, &.{ src.local, reg.dst }, nodeId, extraIdx);
+                    try c.pushCodeExt(.copyReleaseDst, &.{ src.local, reg.dst }, nodeId, extraIdx);
                 }
             } else {
                 if (retain) {
-                    try c.pushOpDesc(.copyRetainSrc, &.{ src.local, reg.dst }, nodeId, extraIdx);
+                    try c.pushCodeExt(.copyRetainSrc, &.{ src.local, reg.dst }, nodeId, extraIdx);
                 } else {
-                    try c.pushOpDesc(.copy, &.{ src.local, reg.dst }, nodeId, extraIdx);
+                    try c.pushCodeExt(.copy, &.{ src.local, reg.dst }, nodeId, extraIdx);
                 }
             }
             if (retain) {
@@ -2200,22 +2189,22 @@ fn genToExactDesc(c: *Chunk, src: GenValue, dst: Cstr, nodeId: cy.NodeId, extraI
             if (src.local == lifted.reg) return error.Unexpected;
 
             if (lifted.rcCandidate) {
-                try c.pushOpDesc(.setBoxValueRelease, &.{ lifted.reg, src.local }, nodeId, extraIdx);
+                try c.pushCodeExt(.setBoxValueRelease, &.{ lifted.reg, src.local }, nodeId, extraIdx);
             } else {
-                try c.pushOpDesc(.setBoxValue, &.{ lifted.reg, src.local }, nodeId, extraIdx);
+                try c.pushCodeExt(.setBoxValue, &.{ lifted.reg, src.local }, nodeId, extraIdx);
             }
             return GenValue.initRetained(src.retained);
         },
         .varSym => {
             // Set var assumes retained src.
             const pc = c.buf.len();
-            try c.pushOpDesc(.setStaticVar, &.{ 0, 0, src.local }, nodeId, extraIdx);
+            try c.pushCodeExt(.setStaticVar, &.{ 0, 0, src.local }, nodeId, extraIdx);
             c.buf.setOpArgU16(pc + 1, @intCast(dst.data.varSym));
             return GenValue.initRetained(src.retained);
         },
         .captured => {
             const captured = dst.data.captured;
-            try c.pushOpDesc(.setCaptured, &.{ c.curBlock.closureLocal, captured.idx, src.local }, nodeId, extraIdx);
+            try c.pushCodeExt(.setCaptured, &.{ c.curBlock.closureLocal, captured.idx, src.local }, nodeId, extraIdx);
             return GenValue.initRetained(src.retained);
         },
         else => {
@@ -2439,8 +2428,7 @@ fn destrElemsStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     const rightv = try genExpr(c, data.right, Cstr.simple);
 
-    try c.pushFailableDebugSym(nodeId);
-    try c.buf.pushOp2(.seqDestructure, rightv.local, @intCast(locals.len));
+    try c.pushFCode(.seqDestructure, &.{rightv.local, @as(u8, @intCast(locals.len))}, nodeId);
     const start = c.buf.ops.items.len;
     try c.buf.ops.resize(c.alloc, c.buf.ops.items.len + locals.len);
     for (locals, 0..) |local, i| {
@@ -2479,9 +2467,8 @@ fn forRangeStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     }
 
     const initPc = c.buf.ops.items.len;
-    try c.pushFailableDebugSym(nodeId);
-    try c.buf.pushOpSlice(.forRangeInit, &.{ startv.local, rangeEnd, @intFromBool(data.increment),
-        counter, eachLocal, 0, 0 });
+    try c.pushFCode(.forRangeInit, &.{ startv.local, rangeEnd, @intFromBool(data.increment),
+        counter, eachLocal, 0, 0 }, nodeId);
 
     try popTempAndUnwind(c, startv);
 
@@ -2500,7 +2487,7 @@ fn forRangeStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const forRangeOp = c.buf.ops.items.len;
     // The forRange op is patched by forRangeInit at runtime.
     c.buf.setOpArgU16(initPc + 6, @intCast(c.buf.ops.items.len - initPc));
-    try c.buf.pushOpSlice(.forRange, &.{ counter, rangeEnd, eachLocal, 0, 0 });
+    try c.pushCode(.forRange, &.{ counter, rangeEnd, eachLocal, 0, 0 }, nodeId);
     c.buf.setOpArgU16(forRangeOp + 4, jumpBackOffset);
 
     c.patchForBlockJumps(jumpStackSave, c.buf.ops.items.len, forRangeOp);
@@ -2519,7 +2506,7 @@ fn verbose(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
 fn tryStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .tryStmt);
     const pushTryPc = c.buf.ops.items.len;
-    try c.buf.pushOpSlice(.pushTry, &.{0, 0, 0, 0});
+    try c.pushCode(.pushTry, &.{0, 0, 0, 0}, nodeId);
 
     try pushBlock(c, false, nodeId);
     try genStmts(c, data.bodyHead);
@@ -2575,7 +2562,7 @@ const Root = @This();
 fn genTryExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const data = c.ir.getExprData(idx, .tryExpr);
     const pushTryPc = c.buf.ops.items.len;
-    try c.buf.pushOpSlice(.pushTry, &.{ 0, 0, 0, 0 });
+    try c.pushCode(.pushTry, &.{ 0, 0, 0, 0 }, nodeId);
 
     const mcstr = try MergeCstr.init(c, cstr);
 
@@ -2906,8 +2893,7 @@ fn genList(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
         try pushUnwindValue(c, val);
     }
 
-    try c.pushFailableDebugSym(nodeId);
-    try c.buf.pushOp3Ext(.list, argStart, data.numArgs, inst.dst, c.desc(nodeId));
+    try c.pushFCode(.list, &.{argStart, data.numArgs, inst.dst}, nodeId);
 
     const argvs = popValues(c, data.numArgs);
     try checkArgs(argStart, argvs);
@@ -3011,19 +2997,17 @@ fn genLambda(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
 
     if (data.numCaptures == 0) {
         const start = c.buf.ops.items.len;
-        try c.pushOptionalDebugSym(func.declId);
-        try c.buf.pushOpSliceExt(.lambda, &.{
-            0, 0, func.numParams, stackSize, @intFromBool(func.reqCallTypeCheck), 0, 0, inst.dst }, c.desc(nodeId));
+        try c.pushCode(.lambda, &.{
+            0, 0, func.numParams, stackSize, @intFromBool(func.reqCallTypeCheck), 0, 0, inst.dst }, nodeId);
         c.buf.setOpArgU16(start + 1, offset);
         c.buf.setOpArgU16(start + 6, @intCast(func.funcSigId));
     } else {
         const captures = c.ir.getArray(data.captures, u8, data.numCaptures);
         const start = c.buf.ops.items.len;
-        try c.pushOptionalDebugSym(func.declId);
-        try c.buf.pushOpSlice(.closure, &.{
+        try c.pushCode(.closure, &.{
             0, 0, func.numParams, @as(u8, @intCast(captures.len)), stackSize, 
             0, 0, cy.vm.CalleeStart, @intFromBool(func.reqCallTypeCheck), inst.dst
-        });
+        }, nodeId);
         c.buf.setOpArgU16(start + 1, offset);
         c.buf.setOpArgU16(start + 6, @intCast(func.funcSigId));
 
@@ -3541,29 +3525,25 @@ fn genConstIntExt(c: *Chunk, val: u48, dst: LocalId, desc: cy.bytecode.InstDesc)
 }
 
 fn pushTypeCheck(c: *cy.Chunk, local: RegisterId, typeId: cy.TypeId, nodeId: cy.NodeId) !void {
-    try c.pushFailableDebugSym(nodeId);
     const start = c.buf.ops.items.len;
-    try c.buf.pushOpSlice(.typeCheck, &[_]u8{ local, 0, 0, });
+    try c.pushFCode(.typeCheck, &.{ local, 0, 0, }, nodeId);
     c.buf.setOpArgU16(start + 2, @intCast(typeId));
 }
 
 fn genCallTypeCheck(c: *cy.Chunk, startLocal: u8, numArgs: u32, funcSigId: sema.FuncSigId, nodeId: cy.NodeId) !void {
-    try c.pushFailableDebugSym(nodeId);
     const start = c.buf.ops.items.len;
-    try c.buf.pushOpSlice(.callTypeCheck, &[_]u8{ startLocal, @intCast(numArgs), 0, 0, });
+    try c.pushFCode(.callTypeCheck, &.{ startLocal, @as(u8, @intCast(numArgs)), 0, 0 }, nodeId);
     c.buf.setOpArgU16(start + 3, @intCast(funcSigId));
 }
 
 fn pushCallSym(c: *cy.Chunk, startLocal: u8, numArgs: u32, numRet: u8, symId: u32, nodeId: cy.NodeId) !void {
-    try c.pushFailableDebugSym(nodeId);
     const start = c.buf.ops.items.len;
-    try c.buf.pushOpSliceExt(.callSym, &.{ startLocal, @as(u8, @intCast(numArgs)), numRet, 0, 0, 0, 0, 0, 0, 0, 0 }, c.desc(nodeId));
+    try c.pushFCode(.callSym, &.{ startLocal, @as(u8, @intCast(numArgs)), numRet, 0, 0, 0, 0, 0, 0, 0, 0 }, nodeId);
     c.buf.setOpArgU16(start + 4, @intCast(symId));
 }
 
 fn pushCall(c: *cy.Chunk, ret: u8, numArgs: u32, numRet: u8, nodeId: cy.NodeId) !void {
-    try c.pushFailableDebugSym(nodeId);
-    try c.buf.pushOp3Ext(.call, ret, @intCast(numArgs), numRet, c.desc(nodeId));
+    try c.pushFCode(.call, &.{ret, @as(u8, @intCast(numArgs)), numRet}, nodeId);
 }
 
 fn reserveLocalRegAt(c: *Chunk, irLocalId: u8, declType: types.TypeId, lifted: bool, reg: u8, nodeId: cy.NodeId) !void {
@@ -3594,32 +3574,29 @@ pub fn reserveLocalReg(c: *Chunk, irVarId: u8, declType: types.TypeId, lifted: b
     return c.curBlock.nextLocalReg;
 }
 
-fn pushCallObjSym(chunk: *cy.Chunk, ret: u8, numArgs: u8, symId: u8, callSigId: u16, nodeId: cy.NodeId) !void {
-    try pushCallObjSymExt(chunk, ret, numArgs, symId, callSigId, nodeId, cy.NullId);
+fn pushCallObjSym(c: *cy.Chunk, ret: u8, numArgs: u8, symId: u8, callSigId: u16, nodeId: cy.NodeId) !void {
+    try pushCallObjSymExt(c, ret, numArgs, symId, callSigId, nodeId, cy.NullId);
 }
 
-fn pushCallObjSymExt(chunk: *cy.Chunk, ret: u8, numArgs: u8, symId: u8, callSigId: u16, nodeId: cy.NodeId, extraIdx: u32) !void {
-    try chunk.pushFailableDebugSym(nodeId);
-    const start = chunk.buf.ops.items.len;
-    try chunk.buf.pushOpSliceExt(.callObjSym, &.{
+fn pushCallObjSymExt(c: *cy.Chunk, ret: u8, numArgs: u8, symId: u8, callSigId: u16, nodeId: cy.NodeId, extraIdx: u32) !void {
+    try c.pushFailableDebugSym(nodeId);
+    const start = c.buf.ops.items.len;
+    try c.buf.pushOpSliceExt(.callObjSym, &.{
         ret, numArgs, 0, symId, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-    }, chunk.descExtra(nodeId, extraIdx));
-    chunk.buf.setOpArgU16(start + 5, callSigId);
+    }, c.descExtra(nodeId, extraIdx));
+    c.buf.setOpArgU16(start + 5, callSigId);
 }
 
 fn pushInlineUnExpr(c: *cy.Chunk, code: cy.OpCode, child: u8, dst: u8, nodeId: cy.NodeId) !void {
-    try c.pushFailableDebugSym(nodeId);
-    try c.buf.pushOpSlice(code, &.{ child, dst, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+    try c.pushFCode(code, &.{ child, dst, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, nodeId);
 }
 
 fn pushInlineBinExpr(c: *cy.Chunk, code: cy.OpCode, left: u8, right: u8, dst: u8, nodeId: cy.NodeId) !void {
-    try c.pushFailableDebugSym(nodeId);
-    try c.buf.pushOpSliceExt(code, &.{ left, right, dst, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, c.desc(nodeId));
+    try c.pushFCode(code, &.{ left, right, dst, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, nodeId);
 }
 
 fn pushInlineTernExpr(c: *cy.Chunk, code: cy.OpCode, a: u8, b: u8, c_: u8, dst: u8, nodeId: cy.NodeId) !void {
-    try c.pushFailableDebugSym(nodeId);
-    try c.buf.pushOpSlice(code, &.{ a, b, c_, dst, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+    try c.pushFCode(code, &.{ a, b, c_, dst, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, nodeId);
 }
 
 fn mainEnd(c: *cy.Chunk, reg: ?u8) !void {
@@ -3680,28 +3657,24 @@ fn getIntOpCode(op: cy.BinaryExprOp) cy.OpCode {
 
 fn pushObjectInit(c: *cy.Chunk, typeId: cy.TypeId, startLocal: u8, numFields: u8, dst: RegisterId, debugNodeId: cy.NodeId) !void {
     if (numFields <= 4) {
-        try c.pushOptionalDebugSym(debugNodeId);
         const start = c.buf.ops.items.len;
-        try c.buf.pushOpSlice(.objectSmall, &[_]u8{ 0, 0, startLocal, numFields, dst });
+        try c.pushCode(.objectSmall, &.{ 0, 0, startLocal, numFields, dst }, debugNodeId);
         c.buf.setOpArgU16(start + 1, @intCast(typeId)); 
     } else {
-        try c.pushFailableDebugSym(debugNodeId);
         const start = c.buf.ops.items.len;
-        try c.buf.pushOpSlice(.object, &[_]u8{ 0, 0, startLocal, numFields, dst });
+        try c.pushFCode(.object, &.{ 0, 0, startLocal, numFields, dst }, debugNodeId);
         c.buf.setOpArgU16(start + 1, @intCast(typeId)); 
     }
 }
 
 fn pushField(c: *cy.Chunk, recv: u8, dst: u8, fieldId: u16, debugNodeId: cy.NodeId) !void {
-    try c.pushFailableDebugSym(debugNodeId);
     const start = c.buf.ops.items.len;
-    try c.buf.pushOpSliceExt(.field, &.{ recv, dst, 0, 0, 0, 0, 0 }, c.desc(debugNodeId));
+    try c.pushFCode(.field, &.{ recv, dst, 0, 0, 0, 0, 0 }, debugNodeId);
     c.buf.setOpArgU16(start + 3, fieldId);
 }
 
 fn pushObjectField(c: *cy.Chunk, recv: u8, fieldIdx: u8, dst: u8, debugNodeId: cy.NodeId) !void {
-    try c.pushOptionalDebugSym(debugNodeId);
-    try c.buf.pushOpSliceExt(.objectField, &.{ recv, fieldIdx, dst }, c.desc(debugNodeId));
+    try c.pushCode(.objectField, &.{ recv, fieldIdx, dst }, debugNodeId);
 }
 
 pub const PreferDst = struct {

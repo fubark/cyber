@@ -844,12 +844,18 @@ pub const Chunk = struct {
         };
     }
 
-    pub fn pushOp(c: *Chunk, code: cy.OpCode, args: []const u8, nodeId: cy.NodeId) !void {
+    /// An instruction that can fail (can throw or panic).
+    pub fn pushFCode(c: *Chunk, code: cy.OpCode, args: []const u8, nodeId: cy.NodeId) !void {
+        try c.pushFailableDebugSym(nodeId);
+        try c.buf.pushOpSliceExt(code, args, c.desc(nodeId));
+    }
+
+    pub fn pushCode(c: *Chunk, code: cy.OpCode, args: []const u8, nodeId: cy.NodeId) !void {
         try c.pushOptionalDebugSym(nodeId);
         try c.buf.pushOpSliceExt(code, args, c.desc(nodeId));
     }
 
-    pub fn pushOpDesc(c: *Chunk, code: cy.OpCode, args: []const u8, nodeId: cy.NodeId, extraIdx: ?u32) !void {
+    pub fn pushCodeExt(c: *Chunk, code: cy.OpCode, args: []const u8, nodeId: cy.NodeId, extraIdx: ?u32) !void {
         try c.pushOptionalDebugSym(nodeId);
         try c.buf.pushOpSliceExt(code, args, c.descExtra(nodeId, extraIdx orelse cy.NullId));
     }

@@ -1901,6 +1901,10 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !TypeExprResult {
             const sym = try cte.callTemplate(c, exprId);
             return TypeExprResult{ .sym = sym, .type = sym.getStaticType() };
         },
+        .expandOpt => {
+            const sym = try cte.callTemplate2(c, c.sema.optionSym, expr.data.expandOpt.param, exprId);
+            return TypeExprResult{ .sym = sym, .type = sym.getStaticType() };
+        },
         else => {
             return c.reportErrorAt("Unsupported type expr: `{}`", &.{v(expr.type())}, exprId);
         }
@@ -2792,10 +2796,14 @@ fn reportIncompatibleFuncSig(c: *cy.Chunk, name: []const u8, funcSigId: FuncSigI
 }
 
 fn checkTypeCstr(c: *cy.Chunk, ctype: CompactType, cstrTypeId: TypeId, nodeId: cy.NodeId) !void {
+    return checkTypeCstr2(c, ctype, cstrTypeId, cstrTypeId, nodeId);
+}
+
+fn checkTypeCstr2(c: *cy.Chunk, ctype: CompactType, cstrTypeId: TypeId, reportCstrTypeId: TypeId, nodeId: cy.NodeId) !void {
     // Dynamic is allowed.
     if (!ctype.dynamic) {
         if (!types.isTypeSymCompat(c.compiler, ctype.id, cstrTypeId)) {
-            const cstrName = try c.sema.allocTypeName(cstrTypeId);
+            const cstrName = try c.sema.allocTypeName(reportCstrTypeId);
             defer c.alloc.free(cstrName);
             const typeName = try c.sema.allocTypeName(ctype.id);
             defer c.alloc.free(typeName);
@@ -3159,7 +3167,7 @@ pub const ChunkExt = struct {
     pub fn semaZeroInit(c: *cy.Chunk, typeId: cy.TypeId, nodeId: cy.NodeId) !ExprResult {
         switch (typeId) {
             bt.Any,
-            bt.Dynamic  => return c.semaNone(nodeId),
+            bt.Dynamic  => return c.semaNone(null, nodeId),
             bt.Boolean  => return c.semaFalse(nodeId),
             bt.Integer  => return c.semaInt(0, nodeId),
             bt.Float    => return c.semaFloat(0, nodeId),
@@ -3501,7 +3509,28 @@ pub const ChunkExt = struct {
     pub fn semaExpr2(c: *cy.Chunk, expr: Expr) !ExprResult {
         const res = try c.semaExprNoCheck(expr);
         if (expr.hasTypeCstr) {
-            try checkTypeCstr(c, res.type, expr.preferType, expr.nodeId);
+            const type_e = c.sema.types.items[expr.preferType];
+            if (type_e.kind == .choice and type_e.data.choice.isOptional) {
+                // Already the same optional type.
+                if (res.type.id == expr.preferType) {
+                    return res;
+                }
+                // Check if type is compatible with Optional's some payload.
+                const someMember = type_e.sym.cast(.enum_t).getMemberByIdx(1);
+                try checkTypeCstr2(c, res.type, someMember.payloadType, expr.preferType, expr.nodeId);
+
+                // Generate IR to wrap value into optional.
+                var b: ObjectBuilder = .{ .c = c };
+                try b.begin(expr.preferType, 2, expr.nodeId);
+                const tag = try c.semaInt(1, expr.nodeId);
+                b.pushArg(tag);
+                b.pushArg(res);
+                const irIdx = b.end();
+
+                return ExprResult.initStatic(irIdx, expr.preferType);
+            } else {
+                try checkTypeCstr(c, res.type, expr.preferType, expr.nodeId);
+            }
         }
         return res;
     }
@@ -3518,7 +3547,13 @@ pub const ChunkExt = struct {
         const node = c.ast.node(nodeId);
         c.curNodeId = nodeId;
         switch (node.type()) {
-            .noneLit => return c.semaNone(nodeId),
+            .noneLit => {
+                if (expr.hasTypeCstr) {
+                   return c.semaNone(expr.preferType, nodeId);
+                } else {
+                   return c.semaNone(null, nodeId);
+                }
+            },
             .errorSymLit => {
                 const sym = c.ast.node(node.data.errorSymLit.symbol);
                 const name = c.ast.nodeString(sym);
@@ -3627,7 +3662,7 @@ pub const ChunkExt = struct {
                 if (node.data.condExpr.elseExpr != cy.NullNode) {
                     elseBody = try c.semaExpr(node.data.condExpr.elseExpr, .{});
                 } else {
-                    elseBody = try c.semaNone(nodeId);
+                    elseBody = try c.semaNone(bt.Any, nodeId);
                 }
                 c.ir.setExprData(irIdx, .condExpr, .{
                     .condLoc = cond.irIdx,
@@ -3671,8 +3706,31 @@ pub const ChunkExt = struct {
                 const ctype = CompactType.initStatic(sym.getStaticType().?);
                 return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = sym });
             },
+            .expandOpt => {
+                const sym = try cte.callTemplate2(c, c.sema.optionSym, node.data.expandOpt.param, nodeId);
+                const ctype = CompactType.initStatic(sym.getStaticType().?);
+                return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = sym });
+            },
             .accessExpr => {
                 return try c.semaAccessExpr(expr, true);
+            },
+            .unwrap => {
+                const opt = try c.semaExpr(node.data.unwrap.opt, .{});
+                const type_e = c.sema.types.items[opt.type.id];
+                if (type_e.kind != .choice or !type_e.data.choice.isOptional) {
+                    const name = try c.sema.allocTypeName(opt.type.id);
+                    defer c.alloc.free(name);
+                    return c.reportErrorAt("Unwrap operator expects an optional type, found: `{}`", &.{v(name)}, nodeId);
+                }
+
+                const someMember = type_e.sym.cast(.enum_t).getMemberByIdx(1);
+                const loc = try c.ir.pushExpr(c.alloc, .unwrapChoice, nodeId, .{
+                    .choice = opt.irIdx,
+                    .tag = 1,
+                    .payload_t = someMember.payloadType,
+                    .fieldIdx = 1,
+                });
+                return ExprResult.initStatic(loc, someMember.payloadType);
             },
             .indexExpr => {
                 const preIdx = try c.ir.pushEmptyExpr(c.alloc, .pre, nodeId);
@@ -3715,13 +3773,13 @@ pub const ChunkExt = struct {
                 if (range.data.range.start != cy.NullNode) {
                     left = try c.semaExprPrefer(range.data.range.start, preferT);
                 } else {
-                    left = try c.semaNone(nodeId);
+                    left = try c.semaNone(null, nodeId);
                 }
                 var right: ExprResult = undefined;
                 if (range.data.range.end != cy.NullNode) {
                     right = try c.semaExprPrefer(range.data.range.end, preferT);
                 } else {
-                    right = try c.semaNone(nodeId);
+                    right = try c.semaNone(null, nodeId);
                 }
 
                 if (recv.type.id == bt.List) {
@@ -4121,7 +4179,22 @@ pub const ChunkExt = struct {
         return ExprResult.initStatic(irIdx, bt.Boolean);
     }
 
-    pub fn semaNone(c: *cy.Chunk, nodeId: cy.NodeId) !ExprResult {
+    pub fn semaNone(c: *cy.Chunk, preferTypeOpt: ?cy.TypeId, nodeId: cy.NodeId) !ExprResult {
+        if (preferTypeOpt) |preferType| {
+            const type_e = c.sema.types.items[preferType];
+            if (type_e.kind == .choice and type_e.data.choice.isOptional) {
+                // Generate IR to wrap value into optional.
+                var b: ObjectBuilder = .{ .c = c };
+                try b.begin(preferType, 2, nodeId);
+                const tag = try c.semaInt(0, nodeId);
+                b.pushArg(tag);
+                const payload = try c.semaInt(0, nodeId);
+                b.pushArg(payload);
+                const loc = b.end();
+
+                return ExprResult.initStatic(loc, preferType);
+            }
+        }
         const irIdx = try c.ir.pushExpr(c.alloc, .none, nodeId, {});
         return ExprResult.initStatic(irIdx, bt.None);
     }
@@ -4753,10 +4826,13 @@ pub const Sema = struct {
     funcSigs: std.ArrayListUnmanaged(FuncSig),
     funcSigMap: std.HashMapUnmanaged(FuncSigKey, FuncSigId, FuncSigKeyContext, 80),
 
+    optionSym: *cy.sym.TypeTemplate,
+
     pub fn init(alloc: std.mem.Allocator, compiler: *cy.VMcompiler) Sema {
         return .{
             .alloc = alloc,
             .compiler = compiler,
+            .optionSym = undefined,
             .funcSigs = .{},
             .funcSigMap = .{},
             .types = .{},

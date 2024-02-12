@@ -594,6 +594,9 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
                     const header = ast.node(typeDecl.data.objectDecl.header);
                     name = ast.nodeStringById(header.data.objectHeader.name);
                 },
+                .enumDecl => {
+                    name = ast.nodeStringById(typeDecl.data.enumDecl.name);
+                },
                 else => {
                     return error.Unsupported;
                 },
@@ -743,9 +746,13 @@ fn genDocComment(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, st
 
 fn parseCyberGenResult(vm: *cy.VM, parser: *const cy.Parser) !Value {
     const root = try vm.allocEmptyMap();
+    errdefer vm.release(root);
+
     const map = root.asHeapObject().map.map();
 
     const decls = try vm.allocEmptyList();
+    errdefer vm.release(decls);
+
     const declsList = decls.asHeapObject().list.getList();
 
     var state = ParseCyberState{

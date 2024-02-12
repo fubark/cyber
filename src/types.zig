@@ -41,6 +41,9 @@ pub const Type = extern struct {
         @"struct": extern struct {
             numFields: u16,
         },
+        choice: extern struct {
+            isOptional: bool,
+        },
     },
 };
 
@@ -157,13 +160,21 @@ pub const SemaExt = struct {
     }
 
     pub fn allocTypeName(s: *cy.Sema, id: TypeId) ![]const u8 {
-        const typ = s.types.items[id];
-        switch (typ.kind) {
-            // .value => {
-            //     return try std.fmt.allocPrint(s.alloc, "+{s}", .{typ.sym.name()});
-            // },
+        const type_e = s.types.items[id];
+        switch (type_e.kind) {
+            .choice => {
+                if (type_e.data.choice.isOptional) {
+                    const template = type_e.sym.parent.?.cast(.typeTemplate);
+                    const variant = template.variants.items[type_e.sym.cast(.enum_t).variantId];
+                    const param = variant.params[0].asHeapObject();
+                    const name = s.getTypeBaseName(param.type.type);
+                    return try std.fmt.allocPrint(s.alloc, "?{s}", .{name});
+                } else {
+                    return try s.alloc.dupe(u8, type_e.sym.name());
+                }
+            },
             else => {
-                return try s.alloc.dupe(u8, typ.sym.name());
+                return try s.alloc.dupe(u8, type_e.sym.name());
             }
         }
     }

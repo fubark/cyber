@@ -552,6 +552,12 @@ pub const EnumType = extern struct {
         return @ptrCast(&self.mod);
     }
 
+    pub fn getMemberByIdx(self: *EnumType, idx: u32) *EnumMember {
+        const mod = self.head.getMod().?;
+        const symId = self.members[idx];
+        return mod.syms.items[symId].cast(.enumMember);
+    }
+
     pub fn getMember(self: *EnumType, name: []const u8) ?*EnumMember {
         const mod = self.head.getMod().?;
         if (mod.getSym(name)) |res| {
@@ -644,7 +650,7 @@ test "sym internals" {
     if (builtin.mode == .ReleaseFast) {
         if (cy.is32Bit) {
             try t.eq(@sizeOf(Sym), 16);
-            try t.eq(@sizeOf(Func), 28);
+            try t.eq(@sizeOf(Func), 32);
         } else {
             try t.eq(@sizeOf(Sym), 24);
             try t.eq(@sizeOf(Func), 40);

@@ -502,6 +502,12 @@ static inline void panicFieldMissing(VM* vm) {
     panicStaticMsg(vm, "Field not found in value.");
 }
 
+static inline void panicUnexpectedChoice(VM* vm, i48 tag, i48 exp) {
+    zPanicFmt(vm, "Expected active choice tag `{}`, found `{}`.", (FmtValue[]){
+        FMT_U32((u32)exp), FMT_U32((u32)tag),
+    }, 2);
+}
+
 static void panicIncompatibleType(VM* vm, TypeId actType, TypeId expType) {
     Str actTypeName = zGetTypeName(vm, actType);
     Str expTypeName = zGetTypeName(vm, expType);
@@ -722,6 +728,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Ref),
         JENTRY(RefCopyObj),
         JENTRY(SetRef),
+        JENTRY(UnwrapChoice),
         JENTRY(SetFieldDyn),
         JENTRY(SetFieldDynIC),
         JENTRY(SetField),
@@ -1618,6 +1625,20 @@ beginSwitch:
         *dst = stack[pc[2]];
         pc += 3;
         NEXT();
+    }
+    CASE(UnwrapChoice): {
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
+        Value* fields = objectGetValuesPtr(&obj->object);
+        u8 tag = pc[2];
+        if (VALUE_AS_INTEGER(fields[0]) == (_BitInt(48))pc[2]) {
+            retain(vm, fields[pc[3]]);
+            stack[pc[4]] = fields[pc[3]];
+            pc += 5;
+            NEXT();
+        } else {
+            panicUnexpectedChoice(vm, VALUE_AS_INTEGER(fields[0]), (_BitInt(48))pc[2]);
+            RETURN(RES_CODE_PANIC);
+        }
     }
     CASE(SetFieldDyn): {
         Value recv = stack[pc[1]];

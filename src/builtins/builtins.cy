@@ -382,3 +382,8 @@ type Fiber:
 #host
 type metatype:
     #host func id() int
+
+template(T type)
+type Option enum:
+    case none
+    case some #T

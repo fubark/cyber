@@ -298,6 +298,11 @@ pub const ChunkExt = struct {
             .kind = if (isChoiceType) .choice else .@"enum",
             .data = undefined,
         };
+        if (isChoiceType) {
+            c.compiler.sema.types.items[typeId].data = .{ .choice = .{
+                .isOptional = false,
+            }};
+        }
         return sym;
     }
 
@@ -417,6 +422,12 @@ pub const ChunkExt = struct {
             .kind = if (isChoiceType) .choice else .@"enum",
             .data = undefined,
         };
+
+        if (isChoiceType) {
+            c.compiler.sema.types.items[typeId].data = .{ .choice = .{
+                .isOptional = parent == c.sema.optionSym,
+            }};
+        }
         return sym;
     }
 

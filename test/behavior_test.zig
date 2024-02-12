@@ -193,7 +193,9 @@ if (!aot) {
     run.case("types/object_zero_init.cy");
     run.case("types/object_zero_init_error.cy");
     run.case("types/objects.cy");
-    // run.case("types/optionals.cy");
+    run.case("types/optionals_incompat_value_error.cy");
+    run.case("types/optionals_unwrap_panic.cy");
+    run.case("types/optionals.cy");
     run.case("types/struct_zero_init_error.cy");
     run.case("types/structs.cy");
     run.case("types/template_choices.cy");
@@ -263,7 +265,6 @@ if (!aot) {
     run.case("builtins/maps.cy");
     run.case("builtins/must.cy");
     run.case("builtins/must_panic.cy");
-    run.case("builtins/optionals.cy");
     run.case("builtins/op_precedence.cy");
     run.case("builtins/panic_panic.cy");
     run.case("builtins/raw_string_single_quote_error.cy");

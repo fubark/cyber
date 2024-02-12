@@ -462,6 +462,7 @@ pub fn buildCVM(b: *std.Build, opts: Options) !*std.build.Step.Compile {
         .target = opts.target,
         .optimize = opts.optimize,
     });
+    lib.linkLibC();
 
     var cflags = std.ArrayList([]const u8).init(b.allocator);
     if (opts.optimize == .Debug) {

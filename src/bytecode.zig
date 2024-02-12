@@ -995,6 +995,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numEntries = pc[2].val;
             return 4 + numEntries * 2;
         },
+        .unwrapChoice,
         .cast,
         .castAbstract,
         .pushTry,
@@ -1187,6 +1188,7 @@ pub const OpCode = enum(u8) {
     ref = vmc.CodeRef,
     refCopyObj = vmc.CodeRefCopyObj,
     setRef = vmc.CodeSetRef,
+    unwrapChoice = vmc.CodeUnwrapChoice,
 
     setFieldDyn = vmc.CodeSetFieldDyn,
     setFieldDynIC = vmc.CodeSetFieldDynIC,
@@ -1273,7 +1275,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 118);
+    try t.eq(std.enums.values(OpCode).len, 119);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

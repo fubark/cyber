@@ -406,6 +406,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .truev              => genTrue(c, cstr, nodeId),
         .tryExpr            => genTryExpr(c, idx, cstr, nodeId),
         .typeSym            => genTypeSym(c, idx, cstr, nodeId),
+        .unwrapChoice       => genUnwrapChoice(c, idx, cstr, nodeId),
         .varSym             => genVarSym(c, idx, cstr, nodeId),
         .blockExpr          => genBlockExpr(c, idx, cstr, nodeId),
         else => {
@@ -1030,6 +1031,21 @@ fn genSymbol(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     }
     try c.buf.pushOp2(.tagLiteral, @intCast(symId), inst.dst);
     return finishNoErrNoDepInst(c, inst, false);
+}
+
+fn genUnwrapChoice(c: *Chunk, loc: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+    const data = c.ir.getExprData(loc, .unwrapChoice);
+    const retain = c.sema.isRcCandidateType(data.payload_t);
+    const inst = try c.rega.selectForDstInst(cstr, retain, nodeId);
+
+    const choice = try genExpr(c, data.choice, Cstr.simple);
+    try pushUnwindValue(c, choice); 
+
+    try c.pushFCode(.unwrapChoice, &.{ choice.reg, data.tag, data.fieldIdx, inst.dst }, nodeId);
+
+    try popTempAndUnwind(c, choice);
+    try releaseTempValue(c, choice, nodeId);
+    return finishDstInst(c, inst, retain);
 }
 
 fn genTrue(c: *Chunk, cstr: Cstr, nodeId: cy.NodeId) !GenValue {

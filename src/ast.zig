@@ -36,6 +36,7 @@ pub const NodeType = enum(u8) {
     enumDecl,
     enumMember,
     errorSymLit,
+    expandOpt,
     exprStmt,
     falseLit,
     forIterHeader,
@@ -93,6 +94,8 @@ pub const NodeType = enum(u8) {
     typeAliasDecl,
     typeTemplate,
     unary_expr,
+    unwrap,
+    unwrapDef,
     varSpec,
     whileCondStmt,
     whileInfStmt,
@@ -131,6 +134,9 @@ const NodeHead = packed struct {
 /// At most 16 bytes in release mode.
 const NodeData = union {
     uninit: void,
+    expandOpt: struct {
+        param: NodeId,
+    },
     exprStmt: struct {
         child: NodeId,
         isLastRootStmt: bool = false, 
@@ -237,6 +243,13 @@ const NodeData = union {
     accessExpr: struct {
         left: NodeId,
         right: NodeId,
+    },
+    unwrap: struct {
+        opt: NodeId,
+    },
+    unwrapDef: struct {
+        opt: NodeId,
+        default: NodeId,
     },
     callExpr: packed struct {
         callee: u24,

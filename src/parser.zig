@@ -782,6 +782,16 @@ pub const Parser = struct {
                     return self.reportError("Unnamed type is not allowed in this context.", &.{});
                 }
             },
+            .question => {
+                const start = self.next_pos;
+                self.advance();
+                const param = try self.parseTermExpr();
+                const id = try self.pushNode(.expandOpt, start);
+                self.ast.setNodeData(id, .{ .expandOpt = .{
+                    .param = param,
+                }});
+                return id;
+            },
             .pound,
             .type_k,
             .none_k,
@@ -2400,9 +2410,7 @@ pub const Parser = struct {
     }
 
     fn parseCondExpr(self: *Parser, cond: NodeId, start: u32) !NodeId {
-        // Assume `?`.
-        self.advance();
-
+        // Assume `?` is consumed.
         const res = try self.pushNode(.condExpr, start);
 
         const body = (try self.parseExpr(.{})) orelse {
@@ -2833,6 +2841,14 @@ pub const Parser = struct {
                     }});
                     left_id = expr_id;
                 },
+                .dot_question => {
+                    self.advance();
+                    const expr = try self.pushNode(.unwrap, start);
+                    self.ast.setNodeData(expr, .{ .unwrap = .{
+                        .opt = left_id,
+                    }});
+                    left_id = expr;
+                },
                 .pound => {
                     self.advance();
                     const call = try self.pushNode(.callTemplate, start);
@@ -3123,7 +3139,21 @@ pub const Parser = struct {
                     left_id = try self.parseBinExpr(left_id, .or_op);
                 },
                 .question => {
-                    left_id = try self.parseCondExpr(left_id, start);
+                    self.advance();
+                    if (self.peek().tag() == .else_k) {
+                        self.advance();
+                        const default = (try self.parseExpr(.{})) orelse {
+                            return self.reportError("Expected default expression.", &.{});
+                        };
+                        const expr = try self.pushNode(.unwrapDef, start);
+                        self.ast.setNodeData(expr, .{ .unwrapDef = .{
+                            .opt = left_id,
+                            .default = default,
+                        }});
+                        left_id = expr;
+                    } else {
+                        left_id = try self.parseCondExpr(left_id, start);
+                    }
                 },
                 .right_bracket,
                 .right_paren,

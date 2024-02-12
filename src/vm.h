@@ -10,6 +10,7 @@ typedef uint32_t u32;
 typedef int32_t i32;
 typedef uint64_t u64;
 typedef int64_t i64;
+typedef _BitInt(48) i48;
 
 #define BITCAST(type, x) (((union {typeof(x) src; type dst;})(x)).dst)
 #define LIKELY(x)   __builtin_expect(!!(x), 1)
@@ -299,6 +300,7 @@ typedef enum {
     CodeRef,
     CodeRefCopyObj,
     CodeSetRef,
+    CodeUnwrapChoice,
 
     /// Set field with runtime type check.
     CodeSetFieldDyn,

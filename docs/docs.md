@@ -797,7 +797,7 @@ print int(currency)       -- '123' or some arbitrary id.
   * [Type functions.](#type-functions)
   * [Type variables.](#type-variables)
 * [Structs.](#structs)
-  * [Declare struct type.](#declare-struct-type)
+  * [Declare struct.](#declare-struct)
   * [Copy structs.](#copy-structs)
 * [Enums.](#enums)
 * [Choices.](#choices)
@@ -807,6 +807,13 @@ print int(currency)       -- '123' or some arbitrary id.
 </td><td valign="top">
 
 * [Optionals.](#optionals)
+  * [Wrap value.](#wrap-value)
+  * [Wrap `none`.](#wrap-none)
+  * [Unwrap or panic.](#unwrap-or-panic)
+  * [Unwrap or default.](#unwrap-or-default)
+  * [Optional chaining.](#optional-chaining)
+  * [`if` unwrap.](#if-unwrap)
+  * [`while` unwrap.](#while-unwrap)
 * [Type aliases.](#type-aliases)
 * [Traits.](#traits)
 * [Union types.](#union-types)
@@ -971,7 +978,7 @@ Struct types can contain field and method members just like object types, but th
 
 Unlike objects, structs do not have a reference count. They can be safely referenced using borrow semantics. Unsafe pointers can also reference structs.
 
-### Declare struct type.
+### Declare struct.
 Struct types are created using the `type struct` declaration:
 ```cy
 type Vec2 struct:
@@ -1076,7 +1083,80 @@ print s.!line     -- Prints '20'
 ```
 
 ## Optionals.
-> _Planned Feature_
+The generic `Option` type is a choice type that either holds a `none` value or contains `some` value. The option template is defined as:
+```cy
+template(T type)
+type Option enum:
+    case none
+    case some #T
+```
+A type prefixed with `?` is a more idiomatic way to create an option type. The following String optional types are equivalent:
+```cy
+Option#String
+?String
+```
+
+### Wrap value.
+Use `?` as a type prefix to turn it into an `Option` type. A value is automatically wrapped into the inferred optional's `some` case:
+```cy
+var a ?String = 'abc'
+print a     -- Prints 'Option(abc)'
+```
+
+### Wrap `none`.
+`none` is automatically initialized to the inferred optional's `none` case:
+```cy
+var a ?String = none
+print a     -- Prints 'Option.none'
+```
+
+### Unwrap or panic.
+The `.?` access operator is used to unwrap an optional. If the expression evaluates to the `none` case, the runtime panics:
+```cy
+var opt ?String = 'abc'
+var v = opt.?
+print v     -- Prints 'abc'
+```
+
+### Unwrap or default.
+The `?else` control flow operator either returns the unwrapped value or a default value when the optional is `none`: *Planned Feature*
+```cy
+var opt ?String = none
+var v = opt ?else 'empty'
+print v     -- Prints 'empty'
+```
+
+`else` can also start a new statement block: *Planned Feature*
+```cy
+var v = opt else:
+    break 'empty'
+
+var v = opt else:
+    throw error.Missing
+```
+
+### Optional chaining.
+Given the last member's type `T` in a chain of `?.` access operators, the chain's execution will either return `Option(T).none` on the first encounter of `none` or returns the last member as an `Option(T).some`: *Planned Feature*
+```cy
+print root?.a?.b?.c?.last
+```
+
+### `if` unwrap.
+The `if` statement can be amended to unwrap an optional value using the capture `->` operator: *Planned Feature*
+```cy
+var opt ?String = 'abc'
+if opt -> v:
+    print v     -- Prints 'abc'
+```
+
+### `while` unwrap. 
+The `while` statement can be amended to unwrap an optional value using the capture `->` operator.
+The loop exits when `none` is encountered: *Planned Feature*
+```cy
+var iter = dir.walk()
+while iter.next() -> entry:
+    print entry.name
+```
 
 ## Type aliases.
 A type alias is declared from a single line `type` statement. This creates a new type symbol for an existing data type.

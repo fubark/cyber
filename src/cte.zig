@@ -6,21 +6,7 @@ const v = cy.fmt.v;
 
 const cte = @This();
 
-pub fn callTemplate(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
-    const node = c.ast.node(nodeId);
-    const callee = node.data.callTemplate.callee;
-    const numArgs = node.data.callTemplate.numArgs;
-    _ = numArgs;
-
-    const calleeRes = try c.semaExprSkipSym(node.data.callTemplate.callee);
-    if (calleeRes.resType != .sym) {
-        return c.reportErrorAt("Expected template symbol.", &.{}, node.data.callTemplate.callee);
-    }
-    const sym = calleeRes.data.sym;
-    if (sym.type != .typeTemplate) {
-        return c.reportErrorAt("Expected template symbol.", &.{}, node.data.callTemplate.callee);
-    }
-
+pub fn callTemplate2(c: *cy.Chunk, template: *cy.sym.TypeTemplate, argHead: cy.NodeId, nodeId: cy.NodeId) !*cy.Sym {
     // Accumulate compile-time args.
     const typeStart = c.typeStack.items.len;
     const valueStart = c.valueStack.items.len;
@@ -34,7 +20,7 @@ pub fn callTemplate(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
         }
         c.valueStack.items.len = valueStart;
     }
-    var arg: cy.NodeId = node.data.callTemplate.argHead;
+    var arg: cy.NodeId = argHead;
     while (arg != cy.NullNode) {
         const res = try nodeToCtValue(c, arg);
         try c.typeStack.append(c.alloc, res.type);
@@ -45,20 +31,18 @@ pub fn callTemplate(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
     const args = c.valueStack.items[valueStart..];
 
     // Check against template signature.
-    const typeTemplate = sym.cast(.typeTemplate);
-
-    if (!cy.types.isTypeFuncSigCompat(c.compiler, @ptrCast(argTypes), bt.Type, typeTemplate.sigId)) {
-        const expSig = try c.sema.allocFuncSigStr(typeTemplate.sigId);
+    if (!cy.types.isTypeFuncSigCompat(c.compiler, @ptrCast(argTypes), bt.Type, template.sigId)) {
+        const expSig = try c.sema.allocFuncSigStr(template.sigId);
         defer c.alloc.free(expSig);
         return c.reportErrorAt(
             \\Expected template signature `{}{}`.
-        , &.{v(typeTemplate.head.name()), v(expSig)}, callee);
+        , &.{v(template.head.name()), v(expSig)}, nodeId);
     }
 
     // Ensure variant type.
-    const res = try typeTemplate.variantCache.getOrPut(c.alloc, args);
+    const res = try template.variantCache.getOrPut(c.alloc, args);
     if (!res.found_existing) {
-        const patchNodes = try execTemplateCtNodes(c, typeTemplate, args);
+        const patchNodes = try execTemplateCtNodes(c, template, args);
 
         // Dupe args and retain
         const params = try c.alloc.dupe(cy.Value, args);
@@ -67,23 +51,36 @@ pub fn callTemplate(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
         }
 
         // Generate variant type.
-        const id = typeTemplate.variants.items.len;
-        try typeTemplate.variants.append(c.alloc, .{
+        const id = template.variants.items.len;
+        try template.variants.append(c.alloc, .{
             .patchNodes = patchNodes,
             .params = params,
             .sym = undefined,
         });
 
-        const newSym = try sema.declareTemplateVariant(c, typeTemplate, @intCast(id));
-        typeTemplate.variants.items[id].sym = newSym;
+        const newSym = try sema.declareTemplateVariant(c, template, @intCast(id));
+        template.variants.items[id].sym = newSym;
 
         res.key_ptr.* = params;
         res.value_ptr.* = @intCast(id);
     }
 
     const variantId = res.value_ptr.*;
-    const variantSym = typeTemplate.variants.items[variantId].sym;
+    const variantSym = template.variants.items[variantId].sym;
     return variantSym;
+}
+
+pub fn callTemplate(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
+    const node = c.ast.node(nodeId);
+    const calleeRes = try c.semaExprSkipSym(node.data.callTemplate.callee);
+    if (calleeRes.resType != .sym) {
+        return c.reportErrorAt("Expected template symbol.", &.{}, node.data.callTemplate.callee);
+    }
+    const sym = calleeRes.data.sym;
+    if (sym.type != .typeTemplate) {
+        return c.reportErrorAt("Expected template symbol.", &.{}, node.data.callTemplate.callee);
+    }
+    return cte.callTemplate2(c, sym.cast(.typeTemplate), node.data.callTemplate.argHead, nodeId);
 }
 
 /// Visit each top level ctNode, perform template param substitution or CTE,

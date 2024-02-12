@@ -59,6 +59,7 @@ pub const TokenType = enum(u8) {
     coyield_k,
     dec,
     dot,
+    dot_question,
     dot_dot,
     else_k,
     enum_k,
@@ -314,6 +315,9 @@ pub const Tokenizer = struct {
                 if (peek(t) == '.') {
                     advance(t);
                     try t.pushToken(.dot_dot, start);
+                } else if (peek(t) == '?') {
+                    advance(t);
+                    try t.pushToken(.dot_question, start);
                 } else {
                     try t.pushToken(.dot, start);
                 }
@@ -1012,6 +1016,6 @@ test "tokenizer internals." {
     try tt.eq(@alignOf(Token), 4);
     try tt.eq(@sizeOf(TokenizeState), 4);
 
-    try tt.eq(std.enums.values(TokenType).len, 67);
+    try tt.eq(std.enums.values(TokenType).len, 68);
     try tt.eq(keywords.kvs.len, 33);
 }

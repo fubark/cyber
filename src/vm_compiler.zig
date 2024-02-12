@@ -652,6 +652,10 @@ fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
             break;
         }
     }
+
+    // Extract special syms. Assumes chunks[1] is the builtins chunk.
+    const builtins = self.chunks.items[1].sym.getMod();
+    self.sema.optionSym = builtins.getSym("Option").?.cast(.typeTemplate);
 }
 
 fn loadPredefinedTypes(self: *VMcompiler, parent: *cy.Sym) !void {

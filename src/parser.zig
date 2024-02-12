@@ -357,14 +357,14 @@ pub const Parser = struct {
     /// Parses the first child indent and returns the indent size.
     fn parseFirstChildIndent(self: *Parser, fromIndent: u32) !u32 {
         const indent = (try self.consumeIndentBeforeStmt()) orelse {
-            return self.reportParseError("Block requires at least one statement. Use the `pass` statement as a placeholder.", &.{});
+            return self.reportParseError("Block requires an indented child statement. Use the `pass` statement as a placeholder.", &.{});
         };
         if ((fromIndent ^ indent < 0x80000000) or fromIndent == 0) {
             // Either same indent style or indenting from root.
             if (indent > fromIndent) {
                 return indent;
             } else {
-                return self.reportParseError("Block requires at least one statement. Use the `pass` statement as a placeholder.", &.{});
+                return self.reportParseError("Block requires an indented child statement. Use the `pass` statement as a placeholder.", &.{});
             }
         } else {
             if (fromIndent & 0x80000000 == 0x80000000) {
@@ -1087,6 +1087,25 @@ pub const Parser = struct {
         }
     }
 
+    fn consumeStmtIndentTo(self: *Parser, reqIndent: u32) !void {
+        const indent = (try self.consumeIndentBeforeStmt()) orelse {
+            return self.reportParseError("Expected statement.", &.{});
+        };
+        if (reqIndent != indent) {
+            return self.reportParseError("Unexpected statement indentation.", &.{});
+        }
+    }
+
+    fn tryConsumeStmtIndentTo(self: *Parser, reqIndent: u32) !bool {
+        const save = self.next_pos;
+        const indent = (try self.consumeIndentBeforeStmt()) orelse return false;
+        if (reqIndent != indent) {
+            self.next_pos = save;
+            return false;
+        }
+        return true;
+    }
+
     fn parseSwitch(self: *Parser, isStmt: bool) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `switch` keyword.
@@ -1095,16 +1114,17 @@ pub const Parser = struct {
         const expr = (try self.parseExpr(.{})) orelse {
             return self.reportParseError("Expected switch expression.", &.{});
         };
-        if (self.peekToken().tag() != .colon) {
-            return self.reportParseError("Expected colon after if condition.", &.{});
-        }
-        self.advanceToken();
 
-        var indent = (try self.consumeIndentBeforeStmt()) orelse {
-            return self.reportParseError("Expected case or else block.", &.{});
-        };
-        if (self.cur_indent != indent) {
-            return self.reportParseError("Expected case or else block.", &.{});
+        var caseIndent = self.cur_indent;
+        var isBlock = false;
+        if (self.peekToken().tag() == .colon) {
+            isBlock = true;
+            self.advanceToken();
+            caseIndent = try self.parseFirstChildIndent(self.cur_indent);
+        } else if (self.peekToken().tag() == .new_line) {
+            try self.consumeStmtIndentTo(caseIndent);
+        } else {
+            return self.reportParseError("Expected colon after switch condition.", &.{});
         }
 
         var firstCase = (try self.parseCaseBlock()) orelse {
@@ -1116,19 +1136,20 @@ pub const Parser = struct {
         // Parse body statements until no more case blocks indentation recedes.
         while (true) {
             const save = self.next_pos;
-            indent = (try self.consumeIndentBeforeStmt()) orelse break;
-            if (self.cur_indent == indent) {
-                const case = (try self.parseCaseBlock()) orelse {
-                    self.next_pos = save;
-                    break;
-                };
-                numCases += 1;
-                self.nodes.items[lastCase].next = case;
-                lastCase = case;
-            } else {
-                self.next_pos = save;
+            if (!try self.tryConsumeStmtIndentTo(caseIndent)) {
                 break;
             }
+            const case = (try self.parseCaseBlock()) orelse {
+                if (isBlock) {
+                    return self.reportParseError("Expected case or else block.", &.{});
+                }
+                // Restore so that next statement outside switch can be parsed.
+                self.next_pos = save;
+                break;
+            };
+            numCases += 1;
+            self.nodes.items[lastCase].next = case;
+            lastCase = case;
         }
 
         const nodet: cy.NodeType = if (isStmt) .switchStmt else .switchExpr;

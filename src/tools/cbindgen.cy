@@ -33,7 +33,7 @@ if existing != '':
     var res = parseCyber(existing[..markerPos])
     for res.decls -> decl:
         if decl.pos < markerPos:
-            switch decl.type:
+            switch decl.type
             case 'func':
                 skipMap[decl.name] = true
             case 'funcInit':
@@ -186,7 +186,7 @@ type State:
 
 func visitor(cursor, parent, client_data):
     var state State = client_data.asObject()
-    switch state.type:
+    switch state.type
     case StateType.root:
         return rootVisitor(cursor, parent, state)
     case StateType.struct:
@@ -211,7 +211,7 @@ func rootVisitor(cursor, parent, state):
         -- Skip system headers.
         return clang.CXChildVisit_Continue
 
-    switch cursor.kind:
+    switch cursor.kind
     case clang.CXCursor_MacroDefinition:
         if clang.lib.clang_Cursor_isMacroBuiltin(cursor) != 0:
             return clang.CXChildVisit_Continue
@@ -343,7 +343,7 @@ func structVisitor(cursor, parent, state):
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
-    switch cursor.kind:
+    switch cursor.kind
     case clang.CXCursor_FieldDecl:
         -- print "field $(cursor.kind) $(name)"
         my ftype = clang.lib.clang_getCursorType(cursor)
@@ -391,7 +391,7 @@ func genMacros(headerPath):
     clang.lib.clang_visitChildren(cursor, cvisitor, cstate)
 
 func initListExpr(cursor, parent, state):
-    switch cursor.kind:
+    switch cursor.kind
     case clang.CXCursor_IntegerLiteral:
         var eval = clang.lib.clang_Cursor_Evaluate(cursor)
         var val = clang.lib.clang_EvalResult_getAsLongLong(eval)
@@ -406,7 +406,7 @@ func initVarVisitor(cursor, parent, state):
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
-    switch cursor.kind:
+    switch cursor.kind
     case clang.CXCursor_TypeRef:
         state.data['type'] = name
     case clang.CXCursor_InitListExpr:
@@ -431,7 +431,7 @@ func macrosRootVisitor(cursor, parent, state):
         -- Skip system headers.
         return clang.CXChildVisit_Continue
 
-    switch cursor.kind:
+    switch cursor.kind
     case clang.CXCursor_UnexposedDecl: pass
     case clang.CXCursor_MacroDefinition: pass
     case clang.CXCursor_MacroExpansion,
@@ -453,14 +453,14 @@ func macrosRootVisitor(cursor, parent, state):
         var kind = clang.lib.clang_EvalResult_getKind(eval)
 
         var finalName = getApiName(name[4..].trim(.left, '_'))
-        switch kind:
+        switch kind
         case clang.CXEval_UnExposed:
             -- Can't eval to primitive. Check for struct intializer.
             my initCur = clang.lib.clang_Cursor_getVarDeclInitializer(cursor)
 
             var cxInitName = clang.lib.clang_getCursorDisplayName(initCur)
             var initName = fromCXString(cxInitName)
-            switch initCur.kind:
+            switch initCur.kind
             case clang.CXCursor_InvalidFile: pass
             case clang.CXCursor_CXXFunctionalCastExpr:
                 var state = [State type: .initVar, data: [:]]
@@ -504,7 +504,7 @@ func fromCXString(cxStr) String:
 
 func toCyType(nameOrSym, forRet):
     if typeof(nameOrSym) == symbol:
-        switch nameOrSym:
+        switch nameOrSym
         case .voidPtr   : return forRet ? 'pointer' else 'any' -- `any` until Optionals are done
         case .bool      : return 'bool'
         case .int       : return 'int'
@@ -547,7 +547,7 @@ func getStruct(name):
     return none
 
 func toBindType(cxType):
-    switch cxType.kind:
+    switch cxType.kind
     case clang.CXType_Float             : return .float
     case clang.CXType_Double            : return .double
     case clang.CXType_Long              : return .long
@@ -565,7 +565,7 @@ func toBindType(cxType):
     case clang.CXType_Typedef:
         var name = fromCXString(clang.lib.clang_getTypedefName(cxType))
 
-        switch name:
+        switch name
         case 'size_t'   : return .long
         case 'uint8_t'  : return .uchar
         case 'uint64_t' : return .ulong

@@ -16,7 +16,7 @@ type Rectangle:
 
 -- Switch case on object payload.
 var s = [Shape.rectangle width: 123, height: 234]
-switch s:
+switch s
 case .rectangle -> r:
     test.eq(r.width, 123.0)
     test.eq(r.height, 234.0)
@@ -25,14 +25,14 @@ else:
 
 -- Switch case on object payload. Expr.
 my res = switch s:
-case .rectangle -> r => r
-else => test.fail()
+    case .rectangle -> r => r
+    else => test.fail()
 test.eq(res.width, 123.0)
 test.eq(res.height, 234.0)
 
 -- Switch case on unnamed object payload.
 s = [Shape.circle radius: 10]
-switch s:
+switch s
 case .circle -> c:
     test.eq(c.radius, 10.0)
 else:
@@ -40,13 +40,13 @@ else:
 
 -- Switch case on unnamed object payload. Expr.
 res = switch s:
-case .circle -> c => c
-else => test.fail()
+    case .circle -> c => c
+    else => test.fail()
 test.eq(res.radius, 10.0)
 
 -- Switch case on primitive payload.
 s = [Shape line: 20]
-switch s:
+switch s
 case .line -> l:
     test.eq(l, 20.0)
 else:
@@ -54,13 +54,13 @@ else:
 
 -- Switch case on primitive payload. Expr.
 res = switch s:
-case .line -> l => l
-else => test.fail()
+    case .line -> l => l
+    else => test.fail()
 test.eq(res, 20.0)
 
 -- Switch case on empty payload.
 s = [Shape.point:]
-switch s:
+switch s
 case .point:
     pass
 else:
@@ -68,13 +68,13 @@ else:
 
 -- Switch case on empty payload. Expr.
 res = switch s:
-case .point => 123
-else => test.fail()
+    case .point => 123
+    else => test.fail()
 test.eq(res, 123)
 
 -- Switch else case.
 s = [Shape.point:]
-switch s:
+switch s
 case .circle -> c:
     test.fail()
 else:
@@ -82,8 +82,8 @@ else:
 
 -- Switch else case. Expr.
 res = switch s:
-case .circle -> c => test.fail()
-else => 234
+    case .circle -> c => test.fail()
+    else => 234
 test.eq(res, 234)
 
 --cytest: pass

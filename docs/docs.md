@@ -852,7 +852,7 @@ var node Node = [value: 234]
 print node.next       -- Prints "Option.none"
 
 type Student:
-    var name string
+    var name String
     var age  int
     var gpa  float
 
@@ -1008,7 +1008,7 @@ var s = [Shape.rectangle width: 10, height: 20]
 The general way to initialize a choice is to pass the payload as an argument:
 ```cy
 var rect = [Rectangle width: 10, height: 20]
-s = [Shape rectangle: rect]
+var s = [Shape rectangle: rect]
 
 s = [Shape line: 20]
 ```
@@ -1021,7 +1021,7 @@ var s = [Shape.point:]
 ### Choice `switch`.
 `case` clauses can match choices and capture the payload:
 ```cy
-switch s:
+switch s
 case .rectangle -> r:
     print "$(r.width) $(r.height)"
 case .circle -> c:
@@ -1228,7 +1228,7 @@ The `switch` statement branches to a case block from a matching case condition. 
 *Incomplete: Not all types can be used in the case conditions such as ranges.*
 ```cy
 var val = 1000
-switch val:
+switch val
 case 0..100: print 'at or between 0 and 99'
 case 100   : print 'val is 100'
 case 200:
@@ -1238,23 +1238,30 @@ case 300, 400:
 else:
     print "val is $(val)"
 ```
-Note that the `switch` block must be empty and requires at least one `case` block or an `else` block to come after it.
+The switch statement requires at least one `case` block or an `else` block.
+When the switch statement begins a new block, the case statements must be indented:
+```cy
+switch val:
+    case 0: print 'a'
+    case 1: print 'b'
+    else: print 'c'
+```
 
 ### `switch` assignment.
 Although `switch` can not be used freely as an expression, it can be assigned to a left variable or destination:
 ```cy
 var shu = switch pepper:
-case 'bell'     => 0
-case 'anaheim'  => 500
-case 'jalapeño' => 2000
-case 'serrano'  => 10000
+    case 'bell'     => 0
+    case 'anaheim'  => 500
+    case 'jalapeño' => 2000
+    case 'serrano'  => 10000
 ```
 When declaring an assignable switch, the cases must have a return value using the syntax `case {cond} => {expr}` or `else => {expr}`.
 
 ### `switch` break.
 A `break` statement exits the current case block and resumes execution after the end of the switch statement: *Planned Feature*
 ```cy
-switch value:
+switch value
 case 0..5:
     print value
     if value == 3:

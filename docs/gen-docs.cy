@@ -161,7 +161,7 @@ func resetState():
 
 func enterBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
     if parsingToc:
-        switch block_t:
+        switch block_t
         case md.BLOCK_HTML:
             textContent = ''
             bufContent = true
@@ -173,7 +173,7 @@ func enterBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
             return 1
         return 0
 
-    switch block_t:
+    switch block_t
     case md.BLOCK_DOC: 
         return 0
     case md.BLOCK_QUOTE:
@@ -234,7 +234,7 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
             resetState()
         return 0
 
-    switch block_t:
+    switch block_t
     case md.BLOCK_DOC:
         return 0
     case md.BLOCK_QUOTE:
@@ -307,7 +307,7 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         return 1
 
 func enterSpan(span_t md.SPANTYPE, detail_p pointer, userdata pointer) int:
-    switch span_t:
+    switch span_t
     case md.SPAN_EM:
         out += '<em>'
         return 0
@@ -339,7 +339,7 @@ func enterSpan(span_t md.SPANTYPE, detail_p pointer, userdata pointer) int:
         return 1
 
 func leaveSpan(span_t md.SPANTYPE, detail pointer, userdata pointer) int:
-    switch span_t:
+    switch span_t
     case md.SPAN_EM:
         out += '</em>'
         return 0
@@ -399,7 +399,7 @@ func genDocsModules():
         var decls = parseCyber(src)['decls']
         var gen = '\n'
         for decls -> decl:
-            switch decl.type:
+            switch decl.type
             case 'funcInit':
                 var docLine = decl.docs ? decl.docs else ''
                 var params = []

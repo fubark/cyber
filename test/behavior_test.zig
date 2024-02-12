@@ -58,7 +58,7 @@ test "Tests." {
     const aot = backend.isAot();
 
     run.case("syntax/adjacent_stmt_error.cy");
-    run.case("syntax/block_no_stmt_error.cy");
+    run.case("syntax/block_no_child_error.cy");
     run.case("syntax/change_to_spaces_error.cy");
     run.case("syntax/change_to_tabs_error.cy");
     run.case("syntax/comment_first_line.cy");

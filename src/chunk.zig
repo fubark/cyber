@@ -75,7 +75,7 @@ pub const Chunk = struct {
 
     curObjectSym: ?*cy.sym.ObjectType,
 
-    /// Symbols declared in this chunk that have modules and which need to be deinited.
+    /// Used to iterate module syms.
     modSyms: std.ArrayListUnmanaged(*cy.Sym),
 
     /// Record other chunks that this chunk's static initializer depends on.
@@ -137,9 +137,7 @@ pub const Chunk = struct {
     /// Whether the src is owned by the chunk.
     srcOwned: bool,
 
-    /// Points to this chunk's `Module`.
-    /// Its exported members will be populated in the Module as sema encounters them.
-    mod: *cy.Module,
+    /// This chunk's sym.
     sym: *cy.sym.Chunk,
 
     /// For binding #host func declarations.
@@ -183,7 +181,7 @@ pub const Chunk = struct {
     llvmFuncs: if (cy.hasJIT) []LLVM_Func else void, // One-to-one with `semaFuncDecls`
 
     /// Chunk owns `srcUri` and `src`.
-    pub fn init(c: *cy.VMcompiler, id: ChunkId, srcUri: []const u8, src: []const u8, sym: *cy.sym.Chunk) !Chunk {
+    pub fn init(c: *cy.VMcompiler, id: ChunkId, srcUri: []const u8, src: []const u8) !Chunk {
         var new = Chunk{
             .id = id,
             .alloc = c.alloc,
@@ -193,7 +191,7 @@ pub const Chunk = struct {
             .src = src,
             .ast = undefined,
             .srcUri = srcUri,
-            .sym = sym,
+            .sym = undefined,
             .parser = try cy.Parser.init(c.alloc),
             .parserAstRootId = cy.NullId,
             .semaProcs = .{},
@@ -242,7 +240,6 @@ pub const Chunk = struct {
             .usingModules = .{},
             .tempTypeRefs = undefined,
             .tempValueRefs = undefined,
-            .mod = undefined,
             .builder = undefined,
             .ctx = undefined,
             .llvmFuncs = undefined,
@@ -320,15 +317,10 @@ pub const Chunk = struct {
         self.localSymMap.deinit(self.alloc);
         self.usingModules.deinit(self.alloc);
 
-        // Deinit modSyms declared in this chunk.
-        for (self.modSyms.items) |modSym| {
-            cy.sym.deinitModSym(self.compiler.vm, modSym);
-        }
-        self.modSyms.deinit(self.alloc);
+        // Deinit the Chunk sym.
+        (&self.sym.head).destroy(self.compiler.vm, self.alloc);
 
-        // Deinit the Chunk modSym.
-        cy.sym.deinitModSym(self.compiler.vm, @ptrCast(self.sym));
-        self.alloc.destroy(self.sym);
+        self.modSyms.deinit(self.alloc);
 
         self.alloc.free(self.srcUri);
         self.parser.deinit();

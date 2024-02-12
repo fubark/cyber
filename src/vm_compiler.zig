@@ -128,13 +128,7 @@ pub const VMcompiler = struct {
 
     pub fn deinitModRetained(self: *VMcompiler) void {
         for (self.chunks.items) |chunk| {
-            const chunkMod = chunk.sym.getMod();
-            chunkMod.deinitRetained(self.vm);
-
-            for (chunk.modSyms.items) |modSym| {
-                const mod = modSym.getMod().?;
-                mod.deinitRetained(self.vm);
-            }
+            (&chunk.sym.head).deinitRetained(self.vm);
         }
     }
 
@@ -156,7 +150,6 @@ pub const VMcompiler = struct {
         // Free any remaining import tasks.
         for (self.importTasks.items) |task| {
             self.alloc.free(task.absSpec);
-            self.alloc.destroy(task.sym);
         }
 
         for (self.chunks.items) |chunk| {
@@ -250,13 +243,10 @@ pub const VMcompiler = struct {
         const srcDup = try self.alloc.dupe(u8, src);
 
         // Main chunk.
-        const mainSym = try self.sema.createChunkSym();
         const nextId: u32 = @intCast(self.chunks.items.len);
         var mainChunk = try self.alloc.create(cy.Chunk);
-        mainChunk.* = try cy.Chunk.init(self, nextId, finalSrcUri, srcDup, mainSym);
-        mainSym.mod.chunk = mainChunk;
-        mainSym.head.namePtr = finalSrcUri.ptr;
-        mainSym.head.nameLen = @intCast(finalSrcUri.len);
+        mainChunk.* = try cy.Chunk.init(self, nextId, finalSrcUri, srcDup);
+        mainChunk.sym = try mainChunk.createChunkSym(finalSrcUri);
         try self.chunks.append(self.alloc, mainChunk);
         try self.chunkMap.put(self.alloc, finalSrcUri, mainChunk);
 
@@ -492,7 +482,7 @@ fn performChunkCodegen(self: *VMcompiler, chunk: *cy.Chunk) !void {
     try bcgen.genChunk(chunk);
 }
 
-fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
+fn performImportTask(self: *VMcompiler, task: ImportTask) !*cy.Chunk {
     // Initialize defaults.
     var res: cc.ModuleLoaderResult = .{
         .src = "",
@@ -545,7 +535,9 @@ fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
     
     // uri is already duped.
     var newChunk = try self.alloc.create(cy.Chunk);
-    newChunk.* = try cy.Chunk.init(self, newChunkId, task.absSpec, srcDup, task.sym);
+
+    newChunk.* = try cy.Chunk.init(self, newChunkId, task.absSpec, srcDup);
+    newChunk.sym = try newChunk.createChunkSym(task.absSpec);
     newChunk.funcLoader = res.funcLoader;
     newChunk.varLoader = res.varLoader;
     newChunk.typeLoader = res.typeLoader;
@@ -554,11 +546,14 @@ fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
     newChunk.srcOwned = true;
     newChunk.onDestroy = res.onDestroy;
 
+    if (task.import) |import| {
+        import.sym = @ptrCast(newChunk.sym);
+    }
+
     try self.chunks.append(self.alloc, newChunk);
     try self.chunkMap.put(self.alloc, task.absSpec, newChunk);
-    task.sym.mod.chunk = newChunk;
-    task.sym.head.namePtr = task.absSpec.ptr;
-    task.sym.head.nameLen = @intCast(task.absSpec.len);
+
+    return newChunk;
 }
 
 fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
@@ -567,17 +562,17 @@ fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
     // Load core module first since the members are imported into each user module.
     var builtinSym: *cy.sym.Chunk = undefined;
     if (self.importBuiltins) {
-        builtinSym = try self.sema.createChunkSym();
         const importCore = ImportTask{
             .fromChunk = mainChunk,
             .nodeId = cy.NullNode,
             .absSpec = try self.alloc.dupe(u8, "builtins"),
-            .sym = builtinSym,
+            .import = null,
         };
         try self.importTasks.append(self.alloc, importCore);
-        performImportTask(self, importCore) catch |err| {
+        const builtinChunk = performImportTask(self, importCore) catch |err| {
             return err;
         };
+        builtinSym = builtinChunk.sym;
         _ = self.importTasks.orderedRemove(0);
         try loadPredefinedTypes(self, @ptrCast(builtinSym));
     }
@@ -625,7 +620,7 @@ fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
 
         // Check for import tasks.
         for (self.importTasks.items, 0..) |task, i| {
-            performImportTask(self, task) catch |err| {
+            _ = performImportTask(self, task) catch |err| {
                 try self.importTasks.replaceRange(self.alloc, 0, i, &.{});
                 return err;
             };
@@ -786,20 +781,12 @@ fn genBytecode(c: *VMcompiler) !void {
 
     // Prepare funcs.
     for (c.chunks.items) |chunk| {
-        const mod = chunk.sym.getMod();
-        for (mod.syms.items) |sym| {
-            try prepareSym(c, sym);
-        }
-        for (mod.funcs.items) |func| {
-            try prepareFunc(c, func);
-        }
-
         for (chunk.modSyms.items) |modSym| {
-            const mod2 = modSym.getMod().?;
-            for (mod2.syms.items) |sym| {
+            const mod = modSym.getMod().?;
+            for (mod.syms.items) |sym| {
                 try prepareSym(c, sym);
             }
-            for (mod2.funcs.items) |func| {
+            for (mod.funcs.items) |func| {
                 try prepareFunc(c, func);
             }
         }
@@ -1004,7 +991,7 @@ const ImportTask = struct {
     fromChunk: *cy.Chunk,
     nodeId: cy.NodeId,
     absSpec: []const u8,
-    sym: *cy.sym.Chunk,
+    import: ?*cy.sym.Import,
 };
 
 pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *VMcompiler, modId: cy.ModuleId) anyerror!void) cy.ModuleLoaderFunc {

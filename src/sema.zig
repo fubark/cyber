@@ -841,8 +841,25 @@ pub fn declareImport(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         specPath = name;
     }
 
-    const sym = try getOrInitModule(c, specPath, nodeId);
-    _ = try c.declareImport(@ptrCast(c.sym), name, @ptrCast(sym), nodeId);
+    var buf: [4096]u8 = undefined;
+    const uri = try resolveModuleSpec(c, &buf, specPath, node.data.importStmt.spec);
+
+    if (c.compiler.chunkMap.get(uri)) |chunk| {
+        _ = try c.declareImport(@ptrCast(c.sym), name, @ptrCast(chunk.sym), nodeId);
+    } else {
+        const import = try c.declareImport(@ptrCast(c.sym), name, undefined, nodeId);
+
+        // resUri is duped. Moves to chunk afterwards.
+        const dupedResUri = try c.alloc.dupe(u8, uri);
+
+        // Queue import task.
+        try c.compiler.importTasks.append(c.alloc, .{
+            .fromChunk = c,
+            .nodeId = nodeId,
+            .absSpec = dupedResUri,
+            .import = import,
+        });
+    }
 }
 
 pub fn declareEnum(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.EnumType {
@@ -970,6 +987,8 @@ pub fn declareObjectMembers(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !v
         const obj = modSym.cast(.object);
 
         const fields = try c.alloc.alloc(cy.sym.FieldInfo, header.data.objectHeader.numFields);
+        errdefer c.alloc.free(fields);
+
         var fieldId: cy.NodeId = header.data.objectHeader.fieldHead;
         while (fieldId != cy.NullNode) : (i += 1) {
             const field = c.ast.node(fieldId);
@@ -4640,7 +4659,6 @@ pub const Sema = struct {
     }
 
     pub usingnamespace cy.types.SemaExt;
-    pub usingnamespace cy.module.SemaExt;
 };
 
 pub const FuncSigKeyContext = struct {

@@ -66,20 +66,17 @@ pub const Module = struct {
             }
         }
         self.retainedVars.clearRetainingCapacity();
+
+        for (self.syms.items) |sym| {
+            sym.deinitRetained(vm);
+        }
     }
 
     pub fn deinit(self: *Module, alloc: std.mem.Allocator) void {
         self.retainedVars.deinit(alloc);
 
         for (self.syms.items) |sym| {
-            // Syms with modules are deinited from the chunk level.
-            sym.deinit(alloc);
-            switch (sym.type) {
-                inline else => |symT| {
-                    const child = sym.cast(symT);
-                    alloc.destroy(child);
-                },
-            }
+            sym.destroy(self.chunk.vm, alloc);
         }
         self.syms.deinit(alloc);
 
@@ -219,21 +216,19 @@ fn addFuncToSym(c: *cy.Chunk, mod: *Module, symId: ModuleSymId, sym: *cy.sym.Fun
     try mod.funcs.append(c.alloc, func);
 }
 
-pub const SemaExt = struct {
-
-    pub fn createChunkSym(s: *cy.Sema) !*cy.sym.Chunk {
-        const sym = try cy.sym.createSym(s.alloc, .chunk, .{
-            .head = cy.Sym.init(.chunk, null, ""),
+pub const ChunkExt = struct {
+    
+    pub fn createChunkSym(c: *cy.Chunk, name: []const u8) !*cy.sym.Chunk {
+        const sym = try cy.sym.createSym(c.alloc, .chunk, .{
+            .head = cy.Sym.init(.chunk, null, name),
             .mod = undefined,
         });
-        @as(*Module, @ptrCast(&sym.mod)).* = Module.init(undefined);
+        @as(*Module, @ptrCast(&sym.mod)).* = Module.init(c);
+        try c.modSyms.append(c.alloc, @ptrCast(sym));
         return sym;
     }
-};
 
-pub const ChunkExt = struct {
-
-    pub fn declareImport(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, importedSym: *cy.Sym, declId: cy.NodeId) !void {
+    pub fn declareImport(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, importedSym: *cy.Sym, declId: cy.NodeId) !*cy.sym.Import {
         const mod = parent.getMod().?;
         try checkUniqueSym(c, mod, name, declId);
 
@@ -243,6 +238,7 @@ pub const ChunkExt = struct {
             .sym = importedSym,
         });
         _ = try addSym(c, mod, name, @ptrCast(sym));
+        return sym;
     }
 
     pub fn declareTypeAlias(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId) !void {
@@ -535,6 +531,9 @@ pub const ChunkExt = struct {
             return null;
         };
         switch (sym.type) {
+            .import => {
+                return sym.cast(.import).sym;
+            },
             .typeAlias => {
                 const alias = sym.cast(.typeAlias);
                 try ensureTypeAliasIsResolved(mod, alias);
@@ -576,11 +575,9 @@ pub const ChunkExt = struct {
         };
         const symId = mod.symMap.get(name) orelse {
             if (must) {
-                const symPath = try modSym.resolved().formatAbsPath(&cy.tempBuf);
                 return c.reportErrorAt(
                     \\Can not find the symbol `{}` in `{}`.
-                    \\`{}` resolves to `{}`.
-                , &.{v(name), v(modSym.name()), v(modSym.name()), v(symPath)}, nodeId);
+                , &.{v(name), v(modSym.name())}, nodeId);
             } else {
                 return null;
             }
@@ -593,11 +590,14 @@ pub const ChunkExt = struct {
             .object,
             .hostObjectType,
             .enumType,
-            .import,
             .chunk,
             .predefinedType,
+            .typeTemplate,
             .enumMember => {
                 return sym;
+            },
+            .import => {
+                return sym.cast(.import).sym;
             },
             .typeAlias => {
                 const alias = sym.cast(.typeAlias);

@@ -40,6 +40,66 @@ pub const Sym = extern struct {
         }
     }
 
+    pub fn deinitRetained(self: *Sym, vm: *cy.VM) void {
+        if (self.getMod()) |mod| {
+            mod.deinitRetained(vm);
+        }
+    }
+
+    pub fn destroy(self: *Sym, vm: *cy.VM, alloc: std.mem.Allocator) void {
+        self.deinit(alloc);
+
+        switch (self.type) {
+            .hostObjectType => {
+                const hostType = self.cast(.hostObjectType);
+                hostType.getMod().deinit(alloc);
+                alloc.destroy(hostType);
+            },
+            .predefinedType => {
+                const predefinedType = self.cast(.predefinedType);
+                predefinedType.getMod().deinit(alloc);
+                alloc.destroy(predefinedType);
+            },
+            .chunk => {
+                const chunk = self.cast(.chunk);
+                chunk.getMod().deinit(alloc);
+                alloc.destroy(chunk);
+            },
+            .object => {
+                const obj = self.cast(.object);
+                obj.getMod().deinit(alloc);
+                alloc.free(obj.fields[0..obj.numFields]);
+                alloc.destroy(obj);
+            },
+            .enumType => {
+                const enumType = self.cast(.enumType);
+                enumType.getMod().deinit(alloc);
+                alloc.free(enumType.members[0..enumType.numMembers]);
+                alloc.destroy(enumType);
+            },
+            .typeTemplate => {
+                const typeTemplate = self.cast(.typeTemplate);
+
+                for (typeTemplate.variants.items) |variant| {
+                    for (variant.args) |arg| {
+                        vm.release(arg);
+                    }
+                    alloc.free(variant.args);
+                    variant.sym.destroy(vm, alloc);
+                }
+                typeTemplate.variants.deinit(alloc);
+                typeTemplate.variantCache.deinit(alloc);
+                alloc.free(typeTemplate.params);
+
+                alloc.destroy(typeTemplate);
+            },
+            inline else => |symT| {
+                const child = self.cast(symT);
+                alloc.destroy(child);
+            },
+        }
+    }
+
     pub fn getMetadata(self: Sym) Metadata {
         return @bitCast(self.metadata);
     }
@@ -83,8 +143,9 @@ pub const Sym = extern struct {
             .object         => return @ptrCast(&self.cast(.object).mod),
             .hostObjectType => return @ptrCast(&self.cast(.hostObjectType).mod),
             .predefinedType => return @ptrCast(&self.cast(.predefinedType).mod),
-            .import         => return self.cast(.import).sym.getMod(),
+            .import,
             .typeAlias,
+            .typeTemplate,
             .enumMember,
             .func,
             .userVar,
@@ -202,25 +263,6 @@ const SymDumpOptions = struct {
     dumpModule: bool = false,
 };
 
-/// Assumes sym contains a module.
-pub fn deinitModSym(vm: *cy.VM, modSym: *Sym) void {
-    const alloc = vm.alloc;
-    const mod = modSym.getMod().?;
-    mod.deinit(alloc);
-
-    switch (modSym.type) {
-        .object => {
-            const obj = modSym.cast(.object);
-            alloc.free(obj.fields[0..obj.numFields]);
-        },
-        .enumType => {
-            const enumType = modSym.cast(.enumType);
-            alloc.free(enumType.members[0..enumType.numMembers]);
-        },
-        else => {},
-    }
-}
-
 pub fn createSym(alloc: std.mem.Allocator, comptime symT: SymType, init: SymChild(symT)) !*SymChild(symT) {
     const sym = try alloc.create(SymChild(symT));
     sym.* = init;
@@ -335,12 +377,20 @@ pub const HostObjectType = extern struct {
     getChildrenFn: cc.ObjectGetChildrenFn,
     finalizerFn: cc.ObjectFinalizerFn,
     mod: vmc.Module,
+
+    pub fn getMod(self: *HostObjectType) *cy.Module {
+        return @ptrCast(&self.mod);
+    }
 };
 
 pub const PredefinedType = extern struct {
     head: Sym,
     type: cy.TypeId,
     mod: vmc.Module,
+
+    pub fn getMod(self: *PredefinedType) *cy.Module {
+        return @ptrCast(&self.mod);
+    }
 };
 
 pub const EnumType = extern struct {
@@ -383,7 +433,7 @@ pub const EnumMember = extern struct {
     payloadType: cy.Nullable(cy.TypeId),
 };
 
-const Import = extern struct {
+pub const Import = extern struct {
     head: Sym,
     declId: cy.NodeId,
     sym: *Sym,

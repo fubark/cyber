@@ -737,7 +737,6 @@ pub const AstView = struct {
             const lastName = self.nodeString(last);
 
             var end = last.srcPos + last.data.span.len;
-            log.tracev("{}", .{last.type()});
             if (last.type() == .stringLit) {
                 end += 1;
             }

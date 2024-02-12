@@ -704,10 +704,11 @@ fn genDocComment(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, st
                         posWithModifiers = modifier.srcPos - 1;
                     }
                 },
+                .funcInit,
                 .func => {
                     const header = ast.node(state.node.data.func.header);
-                    if (header.next() != cy.NullNode) {
-                        const modifier = ast.node(header.next());
+                    if (header.funcHeader_modHead() != cy.NullNode) {
+                        const modifier = ast.node(header.funcHeader_modHead());
                         posWithModifiers = modifier.srcPos - 1;
                     }
                 },

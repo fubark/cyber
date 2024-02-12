@@ -888,7 +888,7 @@ pub const Parser = struct {
                     .name = name,
                     .paramHead = paramHead orelse cy.NullNode,
                 }});
-                self.ast.setNextNode(header, modifierHead);
+                self.ast.nodePtr(header).head.data = .{ .funcHeader = .{ .modHead = @intCast(modifierHead) }};
 
                 const id = try self.pushNode(.funcDecl, start);
                 self.ast.setNodeData(id, .{ .func = .{

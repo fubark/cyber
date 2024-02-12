@@ -1035,10 +1035,9 @@ pub const ValidateConfig = struct {
     enableFileModules: bool = false,
 };
 
-pub fn defaultModuleResolver(_: ?*cc.VM, _: cy.ChunkId, _: cc.Str, spec_: cc.Str, res_: [*c]cc.ResolverResult) callconv(.C) bool {
-    const res: *cc.ResolverResult = res_;
-    res.uri = spec_.buf;
-    res.uriLen = spec_.len;
+pub fn defaultModuleResolver(_: ?*cc.VM, params: cc.ResolverParams) callconv(.C) bool {
+    params.resUri.* = params.spec.buf;
+    params.resUriLen.* = params.spec.len;
     return true;
 }
 

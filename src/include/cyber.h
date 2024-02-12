@@ -17,7 +17,7 @@ typedef struct CsValueSlice {
     size_t len;
 } CsValueSlice;
 
-typedef struct CsResolverResult CsResolverResult;
+typedef struct CsResolverParams CsResolverParams;
 typedef struct CsModuleLoaderResult CsModuleLoaderResult;
 typedef struct CsModule CsModule;
 
@@ -80,25 +80,28 @@ typedef CsValue (*CsFuncFn)(CsVM* vm, const CsValue* args, uint8_t nargs);
 // Internal #host func used to do inline caching.
 typedef void (*CsInlineFuncFn)(CsVM* vm, uint8_t* pc, const CsValue* args, uint8_t nargs);
 
-// This callback is invoked after receiving the resolver result.
-// If `res->uri` was allocated, this can be a good time to free the memory.
-typedef void (*CsResolverOnReceiptFn)(CsVM* vm, CsResolverResult* res);
+typedef struct CsResolverParams {
+    uint32_t chunkId;
+    CsStr curUri;
+    CsStr spec;
 
-typedef struct CsResolverResult {
-    // Resolved uri.
-    const char* uri;
-    // If `uri` is not null terminated, `uriLen` needs to be set.
-    // Defaults to 0 which indicates that `uri` is null terminated.
-    size_t uriLen;
-    // Pointer to callback or null.
-    CsResolverOnReceiptFn onReceipt;
-} CsResolverResult;
+    // Buffer to write a dynamic the result to.
+    char* buf;
+    size_t bufLen;
+
+    // Result.
+    const char** resUri;
+    size_t* resUriLen;
+} CsResolverParams;
 
 // Given the current module's resolved URI and the "to be" imported module specifier,
-// set the resolved uri in `res->uri` and return true, or return false.
+// set `params.resUri`, `params.resUriLen`, and return true.
+// If the result uri is dynamic, write to `params.buf` to build the uri and set `params.resUri` to `params.buf`.
+// If the result uri is a shared reference, `params.buf` does not need to be used.
+// Return false if the uri can not be resolved.
 // Most embedders do not need a resolver and can rely on the default resolver which
-// simply writes `spec` into `outUri` without any adjustments.
-typedef bool (*CsResolverFn)(CsVM* vm, uint32_t chunkId, CsStr curUri, CsStr spec, CsResolverResult* res);
+// simply returns `params.spec` without any adjustments.
+typedef bool (*CsResolverFn)(CsVM* vm, CsResolverParams params);
 
 // Callback invoked after all type symbols in the module's src are loaded.
 // This could be used to set up an array or hashmap for binding #host vars.

@@ -774,58 +774,51 @@ const FieldResult = struct {
     idx: u8,
 };
 
+pub fn declareTypeTemplate(c: *cy.Chunk, nodeId: cy.NodeId, ctNodes: []const cy.NodeId) !void {
+    const node = c.ast.node(nodeId);
+    const typeDecl = c.ast.node(node.data.typeTemplate.typeDecl);
+    switch (typeDecl.type()) {
+        .objectDecl => {
+            const header = c.ast.node(typeDecl.data.objectDecl.header);
+            const name = c.ast.nodeStringById(header.data.objectHeader.name);
+            var sigId: FuncSigId = undefined;
+            const params = try resolveTemplateSig(c, node.data.typeTemplate.paramHead, node.data.typeTemplate.numParams, &sigId);
+            try c.declareTypeTemplate(@ptrCast(c.sym), name, sigId, params, ctNodes, nodeId);
+        },
+        else => {
+            return c.reportErrorAt("Unsupported type template.", &.{}, nodeId);
+        }
+    }
+}
+
 pub fn declareTypeAlias(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = c.ast.node(nodeId);
     const name = c.ast.nodeStringById(node.data.typeAliasDecl.name);
     try c.declareTypeAlias(@ptrCast(c.sym), name, nodeId);
 }
 
-pub fn getOrInitModule(self: *cy.Chunk, spec: []const u8, nodeId: cy.NodeId) !*cy.sym.Chunk {
+pub fn resolveModuleSpec(self: *cy.Chunk, buf: []u8, spec: []const u8, nodeId: cy.NodeId) ![]const u8 {
     self.compiler.hasApiError = false;
 
-    var res: cc.ResolverResult = .{
-        .uri = undefined,
-        .uriLen = 0,
-        .onReceipt = null,
+    var resUri: [*]const u8 = undefined;
+    var resUriLen: usize = undefined;
+    const params: cc.ResolverParams = .{
+        .chunkId = self.id,
+        .curUri = cc.initStr(self.srcUri),
+        .spec = cc.initStr(spec),
+        .buf = buf.ptr,
+        .bufLen = buf.len,
+        .resUri = @ptrCast(&resUri),
+        .resUriLen = &resUriLen,
     };
-    if (!self.compiler.moduleResolver.?(@ptrCast(self.compiler.vm), self.id, cc.initStr(self.srcUri), cc.initStr(spec), @ptrCast(&res))) {
+    if (!self.compiler.moduleResolver.?(@ptrCast(self.compiler.vm), params)) {
         if (self.compiler.hasApiError) {
-            return self.reportError(self.compiler.apiError, &.{});
+            return self.reportErrorAt(self.compiler.apiError, &.{}, nodeId);
         } else {
-            return self.reportError("Failed to resolve module.", &.{});
+            return self.reportErrorAt("Failed to resolve module.", &.{}, nodeId);
         }
     }
-
-    var uri: []const u8 = undefined;
-    if (res.uriLen > 0) {
-        uri = res.uri[0..res.uriLen];
-    } else {
-        uri = std.mem.sliceTo(@as([*:0]const u8, @ptrCast(res.uri)), 0);
-    }
-
-    if (self.compiler.chunkMap.get(uri)) |chunk| {
-        if (res.onReceipt) |onReceipt| {
-            onReceipt(@ptrCast(self.compiler.vm), &res);
-        }
-        return chunk.sym;
-    } else {
-        // resUri is duped. Moves to chunk afterwards.
-        const dupedResUri = try self.alloc.dupe(u8, uri);
-        if (res.onReceipt) |onReceipt| {
-            onReceipt(@ptrCast(self.compiler.vm), &res);
-        }
-
-        const sym = try self.sema.createChunkSym();
-
-        // Queue import task.
-        try self.compiler.importTasks.append(self.alloc, .{
-            .fromChunk = self,
-            .nodeId = nodeId,
-            .absSpec = dupedResUri,
-            .sym = sym,
-        });
-        return sym;
-    }
+    return resUri[0..resUriLen];
 }
 
 pub fn declareImport(c: *cy.Chunk, nodeId: cy.NodeId) !void {

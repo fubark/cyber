@@ -145,18 +145,17 @@ fn onModuleReceipt(vm_: ?*c.VM, res_: [*c]c.ModuleLoaderResult) callconv(.C) voi
     vm.alloc.free(res.src[0..res.srcLen]);
 }
 
-fn resolve(vm_: ?*c.VM, chunkId: cy.ChunkId, curUri: c.Str, spec_: c.Str, res_: [*c]c.ResolverResult) callconv(.C) bool {
+fn resolve(vm_: ?*c.VM, params: c.ResolverParams) callconv(.C) bool {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const res: *c.ResolverResult = res_;
-    const spec = c.strSlice(spec_);
+    const spec = c.strSlice(params.spec);
     if (builtins.get(spec) != null) {
-        res.uri = spec_.buf;
-        res.uriLen = spec_.len;
+        params.resUri.* = spec.ptr;
+        params.resUriLen.* = spec.len;
         return true;
     }
     if (stdMods.get(spec) != null) {
-        res.uri = spec_.buf;
-        res.uriLen = spec_.len;
+        params.resUri.* = spec.ptr;
+        params.resUriLen.* = spec.len;
         return true;
     }
 
@@ -164,7 +163,7 @@ fn resolve(vm_: ?*c.VM, chunkId: cy.ChunkId, curUri: c.Str, spec_: c.Str, res_: 
         return false;
     }
 
-    const uri = zResolve(@ptrCast(vm), chunkId, c.strSlice(curUri), spec) catch |err| {
+    const uri = zResolve(@ptrCast(vm), params.chunkId, params.buf[0..params.bufLen], c.strSlice(params.curUri), spec) catch |err| {
         if (err == error.HandledError) {
             return false;
         } else {
@@ -175,44 +174,44 @@ fn resolve(vm_: ?*c.VM, chunkId: cy.ChunkId, curUri: c.Str, spec_: c.Str, res_: 
         }
     };
 
-    res.uri = uri.ptr;
-    res.uriLen = uri.len;
+    params.resUri.* = uri.ptr;
+    params.resUriLen.* = uri.len;
     return true;
 }
 
-fn zResolve(uvm: *cy.UserVM, chunkId: cy.ChunkId, curUri: []const u8, spec: []const u8) ![]const u8 {
+fn zResolve(uvm: *cy.UserVM, chunkId: cy.ChunkId, buf: []u8, curUri: []const u8, spec: []const u8) ![]const u8 {
+    _ = chunkId;
     const vm = uvm.internal();
-    const chunk = vm.compiler.chunks.items[chunkId];
+
     if (std.mem.startsWith(u8, spec, "http://") or std.mem.startsWith(u8, spec, "https://")) {
         const uri = try std.Uri.parse(spec);
         if (std.mem.endsWith(u8, uri.host.?, "github.com")) {
             if (std.mem.count(u8, uri.path, "/") == 2 and uri.path[uri.path.len-1] != '/') {
-                chunk.tempBufU8.clearRetainingCapacity();
-                try chunk.tempBufU8.appendSlice(vm.alloc, uri.scheme);
-                try chunk.tempBufU8.appendSlice(vm.alloc, "://raw.githubusercontent.com");
-                try chunk.tempBufU8.appendSlice(vm.alloc, uri.path);
-                try chunk.tempBufU8.appendSlice(vm.alloc, "/master/mod.cy");
-                std.debug.print("{s}\n", .{chunk.tempBufU8.items});
-                return chunk.tempBufU8.items;
+                var fbuf = std.io.fixedBufferStream(buf);
+                const w = fbuf.writer();
+
+                try w.writeAll(uri.scheme);
+                try w.writeAll("://raw.githubusercontent.com");
+                try w.writeAll(uri.path);
+                try w.writeAll("/master/mod.cy");
+                std.debug.print("{s}\n", .{fbuf.getWritten()});
+                return fbuf.getWritten();
             }
         }
         return spec;
     }
 
-    chunk.tempBufU8.clearRetainingCapacity();
-
     // Create path from the current script.
     // There should always be a parent directory since `curUri` should be absolute when dealing with file modules.
     const dir = std.fs.path.dirname(curUri) orelse return error.NoParentDir;
-    try chunk.tempBufU8.ensureTotalCapacity(vm.alloc, dir.len + 1 + spec.len + std.fs.MAX_PATH_BYTES);
-    try chunk.tempBufU8.appendSlice(vm.alloc, dir);
-    try chunk.tempBufU8.append(vm.alloc, '/');
-    try chunk.tempBufU8.appendSlice(vm.alloc, spec);
-    const path = chunk.tempBufU8.items;
+
+    var pathBuf: [4096]u8 = undefined;
+    var fbuf = std.io.fixedBufferStream(&pathBuf);
+    try fbuf.writer().print("{s}/{s}", .{dir, spec});
+    const path = fbuf.getWritten();
 
     // Get canonical path.
-    chunk.tempBufU8.items.len += std.fs.MAX_PATH_BYTES;
-    const absPath = std.fs.cwd().realpath(path, chunk.tempBufU8.items[path.len..]) catch |err| {
+    const absPath = std.fs.cwd().realpath(path, buf) catch |err| {
         if (err == error.FileNotFound) {
             var msg = try cy.fmt.allocFormat(vm.alloc, "Import path does not exist: `{}`", &.{v(path)});
             if (builtin.os.tag == .windows) {

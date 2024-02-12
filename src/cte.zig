@@ -75,7 +75,7 @@ pub fn callTemplate(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
         });
 
         const newSym = try sema.declareTemplateVariant(c, typeTemplate, @intCast(id));
-        typeTemplate.variants.items[id].sym = @ptrCast(newSym);
+        typeTemplate.variants.items[id].sym = newSym;
 
         res.key_ptr.* = params;
         res.value_ptr.* = @intCast(id);

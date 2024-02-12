@@ -255,12 +255,16 @@ pub const ChunkExt = struct {
         _ = try addSym(c, mod, name, @ptrCast(sym));
     }
 
-    pub fn declareTypeTemplate(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, sigId: cy.sema.FuncSigId, params: []const cy.sym.TemplateParam, ctNodes: []const cy.NodeId, declId: cy.NodeId) !void {
+    pub fn declareTypeTemplate(c: *cy.Chunk, parent: *cy.Sym, name: []const u8,
+        sigId: cy.sema.FuncSigId, params: []const cy.sym.TemplateParam, kind: cy.sym.TemplateKind,
+        ctNodes: []const cy.NodeId, declId: cy.NodeId) !void {
+
         const mod = parent.getMod().?;
         try checkUniqueSym(c, mod, name, declId);
 
         const sym = try cy.sym.createSym(c.alloc, .typeTemplate, .{
             .head = cy.Sym.init(.typeTemplate, parent, name),
+            .kind = kind,
             .declId = declId,
             .params = params,
             .sigId = sigId,
@@ -282,6 +286,7 @@ pub const ChunkExt = struct {
             .members = @as([*]const ModuleSymId, @ptrCast(@alignCast(&.{}))),
             .numMembers = 0,
             .isChoiceType = isChoiceType,
+            .variantId = cy.NullId,
             .mod = undefined,
         });
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
@@ -385,6 +390,32 @@ pub const ChunkExt = struct {
             .data = .{ .object = .{
                 .numFields = 0,
             }},
+        };
+        return sym;
+    }
+
+    pub fn declareEnumVariantType(c: *cy.Chunk, parent: *cy.sym.TypeTemplate, isChoiceType: bool, variantId: u32) !*cy.sym.EnumType {
+        const mod = parent.head.parent.?.getMod().?;
+
+        const name = parent.head.name();
+        const typeId = try c.sema.pushType();
+        const sym = try cy.sym.createSym(c.alloc, .enum_t, .{
+            .head = cy.Sym.init(.enum_t, @ptrCast(parent), name),
+            .type = typeId,
+            .members = @as([*]const ModuleSymId, @ptrCast(@alignCast(&.{}))),
+            .numMembers = 0,
+            .isChoiceType = isChoiceType,
+            .variantId = variantId,
+            .mod = undefined,
+        });
+
+        @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
+        try mod.chunk.modSyms.append(c.alloc, @ptrCast(sym));
+
+        c.compiler.sema.types.items[typeId] = .{
+            .sym = @ptrCast(sym),
+            .kind = if (isChoiceType) .choice else .@"enum",
+            .data = undefined,
         };
         return sym;
     }

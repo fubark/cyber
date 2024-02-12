@@ -391,10 +391,17 @@ pub const ValueType = extern struct {
     head: Sym,
 };
 
+pub const TemplateKind = enum {
+    object_t,
+    enum_t,
+};
+
 pub const TypeTemplate = struct {
     head: Sym,
     declId: cy.NodeId,
     sigId: cy.sema.FuncSigId,
+
+    kind: TemplateKind,
 
     /// Owned.
     params: []const TemplateParam,
@@ -526,6 +533,10 @@ pub const EnumType = extern struct {
     members: [*]const cy.module.ModuleSymId,
     numMembers: u32,
     mod: vmc.Module,
+
+    /// If not null, the parent points to TypeTemplate sym.
+    variantId: u32,
+
     isChoiceType: bool,
 
     pub fn getValueSym(self: *EnumType, val: u16) *Sym {

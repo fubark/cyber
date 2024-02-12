@@ -807,7 +807,13 @@ pub fn declareTypeTemplate(c: *cy.Chunk, nodeId: cy.NodeId, ctNodes: []const cy.
             const name = c.ast.nodeStringById(header.data.objectHeader.name);
             var sigId: FuncSigId = undefined;
             const params = try resolveTemplateSig(c, node.data.typeTemplate.paramHead, node.data.typeTemplate.numParams, &sigId);
-            try c.declareTypeTemplate(@ptrCast(c.sym), name, sigId, params, ctNodes, nodeId);
+            try c.declareTypeTemplate(@ptrCast(c.sym), name, sigId, params, .object_t, ctNodes, nodeId);
+        },
+        .enumDecl => {
+            const name = c.ast.nodeStringById(typeDecl.data.enumDecl.name);
+            var sigId: FuncSigId = undefined;
+            const params = try resolveTemplateSig(c, node.data.typeTemplate.paramHead, node.data.typeTemplate.numParams, &sigId);
+            try c.declareTypeTemplate(@ptrCast(c.sym), name, sigId, params, .enum_t, ctNodes, nodeId);
         },
         else => {
             return c.reportErrorAt("Unsupported type template.", &.{}, nodeId);
@@ -961,20 +967,37 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.HostObjectTyp
     }
 }
 
-pub fn declareTemplateVariant(c: *cy.Chunk, template: *cy.sym.TypeTemplate, variantId: u32) !*cy.sym.ObjectType {
-    const sym = try c.declareObjectVariantType(template, variantId);
+pub fn declareTemplateVariant(c: *cy.Chunk, template: *cy.sym.TypeTemplate, variantId: u32) !*cy.sym.Sym {
+    switch (template.kind) {
+        .object_t => {
+            const sym = try c.declareObjectVariantType(template, variantId);
 
-    // Set variant in context chunk so sema ops know to swap nodes.
-    const variant = template.variants.items[variantId];
-    c.patchTemplateNodes = variant.patchNodes;
+            // Set variant in context chunk so sema ops know to swap nodes.
+            const variant = template.variants.items[variantId];
+            c.patchTemplateNodes = variant.patchNodes;
 
-    const template_n = c.ast.node(template.declId);
-    try declareObjectMembers(c, @ptrCast(sym), template_n.data.typeTemplate.typeDecl);
+            const template_n = c.ast.node(template.declId);
+            try declareObjectMembers(c, @ptrCast(sym), template_n.data.typeTemplate.typeDecl);
 
-    // Defer method sema.
-    const mod = sym.getMod();
-    try mod.chunk.variantFuncSyms.appendSlice(c.alloc, mod.funcs.items);
-    return sym;
+            // Defer method sema.
+            const mod = sym.getMod();
+            try mod.chunk.variantFuncSyms.appendSlice(c.alloc, mod.funcs.items);
+            return @ptrCast(sym);
+        },
+        .enum_t => {
+            const template_n = c.ast.node(template.declId);
+            const enum_n = c.ast.node(template_n.data.typeTemplate.typeDecl);
+            const isChoiceType = enum_n.data.enumDecl.isChoiceType;
+            const sym = try c.declareEnumVariantType(template, isChoiceType, variantId);
+
+            // Set variant in context chunk so sema ops know to swap nodes.
+            const variant = template.variants.items[variantId];
+            c.patchTemplateNodes = variant.patchNodes;
+
+            try declareEnumMembers(c, sym, template_n.data.typeTemplate.typeDecl);
+            return @ptrCast(sym);
+        },
+    }
 }
 
 pub fn declareObject(c: *cy.Chunk, isStruct: bool, nodeId: cy.NodeId) !*cy.Sym {
@@ -1020,9 +1043,9 @@ pub fn declareObjectMembers(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !v
     // Load fields.
     var i: u32 = 0;
 
-    const header = c.ast.node(node.data.objectDecl.header);
-
     if (modSym.type == .object_t or modSym.type == .struct_t) {
+        const header = c.ast.node(node.data.objectDecl.header);
+
         // Only object types can have fields.
         const obj: *cy.sym.ObjectType = if (modSym.type == .object_t) modSym.cast(.object_t) else modSym.cast(.struct_t);
 

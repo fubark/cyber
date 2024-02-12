@@ -2,8 +2,8 @@
 #include <string.h>
 #include "cyber.h"
 
-// Compile this program with a C compiler. `zig cc` is used here as an example.
-// zig cc main.c -I ../../src/include ../../zig-out/lib/libcyber.a -o main
+// Compile this program with a C++ compiler. `zig c++` is used here as an example.
+// zig c++ main.cpp -I ../../src/include ../../zig-out/lib/libcyber.a -o main
 
 #define STR(s) ((CsStr){ s, strlen(s) })
 

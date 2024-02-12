@@ -228,8 +228,8 @@ typedef enum {
     CodeCopyReleaseDst,
     CodeCopyRetainSrc,
     CodeCopyRetainRelease,
-    CodeCopyObject,
-    CodeCopyObjectDyn,
+    CodeCopyObj,
+    CodeCopyObjDyn,
 
     /// [listReg] [indexReg] [rightReg]
     /// Releases existing value and retains right.
@@ -266,9 +266,10 @@ typedef enum {
     CodeRet0,
     CodeCall,
     CodeTypeCheck,
-    CodeObjectField,
     CodeField,
-    CodeFieldIC,
+    CodeFieldRef,
+    CodeFieldDyn,
+    CodeFieldDynIC,
     CodeLambda,
     CodeClosure,
     CodeCompare,
@@ -295,13 +296,17 @@ typedef enum {
     CodeObjectSmall,
     CodeObject,
 
+    CodeRef,
+    CodeRefCopyObj,
+    CodeSetRef,
+
     /// Set field with runtime type check.
-    CodeSetField,
-    CodeSetFieldIC,
+    CodeSetFieldDyn,
+    CodeSetFieldDynIC,
 
     /// Set field with predetermined field index.
-    CodeSetObjectField,
-    CodeSetObjectFieldCheck,
+    CodeSetField,
+    CodeSetFieldCheck,
     
     CodePushTry,
     CodePopTry,
@@ -609,6 +614,12 @@ typedef struct List {
     ZCyList list;
 } List;
 
+typedef struct Pointer {
+    TypeId typeId;
+    u32 rc;
+    void* ptr;
+} Pointer;
+
 typedef union HeapObject {
     struct {
         u32 typeId;
@@ -624,6 +635,7 @@ typedef union HeapObject {
     List list;
     Tuple tuple;
     HostFunc hostFunc;
+    Pointer pointer;
 } HeapObject;
 
 typedef struct ZAllocator {
@@ -652,7 +664,7 @@ typedef struct TypeEntry {
         } object;
         struct {
             u16 numFields;
-        } value;
+        } struct_t;
         struct {
             void* getChildrenFn;
             void* finalizerFn;

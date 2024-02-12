@@ -194,7 +194,9 @@ if (!aot) {
     run.case("types/object_zero_init_error.cy");
     run.case("types/objects.cy");
     // run.case("types/optionals.cy");
+    run.case("types/struct_zero_init_error.cy");
     run.case("types/structs.cy");
+    
     run.case("types/template_object_init_noexpand_error.cy");
     run.case("types/template_object_spec_noexpand_error.cy");
     run.case("types/template_object_expand_error.cy");

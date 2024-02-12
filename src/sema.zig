@@ -746,8 +746,8 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId, leftId: cy.NodeId, rightId: cy.No
                 .rightLoc = right.irIdx,
             }});
             switch (leftRes.resType) {
-                .field          => c.ir.setStmtCode(irStart, .setFieldDyn),
-                .objectField    => c.ir.setStmtCode(irStart, .setObjectField),
+                .fieldDyn       => c.ir.setStmtCode(irStart, .setFieldDyn),
+                .field          => c.ir.setStmtCode(irStart, .setField),
                 .varSym         => c.ir.setStmtCode(irStart, .setVarSym),
                 .func           => c.ir.setStmtCode(irStart, .setFuncSym),
                 .local          => c.ir.setStmtCode(irStart, .setLocal),
@@ -1483,8 +1483,8 @@ const ExprResultType = enum(u8) {
     varSym,
     func,
     local,
+    fieldDyn,
     field,
-    objectField,
     capturedLocal,
 };
 
@@ -1707,9 +1707,9 @@ fn semaLocal(c: *cy.Chunk, id: LocalVarId, nodeId: cy.NodeId) !ExprResult {
                 .idx = svar.inner.objectMemberAlias.fieldIdx,
                 .typeId = svar.declT, 
                 .recLoc = recLoc,
-                .numNestedIdxes = 0,
+                .numNestedFields = 0,
             });
-            return ExprResult.initCustom(irIdx, .objectField, svar.vtype, undefined);
+            return ExprResult.initCustom(irIdx, .field, svar.vtype, undefined);
         },
         .parentObjectMemberAlias => {
             const recLoc = try c.ir.pushExpr(c.alloc, .captured, nodeId, .{ .idx = svar.inner.parentObjectMemberAlias.selfCapturedIdx });
@@ -1717,7 +1717,7 @@ fn semaLocal(c: *cy.Chunk, id: LocalVarId, nodeId: cy.NodeId) !ExprResult {
                 .idx = svar.inner.parentObjectMemberAlias.fieldIdx,
                 .typeId = svar.declT,
                 .recLoc = recLoc,
-                .numNestedIdxes = 0,
+                .numNestedFields = 0,
             });
             return ExprResult.init(irIdx, svar.vtype);
         },
@@ -2941,7 +2941,7 @@ fn semaSwitchChoicePrologue(c: *cy.Chunk, info: *SwitchInfo, expr: ExprResult, e
         .idx = 0,
         .typeId = bt.Integer,
         .recLoc = recLoc,
-        .numNestedIdxes = 0,
+        .numNestedFields = 0,
     });
     return exprLoc;
 }
@@ -3060,7 +3060,7 @@ fn semaSwitchCase(c: *cy.Chunk, info: SwitchInfo, nodeId: cy.NodeId) !u32 {
             .idx = 1,
             .typeId = declT,
             .recLoc = recLoc,
-            .numNestedIdxes = 0,
+            .numNestedFields = 0,
         });
 
         const declare = c.ir.getStmtDataPtr(declareLoc, .declareLocalInit);
@@ -4459,7 +4459,7 @@ pub const ChunkExt = struct {
                                 .name = res.data.fieldDyn.name,
                                 .recLoc = rec.irIdx,
                             });
-                            return ExprResult.initCustom(irIdx, .field, CompactType.initDynamic(bt.Any), undefined);
+                            return ExprResult.initCustom(irIdx, .fieldDyn, CompactType.initDynamic(bt.Any), undefined);
                         },
                         .field => {
                             const rec = try sema.symbol(c, crLeftSym, node.data.accessExpr.left, true);
@@ -4467,9 +4467,9 @@ pub const ChunkExt = struct {
                                 .idx = res.data.field.idx,
                                 .typeId = res.data.field.typeId,
                                 .recLoc = rec.irIdx,
-                                .numNestedIdxes = 0,
+                                .numNestedFields = 0,
                             });
-                            return ExprResult.initCustom(irIdx, .objectField, CompactType.init(res.data.field.typeId), undefined);
+                            return ExprResult.initCustom(irIdx, .field, CompactType.init(res.data.field.typeId), undefined);
                         },
                     }
                 },
@@ -4514,18 +4514,30 @@ pub const ChunkExt = struct {
                 .name = name,
                 .recLoc = rec.irIdx,
             });
-            return ExprResult.initCustom(irIdx, .field, CompactType.initDynamic(bt.Any), undefined);
+            return ExprResult.initCustom(irIdx, .fieldDyn, CompactType.initDynamic(bt.Any), undefined);
         }
 
         const fieldName = c.ast.nodeString(right);
         const field = try checkGetField(c, left_t.id, fieldName, node.data.accessExpr.right);
-        const irIdx = try c.ir.pushExpr(c.alloc, .field, node.data.accessExpr.right, .{
-            .idx = field.idx,
-            .typeId = field.typeId,
-            .recLoc = rec.irIdx,
-            .numNestedIdxes = 0,
-        });
-        return ExprResult.initCustom(irIdx, .objectField, CompactType.init(field.typeId), undefined);
+        const recIsStructFromFieldAccess = rec.resType == .field and c.sema.getTypeKind(left_t.id) == .@"struct";
+        if (recIsStructFromFieldAccess) {
+            // Continue the field chain.
+            const fidx = try c.ir.reserveData(c.alloc, u8);
+            fidx.* = field.idx;
+            const existing = c.ir.getExprDataPtr(rec.irIdx, .field);
+            existing.typeId = field.typeId;
+            existing.numNestedFields += 1;
+            c.ir.setNode(rec.irIdx, node.data.accessExpr.right);
+            return ExprResult.initCustom(rec.irIdx, .field, CompactType.init(field.typeId), undefined);
+        } else {
+            const irIdx = try c.ir.pushExpr(c.alloc, .field, node.data.accessExpr.right, .{
+                .idx = field.idx,
+                .typeId = field.typeId,
+                .recLoc = rec.irIdx,
+                .numNestedFields = 0,
+            });
+            return ExprResult.initCustom(irIdx, .field, CompactType.init(field.typeId), undefined);
+        }
     }
 };
 

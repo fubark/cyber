@@ -969,7 +969,7 @@ print Node.DefaultValue    -- Prints "100"
 ## Structs.
 Struct types can contain field and method members just like object types, but their instances are copied by value rather than by reference. In that sense, they behave like primitive data types.
 
-Structs are not reference counted. There can only be one active reference to a struct when using the safe ownership model. However, multiple references to the same struct can be created when using unsafe pointers.
+Unlike objects, structs do not have a reference count. They can be safely referenced using borrow semantics. Unsafe pointers can also reference structs.
 
 ### Declare struct type.
 Struct types are created using the `type struct` declaration:

@@ -278,7 +278,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .setFuncSym         => try setFuncSym(c, idx, nodeId),
         .setIndex           => try setIndex(c, idx, nodeId),
         .setLocal           => try irSetLocal(c, idx, nodeId),
-        .setObjectField     => try setObjectField(c, idx, .{}, nodeId),
+        .setField           => try setField(c, idx, .{}, nodeId),
         .setVarSym          => try setVarSym(c, idx, nodeId),
         .setLocalType       => try setLocalType(c, idx),
         .switchStmt         => try switchStmt(c, idx, nodeId),
@@ -673,9 +673,40 @@ fn genField(c: *Chunk, idx: usize, cstr: Cstr, opts: FieldOptions, nodeId: cy.No
         recv = recv_;
     } else {
         recv = try genExpr(c, data.recLoc, Cstr.simple);
+        // try pushUnwindValue(c, recv);
     }
 
-    try pushField(c, recv.reg, data.idx, inst.dst, nodeId);
+    const isStruct = c.sema.getTypeKind(data.typeId) == .@"struct";
+    var getRef = false;
+    var refTemp: RegisterId = undefined;
+    if (data.numNestedFields > 0) {
+        // get ref.
+        refTemp = try c.rega.consumeNextTemp();
+        try pushFieldRef(c, recv.reg, data.idx, data.numNestedFields, refTemp, nodeId);
+        const fieldsLoc = c.ir.advanceExpr(idx, .field);
+        const fields = c.ir.getArray(fieldsLoc, u8, data.numNestedFields);
+        try c.pushCodeBytes(fields);
+        getRef = true;
+    } else {
+        if (isStruct) {
+            refTemp = try c.rega.consumeNextTemp();
+            try pushFieldRef(c, recv.reg, data.idx, 0, refTemp, nodeId);
+            getRef = true;
+        }
+    }
+
+    if (getRef) {
+        if (c.sema.getTypeKind(data.typeId) == .@"struct") {
+            const numFields: u8 = @intCast(c.sema.types.items[data.typeId].data.@"struct".numFields);
+            try c.pushCode(.refCopyObj, &.{ refTemp, numFields, inst.dst }, nodeId);
+        } else {
+            try c.pushCode(.ref, &.{ refTemp, inst.dst }, nodeId);
+        }
+        try popTemp(c, refTemp);
+        try pushRelease(c, refTemp, nodeId);
+    } else {
+        try pushField(c, recv.reg, data.idx, inst.dst, nodeId);
+    }
 
     if (ownRecv) {
         try popTempValue(c, recv);
@@ -920,7 +951,7 @@ fn setField(c: *Chunk, idx: usize, opts: SetFieldOptions, nodeId: cy.NodeId) !vo
     } else {
         recv = try genExpr(c, fieldData.recLoc, Cstr.simple);
         try pushUnwindValue(c, recv);
-    }
+    } 
 
     // Right.
     var rightv: GenValue = undefined;
@@ -931,16 +962,41 @@ fn setField(c: *Chunk, idx: usize, opts: SetFieldOptions, nodeId: cy.NodeId) !vo
         try pushUnwindValue(c, rightv);
     }
 
-    const ownRecv = opts.recv == null;
-    if (requireTypeCheck) {
-        const pc = c.buf.ops.items.len;
-        try c.pushFCode(.setObjectFieldCheck, &.{ recv.local, 0, 0, rightv.local, fieldData.idx }, nodeId);
-        c.buf.setOpArgU16(pc + 2, @intCast(fieldData.typeId));
+    const isStruct = c.sema.getTypeKind(fieldData.typeId) == .@"struct";
+    var getRef = false;
+    var refTemp: RegisterId = undefined;
+    if (fieldData.numNestedFields > 0) {
+        // get ref.
+        refTemp = try c.rega.consumeNextTemp();
+        try pushFieldRef(c, recv.reg, fieldData.idx, fieldData.numNestedFields, refTemp, nodeId);
+        const fieldsLoc = c.ir.advanceExpr(data.leftLoc, .field);
+        const fields = c.ir.getArray(fieldsLoc, u8, fieldData.numNestedFields);
+        try c.pushCodeBytes(fields);
+        getRef = true;
     } else {
-        try c.pushCode(.setObjectField, &.{ recv.local, fieldData.idx, rightv.local }, nodeId);
+        if (isStruct) {
+            refTemp = try c.rega.consumeNextTemp();
+            try pushFieldRef(c, recv.reg, fieldData.idx, 0, refTemp, nodeId);
+            getRef = true;
+        }
+    }
+
+    if (getRef) {
+        try c.pushCode(.setRef, &.{ refTemp, rightv.reg }, nodeId);
+        try popTemp(c, refTemp);
+        try pushRelease(c, refTemp, nodeId);
+    } else {
+        if (requireTypeCheck) {
+            const pc = c.buf.ops.items.len;
+            try c.pushFCode(.setFieldCheck, &.{ recv.reg, 0, 0, rightv.reg, fieldData.idx }, nodeId);
+            c.buf.setOpArgU16(pc + 2, @intCast(fieldData.typeId));
+        } else {
+            try c.pushCode(.setField, &.{ recv.reg, fieldData.idx, rightv.reg }, nodeId);
+        }
     }
 
     try popTempAndUnwind(c, rightv);
+    const ownRecv = opts.recv == null;
     if (ownRecv) {
         try popTempAndUnwind(c, recv);
 
@@ -3895,14 +3951,18 @@ fn pushObjectInit(c: *cy.Chunk, typeId: cy.TypeId, startLocal: u8, numFields: u8
     }
 }
 
-fn pushField(c: *cy.Chunk, recv: u8, dst: u8, fieldId: u16, debugNodeId: cy.NodeId) !void {
+fn pushFieldDyn(c: *cy.Chunk, recv: u8, dst: u8, fieldId: u16, debugNodeId: cy.NodeId) !void {
     const start = c.buf.ops.items.len;
-    try c.pushFCode(.field, &.{ recv, dst, 0, 0, 0, 0, 0 }, debugNodeId);
+    try c.pushFCode(.fieldDyn, &.{ recv, dst, 0, 0, 0, 0, 0 }, debugNodeId);
     c.buf.setOpArgU16(start + 3, fieldId);
 }
 
-fn pushObjectField(c: *cy.Chunk, recv: u8, fieldIdx: u8, dst: u8, debugNodeId: cy.NodeId) !void {
-    try c.pushCode(.objectField, &.{ recv, fieldIdx, dst }, debugNodeId);
+fn pushField(c: *cy.Chunk, recv: u8, fieldIdx: u8, dst: u8, debugNodeId: cy.NodeId) !void {
+    try c.pushCode(.field, &.{ recv, fieldIdx, dst }, debugNodeId);
+}
+
+fn pushFieldRef(c: *cy.Chunk, recv: u8, fieldIdx: u8, numNestedFields: u8, dst: u8, debugNodeId: cy.NodeId) !void {
+    try c.pushCode(.fieldRef, &.{ recv, fieldIdx, numNestedFields, dst }, debugNodeId);
 }
 
 pub const PreferDst = struct {

@@ -3452,7 +3452,7 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst) !void {
             const name = details.namePtr[0..details.nameLen];
             extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{name});
         },
-        .field => {
+        .fieldDyn => {
             const symId = pc[3].val;
             const sym = vm.fieldSyms.buf[symId];
             const name = rt.getName(vm, sym.nameId);

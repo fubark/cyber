@@ -205,6 +205,28 @@ static inline FuncSig getResolvedFuncSig(VM* vm, FuncSigId id) {
     return ((FuncSig*)vm->compiler->sema.funcSigs.buf)[id];
 }
 
+static inline ValueResult allocPointer(VM* vm, void* ptr) {
+    HeapObjectResult res = zAllocPoolObject(vm);
+    res.obj->pointer = (Pointer){
+        .typeId = TYPE_POINTER,
+        .rc = 1,
+        .ptr = ptr,
+    };
+    return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
+}
+
+static inline ValueResult allocObjectSmallEmpty(VM* vm, TypeId typeId) {
+    HeapObjectResult res = zAllocPoolObject(vm);
+    if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
+        return (ValueResult){ .code = res.code };
+    }
+    res.obj->object = (Object){
+        .typeId = typeId | CYC_TYPE_MASK,
+        .rc = 1,
+    };
+    return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
+}
+
 static inline ValueResult allocObjectSmall(VM* vm, TypeId typeId, Value* fields, u8 numFields) {
     HeapObjectResult res = zAllocPoolObject(vm);
     if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
@@ -218,6 +240,19 @@ static inline ValueResult allocObjectSmall(VM* vm, TypeId typeId, Value* fields,
     Value* dst = objectGetValuesPtr(&res.obj->object);
     memcpy(dst, fields, numFields * sizeof(Value));
 
+    return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
+}
+
+static inline ValueResult allocObjectEmpty(VM* vm, TypeId typeId, u8 numFields) {
+    // First slot holds the typeId and rc.
+    HeapObjectResult res = zAllocExternalCycObject(vm, (1 + numFields) * sizeof(Value));
+    if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
+        return (ValueResult){ .code = res.code };
+    }
+    res.obj->object = (Object){
+        .typeId = typeId | CYC_TYPE_MASK,
+        .rc = 1,
+    };
     return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
@@ -238,16 +273,36 @@ static inline ValueResult allocObject(VM* vm, TypeId typeId, Value* fields, u8 n
     return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
-static inline ValueResult copyObject(VM* vm, HeapObject* obj, TypeId typeId, u8 numFields) {
+static ValueResult copyObj(VM* vm, HeapObject* obj, u8 numFields) {
+    TypeId typeId = OBJ_TYPEID(obj);
     Value* values = objectGetValuesPtr(&obj->object);
-    for (int i = 0; i < numFields; i += 1) {
-        retain(vm, values[i]);
-    }
+    ValueResult res;
     if (numFields <= 4) {
-        return allocObjectSmall(vm, typeId, values, numFields);
+        res = allocObjectSmallEmpty(vm, typeId);
     } else {
-        return allocObject(vm, typeId, values, numFields);
+        res = allocObjectEmpty(vm, typeId, numFields);
     }
+    if (res.code != RES_CODE_SUCCESS) {
+        return res;
+    }
+
+    Value* dst = objectGetValuesPtr(&VALUE_AS_HEAPOBJECT(res.val)->object);
+    for (int i = 0; i < numFields; i += 1) {
+        TypeId typeId = getTypeId(values[i]);
+        TypeEntry entry = ((TypeEntry*)vm->typesPtr)[typeId];
+        if (entry.kind == 6) {
+            u8 childNumFields = entry.data.struct_t.numFields;
+            ValueResult res = copyObj(vm, VALUE_AS_HEAPOBJECT(values[i]), childNumFields);
+            if (res.code != RES_CODE_SUCCESS) {
+                return res;
+            }
+            dst[i] = res.val;
+        } else {
+            retain(vm, values[i]);
+            dst[i] = values[i];
+        }
+    }
+    return res;
 }
 
 static inline ValueResult allocEmptyMap(VM* vm) {
@@ -608,8 +663,8 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CopyReleaseDst),
         JENTRY(CopyRetainSrc),
         JENTRY(CopyRetainRelease),
-        JENTRY(CopyObject),
-        JENTRY(CopyObjectDyn),
+        JENTRY(CopyObj),
+        JENTRY(CopyObjDyn),
         JENTRY(SetIndexList),
         JENTRY(SetIndexMap),
         JENTRY(IndexList),
@@ -636,9 +691,10 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Ret0),
         JENTRY(Call),
         JENTRY(TypeCheck),
-        JENTRY(ObjectField),
         JENTRY(Field),
-        JENTRY(FieldIC),
+        JENTRY(FieldRef),
+        JENTRY(FieldDyn),
+        JENTRY(FieldDynIC),
         JENTRY(Lambda),
         JENTRY(Closure),
         JENTRY(Compare),
@@ -660,10 +716,13 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(ObjectTypeCheck),
         JENTRY(ObjectSmall),
         JENTRY(Object),
+        JENTRY(Ref),
+        JENTRY(RefCopyObj),
+        JENTRY(SetRef),
+        JENTRY(SetFieldDyn),
+        JENTRY(SetFieldDynIC),
         JENTRY(SetField),
-        JENTRY(SetFieldIC),
-        JENTRY(SetObjectField),
-        JENTRY(SetObjectFieldCheck),
+        JENTRY(SetFieldCheck),
         JENTRY(PushTry),
         JENTRY(PopTry),
         JENTRY(Throw),
@@ -812,11 +871,10 @@ beginSwitch:
         pc += 3;
         NEXT();
     }
-    CASE(CopyObject): {
+    CASE(CopyObj): {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
-        TypeId typeId = OBJ_TYPEID(obj);
         u8 numFields = pc[2];
-        ValueResult res = copyObject(vm, obj, typeId, numFields);
+        ValueResult res = copyObj(vm, obj, numFields);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
@@ -824,7 +882,7 @@ beginSwitch:
         pc += 4;
         NEXT();
     }
-    CASE(CopyObjectDyn): {
+    CASE(CopyObjDyn): {
         // Check that src is actually a value type.
         Value src = stack[pc[1]];
         TypeId typeId = getTypeId(src);
@@ -832,7 +890,7 @@ beginSwitch:
         if (entry.kind == 6) {
             u8 numFields = (u8)entry.data.object.numFields;
             HeapObject* obj = VALUE_AS_HEAPOBJECT(src);
-            ValueResult res = copyObject(vm, obj, typeId, numFields);
+            ValueResult res = copyObj(vm, obj, numFields);
             if (res.code != RES_CODE_SUCCESS) {
                 RETURN(res.code);
             }
@@ -1306,7 +1364,7 @@ beginSwitch:
         pc += 4;
         NEXT();
     }
-    CASE(ObjectField): {
+    CASE(Field): {
         Value recv = stack[pc[1]];
         HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
         stack[pc[3]] = objectGetField((Object*)obj, pc[2]);
@@ -1314,7 +1372,26 @@ beginSwitch:
         pc += 4;
         NEXT();
     }
-    CASE(Field): {
+    CASE(FieldRef): {
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
+        Value* field = objectGetFieldPtr((Object*)obj, pc[2]);
+        u8 numNestedFields = pc[3];
+        if (numNestedFields > 0) {
+            for (int i = 0; i < numNestedFields; i += 1) {
+                u8 nextIdx = pc[5 + i];
+                field = objectGetFieldPtr((Object*)VALUE_AS_HEAPOBJECT(*field), nextIdx);
+            }
+        }
+
+        ValueResult res = allocPointer(vm, field);
+        if (res.code != RES_CODE_SUCCESS) {
+            RETURN(res.code);
+        }
+        stack[pc[4]] = res.val;
+        pc += 5 + numNestedFields;
+        NEXT();
+    }
+    CASE(FieldDyn): {
         u8 left = pc[1];
         u8 dst = pc[2];
         u16 symId = READ_U16(3);
@@ -1324,7 +1401,7 @@ beginSwitch:
             u8 offset = getFieldOffset(vm, obj, symId);
             if (offset != NULL_U8) {
                 stack[dst] = objectGetField((Object*)obj, offset);
-                pc[0] = CodeFieldIC;
+                pc[0] = CodeFieldDynIC;
                 WRITE_U16(5, OBJ_TYPEID(obj));
                 pc[7] = offset;
             } else {
@@ -1338,7 +1415,7 @@ beginSwitch:
             RETURN(RES_CODE_PANIC);
         }
     }
-    CASE(FieldIC): {
+    CASE(FieldDynIC): {
         Value recv = stack[pc[1]];
         u8 dst = pc[2];
         if (VALUE_IS_POINTER(recv)) {
@@ -1350,7 +1427,7 @@ beginSwitch:
                 NEXT();
             } else {
                 // Deoptimize.
-                pc[0] = CodeField;
+                pc[0] = CodeFieldDyn;
                 NEXT();
             }
         } else {
@@ -1512,7 +1589,34 @@ beginSwitch:
         pc += 6;
         NEXT();
     }
-    CASE(SetField): {
+    CASE(Ref): {
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
+        Value* src = (Value*)obj->pointer.ptr;
+        stack[pc[2]] = *src;
+        pc += 3;
+        NEXT();
+    }
+    CASE(RefCopyObj): {
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
+        Value* src = (Value*)obj->pointer.ptr;
+        u8 numFields = pc[2];
+        ValueResult res = copyObj(vm, VALUE_AS_HEAPOBJECT(*src), numFields);
+        if (res.code != RES_CODE_SUCCESS) {
+            RETURN(res.code);
+        }
+        stack[pc[3]] = res.val;
+        pc += 4;
+        NEXT();
+    }
+    CASE(SetRef): {
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
+        Value* dst = (Value*)obj->pointer.ptr;
+        release(vm, *dst);
+        *dst = stack[pc[2]];
+        pc += 3;
+        NEXT();
+    }
+    CASE(SetFieldDyn): {
         Value recv = stack[pc[1]];
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
@@ -1535,7 +1639,7 @@ beginSwitch:
                 release(vm, *lastValue);
                 *lastValue = val;
 
-                pc[0] = CodeSetFieldIC;
+                pc[0] = CodeSetFieldDynIC;
                 WRITE_U16(5, OBJ_TYPEID(obj));
                 WRITE_U16(7, rightTypeId);
                 pc[9] = offset;
@@ -1550,7 +1654,7 @@ beginSwitch:
             RETURN(RES_CODE_UNKNOWN);
         }
     }
-    CASE(SetFieldIC): {
+    CASE(SetFieldDynIC): {
         Value recv = stack[pc[1]];
         if (VALUE_IS_POINTER(recv)) {
             Value val = stack[pc[4]];
@@ -1563,7 +1667,7 @@ beginSwitch:
                 NEXT();
             } else {
                 // Deoptimize.
-                pc[0] = CodeSetField;
+                pc[0] = CodeSetFieldDyn;
                 NEXT();
             }
         } else {
@@ -1571,7 +1675,7 @@ beginSwitch:
             RETURN(RES_CODE_UNKNOWN);
         }
     }
-    CASE(SetObjectField): {
+    CASE(SetField): {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
         Value* lastValue = objectGetFieldPtr((Object*)obj, pc[2]);
         release(vm, *lastValue);
@@ -1579,7 +1683,7 @@ beginSwitch:
         pc += 4;
         NEXT();
     }
-    CASE(SetObjectFieldCheck): {
+    CASE(SetFieldCheck): {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
         TypeId cstrType = READ_U16(2);
         TypeId valType = getTypeId(stack[pc[4]]);

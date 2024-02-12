@@ -256,11 +256,15 @@ pub const ChunkExt = struct {
         var res = hasZeroInit(c, typeId);
         if (res == .missingEntry) {
             const sym = c.sema.getTypeSym(typeId);
-            res = try visitTypeHasZeroInit(c, sym.cast(.object_t));
+            if (sym.type == .object_t) {
+                res = try visitTypeHasZeroInit(c, sym.cast(.object_t));
+            } else if (sym.type == .struct_t) {
+                res = try visitTypeHasZeroInit(c, sym.cast(.struct_t));
+            } else return error.Unexpected;
         }
         switch (res) {
             .hasZeroInit => return,
-            .missingEntry => cy.unexpected(),
+            .missingEntry => return error.Unexpected,
             .unsupported => {
                 const name = c.sema.getTypeBaseName(typeId);
                 return c.reportErrorAt("Unsupported zero initializer for `{}`.", &.{v(name)}, nodeId);

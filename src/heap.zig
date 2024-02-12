@@ -2113,6 +2113,24 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             const entry = vm.types[typeId];
             log.tracev("free {s} {}", .{@tagName(entry.kind), typeId});
             switch (entry.kind) {
+                .@"struct" => {
+                    const numFields = entry.data.@"struct".numFields;
+                    if (releaseChildren) {
+                        for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
+                            if (skipCycChildren and child.isGcConfirmedCyc()) {
+                                continue;
+                            }
+                            cy.arc.release(vm, child);
+                        }
+                    }
+                    if (free) {
+                        if (numFields <= 4) {
+                            freePoolObject(vm, obj);
+                        } else {
+                            freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value), true);
+                        }
+                    }
+                },
                 .object => {
                     const numFields = entry.data.object.numFields;
                     if (releaseChildren) {

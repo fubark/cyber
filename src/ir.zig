@@ -60,7 +60,7 @@ pub const StmtCode = enum(u8) {
     setLocal,
     setCaptured,
     setFieldDyn,
-    setObjectField,
+    setField,
     setIndex,
     setCallObjSymTern,
     setVarSym,
@@ -235,7 +235,7 @@ pub const Field = struct {
     idx: u8,
 
     /// Number of nested field indexes.
-    numNestedIdxes: u8,
+    numNestedFields: u8,
 };
 
 pub const ObjectInit = struct {
@@ -555,7 +555,7 @@ pub fn StmtData(comptime code: StmtCode) type {
         .setLocal,
         .setFieldDyn,
         .setCaptured,
-        .setObjectField,
+        .setField,
         .setFuncSym,
         .setVarSym,
         .set => Set,
@@ -706,6 +706,12 @@ pub const Buffer = struct {
         return @intCast(start);
     }
 
+    pub fn reserveData(self: *Buffer, alloc: std.mem.Allocator, comptime T: type) !*align(1) T {
+        const start = self.buf.items.len;
+        try self.buf.resize(alloc, self.buf.items.len + @sizeOf(T));
+        return @ptrCast(&self.buf.items[start]);
+    }
+
     pub fn pushEmptyArray(self: *Buffer, alloc: std.mem.Allocator, comptime T: type, len: usize) !u32 {
         const start = self.buf.items.len;
         try self.buf.resize(alloc, self.buf.items.len + @sizeOf(T) * len);
@@ -739,7 +745,7 @@ pub const Buffer = struct {
         return @as(*align(1) cy.NodeId, @ptrCast(self.buf.items.ptr + idx + 1)).*;
     }
 
-    fn setNode(self: *Buffer, idx: usize, nodeId: cy.NodeId) void {
+    pub fn setNode(self: *Buffer, idx: usize, nodeId: cy.NodeId) void {
         @as(*align(1) cy.NodeId, @ptrCast(self.buf.items.ptr + idx + 1)).* = nodeId;
     }
 

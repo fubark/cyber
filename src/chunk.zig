@@ -846,6 +846,10 @@ pub const Chunk = struct {
         try c.buf.pushOpSliceExt(code, args, c.descExtra(nodeId, extraIdx orelse cy.NullId));
     }
 
+    pub fn pushCodeBytes(c: *Chunk, bytes: []const u8) !void {
+        try c.buf.pushOperands(bytes);
+    }
+
     pub usingnamespace cy.module.ChunkExt;
     pub usingnamespace cy.types.ChunkExt;
     pub usingnamespace cy.sema.ChunkExt;

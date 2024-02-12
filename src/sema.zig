@@ -4463,11 +4463,21 @@ fn ensureValueType(c: *cy.Chunk, child_t: cy.TypeId, childNodeId: cy.NodeId) !Va
     const res = try c.valueTypeCache.getOrPut(c.alloc, child_t);
     if (!res.found_existing) {
         const typeId = try c.sema.pushType();
+
+        var numFields: u16 = undefined;
+        if (entry.kind == .object) {
+            numFields = @intCast(entry.sym.cast(.object).numFields);
+        } else if (entry.kind == .choice) {
+            numFields = 2;
+        } else {
+            return c.reportErrorAt("Unsupported {}.", &.{v(entry.kind)}, childNodeId);
+        }
+
         c.compiler.sema.types.items[typeId] = .{
             .sym = entry.sym,
             .kind = .value,
             .data = .{ .value = .{
-                .numFields = @intCast(entry.sym.cast(.object).numFields),
+                .numFields = numFields,
             }},
         };
         res.value_ptr.* = typeId;

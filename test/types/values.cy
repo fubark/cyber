@@ -26,6 +26,15 @@ a.val = 123
 foo(a)
 test.eq(a.val, 123)
 
--- Call and return.
+-- Value choice type.
+type Choice enum:
+    case a int
+    case b float
+var c = [+Choice a: 123]
+switch c
+case .a -> a:
+    test.eq(a, 123)
+else:
+    test.fail()
 
 --cytest: pass

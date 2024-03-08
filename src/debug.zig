@@ -55,7 +55,14 @@ pub fn getDebugSymFromTable(table: []const cy.DebugSym, pc: usize) ?cy.DebugSym 
     return table[idx];
 }
 
-pub fn indexOfDebugSym(vm: *const cy.VM, pc: usize) ?usize {
+pub fn indexOfDebugSym(vm: *const cy.VM, pc: usize) !usize {
+    return getIndexOfDebugSym(vm, pc) orelse {
+        log.trace("at pc: {}", .{pc});
+        return error.NoDebugSym;
+    };
+}
+
+pub fn getIndexOfDebugSym(vm: *const cy.VM, pc: usize) ?usize {
     return indexOfDebugSymFromTable(vm.debugTable, pc);
 }
 
@@ -108,7 +115,7 @@ pub fn printTraceAtPc(vm: *cy.VM, pc: u32, title: []const u8, msg: []const u8) !
         rt.errFmt(vm, "{}: {} (external)", &.{v(title), v(msg)});
         return;
     }
-    if (indexOfDebugSym(vm, pc)) |idx| {
+    if (getIndexOfDebugSym(vm, pc)) |idx| {
         const sym = vm.debugTable[idx];
         const chunk = vm.compiler.chunks.items[sym.file];
         const node = chunk.ast.node(sym.loc);
@@ -368,7 +375,10 @@ test "debug internals." {
 
 pub fn compactToStackFrame(vm: *cy.VM, stack: []const cy.Value, frame: vmc.CompactFrame) !StackFrame {
     if (frame.fpOffset == 0 or cy.fiber.isVmFrame(vm, stack, frame.fpOffset)) {
-        const sym = getDebugSymByPc(vm, frame.pcOffset) orelse return error.NoDebugSym;
+        const sym = getDebugSymByPc(vm, frame.pcOffset) orelse {
+            log.trace("at pc: {}", .{frame.pcOffset});
+            return error.NoDebugSym;
+        };
         return getStackFrame(vm, sym);
     } else {
         const func = stack[frame.fpOffset+2];

@@ -154,7 +154,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
 
             // Unwind stack and release all locals.
             while (framePtr > 0) {
-                const symIdx = cy.debug.indexOfDebugSym(vm, pc) orelse return error.NoDebugSym;
+                const symIdx = try cy.debug.indexOfDebugSym(vm, pc);
                 const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
                 const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
 
@@ -176,7 +176,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
 
         // Cleanup on main fiber block.
         if (vm.ops[pc].opcode() != .coreturn) {
-            const symIdx = cy.debug.indexOfDebugSym(vm, pc) orelse return error.NoDebugSym;
+            const symIdx = try cy.debug.indexOfDebugSym(vm, pc);
             const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
             if (tempIdx != cy.NullId) {
                 cy.arc.runTempReleaseOps(vm, stack.ptr + framePtr, tempIdx);
@@ -268,10 +268,7 @@ pub fn recordCurFrames(vm: *cy.VM) !void {
 }
 
 fn releaseFrame(vm: *cy.VM, fp: u32, pc: u32) !void {
-    const symIdx = cy.debug.indexOfDebugSym(vm, pc) orelse {
-        log.tracev("at pc: {}", .{pc});
-        return error.NoDebugSym;
-    };
+    const symIdx = try cy.debug.indexOfDebugSym(vm, pc);
     const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
     const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
     const locals = sym.getLocals();
@@ -289,7 +286,7 @@ fn releaseFrame(vm: *cy.VM, fp: u32, pc: u32) !void {
 }
 
 fn releaseFrameTemps(vm: *cy.VM, fp: u32, pc: u32) !void {
-    const symIdx = cy.debug.indexOfDebugSym(vm, pc) orelse return error.NoDebugSym;
+    const symIdx = try cy.debug.indexOfDebugSym(vm, pc);
     const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
     log.tracev("release frame temps: {} {}, tempIdx: {}", .{pc, vm.ops[pc].opcode(), tempIdx});
 

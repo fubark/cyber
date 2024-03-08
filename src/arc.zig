@@ -336,7 +336,7 @@ fn markMainStackRoots(vm: *cy.VM) !void {
     var fpOff = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
 
     while (true) {
-        const symIdx = cy.debug.indexOfDebugSym(vm, pcOff) orelse return error.NoDebugSym;
+        const symIdx = try cy.debug.indexOfDebugSym(vm, pcOff);
         const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
         const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
         const locals = sym.getLocals();

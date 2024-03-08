@@ -1768,7 +1768,7 @@ fn semaIdent(c: *cy.Chunk, nodeId: cy.NodeId, comptime symAsValue: bool) !ExprRe
     }
 }
 
-fn resolveLocalRootSym(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId, distinct: bool) !?*Sym {
+pub fn resolveLocalRootSym(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId, distinct: bool) !?*Sym {
     if (c.localSymMap.get(name)) |sym| {
         if (!distinct or sym.isDistinct()) {
             return sym;

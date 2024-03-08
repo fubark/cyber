@@ -618,7 +618,7 @@ pub const Parser = struct {
         const start = self.next_pos;
 
         var token = self.peek();
-        if (token.tag() != .var_k and token.tag() != .my_k) {
+        if (token.tag() != .var_k) {
             return null;
         }
         const typed = token.tag() == .var_k;

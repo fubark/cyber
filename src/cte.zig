@@ -138,32 +138,32 @@ fn nodeToCtValue(c: *cy.Chunk, nodeId: cy.NodeId) !CtValue {
     const node = c.ast.node(nodeId);
     switch (node.type()) {
         .ident => {
-            // For now just assume node refereare types.
             const name = c.ast.nodeString(node);
-            const res = try sema.getOrLookupVar(c, name, true, nodeId);
-            switch (res) {
-                .local => |id| {
-                    _ = id;
-                
-                    // Check for constant var.
-                    return error.TODO;
-                },
-                .static => |csymId| {
-                    const sym_r = try sema.symbol(c, csymId, nodeId, false);
-                    switch (sym_r.data.sym.type) {
-                        .struct_t,
-                        .predefinedType,
-                        .object_t => {
-                            return CtValue{
-                                .type = bt.Type,
-                                .value = try c.vm.allocType(sym_r.data.sym.getStaticType().?),
-                            };
-                        },
-                        else => {
-                            return c.reportErrorAt("Unsupported conversion to compile-time value: {}", &.{v(sym_r.data.sym.type)}, nodeId);
-                        },
-                    }
-                },
+
+            if (c.semaProcs.items.len > 0) {
+                const res = try sema.getOrLookupVar(c, name, true, nodeId);
+                switch (res) {
+                    .local => |id| {
+                        _ = id;
+                    
+                        // Check for constant var.
+                        return error.TODO;
+                    },
+                    else => {},
+                }
+            }
+
+            const sym = (try sema.resolveLocalRootSym(c, name, nodeId, true)) orelse {
+                return c.reportErrorAt("Could not find the symbol `{}`.", &.{v(name)}, nodeId);
+            };
+
+            if (sym.getStaticType()) |type_id| {
+                return CtValue{
+                    .type = bt.Type,
+                    .value = try c.vm.allocType(type_id),
+                };
+            } else {
+                return c.reportErrorAt("Unsupported conversion to compile-time value: {}", &.{v(sym.type)}, nodeId);
             }
         },
         else => {

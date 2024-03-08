@@ -182,7 +182,7 @@ type StateType enum:
 
 type State:
     var type StateType
-    my data
+    var data dynamic
 
 func visitor(cursor, parent, client_data):
     var state State = client_data.asObject()

@@ -10,25 +10,25 @@ type NodeA object:
 var .snode = [Node value: 123]
 
 -- Initialize.
-my n = [Node value: 123]
-t.eq(n.value, 123)
-n = [NodeA value2: 234]
-t.eq(n.value2, 234)
+var n1 = [Node value: 123]
+t.eq(n1.value, 123)
+var n2 = [NodeA value2: 234]
+t.eq(n2.value2, 234)
 
 -- Initialize, infer type.
 var left Node = [value: 123]
 t.eq(left.value, 123)
 
 -- Init and default field to none.
-n = [NodeHeap:]
-t.eq(n.value, none)
+var n3 = [NodeHeap:]
+t.eq(n3.value, none)
 
 type NodeHeap:
     var value any
 
 -- Init with heap value.
-n = [NodeHeap value: [123]]
-t.eq(n.value[0], 123)
+n3 = [NodeHeap value: [123]]
+t.eq(n3.value[0], 123)
 
 -- Get field from declared static var.
 snode.value = 123
@@ -37,9 +37,9 @@ var f = func():
 t.eq(f(), 123)
 
 -- Assign to object field.
-n = [Node value: 123]
-n.value = 234
-t.eq(n.value, 234)
+n1 = [Node value: 123]
+n1.value = 234
+t.eq(n1.value, 234)
 
 -- Op assign to object field.
 var nw = [Node value: 123]
@@ -65,13 +65,13 @@ f()
 t.eq(snode.value, 234)
 
 -- Set to field with heap value.
-n = [NodeHeap value: [123]]
-n.value = 234
-t.eq(n.value, 234)
+n3 = [NodeHeap value: [123]]
+n3.value = 234
+t.eq(n3.value, 234)
 
 -- Struct to string returns struct's name. 
-n = [Node value: 123]
-t.eq(String(n), 'Node')
+n1 = [Node value: 123]
+t.eq(String(n1), 'Node')
 
 type W:
     var a
@@ -97,12 +97,12 @@ type BigNode:
     var c
     var d
     var e
-n = [BigNode a: 1, b: 2, c: 3, d: 4, e: 5]
-t.eq(n.a, 1)
-t.eq(n.b, 2)
-t.eq(n.c, 3)
-t.eq(n.d, 4)
-t.eq(n.e, 5)
+var n4 = [BigNode a: 1, b: 2, c: 3, d: 4, e: 5]
+t.eq(n4.a, 1)
+t.eq(n4.b, 2)
+t.eq(n4.c, 3)
+t.eq(n4.d, 4)
+t.eq(n4.e, 5)
 
 -- Multiple structs with the same field names but different offsets.
 type Node1:
@@ -114,15 +114,15 @@ type Node2:
 type Node3:
     var a
     var b
-var n1 = [Node1 a: 1, b: 2]
-var n2 = [Node2 a: 3, b: 4]
-var n3 = [Node3 a: 5, b: 6]
-t.eq(n1.a, 1)
-t.eq(n1.b, 2)
-t.eq(n2.a, 3)
-t.eq(n2.b, 4)
-t.eq(n3.a, 5)
-t.eq(n3.b, 6)
+var na = [Node1 a: 1, b: 2]
+var nb = [Node2 a: 3, b: 4]
+var nc = [Node3 a: 5, b: 6]
+t.eq(na.a, 1)
+t.eq(na.b, 2)
+t.eq(nb.a, 3)
+t.eq(nb.b, 4)
+t.eq(nc.a, 5)
+t.eq(nc.b, 6)
 
 -- Using Object sym as a value.
 var sym = Node

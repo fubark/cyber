@@ -181,6 +181,7 @@ pub const Sym = extern struct {
             .custom_object_t => return @ptrCast(&self.cast(.custom_object_t).mod),
             .core_t          => return @ptrCast(&self.cast(.core_t).mod),
             .import,
+            .type_copy,
             .typeAlias,
             .typeTemplate,
             .enumMember,
@@ -327,6 +328,7 @@ fn SymChild(comptime symT: SymType) type {
         .enum_t => EnumType,
         .enumMember => EnumMember,
         .typeAlias => TypeAlias,
+        .type_copy => TypeCopy,
         .typeTemplate => TypeTemplate,
         .field => Field,
         .import => Import,
@@ -334,6 +336,15 @@ fn SymChild(comptime symT: SymType) type {
         .null => void,
     };
 }
+
+/// A type sym union is defined so that TypeCopy can allocate enough memory for the largest Sym.
+pub const TypeSym = extern union {
+    object_t: ObjectType,
+    custom_object_t: CustomObjectType,
+    core_t: CoreType,
+    enum_t: EnumType,
+    type_copy: TypeCopy,
+};
 
 pub const SymType = enum(u8) {
     null,
@@ -349,6 +360,10 @@ pub const SymType = enum(u8) {
     enum_t,
     enumMember,
     typeAlias,
+
+    /// Unresolved type copy.
+    type_copy,
+
     typeTemplate,
     field,
 };
@@ -386,6 +401,12 @@ pub const TypeAlias = extern struct {
     declId: cy.NodeId,
     type: cy.TypeId,
     sym: *Sym,
+};
+
+pub const TypeCopy = extern struct {
+    head: Sym,
+    decl_id: cy.NodeId,
+    type: cy.TypeId,
 };
 
 pub const ValueType = extern struct {
@@ -503,6 +524,21 @@ pub const ObjectType = extern struct {
     variantId: u32,
 
     mod: vmc.Module,
+
+    pub fn init(parent: *Sym, chunk: *cy.Chunk, name: []const u8, decl_id: cy.NodeId, type_id: cy.TypeId) ObjectType {
+        var new = ObjectType{
+            .head = cy.Sym.init(.object_t, parent, name),
+            .declId = decl_id,
+            .type = type_id,
+            .fields = undefined,
+            .variantId = cy.NullId,
+            .numFields = 0,
+            .rt_size = cy.NullId,
+            .mod = undefined,
+        };
+        @as(*cy.Module, @ptrCast(&new.mod)).* = cy.Module.init(chunk);
+        return new;
+    }
 
     pub fn getMod(self: *ObjectType) *cy.Module {
         return @ptrCast(&self.mod);

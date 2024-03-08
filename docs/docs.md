@@ -1155,18 +1155,57 @@ while iter.next() -> entry:
 
 ## Type aliases.
 A type alias refers to a different target type.
-Once declared, the alias and the target type are interchangeable.
-It's declared using the assignment `=` operator after a `type` name declaration:
+Once declared, the alias and the target type can be used interchangeably.
+
+A type alias is declared using the assignment `=` operator after a `type` name declaration:
 ```cy
-import util './util.cy'
+type Vec2:
+    x float
+    y float
 
-type Vec3 = util.Vec3
+type Pos2 = Vec2
 
-var v = [Vec3 x: 3, y: 4, z: 5]
+var pos = [Pos2 x: 3, y: 4]
 ```
 
 ## Type copies.
-> _Planned Feature_
+A type copy creates a new type using the same type and memory layout of a target type.
+
+It's declared with `type` name declaration followed by the target type specifier:
+```cy
+type Vec2:
+    x float
+    y float
+
+type Pos2 Vec2
+
+var pos = [Pos2 x: 3, y: 4]
+```
+
+Functions can be declared under the new type's namespace:
+```
+import math
+
+type Pos2 Vec2:
+    func blockDist(o Pos2):
+        var dx = math.abs(o.x - x)
+        var dy = math.abs(o.y - y)
+        return dx + dy
+
+var pos = [Pos2 x: 3, y: 4]
+var dst = [Pos2 x: 4, y: 5]
+print pos.blockDist(dst)     --> 2
+```
+Note that functions declared from the target type do not carry over to the new type.
+
+Unlike a type alias, the new type and the target type can not be used interchangeably since they are different types. However, instances of the new type can be casted to the target type, and vice versa: *Planned Feature*
+```cy
+type Pos2 Vec2
+
+var a = [Pos2 x: 3, y: 4]
+
+var b Vec2 = a as Vec2
+```
 
 ## Traits.
 > _Planned Feature_

@@ -361,6 +361,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         .passStmt,
         .staticDecl,
         .typeAliasDecl,
+        .type_copy_decl,
         .typeTemplate,
         .enumDecl,
         .funcDecl => {
@@ -819,6 +820,19 @@ pub fn declareTypeTemplate(c: *cy.Chunk, nodeId: cy.NodeId, ctNodes: []const cy.
     }
 }
 
+pub fn declareTypeCopy(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.TypeCopy {
+    const node = c.ast.node(nodeId);
+    var name: []const u8 = undefined;
+    if (node.data.type_copy_decl.has_decl) {
+        const decl_n = c.ast.node(node.data.type_copy_decl.decl_or_name);
+        const header = c.ast.node(decl_n.data.objectDecl.header);
+        name = c.ast.nodeStringById(header.data.objectHeader.name);
+    } else {
+        name = c.ast.nodeStringById(node.data.type_copy_decl.decl_or_name);
+    }
+    return c.declareTypeCopy(@ptrCast(c.sym), name, nodeId);
+}
+
 pub fn declareTypeAlias(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = c.ast.node(nodeId);
     const name = c.ast.nodeStringById(node.data.typeAliasDecl.name);
@@ -1116,6 +1130,28 @@ pub fn declareStruct(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
         // Unnamed object.
         const sym = try c.declareUnnamedStructType(@ptrCast(c.sym), nodeId);
         return @ptrCast(sym);
+    }
+}
+
+pub fn resolveTypeCopy(c: *cy.Chunk, type_copy: *cy.sym.TypeCopy) !*cy.Sym {
+    const decl = c.ast.node(type_copy.decl_id);
+
+    const target_t = try resolveTypeSpecNode(c, decl.data.type_copy_decl.target);
+    const target_sym = c.sema.getTypeSym(target_t);
+    if (target_sym.type == .object_t) {
+        const object_t: *cy.sym.ObjectType = @ptrCast(type_copy);
+        object_t.* = cy.sym.ObjectType.init(type_copy.head.parent.?, c, type_copy.head.name(), type_copy.decl_id, type_copy.type);
+        c.compiler.sema.types.items[object_t.type] = .{
+            .sym = @ptrCast(object_t),
+            .kind = .object,
+            .data = .{ .object = .{
+                .numFields = 0,
+            }},
+        };
+        try sema.declareObjectFields(c, @ptrCast(object_t), target_sym.cast(.object_t).declId);
+        return @ptrCast(object_t);
+    } else {
+        return error.Unsupported;
     }
 }
 

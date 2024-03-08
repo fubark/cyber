@@ -766,7 +766,22 @@ pub const Parser = struct {
                 return decl;
             },
             else => {
-                return error.TodoTypeCopy;
+                var decl_idx: usize = undefined;
+                if (appendDecl) {
+                    decl_idx = self.staticDecls.items.len;
+                    try self.staticDecls.append(self.alloc, .{
+                        .declT = .type_copy,
+                        .nodeId = undefined,
+                        .data = undefined,
+                    });
+                }
+
+                const decl = try self.parseTypeCopyDecl(start, name, modifierHead);
+
+                if (appendDecl) {
+                    self.staticDecls.items[decl_idx].nodeId = decl;
+                }
+                return decl;
             }
         }
     }
@@ -810,6 +825,30 @@ pub const Parser = struct {
                 return null;
             },
         }
+    }
+
+    fn parseTypeCopyDecl(self: *Parser, start: TokenId, name: NodeId, mod_head: NodeId) !NodeId {
+        const target = (try self.parseOptTypeSpec(false)) orelse {
+            return self.reportError("Expected type specifier.", &.{});
+        };
+
+        var decl_or_name = name;
+        var has_decl = false;
+        if (self.peek().tag() == .colon) {
+            decl_or_name = try self.parseObjectDecl(start, .{
+                .name = name,
+                .modHead = mod_head,
+            });
+            has_decl = true;
+        }
+
+        const id = try self.pushNode(.type_copy_decl, start);
+        self.ast.setNodeData(id, .{ .type_copy_decl = .{
+            .target = target,
+            .decl_or_name = @intCast(decl_or_name),
+            .has_decl = has_decl,
+        }});
+        return id;
     }
 
     /// Assumes current token is `=`.
@@ -3697,6 +3736,7 @@ const ParseExprOptions = struct {
 const StaticDeclType = enum {
     variable,
     typeAlias,
+    type_copy,
     implicit_method,
     func,
     funcInit,

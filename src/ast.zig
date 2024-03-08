@@ -88,6 +88,7 @@ pub const NodeType = enum(u8) {
     tryExpr,
     tryStmt,
     typeAliasDecl,
+    type_copy_decl,
     typeTemplate,
     unary_expr,
     unwrap,
@@ -299,6 +300,11 @@ const NodeData = union {
     typeAliasDecl: struct {
         name: NodeId,
         typeSpec: NodeId,
+    },
+    type_copy_decl: struct {
+        target: NodeId,
+        decl_or_name: u24,
+        has_decl: bool,
     },
     objectInit: struct {
         name: NodeId,

@@ -204,6 +204,7 @@ if (!aot) {
     run.case("types/template_object_expand_error.cy");
     run.case("types/template_objects.cy");
     run.case("types/type_alias.cy");
+    run.case("types/type_copy.cy");
     run.case("types/type_spec.cy");
     run.case("types/unnamed_object.cy");
 

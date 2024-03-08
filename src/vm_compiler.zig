@@ -627,6 +627,10 @@ fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
                     .typeAlias => {
                         try sema.declareTypeAlias(chunk, decl.nodeId);
                     },
+                    .type_copy => {
+                        const sym = try sema.declareTypeCopy(chunk, decl.nodeId);
+                        decl.data = .{ .sym = @ptrCast(sym) };
+                    },
                     .typeTemplate => {
                         const ctNodes = chunk.parser.ast.templateCtNodes.items[decl.data.typeTemplate.ctNodeStart..decl.data.typeTemplate.ctNodeEnd];
                         try sema.declareTypeTemplate(chunk, decl.nodeId, ctNodes);
@@ -799,6 +803,10 @@ fn declareSymbols(self: *VMcompiler) !void {
                 },
                 .enum_t => {
                     try sema.declareEnumMembers(chunk, @ptrCast(decl.data.sym), decl.nodeId);
+                },
+                .type_copy => {
+                    const sym = try sema.resolveTypeCopy(chunk, @ptrCast(decl.data.sym));
+                    last_type_sym = sym;
                 },
                 .import,
                 .typeTemplate,

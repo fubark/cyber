@@ -144,14 +144,14 @@ pub fn typeLoader(_: ?*cc.VM, info: cc.TypeInfo, out_: [*c]cc.TypeResult) callco
     return false;
 }
 
-pub fn onTypeLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
+pub fn onTypeLoad(vm_: ?*cc.VM, mod: cc.Sym) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     zPostTypeLoad(vm.compiler, mod) catch |err| {
         cy.panicFmt("os module: {}", .{err});
     };
 }
 
-pub fn zPostTypeLoad(c: *cy.Compiler, mod: cc.ApiModule) !void {
+pub fn zPostTypeLoad(c: *cy.Compiler, mod: cc.Sym) !void {
     vars[0] = .{ "cpu", try cy.heap.allocString(c.vm, @tagName(builtin.cpu.arch)) };
     if (builtin.cpu.arch.endian() == .Little) {
         vars[1] = .{ "endian", cy.Value.initSymbol(@intFromEnum(Symbol.little)) };
@@ -190,22 +190,22 @@ pub fn zPostTypeLoad(c: *cy.Compiler, mod: cc.ApiModule) !void {
         vars[6] = .{ "vecBitSize", cy.Value.initI32(0) };
     }
 
-    const sym: *cy.Sym = @ptrCast(@alignCast(mod.sym));
+    const sym = cc.fromSym(mod);
     const chunkMod = sym.getMod().?;
     CArrayT = chunkMod.getSym("CArray").?.cast(.object_t).type;
     CDimArrayT = chunkMod.getSym("CDimArray").?.cast(.object_t).type;
     nextUniqId = 1;
 }
 
-pub fn onLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
+pub fn onLoad(vm_: ?*cc.VM, mod: cc.Sym) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     zPostLoad(vm.compiler, mod) catch |err| {
         cy.panicFmt("os module: {}", .{err});
     };
 }
 
-fn zPostLoad(self: *cy.Compiler, mod: cc.ApiModule) anyerror!void {
-    const b = bindings.ModuleBuilder.init(self, @ptrCast(@alignCast(mod.sym)));
+fn zPostLoad(self: *cy.Compiler, mod: cc.Sym) anyerror!void {
+    const b = bindings.ModuleBuilder.init(self, cc.fromSym(mod));
     _ = b;
 
     // Free vars since they are managed by the module now.

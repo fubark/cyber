@@ -158,7 +158,7 @@ pub const Compiler = struct {
         for (self.chunks.items) |chunk| {
             log.tracev("Deinit chunk `{s}`", .{chunk.srcUri});
             if (chunk.onDestroy) |onDestroy| {
-                onDestroy(@ptrCast(self.vm), cc.ApiModule{ .sym = @ptrCast(chunk.sym) });
+                onDestroy(@ptrCast(self.vm), cc.initSym(@ptrCast(chunk.sym)));
             }
             chunk.deinit();
             self.alloc.destroy(chunk);
@@ -661,7 +661,7 @@ fn declareImportsAndTypes(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
             }
 
             if (chunk.onTypeLoad) |onTypeLoad| {
-                onTypeLoad(@ptrCast(self.vm), cc.ApiModule{ .sym = @ptrCast(chunk.sym) });
+                onTypeLoad(@ptrCast(self.vm), cc.initSym(@ptrCast(chunk.sym)));
             }
         }
 
@@ -859,7 +859,7 @@ fn declareSymbols(self: *Compiler) !void {
         }
 
         if (chunk.onLoad) |onLoad| {
-            onLoad(@ptrCast(self.vm), cc.ApiModule{ .sym = @ptrCast(chunk.sym) });
+            onLoad(@ptrCast(self.vm), cc.initSym(@ptrCast(chunk.sym)));
         }
     }
 }

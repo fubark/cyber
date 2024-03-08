@@ -1077,7 +1077,7 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     };
 
     const info = cc.TypeInfo{
-        .mod = cc.ApiModule{ .sym = @ptrCast(c.sym) },
+        .mod = cc.initSym(@ptrCast(c.sym)),
         .name = cc.initStr(name),
         .idx = c.curHostTypeIdx,
     };
@@ -1126,7 +1126,7 @@ pub fn getHostTypeId(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId) !cy.Type
     };
 
     const info = cc.TypeInfo{
-        .mod = cc.ApiModule{ .sym = @ptrCast(c.sym) },
+        .mod = cc.initSym(@ptrCast(c.sym)),
         .name = cc.initStr(name),
         .idx = c.curHostTypeIdx,
     };
@@ -1368,7 +1368,7 @@ pub fn declareMethod(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: Fun
 
 pub fn declareHostFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: FuncDecl) !*cy.Func {
     const info = cc.FuncInfo{
-        .mod = cc.ApiModule{ .sym = parent },
+        .mod = cc.initSym(parent),
         .name = cc.initStr(decl.namePath),
         .funcSigId = decl.funcSigId,
         .idx = c.curHostFuncIdx,
@@ -1466,7 +1466,7 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
     const decl = try resolveLocalDeclNamePath(c, varSpec.data.varSpec.name);
 
     const info = cc.VarInfo{
-        .mod = cc.ApiModule{ .sym = @ptrCast(c.sym) },
+        .mod = cc.initSym(@ptrCast(c.sym)),
         .name = cc.initStr(decl.namePath),
         .idx = c.curHostVarIdx,
     };

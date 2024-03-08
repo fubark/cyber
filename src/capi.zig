@@ -93,7 +93,13 @@ pub const VarInfo = c.CsVarInfo;
 pub const VarResult = c.CsVarResult;
 pub const Value = c.CsValue;
 pub const VM = c.CsVM;
-pub const ApiModule = c.CsModule;
+pub const Sym = c.CsSym;
+pub fn initSym(sym: *cy.Sym) Sym {
+    return .{ .ptr = sym };
+}
+pub fn fromSym(sym: c.CsSym) *cy.Sym {
+    return @ptrCast(@alignCast(sym.ptr));
+}
 pub const GCResult = c.CsGCResult;
 
 pub const ObjectGetChildrenFn = c.CsObjectGetChildrenFn;

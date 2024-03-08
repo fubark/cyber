@@ -4,7 +4,7 @@ const build_options = @import("build_options");
 const stdx = @import("stdx");
 const fatal = cy.fatal;
 const cy = @import("../cyber.zig");
-const cc = @import("../capi.zig");
+const c = @import("../capi.zig");
 const Value = cy.Value;
 const bindings = @import("bindings.zig");
 const Symbol = bindings.Symbol;
@@ -19,9 +19,9 @@ const log = cy.log.scoped(.core);
 
 pub const VmSrc = @embedFile("builtins_vm.cy");
 pub const Src = @embedFile("builtins.cy");
-pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callconv(.C) bool {
-    const out: *cc.FuncResult = out_;
-    const name = cc.strSlice(func.name);
+pub fn funcLoader(_: ?*c.VM, func: c.FuncInfo, out_: [*c]c.FuncResult) callconv(.C) bool {
+    const out: *c.FuncResult = out_;
+    const name = c.strSlice(func.name);
     if (std.mem.eql(u8, funcs[func.idx].@"0", name)) {
         out.ptr = @ptrCast(@alignCast(funcs[func.idx].@"1"));
         out.type = @intFromEnum(funcs[func.idx].@"2");
@@ -32,7 +32,7 @@ pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callco
 
 pub const appendList = zErrFunc2(inlineBinOp(.appendList));
 
-const NameFunc = struct { []const u8, cy.ZHostFuncFn, cc.FuncEnumType };
+const NameFunc = struct { []const u8, cy.ZHostFuncFn, c.FuncEnumType };
 const funcs = [_]NameFunc{
     // Utils.
     .{"copy",           copy, .standard},
@@ -370,24 +370,24 @@ pub fn zErrFunc(comptime func: fn (vm: *cy.UserVM, args: [*]const Value, nargs: 
     return S.genFunc;
 }
 
-pub fn prepThrowZError(c: cy.Context, err: anyerror, optTrace: ?*std.builtin.StackTrace) Value {
+pub fn prepThrowZError(ctx: cy.Context, err: anyerror, optTrace: ?*std.builtin.StackTrace) Value {
     if (!cy.isFreestanding and cy.verbose) {
         if (optTrace) |trace| {
             std.debug.dumpStackTrace(trace.*);
         }
     }
     const sym = errorSymbol(err);
-    return rt.prepThrowError(c, sym);
+    return rt.prepThrowError(ctx, sym);
 }
 
-pub fn prepThrowZError2(c: cy.Context, err: anyerror, optTrace: ?*std.builtin.StackTrace) rt.Error {
+pub fn prepThrowZError2(ctx: cy.Context, err: anyerror, optTrace: ?*std.builtin.StackTrace) rt.Error {
     if (!cy.isFreestanding and cy.verbose) {
         if (optTrace) |trace| {
             std.debug.dumpStackTrace(trace.*);
         }
     }
     const sym = errorSymbol(err);
-    _ = rt.prepThrowError(c, sym);
+    _ = rt.prepThrowError(ctx, sym);
     return rt.Error.init(@tagName(sym));
 }
 
@@ -970,16 +970,16 @@ pub fn print(vm: *cy.VM, args: [*]const cy.Value, _: u8) Value {
     return Value.Void;
 }
 
-pub fn print_c(c: cy.Context, arg: rt.Any) callconv(.C) rt.Error {
+pub fn print_c(ctx: cy.Context, arg: rt.Any) callconv(.C) rt.Error {
     if (build_options.rt == .vm) {
-        const str = c.getOrBufPrintValueStr(&cy.tempBuf, arg) catch |err| {
-            return cy.builtins.prepThrowZError2(c, err, @errorReturnTrace());
+        const str = ctx.getOrBufPrintValueStr(&cy.tempBuf, arg) catch |err| {
+            return cy.builtins.prepThrowZError2(ctx, err, @errorReturnTrace());
         };
-        rt.print(c, str);
+        rt.print(ctx, str);
     } else {
-        const str = arg.vtable.type.toPrintString(c, arg);
-        rt.print(c, str.slice());
-        c.release(str.buf);
+        const str = arg.type.toPrintString(ctx, arg);
+        rt.print(ctx, str.slice());
+        ctx.release(str.buf);
     }
     return rt.Error.initNull();
 }

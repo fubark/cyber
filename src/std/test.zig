@@ -38,9 +38,9 @@ const funcs = [_]NameHostFunc{
     .{"fail", fail},
 };
 
-pub fn onLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
+pub fn onLoad(vm_: ?*cc.VM, mod: cc.Sym) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const b = bindings.ModuleBuilder.init(vm.compiler, @ptrCast(@alignCast(mod.sym)));
+    const b = bindings.ModuleBuilder.init(vm.compiler, cc.fromSym(mod));
     if (builtin.is_test) {
         // Only available for zig test, until `any` local type specifier is implemented.
         b.declareFuncSig("erase", &.{bt.Any}, bt.Dynamic, erase) catch cy.fatal();

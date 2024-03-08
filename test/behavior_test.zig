@@ -421,13 +421,13 @@ test "Custom modules." {
             count_.* += 3;
             return cy.Value.Void;
         }
-        fn postLoadMod2(_: ?*c.VM, mod: c.ApiModule) callconv(.C) void {
+        fn postLoadMod2(_: ?*c.VM, mod: c.Sym) callconv(.C) void {
             // Test dangling pointer.
             const s1 = allocString("test\x00");
             defer t.alloc.free(s1);
             c.declareUntypedFunc(mod, s1.ptr, 0, @ptrCast(&test3));
         }
-        fn postLoadMod1(_: ?*c.VM, mod: c.ApiModule) callconv(.C) void {
+        fn postLoadMod1(_: ?*c.VM, mod: c.Sym) callconv(.C) void {
             // Test dangling pointer.
             const s1 = allocString("test\x00");
             const s2 = allocString("test2\x00");
@@ -500,9 +500,9 @@ test "Multiple evals persisting state." {
 
     c.setResolver(@ptrCast(run.vm), cy.compiler.defaultModuleResolver);
     c.setModuleLoader(@ptrCast(run.vm), struct {
-        fn onLoad(vm_: ?*c.VM, mod: c.ApiModule) callconv(.C) void {
+        fn onLoad(vm_: ?*c.VM, mod: c.Sym) callconv(.C) void {
             const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-            const sym: *cy.Sym = @ptrCast(@alignCast(mod.sym));
+            const sym: *cy.Sym = c.fromSym(mod);
             const g = cy.ptrAlignCast(*cy.Value, vm.userData).*;
             const chunk = sym.getMod().?.chunk;
             _ = chunk.declareHostVar(sym, "g", cy.NullId, bt.Dynamic, g) catch fatal();

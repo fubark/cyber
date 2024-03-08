@@ -171,8 +171,8 @@ export fn csPerformGC(vm: *cy.UserVM) c.GCResult {
     };
 }
 
-export fn csDeclareUntypedFunc(mod: c.ApiModule, name: [*:0]const u8, numParams: u32, funcPtr: c.FuncFn) void {
-    const modSym: *cy.Sym = @ptrCast(@alignCast(mod.sym));
+export fn csDeclareUntypedFunc(mod: c.Sym, name: [*:0]const u8, numParams: u32, funcPtr: c.FuncFn) void {
+    const modSym = c.fromSym(mod);
     var symName: []const u8 = std.mem.sliceTo(name, 0);
     var nameOwned = false;
     const chunk = modSym.cast(.chunk).getMod().chunk;
@@ -188,8 +188,8 @@ export fn csDeclareUntypedFunc(mod: c.ApiModule, name: [*:0]const u8, numParams:
     }
 }
 
-export fn csDeclareFunc(mod: c.ApiModule, name: [*:0]const u8, params: [*]const cy.TypeId, numParams: u32, retType: cy.TypeId, funcPtr: c.FuncFn) void {
-    const modSym: *cy.Sym = @ptrCast(@alignCast(mod.sym));
+export fn csDeclareFunc(mod: c.Sym, name: [*:0]const u8, params: [*]const cy.TypeId, numParams: u32, retType: cy.TypeId, funcPtr: c.FuncFn) void {
+    const modSym = c.fromSym(mod);
     var symName: []const u8 = std.mem.sliceTo(name, 0);
     var nameOwned = false;
     const chunk = modSym.cast(.chunk).getMod().chunk;
@@ -205,8 +205,8 @@ export fn csDeclareFunc(mod: c.ApiModule, name: [*:0]const u8, params: [*]const 
     }
 }
 
-export fn csDeclareVar(mod: c.ApiModule, name: [*:0]const u8, typeId: cy.TypeId, val: c.Value) void {
-    const modSym: *cy.Sym = @ptrCast(@alignCast(mod.sym));
+export fn csDeclareVar(mod: c.Sym, name: [*:0]const u8, typeId: cy.TypeId, val: c.Value) void {
+    const modSym = c.fromSym(mod);
     var symName: []const u8 = std.mem.sliceTo(name, 0);
     var nameOwned = false;
     const chunk = modSym.cast(.chunk).getMod().chunk;

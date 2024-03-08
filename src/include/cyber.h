@@ -74,9 +74,9 @@ typedef struct CsStr {
     size_t len;
 } CsStr;
 
-typedef struct CsModule {
-    void* sym;
-} CsModule;
+typedef struct CsSym {
+    void* ptr;
+} CsSym;
 
 // #host func is binded to this function pointer signature.
 typedef CsValue (*CsFuncFn)(CsVM* vm, const CsValue* args, uint8_t nargs);
@@ -109,20 +109,20 @@ typedef bool (*CsResolverFn)(CsVM* vm, CsResolverParams params);
 
 // Callback invoked after all type symbols in the module's src are loaded.
 // This could be used to set up an array or hashmap for binding #host vars.
-typedef void (*CsModuleOnTypeLoadFn)(CsVM* vm, CsModule mod);
+typedef void (*CsModuleOnTypeLoadFn)(CsVM* vm, CsSym mod);
 
 // Callback invoked after all symbols in the module's src are loaded.
 // This could be used to inject symbols not declared in the module's src.
-typedef void (*CsModuleOnLoadFn)(CsVM* vm, CsModule mod);
+typedef void (*CsModuleOnLoadFn)(CsVM* vm, CsSym mod);
 
 // Callback invoked just before the module is destroyed.
 // This could be used to cleanup (eg. release) injected symbols from `CsPostLoadModuleFn`,
-typedef void (*CsModuleOnDestroyFn)(CsVM* vm, CsModule mod);
+typedef void (*CsModuleOnDestroyFn)(CsVM* vm, CsSym mod);
 
 // Info about a #host func.
 typedef struct CsFuncInfo {
     // The module it belongs to.
-    CsModule mod;
+    CsSym mod;
     // The name of the func.
     CsStr name;
     // The function's signature.
@@ -154,7 +154,7 @@ typedef bool (*CsFuncLoaderFn)(CsVM* vm, CsFuncInfo funcInfo, CsFuncResult* out)
 // Info about a #host var.
 typedef struct CsVarInfo {
     // The module it belongs to.
-    CsModule mod;
+    CsSym mod;
     // The name of the var.
     CsStr name;
     // A counter that tracks it's current position among all #host vars in the module.
@@ -170,7 +170,7 @@ typedef bool (*CsVarLoaderFn)(CsVM* vm, CsVarInfo funcInfo, CsValue* out);
 // Info about a #host type.
 typedef struct CsTypeInfo {
     // The module it belongs to.
-    CsModule mod;
+    CsSym mod;
     // The name of the type.
     CsStr name;
     // A counter that tracks it's current position among all #host types in the module.
@@ -329,11 +329,11 @@ extern bool csVerbose;
 // -----------------------------------
 
 // Declares a function in a module.
-void csDeclareUntypedFunc(CsModule mod, const char* name, uint32_t numParams, CsFuncFn fn);
-void csDeclareFunc(CsModule mod, const char* name, const CsTypeId* params, uint32_t numParams, CsTypeId retType, CsFuncFn fn);
+void csDeclareUntypedFunc(CsSym mod, const char* name, uint32_t numParams, CsFuncFn fn);
+void csDeclareFunc(CsSym mod, const char* name, const CsTypeId* params, uint32_t numParams, CsTypeId retType, CsFuncFn fn);
 
 // Declares a variable in a module.
-void csDeclareVar(CsModule mod, const char* name, CsValue val);
+void csDeclareVar(CsSym mod, const char* name, CsValue val);
 
 // Expand type template for given arguments.
 CsTypeId csExpandTypeTemplate(CsSym template, CsValue* args, uint32_t nargs);

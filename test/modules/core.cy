@@ -95,7 +95,7 @@ res = parseCyber('var .foo = 123')
 t.eq(res['decls'][0].type, 'variable')
 t.eq(res['decls'][0].name, 'foo')
 
-res = parseCyber('type foo bar')
+res = parseCyber('type foo = bar')
 t.eq(res['decls'][0].type, 'typeAlias')
 t.eq(res['decls'][0].name, 'foo')
 

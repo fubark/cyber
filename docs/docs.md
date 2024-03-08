@@ -811,6 +811,7 @@ print int(currency)       -- '123' or some arbitrary id.
   * [`if` unwrap.](#if-unwrap)
   * [`while` unwrap.](#while-unwrap)
 * [Type aliases.](#type-aliases)
+* [Type copies.](#type-copies)
 * [Traits.](#traits)
 * [Union types.](#union-types)
 * [Generic types.](#generic-types)
@@ -1153,14 +1154,19 @@ while iter.next() -> entry:
 ```
 
 ## Type aliases.
-A type alias is declared from a single line `type` statement. This creates a new type symbol for an existing data type.
+A type alias refers to a different target type.
+Once declared, the alias and the target type are interchangeable.
+It's declared using the assignment `=` operator after a `type` name declaration:
 ```cy
 import util './util.cy'
 
-type Vec3 util.Vec3
+type Vec3 = util.Vec3
 
 var v = [Vec3 x: 3, y: 4, z: 5]
 ```
+
+## Type copies.
+> _Planned Feature_
 
 ## Traits.
 > _Planned Feature_

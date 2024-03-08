@@ -754,7 +754,7 @@ pub const Parser = struct {
                 }
                 return decl;
             },
-            else => {
+            .equal => {
                 const decl = try self.parseTypeAliasDecl(start, name);
                 if (appendDecl) {
                     try self.staticDecls.append(self.alloc, .{
@@ -764,6 +764,9 @@ pub const Parser = struct {
                     });
                 }
                 return decl;
+            },
+            else => {
+                return error.TodoTypeCopy;
             }
         }
     }
@@ -809,7 +812,9 @@ pub const Parser = struct {
         }
     }
 
+    /// Assumes current token is `=`.
     fn parseTypeAliasDecl(self: *Parser, start: TokenId, name: NodeId) !NodeId {
+        self.advance();
         const typeSpec = (try self.parseOptTypeSpec(false)) orelse {
             return self.reportError("Expected type specifier.", &.{});
         };

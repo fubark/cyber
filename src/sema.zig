@@ -1738,6 +1738,17 @@ pub const ExprResult = struct {
         };
     }
 
+    fn initInheritDyn(loc: u32, ctype: CompactType, type_id: TypeId) ExprResult {
+        var new_ctype = ctype;
+        new_ctype.id = @intCast(type_id);
+        return .{
+            .resType = .value,
+            .type = new_ctype,
+            .data = undefined,
+            .irIdx = loc,
+        };
+    }
+
     fn initDynamic(irIdx: u32, typeId: TypeId) ExprResult {
         return .{
             .resType = .value,
@@ -3964,22 +3975,35 @@ pub const ChunkExt = struct {
                 return try c.semaAccessExpr(expr, true);
             },
             .unwrap => {
-                const opt = try c.semaExpr(node.data.unwrap.opt, .{});
-                const type_e = c.sema.types.items[opt.type.id];
-                if (type_e.kind != .option) {
-                    const name = try c.sema.allocTypeName(opt.type.id);
-                    defer c.alloc.free(name);
-                    return c.reportErrorAt("Unwrap operator expects an optional type, found: `{}`", &.{v(name)}, nodeId);
-                }
+                const opt = try c.semaOptionExpr(node.data.unwrap.opt);
+                const payload_t = if (opt.type.id == bt.Any) bt.Any else b: {
+                    const type_sym = c.sema.getTypeSym(opt.type.id).cast(.enum_t);
+                    const some = type_sym.getMemberByIdx(1);
+                    break :b some.payloadType;
+                };
 
-                const someMember = type_e.sym.cast(.enum_t).getMemberByIdx(1);
-                const loc = try c.ir.pushExpr(.unwrapChoice, c.alloc, someMember.payloadType, nodeId, .{
+                const loc = try c.ir.pushExpr(.unwrapChoice, c.alloc, payload_t, nodeId, .{
                     .choice = opt.irIdx,
                     .tag = 1,
-                    .payload_t = someMember.payloadType,
+                    .payload_t = payload_t,
                     .fieldIdx = 1,
                 });
-                return ExprResult.initStatic(loc, someMember.payloadType);
+                return ExprResult.initInheritDyn(loc, opt.type, payload_t);
+            },
+            .unwrap_or => {
+                const opt = try c.semaOptionExpr(node.data.unwrap_or.opt);
+                const payload_t = if (opt.type.id == bt.Any) bt.Any else b: {
+                    const type_sym = c.sema.getTypeSym(opt.type.id).cast(.enum_t);
+                    const some = type_sym.getMemberByIdx(1);
+                    break :b some.payloadType;
+                };
+
+                const default = try c.semaExprCstr(node.data.unwrap_or.default, payload_t);
+                const loc = try c.ir.pushExpr(.unwrap_or, c.alloc, payload_t, nodeId, .{
+                    .opt = opt.irIdx,
+                    .default = default.irIdx,
+                });
+                return ExprResult.initInheritDyn(loc, opt.type, payload_t);
             },
             .indexExpr => {
                 const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, nodeId);

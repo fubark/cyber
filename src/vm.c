@@ -1205,8 +1205,8 @@ beginSwitch:
         NEXT();
     }
     CASE(JumpNone): {
-        i16 offset = READ_I16(1);
-        Value opt = stack[pc[3]];
+        Value opt = stack[pc[1]];
+        i16 offset = READ_I16(2);
 #if TRACE
         TypeId typeId = getTypeId(opt);
         TypeEntry entry = ((TypeEntry*)vm->typesPtr)[typeId];

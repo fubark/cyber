@@ -3279,8 +3279,8 @@ pub const Parser = struct {
                     const default = (try self.parseExpr(.{})) orelse {
                         return self.reportError("Expected default expression.", &.{});
                     };
-                    const expr = try self.pushNode(.unwrapDef, start);
-                    self.ast.setNodeData(expr, .{ .unwrapDef = .{
+                    const expr = try self.pushNode(.unwrap_or, start);
+                    self.ast.setNodeData(expr, .{ .unwrap_or = .{
                         .opt = left_id,
                         .default = default,
                     }});

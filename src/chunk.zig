@@ -493,7 +493,7 @@ pub const Chunk = struct {
 
     pub fn pushEmptyJumpNone(self: *Chunk, opt: LocalId) !u32 {
         const start: u32 = @intCast(self.buf.ops.items.len);
-        try self.buf.pushOp3(.jumpNone, 0, 0, opt);
+        try self.buf.pushOp3(.jumpNone, opt, 0, 0);
         return start;
     }
 
@@ -546,7 +546,7 @@ pub const Chunk = struct {
     }
 
     pub fn patchJumpNoneToCurPc(self: *Chunk, jumpPc: u32) void {
-        self.buf.setOpArgU16(jumpPc + 1, @intCast(self.buf.ops.items.len - jumpPc));
+        self.buf.setOpArgU16(jumpPc + 2, @intCast(self.buf.ops.items.len - jumpPc));
     }
 
     /// Patches block breaks. For `if` and `match` blocks.

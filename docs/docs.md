@@ -1115,33 +1115,33 @@ Option(String)
 A value is automatically wrapped into the inferred optional's `some` case:
 ```cy
 var a ?String = 'abc'
-print a     -- Prints 'Option(abc)'
+print a     --> some(abc)'
 ```
 
 ### Wrap `none`.
 `none` is automatically initialized to the inferred optional's `none` case:
 ```cy
 var a ?String = none
-print a     -- Prints 'Option.none'
+print a     --> none
 ```
 
 ### Unwrap or panic.
 The `.?` access operator is used to unwrap an optional. If the expression evaluates to the `none` case, the runtime panics:
 ```cy
-var opt ?String = 'abc'
+var opt ?int = 123
 var v = opt.?
-print v     -- Prints 'abc'
+print v     --> 123
 ```
 
 ### Unwrap or default.
-The `?else` control flow operator either returns the unwrapped value or a default value when the optional is `none`: *Planned Feature*
+The `?else` control flow operator either returns the unwrapped value or a default value when the optional is `none`:
 ```cy
-var opt ?String = none
-var v = opt ?else 'empty'
-print v     -- Prints 'empty'
+var opt ?int = none
+var v = opt ?else 123
+print v     --> 123
 ```
 
-`?else` can also start a new statement block: *Planned Feature*
+`?else` can be used in an assignment block: *Planned Feature*
 ```cy
 var v = opt ?else:
     break 'empty'

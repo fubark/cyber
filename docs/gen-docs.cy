@@ -402,16 +402,16 @@ func genDocsModules():
         for decls -> decl:
             switch decl.type
             case 'funcInit':
-                var docLine = decl.contains('docs') ? decl.docs else ''
+                var docLine = decl.get('docs') ?else ''
                 var params = []
                 for decl.header.params -> param:
-                    var typeSpec = (param.typeSpec != '') ? param.typeSpec else 'any'
+                    var typeSpec = if (param.typeSpec != '') param.typeSpec else 'any'
                     params.append("$(param.name) $(typeSpec)")
                 var paramsStr = params.join(', ')
                 gen = gen + "> `func $(decl.header.name)($(paramsStr)) $(decl.header.ret)`\n>\n>$(docLine)\n\n"
             case 'variable':
-                var docLine = decl.contains('docs') ? decl.docs else ''
-                var typeSpec = (decl.typeSpec != '') ? decl.typeSpec else 'any'
+                var docLine = decl.get('docs') ?else ''
+                var typeSpec = if (decl.typeSpec != '') decl.typeSpec else 'any'
                 gen = gen + "> `var $(decl.name) $(typeSpec)`\n>\n>$(docLine)\n\n"
             case 'type_copy':
                 gen = gen + "### `type $(decl.name)`\n\n"
@@ -420,10 +420,10 @@ func genDocsModules():
             case 'struct_t':
                 gen = gen + "### `type $(decl.name) struct`\n\n"
             case 'implicit_method':
-                var docLine = decl.contains('docs') ? decl.docs else ''
+                var docLine = decl.get('docs') ?else ''
                 var params = []
                 for decl.header.params -> param:
-                    var typeSpec = (param.typeSpec != '') ? param.typeSpec else 'any'
+                    var typeSpec = if (param.typeSpec != '') param.typeSpec else 'any'
                     params.append("$(param.name) $(typeSpec)")
                 var paramsStr = params.join(', ')
                 gen = gen + "> `func $(decl.header.name)($(paramsStr)) $(decl.header.ret)`\n>\n>$(docLine)\n\n"

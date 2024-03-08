@@ -21,8 +21,10 @@ b = none
 test.eq(b == none, true)
 test.eq(b != none, false)
 
--- -- Unwrap or default.
--- b = none
--- test.eq(b ?else 123, 123)
+-- Unwrap or default.
+b = none
+test.eq(b ?else 123, 123)
+b = 234
+test.eq(b ?else 123, 234)
 
 --cytest: pass

@@ -97,7 +97,7 @@ pub const NodeType = enum(u8) {
     typeTemplate,
     unary_expr,
     unwrap,
-    unwrapDef,
+    unwrap_or,
     varSpec,
     void,
     whileCondStmt,
@@ -262,7 +262,7 @@ const NodeData = union {
     unwrap: struct {
         opt: NodeId,
     },
-    unwrapDef: struct {
+    unwrap_or: struct {
         opt: NodeId,
         default: NodeId,
     },

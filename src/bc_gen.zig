@@ -408,6 +408,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .tryExpr            => genTryExpr(c, idx, cstr, nodeId),
         .typeSym            => genTypeSym(c, idx, cstr, nodeId),
         .unwrapChoice       => genUnwrapChoice(c, idx, cstr, nodeId),
+        .unwrap_or          => genUnwrapOr(c, idx, cstr, nodeId),
         .varSym             => genVarSym(c, idx, cstr, nodeId),
         .blockExpr          => genBlockExpr(c, idx, cstr, nodeId),
         else => {
@@ -2845,6 +2846,36 @@ fn genTryExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     }
     c.buf.setOpArgU16(popTryPc + 1, @intCast(c.buf.ops.items.len - popTryPc));
     return val;
+}
+
+fn genUnwrapOr(c: *Chunk, loc: usize, cstr: Cstr, node: cy.NodeId) !GenValue {
+    const data = c.ir.getExprData(loc, .unwrap_or);
+
+    var finalCstr = cstr;
+    if (!finalCstr.isExact()) {
+        const temp = try c.rega.consumeNextTemp();
+        finalCstr = Cstr.toTemp(temp);
+    }
+
+    const optv = try genExpr(c, data.opt, Cstr.simple);
+    try pushUnwindValue(c, optv);
+    const jump_none = try c.pushEmptyJumpNone(optv.reg);
+
+    var retain_some = true;
+    const inst = try c.rega.selectForDstInst(cstr, retain_some, node);
+    try pushField(c, optv.reg, 1, inst.dst, node);
+    const somev = finishDstInst(c, inst, retain_some);
+    const jump_end = try c.pushEmptyJump();
+
+    // else.
+    c.patchJumpNoneToCurPc(jump_none);
+    _ = try genExpr(c, data.default, finalCstr);
+
+    c.patchJumpToCurPc(jump_end);
+    try popTempAndUnwind(c, optv);
+    try releaseTempValue(c, optv, node);
+
+    return somev;
 }
 
 fn genIfExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {

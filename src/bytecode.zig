@@ -617,8 +617,9 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             len += try fmt.printCount(w, "if !%{} jmp @{}", &.{v(pc[1].val), v(pcOffset + jump)});
         },
         .jumpNone => {
-            const jump = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
-            len += try fmt.printCount(w, "offset={}, cond={}", &.{v(jump), v(pc[3].val)});
+            const jump = @as(*const align(1) i16, @ptrCast(pc + 2)).*;
+            const jump_u32: u32 = @bitCast(@as(i32, jump));
+            len += try fmt.printCount(w, "if %{} == none: jmp @{}", &.{v(pc[1].val), v(pcOffset +% jump_u32)});
         },
         .list => {
             const startLocal = pc[1].val;

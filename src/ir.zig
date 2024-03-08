@@ -132,6 +132,7 @@ pub const ExprCode = enum(u8) {
     mainEnd,
     else_block,
     unwrapChoice,
+    unwrap_or,
     box,
     range,
 };
@@ -168,6 +169,11 @@ pub const UnwrapChoice = struct {
     payload_t: cy.TypeId,
     tag: u8,
     fieldIdx: u8,
+};
+
+pub const UnwrapOr = struct {
+    opt: Loc,
+    default: Loc,
 };
 
 pub const Coresume = struct {
@@ -641,6 +647,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .blockExpr => BlockExpr,
         .coresume => Coresume,
         .unwrapChoice => UnwrapChoice,
+        .unwrap_or => UnwrapOr,
         .typeCheckOption => TypeCheckOption,
         .box => Box,
         .range => Range,

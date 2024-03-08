@@ -157,6 +157,7 @@ typedef struct IndexSlice {
 #define VALUE_IS_LIST(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_LIST))
 #define VALUE_IS_TUPLE(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_TUPLE))
 #define VALUE_IS_MAP(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_MAP))
+#define VALUE_IS_RANGE(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_RANGE))
 #define VALUE_BOTH_FLOATS(a, b) (VALUE_IS_FLOAT(a) && VALUE_IS_FLOAT(b))
 #define VALUE_IS_INTEGER(v) ((v & TAGGED_UPPER_VALUE_MASK) == TAGGED_INTEGER_MASK)
 #define VALUE_BOTH_INTEGERS(a, b) ((a & b & TAGGED_UPPER_VALUE_MASK) == TAGGED_INTEGER_MASK)
@@ -327,6 +328,7 @@ typedef enum {
     CodeSetCaptured,
     CodeTag,
     CodeTagLiteral,
+    CodeRange,
     CodeCast,
     CodeCastAbstract,
     CodeBitwiseAnd,
@@ -394,12 +396,13 @@ enum {
     TYPE_TCC_STATE = 25,
     TYPE_POINTER = 26,
     TYPE_METATYPE = 27,
+    TYPE_RANGE = 28,
 
     // TYPE_UNDEFINED = 17,
 };
 
 #define PrimitiveEnd 9
-#define BuiltinEnd 28
+#define BuiltinEnd 29
 
 typedef uint8_t Inst;
 typedef uint64_t Value;
@@ -624,6 +627,16 @@ typedef struct Pointer {
     void* ptr;
 } Pointer;
 
+typedef struct Range {
+    TypeId typeId;
+    u32 rc;
+    bool has_start;
+    bool has_end;
+    bool inc;
+    i64 start;
+    i64 end;
+} Range;
+
 typedef union HeapObject {
     struct {
         u32 typeId;
@@ -631,6 +644,7 @@ typedef union HeapObject {
     } head;
     Fiber fiber;
     Object object;
+    Range range;
     MetaType metatype;
     Lambda lambda;
     Closure closure;

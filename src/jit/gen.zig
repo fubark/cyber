@@ -848,7 +848,6 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         // .preCallObjSym      => genCallObjSym(c, idx, cstr, nodeId),
         // .preCallObjSymBinOp => genCallObjSymBinOp(c, idx, cstr, nodeId),
         // .preCallObjSymUnOp  => genCallObjSymUnOp(c, idx, cstr, nodeId),
-        // .preSlice           => genSlice(c, idx, cstr, nodeId),
         // .preUnOp            => genUnOp(c, idx, cstr, nodeId),
         // .string             => genString(c, idx, cstr, nodeId),
         .stringTemplate     => genStringTemplate(c, idx, cstr, nodeId),

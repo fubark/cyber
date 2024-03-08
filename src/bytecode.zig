@@ -733,10 +733,9 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
         },
         .sliceList => {
             const recv = pc[1].val;
-            const start = pc[2].val;
-            const end = pc[3].val;
-            const dst = pc[4].val;
-            len += try fmt.printCount(w, "recv={}, start={}, end={}, dst={}", &.{v(recv), v(start), v(end), v(dst)});
+            const range = pc[2].val;
+            const dst = pc[3].val;
+            len += try fmt.printCount(w, "%{} = %{}[Range(%{})]", &.{v(dst), v(recv), v(range)});
         },
         .castAbstract,
         .cast => {
@@ -991,6 +990,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numEntries = pc[2].val;
             return 4 + numEntries * 2;
         },
+        .range,
         .unwrapChoice,
         .cast,
         .castAbstract,
@@ -1212,6 +1212,7 @@ pub const OpCode = enum(u8) {
     tag = vmc.CodeTag,
     /// TODO: Rename to symbol.
     tagLiteral = vmc.CodeTagLiteral,
+    range = vmc.CodeRange,
 
     seqDestructure = vmc.CodeSeqDestructure,
     bitwiseAnd = vmc.CodeBitwiseAnd,

@@ -237,7 +237,7 @@ pub const Parser = struct {
             } else if (token.tag() == .indent) {
                 // If another indent token is encountered, it would be a different type.
                 return self.reportError("Can not mix tabs and spaces for indentation.", &.{});
-            } else if (token.tag() == .none) {
+            } else if (token.tag() == .null) {
                 return null;
             } else {
                 return res;
@@ -598,7 +598,7 @@ pub const Parser = struct {
 
         var typeSpec: cy.NodeId = cy.NullNode;
         const token = self.peek();
-        if (token.tag() != .new_line and token.tag() != .none) {
+        if (token.tag() != .new_line and token.tag() != .null) {
             if (try self.parseOptTypeSpec(true)) |res| {
                 typeSpec = res;
             }
@@ -1529,34 +1529,17 @@ pub const Parser = struct {
             return self.reportError("Expected condition expression.", &.{});
         };
 
-        token = self.peek();
-        if (token.tag() == .colon) {
-            self.advance();
-            const res = try self.parseSingleOrIndentedBodyStmts();
-
-            const header = try self.pushNode(.forIterHeader, start);
-            self.ast.setNodeData(header, .{ .forIterHeader = .{
-                .iterable = expr_id,
-                .eachClause = cy.NullNode,
-            }});
-            self.ast.nodePtr(header).head.data = .{ .forIterHeader = .{ .count = cy.NullNode }};
-
-            const forStmt = try self.pushNode(.forIterStmt, start);
-            self.ast.setNodeData(forStmt, .{ .forIterStmt = .{
-                .header = header,
-                .bodyHead = res.first,
-            }});
-            return forStmt;
-        } else if (token.tag() == .dot_dot or token.tag() == .minusDotDot) {
-            self.advance();
-            const right_range_expr = (try self.parseExpr(.{})) orelse {
+        const iter = self.ast.node(expr_id);
+        if (iter.type() == .range) {
+            if (iter.data.range.end == cy.NullNode) {
                 return self.reportError("Expected right range expression.", &.{});
-            };
+            }
+
             const header = try self.pushNode(.forRangeHeader, expr_pos);
             self.ast.setNodeData(header, .{ .forRangeHeader = .{
-                .start = expr_id,
-                .end = @intCast(right_range_expr),
-                .increment = token.tag() == .dot_dot,
+                .start = iter.data.range.start,
+                .end = iter.data.range.end,
+                .increment = iter.data.range.inc,
             }});
 
             token = self.peek();
@@ -1600,6 +1583,26 @@ pub const Parser = struct {
             } else {
                 return self.reportError("Expected :.", &.{});
             }
+        }
+
+        token = self.peek();
+        if (token.tag() == .colon) {
+            self.advance();
+            const res = try self.parseSingleOrIndentedBodyStmts();
+
+            const header = try self.pushNode(.forIterHeader, start);
+            self.ast.setNodeData(header, .{ .forIterHeader = .{
+                .iterable = expr_id,
+                .eachClause = cy.NullNode,
+            }});
+            self.ast.nodePtr(header).head.data = .{ .forIterHeader = .{ .count = cy.NullNode }};
+
+            const forStmt = try self.pushNode(.forIterStmt, start);
+            self.ast.setNodeData(forStmt, .{ .forIterStmt = .{
+                .header = header,
+                .bodyHead = res.first,
+            }});
+            return forStmt;
         } else if (token.tag() == .capture) {
             self.advance();
             token = self.peek();
@@ -1937,7 +1940,7 @@ pub const Parser = struct {
             self.advance();
             return;
         }
-        if (tag == .none) {
+        if (tag == .null) {
             return;
         }
         return self.reportError("Expected end of line or file. Got {}.", &.{v(tag)});
@@ -1945,7 +1948,7 @@ pub const Parser = struct {
 
     fn consumeWhitespaceTokens(self: *Parser) void {
         var token = self.peek();
-        while (token.tag() != .none) {
+        while (token.tag() != .null) {
             switch (token.tag()) {
                 .new_line,
                 .indent => {
@@ -2407,7 +2410,7 @@ pub const Parser = struct {
                 .right_bracket,
                 .right_paren,
                 .new_line,
-                .none => break,
+                .null => break,
                 .comma => {
                     self.advance();
                     const arg = (try self.parseExpr(.{})) orelse {
@@ -2433,12 +2436,12 @@ pub const Parser = struct {
     }
 
     /// Parses the right expression of a BinaryExpression.
-    fn parseRightExpression(self: *Parser, left_op: cy.ast.BinaryExprOp) anyerror!NodeId {
+    fn parseRightExpr(self: *Parser, left_op: cy.ast.BinaryExprOp) anyerror!NodeId {
         var start = self.next_pos;
         var token = self.peek();
 
         switch (token.tag()) {
-            .none => {
+            .null => {
                 return self.reportError("Expected right operand.", &.{});
             },
             .indent,
@@ -2447,7 +2450,7 @@ pub const Parser = struct {
                 self.consumeWhitespaceTokens();
                 start = self.next_pos;
                 token = self.peek();
-                if (token.tag() == .none) {
+                if (token.tag() == .null) {
                     return self.reportError("Expected right operand.", &.{});
                 }
             },
@@ -2455,16 +2458,19 @@ pub const Parser = struct {
         }
 
         const expr_id = try self.parseTermExpr();
+        return self.parseRightExpr2(left_op, expr_id);
+    }
 
+    fn parseRightExpr2(self: *Parser, left_op: cy.ast.BinaryExprOp, right_id: cy.NodeId) anyerror!NodeId {
         // Check if next token is an operator with higher precedence.
-        token = self.peek();
+        var token = self.peek();
 
         var rightOp: cy.ast.BinaryExprOp = undefined;
         switch (token.tag()) {
             .operator => rightOp = toBinExprOp(token.data.operator_t),
             .and_k => rightOp = .and_op,
             .or_k => rightOp = .or_op,
-            else => return expr_id,
+            else => return right_id,
         }
 
         const op_prec = getBinOpPrecedence(left_op);
@@ -2472,22 +2478,22 @@ pub const Parser = struct {
         if (right_op_prec > op_prec) {
             // Continue parsing right.
             _ = self.consume();
-            start = self.next_pos;
-            const right_id = try self.parseRightExpression(rightOp);
+            var start = self.next_pos;
+            const next_right = try self.parseRightExpr(rightOp);
 
             const binExpr = try self.pushNode(.binExpr, start);
             self.ast.setNodeData(binExpr, .{ .binExpr = .{
-                .left = expr_id,
-                .right = @intCast(right_id),
+                .left = right_id,
+                .right = @intCast(next_right),
                 .op = rightOp,
             }});
 
             // Before returning the expr, perform left recursion if the op prec greater than the starting op.
             // eg. a + b * c * d
-            //         ^ parseRightExpression starts here
+            //         ^ parseRightExpr starts here
             // Returns ((b * c) * d).
             // eg. a < b * c - d
-            //         ^ parseRightExpression starts here
+            //         ^ parseRightExpr starts here
             // Returns ((b * c) - d).
             var left = binExpr;
             while (true) {
@@ -2503,7 +2509,7 @@ pub const Parser = struct {
                 const right2_op_prec = getBinOpPrecedence(rightOp2);
                 if (right2_op_prec > op_prec) {
                     self.advance();
-                    const rightExpr = try self.parseRightExpression(rightOp);
+                    const rightExpr = try self.parseRightExpr(rightOp);
                     const newBinExpr = try self.pushNode(.binExpr, start);
                     self.ast.setNodeData(newBinExpr, .{ .binExpr = .{
                         .left = left,
@@ -2517,7 +2523,7 @@ pub const Parser = struct {
                 }
             }
         }
-        return expr_id;
+        return right_id;
     }
 
     fn isVarDeclaredFromScope(self: *Parser, name: []const u8) bool {
@@ -2628,8 +2634,14 @@ pub const Parser = struct {
         return id;
     }
 
-    /// An expression term doesn't contain a binary expression at the top.
     fn parseTermExpr(self: *Parser) anyerror!NodeId {
+        return (try self.parseTermExprOpt()) orelse {
+            return self.reportError("Expected term expr. Got: {}.", &.{v(self.peek().tag())});
+        };
+    }
+
+    /// An expression term doesn't contain a binary expression at the top.
+    fn parseTermExprOpt(self: *Parser) anyerror!?NodeId {
         const start = self.next_pos;
         var token = self.peek();
         switch (token.tag()) {
@@ -2754,11 +2766,39 @@ pub const Parser = struct {
                 }});
                 return coinit;
             },
+            .minusDotDot => {
+                // Start omitted.
+                self.advance();
+                const end = (try self.parseExpr(.{})) orelse {
+                    return self.reportError("Expected range end.", &.{});
+                };
+
+                const range = try self.pushNode(.range, start);
+                self.ast.setNodeData(range, .{ .range = .{
+                    .start = cy.NullNode,
+                    .end = @intCast(end),
+                    .inc = false,
+                }});
+                return range;
+            },
+            .dot_dot => {
+                // Start omitted.
+                self.advance();
+                const end = (try self.parseExpr(.{})) orelse {
+                    return self.reportError("Expected range end.", &.{});
+                };
+
+                const range = try self.pushNode(.range, start);
+                self.ast.setNodeData(range, .{ .range = .{
+                    .start = cy.NullNode,
+                    .end = @intCast(end),
+                    .inc = true,
+                }});
+                return range;
+            },
             else => {},
         }
-        return (try self.parseTightTermExpr()) orelse {
-            return self.reportError("Expected term expr. Got: {}.", &.{v(self.peek().tag())});
-        };
+        return self.parseTightTermExpr();
     }
 
     /// A tight term expr also doesn't include various top expressions
@@ -2973,101 +3013,29 @@ pub const Parser = struct {
                     left_id = expr;
                 },
                 .left_bracket => {
-                    // index expr, slice expr.
+                    // Index expr.
                     self.advance();
-                    if (self.peek().tag() == .dot_dot) {
-                        // Slice expr, start index omitted.
-                        self.advance();
-                        const rightRange = (try self.parseExpr(.{})) orelse {
-                            return self.reportError("Expected expression.", &.{});
-                        };
-
-                        if (self.peek().tag() != .right_bracket) {
-                            return self.reportError("Expected right bracket.", &.{});
-                        }
-
-                        self.advance();
-
-                        const range = try self.pushNode(.range, start);
-                        self.ast.setNodeData(range, .{ .range = .{
-                            .start = cy.NullNode,
-                            .end = rightRange,
-                        }});
-
-                        const expr = try self.pushNode(.sliceExpr, start);
-                        self.ast.setNodeData(expr, .{ .sliceExpr = .{
-                            .arr = left_id,
-                            .range = range,
-                        }});
-                        left_id = expr;
-                        start = self.next_pos;
-                        continue;
-                    }
                     const index = (try self.parseExpr(.{})) orelse {
                         return self.reportError("Expected index.", &.{});
                     };
 
-                    if (self.peek().tag() == .right_bracket) {
-                        // Index expr.
-                        self.advance();
-                        const expr = try self.pushNode(.indexExpr, start);
-                        self.ast.setNodeData(expr, .{ .indexExpr = .{
-                            .left = left_id,
-                            .right = index,
-                        }});
-                        left_id = expr;
-                        start = self.next_pos;
-                    } else if (self.peek().tag() == .dot_dot) {
-                        // Slice expr.
-                        self.advance();
-                        if (self.peek().tag() == .right_bracket) {
-                            // End index omitted.
-                            self.advance();
-
-                            const range = try self.pushNode(.range, start);
-                            self.ast.setNodeData(range, .{ .range = .{
-                                .start = index,
-                                .end = cy.NullNode,
-                            }});
-
-                            const expr = try self.pushNode(.sliceExpr, start);
-                            self.ast.setNodeData(expr, .{ .sliceExpr = .{
-                                .arr = left_id,
-                                .range = range,
-                            }});
-                            left_id = expr;
-                            start = self.next_pos;
-                        } else {
-                            const right = (try self.parseExpr(.{})) orelse {
-                                return self.reportError("Expected end index.", &.{});
-                            };
-                            if (self.peek().tag() != .right_bracket) {
-                                return self.reportError("Expected right bracket.", &.{});
-                            }
-                            self.advance();
-
-                            const range = try self.pushNode(.range, start);
-                            self.ast.setNodeData(range, .{ .range = .{
-                                .start = index,
-                                .end = right,
-                            }});
-
-                            const expr = try self.pushNode(.sliceExpr, start);
-                            self.ast.setNodeData(expr, .{ .sliceExpr = .{
-                                .arr = left_id,
-                                .range = range,
-                            }});
-                            left_id = expr;
-                            start = self.next_pos;
-                        }
-                    } else {
+                    if (self.peek().tag() != .right_bracket) {
                         return self.reportError("Expected right bracket.", &.{});                            
                     }
+                    self.advance();
+
+                    const expr = try self.pushNode(.indexExpr, start);
+                    self.ast.setNodeData(expr, .{ .indexExpr = .{
+                        .left = left_id,
+                        .right = index,
+                    }});
+                    left_id = expr;
                 },
                 .left_paren => {
                     const call_id = try self.parseCallExpression(left_id);
                     left_id = call_id;
                 },
+                .minusDotDot,
                 .dot_dot,
                 .right_bracket,
                 .right_paren,
@@ -3093,7 +3061,7 @@ pub const Parser = struct {
                 .templateString,
                 .equal_greater,
                 .new_line,
-                .none => break,
+                .null => break,
                 else => break,
             }
         }
@@ -3119,7 +3087,7 @@ pub const Parser = struct {
         // Assumes current token is the operator.
         self.advance();
 
-        const right = try self.parseRightExpression(op);
+        const right = try self.parseRightExpr(op);
         const expr = try self.pushNode(.binExpr, opStart);
         self.ast.setNodeData(expr, .{ .binExpr = .{
             .left = left,
@@ -3164,7 +3132,7 @@ pub const Parser = struct {
 
         var left_id: NodeId = undefined;
         switch (token.tag()) {
-            .none => return null,
+            .null => return null,
             .right_paren => return null,
             .right_bracket => return null,
             .indent,
@@ -3173,7 +3141,7 @@ pub const Parser = struct {
                 self.consumeWhitespaceTokens();
                 start = self.next_pos;
                 token = self.peek();
-                if (token.tag() == .none) {
+                if (token.tag() == .null) {
                     return null;
                 }
             },
@@ -3220,6 +3188,32 @@ pub const Parser = struct {
                     const bin_op = toBinExprOp(op_t);
                     left_id = try self.parseBinExpr(left_id, bin_op);
                 },
+                .minusDotDot => {
+                    self.advance();
+                    const end: cy.NodeId = if (try self.parseTermExprOpt()) |right| b: {
+                        break :b try self.parseRightExpr2(.reverse_range, right);
+                    } else cy.NullNode;
+                    const range = try self.pushNode(.range, start);
+                    self.ast.setNodeData(range, .{ .range = .{
+                        .start = left_id,
+                        .end = @intCast(end),
+                        .inc = false,
+                    }});
+                    left_id = range;
+                },
+                .dot_dot => {
+                    self.advance();
+                    const end: cy.NodeId = if (try self.parseTermExprOpt()) |right| b: {
+                        break :b try self.parseRightExpr2(.range, right);
+                    } else cy.NullNode;
+                    const range = try self.pushNode(.range, start);
+                    self.ast.setNodeData(range, .{ .range = .{
+                        .start = left_id,
+                        .end = @intCast(end),
+                        .inc = true,
+                    }});
+                    left_id = range;
+                },
                 .as_k => {
                     const opStart = self.next_pos;
                     self.advance();
@@ -3263,11 +3257,9 @@ pub const Parser = struct {
                 .else_k,
                 .comma,
                 .colon,
-                .minusDotDot,
-                .dot_dot,
                 .capture,
                 .new_line,
-                .none => break,
+                .null => break,
                 else => {
                     if (!opts.parseShorthandCallExpr) {
                         return left_id;
@@ -3346,7 +3338,7 @@ pub const Parser = struct {
         var right: cy.NodeId = cy.NullNode;
         inner: {
             var token = self.peek();
-            if (token.tag() == .new_line or token.tag() == .none) {
+            if (token.tag() == .new_line or token.tag() == .null) {
                 break :inner;
             }
 
@@ -3388,7 +3380,7 @@ pub const Parser = struct {
         const token = self.peek();
         switch (token.tag()) {
             .new_line,
-            .none => {
+            .null => {
                 return try self.pushNode(.returnStmt, start);
             },
             .func_k => {
@@ -3500,7 +3492,7 @@ pub const Parser = struct {
             if (token.tag() == .new_line) {
                 self.advance();
                 return id;
-            } else if (token.tag() == .none) {
+            } else if (token.tag() == .null) {
                 return id;
             } else return self.reportError("Expected end of line or file", &.{});
         }
@@ -3520,7 +3512,7 @@ pub const Parser = struct {
         if (self.next_pos + n < self.tokens.len) {
             return self.tokens[self.next_pos + n];
         } else {
-            return Token.init(.none, self.next_pos, .{
+            return Token.init(.null, self.next_pos, .{
                 .end_pos = cy.NullNode,
             });
         }
@@ -3530,7 +3522,7 @@ pub const Parser = struct {
         if (!self.isAtEnd()) {
             return self.tokens[self.next_pos];
         } else {
-            return Token.init(.none, @intCast(self.ast.src.len), .{
+            return Token.init(.null, @intCast(self.ast.src.len), .{
                 .end_pos = cy.NullNode,
             });
         }
@@ -3664,27 +3656,27 @@ fn toBinExprOp(op: cy.tokenizer.OperatorType) cy.ast.BinaryExprOp {
 pub fn getBinOpPrecedence(op: cy.ast.BinaryExprOp) u8 {
     switch (op) {
         .bitwiseLeftShift,
-        .bitwiseRightShift => return 9,
+        .bitwiseRightShift => return 10,
 
-        .bitwiseAnd => return 8,
+        .bitwiseAnd => return 9,
 
         .bitwiseXor,
-        .bitwiseOr => return 7,
+        .bitwiseOr => return 8,
 
-        .caret => return 6,
+        .caret => return 7,
 
         .slash,
         .percent,
         .star => {
-            return 5;
+            return 6;
         },
 
         .minus,
         .plus => {
-            return 4;
+            return 5;
         },
 
-        .cast => return 3,
+        .cast => return 4,
 
         .greater,
         .greater_equal,
@@ -3692,12 +3684,15 @@ pub fn getBinOpPrecedence(op: cy.ast.BinaryExprOp) u8 {
         .less_equal,
         .bang_equal,
         .equal_equal => {
-            return 2;
+            return 3;
         },
 
-        .and_op => return 1,
+        .and_op => return 2,
 
-        .or_op => return 0,
+        .or_op => return 1,
+
+        .range,
+        .reverse_range => return 0,
 
         else => return 0,
     }

@@ -117,7 +117,6 @@ pub const ExprCode = enum(u8) {
     pre,
     preBinOp,
     preUnOp,
-    preSlice,
     preCallDyn,
     preCallObjSym,
     preCallObjSymUnOp,
@@ -134,6 +133,7 @@ pub const ExprCode = enum(u8) {
     else_block,
     unwrapChoice,
     box,
+    range,
 };
 
 pub const ExprType = packed struct {
@@ -147,6 +147,12 @@ pub const ExprType = packed struct {
     pub fn initThrows(id: cy.TypeId) ExprType {
         return .{ .id = @intCast(id), .throws = true };
     }
+};
+
+pub const Range = struct {
+    start: cy.Nullable(Loc),
+    end: cy.Nullable(Loc),
+    inc: bool,
 };
 
 pub const Box = struct {
@@ -602,7 +608,6 @@ pub fn ExprData(comptime code: ExprCode) type {
         .preCallFuncSym,
         .preCallObjSym,
         .preCallObjSymBinOp,
-        .preSlice,
         .preBinOp,
         .preUnOp,
         .preCallObjSymUnOp,
@@ -633,6 +638,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .coresume => Coresume,
         .unwrapChoice => UnwrapChoice,
         .box => Box,
+        .range => Range,
         else => void,
     };
 }

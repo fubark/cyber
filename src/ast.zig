@@ -80,7 +80,6 @@ pub const NodeType = enum(u8) {
     runeLit,
     semaSym,
     seqDestructure,
-    sliceExpr,
     staticDecl,
     stringLit,
     stringTemplate,
@@ -402,18 +401,15 @@ const NodeData = union {
         head: NodeId,
         numArgs: u8,
     },
-    sliceExpr: struct {
-        arr: NodeId,
-        range: NodeId,
-    },
     typeTemplate: packed struct {
         paramHead: cy.Nullable(u24),
         numParams: u8,
         typeDecl: NodeId,
     },
     range: struct {
-        start: NodeId,
-        end: NodeId,
+        start: cy.Nullable(NodeId),
+        end: cy.Nullable(u24),
+        inc: bool,
     },
     cond_expr: struct {
         if_branch: NodeId,
@@ -512,6 +508,8 @@ pub const BinaryExprOp = enum(u8) {
     and_op,
     or_op,
     cast,
+    range,
+    reverse_range,
     dummy,
 
     pub fn name(self: BinaryExprOp) []const u8 {
@@ -869,6 +867,8 @@ fn getBinOpStr(op: BinaryExprOp) []const u8 {
         .and_op => " and ",
         .or_op => " or ",
         .cast => "as",
+        .range,
+        .reverse_range,
         .index,
         .dummy => cy.unexpected(),
     };
@@ -1013,19 +1013,14 @@ pub const Encoder = struct {
                 try self.writeNode(w, node.data.group.child);
                 try w.writeByte(')');
             },
-            .sliceExpr => {
-                try self.writeNode(w, node.data.sliceExpr.arr);
-
-                const range = self.ast.node(node.data.sliceExpr.range);
-                try w.writeByte('[');
-                if (range.data.range.start != cy.NullNode) {
-                    try self.writeNode(w, range.data.range.start);
+            .range => {
+                if (node.data.range.start != cy.NullNode) {
+                    try self.writeNode(w, node.data.range.start);
                 }
                 try w.writeAll("..");
-                if (range.data.range.end != cy.NullNode) {
-                    try self.writeNode(w, range.data.range.end);
+                if (node.data.range.end != cy.NullNode) {
+                    try self.writeNode(w, node.data.range.end);
                 }
-                try w.writeByte(']');
             },
             .indexExpr => {
                 try self.writeNode(w, node.data.indexExpr.left);

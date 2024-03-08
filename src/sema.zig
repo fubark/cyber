@@ -3923,18 +3923,7 @@ pub const ChunkExt = struct {
                 const preferT = if (leftT == bt.List or leftT == bt.Tuple) bt.Integer else bt.Any;
                 const index = try c.semaExprPrefer(node.data.indexExpr.right, preferT);
 
-                if (leftT == bt.List or leftT == bt.Tuple or leftT == bt.Map) {
-                    // Specialized.
-                    c.ir.setExprCode(loc, .preBinOp);
-                    c.ir.setExprType(loc, bt.Any);
-                    c.ir.setExprData(loc, .preBinOp, .{ .binOp = .{
-                        .leftT = leftT,
-                        .rightT = index.type.id,
-                        .op = .index,
-                        .left = left.irIdx,
-                        .right = index.irIdx,
-                    }});
-                } else {
+                if (left.type.dynamic) {
                     const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, index.type.id }, bt.Any);
                     c.ir.setExprCode(loc, .preCallObjSymBinOp);
                     c.ir.setExprType(loc, bt.Any);
@@ -3943,73 +3932,59 @@ pub const ChunkExt = struct {
                         .left = left.irIdx,
                         .right = index.irIdx,
                     }});
-                }
-                return ExprResult.initDynamic(loc, bt.Any);
-            },
-            .sliceExpr => {
-                const preIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, nodeId);
-
-                const recv = try c.semaExpr(node.data.sliceExpr.arr, .{});
-                const preferT = if (recv.type.id == bt.List) bt.Integer else bt.Any;
-
-                const range = c.ast.node(node.data.sliceExpr.range);
-
-                var left: ExprResult = undefined;
-                if (range.data.range.start != cy.NullNode) {
-                    left = try c.semaExprPrefer(range.data.range.start, preferT);
-                } else {
-                    left = try c.semaNone(null, nodeId);
-                }
-                var right: ExprResult = undefined;
-                if (range.data.range.end != cy.NullNode) {
-                    right = try c.semaExprPrefer(range.data.range.end, preferT);
-                } else {
-                    right = try c.semaNone(null, nodeId);
+                    return ExprResult.initDynamic(loc, bt.Any);
                 }
 
-                if (recv.type.id == bt.List) {
+                if (leftT == bt.List or leftT == bt.Tuple or leftT == bt.Map) {
                     // Specialized.
-                    c.ir.setExprCode(preIdx, .preSlice);
-                    c.ir.setExprData(preIdx, .preSlice, .{
-                        .slice = .{
-                            .recvT = recv.type.id,
-                            .rec = recv.irIdx,
-                            .left = left.irIdx,
-                            .right = right.irIdx,
-                        },
-                    });
-                    return ExprResult.initStatic(preIdx, bt.List);
-                } else {
-                    if (recv.type.dynamic) {
-                        const irExtraIdx = try c.ir.pushEmptyArray(c.alloc, u32, 2);
-                        c.ir.setArrayItem(irExtraIdx, u32, 0, left.irIdx);
-                        c.ir.setArrayItem(irExtraIdx, u32, 1, right.irIdx);
-                        const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, left.type.id, right.type.id }, bt.Any);
-                        c.ir.setExprCode(preIdx, .preCallObjSym);
-                        c.ir.setExprData(preIdx, .preCallObjSym, .{ .callObjSym = .{
-                            .name = "$slice",
-                            .funcSigId = funcSigId,
-                            .numArgs = 2,
-                            .rec = recv.irIdx,
-                            .args = irExtraIdx,
-                        }});
-                        return ExprResult.initDynamic(preIdx, bt.Any);
-                    } else {
-                        // Look for sym under left type's module.
-                        const recvTypeSym = c.sema.getTypeSym(recv.type.id);
-                        const sym = try c.mustFindSym(recvTypeSym, "$slice", nodeId);
-                        const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, 3);
-                        c.ir.setArrayItem(irArgsIdx, u32, 0, recv.irIdx);
-                        c.ir.setArrayItem(irArgsIdx, u32, 1, left.irIdx);
-                        c.ir.setArrayItem(irArgsIdx, u32, 2, right.irIdx);
-                        return c.semaCallFuncSym(preIdx, nodeId, sym.cast(.func), .{
-                            .types = @constCast(&[_]CompactType{ recv.type, left.type, right.type }),
-                            .start = 0,
-                            .hasDynamicArg = left.type.dynamic or right.type.dynamic,
-                            .irArgsIdx = irArgsIdx,
-                        });
+                    var res_t = bt.Any;
+                    if (leftT == bt.List and index.type.id == bt.Range) {
+                        res_t = bt.List;
                     }
+
+                    c.ir.setExprCode(loc, .preBinOp);
+                    c.ir.setExprType(loc, res_t);
+                    c.ir.setExprData(loc, .preBinOp, .{ .binOp = .{
+                        .leftT = leftT,
+                        .rightT = index.type.id,
+                        .op = .index,
+                        .left = left.irIdx,
+                        .right = index.irIdx,
+                    }});
+
+                    return ExprResult.initStatic(loc, res_t);
+                } else {
+                    // Look for sym under left type's module.
+                    const recTypeSym = c.sema.getTypeSym(leftT);
+                    const sym = try c.mustFindSym(recTypeSym, "$index", nodeId);
+                    const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, 2);
+                    c.ir.setArrayItem(irArgsIdx, u32, 0, left.irIdx);
+                    c.ir.setArrayItem(irArgsIdx, u32, 1, index.irIdx);
+                    return c.semaCallFuncSym(loc, nodeId, sym.cast(.func), .{
+                        .types = @constCast(&[_]CompactType{ left.type, index.type }),
+                        .start = 0,
+                        .hasDynamicArg = left.type.dynamic or index.type.dynamic,
+                        .irArgsIdx = irArgsIdx,
+                    });
                 }
+            },
+            .range => {
+                var start: u32 = cy.NullId;
+                if (node.data.range.start != cy.NullNode) {
+                    const start_res = try c.semaExprCstr(node.data.range.start, bt.Integer);
+                    start = start_res.irIdx;
+                }
+                var end: u32 = cy.NullId;
+                if (node.data.range.end != cy.NullNode) {
+                    const end_res = try c.semaExprCstr(node.data.range.end, bt.Integer);
+                    end = end_res.irIdx;
+                }
+                const loc = try c.ir.pushExpr(.range, c.alloc, bt.Range, nodeId, .{
+                    .start = start,
+                    .end = end,
+                    .inc = node.data.range.inc,
+                });
+                return ExprResult.initStatic(loc, bt.Range);
             },
             .binExpr => {
                 const left = node.data.binExpr.left;

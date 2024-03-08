@@ -31,25 +31,23 @@ pub fn sliceFn(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const str = obj.string.getSlice();
     const parent = obj.string.getParentByType(stype);
 
+    const range = args[1].asHeapObject();
+
     var start: i48 = undefined;
-    if (args[1].isNone()) {
+    if (!range.range.has_start) {
         start = 0;
-    } else if (args[1].isInteger()) {
-        start = args[1].asInteger();
     } else {
-        return rt.prepThrowError(vm, .InvalidArgument);
+        start = @intCast(range.range.start);
     }
     if (start < 0) {
         return rt.prepThrowError(vm, .OutOfBounds);
     }
 
     var end: i48 = undefined;
-    if (args[2].isNone()) {
+    if (!range.range.has_end) {
         end = @intCast(str.len);
-    } else if (args[2].isInteger()) {
-        end = args[2].asInteger();
     } else {
-        return rt.prepThrowError(vm, .InvalidArgument);
+        end = @intCast(range.range.end);
     }
     if (end > str.len) {
         return rt.prepThrowError(vm, .OutOfBounds);

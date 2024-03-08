@@ -383,6 +383,23 @@ static inline ValueResult allocLambda(VM* vm, u32 funcPc, u8 numParams, u8 stack
     return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
+static inline ValueResult allocRange(VM* vm, bool has_start, i64 start, bool has_end, i64 end, bool inc) {
+    HeapObjectResult res = zAllocPoolObject(vm);
+    if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
+        return (ValueResult){ .code = res.code };
+    }
+    res.obj->range = (Range){
+        .typeId = TYPE_RANGE,
+        .rc = 1,
+        .has_start = has_start,
+        .has_end = has_end,
+        .inc = inc,
+        .start = start,
+        .end = end,
+    };
+    return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
+}
+
 static inline ValueResult allocBox(VM* vm, Value val) {
     HeapObjectResult res = zAllocPoolObject(vm);
     if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
@@ -750,6 +767,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(SetCaptured),
         JENTRY(Tag),
         JENTRY(TagLiteral),
+        JENTRY(Range),
         JENTRY(Cast),
         JENTRY(CastAbstract),
         JENTRY(BitwiseAnd),
@@ -1097,16 +1115,16 @@ beginSwitch:
     }
     CASE(SliceList): {
         Value listv = stack[pc[1]];
-        Value startv = stack[pc[2]];
-        Value endv = stack[pc[3]];
-        if (VALUE_IS_LIST(listv) && (VALUE_IS_INTEGER(startv) || VALUE_IS_NONE(startv)) && (VALUE_IS_INTEGER(endv) || VALUE_IS_NONE(endv))) {
+        Value rangev = stack[pc[2]];
+        if (VALUE_IS_LIST(listv) && VALUE_IS_RANGE(rangev)) {
             HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
+            HeapObject* rangeo = VALUE_AS_HEAPOBJECT(rangev);
 
             _BitInt(48) start;
-            if (VALUE_IS_NONE(startv)) {
-                start = 0;
+            if (rangeo->range.has_start) {
+                start = rangeo->range.start;
             } else {
-                start = VALUE_AS_INTEGER(startv);
+                start = 0;
             }
             if (start < 0) {
                 panicOutOfBounds(vm);
@@ -1114,10 +1132,10 @@ beginSwitch:
             }
 
             _BitInt(48) end;
-            if (VALUE_IS_NONE(endv)) {
-                end = listo->list.list.len;
+            if (rangeo->range.has_end) {
+                end = rangeo->range.end;
             } else {
-                end = VALUE_AS_INTEGER(endv);
+                end = listo->list.list.len;
             }
             if (end > listo->list.list.len) {
                 panicOutOfBounds(vm);
@@ -1137,12 +1155,12 @@ beginSwitch:
             if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
                 RETURN(res.code);
             }
-            stack[pc[4]] = res.val;
+            stack[pc[3]] = res.val;
             pc += CALL_OBJ_SYM_INST_LEN;
             NEXT();
         } else {
             if (!VALUE_IS_LIST(listv)) {
-                DEOPTIMIZE_TERNOP();
+                DEOPTIMIZE_BINOP();
                 NEXT();
             }
             panicExpectedInteger(vm);
@@ -1931,6 +1949,23 @@ beginSwitch:
         u8 symId = pc[1];
         stack[pc[2]] = VALUE_SYMBOL(symId);
         pc += 3;
+        NEXT();
+    }
+    CASE(Range): {
+        i64 start;
+        if (pc[1] != NULL_U8) {
+            start = VALUE_AS_INTEGER(stack[pc[1]]);
+        }
+        i64 end;
+        if (pc[2] != NULL_U8) {
+            end = VALUE_AS_INTEGER(stack[pc[2]]);
+        }
+        ValueResult res = allocRange(vm, pc[1] != NULL_U8, start, pc[2] != NULL_U8, end, pc[3] == 1);
+        if (res.code != RES_CODE_SUCCESS) {
+            RETURN(res.code);
+        }
+        stack[pc[4]] = res.val;
+        pc += 5;
         NEXT();
     }
     CASE(Cast): {

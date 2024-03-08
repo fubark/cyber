@@ -110,6 +110,7 @@ pub const HeapObject = extern union {
     listIter: ListIterator,
     map: Map,
     mapIter: MapIterator,
+    range: Range,
 
     // Functions.
     closure: Closure,
@@ -223,6 +224,15 @@ pub const Tuple = extern struct {
     pub fn getElemsPtr(self: *Tuple) [*]Value {
         return @ptrCast(&self.firstValue);
     }
+};
+
+pub const Range = extern struct {
+    typeId: cy.TypeId,
+    rc: u32,
+    has_start: bool,
+    has_end: bool,
+    start: i64,
+    end: i64,
 };
 
 pub const List = extern struct {
@@ -1723,6 +1733,11 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                 } else {
                     freeExternalObject(vm, obj, (2 + obj.tuple.len) * @sizeOf(Value), true);
                 }
+            }
+        },
+        bt.Range => {
+            if (free) {
+                freePoolObject(vm, obj);
             }
         },
         bt.List => {

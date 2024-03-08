@@ -114,8 +114,8 @@ type float struct:
 #host
 type List:
     #host func '$index'(idx int) any
-    #host func '$setIndex'(idx int, val any) none
-    #host func '$slice'(start any, end any) List
+    #host func '$index'(range Range) List
+    #host func '$setIndex'(idx int, val any) void
 
     --| Appends a value to the end of the list.
     #host func append(val any) none
@@ -244,11 +244,11 @@ type String:
     --| Returns the UTF-8 rune starting at byte index `idx` as a string.
     #host func sliceAt(idx int) String
 
-    --| Returns a slice into this string from `start` to `end` (exclusive) byte indexes.
-    #host func '$slice'(start any, end any) String
-
     --| Returns the rune at byte index `idx`. The replacement character (0xFFFD) is returned for an invalid UTF-8 rune.
     #host func '$index'(idx int) String
+
+    --| Returns a slice into this string from a `Range` with `start` (inclusive) to `end` (exclusive) byte indexes.
+    #host func '$index'(range Range) String
 
     --| Returns a list of UTF-8 strings split at occurrences of `sep`.
     #host func split(sep String) List
@@ -324,12 +324,10 @@ type Array:
     --| Returns a new array with all occurrences of `needle` replaced with `replacement`.
     #host func replace(needle Array, replacement Array) Array
 
-    --| Returns a slice into this array from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
-    #host func slice(start any, end any) Array
-
-    #host func '$slice'(start any, end any) Array
-
     #host func '$index'(idx int) int
+
+    --| Returns a slice into this array from a `Range` with `start` (inclusive) to `end` (exclusive) indexes.
+    #host func '$index'(range Range) Array
 
     --| Returns a list of arrays split at occurrences of `sep`.
     #host func split(sep Array) List

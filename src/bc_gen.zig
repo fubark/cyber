@@ -393,8 +393,8 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .preCallObjSym      => genCallObjSym(c, idx, cstr, nodeId),
         .preCallObjSymBinOp => genCallObjSymBinOp(c, idx, cstr, nodeId),
         .preCallObjSymUnOp  => genCallObjSymUnOp(c, idx, cstr, nodeId),
-        .preSlice           => genSlice(c, idx, cstr, nodeId),
         .preUnOp            => genUnOp(c, idx, cstr, nodeId),
+        .range              => genRange(c, idx, cstr, nodeId),
         .string             => genString(c, idx, cstr, nodeId),
         .stringTemplate     => genStringTemplate(c, idx, cstr, nodeId),
         .switchExpr         => genSwitch(c, idx, cstr, nodeId),
@@ -1020,6 +1020,32 @@ fn genError(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     return finishNoErrNoDepInst(c, inst, false);
 }
 
+fn genRange(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+    const data = c.ir.getExprData(idx, .range);
+
+    const inst = try c.rega.selectForDstInst(cstr, true, nodeId);
+
+    var start: GenValue = undefined;
+    if (data.start != cy.NullId) {
+        // Assume int.
+        start = try genExpr(c, data.start, Cstr.simple);
+    }
+
+    var end: GenValue = undefined;
+    if (data.end != cy.NullId) {
+        // Assume int.
+        end = try genExpr(c, data.end, Cstr.simple);
+    }
+
+    const start_reg = if (data.start != cy.NullId) start.reg else cy.NullU8;
+    const end_reg = if (data.end != cy.NullId) end.reg else cy.NullU8;
+    try c.pushCode(.range, &.{start_reg, end_reg, @intFromBool(data.inc), inst.dst}, nodeId);
+
+    if (data.end != cy.NullId) try popTempValue(c, end);
+    if (data.start != cy.NullId) try popTempValue(c, start);
+    return finishDstInst(c, inst, true);
+}
+
 fn genSymbol(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const data = c.ir.getExprData(idx, .symbol);
 
@@ -1136,32 +1162,6 @@ fn genString(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
 fn pushStringConst(c: *Chunk, str: []const u8, dst: RegisterId, nodeId: cy.NodeId) !void {
     const idx = try c.buf.getOrPushStaticStringConst(str);
     try genConst(c, idx, dst, true, nodeId);
-}
-
-fn genSlice(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
-    const data = c.ir.getExprData(idx, .preSlice).slice;
-    const inst = try c.rega.selectForDstInst(cstr, true, nodeId);
-
-    if (data.recvT != bt.List) {
-        return error.Unexpected;
-    }
-
-    var args: [3]GenValue = undefined;
-    args[0] = try genExpr(c, data.rec, Cstr.simple);
-    try pushUnwindValue(c, args[0]);
-    args[1] = try genExpr(c, data.left, Cstr.simple);
-    try pushUnwindValue(c, args[1]);
-    args[2] = try genExpr(c, data.right, Cstr.simple);
-    try pushUnwindValue(c, args[2]);
-
-    try pushInlineTernExpr(c, .sliceList, args[0].reg, args[1].reg, args[2].reg, inst.dst, nodeId);
-
-    const retained = try popTempAndUnwinds2(c, &args);
-
-    // ARC cleanup.
-    try pushReleaseVals(c, retained, nodeId);
-
-    return finishDstInst(c, inst, true);
 }
 
 fn genUnOp(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
@@ -1497,7 +1497,11 @@ fn genBinOp(c: *Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy.No
     switch (data.op) {
         .index => {
             if (data.leftT == bt.List) {
-                try pushInlineBinExpr(c, .indexList, leftv.reg, rightv.reg, inst.dst, nodeId);
+                if (data.rightT == bt.Range) {
+                    try pushInlineBinExpr(c, .sliceList, leftv.reg, rightv.reg, inst.dst, nodeId);
+                } else {
+                    try pushInlineBinExpr(c, .indexList, leftv.reg, rightv.reg, inst.dst, nodeId);
+                }
             } else if (data.leftT == bt.Tuple) {
                 try pushInlineBinExpr(c, .indexTuple, leftv.reg, rightv.reg, inst.dst, nodeId);
             } else if (data.leftT == bt.Map) {

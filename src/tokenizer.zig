@@ -42,6 +42,8 @@ const keywords = std.ComptimeStringMap(TokenType, .{
 });
 
 pub const TokenType = enum(u8) {
+    /// Used to indicate no token.
+    null,
     and_k,
     as_k,
     at,
@@ -84,8 +86,6 @@ pub const TokenType = enum(u8) {
     minusDotDot,
     my_k,
     new_line,
-    /// Used to indicate no token.
-    none,
     none_k,
     not_k,
     object_k,

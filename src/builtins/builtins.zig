@@ -100,6 +100,7 @@ const funcs = [_]NameFunc{
 
     // List
     .{"$index",     zErrFunc2(inlineBinOp(.indexList)), .inlinec},
+    .{"$index",     zErrFunc2(inlineBinOp(.sliceList)), .inlinec},
     .{"$setIndex",  bindings.inlineTernOp(.setIndexList), .inlinec},
     .{"$slice",     bindings.inlineTernOp(.sliceList), .inlinec},
     .{"append",     appendList, .inlinec},
@@ -149,8 +150,8 @@ const funcs = [_]NameFunc{
     .{"repeat", string.repeat, .standard},
     .{"seek", zErrFunc2(string.seek), .standard},
     .{"sliceAt", zErrFunc2(string.sliceAt), .standard},
-    .{"$slice", string.sliceFn, .standard},
     .{"$index", zErrFunc2(string.runeAt), .standard},
+    .{"$index", string.sliceFn, .standard},
     .{"split", zErrFunc2(string.split), .standard},
     .{"startsWith", string.startsWith, .standard},
     .{"trim", string.trim, .standard},
@@ -175,9 +176,8 @@ const funcs = [_]NameFunc{
     .{"len",            arrayLen, .standard},
     .{"repeat",         zErrFunc2(arrayRepeat), .standard},
     .{"replace",        arrayReplace, .standard},
-    .{"slice",          arraySlice, .standard},
-    .{"$slice",         arraySlice, .standard},
     .{"$index",         zErrFunc2(arrayGetByte), .standard},
+    .{"$index",         arraySlice, .standard},
     .{"split",          zErrFunc2(arraySplit), .standard},
     .{"startsWith",     arrayStartsWith, .standard},
     .{"trim",           zErrFunc2(arrayTrim), .standard},
@@ -941,25 +941,23 @@ fn arraySlice(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
     const slice = obj.array.getSlice();
 
+    const range = args[1].asHeapObject();
+
     var start: i48 = undefined;
-    if (args[1].isNone()) {
+    if (!range.range.has_start) {
         start = 0;
-    } else if (args[1].isInteger()) {
-        start = args[1].asInteger();
     } else {
-        return rt.prepThrowError(vm, .InvalidArgument);
+        start = @intCast(range.range.start);
     }
     if (start < 0) {
         return rt.prepThrowError(vm, .OutOfBounds);
     }
 
     var end: i48 = undefined;
-    if (args[2].isNone()) {
+    if (!range.range.has_end) {
         end = @intCast(slice.len);
-    } else if (args[2].isInteger()) {
-        end = args[2].asInteger();
     } else {
-        return rt.prepThrowError(vm, .InvalidArgument);
+        end = @intCast(range.range.end);
     }
     if (end > slice.len) {
         return rt.prepThrowError(vm, .OutOfBounds);

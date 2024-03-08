@@ -271,6 +271,7 @@ Cyber supports the following operators. They are ordered from highest to lowest 
 | `>` `>=` `<` `<=` `!=` `==` | Greater, greater or equal, less, less or equal, not equals, equals. |
 | `and` | Logical and. |
 | `or` | Logical or. |
+| `..` `-..` | Range, reversed range. |
 
 ### Arithmetic Operators.
 The following arithmetic operators are supported for the [numeric data types](#numbers).

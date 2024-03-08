@@ -4155,6 +4155,16 @@ fn callMethod(
                 return null;
             }
 
+            // Perform type check on args.
+            const vals = sp[ret+CallArgStart+1..ret+CallArgStart+1+numArgs-1];
+            const target = vm.compiler.sema.getFuncSig(data.optimizing.func_sig);
+            for (vals, target.params()[1..]) |val, target_t| {
+                const valTypeId = val.getTypeId();
+                if (!types.isTypeSymCompat(vm.compiler, valTypeId, target_t)) {
+                    return null;
+                }
+            }
+
             vm.pc = pc;
             const res: Value = @bitCast(data.optimizing.ptr.?(@ptrCast(vm), @ptrCast(sp + ret + CallArgStart), numArgs));
             if (res.isInterrupt()) {
@@ -4171,10 +4181,10 @@ fn callMethod(
             }
             // Perform type check on args.
             const vals = sp[ret+CallArgStart+1..ret+CallArgStart+1+numArgs-1];
-            const targetFuncSig = vm.compiler.sema.getFuncSig(data.typed.funcSigId);
-            for (vals, targetFuncSig.params()[1..]) |val, cstrTypeId| {
+            const target = vm.compiler.sema.getFuncSig(data.typed.func_sig);
+            for (vals, target.params()[1..]) |val, target_t| {
                 const valTypeId = val.getTypeId();
-                if (!types.isTypeSymCompat(vm.compiler, valTypeId, cstrTypeId)) {
+                if (!types.isTypeSymCompat(vm.compiler, valTypeId, target_t)) {
                     return null;
                 }
             }
@@ -4185,7 +4195,7 @@ fn callMethod(
 
             if (pc[7].val & 0x80 == 0) {
                 // Check to inline function ptr.
-                if (canInlineCallObjSym(vm, anySelfFuncSigId, data.typed.funcSigId, targetFuncSig)) {
+                if (canInlineCallObjSym(vm, anySelfFuncSigId, data.typed.func_sig, target)) {
                     pc[0] = cy.Inst.initOpCode(.callObjFuncIC);
                     pc[7].val = @intCast(data.typed.stackSize);
                     @as(*align(1) u32, @ptrCast(pc + 8)).* = data.typed.pc;
@@ -4213,17 +4223,17 @@ fn callMethod(
             }
             // Perform type check on args.
             const vals = sp[ret+CallArgStart+1..ret+CallArgStart+1+numArgs-1];
-            const targetFuncSig = vm.sema.getFuncSig(data.typedHost.funcSigId);
-            for (vals, targetFuncSig.params()[1..]) |val, cstrTypeId| {
+            const target = vm.sema.getFuncSig(data.typedHost.func_sig);
+            for (vals, target.params()[1..]) |val, target_t| {
                 const valTypeId = val.getTypeId();
-                if (!types.isTypeSymCompat(vm.compiler, valTypeId, cstrTypeId)) {
+                if (!types.isTypeSymCompat(vm.compiler, valTypeId, target_t)) {
                     return null;
                 }
             }
 
             if (pc[7].val & 0x80 == 0) {
                 // Check to inline function ptr.
-                if (canInlineCallObjSym(vm, anySelfFuncSigId, data.typedHost.funcSigId, targetFuncSig)) {
+                if (canInlineCallObjSym(vm, anySelfFuncSigId, data.typedHost.func_sig, target)) {
                     pc[0] = cy.Inst.initOpCode(.callObjNativeFuncIC);
                     @as(*align(1) u48, @ptrCast(pc + 8)).* = @intCast(@intFromPtr(data.typedHost.ptr));
                     @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);

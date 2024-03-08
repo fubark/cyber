@@ -2,7 +2,7 @@
 #host func copy(val any) any
 
 --| Prints the result of `toCyon` on a value.
-#host func dump(val any) none
+#host func dump(val any) void
 
 #host func errorReport() String
 
@@ -26,7 +26,7 @@
 #host func must(val any) any
 
 --| Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors](#unexpected-errors).
-#host func panic(err any) none
+#host func panic(err any) dynamic
 
 --| Parses Cyber source string into structured map object.
 --| Currently, only metadata about static declarations is made available but this will be extended to include an AST.
@@ -40,7 +40,7 @@
 #host func performGC() Map
 
 --| Prints a value. The host determines how it is printed.
-#host func print(str any) none
+#host func print(str any) void
 
 --| Converts a rune to a string.
 #host func runestr(val int) String
@@ -142,7 +142,7 @@ type List:
     #host func append(val any) void
 
     --| Inserts a value at index `idx`.
-    #host func insert(idx int, val any) none
+    #host func insert(idx int, val any) void
 
     --| Returns a new iterator over the list elements.
     #host func iterator() ListIterator
@@ -154,17 +154,17 @@ type List:
     #host func len() int
 
     --| Removes an element at index `idx`.
-    #host func remove(idx int) none
+    #host func remove(idx int) void
 
     --| Resizes the list to `len` elements. If the new size is bigger, `none` values
     --| are appended to the list. If the new size is smaller, elements at the end of the list are removed.
-    #host func resize(size int) none
+    #host func resize(size int) void
 
     #host func slice(start any, end any) List
 
     --| Sorts the list with the given `less` function.
     --| If element `a` should be ordered before `b`, the function should return `true` otherwise `false`.
-    func sort(lessFn any) none:
+    func sort(lessFn any) void:
         -- Simple insertion sort, will be upgraded to pdqsort later on.
         for 1..self.len() -> i:
             var cur = self[i]
@@ -386,7 +386,7 @@ type pointer:
     #host func get(offset int, ctype symbol) any
 
     --| Unsafe. Converts the value to a compatible C value and writes it to a byte offset from this pointer.
-    #host func set(offset int, ctype symbol, val any) none
+    #host func set(offset int, ctype symbol, val any) void
 
     --| Unsafe. Returns an `Array` with a copy of the byte data starting from an offset to the specified length.
     #host func toArray(offset int, len int) Array

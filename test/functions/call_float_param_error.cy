@@ -3,7 +3,7 @@ func foo(a float):
 foo(true)
 
 --cytest: error
---CompileError: Can not find compatible function for call signature: `foo(bool) any`.
+--CompileError: Can not find compatible function for call signature: `foo(bool)`.
 --Functions named `foo` in `main`:
 --    func foo(float) dynamic
 --

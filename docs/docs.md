@@ -249,7 +249,7 @@ These keywords only have meaning in a certain context.
 - [Methods](#methods): `self` `Self`
 - [Types](#custom-types): [`object`](#objects) [`struct`](#structs) [`enum`](#enums) 
 - [Catching Errors](#caught-variable): `caught`
-- Function Specifier: 
+- Function Return: `void`
 
 ### Literals.
 - [Booleans](#booleans): `true` `false`

@@ -545,6 +545,7 @@ pub const Parser = struct {
         const start = self.next_pos;
         var token = self.peek();
         switch (token.tag()) {
+            .void_k,
             .struct_k,
             .enum_k,
             .type_k,
@@ -807,6 +808,7 @@ pub const Parser = struct {
             },
             .question,
             .pound,
+            .void_k,
             .type_k,
             .none_k,
             .ident => {
@@ -2886,6 +2888,10 @@ pub const Parser = struct {
             .none_k => {
                 self.advance();
                 return try self.pushNode(.noneLit, start);
+            },
+            .void_k => {
+                self.advance();
+                return try self.pushNode(.void, start);
             },
             .dec => b: {
                 self.advance();

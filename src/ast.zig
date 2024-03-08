@@ -99,6 +99,7 @@ pub const NodeType = enum(u8) {
     unwrap,
     unwrapDef,
     varSpec,
+    void,
     whileCondStmt,
     whileInfStmt,
     whileOptHeader,

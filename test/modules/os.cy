@@ -8,22 +8,24 @@ if os.system != 'windows':
     t.assert(os.getEnv('testfoo') == none)
 
 -- access()
-my res = try os.access('test/assets/missing.txt', .read)
-t.eq(res, error.FileNotFound)
+try:
+    os.access('test/assets/missing.txt', .read)
+catch err:
+    t.eq(err, error.FileNotFound)
 os.access('test/assets/file.txt', .read)
 
 -- args()
-res = os.args()
+my res = os.args()
 t.eq(res.len() > 0, true)
 
 -- createDir()
-try os.removeDir('test/assets/tempdir')
+os.removeDir('test/assets/tempdir')
 os.createDir('test/assets/tempdir')
 var dir = os.openDir('test/assets/tempdir')
 t.eq(dir.stat().type, .dir)
 
 -- createFile() new file.
-try os.removeFile('test/assets/write.txt')
+os.removeFile('test/assets/write.txt')
 var file = os.createFile('test/assets/write.txt', false)
 file.write('foobar')
 t.eq(os.readFile('test/assets/write.txt'), 'foobar')
@@ -82,7 +84,10 @@ t.eq(res, error.Closed)
 
 -- File.seek()
 file = os.openFile('test/assets/file.txt', .read)
-t.eq(try file.seek(-1), error.InvalidArgument)
+try:
+    file.seek(-1)
+catch err:
+    t.eq(err, error.InvalidArgument)
 file.seek(3)
 t.eq(file.read(3), Array('bar'))
 
@@ -97,7 +102,10 @@ t.eq(file.read(3), Array('foo'))
 file = os.openFile('test/assets/file.txt', .read)
 file.seekFromEnd(-3)
 t.eq(file.read(3), Array('bar'))
-t.eq(try file.seekFromEnd(1), error.InvalidArgument)
+try:
+    file.seekFromEnd(1)
+catch err:
+    t.eq(err, error.InvalidArgument)
 file.seekFromEnd(-6)
 t.eq(file.read(3), Array('foo'))
 

@@ -21,7 +21,7 @@
 
 --| Attempts to access a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.
 --| Throws an error if unsuccessful.
-#host func access(path String, mode symbol) none
+#host func access(path String, mode symbol) void
 
 --| Returns the command line arguments in a `List`.
 --| Each argument is converted to a `String`.
@@ -32,10 +32,10 @@
 #host func cacheUrl(url String) String
 
 --| Copies a file to a destination path.
-#host func copyFile(srcPath String, dstPath String) none
+#host func copyFile(srcPath String, dstPath String) void
 
 --| Creates the directory at `path`. Returns `true` if successful.
-#host func createDir(path String) none
+#host func createDir(path String) void
 
 --| Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated.
 #host func createFile(path String, truncate bool) File
@@ -56,13 +56,13 @@
 #host func exePath() String
 
 --| Exits the program with a status code.
-#host func exit(status int) none
+#host func exit(status int) void
 
 --| Fetches the contents at `url` using the HTTP GET request method.
 #host func fetchUrl(url String) Array
 
 --| Frees the memory located at `ptr`.
-#host func free(ptr pointer) none
+#host func free(ptr pointer) void
 
 --| Returns an environment variable by key.
 #host func getEnv(key String) ?String
@@ -111,28 +111,28 @@
 #host func realPath(path String) String
 
 --| Removes an empty directory at `path`. Returns `true` if successful.
-#host func removeDir(path String) none
+#host func removeDir(path String) void
 
 --| Removes the file at `path`. Returns `true` if successful.
-#host func removeFile(path String) none
+#host func removeFile(path String) void
 
 --| Sets an environment variable by key.
-#host func setEnv(key String, val String) none
+#host func setEnv(key String, val String) void
 
 --| Pauses the current thread for given milliseconds.
-#host func sleep(ms float) none
+#host func sleep(ms float) void
 
 --| Removes an environment variable by key.
-#host func unsetEnv(key String) none
+#host func unsetEnv(key String) void
 
 --| Writes `contents` as a string or bytes to a file.
-#host func writeFile(path String, contents any) none
+#host func writeFile(path String, contents any) void
 
 #host
 type File:
 
     --| Closes the file handle. File ops invoked afterwards will return `error.Closed`.
-    #host func close() none
+    #host func close() void
     #host func iterator() any
     #host func next() any
 
@@ -144,13 +144,13 @@ type File:
     #host func readAll() Array
 
     --| Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.
-    #host func seek(n int) none
+    #host func seek(n int) void
 
     --| Seeks the read/write position by `pos` bytes from the current position.
-    #host func seekFromCur(n int) none
+    #host func seekFromCur(n int) void
 
     --| Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid.
-    #host func seekFromEnd(n int) none
+    #host func seekFromEnd(n int) void
 
     --| Returns info about the file as a `Map`.
     #host func stat() Map
@@ -210,10 +210,10 @@ type FFI:
     #host func bindObjPtr(obj any) pointer
 
     --| Binds a Cyber type to a C struct.
-    #host func cbind(mt metatype, fields List) none
+    #host func cbind(mt metatype, fields List) void
 
     --| Declares a C function which will get binded to the library handle created from `bindLib`.
-    #host func cfunc(name String, params List, ret any) none
+    #host func cfunc(name String, params List, ret any) void
 
     --| Allocates memory for a C struct or primitive with the given C type specifier.
     --| A `pointer` to the allocated memory is returned.
@@ -223,7 +223,7 @@ type FFI:
     --| Releases the object from the FFI context.
     --| External code should no longer use the object's pointer since it's not guaranteed to exist
     --| or point to the correct object.
-    #host func unbindObjPtr(obj any) none
+    #host func unbindObjPtr(obj any) void
 
 type CArray:
     elem any

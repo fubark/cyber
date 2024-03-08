@@ -63,8 +63,14 @@ a.insert(1, 4)
 t.eqList(a, [2, 4, 1, 3])
 
 -- insert() at index out of bounds.
-t.eq(try a.insert(-1, 123), error.OutOfBounds)
-t.eq(try a.insert(100, 123), error.OutOfBounds)
+try:
+    a.insert(-1, 123)
+catch err:
+    t.eq(err, error.OutOfBounds)
+try:
+    a.insert(100, 123)
+catch err:
+    t.eq(err, error.OutOfBounds)
 
 -- join()
 t.eq([].join(','), '')
@@ -101,8 +107,14 @@ t.eq(a[1], 2)
 
 -- remove() out of bounds.
 a = [1, 2, 3]
-t.eq(try a.remove(-1), error.OutOfBounds)
-t.eq(try a.remove(3), error.OutOfBounds)
+try:
+    a.remove(-1)
+catch err:
+    t.eq(err, error.OutOfBounds)
+try:
+    a.remove(3)
+catch err:
+    t.eq(err, error.OutOfBounds)
 t.eq(a.len(), 3)
 
 -- remove() rc item.

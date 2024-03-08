@@ -45,7 +45,7 @@ pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.TypeTemplate, ar
 
     return expandTemplate(c, template, args, argTypes) catch |err| {
         if (err == error.IncompatSig) {
-            const expSig = try c.sema.allocFuncSigStr(template.sigId);
+            const expSig = try c.sema.allocFuncSigStr(template.sigId, true);
             defer c.alloc.free(expSig);
             return c.reportErrorAt(
                 \\Expected template signature `{}{}`.
@@ -58,7 +58,7 @@ pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.TypeTemplate, ar
 
 pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.TypeTemplate, args: []const cy.Value, arg_types: []const cy.TypeId) !*cy.Sym {
     // Check against template signature.
-    if (!cy.types.isTypeFuncSigCompat(c.compiler, @ptrCast(arg_types), bt.Type, template.sigId)) {
+    if (!cy.types.isTypeFuncSigCompat(c.compiler, @ptrCast(arg_types), .not_void, template.sigId)) {
         return error.IncompatSig;
     }
 

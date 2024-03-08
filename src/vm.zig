@@ -3653,7 +3653,7 @@ fn panicIncompatibleFuncSig(vm: *cy.VM, funcId: rt.FuncId, args: []const Value, 
         vm.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
         return error.Panic;
     };
-    const existingSigStr = vm.compiler.sema.allocFuncSigStr(targetFuncSigId) catch {
+    const existingSigStr = vm.compiler.sema.allocFuncSigStr(targetFuncSigId, true) catch {
         vm.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
         return error.Panic;
     };
@@ -3680,7 +3680,7 @@ pub fn getMruFuncSigId(vm: *cy.VM, mgExt: rt.MethodGroupExt) sema.FuncSigId {
 }
 
 fn panicIncompatibleLambdaSig(vm: *cy.VM, args: []const Value, cstrFuncSigId: sema.FuncSigId) error{Panic, OutOfMemory} {
-    const cstrFuncSigStr = try vm.compiler.sema.allocFuncSigStr(cstrFuncSigId);
+    const cstrFuncSigStr = try vm.compiler.sema.allocFuncSigStr(cstrFuncSigId, true);
     defer vm.alloc.free(cstrFuncSigStr);
     const argTypes = try allocValueTypeIds(vm, args);
     defer vm.alloc.free(argTypes);
@@ -3722,7 +3722,7 @@ fn panicIncompatibleMethodSig(
         defer vm.alloc.free(sigStr);
         if (singleMethod) {
             const funcSigId = getMruFuncSigId(vm, mgExt);
-            const existingSigStr = try vm.compiler.sema.allocFuncSigStr(funcSigId);
+            const existingSigStr = try vm.compiler.sema.allocFuncSigStr(funcSigId, true);
             defer vm.alloc.free(existingSigStr);
 
             const typeName = vm.types[typeId].sym.name();
@@ -3937,8 +3937,8 @@ fn releaseFuncSymDep(vm: *VM, symId: SymbolId) void {
 }
 
 fn reportAssignFuncSigMismatch(vm: *VM, srcFuncSigId: u32, dstFuncSigId: u32) error{OutOfMemory, Panic} {
-    const dstSig = vm.compiler.sema.allocFuncSigStr(dstFuncSigId) catch fatal();
-    const srcSig = vm.compiler.sema.allocFuncSigStr(srcFuncSigId) catch fatal();
+    const dstSig = vm.compiler.sema.allocFuncSigStr(dstFuncSigId, true) catch fatal();
+    const srcSig = vm.compiler.sema.allocFuncSigStr(srcFuncSigId, true) catch fatal();
     defer {
         vm.alloc.free(dstSig);
         vm.alloc.free(srcSig);

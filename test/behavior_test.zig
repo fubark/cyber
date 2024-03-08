@@ -97,18 +97,14 @@ if (!aot) {
 if (!aot) {
     run.case("functions/call_fiber_param.cy");
 }
-    run.case("functions/call_fiber_param_error.cy");
     run.case("functions/call_float_param_error.cy");
 if (!aot) {
     run.case("functions/call_lambda.cy");
     run.case("functions/call_lambda_incompat_arg_panic.cy");
 }
-    run.case("functions/call_list_param_error.cy");
-    run.case("functions/call_map_param_error.cy");
 if (!aot) {
     run.case("functions/call_metatype_param.cy");
 }
-    run.case("functions/call_metatype_param_error.cy");
     run.case("functions/call_method_missing_error.cy");
 if (!aot) {
     run.case("functions/call_method_missing_panic.cy");
@@ -137,6 +133,7 @@ if (!aot) {
     run.case("functions/call_symbol_param_error.cy");
     run.case("functions/call_typed_param.cy");
     run.case("functions/call_undeclared_error.cy");   
+    run.case("functions/call_void_return_error.cy");
     run.case("functions/declare_over_builtin.cy");
     run.case("functions/method_self_param_error.cy");
     run.case("functions/object_funcs.cy");

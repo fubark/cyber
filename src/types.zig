@@ -300,7 +300,7 @@ pub fn isAnyOrDynamic(id: TypeId) bool {
 }
 
 /// Check type constraints on target func signature.
-pub fn isTypeFuncSigCompat(c: *cy.Compiler, args: []const CompactType, ret: TypeId, targetId: sema.FuncSigId) bool {
+pub fn isTypeFuncSigCompat(c: *cy.Compiler, args: []const CompactType, ret_cstr: ReturnCstr, targetId: sema.FuncSigId) bool {
     const target = c.sema.getFuncSig(targetId);
     if (cy.Trace) {
         const sigStr = c.sema.formatFuncSig(targetId, &cy.tempBuf) catch cy.fatal();
@@ -328,7 +328,23 @@ pub fn isTypeFuncSigCompat(c: *cy.Compiler, args: []const CompactType, ret: Type
     }
 
     // Check return type. Target is the source return type.
-    return isTypeSymCompat(c, target.ret, ret);
+    return isValidReturnType(c, target.ret, ret_cstr);
+}
+
+pub const ReturnCstr = enum(u8) {
+    any,       // exprStmt.
+    not_void,  // expr.
+};
+
+pub fn isValidReturnType(_: *cy.Compiler, type_id: TypeId, cstr: ReturnCstr) bool {
+    switch (cstr) {
+        .any => {
+            return true;
+        },
+        .not_void => {
+            return type_id != bt.Void;
+        },
+    }
 }
 
 pub fn isTypeSymCompat(_: *cy.Compiler, typeId: TypeId, cstrType: TypeId) bool {

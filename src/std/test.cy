@@ -1,5 +1,5 @@
 --| Panics if `pred` is `false`.
-#host func assert(pred any) none
+#host func assert(pred bool) void
 
 --| Returns whether two values are equal.
 --| Panics with `error.AssertError` if types or values do not match up.

@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 const stdx = @import("stdx");
 const fatal = cy.fatal;
 const cy = @import("../cyber.zig");
@@ -46,7 +47,7 @@ const funcs = [_]NameFunc{
     .{"parseCyber",     zErrFunc2(parseCyber), .standard},
     .{"parseCyon",      zErrFunc2(parseCyon), .standard},
     .{"performGC",      zErrFunc2(performGC), .standard},
-    .{"print",          zErrFunc2(print), .standard},
+    .{"print",          print, .standard},
     .{"runestr",        zErrFunc2(runestr), .standard},
     .{"toCyon",         zErrFunc2(toCyon), .standard},
     .{"typeof",         typeof, .standard},
@@ -287,26 +288,40 @@ pub fn zErrFunc(comptime func: fn (vm: *cy.UserVM, args: [*]const Value, nargs: 
     return S.genFunc;
 }
 
-pub fn prepThrowZError(vm: *cy.VM, err: anyerror, optTrace: ?*std.builtin.StackTrace) Value {
+pub fn prepThrowZError(c: cy.Context, err: anyerror, optTrace: ?*std.builtin.StackTrace) Value {
     if (!cy.isFreestanding and cy.verbose) {
         if (optTrace) |trace| {
             std.debug.dumpStackTrace(trace.*);
         }
     }
-    switch (err) {
-        error.Unicode               => return rt.prepThrowError(vm, .Unicode),
-        error.InvalidArgument       => return rt.prepThrowError(vm, .InvalidArgument),
-        error.InvalidEnumTag        => return rt.prepThrowError(vm, .InvalidArgument),
-        error.FileNotFound          => return rt.prepThrowError(vm, .FileNotFound),
-        error.OutOfBounds           => return rt.prepThrowError(vm, .OutOfBounds),
-        error.PermissionDenied      => return rt.prepThrowError(vm, .PermissionDenied),
-        error.StdoutStreamTooLong   => return rt.prepThrowError(vm, .StreamTooLong),
-        error.StderrStreamTooLong   => return rt.prepThrowError(vm, .StreamTooLong),
-        error.EndOfStream           => return rt.prepThrowError(vm, .EndOfStream),
-        else                        => {
-            rt.errFmt(vm, "UnknownError: {}", &.{fmt.v(err)});
-            return rt.prepThrowError(vm, .UnknownError);
+    const sym = errorSymbol(err);
+    return rt.prepThrowError(c, sym);
+}
+
+pub fn prepThrowZError2(c: cy.Context, err: anyerror, optTrace: ?*std.builtin.StackTrace) rt.Error {
+    if (!cy.isFreestanding and cy.verbose) {
+        if (optTrace) |trace| {
+            std.debug.dumpStackTrace(trace.*);
         }
+    }
+    const sym = errorSymbol(err);
+    _ = rt.prepThrowError(c, sym);
+    return rt.Error.init(@tagName(sym));
+}
+
+fn errorSymbol(err: anyerror) Symbol {
+    switch (err) {
+        error.AssertError           => return .AssertError,
+        error.Unicode               => return .Unicode,
+        error.InvalidArgument       => return .InvalidArgument,
+        error.InvalidEnumTag        => return .InvalidArgument,
+        error.FileNotFound          => return .FileNotFound,
+        error.OutOfBounds           => return .OutOfBounds,
+        error.PermissionDenied      => return .PermissionDenied,
+        error.StdoutStreamTooLong   => return .StreamTooLong,
+        error.StderrStreamTooLong   => return .StreamTooLong,
+        error.EndOfStream           => return .EndOfStream,
+        else                        => return .UnknownError,
     }
 }
 
@@ -848,10 +863,26 @@ pub fn performGC(vm: *cy.VM, _: [*]const Value, _: u8) linksection(cy.StdSection
     return map;
 }
 
-pub fn print(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    const str = try vm.getOrBufPrintValueStr(&cy.tempBuf, args[0]);
-    rt.print(vm, str);
+pub fn print(vm: *cy.VM, args: [*]const cy.Value, _: u8) Value {
+    const err = print_c(vm, args[0]);
+    if (!err.isNull()) {
+        return Value.Interrupt;
+    }
     return Value.None;
+}
+
+pub fn print_c(c: cy.Context, arg: rt.Any) callconv(.C) rt.Error {
+    if (build_options.rt == .vm) {
+        const str = c.getOrBufPrintValueStr(&cy.tempBuf, arg) catch |err| {
+            return cy.builtins.prepThrowZError2(c, err, @errorReturnTrace());
+        };
+        rt.print(c, str);
+    } else {
+        const str = arg.vtable.type.toPrintString(c, arg);
+        rt.print(c, str.slice());
+        c.release(str.buf);
+    }
+    return rt.Error.initNull();
 }
 
 pub fn typeof(vm: *cy.VM, args: [*]const Value, _: u8) Value {

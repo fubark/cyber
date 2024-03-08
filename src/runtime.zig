@@ -373,39 +373,141 @@ test "runtime internals." {
     }
 }
 
-pub const Context = *align(8) anyopaque;
+pub fn ErrorUnion(comptime T: type) type {
+    return extern struct {
+        err: StaticSymbol,
+        val: T,
 
-pub fn prepThrowError(ctx: Context, tag: cy.bindings.Symbol) cy.Value {
+        pub fn hasError(self: @This()) bool {
+            return 0 != @as(u64, @bitCast(self.err));
+        }
+    };
+}
+
+pub const Context = if (build_options.rt == .pm) *Fiber else *cy.VM;
+pub const TypeHandle = if (build_options.rt == .pm) *TypeTable else cy.TypeId;
+pub const CompatError = if (build_options.rt == .pm) StaticSymbol else cy.Value;
+pub const Error = StaticSymbol;
+pub const Symbol = if (build_options.rt == .pm) StaticSymbol else cy.Value;
+
+pub const AnyTable = extern struct {
+    type: *TypeTable, 
+};
+
+pub const TypeTable = extern struct {
+    is_struct: bool,
+    data: extern union {
+        @"struct": extern struct {
+            // Size in bytes.
+            size: u32,
+        },
+    },
+    name: [*:0]const u8,
+    toPrintString: *const fn(Context, Any) StaticString,
+};
+
+const StaticString = extern struct {
+    ptr: [*]const u8,
+    len: u64,
+    buf: *StaticBuffer,
+    ascii: bool,
+
+    pub fn slice(self: StaticString) []const u8 {
+        return self.ptr[0..self.len];
+    }
+};
+
+const StaticBuffer = extern struct {
+    len: usize,
+};
+
+const Fiber = extern struct {
+    pm: *void,
+    panicPayload: u64,
+    panicType: u8,
+
+    pub fn release(self: Fiber, obj: *anyopaque) void {
+        _ = self;
+        _ = obj;
+    }
+
+    pub fn releaseBox(v: Any) void {
+        _ = v;
+    
+        cy.panic("TODO");
+    }
+};
+
+/// Portable Any.
+pub const Any = if (build_options.rt == .pm) StaticAny else cy.Value;
+
+pub const StaticSymbol = packed struct {
+    name: u48,
+    len: u16,
+
+    pub fn initNull() StaticSymbol {
+        return @bitCast(@as(u64, 0));
+    }
+
+    pub fn isNull(self: StaticSymbol) bool {
+        return 0 == @as(u64, @bitCast(self));
+    }
+
+    pub fn init(name: []const u8) StaticSymbol {
+        return .{ .name = @truncate(@intFromPtr(name.ptr)), .len = @truncate(name.len) };
+    }
+};
+
+pub fn wrapErrorValue(comptime T: type, val: T) ErrorUnion(T) {
+    return .{ .err = @bitCast(@as(u64, 0)), .val = val };
+}
+
+pub fn wrapError(comptime T: type, err: Error) ErrorUnion(T) {
+    return .{ .err = err, .val = undefined };
+}
+
+const StaticAny = extern struct {
+    value: u64,
+    vtable: *const AnyTable,
+
+    pub fn getTypeId(self: *const Any) *TypeTable {
+        return self.vtable.type;
+    }
+};
+
+pub fn getTypeName(c: Context, type_h: TypeHandle) []const u8 {
     if (build_options.rt == .vm) {
-        const vm: *cy.VM = @ptrCast(ctx);
+        return c.types[type_h].sym.name();
+    } else {
+        return std.mem.span(type_h.name);
+    }
+}
+
+pub fn prepThrowError(c: Context, tag: cy.bindings.Symbol) CompatError {
+    if (build_options.rt == .vm) {
         const id: u8 = @intFromEnum(tag);
-        vm.curFiber.panicPayload = cy.Value.initErrorSymbol(id).val;
-        vm.curFiber.panicType = vmc.PANIC_NATIVE_THROW;
+        c.curFiber.panicPayload = cy.Value.initErrorSymbol(id).val;
+        c.curFiber.panicType = vmc.PANIC_NATIVE_THROW;
         return cy.Value.Interrupt;
     } else {
-        const f: *pmc.Fiber = @ptrCast(ctx);
-        const id: u8 = @intFromEnum(tag);
-        f.panicPayload = cy.Value.initErrorSymbol(id).val;
-        f.panicType = vmc.PANIC_NATIVE_THROW;
-        return cy.Value.Interrupt;
+        c.panicPayload = 0;
+        c.panicType = vmc.PANIC_NATIVE_THROW;
+        return Symbol.init(@tagName(tag));
     }
 }
 
 pub fn getSymName(c: Context, id: u32) []const u8 {
     if (build_options.rt == .vm) {
-        const vm: *cy.VM = @ptrCast(c);
-        return vm.syms.buf[id].name;
+        return c.syms.buf[id].name;
     } else {
-        const f: *pmc.Fiber = @ptrCast(c);
-        const tag = f.pm[0].syms[id];
+        const tag = c.pm[0].syms[id];
         return tag.name.buf[0..tag.name.len];
     }
 }
 
 pub fn errMsg(c: Context, str: []const u8) void {
     if (build_options.rt == .vm) {
-        const vm: *cy.VM = @ptrCast(c);
-        vm.errorFn.?(@ptrCast(vm), api.initStr(str));
+        c.errorFn.?(@ptrCast(c), api.initStr(str));
     } else {
         const w = std.io.getStdErr().writer();
         w.writeAll(str) catch cy.fatal();
@@ -415,10 +517,9 @@ pub fn errMsg(c: Context, str: []const u8) void {
 
 pub fn errFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) void {
     if (build_options.rt == .vm) {
-        const vm: *cy.VM = @ptrCast(c);
-        const w = vm.clearTempString();
+        const w = c.clearTempString();
         cy.fmt.print(w, format, args);
-        vm.errorFn.?(@ptrCast(vm), api.initStr(vm.getTempString()));
+        c.errorFn.?(@ptrCast(c), api.initStr(c.getTempString()));
     } else {
         const w = std.io.getStdErr().writer();
         cy.fmt.print(w, format, args);
@@ -428,10 +529,9 @@ pub fn errFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) voi
 
 pub fn errZFmt(c: Context, comptime format: []const u8, args: anytype) void {
     if (build_options.rt == .vm) {
-        const vm: *cy.VM = @ptrCast(c);
-        const w = vm.clearTempString();
+        const w = c.clearTempString();
         std.fmt.format(w, format, args) catch cy.fatal();
-        vm.errorFn.?(@ptrCast(vm), api.initStr(vm.getTempString()));
+        c.errorFn.?(@ptrCast(c), api.initStr(c.getTempString()));
     } else {
         const w = std.io.getStdErr().writer();
         std.fmt.format(w, format, args) catch cy.fatal();
@@ -441,8 +541,7 @@ pub fn errZFmt(c: Context, comptime format: []const u8, args: anytype) void {
 
 pub fn print(c: Context, str: []const u8) void {
     if (build_options.rt == .vm) {
-        const vm: *cy.VM = @ptrCast(c);
-        vm.printFn.?(@ptrCast(vm), api.initStr(str));
+        c.printFn.?(@ptrCast(c), api.initStr(str));
     } else {
         const w = std.io.getStdOut().writer();
         w.writeAll(str) catch cy.fatal();
@@ -452,10 +551,9 @@ pub fn print(c: Context, str: []const u8) void {
 
 pub fn printFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) void {
     if (build_options.rt == .vm) {
-        const vm: *cy.VM = @ptrCast(c);
-        const w = vm.clearTempString();
+        const w = c.clearTempString();
         cy.fmt.print(w, format, args);
-        vm.printFn.?(@ptrCast(vm), api.initStr(vm.getTempString()));
+        c.printFn.?(@ptrCast(c), api.initStr(c.getTempString()));
     } else {
         const w = std.io.getStdOut().writer();
         cy.fmt.print(w, format, args);
@@ -465,10 +563,9 @@ pub fn printFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) v
 
 pub fn printZFmt(c: Context, comptime format: []const u8, args: anytype) void {
     if (build_options.rt == .vm) {
-        const vm: *cy.VM = @ptrCast(c);
-        const w = vm.clearTempString();
+        const w = c.clearTempString();
         std.fmt.format(w, format, args);
-        vm.printFn.?(@ptrCast(vm), api.initStr(vm.getTempString()));
+        c.printFn.?(@ptrCast(c), api.initStr(c.getTempString()));
     } else {
         const w = std.io.getStdOut().writer();
         std.fmt.format(w, format, args);

@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 const stdx = @import("stdx");
 const cy = @import("../cyber.zig");
 const cc = @import("../capi.zig");
@@ -31,7 +32,7 @@ const cFunc = cy.builtins.cFunc;
 const NameHostFunc = struct { []const u8, cy.ZHostFuncFn };
 const funcs = [_]NameHostFunc{
     .{"assert", zErrFunc(assert)},
-    .{"eq", cFunc(eq)},
+    .{"eq", eq},
     .{"eqList", zErrFunc(eqList)},
     .{"eqNear", zErrFunc(eqNear)},
     .{"fail", fail},
@@ -60,20 +61,61 @@ fn getComparableTag(val: Value) cy.ValueUserTag {
     return val.getUserTag();
 }
 
-pub fn eq(c: cy.Context, args: [*]const Value, _: u8) callconv(.C) Value {
-    if (eq2(c, args[0], args[1])) {
-        return Value.True;
+pub fn eq(vm: *cy.VM, args: [*]const cy.Value, _: u8) Value {
+    const res = eq_c(vm, args[0], args[1]);
+    if (res.hasError()) {
+        return Value.Interrupt;
+    }
+    return Value.initBool(res.val);
+}
+
+pub fn eq_c(c: cy.Context, act: rt.Any, exp: rt.Any) callconv(.C) rt.ErrorUnion(bool) {
+    if (eq2(c, act, exp)) {
+        return rt.wrapErrorValue(bool, true);
     } else {
-        return rt.prepThrowError(c, .AssertError);
+        const err = cy.builtins.prepThrowZError2(c, error.AssertError, null);
+        return rt.wrapError(bool, err);
     }
 }
 
-fn eq2(c: cy.Context, act: Value, exp: Value) linksection(cy.StdSection) bool {
-    const actType = getComparableTag(act);
-    const expType = getComparableTag(exp);
-    if (actType == expType) {
-        switch (actType) {
-            .int => {
+fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) linksection(cy.StdSection) bool {
+    const act_t = act.getTypeId();
+    const exp_t = exp.getTypeId();
+
+    if (act_t != exp_t) {
+        rt.errFmt(c, "Types do not match:", &.{});
+        rt.errFmt(c, "actual: {} != {}", &.{v(rt.getTypeName(c, act_t)), v(rt.getTypeName(c, exp_t))});
+        return false;
+    }
+
+    // PM compares by value if `is_struct` is true. Compares reference otherwise.
+    // VM checks the type id and performs unboxing.
+    if (build_options.rt == .pm) {
+        if (act.vtable.type.is_struct) {
+            const size = act.vtable.type.data.@"struct".size;
+            if (size <= 8) {
+                const act_s = std.mem.asBytes(&act.value)[0..size];
+                const exp_s = std.mem.asBytes(&exp.value)[0..size];
+                if (std.mem.eql(u8, act_s, exp_s)) {
+                    return true;
+                } else {
+                    rt.errZFmt(c, "actual: {any} != {any}", .{act_s, exp_s});
+                    return false;
+                }
+            } else {
+                cy.panic("TODO");
+            }
+        } else {
+            if (act.value == exp.value) {
+                return true;
+            } else {
+                rt.errFmt(c, "actual: {} != {}", &.{v(act.value), v(exp.value)});
+                return false;
+            }
+        }
+    } else {
+        switch (act_t) {
+            bt.Integer => {
                 if (act.asInteger() == exp.asInteger()) {
                     return true;
                 } else {
@@ -81,7 +123,7 @@ fn eq2(c: cy.Context, act: Value, exp: Value) linksection(cy.StdSection) bool {
                     return false;
                 }
             },
-            .float => {
+            bt.Float => {
                 if (act.asF64() == exp.asF64()) {
                     return true;
                 } else {
@@ -89,7 +131,7 @@ fn eq2(c: cy.Context, act: Value, exp: Value) linksection(cy.StdSection) bool {
                     return false;
                 }
             },
-            .string => {
+            bt.String => {
                 const actStr = act.asString();
                 const expStr = exp.asString();
                 if (std.mem.eql(u8, actStr, expStr)) {
@@ -99,7 +141,7 @@ fn eq2(c: cy.Context, act: Value, exp: Value) linksection(cy.StdSection) bool {
                     return false;
                 }
             },
-            .array => {
+            bt.Array => {
                 const actStr = act.asArray();
                 const expStr = exp.asArray();
                 if (std.mem.eql(u8, actStr, expStr)) {
@@ -109,7 +151,7 @@ fn eq2(c: cy.Context, act: Value, exp: Value) linksection(cy.StdSection) bool {
                     return false;
                 }
             },
-            .pointer => {
+            bt.Pointer => {
                 const actPtr = act.castHeapObject(*cy.Pointer).ptr;
                 const expPtr = exp.castHeapObject(*cy.Pointer).ptr;
                 if (actPtr == expPtr) {
@@ -119,7 +161,7 @@ fn eq2(c: cy.Context, act: Value, exp: Value) linksection(cy.StdSection) bool {
                     return false;
                 }
             },
-            .bool => {
+            bt.Boolean => {
                 const actv = act.asBool();
                 const expv = exp.asBool();
                 if (actv == expv) {
@@ -129,7 +171,7 @@ fn eq2(c: cy.Context, act: Value, exp: Value) linksection(cy.StdSection) bool {
                     return false;
                 }
             },
-            .symbol => {
+            bt.Symbol => {
                 const actv = act.asSymbolId();
                 const expv = exp.asSymbolId();
                 if (actv == expv) {
@@ -139,10 +181,10 @@ fn eq2(c: cy.Context, act: Value, exp: Value) linksection(cy.StdSection) bool {
                     return false;
                 }
             },
-            .none => {
+            bt.None => {
                 return true;
             },
-            .err => {
+            bt.Error => {
                 const actv = act.asErrorSymbol();
                 const expv = exp.asErrorSymbol();
                 if (actv == expv) {
@@ -154,19 +196,7 @@ fn eq2(c: cy.Context, act: Value, exp: Value) linksection(cy.StdSection) bool {
                     return false;
                 }
             },
-            .map,
-            .list,
-            .object => {
-                const actv = act.asAnyOpaque();
-                const expv = exp.asAnyOpaque();
-                if (actv == expv) {
-                    return true;
-                } else {
-                    rt.errFmt(c, "actual: {} != {}", &.{v(actv), v(expv)});
-                    return false;
-                }
-            },
-            .metatype => {
+            bt.MetaType => {
                 const actv = act.asHeapObject().metatype;
                 const expv = exp.asHeapObject().metatype;
                 if (std.meta.eql(actv, expv)) {
@@ -176,14 +206,32 @@ fn eq2(c: cy.Context, act: Value, exp: Value) linksection(cy.StdSection) bool {
                     return false;
                 }
             },
+            bt.Map,
+            bt.List => {
+                const actv = act.asAnyOpaque();
+                const expv = exp.asAnyOpaque();
+                if (actv == expv) {
+                    return true;
+                } else {
+                    rt.errFmt(c, "actual: {} != {}", &.{v(actv), v(expv)});
+                    return false;
+                }
+            },
             else => {
-                cy.panicFmt("Unsupported type {}", .{actType});
+                if (act_t < cy.types.BuiltinEnd) {
+                    cy.panicFmt("Unsupported type {}", .{act_t});
+                } else {
+                    const actv = act.asAnyOpaque();
+                    const expv = exp.asAnyOpaque();
+                    if (actv == expv) {
+                        return true;
+                    } else {
+                        rt.errFmt(c, "actual: {} != {}", &.{v(actv), v(expv)});
+                        return false;
+                    }
+                }
             }
         }
-    } else {
-        rt.errFmt(c, "Types do not match:", &.{});
-        rt.errFmt(c, "actual: {} != {}", &.{v(actType), v(expType)});
-        return false;
     }
 }
 

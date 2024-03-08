@@ -16,7 +16,7 @@ var trace: bool = undefined;
 var optFFI: ?bool = undefined; 
 var optStatic: ?bool = undefined; 
 var optJIT: ?bool = undefined;
-var runtime: config.Runtime = undefined;
+var optRT: ?config.Runtime = undefined;
 
 var stdx: *std.build.Module = undefined;
 var tcc: *std.build.Module = undefined;
@@ -35,7 +35,7 @@ pub fn build(b: *std.build.Builder) !void {
     optStatic = b.option(bool, "static", "Override default lib build type: true=static, false=dynamic");
     trace = b.option(bool, "trace", "Enable tracing features.") orelse (optimize == .Debug);
     optJIT = b.option(bool, "jit", "Build with JIT.");
-    runtime = b.option(config.Runtime, "rt", "Runtime.") orelse .vm;
+    optRT = b.option(config.Runtime, "rt", "Runtime.");
 
     stdx = b.createModule(.{
         .source_file = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
@@ -99,6 +99,32 @@ pub fn build(b: *std.build.Builder) !void {
     }
 
     {
+        const step = b.step("rt", "Build runtime for AOT.");
+
+        var opts = getDefaultOptions(target, optimize);
+        opts.ffi = false;
+        opts.malloc = if (target.getCpuArch().isWasm()) .zig else .malloc;
+        opts.cli = false;
+        opts.rt = .pm;
+        opts.applyOverrides();
+
+        const lib = b.addStaticLibrary(.{
+            .name = "rt",
+            .root_source_file = .{ .path = "src/runtime_static.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+        if (lib.optimize != .Debug) {
+            lib.strip = true;
+        }
+        lib.addIncludePath(.{. path = thisDir() ++ "/src" });
+
+        try buildAndLinkDeps(lib, opts);
+        step.dependOn(&lib.step);
+        step.dependOn(&b.addInstallArtifact(lib, .{}).step);
+    }
+
+    {
         const step = b.step("lib", "Build as a library.");
 
         var opts = getDefaultOptions(target, optimize);
@@ -133,9 +159,6 @@ pub fn build(b: *std.build.Builder) !void {
             // `instance.exports.__indirect_function_table`
             lib.export_table = true;
         }
-
-        // Allow dynamic libraries to be loaded by filename in the cwd.
-        // lib.addRPath(".");
 
         // Allow exported symbols to be visible to dlopen.
         // Also needed to export symbols in wasm lib.
@@ -320,6 +343,7 @@ pub const Options = struct {
     ffi: bool,
     cli: bool,
     jit: bool,
+    rt: config.Runtime,
 
     fn applyOverrides(self: *Options) void {
         if (optMalloc) |malloc| {
@@ -365,6 +389,7 @@ fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.Optimize
         .ffi = !target.getCpuArch().isWasm(),
         .cli = !target.getCpuArch().isWasm(),
         .jit = false,
+        .rt = .vm,
     };
 }
 
@@ -397,7 +422,7 @@ fn createBuildOptions(b: *std.build.Builder, opts: Options) !*std.build.Step.Opt
     build_options.addOption(bool, "cli", opts.cli);
     build_options.addOption(bool, "jit", opts.jit);
     build_options.addOption(config.TestBackend, "testBackend", testBackend);
-    build_options.addOption(config.Runtime, "rt", runtime);
+    build_options.addOption(config.Runtime, "rt", opts.rt);
     build_options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
     return build_options;
 }

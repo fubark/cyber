@@ -12,30 +12,6 @@ const log = cy.log.scoped(.lib);
 const bt = cy.types.BuiltinTypes;
 const c = @import("capi.zig");
 
-pub fn toCFunc(comptime func: fn (*cy.VM, [*]const Value, u8) anyerror!Value) fn (*cy.VM, [*]const Value, u8) callconv(.C) Value {
-    const S = struct {
-        pub fn genFunc(vm: *cy.VM, args: [*]const Value, nargs: u8) callconv(.C) Value {
-            return @call(.always_inline, func, .{vm, args, nargs}) catch |err| {
-                return @call(.never_inline, cy.builtins.prepThrowZError, .{vm, err, @errorReturnTrace()});
-            };
-        }
-    };
-    return S.genFunc;
-}
-
-comptime {
-    // Temporarily export for bootstrapping.
-    if (build_options.rt == .pm) {
-        const mtest = @import("std/test.zig");
-        @export(mtest.eq, .{ .name = "test_eq", .linkage = .Strong });
-
-        const mbuiltins = @import("builtins/builtins.zig");
-        @export(mbuiltins.typesym, .{ .name = "builtins_typesym", .linkage = .Strong });
-        const print = toCFunc(mbuiltins.print);
-        @export(print, .{ .name = "builtins_print", .linkage = .Strong });
-    }
-}
-
 export fn csCreate() *cy.UserVM {
     const alloc = cy.heap.getAllocator();
     const vm = alloc.create(cy.VM) catch fatal();

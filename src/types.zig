@@ -14,7 +14,7 @@ pub const TypeId = u32;
 
 const TypeKind = enum(u8) {
     null,
-    predefined,
+    core,
     object,
     hostObject,
     @"enum",

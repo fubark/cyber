@@ -72,10 +72,10 @@ pub const Sym = extern struct {
                 hostType.getMod().deinit(alloc);
                 alloc.destroy(hostType);
             },
-            .predefinedType => {
-                const predefinedType = self.cast(.predefinedType);
-                predefinedType.getMod().deinit(alloc);
-                alloc.destroy(predefinedType);
+            .core_t => {
+                const core_t = self.cast(.core_t);
+                core_t.getMod().deinit(alloc);
+                alloc.destroy(core_t);
             },
             .chunk => {
                 const chunk = self.cast(.chunk);
@@ -141,7 +141,7 @@ pub const Sym = extern struct {
     pub fn isType(self: Sym) bool {
         switch (self.type) {
             .hostObjectType,
-            .predefinedType,
+            .core_t,
             .typeAlias,
             .struct_t,
             .object_t,
@@ -179,7 +179,7 @@ pub const Sym = extern struct {
             .struct_t       => return @ptrCast(&self.cast(.struct_t).mod),
             .object_t       => return @ptrCast(&self.cast(.object_t).mod),
             .hostObjectType => return @ptrCast(&self.cast(.hostObjectType).mod),
-            .predefinedType => return @ptrCast(&self.cast(.predefinedType).mod),
+            .core_t         => return @ptrCast(&self.cast(.core_t).mod),
             .import,
             .typeAlias,
             .typeTemplate,
@@ -217,7 +217,7 @@ pub const Sym = extern struct {
             .hostVar    => return self.cast(.hostVar).type,
             .enumMember => return self.cast(.enumMember).type,
             .struct_t,
-            .predefinedType,
+            .core_t,
             .typeAlias,
             .object_t   => return bt.MetaType,
             .func => {
@@ -234,7 +234,7 @@ pub const Sym = extern struct {
 
     pub fn getStaticType(self: *Sym) ?cy.TypeId {
         switch (self.type) {
-            .predefinedType => return self.cast(.predefinedType).type,
+            .core_t         => return self.cast(.core_t).type,
             .enum_t         => return self.cast(.enum_t).type,
             .typeAlias      => return self.cast(.typeAlias).type,
             .struct_t       => return self.cast(.struct_t).type,
@@ -322,7 +322,7 @@ fn SymChild(comptime symT: SymType) type {
         .struct_t,
         .object_t => ObjectType,
         .hostObjectType => HostObjectType,
-        .predefinedType => PredefinedType,
+        .core_t => CoreType,
         .enum_t => EnumType,
         .enumMember => EnumMember,
         .typeAlias => TypeAlias,
@@ -342,7 +342,7 @@ pub const SymType = enum(u8) {
     hostObjectType,
     object_t,
     struct_t,
-    predefinedType,
+    core_t,
     import,
     chunk,
     enum_t,
@@ -521,12 +521,12 @@ pub const HostObjectType = extern struct {
     }
 };
 
-pub const PredefinedType = extern struct {
+pub const CoreType = extern struct {
     head: Sym,
     type: cy.TypeId,
     mod: vmc.Module,
 
-    pub fn getMod(self: *PredefinedType) *cy.Module {
+    pub fn getMod(self: *CoreType) *cy.Module {
         return @ptrCast(&self.mod);
     }
 };

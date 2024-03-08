@@ -48,7 +48,7 @@ pub fn genAll(c: *cy.VMcompiler) !void {
                     try c.vm.addFieldSym(@intCast(typeId), fieldSymId, @intCast(i), field.type);
                 }
             },
-            .predefinedType,
+            .core_t,
             .hostObjectType,
             .enum_t => {},
             else => {
@@ -135,7 +135,7 @@ fn prepareSym(c: *cy.VMcompiler, sym: *cy.Sym) !void {
         },
         .typeTemplate,
         .hostObjectType,
-        .predefinedType,
+        .core_t,
         .chunk,
         .field,
         .struct_t,
@@ -611,7 +611,7 @@ fn genCast(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
         const pc = c.buf.ops.items.len;
         try c.pushFCode(.cast, &.{ childv.reg, 0, 0, inst.dst }, nodeId);
         c.buf.setOpArgU16(pc + 2, @intCast(data.typeId));
-    } else if (sym.type == .predefinedType) {
+    } else if (sym.type == .core_t) {
         if (types.toRtConcreteType(data.typeId)) |tId| {
             const pc = c.buf.ops.items.len;
             try c.pushFCode(.cast, &.{ childv.reg, 0, 0, inst.dst }, nodeId);

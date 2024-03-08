@@ -1046,7 +1046,7 @@ pub fn declareObject(c: *cy.Chunk, isStruct: bool, nodeId: cy.NodeId) !*cy.Sym {
     }
 }
 
-/// modSym can be an objectType or predefinedType.
+/// modSym can be an object or core type.
 pub fn declareObjectFields(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !void {
     const node = c.ast.node(nodeId);
 
@@ -1611,8 +1611,8 @@ fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.Node
             defer c.typeStack.items.len = res.start;
             return c.semaCallFuncSym(preIdx, symNodeId, funcSym, res);
         },
-        .predefinedType => {
-            const typeId = sym.cast(.predefinedType).type;
+        .core_t => {
+            const typeId = sym.cast(.core_t).type;
             return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, typeId);
         }, 
         .struct_t,
@@ -1663,9 +1663,9 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId, comptime symAsValue: b
                 const irIdx = try c.ir.pushExpr(c.alloc, .typeSym, nodeId, .{ .typeId = objTypeId });
                 return ExprResult.init(irIdx, ctype);
             },
-            .predefinedType => {
-                const predefinedType = sym.cast(.predefinedType).type;
-                const irIdx = try c.ir.pushExpr(c.alloc, .typeSym, nodeId, .{ .typeId = predefinedType });
+            .core_t => {
+                const core_t = sym.cast(.core_t).type;
+                const irIdx = try c.ir.pushExpr(c.alloc, .typeSym, nodeId, .{ .typeId = core_t });
                 return ExprResult.init(irIdx, ctype);
             },
             .enumMember => {

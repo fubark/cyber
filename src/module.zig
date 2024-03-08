@@ -568,12 +568,12 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn declarePredefinedType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, typeId: types.TypeId) !*cy.sym.PredefinedType {
+    pub fn declareCoreType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, typeId: types.TypeId) !*cy.sym.CoreType {
         const mod = parent.getMod().?;
         try checkUniqueSym(c, mod, name, cy.NullId);
 
-        const sym = try cy.sym.createSym(c.alloc, .predefinedType, .{
-            .head = cy.Sym.init(.predefinedType, parent, name),
+        const sym = try cy.sym.createSym(c.alloc, .core_t, .{
+            .head = cy.Sym.init(.core_t, parent, name),
             .type = typeId,
             .mod = undefined,
         });
@@ -582,7 +582,7 @@ pub const ChunkExt = struct {
         _ = try addSym(c, mod, name, @ptrCast(sym));
         c.compiler.sema.types.items[typeId] = .{
             .sym = @ptrCast(sym),
-            .kind = .predefined,
+            .kind = .core,
             .data = undefined,
         };
         return sym;
@@ -711,7 +711,7 @@ pub const ChunkExt = struct {
             .hostObjectType,
             .enum_t,
             .chunk,
-            .predefinedType,
+            .core_t,
             .typeTemplate,
             .enumMember => {
                 return sym;

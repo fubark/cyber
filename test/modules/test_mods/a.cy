@@ -45,16 +45,16 @@ func useInt(a):
     return toInt(a)
 
 type Vec2:
-    var x float
-    var y float
+    x float
+    y float
 
 func Vec2.new(x float, y float):
     return [Vec2 x: x, y: y]
 type Vec2Alias Vec2
 
 type Bar:
-    var a float
+    a float
 
 template(T type)
 type TFoo:
-    var a #T
+    a #T

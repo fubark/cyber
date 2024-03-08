@@ -1,7 +1,7 @@
 import test
 
 type Foo struct:
-    var val int
+    val int
 
 -- Initialize value.
 var a = [Foo val: 123]
@@ -32,8 +32,8 @@ test.eq(a.val, 123)
 
 -- Nested struct.
 type Bar struct:
-    var a int
-    var b Foo
+    a int
+    b Foo
 var c = [Bar a: 123, b: [val: 234]]
 test.eq(c.a, 123)
 test.eq(c.b.val, 234)

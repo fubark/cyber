@@ -2,7 +2,7 @@ import test
 
 template(T type)
 type Foo:
-    var a #T
+    a #T
 
     func get() #T:
         return self.a

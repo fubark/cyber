@@ -1,5 +1,5 @@
 type S struct:
-    var a S
+    a S
 
 var o = [S:]
 

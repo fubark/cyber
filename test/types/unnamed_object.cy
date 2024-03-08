@@ -1,11 +1,11 @@
 import test
 
 type A:
-    var a int
-    var b object:
-        var a int
-        var b float
-    var c float
+    a int
+    b object:
+        a int
+        b float
+    c float
 
 var a = [A
     a: 123,

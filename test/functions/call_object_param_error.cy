@@ -1,5 +1,5 @@
 type Foo:
-    var a float
+    a float
 
 func foo(a Foo):
     pass

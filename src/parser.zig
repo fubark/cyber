@@ -617,32 +617,21 @@ pub const Parser = struct {
     fn parseObjectField(self: *Parser) !?NodeId {
         const start = self.next_pos;
 
-        var token = self.peek();
-        if (token.tag() != .var_k) {
-            return null;
-        }
-        const typed = token.tag() == .var_k;
-        self.advance();
-
         const name = (try self.parseOptName()) orelse {
-            return self.reportError("Expected field identifier.", &.{});
+            return null;
         };
 
-        var typeSpec: cy.NodeId = cy.NullNode;
-        if (typed) {
-            if (try self.parseOptTypeSpec(true)) |node| {
-                if (self.ast.nodeType(node) != .objectDecl) {
-                    try self.consumeNewLineOrEnd();
-                }
-                typeSpec = node;
-            }
+        const typeSpec = try self.parseOptTypeSpec(true) orelse {
+            return self.reportError("Expected field type specifier.", &.{});
+        };
+        if (self.ast.nodeType(typeSpec) != .objectDecl) {
+            try self.consumeNewLineOrEnd();
         }
 
         const field = try self.pushNode(.objectField, start);
         self.ast.setNodeData(field, .{ .objectField = .{
             .name = name,
             .typeSpec = @intCast(typeSpec),
-            .typed = typed,
         }});
         return field;
     }

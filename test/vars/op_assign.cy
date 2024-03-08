@@ -15,7 +15,7 @@ t.eq(a, 49)
 
 -- Op assign to field.
 type S:
-    var foo int
+    foo int
 var s = [S foo: 1]
 s.foo += 10
 t.eq(s.foo, 11)

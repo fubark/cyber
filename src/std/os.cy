@@ -226,9 +226,9 @@ type FFI:
     #host func unbindObjPtr(obj any) none
 
 type CArray:
-    var elem
-    var n
+    elem any
+    n    any
 
 type CDimArray:
-    var elem
-    var dims
+    elem any
+    dims any

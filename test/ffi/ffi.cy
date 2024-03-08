@@ -16,10 +16,10 @@ else:
     libPath = none
 
 type MyObject:
-    var a float
-    var b int
-    var c pointer
-    var d bool
+    a float
+    b int
+    c pointer
+    d bool
 
 ffi = os.newFFI()
 ffi.cbind(MyObject, [.double, .int, .charPtr, .bool])

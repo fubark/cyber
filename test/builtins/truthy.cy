@@ -16,7 +16,7 @@ t.eq(bool(''), true)
 t.eq(bool([:]), true)
 t.eq(bool([]), true)
 type S:
-    var a
+    a any
 t.eq(bool([S a: 0]), true)
 
 -- none evaluates to false

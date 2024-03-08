@@ -8,7 +8,7 @@ func staticPrim(a float):
 	return a == 123.0
 
 type PrimType:
-	var a float
+	a float
 
 -- Call static function with literal.
 t.eq(staticPrim(123.0), true)

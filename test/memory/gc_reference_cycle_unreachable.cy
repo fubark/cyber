@@ -26,11 +26,11 @@ t.eq(res['numCycFreed'], 2)
 
 -- Reference cycle with non pool objects.
 type T:
-    var a
-    var b
-    var c
-    var d
-    var e
+    a any
+    b any
+    c any
+    d any
+    e any
 func foo3():
     var a = [T:]
     var b = [T:]

@@ -1,7 +1,7 @@
 import t 'test'
 
 type Foo:
-    var a int
+    a int
 
 func foo(a Foo):
     return a.a == 123

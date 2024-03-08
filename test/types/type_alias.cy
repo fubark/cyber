@@ -1,8 +1,8 @@
 import t 'test'
 
 type Vec2:
-    var x float
-    var y float
+    x float
+    y float
 
 type Vec Vec2
 

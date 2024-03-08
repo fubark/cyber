@@ -44,8 +44,8 @@ t.eq(int(1), 1)
 t.eq(a.useInt(1), 1)
 
 type Vec2:
-    var x float
-    var y float
+    x float
+    y float
 -- Same name, different object types.
 var v1 = [Vec2 x: 1, y: 2]
 var v2 = [a.Vec2 x: 3, y: 4]

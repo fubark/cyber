@@ -6,7 +6,7 @@ type Vec2 a.Vec2
 
 -- Using alias as type spec.
 type Parent:
-    var v Vec2
+    v Vec2
 
 var v = [Vec2 x: 1, y: 2]
 t.eq(v.x, 1.0)
@@ -20,6 +20,6 @@ v = [a.Vec2Alias x: 1, y: 2]
 
 -- Using alias from imported module as type spec.
 type Parent2:
-    var v a.Vec2Alias
+    v a.Vec2Alias
 
 --cytest: pass

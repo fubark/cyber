@@ -15,7 +15,7 @@ t.eq(typeof([:]).id(), 12)
 
 -- Referencing type object.
 type Foo:
-    var a float
+    a float
 var foo = [Foo a: 123]
 t.eq(typeof(foo), Foo)
 

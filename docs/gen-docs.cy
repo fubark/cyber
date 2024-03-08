@@ -152,9 +152,9 @@ type State enum:
     case html
 
 type Link:
-    var href  String
-    var title String
-    var text  String
+    href  String
+    title String
+    text  String
 
 func resetState():
     state = State.main
@@ -380,8 +380,8 @@ func getAttrText(attr) String:
     return (attr.text as pointer).toArray(0, attr.size).decode()
 
 type ModulePair:
-    var path    String
-    var section String
+    path    String
+    section String
 
 func genDocsModules():
     var modules = [

@@ -1,7 +1,7 @@
 import test
 
 type S:
-    var a float
+    a float
 
 var o = [S a: 123.0]
 

@@ -53,21 +53,21 @@ var .CXChildVisit_Continue = 1
 var .CXChildVisit_Recurse = 2
 
 type CXSourceLocation:
-    var ptr_data List
-    var int_data int
+    ptr_data List
+    int_data int
 
 type CXString:
-    var data pointer 
-    var private_flags int
+    data pointer 
+    private_flags int
 
 type CXCursor:
-    var kind int
-    var xdata int
-    var data List
+    kind  int
+    xdata int
+    data  List
 
 type CXType:
-    var kind int
-    var data List
+    kind int
+    data List
  
 my .lib = load(ffi) -- Make lib depedent on ffi.
 my .ffi = none

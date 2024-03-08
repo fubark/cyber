@@ -168,9 +168,9 @@ func getMacrosTranslationUnit(hppPath):
         clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_KeepGoing)
 
 type Struct:
-    var fieldTypes List
-    var fieldNames List
-    var cxFieldTypes List
+    fieldTypes   List
+    fieldNames   List
+    cxFieldTypes List
 
 type StateType enum:
     case root
@@ -181,8 +181,8 @@ type StateType enum:
     case initListExpr
 
 type State:
-    var type StateType
-    var data dynamic
+    type StateType
+    data dynamic
 
 func visitor(cursor, parent, client_data):
     var state State = client_data.asObject()
@@ -263,7 +263,7 @@ func rootVisitor(cursor, parent, state):
                 out += '-- '
 
             my fieldt = struct.fieldTypes[i]
-            out += "    var $(name) $(toCyType(fieldt, false))"
+            out += "    $(name) $(toCyType(fieldt, false))"
             if is(fieldt, .voidPtr) or
                 (typeof(fieldt) == String and fieldt.startsWith('[os.CArray')):
                 out += " -- $(struct.cxFieldTypes[i])"

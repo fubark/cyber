@@ -1,8 +1,8 @@
 type Bar:
-    var b float
+    b float
 
 type Foo:
-    var field Bar
+    field Bar
 
 func foo(a Foo):
     pass

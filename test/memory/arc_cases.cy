@@ -35,7 +35,7 @@ var c = '$(a)'  -- If `a` isn't marked as a rcCandidate, `a` would be freed here
 
 -- Field retains local rec so that noerr prerelease doesn't free the rec too early.
 type Node:
-    var val int
+    val int
 my foo = [Node val: 123]
 foo = foo.val
 t.eq(foo, 123)

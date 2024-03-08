@@ -1,11 +1,11 @@
 import t 'test'
 
 type Node:
-    var value int
+    value int
 
 -- `object` keyword is optional.
 type NodeA object:
-    var value2 int
+    value2 int
 
 var .snode = [Node value: 123]
 
@@ -24,7 +24,7 @@ var n3 = [NodeHeap:]
 t.eq(n3.value, none)
 
 type NodeHeap:
-    var value any
+    value any
 
 -- Init with heap value.
 n3 = [NodeHeap value: [123]]
@@ -74,8 +74,8 @@ n1 = [Node value: 123]
 t.eq(String(n1), 'Node')
 
 type W:
-    var a
-    var b
+    a any
+    b any
 
 -- Initialize fields with commas.
 var w = [W a: 1, b: 2]
@@ -92,11 +92,11 @@ t.eq(w.b, 2)
 
 -- Big structs (allocated outside of heap pages).
 type BigNode:
-    var a
-    var b
-    var c
-    var d
-    var e
+    a any
+    b any
+    c any
+    d any
+    e any
 var n4 = [BigNode a: 1, b: 2, c: 3, d: 4, e: 5]
 t.eq(n4.a, 1)
 t.eq(n4.b, 2)
@@ -106,14 +106,14 @@ t.eq(n4.e, 5)
 
 -- Multiple structs with the same field names but different offsets.
 type Node1:
-    var a
-    var b
+    a any
+    b any
 type Node2:
-    var b
-    var a
+    b any
+    a any
 type Node3:
-    var a
-    var b
+    a any
+    b any
 var na = [Node1 a: 1, b: 2]
 var nb = [Node2 a: 3, b: 4]
 var nc = [Node3 a: 5, b: 6]

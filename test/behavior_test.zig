@@ -780,7 +780,7 @@ test "object_init_dyn_field_gen" {
     // Initialize field with dynamic/typed value does not gen `objectTypeCheck`.
     try eval(.{ .silent = true },
         \\type S:
-        \\  var a dynamic
+        \\  a dynamic
         \\func foo():
         \\  return 123
         \\var s = [S a: foo()]

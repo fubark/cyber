@@ -1,6 +1,6 @@
 template(T type)
 type Foo:
-    var a #T
+    a #T
 
 var f = [Foo#(String, int) a: 'abc']
 

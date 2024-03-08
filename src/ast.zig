@@ -315,8 +315,7 @@ const NodeData = union {
     },
     objectField: packed struct {
         name: NodeId,
-        typeSpec: cy.Nullable(u24),
-        typed: bool,
+        typeSpec: NodeId,
     },
     objectDecl: packed struct {
         header: NodeId,

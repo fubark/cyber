@@ -335,8 +335,8 @@ type Array:
 #host func Array.'$call'(val any) Array
 
 type ArrayIterator:
-    var arr Array
-    var nextIdx int
+    arr     Array
+    nextIdx int
 
     func next() any:
         if nextIdx >= self.arr.len():

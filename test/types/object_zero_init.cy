@@ -1,15 +1,15 @@
 import test
 
 type S:
-    var a float
+    a float
 
 -- Zero initialize missing field.
 var o = [S:]
 test.eq(o.a, 0.0)
 
 type T:
-  var a S
-  var b float
+    a S
+    b float
 
 -- Zero initialize missing field. Nested object.
 var t = [T:]

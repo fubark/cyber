@@ -10,7 +10,7 @@ func foo1(a int):
 a = [Foo a: 123]
 t.eq(foo2(a as Foo), true)
 type Foo:
-    var a int
+    a int
 func foo2(a Foo):
     return true
 

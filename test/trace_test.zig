@@ -70,7 +70,7 @@ test "ARC." {
     try eval(.{},
         \\import t 'test'
         \\type S:
-        \\  var value
+        \\  value any
         \\var a = [123]
         \\var s = [S value: a]
         \\t.eq(s.value[0], 123)
@@ -84,7 +84,7 @@ test "ARC." {
     // Object is released when returned rvalue field access.
     try eval(.{},
         \\type S:
-        \\  var value
+        \\  value any
         \\1 + [S value: 123].value
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         const val = try res;
@@ -186,7 +186,7 @@ test "ARC for function return values." {
     try eval(.{},
         \\import t 'test'
         \\type S:
-        \\  var value
+        \\  value any
         \\func foo():
         \\  var a = [S value: 123]
         \\  return a
@@ -202,7 +202,7 @@ test "ARC for function return values." {
     // Object is released when returned from a function if no followup assignment.
     try eval(.{},
         \\type S:
-        \\  var value
+        \\  value any
         \\func foo():
         \\  return [S value: 123]
         \\foo()
@@ -270,7 +270,7 @@ test "ARC in loops." {
     // A non-rcCandidate var is reassigned to a rcCandidate var (field access on the right) inside a loop.
     try eval(.{},
         \\type S:
-        \\  var foo
+        \\  foo any
         \\my a = 123
         \\for 0..3:
         \\  a = [S foo: 123].foo

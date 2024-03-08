@@ -1,5 +1,5 @@
 type S:
-    var a any
+    a any
 
 var a = [S a: 123] + 123
 

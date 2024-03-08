@@ -1,5 +1,5 @@
 type S:
-    var a S
+    a S
 
 var o = [S:]
 

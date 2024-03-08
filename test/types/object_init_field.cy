@@ -1,7 +1,7 @@
 import test
 
 type S:
-  var x float
+    x float
 
 -- Exact field type.
 var s = [S x: 1.23]

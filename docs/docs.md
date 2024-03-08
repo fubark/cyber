@@ -830,21 +830,19 @@ An object type contains field and function members. New instances can be created
 Object types are declared with `type object`. The `object` keyword is optional when using a `type` declaration. These two declarations are equivalent:
 ```cy
 type A object:
-    var b int
+    my_field int
 
 type A:
-    var b int
+    my_field int
 ```
 
 ### Fields.
-Fields must be declared at the top of the `type` block using `var` or `my`:
+Fields must be declared at the top of the `type` block with their names and type specifiers:
 ```cy
 type Node:
-    var value int
-    var next  ?Node
+    value int
+    next  ?Node
 ```
-Field types are optional for `var` declarations and defaults to the `any` type.
-When fields are declared with `my` instead, they become dynamically typed and do not accept a type specifier.
 
 ### Instantiate.
 New object instances are created using a record literal with a leading type name:
@@ -866,9 +864,9 @@ var node Node = [value: 234]
 print node.next       -- Prints "Option.none"
 
 type Student:
-    var name String
-    var age  int
-    var gpa  float
+    name String
+    age  int
+    gpa  float
 
 var s = [Student:]
 print s.name       -- Prints ""
@@ -881,8 +879,8 @@ Circular type references are allowed if the object can be initialized:
 > _Planned Feature: Optional types are not currently supported._
 ```cy
 type Node:
-    var val  any
-    var next ?Node
+    val  any
+    next ?Node
 
 var n = [Node:]    -- Initializes.
 ```
@@ -891,8 +889,8 @@ In this example, `next` has an optional `?Node` type so it can be initialized to
 The following example will fail because this version of `Node` can not be initialized:
 ```cy
 type Node:
-    var val  any
-    var next Node
+    val  any
+    next Node
 
 var n = [Node:]    -- CompileError. Can not zero initialize `next`
                    -- because of circular dependency.
@@ -902,10 +900,10 @@ var n = [Node:]    -- CompileError. Can not zero initialize `next`
 Unnamed object types can be declared and used without an explicit `type` declaration:
 ```cy
 type Node:
-    var value object:
-        var a  int
-        var b  float
-    var next ?Node
+    value object:
+        a  int
+        b  float
+    next  ?Node
 
 var node = [Node
     value: [a: 123, b: 100.0],
@@ -917,8 +915,8 @@ var node = [Node
 Methods allow invoking a function on an object instance using the `.` operator:
 ```cy
 type Node:
-    var value int
-    var next  ?Node
+    value int
+    next  ?Node
 
     func inc(n):
         value += n
@@ -943,8 +941,8 @@ Type members can be implicitly referenced inside the method. *Incomplete: Only t
 To reference members explicitly inside a method, use the builtin `self`:
 ```cy
 type Node:
-    var value int
-    var next  ?Node
+    value int
+    next  ?Node
 
     func double():
         return self.value * 2
@@ -954,8 +952,8 @@ type Node:
 Type functions are declared outside of the `type` block with an explicit namespace path:
 ```cy
 type Node:
-    var value int
-    var next  ?Node
+    value int
+    next  ?Node
 
 -- Declare namespace function inside `Node`.
 func Node.new():
@@ -982,8 +980,8 @@ Unlike objects, structs do not have a reference count. They can be safely refere
 Struct types are created using the `type struct` declaration:
 ```cy
 type Vec2 struct:
-    var x float
-    var y float
+    x float
+    y float
 
 var v = [Vec2 x: 30, y: 40]
 ```
@@ -1026,16 +1024,16 @@ Choices are enums with payloads (also known as sum types or tagged unions). An e
 type Shape enum:
     case rectangle Rectangle
     case circle    object:
-        var radius float
+        radius float
     case triangle  object:
-        var base   float
-        var height float
+        base   float
+        height float
     case line      float
     case point 
 
 type Rectangle:
-    var width  float
-    var height float
+    width  float
+    height float
 ```
 
 ### Initialize choice.
@@ -1179,8 +1177,8 @@ Templates are used to specialize type declarations. Since template parameters on
 ```cy
 template(T type)
 type MyContainer:
-    var id int
-    var value #T
+    id    int
+    value #T
 
     func get() #T:
         return self.value
@@ -1930,9 +1928,9 @@ When using `cfunc` or `cbind` declarations, [symbols](#symbols-1) are used to re
 import os
 
 type MyObject:
-    var a float
-    var b pointer
-    var c bool
+    a float
+    b pointer
+    c bool
 
 ffi.cbind(MyObject, [.float, .voidPtr, .bool])
 ffi.cfunc('foo', [MyObject], MyObject)
@@ -2627,8 +2625,8 @@ Normally this would impact performance, but Cyber generates specialized bytecode
 To overload an operator for an object type, declare `$prefix`, `$infix`, `$postfix` methods. See the available [builtin operators](#builtin-operators). Since operator names aren't allowed as standard identifiers, they are contained in a string literal.
 ```cy
 type Vec2:
-    var x float
-    var y float
+    x float
+    y float
 
     func '$infix+'(o Vec2) Vec2:
         return [Vec2
@@ -2647,7 +2645,7 @@ var c = -a
 Some special operators have their own name. This example overloads the `index` operator and the `set index` operator:
 ```cy
 type MyCollection:
-    var arr List
+    arr List
 
     func '$index'(idx):
         return arr[idx * 2]
@@ -2695,8 +2693,8 @@ Declare a `$call` function to allow invoking a module as a function.
 ```cy
 -- Object types are also modules.
 type Vec2:
-    var x float
-    var y float
+    x float
+    y float
 
 func Vec2.'$call'(x float, y float) Vec2:
     return [Vec2 x: x, y: y]

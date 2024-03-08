@@ -1056,16 +1056,7 @@ pub fn declareObjectMembers(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !v
         while (fieldId != cy.NullNode) : (i += 1) {
             const field = c.ast.node(fieldId);
             const fieldName = c.ast.nodeStringById(field.data.objectField.name);
-            var fieldType: cy.TypeId = cy.NullId;
-            if (field.data.objectField.typed) {
-                if (field.data.objectField.typeSpec == cy.NullNode) {
-                    fieldType = bt.Any;
-                } else {
-                    fieldType = try resolveTypeSpecNode(c, field.data.objectField.typeSpec);
-                }
-            } else {
-                fieldType = bt.Dynamic;
-            }
+            const fieldType = try resolveTypeSpecNode(c, field.data.objectField.typeSpec);
 
             const symId = try c.declareField(@ptrCast(obj), fieldName, i, fieldType, fieldId);
             fields[i] = .{

@@ -1,5 +1,5 @@
 type S:
-    var a
+    a any
 
 var o = [S a: 100]
 o.b = 200

@@ -48,9 +48,9 @@ if codeBuf == none:
 var llSymIter = llvm.ObjectFileCopySymbolIterator(llBin)
 
 type Sym:
-    var name String
-    var addr int
-    var code Array
+    name String
+    addr int
+    code Array
 
 -- First pass accumulates the unordered symbols.
 var syms = []

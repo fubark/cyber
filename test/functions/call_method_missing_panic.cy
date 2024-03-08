@@ -1,5 +1,5 @@
 type S:
-    var a
+    a any
 
 my o = [S:]
 o.foo()

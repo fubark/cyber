@@ -3,16 +3,16 @@ import test
 type Shape enum:
     case rectangle Rectangle
     case circle    object:
-        var radius float
+        radius float
     case triangle  object:
-        var base   float
-        var height float
+        base   float
+        height float
     case line      float
     case point
 
 type Rectangle:
-    var width  float
-    var height float
+    width  float
+    height float
 
 -- Switch case on object payload.
 var s = [Shape.rectangle width: 123, height: 234]

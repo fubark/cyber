@@ -1,5 +1,5 @@
 type S:
-    var value
+    value any
 
     func foo():
         var a = [S value: 123]

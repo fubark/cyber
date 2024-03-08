@@ -1,7 +1,7 @@
 import t 'test'
 
 type S:
-  var a float
+    a float
 
 my o = t.erase([S a: 123])
 o.a = []

@@ -1,5 +1,5 @@
 type S:
-    var a dynamic
+    a dynamic
 
 func foo():
     return 123

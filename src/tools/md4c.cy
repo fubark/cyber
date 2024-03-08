@@ -61,84 +61,84 @@ var .ALIGN_CENTER int = 2
 var .ALIGN_RIGHT int = 3
 
 type ATTRIBUTE_S:
-    var text any -- const MD_CHAR *
-    var size SIZE
-    var substr_types any -- const MD_TEXTTYPE *
-    var substr_offsets any -- const MD_OFFSET *
+    text any -- const MD_CHAR *
+    size SIZE
+    substr_types any -- const MD_TEXTTYPE *
+    substr_offsets any -- const MD_OFFSET *
 
 type ATTRIBUTE ATTRIBUTE_S
 
 type BLOCK_UL_DETAIL_S:
-    var is_tight int
-    var mark CHAR
+    is_tight int
+    mark CHAR
 
 type BLOCK_UL_DETAIL BLOCK_UL_DETAIL_S
 
 type BLOCK_OL_DETAIL_S:
-    var start int
-    var is_tight int
-    var mark_delimiter CHAR
+    start int
+    is_tight int
+    mark_delimiter CHAR
 
 type BLOCK_OL_DETAIL BLOCK_OL_DETAIL_S
 
 type BLOCK_LI_DETAIL_S:
-    var is_task int
-    var task_mark CHAR
-    var task_mark_offset OFFSET
+    is_task int
+    task_mark CHAR
+    task_mark_offset OFFSET
 
 type BLOCK_LI_DETAIL BLOCK_LI_DETAIL_S
 
 type BLOCK_H_DETAIL_S:
-    var level int
+    level int
 
 type BLOCK_H_DETAIL BLOCK_H_DETAIL_S
 
 type BLOCK_CODE_DETAIL_S:
-    var info ATTRIBUTE
-    var lang ATTRIBUTE
-    var fence_char CHAR
+    info ATTRIBUTE
+    lang ATTRIBUTE
+    fence_char CHAR
 
 type BLOCK_CODE_DETAIL BLOCK_CODE_DETAIL_S
 
 type BLOCK_TABLE_DETAIL_S:
-    var col_count int
-    var head_row_count int
-    var body_row_count int
+    col_count int
+    head_row_count int
+    body_row_count int
 
 type BLOCK_TABLE_DETAIL BLOCK_TABLE_DETAIL_S
 
 type BLOCK_TD_DETAIL_S:
-    var align ALIGN
+    align ALIGN
 
 type BLOCK_TD_DETAIL BLOCK_TD_DETAIL_S
 
 type SPAN_A_DETAIL_S:
-    var href ATTRIBUTE
-    var title ATTRIBUTE
+    href ATTRIBUTE
+    title ATTRIBUTE
 
 type SPAN_A_DETAIL SPAN_A_DETAIL_S
 
 type SPAN_IMG_DETAIL_S:
-    var src ATTRIBUTE
-    var title ATTRIBUTE
+    src ATTRIBUTE
+    title ATTRIBUTE
 
 type SPAN_IMG_DETAIL SPAN_IMG_DETAIL_S
 
 type SPAN_WIKILINK_S:
-    var target ATTRIBUTE
+    target ATTRIBUTE
 
 type SPAN_WIKILINK_DETAIL SPAN_WIKILINK_S
 
 type PARSER_S:
-    var abi_version int
-    var flags int
-    var enter_block any -- int (*)(MD_BLOCKTYPE, void *, void *)
-    var leave_block any -- int (*)(MD_BLOCKTYPE, void *, void *)
-    var enter_span any -- int (*)(MD_SPANTYPE, void *, void *)
-    var leave_span any -- int (*)(MD_SPANTYPE, void *, void *)
-    var text any -- int (*)(MD_TEXTTYPE, const MD_CHAR *, MD_SIZE, void *)
-    var debug_log any -- void (*)(const char *, void *)
-    var syntax any -- void (*)(void)
+    abi_version int
+    flags int
+    enter_block any -- int (*)(MD_BLOCKTYPE, void *, void *)
+    leave_block any -- int (*)(MD_BLOCKTYPE, void *, void *)
+    enter_span any -- int (*)(MD_SPANTYPE, void *, void *)
+    leave_span any -- int (*)(MD_SPANTYPE, void *, void *)
+    text any -- int (*)(MD_TEXTTYPE, const MD_CHAR *, MD_SIZE, void *)
+    debug_log any -- void (*)(const char *, void *)
+    syntax any -- void (*)(void)
 
 type PARSER PARSER_S
 

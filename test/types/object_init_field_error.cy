@@ -1,5 +1,5 @@
 type S:
-    var a float
+    a float
 
 func foo():
     return 123

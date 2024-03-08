@@ -659,7 +659,7 @@ pub const Chunk = struct {
         }
     }
 
-    pub fn reportErrorMsgAt(self: *Chunk, msg: []const u8, nodeId: cy.NodeId) !void {
+    pub fn reportErrorMsgAt(self: *Chunk, msg: []const u8, nodeId: cy.NodeId) error{OutOfMemory, CompileError} {
         try self.compiler.setErrorAt(self.id, nodeId, msg);
         return error.CompileError;
     }

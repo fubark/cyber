@@ -4,10 +4,9 @@ func foo(a float):
     return 'foo'
 
 --cytest: error
---panic: Can not find compatible function for `foo(String) any`.
---Only `func foo(float) dynamic` exists.
+--panic: Expected type `float`, found `String`.
 --
---main:2:5 main:
+--main:2:9 main:
 --a = foo(a)
---    ^
+--        ^
 --

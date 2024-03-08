@@ -8,8 +8,7 @@ const cc = @import("capi.zig");
 const ir = cy.ir;
 const vmc = @import("vm_c.zig");
 const rt = cy.rt;
-const types = cy.types;
-const bt = types.BuiltinTypes;
+const bt = cy.types.BuiltinTypes;
 const Nullable = cy.Nullable;
 const sema = @This();
 const cte = cy.cte;
@@ -18,10 +17,10 @@ const v = fmt.v;
 const module = cy.module;
 
 const ChunkId = cy.chunk.ChunkId;
-const TypeId = types.TypeId;
-const CompactType = types.CompactType;
+const TypeId = cy.types.TypeId;
+const CompactType = cy.types.CompactType;
 const Sym = cy.Sym;
-const ReturnCstr = types.ReturnCstr;
+const ReturnCstr = cy.types.ReturnCstr;
 
 const vm_ = @import("vm.zig");
 
@@ -1484,7 +1483,7 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
     // c.ast.node(node.data.staticDecl.varSpec).next = typeId;
 
     const outTypeId = out.getTypeId();
-    if (!types.isTypeSymCompat(c.compiler, outTypeId, typeId)) {
+    if (!cy.types.isTypeSymCompat(c.compiler, outTypeId, typeId)) {
         const expTypeName = c.sema.getTypeBaseName(typeId);
         const actTypeName = c.sema.getTypeBaseName(outTypeId);
         return c.reportErrorAt("Host var `{}` expects type {}, got: {}.", &.{v(decl.namePath), v(expTypeName), v(actTypeName)}, nodeId);
@@ -1813,36 +1812,19 @@ fn toTypes(ctypes: []CompactType) []const TypeId {
     return @ptrCast(ctypes);
 }
 
-fn callSymWithRecv(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.NodeId, recv: ExprResult, argHead: cy.NodeId, ret_cstr: ReturnCstr) !ExprResult {
-    try referenceSym(c, sym, symNodeId);
+fn requireFuncSym(c: *cy.Chunk, sym: *Sym, node: cy.NodeId) !*cy.sym.FuncSym {
     if (sym.type != .func) {
-        return error.Unexpected;
+        return c.reportErrorAt("Expected `{}` to be a function symbol.", &.{v(sym.name())}, node);
     }
-
-    const funcSym = sym.cast(.func);
-    const funcSigId = getFuncSigHint(funcSym, numArgs);
-    const funcSig = c.compiler.sema.getFuncSig(funcSigId);
-    const preferParamTypes = funcSig.params();
-
-    const res = try c.semaPushFirstAndArgsInfer(recv, argHead, numArgs, preferParamTypes);
-    defer c.typeStack.items.len = res.start;
-    return c.semaCallFuncSym(preIdx, symNodeId, funcSym, ret_cstr, res);
+    return sym.cast(.func);
 }
 
 // Invoke a type's sym as the callee.
 fn callTypeSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.NodeId, argHead: cy.NodeId, typeId: cy.TypeId, ret_cstr: ReturnCstr) !ExprResult {
+    _ = typeId;
     const typeCallSym = try c.findDistinctSym(sym, "$call", cy.NullNode, true);
-    if (typeCallSym.type != .func) {
-        const typeName = c.sema.getTypeBaseName(typeId);
-        return c.reportErrorAt("Can not find `$call` function for `{}`.", &.{v(typeName)}, symNodeId);
-    }
-    const funcSym = typeCallSym.cast(.func);
-    const funcSigId = getFuncSigHint(funcSym, numArgs);
-    const funcSig = c.compiler.sema.getFuncSig(funcSigId);
-    const preferParamTypes = funcSig.params();
-    const res = try c.semaPushCallArgsInfer(argHead, numArgs, preferParamTypes);
-    defer c.typeStack.items.len = res.start;
-    return c.semaCallFuncSym(preIdx, symNodeId, funcSym, ret_cstr, res);
+    const funcSym = try requireFuncSym(c, typeCallSym, symNodeId);
+    return c.semaCallFuncSym(preIdx, funcSym, argHead, numArgs, ret_cstr, symNodeId);
 }
 
 fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.NodeId, argHead: cy.NodeId, ret_cstr: ReturnCstr) !ExprResult {
@@ -1850,13 +1832,7 @@ fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.Node
     switch (sym.type) {
         .func => {
             const funcSym = sym.cast(.func);
-            const funcSigId = getFuncSigHint(funcSym, numArgs);
-            const funcSig = c.compiler.sema.getFuncSig(funcSigId);
-            const preferParamTypes = funcSig.params();
-
-            const res = try c.semaPushCallArgsInfer(argHead, numArgs, preferParamTypes);
-            defer c.typeStack.items.len = res.start;
-            return c.semaCallFuncSym(preIdx, symNodeId, funcSym, ret_cstr, res);
+            return c.semaCallFuncSym(preIdx, funcSym, argHead, numArgs, ret_cstr, symNodeId);
         },
         .bool_t => {
             const type_id = sym.cast(.bool_t).type;
@@ -1886,9 +1862,8 @@ fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.Node
         .hostVar => {
             // preCall.
             const callee = try sema.symbol(c, sym, symNodeId, true);
-            const res = try c.semaPushCallArgs(argHead, numArgs);
-            defer c.typeStack.items.len = res.start;
-            return c.semaCallValue(preIdx, callee.irIdx, numArgs, res.irArgsIdx);
+            const args = try c.semaPushCallArgs(argHead, numArgs);
+            return c.semaCallValue(preIdx, callee.irIdx, numArgs, args);
         },
         else => {
             // try pushCallArgs(c, node.data.callExpr.argHead, numArgs, true);
@@ -2067,7 +2042,7 @@ pub fn resolveLocalRootSym(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId, di
 
 /// If no type spec, default to `dynamic` type.
 /// Returns the final resolved type sym.
-pub fn resolveTypeSpecNode(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!types.TypeId {
+pub fn resolveTypeSpecNode(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!cy.TypeId {
     if (nodeId == cy.NullNode) {
         return bt.Dynamic;
     }
@@ -2078,7 +2053,7 @@ pub fn resolveTypeSpecNode(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!types.TypeI
     return type_id;
 }
 
-pub fn resolveReturnTypeSpecNode(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!types.TypeId {
+pub fn resolveReturnTypeSpecNode(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!cy.TypeId {
     if (nodeId == cy.NullNode) {
         return bt.Dynamic;
     }
@@ -2427,7 +2402,7 @@ fn visitChunkInit(self: *cy.Compiler, c: *cy.Chunk) !void {
     // Once all deps are visited, emit IR.
     const func = c.sym.getMod().getSym("$init").?.cast(.func).first;
     const exprLoc = try self.main_chunk.ir.pushExpr(.preCallFuncSym, c.alloc, bt.Void, cy.NullNode, .{ .callFuncSym = .{
-        .func = func, .hasDynamicArg = false, .numArgs = 0, .args = 0,
+        .func = func, .numArgs = 0, .args = 0,
     }});
     _ = try self.main_chunk.ir.pushStmt(c.alloc, .exprStmt, cy.NullNode, .{
         .expr = exprLoc,
@@ -2933,72 +2908,18 @@ fn lookupParentLocal(c: *cy.Chunk, name: []const u8) !?LookupParentLocalResult {
     return null;
 }
 
-/// Finds the first function that matches the constrained signature.
-fn findCompatFuncForSym(
-    c: *cy.Chunk, sym: *Sym, 
-    args: []const CompactType, ret_cstr: ReturnCstr,
-) ?*cy.Func {
-    switch (sym.type) {
-        .func => {
-            const func = sym.cast(.func);
-            if (cy.types.isTypeFuncSigCompat(c.compiler, args, ret_cstr, func.firstFuncSig)) {
-                return func.first;
-            }
-            if (func.numFuncs > 1) {
-                var cur = func.first.next;
-                while (cur) |entry| {
-                    if (cy.types.isTypeFuncSigCompat(c.compiler, args, ret_cstr, entry.funcSigId)) {
-                        return entry;
-                    }
-                    cur = entry.next;
-                }
-            }
-            return null;
-        },
-        else => {
-            return null;
-        },
-    }
-}
-
-fn getFuncSigHint(funcSym: *cy.sym.FuncSym, numArgs: u32) FuncSigId {
-    _ = numArgs;
-    // Just return the first func for now.
-    return funcSym.firstFuncSig;
-}
-
-fn mustFindCompatFuncForSym(
-    c: *cy.Chunk, sym: *cy.sym.FuncSym, 
-    args: []const CompactType, ret: ReturnCstr, nodeId: cy.NodeId,
-) !*cy.Func {
-    if (cy.types.isTypeFuncSigCompat(c.compiler, args, ret, sym.firstFuncSig)) {
-        return sym.first;
-    }
-    if (sym.numFuncs > 1) {
-        var cur = sym.first.next;
-        while (cur) |entry| {
-            if (cy.types.isTypeFuncSigCompat(c.compiler, args, ret, entry.funcSigId)) {
-                return entry;
-            }
-            cur = entry.next;
-        }
-    }
-    try reportIncompatibleCallSig(c, sym, args, ret, nodeId);
-    unreachable;
-}
-
-fn reportIncompatibleCallSig(c: *cy.Chunk, sym: *cy.sym.FuncSym, args: []const CompactType, ret_cstr: ReturnCstr, nodeId: cy.NodeId) !void {
+fn reportIncompatibleCallSig(c: *cy.Chunk, sym: *cy.sym.FuncSym, args: []const cy.TypeId, ret_cstr: ReturnCstr, nodeId: cy.NodeId) anyerror {
     const name = sym.head.name();
     var msg: std.ArrayListUnmanaged(u8) = .{};
     const w = msg.writer(c.alloc);
-    const callSigStr = try c.sema.allocArgsStr(args, true);
+    const callSigStr = try c.sema.allocTypesStr(args);
     defer c.alloc.free(callSigStr);
 
+    try w.print("Can not find compatible function for call: `{s}{s}`.", .{name, callSigStr});
     if (ret_cstr == .not_void) {
-        try w.print("Can not find compatible function for call signature: `{s}{s}`. Expects non-void return.\n", .{name, callSigStr});
-    } else {
-        try w.print("Can not find compatible function for call signature: `{s}{s}`.\n", .{name, callSigStr});
+        try w.writeAll(" Expects non-void return.");
     }
+    try w.writeAll("\n");
     try w.print("Functions named `{s}` in `{s}`:\n", .{name, sym.head.parent.?.name() });
 
     var funcStr = try c.sema.formatFuncSig(sym.firstFuncSig, &cy.tempBuf);
@@ -3048,7 +2969,7 @@ fn checkTypeCstr(c: *cy.Chunk, ctype: CompactType, cstrTypeId: TypeId, nodeId: c
 fn checkTypeCstr2(c: *cy.Chunk, ctype: CompactType, cstrTypeId: TypeId, reportCstrTypeId: TypeId, nodeId: cy.NodeId) !void {
     // Dynamic is allowed.
     if (!ctype.dynamic) {
-        if (!types.isTypeSymCompat(c.compiler, ctype.id, cstrTypeId)) {
+        if (!cy.types.isTypeSymCompat(c.compiler, ctype.id, cstrTypeId)) {
             const cstrName = try c.sema.allocTypeName(reportCstrTypeId);
             defer c.alloc.free(cstrName);
             const typeName = try c.sema.allocTypeName(ctype.id);
@@ -3589,96 +3510,98 @@ pub const ChunkExt = struct {
         }
     }
 
-    pub fn semaPushCallArgsInfer(c: *cy.Chunk, argHead: cy.NodeId, numArgs: u8, preferTypes: []const types.TypeId) !StackTypesResult {
-        const start = c.typeStack.items.len;
-        const irIdx = try c.ir.pushEmptyArray(c.alloc, u32, numArgs);
-        const hasDynamicArg = try semaPushArgsInferInner(c, irIdx, argHead, preferTypes);
-        return StackTypesResult{
-            .hasDynamicArg = hasDynamicArg,
-            .types = @ptrCast(c.typeStack.items[start..start+numArgs]),
-            .start = @intCast(start),
-            .irArgsIdx = irIdx,
-        };
-    }
+    pub fn semaCallFuncSymRec(c: *cy.Chunk, loc: u32, sym: *cy.sym.FuncSym, rec: cy.NodeId, rec_res: ExprResult,
+        argHead: cy.NodeId, numArgs: u8, ret_cstr: ReturnCstr, node: cy.NodeId) !ExprResult {
 
-    pub fn semaPushFirstAndArgsInfer(c: *cy.Chunk, recv: ExprResult, argHead: cy.NodeId, numArgs: u8, preferTypes: []const cy.TypeId) !StackTypesResult {
-        const start = c.typeStack.items.len;
-        try c.typeStack.append(c.alloc, @bitCast(recv.type));
-        const irIdx = try c.ir.pushEmptyArray(c.alloc, u32, numArgs + 1);
-        c.ir.setArrayItem(irIdx, u32, 0, recv.irIdx);
+        var matcher = try FuncMatcher.init(c, sym, numArgs + 1, ret_cstr);
+        defer matcher.deinit(c);
 
-        var effPreferTypes = preferTypes;
-        if (effPreferTypes.len == 0) {
-            effPreferTypes = &.{bt.Any};
+        // Receiver.
+        try matcher.matchArg(c, rec, 0, rec_res);
+
+        var arg = argHead;
+        var arg_idx: u32 = 1;
+
+        while (arg_idx < numArgs + 1) {
+            const arg_n = c.ast.node(arg);
+            const arg_res = try c.semaExprPrefer(arg, matcher.getArgTypeHint(arg_idx));
+            try matcher.matchArg(c, arg, arg_idx, arg_res);
+            arg_idx += 1;
+            arg = arg_n.next();
         }
-        const hasDynamicArg = try semaPushArgsInferInner(c, irIdx + @sizeOf(u32), argHead, preferTypes[1..]);
-        return StackTypesResult{
-            .hasDynamicArg = hasDynamicArg,
-            .types = @ptrCast(c.typeStack.items[start..start+numArgs + 1]),
-            .start = @intCast(start),
-            .irArgsIdx = irIdx,
-        };
+
+        try matcher.matchEnd(c, node);
+        return c.semaCallFuncSymResult(loc, sym, matcher.func, matcher.args_loc, matcher.nargs, node);
     }
 
-    pub fn semaPushRecvAndArgs(c: *cy.Chunk, recv: ExprResult, argHead: cy.NodeId, numArgs: u8) !StackTypesResult {
-        const start = c.typeStack.items.len;
-        try c.typeStack.append(c.alloc, @bitCast(recv.type));
+    pub fn semaCallFuncSymResult(c: *cy.Chunk, loc: u32, sym: *cy.sym.FuncSym, func: *cy.Func, args_loc: u32, nargs: u32, node: cy.NodeId) !ExprResult {
+        try referenceSym(c, @ptrCast(sym), node);
+        c.ir.setExprCode(loc, .preCallFuncSym);
+        c.ir.setExprType2(loc, .{ .id = @intCast(func.retType), .throws = func.throws });
+        c.ir.setExprData(loc, .preCallFuncSym, .{ .callFuncSym = .{
+            .func = func, .numArgs = @as(u8, @intCast(nargs)), .args = args_loc,
+        }});
+        return ExprResult.init(loc, CompactType.init(func.retType));
+    }
+
+    pub fn semaCallFuncSym1(c: *cy.Chunk, loc: u32, sym: *cy.sym.FuncSym, arg1_n: cy.NodeId, arg1: ExprResult,
+        ret_cstr: ReturnCstr, node: cy.NodeId) !ExprResult {
+
+        var matcher = try FuncMatcher.init(c, sym, 1, ret_cstr);
+        defer matcher.deinit(c);
+
+        try matcher.matchArg(c, arg1_n, 0, arg1);
+        try matcher.matchEnd(c, node);
+
+        return c.semaCallFuncSymResult(loc, sym, matcher.func, matcher.args_loc, matcher.nargs, node);
+    }
+
+    pub fn semaCallFuncSym2(c: *cy.Chunk, loc: u32, sym: *cy.sym.FuncSym, arg1_n: cy.NodeId, arg1: ExprResult,
+        arg2_n: cy.NodeId, arg2: ExprResult, ret_cstr: ReturnCstr, node: cy.NodeId) !ExprResult {
+
+        var matcher = try FuncMatcher.init(c, sym, 2, ret_cstr);
+        defer matcher.deinit(c);
+
+        try matcher.matchArg(c, arg1_n, 0, arg1);
+        try matcher.matchArg(c, arg2_n, 1, arg2);
+        try matcher.matchEnd(c, node);
+
+        return c.semaCallFuncSymResult(loc, sym, matcher.func, matcher.args_loc, matcher.nargs, node);
+    }
+
+    /// Match first overloaded function.
+    pub fn semaCallFuncSym(c: *cy.Chunk, loc: u32, sym: *cy.sym.FuncSym, argHead: cy.NodeId, numArgs: u8, ret_cstr: ReturnCstr, node: cy.NodeId) !ExprResult {
+        var matcher = try FuncMatcher.init(c, sym, numArgs, ret_cstr);
+        defer matcher.deinit(c);
+
+        var arg = argHead;
+        var arg_idx: u32 = 0;
+
+        while (arg_idx < numArgs) {
+            const arg_n = c.ast.node(arg);
+            const arg_res = try c.semaExprPrefer(arg, matcher.getArgTypeHint(arg_idx));
+            try matcher.matchArg(c, arg, arg_idx, arg_res);
+            arg_idx += 1;
+            arg = arg_n.next();
+        }
+
+        try matcher.matchEnd(c, node);
+
+        return c.semaCallFuncSymResult(loc, sym, matcher.func, matcher.args_loc, matcher.nargs, node);
+    }
+
+    pub fn semaPushCallArgs(c: *cy.Chunk, argHead: cy.NodeId, numArgs: u8) !u32 {
         const irIdx = try c.ir.pushEmptyArray(c.alloc, u32, numArgs);
-        const hasDynamicArg = try semaPushArgsInner(c, irIdx, argHead);
-        return StackTypesResult{
-            .types = @ptrCast(c.typeStack.items[start..start+numArgs+1]),
-            .start = @intCast(start),
-            .hasDynamicArg = hasDynamicArg,
-            .irArgsIdx = irIdx,
-        };
-    }
-
-    pub fn semaPushCallArgs(c: *cy.Chunk, argHead: cy.NodeId, numArgs: u8) !StackTypesResult {
-        const start = c.typeStack.items.len;
-        const irIdx = try c.ir.pushEmptyArray(c.alloc, u32, numArgs);
-        const hasDynamicArg = try semaPushArgsInner(c, irIdx, argHead);
-        return StackTypesResult{
-            .hasDynamicArg = hasDynamicArg,
-            .types = @ptrCast(c.typeStack.items[start..start+numArgs]),
-            .start = @intCast(start),
-            .irArgsIdx = irIdx,
-        };
-    }
-
-    fn semaPushArgsInner(c: *cy.Chunk, irIdx: u32, argHead: cy.NodeId) !bool {
-        var hasDynamicArg: bool = false;
         var nodeId = argHead;
         var i: u32 = 0;
         while (nodeId != cy.NullNode) {
             const arg = c.ast.node(nodeId);
             const argRes = try c.semaExpr(nodeId, .{});
             c.ir.setArrayItem(irIdx, u32, i, argRes.irIdx);
-            hasDynamicArg = hasDynamicArg or argRes.type.dynamic;
-            try c.typeStack.append(c.alloc, @bitCast(argRes.type));
             i += 1;
             nodeId = arg.next();
         }
-        return hasDynamicArg;
-    }
-
-    fn semaPushArgsInferInner(c: *cy.Chunk, irIdx: u32, argHead: cy.NodeId, preferTypes: []const TypeId) !bool {
-        var nodeId = argHead;
-        var i: u32 = 0;
-        var hasDynamicArg: bool = false;
-        while (nodeId != cy.NullNode) {
-            const arg = c.ast.node(nodeId);
-            var preferT = bt.Any;
-            if (i < preferTypes.len) {
-                preferT = preferTypes[i];
-            }
-            const argRes = try c.semaExprPrefer(nodeId, preferT);
-            c.ir.setArrayItem(irIdx, u32, i, argRes.irIdx);
-            try c.typeStack.append(c.alloc, @bitCast(argRes.type));
-            hasDynamicArg = hasDynamicArg or argRes.type.dynamic;
-            i += 1;
-            nodeId = arg.next();
-        }
-        return hasDynamicArg;
+        return irIdx;
     }
 
     /// Skips emitting IR for a sym.
@@ -3770,17 +3693,17 @@ pub const ChunkExt = struct {
                 }
                 // Check if type is compatible with Optional's some payload.
                 const someMember = type_e.sym.cast(.enum_t).getMemberByIdx(1);
-                try checkTypeCstr2(c, res.type, someMember.payloadType, expr.preferType, expr.nodeId);
+                if (cy.types.isTypeSymCompat(c.compiler, res.type.id, someMember.payloadType)) {
+                    // Generate IR to wrap value into optional.
+                    var b: ObjectBuilder = .{ .c = c };
+                    try b.begin(expr.preferType, 2, expr.nodeId);
+                    const tag = try c.semaInt(1, expr.nodeId);
+                    b.pushArg(tag);
+                    b.pushArg(res);
+                    const irIdx = b.end();
 
-                // Generate IR to wrap value into optional.
-                var b: ObjectBuilder = .{ .c = c };
-                try b.begin(expr.preferType, 2, expr.nodeId);
-                const tag = try c.semaInt(1, expr.nodeId);
-                b.pushArg(tag);
-                b.pushArg(res);
-                const irIdx = b.end();
-
-                return ExprResult.initStatic(irIdx, expr.preferType);
+                    return ExprResult.initStatic(irIdx, expr.preferType);
+                }
             } else {
                 if (expr.preferType == bt.Any and res.type.id != bt.Any) {
                     // Box value.
@@ -3793,7 +3716,7 @@ pub const ChunkExt = struct {
             }
 
             if (expr.reqTypeCstr) {
-                if (!types.isTypeSymCompat(c.compiler, res.type.id, expr.preferType)) {
+                if (!cy.types.isTypeSymCompat(c.compiler, res.type.id, expr.preferType)) {
                     if (res.type.dynamic) {
                         var new_res = res;
                         new_res.irIdx = try c.ir.pushExpr(.type_check, c.alloc, expr.preferType, expr.nodeId, .{
@@ -3945,11 +3868,11 @@ pub const ChunkExt = struct {
                 });
                 if (!child.type.dynamic) {
                     // Compile-time cast.
-                    if (types.isTypeSymCompat(c.compiler, child.type.id, typeId)) {
+                    if (cy.types.isTypeSymCompat(c.compiler, child.type.id, typeId)) {
                         c.ir.getExprDataPtr(irIdx, .cast).isRtCast = false;
                     } else {
                         // Check if it's a narrowing cast (deferred to runtime).
-                        if (!types.isTypeSymCompat(c.compiler, typeId, child.type.id)) {
+                        if (!cy.types.isTypeSymCompat(c.compiler, typeId, child.type.id)) {
                             const actTypeName = c.sema.getTypeBaseName(child.type.id);
                             const expTypeName = c.sema.getTypeBaseName(typeId);
                             return c.reportErrorAt("Cast expects `{}`, got `{}`.", &.{v(expTypeName), v(actTypeName)}, nodeId);
@@ -4042,15 +3965,10 @@ pub const ChunkExt = struct {
                     // Look for sym under left type's module.
                     const recTypeSym = c.sema.getTypeSym(leftT);
                     const sym = try c.mustFindSym(recTypeSym, "$index", nodeId);
-                    const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, 2);
-                    c.ir.setArrayItem(irArgsIdx, u32, 0, left.irIdx);
-                    c.ir.setArrayItem(irArgsIdx, u32, 1, index.irIdx);
-                    return c.semaCallFuncSym(loc, nodeId, sym.cast(.func), expr.getRetCstr(), .{
-                        .types = @constCast(&[_]CompactType{ left.type, index.type }),
-                        .start = 0,
-                        .hasDynamicArg = left.type.dynamic or index.type.dynamic,
-                        .irArgsIdx = irArgsIdx,
-                    });
+                    const func_sym = try requireFuncSym(c, sym, nodeId);
+
+                    return c.semaCallFuncSym2(loc, func_sym, node.data.indexExpr.left, left,
+                        node.data.indexExpr.right, index, expr.getRetCstr(), nodeId);
                 }
             },
             .range => {
@@ -4228,14 +4146,14 @@ pub const ChunkExt = struct {
                 if (catchError) {
                     const child = try c.semaExpr(node.data.tryExpr.expr, .{});
                     c.ir.setExprData(irIdx, .tryExpr, .{ .expr = child.irIdx, .catchBody = cy.NullId });
-                    const unionT = types.unionOf(c.compiler, child.type.id, bt.Error);
+                    const unionT = cy.types.unionOf(c.compiler, child.type.id, bt.Error);
                     return ExprResult.init(irIdx, CompactType.init2(unionT, child.type.dynamic));
                 } else {
                     const child = try c.semaExpr(node.data.tryExpr.expr, .{});
                     const catchExpr = try c.semaExpr(node.data.tryExpr.catchExpr, .{});
                     c.ir.setExprData(irIdx, .tryExpr, .{ .expr = child.irIdx, .catchBody = catchExpr.irIdx });
                     const dynamic = catchExpr.type.dynamic or child.type.dynamic;
-                    const unionT = types.unionOf(c.compiler, child.type.id, catchExpr.type.id);
+                    const unionT = cy.types.unionOf(c.compiler, child.type.id, catchExpr.type.id);
                     return ExprResult.init(irIdx, CompactType.init2(unionT, dynamic));
                 }
             },
@@ -4269,9 +4187,8 @@ pub const ChunkExt = struct {
                 } else {
                     // preCall.
                     const numArgs = callExpr.data.callExpr.numArgs;
-                    const res = try c.semaPushCallArgs(callExpr.data.callExpr.argHead, numArgs);
-                    defer c.typeStack.items.len = res.start;
-                    _ = try c.semaCallValue(irCallIdx, callee.irIdx, numArgs, res.irArgsIdx);
+                    const args = try c.semaPushCallArgs(callExpr.data.callExpr.argHead, numArgs);
+                    _ = try c.semaCallValue(irCallIdx, callee.irIdx, numArgs, args);
                 }
 
                 return ExprResult.initStatic(irIdx, bt.Fiber);
@@ -4335,19 +4252,18 @@ pub const ChunkExt = struct {
                 if (leftRes.type.dynamic) {
                     // Runtime method call.
                     const recv = try sema.symbol(c, leftSym, callee.data.accessExpr.left, true);
-                    const res = try c.semaPushRecvAndArgs(recv, node.data.callExpr.argHead, numArgs);
-                    defer c.typeStack.items.len = res.start;
-                    return c.semaCallObjSym(preIdx, recv.irIdx, rightId, res.types, res.irArgsIdx);
+                    const args = try c.semaPushCallArgs(node.data.callExpr.argHead, numArgs);
+                    return c.semaCallObjSym(preIdx, recv.irIdx, rightId, numArgs, args);
                 }
 
                 if (leftSym.isVariable()) {
                     // Look for sym under left type's module.
                     const leftTypeSym = c.sema.getTypeSym(leftRes.type.id);
                     const rightSym = try c.mustFindSym(leftTypeSym, rightName, rightId);
-
+                    const func_sym = try requireFuncSym(c, rightSym, rightId);
                     const recv = try sema.symbol(c, leftSym, callee.data.accessExpr.left, true);
-
-                    return try callSymWithRecv(c, preIdx, rightSym, numArgs, rightId, recv, node.data.callExpr.argHead, expr.getRetCstr());
+                    return c.semaCallFuncSymRec(preIdx, func_sym, callee.data.accessExpr.left, recv,
+                        node.data.callExpr.argHead, numArgs, expr.getRetCstr(), expr.nodeId);
                 } else {
                     // Look for sym under left module.
                     const rightSym = try c.mustFindSym(leftSym, rightName, rightId);
@@ -4356,15 +4272,17 @@ pub const ChunkExt = struct {
             } else {
                 if (leftRes.type.dynamic) {
                     // preCallObjSym.
-                    const res = try c.semaPushRecvAndArgs(leftRes, node.data.callExpr.argHead, numArgs);
-                    defer c.typeStack.items.len = res.start;
-                    return c.semaCallObjSym(preIdx, leftRes.irIdx, rightId, res.types, res.irArgsIdx);
+                    const args = try c.semaPushCallArgs(node.data.callExpr.argHead, numArgs);
+                    return c.semaCallObjSym(preIdx, leftRes.irIdx, rightId, numArgs, args);
                 } else {
                     // Look for sym under left type's module.
                     const rightName = c.ast.nodeStringById(rightId);
                     const leftTypeSym = c.sema.getTypeSym(leftRes.type.id);
                     const rightSym = try c.mustFindSym(leftTypeSym, rightName, rightId);
-                    return try callSymWithRecv(c, preIdx, rightSym, numArgs, rightId, leftRes, node.data.callExpr.argHead, expr.getRetCstr());
+                    const func_sym = try requireFuncSym(c, rightSym, rightId);
+
+                    return c.semaCallFuncSymRec(preIdx, func_sym, callee.data.accessExpr.left, leftRes,
+                        node.data.callExpr.argHead, numArgs, expr.getRetCstr(), expr.nodeId);
                 }
             }
         } else if (callee.type() == .ident) {
@@ -4375,9 +4293,8 @@ pub const ChunkExt = struct {
                 .local => |_| {
                     // preCall.
                     const calleeRes = try c.semaExpr(node.data.callExpr.callee, .{});
-                    const res = try c.semaPushCallArgs(node.data.callExpr.argHead, numArgs);
-                    defer c.typeStack.items.len = res.start;
-                    return c.semaCallValue(preIdx, calleeRes.irIdx, numArgs, res.irArgsIdx);
+                    const args = try c.semaPushCallArgs(node.data.callExpr.argHead, numArgs);
+                    return c.semaCallValue(preIdx, calleeRes.irIdx, numArgs, args);
                 },
                 .static => |sym| {
                     if (sym.type == .typeTemplate) {
@@ -4392,9 +4309,8 @@ pub const ChunkExt = struct {
         } else {
             // preCall.
             const calleeRes = try c.semaExpr(node.data.callExpr.callee, .{});
-            const res = try c.semaPushCallArgs(node.data.callExpr.argHead, numArgs);
-            defer c.typeStack.items.len = res.start;
-            return c.semaCallValue(preIdx, calleeRes.irIdx, numArgs, res.irArgsIdx);
+            const args = try c.semaPushCallArgs(node.data.callExpr.argHead, numArgs);
+            return c.semaCallValue(preIdx, calleeRes.irIdx, numArgs, args);
         }
     }
 
@@ -4465,18 +4381,6 @@ pub const ChunkExt = struct {
         return ExprResult.initStatic(irIdx, bt.Map);
     }
 
-    pub fn semaCallFuncSym(c: *cy.Chunk, loc: u32, calleeId: cy.NodeId, funcSym: *cy.sym.FuncSym, ret_cstr: ReturnCstr, args: StackTypesResult) !ExprResult {
-        const func = try mustFindCompatFuncForSym(c, funcSym, args.types, ret_cstr, calleeId);
-        try referenceSym(c, @ptrCast(funcSym), calleeId);
-
-        c.ir.setExprCode(loc, .preCallFuncSym);
-        c.ir.setExprType2(loc, .{ .id = @intCast(func.retType), .throws = func.throws });
-        c.ir.setExprData(loc, .preCallFuncSym, .{ .callFuncSym = .{
-            .func = func, .hasDynamicArg = args.hasDynamicArg, .numArgs = @as(u8, @intCast(args.types.len)), .args = args.irArgsIdx,
-        }});
-        return ExprResult.init(loc, CompactType.init(func.retType));
-    }
-
     pub fn semaCallValue(c: *cy.Chunk, preIdx: u32, calleeLoc: u32, numArgs: u32, argsLoc: u32) !ExprResult {
         // Dynamic call.
         c.ir.setExprCode(preIdx, .preCallDyn);
@@ -4489,22 +4393,14 @@ pub const ChunkExt = struct {
         return ExprResult.initDynamic(preIdx, bt.Any);
     }
 
-    pub fn semaCallObjSym(c: *cy.Chunk, preIdx: u32, recLoc: u32, right: cy.NodeId, calleeAndArgs: []CompactType, irArgsIdx: u32) !ExprResult {
+    pub fn semaCallObjSym(c: *cy.Chunk, preIdx: u32, recLoc: u32, right: cy.NodeId, num_args: u8, irArgsIdx: u32) !ExprResult {
         // Dynamic method call.
         const name = c.ast.nodeStringById(right);
 
-        // Overwrite first arg as any to match prev implementation.
-        calleeAndArgs[0] = CompactType.initDynamic(bt.Any);
-
-        const reqRet = bt.Any;
-        const sigTypes = toTypes(calleeAndArgs);
-        const funcSigId = try c.sema.ensureFuncSig(sigTypes, reqRet);
-
         c.ir.setExprCode(preIdx, .preCallObjSym);
         c.ir.setExprData(preIdx, .preCallObjSym, .{ .callObjSym = .{
-            .funcSigId = funcSigId,
             .name = name,
-            .numArgs = @as(u8, @intCast(calleeAndArgs.len-1)),
+            .numArgs = num_args,
             .rec = recLoc,
             .args = irArgsIdx,
         }});
@@ -4543,14 +4439,8 @@ pub const ChunkExt = struct {
                         // Look for sym under child type's module.
                         const childTypeSym = c.sema.getTypeSym(child.type.id);
                         const sym = try c.mustFindSym(childTypeSym, op.name(), nodeId);
-                        const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, 1);
-                        c.ir.setArrayItem(irArgsIdx, u32, 0, child.irIdx);
-                        return c.semaCallFuncSym(irIdx, nodeId, sym.cast(.func), expr.getRetCstr(), .{
-                            .types = @constCast(&[_]CompactType{ child.type }),
-                            .start = 0,
-                            .hasDynamicArg = false,
-                            .irArgsIdx = irArgsIdx,
-                        });
+                        const func_sym = try requireFuncSym(c, sym, nodeId);
+                        return c.semaCallFuncSym1(irIdx, func_sym, node.data.unary.child, child, expr.getRetCstr(), nodeId);
                     }
                 }
             },
@@ -4690,15 +4580,8 @@ pub const ChunkExt = struct {
                         // Look for sym under left type's module.
                         const leftTypeSym = c.sema.getTypeSym(left.type.id);
                         const sym = try c.mustFindSym(leftTypeSym, op.name(), nodeId);
-                        const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, 2);
-                        c.ir.setArrayItem(irArgsIdx, u32, 0, left.irIdx);
-                        c.ir.setArrayItem(irArgsIdx, u32, 1, right.irIdx);
-                        return c.semaCallFuncSym(loc, nodeId, sym.cast(.func), expr.getRetCstr(), .{
-                            .types = @constCast(&[_]CompactType{ left.type, right.type }),
-                            .start = 0,
-                            .hasDynamicArg = right.type.dynamic,
-                            .irArgsIdx = irArgsIdx,
-                        });
+                        const funcSym = try requireFuncSym(c, sym, nodeId);
+                        return c.semaCallFuncSym2(loc, funcSym, leftId, left, rightId, right, expr.getRetCstr(), nodeId);
                     }
                 }
             },
@@ -4747,15 +4630,8 @@ pub const ChunkExt = struct {
                         // Look for sym under left type's module.
                         const leftTypeSym = c.sema.getTypeSym(left.type.id);
                         const sym = try c.mustFindSym(leftTypeSym, op.name(), nodeId);
-                        const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, 2);
-                        c.ir.setArrayItem(irArgsIdx, u32, 0, left.irIdx);
-                        c.ir.setArrayItem(irArgsIdx, u32, 1, right.irIdx);
-                        return c.semaCallFuncSym(loc, nodeId, sym.cast(.func), expr.getRetCstr(), .{
-                            .types = @constCast(&[_]CompactType{ left.type, right.type }),
-                            .start = 0,
-                            .hasDynamicArg = right.type.dynamic,
-                            .irArgsIdx = irArgsIdx,
-                        });
+                        const func_sym = try requireFuncSym(c, sym, nodeId);
+                        return c.semaCallFuncSym2(loc, func_sym, leftId, left, rightId, right, expr.getRetCstr(), nodeId);
                     }
                 }
             },
@@ -5107,23 +4983,11 @@ pub fn popFuncBlock(c: *cy.Chunk) !void {
     });
 }
 
-const PushCallArgsResult = struct {
-    argTypes: []const TypeId,
-    hasDynamicArg: bool,
-};
-
-const StackTypesResult = struct {
-    types: []CompactType,
-    start: u32,
-    hasDynamicArg: bool,
-    irArgsIdx: u32,
-};
-
 pub const FuncSigId = u32;
 pub const FuncSig = struct {
     /// Last elem is the return type sym.
-    paramPtr: [*]const types.TypeId,
-    ret: types.TypeId,
+    paramPtr: [*]const cy.TypeId,
+    ret: cy.TypeId,
     paramLen: u16,
 
     /// If a param or the return type is not the any type.
@@ -5135,7 +4999,7 @@ pub const FuncSig = struct {
     /// Requires type checking if any param is not `dynamic` or `any`.
     reqCallTypeCheck: bool,
 
-    pub inline fn params(self: FuncSig) []const types.TypeId {
+    pub inline fn params(self: FuncSig) []const cy.TypeId {
         return self.paramPtr[0..self.paramLen];
     }
 
@@ -5143,7 +5007,7 @@ pub const FuncSig = struct {
         return @intCast(self.paramLen);
     }
 
-    pub inline fn getRetType(self: FuncSig) types.TypeId {
+    pub inline fn getRetType(self: FuncSig) cy.TypeId {
         return self.ret;
     }
 
@@ -5180,7 +5044,7 @@ pub const Sema = struct {
     alloc: std.mem.Allocator,
     compiler: *cy.Compiler,
 
-    types: std.ArrayListUnmanaged(types.Type),
+    types: std.ArrayListUnmanaged(cy.types.Type),
 
     /// Resolved signatures for functions.
     funcSigs: std.ArrayListUnmanaged(FuncSig),
@@ -5292,6 +5156,17 @@ pub const Sema = struct {
         const w = buf.writer(s.alloc);
         try writeFuncSigStr(s, w, funcSigId);
         return buf.items;
+    }
+
+    pub fn allocTypesStr(s: *Sema, types: []const TypeId) ![]const u8 {
+        var buf: std.ArrayListUnmanaged(u8) = .{};
+        defer buf.deinit(s.alloc);
+
+        const w = buf.writer(s.alloc);
+        try w.writeAll("(");
+        try writeFuncParams(s, w, types);
+        try w.writeAll(")");
+        return buf.toOwnedSlice(s.alloc);
     }
 
     pub fn allocFuncSigTypesStr(s: *Sema, params: []const TypeId, ret: TypeId) ![]const u8 {
@@ -5516,5 +5391,134 @@ pub const ObjectBuilder = struct {
 
     pub fn end(b: *ObjectBuilder) u32 {
         return b.irIdx;
+    }
+};
+
+const FuncMatcher = struct {
+    sym: *cy.sym.FuncSym,
+    func: *cy.Func,
+    func_params: []const cy.TypeId,
+    args_loc: u32,
+    type_start: usize,
+    ret_cstr: ReturnCstr,
+    nargs: u32,
+
+    fn init(c: *cy.Chunk, func_sym: *cy.sym.FuncSym, nargs: u32, ret_cstr: ReturnCstr) !FuncMatcher {
+        const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
+        const start = c.typeStack.items.len;
+
+        const func_sig = c.sema.getFuncSig(func_sym.firstFuncSig);
+        return FuncMatcher{
+            .sym = func_sym,
+            .args_loc = args_loc,
+            .type_start = start,
+            .func = func_sym.first,
+            .func_params = func_sig.params(),
+            .ret_cstr = ret_cstr,
+            .nargs = nargs,
+        };
+    }
+
+    fn deinit(self: *FuncMatcher, c: *cy.Chunk) void {
+        c.typeStack.items.len = self.type_start;
+    }
+
+    fn getArgTypeHint(self: *FuncMatcher, arg_idx: u32) cy.TypeId {
+        if (arg_idx < self.func_params.len) {
+            return self.func_params[arg_idx];
+        } else {
+            return bt.Any;
+        }
+    }
+
+    fn matchEnd(self: *FuncMatcher, c: *cy.Chunk, node: cy.NodeId) !void {
+        // Check for unconsumed func params.
+        if (self.nargs < self.func_params.len) {
+            const arg_types = c.typeStack.items[self.type_start..];
+            while (self.nargs < self.func_params.len) {
+                if (!self.matchNextFunc(c, arg_types)) {
+                    return reportIncompatibleCallSig(c, self.sym, arg_types, self.ret_cstr, node);
+                }
+            }
+        }
+
+        // Check return type.
+        if (!cy.types.isValidReturnType(c.compiler, self.func.retType, self.ret_cstr)) {
+            const arg_types = c.typeStack.items[self.type_start..];
+            return reportIncompatibleCallSig(c, self.sym, arg_types, self.ret_cstr, node);
+        }
+    }
+
+    fn matchNextFunc(self: *FuncMatcher, c: *cy.Chunk, arg_types: []const cy.TypeId) bool {
+        while (true) {
+            // First get next function that matches previous arg types.
+            self.func = self.func.next orelse {
+                return false;
+            };
+            const func_sig = c.sema.getFuncSig(self.func.funcSigId);
+            self.func_params = func_sig.params();
+
+            if (self.func_params.len < arg_types.len) {
+                continue;
+            }
+            for (arg_types, 0..) |arg_t, i| {
+                if (i >= self.func_params.len) {
+                    continue;
+                }
+                if (!cy.types.isTypeSymCompat(c.compiler, arg_t, self.func_params[i])) {
+                    // Ignore `arg_t.dynamic` since dynamic args already have inserted type checks.
+                    continue;
+                }
+            }
+            return true;
+        }
+    }
+
+    fn reportIncompatibleArg(self: *FuncMatcher, c: *cy.Chunk, arg: cy.NodeId, arg_res: ExprResult) anyerror {
+        try c.typeStack.append(c.alloc, arg_res.type.id);
+        const types = c.typeStack.items[self.type_start..];
+        return reportIncompatibleCallSig(c, self.sym, types, self.ret_cstr, arg);
+    }
+
+    fn matchArg(self: *FuncMatcher, c: *cy.Chunk, arg: cy.NodeId, arg_idx: u32, arg_res: ExprResult) !void {
+        if (arg_idx >= self.func_params.len) {
+            while (arg_idx >= self.func_params.len) {
+                const arg_types = c.typeStack.items[self.type_start..];
+                if (!self.matchNextFunc(c, arg_types)) {
+                    return self.reportIncompatibleArg(c, arg, arg_res);
+                }
+            }
+        }
+        var ct_compat = cy.types.isTypeSymCompat(c.compiler, arg_res.type.id, self.func_params[arg_idx]);
+        const rt_compat = arg_res.type.dynamic and arg_res.type.id == bt.Any;
+        if (!ct_compat and !rt_compat) {
+            const arg_types = c.typeStack.items[self.type_start..];
+            while (!ct_compat) {
+                // Can not be used as argument.
+                if (!self.matchNextFunc(c, arg_types)) {
+                    return self.reportIncompatibleArg(c, arg, arg_res);
+                }
+
+                // Chunk next func has an unconsumed param.
+                if (arg_idx >= self.func_params.len) {
+                    continue;
+                }
+
+                ct_compat = cy.types.isTypeSymCompat(c.compiler, arg_res.type.id, self.func_params[arg_idx]);
+            }
+        }
+
+        if (ct_compat) {
+            try c.typeStack.append(c.alloc, arg_res.type.id);
+            c.ir.setArrayItem(self.args_loc, u32, arg_idx, arg_res.irIdx);
+        } else {
+            // Insert type check at runtime.
+            const loc = try c.ir.pushExpr(.type_check, c.alloc, self.func_params[arg_idx], arg, .{
+                .expr = arg_res.irIdx,
+                .exp_type = self.func_params[arg_idx],
+            });
+            try c.typeStack.append(c.alloc, self.func_params[arg_idx]);
+            c.ir.setArrayItem(self.args_loc, u32, arg_idx, loc);
+        }
     }
 };

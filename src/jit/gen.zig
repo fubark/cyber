@@ -721,10 +721,6 @@ fn genCallFuncSym(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenV
         try genAndPushExpr(c, argIdx, Cstr.toTemp(temp));
     }
 
-    if (data.hasDynamicArg) {
-        // try genCallTypeCheck(c, inst.ret + cy.vm.CallArgStart, data.numArgs, data.func.funcSigId, nodeId);
-    }
-
     if (data.func.type == .hostFunc) {
         // Populate callHost stencil args.
         try assm.genAddImm(c, .arg0, .fp, 8 * (inst.ret + cy.vm.CallArgStart));

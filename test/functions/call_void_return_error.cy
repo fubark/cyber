@@ -4,7 +4,7 @@ func foo() void:
 var a = foo()
 
 --cytest: error
---CompileError: Can not find compatible function for call signature: `foo()`. Expects non-void return.
+--CompileError: Can not find compatible function for call: `foo()`. Expects non-void return.
 --Functions named `foo` in `main`:
 --    func foo() void
 --

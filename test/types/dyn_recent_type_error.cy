@@ -6,11 +6,11 @@ func foo(n int):
     pass
 
 --cytest: error
---CompileError: Can not find compatible function for call signature: `foo(dyn String)`.
+--CompileError: Can not find compatible function for call: `foo(String)`.
 --Functions named `foo` in `main`:
 --    func foo(int) dynamic
 --
---main:4:1:
+--main:4:5:
 --foo(a)
---^
+--    ^
 --

@@ -701,7 +701,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CallObjSym),
         JENTRY(CallObjNativeFuncIC),
         JENTRY(CallObjFuncIC),
-        JENTRY(CallTypeCheck),
         JENTRY(CallSym),
         JENTRY(CallFuncIC),
         JENTRY(CallNativeFuncIC),
@@ -1232,12 +1231,12 @@ beginSwitch:
         u8 ret = pc[1];
         u8 numArgs = pc[2];
         u8 mgId = pc[4];
-        u16 anySelfFuncSigId = READ_U16(5);
+        // u16 anySelfFuncSigId = READ_U16(5);
 
         Value recv = stack[ret + CALL_ARG_START];
         TypeId typeId = getTypeId(recv);
 
-        CallObjSymResult res = zCallObjSym(vm, pc, stack, recv, typeId, mgId, ret, numArgs, anySelfFuncSigId);
+        CallObjSymResult res = zCallObjSym(vm, pc, stack, recv, typeId, mgId, ret, numArgs);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
@@ -1278,52 +1277,29 @@ beginSwitch:
 
         TypeId cachedTypeId = READ_U16(14);
         if (typeId == cachedTypeId) {
-            u8 numLocals = pc[7];
-            if (stack + ret + numLocals >= vm->stackEndPtr) {
-                RETURN(RES_CODE_STACK_OVERFLOW);
-            }
-            Value retFramePtr = (uintptr_t)stack;
-            stack += ret;
-            stack[1] = VALUE_RETINFO(false, CALL_OBJ_SYM_INST_LEN);
-            stack[2] = (uintptr_t)(pc + CALL_OBJ_SYM_INST_LEN);
-            stack[3] = retFramePtr;
-            pc = vm->instPtr + READ_U32(8);
+            // Deoptimize.
+            pc[0] = CodeCallObjSym;
             NEXT();
         }
 
-        // Deoptimize.
-        pc[0] = CodeCallObjSym;
-        NEXT();
-    }
-    CASE(CallTypeCheck): {
-        u8 argStartReg = pc[1];
-        u8 numArgs = pc[2];
-        u16 funcSigId = READ_U16(3);
+        // TODO: Split into CallObjTypedFuncIC where cached func sig id is used instead.
+        // const callFuncSig = vm.sema.getFuncSig(callSigId);
+        // for (1..callFuncSig.paramLen) |i| {
+        //     if (!types.isTypeSymCompat(vm.compiler, callFuncSig.paramPtr[i], targetSig.paramPtr[i])) {
+        //         return false;
+        //     }
+        // }
 
-        FuncSig funcSig = getResolvedFuncSig(vm, funcSigId);
-        Value* args = stack + argStartReg;
-
-        // TODO: numArgs and this check can be removed if overloaded symbols are grouped by numParams.
-        if (numArgs != funcSig.paramLen) {
-            u16 funcId = READ_U16(5 + 4);
-            zPanicIncompatibleFuncSig(vm, funcId, args, numArgs, funcSigId);
-            RETURN(RES_CODE_PANIC);
+        u8 numLocals = pc[7];
+        if (stack + ret + numLocals >= vm->stackEndPtr) {
+            RETURN(RES_CODE_STACK_OVERFLOW);
         }
-
-        // Perform type check on args.
-        for (int i = 0; i < funcSig.paramLen; i += 1) {
-            TypeId cstrTypeId = funcSig.paramPtr[i];
-            TypeId argTypeId = getTypeId(args[i]);
-
-            if (!isTypeCompat(argTypeId, cstrTypeId)) {
-                // Assumes next inst is callSym/callNativeFuncIC/callFuncIC.
-                u16 funcId = READ_U16(5 + 4);
-                // return panicIncompatibleFuncSig(vm, funcId, args, funcSigId);
-                zPanicIncompatibleFuncSig(vm, funcId, args, numArgs, funcSigId);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
-        pc += 5;
+        Value retFramePtr = (uintptr_t)stack;
+        stack += ret;
+        stack[1] = VALUE_RETINFO(false, CALL_OBJ_SYM_INST_LEN);
+        stack[2] = (uintptr_t)(pc + CALL_OBJ_SYM_INST_LEN);
+        stack[3] = retFramePtr;
+        pc = vm->instPtr + READ_U32(8);
         NEXT();
     }
     CASE(CallSym): {

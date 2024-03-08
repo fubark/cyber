@@ -745,12 +745,12 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
         .staticVar => {
             const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
             const dst = pc[3].val;
-            len += try fmt.printCount(w, "sym={} dst={}", &.{v(symId), v(dst)});
+            len += try fmt.printCount(w, "%{} = vars[{}]", &.{v(dst), v(symId)});
         },
         .setStaticVar => {
             const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
             const src = pc[3].val;
-            len += try fmt.printCount(w, "sym={} src={}", &.{v(symId), v(src)});
+            len += try fmt.printCount(w, "vars[{}] = %{}", &.{v(symId), v(src)});
         },
         .pushTry => {
             const errDst = pc[1].val;
@@ -767,12 +767,6 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const exprCount = pc[2].val;
             const dst = pc[3].val;
             len += try fmt.printCount(w, "startLocal={}, exprCount={}, dst={}", &.{v(startLocal), v(exprCount), v(dst)});
-        },
-        .callTypeCheck => {
-            const arg = pc[1].val;
-            const numArgs = pc[2].val;
-            const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            len += try fmt.printCount(w, "arg={}, nargs={}, sigId={}", &.{v(arg), v(numArgs), v(funcSigId)});
         },
         else => {},
     }
@@ -983,8 +977,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .unwrapChoice,
         .cast,
         .castAbstract,
-        .pushTry,
-        .callTypeCheck => {
+        .pushTry => {
             return 5;
         },
         .match => {
@@ -1121,10 +1114,6 @@ pub const OpCode = enum(u8) {
     callObjSym = vmc.CodeCallObjSym,
     callObjNativeFuncIC = vmc.CodeCallObjNativeFuncIC,
     callObjFuncIC = vmc.CodeCallObjFuncIC,
-
-    /// Runtime type check.
-    callTypeCheck = vmc.CodeCallTypeCheck,
-
     callSym = vmc.CodeCallSym,
     callFuncIC = vmc.CodeCallFuncIC,
     callNativeFuncIC = vmc.CodeCallNativeFuncIC,
@@ -1258,7 +1247,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 119);
+    try t.eq(std.enums.values(OpCode).len, 117);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

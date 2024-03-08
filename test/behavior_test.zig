@@ -783,29 +783,6 @@ test "FFI." {
     try case("ffi/ffi.cy");
 }
 
-test "object_init_dyn_field_gen" {
-    // Initialize field with dynamic/typed value does not gen `objectTypeCheck`.
-    try eval(.{ .silent = true },
-        \\type S:
-        \\  a dynamic
-        \\func foo():
-        \\  return 123
-        \\var s = [S a: foo()]
-        \\var t = [S a: 123]
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        _ = try res;
-
-        const ops = run.vm.ops;
-        var pc: u32 = 0;
-        while (pc < ops.len) {
-            if (@as(cy.OpCode, @enumFromInt(ops[pc].val)) == .objectTypeCheck) {
-                return error.Failed;
-            }
-            pc += cy.bytecode.getInstLenAt(ops.ptr + pc);
-        }
-    }}.func);
-}
-
 test "windows new lines" {
     try eval(.{ .silent = true }, "a = 123\r\nb = 234\r\nc =",
     struct { fn func(run: *VMrunner, res: EvalResult) !void {

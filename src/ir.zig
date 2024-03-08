@@ -469,9 +469,10 @@ pub const TypeSym = struct {
 
 pub const CallObjSym = struct {
     name: []const u8,
-    funcSigId: sema.FuncSigId,
     rec: Loc,
     args: Loc,
+
+    // Does not include rec.
     numArgs: u8,
 };
 
@@ -490,7 +491,6 @@ pub const CallObjSymUnOp = struct {
 
 pub const CallFuncSym = struct {
     func: *cy.Func,
-    hasDynamicArg: bool,
     numArgs: u8,
     args: u32,
 };

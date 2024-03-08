@@ -8,11 +8,11 @@ var o = [S:]
 o.foo(234)
 
 --cytest: error
---CompileError: Can not find compatible function for call signature: `foo(S, int)`.
+--CompileError: Can not find compatible function for call: `foo(S, int)`.
 --Functions named `foo` in `S`:
 --    func foo(S) dynamic
 --
---main:8:3:
+--main:8:7:
 --o.foo(234)
---  ^
+--      ^
 --

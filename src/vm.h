@@ -258,7 +258,6 @@ typedef enum {
     // [ret] [numArgs] [hasRet] [symId] [callSig u16] [metadata] [ptr u48] [recvT u16]
     CodeCallObjNativeFuncIC,
     CodeCallObjFuncIC,
-    CodeCallTypeCheck,
     CodeCallSym,
     CodeCallFuncIC,
     CodeCallNativeFuncIC,
@@ -1046,7 +1045,7 @@ void zFreeObject(VM* vm, HeapObject* obj);
 void zEnd(VM* vm, Inst* pc);
 ValueResult zAllocList(VM* vm, Value* elemStart, uint8_t nelems);
 double zOtherToF64(Value val);
-CallObjSymResult zCallObjSym(VM* vm, Inst* pc, Value* stack, Value recv, TypeId typeId, uint8_t mgId, u8 startLocal, u8 numArgs, u16 anySelfFuncSigId);
+CallObjSymResult zCallObjSym(VM* vm, Inst* pc, Value* stack, Value recv, TypeId typeId, uint8_t mgId, u8 startLocal, u8 numArgs);
 ValueResult zAllocFiber(VM* vm, uint32_t pc, Value* args, uint8_t nargs, uint8_t argDst, uint8_t initialStackSize);
 PcSp zPushFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Fiber* fiber, uint8_t parentDstLocal);
 PcSpOff zPopFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Value retValue);
@@ -1061,7 +1060,6 @@ ValueResult zAllocStringTemplate(VM* vm, Inst* strs, u8 strCount, Value* vals, u
 ValueResult zAllocStringTemplate2(VM* vm, Value* strs, u8 strCount, Value* vals, u8 valCount);
 ValueResult zAllocMap(VM* vm, u16* keyIdxs, Value* vals, u32 numEntries);
 Value zGetFieldFallback(VM* vm, HeapObject* obj, NameId nameId);
-void zPanicIncompatibleFuncSig(VM* vm, FuncId funcId, Value* args, size_t numArgs, FuncSigId targetFuncSigId);
 ResultCode zSetStaticFunc(VM* vm, FuncId funcId, Value val);
 ResultCode zGrowTryStackTotalCapacity(ZCyList* list, ZAllocator alloc, size_t minCap);
 u16 zOpMatch(const Inst* pc, Value* framePtr);

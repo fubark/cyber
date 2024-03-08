@@ -4066,32 +4066,17 @@ fn getFuncSigIdOfSym(vm: *const VM, symId: SymbolId) sema.FuncSigId {
 
 fn callMethodNoInline(
     vm: *VM, pc: [*]cy.Inst, sp: [*]cy.Value, methodType: rt.MethodType, data: rt.MethodData,
-    typeId: vmc.TypeId, startLocal: u8, numArgs: u8, anySelfFuncSigId: sema.FuncSigId,
+    typeId: vmc.TypeId, startLocal: u8, numArgs: u8, 
 ) !?cy.fiber.PcSp {
-    return @call(.always_inline, callMethod, .{vm, pc, sp, methodType, data, typeId, startLocal, numArgs, anySelfFuncSigId});
+    return @call(.always_inline, callMethod, .{vm, pc, sp, methodType, data, typeId, startLocal, numArgs});
 }
 
 pub const CallArgStart: u8 = vmc.CALL_ARG_START;
 pub const CalleeStart: u8 = vmc.CALLEE_START;
 
-inline fn canInlineCallObjSym(vm: *VM, callSigId: u32, targetSigId: u32, targetSig: cy.sema.FuncSig) bool {
-    if (callSigId == targetSigId) {
-        return true;
-    } else {
-        // Only check params after self.
-        const callFuncSig = vm.sema.getFuncSig(callSigId);
-        for (1..callFuncSig.paramLen) |i| {
-            if (!types.isTypeSymCompat(vm.compiler, callFuncSig.paramPtr[i], targetSig.paramPtr[i])) {
-                return false;
-            }
-        }
-        return true;
-    }
-}
-
 fn callMethod(
     vm: *VM, pc: [*]cy.Inst, sp: [*]cy.Value, methodType: rt.MethodType, data: rt.MethodData,
-    typeId: vmc.TypeId, ret: u8, numArgs: u8, anySelfFuncSigId: sema.FuncSigId,
+    typeId: vmc.TypeId, ret: u8, numArgs: u8,
 ) !?cy.fiber.PcSp {
     switch (methodType) {
         .untyped => {
@@ -4183,7 +4168,8 @@ fn callMethod(
 
             if (pc[7].val & 0x80 == 0) {
                 // Check to inline function ptr.
-                if (canInlineCallObjSym(vm, anySelfFuncSigId, data.typed.func_sig, target)) {
+                // TODO: callObjTypedFuncIC
+                if (false) {
                     pc[0] = cy.Inst.initOpCode(.callObjFuncIC);
                     pc[7].val = @intCast(data.typed.stackSize);
                     @as(*align(1) u32, @ptrCast(pc + 8)).* = data.typed.pc;
@@ -4221,7 +4207,8 @@ fn callMethod(
 
             if (pc[7].val & 0x80 == 0) {
                 // Check to inline function ptr.
-                if (canInlineCallObjSym(vm, anySelfFuncSigId, data.typedHost.func_sig, target)) {
+                // TODO: callObjTypedHostFuncIC
+                if (false) {
                     pc[0] = cy.Inst.initOpCode(.callObjNativeFuncIC);
                     @as(*align(1) u48, @ptrCast(pc + 8)).* = @intCast(@intFromPtr(data.typedHost.ptr));
                     @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
@@ -4251,7 +4238,7 @@ fn callMethod(
 /// Assumes there are overloaded methods.
 fn callFirstOverloadedMethod(
     vm: *VM, pc: [*]cy.Inst, sp: [*]Value, mgId: vmc.MethodGroupId,
-    typeId: vmc.TypeId, ret: u8, numArgs: u8, anySelfFuncSigId: sema.FuncSigId,
+    typeId: vmc.TypeId, ret: u8, numArgs: u8, 
 ) !?cy.fiber.PcSp {
     const mgExt = &vm.methodGroupExts.buf[mgId];
     std.debug.assert(mgExt.mruTypeMethodGroupId != cy.NullId);
@@ -4267,7 +4254,7 @@ fn callFirstOverloadedMethod(
             methodId = method.next;
             continue;
         }
-        if (try @call(.never_inline, callMethodNoInline, .{vm, pc, sp, method.type, method.data, typeId, ret, numArgs, anySelfFuncSigId})) |res| {
+        if (try @call(.never_inline, callMethodNoInline, .{vm, pc, sp, method.type, method.data, typeId, ret, numArgs})) |res| {
             // Update MethodGroup cache.
             // TypeMethodGroup is updated on MethodGroup cache miss.
             const mgPtr = &vm.methodGroups.buf[mgId];
@@ -4285,13 +4272,13 @@ fn callFirstOverloadedMethod(
 /// Assumes cache hit on TypeMethodGroup.
 fn callMethodGroup(
     vm: *VM, pc: [*]cy.Inst, sp: [*]Value, mgId: vmc.MethodGroupId, mg: rt.MethodGroup,
-    typeId: vmc.TypeId, startLocal: u8, numArgs: u8, anySelfFuncSigId: sema.FuncSigId,
+    typeId: vmc.TypeId, startLocal: u8, numArgs: u8,
 ) !?cy.fiber.PcSp {
-    if (try @call(.always_inline, callMethod, .{vm, pc, sp, mg.mruMethodType, mg.mruMethodData, typeId, startLocal, numArgs, anySelfFuncSigId})) |res| {
+    if (try @call(.always_inline, callMethod, .{vm, pc, sp, mg.mruMethodType, mg.mruMethodData, typeId, startLocal, numArgs})) |res| {
         return res;
     }
     if (mg.mruTypeMethodOverloaded) {
-        return @call(.never_inline, callFirstOverloadedMethod, .{vm, pc, sp, mgId, typeId, startLocal, numArgs, anySelfFuncSigId});
+        return @call(.never_inline, callFirstOverloadedMethod, .{vm, pc, sp, mgId, typeId, startLocal, numArgs});
     }
     return null;
 }
@@ -4378,7 +4365,7 @@ export fn zOtherToF64(val: Value) f64 {
 
 export fn zCallObjSym(
     vm: *cy.VM, pc: [*]cy.Inst, stack: [*]Value, recv: Value,
-    typeId: cy.TypeId, mgId: u8, startLocal: u8, numArgs: u8, anySelfFuncSigId: u16,
+    typeId: cy.TypeId, mgId: u8, startLocal: u8, numArgs: u8,
 ) vmc.CallObjSymResult {
     const mbMethodGroup = vm.getCachedMethodGroupForType(typeId, mgId) catch {
         return .{
@@ -4389,7 +4376,7 @@ export fn zCallObjSym(
     };
     if (mbMethodGroup) |sym| {
         const mb_res = @call(.always_inline, callMethodGroup, .{
-            vm, pc, stack, mgId, sym, typeId, startLocal, numArgs, anySelfFuncSigId,
+            vm, pc, stack, mgId, sym, typeId, startLocal, numArgs,
         }) catch |err| {
             if (err == error.Panic) {
                 return .{

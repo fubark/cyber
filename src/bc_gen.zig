@@ -1210,7 +1210,7 @@ fn genCallObjSym(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
 
     const mgId = try c.compiler.vm.ensureMethodGroup(data.name);
     try pushCallObjSym(c, inst.ret, data.numArgs + 1,
-        @intCast(mgId), @intCast(data.funcSigId), nodeId);
+        @intCast(mgId), 0, nodeId);
 
     const argvs = popValues(c, data.numArgs+1);
     try checkArgs(argStart, argvs);
@@ -1233,10 +1233,6 @@ fn genCallFuncSym(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValu
             try pushUnwindValue(c, recv);
             const itemv = try genExpr(c, args[1], Cstr.simple);
             try pushUnwindValue(c, itemv);
-
-            if (data.hasDynamicArg) {
-                try pushTypeCheck(c, recv.reg, bt.List, nodeId);
-            }
 
             try pushInlineBinExpr(c, .appendList, recv.reg, itemv.reg, inst.dst, nodeId);
 
@@ -1261,10 +1257,6 @@ fn genCallFuncSym(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValu
             if (cy.Trace and temp != argStart + i) return error.Unexpected;
             const val = try genAndPushExpr(c, argIdx, Cstr.toTemp(temp));
             try pushUnwindValue(c, val);
-        }
-
-        if (data.hasDynamicArg) {
-            try genCallTypeCheck(c, inst.ret + cy.vm.CallArgStart, data.numArgs, data.func.funcSigId, nodeId);
         }
 
         const rtId = c.compiler.genSymMap.get(data.func).?.funcSym.id;
@@ -3859,12 +3851,6 @@ fn pushTypeCheck(c: *cy.Chunk, local: RegisterId, typeId: cy.TypeId, nodeId: cy.
     const start = c.buf.ops.items.len;
     try c.pushFCode(.typeCheck, &.{ local, 0, 0, }, nodeId);
     c.buf.setOpArgU16(start + 2, @intCast(typeId));
-}
-
-fn genCallTypeCheck(c: *cy.Chunk, startLocal: u8, numArgs: u32, funcSigId: sema.FuncSigId, nodeId: cy.NodeId) !void {
-    const start = c.buf.ops.items.len;
-    try c.pushFCode(.callTypeCheck, &.{ startLocal, @as(u8, @intCast(numArgs)), 0, 0 }, nodeId);
-    c.buf.setOpArgU16(start + 3, @intCast(funcSigId));
 }
 
 fn pushCallSym(c: *cy.Chunk, startLocal: u8, numArgs: u32, numRet: u8, symId: u32, nodeId: cy.NodeId) !void {

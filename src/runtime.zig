@@ -387,26 +387,21 @@ pub fn ErrorUnion(comptime T: type) type {
 }
 
 pub const Context = if (build_options.rt == .pm) *Fiber else *cy.VM;
-pub const TypeHandle = if (build_options.rt == .pm) *TypeTable else cy.TypeId;
+pub const TypeHandle = if (build_options.rt == .pm) *const TypeTable else cy.TypeId;
 pub const CompatError = if (build_options.rt == .pm) StaticSymbol else cy.Value;
 pub const Error = StaticSymbol;
 pub const Symbol = if (build_options.rt == .pm) StaticSymbol else cy.Value;
 
-pub const AnyTable = extern struct {
-    type: *TypeTable, 
-};
-
 pub const TypeTable = extern struct {
-    is_struct: bool,
-    data: extern union {
-        @"struct": extern struct {
-            // Size in bytes.
-            size: u32,
-        },
-    },
+    // Size in bytes.
+    size: usize,
     name: [*:0]const u8,
     toPrintString: *const fn(Context, Any) StaticString,
+    kind: u8,
 };
+
+pub const TypeKindObject: u8 = 0;
+pub const TypeKindStruct: u8 = 1;
 
 const StaticString = extern struct {
     ptr: [*]const u8,
@@ -470,10 +465,10 @@ pub fn wrapError(comptime T: type, err: Error) ErrorUnion(T) {
 
 const StaticAny = extern struct {
     value: u64,
-    vtable: *const AnyTable,
+    type: *const TypeTable,
 
-    pub fn getTypeId(self: *const Any) *TypeTable {
-        return self.vtable.type;
+    pub fn getTypeId(self: *const Any) *const TypeTable {
+        return self.type;
     }
 };
 

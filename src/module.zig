@@ -74,7 +74,12 @@ pub const Module = struct {
         }
     }
 
-    pub fn getFunc(m: *const Module, id: cy.FuncId) *cy.Func {
+    pub fn getFirstFunc(m: *const Module, name: []const u8) ?*cy.Func {
+        const symId = m.symMap.get(name) orelse return null;
+        return m.chunk.syms.items[symId].cast(.func).first;
+    }
+
+    pub fn getFuncById(m: *const Module, id: cy.FuncId) *cy.Func {
         return m.chunk.funcs.items[id];
     }
 
@@ -153,6 +158,7 @@ fn createFunc(c: *cy.Chunk, ftype: cy.sym.FuncType, parent: *cy.Sym, sym: ?*cy.s
         .retType = funcSig.getRetType(),
         .reqCallTypeCheck = funcSig.reqCallTypeCheck,
         .sym = sym,
+        .throws = false,
         .parent = parent,
         .isMethod = isMethod,
         .numParams = @intCast(funcSig.paramLen),
@@ -355,6 +361,7 @@ pub const ChunkExt = struct {
             .type = typeId,
             .fields = undefined,
             .variantId = variantId,
+            .rt_size = cy.NullId,
             .numFields = 0,
             .mod = undefined,
         });
@@ -442,6 +449,7 @@ pub const ChunkExt = struct {
             .fields = undefined,
             .variantId = cy.NullId,
             .numFields = 0,
+            .rt_size = cy.NullId,
             .mod = undefined,
         });
 
@@ -478,6 +486,7 @@ pub const ChunkExt = struct {
             .fields = undefined,
             .variantId = cy.NullId,
             .numFields = 0,
+            .rt_size = cy.NullId,
             .mod = undefined,
         });
 
@@ -515,6 +524,7 @@ pub const ChunkExt = struct {
             .fields = undefined,
             .variantId = cy.NullId,
             .numFields = 0,
+            .rt_size = cy.NullId,
             .mod = undefined,
         });
 
@@ -556,7 +566,6 @@ pub const ChunkExt = struct {
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
 
         _ = try addSym(c, mod, name, @ptrCast(sym));
-        // c.vm.types.buf[rtTypeId].isHostObject = true;
         c.compiler.sema.types.items[type_id] = .{
             .sym = @ptrCast(sym),
             .kind = .custom_object,

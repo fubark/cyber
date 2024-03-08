@@ -91,8 +91,8 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
     // PM compares by value if `is_struct` is true. Compares reference otherwise.
     // VM checks the type id and performs unboxing.
     if (build_options.rt == .pm) {
-        if (act.vtable.type.is_struct) {
-            const size = act.vtable.type.data.@"struct".size;
+        if (act.type.kind == rt.TypeKindStruct) {
+            const size = act.type.size;
             if (size <= 8) {
                 const act_s = std.mem.asBytes(&act.value)[0..size];
                 const exp_s = std.mem.asBytes(&exp.value)[0..size];

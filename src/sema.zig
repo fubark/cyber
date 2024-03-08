@@ -4899,23 +4899,26 @@ pub const ChunkExt = struct {
 
         const fieldName = c.ast.nodeString(right);
         const field = try checkGetField(c, left_t.id, fieldName, node.data.accessExpr.right);
+        var field_t = CompactType.init(field.typeId);
+        field_t.dynamic = field_t.dynamic or left_t.dynamic;
+
         const recIsStructFromFieldAccess = rec.resType == .field and c.sema.getTypeKind(left_t.id) == .@"struct";
         if (recIsStructFromFieldAccess) {
             // Continue the field chain.
             const fidx = try c.ir.reserveData(c.alloc, u8);
             fidx.* = field.idx;
             const existing = c.ir.getExprDataPtr(rec.irIdx, .field);
-            c.ir.setExprType(rec.irIdx, field.typeId);
+            c.ir.setExprType(rec.irIdx, field_t.id);
             existing.numNestedFields += 1;
             c.ir.setNode(rec.irIdx, node.data.accessExpr.right);
-            return ExprResult.initCustom(rec.irIdx, .field, CompactType.init2(field.typeId, left_t.dynamic), undefined);
+            return ExprResult.initCustom(rec.irIdx, .field, field_t, undefined);
         } else {
-            const loc = try c.ir.pushExpr(.field, c.alloc, field.typeId, node.data.accessExpr.right, .{
+            const loc = try c.ir.pushExpr(.field, c.alloc, field_t.id, node.data.accessExpr.right, .{
                 .idx = field.idx,
                 .rec = rec.irIdx,
                 .numNestedFields = 0,
             });
-            return ExprResult.initCustom(loc, .field, CompactType.init2(field.typeId, left_t.dynamic), undefined);
+            return ExprResult.initCustom(loc, .field, field_t, undefined);
         }
     }
 };

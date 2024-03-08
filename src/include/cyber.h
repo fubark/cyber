@@ -42,6 +42,9 @@ typedef enum {
     CS_TYPE_SYMBOL,
     CS_TYPE_INTEGER,
     CS_TYPE_FLOAT,
+    CS_TYPE_DYNAMIC,
+    CS_TYPE_ANY,
+    CS_TYPE_TYPE,
     CS_TYPE_TUPLE,
     CS_TYPE_LIST,
     CS_TYPE_LISTITER,
@@ -57,7 +60,6 @@ typedef enum {
     CS_TYPE_BOX,
     CS_TYPE_TCCSTATE,
     CS_TYPE_POINTER,
-    CS_TYPE_TYPE,
     CS_TYPE_METATYPE,
 } CsType;
 typedef uint32_t CsTypeId;

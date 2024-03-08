@@ -67,8 +67,8 @@ pub const Sym = extern struct {
         self.deinit(alloc);
 
         switch (self.type) {
-            .hostObjectType => {
-                const hostType = self.cast(.hostObjectType);
+            .custom_object_t => {
+                const hostType = self.cast(.custom_object_t);
                 hostType.getMod().deinit(alloc);
                 alloc.destroy(hostType);
             },
@@ -140,7 +140,7 @@ pub const Sym = extern struct {
 
     pub fn isType(self: Sym) bool {
         switch (self.type) {
-            .hostObjectType,
+            .custom_object_t,
             .core_t,
             .typeAlias,
             .struct_t,
@@ -174,12 +174,12 @@ pub const Sym = extern struct {
 
     pub fn getMod(self: *Sym) ?*cy.Module {
         switch (self.type) {
-            .chunk          => return @ptrCast(&self.cast(.chunk).mod),
-            .enum_t         => return @ptrCast(&self.cast(.enum_t).mod),
-            .struct_t       => return @ptrCast(&self.cast(.struct_t).mod),
-            .object_t       => return @ptrCast(&self.cast(.object_t).mod),
-            .hostObjectType => return @ptrCast(&self.cast(.hostObjectType).mod),
-            .core_t         => return @ptrCast(&self.cast(.core_t).mod),
+            .chunk           => return @ptrCast(&self.cast(.chunk).mod),
+            .enum_t          => return @ptrCast(&self.cast(.enum_t).mod),
+            .struct_t        => return @ptrCast(&self.cast(.struct_t).mod),
+            .object_t        => return @ptrCast(&self.cast(.object_t).mod),
+            .custom_object_t => return @ptrCast(&self.cast(.custom_object_t).mod),
+            .core_t          => return @ptrCast(&self.cast(.core_t).mod),
             .import,
             .typeAlias,
             .typeTemplate,
@@ -219,6 +219,7 @@ pub const Sym = extern struct {
             .struct_t,
             .core_t,
             .typeAlias,
+            .custom_object_t,
             .object_t   => return bt.MetaType,
             .func => {
                 const func = self.cast(.func);
@@ -234,13 +235,13 @@ pub const Sym = extern struct {
 
     pub fn getStaticType(self: *Sym) ?cy.TypeId {
         switch (self.type) {
-            .core_t         => return self.cast(.core_t).type,
-            .enum_t         => return self.cast(.enum_t).type,
-            .typeAlias      => return self.cast(.typeAlias).type,
-            .struct_t       => return self.cast(.struct_t).type,
-            .object_t       => return self.cast(.object_t).type,
-            .hostObjectType => return self.cast(.hostObjectType).type,
-            else            => return null,
+            .core_t          => return self.cast(.core_t).type,
+            .enum_t          => return self.cast(.enum_t).type,
+            .typeAlias       => return self.cast(.typeAlias).type,
+            .struct_t        => return self.cast(.struct_t).type,
+            .object_t        => return self.cast(.object_t).type,
+            .custom_object_t => return self.cast(.custom_object_t).type,
+            else             => return null,
         }
     }
 
@@ -321,7 +322,7 @@ fn SymChild(comptime symT: SymType) type {
         .hostVar => HostVar,
         .struct_t,
         .object_t => ObjectType,
-        .hostObjectType => HostObjectType,
+        .custom_object_t => CustomObjectType,
         .core_t => CoreType,
         .enum_t => EnumType,
         .enumMember => EnumMember,
@@ -339,7 +340,7 @@ pub const SymType = enum(u8) {
     userVar,
     hostVar,
     func,
-    hostObjectType,
+    custom_object_t,
     object_t,
     struct_t,
     core_t,
@@ -508,7 +509,7 @@ pub const ObjectType = extern struct {
     }
 };
 
-pub const HostObjectType = extern struct {
+pub const CustomObjectType = extern struct {
     head: Sym,
     type: cy.TypeId,
     declId: cy.NodeId,
@@ -516,7 +517,7 @@ pub const HostObjectType = extern struct {
     finalizerFn: cc.ObjectFinalizerFn,
     mod: vmc.Module,
 
-    pub fn getMod(self: *HostObjectType) *cy.Module {
+    pub fn getMod(self: *CustomObjectType) *cy.Module {
         return @ptrCast(&self.mod);
     }
 };

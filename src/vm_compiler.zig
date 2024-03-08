@@ -8,11 +8,9 @@ const cc = @import("capi.zig");
 const rt = cy.rt;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
-const vm_ = @import("vm.zig");
 const vmc = @import("vm_c.zig");
 const sema = cy.sema;
-const types = cy.types;
-const bt = types.BuiltinTypes;
+const bt = cy.types.BuiltinTypes;
 const cy_mod = @import("builtins/builtins.zig");
 const math_mod = @import("builtins/math.zig");
 const llvm_gen = @import("llvm_gen.zig");
@@ -614,11 +612,11 @@ fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
                         try sema.declareImport(chunk, decl.nodeId);
                     },
                     .struct_t => {
-                        const sym = try sema.declareObject(chunk, true, decl.nodeId);
+                        const sym = try sema.declareStruct(chunk, decl.nodeId);
                         decl.data = .{ .sym = @ptrCast(sym) };
                     },
                     .object => {
-                        const sym = try sema.declareObject(chunk, false, decl.nodeId);
+                        const sym = try sema.declareObject(chunk, decl.nodeId);
                         // Persist for declareObjectMembers.
                         decl.data = .{ .sym = @ptrCast(sym) };
                     },
@@ -668,7 +666,12 @@ fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
 fn loadPredefinedTypes(self: *VMcompiler, parent: *cy.Sym) !void {
     log.tracev("Load predefined types", .{});
     const Entry = struct { []const u8, cy.TypeId };
-    const entries = &[_]Entry{
+
+    const mod = parent.getMod().?;
+    const c = mod.chunk;
+
+    const common = &[_]Entry{
+        // Primitives.
         .{"none", bt.None},
         .{"bool", bt.Boolean},
         .{"error", bt.Error},
@@ -679,6 +682,26 @@ fn loadPredefinedTypes(self: *VMcompiler, parent: *cy.Sym) !void {
         .{"int", bt.Integer},
         .{"float", bt.Float},
 
+        // Unions.
+        .{"dynamic", bt.Dynamic},
+        .{"any", bt.Any},
+    };
+    for (common) |entry| {
+        const id = try self.sema.pushType();
+        std.debug.assert(id == entry.@"1");
+        _ = try c.declareCoreType(parent, entry.@"0", id);
+    }
+
+    const vm_common = &[_]Entry{
+        .{"type", bt.Type},
+    };
+    for (vm_common) |entry| {
+        const id = try self.sema.pushType();
+        std.debug.assert(id == entry.@"1");
+        _ = try c.declareCoreType(parent, entry.@"0", id);
+    }
+
+    const builtins = &[_]Entry{
         // Begin object types.
         .{"tuple", bt.Tuple},
         .{"List", bt.List},
@@ -695,20 +718,20 @@ fn loadPredefinedTypes(self: *VMcompiler, parent: *cy.Sym) !void {
         .{"Box", bt.Box},
         .{"TccState", bt.TccState},
         .{"pointer", bt.Pointer},
-        .{"type", bt.Type},
         .{"metatype", bt.MetaType},
-
-        .{"dynamic", bt.Dynamic},
-        .{"any", bt.Any},
     };
-
-    const mod = parent.getMod().?;
-    const c = mod.chunk;
-
-    for (entries) |entry| {
-        const id = try self.sema.pushType();
-        std.debug.assert(id == entry.@"1");
-        _ = try c.declarePredefinedType(parent, entry.@"0", id);
+    if (!self.config.backend.isAot()) {
+        for (builtins) |entry| {
+            const id = try self.sema.pushType();
+            std.debug.assert(id == entry.@"1");
+            _ = try c.declareCustomObjectType(parent, entry.@"0", cy.NullNode, null, null, id);
+        }
+    } else {
+        for (builtins) |entry| {
+            // Only reserve the type. Bind object/struct types later.
+            const id = try self.sema.pushType();
+            std.debug.assert(id == entry.@"1");
+        }
     }
 
     self.indexMGID = try self.vm.ensureMethodGroup("$index");
@@ -745,7 +768,7 @@ fn declareSymbols(self: *VMcompiler) !void {
     log.tracev("Load module symbols.", .{});
     for (self.chunks.items) |chunk| {
         // Process static declarations.
-        var last_obj_sym: *cy.Sym = undefined;
+        var last_type_sym: *cy.Sym = undefined;
         for (chunk.parser.staticDecls.items) |*decl| {
             log.tracev("Load {s}", .{@tagName(decl.declT)});
             switch (decl.declT) {
@@ -758,8 +781,8 @@ fn declareSymbols(self: *VMcompiler) !void {
                     }
                 },
                 .implicit_method => {
-                    const method = try sema.resolveImplicitMethodDecl(chunk, last_obj_sym, decl.nodeId);
-                    const func = try sema.declareMethod(chunk, last_obj_sym, decl.nodeId, method);
+                    const method = try sema.resolveImplicitMethodDecl(chunk, last_type_sym, decl.nodeId);
+                    const func = try sema.declareMethod(chunk, last_type_sym, decl.nodeId, method);
                     decl.data = .{ .implicit_method = func };
                 },
                 .func => {
@@ -772,7 +795,7 @@ fn declareSymbols(self: *VMcompiler) !void {
                 .struct_t,
                 .object => {
                     try sema.declareObjectFields(chunk, decl.data.sym, decl.nodeId);
-                    last_obj_sym = decl.data.sym;
+                    last_type_sym = decl.data.sym;
                 },
                 .enum_t => {
                     try sema.declareEnumMembers(chunk, @ptrCast(decl.data.sym), decl.nodeId);
@@ -897,15 +920,17 @@ pub fn defaultModuleResolver(_: ?*cc.VM, params: cc.ResolverParams) callconv(.C)
     return true;
 }
 
-pub fn defaultModuleLoader(_: ?*cc.VM, spec: cc.Str, out_: [*c]cc.ModuleLoaderResult) callconv(.C) bool {
+pub fn defaultModuleLoader(vm_: ?*cc.VM, spec: cc.Str, out_: [*c]cc.ModuleLoaderResult) callconv(.C) bool {
     const out: *cc.ModuleLoaderResult = out_;
     const name = cc.strSlice(spec);
     if (std.mem.eql(u8, name, "builtins")) {
+        const vm: *cy.VM = @ptrCast(@alignCast(vm_));
+        const aot = vm.compiler.config.backend.isAot();
         out.* = .{
-            .src = cy_mod.Src,
-            .srcLen = cy_mod.Src.len,
+            .src = if (aot) cy_mod.Src else cy_mod.VmSrc,
+            .srcLen = if (aot) cy_mod.Src.len else cy_mod.VmSrc.len,
             .funcLoader = cy_mod.funcLoader,
-            .typeLoader = cy_mod.typeLoader,
+            .typeLoader = if (aot) cy_mod.typeLoader else cy_mod.vmTypeLoader,
             .onLoad = cy_mod.onLoad,
             .onReceipt = null,
             .varLoader = null,

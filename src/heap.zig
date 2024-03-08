@@ -2162,9 +2162,9 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                         freePoolObject(vm, obj);
                     }
                 },
-                .hostObject => {
+                .custom_object => {
                     if (releaseChildren) {
-                        if (entry.data.hostObject.getChildrenFn) |getChildren| {
+                        if (entry.data.custom_object.getChildrenFn) |getChildren| {
                             const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
                             for (cc.valueSlice(children)) |child| {
                                 if (skipCycChildren and child.isGcConfirmedCyc()) {
@@ -2175,7 +2175,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                         }
                     }
                     if (free) {
-                        if (entry.data.hostObject.finalizerFn) |finalizer| {
+                        if (entry.data.custom_object.finalizerFn) |finalizer| {
                             finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
                             if (obj.isPoolObject()) {
                                 freePoolObject(vm, obj);

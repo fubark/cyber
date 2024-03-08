@@ -536,19 +536,19 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn declareHostObjectType(
+    pub fn declareCustomObjectType(
         c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId,
-        getChildrenFn: cc.ObjectGetChildrenFn, finalizerFn: cc.ObjectFinalizerFn,
-    ) !*cy.sym.HostObjectType {
+        getChildrenFn: cc.ObjectGetChildrenFn, finalizerFn: cc.ObjectFinalizerFn, opt_type_id: ?cy.TypeId,
+    ) !*cy.sym.CustomObjectType {
         const mod = parent.getMod().?;
         try checkUniqueSym(c, mod, name, declId);
 
-        const typeId = try c.sema.pushType();
+        const type_id = opt_type_id orelse try c.sema.pushType();
 
-        const sym = try cy.sym.createSym(c.alloc, .hostObjectType, .{
-            .head = cy.Sym.init(.hostObjectType, parent, name),
+        const sym = try cy.sym.createSym(c.alloc, .custom_object_t, .{
+            .head = cy.Sym.init(.custom_object_t, parent, name),
             .declId = declId,
-            .type = typeId,
+            .type = type_id,
             .getChildrenFn = getChildrenFn,
             .finalizerFn = finalizerFn,
             .mod = undefined,
@@ -557,10 +557,10 @@ pub const ChunkExt = struct {
 
         _ = try addSym(c, mod, name, @ptrCast(sym));
         // c.vm.types.buf[rtTypeId].isHostObject = true;
-        c.compiler.sema.types.items[typeId] = .{
+        c.compiler.sema.types.items[type_id] = .{
             .sym = @ptrCast(sym),
-            .kind = .hostObject,
-            .data = .{ .hostObject = .{
+            .kind = .custom_object,
+            .data = .{ .custom_object = .{
                 .getChildrenFn = getChildrenFn,
                 .finalizerFn = finalizerFn,
             }},
@@ -708,7 +708,7 @@ pub const ChunkExt = struct {
             .hostVar,
             .struct_t,
             .object_t,
-            .hostObjectType,
+            .custom_object_t,
             .enum_t,
             .chunk,
             .core_t,

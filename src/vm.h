@@ -371,28 +371,30 @@ enum {
     TYPE_INTEGER = 7,
     TYPE_FLOAT = 8,
 
-    // Builtin concrete types.
-    TYPE_TUPLE = 9,
-    TYPE_LIST = 10,
-    TYPE_LIST_ITER = 11,
-    TYPE_MAP = 12,
-    TYPE_MAP_ITER = 13,
-    TYPE_CLOSURE = 14,
-    TYPE_LAMBDA = 15,
-    TYPE_HOST_FUNC = 16,
-    TYPE_EXTERN_FUNC = 17,
-    TYPE_STRING = 18,
-    TYPE_ARRAY = 19,
-    TYPE_FIBER = 20,
-    TYPE_BOX = 21,
-    TYPE_TCC_STATE = 22,
-    TYPE_POINTER = 23,
-    TYPE_TYPE = 24,
-    TYPE_METATYPE = 25,
+    // Common types for VM and AOT.
+    TYPE_DYNAMIC = 9,
+    TYPE_ANY = 10,
 
-    // Builtin abstract types.
-    TYPE_DYNAMIC = 26,
-    TYPE_ANY = 27,
+    // VM exclusive types.
+    TYPE_TYPE = 11,
+
+    TYPE_TUPLE = 12,
+    TYPE_LIST = 13,
+    TYPE_LIST_ITER = 14,
+    TYPE_MAP = 15,
+    TYPE_MAP_ITER = 16,
+    TYPE_CLOSURE = 17,
+    TYPE_LAMBDA = 18,
+    TYPE_HOST_FUNC = 19,
+    TYPE_EXTERN_FUNC = 20,
+    TYPE_STRING = 21,
+    TYPE_ARRAY = 22,
+    TYPE_FIBER = 23,
+    TYPE_BOX = 24,
+    TYPE_TCC_STATE = 25,
+    TYPE_POINTER = 26,
+    TYPE_METATYPE = 27,
+
     // TYPE_UNDEFINED = 17,
 };
 

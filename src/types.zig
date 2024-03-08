@@ -16,7 +16,7 @@ const TypeKind = enum(u8) {
     null,
     core,
     object,
-    hostObject,
+    custom_object,
     @"enum",
     choice,
     @"struct",
@@ -34,7 +34,7 @@ pub const Type = extern struct {
         },
         // Even though this increases the size of other type entries, it might not be worth
         // separating into another table since it would add another indirection.
-        hostObject: extern struct {
+        custom_object: extern struct {
             getChildrenFn: cc.ObjectGetChildrenFn,
             finalizerFn: cc.ObjectFinalizerFn,
         },
@@ -99,7 +99,7 @@ pub const CompactType = packed struct {
 };
 
 pub const PrimitiveEnd: TypeId = vmc.PrimitiveEnd;
-const BuiltinEnd: TypeId = vmc.BuiltinEnd;
+pub const BuiltinEnd: TypeId = vmc.BuiltinEnd;
 
 const bt = BuiltinTypes;
 pub const BuiltinTypes = struct {
@@ -248,7 +248,7 @@ pub const SemaExt = struct {
             else => {
                 const sym = s.getTypeSym(id);
                 switch (sym.type) {
-                    .hostObjectType,
+                    .custom_object_t,
                     .struct_t,
                     .object_t => return true,
                     .enum_t => return false,

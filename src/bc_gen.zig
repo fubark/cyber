@@ -49,7 +49,7 @@ pub fn genAll(c: *cy.VMcompiler) !void {
                 }
             },
             .core_t,
-            .hostObjectType,
+            .custom_object_t,
             .enum_t => {},
             else => {
                 log.tracev("{}", .{sym.type});
@@ -134,7 +134,7 @@ fn prepareSym(c: *cy.VMcompiler, sym: *cy.Sym) !void {
             try c.genSymMap.putNoClobber(c.alloc, sym, .{ .varSym = .{ .id = @intCast(id) }});
         },
         .typeTemplate,
-        .hostObjectType,
+        .custom_object_t,
         .core_t,
         .chunk,
         .field,
@@ -262,7 +262,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .forIterStmt        => try forIterStmt(c, idx, nodeId),
         .forRangeStmt       => try forRangeStmt(c, idx, nodeId),
         .funcBlock          => try funcBlock(c, idx, nodeId),
-        .ifStmt             => try genIfStmt(c, idx, nodeId),
+        .ifStmt             => try ifStmt(c, idx, nodeId),
         .mainBlock          => try mainBlock(c, idx, nodeId),
         .block              => try genBlock(c, idx, nodeId),
         .opSet              => try opSet(c, idx, nodeId),
@@ -607,7 +607,7 @@ fn genCast(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     try pushUnwindValue(c, childv);
 
     const sym = c.sema.getTypeSym(data.typeId);
-    if (sym.type == .object_t) {
+    if (sym.type == .object_t or sym.type == .custom_object_t) {
         const pc = c.buf.ops.items.len;
         try c.pushFCode(.cast, &.{ childv.reg, 0, 0, inst.dst }, nodeId);
         c.buf.setOpArgU16(pc + 2, @intCast(data.typeId));
@@ -2939,7 +2939,7 @@ fn genCondExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     return val;
 }
 
-fn genIfStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
+fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .ifStmt);
     const bodyEndJumpsStart = c.listDataStack.items.len;
 

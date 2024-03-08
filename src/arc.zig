@@ -441,8 +441,8 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
                     }
                 }
             } else {
-                // Host type.
-                if (entry.sym.cast(.hostObjectType).getChildrenFn) |getChildren| {
+                // Custom object type.
+                if (entry.sym.cast(.custom_object_t).getChildrenFn) |getChildren| {
                     const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
                     for (cc.valueSlice(children)) |child| {
                         if (child.isCycPointer()) {

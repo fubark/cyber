@@ -356,12 +356,9 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         .assignStmt => {
             try assignStmt(c, nodeId, node.data.assignStmt.left, node.data.assignStmt.right, .{});
         },
-        .hostObjectDecl,
         .objectDecl,
         .structDecl,
         .passStmt,
-        .hostVarDecl,
-        .hostFuncDecl,
         .staticDecl,
         .typeAliasDecl,
         .typeTemplate,
@@ -977,6 +974,57 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     }
 }
 
+pub fn declareHostStruct(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
+    const node = c.ast.node(nodeId);
+
+    const header = c.ast.node(node.data.objectDecl.header); 
+    const name = c.ast.nodeStringById(header.data.objectHeader.name);
+
+    const typeLoader = c.typeLoader orelse {
+        return c.reportErrorAt("No type loader set for `{}`.", &.{v(name)}, nodeId);
+    };
+
+    const info = cc.TypeInfo{
+        .mod = cc.ApiModule{ .sym = @ptrCast(c.sym) },
+        .name = cc.initStr(name),
+        .idx = c.curHostTypeIdx,
+    };
+    c.curHostTypeIdx += 1;
+    var res: cc.TypeResult = .{
+        .data = .{
+            .custom = .{
+                .outTypeId = null,
+                .getChildren = null,
+                .finalizer = null,
+            },
+        },
+        .type = cc.BindTypeCustom,
+    };
+    log.tracev("Invoke type loader for: {s}", .{name});
+    if (!typeLoader(@ptrCast(c.compiler.vm), info, &res)) {
+        return c.reportErrorAt("Failed to load #host type `{}` struct.", &.{v(name)}, nodeId);
+    }
+
+    switch (res.type) {
+        cc.BindTypeCustom => {
+            return error.Unsupported;
+        },
+        cc.BindTypeDecl => {
+            return error.Unsupported;
+        },
+        cc.BindTypePredefined => {
+            const type_e = c.sema.types.items[res.data.predefined.typeId];
+            if (type_e.sym.type != .core_t and type_e.sym.type != .struct_t) {
+                return c.reportErrorAt("Expected predefined struct type.", &.{}, nodeId);
+            }
+            return type_e.sym;
+        },
+        else => {
+            return error.Unsupported;
+        },
+    }
+}
+
 pub fn declareTemplateVariant(c: *cy.Chunk, template: *cy.sym.TypeTemplate, variantId: u32) !*cy.sym.Sym {
     const tchunk = template.chunk();
     const template_n = tchunk.ast.node(template.declId);
@@ -1049,6 +1097,14 @@ pub fn declareStruct(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
     const node = c.ast.node(nodeId);
 
     const header = c.ast.node(node.data.objectDecl.header);
+
+    // Check for #host modifier.
+    if (header.head.data.objectHeader.modHead != cy.NullNode) {
+        const modifier = c.ast.node(header.head.data.objectHeader.modHead);
+        if (modifier.data.dirModifier.type == .host) {
+            return @ptrCast(try declareHostStruct(c, nodeId));
+        }
+    }
 
     const nameId = header.data.objectHeader.name;
     if (nameId != cy.NullNode) {
@@ -1151,8 +1207,6 @@ pub fn declareMethod(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: Fun
 }
 
 pub fn declareHostFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: FuncDecl) !*cy.Func {
-    c.parser.ast.nodePtr(nodeId).head.type = .hostFuncDecl;
-
     const info = cc.FuncInfo{
         .mod = cc.ApiModule{ .sym = parent },
         .name = cc.initStr(decl.namePath),
@@ -1247,7 +1301,6 @@ pub fn declareVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
 }
 
 fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
-    c.parser.ast.nodePtr(nodeId).head.type = .hostVarDecl;
     const node = c.ast.node(nodeId);
     const varSpec = c.ast.node(node.data.staticDecl.varSpec);
     const decl = try resolveLocalDeclNamePath(c, varSpec.data.varSpec.name);
@@ -1628,13 +1681,20 @@ fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.Node
             return c.semaCallFuncSym(preIdx, symNodeId, funcSym, res);
         },
         .core_t => {
-            const typeId = sym.cast(.core_t).type;
-            return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, typeId);
+            const type_id = sym.cast(.core_t).type;
+            return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, type_id);
         }, 
-        .struct_t,
+        .custom_object_t => {
+            const type_id = sym.cast(.custom_object_t).type;
+            return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, type_id);
+        },
+        .struct_t => {
+            const type_id = sym.cast(.struct_t).type;
+            return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, type_id);
+        },
         .object_t => {
-            const typeId = sym.cast(.object_t).type;
-            return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, typeId);
+            const type_id = sym.cast(.object_t).type;
+            return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, type_id);
         },
         .userVar,
         .hostVar => {
@@ -1677,6 +1737,11 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId, comptime symAsValue: b
             .object_t => {
                 const objTypeId = sym.cast(.object_t).type;
                 const irIdx = try c.ir.pushExpr(c.alloc, .typeSym, nodeId, .{ .typeId = objTypeId });
+                return ExprResult.init(irIdx, ctype);
+            },
+            .custom_object_t => {
+                const type_id = sym.cast(.custom_object_t).type;
+                const irIdx = try c.ir.pushExpr(c.alloc, .typeSym, nodeId, .{ .typeId = type_id });
                 return ExprResult.init(irIdx, ctype);
             },
             .core_t => {

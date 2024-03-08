@@ -16,6 +16,7 @@ const inlineBinOp = bindings.inlineBinOp;
 
 const log = cy.log.scoped(.core);
 
+pub const VmSrc = @embedFile("builtins_vm.cy");
 pub const Src = @embedFile("builtins.cy");
 pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callconv(.C) bool {
     const out: *cc.FuncResult = out_;
@@ -198,31 +199,52 @@ const funcs = [_]NameFunc{
     .{"id", metatypeId, .standard},
 };
 
-const NameType = struct { []const u8, cy.TypeId };
+const CreateForAot = bool;
+const NameType = struct { []const u8, cy.TypeId, CreateForAot };
 const types = [_]NameType{
-    .{"bool", bt.Boolean },
-    .{"error", bt.Error },
-    .{"int", bt.Integer },
-    .{"float", bt.Float },
-    .{"List", bt.List },
-    .{"ListIterator", bt.ListIter },
-    .{"tuple", bt.Tuple },
-    .{"Map", bt.Map },
-    .{"MapIterator", bt.MapIter },
-    .{"String", bt.String },
-    .{"Array", bt.Array },
-    .{"pointer", bt.Pointer },
-    .{"ExternFunc", bt.ExternFunc },
-    .{"Fiber", bt.Fiber },
-    .{"metatype", bt.MetaType },
+    .{"bool", bt.Boolean, false },
+    .{"error", bt.Error, false },
+    .{"int", bt.Integer, false },
+    .{"float", bt.Float, false }, 
+    .{"List", bt.List, true },
+    .{"ListIterator", bt.ListIter, true },
+    .{"tuple", bt.Tuple, true },
+    .{"Map", bt.Map, true },
+    .{"MapIterator", bt.MapIter, true },
+    .{"String", bt.String, true },
+    .{"Array", bt.Array, true },
+    .{"pointer", bt.Pointer, true },
+    .{"ExternFunc", bt.ExternFunc, true },
+    .{"Fiber", bt.Fiber, true },
+    .{"metatype", bt.MetaType, true },
 };
 
 pub fn typeLoader(_: ?*cc.VM, info: cc.TypeInfo, out_: [*c]cc.TypeResult) callconv(.C) bool {
     const out: *cc.TypeResult = out_;
     const name = cc.strSlice(info.name);
     if (std.mem.eql(u8, types[info.idx].@"0", name)) {
-        out.type = cc.TypeKindCoreObject;
-        out.data.coreObject = .{
+        if (types[info.idx].@"2") {
+            out.type = cc.BindTypeDecl;
+            out.data.decl = .{
+                .typeId = types[info.idx].@"1",
+            };
+        } else {
+            out.type = cc.BindTypePredefined;
+            out.data.predefined = .{
+                .typeId = types[info.idx].@"1",
+            };
+        }
+        return true;
+    }
+    return false;
+}
+
+pub fn vmTypeLoader(_: ?*cc.VM, info: cc.TypeInfo, out_: [*c]cc.TypeResult) callconv(.C) bool {
+    const out: *cc.TypeResult = out_;
+    const name = cc.strSlice(info.name);
+    if (std.mem.eql(u8, types[info.idx].@"0", name)) {
+        out.type = cc.BindTypePredefined;
+        out.data.predefined = .{
             .typeId = types[info.idx].@"1",
         };
         return true;

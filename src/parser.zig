@@ -2368,7 +2368,7 @@ pub const Parser = struct {
         const expr_start = self.ast.nodePos(left_id);
         const callExpr = try self.ast.pushNode(self.alloc, .callExpr, expr_start);
 
-        const firstArg = (try self.parseTightTermExpr()) orelse {
+        const firstArg = (try self.parseExpr(.{})) orelse {
             return self.reportError("Expected call arg.", &.{});
         };
         var numArgs: u32 = 1;
@@ -2377,15 +2377,21 @@ pub const Parser = struct {
         while (true) {
             const token = self.peek();
             switch (token.tag()) {
-                .new_line => break,
+                .right_bracket,
+                .right_paren,
+                .new_line,
                 .none => break,
-                else => {
-                    const arg = (try self.parseTightTermExpr()) orelse {
+                .comma => {
+                    self.advance();
+                    const arg = (try self.parseExpr(.{})) orelse {
                         return self.reportError("Expected call arg.", &.{});
                     };
                     self.ast.setNextNode(last_arg_id, arg);
                     last_arg_id = arg;
                     numArgs += 1;
+                },
+                else => {
+                    return self.reportError("Expected comma.", &.{});
                 },
             }
         }

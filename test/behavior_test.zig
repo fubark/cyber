@@ -132,6 +132,7 @@ if (!aot) {
     run.case("functions/call_recursive.cy");
 if (!aot) {
     run.case("functions/call_recursive_dyn.cy");
+    run.case("functions/call_shorthand.cy");
     run.case("functions/call_static_lambda_incompat_arg_panic.cy");
     run.case("functions/call_string_param_error.cy");
     run.case("functions/call_symbol_param_error.cy");
@@ -196,6 +197,10 @@ if (!aot) {
     run.case("types/optionals_incompat_value_error.cy");
     run.case("types/optionals_unwrap_panic.cy");
     run.case("types/optionals.cy");
+
+    // run.case("types/pointers.cy");
+    // run.case("types/pointers_error.cy");
+
     run.case("types/struct_zero_init_error.cy");
     run.case("types/structs.cy");
     run.case("types/template_choices.cy");
@@ -276,11 +281,13 @@ if (!aot) {
     run.case("builtins/set_index_unsupported_panic.cy");
     run.case("builtins/string_new_line_error.cy");
     run.case("builtins/string_interpolation.cy");
+}
     run.case("builtins/strings.cy");
     run.case("builtins/strings_ascii.cy");
     run.case("builtins/strings_utf8.cy");
     run.case("builtins/string_slices_ascii.cy");
     run.case("builtins/string_slices_utf8.cy");
+if (!aot) {
     run.case("builtins/symbols.cy");
     run.case("builtins/truthy.cy");
 }

@@ -1614,38 +1614,17 @@ var d = dist(x0: 10, x1: 20, y0: 30, y1: 40)
 ```
 
 ### Shorthand syntax.
-The shorthand method for calling functions omits parentheses and commas. This only works for functions that accept parameters:
-> _Incomplete: Only the most trivial cases work with the shorthand method. The case with operators being separated by spaces might not end up being implemented._
+Functions can be invoked without parentheses. This only works for calls that take at least one argument. Named arguments are not allowed and nested function calls must use parentheses:
 ```cy
-var d = dist 100 100 200 200  -- Calls the function `dist`.
+-- Calls the function `dist`.
+var d = dist 100, 100, 200, 200
 
-func random():       -- Function with no parameters.
+func foo():       
     return 4
 
-var r = random       -- Returns the function itself as a value.
+var r = foo       -- Returns the function itself as a value.
                      -- Does not call the function `random`.
-r = random()         -- Calls the function `random`.
-```
-
-The top level arguments for the shorthand convention must be separated by whitespace. A string can contain whitespace since it's surrounded by delimiters. 
-```cy
-var a = myFunc 'cyber script'
-```
-
-The following has a binary expression with spaces inbetween which is not allowed. Removing that whitespace fixes the call expression.
-
-```cy
-var a = myFunc 1 + 2     -- Not allowed.
-a = myFunc 1+2       -- Correct.
-```
-
-Wrapping arguments in parentheses allows you to keep the whitespace in the sub-expression.
-```cy
--- This calls the function `myFunc` with 2 arguments.
-var a = myFunc 'hello' (1 + 2 * 3)
-
--- Nested function call using the shorthand convention.
-a = myFunc 'hello' (otherFunc 1+2 'world')
+r = foo()         -- Calls the function `random`.
 ```
 
 ### Call block syntax.

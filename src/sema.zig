@@ -3564,6 +3564,7 @@ pub const ChunkExt = struct {
     pub fn semaExpr2(c: *cy.Chunk, expr: Expr) !ExprResult {
         const res = try c.semaExprNoCheck(expr);
         if (expr.hasTypeCstr) {
+            // TODO: Check for exact match first since it's the common case.
             const type_e = c.sema.types.items[expr.preferType];
             if (type_e.kind == .choice and type_e.data.choice.isOptional) {
                 // Already the same optional type.
@@ -3585,6 +3586,15 @@ pub const ChunkExt = struct {
                 return ExprResult.initStatic(irIdx, expr.preferType);
             } else {
                 try checkTypeCstr(c, res.type, expr.preferType, expr.nodeId);
+                if (expr.preferType == bt.Any and res.type.id != bt.Any) {
+                    // Box value.
+                    var newRes = res;
+                    newRes.irIdx = try c.ir.pushExpr(.box, c.alloc, bt.Any, expr.nodeId, .{
+                        .expr = res.irIdx,
+                        .expr_t = res.type.id,
+                    });
+                    return newRes;
+                }
             }
         }
         return res;

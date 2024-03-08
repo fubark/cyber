@@ -133,6 +133,11 @@ pub const ExprCode = enum(u8) {
     mainEnd,
     elseBlock,
     unwrapChoice,
+    box,
+};
+
+pub const Box = struct {
+    expr: Loc,
 };
 
 pub const UnwrapChoice = struct {
@@ -622,6 +627,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .blockExpr => BlockExpr,
         .coresume => Coresume,
         .unwrapChoice => UnwrapChoice,
+        .box => Box,
         else => void,
     };
 }

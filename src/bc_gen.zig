@@ -366,6 +366,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
     }
 
     const res = try switch (code) {
+        .box                => genBox(c, idx, cstr, nodeId),
         .captured           => genCaptured(c, idx, cstr, nodeId),
         .cast               => genCast(c, idx, cstr, nodeId),
         .coinitCall         => genCoinitCall(c, idx, cstr, nodeId),
@@ -1560,6 +1561,13 @@ fn genBinOp(c: *Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy.No
     try releaseCond2(c, retainedLeft, leftv.reg, retainedRight, rightv.reg, nodeId);
 
     return finishDstInst(c, inst, retained);
+}
+
+fn genBox(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+    _ = nodeId;
+    // Passthrough, since all values are boxed in the VM.
+    const data = c.ir.getExprData(idx, .box);
+    return genExpr(c, data.expr, cstr);
 }
 
 fn genCaptured(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {

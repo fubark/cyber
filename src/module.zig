@@ -235,6 +235,27 @@ pub const ChunkExt = struct {
         _ = try addSym(c, mod, name, @ptrCast(sym));
     }
 
+    pub fn declareTypeCopy(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl_id: cy.NodeId, opt_type_id: ?cy.TypeId) !*cy.sym.TypeCopy {
+        const mod = parent.getMod().?;
+        try checkUniqueSym(c, mod, name, decl_id);
+
+        const type_id = opt_type_id orelse try c.sema.pushType();
+        const sym: *cy.sym.TypeCopy = @ptrCast(try c.alloc.create(cy.sym.TypeSym));
+        sym.* = .{
+            .head = cy.Sym.init(.type_copy, parent, name),
+            .decl_id = decl_id,
+            .type = type_id,
+        };
+        _ = try addSym(c, mod, name, @ptrCast(sym));
+
+        c.compiler.sema.types.items[type_id] = .{
+            .sym = @ptrCast(sym),
+            .kind = .null,
+            .data = undefined,
+        };
+        return sym;
+    }
+
     pub fn declareTypeTemplate(c: *cy.Chunk, parent: *cy.Sym, name: []const u8,
         sigId: cy.sema.FuncSigId, params: []const cy.sym.TemplateParam, kind: cy.sym.TemplateKind,
         ctNodes: []const cy.NodeId, declId: cy.NodeId) !void {
@@ -277,11 +298,6 @@ pub const ChunkExt = struct {
             .kind = if (isChoiceType) .choice else .@"enum",
             .data = undefined,
         };
-        if (isChoiceType) {
-            c.compiler.sema.types.items[typeId].data = .{ .choice = .{
-                .isOptional = false,
-            }};
-        }
         return sym;
     }
 
@@ -337,7 +353,7 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn declareField(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, idx: u32, typeId: types.TypeId, declId: cy.NodeId) !cy.SymId {
+    pub fn declareField(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, idx: u32, typeId: types.TypeId, declId: cy.NodeId) !*cy.sym.Field {
         const mod = parent.getMod().?;
         try checkUniqueSym(c, mod, name, declId);
 
@@ -346,8 +362,8 @@ pub const ChunkExt = struct {
             .idx = idx,
             .type = typeId,
         });
-        const id = try addSym(c, mod, name, @ptrCast(sym));
-        return id;
+        _ = try addSym(c, mod, name, @ptrCast(sym));
+        return sym;
     }
 
     pub fn declareObjectVariantType(c: *cy.Chunk, parent: *cy.sym.TypeTemplate, variantId: u32) !*cy.sym.ObjectType {
@@ -395,39 +411,33 @@ pub const ChunkExt = struct {
 
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
 
+        var kind: cy.types.TypeKind = undefined;
+        if (parent == c.sema.option_tmpl) {
+            kind = .option;
+        } else if (isChoiceType) {
+            kind = .choice;
+        } else {
+            kind = .@"enum";
+        }
         c.compiler.sema.types.items[typeId] = .{
             .sym = @ptrCast(sym),
-            .kind = if (isChoiceType) .choice else .@"enum",
+            .kind = kind,
             .data = undefined,
         };
-
-        if (isChoiceType) {
-            c.compiler.sema.types.items[typeId].data = .{ .choice = .{
-                .isOptional = parent == c.sema.optionSym,
-            }};
-        }
         return sym;
     }
 
-    pub fn declareObjectType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId) !*cy.sym.ObjectType {
+    pub fn declareObjectType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId, opt_type_id: ?cy.TypeId) !*cy.sym.ObjectType {
         const mod = parent.getMod().?;
         try checkUniqueSym(c, mod, name, declId);
 
-        const typeId = try c.sema.pushType();
-        const sym = try cy.sym.createSym(c.alloc, .object_t, .{
-            .head = cy.Sym.init(.object_t, parent, name),
-            .declId = declId,
-            .type = typeId,
-            .fields = undefined,
-            .variantId = cy.NullId,
-            .numFields = 0,
-            .mod = undefined,
-        });
-
-        @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
+        const type_id = opt_type_id orelse try c.sema.pushType();
+        const sym = try cy.sym.createSym(c.alloc, .object_t,
+            cy.sym.ObjectType.init(parent, mod.chunk, name, declId, type_id)
+        );
 
         _ = try addSym(c, mod, name, @ptrCast(sym));
-        c.compiler.sema.types.items[typeId] = .{
+        c.compiler.sema.types.items[type_id] = .{
             .sym = @ptrCast(sym),
             .kind = .object,
             .data = .{ .object = .{
@@ -437,11 +447,11 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn declareStructType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId) !*cy.sym.ObjectType {
+    pub fn declareStructType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId, opt_type_id: ?cy.TypeId) !*cy.sym.ObjectType {
         const mod = parent.getMod().?;
         try checkUniqueSym(c, mod, name, declId);
 
-        const typeId = try c.sema.pushType();
+        const typeId = opt_type_id orelse try c.sema.pushType();
         const sym = try cy.sym.createSym(c.alloc, .struct_t, .{
             .head = cy.Sym.init(.struct_t, parent, name),
             .declId = declId,
@@ -577,21 +587,66 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn declareCoreType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, typeId: types.TypeId) !*cy.sym.CoreType {
+    pub fn declareFloatType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, bits: u8, opt_type_id: ?types.TypeId, node_id: cy.NodeId) !*cy.sym.FloatType {
         const mod = parent.getMod().?;
-        try checkUniqueSym(c, mod, name, cy.NullId);
+        try checkUniqueSym(c, mod, name, node_id);
 
-        const sym = try cy.sym.createSym(c.alloc, .core_t, .{
-            .head = cy.Sym.init(.core_t, parent, name),
-            .type = typeId,
+        const type_id = opt_type_id orelse try c.sema.pushType();
+        const sym = try cy.sym.createSym(c.alloc, .float_t, .{
+            .head = cy.Sym.init(.float_t, parent, name),
+            .type = type_id,
+            .mod = undefined,
+            .bits = bits,
+        });
+        @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
+
+        _ = try addSym(c, mod, name, @ptrCast(sym));
+        c.compiler.sema.types.items[type_id] = .{
+            .sym = @ptrCast(sym),
+            .kind = .float,
+            .data = undefined,
+        };
+        return sym;
+    }
+
+    pub fn declareIntType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, bits: u8, opt_type_id: ?types.TypeId, node_id: cy.NodeId) !*cy.sym.IntType {
+        const mod = parent.getMod().?;
+        try checkUniqueSym(c, mod, name, node_id);
+
+        const type_id = opt_type_id orelse try c.sema.pushType();
+        const sym = try cy.sym.createSym(c.alloc, .int_t, .{
+            .head = cy.Sym.init(.int_t, parent, name),
+            .type = type_id,
+            .mod = undefined,
+            .bits = bits,
+        });
+        @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
+
+        _ = try addSym(c, mod, name, @ptrCast(sym));
+        c.compiler.sema.types.items[type_id] = .{
+            .sym = @ptrCast(sym),
+            .kind = .int,
+            .data = undefined,
+        };
+        return sym;
+    }
+
+    pub fn declareBoolType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, opt_type_id: ?types.TypeId, node_id: cy.NodeId) !*cy.sym.BoolType {
+        const mod = parent.getMod().?;
+        try checkUniqueSym(c, mod, name, node_id);
+
+        const type_id = opt_type_id orelse try c.sema.pushType();
+        const sym = try cy.sym.createSym(c.alloc, .bool_t, .{
+            .head = cy.Sym.init(.bool_t, parent, name),
+            .type = type_id,
             .mod = undefined,
         });
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
 
         _ = try addSym(c, mod, name, @ptrCast(sym));
-        c.compiler.sema.types.items[typeId] = .{
+        c.compiler.sema.types.items[type_id] = .{
             .sym = @ptrCast(sym),
-            .kind = .core,
+            .kind = .bool,
             .data = undefined,
         };
         return sym;
@@ -720,7 +775,10 @@ pub const ChunkExt = struct {
             .custom_object_t,
             .enum_t,
             .chunk,
-            .core_t,
+            .bool_t,
+            .int_t,
+            .float_t,
+            .type_copy,
             .typeTemplate,
             .enumMember => {
                 return sym;

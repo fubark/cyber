@@ -55,13 +55,17 @@
 --| .float, .int, .bool, .object, .list, .map, .string, .array, .function, .fiber, .pointer, .symbol, .metatype, .none, .error
 #host func typesym(val any) symbol
 
-#host type bool struct
+#host type void
+
+#host type bool #bool_t
 
 --| Converts a value to either `true` or `false`.
 #host func bool.'$call'(val any) bool
 
+#host type symbol #int64_t
+
 #host
-type error struct:
+type error #int64_t:
     --| Return the underlying `symbol`.
     #host func sym() symbol
 
@@ -69,7 +73,7 @@ type error struct:
 #host func error.'$call'(val any) error
 
 #host
-type int struct:
+type int #int64_t:
     #host func '$prefix~'() int
     #host func '$prefix-'() int
     #host func '$infix<'(o any) bool
@@ -99,7 +103,7 @@ type int struct:
 #host func int.'$call'(val any) int
 
 #host
-type float struct:
+type float #float64_t:
     #host func '$prefix-'() float
     #host func '$infix<'(o any) bool
     #host func '$infix<='(o any) bool
@@ -114,6 +118,16 @@ type float struct:
 
 --| Converts the value to a `float`. Panics if type conversion fails.
 #host func float.'$call'(val any) float
+
+#host type placeholder1
+#host type placeholder2
+#host type placeholder3
+
+#host type dynamic
+
+#host type any
+
+#host type type
 
 #host
 type List:
@@ -171,7 +185,7 @@ type ListIterator:
     #host func next() ?any
 
 #host
-type tuple:
+type Tuple:
     #host func '$index'(idx int) any
 
 #host
@@ -380,6 +394,10 @@ type pointer:
 --| Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI.
 #host func pointer.'$call'(val any) pointer
 
+#host type Closure
+#host type Lambda
+#host type HostFunc
+
 #host
 type ExternFunc:
     --| Returns the memory address as an `int`. The value may be negative since it's
@@ -393,6 +411,10 @@ type Fiber:
 #host
 type metatype:
     #host func id() int
+
+#host type Range
+#host type Box
+#host type TccState
 
 template(T type)
 type Option enum:

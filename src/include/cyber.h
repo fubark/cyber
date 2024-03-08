@@ -184,9 +184,6 @@ typedef enum {
 
     // Create a new type from the given type declaration with a predefined type id.
     CS_BIND_TYPE_DECL,
-
-    // Bind to an predefined type.
-    CS_BIND_TYPE_PREDEFINED,
 } CsBindTypeKind;
 
 // Given an object, return the pointer of an array and the number of children.
@@ -212,21 +209,20 @@ typedef struct CsTypeResult {
             // If not null, the created runtime type id will be written to `outTypeId`.
             // This typeId is then used to allocate a new instance of the object.
             // Defaults to null.
-            CsTypeId* outTypeId;
+            CsTypeId* out_type_id;
+
+            // If NullId, the next type id is consumed and written to `out_type_id`.
+            CsTypeId type_id;
 
             // Pointer to callback or null.
-            CsObjectGetChildrenFn getChildren;
+            CsObjectGetChildrenFn get_children;
             // Pointer to callback or null.
             CsObjectFinalizerFn finalizer;
         } custom;
         struct {
             // The reserved `typeId` is used for the new type.
-            CsTypeId typeId;
+            CsTypeId type_id;
         } decl;
-        struct {
-            // Predefined typeId.
-            CsTypeId typeId;
-        } predefined;
     } data;
     // `CsBindTypeKind`. By default, this is `CS_BIND_TYPE_CUSTOM`.
     uint8_t type;
@@ -273,9 +269,9 @@ typedef void (*CsErrorFn)(CsVM* vm, CsStr str);
 // The default behavior is a no-op.
 typedef void (*CsLogFn)(CsStr str);
 
-//
+// -----------------------------------
 // [ Top level ]
-//
+// -----------------------------------
 CsStr csGetFullVersion();
 CsStr csGetVersion();
 CsStr csGetBuild();
@@ -283,9 +279,9 @@ CsStr csGetCommit();
 CsLogFn csGetLogger();
 void csSetLogger(CsLogFn log);
 
-//
+// -----------------------------------
 // [ VM ]
-//
+// -----------------------------------
 
 CsVM* csCreate();
 
@@ -328,9 +324,9 @@ void csSetUserData(CsVM* vm, void* userData);
 // Verbose flag. In a debug build, this would print more logs.
 extern bool csVerbose;
 
-//
-// [ Modules ]
-//
+// -----------------------------------
+// [ Symbols ]
+// -----------------------------------
 
 // Declares a function in a module.
 void csDeclareUntypedFunc(CsModule mod, const char* name, uint32_t numParams, CsFuncFn fn);
@@ -344,7 +340,7 @@ CsTypeId csExpandTypeTemplate(CsSym template, CsValue* args, uint32_t nargs);
 
 // -----------------------------------
 // [ Memory ]
-//
+// -----------------------------------
 void csRelease(CsVM* vm, CsValue val);
 void csRetain(CsVM* vm, CsValue val);
 
@@ -382,11 +378,12 @@ void csFree(CsVM* vm, void* ptr, size_t len);
 void csFreeStr(CsVM* vm, CsStr str);
 void csFreeStrZ(CsVM* vm, const char* str);
 
-//
+// -----------------------------------
 // [ Values ]
+//
 // Functions that begin with `csNew` instantiate objects on the heap and
 // automatically retain +1 refcount.
-//
+// -----------------------------------
 
 // Create values.
 CsValue csTrue();

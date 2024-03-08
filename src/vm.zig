@@ -897,14 +897,14 @@ pub const VM = struct {
         if (mod.getSym(name)) |_| {
             return error.DuplicateSym;
         }
-        const sym = c.declareObjectType(parent, name, cy.NullId) catch return error.Unexpected;
+        const sym = c.declareObjectType(parent, name, cy.NullId, null) catch return error.Unexpected;
         sym.head.setNameOwned(true);
 
         const infos = try c.alloc.alloc(cy.sym.FieldInfo, fields.len);
         for (fields, 0..) |field, i| {
-            const symId = c.declareField(@ptrCast(sym), field, @intCast(i), bt.Any, cy.NullId) catch return error.Unexpected;
+            const field_sym = c.declareField(@ptrCast(sym), field, @intCast(i), bt.Any, cy.NullId) catch return error.Unexpected;
             infos[i] = .{
-                .symId = symId,
+                .sym = @ptrCast(field_sym),
                 .type = bt.Any,
             };
         }
@@ -4768,6 +4768,9 @@ export fn zGetTypeName(vm: *VM, id: cy.TypeId) vmc.Str {
     if (cy.Trace) {
         if ((id & vmc.TYPE_MASK) == vmc.TYPE_MASK) {
             return vmc.Str{ .ptr = "DanglingObject", .len = "DanglingObject".len };
+        }
+        if (vm.types[id].kind == .null) {
+            cy.panicFmt("Type `{}` is uninited.", .{ id });
         }
     }
     const name = vm.types[id].sym.name();

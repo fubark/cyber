@@ -100,6 +100,8 @@ pub const Compiler = struct {
     @"infix<<MGID": vmc.MethodGroupId = cy.NullId,
     @"infix>>MGID": vmc.MethodGroupId = cy.NullId,
 
+    main_chunk: *cy.Chunk,
+
     pub fn init(self: *Compiler, vm: *cy.VM) !void {
         self.* = .{
             .alloc = vm.alloc,
@@ -120,6 +122,7 @@ pub const Compiler = struct {
             .config = .{}, 
             .hasApiError = false,
             .apiError = "",
+            .main_chunk = undefined,
         };
         try self.reinit();    
     }
@@ -242,16 +245,42 @@ pub const Compiler = struct {
 
         const srcDup = try self.alloc.dupe(u8, src);
 
+        try loadBuiltins(self);
+
+        // TODO: Types and symbols should be loaded recursively for single-threaded.
+        //       Separate into two passes one for types and function signatures, and
+        //       another for function bodies.
+
+        // Load core module first since the members are imported into each user module.
+        var core_sym: *cy.sym.Chunk = undefined;
+        if (self.importBuiltins) {
+            const importCore = ImportTask{
+                .fromChunk = null,
+                .nodeId = cy.NullNode,
+                .absSpec = try self.alloc.dupe(u8, "builtins"),
+                .import = null,
+            };
+            try self.importTasks.append(self.alloc, importCore);
+            const core_chunk = performImportTask(self, importCore) catch |err| {
+                return err;
+            };
+            core_sym = core_chunk.sym;
+            _ = self.importTasks.orderedRemove(0);
+            try reserveCoreTypes(self);
+            try createDynMethodIds(self);
+        }
+
         // Main chunk.
         const nextId: u32 = @intCast(self.chunks.items.len);
         var mainChunk = try self.alloc.create(cy.Chunk);
         mainChunk.* = try cy.Chunk.init(self, nextId, finalSrcUri, srcDup);
         mainChunk.sym = try mainChunk.createChunkSym(finalSrcUri);
+        self.main_chunk = mainChunk;
         try self.chunks.append(self.alloc, mainChunk);
         try self.chunkMap.put(self.alloc, finalSrcUri, mainChunk);
 
         // All modules and data types are loaded first.
-        try declareImportsAndTypes(self, mainChunk);
+        try declareImportsAndTypes(self, core_sym);
 
         // Declare static vars and funcs after types have been resolved.
         try declareSymbols(self);
@@ -389,7 +418,7 @@ fn performChunkParse(self: *Compiler, chunk: *cy.Chunk) !void {
 fn performChunkSema(self: *Compiler, chunk: *cy.Chunk) !void {
     try chunk.ir.pushStmtBlock2(chunk.alloc, chunk.rootStmtBlock);
 
-    if (chunk.id == 0) {
+    if (chunk == self.main_chunk) {
         _ = try sema.semaMainBlock(self, chunk);
     }
     // Top level declarations only.
@@ -519,20 +548,24 @@ fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
     log.tracev("Invoke module loader: {s}", .{task.absSpec});
 
     if (!self.moduleLoader.?(@ptrCast(self.vm), cc.initStr(task.absSpec), &res)) {
-        const chunk = task.fromChunk;
-        if (task.nodeId == cy.NullNode) {
-            if (self.hasApiError) {
-                return chunk.reportError(self.apiError, &.{});
+        if (task.fromChunk) |from| {
+            if (task.nodeId == cy.NullNode) {
+                if (self.hasApiError) {
+                    return from.reportError(self.apiError, &.{});
+                } else {
+                    return from.reportError("Failed to load module: {}", &.{v(task.absSpec)});
+                }
             } else {
-                return chunk.reportError("Failed to load module: {}", &.{v(task.absSpec)});
+                const stmt = from.ast.node(task.nodeId);
+                if (self.hasApiError) {
+                    return from.reportErrorAt(self.apiError, &.{}, stmt.data.importStmt.spec);
+                } else {
+                    return from.reportErrorAt("Failed to load module: {}", &.{v(task.absSpec)}, stmt.data.importStmt.spec);
+                }
             }
         } else {
-            const stmt = chunk.ast.node(task.nodeId);
-            if (self.hasApiError) {
-                return chunk.reportErrorAt(self.apiError, &.{}, stmt.data.importStmt.spec);
-            } else {
-                return chunk.reportErrorAt("Failed to load module: {}", &.{v(task.absSpec)}, stmt.data.importStmt.spec);
-            }
+            try self.setErrorFmtAt(cy.NullId, cy.NullNode, "Failed to load module: {}", &.{v(task.absSpec)});
+            return error.CompileError;
         }
     }
 
@@ -575,26 +608,8 @@ fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
     return newChunk;
 }
 
-fn declareImportsAndTypes(self: *Compiler, mainChunk: *cy.Chunk) !void {
+fn declareImportsAndTypes(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
     log.tracev("Load imports and types.", .{});
-
-    // Load core module first since the members are imported into each user module.
-    var builtinSym: *cy.sym.Chunk = undefined;
-    if (self.importBuiltins) {
-        const importCore = ImportTask{
-            .fromChunk = mainChunk,
-            .nodeId = cy.NullNode,
-            .absSpec = try self.alloc.dupe(u8, "builtins"),
-            .import = null,
-        };
-        try self.importTasks.append(self.alloc, importCore);
-        const builtinChunk = performImportTask(self, importCore) catch |err| {
-            return err;
-        };
-        builtinSym = builtinChunk.sym;
-        _ = self.importTasks.orderedRemove(0);
-        try loadPredefinedTypes(self, @ptrCast(builtinSym));
-    }
 
     var id: u32 = 0;
     while (true) {
@@ -605,7 +620,7 @@ fn declareImportsAndTypes(self: *Compiler, mainChunk: *cy.Chunk) !void {
 
             if (self.importBuiltins) {
                 // Import builtin module into local namespace.
-                try sema.declareUsingModule(chunk, @ptrCast(builtinSym));
+                try sema.declareUsingModule(chunk, @ptrCast(core_sym));
             }
 
             // Process static declarations.
@@ -665,82 +680,75 @@ fn declareImportsAndTypes(self: *Compiler, mainChunk: *cy.Chunk) !void {
         }
     }
 
-    // Extract special syms. Assumes chunks[1] is the builtins chunk.
-    const builtins = self.chunks.items[1].sym.getMod();
+    // Extract special syms. Assumes chunks[0] is the builtins chunk.
+    const builtins = self.chunks.items[0].sym.getMod();
     self.sema.option_tmpl = builtins.getSym("Option").?.cast(.typeTemplate);
 }
 
-fn loadPredefinedTypes(self: *Compiler, parent: *cy.Sym) !void {
-    log.tracev("Load predefined types", .{});
-    const Entry = struct { []const u8, cy.TypeId };
+fn loadBuiltins(self: *Compiler) !void {
+    const builtins = &self.sema.builtins;
+    try builtins.putNoClobber(self.alloc, "int64_t", .{ .type = .int_t, .data = .{ .int_t = .{
+        .bits = 64,
+    }}});
+    try builtins.putNoClobber(self.alloc, "float64_t", .{ .type = .int_t, .data = .{ .int_t = .{
+        .bits = 64,
+    }}});
+    try builtins.putNoClobber(self.alloc, "bool_t", .{ .type = .bool_t, .data = undefined });
+}
 
-    const mod = parent.getMod().?;
-    const c = mod.chunk;
+fn reserveCoreTypes(self: *Compiler) !void {
+    log.tracev("Reserve core types", .{});
 
-    const common = &[_]Entry{
+    const type_ids = &[_]cy.TypeId{
+        // Incomplete type.
+        bt.Void,
+
         // Primitives.
-        .{"none", bt.None},
-        .{"bool", bt.Boolean},
-        .{"error", bt.Error},
-        .{"placeholder1", bt.Placeholder1},
-        .{"placeholder2", bt.Placeholder2},
-        .{"placeholder3", bt.Placeholder3},
-        .{"symbol", bt.Symbol},
-        .{"int", bt.Integer},
-        .{"float", bt.Float},
+        bt.Boolean,
+        bt.Error,
+        bt.Placeholder1,
+        bt.Placeholder2,
+        bt.Placeholder3,
+        bt.Symbol,
+        bt.Integer,
+        bt.Float,
 
         // Unions.
-        .{"dynamic", bt.Dynamic},
-        .{"any", bt.Any},
+        bt.Dynamic,
+        bt.Any,
+
+        // VM specific types.
+        bt.Type,
+
+        // Object types.
+        bt.Tuple,
+        bt.List,
+        bt.ListIter,
+        bt.Map,
+        bt.MapIter,
+        bt.Closure,
+        bt.Lambda,
+        bt.HostFunc,
+        bt.ExternFunc,
+        bt.String,
+        bt.Array,
+        bt.Fiber,
+        bt.Box,
+        bt.TccState,
+        bt.Pointer,
+        bt.MetaType,
+        bt.Range,
     };
-    for (common) |entry| {
+
+    for (type_ids) |type_id| {
         const id = try self.sema.pushType();
-        std.debug.assert(id == entry.@"1");
-        _ = try c.declareCoreType(parent, entry.@"0", id);
+        std.debug.assert(id == type_id);
     }
 
-    const vm_common = &[_]Entry{
-        .{"type", bt.Type},
-    };
-    for (vm_common) |entry| {
-        const id = try self.sema.pushType();
-        std.debug.assert(id == entry.@"1");
-        _ = try c.declareCoreType(parent, entry.@"0", id);
-    }
+    std.debug.assert(self.sema.types.items.len == cy.types.BuiltinEnd);
+}
 
-    const builtins = &[_]Entry{
-        // Begin object types.
-        .{"tuple", bt.Tuple},
-        .{"List", bt.List},
-        .{"ListIterator", bt.ListIter},
-        .{"Map", bt.Map},
-        .{"MapIterator", bt.MapIter},
-        .{"Closure", bt.Closure},
-        .{"Lambda", bt.Lambda},
-        .{"HostFunc", bt.HostFunc},
-        .{"ExternFunc", bt.ExternFunc},
-        .{"String", bt.String},
-        .{"Array", bt.Array},
-        .{"Fiber", bt.Fiber},
-        .{"Box", bt.Box},
-        .{"TccState", bt.TccState},
-        .{"pointer", bt.Pointer},
-        .{"metatype", bt.MetaType},
-    };
-    if (!self.config.backend.isAot()) {
-        for (builtins) |entry| {
-            const id = try self.sema.pushType();
-            std.debug.assert(id == entry.@"1");
-            _ = try c.declareCustomObjectType(parent, entry.@"0", cy.NullNode, null, null, id);
-        }
-    } else {
-        for (builtins) |entry| {
-            // Only reserve the type. Bind object/struct types later.
-            const id = try self.sema.pushType();
-            std.debug.assert(id == entry.@"1");
-        }
-    }
-
+fn createDynMethodIds(self: *Compiler) !void {
     self.indexMGID = try self.vm.ensureMethodGroup("$index");
     self.setIndexMGID = try self.vm.ensureMethodGroup("$setIndex");
     self.sliceMGID = try self.vm.ensureMethodGroup("$slice");
@@ -764,11 +772,6 @@ fn loadPredefinedTypes(self: *Compiler, parent: *cy.Sym) !void {
     self.@"infix<<MGID" = try self.vm.ensureMethodGroup("$infix<<");
     self.@"infix>>MGID" = try self.vm.ensureMethodGroup("$infix>>");
     self.@"prefix-MGID" = try self.vm.ensureMethodGroup("$prefix-");
-
-    // id = try sema.addResolvedInternalSym(self, "undefined");
-    // std.debug.assert(id == bt.Undefined);
-    // id = try sema.addResolvedInternalSym(self, "dynamic");
-    // std.debug.assert(id == bt.Dynamic);
 }
 
 // fn computeTypeSizesRec(self: *VMcompiler) !void {
@@ -842,8 +845,12 @@ fn declareSymbols(self: *Compiler) !void {
                     try sema.declareEnumMembers(chunk, @ptrCast(decl.data.sym), decl.nodeId);
                 },
                 .type_copy => {
-                    const sym = try sema.resolveTypeCopy(chunk, @ptrCast(decl.data.sym));
-                    last_type_sym = sym;
+                    if (decl.data.sym.type == .type_copy) {
+                        const sym = try sema.resolveTypeCopy(chunk, @ptrCast(decl.data.sym));
+                        last_type_sym = sym;
+                    } else {
+                        last_type_sym = decl.data.sym;
+                    }
                 },
                 .import,
                 .typeTemplate,
@@ -912,7 +919,7 @@ pub fn replaceIntoShorterList(comptime T: type, input: []const T, needle: []cons
 const unexpected = cy.fatal;
 
 const ImportTask = struct {
-    fromChunk: *cy.Chunk,
+    fromChunk: ?*cy.Chunk,
     nodeId: cy.NodeId,
     absSpec: []const u8,
     import: ?*cy.sym.Import,

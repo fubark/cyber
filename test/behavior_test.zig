@@ -582,7 +582,7 @@ test "Debug labels." {
         _ = try res;
         const vm = run.vm;
         for (vm.compiler.buf.debugMarkers.items) |marker| {
-            if (marker.pc == 3) {
+            if (marker.etype() == .label) {
                 try t.eqStr(marker.getLabelName(), "MyLabel");
                 return;
             }
@@ -844,7 +844,7 @@ test "Stack trace unwinding." {
     try t.eq(trace.frames.len, 1);
     try eqStackFrame(trace.frames[0], .{
         .name = "main",
-        .chunkId = 0,
+        .chunkId = 1,
         .line = 2,
         .col = 6,
         .lineStartPos = 35,
@@ -873,14 +873,14 @@ test "Stack trace unwinding." {
     try t.eq(trace.frames.len, 2);
     try eqStackFrame(trace.frames[0], .{
         .name = "foo",
-        .chunkId = 0,
+        .chunkId = 1,
         .line = 3,
         .col = 15,
         .lineStartPos = 49,
     });
     try eqStackFrame(trace.frames[1], .{
         .name = "main",
-        .chunkId = 0,
+        .chunkId = 1,
         .line = 4,
         .col = 0,
         .lineStartPos = 68,
@@ -906,7 +906,7 @@ test "Stack trace unwinding." {
         });
         try eqStackFrame(trace.frames[1], .{
             .name = "main",
-            .chunkId = 0,
+            .chunkId = 1,
             .line = 0,
             .col = 0,
             .lineStartPos = cy.NullId,
@@ -940,7 +940,7 @@ test "Stack trace unwinding." {
             });
             try eqStackFrame(trace_.frames[1], .{
                 .name = "main",
-                .chunkId = 0,
+                .chunkId = 1,
                 .line = 0,
                 .col = 0,
                 .lineStartPos = cy.NullId,

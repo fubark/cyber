@@ -10,9 +10,29 @@ const log = cy.log.scoped(.sym);
 const fmt = cy.fmt;
 const v = fmt.v;
 
-const Metadata = packed struct {
-    isNameOwned: bool,
-    padding: u15,
+pub const SymType = enum(u8) {
+    null,
+    userVar,
+    hostVar,
+    func,
+    custom_object_t,
+    object_t,
+    struct_t,
+    // pointer_t,
+    bool_t,
+    int_t,
+    float_t,
+    import,
+    chunk,
+    enum_t,
+    enumMember,
+    typeAlias,
+
+    /// Unresolved type copy.
+    type_copy,
+
+    typeTemplate,
+    field,
 };
 
 /// Base symbol. All symbols stem from the same header.
@@ -28,14 +48,14 @@ pub const Sym = extern struct {
         return .{
             .namePtr = name_.ptr,
             .nameLen = @intCast(name_.len),
-            .metadata = @bitCast(Metadata{ .padding = undefined, .isNameOwned = false }),
+            .metadata = @bitCast(Metadata{ .padding = undefined, .name_owned = false, .type_copy = false }),
             .type = symT,
             .parent = parent,
         };
     }
 
     pub fn deinit(self: *Sym, alloc: std.mem.Allocator) void {
-        if (self.getMetadata().isNameOwned) {
+        if (self.getMetadata().name_owned) {
             alloc.free(self.name());
         }
     }
@@ -66,39 +86,50 @@ pub const Sym = extern struct {
     pub fn destroy(self: *Sym, vm: *cy.VM, alloc: std.mem.Allocator) void {
         self.deinit(alloc);
 
+        var size: usize = undefined;
         switch (self.type) {
             .custom_object_t => {
                 const hostType = self.cast(.custom_object_t);
                 hostType.getMod().deinit(alloc);
-                alloc.destroy(hostType);
+                size = @sizeOf(CustomObjectType);
             },
-            .core_t => {
-                const core_t = self.cast(.core_t);
-                core_t.getMod().deinit(alloc);
-                alloc.destroy(core_t);
+            .bool_t => {
+                const bool_t = self.cast(.bool_t);
+                bool_t.getMod().deinit(alloc);
+                size = @sizeOf(BoolType);
+            },
+            .int_t => {
+                const int_t = self.cast(.int_t);
+                int_t.getMod().deinit(alloc);
+                size = @sizeOf(IntType);
+            },
+            .float_t => {
+                const float_t = self.cast(.float_t);
+                float_t.getMod().deinit(alloc);
+                size = @sizeOf(FloatType);
             },
             .chunk => {
                 const chunk = self.cast(.chunk);
                 chunk.getMod().deinit(alloc);
-                alloc.destroy(chunk);
+                size = @sizeOf(Chunk);
             },
             .struct_t => {
                 const obj = self.cast(.struct_t);
                 obj.getMod().deinit(alloc);
                 alloc.free(obj.fields[0..obj.numFields]);
-                alloc.destroy(obj);
+                size = @sizeOf(ObjectType);
             },
             .object_t => {
                 const obj = self.cast(.object_t);
                 obj.getMod().deinit(alloc);
                 alloc.free(obj.fields[0..obj.numFields]);
-                alloc.destroy(obj);
+                size = @sizeOf(ObjectType);
             },
             .enum_t => {
                 const enumType = self.cast(.enum_t);
                 enumType.getMod().deinit(alloc);
                 alloc.free(enumType.members[0..enumType.numMembers]);
-                alloc.destroy(enumType);
+                size = @sizeOf(EnumType);
             },
             .typeTemplate => {
                 const typeTemplate = self.cast(.typeTemplate);
@@ -115,22 +146,61 @@ pub const Sym = extern struct {
                 typeTemplate.variantCache.deinit(alloc);
                 alloc.free(typeTemplate.params);
 
-                alloc.destroy(typeTemplate);
+                size = @sizeOf(TypeTemplate);
             },
-            inline else => |symT| {
-                const child = self.cast(symT);
-                alloc.destroy(child);
+            .type_copy => {
+                size = @sizeOf(TypeSym);
             },
+            .field => {
+                size = @sizeOf(Field);
+            },
+            .typeAlias => {
+                size = @sizeOf(TypeAlias);
+            },
+            .enumMember => {
+                size = @sizeOf(EnumMember);
+            },
+            .import => {
+                size = @sizeOf(Import);
+            },
+            .func => {
+                size = @sizeOf(FuncSym);
+            },
+            .userVar => {
+                size = @sizeOf(UserVar);
+            },
+            .hostVar => {
+                size = @sizeOf(HostVar);
+            },
+            .null => {
+                size = 0;
+            },
+            //     const child = self.cast(symT);
+            //     size = @sizeOf();
+            // },
         }
+
+        if (self.getMetadata().type_copy) {
+            size = @sizeOf(TypeSym);
+        }
+
+        const slice = @as([*]const align(8) u8, @ptrCast(self))[0..size];
+        alloc.free(slice);
     }
 
     pub fn getMetadata(self: Sym) Metadata {
         return @bitCast(self.metadata);
     }
 
-    pub fn setNameOwned(self: *Sym, nameOwned: bool) void {
+    pub fn setNameOwned(self: *Sym, name_owned: bool) void {
         var metadata = self.getMetadata();
-        metadata.isNameOwned = nameOwned;
+        metadata.name_owned = name_owned;
+        self.metadata = @bitCast(metadata);
+    }
+
+    pub fn setTypeCopy(self: *Sym, type_copy: bool) void {
+        var metadata = self.getMetadata();
+        metadata.type_copy = type_copy;
         self.metadata = @bitCast(metadata);
     }
 
@@ -141,14 +211,25 @@ pub const Sym = extern struct {
     pub fn isType(self: Sym) bool {
         switch (self.type) {
             .custom_object_t,
-            .core_t,
+            .bool_t,
+            .int_t,
+            .float_t,
             .typeAlias,
             .struct_t,
             .object_t,
             .enum_t => {
                 return true;
             },
-            else => {
+            .null,
+            .userVar,
+            .hostVar,
+            .import,
+            .func,
+            .typeTemplate,
+            .type_copy,
+            .field,
+            .enumMember,
+            .chunk => {
                 return false;
             },
         }
@@ -179,7 +260,9 @@ pub const Sym = extern struct {
             .struct_t        => return @ptrCast(&self.cast(.struct_t).mod),
             .object_t        => return @ptrCast(&self.cast(.object_t).mod),
             .custom_object_t => return @ptrCast(&self.cast(.custom_object_t).mod),
-            .core_t          => return @ptrCast(&self.cast(.core_t).mod),
+            .bool_t          => return @ptrCast(&self.cast(.bool_t).mod),
+            .int_t           => return @ptrCast(&self.cast(.int_t).mod),
+            .float_t         => return @ptrCast(&self.cast(.float_t).mod),
             .import,
             .type_copy,
             .typeAlias,
@@ -212,13 +295,16 @@ pub const Sym = extern struct {
         }
     }
 
-    pub fn getValueType(self: *Sym) !cy.TypeId {
+    pub fn getValueType(self: *Sym) !?cy.TypeId {
         switch (self.type) {
             .userVar    => return self.cast(.userVar).type,
             .hostVar    => return self.cast(.hostVar).type,
             .enumMember => return self.cast(.enumMember).type,
+            .enum_t,
+            .int_t,
+            .float_t,
             .struct_t,
-            .core_t,
+            .bool_t,
             .typeAlias,
             .custom_object_t,
             .object_t   => return bt.MetaType,
@@ -230,19 +316,61 @@ pub const Sym = extern struct {
                     return error.AmbiguousSymbol;
                 }
             },
-            else => return bt.Any,
+            .field,
+            .null,
+            .import,
+            .type_copy,
+            .typeTemplate,
+            .chunk => return null,
         }
     }
 
     pub fn getStaticType(self: *Sym) ?cy.TypeId {
         switch (self.type) {
-            .core_t          => return self.cast(.core_t).type,
+            .bool_t          => return self.cast(.bool_t).type,
+            .int_t           => return self.cast(.int_t).type,
+            .float_t         => return self.cast(.float_t).type,
             .enum_t          => return self.cast(.enum_t).type,
             .typeAlias       => return self.cast(.typeAlias).type,
             .struct_t        => return self.cast(.struct_t).type,
             .object_t        => return self.cast(.object_t).type,
             .custom_object_t => return self.cast(.custom_object_t).type,
-            else             => return null,
+            .null,
+            .field,
+            .typeTemplate,
+            .enumMember,
+            .func,
+            .import,
+            .type_copy,
+            .chunk,
+            .hostVar,
+            .userVar         => return null,
+        }
+    }
+
+    pub fn getFields(self: *Sym) ?[]const FieldInfo {
+        switch (self.type) {
+            .enum_t          => return &[_]FieldInfo{
+                .{ .sym = undefined, .type = bt.Integer },
+                .{ .sym = undefined, .type = bt.Any },
+            },
+            .struct_t        => return self.cast(.struct_t).getFields(),
+            .object_t        => return self.cast(.object_t).getFields(),
+            .bool_t,
+            .int_t,
+            .float_t,
+            .typeAlias,
+            .custom_object_t,
+            .null,
+            .field,
+            .typeTemplate,
+            .enumMember,
+            .func,
+            .import,
+            .type_copy,
+            .chunk,
+            .hostVar,
+            .userVar         => return null,
         }
     }
 
@@ -300,6 +428,12 @@ pub const Sym = extern struct {
     }
 };
 
+const Metadata = packed struct {
+    name_owned: bool,
+    type_copy: bool,
+    padding: u14,
+};
+
 const SymDumpOptions = struct {
     indent: u32 = 0,
     dumpModule: bool = false,
@@ -324,7 +458,9 @@ fn SymChild(comptime symT: SymType) type {
         .struct_t,
         .object_t => ObjectType,
         .custom_object_t => CustomObjectType,
-        .core_t => CoreType,
+        .bool_t => BoolType,
+        .int_t => IntType,
+        .float_t => FloatType,
         .enum_t => EnumType,
         .enumMember => EnumMember,
         .typeAlias => TypeAlias,
@@ -341,31 +477,11 @@ fn SymChild(comptime symT: SymType) type {
 pub const TypeSym = extern union {
     object_t: ObjectType,
     custom_object_t: CustomObjectType,
-    core_t: CoreType,
+    bool_t: BoolType,
+    int_t: IntType,
+    float_t: FloatType,
     enum_t: EnumType,
     type_copy: TypeCopy,
-};
-
-pub const SymType = enum(u8) {
-    null,
-    userVar,
-    hostVar,
-    func,
-    custom_object_t,
-    object_t,
-    struct_t,
-    core_t,
-    import,
-    chunk,
-    enum_t,
-    enumMember,
-    typeAlias,
-
-    /// Unresolved type copy.
-    type_copy,
-
-    typeTemplate,
-    field,
 };
 
 pub const HostVar = extern struct {
@@ -509,7 +625,7 @@ pub const Field = extern struct {
 };
 
 pub const FieldInfo = packed struct {
-    symId: cy.SymId,
+    sym: *cy.Sym,
     type: cy.TypeId,
 };
 
@@ -519,6 +635,8 @@ pub const ObjectType = extern struct {
     declId: cy.NodeId,
     fields: [*]const FieldInfo,
     numFields: u32,
+
+    rt_size: cy.Nullable(u32),
 
     /// If not null, the parent points to TypeTemplate sym.
     variantId: u32,
@@ -543,6 +661,10 @@ pub const ObjectType = extern struct {
     pub fn getMod(self: *ObjectType) *cy.Module {
         return @ptrCast(&self.mod);
     }
+
+    pub fn getFields(self: ObjectType) []const FieldInfo {
+        return self.fields[0..self.numFields];
+    }
 };
 
 pub const CustomObjectType = extern struct {
@@ -558,12 +680,34 @@ pub const CustomObjectType = extern struct {
     }
 };
 
-pub const CoreType = extern struct {
+pub const FloatType = extern struct {
+    head: Sym,
+    type: cy.TypeId,
+    mod: vmc.Module,
+    bits: u8,
+
+    pub fn getMod(self: *FloatType) *cy.Module {
+        return @ptrCast(&self.mod);
+    }
+};
+
+pub const IntType = extern struct {
+    head: Sym,
+    type: cy.TypeId,
+    mod: vmc.Module,
+    bits: u8,
+
+    pub fn getMod(self: *IntType) *cy.Module {
+        return @ptrCast(&self.mod);
+    }
+};
+
+pub const BoolType = extern struct {
     head: Sym,
     type: cy.TypeId,
     mod: vmc.Module,
 
-    pub fn getMod(self: *CoreType) *cy.Module {
+    pub fn getMod(self: *BoolType) *cy.Module {
         return @ptrCast(&self.mod);
     }
 };
@@ -649,19 +793,20 @@ pub const Func = struct {
     parent: *Sym,
 
     funcSigId: cy.sema.FuncSigId,
-    reqCallTypeCheck: bool,
-    numParams: u8,
-    isMethod: bool,
     declId: cy.NodeId,
     retType: cy.TypeId,
-    data: union {
-        hostFunc: struct {
+    data: extern union {
+        hostFunc: extern struct {
             ptr: cy.ZHostFuncFn,
         },
-        hostInlineFunc: struct {
+        hostInlineFunc: extern struct {
             ptr: cy.ZHostFuncFn,
         },
     },
+    reqCallTypeCheck: bool,
+    numParams: u8,
+    isMethod: bool,
+    throws: bool,
 
     pub fn isGenerated(self: Func) bool {
         return self.declId == cy.NullId;

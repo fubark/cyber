@@ -118,7 +118,7 @@ const funcs = [_]NameFunc{
     // ListIterator
     .{"next", bindings.listIteratorNext, .standard},
 
-    // tuple
+    // Tuple
     .{"$index", zErrFunc2(inlineBinOp(.indexTuple)), .inlinec},
 
     // Map
@@ -202,39 +202,88 @@ const funcs = [_]NameFunc{
     .{"id", metatypeId, .standard},
 };
 
-const CreateForAot = bool;
-const NameType = struct { []const u8, cy.TypeId, CreateForAot };
+const NameType = struct { []const u8, cy.TypeId };
 const types = [_]NameType{
+    .{"bool", bt.Boolean },
+    .{"error", bt.Error },
+    .{"int", bt.Integer },
+    .{"float", bt.Float }, 
+    .{"List", bt.List },
+    .{"ListIterator", bt.ListIter },
+    .{"Tuple", bt.Tuple },
+    .{"Map", bt.Map },
+    .{"MapIterator", bt.MapIter },
+    .{"String", bt.String },
+    .{"Array", bt.Array },
+    .{"pointer", bt.Pointer },
+    .{"ExternFunc", bt.ExternFunc },
+    .{"Fiber", bt.Fiber },
+    .{"metatype", bt.MetaType },
+};
+
+pub fn typeLoader(_: ?*c.VM, info: c.TypeInfo, out_: [*c]c.TypeResult) callconv(.C) bool {
+    const out: *c.TypeResult = out_;
+    const name = c.strSlice(info.name);
+    if (std.mem.eql(u8, types[info.idx].@"0", name)) {
+        out.type = c.BindTypeDecl;
+        out.data.decl = .{
+            .type_id = types[info.idx].@"1",
+        };
+        return true;
+    }
+    return false;
+}
+
+const CustomType = bool;
+const NameType2 = struct { []const u8, cy.TypeId, CustomType };
+const vm_types = [_]NameType2{
+    .{"void", bt.Void, true },
     .{"bool", bt.Boolean, false },
+    .{"symbol", bt.Symbol, false },
     .{"error", bt.Error, false },
     .{"int", bt.Integer, false },
     .{"float", bt.Float, false }, 
+    .{"placeholder1", bt.Placeholder1, true }, 
+    .{"placeholder2", bt.Placeholder2, true }, 
+    .{"placeholder3", bt.Placeholder3, true }, 
+    .{"dynamic", bt.Dynamic, true },
+    .{"any", bt.Any, true },
+    .{"type", bt.Type, true },
     .{"List", bt.List, true },
     .{"ListIterator", bt.ListIter, true },
-    .{"tuple", bt.Tuple, true },
+    .{"Tuple", bt.Tuple, true },
     .{"Map", bt.Map, true },
     .{"MapIterator", bt.MapIter, true },
     .{"String", bt.String, true },
     .{"Array", bt.Array, true },
     .{"pointer", bt.Pointer, true },
+    .{"Closure", bt.Closure, true },
+    .{"Lambda", bt.Lambda, true },
+    .{"HostFunc", bt.HostFunc, true },
     .{"ExternFunc", bt.ExternFunc, true },
     .{"Fiber", bt.Fiber, true },
     .{"metatype", bt.MetaType, true },
+    .{"Range", bt.Range, true },
+    .{"Box", bt.Box, true },
+    .{"TccState", bt.TccState, true },
 };
 
-pub fn typeLoader(_: ?*cc.VM, info: cc.TypeInfo, out_: [*c]cc.TypeResult) callconv(.C) bool {
-    const out: *cc.TypeResult = out_;
-    const name = cc.strSlice(info.name);
-    if (std.mem.eql(u8, types[info.idx].@"0", name)) {
-        if (types[info.idx].@"2") {
-            out.type = cc.BindTypeDecl;
-            out.data.decl = .{
-                .typeId = types[info.idx].@"1",
+pub fn vmTypeLoader(_: ?*c.VM, info: c.TypeInfo, out_: [*c]c.TypeResult) callconv(.C) bool {
+    const out: *c.TypeResult = out_;
+    const name = c.strSlice(info.name);
+    if (std.mem.eql(u8, vm_types[info.idx].@"0", name)) {
+        if (vm_types[info.idx].@"2") {
+            out.type = c.BindTypeCustom;
+            out.data.custom = .{
+                .out_type_id = null,
+                .type_id = vm_types[info.idx].@"1",
+                .get_children = null,
+                .finalizer = null,
             };
         } else {
-            out.type = cc.BindTypePredefined;
-            out.data.predefined = .{
-                .typeId = types[info.idx].@"1",
+            out.type = c.BindTypeDecl;
+            out.data.decl = .{
+                .type_id = vm_types[info.idx].@"1",
             };
         }
         return true;
@@ -242,25 +291,56 @@ pub fn typeLoader(_: ?*cc.VM, info: cc.TypeInfo, out_: [*c]cc.TypeResult) callco
     return false;
 }
 
-pub fn vmTypeLoader(_: ?*cc.VM, info: cc.TypeInfo, out_: [*c]cc.TypeResult) callconv(.C) bool {
-    const out: *cc.TypeResult = out_;
-    const name = cc.strSlice(info.name);
-    if (std.mem.eql(u8, types[info.idx].@"0", name)) {
-        out.type = cc.BindTypePredefined;
-        out.data.predefined = .{
-            .typeId = types[info.idx].@"1",
-        };
-        return true;
-    }
-    return false;
-}
+pub var OptionInt: cy.TypeId = undefined;
+pub var OptionAny: cy.TypeId = undefined;
+pub var OptionTuple: cy.TypeId = undefined;
+pub var OptionMap: cy.TypeId = undefined;
+pub var OptionArray: cy.TypeId = undefined;
+pub var OptionString: cy.TypeId = undefined;
 
-pub fn onLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
+pub fn onLoad(vm_: ?*c.VM, mod: c.Sym) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const b = bindings.ModuleBuilder.init(vm.compiler, @ptrCast(@alignCast(mod.sym)));
+    const chunk_sym = c.fromSym(mod).cast(.chunk);
+    const b = bindings.ModuleBuilder.init(vm.compiler, @ptrCast(chunk_sym));
     if (cy.Trace) {
         b.declareFuncSig("traceRetains", &.{}, bt.Integer, traceRetains) catch cy.fatal();
         b.declareFuncSig("traceReleases", &.{}, bt.Integer, traceRetains) catch cy.fatal();
+    }
+
+    const option_tmpl = c.initSym(chunk_sym.getMod().getSym("Option").?);
+
+    const int_t = c.newType(vm_, bt.Integer);
+    defer c.release(vm_, int_t);
+    OptionInt = c.expandTypeTemplate(option_tmpl, @constCast(&[_]c.Value{ int_t }), 1);
+
+    const any_t = c.newType(vm_, bt.Any);
+    defer c.release(vm_, any_t);
+    OptionAny = c.expandTypeTemplate(option_tmpl, @constCast(&[_]c.Value{ any_t }), 1);
+
+    const tuple_t = c.newType(vm_, bt.Tuple);
+    defer c.release(vm_, tuple_t);
+    OptionTuple = c.expandTypeTemplate(option_tmpl, @constCast(&[_]c.Value{ tuple_t }), 1);
+
+    const map_t = c.newType(vm_, bt.Map);
+    defer c.release(vm_, map_t);
+    OptionMap = c.expandTypeTemplate(option_tmpl, @constCast(&[_]c.Value{ map_t }), 1);
+
+    const array_t = c.newType(vm_, bt.Array);
+    defer c.release(vm_, array_t);
+    OptionArray = c.expandTypeTemplate(option_tmpl, @constCast(&[_]c.Value{ array_t }), 1);
+
+    const string_t = c.newType(vm_, bt.String);
+    defer c.release(vm_, string_t);
+    OptionString = c.expandTypeTemplate(option_tmpl, @constCast(&[_]c.Value{ string_t }), 1);
+
+    // Verify all core types have been initialized.
+    if (cy.Trace) {
+        for (0..cy.types.BuiltinEnd) |i| {
+            const type_e = vm.sema.types.items[i];
+            if (type_e.kind == .null) {
+                cy.panicFmt("Type {} is uninited.", .{i});
+            }
+        }
     }
 }
 
@@ -658,13 +738,8 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
             try vm.mapSet(entry, try vm.retainOrAllocAstring("typeSpec"), typeSpec);
         },
         .type_copy => {
-            if (node.data.type_copy_decl.has_decl) {
-                const decl_n = ast.node(node.data.type_copy_decl.decl_or_name);
-                const header = ast.node(decl_n.data.objectDecl.header);
-                name = ast.nodeStringById(header.data.objectHeader.name);
-            } else {
-                name = ast.nodeStringById(node.data.type_copy_decl.decl_or_name);
-            }
+            const header = ast.node(node.data.type_copy_decl.header);
+            name = ast.nodeStringById(header.data.type_copy_header.name);
         },
         .typeAlias => {
             name = ast.nodeStringById(node.data.typeAliasDecl.name);

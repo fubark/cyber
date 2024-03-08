@@ -26,29 +26,31 @@ pub fn genAll(c: *cy.Compiler) !void {
 
     // Prepare types.
     for (c.sema.types.items, 0..) |stype, typeId| {
+        if (stype.kind == .null) {
+            // Skip placeholders.
+            continue;
+        }
         log.tracev("bc prepare type: {s}", .{stype.sym.name()});
         const sym = stype.sym;
 
         switch (sym.type) {
             .object_t => {
                 const obj = sym.cast(.object_t);
-                const mod = sym.getMod().?;
                 for (obj.fields[0..obj.numFields], 0..) |field, i| {
-                    const fieldSym = mod.getSymById(field.symId);
-                    const fieldSymId = try c.vm.ensureFieldSym(fieldSym.name());
+                    const fieldSymId = try c.vm.ensureFieldSym(field.sym.name());
                     try c.vm.addFieldSym(@intCast(typeId), fieldSymId, @intCast(i), field.type);
                 }
             },
             .struct_t => {
                 const obj = sym.cast(.struct_t);
-                const mod = sym.getMod().?;
                 for (obj.fields[0..obj.numFields], 0..) |field, i| {
-                    const fieldSym = mod.getSymById(field.symId);
-                    const fieldSymId = try c.vm.ensureFieldSym(fieldSym.name());
+                    const fieldSymId = try c.vm.ensureFieldSym(field.sym.name());
                     try c.vm.addFieldSym(@intCast(typeId), fieldSymId, @intCast(i), field.type);
                 }
             },
-            .core_t,
+            .int_t,
+            .float_t,
+            .bool_t,
             .custom_object_t,
             .enum_t => {},
             else => {
@@ -135,7 +137,9 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
         },
         .typeTemplate,
         .custom_object_t,
-        .core_t,
+        .bool_t,
+        .int_t,
+        .float_t,
         .chunk,
         .field,
         .struct_t,
@@ -605,24 +609,15 @@ fn genCast(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const childv = try genExpr(c, data.expr, Cstr.simple);
     try pushUnwindValue(c, childv);
 
-    const sym = c.sema.getTypeSym(data.typeId);
-    if (sym.type == .object_t or sym.type == .custom_object_t) {
+    if (types.toRtConcreteType(data.typeId)) |tId| {
         const pc = c.buf.ops.items.len;
         try c.pushFCode(.cast, &.{ childv.reg, 0, 0, inst.dst }, nodeId);
-        c.buf.setOpArgU16(pc + 2, @intCast(data.typeId));
-    } else if (sym.type == .core_t) {
-        if (types.toRtConcreteType(data.typeId)) |tId| {
-            const pc = c.buf.ops.items.len;
-            try c.pushFCode(.cast, &.{ childv.reg, 0, 0, inst.dst }, nodeId);
-            c.buf.setOpArgU16(pc + 2, @intCast(tId));
-        } else {
-            // Cast to abstract type.
-            const pc = c.buf.ops.items.len;
-            try c.pushFCode(.castAbstract, &.{ childv.reg, 0, 0, inst.dst }, nodeId);
-            c.buf.setOpArgU16(pc + 2, @intCast(data.typeId));
-        }
+        c.buf.setOpArgU16(pc + 2, @intCast(tId));
     } else {
-        return error.TODO;
+        // Cast to abstract type.
+        const pc = c.buf.ops.items.len;
+        try c.pushFCode(.castAbstract, &.{ childv.reg, 0, 0, inst.dst }, nodeId);
+        c.buf.setOpArgU16(pc + 2, @intCast(data.typeId));
     }
 
     try popTempAndUnwind(c, childv);
@@ -750,8 +745,8 @@ fn genObjectInit(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
                 }
             }
         },
-        .choice => {
-        },
+        .option,
+        .choice => {},
         else => return error.Unexpected,
     }
 
@@ -1769,6 +1764,7 @@ fn reserveFuncRegs(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []ali
             c.genLocalStack.items[c.curBlock.localStart + 4 + 1 + numParams + paramCopyIdx] = .{
                 .some = .{
                     .owned = true,
+                    .defined = true,
                     .rcCandidate = c.sema.isRcCandidateType(param.declType),
                     .lifted = param.lifted,
                     .isDynamic = param.declType == bt.Dynamic,
@@ -1792,6 +1788,7 @@ fn reserveFuncRegs(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []ali
             c.genLocalStack.items[c.curBlock.localStart + 4 + 1 + i] = .{
                 .some = .{
                     .owned = false,
+                    .defined = true,
                     .rcCandidate = c.sema.isRcCandidateType(param.declType),
                     .lifted = false,
                     .isDynamic = param.declType == bt.Dynamic,
@@ -1860,6 +1857,7 @@ fn declareLocalInit(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
     const val = try genExpr(c, data.init, cstr);
 
     const local = getLocalInfoPtr(c, reg);
+    local.some.defined = true;
 
     if (local.some.lifted) {
         try c.pushOptionalDebugSym(nodeId);
@@ -1882,11 +1880,7 @@ fn declareLocalInit(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
 
 fn declareLocal(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .declareLocal);
-
-    const reg = try reserveLocalReg(c, data.id, data.declType, data.lifted, nodeId, true);
-
-    // Not yet initialized, so it does not have a refcount.
-    getLocalInfoPtr(c, reg).some.rcCandidate = false;
+    _ = try reserveLocalReg(c, data.id, data.declType, data.lifted, nodeId, true);
 }
 
 fn setCaptured(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
@@ -1940,23 +1934,23 @@ fn setLocal(c: *Chunk, data: ir.Local, rightIdx: u32, right_t: cy.TypeId, nodeId
     }
 
     // Update retained state. Refetch local.
-    local = getLocalInfoPtr(c, reg);
-    local.some.rcCandidate = rightv.retained;
+    updateRegType(c, reg, right_t);
+}
+
+fn updateRegType(c: *Chunk, reg: RegisterId, type_id: cy.TypeId) void {
+    const local = getLocalInfoPtr(c, reg);
+    local.some.defined = true;
+    local.some.rcCandidate = c.sema.isRcCandidateType(type_id);
     if (local.some.isDynamic) {
-        local.some.type = right_t;
-        local.some.isStructValue = c.sema.getTypeKind(right_t) == .@"struct";
+        local.some.type = type_id;
+        local.some.isStructValue = c.sema.getTypeKind(type_id) == .@"struct";
     }
 }
 
 fn setLocalType(c: *Chunk, idx: usize) !void {
     const data = c.ir.getStmtData(idx, .setLocalType);
     const reg = toLocalReg(c, data.local);
-    const local = getLocalInfoPtr(c, reg);
-    local.some.rcCandidate = c.sema.isRcCandidateType(data.type.id);
-    if (local.some.isDynamic) {
-        local.some.type = data.type.id;
-        local.some.isStructValue = c.sema.getTypeKind(data.type.id) == .@"struct";
-    }
+    updateRegType(c, reg, data.type.id);
 }
 
 fn opSet(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
@@ -2121,6 +2115,7 @@ fn opSet(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 fn orOp(c: *Chunk, data: ir.BinOp, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     if (cstr.isExact()) {
         const leftv = try genExpr(c, data.left, Cstr.simple);
+
         const jumpFalse = try c.pushEmptyJumpNotCond(leftv.reg);
 
         // Gen left to finalCstr. Require retain to merge with right.
@@ -2153,6 +2148,7 @@ fn orOp(c: *Chunk, data: ir.BinOp, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
 fn andOp(c: *Chunk, data: ir.BinOp, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     if (cstr.isExact()) {
         const leftv = try genExpr(c, data.left, Cstr.simple);
+
         const jumpFalse = try c.pushEmptyJumpNotCond(leftv.reg);
 
         // RHS. Goes to final dst whether true or false.
@@ -2172,6 +2168,7 @@ fn andOp(c: *Chunk, data: ir.BinOp, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
         // Merged branch result.
         const res = try c.rega.consumeNextTemp();
         const leftv = try genExpr(c, data.left, Cstr.simple);
+
         const jumpFalse = try c.pushEmptyJumpNotCond(leftv.reg);
         try popTempValue(c, leftv);
 
@@ -2234,6 +2231,9 @@ pub const Local = union {
         /// Whether the local is owned by the block. eg. Read-only func params would not be owned.
         owned: bool,
 
+        /// Whether a value has been assigned to the local.
+        defined: bool,
+
         lifted: bool,
 
         isStructValue: bool,
@@ -2264,7 +2264,7 @@ fn genReleaseLocals(c: *Chunk, startLocalReg: u8, debugNodeId: cy.NodeId) !void 
     const locals = getAliveLocals(c, startLocalReg);
     log.tracev("Generate release locals: start={}, count={}", .{startLocalReg, locals.len});
     for (locals, 0..) |local, i| {
-        if (local.some.owned) {
+        if (local.some.defined and local.some.owned) {
             if (local.some.rcCandidate or local.some.lifted) {
                 try c.operandStack.append(c.alloc, @intCast(startLocalReg + i));
             }
@@ -2665,8 +2665,7 @@ fn destrElemsStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     try c.buf.ops.resize(c.alloc, c.buf.ops.items.len + locals.len);
     for (locals, 0..) |local, i| {
         const reg = toLocalReg(c, local);
-        const regInfo = getLocalInfoPtr(c, reg);
-        regInfo.some.rcCandidate = c.sema.isRcCandidateType(bt.Any);
+        updateRegType(c, reg, bt.Any);
         c.buf.ops.items[start+i] = .{ .val = reg };
     }
 
@@ -3831,21 +3830,25 @@ fn pushCall(c: *cy.Chunk, ret: u8, numArgs: u32, numRet: u8, nodeId: cy.NodeId) 
 
 fn reserveLocalRegAt(c: *Chunk, irLocalId: u8, declType: types.TypeId, lifted: bool, reg: u8, nodeId: cy.NodeId) !void {
     // Stacks are always big enough because of pushProc.
-    log.tracev("reserve irId={} reg={} {*} {} {}", .{ irLocalId, reg, c.curBlock, c.curBlock.irLocalMapStart, c.curBlock.localStart });
+    log.tracev("reserve irId={} reg={} {*} {} {} {} {s}", .{ irLocalId, reg, c.curBlock, c.curBlock.irLocalMapStart, c.curBlock.localStart, declType, c.sema.getTypeBaseName(declType) });
     log.tracev("local stacks {} {}", .{ c.genIrLocalMapStack.items.len, c.genLocalStack.items.len });
     c.genIrLocalMapStack.items[c.curBlock.irLocalMapStart + irLocalId] = reg;
     c.genLocalStack.items[c.curBlock.localStart + reg] = .{
         .some = .{
             .owned = true,
-            .rcCandidate = c.sema.isRcCandidateType(declType),
+
+            // Not yet initialized, so it does not have a refcount.
+            .defined = false,
+
             .lifted = lifted,
             .isDynamic = declType == bt.Dynamic,
-
-            // Updated when it's assigned.
-            .isStructValue = false,
-            .type = cy.NullId,
+            .rcCandidate = undefined,
+            .isStructValue = undefined,
+            .type = undefined,
         },
     };
+    updateRegType(c, reg, declType);
+
     if (cy.Trace) {
         const nodeStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
         log.tracev("reserve {}: {s}", .{reg, nodeStr});

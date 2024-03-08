@@ -441,7 +441,7 @@ Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integer
 Object types include [Lists](#lists), [Tuples](#tuples), [Maps](#maps), [Strings](#strings), [Arrays](#arrays), [Objects](#objects), [Lambdas](#lambdas), [Fibers](#fibers), [Choices](#choices), [Optionals](#optionals), [Pointers](#pointers), and several internal object types.
 
 ## Booleans.
-Booleans can be `true` or `false`. See [`type bool`](#type-bool-struct).
+Booleans can be `true` or `false`. See [`type bool`](#type-bool).
 ```cy
 var a = true
 if true:
@@ -451,7 +451,7 @@ if true:
 ## Numbers.
 
 ### Integers.
-`int` is the default integer type. It has 48-bits and can represent integers in the range -(2<sup>47</sup>) to 2<sup>47</sup>-1. See [`type int`](#type-int-struct).
+`int` is the default integer type. It has 48-bits and can represent integers in the range -(2<sup>47</sup>) to 2<sup>47</sup>-1. See [`type int`](#type-int).
 
 When a numeric literal is used and the type can not be inferred, it will default to the `int` type:
 ```cy
@@ -475,7 +475,7 @@ var b = int(a)
 In addition to arithmetic operations, integers can also perform [bitwise operations](#bitwise-operators).
 
 ### Floats.
-`float` is the default floating point type. It has a (IEEE 754) 64-bit floating point format. See [`type float`](#type-float-struct).
+`float` is the default floating point type. It has a (IEEE 754) 64-bit floating point format. See [`type float`](#type-float).
 
 Although a `float` represents a decimal number, it can also represent integers between -(2<sup>53</sup>-1) and (2<sup>53</sup>-1). Any integers beyond the safe integer range is not guaranteed to have a unique representation.
 
@@ -1655,10 +1655,10 @@ In the example above, the function `foo` is called with 4 arguments. The first a
 * [Visibility.](#visibility)
 * [Builtin modules.](#builtin-modules)
 * [builtins.](#builtins)
-  * [`type bool`](#type-bool-struct)
-  * [`type error`](#type-error-struct)
-  * [`type int`](#type-int-struct)
-  * [`type float`](#type-float-struct)
+  * [`type bool`](#type-bool)
+  * [`type error`](#type-error)
+  * [`type int`](#type-int)
+  * [`type float`](#type-float)
   * [`type List`](#type-list)
   * [`type ListIterator`](#type-listiterator)
   * [`type tuple`](#type-tuple)
@@ -1682,9 +1682,6 @@ In the example above, the function `foo` is called with 4 arguments. The first a
   * [`type FFI`](#type-ffi)
   * [`type CArray`](#type-carray)
   * [`type CDimArray`](#type-cdimarray)
-  * [`type DirEntry`](#type-direntry)
-  * [`type DirWalkEntry`](#type-dirwalkentry)
-  * [`type ArgOption`](#type-argoption)
   * [`map DirEntry`](#map-direntry)
   * [`map DirWalkEntry`](#map-dirwalkentry)
   * [`map ArgOption`](#map-argoption)
@@ -2643,6 +2640,7 @@ func add(a int, b int):
 * [Generics.](#generics)
 * [Macros.](#macros)
 * [Compile-time execution.](#compile-time-execution)
+  * [Builtin types.](#builtin-types)
   * [Builtin functions.](#builtin-functions)
   * [Builtin constants.](#builtin-constants)
 * [Runtime execution.](#runtime-execution)
@@ -2780,6 +2778,17 @@ See [Custom Types / Generic types](#generic-types) and [Functions / Generic func
 
 ## Compile-time execution.
 > _Planned Feature_
+
+### Builtin types.
+Builtin types are used internally by the compiler to define it's own primitive types such as `bool`, `int`, and `float`.
+> `type bool_t`
+>
+
+> `type int64_t`
+>
+
+> `type float64_t`
+>
 
 ### Builtin functions.
 > `func genLabel(name String)`

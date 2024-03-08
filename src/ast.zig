@@ -93,6 +93,7 @@ pub const NodeType = enum(u8) {
     tryStmt,
     typeAliasDecl,
     type_copy_decl,
+    type_copy_header,
     typeTemplate,
     unary_expr,
     unwrap,
@@ -114,6 +115,9 @@ const NodeHead = packed struct {
         // Statements use next to advance to the next statement.
         // Expressions also use this for sequential arguments.
         next: u24,
+        type_copy_header: packed struct {
+            attr_head: cy.Nullable(u24),
+        },
         funcHeader: packed struct {
             modHead: cy.Nullable(u24),
         },
@@ -315,9 +319,13 @@ const NodeData = union {
         typeSpec: NodeId,
     },
     type_copy_decl: struct {
+        header: NodeId,
+        func_head: u24,
+        num_funcs: u8,
+    },
+    type_copy_header: struct {
+        name: NodeId,
         target: NodeId,
-        decl_or_name: u24,
-        has_decl: bool,
     },
     objectInit: struct {
         name: NodeId,

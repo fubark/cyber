@@ -919,17 +919,52 @@ pub fn declareTypeTemplate(c: *cy.Chunk, nodeId: cy.NodeId, ctNodes: []const cy.
     }
 }
 
-pub fn declareTypeCopy(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.TypeCopy {
+pub fn declareTypeCopy(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     const node = c.ast.node(nodeId);
-    var name: []const u8 = undefined;
-    if (node.data.type_copy_decl.has_decl) {
-        const decl_n = c.ast.node(node.data.type_copy_decl.decl_or_name);
-        const header = c.ast.node(decl_n.data.objectDecl.header);
-        name = c.ast.nodeStringById(header.data.objectHeader.name);
-    } else {
-        name = c.ast.nodeStringById(node.data.type_copy_decl.decl_or_name);
+    const header = c.ast.node(node.data.type_copy_decl.header);
+    const name = c.ast.nodeStringById(header.data.type_copy_header.name);
+
+    // Check for #host modifier.
+    var type_id: ?cy.TypeId = null;
+    if (header.head.data.objectHeader.modHead != cy.NullNode) {
+        const modifier = c.ast.node(header.head.data.objectHeader.modHead);
+        if (modifier.data.dirModifier.type == .host) {
+            type_id = try getHostTypeId(c, name, nodeId);
+        }
     }
-    return c.declareTypeCopy(@ptrCast(c.sym), name, nodeId);
+
+    // Check if target is a builtin type.
+    const target = c.ast.node(header.data.type_copy_header.target);
+    if (target.type() == .comptimeExpr) {
+        const expr = c.ast.node(target.data.comptimeExpr.child);
+        if (expr.type() == .ident) {
+            const builtin_n = c.ast.nodeString(expr);
+            if (c.sema.builtins.get(builtin_n)) |builtin_sym| {
+                switch (builtin_sym.type) {
+                    .bool_t => {
+                        const sym = try c.declareBoolType(@ptrCast(c.sym), name, type_id, nodeId);
+                        return @ptrCast(sym);
+                    },
+                    .int_t => {
+                        const bits = builtin_sym.data.int_t.bits;
+                        const sym = try c.declareIntType(@ptrCast(c.sym), name, bits, type_id, nodeId);
+                        return @ptrCast(sym);
+                    },
+                    .float_t => {
+                        const bits = builtin_sym.data.float_t.bits;
+                        const sym = try c.declareFloatType(@ptrCast(c.sym), name, bits, type_id, nodeId);
+                        return @ptrCast(sym);
+                    },
+                    // else => {
+                    //     return error.Unsupported;
+                    // },
+                }
+            }
+        }
+    }
+
+    const sym = try c.declareTypeCopy(@ptrCast(c.sym), name, nodeId, type_id);
+    return @ptrCast(sym);
 }
 
 pub fn declareTypeAlias(c: *cy.Chunk, nodeId: cy.NodeId) !void {
@@ -1049,8 +1084,9 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     var res: cc.TypeResult = .{
         .data = .{
             .custom = .{
-                .outTypeId = null,
-                .getChildren = null,
+                .out_type_id = null,
+                .type_id = cy.NullId,
+                .get_children = null,
                 .finalizer = null,
             },
         },
@@ -1063,24 +1099,18 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
 
     switch (res.type) {
         cc.BindTypeCustom => {
+            const type_id: ?cy.TypeId = if (res.data.custom.type_id != cy.NullId) res.data.custom.type_id else null;
             const sym = try c.declareCustomObjectType(@ptrCast(c.sym), name, nodeId,
-                res.data.custom.getChildren, res.data.custom.finalizer, null);
-            if (res.data.custom.outTypeId) |outTypeId| {
+                res.data.custom.get_children, res.data.custom.finalizer, type_id);
+            if (res.data.custom.out_type_id) |out_type_id| {
                 log.tracev("output typeId: {}", .{sym.type});
-                outTypeId.* = sym.type;
+                out_type_id.* = sym.type;
             }
             return @ptrCast(sym);
         },
         cc.BindTypeDecl => {
-            const sym = try c.declareObjectType(@ptrCast(c.sym), name, nodeId);
+            const sym = try c.declareObjectType(@ptrCast(c.sym), name, nodeId, res.data.decl.type_id);
             return @ptrCast(sym);
-        },
-        cc.BindTypePredefined => {
-            const type_e = c.sema.types.items[res.data.predefined.typeId];
-            if (type_e.sym.type != .object_t and type_e.sym.type != .custom_object_t) {
-                return c.reportErrorAt("Expected predefined object type.", &.{}, nodeId);
-            }
-            return type_e.sym;
         },
         else => {
             return error.Unsupported;
@@ -1088,12 +1118,8 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     }
 }
 
-pub fn declareHostStruct(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
-    const node = c.ast.node(nodeId);
-
-    const header = c.ast.node(node.data.objectDecl.header); 
-    const name = c.ast.nodeStringById(header.data.objectHeader.name);
-
+/// Only allows binding a predefined host type id (BIND_TYPE_DECL).
+pub fn getHostTypeId(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId) !cy.TypeId {
     const typeLoader = c.typeLoader orelse {
         return c.reportErrorAt("No type loader set for `{}`.", &.{v(name)}, nodeId);
     };
@@ -1107,8 +1133,9 @@ pub fn declareHostStruct(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     var res: cc.TypeResult = .{
         .data = .{
             .custom = .{
-                .outTypeId = null,
-                .getChildren = null,
+                .out_type_id = null,
+                .type_id = cy.NullId,
+                .get_children = null,
                 .finalizer = null,
             },
         },
@@ -1116,7 +1143,7 @@ pub fn declareHostStruct(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     };
     log.tracev("Invoke type loader for: {s}", .{name});
     if (!typeLoader(@ptrCast(c.compiler.vm), info, &res)) {
-        return c.reportErrorAt("Failed to load #host type `{}` struct.", &.{v(name)}, nodeId);
+        return c.reportErrorAt("Failed to load #host type `{}`.", &.{v(name)}, nodeId);
     }
 
     switch (res.type) {
@@ -1124,14 +1151,7 @@ pub fn declareHostStruct(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
             return error.Unsupported;
         },
         cc.BindTypeDecl => {
-            return error.Unsupported;
-        },
-        cc.BindTypePredefined => {
-            const type_e = c.sema.types.items[res.data.predefined.typeId];
-            if (type_e.sym.type != .core_t and type_e.sym.type != .struct_t) {
-                return c.reportErrorAt("Expected predefined struct type.", &.{}, nodeId);
-            }
-            return type_e.sym;
+            return res.data.decl.type_id;
         },
         else => {
             return error.Unsupported;
@@ -1198,7 +1218,7 @@ pub fn declareObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
     const nameId = header.data.objectHeader.name;
     if (nameId != cy.NullNode) {
         const name = c.ast.nodeStringById(nameId);
-        const sym = try c.declareObjectType(@ptrCast(c.sym), name, nodeId);
+        const sym = try c.declareObjectType(@ptrCast(c.sym), name, nodeId, null);
         return @ptrCast(sym);
     } else {
         // Unnamed object.
@@ -1211,31 +1231,33 @@ pub fn declareStruct(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
     const node = c.ast.node(nodeId);
 
     const header = c.ast.node(node.data.objectDecl.header);
-
-    // Check for #host modifier.
-    if (header.head.data.objectHeader.modHead != cy.NullNode) {
-        const modifier = c.ast.node(header.head.data.objectHeader.modHead);
-        if (modifier.data.dirModifier.type == .host) {
-            return @ptrCast(try declareHostStruct(c, nodeId));
-        }
-    }
-
     const nameId = header.data.objectHeader.name;
-    if (nameId != cy.NullNode) {
-        const name = c.ast.nodeStringById(nameId);
-        const sym = try c.declareStructType(@ptrCast(c.sym), name, nodeId);
-        return @ptrCast(sym);
-    } else {
+    if (nameId == cy.NullNode) {
         // Unnamed object.
         const sym = try c.declareUnnamedStructType(@ptrCast(c.sym), nodeId);
         return @ptrCast(sym);
     }
+
+    const name = c.ast.nodeStringById(nameId);
+
+    // Check for #host modifier.
+    var type_id: ?cy.TypeId = null;
+    if (header.head.data.objectHeader.modHead != cy.NullNode) {
+        const modifier = c.ast.node(header.head.data.objectHeader.modHead);
+        if (modifier.data.dirModifier.type == .host) {
+            type_id = try getHostTypeId(c, name, nodeId);
+        }
+    }
+
+    const sym = try c.declareStructType(@ptrCast(c.sym), name, nodeId, type_id);
+    return @ptrCast(sym);
 }
 
 pub fn resolveTypeCopy(c: *cy.Chunk, type_copy: *cy.sym.TypeCopy) !*cy.Sym {
     const decl = c.ast.node(type_copy.decl_id);
 
-    const target_t = try resolveTypeSpecNode(c, decl.data.type_copy_decl.target);
+    const header = c.ast.node(decl.data.type_copy_decl.header);
+    const target_t = try resolveTypeSpecNode(c, header.data.type_copy_header.target);
     const target_sym = c.sema.getTypeSym(target_t);
     if (target_sym.type == .object_t) {
         const object_t: *cy.sym.ObjectType = @ptrCast(type_copy);
@@ -1248,6 +1270,7 @@ pub fn resolveTypeCopy(c: *cy.Chunk, type_copy: *cy.sym.TypeCopy) !*cy.Sym {
             }},
         };
         try sema.declareObjectFields(c, @ptrCast(object_t), target_sym.cast(.object_t).declId);
+        object_t.head.setTypeCopy(true);
         return @ptrCast(object_t);
     } else {
         return error.Unsupported;
@@ -1276,9 +1299,9 @@ pub fn declareObjectFields(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !vo
             const fieldName = c.ast.nodeStringById(field.data.objectField.name);
             const fieldType = try resolveTypeSpecNode(c, field.data.objectField.typeSpec);
 
-            const symId = try c.declareField(@ptrCast(obj), fieldName, i, fieldType, fieldId);
+            const sym = try c.declareField(@ptrCast(obj), fieldName, i, fieldType, fieldId);
             fields[i] = .{
-                .symId = symId,
+                .sym = @ptrCast(sym),
                 .type = fieldType,
             };
 
@@ -1650,7 +1673,7 @@ pub fn staticDecl(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId) !void {
 
     const irIdx = try c.ir.pushEmptyStmt(c.alloc, .setVarSym, nodeId);
     const recLoc = try c.ir.pushExpr(.varSym, c.alloc, undefined, nodeId, .{ .sym = sym });
-    const symType = CompactType.init(try sym.getValueType());
+    const symType = CompactType.init((try sym.getValueType()).?);
     const right = try semaExprCType(c, node.data.staticDecl.right, symType);
     c.ir.setStmtData(irIdx, .setVarSym, .{ .generic = .{
         .left_t = symType,
@@ -1815,9 +1838,17 @@ fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.Node
             defer c.typeStack.items.len = res.start;
             return c.semaCallFuncSym(preIdx, symNodeId, funcSym, res);
         },
-        .core_t => {
-            const type_id = sym.cast(.core_t).type;
-            return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, type_id);
+        .bool_t => {
+            const type_id = sym.cast(.bool_t).type;
+            return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, type_id, ret_cstr);
+        }, 
+        .int_t => {
+            const type_id = sym.cast(.int_t).type;
+            return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, type_id, ret_cstr);
+        }, 
+        .float_t => {
+            const type_id = sym.cast(.float_t).type;
+            return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, type_id, ret_cstr);
         }, 
         .custom_object_t => {
             const type_id = sym.cast(.custom_object_t).type;
@@ -1850,7 +1881,9 @@ fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.Node
 pub fn symbol(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId, comptime symAsValue: bool) !ExprResult {
     try referenceSym(c, sym, nodeId);
     if (symAsValue) {
-        const typeId = try sym.getValueType();
+        const typeId = (try sym.getValueType()) orelse {
+            return c.reportErrorAt("Can't use symbol `{}` as a value.", &.{v(sym.name())}, nodeId);
+        };
         const ctype = CompactType.init(typeId);
         switch (sym.type) {
             .userVar,
@@ -1879,9 +1912,19 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId, comptime symAsValue: b
                 const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, typeId, nodeId, .{ .typeId = type_id });
                 return ExprResult.init(irIdx, ctype);
             },
-            .core_t => {
-                const core_t = sym.cast(.core_t).type;
-                const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, typeId, nodeId, .{ .typeId = core_t });
+            .bool_t => {
+                const type_id = sym.cast(.bool_t).type;
+                const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, typeId, nodeId, .{ .typeId = type_id });
+                return ExprResult.init(irIdx, ctype);
+            },
+            .int_t => {
+                const type_id = sym.cast(.int_t).type;
+                const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, typeId, nodeId, .{ .typeId = type_id });
+                return ExprResult.init(irIdx, ctype);
+            },
+            .float_t => {
+                const type_id = sym.cast(.float_t).type;
+                const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, typeId, nodeId, .{ .typeId = type_id });
                 return ExprResult.init(irIdx, ctype);
             },
             .enumMember => {
@@ -1893,7 +1936,7 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId, comptime symAsValue: b
                 return ExprResult.init(irIdx, ctype);
             },
             else => {
-                return c.reportErrorAt("Can't use symbol `{}` as a value.", &.{v(sym.name())}, nodeId);
+                return error.Unsupported;
             }
         }
     } else {
@@ -1901,7 +1944,7 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId, comptime symAsValue: b
         if (sym.isType()) {
             typeId = CompactType.init(sym.getStaticType().?);
         } else {
-            typeId = CompactType.init(try sym.getValueType());
+            typeId = CompactType.init((try sym.getValueType()) orelse bt.Void);
         }
         return ExprResult.initCustom(cy.NullId, .sym, typeId, .{ .sym = sym });
     }
@@ -2044,12 +2087,35 @@ pub fn resolveLocalNamePathSym(c: *cy.Chunk, head: cy.NodeId, end: cy.NodeId) an
     return sym;
 }
 
-const TypeExprResult = struct {
-    sym: *cy.Sym,
-    type: ?cy.TypeId,
-};
+fn resolveSymType(c: *cy.Chunk, sym: *cy.Sym, node_id: cy.NodeId) !cy.TypeId {
+    return sym.getStaticType() orelse {
+        switch (sym.type) {
+            .typeTemplate => {
+                return c.reportErrorAt("Expected a type symbol. `{}` is a type template and must be expanded to a type first.", &.{v(sym.name())}, node_id);
+            },
+            else => {
+                return c.reportErrorAt("`{}` is not a type symbol.", &.{v(sym.name())}, node_id);
+            }
+        }
+    };
+}
 
-fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !TypeExprResult {
+fn resolveSym(c: *cy.Chunk, node_id: cy.NodeId) !*cy.Sym {
+    const node = c.ast.node(node_id);
+    switch (node.type()) {
+        .ident => {
+            const name = c.ast.nodeString(node);
+            return (try resolveLocalRootSym(c, name, node_id, true)) orelse {
+                return c.reportErrorAt("Could not find the symbol `{}`.", &.{v(name)}, node_id);
+            };
+        },
+        else => {
+            return c.reportErrorAt("Expected symbol. Found `{}`.", &.{v(node.type())}, node_id);
+        },
+    }
+}
+
+fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !cy.TypeId {
     const expr = c.ast.node(exprId);
     switch (expr.type()) {
         .objectDecl => {
@@ -2057,7 +2123,7 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !TypeExprResult {
             const header = c.ast.node(expr.data.objectDecl.header);
             const symId = header.data.objectHeader.name;
             const sym = c.sym.getMod().chunk.syms.items[symId];
-            return TypeExprResult{ .sym = sym, .type = sym.getStaticType().? };
+            return resolveSymType(c, sym, exprId);
         },
         .void => {
             return bt.Void;
@@ -2067,17 +2133,17 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !TypeExprResult {
             const sym = (try resolveLocalRootSym(c, name, exprId, true)) orelse {
                 return c.reportErrorAt("Could not find the symbol `{}`.", &.{v(name)}, exprId);
             };
-            return TypeExprResult{ .sym = sym, .type = sym.getStaticType() };
+            return resolveSymType(c, sym, exprId);
         },
         .accessExpr => {
-            const parent = try resolveTypeExpr(c, expr.data.accessExpr.left);
+            const parent = try resolveSym(c, expr.data.accessExpr.left);
             const right = c.ast.node(expr.data.accessExpr.right);
             if (right.type() != .ident) {
                 return c.reportErrorAt("Expected identifier.", &.{}, expr.data.accessExpr.right);
             }
             const name = c.ast.nodeString(right);
-            const sym = try c.findDistinctSym(parent.sym, name, expr.data.accessExpr.right, true);
-            return TypeExprResult{ .sym = sym, .type = sym.getStaticType() };
+            const sym = try c.findDistinctSym(parent, name, expr.data.accessExpr.right, true);
+            return resolveSymType(c, sym, exprId);
         },
         .comptimeExpr => {
             if (expr.data.comptimeExpr.patchIdx != cy.NullId) {
@@ -2088,15 +2154,15 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !TypeExprResult {
             }
         },
         .semaSym => {
-            return TypeExprResult{ .sym = expr.data.semaSym.sym, .type = expr.data.semaSym.sym.getStaticType() };
+            return resolveSymType(c, expr.data.semaSym.sym, exprId);
         },
         .callExpr => {
-            const sym = try cte.expandTemplate(c, exprId);
-            return TypeExprResult{ .sym = sym, .type = sym.getStaticType() };
+            const sym = try cte.expandTemplateOnCallExpr(c, exprId);
+            return resolveSymType(c, sym, exprId);
         },
         .expandOpt => {
-            const sym = try cte.expandTemplate2(c, c.sema.optionSym, expr.data.expandOpt.param, exprId);
-            return TypeExprResult{ .sym = sym, .type = sym.getStaticType() };
+            const sym = try cte.expandTemplateOnCallArgs(c, c.sema.option_tmpl, expr.data.expandOpt.param, exprId);
+            return resolveSymType(c, sym, exprId);
         },
         else => {
             return c.reportErrorAt("Unsupported type expr: `{}`", &.{v(expr.type())}, exprId);
@@ -2340,14 +2406,13 @@ fn visitChunkInit(self: *cy.Compiler, c: *cy.Chunk) !void {
         }
         try visitChunkInit(self, depChunk);
     }
-    // Once all deps are visited, emit IR.
-    const mainChunk = self.chunks.items[0];
 
+    // Once all deps are visited, emit IR.
     const func = c.sym.getMod().getSym("$init").?.cast(.func).first;
-    const exprLoc = try mainChunk.ir.pushExpr(.preCallFuncSym, c.alloc, bt.None, cy.NullNode, .{ .callFuncSym = .{
+    const exprLoc = try self.main_chunk.ir.pushExpr(.preCallFuncSym, c.alloc, bt.Void, cy.NullNode, .{ .callFuncSym = .{
         .func = func, .hasDynamicArg = false, .numArgs = 0, .args = 0,
     }});
-    _ = try mainChunk.ir.pushStmt(c.alloc, .exprStmt, cy.NullNode, .{
+    _ = try self.main_chunk.ir.pushStmt(c.alloc, .exprStmt, cy.NullNode, .{
         .expr = exprLoc,
         .isBlockResult = false,
     });
@@ -3038,7 +3103,7 @@ fn resolveSymAccess(c: *cy.Chunk, sym: *Sym, rightId: cy.NodeId) !SymAccessResul
     const rightName = c.ast.nodeString(right);
 
     if (sym.isVariable()) {
-        const leftT = try sym.getValueType();
+        const leftT = (try sym.getValueType()).?;
         if (leftT == bt.Dynamic or leftT == bt.Map) {
             return .{ .type = .fieldDyn, .data = .{ .fieldDyn = .{
                 .name = rightName,
@@ -4746,7 +4811,7 @@ pub const ChunkExt = struct {
                                 if (sym.isType()) {
                                     typeId = CompactType.init(sym.getStaticType().?);
                                 } else {
-                                    typeId = CompactType.init(try sym.getValueType());
+                                    typeId = CompactType.init((try sym.getValueType()) orelse bt.Void);
                                 }
                                 return ExprResult.initCustom(cy.NullId, .sym, typeId, .{ .sym = res.data.sym });
                             } else {
@@ -5079,6 +5144,24 @@ const FuncSigKey = struct {
     ret: TypeId,
 };
 
+const BuiltinSymType = enum(u8) {
+    bool_t,
+    int_t,
+    float_t,
+};
+
+const BuiltinSym = struct {
+    type: BuiltinSymType,
+    data: union {
+        int_t: struct {
+            bits: u8,
+        },
+        float_t: struct {
+            bits: u8,
+        },
+    },
+};
+
 pub const Sema = struct {
     alloc: std.mem.Allocator,
     compiler: *cy.Compiler,
@@ -5089,16 +5172,18 @@ pub const Sema = struct {
     funcSigs: std.ArrayListUnmanaged(FuncSig),
     funcSigMap: std.HashMapUnmanaged(FuncSigKey, FuncSigId, FuncSigKeyContext, 80),
 
-    optionSym: *cy.sym.TypeTemplate,
+    option_tmpl: *cy.sym.TypeTemplate,
+    builtins: std.StringHashMapUnmanaged(BuiltinSym),
 
     pub fn init(alloc: std.mem.Allocator, compiler: *cy.Compiler) Sema {
         return .{
             .alloc = alloc,
             .compiler = compiler,
-            .optionSym = undefined,
+            .option_tmpl = undefined,
             .funcSigs = .{},
             .funcSigMap = .{},
             .types = .{},
+            .builtins = .{},
         };
     }
 
@@ -5110,10 +5195,12 @@ pub const Sema = struct {
             self.types.clearRetainingCapacity();
             self.funcSigs.clearRetainingCapacity();
             self.funcSigMap.clearRetainingCapacity();
+            self.builtins.clearRetainingCapacity();
         } else {
             self.types.deinit(alloc);
             self.funcSigs.deinit(alloc);
             self.funcSigMap.deinit(alloc);
+            self.builtins.deinit(alloc);
         }
     }
 

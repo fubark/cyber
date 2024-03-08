@@ -104,13 +104,8 @@ pub const FuncEnumType = enum(u8) {
     inlinec = c.CS_FUNC_INLINE,
 };
 
-pub const TypeKind = c.CsTypeType;
-pub const TypeEnumKind = enum(u8) {
-    object = c.CS_TYPE_OBJECT,
-    coreObject = c.CS_TYPE_CORE_OBJECT,
-};
-pub const TypeKindObject = c.CS_TYPE_OBJECT;
-pub const TypeKindCoreObject = c.CS_TYPE_CORE_OBJECT;
+pub const BindTypeCustom = c.CS_BIND_TYPE_CUSTOM;
+pub const BindTypeDecl = c.CS_BIND_TYPE_DECL;
 
 pub const TypeId = c.CsTypeId;
 pub const TypeVoid = c.CS_TYPE_VOID;

@@ -12,9 +12,11 @@ const log = cy.log.scoped(.types);
 
 pub const TypeId = u32;
 
-const TypeKind = enum(u8) {
+pub const TypeKind = enum(u8) {
     null,
-    core,
+    bool,
+    int,
+    float,
     object,
     custom_object,
     @"enum",
@@ -201,6 +203,11 @@ pub const SemaExt = struct {
     }
 
     pub fn getTypeSym(s: *cy.Sema, id: TypeId) *cy.Sym {
+        if (cy.Trace) {
+            if (s.types.items[id].kind == .null) {
+                cy.panicFmt("Type `{}` is uninited.", .{ id });
+            }
+        }
         return s.types.items[id].sym;
     }
 

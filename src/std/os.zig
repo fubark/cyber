@@ -134,8 +134,9 @@ pub fn typeLoader(_: ?*cc.VM, info: cc.TypeInfo, out_: [*c]cc.TypeResult) callco
     if (std.mem.eql(u8, types[info.idx].@"0", name)) {
         out.type = cc.BindTypeCustom;
         out.data.custom = .{
-            .outTypeId = types[info.idx].@"1",
-            .getChildren = types[info.idx].@"2",
+            .out_type_id = types[info.idx].@"1",
+            .type_id = cy.NullId,
+            .get_children = types[info.idx].@"2",
             .finalizer = types[info.idx].@"3",
         };
         return true;

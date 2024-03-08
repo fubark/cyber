@@ -53,7 +53,7 @@ var hljsCSS = os.readFile("$(curDir)/github-dark.min.css")
 var hljsJS = os.readFile("$(curDir)/highlight.min.js")
 
 var stylePart = '<link rel="stylesheet" href="./style.css">'
-if !args['import-style']:
+if !args.contains('import-style'):
     var styleCSS = os.readFile("$(curDir)/style.css")
     stylePart = "<style>$(styleCSS)</style>"
 
@@ -413,6 +413,8 @@ func genDocsModules():
                 var docLine = decl.contains('docs') ? decl.docs else ''
                 var typeSpec = (decl.typeSpec != '') ? decl.typeSpec else 'any'
                 gen = gen + "> `var $(decl.name) $(typeSpec)`\n>\n>$(docLine)\n\n"
+            case 'type_copy':
+                gen = gen + "### `type $(decl.name)`\n\n"
             case 'object':
                 gen = gen + "### `type $(decl.name)`\n\n"
             case 'struct_t':

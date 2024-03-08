@@ -818,26 +818,40 @@ pub const Parser = struct {
         }
     }
 
-    fn parseTypeCopyDecl(self: *Parser, start: TokenId, name: NodeId, mod_head: NodeId) !NodeId {
+    fn parseTypeCopyDecl(self: *Parser, start: TokenId, name: NodeId, attr_head: NodeId) !NodeId {
+        self.inObjectDecl = true;
+        defer self.inObjectDecl = false;
+
         const target = (try self.parseOptTypeSpec(false)) orelse {
             return self.reportError("Expected type specifier.", &.{});
         };
 
-        var decl_or_name = name;
-        var has_decl = false;
+        var func_head: cy.NodeId = cy.NullNode;
+        var num_funcs: u32 = 0;
         if (self.peek().tag() == .colon) {
-            decl_or_name = try self.parseObjectDecl(start, .{
-                .name = name,
-                .modHead = mod_head,
-            });
-            has_decl = true;
+            self.advance();
+            const req_indent = try self.parseFirstChildIndent(self.cur_indent);
+            const prev_indent = self.cur_indent;
+            defer self.cur_indent = prev_indent;
+            self.cur_indent = req_indent;
+
+            const funcs = try self.parseTypeFuncs(req_indent);
+            func_head = funcs.head;
+            num_funcs = funcs.len;
         }
+
+        const header = try self.pushNode(.type_copy_header, start);
+        self.ast.setNodeData(header, .{ .type_copy_header = .{
+            .target = target,
+            .name = name,
+        }});
+        self.ast.nodePtr(header).head.data = .{ .type_copy_header = .{ .attr_head = @intCast(attr_head) }};
 
         const id = try self.pushNode(.type_copy_decl, start);
         self.ast.setNodeData(id, .{ .type_copy_decl = .{
-            .target = target,
-            .decl_or_name = @intCast(decl_or_name),
-            .has_decl = has_decl,
+            .header = header,
+            .func_head = @intCast(func_head),
+            .num_funcs = @intCast(num_funcs),
         }});
         return id;
     }

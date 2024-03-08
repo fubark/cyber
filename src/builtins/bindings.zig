@@ -344,6 +344,21 @@ pub fn listLen(_: *cy.VM, args: [*]const Value, _: u8) Value {
 //     return Value.None;
 // }
 
+pub fn mapContains(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    const obj = args[0].asHeapObject();
+    const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
+    return Value.initBool(inner.contains(args[1]));
+}
+
+pub fn mapGet(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+    const obj = args[0].asHeapObject();
+    const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
+    if (inner.get(args[1])) |val| {
+        vm.retain(val);
+        return anySome(vm, val) catch cy.fatal();
+    } else return anyNone(vm) catch cy.fatal();
+}
+
 inline fn inlineUnaryOp(pc: [*]cy.Inst, code: cy.OpCode) void {
     const ret = pc[1].val;
     // Save callObjSym data.

@@ -268,6 +268,7 @@ if (!aot) {
     run.case("builtins/list_neg_index_oob_panic.cy");
     run.case("builtins/lists.cy");
     run.case("builtins/logic_ops.cy");
+    run.case("builtins/map_index_panic.cy");
     run.case("builtins/maps.cy");
     run.case("builtins/must.cy");
     run.case("builtins/must_panic.cy");

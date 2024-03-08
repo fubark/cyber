@@ -1025,7 +1025,8 @@ beginSwitch:
                 retain(vm, val);
                 stack[pc[3]] = val;
             } else {
-                stack[pc[3]] = VALUE_NONE;
+                panicFieldMissing(vm);
+                RETURN(RES_CODE_PANIC);
             }
             pc += CALL_OBJ_SYM_INST_LEN;
             NEXT();

@@ -123,6 +123,8 @@ const funcs = [_]NameFunc{
     // Map
     .{"$index", zErrFunc2(inlineBinOp(.indexMap)), .inlinec},
     .{"$setIndex", bindings.inlineTernOp(.setIndexMap), .inlinec},
+    .{"contains", bindings.mapContains, .standard},
+    .{"get", bindings.mapGet, .standard},
     .{"remove", bindings.mapRemove, .standard},
     .{"size", bindings.mapSize, .standard},
     .{"iterator", bindings.mapIterator, .standard},

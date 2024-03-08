@@ -173,7 +173,13 @@ type tuple:
 #host
 type Map:
     #host func '$index'(key any) any
-    #host func '$setIndex'(key any, val any) none
+    #host func '$setIndex'(key any, val any) void
+
+    --| Returns whether there is a value mapped to `key`.
+    #host func contains(key any) bool
+
+    --| Returns value mapped to `key` or returns `none`.
+    #host func get(key any) ?any
 
     --| Removes the element with the given key `key`.
     #host func remove(key any) none

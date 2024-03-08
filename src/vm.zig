@@ -1263,7 +1263,9 @@ pub const VM = struct {
             const map = cy.ptrAlignCast(*const cy.MapInner, &obj.map.inner);
             if (map.getByString(name)) |val| {
                 return val;
-            } else return Value.None;
+            } else {
+                return self.prepPanic("Missing key in map.");
+            }
         } else {
             logger.tracev("Missing symbol for object: {}", .{obj.getTypeId()});
             return Value.None;

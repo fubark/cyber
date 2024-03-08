@@ -3,7 +3,6 @@ import t 'test'
 -- Empty map.
 var a = [:]
 t.eq(a.size(), 0)
-t.eq(a['foo'], none)
 
 -- Omits last comma for multiline initializer.
 a = [
@@ -145,9 +144,10 @@ t.eq(codeSum, 294)
 
 -- Remove from map.
 m = [ a: 2, b: 3, c: 4 ]
+t.eq(m.get('a').?, 2)
 m.remove('a')
 t.eq(m.size(), 2)
-t.eq(m['a'], none)
+t.assert(m.get('a') == none)
 t.eq(m['b'], 3)
 t.eq(m['c'], 4)
 
@@ -156,5 +156,15 @@ m = [:]
 m[String(1)] = 123
 m.remove('1')
 t.eq(m.size(), 0)
+
+-- contains()
+m = [a: 123]
+t.eq(m.contains('a'), true)
+t.eq(m.contains('b'), false)
+
+-- get()
+m = [a: 123]
+t.eq(m.get('a').?, 123)
+t.assert(m.get('b') == none)
 
 --cytest: pass

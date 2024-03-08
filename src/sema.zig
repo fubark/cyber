@@ -1888,12 +1888,12 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !TypeExprResult {
         .semaSym => {
             return TypeExprResult{ .sym = expr.data.semaSym.sym, .type = expr.data.semaSym.sym.getStaticType() };
         },
-        .callTemplate => {
-            const sym = try cte.callTemplate(c, exprId);
+        .callExpr => {
+            const sym = try cte.expandTemplate(c, exprId);
             return TypeExprResult{ .sym = sym, .type = sym.getStaticType() };
         },
         .expandOpt => {
-            const sym = try cte.callTemplate2(c, c.sema.optionSym, expr.data.expandOpt.param, exprId);
+            const sym = try cte.expandTemplate2(c, c.sema.optionSym, expr.data.expandOpt.param, exprId);
             return TypeExprResult{ .sym = sym, .type = sym.getStaticType() };
         },
         else => {
@@ -3692,13 +3692,8 @@ pub const ChunkExt = struct {
             .callExpr => {
                 return try c.semaCallExpr(expr);
             },
-            .callTemplate => {
-                const sym = try cte.callTemplate(c, nodeId);
-                const ctype = CompactType.initStatic(sym.getStaticType().?);
-                return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = sym });
-            },
             .expandOpt => {
-                const sym = try cte.callTemplate2(c, c.sema.optionSym, node.data.expandOpt.param, nodeId);
+                const sym = try cte.expandTemplate2(c, c.sema.optionSym, node.data.expandOpt.param, nodeId);
                 const ctype = CompactType.initStatic(sym.getStaticType().?);
                 return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = sym });
             },
@@ -4065,6 +4060,13 @@ pub const ChunkExt = struct {
 
             if (leftRes.resType == .sym) {
                 const leftSym = leftRes.data.sym;
+
+                if (leftSym.type == .typeTemplate) {
+                    const final_sym = try cte.expandTemplate2(c, leftSym.cast(.typeTemplate), node.data.callExpr.argHead, expr.nodeId);
+                    const ctype = CompactType.initStatic(final_sym.getStaticType().?);
+                    return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = final_sym });
+                }
+
                 if (leftSym.type == .func) {
                     return c.reportErrorAt("Can not access function symbol `{}`.", &.{
                         v(c.ast.nodeStringById(callee.data.accessExpr.left))}, callee.data.accessExpr.right);
@@ -4120,6 +4122,12 @@ pub const ChunkExt = struct {
                     return c.semaCallValue(preIdx, calleeRes.irIdx, numArgs, res.irArgsIdx);
                 },
                 .static => |sym| {
+                    if (sym.type == .typeTemplate) {
+                        const final_sym = try cte.expandTemplate2(c, sym.cast(.typeTemplate), node.data.callExpr.argHead, expr.nodeId);
+                        const ctype = CompactType.initStatic(final_sym.getStaticType().?);
+                        return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = final_sym });
+                    }
+
                     return callSym(c, preIdx, sym, numArgs, node.data.callExpr.callee, node.data.callExpr.argHead);
                 },
             }

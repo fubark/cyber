@@ -1088,9 +1088,9 @@ type Option enum:
     case none
     case some #T
 ```
-A type prefixed with `?` is a more idiomatic way to create an option type. The following String optional types are equivalent:
+A type prefixed with `?` is the idiomatic way to create an option type. The following String optional types are equivalent:
 ```cy
-Option#String
+Option(String)
 ?String
 ```
 
@@ -1187,14 +1187,9 @@ type MyContainer:
 ### Expand type template.
 When the template is invoked with compile-time argument(s), a specialized version of the type is generated.
 
-Invoking a template requires a `#` before the call arguments. This indicates that they are compile-time arguments. In this example, `String` can be used as an argument since it satisfies the `type` parameter constraint:
+In this example, `String` can be used as an argument since it satisfies the `type` parameter constraint:
 ```cy
-var a MyContainer#(String) = [id: 123, value: 'abc']
-print a.get()      -- Prints 'abc'
-```
-When there is only one template argument, the syntax can be simplified:
-```cy
-var a MyContainer#String = [id: 123, value: 'abc']
+var a MyContainer(String) = [id: 123, value: 'abc']
 print a.get()      -- Prints 'abc'
 ```
 Note that invoking the template again with the same argument(s) returns the same generated type. In other words, the generated type is always memoized from the input parameters.

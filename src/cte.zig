@@ -6,7 +6,7 @@ const v = cy.fmt.v;
 
 const cte = @This();
 
-pub fn callTemplate2(c: *cy.Chunk, template: *cy.sym.TypeTemplate, argHead: cy.NodeId, nodeId: cy.NodeId) !*cy.Sym {
+pub fn expandTemplate2(c: *cy.Chunk, template: *cy.sym.TypeTemplate, argHead: cy.NodeId, nodeId: cy.NodeId) !*cy.Sym {
     // Accumulate compile-time args.
     const typeStart = c.typeStack.items.len;
     const valueStart = c.valueStack.items.len;
@@ -70,17 +70,17 @@ pub fn callTemplate2(c: *cy.Chunk, template: *cy.sym.TypeTemplate, argHead: cy.N
     return variantSym;
 }
 
-pub fn callTemplate(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
+pub fn expandTemplate(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
     const node = c.ast.node(nodeId);
-    const calleeRes = try c.semaExprSkipSym(node.data.callTemplate.callee);
+    const calleeRes = try c.semaExprSkipSym(node.data.callExpr.callee);
     if (calleeRes.resType != .sym) {
-        return c.reportErrorAt("Expected template symbol.", &.{}, node.data.callTemplate.callee);
+        return c.reportErrorAt("Expected template symbol.", &.{}, node.data.callExpr.callee);
     }
     const sym = calleeRes.data.sym;
     if (sym.type != .typeTemplate) {
-        return c.reportErrorAt("Expected template symbol.", &.{}, node.data.callTemplate.callee);
+        return c.reportErrorAt("Expected template symbol.", &.{}, node.data.callExpr.callee);
     }
-    return cte.callTemplate2(c, sym.cast(.typeTemplate), node.data.callTemplate.argHead, nodeId);
+    return cte.expandTemplate2(c, sym.cast(.typeTemplate), node.data.callExpr.argHead, nodeId);
 }
 
 /// Visit each top level ctNode, perform template param substitution or CTE,

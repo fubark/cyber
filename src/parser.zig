@@ -2838,27 +2838,6 @@ pub const Parser = struct {
                     }});
                     left_id = expr;
                 },
-                .pound => {
-                    self.advance();
-                    const call = try self.pushNode(.callTemplate, start);
-                    if (self.peek().tag() == .left_paren) {
-                        var hasNamedArg: bool = undefined;
-                        const args = try self.parseCallArgs(&hasNamedArg);
-                        self.ast.setNodeData(call, .{ .callTemplate = .{
-                            .callee = left_id,
-                            .argHead = @intCast(args.head),
-                            .numArgs = @intCast(args.len),
-                        }});
-                    } else {
-                        const arg = try self.parseTermExpr();
-                        self.ast.setNodeData(call, .{ .callTemplate = .{
-                            .callee = left_id,
-                            .argHead = @intCast(arg),
-                            .numArgs = 1,
-                        }});
-                    }
-                    left_id = call;
-                },
                 .left_bracket => {
                     // index expr, slice expr.
                     self.advance();

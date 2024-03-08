@@ -18,7 +18,6 @@ pub const NodeType = enum(u8) {
     breakStmt,
     caseBlock,
     callExpr,
-    callTemplate,
     castExpr,
     caseHeader,
     catchStmt,
@@ -256,11 +255,6 @@ const NodeData = union {
         numArgs: u8,
         argHead: u24,
         hasNamedArg: bool,
-    },
-    callTemplate: packed struct {
-        callee: NodeId,
-        argHead: u24,
-        numArgs: u8,
     },
     unary: struct {
         child: NodeId,

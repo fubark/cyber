@@ -11,19 +11,19 @@ type Foo:
         self.a = a
 
 -- Infer decl type.
-var f = [Foo#(String) a: 'abc']
+var f = [Foo(String) a: 'abc']
 test.eq(f.a, 'abc')
 
 -- Simplified syntax.
-f = [Foo#String a: 'abc']
+f = [Foo(String) a: 'abc']
 test.eq(f.a, 'abc')
 
 -- Declare with type spec.
-var f2 Foo#String = [a: 'abc']
+var f2 Foo(String) = [a: 'abc']
 test.eq(f2.a, 'abc')
 
 -- Different variant.
-var f3 = [Foo#int a: 123]
+var f3 = [Foo(int) a: 123]
 test.eq(f3.a, 123)
 
 -- Method return type replaced with template param.
@@ -34,7 +34,7 @@ a = 234
 test.eq(a, 234)
 
 -- Method param type replaced with template param.
-f3 = [Foo#int a: 123]
+f3 = [Foo(int) a: 123]
 f3.set(234)
 test.eq(f3.a, 234)
 

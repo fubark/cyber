@@ -1,7 +1,7 @@
 import test
 
 -- Explicit type.
-var a Option#int = 123
+var a Option(int) = 123
 -- test.eq(a == none, false)
 -- test.eq(a != none, true)
 test.eq(a.?, 123)

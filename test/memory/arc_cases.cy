@@ -1,16 +1,16 @@
 import t 'test'
 
--- Temporary rc if expr cond is released before entering body. (cond always evaluates true for rc objects)
-var a = String(1) ? 123 else false
+-- Temporary rc if expr cond is released before entering body.
+var a = String(1) == '1' ? 123 else false
 
--- Temporary rc if stmt cond is released before entering body. (cond always evaluates true for rc objects)
-if String(1):
+-- Temporary rc if stmt cond is released before entering body.
+if String(1) == '1':
     pass
 
 -- Temporary rc else cond is released before entering body. 
 if false:
     pass
-else String(1):
+else String(1) == '1':
     pass
 
 -- Temporary rc where cond is released before entering body.

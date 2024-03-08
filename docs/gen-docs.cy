@@ -402,7 +402,7 @@ func genDocsModules():
         for decls -> decl:
             switch decl.type
             case 'funcInit':
-                var docLine = decl.docs ? decl.docs else ''
+                var docLine = decl.docs != none ? decl.docs else ''
                 var params = []
                 for decl.header.params -> param:
                     var typeSpec = (param.typeSpec != '') ? param.typeSpec else 'any'
@@ -415,15 +415,16 @@ func genDocsModules():
                 gen = gen + "> `var $(decl.name) $(typeSpec)`\n>\n>$(docLine)\n\n"
             case 'object':
                 gen = gen + "### `type $(decl.name)`\n\n"
-                for decl.children -> child:
-                    if child.type == 'funcInit':
-                        var docLine = child.docs ? child.docs else ''
-                        var params = []
-                        for child.header.params -> param:
-                            var typeSpec = (param.typeSpec != '') ? param.typeSpec else 'any'
-                            params.append("$(param.name) $(typeSpec)")
-                        var paramsStr = params.join(', ')
-                        gen = gen + "> `func $(child.header.name)($(paramsStr)) $(child.header.ret)`\n>\n>$(docLine)\n\n"
+            case 'struct_t':
+                gen = gen + "### `type $(decl.name) struct`\n\n"
+            case 'implicit_method':
+                var docLine = decl.docs != none ? decl.docs else ''
+                var params = []
+                for decl.header.params -> param:
+                    var typeSpec = (param.typeSpec != '') ? param.typeSpec else 'any'
+                    params.append("$(param.name) $(typeSpec)")
+                var paramsStr = params.join(', ')
+                gen = gen + "> `func $(decl.header.name)($(paramsStr)) $(decl.header.ret)`\n>\n>$(docLine)\n\n"
 
         -- Replace section in modules.md.
         var needle = "<!-- $(mod.section).start -->"

@@ -535,7 +535,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         .ifStmt => {
             const irIdx = try c.ir.pushEmptyStmt(c.alloc, .ifStmt, nodeId);
             const ifBranch = c.ast.node(node.data.ifStmt.ifBranch);
-            const cond = try c.semaExpr(ifBranch.data.ifBranch.cond, .{});
+            const cond = try c.semaExprCstr(ifBranch.data.ifBranch.cond, bt.Boolean);
 
             const irElsesIdx = try c.ir.pushEmptyArray(c.alloc, u32, node.data.ifStmt.numElseBlocks);
 
@@ -567,8 +567,8 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                     }
                     break;
                 } else {
-                    const irElseIdx = try c.ir.pushEmptyExpr(c.alloc, .elseBlock, elseBlockId);
-                    const elseCond = try c.semaExpr(elseBlock.data.elseBlock.cond, .{});
+                    const irElseIdx = try c.ir.pushEmptyExpr(.elseBlock, c.alloc, undefined, elseBlockId);
+                    const elseCond = try c.semaExprCstr(elseBlock.data.elseBlock.cond, bt.Boolean);
 
                     try pushBlock(c, elseBlockId);
                     try semaStmts(c, elseBlock.data.elseBlock.bodyHead);
@@ -4410,9 +4410,9 @@ pub const ChunkExt = struct {
         switch (op) {
             .and_op,
             .or_op => {
-                const preIdx = try c.ir.pushEmptyExpr(c.alloc, .preBinOp, nodeId);
-                const left = try c.semaExpr(leftId, .{});
-                const right = try c.semaExpr(rightId, .{});
+                const preIdx = try c.ir.pushEmptyExpr(.preBinOp, c.alloc, bt.Boolean, nodeId);
+                const left = try c.semaExprCstr(leftId, bt.Boolean);
+                const right = try c.semaExprCstr(rightId, bt.Boolean);
                 c.ir.setExprData(preIdx, .preBinOp, .{ .binOp = .{
                     .leftT = left.type.id,
                     .rightT = right.type.id,

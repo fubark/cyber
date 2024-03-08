@@ -3,13 +3,13 @@ import t 'test'
 -- or operator
 t.eq(false or false, false)
 t.eq(false or true, true)
-t.eq('cyber' or false, 'cyber')
-t.eq(false or 'cyber', 'cyber')
+t.eq('cyber' == 'cyber' or false, true)
+t.eq(false or 'cyber' == 'cyber', true)
 -- or assigned to local.
-var str = false or 'cyber'
-t.eq(str, 'cyber')
+var res = false or 'cyber' == 'cyber'
+t.eq(res, true)
 -- or with retained local.
-t.eq(str or 'false', 'cyber')
+t.eq(res or 'cyber' == 'cyber', true)
 
 var .called = false
 func foo():
@@ -18,12 +18,11 @@ func foo():
 -- If first `or` operand evaluates to true, the second expression is not evaluated
 -- and the first operand is returned.
 called = false
-t.eq(123 or foo(), 123)
+t.eq(true or foo(), true)
 t.eq(called, false)
 
 -- If first `or` operand evaluates to false, the second expression is evaluated and returned.
-var a = 123
-t.eq(false or a, 123)
+t.eq(false or true, true)
 t.eq(false and true, false)
 t.eq(true and true, true)
 
@@ -39,7 +38,7 @@ t.eq(false and foo(), false)
 t.eq(called, false)
 
 -- If first `and` operand evaluates to true, the second expression is evaluated and returned.
-t.eq(123 and 234, 234)
+t.eq(true and true, true)
 
 -- not operator
 t.eq(not false, true)

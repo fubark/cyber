@@ -323,28 +323,27 @@ a <= b   -- `true` if a is less than or equal to b
 
 The logical operators `and`, `or`, and `not` are supported.
 
-`and` evaluates to `a` if `a` is not truthy. Otherwise, it evaluates to `b`. If `a` is not truthy, the evaluation of `b` is not executed. A numeric value that isn't 0 is truthy. An object reference is always truthy. The none value is not truthy.
+`and` evaluates to `true` if both operands are `true`. Otherwise, it evaluates to `false`. If the left operand is `false`, the evaluation of the right operand is skipped:
 ```cy
-true and true  -- Evaluates to true
-123 and 234    -- Evaluates to 234
-123 and 0      -- Evaluates to false
+true and true    --> true
+true and false   --> false
+false and true   --> false
+false and false  --> false
 ```
-`or` evaluates to `a` if `a` is truthy. Otherwise, it evaluates to `b`. If `a` is found to be truthy, the evaluation of `b` is not executed.
+`or` evaluates to `true` if at least one of the operands is `true`. Otherwise, it evaluates to `false`. If the left operand is `true`, the evaluation of the right operand is skipped:
 ```cy
-true or false  -- Evaluates to true
-false or true  -- Evaluates to true
-false or false -- Evaluates to false
-123 or false   -- Evaluates to 123
+true or true     --> true
+true or false    --> true
+false or true    --> true
+false or false   --> false
 ```
 
 The unary operator `not` performs negation on the boolean value. The unary operator `!` can also be used instead of `not`.
 ```cy
-not false     -- Evaluates to true
-not true      -- Evaluates to false
-not 0         -- Evaluates to true      
-not 123       -- Evaluates to false
-!false        -- Evaluates to true
-!true         -- Evaluates to false
+not false     --> true
+not true      --> false
+!false        --> true
+!true         --> false
 ```
 
 ### Bitwise Operators.
@@ -441,20 +440,17 @@ Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integer
 Object types include [Lists](#lists), [Tuples](#tuples), [Maps](#maps), [Strings](#strings), [Arrays](#arrays), [Objects](#objects), [Lambdas](#lambdas), [Fibers](#fibers), [Choices](#choices), [Optionals](#optionals), [Pointers](#pointers), and several internal object types.
 
 ## Booleans.
-Booleans can be `true` or `false`. See [`type bool`](#type-bool).
+Booleans can be `true` or `false`. See [`type bool`](#type-bool-struct).
 ```cy
 var a = true
-if a:
+if true:
     print 'a is true'
 ```
-When other value types are coerced to the bool type, the truthy value is determined as follows.
-- The `none` value is `false`.
-- Other objects and values are always `true`.
 
 ## Numbers.
 
 ### Integers.
-`int` is the default integer type. It has 48-bits and can represent integers in the range -(2<sup>47</sup>) to 2<sup>47</sup>-1. See [`type int`](#type-int).
+`int` is the default integer type. It has 48-bits and can represent integers in the range -(2<sup>47</sup>) to 2<sup>47</sup>-1. See [`type int`](#type-int-struct).
 
 When a numeric literal is used and the type can not be inferred, it will default to the `int` type:
 ```cy
@@ -478,7 +474,7 @@ var b = int(a)
 In addition to arithmetic operations, integers can also perform [bitwise operations](#bitwise-operators).
 
 ### Floats.
-`float` is the default floating point type. It has a (IEEE 754) 64-bit floating point format. See [`type float`](#type-float).
+`float` is the default floating point type. It has a (IEEE 754) 64-bit floating point format. See [`type float`](#type-float-struct).
 
 Although a `float` represents a decimal number, it can also represent integers between -(2<sup>53</sup>-1) and (2<sup>53</sup>-1). Any integers beyond the safe integer range is not guaranteed to have a unique representation.
 
@@ -1615,10 +1611,10 @@ In the example above, the function `foo` is called with 4 arguments. The first a
 * [Visibility.](#visibility)
 * [Builtin modules.](#builtin-modules)
 * [builtins.](#builtins)
-  * [`type bool`](#type-bool)
-  * [`type error`](#type-error)
-  * [`type int`](#type-int)
-  * [`type float`](#type-float)
+  * [`type bool`](#type-bool-struct)
+  * [`type error`](#type-error-struct)
+  * [`type int`](#type-int-struct)
+  * [`type float`](#type-float-struct)
   * [`type List`](#type-list)
   * [`type ListIterator`](#type-listiterator)
   * [`type tuple`](#type-tuple)

@@ -164,7 +164,7 @@ type List:
 
 #host
 type ListIterator:
-    #host func next() any
+    #host func next() ?any
 
 #host
 type tuple:
@@ -182,7 +182,7 @@ type Map:
     #host func get(key any) ?any
 
     --| Removes the element with the given key `key`.
-    #host func remove(key any) none
+    #host func remove(key any) bool
 
     --| Returns the number of key-value pairs in the map.
     #host func size() int
@@ -192,7 +192,7 @@ type Map:
 
 #host
 type MapIterator:
-    #host func next() any
+    #host func next() ?any
   
 #host
 type String:
@@ -209,13 +209,13 @@ type String:
     #host func endsWith(suffix String) bool
 
     --| Returns the first byte index of substring `needle` in the string or `none` if not found. SIMD enabled.
-    #host func find(needle String) any
+    #host func find(needle String) ?int
 
     --| Returns the first byte index of any rune in `runes` or `none` if not found. SIMD enabled.
-    #host func findAnyRune(runes String) any
+    #host func findAnyRune(runes String) ?int
 
     --| Returns the first byte index of a rune `needle` in the string or `none` if not found. SIMD enabled.
-    #host func findRune(rune int) int
+    #host func findRune(rune int) ?int
 
     --| Returns a new string with `str` inserted at byte index `idx`.
     #host func insert(idx int, str String) String
@@ -283,13 +283,13 @@ type Array:
     #host func endsWith(suffix Array) bool
 
     --| Returns the first index of `needle` in the array or `none` if not found.
-    #host func find(needle Array) any
+    #host func find(needle Array) ?int
 
     --| Returns the first index of any `bytes` in `arrays` or `none` if not found.
-    #host func findAnyByte(bytes Array) any
+    #host func findAnyByte(bytes Array) ?int
 
     --| Returns the first index of `byte` in the array or `none` if not found.
-    #host func findByte(byte int) any
+    #host func findByte(byte int) ?int
 
     --| Formats each byte in the array using a kind specifier which can be binary `.b`,
     --| octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.
@@ -345,7 +345,7 @@ type ArrayIterator:
     arr     Array
     nextIdx int
 
-    func next() any:
+    func next() ?any:
         if nextIdx >= self.arr.len():
             return none
         var res = self.arr[nextIdx]

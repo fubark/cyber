@@ -444,7 +444,7 @@ pub fn fileNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
             // Advance pos.
             fileo.curPos += @intCast(end);
 
-            return line;
+            return ArraySome(vm, line);
         }
 
         var lineBuf = try cy.string.HeapArrayBuilder.init(vm);
@@ -462,9 +462,9 @@ pub fn fileNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
                 // End of stream.
                 fileo.iterLines = false;
                 if (lineBuf.len > 0) {
-                    return Value.initNoCycPtr(lineBuf.ownObject(vm.alloc));
+                    return ArraySome(vm, Value.initNoCycPtr(lineBuf.ownObject(vm.alloc)));
                 } else {
-                    return Value.None;
+                    return ArrayNone(vm);
                 }
             }
             if (cy.string.getLineEnd(readBuf[0..bytesRead])) |end| {
@@ -475,7 +475,7 @@ pub fn fileNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
                 fileo.curPos = @intCast(end);
                 fileo.readBufEnd = @intCast(bytesRead);
 
-                return Value.initNoCycPtr(lineBuf.ownObject(vm.alloc));
+                return ArraySome(vm, Value.initNoCycPtr(lineBuf.ownObject(vm.alloc)));
             } else {
                 try lineBuf.appendString(vm.alloc, readBuf[0..bytesRead]);
 
@@ -485,9 +485,14 @@ pub fn fileNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
             }
         }
     } else {
-        return Value.None;
+        return ArrayNone(vm);
     }
 }
+
+const MapNone = cy.builtins.MapNone;
+const MapSome = cy.builtins.MapSome;
+const ArrayNone = cy.builtins.ArrayNone;
+const ArraySome = cy.builtins.ArraySome;
 
 pub fn dirIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
@@ -521,9 +526,9 @@ pub fn dirIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
                 else => .unknown,
             };
             try map.set(vm, typeKey, Value.initSymbol(@intFromEnum(typeTag)));
-            return mapv;
+            return MapSome(vm, mapv);
         } else {
-            return Value.None;
+            return MapNone(vm);
         }
     } else {
         const stdIter = cy.ptrAlignCast(*std.fs.IterableDir.Iterator, &iter.inner.iter);
@@ -546,9 +551,9 @@ pub fn dirIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
                 else => .unknown,
             };
             try map.set(vm, typeKey, Value.initSymbol(@intFromEnum(typeTag)));
-            return mapv;
+            return MapSome(vm, mapv);
         } else {
-            return Value.None;
+            return MapNone(vm);
         }
     }
 }

@@ -544,7 +544,7 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     // try bcgen.releaseTempValue(c, condv, condNodeId);
 
     try bcgen.pushBlock(c, false, nodeId);
-    try genStmts(c, data.bodyHead);
+    try genStmts(c, data.body_head);
     try bcgen.popBlock(c);
 
     const hasElse = false;

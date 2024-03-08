@@ -95,7 +95,7 @@ pub fn insertFn(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     }
 }
 
-pub fn find(_: *cy.VM, args: [*]const Value, _: u8) Value {
+pub fn find(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const needle = args[1].asString();
@@ -103,14 +103,14 @@ pub fn find(_: *cy.VM, args: [*]const Value, _: u8) Value {
         if (needle.len == 1) {
             // One ascii char special case. Perform indexOfChar.
             if (string.indexOfChar(str, needle[0])) |idx| {
-                return Value.initInt(@intCast(idx));
+                return intSome(vm, @intCast(idx)) catch cy.fatal();
             }
         }
         if (string.indexOf(str, needle)) |idx| {
-            return Value.initInt(@intCast(idx));
+            return intSome(vm, @intCast(idx)) catch cy.fatal();
         }
     }
-    return Value.None;
+    return intNone(vm) catch cy.fatal();
 }
 
 pub fn startsWith(_: *cy.VM, args: [*]const Value, _: u8) Value {
@@ -134,6 +134,9 @@ pub fn isAscii(_: *cy.VM, args: [*]const Value, _: u8) Value {
     return Value.initBool(stype.isAstring());
 }
 
+const intSome = cy.builtins.intSome;
+const intNone = cy.builtins.intNone;
+
 pub fn findAnyRune(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
@@ -146,7 +149,7 @@ pub fn findAnyRune(vm: *cy.VM, args: [*]const Value, _: u8) Value {
         if (stype.isAstring()) {
             if (setIsAscii) {
                 if (@call(.never_inline, string.indexOfAsciiSet, .{str, set})) |idx| {
-                    return Value.initInt(@intCast(idx));
+                    return intSome(vm, @intCast(idx)) catch cy.fatal();
                 }
             } else {
                 // Reduce search set to just ASCII codepoints.
@@ -165,14 +168,14 @@ pub fn findAnyRune(vm: *cy.VM, args: [*]const Value, _: u8) Value {
                 }
                 if (tempBuf.len > 0) {
                     if (string.indexOfAsciiSet(str, tempBuf.items())) |idx| {
-                        return Value.initInt(@intCast(idx));
+                        return intSome(vm, @intCast(idx)) catch cy.fatal();
                     }
                 }
             }
         } else {
             if (setIsAscii) {
                 if (string.indexOfAsciiSet(str, set)) |idx| {
-                    return Value.initInt(@intCast(idx));
+                    return intSome(vm, @intCast(idx)) catch cy.fatal();
                 }
             } else {
                 // Scalar.
@@ -187,17 +190,17 @@ pub fn findAnyRune(vm: *cy.VM, args: [*]const Value, _: u8) Value {
                     };
                     while (set_iter.nextCodepoint()) |set_cp| {
                         if (set_cp == cp) {
-                            return Value.initInt(@intCast(iter.i));
+                            return intSome(vm, @intCast(iter.i)) catch cy.fatal();
                         }
                     }
                 }
             }
         }
     }
-    return Value.None;
+    return intNone(vm) catch cy.fatal();
 }
 
-pub fn findRune(_: *cy.VM, args: [*]const Value, _: u8) Value {
+pub fn findRune(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const needle = args[1].asInteger();
@@ -209,24 +212,24 @@ pub fn findRune(_: *cy.VM, args: [*]const Value, _: u8) Value {
         if (stype.isAstring()) {
             if (needleIsAscii) {
                 if (string.indexOfChar(str, @intCast(code))) |idx| {
-                    return Value.initInt(@intCast(idx));
+                    return intSome(vm, @intCast(idx)) catch cy.fatal();
                 }
             }
         } else {
             if (needleIsAscii) {
                 if (string.indexOfChar(str, @intCast(code))) |idx| {
-                    return Value.initInt(@intCast(idx));
+                    return intSome(vm, @intCast(idx)) catch cy.fatal();
                 }
             } else {
                 var slice: [4]u8 = undefined;
                 _ = std.unicode.utf8Encode(code, &slice) catch fatal();
                 if (string.indexOf(str, &slice)) |idx| {
-                    return Value.initInt(@intCast(idx));
+                    return intSome(vm, @intCast(idx)) catch cy.fatal();
                 }
             }
         }
     }
-    return Value.None;
+    return intNone(vm) catch cy.fatal();
 }
 
 pub fn upper(vm: *cy.VM, args: [*]const Value, _: u8) Value {
@@ -492,9 +495,8 @@ pub fn repeat(vm: *cy.VM, args: [*]const Value, _: u8) Value {
         return Value.initNoCycPtr(new);
     } else {
         if (un == 0) {
-            const empty = vm.emptyString;
-            vm.retain(empty);
-            return empty;
+            vm.retain(vm.emptyString);
+            return vm.emptyString;
         } else {
             vm.retainObject(obj);
             return Value.initNoCycPtr(obj);

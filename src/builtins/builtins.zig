@@ -996,14 +996,14 @@ fn arrayFind(vm: *cy.VM, args: [*]const Value, _: u8) Value {
         if (needle.len == 1) {
             // One byte special case. Perform indexOfChar.
             if (cy.string.indexOfChar(slice, needle[0])) |idx| {
-                return Value.initInt(@intCast(idx));
+                return intSome(vm, @intCast(idx)) catch cy.fatal();
             }
         }
         if (cy.string.indexOf(slice, needle)) |idx| {
-            return Value.initInt(@intCast(idx));
+            return intSome(vm, @intCast(idx)) catch cy.fatal();
         }
     }
-    return Value.None;
+    return intNone(vm) catch cy.fatal();
 }
 
 fn arrayStartsWith(_: *cy.VM, args: [*]const Value, _: u8) Value {
@@ -1102,7 +1102,7 @@ fn arrayFindAnyByte(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const setIsAscii = cy.string.isAstring(set);
     if (setIsAscii) {
         if (cy.string.indexOfAsciiSet(slice, set)) |idx| {
-            return Value.initInt(@intCast(idx));
+            return intSome(vm, @intCast(idx)) catch cy.fatal();
         }
     } else {
         // Slow check against every byte.
@@ -1115,10 +1115,10 @@ fn arrayFindAnyByte(vm: *cy.VM, args: [*]const Value, _: u8) Value {
             }
         }
         if (minIndex != cy.NullId) {
-            return Value.initInt(@intCast(minIndex));
+            return intSome(vm, @intCast(minIndex)) catch cy.fatal();
         }
     }
-    return Value.None;
+    return intNone(vm) catch cy.fatal();
 }
 
 fn arrayFindByte(vm: *cy.VM, args: [*]const Value, _: u8) Value {
@@ -1127,9 +1127,9 @@ fn arrayFindByte(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const byte = args[1].asInteger();
 
     if (cy.string.indexOfChar(slice, @intCast(byte))) |idx| {
-        return Value.initInt(@intCast(idx));
+        return intSome(vm, @intCast(idx)) catch cy.fatal();
     }
-    return Value.None;
+    return intNone(vm) catch cy.fatal();
 }
 
 fn arrayFmt(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
@@ -1569,4 +1569,52 @@ fn floatCall(vm: *cy.VM, args: [*]const Value, _: u8) Value {
             return vm.prepPanic("Not a type that can be converted to `float`.");
         }
     }
+}
+
+pub fn intNone(vm: *cy.VM) !Value {
+    return vm.allocObjectSmall(OptionInt, &.{ Value.initInt(0), Value.initInt(0) });
+}
+
+pub fn intSome(vm: *cy.VM, v: i48) !Value {
+    return vm.allocObjectSmall(OptionInt, &.{ Value.initInt(1), Value.initInt(v) });
+}
+
+pub fn anyNone(vm: *cy.VM) !Value {
+    return vm.allocObjectSmall(OptionAny, &.{ Value.initInt(0), Value.initInt(0) });
+}
+
+pub fn anySome(vm: *cy.VM, v: Value) !Value {
+    return vm.allocObjectSmall(OptionAny, &.{ Value.initInt(1), v });
+}
+
+pub fn TupleNone(vm: *cy.VM) !Value {
+    return vm.allocObjectSmall(OptionTuple, &.{ Value.initInt(0), Value.initInt(0) });
+}
+
+pub fn TupleSome(vm: *cy.VM, v: Value) !Value {
+    return vm.allocObjectSmall(OptionTuple, &.{ Value.initInt(1), v });
+}
+
+pub fn MapNone(vm: *cy.VM) !Value {
+    return vm.allocObjectSmall(OptionMap, &.{ Value.initInt(0), Value.initInt(0) });
+}
+
+pub fn MapSome(vm: *cy.VM, v: Value) !Value {
+    return vm.allocObjectSmall(OptionMap, &.{ Value.initInt(1), v });
+}
+
+pub fn ArrayNone(vm: *cy.VM) !Value {
+    return vm.allocObjectSmall(OptionArray, &.{ Value.initInt(0), Value.initInt(0) });
+}
+
+pub fn ArraySome(vm: *cy.VM, v: Value) !Value {
+    return vm.allocObjectSmall(OptionArray, &.{ Value.initInt(1), v });
+}
+
+pub fn StringNone(vm: *cy.VM) !Value {
+    return vm.allocObjectSmall(OptionString, &.{ Value.initInt(0), Value.initInt(0) });
+}
+
+pub fn StringSome(vm: *cy.VM, v: Value) !Value {
+    return vm.allocObjectSmall(OptionString, &.{ Value.initInt(1), v });
 }

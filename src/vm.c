@@ -293,7 +293,7 @@ static ValueResult copyObj(VM* vm, HeapObject* obj, u8 numFields) {
     for (int i = 0; i < numFields; i += 1) {
         TypeId typeId = getTypeId(values[i]);
         TypeEntry entry = ((TypeEntry*)vm->typesPtr)[typeId];
-        if (entry.kind == 6) {
+        if (entry.kind == TYPE_KIND_STRUCT) {
             u8 childNumFields = entry.data.struct_t.numFields;
             ValueResult res = copyObj(vm, VALUE_AS_HEAPOBJECT(values[i]), childNumFields);
             if (res.code != RES_CODE_SUCCESS) {
@@ -528,7 +528,7 @@ static inline void panicUnexpectedChoice(VM* vm, i48 tag, i48 exp) {
 static void panicIncompatibleType(VM* vm, TypeId actType, TypeId expType) {
     Str actTypeName = zGetTypeName(vm, actType);
     Str expTypeName = zGetTypeName(vm, expType);
-    zPanicFmt(vm, "Expected type `{}`, got `{}` instead.", (FmtValue[]){
+    zPanicFmt(vm, "Expected type `{}`, found `{}`.", (FmtValue[]){
         FMT_STR(expTypeName), FMT_STR(actTypeName)
     }, 2);
 }
@@ -909,7 +909,7 @@ beginSwitch:
         Value src = stack[pc[1]];
         TypeId typeId = getTypeId(src);
         TypeEntry entry = ((TypeEntry*)vm->typesPtr)[typeId];
-        if (entry.kind == 6) {
+        if (entry.kind == TYPE_KIND_STRUCT) {
             u8 numFields = (u8)entry.data.object.numFields;
             HeapObject* obj = VALUE_AS_HEAPOBJECT(src);
             ValueResult res = copyObj(vm, obj, numFields);

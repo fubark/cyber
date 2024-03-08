@@ -306,8 +306,8 @@ test "ARC in loops." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
         var trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 5);
-        try t.eq(trace.numRetains, 3);
+        try t.eq(trace.numRetainAttempts, 10);
+        try t.eq(trace.numRetains, 6);
     }}.func);
 
     // For iter with `any` temp value, the last temp value is released at the end of the block.
@@ -319,9 +319,9 @@ test "ARC in loops." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
         var trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 9);
-        try t.eq(trace.numRetains, 9);
-        try t.eq(trace.numReleases, 9);
+        try t.eq(trace.numRetainAttempts, 14);
+        try t.eq(trace.numRetains, 14);
+        try t.eq(trace.numReleases, 14);
     }}.func);
 }
 

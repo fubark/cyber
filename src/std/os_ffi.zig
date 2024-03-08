@@ -779,7 +779,6 @@ fn toCyType(ctype: CType, forRet: bool) !types.TypeId {
 
 pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Value {
     const ffi = args[0].castHostObject(*FFI);
-    const path = args[1];
 
     var success = false;
 
@@ -790,7 +789,8 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
         }
     }
 
-    if (path.isNone()) {
+    const path = args[1].asHeapObject();
+    if (path.object.getValue(0).asInteger() == 0) {
         if (builtin.os.tag == .macos) {
             const exe = try std.fs.selfExePathAlloc(vm.alloc);
             defer vm.alloc.free(exe);
@@ -799,9 +799,9 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
             lib.* = try dlopen("");
         }
     } else {
-        const pathStr = try vm.getOrBufPrintValueStr(&cy.tempBuf, path);
-        log.tracev("bindLib {s}", .{pathStr});
-        lib.* = dlopen(pathStr) catch |err| {
+        const path_s = path.object.getValue(1).asString();
+        log.tracev("bindLib {s}", .{path_s});
+        lib.* = dlopen(path_s) catch |err| {
             if (err == error.FileNotFound) {
                 return rt.prepThrowError(vm, .FileNotFound);
             } else {

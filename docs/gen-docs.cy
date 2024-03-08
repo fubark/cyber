@@ -17,7 +17,7 @@ var args = os.parseArgs([
 
 genDocsModules()
 
-var curDir = os.dirName(#modUri)
+var curDir = os.dirName(#modUri).?
 var src = os.readFile("$(curDir)/docs-modules.md")
 var csrc = os.cstr(src)
 var csrcLen = Array(src).len()
@@ -39,7 +39,7 @@ parser.set(40, .voidPtr, text_c)
 parser.set(48, .voidPtr, nullptr)
 parser.set(56, .voidPtr, nullptr)
 
-var res = md.md_parse(csrc, csrcLen, parser, none)
+var res = md.md_parse(csrc, csrcLen, parser, pointer(0))
 if res != 0:
     print "parse error: $(res)"
     os.exit(1)
@@ -230,7 +230,7 @@ func enterBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
 func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
     if parsingToc:
         if block_t == md.BLOCK_HTML:
-            if textContent.startsWith('<!--') and textContent.find('TOC-END') != none:
+            if textContent.startsWith('<!--') and !isNone(textContent.find('TOC-END')):
                 parsingToc = false
             resetState()
         return 0
@@ -267,8 +267,8 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         id = id.replace('.', '')
         id = id.replace('/', '')
         id = id.lower()
-        if idCounts[id]:
-            var newId = "$(id)-$(String(idCounts[id]))"
+        if idCounts.get(id) -> count:
+            var newId = "$(id)-$(count)"
             idCounts[id] += 1
             id = newId
         else:
@@ -391,7 +391,7 @@ func genDocsModules():
         [ModulePair path: '../src/std/test.cy', section: 'test'],
     ]
 
-    var curDir = os.dirName(#modUri)
+    var curDir = os.dirName(#modUri).?
     -- var md = os.readFile("$(curDir)/../modules.md")
     var md = os.readFile("$(curDir)/docs.md")
 
@@ -402,7 +402,7 @@ func genDocsModules():
         for decls -> decl:
             switch decl.type
             case 'funcInit':
-                var docLine = decl.docs != none ? decl.docs else ''
+                var docLine = decl.contains('docs') ? decl.docs else ''
                 var params = []
                 for decl.header.params -> param:
                     var typeSpec = (param.typeSpec != '') ? param.typeSpec else 'any'
@@ -410,7 +410,7 @@ func genDocsModules():
                 var paramsStr = params.join(', ')
                 gen = gen + "> `func $(decl.header.name)($(paramsStr)) $(decl.header.ret)`\n>\n>$(docLine)\n\n"
             case 'variable':
-                var docLine = decl.docs ? decl.docs else ''
+                var docLine = decl.contains('docs') ? decl.docs else ''
                 var typeSpec = (decl.typeSpec != '') ? decl.typeSpec else 'any'
                 gen = gen + "> `var $(decl.name) $(typeSpec)`\n>\n>$(docLine)\n\n"
             case 'object':
@@ -418,7 +418,7 @@ func genDocsModules():
             case 'struct_t':
                 gen = gen + "### `type $(decl.name) struct`\n\n"
             case 'implicit_method':
-                var docLine = decl.docs != none ? decl.docs else ''
+                var docLine = decl.contains('docs') ? decl.docs else ''
                 var params = []
                 for decl.header.params -> param:
                     var typeSpec = (param.typeSpec != '') ? param.typeSpec else 'any'
@@ -428,8 +428,8 @@ func genDocsModules():
 
         -- Replace section in modules.md.
         var needle = "<!-- $(mod.section).start -->"
-        var startIdx = (md.find(needle) as int) + needle.len()
-        var endIdx = md.find("<!-- $(mod.section).end -->")
+        var startIdx = md.find(needle).? + needle.len()
+        var endIdx = md.find("<!-- $(mod.section).end -->").?
         md = md[0..startIdx] + gen + md[endIdx..]
 
     os.writeFile("$(curDir)/docs-modules.md", md)

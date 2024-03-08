@@ -47,7 +47,7 @@ nw.value += 1
 t.eq(nw.value, 124)
 
 -- Assign to object field when the object is a temp local.
-var nodes = [ [Node value: 123] ]
+my nodes = [ [Node value: 123] ]
 nodes[0].value = 234
 t.eq(nodes[0].value, 234)
 

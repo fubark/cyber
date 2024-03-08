@@ -17,17 +17,15 @@ var .args = os.parseArgs([
 ])
 
 var existingLibPath = false
-var markerPos = none
-my existing = none
+var markerPos = 0
+var existing = ''
 
 -- Determine where in the output file to emit generated bindings.
 -- Also collect existing symbols that should be skipped.
 -- Build skip map.
 existing = try os.readFile(args.o) catch ''
 if existing != '':
-    markerPos = existing.find('\n-- CBINDGEN MARKER')
-    if markerPos == none:
-        markerPos = existing.len()
+    markerPos = existing.find('\n-- CBINDGEN MARKER') ?else existing.len()
 
     -- Only parse section before the marker since the gen part could contain bad syntax.
     var res = parseCyber(existing[..markerPos])
@@ -102,15 +100,15 @@ for funcs -> fn:
         if typeof(param) == String:
             finalParams.append(getApiName(param))
         else:
-            finalParams.append(param)
+            finalParams.append(param as symbol)
     var finalRet = ensureBindType(fn.ret)
     out += "    ffi.cfunc('$(fn.name)', [$(finalParams.join(', '))], $(finalRet))\n"
-var libPath = existingLibPath ? 'libPath' else "'$(args.libpath)'"
-out += "    my lib = ffi.bindLib($(libPath), [genMap: true])\n"
+var libPath = if (existingLibPath) 'libPath' else "'$(args.libpath)'"
+out += "    my lib = ffi.bindLib([?String some: $(libPath)], [genMap: true])\n"
 
 -- Reassign to static funcs.
 for funcs -> fn:
-    if skipMap[fn.name]:
+    if skipMap.contains(fn.name):
         out += '-- '
     out += "    $(getApiName(fn.name)) = lib.$(fn.name)\n"
 
@@ -128,12 +126,12 @@ os.writeFile(args.o, out)
 
 var .skipMap = [:]
 var .macros = []
-var .cvisitor = none
+var .cvisitor = pointer(0)
 -- Build output string.
 var .out = ''
 var .skipChildren = false
 var .aliases = [:]    -- aliasName -> structName or binding symbol (eg: .voidPtr)
-my .struct = none
+my .struct = false
 var .structMap = [:]  -- structName -> list of fields (symOrName)
 var .enumMap = [:]
 var .structs = []
@@ -151,7 +149,7 @@ func getTranslationUnit(headerPath):
 
     var cpath = os.cstr(headerPath)
     var index = clang.lib.clang_createIndex(0, 0)
-    return clang.lib.clang_parseTranslationUnit(index, cpath, cargs, rest.len(), none, 0,
+    return clang.lib.clang_parseTranslationUnit(index, cpath, cargs, rest.len(), pointer(0), 0,
         -- clang.CXTranslationUnit_DetailedPreprocessingRecord | clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_SingleFileParse)
         clang.CXTranslationUnit_DetailedPreprocessingRecord | clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_KeepGoing)
 
@@ -164,7 +162,7 @@ func getMacrosTranslationUnit(hppPath):
 
     var cpath = os.cstr(hppPath)
     var index = clang.lib.clang_createIndex(0, 0)
-    return clang.lib.clang_parseTranslationUnit(index, cpath, cargs, rest.len(), none, 0,
+    return clang.lib.clang_parseTranslationUnit(index, cpath, cargs, rest.len(), pointer(0), 0,
         clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_KeepGoing)
 
 type Struct:
@@ -226,7 +224,7 @@ func rootVisitor(cursor, parent, state):
 
     case clang.CXCursor_TypedefDecl: 
         -- print "typedef $(name)"
-        if skipMap[name]:
+        if skipMap.contains(name):
             out += "-- typedef $(name)\n\n"
         else:
             var atype = clang.lib.clang_getTypedefDeclUnderlyingType(cursor)
@@ -321,7 +319,7 @@ func rootVisitor(cursor, parent, state):
         var retT = toBindType(cxRet)
         outFunc += "$(toCyType(retT, true)): pass"
 
-        if skipMap[funcName]:
+        if skipMap.contains(funcName):
             outFunc = '-- ' + outFunc
 
         out += "$(outFunc)\n"
@@ -445,7 +443,7 @@ func macrosRootVisitor(cursor, parent, state):
             -- Skip non-macro vars.
             return clang.CXChildVisit_Continue
 
-        if skipMap[name[4..]]:
+        if skipMap.contains(name[4..]):
             out += '-- '
 
         -- print "var $(name)"
@@ -505,7 +503,7 @@ func fromCXString(cxStr) String:
 func toCyType(nameOrSym, forRet):
     if typeof(nameOrSym) == symbol:
         switch nameOrSym
-        case .voidPtr   : return forRet ? 'pointer' else 'any' -- `any` until Optionals are done
+        case .voidPtr   : return if (forRet) 'pointer' else 'any' -- `any` until Optionals are done
         case .bool      : return 'bool'
         case .int       : return 'int'
         case .uint      : return 'int'
@@ -516,14 +514,14 @@ func toCyType(nameOrSym, forRet):
         case .float     : return 'float'
         case .double    : return 'float'
         case .voidPtr   : return 'pointer'
-        case .void      : return 'none'
+        case .void      : return 'void'
         else:
             print "Unsupported type $(nameOrSym)"
             throw error.Unsupported
     else:
         if nameOrSym.startsWith('[os.CArray'):
             return 'List'
-        if !forRet and aliases[nameOrSym]:
+        if !forRet and aliases.contains(nameOrSym):
             if aliases[nameOrSym] == .voidPtr:
                 return 'any'
         return getApiName(nameOrSym)
@@ -532,7 +530,7 @@ func ensureBindType(nameOrSym):
     if typeof(nameOrSym) == symbol:
         return nameOrSym
     else:
-        if aliases[nameOrSym]:
+        if aliases.contains(nameOrSym):
             var og = aliases[nameOrSym]
             if typeof(og) == symbol:
                 return og
@@ -544,7 +542,7 @@ func getStruct(name):
     if aliases[name]:
         var alias = aliases[name]
         return structMap[alias]
-    return none
+    return false
 
 func toBindType(cxType):
     switch cxType.kind
@@ -570,13 +568,13 @@ func toBindType(cxType):
         case 'uint8_t'  : return .uchar
         case 'uint64_t' : return .ulong
         else:
-            if structMap[name]:
+            if structMap.contains(name):
                 -- Valid type.
                 return name
-            else aliases[name]:
+            else aliases.contains(name):
                 -- Valid alias.
                 return name
-            else enumMap[name]:
+            else enumMap.contains(name):
                 return name
 
         print name

@@ -3,15 +3,14 @@ import t 'test'
 
 if os.system != 'windows':
     os.setEnv('testfoo', 'testbar')
-    t.eq(os.getEnv('testfoo'), 'testbar')
+    t.eq(os.getEnv('testfoo').?, 'testbar')
     os.unsetEnv('testfoo')
-    t.eq(os.getEnv('testfoo'), none)
+    t.assert(os.getEnv('testfoo') == none)
 
 -- access()
 my res = try os.access('test/assets/missing.txt', .read)
 t.eq(res, error.FileNotFound)
-res = os.access('test/assets/file.txt', .read)
-t.eq(res, none)
+os.access('test/assets/file.txt', .read)
 
 -- args()
 res = os.args()
@@ -19,7 +18,7 @@ t.eq(res.len() > 0, true)
 
 -- createDir()
 try os.removeDir('test/assets/tempdir')
-t.eq(os.createDir('test/assets/tempdir'), none)
+os.createDir('test/assets/tempdir')
 var dir = os.openDir('test/assets/tempdir')
 t.eq(dir.stat().type, .dir)
 
@@ -38,13 +37,13 @@ file = os.createFile('test/assets/write.txt', true)
 t.eq(os.readFile('test/assets/write.txt'), '')
 
 -- dirName()
-t.eq(os.dirName('.'), none)
-t.eq(os.dirName('./foo'), '.')
-t.eq(os.dirName('./foo/bar.txt'), './foo')
-t.eq(os.dirName('./foo/bar'), './foo')
-t.eq(os.dirName('/root'), '/')
-t.eq(os.dirName('/root/bar'), '/root')
-t.eq(os.dirName('/root/bar.txt'), '/root')
+t.assert(os.dirName('.') == none)
+t.eq(os.dirName('./foo').?, '.')
+t.eq(os.dirName('./foo/bar.txt').?, './foo')
+t.eq(os.dirName('./foo/bar').?, './foo')
+t.eq(os.dirName('/root').?, '/')
+t.eq(os.dirName('/root/bar').?, '/root')
+t.eq(os.dirName('/root/bar.txt').?, '/root')
 
 -- openDir()
 dir = os.openDir('test')
@@ -116,7 +115,7 @@ t.eq(os.readFile('test/assets/write.txt'), 'foobarabcxyz')
 -- Dir.iterator()
 dir = os.openDir('test/assets/dir', true)
 var iter = dir.iterator()
-var entries = []
+my entries = []
 while iter.next() -> n:
     entries.append(n)
 t.eq(entries.len(), 3)

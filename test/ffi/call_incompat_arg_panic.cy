@@ -1,13 +1,11 @@
 import os 'os'
 
-my libPath = none
+var libPath ?String = none
 if os.system == 'macos':
   -- rdynamic doesn't work atm for MacOS.
   libPath = 'test/ffi/macos_lib.dylib'
 else os.system == 'windows':
   libPath = 'test/ffi/win_lib.dll'
-else:
-  libPath = none
 
 var ffi = os.newFFI()
 ffi.cfunc('testAdd', [.int, .int], .int)
@@ -18,7 +16,7 @@ lib.testAdd(123, '321')
 --panic: Can not find compatible function for `testAdd(any, int, String) any` in `BindLib1`.
 --Only `func testAdd(any, int, int) int` exists for the symbol `testAdd`.
 --
---main:15:1 main:
+--main:13:1 main:
 --lib.testAdd(123, '321')
 --^
 --

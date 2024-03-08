@@ -47,7 +47,7 @@
 #host func cwd() String
 
 --| Returns the given path with its last component removed.
-#host func dirName(path String) String
+#host func dirName(path String) ?String
 
 --| Runs a shell command and returns the stdout/stderr.
 #host func execCmd(args List) Map
@@ -65,7 +65,7 @@
 #host func free(ptr pointer) none
 
 --| Returns an environment variable by key.
-#host func getEnv(key String) String
+#host func getEnv(key String) ?String
 
 --| Returns all environment variables as a `Map`.
 #host func getEnvAll() Map
@@ -185,7 +185,7 @@ type Dir:
 
 #host
 type DirIterator:
-    #host func next() any
+    #host func next() ?Map
 
 #host
 type FFI:
@@ -196,13 +196,13 @@ type FFI:
     #host func bindCallback(fn any, params List, ret symbol) ExternFunc
 
     --| Calls `bindLib(path, [:])`. 
-    #host func bindLib(path any) any
+    #host func bindLib(path ?String) any
 
     --| Creates a handle to a dynamic library and functions declared from `cfunc`.
     --| By default, an anonymous object is returned with the C-functions binded as the object's methods.
     --| If `config` contains `genMap: true`, a `Map` is returned instead with C-functions
     --| binded as function values.
-    #host func bindLib(path any, config Map) any
+    #host func bindLib(path ?String, config Map) any
 
     --| Returns a Cyber object's pointer. Operations on the pointer is unsafe,
     --| but it can be useful when passing it to C as an opaque pointer.

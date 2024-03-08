@@ -268,7 +268,10 @@ pub fn recordCurFrames(vm: *cy.VM) !void {
 }
 
 fn releaseFrame(vm: *cy.VM, fp: u32, pc: u32) !void {
-    const symIdx = cy.debug.indexOfDebugSym(vm, pc) orelse return error.NoDebugSym;
+    const symIdx = cy.debug.indexOfDebugSym(vm, pc) orelse {
+        log.tracev("at pc: {}", .{pc});
+        return error.NoDebugSym;
+    };
     const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
     const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
     const locals = sym.getLocals();

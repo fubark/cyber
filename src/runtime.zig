@@ -34,7 +34,7 @@ pub const MethodType = enum {
 pub const MethodData = extern union {
     typedHost: extern struct {
         ptr: vmc.HostFuncFn,
-        funcSigId: sema.FuncSigId,
+        func_sig: sema.FuncSigId,
         /// Includes self param.
         numParams: u8,
     },
@@ -44,10 +44,11 @@ pub const MethodData = extern union {
     },
     optimizing: extern struct {
         ptr: vmc.HostFuncFn,
+        func_sig: sema.FuncSigId,
         numParams: u8,
     },
     typed: extern struct {
-        funcSigId: sema.FuncSigId,
+        func_sig: sema.FuncSigId,
         pc: u32,
         stackSize: u32,
         numParams: u8,
@@ -102,7 +103,7 @@ pub const MethodInit = struct {
             .type = .typed,
             .data = .{
                 .typed = .{
-                    .funcSigId = funcSigId,
+                    .func_sig = funcSigId,
                     .pc = @intCast(pc),
                     .stackSize = stackSize,
                     .numParams = numParams,
@@ -117,7 +118,7 @@ pub const MethodInit = struct {
             .type = .typedHost,
             .data = .{
                 .typedHost = .{
-                    .funcSigId = funcSigId,
+                    .func_sig = funcSigId,
                     .ptr = @ptrCast(func),
                     .numParams = numParams,
                 },
@@ -131,6 +132,7 @@ pub const MethodInit = struct {
             .type = .optimizing,
             .data = .{
                 .optimizing = .{
+                    .func_sig = funcSigId,
                     .ptr = @ptrCast(func),
                     .numParams = numParams,
                 },

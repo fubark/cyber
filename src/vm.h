@@ -670,6 +670,9 @@ typedef struct ZList {
     size_t cap;
 } ZList;
 
+#define TYPE_KIND_STRUCT 8
+#define TYPE_KIND_OPTION 9
+
 typedef struct TypeEntry {
     void* sym;
     u8 kind;

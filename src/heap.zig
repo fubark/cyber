@@ -1643,21 +1643,21 @@ pub fn allocObject(self: *cy.VM, sid: cy.TypeId, fields: []const Value) !Value {
     return Value.initCycPtr(obj);
 }
 
-pub fn allocEmptyObject(self: *cy.VM, sid: cy.TypeId, numFields: u32) !Value {
+pub fn allocEmptyObject(self: *cy.VM, type_id: cy.TypeId, nfields: u32) !Value {
     // First slot holds the typeId and rc.
-    const obj: *Object = @ptrCast(try allocExternalObject(self, (1 + numFields) * @sizeOf(Value), true));
+    const obj: *Object = @ptrCast(try allocExternalObject(self, (1 + nfields) * @sizeOf(Value), true));
     obj.* = .{
-        .typeId = sid | vmc.CYC_TYPE_MASK,
+        .typeId = type_id | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .firstValue = undefined,
     };
     return Value.initCycPtr(obj);
 }
 
-pub fn allocObjectSmall(self: *cy.VM, sid: cy.TypeId, fields: []const Value) !Value {
+pub fn allocObjectSmall(self: *cy.VM, type_id: cy.TypeId, fields: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.object = .{
-        .typeId = sid | vmc.CYC_TYPE_MASK,
+        .typeId = type_id | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .firstValue = undefined,
     };
@@ -1668,10 +1668,10 @@ pub fn allocObjectSmall(self: *cy.VM, sid: cy.TypeId, fields: []const Value) !Va
     return Value.initCycPtr(obj);
 }
 
-pub fn allocEmptyObjectSmall(self: *cy.VM, sid: cy.TypeId) !Value {
+pub fn allocEmptyObjectSmall(self: *cy.VM, type_id: cy.TypeId) !Value {
     const obj = try allocPoolObject(self);
     obj.object = .{
-        .typeId = sid | vmc.CYC_TYPE_MASK,
+        .typeId = type_id | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .firstValue = undefined,
     };
@@ -1989,7 +1989,6 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             }
         },
         else => {
-            // Struct deinit.
             if (cy.Trace) {
                 log.tracev("free {s}", .{vm.getTypeName(typeId)});
 
@@ -2004,6 +2003,17 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             const entry = vm.types[typeId];
             log.tracev("free {s} {}", .{@tagName(entry.kind), typeId});
             switch (entry.kind) {
+                .option => {
+                    if (releaseChildren) {
+                        const child = obj.object.getValuesConstPtr()[1];
+                        if (!skipCycChildren or !child.isGcConfirmedCyc()) {
+                            cy.arc.release(vm, child);
+                        }
+                    }
+                    if (free) {
+                        freePoolObject(vm, obj);
+                    }
+                },
                 .@"struct" => {
                     const numFields = entry.data.@"struct".numFields;
                     if (releaseChildren) {
@@ -2097,7 +2107,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
 }
 
 // User bytes excludes the type header.
-const MaxPoolObjectUserBytes = @sizeOf(HeapObject) - 8;
+pub const MaxPoolObjectUserBytes = @sizeOf(HeapObject) - 8;
 
 pub fn traceAlloc(vm: *cy.VM, ptr: *HeapObject) void {
     // log.tracev("alloc {*} {} {}", .{ptr, ptr.getTypeId(), vm.debugPc});
@@ -2149,7 +2159,6 @@ test "heap internals." {
         try t.eq(@sizeOf(ListIterator), 16);
         try t.eq(@sizeOf(Map), 32);
         try t.eq(@sizeOf(MapIterator), 16);
-        try t.eq(@sizeOf(ArraySlice), 24);
         try t.eq(@sizeOf(Pointer), 16);
     } else {
         try t.eq(@sizeOf(MapInner), 32);
@@ -2178,6 +2187,7 @@ test "heap internals." {
             try t.eq(@sizeOf(UstringSlice), 32);
         }
         try t.eq(@sizeOf(Array), 16);
+        try t.eq(@sizeOf(ArraySlice), 24);
         try t.eq(@sizeOf(Object), 16);
         try t.eq(@sizeOf(Box), 16);
         try t.eq(@sizeOf(HostFunc), 40);

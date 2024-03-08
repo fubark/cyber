@@ -6,14 +6,12 @@ var ffi = os.newFFI()
 my lib = try ffi.bindLib('xyz123.so')
 t.eq(lib, error.FileNotFound)
 
-my libPath = none
+var libPath ?String = none
 if os.system == 'macos':
     -- rdynamic doesn't work atm for MacOS.
     libPath = 'test/ffi/macos_lib.dylib'
 else os.system == 'windows':
     libPath = 'test/ffi/win_lib.dll'
-else:
-    libPath = none
 
 type MyObject:
     a float
@@ -85,10 +83,10 @@ os.free(cstr)
 
 -- testVoidPtr
 t.eq(lib.testVoidPtr(pointer(123)), pointer(123))
-t.eq(lib.testVoidPtr(none), pointer(0))
+t.eq(lib.testVoidPtr(pointer(0)), pointer(0))
 
 -- void return and no args.
-t.eq(lib.testVoid(), none)
+lib.testVoid()
 
 -- bool arg and bool return.
 t.eq(lib.testBool(true), true)
@@ -112,7 +110,7 @@ func staticAdd(a int, b int) int:
 
 t.eq(staticAdd(123, 321), 444)
 -- Freeing the lib reference should not affect `staticAdd`
-lib = none
+lib = false
 t.eq(staticAdd(123, 321), 444)
 
 -- Callback.

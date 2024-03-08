@@ -100,6 +100,11 @@ pub const Symbol = enum {
     unknown,
 };
 
+const TupleNone = cy.builtins.TupleNone;
+const TupleSome = cy.builtins.TupleSome;
+const anyNone = cy.builtins.anyNone;
+const anySome = cy.builtins.anySome;
+
 pub fn getBuiltinSymbol(id: u32) ?Symbol {
     return std.meta.intToEnum(Symbol, id) catch {
         return null;
@@ -253,8 +258,8 @@ pub fn listIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) Value {
         defer obj.listIter.nextIdx += 1;
         const val = list.list.ptr[obj.listIter.nextIdx];
         vm.retain(val);
-        return val;
-    } else return Value.None;
+        return anySome(vm, val) catch cy.fatal();
+    } else return anyNone(vm) catch cy.fatal();
 }
 
 pub fn listIterator(vm: *cy.VM, args: [*]const Value, _: u8) Value {
@@ -296,8 +301,9 @@ pub fn mapIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
         vm.retain(entry.key);
         vm.retain(entry.value);
-        return cy.heap.allocTuple(vm, &.{entry.key, entry.value}) catch cy.fatal();
-    } else return Value.None;
+        const res = cy.heap.allocTuple(vm, &.{entry.key, entry.value}) catch cy.fatal();
+        return TupleSome(vm, res) catch cy.fatal();
+    } else return TupleNone(vm) catch cy.fatal();
 }
 
 pub fn mapSize(_: *cy.VM, args: [*]const Value, _: u8) Value {

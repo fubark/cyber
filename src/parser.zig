@@ -805,16 +805,7 @@ pub const Parser = struct {
                     return self.reportError("Unnamed type is not allowed in this context.", &.{});
                 }
             },
-            .question => {
-                const start = self.next_pos;
-                self.advance();
-                const param = try self.parseTermExpr();
-                const id = try self.pushNode(.expandOpt, start);
-                self.ast.setNodeData(id, .{ .expandOpt = .{
-                    .param = param,
-                }});
-                return id;
-            },
+            .question,
             .pound,
             .type_k,
             .none_k,
@@ -2852,6 +2843,15 @@ pub const Parser = struct {
                     const id = try self.pushSpanNode(.ident, start);
                     break :b id;
                 }
+            },
+            .question => {
+                self.advance();
+                const param = try self.parseTermExpr();
+                const id = try self.pushNode(.expandOpt, start);
+                self.ast.setNodeData(id, .{ .expandOpt = .{
+                    .param = param,
+                }});
+                return id;
             },
             .dot => {
                 self.advance();

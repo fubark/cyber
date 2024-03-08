@@ -462,11 +462,14 @@ pub fn exePath(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
     return vm.allocString(path);
 }
 
+const StringNone = cy.builtins.StringNone;
+const StringSome = cy.builtins.StringSome;
+
 pub fn getEnv(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm or builtin.os.tag == .windows) return vm.prepPanic("Unsupported.");
     const key = args[0].asString();
-    const res = std.os.getenv(key) orelse return Value.None;
-    return vm.allocString(res);
+    const res = std.os.getenv(key) orelse return StringNone(vm);
+    return StringSome(vm, try vm.allocString(res));
 }
 
 pub fn getEnvAll(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
@@ -546,9 +549,9 @@ pub fn dirName(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const path = args[0].asString();
     if (std.fs.path.dirname(path)) |res| {
-        return vm.allocString(res);
+        return StringSome(vm, try vm.allocString(res));
     } else {
-        return Value.None;
+        return StringNone(vm);
     }
 }
 

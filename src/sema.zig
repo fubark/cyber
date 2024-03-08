@@ -95,6 +95,7 @@ pub const LocalVar = struct {
             fieldIdx: u8,
         },
         parentObjectMemberAlias: struct {
+            parentVarId: u32,
             selfCapturedIdx: u8,
             fieldIdx: u8,
         },
@@ -2602,6 +2603,7 @@ fn pushCapturedObjectMemberAlias(self: *cy.Chunk, name: []const u8, parentVarId:
     const id = try pushLocalVar(self, .parentObjectMemberAlias, name, vtype, false);
     const capturedIdx: u8 = @intCast(proc.captures.items.len);
     self.varStack.items[id].inner = .{ .parentObjectMemberAlias = .{
+        .parentVarId = parentVarId,
         .selfCapturedIdx = capturedIdx,
         .fieldIdx = idx,
     }};
@@ -3694,11 +3696,16 @@ pub const ChunkExt = struct {
 
     pub fn semaExpr2(c: *cy.Chunk, expr: Expr) !ExprResult {
         const res = try c.semaExprNoCheck(expr);
+        if (cy.Trace) {
+            const nodeId = expr.nodeId;
+            const type_name = c.sema.getTypeBaseName(res.type.id);
+            log.tracev("expr.{s}: end {s}", .{@tagName(c.ast.node(nodeId).type()), type_name});
+        }
 
         if (expr.hasTypeCstr) {
             // TODO: Check for exact match first since it's the common case.
             const type_e = c.sema.types.items[expr.preferType];
-            if (type_e.kind == .choice and type_e.data.choice.isOptional) {
+            if (type_e.kind == .option) {
                 // Already the same optional type.
                 if (res.type.id == expr.preferType) {
                     return res;
@@ -3843,12 +3850,12 @@ pub const ChunkExt = struct {
                 const loc = try c.ir.pushExpr(.int, c.alloc, bt.Integer, nodeId, .{ .val = val });
                 return ExprResult.initStatic(loc, bt.Integer);
             },
-            .condExpr => {
-                const ifBranch = c.ast.node(node.data.condExpr.ifBranch);
+            .cond_expr => {
+                const ifBranch = c.ast.node(node.data.cond_expr.if_branch);
 
-                const cond = try c.semaExprCstr(ifBranch.data.ifBranch.cond, bt.Boolean);
-                const body = try c.semaExprCstr(ifBranch.data.ifBranch.bodyHead, expr.preferType);
-                const else_body = try c.semaExprCstr(node.data.condExpr.elseExpr, expr.preferType);
+                const cond = try c.semaExprCstr(ifBranch.data.if_branch.cond, bt.Boolean);
+                const body = try c.semaExprCstr(ifBranch.data.if_branch.body_head, expr.preferType);
+                const else_body = try c.semaExprCstr(node.data.cond_expr.else_expr, expr.preferType);
 
                 const loc = try c.ir.pushExpr(.condExpr, c.alloc, body.type.id, nodeId, .{
                     .cond = cond.irIdx,
@@ -3893,7 +3900,7 @@ pub const ChunkExt = struct {
             .unwrap => {
                 const opt = try c.semaExpr(node.data.unwrap.opt, .{});
                 const type_e = c.sema.types.items[opt.type.id];
-                if (type_e.kind != .choice or !type_e.data.choice.isOptional) {
+                if (type_e.kind != .option) {
                     const name = try c.sema.allocTypeName(opt.type.id);
                     defer c.alloc.free(name);
                     return c.reportErrorAt("Unwrap operator expects an optional type, found: `{}`", &.{v(name)}, nodeId);
@@ -4619,14 +4626,17 @@ pub const ChunkExt = struct {
             .caret,
             .plus,
             .minus => {
-                const leftPreferT = if (expr.preferType == bt.Float or expr.preferType == bt.Integer) expr.preferType else bt.Any;
-
                 const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, nodeId);
 
-                const left = try c.semaExprPrefer(leftId, leftPreferT);
-                const rightPreferT = if (left.type.id == bt.Float or left.type.id == bt.Integer) left.type.id else bt.Any;
-                const right = try c.semaExprPrefer(rightId, rightPreferT);
-                if (left.type.id == bt.Integer or left.type.id == bt.Float) {
+                var left: ExprResult = undefined;
+                if (expr.preferType == bt.Float or expr.preferType == bt.Integer) {
+                    left = try c.semaExprPrefer(leftId, expr.preferType);
+                } else {
+                    left = try c.semaExpr(leftId, .{});
+                }
+
+                if (left.type.id == bt.Float or left.type.id == bt.Integer) {
+                    const right = try c.semaExprPrefer(rightId, left.type.id);
                     // Specialized.
                     c.ir.setExprCode(loc, .preBinOp);
                     c.ir.setExprType(loc, left.type.id);
@@ -4639,6 +4649,7 @@ pub const ChunkExt = struct {
                     }});
                     return ExprResult.initStatic(loc, left.type.id);
                 } else {
+                    const right = try c.semaExpr(rightId, .{});
                     if (left.type.dynamic) {
                         // Generic callObjSym.
                         const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, right.type.id }, bt.Any);

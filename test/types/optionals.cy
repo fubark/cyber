@@ -2,8 +2,8 @@ import test
 
 -- Explicit type.
 var a Option(int) = 123
--- test.eq(a == none, false)
--- test.eq(a != none, true)
+test.eq(a == none, false)
+test.eq(a != none, true)
 test.eq(a.?, 123)
 
 -- Shorthand.
@@ -18,8 +18,8 @@ test.eq(c.?.a, 123)
 
 -- Wrapping none implicitly.
 b = none
--- test.eq(b == none, true)
--- test.eq(b != none, false)
+test.eq(b == none, true)
+test.eq(b != none, false)
 
 -- -- Unwrap or default.
 -- b = none

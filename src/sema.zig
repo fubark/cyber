@@ -4684,8 +4684,14 @@ pub const ChunkExt = struct {
                 const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, nodeId);
 
                 const left = try c.semaExprPrefer(leftId, leftPreferT);
-                const rightPreferT = if (left.type.id == bt.Float or left.type.id == bt.Integer) left.type.id else bt.Any;
-                const right = try c.semaExprPrefer(rightId, rightPreferT);
+                const right = try c.semaExprPrefer(rightId, left.type.id);
+
+                if (left.type.id == right.type.id) {
+                    const left_te = c.sema.types.items[left.type.id];
+                    if (left_te.kind == .option or left_te.kind == .@"struct") {
+                        return semaStructCompare(c, left, leftId, op, right, rightId, left_te, nodeId);
+                    }
+                }
 
                 c.ir.setExprCode(loc, .preBinOp);
                 c.ir.setExprType(loc, bt.Boolean);
@@ -4815,17 +4821,83 @@ pub const ChunkExt = struct {
             c.ir.setExprType(rec.irIdx, field.typeId);
             existing.numNestedFields += 1;
             c.ir.setNode(rec.irIdx, node.data.accessExpr.right);
-            return ExprResult.initCustom(rec.irIdx, .field, CompactType.init(field.typeId), undefined);
+            return ExprResult.initCustom(rec.irIdx, .field, CompactType.init2(field.typeId, left_t.dynamic), undefined);
         } else {
             const loc = try c.ir.pushExpr(.field, c.alloc, field.typeId, node.data.accessExpr.right, .{
                 .idx = field.idx,
                 .rec = rec.irIdx,
                 .numNestedFields = 0,
             });
-            return ExprResult.initCustom(loc, .field, CompactType.init(field.typeId), undefined);
+            return ExprResult.initCustom(loc, .field, CompactType.init2(field.typeId, left_t.dynamic), undefined);
         }
     }
 };
+
+fn semaStructCompare(c: *cy.Chunk, left: ExprResult, left_id: cy.NodeId, op: cy.BinaryExprOp,
+    right: ExprResult, right_id: cy.NodeId, left_te: cy.types.Type, node_id: cy.NodeId) !ExprResult {
+
+    // Struct memberwise comparison.
+    const fields = left_te.sym.getFields().?;
+
+    var field_t = c.sema.getTypeSym(fields[0].type);
+    var it: u32 = undefined;
+    if (field_t.type != .int_t and field_t.type != .object_t) {
+        return error.Unsupported;
+    } else {
+        const left_f = try c.ir.pushExpr(.field, c.alloc, fields[0].type, left_id, .{
+            .idx = 0,
+            .rec = left.irIdx,
+            .numNestedFields = 0,
+        });
+        const right_f = try c.ir.pushExpr(.field, c.alloc, fields[0].type, right_id, .{
+            .idx = 0,
+            .rec = right.irIdx,
+            .numNestedFields = 0,
+        });
+        it = try c.ir.pushExpr(.preBinOp, c.alloc, bt.Boolean, node_id, .{ .binOp = .{
+            .leftT = fields[0].type,
+            .rightT = fields[0].type,
+            .op = op,
+            .left = left_f,
+            .right = right_f,
+        }});
+    }
+    if (fields.len > 1) {
+        for (fields[1..], 1..) |field, fidx| {
+            field_t = c.sema.getTypeSym(fields[0].type);
+            if (field_t.type != .int_t and field_t.type != .object_t) {
+                return error.Unsupported;
+            }
+            const left_f = try c.ir.pushExpr(.field, c.alloc, field.type, left_id, .{
+                .idx = @as(u8, @intCast(fidx)),
+                .rec = left.irIdx,
+                .numNestedFields = 0,
+            });
+            const right_f = try c.ir.pushExpr(.field, c.alloc, field.type, right_id, .{
+                .idx = @as(u8, @intCast(fidx)),
+                .rec = right.irIdx,
+                .numNestedFields = 0,
+            });
+            const compare = try c.ir.pushExpr(.preBinOp, c.alloc, bt.Boolean, node_id, .{ .binOp = .{
+                .leftT = field.type,
+                .rightT = field.type,
+                .op = op,
+                .left = left_f,
+                .right = right_f,
+            }});
+            const logic_op: cy.BinaryExprOp = if (op == .equal_equal) .and_op else .or_op;
+            it = try c.ir.pushExpr(.preBinOp, c.alloc, bt.Boolean, node_id, .{ .binOp = .{
+                .leftT = bt.Boolean,
+                .rightT = bt.Boolean,
+                .op = logic_op,
+                .left = it,
+                .right = compare,
+            }});
+        }
+    }
+    const dynamic = right.type.dynamic or left.type.dynamic;
+    return ExprResult.init(it, CompactType.init2(bt.Boolean, dynamic));
+}
 
 const VarResult = struct {
     id: LocalVarId,

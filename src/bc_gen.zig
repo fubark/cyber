@@ -373,7 +373,6 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .captured           => genCaptured(c, idx, cstr, nodeId),
         .cast               => genCast(c, idx, cstr, nodeId),
         .coinitCall         => genCoinitCall(c, idx, cstr, nodeId),
-        .condExpr           => genCondExpr(c, idx, cstr, nodeId),
         .coresume           => genCoresume(c, idx, cstr, nodeId),
         .coyield            => genCoyield(c, idx, cstr, nodeId),
         .enumMemberSym      => genEnumMemberSym(c, idx, cstr, nodeId),
@@ -383,6 +382,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .field              => genField(c, idx, cstr, .{}, nodeId),
         .float              => genFloat(c, idx, cstr, nodeId),
         .funcSym            => genFuncSym(c, idx, cstr, nodeId),
+        .if_expr            => genIfExpr(c, idx, cstr, nodeId),
         .int                => genInt(c, idx, cstr, nodeId),
         .lambda             => genLambda(c, idx, cstr, nodeId),
         .list               => genList(c, idx, cstr, nodeId),
@@ -2847,9 +2847,9 @@ fn genTryExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     return val;
 }
 
-fn genCondExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+fn genIfExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     _ = nodeId;
-    const data = c.ir.getExprData(idx, .condExpr);
+    const data = c.ir.getExprData(idx, .if_expr);
     const condNodeId = c.ir.getNode(data.cond);
 
     var finalCstr = cstr;

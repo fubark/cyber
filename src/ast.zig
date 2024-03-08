@@ -24,7 +24,6 @@ pub const NodeType = enum(u8) {
     coinit,
     comptimeExpr,
     comptimeStmt,
-    cond_expr,
     continueStmt,
     coresume,
     coyield,
@@ -50,9 +49,10 @@ pub const NodeType = enum(u8) {
     hexLit,
     ident,
 
-    // Used by if_stmt and cond_expr.
+    // Used by if_stmt and if_expr.
     if_branch,
     
+    if_expr,
     if_stmt,
     if_unwrap,
     if_unwrap_stmt,
@@ -420,7 +420,7 @@ const NodeData = union {
         end: cy.Nullable(u24),
         inc: bool,
     },
-    cond_expr: struct {
+    if_expr: struct {
         if_branch: NodeId,
         else_expr: NodeId,
     },
@@ -956,13 +956,13 @@ pub const Encoder = struct {
             .exprStmt => {
                 try self.writeNode(w, node.data.exprStmt.child);
             },
-            .cond_expr => {
-                const ifBranch = self.ast.node(node.data.cond_expr.if_branch);
+            .if_expr => {
+                const ifBranch = self.ast.node(node.data.if_expr.if_branch);
                 try self.writeNode(w, ifBranch.data.if_branch.cond);
                 try w.writeAll("?");
                 try self.writeNode(w, ifBranch.data.if_branch.body_head);
                 try w.writeAll(" else ");
-                try self.writeNode(w, node.data.cond_expr.else_expr);
+                try self.writeNode(w, node.data.if_expr.else_expr);
             },
             .caseBlock => {
                 if (node.data.caseBlock.header == cy.NullNode) {

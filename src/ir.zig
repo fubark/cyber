@@ -106,7 +106,7 @@ pub const ExprCode = enum(u8) {
     array,
     lambda,
     closure,
-    condExpr,
+    if_expr,
     captured,
     throw,
     switchExpr,
@@ -213,7 +213,7 @@ pub const Captured = struct {
     idx: u8,
 };
 
-pub const CondExpr = struct {
+pub const IfExpr = struct {
     cond: Loc,
     body: u32,
     elseBody: u32,
@@ -623,7 +623,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .float => Float,
         .int => Int,
         .local => Local,
-        .condExpr => CondExpr,
+        .if_expr => IfExpr,
         .tryExpr => TryExpr,
         .throw => ThrowExpr,
         .list => List,

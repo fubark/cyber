@@ -37,7 +37,7 @@ test "ARC." {
     // Non-initializer expr in if expr true branch is retained.
     try eval(.{},
         \\var a = [ 123 ]
-        \\var b = true ? a else 234
+        \\var b = if (true) a else 234
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
         var trace = run.getTrace();
@@ -70,7 +70,7 @@ test "ARC." {
     try eval(.{},
         \\import t 'test'
         \\type S:
-        \\  value any
+        \\  value List
         \\var a = [123]
         \\var s = [S value: a]
         \\t.eq(s.value[0], 123)
@@ -108,7 +108,7 @@ test "ARC." {
     // Non-initializer expr in if expr false branch is retained.
     try eval(.{},
         \\var a = [ 123 ]
-        \\var b = false ? 234 else a
+        \\var b = if (false) 234 else a
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res;
         var trace = run.getTrace();

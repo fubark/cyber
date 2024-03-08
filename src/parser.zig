@@ -2544,9 +2544,22 @@ pub const Parser = struct {
         return false;
     }
 
-    fn parseCondExpr(self: *Parser, cond: NodeId, start: u32) !NodeId {
-        // Assume `?` is consumed.
-        const res = try self.pushNode(.cond_expr, start);
+    // Assume at `if` token.
+    fn parseIfExpr(self: *Parser, start: u32) !NodeId {
+        self.advance();
+        if (self.peek().tag() != .left_paren) {
+            return self.reportError("Expected `(` for `if` expression.", &.{});
+        }
+        self.advance();
+        const cond = (try self.parseExpr(.{})) orelse {
+            return self.reportError("Expected condition for `if` expression.", &.{});
+        };
+        if (self.peek().tag() != .right_paren) {
+            return self.reportError("Expected `)` for `if` expression.", &.{});
+        }
+        self.advance();
+
+        const res = try self.pushNode(.if_expr, start);
 
         const body = (try self.parseExpr(.{})) orelse {
             return self.reportError("Expected conditional true expression.", &.{});
@@ -2558,7 +2571,7 @@ pub const Parser = struct {
             .body_head = body,
         }});
 
-        self.ast.setNodeData(res, .{ .cond_expr = .{
+        self.ast.setNodeData(res, .{ .if_expr = .{
             .if_branch = ifBranch,
             .else_expr = cy.NullNode,
         }});
@@ -2572,7 +2585,7 @@ pub const Parser = struct {
         const elseExpr = (try self.parseExpr(.{})) orelse {
             return self.reportError("Expected else body.", &.{});
         };
-        self.ast.nodePtr(res).data.cond_expr.else_expr = elseExpr;
+        self.ast.nodePtr(res).data.if_expr.else_expr = elseExpr;
         return res;
     }
 
@@ -2698,6 +2711,9 @@ pub const Parser = struct {
                     .catchExpr = catchExpr,
                 }});
                 return tryExpr;
+            },
+            .if_k => {
+                return try self.parseIfExpr(start);
             },
             .coresume_k => {
                 self.advance();
@@ -3256,20 +3272,19 @@ pub const Parser = struct {
                 },
                 .question => {
                     self.advance();
-                    if (self.peek().tag() == .else_k) {
-                        self.advance();
-                        const default = (try self.parseExpr(.{})) orelse {
-                            return self.reportError("Expected default expression.", &.{});
-                        };
-                        const expr = try self.pushNode(.unwrapDef, start);
-                        self.ast.setNodeData(expr, .{ .unwrapDef = .{
-                            .opt = left_id,
-                            .default = default,
-                        }});
-                        left_id = expr;
-                    } else {
-                        left_id = try self.parseCondExpr(left_id, start);
+                    if (self.peek().tag() != .else_k) {
+                        return self.reportError("Expected `else`.", &.{});
                     }
+                    self.advance();
+                    const default = (try self.parseExpr(.{})) orelse {
+                        return self.reportError("Expected default expression.", &.{});
+                    };
+                    const expr = try self.pushNode(.unwrapDef, start);
+                    self.ast.setNodeData(expr, .{ .unwrapDef = .{
+                        .opt = left_id,
+                        .default = default,
+                    }});
+                    left_id = expr;
                 },
                 .right_bracket,
                 .right_paren,

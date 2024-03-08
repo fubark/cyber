@@ -3916,14 +3916,14 @@ pub const ChunkExt = struct {
                 const loc = try c.ir.pushExpr(.int, c.alloc, bt.Integer, nodeId, .{ .val = val });
                 return ExprResult.initStatic(loc, bt.Integer);
             },
-            .cond_expr => {
-                const ifBranch = c.ast.node(node.data.cond_expr.if_branch);
+            .if_expr => {
+                const ifBranch = c.ast.node(node.data.if_expr.if_branch);
 
                 const cond = try c.semaExprCstr(ifBranch.data.if_branch.cond, bt.Boolean);
                 const body = try c.semaExprCstr(ifBranch.data.if_branch.body_head, expr.preferType);
-                const else_body = try c.semaExprCstr(node.data.cond_expr.else_expr, expr.preferType);
+                const else_body = try c.semaExprCstr(node.data.if_expr.else_expr, expr.preferType);
 
-                const loc = try c.ir.pushExpr(.condExpr, c.alloc, body.type.id, nodeId, .{
+                const loc = try c.ir.pushExpr(.if_expr, c.alloc, body.type.id, nodeId, .{
                     .cond = cond.irIdx,
                     .body = body.irIdx,
                     .elseBody = else_body.irIdx,

@@ -1261,7 +1261,7 @@ Note that invoking the template again with the same argument(s) returns the same
 
 * [Branching.](#branching)
   * [`if` statement.](#if-statement)
-  * [Conditional expression.](#conditional-expression)
+  * [`if` expression.](#if-expression)
   * [and/or.](#andor)
 * [Iterations.](#iterations)
   * [Infinite `while`.](#infinite-while)
@@ -1299,11 +1299,12 @@ else:
     print 'neither 10 nor 20'
 ```
 
-### Conditional expression.
-A conditional branch expression evaluates a condition and returns either the true value or false value:
+### `if` expression.
+An `if` expression evaluates a condition in parentheses and returns either the true value or false value.
+Unlike the `if` statement, the `if` expression can not contain `else` conditional cases:
 ```cy
 var a = 10
-var str = a == 10 ? 'red' else 'blue'
+var str = if (a == 10) 'red' else 'blue'
 ```
 
 ### `and`/`or`

@@ -323,10 +323,10 @@ if (!aot) {
     run.case("vars/static_init_error.cy");
     run.case("vars/static_init_read_self_error.cy");
 
-    run.case("control_flow/cond_expr.cy");
     run.case("control_flow/for_iter.cy");
     run.case("control_flow/for_iter_unsupported_panic.cy");
     run.case("control_flow/for_range.cy");
+    run.case("control_flow/if_expr.cy");
     run.case("control_flow/if_stmt.cy");
     run.case("control_flow/if_unwrap.cy");
     run.case("control_flow/switch.cy");

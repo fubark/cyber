@@ -481,10 +481,10 @@ pub fn nop(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) 
 pub const ModuleBuilder = struct {
     sym: *cy.Sym,
     chunk: *cy.Chunk,
-    compiler: *cy.VMcompiler,
+    compiler: *cy.Compiler,
     vm: *cy.VM,
 
-    pub fn init(c: *cy.VMcompiler, symOpt: ?*cy.Sym) ModuleBuilder {
+    pub fn init(c: *cy.Compiler, symOpt: ?*cy.Sym) ModuleBuilder {
         var new = ModuleBuilder{
             .sym = undefined,
             .compiler = c,

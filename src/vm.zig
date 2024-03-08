@@ -129,7 +129,7 @@ pub const VM = struct {
 
     trace: if (cy.Trace) *vmc.TraceInfo else void,
 
-    compiler: *cy.VMcompiler,
+    compiler: *cy.Compiler,
     sema: *cy.sema.Sema,
 
     /// User data ptr. Useful for embedders.
@@ -249,7 +249,7 @@ pub const VM = struct {
         };
         self.mainFiber.panicType = vmc.PANIC_NONE;
         self.curFiber = &self.mainFiber;
-        self.compiler = try self.alloc.create(cy.VMcompiler);
+        self.compiler = try self.alloc.create(cy.Compiler);
         self.sema = &self.compiler.sema;
         try self.compiler.init(self);
 

@@ -405,7 +405,7 @@ test "Custom modules." {
     var count: usize = 0;
     c.setUserData(@ptrCast(run.vm), &count);
 
-    c.setResolver(@ptrCast(run.vm), cy.vm_compiler.defaultModuleResolver);
+    c.setResolver(@ptrCast(run.vm), cy.compiler.defaultModuleResolver);
     const S = struct {
         fn test1(vm: *cy.VM, _: [*]const cy.Value, _: u8) cy.Value {
             const count_ = cy.ptrAlignCast(*usize, vm.userData);
@@ -443,7 +443,7 @@ test "Custom modules." {
 
             const name = c.strSlice(spec);
             if (std.mem.eql(u8, name, "builtins")) {
-                const defaultLoader = cy.vm_compiler.defaultModuleLoader;
+                const defaultLoader = cy.compiler.defaultModuleLoader;
                 return defaultLoader(vm_, spec, @ptrCast(out));
             }
             if (std.mem.eql(u8, name, "mod1")) {
@@ -499,7 +499,7 @@ test "Multiple evals persisting state." {
     defer run.vm.release(global);
     c.setUserData(@ptrCast(run.vm), &global);
 
-    c.setResolver(@ptrCast(run.vm), cy.vm_compiler.defaultModuleResolver);
+    c.setResolver(@ptrCast(run.vm), cy.compiler.defaultModuleResolver);
     c.setModuleLoader(@ptrCast(run.vm), struct {
         fn onLoad(vm_: ?*c.VM, mod: c.ApiModule) callconv(.C) void {
             const vm: *cy.VM = @ptrCast(@alignCast(vm_));

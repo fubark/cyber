@@ -2197,7 +2197,7 @@ pub fn pushFuncProc(c: *cy.Chunk, func: *cy.Func) !ProcId {
     return id;
 }
 
-pub fn semaMainBlock(compiler: *cy.VMcompiler, mainc: *cy.Chunk) !u32 {
+pub fn semaMainBlock(compiler: *cy.Compiler, mainc: *cy.Chunk) !u32 {
     const irIdx = try mainc.ir.pushEmptyStmt(compiler.alloc, .mainBlock, mainc.parserAstRootId);
 
     const id = try pushProc(mainc, null);
@@ -2228,7 +2228,7 @@ pub fn semaMainBlock(compiler: *cy.VMcompiler, mainc: *cy.Chunk) !u32 {
     return irIdx;
 }
 
-fn visitChunkInit(self: *cy.VMcompiler, c: *cy.Chunk) !void {
+fn visitChunkInit(self: *cy.Compiler, c: *cy.Chunk) !void {
     c.initializerVisiting = true;
     var iter = c.symInitChunkDeps.keyIterator();
 
@@ -4926,7 +4926,7 @@ const FuncSigKey = struct {
 
 pub const Sema = struct {
     alloc: std.mem.Allocator,
-    compiler: *cy.VMcompiler,
+    compiler: *cy.Compiler,
 
     types: std.ArrayListUnmanaged(types.Type),
 
@@ -4936,7 +4936,7 @@ pub const Sema = struct {
 
     optionSym: *cy.sym.TypeTemplate,
 
-    pub fn init(alloc: std.mem.Allocator, compiler: *cy.VMcompiler) Sema {
+    pub fn init(alloc: std.mem.Allocator, compiler: *cy.Compiler) Sema {
         return .{
             .alloc = alloc,
             .compiler = compiler,

@@ -293,7 +293,7 @@ pub fn isAnyOrDynamic(id: TypeId) bool {
 }
 
 /// Check type constraints on target func signature.
-pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const CompactType, ret: TypeId, targetId: sema.FuncSigId) bool {
+pub fn isTypeFuncSigCompat(c: *cy.Compiler, args: []const CompactType, ret: TypeId, targetId: sema.FuncSigId) bool {
     const target = c.sema.getFuncSig(targetId);
     if (cy.Trace) {
         const sigStr = c.sema.formatFuncSig(targetId, &cy.tempBuf) catch cy.fatal();
@@ -324,7 +324,7 @@ pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const CompactType, ret: Ty
     return isTypeSymCompat(c, target.ret, ret);
 }
 
-pub fn isTypeSymCompat(_: *cy.VMcompiler, typeId: TypeId, cstrType: TypeId) bool {
+pub fn isTypeSymCompat(_: *cy.Compiler, typeId: TypeId, cstrType: TypeId) bool {
     if (typeId == cstrType) {
         return true;
     }
@@ -335,7 +335,7 @@ pub fn isTypeSymCompat(_: *cy.VMcompiler, typeId: TypeId, cstrType: TypeId) bool
 }
 
 /// Check type constraints on target func signature.
-pub fn isFuncSigCompat(c: *cy.VMcompiler, id: sema.FuncSigId, targetId: sema.FuncSigId) bool {
+pub fn isFuncSigCompat(c: *cy.Compiler, id: sema.FuncSigId, targetId: sema.FuncSigId) bool {
     const src = c.sema.getFuncSig(id);
     const target = c.sema.getFuncSig(targetId);
 
@@ -378,7 +378,7 @@ pub fn isSameType(t1: TypeId, t2: TypeId) bool {
     return t1 == t2;
 }
 
-pub fn unionOf(c: *cy.VMcompiler, a: TypeId, b: TypeId) TypeId {
+pub fn unionOf(c: *cy.Compiler, a: TypeId, b: TypeId) TypeId {
     _ = c;
     if (a == b) {
         return a;

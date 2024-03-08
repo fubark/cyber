@@ -36,13 +36,13 @@ pub const sym = @import("sym.zig");
 pub const Sym = sym.Sym;
 pub const Func = sym.Func;
 
-pub const vm_compiler = @import("vm_compiler.zig");
-pub const Backend = vm_compiler.Backend;
-pub const VMcompiler = vm_compiler.VMcompiler;
-pub const CompileResult = vm_compiler.CompileResult;
-pub const CompileConfig = vm_compiler.CompileConfig;
-pub const ValidateConfig = vm_compiler.ValidateConfig;
-pub const CompileErrorType = vm_compiler.CompileErrorType;
+pub const compiler = @import("compiler.zig");
+pub const Backend = compiler.Backend;
+pub const Compiler = compiler.Compiler;
+pub const CompileResult = compiler.CompileResult;
+pub const CompileConfig = compiler.CompileConfig;
+pub const ValidateConfig = compiler.ValidateConfig;
+pub const CompileErrorType = compiler.CompileErrorType;
 
 pub const chunk = @import("chunk.zig");
 pub const Chunk = chunk.Chunk;

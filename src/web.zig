@@ -30,7 +30,7 @@ pub fn loader(vm: ?*c.VM, spec_: c.Str, out_: [*c]c.ModuleLoaderResult) callconv
         });
         return true;
     } else {
-        return cy.vm_compiler.defaultModuleLoader(vm, spec_, out);
+        return cy.compiler.defaultModuleLoader(vm, spec_, out);
     }
 }
 

@@ -18,10 +18,10 @@ pub const Allocator = struct {
     /// Track the max number of registers used to know the stack size required by the block.
     maxTemp: u8,
 
-    compiler: *cy.VMcompiler,
+    compiler: *cy.Compiler,
     chunkId: cy.ChunkId,
 
-    pub fn init(c: *cy.VMcompiler, chunkId: cy.ChunkId) Allocator {
+    pub fn init(c: *cy.Compiler, chunkId: cy.ChunkId) Allocator {
         return .{
             .tempStart = undefined,
             .nextTemp = undefined,

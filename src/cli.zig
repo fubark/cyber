@@ -100,7 +100,7 @@ pub fn loader(vm_: ?*c.VM, spec_: c.Str, out_: [*c]c.ModuleLoaderResult) callcon
     const out: *c.ModuleLoaderResult = out_;
     const spec = c.strSlice(spec_);
     if (builtins.get(spec) != null) {
-        return cy.vm_compiler.defaultModuleLoader(vm_, spec_, out);
+        return cy.compiler.defaultModuleLoader(vm_, spec_, out);
     }
     if (stdMods.get(spec)) |res| {
         out.* = res;

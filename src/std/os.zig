@@ -150,7 +150,7 @@ pub fn onTypeLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
     };
 }
 
-pub fn zPostTypeLoad(c: *cy.VMcompiler, mod: cc.ApiModule) !void {
+pub fn zPostTypeLoad(c: *cy.Compiler, mod: cc.ApiModule) !void {
     vars[0] = .{ "cpu", try cy.heap.allocString(c.vm, @tagName(builtin.cpu.arch)) };
     if (builtin.cpu.arch.endian() == .Little) {
         vars[1] = .{ "endian", cy.Value.initSymbol(@intFromEnum(Symbol.little)) };
@@ -203,7 +203,7 @@ pub fn onLoad(vm_: ?*cc.VM, mod: cc.ApiModule) callconv(.C) void {
     };
 }
 
-fn zPostLoad(self: *cy.VMcompiler, mod: cc.ApiModule) anyerror!void {
+fn zPostLoad(self: *cy.Compiler, mod: cc.ApiModule) anyerror!void {
     const b = bindings.ModuleBuilder.init(self, @ptrCast(@alignCast(mod.sym)));
     _ = b;
 

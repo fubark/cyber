@@ -22,7 +22,7 @@ const A64 = @import("jit/a64.zig");
 const bindings = cy.bindings;
 const module = cy.module;
 
-const log = cy.log.scoped(.vm_compiler);
+const log = cy.log.scoped(.compiler);
 
 const f64NegOne = cy.Value.initF64(-1);
 const f64One = cy.Value.initF64(1);
@@ -31,7 +31,7 @@ const dumpCompileErrorStackTrace = !cy.isFreestanding and builtin.mode == .Debug
 
 const Root = @This();
 
-pub const VMcompiler = struct {
+pub const Compiler = struct {
     alloc: std.mem.Allocator,
     vm: *cy.VM,
     buf: cy.ByteCodeBuffer,
@@ -100,7 +100,7 @@ pub const VMcompiler = struct {
     @"infix<<MGID": vmc.MethodGroupId = cy.NullId,
     @"infix>>MGID": vmc.MethodGroupId = cy.NullId,
 
-    pub fn init(self: *VMcompiler, vm: *cy.VM) !void {
+    pub fn init(self: *Compiler, vm: *cy.VM) !void {
         self.* = .{
             .alloc = vm.alloc,
             .vm = vm,
@@ -124,7 +124,7 @@ pub const VMcompiler = struct {
         try self.reinit();    
     }
 
-    pub fn deinitModRetained(self: *VMcompiler) void {
+    pub fn deinitModRetained(self: *Compiler) void {
         for (self.chunks.items) |chunk| {
             for (chunk.syms.items) |sym| {
                 sym.deinitRetained(self.vm);
@@ -132,7 +132,7 @@ pub const VMcompiler = struct {
         }
     }
 
-    pub fn deinit(self: *VMcompiler, comptime reset: bool) void {
+    pub fn deinit(self: *Compiler, comptime reset: bool) void {
         self.alloc.free(self.lastErr);
         self.lastErr = "";
 
@@ -179,12 +179,12 @@ pub const VMcompiler = struct {
         self.apiError = "";
     }
 
-    pub fn reinit(self: *VMcompiler) !void {
+    pub fn reinit(self: *Compiler) !void {
         self.lastErrNode = cy.NullId;
         self.lastErrChunk = cy.NullId;
     }
 
-    pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileResult {
+    pub fn compile(self: *Compiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileResult {
         defer {
             // Update VM types view.
             self.vm.types = self.sema.types.items;
@@ -226,7 +226,7 @@ pub const VMcompiler = struct {
     }
 
     /// Wrap compile so all errors can be handled in one place.
-    fn compileInner(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileInnerResult {
+    fn compileInner(self: *Compiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileInnerResult {
         self.config = config;
 
         var finalSrcUri: []const u8 = undefined;
@@ -255,6 +255,9 @@ pub const VMcompiler = struct {
 
         // Declare static vars and funcs after types have been resolved.
         try declareSymbols(self);
+
+        // Compute type sizes after type fields have been resolved.
+        // try computeTypeSizesRec(self);
 
         // Perform sema on static initializers.
         log.tracev("Perform init sema.", .{});
@@ -338,7 +341,7 @@ pub const VMcompiler = struct {
 
     /// If `chunkId` is NullId, then the error comes from an aggregate step.
     /// If `nodeId` is NullId, then the error does not have a location.
-    pub fn setErrorFmtAt(self: *VMcompiler, chunkId: cy.ChunkId, nodeId: cy.NodeId, format: []const u8, args: []const fmt.FmtValue) !void {
+    pub fn setErrorFmtAt(self: *Compiler, chunkId: cy.ChunkId, nodeId: cy.NodeId, format: []const u8, args: []const fmt.FmtValue) !void {
         self.alloc.free(self.lastErr);
         self.lastErr = try fmt.allocFormat(self.alloc, format, args);
         self.lastErrChunk = chunkId;
@@ -346,7 +349,7 @@ pub const VMcompiler = struct {
     }
 
     /// Assumes `msg` is heap allocated.
-    pub fn setErrorAt(self: *VMcompiler, chunkId: cy.ChunkId, nodeId: cy.NodeId, msg: []const u8) !void {
+    pub fn setErrorAt(self: *Compiler, chunkId: cy.ChunkId, nodeId: cy.NodeId, msg: []const u8) !void {
         self.alloc.free(self.lastErr);
         self.lastErr = msg;
         self.lastErrChunk = chunkId;
@@ -364,7 +367,7 @@ pub const AotCompileResult = struct {
 
 /// Tokenize and parse.
 /// Parser pass collects static declaration info.
-fn performChunkParse(self: *VMcompiler, chunk: *cy.Chunk) !void {
+fn performChunkParse(self: *Compiler, chunk: *cy.Chunk) !void {
     var tt = cy.debug.timer();
     const res = try chunk.parser.parse(chunk.src, .{});
     tt.endPrint("parse");
@@ -383,7 +386,7 @@ fn performChunkParse(self: *VMcompiler, chunk: *cy.Chunk) !void {
 
 /// Sema pass.
 /// Symbol resolving, type checking, and builds the model for codegen.
-fn performChunkSema(self: *VMcompiler, chunk: *cy.Chunk) !void {
+fn performChunkSema(self: *Compiler, chunk: *cy.Chunk) !void {
     try chunk.ir.pushStmtBlock2(chunk.alloc, chunk.rootStmtBlock);
 
     if (chunk.id == 0) {
@@ -416,7 +419,7 @@ fn performChunkSemaDecls(c: *cy.Chunk) !void {
 }
 
 /// Sema on static initializers.
-fn performChunkInitSema(self: *VMcompiler, c: *cy.Chunk) !void {
+fn performChunkInitSema(self: *Compiler, c: *cy.Chunk) !void {
     log.tracev("Perform init sema. {} {s}", .{c.id, c.srcUri});
 
     const funcSigId = try c.sema.ensureFuncSig(&.{}, bt.None);
@@ -498,7 +501,7 @@ fn appendSymInitIrDFS(c: *cy.Chunk, sym: *cy.Sym, info: *cy.chunk.SymInitInfo, r
     info.visited = true;
 }
 
-fn performImportTask(self: *VMcompiler, task: ImportTask) !*cy.Chunk {
+fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
     // Initialize defaults.
     var res: cc.ModuleLoaderResult = .{
         .src = "",
@@ -572,7 +575,7 @@ fn performImportTask(self: *VMcompiler, task: ImportTask) !*cy.Chunk {
     return newChunk;
 }
 
-fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
+fn declareImportsAndTypes(self: *Compiler, mainChunk: *cy.Chunk) !void {
     log.tracev("Load imports and types.", .{});
 
     // Load core module first since the members are imported into each user module.
@@ -664,10 +667,10 @@ fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
 
     // Extract special syms. Assumes chunks[1] is the builtins chunk.
     const builtins = self.chunks.items[1].sym.getMod();
-    self.sema.optionSym = builtins.getSym("Option").?.cast(.typeTemplate);
+    self.sema.option_tmpl = builtins.getSym("Option").?.cast(.typeTemplate);
 }
 
-fn loadPredefinedTypes(self: *VMcompiler, parent: *cy.Sym) !void {
+fn loadPredefinedTypes(self: *Compiler, parent: *cy.Sym) !void {
     log.tracev("Load predefined types", .{});
     const Entry = struct { []const u8, cy.TypeId };
 
@@ -768,7 +771,42 @@ fn loadPredefinedTypes(self: *VMcompiler, parent: *cy.Sym) !void {
     // std.debug.assert(id == bt.Dynamic);
 }
 
-fn declareSymbols(self: *VMcompiler) !void {
+// fn computeTypeSizesRec(self: *VMcompiler) !void {
+//     log.tracev("Compute type sizes.", .{});
+//     for (self.chunks.items) |chunk| {
+//         // Process static declarations.
+//         for (chunk.parser.staticDecls.items) |decl| {
+//             switch (decl.declT) {
+//                 // .struct_t => {
+//                 // },
+//                 .object => {
+//                     const object_t = decl.data.sym.cast(.object_t);
+//                     if (object_t.rt_size == cy.NullId) {
+//                         try computeTypeSize(object_t);
+//                     }
+//                 },
+//                 // .enum_t => {
+//                 // },
+//                 else => {},
+//             }
+//         }
+
+//         if (chunk.onLoad) |onLoad| {
+//             onLoad(@ptrCast(self.vm), cc.ApiModule{ .sym = @ptrCast(chunk.sym) });
+//         }
+//     }
+// }
+
+// fn computeTypeSize(object_t: *cy.sym.ObjectType) !void {
+//     var size: u32 = 0;
+//     for (object_t.getFields()) |field| {
+//         if (field.type == )
+//         _ = field;
+//     }
+//     object_t.rt_size = size;
+// }
+
+fn declareSymbols(self: *Compiler) !void {
     log.tracev("Load module symbols.", .{});
     for (self.chunks.items) |chunk| {
         // Process static declarations.
@@ -779,8 +817,7 @@ fn declareSymbols(self: *VMcompiler) !void {
                 .variable => {
                     const sym = try sema.declareVar(chunk, decl.nodeId);
                     decl.data = .{ .sym = sym };
-                    const node = chunk.ast.node(decl.nodeId);
-                    if (node.type() == .staticDecl) {
+                    if (sym.type == .userVar) {
                         chunk.hasStaticInit = true;
                     }
                 },
@@ -881,7 +918,7 @@ const ImportTask = struct {
     import: ?*cy.sym.Import,
 };
 
-pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *VMcompiler, modId: cy.ModuleId) anyerror!void) cy.ModuleLoaderFunc {
+pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *Compiler, modId: cy.ModuleId) anyerror!void) cy.ModuleLoaderFunc {
     return struct {
         fn initCompat(vm: *cy.UserVM, modId: cy.ModuleId) bool {
             initFn(vm.internal().compiler, modId) catch |err| {
@@ -964,11 +1001,13 @@ pub fn defaultModuleLoader(vm_: ?*cc.VM, spec: cc.Str, out_: [*c]cc.ModuleLoader
 }
 
 comptime {
-    @export(defaultModuleResolver, .{ .name = "csDefaultModuleResolver", .linkage = .Strong });
-    @export(defaultModuleLoader, .{ .name = "csDefaultModuleLoader", .linkage = .Strong });
+    if (build_options.rt != .pm) {
+        @export(defaultModuleResolver, .{ .name = "csDefaultModuleResolver", .linkage = .Strong });
+        @export(defaultModuleLoader, .{ .name = "csDefaultModuleLoader", .linkage = .Strong });
+    }
 }
 
 test "vm compiler internals." {
-    try t.eq(@offsetOf(VMcompiler, "buf"), @offsetOf(vmc.Compiler, "buf"));
-    try t.eq(@offsetOf(VMcompiler, "sema"), @offsetOf(vmc.Compiler, "sema"));
+    try t.eq(@offsetOf(Compiler, "buf"), @offsetOf(vmc.Compiler, "buf"));
+    try t.eq(@offsetOf(Compiler, "sema"), @offsetOf(vmc.Compiler, "sema"));
 }

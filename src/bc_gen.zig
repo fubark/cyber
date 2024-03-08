@@ -18,7 +18,7 @@ const Chunk = cy.chunk.Chunk;
 
 const gen = @This();
 
-pub fn genAll(c: *cy.VMcompiler) !void {
+pub fn genAll(c: *cy.Compiler) !void {
     // Constants.
     c.vm.emptyString = try c.buf.getOrPushStaticAstring("");
     c.vm.emptyArray = try cy.heap.allocArray(c.vm, "");
@@ -116,7 +116,7 @@ pub fn genAll(c: *cy.VMcompiler) !void {
     // }
 }
 
-fn prepareSym(c: *cy.VMcompiler, sym: *cy.Sym) !void {
+fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
     switch (sym.type) {
         .hostVar => {
             const id = c.vm.varSyms.len;
@@ -152,7 +152,7 @@ fn prepareSym(c: *cy.VMcompiler, sym: *cy.Sym) !void {
     }
 }
 
-fn prepareFunc(c: *cy.VMcompiler, func: *cy.Func) !void {
+fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
     if (func.type == .userLambda) {
         return;
     }
@@ -200,7 +200,7 @@ fn prepareFunc(c: *cy.VMcompiler, func: *cy.Func) !void {
     }
 }
 
-fn addVmFunc(c: *cy.VMcompiler, func: *cy.Func, rtFunc: rt.FuncSymbol) !u32 {
+fn addVmFunc(c: *cy.Compiler, func: *cy.Func, rtFunc: rt.FuncSymbol) !u32 {
     const id = c.vm.funcSyms.len;
     try c.vm.funcSyms.append(c.alloc, rtFunc);
 
@@ -3332,7 +3332,7 @@ fn genLambda(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     return finishDstInst(c, inst, true);
 }
 
-pub fn shouldGenMainScopeReleaseOps(c: *cy.VMcompiler) bool {
+pub fn shouldGenMainScopeReleaseOps(c: *cy.Compiler) bool {
     return !c.vm.config.singleRun;
 }
 

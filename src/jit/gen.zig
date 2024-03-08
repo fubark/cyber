@@ -265,7 +265,7 @@ fn exprStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     }
 }
 
-pub fn prepareFunc(c: *cy.VMcompiler, func: *cy.Func) !void {
+pub fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
     if (func.type == .userLambda) {
         return;
     }
@@ -1086,7 +1086,7 @@ fn funcBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     try bcgen.popFuncBlockCommon(c, func);
 }
 
-pub fn gen(self: *cy.VMcompiler) !void {
+pub fn gen(self: *cy.Compiler) !void {
     // Prepare host funcs.
     for (self.chunks.items) |chunk| {
         for (chunk.funcs.items) |func| {

@@ -25,7 +25,7 @@ pub const FuncId = u32;
 pub const Chunk = struct {
     id: ChunkId,
     alloc: std.mem.Allocator,
-    compiler: *cy.VMcompiler,
+    compiler: *cy.Compiler,
     sema: *cy.Sema,
     vm: *cy.VM,
 
@@ -195,7 +195,7 @@ pub const Chunk = struct {
     llvmFuncs: if (cy.hasJIT) []LLVM_Func else void, // One-to-one with `semaFuncDecls`
 
     /// Chunk owns `srcUri` and `src`.
-    pub fn init(c: *cy.VMcompiler, id: ChunkId, srcUri: []const u8, src: []const u8) !Chunk {
+    pub fn init(c: *cy.Compiler, id: ChunkId, srcUri: []const u8, src: []const u8) !Chunk {
         var new = Chunk{
             .id = id,
             .alloc = c.alloc,
@@ -445,7 +445,7 @@ pub const Chunk = struct {
 
     /// Given two local values, determine the next destination temp local.
     /// The type of the dest value is left undefined to be set by caller.
-    fn nextTempDestValue(self: *cy.VMcompiler, src1: bc_gen.GenValue, src2: bc_gen.GenValue) !bc_gen.GenValue {
+    fn nextTempDestValue(self: *cy.Compiler, src1: bc_gen.GenValue, src2: bc_gen.GenValue) !bc_gen.GenValue {
         if (src1.isTempLocal == src2.isTempLocal) {
             if (src1.isTempLocal) {
                 const minTempLocal = std.math.min(src1.local, src2.local);

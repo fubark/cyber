@@ -317,7 +317,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             const returnMain = node.data.exprStmt.isLastRootStmt;
             const expr = try c.semaExpr(node.data.exprStmt.child, .{});
             _ = try c.ir.pushStmt(c.alloc, .exprStmt, nodeId, .{
-                .exprLoc = expr.irIdx,
+                .expr = expr.irIdx,
                 .isBlockResult = returnMain,
             });
         },
@@ -440,7 +440,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             const stmtBlock = try popLoopBlock(c);
 
             c.ir.setStmtData(irIdx, .forIterStmt, .{
-                .iterLoc = iter.irIdx, .eachLocal = eachLocal,
+                .iter = iter.irIdx, .eachLocal = eachLocal,
                 .countLocal = countLocal, .declHead = declHead,
                 .bodyHead = stmtBlock.first,
             });
@@ -500,7 +500,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             const stmtBlock = try popLoopBlock(c);
             c.ir.setStmtData(irIdx, .whileCondStmt, .{
-                .condLoc = cond.irIdx,
+                .cond = cond.irIdx,
                 .bodyHead = stmtBlock.first,
             });
         },
@@ -525,7 +525,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             const stmtBlock = try popLoopBlock(c);
             c.ir.setStmtData(irIdx, .whileOptStmt, .{
-                .optLoc = opt.irIdx,
+                .opt = opt.irIdx,
                 .someLocal = someLocal,
                 .capIdx = declHead,
                 .bodyHead = stmtBlock.first,
@@ -560,7 +560,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
                     c.ir.setArrayItem(irElsesIdx, u32, i, irElseIdx);
                     c.ir.setExprData(irElseIdx, .elseBlock, .{
-                        .condLoc = cy.NullId, .isElse = true, .bodyHead = stmtBlock.first
+                        .cond = cy.NullId, .isElse = true, .bodyHead = stmtBlock.first
                     });
 
                     elseBlockId = elseBlock.next();
@@ -578,7 +578,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
                     c.ir.setArrayItem(irElsesIdx, u32, i, irElseIdx);
                     c.ir.setExprData(irElseIdx, .elseBlock, .{
-                        .condLoc = elseCond.irIdx, .isElse = false, .bodyHead = stmtBlock.first
+                        .cond = elseCond.irIdx, .isElse = false, .bodyHead = stmtBlock.first
                     });
 
                     elseBlockId = elseBlock.next();
@@ -588,7 +588,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             }
 
             c.ir.setStmtData(irIdx, .ifStmt, .{
-                .condLoc = cond.irIdx,
+                .cond = cond.irIdx,
                 .bodyHead = ifStmtBlock.first,
                 .numElseBlocks = node.data.ifStmt.numElseBlocks,
                 .elseBlocks = irElsesIdx,
@@ -629,7 +629,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             const expr = try c.semaExprCstr(node.data.returnExprStmt.child, retType);
             _ = try c.ir.pushStmt(c.alloc, .retExprStmt, nodeId, .{
-                .exprLoc = expr.irIdx,
+                .expr = expr.irIdx,
             });
         },
         .comptimeStmt => {
@@ -705,9 +705,9 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId, leftId: cy.NodeId, rightId: cy.No
                 c.ir.setStmtData(irStart, .setIndex, .{
                     .index = .{
                         .recvT = recv.type.id,
-                        .recLoc = recv.irIdx,
-                        .indexLoc = index.irIdx,
-                        .rightLoc = right.irIdx,
+                        .rec = recv.irIdx,
+                        .index = index.irIdx,
+                        .right = right.irIdx,
                     },
                 });
             } else {
@@ -718,9 +718,9 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId, leftId: cy.NodeId, rightId: cy.No
                         // .recvT = recvT.id,
                         .name = "$setIndex",
                         .funcSigId = funcSigId,
-                        .recLoc = recv.irIdx,
-                        .indexLoc = index.irIdx,
-                        .rightLoc = right.irIdx,
+                        .rec = recv.irIdx,
+                        .index = index.irIdx,
+                        .right = right.irIdx,
                     },
                 });
             }
@@ -742,8 +742,8 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId, leftId: cy.NodeId, rightId: cy.No
             c.ir.setStmtData(irStart, .set, .{ .generic = .{
                 .left_t = leftT,
                 .right_t = right.type,
-                .leftLoc = leftRes.irIdx,
-                .rightLoc = right.irIdx,
+                .left = leftRes.irIdx,
+                .right = right.irIdx,
             }});
             switch (leftRes.resType) {
                 .fieldDyn       => c.ir.setStmtCode(irStart, .setFieldDyn),
@@ -1476,8 +1476,8 @@ pub fn staticDecl(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId) !void {
     c.ir.setStmtData(irIdx, .setVarSym, .{ .generic = .{
         .left_t = symType,
         .right_t = right.type,
-        .leftLoc = recLoc,
-        .rightLoc = right.irIdx,
+        .left = recLoc,
+        .right = right.irIdx,
     }});
 
     try c.symInitInfos.put(c.alloc, sym, .{
@@ -1729,7 +1729,7 @@ fn semaLocal(c: *cy.Chunk, id: LocalVarId, nodeId: cy.NodeId) !ExprResult {
             const irIdx = try c.ir.pushExpr(c.alloc, .field, nodeId, .{
                 .idx = svar.inner.objectMemberAlias.fieldIdx,
                 .typeId = svar.declT, 
-                .recLoc = recLoc,
+                .rec = recLoc,
                 .numNestedFields = 0,
             });
             return ExprResult.initCustom(irIdx, .field, svar.vtype, undefined);
@@ -1739,7 +1739,7 @@ fn semaLocal(c: *cy.Chunk, id: LocalVarId, nodeId: cy.NodeId) !ExprResult {
             const irIdx = try c.ir.pushExpr(c.alloc, .field, nodeId, .{
                 .idx = svar.inner.parentObjectMemberAlias.fieldIdx,
                 .typeId = svar.declT,
-                .recLoc = recLoc,
+                .rec = recLoc,
                 .numNestedFields = 0,
             });
             return ExprResult.init(irIdx, svar.vtype);
@@ -2155,7 +2155,7 @@ fn visitChunkInit(self: *cy.VMcompiler, c: *cy.Chunk) !void {
         .func = func, .hasDynamicArg = false, .numArgs = 0, .args = 0,
     }});
     _ = try mainChunk.ir.pushStmt(c.alloc, .exprStmt, cy.NullNode, .{
-        .exprLoc = exprLoc,
+        .expr = exprLoc,
         .isBlockResult = false,
     });
 
@@ -2941,7 +2941,7 @@ fn semaSwitchExpr(c: *cy.Chunk, nodeId: cy.NodeId) !ExprResult {
 
     if (info.exprIsChoiceType) {
         _ = try c.ir.pushStmt(c.alloc, .exprStmt, nodeId, .{
-            .exprLoc = irIdx,
+            .expr = irIdx,
             .isBlockResult = true,
         });
 
@@ -2971,7 +2971,7 @@ fn semaSwitchChoicePrologue(c: *cy.Chunk, info: *SwitchInfo, expr: ExprResult, e
     const exprLoc = try c.ir.pushExpr(c.alloc, .field, exprId, .{
         .idx = 0,
         .typeId = bt.Integer,
-        .recLoc = recLoc,
+        .rec = recLoc,
         .numNestedFields = 0,
     });
     return exprLoc;
@@ -3017,7 +3017,7 @@ fn semaSwitchElseCase(c: *cy.Chunk, info: SwitchInfo, nodeId: cy.NodeId) !u32 {
 
         const expr = try c.semaExpr(case.data.caseBlock.bodyHead, .{});
         _ = try c.ir.pushStmt(c.alloc, .exprStmt, case.data.caseBlock.bodyHead, .{
-            .exprLoc = expr.irIdx,
+            .expr = expr.irIdx,
             .isBlockResult = true,
         });
         const stmtBlock = try popBlock(c);
@@ -3090,7 +3090,7 @@ fn semaSwitchCase(c: *cy.Chunk, info: SwitchInfo, nodeId: cy.NodeId) !u32 {
         const fieldLoc = try c.ir.pushExpr(c.alloc, .field, header.data.caseHeader.capture, .{
             .idx = 1,
             .typeId = declT,
-            .recLoc = recLoc,
+            .rec = recLoc,
             .numNestedFields = 0,
         });
 
@@ -3102,7 +3102,7 @@ fn semaSwitchCase(c: *cy.Chunk, info: SwitchInfo, nodeId: cy.NodeId) !u32 {
     if (case.data.caseBlock.bodyIsExpr) {
         const expr = try c.semaExpr(case.data.caseBlock.bodyHead, .{});
         _ = try c.ir.pushStmt(c.alloc, .exprStmt, case.data.caseBlock.bodyHead, .{
-            .exprLoc = expr.irIdx,
+            .expr = expr.irIdx,
             .isBlockResult = true,
         });
         const stmtBlock = try popBlock(c);
@@ -3665,7 +3665,7 @@ pub const ChunkExt = struct {
                     elseBody = try c.semaNone(bt.Any, nodeId);
                 }
                 c.ir.setExprData(irIdx, .condExpr, .{
-                    .condLoc = cond.irIdx,
+                    .cond = cond.irIdx,
                     .body = body.irIdx,
                     .elseBody = elseBody.irIdx,
                 });
@@ -3681,7 +3681,7 @@ pub const ChunkExt = struct {
                 const typeId = try resolveTypeSpecNode(c, node.data.castExpr.typeSpec);
                 const child = try c.semaExpr(node.data.castExpr.expr, .{});
                 const irIdx = try c.ir.pushExpr(c.alloc, .cast, nodeId, .{
-                    .typeId = typeId, .isRtCast = true, .exprLoc = child.irIdx,
+                    .typeId = typeId, .isRtCast = true, .expr = child.irIdx,
                 });
                 if (!child.type.dynamic) {
                     // Compile-time cast.
@@ -3747,16 +3747,16 @@ pub const ChunkExt = struct {
                         .leftT = leftT,
                         .rightT = index.type.id,
                         .op = .index,
-                        .leftLoc = left.irIdx,
-                        .rightLoc = index.irIdx,
+                        .left = left.irIdx,
+                        .right = index.irIdx,
                     }});
                 } else {
                     const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, index.type.id }, bt.Any);
                     c.ir.setExprCode(preIdx, .preCallObjSymBinOp);
                     c.ir.setExprData(preIdx, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
                         .op = .index, .funcSigId = funcSigId,
-                        .leftLoc = left.irIdx,
-                        .rightLoc = index.irIdx,
+                        .left = left.irIdx,
+                        .right = index.irIdx,
                     }});
                 }
                 return ExprResult.initDynamic(preIdx, bt.Any);
@@ -3788,9 +3788,9 @@ pub const ChunkExt = struct {
                     c.ir.setExprData(preIdx, .preSlice, .{
                         .slice = .{
                             .recvT = recv.type.id,
-                            .recLoc = recv.irIdx,
-                            .leftLoc = left.irIdx,
-                            .rightLoc = right.irIdx,
+                            .rec = recv.irIdx,
+                            .left = left.irIdx,
+                            .right = right.irIdx,
                         },
                     });
                     return ExprResult.initStatic(preIdx, bt.List);
@@ -3805,8 +3805,8 @@ pub const ChunkExt = struct {
                             .name = "$slice",
                             .funcSigId = funcSigId,
                             .numArgs = 2,
-                            .recLoc = recv.irIdx,
-                            .argsLoc = irExtraIdx,
+                            .rec = recv.irIdx,
+                            .args = irExtraIdx,
                         }});
                         return ExprResult.initDynamic(preIdx, bt.Any);
                     } else {
@@ -3937,7 +3937,7 @@ pub const ChunkExt = struct {
 
                 const exprRes = try c.semaExpr(node.data.func.bodyHead, .{});
                 _ = try c.ir.pushStmt(c.alloc, .retExprStmt, nodeId, .{
-                    .exprLoc = exprRes.irIdx,
+                    .expr = exprRes.irIdx,
                 });
 
                 try popLambdaProc(c);
@@ -3963,7 +3963,7 @@ pub const ChunkExt = struct {
             },
             .throwExpr => {
                 const child = try c.semaExpr(node.data.throwExpr.child, .{});
-                const irIdx = try c.ir.pushExpr(c.alloc, .throw, nodeId, .{ .exprLoc = child.irIdx });
+                const irIdx = try c.ir.pushExpr(c.alloc, .throw, nodeId, .{ .expr = child.irIdx });
                 return ExprResult.initDynamic(irIdx, bt.Any);
             },
             .tryExpr => {
@@ -3983,13 +3983,13 @@ pub const ChunkExt = struct {
 
                 if (catchError) {
                     const child = try c.semaExpr(node.data.tryExpr.expr, .{});
-                    c.ir.setExprData(irIdx, .tryExpr, .{ .exprLoc = child.irIdx, .catchBody = cy.NullId });
+                    c.ir.setExprData(irIdx, .tryExpr, .{ .expr = child.irIdx, .catchBody = cy.NullId });
                     const unionT = types.unionOf(c.compiler, child.type.id, bt.Error);
                     return ExprResult.init(irIdx, CompactType.init2(unionT, child.type.dynamic));
                 } else {
                     const child = try c.semaExpr(node.data.tryExpr.expr, .{});
                     const catchExpr = try c.semaExpr(node.data.tryExpr.catchExpr, .{});
-                    c.ir.setExprData(irIdx, .tryExpr, .{ .exprLoc = child.irIdx, .catchBody = catchExpr.irIdx });
+                    c.ir.setExprData(irIdx, .tryExpr, .{ .expr = child.irIdx, .catchBody = catchExpr.irIdx });
                     const dynamic = catchExpr.type.dynamic or child.type.dynamic;
                     const unionT = types.unionOf(c.compiler, child.type.id, catchExpr.type.id);
                     return ExprResult.init(irIdx, CompactType.init2(unionT, dynamic));
@@ -4039,7 +4039,7 @@ pub const ChunkExt = struct {
             .coresume => {
                 const child = try c.semaExpr(node.data.coresume.child, .{});
                 const irIdx = try c.ir.pushExpr(c.alloc, .coresume, nodeId, .{
-                    .exprLoc = child.irIdx,
+                    .expr = child.irIdx,
                 });
                 return ExprResult.initStatic(irIdx, bt.Any);
             },
@@ -4226,9 +4226,9 @@ pub const ChunkExt = struct {
         // Dynamic call.
         c.ir.setExprCode(preIdx, .preCallDyn);
         c.ir.setExprData(preIdx, .preCallDyn, .{ .callDyn = .{
-            .calleeLoc = calleeLoc,
+            .callee = calleeLoc,
             .numArgs = @as(u8, @intCast(numArgs)),
-            .argsLoc = argsLoc,
+            .args = argsLoc,
         }});
         return ExprResult.initDynamic(preIdx, bt.Any);
     }
@@ -4249,8 +4249,8 @@ pub const ChunkExt = struct {
             .funcSigId = funcSigId,
             .name = name,
             .numArgs = @as(u8, @intCast(calleeAndArgs.len-1)),
-            .recLoc = recLoc,
-            .argsLoc = irArgsIdx,
+            .rec = recLoc,
+            .args = irArgsIdx,
         }});
         return ExprResult.initDynamic(preIdx, bt.Any);
     }
@@ -4271,7 +4271,7 @@ pub const ChunkExt = struct {
                     // Specialized.
                     c.ir.setExprCode(irIdx, .preUnOp);
                     c.ir.setExprData(irIdx, .preUnOp, .{ .unOp = .{
-                        .childT = child.type.id, .op = op, .exprLoc = child.irIdx,
+                        .childT = child.type.id, .op = op, .expr = child.irIdx,
                     }});
                     return ExprResult.initStatic(irIdx, child.type.id);
                 } else {
@@ -4280,7 +4280,7 @@ pub const ChunkExt = struct {
                         const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any }, bt.Any);
                         c.ir.setExprCode(irIdx, .preCallObjSymUnOp);
                         c.ir.setExprData(irIdx, .preCallObjSymUnOp, .{ .callObjSymUnOp = .{
-                            .op = op, .funcSigId = funcSigId, .exprLoc = child.irIdx,
+                            .op = op, .funcSigId = funcSigId, .expr = child.irIdx,
                         }});
                         return ExprResult.initDynamic(irIdx, bt.Any);
                     } else {
@@ -4303,7 +4303,7 @@ pub const ChunkExt = struct {
 
                 const child = try c.semaExpr(node.data.unary.child, .{});
                 c.ir.setExprData(irIdx, .preUnOp, .{ .unOp = .{
-                    .childT = child.type.id, .op = op, .exprLoc = child.irIdx,
+                    .childT = child.type.id, .op = op, .expr = child.irIdx,
                 }});
                 return ExprResult.initStatic(irIdx, bt.Boolean);
             },
@@ -4316,14 +4316,14 @@ pub const ChunkExt = struct {
                 if (child.type.id == bt.Integer) {
                     c.ir.setExprCode(irIdx, .preUnOp);
                     c.ir.setExprData(irIdx, .preUnOp, .{ .unOp = .{
-                        .childT = child.type.id, .op = op, .exprLoc = child.irIdx,
+                        .childT = child.type.id, .op = op, .expr = child.irIdx,
                     }});
                     return ExprResult.initStatic(irIdx, bt.Float);
                 } else {
                     const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any }, bt.Any);
                     c.ir.setExprCode(irIdx, .preCallObjSymUnOp);
                     c.ir.setExprData(irIdx, .preCallObjSymUnOp, .{ .callObjSymUnOp = .{
-                        .op = op, .funcSigId = funcSigId, .exprLoc = child.irIdx,
+                        .op = op, .funcSigId = funcSigId, .expr = child.irIdx,
                     }});
                     return ExprResult.initDynamic(irIdx, bt.Any);
                 }
@@ -4345,8 +4345,8 @@ pub const ChunkExt = struct {
                     .leftT = left.type.id,
                     .rightT = right.type.id,
                     .op = op,
-                    .leftLoc = left.irIdx,
-                    .rightLoc = right.irIdx,
+                    .left = left.irIdx,
+                    .right = right.irIdx,
                 }});
 
                 const dynamic = right.type.dynamic or left.type.dynamic;
@@ -4372,8 +4372,8 @@ pub const ChunkExt = struct {
                         .leftT = bt.Integer,
                         .rightT = right.type.id,
                         .op = op,
-                        .leftLoc = left.irIdx,
-                        .rightLoc = right.irIdx,
+                        .left = left.irIdx,
+                        .right = right.irIdx,
                     }});
                     return ExprResult.initStatic(preIdx, bt.Integer);
                 } else {
@@ -4382,8 +4382,8 @@ pub const ChunkExt = struct {
                     c.ir.setExprCode(preIdx, .preCallObjSymBinOp);
                     c.ir.setExprData(preIdx, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
                         .op = op, .funcSigId = funcSigId,
-                        .leftLoc = left.irIdx,
-                        .rightLoc = right.irIdx,
+                        .left = left.irIdx,
+                        .right = right.irIdx,
                     }});
 
                     // TODO: Check func syms.
@@ -4409,8 +4409,8 @@ pub const ChunkExt = struct {
                         .leftT = left.type.id,
                         .rightT = right.type.id,
                         .op = op,
-                        .leftLoc = left.irIdx,
-                        .rightLoc = right.irIdx,
+                        .left = left.irIdx,
+                        .right = right.irIdx,
                     }});
                     return ExprResult.initStatic(preIdx, bt.Boolean);
                 } else {
@@ -4420,8 +4420,8 @@ pub const ChunkExt = struct {
                         c.ir.setExprCode(preIdx, .preCallObjSymBinOp);
                         c.ir.setExprData(preIdx, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
                             .op = op, .funcSigId = funcSigId,
-                            .leftLoc = left.irIdx,
-                            .rightLoc = right.irIdx,
+                            .left = left.irIdx,
+                            .right = right.irIdx,
                         }});
                         return ExprResult.initDynamic(preIdx, bt.Any);
                     } else {
@@ -4460,8 +4460,8 @@ pub const ChunkExt = struct {
                         .leftT = left.type.id,
                         .rightT = right.type.id,
                         .op = op,
-                        .leftLoc = left.irIdx,
-                        .rightLoc = right.irIdx,
+                        .left = left.irIdx,
+                        .right = right.irIdx,
                     }});
                     return ExprResult.initStatic(preIdx, left.type.id);
                 } else {
@@ -4471,8 +4471,8 @@ pub const ChunkExt = struct {
                         c.ir.setExprCode(preIdx, .preCallObjSymBinOp);
                         c.ir.setExprData(preIdx, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
                             .op = op, .funcSigId = funcSigId,
-                            .leftLoc = left.irIdx,
-                            .rightLoc = right.irIdx,
+                            .left = left.irIdx,
+                            .right = right.irIdx,
                         }});
                         return ExprResult.initDynamic(preIdx, bt.Any);
                     } else {
@@ -4506,8 +4506,8 @@ pub const ChunkExt = struct {
                     .leftT = left.type.id,
                     .rightT = right.type.id,
                     .op = op,
-                    .leftLoc = left.irIdx,
-                    .rightLoc = right.irIdx,
+                    .left = left.irIdx,
+                    .right = right.irIdx,
                 }});
                 return ExprResult.initStatic(preIdx, bt.Boolean);
             },
@@ -4558,7 +4558,7 @@ pub const ChunkExt = struct {
                             const rec = try sema.symbol(c, crLeftSym, node.data.accessExpr.left, true);
                             const irIdx = try c.ir.pushExpr(c.alloc, .fieldDyn, node.data.accessExpr.right, .{
                                 .name = res.data.fieldDyn.name,
-                                .recLoc = rec.irIdx,
+                                .rec = rec.irIdx,
                             });
                             return ExprResult.initCustom(irIdx, .fieldDyn, CompactType.initDynamic(bt.Any), undefined);
                         },
@@ -4567,7 +4567,7 @@ pub const ChunkExt = struct {
                             const irIdx = try c.ir.pushExpr(c.alloc, .field, node.data.accessExpr.right, .{
                                 .idx = res.data.field.idx,
                                 .typeId = res.data.field.typeId,
-                                .recLoc = rec.irIdx,
+                                .rec = rec.irIdx,
                                 .numNestedFields = 0,
                             });
                             return ExprResult.initCustom(irIdx, .field, CompactType.init(res.data.field.typeId), undefined);
@@ -4613,7 +4613,7 @@ pub const ChunkExt = struct {
 
             const irIdx = try c.ir.pushExpr(c.alloc, .fieldDyn, node.data.accessExpr.right, .{
                 .name = name,
-                .recLoc = rec.irIdx,
+                .rec = rec.irIdx,
             });
             return ExprResult.initCustom(irIdx, .fieldDyn, CompactType.initDynamic(bt.Any), undefined);
         }
@@ -4634,7 +4634,7 @@ pub const ChunkExt = struct {
             const irIdx = try c.ir.pushExpr(c.alloc, .field, node.data.accessExpr.right, .{
                 .idx = field.idx,
                 .typeId = field.typeId,
-                .recLoc = rec.irIdx,
+                .rec = rec.irIdx,
                 .numNestedFields = 0,
             });
             return ExprResult.initCustom(irIdx, .field, CompactType.init(field.typeId), undefined);

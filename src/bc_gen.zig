@@ -506,7 +506,7 @@ fn genCoresume(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const data = c.ir.getExprData(idx, .coresume);
     const inst = try c.rega.selectForDstInst(cstr, true, nodeId);
 
-    const childv = try genExpr(c, data.exprLoc, Cstr.simpleRetain);
+    const childv = try genExpr(c, data.expr, Cstr.simpleRetain);
 
     try c.pushCode(.coresume, &.{childv.reg, inst.dst}, nodeId);
 
@@ -539,10 +539,10 @@ fn genCoinitCall(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
         args = c.ir.getArray(argsIdx, u32, numArgs);
     } else if (callCode == .preCallDyn) {
         numArgs = data.callDyn.numArgs;
-        args = c.ir.getArray(data.callDyn.argsLoc, u32, numArgs);
+        args = c.ir.getArray(data.callDyn.args, u32, numArgs);
 
         const temp = try c.rega.consumeNextTemp();
-        const val = try genAndPushExpr(c, data.callDyn.calleeLoc, Cstr.toTempRetain(temp));
+        const val = try genAndPushExpr(c, data.callDyn.callee, Cstr.toTempRetain(temp));
         try pushUnwindValue(c, val);
     } else return error.Unexpected;
 
@@ -600,13 +600,13 @@ fn genCast(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const data = c.ir.getExprData(idx, .cast);
 
     if (!data.isRtCast) {
-        return genExpr(c, data.exprLoc, cstr);
+        return genExpr(c, data.expr, cstr);
     }
 
     const inst = try c.rega.selectForDstInst(cstr, false, nodeId);
 
     // TODO: If inst.dst is a temp, this should have a cstr of localOrExact.
-    const childv = try genExpr(c, data.exprLoc, Cstr.simple);
+    const childv = try genExpr(c, data.expr, Cstr.simple);
     try pushUnwindValue(c, childv);
 
     const sym = c.sema.getTypeSym(data.typeId);
@@ -648,7 +648,7 @@ fn genFieldDyn(c: *Chunk, idx: usize, cstr: Cstr, opts: FieldOptions, nodeId: cy
     if (opts.recv) |recv_| {
         recv = recv_;
     } else {
-        recv = try genExpr(c, data.recLoc, Cstr.simple);
+        recv = try genExpr(c, data.rec, Cstr.simple);
         try pushUnwindValue(c, recv);
     }
 
@@ -673,7 +673,7 @@ fn genField(c: *Chunk, idx: usize, cstr: Cstr, opts: FieldOptions, nodeId: cy.No
     if (opts.recv) |recv_| {
         recv = recv_;
     } else {
-        recv = try genExpr(c, data.recLoc, Cstr.simple);
+        recv = try genExpr(c, data.rec, Cstr.simple);
         // try pushUnwindValue(c, recv);
     }
 
@@ -800,7 +800,7 @@ fn contStmt(c: *Chunk, nodeId: cy.NodeId) !void {
 
 fn genThrow(c: *Chunk, idx: usize, nodeId: cy.NodeId) !GenValue {
     const data = c.ir.getExprData(idx, .throw);
-    const childv = try genExpr(c, data.exprLoc, Cstr.simple);
+    const childv = try genExpr(c, data.expr, Cstr.simple);
 
     try c.pushFCode(.throw, &.{childv.reg}, nodeId);
 
@@ -828,13 +828,13 @@ fn setCallObjSymTern(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     var args: [4]GenValue = undefined;
     var temp = try c.rega.consumeNextTemp();
-    args[0] = try genExpr(c, data.recLoc, Cstr.toTemp(temp));
+    args[0] = try genExpr(c, data.rec, Cstr.toTemp(temp));
     try pushUnwindValue(c, args[0]);
     temp = try c.rega.consumeNextTemp();
-    args[1] = try genExpr(c, data.indexLoc, Cstr.toTemp(temp));
+    args[1] = try genExpr(c, data.index, Cstr.toTemp(temp));
     try pushUnwindValue(c, args[1]);
     temp = try c.rega.consumeNextTemp();
-    args[2] = try genExpr(c, data.rightLoc, Cstr.toTemp(temp));
+    args[2] = try genExpr(c, data.right, Cstr.toTemp(temp));
     try pushUnwindValue(c, args[2]);
 
     const mgId = try c.compiler.vm.ensureMethodGroup(data.name);
@@ -865,15 +865,15 @@ fn setIndex(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const noneRet = try c.rega.consumeNextTemp();
 
     // Recv.
-    const recv = try genAndPushExpr(c, data.recLoc, Cstr.simple);
+    const recv = try genAndPushExpr(c, data.rec, Cstr.simple);
     try pushUnwindValue(c, recv);
 
     // Index
-    const indexv = try genAndPushExpr(c, data.indexLoc, Cstr.simple);
+    const indexv = try genAndPushExpr(c, data.index, Cstr.simple);
     try pushUnwindValue(c, indexv);
 
     // RHS
-    const rightv = try genAndPushExpr(c, data.rightLoc, Cstr.simple);
+    const rightv = try genAndPushExpr(c, data.right, Cstr.simple);
     try pushUnwindValue(c, rightv);
 
     const argvs = c.genValueStack.items[valsStart..];
@@ -899,7 +899,7 @@ const SetFieldDynOptions = struct {
 
 fn setFieldDyn(c: *Chunk, idx: usize, opts: SetFieldDynOptions, nodeId: cy.NodeId) !void {
     const setData = c.ir.getStmtData(idx, .setFieldDyn).generic;
-    const data = c.ir.getExprData(setData.leftLoc, .fieldDyn);
+    const data = c.ir.getExprData(setData.left, .fieldDyn);
 
     const fieldId = try c.compiler.vm.ensureFieldSym(data.name);
     const ownRecv = opts.recv == null;
@@ -909,7 +909,7 @@ fn setFieldDyn(c: *Chunk, idx: usize, opts: SetFieldDynOptions, nodeId: cy.NodeI
     if (opts.recv) |recv_| {
         recv = recv_;
     } else {
-        recv = try genExpr(c, data.recLoc, Cstr.simple);
+        recv = try genExpr(c, data.rec, Cstr.simple);
         try pushUnwindValue(c, recv);
     }
 
@@ -918,7 +918,7 @@ fn setFieldDyn(c: *Chunk, idx: usize, opts: SetFieldDynOptions, nodeId: cy.NodeI
     if (opts.right) |right| {
         rightv = right;
     } else {
-        rightv = try genExpr(c, setData.rightLoc, Cstr.simpleRetain);
+        rightv = try genExpr(c, setData.right, Cstr.simpleRetain);
         try pushUnwindValue(c, rightv);
     }
 
@@ -943,14 +943,14 @@ const SetFieldOptions = struct {
 fn setField(c: *Chunk, idx: usize, opts: SetFieldOptions, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .setField).generic;
     const requireTypeCheck = data.left_t.id != bt.Any and data.right_t.dynamic;
-    const fieldData = c.ir.getExprData(data.leftLoc, .field);
+    const fieldData = c.ir.getExprData(data.left, .field);
 
     // Receiver.
     var recv: GenValue = undefined;
     if (opts.recv) |recv_| {
         recv = recv_;
     } else {
-        recv = try genExpr(c, fieldData.recLoc, Cstr.simple);
+        recv = try genExpr(c, fieldData.rec, Cstr.simple);
         try pushUnwindValue(c, recv);
     } 
 
@@ -959,7 +959,7 @@ fn setField(c: *Chunk, idx: usize, opts: SetFieldOptions, nodeId: cy.NodeId) !vo
     if (opts.right) |right| {
         rightv = right;
     } else {
-        rightv = try genExpr(c, data.rightLoc, Cstr.simpleRetain);
+        rightv = try genExpr(c, data.right, Cstr.simpleRetain);
         try pushUnwindValue(c, rightv);
     }
 
@@ -970,7 +970,7 @@ fn setField(c: *Chunk, idx: usize, opts: SetFieldOptions, nodeId: cy.NodeId) !vo
         // get ref.
         refTemp = try c.rega.consumeNextTemp();
         try pushFieldRef(c, recv.reg, fieldData.idx, fieldData.numNestedFields, refTemp, nodeId);
-        const fieldsLoc = c.ir.advanceExpr(data.leftLoc, .field);
+        const fieldsLoc = c.ir.advanceExpr(data.left, .field);
         const fields = c.ir.getArray(fieldsLoc, u8, fieldData.numNestedFields);
         try c.pushCodeBytes(fields);
         getRef = true;
@@ -1148,11 +1148,11 @@ fn genSlice(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     }
 
     var args: [3]GenValue = undefined;
-    args[0] = try genExpr(c, data.recLoc, Cstr.simple);
+    args[0] = try genExpr(c, data.rec, Cstr.simple);
     try pushUnwindValue(c, args[0]);
-    args[1] = try genExpr(c, data.leftLoc, Cstr.simple);
+    args[1] = try genExpr(c, data.left, Cstr.simple);
     try pushUnwindValue(c, args[1]);
-    args[2] = try genExpr(c, data.rightLoc, Cstr.simple);
+    args[2] = try genExpr(c, data.right, Cstr.simple);
     try pushUnwindValue(c, args[2]);
 
     try pushInlineTernExpr(c, .sliceList, args[0].reg, args[1].reg, args[2].reg, inst.dst, nodeId);
@@ -1170,7 +1170,7 @@ fn genUnOp(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const inst = try c.rega.selectForDstInst(cstr, false, nodeId);
 
     const canUseDst = !c.isParamOrLocalVar(inst.dst);
-    const childv = try genExpr(c, data.exprLoc, Cstr.preferVolatileIf(canUseDst, inst.dst));
+    const childv = try genExpr(c, data.expr, Cstr.preferVolatileIf(canUseDst, inst.dst));
     try pushUnwindValue(c, childv);
 
     switch (data.op) {
@@ -1211,11 +1211,11 @@ fn genCallObjSym(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
     // Receiver.
     const argStart = c.rega.nextTemp;
     var temp = try c.rega.consumeNextTemp();
-    const recv = try genExpr(c, data.recLoc, Cstr.toTemp(temp));
+    const recv = try genExpr(c, data.rec, Cstr.toTemp(temp));
     try pushUnwindValue(c, recv);
     try c.genValueStack.append(c.alloc, recv);
 
-    const args = c.ir.getArray(data.argsLoc, u32, data.numArgs);
+    const args = c.ir.getArray(data.args, u32, data.numArgs);
     for (args, 0..) |argIdx, i| {
         temp = try c.rega.consumeNextTemp();
         if (cy.Trace and temp != argStart + 1 + i) return error.Unexpected;
@@ -1303,12 +1303,12 @@ fn genCallDyn(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     // Callee.
     const argStart = c.rega.nextTemp;
     var temp = try c.rega.consumeNextTemp();
-    const calleev = try genExpr(c, data.calleeLoc, Cstr.toTemp(temp));
+    const calleev = try genExpr(c, data.callee, Cstr.toTemp(temp));
     try pushUnwindValue(c, calleev);
     try c.genValueStack.append(c.alloc, calleev);
 
     // Args.
-    const args = c.ir.getArray(data.argsLoc, u32, data.numArgs);
+    const args = c.ir.getArray(data.args, u32, data.numArgs);
     for (args, 0..) |argIdx, i| {
         temp = try c.rega.consumeNextTemp();
         if (cy.Trace and temp != argStart + 1 + i) return error.Unexpected;
@@ -1357,7 +1357,7 @@ fn genCallObjSymUnOp(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenV
     const inst = try beginCall(c, cstr, false, nodeId);
 
     var temp = try c.rega.consumeNextTemp();
-    const childv = try genExpr(c, data.exprLoc, Cstr.toTemp(temp));
+    const childv = try genExpr(c, data.expr, Cstr.toTemp(temp));
     try pushUnwindValue(c, childv);
 
     const mgId = try getUnMGID(c, data.op);
@@ -1379,7 +1379,7 @@ fn genCallObjSymBinOp(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !Gen
     // copy inst doesn't create a debug symbol, otherwise that needs to be moved as well.
 
     var temp = try c.rega.consumeNextTemp();
-    const leftv = try genExpr(c, data.leftLoc, Cstr.toTemp(temp));
+    const leftv = try genExpr(c, data.left, Cstr.toTemp(temp));
     try pushUnwindValue(c, leftv);
 
     const leftCopySave = extractIfCopyInst(c, leftPc);
@@ -1387,7 +1387,7 @@ fn genCallObjSymBinOp(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !Gen
 
     const rightPc = c.buf.ops.items.len;
     temp = try c.rega.consumeNextTemp();
-    const rightv = try genExpr(c, data.rightLoc, Cstr.toTemp(temp));
+    const rightv = try genExpr(c, data.right, Cstr.toTemp(temp));
     try pushUnwindValue(c, rightv);
 
     var hasRightCopy = false;
@@ -1486,12 +1486,12 @@ fn genBinOp(c: *Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy.No
     if (opts.left) |left| {
         leftv = left;
     } else {
-        leftv = try genExpr(c, data.leftLoc, Cstr.preferVolatileIf(prefer.canUseDst, prefer.dst));
+        leftv = try genExpr(c, data.left, Cstr.preferVolatileIf(prefer.canUseDst, prefer.dst));
         try pushUnwindValue(c, leftv);
     }
 
     // Rhs.
-    const rightv = try genExpr(c, data.rightLoc, prefer.nextCstr(leftv));
+    const rightv = try genExpr(c, data.right, prefer.nextCstr(leftv));
     try pushUnwindValue(c, rightv);
 
     var retained = false;
@@ -1832,7 +1832,7 @@ fn setFuncSym(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const funcSymIdx = c.ir.advanceStmt(idx, .setFuncSym);
     const data = c.ir.getExprData(funcSymIdx, .funcSym);
 
-    const rightv = try genExpr(c, setData.rightLoc, Cstr.simpleRetain);
+    const rightv = try genExpr(c, setData.right, Cstr.simpleRetain);
     try pushUnwindValue(c, rightv);
 
     const pc = c.buf.len();
@@ -1850,7 +1850,7 @@ fn setVarSym(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const varSym = c.ir.getExprData(varSymIdx, .varSym);
 
     const id = c.compiler.genSymMap.get(varSym.sym).?.varSym.id;
-    const rightv = try genExpr(c, data.rightLoc, Cstr.toVarSym(id));
+    const rightv = try genExpr(c, data.right, Cstr.toVarSym(id));
     _ = try popUnwindValue(c, rightv);
 }
 
@@ -1907,14 +1907,14 @@ fn setCaptured(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     // RHS.
     // const dstRetained = c.sema.isRcCandidateType(data.leftT.id);
-    _ = try genExpr(c, data.rightLoc, Cstr.toCaptured(capData.idx));
+    _ = try genExpr(c, data.right, Cstr.toCaptured(capData.idx));
 }
 
 fn irSetLocal(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .setLocal).generic;
     const localIdx = c.ir.advanceStmt(idx, .setLocal);
     const localData = c.ir.getExprData(localIdx, .local);
-    try setLocal(c, localData, data.rightLoc, data.right_t.id, nodeId, .{});
+    try setLocal(c, localData, data.right, data.right_t.id, nodeId, .{});
 }
 
 const SetLocalOptions = struct {
@@ -2125,7 +2125,7 @@ fn opSet(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
 fn orOp(c: *Chunk, data: ir.BinOp, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     if (cstr.isExact()) {
-        const leftv = try genExpr(c, data.leftLoc, Cstr.simple);
+        const leftv = try genExpr(c, data.left, Cstr.simple);
         const jumpFalse = try c.pushEmptyJumpNotCond(leftv.reg);
 
         // Gen left to finalCstr. Require retain to merge with right.
@@ -2135,7 +2135,7 @@ fn orOp(c: *Chunk, data: ir.BinOp, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
         // RHS, gen to final dst.
         c.patchJumpNotCondToCurPc(jumpFalse);
         try releaseTempValue(c, leftv, nodeId);
-        const rightv = try genExpr(c, data.rightLoc, cstr);
+        const rightv = try genExpr(c, data.right, cstr);
 
         c.patchJumpToCurPc(jumpEnd);
         try popTempValue(c, leftv);
@@ -2145,10 +2145,10 @@ fn orOp(c: *Chunk, data: ir.BinOp, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
         // Can use cond as merged result. Require retain to merge with right.
         const cond = try c.rega.consumeNextTemp();
         const condCstr = Cstr.toTempRetain(cond);
-        const leftv = try genExpr(c, data.leftLoc, condCstr);
+        const leftv = try genExpr(c, data.left, condCstr);
         const jumpTrue = try c.pushEmptyJumpCond(cond);
 
-        const rightv = try genExpr(c, data.rightLoc, condCstr);
+        const rightv = try genExpr(c, data.right, condCstr);
         c.patchJumpCondToCurPc(jumpTrue);
 
         return regValue(c, cond, leftv.retained or rightv.retained);
@@ -2157,11 +2157,11 @@ fn orOp(c: *Chunk, data: ir.BinOp, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
 
 fn andOp(c: *Chunk, data: ir.BinOp, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     if (cstr.isExact()) {
-        const leftv = try genExpr(c, data.leftLoc, Cstr.simple);
+        const leftv = try genExpr(c, data.left, Cstr.simple);
         const jumpFalse = try c.pushEmptyJumpNotCond(leftv.reg);
 
         // RHS. Goes to final dst whether true or false.
-        const rightv = try genExpr(c, data.rightLoc, cstr);
+        const rightv = try genExpr(c, data.right, cstr);
         try releaseTempValue(c, leftv, nodeId);
         const jumpEnd = try c.pushEmptyJump();
 
@@ -2176,13 +2176,13 @@ fn andOp(c: *Chunk, data: ir.BinOp, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     } else {
         // Merged branch result.
         const res = try c.rega.consumeNextTemp();
-        const leftv = try genExpr(c, data.leftLoc, Cstr.simple);
+        const leftv = try genExpr(c, data.left, Cstr.simple);
         const jumpFalse = try c.pushEmptyJumpNotCond(leftv.reg);
         try popTempValue(c, leftv);
 
         // RHS. Goes to res whether true or false.
         try releaseTempValue(c, leftv, nodeId);
-        const rightv = try genExpr(c, data.rightLoc, Cstr.toTempRetain(res));
+        const rightv = try genExpr(c, data.right, Cstr.toTempRetain(res));
         const jumpEnd = try c.pushEmptyJump();
 
         c.patchJumpNotCondToCurPc(jumpFalse);
@@ -2215,9 +2215,9 @@ fn retExprStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     var childv: GenValue = undefined;
     if (c.curBlock.type == .main) {
         // Main block.
-        childv = try genExpr(c, data.exprLoc, Cstr.simpleRetain);
+        childv = try genExpr(c, data.expr, Cstr.simpleRetain);
     } else {
-        childv = try genExpr(c, data.exprLoc, Cstr.ret);
+        childv = try genExpr(c, data.expr, Cstr.ret);
     }
 
     try popTempAndUnwind(c, childv);
@@ -2549,7 +2549,7 @@ fn forIterStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const iterTemp = try c.rega.consumeNextTemp();
 
     // Iterable.
-    const iterv = try genExpr(c, data.iterLoc, Cstr.toTemp(iterTemp + cy.vm.CallArgStart));
+    const iterv = try genExpr(c, data.iter, Cstr.toTemp(iterTemp + cy.vm.CallArgStart));
 
     const node = c.ast.node(nodeId);
     const header = c.ast.node(node.data.forIterStmt.header);
@@ -2639,7 +2639,7 @@ fn whileOptStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     try genStmt(c, data.capIdx);
 
     // Optional.
-    const optv = try genExpr(c, data.optLoc, Cstr.simple);
+    const optv = try genExpr(c, data.opt, Cstr.simple);
 
     const optNoneJump = try c.pushEmptyJumpNone(optv.reg);
 
@@ -2694,8 +2694,8 @@ fn whileCondStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     const blockJumpStart: u32 = @intCast(c.blockJumpStack.items.len);
 
-    const condNodeId = c.ir.getNode(data.condLoc);
-    const condv = try genExpr(c, data.condLoc, Cstr.simple);
+    const condNodeId = c.ir.getNode(data.cond);
+    const condv = try genExpr(c, data.cond, Cstr.simple);
 
     const condMissJump = try c.pushEmptyJumpNotCond(condv.reg);
 
@@ -2866,7 +2866,7 @@ fn genTryExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const mcstr = try MergeCstr.init(c, cstr);
 
     // Body expr.
-    const childv = try genExpr(c, data.exprLoc, mcstr.cstr);
+    const childv = try genExpr(c, data.expr, mcstr.cstr);
 
     const popTryPc = c.buf.ops.items.len;
     try c.buf.pushOp2(.popTry, 0, 0);
@@ -2896,7 +2896,7 @@ fn genTryExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
 fn genCondExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     _ = nodeId;
     const data = c.ir.getExprData(idx, .condExpr);
-    const condNodeId = c.ir.getNode(data.condLoc);
+    const condNodeId = c.ir.getNode(data.cond);
 
     var finalCstr = cstr;
     if (!finalCstr.isExact()) {
@@ -2905,7 +2905,7 @@ fn genCondExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     }
 
     // Cond.
-    const condv = try genExpr(c, data.condLoc, Cstr.simple);
+    const condv = try genExpr(c, data.cond, Cstr.simple);
 
     const condFalseJump = try c.pushEmptyJumpNotCond(condv.reg);
 
@@ -2933,8 +2933,8 @@ fn genIfStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .ifStmt);
     const bodyEndJumpsStart = c.listDataStack.items.len;
 
-    var condNodeId = c.ir.getNode(data.condLoc);
-    var condv = try genExpr(c, data.condLoc, Cstr.simple);
+    var condNodeId = c.ir.getNode(data.cond);
+    var condv = try genExpr(c, data.cond, Cstr.simple);
     try pushUnwindValue(c, condv);
 
     var prevCaseMissJump = try c.pushEmptyJumpNotCond(condv.reg);
@@ -2963,8 +2963,8 @@ fn genIfStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
             c.patchJumpNotCondToCurPc(prevCaseMissJump);
 
             if (!elseBlock.isElse) {
-                condNodeId = c.ir.getNode(elseBlock.condLoc);
-                condv = try genExpr(c, elseBlock.condLoc, Cstr.simple);
+                condNodeId = c.ir.getNode(elseBlock.cond);
+                condv = try genExpr(c, elseBlock.cond, Cstr.simple);
                 try pushUnwindValue(c, condv);
                 prevCaseMissJump = try c.pushEmptyJumpNotCond(condv.reg);
 
@@ -3527,16 +3527,16 @@ fn exprStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     if (data.isBlockResult) {
         const inMain = c.curBlock.sBlockDepth == 0;
         if (inMain) {
-            const exprv = try genExpr(c, data.exprLoc, Cstr.simpleRetain);
+            const exprv = try genExpr(c, data.expr, Cstr.simpleRetain);
             c.curBlock.endLocal = exprv.reg;
             try popTempValue(c, exprv);
         } else {
             // Return from block expression.
             const b = c.blocks.getLast();
-            _ = try genExpr(c, data.exprLoc, b.blockExprCstr);
+            _ = try genExpr(c, data.expr, b.blockExprCstr);
         }
     } else {
-        const exprv = try genExpr(c, data.exprLoc, Cstr.simple);
+        const exprv = try genExpr(c, data.expr, Cstr.simple);
 
         // TODO: Merge with previous release inst.
         try releaseTempValue(c, exprv, nodeId);

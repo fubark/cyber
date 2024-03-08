@@ -143,7 +143,7 @@ pub const UnwrapChoice = struct {
 };
 
 pub const Coresume = struct {
-    exprLoc: Loc,
+    expr: Loc,
 };
 
 pub const Block = struct {
@@ -174,14 +174,14 @@ pub const DestructureElems = struct {
 };
 
 pub const WhileOptStmt = struct {
-    optLoc: Loc,
+    opt: Loc,
     capIdx: u32,
     bodyHead: u32,
     someLocal: u8,
 };
 
 pub const WhileCondStmt = struct {
-    condLoc: Loc,
+    cond: Loc,
     bodyHead: Loc,
 };
 
@@ -198,17 +198,17 @@ pub const Captured = struct {
 };
 
 pub const CondExpr = struct {
-    condLoc: Loc,
+    cond: Loc,
     body: u32,
     elseBody: u32,
 };
 
 pub const ThrowExpr = struct {
-    exprLoc: Loc,
+    expr: Loc,
 };
 
 pub const TryExpr = struct {
-    exprLoc: Loc,
+    expr: Loc,
     catchBody: u32,
 };
 
@@ -221,14 +221,14 @@ pub const Error = struct {
 };
 
 pub const Cast = struct {
-    exprLoc: Loc,
+    expr: Loc,
     typeId: TypeId,
     isRtCast: bool,
 };
 
 pub const FieldDyn = struct {
     name: []const u8,
-    recLoc: Loc,
+    rec: Loc,
 };
 
 /// Can have a chain of nested struct field indexes.
@@ -238,7 +238,7 @@ pub const Field = struct {
     typeId: TypeId,
 
     /// Receiver.
-    recLoc: Loc,
+    rec: Loc,
 
     /// Field index of receiver.
     idx: u8,
@@ -264,7 +264,7 @@ pub const SetLocalType = struct {
 pub const ForIterStmt = struct {
     eachLocal: ?u8,
     countLocal: ?u8,
-    iterLoc: Loc,
+    iter: Loc,
     declHead: u32,
     bodyHead: u32,
 };
@@ -285,7 +285,7 @@ pub const TryStmt = struct {
 };
 
 pub const ElseBlock = struct {
-    condLoc: Loc,
+    cond: Loc,
     bodyHead: u32,
     isElse: bool,
 };
@@ -393,17 +393,17 @@ pub const Prepare = union {
 
 pub const Slice = struct {
     recvT: TypeId,
-    recLoc: Loc,
-    leftLoc: Loc,
-    rightLoc: Loc,
+    rec: Loc,
+    left: Loc,
+    right: Loc,
 };
 
 pub const BinOp = struct {
     leftT: TypeId,
     rightT: TypeId,
     op: cy.BinaryExprOp,
-    leftLoc: Loc,
-    rightLoc: Loc,
+    left: Loc,
+    right: Loc,
 };
 
 pub const Set = union {
@@ -415,23 +415,23 @@ pub const Set = union {
 pub const SetCallObjSymTern = struct {
     name: []const u8,
     funcSigId: sema.FuncSigId,
-    recLoc: Loc,
-    indexLoc: Loc,
-    rightLoc: Loc,
+    rec: Loc,
+    index: Loc,
+    right: Loc,
 };
 
 pub const SetGeneric = struct {
     left_t: CompactType,
     right_t: CompactType,
-    leftLoc: Loc,
-    rightLoc: Loc,
+    left: Loc,
+    right: Loc,
 };
 
 pub const SetIndex = struct {
     recvT: TypeId,
-    recLoc: Loc,
-    indexLoc: Loc,
-    rightLoc: Loc,
+    rec: Loc,
+    index: Loc,
+    right: Loc,
 };
 
 pub const VarSym = struct {
@@ -454,20 +454,20 @@ pub const TypeSym = struct {
 pub const CallObjSym = struct {
     name: []const u8,
     funcSigId: sema.FuncSigId,
-    recLoc: Loc,
-    argsLoc: Loc,
+    rec: Loc,
+    args: Loc,
     numArgs: u8,
 };
 
 pub const CallObjSymBinOp = struct {
     op: cy.BinaryExprOp,
     funcSigId: sema.FuncSigId,
-    leftLoc: Loc,
-    rightLoc: Loc,
+    left: Loc,
+    right: Loc,
 };
 
 pub const CallObjSymUnOp = struct {
-    exprLoc: Loc,
+    expr: Loc,
     op: cy.UnaryOp,
     funcSigId: sema.FuncSigId,
 };
@@ -480,17 +480,17 @@ pub const CallFuncSym = struct {
 };
 
 pub const CallDyn = struct {
-    calleeLoc: Loc,
-    argsLoc: Loc,
+    callee: Loc,
+    args: Loc,
     numArgs: u8,
 };
 
 pub const RetExprStmt = struct {
-    exprLoc: Loc,
+    expr: Loc,
 };
 
 pub const ExprStmt = struct {
-    exprLoc: Loc,
+    expr: Loc,
     /// If in a block expression, returns as the result of the expression.
     /// If in the main block, can be used to return from an `eval`.
     isBlockResult: bool,
@@ -527,7 +527,7 @@ pub const StringTemplate = struct {
 };
 
 pub const UnOp = struct {
-    exprLoc: Loc,
+    expr: Loc,
     childT: TypeId,
     op: cy.UnaryOp,
 };
@@ -538,7 +538,7 @@ pub const StmtBlock = struct {
 };
 
 pub const IfStmt = struct {
-    condLoc: Loc,
+    cond: Loc,
     bodyHead: u32,
     elseBlocks: u32,
     numElseBlocks: u8,

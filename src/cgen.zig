@@ -623,7 +623,6 @@ fn genTopExpr(c: *Chunk, idx: usize, cstr: Cstr) !Value {
 }
 
 fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!Value {
-
     const code = c.ir.getExprCode(idx);
     const nodeId = c.ir.getNode(idx);
 
@@ -919,15 +918,13 @@ fn genInt(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !Value {
 
 fn exprStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .exprStmt);
-    _ = data;
 
     // const cstr = RegisterCstr.initSimple(data.returnMain);
 
     try c.beginLine(nodeId);
     const b = c.block();
     try c.pushSpanFmt("Value tmp{} = ", .{ b.nextTemp() });
-    const expr = c.ir.advanceStmt(idx, .exprStmt);
-    const exprv = try genTopExpr(c, expr, Cstr.none);
+    const exprv = try genTopExpr(c, data.expr, Cstr.none);
     _ = exprv;
     try c.pushSpanEnd(";");
 
@@ -1221,7 +1218,7 @@ fn genBinOp(c: *Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy.No
     if (opts.left) |left| {
         leftv = left;
     } else {
-        leftv = try genExpr(c, data.leftLoc, Cstr.init(data.leftT));
+        leftv = try genExpr(c, data.left, Cstr.init(data.leftT));
     }
 
     var retained = false;
@@ -1288,7 +1285,7 @@ fn genBinOp(c: *Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy.No
     }
 
     // Rhs.
-    const rightv = try genExpr(c, data.rightLoc, Cstr.init(data.rightT));
+    const rightv = try genExpr(c, data.right, Cstr.init(data.rightT));
     _ = rightv;
 
     // const leftRetained = if (opts.left == null) unwindTempKeepDst(c, leftv, inst.dst) else false;
@@ -1374,10 +1371,10 @@ fn retExprStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const b = c.block();
     if (b.type == .main) {
         // // Main block.
-        // childv = try genExpr(c, data.exprLoc, RegisterCstr.simpleMustRetain);
+        // childv = try genExpr(c, data.expr, RegisterCstr.simpleMustRetain);
         return error.TODO;
     } else {
-        childv = try genTopExpr(c, data.exprLoc, Cstr.init(b.data.func.retType));
+        childv = try genTopExpr(c, data.expr, Cstr.init(b.data.func.retType));
     }
     try c.pushSpanEnd(";");
 

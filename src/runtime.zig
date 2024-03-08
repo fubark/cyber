@@ -434,7 +434,7 @@ pub fn errZFmt(c: Context, comptime format: []const u8, args: anytype) void {
         vm.errorFn.?(@ptrCast(vm), api.initStr(vm.getTempString()));
     } else {
         const w = std.io.getStdErr().writer();
-        std.fmt.format(w, format, args);
+        std.fmt.format(w, format, args) catch cy.fatal();
         w.writeByte('\n') catch cy.fatal();
     }
 }

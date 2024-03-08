@@ -1188,37 +1188,20 @@ fn genLocalReg(c: *cy.Chunk, reg: RegisterId, cstr: Cstr, nodeId: cy.NodeId) !Ge
     const local = bcgen.getLocalInfo(c, reg);
 
     if (!local.some.lifted) {
-        const inst = try c.rega.selectForLocalInst(cstr, reg, local.some.rcCandidate, nodeId);
-        if (inst.dst != reg) {
-            if (inst.retainSrc) {
-                if (inst.releaseDst) {
-                    // try c.buf.pushOp2Ext(.copyRetainRelease, reg, inst.dst, c.desc(nodeId));
-                    return error.TODO;
-                } else {
-                    // try c.buf.pushOp2Ext(.copyRetainSrc, reg, inst.dst, c.desc(nodeId));
-                    return error.TODO;
-                }
-            } else {
-                if (inst.releaseDst) {
-                    // try c.buf.pushOp2Ext(.copyReleaseDst, reg, inst.dst, c.desc(nodeId));
-                    return error.TODO;
-                } else {
-                    // try c.buf.pushOp2Ext(.copy, reg, inst.dst, c.desc(nodeId));
-                    try assm.genLoadSlot(c, .temp, reg);
-                    try assm.genStoreSlot(c, inst.dst, .temp);
-                }
-            }
-        } else {
-            // Nop. When the cstr allows returning the local itself.
-            if (inst.retainSrc) {
-                // try c.buf.pushOp1Ext(.retain, reg, c.desc(nodeId));
-                return error.TODO;
-            } else {
-                // Nop.
-            }
+        const srcv = regValue(c, reg, false);
+        var exact_cstr = cstr;
+        switch (cstr.type) {
+            .preferVolatile => {
+                exact_cstr = Cstr.toLocal(reg, false);
+                exact_cstr.data.reg.retain = false;
+            },
+            .simple => {
+                exact_cstr = Cstr.toLocal(reg, false);
+                exact_cstr.data.reg.retain = local.some.rcCandidate and cstr.data.simple.retain;
+            },
+            else => {},
         }
-        const val = regValue(c, inst.dst, inst.retainSrc);
-        return finishInst(c, val, inst.finalDst);
+        return genToExact(c, srcv, exact_cstr, c.desc(nodeId));
     } else {
         // // Special case when src local is boxed.
         // const retainSrc = local.some.rcCandidate and (cstr.mustRetain or cstr.type == .local or cstr.type == .boxedLocal);

@@ -1620,30 +1620,20 @@ fn genLocalReg(c: *Chunk, reg: RegisterId, cstr: Cstr, nodeId: cy.NodeId) !GenVa
             return genValueLocal(c, reg, local, cstr, nodeId);
         }
 
-        const inst = try c.rega.selectForLocalInst(cstr, reg, local.some.rcCandidate, nodeId);
-        if (inst.dst != reg) {
-            if (inst.retainSrc) {
-                if (inst.releaseDst) {
-                    try c.pushCode(.copyRetainRelease, &.{ reg, inst.dst }, nodeId);
-                } else {
-                    try c.pushCode(.copyRetainSrc, &.{ reg, inst.dst }, nodeId);
-                }
-            } else {
-                if (inst.releaseDst) {
-                    try c.pushCode(.copyReleaseDst, &.{ reg, inst.dst }, nodeId);
-                } else {
-                    try c.pushCode(.copy, &.{ reg, inst.dst }, nodeId);
-                }
-            }
-        } else {
-            // Nop. When the cstr allows returning the local itself.
-            if (inst.retainSrc) {
-                try c.pushCode(.retain, &.{ reg }, nodeId);
-            } else {
-                // Nop.
-            }
+        const srcv = regValue(c, reg, false);
+        var exact_cstr = cstr;
+        switch (cstr.type) {
+            .preferVolatile => {
+                exact_cstr = Cstr.toLocal(reg, false);
+                exact_cstr.data.reg.retain = false;
+            },
+            .simple => {
+                exact_cstr = Cstr.toLocal(reg, false);
+                exact_cstr.data.reg.retain = local.some.rcCandidate and cstr.data.simple.retain;
+            },
+            else => {},
         }
-        return finishCopyInst(c, inst, inst.retainSrc);
+        return genToExact(c, srcv, exact_cstr, nodeId);
     } else {
         if (local.some.isStructValue) {
             return genLiftedValueLocal(c, reg, local, cstr, nodeId);
@@ -1867,7 +1857,11 @@ fn declareLocalInit(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
         try c.buf.pushOp2Ext(.constI8, 0, reg, c.desc(nodeId));
     }
 
-    const val = try genExpr(c, data.init, Cstr.toLocal(reg, false));
+    var cstr = Cstr.toLocal(reg, false);
+    if (data.declType != bt.Dynamic and data.initType.dynamic) {
+        cstr.data.reg.check_type = data.declType;
+    }
+    const val = try genExpr(c, data.init, cstr);
 
     const local = getLocalInfoPtr(c, reg);
 
@@ -1879,7 +1873,7 @@ fn declareLocalInit(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
     if (local.some.isDynamic) {
         local.some.type = data.declType;
     } else {
-        local.some.type = data.initType;
+        local.some.type = data.initType.id;
     }
     local.some.isStructValue = c.sema.getTypeKind(local.some.type) == .@"struct";
 
@@ -1912,14 +1906,16 @@ fn setCaptured(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
 fn irSetLocal(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .setLocal).generic;
-    const localIdx = c.ir.advanceStmt(idx, .setLocal);
+    const localIdx = c.ir.advanceStmt(idx, .setLocal); 
     const localData = c.ir.getExprData(localIdx, .local);
-    try setLocal(c, localData, data.right, data.right_t.id, nodeId, .{});
+    const check_type: ?cy.TypeId = if (!data.left_t.dynamic and data.right_t.dynamic) data.left_t.id else null;
+    try setLocal(c, localData, data.right, data.right_t.id, nodeId, .{ .check_type = check_type });
 }
 
 const SetLocalOptions = struct {
     rightv: ?GenValue = null,
     extraIdx: ?u32 = null,
+    check_type: ?cy.TypeId = null,
 };
 
 fn setLocal(c: *Chunk, data: ir.Local, rightIdx: u32, right_t: cy.TypeId, nodeId: cy.NodeId, opts: SetLocalOptions) !void {
@@ -1931,6 +1927,9 @@ fn setLocal(c: *Chunk, data: ir.Local, rightIdx: u32, right_t: cy.TypeId, nodeId
         dst = Cstr.toLiftedLocal(reg, local.some.rcCandidate);
     } else {
         dst = Cstr.toLocal(reg, local.some.rcCandidate);
+        if (opts.check_type) |check_type| {
+            dst.data.reg.check_type = check_type;
+        }
     }
 
     var rightv: GenValue = undefined;
@@ -2464,31 +2463,42 @@ fn genToExactDesc(c: *Chunk, src: GenValue, dst: Cstr, nodeId: cy.NodeId, extraI
         .localReg,
         .tempReg => {
             const reg = dst.data.reg;
-            if (src.reg == reg.dst) return error.Unexpected;
 
             const retain = shouldRetain(c, reg.retain, src);
-            if (reg.releaseDst) {
-                if (retain) {
-                    try c.pushCodeExt(.copyRetainRelease, &.{ src.reg, reg.dst }, nodeId, extraIdx);
+            if (src.reg != reg.dst) {
+                if (dst.data.reg.check_type) |type_id| {
+                    try pushTypeCheck(c, src.reg, type_id, nodeId);
+                }
+
+                if (reg.releaseDst) {
+                    if (retain) {
+                        try c.pushCodeExt(.copyRetainRelease, &.{ src.reg, reg.dst }, nodeId, extraIdx);
+                    } else {
+                        try c.pushCodeExt(.copyReleaseDst, &.{ src.reg, reg.dst }, nodeId, extraIdx);
+                    }
                 } else {
-                    try c.pushCodeExt(.copyReleaseDst, &.{ src.reg, reg.dst }, nodeId, extraIdx);
+                    if (retain) {
+                        try c.pushCodeExt(.copyRetainSrc, &.{ src.reg, reg.dst }, nodeId, extraIdx);
+                    } else {
+                        try c.pushCodeExt(.copy, &.{ src.reg, reg.dst }, nodeId, extraIdx);
+                    }
                 }
             } else {
                 if (retain) {
-                    try c.pushCodeExt(.copyRetainSrc, &.{ src.reg, reg.dst }, nodeId, extraIdx);
+                    try c.pushCode(.retain, &.{ src.reg }, nodeId);
                 } else {
-                    try c.pushCodeExt(.copy, &.{ src.reg, reg.dst }, nodeId, extraIdx);
+                    // Nop.
                 }
             }
-            if (retain) {
-                return regValue(c, reg.dst, true);
-            } else {
-                return regValue(c, reg.dst, src.retained);
-            }
+            return regValue(c, reg.dst, retain or src.retained);
         },
         .liftedLocal => {
             const lifted = dst.data.liftedLocal;
             if (src.reg == lifted.reg) return error.Unexpected;
+
+            if (shouldRetain(c, true, src)) {
+                try c.pushCode(.retain, &.{ src.reg }, nodeId);
+            }
 
             if (lifted.rcCandidate) {
                 try c.pushCodeExt(.setBoxValueRelease, &.{ lifted.reg, src.reg }, nodeId, extraIdx);
@@ -2498,13 +2508,20 @@ fn genToExactDesc(c: *Chunk, src: GenValue, dst: Cstr, nodeId: cy.NodeId, extraI
             return GenValue.initRetained(src.retained);
         },
         .varSym => {
-            // Set var assumes retained src.
+            if (shouldRetain(c, true, src)) {
+                try c.pushCode(.retain, &.{ src.reg }, nodeId);
+            }
+
             const pc = c.buf.len();
             try c.pushCodeExt(.setStaticVar, &.{ 0, 0, src.reg }, nodeId, extraIdx);
             c.buf.setOpArgU16(pc + 1, @intCast(dst.data.varSym));
             return GenValue.initRetained(src.retained);
         },
         .captured => {
+            if (shouldRetain(c, true, src)) {
+                try c.pushCode(.retain, &.{ src.reg }, nodeId);
+            }
+
             const captured = dst.data.captured;
             try c.pushCodeExt(.setCaptured, &.{ c.curBlock.closureLocal, captured.idx, src.reg }, nodeId, extraIdx);
             return GenValue.initRetained(src.retained);

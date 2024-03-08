@@ -351,7 +351,7 @@ pub const DeclareLocalInit = struct {
     /// the memory must be zeroed so unwinding doesn't end up using an undefined value.
     zeroMem: bool,
     init: Loc,
-    initType: cy.TypeId,
+    initType: CompactType,
 
     pub fn name(self: DeclareLocalInit) []const u8 {
         return self.namePtr[0..self.nameLen];

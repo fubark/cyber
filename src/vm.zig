@@ -296,7 +296,8 @@ pub const VM = struct {
         }
 
         logger.tracev("release varSyms", .{});
-        for (self.varSyms.items()) |vsym| {
+        for (self.varSyms.items(), 0..) |vsym, i| {
+            logger.tracevIf(cy.logMemory, "release varSym: {s}", .{self.varSymExtras.buf[i].name()});
             release(self, vsym.value);
         }
         self.varSyms.clearRetainingCapacity();

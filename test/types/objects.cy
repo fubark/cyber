@@ -129,4 +129,9 @@ var sym = Node
 t.eq(typesym(sym), .metatype)
 t.eq(String(sym), 'type: Node')
 
+-- Dynamic variable.
+my val = t.erase([Node value: 123])
+var dst Node = val
+t.eq(dst.value, 123)
+
 --cytest: pass

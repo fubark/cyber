@@ -1368,7 +1368,7 @@ fn declareLocalName2(c: *cy.Chunk, name: []const u8, declType: TypeId, hidden: b
             .id = irId,
             .lifted = false,
             .init = cy.NullId,
-            .initType = cy.NullId,
+            .initType = undefined,
             .zeroMem = false,
         });
     } else {
@@ -1432,7 +1432,7 @@ fn localDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
     var data = c.ir.getStmtDataPtr(irIdx, .declareLocalInit);
     data.init = right.irIdx;
-    data.initType = right.type.id;
+    data.initType = right.type;
     if (maxLocalsBeforeInit < c.proc().maxLocals) {
         // Initializer must have a declaration (in a block expr)
         // since the number of locals increased.
@@ -2964,7 +2964,7 @@ fn semaSwitchChoicePrologue(c: *cy.Chunk, info: *SwitchInfo, expr: ExprResult, e
     const declareLoc = choiceVar.inner.local.declIrStart;
     const declare = c.ir.getStmtDataPtr(declareLoc, .declareLocalInit);
     declare.init = expr.irIdx;
-    declare.initType = expr.type.id;
+    declare.initType = expr.type;
 
     // Get choice tag for switch expr.
     const recLoc = try c.ir.pushExpr(c.alloc, .local, exprId, .{ .id = choiceVar.inner.local.id });
@@ -3096,7 +3096,7 @@ fn semaSwitchCase(c: *cy.Chunk, info: SwitchInfo, nodeId: cy.NodeId) !u32 {
 
         const declare = c.ir.getStmtDataPtr(declareLoc, .declareLocalInit);
         declare.init = fieldLoc;
-        declare.initType = declT;
+        declare.initType = CompactType.init(declT);
     }
 
     if (case.data.caseBlock.bodyIsExpr) {

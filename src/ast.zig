@@ -1080,6 +1080,7 @@ pub const Encoder = struct {
             .varSpec => {
                 try self.writeNode(w, node.data.varSpec.name);
                 if (node.data.varSpec.typeSpec != cy.NullNode) {
+                    try w.writeByte(' ');
                     var cur = node.data.varSpec.typeSpec;
                     try self.writeNode(w, cur);
                     cur = self.ast.node(cur).next();

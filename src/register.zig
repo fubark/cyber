@@ -54,80 +54,6 @@ pub const Allocator = struct {
         return self.nextTemp;
     }
 
-    pub fn selectForLocalInst(self: *Allocator, cstr: Cstr, local: u8, rcCandidate: bool, nodeId: cy.NodeId) !CopyInst {
-        _ = self;
-        switch (cstr.type) {
-            .varSym => {
-                if (rcCandidate) {
-                    return .{
-                        .dst = local,
-                        .retainSrc = true,
-                        .releaseDst = false,
-                        .finalDst = cstr,
-                        .nodeId = nodeId,
-                    };
-                } else {
-                    return .{
-                        .dst = local,
-                        .retainSrc = false,
-                        .releaseDst = false,
-                        .finalDst = cstr,
-                        .nodeId = nodeId,
-                    };
-                }
-            },
-            .captured => {
-                return .{
-                    .dst = local,
-                    .retainSrc = rcCandidate,
-                    .releaseDst = false,
-                    .finalDst = cstr,
-                    .nodeId = nodeId,
-                };
-            },
-            .liftedLocal => {
-                const retainSrc = cstr.data.reg.dst != local and rcCandidate;
-                return .{
-                    .dst = local,
-                    .retainSrc = retainSrc,
-                    .releaseDst = false,
-                    .finalDst = cstr,
-                    .nodeId = nodeId,
-                };
-            },
-            .localReg,
-            .tempReg => {
-                const retainSrc = cstr.data.reg.retain and cstr.data.reg.dst != local and rcCandidate;
-                return .{
-                    .dst = cstr.data.reg.dst,
-                    .retainSrc = retainSrc,
-                    .releaseDst = cstr.data.reg.releaseDst,
-                    .finalDst = null,
-                    .nodeId = nodeId,
-                };
-            },
-            .simple => {
-                return .{
-                    .dst = local,
-                    .retainSrc = cstr.data.simple.retain,
-                    .releaseDst = false,
-                    .finalDst = null,
-                    .nodeId = nodeId,
-                };
-            },
-            .preferVolatile => {
-                return .{
-                    .dst = local,
-                    .retainSrc = false,
-                    .releaseDst = false,
-                    .finalDst = null,
-                    .nodeId = nodeId,
-                };
-            },
-            .none => return error.Unsupported,
-        }
-    }
-
     /// Selecting for a non local inst that can not fail.
     /// A required dst can be retained but `requiresPreRelease` will be set to true.
     pub fn selectForNoErrNoDepInst(self: *Allocator, cstr: Cstr, instCouldRetain: bool, nodeId: cy.NodeId) !NoErrInst {
@@ -357,6 +283,9 @@ pub const Cstr = struct {
             dst: RegisterId,
             retain: bool,
             releaseDst: bool,
+
+            /// Whether to check src type before copy to dst.
+            check_type: ?cy.TypeId,
         },
         // Runtime id.
         varSym: u32,
@@ -395,6 +324,7 @@ pub const Cstr = struct {
         .dst = 0,
         .retain = true,
         .releaseDst = false,
+        .check_type = null,
     }}};
 
     pub fn toCaptured(idx: u8) Cstr {
@@ -441,6 +371,7 @@ pub const Cstr = struct {
             .dst = reg,
             .retain = true,
             .releaseDst = false,
+            .check_type = null,
         }}};
     }
 
@@ -449,6 +380,7 @@ pub const Cstr = struct {
             .dst = reg,
             .retain = false,
             .releaseDst = false,
+            .check_type = null,
         }}};
     }
 
@@ -457,6 +389,7 @@ pub const Cstr = struct {
             .dst = reg,
             .retain = true,
             .releaseDst = true,
+            .check_type = null,
         }}};
     }
 
@@ -465,6 +398,7 @@ pub const Cstr = struct {
             .dst = reg,
             .retain = true,
             .releaseDst = rcCandidate,
+            .check_type = null,
         }}};
     }
 

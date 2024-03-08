@@ -285,6 +285,7 @@ if (!aot) {
 }
 
     run.case("vars/local_annotate_error.cy");
+    run.case("vars/local_assign_dyn_panic.cy");
     run.case("vars/local_assign_error.cy");
 if (!aot) {
     run.case("vars/local_assign.cy");
@@ -292,6 +293,7 @@ if (!aot) {
     run.case("vars/local_dup_captured_error.cy");
     run.case("vars/local_dup_error.cy");
     run.case("vars/local_dup_static_error.cy");
+    run.case("vars/local_init_dyn_panic.cy");
     run.case("vars/local_init_error.cy");
 if (!aot) {
     run.case("vars/local_init.cy");

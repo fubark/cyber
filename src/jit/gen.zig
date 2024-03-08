@@ -1089,16 +1089,8 @@ fn funcBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
 pub fn gen(self: *cy.VMcompiler) !void {
     // Prepare host funcs.
     for (self.chunks.items) |chunk| {
-        const mod = chunk.sym.getMod();
-        for (mod.funcs.items) |func| {
+        for (chunk.funcs.items) |func| {
             try prepareFunc(self, func);
-        }
-
-        for (chunk.modSyms.items) |modSym| {
-            const mod2 = modSym.getMod().?;
-            for (mod2.funcs.items) |func| {
-                try prepareFunc(self, func);
-            }
         }
     }
 

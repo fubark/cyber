@@ -728,14 +728,9 @@ typedef struct ByteCodeBuffer {
 } ByteCodeBuffer;
 
 typedef struct Module {
-    ZList syms;
     ZHashMap symMap;
-
-    ZList funcs;
     ZHashMap overloadedFuncMap;
-
     ZList retainedVars;
-
     void* chunk;
 } Module;
 

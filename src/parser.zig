@@ -723,17 +723,24 @@ pub const Parser = struct {
             .object_k,
             .new_line,
             .colon => {
+                var decl_idx: usize = undefined;
+                if (appendDecl) {
+                    decl_idx = self.staticDecls.items.len;
+                    try self.staticDecls.append(self.alloc, .{
+                        .declT = .object,
+                        .nodeId = undefined,
+                        .data = undefined,
+                    });
+                }
+
                 const decl = try self.parseObjectDecl(start, .{
                     .name = name,
                     .modHead = modifierHead,
                     .isStruct = false,
                 });
+
                 if (appendDecl) {
-                    try self.staticDecls.append(self.alloc, .{
-                        .declT = .object,
-                        .nodeId = decl,
-                        .data = undefined,
-                    });
+                    self.staticDecls.items[decl_idx].nodeId = decl;
                 }
                 return decl;
             },
@@ -1027,9 +1034,9 @@ pub const Parser = struct {
                     .bodyHead = res.first,
                 }});
 
-                if (!self.inObjectDecl) {
+                if (!self.inTemplate) {
                     try self.staticDecls.append(self.alloc, .{
-                        .declT = .func,
+                        .declT = if (self.inObjectDecl) .implicit_method else .func,
                         .nodeId = id,
                         .data = undefined,
                     });
@@ -1050,9 +1057,9 @@ pub const Parser = struct {
                     .bodyHead = cy.NullNode,
                 }});
 
-                if (!self.inObjectDecl) {
+                if (!self.inTemplate) {
                     try self.staticDecls.append(self.alloc, .{
-                        .declT = .funcInit,
+                        .declT = if (self.inObjectDecl) .implicit_method else .funcInit,
                         .nodeId = id,
                         .data = undefined,
                     });
@@ -3635,6 +3642,7 @@ const ParseExprOptions = struct {
 const StaticDeclType = enum {
     variable,
     typeAlias,
+    implicit_method,
     func,
     funcInit,
     import,
@@ -3648,6 +3656,7 @@ pub const StaticDecl = struct {
     declT: StaticDeclType,
     nodeId: cy.NodeId,
     data: union {
+        implicit_method: *cy.Func,
         func: *cy.Func,
         sym: *cy.Sym,
         typeTemplate: struct {

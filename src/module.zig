@@ -15,20 +15,11 @@ const log = cy.log.scoped(.module);
 
 pub const ModFuncKey = cy.hash.KeyU64;
 
-pub const ModuleSymId = u32;
-pub const ModuleFuncId = u32;
-
 /// A module contains symbols declared in Cyber source code and through the embedded API.
 /// Overloaded functions are linked together so that type signatures can be checked sequentially.
 pub const Module = struct {
-    /// Syms.
-    syms: std.ArrayListUnmanaged(*cy.Sym),
-
     /// Name to sym.
-    symMap: std.StringHashMapUnmanaged(ModuleSymId),
-
-    /// Functions. Includes lambdas which are not linked from a named sym.
-    funcs: std.ArrayListUnmanaged(*cy.Func),
+    symMap: std.StringHashMapUnmanaged(cy.SymId),
 
     /// Sym+funcSig to func sym. This is used to check whether an overloaded function is unique.
     /// This should only be populated for a function sym once it's overloaded.
@@ -42,9 +33,7 @@ pub const Module = struct {
 
     pub fn init(chunk: *cy.Chunk) Module {
         return .{
-            .syms = .{},
             .symMap = .{},
-            .funcs = .{},
             .overloadedFuncMap = .{},
             .retainedVars = .{},
             .chunk = chunk,
@@ -66,25 +55,10 @@ pub const Module = struct {
             }
         }
         self.retainedVars.clearRetainingCapacity();
-
-        for (self.syms.items) |sym| {
-            sym.deinitRetained(vm);
-        }
     }
 
     pub fn deinit(self: *Module, alloc: std.mem.Allocator) void {
         self.retainedVars.deinit(alloc);
-
-        for (self.syms.items) |sym| {
-            sym.destroy(self.chunk.vm, alloc);
-        }
-        self.syms.deinit(alloc);
-
-        for (self.funcs.items) |func| {
-            alloc.destroy(func);
-        }
-        self.funcs.deinit(alloc);
-
         self.symMap.deinit(alloc);
         self.overloadedFuncMap.deinit(alloc);
     }
@@ -100,20 +74,20 @@ pub const Module = struct {
         }
     }
 
-    pub fn getFunc(m: *const Module, id: ModuleFuncId) *cy.Func {
-        return m.funcs.items[id];
+    pub fn getFunc(m: *const Module, id: cy.FuncId) *cy.Func {
+        return m.chunk.funcs.items[id];
     }
 
-    pub fn getSymById(m: *const Module, id: ModuleSymId) *cy.Sym {
-        return m.syms.items[id];
+    pub fn getSymById(m: *const Module, id: cy.SymId) *cy.Sym {
+        return m.chunk.syms.items[id];
     }
 
     pub fn getSym(m: *Module, name: []const u8) ?*cy.Sym {
         const symId = m.symMap.get(name) orelse return null;
-        return m.syms.items[symId];
+        return m.chunk.syms.items[symId];
     }
 
-    fn isFuncUnique(m: *Module, func: *cy.sym.FuncSym, symId: ModuleSymId, funcSigId: sema.FuncSigId) bool {
+    fn isFuncUnique(m: *Module, func: *cy.sym.FuncSym, sym_id: cy.SymId, funcSigId: sema.FuncSigId) bool {
         if (func.firstFuncSig == funcSigId) {
             return false;
         }
@@ -121,14 +95,14 @@ pub const Module = struct {
             return true;
         }
         
-        const key = ModFuncKey.initModFuncKey(symId, funcSigId);
+        const key = ModFuncKey.initModFuncKey(sym_id, funcSigId);
         return !m.overloadedFuncMap.contains(key);
     }
 };
 
 fn checkUniqueSym(c: *cy.Chunk, mod: *Module, name: []const u8, declId: cy.NodeId) !void {
     if (mod.symMap.get(name)) |symId| {
-        const sym = mod.syms.items[symId];
+        const sym = mod.chunk.syms.items[symId];
         return reportDupSym(c, sym, name, declId);
     }
 }
@@ -137,27 +111,27 @@ fn reportDupSym(c: *cy.Chunk, sym: *cy.Sym, name: []const u8, declId: cy.NodeId)
     return c.reportErrorAt("`{}` has already been declared as a `{}`.", &.{v(name), v(sym.type)}, declId);
 }
 
-fn addSym(c: *cy.Chunk, mod: *Module, name: []const u8, sym: *cy.Sym) !ModuleSymId {
-    const id = mod.syms.items.len;
-    try mod.syms.append(c.alloc, sym);
+fn addSym(c: *cy.Chunk, mod: *Module, name: []const u8, sym: *cy.Sym) !cy.SymId {
+    const id = mod.chunk.syms.items.len;
+    try mod.chunk.syms.append(c.alloc, sym);
     try mod.symMap.putNoClobber(c.alloc, name, @intCast(id));
     return @intCast(id);
 }
 
 const PrepareFuncSymResult = struct {
     sym: *cy.sym.FuncSym,
-    symId: ModuleSymId,
+    symId: cy.SymId,
 };
 
 fn prepareFuncSym(c: *cy.Chunk, parent: *cy.Sym, mod: *Module, name: []const u8, funcSigId: sema.FuncSigId, declId: cy.NodeId) !PrepareFuncSymResult {
-    if (mod.symMap.get(name)) |symId| {
-        const sym = mod.syms.items[symId];
+    if (mod.symMap.get(name)) |sym_id| {
+        const sym = mod.chunk.syms.items[sym_id];
         if (sym.type == .func) {
             const func = sym.cast(.func);
-            if (!mod.isFuncUnique(func, symId, funcSigId)) {
+            if (!mod.isFuncUnique(func, sym_id, funcSigId)) {
                 return c.reportErrorAt("`{}` has already been declared with the same function signature.", &.{v(name)}, declId);
             }
-            return .{ .sym = func, .symId = symId };
+            return .{ .sym = func, .symId = sym_id };
         } else {
             try reportDupSym(c, sym, name, declId);
         }
@@ -189,7 +163,7 @@ fn createFunc(c: *cy.Chunk, ftype: cy.sym.FuncType, parent: *cy.Sym, sym: ?*cy.s
     return func;
 }
 
-fn addFuncToSym(c: *cy.Chunk, mod: *Module, symId: ModuleSymId, sym: *cy.sym.FuncSym, func: *cy.Func) !void {
+fn addFuncToSym(c: *cy.Chunk, mod: *Module, sym_id: cy.SymId, sym: *cy.sym.FuncSym, func: *cy.Func) !void {
     if (sym.numFuncs == 0) {
         // First func for sym.
         sym.numFuncs = 1;
@@ -206,15 +180,15 @@ fn addFuncToSym(c: *cy.Chunk, mod: *Module, symId: ModuleSymId, sym: *cy.sym.Fun
     if (sym.numFuncs > 1) {
         if (sym.numFuncs == 2) {
             // Insert first func into overloaded map.
-            const key = ModFuncKey.initModFuncKey(symId, sym.firstFuncSig);
+            const key = ModFuncKey.initModFuncKey(sym_id, sym.firstFuncSig);
             try mod.overloadedFuncMap.putNoClobber(c.alloc, key, sym.first);
         }
         // Insert new func into overloaded map.
-        const key = ModFuncKey.initModFuncKey(symId, func.funcSigId);
+        const key = ModFuncKey.initModFuncKey(sym_id, func.funcSigId);
         try mod.overloadedFuncMap.putNoClobber(c.alloc, key, func);
     }
 
-    try mod.funcs.append(c.alloc, func);
+    try mod.chunk.funcs.append(c.alloc, func);
 }
 
 pub const ChunkExt = struct {
@@ -225,7 +199,7 @@ pub const ChunkExt = struct {
             .mod = undefined,
         });
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(c);
-        try c.modSyms.append(c.alloc, @ptrCast(sym));
+        try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }
 
@@ -283,14 +257,13 @@ pub const ChunkExt = struct {
         const sym = try cy.sym.createSym(c.alloc, .enum_t, .{
             .head = cy.Sym.init(.enum_t, parent, name),
             .type = typeId,
-            .members = @as([*]const ModuleSymId, @ptrCast(@alignCast(&.{}))),
+            .members = @as([*]const cy.SymId, @ptrCast(@alignCast(&.{}))),
             .numMembers = 0,
             .isChoiceType = isChoiceType,
             .variantId = cy.NullId,
             .mod = undefined,
         });
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
-        try mod.chunk.modSyms.append(c.alloc, @ptrCast(sym));
 
         _ = try addSym(c, mod, name, @ptrCast(sym));
         c.compiler.sema.types.items[typeId] = .{
@@ -306,7 +279,7 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn declareEnumMember(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, typeId: types.TypeId, val: u32, payloadType: cy.TypeId, declId: cy.NodeId) !ModuleSymId {
+    pub fn declareEnumMember(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, typeId: types.TypeId, val: u32, payloadType: cy.TypeId, declId: cy.NodeId) !cy.SymId {
         const mod = parent.getMod().?;
         try checkUniqueSym(c, mod, name, declId);
 
@@ -358,7 +331,7 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn declareField(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, idx: u32, typeId: types.TypeId, declId: cy.NodeId) !ModuleSymId {
+    pub fn declareField(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, idx: u32, typeId: types.TypeId, declId: cy.NodeId) !cy.SymId {
         const mod = parent.getMod().?;
         try checkUniqueSym(c, mod, name, declId);
 
@@ -387,7 +360,6 @@ pub const ChunkExt = struct {
         });
 
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
-        try mod.chunk.modSyms.append(c.alloc, @ptrCast(sym));
 
         c.compiler.sema.types.items[typeId] = .{
             .sym = @ptrCast(sym),
@@ -407,7 +379,7 @@ pub const ChunkExt = struct {
         const sym = try cy.sym.createSym(c.alloc, .enum_t, .{
             .head = cy.Sym.init(.enum_t, @ptrCast(parent), name),
             .type = typeId,
-            .members = @as([*]const ModuleSymId, @ptrCast(@alignCast(&.{}))),
+            .members = @as([*]const cy.SymId, @ptrCast(@alignCast(&.{}))),
             .numMembers = 0,
             .isChoiceType = isChoiceType,
             .variantId = variantId,
@@ -415,7 +387,6 @@ pub const ChunkExt = struct {
         });
 
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
-        try mod.chunk.modSyms.append(c.alloc, @ptrCast(sym));
 
         c.compiler.sema.types.items[typeId] = .{
             .sym = @ptrCast(sym),
@@ -447,7 +418,6 @@ pub const ChunkExt = struct {
         });
 
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
-        try mod.chunk.modSyms.append(c.alloc, @ptrCast(sym));
 
         _ = try addSym(c, mod, name, @ptrCast(sym));
         c.compiler.sema.types.items[typeId] = .{
@@ -476,7 +446,6 @@ pub const ChunkExt = struct {
         });
 
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
-        try mod.chunk.modSyms.append(c.alloc, @ptrCast(sym));
 
         _ = try addSym(c, mod, name, @ptrCast(sym));
         c.compiler.sema.types.items[typeId] = .{
@@ -513,7 +482,6 @@ pub const ChunkExt = struct {
         });
 
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
-        try mod.chunk.modSyms.append(c.alloc, @ptrCast(sym));
 
         const symId = try addSym(c, mod, name, @ptrCast(sym));
 
@@ -551,7 +519,6 @@ pub const ChunkExt = struct {
         });
 
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
-        try mod.chunk.modSyms.append(c.alloc, @ptrCast(sym));
 
         const symId = try addSym(c, mod, name, @ptrCast(sym));
 
@@ -587,7 +554,6 @@ pub const ChunkExt = struct {
             .mod = undefined,
         });
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
-        try mod.chunk.modSyms.append(c.alloc, @ptrCast(sym));
 
         _ = try addSym(c, mod, name, @ptrCast(sym));
         // c.vm.types.buf[rtTypeId].isHostObject = true;
@@ -612,7 +578,6 @@ pub const ChunkExt = struct {
             .mod = undefined,
         });
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
-        try mod.chunk.modSyms.append(c.alloc, @ptrCast(sym));
 
         _ = try addSym(c, mod, name, @ptrCast(sym));
         c.compiler.sema.types.items[typeId] = .{
@@ -637,7 +602,7 @@ pub const ChunkExt = struct {
     pub fn addUserLambda(c: *cy.Chunk, parent: *cy.Sym, funcSigId: sema.FuncSigId, declId: cy.NodeId) !*cy.Func {
         const mod = parent.getMod().?;
         const func = try createFunc(c, .userLambda, parent, null, funcSigId, declId, false);
-        try mod.funcs.append(c.alloc, func);
+        try mod.chunk.funcs.append(c.alloc, func);
         return func;
     }
 
@@ -737,7 +702,7 @@ pub const ChunkExt = struct {
             }
         };
 
-        const sym = mod.syms.items[symId];
+        const sym = mod.chunk.syms.items[symId];
         switch (sym.type) {
             .userVar,
             .hostVar,
@@ -794,9 +759,7 @@ fn ensureTypeAliasIsResolved(mod: *Module, alias: *cy.sym.TypeAlias) !void {
 }
 
 test "module internals" {
-    try t.eq(@offsetOf(Module, "syms"), @offsetOf(vmc.Module, "syms"));
     try t.eq(@offsetOf(Module, "symMap"), @offsetOf(vmc.Module, "symMap"));
-    try t.eq(@offsetOf(Module, "funcs"), @offsetOf(vmc.Module, "funcs"));
     try t.eq(@offsetOf(Module, "overloadedFuncMap"), @offsetOf(vmc.Module, "overloadedFuncMap"));
     try t.eq(@offsetOf(Module, "retainedVars"), @offsetOf(vmc.Module, "retainedVars"));
     try t.eq(@offsetOf(Module, "chunk"), @offsetOf(vmc.Module, "chunk"));

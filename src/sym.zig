@@ -487,7 +487,7 @@ pub const Field = extern struct {
 };
 
 pub const FieldInfo = packed struct {
-    symId: cy.module.ModuleSymId,
+    symId: cy.SymId,
     type: cy.TypeId,
 };
 
@@ -534,7 +534,7 @@ pub const PredefinedType = extern struct {
 pub const EnumType = extern struct {
     head: Sym,
     type: cy.TypeId,
-    members: [*]const cy.module.ModuleSymId,
+    members: [*]const cy.SymId,
     numMembers: u32,
     mod: vmc.Module,
 
@@ -545,7 +545,7 @@ pub const EnumType = extern struct {
 
     pub fn getValueSym(self: *EnumType, val: u16) *Sym {
         const symId = self.members[val];
-        return self.getMod().syms.items[symId];
+        return self.getMod().chunk.syms.items[symId];
     }
 
     pub fn getMod(self: *EnumType) *cy.Module {
@@ -555,7 +555,7 @@ pub const EnumType = extern struct {
     pub fn getMemberByIdx(self: *EnumType, idx: u32) *EnumMember {
         const mod = self.head.getMod().?;
         const symId = self.members[idx];
-        return mod.syms.items[symId].cast(.enumMember);
+        return mod.chunk.syms.items[symId].cast(.enumMember);
     }
 
     pub fn getMember(self: *EnumType, name: []const u8) ?*EnumMember {

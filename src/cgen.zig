@@ -310,18 +310,9 @@ pub fn gen(self: *cy.VMcompiler) !cy.vm_compiler.AotCompileResult {
 
     // Prepare host funcs.
     for (self.chunks.items) |chunk| {
-        const mod = chunk.sym.getMod();
-        for (mod.funcs.items) |func| {
+        for (chunk.funcs.items) |func| {
             _ = func;
             // try jitgen.prepareFunc(self, func);
-        }
-
-        for (chunk.modSyms.items) |modSym| {
-            const mod2 = modSym.getMod().?;
-            for (mod2.funcs.items) |func| {
-                _ = func;
-                // try jitgen.prepareFunc(self, func);
-            }
         }
     }
 
@@ -512,7 +503,7 @@ fn genHead(c: *Compiler, w: std.ArrayListUnmanaged(u8).Writer, chunks: []Chunk) 
         const isStd = std.mem.eql(u8, modName, "builtins") or
             std.mem.eql(u8, modName, "test");
 
-        for (base.sym.getMod().funcs.items) |func| {
+        for (base.funcs.items) |func| {
             if (func.type == .userLambda) {
                 continue;
             }

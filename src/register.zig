@@ -219,14 +219,6 @@ pub const NoErrInst = struct {
     nodeId: cy.NodeId,
 };
 
-pub const CopyInst = struct {
-    dst: RegisterId,
-    retainSrc: bool,
-    releaseDst: bool,
-    finalDst: ?Cstr,
-    nodeId: cy.NodeId,
-};
-
 pub const DstInst = struct {
     dst: RegisterId,
     finalDst: ?Cstr,

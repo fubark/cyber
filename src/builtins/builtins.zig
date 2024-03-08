@@ -612,6 +612,10 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
         .typeAlias => {
             name = ast.nodeStringById(node.data.typeAliasDecl.name);
         },
+        .implicit_method => {
+            const header = ast.node(node.data.func.header);
+            name = ast.getNamePathInfoById(header.data.funcHeader.name).namePath;
+        },
         .func => {
             const header = ast.node(node.data.func.header);
             name = ast.getNamePathInfoById(header.data.funcHeader.name).namePath;
@@ -630,30 +634,6 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
         .object => {
             const header = ast.node(node.data.objectDecl.header);
             name = ast.nodeStringById(header.data.objectHeader.name);
-
-            const childrenv = try vm.allocEmptyList();
-            const children = childrenv.asHeapObject().list.getList();
-
-            var funcId: cy.NodeId = node.data.objectDecl.funcHead;
-            while (funcId != cy.NullNode) {
-                const funcN = ast.node(funcId);
-                var childDecl: cy.parser.StaticDecl = undefined;
-                switch (funcN.type()) {
-                    .funcDecl => {
-                        if (funcN.data.func.bodyHead == cy.NullNode) {
-                            childDecl = .{ .declT = .funcInit, .nodeId = funcId, .data = undefined };
-                        } else {
-                            childDecl = .{ .declT = .func, .nodeId = funcId, .data = undefined };
-                        }
-                    },
-                    else => return error.Unsupported,
-                }
-
-                try children.append(vm.alloc, try genDeclEntry(vm, ast, childDecl, state));
-                funcId = funcN.next();
-            }
-
-            try vm.mapSet(entry, try vm.retainOrAllocAstring("children"), childrenv);
         },
         .enum_t => {
             name = ast.nodeStringById(node.data.enumDecl.name);

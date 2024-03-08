@@ -901,7 +901,7 @@ pub fn declareEnumMembers(c: *cy.Chunk, sym: *cy.sym.EnumType, nodeId: cy.NodeId
     var i: u32 = 0;
     var cur: cy.NodeId = node.data.enumDecl.memberHead;
 
-    const members = try c.alloc.alloc(cy.module.ModuleSymId, node.data.enumDecl.numMembers);
+    const members = try c.alloc.alloc(cy.SymId, node.data.enumDecl.numMembers);
     while (cur != cy.NullNode) : (i += 1) {
         const member = c.ast.node(cur);
         const memberNameN = c.ast.node(member.data.enumMember.name);
@@ -978,11 +978,21 @@ pub fn declareTemplateVariant(c: *cy.Chunk, template: *cy.sym.TypeTemplate, vari
             const variant = template.variants.items[variantId];
             tchunk.patchTemplateNodes = variant.patchNodes;
 
-            try declareObjectMembers(tchunk, @ptrCast(sym), template_n.data.typeTemplate.typeDecl);
+            const mod = sym.getMod();
+            const start = mod.chunk.funcs.items.len;
+
+            try declareObjectFields(tchunk, @ptrCast(sym), template_n.data.typeTemplate.typeDecl);
+
+            const object_n = tchunk.ast.node(template_n.data.typeTemplate.typeDecl);
+            var func_id: cy.NodeId = object_n.data.objectDecl.funcHead;
+            while (func_id != cy.NullNode) {
+                const decl = try resolveImplicitMethodDecl(c, @ptrCast(sym), func_id);
+                _ = try declareMethod(c, @ptrCast(sym), func_id, decl);
+                func_id = c.ast.node(func_id).next();
+            }
 
             // Defer method sema.
-            const mod = sym.getMod();
-            try mod.chunk.variantFuncSyms.appendSlice(c.alloc, mod.funcs.items);
+            try mod.chunk.variantFuncSyms.appendSlice(c.alloc, mod.chunk.funcs.items[start..]);
             return @ptrCast(sym);
         },
         .enum_t => {
@@ -1037,7 +1047,7 @@ pub fn declareObject(c: *cy.Chunk, isStruct: bool, nodeId: cy.NodeId) !*cy.Sym {
 }
 
 /// modSym can be an objectType or predefinedType.
-pub fn declareObjectMembers(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !void {
+pub fn declareObjectFields(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !void {
     const node = c.ast.node(nodeId);
 
     // Load fields.
@@ -1072,33 +1082,6 @@ pub fn declareObjectMembers(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !v
             .numFields = @intCast(obj.numFields),
         };
     } 
-
-    var funcId: cy.NodeId = node.data.objectDecl.funcHead;
-    while (funcId != cy.NullNode) {
-        const decl = try resolveImplicitMethodDecl(c, modSym, funcId);
-        _ = try declareMethod(c, modSym, funcId, decl);
-        funcId = c.ast.node(funcId).next();
-    }
-}
-
-pub fn objectDecl(c: *cy.Chunk, obj: *cy.sym.ObjectType, nodeId: cy.NodeId) !void {
-    if (c.curSelfSym != null) {
-        return c.reportErrorAt("Nested types are not supported.", &.{}, nodeId);
-    }
-
-    const mod = obj.head.getMod().?;
-
-    // Iterate with index since lambdas can be pushed and reallocate the buffer.
-    var i: u32 = 0;
-    const numFuncs = mod.funcs.items.len;
-    while (i < numFuncs) {
-        const func = mod.funcs.items[i];
-        if (func.isMethod and func.type == .userFunc) {
-            // Object method.
-            try sema.methodDecl(c, func);
-        }
-        i += 1;
-    }
 }
 
 pub fn declareFuncInit(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId) !void {
@@ -1134,7 +1117,7 @@ fn declareGenericFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId) !void {
     }
 }
 
-fn declareMethod(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: FuncDecl) !*cy.Func {
+pub fn declareMethod(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: FuncDecl) !*cy.Func {
     const node = c.ast.node(nodeId);
     if (node.data.func.bodyHead != cy.NullNode) {
         return c.declareUserFunc(parent, decl.name, decl.funcSigId, nodeId, true);
@@ -1851,7 +1834,7 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !TypeExprResult {
             // Unnamed object.
             const header = c.ast.node(expr.data.objectDecl.header);
             const symId = header.data.objectHeader.name;
-            const sym = c.sym.getMod().syms.items[symId];
+            const sym = c.sym.getMod().chunk.syms.items[symId];
             return TypeExprResult{ .sym = sym, .type = sym.getStaticType().? };
         },
         .noneLit => {
@@ -1910,7 +1893,7 @@ const FuncDecl = struct {
     isMethod: bool,
 };
 
-fn resolveImplicitMethodDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !FuncDecl {
+pub fn resolveImplicitMethodDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !FuncDecl {
     const func = c.ast.node(nodeId);
     const header = c.ast.node(func.data.func.header);
     const name = c.ast.nodeStringById(header.data.funcHeader.name);

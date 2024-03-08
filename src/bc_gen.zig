@@ -58,17 +58,13 @@ pub fn genAll(c: *cy.VMcompiler) !void {
         }
     }
 
-    // Prepare funcs.
     for (c.chunks.items) |chunk| {
-        for (chunk.modSyms.items) |modSym| {
-            log.tracev("prep module", .{});
-            const mod = modSym.getMod().?;
-            for (mod.syms.items) |sym| {
-                try prepareSym(c, sym);
-            }
-            for (mod.funcs.items) |func| {
-                try prepareFunc(c, func);
-            }
+        log.tracev("prep chunk", .{});
+        for (chunk.syms.items) |sym| {
+            try prepareSym(c, sym);
+        }
+        for (chunk.funcs.items) |func| {
+            try prepareFunc(c, func);
         }
     }
 
@@ -140,6 +136,7 @@ fn prepareSym(c: *cy.VMcompiler, sym: *cy.Sym) !void {
         .typeTemplate,
         .hostObjectType,
         .predefinedType,
+        .chunk,
         .field,
         .struct_t,
         .object_t,
@@ -2427,10 +2424,6 @@ fn finishDstInst(c: *Chunk, inst: cy.register.DstInst, retainedToDst: bool) !Gen
 }
 
 fn finishNoErrNoDepInst(c: *Chunk, inst: cy.register.NoErrInst, retainedToDst: bool) !GenValue {
-    return finishInst(c, inst.dst, inst.finalDst, retainedToDst, inst.nodeId);
-}
-
-fn finishCopyInst(c: *Chunk, inst: cy.register.CopyInst, retainedToDst: bool) !GenValue {
     return finishInst(c, inst.dst, inst.finalDst, retainedToDst, inst.nodeId);
 }
 

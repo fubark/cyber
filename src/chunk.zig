@@ -17,6 +17,8 @@ const jitgen = @import("jit/gen.zig");
 const X64 = @import("jit/x64.zig");
 
 pub const ChunkId = u32;
+pub const SymId = u32;
+pub const FuncId = u32;
 
 /// A compilation unit.
 /// It contains data to compile from source into a module with exported symbols.
@@ -77,9 +79,6 @@ pub const Chunk = struct {
 
     curSelfSym: ?*cy.Sym,
 
-    /// Used to iterate module syms.
-    modSyms: std.ArrayListUnmanaged(*cy.Sym),
-
     /// Record other chunks that this chunk's static initializer depends on.
     symInitChunkDeps: std.AutoHashMapUnmanaged(*cy.Chunk, void),
 
@@ -114,6 +113,12 @@ pub const Chunk = struct {
     /// This is only needed for default initializers so it is created on demand per chunk.
     typeDeps: std.ArrayListUnmanaged(TypeDepNode),
     typeDepsMap: std.AutoHashMapUnmanaged(*cy.Sym, u32),
+
+    /// Syms.
+    syms: std.ArrayListUnmanaged(*cy.Sym),
+
+    /// Functions. Includes lambdas which are not linked from a named sym.
+    funcs: std.ArrayListUnmanaged(*cy.Func),
 
     ///
     /// Codegen pass
@@ -237,7 +242,6 @@ pub const Chunk = struct {
             .curInitingSym = null,
             .curInitingSymDeps = .{},
             .symInitChunkDeps = .{},
-            .modSyms = .{},
             .tempBufU8 = .{},
             .srcOwned = true,
             .mainSemaProcId = cy.NullId,
@@ -267,6 +271,8 @@ pub const Chunk = struct {
                 .first = cy.NullId,
                 .last = cy.NullId,
             },
+            .syms = .{},
+            .funcs = .{},
         };
 
         if (cy.hasJIT) {
@@ -293,7 +299,7 @@ pub const Chunk = struct {
         self.semaProcs.deinit(self.alloc);
 
         self.procs.deinit(self.alloc);
-        self.blocks.deinit(self.alloc);
+        self.blocks.deinit(self.alloc); 
 
         self.blockJumpStack.deinit(self.alloc);
         self.assignedVarStack.deinit(self.alloc);
@@ -334,10 +340,16 @@ pub const Chunk = struct {
         self.localSymMap.deinit(self.alloc);
         self.usingModules.deinit(self.alloc);
 
-        // Deinit the Chunk sym.
-        (&self.sym.head).destroy(self.compiler.vm, self.alloc);
+        // Deinit chunk syms.
+        for (self.syms.items) |sym| {
+            sym.destroy(self.vm, self.alloc);
+        }
+        self.syms.deinit(self.alloc);
 
-        self.modSyms.deinit(self.alloc);
+        for (self.funcs.items) |func| {
+            self.alloc.destroy(func);
+        }
+        self.funcs.deinit(self.alloc);
 
         self.variantFuncSyms.deinit(self.alloc);
 

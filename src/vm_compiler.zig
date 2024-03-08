@@ -128,7 +128,9 @@ pub const VMcompiler = struct {
 
     pub fn deinitModRetained(self: *VMcompiler) void {
         for (self.chunks.items) |chunk| {
-            (&chunk.sym.head).deinitRetained(self.vm);
+            for (chunk.syms.items) |sym| {
+                sym.deinitRetained(self.vm);
+            }
         }
     }
 
@@ -399,12 +401,16 @@ fn performChunkSemaDecls(c: *cy.Chunk) !void {
     for (c.parser.staticDecls.items) |decl| {
         switch (decl.declT) {
             .func => {
-                // Skip flat method decls since they are processed in objectDecl.
-                if (decl.data.func.isMethod) continue;
-                try sema.funcDecl(c, decl.data.func);
+                if (decl.data.func.isMethod) {
+                    try sema.methodDecl(c, decl.data.func);
+                } else {
+                    try sema.funcDecl(c, decl.data.func);
+                }
             },
-            .object => {
-                try sema.objectDecl(c, @ptrCast(decl.data.sym), decl.nodeId);
+            .implicit_method => {
+                if (decl.data.implicit_method.type == .userFunc) {
+                    try sema.methodDecl(c, decl.data.implicit_method);
+                }
             },
             else => {},
         }
@@ -628,6 +634,7 @@ fn declareImportsAndTypes(self: *VMcompiler, mainChunk: *cy.Chunk) !void {
                         try sema.declareTypeTemplate(chunk, decl.nodeId, ctNodes);
                     },
                     .variable,
+                    .implicit_method,
                     .func,
                     .funcInit => {},
                 }
@@ -738,6 +745,7 @@ fn declareSymbols(self: *VMcompiler) !void {
     log.tracev("Load module symbols.", .{});
     for (self.chunks.items) |chunk| {
         // Process static declarations.
+        var last_obj_sym: *cy.Sym = undefined;
         for (chunk.parser.staticDecls.items) |*decl| {
             log.tracev("Load {s}", .{@tagName(decl.declT)});
             switch (decl.declT) {
@@ -749,6 +757,11 @@ fn declareSymbols(self: *VMcompiler) !void {
                         chunk.hasStaticInit = true;
                     }
                 },
+                .implicit_method => {
+                    const method = try sema.resolveImplicitMethodDecl(chunk, last_obj_sym, decl.nodeId);
+                    const func = try sema.declareMethod(chunk, last_obj_sym, decl.nodeId, method);
+                    decl.data = .{ .implicit_method = func };
+                },
                 .func => {
                     const func = try sema.declareFunc(chunk, @ptrCast(chunk.sym), decl.nodeId);
                     decl.data = .{ .func = func };
@@ -758,7 +771,8 @@ fn declareSymbols(self: *VMcompiler) !void {
                 },
                 .struct_t,
                 .object => {
-                    try sema.declareObjectMembers(chunk, decl.data.sym, decl.nodeId);
+                    try sema.declareObjectFields(chunk, decl.data.sym, decl.nodeId);
+                    last_obj_sym = decl.data.sym;
                 },
                 .enum_t => {
                     try sema.declareEnumMembers(chunk, @ptrCast(decl.data.sym), decl.nodeId);

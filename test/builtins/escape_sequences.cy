@@ -1,11 +1,11 @@
 import t 'test'
 
--- Single quote literal with escaped single quote.
-var str = "ab\'c"
+-- Double quote literal with escaped double quote.
+var str = "ab\"c"
 t.eq(str.len(), 4)
 t.eq(str.runeAt(0), `a`)
 t.eq(str.runeAt(1), `b`)
-t.eq(str.runeAt(2), `'`)
+t.eq(str.runeAt(2), `"`)
 t.eq(str.runeAt(3), `c`)
 
 -- Single quote literal with new line escape sequence.
@@ -32,7 +32,10 @@ t.eq("ab\rc".runeAt(2), 13)
 t.eq("ab\tc".runeAt(2), 9)
 
 -- Escaped backslash.
-t.eq("ab\\nc".runeAt(2), 92)
+t.eq("ab\\nc".runeAt(2), 0x5c)
 t.eq("ab\\nc".runeAt(3), `n`)
+
+-- Hex.
+t.eq("\x61".runeAt(0), `a`)
 
 --cytest: pass

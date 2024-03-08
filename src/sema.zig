@@ -3733,16 +3733,10 @@ pub const ChunkExt = struct {
                 }
                 var val: u48 = undefined;
                 if (literal[0] == '\\') {
-                    if (unescapeAsciiChar(literal[1])) |ch| {
-                        val = ch;
-                    } else {
-                        val = literal[1];
-                        if (val > 128) {
-                            return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
-                        }
-                    }
-                    if (literal.len != 2) {
-                        return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
+                    const res = try unescapeSeq(literal[1..]);
+                    val = res.char;
+                    if (literal.len > res.advance + 1) {
+                        return c.reportErrorAt("Invalid escape sequence.", &.{}, nodeId);
                     }
                 } else {
                     const len = std.unicode.utf8ByteSequenceLength(literal[0]) catch {
@@ -3997,7 +3991,6 @@ pub const ChunkExt = struct {
                 var curId: cy.NodeId = node.data.stringTemplate.strHead;
                 while (curId != cy.NullNode) {
                     const str = c.ast.node(curId);
-                    log.tracev("{}", .{str.type()});
                     c.ir.setArrayItem(irStrsIdx, []const u8, i, c.ast.nodeString(str));
                     curId = str.next();
                     i += 1;
@@ -5118,47 +5111,86 @@ pub const U32SliceContext = struct {
 };
 
 /// `buf` is assumed to be big enough.
-pub fn unescapeString(buf: []u8, literal: []const u8) []const u8 {
-    var newIdx: u32 = 0; 
-    var i: u32 = 0;
-    while (i < literal.len) : (newIdx += 1) {
-        if (literal[i] == '\\') {
-            if (unescapeAsciiChar(literal[i + 1])) |ch| {
-                buf[newIdx] = ch;
-            } else {
-                buf[newIdx] = literal[i + 1];
-            }
-            i += 2;
+pub fn unescapeString(buf: []u8, literal: []const u8, always_copy: bool) ![]const u8 {
+    var i = std.mem.indexOfScalar(u8, literal, '\\') orelse {
+        if (always_copy) {
+            @memcpy(buf[0..literal.len], literal);
+            return buf[0..literal.len];
         } else {
-            buf[newIdx] = literal[i];
-            i += 1;
+            return literal;
         }
+    };
+    @memcpy(buf[0..i], literal[0..i]);
+    var len = i;
+    var res = try unescapeSeq(literal[i+1..]);
+    buf[len] = res.char;
+    len += 1;
+    var rest = literal[i+1+res.advance..];
+
+    while (true) {
+        i = std.mem.indexOfScalar(u8, rest, '\\') orelse break;
+        @memcpy(buf[len..len+i], rest[0..i]);
+        len += i;
+        res = try unescapeSeq(rest[i+1..]);
+        buf[len] = res.char;
+        len += 1;
+        rest = rest[i+1+res.advance..];
     }
-    return buf[0..newIdx];
+
+    @memcpy(buf[len..len+rest.len], rest);
+    return buf[0..len+rest.len];
 }
 
-pub fn unescapeAsciiChar(ch: u8) ?u8 {
-    switch (ch) {
+const CharAdvance = struct {
+    char: u8,
+    advance: u8,
+
+    fn init(char: u8, advance: u8) CharAdvance {
+        return CharAdvance{ .char = char, .advance = advance };
+    }
+};
+
+pub fn unescapeSeq(seq: []const u8) !CharAdvance {
+    if (seq.len == 0) {
+        return error.MissingEscapeSeq;
+    }
+    switch (seq[0]) {
         'a' => {
-            return 0x07;
+            return CharAdvance.init(0x07, 1);
         },
         'b' => {
-            return 0x08;
+            return CharAdvance.init(0x08, 1);
         },
         'e' => {
-            return 0x1b;
+            return CharAdvance.init(0x1b, 1);
         },
         'n' => {
-            return '\n';
+            return CharAdvance.init('\n', 1);
         },
         'r' => {
-            return '\r';
+            return CharAdvance.init('\r', 1);
         },
         't' => {
-            return '\t';
+            return CharAdvance.init('\t', 1);
+        },
+        '\\' => {
+            return CharAdvance.init('\\', 1);
+        },
+        '"' => {
+            return CharAdvance.init('"', 1);
+        },
+        '0' => {
+            return CharAdvance.init('"', 1);
+        },
+        'x' => {
+            if (seq.len < 3) {
+                return error.InvalidEscapeSeq;
+            }
+            const ch = try std.fmt.parseInt(u8, seq[1..3], 16);
+            return CharAdvance.init(ch, 3);
         },
         else => {
-            return null;
+            return error.InvalidEscapeSeq;
         }
     }
 }

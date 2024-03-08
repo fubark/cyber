@@ -455,7 +455,7 @@ pub const DecodeMapIR = struct {
                 defer buf.deinit();
 
                 try buf.resize(token_s.len);
-                const str = cy.unescapeString(buf.items, token_s);
+                const str = try cy.unescapeString(buf.items, token_s, true);
                 buf.items.len = str.len;
                 return buf.toOwnedSlice();
             } else if (val_n.type() == .stringTemplate) {
@@ -615,7 +615,7 @@ pub const DecodeValueIR = struct {
         var buf = std.ArrayList(u8).init(self.alloc);
         defer buf.deinit();
         try buf.resize(token_s.len);
-        const str = cy.unescapeString(buf.items, token_s);
+        const str = try cy.unescapeString(buf.items, token_s, true);
         buf.items.len = str.len;
         return try buf.toOwnedSlice();
     }

@@ -52,7 +52,6 @@ for worlds -> w:
 * [Reserved identifiers.](#reserved-identifiers)
   * [Keywords.](#keywords)
   * [Contextual keywords.](#contextual-keywords)
-  * [Symbols.](#symbols)
   * [Literals.](#literals)
 </td><td valign="top">
 
@@ -427,7 +426,7 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
   * [Map indexing.](#map-indexing)
   * [Map operations.](#map-operations)
   * [Map block.](#map-block)
-* [Symbols.](#symbols-1)
+* [Symbols.](#symbols)
 </td>
 </tr></table>
 
@@ -547,16 +546,25 @@ line $(title)
 ```
 
 ### Escape sequences.
-The following escape sequences are supported in string literals:
+The following escape sequences are supported in string literals wrapped in double quotes:
 
-| Escape Sequence | Code | Description |
+| Sequence | Code | Character |
 | --- | --- | --- |
-| \a | 0x07 | Terminal bell. |
-| \b | 0x08 | Backspace. |
-| \e | 0x1b | Escape character. |
-| \n | 0x0a | Line feed character. |
-| \r | 0x0d | Carriage return character. |
-| \t | 0x09 | Horizontal tab character. |
+| `\0` | 0x00 | Null |
+| `\a` | 0x07 | Terminal bell |
+| `\b` | 0x08 | Backspace |
+| `\e` | 0x1b | Escape |
+| `\n` | 0x0a | Line feed |
+| `\r` | 0x0d | Carriage return |
+| `\t` | 0x09 | Horizontal tab |
+| `\"` | 0x22 | Double quote |
+| `\\` | 0x5c | Backslash |
+| `\x??` | -- | Hex number |
+
+Example:
+```cy
+print "\xF0\x9F\x90\xB6"    --> 🐶
+```
 
 ### String operations.
 See [`type String`](#type-string) for all available methods.

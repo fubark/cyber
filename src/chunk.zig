@@ -648,7 +648,7 @@ pub const Chunk = struct {
 
     pub fn unescapeString(self: *Chunk, literal: []const u8) ![]const u8 {
         try self.tempBufU8.resize(self.alloc, literal.len);
-        return cy.sema.unescapeString(self.tempBufU8.items, literal);
+        return cy.sema.unescapeString(self.tempBufU8.items, literal, false);
     }
 
     pub fn dumpLocals(self: *const Chunk, sproc: *sema.Proc) !void {

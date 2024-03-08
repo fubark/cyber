@@ -110,7 +110,7 @@ hljs.registerLanguage('cy', function() {
         /*
         {
             scope: 'symbol',
-            begin: '#', end: /\w(?=[^\w])/
+            begin: '.', end: /\\w(?=[^\\w])/
         },*/
         hljs.COMMENT(
         '\\-\\-', // begin

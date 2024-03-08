@@ -183,36 +183,35 @@ pub fn listJoin(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const obj = args[0].asHeapObject();
     const items = obj.list.items();
     if (items.len > 0) {
-        var sepCharLen: u32 = undefined;
-        const sep = args[1].asString2(&sepCharLen);
+        var is_ascii = args[1].asHeapObject().string.getType().isAstring();
+        const sep = args[1].asString();
 
         // First record length.
-        var charLenSum: u32 = 0;
         var byteLen: u32 = 0;
-        var charLen: u32 = undefined;
+        var out_ascii: bool=  undefined;
 
         // Record first string part.
-        var str = try vm.getOrBufPrintValueStr2(&cy.tempBuf, items[0], &charLen);
-        charLenSum += charLen;
+        var str = try vm.getOrBufPrintValueStr2(&cy.tempBuf, items[0], &out_ascii);
+        is_ascii = is_ascii and out_ascii;
         byteLen += @intCast(str.len);
 
         // Record other string parts.
         for (items[1..]) |item| {
-            str = try vm.getOrBufPrintValueStr2(&cy.tempBuf, item, &charLen);
-            charLenSum += charLen;
+            str = try vm.getOrBufPrintValueStr2(&cy.tempBuf, item, &out_ascii);
+            is_ascii = is_ascii and out_ascii;
             byteLen += @intCast(str.len);
         }
-        charLenSum += @intCast(sepCharLen * (items.len-1));
         byteLen += @intCast(sep.len * (items.len-1));
 
         // Allocate final buffer and perform join.
         var newObj: *cy.HeapObject = undefined;
         var buf: []u8 = undefined;
-        if (charLenSum == byteLen) {
+
+        if (is_ascii) {
             newObj = try vm.allocUnsetAstringObject(byteLen);
             buf = newObj.astring.getMutSlice();
         } else {
-            newObj = try vm.allocUnsetUstringObject(byteLen, charLenSum);
+            newObj = try vm.allocUnsetUstringObject(byteLen);
             buf = newObj.ustring.getMutSlice();
         }
 

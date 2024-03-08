@@ -1435,7 +1435,7 @@ pub const VM = struct {
     }
 
     /// String is guaranteed to be valid UTF-8.
-    pub fn getOrBufPrintValueStr(self: *const VM, buf: []u8, val: Value) linksection(cy.StdSection) ![]const u8 {
+    pub fn getOrBufPrintValueStr(self: *const VM, buf: []u8, val: Value) ![]const u8 {
         var fbuf = std.io.fixedBufferStream(buf);
         var w = fbuf.writer();
 
@@ -1447,17 +1447,18 @@ pub const VM = struct {
         return fbuf.getWritten();
     }
 
-    pub fn getOrBufPrintValueStr2(self: *const VM, buf: []u8, val: Value, outCharLen: *u32) linksection(cy.StdSection) ![]const u8 {
+    pub fn getOrBufPrintValueStr2(self: *const VM, buf: []u8, val: Value, out_ascii: *bool) ![]const u8 {
         var fbuf = std.io.fixedBufferStream(buf);
         var w = fbuf.writer();
 
         if (val.isString()) {
-            return val.asString2(outCharLen);
+            out_ascii.* = val.asHeapObject().string.getType().isAstring();
+            return val.asString();
         } else {
             _ = try self.writeValue(w, val);
         }
         const res = fbuf.getWritten();
-        outCharLen.* = @intCast(res.len);
+        out_ascii.* = true;
         return res;
     }
 

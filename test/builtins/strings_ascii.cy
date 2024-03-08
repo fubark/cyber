@@ -18,9 +18,9 @@ str = 'abcxyz'
 var lstr = 'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'
 
 -- index operator
-t.eq(str[0], 'a')
-t.eq(str[3], 'x')
-t.eq(str[5], 'z')
+t.eq(str[0], `a`)
+t.eq(str[3], `x`)
+t.eq(str[5], `z`)
 t.eq(try str[-1], error.OutOfBounds)
 t.eq(try str[6], error.OutOfBounds)
 
@@ -49,6 +49,9 @@ t.eq(str[6..6], '')
 t.eq(str.concat('123'), 'abcxyz123')
 t.eq(str.concat('123').isAscii(), true)
 t.eq(str.concat('🦊').isAscii(), false)
+
+-- count()
+t.eq(str.count(), 6)
 
 -- endsWith()
 t.eq(str.endsWith('xyz'), true)
@@ -159,13 +162,6 @@ t.eq(str.replace('bc', 'foo🦊').isAscii(), false)
 t.eq(str.replace('xy', 'foo'), 'abcfooz')
 t.eq(str.replace('xyz', 'foo'), 'abcfoo')
 t.eq(str.replace('abcd', 'foo'), 'abcxyz')
-
--- runeAt()
-t.eq(try str.runeAt(-1), error.OutOfBounds)
-t.eq(str.runeAt(0), 97)
-t.eq(str.runeAt(3), 120)
-t.eq(str.runeAt(5), 122)
-t.eq(try str.runeAt(6), error.OutOfBounds)
 
 -- sliceAt()
 t.eq(str.sliceAt(0), 'a')

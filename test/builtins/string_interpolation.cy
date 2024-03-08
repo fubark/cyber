@@ -7,12 +7,12 @@ t.eq("Hello $(a) $(b)", 'Hello World 123')
 
 -- Using just dollar sign.
 t.eq('$'.len(), 1)
-t.eq('$'.runeAt(0), 36)
+t.eq('$'[0], 36)
 
 -- Escape.
 var str = "\n\tHello $(a) $(b)"
-t.eq(str.runeAt(0), 10)
-t.eq(str.runeAt(1), 9)
+t.eq(str[0], 10)
+t.eq(str[1], 9)
 
 -- Using string literal.
 t.eq("Hello $(a) $(b)", 'Hello World 123')

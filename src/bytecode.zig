@@ -282,9 +282,9 @@ pub const ByteCodeBuffer = struct {
         return self.getOrPushConst(val);
     }
 
-    pub fn getOrPushStaticUstring(self: *ByteCodeBuffer, str: []const u8, charLen: u32) !cy.Value {
+    pub fn getOrPushStaticUstring(self: *ByteCodeBuffer, str: []const u8) !cy.Value {
         var allocated: bool = undefined;
-        const val = try cy.heap.getOrAllocUstring(self.vm, str, charLen, &allocated);
+        const val = try cy.heap.getOrAllocUstring(self.vm, str, &allocated);
         if (allocated) {
             try self.vm.staticObjects.append(self.alloc, @ptrCast(val.asHeapObject()));
         }
@@ -301,12 +301,10 @@ pub const ByteCodeBuffer = struct {
     }
 
     pub fn getOrPushStaticStringValue(self: *ByteCodeBuffer, str: []const u8) !cy.Value {
-        var ascii: bool = undefined;
-        const num_cps = cy.string.measureUtf8(str, &ascii);
-        if (ascii) {
+        if (cy.string.isAstring(str)) {
             return try self.getOrPushStaticAstring(str);
         } else {
-            return try self.getOrPushStaticUstring(str, @intCast(num_cps));
+            return try self.getOrPushStaticUstring(str);
         }
     }
 };

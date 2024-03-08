@@ -409,7 +409,8 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
   * [Raw string literal.](#raw-string-literal)
   * [String literal.](#string-literal)
   * [Escape sequences.](#escape-sequences)
-  * [String operations.](#string-operations)
+  * [String indexing.](#string-indexing)
+  * [String concatenation.](#string-concatenation)
   * [String interpolation.](#string-interpolation)
   * [String formatting.](#string-formatting)
   * [Line-join literal.](#line-join-literal)
@@ -568,35 +569,44 @@ Example:
 print "\xF0\x9F\x90\xB6"    --> 🐶
 ```
 
-### String operations.
-See [`type String`](#type-string) for all available methods.
+### String indexing.
+The index operator returns the rune starting at the given byte index:
+```cy
+var a = 'abcxyz'
+print a[1]          --> 98
+print(a[1] == `b`)  --> true
+```
 
+If an index does not begin a sequence of valid UTF-8 bytes, the replacement character (0xFFFD, 65533) is returned:
+```cy
+var a = '🐶abcxyz'
+print a[1]          --> 65533
+```
+
+Since indexing operates at the byte level, it should not be relied upon for iterating runes or rune indexing.
+However, if the string is known to only contain ASCII runes (each rune occupies one byte), indexing will return the expected rune.
+
+`String.seek` will always return the correct byte index for a rune index:
+```cy
+var a = '🐶abcxyz'
+print a.seek(2)         --> 5
+print a[a.seek(2)]      --> 98 (`b`)
+```
+
+Similarily, slicing operates on byte indexes. Using the slice operator will return a view of the string at the given start and end (exclusive) indexes. The start index defaults to 0 and the end index defaults to the string's byte length:
+```cy
+var str = 'abcxyz'
+var sub = str[0..3]
+print str[0..3]  --> abc
+print str[..5]   --> abcxy
+print str[1..]   --> bcxyz
+```
+
+### String concatenation.
 Concatenate two strings together with the `+` operator or the method `concat`. 
 ```cy
 var res = 'abc' + 'xyz'
 res = res.concat('end')
-```
-
-Using the index operator will return the UTF-8 rune at the given index as a slice. This is equivalent to calling the method `sliceAt()`.
-```cy
-var str = 'abcd'
-print str[1]     -- "b"
-```
-
-Using the slice operator will return a view of the string at the given start and end (exclusive) indexes. The start index defaults to 0 and the end index defaults to the string's length.
-```cy
-var str = 'abcxyz'
-var sub = str[0..3]
-print sub        -- "abc"
-print str[..5]   -- "abcxy"
-print str[1..]   -- "bcxyz"
-
--- One way to use slices is to continue a string operation.
-str = 'abcabcabc'
-var i = str.findRune(`c`)
-print(i)                            -- "2"
-i += 1
-print(i + str[i..].findRune(`c`))   -- "5"
 ```
 
 ### String interpolation.

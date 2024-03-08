@@ -133,22 +133,22 @@ const funcs = [_]NameFunc{
     // String
     .{"$infix+", string.concat, .standard},
     .{"concat", string.concat, .standard},
+    .{"count", string.count, .standard},
     .{"endsWith", string.endsWith, .standard},
     .{"find", string.find, .standard},
     .{"findAnyRune", string.findAnyRune, .standard},
     .{"findRune", string.findRune, .standard},
-    .{"insert", string.insertFn, .standard},
+    .{"insert", zErrFunc2(string.insertFn), .standard},
     .{"isAscii", string.isAscii, .standard},
     .{"len", string.lenFn, .standard},
     .{"less", string.less, .standard},
     .{"lower", string.lower, .standard},
     .{"replace", string.stringReplace, .standard},
     .{"repeat", string.repeat, .standard},
-    .{"runeAt", string.runeAt, .standard},
-    .{"slice", string.sliceFn, .standard},
+    .{"seek", zErrFunc2(string.seek), .standard},
+    .{"sliceAt", zErrFunc2(string.sliceAt), .standard},
     .{"$slice", string.sliceFn, .standard},
-    .{"sliceAt", string.sliceAt, .standard},
-    .{"$index", string.sliceAt, .standard},
+    .{"$index", zErrFunc2(string.runeAt), .standard},
     .{"split", zErrFunc2(string.split), .standard},
     .{"startsWith", string.startsWith, .standard},
     .{"trim", string.trim, .standard},
@@ -661,6 +661,9 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
         .implicit_method => {
             const header = ast.node(node.data.func.header);
             name = ast.getNamePathInfoById(header.data.funcHeader.name).namePath;
+            
+            const headerv = try genNodeValue(vm, ast, node.data.func.header);
+            try vm.mapSet(entry, try vm.retainOrAllocAstring("header"), headerv);
         },
         .func => {
             const header = ast.node(node.data.func.header);
@@ -738,6 +741,7 @@ fn genDocComment(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, st
                         posWithModifiers = modifier.srcPos - 1;
                     }
                 },
+                .implicit_method,
                 .funcInit,
                 .func => {
                     const header = ast.node(state.node.data.func.header);
@@ -1039,7 +1043,7 @@ fn arrayDecode1(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
             return vm.allocAstringSlice(slice, parent) catch fatal();
         } else {
             vm.retainObject(parent);
-            return vm.allocUstringSlice(slice, @intCast(size), parent) catch fatal();
+            return vm.allocUstringSlice(slice, parent) catch fatal();
         }
     } else {
         return rt.prepThrowError(vm, .Unicode);

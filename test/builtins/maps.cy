@@ -105,7 +105,7 @@ sum = 0
 var codeSum = 0
 for m -> [k, v]:
     sum += v
-    codeSum += k.runeAt(0)
+    codeSum += k[0]
 t.eq(sum, 9)
 t.eq(codeSum, 294)
 
@@ -127,9 +127,9 @@ for m -> [k, n]:
     var innerSum = 0
     for m -> [kk, nn]:
         innerSum += nn
-        codeSum += kk.runeAt(0)
+        codeSum += kk[0]
     res += n * innerSum
-    codeSum += k.runeAt(0)
+    codeSum += k[0]
 t.eq(res, 36)
 t.eq(codeSum, 294 * 4)
 
@@ -139,7 +139,7 @@ sum = 0
 codeSum = 0
 for m -> [k, v]:
     sum += v[0]
-    codeSum += k.runeAt(0)
+    codeSum += k[0]
 t.eq(sum, 9)
 t.eq(codeSum, 294)
 

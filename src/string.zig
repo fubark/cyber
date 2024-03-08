@@ -243,7 +243,7 @@ pub const HeapArrayBuilder = struct {
     }
 };
 
-fn isAstringScalar(str: []const u8) linksection(cy.Section) bool {
+fn isAstringScalar(str: []const u8) bool {
     for (str) |ch| {
         if (ch & 0x80 > 0) {
             return false;
@@ -252,7 +252,7 @@ fn isAstringScalar(str: []const u8) linksection(cy.Section) bool {
     return true;
 }
 
-pub fn isAstring(str: []const u8) linksection(cy.Section) bool {
+pub fn isAstring(str: []const u8) bool {
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
         var vbuf: @Vector(VecSize, u8) = undefined;
         var i: usize = 0;
@@ -272,32 +272,6 @@ pub fn isAstring(str: []const u8) linksection(cy.Section) bool {
     } else {
         return isAstringScalar(str);
     }
-}
-
-pub fn measureUtf8(s: []const u8, out_ascii: *bool) usize {
-    var num_cps: usize = 0;
-    var i: usize = 0;
-    var has_invalid = false;
-    while (i < s.len) {
-        const cp_len = std.unicode.utf8ByteSequenceLength(s[i]) catch return {
-            has_invalid = true;
-            num_cps += 1;
-            i += 1;
-            continue;
-        };
-        if (i + cp_len > s.len) {
-            num_cps += 1;
-            i += 1;
-            continue;
-        }
-        _ = std.unicode.utf8Decode(s[i .. i + cp_len]) catch {
-            has_invalid = true;
-        };
-        i += cp_len;
-        num_cps += 1;
-    }
-    out_ascii.* = num_cps == s.len and !has_invalid;
-    return num_cps;
 }
 
 /// Validates a UTF-8 string and returns the char length.
@@ -320,15 +294,15 @@ pub fn validateUtf8(s: []const u8) ?usize {
     return charLen;
 }
 
-/// Assumes valid UTF-8 sequence.
-pub fn utf8Len(s: []const u8) linksection(cy.Section) usize {
+pub fn countRunes(s: []const u8) usize {
     var len: usize = 0;
     var i: usize = 0;
     while (i < s.len) {
-        const cp_len = std.unicode.utf8ByteSequenceLength(s[i]) catch return cy.fatal();
-        if (i + cp_len == s.len) {
-            return len;
-        }
+        const cp_len = std.unicode.utf8ByteSequenceLength(s[i]) catch {
+            i += 1;
+            len += 1;
+            continue;
+        };
         i += cp_len;
         len += 1;
     }
@@ -347,21 +321,27 @@ pub fn utf8CharSliceAt(str: []const u8, idx: usize) linksection(cy.Section) ?[]c
     return slice;
 }
 
-/// Assumes charIdx is at most charLen.
-pub fn ustringSeekByCharIndex(str: []const u8, seekIdx: u32, seekCharIdx: u32, charIdx: u32) usize {
+/// `out_bad_byte` can be used to determine if it's an ascii string.
+pub fn ustringSeekByRuneIndex(str: []const u8, byte_idx: u32, rune_idx: u32, target_rune_idx: u32, out_bad_byte: *bool) !usize {
     var i: usize = 0;
     var curCharIdx: u32 = 0;
-    if (charIdx >= seekCharIdx) {
-        i = seekIdx;
-        curCharIdx = seekCharIdx;
+    var bad_byte = false;
+    if (target_rune_idx >= rune_idx) {
+        i = byte_idx;
+        curCharIdx = rune_idx;
     }
     while (true) {
-        if (curCharIdx == charIdx) {
+        if (curCharIdx == target_rune_idx) {
+            out_bad_byte.* = bad_byte;
             return i;
         } else {
+            if (i >= str.len) {
+                return error.OutOfBounds;
+            }
             const len = std.unicode.utf8ByteSequenceLength(str[i]) catch {
                 i += 1;
                 curCharIdx += 1;
+                bad_byte = true;
                 continue;
             };
             i += len;
@@ -745,7 +725,7 @@ pub fn indexOfAsciiSet(str: []const u8, set: []const u8) linksection(cy.StdSecti
 }
 
 /// For Ascii needle.
-pub fn indexOfChar(buf: []const u8, needle: u8) linksection(cy.StdSection) ?usize {
+pub fn indexOfChar(buf: []const u8, needle: u8) ?usize {
     // SIMD is approx 5x faster than scalar.
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
         var i: usize = 0;
@@ -904,10 +884,12 @@ pub fn utf8CodeAtNoCheck(str: []const u8, idx: usize) u21 {
     return std.unicode.utf8Decode(str[0..len]) catch cy.fatal();
 }
 
-pub fn utf8CharSliceAtNoCheck(str: []const u8, idx: usize) []const u8 {
+pub fn runeSliceAt(str: []const u8, idx: usize, out_bad_byte: *bool) []const u8 {
     const len = std.unicode.utf8ByteSequenceLength(str[idx]) catch {
-        return ReplacementCharSlice;
+        out_bad_byte.* = true;
+        return str[idx..idx+1];
     };
+    out_bad_byte.* = false;
     return str[idx..idx+len];
 }
 

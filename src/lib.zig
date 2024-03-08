@@ -280,8 +280,8 @@ export fn csNewAstring(vm: *cy.VM, cstr: c.Str) Value {
     return vm.retainOrAllocAstring(c.strSlice(cstr)) catch fatal();
 }
 
-export fn csNewUstring(vm: *cy.VM, cstr: c.Str, charLen: u32) Value {
-    return vm.retainOrAllocUstring(c.strSlice(cstr), charLen) catch fatal();
+export fn csNewUstring(vm: *cy.VM, cstr: c.Str) Value {
+    return vm.retainOrAllocUstring(c.strSlice(cstr)) catch fatal();
 }
 
 export fn csNewTuple(vm: *cy.UserVM, ptr: [*]const Value, len: usize) Value {

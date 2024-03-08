@@ -52,7 +52,7 @@ if idx == none:
     throw error.NoMemoryOutput
 out = out[0..idx].trim(.right, ' ')
 var i = out.len()-1
-while out.runeAt(i) != ` `:
+while out[i] != ` `:
     i -= 1
 var mem = float(out[i+1..])
 

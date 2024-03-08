@@ -141,14 +141,6 @@ pub const Value = packed union {
         return obj.string.getSlice();
     }
 
-    pub fn asString2(val: Value, outCharLen: *u32) []const u8 {
-        if (cy.Trace) {
-            if (!val.isString()) cy.panic("Not a string.");
-        }
-        const obj = val.asHeapObject();
-        return obj.string.getSlice2(outCharLen);
-    }
-
     pub inline fn toF64(self: *const Value) linksection(cy.HotSection) f64 {
         @setRuntimeSafety(debug);
         if (self.isFloat()) {

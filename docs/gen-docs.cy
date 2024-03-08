@@ -385,7 +385,7 @@ type ModulePair:
 
 func genDocsModules():
     var modules = [
-        [ModulePair path: '../src/builtins/builtins.cy', section: 'builtins'],
+        [ModulePair path: '../src/builtins/builtins_vm.cy', section: 'builtins'],
         [ModulePair path: '../src/builtins/math.cy', section: 'math'],
         [ModulePair path: '../src/std/os.cy', section: 'os'],
         [ModulePair path: '../src/std/test.cy', section: 'test'],

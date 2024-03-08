@@ -350,11 +350,6 @@ const Lambda = extern struct {
     funcSigId: u32,
 };
 
-const UstringMruChar = struct {
-    charIdx: u32,
-    byteIdx: u32,
-};
-
 pub const StringType = enum(u2) {
     ustring = 0,
     uslice = 1,
@@ -378,8 +373,8 @@ pub const String = extern struct {
     pub fn getParentByType(self: *String, stype: StringType) *cy.HeapObject {
         switch (stype) {
             .ustring => return @ptrCast(self),
-            .uslice => return @as(*const UstringSlice, @ptrCast(self)).getParentPtr().?,
-            .aslice => return @as(*const AstringSlice, @ptrCast(self)).getParentPtr().?,
+            .uslice => return @as(*const UstringSlice, @ptrCast(self)).parent.?,
+            .aslice => return @as(*const AstringSlice, @ptrCast(self)).parent.?,
             .astring => return @ptrCast(self),
         }
     }
@@ -390,79 +385,6 @@ pub const String = extern struct {
             .uslice => return @as(*const UstringSlice, @ptrCast(self)).getSlice(),
             .astring => return @as(*const Astring, @ptrCast(self)).getSlice(),
             .aslice => return @as(*const AstringSlice, @ptrCast(self)).getSlice(),
-        }
-    }
-
-    pub fn getSlice2(self: *const String, outCharLen: *u32) []const u8 {
-        switch (self.getType()) {
-            .ustring => {
-                const ustring: *const Ustring = @ptrCast(self);
-                outCharLen.* = @intCast(ustring.charLen);
-                return ustring.getSlice();
-            },
-            .uslice => {
-                const uslice: *const UstringSlice = @ptrCast(self);
-                outCharLen.* = @intCast(uslice.charLen);
-                return uslice.getSlice();
-            },
-            .astring => {
-                const slice = @as(*const Astring, @ptrCast(self)).getSlice();
-                outCharLen.* = @intCast(slice.len);
-                return slice;
-            },
-            .aslice => {
-                const slice = @as(*const AstringSlice, @ptrCast(self)).getSlice();
-                outCharLen.* = @intCast(slice.len);
-                return slice;
-            },
-        }
-    }
-
-    pub inline fn getCharLen(self: *const String) u32 {
-        switch (self.getType()) {
-            .ustring => return @as(*const Ustring, @ptrCast(self)).charLen,
-            .uslice => return @as(*const UstringSlice, @ptrCast(self)).charLen,
-            .astring,
-            .aslice => return self.len(),
-        }
-    }
-
-    /// Assumes ustring.
-    pub inline fn getUstringCharLen(self: *const String) u32 {
-        if (self.isSlice()) {
-            return @as(*const UstringSlice, @ptrCast(self)).charLen;
-        } else {
-            return @as(*const Ustring, @ptrCast(self)).charLen;
-        }
-    }
-
-    /// Assumes ustring.
-    pub inline fn setUstringMruChar(self: *String, charIdx: u32, byteIdx: u32) void {
-        if (self.isSlice()) {
-            const uslice: *UstringSlice = @ptrCast(self);
-            uslice.mruCharIdx = charIdx;
-            uslice.mruIdx = byteIdx;
-        } else {
-            const ustring: *Ustring = @ptrCast(self);
-            ustring.mruCharIdx = charIdx;
-            ustring.mruIdx = byteIdx;
-        }
-    }
-
-    /// Assumes ustring.
-    pub inline fn getUstringMruChar(self: *const String) UstringMruChar {
-        if (self.isSlice()) {
-            const uslice: *const UstringSlice = @ptrCast(self);
-            return .{
-                .charIdx = uslice.mruCharIdx,
-                .byteIdx = uslice.mruIdx,
-            };
-        } else {
-            const ustring: *const Ustring = @ptrCast(self);
-            return .{
-                .charIdx = ustring.mruCharIdx,
-                .byteIdx = ustring.mruIdx,
-            };
         }
     }
 
@@ -511,9 +433,6 @@ const Ustring = extern struct {
     // headerAndLen: u32,
 
     headerAndLen: u32,
-    charLen: u32,
-    mruIdx: u32,
-    mruCharIdx: u32,
     bufStart: u8,
 
     const BufOffset = @offsetOf(Ustring, "bufStart");
@@ -531,16 +450,9 @@ pub const AstringSlice = extern struct {
     typeId: cy.TypeId align(8),
     rc: u32,
     headerAndLen: u32,
-    /// `buf` offset from the parent Astring object.
-    offset: u32,
+    parent: ?*HeapObject,
     /// Pointer to the first byte of the slice.
     buf: [*]const u8,
-
-    pub inline fn getParentPtr(self: *const AstringSlice) ?*cy.HeapObject {
-        if (self.offset != 0) {
-            return @ptrFromInt(@intFromPtr(self.buf) - self.offset);
-        } else return null;
-    }
 
     pub inline fn getSlice(self: *const AstringSlice) []const u8 {
         return self.buf[0..@as(*const String, @ptrCast(self)).len()];
@@ -551,20 +463,9 @@ pub const UstringSlice = extern struct {
     typeId: cy.TypeId align(8),
     rc: u32,
     headerAndLen: u32,
-    /// `buf` offset from the parent Ustring object.
-    offset: u32,
+    parent: ?*HeapObject,
     /// Pointer to the first byte of the slice.
     buf: [*]const u8,
-
-    charLen: u32,
-    mruIdx: u32,
-    mruCharIdx: u32,
-
-    pub inline fn getParentPtr(self: *const UstringSlice) ?*cy.HeapObject {
-        if (self.offset != 0) {
-            return @ptrFromInt(@intFromPtr(self.buf) - self.offset);
-        } else return null;
-    }
 
     pub inline fn getSlice(self: *const UstringSlice) []const u8 {
         return self.buf[0..@as(*const String, @ptrCast(self)).len()];
@@ -1209,21 +1110,20 @@ pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.Inst, vals: []const Va
     std.mem.copy(u8, self.u8Buf.items(), firstSlice);
 
     const writer = self.u8Buf.writer(self.alloc);
-    var finalCharLen: u32 = firstStr.string.getCharLen();
+    var is_ascii = true;
     for (vals, 0..) |val, i| {
-        var charLen: u32 = undefined;
-        const valstr = try self.getOrBufPrintValueStr2(&cy.tempBuf, val, &charLen);
-        finalCharLen += charLen;
+        var out_ascii: bool = undefined;
+        const valstr = try self.getOrBufPrintValueStr2(&cy.tempBuf, val, &out_ascii);
+        is_ascii = is_ascii and out_ascii;
         _ = try writer.write(valstr);
 
         const str = Value.initRaw(self.consts[strs[i+1].val].val).asHeapObject();
-        finalCharLen += str.string.getCharLen();
-
+        is_ascii = is_ascii and str.string.getType().isAstring();
         try self.u8Buf.appendSlice(self.alloc, str.string.getSlice());
     }
 
-    if (self.u8Buf.len != finalCharLen) {
-        return retainOrAllocUstring(self, self.u8Buf.items(), finalCharLen);
+    if (is_ascii) {
+        return retainOrAllocUstring(self, self.u8Buf.items());
     } else {
         return retainOrAllocAstring(self, self.u8Buf.items());
     }
@@ -1236,21 +1136,21 @@ pub fn allocStringTemplate2(self: *cy.VM, strs: []const Value, vals: []const Val
     std.mem.copy(u8, self.u8Buf.items(), firstSlice);
 
     const writer = self.u8Buf.writer(self.alloc);
-    var finalCharLen: u32 = firstStr.string.getCharLen();
+    var is_ascii = true;
     for (vals, 0..) |val, i| {
-        var charLen: u32 = undefined;
-        const valstr = try self.getOrBufPrintValueStr2(&cy.tempBuf, val, &charLen);
-        finalCharLen += charLen;
+        var out_ascii: bool = undefined;
+        const valstr = try self.getOrBufPrintValueStr2(&cy.tempBuf, val, &out_ascii);
+        is_ascii = is_ascii and out_ascii;
         _ = try writer.write(valstr);
 
         const str = strs[i+1].asHeapObject();
-        finalCharLen += str.string.getCharLen();
+        is_ascii = is_ascii and str.string.getType().isAstring();
 
         try self.u8Buf.appendSlice(self.alloc, str.string.getSlice());
     }
 
-    if (self.u8Buf.len != finalCharLen) {
-        return retainOrAllocUstring(self, self.u8Buf.items(), finalCharLen);
+    if (is_ascii) {
+        return retainOrAllocUstring(self, self.u8Buf.items());
     } else {
         return retainOrAllocAstring(self, self.u8Buf.items());
     }
@@ -1284,8 +1184,8 @@ pub fn allocArrayConcat(self: *cy.VM, slice: []const u8, other: []const u8) link
     return Value.initNoCycPtr(obj);
 }
 
-fn allocUstringConcat3Object(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8, charLen: u32) linksection(cy.Section) !*HeapObject {
-    const obj = try allocUnsetUstringObject(self, str1.len + str2.len + str3.len, charLen);
+fn allocUstringConcat3Object(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8) !*HeapObject {
+    const obj = try allocUnsetUstringObject(self, str1.len + str2.len + str3.len);
     const dst = obj.ustring.getMutSlice();
     std.mem.copy(u8, dst[0..str1.len], str1);
     std.mem.copy(u8, dst[str1.len..str1.len+str2.len], str2);
@@ -1293,8 +1193,8 @@ fn allocUstringConcat3Object(self: *cy.VM, str1: []const u8, str2: []const u8, s
     return obj;
 }
 
-fn allocUstringConcatObject(self: *cy.VM, str1: []const u8, str2: []const u8, charLen: u32) linksection(cy.Section) !*HeapObject {
-    const obj = try allocUnsetUstringObject(self, str1.len + str2.len, charLen);
+fn allocUstringConcatObject(self: *cy.VM, str1: []const u8, str2: []const u8) !*HeapObject {
+    const obj = try allocUnsetUstringObject(self, str1.len + str2.len);
     const dst = obj.ustring.getMutSlice();
     std.mem.copy(u8, dst[0..str1.len], str1);
     std.mem.copy(u8, dst[str1.len..], str2);
@@ -1370,7 +1270,7 @@ pub fn getOrAllocAstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8
     }
 }
 
-pub fn getOrAllocUstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8, charLen: u32) linksection(cy.Section) !Value {
+pub fn getOrAllocUstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8) !Value {
     if (str1.len + str2.len + str3.len <= DefaultStringInternMaxByteLen) {
         const concat = self.tempBuf[0..str1.len+str2.len+str3.len];
         @memcpy(concat[0..str1.len], str1);
@@ -1382,18 +1282,18 @@ pub fn getOrAllocUstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8
             cy.arc.retainObject(self, res.value_ptr.*);
             return Value.initNoCycPtr(res.value_ptr.*);
         } else {
-            const obj = try allocUstringObject(self, concat, charLen);
+            const obj = try allocUstringObject(self, concat);
             res.key_ptr.* = obj.ustring.getSlice();
             res.value_ptr.* = obj;
             return Value.initNoCycPtr(obj);
         }
     } else {
-        const obj = try allocUstringConcat3Object(self, str1, str2, str3, charLen);
+        const obj = try allocUstringConcat3Object(self, str1, str2, str3);
         return Value.initNoCycPtr(obj);
     }
 }
 
-pub fn getOrAllocUstringConcat(self: *cy.VM, str: []const u8, str2: []const u8, charLen: u32) linksection(cy.Section) !Value {
+pub fn getOrAllocUstringConcat(self: *cy.VM, str: []const u8, str2: []const u8) !Value {
     if (str.len + str2.len <= DefaultStringInternMaxByteLen) {
         const concat = self.tempBuf[0..str.len+str2.len];
         @memcpy(concat[0..str.len], str);
@@ -1404,13 +1304,13 @@ pub fn getOrAllocUstringConcat(self: *cy.VM, str: []const u8, str2: []const u8, 
             cy.arc.retainObject(self, res.value_ptr.*);
             return Value.initNoCycPtr(res.value_ptr.*);
         } else {
-            const obj = try allocUstringObject(self, concat, charLen);
+            const obj = try allocUstringObject(self, concat);
             res.key_ptr.* = obj.ustring.getSlice();
             res.value_ptr.* = obj;
             return Value.initNoCycPtr(obj);
         }
     } else {
-        const obj = try allocUstringConcatObject(self, str, str2, charLen);
+        const obj = try allocUstringConcatObject(self, str, str2);
         return Value.initNoCycPtr(obj);
     }
 }
@@ -1471,12 +1371,10 @@ pub const VmExt = struct {
 };
 
 pub fn allocString(self: *cy.VM, str: []const u8) linksection(cy.Section) !Value {
-    var ascii: bool = undefined;
-    const num_cps = cy.string.measureUtf8(str, &ascii);
-    if (ascii) {
+    if (cy.string.isAstring(str)) {
         return self.retainOrAllocAstring(str);
     } else {
-        return self.retainOrAllocUstring(str, @intCast(num_cps));
+        return self.retainOrAllocUstring(str);
     }
 }
 
@@ -1503,16 +1401,16 @@ pub fn allocUnsetAstringObject(self: *cy.VM, len: usize) linksection(cy.Section)
     return obj;
 }
 
-pub fn retainOrAllocUstring(self: *cy.VM, str: []const u8, charLen: u32) !Value {
+pub fn retainOrAllocUstring(self: *cy.VM, str: []const u8) !Value {
     var allocated: bool = undefined;
-    const res = try getOrAllocUstring(self, str, charLen, &allocated);
+    const res = try getOrAllocUstring(self, str, &allocated);
     if (!allocated) {
         cy.arc.retain(self, res);
     }
     return res;
 }
 
-pub fn getOrAllocUstring(self: *cy.VM, str: []const u8, charLen: u32, outAllocated: *bool) !Value {
+pub fn getOrAllocUstring(self: *cy.VM, str: []const u8, outAllocated: *bool) !Value {
     if (str.len <= DefaultStringInternMaxByteLen) {
         const res = try self.strInterns.getOrPut(self.alloc, str);
         if (res.found_existing) {
@@ -1520,14 +1418,14 @@ pub fn getOrAllocUstring(self: *cy.VM, str: []const u8, charLen: u32, outAllocat
             return Value.initNoCycPtr(res.value_ptr.*);
         } else {
             outAllocated.* = true;
-            const obj = try allocUstringObject(self, str, charLen);
+            const obj = try allocUstringObject(self, str);
             res.key_ptr.* = obj.ustring.getSlice();
             res.value_ptr.* = obj;
             return Value.initNoCycPtr(obj);
         }
     } else {
         outAllocated.* = true;
-        const obj = try allocUstringObject(self, str, charLen);
+        const obj = try allocUstringObject(self, str);
         return Value.initNoCycPtr(obj);
     }
 }
@@ -1566,14 +1464,14 @@ pub fn allocUstring(self: *cy.VM, str: []const u8, charLen: u32) linksection(cy.
     return Value.initNoCycPtr(obj);
 }
 
-pub fn allocUstringObject(self: *cy.VM, str: []const u8, charLen: u32) linksection(cy.Section) !*HeapObject {
-    const obj = try allocUnsetUstringObject(self, str.len, charLen);
+pub fn allocUstringObject(self: *cy.VM, str: []const u8) !*HeapObject {
+    const obj = try allocUnsetUstringObject(self, str.len);
     const dst = obj.ustring.getMutSlice();
     std.mem.copy(u8, dst, str);
     return obj;
 }
 
-pub fn allocUnsetUstringObject(self: *cy.VM, len: usize, charLen: u32) linksection(cy.Section) !*HeapObject {
+pub fn allocUnsetUstringObject(self: *cy.VM, len: usize) !*HeapObject {
     var obj: *HeapObject = undefined;
     if (len <= MaxPoolObjectUstringByteLen) {
         obj = try allocPoolObject(self);
@@ -1584,38 +1482,31 @@ pub fn allocUnsetUstringObject(self: *cy.VM, len: usize, charLen: u32) linksecti
         .typeId = bt.String,
         .rc = 1,
         .headerAndLen = (@as(u32, @intFromEnum(StringType.ustring)) << 30) | @as(u32, @intCast(len)),
-        .charLen = charLen,
-        .mruIdx = 0,
-        .mruCharIdx = 0,
         .bufStart = undefined,
     };
     return obj;
 }
 
-pub fn allocUstringSlice(self: *cy.VM, slice: []const u8, charLen: u32, parent: ?*HeapObject) !Value {
+pub fn allocUstringSlice(self: *cy.VM, slice: []const u8, parent: ?*HeapObject) !Value {
     const obj = try allocPoolObject(self);
     obj.uslice = .{
         .typeId = bt.String,
         .rc = 1,
         .buf = slice.ptr,
         .headerAndLen = (@as(u32, @intFromEnum(StringType.uslice)) << 30) | @as(u32, @intCast(slice.len)),
-        .charLen = charLen,
-        .mruIdx = 0,
-        .mruCharIdx = 0,
-        .offset = @intCast(@intFromPtr(slice.ptr) - @intFromPtr(parent)),
+        .parent = parent,
     };
     return Value.initNoCycPtr(obj);
 }
 
 pub fn allocAstringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject) !Value {
     const obj = try allocPoolObject(self);
-    log.tracev("{*} {*}", .{parent, slice.ptr});
     obj.aslice = .{
         .typeId = bt.String,
         .rc = 1,
         .headerAndLen = (@as(u32, @intFromEnum(StringType.aslice)) << 30) | @as(u32, @intCast(slice.len)),
         .buf = slice.ptr,
-        .offset = @intCast(@intFromPtr(slice.ptr) - @intFromPtr(parent)),
+        .parent = parent,
     };
     return Value.initNoCycPtr(obj);
 }
@@ -1966,7 +1857,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                 },
                 .aslice => {
                     if (releaseChildren) {
-                        if (obj.aslice.getParentPtr()) |parent| {
+                        if (obj.aslice.parent) |parent| {
                             cy.arc.releaseObject(vm, parent);
                         }
                     }
@@ -1976,7 +1867,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                 },
                 .uslice => {
                     if (releaseChildren) {
-                        if (obj.uslice.getParentPtr()) |parent| {
+                        if (obj.uslice.parent) |parent| {
                             cy.arc.releaseObject(vm, parent);
                         }
                     }
@@ -2259,16 +2150,17 @@ test "heap internals." {
             try t.eq(@sizeOf(Pointer), 16);
         }
     }
-    if (builtin.os.tag != .windows) {
+
+    if (builtin.os.tag != .windows) { 
         try t.eq(@sizeOf(Closure), 32);
         try t.eq(@sizeOf(Lambda), 24);
         try t.eq(@sizeOf(Astring), 16);
-        try t.eq(@sizeOf(Ustring), 32);
-        try t.eq(@sizeOf(AstringSlice), 24);
+        try t.eq(@sizeOf(Ustring), 16);
+        try t.eq(@sizeOf(AstringSlice), 32);
         if (cy.is32Bit) {
             try t.eq(@sizeOf(UstringSlice), 32);
         } else {
-            try t.eq(@sizeOf(UstringSlice), 40);
+            try t.eq(@sizeOf(UstringSlice), 32);
         }
         try t.eq(@sizeOf(Array), 16);
         try t.eq(@sizeOf(Object), 16);
@@ -2316,18 +2208,12 @@ test "heap internals." {
         .typeId = bt.String,
         .rc = 1,
         .headerAndLen = (@as(u32, @intFromEnum(StringType.ustring)) << 30) | @as(u32, 1),
-        .charLen = 1,
-        .mruIdx = 0,
-        .mruCharIdx = 0,
         .bufStart = undefined,
     };
     try t.eq(@intFromPtr(&ustr.typeId), @intFromPtr(&ustr));
     try t.eq(@intFromPtr(&ustr.rc), @intFromPtr(&ustr) + 4);
     try t.eq(@intFromPtr(&ustr.headerAndLen), @intFromPtr(&ustr) + 8);
-    try t.eq(@intFromPtr(&ustr.charLen), @intFromPtr(&ustr) + 12);
-    try t.eq(@intFromPtr(&ustr.mruIdx), @intFromPtr(&ustr) + 16);
-    try t.eq(@intFromPtr(&ustr.mruCharIdx), @intFromPtr(&ustr) + 20);
-    try t.eq(Ustring.BufOffset, 24);
+    try t.eq(Ustring.BufOffset, 12);
     try t.eq(@intFromPtr(&ustr.bufStart), @intFromPtr(&ustr) + Ustring.BufOffset);
 
     try t.eq(@offsetOf(List, "typeId"), 0);    

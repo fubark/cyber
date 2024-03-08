@@ -675,7 +675,8 @@ fn genField(c: *Chunk, idx: usize, cstr: Cstr, opts: FieldOptions, nodeId: cy.No
         // try pushUnwindValue(c, recv);
     }
 
-    const isStruct = c.sema.getTypeKind(data.typeId) == .@"struct";
+    const type_id = c.ir.getExprType(idx).id;
+    const isStruct = c.sema.getTypeKind(type_id) == .@"struct";
     var getRef = false;
     var refTemp: RegisterId = undefined;
     if (data.numNestedFields > 0) {
@@ -695,8 +696,8 @@ fn genField(c: *Chunk, idx: usize, cstr: Cstr, opts: FieldOptions, nodeId: cy.No
     }
 
     if (getRef) {
-        if (c.sema.getTypeKind(data.typeId) == .@"struct") {
-            const numFields: u8 = @intCast(c.sema.types.items[data.typeId].data.@"struct".numFields);
+        if (c.sema.getTypeKind(type_id) == .@"struct") {
+            const numFields: u8 = @intCast(c.sema.types.items[type_id].data.@"struct".numFields);
             try c.pushCode(.refCopyObj, &.{ refTemp, numFields, inst.dst }, nodeId);
         } else {
             try c.pushCode(.ref, &.{ refTemp, inst.dst }, nodeId);
@@ -713,7 +714,7 @@ fn genField(c: *Chunk, idx: usize, cstr: Cstr, opts: FieldOptions, nodeId: cy.No
         try releaseTempValue(c, recv, nodeId);
     }
 
-    const willRetain = c.sema.isRcCandidateType(data.typeId);
+    const willRetain = c.sema.isRcCandidateType(type_id);
     return finishDstInst(c, inst, willRetain);
 }
 
@@ -819,8 +820,8 @@ fn pushNone(c: *Chunk, dst: LocalId) !void {
     try c.buf.pushOp1(.none, dst);
 }
 
-fn setCallObjSymTern(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
-    const data = c.ir.getStmtData(idx, .setCallObjSymTern).callObjSymTern;
+fn setCallObjSymTern(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
+    const data = c.ir.getStmtData(loc, .setCallObjSymTern).callObjSymTern;
 
     const inst = try beginCall(c, Cstr.none, false, nodeId);
 
@@ -961,7 +962,8 @@ fn setField(c: *Chunk, idx: usize, opts: SetFieldOptions, nodeId: cy.NodeId) !vo
         try pushUnwindValue(c, rightv);
     }
 
-    const isStruct = c.sema.getTypeKind(fieldData.typeId) == .@"struct";
+    const type_id = c.ir.getExprType(data.left).id;
+    const isStruct = c.sema.getTypeKind(type_id) == .@"struct";
     var getRef = false;
     var refTemp: RegisterId = undefined;
     if (fieldData.numNestedFields > 0) {
@@ -988,7 +990,7 @@ fn setField(c: *Chunk, idx: usize, opts: SetFieldOptions, nodeId: cy.NodeId) !vo
         if (requireTypeCheck) {
             const pc = c.buf.ops.items.len;
             try c.pushFCode(.setFieldCheck, &.{ recv.reg, 0, 0, rightv.reg, fieldData.idx }, nodeId);
-            c.buf.setOpArgU16(pc + 2, @intCast(fieldData.typeId));
+            c.buf.setOpArgU16(pc + 2, @intCast(type_id));
         } else {
             try c.pushCode(.setField, &.{ recv.reg, fieldData.idx, rightv.reg }, nodeId);
         }
@@ -2766,11 +2768,10 @@ fn forRangeStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const rangeEnd = try c.rega.consumeNextTemp();
 
     // Range start.
-    const startIdx = c.ir.advanceStmt(idx, .forRangeStmt);
-    const startv = try genExpr(c, startIdx, Cstr.simple);
+    const startv = try genExpr(c, data.start, Cstr.simple);
 
     // Range end.
-    const endv = try genExpr(c, data.rangeEnd, Cstr.toTemp(rangeEnd));
+    const endv = try genExpr(c, data.end, Cstr.toTemp(rangeEnd));
     try pushUnwindValue(c, endv);
 
     // Begin sub-block.

@@ -20,7 +20,7 @@ const log = cy.log.scoped(.ir);
 /// IR nodes are indexed by their position in the array.
 /// Stmt and expr nodes contain metadata which starts with their node type followed by their AST node id.
 /// Stmt nodes additionally have a next index that points to the next stmt node.
-/// Expr nodes additionally have a type id.
+/// Expr nodes additionally have a type id that also contains a throws bit.
 /// Data specific to a node's type follows the metadata.
 
 pub const StmtCode = enum(u8) {
@@ -135,6 +135,19 @@ pub const ExprCode = enum(u8) {
     elseBlock,
     unwrapChoice,
     box,
+};
+
+pub const ExprType = packed struct {
+    id: u31,
+    throws: bool,
+
+    pub fn init(id: cy.TypeId) ExprType {
+        return .{ .id = @intCast(id), .throws = false };
+    }
+
+    pub fn initThrows(id: cy.TypeId) ExprType {
+        return .{ .id = @intCast(id), .throws = true };
+    }
 };
 
 pub const Box = struct {
@@ -713,13 +726,13 @@ pub const Buffer = struct {
         return self.stmtBlockStack.pop();
     }
 
-    pub fn pushEmptyExpr(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, type_id: cy.TypeId, node_id: cy.NodeId) !u32 {
+    pub fn pushEmptyExpr(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, expr_t: ExprType, node_id: cy.NodeId) !u32 {
         log.tracev("irPushExpr: {}", .{code});
         const start = self.buf.items.len;
         try self.buf.resize(alloc, self.buf.items.len + 1 + 4 + 4 + @sizeOf(ExprData(code)));
         self.buf.items[start] = @intFromEnum(code);
         self.setNode(start, node_id);
-        self.setExprType(start, type_id);
+        self.setExprType2(start, expr_t);
         return @intCast(start);
     }
 
@@ -745,9 +758,17 @@ pub const Buffer = struct {
     }
 
     pub fn pushExpr(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, type_id: cy.TypeId, node_id: cy.NodeId, data: ExprData(code)) !u32 {
-        const idx = try self.pushEmptyExpr(code, alloc, type_id, node_id);
-        self.setExprData(idx, code, data);
-        return idx;
+        const expr_t = ExprType.init(type_id);
+        const loc = try self.pushEmptyExpr(code, alloc, expr_t, node_id);
+        self.setExprData(loc, code, data);
+        return loc;
+    }
+
+    pub fn pushExprThrows(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, type_id: cy.TypeId, node_id: cy.NodeId, data: ExprData(code)) !u32 {
+        const expr_t = ExprType.initThrows(type_id);
+        const loc = try self.pushEmptyExpr(code, alloc, expr_t, node_id);
+        self.setExprData(loc, code, data);
+        return loc;
     }
 
     pub fn getExprCode(self: *Buffer, idx: usize) ExprCode {
@@ -766,12 +787,22 @@ pub const Buffer = struct {
         @as(*align(1) cy.NodeId, @ptrCast(self.buf.items.ptr + idx + 1)).* = nodeId;
     }
 
-    pub fn setExprType(self: *Buffer, loc: usize, type_id: cy.TypeId) void {
-        @as(*align(1) cy.TypeId, @ptrCast(self.buf.items.ptr + loc + 1 + 4)).* = type_id;
+    pub fn setExprType2(self: *Buffer, loc: usize, expr_t: ExprType) void {
+        @as(*align(1) ExprType, @ptrCast(self.buf.items.ptr + loc + 1 + 4)).* = expr_t;
     }
 
-    pub fn getExprType(self: *Buffer, loc: usize) cy.TypeId {
-        return @as(*align(1) cy.TypeId, @ptrCast(self.buf.items.ptr + loc + 1 + 4)).*;
+    pub fn setExprType(self: *Buffer, loc: usize, type_id: cy.TypeId) void {
+        const expr_t = ExprType.init(type_id);
+        @as(*align(1) ExprType, @ptrCast(self.buf.items.ptr + loc + 1 + 4)).* = expr_t;
+    }
+
+    pub fn setExprTypeThrows(self: *Buffer, loc: usize, type_id: cy.TypeId) void {
+        const expr_t = ExprType.initThrows(type_id);
+        @as(*align(1) ExprType, @ptrCast(self.buf.items.ptr + loc + 1 + 4)).* = expr_t;
+    }
+
+    pub fn getExprType(self: *Buffer, loc: usize) ExprType {
+        return @as(*align(1) ExprType, @ptrCast(self.buf.items.ptr + loc + 1 + 4)).*;
     }
 
     pub fn setStmtNext(self: *Buffer, idx: usize, nextIdx: u32) void {

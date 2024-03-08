@@ -115,9 +115,6 @@ pub fn prepareThrowSymbol(vm: *cy.UserVM, sym: Symbol) Value {
     return vm.prepareThrowSymbol(@intFromEnum(sym));
 }  
 
-const StdSection = cy.StdSection;
-const Section = cy.Section;
-
 pub fn bindCore(self: *cy.VM) !void {
     @setCold(true);
     for (std.enums.values(Symbol)) |sym| {
@@ -132,7 +129,7 @@ fn ensureSymbol(vm: *cy.VM, name: []const u8, sym: Symbol) !void {
 
 // TODO: Provide sort where the sort fields and compare strategy are provided instead of a lessFn,
 //       since Cyber's VM is non reentrant.
-pub fn listSort(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+pub fn listSort(vm: *cy.VM, args: [*]const Value, nargs: u8) Value {
     const obj = args[0].asHeapObject();
     const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
     const LessContext = struct {

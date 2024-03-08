@@ -30,9 +30,6 @@ const UserVM = cy.UserVM;
 
 const logger = cy.log.scoped(.vm);
 
-const UseGlobalVM = true;
-const StdSection = cy.StdSection;
-
 pub const VM = struct {
     alloc: std.mem.Allocator,
 

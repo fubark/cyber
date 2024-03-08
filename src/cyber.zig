@@ -73,9 +73,6 @@ pub const buildReturnInfo = vm.buildReturnInfo;
 pub const getStackOffset = vm.getStackOffset;
 pub const getInstOffset = vm.getInstOffset;
 
-const api = @import("api.zig");
-pub const UserVM = api.UserVM;
-
 pub const heap = @import("heap.zig");
 pub const HeapObject = heap.HeapObject;
 pub const MapInner = heap.MapInner;
@@ -126,11 +123,6 @@ pub const EncodeListContext = cyon.EncodeListContext;
 pub const DecodeMapIR = cyon.DecodeMapIR;
 pub const DecodeListIR = cyon.DecodeListIR;
 pub const DecodeValueIR = cyon.DecodeValueIR;
-
-/// Sections don't work on macOS arm64 builds but they are needed for the build.
-pub const HotSection = if (builtin.os.tag == .macos) "__TEXT,.eval" else ".eval";
-pub const Section = if (builtin.os.tag == .macos) "__TEXT,.eval2" else ".eval2";
-pub const StdSection = if (builtin.os.tag == .macos) "__TEXT,.eval.std" else ".eval.std";
 
 /// Whether to print verbose logs.
 pub export var verbose = false;

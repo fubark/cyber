@@ -44,8 +44,8 @@ const funcs = [_]NameFunc{
     .{"access",         zErrFunc2(access)},
     .{"args",           zErrFunc2(osArgs)},
     .{"cacheUrl",       zErrFunc2(cacheUrl)},
-    .{"copyFile",       zErrFunc(copyFile)},
-    .{"createDir",      zErrFunc(createDir)},
+    .{"copyFile",       zErrFunc2(copyFile)},
+    .{"createDir",      zErrFunc2(createDir)},
     .{"createFile",     zErrFunc2(createFile)},
     .{"cstr",           zErrFunc2(cstr)},
     .{"cwd",            zErrFunc2(cwd)},
@@ -57,7 +57,7 @@ const funcs = [_]NameFunc{
     .{"free",           free},
     .{"getEnv",         zErrFunc2(getEnv)},
     .{"getEnvAll",      zErrFunc2(getEnvAll)},
-    .{"malloc",         zErrFunc(malloc)},
+    .{"malloc",         zErrFunc2(malloc)},
     .{"milliTime",      milliTime},
     .{"newFFI",         newFFI},
     .{"now",            zErrFunc2(now)},
@@ -69,9 +69,9 @@ const funcs = [_]NameFunc{
     .{"readFile",       zErrFunc2(readFile)},
     .{"readLine",       zErrFunc2(readLine)},
     .{"realPath",       zErrFunc2(realPath)},
-    .{"removeDir",      zErrFunc(removeDir)},
-    .{"removeFile",     zErrFunc(removeFile)},
-    .{"setEnv",         zErrFunc(setEnv)},
+    .{"removeDir",      zErrFunc2(removeDir)},
+    .{"removeFile",     zErrFunc2(removeFile)},
+    .{"setEnv",         zErrFunc2(setEnv)},
     .{"sleep",          sleep},
     .{"unsetEnv",       unsetEnv},
     .{"writeFile",      zErrFunc2(writeFile)},
@@ -99,11 +99,11 @@ const funcs = [_]NameFunc{
     .{"next", zErrFunc2(fs.dirIteratorNext)},
 
     // FFI
-    .{"bindCallback",   zErrFunc(ffi.ffiBindCallback)},
+    .{"bindCallback",   zErrFunc2(ffi.ffiBindCallback)},
     .{"bindLib",        zErrFunc2(bindLib)},
     .{"bindLib",        zErrFunc2(bindLibExt)},
     .{"bindObjPtr",     zErrFunc2(ffi.ffiBindObjPtr)},
-    .{"cbind",          zErrFunc(ffi.ffiCbind)},
+    .{"cbind",          zErrFunc2(ffi.ffiCbind)},
     .{"cfunc",          zErrFunc2(ffi.ffiCfunc)},
     .{"new",            zErrFunc2(ffi.ffiNew)},
     .{"unbindObjPtr",   zErrFunc2(ffi.ffiUnbindObjPtr)},
@@ -235,17 +235,17 @@ fn openDir2(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return fs.allocDir(vm, fd, iterable) catch fatal();
 }
 
-fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
+fn removeDir(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const path = args[0].asString();
     try std.fs.cwd().deleteDir(path);
     return Value.Void;
 }
 
-fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
+fn copyFile(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const src = args[0].asString();
-    const alloc = vm.allocator();
+    const alloc = vm.alloc;
     const srcDupe = alloc.dupe(u8, src) catch fatal();
     defer alloc.free(srcDupe);
     const dst = args[1].asString();
@@ -253,15 +253,15 @@ fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
     return Value.Void;
 }
 
-fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
+fn removeFile(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const path = args[0].asString();
     try std.fs.cwd().deleteFile(path);
     return Value.Void;
 }
 
-fn createDir(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
+fn createDir(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const path = args[0].asString();
     try std.fs.cwd().makeDir(path);
     return Value.Void;
@@ -499,11 +499,11 @@ pub fn free(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     return Value.Void;
 }
 
-pub fn malloc(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
-    if (cy.isWasm) return vm.returnPanic("Unsupported.");
+pub fn malloc(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const size: usize = @intCast(args[0].asInteger());
     const ptr = std.c.malloc(size);
-    return cy.heap.allocPointer(vm.internal(), ptr);
+    return cy.heap.allocPointer(vm, ptr);
 }
 
 fn cstr(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
@@ -565,15 +565,15 @@ pub fn realPath(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return vm.allocString(res);
 }
 
-pub fn setEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
-    if (cy.isWasm or builtin.os.tag == .windows) return vm.returnPanic("Unsupported.");
+pub fn setEnv(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    if (cy.isWasm or builtin.os.tag == .windows) return vm.prepPanic("Unsupported.");
     const key = args[0].asString();
-    const keyz = try vm.allocator().dupeZ(u8, key);
-    defer vm.allocator().free(keyz);
+    const keyz = try vm.alloc.dupeZ(u8, key);
+    defer vm.alloc.free(keyz);
 
     const value = args[1].asString();
-    const valuez = try vm.allocator().dupeZ(u8, value);
-    defer vm.allocator().free(valuez);
+    const valuez = try vm.alloc.dupeZ(u8, value);
+    defer vm.alloc.free(valuez);
     _ = setenv(keyz, valuez, 1);
     return Value.Void;
 }

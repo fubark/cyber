@@ -435,9 +435,8 @@ const CGen = struct {
     }
 };
 
-pub fn ffiCbind(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
-    const ivm = vm.internal();
-    const alloc = vm.allocator();
+pub fn ffiCbind(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const alloc = vm.alloc;
     const ffi = args[0].castHostObject(*FFI);
     const mt = args[1].asHeapObject();
     if (mt.metatype.typeKind != @intFromEnum(cy.heap.MetaTypeKind.object)) {
@@ -456,7 +455,7 @@ pub fn ffiCbind(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
 
     var fieldsBuilder: std.ArrayListUnmanaged(CType) = .{};
     for (fieldsList.items()) |field| {
-        try fieldsBuilder.append(alloc, try ffi.toCType(ivm, field));
+        try fieldsBuilder.append(alloc, try ffi.toCType(vm, field));
     }
 
     const fields = try fieldsBuilder.toOwnedSlice(alloc);
@@ -1031,7 +1030,7 @@ extern fn __floatundidf(u64) f64;
 extern fn __fixunsdfdi(f64) u64;
 extern fn memmove(dst: *anyopaque, src: *anyopaque, num: usize) *anyopaque;
 
-fn cyRelease(vm: *cy.UserVM, val: Value) callconv(.C) void {
+fn cyRelease(vm: *cy.VM, val: Value) callconv(.C) void {
     vm.release(val);
 }
 
@@ -1064,24 +1063,21 @@ fn cGetFuncPtr(val: Value) callconv(.C) ?*anyopaque {
     }
 }
 
-fn cAllocCyPointer(vm: *cy.UserVM, ptr: ?*anyopaque) callconv(.C) Value {
-    return cy.heap.allocPointer(vm.internal(), ptr) catch cy.fatal();
+fn cAllocCyPointer(vm: *cy.VM, ptr: ?*anyopaque) callconv(.C) Value {
+    return cy.heap.allocPointer(vm, ptr) catch cy.fatal();
 }
 
-fn cAllocObject(vm: *cy.UserVM, id: cy.TypeId) callconv(.C) Value {
-    const ivm = vm.internal();
-
-    const numFields = ivm.compiler.sema.types.items[id].data.object.numFields;
+fn cAllocObject(vm: *cy.VM, id: cy.TypeId) callconv(.C) Value {
+    const numFields = vm.compiler.sema.types.items[id].data.object.numFields;
     if (numFields <= 4) {
-        return cy.heap.allocEmptyObjectSmall(ivm, id) catch cy.fatal();
+        return cy.heap.allocEmptyObjectSmall(vm, id) catch cy.fatal();
     } else {
-        return cy.heap.allocEmptyObject(ivm, id, numFields) catch cy.fatal();
+        return cy.heap.allocEmptyObject(vm, id, numFields) catch cy.fatal();
     }
 }
 
-fn cAllocList(vm: *cy.UserVM, elems: [*]Value, n: u32) callconv(.C) Value {
-    const ivm = vm.internal();
-    return cy.heap.allocList(ivm, elems[0..n]) catch cy.fatal();
+fn cAllocList(vm: *cy.VM, elems: [*]Value, n: u32) callconv(.C) Value {
+    return cy.heap.allocList(vm, elems[0..n]) catch cy.fatal();
 }
 
 fn cyCallFunc(vm: *cy.VM, func: Value, args: [*]const Value, nargs: u8) callconv(.C) Value {
@@ -1097,19 +1093,17 @@ fn breakpoint() callconv(.C) void {
     @breakpoint();
 }
 
-pub fn ffiBindCallback(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
-    if (!cy.hasFFI) return vm.returnPanic("Unsupported.");
-
-    const ivm = vm.internal();
+pub fn ffiBindCallback(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    if (!cy.hasFFI) return vm.prepPanic("Unsupported.");
 
     const ffi = args[0].castHostObject(*FFI);
     const func = args[1];
     const params = args[2].asHeapObject().list.items();
-    const ret = try ffi.toCType(ivm, args[3]);
+    const ret = try ffi.toCType(vm, args[3]);
 
     var csrc: std.ArrayListUnmanaged(u8) = .{};
-    defer csrc.deinit(ivm.alloc);
-    const w = csrc.writer(ivm.alloc);
+    defer csrc.deinit(vm.alloc);
+    const w = csrc.writer(vm.alloc);
 
     const cgen = CGen{ .ffi = ffi };
     try cgen.genHeaders(w);
@@ -1122,14 +1116,14 @@ pub fn ffiBindCallback(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Val
     try writeCType(w, ret);
     try w.print(" cyExternFunc(", .{});
     if (params.len > 0) {
-        var ctype = try ffi.toCType(ivm, params[0]);
+        var ctype = try ffi.toCType(vm, params[0]);
         try writeCType(w, ctype);
         try w.print(" p0", .{});
 
         if (params.len > 1) {
             for (params[1..], 1..) |param, i| {
                 try w.print(", ", .{});
-                ctype = try ffi.toCType(ivm, param);
+                ctype = try ffi.toCType(vm, param);
                 try writeCType(w, ctype);
                 try w.print(" p{}", .{i});
             }
@@ -1140,7 +1134,7 @@ pub fn ffiBindCallback(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Val
     try w.print("  UserVM* vm = (UserVM*)0x{X};\n", .{@intFromPtr(vm)});
     try w.print("  int64_t args[{}];\n", .{params.len});
     for (params, 0..) |param, i| {
-        var ctype = try ffi.toCType(ivm, param);
+        var ctype = try ffi.toCType(vm, param);
         try w.print("  args[{}] = ", .{i});
         const cval = try std.fmt.bufPrint(&cy.tempBuf, "p{}", .{i});
         try writeToCyValue(w, cval, ctype);
@@ -1201,7 +1195,7 @@ pub fn ffiBindCallback(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Val
         cy.panic("Failed to relocate compiled code.");
     }
 
-    const tccState = try cy.heap.allocTccState(ivm, state.?, null);
+    const tccState = try cy.heap.allocTccState(vm, state.?, null);
 
     const funcPtr = tcc.tcc_get_symbol(state, "cyExternFunc") orelse {
         cy.panic("Failed to get symbol.");
@@ -1211,11 +1205,11 @@ pub fn ffiBindCallback(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Val
     vm.retain(func);
 
     // Create extern func.
-    const res = try cy.heap.allocExternFunc(ivm, func, funcPtr, tccState);
+    const res = try cy.heap.allocExternFunc(vm, func, funcPtr, tccState);
 
     // ffi manages the extern func. (So it does not get freed).
     vm.retain(res);
-    try ffi.managed.append(ivm.alloc, res);
+    try ffi.managed.append(vm.alloc, res);
 
     return res;
 }

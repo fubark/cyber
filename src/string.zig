@@ -274,10 +274,36 @@ pub fn isAstring(str: []const u8) linksection(cy.Section) bool {
     }
 }
 
+pub fn measureUtf8(s: []const u8, out_ascii: *bool) usize {
+    var num_cps: usize = 0;
+    var i: usize = 0;
+    var has_invalid = false;
+    while (i < s.len) {
+        const cp_len = std.unicode.utf8ByteSequenceLength(s[i]) catch return {
+            has_invalid = true;
+            num_cps += 1;
+            i += 1;
+            continue;
+        };
+        if (i + cp_len > s.len) {
+            num_cps += 1;
+            i += 1;
+            continue;
+        }
+        _ = std.unicode.utf8Decode(s[i .. i + cp_len]) catch {
+            has_invalid = true;
+        };
+        i += cp_len;
+        num_cps += 1;
+    }
+    out_ascii.* = num_cps == s.len and !has_invalid;
+    return num_cps;
+}
+
 /// Validates a UTF-8 string and returns the char length.
 /// If the char length returned is the same as the byte len, it's also a valid ascii string.
 /// TODO: Implement SIMD version.
-pub fn validateUtf8(s: []const u8) linksection(cy.Section) ?usize {
+pub fn validateUtf8(s: []const u8) ?usize {
     var charLen: usize = 0;
     var i: usize = 0;
     while (i < s.len) {
@@ -321,8 +347,8 @@ pub fn utf8CharSliceAt(str: []const u8, idx: usize) linksection(cy.Section) ?[]c
     return slice;
 }
 
-/// Assumes str is valid UTF-8 and charIdx is at most charLen.
-pub fn ustringSeekByCharIndex(str: []const u8, seekIdx: u32, seekCharIdx: u32, charIdx: u32) linksection(cy.Section) usize {
+/// Assumes charIdx is at most charLen.
+pub fn ustringSeekByCharIndex(str: []const u8, seekIdx: u32, seekCharIdx: u32, charIdx: u32) usize {
     var i: usize = 0;
     var curCharIdx: u32 = 0;
     if (charIdx >= seekCharIdx) {
@@ -333,7 +359,11 @@ pub fn ustringSeekByCharIndex(str: []const u8, seekIdx: u32, seekCharIdx: u32, c
         if (curCharIdx == charIdx) {
             return i;
         } else {
-            const len = std.unicode.utf8ByteSequenceLength(str[i]) catch cy.fatal();
+            const len = std.unicode.utf8ByteSequenceLength(str[i]) catch {
+                i += 1;
+                curCharIdx += 1;
+                continue;
+            };
             i += len;
             curCharIdx += 1;
         }
@@ -875,9 +905,13 @@ pub fn utf8CodeAtNoCheck(str: []const u8, idx: usize) u21 {
 }
 
 pub fn utf8CharSliceAtNoCheck(str: []const u8, idx: usize) []const u8 {
-    const len = std.unicode.utf8ByteSequenceLength(str[idx]) catch cy.fatal();
+    const len = std.unicode.utf8ByteSequenceLength(str[idx]) catch {
+        return ReplacementCharSlice;
+    };
     return str[idx..idx+len];
 }
+
+const ReplacementCharSlice = &.{0xEF, 0xBF, 0xBD};
 
 pub fn getStaticUstringHeader(vm: *cy.VM, start: usize) *align(1) cy.StaticUstringHeader {
     return @ptrCast(vm.strBuf.ptr + start - 12);

@@ -4,6 +4,7 @@ const rt = cy.rt;
 const Value = cy.Value;
 const fatal = cy.fatal;
 const bindings = @import("bindings.zig");
+const string = cy.string;
 
 pub fn concat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
@@ -83,9 +84,9 @@ pub fn sliceFn(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
         const uend: u32 = @intCast(end);
 
         const mru = obj.string.getUstringMruChar();
-        const startByteIdx: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, ustart));
+        const startByteIdx: u32 = @intCast(string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, ustart));
         obj.string.setUstringMruChar(ustart, startByteIdx);
-        const endByteIdx: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, startByteIdx, ustart, uend));
+        const endByteIdx: u32 = @intCast(string.ustringSeekByCharIndex(str, startByteIdx, ustart, uend));
 
         vm.retainObject(parent);
         return vm.allocUstringSlice(str[startByteIdx..endByteIdx], uend - ustart, parent) catch fatal();
@@ -118,7 +119,7 @@ pub fn insertFn(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
         const insert = args[2].asString2(&insertCharLen);
         const uidx: u32 = @intCast(idx);
         const mru = obj.string.getUstringMruChar();
-        const start: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
+        const start: u32 = @intCast(string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
 
         obj.string.setUstringMruChar(uidx, start);
         return vm.allocUstringConcat3(str[0..start], insert, str[start..], @intCast(charLen + insertCharLen)) catch fatal();
@@ -132,20 +133,20 @@ pub fn find(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) V
     if (needle.len > 0 and needle.len <= str.len) {
         if (needle.len == 1) {
             // One ascii char special case. Perform indexOfChar.
-            if (cy.string.indexOfChar(str, needle[0])) |idx| {
+            if (string.indexOfChar(str, needle[0])) |idx| {
                 const stype = obj.string.getType();
                 if (stype.isUstring()) {
-                    const charIdx = cy.toUtf8CharIdx(str, idx);
+                    const charIdx = string.toUtf8CharIdx(str, idx);
                     return Value.initInt(@intCast(charIdx));
                 } else {
                     return Value.initInt(@intCast(idx));
                 }
             }
         }
-        if (cy.string.indexOf(str, needle)) |idx| {
+        if (string.indexOf(str, needle)) |idx| {
             const stype = obj.string.getType();
             if (stype.isUstring()) {
-                const charIdx = cy.toUtf8CharIdx(str, idx);
+                const charIdx = string.toUtf8CharIdx(str, idx);
                 return Value.initInt(@intCast(charIdx));
             } else {
                 return Value.initInt(@intCast(idx));
@@ -187,7 +188,7 @@ pub fn findAnyRune(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSe
     if (set.len > 0) {
         if (stype.isAstring()) {
             if (setIsAscii) {
-                if (@call(.never_inline, cy.indexOfAsciiSet, .{str, set})) |idx| {
+                if (@call(.never_inline, string.indexOfAsciiSet, .{str, set})) |idx| {
                     return Value.initInt(@intCast(idx));
                 }
             } else {
@@ -206,15 +207,15 @@ pub fn findAnyRune(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSe
                     }
                 }
                 if (tempBuf.len > 0) {
-                    if (cy.indexOfAsciiSet(str, tempBuf.items())) |idx| {
+                    if (string.indexOfAsciiSet(str, tempBuf.items())) |idx| {
                         return Value.initInt(@intCast(idx));
                     }
                 }
             }
         } else {
             if (setIsAscii) {
-                if (cy.indexOfAsciiSet(str, set)) |idx| {
-                    const charIdx = cy.toUtf8CharIdx(str, idx);
+                if (string.indexOfAsciiSet(str, set)) |idx| {
+                    const charIdx = string.toUtf8CharIdx(str, idx);
                     return Value.initInt(@intCast(charIdx));
                 }
             } else {
@@ -225,7 +226,7 @@ pub fn findAnyRune(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSe
                     .i = 0,
                 };
                 while (iter.nextCodepoint()) |cp| {
-                    if (cy.charIndexOfCodepoint(str, cp)) |idx| {
+                    if (string.charIndexOfCodepoint(str, cp)) |idx| {
                         if (idx < minIndex) {
                             minIndex = @intCast(idx);
                         }
@@ -251,21 +252,21 @@ pub fn findRune(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
         const needleIsAscii = code < 128;
         if (stype.isAstring()) {
             if (needleIsAscii) {
-                if (cy.string.indexOfChar(str, @intCast(code))) |idx| {
+                if (string.indexOfChar(str, @intCast(code))) |idx| {
                     return Value.initInt(@intCast(idx));
                 }
             }
         } else {
             if (needleIsAscii) {
-                if (cy.string.indexOfChar(str, @intCast(code))) |idx| {
-                    const charIdx = cy.toUtf8CharIdx(str, idx);
+                if (string.indexOfChar(str, @intCast(code))) |idx| {
+                    const charIdx = string.toUtf8CharIdx(str, idx);
                     return Value.initInt(@intCast(charIdx));
                 }
             } else {
                 var slice: [4]u8 = undefined;
                 _ = std.unicode.utf8Encode(code, &slice) catch fatal();
-                if (cy.string.indexOf(str, &slice)) |idx| {
-                    const charIdx = cy.toUtf8CharIdx(str, idx);
+                if (string.indexOf(str, &slice)) |idx| {
+                    const charIdx = string.toUtf8CharIdx(str, idx);
                     return Value.initInt(@intCast(charIdx));
                 }
             }
@@ -340,8 +341,8 @@ pub fn sliceAt(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
         }
         const uidx: u32 = @intCast(idx);
         const mru = obj.string.getUstringMruChar();
-        const start: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
-        const slice = cy.string.utf8CharSliceAtNoCheck(str, start);
+        const start: u32 = @intCast(string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
+        const slice = string.utf8CharSliceAtNoCheck(str, start);
 
         obj.string.setUstringMruChar(uidx, start);
         if (slice.len == 1) {
@@ -368,11 +369,13 @@ pub fn runeAt(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection
         }
         const uidx: u32 = @intCast(idx);
         const mru = obj.string.getUstringMruChar();
-        const start: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
-        const slice = cy.string.utf8CharSliceAtNoCheck(str, start);
+        const start: u32 = @intCast(string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
+        const slice = string.utf8CharSliceAtNoCheck(str, start);
 
-        const cp = std.unicode.utf8Decode(slice) catch cy.fatal();
         obj.string.setUstringMruChar(uidx, start);
+        const cp = std.unicode.utf8Decode(slice) catch {
+            return Value.initInt(@intCast(std.unicode.replacement_character));
+        };
         return Value.initInt(@intCast(cp));
     }
 }
@@ -400,7 +403,7 @@ pub fn trim(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) 
     if (stype.isAstring()) {
         return vm.retainOrAllocAstring(res) catch fatal();
     } else {
-        const runeLen: u32 = @intCast(cy.string.utf8Len(res));
+        const runeLen: u32 = @intCast(string.utf8Len(res));
         return vm.retainOrAllocUstring(res, runeLen) catch fatal();
     }
 }
@@ -438,20 +441,20 @@ fn astringReplace(vm: *cy.VM, str: []const u8, needlev: *cy.heap.String, replace
     const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
     idxBuf.clearRetainingCapacity();
     defer idxBuf.ensureMaxCapOrClear(vm.alloc, 4096) catch fatal();
-    const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.alloc)) catch fatal();
+    const newLen = string.prepReplacement(str, needle, replacement, idxBuf.writer(vm.alloc)) catch fatal();
     const numIdxes = @divExact(idxBuf.len, 4);
     if (numIdxes > 0) {
         if (rcharLen == replacement.len) {
             const new = vm.allocUnsetAstringObject(newLen) catch fatal();
             const newBuf = new.astring.getMutSlice();
             const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
-            cy.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
+            string.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
             return vm.allocOwnedAstring(new) catch fatal();
         } else {
             const new = vm.allocUnsetUstringObject(newLen, @intCast(str.len + idxBuf.len * rcharLen - idxBuf.len * needle.len)) catch fatal();
             const newBuf = new.ustring.getMutSlice();
             const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
-            cy.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
+            string.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
             return vm.allocOwnedUstring(new) catch fatal();
         }
     } else {
@@ -468,13 +471,13 @@ fn ustringReplace(vm: *cy.VM, str: []const u8, needlev: *cy.heap.String, replace
     const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
     idxBuf.clearRetainingCapacity();
     defer idxBuf.ensureMaxCapOrClear(vm.alloc, 4096) catch fatal();
-    const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.alloc)) catch fatal();
+    const newLen = string.prepReplacement(str, needle, replacement, idxBuf.writer(vm.alloc)) catch fatal();
     const numIdxes = @divExact(idxBuf.len, 4);
     if (numIdxes > 0) {
         const new = vm.allocUnsetUstringObject(newLen, @intCast(str.len + idxBuf.len * rcharLen - idxBuf.len * ncharLen)) catch fatal();
         const newBuf = new.ustring.getMutSlice();
         const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
-        cy.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
+        cy.string.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
         return vm.allocOwnedUstring(new) catch fatal();
     } else {
         return null;
@@ -547,7 +550,7 @@ pub fn split(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection)
             try list.list.append(vm.alloc, partv);
         } else {
             vm.retainObject(parent);
-            const runeLen: u32 = @intCast(cy.string.utf8Len(part));
+            const runeLen: u32 = @intCast(string.utf8Len(part));
             const partv = try vm.allocUstringSlice(part, runeLen, parent);
             try list.list.append(vm.alloc, partv);
         }

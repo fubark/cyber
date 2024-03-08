@@ -108,19 +108,6 @@ pub const StackTrace = debug.StackTrace;
 pub const StackFrame = debug.StackFrame;
 
 pub const string = @import("string.zig");
-pub const HeapStringBuilder = string.HeapStringBuilder;
-pub const HeapArrayBuilder = string.HeapArrayBuilder;
-pub const isAstring = string.isAstring;
-pub const validateUtf8 = string.validateUtf8;
-pub const utf8CharSliceAt = string.utf8CharSliceAt;
-pub const indexOfChar = string.indexOfChar;
-pub const indexOfAsciiSet = string.indexOfAsciiSet;
-pub const toUtf8CharIdx = string.toUtf8CharIdx;
-pub const charIndexOfCodepoint = string.charIndexOfCodepoint;
-pub const getLineEnd = string.getLineEnd;
-pub const prepReplacement = string.prepReplacement;
-pub const replaceAtIdxes = string.replaceAtIdxes;
-pub const utf8CodeAtNoCheck = string.utf8CodeAtNoCheck;
 
 pub const bytecode = @import("bytecode.zig");
 pub const ByteCodeBuffer = bytecode.ByteCodeBuffer;

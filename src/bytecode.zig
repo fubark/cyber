@@ -301,14 +301,12 @@ pub const ByteCodeBuffer = struct {
     }
 
     pub fn getOrPushStaticStringValue(self: *ByteCodeBuffer, str: []const u8) !cy.Value {
-        if (cy.validateUtf8(str)) |charLen| {
-            if (charLen == str.len) {
-                return try self.getOrPushStaticAstring(str);
-            } else {
-                return try self.getOrPushStaticUstring(str, @intCast(charLen));
-            }
+        var ascii: bool = undefined;
+        const num_cps = cy.string.measureUtf8(str, &ascii);
+        if (ascii) {
+            return try self.getOrPushStaticAstring(str);
         } else {
-            return error.InvalidUtf8;
+            return try self.getOrPushStaticUstring(str, @intCast(num_cps));
         }
     }
 };

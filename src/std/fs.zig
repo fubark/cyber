@@ -437,7 +437,7 @@ pub fn fileNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const fileo = args[0].castHostObject(*File);
     if (fileo.iterLines) {
         const readBuf = fileo.readBuf[0..fileo.readBufCap];
-        if (cy.getLineEnd(readBuf[fileo.curPos..fileo.readBufEnd])) |end| {
+        if (cy.string.getLineEnd(readBuf[fileo.curPos..fileo.readBufEnd])) |end| {
             // Found new line.
             const line = try vm.allocArray(readBuf[fileo.curPos..fileo.curPos+end]);
 
@@ -447,7 +447,7 @@ pub fn fileNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
             return line;
         }
 
-        var lineBuf = try cy.HeapArrayBuilder.init(vm);
+        var lineBuf = try cy.string.HeapArrayBuilder.init(vm);
         defer lineBuf.deinit();
         // Start with previous string without line delimiter.
         try lineBuf.appendString(vm.alloc, readBuf[fileo.curPos..fileo.readBufEnd]);
@@ -467,7 +467,7 @@ pub fn fileNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
                     return Value.None;
                 }
             }
-            if (cy.getLineEnd(readBuf[0..bytesRead])) |end| {
+            if (cy.string.getLineEnd(readBuf[0..bytesRead])) |end| {
                 // Found new line.
                 try lineBuf.appendString(vm.alloc, readBuf[0..end]);
 
@@ -507,8 +507,8 @@ pub fn dirIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
                 vm.release(nameKey);
                 vm.release(typeKey);
             }
-            const entryPath = try cy.heap.allocStringInternOrArray(vm, entry.path);
-            const entryName = try cy.heap.allocStringInternOrArray(vm, entry.basename);
+            const entryPath = try vm.allocString(entry.path);
+            const entryName = try vm.allocString(entry.basename);
             defer {
                 vm.release(entryPath);
                 vm.release(entryName);
@@ -533,7 +533,7 @@ pub fn dirIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
             const map = mapv.castHeapObject(*cy.heap.Map);
             const nameKey = try vm.retainOrAllocAstring("name");
             const typeKey = try vm.retainOrAllocAstring("type");
-            const entryName = try cy.heap.allocStringInternOrArray(vm, entry.name);
+            const entryName = try vm.allocString(entry.name);
             defer {
                 vm.release(nameKey);
                 vm.release(typeKey);

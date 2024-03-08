@@ -273,7 +273,7 @@ export fn csVmObject(ptr: *anyopaque) Value {
 }
 
 export fn csNewString(vm: *cy.VM, cstr: c.Str) Value {
-    return vm.allocStringInternOrArray(c.strSlice(cstr)) catch fatal();
+    return vm.allocString(c.strSlice(cstr)) catch fatal();
 }
 
 export fn csNewAstring(vm: *cy.VM, cstr: c.Str) Value {

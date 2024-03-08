@@ -1438,7 +1438,7 @@ pub fn getOrAllocOwnedString(self: *cy.VM, obj: *HeapObject, str: []const u8) li
 
 const Root = @This();
 pub const VmExt = struct {
-    pub const allocStringInternOrArray = Root.allocStringInternOrArray;
+    pub const allocString = Root.allocString;
     pub const retainOrAllocAstring = Root.retainOrAllocAstring;
     pub const retainOrAllocUstring = Root.retainOrAllocUstring;
     pub const allocAstringConcat = Root.getOrAllocAstringConcat;
@@ -1459,7 +1459,6 @@ pub const VmExt = struct {
     pub const allocUnsetArrayObject = Root.allocUnsetArrayObject;
     pub const allocUnsetAstringObject = Root.allocUnsetAstringObject;
     pub const allocUnsetUstringObject = Root.allocUnsetUstringObject;
-    pub const allocStringOrFail = Root.allocStringOrFail;
     pub const allocListFill = Root.allocListFill;
     pub const allocListIterator = Root.allocListIterator;
     pub const allocMapIterator = Root.allocMapIterator;
@@ -1471,27 +1470,13 @@ pub const VmExt = struct {
     }
 };
 
-pub fn allocStringOrFail(self: *cy.VM, str: []const u8) linksection(cy.Section) !Value {
-    if (cy.validateUtf8(str)) |charLen| {
-        if (str.len == charLen) {
-            return try retainOrAllocAstring(self, str);
-        } else {
-            return try retainOrAllocUstring(self, str, @intCast(charLen));
-        }
+pub fn allocString(self: *cy.VM, str: []const u8) linksection(cy.Section) !Value {
+    var ascii: bool = undefined;
+    const num_cps = cy.string.measureUtf8(str, &ascii);
+    if (ascii) {
+        return self.retainOrAllocAstring(str);
     } else {
-        return error.Unicode;
-    }
-}
-
-pub fn allocStringInternOrArray(self: *cy.VM, str: []const u8) linksection(cy.Section) !Value {
-    if (cy.validateUtf8(str)) |charLen| {
-        if (str.len == charLen) {
-            return try retainOrAllocAstring(self, str);
-        } else {
-            return try retainOrAllocUstring(self, str, @intCast(charLen));
-        }
-    } else {
-        return self.allocArray(str);
+        return self.retainOrAllocUstring(str, @intCast(num_cps));
     }
 }
 

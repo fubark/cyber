@@ -362,7 +362,7 @@ pub fn errorReport(vm: *cy.VM, _: [*]const Value, _: u8) linksection(cy.StdSecti
     const w = buf.writer(vm.alloc);
     try cy.debug.writeStackFrames(vm, w, trace);
 
-    return vm.allocStringInternOrArray(buf.items);
+    return vm.allocString(buf.items);
 }
 
 pub fn must(vm: *cy.VM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) anyerror!Value {
@@ -415,7 +415,7 @@ pub fn runestr(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
     if (std.unicode.utf8ValidCodepoint(rune)) {
         var buf: [4]u8 = undefined;
         const len = try std.unicode.utf8Encode(rune, &buf);
-        return vm.allocStringInternOrArray(buf[0..len]);
+        return vm.allocString(buf[0..len]);
     } else {
         return rt.prepThrowError(vm, .InvalidRune);
     }
@@ -439,7 +439,7 @@ pub fn getObjectRc(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSec
 pub fn toCyon(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
     const res = try allocToCyon(vm, vm.alloc, args[0]);
     defer vm.alloc.free(res);
-    return vm.allocStringInternOrArray(res);
+    return vm.allocString(res);
 }
 
 fn allocToCyon(vm: *cy.VM, alloc: std.mem.Allocator, root: Value) ![]const u8 {
@@ -591,7 +591,7 @@ fn genNodeValue(vm: *cy.VM, ast: cy.ast.AstView, nodeId: cy.NodeId) !cy.Value {
     switch (node.type()) {
         .funcHeader => {
             const name = ast.getNamePathInfoById(node.data.funcHeader.name).namePath;
-            try vm.mapSet(map, try vm.retainOrAllocAstring("name"), try vm.allocStringInternOrArray(name));
+            try vm.mapSet(map, try vm.retainOrAllocAstring("name"), try vm.allocString(name));
 
             const params = try vm.allocEmptyList();
             var paramId = node.data.funcHeader.paramHead;
@@ -607,7 +607,7 @@ fn genNodeValue(vm: *cy.VM, ast: cy.ast.AstView, nodeId: cy.NodeId) !cy.Value {
         },
         .funcParam => {
             var name = ast.nodeStringById(node.data.funcParam.name);
-            try vm.mapSet(map, try vm.retainOrAllocAstring("name"), try vm.allocStringInternOrArray(name));
+            try vm.mapSet(map, try vm.retainOrAllocAstring("name"), try vm.allocString(name));
 
             const typeSpec = try genTypeSpecString(vm, ast, node.data.funcParam.typeSpec);
             try vm.mapSet(map, try vm.retainOrAllocAstring("typeSpec"), typeSpec);
@@ -763,7 +763,7 @@ fn genDocComment(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, st
                 }
                 const finalStr = std.mem.trim(u8, state.sb.items, " ");
                 defer state.sb.clearRetainingCapacity();
-                return try vm.allocStringInternOrArray(finalStr);
+                return try vm.allocString(finalStr);
             }
         }
     }
@@ -830,7 +830,7 @@ fn fromCyonValue(vm: *cy.VM, val: cy.DecodeValueIR) !Value {
             const map = mapVal.asHeapObject();
             while (iter.next()) |entry| {
                 const child = try fromCyonValue(vm, dmap.getValue(entry.key_ptr.*));
-                const key = try vm.allocStringInternOrArray(entry.key_ptr.*);
+                const key = try vm.allocString(entry.key_ptr.*);
                 stdMapPut(vm, map, key, child);
             }
             return mapVal;
@@ -839,7 +839,7 @@ fn fromCyonValue(vm: *cy.VM, val: cy.DecodeValueIR) !Value {
             const str = try val.allocString();
             defer val.alloc.free(str);
             // TODO: Use allocOwnedString
-            return try vm.allocStringInternOrArray(str);
+            return try vm.allocString(str);
         },
         .integer => {
             return Value.initInt(try val.getInt());
@@ -1032,7 +1032,7 @@ fn arrayDecode1(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 
     const parent = obj.array.getParent();
     const slice = obj.array.getSlice();
-    if (cy.validateUtf8(slice)) |size| {
+    if (cy.string.validateUtf8(slice)) |size| {
         // Since the bytes are validated, just return a slice view of the bytes.
         if (size == slice.len) {
             vm.retainObject(parent);
@@ -1095,9 +1095,9 @@ fn arrayFindAnyByte(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSe
     const obj = args[0].asHeapObject();
     const slice = obj.array.getSlice();
     const set = args[1].asArray();
-    const setIsAscii = cy.isAstring(set);
+    const setIsAscii = cy.string.isAstring(set);
     if (setIsAscii) {
-        if (cy.indexOfAsciiSet(slice, set)) |idx| {
+        if (cy.string.indexOfAsciiSet(slice, set)) |idx| {
             return Value.initInt(@intCast(idx));
         }
     } else {
@@ -1122,7 +1122,7 @@ fn arrayFindByte(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     const slice = obj.array.getSlice();
     const byte = args[1].asInteger();
 
-    if (cy.indexOfChar(slice, @intCast(byte))) |idx| {
+    if (cy.string.indexOfChar(slice, @intCast(byte))) |idx| {
         return Value.initInt(@intCast(idx));
     }
     return Value.None;
@@ -1210,13 +1210,13 @@ fn arrayReplace(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     const idxBuf = &vm.u8Buf;
     idxBuf.clearRetainingCapacity();
     defer idxBuf.ensureMaxCapOrClear(vm.alloc, 4096) catch fatal();
-    const newLen = cy.prepReplacement(slice, needle, replacement, idxBuf.writer(vm.alloc)) catch fatal();
+    const newLen = cy.string.prepReplacement(slice, needle, replacement, idxBuf.writer(vm.alloc)) catch fatal();
     const numIdxes = @divExact(idxBuf.len, 4);
     if (numIdxes > 0) {
         const new = vm.allocUnsetArrayObject(newLen) catch fatal();
         const newBuf = new.array.getMutSlice();
         const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
-        cy.replaceAtIdxes(newBuf, slice, @intCast(needle.len), replacement, idxes);
+        cy.string.replaceAtIdxes(newBuf, slice, @intCast(needle.len), replacement, idxes);
         return Value.initNoCycPtr(new);
     } else {
         vm.retainObject(obj);

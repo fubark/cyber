@@ -498,7 +498,9 @@ var b = float(a)
 > _Planned Feature_
 
 ## Strings.
-The `String` type represents a sequence of validated UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as an `int`. See [`type String`](#type-string).
+The `String` type represents a sequence of UTF-8 codepoints. Each code point is stored internally as 1-4 bytes. See [`type String`](#type-string).
+
+Strings are not validated by default. If the codepoint is invalid at a particular index, the replacement character (0xFFFD) is returned instead.
 
 Strings are **immutable**, so operations that do string manipulation return a new string. By default, short strings are interned to reduce memory footprint.
 
@@ -641,7 +643,6 @@ To mutate an existing string, use [type MutString](#mutstring). *Planned Feature
 
 ## Arrays.
 An `Array` is an immutable sequence of bytes.
-It can be a more performant way to represent strings but it won't automatically validate their encoding and indexing returns the n'th byte rather than a UTF-8 rune.
 See [`type Array`](#type-array).
 
 ```cy

@@ -249,7 +249,7 @@ These keywords only have meaning in a certain context.
 - [Methods](#methods): `self` `Self`
 - [Types](#custom-types): [`object`](#objects) [`struct`](#structs) [`enum`](#enums) 
 - [Catching Errors](#caught-variable): `caught`
-- [Function Throws](#throws-specifier): `throws`
+- Function Specifier: 
 
 ### Literals.
 - [Booleans](#booleans): `true` `false`
@@ -2011,9 +2011,10 @@ print ptr.value()     --'3735928559'
 <table><tr>
 <td valign="top">
 
-* [Error trait.](#error-trait)
-  * [`error` value.](#error-value)
-  * [Enum error.](#enum-error)
+* [Error value.](#error-value)
+  * [`error` literal.](#error-literal)
+  * [`error` payload.](#error-payload)
+  * [`error` set type.](#error-set-type)
 * [Throwing errors.](#throwing-errors)
 * [Catching errors.](#catching-errors)
   * [`try` block.](#try-block)
@@ -2024,8 +2025,8 @@ print ptr.value()     --'3735928559'
 </td><td valign="top">
 
 * [Semantic checks.](#semantic-checks)
-  * [`throws` specifier.](#throws-specifier)
-  * [Requiring `throws`.](#requiring-throws)
+  * [throws specifier.](#throws-specifier)
+  * [throws check.](#throws-check)
 * [Stack trace.](#stack-trace)
 * [Unexpected errors.](#unexpected-errors)
   * [Panics.](#panics)
@@ -2036,12 +2037,10 @@ print ptr.value()     --'3735928559'
 
 Cyber provides a throw/catch mechanism to handle expected errors. For unexpected errors, panics can be used as a fail-fast mechanism to abort the currently running fiber.
 
-## Error trait.
-Only types that implement the `Error` trait can be thrown or attached to a panic.
-Since the `Error` trait is empty, it's simple to turn any type into a throwable type.
+## Error value.
 
-### `error` value.
-An `error` value contains a `symbol` and implements the `Error` trait. They can be created without a declaration using the error literal:
+### `error` literal.
+An `error` value contains a `symbol`. They can be created without a declaration using the error literal:
 ```cy
 var err = error.Oops
 ```
@@ -2061,21 +2060,23 @@ if err.sym() == .Oops:
     handleOops()
 ```
 
-### Enum error.
-By implementing the `Error` trait, an enum type can be throwable: *Planned Feature*
+### `error` payload.
+An payload value can be attached when throwing an error value. *Planned Feature*
+
+### `error` set type.
+Error set types enumerate error values that belong to the same group of errors: *Planned Feature*
 ```cy
-type MyError enum:
-    with Error
-    boom
-    badArgument
-    nameTooLong
+type MyError error:
+    case boom
+    case badArgument
+    case nameTooLong
 
 var err = MyError.nameTooLong
 ```
 
 ## Throwing errors.
 Use the `throw` keyword to throw errors. 
-A thrown error continues to bubble up the call stack until it is caught by a `try` block or expression.
+A thrown error continues to bubble up the call stack until it is caught by a `try` block or `try` expression.
 ```cy
 func fail():
     throw error.Oops      -- Throws an error with the symbol `#Oops`
@@ -2122,7 +2123,7 @@ catch:
     print caught
 ```
 
-Enum errors can be matched: *Planned Feature*
+Error sets can be matched: *Planned Feature*
 ```cy
 try:
     funcThatCanFail()
@@ -2154,37 +2155,36 @@ if res == error.Failed:
 ```
 
 ## Semantic checks.
-### `throws` specifier.
-The `throws` specifier indicates that a function contains a throwing expression that was not caught with `try catch`.
+### throws specifier.
+The throws specifier `!` indicates that a function contains a throwing expression that was not caught with `try catch`.
 
-When a function does not have a return specifier, it's implicitly given the `throws` specifier:
+The specifier is attached to the function return type as a prefix:
 ```cy
-func foo():
+func foo() !void:
     throw error.Failure
-
-func bar() throws:
-    throw error.Failure
-
--- `foo` and `bar` both have the same return specifier.
 ```
 
-Return types for typed functions are declared after `throws` using a comma separator:
+This declaration indicates the function can either return an `int` type or throw an error:
 ```cy
-func result(cond bool) throws, int:
+func result(cond bool) !int:
     if cond:
         return 123
     else:
         throw error.Failure
 ```
 
-### Requiring `throws`.
-A compile-time error is issued when a typed function without a `throws` specifier contains an uncaught throwing expression: *Planned Feature*
+### throws check.
+The compiler requires a throws specifier if the function contains an uncaught throwing expression: *Planned Feature*
 ```cy
 func foo(a int) int:
     if a == 10:
-        throw error.Failure -- CompileError. `foo` requires the `throws`
-    else:                   -- specifier or any throwing expression must
-        return a * 2        -- be caught with `try catch`.
+        throw error.Failure   --> CompileError.
+    else:
+        return a * 2
+
+--> CompileError. Uncaught throwing expression.
+--> `foo` requires the `!` throws specifier or
+--> the expression must be caught with `try`.
 ```
 
 ## Stack trace.

@@ -187,7 +187,7 @@ h3 {
     border-radius: 0rem;
 }
 
-.markdown h3 > code {
+main h3 > code {
     color: var(--header);
     font-size: 0.9em;
     background-color: transparent;

@@ -400,10 +400,11 @@ export fn csToBool(val: Value) bool {
 }
 
 test "csToBool()" {
+    try t.eq(c.toBool(c.float(0)), false);
     try t.eq(c.toBool(c.float(123.0)), true);
-    try t.eq(c.toBool(c.float(0)), true);
+    try t.eq(c.toBool(c.integer(0)), false);
+    try t.eq(c.toBool(c.integer(1)), true);
     try t.eq(c.toBool(c.csTrue()), true);
-    try t.eq(c.toBool(c.none()), false);
     try t.eq(c.toBool(c.csFalse()), false);
 }
 

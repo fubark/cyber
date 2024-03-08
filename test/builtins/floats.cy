@@ -15,7 +15,6 @@ t.eq(float(100), 100.0)
 t.eq(float(100.1), 100.1)
 t.eq(float('100'), 100.0)
 t.eq(float('100.1'), 100.1)
-t.eq(float(none), 0.0)
 t.eq(float(true), 1.0)
 t.eq(float(false), 0.0)
 

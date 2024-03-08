@@ -863,7 +863,13 @@ beginSwitch:
     }
     CASE(Not): {
         Value val = stack[pc[1]];
-        bool bval = VALUE_IS_BOOLEAN(val) ? VALUE_AS_BOOLEAN(val) : VALUE_ASSUME_NOT_BOOL_TO_BOOL(val);
+#if TRACE
+        if (!VALUE_IS_BOOLEAN(val)) {
+            panicStaticMsg(vm, "Expected `bool` type.");
+            RETURN(RES_CODE_PANIC);
+        }
+#endif
+        bool bval = VALUE_AS_BOOLEAN(val);
         stack[pc[2]] = VALUE_BOOLEAN(!bval);
         pc += 3;
         NEXT();
@@ -1162,9 +1168,15 @@ beginSwitch:
         }
     }
     CASE(JumpNotCond): {
-        Value cond = stack[pc[1]];
-        bool condVal = VALUE_IS_BOOLEAN(cond) ? VALUE_AS_BOOLEAN(cond) : VALUE_ASSUME_NOT_BOOL_TO_BOOL(cond);
-        if (!condVal) {
+        Value condv = stack[pc[1]];
+#if TRACE
+        if (!VALUE_IS_BOOLEAN(condv)) {
+            panicStaticMsg(vm, "Unexpected. Insert type check.");
+            RETURN(RES_CODE_PANIC);
+        }
+#endif
+        bool cond = VALUE_AS_BOOLEAN(condv);
+        if (!cond) {
             pc += READ_U16(2);
             NEXT();
         } else {
@@ -1173,9 +1185,15 @@ beginSwitch:
         }
     }
     CASE(JumpCond): {
-        Value cond = stack[pc[1]];
-        bool condVal = VALUE_IS_BOOLEAN(cond) ? VALUE_AS_BOOLEAN(cond) : VALUE_ASSUME_NOT_BOOL_TO_BOOL(cond);
-        if (condVal) {
+        Value condv = stack[pc[1]];
+#if TRACE
+        if (!VALUE_IS_BOOLEAN(condv)) {
+            panicStaticMsg(vm, "Unexpected. Insert type check.");
+            RETURN(RES_CODE_PANIC);
+        }
+#endif
+        bool cond = VALUE_AS_BOOLEAN(condv);
+        if (cond) {
             pc += (uintptr_t)READ_I16(2);
         } else {
             pc += 4;

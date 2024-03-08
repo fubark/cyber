@@ -116,7 +116,7 @@ t.eq(a[1], 3)
 a = [1, 2, 3]
 a.resize(4)
 t.eq(a.len(), 4)
-t.eq(a[3], none)
+t.eq(a[3], 0)
 a.resize(2)
 t.eq(a.len(), 2)
 t.eq(a[1], 2)

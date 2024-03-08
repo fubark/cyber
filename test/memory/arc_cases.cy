@@ -14,7 +14,7 @@ else String(1) == '1':
     pass
 
 -- Temporary rc where cond is released before entering body.
-while String(1):
+while String(1) == '1':
     break
 
 -- b's narrow type becomes `any` after the if branch, `a = b` should generate copyRetainSrc.

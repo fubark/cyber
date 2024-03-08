@@ -6,22 +6,13 @@ func fail():
 func happy(a):
     return a
 
-my a = none
-
 -- No error.
+my a = false
 try:
     a = 1
 catch:
     a = 0
 t.eq(a, 1)
-
--- No error. Skip catch.
-try:
-    a = 1
-catch:
-    a = 0
-a = 2
-t.eq(a, 2)
 
 -- No error in function.
 func foo():

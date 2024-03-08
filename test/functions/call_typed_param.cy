@@ -46,19 +46,6 @@ n = t.erase(123)
 t.eq(fooInt(n as int), true)
 
 --|
---| none.
---|
-func fooNone(a none):
-    return a == none
-
--- Literal.
-t.eq(fooNone(none), true)
-        
--- From var.
-n = none
-t.eq(fooNone(n), true)
-
---|
 --| pointer.
 --|
 func fooPointer(a pointer):

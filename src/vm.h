@@ -139,7 +139,6 @@ typedef struct IndexSlice {
 #define VALUE_AS_FLOAT_TO_INT(v) ((int32_t)VALUE_AS_FLOAT(v))
 #define VALUE_AS_FLOAT_TO_INT64(v) ((int64_t)VALUE_AS_FLOAT(v))
 #define VALUE_AS_BOOLEAN(v) (v == TRUE_MASK)
-#define VALUE_ASSUME_NOT_BOOL_TO_BOOL(v) (!VALUE_IS_NONE(v))
 #define VALUE_GET_TAG(v) ((BITCAST(u32, v >> 32)) & TAG_MASK)
 // #define VALUE_RETINFO_NUMRETVALS(v) (v & 0xff)
 #define VALUE_RETINFO_RETFLAG(v) ((v & 0xff00) >> 8)

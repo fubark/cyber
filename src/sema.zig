@@ -4475,7 +4475,7 @@ pub const ChunkExt = struct {
             .not => {
                 const irIdx = try c.ir.pushEmptyExpr(.preUnOp, c.alloc, undefined, nodeId);
 
-                const child = try c.semaExpr(node.data.unary.child, .{});
+                const child = try c.semaExprCstr(node.data.unary.child, bt.Boolean);
                 c.ir.setExprData(irIdx, .preUnOp, .{ .unOp = .{
                     .childT = child.type.id, .op = op, .expr = child.irIdx,
                 }});

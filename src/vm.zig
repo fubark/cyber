@@ -601,7 +601,7 @@ pub const VM = struct {
             const main: *const fn(*VM, [*]Value) callconv(.C) void = @ptrCast(@alignCast(jitRes.buf.items.ptr + jitRes.mainPc));
             // @breakpoint();
             main(self, self.framePtr);
-            return Value.None;
+            return Value.initInt(0);
         } else if (config.backend == .vm) {
             if (cy.verbose) {
                 try debug.dumpBytecode(self, .{});
@@ -657,7 +657,7 @@ pub const VM = struct {
                     return error.ExePanic;
                 }
             }
-            return Value.None;
+            return Value.initInt(0);
         }
     }
 
@@ -785,7 +785,7 @@ pub const VM = struct {
         logger.tracev("main stack size: {}", .{buf.mainStackSize});
 
         if (self.endLocal == 255) {
-            return Value.None;
+            return Value.initInt(0);
         } else {
             return self.stack[self.endLocal];
         }
@@ -1478,10 +1478,6 @@ pub const VM = struct {
                         try std.fmt.format(w, "{d}", .{f});
                     }
                 }
-                return;
-            },
-            bt.None => {
-                try w.writeAll("none");
                 return;
             },
             bt.Boolean => {
@@ -3883,14 +3879,7 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
                 },
             }
         } else {
-            switch (val.getTag()) {
-                bt.None => {
-                    fmt.printStdout("None\n", &.{});
-                },
-                else => {
-                    fmt.printStdout("{}\n", &.{v(val.val)});
-                },
-            }
+            fmt.printStdout("{}\n", &.{v(val.val)});
         }
     }
 }
@@ -4737,7 +4726,7 @@ pub var dummyCyclableHead = DummyCyclableNode{
     .next = null,
     // This will be marked automatically before sweep, so it's never considered as a cyc object.
     .len = if (cy.Malloc == .zig) 0 else {},
-    .typeId = vmc.GC_MARK_MASK | bt.None,
+    .typeId = vmc.GC_MARK_MASK | bt.Void,
 };
 
 pub fn defaultPrint(_: ?*cc.VM, _: cc.Str) callconv(.C) void {

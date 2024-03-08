@@ -180,11 +180,20 @@ pub const Value = packed union {
         return !self.isNone();
     }
 
-    pub inline fn toBool(self: *const Value) bool {
+    pub fn toBool(self: *const Value) bool {
         if (self.isBool()) {
             return self.asBool();
         }
-        return !self.isNone();
+        if (self.isFloat() and self.asF64() == 0) {
+            return false;
+        }
+        if (self.isInteger() and self.asInteger() == 0) {
+            return false;
+        }
+        if (self.isString() and self.asString().len == 0) {
+            return false;
+        }
+        return true;
     }
 
     pub inline fn isArray(self: *const Value) bool {

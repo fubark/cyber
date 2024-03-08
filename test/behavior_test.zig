@@ -290,7 +290,7 @@ if (!aot) {
     run.case("builtins/string_slices_utf8.cy");
 if (!aot) {
     run.case("builtins/symbols.cy");
-    run.case("builtins/truthy.cy");
+    run.case("builtins/bool.cy");
 }
 
     run.case("vars/local_annotate_error.cy");

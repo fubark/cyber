@@ -81,7 +81,7 @@ t.eq(res, 2)
 res = switch 'three':
     case 'one' => 1
     case 'two' => 2
-t.eq(res, none)
+t.eq(res, false)
 
 -- Assign switch to static var.
 var .varRes = switch 'one':
@@ -97,6 +97,6 @@ t.eq(varRes2, 2)
 var .varRes3 = switch 'three':
     case 'one' => 1
     case 'two' => 2
-t.eq(varRes3, none)
+t.eq(varRes3, false)
 
 --cytest: pass

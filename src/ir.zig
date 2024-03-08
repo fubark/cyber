@@ -16,10 +16,11 @@ const log = cy.log.scoped(.ir);
 ///    static variable initializers and zero values.
 /// 5. Makes bc codegen simpler, creating additional backends should also be simpler.
 ///
-/// The IR is tree structure but all the nodes are packed into a linear array.
+/// The IR is a tree structure but all the nodes are packed into a linear array.
 /// IR nodes are indexed by their position in the array.
-/// Stmt and expr nodes contain metadata which starts with their node type followed by their AST nodeId.
+/// Stmt and expr nodes contain metadata which starts with their node type followed by their AST node id.
 /// Stmt nodes additionally have a next index that points to the next stmt node.
+/// Expr nodes additionally have a type id.
 /// Data specific to a node's type follows the metadata.
 
 pub const StmtCode = enum(u8) {
@@ -239,9 +240,6 @@ pub const FieldDyn = struct {
 /// Can have a chain of nested struct field indexes.
 /// The array of nested indexes are located after this struct.
 pub const Field = struct {
-    /// Final field type returned.
-    typeId: TypeId,
-
     /// Receiver.
     rec: Loc,
 
@@ -275,7 +273,8 @@ pub const ForIterStmt = struct {
 };
 
 pub const ForRangeStmt = struct {
-    rangeEnd: u32,
+    start: Loc,
+    end: Loc,
     eachLocal: ?u8,
     increment: bool,
     declHead: u32,
@@ -655,16 +654,16 @@ pub const Buffer = struct {
 
     pub fn setExprData(self: *Buffer, idx: usize, comptime code: ExprCode, data: ExprData(code)) void {
         const bytes = std.mem.toBytes(data);
-        @memcpy(self.buf.items[idx+1+4..idx+1+4+bytes.len], &bytes);
+        @memcpy(self.buf.items[idx+1+4+4..idx+1+4+4+bytes.len], &bytes);
     }
 
     pub fn getExprData(self: *Buffer, idx: usize, comptime code: ExprCode) ExprData(code) {
-        const data = self.buf.items[idx+1+4..][0..@sizeOf(ExprData(code))];
+        const data = self.buf.items[idx+1+4+4..][0..@sizeOf(ExprData(code))];
         return std.mem.bytesToValue(ExprData(code), data);
     }
 
     pub fn getExprDataPtr(self: *Buffer, idx: usize, comptime code: ExprCode) *align(1) ExprData(code) {
-        const data = self.buf.items[idx+1+4..][0..@sizeOf(ExprData(code))];
+        const data = self.buf.items[idx+1+4+4..][0..@sizeOf(ExprData(code))];
         return std.mem.bytesAsValue(ExprData(code), data);
     }
 
@@ -692,7 +691,7 @@ pub const Buffer = struct {
     }
 
     pub fn advanceExpr(_: *Buffer, idx: usize, comptime code: ExprCode) usize {
-        return idx + 1 + 4 + @sizeOf(ExprData(code));
+        return idx + 1 + 4 + 4 + @sizeOf(ExprData(code));
     }
 
     pub fn advanceStmt(_: *Buffer, idx: usize, comptime code: StmtCode) usize {
@@ -714,12 +713,13 @@ pub const Buffer = struct {
         return self.stmtBlockStack.pop();
     }
 
-    pub fn pushEmptyExpr(self: *Buffer, alloc: std.mem.Allocator, comptime code: ExprCode, nodeId: cy.NodeId) !u32 {
+    pub fn pushEmptyExpr(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, type_id: cy.TypeId, node_id: cy.NodeId) !u32 {
         log.tracev("irPushExpr: {}", .{code});
         const start = self.buf.items.len;
-        try self.buf.resize(alloc, self.buf.items.len + 1 + 4 + @sizeOf(ExprData(code)));
+        try self.buf.resize(alloc, self.buf.items.len + 1 + 4 + 4 + @sizeOf(ExprData(code)));
         self.buf.items[start] = @intFromEnum(code);
-        self.setNode(start, nodeId);
+        self.setNode(start, node_id);
+        self.setExprType(start, type_id);
         return @intCast(start);
     }
 
@@ -744,8 +744,8 @@ pub const Buffer = struct {
         return std.mem.bytesAsSlice(T, data);
     }
 
-    pub fn pushExpr(self: *Buffer, alloc: std.mem.Allocator, comptime code: ExprCode, nodeId: cy.NodeId, data: ExprData(code)) !u32 {
-        const idx = try self.pushEmptyExpr(alloc, code, nodeId);
+    pub fn pushExpr(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, type_id: cy.TypeId, node_id: cy.NodeId, data: ExprData(code)) !u32 {
+        const idx = try self.pushEmptyExpr(code, alloc, type_id, node_id);
         self.setExprData(idx, code, data);
         return idx;
     }
@@ -764,6 +764,14 @@ pub const Buffer = struct {
 
     pub fn setNode(self: *Buffer, idx: usize, nodeId: cy.NodeId) void {
         @as(*align(1) cy.NodeId, @ptrCast(self.buf.items.ptr + idx + 1)).* = nodeId;
+    }
+
+    pub fn setExprType(self: *Buffer, loc: usize, type_id: cy.TypeId) void {
+        @as(*align(1) cy.TypeId, @ptrCast(self.buf.items.ptr + loc + 1 + 4)).* = type_id;
+    }
+
+    pub fn getExprType(self: *Buffer, loc: usize) cy.TypeId {
+        return @as(*align(1) cy.TypeId, @ptrCast(self.buf.items.ptr + loc + 1 + 4)).*;
     }
 
     pub fn setStmtNext(self: *Buffer, idx: usize, nextIdx: u32) void {

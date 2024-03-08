@@ -634,12 +634,352 @@ progress:indeterminate::-moz-progress-bar {
   Outdated base version: https://github.com/primer/github-syntax-dark
   Current colors taken from GitHub's CSS
 */.hljs{color:#c9d1d9;background:#0d1117}.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#ff7b72}.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#d2a8ff}.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#79c0ff}.hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#a5d6ff}.hljs-built_in,.hljs-symbol{color:#ffa657}.hljs-code,.hljs-comment,.hljs-formula{color:#8b949e}.hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag{color:#7ee787}.hljs-subst{color:#c9d1d9}.hljs-section{color:#1f6feb;font-weight:700}.hljs-bullet{color:#f2cc60}.hljs-emphasis{color:#c9d1d9;font-style:italic}.hljs-strong{color:#c9d1d9;font-weight:700}.hljs-addition{color:#aff5b4;background-color:#033a16}.hljs-deletion{color:#ffdcd7;background-color:#67060c}</style>
-    <link rel="stylesheet" href="./style.css">
+    <style>:root {
+    --bg: #0c0c0c;
+    --accent-bg: #0d0707;
+    --border: #614721;
+/*    --text: #d2d2d2;*/
+    --text: #fff;
+    --text-light: #888888;
+    --accent-light: #ffc57b;
+/*    --header: #c4beb9;*/
+    --header: #b5aea8;
+    /* --accent-light: #fab760; */
+    --accent: #ffa430;
+    --marked: #ffa430;
+    --mono-font: Consolas, Menlo, Monaco, "Andale Mono", "Ubuntu Mono", monospace;
+    --keyword: #ff7d67;
+
+    --header-line: #333;
+
+    --nav-width: 15em;
+}
+
+html {
+    scroll-behavior: auto;
+}
+
+h1 {
+    font-size: 2em;
+    font-weight: normal;
+    margin-top: 1.5em;
+}
+
+h2 {
+    font-size: 1.5em;
+    font-weight: normal;
+}
+
+h3 {
+    font-weight: normal;
+}
+
+h4 {
+    font-weight: normal;
+}
+
+h5 {
+    font-weight: normal;
+}
+
+h6 {
+    font-weight: normal;
+}
+
+h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
+    opacity: 0;
+    text-decoration: none
+}
+
+h1:hover a, h2:hover a, h3:hover a, h4:hover a, h5:hover a, h6:hover a {
+    opacity: initial
+}
+
+h1.title {
+    color: var(--accent);
+    margin-bottom: 10px;
+}
+
+html, body {
+    font-size: 18px;
+
+    /* Reset to defaults */ 
+    letter-spacing: normal;
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: auto;
+    background-color: var(--bg);
+    color: var(--text);
+}
+
+header ul {
+    list-style-type: none;
+    padding-left: 0px;
+}
+
+header a {
+    white-space: nowrap;
+}
+
+body > header {
+    height: 100%;
+    width: var(--nav-width);
+    padding-left: 40px;
+    text-align: left;
+    position: fixed;
+    top: 0;
+    left: 0;
+    overflow-y: auto;
+    background-color: var(--bg);
+}
+
+header ul li {
+    display: list-item;
+    margin-right: 0px;
+}
+
+body {
+    display: block;
+}
+
+main {
+    padding-top: 0px;
+    padding-left: calc(var(--nav-width) + 20px);
+    padding-right: 20px;
+}
+
+em {
+    font-style: normal;
+    color: #fb6767;
+}
+
+/* mobile */
+@media screen and (max-width: 720px) {
+    body {
+        display: grid;
+    }
+
+    /* Make 2 column navs fit */
+    table ul {
+        padding-left: 20px;
+    }
+    table ul ul {
+        padding-left: 0px;
+    }
+    table td {
+        padding: 0.5rem 0 0.5rem 0;
+    }
+
+    body > header {
+        position: static;
+        padding-left: 0px;
+        height: initial;
+        width: initial;
+        top: initial;
+        left: initial;
+        text-align: center;
+        overflow-y: visible;
+        background-color: var(--accent-bg);
+    }
+
+    main {
+        padding-left: 0px;
+        padding-right: 0px;
+    }
+
+    header ul {
+        margin-top: 0px;
+        margin-bottom: 0px;
+    }
+
+    header ul li {
+        display: inline;
+        margin-right: 5px;
+    }
+}
+
+a.current {
+    text-decoration: none;
+}
+
+h1 {
+/*    color: var(--accent);*/
+/*    font-weight: bold;*/
+}
+
+.markdown h2 {
+    color: var(--header);
+    font-weight: bold; 
+    margin-top: 60px;
+}
+
+h3 {
+    color: var(--header);
+/*    font-weight: bold; */
+    font-size: 1.2em;
+    margin-top: 2.2em;
+
+    padding: 0.5rem 1rem 0.7rem 0.75rem;
+    border-bottom: 0.15rem solid var(--header-line);
+    border-radius: 0rem;
+}
+
+main h3 > code {
+    color: var(--header);
+    font-size: 0.9em;
+    background-color: transparent;
+}
+
+.markdown table tr th {
+    text-align: left;
+    color: var(--text-light);
+    font-weight: normal;
+}
+
+.markdown table tr th, .markdown table tr td {
+    border: 3px solid #222;
+}
+
+.markdown table tr td:first-child code {
+    font-size: 15px;
+}
+
+.book-search input {
+    background-color: var(--bg);
+    border: 3px solid #222;
+}
+
+.book-menu .book-brand a {
+    color: var(--accent);
+    font-weight: bold;
+}
+
+.book-menu a {
+    color: var(--accent-light);
+}
+.book-menu a:hover {
+    opacity: 1;
+    color: var(--accent-light);
+    text-decoration: underline;
+}
+
+.book-menu a.active {
+    color: var(--accent);
+    font-weight: bold;
+    text-decoration: underline;
+}
+
+ul a {
+    color: var(--accent-light);
+}
+
+a {
+    color: var(--accent);
+}
+
+.markdown a:visited {
+    color: var(--accent);
+    text-decoration: underline;
+}
+.markdown a {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+:focus {
+    outline-style: none;
+}
+
+/* inline code */
+main code {
+    font-size: 17px;
+    background: none;
+    color: var(--accent-light);
+    padding: 2px 6px;
+}
+
+/* block code */
+main pre code {
+    font-size: 15px;
+    color: var(--text);
+    font-weight: normal;
+    font-family: var(--mono-font);
+}
+
+pre {
+/*    padding: 10px;*/
+    font-size: 15px;
+    border: 0px solid var(--border);
+    background-color: #171717;
+}
+
+pre code.hljs {
+    padding: 0px;
+    white-space: pre-wrap;
+}
+
+.hljs {
+/*    background-color: var(--accent-bg);*/
+    background-color: transparent;
+}
+
+.hljs-params {
+    color: #c9d1d9;
+}
+
+blockquote {
+    margin: 20px 0 20px 0;
+    font-style: normal;
+    border-left: 3px solid var(--header-line);
+    padding: 3px 0px 3px 15px;
+    color: var(--text);
+}
+
+blockquote p:nth-child(2) {
+    margin-top: 5px;
+}
+
+blockquote p {
+    margin: 0px;
+    padding: 0px;
+}
+
+blockquote em {
+    color: #fb6767;
+}
+
+table {
+    font-size: 18px;
+    width: auto;
+    line-height: 1.5em;
+    display: table;
+    margin: 0 0;
+}
+
+table thead {
+    border-bottom: 0.15rem solid var(--header-line);
+    width: auto;
+}
+
+table th {
+    border: 0px solid var(--border);
+    width: auto;
+    background-color: transparent;
+}
+
+table td {
+    border: 0px solid var(--border);
+    width: auto;
+}
+
+table tbody tr:nth-child(even) {
+    background-color: #111;
+}
+</style>
 </head>
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 129-c437dfd</div>
+    <div class="sub-title">v0.4-dev 135-029dcaa</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>

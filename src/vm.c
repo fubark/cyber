@@ -1428,7 +1428,11 @@ beginSwitch:
                 WRITE_U16(5, OBJ_TYPEID(obj));
                 pc[7] = offset;
             } else {
-                stack[dst] = zGetFieldFallback(vm, obj, ((FieldSymbolMap*)vm->fieldSyms.buf)[symId].nameId);
+                Value res = zGetFieldFallback(vm, obj, ((FieldSymbolMap*)vm->fieldSyms.buf)[symId].nameId);
+                if (res == VALUE_INTERRUPT) {
+                    RETURN(RES_CODE_PANIC);
+                }
+                stack[dst] = res;
             }
             retain(vm, stack[dst]);
             pc += 8;

@@ -1267,8 +1267,7 @@ pub const VM = struct {
                 return self.prepPanic("Missing key in map.");
             }
         } else {
-            logger.tracev("Missing symbol for object: {}", .{obj.getTypeId()});
-            return Value.None;
+            return self.prepPanic("Missing field in object.");
         }
     }
 

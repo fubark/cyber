@@ -78,7 +78,7 @@ pub fn eq_c(c: cy.Context, act: rt.Any, exp: rt.Any) callconv(.C) rt.ErrorUnion(
     }
 }
 
-fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) linksection(cy.StdSection) bool {
+fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
     const act_t = act.getTypeId();
     const exp_t = exp.getTypeId();
 
@@ -235,9 +235,9 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) linksection(cy.StdSection) bool 
     }
 }
 
-pub fn assert(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
-    if (args[0].toBool()) {
-        return Value.None;
+pub fn assert(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    if (args[0].asBool()) {
+        return Value.Void;
     } else {
         rt.errFmt(vm, "Assertion failed.", &.{});
         return rt.prepThrowError(vm, .AssertError);

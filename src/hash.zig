@@ -77,10 +77,10 @@ pub const KeyU64 = extern union {
 };
 
 pub const KeyU64Context = struct {
-    pub fn hash(_: @This(), key: KeyU64) linksection(cy.Section) u64 {
+    pub fn hash(_: @This(), key: KeyU64) u64 {
         return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.val));
     }
-    pub fn eql(_: @This(), a: KeyU64, b: KeyU64) linksection(cy.Section) bool {
+    pub fn eql(_: @This(), a: KeyU64, b: KeyU64) bool {
         return a.val == b.val;
     }
 };

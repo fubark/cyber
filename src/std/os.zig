@@ -214,12 +214,12 @@ fn zPostLoad(self: *cy.Compiler, mod: cc.ApiModule) anyerror!void {
     }
 }
 
-fn openDir(vm: *cy.VM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) anyerror!Value {
+fn openDir(vm: *cy.VM, args: [*]const Value, nargs: u8) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
     return openDir2(vm, &[_]Value{ args[0], Value.False }, nargs);
 }
 
-fn openDir2(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+fn openDir2(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const path = args[0].asString();
     const iterable = args[1].asBool();
@@ -234,14 +234,14 @@ fn openDir2(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) 
     return fs.allocDir(vm, fd, iterable) catch fatal();
 }
 
-fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const path = args[0].asString();
     try std.fs.cwd().deleteDir(path);
     return Value.None;
 }
 
-fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const src = args[0].asString();
     const alloc = vm.allocator();
@@ -252,21 +252,21 @@ fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     return Value.None;
 }
 
-fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const path = args[0].asString();
     try std.fs.cwd().deleteFile(path);
     return Value.None;
 }
 
-fn createDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+fn createDir(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const path = args[0].asString();
     try std.fs.cwd().makeDir(path);
     return Value.None;
 }
 
-fn createFile(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+fn createFile(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const path = args[0].asString();
     const truncate = args[1].asBool();
@@ -292,7 +292,7 @@ pub fn access(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return Value.None;
 }
 
-fn openFile(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+fn openFile(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const path = args[0].asString();
     const mode: Symbol = @enumFromInt(args[1].asSymbolId());
@@ -430,7 +430,7 @@ fn parseArgs(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return res;
 }
 
-fn osArgs(vm: *cy.VM, _: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+fn osArgs(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
     var iter = try std.process.argsWithAllocator(vm.alloc);
     defer iter.deinit();
@@ -443,7 +443,7 @@ fn osArgs(vm: *cy.VM, _: [*]const Value, _: u8) linksection(cy.StdSection) anyer
     return listv;
 }
 
-pub fn cwd(vm: *cy.VM, _: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn cwd(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const res = try std.process.getCwdAlloc(vm.alloc);
     defer vm.alloc.free(res);
@@ -485,21 +485,21 @@ pub fn getEnvAll(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
     return map;
 }
 
-pub fn free(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn free(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const ptr = args[0].asHeapObject().pointer.ptr;
     std.c.free(ptr);
     return Value.None;
 }
 
-pub fn malloc(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn malloc(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const size: usize = @intCast(args[0].asInteger());
     const ptr = std.c.malloc(size);
     return cy.heap.allocPointer(vm.internal(), ptr);
 }
 
-fn cstr(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+fn cstr(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const bytes = try vm.getOrBufPrintValueRawStr(&cy.tempBuf, args[0]);
     const new: [*]u8 = @ptrCast(std.c.malloc(bytes.len + 1));
@@ -535,7 +535,7 @@ pub fn now(_: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
     return Value.initF64(@as(f64, @floatFromInt(ns)) / @as(f64, std.time.ns_per_s));
 }
 
-pub fn milliTime(_: *cy.VM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn milliTime(_: *cy.VM, _: [*]const Value, _: u8) Value {
     return Value.initF64(@floatFromInt(stdx.time.getMilliTimestamp()));
 }
 
@@ -572,7 +572,7 @@ pub fn setEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
 }
 pub extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 
-pub fn sleep(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn sleep(_: *cy.VM, args: [*]const Value, _: u8) Value {
     if (builtin.os.tag == .windows) {
         const ms: u32 = @intFromFloat(args[0].asF64());
         std.os.windows.kernel32.Sleep(ms);
@@ -601,19 +601,19 @@ pub fn unsetEnv(vm: *cy.VM, args: [*]const Value, _: u8) Value {
 }
 pub extern "c" fn unsetenv(name: [*:0]const u8) c_int;
 
-fn newFFI(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn newFFI(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     _ = args;
     if (!cy.hasFFI) return vm.prepPanic("Unsupported.");
     return ffi.allocFFI(vm) catch fatal();
 }
 
-pub fn bindLib(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn bindLib(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasFFI) return vm.prepPanic("Unsupported.");
 
     return @call(.never_inline, ffi.ffiBindLib, .{vm, args, .{}});
 }
 
-pub fn bindLibExt(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn bindLibExt(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasFFI) return vm.prepPanic("Unsupported.");
 
     var configV = args[2];
@@ -661,7 +661,7 @@ fn cacheUrl(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     }
 }
 
-pub fn execCmd(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn execCmd(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
 
     const obj = args[0].asHeapObject();
@@ -709,7 +709,7 @@ pub fn execCmd(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
     return map;
 }
 
-pub fn exit(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn exit(_: *cy.VM, args: [*]const Value, _: u8) Value {
     const status: u8 = @intCast(args[0].asInteger());
     std.os.exit(status);
 }
@@ -756,7 +756,7 @@ pub fn readFile(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return vm.allocString(content);
 }
 
-pub fn writeFile(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn writeFile(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
     const path = args[0].asString();
     const content = try vm.getOrBufPrintValueRawStr(&cy.tempBuf, args[1]);

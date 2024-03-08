@@ -141,7 +141,7 @@ pub const Value = packed union {
         return obj.string.getSlice();
     }
 
-    pub inline fn toF64(self: *const Value) linksection(cy.HotSection) f64 {
+    pub inline fn toF64(self: *const Value) f64 {
         @setRuntimeSafety(debug);
         if (self.isFloat()) {
             return self.asF64();
@@ -150,7 +150,7 @@ pub const Value = packed union {
         }
     }
 
-    pub fn otherToF64(self: *const Value) linksection(cy.HotSection) !f64 {
+    pub fn otherToF64(self: *const Value) !f64 {
         if (self.isPointer()) {
             const obj = self.asHeapObject();
             if (obj.getTypeId() == bt.String) {
@@ -304,7 +304,7 @@ pub const Value = packed union {
         return @ptrFromInt(@as(usize, @intCast(self.val & ~vmc.POINTER_MASK)));
     }
 
-    pub inline fn asBool(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn asBool(self: *const Value) bool {
         return self.val == TrueMask;
     }
 
@@ -483,7 +483,7 @@ pub const Value = packed union {
         }
     }
 
-    pub fn getUserTag(self: *const Value) linksection(cy.Section) ValueUserTag {
+    pub fn getUserTag(self: *const Value) ValueUserTag {
         const typeId = self.getTypeId();
         switch (typeId) {
             bt.Float => return .float,
@@ -549,7 +549,7 @@ pub const ValueUserTag = enum {
     none,
 };
 
-pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
+pub fn shallowCopy(vm: *cy.VM, val: Value) Value {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         switch (obj.getTypeId()) {

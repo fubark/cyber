@@ -119,7 +119,7 @@ pub const DirIterator = extern struct {
     recursive: bool,
 };
 
-pub fn allocFile(vm: *cy.VM, fd: if (cy.hasStdFiles) std.os.fd_t else u32) linksection(cy.StdSection) !Value {
+pub fn allocFile(vm: *cy.VM, fd: if (cy.hasStdFiles) std.os.fd_t else u32) !Value {
     const file: *File = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, FileT, @sizeOf(File))));
     file.* = .{
         .fd = fd,
@@ -135,7 +135,7 @@ pub fn allocFile(vm: *cy.VM, fd: if (cy.hasStdFiles) std.os.fd_t else u32) links
     return Value.initHostNoCycPtr(file);
 }
 
-pub fn allocDir(vm: *cy.VM, fd: std.os.fd_t, iterable: bool) linksection(cy.StdSection) !Value {
+pub fn allocDir(vm: *cy.VM, fd: std.os.fd_t, iterable: bool) !Value {
     const dir: *Dir = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, DirT, @sizeOf(Dir))));
     dir.* = .{
         .fd = fd,
@@ -145,7 +145,7 @@ pub fn allocDir(vm: *cy.VM, fd: std.os.fd_t, iterable: bool) linksection(cy.StdS
     return Value.initHostNoCycPtr(dir);
 }
 
-pub fn allocDirIterator(vm: *cy.VM, dirv: Value, recursive: bool) linksection(cy.StdSection) !Value {
+pub fn allocDirIterator(vm: *cy.VM, dirv: Value, recursive: bool) !Value {
     const dirIter: *DirIterator = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, DirIterT, @sizeOf(DirIterator))));
     dirIter.* = .{
         .dir = dirv,
@@ -214,7 +214,7 @@ pub fn fileStreamLines1(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value 
     return args[0];
 }
 
-pub fn dirWalk(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn dirWalk(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
     const dir = args[0].castHostObject(*Dir);
     if (dir.iterable) {
@@ -225,7 +225,7 @@ pub fn dirWalk(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSectio
     }
 }
 
-pub fn dirIterator(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn dirIterator(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
     const dir = args[0].castHostObject(*Dir);
     if (dir.iterable) {
@@ -313,7 +313,7 @@ pub fn fileWrite(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return Value.initInt(@intCast(numWritten));
 }
 
-pub fn fileClose(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn fileClose(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const file = args[0].castHostObject(*File);
@@ -321,7 +321,7 @@ pub fn fileClose(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSect
     return Value.None;
 }
 
-pub fn fileRead(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn fileRead(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
@@ -346,7 +346,7 @@ pub fn fileRead(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     return vm.allocArray(tempBuf.buf[0..numRead]);
 }
 
-pub fn fileReadAll(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn fileReadAll(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const fileo = args[0].castHostObject(*File);
@@ -378,7 +378,7 @@ pub fn fileReadAll(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSe
     }
 }
 
-pub fn fileOrDirStat(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn fileOrDirStat(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const obj = args[0].asHeapObject();

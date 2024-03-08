@@ -243,7 +243,7 @@ pub const List = extern struct {
     }
 
     /// Assumes `val` is retained.
-    pub fn append(self: *List, alloc: std.mem.Allocator, val: Value) linksection(cy.Section) !void {
+    pub fn append(self: *List, alloc: std.mem.Allocator, val: Value) !void {
         const list = cy.ptrAlignCast(*cy.List(Value), &self.list);
         if (list.len == list.buf.len) {
             // After reaching a certain size, use power of two ceil.
@@ -708,7 +708,7 @@ pub fn allocExternalObject(vm: *cy.VM, size: usize, comptime cyclable: bool) !*H
 }
 
 /// Assumes new object will have an RC = 1.
-pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
+pub fn allocPoolObject(self: *cy.VM) !*HeapObject {
     if (self.heapFreeHead == null) {
         const list = try growHeapPages(self, @max(1, (self.heapPages.len * 15) / 10));
         self.heapFreeHead = list.head;
@@ -788,7 +788,7 @@ fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize, comptime cyclabl
 
 /// typeId should be cleared in trace mode since tracking may still hold a reference to the object.
 /// The gc also needs it for now to traverse objects in pages.
-pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
+pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) void {
     if (cy.Trace) {
         if (vm.objectTraceMap.getPtr(obj)) |trace| {
             trace.freePc = vm.debugPc;
@@ -855,7 +855,7 @@ pub fn allocMetaType(self: *cy.VM, typeKind: u8, typeId: cy.TypeId) !Value {
     return Value.initNoCycPtr(obj);
 }
 
-pub fn allocEmptyList(self: *cy.VM) linksection(cy.Section) !Value {
+pub fn allocEmptyList(self: *cy.VM) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
         .typeId = bt.List | vmc.CYC_TYPE_MASK,
@@ -883,7 +883,7 @@ pub fn allocOwnedList(self: *cy.VM, elems: []Value) !Value {
     return Value.initCycPtr(obj);
 }
 
-pub fn allocListFill(self: *cy.VM, val: Value, n: u32) linksection(cy.StdSection) !Value {
+pub fn allocListFill(self: *cy.VM, val: Value, n: u32) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
         .typeId = bt.List | vmc.CYC_TYPE_MASK,
@@ -909,7 +909,7 @@ pub fn allocListFill(self: *cy.VM, val: Value, n: u32) linksection(cy.StdSection
     return Value.initCycPtr(obj);
 }
 
-pub fn allocHostNoCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) linksection(cy.HotSection) !*align(8) anyopaque {
+pub fn allocHostNoCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) !*align(8) anyopaque {
     if (numBytes <= MaxPoolObjectUserBytes) {
         const obj = try allocPoolObject(vm);
         obj.head = .{
@@ -927,7 +927,7 @@ pub fn allocHostNoCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) link
     }
 }
 
-pub fn allocHostCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) linksection(cy.HotSection) !*anyopaque {
+pub fn allocHostCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) !*anyopaque {
     if (numBytes <= MaxPoolObjectUserBytes) {
         const obj = try allocPoolObject(vm);
         obj.head = .{
@@ -945,7 +945,7 @@ pub fn allocHostCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) linkse
     }
 }
 
-pub fn allocTuple(vm: *cy.VM, elems: []const Value) linksection(cy.HotSection) !Value {
+pub fn allocTuple(vm: *cy.VM, elems: []const Value) !Value {
     var obj: *HeapObject = undefined;
     if (elems.len <= 3) {
         obj = try allocPoolObject(vm);
@@ -964,7 +964,7 @@ pub fn allocTuple(vm: *cy.VM, elems: []const Value) linksection(cy.HotSection) !
     return Value.initCycPtr(obj);
 }
 
-pub fn allocList(self: *cy.VM, elems: []const Value) linksection(cy.HotSection) !Value {
+pub fn allocList(self: *cy.VM, elems: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
         .typeId = bt.List | vmc.CYC_TYPE_MASK,
@@ -984,7 +984,7 @@ pub fn allocList(self: *cy.VM, elems: []const Value) linksection(cy.HotSection) 
 }
 
 /// Assumes list is already retained for the iterator.
-pub fn allocListIterator(self: *cy.VM, list: *List) linksection(cy.HotSection) !Value {
+pub fn allocListIterator(self: *cy.VM, list: *List) !Value {
     const obj = try allocPoolObject(self);
     obj.listIter = .{
         .typeId = bt.ListIter | vmc.CYC_TYPE_MASK,
@@ -1044,7 +1044,7 @@ pub fn allocMap(self: *cy.VM, keyIdxs: []const align(1) u16, vals: []const Value
 }
 
 /// Assumes map is already retained for the iterator.
-pub fn allocMapIterator(self: *cy.VM, map: *Map) linksection(cy.HotSection) !Value {
+pub fn allocMapIterator(self: *cy.VM, map: *Map) !Value {
     const obj = try allocPoolObject(self);
     obj.mapIter = .{
         .typeId = bt.MapIter | vmc.CYC_TYPE_MASK,
@@ -1156,15 +1156,15 @@ pub fn allocStringTemplate2(self: *cy.VM, strs: []const Value, vals: []const Val
     }
 }
 
-pub fn getOrAllocOwnedAstring(self: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) !Value {
+pub fn getOrAllocOwnedAstring(self: *cy.VM, obj: *HeapObject) !Value {
     return getOrAllocOwnedString(self, obj, obj.astring.getSlice());
 }
 
-pub fn getOrAllocOwnedUstring(self: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) !Value {
+pub fn getOrAllocOwnedUstring(self: *cy.VM, obj: *HeapObject) !Value {
     return getOrAllocOwnedString(self, obj, obj.ustring.getSlice());
 }
 
-pub fn allocArrayConcat(self: *cy.VM, slice: []const u8, other: []const u8) linksection(cy.Section) !Value {
+pub fn allocArrayConcat(self: *cy.VM, slice: []const u8, other: []const u8) !Value {
     const len: u32 = @intCast(slice.len + other.len);
     var obj: *HeapObject = undefined;
     if (len <= MaxPoolObjectArrayByteLen) {
@@ -1208,7 +1208,7 @@ fn allocAstringObject(self: *cy.VM, str: []const u8) !*HeapObject {
     return obj;
 }
 
-fn allocAstringConcat3Object(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8) linksection(cy.Section) !*HeapObject {
+fn allocAstringConcat3Object(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8) !*HeapObject {
     const obj = try allocUnsetAstringObject(self, str1.len + str2.len + str3.len);
     const dst = obj.astring.getMutSlice();
     std.mem.copy(u8, dst[0..str1.len], str1);
@@ -1217,7 +1217,7 @@ fn allocAstringConcat3Object(self: *cy.VM, str1: []const u8, str2: []const u8, s
     return obj;
 }
 
-fn allocAstringConcatObject(self: *cy.VM, str1: []const u8, str2: []const u8) linksection(cy.Section) !*HeapObject {
+fn allocAstringConcatObject(self: *cy.VM, str1: []const u8, str2: []const u8) !*HeapObject {
     const obj = try allocUnsetAstringObject(self, str1.len + str2.len);
     const dst = obj.astring.getMutSlice();
     std.mem.copy(u8, dst[0..str1.len], str1);
@@ -1225,7 +1225,7 @@ fn allocAstringConcatObject(self: *cy.VM, str1: []const u8, str2: []const u8) li
     return obj;
 }
 
-pub fn getOrAllocAstringConcat(self: *cy.VM, str: []const u8, str2: []const u8) linksection(cy.Section) !Value {
+pub fn getOrAllocAstringConcat(self: *cy.VM, str: []const u8, str2: []const u8) !Value {
     if (str.len + str2.len <= DefaultStringInternMaxByteLen) {
         const concat = self.tempBuf[0..str.len+str2.len];
         @memcpy(concat[0..str.len], str);
@@ -1247,7 +1247,7 @@ pub fn getOrAllocAstringConcat(self: *cy.VM, str: []const u8, str2: []const u8) 
     }
 }
 
-pub fn getOrAllocAstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8) linksection(cy.Section) !Value {
+pub fn getOrAllocAstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8) !Value {
     if (str1.len + str2.len + str3.len <= DefaultStringInternMaxByteLen) {
         const concat = self.tempBuf[0..str1.len+str2.len+str3.len];
         @memcpy(concat[0..str1.len], str1);
@@ -1319,7 +1319,7 @@ const DefaultStringInternMaxByteLen = 64;
 
 // If no such string intern exists, `obj` is added as a string intern.
 // Otherwise, `obj` is released and the existing string intern is retained and returned.
-pub fn getOrAllocOwnedString(self: *cy.VM, obj: *HeapObject, str: []const u8) linksection(cy.HotSection) !Value {
+pub fn getOrAllocOwnedString(self: *cy.VM, obj: *HeapObject, str: []const u8) !Value {
     if (str.len <= DefaultStringInternMaxByteLen) {
         const res = try self.strInterns.getOrPut(self.alloc, str);
         if (res.found_existing) {
@@ -1370,7 +1370,7 @@ pub const VmExt = struct {
     }
 };
 
-pub fn allocString(self: *cy.VM, str: []const u8) linksection(cy.Section) !Value {
+pub fn allocString(self: *cy.VM, str: []const u8) !Value {
     if (cy.string.isAstring(str)) {
         return self.retainOrAllocAstring(str);
     } else {
@@ -1378,14 +1378,14 @@ pub fn allocString(self: *cy.VM, str: []const u8) linksection(cy.Section) !Value
     }
 }
 
-pub fn allocAstring(self: *cy.VM, str: []const u8) linksection(cy.Section) !Value {
+pub fn allocAstring(self: *cy.VM, str: []const u8) !Value {
     const obj = try allocUnsetAstringObject(self, str.len);
     const dst = obj.astring.getSlice();
     std.mem.copy(u8, dst, str);
     return Value.initNoCycPtr(obj);
 }
 
-pub fn allocUnsetAstringObject(self: *cy.VM, len: usize) linksection(cy.Section) !*HeapObject {
+pub fn allocUnsetAstringObject(self: *cy.VM, len: usize) !*HeapObject {
     var obj: *HeapObject = undefined;
     if (len <= MaxPoolObjectAstringByteLen) {
         obj = try allocPoolObject(self);
@@ -1459,7 +1459,7 @@ pub fn getOrAllocAstring(self: *cy.VM, str: []const u8, outAllocated: *bool) !Va
     }
 }
 
-pub fn allocUstring(self: *cy.VM, str: []const u8, charLen: u32) linksection(cy.Section) !Value {
+pub fn allocUstring(self: *cy.VM, str: []const u8, charLen: u32) !Value {
     const obj = try allocUstringObject(self, str, charLen);
     return Value.initNoCycPtr(obj);
 }
@@ -1592,7 +1592,7 @@ pub fn allocHostFunc(self: *cy.VM, func: cy.ZHostFuncFn, numParams: u32, funcSig
     return Value.initNoCycPtr(obj);
 }
 
-pub fn allocTccState(self: *cy.VM, state: *tcc.TCCState, optLib: ?*std.DynLib) linksection(cy.StdSection) !Value {
+pub fn allocTccState(self: *cy.VM, state: *tcc.TCCState, optLib: ?*std.DynLib) !Value {
     const obj = try allocPoolObject(self);
     obj.tccState = .{
         .typeId = bt.TccState,
@@ -1695,7 +1695,7 @@ pub fn allocFuncFromSym(self: *cy.VM, symId: cy.vm.SymbolId) !Value {
 /// TODO: flatten recursion.
 pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
     comptime releaseChildren: bool, comptime skipCycChildren: bool, comptime free: bool,
-) linksection(cy.HotSection) void {
+) void {
     if (cy.Trace) {
         if (obj.isFreed()) {
             cy.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});

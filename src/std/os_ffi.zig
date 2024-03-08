@@ -102,7 +102,7 @@ pub const FFI = struct {
     }
 };
 
-pub fn allocFFI(vm: *cy.VM) linksection(cy.StdSection) !Value {
+pub fn allocFFI(vm: *cy.VM) !Value {
     const ffi: *FFI = @ptrCast(try cy.heap.allocHostNoCycObject(vm, FFIT, @sizeOf(FFI)));
     ffi.* = .{
         .cstructs = .{},
@@ -435,7 +435,7 @@ const CGen = struct {
     }
 };
 
-pub fn ffiCbind(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn ffiCbind(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
     const ivm = vm.internal();
     const alloc = vm.allocator();
     const ffi = args[0].castHostObject(*FFI);
@@ -465,7 +465,7 @@ pub fn ffiCbind(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
     return Value.None;
 }
 
-pub fn ffiCfunc(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn ffiCfunc(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const ffi = args[0].castHostObject(*FFI);
 
     const funcArgs = args[2].asHeapObject().list.items();
@@ -492,7 +492,7 @@ pub fn ffiCfunc(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     return Value.None;
 }
 
-pub fn ffiNew(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) anyerror!Value {
+pub fn ffiNew(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     // const ffi = args[0].castHostObject(*FFI);
 
     const csym = try std.meta.intToEnum(Symbol, args[1].asSymbolId());

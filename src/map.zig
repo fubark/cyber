@@ -25,19 +25,19 @@ pub const ValueMap = struct {
         return Iterator{ .map = self };
     }
 
-    pub fn put(self: *ValueMap, alloc: std.mem.Allocator, key: cy.Value, value: cy.Value) linksection(cy.Section) std.mem.Allocator.Error!void {
+    pub fn put(self: *ValueMap, alloc: std.mem.Allocator, key: cy.Value, value: cy.Value) std.mem.Allocator.Error!void {
         const res = try self.getOrPut(alloc, key);
         res.valuePtr.* = value;
     }
 
-    pub fn get(self: ValueMap, key: cy.Value) linksection(cy.Section) ?cy.Value {
+    pub fn get(self: ValueMap, key: cy.Value) ?cy.Value {
         if (self.getIndex(key)) |idx| {
             return self.entries.?[idx].value;
         }
         return null;
     }
 
-    pub fn getByString(self: ValueMap, key: []const u8) linksection(cy.Section) ?cy.Value {
+    pub fn getByString(self: ValueMap, key: []const u8) ?cy.Value {
         @setRuntimeSafety(debug);
         if (self.getIndexByString(key)) |idx| {
             return self.entries.?[idx].value;
@@ -114,7 +114,7 @@ pub const ValueMap = struct {
         };
     }
 
-    pub fn putAssumeCapacityNoClobber(self: *ValueMap, key: cy.Value, value: cy.Value) linksection(cy.Section) void {
+    pub fn putAssumeCapacityNoClobber(self: *ValueMap, key: cy.Value, value: cy.Value) void {
         std.debug.assert(!self.contains(key));
 
         const hash = computeHash(key);
@@ -140,16 +140,16 @@ pub const ValueMap = struct {
         self.size += 1;
     }
 
-    pub fn contains(self: ValueMap, key: cy.Value) linksection(cy.Section) bool {
+    pub fn contains(self: ValueMap, key: cy.Value) bool {
         return self.getIndex(key) != null;
     }
 
-    fn computeStringHash(str: []const u8) linksection(cy.Section) u64 {
+    fn computeStringHash(str: []const u8) u64 {
         @setRuntimeSafety(debug);
         return std.hash.Wyhash.hash(0, str);
     }
 
-    fn computeHash(key: cy.Value) linksection(cy.Section) u64 {
+    fn computeHash(key: cy.Value) u64 {
         if (key.isPointer()) {
             const obj = key.asHeapObject();
             if (obj.getTypeId() == bt.String) {
@@ -187,13 +187,13 @@ pub const ValueMap = struct {
         return false;
     }
 
-    fn capacityForSize(size: u32) linksection(cy.Section) u32 {
+    fn capacityForSize(size: u32) u32 {
         var newCap: u32 = @truncate((@as(u64, size) * 100) / MaxLoadPercentage + 1);
         newCap = std.math.ceilPowerOfTwo(u32, newCap) catch unreachable;
         return newCap;
     }
 
-    inline fn getIndexByString(self: ValueMap, key: []const u8) linksection(cy.Section) ?usize {
+    inline fn getIndexByString(self: ValueMap, key: []const u8) ?usize {
         @setRuntimeSafety(debug);
 
         if (self.size == 0) {
@@ -232,7 +232,7 @@ pub const ValueMap = struct {
     /// fuse the basic blocks after the branch to the basic blocks
     /// from this function.  To encourage that, this function is
     /// marked as inline.
-    inline fn getIndex(self: ValueMap, key: cy.Value) linksection(cy.Section) ?usize {
+    inline fn getIndex(self: ValueMap, key: cy.Value) ?usize {
         if (self.size == 0) {
             return null;
         }
@@ -316,7 +316,7 @@ pub const ValueMap = struct {
         self.available = 0;
     }
 
-    pub fn remove(self: *ValueMap, vm: *cy.VM, key: cy.Value) linksection(cy.Section) bool {
+    pub fn remove(self: *ValueMap, vm: *cy.VM, key: cy.Value) bool {
         if (self.getIndex(key)) |idx| {
             self.removeByIndex(idx);
             // Release key since it can be an object.
@@ -326,13 +326,13 @@ pub const ValueMap = struct {
         return false;
     }
 
-    fn removeByIndex(self: *ValueMap, idx: usize) linksection(cy.Section) void {
+    fn removeByIndex(self: *ValueMap, idx: usize) void {
         self.metadata.?[idx].remove();
         self.size -= 1;
         self.available += 1;
     }
 
-    pub fn next(self: *ValueMap, idx: *u32) linksection(cy.Section) ?ValueMapEntry {
+    pub fn next(self: *ValueMap, idx: *u32) ?ValueMapEntry {
         std.debug.assert(idx.* <= self.cap);
         if (self.size == 0) {
             return null;

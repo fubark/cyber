@@ -29,7 +29,7 @@ pub fn ListAligned(comptime T: type, comptime Align: ?u29) type {
             self.len = 0;
         }
 
-        pub fn append(self: *ListT, alloc: std.mem.Allocator, val: T) linksection(cy.Section) !void {
+        pub fn append(self: *ListT, alloc: std.mem.Allocator, val: T) !void {
             if (self.len == self.buf.len) {
                 try self.growTotalCapacity(alloc, self.len + 1);
             }
@@ -37,23 +37,23 @@ pub fn ListAligned(comptime T: type, comptime Align: ?u29) type {
             self.len += 1;
         }
 
-        pub fn remove(self: *ListT, idx: usize) linksection(cy.Section) void {
+        pub fn remove(self: *ListT, idx: usize) void {
             std.mem.copy(T, self.buf[idx..self.len-1], self.buf[idx+1..self.len]);
             self.len -= 1;
         }
 
-        pub fn insertAssumeCapacity(self: *ListT, idx: usize, val: T) linksection(cy.Section) void {
+        pub fn insertAssumeCapacity(self: *ListT, idx: usize, val: T) void {
             std.mem.copyBackwards(T, self.buf[idx+1..self.len+1], self.buf[idx..self.len]);
             self.buf[idx] = val;
             self.len += 1;
         }
 
-        pub fn appendAssumeCapacity(self: *ListT, val: T) linksection(cy.Section) void {
+        pub fn appendAssumeCapacity(self: *ListT, val: T) void {
             self.buf[self.len] = val;
             self.len += 1;
         }
 
-        pub fn appendSlice(self: *ListT, alloc: std.mem.Allocator, slice: []const T) linksection(cy.Section) !void {
+        pub fn appendSlice(self: *ListT, alloc: std.mem.Allocator, slice: []const T) !void {
             try self.ensureTotalCapacity(alloc, self.len + slice.len);
             const oldLen = self.len;
             self.len += slice.len;
@@ -80,7 +80,7 @@ pub fn ListAligned(comptime T: type, comptime Align: ?u29) type {
             self.len = len;
         }
 
-        pub inline fn ensureMaxCapOrClear(self: *ListT, alloc: std.mem.Allocator, maxCap: usize) linksection(cy.Section) !void {
+        pub inline fn ensureMaxCapOrClear(self: *ListT, alloc: std.mem.Allocator, maxCap: usize) !void {
             if (maxCap < self.buf.len) {
                 alloc.free(self.buf);
                 self.buf = try alloc.alignedAlloc(T, Align, maxCap);

@@ -127,7 +127,7 @@ fn ensureSymbol(vm: *cy.VM, name: []const u8, sym: Symbol) !void {
 
 // TODO: Provide sort where the sort fields and compare strategy are provided instead of a lessFn,
 //       since Cyber's VM is non reentrant.
-pub fn listSort(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+pub fn listSort(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     const obj = args[0].asHeapObject();
     const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
     const LessContext = struct {
@@ -153,7 +153,7 @@ pub fn listSort(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.
     return Value.None;
 }
 
-pub fn listRemove(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listRemove(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const index: i64 = @intCast(args[1].asInteger());
     const list = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
@@ -165,7 +165,7 @@ pub fn listRemove(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Sectio
     return Value.None;
 }
 
-pub fn listInsert(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listInsert(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const index: i64 = @intCast(args[1].asInteger());
     const value = args[2];
     const list = args[0].asHeapObject();
@@ -246,7 +246,7 @@ pub fn listConcat(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return Value.None;
 }
 
-pub fn listIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
     const list = obj.listIter.list;
     if (obj.listIter.nextIdx < list.list.len) {
@@ -257,13 +257,13 @@ pub fn listIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.
     } else return Value.None;
 }
 
-pub fn listIterator(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listIterator(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
     vm.retainObject(obj);
     return vm.allocListIterator(&obj.list) catch fatal();
 }
 
-pub fn listResize(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn listResize(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const recv = args[0];
     const list = recv.asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
@@ -284,13 +284,13 @@ pub fn listResize(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSec
     return Value.None;
 }
 
-pub fn mapIterator(vm: *cy.VM, args: [*]const Value, _: u8) linksection(Section) Value {
+pub fn mapIterator(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
     vm.retainObject(obj);
     return vm.allocMapIterator(&obj.map) catch fatal();
 }
 
-pub fn mapIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) linksection(Section) Value {
+pub fn mapIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
     const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.inner);
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
@@ -300,20 +300,20 @@ pub fn mapIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) linksection(Sect
     } else return Value.None;
 }
 
-pub fn mapSize(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn mapSize(_: *cy.VM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     return Value.initInt(@intCast(inner.size));
 }
 
-pub fn mapRemove(vm: *cy.VM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn mapRemove(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     _ = inner.remove(vm, args[1]);
     return Value.None;
 }
 
-pub fn listLen(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listLen(_: *cy.VM, args: [*]const Value, _: u8) Value {
     const list = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     return Value.initInt(@intCast(inner.len));
@@ -323,7 +323,7 @@ pub fn listLen(_: *cy.VM, args: [*]const Value, _: u8) linksection(cy.Section) V
 // Although it works, it requires native func calls to perform additional copies of pc and framePtr back to the eval loop,
 // which is a bad tradeoff for every other function call that doesn't need to.
 // One solution is to add another bytecode to call nativeFunc1 with control over execution context.
-// fn fiberResume(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.HotSection) Value {
+// fn fiberResume(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) Value {
 //     const obj = recv.asHeapObject();
 //     if (&obj.fiber != @ptrCast(*cy.VM, vm).curFiber) {
 //         // Only resume fiber if it's not done.
@@ -474,7 +474,7 @@ pub fn inlineBinOp(comptime code: cy.OpCode) fn (*cy.VM, [*]const Value, u8) any
     return S.method;
 }
 
-pub fn nop(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn nop(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
     return vm.returnPanic("Unsupported.");
 }
 

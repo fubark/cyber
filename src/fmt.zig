@@ -455,20 +455,20 @@ const HostFileWriter = struct {
 
     pub const Error = error{};
 
-    pub fn writeByte(self: HostFileWriter, byte: u8) linksection(cy.Section) Error!void {
+    pub fn writeByte(self: HostFileWriter, byte: u8) Error!void {
         os.hostFileWrite(self.fid, @ptrCast(&byte), 1);
     }
 
-    pub fn writeAll(self: HostFileWriter, data: []const u8) linksection(cy.Section) Error!void {
+    pub fn writeAll(self: HostFileWriter, data: []const u8) Error!void {
         os.hostFileWrite(self.fid, data.ptr, data.len);
     }
 
-    pub fn write(self: HostFileWriter, data: []const u8) linksection(cy.Section) Error!u64 {
+    pub fn write(self: HostFileWriter, data: []const u8) Error!u64 {
         os.hostFileWrite(self.fid, data.ptr, data.len);
         return data.len;
     }
 
-    pub fn writeByteNTimes(self: HostFileWriter, byte: u8, n: usize) linksection(cy.Section) Error!void {
+    pub fn writeByteNTimes(self: HostFileWriter, byte: u8, n: usize) Error!void {
         var bytes: [256]u8 = undefined;
         @memset(bytes[0..], byte);
 

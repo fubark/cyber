@@ -309,7 +309,7 @@ pub fn countRunes(s: []const u8) usize {
     return len;
 }
 
-pub fn utf8CharSliceAt(str: []const u8, idx: usize) linksection(cy.Section) ?[]const u8 {
+pub fn utf8CharSliceAt(str: []const u8, idx: usize) ?[]const u8 {
     const cp_len = std.unicode.utf8ByteSequenceLength(str[idx]) catch return null;
     if (idx + cp_len > str.len) {
         return null;
@@ -350,7 +350,7 @@ pub fn ustringSeekByRuneIndex(str: []const u8, byte_idx: u32, rune_idx: u32, tar
     }
 }
 
-fn indexOfCharScalar(buf: []const u8, needle: u8) linksection(cy.Section) ?usize {
+fn indexOfCharScalar(buf: []const u8, needle: u8) ?usize {
     for (buf, 0..) |ch, i| {
         if (ch == needle) {
             return i;
@@ -448,13 +448,13 @@ fn indexOfCharSimdFixed(comptime VecSize: usize, buf: []const u8, needle: u8) ?u
 const hasAvx2 = std.Target.x86.featureSetHasAny(builtin.cpu.features, .{ .avx2 });
 const NullId = std.math.maxInt(u32);
 
-fn indexOfScalar(str: []const u8, needle: []const u8) linksection(cy.StdSection) ?usize {
+fn indexOfScalar(str: []const u8, needle: []const u8) ?usize {
     return std.mem.indexOf(u8, str, needle);
 }
 
 /// `needle` can be any UTF-8 string.
 /// `str` is assumed to have `needle.len` additional bytes so that an offset buffer can loaded without bounds check.
-fn indexOfSimdFixed(comptime VecSize: usize, str: []const u8, needle: []const u8) linksection(cy.StdSection) ?usize {
+fn indexOfSimdFixed(comptime VecSize: usize, str: []const u8, needle: []const u8) ?usize {
     const MaskInt = std.meta.Int(.unsigned, VecSize);
     // Algorithm based on: http://0x80.pl/articles/simd-strfind.html.
 
@@ -487,7 +487,7 @@ fn indexOfSimdFixed(comptime VecSize: usize, str: []const u8, needle: []const u8
 }
 
 /// `str.len` can be assumed to be >= 1 and < VecSize + needle.len.
-fn indexOfSimdRemain(comptime VecSize: usize, str_: []const u8, needle: []const u8) linksection(cy.StdSection) ?usize {
+fn indexOfSimdRemain(comptime VecSize: usize, str_: []const u8, needle: []const u8) ?usize {
     const MaskInt = std.meta.Int(.unsigned, VecSize);
 
     // This will check up to `VecSize` bytes and any extras after that
@@ -529,7 +529,7 @@ inline fn unsetLowestBit(mask: anytype, idx: anytype) @TypeOf(mask) {
 }
 
 /// `needle.len` is assumed to be at most `str.len`.
-pub fn indexOf(str: []const u8, needle: []const u8) linksection(cy.StdSection) ?usize {
+pub fn indexOf(str: []const u8, needle: []const u8) ?usize {
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
         var i: usize = 0;
         // Ensure that there is `needle.len` additional bytes after the fixed width.
@@ -551,7 +551,7 @@ pub fn indexOf(str: []const u8, needle: []const u8) linksection(cy.StdSection) ?
     }
 }
 
-fn indexOfAsciiSetScalar(str: []const u8, set: []const u8) linksection(cy.StdSection) ?usize {
+fn indexOfAsciiSetScalar(str: []const u8, set: []const u8) ?usize {
     for (str, 0..) |code, i| {
         if (indexOfChar(set, code) != null) {
             return i;
@@ -560,7 +560,7 @@ fn indexOfAsciiSetScalar(str: []const u8, set: []const u8) linksection(cy.StdSec
     return null;
 }
 
-pub fn indexOfAsciiSetSimdRemain(comptime VecSize: usize, str: []const u8, set: []const u8) linksection(cy.StdSection) ?usize {
+pub fn indexOfAsciiSetSimdRemain(comptime VecSize: usize, str: []const u8, set: []const u8) ?usize {
     const MaskInt = std.meta.Int(.unsigned, VecSize);
     // const MaskShiftInt = std.meta.Int(.unsigned, std.math.log2(@bitSizeOf(MaskInt)));
 
@@ -630,7 +630,7 @@ pub fn indexOfAsciiSetSimdRemain(comptime VecSize: usize, str: []const u8, set: 
     }
 }
 
-pub fn indexOfAsciiSetSimdFixed(comptime VecSize: usize, str: []const u8, set: []const u8) linksection(cy.StdSection) ?usize {
+pub fn indexOfAsciiSetSimdFixed(comptime VecSize: usize, str: []const u8, set: []const u8) ?usize {
     const MaskInt = std.meta.Int(.unsigned, VecSize);
 
     if (VecSize == 32 and hasAvx2) {
@@ -703,7 +703,7 @@ pub fn indexOfAsciiSetSimdFixed(comptime VecSize: usize, str: []const u8, set: [
     }
 }
 
-pub fn indexOfAsciiSet(str: []const u8, set: []const u8) linksection(cy.StdSection) ?usize {
+pub fn indexOfAsciiSet(str: []const u8, set: []const u8) ?usize {
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
         var i: usize = 0;
         const iters = @divTrunc(str.len, VecSize);
@@ -754,7 +754,7 @@ pub fn indexOfChar(buf: []const u8, needle: u8) ?usize {
     }
 }
 
-pub fn toUtf8CharIdx(str: []const u8, idx: usize) linksection(cy.Section) usize {
+pub fn toUtf8CharIdx(str: []const u8, idx: usize) usize {
     var charIdx: usize = 0;
     var i: usize = 0;
     while (i < idx) {
@@ -765,7 +765,7 @@ pub fn toUtf8CharIdx(str: []const u8, idx: usize) linksection(cy.Section) usize 
     return charIdx;
 }
 
-pub fn charIndexOfCodepoint(str: []const u8, needle: u21) linksection(cy.Section) ?usize {
+pub fn charIndexOfCodepoint(str: []const u8, needle: u21) ?usize {
     var charIdx: usize = 0;
     var i: usize = 0;
     while (i < str.len) {
@@ -780,7 +780,7 @@ pub fn charIndexOfCodepoint(str: []const u8, needle: u21) linksection(cy.Section
     return null;
 }
 
-fn getLineEndCpu(buf: []const u8) linksection(cy.StdSection) ?usize {
+fn getLineEndCpu(buf: []const u8) ?usize {
     for (buf, 0..) |ch, i| {
         if (ch == '\n') {
             return i + 1;
@@ -804,7 +804,7 @@ test "getLineEndCpu()" {
     try t.eq(getLineEndCpu(str[24..]), null);
 }
 
-pub fn getLineEnd(buf: []const u8) linksection(cy.StdSection) ?usize {
+pub fn getLineEnd(buf: []const u8) ?usize {
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
         const MaskInt = std.meta.Int(.unsigned, VecSize);
         var vbuf: @Vector(VecSize, u8) = undefined;
@@ -843,7 +843,7 @@ pub fn getLineEnd(buf: []const u8) linksection(cy.StdSection) ?usize {
 }
 
 /// Like std.mem.replacementSize but also records the idxes.
-pub fn prepReplacement(str: []const u8, needle: []const u8, replacement: []const u8, idxesWriter: anytype) linksection(cy.StdSection) !usize {
+pub fn prepReplacement(str: []const u8, needle: []const u8, replacement: []const u8, idxesWriter: anytype) !usize {
     if (needle.len == 0) {
         return str.len;
     }
@@ -861,7 +861,7 @@ pub fn prepReplacement(str: []const u8, needle: []const u8, replacement: []const
     return size;
 }
 
-pub fn replaceAtIdxes(dst: []u8, src: []const u8, needleLen: u32, replacement: []const u8, idxes: []const u32) linksection(cy.StdSection) void {
+pub fn replaceAtIdxes(dst: []u8, src: []const u8, needleLen: u32, replacement: []const u8, idxes: []const u32) void {
     var dstIdx: usize = 0;
     var srcIdx: usize = 0;
     for (idxes) |idx| {

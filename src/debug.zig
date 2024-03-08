@@ -216,7 +216,7 @@ pub fn printLastUserParseError(vm: *const cy.VM) !void {
     try writeLastUserParseError(vm, w);
 }
 
-pub fn printUserError(vm: *cy.VM, title: []const u8, msg: []const u8, chunkId: u32, pos: u32) linksection(cy.Section) !void {
+pub fn printUserError(vm: *cy.VM, title: []const u8, msg: []const u8, chunkId: u32, pos: u32) !void {
     if (cy.silentError) {
         return;
     }
@@ -226,7 +226,7 @@ pub fn printUserError(vm: *cy.VM, title: []const u8, msg: []const u8, chunkId: u
 }
 
 /// Reduced to using writer so printed errors can be tested.
-pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []const u8, chunkId: u32, pos: u32) linksection(cy.Section) !void {
+pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []const u8, chunkId: u32, pos: u32) !void {
     if (chunkId != cy.NullId) {
         const chunk = vm.compiler.chunks.items[chunkId];
         if (pos != NullId) {

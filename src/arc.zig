@@ -12,7 +12,7 @@ const vmc = cy.vmc;
 const rt = cy.rt;
 const bt = cy.types.BuiltinTypes;
 
-pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
+pub fn release(vm: *cy.VM, val: cy.Value) void {
     if (cy.Trace) {
         vm.trace.numReleaseAttempts += 1;
     }
@@ -79,7 +79,7 @@ pub fn checkDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) void {
     }
 }
 
-pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection) void {
+pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) void {
     if (cy.Trace) {
         checkDoubleFree(vm, obj);
     }
@@ -121,7 +121,7 @@ pub fn releaseLocals(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, local
     }
 }
 
-pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection) void {
+pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) void {
     obj.head.rc += 1;
     if (cy.Trace) {
         checkRetainDanglingPointer(self, obj);
@@ -162,7 +162,7 @@ pub fn checkRetainDanglingPointer(vm: *cy.VM, obj: *cy.HeapObject) void {
     }
 }
 
-pub inline fn retain(self: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
+pub inline fn retain(self: *cy.VM, val: cy.Value) void {
     if (cy.Trace) {
         self.trace.numRetainAttempts += 1;
     }
@@ -184,7 +184,7 @@ pub inline fn retain(self: *cy.VM, val: cy.Value) linksection(cy.HotSection) voi
     }
 }
 
-pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) linksection(cy.HotSection) void {
+pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) void {
     if (cy.Trace) {
         self.trace.numRetainAttempts += inc;
     }

@@ -722,7 +722,7 @@ pub const VM = struct {
         return vm.compiler.sema.types.items[typeId].sym.name();
     }
 
-    pub fn popStackFrameCold(self: *VM, comptime numRetVals: u2) linksection(cy.HotSection) void {
+    pub fn popStackFrameCold(self: *VM, comptime numRetVals: u2) void {
         _ = self;
         @setRuntimeSafety(debug);
         switch (numRetVals) {
@@ -736,7 +736,7 @@ pub const VM = struct {
         }
     }
 
-    fn popStackFrameLocal(self: *VM, pc: *usize, retLocal: u8, comptime numRetVals: u2) linksection(cy.HotSection) bool {
+    fn popStackFrameLocal(self: *VM, pc: *usize, retLocal: u8, comptime numRetVals: u2) bool {
         @setRuntimeSafety(debug);
         _ = retLocal;
         _ = self;
@@ -1155,7 +1155,7 @@ pub const VM = struct {
         return error.Panic;
     }
 
-    fn setField(self: *VM, recv: Value, fieldId: SymbolId, val: Value) linksection(cy.HotSection) !void {
+    fn setField(self: *VM, recv: Value, fieldId: SymbolId, val: Value) !void {
         if (recv.isPointer()) {
             const obj = recv.asHeapObject();
             const symMap = &self.fieldSyms.buf[fieldId];
@@ -1200,7 +1200,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn getFieldOffset(self: *VM, obj: *HeapObject, symId: SymbolId) linksection(cy.HotSection) u8 {
+    pub fn getFieldOffset(self: *VM, obj: *HeapObject, symId: SymbolId) u8 {
         const symMap = self.fieldSyms.buf[symId];
         if (obj.getTypeId() == symMap.mruTypeId) {
             return @intCast(symMap.mruOffset);
@@ -1209,7 +1209,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn setFieldRelease(self: *VM, recv: Value, symId: SymbolId, val: Value) linksection(cy.HotSection) !void {
+    pub fn setFieldRelease(self: *VM, recv: Value, symId: SymbolId, val: Value) !void {
         @setCold(true);
         if (recv.isPointer()) {
             const obj = recv.asHeapObject();
@@ -1226,7 +1226,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn getField2(self: *VM, recv: Value, symId: SymbolId) linksection(cy.Section) !Value {
+    pub fn getField2(self: *VM, recv: Value, symId: SymbolId) !Value {
         if (recv.isPointer()) {
             const obj = recv.asHeapObject();
             const offset = self.getFieldOffset(obj, symId);
@@ -1241,7 +1241,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn getField(self: *VM, recv: Value, symId: SymbolId) linksection(cy.HotSection) !Value {
+    pub fn getField(self: *VM, recv: Value, symId: SymbolId) !Value {
         if (recv.isPointer()) {
             const obj = recv.asHeapObject();
             const offset = self.getFieldOffset(obj, symId);
@@ -1256,7 +1256,7 @@ pub const VM = struct {
         }
     }
 
-    fn getFieldFallback(self: *VM, obj: *const HeapObject, nameId: vmc.NameId) linksection(cy.HotSection) Value {
+    fn getFieldFallback(self: *VM, obj: *const HeapObject, nameId: vmc.NameId) Value {
         @setCold(true);
         const name = rt.getName(self, nameId);
         if (obj.getTypeId() == bt.Map) {
@@ -1273,7 +1273,7 @@ pub const VM = struct {
     /// startLocal points to the first arg in the current stack frame.
     fn callSym(
         self: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: SymbolId, ret: u8, numArgs: u8,
-    ) linksection(cy.HotSection) !cy.fiber.PcSp {
+    ) !cy.fiber.PcSp {
         const sym = self.funcSyms.buf[symId];
         switch (@as(rt.FuncSymbolType, @enumFromInt(sym.entryT))) {
             .hostFunc => {
@@ -1357,7 +1357,7 @@ pub const VM = struct {
         return self.typeMethodGroupKeys.get(key);
     }
 
-    fn getCachedMethodGroupForType(self: *VM, typeId: vmc.TypeId, mgId: vmc.MethodGroupId) linksection(cy.HotSection) !?rt.MethodGroup {
+    fn getCachedMethodGroupForType(self: *VM, typeId: vmc.TypeId, mgId: vmc.MethodGroupId) !?rt.MethodGroup {
         const mg = self.methodGroups.buf[mgId];
         if (mg.mruTypeId == typeId) {
             return mg;
@@ -1408,7 +1408,7 @@ pub const VM = struct {
     }
 
     /// Not guaranteed to be valid UTF-8. Returns `array` bytes.
-    pub fn getOrBufPrintValueRawStr(self: *const VM, buf: []u8, val: Value) linksection(cy.StdSection) ![]const u8 {
+    pub fn getOrBufPrintValueRawStr(self: *const VM, buf: []u8, val: Value) ![]const u8 {
         if (val.isArray()) {
             return val.asArray();
         } else {
@@ -1462,7 +1462,7 @@ pub const VM = struct {
         return res;
     }
 
-    pub fn writeValue(self: *const VM, w: anytype, val: Value) linksection(cy.StdSection) !void {
+    pub fn writeValue(self: *const VM, w: anytype, val: Value) !void {
         const typeId = val.getTypeId();
         
         switch (typeId) {
@@ -1585,7 +1585,7 @@ pub const VM = struct {
     pub usingnamespace cy.arc.VmExt;
 };
 
-fn evalCompareBool(left: Value, right: Value) linksection(cy.HotSection) bool {
+fn evalCompareBool(left: Value, right: Value) bool {
     switch (left.getTypeId()) {
         bt.String => {
             if (right.getTypeId() == bt.String) {
@@ -1613,7 +1613,7 @@ fn evalCompareBool(left: Value, right: Value) linksection(cy.HotSection) bool {
     return false;
 }
 
-fn evalCompare(left: Value, right: Value) linksection(cy.HotSection) Value {
+fn evalCompare(left: Value, right: Value) Value {
     switch (left.getTypeId()) {
         bt.String => {
             if (right.getTypeId() == bt.String) {
@@ -1641,7 +1641,7 @@ fn evalCompare(left: Value, right: Value) linksection(cy.HotSection) Value {
     return Value.False;
 }
 
-fn evalCompareNot(left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy.Value {
+fn evalCompareNot(left: cy.Value, right: cy.Value) cy.Value {
     switch (left.getTypeId()) {
         bt.String => {
             if (right.getTypeId() == bt.String) {
@@ -1669,7 +1669,7 @@ fn evalCompareNot(left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy
     return Value.True;
 }
 
-fn toF64OrPanic(vm: *cy.VM, val: Value) linksection(cy.HotSection) !f64 {
+fn toF64OrPanic(vm: *cy.VM, val: Value) !f64 {
     if (val.isFloat()) {
         return val.asF64();
     } else if (val.isInteger()) {
@@ -1818,7 +1818,7 @@ pub fn handleInterrupt(vm: *VM, rootFp: u32) !void {
 
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM, assuming pc, framePtr, and virtual registers are already set.
-pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, Unexpected, End}!void {
+pub fn evalLoopGrowStack(vm: *VM) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, Unexpected, End}!void {
     logger.tracev("begin eval loop", .{});
 
     // Record the start fp offset, so that stack unwinding knows when to stop.
@@ -1854,7 +1854,7 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
     }
 }
 
-fn handleExecResult(vm: *VM, res: u32, fpStart: u32) linksection(cy.HotSection) !void {
+fn handleExecResult(vm: *VM, res: u32, fpStart: u32) !void {
     if (res == vmc.RES_CODE_PANIC) {
         try handleInterrupt(vm, fpStart);
     } else if (res == vmc.RES_CODE_STACK_OVERFLOW) {
@@ -1886,7 +1886,7 @@ const GenLabels = builtin.mode != .Debug and !builtin.cpu.arch.isWasm() and fals
 
 const DebugTraceStopAtNumOps: ?u32 = null;
 
-fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, End}!void {
+fn evalLoop(vm: *VM) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, End}!void {
     if (GenLabels) {
         _ = asm volatile ("LEvalLoop:"::);
     }
@@ -3364,7 +3364,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
     }
 }
 
-fn popStackFrameLocal0(pc: *[*]const cy.Inst, framePtr: *[*]Value) linksection(cy.HotSection) bool {
+fn popStackFrameLocal0(pc: *[*]const cy.Inst, framePtr: *[*]Value) bool {
     const retFlag = framePtr.*[1].retInfoRetFlag();
     const reqNumArgs = framePtr.*[1].retInfoNumRet();
     if (reqNumArgs == 0) {
@@ -3394,7 +3394,7 @@ fn popStackFrameLocal0(pc: *[*]const cy.Inst, framePtr: *[*]Value) linksection(c
     }
 }
 
-fn popStackFrameLocal1(vm: *VM, pc: *[*]const cy.Inst, framePtr: *[*]Value) linksection(cy.HotSection) bool {
+fn popStackFrameLocal1(vm: *VM, pc: *[*]const cy.Inst, framePtr: *[*]Value) bool {
     const retFlag = framePtr.*[1].retInfoRetFlag();
     const reqNumArgs = framePtr.*[1].retInfoNumRet();
     if (reqNumArgs == 1) {
@@ -3817,7 +3817,7 @@ fn getObjectFunctionFallback(
 fn callObjSymFallback(
     vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, recv: Value, typeId: u32, mgId: vmc.MethodGroupId, 
     ret: u8, numArgs: u8,
-) linksection(cy.Section) !cy.fiber.PcSp {
+) !cy.fiber.PcSp {
     @setCold(true);
     // const func = try @call(.never_inline, getObjectFunctionFallback, .{obj, symId});
     const vals = framePtr[ret+CallArgStart+1..ret+CallArgStart+1+numArgs-1];
@@ -3984,7 +3984,7 @@ fn isAssignFuncSigCompat(vm: *VM, srcFuncSigId: sema.FuncSigId, dstFuncSigId: se
     return true;
 }
 
-fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !void {
+fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) !void {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         switch (obj.getTypeId()) {
@@ -4286,7 +4286,7 @@ fn callFirstOverloadedMethod(
 fn callMethodGroup(
     vm: *VM, pc: [*]cy.Inst, sp: [*]Value, mgId: vmc.MethodGroupId, mg: rt.MethodGroup,
     typeId: vmc.TypeId, startLocal: u8, numArgs: u8, anySelfFuncSigId: sema.FuncSigId,
-) linksection(cy.HotSection) !?cy.fiber.PcSp {
+) !?cy.fiber.PcSp {
     if (try @call(.always_inline, callMethod, .{vm, pc, sp, mg.mruMethodType, mg.mruMethodData, typeId, startLocal, numArgs, anySelfFuncSigId})) |res| {
         return res;
     }
@@ -4350,7 +4350,7 @@ export fn zDumpEvalOp(vm: *VM, pc: [*]const cy.Inst) void {
     dumpEvalOp(vm, pc) catch cy.fatal();
 }
 
-pub export fn zFreeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
+pub export fn zFreeObject(vm: *cy.VM, obj: *HeapObject) void {
     cy.heap.freeObject(vm, obj, true, false, true);
 } 
 

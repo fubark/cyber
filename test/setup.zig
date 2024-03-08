@@ -27,9 +27,17 @@ pub const Config = struct {
 
     debug: bool = false,
 
+    reload: bool = false,
+
     ctx: ?*anyopaque = null,
 
     chdir: ?[]const u8 = null,
+
+    pub fn withReload(self: Config) Config {
+        var new = self;
+        new.reload = true;
+        return new;
+    }
 
     pub fn withSilent(self: Config) Config {
         var new = self;
@@ -189,7 +197,7 @@ pub const VMrunner = struct {
             .gen_all_debug_syms = config.debug,
             .backend = cy.fromTestBackend(build_options.testBackend),
             .spawn_exe = false,
-            .reload = false,
+            .reload = config.reload,
         }, @ptrCast(&resv));
 
         if (optCb) |cb| {

@@ -563,8 +563,8 @@ pub const UnaryOp = enum(u8) {
 test "ast internals." {
     if (builtin.mode == .ReleaseFast) {
         try t.eq(@sizeOf(NodeHead), 4);
-        try t.eq(@sizeOf(NodeData), 8);
-        try t.eq(@sizeOf(Node), 16);
+        try t.eq(@sizeOf(NodeData), 16);
+        try t.eq(@sizeOf(Node), 24);
     } else {
         try t.eq(@sizeOf(NodeHead), 4);
         try t.eq(@sizeOf(NodeData), 16);

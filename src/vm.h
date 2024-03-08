@@ -827,6 +827,15 @@ typedef struct StaticVar {
     Value value;
 } StaticVar;
 
+typedef struct EvalConfig {
+    bool single_run;
+    bool file_modules;
+    bool gen_all_debug_syms;
+    u8 backend;
+    bool reload;
+    bool spawn_exe;
+} EvalConfig;
+
 typedef struct VM {
 #if IS_32BIT
     Fiber mainFiber;
@@ -941,9 +950,11 @@ typedef struct VM {
     ZList varSymExtras;
     size_t endLocal;
 
-    #if TRACE
-    u32 padding;
-    #endif
+    EvalConfig config;
+    u32 padding1;
+#if TRACE
+    u32 padding2;
+#endif
     Str lastExeError;
 #else
     struct {
@@ -962,23 +973,20 @@ typedef struct VM {
     #if TRACE
     u32 debugPc;
     #endif
+    EvalConfig config;
 #endif
 
 } VM;
 
-typedef struct EvalConfig {
-    bool singleRun;
-    bool enableFileModules;
-    bool reload;
-    bool genAllDebugSyms;
-} EvalConfig;
 
-typedef enum {
+typedef int ResultCode;
+
+enum {
     RES_CODE_SUCCESS = 0,
     RES_CODE_PANIC,
     RES_CODE_STACK_OVERFLOW,
     RES_CODE_UNKNOWN,
-} ResultCode;
+};
 
 typedef struct BufferResult {
     void* buf;

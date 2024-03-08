@@ -10,7 +10,7 @@
 import os
 import md '../src/tools/md4c.cy'
 
-var args = os.parseArgs([
+my args = os.parseArgs([
     [ name: 'version', type: String, default: 'dev' ],
     [ name: 'import-style', type: bool, default: false ],
 ])
@@ -53,7 +53,7 @@ var hljsCSS = os.readFile("$(curDir)/github-dark.min.css")
 var hljsJS = os.readFile("$(curDir)/highlight.min.js")
 
 var stylePart = '<link rel="stylesheet" href="./style.css">'
-if !args.contains('import-style'):
+if !args['import-style']:
     var styleCSS = os.readFile("$(curDir)/style.css")
     stylePart = "<style>$(styleCSS)</style>"
 

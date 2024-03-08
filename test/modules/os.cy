@@ -19,13 +19,19 @@ my res = os.args()
 t.eq(res.len() > 0, true)
 
 -- createDir()
-os.removeDir('test/assets/tempdir')
+try:
+    os.removeDir('test/assets/tempdir')
+catch:
+    pass
 os.createDir('test/assets/tempdir')
 var dir = os.openDir('test/assets/tempdir')
 t.eq(dir.stat().type, .dir)
 
 -- createFile() new file.
-os.removeFile('test/assets/write.txt')
+try:
+    os.removeFile('test/assets/write.txt')
+catch:
+    pass
 var file = os.createFile('test/assets/write.txt', false)
 file.write('foobar')
 t.eq(os.readFile('test/assets/write.txt'), 'foobar')
@@ -145,7 +151,7 @@ t.eq(entries.len(), 4)
 entries.sort((a, b) => a.path.less(b.path))
 t.eq(entries[0].path, 'dir2')
 if os.system == 'windows':
-    t.eq(entries[1].path, 'dir2\\file.txt')
+    t.eq(entries[1].path, 'dir2\file.txt')
 else:
     t.eq(entries[1].path, 'dir2/file.txt')
 t.eq(entries[2].path, 'file.txt')

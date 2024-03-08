@@ -221,6 +221,7 @@ pub fn build(b: *std.build.Builder) !void {
         });
 
         opts = getDefaultOptions(target, optimize);
+        opts.trackGlobalRc = true;
         opts.cli = true;
         opts.applyOverrides();
         const lib = try buildLib(b, opts);
@@ -429,7 +430,7 @@ fn addTraceTest(b: *std.build.Builder, opts: Options) !*std.build.LibExeObjStep 
     newOpts.applyOverrides();
 
     // Include all deps since it contains tests that depend on Zig source.
-    try buildAndLinkDeps(step, opts);
+    try buildAndLinkDeps(step, newOpts);
     return step;
 }
 
@@ -546,6 +547,19 @@ fn buildLib(b: *std.Build, opts: Options) !*std.build.Step.Compile {
         // Export table so non-exported functions can still be invoked from:
         // `instance.exports.__indirect_function_table`
         lib.export_table = true;
+    }
+
+    if (opts.cli) {
+        if (opts.target.getOsTag() == .windows) {
+            lib.linkSystemLibrary("ole32");
+            lib.linkSystemLibrary("crypt32");
+            lib.linkSystemLibrary("ws2_32");
+
+            if (opts.target.getAbi() == .msvc) {
+                lib.linkSystemLibrary("advapi32");
+                lib.linkSystemLibrary("shell32");
+            }
+        }
     }
 
     // Allow exported symbols to be visible to dlopen.

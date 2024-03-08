@@ -7,6 +7,7 @@ const sema = cy.sema;
 const vmc = @import("vm_c.zig");
 const pmc = @import("pm_c.zig");
 const api = @import("capi.zig");
+const lib = @import("lib.zig");
 const logger = cy.log.scoped(.runtime);
 
 pub const TypeKey = cy.hash.KeyU64;
@@ -451,7 +452,7 @@ pub const StaticSymbol = packed struct {
     }
 
     pub fn init(name: []const u8) StaticSymbol {
-        return .{ .name = @truncate(@intFromPtr(name.ptr)), .len = @truncate(name.len) };
+        return .{ .name = @intCast(@intFromPtr(name.ptr)), .len = @truncate(name.len) };
     }
 };
 
@@ -595,7 +596,7 @@ pub fn printZFmt(c: Context, comptime format: []const u8, args: anytype) void {
 
 pub fn log(str: []const u8) void {
     if (build_options.rt == .vm) {
-        cy.log.logFn.?(api.toStr(str));
+        lib.csLog.?(api.toStr(str));
     } else {
         const w = std.io.getStdErr().writer();
         w.writeAll(str) catch cy.fatal();

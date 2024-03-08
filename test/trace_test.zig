@@ -370,7 +370,7 @@ test "Import http spec." {
     var client = http.MockHttpClient.init(t.alloc);
     client.retReqError = error.UnknownHostName;
     vm.httpClient = client.iface();
-    try run.eval(Config.initFileModules("./test/modules/import.cy").withSilent(),
+    try run.eval(Config.initFileModules("./test/modules/import.cy").withSilent().withReload(),
         \\import a 'https://doesnotexist123.com/'
         \\b = a
     , struct { fn func(run_: *VMrunner, res: EvalResult) !void {
@@ -388,7 +388,7 @@ test "Import http spec." {
     client = http.MockHttpClient.init(t.alloc);
     client.retStatusCode = std.http.Status.not_found;
     vm.httpClient = client.iface();
-    try run.eval(Config.initFileModules("./test/modules/import.cy").withSilent(),
+    try run.eval(Config.initFileModules("./test/modules/import.cy").withSilent().withReload(),
         \\import a 'https://exists.com/missing'
         \\b = a
     , struct { fn func(run_: *VMrunner, res: EvalResult) !void {
@@ -409,7 +409,7 @@ test "Import http spec." {
         \\var .foo = 123
         ;
     vm.httpClient = client.iface();
-    _ = try run.evalPass(Config.initFileModules("./test/modules/import.cy"),
+    _ = try run.evalPass(Config.initFileModules("./test/modules/import.cy").withReload(),
         \\import a 'https://exists.com/a.cy'
         \\import t 'test'
         \\t.eq(a.foo, 123)

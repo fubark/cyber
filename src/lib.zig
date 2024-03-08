@@ -14,7 +14,7 @@ const c = @import("capi.zig");
 const cli = @import("cli.zig");
 
 comptime {
-    if (build_options.cli) {
+    if (build_options.cli or builtin.os.tag == .wasi) {
         std.testing.refAllDecls(cli);
     }
 }
@@ -239,7 +239,7 @@ export fn csSetErrorPrinter(vm: *cy.VM, print: c.PrintErrorFn) void {
     vm.print_err = print;
 }
 
-export var csLog: c.LogFn = cy.log.defaultLog;
+pub export var csLog: c.LogFn = cy.log.defaultLog;
 
 export fn csPerformGC(vm: *cy.VM) c.GCResult {
     const res = cy.arc.performGC(vm) catch cy.fatal();

@@ -17,7 +17,7 @@ export fn csSetupForWeb(vm: *cy.VM) void {
 
 pub fn loader(vm: ?*c.VM, spec_: c.Str, out_: [*c]c.ModuleLoaderResult) callconv(.C) bool {
     const out: *c.ModuleLoaderResult = out_;
-    const spec = c.strSlice(spec_);
+    const spec = c.fromSlice(spec_);
     if (std.mem.eql(u8, "web", spec)) {
         const src = (
             \\--| Evals JS from the host environment.
@@ -36,7 +36,7 @@ pub fn loader(vm: ?*c.VM, spec_: c.Str, out_: [*c]c.ModuleLoaderResult) callconv
 
 pub fn funcLoader(_: ?*c.VM, func: c.FuncInfo, out_: [*c]c.FuncResult) callconv(.C) bool {
     const out: *c.FuncResult = out_;
-    const name = c.strSlice(func.name);
+    const name = c.fromSlice(func.name);
     if (std.mem.eql(u8, "eval", name)) {
         out.ptr = @ptrCast(&eval);
         return true;
@@ -53,5 +53,5 @@ extern fn hostEvalJS(ptr: [*]const u8, len: usize) void;
 pub fn eval(vm: *cy.VM, args: [*]const cy.Value, _: u8) cy.Value {
     const str = vm.getOrBufPrintValueStr(&cy.tempBuf, args[0]) catch cy.fatal();
     hostEvalJS(str.ptr, str.len);
-    return cy.Value.None;
+    return cy.Value.True;
 }

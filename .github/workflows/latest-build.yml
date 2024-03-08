@@ -11,12 +11,13 @@ on:
   push:
     branches:
       - master
-    paths-ignore:
-      - '.github/**'
-      - '**.md'
-      - '.gitattributes'
-      - 'examples/**.cy'
-      - 'examples/**/*.cy'
+    paths:
+      - '**'
+      - '!.github/**'
+      - '!**.md'
+      - '!.gitattributes'
+      - '!examples/**.cy'
+      - '!examples/**/*.cy'
 # Cancel previous job if it's running.
 concurrency:
   group: latest
@@ -199,15 +200,26 @@ jobs:
           restore-keys:
             build-${{ env.BUILD_TARGET }}-${{ env.BUILD_MODE }}-1
 
-      - name: Run tests.
+      - name: Run tests. (cli, debug)
         if: env.BUILD_TARGET != 'wasm32-wasi' && env.BUILD_CMD == 'cli'
         run: zig build test ${{ env.ZIG_TARGET_FLAG }} 
 
-      - name: Run tests.
-        if: env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD == 'lib'
+      # Optimize with ReleaseSafe since there are issues with Zig 0.11.0 and building tests for ReleaseFast.
+      - name: Run tests. (cli, release)
+        if: env.BUILD_TARGET != 'wasm32-wasi' && env.BUILD_CMD == 'cli'
+        run: zig build test ${{ env.ZIG_TARGET_FLAG }} -Doptimize=ReleaseSafe
+
+      - name: Run tests. (lib, debug)
+        if: env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD == 'lib' && env.BUILD_TARGET != 'x86_64-windows-msvc'
         run: |
           zig build build-link-test ${{ env.ZIG_TARGET_FLAG }} 
-          ./zig-out/bin/test
+          ./zig-out/bin/test${{ env.BIN_EXT }}
+
+      - name: Run tests. (lib, release)
+        if: env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD == 'lib' && env.BUILD_TARGET != 'x86_64-windows-msvc'
+        run: |
+          zig build build-link-test ${{ env.ZIG_TARGET_FLAG }} -Doptimize=ReleaseSafe
+          ./zig-out/bin/test${{ env.BIN_EXT }}
 
       - name: Run tests.
         if: env.BUILD_TARGET == 'wasm32-freestanding' || env.BUILD_TARGET == 'wasm32-wasi'

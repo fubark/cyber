@@ -23,12 +23,14 @@ typedef struct CsModule CsModule;
 
 #define CS_NULLID UINT32_MAX
 
-typedef enum {
+typedef int CsResultCode;
+
+enum {
     CS_SUCCESS = 0,
     CS_ERROR_COMPILE,
     CS_ERROR_PANIC,
     CS_ERROR_UNKNOWN,
-} CsResultCode;
+};
 
 typedef enum {
     CS_TYPE_VOID = 0,
@@ -285,6 +287,7 @@ typedef struct CsEvalConfig {
     CsBackend backend;
 
     /// Whether url imports and cached assets should be reloaded.
+    /// TODO: This should be part of CLI config.
     bool reload;
 
     bool spawn_exe;

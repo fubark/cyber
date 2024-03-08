@@ -764,7 +764,7 @@ pub const Chunk = struct {
 
     /// An optional debug sym is only included in Trace builds.
     pub fn pushOptionalDebugSym(c: *Chunk, nodeId: cy.NodeId) !void {
-        if (cy.Trace or c.compiler.vm.config.genAllDebugSyms) {
+        if (cy.Trace or c.compiler.vm.config.gen_all_debug_syms) {
             try c.buf.pushFailableDebugSym(
                 c.buf.ops.items.len, c.id, nodeId, c.curBlock.frameLoc,
                 cy.NullId, 0, 0,

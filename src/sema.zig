@@ -1672,7 +1672,7 @@ pub fn staticDecl(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId) !void {
     const depStart = c.symInitDeps.items.len;
 
     const irIdx = try c.ir.pushEmptyStmt(c.alloc, .setVarSym, nodeId);
-    const recLoc = try c.ir.pushExpr(.varSym, c.alloc, undefined, nodeId, .{ .sym = sym });
+    const recLoc = try c.ir.pushExpr(.varSym, c.alloc, bt.Void, nodeId, .{ .sym = sym });
     const symType = CompactType.init((try sym.getValueType()).?);
     const right = try semaExprCType(c, node.data.staticDecl.right, symType);
     c.ir.setStmtData(irIdx, .setVarSym, .{ .generic = .{
@@ -4017,7 +4017,7 @@ pub const ChunkExt = struct {
                 return ExprResult.initStatic(irIdx, bt.List);
             },
             .recordLit => {
-                if (expr.preferType != bt.Any) {
+                if (expr.hasTypeCstr) {
                     if (c.sema.isUserObjectType(expr.preferType)) {
                         // Infer user object type.
                         const obj = c.sema.getTypeSym(expr.preferType).cast(.object_t);

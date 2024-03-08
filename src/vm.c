@@ -335,7 +335,7 @@ static inline ValueResult allocClosure(
     if (numCapturedVals <= 2) {
         res = zAllocPoolObject(vm);
     } else {
-        res = zAllocExternalCycObject(vm, (2 + numCapturedVals) * sizeof(Value));
+        res = zAllocExternalCycObject(vm, (3 + numCapturedVals) * sizeof(Value));
     }
     if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
         return (ValueResult){ .code = res.code };

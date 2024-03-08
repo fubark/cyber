@@ -1938,10 +1938,8 @@ fn updateRegType(c: *Chunk, reg: RegisterId, type_id: cy.TypeId) void {
     const local = getLocalInfoPtr(c, reg);
     local.some.defined = true;
     local.some.rcCandidate = c.sema.isRcCandidateType(type_id);
-    if (local.some.isDynamic) {
-        local.some.type = type_id;
-        local.some.isStructValue = c.sema.getTypeKind(type_id) == .@"struct";
-    }
+    local.some.type = type_id;
+    local.some.isStructValue = c.sema.getTypeKind(type_id) == .@"struct";
 }
 
 fn setLocalType(c: *Chunk, idx: usize) !void {
@@ -3886,7 +3884,7 @@ fn reserveLocalRegAt(c: *Chunk, irLocalId: u8, declType: types.TypeId, lifted: b
 
     if (cy.Trace) {
         const nodeStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
-        log.tracev("reserve {}: {s}", .{reg, nodeStr});
+        log.tracev("reserve {} {}: {s}", .{c.curBlock.localStart, reg, nodeStr});
     }
 }
 

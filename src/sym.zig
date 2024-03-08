@@ -843,10 +843,10 @@ test "sym internals" {
     if (builtin.mode == .ReleaseFast) {
         if (cy.is32Bit) {
             try t.eq(@sizeOf(Sym), 16);
-            try t.eq(@sizeOf(Func), 32);
+            try t.eq(@sizeOf(Func), 36);
         } else {
             try t.eq(@sizeOf(Sym), 24);
-            try t.eq(@sizeOf(Func), 40);
+            try t.eq(@sizeOf(Func), 56);
         }
     } else {
         try t.eq(@sizeOf(Sym), 24);

@@ -1730,6 +1730,7 @@ test "vm internals." {
         try t.eq(@offsetOf(VM, "objectTraceMap"), @offsetOf(vmc.VM, "objectTraceMap"));
     }
 
+    try t.eq(@offsetOf(VM, "config"), @offsetOf(vmc.VM, "config"));
     try t.eq(@offsetOf(VM, "lastExeError"), @offsetOf(vmc.VM, "lastExeError"));
 
     if (cy.Trace) {
@@ -1793,7 +1794,7 @@ pub fn evalLoopGrowStack(vm: *VM) error{StackOverflow, OutOfMemory, Panic, NoDeb
     }
 }
 
-fn handleExecResult(vm: *VM, res: u32, fpStart: u32) !void {
+fn handleExecResult(vm: *VM, res: vmc.ResultCode, fpStart: u32) !void {
     if (res == vmc.RES_CODE_PANIC) {
         try handleInterrupt(vm, fpStart);
     } else if (res == vmc.RES_CODE_STACK_OVERFLOW) {

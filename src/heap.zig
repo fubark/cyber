@@ -1077,7 +1077,7 @@ pub fn allocClosure(
     if (capturedVals.len <= 2) {
         obj = try allocPoolObject(self);
     } else {
-        obj = try allocExternalObject(self, (2 + capturedVals.len) * @sizeOf(Value));
+        obj = try allocExternalObject(self, (3 + capturedVals.len) * @sizeOf(Value));
     }
     obj.closure = .{
         .typeId = bt.Closure | vmc.CYC_TYPE_MASK,
@@ -1820,10 +1820,10 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                 }
             }
             if (free) {
-                if (obj.closure.numCaptured <= 3) {
+                if (obj.closure.numCaptured <= 2) {
                     freePoolObject(vm, obj);
                 } else {
-                    freeExternalObject(vm, obj, (2 + obj.closure.numCaptured) * @sizeOf(Value), true);
+                    freeExternalObject(vm, obj, (3 + obj.closure.numCaptured) * @sizeOf(Value), true);
                 }
             }
         },
@@ -2183,10 +2183,11 @@ test "heap internals." {
         try t.eq(@sizeOf(Lambda), 24);
         try t.eq(@sizeOf(Astring), 16);
         try t.eq(@sizeOf(Ustring), 16);
-        try t.eq(@sizeOf(AstringSlice), 32);
         if (cy.is32Bit) {
-            try t.eq(@sizeOf(UstringSlice), 32);
+            try t.eq(@sizeOf(AstringSlice), 24);
+            try t.eq(@sizeOf(UstringSlice), 24);
         } else {
+            try t.eq(@sizeOf(AstringSlice), 32);
             try t.eq(@sizeOf(UstringSlice), 32);
         }
         try t.eq(@sizeOf(Array), 16);
@@ -2246,4 +2247,15 @@ test "heap internals." {
 
     try t.eq(@offsetOf(List, "typeId"), 0);    
     try t.eq(@offsetOf(List, "rc"), 4);    
+
+    try t.eq(@offsetOf(Closure, "typeId"), @offsetOf(vmc.Closure, "typeId"));
+    try t.eq(@offsetOf(Closure, "rc"), @offsetOf(vmc.Closure, "rc"));
+    try t.eq(@offsetOf(Closure, "funcPc"), @offsetOf(vmc.Closure, "funcPc"));
+    try t.eq(@offsetOf(Closure, "numParams"), @offsetOf(vmc.Closure, "numParams"));
+    try t.eq(@offsetOf(Closure, "numCaptured"), @offsetOf(vmc.Closure, "numCaptured"));
+    try t.eq(@offsetOf(Closure, "stackSize"), @offsetOf(vmc.Closure, "stackSize"));
+    try t.eq(@offsetOf(Closure, "local"), @offsetOf(vmc.Closure, "local"));
+    try t.eq(@offsetOf(Closure, "funcSigId"), @offsetOf(vmc.Closure, "rFuncSigId"));
+    try t.eq(@offsetOf(Closure, "reqCallTypeCheck"), @offsetOf(vmc.Closure, "reqCallTypeCheck"));
+    try t.eq(@offsetOf(Closure, "firstCapturedVal"), @offsetOf(vmc.Closure, "firstCapturedVal"));
 }

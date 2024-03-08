@@ -177,11 +177,15 @@ typedef struct CsTypeInfo {
 } CsTypeInfo;
 
 typedef enum {
-    // #host object type that needs to be created.
-    CS_TYPE_OBJECT,
-    // #host object type that is hardcoded into the VM and already has a type id.
-    CS_TYPE_CORE_OBJECT,
-} CsTypeType;
+    // Create a new object type with it's own memory layout and finalizer.
+    CS_BIND_TYPE_CUSTOM,
+
+    // Create a new type from the given type declaration with a predefined type id.
+    CS_BIND_TYPE_DECL,
+
+    // Bind to an predefined type.
+    CS_BIND_TYPE_PREDEFINED,
+} CsBindTypeKind;
 
 // Given an object, return the pointer of an array and the number of children.
 // If there are no children, return NULL and 0 for the length.
@@ -212,13 +216,17 @@ typedef struct CsTypeResult {
             CsObjectGetChildrenFn getChildren;
             // Pointer to callback or null.
             CsObjectFinalizerFn finalizer;
-        } object;
+        } custom;
         struct {
-            // Existing typeId.
+            // The reserved `typeId` is used for the new type.
             CsTypeId typeId;
-        } coreObject;
+        } decl;
+        struct {
+            // Predefined typeId.
+            CsTypeId typeId;
+        } predefined;
     } data;
-    // `CsTypeType`. By default, this is `CS_TYPE_OBJECT`.
+    // `CsBindTypeKind`. By default, this is `CS_BIND_TYPE_CUSTOM`.
     uint8_t type;
 } CsTypeResult;
 

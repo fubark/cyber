@@ -918,15 +918,15 @@ pub fn declareEnumMembers(c: *cy.Chunk, sym: *cy.sym.EnumType, nodeId: cy.NodeId
     sym.numMembers = @intCast(members.len);
 }
 
-pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.HostObjectType {
-    c.parser.ast.nodePtr(nodeId).head.type = .hostObjectDecl;
+/// Returns an object or custom object type sym.
+pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     const node = c.ast.node(nodeId);
 
     const header = c.ast.node(node.data.objectDecl.header); 
     const name = c.ast.nodeStringById(header.data.objectHeader.name);
 
     const typeLoader = c.typeLoader orelse {
-        return c.reportErrorAt("No object type loader set for `{}`.", &.{v(name)}, nodeId);
+        return c.reportErrorAt("No type loader set for `{}`.", &.{v(name)}, nodeId);
     };
 
     const info = cc.TypeInfo{
@@ -937,32 +937,42 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.HostObjectTyp
     c.curHostTypeIdx += 1;
     var res: cc.TypeResult = .{
         .data = .{
-            .object = .{
+            .custom = .{
                 .outTypeId = null,
                 .getChildren = null,
                 .finalizer = null,
             },
         },
-        .type = cc.TypeKindObject,
+        .type = cc.BindTypeCustom,
     };
     log.tracev("Invoke type loader for: {s}", .{name});
     if (!typeLoader(@ptrCast(c.compiler.vm), info, &res)) {
-        return c.reportErrorAt("#host type `{}` object failed to load.", &.{v(name)}, nodeId);
+        return c.reportErrorAt("Failed to load #host type `{}` object.", &.{v(name)}, nodeId);
     }
 
-    switch (@as(cc.TypeEnumKind, @enumFromInt(res.type))) {
-        .object => {
-            const sym = try c.declareHostObjectType(@ptrCast(c.sym), name, nodeId,
-                res.data.object.getChildren, res.data.object.finalizer);
-            if (res.data.object.outTypeId) |outTypeId| {
+    switch (res.type) {
+        cc.BindTypeCustom => {
+            const sym = try c.declareCustomObjectType(@ptrCast(c.sym), name, nodeId,
+                res.data.custom.getChildren, res.data.custom.finalizer, null);
+            if (res.data.custom.outTypeId) |outTypeId| {
                 log.tracev("output typeId: {}", .{sym.type});
                 outTypeId.* = sym.type;
             }
-            return sym;
-        },
-        .coreObject => {
-            const sym = c.compiler.sema.types.items[res.data.coreObject.typeId].sym;
             return @ptrCast(sym);
+        },
+        cc.BindTypeDecl => {
+            const sym = try c.declareObjectType(@ptrCast(c.sym), name, nodeId);
+            return @ptrCast(sym);
+        },
+        cc.BindTypePredefined => {
+            const type_e = c.sema.types.items[res.data.predefined.typeId];
+            if (type_e.sym.type != .object_t and type_e.sym.type != .custom_object_t) {
+                return c.reportErrorAt("Expected predefined object type.", &.{}, nodeId);
+            }
+            return type_e.sym;
+        },
+        else => {
+            return error.Unsupported;
         },
     }
 }
@@ -1010,39 +1020,45 @@ pub fn declareTemplateVariant(c: *cy.Chunk, template: *cy.sym.TypeTemplate, vari
     }
 }
 
-pub fn declareObject(c: *cy.Chunk, isStruct: bool, nodeId: cy.NodeId) !*cy.Sym {
+pub fn declareObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
     const node = c.ast.node(nodeId);
 
     const header = c.ast.node(node.data.objectDecl.header);
 
-    if (!isStruct) {
-        // Check for #host modifier.
-        if (header.head.data.objectHeader.modHead != cy.NullNode) {
-            const modifier = c.ast.node(header.head.data.objectHeader.modHead);
-            if (modifier.data.dirModifier.type == .host) {
-                return @ptrCast(try declareHostObject(c, nodeId));
-            }
+    // Check for #host modifier.
+    if (header.head.data.objectHeader.modHead != cy.NullNode) {
+        const modifier = c.ast.node(header.head.data.objectHeader.modHead);
+        if (modifier.data.dirModifier.type == .host) {
+            return @ptrCast(try declareHostObject(c, nodeId));
         }
     }
+
     const nameId = header.data.objectHeader.name;
     if (nameId != cy.NullNode) {
         const name = c.ast.nodeStringById(nameId);
-        if (isStruct) {
-            const sym = try c.declareStructType(@ptrCast(c.sym), name, nodeId);
-            return @ptrCast(sym);
-        } else {
-            const sym = try c.declareObjectType(@ptrCast(c.sym), name, nodeId);
-            return @ptrCast(sym);
-        }
+        const sym = try c.declareObjectType(@ptrCast(c.sym), name, nodeId);
+        return @ptrCast(sym);
     } else {
         // Unnamed object.
-        if (isStruct) {
-            const sym = try c.declareUnnamedStructType(@ptrCast(c.sym), nodeId);
-            return @ptrCast(sym);
-        } else {
-            const sym = try c.declareUnnamedObjectType(@ptrCast(c.sym), nodeId);
-            return @ptrCast(sym);
-        }
+        const sym = try c.declareUnnamedObjectType(@ptrCast(c.sym), nodeId);
+        return @ptrCast(sym);
+    }
+}
+
+pub fn declareStruct(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
+    const node = c.ast.node(nodeId);
+
+    const header = c.ast.node(node.data.objectDecl.header);
+
+    const nameId = header.data.objectHeader.name;
+    if (nameId != cy.NullNode) {
+        const name = c.ast.nodeStringById(nameId);
+        const sym = try c.declareStructType(@ptrCast(c.sym), name, nodeId);
+        return @ptrCast(sym);
+    } else {
+        // Unnamed object.
+        const sym = try c.declareUnnamedStructType(@ptrCast(c.sym), nodeId);
+        return @ptrCast(sym);
     }
 }
 

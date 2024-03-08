@@ -233,7 +233,6 @@ pub const VM = struct {
             .config = undefined,
             .httpClient = undefined,
             .stdHttpClient = undefined,
-            .lastError = null,
             .userData = null,
             .expGlobalRC = 0,
             .varSymExtras = .{},
@@ -573,8 +572,8 @@ pub const VM = struct {
                 return error.Unsupported;
             }
 
-            const jitRes = res.inner.jit.buf;
-            try cy.fiber.stackEnsureTotalCapacity(self, res.inner.jit.mainStackSize);
+            const jitRes = res.jit.buf;
+            try cy.fiber.stackEnsureTotalCapacity(self, res.jit.mainStackSize);
             self.framePtr = @ptrCast(self.stack.ptr);
 
             // Mark code executable.
@@ -623,9 +622,9 @@ pub const VM = struct {
             tt = cy.debug.timer();
             defer tt.endPrint("eval");
 
-            return self.evalByteCode(res.inner.vm);
+            return self.evalByteCode(res.vm);
         } else {
-            defer res.inner.aot.deinit(self.alloc);
+            defer res.aot.deinit(self.alloc);
             if (cy.isFreestanding or cy.isWasm) {
                 return error.Unsupported;
             }
@@ -633,25 +632,23 @@ pub const VM = struct {
             if (self.config.spawnExe) {
                 const term = try spawn(.{
                     .allocator = self.alloc,
-                    .argv = &.{res.inner.aot.exePath},
+                    .argv = &.{res.aot.exePath},
                 });
                 if (term != .Exited or term.Exited != 0) {
-                    self.lastError = error.ExePanic;
                     self.alloc.free(self.lastExeError);
                     self.lastExeError = "";
-                    return error.ExePanic;
+                    return error.Panic;
                 }
             } else {
                 const exeRes = try std.ChildProcess.exec(.{
                     .allocator = self.alloc,
-                    .argv = &.{res.inner.aot.exePath},
+                    .argv = &.{res.aot.exePath},
                 });
                 self.alloc.free(exeRes.stdout);
                 if (exeRes.term != .Exited or exeRes.term.Exited != 0) {
-                    self.lastError = error.ExePanic;
                     self.alloc.free(self.lastExeError);
                     self.lastExeError = exeRes.stderr;
-                    return error.ExePanic;
+                    return error.Panic;
                 }
             }
             return Value.initInt(0);
@@ -773,12 +770,7 @@ pub const VM = struct {
         self.consts = buf.mconsts;
         self.types = self.compiler.sema.types.items;
 
-        @call(.never_inline, evalLoopGrowStack, .{self}) catch |err| {
-            if (err == error.Panic) {
-                self.lastError = error.Panic;
-            }
-            return err;
-        };
+        try @call(.never_inline, evalLoopGrowStack, .{self});
         logger.tracev("main stack size: {}", .{buf.mainStackSize});
 
         if (self.endLocal == 255) {
@@ -868,20 +860,6 @@ pub const VM = struct {
         vm.framePtr = vm.stack.ptr + fpOff;
 
         return vm.framePtr[ret];
-    }
-
-    pub fn allocLastErrorReport(self: *VM) ![:0]const u8 {
-        if (self.lastError) |err| {
-            switch (err) {
-                error.TokenError => return debug.allocLastUserParseError(self),
-                error.ParseError => return debug.allocLastUserParseError(self),
-                error.CompileError => return debug.allocLastUserCompileError(self),
-                error.Panic => return debug.allocLastUserPanicError(self),
-                error.ExePanic => return error.Unexpected,
-            }
-        } else {
-            return error.NoLastError;
-        }
     }
 
     pub fn addAnonymousStruct(self: *VM, parent: *cy.Sym, baseName: []const u8, uniqId: u32, fields: []const []const u8) !cy.TypeId {
@@ -1573,6 +1551,10 @@ pub const VM = struct {
 
     pub fn getTempString(vm: *VM) []const u8 {
         return vm.u8Buf.items();
+    }
+
+    pub fn getNewFramePtrOffset(self: *VM, args: [*]const Value, nargs: u8) u32 {
+        return @intCast(cy.fiber.getStackOffset(self.stack.ptr, args + nargs));
     }
 
     pub usingnamespace cy.heap.VmExt;
@@ -3459,17 +3441,6 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst) !void {
     try cy.bytecode.dumpInst(vm, offset, pc[0].opcode(), pc, .{ .extra = extra });
 }
 
-pub const EvalError = error{
-    Panic,
-    ParseError,
-    CompileError,
-    OutOfMemory,
-    NoEndOp,
-    End,
-    StackOverflow,
-    NoDebugSym,
-};
-
 const FieldEntry = struct {
     offset: u32,
     typeId: types.TypeId,
@@ -4287,10 +4258,6 @@ inline fn deoptimizeBinOp(pc: [*]cy.Inst) void {
     pc[3] = pc[10];
     pc[4] = pc[11];
 }
-
-pub const ValidateResult = struct {
-    err: ?cy.CompileErrorType,
-};
 
 export fn zFatal() void {
     cy.fatal();

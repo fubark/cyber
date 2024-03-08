@@ -203,8 +203,9 @@ pub const Tokenizer = struct {
     /// For syntax highlighting, skip errors.
     ignoreErrors: bool,
 
-    lastErr: []const u8,
-    lastErrPos: u32,
+    has_error: bool,
+    reportFn: *const fn(*anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror!void,
+    ctx: *anyopaque,
 
     pub fn init(alloc: std.mem.Allocator, src: []const u8) Tokenizer {
         return .{
@@ -215,20 +216,15 @@ pub const Tokenizer = struct {
             .parseComments = false,
             .ignoreErrors = false,
             .comments = .{},
-            .lastErr = "",
-            .lastErrPos = 0,
+            .reportFn = defaultReportFn,
+            .ctx = undefined,
+            .has_error = false,
         };
     }
 
     pub fn deinit(self: *Tokenizer) void {
         self.tokens.deinit(self.alloc);
         self.comments.deinit(self.alloc);
-        self.alloc.free(self.lastErr);
-    }
-
-    pub fn consumeErr(self: *Tokenizer) []const u8 {
-        defer self.lastErr = "";
-        return self.lastErr;
     }
 
     pub fn consumeComments(self: *Tokenizer) std.ArrayListUnmanaged(cy.IndexSlice(u32)) {
@@ -456,17 +452,17 @@ pub const Tokenizer = struct {
             '`' => {
                 // UTF-8 codepoint literal (rune).
                 if (isAtEnd(t)) {
-                    return t.reportError("Expected UTF-8 rune.", &.{});
+                    try t.reportError("Expected UTF-8 rune.", &.{});
                 }
                 while (true) {
                     if (isAtEnd(t)) {
-                        return t.reportError("Expected UTF-8 rune.", &.{});
+                        try t.reportError("Expected UTF-8 rune.", &.{});
                     }
                     ch = peek(t);
                     if (ch == '\\') {
                         advance(t);
                         if (isAtEnd(t)) {
-                            return t.reportError("Expected back tick or backslash.", &.{});
+                            try t.reportError("Expected back tick or backslash.", &.{});
                         }
                         advance(t);
                     } else {
@@ -480,7 +476,7 @@ pub const Tokenizer = struct {
             },
             '"' => {
                 if (state.stateT == .templateExprToken) {
-                    return t.reportError("Nested string literal is not allowed.", &.{});
+                    try t.reportError("Nested string literal is not allowed.", &.{});
                 } else {
                     if (peek(t) == '"') {
                         if (peekAhead(t, 1)) |ch2| {
@@ -535,7 +531,7 @@ pub const Tokenizer = struct {
                     try t.pushToken(.err, start);
                     return .{ .stateT = .token };
                 } else {
-                    return t.reportErrorAt("unknown character: {} ({}) at {}", &.{
+                    try t.reportErrorAt("unknown character: {} ({}) at {}", &.{
                         cy.fmt.char(ch), v(ch), v(start)
                     }, start);
                 }
@@ -669,7 +665,8 @@ pub const Tokenizer = struct {
                     t.nextPos = start;
                     try t.pushToken(.err, start);
                     return .{ .stateT = .token };
-                } return t.reportErrorAt("UnterminatedString", &.{}, start);
+                }
+                try t.reportErrorAt("UnterminatedString", &.{}, start);
             }
             const ch = peek(t);
             switch (ch) {
@@ -725,7 +722,8 @@ pub const Tokenizer = struct {
                             t.nextPos = start;
                             try t.pushToken(.err, start);
                             return .{ .stateT = .token };
-                        } else return t.reportErrorAt("UnterminatedString", &.{}, start);
+                        }
+                        try t.reportErrorAt("UnterminatedString", &.{}, start);
                     }
                     _ = consume(t);
                     continue;
@@ -736,7 +734,8 @@ pub const Tokenizer = struct {
                             t.nextPos = start;
                             try t.pushToken(.err, start);
                             return .{ .stateT = .token };
-                        } else return t.reportErrorAt("Encountered new line in single line literal.", &.{}, start);
+                        }
+                        try t.reportErrorAt("Encountered new line in single line literal.", &.{}, start);
                     }
                     _ = consume(t);
                 },
@@ -1001,17 +1000,23 @@ pub const Tokenizer = struct {
         try self.tokens.append(self.alloc, Token.init(token_t, startPos, .{ .end_pos = endPos }));
     }
 
-    fn reportError(self: *Tokenizer, format: []const u8, args: []const cy.fmt.FmtValue) error{TokenError} {
-        return self.reportErrorAt(format, args, self.nextPos);
+    fn reportError(self: *Tokenizer, format: []const u8, args: []const cy.fmt.FmtValue) anyerror!void {
+        try self.reportErrorAt(format, args, self.nextPos);
     }
 
-    fn reportErrorAt(self: *Tokenizer, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) error{TokenError} {
-        self.alloc.free(self.lastErr);
-        self.lastErr = cy.fmt.allocFormat(self.alloc, format, args) catch cy.fatal();
-        self.lastErrPos = pos;
-        return error.TokenError;
+    fn reportErrorAt(self: *Tokenizer, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror!void {
+        self.has_error = true;
+        try self.reportFn(self.ctx, format, args, pos);
     }
 };
+
+pub fn defaultReportFn(ctx: *anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror!void {
+    _ = ctx;
+    _ = format;
+    _ = args;
+    _ = pos;
+    return error.TokenError;
+}
 
 test "tokenizer internals." {
     try tt.eq(@sizeOf(Token), 8);

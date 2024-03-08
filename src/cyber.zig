@@ -39,6 +39,7 @@ pub const Func = sym.Func;
 pub const compiler = @import("compiler.zig");
 pub const Backend = compiler.Backend;
 pub const Compiler = compiler.Compiler;
+pub const Report = compiler.Report;
 pub const CompileResult = compiler.CompileResult;
 pub const CompileConfig = compiler.CompileConfig;
 pub const ValidateConfig = compiler.ValidateConfig;

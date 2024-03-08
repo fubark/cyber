@@ -767,15 +767,9 @@ typedef struct Compiler {
     ByteCodeBuffer buf;
     JitCodeBuffer jitBuf;
 
-    char* lastErrPtr;
-    size_t lastErrLen;
+    ZList reports;
 
     Sema sema;
-
-    NodeId lastErrNode;
-    ChunkId lastErrChunk;
-
-    NodeId errorPayload;
 } Compiler;
 
 typedef struct OpCount {

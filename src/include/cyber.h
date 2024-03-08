@@ -25,8 +25,6 @@ typedef struct CsModule CsModule;
 
 typedef enum {
     CS_SUCCESS = 0,
-    CS_ERROR_TOKEN,
-    CS_ERROR_PARSE,
     CS_ERROR_COMPILE,
     CS_ERROR_PANIC,
     CS_ERROR_UNKNOWN,
@@ -314,8 +312,14 @@ void csSetErrorFn(CsVM* vm, CsErrorFn errorFn);
 CsResultCode csEval(CsVM* vm, CsStr src, CsValue* outVal);
 CsResultCode csValidate(CsVM* vm, CsStr src);
 
-/// After receiving an error CsResultCode, this returns the error report. Call `csFreeStr` afterwards.
-const char* csNewLastErrorReport(CsVM* vm);
+/// Returns first compile-time report summary. Must be freed with `csFreeStr`.
+CsStr csNewFirstReportSummary(CsVM* vm);
+
+/// Returns runtime panic summary. Must be freed with `csFreeStr`.
+CsStr csNewPanicSummary(CsVM* vm);
+
+/// Some API callbacks use this to report errors.
+void csReportApiError(CsVM* vm, CsStr msg);
 
 // Attach a userdata pointer inside the VM.
 void* csGetUserData(CsVM* vm);

@@ -10,11 +10,11 @@ pub fn expandTemplateOnCallExpr(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
     const node = c.ast.node(nodeId);
     const calleeRes = try c.semaExprSkipSym(node.data.callExpr.callee);
     if (calleeRes.resType != .sym) {
-        return c.reportErrorAt("Expected template symbol.", &.{}, node.data.callExpr.callee);
+        return c.reportErrorFmt("Expected template symbol.", &.{}, node.data.callExpr.callee);
     }
     const sym = calleeRes.data.sym;
     if (sym.type != .typeTemplate) {
-        return c.reportErrorAt("Expected template symbol.", &.{}, node.data.callExpr.callee);
+        return c.reportErrorFmt("Expected template symbol.", &.{}, node.data.callExpr.callee);
     }
     return cte.expandTemplateOnCallArgs(c, sym.cast(.typeTemplate), node.data.callExpr.argHead, nodeId);
 }
@@ -47,7 +47,7 @@ pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.TypeTemplate, ar
         if (err == error.IncompatSig) {
             const expSig = try c.sema.allocFuncSigStr(template.sigId, true);
             defer c.alloc.free(expSig);
-            return c.reportErrorAt(
+            return c.reportErrorFmt(
                 \\Expected template signature `{}{}`.
             , &.{v(template.head.name()), v(expSig)}, nodeId);
         } else {
@@ -164,7 +164,7 @@ fn nodeToCtValue(c: *cy.Chunk, nodeId: cy.NodeId) !CtValue {
             }
 
             const sym = (try sema.resolveLocalRootSym(c, name, nodeId, true)) orelse {
-                return c.reportErrorAt("Could not find the symbol `{}`.", &.{v(name)}, nodeId);
+                return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, nodeId);
             };
 
             if (sym.getStaticType()) |type_id| {
@@ -173,7 +173,7 @@ fn nodeToCtValue(c: *cy.Chunk, nodeId: cy.NodeId) !CtValue {
                     .value = try c.vm.allocType(type_id),
                 };
             } else {
-                return c.reportErrorAt("Unsupported conversion to compile-time value: {}", &.{v(sym.type)}, nodeId);
+                return c.reportErrorFmt("Unsupported conversion to compile-time value: {}", &.{v(sym.type)}, nodeId);
             }
         },
         else => {

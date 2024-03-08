@@ -659,23 +659,13 @@ pub const Chunk = struct {
         }
     }
 
-    pub fn reportErrorMsgAt(self: *Chunk, msg: []const u8, nodeId: cy.NodeId) error{OutOfMemory, CompileError} {
-        try self.compiler.setErrorAt(self.id, nodeId, msg);
+    pub fn reportError(self: *Chunk, msg: []const u8, nodeId: ?cy.NodeId) error{OutOfMemory, CompileError} {
+        try self.compiler.addReport(.compile_err, self.id, nodeId, msg);
         return error.CompileError;
     }
 
-    pub fn setErrorFmtAt(self: *Chunk, format: []const u8, args: []const fmt.FmtValue, nodeId: cy.NodeId) !void {
-        try self.compiler.setErrorFmtAt(self.id, nodeId, format, args);
-    }
-
-    // TODO: Rename to reportErrorFmt
-    pub fn reportError(self: *Chunk, format: []const u8, args: []const fmt.FmtValue) error{CompileError, OutOfMemory, FormatError} {
-        return self.reportErrorAt(format, args, cy.NullId);
-    }
-
-    // TODO: Rename to reportErrorFmtAt
-    pub fn reportErrorAt(self: *Chunk, format: []const u8, args: []const fmt.FmtValue, nodeId: cy.NodeId) error{CompileError, OutOfMemory, FormatError} {
-        try self.setErrorFmtAt(format, args, nodeId);
+    pub fn reportErrorFmt(self: *Chunk, format: []const u8, args: []const fmt.FmtValue, nodeId: ?cy.NodeId) error{CompileError, OutOfMemory, FormatError} {
+        try self.compiler.addReportFmt(.compile_err, self.id, nodeId, format, args);
         return error.CompileError;
     }
 

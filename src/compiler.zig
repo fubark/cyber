@@ -37,16 +37,10 @@ pub const Compiler = struct {
     buf: cy.ByteCodeBuffer,
     jitBuf: jitgen.CodeBuffer,
 
-    lastErr: []const u8,
+    reports: std.ArrayListUnmanaged(Report),
     
     /// Sema model resulting from the sema pass.
     sema: sema.Sema,
-
-    lastErrNode: cy.NodeId,
-    lastErrChunk: cy.ChunkId,
-
-    /// Used to return additional info for an error.
-    errorPayload: cy.NodeId,
 
     /// Determines how modules are loaded.
     moduleLoader: cc.ModuleLoaderFn,
@@ -108,10 +102,7 @@ pub const Compiler = struct {
             .vm = vm,
             .buf = try cy.ByteCodeBuffer.init(vm.alloc, vm),
             .jitBuf = jitgen.CodeBuffer.init(),
-            .lastErr = "",
-            .lastErrNode = undefined,
-            .lastErrChunk = undefined,
-            .errorPayload = undefined,
+            .reports = .{},
             .sema = sema.Sema.init(vm.alloc, self),
             .moduleLoader = defaultModuleLoader,
             .moduleResolver = defaultModuleResolver,
@@ -136,8 +127,10 @@ pub const Compiler = struct {
     }
 
     pub fn deinit(self: *Compiler, comptime reset: bool) void {
-        self.alloc.free(self.lastErr);
-        self.lastErr = "";
+        self.clearReports();
+        if (!reset) {
+            self.reports.deinit(self.alloc);
+        }
 
         if (reset) {
             self.buf.clear();
@@ -183,53 +176,41 @@ pub const Compiler = struct {
     }
 
     pub fn reinit(self: *Compiler) !void {
-        self.lastErrNode = cy.NullId;
-        self.lastErrChunk = cy.NullId;
+        self.clearReports();
     }
 
-    pub fn compile(self: *Compiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileResult {
+    pub fn clearReports(self: *Compiler) void {
+        for (self.reports.items) |report| {
+            report.deinit(self.alloc);
+        }
+        self.reports.clearRetainingCapacity();
+    }
+
+    pub fn compile(self: *Compiler, srcUri: []const u8, src: []const u8, config: cc.CompileConfig) !CompileResult {
         defer {
             // Update VM types view.
             self.vm.types = self.sema.types.items;
         }
         const res = self.compileInner(srcUri, src, config) catch |err| {
-            if (err == error.TokenError) {
-                return CompileResult{
-                    .inner = undefined,
-                    .err = .tokenize,
-                };
-            } else if (err == error.ParseError) {
-                return CompileResult{
-                    .inner = undefined,
-                    .err = .parse,
-                };
+            if (dumpCompileErrorStackTrace and !cc.silent()) {
+                std.debug.dumpStackTrace(@errorReturnTrace().?.*);
+            }
+            if (err == error.CompileError) {
+                return err;
+            }
+            if (self.chunks.items.len > 0) {
+                // Report other errors using the main chunk.
+                return self.main_chunk.reportErrorFmt("Error: {}", &.{v(err)}, null);
             } else {
-                if (dumpCompileErrorStackTrace and !cy.silentError) {
-                    std.debug.dumpStackTrace(@errorReturnTrace().?.*);
-                }
-                if (err != error.CompileError) {
-                    if (self.chunks.items.len > 0) {
-                        // Report other errors using the main chunk.
-                        const chunk = self.chunks.items[0];
-                        try chunk.setErrorFmtAt("Error: {}", &.{v(err)}, cy.NullId);
-                    } else {
-                        return err;
-                    }
-                }
-                return CompileResult{
-                    .inner = undefined,
-                    .err = .compile,
-                };
+                try self.addReportFmt(.compile_err, null, null, "Error: {}", &.{v(err)});
+                return error.CompileError;
             }
         };
-        return CompileResult{
-            .inner = res,
-            .err = null,
-        };
+        return res;
     }
 
     /// Wrap compile so all errors can be handled in one place.
-    fn compileInner(self: *Compiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileInnerResult {
+    fn compileInner(self: *Compiler, srcUri: []const u8, src: []const u8, config: cc.CompileConfig) !CompileResult {
         self.config = config;
 
         var finalSrcUri: []const u8 = undefined;
@@ -312,8 +293,7 @@ pub const Compiler = struct {
                     return err;
                 } else {
                     // Wrap all other errors as a CompileError.
-                    try chunk.setErrorFmtAt("error.{}", &.{v(err)}, chunk.curNodeId);
-                    return error.CompileError;
+                    return chunk.reportErrorFmt("error.{}", &.{v(err)}, chunk.curNodeId);
                 }
                 return err;
             };
@@ -365,24 +345,50 @@ pub const Compiler = struct {
             log.tracev("Done. Perform codegen.", .{});
         }
 
-        return CompileInnerResult{ .vm = undefined };
+        return CompileResult{ .vm = undefined };
     }
 
-    /// If `chunkId` is NullId, then the error comes from an aggregate step.
-    /// If `nodeId` is NullId, then the error does not have a location.
-    pub fn setErrorFmtAt(self: *Compiler, chunkId: cy.ChunkId, nodeId: cy.NodeId, format: []const u8, args: []const fmt.FmtValue) !void {
-        self.alloc.free(self.lastErr);
-        self.lastErr = try fmt.allocFormat(self.alloc, format, args);
-        self.lastErrChunk = chunkId;
-        self.lastErrNode = nodeId;
+    pub fn addReportFmt(self: *Compiler, report_t: ReportType, chunk: ?cy.ChunkId, loc: ?u32, format: []const u8, args: []const fmt.FmtValue) !void {
+        const msg = try fmt.allocFormat(self.alloc, format, args);
+        try self.addReportConsume(report_t, chunk, loc, msg);
     }
 
     /// Assumes `msg` is heap allocated.
-    pub fn setErrorAt(self: *Compiler, chunkId: cy.ChunkId, nodeId: cy.NodeId, msg: []const u8) !void {
-        self.alloc.free(self.lastErr);
-        self.lastErr = msg;
-        self.lastErrChunk = chunkId;
-        self.lastErrNode = nodeId;
+    pub fn addReportConsume(self: *Compiler, report_t: ReportType, chunk: ?cy.ChunkId, loc: ?u32, msg: []const u8) !void {
+        try self.reports.append(self.alloc, .{
+            .type = report_t,
+            .chunk = chunk orelse cy.NullId,
+            .loc = loc orelse cy.NullId,
+            .msg = msg,
+        });
+    }
+
+    pub fn addReport(self: *Compiler, report_t: ReportType, chunk: ?cy.ChunkId, loc: ?u32, msg: []const u8) !void {
+        const dupe = try self.alloc.dupe(u8, msg);
+        try self.addReportConsume(report_t, chunk, loc, dupe);
+    }
+};
+
+const ReportType = enum(u8) {
+    token_err,
+    parse_err,
+    compile_err,
+};
+
+pub const Report = struct {
+    type: ReportType,
+    msg: []const u8,
+
+    /// If NullId, then the report comes from an aggregate step.
+    chunk: cy.ChunkId,
+
+    /// srcPos if token_err or parse_err
+    //  nodeId if compile_err
+    /// If NullId, then the report does not have a location.
+    loc: u32,
+
+    pub fn deinit(self: Report, alloc: std.mem.Allocator) void {
+        alloc.free(self.msg);
     }
 };
 
@@ -397,18 +403,33 @@ pub const AotCompileResult = struct {
 /// Tokenize and parse.
 /// Parser pass collects static declaration info.
 fn performChunkParse(self: *Compiler, chunk: *cy.Chunk) !void {
+    _ = self;
     var tt = cy.debug.timer();
+
+    const S = struct {
+        fn parserReport(ctx: *anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror {
+            const c: *cy.Chunk = @ptrCast(@alignCast(ctx));
+            try c.compiler.addReportFmt(.parse_err, c.id, pos, format, args);
+            return error.ParseError;
+        }
+
+        fn tokenizerReport(ctx: *anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror!void {
+            const c: *cy.Chunk = @ptrCast(@alignCast(ctx));
+            try c.compiler.addReportFmt(.token_err, c.id, pos, format, args);
+            return error.TokenError;
+        }
+    };
+
+    chunk.parser.reportFn = S.parserReport;
+    chunk.parser.tokenizerReportFn = S.tokenizerReport;
+    chunk.parser.ctx = chunk;
+
     const res = try chunk.parser.parse(chunk.src, .{});
     tt.endPrint("parse");
     // Update buffer pointers so success/error paths can access them.
     chunk.updateAstView(res.ast);
     if (res.has_error) {
-        self.lastErrChunk = chunk.id;
-        if (res.isTokenError) {
-            return error.TokenError;
-        } else {
-            return error.ParseError;
-        }
+        return error.CompileError;
     }
     chunk.parserAstRootId = res.root_id;
 }
@@ -509,7 +530,7 @@ fn appendSymInitIrDFS(c: *cy.Chunk, sym: *cy.Sym, info: *cy.chunk.SymInitInfo, r
         return;
     }
     if (info.visiting) {
-        return c.reportErrorAt("Referencing `{}` creates a circular dependency in the module.", &.{v(sym.name())}, refNodeId);
+        return c.reportErrorFmt("Referencing `{}` creates a circular dependency in the module.", &.{v(sym.name())}, refNodeId);
     }
     info.visiting = true;
 
@@ -551,20 +572,20 @@ fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
         if (task.fromChunk) |from| {
             if (task.nodeId == cy.NullNode) {
                 if (self.hasApiError) {
-                    return from.reportError(self.apiError, &.{});
+                    return from.reportError(self.apiError, null);
                 } else {
-                    return from.reportError("Failed to load module: {}", &.{v(task.absSpec)});
+                    return from.reportErrorFmt("Failed to load module: {}", &.{v(task.absSpec)}, null);
                 }
             } else {
                 const stmt = from.ast.node(task.nodeId);
                 if (self.hasApiError) {
-                    return from.reportErrorAt(self.apiError, &.{}, stmt.data.importStmt.spec);
+                    return from.reportErrorFmt(self.apiError, &.{}, stmt.data.importStmt.spec);
                 } else {
-                    return from.reportErrorAt("Failed to load module: {}", &.{v(task.absSpec)}, stmt.data.importStmt.spec);
+                    return from.reportErrorFmt("Failed to load module: {}", &.{v(task.absSpec)}, stmt.data.importStmt.spec);
                 }
             }
         } else {
-            try self.setErrorFmtAt(cy.NullId, cy.NullNode, "Failed to load module: {}", &.{v(task.absSpec)});
+            try self.addReportFmt(.compile_err, null, null, "Failed to load module: {}", &.{v(task.absSpec)});
             return error.CompileError;
         }
     }
@@ -864,18 +885,7 @@ fn declareSymbols(self: *Compiler) !void {
     }
 }
 
-pub const CompileErrorType = enum {
-    tokenize,
-    parse,
-    compile,
-};
-
-pub const CompileResult = struct {
-    inner: CompileInnerResult,
-    err: ?CompileErrorType,
-};
-
-const CompileInnerResult = union {
+pub const CompileResult = union {
     vm: cy.ByteCodeBuffer,
     jit: struct {
         mainStackSize: u32,
@@ -1016,5 +1026,6 @@ comptime {
 
 test "vm compiler internals." {
     try t.eq(@offsetOf(Compiler, "buf"), @offsetOf(vmc.Compiler, "buf"));
+    try t.eq(@offsetOf(Compiler, "reports"), @offsetOf(vmc.Compiler, "reports"));
     try t.eq(@offsetOf(Compiler, "sema"), @offsetOf(vmc.Compiler, "sema"));
 }

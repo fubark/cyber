@@ -126,11 +126,11 @@ pub fn printTraceAtPc(vm: *cy.VM, pc: u32, title: []const u8, msg: []const u8) !
     }
 }
 
-pub fn allocLastUserPanicError(vm: *const cy.VM) ![:0]const u8 {
+pub fn allocLastUserPanicError(vm: *const cy.VM) ![]const u8 {
     var buf: std.ArrayListUnmanaged(u8) = .{};
     const w = buf.writer(vm.alloc);
     try writeLastUserPanicError(vm, w);
-    return buf.toOwnedSliceSentinel(vm.alloc, 0);
+    return buf.toOwnedSlice(vm.alloc);
 }
 
 pub fn printLastUserPanicError(vm: *cy.VM) !void {
@@ -151,76 +151,35 @@ fn writeLastUserPanicError(vm: *const cy.VM, w: anytype) !void {
     try writeStackFrames(vm, w, trace.frames);
 }
 
-pub fn allocLastUserCompileError(vm: *const cy.VM) ![:0]const u8 {
+pub fn allocReportSummary(c: *const cy.Compiler, report: cy.Report) ![]const u8 {
     var buf: std.ArrayListUnmanaged(u8) = .{};
-    const w = buf.writer(vm.alloc);
-    try writeLastUserCompileError(vm, w);
-    return buf.toOwnedSliceSentinel(vm.alloc, 0);
-}
-
-pub fn printLastUserCompileError(vm: *const cy.VM) !void {
-    if (cy.silentError) {
-        return;
+    const w = buf.writer(c.alloc);
+    switch (report.type) {
+        .token_err => {
+            try writeUserError(c, w, "TokenError", report.msg, report.chunk, report.loc);
+        },
+        .parse_err => {
+            try writeUserError(c, w, "ParseError", report.msg, report.chunk, report.loc);
+        },
+        .compile_err => {
+            try writeCompileErrorSummary(c, w, report);
+        },
     }
-    const w = fmt.lockStderrWriter();
-    defer fmt.unlockPrint();
-    try writeLastUserCompileError(vm, w);
+    return buf.toOwnedSlice(c.alloc);
 }
 
-fn writeLastUserCompileError(vm: *const cy.VM, w: anytype) !void {
-    if (vm.compiler.lastErrChunk != cy.NullId) {
-        const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
-        if (vm.compiler.lastErrNode != cy.NullId) {
-            const node = chunk.ast.node(vm.compiler.lastErrNode);
-            try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, chunk.id, node.srcPos);
+fn writeCompileErrorSummary(c: *const cy.Compiler, w: anytype, report: cy.Report) !void {
+    if (report.chunk != cy.NullId) {
+        const chunk = c.chunks.items[report.chunk];
+        if (report.loc != cy.NullId) {
+            const node = chunk.ast.node(report.loc);
+            try writeUserError(c, w, "CompileError", report.msg, report.chunk, node.srcPos);
         } else {
-            try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, chunk.id, cy.NullId);
+            try writeUserError(c, w, "CompileError", report.msg, report.chunk, cy.NullId);
         }
     } else {
-        try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, cy.NullId, cy.NullId);
+        try writeUserError(c, w, "CompileError", report.msg, cy.NullId, cy.NullId);
     }
-}
-
-pub fn allocLastUserParseError(vm: *const cy.VM) ![:0]const u8 {
-    var buf: std.ArrayListUnmanaged(u8) = .{};
-    const w = buf.writer(vm.alloc);
-    try writeLastUserParseError(vm, w);
-    return buf.toOwnedSliceSentinel(vm.alloc, 0);
-}
-
-pub fn allocLastUserTokenError(vm: *const cy.VM) ![:0]const u8 {
-    var buf: std.ArrayListUnmanaged(u8) = .{};
-    const w = buf.writer(vm.alloc);
-    try writeLastUserTokenError(vm, w);
-    return buf.toOwnedSliceSentinel(vm.alloc, 0);
-}
-
-fn writeLastUserTokenError(vm: *const cy.VM, w: anytype) !void {
-    const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
-    try writeUserError(vm, w, "TokenError", chunk.parser.last_err, chunk.id, chunk.parser.last_err_pos);
-}
-
-pub fn printLastUserTokenError(vm: *const cy.VM) !void {
-    if (cy.silentError) {
-        return;
-    }
-    const w = fmt.lockStderrWriter();
-    defer fmt.unlockPrint();
-    try writeLastUserTokenError(vm, w);
-}
-
-fn writeLastUserParseError(vm: *const cy.VM, w: anytype) !void {
-    const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
-    try writeUserError(vm, w, "ParseError", chunk.parser.last_err, chunk.id, chunk.parser.last_err_pos);
-}
-
-pub fn printLastUserParseError(vm: *const cy.VM) !void {
-    if (cy.silentError) {
-        return;
-    }
-    const w = fmt.lockStderrWriter();
-    defer fmt.unlockPrint();
-    try writeLastUserParseError(vm, w);
 }
 
 pub fn printUserError(vm: *cy.VM, title: []const u8, msg: []const u8, chunkId: u32, pos: u32) !void {

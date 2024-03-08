@@ -43,6 +43,8 @@ pub const setLogger = c.csSetLogger;
 pub const setUserData = c.csSetUserData;
 pub const getUserData = c.csGetUserData;
 pub const getGlobalRC = c.csGetGlobalRC;
+pub const newFirstReportSummary = c.csNewFirstReportSummary;
+pub const newPanicSummary = c.csNewPanicSummary;
 pub const release = c.csRelease;
 
 pub const Str = c.CsStr;
@@ -140,8 +142,6 @@ pub const TypeMetaType = c.CS_TYPE_METATYPE;
 
 pub const ResultCode = c.CsResultCode;
 pub const Success = c.CS_SUCCESS;
-pub const ErrorParse = c.CS_ERROR_PARSE;
-pub const ErrorToken = c.CS_ERROR_TOKEN;
 pub const ErrorCompile = c.CS_ERROR_COMPILE;
 pub const ErrorPanic = c.CS_ERROR_PANIC;
 pub const ErrorUnknown = c.CS_ERROR_UNKNOWN;

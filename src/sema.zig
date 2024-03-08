@@ -340,7 +340,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
                 .plus,
                 .minus => {},
                 else => {
-                    return c.reportErrorAt("Unsupported op assign statement for {}.", &.{v(op)}, nodeId);
+                    return c.reportErrorFmt("Unsupported op assign statement for {}.", &.{v(op)}, nodeId);
                 }
             }
 
@@ -410,7 +410,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
                     }
                     hasSeqDestructure = true;
                 } else {
-                    return c.reportErrorAt("Unsupported each clause: {}", &.{v(eachClause.type())}, header.data.forIterHeader.eachClause);
+                    return c.reportErrorFmt("Unsupported each clause: {}", &.{v(eachClause.type())}, header.data.forIterHeader.eachClause);
                 }
             }
 
@@ -461,7 +461,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
                     const varId = try declareLocal(c, header.head.data.forRangeHeader.eachClause, bt.Integer, false);
                     eachLocal = c.varStack.items[varId].inner.local.id;
                 } else {
-                    return c.reportErrorAt("Unsupported each clause: {}", &.{v(eachClause.type())}, header.head.data.forRangeHeader.eachClause);
+                    return c.reportErrorFmt("Unsupported each clause: {}", &.{v(eachClause.type())}, header.head.data.forRangeHeader.eachClause);
                 }
             }
 
@@ -522,7 +522,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
 
             const header = c.ast.node(node.data.whileOptStmt.header);
             if (header.data.whileOptHeader.capture == cy.NullNode) {
-                return c.reportErrorAt("Expected unwrapped variable declaration.", &.{}, nodeId);
+                return c.reportErrorFmt("Expected unwrapped variable declaration.", &.{}, nodeId);
             }
 
             try pushBlock(c, nodeId);
@@ -610,12 +610,12 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
 
                 if (std.mem.eql(u8, "genLabel", name)) {
                     if (expr.data.callExpr.numArgs != 1) {
-                        return c.reportErrorAt("genLabel expected 1 arg", &.{}, nodeId);
+                        return c.reportErrorFmt("genLabel expected 1 arg", &.{}, nodeId);
                     }
 
                     const arg = c.ast.node(expr.data.callExpr.argHead);
                     if (arg.type() != .stringLit) {
-                        return c.reportErrorAt("genLabel expected string arg", &.{}, nodeId);
+                        return c.reportErrorFmt("genLabel expected string arg", &.{}, nodeId);
                     }
 
                     const label = c.ast.nodeString(arg);
@@ -632,13 +632,13 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
                     cy.verbose = false;
                     _ = try c.ir.pushStmt(c.alloc, .verbose, nodeId, .{ .verbose = false });
                 } else {
-                    return c.reportErrorAt("Unsupported annotation: {}", &.{v(name)}, nodeId);
+                    return c.reportErrorFmt("Unsupported annotation: {}", &.{v(name)}, nodeId);
                 }
             } else {
-                return c.reportErrorAt("Unsupported expr: {}", &.{v(expr.type())}, nodeId);
+                return c.reportErrorFmt("Unsupported expr: {}", &.{v(expr.type())}, nodeId);
             }
         },
-        else => return c.reportErrorAt("Unsupported statement: {}", &.{v(node.type())}, nodeId),
+        else => return c.reportErrorFmt("Unsupported statement: {}", &.{v(node.type())}, nodeId),
     }
     return node.next();
 }
@@ -657,7 +657,7 @@ fn semaElseStmt(c: *cy.Chunk, node_id: cy.NodeId, node: cy.Node) !u32 {
             });
 
             if (node.next() != cy.NullNode) {
-                return c.reportErrorAt("Can not have additional blocks after `else`.", &.{}, node.next());
+                return c.reportErrorFmt("Can not have additional blocks after `else`.", &.{}, node.next());
             }
             return irElseIdx;
         } else {
@@ -852,12 +852,12 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId, leftId: cy.NodeId, rightId: cy.No
                 .capturedLocal  => c.ir.setStmtCode(irStart, .setCaptured),
                 else => {
                     log.tracev("leftRes {s} {}", .{@tagName(leftRes.resType), leftRes.type});
-                    return c.reportErrorAt("Assignment to the left `{}` is unsupported.", &.{v(left.type())}, nodeId);
+                    return c.reportErrorFmt("Assignment to the left `{}` is unsupported.", &.{v(left.type())}, nodeId);
                 }
             }
         },
         else => {
-            return c.reportErrorAt("Assignment to the left `{}` is unsupported.", &.{v(left.type())}, nodeId);
+            return c.reportErrorFmt("Assignment to the left `{}` is unsupported.", &.{v(left.type())}, nodeId);
         }
     }
 }
@@ -866,7 +866,7 @@ fn checkGetFieldFromObjMod(c: *cy.Chunk, obj: *cy.sym.ObjectType, fieldName: []c
     if (obj.head.getMod().?.getSym(fieldName)) |sym| {
         if (sym.type != .field) {
             const objectName = obj.head.name();
-            return c.reportErrorAt("`{}` is not a field in `{}`.", &.{v(fieldName), v(objectName)}, nodeId);
+            return c.reportErrorFmt("`{}` is not a field in `{}`.", &.{v(fieldName), v(objectName)}, nodeId);
         }
         const field = sym.cast(.field);
         return .{
@@ -875,7 +875,7 @@ fn checkGetFieldFromObjMod(c: *cy.Chunk, obj: *cy.sym.ObjectType, fieldName: []c
         };
     } else {
         const objectName = obj.head.name();
-        return c.reportErrorAt("Field `{}` does not exist in `{}`.", &.{v(fieldName), v(objectName)}, nodeId);
+        return c.reportErrorFmt("Field `{}` does not exist in `{}`.", &.{v(fieldName), v(objectName)}, nodeId);
     }
 }
 
@@ -887,7 +887,7 @@ fn checkGetField(c: *cy.Chunk, recvT: TypeId, fieldName: []const u8, nodeId: cy.
         return checkGetFieldFromObjMod(c, sym.cast(.struct_t), fieldName, nodeId);
     } else {
         const name = c.sema.getTypeBaseName(recvT);
-        return c.reportErrorAt("Type `{}` does not have a field named `{}`.", &.{v(name), v(fieldName)}, nodeId);
+        return c.reportErrorFmt("Type `{}` does not have a field named `{}`.", &.{v(name), v(fieldName)}, nodeId);
     }
 }
 
@@ -914,7 +914,7 @@ pub fn declareTypeTemplate(c: *cy.Chunk, nodeId: cy.NodeId, ctNodes: []const cy.
             try c.declareTypeTemplate(@ptrCast(c.sym), name, sigId, params, .enum_t, ctNodes, nodeId);
         },
         else => {
-            return c.reportErrorAt("Unsupported type template.", &.{}, nodeId);
+            return c.reportErrorFmt("Unsupported type template.", &.{}, nodeId);
         }
     }
 }
@@ -989,9 +989,9 @@ pub fn resolveModuleSpec(self: *cy.Chunk, buf: []u8, spec: []const u8, nodeId: c
     };
     if (!self.compiler.moduleResolver.?(@ptrCast(self.compiler.vm), params)) {
         if (self.compiler.hasApiError) {
-            return self.reportErrorAt(self.compiler.apiError, &.{}, nodeId);
+            return self.reportErrorFmt(self.compiler.apiError, &.{}, nodeId);
         } else {
-            return self.reportErrorAt("Failed to resolve module.", &.{}, nodeId);
+            return self.reportErrorFmt("Failed to resolve module.", &.{}, nodeId);
         }
     }
     return resUri[0..resUriLen];
@@ -1072,7 +1072,7 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     const name = c.ast.nodeStringById(header.data.objectHeader.name);
 
     const typeLoader = c.typeLoader orelse {
-        return c.reportErrorAt("No type loader set for `{}`.", &.{v(name)}, nodeId);
+        return c.reportErrorFmt("No type loader set for `{}`.", &.{v(name)}, nodeId);
     };
 
     const info = cc.TypeInfo{
@@ -1094,7 +1094,7 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     };
     log.tracev("Invoke type loader for: {s}", .{name});
     if (!typeLoader(@ptrCast(c.compiler.vm), info, &res)) {
-        return c.reportErrorAt("Failed to load #host type `{}` object.", &.{v(name)}, nodeId);
+        return c.reportErrorFmt("Failed to load #host type `{}` object.", &.{v(name)}, nodeId);
     }
 
     switch (res.type) {
@@ -1121,7 +1121,7 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
 /// Only allows binding a predefined host type id (BIND_TYPE_DECL).
 pub fn getHostTypeId(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId) !cy.TypeId {
     const typeLoader = c.typeLoader orelse {
-        return c.reportErrorAt("No type loader set for `{}`.", &.{v(name)}, nodeId);
+        return c.reportErrorFmt("No type loader set for `{}`.", &.{v(name)}, nodeId);
     };
 
     const info = cc.TypeInfo{
@@ -1143,7 +1143,7 @@ pub fn getHostTypeId(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId) !cy.Type
     };
     log.tracev("Invoke type loader for: {s}", .{name});
     if (!typeLoader(@ptrCast(c.compiler.vm), info, &res)) {
-        return c.reportErrorAt("Failed to load #host type `{}`.", &.{v(name)}, nodeId);
+        return c.reportErrorFmt("Failed to load #host type `{}`.", &.{v(name)}, nodeId);
     }
 
     switch (res.type) {
@@ -1332,7 +1332,7 @@ pub fn declareFuncInit(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId) !void {
     }
     const header = c.ast.node(node.funcDecl_header());
     const name = c.ast.nodeStringById(header.funcHeader_name());
-    return c.reportErrorAt("`{}` is not a host function.", &.{v(name)}, nodeId);
+    return c.reportErrorFmt("`{}` is not a host function.", &.{v(name)}, nodeId);
 }
 
 fn declareGenericFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId) !void {
@@ -1362,7 +1362,7 @@ pub fn declareMethod(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: Fun
             return declareHostFunc(c, parent, nodeId, decl);
         }
     }
-    return c.reportErrorAt("`{}` does not have an initializer.", &.{v(decl.name)}, nodeId);
+    return c.reportErrorFmt("`{}` does not have an initializer.", &.{v(decl.name)}, nodeId);
 }
 
 pub fn declareHostFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: FuncDecl) !*cy.Func {
@@ -1374,7 +1374,7 @@ pub fn declareHostFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: F
     };
     c.curHostFuncIdx += 1;
     const funcLoader = c.funcLoader orelse {
-        return c.reportErrorAt("No function loader set for `{}`.", &.{v(decl.name)}, nodeId);
+        return c.reportErrorFmt("No function loader set for `{}`.", &.{v(decl.name)}, nodeId);
     };
 
     log.tracev("Invoke func loader for: {s}", .{decl.namePath});
@@ -1383,7 +1383,7 @@ pub fn declareHostFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: F
         .type = cc.FuncTypeStandard,
     };
     if (!funcLoader(@ptrCast(c.compiler.vm), info, @ptrCast(&res))) {
-        return c.reportErrorAt("Host func `{}` failed to load.", &.{v(decl.name)}, nodeId);
+        return c.reportErrorFmt("Host func `{}` failed to load.", &.{v(decl.name)}, nodeId);
     }
 
     if (res.type == cc.FuncTypeStandard) {
@@ -1391,7 +1391,7 @@ pub fn declareHostFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: F
     } else if (res.type == cc.FuncTypeInline) {
         // const funcSig = c.compiler.sema.getFuncSig(func.funcSigId);
         // if (funcSig.reqCallTypeCheck) {
-        //     return c.reportErrorAt("Failed to load: {}, Only untyped quicken func is supported.", &.{v(name)}, nodeId);
+        //     return c.reportErrorFmt("Failed to load: {}, Only untyped quicken func is supported.", &.{v(name)}, nodeId);
         // }
         return try c.declareHostInlineFunc(decl.parent, decl.name, decl.funcSigId, nodeId, @ptrCast(@alignCast(res.ptr)), decl.isMethod);
     } else {
@@ -1449,7 +1449,7 @@ pub fn declareVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
             }
         }
         const name = c.ast.getNamePathInfoById(varSpec.data.varSpec.name).namePath;
-        return c.reportErrorAt("`{}` does not have an initializer.", &.{v(name)}, nodeId);
+        return c.reportErrorFmt("`{}` does not have an initializer.", &.{v(name)}, nodeId);
     } else {
         // var type.
         const typeId = try resolveTypeSpecNode(c, varSpec.data.varSpec.typeSpec);
@@ -1471,12 +1471,12 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
     };
     c.curHostVarIdx += 1;
     const varLoader = c.varLoader orelse {
-        return c.reportErrorAt("No var loader set for `{}`.", &.{v(decl.namePath)}, nodeId);
+        return c.reportErrorFmt("No var loader set for `{}`.", &.{v(decl.namePath)}, nodeId);
     };
     log.tracev("Invoke var loader for: {s}", .{decl.namePath});
     var out: cy.Value = cy.Value.initInt(0);
     if (!varLoader(@ptrCast(c.compiler.vm), info, @ptrCast(&out))) {
-        return c.reportErrorAt("Host var `{}` failed to load.", &.{v(decl.namePath)}, nodeId);
+        return c.reportErrorFmt("Host var `{}` failed to load.", &.{v(decl.namePath)}, nodeId);
     }
     // var type.
     const typeId = try resolveTypeSpecNode(c, varSpec.data.varSpec.typeSpec);
@@ -1486,7 +1486,7 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
     if (!cy.types.isTypeSymCompat(c.compiler, outTypeId, typeId)) {
         const expTypeName = c.sema.getTypeBaseName(typeId);
         const actTypeName = c.sema.getTypeBaseName(outTypeId);
-        return c.reportErrorAt("Host var `{}` expects type {}, got: {}.", &.{v(decl.namePath), v(expTypeName), v(actTypeName)}, nodeId);
+        return c.reportErrorFmt("Host var `{}` expects type {}, got: {}.", &.{v(decl.namePath), v(expTypeName), v(actTypeName)}, nodeId);
     }
 
     return @ptrCast(try c.declareHostVar(decl.parent, decl.name, nodeId, typeId, out));
@@ -1505,7 +1505,7 @@ fn declareParam(c: *cy.Chunk, paramId: cy.NodeId, isSelf: bool, paramIdx: u32, d
     if (!isSelf) {
         if (proc.nameToVar.get(name)) |varInfo| {
             if (varInfo.blockId == c.semaBlocks.items.len - 1) {
-                return c.reportErrorAt("Function param `{}` is already declared.", &.{v(name)}, paramId);
+                return c.reportErrorFmt("Function param `{}` is already declared.", &.{v(name)}, paramId);
             }
         }
     }
@@ -1534,11 +1534,11 @@ fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, hasInit: b
         if (varInfo.blockId == c.semaBlocks.items.len - 1) {
             const svar = &c.varStack.items[varInfo.varId];
             if (svar.isParentLocalAlias()) {
-                return c.reportErrorAt("`{}` already references a parent local variable.", &.{v(name)}, nodeId);
+                return c.reportErrorFmt("`{}` already references a parent local variable.", &.{v(name)}, nodeId);
             } else if (svar.type == .staticAlias) {
-                return c.reportErrorAt("`{}` already references a static variable.", &.{v(name)}, nodeId);
+                return c.reportErrorFmt("`{}` already references a static variable.", &.{v(name)}, nodeId);
             } else {
-                return c.reportErrorAt("Variable `{}` is already declared in the block.", &.{v(name)}, nodeId);
+                return c.reportErrorFmt("Variable `{}` is already declared in the block.", &.{v(name)}, nodeId);
             }
         } else {
             // Create shadow entry for restoring the prev var.
@@ -1814,7 +1814,7 @@ fn toTypes(ctypes: []CompactType) []const TypeId {
 
 fn requireFuncSym(c: *cy.Chunk, sym: *Sym, node: cy.NodeId) !*cy.sym.FuncSym {
     if (sym.type != .func) {
-        return c.reportErrorAt("Expected `{}` to be a function symbol.", &.{v(sym.name())}, node);
+        return c.reportErrorFmt("Expected `{}` to be a function symbol.", &.{v(sym.name())}, node);
     }
     return sym.cast(.func);
 }
@@ -1877,7 +1877,7 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId, comptime symAsValue: b
     try referenceSym(c, sym, nodeId);
     if (symAsValue) {
         const typeId = (try sym.getValueType()) orelse {
-            return c.reportErrorAt("Can't use symbol `{}` as a value.", &.{v(sym.name())}, nodeId);
+            return c.reportErrorFmt("Can't use symbol `{}` as a value.", &.{v(sym.name())}, nodeId);
         };
         const ctype = CompactType.init(typeId);
         switch (sym.type) {
@@ -1977,7 +1977,7 @@ fn semaLocal(c: *cy.Chunk, id: LocalVarId, nodeId: cy.NodeId) !ExprResult {
             return ExprResult.initCustom(loc, .capturedLocal, svar.vtype, undefined);
         },
         else => {
-            return c.reportError("Unsupported: {}", &.{v(svar.type)});
+            return c.reportErrorFmt("Unsupported: {}", &.{v(svar.type)}, null);
         },
     }
 }
@@ -2001,7 +2001,7 @@ pub fn resolveLocalRootSym(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId, di
         if (!distinct or sym.isDistinct()) {
             return sym;
         } else {
-            return c.reportErrorAt("`{}` is not a unique symbol.", &.{v(name)}, nodeId);
+            return c.reportErrorFmt("`{}` is not a unique symbol.", &.{v(name)}, nodeId);
         }
     }
 
@@ -2048,7 +2048,7 @@ pub fn resolveTypeSpecNode(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!cy.TypeId {
     }
     const type_id = try resolveTypeExpr(c, nodeId);
     if (type_id == bt.Void) {
-        return c.reportErrorAt("`void` can not be used as common type specifier.", &.{}, nodeId);
+        return c.reportErrorFmt("`void` can not be used as common type specifier.", &.{}, nodeId);
     }
     return type_id;
 }
@@ -2066,7 +2066,7 @@ pub fn resolveLocalNamePathSym(c: *cy.Chunk, head: cy.NodeId, end: cy.NodeId) an
     var name = c.ast.nodeString(node);
 
     var sym = (try resolveLocalRootSym(c, name, nodeId, true)) orelse {
-        return c.reportErrorAt("Could not find the symbol `{}`.", &.{v(name)}, nodeId);
+        return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, nodeId);
     };
 
     nodeId = node.next();
@@ -2083,10 +2083,10 @@ fn resolveSymType(c: *cy.Chunk, sym: *cy.Sym, node_id: cy.NodeId) !cy.TypeId {
     return sym.getStaticType() orelse {
         switch (sym.type) {
             .typeTemplate => {
-                return c.reportErrorAt("Expected a type symbol. `{}` is a type template and must be expanded to a type first.", &.{v(sym.name())}, node_id);
+                return c.reportErrorFmt("Expected a type symbol. `{}` is a type template and must be expanded to a type first.", &.{v(sym.name())}, node_id);
             },
             else => {
-                return c.reportErrorAt("`{}` is not a type symbol.", &.{v(sym.name())}, node_id);
+                return c.reportErrorFmt("`{}` is not a type symbol.", &.{v(sym.name())}, node_id);
             }
         }
     };
@@ -2098,11 +2098,11 @@ fn resolveSym(c: *cy.Chunk, node_id: cy.NodeId) !*cy.Sym {
         .ident => {
             const name = c.ast.nodeString(node);
             return (try resolveLocalRootSym(c, name, node_id, true)) orelse {
-                return c.reportErrorAt("Could not find the symbol `{}`.", &.{v(name)}, node_id);
+                return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, node_id);
             };
         },
         else => {
-            return c.reportErrorAt("Expected symbol. Found `{}`.", &.{v(node.type())}, node_id);
+            return c.reportErrorFmt("Expected symbol. Found `{}`.", &.{v(node.type())}, node_id);
         },
     }
 }
@@ -2123,7 +2123,7 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !cy.TypeId {
         .ident => {
             const name = c.ast.nodeString(expr);
             const sym = (try resolveLocalRootSym(c, name, exprId, true)) orelse {
-                return c.reportErrorAt("Could not find the symbol `{}`.", &.{v(name)}, exprId);
+                return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, exprId);
             };
             return resolveSymType(c, sym, exprId);
         },
@@ -2131,7 +2131,7 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !cy.TypeId {
             const parent = try resolveSym(c, expr.data.accessExpr.left);
             const right = c.ast.node(expr.data.accessExpr.right);
             if (right.type() != .ident) {
-                return c.reportErrorAt("Expected identifier.", &.{}, expr.data.accessExpr.right);
+                return c.reportErrorFmt("Expected identifier.", &.{}, expr.data.accessExpr.right);
             }
             const name = c.ast.nodeString(right);
             const sym = try c.findDistinctSym(parent, name, expr.data.accessExpr.right, true);
@@ -2142,7 +2142,7 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !cy.TypeId {
                 const patchNode = c.patchTemplateNodes[expr.data.comptimeExpr.patchIdx];
                 return resolveTypeExpr(c, patchNode);
             } else {
-                return c.reportErrorAt("Unexpected compile-time expression.", &.{}, exprId);
+                return c.reportErrorFmt("Unexpected compile-time expression.", &.{}, exprId);
             }
         },
         .semaSym => {
@@ -2157,7 +2157,7 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !cy.TypeId {
             return resolveSymType(c, sym, exprId);
         },
         else => {
-            return c.reportErrorAt("Unsupported type expr: `{}`", &.{v(expr.type())}, exprId);
+            return c.reportErrorFmt("Unsupported type expr: `{}`", &.{v(expr.type())}, exprId);
         }
     }
 }
@@ -2187,7 +2187,7 @@ pub fn resolveImplicitMethodDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) 
         const param = c.ast.node(curParamId);
         const paramName = c.ast.nodeStringById(param.data.funcParam.name);
         if (std.mem.eql(u8, "self", paramName)) {
-            return c.reportErrorAt("`self` param is not allowed in an implicit method declaration.", &.{}, curParamId);
+            return c.reportErrorFmt("`self` param is not allowed in an implicit method declaration.", &.{}, curParamId);
         }
         const typeId = try resolveTypeSpecNode(c, param.data.funcParam.typeSpec);
         try c.typeStack.append(c.alloc, typeId);
@@ -2218,7 +2218,7 @@ fn resolveTemplateSig(c: *cy.Chunk, paramHead: cy.NodeId, numParams: u32, outSig
     while (param != cy.NullNode) {
         const param_n = c.ast.node(param);
         if (param_n.data.funcParam.typeSpec == cy.NullNode) {
-            return c.reportErrorAt("Expected param type specifier.", &.{}, param);
+            return c.reportErrorFmt("Expected param type specifier.", &.{}, param);
         }
         const typeId = try resolveTypeSpecNode(c, param_n.data.funcParam.typeSpec);
         try c.typeStack.append(c.alloc, typeId);
@@ -2394,7 +2394,7 @@ fn visitChunkInit(self: *cy.Compiler, c: *cy.Chunk) !void {
             continue;
         }
         if (depChunk.initializerVisiting) {
-            return c.reportErrorAt("Referencing `{}` created a circular module dependency.", &.{v(c.srcUri)}, cy.NullNode);
+            return c.reportErrorFmt("Referencing `{}` created a circular module dependency.", &.{v(c.srcUri)}, cy.NullNode);
         }
         try visitChunkInit(self, depChunk);
     }
@@ -2725,7 +2725,7 @@ fn referenceSym(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId) !void {
     if (c.curInitingSym == sym) {
         const node = c.ast.node(nodeId);
         const name = c.ast.nodeString(node);
-        return c.reportErrorAt("Reference to `{}` creates a circular dependency.", &.{v(name)}, nodeId);
+        return c.reportErrorFmt("Reference to `{}` creates a circular dependency.", &.{v(name)}, nodeId);
     }
 
     // Determine the chunk the symbol belongs to.
@@ -2762,7 +2762,7 @@ const VarLookupResult = union(enum) {
 pub fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool, nodeId: cy.NodeId) !VarLookupResult {
     if (self.semaProcs.items.len == 1 and self.isInStaticInitializer()) {
         return (try lookupStaticVar(self, name, nodeId, staticLookup)) orelse {
-            return self.reportErrorAt("Could not find the symbol `{}`.", &.{v(name)}, nodeId);
+            return self.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, nodeId);
         };
     }
 
@@ -2782,14 +2782,14 @@ pub fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool, nod
             // eg. var a = 0
             //     var b: a
             if (self.isInStaticInitializer() and self.semaBlockDepth() == 0) {
-                return self.reportErrorAt("Can not reference local `{}` in a static initializer.", &.{v(name)}, nodeId);
+                return self.reportErrorFmt("Can not reference local `{}` in a static initializer.", &.{v(name)}, nodeId);
             }
             return VarLookupResult{
                 .local = varInfo.varId,
             };
         } else {
             if (self.isInStaticInitializer() and self.semaBlockDepth() == 0) {
-                return self.reportErrorAt("Can not reference local `{}` in a static initializer.", &.{v(name)}, nodeId);
+                return self.reportErrorFmt("Can not reference local `{}` in a static initializer.", &.{v(name)}, nodeId);
             }
             return VarLookupResult{
                 .local = varInfo.varId,
@@ -2816,7 +2816,7 @@ pub fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool, nod
         } else if (proc.isStaticFuncBlock) {
             // Can not capture local before static function block.
             const funcName = proc.func.?.name();
-            return self.reportErrorAt("Can not capture the local variable `{}` from static function `{}`.\nOnly lambdas (anonymous functions) can capture local variables.", &.{v(name), v(funcName)}, self.curNodeId);
+            return self.reportErrorFmt("Can not capture the local variable `{}` from static function `{}`.\nOnly lambdas (anonymous functions) can capture local variables.", &.{v(name), v(funcName)}, self.curNodeId);
         }
 
         // Create a local captured variable.
@@ -2847,7 +2847,7 @@ pub fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool, nod
         }
     } else {
         const res = (try lookupStaticVar(self, name, nodeId, staticLookup)) orelse {
-            return self.reportErrorAt("Undeclared variable `{}`.", &.{v(name)}, nodeId);
+            return self.reportErrorFmt("Undeclared variable `{}`.", &.{v(name)}, nodeId);
         };
         _ = try pushStaticVarAlias(self, name, res.static);
         return res;
@@ -2933,7 +2933,8 @@ fn reportIncompatibleCallSig(c: *cy.Chunk, sym: *cy.sym.FuncSym, args: []const c
             cur = curFunc.next;
         }
     }
-    return c.reportErrorMsgAt(try msg.toOwnedSlice(c.alloc), nodeId);
+    try c.compiler.addReportConsume(.compile_err, c.id, nodeId, try msg.toOwnedSlice(c.alloc));
+    return error.CompileError;
 }
 
 fn reportIncompatibleFuncSig(c: *cy.Chunk, name: []const u8, funcSigId: FuncSigId, searchSym: *Sym) !void {
@@ -2974,7 +2975,7 @@ fn checkTypeCstr2(c: *cy.Chunk, ctype: CompactType, cstrTypeId: TypeId, reportCs
             defer c.alloc.free(cstrName);
             const typeName = try c.sema.allocTypeName(ctype.id);
             defer c.alloc.free(typeName);
-            return c.reportErrorAt("Expected type `{}`, got `{}`.", &.{v(cstrName), v(typeName)}, nodeId);
+            return c.reportErrorFmt("Expected type `{}`, got `{}`.", &.{v(cstrName), v(typeName)}, nodeId);
         }
     }
 }
@@ -3193,7 +3194,7 @@ fn semaSwitchElseCase(c: *cy.Chunk, info: SwitchInfo, nodeId: cy.NodeId) !u32 {
         try pushBlock(c, nodeId);
 
         if (!info.isStmt) {
-            return c.reportErrorAt("Assign switch statement requires a return case: `else => {expr}`", &.{}, nodeId);
+            return c.reportErrorFmt("Assign switch statement requires a return case: `else => {expr}`", &.{}, nodeId);
         }
 
         try semaStmts(c, case.data.caseBlock.bodyHead);
@@ -3275,7 +3276,7 @@ fn semaSwitchCase(c: *cy.Chunk, info: SwitchInfo, nodeId: cy.NodeId) !u32 {
         blockExpr.bodyHead = stmtBlock.first;
     } else {
         if (!info.isStmt) {
-            return c.reportErrorAt("Assign switch statement requires a return case: `case {cond} => {expr}`", &.{}, nodeId);
+            return c.reportErrorFmt("Assign switch statement requires a return case: `case {cond} => {expr}`", &.{}, nodeId);
         }
 
         try semaStmts(c, case.data.caseBlock.bodyHead);
@@ -3311,11 +3312,11 @@ fn semaCaseCond(c: *cy.Chunk, info: SwitchInfo, state: *CaseState) !void {
                 return;
             } else {
                 const targetTypeName = info.exprTypeSym.name();
-                return c.reportErrorAt("`{}` is not a member of `{}`", &.{v(name), v(targetTypeName)}, state.condId);
+                return c.reportErrorFmt("`{}` is not a member of `{}`", &.{v(name), v(targetTypeName)}, state.condId);
             }
         } else {
             const targetTypeName = info.exprTypeSym.name();
-            return c.reportErrorAt("Expected to match a member of `{}`", &.{v(targetTypeName)}, state.condId);
+            return c.reportErrorFmt("Expected to match a member of `{}`", &.{v(targetTypeName)}, state.condId);
         }
     }
 
@@ -3417,7 +3418,7 @@ pub const ChunkExt = struct {
         const left = try c.semaExprSkipSym(node.data.objectInit.name);
         if (left.resType != .sym) {
             const name = c.ast.nodeStringById(node.data.objectInit.name);
-            return c.reportErrorAt("Object type `{}` does not exist.", &.{v(name)}, node.data.objectInit.name);
+            return c.reportErrorFmt("Object type `{}` does not exist.", &.{v(name)}, node.data.objectInit.name);
         }
 
         const sym = left.data.sym.resolved();
@@ -3435,7 +3436,7 @@ pub const ChunkExt = struct {
 
                 const initializer = c.ast.node(node.data.objectInit.initializer);
                 if (initializer.data.recordLit.numArgs != 1) {
-                    return c.reportErrorAt("Expected only one member to payload entry.", &.{}, node.data.objectInit.name);
+                    return c.reportErrorFmt("Expected only one member to payload entry.", &.{}, node.data.objectInit.name);
                 }
 
                 const entryId = initializer.data.recordLit.argHead;
@@ -3445,7 +3446,7 @@ pub const ChunkExt = struct {
                 const fieldName = c.ast.nodeString(field);
 
                 const member = enumType.getMember(fieldName) orelse {
-                    return c.reportErrorAt("`{}` is not a member of `{}`", &.{v(fieldName), v(enumType.head.name())}, entry.data.keyValue.key);
+                    return c.reportErrorFmt("`{}` is not a member of `{}`", &.{v(fieldName), v(enumType.head.name())}, entry.data.keyValue.key);
                 };
 
                 var b: ObjectBuilder = .{ .c = c };
@@ -3463,14 +3464,14 @@ pub const ChunkExt = struct {
                 // Check if enum is choice type.
                 if (!enumSym.isChoiceType) {
                     const name = c.ast.nodeStringById(node.data.objectInit.name);
-                    return c.reportErrorAt("Can not initialize `{}`. It is not a choice type.", &.{v(name)}, node.data.objectInit.name);
+                    return c.reportErrorFmt("Can not initialize `{}`. It is not a choice type.", &.{v(name)}, node.data.objectInit.name);
                 }
 
                 if (member.payloadType == cy.NullId) {
                     // No payload type. Ensure empty record literal.
                     const initializer = c.ast.node(node.data.objectInit.initializer);
                     if (initializer.data.recordLit.numArgs != 0) {
-                        return c.reportErrorAt("Expected empty record literal.", &.{}, node.data.objectInit.name);
+                        return c.reportErrorFmt("Expected empty record literal.", &.{}, node.data.objectInit.name);
                     }
 
                     var b: ObjectBuilder = .{ .c = c };
@@ -3484,7 +3485,7 @@ pub const ChunkExt = struct {
                 } else {
                     if (!c.sema.isUserObjectType(member.payloadType)) {
                         const payloadTypeName = c.sema.getTypeBaseName(member.payloadType);
-                        return c.reportErrorAt("The payload type `{}` can not be initialized with key value pairs.", &.{v(payloadTypeName)}, node.data.objectInit.name);
+                        return c.reportErrorFmt("The payload type `{}` can not be initialized with key value pairs.", &.{v(payloadTypeName)}, node.data.objectInit.name);
                     }
 
                     const obj = c.sema.getTypeSym(member.payloadType).cast(.object_t);
@@ -3501,11 +3502,11 @@ pub const ChunkExt = struct {
             },
             .typeTemplate => {
                 const name = c.ast.nodeStringById(node.data.objectInit.name);
-                return c.reportErrorAt("Expected a type symbol. `{}` is a type template and must be expanded to a type first.", &.{v(name)}, node.data.objectInit.name);
+                return c.reportErrorFmt("Expected a type symbol. `{}` is a type template and must be expanded to a type first.", &.{v(name)}, node.data.objectInit.name);
             },
             else => {
                 const name = c.ast.nodeStringById(node.data.objectInit.name);
-                return c.reportErrorAt("Can not initialize `{}`.", &.{v(name)}, node.data.objectInit.name);
+                return c.reportErrorFmt("Can not initialize `{}`.", &.{v(name)}, node.data.objectInit.name);
             }
         }
     }
@@ -3656,7 +3657,7 @@ pub const ChunkExt = struct {
             const type_sym = c.sema.getTypeSym(res.type.id);
             if (type_sym.parent != @as(*cy.Sym, @ptrCast(c.sema.option_tmpl))) {
                 const name = c.sema.getTypeBaseName(res.type.id);
-                return c.reportErrorAt("Expected `Option` type, found `{}`.", &.{v(name)}, node_id);
+                return c.reportErrorFmt("Expected `Option` type, found `{}`.", &.{v(name)}, node_id);
             }
             return res;
         }
@@ -3729,7 +3730,7 @@ pub const ChunkExt = struct {
                     defer c.alloc.free(cstrName);
                     const typeName = try c.sema.allocTypeName(res.type.id);
                     defer c.alloc.free(typeName);
-                    return c.reportErrorAt("Expected type `{}`, got `{}`.", &.{v(cstrName), v(typeName)}, expr.nodeId);
+                    return c.reportErrorFmt("Expected type `{}`, got `{}`.", &.{v(cstrName), v(typeName)}, expr.nodeId);
                 }
             }
         }
@@ -3751,7 +3752,7 @@ pub const ChunkExt = struct {
                 if (expr.hasTypeCstr) {
                     return c.semaNone(expr.preferType, nodeId);
                 } else {
-                    return c.reportErrorAt("Could not determine optional type for `none`.", &.{}, nodeId);
+                    return c.reportErrorFmt("Could not determine optional type for `none`.", &.{}, nodeId);
                 }
             },
             .errorSymLit => {
@@ -3822,24 +3823,24 @@ pub const ChunkExt = struct {
             .runeLit => {
                 const literal = c.ast.nodeString(node);
                 if (literal.len == 0) {
-                    return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
+                    return c.reportErrorFmt("Invalid UTF-8 Rune.", &.{}, nodeId);
                 }
                 var val: u48 = undefined;
                 if (literal[0] == '\\') {
                     const res = try unescapeSeq(literal[1..]);
                     val = res.char;
                     if (literal.len > res.advance + 1) {
-                        return c.reportErrorAt("Invalid escape sequence.", &.{}, nodeId);
+                        return c.reportErrorFmt("Invalid escape sequence.", &.{}, nodeId);
                     }
                 } else {
                     const len = std.unicode.utf8ByteSequenceLength(literal[0]) catch {
-                        return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
+                        return c.reportErrorFmt("Invalid UTF-8 Rune.", &.{}, nodeId);
                     };
                     if (literal.len != len) {
-                        return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
+                        return c.reportErrorFmt("Invalid UTF-8 Rune.", &.{}, nodeId);
                     }
                     val = std.unicode.utf8Decode(literal[0..0+len]) catch {
-                        return c.reportErrorAt("Invalid UTF-8 Rune.", &.{}, nodeId);
+                        return c.reportErrorFmt("Invalid UTF-8 Rune.", &.{}, nodeId);
                     };
                 }
                 const loc = try c.ir.pushExpr(.int, c.alloc, bt.Integer, nodeId, .{ .val = val });
@@ -3875,7 +3876,7 @@ pub const ChunkExt = struct {
                         if (!cy.types.isTypeSymCompat(c.compiler, typeId, child.type.id)) {
                             const actTypeName = c.sema.getTypeBaseName(child.type.id);
                             const expTypeName = c.sema.getTypeBaseName(typeId);
-                            return c.reportErrorAt("Cast expects `{}`, got `{}`.", &.{v(expTypeName), v(actTypeName)}, nodeId);
+                            return c.reportErrorFmt("Cast expects `{}`, got `{}`.", &.{v(expTypeName), v(actTypeName)}, nodeId);
                         }
                     }
                 }
@@ -4165,10 +4166,10 @@ pub const ChunkExt = struct {
                         const irIdx = try c.ir.pushExpr(.string, c.alloc, bt.String, nodeId, .{ .literal = c.srcUri });
                         return ExprResult.initStatic(irIdx, bt.String);
                     } else {
-                        return c.reportErrorAt("Compile-time symbol does not exist: {}", &.{v(name)}, node.data.comptimeExpr.child);
+                        return c.reportErrorFmt("Compile-time symbol does not exist: {}", &.{v(name)}, node.data.comptimeExpr.child);
                     }
                 } else {
-                    return c.reportErrorAt("Unsupported compile-time expr: {}", &.{v(child.type())}, node.data.comptimeExpr.child);
+                    return c.reportErrorFmt("Unsupported compile-time expr: {}", &.{v(child.type())}, node.data.comptimeExpr.child);
                 }
             },
             .coinit => {
@@ -4208,7 +4209,7 @@ pub const ChunkExt = struct {
                 return semaSwitchExpr(c, nodeId);
             },
             else => {
-                return c.reportErrorAt("Unsupported node: {}", &.{v(node.type())}, nodeId);
+                return c.reportErrorFmt("Unsupported node: {}", &.{v(node.type())}, nodeId);
             },
         }
     }
@@ -4219,7 +4220,7 @@ pub const ChunkExt = struct {
         const numArgs = node.data.callExpr.numArgs;
 
         if (node.data.callExpr.hasNamedArg) {
-            return c.reportErrorAt("Unsupported named args.", &.{}, expr.nodeId);
+            return c.reportErrorFmt("Unsupported named args.", &.{}, expr.nodeId);
         }
 
         // pre is later patched with the type of call.
@@ -4243,7 +4244,7 @@ pub const ChunkExt = struct {
                 }
 
                 if (leftSym.type == .func) {
-                    return c.reportErrorAt("Can not access function symbol `{}`.", &.{
+                    return c.reportErrorFmt("Can not access function symbol `{}`.", &.{
                         v(c.ast.nodeStringById(callee.data.accessExpr.left))}, callee.data.accessExpr.right);
                 }
                 const right = c.ast.node(rightId);
@@ -4367,7 +4368,7 @@ pub const ChunkExt = struct {
             return ExprResult.initStatic(loc, preferType);
         } else {
             const name = type_e.sym.name();
-            return c.reportErrorAt("Expected `Option(T)` to infer `none` value, found `{}`.", &.{v(name)}, nodeId);
+            return c.reportErrorFmt("Expected `Option(T)` to infer `none` value, found `{}`.", &.{v(name)}, nodeId);
         }
     }
 
@@ -4474,7 +4475,7 @@ pub const ChunkExt = struct {
                     return ExprResult.initDynamic(irIdx, bt.Any);
                 }
             },
-            else => return c.reportErrorAt("Unsupported unary op: {}", &.{v(op)}, nodeId),
+            else => return c.reportErrorFmt("Unsupported unary op: {}", &.{v(op)}, nodeId),
         }
     }
 
@@ -4662,7 +4663,7 @@ pub const ChunkExt = struct {
                 }});
                 return ExprResult.initStatic(loc, bt.Boolean);
             },
-            else => return c.reportErrorAt("Unsupported binary op: {}", &.{v(op)}, nodeId),
+            else => return c.reportErrorFmt("Unsupported binary op: {}", &.{v(op)}, nodeId),
         }
     }
 

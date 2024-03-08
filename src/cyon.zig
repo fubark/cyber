@@ -529,7 +529,6 @@ pub const DecodeMapIR = struct {
 pub fn decodeMap(alloc: std.mem.Allocator, parser: *Parser, ctx: anytype, out: anytype, decode_map: fn (DecodeMapIR, @TypeOf(ctx), @TypeOf(out)) anyerror!void, cdata: []const u8) !void {
     const res = try parser.parse(cdata, .{});
     if (res.has_error) {
-        log.tracev("Parse Error: {s}", .{res.err_msg});
         return error.ParseError;
     }
 
@@ -550,7 +549,6 @@ pub fn decodeMap(alloc: std.mem.Allocator, parser: *Parser, ctx: anytype, out: a
 pub fn decode(alloc: std.mem.Allocator, parser: *Parser, cyon: []const u8) !DecodeValueIR {
     const res = try parser.parse(cyon, .{});
     if (res.has_error) {
-        log.tracev("Parse Error: {s}", .{res.err_msg});
         return error.ParseError;
     }
 

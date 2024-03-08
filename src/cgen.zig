@@ -343,7 +343,7 @@ const Chunk = struct {
                     try c.bufPushFmt("BOX_OBJ({s}, ", .{ c_name });
                 } else {
                     const name = c.sema.getTypeBaseName(id);
-                    return c.base.reportError("Unsupported box macro: {}", &.{v(name)});
+                    return c.base.reportErrorFmt("Unsupported box macro: {}", &.{v(name)}, null);
                 }
             },
         };
@@ -784,10 +784,7 @@ fn genChunk(c: *Chunk) !void {
     genChunkInner(c) catch |err| {
         if (err != error.CompileError) {
             // Wrap all other errors as a CompileError.
-            log.tracev("{*}", .{c.base});
-            try c.base.setErrorFmtAt("error.{}", &.{v(err)}, c.errNodeId);
-            log.tracev("{*}", .{c.base});
-            return error.CompileError;
+            return c.base.reportErrorFmt("error.{}", &.{v(err)}, c.errNodeId);
         } else return err;
     };
 }
@@ -1805,7 +1802,7 @@ fn genBinOp(c: *Chunk, loc: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy.No
             return error.TODO;
         },
         else => {
-            return c.base.reportErrorAt("Unsupported op: {}", &.{v(data.op)}, nodeId);
+            return c.base.reportErrorFmt("Unsupported op: {}", &.{v(data.op)}, nodeId);
         },
     }
 

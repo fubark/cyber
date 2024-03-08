@@ -6,6 +6,7 @@ const fatal = cy.fatal;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const cy = @import("cyber.zig");
+const c = @import("capi.zig");
 const Token = cy.tokenizer.Token;
 
 const NodeId = cy.NodeId;
@@ -42,9 +43,6 @@ pub const Parser = struct {
     ast: cy.ast.Ast,
     tokens: []const Token,
 
-    last_err: []const u8,
-    /// The last error's src char pos.
-    last_err_pos: u32,
     blockStack: std.ArrayListUnmanaged(Block),
     cur_indent: u32,
 
@@ -63,6 +61,12 @@ pub const Parser = struct {
     inTemplate: bool,
     collectCtNodes: bool,
     ctNodePatchIdx: u32,
+
+    reportFn: *const fn(*anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror,
+    tokenizerReportFn: *const fn(*anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror!void,
+    ctx: *anyopaque,
+
+    has_error: bool,
 
     /// For custom functions.
     user: struct {
@@ -83,8 +87,6 @@ pub const Parser = struct {
             .next_pos = undefined,
             .savePos = undefined,
             .tokens = undefined,
-            .last_err = "",
-            .last_err_pos = 0,
             .blockStack = .{},
             .cur_indent = 0,
             .name = "",
@@ -95,12 +97,15 @@ pub const Parser = struct {
             .inTemplate = false,
             .collectCtNodes = false,
             .ctNodePatchIdx = 0,
+            .reportFn = defaultReportFn,
+            .tokenizerReportFn = cy.tokenizer.defaultReportFn,
+            .ctx = undefined,
+            .has_error = false,
         };
     }
 
     pub fn deinit(self: *Parser) void {
         self.ast.deinit(self.alloc);
-        self.alloc.free(self.last_err);
         for (self.blockStack.items) |*block| {
             block.deinit(self.alloc);
         }
@@ -109,16 +114,9 @@ pub const Parser = struct {
         self.staticDecls.deinit(self.alloc);
     }
 
-    fn dumpTokensToCurrent(self: *Parser) void {
-        for (self.tokens[0..self.next_pos+1]) |token| {
-            log.tracev("{}", .{token.tag()});
-        }
-    }
-
     pub fn parseNoErr(self: *Parser, src: []const u8, opts: ParseOptions) !ResultView {
         const res = try self.parse(src, opts);
         if (res.has_error) {
-            log.tracev("{s}", .{res.err_msg});
             return error.ParseError;
         }
         return res;
@@ -128,53 +126,53 @@ pub const Parser = struct {
         self.ast.src = src;
         self.name = "";
         self.deps.clearRetainingCapacity();
+        self.has_error = false;
 
         var tokenizer = cy.Tokenizer.init(self.alloc, src);
         defer tokenizer.deinit();
 
         tokenizer.parseComments = opts.parseComments;
+        tokenizer.reportFn = self.tokenizerReportFn;
+        tokenizer.ctx = self.ctx;
         try tokenizer.tokens.ensureTotalCapacityPrecise(self.alloc, 511);
         tokenizer.tokenize() catch |err| {
             log.tracev("tokenize error: {}", .{err});
-            if (dumpParseErrorStackTrace and !cy.silentError) {
+            if (dumpParseErrorStackTrace and !c.silent()) {
                 std.debug.dumpStackTrace(@errorReturnTrace().?.*);
             }
-            self.last_err = tokenizer.consumeErr();
-            self.last_err_pos = tokenizer.lastErrPos;
-            return ResultView{
-                .has_error = true,
-                .isTokenError = true,
-                .err_msg = self.last_err,
-                .root_id = cy.NullNode,
-                .ast = self.ast.view(),
-                .name = self.name,
-                .deps = &self.deps,
-            };
+            if (err == error.TokenError) {
+                return ResultView{
+                    .has_error = true,
+                    .root_id = cy.NullNode,
+                    .ast = self.ast.view(),
+                    .name = self.name,
+                    .deps = &self.deps,
+                };
+            } else {
+                return err;
+            }
         };
         self.ast.comments = tokenizer.consumeComments();
         self.tokens = tokenizer.tokens.items;
 
         const root_id = self.parseRoot() catch |err| {
-            log.tracev("parse error: {} {s}", .{err, self.last_err});
-            // self.dumpTokensToCurrent();
-            logSrcPos(self.ast.src, self.last_err_pos, 20);
-            if (dumpParseErrorStackTrace and !cy.silentError) {
+            if (dumpParseErrorStackTrace and !c.silent()) {
                 std.debug.dumpStackTrace(@errorReturnTrace().?.*);
             }
-            return ResultView{
-                .has_error = true,
-                .isTokenError = false,
-                .err_msg = self.last_err,
-                .root_id = cy.NullNode,
-                .ast = self.ast.view(),
-                .name = self.name,
-                .deps = &self.deps,
-            };
+            if (err == error.ParseError) {
+                return ResultView{
+                    .has_error = true,
+                    .root_id = cy.NullNode,
+                    .ast = self.ast.view(),
+                    .name = self.name,
+                    .deps = &self.deps,
+                };
+            } else {
+                return err;
+            }
         };
         return ResultView{
-            .has_error = false,
-            .isTokenError = false,
-            .err_msg = "",
+            .has_error = self.has_error or tokenizer.has_error,
             .root_id = root_id,
             .ast = self.ast.view(),
             .name = self.name,
@@ -1920,11 +1918,11 @@ pub const Parser = struct {
         return self.reportErrorAtSrc("Unknown token: {}", &.{v(token.tag())}, token.pos());
     }
 
-    fn reportError(self: *Parser, format: []const u8, args: []const fmt.FmtValue) error{ParseError, FormatError, OutOfMemory} {
+    fn reportError(self: *Parser, format: []const u8, args: []const fmt.FmtValue) anyerror {
         return self.reportErrorAt(format, args, self.next_pos);
     }
 
-    fn reportErrorAt(self: *Parser, format: []const u8, args: []const fmt.FmtValue, tokenPos: u32) error{ParseError, FormatError, OutOfMemory} {
+    fn reportErrorAt(self: *Parser, format: []const u8, args: []const fmt.FmtValue, tokenPos: u32) anyerror {
         var srcPos: u32 = undefined;
         if (tokenPos >= self.tokens.len) {
             srcPos = @intCast(self.ast.src.len);
@@ -1934,11 +1932,9 @@ pub const Parser = struct {
         return self.reportErrorAtSrc(format, args, srcPos);
     }
 
-    fn reportErrorAtSrc(self: *Parser, format: []const u8, args: []const fmt.FmtValue, srcPos: u32) error{ParseError, FormatError, OutOfMemory} {
-        self.alloc.free(self.last_err);
-        self.last_err = try fmt.allocFormat(self.alloc, format, args);
-        self.last_err_pos = srcPos;
-        return error.ParseError;
+    fn reportErrorAtSrc(self: *Parser, format: []const u8, args: []const fmt.FmtValue, srcPos: u32) anyerror {
+        self.has_error = true;
+        return self.reportFn(self.ctx, format, args, srcPos);
     }
 
     fn consumeNewLineOrEnd(self: *Parser) !void {
@@ -3628,9 +3624,7 @@ pub const Result = struct {
 /// Result data is not owned.
 pub const ResultView = struct {
     root_id: NodeId,
-    err_msg: []const u8,
     has_error: bool,
-    isTokenError: bool,
 
     ast: cy.ast.AstView,
 
@@ -3860,3 +3854,11 @@ const FirstLastStmt = struct {
     first: NodeId,
     last: NodeId,
 };
+
+fn defaultReportFn(ctx: *anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror {
+    _ = ctx;
+    _ = format;
+    _ = args;
+    _ = pos;
+    return error.ParseError;
+}

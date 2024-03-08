@@ -285,11 +285,11 @@ pub const ChunkExt = struct {
             .missingEntry => return error.Unexpected,
             .unsupported => {
                 const name = c.sema.getTypeBaseName(typeId);
-                return c.reportErrorAt("Unsupported zero initializer for `{}`.", &.{v(name)}, nodeId);
+                return c.reportErrorFmt("Unsupported zero initializer for `{}`.", &.{v(name)}, nodeId);
             },
             .circularDep => {
                 const name = c.sema.getTypeBaseName(typeId);
-                return c.reportErrorAt("Can not zero initialize `{}` because of circular dependency.", &.{v(name)}, nodeId);
+                return c.reportErrorFmt("Can not zero initialize `{}` because of circular dependency.", &.{v(name)}, nodeId);
             }
         }
     }

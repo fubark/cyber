@@ -198,7 +198,7 @@ pub const Allocator = struct {
 
     pub fn consumeNextTemp(self: *Allocator) !u8 {
         if (self.nextTemp == NullReg) {
-            return self.compiler.chunks.items[self.chunkId].reportError("Exceeded max locals.", &.{});
+            return self.compiler.chunks.items[self.chunkId].reportError("Exceeded max locals.", null);
         }
         defer {
             // Advance to the next free temp.

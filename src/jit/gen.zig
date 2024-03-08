@@ -221,12 +221,12 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
     // Check stack after statement.
     if (cy.Trace and c.procs.items.len > 0) {
         if (c.unwindTempIndexStack.items.len != tempRetainedStart) {
-            return c.reportErrorAt("Expected {} unwindable retained temps, got {}",
+            return c.reportErrorFmt("Expected {} unwindable retained temps, got {}",
                 &.{v(tempRetainedStart), v(c.unwindTempIndexStack.items.len)}, nodeId);
         }
 
         if (c.rega.nextTemp != tempStart) {
-            return c.reportErrorAt("Expected {} temp start, got {}",
+            return c.reportErrorFmt("Expected {} temp start, got {}",
                 &.{v(tempStart), v(c.rega.nextTemp)}, nodeId);
         }
     }
@@ -490,7 +490,7 @@ fn genBinOp(c: *cy.Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy
         //     try c.buf.pushOp3Ext(.compareNot, leftv.reg, rightv.reg, inst.dst, c.desc(nodeId));
         // },
         else => {
-            return c.reportErrorAt("Unsupported op: {}", &.{v(data.op)}, nodeId);
+            return c.reportErrorFmt("Unsupported op: {}", &.{v(data.op)}, nodeId);
         },
     }
 
@@ -1128,8 +1128,7 @@ fn genChunk(c: *cy.Chunk) !void {
     genChunkInner(c) catch |err| {
         if (err != error.CompileError) {
             // Wrap all other errors as a CompileError.
-            try c.setErrorFmtAt("error.{}", &.{v(err)}, c.curNodeId);
-            return error.CompileError;
+            return c.reportErrorFmt("error.{}", &.{v(err)}, c.curNodeId);
         } else return err;
     };
 }
@@ -1149,13 +1148,13 @@ fn genChunkInner(c: *cy.Chunk) !void {
 
     // Ensure that all cstr and values were accounted for.
     if (c.genValueStack.items.len > 0) {
-        return c.reportErrorAt("Remaining gen values: {}", &.{v(c.genValueStack.items.len)}, cy.NullId);
+        return c.reportErrorFmt("Remaining gen values: {}", &.{v(c.genValueStack.items.len)}, cy.NullId);
     }
     if (c.unwindTempIndexStack.items.len > 0) {
-        return c.reportErrorAt("Remaining unwind temp index: {}", &.{v(c.unwindTempIndexStack.items.len)}, cy.NullId);
+        return c.reportErrorFmt("Remaining unwind temp index: {}", &.{v(c.unwindTempIndexStack.items.len)}, cy.NullId);
     }
     if (c.unwindTempRegStack.items.len > 0) {
-        return c.reportErrorAt("Remaining unwind temp reg: {}", &.{v(c.unwindTempRegStack.items.len)}, cy.NullId);
+        return c.reportErrorFmt("Remaining unwind temp reg: {}", &.{v(c.unwindTempRegStack.items.len)}, cy.NullId);
     }
 
     if (cy.Trace and !cy.isWasm) {

@@ -113,7 +113,7 @@ fn checkUniqueSym(c: *cy.Chunk, mod: *Module, name: []const u8, declId: cy.NodeI
 }
 
 fn reportDupSym(c: *cy.Chunk, sym: *cy.Sym, name: []const u8, declId: cy.NodeId) !void {
-    return c.reportErrorAt("`{}` has already been declared as a `{}`.", &.{v(name), v(sym.type)}, declId);
+    return c.reportErrorFmt("`{}` has already been declared as a `{}`.", &.{v(name), v(sym.type)}, declId);
 }
 
 fn addSym(c: *cy.Chunk, mod: *Module, name: []const u8, sym: *cy.Sym) !cy.SymId {
@@ -134,7 +134,7 @@ fn prepareFuncSym(c: *cy.Chunk, parent: *cy.Sym, mod: *Module, name: []const u8,
         if (sym.type == .func) {
             const func = sym.cast(.func);
             if (!mod.isFuncUnique(func, sym_id, funcSigId)) {
-                return c.reportErrorAt("`{}` has already been declared with the same function signature.", &.{v(name)}, declId);
+                return c.reportErrorFmt("`{}` has already been declared with the same function signature.", &.{v(name)}, declId);
             }
             return .{ .sym = func, .symId = sym_id };
         } else {
@@ -731,11 +731,11 @@ pub const ChunkExt = struct {
     pub fn mustFindSym(c: *cy.Chunk, modSym: *cy.Sym, name: []const u8, nodeId: cy.NodeId) !*cy.Sym {
         const mod = modSym.getMod() orelse {
             const symPath = try modSym.formatAbsPath(&cy.tempBuf);
-            return c.reportErrorAt("Can not access `{}` from parent `{}`. Parent is not a module.", &.{v(name), v(symPath)}, nodeId);
+            return c.reportErrorFmt("Can not access `{}` from parent `{}`. Parent is not a module.", &.{v(name), v(symPath)}, nodeId);
         };
         const sym = mod.getSym(name) orelse {
             const symPath = try modSym.resolved().formatAbsPath(&cy.tempBuf);
-            return c.reportErrorAt("Can not find the symbol `{}` in `{}`.", &.{v(name), v(symPath)}, nodeId);
+            return c.reportErrorFmt("Can not find the symbol `{}` in `{}`.", &.{v(name), v(symPath)}, nodeId);
         };
         switch (sym.type) {
             .typeAlias => {
@@ -754,11 +754,11 @@ pub const ChunkExt = struct {
     ) anyerror!(if (must) *cy.Sym else ?*cy.Sym) {
         const mod = modSym.getMod() orelse {
             const symPath = try modSym.formatAbsPath(&cy.tempBuf);
-            return c.reportErrorAt("Can not access `{}` from parent `{}`. Parent is not a module.", &.{v(name), v(symPath)}, nodeId);
+            return c.reportErrorFmt("Can not access `{}` from parent `{}`. Parent is not a module.", &.{v(name), v(symPath)}, nodeId);
         };
         const symId = mod.symMap.get(name) orelse {
             if (must) {
-                return c.reportErrorAt(
+                return c.reportErrorFmt(
                     \\Can not find the symbol `{}` in `{}`.
                 , &.{v(name), v(modSym.name())}, nodeId);
             } else {
@@ -796,7 +796,7 @@ pub const ChunkExt = struct {
                 if (func.numFuncs > 1) {
                     if (must) {
                         // More than one func for sym.
-                        return c.reportErrorAt("Symbol `{}` is ambiguous. There are multiple functions with the same name.", &.{v(name)}, nodeId);
+                        return c.reportErrorFmt("Symbol `{}` is ambiguous. There are multiple functions with the same name.", &.{v(name)}, nodeId);
                     } else {
                         return null;
                     }
@@ -806,7 +806,7 @@ pub const ChunkExt = struct {
             },
             .field => {
                 if (must) {
-                    return c.reportErrorAt("Can not reference `{}` as a symbol.", &.{v(name)}, nodeId);
+                    return c.reportErrorFmt("Can not reference `{}` as a symbol.", &.{v(name)}, nodeId);
                 } else {
                     return null;
                 }

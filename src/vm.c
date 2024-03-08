@@ -703,6 +703,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(JumpNotCond),
         JENTRY(JumpCond),
         JENTRY(Jump),
+        JENTRY(JumpNone),
         JENTRY(Release),
         JENTRY(ReleaseN),
         JENTRY(CallObjSym),
@@ -716,6 +717,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Ret0),
         JENTRY(Call),
         JENTRY(TypeCheck),
+        JENTRY(TypeCheckOption),
         JENTRY(Field),
         JENTRY(FieldRef),
         JENTRY(FieldDyn),
@@ -775,8 +777,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(BitwiseNot),
         JENTRY(BitwiseLeftShift),
         JENTRY(BitwiseRightShift),
-        JENTRY(JumpNone),
-        JENTRY(JumpNotNone),
         JENTRY(AddInt),
         JENTRY(SubInt),
         JENTRY(MulInt),
@@ -879,7 +879,7 @@ beginSwitch:
         pc += 3;
         NEXT();
     CASE(CopyReleaseDst): {
-        uint8_t dst = pc[2];
+        u8 dst = pc[2];
         release(vm, stack[dst]);
         stack[dst] = stack[pc[1]];
         pc += 3;
@@ -1204,6 +1204,24 @@ beginSwitch:
         pc += READ_I16(1);
         NEXT();
     }
+    CASE(JumpNone): {
+        i16 offset = READ_I16(1);
+        Value opt = stack[pc[3]];
+#if TRACE
+        TypeId typeId = getTypeId(opt);
+        TypeEntry entry = ((TypeEntry*)vm->typesPtr)[typeId];
+        if (entry.kind != TYPE_KIND_OPTION) {
+            panicStaticMsg(vm, "Unexpected. Insert type check.");
+        }
+#endif
+        if (VALUE_AS_INTEGER(objectGetField((Object*)VALUE_AS_HEAPOBJECT(opt), 0)) == 0) {
+            pc += offset;
+            NEXT();
+        } else {
+            pc += 4;
+            NEXT();
+        }
+    }
     CASE(Release): {
         release(vm, stack[pc[1]]);
         pc += 2;
@@ -1403,6 +1421,17 @@ beginSwitch:
             RETURN(RES_CODE_PANIC);
         }
         pc += 4;
+        NEXT();
+    }
+    CASE(TypeCheckOption): {
+        Value val = stack[pc[1]];
+        TypeId typeId = getTypeId(val);
+        TypeEntry entry = ((TypeEntry*)vm->typesPtr)[typeId];
+        if (entry.kind != TYPE_KIND_OPTION) {
+            panicStaticMsg(vm, "Expected `Option` type.");
+            RETURN(RES_CODE_PANIC);
+        }
+        pc += 2;
         NEXT();
     }
     CASE(Field): {
@@ -2039,26 +2068,6 @@ beginSwitch:
             }
             stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) >> rightInt);
         )
-    }
-    CASE(JumpNone): {
-        int16_t offset = READ_I16(1);
-        if (VALUE_IS_NONE(stack[pc[3]])) {
-            pc += offset;
-            NEXT();
-        } else {
-            pc += 4;
-            NEXT();
-        }
-    }
-    CASE(JumpNotNone): {
-        int16_t offset = READ_I16(1);
-        if (!VALUE_IS_NONE(stack[pc[3]])) {
-            pc += offset;
-            NEXT();
-        } else {
-            pc += 4;
-            NEXT();
-        }
     }
     CASE(AddInt): {
         INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) + VALUE_AS_INTEGER(right)))

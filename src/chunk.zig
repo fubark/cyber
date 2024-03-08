@@ -491,21 +491,9 @@ pub const Chunk = struct {
         try self.regStack.append(self.alloc, reg);
     }
 
-    pub fn pushJumpBackNotNone(self: *Chunk, toPc: usize, condLocal: LocalId) !void {
-        const pc = self.buf.ops.items.len;
-        try self.buf.pushOp3(.jumpNotNone, 0, 0, condLocal);
-        self.buf.setOpArgU16(pc + 1, @bitCast(-@as(i16, @intCast(pc - toPc))));
-    }
-
-    pub fn pushEmptyJumpNone(self: *Chunk, condLocal: LocalId) !u32 {
+    pub fn pushEmptyJumpNone(self: *Chunk, opt: LocalId) !u32 {
         const start: u32 = @intCast(self.buf.ops.items.len);
-        try self.buf.pushOp3(.jumpNone, 0, 0, condLocal);
-        return start;
-    }
-
-    pub fn pushEmptyJumpNotNone(self: *Chunk, condLocal: LocalId) !u32 {
-        const start: u32 = @intCast(self.buf.ops.items.len);
-        try self.buf.pushOp3(.jumpNotNone, 0, 0, condLocal);
+        try self.buf.pushOp3(.jumpNone, 0, 0, opt);
         return start;
     }
 
@@ -558,10 +546,6 @@ pub const Chunk = struct {
     }
 
     pub fn patchJumpNoneToCurPc(self: *Chunk, jumpPc: u32) void {
-        self.buf.setOpArgU16(jumpPc + 1, @intCast(self.buf.ops.items.len - jumpPc));
-    }
-
-    pub fn patchJumpNotNoneToCurPc(self: *Chunk, jumpPc: u32) void {
         self.buf.setOpArgU16(jumpPc + 1, @intCast(self.buf.ops.items.len - jumpPc));
     }
 

@@ -402,6 +402,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .stringTemplate     => genStringTemplate(c, idx, cstr, nodeId),
         .switchExpr         => genSwitch(c, idx, cstr, nodeId),
         .symbol             => genSymbol(c, idx, cstr, nodeId),
+        .typeCheckOption    => genTypeCheckOption(c, idx, cstr, nodeId),
         .throw              => genThrow(c, idx, nodeId),
         .truev              => genTrue(c, cstr, nodeId),
         .tryExpr            => genTryExpr(c, idx, cstr, nodeId),
@@ -1037,6 +1038,18 @@ fn genSymbol(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     }
     try c.buf.pushOp2(.tagLiteral, @intCast(symId), inst.dst);
     return finishNoErrNoDepInst(c, inst, false);
+}
+
+fn genTypeCheckOption(c: *Chunk, loc: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+    const data = c.ir.getExprData(loc, .typeCheckOption);
+
+    const expr = try genExpr(c, data.expr, cstr);
+    try pushUnwindValue(c, expr);
+
+    try pushTypeCheckOption(c, expr.reg, nodeId);
+
+    _ = try popUnwindValue(c, expr); 
+    return expr;
 }
 
 fn genUnwrapChoice(c: *Chunk, loc: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
@@ -2581,21 +2594,29 @@ fn forIterStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     // next()
     try genIterNext(c, iterTemp, data.countLocal != null, iterNodeId);
+    const hasCounter = data.countLocal != null;
+
+    const jump_none = try c.pushEmptyJumpNone(iterTemp + 1);
     if (data.eachLocal) |eachLocal| {
-        extraIdx = try c.fmtExtraDesc("copy next() to local", .{});
-        const resTemp = regValue(c, iterTemp + 1, true);
-        try setLocal(c, .{ .id = eachLocal }, undefined, bt.Any, eachNodeId, .{ .rightv = resTemp, .extraIdx = extraIdx });
+        // extraIdx = try c.fmtExtraDesc("copy next() to local", .{});
+
+        // Unwrap to var.
+        const unwrap_reg = toLocalReg(c, eachLocal);
+        const unwrap_local = getLocalInfoPtr(c, unwrap_reg);
+        try pushField(c, iterTemp + 1, 1, unwrap_reg, nodeId);
+        // Mark var defined for ARC.
+        unwrap_local.some.defined = true;
     }
     if (data.countLocal) |countLocal| {
         extraIdx = try c.fmtExtraDesc("copy count to local", .{});
         const countTemp = regValue(c, iterTemp - 1, false);
         try setLocal(c, .{ .id = countLocal }, undefined, bt.Integer, eachNodeId, .{ .rightv = countTemp, .extraIdx = extraIdx });
     }
-    const hasCounter = data.countLocal != null;
 
-    const resNoneJump = try c.pushEmptyJumpNone(iterTemp + 1);
+    try pushRelease(c, iterTemp + 1, iterNodeId);
 
     const jumpStackSave: u32 = @intCast(c.blockJumpStack.items.len);
+    defer c.blockJumpStack.items.len = jumpStackSave;
 
     try genStmts(c, data.bodyHead);
 
@@ -2606,13 +2627,15 @@ fn forIterStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     const contPc = c.buf.ops.items.len;
     try c.pushJumpBackTo(bodyPc);
-    c.patchJumpNoneToCurPc(resNoneJump);
 
     c.patchForBlockJumps(jumpStackSave, c.buf.ops.items.len, contPc);
-    c.blockJumpStack.items.len = jumpStackSave;
+
+    const skip_release = try c.pushEmptyJump();
+    c.patchJumpNoneToCurPc(jump_none);
+    try pushRelease(c, iterTemp + 1, iterNodeId);
+    c.patchJumpToCurPc(skip_release);
 
     // TODO: Iter local should be a reserved hidden local (instead of temp) so it can be cleaned up by endLocals when aborting the current fiber.
-    try c.pushOptionalDebugSym(nodeId);
     try pushRelease(c, iterTemp, iterNodeId);
 
     try popUnwind(c, iterTemp);
@@ -3804,6 +3827,10 @@ fn genConstIntExt(c: *Chunk, val: u48, dst: LocalId, desc: cy.bytecode.InstDesc)
     const idx = try c.buf.getOrPushConst(cy.Value.initInt(@intCast(val)));
     try genConst(c, idx, dst, false, desc.nodeId);
     return regValue(c, dst, false);
+}
+
+fn pushTypeCheckOption(c: *cy.Chunk, local: RegisterId, nodeId: cy.NodeId) !void {
+    try c.pushFCode(.typeCheckOption, &.{ local }, nodeId);
 }
 
 fn pushTypeCheck(c: *cy.Chunk, local: RegisterId, typeId: cy.TypeId, nodeId: cy.NodeId) !void {

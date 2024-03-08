@@ -266,6 +266,7 @@ typedef enum {
     CodeRet0,
     CodeCall,
     CodeTypeCheck,
+    CodeTypeCheckOption,
     CodeField,
     CodeFieldRef,
     CodeFieldDyn,

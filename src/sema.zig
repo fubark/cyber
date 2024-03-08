@@ -3752,6 +3752,25 @@ pub const ChunkExt = struct {
         });
     }
 
+    pub fn semaOptionExpr(c: *cy.Chunk, node_id: cy.NodeId) !ExprResult {
+        const res = try semaExpr(c, node_id, .{});
+        if (res.type.dynamic and res.type.id == bt.Any) {
+            // Runtime check.
+            var new_res = res;
+            new_res.irIdx = try c.ir.pushExpr(.typeCheckOption, c.alloc, bt.Any, node_id, .{
+                .expr = res.irIdx,
+            });
+            return new_res;
+        } else {
+            const type_sym = c.sema.getTypeSym(res.type.id);
+            if (type_sym.parent != @as(*cy.Sym, @ptrCast(c.sema.option_tmpl))) {
+                const name = c.sema.getTypeBaseName(res.type.id);
+                return c.reportErrorAt("Expected `Option` type, found `{}`.", &.{v(name)}, node_id);
+            }
+            return res;
+        }
+    }
+
     pub fn semaExpr(c: *cy.Chunk, nodeId: cy.NodeId, opts: SemaExprOptions) !ExprResult {
         // Set current node for unexpected errors.
         c.curNodeId = nodeId;
@@ -4422,24 +4441,23 @@ pub const ChunkExt = struct {
         return ExprResult.initStatic(irIdx, bt.Boolean);
     }
 
-    pub fn semaNone(c: *cy.Chunk, preferTypeOpt: ?cy.TypeId, nodeId: cy.NodeId) !ExprResult {
-        if (preferTypeOpt) |preferType| {
-            const type_e = c.sema.types.items[preferType];
-            if (type_e.kind == .choice and type_e.data.choice.isOptional) {
-                // Generate IR to wrap value into optional.
-                var b: ObjectBuilder = .{ .c = c };
-                try b.begin(preferType, 2, nodeId);
-                const tag = try c.semaInt(0, nodeId);
-                b.pushArg(tag);
-                const payload = try c.semaInt(0, nodeId);
-                b.pushArg(payload);
-                const loc = b.end();
+    pub fn semaNone(c: *cy.Chunk, preferType: cy.TypeId, nodeId: cy.NodeId) !ExprResult {
+        const type_e = c.sema.types.items[preferType];
+        if (type_e.kind == .option) {
+            // Generate IR to wrap value into optional.
+            var b: ObjectBuilder = .{ .c = c };
+            try b.begin(preferType, 2, nodeId);
+            const tag = try c.semaInt(0, nodeId);
+            b.pushArg(tag);
+            const payload = try c.semaInt(0, nodeId);
+            b.pushArg(payload);
+            const loc = b.end();
 
-                return ExprResult.initStatic(loc, preferType);
-            }
+            return ExprResult.initStatic(loc, preferType);
+        } else {
+            const name = type_e.sym.name();
+            return c.reportErrorAt("Expected `Option(T)` to infer `none` value, found `{}`.", &.{v(name)}, nodeId);
         }
-        const loc = try c.ir.pushExpr(.none, c.alloc, bt.None, nodeId, {});
-        return ExprResult.initStatic(loc, bt.None);
     }
 
     pub fn semaEmptyList(c: *cy.Chunk, nodeId: cy.NodeId) !ExprResult {

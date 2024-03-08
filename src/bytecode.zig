@@ -620,10 +620,6 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const jump = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
             len += try fmt.printCount(w, "offset={}, cond={}", &.{v(jump), v(pc[3].val)});
         },
-        .jumpNotNone => {
-            const jump = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
-            len += try fmt.printCount(w, "offset={}, cond={}", &.{v(jump), v(pc[3].val)});
-        },
         .list => {
             const startLocal = pc[1].val;
             const numElems = pc[2].val;
@@ -913,6 +909,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .coreturn => {
             return 1;
         },
+        .typeCheckOption,
         .throw,
         .retain,
         .end,
@@ -965,7 +962,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .field,
         .setStaticFunc,
         .setField,
-        .jumpNotNone,
         .jumpNone,
         .jumpCond,
         .compare,
@@ -1142,6 +1138,7 @@ pub const OpCode = enum(u8) {
     call = vmc.CodeCall,
 
     typeCheck = vmc.CodeTypeCheck,
+    typeCheckOption = vmc.CodeTypeCheckOption,
 
     field = vmc.CodeField,
     fieldRef = vmc.CodeFieldRef,
@@ -1214,7 +1211,6 @@ pub const OpCode = enum(u8) {
     bitwiseNot = vmc.CodeBitwiseNot,
     bitwiseLeftShift = vmc.CodeBitwiseLeftShift,
     bitwiseRightShift = vmc.CodeBitwiseRightShift,
-    jumpNotNone = vmc.CodeJumpNotNone,
     jumpNone = vmc.CodeJumpNone,
     addInt = vmc.CodeAddInt,
     subInt = vmc.CodeSubInt,

@@ -22,6 +22,7 @@ pub const TypeKind = enum(u8) {
     @"enum",
     choice,
     @"struct",
+    option,
 };
 
 pub const Type = extern struct {
@@ -42,9 +43,6 @@ pub const Type = extern struct {
         },
         @"struct": extern struct {
             numFields: u16,
-        },
-        choice: extern struct {
-            isOptional: bool,
         },
     },
 };
@@ -165,16 +163,15 @@ pub const SemaExt = struct {
     pub fn allocTypeName(s: *cy.Sema, id: TypeId) ![]const u8 {
         const type_e = s.types.items[id];
         switch (type_e.kind) {
+            .option => {
+                const template = type_e.sym.parent.?.cast(.typeTemplate);
+                const variant = template.variants.items[type_e.sym.cast(.enum_t).variantId];
+                const param = variant.params[0].asHeapObject();
+                const name = s.getTypeBaseName(param.type.type);
+                return try std.fmt.allocPrint(s.alloc, "?{s}", .{name});
+            },
             .choice => {
-                if (type_e.data.choice.isOptional) {
-                    const template = type_e.sym.parent.?.cast(.typeTemplate);
-                    const variant = template.variants.items[type_e.sym.cast(.enum_t).variantId];
-                    const param = variant.params[0].asHeapObject();
-                    const name = s.getTypeBaseName(param.type.type);
-                    return try std.fmt.allocPrint(s.alloc, "?{s}", .{name});
-                } else {
-                    return try s.alloc.dupe(u8, type_e.sym.name());
-                }
+                return try s.alloc.dupe(u8, type_e.sym.name());
             },
             else => {
                 return try s.alloc.dupe(u8, type_e.sym.name());
@@ -259,7 +256,9 @@ pub const SemaExt = struct {
                     .custom_object_t,
                     .struct_t,
                     .object_t => return true,
-                    .enum_t => return false,
+                    .enum_t => {
+                        return sym.cast(.enum_t).isChoiceType;
+                    },
                     else => {
                         cy.panicFmt("Unexpected sym type: {} {}", .{id, sym.type});
                     }

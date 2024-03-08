@@ -126,6 +126,7 @@ pub const ExprCode = enum(u8) {
     orOp,
 
     tryExpr,
+    typeCheckOption,
 
     blockExpr,
     mainEnd,
@@ -155,6 +156,10 @@ pub const Range = struct {
 };
 
 pub const Box = struct {
+    expr: Loc,
+};
+
+pub const TypeCheckOption = struct {
     expr: Loc,
 };
 
@@ -636,6 +641,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .blockExpr => BlockExpr,
         .coresume => Coresume,
         .unwrapChoice => UnwrapChoice,
+        .typeCheckOption => TypeCheckOption,
         .box => Box,
         .range => Range,
         else => void,

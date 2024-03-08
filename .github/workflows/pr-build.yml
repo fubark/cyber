@@ -43,16 +43,20 @@ jobs:
             target: x86_64-windows-gnu
             mode: release
             cmd: cli
-          # - host: ubuntu-22.04
-          #   target: wasm32-freestanding
-          #   mode: release
-          #   cmd: web-lib
+          - host: ubuntu-22.04
+            target: wasm32-freestanding
+            mode: release
+            cmd: web-lib
           - host: ubuntu-22.04
             target: wasm32-wasi
             mode: release
             cmd: cli
           - host: windows-2022
             target: x86_64-windows-gnu
+            mode: release
+            cmd: lib
+          - host: windows-2022
+            target: x86_64-windows-msvc
             mode: release
             cmd: lib
           - host: ubuntu-22.04
@@ -71,6 +75,7 @@ jobs:
       ZIG_TARGET_FLAG: >-
         ${{ fromJson('{
           "x86_64-windows-gnu": "-Dtarget=x86_64-windows-gnu -Dcpu=baseline",
+          "x86_64-windows-msvc": "-Dtarget=x86_64-windows-msvc -Dcpu=baseline",
           "x86_64-linux-gnu": "-Dtarget=x86_64-linux-gnu -Dcpu=baseline",
           "x86_64-selinux-gnu": "-Dtarget=x86_64-linux-gnu -Dcpu=baseline -Dselinux",
           "x86_64-macos-none": "-Dtarget=x86_64-macos-none -Dcpu=baseline",

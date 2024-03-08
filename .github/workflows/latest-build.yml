@@ -53,10 +53,14 @@ jobs:
             target: x86_64-windows-gnu
             mode: release
             cmd: lib
-          # - host: ubuntu-22.04
-          #   target: wasm32-freestanding
-          #   mode: release
-          #   cmd: web-lib
+          - host: windows-2022
+            target: x86_64-windows-msvc
+            mode: release
+            cmd: lib
+          - host: ubuntu-22.04
+            target: wasm32-freestanding
+            mode: release
+            cmd: web-lib
           - host: ubuntu-22.04
             target: wasm32-wasi
             mode: release
@@ -87,6 +91,7 @@ jobs:
       ZIG_TARGET_FLAG: >-
         ${{ fromJson('{
           "x86_64-windows-gnu": "-Dtarget=x86_64-windows-gnu -Dcpu=baseline",
+          "x86_64-windows-msvc": "-Dtarget=x86_64-windows-msvc -Dcpu=baseline",
           "x86_64-linux-gnu": "-Dtarget=x86_64-linux-gnu -Dcpu=baseline",
           "x86_64-selinux-gnu": "-Dtarget=x86_64-linux-gnu -Dcpu=baseline -Dselinux",
           "x86_64-macos-none": "-Dtarget=x86_64-macos-none -Dcpu=baseline",
@@ -251,7 +256,12 @@ jobs:
       - name: Move. (windows lib)
         if: env.BUILD_TARGET == 'x86_64-windows-gnu' && env.BUILD_CMD == 'lib'
         run: |
-          mv zig-out/lib/cyber.lib libcyber-windows-x64.lib
+          mv zig-out/lib/cyber.lib libcyber-windows-gnu-x64.lib
+
+      - name: Move. (windows lib)
+        if: env.BUILD_TARGET == 'x86_64-windows-msvc' && env.BUILD_CMD == 'lib'
+        run: |
+          mv zig-out/lib/cyber.lib libcyber-windows-msvc-x64.lib
 
       - name: Move. (linux lib)
         if: env.BUILD_TARGET == 'x86_64-linux-gnu' && env.BUILD_CMD == 'lib'
@@ -292,7 +302,8 @@ jobs:
         with:
           name: bin
           path: |
-            libcyber-windows-x64.lib
+            libcyber-windows-gnu-x64.lib
+            libcyber-windows-msvc-x64.lib
             libcyber-linux-x64.a
             libcyber-macos-x64.a
             libcyber-macos-arm64.a
@@ -415,7 +426,8 @@ jobs:
             cyber-macos-x64.tar.gz
             cyber-macos-arm64.tar.gz
             cyber-windows-x64.zip
-            libcyber-windows-x64.lib
+            libcyber-windows-gnu-x64.lib
+            libcyber-windows-msvc-x64.lib
             libcyber-linux-x64.a
             libcyber-macos-x64.a
             libcyber-macos-arm64.a
@@ -436,7 +448,8 @@ jobs:
             cyber-macos-x64.tar.gz
             cyber-macos-arm64.tar.gz
             cyber-windows-x64.zip
-            libcyber-windows-x64.lib
+            libcyber-windows-gnu-x64.lib
+            libcyber-windows-msvc-x64.lib
             libcyber-linux-x64.a
             libcyber-macos-x64.a
             libcyber-macos-arm64.a

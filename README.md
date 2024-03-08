@@ -16,7 +16,7 @@ Cyber is a fast, efficient, and concurrent scripting language. You can embed it 
 ### Supported Platforms
 - Linux x64 (Ubuntu, Fedora, Arch)
 - macOS x64
-- macOS arm64 (Manually tested.)
+- macOS arm64
 - Windows x64
 - WASM Web
 - WASM WASI

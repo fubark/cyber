@@ -262,7 +262,7 @@ pub fn fileSeekFromEnd(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 
     const file = fileo.getStdFile();
     try file.seekFromEnd(numBytes);
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn fileSeekFromCur(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
@@ -277,7 +277,7 @@ pub fn fileSeekFromCur(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 
     const file = fileo.getStdFile();
     try file.seekBy(numBytes);
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn fileSeek(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
@@ -296,7 +296,7 @@ pub fn fileSeek(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const file = fileo.getStdFile();
     const unumBytes: u32 = @intCast(numBytes);
     try file.seekTo(unumBytes);
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn fileWrite(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
@@ -318,7 +318,7 @@ pub fn fileClose(vm: *cy.VM, args: [*]const Value, _: u8) Value {
 
     const file = args[0].castHostObject(*File);
     file.close();
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn fileRead(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {

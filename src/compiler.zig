@@ -422,7 +422,7 @@ fn performChunkSemaDecls(c: *cy.Chunk) !void {
 fn performChunkInitSema(self: *Compiler, c: *cy.Chunk) !void {
     log.tracev("Perform init sema. {} {s}", .{c.id, c.srcUri});
 
-    const funcSigId = try c.sema.ensureFuncSig(&.{}, bt.None);
+    const funcSigId = try c.sema.ensureFuncSig(&.{}, bt.Void);
 
     const decl = try c.parser.ast.pushNode(self.alloc, .funcDecl, cy.NullId);
     const header = try c.parser.ast.pushNode(self.alloc, .funcHeader, cy.NullNode);

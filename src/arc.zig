@@ -235,7 +235,7 @@ pub fn performGC(vm: *cy.VM) !GCResult {
     try performMark(vm);
 
     // Make sure dummy node has mark bit.
-    cy.vm.dummyCyclableHead.typeId = vmc.GC_MARK_MASK | bt.None;
+    cy.vm.dummyCyclableHead.typeId = vmc.GC_MARK_MASK | bt.Void;
 
     return try performSweep(vm);
 }

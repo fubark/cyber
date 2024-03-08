@@ -9,12 +9,12 @@ type Node:
     value  dynamic
 
     func getLeftmost():
-        if self.left == none:
+        if self.left == false:
             return self
         return self.left.getLeftmost()
 
     func getRightmost():
-        if self.right == none:
+        if self.right == false:
             return self
         return self.right.getRightmost()
 
@@ -55,7 +55,7 @@ type Node:
             return self.left.getLeftN(n - 1)
 
 func Heap.new() Heap:
-    return [Heap root: none, size: 0, last: none]
+    return [Heap root: false, size: 0, last: false]
 
 type Heap:
     root dynamic
@@ -63,18 +63,18 @@ type Heap:
     last dynamic
 
     func insert(value):
-        if self.root == none:
-            self.root = [Node left: none, right: none, parent: none, value: value]
+        if self.root == false:
+            self.root = [Node left: false, right: false, parent: false, value: value]
             self.last = self.root
             self.size = 1
             return
-        my new = none
+        my new = false
         if int(self.size + 1) & int(self.size) == 0:
             -- Insert at left most node.
             my parent = self.root.getLeftmost()
             new = [Node
-                left: none,
-                right: none,
+                left: false,
+                right: false,
                 parent: parent,
                 value: value,
             ]
@@ -84,8 +84,8 @@ type Heap:
             -- Insert after last node.
             if self.size % 2 == 0:
                 new = [Node
-                    left: none,
-                    right: none,
+                    left: false,
+                    right: false,
                     parent: self.last.parent,
                     value: value,
                 ]
@@ -94,8 +94,8 @@ type Heap:
             else:
                 my sibling = self.last.parent.getRightSibling()
                 new = [Node
-                    left: none,
-                    right: none,
+                    left: false,
+                    right: false,
                     parent: sibling,
                     value: value,
                 ]
@@ -113,26 +113,26 @@ type Heap:
         my parentParent = parentSave.parent
 
         parentSave.left = node.left
-        if node.left != none:
+        if node.left != false:
             node.left.parent = parentSave
         parentSave.right = node.right
-        if node.right != none:
+        if node.right != false:
             node.right.parent = parentSave
         parentSave.parent = node
 
         if parentLeft == node:
             node.left = parentSave
             node.right = parentRight
-            if parentRight != none:
+            if parentRight != false:
                 parentRight.parent = node
         else:
             node.left = parentLeft
             node.right = parentSave
-            if parentLeft != none:
+            if parentLeft != false:
                 parentLeft.parent = node
         node.parent = parentParent
 
-        if parentParent == none:
+        if parentParent == false:
             self.root = node
         else:
             if parentParent.left == parentSave:
@@ -141,7 +141,7 @@ type Heap:
                 parentParent.right = node
 
     func siftUp(node):
-        if node.parent == none:
+        if node.parent == false:
             return
         if node.value > node.parent.value:
             self.swapUp(node)
@@ -149,35 +149,35 @@ type Heap:
                 self.siftUp(node)
 
     func siftDown(node):
-        if node.left != none and node.left.value > node.value:
+        if node.left != false and node.left.value > node.value:
             self.swapUp(node.left)
             self.siftDown(node)
-        else node.right != none and node.right.value > node.value:
+        else node.right != false and node.right.value > node.value:
             self.swapUp(node.right)
             self.siftDown(node)
 
     func popTop():
         if self.size == 1:
             var res = self.root
-            self.root = none
-            self.last = none
+            self.root = false
+            self.last = false
             self.size = 0
             return res
 
         if self.size <= 3:
             my top = self.root
             self.swapUp(self.last)
-            top.parent = none
+            top.parent = false
             if self.size == 3:
-                self.root.right = none
+                self.root.right = false
                 self.last = self.root.left
             else:
-                self.root.left = none
+                self.root.left = false
                 self.last = self.root
             self.size = self.size - 1
             return top
 
-        var newLast = none
+        my newLast = false
         if int(self.size) & int(self.size - 1) == 0:
             newLast = self.root.getRightmost()
         else:
@@ -190,10 +190,10 @@ type Heap:
         self.last.right = self.root.right
 
         if self.last.parent.left == self.last:
-            self.last.parent.left = none
+            self.last.parent.left = false
         else:
-            self.last.parent.right = none
-        self.last.parent = none
+            self.last.parent.right = false
+        self.last.parent = false
 
         var top = self.root
         self.root = self.last

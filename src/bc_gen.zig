@@ -128,7 +128,7 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
         },
         .userVar => {
             const id = c.vm.varSyms.len;
-            const rtVar = rt.VarSym.init(cy.Value.None);
+            const rtVar = rt.VarSym.init(cy.Value.initInt(0));
             try c.vm.varSyms.append(c.alloc, rtVar);
             try c.vm.varSymExtras.append(c.alloc, sym);
             try c.genSymMap.putNoClobber(c.alloc, sym, .{ .varSym = .{ .id = @intCast(id) }});
@@ -384,7 +384,6 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .list               => genList(c, idx, cstr, nodeId),
         .local              => genLocal(c, idx, cstr, nodeId),
         .map                => genMap(c, idx, cstr, nodeId),
-        .none               => genNone(c, cstr, nodeId),
         .objectInit         => genObjectInit(c, idx, cstr, nodeId),
         .pre                => return error.Unexpected,
         .preBinOp           => genBinOp(c, idx, cstr, .{}, nodeId),
@@ -516,7 +515,7 @@ fn genCoyield(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     _ = idx;
     try c.pushCode(.coyield, &.{c.curBlock.startLocalReg, c.curBlock.nextLocalReg}, nodeId);
     // TODO: return coyield expression.
-    return genNone(c, cstr, nodeId);
+    return genFalse(c, cstr, nodeId);
 }
 
 fn genCoinitCall(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
@@ -804,19 +803,6 @@ fn genThrow(c: *Chunk, idx: usize, nodeId: cy.NodeId) !GenValue {
 
     try popTempAndUnwind(c, childv);
     return GenValue.initNoValue();
-}
-
-fn genNone(c: *Chunk, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
-    const inst = try c.rega.selectForNoErrNoDepInst(cstr, false, nodeId);
-    if (inst.requiresPreRelease) {
-        try pushRelease(c, inst.dst, nodeId);
-    }
-    try pushNone(c, inst.dst);
-    return finishNoErrNoDepInst(c, inst, false);
-}
-
-fn pushNone(c: *Chunk, dst: LocalId) !void {
-    try c.buf.pushOp1(.none, dst);
 }
 
 fn setCallObjSymTern(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
@@ -3110,7 +3096,7 @@ fn genSwitch(c: *Chunk, idx: usize, cstr: ?Cstr, nodeId: cy.NodeId) !GenValue {
 
     if (!isStmt and !hasElse) {
         // Gen none return for missing else.
-        _ = try genNone(c, cstr.?, nodeId);
+        _ = try genFalse(c, cstr.?, nodeId);
     }
 
     // Jump here from case body ends.

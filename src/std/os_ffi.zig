@@ -462,7 +462,7 @@ pub fn ffiCbind(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
     const fields = try fieldsBuilder.toOwnedSlice(alloc);
     try ffi.cstructs.append(alloc, .{ .type = typeId, .fields = fields });
 
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn ffiCfunc(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
@@ -489,7 +489,7 @@ pub fn ffiCfunc(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
         .skip = false,
     });
 
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn ffiNew(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
@@ -767,7 +767,7 @@ fn toCyType(ctype: CType, forRet: bool) !types.TypeId {
                         return bt.Pointer;
                     }
                 },
-                .void => return bt.None,
+                .void => return bt.Void,
                 else => {
                     std.debug.print("Unsupported val type: {s}\n", .{ @tagName(sym) });
                     return error.InvalidArgument;
@@ -1038,7 +1038,6 @@ fn cyRelease(vm: *cy.UserVM, val: Value) callconv(.C) void {
 fn cGetPtr(val: Value) callconv(.C) ?*anyopaque {
     const valT = val.getTypeId();
     switch (valT) {
-        bt.None => return null,
         bt.Pointer => {
             return val.asHeapObject().pointer.ptr;
         },
@@ -1052,7 +1051,6 @@ fn cGetPtr(val: Value) callconv(.C) ?*anyopaque {
 fn cGetFuncPtr(val: Value) callconv(.C) ?*anyopaque {
     const valT = val.getTypeId();
     switch (valT) {
-        bt.None => return null,
         bt.Pointer => {
             return val.asHeapObject().pointer.ptr;
         },
@@ -1251,5 +1249,5 @@ pub fn ffiUnbindObjPtr(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
         }
     }
 
-    return Value.None;
+    return Value.Void;
 }

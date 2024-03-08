@@ -19,9 +19,9 @@ t.eq(n2.value2, 234)
 var left Node = [value: 123]
 t.eq(left.value, 123)
 
--- Init and default field to none.
-var n3 = [NodeHeap:]
-t.eq(n3.value, none)
+-- Init and default field to int(0).
+my n3 = [NodeHeap:]
+t.eq(n3.value, 0)
 
 type NodeHeap:
     value any

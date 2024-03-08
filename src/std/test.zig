@@ -181,9 +181,6 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
                     return false;
                 }
             },
-            bt.None => {
-                return true;
-            },
             bt.Error => {
                 const actv = act.asErrorSymbol();
                 const expv = exp.asErrorSymbol();

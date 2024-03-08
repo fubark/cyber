@@ -2560,8 +2560,8 @@ The following shows the zero values of builtin or created types.
 |`Map`|`[:]`|
 |`type S`|`[S:]`|
 |`#host type S`|`S.$zero()`|
-|`dynamic`|`Option.none`|
-|`any`|`Option.none`|
+|`dynamic`|`int(0)`|
+|`any`|`int(0)`|
 |`?S`|`Option(S).none`|
 
 ### Functions.

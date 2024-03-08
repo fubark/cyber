@@ -162,7 +162,7 @@ pub fn listRemove(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     } 
     vm.release(inner.buf[@intCast(index)]);
     inner.remove(@intCast(index));
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn listInsert(vm: *cy.VM, args: [*]const Value, _: u8) Value {
@@ -176,7 +176,7 @@ pub fn listInsert(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     inner.growTotalCapacity(vm.alloc, inner.len + 1) catch cy.fatal();
     vm.retain(value);
     inner.insertAssumeCapacity(@intCast(index), value);
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn listJoin(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
@@ -236,14 +236,14 @@ pub fn listJoin(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     }
 }
 
-pub fn listConcat(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn listAppendList(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const obj = args[0].asHeapObject();
     const list = args[1].asHeapObject();
     for (list.list.items()) |it| {
         vm.retain(it);
         try obj.list.append(vm.alloc, it);
     }
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn listIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) Value {
@@ -272,7 +272,7 @@ pub fn listResize(vm: *cy.VM, args: [*]const Value, _: u8) Value {
         const oldLen = inner.len;
         inner.resize(vm.alloc, size) catch cy.fatal();
         for (inner.items()[oldLen..size]) |*item| {
-            item.* = Value.None;
+            item.* = Value.initInt(0);
         }
     } else if (inner.len > size) {
         // Remove items.
@@ -281,7 +281,7 @@ pub fn listResize(vm: *cy.VM, args: [*]const Value, _: u8) Value {
         }
         inner.resize(vm.alloc, size) catch cy.fatal();
     }
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn mapIterator(vm: *cy.VM, args: [*]const Value, _: u8) Value {
@@ -309,8 +309,8 @@ pub fn mapSize(_: *cy.VM, args: [*]const Value, _: u8) Value {
 pub fn mapRemove(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-    _ = inner.remove(vm, args[1]);
-    return Value.None;
+    const removed = inner.remove(vm, args[1]);
+    return Value.initBool(removed);
 }
 
 pub fn listLen(_: *cy.VM, args: [*]const Value, _: u8) Value {
@@ -373,17 +373,17 @@ inline fn inlineUnaryOp(pc: [*]cy.Inst, code: cy.OpCode) void {
 
 pub fn intBitwiseNot(vm: *cy.VM, _: [*]const Value, _: u8) Value {
     inlineUnaryOp(vm.pc, .bitwiseNot);
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn intNeg(vm: *cy.VM, _: [*]const Value, _: u8) Value {
     inlineUnaryOp(vm.pc, .negInt);
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn floatNeg(vm: *cy.VM, _: [*]const Value, _: u8) Value {
     inlineUnaryOp(vm.pc, .negFloat);
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn inlineTernOp(comptime code: cy.OpCode) cy.ZHostFuncFn {
@@ -402,7 +402,7 @@ pub fn inlineTernOp(comptime code: cy.OpCode) cy.ZHostFuncFn {
             pc[2].val = ret + cy.vm.CallArgStart + 1;
             pc[3].val = ret + cy.vm.CallArgStart + 2;
             pc[4].val = ret;
-            return Value.None;
+            return Value.Void;
         }
     };
     return S.method;
@@ -483,7 +483,7 @@ pub fn inlineBinOp(comptime code: cy.OpCode) fn (*cy.VM, [*]const Value, u8) any
                 pc[2].val = ret + cy.vm.CallArgStart + 1;
                 pc[3].val = ret;
             }
-            return Value.None;
+            return Value.Void;
         }
     };
     return S.method;

@@ -1,7 +1,6 @@
 import t 'test'
 
 -- id()
-t.eq(typeof(none).id(), 0)
 t.eq(typeof(true).id(), 1)
 t.eq(typeof(false).id(), 1)
 t.eq(typeof(error.err).id(), 2)

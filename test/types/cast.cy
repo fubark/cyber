@@ -36,7 +36,7 @@ func foo5(a any):
 a = t.erase(1) as int
 
 -- Cast for interim dst to static var.
-var .sa any = none
+var .sa any = 'abc'
 sa = t.erase(1) as int
 
 --cytest: pass

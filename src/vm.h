@@ -72,13 +72,13 @@ typedef struct IndexSlice {
 #define TAGGED_ENUM_MASK (TAGGED_VALUE_MASK | ENUM_MASK)
 
 // 0111111111111100 0000000000000000
-#define NONE_MASK (TAGGED_VALUE_MASK | ((u64)TAG_NONE << 32))
+#define VOID_MASK (TAGGED_VALUE_MASK | ((u64)TAG_VOID << 32))
 
 // 0111111111111100 0000000000000001
 #define BOOLEAN_MASK (TAGGED_VALUE_MASK | ((u64)TAG_BOOLEAN << 32))
 
 #define TAG_MASK (((uint32_t)1 << 3) - 1)
-#define TAG_NONE ((uint8_t)0)
+#define TAG_VOID ((uint8_t)0)
 #define TAG_BOOLEAN ((uint8_t)1)
 #define TAG_ERROR ((uint8_t)2)
 #define TAG_SYMBOL ((uint8_t)6)
@@ -117,7 +117,7 @@ typedef struct IndexSlice {
 // Assumes _BitInt(48) param. `or` op automatically generates trunc on n's undefined padding bits.
 #define VALUE_INTEGER(n) (TAGGED_INTEGER_MASK | BITCAST(unsigned _BitInt(48), n))
 #define VALUE_BOOLEAN(b) (b ? TRUE_MASK : FALSE_MASK)
-#define VALUE_NONE NONE_MASK
+#define VALUE_VOID VOID_MASK
 #define VALUE_FLOAT(n) ((ValueUnion){ .d = n }.u)
 #define VALUE_ENUM(tag, val) ((Value)(ENUM_MASK | tag << 8 | val ))
 #define VALUE_RETINFO(retFlag, callInstOff) ((Value)(0 | ((u32)retFlag << 8) | ((u32)callInstOff << 16)))
@@ -148,7 +148,6 @@ typedef struct IndexSlice {
 #define VALUE_IS_POINTER(v) (v >= NOCYC_POINTER_MASK)
 #define VALUE_IS_CLOSURE(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_CLOSURE))
 #define VALUE_IS_BOX(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_BOX))
-#define VALUE_IS_NONE(v) (v == NONE_MASK)
 #define VALUE_IS_FLOAT(v) ((v & TAGGED_VALUE_MASK) != TAGGED_VALUE_MASK)
 #define VALUE_IS_ERROR(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == ERROR_MASK)
 
@@ -224,7 +223,6 @@ typedef enum {
     
     CodeTrue,
     CodeFalse,
-    CodeNone,
     CodeNot,
     CodeCopy,
     CodeCopyReleaseDst,
@@ -250,6 +248,7 @@ typedef enum {
     CodeJumpNotCond,
     CodeJumpCond,
     CodeJump,
+    CodeJumpNone,
     CodeRelease,
     CodeReleaseN,
 
@@ -337,8 +336,6 @@ typedef enum {
     CodeBitwiseNot,
     CodeBitwiseLeftShift,
     CodeBitwiseRightShift,
-    CodeJumpNone,
-    CodeJumpNotNone,
     CodeAddInt,
     CodeSubInt,
     CodeMulInt,
@@ -363,7 +360,7 @@ typedef enum {
 typedef uint32_t TypeId;
 enum {
     // The order of the first 9 primitive types are required for the VM.
-    TYPE_NONE = 0,
+    TYPE_VOID = 0,
     TYPE_BOOLEAN = 1,
     TYPE_ERROR = 2,
     TYPE_PLACEHOLDER1 = 3,

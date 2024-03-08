@@ -23,7 +23,7 @@ const BooleanMask: u64 = TaggedValueMask | (@as(u64, TagBoolean) << 32);
 const FalseMask: u64 = BooleanMask;
 const TrueMask: u64 = BooleanMask | TrueBitMask;
 const TrueBitMask: u64 = 1;
-const NoneMask: u64 = TaggedValueMask | (@as(u64, TagNone) << 32);
+const VoidMask: u64 = TaggedValueMask | (@as(u64, TagVoid) << 32);
 const ErrorMask: u64 = TaggedValueMask | (@as(u64, TagError) << 32);
 const SymbolMask: u64 = TaggedValueMask | (@as(u64, TagSymbol) << 32);
 
@@ -34,7 +34,7 @@ const BeforeTagMask: u32 = 0x7fff << 3;
 
 /// The tag id is also the primitive type id.
 const TagId = u3;
-pub const TagNone: TagId = 0;
+pub const TagVoid: TagId = 0;
 pub const TagBoolean: TagId = 1;
 pub const TagError: TagId = 2;
 // pub const TagEnum: TagId = 5;
@@ -68,7 +68,11 @@ pub const Value = packed union {
     //     high: u32,
     // },
 
-    pub const None = Value{ .val = NoneMask };
+    /// This is only used to return something from binded functions that have void return.
+    /// It should never be encountered by user code.
+    /// TODO: Remove once binded functions no longer have a Value return.
+    pub const Void = Value{ .val = VoidMask };
+
     pub const True = Value{ .val = TrueMask };
     pub const False = Value{ .val = FalseMask };
 
@@ -162,7 +166,6 @@ pub const Value = packed union {
             }
         } else {
             switch (self.getTag()) {
-                TagNone => return 0,
                 TagBoolean => return if (self.asBool()) 1 else 0,
                 TagInteger => return @floatFromInt(self.asInteger()),
                 else => {
@@ -308,8 +311,8 @@ pub const Value = packed union {
         return self.val == TrueMask;
     }
 
-    pub inline fn isNone(self: *const Value) bool {
-        return self.val == NoneMask;
+    pub inline fn isVoid(self: *const Value) bool {
+        return self.val == VoidMask;
     }
 
     pub inline fn isTrue(self: *const Value) bool {
@@ -437,9 +440,6 @@ pub const Value = packed union {
             bt.Float => {
                 log.tracev("Float {}", .{self.asF64()});
             },
-            bt.None => {
-                log.tracev("None", .{});
-            },
             bt.Integer => {
                 log.tracev("Integer {}", .{self.asInteger()});
             },
@@ -488,7 +488,6 @@ pub const Value = packed union {
         switch (typeId) {
             bt.Float => return .float,
             bt.Boolean => return .bool,
-            bt.None => return .none,
             bt.Symbol => return .symbol,
             bt.Error => return .err,
             bt.Integer => return .int,
@@ -650,7 +649,7 @@ test "asF64" {
 test "value internals." {
     try t.eq(@sizeOf(Value), 8);
     try t.eq(@alignOf(Value), 8);
-    try t.eq(NoneMask, 0x7FFC000000000000);
+    try t.eq(VoidMask, 0x7FFC000000000000);
     try t.eq(TrueMask, 0x7FFC000100000001);
     try t.eq(FalseMask, 0x7FFC000100000000);
     try t.eq(vmc.POINTER_MASK, 0xFFFE000000000000);

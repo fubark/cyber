@@ -119,7 +119,7 @@ pub const BuiltinTypes = struct {
     pub const Map: TypeId = vmc.TYPE_MAP;
     pub const MapIter: TypeId = vmc.TYPE_MAP_ITER;
     pub const Pointer: TypeId = vmc.TYPE_POINTER;
-    pub const None: TypeId = vmc.TYPE_NONE;
+    pub const Void: TypeId = vmc.TYPE_VOID;
     pub const Error: TypeId = vmc.TYPE_ERROR;
     pub const Fiber: TypeId = vmc.TYPE_FIBER;
     pub const MetaType: TypeId = vmc.TYPE_METATYPE;
@@ -242,7 +242,7 @@ pub const SemaExt = struct {
             bt.Integer,
             bt.Float,
             bt.Symbol,
-            bt.None,
+            bt.Void,
             bt.Error,
             // bt.Undefined,
             bt.Boolean => return false,

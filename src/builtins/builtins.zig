@@ -427,7 +427,7 @@ pub fn dump(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const res = try allocToCyon(vm, vm.alloc, args[0]);
     defer vm.alloc.free(res);
     rt.print(vm, res);
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn getObjectRc(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
@@ -883,7 +883,7 @@ pub fn print(vm: *cy.VM, args: [*]const cy.Value, _: u8) Value {
     if (!err.isNull()) {
         return Value.Interrupt;
     }
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn print_c(c: cy.Context, arg: rt.Any) callconv(.C) rt.Error {
@@ -1380,7 +1380,7 @@ fn pointerSet(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
                 bt.Integer => {
                     const addr: usize = @intFromPtr(rawPtr) + @as(usize, @intCast(uidx));
                     @as(*i32, @ptrFromInt(addr)).* = @intCast(val.asInteger());
-                    return Value.None;
+                    return Value.Void;
                 },
                 else => {
                     return error.InvalidArgument;
@@ -1392,12 +1392,12 @@ fn pointerSet(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
                 bt.Pointer => {
                     const addr: usize = @intFromPtr(rawPtr) + @as(usize, @intCast(uidx));
                     @as(*?*anyopaque, @ptrFromInt(addr)).* = val.asHeapObject().pointer.ptr;
-                    return Value.None;
+                    return Value.Void;
                 },
                 bt.ExternFunc => {
                     const addr: usize = @intFromPtr(rawPtr) + @as(usize, @intCast(uidx));
                     @as(*?*anyopaque, @ptrFromInt(addr)).* = val.asHeapObject().externFunc.ptr;
-                    return Value.None;
+                    return Value.Void;
                 },
                 else => {
                     return error.InvalidArgument;

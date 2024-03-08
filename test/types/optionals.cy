@@ -25,8 +25,4 @@ b = none
 -- b = none
 -- test.eq(b ?else 123, 123)
 
--- Dynamic none.
-my foo = none
-test.eq(foo, none)
-
 --cytest: pass

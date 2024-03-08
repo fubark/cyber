@@ -507,10 +507,6 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[1].val;
             len += try fmt.printCount(w, "%{} = false", &.{v(dst)});
         },
-        .none => {
-            const dst = pc[1].val;
-            len += try fmt.printCount(w, "%{} = none", &.{v(dst)});
-        },
         .constI8 => {
             const val: i8 = @bitCast(pc[1].val);
             const dst = pc[2].val;
@@ -921,7 +917,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .retain,
         .end,
         .release,
-        .none,
         .true,
         .false,
         .mapEmpty => {
@@ -1092,8 +1087,6 @@ pub const OpCode = enum(u8) {
     /// Push boolean onto register stack.
     true = vmc.CodeTrue,
     false = vmc.CodeFalse,
-    /// Sets the `none` value to a dst local.
-    none = vmc.CodeNone,
     /// Pops top register, performs not, and pushes result onto stack.
     not = vmc.CodeNot,
     /// Copies a local from src to dst.

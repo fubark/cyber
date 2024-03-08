@@ -1,6 +1,6 @@
 import t 'test'
 
-var .g = none
+var .g any = 0
 var a = []
 var b = []
 a.append(b)

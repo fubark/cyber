@@ -311,7 +311,7 @@ pub fn fiberEnd(vm: *cy.VM, ctx: PcSpOff) ?PcSpOff {
             // Print fiber panic.
             cy.debug.printLastUserPanicError(vm) catch cy.fatal();
         }
-        return cy.fiber.popFiber(vm, ctx, Value.None);
+        return cy.fiber.popFiber(vm, ctx, Value.initInt(0));
     } else return null;
 }
 

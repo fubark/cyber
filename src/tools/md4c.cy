@@ -147,7 +147,7 @@ type RENDERER = PARSER
 func md_parse(text any, size SIZE, parser any, userdata any) int: pass
 
 import os
-my .ffi = none
+my .ffi = false
 my .lib = load()
 func load():
     ffi = os.newFFI()

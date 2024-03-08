@@ -70,7 +70,7 @@ type CXType:
     data List
  
 my .lib = load(ffi) -- Make lib depedent on ffi.
-my .ffi = none
+my .ffi = false
 
 func load(dummy):
     ffi = os.newFFI()
@@ -193,5 +193,5 @@ func load(dummy):
     -- CXType clang_Type_getNamedType(CXType T);
     ffi.cfunc('clang_Type_getNamedType', [CXType], CXType)
 
-    return ffi.bindLib('libclang.dylib')
+    return ffi.bindLib([?String some: 'libclang.dylib'])
     -- return ffi.bindLib('/Library/Developer/CommandLineTools/usr/lib/libclang.dylib')

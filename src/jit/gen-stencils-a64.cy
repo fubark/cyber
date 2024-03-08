@@ -18,14 +18,14 @@ var cbuf = llvm.GetBufferStart(llBuf)
 var size = llvm.GetBufferSize(llBuf)
 var buf = cbuf.toArray(0, size)
 
-var llBin = llvm.CreateBinary(llBuf, none, outMsg)
+var llBin = llvm.CreateBinary(llBuf, pointer(0), outMsg)
 
 var binType = llvm.BinaryGetType(llBin)
 if binType != llvm.BinaryTypeMachO64L:
     throw error.UnexpectedObjectFormat
 
 -- Find text section.
-my codeBuf = none
+my codeBuf = false
 var llSectIter = llvm.ObjectFileCopySectionIterator(llBin)
 while llvm.ObjectFileIsSectionIteratorAtEnd(llBin, llSectIter) == 0:
     var cname = llvm.GetSectionName(llSectIter)
@@ -42,7 +42,7 @@ while llvm.ObjectFileIsSectionIteratorAtEnd(llBin, llSectIter) == 0:
         break
     llvm.MoveToNextSection(llSectIter)
 
-if codeBuf == none:
+if codeBuf == false:
     throw error.MissingTextSection
 
 var llSymIter = llvm.ObjectFileCopySymbolIterator(llBin)
@@ -52,7 +52,7 @@ type Sym:
     addr int
 
 -- First pass accumulates the unordered symbols.
-var syms = []
+my syms = []
 var symMap = [:]
 while llvm.ObjectFileIsSymbolIteratorAtEnd(llBin, llSymIter) == 0:
     if llvm.GetSectionContainsSymbol(llSectIter, llSymIter) == 0:
@@ -118,7 +118,7 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
     var value = cname.fromCstr(0).decode()
 
     -- Find relevant func sym.
-    my found = none
+    my found = false
     for syms -> sym, i:
         if offset >= sym.addr:
             if i < syms.len()-1 and offset >= syms[i+1].addr:
@@ -126,7 +126,7 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
             found = sym
             break
 
-    if found == none:
+    if found == false:
         throw error.MissingSym
 
     out += "pub const $(found.name[1..])_$(symName[1..]) = $(offset-found.addr);\n"

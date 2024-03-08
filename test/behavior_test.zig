@@ -412,17 +412,17 @@ test "Custom modules." {
         fn test1(vm: *cy.VM, _: [*]const cy.Value, _: u8) cy.Value {
             const count_ = cy.ptrAlignCast(*usize, vm.userData);
             count_.* += 1;
-            return cy.Value.None;
+            return cy.Value.Void;
         }
         fn test2(vm: *cy.VM, _: [*]const cy.Value, _: u8) cy.Value {
             const count_ = cy.ptrAlignCast(*usize, vm.userData);
             count_.* += 2;
-            return cy.Value.None;
+            return cy.Value.Void;
         }
         fn test3(vm: *cy.VM, _: [*]const cy.Value, _: u8) cy.Value {
             const count_ = cy.ptrAlignCast(*usize, vm.userData);
             count_.* += 3;
-            return cy.Value.None;
+            return cy.Value.Void;
         }
         fn postLoadMod2(_: ?*c.VM, mod: c.ApiModule) callconv(.C) void {
             // Test dangling pointer.

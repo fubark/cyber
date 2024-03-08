@@ -236,10 +236,6 @@ export fn csSetUserData(vm: *cy.VM, userData: ?*anyopaque) void {
     vm.userData = userData;
 }
 
-export fn csNone() Value {
-    return Value.None;
-}
-
 export fn csTrue() Value {
     return Value.True;
 }
@@ -440,7 +436,7 @@ export fn csToTempByteArray(vm: *cy.VM, val: Value) c.Str {
 }
 
 test "Constants." {
-    try t.eq(c.TypeNone, bt.None);
+    try t.eq(c.TypeVoid, bt.Void);
     try t.eq(c.TypeBoolean, bt.Boolean);
     try t.eq(c.TypeError, bt.Error);
     try t.eq(c.TypeSymbol, bt.Symbol);

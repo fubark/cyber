@@ -33,7 +33,7 @@ typedef enum {
 } CsResultCode;
 
 typedef enum {
-    CS_TYPE_NONE = 0,
+    CS_TYPE_VOID = 0,
     CS_TYPE_BOOLEAN,
     CS_TYPE_ERROR,
     CS_TYPE_PLACEHOLDER1,
@@ -386,7 +386,6 @@ void csFreeStrZ(CsVM* vm, const char* str);
 //
 
 // Create values.
-CsValue csNone();
 CsValue csTrue();
 CsValue csFalse();
 CsValue csBool(bool b);

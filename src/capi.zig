@@ -32,7 +32,6 @@ pub const asInteger = c.csAsInteger;
 pub const integer = c.csInteger;
 pub const asBool = c.csAsBool;
 pub const toBool = c.csToBool;
-pub const none = c.csNone;
 pub const declareUntypedFunc = c.csDeclareUntypedFunc;
 pub const setResolver = c.csSetResolver;
 pub const setModuleLoader = c.csSetModuleLoader;
@@ -111,7 +110,7 @@ pub const TypeKindObject = c.CS_TYPE_OBJECT;
 pub const TypeKindCoreObject = c.CS_TYPE_CORE_OBJECT;
 
 pub const TypeId = c.CsTypeId;
-pub const TypeNone = c.CS_TYPE_NONE;
+pub const TypeVoid = c.CS_TYPE_VOID;
 pub const TypeBoolean = c.CS_TYPE_BOOLEAN;
 pub const TypeError = c.CS_TYPE_ERROR;
 pub const TypeSymbol = c.CS_TYPE_SYMBOL;

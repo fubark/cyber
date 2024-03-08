@@ -80,7 +80,7 @@ clang.lib.clang_visitChildren(cursor, cvisitor, cstate)
 
 -- Generate ffi init.
 out += "\nimport os\n"
-out += "my .ffi = none\n"
+out += "my .ffi = false\n"
 out += "my .lib = load()\n"
 out += "func load():\n"
 out += "    ffi = os.newFFI()\n"

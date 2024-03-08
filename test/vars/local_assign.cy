@@ -16,7 +16,7 @@ t.eq(b, 3)
 
 -- Using a variable that was conditionally assigned.
 var f = func():
-    my a = none
+    my a = false
     if true:
         a = 1
     return a
@@ -24,15 +24,15 @@ t.eq(f(), 1)
 
 -- Using a variable that was conditionally not assigned.
 f = func():
-    my a = none
+    my a = false
     if false:
         a = 1
     return a
-t.eq(f(), none)
+t.eq(f(), false)
 
 -- Using a variable that was assigned in a loop.
 f = func():
-    my a = none
+    my a = false
     for 2..3 -> i:
         a = i
     return a
@@ -40,16 +40,10 @@ t.eq(f(), 2)
 
 -- Using a variable that was not assigned in a loop.
 f = func():
-    my a = none
+    my a = false
     for 2..2 -> i:
         a = i
     return a
-t.eq(f(), none)
-
--- `none` inferred as `any` for declaration.
-var c = none
-c = 234
-c = none
-c = []
+t.eq(f(), false)
 
 --cytest: pass

@@ -683,7 +683,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(SubFloat),
         JENTRY(True),
         JENTRY(False),
-        JENTRY(None),
         JENTRY(Not),
         JENTRY(Copy),
         JENTRY(CopyReleaseDst),
@@ -862,11 +861,6 @@ beginSwitch:
         pc += 2;
         NEXT();
     }
-    CASE(None): {
-        stack[pc[1]] = VALUE_NONE;
-        pc += 2;
-        NEXT();
-    }
     CASE(Not): {
         Value val = stack[pc[1]];
         bool bval = VALUE_IS_BOOLEAN(val) ? VALUE_AS_BOOLEAN(val) : VALUE_ASSUME_NOT_BOOL_TO_BOOL(val);
@@ -942,7 +936,7 @@ beginSwitch:
                 release(vm, existing);
                 retain(vm, right);
                 ((Value*)listo->list.list.buf)[idx] = right;
-                stack[pc[4]] = VALUE_NONE;
+                stack[pc[4]] = VALUE_VOID;
                 pc += CALL_OBJ_SYM_INST_LEN;
                 NEXT();
             } else {
@@ -966,7 +960,7 @@ beginSwitch:
             Map* mapo = (Map*)VALUE_AS_HEAPOBJECT(mapv);
             ResultCode code = zMapSet(vm, mapo, index, right);
             if (LIKELY(code == RES_CODE_SUCCESS)) {
-                stack[pc[4]] = VALUE_NONE;
+                stack[pc[4]] = VALUE_VOID;
                 pc += CALL_OBJ_SYM_INST_LEN;
                 NEXT();
             }
@@ -1071,7 +1065,7 @@ beginSwitch:
             retain(vm, itemv);
             ((Value*)listo->list.list.buf)[len] = itemv;
             listo->list.list.len = len + 1;
-            stack[pc[3]] = VALUE_NONE;
+            stack[pc[3]] = VALUE_VOID;
 
             pc += CALL_OBJ_SYM_INST_LEN;
             NEXT();
@@ -1358,8 +1352,8 @@ beginSwitch:
         }
     }
     CASE(Ret0): {
-        uint8_t retFlag = VALUE_RETINFO_RETFLAG(stack[1]);
-        stack[0] = VALUE_NONE;
+        u8 retFlag = VALUE_RETINFO_RETFLAG(stack[1]);
+        stack[0] = VALUE_VOID;
         if (retFlag == 0) {
             pc = (Inst*)stack[2];
             stack = (Value*)stack[3];
@@ -1794,7 +1788,7 @@ beginSwitch:
     }
     CASE(Coyield):
         if (vm->curFiber != &vm->mainFiber) {
-            PcSpOff res = zPopFiber(vm, pcOffset(vm, pc), stack, VALUE_NONE);
+            PcSpOff res = zPopFiber(vm, pcOffset(vm, pc), stack, VALUE_INTEGER(0));
             pc = vm->instPtr + res.pc;
             stack = vm->stackPtr + res.sp;
         } else {

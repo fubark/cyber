@@ -238,7 +238,7 @@ fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const path = args[0].asString();
     try std.fs.cwd().deleteDir(path);
-    return Value.None;
+    return Value.Void;
 }
 
 fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
@@ -249,21 +249,21 @@ fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
     defer alloc.free(srcDupe);
     const dst = args[1].asString();
     try std.fs.cwd().copyFile(srcDupe, std.fs.cwd(), dst, .{});
-    return Value.None;
+    return Value.Void;
 }
 
 fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const path = args[0].asString();
     try std.fs.cwd().deleteFile(path);
-    return Value.None;
+    return Value.Void;
 }
 
 fn createDir(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.returnPanic("Unsupported.");
     const path = args[0].asString();
     try std.fs.cwd().makeDir(path);
-    return Value.None;
+    return Value.Void;
 }
 
 fn createFile(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
@@ -289,7 +289,7 @@ pub fn access(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
         }
     };
     try std.fs.cwd().access(path, .{ .mode = zmode });
-    return Value.None;
+    return Value.Void;
 }
 
 fn openFile(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
@@ -354,7 +354,10 @@ fn parseArgs(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
                     return error.InvalidArgument;
                 },
             }
-            const default = entry.getByString("default") orelse Value.None;
+            const default = entry.getByString("default") orelse b: {
+                vm.retain(vm.emptyString);
+                break :b vm.emptyString;
+            };
             try optionMap.put(vm.alloc, name.asString(), .{
                 .name = name,
                 .type = optType,
@@ -489,7 +492,7 @@ pub fn free(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const ptr = args[0].asHeapObject().pointer.ptr;
     std.c.free(ptr);
-    return Value.None;
+    return Value.Void;
 }
 
 pub fn malloc(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
@@ -568,7 +571,7 @@ pub fn setEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) anyerror!Value {
     const valuez = try vm.allocator().dupeZ(u8, value);
     defer vm.allocator().free(valuez);
     _ = setenv(keyz, valuez, 1);
-    return Value.None;
+    return Value.Void;
 }
 pub extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 
@@ -586,7 +589,7 @@ pub fn sleep(_: *cy.VM, args: [*]const Value, _: u8) Value {
             std.os.nanosleep(secs, nsecs);
         }
     }
-    return Value.None;
+    return Value.Void;
 }
 
 extern fn hostSleep(secs: u64, nsecs: u64) void;
@@ -597,7 +600,7 @@ pub fn unsetEnv(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const keyz = vm.alloc.dupeZ(u8, key) catch cy.fatal();
     defer vm.alloc.free(keyz);
     _ = unsetenv(keyz);
-    return Value.None;
+    return Value.Void;
 }
 pub extern "c" fn unsetenv(name: [*:0]const u8) c_int;
 
@@ -761,5 +764,5 @@ pub fn writeFile(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const path = args[0].asString();
     const content = try vm.getOrBufPrintValueRawStr(&cy.tempBuf, args[1]);
     try std.fs.cwd().writeFile(path, content);
-    return Value.None;
+    return Value.Void;
 }

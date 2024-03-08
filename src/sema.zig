@@ -1450,7 +1450,7 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
         return c.reportErrorAt("No var loader set for `{}`.", &.{v(decl.namePath)}, nodeId);
     };
     log.tracev("Invoke var loader for: {s}", .{decl.namePath});
-    var out: cy.Value = cy.Value.None;
+    var out: cy.Value = cy.Value.initInt(0);
     if (!varLoader(@ptrCast(c.compiler.vm), info, @ptrCast(&out))) {
         return c.reportErrorAt("Host var `{}` failed to load.", &.{v(decl.namePath)}, nodeId);
     }
@@ -1626,10 +1626,6 @@ fn localDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     if (inferType) {
         var declType = right.type.toStaticDeclType();
         var recentType = right.type.id;
-        if (declType == bt.None) {
-            declType = bt.Any;
-            recentType = bt.Any;
-        }
 
         svar.declT = declType;
         svar.vtype.id = @intCast(recentType);
@@ -2056,11 +2052,8 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !TypeExprResult {
             const sym = c.sym.getMod().chunk.syms.items[symId];
             return TypeExprResult{ .sym = sym, .type = sym.getStaticType().? };
         },
-        .noneLit => {
-            const sym = (try resolveLocalRootSym(c, "none", exprId, true)) orelse {
-                return c.reportErrorAt("Could not find the symbol `{}`.", &.{v("none")}, exprId);
-            };
-            return TypeExprResult{ .sym = sym, .type = sym.getStaticType().? };
+        .void => {
+            return bt.Void;
         },
         .ident => {
             const name = c.ast.nodeString(expr);
@@ -3358,7 +3351,7 @@ pub const ChunkExt = struct {
     pub fn semaZeroInit(c: *cy.Chunk, typeId: cy.TypeId, nodeId: cy.NodeId) !ExprResult {
         switch (typeId) {
             bt.Any,
-            bt.Dynamic  => return c.semaNone(null, nodeId),
+            bt.Dynamic  => return c.semaInt(0, nodeId),
             bt.Boolean  => return c.semaFalse(nodeId),
             bt.Integer  => return c.semaInt(0, nodeId),
             bt.Float    => return c.semaFloat(0, nodeId),
@@ -3754,9 +3747,9 @@ pub const ChunkExt = struct {
         switch (node.type()) {
             .noneLit => {
                 if (expr.hasTypeCstr) {
-                   return c.semaNone(expr.preferType, nodeId);
+                    return c.semaNone(expr.preferType, nodeId);
                 } else {
-                   return c.semaNone(null, nodeId);
+                    return c.reportErrorAt("Could not determine optional type for `none`.", &.{}, nodeId);
                 }
             },
             .errorSymLit => {

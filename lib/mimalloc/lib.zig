@@ -1,6 +1,5 @@
 const std = @import("std");
 
-
 pub fn createModule(b: *std.Build) *std.build.Module {
     return b.createModule(.{
         .source_file = .{ .path = thisDir() ++ "/mimalloc.zig" },

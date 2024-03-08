@@ -85,7 +85,14 @@ pub fn build(b: *std.build.Builder) !void {
         const step = b.step("vm-lib", "Build vm as a library.");
 
         var opts = getDefaultOptions(target, optimize);
-        const lib = try buildCVM(b, opts);
+        const obj = try buildCVM(b, opts);
+
+        const lib = b.addStaticLibrary(.{
+            .name = "vm",
+            .target = target,
+            .optimize = optimize,
+        });
+        lib.addObject(obj);
 
         step.dependOn(&lib.step);
         step.dependOn(&b.addInstallArtifact(lib, .{}).step);
@@ -278,7 +285,7 @@ pub fn buildAndLinkDeps(step: *std.build.Step.Compile, opts: Options) !void {
         if (opts.target.getCpuArch().isWasm()) {
             lib.stack_protector = false;
         }
-        step.linkLibrary(lib);
+        step.addObject(lib);
     }
 
     if (opts.ffi) {
@@ -460,7 +467,7 @@ pub const PrintStep = struct {
 };
 
 pub fn buildCVM(b: *std.Build, opts: Options) !*std.build.Step.Compile {
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addObject(.{
         .name = "vm",
         .target = opts.target,
         .optimize = opts.optimize,

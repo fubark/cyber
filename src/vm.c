@@ -10,7 +10,7 @@
 #define STATIC_ASSERT(cond, msg) typedef char static_assertion_##msg[(cond)?1:-1]
 
 #define TRACEV(msg, ...) \
-    do { if (TRACE && verbose) zLog(msg, (FmtValue[]){__VA_ARGS__}, sizeof((FmtValue[]){__VA_ARGS__})/sizeof(FmtValue)); } while (false)
+    do { if (TRACE && csVerbose) zLog(msg, (FmtValue[]){__VA_ARGS__}, sizeof((FmtValue[]){__VA_ARGS__})/sizeof(FmtValue)); } while (false)
 #define LTRACE(msg, ...) \
     do { if (TRACE) zLog(msg, (FmtValue[]){__VA_ARGS__}, sizeof((FmtValue[]){__VA_ARGS__})/sizeof(FmtValue)); } while (false)
 #define LOG(msg, ...) \
@@ -657,7 +657,7 @@ ResultCode execBytecode(VM* vm) {
         vm->trace->opCounts[pc[0]].count += 1; \
         vm->trace->totalOpCounts += 1;
     #define PRE_DUMP() \
-        if (verbose) { \
+        if (csVerbose) { \
             zDumpEvalOp(vm, pc); \
         } \
         vm->debugPc = pcOffset(vm, pc);

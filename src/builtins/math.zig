@@ -8,7 +8,7 @@ const bt = cy.types.BuiltinTypes;
 pub const Src = @embedFile("math.cy");
 pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callconv(.C) bool {
     const out: *cc.FuncResult = out_;
-    const name = cc.strSlice(func.name);
+    const name = cc.fromStr(func.name);
     if (std.mem.eql(u8, funcs[func.idx].@"0", name)) {
         out.ptr = @ptrCast(funcs[func.idx].@"1");
         return true;
@@ -17,7 +17,7 @@ pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callco
 }
 pub fn varLoader(_: ?*cc.VM, v: cc.VarInfo, out_: [*c]cc.Value) callconv(.C) bool {
     const out: *cc.Value = out_;
-    const name = cc.strSlice(v.name);
+    const name = cc.fromStr(v.name);
     if (std.mem.eql(u8, vars[v.idx].@"0", name)) {
         out.* = vars[v.idx].@"1".val;
         return true;

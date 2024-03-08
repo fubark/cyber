@@ -18,7 +18,7 @@ const log = cy.log.scoped(.testmod);
 pub const Src = @embedFile("test.cy");
 pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callconv(.C) bool {
     const out: *cc.FuncResult = out_;
-    const name = cc.strSlice(func.name);
+    const name = cc.fromStr(func.name);
     if (std.mem.eql(u8, funcs[func.idx].@"0", name)) {
         out.ptr = @ptrCast(funcs[func.idx].@"1");
         return true;
@@ -40,11 +40,10 @@ const funcs = [_]NameHostFunc{
 
 pub fn onLoad(vm_: ?*cc.VM, mod: cc.Sym) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const b = bindings.ModuleBuilder.init(vm.compiler, cc.fromSym(mod));
-    if (builtin.is_test) {
-        // Only available for zig test, until `any` local type specifier is implemented.
-        b.declareFuncSig("erase", &.{bt.Any}, bt.Dynamic, erase) catch cy.fatal();
-    }
+    const b = bindings.ModuleBuilder.init(vm.compiler, cy.Sym.fromC(mod));
+
+    // Only available for zig test, until `any` local type specifier is implemented.
+    b.declareFuncSig("erase", &.{bt.Any}, bt.Dynamic, erase) catch cy.fatal();
 }
 
 fn fail(vm: *cy.VM, _: [*]const Value, _: u8) Value {

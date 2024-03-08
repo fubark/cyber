@@ -60,6 +60,13 @@ pub const Sym = extern struct {
         }
     }
 
+    pub fn toC(self: *Sym) cc.Sym {
+        return .{ .ptr = self };
+    }
+    pub fn fromC(sym: cc.Sym) *cy.Sym {
+        return @ptrCast(@alignCast(sym.ptr));
+    }
+
     /// This is mainly used at the end of execution to release values
     /// so that the global rc can be compared against 0.
     pub fn deinitRetained(self: *Sym, vm: *cy.VM) void {
@@ -771,6 +778,10 @@ pub const Import = extern struct {
 pub const Chunk = extern struct {
     head: Sym,
     mod: vmc.Module,
+
+    pub fn sym(self: *Chunk) *cy.Sym {
+        return @ptrCast(self);
+    }
 
     pub fn getMod(self: *Chunk) *cy.Module {
         return @ptrCast(&self.mod);

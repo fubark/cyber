@@ -133,38 +133,7 @@ pub fn build(b: *std.build.Builder) !void {
         opts.cli = false;
         opts.applyOverrides();
 
-        var lib: *std.build.Step.Compile = undefined;
-        if (opts.static) {
-            lib = b.addStaticLibrary(.{
-                .name = "cyber",
-                .root_source_file = .{ .path = "src/lib.zig" },
-                .target = target,
-                .optimize = optimize,
-            });
-        } else {
-            lib = b.addSharedLibrary(.{
-                .name = "cyber",
-                .root_source_file = .{ .path = "src/lib.zig" },
-                .target = target,
-                .optimize = optimize,
-            });
-        }
-        if (lib.optimize != .Debug) {
-            lib.strip = true;
-        }
-        lib.addIncludePath(.{. path = thisDir() ++ "/src" });
-
-        if (target.getCpuArch().isWasm()) {
-            // Export table so non-exported functions can still be invoked from:
-            // `instance.exports.__indirect_function_table`
-            lib.export_table = true;
-        }
-
-        // Allow exported symbols to be visible to dlopen.
-        // Also needed to export symbols in wasm lib.
-        lib.rdynamic = true;
-
-        try buildAndLinkDeps(lib, opts);
+        const lib = try buildLib(b, opts);
         step.dependOn(&lib.step);
         step.dependOn(&b.addInstallArtifact(lib, .{}).step);
     }
@@ -209,8 +178,7 @@ pub fn build(b: *std.build.Builder) !void {
         opts.applyOverrides();
 
         var step = b.addTest(.{
-            // Lib test includes main tests.
-            .root_source_file = .{ .path = "./test/lib_test.zig" },
+            .root_source_file = .{ .path = "./test/main_test.zig" },
             .target = target,
             .optimize = optimize,
             .filter = testFilter,
@@ -223,6 +191,40 @@ pub fn build(b: *std.build.Builder) !void {
         mainStep.dependOn(&b.addInstallArtifact(step, .{}).step);
 
         step = try addTraceTest(b, opts);
+        mainStep.dependOn(&b.addInstallArtifact(step, .{}).step);
+    }
+
+    {
+        const mainStep = b.step("build-link-test", "Build link test.");
+
+        var opts = getDefaultOptions(target, optimize);
+        opts.trackGlobalRc = true;
+        opts.ffi = false;
+        opts.link_test = true;
+        opts.applyOverrides();
+
+        var step = b.addTest(.{
+            // Lib test includes main tests.
+            .root_source_file = .{ .path = "./test/behavior_test.zig" },
+            .target = target,
+            .optimize = optimize,
+            .filter = testFilter,
+            .main_pkg_path = .{ .path = "." },
+        });
+        step.addIncludePath(.{ .path = thisDir() ++ "/src" });
+        step.rdynamic = true;
+
+        try addBuildOptions(b, step, opts);
+        step.addModule("stdx", stdx);
+        step.addAnonymousModule("tcc", .{
+            .source_file = .{ .path = thisDir() ++ "/src/nopkg.zig" },
+        });
+
+        opts = getDefaultOptions(target, optimize);
+        opts.cli = true;
+        opts.applyOverrides();
+        const lib = try buildLib(b, opts);
+        step.linkLibrary(lib);
         mainStep.dependOn(&b.addInstallArtifact(step, .{}).step);
     }
 
@@ -235,30 +237,6 @@ pub fn build(b: *std.build.Builder) !void {
 
         var step = b.addTest(.{
             .root_source_file = .{ .path = "./test/main_test.zig" },
-            .target = target,
-            .optimize = optimize,
-            .filter = testFilter,
-            .main_pkg_path = .{ .path = "." },
-        });
-        step.addIncludePath(.{ .path = thisDir() ++ "/src" });
-        step.rdynamic = true;
-
-        try buildAndLinkDeps(step, opts);
-        mainStep.dependOn(&b.addRunArtifact(step).step);
-
-        step = try addTraceTest(b, opts);
-        mainStep.dependOn(&b.addRunArtifact(step).step);
-    }
-
-    {
-        const mainStep = b.step("test-lib", "Run tests.");
-
-        var opts = getDefaultOptions(target, optimize);
-        opts.trackGlobalRc = true;
-        opts.applyOverrides();
-
-        var step = b.addTest(.{
-            .root_source_file = .{ .path = "./test/lib_test.zig" },
             .target = target,
             .optimize = optimize,
             .filter = testFilter,
@@ -344,6 +322,7 @@ pub const Options = struct {
     cli: bool,
     jit: bool,
     rt: config.Runtime,
+    link_test: bool,
 
     fn applyOverrides(self: *Options) void {
         if (optMalloc) |malloc| {
@@ -390,6 +369,7 @@ fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.Optimize
         .cli = !target.getCpuArch().isWasm(),
         .jit = false,
         .rt = .vm,
+        .link_test = false,
     };
 }
 
@@ -423,6 +403,7 @@ fn createBuildOptions(b: *std.build.Builder, opts: Options) !*std.build.Step.Opt
     build_options.addOption(bool, "jit", opts.jit);
     build_options.addOption(config.TestBackend, "testBackend", testBackend);
     build_options.addOption(config.Runtime, "rt", opts.rt);
+    build_options.addOption(bool, "link_test", opts.link_test);
     build_options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
     return build_options;
 }
@@ -446,7 +427,9 @@ fn addTraceTest(b: *std.build.Builder, opts: Options) !*std.build.LibExeObjStep 
     var newOpts = opts;
     newOpts.trace = true;
     newOpts.applyOverrides();
-    try buildAndLinkDeps(step, newOpts);
+
+    // Include all deps since it contains tests that depend on Zig source.
+    try buildAndLinkDeps(step, opts);
     return step;
 }
 
@@ -534,5 +517,41 @@ pub fn buildCVM(b: *std.Build, opts: Options) !*std.build.Step.Compile {
         .file = .{ .path = thisDir() ++ "/src/vm.c" },
         .flags = cflags.items
     });
+    return lib;
+}
+
+fn buildLib(b: *std.Build, opts: Options) !*std.build.Step.Compile {
+    var lib: *std.build.Step.Compile = undefined;
+    if (opts.static) {
+        lib = b.addStaticLibrary(.{
+            .name = "cyber",
+            .root_source_file = .{ .path = "src/lib.zig" },
+            .target = opts.target,
+            .optimize = opts.optimize,
+        });
+    } else {
+        lib = b.addSharedLibrary(.{
+            .name = "cyber",
+            .root_source_file = .{ .path = "src/lib.zig" },
+            .target = opts.target,
+            .optimize = opts.optimize,
+        });
+    }
+    if (lib.optimize != .Debug) {
+        lib.strip = true;
+    }
+    lib.addIncludePath(.{. path = thisDir() ++ "/src" });
+
+    if (opts.target.getCpuArch().isWasm()) {
+        // Export table so non-exported functions can still be invoked from:
+        // `instance.exports.__indirect_function_table`
+        lib.export_table = true;
+    }
+
+    // Allow exported symbols to be visible to dlopen.
+    // Also needed to export symbols in wasm lib.
+    lib.rdynamic = true;
+
+    try buildAndLinkDeps(lib, opts);
     return lib;
 }

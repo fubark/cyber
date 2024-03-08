@@ -7,7 +7,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 pub const log = cy.log.scoped(.arc);
 const cy = @import("cyber.zig");
-const cc = @import("capi.zig");
+const c = @import("capi.zig");
 const vmc = cy.vmc;
 const rt = cy.rt;
 const bt = cy.types.BuiltinTypes;
@@ -214,11 +214,6 @@ pub fn getGlobalRC(self: *const cy.VM) usize {
     }
 }
 
-const GCResult = struct {
-    numCycFreed: u32,
-    numObjFreed: u32,
-};
-
 /// Mark-sweep leveraging refcounts and deals only with cyclable objects.
 /// 1. Looks at all root nodes from the stack and globals.
 ///    Traverse the children and sets the mark flag to true.
@@ -230,7 +225,7 @@ const GCResult = struct {
 ///    If the mark flag is set, reset the flag for the next gc run.
 ///    TODO: Allocate using separate pages for cyclable and non-cyclable objects,
 ///          so only cyclable objects are iterated.
-pub fn performGC(vm: *cy.VM) !GCResult {
+pub fn performGC(vm: *cy.VM) !c.GCResult {
     log.tracev("Run gc.", .{});
     try performMark(vm);
 
@@ -252,7 +247,7 @@ fn performMark(vm: *cy.VM) !void {
     }
 }
 
-fn performSweep(vm: *cy.VM) !GCResult {
+fn performSweep(vm: *cy.VM) !c.GCResult {
     log.tracev("Perform sweep.", .{});
     // Collect cyc nodes and release their children (child cyc nodes are skipped).
     if (cy.Trace) {
@@ -319,7 +314,7 @@ fn performSweep(vm: *cy.VM) !GCResult {
         vm.numFreed += @intCast(cycObjs.items.len);
     }
 
-    const res = GCResult{
+    const res = c.GCResult{
         .numCycFreed = @intCast(cycObjs.items.len),
         .numObjFreed = if (cy.Trace) vm.numFreed else 0,
     };
@@ -444,7 +439,7 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
                 // Custom object type.
                 if (entry.sym.cast(.custom_object_t).getChildrenFn) |getChildren| {
                     const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                    for (cc.valueSlice(children)) |child| {
+                    for (cy.Value.fromSliceC(children)) |child| {
                         if (child.isCycPointer()) {
                             markValue(vm, child);
                         }
@@ -486,18 +481,9 @@ pub fn countObjects(vm: *cy.VM) usize {
 
 pub fn checkGlobalRC(vm: *cy.VM) !void {
     const rc = getGlobalRC(vm);
-    if (rc != vm.expGlobalRC) {
-        std.debug.print("unreleased refcount: {}, expected: {}\n", .{rc, vm.expGlobalRC});
-
-        if (cy.Trace) {
-            var iter = vm.objectTraceMap.iterator();
-            while (iter.next()) |it| {
-                const trace = it.value_ptr.*;
-                if (trace.freePc == cy.NullId) {
-                    try dumpObjectAllocTrace(vm, it.key_ptr.*, trace.allocPc);
-                }
-            }
-        }
+    if (rc != 0) {
+        std.debug.print("unreleased refcount: {}\n", .{rc});
+        c.traceDumpLiveObjects(@ptrCast(vm));
 
         // var iter = cy.vm.traceObjRetains.iterator();
         // while (iter.next()) |e| {
@@ -509,7 +495,7 @@ pub fn checkGlobalRC(vm: *cy.VM) !void {
     }
 }
 
-fn dumpObjectAllocTrace(vm: *cy.VM, obj: *cy.HeapObject, allocPc: u32) !void {
+pub fn dumpObjectAllocTrace(vm: *cy.VM, obj: *cy.HeapObject, allocPc: u32) !void {
     var buf: [256]u8 = undefined;
     const typeId = obj.getTypeId();
     const typeName = vm.getTypeName(typeId);

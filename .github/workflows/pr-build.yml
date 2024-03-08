@@ -157,7 +157,9 @@ jobs:
 
       - name: Run tests.
         if: env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD == 'lib'
-        run: zig build test-lib ${{ env.ZIG_TARGET_FLAG }} 
+        run: |
+          zig build build-link-test ${{ env.ZIG_TARGET_FLAG }} 
+          ./zig-out/bin/test
 
       - name: Run tests.
         if: env.BUILD_TARGET == 'wasm32-freestanding' || env.BUILD_TARGET == 'wasm32-wasi'

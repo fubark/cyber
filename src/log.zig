@@ -34,7 +34,7 @@ pub fn scoped(comptime Scope: @Type(.EnumLiteral)) type {
             if (!cy.Trace) {
                 return;
             }
-            if (!cy.verbose) {
+            if (!c.verbose()) {
                 return;
             }
             trace_(format, args);
@@ -44,7 +44,7 @@ pub fn scoped(comptime Scope: @Type(.EnumLiteral)) type {
             if (!cy.Trace) {
                 return;
             }
-            if (!cy.verbose) {
+            if (!c.verbose()) {
                 return;
             }
             if (!cond) {
@@ -69,10 +69,9 @@ pub fn scoped(comptime Scope: @Type(.EnumLiteral)) type {
     };
 }
 
-const c = @import("capi.zig");
-pub export var logFn: c.LogFn = defaultLog;
 var logBuf: [1024]u8 = undefined;
 
+const c = @import("capi.zig");
 pub fn defaultLog(_: c.Str) callconv(.C) void {
     // Default log is a nop.
 }
@@ -80,13 +79,13 @@ pub fn defaultLog(_: c.Str) callconv(.C) void {
 pub fn zfmt(comptime format: []const u8, args: anytype) void {
     var b = std.io.fixedBufferStream(&logBuf);
     std.fmt.format(b.writer(), format, args) catch cy.fatal();
-    logFn.?(c.initStr(b.getWritten()));
+    c.getLog().?(c.toStr(b.getWritten()));
 }
 
 pub fn fmt(format: []const u8, args: []const cy.fmt.FmtValue) void {
     var b = std.io.fixedBufferStream(&logBuf);
     cy.fmt.print(b.writer(), format, args);
-    logFn.?(c.initStr(b.getWritten()));
+    c.getLog().?(c.toStr(b.getWritten()));
 }
 
 const default = if (UseStd) std.log.default else wasm.scoped(.default);
@@ -101,14 +100,4 @@ pub fn info(comptime format: []const u8, args: anytype) void {
 
 pub fn err(comptime format: []const u8, args: anytype) void {
     default.err(format, args);
-}
-
-/// Used in C/C++ code to log synchronously.
-const c_log = scoped(.c);
-pub export fn zig_log(buf: [*c]const u8) void {
-    c_log.tracev("{s}", .{ buf });
-}
-
-pub export fn zig_log_u32(buf: [*c]const u8, val: u32) void {
-    c_log.tracev("{s}: {}", .{ buf, val });
 }

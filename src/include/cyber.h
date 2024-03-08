@@ -72,6 +72,8 @@ typedef struct CsStr {
     size_t len;
 } CsStr;
 
+typedef CsStr CsSlice;
+
 typedef struct CsSym {
     void* ptr;
 } CsSym;
@@ -267,23 +269,72 @@ typedef void (*CsPrintErrorFn)(CsVM* vm, CsStr str);
 // The default behavior is a no-op.
 typedef void (*CsLogFn)(CsStr str);
 
+typedef enum {
+    CS_VM = 0,
+    CS_JIT,
+    CS_TCC,
+    CS_CC,
+    CS_LLVM,
+} CsBackend;
+
+typedef struct CsEvalConfig {
+    /// Compiler options.
+    bool single_run;
+    bool file_modules;
+    bool gen_all_debug_syms;
+    CsBackend backend;
+
+    /// Whether url imports and cached assets should be reloaded.
+    bool reload;
+
+    bool spawn_exe;
+} CsEvalConfig;
+
+typedef struct CsCompileConfig {
+    /// Whether this process intends to perform eval once and exit.
+    /// In that scenario, the compiler can skip generating the final release ops for the main block.
+    bool single_run;
+
+    bool skip_codegen;
+
+    bool file_modules;
+
+    /// By default, debug syms are only generated for insts that can potentially fail.
+    bool gen_all_debug_syms;
+
+    CsBackend backend;
+
+    bool emit_source_map;
+
+    bool gen_debug_func_markers;
+} CsCompileConfig;
+
+typedef struct CsValidateConfig {
+    /// Compiler options.
+    bool file_modules;
+} CsValidateConfig;
+
+typedef struct CsAllocator {
+    void* ptr;
+    const void* vtable;
+} CsAllocator;
+
 // -----------------------------------
 // [ Top level ]
 // -----------------------------------
-CsStr csGetFullVersion();
-CsStr csGetVersion();
-CsStr csGetBuild();
-CsStr csGetCommit();
-CsLogFn csGetLogger();
-void csSetLogger(CsLogFn log);
+CsStr csGetFullVersion(void);
+CsStr csGetVersion(void);
+CsStr csGetBuild(void);
+CsStr csGetCommit(void);
+extern CsLogFn csLog;
 
 // -----------------------------------
 // [ VM ]
 // -----------------------------------
 
-CsVM* csCreate();
+CsVM* csCreate(void);
 
-// Deinitialize the VM but leaves heap pages alive to allow object counting.
+// Deinitialize static objects so that reference counts can be verified.
 // Afterwards, call `csDestroy` or perform a check on `csCountObjects`.
 void csDeinit(CsVM* vm);
 
@@ -294,7 +345,7 @@ CsResolverFn csGetResolver(CsVM* vm);
 void csSetResolver(CsVM* vm, CsResolverFn resolver);
 
 // The default module resolver. It returns `spec`.
-bool csDefaultResolver(CsVM* vm, uint32_t chunkId, CsStr curUri, CsStr spec, CsStr* outUri);
+bool csDefaultResolver(CsVM* vm, CsResolverParams params);
 
 CsModuleLoaderFn csGetModuleLoader(CsVM* vm);
 void csSetModuleLoader(CsVM* vm, CsModuleLoaderFn loader);
@@ -304,12 +355,17 @@ bool csDefaultModuleLoader(CsVM* vm, CsStr resolvedSpec, CsModuleLoaderResult* o
 
 CsPrintFn csGetPrinter(CsVM* vm);
 void csSetPrinter(CsVM* vm, CsPrintFn print);
-CsErrorFn csGetErrorFn(CsVM* vm);
-void csSetErrorFn(CsVM* vm, CsErrorFn errorFn);
+CsPrintErrorFn csGetErrorPrinter(CsVM* vm);
+void csSetErrorPrinter(CsVM* vm, CsPrintErrorFn print);
+
+CsEvalConfig csDefaultEvalConfig(void);
+CsCompileConfig csDefaultCompileConfig(void);
 
 // Evalutes the source code and returns the result code.
 // If the last statement of the script is an expression, `outVal` will contain the value.
 CsResultCode csEval(CsVM* vm, CsStr src, CsValue* outVal);
+CsResultCode csEvalExt(CsVM* vm, CsStr uri, CsStr src, CsEvalConfig config, CsValue* outVal);
+CsResultCode csCompile(CsVM* vm, CsStr uri, CsStr src, CsCompileConfig config);
 CsResultCode csValidate(CsVM* vm, CsStr src);
 
 /// Returns first compile-time report summary. Must be freed with `csFreeStr`.
@@ -325,8 +381,13 @@ void csReportApiError(CsVM* vm, CsStr msg);
 void* csGetUserData(CsVM* vm);
 void csSetUserData(CsVM* vm, void* userData);
 
+CsStr csResultName(CsResultCode code);
+
 // Verbose flag. In a debug build, this would print more logs.
 extern bool csVerbose;
+
+// Silent flag. Whether to print errors.
+extern bool csSilent;
 
 // -----------------------------------
 // [ Symbols ]
@@ -370,17 +431,22 @@ size_t csGetGlobalRC(CsVM* vm);
 // This can be used to check if all objects were cleaned up after `csDeinit`.
 size_t csCountObjects(CsVM* vm);
 
+// TRACE mode: Dump live objects recorded in global object map.
+void csTraceDumpLiveObjects(CsVM* vm);
+
 // For embedded, Cyber by default uses malloc (it can be configured to use the high-perf mimalloc).
 // If the host uses a different allocator than Cyber, use `csAlloc` to allocate memory
 // that is handed over to Cyber so it knows how to free it.
 // This is also used to manage accessible buffers when embedding WASM.
-void* csAlloc(CsVM* vm, size_t size);
+CsSlice csAlloc(CsVM* vm, size_t size);
 
 // When using the Zig allocator, you'll need to pass the original memory size.
 // For all other allocators, use 1 for `len`.
-void csFree(CsVM* vm, void* ptr, size_t len);
+void csFree(CsVM* vm, CsSlice slice);
 void csFreeStr(CsVM* vm, CsStr str);
 void csFreeStrZ(CsVM* vm, const char* str);
+
+CsAllocator csGetAllocator(CsVM* vm);
 
 // -----------------------------------
 // [ Values ]
@@ -390,8 +456,8 @@ void csFreeStrZ(CsVM* vm, const char* str);
 // -----------------------------------
 
 // Create values.
-CsValue csTrue();
-CsValue csFalse();
+CsValue csTrue(void);
+CsValue csFalse(void);
 CsValue csBool(bool b);
 
 // int64_t is downcasted to a 48-bit int.

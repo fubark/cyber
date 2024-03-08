@@ -5,6 +5,7 @@ const log = cy.log.scoped(.bc_gen);
 const ir = cy.ir;
 const rt = cy.rt;
 const sema = cy.sema;
+const cc = @import("capi.zig");
 const types = cy.types;
 const bt = types.BuiltinTypes;
 const v = cy.fmt.v;
@@ -240,7 +241,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
     c.curNodeId = nodeId;
     if (cy.Trace) {
         const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
-        if (cy.verbose) {
+        if (cc.verbose()) {
             rt.logFmt("{}| {}: `{}` unw={} ntmp={}", &.{
                 cy.fmt.repeat(' ', c.indent * 4), v(@tagName(code)), v(contextStr),
                 v(c.unwindTempIndexStack.items.len), v(c.rega.nextTemp),
@@ -299,7 +300,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
     }
 
     if (cy.Trace) {
-        if (cy.verbose) {
+        if (cc.verbose()) {
             rt.logFmt("{}| end {} unw={} ntmp={}", &.{
                 cy.fmt.repeat(' ', c.indent * 4), v(@tagName(code)),
                 v(c.unwindTempIndexStack.items.len), v(c.rega.nextTemp),
@@ -359,7 +360,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
     if (cy.Trace) {
         c.indent += 1;
         const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
-        if (cy.verbose) {
+        if (cc.verbose()) {
             rt.logFmt("{}( {}: `{}` {} unw={} ntmp={}", &.{
                 cy.fmt.repeat(' ', c.indent * 4), v(@tagName(code)), v(contextStr), v(@tagName(cstr.type)),
                 v(c.unwindTempIndexStack.items.len), v(c.rega.nextTemp),
@@ -417,7 +418,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         }
     };
     if (cy.Trace) {
-        if (cy.verbose) {
+        if (cc.verbose()) {
             rt.logFmt("{}) end {} unw={} ntmp={}", &.{
                 cy.fmt.repeat(' ', c.indent * 4), v(@tagName(code)),
                 v(c.unwindTempIndexStack.items.len), v(c.rega.nextTemp),
@@ -2736,7 +2737,7 @@ fn forRangeStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 fn verbose(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     _ = nodeId;
     const data = c.ir.getStmtData(idx, .verbose);
-    cy.verbose = data.verbose;
+    cc.setVerbose(data.verbose);
 }
 
 fn tryStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
@@ -3246,7 +3247,7 @@ fn pushFuncBlockCommon(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: [
 
     c.curBlock.frameLoc = nodeId;
 
-    if (c.compiler.config.genDebugFuncMarkers) {
+    if (c.compiler.config.gen_debug_func_markers) {
         try c.compiler.buf.pushDebugFuncStart(func, c.id);
     }
 
@@ -3282,7 +3283,7 @@ pub fn popFuncBlockCommon(c: *Chunk, func: *cy.Func) !void {
     // Pop the null boundary index.
     try popUnwind(c, cy.NullU8);
 
-    if (c.compiler.config.genDebugFuncMarkers) {
+    if (c.compiler.config.gen_debug_func_markers) {
         try c.compiler.buf.pushDebugFuncEnd(func, c.id);
     }
 
@@ -3338,7 +3339,7 @@ fn genLambda(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
 }
 
 pub fn shouldGenMainScopeReleaseOps(c: *cy.Compiler) bool {
-    return !c.vm.config.singleRun;
+    return !c.vm.config.single_run;
 }
 
 fn genBlock(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {

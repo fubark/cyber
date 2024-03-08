@@ -37,13 +37,9 @@ pub const Sym = sym.Sym;
 pub const Func = sym.Func;
 
 pub const compiler = @import("compiler.zig");
-pub const Backend = compiler.Backend;
 pub const Compiler = compiler.Compiler;
 pub const Report = compiler.Report;
 pub const CompileResult = compiler.CompileResult;
-pub const CompileConfig = compiler.CompileConfig;
-pub const ValidateConfig = compiler.ValidateConfig;
-pub const CompileErrorType = compiler.CompileErrorType;
 
 pub const chunk = @import("chunk.zig");
 pub const Chunk = chunk.Chunk;
@@ -67,9 +63,7 @@ pub const Value = value.Value;
 pub const ValueUserTag = value.ValueUserTag;
 
 pub const vm = @import("vm.zig");
-pub const EvalConfig = vm.EvalConfig;
 pub const VM = vm.VM;
-pub const EvalError = vm.EvalError;
 pub const buildReturnInfo = vm.buildReturnInfo;
 pub const getStackOffset = vm.getStackOffset;
 pub const getInstOffset = vm.getInstOffset;
@@ -126,18 +120,7 @@ pub const DecodeListIR = cyon.DecodeListIR;
 pub const DecodeValueIR = cyon.DecodeValueIR;
 
 /// Whether to print verbose logs.
-pub export var verbose = false;
 pub var logMemory = false;
-
-comptime {
-    @export(verbose, .{ .name = "csVerbose", .linkage = .Strong });
-}
-
-/// Compile errors are not printed.
-pub var silentError = false;
-
-/// Internal messages are not printed.
-pub var silentInternal = false;
 
 pub const simd = @import("simd.zig");
 
@@ -191,4 +174,18 @@ pub inline fn unsupported() noreturn {
 
 pub inline fn fatal() noreturn {
     panic("error");
+}
+
+pub fn fromTestBackend(backend: @TypeOf(build_options.testBackend)) c.Backend {
+    return switch (backend) {
+        .jit => c.BackendJIT,
+        .vm => c.BackendVM,
+        .tcc => c.BackendTCC,
+        .cc => c.BackendCC,
+    };
+}
+
+pub const c = @import("capi.zig");
+pub fn isAot(backend: c.Backend) bool {
+    return backend == c.BackendTCC or backend == c.BackendCC or backend == c.BackendLLVM;
 }

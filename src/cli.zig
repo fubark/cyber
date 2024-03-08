@@ -1,12 +1,11 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 const cy = @import("cyber.zig");
-const bindings = @import("builtins/bindings.zig");
 const os_mod = @import("std/os.zig");
 const test_mod = @import("std/test.zig");
 const cache = @import("cache.zig");
 const c = @import("capi.zig");
-const bt = cy.types.BuiltinTypes;
 const v = cy.fmt.v;
 const log = cy.log.scoped(.cli);
 const rt = cy.rt;
@@ -16,37 +15,41 @@ const builtins = std.ComptimeStringMap(void, .{
     .{"math"},
 });
 
+const os_res = c.ModuleLoaderResult{
+    .src = os_mod.Src,
+    .srcLen = os_mod.Src.len,
+    .varLoader = os_mod.varLoader,
+    .funcLoader = os_mod.funcLoader,
+    .typeLoader = os_mod.typeLoader,
+    .onTypeLoad = os_mod.onTypeLoad,
+    .onLoad = os_mod.onLoad,
+    .onReceipt = null,
+    .onDestroy = null,
+};
+
+const test_res = c.ModuleLoaderResult{
+    .src = test_mod.Src,
+    .srcLen = test_mod.Src.len,
+    .funcLoader = test_mod.funcLoader,
+    .onLoad = test_mod.onLoad,
+    .onReceipt = null,
+    .varLoader = null,
+    .typeLoader = null,
+    .onDestroy = null,
+    .onTypeLoad = null,
+};
+
 const stdMods = std.ComptimeStringMap(c.ModuleLoaderResult, .{
-    .{"os", c.ModuleLoaderResult{
-        .src = os_mod.Src,
-        .srcLen = os_mod.Src.len,
-        .varLoader = os_mod.varLoader,
-        .funcLoader = os_mod.funcLoader,
-        .typeLoader = os_mod.typeLoader,
-        .onTypeLoad = os_mod.onTypeLoad,
-        .onLoad = os_mod.onLoad,
-        .onReceipt = null,
-        .onDestroy = null,
-    }},
-    .{"test", c.ModuleLoaderResult{
-        .src = test_mod.Src,
-        .srcLen = test_mod.Src.len,
-        .funcLoader = test_mod.funcLoader,
-        .onLoad = test_mod.onLoad,
-        .onReceipt = null,
-        .varLoader = null,
-        .typeLoader = null,
-        .onDestroy = null,
-        .onTypeLoad = null,
-    }},
+    .{"os", os_res},
+    .{"test", test_res},
 });
 
-pub fn setupVMForCLI(vm: *cy.VM) void {
+pub export fn csSetupForCLI(vm: *c.VM) void {
     c.setResolver(@ptrCast(vm), resolve);
     c.setModuleLoader(@ptrCast(vm), loader);
     c.setPrinter(@ptrCast(vm), print);
-    c.setErrorFn(@ptrCast(vm), errorFn);
-    c.setLogger(logFn);
+    c.setErrorPrinter(@ptrCast(vm), printError);
+    c.setLog(logFn);
 }
 
 fn logFn(str: c.Str) callconv(.C) void {
@@ -55,7 +58,7 @@ fn logFn(str: c.Str) callconv(.C) void {
         os_mod.hostFileWrite(2, "\n", 1);
     } else {
         const w = std.io.getStdErr().writer();
-        w.writeAll(c.strSlice(str)) catch cy.fatal();
+        w.writeAll(c.fromStr(str)) catch cy.fatal();
         w.writeByte('\n') catch cy.fatal();
     }
 }
@@ -79,13 +82,13 @@ fn print(_: ?*c.VM, str: c.Str) callconv(.C) void {
         // Temporarily redirect to error for tests to avoid hanging the Zig runner.
         if (builtin.is_test) {
             const w = std.io.getStdErr().writer();
-            const slice = c.strSlice(str);
+            const slice = c.fromStr(str);
             w.writeAll(slice) catch cy.fatal();
             return;
         }
 
         const w = std.io.getStdOut().writer();
-        const slice = c.strSlice(str);
+        const slice = c.fromStr(str);
         w.writeAll(slice) catch cy.fatal();
     }
 }
@@ -93,9 +96,9 @@ fn print(_: ?*c.VM, str: c.Str) callconv(.C) void {
 pub fn loader(vm_: ?*c.VM, spec_: c.Str, out_: [*c]c.ModuleLoaderResult) callconv(.C) bool {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     const out: *c.ModuleLoaderResult = out_;
-    const spec = c.strSlice(spec_);
+    const spec = c.fromStr(spec_);
     if (builtins.get(spec) != null) {
-        return cy.compiler.defaultModuleLoader(vm_, spec_, out);
+        return c.defaultModuleLoader(vm_, spec_, out);
     }
     if (stdMods.get(spec)) |res| {
         out.* = res;
@@ -106,24 +109,26 @@ pub fn loader(vm_: ?*c.VM, spec_: c.Str, out_: [*c]c.ModuleLoaderResult) callcon
         return false;
     }
 
+    const alloc = vm.alloc;
+
     // Load from file or http.
     var src: []const u8 = undefined;
     if (std.mem.startsWith(u8, spec, "http://") or std.mem.startsWith(u8, spec, "https://")) {
-        src = loadUrl(@ptrCast(vm), spec) catch |err| {
+        src = loadUrl(vm, alloc, spec) catch |err| {
             if (err == error.HandledError) {
                 return false;
             } else {
-                const msg = cy.fmt.allocFormat(vm.alloc, "Can not load `{}`. {}", &.{v(spec), v(err)}) catch return false;
-                defer vm.alloc.free(msg);
-                vm.setApiError(msg) catch cy.fatal();
+                const msg = cy.fmt.allocFormat(alloc, "Can not load `{}`. {}", &.{v(spec), v(err)}) catch return false;
+                defer alloc.free(msg);
+                c.reportApiError(@ptrCast(vm), c.toStr(msg));
                 return false;
             }
         };
     } else {
-        src = std.fs.cwd().readFileAlloc(vm.alloc, spec, 1e10) catch |err| {
-            const msg = cy.fmt.allocFormat(vm.alloc, "Can not load `{}`. {}", &.{v(spec), v(err)}) catch return false;
-            defer vm.alloc.free(msg);
-            vm.setApiError(msg) catch cy.fatal();
+        src = std.fs.cwd().readFileAlloc(alloc, spec, 1e10) catch |err| {
+            const msg = cy.fmt.allocFormat(alloc, "Can not load `{}`. {}", &.{v(spec), v(err)}) catch return false;
+            defer alloc.free(msg);
+            c.reportApiError(@ptrCast(vm), c.toStr(msg));
             return false;
         };
     }
@@ -135,14 +140,14 @@ pub fn loader(vm_: ?*c.VM, spec_: c.Str, out_: [*c]c.ModuleLoaderResult) callcon
 }
 
 fn onModuleReceipt(vm_: ?*c.VM, res_: [*c]c.ModuleLoaderResult) callconv(.C) void {
-    const vm: *cy.VM = @ptrCast(@alignCast(vm_));
+    const vm: *c.VM = @ptrCast(vm_);
     const res: *c.ModuleLoaderResult = res_;
-    vm.alloc.free(res.src[0..res.srcLen]);
+    c.free(vm, c.toSlice(res.src[0..res.srcLen]));
 }
 
 fn resolve(vm_: ?*c.VM, params: c.ResolverParams) callconv(.C) bool {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const spec = c.strSlice(params.spec);
+    const spec = c.fromStr(params.spec);
     if (builtins.get(spec) != null) {
         params.resUri.* = spec.ptr;
         params.resUriLen.* = spec.len;
@@ -158,13 +163,14 @@ fn resolve(vm_: ?*c.VM, params: c.ResolverParams) callconv(.C) bool {
         return false;
     }
 
-    const uri = zResolve(@ptrCast(vm), params.chunkId, params.buf[0..params.bufLen], c.strSlice(params.curUri), spec) catch |err| {
+    const alloc = vm.alloc;
+    const uri = zResolve(vm, alloc, params.chunkId, params.buf[0..params.bufLen], c.fromStr(params.curUri), spec) catch |err| {
         if (err == error.HandledError) {
             return false;
         } else {
-            const msg = cy.fmt.allocFormat(vm.alloc, "Resolve module `{}`, error: `{}`", &.{v(spec), v(err)}) catch return false;
-            defer vm.alloc.free(msg);
-            vm.setApiError(msg) catch cy.fatal();
+            const msg = cy.fmt.allocFormat(alloc, "Resolve module `{}`, error: `{}`", &.{v(spec), v(err)}) catch return false;
+            defer alloc.free(msg);
+            c.reportApiError(@ptrCast(vm), c.toStr(msg));
             return false;
         }
     };
@@ -174,10 +180,8 @@ fn resolve(vm_: ?*c.VM, params: c.ResolverParams) callconv(.C) bool {
     return true;
 }
 
-fn zResolve(uvm: *cy.UserVM, chunkId: cy.ChunkId, buf: []u8, curUri: []const u8, spec: []const u8) ![]const u8 {
+fn zResolve(vm: *cy.VM, alloc: std.mem.Allocator, chunkId: cy.ChunkId, buf: []u8, curUri: []const u8, spec: []const u8) ![]const u8 {
     _ = chunkId;
-    const vm = uvm.internal();
-
     if (std.mem.startsWith(u8, spec, "http://") or std.mem.startsWith(u8, spec, "https://")) {
         const uri = try std.Uri.parse(spec);
         if (std.mem.endsWith(u8, uri.host.?, "github.com")) {
@@ -208,12 +212,12 @@ fn zResolve(uvm: *cy.UserVM, chunkId: cy.ChunkId, buf: []u8, curUri: []const u8,
     // Get canonical path.
     const absPath = std.fs.cwd().realpath(path, buf) catch |err| {
         if (err == error.FileNotFound) {
-            var msg = try cy.fmt.allocFormat(vm.alloc, "Import path does not exist: `{}`", &.{v(path)});
+            var msg = try cy.fmt.allocFormat(alloc, "Import path does not exist: `{}`", &.{v(path)});
             if (builtin.os.tag == .windows) {
                 _ = std.mem.replaceScalar(u8, msg, '/', '\\');
             }
-            defer vm.alloc.free(msg);
-            try vm.setApiError(msg);
+            defer alloc.free(msg);
+            c.reportApiError(@ptrCast(vm), c.toStr(msg));
             return error.HandledError;
         } else {
             return err;
@@ -222,9 +226,9 @@ fn zResolve(uvm: *cy.UserVM, chunkId: cy.ChunkId, buf: []u8, curUri: []const u8,
     return absPath;
 }
 
-fn loadUrl(vm: *cy.VM, url: []const u8) ![]const u8 {
-    const specGroup = try cache.getSpecHashGroup(vm.alloc, url);
-    defer specGroup.deinit(vm.alloc);
+fn loadUrl(vm: *cy.VM, alloc: std.mem.Allocator, url: []const u8) ![]const u8 {
+    const specGroup = try cache.getSpecHashGroup(alloc, url);
+    defer specGroup.deinit(alloc);
 
     if (vm.config.reload) {
         // Remove cache entry.
@@ -233,7 +237,7 @@ fn loadUrl(vm: *cy.VM, url: []const u8) ![]const u8 {
         // First check local cache.
         if (try specGroup.findEntryBySpec(url)) |entry| {
             var found = true;
-            const src = cache.allocSpecFileContents(vm.alloc, entry) catch |err| b: {
+            const src = cache.allocSpecFileContents(alloc, entry) catch |err| b: {
                 if (err == error.FileNotFound) {
                     // Fallthrough.
                     found = false;
@@ -243,9 +247,9 @@ fn loadUrl(vm: *cy.VM, url: []const u8) ![]const u8 {
                 }
             };
             if (found) {
-                if (cy.verbose) {
-                    const cachePath = try cache.allocSpecFilePath(vm.alloc, entry);
-                    defer vm.alloc.free(cachePath);
+                if (c.verbose()) {
+                    const cachePath = try cache.allocSpecFilePath(alloc, entry);
+                    defer alloc.free(cachePath);
                     rt.logZFmt("Using cached `{s}` at `{s}`", .{url, cachePath});
                 }
                 return src;
@@ -255,16 +259,16 @@ fn loadUrl(vm: *cy.VM, url: []const u8) ![]const u8 {
 
     const client = vm.httpClient;
 
-    if (cy.verbose) {
+    if (c.verbose()) {
         rt.logZFmt("Fetching `{s}`.", .{url});
     }
 
     const uri = try std.Uri.parse(url);
     var req = client.request(.GET, uri, .{ .allocator = vm.alloc }) catch |err| {
         if (err == error.UnknownHostName) {
-            const msg = try cy.fmt.allocFormat(vm.alloc, "Can not connect to `{}`.", &.{v(uri.host.?)});
-            defer vm.alloc.free(msg);
-            try vm.setApiError(msg);
+            const msg = try cy.fmt.allocFormat(alloc, "Can not connect to `{}`.", &.{v(uri.host.?)});
+            defer alloc.free(msg);
+            c.reportApiError(@ptrCast(vm), c.toStr(msg));
             return error.HandledError;
         } else {
             return err;
@@ -281,26 +285,26 @@ fn loadUrl(vm: *cy.VM, url: []const u8) ![]const u8 {
         },
         else => {
             // Stop immediately.
-            const err = try cy.fmt.allocFormat(vm.alloc, "Can not load `{}`. Response code: {}", &.{v(url), v(req.response.status)});
-            defer vm.alloc.free(err);
-            try vm.setApiError(err);
+            const err = try cy.fmt.allocFormat(alloc, "Can not load `{}`. Response code: {}", &.{v(url), v(req.response.status)});
+            defer alloc.free(err);
+            c.reportApiError(@ptrCast(vm), c.toStr(err));
             return error.HandledError;
         },
     }
 
     var buf: std.ArrayListUnmanaged(u8) = .{};
-    errdefer buf.deinit(vm.alloc);
+    errdefer buf.deinit(alloc);
     var readBuf: [4096]u8 = undefined;
     var read: usize = readBuf.len;
 
     while (read == readBuf.len) {
         read = try client.readAll(&req, &readBuf);
-        try buf.appendSlice(vm.alloc, readBuf[0..read]);
+        try buf.appendSlice(alloc, readBuf[0..read]);
     }
 
     // Cache to local.
-    const entry = try cache.saveNewSpecFile(vm.alloc, specGroup, url, buf.items);
-    entry.deinit(vm.alloc);
+    const entry = try cache.saveNewSpecFile(alloc, specGroup, url, buf.items);
+    entry.deinit(alloc);
 
-    return try buf.toOwnedSlice(vm.alloc);
+    return try buf.toOwnedSlice(alloc);
 }

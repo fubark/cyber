@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
 const cy = @import("cyber.zig");
+const c = @import("capi.zig");
 const log = cy.log.scoped(.main);
 const cli = @import("cli.zig");
 const build_options = @import("build_options");
@@ -13,7 +14,7 @@ comptime {
 
 var verbose = false;
 var reload = false;
-var backend: cy.Backend = .vm;
+var backend: c.Backend = c.BackendVM;
 var dumpStats = false; // Only for trace build.
 var pc: ?u32 = null;
 
@@ -52,13 +53,13 @@ pub fn main() !void {
             } else if (std.mem.eql(u8, arg, "-r")) {
                 reload = true;
             } else if (std.mem.eql(u8, arg, "-vm")) {
-                backend = .vm;
+                backend = c.BackendVM;
             } else if (std.mem.eql(u8, arg, "-cc")) {
-                backend = .cc;
+                backend = c.BackendCC;
             } else if (std.mem.eql(u8, arg, "-tcc")) {
-                backend = .tcc;
+                backend = c.BackendTCC;
             } else if (std.mem.eql(u8, arg, "-jit")) {
-                backend = .jit;
+                backend = c.BackendJIT;
             } else if (std.mem.eql(u8, arg, "-pc")) {
                 i += 1;
                 if (i < args.len) {
@@ -146,34 +147,29 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     const src = try std.fs.cwd().readFileAlloc(alloc, path, 1e9);
     defer alloc.free(src);
     
-    cy.verbose = verbose;
+    c.setVerbose(verbose);
 
     try vm.init(alloc);
-    cli.setupVMForCLI(@ptrCast(&vm));
+    cli.csSetupForCLI(@ptrCast(&vm));
     defer vm.deinit(false);
 
-    const res = vm.compile(path, src, .{
-        .singleRun = builtin.mode == .ReleaseFast,
-        .enableFileModules = true,
-        .genDebugFuncMarkers = true,
-        .backend = backend,
-    }) catch |err| {
-        fmt.panic("unexpected {}\n", &.{fmt.v(err)});
-    };
-    if (res.err) |err| {
-        switch (err) {
-            .tokenize,
-            .parse,
-            .compile, => {
-                if (!cy.silentError) {
-                    const report = try vm.allocLastErrorReport();
-                    defer alloc.free(report);
-                    cy.rt.writeStderr(report);
-                }
-                exit(1);
-            },
+    var config = c.defaultCompileConfig();
+    config.single_run = builtin.mode == .ReleaseFast;
+    config.file_modules = true;
+    config.gen_debug_func_markers = true;
+    config.backend = backend;
+    _ = vm.compile(path, src, config) catch |err| {
+        if (err == error.CompileError) {
+            if (!c.silent()) {
+                const report = c.newFirstReportSummary(@ptrCast(&vm));
+                defer c.freeStr(@ptrCast(&vm), report);
+                cy.rt.writeStderr(c.fromStr(report));
+            }
+            exit(1);
+        } else {
+            fmt.panic("unexpected {}\n", &.{fmt.v(err)});
         }
-    }
+    };
     try cy.debug.dumpBytecode(&vm, .{ .pcContext = pc });
 }
 
@@ -181,28 +177,32 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     const src = try std.fs.cwd().readFileAllocOptions(alloc, path, 1e9, 4096, @alignOf(u8), null);
     defer alloc.free(src);
 
-    cy.verbose = verbose;
+    c.setVerbose(verbose);
 
     try vm.init(alloc);
-    cli.setupVMForCLI(@ptrCast(&vm));
+    cli.csSetupForCLI(@ptrCast(&vm));
     defer vm.deinit(false);
 
-    _ = vm.eval(path, src, .{
-        .singleRun = builtin.mode == .ReleaseFast,
-        .enableFileModules = true,
-        .reload = reload,
-        .backend = backend,
-        .spawnExe = true,
-    }) catch |err| {
+    var config = c.defaultEvalConfig();
+    config.single_run = builtin.mode == .ReleaseFast;
+    config.file_modules = true;
+    config.reload = reload;
+    config.backend = backend;
+    config.spawn_exe = true;
+    _ = vm.eval(path, src, config) catch |err| {
         switch (err) {
-            error.Panic,
-            error.TokenError,
-            error.ParseError,
+            error.Panic => {
+                if (!c.silent()) {
+                    const report = c.newPanicSummary(@ptrCast(&vm));
+                    defer c.freeStr(@ptrCast(&vm), report);
+                    cy.rt.writeStderr(c.fromStr(report));
+                }
+            },
             error.CompileError => {
-                if (!cy.silentError) {
-                    const report = try vm.allocLastErrorReport();
-                    defer alloc.free(report);
-                    cy.rt.writeStderr(report);
+                if (!c.silent()) {
+                    const report = c.newFirstReportSummary(@ptrCast(&vm));
+                    defer c.freeStr(@ptrCast(&vm), report);
+                    cy.rt.writeStderr(c.fromStr(report));
                 }
             },
             else => {

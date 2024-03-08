@@ -30,7 +30,7 @@ pub var nextUniqId: u32 = undefined;
 pub const Src = @embedFile("os.cy");
 pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callconv(.C) bool {
     const out: *cc.FuncResult = out_;
-    const name = cc.strSlice(func.name);
+    const name = cc.fromStr(func.name);
     if (std.mem.eql(u8, funcs[func.idx].@"0", name)) {
         out.ptr = @ptrCast(funcs[func.idx].@"1");
         return true;
@@ -112,7 +112,7 @@ const funcs = [_]NameFunc{
 const NameValue = struct { []const u8, cy.Value };
 var vars: [7]NameValue = undefined;
 pub fn varLoader(_: ?*cc.VM, v: cc.VarInfo, out: [*c]cc.Value) callconv(.C) bool {
-    const name = cc.strSlice(v.name);
+    const name = cc.fromStr(v.name);
     if (std.mem.eql(u8, vars[v.idx].@"0", name)) {
         out.* = vars[v.idx].@"1".val;
         return true;
@@ -130,7 +130,7 @@ const types = [_]NameType{
 
 pub fn typeLoader(_: ?*cc.VM, info: cc.TypeInfo, out_: [*c]cc.TypeResult) callconv(.C) bool {
     const out: *cc.TypeResult = out_;
-    const name = cc.strSlice(info.name);
+    const name = cc.fromStr(info.name);
     if (std.mem.eql(u8, types[info.idx].@"0", name)) {
         out.type = cc.BindTypeCustom;
         out.data.custom = .{
@@ -190,7 +190,7 @@ pub fn zPostTypeLoad(c: *cy.Compiler, mod: cc.Sym) !void {
         vars[6] = .{ "vecBitSize", cy.Value.initI32(0) };
     }
 
-    const sym = cc.fromSym(mod);
+    const sym = cy.Sym.fromC(mod);
     const chunkMod = sym.getMod().?;
     CArrayT = chunkMod.getSym("CArray").?.cast(.object_t).type;
     CDimArrayT = chunkMod.getSym("CDimArray").?.cast(.object_t).type;
@@ -205,7 +205,7 @@ pub fn onLoad(vm_: ?*cc.VM, mod: cc.Sym) callconv(.C) void {
 }
 
 fn zPostLoad(self: *cy.Compiler, mod: cc.Sym) anyerror!void {
-    const b = bindings.ModuleBuilder.init(self, cc.fromSym(mod));
+    const b = bindings.ModuleBuilder.init(self, cy.Sym.fromC(mod));
     _ = b;
 
     // Free vars since they are managed by the module now.

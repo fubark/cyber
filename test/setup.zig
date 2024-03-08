@@ -4,12 +4,11 @@ const build_options = @import("build_options");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const fatal = cy.fatal;
+const c = @import("../src/capi.zig");
 const cy = @import("../src/cyber.zig");
 const cli = @import("../src/cli.zig");
 const vmc = cy.vmc;
 const log = cy.log.scoped(.setup);
-
-const UserError = error{Panic, CompileError, TokenError, ParseError};
 
 pub const Config = struct {
     uri: []const u8 = "main",
@@ -58,44 +57,27 @@ pub const Config = struct {
     }
 };
 
-var testVm: cy.VM = undefined;
+extern fn csSetupForCLI(vm: *c.VM) void;
 
 pub const VMrunner = struct {
-    vm: *cy.VM,
+    vm: *c.VM,
     ctx: ?*anyopaque = null,
 
-    pub fn create() *VMrunner {
-        var new = t.alloc.create(VMrunner) catch fatal();
-        new.init() catch fatal();
-        return new;
-    }
-
-    pub fn destroy(self: *VMrunner) void {
-        self.deinit();
-        t.alloc.destroy(self);
-    }
-
-    fn init(self: *VMrunner) !void {
-        self.* = .{
-            .vm = @ptrCast(&testVm),
+    pub fn init() VMrunner {
+        const vm = c.create();
+        csSetupForCLI(@ptrCast(vm));
+        return .{
+            .vm = @ptrCast(vm),
         };
-        self.vm.init(t.alloc) catch fatal();
-        cli.setupVMForCLI(self.vm);
     }
 
     pub fn deinit(self: *VMrunner) void {
-        self.deinitExt(true);
+        c.deinit(self.vm);
+        c.destroy(self.vm);
     }
 
-    pub fn deinitExt(self: *VMrunner, checkGlobalRC: bool) void {
-        self.vm.deinit(false);
-        if (checkGlobalRC) {
-            cy.arc.checkGlobalRC(self.vm) catch cy.panic("unreleased refcount");
-        }
-    }
-
-    fn deinitValue(self: *VMrunner, val: cy.Value) void {
-        self.vm.release(val);
+    pub fn internal(self: *VMrunner) *cy.VM {
+        return @ptrCast(@alignCast(self.vm));
     }
 
     fn checkMemory(self: *VMrunner) !bool {
@@ -107,136 +89,143 @@ pub const VMrunner = struct {
     }
 
     pub fn getStackTrace(self: *VMrunner) *const cy.StackTrace {
-        return self.vm.getStackTrace();
+        return self.internal().getStackTrace();
     }
 
     pub fn getTrace(self: *VMrunner) *vmc.TraceInfo {
-        return self.vm.trace;
+        return self.internal().trace;
     }
 
-    pub fn assertPanicMsg(self: *VMrunner, exp: []const u8) !void {
-        const msg = try self.allocPanicMsg();
-        defer self.vm.alloc.free(msg);
-        try t.eqStr(msg, exp);
-    }
-
-    fn allocPanicMsg(self: *VMrunner) ![]const u8 {
-        return cy.debug.allocPanicMsg(self.vm);
-    }
-
-    pub fn expectErrorReport(self: *VMrunner, val: anytype, expErr: UserError, expReport: []const u8) !void {
+    pub fn expectErrorReport(self: *VMrunner, res: EvalResult, expErr: c.ResultCode, expReport: []const u8) !void {
         var errorMismatch = false;
-        if (val) |actual_payload| {
-            std.debug.print("expected error.{s}, found {any}\n", .{ @errorName(expErr), actual_payload });
+        if (res.code == c.Success) {
+            std.debug.print("expected error.{s}, found {any}\n", .{ c.fromStr(c.resultName(expErr)), res.value });
             return error.TestUnexpectedError;
-        } else |actual_error| {
-            if (actual_error != expErr) {
-                std.debug.print("expected error.{s}, found error.{s}\n", .{ @errorName(expErr), @errorName(actual_error) });
+        } else {
+            if (res.code != expErr) {
+                std.debug.print("expected error.{s}, found error.{s}\n", .{ c.fromStr(c.resultName(expErr)), c.fromStr(c.resultName(res.code)) });
                 errorMismatch = true;
                 // Continue to compare report.
             }
         }
-        const report = try self.vm.allocLastErrorReport();
-        try eqUserError(t.alloc, report, expReport);
+        const report = try self.getErrorSummary(res.code);
+        defer c.freeStr(self.vm, report);
+        try eqUserError(t.alloc, c.fromStr(report), expReport);
 
         if (errorMismatch) {
             return error.TestUnexpectedError;
         }
     }
 
-    pub fn expectErrorReport2(self: *VMrunner, val: anytype, expReport: []const u8) !void {
+    pub fn expectErrorReport2(self: *VMrunner, res: EvalResult, expReport: []const u8) !void {
         var errorMismatch = false;
-        if (val) |actual_payload| {
-            std.debug.print("expected error, found {any}\n", .{ actual_payload });
+        if (res.code == c.Success) {
+            std.debug.print("expected error, found {any}\n", .{ res.value });
             return error.TestUnexpectedError;
-        } else |_| {
-            // Continue to compare report.
         }
-        const report = try self.vm.allocLastErrorReport();
-        try eqUserError(t.alloc, report, expReport);
+        // Continue to compare report.
+        const report = try self.getErrorSummary(res.code);
+        defer c.freeStr(self.vm, report);
+        try eqUserError(t.alloc, c.fromStr(report), expReport);
 
         if (errorMismatch) {
             return error.TestUnexpectedError;
         }
     }
 
-    pub fn evalExt(self: *VMrunner, config: Config, src: []const u8) !cy.Value {
-        if (config.silent) {
-            cy.silentError = true;
+    fn getErrorSummary(self: *VMrunner, code: c.ResultCode) !c.Str {
+        if (code == c.ErrorCompile) {
+            return c.newFirstReportSummary(self.vm);
+        } else if (code == c.ErrorPanic) {
+            return c.newPanicSummary(self.vm);
         }
+        return error.Unsupported;
+    }
+
+    pub fn evalPass(run: *VMrunner, config: Config, src: []const u8) !void {
+        return run.eval(config, src, null);
+    }
+
+    pub fn eval(run: *VMrunner, config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalResult) anyerror!void) !void {
+        const vm = run.vm;
         defer {
             if (config.silent) {
-                cy.silentError = false;
+                c.setSilent(false);
+            }
+            if (config.debug) {
+                c.setVerbose(false);
+                t.setLogLevel(.warn);
             }
         }
-        try self.resetEnv();    
-        return self.vm.eval(config.uri, src, .{
-            .singleRun = false,
-            .enableFileModules = config.enableFileModules,
-        }) catch |err| {
-            switch (err) {
-                error.Panic,
-                error.TokenError,
-                error.ParseError,
-                error.CompileError => {
-                    if (!cy.silentError) {
-                        const report = try self.vm.allocLastErrorReport();
-                        defer t.alloc.free(report);
-                        std.debug.print("{s}", .{report});
-                    }
-                },
-                else => {},
-            }
-            return err;
-        };
-    }
-
-    pub fn evalExtNoReset(self: *VMrunner, config: Config, src: []const u8) !cy.Value {
         if (config.silent) {
-            cy.silentError = true;
+            c.setSilent(true);
+        }
+        if (config.debug) {
+            c.setVerbose(true);
+            t.setLogLevel(.debug);
+        }
+
+        // Set and restore cwd.
+        var cwdBuf: [1024]u8 = undefined;
+        const cwd = try std.os.getcwd(&cwdBuf);
+        if (config.chdir) |chdir| {
+            try std.os.chdir(chdir);
         }
         defer {
-            if (config.silent) {
-                cy.silentError = false;
+            if (config.chdir != null) {
+                std.os.chdir(cwd) catch @panic("error");
             }
         }
-        return self.vm.eval(config.uri, src, .{ .singleRun = false, .enableFileModules = config.enableFileModules, .reload = true }) catch |err| {
-            switch (err) {
-                error.Panic,
-                error.TokenError,
-                error.ParseError,
-                error.CompileError => {
-                    if (!cy.silentError) {
-                        const report = try self.vm.allocLastErrorReport();
-                        defer t.alloc.free(report);
-                        std.debug.print("{s}", .{report});
-                    }
-                },
-                else => {},
-            }
-            return err;
-        };
-    }
 
-    pub fn eval(self: *VMrunner, src: []const u8) !cy.Value {
-        return self.evalExt(.{ .uri = "main" }, src);
-    }
-
-    pub fn resetEnv(self: *VMrunner) !void {
-        self.vm.deinit(false);
-        const rc = cy.arc.getGlobalRC(self.vm);
-        if (rc != 0) {
-            log.tracev("{} unreleased refcount from previous eval", .{rc});
-            return error.UnreleasedObjects;
+        run.ctx = config.ctx;
+        if (config.preEval) |preEval| {
+            preEval(run);
         }
-        try self.vm.init(t.alloc);
-        cli.setupVMForCLI(self.vm);
+
+        var resv: c.Value = undefined;
+        const res_code = c.evalExt(vm, c.toStr(config.uri), c.toStr(src), .{ 
+            .single_run = false,
+            .file_modules = config.enableFileModules,
+            .gen_all_debug_syms = config.debug,
+            .backend = cy.fromTestBackend(build_options.testBackend),
+            .spawn_exe = false,
+            .reload = false,
+        }, @ptrCast(&resv));
+
+        if (optCb) |cb| {
+            const res = EvalResult{
+                .code = res_code,
+                .value = resv,
+            };
+            cb(run, res) catch |err| {
+                if (err == error.EvalError) {
+                    printErrorReport(vm, res_code);
+                }
+                return err;
+            };
+        }  else {
+            if (res_code != c.Success) {
+                printErrorReport(vm, res_code);
+                return error.EvalError;
+            }
+        }
+
+        // Deinit, so global objects from builtins are released.
+        c.deinit(vm);
+
+        // Run GC after runtime syms are released.
+        if (config.cleanupGC) {
+            _ = c.performGC(vm);
+        }
+
+        if (config.checkGlobalRc) {
+            if (c.getGlobalRC(vm) != 0) {
+                c.traceDumpLiveObjects(vm);
+                cy.panic("unreleased refcount");
+            }
+        }
     }
 
-    fn evalNoReset(self: *VMrunner, src: []const u8) !cy.Value {
-        return self.evalExtNoReset(.{ .uri = "main" }, src);
-    }
-    
     pub fn valueIsString(_: *VMrunner, val: cy.Value, exp: []const u8) !void {
         if (val.isString()) {
             try t.eqStr(val.asString(), exp);
@@ -284,149 +273,82 @@ pub const VMrunner = struct {
         }
         return dupe;
     }
-
-    fn parse(self: *VMrunner, src: []const u8) !cy.ParseResultView {
-        _ = self;
-        _ = src;
-        return undefined;
-    }
 };
 
 pub fn compile(config: Config, src: []const u8) !void {
-    const run = VMrunner.create();
-    defer t.alloc.destroy(run);
+    var run = VMrunner.init();
+    defer run.deinit();
+    
     defer {
         if (config.silent) {
-            cy.silentError = false;
-            cy.silentInternal = false;
+            c.setSilent(false);
         }
         if (config.debug) {
-            cy.verbose = false;
+            c.setVerbose(false);
             t.setLogLevel(.warn);
         }
     }
-    errdefer run.vm.deinit(false);
-    var checkGlobalRC = true;
 
     if (config.silent) {
-        cy.silentError = true;
-        cy.silentInternal = true;
+        c.setSilent(true);
     }
     if (config.debug) {
-        cy.verbose = true;
+        c.setVerbose(true);
         t.setLogLevel(.debug);
     }
 
-    const res = try run.vm.compile(config.uri, src, .{ 
-        .singleRun = false,
-        .enableFileModules = config.enableFileModules,
-        // .genAllDebugSyms = config.debug,
-        .backend = cy.Backend.fromTestBackend(build_options.testBackend),
-    });
-    if (res.err) |_| {
-        try printErrorReport(run.vm, error.CompileError);
-        checkGlobalRC = false;
+    var compile_c = c.defaultCompileConfig();
+    compile_c.single_run = false;
+    compile_c.file_modules = config.enableFileModules;
+    // .genAllDebugSyms = config.debug,
+    compile_c.backend = cy.fromTestBackend(build_options.testBackend);
+
+    const res_code = c.compile(run.vm, c.toStr(config.uri), c.toStr(src), compile_c);
+    if (res_code != c.Success) {
+        printErrorReport(run.vm, res_code);
         return error.CompileError;
     }
-
-    run.vm.deinit(false);
 }
 
-pub const EvalResult = anyerror!cy.Value;
+pub const EvalResult = struct {
+    code: c.ResultCode,
+    value: c.Value,
+
+    pub fn getValueC(self: EvalResult) !c.Value {
+        if (self.code != c.Success) {
+            return error.EvalError;
+        }
+        return self.value;
+    }
+
+    pub fn getValue(self: EvalResult) !cy.Value {
+        if (self.code != c.Success) {
+            return error.EvalError;
+        }
+        return @as(cy.Value, @bitCast(self.value));
+    }
+};
 
 pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalResult) anyerror!void) !void {
-    const run = VMrunner.create();
-    defer t.alloc.destroy(run);
-    defer {
-        if (config.silent) {
-            cy.silentError = false;
-            cy.silentInternal = false;
-        }
-        if (config.debug) {
-            cy.verbose = false;
-            t.setLogLevel(.warn);
-        }
-    }
-    errdefer run.vm.deinit(false);
-    var checkGlobalRC = true;
-
-    if (config.silent) {
-        cy.silentError = true;
-        cy.silentInternal = true;
-    }
-    if (config.debug) {
-        cy.verbose = true;
-        t.setLogLevel(.debug);
-    }
-
-    // Set and restore cwd.
-    var cwdBuf: [1024]u8 = undefined;
-    const cwd = try std.os.getcwd(&cwdBuf);
-    if (config.chdir) |chdir| {
-        try std.os.chdir(chdir);
-    }
-    defer {
-        if (config.chdir != null) {
-            std.os.chdir(cwd) catch @panic("error");
-        }
-    }
-
-    run.ctx = config.ctx;
-    if (config.preEval) |preEval| {
-        preEval(run);
-    }
-
-    const res = run.vm.eval(config.uri, src, .{ 
-        .singleRun = false,
-        .enableFileModules = config.enableFileModules,
-        .genAllDebugSyms = config.debug,
-        .backend = cy.Backend.fromTestBackend(build_options.testBackend),
-    });
-
-    if (optCb) |cb| {
-        cb(run, res) catch |err| {
-            try printErrorReport(run.vm, err);
-            checkGlobalRC = false;
-            return err;
-        };
-    }  else {
-        _ = res catch |err| {
-            try printErrorReport(run.vm, err);
-            checkGlobalRC = false;
-            return err;
-        };
-    }
-
-    // Deinit, so global objects from builtins are released.
-    run.vm.deinitRtObjects();
-    run.vm.compiler.deinitModRetained();
-
-    // Run GC after runtime syms are released.
-    if (config.cleanupGC) {
-        _ = try cy.arc.performGC(run.vm);
-    }
-
-    if (config.checkGlobalRc) {
-        try cy.arc.checkGlobalRC(run.vm);
-    }
-    run.vm.deinit(false);
+    var run = VMrunner.init();
+    defer run.deinit();
+    try run.eval(config, src, optCb);
 }
 
-fn printErrorReport(vm: *cy.VM, err: anyerror) !void {
-    if (cy.silentError) {
+pub fn printErrorReport(vm: *c.VM, code: c.ResultCode) void {
+    if (c.silent()) {
         return;
     }
-    switch (err) {
-        error.ExePanic => {
-            std.debug.print("{s}", .{ vm.lastExeError });
+    switch (code) {
+        c.ErrorPanic => {
+            const summary = c.newPanicSummary(vm);
+            defer c.freeStr(vm, summary);
+            std.debug.print("{s}", .{c.fromStr(summary)});
         },
-        error.Panic,
-        error.TokenError,
-        error.ParseError,
-        error.CompileError => {
-            const report = try vm.allocLastErrorReport();
-            defer t.alloc.free(report);
-            std.debug.print("{s}", .{report});
+        c.ErrorCompile => {
+            const summary = c.newFirstReportSummary(vm);
+            defer c.freeStr(vm, summary);
+            std.debug.print("{s}", .{c.fromStr(summary)});
         },
         else => {},
     }
@@ -437,8 +359,7 @@ pub fn evalPass(config: Config, src: []const u8) !void {
 }
 
 /// relPath does not have to physically exist.
-pub fn eqUserError(alloc: std.mem.Allocator, act: [:0]const u8, expTmpl: []const u8) !void {
-    defer alloc.free(act);
+pub fn eqUserError(alloc: std.mem.Allocator, act: []const u8, expTmpl: []const u8) !void {
     var exp: std.ArrayListUnmanaged(u8) = .{};
     defer exp.deinit(alloc);
     var curTmpl = expTmpl;

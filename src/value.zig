@@ -6,6 +6,7 @@ const t = stdx.testing;
 const debug = builtin.mode == .Debug;
 const log = cy.log.scoped(.value);
 const cy = @import("cyber.zig");
+const c = @import("capi.zig");
 const rt = cy.rt;
 const bt = cy.types.BuiltinTypes;
 const fmt = @import("fmt.zig");
@@ -529,6 +530,21 @@ pub const Value = packed union {
                 return .object;
             },
         }
+    }
+
+    pub fn fromSliceC(self: c.ValueSlice) []const Value {
+        return @ptrCast(self.ptr[0..self.len]);
+    }
+
+    pub fn toSliceC(slice: []const cy.Value) c.ValueSlice {
+        return .{
+            .ptr = @ptrCast(slice.ptr),
+            .len = slice.len,
+        };
+    }
+
+    pub fn toC(self: Value) c.Value {
+        return @bitCast(self);
     }
 };
 

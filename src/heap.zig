@@ -54,6 +54,9 @@ pub fn getAllocator() std.mem.Allocator {
             return std.heap.c_allocator;
         },
         .zig => {
+            if (builtin.is_test) {
+                return t.alloc;
+            }
             if (cy.isWasm) {
                 return std.heap.wasm_allocator;
             } else {
@@ -2067,7 +2070,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                     if (releaseChildren) {
                         if (entry.data.custom_object.getChildrenFn) |getChildren| {
                             const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                            for (cc.valueSlice(children)) |child| {
+                            for (Value.fromSliceC(children)) |child| {
                                 if (skipCycChildren and child.isGcConfirmedCyc()) {
                                     continue;
                                 }

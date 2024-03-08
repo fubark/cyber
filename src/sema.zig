@@ -626,10 +626,10 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
                 } else if (std.mem.eql(u8, "dumpBytecode", name)) {
                     _ = try c.ir.pushStmt(c.alloc, .dumpBytecode, nodeId, {});
                 } else if (std.mem.eql(u8, "verbose", name)) {
-                    cy.verbose = true;
+                    cc.setVerbose(true);
                     _ = try c.ir.pushStmt(c.alloc, .verbose, nodeId, .{ .verbose = true });
                 } else if (std.mem.eql(u8, "verboseOff", name)) {
-                    cy.verbose = false;
+                    cc.setVerbose(false);
                     _ = try c.ir.pushStmt(c.alloc, .verbose, nodeId, .{ .verbose = false });
                 } else {
                     return c.reportErrorFmt("Unsupported annotation: {}", &.{v(name)}, nodeId);
@@ -980,8 +980,8 @@ pub fn resolveModuleSpec(self: *cy.Chunk, buf: []u8, spec: []const u8, nodeId: c
     var resUriLen: usize = undefined;
     const params: cc.ResolverParams = .{
         .chunkId = self.id,
-        .curUri = cc.initStr(self.srcUri),
-        .spec = cc.initStr(spec),
+        .curUri = cc.toStr(self.srcUri),
+        .spec = cc.toStr(spec),
         .buf = buf.ptr,
         .bufLen = buf.len,
         .resUri = @ptrCast(&resUri),
@@ -1076,8 +1076,8 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     };
 
     const info = cc.TypeInfo{
-        .mod = cc.initSym(@ptrCast(c.sym)),
-        .name = cc.initStr(name),
+        .mod = c.sym.sym().toC(),
+        .name = cc.toStr(name),
         .idx = c.curHostTypeIdx,
     };
     c.curHostTypeIdx += 1;
@@ -1125,8 +1125,8 @@ pub fn getHostTypeId(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId) !cy.Type
     };
 
     const info = cc.TypeInfo{
-        .mod = cc.initSym(@ptrCast(c.sym)),
-        .name = cc.initStr(name),
+        .mod = c.sym.sym().toC(),
+        .name = cc.toStr(name),
         .idx = c.curHostTypeIdx,
     };
     c.curHostTypeIdx += 1;
@@ -1367,8 +1367,8 @@ pub fn declareMethod(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: Fun
 
 pub fn declareHostFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: FuncDecl) !*cy.Func {
     const info = cc.FuncInfo{
-        .mod = cc.initSym(parent),
-        .name = cc.initStr(decl.namePath),
+        .mod = parent.toC(),
+        .name = cc.toStr(decl.namePath),
         .funcSigId = decl.funcSigId,
         .idx = c.curHostFuncIdx,
     };
@@ -1465,8 +1465,8 @@ fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
     const decl = try resolveLocalDeclNamePath(c, varSpec.data.varSpec.name);
 
     const info = cc.VarInfo{
-        .mod = cc.initSym(@ptrCast(c.sym)),
-        .name = cc.initStr(decl.namePath),
+        .mod = c.sym.sym().toC(),
+        .name = cc.toStr(decl.namePath),
         .idx = c.curHostVarIdx,
     };
     c.curHostVarIdx += 1;

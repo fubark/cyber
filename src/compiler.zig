@@ -60,7 +60,7 @@ pub const Compiler = struct {
     /// Imports are queued.
     importTasks: std.ArrayListUnmanaged(ImportTask),
 
-    config: CompileConfig,
+    config: cc.CompileConfig,
 
     /// Tracks whether an error was set from the API.
     hasApiError: bool,
@@ -110,7 +110,7 @@ pub const Compiler = struct {
             .chunkMap = .{},
             .genSymMap = .{},
             .importTasks = .{},
-            .config = .{}, 
+            .config = cc.defaultCompileConfig(), 
             .hasApiError = false,
             .apiError = "",
             .main_chunk = undefined,
@@ -151,7 +151,7 @@ pub const Compiler = struct {
         for (self.chunks.items) |chunk| {
             log.tracev("Deinit chunk `{s}`", .{chunk.srcUri});
             if (chunk.onDestroy) |onDestroy| {
-                onDestroy(@ptrCast(self.vm), cc.initSym(@ptrCast(chunk.sym)));
+                onDestroy(@ptrCast(self.vm), cy.Sym.toC(@ptrCast(chunk.sym)));
             }
             chunk.deinit();
             self.alloc.destroy(chunk);
@@ -214,7 +214,7 @@ pub const Compiler = struct {
         self.config = config;
 
         var finalSrcUri: []const u8 = undefined;
-        if (!cy.isWasm and builtin.os.tag != .freestanding and config.enableFileModules) {
+        if (!cy.isWasm and builtin.os.tag != .freestanding and config.file_modules) {
             // Ensure that `srcUri` is resolved.
             finalSrcUri = std.fs.cwd().realpathAlloc(self.alloc, srcUri) catch |err| {
                 log.tracev("Could not resolve main src uri: {s}", .{srcUri});
@@ -314,11 +314,11 @@ pub const Compiler = struct {
             chunk.ir.setStmtData(0, .root, .{ .bodyHead = chunk.rootStmtBlock.first });
         }
 
-        if (!config.skipCodegen) {
+        if (!config.skip_codegen) {
             log.tracev("Perform codegen.", .{});
 
             switch (self.config.backend) {
-                .jit => {
+                cc.BackendJIT => {
                     if (cy.isWasm) return error.Unsupported;
                     try jitgen.gen(self);
                     return .{ .jit = .{
@@ -326,21 +326,22 @@ pub const Compiler = struct {
                         .buf = self.jitBuf,
                     }};
                 },
-                .tcc, .cc => {
+                cc.BackendTCC, cc.BackendCC => {
                     if (cy.isWasm or !cy.hasCLI) return error.Unsupported;
                     const res = try cgen.gen(self);
                     return .{ .aot = res };
                 },
-                .llvm => {
+                cc.BackendLLVM => {
                     // try llvm_gen.genNativeBinary(self);
                     return error.TODO;
                 },
-                .vm => {
+                cc.BackendVM => {
                     try bcgen.genAll(self);
                     return .{
                         .vm = self.buf,
                     };
                 },
+                else => return error.Unsupported,
             }
             log.tracev("Done. Perform codegen.", .{});
         }
@@ -568,7 +569,7 @@ fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
     self.hasApiError = false;
     log.tracev("Invoke module loader: {s}", .{task.absSpec});
 
-    if (!self.moduleLoader.?(@ptrCast(self.vm), cc.initStr(task.absSpec), &res)) {
+    if (!self.moduleLoader.?(@ptrCast(self.vm), cc.toStr(task.absSpec), &res)) {
         if (task.fromChunk) |from| {
             if (task.nodeId == cy.NullNode) {
                 if (self.hasApiError) {
@@ -682,7 +683,7 @@ fn declareImportsAndTypes(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
             }
 
             if (chunk.onTypeLoad) |onTypeLoad| {
-                onTypeLoad(@ptrCast(self.vm), cc.initSym(@ptrCast(chunk.sym)));
+                onTypeLoad(@ptrCast(self.vm), chunk.sym.sym().toC());
             }
         }
 
@@ -880,7 +881,7 @@ fn declareSymbols(self: *Compiler) !void {
         }
 
         if (chunk.onLoad) |onLoad| {
-            onLoad(@ptrCast(self.vm), cc.initSym(@ptrCast(chunk.sym)));
+            onLoad(@ptrCast(self.vm), chunk.sym.sym().toC());
         }
     }
 }
@@ -947,35 +948,6 @@ pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *Com
     }.initCompat;
 }
 
-pub const Backend = enum(u8) {
-    vm,
-    jit,
-    tcc,
-    cc,
-    llvm,
-
-    pub fn fromTestBackend(backend: @TypeOf(build_options.testBackend)) Backend {
-        return std.meta.stringToEnum(Backend, @tagName(backend)).?;
-    }
-
-    pub fn isAot(self: Backend) bool {
-        return self == .tcc or self == .cc or self == .llvm;
-    }
-};
-
-pub const CompileConfig = struct {
-    singleRun: bool = false,
-    skipCodegen: bool = false,
-    enableFileModules: bool = false,
-    genDebugFuncMarkers: bool = false,
-    backend: Backend = .vm,
-    emitSourceMap: bool = false,
-};
-
-pub const ValidateConfig = struct {
-    enableFileModules: bool = false,
-};
-
 pub fn defaultModuleResolver(_: ?*cc.VM, params: cc.ResolverParams) callconv(.C) bool {
     params.resUri.* = params.spec.buf;
     params.resUriLen.* = params.spec.len;
@@ -984,10 +956,10 @@ pub fn defaultModuleResolver(_: ?*cc.VM, params: cc.ResolverParams) callconv(.C)
 
 pub fn defaultModuleLoader(vm_: ?*cc.VM, spec: cc.Str, out_: [*c]cc.ModuleLoaderResult) callconv(.C) bool {
     const out: *cc.ModuleLoaderResult = out_;
-    const name = cc.strSlice(spec);
+    const name = cc.fromStr(spec);
     if (std.mem.eql(u8, name, "builtins")) {
         const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-        const aot = vm.compiler.config.backend.isAot();
+        const aot = cy.isAot(vm.compiler.config.backend);
         out.* = .{
             .src = if (aot) cy_mod.Src else cy_mod.VmSrc,
             .srcLen = if (aot) cy_mod.Src.len else cy_mod.VmSrc.len,
@@ -1015,13 +987,6 @@ pub fn defaultModuleLoader(vm_: ?*cc.VM, spec: cc.Str, out_: [*c]cc.ModuleLoader
         return true;
     }
     return false;
-}
-
-comptime {
-    if (build_options.rt != .pm) {
-        @export(defaultModuleResolver, .{ .name = "csDefaultModuleResolver", .linkage = .Strong });
-        @export(defaultModuleLoader, .{ .name = "csDefaultModuleLoader", .linkage = .Strong });
-    }
 }
 
 test "vm compiler internals." {

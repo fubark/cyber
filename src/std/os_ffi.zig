@@ -117,7 +117,7 @@ pub fn allocFFI(vm: *cy.VM) !Value {
 
 pub fn ffiGetChildren(_: ?*c.VM, obj: ?*anyopaque) callconv(.C) c.ValueSlice {
     var ffi: *FFI = @ptrCast(@alignCast(obj));
-    return c.initValueSlice(ffi.managed.items);
+    return Value.toSliceC(ffi.managed.items);
 }
 
 pub fn ffiFinalizer(vm_: ?*c.VM, obj: ?*anyopaque) callconv(.C) void {

@@ -938,7 +938,6 @@ typedef struct VM {
         void* vtable;
     } httpClient;
     void* stdHttpClient;
-    size_t expGlobalRC;
     ZList varSymExtras;
     size_t endLocal;
 
@@ -954,7 +953,6 @@ typedef struct VM {
     void* stdHttpClient;
     Value emptyString;
     Value emptyArray;
-    size_t expGlobalRC;
     ZCyList varSymExtras;
 
     size_t endLocal;
@@ -1026,7 +1024,7 @@ typedef Value (*HostFuncFn)(VM* vm, const Value* args, uint8_t nargs);
 ResultCode execBytecode(VM* vm);
 
 // Zig vars.
-extern bool verbose;
+extern bool csVerbose;
 
 // Zig functions.
 void zFatal();

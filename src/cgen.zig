@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const cy = @import("cyber.zig");
+const cc = @import("capi.zig");
 const rt = cy.rt;
 const ir = cy.ir;
 const bt = cy.types.BuiltinTypes;
@@ -519,7 +520,7 @@ pub fn gen(self: *cy.Compiler) !cy.compiler.AotCompileResult {
             .compiler = &compiler,
             .errNodeId = cy.NullId,
             .indent = 0,
-            .emitSourceMap = self.config.emitSourceMap,
+            .emitSourceMap = self.config.emit_source_map,
             .ast = chunk.ast,
             .srcUri = chunk.srcUri,
         };
@@ -577,7 +578,7 @@ pub fn gen(self: *cy.Compiler) !cy.compiler.AotCompileResult {
     }
     errdefer self.alloc.free(exePath); 
 
-    if (self.config.backend == .tcc) {
+    if (self.config.backend == cc.BackendTCC) {
         // const src = try std.fs.cwd().readFileAllocOptions(self.alloc, outPath, 1e9, null, @alignOf(u8), 0);
         // defer self.alloc.free(src);
 
@@ -843,8 +844,8 @@ fn genStmt(c: *Chunk, loc: u32) anyerror!void {
         // .switchStmt         => try switchStmt(c, idx, nodeId),
         // .tryStmt            => try tryStmt(c, idx, nodeId),
         .verbose            => {
-            if (cy.Trace and !cy.verbose) {
-                cy.verbose = true;
+            if (cy.Trace and !cc.verbose()) {
+                cc.setVerbose(true);
                 c.proc().resetVerboseOnEnd = true;
             }
         },

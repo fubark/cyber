@@ -9,6 +9,7 @@ const stencils = switch (builtin.cpu.arch) {
 };
 const log = cy.log.scoped(.jit_gen);
 const bt = cy.types.BuiltinTypes;
+const cc = @import("../capi.zig");
 const v = cy.fmt.v;
 const rt = cy.rt;
 const ir = cy.ir;
@@ -165,7 +166,7 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
         const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
         log.tracev("----{s}: {{{s}}}", .{@tagName(code), contextStr});
 
-        if (cy.verbose) {
+        if (cc.verbose()) {
             dumpEndPc = try genCallDumpJitSection(c, idx, true);
         }
 
@@ -233,7 +234,7 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
     log.tracev("----{s}: end", .{@tagName(code)});
 
     if (cy.Trace) {
-        if (cy.verbose) {
+        if (cc.verbose()) {
             assm.patchMovPcRelTo(c, dumpEndPc, c.jitGetPos());
         }
     }
@@ -806,7 +807,7 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
         log.tracev("{s}: {{{s}}} {s}", .{@tagName(code), contextStr, @tagName(cstr.type)});
 
-        if (cy.verbose) {
+        if (cc.verbose()) {
             dumpEndPc = try genCallDumpJitSection(c, idx, false);
         }
 
@@ -859,7 +860,7 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
     log.tracev("{s}: end", .{@tagName(code)});
 
     if (cy.Trace) {
-        if (cy.verbose) {
+        if (cc.verbose()) {
             assm.patchMovPcRelTo(c, dumpEndPc, c.jitGetPos());
         }
     }
@@ -1238,5 +1239,5 @@ fn retExprStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
 fn verbose(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     _ = nodeId;
     const data = c.ir.getStmtData(idx, .verbose);
-    cy.verbose = data.verbose;
+    cc.setVerbose(data.verbose);
 }

@@ -1,18 +1,53 @@
-const cy = @import("cyber.zig");
-
 /// Using C headers as the single source of truth.
+const std = @import("std");
 const c = @cImport({
     @cInclude("include/cyber.h");
 });
 
+pub fn verbose() bool {
+    return c.csVerbose;
+}
+pub fn setVerbose(v: bool) void {
+    c.csVerbose = v;
+}
+pub fn silent() bool {
+    return c.csSilent;
+}
+pub fn setSilent(v: bool) void {
+    c.csSilent = v;
+}
+pub const Allocator = c.CsAllocator;
+pub fn toAllocator(alloc: std.mem.Allocator) Allocator {
+    return .{ .ptr = alloc.ptr, .vtable = @ptrCast(alloc.vtable) };
+}
+pub fn fromAllocator(alloc: Allocator) std.mem.Allocator {
+    return .{ .ptr = @ptrCast(alloc.ptr), .vtable = @ptrCast(@alignCast(alloc.vtable)) };
+}
+pub fn getLog() LogFn {
+    return c.csLog;
+}
+pub fn setLog(func: LogFn) void {
+    c.csLog = func;
+}
+pub const getAllocator = c.csGetAllocator;
+pub const reportApiError = c.csReportApiError;
+pub const defaultResolver = c.csDefaultResolver;
+pub const defaultModuleLoader = c.csDefaultModuleLoader;
 pub const getVersion = c.csGetVersion;
 pub const getFullVersion = c.csGetFullVersion;
 pub const getCommit = c.csGetCommit;
 pub const getBuild = c.csGetBuild;
 pub const create = c.csCreate;
+pub const deinit = c.csDeinit;
 pub const destroy = c.csDestroy;
 pub const validate = c.csValidate;
+pub const defaultEvalConfig = c.csDefaultEvalConfig;
 pub const eval = c.csEval;
+pub const defaultCompileConfig = c.csDefaultCompileConfig;
+pub const compile = c.csCompile;
+pub const freeStr = c.csFreeStr;
+pub const free = c.csFree;
+pub const evalExt = c.csEvalExt;
 pub const listLen = c.csListLen;
 pub const listCap = c.csListCap;
 pub const listAppend = c.csListAppend;
@@ -25,6 +60,7 @@ pub const getTypeId = c.csGetTypeId;
 pub const newFunc = c.csNewFunc;
 pub const newPointer = c.csNewPointer;
 pub const newType = c.csNewType;
+pub const newEmptyMap = c.csNewEmptyMap;
 pub const symbol = c.csSymbol;
 pub const asSymbolId = c.csAsSymbolId;
 pub const csTrue = c.csTrue;
@@ -34,6 +70,7 @@ pub const integer = c.csInteger;
 pub const asBool = c.csAsBool;
 pub const toBool = c.csToBool;
 pub const declareUntypedFunc = c.csDeclareUntypedFunc;
+pub const declareFunc = c.csDeclareFunc;
 pub const expandTypeTemplate = c.csExpandTypeTemplate;
 pub const setResolver = c.csSetResolver;
 pub const setModuleLoader = c.csSetModuleLoader;
@@ -45,12 +82,26 @@ pub const getGlobalRC = c.csGetGlobalRC;
 pub const newFirstReportSummary = c.csNewFirstReportSummary;
 pub const newPanicSummary = c.csNewPanicSummary;
 pub const release = c.csRelease;
+pub const retain = c.csRetain;
+pub const performGC = c.csPerformGC;
+pub const traceDumpLiveObjects = c.csTraceDumpLiveObjects;
+pub const resultName = c.csResultName;
 
-pub const Str = c.CsStr;
-pub fn strSlice(str: Str) []const u8 {
+pub const Slice = c.CsSlice;
+pub fn fromSlice(str: Slice) []const u8 {
     return str.buf[0..str.len];
 }
-pub fn initStr(s: []const u8) Str {
+pub fn toSlice(s: []const u8) Slice {
+    return .{
+        .buf = s.ptr,
+        .len = s.len,
+    };
+}
+pub const Str = c.CsStr;
+pub fn fromStr(str: Str) []const u8 {
+    return str.buf[0..str.len];
+}
+pub fn toStr(s: []const u8) Str {
     return .{
         .buf = s.ptr,
         .len = s.len,
@@ -58,20 +109,13 @@ pub fn initStr(s: []const u8) Str {
 }
 
 pub const ValueSlice = c.CsValueSlice;
-pub fn valueSlice(self: ValueSlice) []const cy.Value {
-    return @ptrCast(self.ptr[0..self.len]);
-}
-pub fn initValueSlice(slice: []const cy.Value) ValueSlice {
-    return .{
-        .ptr = @ptrCast(slice.ptr),
-        .len = slice.len,
-    };
-}
-
 pub const FuncFn = c.CsFuncFn;
 pub const PrintFn = c.CsPrintFn;
 pub const PrintErrorFn = c.CsPrintErrorFn;
 pub const LogFn = c.CsLogFn;
+pub const ValidateConfig = c.CsValidateConfig;
+pub const CompileConfig = c.CsCompileConfig;
+pub const EvalConfig = c.CsEvalConfig;
 pub const FuncInfo = c.CsFuncInfo;
 pub const FuncResult = c.CsFuncResult;
 pub const ModuleLoaderFn = c.CsModuleLoaderFn;
@@ -95,12 +139,6 @@ pub const VarResult = c.CsVarResult;
 pub const Value = c.CsValue;
 pub const VM = c.CsVM;
 pub const Sym = c.CsSym;
-pub fn initSym(sym: *cy.Sym) Sym {
-    return .{ .ptr = sym };
-}
-pub fn fromSym(sym: c.CsSym) *cy.Sym {
-    return @ptrCast(@alignCast(sym.ptr));
-}
 pub const GCResult = c.CsGCResult;
 
 pub const ObjectGetChildrenFn = c.CsObjectGetChildrenFn;
@@ -113,6 +151,13 @@ pub const FuncEnumType = enum(u8) {
 
 pub const BindTypeCustom = c.CS_BIND_TYPE_CUSTOM;
 pub const BindTypeDecl = c.CS_BIND_TYPE_DECL;
+
+pub const Backend = c.CsBackend;
+pub const BackendVM = c.CS_VM;
+pub const BackendJIT = c.CS_JIT;
+pub const BackendTCC = c.CS_TCC;
+pub const BackendCC = c.CS_CC;
+pub const BackendLLVM = c.CS_LLVM;
 
 pub const TypeId = c.CsTypeId;
 pub const TypeVoid = c.CS_TYPE_VOID;

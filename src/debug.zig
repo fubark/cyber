@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const cc = @import("capi.zig");
 const bt = cy.types.BuiltinTypes;
 const rt = cy.rt;
 const fmt = @import("fmt.zig");
@@ -134,7 +135,7 @@ pub fn allocLastUserPanicError(vm: *const cy.VM) ![]const u8 {
 }
 
 pub fn printLastUserPanicError(vm: *cy.VM) !void {
-    if (cy.silentError) {
+    if (cc.silent()) {
         return;
     }
     var w = rt.ErrorWriter{ .c = vm };
@@ -182,7 +183,7 @@ fn writeCompileErrorSummary(c: *const cy.Compiler, w: anytype, report: cy.Report
 }
 
 pub fn printUserError(vm: *cy.VM, title: []const u8, msg: []const u8, chunkId: u32, pos: u32) !void {
-    if (cy.silentError) {
+    if (cc.silent()) {
         return;
     }
     var w = rt.ErrorWriter{ .c = vm };
@@ -669,7 +670,7 @@ const TimerTrace = struct {
     }
 
     pub fn endPrint(self: *TimerTrace, msg: []const u8) void {
-        if (EnableTimerTrace and cy.verbose) {
+        if (EnableTimerTrace and cc.verbose()) {
             const now = self.timer.read();
             cy.log.zfmt("{s}: {d:.3}ms", .{ msg, @as(f32, @floatFromInt(now)) / 1e6 });
         }

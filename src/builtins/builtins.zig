@@ -21,7 +21,7 @@ pub const VmSrc = @embedFile("builtins_vm.cy");
 pub const Src = @embedFile("builtins.cy");
 pub fn funcLoader(_: ?*c.VM, func: c.FuncInfo, out_: [*c]c.FuncResult) callconv(.C) bool {
     const out: *c.FuncResult = out_;
-    const name = c.strSlice(func.name);
+    const name = c.fromStr(func.name);
     if (std.mem.eql(u8, funcs[func.idx].@"0", name)) {
         out.ptr = @ptrCast(@alignCast(funcs[func.idx].@"1"));
         out.type = @intFromEnum(funcs[func.idx].@"2");
@@ -223,7 +223,7 @@ const types = [_]NameType{
 
 pub fn typeLoader(_: ?*c.VM, info: c.TypeInfo, out_: [*c]c.TypeResult) callconv(.C) bool {
     const out: *c.TypeResult = out_;
-    const name = c.strSlice(info.name);
+    const name = c.fromStr(info.name);
     if (std.mem.eql(u8, types[info.idx].@"0", name)) {
         out.type = c.BindTypeDecl;
         out.data.decl = .{
@@ -270,7 +270,7 @@ const vm_types = [_]NameType2{
 
 pub fn vmTypeLoader(_: ?*c.VM, info: c.TypeInfo, out_: [*c]c.TypeResult) callconv(.C) bool {
     const out: *c.TypeResult = out_;
-    const name = c.strSlice(info.name);
+    const name = c.fromStr(info.name);
     if (std.mem.eql(u8, vm_types[info.idx].@"0", name)) {
         if (vm_types[info.idx].@"2") {
             out.type = c.BindTypeCustom;
@@ -300,14 +300,14 @@ pub var OptionString: cy.TypeId = undefined;
 
 pub fn onLoad(vm_: ?*c.VM, mod: c.Sym) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const chunk_sym = c.fromSym(mod).cast(.chunk);
+    const chunk_sym = cy.Sym.fromC(mod).cast(.chunk);
     const b = bindings.ModuleBuilder.init(vm.compiler, @ptrCast(chunk_sym));
     if (cy.Trace) {
         b.declareFuncSig("traceRetains", &.{}, bt.Integer, traceRetains) catch cy.fatal();
         b.declareFuncSig("traceReleases", &.{}, bt.Integer, traceRetains) catch cy.fatal();
     }
 
-    const option_tmpl = c.initSym(chunk_sym.getMod().getSym("Option").?);
+    const option_tmpl = chunk_sym.getMod().getSym("Option").?.toC();
 
     const int_t = c.newType(vm_, bt.Integer);
     defer c.release(vm_, int_t);
@@ -371,7 +371,7 @@ pub fn zErrFunc(comptime func: fn (vm: *cy.UserVM, args: [*]const Value, nargs: 
 }
 
 pub fn prepThrowZError(ctx: cy.Context, err: anyerror, optTrace: ?*std.builtin.StackTrace) Value {
-    if (!cy.isFreestanding and cy.verbose) {
+    if (!cy.isFreestanding and c.verbose()) {
         if (optTrace) |trace| {
             std.debug.dumpStackTrace(trace.*);
         }
@@ -381,7 +381,7 @@ pub fn prepThrowZError(ctx: cy.Context, err: anyerror, optTrace: ?*std.builtin.S
 }
 
 pub fn prepThrowZError2(ctx: cy.Context, err: anyerror, optTrace: ?*std.builtin.StackTrace) rt.Error {
-    if (!cy.isFreestanding and cy.verbose) {
+    if (!cy.isFreestanding and c.verbose()) {
         if (optTrace) |trace| {
             std.debug.dumpStackTrace(trace.*);
         }

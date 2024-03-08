@@ -150,17 +150,13 @@ pub const VM = struct {
     emptyString: Value,
     emptyArray: Value,
 
-    expGlobalRC: usize,
-
     varSymExtras: cy.List(*cy.Sym),
 
     /// Local to be returned back to eval caller.
     /// 255 indicates no return value.
     endLocal: usize,
 
-    config: EvalConfig,
-
-    lastError: ?error{TokenError, ParseError, CompileError, Panic, ExePanic},
+    config: cc.EvalConfig,
 
     countFrees: if (cy.Trace) bool else void,
     numFreed: if (cy.Trace) u32 else void,
@@ -234,7 +230,6 @@ pub const VM = struct {
             .httpClient = undefined,
             .stdHttpClient = undefined,
             .userData = null,
-            .expGlobalRC = 0,
             .varSymExtras = .{},
             .print = defaultPrint,
             .print_err = defaultPrintError,
@@ -319,7 +314,7 @@ pub const VM = struct {
         self.deinitedRtObjects = true;
     }
 
-    pub fn deinit(self: *VM, comptime reset: bool) void {
+    pub fn deinit(self: *VM, reset: bool) void {
         if (self.deinited) {
             return;
         }
@@ -491,38 +486,22 @@ pub const VM = struct {
         self.lastExeError = "";
     }
 
-    pub fn validate(self: *VM, srcUri: []const u8, src: []const u8, config: cy.ValidateConfig) !ValidateResult {
-        const res = try self.compile(srcUri, src, .{
-            .enableFileModules = config.enableFileModules,
-            .skipCodegen = true,
-        });
-        return ValidateResult{
-            .err = res.err,
-        };
+    pub fn validate(self: *VM, srcUri: []const u8, src: []const u8, config: cc.ValidateConfig) !void {
+        var compile_c = cc.defaultCompileConfig();
+        compile_c.file_modules = config.file_modules;
+        compile_c.skip_codegen = true;
+        _ = try self.compile(srcUri, src, compile_c);
     }
 
-    pub fn compile(self: *VM, srcUri: []const u8, src: []const u8, config: cy.CompileConfig) !cy.CompileResult {
+    pub fn compile(self: *VM, srcUri: []const u8, src: []const u8, config: cc.CompileConfig) !cy.CompileResult {
         try self.resetVM();
-        self.config = .{
-            .singleRun = config.singleRun,
-            .enableFileModules = config.enableFileModules,
-            .genAllDebugSyms = true,
-        };
+        self.config = cc.defaultEvalConfig();
+        self.config.single_run = config.single_run;
+        self.config.file_modules = config.file_modules;
+        self.config.gen_all_debug_syms = true;
+
         var tt = cy.debug.timer();
         const res = try self.compiler.compile(srcUri, src, config);
-        if (res.err) |err| {
-            switch (err) {
-                .tokenize => {
-                    self.lastError = error.TokenError;
-                },
-                .parse => {
-                    self.lastError = error.ParseError;
-                },
-                .compile => {
-                    self.lastError = error.CompileError;
-                },
-            }
-        }
         tt.endPrint("compile");
         return res;
     }
@@ -539,35 +518,20 @@ pub const VM = struct {
         try self.compiler.reinit();
     }
 
-    pub fn eval(self: *VM, srcUri: []const u8, src: []const u8, config: EvalConfig) !Value {
+    pub fn eval(self: *VM, srcUri: []const u8, src: []const u8, config: cc.EvalConfig) !Value {
         try self.resetVM();
         self.config = config;
         var tt = cy.debug.timer();
-        const res = try self.compiler.compile(srcUri, src, .{
-            .singleRun = config.singleRun,
-            .enableFileModules = config.enableFileModules,
-            .genDebugFuncMarkers = cy.Trace,
-            .backend = config.backend,
-        });
-        if (res.err) |err| {
-            switch (err) {
-                .tokenize => {
-                    self.lastError = error.TokenError;
-                    return error.TokenError;
-                },
-                .parse => {
-                    self.lastError = error.ParseError;
-                    return error.ParseError;
-                },
-                .compile => {
-                    self.lastError = error.CompileError;
-                    return error.CompileError;
-                },
-            }
-        }
+
+        var compile_c = cc.defaultCompileConfig();
+        compile_c.single_run = config.single_run;
+        compile_c.file_modules = config.file_modules;
+        compile_c.gen_all_debug_syms = cy.Trace;
+        compile_c.backend = config.backend;
+        const res = try self.compiler.compile(srcUri, src, compile_c);
         tt.endPrint("compile");
 
-        if (config.backend == .jit) {
+        if (config.backend == cc.BackendJIT) {
             if (cy.isFreestanding or cy.isWasm) {
                 return error.Unsupported;
             }
@@ -598,8 +562,8 @@ pub const VM = struct {
             // @breakpoint();
             main(self, self.framePtr);
             return Value.initInt(0);
-        } else if (config.backend == .vm) {
-            if (cy.verbose) {
+        } else if (config.backend == cc.BackendVM) {
+            if (cc.verbose()) {
                 try debug.dumpBytecode(self, .{});
             }
 
@@ -629,7 +593,7 @@ pub const VM = struct {
                 return error.Unsupported;
             }
 
-            if (self.config.spawnExe) {
+            if (self.config.spawn_exe) {
                 const term = try spawn(.{
                     .allocator = self.alloc,
                     .argv = &.{res.aot.exePath},
@@ -1757,7 +1721,6 @@ test "vm internals." {
     try t.eq(@offsetOf(VM, "stdHttpClient"), @offsetOf(vmc.VM, "stdHttpClient"));
     try t.eq(@offsetOf(VM, "emptyString"), @offsetOf(vmc.VM, "emptyString"));
     try t.eq(@offsetOf(VM, "emptyArray"), @offsetOf(vmc.VM, "emptyArray"));
-    try t.eq(@offsetOf(VM, "expGlobalRC"), @offsetOf(vmc.VM, "expGlobalRC"));
 
     try t.eq(@offsetOf(VM, "varSymExtras"), @offsetOf(vmc.VM, "varSymExtras"));
     try t.eq(@offsetOf(VM, "endLocal"), @offsetOf(vmc.VM, "endLocal"));
@@ -3851,24 +3814,6 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
         }
     }
 }
-
-pub const EvalConfig = struct {
-    /// Whether this process intends to perform eval once and exit.
-    /// In that scenario, the compiler can skip generating the final release ops for the main block.
-    singleRun: bool = false,
-
-    enableFileModules: bool = false,
-
-    /// Whether url imports and cached assets should be reloaded.
-    reload: bool = false,
-
-    /// By default, debug syms are only generated for insts that can potentially fail.
-    genAllDebugSyms: bool = false,
-
-    backend: cy.Backend = .vm,
-
-    spawnExe: bool = false,
-};
 
 fn opMatch(pc: [*]const cy.Inst, framePtr: [*]const Value) u16 {
     const expr = framePtr[pc[1].val];

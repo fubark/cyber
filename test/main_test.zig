@@ -9,4 +9,7 @@ test {
     t.refAllDecls(vm);
 
     _ = @import("behavior_test.zig");
+    
+    const lib = @import("../src/lib.zig");
+    std.testing.refAllDecls(lib);
 }

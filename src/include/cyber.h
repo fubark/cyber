@@ -339,7 +339,10 @@ void csDeclareFunc(CsModule mod, const char* name, const CsTypeId* params, uint3
 // Declares a variable in a module.
 void csDeclareVar(CsModule mod, const char* name, CsValue val);
 
-// 
+// Expand type template for given arguments.
+CsTypeId csExpandTypeTemplate(CsSym template, CsValue* args, uint32_t nargs);
+
+// -----------------------------------
 // [ Memory ]
 //
 void csRelease(CsVM* vm, CsValue val);
@@ -411,6 +414,7 @@ CsValue csNewEmptyMap(CsVM* vm);
 CsValue csNewUntypedFunc(CsVM* vm, uint32_t numParams, CsFuncFn func);
 CsValue csNewFunc(CsVM* vm, const CsTypeId* params, uint32_t numParams, CsTypeId retType, CsFuncFn func);
 CsValue csNewPointer(CsVM* vm, void* ptr);
+CsValue csNewType(CsVM* vm, CsTypeId type_id);
 
 // Instantiating a `#host type` requires the `typeId` obtained from `CsTypeLoader` and
 // the number of bytes the object will occupy. Objects of the same type can have different sizes.

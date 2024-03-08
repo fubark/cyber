@@ -6,7 +6,20 @@ const v = cy.fmt.v;
 
 const cte = @This();
 
-pub fn expandTemplate2(c: *cy.Chunk, template: *cy.sym.TypeTemplate, argHead: cy.NodeId, nodeId: cy.NodeId) !*cy.Sym {
+pub fn expandTemplateOnCallExpr(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
+    const node = c.ast.node(nodeId);
+    const calleeRes = try c.semaExprSkipSym(node.data.callExpr.callee);
+    if (calleeRes.resType != .sym) {
+        return c.reportErrorAt("Expected template symbol.", &.{}, node.data.callExpr.callee);
+    }
+    const sym = calleeRes.data.sym;
+    if (sym.type != .typeTemplate) {
+        return c.reportErrorAt("Expected template symbol.", &.{}, node.data.callExpr.callee);
+    }
+    return cte.expandTemplateOnCallArgs(c, sym.cast(.typeTemplate), node.data.callExpr.argHead, nodeId);
+}
+
+pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.TypeTemplate, argHead: cy.NodeId, nodeId: cy.NodeId) !*cy.Sym {
     // Accumulate compile-time args.
     const typeStart = c.typeStack.items.len;
     const valueStart = c.valueStack.items.len;
@@ -30,13 +43,23 @@ pub fn expandTemplate2(c: *cy.Chunk, template: *cy.sym.TypeTemplate, argHead: cy
     const argTypes = c.typeStack.items[typeStart..];
     const args = c.valueStack.items[valueStart..];
 
+    return expandTemplate(c, template, args, argTypes) catch |err| {
+        if (err == error.IncompatSig) {
+            const expSig = try c.sema.allocFuncSigStr(template.sigId);
+            defer c.alloc.free(expSig);
+            return c.reportErrorAt(
+                \\Expected template signature `{}{}`.
+            , &.{v(template.head.name()), v(expSig)}, nodeId);
+        } else {
+            return err;
+        }
+    };
+}
+
+pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.TypeTemplate, args: []const cy.Value, arg_types: []const cy.TypeId) !*cy.Sym {
     // Check against template signature.
-    if (!cy.types.isTypeFuncSigCompat(c.compiler, @ptrCast(argTypes), bt.Type, template.sigId)) {
-        const expSig = try c.sema.allocFuncSigStr(template.sigId);
-        defer c.alloc.free(expSig);
-        return c.reportErrorAt(
-            \\Expected template signature `{}{}`.
-        , &.{v(template.head.name()), v(expSig)}, nodeId);
+    if (!cy.types.isTypeFuncSigCompat(c.compiler, @ptrCast(arg_types), bt.Type, template.sigId)) {
+        return error.IncompatSig;
     }
 
     // Ensure variant type.
@@ -68,19 +91,6 @@ pub fn expandTemplate2(c: *cy.Chunk, template: *cy.sym.TypeTemplate, argHead: cy
     const variantId = res.value_ptr.*;
     const variantSym = template.variants.items[variantId].sym;
     return variantSym;
-}
-
-pub fn expandTemplate(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
-    const node = c.ast.node(nodeId);
-    const calleeRes = try c.semaExprSkipSym(node.data.callExpr.callee);
-    if (calleeRes.resType != .sym) {
-        return c.reportErrorAt("Expected template symbol.", &.{}, node.data.callExpr.callee);
-    }
-    const sym = calleeRes.data.sym;
-    if (sym.type != .typeTemplate) {
-        return c.reportErrorAt("Expected template symbol.", &.{}, node.data.callExpr.callee);
-    }
-    return cte.expandTemplate2(c, sym.cast(.typeTemplate), node.data.callExpr.argHead, nodeId);
 }
 
 /// Visit each top level ctNode, perform template param substitution or CTE,

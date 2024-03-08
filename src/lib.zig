@@ -220,6 +220,22 @@ export fn csDeclareVar(mod: c.ApiModule, name: [*:0]const u8, typeId: cy.TypeId,
     }
 }
 
+export fn csExpandTypeTemplate(ctemplate: c.Sym, args_ptr: [*]const cy.Value, nargs: u32) c.TypeId {
+    const template = c.fromSym(ctemplate).cast(.typeTemplate);
+    const chunk = template.chunk();
+    const args = args_ptr[0..nargs];
+
+    // Build args types.
+    const typeStart = chunk.typeStack.items.len;
+    defer chunk.typeStack.items.len = typeStart;
+    for (args) |arg| {
+        chunk.typeStack.append(chunk.alloc, arg.getTypeId()) catch cy.fatal();
+    }
+    const arg_types = chunk.typeStack.items[typeStart..];
+    const sym = cy.cte.expandTemplate(chunk, template, args, arg_types) catch cy.fatal();
+    return sym.getStaticType().?;
+}
+
 export fn csRelease(vm: *cy.UserVM, val: Value) void {
     vm.release(val);
 }
@@ -354,6 +370,10 @@ export fn csSymbol(vm: *cy.VM, str: c.Str) Value {
 
 export fn csNewPointer(vm: *cy.VM, ptr: ?*anyopaque) Value {
     return cy.heap.allocPointer(vm, ptr) catch fatal();
+}
+
+export fn csNewType(vm: *cy.VM, type_id: cy.TypeId) Value {
+    return cy.heap.allocType(vm, type_id) catch fatal();
 }
 
 test "csNewPointer()" {

@@ -24,6 +24,7 @@ pub const float = c.csFloat;
 pub const getTypeId = c.csGetTypeId;
 pub const newFunc = c.csNewFunc;
 pub const newPointer = c.csNewPointer;
+pub const newType = c.csNewType;
 pub const symbol = c.csSymbol;
 pub const asSymbolId = c.csAsSymbolId;
 pub const csTrue = c.csTrue;
@@ -33,6 +34,7 @@ pub const integer = c.csInteger;
 pub const asBool = c.csAsBool;
 pub const toBool = c.csToBool;
 pub const declareUntypedFunc = c.csDeclareUntypedFunc;
+pub const expandTypeTemplate = c.csExpandTypeTemplate;
 pub const setResolver = c.csSetResolver;
 pub const setModuleLoader = c.csSetModuleLoader;
 pub const setPrinter = c.csSetPrinter;
@@ -41,6 +43,7 @@ pub const setLogger = c.csSetLogger;
 pub const setUserData = c.csSetUserData;
 pub const getUserData = c.csGetUserData;
 pub const getGlobalRC = c.csGetGlobalRC;
+pub const release = c.csRelease;
 
 pub const Str = c.CsStr;
 pub fn strSlice(str: Str) []const u8 {

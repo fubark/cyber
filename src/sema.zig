@@ -3883,7 +3883,7 @@ pub const ChunkExt = struct {
                 return try c.semaCallExpr(expr);
             },
             .expandOpt => {
-                const sym = try cte.expandTemplate2(c, c.sema.optionSym, node.data.expandOpt.param, nodeId);
+                const sym = try cte.expandTemplateOnCallArgs(c, c.sema.option_tmpl, node.data.expandOpt.param, nodeId);
                 const ctype = CompactType.initStatic(sym.getStaticType().?);
                 return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = sym });
             },
@@ -4228,7 +4228,7 @@ pub const ChunkExt = struct {
                 const leftSym = leftRes.data.sym;
 
                 if (leftSym.type == .typeTemplate) {
-                    const final_sym = try cte.expandTemplate2(c, leftSym.cast(.typeTemplate), node.data.callExpr.argHead, expr.nodeId);
+                    const final_sym = try cte.expandTemplateOnCallArgs(c, leftSym.cast(.typeTemplate), node.data.callExpr.argHead, expr.nodeId);
                     const ctype = CompactType.initStatic(final_sym.getStaticType().?);
                     return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = final_sym });
                 }
@@ -4289,7 +4289,7 @@ pub const ChunkExt = struct {
                 },
                 .static => |sym| {
                     if (sym.type == .typeTemplate) {
-                        const final_sym = try cte.expandTemplate2(c, sym.cast(.typeTemplate), node.data.callExpr.argHead, expr.nodeId);
+                        const final_sym = try cte.expandTemplateOnCallArgs(c, sym.cast(.typeTemplate), node.data.callExpr.argHead, expr.nodeId);
                         const ctype = CompactType.initStatic(final_sym.getStaticType().?);
                         return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = final_sym });
                     }

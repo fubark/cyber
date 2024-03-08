@@ -2008,6 +2008,12 @@ pub fn resolveTypeSpecNode(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!types.TypeI
     if (nodeId == cy.NullNode) {
         return bt.Dynamic;
     }
+    const type_id = try resolveTypeExpr(c, nodeId);
+    if (type_id == bt.Void) {
+        return c.reportErrorAt("`void` can not be used as common type specifier.", &.{}, nodeId);
+    }
+    return type_id;
+}
 
     const res = try resolveTypeExpr(c, nodeId);
     return res.type orelse {

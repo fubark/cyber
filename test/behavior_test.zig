@@ -119,7 +119,6 @@ if (!aot) {
     run.case("functions/call_host.cy");
     run.case("functions/call_host_param_panic.cy");
 }
-    run.case("functions/call_none_param_error.cy");
 if (!aot) {
     run.case("functions/call_object_param.cy");
 }
@@ -144,6 +143,7 @@ if (!aot) {
     run.case("functions/overload.cy");
     run.case("functions/read_capture_local_error.cy");
     run.case("functions/static.cy");
+    run.case("functions/void_param_error.cy");
 
     run.case("memory/arc_cases.cy");
     run.case("memory/gc_reference_cycle_unreachable.cy");

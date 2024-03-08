@@ -2474,14 +2474,15 @@ pub const Parser = struct {
         }});
 
         const token = self.peek();
-        if (token.tag() == .else_k) {
-            self.advance();
-
-            const elseExpr = (try self.parseExpr(.{})) orelse {
-                return self.reportError("Expected else body.", &.{});
-            };
-            self.ast.nodePtr(res).data.condExpr.elseExpr = elseExpr;
+        if (token.tag() != .else_k) {
+            return self.reportError("Expected else body.", &.{});
         }
+        self.advance();
+
+        const elseExpr = (try self.parseExpr(.{})) orelse {
+            return self.reportError("Expected else body.", &.{});
+        };
+        self.ast.nodePtr(res).data.condExpr.elseExpr = elseExpr;
         return res;
     }
 

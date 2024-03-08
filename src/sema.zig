@@ -3716,30 +3716,19 @@ pub const ChunkExt = struct {
                 return ExprResult.initStatic(loc, bt.Integer);
             },
             .condExpr => {
-                const irIdx = try c.ir.pushEmptyExpr(c.alloc, .condExpr, nodeId);
-
                 const ifBranch = c.ast.node(node.data.condExpr.ifBranch);
 
-                const cond = try c.semaExpr(ifBranch.data.ifBranch.cond, .{});
-                const body = try c.semaExpr(ifBranch.data.ifBranch.bodyHead, .{});
-                var elseBody: ExprResult = undefined;
-                if (node.data.condExpr.elseExpr != cy.NullNode) {
-                    elseBody = try c.semaExpr(node.data.condExpr.elseExpr, .{});
-                } else {
-                    elseBody = try c.semaNone(bt.Any, nodeId);
-                }
-                c.ir.setExprData(irIdx, .condExpr, .{
+                const cond = try c.semaExprCstr(ifBranch.data.ifBranch.cond, bt.Boolean);
+                const body = try c.semaExprCstr(ifBranch.data.ifBranch.bodyHead, expr.preferType);
+                const else_body = try c.semaExprCstr(node.data.condExpr.elseExpr, expr.preferType);
+
+                const loc = try c.ir.pushExpr(.condExpr, c.alloc, body.type.id, nodeId, .{
                     .cond = cond.irIdx,
                     .body = body.irIdx,
-                    .elseBody = elseBody.irIdx,
+                    .elseBody = else_body.irIdx,
                 });
-
-                const dynamic = body.type.dynamic or elseBody.type.dynamic;
-                if (body.type.id == elseBody.type.id) {
-                    return ExprResult.init(irIdx, CompactType.init2(body.type.id, dynamic));
-                } else {
-                    return ExprResult.init(irIdx, CompactType.init2(bt.Any, dynamic));
-                }
+                const dynamic = body.type.dynamic or else_body.type.dynamic;
+                return ExprResult.init(loc, CompactType.init2(bt.Any, dynamic));
             },
             .castExpr => {
                 const typeId = try resolveTypeSpecNode(c, node.data.castExpr.typeSpec);

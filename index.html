@@ -634,352 +634,12 @@ progress:indeterminate::-moz-progress-bar {
   Outdated base version: https://github.com/primer/github-syntax-dark
   Current colors taken from GitHub's CSS
 */.hljs{color:#c9d1d9;background:#0d1117}.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#ff7b72}.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#d2a8ff}.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#79c0ff}.hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#a5d6ff}.hljs-built_in,.hljs-symbol{color:#ffa657}.hljs-code,.hljs-comment,.hljs-formula{color:#8b949e}.hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag{color:#7ee787}.hljs-subst{color:#c9d1d9}.hljs-section{color:#1f6feb;font-weight:700}.hljs-bullet{color:#f2cc60}.hljs-emphasis{color:#c9d1d9;font-style:italic}.hljs-strong{color:#c9d1d9;font-weight:700}.hljs-addition{color:#aff5b4;background-color:#033a16}.hljs-deletion{color:#ffdcd7;background-color:#67060c}</style>
-    <style>:root {
-    --bg: #0c0c0c;
-    --accent-bg: #0d0707;
-    --border: #614721;
-/*    --text: #d2d2d2;*/
-    --text: #fff;
-    --text-light: #888888;
-    --accent-light: #ffc57b;
-/*    --header: #c4beb9;*/
-    --header: #b5aea8;
-    /* --accent-light: #fab760; */
-    --accent: #ffa430;
-    --marked: #ffa430;
-    --mono-font: Consolas, Menlo, Monaco, "Andale Mono", "Ubuntu Mono", monospace;
-    --keyword: #ff7d67;
-
-    --header-line: #333;
-
-    --nav-width: 15em;
-}
-
-html {
-    scroll-behavior: auto;
-}
-
-h1 {
-    font-size: 2em;
-    font-weight: normal;
-    margin-top: 1.5em;
-}
-
-h2 {
-    font-size: 1.5em;
-    font-weight: normal;
-}
-
-h3 {
-    font-weight: normal;
-}
-
-h4 {
-    font-weight: normal;
-}
-
-h5 {
-    font-weight: normal;
-}
-
-h6 {
-    font-weight: normal;
-}
-
-h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
-    opacity: 0;
-    text-decoration: none
-}
-
-h1:hover a, h2:hover a, h3:hover a, h4:hover a, h5:hover a, h6:hover a {
-    opacity: initial
-}
-
-h1.title {
-    color: var(--accent);
-    margin-bottom: 10px;
-}
-
-html, body {
-    font-size: 18px;
-
-    /* Reset to defaults */ 
-    letter-spacing: normal;
-    -webkit-font-smoothing: auto;
-    -moz-osx-font-smoothing: auto;
-    background-color: var(--bg);
-    color: var(--text);
-}
-
-header ul {
-    list-style-type: none;
-    padding-left: 0px;
-}
-
-header a {
-    white-space: nowrap;
-}
-
-body > header {
-    height: 100%;
-    width: var(--nav-width);
-    padding-left: 40px;
-    text-align: left;
-    position: fixed;
-    top: 0;
-    left: 0;
-    overflow-y: auto;
-    background-color: var(--bg);
-}
-
-header ul li {
-    display: list-item;
-    margin-right: 0px;
-}
-
-body {
-    display: block;
-}
-
-main {
-    padding-top: 0px;
-    padding-left: calc(var(--nav-width) + 20px);
-    padding-right: 20px;
-}
-
-em {
-    font-style: normal;
-    color: #fb6767;
-}
-
-/* mobile */
-@media screen and (max-width: 720px) {
-    body {
-        display: grid;
-    }
-
-    /* Make 2 column navs fit */
-    table ul {
-        padding-left: 20px;
-    }
-    table ul ul {
-        padding-left: 0px;
-    }
-    table td {
-        padding: 0.5rem 0 0.5rem 0;
-    }
-
-    body > header {
-        position: static;
-        padding-left: 0px;
-        height: initial;
-        width: initial;
-        top: initial;
-        left: initial;
-        text-align: center;
-        overflow-y: visible;
-        background-color: var(--accent-bg);
-    }
-
-    main {
-        padding-left: 0px;
-        padding-right: 0px;
-    }
-
-    header ul {
-        margin-top: 0px;
-        margin-bottom: 0px;
-    }
-
-    header ul li {
-        display: inline;
-        margin-right: 5px;
-    }
-}
-
-a.current {
-    text-decoration: none;
-}
-
-h1 {
-/*    color: var(--accent);*/
-/*    font-weight: bold;*/
-}
-
-.markdown h2 {
-    color: var(--header);
-    font-weight: bold; 
-    margin-top: 60px;
-}
-
-h3 {
-    color: var(--header);
-/*    font-weight: bold; */
-    font-size: 1.2em;
-    margin-top: 2.2em;
-
-    padding: 0.5rem 1rem 0.7rem 0.75rem;
-    border-bottom: 0.15rem solid var(--header-line);
-    border-radius: 0rem;
-}
-
-.markdown h3 > code {
-    color: var(--header);
-    font-size: 0.9em;
-    background-color: transparent;
-}
-
-.markdown table tr th {
-    text-align: left;
-    color: var(--text-light);
-    font-weight: normal;
-}
-
-.markdown table tr th, .markdown table tr td {
-    border: 3px solid #222;
-}
-
-.markdown table tr td:first-child code {
-    font-size: 15px;
-}
-
-.book-search input {
-    background-color: var(--bg);
-    border: 3px solid #222;
-}
-
-.book-menu .book-brand a {
-    color: var(--accent);
-    font-weight: bold;
-}
-
-.book-menu a {
-    color: var(--accent-light);
-}
-.book-menu a:hover {
-    opacity: 1;
-    color: var(--accent-light);
-    text-decoration: underline;
-}
-
-.book-menu a.active {
-    color: var(--accent);
-    font-weight: bold;
-    text-decoration: underline;
-}
-
-ul a {
-    color: var(--accent-light);
-}
-
-a {
-    color: var(--accent);
-}
-
-.markdown a:visited {
-    color: var(--accent);
-    text-decoration: underline;
-}
-.markdown a {
-    color: var(--accent);
-    text-decoration: underline;
-}
-
-:focus {
-    outline-style: none;
-}
-
-/* inline code */
-main code {
-    font-size: 17px;
-    background: none;
-    color: var(--accent-light);
-    padding: 2px 6px;
-}
-
-/* block code */
-main pre code {
-    font-size: 15px;
-    color: var(--text);
-    font-weight: normal;
-    font-family: var(--mono-font);
-}
-
-pre {
-/*    padding: 10px;*/
-    font-size: 15px;
-    border: 0px solid var(--border);
-    background-color: #171717;
-}
-
-pre code.hljs {
-    padding: 0px;
-    white-space: pre-wrap;
-}
-
-.hljs {
-/*    background-color: var(--accent-bg);*/
-    background-color: transparent;
-}
-
-.hljs-params {
-    color: #c9d1d9;
-}
-
-blockquote {
-    margin: 20px 0 20px 0;
-    font-style: normal;
-    border-left: 3px solid var(--header-line);
-    padding: 3px 0px 3px 15px;
-    color: var(--text);
-}
-
-blockquote p:nth-child(2) {
-    margin-top: 5px;
-}
-
-blockquote p {
-    margin: 0px;
-    padding: 0px;
-}
-
-blockquote em {
-    color: #fb6767;
-}
-
-table {
-    font-size: 18px;
-    width: auto;
-    line-height: 1.5em;
-    display: table;
-    margin: 0 0;
-}
-
-table thead {
-    border-bottom: 0.15rem solid var(--header-line);
-    width: auto;
-}
-
-table th {
-    border: 0px solid var(--border);
-    width: auto;
-    background-color: transparent;
-}
-
-table td {
-    border: 0px solid var(--border);
-    width: auto;
-}
-
-table tbody tr:nth-child(even) {
-    background-color: #111;
-}
-</style>
+    <link rel="stylesheet" href="./style.css">
 </head>
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 73-8d31034</div>
+    <div class="sub-title">v0.4-dev 129-c437dfd</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -1035,7 +695,6 @@ for worlds -> w:
 <li><a href="#reserved-identifiers" title="">Reserved identifiers.</a><ul>
 <li><a href="#keywords" title="">Keywords.</a></li>
 <li><a href="#contextual-keywords" title="">Contextual keywords.</a></li>
-<li><a href="#symbols" title="">Symbols.</a></li>
 <li><a href="#literals" title="">Literals.</a></li>
 </ul>
 </li>
@@ -1210,7 +869,7 @@ For this use case, you can use a declaration block. <em>Planned Feature</em></p>
 <li><a href="#methods" title="">Methods</a>: <code>self</code> <code>Self</code></li>
 <li><a href="#custom-types" title="">Types</a>: <a href="#objects" title=""><code>object</code></a> <a href="#structs" title=""><code>struct</code></a> <a href="#enums" title=""><code>enum</code></a></li>
 <li><a href="#caught-variable" title="">Catching Errors</a>: <code>caught</code></li>
-<li><a href="#throws-specifier" title="">Function Throws</a>: <code>throws</code></li>
+<li>Function Return: <code>void</code></li>
 </ul>
 <a href="#syntax">^topic</a>
 <h3 id="literals">Literals. <a href="#literals">#</a></h3>
@@ -1222,7 +881,7 @@ For this use case, you can use a declaration block. <em>Planned Feature</em></p>
 <a href="#syntax">^topic</a>
 <h2 id="operators">Operators. <a href="#operators">#</a></h2>
 <p>Cyber supports the following operators. They are ordered from highest to lowest precedence.</p>
-<table><thead><tr><th>Operator</th><th>Description</th></tr></thead><tbody><tr><td><code><<</code> <code>>></code></td><td>Bitwise left shift, right shift.</td></tr><tr><td><code>&</code></td><td>Bitwise and.</td></tr><tr><td><code>|</code> <code>||</code></td><td>Bitwise or, exclusive or.</td></tr><tr><td><code>^</code></td><td>Power.</td></tr><tr><td><code>/</code> <code>%</code> <code>*</code></td><td>Division, modulus, multiplication.</td></tr><tr><td><code>+</code> <code>-</code></td><td>Addition, subtraction.</td></tr><tr><td><code>as</code></td><td>Type casting.</td></tr><tr><td><code>></code> <code>>=</code> <code><</code> <code><=</code> <code>!=</code> <code>==</code></td><td>Greater, greater or equal, less, less or equal, not equals, equals.</td></tr><tr><td><code>and</code></td><td>Logical and.</td></tr><tr><td><code>or</code></td><td>Logical or.</td></tr></tbody></table><a href="#syntax">^topic</a>
+<table><thead><tr><th>Operator</th><th>Description</th></tr></thead><tbody><tr><td><code><<</code> <code>>></code></td><td>Bitwise left shift, right shift.</td></tr><tr><td><code>&</code></td><td>Bitwise and.</td></tr><tr><td><code>|</code> <code>||</code></td><td>Bitwise or, exclusive or.</td></tr><tr><td><code>^</code></td><td>Power.</td></tr><tr><td><code>/</code> <code>%</code> <code>*</code></td><td>Division, modulus, multiplication.</td></tr><tr><td><code>+</code> <code>-</code></td><td>Addition, subtraction.</td></tr><tr><td><code>as</code></td><td>Type casting.</td></tr><tr><td><code>></code> <code>>=</code> <code><</code> <code><=</code> <code>!=</code> <code>==</code></td><td>Greater, greater or equal, less, less or equal, not equals, equals.</td></tr><tr><td><code>and</code></td><td>Logical and.</td></tr><tr><td><code>or</code></td><td>Logical or.</td></tr><tr><td><code>..</code> <code>-..</code></td><td>Range, reversed range.</td></tr></tbody></table><a href="#syntax">^topic</a>
 <h3 id="arithmetic-operators">Arithmetic Operators. <a href="#arithmetic-operators">#</a></h3>
 <p>The following arithmetic operators are supported for the <a href="#numbers" title="">numeric data types</a>.</p>
 <pre><code class="language-cy">1 + 2     -- Addition, evaluates to 3.
@@ -1263,24 +922,23 @@ a <= b   -- `true` if a is less than or equal to b
 <a href="#syntax">^topic</a>
 <h3 id="logic-operators">Logic Operators. <a href="#logic-operators">#</a></h3>
 <p>The logical operators <code>and</code>, <code>or</code>, and <code>not</code> are supported.</p>
-<p><code>and</code> evaluates to <code>a</code> if <code>a</code> is not truthy. Otherwise, it evaluates to <code>b</code>. If <code>a</code> is not truthy, the evaluation of <code>b</code> is not executed. A numeric value that isn't 0 is truthy. An object reference is always truthy. The none value is not truthy.</p>
-<pre><code class="language-cy">true and true  -- Evaluates to true
-123 and 234    -- Evaluates to 234
-123 and 0      -- Evaluates to false
+<p><code>and</code> evaluates to <code>true</code> if both operands are <code>true</code>. Otherwise, it evaluates to <code>false</code>. If the left operand is <code>false</code>, the evaluation of the right operand is skipped:</p>
+<pre><code class="language-cy">true and true    --> true
+true and false   --> false
+false and true   --> false
+false and false  --> false
 </code></pre>
-<p><code>or</code> evaluates to <code>a</code> if <code>a</code> is truthy. Otherwise, it evaluates to <code>b</code>. If <code>a</code> is found to be truthy, the evaluation of <code>b</code> is not executed.</p>
-<pre><code class="language-cy">true or false  -- Evaluates to true
-false or true  -- Evaluates to true
-false or false -- Evaluates to false
-123 or false   -- Evaluates to 123
+<p><code>or</code> evaluates to <code>true</code> if at least one of the operands is <code>true</code>. Otherwise, it evaluates to <code>false</code>. If the left operand is <code>true</code>, the evaluation of the right operand is skipped:</p>
+<pre><code class="language-cy">true or true     --> true
+true or false    --> true
+false or true    --> true
+false or false   --> false
 </code></pre>
 <p>The unary operator <code>not</code> performs negation on the boolean value. The unary operator <code>!</code> can also be used instead of <code>not</code>.</p>
-<pre><code class="language-cy">not false     -- Evaluates to true
-not true      -- Evaluates to false
-not 0         -- Evaluates to true      
-not 123       -- Evaluates to false
-!false        -- Evaluates to true
-!true         -- Evaluates to false
+<pre><code class="language-cy">not false     --> true
+not true      --> false
+!false        --> true
+!true         --> false
 </code></pre>
 <a href="#syntax">^topic</a>
 <h3 id="bitwise-operators">Bitwise Operators. <a href="#bitwise-operators">#</a></h3>
@@ -1344,7 +1002,8 @@ var a = 123   -- This is a comment on the same line as a statement.
 <li><a href="#raw-string-literal" title="">Raw string literal.</a></li>
 <li><a href="#string-literal" title="">String literal.</a></li>
 <li><a href="#escape-sequences" title="">Escape sequences.</a></li>
-<li><a href="#string-operations" title="">String operations.</a></li>
+<li><a href="#string-indexing" title="">String indexing.</a></li>
+<li><a href="#string-concatenation" title="">String concatenation.</a></li>
 <li><a href="#string-interpolation" title="">String interpolation.</a></li>
 <li><a href="#string-formatting" title="">String formatting.</a></li>
 <li><a href="#line-join-literal" title="">Line-join literal.</a></li>
@@ -1366,7 +1025,7 @@ var a = 123   -- This is a comment on the same line as a statement.
 <li><a href="#map-block" title="">Map block.</a></li>
 </ul>
 </li>
-<li><a href="#symbols-1" title="">Symbols.</a></li>
+<li><a href="#symbols" title="">Symbols.</a></li>
 </ul>
 </td>
 </tr></table>
@@ -1377,14 +1036,9 @@ var a = 123   -- This is a comment on the same line as a statement.
 <h2 id="booleans">Booleans. <a href="#booleans">#</a></h2>
 <p>Booleans can be <code>true</code> or <code>false</code>. See <a href="#type-bool" title=""><code>type bool</code></a>.</p>
 <pre><code class="language-cy">var a = true
-if a:
+if true:
     print 'a is true'
 </code></pre>
-<p>When other value types are coerced to the bool type, the truthy value is determined as follows.</p>
-<ul>
-<li>The <code>none</code> value is <code>false</code>.</li>
-<li>Other objects and values are always <code>true</code>.</li>
-</ul>
 <a href="#basic-types">^topic</a>
 <h2 id="numbers">Numbers. <a href="#numbers">#</a></h2>
 <a href="#basic-types">^topic</a>
@@ -1424,7 +1078,8 @@ var b = float(a)
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#basic-types">^topic</a>
 <h2 id="strings">Strings. <a href="#strings">#</a></h2>
-<p>The <code>String</code> type represents a sequence of validated UTF-8 codepoints, also known as <code>runes</code>. Each rune is stored internally as 1-4 bytes and can be represented as an <code>int</code>. See <a href="#type-string" title=""><code>type String</code></a>.</p>
+<p>The <code>String</code> type represents a sequence of UTF-8 codepoints. Each code point is stored internally as 1-4 bytes. See <a href="#type-string" title=""><code>type String</code></a>.</p>
+<p>Strings are not validated by default. If the codepoint is invalid at a particular index, the replacement character (0xFFFD) is returned instead.</p>
 <p>Strings are <strong>immutable</strong>, so operations that do string manipulation return a new string. By default, short strings are interned to reduce memory footprint.</p>
 <p>Under the hood, there are multiple string implementations to make operations faster by default using SIMD.</p>
 <a href="#basic-types">^topic</a>
@@ -1460,31 +1115,40 @@ line $(title)
 </code></pre>
 <a href="#basic-types">^topic</a>
 <h3 id="escape-sequences">Escape sequences. <a href="#escape-sequences">#</a></h3>
-<p>The following escape sequences are supported in string literals:</p>
-<table><thead><tr><th>Escape Sequence</th><th>Code</th><th>Description</th></tr></thead><tbody><tr><td>\a</td><td>0x07</td><td>Terminal bell.</td></tr><tr><td>\b</td><td>0x08</td><td>Backspace.</td></tr><tr><td>\e</td><td>0x1b</td><td>Escape character.</td></tr><tr><td>\n</td><td>0x0a</td><td>Line feed character.</td></tr><tr><td>\r</td><td>0x0d</td><td>Carriage return character.</td></tr><tr><td>\t</td><td>0x09</td><td>Horizontal tab character.</td></tr></tbody></table><a href="#basic-types">^topic</a>
-<h3 id="string-operations">String operations. <a href="#string-operations">#</a></h3>
-<p>See <a href="#type-string" title=""><code>type String</code></a> for all available methods.</p>
+<p>The following escape sequences are supported in string literals wrapped in double quotes:</p>
+<table><thead><tr><th>Sequence</th><th>Code</th><th>Character</th></tr></thead><tbody><tr><td><code>\0</code></td><td>0x00</td><td>Null</td></tr><tr><td><code>\a</code></td><td>0x07</td><td>Terminal bell</td></tr><tr><td><code>\b</code></td><td>0x08</td><td>Backspace</td></tr><tr><td><code>\e</code></td><td>0x1b</td><td>Escape</td></tr><tr><td><code>\n</code></td><td>0x0a</td><td>Line feed</td></tr><tr><td><code>\r</code></td><td>0x0d</td><td>Carriage return</td></tr><tr><td><code>\t</code></td><td>0x09</td><td>Horizontal tab</td></tr><tr><td><code>\"</code></td><td>0x22</td><td>Double quote</td></tr><tr><td><code>\\</code></td><td>0x5c</td><td>Backslash</td></tr><tr><td><code>\x??</code></td><td>--</td><td>Hex number</td></tr></tbody></table><p>Example:</p>
+<pre><code class="language-cy">print "\xF0\x9F\x90\xB6"    --> 🐶
+</code></pre>
+<a href="#basic-types">^topic</a>
+<h3 id="string-indexing">String indexing. <a href="#string-indexing">#</a></h3>
+<p>The index operator returns the rune starting at the given byte index:</p>
+<pre><code class="language-cy">var a = 'abcxyz'
+print a[1]          --> 98
+print(a[1] == `b`)  --> true
+</code></pre>
+<p>If an index does not begin a sequence of valid UTF-8 bytes, the replacement character (0xFFFD, 65533) is returned:</p>
+<pre><code class="language-cy">var a = '🐶abcxyz'
+print a[1]          --> 65533
+</code></pre>
+<p>Since indexing operates at the byte level, it should not be relied upon for iterating runes or rune indexing.
+However, if the string is known to only contain ASCII runes (each rune occupies one byte), indexing will return the expected rune.</p>
+<p><code>String.seek</code> will always return the correct byte index for a rune index:</p>
+<pre><code class="language-cy">var a = '🐶abcxyz'
+print a.seek(2)         --> 5
+print a[a.seek(2)]      --> 98 (`b`)
+</code></pre>
+<p>Similarily, slicing operates on byte indexes. Using the slice operator will return a view of the string at the given start and end (exclusive) indexes. The start index defaults to 0 and the end index defaults to the string's byte length:</p>
+<pre><code class="language-cy">var str = 'abcxyz'
+var sub = str[0..3]
+print str[0..3]  --> abc
+print str[..5]   --> abcxy
+print str[1..]   --> bcxyz
+</code></pre>
+<a href="#basic-types">^topic</a>
+<h3 id="string-concatenation">String concatenation. <a href="#string-concatenation">#</a></h3>
 <p>Concatenate two strings together with the <code>+</code> operator or the method <code>concat</code>.</p>
 <pre><code class="language-cy">var res = 'abc' + 'xyz'
 res = res.concat('end')
-</code></pre>
-<p>Using the index operator will return the UTF-8 rune at the given index as a slice. This is equivalent to calling the method <code>sliceAt()</code>.</p>
-<pre><code class="language-cy">var str = 'abcd'
-print str[1]     -- "b"
-</code></pre>
-<p>Using the slice operator will return a view of the string at the given start and end (exclusive) indexes. The start index defaults to 0 and the end index defaults to the string's length.</p>
-<pre><code class="language-cy">var str = 'abcxyz'
-var sub = str[0..3]
-print sub        -- "abc"
-print str[..5]   -- "abcxy"
-print str[1..]   -- "bcxyz"
-
--- One way to use slices is to continue a string operation.
-str = 'abcabcabc'
-var i = str.findRune(`c`)
-print(i)                            -- "2"
-i += 1
-print(i + str[i..].findRune(`c`))   -- "5"
 </code></pre>
 <a href="#basic-types">^topic</a>
 <h3 id="string-interpolation">String interpolation. <a href="#string-interpolation">#</a></h3>
@@ -1528,7 +1192,6 @@ print "$(bytes.fmt(.x))"
 <a href="#basic-types">^topic</a>
 <h2 id="arrays">Arrays. <a href="#arrays">#</a></h2>
 <p>An <code>Array</code> is an immutable sequence of bytes.
-It can be a more performant way to represent strings but it won't automatically validate their encoding and indexing returns the n'th byte rather than a UTF-8 rune.
 See <a href="#type-array" title=""><code>type Array</code></a>.</p>
 <pre><code class="language-cy">var a = Array('abcd')
 a = a.insertByte(1, 255)
@@ -1695,6 +1358,7 @@ print int(currency)       -- '123' or some arbitrary id.
 </ul>
 </li>
 <li><a href="#type-aliases" title="">Type aliases.</a></li>
+<li><a href="#type-copies" title="">Type copies.</a></li>
 <li><a href="#traits" title="">Traits.</a></li>
 <li><a href="#union-types" title="">Union types.</a></li>
 <li><a href="#generic-types" title="">Generic types.</a><ul>
@@ -1709,20 +1373,18 @@ print int(currency)       -- '123' or some arbitrary id.
 <p>An object type contains field and function members. New instances can be created from them similar to a struct or class in other languages. Unlike classes, there is no builtin concept of inheritance but a similar effect can be achieved using composition and embedding.</p>
 <p>Object types are declared with <code>type object</code>. The <code>object</code> keyword is optional when using a <code>type</code> declaration. These two declarations are equivalent:</p>
 <pre><code class="language-cy">type A object:
-    var b int
+    my_field int
 
 type A:
-    var b int
+    my_field int
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="fields">Fields. <a href="#fields">#</a></h3>
-<p>Fields must be declared at the top of the <code>type</code> block using <code>var</code> or <code>my</code>:</p>
+<p>Fields must be declared at the top of the <code>type</code> block with their names and type specifiers:</p>
 <pre><code class="language-cy">type Node:
-    var value int
-    var next  ?Node
+    value int
+    next  ?Node
 </code></pre>
-<p>Field types are optional for <code>var</code> declarations and defaults to the <code>any</code> type.
-When fields are declared with <code>my</code> instead, they become dynamically typed and do not accept a type specifier.</p>
 <a href="#custom-types">^topic</a>
 <h3 id="instantiate">Instantiate. <a href="#instantiate">#</a></h3>
 <p>New object instances are created using a record literal with a leading type name:</p>
@@ -1740,9 +1402,9 @@ print node.value       -- Prints "234"
 print node.next       -- Prints "Option.none"
 
 type Student:
-    var name String
-    var age  int
-    var gpa  float
+    name String
+    age  int
+    gpa  float
 
 var s = [Student:]
 print s.name       -- Prints ""
@@ -1754,16 +1416,16 @@ print s.gpa        -- Prints "0.0"
 <p>Circular type references are allowed if the object can be initialized:</p>
 <blockquote><p><em>Planned Feature: Optional types are not currently supported.</em></p>
 </blockquote><pre><code class="language-cy">type Node:
-    var val  any
-    var next ?Node
+    val  any
+    next ?Node
 
 var n = [Node:]    -- Initializes.
 </code></pre>
 <p>In this example, <code>next</code> has an optional <code>?Node</code> type so it can be initialized to <code>none</code> when creating a new <code>Node</code> object.</p>
 <p>The following example will fail because this version of <code>Node</code> can not be initialized:</p>
 <pre><code class="language-cy">type Node:
-    var val  any
-    var next Node
+    val  any
+    next Node
 
 var n = [Node:]    -- CompileError. Can not zero initialize `next`
                    -- because of circular dependency.
@@ -1772,10 +1434,10 @@ var n = [Node:]    -- CompileError. Can not zero initialize `next`
 <h3 id="unnamed-object">Unnamed object. <a href="#unnamed-object">#</a></h3>
 <p>Unnamed object types can be declared and used without an explicit <code>type</code> declaration:</p>
 <pre><code class="language-cy">type Node:
-    var value object:
-        var a  int
-        var b  float
-    var next ?Node
+    value object:
+        a  int
+        b  float
+    next  ?Node
 
 var node = [Node
     value: [a: 123, b: 100.0],
@@ -1786,8 +1448,8 @@ var node = [Node
 <h3 id="methods">Methods. <a href="#methods">#</a></h3>
 <p>Methods allow invoking a function on an object instance using the <code>.</code> operator:</p>
 <pre><code class="language-cy">type Node:
-    var value int
-    var next  ?Node
+    value int
+    next  ?Node
 
     func inc(n):
         value += n
@@ -1808,8 +1470,8 @@ n.incAndPrint()         -- Prints "444"
 <p>Type members can be implicitly referenced inside the method. <em>Incomplete: Only the type's fields can be referenced this way.</em></p>
 <p>To reference members explicitly inside a method, use the builtin <code>self</code>:</p>
 <pre><code class="language-cy">type Node:
-    var value int
-    var next  ?Node
+    value int
+    next  ?Node
 
     func double():
         return self.value * 2
@@ -1818,8 +1480,8 @@ n.incAndPrint()         -- Prints "444"
 <h3 id="type-functions">Type functions. <a href="#type-functions">#</a></h3>
 <p>Type functions are declared outside of the <code>type</code> block with an explicit namespace path:</p>
 <pre><code class="language-cy">type Node:
-    var value int
-    var next  ?Node
+    value int
+    next  ?Node
 
 -- Declare namespace function inside `Node`.
 func Node.new():
@@ -1843,8 +1505,8 @@ print Node.DefaultValue    -- Prints "100"
 <h3 id="declare-struct">Declare struct. <a href="#declare-struct">#</a></h3>
 <p>Struct types are created using the <code>type struct</code> declaration:</p>
 <pre><code class="language-cy">type Vec2 struct:
-    var x float
-    var y float
+    x float
+    y float
 
 var v = [Vec2 x: 30, y: 40]
 </code></pre>
@@ -1883,16 +1545,16 @@ print(fruit == Fruit.orange)   -- 'true'
 <pre><code class="language-cy">type Shape enum:
     case rectangle Rectangle
     case circle    object:
-        var radius float
+        radius float
     case triangle  object:
-        var base   float
-        var height float
+        base   float
+        height float
     case line      float
     case point 
 
 type Rectangle:
-    var width  float
-    var height float
+    width  float
+    height float
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="initialize-choice">Initialize choice. <a href="#initialize-choice">#</a></h3>
@@ -1939,41 +1601,41 @@ type Option enum:
     case none
     case some #T
 </code></pre>
-<p>A type prefixed with <code>?</code> is a more idiomatic way to create an option type. The following String optional types are equivalent:</p>
-<pre><code class="language-cy">Option#String
+<p>A type prefixed with <code>?</code> is the idiomatic way to create an option type. The following String optional types are equivalent:</p>
+<pre><code class="language-cy">Option(String)
 ?String
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="wrap-value">Wrap value. <a href="#wrap-value">#</a></h3>
-<p>Use <code>?</code> as a type prefix to turn it into an <code>Option</code> type. A value is automatically wrapped into the inferred optional's <code>some</code> case:</p>
+<p>A value is automatically wrapped into the inferred optional's <code>some</code> case:</p>
 <pre><code class="language-cy">var a ?String = 'abc'
-print a     -- Prints 'Option(abc)'
+print a     --> some(abc)'
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="wrap-none">Wrap <code>none</code>. <a href="#wrap-none">#</a></h3>
 <p><code>none</code> is automatically initialized to the inferred optional's <code>none</code> case:</p>
 <pre><code class="language-cy">var a ?String = none
-print a     -- Prints 'Option.none'
+print a     --> none
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="unwrap-or-panic">Unwrap or panic. <a href="#unwrap-or-panic">#</a></h3>
 <p>The <code>.?</code> access operator is used to unwrap an optional. If the expression evaluates to the <code>none</code> case, the runtime panics:</p>
-<pre><code class="language-cy">var opt ?String = 'abc'
+<pre><code class="language-cy">var opt ?int = 123
 var v = opt.?
-print v     -- Prints 'abc'
+print v     --> 123
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="unwrap-or-default">Unwrap or default. <a href="#unwrap-or-default">#</a></h3>
-<p>The <code>?else</code> control flow operator either returns the unwrapped value or a default value when the optional is <code>none</code>: <em>Planned Feature</em></p>
-<pre><code class="language-cy">var opt ?String = none
-var v = opt ?else 'empty'
-print v     -- Prints 'empty'
+<p>The <code>?else</code> control flow operator either returns the unwrapped value or a default value when the optional is <code>none</code>:</p>
+<pre><code class="language-cy">var opt ?int = none
+var v = opt ?else 123
+print v     --> 123
 </code></pre>
-<p><code>else</code> can also start a new statement block: <em>Planned Feature</em></p>
-<pre><code class="language-cy">var v = opt else:
+<p><code>?else</code> can be used in an assignment block: <em>Planned Feature</em></p>
+<pre><code class="language-cy">var v = opt ?else:
     break 'empty'
 
-var v = opt else:
+var v = opt ?else:
     throw error.Missing
 </code></pre>
 <a href="#custom-types">^topic</a>
@@ -1983,7 +1645,7 @@ var v = opt else:
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="if-unwrap"><code>if</code> unwrap. <a href="#if-unwrap">#</a></h3>
-<p>The <code>if</code> statement can be amended to unwrap an optional value using the capture <code>-></code> operator: <em>Planned Feature</em></p>
+<p>The <code>if</code> statement can be amended to unwrap an optional value using the capture <code>-></code> operator:</p>
 <pre><code class="language-cy">var opt ?String = 'abc'
 if opt -> v:
     print v     -- Prints 'abc'
@@ -1991,19 +1653,56 @@ if opt -> v:
 <a href="#custom-types">^topic</a>
 <h3 id="while-unwrap"><code>while</code> unwrap. <a href="#while-unwrap">#</a></h3>
 <p>The <code>while</code> statement can be amended to unwrap an optional value using the capture <code>-></code> operator.
-The loop exits when <code>none</code> is encountered: <em>Planned Feature</em></p>
+The loop exits when <code>none</code> is encountered:</p>
 <pre><code class="language-cy">var iter = dir.walk()
 while iter.next() -> entry:
     print entry.name
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h2 id="type-aliases">Type aliases. <a href="#type-aliases">#</a></h2>
-<p>A type alias is declared from a single line <code>type</code> statement. This creates a new type symbol for an existing data type.</p>
-<pre><code class="language-cy">import util './util.cy'
+<p>A type alias refers to a different target type.
+Once declared, the alias and the target type can be used interchangeably.</p>
+<p>A type alias is declared using the assignment <code>=</code> operator after a <code>type</code> name declaration:</p>
+<pre><code class="language-cy">type Vec2:
+    x float
+    y float
 
-type Vec3 util.Vec3
+type Pos2 = Vec2
 
-var v = [Vec3 x: 3, y: 4, z: 5]
+var pos = [Pos2 x: 3, y: 4]
+</code></pre>
+<a href="#custom-types">^topic</a>
+<h2 id="type-copies">Type copies. <a href="#type-copies">#</a></h2>
+<p>A type copy creates a new type using the same type and memory layout of a target type.</p>
+<p>It's declared with <code>type</code> name declaration followed by the target type specifier:</p>
+<pre><code class="language-cy">type Vec2:
+    x float
+    y float
+
+type Pos2 Vec2
+
+var pos = [Pos2 x: 3, y: 4]
+</code></pre>
+<p>Functions can be declared under the new type's namespace:</p>
+<pre><code class="language-">import math
+
+type Pos2 Vec2:
+    func blockDist(o Pos2):
+        var dx = math.abs(o.x - x)
+        var dy = math.abs(o.y - y)
+        return dx + dy
+
+var pos = [Pos2 x: 3, y: 4]
+var dst = [Pos2 x: 4, y: 5]
+print pos.blockDist(dst)     --> 2
+</code></pre>
+<p>Note that functions declared from the target type do not carry over to the new type.</p>
+<p>Unlike a type alias, the new type and the target type can not be used interchangeably since they are different types. However, instances of the new type can be casted to the target type, and vice versa: <em>Planned Feature</em></p>
+<pre><code class="language-cy">type Pos2 Vec2
+
+var a = [Pos2 x: 3, y: 4]
+
+var b Vec2 = a as Vec2
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h2 id="traits">Traits. <a href="#traits">#</a></h2>
@@ -2016,8 +1715,8 @@ var v = [Vec3 x: 3, y: 4, z: 5]
 <p>Templates are used to specialize type declarations. Since template parameters only exist at compile-time, the <code>#</code> prefix is used to reference them in the template body:</p>
 <pre><code class="language-cy">template(T type)
 type MyContainer:
-    var id int
-    var value #T
+    id    int
+    value #T
 
     func get() #T:
         return self.value
@@ -2025,12 +1724,8 @@ type MyContainer:
 <a href="#custom-types">^topic</a>
 <h3 id="expand-type-template">Expand type template. <a href="#expand-type-template">#</a></h3>
 <p>When the template is invoked with compile-time argument(s), a specialized version of the type is generated.</p>
-<p>Invoking a template requires a <code>#</code> before the call arguments. This indicates that they are compile-time arguments. In this example, <code>String</code> can be used as an argument since it satisfies the <code>type</code> parameter constraint:</p>
-<pre><code class="language-cy">var a MyContainer#(String) = [id: 123, value: 'abc']
-print a.get()      -- Prints 'abc'
-</code></pre>
-<p>When there is only one template argument, the syntax can be simplified:</p>
-<pre><code class="language-cy">var a MyContainer#String = [id: 123, value: 'abc']
+<p>In this example, <code>String</code> can be used as an argument since it satisfies the <code>type</code> parameter constraint:</p>
+<pre><code class="language-cy">var a MyContainer(String) = [id: 123, value: 'abc']
 print a.get()      -- Prints 'abc'
 </code></pre>
 <p>Note that invoking the template again with the same argument(s) returns the same generated type. In other words, the generated type is always memoized from the input parameters.</p>
@@ -2041,7 +1736,7 @@ print a.get()      -- Prints 'abc'
 <ul>
 <li><a href="#branching" title="">Branching.</a><ul>
 <li><a href="#if-statement" title=""><code>if</code> statement.</a></li>
-<li><a href="#conditional-expression" title="">Conditional expression.</a></li>
+<li><a href="#if-expression" title=""><code>if</code> expression.</a></li>
 <li><a href="#andor" title="">and/or.</a></li>
 </ul>
 </li>
@@ -2083,10 +1778,11 @@ else:
     print 'neither 10 nor 20'
 </code></pre>
 <a href="#control-flow">^topic</a>
-<h3 id="conditional-expression">Conditional expression. <a href="#conditional-expression">#</a></h3>
-<p>A conditional branch expression evaluates a condition and returns either the true value or false value:</p>
+<h3 id="if-expression"><code>if</code> expression. <a href="#if-expression">#</a></h3>
+<p>An <code>if</code> expression evaluates a condition in parentheses and returns either the true value or false value.
+Unlike the <code>if</code> statement, the <code>if</code> expression can not contain <code>else</code> conditional cases:</p>
 <pre><code class="language-cy">var a = 10
-var str = a == 10 ? 'red' else 'blue'
+var str = if (a == 10) 'red' else 'blue'
 </code></pre>
 <a href="#control-flow">^topic</a>
 <h3 id="andor"><code>and</code>/<code>or</code> <a href="#andor">#</a></h3>
@@ -2358,30 +2054,16 @@ func foo():
 </code></pre>
 <a href="#functions">^topic</a>
 <h3 id="shorthand-syntax">Shorthand syntax. <a href="#shorthand-syntax">#</a></h3>
-<p>The shorthand method for calling functions omits parentheses and commas. This only works for functions that accept parameters:</p>
-<blockquote><p><em>Incomplete: Only the most trivial cases work with the shorthand method. The case with operators being separated by spaces might not end up being implemented.</em></p>
-</blockquote><pre><code class="language-cy">var d = dist 100 100 200 200  -- Calls the function `dist`.
+<p>Functions can be invoked without parentheses. This only works for calls that take at least one argument. Named arguments are not allowed and nested function calls must use parentheses:</p>
+<pre><code class="language-cy">-- Calls the function `dist`.
+var d = dist 100, 100, 200, 200
 
-func random():       -- Function with no parameters.
+func foo():       
     return 4
 
-var r = random       -- Returns the function itself as a value.
+var r = foo       -- Returns the function itself as a value.
                      -- Does not call the function `random`.
-r = random()         -- Calls the function `random`.
-</code></pre>
-<p>The top level arguments for the shorthand convention must be separated by whitespace. A string can contain whitespace since it's surrounded by delimiters.</p>
-<pre><code class="language-cy">var a = myFunc 'cyber script'
-</code></pre>
-<p>The following has a binary expression with spaces inbetween which is not allowed. Removing that whitespace fixes the call expression.</p>
-<pre><code class="language-cy">var a = myFunc 1 + 2     -- Not allowed.
-a = myFunc 1+2       -- Correct.
-</code></pre>
-<p>Wrapping arguments in parentheses allows you to keep the whitespace in the sub-expression.</p>
-<pre><code class="language-cy">-- This calls the function `myFunc` with 2 arguments.
-var a = myFunc 'hello' (1 + 2 * 3)
-
--- Nested function call using the shorthand convention.
-a = myFunc 'hello' (otherFunc 1+2 'world')
+r = foo()         -- Calls the function `random`.
 </code></pre>
 <a href="#functions">^topic</a>
 <h3 id="call-block-syntax">Call block syntax. <a href="#call-block-syntax">#</a></h3>
@@ -2439,9 +2121,6 @@ a = myFunc 'hello' (otherFunc 1+2 'world')
 <li><a href="#type-ffi" title=""><code>type FFI</code></a></li>
 <li><a href="#type-carray" title=""><code>type CArray</code></a></li>
 <li><a href="#type-cdimarray" title=""><code>type CDimArray</code></a></li>
-<li><a href="#type-direntry" title=""><code>type DirEntry</code></a></li>
-<li><a href="#type-dirwalkentry" title=""><code>type DirWalkEntry</code></a></li>
-<li><a href="#type-argoption" title=""><code>type ArgOption</code></a></li>
 <li><a href="#map-direntry" title=""><code>map DirEntry</code></a></li>
 <li><a href="#map-dirwalkentry" title=""><code>map DirWalkEntry</code></a></li>
 <li><a href="#map-argoption" title=""><code>map ArgOption</code></a></li>
@@ -2550,7 +2229,7 @@ print typeof('my str').id()
 <!-- builtins.start -->
 <blockquote><p><code>func copy(val any) any</code></p>
 <p>Copies a primitive value or creates a shallow copy of an object value.</p>
-</blockquote><blockquote><p><code>func dump(val any) none</code></p>
+</blockquote><blockquote><p><code>func dump(val any) <void></code></p>
 <p>Prints the result of <code>toCyon</code> on a value.</p>
 </blockquote><blockquote><p><code>func errorReport() String</code></p>
 </blockquote><blockquote><p><code>func getObjectRc(val any) int</code></p>
@@ -2561,9 +2240,11 @@ print typeof('my str').id()
 <p>Returns whether a rune is an alphabetic letter.</p>
 </blockquote><blockquote><p><code>func isDigit(val int) bool</code></p>
 <p>Returns whether a rune is a digit.</p>
+</blockquote><blockquote><p><code>func isNone(val any) bool</code></p>
+<p>Returns whether a boxed value is the <code>none</code> case of a generic <code>Option(T)</code> type.  This is temporary and may be removed in a future release.</p>
 </blockquote><blockquote><p><code>func must(val any) any</code></p>
 <p>If <code>val</code> is an error, <code>panic(val)</code> is invoked. Otherwise, <code>val</code> is returned.</p>
-</blockquote><blockquote><p><code>func panic(err any) none</code></p>
+</blockquote><blockquote><p><code>func panic(err any) dynamic</code></p>
 <p>Stop execution in the current fiber and starts unwinding the call stack. See <a href="#unexpected-errors" title="">Unexpected Errors</a>.</p>
 </blockquote><blockquote><p><code>func parseCyber(src String) Map</code></p>
 <p>Parses Cyber source string into structured map object.  Currently, only metadata about static declarations is made available but this will be extended to include an AST.</p>
@@ -2571,7 +2252,7 @@ print typeof('my str').id()
 <p>Parses a CYON string into a value.</p>
 </blockquote><blockquote><p><code>func performGC() Map</code></p>
 <p>Runs the garbage collector once to detect reference cycles and abandoned objects.  Returns the statistics of the run in a map value.</p>
-</blockquote><blockquote><p><code>func print(str any) none</code></p>
+</blockquote><blockquote><p><code>func print(str any) <void></code></p>
 <p>Prints a value. The host determines how it is printed.</p>
 </blockquote><blockquote><p><code>func runestr(val int) String</code></p>
 <p>Converts a rune to a string.</p>
@@ -2582,10 +2263,14 @@ print typeof('my str').id()
 </blockquote><blockquote><p><code>func typesym(val any) symbol</code></p>
 <p>Returns the value's type as one of the predefined symbols:  .float, .int, .bool, .object, .list, .map, .string, .array, .function, .fiber, .pointer, .symbol, .metatype, .none, .error</p>
 </blockquote><a href="#modules">^topic</a>
+<h3 id="type-void"><code>type void</code> <a href="#type-void">#</a></h3>
+<a href="#modules">^topic</a>
 <h3 id="type-bool"><code>type bool</code> <a href="#type-bool">#</a></h3>
 <blockquote><p><code>func bool.'$call'(val any) bool</code></p>
 <p>Converts a value to either <code>true</code> or <code>false</code>.</p>
 </blockquote><a href="#modules">^topic</a>
+<h3 id="type-symbol"><code>type symbol</code> <a href="#type-symbol">#</a></h3>
+<a href="#modules">^topic</a>
 <h3 id="type-error"><code>type error</code> <a href="#type-error">#</a></h3>
 <blockquote><p><code>func sym() symbol</code></p>
 <p>Return the underlying <code>symbol</code>.</p>
@@ -2632,15 +2317,27 @@ print typeof('my str').id()
 </blockquote><blockquote><p><code>func float.'$call'(val any) float</code></p>
 <p>Converts the value to a <code>float</code>. Panics if type conversion fails.</p>
 </blockquote><a href="#modules">^topic</a>
+<h3 id="type-placeholder1"><code>type placeholder1</code> <a href="#type-placeholder1">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-placeholder2"><code>type placeholder2</code> <a href="#type-placeholder2">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-placeholder3"><code>type placeholder3</code> <a href="#type-placeholder3">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-dynamic"><code>type dynamic</code> <a href="#type-dynamic">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-any"><code>type any</code> <a href="#type-any">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-type"><code>type type</code> <a href="#type-type">#</a></h3>
+<a href="#modules">^topic</a>
 <h3 id="type-list"><code>type List</code> <a href="#type-list">#</a></h3>
-<blockquote><p><code>func $index(idx any) any</code></p>
-</blockquote><blockquote><p><code>func $setIndex(idx any, val any) none</code></p>
-</blockquote><blockquote><p><code>func $slice(start any, end any) List</code></p>
-</blockquote><blockquote><p><code>func append(val any) none</code></p>
+<blockquote><p><code>func $index(idx int) any</code></p>
+</blockquote><blockquote><p><code>func $index(range Range) List</code></p>
+</blockquote><blockquote><p><code>func $setIndex(idx int, val any) <void></code></p>
+</blockquote><blockquote><p><code>func append(list List) <void></code></p>
+<p>Appends the elements of another list to the end of this list.</p>
+</blockquote><blockquote><p><code>func append(val any) <void></code></p>
 <p>Appends a value to the end of the list.</p>
-</blockquote><blockquote><p><code>func concat(list List) none</code></p>
-<p>Concats the elements of another list to the end of this list.</p>
-</blockquote><blockquote><p><code>func insert(idx int, val any) none</code></p>
+</blockquote><blockquote><p><code>func insert(idx int, val any) <void></code></p>
 <p>Inserts a value at index <code>idx</code>.</p>
 </blockquote><blockquote><p><code>func iterator() ListIterator</code></p>
 <p>Returns a new iterator over the list elements.</p>
@@ -2648,24 +2345,30 @@ print typeof('my str').id()
 <p>Returns a new string that joins the elements with <code>separator</code>.</p>
 </blockquote><blockquote><p><code>func len() int</code></p>
 <p>Returns the number of elements in the list.</p>
-</blockquote><blockquote><p><code>func remove(idx int) none</code></p>
+</blockquote><blockquote><p><code>func remove(idx int) <void></code></p>
 <p>Removes an element at index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func resize(size int) none</code></p>
+</blockquote><blockquote><p><code>func resize(size int) <void></code></p>
 <p>Resizes the list to <code>len</code> elements. If the new size is bigger, <code>none</code> values  are appended to the list. If the new size is smaller, elements at the end of the list are removed.</p>
 </blockquote><blockquote><p><code>func slice(start any, end any) List</code></p>
+</blockquote><blockquote><p><code>func sort(lessFn any) <void></code></p>
+<p>Sorts the list with the given <code>less</code> function.  If element <code>a</code> should be ordered before <code>b</code>, the function should return <code>true</code> otherwise <code>false</code>.</p>
 </blockquote><blockquote><p><code>func List.fill(val any, n int) List</code></p>
 <p>Creates a list with initial capacity of <code>n</code> and values set to <code>val</code>.  If the value is an object, it is shallow copied <code>n</code> times.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-listiterator"><code>type ListIterator</code> <a href="#type-listiterator">#</a></h3>
-<blockquote><p><code>func next() any</code></p>
+<blockquote><p><code>func next() <expandOpt></code></p>
 </blockquote><a href="#modules">^topic</a>
-<h3 id="type-tuple"><code>type tuple</code> <a href="#type-tuple">#</a></h3>
+<h3 id="type-tuple"><code>type Tuple</code> <a href="#type-tuple">#</a></h3>
 <blockquote><p><code>func $index(idx int) any</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-map"><code>type Map</code> <a href="#type-map">#</a></h3>
 <blockquote><p><code>func $index(key any) any</code></p>
-</blockquote><blockquote><p><code>func $setIndex(key any, val any) none</code></p>
-</blockquote><blockquote><p><code>func remove(key any) none</code></p>
+</blockquote><blockquote><p><code>func $setIndex(key any, val any) <void></code></p>
+</blockquote><blockquote><p><code>func contains(key any) bool</code></p>
+<p>Returns whether there is a value mapped to <code>key</code>.</p>
+</blockquote><blockquote><p><code>func get(key any) <expandOpt></code></p>
+<p>Returns value mapped to <code>key</code> or returns <code>none</code>.</p>
+</blockquote><blockquote><p><code>func remove(key any) bool</code></p>
 <p>Removes the element with the given key <code>key</code>.</p>
 </blockquote><blockquote><p><code>func size() int</code></p>
 <p>Returns the number of key-value pairs in the map.</p>
@@ -2673,26 +2376,29 @@ print typeof('my str').id()
 <p>Returns a new iterator over the map elements.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-mapiterator"><code>type MapIterator</code> <a href="#type-mapiterator">#</a></h3>
-<blockquote><p><code>func next() any</code></p>
+<blockquote><p><code>func next() <expandOpt></code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-string"><code>type String</code> <a href="#type-string">#</a></h3>
 <blockquote><p><code>func $infix+(o any) String</code></p>
+<p>Returns a new string that concats this string and <code>str</code>.</p>
 </blockquote><blockquote><p><code>func concat(o String) String</code></p>
 <p>Returns a new string that concats this string and <code>str</code>.</p>
+</blockquote><blockquote><p><code>func count() int</code></p>
+<p>Returns the number of runes in the string.</p>
 </blockquote><blockquote><p><code>func endsWith(suffix String) bool</code></p>
 <p>Returns whether the string ends with <code>suffix</code>.</p>
-</blockquote><blockquote><p><code>func find(needle String) any</code></p>
-<p>Returns the first index of substring <code>needle</code> in the string or <code>none</code> if not found. SIMD enabled.</p>
-</blockquote><blockquote><p><code>func findAnyRune(runes String) any</code></p>
-<p>Returns the first index of any UTF-8 rune in <code>runes</code> or <code>none</code> if not found. SIMD enabled.</p>
-</blockquote><blockquote><p><code>func findRune(rune int) int</code></p>
-<p>Returns the first index of UTF-8 rune <code>needle</code> in the string or <code>none</code> if not found. SIMD enabled.</p>
+</blockquote><blockquote><p><code>func find(needle String) <expandOpt></code></p>
+<p>Returns the first byte index of substring <code>needle</code> in the string or <code>none</code> if not found. SIMD enabled.</p>
+</blockquote><blockquote><p><code>func findAnyRune(runes String) <expandOpt></code></p>
+<p>Returns the first byte index of any rune in <code>runes</code> or <code>none</code> if not found. SIMD enabled.</p>
+</blockquote><blockquote><p><code>func findRune(rune int) <expandOpt></code></p>
+<p>Returns the first byte index of a rune <code>needle</code> in the string or <code>none</code> if not found. SIMD enabled.</p>
 </blockquote><blockquote><p><code>func insert(idx int, str String) String</code></p>
-<p>Returns a new string with <code>str</code> inserted at index <code>idx</code>.</p>
+<p>Returns a new string with <code>str</code> inserted at byte index <code>idx</code>.</p>
 </blockquote><blockquote><p><code>func isAscii() bool</code></p>
 <p>Returns whether the string contains all ASCII runes.</p>
 </blockquote><blockquote><p><code>func len() int</code></p>
-<p>Returns the number of UTF-8 runes in the string.</p>
+<p>Returns the byte length of the string. See <code>count()</code> to obtain the number of runes.</p>
 </blockquote><blockquote><p><code>func less(other String) bool</code></p>
 <p>Returns whether this string is lexicographically before <code>other</code>.</p>
 </blockquote><blockquote><p><code>func lower() String</code></p>
@@ -2701,14 +2407,14 @@ print typeof('my str').id()
 <p>Returns a new string with all occurrences of <code>needle</code> replaced with <code>replacement</code>.</p>
 </blockquote><blockquote><p><code>func repeat(n int) String</code></p>
 <p>Returns a new string with this string repeated <code>n</code> times.</p>
-</blockquote><blockquote><p><code>func runeAt(n int) int</code></p>
-<p>Returns the UTF-8 rune at index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func slice(start any, end any) String</code></p>
-<p>Returns a slice into this string from <code>start</code> to <code>end</code> (exclusive) indexes. This is equivalent to using the slice index operator <code>[start..end]</code>.</p>
-</blockquote><blockquote><p><code>func $slice(start any, end any) String</code></p>
+</blockquote><blockquote><p><code>func seek(idx int) int</code></p>
+<p>Returns the starting byte index for the rune index <code>idx</code>.</p>
 </blockquote><blockquote><p><code>func sliceAt(idx int) String</code></p>
-<p>Returns the UTF-8 rune at index <code>idx</code> as a single rune string.</p>
+<p>Returns the UTF-8 rune starting at byte index <code>idx</code> as a string.</p>
 </blockquote><blockquote><p><code>func $index(idx int) String</code></p>
+<p>Returns the rune at byte index <code>idx</code>. The replacement character (0xFFFD) is returned for an invalid UTF-8 rune.</p>
+</blockquote><blockquote><p><code>func $index(range Range) String</code></p>
+<p>Returns a slice into this string from a <code>Range</code> with <code>start</code> (inclusive) to <code>end</code> (exclusive) byte indexes.</p>
 </blockquote><blockquote><p><code>func split(sep String) List</code></p>
 <p>Returns a list of UTF-8 strings split at occurrences of <code>sep</code>.</p>
 </blockquote><blockquote><p><code>func startsWith(prefix String) bool</code></p>
@@ -2730,11 +2436,11 @@ print typeof('my str').id()
 <p>Decodes the array based on an <code>encoding</code>. Supported encodings: <code>.utf8</code>.  Returns the decoded string or throws <code>error.Decode</code>.</p>
 </blockquote><blockquote><p><code>func endsWith(suffix Array) bool</code></p>
 <p>Returns whether the array ends with <code>suffix</code>.</p>
-</blockquote><blockquote><p><code>func find(needle Array) any</code></p>
+</blockquote><blockquote><p><code>func find(needle Array) <expandOpt></code></p>
 <p>Returns the first index of <code>needle</code> in the array or <code>none</code> if not found.</p>
-</blockquote><blockquote><p><code>func findAnyByte(bytes Array) any</code></p>
+</blockquote><blockquote><p><code>func findAnyByte(bytes Array) <expandOpt></code></p>
 <p>Returns the first index of any <code>bytes</code> in <code>arrays</code> or <code>none</code> if not found.</p>
-</blockquote><blockquote><p><code>func findByte(byte int) any</code></p>
+</blockquote><blockquote><p><code>func findByte(byte int) <expandOpt></code></p>
 <p>Returns the first index of <code>byte</code> in the array or <code>none</code> if not found.</p>
 </blockquote><blockquote><p><code>func fmt(kind symbol) String</code></p>
 <p>Formats each byte in the array using a kind specifier which can be binary <code>.b</code>,  octal <code>.o</code>, decimal <code>.d</code>, hexadecimal <code>.x</code>, ASCII <code>.c</code>.  Each byte is zero padded.</p>
@@ -2748,16 +2454,17 @@ print typeof('my str').id()
 <p>Returns a new array with <code>arr</code> inserted at index <code>idx</code>.</p>
 </blockquote><blockquote><p><code>func insertByte(idx int, byte int) Array</code></p>
 <p>Returns a new array with <code>byte</code> inserted at index <code>idx</code>.</p>
+</blockquote><blockquote><p><code>func iterator() ArrayIterator</code></p>
+<p>Returns a new iterator over the array bytes.</p>
 </blockquote><blockquote><p><code>func len() int</code></p>
 <p>Returns the number of bytes in the array.</p>
 </blockquote><blockquote><p><code>func repeat(n int) Array</code></p>
 <p>Returns a new array with this array repeated <code>n</code> times.</p>
 </blockquote><blockquote><p><code>func replace(needle Array, replacement Array) Array</code></p>
 <p>Returns a new array with all occurrences of <code>needle</code> replaced with <code>replacement</code>.</p>
-</blockquote><blockquote><p><code>func slice(start any, end any) Array</code></p>
-<p>Returns a slice into this array from <code>start</code> to <code>end</code> (exclusive) indexes. This is equivalent to using the slice index operator <code>[start..end]</code>.</p>
-</blockquote><blockquote><p><code>func $slice(start any, end any) Array</code></p>
 </blockquote><blockquote><p><code>func $index(idx int) int</code></p>
+</blockquote><blockquote><p><code>func $index(range Range) Array</code></p>
+<p>Returns a slice into this array from a <code>Range</code> with <code>start</code> (inclusive) to <code>end</code> (exclusive) indexes.</p>
 </blockquote><blockquote><p><code>func split(sep Array) List</code></p>
 <p>Returns a list of arrays split at occurrences of <code>sep</code>.</p>
 </blockquote><blockquote><p><code>func startsWith(prefix Array) bool</code></p>
@@ -2768,7 +2475,8 @@ print typeof('my str').id()
 <p>Converts a string to an byte <code>Array</code>.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-arrayiterator"><code>type ArrayIterator</code> <a href="#type-arrayiterator">#</a></h3>
-<a href="#modules">^topic</a>
+<blockquote><p><code>func next() <expandOpt></code></p>
+</blockquote><a href="#modules">^topic</a>
 <h3 id="type-pointer"><code>type pointer</code> <a href="#type-pointer">#</a></h3>
 <blockquote><p><code>func addr() int</code></p>
 <p>Returns the memory address as an <code>int</code>. The value may be negative since it's  bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.</p>
@@ -2778,13 +2486,19 @@ print typeof('my str').id()
 <p>Unsafe. Returns an <code>Array</code> from a null terminated C string.</p>
 </blockquote><blockquote><p><code>func get(offset int, ctype symbol) any</code></p>
 <p>Unsafe. Dereferences the pointer at a byte offset and returns the C value converted to Cyber.</p>
-</blockquote><blockquote><p><code>func set(offset int, ctype symbol, val any) none</code></p>
+</blockquote><blockquote><p><code>func set(offset int, ctype symbol, val any) <void></code></p>
 <p>Unsafe. Converts the value to a compatible C value and writes it to a byte offset from this pointer.</p>
 </blockquote><blockquote><p><code>func toArray(offset int, len int) Array</code></p>
 <p>Unsafe. Returns an <code>Array</code> with a copy of the byte data starting from an offset to the specified length.</p>
 </blockquote><blockquote><p><code>func pointer.'$call'(val any) pointer</code></p>
 <p>Converts a <code>int</code> to a <code>pointer</code> value, or casts to a <code>pointer</code>. This is usually used with FFI.</p>
 </blockquote><a href="#modules">^topic</a>
+<h3 id="type-closure"><code>type Closure</code> <a href="#type-closure">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-lambda"><code>type Lambda</code> <a href="#type-lambda">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-hostfunc"><code>type HostFunc</code> <a href="#type-hostfunc">#</a></h3>
+<a href="#modules">^topic</a>
 <h3 id="type-externfunc"><code>type ExternFunc</code> <a href="#type-externfunc">#</a></h3>
 <blockquote><p><code>func addr() int</code></p>
 <p>Returns the memory address as an <code>int</code>. The value may be negative since it's  bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.</p>
@@ -2794,7 +2508,13 @@ print typeof('my str').id()
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-metatype"><code>type metatype</code> <a href="#type-metatype">#</a></h3>
 <blockquote><p><code>func id() int</code></p>
-</blockquote><!-- builtins.end -->
+</blockquote><a href="#modules">^topic</a>
+<h3 id="type-range"><code>type Range</code> <a href="#type-range">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-box"><code>type Box</code> <a href="#type-box">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-tccstate"><code>type TccState</code> <a href="#type-tccstate">#</a></h3>
+<!-- builtins.end -->
 <a href="#modules">^topic</a>
 <h2 id="math">math. <a href="#math">#</a></h2>
 <p>The math module contains commonly used math constants and functions.</p>
@@ -2940,15 +2660,15 @@ for map -> [k, v]:
 <p>The current operating system's tag name.</p>
 </blockquote><blockquote><p><code>var vecBitSize int</code></p>
 <p>Default SIMD vector bit size.</p>
-</blockquote><blockquote><p><code>func access(path String, mode symbol) none</code></p>
+</blockquote><blockquote><p><code>func access(path String, mode symbol) <void></code></p>
 <p>Attempts to access a file at the given <code>path</code> with the <code>.read</code>, <code>.write</code>, or <code>.readWrite</code> mode.  Throws an error if unsuccessful.</p>
 </blockquote><blockquote><p><code>func args() List</code></p>
 <p>Returns the command line arguments in a <code>List</code>.  Each argument is converted to a <code>String</code>.</p>
 </blockquote><blockquote><p><code>func cacheUrl(url String) String</code></p>
 <p>Returns the path of a locally cached file of <code>url</code>.  If no such file exists locally, it's fetched from <code>url</code>.</p>
-</blockquote><blockquote><p><code>func copyFile(srcPath String, dstPath String) none</code></p>
+</blockquote><blockquote><p><code>func copyFile(srcPath String, dstPath String) <void></code></p>
 <p>Copies a file to a destination path.</p>
-</blockquote><blockquote><p><code>func createDir(path String) none</code></p>
+</blockquote><blockquote><p><code>func createDir(path String) <void></code></p>
 <p>Creates the directory at <code>path</code>. Returns <code>true</code> if successful.</p>
 </blockquote><blockquote><p><code>func createFile(path String, truncate bool) File</code></p>
 <p>Creates and opens the file at <code>path</code>. If <code>truncate</code> is true, an existing file will be truncated.</p>
@@ -2956,19 +2676,19 @@ for map -> [k, v]:
 <p>Returns a null terminated C string.</p>
 </blockquote><blockquote><p><code>func cwd() String</code></p>
 <p>Returns the current working directory.</p>
-</blockquote><blockquote><p><code>func dirName(path String) String</code></p>
+</blockquote><blockquote><p><code>func dirName(path String) <expandOpt></code></p>
 <p>Returns the given path with its last component removed.</p>
 </blockquote><blockquote><p><code>func execCmd(args List) Map</code></p>
 <p>Runs a shell command and returns the stdout/stderr.</p>
 </blockquote><blockquote><p><code>func exePath() String</code></p>
 <p>Returns the current executable's path.</p>
-</blockquote><blockquote><p><code>func exit(status int) none</code></p>
+</blockquote><blockquote><p><code>func exit(status int) <void></code></p>
 <p>Exits the program with a status code.</p>
 </blockquote><blockquote><p><code>func fetchUrl(url String) Array</code></p>
 <p>Fetches the contents at <code>url</code> using the HTTP GET request method.</p>
-</blockquote><blockquote><p><code>func free(ptr pointer) none</code></p>
+</blockquote><blockquote><p><code>func free(ptr pointer) <void></code></p>
 <p>Frees the memory located at <code>ptr</code>.</p>
-</blockquote><blockquote><p><code>func getEnv(key String) String</code></p>
+</blockquote><blockquote><p><code>func getEnv(key String) <expandOpt></code></p>
 <p>Returns an environment variable by key.</p>
 </blockquote><blockquote><p><code>func getEnvAll() Map</code></p>
 <p>Returns all environment variables as a <code>Map</code>.</p>
@@ -2996,21 +2716,21 @@ for map -> [k, v]:
 <p>Reads stdin until a new line as a <code>String</code>. This is intended to read user input from the command line.  For bulk reads from stdin, use <code>stdin</code>.</p>
 </blockquote><blockquote><p><code>func realPath(path String) String</code></p>
 <p>Returns the absolute path of the given path.</p>
-</blockquote><blockquote><p><code>func removeDir(path String) none</code></p>
+</blockquote><blockquote><p><code>func removeDir(path String) <void></code></p>
 <p>Removes an empty directory at <code>path</code>. Returns <code>true</code> if successful.</p>
-</blockquote><blockquote><p><code>func removeFile(path String) none</code></p>
+</blockquote><blockquote><p><code>func removeFile(path String) <void></code></p>
 <p>Removes the file at <code>path</code>. Returns <code>true</code> if successful.</p>
-</blockquote><blockquote><p><code>func setEnv(key String, val String) none</code></p>
+</blockquote><blockquote><p><code>func setEnv(key String, val String) <void></code></p>
 <p>Sets an environment variable by key.</p>
-</blockquote><blockquote><p><code>func sleep(ms float) none</code></p>
+</blockquote><blockquote><p><code>func sleep(ms float) <void></code></p>
 <p>Pauses the current thread for given milliseconds.</p>
-</blockquote><blockquote><p><code>func unsetEnv(key String) none</code></p>
+</blockquote><blockquote><p><code>func unsetEnv(key String) <void></code></p>
 <p>Removes an environment variable by key.</p>
-</blockquote><blockquote><p><code>func writeFile(path String, contents any) none</code></p>
+</blockquote><blockquote><p><code>func writeFile(path String, contents any) <void></code></p>
 <p>Writes <code>contents</code> as a string or bytes to a file.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-file"><code>type File</code> <a href="#type-file">#</a></h3>
-<blockquote><p><code>func close() none</code></p>
+<blockquote><p><code>func close() <void></code></p>
 <p>Closes the file handle. File ops invoked afterwards will return <code>error.Closed</code>.</p>
 </blockquote><blockquote><p><code>func iterator() any</code></p>
 </blockquote><blockquote><p><code>func next() any</code></p>
@@ -3018,11 +2738,11 @@ for map -> [k, v]:
 <p>Reads at most <code>n</code> bytes as an <code>Array</code>. <code>n</code> must be at least 1.  A result with length 0 indicates the end of file was reached.</p>
 </blockquote><blockquote><p><code>func readAll() Array</code></p>
 <p>Reads to the end of the file and returns the content as an <code>Array</code>.</p>
-</blockquote><blockquote><p><code>func seek(n int) none</code></p>
+</blockquote><blockquote><p><code>func seek(n int) <void></code></p>
 <p>Seeks the read/write position to <code>pos</code> bytes from the start. Negative <code>pos</code> is invalid.</p>
-</blockquote><blockquote><p><code>func seekFromCur(n int) none</code></p>
+</blockquote><blockquote><p><code>func seekFromCur(n int) <void></code></p>
 <p>Seeks the read/write position by <code>pos</code> bytes from the current position.</p>
-</blockquote><blockquote><p><code>func seekFromEnd(n int) none</code></p>
+</blockquote><blockquote><p><code>func seekFromEnd(n int) <void></code></p>
 <p>Seeks the read/write position by <code>pos</code> bytes from the end. Positive <code>pos</code> is invalid.</p>
 </blockquote><blockquote><p><code>func stat() Map</code></p>
 <p>Returns info about the file as a <code>Map</code>.</p>
@@ -3042,24 +2762,24 @@ for map -> [k, v]:
 <p>Returns a new iterator over the directory recursive entries.  If this directory was not opened with the iterable flag, <code>error.NotAllowed</code> is returned instead.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-diriterator"><code>type DirIterator</code> <a href="#type-diriterator">#</a></h3>
-<blockquote><p><code>func next() any</code></p>
+<blockquote><p><code>func next() <expandOpt></code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-ffi"><code>type FFI</code> <a href="#type-ffi">#</a></h3>
 <blockquote><p><code>func bindCallback(fn any, params List, ret symbol) ExternFunc</code></p>
 <p>Creates an <code>ExternFunc</code> that contains a C function pointer with the given signature.  The extern function is a wrapper that calls the provided user function.  Once created, the extern function is retained and managed by the FFI context.</p>
-</blockquote><blockquote><p><code>func bindLib(path any) any</code></p>
+</blockquote><blockquote><p><code>func bindLib(path <expandOpt>) any</code></p>
 <p>Calls <code>bindLib(path, [:])</code>.</p>
-</blockquote><blockquote><p><code>func bindLib(path any, config Map) any</code></p>
+</blockquote><blockquote><p><code>func bindLib(path <expandOpt>, config Map) any</code></p>
 <p>Creates a handle to a dynamic library and functions declared from <code>cfunc</code>.  By default, an anonymous object is returned with the C-functions binded as the object's methods.  If <code>config</code> contains <code>genMap: true</code>, a <code>Map</code> is returned instead with C-functions  binded as function values.</p>
 </blockquote><blockquote><p><code>func bindObjPtr(obj any) pointer</code></p>
 <p>Returns a Cyber object's pointer. Operations on the pointer is unsafe,  but it can be useful when passing it to C as an opaque pointer.  The object is also retained and managed by the FFI context.</p>
-</blockquote><blockquote><p><code>func cbind(mt metatype, fields List) none</code></p>
+</blockquote><blockquote><p><code>func cbind(mt metatype, fields List) <void></code></p>
 <p>Binds a Cyber type to a C struct.</p>
-</blockquote><blockquote><p><code>func cfunc(name String, params List, ret any) none</code></p>
+</blockquote><blockquote><p><code>func cfunc(name String, params List, ret any) <void></code></p>
 <p>Declares a C function which will get binded to the library handle created from <code>bindLib</code>.</p>
 </blockquote><blockquote><p><code>func new(ctype symbol) pointer</code></p>
 <p>Allocates memory for a C struct or primitive with the given C type specifier.  A <code>pointer</code> to the allocated memory is returned.  Eventually this will return a <code>cpointer</code> instead which will be more idiomatic to use.</p>
-</blockquote><blockquote><p><code>func unbindObjPtr(obj any) none</code></p>
+</blockquote><blockquote><p><code>func unbindObjPtr(obj any) <void></code></p>
 <p>Releases the object from the FFI context.  External code should no longer use the object's pointer since it's not guaranteed to exist  or point to the correct object.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-carray"><code>type CArray</code> <a href="#type-carray">#</a></h3>
@@ -3082,7 +2802,7 @@ var a = 123 + 321
 t.eq(a, 444)
 </code></pre>
 <!-- test.start -->
-<blockquote><p><code>func assert(pred any) none</code></p>
+<blockquote><p><code>func assert(pred bool) <void></code></p>
 <p>Panics if <code>pred</code> is <code>false</code>.</p>
 </blockquote><blockquote><p><code>func eq(a any, b any) bool</code></p>
 <p>Returns whether two values are equal.  Panics with <code>error.AssertError</code> if types or values do not match up.</p>
@@ -3162,9 +2882,9 @@ Once the object is released by ARC, the TCCState is also released which removes 
 <pre><code class="language-cy">import os
 
 type MyObject:
-    var a float
-    var b pointer
-    var c bool
+    a float
+    b pointer
+    c bool
 
 ffi.cbind(MyObject, [.float, .voidPtr, .bool])
 ffi.cfunc('foo', [MyObject], MyObject)
@@ -3205,9 +2925,10 @@ print ptr.value()     --'3735928559'
 <table><tr>
 <td valign="top">
 <ul>
-<li><a href="#error-trait" title="">Error trait.</a><ul>
-<li><a href="#error-value" title=""><code>error</code> value.</a></li>
-<li><a href="#enum-error" title="">Enum error.</a></li>
+<li><a href="#error-value" title="">Error value.</a><ul>
+<li><a href="#error-literal" title=""><code>error</code> literal.</a></li>
+<li><a href="#error-payload" title=""><code>error</code> payload.</a></li>
+<li><a href="#error-set-type" title=""><code>error</code> set type.</a></li>
 </ul>
 </li>
 <li><a href="#throwing-errors" title="">Throwing errors.</a></li>
@@ -3223,8 +2944,8 @@ print ptr.value()     --'3735928559'
 </td><td valign="top">
 <ul>
 <li><a href="#semantic-checks" title="">Semantic checks.</a><ul>
-<li><a href="#throws-specifier" title=""><code>throws</code> specifier.</a></li>
-<li><a href="#requiring-throws" title="">Requiring <code>throws</code>.</a></li>
+<li><a href="#throws-specifier" title="">throws specifier.</a></li>
+<li><a href="#throws-check" title="">throws check.</a></li>
 </ul>
 </li>
 <li><a href="#stack-trace" title="">Stack trace.</a></li>
@@ -3237,12 +2958,10 @@ print ptr.value()     --'3735928559'
 </tr></table>
 <p><a href="#table-of-contents" title="">^top</a></p>
 <p>Cyber provides a throw/catch mechanism to handle expected errors. For unexpected errors, panics can be used as a fail-fast mechanism to abort the currently running fiber.</p>
-<h2 id="error-trait">Error trait. <a href="#error-trait">#</a></h2>
-<p>Only types that implement the <code>Error</code> trait can be thrown or attached to a panic.
-Since the <code>Error</code> trait is empty, it's simple to turn any type into a throwable type.</p>
+<h2 id="error-value">Error value. <a href="#error-value">#</a></h2>
 <a href="#error-handling">^topic</a>
-<h3 id="error-value"><code>error</code> value. <a href="#error-value">#</a></h3>
-<p>An <code>error</code> value contains a <code>symbol</code> and implements the <code>Error</code> trait. They can be created without a declaration using the error literal:</p>
+<h3 id="error-literal"><code>error</code> literal. <a href="#error-literal">#</a></h3>
+<p>An <code>error</code> value contains a <code>symbol</code>. They can be created without a declaration using the error literal:</p>
 <pre><code class="language-cy">var err = error.Oops
 </code></pre>
 <p>Use <code>sym()</code> to obtain the underlying symbol:</p>
@@ -3257,20 +2976,22 @@ if err.sym() == .Oops:
     handleOops()
 </code></pre>
 <a href="#error-handling">^topic</a>
-<h3 id="enum-error">Enum error. <a href="#enum-error">#</a></h3>
-<p>By implementing the <code>Error</code> trait, an enum type can be throwable: <em>Planned Feature</em></p>
-<pre><code class="language-cy">type MyError enum:
-    with Error
-    boom
-    badArgument
-    nameTooLong
+<h3 id="error-payload"><code>error</code> payload. <a href="#error-payload">#</a></h3>
+<p>An payload value can be attached when throwing an error value. <em>Planned Feature</em></p>
+<a href="#error-handling">^topic</a>
+<h3 id="error-set-type"><code>error</code> set type. <a href="#error-set-type">#</a></h3>
+<p>Error set types enumerate error values that belong to the same group of errors: <em>Planned Feature</em></p>
+<pre><code class="language-cy">type MyError error:
+    case boom
+    case badArgument
+    case nameTooLong
 
 var err = MyError.nameTooLong
 </code></pre>
 <a href="#error-handling">^topic</a>
 <h2 id="throwing-errors">Throwing errors. <a href="#throwing-errors">#</a></h2>
 <p>Use the <code>throw</code> keyword to throw errors.
-A thrown error continues to bubble up the call stack until it is caught by a <code>try</code> block or expression.</p>
+A thrown error continues to bubble up the call stack until it is caught by a <code>try</code> block or <code>try</code> expression.</p>
 <pre><code class="language-cy">func fail():
     throw error.Oops      -- Throws an error with the symbol `#Oops`
 
@@ -3310,7 +3031,7 @@ catch error.BadDay:
 catch:
     print caught
 </code></pre>
-<p>Enum errors can be matched: <em>Planned Feature</em></p>
+<p>Error sets can be matched: <em>Planned Feature</em></p>
 <pre><code class="language-cy">try:
     funcThatCanFail()
 catch MyError.Boom:
@@ -3338,32 +3059,31 @@ if res == error.Failed:
 <a href="#error-handling">^topic</a>
 <h2 id="semantic-checks">Semantic checks. <a href="#semantic-checks">#</a></h2>
 <a href="#error-handling">^topic</a>
-<h3 id="throws-specifier"><code>throws</code> specifier. <a href="#throws-specifier">#</a></h3>
-<p>The <code>throws</code> specifier indicates that a function contains a throwing expression that was not caught with <code>try catch</code>.</p>
-<p>When a function does not have a return specifier, it's implicitly given the <code>throws</code> specifier:</p>
-<pre><code class="language-cy">func foo():
+<h3 id="throws-specifier">throws specifier. <a href="#throws-specifier">#</a></h3>
+<p>The throws specifier <code>!</code> indicates that a function contains a throwing expression that was not caught with <code>try catch</code>.</p>
+<p>The specifier is attached to the function return type as a prefix:</p>
+<pre><code class="language-cy">func foo() !void:
     throw error.Failure
-
-func bar() throws:
-    throw error.Failure
-
--- `foo` and `bar` both have the same return specifier.
 </code></pre>
-<p>Return types for typed functions are declared after <code>throws</code> using a comma separator:</p>
-<pre><code class="language-cy">func result(cond bool) throws, int:
+<p>This declaration indicates the function can either return an <code>int</code> type or throw an error:</p>
+<pre><code class="language-cy">func result(cond bool) !int:
     if cond:
         return 123
     else:
         throw error.Failure
 </code></pre>
 <a href="#error-handling">^topic</a>
-<h3 id="requiring-throws">Requiring <code>throws</code>. <a href="#requiring-throws">#</a></h3>
-<p>A compile-time error is issued when a typed function without a <code>throws</code> specifier contains an uncaught throwing expression: <em>Planned Feature</em></p>
+<h3 id="throws-check">throws check. <a href="#throws-check">#</a></h3>
+<p>The compiler requires a throws specifier if the function contains an uncaught throwing expression: <em>Planned Feature</em></p>
 <pre><code class="language-cy">func foo(a int) int:
     if a == 10:
-        throw error.Failure -- CompileError. `foo` requires the `throws`
-    else:                   -- specifier or any throwing expression must
-        return a * 2        -- be caught with `try catch`.
+        throw error.Failure   --> CompileError.
+    else:
+        return a * 2
+
+--> CompileError. Uncaught throwing expression.
+--> `foo` requires the `!` throws specifier or
+--> the expression must be caught with `try`.
 </code></pre>
 <a href="#error-handling">^topic</a>
 <h2 id="stack-trace">Stack trace. <a href="#stack-trace">#</a></h2>
@@ -3693,7 +3413,7 @@ var b int = 123.0    -- CompileError. Expected `int`, got `float`.
 <a href="#type-system">^topic</a>
 <h3 id="zero-values">Zero values. <a href="#zero-values">#</a></h3>
 <p>The following shows the zero values of builtin or created types.</p>
-<table><thead><tr><th>Type</th><th>Zero value</th></tr></thead><tbody><tr><td><code>boolean</code></td><td><code>false</code></td></tr><tr><td><code>int</code></td><td><code>0</code></td></tr><tr><td><code>float</code></td><td><code>0.0</code></td></tr><tr><td><code>String</code></td><td><code>''</code></td></tr><tr><td><code>Array</code></td><td><code>Array('')</code></td></tr><tr><td><code>List</code></td><td><code>[]</code></td></tr><tr><td><code>Map</code></td><td><code>[:]</code></td></tr><tr><td><code>type S</code></td><td><code>[S:]</code></td></tr><tr><td><code>#host type S</code></td><td><code>S.$zero()</code></td></tr><tr><td><code>dynamic</code></td><td><code>Option.none</code></td></tr><tr><td><code>any</code></td><td><code>Option.none</code></td></tr><tr><td><code>?S</code></td><td><code>Option(S).none</code></td></tr></tbody></table><a href="#type-system">^topic</a>
+<table><thead><tr><th>Type</th><th>Zero value</th></tr></thead><tbody><tr><td><code>boolean</code></td><td><code>false</code></td></tr><tr><td><code>int</code></td><td><code>0</code></td></tr><tr><td><code>float</code></td><td><code>0.0</code></td></tr><tr><td><code>String</code></td><td><code>''</code></td></tr><tr><td><code>Array</code></td><td><code>Array('')</code></td></tr><tr><td><code>List</code></td><td><code>[]</code></td></tr><tr><td><code>Map</code></td><td><code>[:]</code></td></tr><tr><td><code>type S</code></td><td><code>[S:]</code></td></tr><tr><td><code>#host type S</code></td><td><code>S.$zero()</code></td></tr><tr><td><code>dynamic</code></td><td><code>int(0)</code></td></tr><tr><td><code>any</code></td><td><code>int(0)</code></td></tr><tr><td><code>?S</code></td><td><code>Option(S).none</code></td></tr></tbody></table><a href="#type-system">^topic</a>
 <h3 id="functions-1">Functions. <a href="#functions-1">#</a></h3>
 <p>Function parameter and return type specifiers follows a similiar syntax.</p>
 <pre><code class="language-cy">func mul(a float, b float) float:
@@ -3768,6 +3488,7 @@ func add(a int, b int):
 <li><a href="#generics" title="">Generics.</a></li>
 <li><a href="#macros" title="">Macros.</a></li>
 <li><a href="#compile-time-execution" title="">Compile-time execution.</a><ul>
+<li><a href="#builtin-types" title="">Builtin types.</a></li>
 <li><a href="#builtin-functions" title="">Builtin functions.</a></li>
 <li><a href="#builtin-constants" title="">Builtin constants.</a></li>
 </ul>
@@ -3783,8 +3504,8 @@ func add(a int, b int):
 </blockquote><p>Normally this would impact performance, but Cyber generates specialized bytecode for builtin types like <code>int</code> and <code>float</code>. The VM performs inline caching at runtime to eliminate the overhead of evaluating on dynamic operands.</p>
 <p>To overload an operator for an object type, declare <code>$prefix</code>, <code>$infix</code>, <code>$postfix</code> methods. See the available <a href="#builtin-operators" title="">builtin operators</a>. Since operator names aren't allowed as standard identifiers, they are contained in a string literal.</p>
 <pre><code class="language-cy">type Vec2:
-    var x float
-    var y float
+    x float
+    y float
 
     func '$infix+'(o Vec2) Vec2:
         return [Vec2
@@ -3801,7 +3522,7 @@ var c = -a
 </code></pre>
 <p>Some special operators have their own name. This example overloads the <code>index</code> operator and the <code>set index</code> operator:</p>
 <pre><code class="language-cy">type MyCollection:
-    var arr List
+    arr List
 
     func '$index'(idx):
         return arr[idx * 2]
@@ -3825,8 +3546,8 @@ print a[1]        -- Prints `3`
 <p>Declare a <code>$call</code> function to allow invoking a module as a function.</p>
 <pre><code class="language-cy">-- Object types are also modules.
 type Vec2:
-    var x float
-    var y float
+    x float
+    y float
 
 func Vec2.'$call'(x float, y float) Vec2:
     return [Vec2 x: x, y: y]
@@ -3873,6 +3594,12 @@ print bool          -- 'type: bool'
 </blockquote><a href="#metaprogramming">^topic</a>
 <h2 id="compile-time-execution">Compile-time execution. <a href="#compile-time-execution">#</a></h2>
 <blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#metaprogramming">^topic</a>
+<h3 id="builtin-types">Builtin types. <a href="#builtin-types">#</a></h3>
+<p>Builtin types are used internally by the compiler to define it's own primitive types such as <code>bool</code>, <code>int</code>, and <code>float</code>.</p>
+<blockquote><p><code>type bool_t</code></p>
+</blockquote><blockquote><p><code>type int64_t</code></p>
+</blockquote><blockquote><p><code>type float64_t</code></p>
 </blockquote><a href="#metaprogramming">^topic</a>
 <h3 id="builtin-functions">Builtin functions. <a href="#builtin-functions">#</a></h3>
 <blockquote><p><code>func genLabel(name String)</code></p>
@@ -4605,7 +4332,7 @@ hljs.registerLanguage('cy', function() {
         /*
         {
             scope: 'symbol',
-            begin: '#', end: /w(?=[^w])/
+            begin: '.', end: /\w(?=[^\w])/
         },*/
         hljs.COMMENT(
         '\-\-', // begin

@@ -18,6 +18,10 @@
 --| Returns whether a rune is a digit.
 #host func isDigit(val int) bool
 
+--| Returns whether a boxed value is the `none` case of a generic `Option(T)` type.
+--| This is temporary and may be removed in a future release.
+#host func isNone(val any) bool
+
 --| If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned.
 #host func must(val any) any
 

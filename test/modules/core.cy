@@ -90,6 +90,13 @@ t.eq(isDigit(`3`), true)
 t.eq(isDigit(`a`), false)
 t.eq(isDigit(`A`), false)
 
+-- isNone()
+var opt ?int = none
+t.eq(isNone(opt), true)
+t.eq(isNone(1), false)
+opt = 123
+t.eq(isNone(opt), false)
+
 -- parseCyber()
 res = parseCyber('var .foo = 123')
 t.eq(res['decls'][0].type, 'variable')

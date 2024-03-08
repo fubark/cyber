@@ -42,6 +42,7 @@ const funcs = [_]NameFunc{
     .{"is",             is, .standard},
     .{"isAlpha",        isAlpha, .standard},
     .{"isDigit",        isDigit, .standard},
+    .{"isNone",         isNone, .standard},
     .{"must",           zErrFunc2(must), .standard},
     .{"panic",          zErrFunc2(panic), .standard},
     .{"parseCyber",     zErrFunc2(parseCyber), .standard},
@@ -406,6 +407,15 @@ pub fn isDigit(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     } else {
         return Value.initBool(std.ascii.isDigit(@intCast(num)));
     }
+}
+
+pub fn isNone(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+    const type_e = vm.types[args[0].getTypeId()];
+    if (type_e.kind != .option) {
+        return Value.False;
+    }
+    const is_none = args[0].asHeapObject().object.getValue(0).asInteger() == 0;
+    return Value.initBool(is_none);
 }
 
 pub fn runestr(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {

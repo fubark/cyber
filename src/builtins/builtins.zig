@@ -516,6 +516,7 @@ pub fn dump(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const res = try allocToCyon(vm, vm.alloc, args[0]);
     defer vm.alloc.free(res);
     rt.print(vm, res);
+    rt.print(vm, "\n");
     return Value.Void;
 }
 
@@ -976,9 +977,11 @@ pub fn print_c(ctx: cy.Context, arg: rt.Any) callconv(.C) rt.Error {
             return cy.builtins.prepThrowZError2(ctx, err, @errorReturnTrace());
         };
         rt.print(ctx, str);
+        rt.print(ctx, "\n");
     } else {
         const str = arg.type.toPrintString(ctx, arg);
         rt.print(ctx, str.slice());
+        rt.print(ctx, "\n");
         ctx.release(str.buf);
     }
     return rt.Error.initNull();

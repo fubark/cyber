@@ -412,7 +412,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .varSym             => genVarSym(c, idx, cstr, nodeId),
         .blockExpr          => genBlockExpr(c, idx, cstr, nodeId),
         else => {
-            rt.errZFmt(c.vm, "{}", .{code});
+            rt.printErrorZFmt(c.vm, "{}\n", .{code});
             return error.TODO;
         }
     };

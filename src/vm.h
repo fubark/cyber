@@ -922,8 +922,8 @@ typedef struct VM {
     Compiler* compiler;
     Sema* sema;
     void* userData;
-    void* printFn;
-    void* errorFn;
+    void* print;
+    void* print_err;
 #if TRACE
     ZHashMap objectTraceMap;
 #endif

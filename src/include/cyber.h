@@ -255,13 +255,13 @@ typedef struct CsModuleLoaderResult {
 // set symbol loaders, and return true. Otherwise, return false.
 typedef bool (*CsModuleLoaderFn)(CsVM* vm, CsStr resolvedSpec, CsModuleLoaderResult* out);
 
-// Handler for the builtin `print`.
+// Handler for printing. The builtin `print` would invoke this.
 // The default behavior is a no-op.
 typedef void (*CsPrintFn)(CsVM* vm, CsStr str);
 
-// Handler for VM errors.
+// Handler for printing errors.
 // The default behavior is a no-op.
-typedef void (*CsErrorFn)(CsVM* vm, CsStr str);
+typedef void (*CsPrintErrorFn)(CsVM* vm, CsStr str);
 
 // Handler for compiler and runtime logs.
 // The default behavior is a no-op.

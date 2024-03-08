@@ -326,7 +326,7 @@ const Chunk = struct {
                         return TypeName.init(name);
                     }
                 } else {
-                    rt.errZFmt(c.sema.compiler.vm, "Unsupported sym type: {}", .{id});
+                    rt.printErrorZFmt(c.sema.compiler.vm, "Unsupported sym type: {}\n", .{id});
                     return error.TODO;
                 }
             }
@@ -638,7 +638,7 @@ pub fn gen(self: *cy.Compiler) !cy.compiler.AotCompileResult {
         defer self.alloc.free(res.stdout);
 
         if (res.term != .Exited or res.term.Exited != 0) {
-            rt.errMsg(self.vm, res.stderr);
+            rt.printError(self.vm, res.stderr);
             return error.CCError;
         }
     }
@@ -917,7 +917,7 @@ fn genExpr(c: *Chunk, loc: usize, cstr: Cstr) anyerror!Value {
         // .typeSym            => genTypeSym(c, idx, cstr, nodeId),
         // .varSym             => genVarSym(c, idx, cstr, nodeId),
         else => {
-            rt.errZFmt(c.vm, "{}", .{code});
+            rt.printErrorZFmt(c.vm, "{}\n", .{code});
             return error.TODO;
         },
     };

@@ -28,7 +28,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) void {
         if (cy.TrackGlobalRC) {
             if (cy.Trace) {
                 if (vm.refCounts == 0) {
-                    rt.errFmt(vm, "Double free. {}", &.{cy.fmt.v(obj.getTypeId())});
+                    rt.printErrorFmt(vm, "Double free. {}\n", &.{cy.fmt.v(obj.getTypeId())});
                     cy.fatal();
                 }
             }

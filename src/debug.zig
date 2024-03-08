@@ -112,7 +112,7 @@ pub fn printTraceAtNode(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
 pub fn printTraceAtPc(vm: *cy.VM, pc: u32, title: []const u8, msg: []const u8) !void {
     if (pc == cy.NullId) {
-        rt.errFmt(vm, "{}: {} (external)", &.{v(title), v(msg)});
+        rt.printErrorFmt(vm, "{}: {} (external)\n", &.{v(title), v(msg)});
         return;
     }
     if (getIndexOfDebugSym(vm, pc)) |idx| {
@@ -121,7 +121,7 @@ pub fn printTraceAtPc(vm: *cy.VM, pc: u32, title: []const u8, msg: []const u8) !
         const node = chunk.ast.node(sym.loc);
         try printUserError(vm, title, msg, sym.file, node.srcPos);
     } else {
-        rt.errFmt(vm, "{}: {}\nMissing debug sym for {}, pc: {}.", &.{
+        rt.printErrorFmt(vm, "{}: {}\nMissing debug sym for {}, pc: {}.\n", &.{
             v(title), v(msg), v(vm.ops[pc].opcode()), v(pc)});
     }
 }
@@ -137,9 +137,8 @@ pub fn printLastUserPanicError(vm: *cy.VM) !void {
     if (cy.silentError) {
         return;
     }
-    const w = vm.clearTempString();
+    var w = rt.ErrorWriter{ .c = vm };
     try writeLastUserPanicError(vm, w);
-    rt.errMsg(vm, vm.getTempString());
 }
 
 fn writeLastUserPanicError(vm: *const cy.VM, w: anytype) !void {
@@ -186,15 +185,14 @@ pub fn printUserError(vm: *cy.VM, title: []const u8, msg: []const u8, chunkId: u
     if (cy.silentError) {
         return;
     }
-    const w = vm.clearTempString();
-    try writeUserError(vm, w, title, msg, chunkId, pos);
-    rt.errMsg(vm, vm.getTempString());
+    var w = rt.ErrorWriter{ .c = vm };
+    try writeUserError(vm.compiler, w, title, msg, chunkId, pos);
 }
 
 /// Reduced to using writer so printed errors can be tested.
-pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []const u8, chunkId: u32, pos: u32) !void {
+pub fn writeUserError(c: *const cy.Compiler, w: anytype, title: []const u8, msg: []const u8, chunkId: u32, pos: u32) !void {
     if (chunkId != cy.NullId) {
-        const chunk = vm.compiler.chunks.items[chunkId];
+        const chunk = c.chunks.items[chunkId];
         if (pos != NullId) {
             var line: u32 = undefined;
             var col: u32 = undefined;
@@ -510,14 +508,14 @@ pub fn dumpBytecode(vm: *cy.VM, opts: DumpBytecodeOptions) !void {
             // const sblock = &chunk.semaBlocks.items[funcDecl.semaBlockId];
             // try chunk.dumpLocals(sblock);
         }
-        rt.print(vm, "");
+        rt.print(vm, "\n");
 
         const node = chunk.ast.node(sym.loc);
         const msg = try std.fmt.allocPrint(vm.alloc, "pc={} op={s} node={s}", .{ pcContext, @tagName(pc[pcContext].opcode()), @tagName(node.type()) });
         defer vm.alloc.free(msg);
         try printUserError(vm, "Trace", msg, sym.file, node.srcPos);
 
-        rt.print(vm, "Bytecode:");
+        rt.print(vm, "Bytecode:\n");
         const ContextSize = 40;
         const startSymIdx = if (idx >= ContextSize) idx - ContextSize else 0;
         pcOffset = debugTable[startSymIdx].pc;
@@ -570,7 +568,7 @@ pub fn dumpBytecode(vm: *cy.VM, opts: DumpBytecodeOptions) !void {
             }
         }
     } else {
-        rt.print(vm, "Bytecode:");
+        rt.print(vm, "Bytecode:\n");
 
         var curMarkerIdx: u32 = if (vm.compiler.buf.debugMarkers.items.len > 0) 0 else cy.NullId;
         var nextMarkerPc: u32 = if (curMarkerIdx == 0) vm.compiler.buf.debugMarkers.items[curMarkerIdx].pc else cy.NullId;
@@ -588,11 +586,11 @@ pub fn dumpBytecode(vm: *cy.VM, opts: DumpBytecodeOptions) !void {
             instIdx += 1;
         }
 
-        rt.printFmt(vm, "\nConstants ({}):", &.{v(vm.compiler.buf.mconsts.len)});
+        rt.printFmt(vm, "\nConstants ({}):\n", &.{v(vm.compiler.buf.mconsts.len)});
         for (vm.compiler.buf.mconsts) |extra| {
             const val = cy.Value{ .val = extra.val };
             const str = try vm.bufPrintValueShortStr(&vm.tempBuf, val);
-            rt.printFmt(vm, "{}", &.{v(str)});
+            rt.printFmt(vm, "{}\n", &.{v(str)});
         }
     }
 }
@@ -601,13 +599,13 @@ fn dumpMarkerAdvance(vm: *cy.VM, curMarkerIdx: *u32, nextMarkerPc: *u32) void {
     const marker = vm.compiler.buf.debugMarkers.items[curMarkerIdx.*];
     switch (marker.etype()) {
         .label => {
-            rt.printFmt(vm, "{}:", &.{v(marker.getLabelName())});
+            rt.printFmt(vm, "{}:\n", &.{v(marker.getLabelName())});
         },
         .funcStart => {
-            rt.printFmt(vm, "---- func begin: {}", &.{v(marker.data.funcStart.func.name())});
+            rt.printFmt(vm, "---- func begin: {}\n", &.{v(marker.data.funcStart.func.name())});
         },
         .funcEnd => {
-            rt.printFmt(vm, "---- func end: {}", &.{v(marker.data.funcEnd.func.name())});
+            rt.printFmt(vm, "---- func end: {}\n", &.{v(marker.data.funcEnd.func.name())});
         },
     }
     curMarkerIdx.* += 1;

@@ -637,24 +637,22 @@ pub const Chunk = struct {
 
     pub fn dumpLocals(self: *const Chunk, sproc: *sema.Proc) !void {
         if (cy.Trace) {
-            if (!cy.silentInternal) {
-                rt.print(self.vm, "Locals:");
-                const params = self.getProcParams(sproc);
-                for (params) |svar| {
-                    const typeId: types.TypeId = svar.vtype.id;
-                    rt.printFmt(self.vm, "{} (param), local: {}, dyn: {}, rtype: {}, lifted: {}", &.{
-                        v(svar.name()), v(svar.local), v(svar.vtype.dynamic), v(typeId),
-                        v(svar.inner.local.lifted),
-                    });
-                }
-                const vars = self.getProcVars(sproc);
-                for (vars) |svar| {
-                    const typeId: types.TypeId = svar.vtype.id;
-                    rt.printFmt(self.vm, "{}, local: {}, dyn: {}, rtype: {}, lifted: {}", &.{
-                        v(svar.name()), v(svar.local), v(svar.vtype.dynamic), v(typeId),
-                        v(svar.inner.local.lifted),
-                    });
-                }
+            rt.print(self.vm, "Locals:\n");
+            const params = self.getProcParams(sproc);
+            for (params) |svar| {
+                const typeId: types.TypeId = svar.vtype.id;
+                rt.printFmt(self.vm, "{} (param), local: {}, dyn: {}, rtype: {}, lifted: {}\n", &.{
+                    v(svar.name()), v(svar.local), v(svar.vtype.dynamic), v(typeId),
+                    v(svar.inner.local.lifted),
+                });
+            }
+            const vars = self.getProcVars(sproc);
+            for (vars) |svar| {
+                const typeId: types.TypeId = svar.vtype.id;
+                rt.printFmt(self.vm, "{}, local: {}, dyn: {}, rtype: {}, lifted: {}\n", &.{
+                    v(svar.name()), v(svar.local), v(svar.vtype.dynamic), v(typeId),
+                    v(svar.inner.local.lifted),
+                });
             }
         }
     }

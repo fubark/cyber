@@ -502,47 +502,72 @@ pub fn getSymName(c: Context, id: u32) []const u8 {
     }
 }
 
-pub fn errMsg(c: Context, str: []const u8) void {
+pub const ErrorWriter = struct {
+    c: Context,
+
+    pub fn write(self: ErrorWriter, bytes: []const u8) !void {
+        return self.writeAll(bytes);
+    }
+
+    pub fn writeAll(self: ErrorWriter, bytes: []const u8) !void {
+        printError(self.c, bytes);
+    }
+
+    pub fn writeByte(self: ErrorWriter, byte: u8) !void {
+        const array = [1]u8{byte};
+        return self.writeAll(&array);
+    }
+
+    pub fn writeByteNTimes(self: ErrorWriter, byte: u8, n: usize) !void {
+        var bytes: [256]u8 = undefined;
+        @memset(bytes[0..], byte);
+
+        var remaining = n;
+        while (remaining > 0) {
+            const to_write = @min(remaining, bytes.len);
+            try self.writeAll(bytes[0..to_write]);
+            remaining -= to_write;
+        }
+    }
+};
+
+pub fn printError(c: Context, str: []const u8) void {
     if (build_options.rt == .vm) {
-        c.errorFn.?(@ptrCast(c), api.initStr(str));
+        c.print_err.?(@ptrCast(c), api.toStr(str));
     } else {
         const w = std.io.getStdErr().writer();
         w.writeAll(str) catch cy.fatal();
-        w.writeByte('\n') catch cy.fatal();
     }
 }
 
-pub fn errFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) void {
+pub fn printErrorFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) void {
     if (build_options.rt == .vm) {
         const w = c.clearTempString();
         cy.fmt.print(w, format, args);
-        c.errorFn.?(@ptrCast(c), api.initStr(c.getTempString()));
+        c.print_err.?(@ptrCast(c), api.toStr(c.getTempString()));
     } else {
         const w = std.io.getStdErr().writer();
         cy.fmt.print(w, format, args);
-        w.writeByte('\n') catch cy.fatal();
     }
 }
 
-pub fn errZFmt(c: Context, comptime format: []const u8, args: anytype) void {
+pub fn printErrorZFmt(c: Context, comptime format: []const u8, args: anytype) void {
     if (build_options.rt == .vm) {
         const w = c.clearTempString();
         std.fmt.format(w, format, args) catch cy.fatal();
-        c.errorFn.?(@ptrCast(c), api.initStr(c.getTempString()));
+        c.print_err.?(@ptrCast(c), api.toStr(c.getTempString()));
     } else {
         const w = std.io.getStdErr().writer();
         std.fmt.format(w, format, args) catch cy.fatal();
-        w.writeByte('\n') catch cy.fatal();
     }
 }
 
 pub fn print(c: Context, str: []const u8) void {
     if (build_options.rt == .vm) {
-        c.printFn.?(@ptrCast(c), api.initStr(str));
+        c.print.?(@ptrCast(c), api.toStr(str));
     } else {
         const w = std.io.getStdOut().writer();
         w.writeAll(str) catch cy.fatal();
-        w.writeByte('\n') catch cy.fatal();
     }
 }
 
@@ -550,11 +575,10 @@ pub fn printFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) v
     if (build_options.rt == .vm) {
         const w = c.clearTempString();
         cy.fmt.print(w, format, args);
-        c.printFn.?(@ptrCast(c), api.initStr(c.getTempString()));
+        c.print.?(@ptrCast(c), api.toStr(c.getTempString()));
     } else {
         const w = std.io.getStdOut().writer();
         cy.fmt.print(w, format, args);
-        w.writeByte('\n') catch cy.fatal();
     }
 }
 
@@ -562,17 +586,16 @@ pub fn printZFmt(c: Context, comptime format: []const u8, args: anytype) void {
     if (build_options.rt == .vm) {
         const w = c.clearTempString();
         std.fmt.format(w, format, args);
-        c.printFn.?(@ptrCast(c), api.initStr(c.getTempString()));
+        c.print.?(@ptrCast(c), api.toStr(c.getTempString()));
     } else {
         const w = std.io.getStdOut().writer();
         std.fmt.format(w, format, args);
-        w.writeByte('\n') catch cy.fatal();
     }
 }
 
 pub fn log(str: []const u8) void {
     if (build_options.rt == .vm) {
-        cy.log.logFn.?(api.initStr(str));
+        cy.log.logFn.?(api.toStr(str));
     } else {
         const w = std.io.getStdErr().writer();
         w.writeAll(str) catch cy.fatal();

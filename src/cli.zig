@@ -60,38 +60,33 @@ fn logFn(str: c.Str) callconv(.C) void {
     }
 }
 
-fn errorFn(_: ?*c.VM, str: c.Str) callconv(.C) void {
-    if (cy.silentError) {
+fn printError(_: ?*c.VM, str: c.Str) callconv(.C) void {
+    if (c.silent()) {
         return;
     }
     if (cy.isWasmFreestanding) {
         os_mod.hostFileWrite(2, str.buf, str.len);
-        os_mod.hostFileWrite(2, "\n", 1);
     } else {
         const w = std.io.getStdErr().writer();
-        w.writeAll(c.strSlice(str)) catch cy.fatal();
-        w.writeByte('\n') catch cy.fatal();
+        w.writeAll(c.fromStr(str)) catch cy.fatal();
     }
 }
 
 fn print(_: ?*c.VM, str: c.Str) callconv(.C) void {
     if (cy.isWasmFreestanding) {
         os_mod.hostFileWrite(1, str.buf, str.len);
-        os_mod.hostFileWrite(1, "\n", 1);
     } else {
         // Temporarily redirect to error for tests to avoid hanging the Zig runner.
         if (builtin.is_test) {
             const w = std.io.getStdErr().writer();
             const slice = c.strSlice(str);
             w.writeAll(slice) catch cy.fatal();
-            w.writeByte('\n') catch cy.fatal();
             return;
         }
 
         const w = std.io.getStdOut().writer();
         const slice = c.strSlice(str);
         w.writeAll(slice) catch cy.fatal();
-        w.writeByte('\n') catch cy.fatal();
     }
 }
 

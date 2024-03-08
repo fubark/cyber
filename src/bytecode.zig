@@ -779,6 +779,7 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             fmt.print(w, "{}| {}", &.{fmt.repeat(' ', @intCast(ExtraStartCol-len)), v(extra)});
         }
     }
+    try w.writeByte('\n');
     rt.print(vm, vm.getTempString());
 }
 

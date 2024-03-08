@@ -132,9 +132,9 @@ pub const VM = struct {
     /// User data ptr. Useful for embedders.
     userData: ?*anyopaque,
 
-    /// Host print callback.
-    printFn: cc.PrintFn,
-    errorFn: cc.ErrorFn,
+    /// Host write hook.
+    print: cc.PrintFn,
+    print_err: cc.PrintErrorFn,
 
     /// Object to pc of instruction that allocated it.
     objectTraceMap: if (cy.Trace) std.AutoHashMapUnmanaged(*HeapObject, debug.ObjectTrace) else void,
@@ -236,8 +236,8 @@ pub const VM = struct {
             .userData = null,
             .expGlobalRC = 0,
             .varSymExtras = .{},
-            .printFn = defaultPrint,
-            .errorFn = defaultErrorFn,
+            .print = defaultPrint,
+            .print_err = defaultPrintError,
             .countFrees = if (cy.Trace) false else {},
             .numFreed = if (cy.Trace) 0 else {},
             .tempBuf = undefined,
@@ -1751,8 +1751,8 @@ test "vm internals." {
     try t.eq(@offsetOf(VM, "compactTrace"), @offsetOf(vmc.VM, "compactTrace"));
     try t.eq(@offsetOf(VM, "compiler"), @offsetOf(vmc.VM, "compiler"));
     try t.eq(@offsetOf(VM, "userData"), @offsetOf(vmc.VM, "userData"));
-    try t.eq(@offsetOf(VM, "printFn"), @offsetOf(vmc.VM, "printFn"));
-    try t.eq(@offsetOf(VM, "errorFn"), @offsetOf(vmc.VM, "errorFn"));
+    try t.eq(@offsetOf(VM, "print"), @offsetOf(vmc.VM, "print"));
+    try t.eq(@offsetOf(VM, "print_err"), @offsetOf(vmc.VM, "print_err"));
     try t.eq(@offsetOf(VM, "httpClient"), @offsetOf(vmc.VM, "httpClient"));
     try t.eq(@offsetOf(VM, "stdHttpClient"), @offsetOf(vmc.VM, "stdHttpClient"));
     try t.eq(@offsetOf(VM, "emptyString"), @offsetOf(vmc.VM, "emptyString"));
@@ -4681,11 +4681,11 @@ pub var dummyCyclableHead = DummyCyclableNode{
 };
 
 pub fn defaultPrint(_: ?*cc.VM, _: cc.Str) callconv(.C) void {
-    // Default print is a nop.
+    // Default is a nop.
 }
 
-pub fn defaultErrorFn(_: ?*cc.VM, _: cc.Str) callconv(.C) void {
-    // Default errorFn is a nop.
+pub fn defaultPrintError(_: ?*cc.VM, _: cc.Str) callconv(.C) void {
+    // Default is a nop.
 }
 
 export fn zDeoptBinOp(vm: *VM, pc: [*]cy.Inst) [*]cy.Inst {

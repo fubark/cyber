@@ -121,11 +121,11 @@ type List:
     #host func '$index'(range Range) List
     #host func '$setIndex'(idx int, val any) void
 
-    --| Appends a value to the end of the list.
-    #host func append(val any) none
+    --| Appends the elements of another list to the end of this list.
+    #host func append(list List) void
 
-    --| Concats the elements of another list to the end of this list.
-    #host func concat(list List) none
+    --| Appends a value to the end of the list.
+    #host func append(val any) void
 
     --| Inserts a value at index `idx`.
     #host func insert(idx int, val any) none

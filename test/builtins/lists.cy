@@ -40,9 +40,9 @@ a.append(1)
 t.eq(a.len(), 1)
 t.eq(a[0], 1)
 
--- concat()
+-- append(List)
 a = [1, 2, 3]
-a.concat([4, 5, 6])
+a.append([4, 5, 6])
 t.eqList(a, [1, 2, 3, 4, 5, 6])
 
 -- insert() in empty

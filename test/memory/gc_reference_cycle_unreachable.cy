@@ -4,8 +4,8 @@ import t 'test'
 func foo():
     var a = []
     var b = []
-    a.append(b)
-    b.append(a)
+    a.append(b as any)
+    b.append(a as any)
     var res = performGC()
     -- Cycle still alive in the current stack so no gc.
     t.eq(res['numCycFreed'], 0)
@@ -17,8 +17,8 @@ t.eq(res['numCycFreed'], 2)
 func foo2():
     var a = []
     var b = []
-    a.append(b)
-    b.append(a)
+    a.append(b as any)
+    b.append(a as any)
     a.append(pointer(1))
 foo2()
 res = performGC()

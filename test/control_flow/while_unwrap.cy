@@ -2,7 +2,7 @@ import t 'test'
 
 -- Assign to variable.
 var a = 0 
-var next = func():
+var next = func() ?int:
     if a < 4:
         a += 1
         return a
@@ -15,7 +15,7 @@ t.eq(sum, 10)
 
 -- Assign rc value to variable.
 a = 0 
-next = func ():
+next = func () ?List:
     if a < 4:
         a += 1
         return [a]
@@ -28,7 +28,7 @@ t.eq(sum, 10)
 
 -- Single line block.
 a = 0 
-next = func():
+next = func() ?int:
     if a < 4:
         a += 1
         return a

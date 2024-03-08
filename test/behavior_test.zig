@@ -335,7 +335,7 @@ if (!aot) {
     run.case("control_flow/return.cy");
     run.case("control_flow/while_cond.cy");
     run.case("control_flow/while_inf.cy");
-    run.case("control_flow/while_unwrap_opt.cy");
+    run.case("control_flow/while_unwrap.cy");
 }
 
     var numPassed: u32 = 0;

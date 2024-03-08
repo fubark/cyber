@@ -44,9 +44,7 @@ pub const StmtCode = enum(u8) {
     ifUnwrapStmt,
     switchStmt,
     tryStmt,
-    whileOptStmt,
-    whileInfStmt,
-    whileCondStmt,
+    loopStmt,
     forRangeStmt,
     forIterStmt,
     destrElemsStmt,
@@ -193,20 +191,8 @@ pub const DestructureElems = struct {
     right: u32,
 };
 
-pub const WhileOptStmt = struct {
-    opt: Loc,
-    capIdx: u32,
-    bodyHead: u32,
-    someLocal: u8,
-};
-
-pub const WhileCondStmt = struct {
-    cond: Loc,
-    bodyHead: Loc,
-};
-
-pub const WhileInfStmt = struct {
-    bodyHead: u32,
+pub const LoopStmt = struct {
+    body_head: Loc,
 };
 
 pub const PushDebugLabel = struct {
@@ -596,14 +582,12 @@ pub fn StmtData(comptime code: StmtCode) type {
         .setVarSym,
         .set => Set,
         .pushDebugLabel => PushDebugLabel,
-        .whileOptStmt => WhileOptStmt,
-        .whileCondStmt => WhileCondStmt,
         .verbose => Verbose,
-        .whileInfStmt => WhileInfStmt,
         .destrElemsStmt => DestructureElems,
         .exprStmt => ExprStmt,
         .block => Block,
         .retExprStmt => RetExprStmt,
+        .loopStmt => LoopStmt,
         else => void,
     };
 }

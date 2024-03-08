@@ -479,54 +479,81 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
         },
         .whileInfStmt => {
             try preLoop(c, node.data.whileInfStmt.bodyHead);
-            const irIdx = try c.ir.pushEmptyStmt(c.alloc, .whileInfStmt, nodeId);
+            const loc = try c.ir.pushEmptyStmt(c.alloc, .loopStmt, nodeId);
             try pushBlock(c, nodeId);
-            try semaStmts(c, node.data.whileInfStmt.bodyHead);
+            {
+                try semaStmts(c, node.data.whileInfStmt.bodyHead);
+                _ = try c.ir.pushStmt(c.alloc, .contStmt, nodeId, {});
+            }
             const stmtBlock = try popLoopBlock(c);
-            c.ir.setStmtData(irIdx, .whileInfStmt, .{
-                .bodyHead = stmtBlock.first,
+            c.ir.setStmtData(loc, .loopStmt, .{
+                .body_head = stmtBlock.first,
             });
         },
         .whileCondStmt => {
             try preLoop(c, nodeId);
-            const irIdx = try c.ir.pushEmptyStmt(c.alloc, .whileCondStmt, nodeId);
+            const loc = try c.ir.pushEmptyStmt(c.alloc, .loopStmt, nodeId);
 
-            const cond = try c.semaExpr(node.data.whileCondStmt.cond, .{});
             try pushBlock(c, nodeId);
-
-            try semaStmts(c, node.data.whileCondStmt.bodyHead);
-
+            {
+                const if_stmt = try c.ir.pushEmptyStmt(c.alloc, .ifStmt, node.data.whileCondStmt.cond);
+                const cond = try c.semaExpr(node.data.whileCondStmt.cond, .{});
+                try pushBlock(c, node.data.whileCondStmt.cond);
+                {
+                    try semaStmts(c, node.data.whileCondStmt.bodyHead);
+                    _ = try c.ir.pushStmt(c.alloc, .contStmt, nodeId, {});
+                }
+                const if_block = try popBlock(c);
+                c.ir.setStmtData(if_stmt, .ifStmt, .{
+                    .cond = cond.irIdx,
+                    .body_head = if_block.first,
+                    .else_block = cy.NullId,
+                });
+            }
             const stmtBlock = try popLoopBlock(c);
-            c.ir.setStmtData(irIdx, .whileCondStmt, .{
-                .cond = cond.irIdx,
-                .bodyHead = stmtBlock.first,
+            c.ir.setStmtData(loc, .loopStmt, .{
+                .body_head = stmtBlock.first,
             });
         },
         .whileOptStmt => {
             try preLoop(c, nodeId);
-            const irIdx = try c.ir.pushEmptyStmt(c.alloc, .whileOptStmt, nodeId);
+            const loc = try c.ir.pushEmptyStmt(c.alloc, .loopStmt, nodeId);
 
             const header = c.ast.node(node.data.whileOptStmt.header);
-            const opt = try c.semaExpr(header.data.whileOptHeader.opt, .{});
+            if (header.data.whileOptHeader.capture == cy.NullNode) {
+                return c.reportErrorAt("Expected unwrapped variable declaration.", &.{}, nodeId);
+            }
 
             try pushBlock(c, nodeId);
-            if (header.data.whileOptHeader.capture == cy.NullNode) {
-                return c.reportErrorAt("Missing variable declaration for `some`.", &.{}, nodeId);
+            {
+                const if_stmt = try c.ir.pushEmptyStmt(c.alloc, .ifUnwrapStmt, header.data.whileOptHeader.opt);
+                const opt = try c.semaOptionExpr(header.data.whileOptHeader.opt);
+                try pushBlock(c, header.data.whileOptHeader.opt);
+                var decl_head: u32 = undefined;
+                var unwrap_local: u8 = undefined;
+                {
+                    const unwrap_t = if (opt.type.dynamic) bt.Dynamic else b: {
+                        break :b c.sema.getTypeSym(opt.type.id).cast(.enum_t).getMemberByIdx(1).payloadType;
+                    };
+                    const unwrap_var = try declareLocal(c, header.data.whileOptHeader.capture, unwrap_t, false);
+                    unwrap_local = @intCast(c.varStack.items[unwrap_var].inner.local.id);
+
+                    decl_head = c.ir.getAndClearStmtBlock();
+                    try semaStmts(c, node.data.whileOptStmt.bodyHead);
+                    _ = try c.ir.pushStmt(c.alloc, .contStmt, nodeId, {});
+                }
+                const if_block = try popBlock(c);
+                c.ir.setStmtData(if_stmt, .ifUnwrapStmt, .{
+                    .opt = opt.irIdx,
+                    .unwrap_local = unwrap_local,
+                    .decl_head = decl_head,
+                    .body_head = if_block.first,
+                    .else_block = cy.NullId,
+                });
             }
-            const declT = if (opt.type.dynamic) bt.Dynamic else bt.Any;
-            const id = try declareLocal(c, header.data.whileOptHeader.capture, declT, false);
-            const someLocal: u8 = @intCast(c.varStack.items[id].inner.local.id);
-
-            const declHead = c.ir.getAndClearStmtBlock();
-
-            try semaStmts(c, node.data.whileOptStmt.bodyHead);
-
             const stmtBlock = try popLoopBlock(c);
-            c.ir.setStmtData(irIdx, .whileOptStmt, .{
-                .opt = opt.irIdx,
-                .someLocal = someLocal,
-                .capIdx = declHead,
-                .bodyHead = stmtBlock.first,
+            c.ir.setStmtData(loc, .loopStmt, .{
+                .body_head = stmtBlock.first,
             });
         },
         .switchStmt => {

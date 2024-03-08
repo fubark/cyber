@@ -264,6 +264,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .funcBlock          => try funcBlock(c, idx, nodeId),
         .ifStmt             => try ifStmt(c, idx, nodeId),
         .ifUnwrapStmt       => try ifUnwrapStmt(c, idx, nodeId),
+        .loopStmt           => try loopStmt(c, idx, nodeId),
         .mainBlock          => try mainBlock(c, idx, nodeId),
         .block              => try genBlock(c, idx, nodeId),
         .opSet              => try opSet(c, idx, nodeId),
@@ -282,9 +283,6 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .switchStmt         => try switchStmt(c, idx, nodeId),
         .tryStmt            => try tryStmt(c, idx, nodeId),
         .verbose            => try verbose(c, idx, nodeId),
-        .whileCondStmt      => try whileCondStmt(c, idx, nodeId),
-        .whileInfStmt       => try whileInfStmt(c, idx, nodeId),
-        .whileOptStmt       => try whileOptStmt(c, idx, nodeId),
         // TODO: Specialize op assign.
         // .opSetLocal => try opSetLocal(c, getData(pc, .opSetLocal), nodeId),
         // .opSetObjectField => try opSetObjectField(c, getData(pc, .opSetObjectField), nodeId),
@@ -2650,95 +2648,19 @@ fn genIterNext(c: *Chunk, iterTemp: u8, hasCounter: bool, iterNodeId: cy.NodeId)
     }
 }
 
-fn whileOptStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
-    const data = c.ir.getStmtData(idx, .whileOptStmt);
-    const topPc = c.buf.ops.items.len;
+fn loopStmt(c: *cy.Chunk, loc: usize, nodeId: cy.NodeId) !void {
+    const data = c.ir.getStmtData(loc, .loopStmt);
 
-    const blockJumpStart: u32 = @intCast(c.blockJumpStack.items.len);
+    const top_pc = c.buf.ops.items.len;
+    const jump_start: u32 = @intCast(c.blockJumpStack.items.len);
+    defer c.blockJumpStack.items.len = jump_start;
 
-    try pushBlock(c, true, nodeId);
-    try genStmt(c, data.capIdx);
-
-    // Optional.
-    const optv = try genExpr(c, data.opt, Cstr.simple);
-
-    const optNoneJump = try c.pushEmptyJumpNone(optv.reg);
-
-    // Copy to captured var.
-    try setLocal(c, .{ .id = data.someLocal }, undefined, bt.Any, nodeId, .{ .rightv = optv });
-
-    try popTempValue(c, optv);
-    // No release, captured var consumes it.
-
-    try genStmts(c, data.bodyHead);
-
-    const b = c.blocks.getLast();
-    try genReleaseLocals(c, b.nextLocalReg, b.nodeId);
-    try popLoopBlock(c);
-
-    try c.pushJumpBackTo(topPc);
-    c.patchJumpNoneToCurPc(optNoneJump);
-
-    // No need to free optv if it is none.
-
-    c.patchForBlockJumps(blockJumpStart, c.buf.ops.items.len, topPc);
-    c.blockJumpStack.items.len = blockJumpStart;
-}
-
-fn whileInfStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
-    const data = c.ir.getStmtData(idx, .whileInfStmt);
-
-    // Loop top.
-    const topPc = c.buf.ops.items.len;
-
-    const blockJumpStart: u32 = @intCast(c.blockJumpStack.items.len);
-
-    try pushBlock(c, true, nodeId);
-
-    try genStmts(c, data.bodyHead);
-
-    const b = c.blocks.getLast();
-    try genReleaseLocals(c, b.nextLocalReg, b.nodeId);
-    try popLoopBlock(c);
-
-    try c.pushJumpBackTo(topPc);
-
-    c.patchForBlockJumps(blockJumpStart, c.buf.ops.items.len, topPc);
-    c.blockJumpStack.items.len = blockJumpStart;
-}
-
-fn whileCondStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
-    const data = c.ir.getStmtData(idx, .whileCondStmt);
-
-    // Loop top.
-    const topPc = c.buf.ops.items.len;
-
-    const blockJumpStart: u32 = @intCast(c.blockJumpStack.items.len);
-
-    const condNodeId = c.ir.getNode(data.cond);
-    const condv = try genExpr(c, data.cond, Cstr.simple);
-
-    const condMissJump = try c.pushEmptyJumpNotCond(condv.reg);
-
-    try popTempValue(c, condv);
-    try releaseTempValue(c, condv, condNodeId);
-
-    try pushBlock(c, true, nodeId);
-
-    // Enter while body.
-    try genStmts(c, data.bodyHead);
-
-    const b = c.blocks.getLast();
-    try genReleaseLocals(c, b.nextLocalReg, b.nodeId);
-    try popLoopBlock(c);
-
-    try c.pushJumpBackTo(topPc);
-    c.patchJumpNotCondToCurPc(condMissJump);
-
-    // No need to free cond if false.
-
-    c.patchForBlockJumps(blockJumpStart, c.buf.ops.items.len, topPc);
-    c.blockJumpStack.items.len = blockJumpStart;
+    {
+        try pushBlock(c, true, nodeId);
+        try genStmts(c, data.body_head);
+        try popLoopBlock(c);
+    }
+    c.patchForBlockJumps(jump_start, c.buf.ops.items.len, top_pc);
 }
 
 fn destrElemsStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {

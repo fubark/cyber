@@ -15,8 +15,9 @@ res = try fail() catch 0
 t.eq(res, 0)
 
 -- Retained catch value.
-res = try fail() catch 'retained'
-t.eq(res, 'retained')
+var res2 = ''
+res2 = try fail() catch 'retained'
+t.eq(res2, 'retained')
 
 -- Sub expr fails, returns default value.
 res = try happy(fail()) catch 0

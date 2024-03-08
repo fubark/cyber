@@ -948,9 +948,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .seqDestructure => {
             return 3 + pc[2].val;
         },
-        .objectTypeCheck => {
-            return 3 + pc[2].val * 5;
-        },
         .copyObj,
         .typeCheck,
         .call,
@@ -1168,7 +1165,6 @@ pub const OpCode = enum(u8) {
     stringTemplate = vmc.CodeStringTemplate,
     negFloat = vmc.CodeNegFloat,
 
-    objectTypeCheck = vmc.CodeObjectTypeCheck,
     objectSmall = vmc.CodeObjectSmall,
     object = vmc.CodeObject,
 

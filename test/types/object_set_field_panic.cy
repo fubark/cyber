@@ -7,9 +7,9 @@ var o = [S a: 123]
 o.a = foo()
 
 --cytest: error
---panic: Assigning to `float` field with incompatible type `List`.
+--panic: Expected type `float`, found `List`.
 --
---main:7:1 main:
+--main:7:7 main:
 --o.a = foo()
---^
+--      ^
 --

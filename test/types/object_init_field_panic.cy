@@ -7,9 +7,9 @@ func foo():
 var s = [S a: foo()]
 
 --cytest: error
---panic: Initializing `float` field with incompatible type `int`.
+--panic: Expected type `float`, found `int`.
 --
---main:7:9 main:
+--main:7:15 main:
 --var s = [S a: foo()]
---        ^
+--              ^
 --

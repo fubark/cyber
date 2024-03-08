@@ -126,6 +126,7 @@ pub const ExprCode = enum(u8) {
     orOp,
 
     tryExpr,
+    type_check,
     typeCheckOption,
 
     blockExpr,
@@ -158,6 +159,11 @@ pub const Range = struct {
 
 pub const Box = struct {
     expr: Loc,
+};
+
+pub const TypeCheck = struct {
+    expr: Loc,
+    exp_type: cy.TypeId,
 };
 
 pub const TypeCheckOption = struct {
@@ -269,10 +275,6 @@ pub const Field = struct {
 pub const ObjectInit = struct {
     typeId: TypeId,
     numArgs: u8,
-    numFieldsToCheck: u8,
-
-    /// Idx into ir data.
-    fieldsToCheck: u32,
 };
 
 pub const SetLocalType = struct {
@@ -648,6 +650,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .coresume => Coresume,
         .unwrapChoice => UnwrapChoice,
         .unwrap_or => UnwrapOr,
+        .type_check => TypeCheck,
         .typeCheckOption => TypeCheckOption,
         .box => Box,
         .range => Range,

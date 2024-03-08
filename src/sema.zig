@@ -499,7 +499,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
             try pushBlock(c, nodeId);
             {
                 const if_stmt = try c.ir.pushEmptyStmt(c.alloc, .ifStmt, node.data.whileCondStmt.cond);
-                const cond = try c.semaExpr(node.data.whileCondStmt.cond, .{});
+                const cond = try c.semaExprCstr(node.data.whileCondStmt.cond, bt.Boolean);
                 try pushBlock(c, node.data.whileCondStmt.cond);
                 {
                     try semaStmts(c, node.data.whileCondStmt.bodyHead);
@@ -3428,7 +3428,6 @@ pub const ChunkExt = struct {
                 const obj = sym.cast(.object_t);
                 const irIdx = try c.ir.pushExpr(.objectInit, c.alloc, typeId, nodeId, .{
                     .typeId = obj.type, .numArgs = @as(u8, @intCast(obj.numFields)),
-                    .numFieldsToCheck = 0, .fieldsToCheck = 0,
                 });
                 const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, obj.numFields);
                 for (obj.fields[0..obj.numFields], 0..) |field, i| {
@@ -3468,9 +3467,6 @@ pub const ChunkExt = struct {
         const irIdx = try c.ir.pushEmptyExpr(.objectInit, c.alloc, ir.ExprType.init(obj.type), initializerId);
         const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, obj.numFields);
 
-        const argStart = c.typeStack.items.len;
-        defer c.typeStack.items.len = argStart;
-
         var i: u32 = 0;
         for (fieldNodes, 0..) |item, fIdx| {
             const fieldT = obj.fields[fIdx].type;
@@ -3480,31 +3476,16 @@ pub const ChunkExt = struct {
 
                 const arg = try c.semaZeroInit(fieldT, initializerId);
                 c.ir.setArrayItem(irArgsIdx, u32, i, arg.irIdx);
-                try c.typeStack.append(c.alloc, @bitCast(arg.type));
             } else {
                 const arg = try c.semaExprCstr(item.nodeId, fieldT);
                 c.ir.setArrayItem(irArgsIdx, u32, i, arg.irIdx);
-                try c.typeStack.append(c.alloc, @bitCast(arg.type));
             }
             i += 1;
         }
 
-        const args: []const CompactType = @ptrCast(c.typeStack.items[argStart..]);
-        const irExtraIdx = try c.ir.pushEmptyArray(c.alloc, u8, args.len);
-
-        var numFieldsToCheck: u32 = 0;
-        for (args, 0..) |arg, fidx| {
-            if (obj.fields[fidx].type != bt.Dynamic and arg.dynamic) {
-                c.ir.setArrayItem(irExtraIdx, u8, numFieldsToCheck, @as(u8, @intCast(fidx)));
-                numFieldsToCheck += 1;
-            }
-        }
         c.ir.setExprData(irIdx, .objectInit, .{
             .typeId = obj.type, .numArgs = @as(u8, @intCast(obj.numFields)),
-            .numFieldsToCheck = @as(u8, @intCast(numFieldsToCheck)),
-            .fieldsToCheck = irExtraIdx,
         });
-        c.ir.buf.items.len = irExtraIdx + numFieldsToCheck;
 
         return ExprResult.initStatic(irIdx, obj.type);
     }
@@ -3812,7 +3793,21 @@ pub const ChunkExt = struct {
             }
 
             if (expr.reqTypeCstr) {
-                try checkTypeCstr(c, res.type, expr.preferType, expr.nodeId);
+                if (!types.isTypeSymCompat(c.compiler, res.type.id, expr.preferType)) {
+                    if (res.type.dynamic) {
+                        var new_res = res;
+                        new_res.irIdx = try c.ir.pushExpr(.type_check, c.alloc, expr.preferType, expr.nodeId, .{
+                            .expr = res.irIdx,
+                            .exp_type = expr.preferType,
+                        });
+                        return new_res;
+                    }
+                    const cstrName = try c.sema.allocTypeName(expr.preferType);
+                    defer c.alloc.free(cstrName);
+                    const typeName = try c.sema.allocTypeName(res.type.id);
+                    defer c.alloc.free(typeName);
+                    return c.reportErrorAt("Expected type `{}`, got `{}`.", &.{v(cstrName), v(typeName)}, expr.nodeId);
+                }
             }
         }
         return res;
@@ -5509,7 +5504,6 @@ pub const ObjectBuilder = struct {
         b.typeId = typeId;
         b.irIdx = try b.c.ir.pushExpr(.objectInit, b.c.alloc, typeId, nodeId, .{
             .typeId = typeId, .numArgs = @as(u8, @intCast(numFields)),
-            .numFieldsToCheck = 0, .fieldsToCheck = 0,
         });
         b.irArgsIdx = try b.c.ir.pushEmptyArray(b.c.alloc, u32, numFields);
         b.argIdx = 0;

@@ -541,14 +541,6 @@ static void panicIncompatibleFieldType(VM* vm, TypeId fieldTypeId, TypeId rightT
     }, 2);
 }
 
-static void panicIncompatibleInitFieldType(VM* vm, TypeId fieldTypeId, TypeId rightTypeId) {
-    Str fieldTypeName = zGetTypeName(vm, fieldTypeId);
-    Str rightTypeName = zGetTypeName(vm, rightTypeId);
-    zPanicFmt(vm, "Initializing `{}` field with incompatible type `{}`.", (FmtValue[]){
-        FMT_STR(fieldTypeName), FMT_STR(rightTypeName)
-    }, 2);
-}
-
 static void panicCastFail(VM* vm, TypeId actTypeId, TypeId expTypeId) {
     Str actName = zGetTypeName(vm, actTypeId);
     Str expName = zGetTypeName(vm, expTypeId);
@@ -740,7 +732,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CompareNot),
         JENTRY(StringTemplate),
         JENTRY(NegFloat),
-        JENTRY(ObjectTypeCheck),
         JENTRY(ObjectSmall),
         JENTRY(Object),
         JENTRY(Ref),
@@ -1619,25 +1610,6 @@ beginSwitch:
     }
     CASE(NegFloat): {
         FLOAT_UNOP(stack[pc[2]] = VALUE_FLOAT(-VALUE_AS_FLOAT(val)))
-    }
-    CASE(ObjectTypeCheck): {
-        u8 startLocal = pc[1];
-        u8 n = pc[2];
-        u8* dataPtr = pc + 3;
-
-        // Perform type check on field initializers.
-        for (int i = 0; i < n; i += 1) {
-            TypeId valTypeId = getTypeId(stack[startLocal + dataPtr[0]]);
-            TypeId cstrTypeId = READ_U32_FROM(dataPtr, 1);
-
-            if (!isTypeCompat(valTypeId, cstrTypeId)) {
-                panicIncompatibleInitFieldType(vm, cstrTypeId, valTypeId);
-                RETURN(RES_CODE_PANIC);
-            }
-            dataPtr += 5;
-        }
-        pc = dataPtr;
-        NEXT();
     }
     CASE(ObjectSmall): {
         u16 typeId = READ_U16(1);

@@ -293,7 +293,6 @@ typedef enum {
     CodeCompareNot,
     CodeStringTemplate,
     CodeNegFloat,
-    CodeObjectTypeCheck,
     CodeObjectSmall,
     CodeObject,
 

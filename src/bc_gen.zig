@@ -402,6 +402,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .stringTemplate     => genStringTemplate(c, idx, cstr, nodeId),
         .switchExpr         => genSwitch(c, idx, cstr, nodeId),
         .symbol             => genSymbol(c, idx, cstr, nodeId),
+        .type_check         => genTypeCheck(c, idx, cstr, nodeId),
         .typeCheckOption    => genTypeCheckOption(c, idx, cstr, nodeId),
         .throw              => genThrow(c, idx, nodeId),
         .truev              => genTrue(c, cstr, nodeId),
@@ -730,28 +731,6 @@ fn genObjectInit(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
         try pushUnwindValue(c, val);
     }
 
-    const typ = c.sema.types.items[data.typeId];
-    switch (typ.kind) {
-        .@"struct",
-        .object => {
-            const obj: *cy.sym.ObjectType = if (typ.kind == .object) typ.sym.cast(.object_t) else typ.sym.cast(.struct_t);
-            if (data.numFieldsToCheck > 0) {
-                try c.pushFCode(.objectTypeCheck, &.{ argStart , @as(u8, @intCast(data.numFieldsToCheck)) }, nodeId);
-
-                const checkFields = c.ir.getArray(data.fieldsToCheck, u8, data.numFieldsToCheck);
-
-                for (checkFields) |fidx| {
-                    const start = c.buf.ops.items.len;
-                    try c.buf.pushOperands(&.{ @as(u8, @intCast(fidx)), 0, 0, 0, 0 });
-                    c.buf.setOpArgU32(start + 1, obj.fields[fidx].type);
-                }
-            }
-        },
-        .option,
-        .choice => {},
-        else => return error.Unexpected,
-    }
-
     try pushObjectInit(c, data.typeId, argStart, @intCast(data.numArgs), inst.dst, nodeId);
 
     const argvs = popValues(c, data.numArgs);
@@ -1039,6 +1018,18 @@ fn genSymbol(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     }
     try c.buf.pushOp2(.tagLiteral, @intCast(symId), inst.dst);
     return finishNoErrNoDepInst(c, inst, false);
+}
+
+fn genTypeCheck(c: *Chunk, loc: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+    const data = c.ir.getExprData(loc, .type_check);
+
+    const expr = try genExpr(c, data.expr, cstr);
+    try pushUnwindValue(c, expr);
+
+    try pushTypeCheck(c, expr.reg, data.exp_type, nodeId);
+
+    _ = try popUnwindValue(c, expr); 
+    return expr;
 }
 
 fn genTypeCheckOption(c: *Chunk, loc: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {

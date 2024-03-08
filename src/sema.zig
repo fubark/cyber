@@ -295,15 +295,14 @@ pub const ModFuncSigKey = cy.hash.KeyU96;
 const ObjectMemberKey = cy.hash.KeyU64;
 
 pub fn semaStmts(c: *cy.Chunk, head: cy.NodeId) anyerror!void {
-    var curId = head;
-    while (curId != cy.NullNode) {
-        try semaStmt(c, curId);
-        const node = c.ast.node(curId);
-        curId = node.next();
+    var stmt = head;
+    while (stmt != cy.NullNode) {
+        stmt = try semaStmt(c, stmt);
     }
 }
 
-pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
+/// Returns the next stmt node or NullNode.
+pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
     c.curNodeId = nodeId;
     const node = c.ast.node(nodeId);
     if (cy.Trace) {
@@ -533,65 +532,11 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         .switchStmt => {
             try semaSwitchStmt(c, nodeId);
         },
-        .ifStmt => {
-            const irIdx = try c.ir.pushEmptyStmt(c.alloc, .ifStmt, nodeId);
-            const ifBranch = c.ast.node(node.data.ifStmt.ifBranch);
-            const cond = try c.semaExprCstr(ifBranch.data.ifBranch.cond, bt.Boolean);
-
-            const irElsesIdx = try c.ir.pushEmptyArray(c.alloc, u32, node.data.ifStmt.numElseBlocks);
-
-            try pushBlock(c, nodeId);
-            try semaStmts(c, ifBranch.data.ifBranch.bodyHead);
-            const ifStmtBlock = try popBlock(c);
-
-            var elseBlockId: cy.NodeId = node.data.ifStmt.elseHead;
-            var i: u32 = 0;
-            // var hasElse = false;
-            while (elseBlockId != cy.NullNode) {
-                const elseBlock = c.ast.node(elseBlockId);
-                const isElse = elseBlock.data.elseBlock.cond == cy.NullNode;
-                if (isElse) {
-                    // hasElse = true;
-                    const irElseIdx = try c.ir.pushEmptyExpr(.elseBlock, c.alloc, undefined, elseBlockId);
-                    try pushBlock(c, elseBlockId);
-                    try semaStmts(c, elseBlock.data.elseBlock.bodyHead);
-                    const stmtBlock = try popBlock(c);
-
-                    c.ir.setArrayItem(irElsesIdx, u32, i, irElseIdx);
-                    c.ir.setExprData(irElseIdx, .elseBlock, .{
-                        .cond = cy.NullId, .isElse = true, .bodyHead = stmtBlock.first
-                    });
-
-                    elseBlockId = elseBlock.next();
-                    if (elseBlockId != cy.NullNode) {
-                        return c.reportErrorAt("Can not have additional blocks after `else`.", &.{}, elseBlockId);
-                    }
-                    break;
-                } else {
-                    const irElseIdx = try c.ir.pushEmptyExpr(.elseBlock, c.alloc, undefined, elseBlockId);
-                    const elseCond = try c.semaExprCstr(elseBlock.data.elseBlock.cond, bt.Boolean);
-
-                    try pushBlock(c, elseBlockId);
-                    try semaStmts(c, elseBlock.data.elseBlock.bodyHead);
-                    const stmtBlock = try popBlock(c);
-
-                    c.ir.setArrayItem(irElsesIdx, u32, i, irElseIdx);
-                    c.ir.setExprData(irElseIdx, .elseBlock, .{
-                        .cond = elseCond.irIdx, .isElse = false, .bodyHead = stmtBlock.first
-                    });
-
-                    elseBlockId = elseBlock.next();
-                    i += 1;
-                    continue;
-                }
-            }
-
-            c.ir.setStmtData(irIdx, .ifStmt, .{
-                .cond = cond.irIdx,
-                .bodyHead = ifStmtBlock.first,
-                .numElseBlocks = node.data.ifStmt.numElseBlocks,
-                .elseBlocks = irElsesIdx,
-            });
+        .if_stmt => {
+            try semaIfStmt(c, nodeId, node);
+        },
+        .if_unwrap_stmt => {
+            try semaIfUnwrapStmt(c, nodeId, node);
         },
         .tryStmt => {
             var data: ir.TryStmt = undefined;
@@ -616,9 +561,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             c.ir.setStmtData(irIdx, .tryStmt, data);
         },
-        .importStmt => {
-            return;
-        },
+        .importStmt => {},
         .returnStmt => {
             _ = try c.ir.pushStmt(c.alloc, .retStmt, nodeId, {});
         },
@@ -668,6 +611,134 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             }
         },
         else => return c.reportErrorAt("Unsupported statement: {}", &.{v(node.type())}, nodeId),
+    }
+    return node.next();
+}
+
+fn semaElseStmt(c: *cy.Chunk, node_id: cy.NodeId, node: cy.Node) !u32 {
+    if (node.type() == .else_block) {
+        if (node.data.else_block.cond == cy.NullNode) {
+            // else.
+            const irElseIdx = try c.ir.pushEmptyExpr(.else_block, c.alloc, undefined, node_id);
+            try pushBlock(c, node_id);
+            try semaStmts(c, node.data.else_block.body_head);
+            const stmtBlock = try popBlock(c);
+
+            c.ir.setExprData(irElseIdx, .else_block, .{
+                .cond = cy.NullId, .body_head = stmtBlock.first, .else_block = cy.NullId,
+            });
+
+            if (node.next() != cy.NullNode) {
+                return c.reportErrorAt("Can not have additional blocks after `else`.", &.{}, node.next());
+            }
+            return irElseIdx;
+        } else {
+            const irElseIdx = try c.ir.pushEmptyExpr(.else_block, c.alloc, undefined, node_id);
+            const elseCond = try c.semaExprCstr(node.data.else_block.cond, bt.Boolean);
+
+            try pushBlock(c, node_id);
+            try semaStmts(c, node.data.else_block.body_head);
+            const stmtBlock = try popBlock(c);
+
+            c.ir.setExprData(irElseIdx, .else_block, .{
+                .cond = elseCond.irIdx, .body_head = stmtBlock.first, .else_block = cy.NullId,
+            });
+            return irElseIdx;
+        }
+    } else return error.TODO;
+}
+
+fn semaIfUnwrapStmt(c: *cy.Chunk, nodeId: cy.NodeId, node: cy.Node) !void {
+    const loc = try c.ir.pushEmptyStmt(c.alloc, .ifUnwrapStmt, nodeId);
+
+    const if_unwrap = c.ast.node(node.data.if_unwrap_stmt.if_unwrap);
+    const opt = try c.semaOptionExpr(if_unwrap.data.if_unwrap.opt);
+
+    try pushBlock(c, nodeId);
+    const body_head = if_unwrap.head.data.if_unwrap.body_head;
+    var decl_head: u32 = undefined;
+    var unwrap_local: u8 = undefined;
+    {
+        const unwrap_t = if (opt.type.dynamic) bt.Dynamic else b: {
+            break :b c.sema.getTypeSym(opt.type.id).cast(.enum_t).getMemberByIdx(1).payloadType;
+        };
+        const unwrap_var = try declareLocal(c, if_unwrap.data.if_unwrap.unwrap, unwrap_t, false);
+        unwrap_local = @intCast(c.varStack.items[unwrap_var].inner.local.id);
+
+        decl_head = c.ir.getAndClearStmtBlock();
+        try semaStmts(c, body_head);
+    }
+    const if_block = try popBlock(c);
+
+    if (node.data.if_unwrap_stmt.else_block == cy.NullNode) {
+        c.ir.setStmtData(loc, .ifUnwrapStmt, .{
+            .opt = opt.irIdx,
+            .unwrap_local = unwrap_local,
+            .decl_head = decl_head,
+            .body_head = if_block.first,
+            .else_block = cy.NullId,
+        });
+        return;
+    }
+
+    var else_id = node.data.if_unwrap_stmt.else_block;
+    var else_n = c.ast.node(else_id);
+    var else_loc = try semaElseStmt(c, else_id, else_n);
+    c.ir.setStmtData(loc, .ifUnwrapStmt, .{
+        .opt = opt.irIdx,
+        .unwrap_local = unwrap_local,
+        .decl_head = decl_head,
+        .body_head = if_block.first,
+        .else_block = else_loc,
+    });
+
+    else_id = else_n.next();
+    while (else_id != cy.NullNode) {
+        else_n = c.ast.node(else_id);
+        const next_else_loc = try semaElseStmt(c, else_id, else_n);
+
+        c.ir.getExprDataPtr(else_loc, .else_block).else_block = next_else_loc;
+        else_loc = next_else_loc;
+        else_id = else_n.next();
+    }
+}
+
+fn semaIfStmt(c: *cy.Chunk, nodeId: cy.NodeId, node: cy.Node) !void {
+    const irIdx = try c.ir.pushEmptyStmt(c.alloc, .ifStmt, nodeId);
+
+    const branch = c.ast.node(node.data.if_stmt.if_branch);
+    const cond = try c.semaExprCstr(branch.data.if_branch.cond, bt.Boolean);
+
+    try pushBlock(c, nodeId);
+    try semaStmts(c, branch.data.if_branch.body_head);
+    const ifStmtBlock = try popBlock(c);
+
+    if (node.data.if_stmt.else_block == cy.NullNode) {
+        c.ir.setStmtData(irIdx, .ifStmt, .{
+            .cond = cond.irIdx,
+            .body_head = ifStmtBlock.first,
+            .else_block = cy.NullId,
+        });
+        return;
+    }
+
+    var else_id = node.data.if_stmt.else_block;
+    var else_n = c.ast.node(else_id);
+    var else_loc = try semaElseStmt(c, else_id, else_n);
+    c.ir.setStmtData(irIdx, .ifStmt, .{
+        .cond = cond.irIdx,
+        .body_head = ifStmtBlock.first,
+        .else_block = else_loc,
+    });
+
+    else_id = else_n.next();
+    while (else_id != cy.NullNode) {
+        else_n = c.ast.node(else_id);
+        const next_else_loc = try semaElseStmt(c, else_id, else_n);
+
+        c.ir.getExprDataPtr(else_loc, .else_block).else_block = next_else_loc;
+        else_loc = next_else_loc;
+        else_id = else_n.next();
     }
 }
 

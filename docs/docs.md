@@ -1111,7 +1111,7 @@ Option(String)
 ```
 
 ### Wrap value.
-Use `?` as a type prefix to turn it into an `Option` type. A value is automatically wrapped into the inferred optional's `some` case:
+A value is automatically wrapped into the inferred optional's `some` case:
 ```cy
 var a ?String = 'abc'
 print a     -- Prints 'Option(abc)'
@@ -1140,12 +1140,12 @@ var v = opt ?else 'empty'
 print v     -- Prints 'empty'
 ```
 
-`else` can also start a new statement block: *Planned Feature*
+`?else` can also start a new statement block: *Planned Feature*
 ```cy
-var v = opt else:
+var v = opt ?else:
     break 'empty'
 
-var v = opt else:
+var v = opt ?else:
     throw error.Missing
 ```
 
@@ -1156,7 +1156,7 @@ print root?.a?.b?.c?.last
 ```
 
 ### `if` unwrap.
-The `if` statement can be amended to unwrap an optional value using the capture `->` operator: *Planned Feature*
+The `if` statement can be amended to unwrap an optional value using the capture `->` operator:
 ```cy
 var opt ?String = 'abc'
 if opt -> v:
@@ -1165,7 +1165,7 @@ if opt -> v:
 
 ### `while` unwrap. 
 The `while` statement can be amended to unwrap an optional value using the capture `->` operator.
-The loop exits when `none` is encountered: *Planned Feature*
+The loop exits when `none` is encountered:
 ```cy
 var iter = dir.walk()
 while iter.next() -> entry:

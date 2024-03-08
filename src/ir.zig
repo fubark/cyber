@@ -41,6 +41,7 @@ pub const StmtCode = enum(u8) {
 
     exprStmt,
     ifStmt,
+    ifUnwrapStmt,
     switchStmt,
     tryStmt,
     whileOptStmt,
@@ -132,7 +133,7 @@ pub const ExprCode = enum(u8) {
 
     blockExpr,
     mainEnd,
-    elseBlock,
+    else_block,
     unwrapChoice,
     box,
 };
@@ -299,12 +300,6 @@ pub const TryStmt = struct {
     errLocal: u8,
     bodyHead: u32,
     catchBodyHead: u32,
-};
-
-pub const ElseBlock = struct {
-    cond: Loc,
-    bodyHead: u32,
-    isElse: bool,
 };
 
 pub const Local = struct {
@@ -554,11 +549,24 @@ pub const StmtBlock = struct {
     last: u32,
 };
 
+pub const ElseBlock = struct {
+    cond: cy.Nullable(Loc),
+    body_head: Loc,
+    else_block: cy.Nullable(Loc),
+};
+
 pub const IfStmt = struct {
     cond: Loc,
-    bodyHead: u32,
-    elseBlocks: u32,
-    numElseBlocks: u8,
+    body_head: Loc,
+    else_block: cy.Nullable(Loc),
+};
+
+pub const IfUnwrapStmt = struct {
+    opt: Loc,
+    unwrap_local: u8,
+    decl_head: Loc,
+    body_head: Loc,
+    else_block: cy.Nullable(Loc),
 };
 
 pub const Verbose = struct {
@@ -573,6 +581,7 @@ pub fn StmtData(comptime code: StmtCode) type {
         .declareLocal => DeclareLocal,
         .declareLocalInit => DeclareLocalInit,
         .ifStmt => IfStmt,
+        .ifUnwrapStmt => IfUnwrapStmt,
         .tryStmt => TryStmt,
         .forIterStmt => ForIterStmt,
         .forRangeStmt => ForRangeStmt,
@@ -604,7 +613,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .lambda => Lambda,
         .switchExpr => Switch,
         .switchCase => SwitchCase,
-        .elseBlock => ElseBlock,
+        .else_block => ElseBlock,
         .preCallDyn,
         .preCallFuncSym,
         .preCallObjSym,

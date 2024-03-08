@@ -330,6 +330,7 @@ if (!aot) {
     run.case("control_flow/for_iter_unsupported_panic.cy");
     run.case("control_flow/for_range.cy");
     run.case("control_flow/if_stmt.cy");
+    run.case("control_flow/if_unwrap.cy");
     run.case("control_flow/switch.cy");
     run.case("control_flow/return.cy");
     run.case("control_flow/while_cond.cy");

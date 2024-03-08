@@ -1165,7 +1165,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseElseStmt(self: *Parser, outNumElseBlocks: *u32) anyerror!NodeId {
+    fn parseElseStmt(self: *Parser) anyerror!NodeId {
         const save = self.next_pos;
         const indent = try self.consumeIndentBeforeStmt();
         if (indent != self.cur_indent) {
@@ -1179,8 +1179,7 @@ pub const Parser = struct {
             return cy.NullNode;
         }
 
-        const elseBlock = try self.pushNode(.elseBlock, self.next_pos);
-        outNumElseBlocks.* += 1;
+        const elseBlock = try self.pushNode(.else_block, self.next_pos);
         self.advance();
 
         token = self.peek();
@@ -1189,9 +1188,9 @@ pub const Parser = struct {
             self.advance();
 
             const res = try self.parseSingleOrIndentedBodyStmts();
-            self.ast.setNodeData(elseBlock, .{ .elseBlock = .{
-                .bodyHead = res.first,
+            self.ast.setNodeData(elseBlock, .{ .else_block = .{
                 .cond = cy.NullNode,
+                .body_head = res.first,
             }});
             return elseBlock;
         } else {
@@ -1204,12 +1203,12 @@ pub const Parser = struct {
                 self.advance();
 
                 const res = try self.parseSingleOrIndentedBodyStmts();
-                self.ast.setNodeData(elseBlock, .{ .elseBlock = .{
-                    .bodyHead = res.first,
+                self.ast.setNodeData(elseBlock, .{ .else_block = .{
                     .cond = cond,
+                    .body_head = res.first,
                 }});
 
-                const nested_else = try self.parseElseStmt(outNumElseBlocks);
+                const nested_else = try self.parseElseStmt();
                 if (nested_else != cy.NullNode) {
                     self.ast.setNextNode(elseBlock, nested_else);
                 }
@@ -1354,30 +1353,58 @@ pub const Parser = struct {
         };
 
         var token = self.peek();
-        if (token.tag() != .colon) {
+        if (token.tag() == .colon) {
+            self.advance();
+            const ifStmt = try self.pushNode(.if_stmt, start);
+
+            const res = try self.parseSingleOrIndentedBodyStmts();
+
+            const else_block = try self.parseElseStmt();
+
+            const if_branch = try self.pushNode(.if_branch, start);
+            self.ast.setNodeData(if_branch, .{ .if_branch = .{
+                .cond = cond,
+                .body_head = res.first,
+            }});
+
+            self.ast.setNodeData(ifStmt, .{ .if_stmt = .{
+                .if_branch = if_branch,
+                .else_block = else_block,
+            }});
+            return ifStmt;
+        } else if (token.tag() == .capture) {
+            self.advance();
+
+            const unwrap = (try self.parseExpr(.{})) orelse {
+                return self.reportError("Expected unwrap variable.", &.{});
+            };
+
+            if (self.peek().tag() != .colon) {
+                return self.reportError("Expected colon.", &.{});
+            }
+            self.advance();
+
+            const ifStmt = try self.pushNode(.if_unwrap_stmt, start);
+
+            const res = try self.parseSingleOrIndentedBodyStmts();
+
+            const else_block = try self.parseElseStmt();
+
+            const if_unwrap = try self.pushNode(.if_unwrap, start);
+            self.ast.setNodeData(if_unwrap, .{ .if_unwrap = .{
+                .opt = cond,
+                .unwrap = unwrap,
+            }});
+            self.ast.nodePtr(if_unwrap).head.data = .{ .if_unwrap = .{ .body_head = @intCast(res.first) }};
+
+            self.ast.setNodeData(ifStmt, .{ .if_unwrap_stmt = .{
+                .if_unwrap = if_unwrap,
+                .else_block = else_block,
+            }});
+            return ifStmt;
+        } else {
             return self.reportError("Expected colon after if condition.", &.{});
         }
-        self.advance();
-
-        const ifStmt = try self.pushNode(.ifStmt, start);
-
-        var res = try self.parseSingleOrIndentedBodyStmts();
-
-        var numElseBlocks: u32 = 0;
-        const elseBlock = try self.parseElseStmt(&numElseBlocks);
-
-        const ifBranch = try self.pushNode(.ifBranch, start);
-        self.ast.setNodeData(ifBranch, .{ .ifBranch = .{
-            .cond = cond,
-            .bodyHead = res.first,
-        }});
-
-        self.ast.setNodeData(ifStmt, .{ .ifStmt = .{
-            .ifBranch = ifBranch,
-            .elseHead = @intCast(elseBlock),
-            .numElseBlocks = @intCast(numElseBlocks),
-        }});
-        return ifStmt;
     }
 
     fn parseImportStmt(self: *Parser) !NodeId {
@@ -2506,21 +2533,21 @@ pub const Parser = struct {
 
     fn parseCondExpr(self: *Parser, cond: NodeId, start: u32) !NodeId {
         // Assume `?` is consumed.
-        const res = try self.pushNode(.condExpr, start);
+        const res = try self.pushNode(.cond_expr, start);
 
         const body = (try self.parseExpr(.{})) orelse {
             return self.reportError("Expected conditional true expression.", &.{});
         };
 
-        const ifBranch = try self.pushNode(.ifBranch, start);
-        self.ast.setNodeData(ifBranch, .{ .ifBranch = .{
+        const ifBranch = try self.pushNode(.if_branch, start);
+        self.ast.setNodeData(ifBranch, .{ .if_branch = .{
             .cond = cond,
-            .bodyHead = body,
+            .body_head = body,
         }});
 
-        self.ast.setNodeData(res, .{ .condExpr = .{
-            .ifBranch = ifBranch,
-            .elseExpr = cy.NullNode,
+        self.ast.setNodeData(res, .{ .cond_expr = .{
+            .if_branch = ifBranch,
+            .else_expr = cy.NullNode,
         }});
 
         const token = self.peek();
@@ -2532,7 +2559,7 @@ pub const Parser = struct {
         const elseExpr = (try self.parseExpr(.{})) orelse {
             return self.reportError("Expected else body.", &.{});
         };
-        self.ast.nodePtr(res).data.condExpr.elseExpr = elseExpr;
+        self.ast.nodePtr(res).data.cond_expr.else_expr = elseExpr;
         return res;
     }
 

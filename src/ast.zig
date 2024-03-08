@@ -24,14 +24,14 @@ pub const NodeType = enum(u8) {
     coinit,
     comptimeExpr,
     comptimeStmt,
-    condExpr,
+    cond_expr,
     continueStmt,
     coresume,
     coyield,
     decLit,
     dirModifier,
     eachClause,
-    elseBlock,
+    else_block,
     enumDecl,
     enumMember,
     errorSymLit,
@@ -49,8 +49,13 @@ pub const NodeType = enum(u8) {
     group,
     hexLit,
     ident,
-    ifBranch,
-    ifStmt,
+
+    // Used by if_stmt and cond_expr.
+    if_branch,
+    
+    if_stmt,
+    if_unwrap,
+    if_unwrap_stmt,
     importStmt,
     indexExpr,
     keyValue,
@@ -124,6 +129,9 @@ const NodeHead = packed struct {
         },
         forIterHeader: packed struct {
             count: cy.Nullable(u24),
+        },
+        if_unwrap: packed struct {
+            body_head: u24,
         },
     },
 };
@@ -227,15 +235,21 @@ const NodeData = union {
     coinit: struct {
         child: NodeId,
     },
-    ifStmt: packed struct {
-        ifBranch: NodeId,
-        elseHead: cy.Nullable(u24),
-        // if numElseBlocks > 0, `elseHead` points to first else block.
-        numElseBlocks: u8,
-    },
-    ifBranch: struct {
+    if_branch: struct {
         cond: NodeId,
-        bodyHead: NodeId,
+        body_head: NodeId,
+    },
+    if_stmt: packed struct {
+        if_branch: NodeId,
+        else_block: cy.Nullable(NodeId),
+    },
+    if_unwrap_stmt: packed struct {
+        if_unwrap: NodeId,
+        else_block: cy.Nullable(NodeId),
+    },
+    if_unwrap: struct {
+        opt: NodeId,
+        unwrap: NodeId,
     },
     accessExpr: struct {
         left: NodeId,
@@ -401,14 +415,14 @@ const NodeData = union {
         start: NodeId,
         end: NodeId,
     },
-    condExpr: struct {
-        ifBranch: NodeId,
-        elseExpr: NodeId,
+    cond_expr: struct {
+        if_branch: NodeId,
+        else_expr: NodeId,
     },
-    elseBlock: struct {
-        bodyHead: NodeId,
+    else_block: struct {
         // for else ifs only.
-        cond: NodeId,
+        cond: cy.Nullable(NodeId),
+        body_head: NodeId,
     },
     stringTemplate: packed struct {
         exprHead: NodeId,
@@ -933,13 +947,13 @@ pub const Encoder = struct {
             .exprStmt => {
                 try self.writeNode(w, node.data.exprStmt.child);
             },
-            .condExpr => {
-                const ifBranch = self.ast.node(node.data.condExpr.ifBranch);
-                try self.writeNode(w, ifBranch.data.ifBranch.cond);
+            .cond_expr => {
+                const ifBranch = self.ast.node(node.data.cond_expr.if_branch);
+                try self.writeNode(w, ifBranch.data.if_branch.cond);
                 try w.writeAll("?");
-                try self.writeNode(w, ifBranch.data.ifBranch.bodyHead);
+                try self.writeNode(w, ifBranch.data.if_branch.body_head);
                 try w.writeAll(" else ");
-                try self.writeNode(w, node.data.condExpr.elseExpr);
+                try self.writeNode(w, node.data.cond_expr.else_expr);
             },
             .caseBlock => {
                 if (node.data.caseBlock.header == cy.NullNode) {

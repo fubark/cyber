@@ -263,6 +263,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .forRangeStmt       => try forRangeStmt(c, idx, nodeId),
         .funcBlock          => try funcBlock(c, idx, nodeId),
         .ifStmt             => try ifStmt(c, idx, nodeId),
+        .ifUnwrapStmt       => try ifUnwrapStmt(c, idx, nodeId),
         .mainBlock          => try mainBlock(c, idx, nodeId),
         .block              => try genBlock(c, idx, nodeId),
         .opSet              => try opSet(c, idx, nodeId),
@@ -2948,68 +2949,125 @@ fn genCondExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     return val;
 }
 
+fn ifUnwrapStmt(c: *cy.Chunk, loc: usize, nodeId: cy.NodeId) !void {
+    const data = c.ir.getStmtData(loc, .ifUnwrapStmt);
+
+    var opt_nid = c.ir.getNode(data.opt);
+    var optv = try genExpr(c, data.opt, Cstr.simple);
+    try pushUnwindValue(c, optv);
+
+    var jump_none = try c.pushEmptyJumpNone(optv.reg);
+    {
+        try pushBlock(c, false, nodeId);
+        try genStmts(c, data.decl_head);
+
+        // Unwrap to var.
+        const unwrap_reg = toLocalReg(c, data.unwrap_local);
+        const unwrap_local = getLocalInfoPtr(c, unwrap_reg);
+        try pushField(c, optv.reg, 1, unwrap_reg, nodeId);
+        // Mark var defined for ARC.
+        unwrap_local.some.defined = true;
+
+        // ARC cleanup for true case.
+        try popTempAndUnwind(c, optv);
+        try releaseTempValue(c, optv, opt_nid);
+
+        try genStmts(c, data.body_head);
+        try popBlock(c);
+    }
+
+    var jump_end: u32 = undefined;
+    if (data.else_block != cy.NullId) {
+        jump_end = try c.pushEmptyJump();
+    }
+
+    if (optv.isRetainedTemp()) {
+        const skip_release = try c.pushEmptyJump();
+        c.patchJumpNoneToCurPc(jump_none);
+        try pushRelease(c, optv.reg, opt_nid);
+        c.patchJumpToCurPc(skip_release);
+    } else {
+        c.patchJumpNoneToCurPc(jump_none);
+    }
+
+    if (data.else_block != cy.NullId) {
+        try elseBlocks(c, data.else_block);
+        c.patchJumpToCurPc(jump_end);
+    }
+}
+
 fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .ifStmt);
-    const bodyEndJumpsStart = c.listDataStack.items.len;
 
     var condNodeId = c.ir.getNode(data.cond);
     var condv = try genExpr(c, data.cond, Cstr.simple);
     try pushUnwindValue(c, condv);
 
-    var prevCaseMissJump = try c.pushEmptyJumpNotCond(condv.reg);
+    var jump_miss = try c.pushEmptyJumpNotCond(condv.reg);
 
     // ARC cleanup for true case.
     try popTempAndUnwind(c, condv);
     try releaseTempValue(c, condv, condNodeId);
 
     try pushBlock(c, false, nodeId);
-    try genStmts(c, data.bodyHead);
+    try genStmts(c, data.body_head);
     try popBlock(c);
 
-    var hasElse = false;
+    var jump_end: u32 = undefined;
+    if (data.else_block != cy.NullId) {
+        jump_end = try c.pushEmptyJump();
+    }
 
-    if (data.numElseBlocks > 0) {
-        const elseBlocks = c.ir.getArray(data.elseBlocks, u32, data.numElseBlocks);
+    c.patchJumpNotCondToCurPc(jump_miss);
 
-        for (elseBlocks) |elseIdx| {
-            const elseBlockNodeId = c.ir.getNode(elseIdx);
-            const elseBlock = c.ir.getExprData(elseIdx, .elseBlock);
+    if (data.else_block != cy.NullId) {
+        try elseBlocks(c, data.else_block);
+        c.patchJumpToCurPc(jump_end);
+    }
+}
 
-            const bodyEndJump = try c.pushEmptyJump();
-            try c.listDataStack.append(c.alloc, .{ .pc = bodyEndJump });
+fn elseBlocks(c: *cy.Chunk, else_head: u32) !void {
+    const bodyEndJumpsStart = c.listDataStack.items.len;
+    defer c.listDataStack.items.len = bodyEndJumpsStart;
 
-            // Jump here from prev case miss.
-            c.patchJumpNotCondToCurPc(prevCaseMissJump);
+    var else_loc = else_head;
+    while (else_loc != cy.NullId) {
+        const else_nid = c.ir.getNode(else_loc);
+        const else_b = c.ir.getExprData(else_loc, .else_block);
 
-            if (!elseBlock.isElse) {
-                condNodeId = c.ir.getNode(elseBlock.cond);
-                condv = try genExpr(c, elseBlock.cond, Cstr.simple);
-                try pushUnwindValue(c, condv);
-                prevCaseMissJump = try c.pushEmptyJumpNotCond(condv.reg);
+        if (else_b.cond != cy.NullId) {
+            const condNodeId = c.ir.getNode(else_b.cond);
+            const condv = try genExpr(c, else_b.cond, Cstr.simple);
+            try pushUnwindValue(c, condv);
 
-                // ARC cleanup for true case.
-                try popTempAndUnwind(c, condv);
-                try releaseTempValue(c, condv, condNodeId);
-            } else {
-                hasElse = true;
+            const jump_miss = try c.pushEmptyJumpNotCond(condv.reg);
+
+            // ARC cleanup for true case.
+            try popTempAndUnwind(c, condv);
+            try releaseTempValue(c, condv, condNodeId);
+
+            try pushBlock(c, false, else_nid);
+            try genStmts(c, else_b.body_head);
+            try popBlock(c);
+
+            if (else_b.else_block != cy.NullId) {
+                const jump_end = try c.pushEmptyJump();
+                try c.listDataStack.append(c.alloc, .{ .pc = jump_end });
             }
 
-            try pushBlock(c, false, elseBlockNodeId);
-            try genStmts(c, elseBlock.bodyHead);
+            c.patchJumpNotCondToCurPc(jump_miss);
+        } else {
+            try pushBlock(c, false, else_nid);
+            try genStmts(c, else_b.body_head);
             try popBlock(c);
         }
+        else_loc = else_b.else_block;
     }
 
     // Jump here from all body ends.
     const bodyEndJumps = c.listDataStack.items[bodyEndJumpsStart..];
     for (bodyEndJumps) |jump| {
         c.patchJumpToCurPc(jump.pc);
-    }
-    c.listDataStack.items.len = bodyEndJumpsStart;
-
-    if (!hasElse) {
-        // Jump here from prev case miss.
-        c.patchJumpNotCondToCurPc(prevCaseMissJump);
     }
 }
 

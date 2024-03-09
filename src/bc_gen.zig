@@ -1136,12 +1136,11 @@ fn genStringTemplate(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenV
 
 fn genString(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const data = c.ir.getExprData(idx, .string);
-    const str = try c.unescapeString(data.literal);
     const inst = try c.rega.selectForNoErrNoDepInst(cstr, true, nodeId);
     if (inst.requiresPreRelease) {
         try pushRelease(c, inst.dst, nodeId);
     }
-    try pushStringConst(c, str, inst.dst, nodeId);
+    try pushStringConst(c, data.raw, inst.dst, nodeId);
     return finishNoErrNoDepInst(c, inst, true);
 }
 

@@ -614,7 +614,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
                     }
 
                     const arg = c.ast.node(expr.data.callExpr.argHead);
-                    if (arg.type() != .stringLit) {
+                    if (arg.type() != .stringLit and arg.type() != .raw_string_lit) {
                         return c.reportErrorFmt("genLabel expected string arg", &.{}, nodeId);
                     }
 
@@ -2290,7 +2290,7 @@ fn resolveLocalDeclNamePath(c: *cy.Chunk, nameId: cy.NodeId) !DeclNamePathResult
         const name = c.ast.nodeString(last);
 
         var end = last.srcPos + name.len;
-        if (last.type() == .stringLit) {
+        if (last.type() == .raw_string_lit) {
             end += 1;
         }
         const namePath = c.ast.src[nameN.srcPos..end];
@@ -3820,6 +3820,7 @@ pub const ChunkExt = struct {
                 return try semaIdent(c, nodeId, true);
             },
             .stringLit => return c.semaString(c.ast.nodeString(node), nodeId),
+            .raw_string_lit => return c.semaRawString(c.ast.nodeString(node), nodeId),
             .runeLit => {
                 const literal = c.ast.nodeString(node);
                 if (literal.len == 0) {
@@ -4043,7 +4044,7 @@ pub const ChunkExt = struct {
                             const name = c.ast.nodeString(key);
                             c.ir.setArrayItem(irKeysIdx, []const u8, i, name);
                         },
-                        .stringLit => {
+                        .raw_string_lit => {
                             const name = c.ast.nodeString(key);
                             c.ir.setArrayItem(irKeysIdx, []const u8, i, name);
                         },
@@ -4163,8 +4164,7 @@ pub const ChunkExt = struct {
                 if (child.type() == .ident) {
                     const name = c.ast.nodeString(child);
                     if (std.mem.eql(u8, name, "modUri")) {
-                        const irIdx = try c.ir.pushExpr(.string, c.alloc, bt.String, nodeId, .{ .literal = c.srcUri });
-                        return ExprResult.initStatic(irIdx, bt.String);
+                        return c.semaRawString(c.srcUri, nodeId);
                     } else {
                         return c.reportErrorFmt("Compile-time symbol does not exist: {}", &.{v(name)}, node.data.comptimeExpr.child);
                     }
@@ -4328,8 +4328,20 @@ pub const ChunkExt = struct {
         }
     }
 
-    pub fn semaString(c: *cy.Chunk, str: []const u8, nodeId: cy.NodeId) !ExprResult {
-        const irIdx = try c.ir.pushExpr(.string, c.alloc, bt.String, nodeId, .{ .literal = str });
+    pub fn semaString(c: *cy.Chunk, lit: []const u8, nodeId: cy.NodeId) !ExprResult {
+        const raw = try c.unescapeString(lit);
+        if (raw.ptr != lit.ptr) {
+            // Dupe and track in ast.strs.
+            const dupe = try c.alloc.dupe(u8, raw);
+            try c.parser.ast.strs.append(c.alloc, dupe);
+            return c.semaRawString(dupe, nodeId);
+        } else {
+            return c.semaRawString(raw, nodeId);
+        }
+    }
+
+    pub fn semaRawString(c: *cy.Chunk, raw: []const u8, nodeId: cy.NodeId) !ExprResult {
+        const irIdx = try c.ir.pushExpr(.string, c.alloc, bt.String, nodeId, .{ .raw = raw });
         return ExprResult.initStatic(irIdx, bt.String);
     }
 

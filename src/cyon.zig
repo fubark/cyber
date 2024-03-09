@@ -449,7 +449,10 @@ pub const DecodeMapIR = struct {
     pub fn allocString(self: DecodeMapIR, key: []const u8) ![]const u8 {
         if (self.map.get(key)) |val_id| {
             const val_n = self.ast.node(val_id);
-            if (val_n.type() == .stringLit) {
+            if (val_n.type() == .raw_string_lit) {
+                const token_s = self.ast.nodeString(val_n);
+                return try self.alloc.dupe(u8, token_s);
+            } else if (val_n.type() == .stringLit) {
                 const token_s = self.ast.nodeString(val_n);
                 var buf = std.ArrayList(u8).init(self.alloc);
                 defer buf.deinit();
@@ -587,6 +590,7 @@ pub const DecodeValueIR = struct {
         switch (node.type()) {
             .arrayLit => return .list,
             .recordLit => return .map,
+            .raw_string_lit,
             .stringLit => return .string,
             .hexLit,
             .binLit,

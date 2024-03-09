@@ -534,7 +534,7 @@ pub const Array = struct {
 };
 
 pub const String = struct {
-    literal: []const u8,
+    raw: []const u8,
 };
 
 pub const StringTemplate = struct {

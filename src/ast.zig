@@ -73,6 +73,7 @@ pub const NodeType = enum(u8) {
     opAssignStmt,
     passStmt,
     range,
+    raw_string_lit,
     recordLit,
     returnExprStmt,
     returnStmt,
@@ -140,7 +141,7 @@ const NodeHead = packed struct {
     },
 };
 
-/// At most 16 bytes in release mode.
+/// At most 8 bytes for ReleaseFast.
 const NodeData = union {
     uninit: void,
     expandOpt: struct {
@@ -319,7 +320,7 @@ const NodeData = union {
         name: NodeId,
         typeSpec: NodeId,
     },
-    type_copy_decl: struct {
+    type_copy_decl: packed struct {
         header: NodeId,
         func_head: u24,
         num_funcs: u8,
@@ -415,7 +416,7 @@ const NodeData = union {
         numParams: u8,
         typeDecl: NodeId,
     },
-    range: struct {
+    range: packed struct {
         start: cy.Nullable(NodeId),
         end: cy.Nullable(u24),
         inc: bool,
@@ -563,8 +564,8 @@ pub const UnaryOp = enum(u8) {
 test "ast internals." {
     if (builtin.mode == .ReleaseFast) {
         try t.eq(@sizeOf(NodeHead), 4);
-        try t.eq(@sizeOf(NodeData), 16);
-        try t.eq(@sizeOf(Node), 24);
+        try t.eq(@sizeOf(NodeData), 8);
+        try t.eq(@sizeOf(Node), 16);
     } else {
         try t.eq(@sizeOf(NodeHead), 4);
         try t.eq(@sizeOf(NodeData), 16);
@@ -583,6 +584,9 @@ pub const Ast = struct {
     templateCtNodes: std.ArrayListUnmanaged(NodeId),
 
     /// Heap generated strings, stable pointers unlike `srcGen`.
+    /// Used for:
+    /// - Unnamed struct identifiers.
+    /// - Unescaped strings.
     strs: std.ArrayListUnmanaged([]const u8),
 
     /// Optionally parsed by tokenizer.
@@ -790,7 +794,7 @@ pub const AstView = struct {
             const lastName = self.nodeString(last);
 
             var end = last.srcPos + last.data.span.len;
-            if (last.type() == .stringLit) {
+            if (last.type() == .raw_string_lit) {
                 end += 1;
             }
             return .{
@@ -1008,6 +1012,9 @@ pub const Encoder = struct {
             .decLit,
             .ident => {
                 try w.writeAll(self.ast.nodeString(node));
+            },
+            .raw_string_lit => {
+                try w.writeAll(self.ast.nodeStringAndDelim(node));
             },
             .stringLit => {
                 try w.writeAll(self.ast.nodeStringAndDelim(node));

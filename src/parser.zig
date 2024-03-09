@@ -553,6 +553,10 @@ pub const Parser = struct {
                 self.advance();
                 return try self.pushSpanNode(.ident, start);
             },
+            .raw_string => {
+                self.advance();
+                return try self.pushSpanNode(.raw_string_lit, start);
+            },
             .string => {
                 self.advance();
                 return try self.pushSpanNode(.stringLit, start);
@@ -1429,7 +1433,7 @@ pub const Parser = struct {
                     return self.reportError("Expected import specifier.", &.{});
                 };
                 const spec_t = self.ast.nodeType(spec);
-                if (spec_t == .stringLit) {
+                if (spec_t == .raw_string_lit) {
                     try self.consumeNewLineOrEnd();
                 } else {
                     return self.reportError("Expected import specifier to be a string. {}", &.{fmt.v(spec_t)});
@@ -2929,6 +2933,10 @@ pub const Parser = struct {
                 self.advance();
                 break :b try self.pushSpanNode(.runeLit, start);
             },
+            .raw_string => b: {
+                self.advance();
+                break :b try self.pushSpanNode(.raw_string_lit, start);
+            },
             .string => b: {
                 self.advance();
                 break :b try self.pushSpanNode(.stringLit, start);
@@ -3082,6 +3090,7 @@ pub const Parser = struct {
                 .and_k,
                 .as_k,
                 .capture,
+                .raw_string,
                 .string,
                 .bin,
                 .oct,
@@ -3837,7 +3846,7 @@ fn isRecedingIndent(p: *Parser, prevIndent: u32, curIndent: u32, indent: u32) !b
 fn isRecordKeyNodeType(node_t: cy.NodeType) bool {
     switch (node_t) {
         .ident,
-        .stringLit,
+        .raw_string_lit,
         .decLit,
         .binLit,
         .octLit,

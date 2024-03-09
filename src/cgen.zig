@@ -1161,7 +1161,7 @@ fn genString(c: *Chunk, loc: usize, cstr: Cstr, nodeId: cy.NodeId) !Value {
     // if (inst.requiresPreRelease) {
     //     try pushRelease(c, inst.dst, nodeId);
     // }
-    const c_lit = try cStringLit(c, data.literal);
+    const c_lit = try cStringLit(c, data.raw);
 
     try c.bufPushFmt("STRING(\"{s}\")", .{c_lit});
 
@@ -1877,12 +1877,9 @@ fn retExprStmt(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
     // }
 }
 
-pub fn cStringLit(self: *Chunk, lit: []const u8) ![]const u8 {
-    // Big enough to hold unescaped lit and escape c lit.
-    try self.base.tempBufU8.resize(self.alloc, lit.len * 3);
-
-    // First unescape Cyber literal.
-    const unescaped = try cy.sema.unescapeString(self.base.tempBufU8.items[0..lit.len], lit, false);
+pub fn cStringLit(self: *Chunk, raw: []const u8) ![]const u8 {
+    // Big enough to hold escaped C literal.
+    try self.base.tempBufU8.resize(self.alloc, raw.len * 2);
 
     // Escape to C literal.
     const ReplaceChars = "\\\"";
@@ -1895,12 +1892,12 @@ pub fn cStringLit(self: *Chunk, lit: []const u8) ![]const u8 {
             };
         }
     };
-    if (std.mem.indexOfAny(u8, unescaped, ReplaceChars)) |idx| {
-        var fbuf = std.io.fixedBufferStream(self.base.tempBufU8.items[lit.len..]);
+    if (std.mem.indexOfAny(u8, raw, ReplaceChars)) |idx| {
+        var fbuf = std.io.fixedBufferStream(self.base.tempBufU8.items[0..]);
         const w = fbuf.writer();
-        try w.print("{s}{s}", .{unescaped[0..idx], S.replacement(unescaped[idx])});
+        try w.print("{s}{s}", .{raw[0..idx], S.replacement(raw[idx])});
 
-        var rest = unescaped[idx+1..];
+        var rest = raw[idx+1..];
         while (std.mem.indexOfAny(u8, rest, ReplaceChars)) |idx2| {
             try w.print("{s}{s}", .{rest[0..idx2], S.replacement(rest[idx2])});
             rest = rest[idx2+1..];
@@ -1908,6 +1905,6 @@ pub fn cStringLit(self: *Chunk, lit: []const u8) ![]const u8 {
         try w.writeAll(rest);
         return fbuf.getWritten();
     } else {
-        return unescaped;
+        return raw;
     }
 }

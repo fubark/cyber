@@ -102,6 +102,7 @@ pub const TokenType = enum(u8) {
     right_bracket,
     right_paren,
     rune,
+    raw_string,
     string,
     struct_k,
     switch_k,
@@ -796,7 +797,7 @@ pub const Tokenizer = struct {
                 } else return t.reportErrorAt("UnterminatedString", &.{}, start);
             }
             if (peek(t) == '\'') {
-                try t.pushSpanToken(.string, start, t.nextPos);
+                try t.pushSpanToken(.raw_string, start, t.nextPos);
                 advance(t);
                 return;
             } else if (peek(t) == '\n') {
@@ -826,7 +827,7 @@ pub const Tokenizer = struct {
                     continue;
                 };
                 if (ch == '\'' and ch2 == '\'') {
-                    try t.pushSpanToken(.string, start, t.nextPos);
+                    try t.pushSpanToken(.raw_string, start, t.nextPos);
                     advance(t);
                     advance(t);
                     advance(t);
@@ -1023,6 +1024,6 @@ test "tokenizer internals." {
     try tt.eq(@alignOf(Token), 4);
     try tt.eq(@sizeOf(TokenizeState), 4);
 
-    try tt.eq(std.enums.values(TokenType).len, 69);
+    try tt.eq(std.enums.values(TokenType).len, 70);
     try tt.eq(keywords.kvs.len, 34);
 }

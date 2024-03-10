@@ -1112,6 +1112,10 @@ pub const Encoder = struct {
                     }
                 }
             },
+            .expandOpt => {
+                try w.writeByte('?');
+                try self.writeNode(w, node.data.expandOpt.param);
+            },
             else => {
                 try w.writeByte('<');
                 try w.writeAll(@tagName(node.type()));

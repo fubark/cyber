@@ -57,6 +57,7 @@ if !args['import-style']:
     var styleCSS = os.readFile("$(curDir)/style.css")
     stylePart = "<style>$(styleCSS)</style>"
 
+var toc_links = tocLinksHtml.join("\n")
 var html = """<html lang="en">
 <head>
     <meta charset="utf-8">
@@ -77,7 +78,7 @@ var html = """<html lang="en">
     </ul>
     <div class="sub-title">Table of Contents</div>
     <ul>
-        $(tocLinksHtml.join('\n'))
+        $(toc_links)
     </ul>
 </header>
 <main>
@@ -213,10 +214,10 @@ func enterBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         out += """<pre><code class="language-$(lang)">"""
         return 0
     case md.BLOCK_UL:
-        out += '<ul>\n'
+        out += "<ul>\n"
         return 0
     case md.BLOCK_OL:
-        out += '<ol>\n'
+        out += "<ol>\n"
         return 0
     case md.BLOCK_LI:
         out += '<li>'
@@ -261,7 +262,7 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         return 0 
     case md.BLOCK_H:
         my detail = md.lib['ptrToBLOCK_H_DETAIL_S'](detail_p)
-        textContent = textContent.trim(.ends, ' \n')
+        textContent = textContent.trim(.ends, " \n")
 
         my id = textContent.replace(' ', '-')
         id = id.replace('.', '')
@@ -287,19 +288,19 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         resetState()
         return 0
     case md.BLOCK_P:
-        out += '</p>\n'
+        out += "</p>\n"
         return 0
     case md.BLOCK_CODE:
-        out += '</code></pre>\n'
+        out += "</code></pre>\n"
         return 0
     case md.BLOCK_UL:
-        out += '</ul>\n'
+        out += "</ul>\n"
         return 0
     case md.BLOCK_OL:
-        out += '</ol>\n'
+        out += "</ol>\n"
         return 0
     case md.BLOCK_LI:
-        out += '</li>\n'
+        out += "</li>\n"
         return 0
     case md.BLOCK_HTML:
         return 0
@@ -398,7 +399,7 @@ func genDocsModules():
     for modules -> mod:
         var src = os.readFile("$(curDir)/$(mod.path)")
         var decls = parseCyber(src)['decls']
-        var gen = '\n'
+        var gen = "\n"
         for decls -> decl:
             switch decl.type
             case 'funcInit':

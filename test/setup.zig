@@ -143,7 +143,7 @@ pub const VMrunner = struct {
 
     fn getErrorSummary(self: *VMrunner, code: c.ResultCode) !c.Str {
         if (code == c.ErrorCompile) {
-            return c.newFirstReportSummary(self.vm);
+            return c.newErrorReportSummary(self.vm);
         } else if (code == c.ErrorPanic) {
             return c.newPanicSummary(self.vm);
         }
@@ -354,7 +354,7 @@ pub fn printErrorReport(vm: *c.VM, code: c.ResultCode) void {
             std.debug.print("{s}", .{c.fromStr(summary)});
         },
         c.ErrorCompile => {
-            const summary = c.newFirstReportSummary(vm);
+            const summary = c.newErrorReportSummary(vm);
             defer c.freeStr(vm, summary);
             std.debug.print("{s}", .{c.fromStr(summary)});
         },

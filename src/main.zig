@@ -161,7 +161,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     _ = vm.compile(path, src, config) catch |err| {
         if (err == error.CompileError) {
             if (!c.silent()) {
-                const report = c.newFirstReportSummary(@ptrCast(&vm));
+                const report = c.newErrorReportSummary(@ptrCast(&vm));
                 defer c.freeStr(@ptrCast(&vm), report);
                 cy.rt.writeStderr(c.fromStr(report));
             }
@@ -200,7 +200,7 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
             },
             error.CompileError => {
                 if (!c.silent()) {
-                    const report = c.newFirstReportSummary(@ptrCast(&vm));
+                    const report = c.newErrorReportSummary(@ptrCast(&vm));
                     defer c.freeStr(@ptrCast(&vm), report);
                     cy.rt.writeStderr(c.fromStr(report));
                 }

@@ -168,6 +168,7 @@ pub const VM = struct {
     tempBuf: [128]u8 align(4),
 
     lastExeError: []const u8,
+    last_res: cc.ResultCode,
 
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
@@ -237,6 +238,7 @@ pub const VM = struct {
             .numFreed = if (cy.Trace) 0 else {},
             .tempBuf = undefined,
             .lastExeError = "",
+            .last_res = cc.Success,
         };
         self.mainFiber.panicType = vmc.PANIC_NONE;
         self.curFiber = &self.mainFiber;

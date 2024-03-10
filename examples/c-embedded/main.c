@@ -24,9 +24,10 @@ int main() {
     if (res == CS_SUCCESS) {
         printf("Success!\n");
         csRelease(vm, val);
-    } else {
-        const char* report = csNewLastErrorReport(vm);
-        printf("%s\n", report);
+    } else { 
+        CsStr s = csNewLastErrorSummary(vm);
+        printf("%.*s\n", (int)s.len, s.buf);
+        csFreeStr(vm, s);
     }
     csDestroy(vm);
     return 0;

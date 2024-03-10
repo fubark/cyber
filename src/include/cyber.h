@@ -371,8 +371,14 @@ CsResultCode csEvalExt(CsVM* vm, CsStr uri, CsStr src, CsEvalConfig config, CsVa
 CsResultCode csCompile(CsVM* vm, CsStr uri, CsStr src, CsCompileConfig config);
 CsResultCode csValidate(CsVM* vm, CsStr src);
 
+/// Convenience function to return the last error summary.
+/// Returns csNewErrorReportSummary if the last result was a CS_ERROR_COMPILE,
+/// or csNewPanicSummary if the last result was a CS_ERROR_PANIC,
+/// or the null string.
+CsStr csNewLastErrorSummary(CsVM* vm);
+
 /// Returns first compile-time report summary. Must be freed with `csFreeStr`.
-CsStr csNewFirstReportSummary(CsVM* vm);
+CsStr csNewErrorReportSummary(CsVM* vm);
 
 /// Returns runtime panic summary. Must be freed with `csFreeStr`.
 CsStr csNewPanicSummary(CsVM* vm);
@@ -404,7 +410,7 @@ void csDeclareFunc(CsSym mod, const char* name, const CsTypeId* params, uint32_t
 void csDeclareVar(CsSym mod, const char* name, CsValue val);
 
 // Expand type template for given arguments.
-CsTypeId csExpandTypeTemplate(CsSym template, CsValue* args, uint32_t nargs);
+CsTypeId csExpandTypeTemplate(CsSym type_t, CsValue* args, uint32_t nargs);
 
 // -----------------------------------
 // [ Memory ]

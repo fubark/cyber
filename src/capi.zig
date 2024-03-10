@@ -79,7 +79,8 @@ pub const setErrorPrinter = c.csSetErrorPrinter;
 pub const setUserData = c.csSetUserData;
 pub const getUserData = c.csGetUserData;
 pub const getGlobalRC = c.csGetGlobalRC;
-pub const newFirstReportSummary = c.csNewFirstReportSummary;
+pub const newLastErrorSummary = c.csNewLastErrorSummary;
+pub const newErrorReportSummary = c.csNewErrorReportSummary;
 pub const newPanicSummary = c.csNewPanicSummary;
 pub const release = c.csRelease;
 pub const retain = c.csRetain;
@@ -107,6 +108,7 @@ pub fn toStr(s: []const u8) Str {
         .len = s.len,
     };
 }
+pub const null_str = Str{ .buf = null, .len = 0 };
 
 pub const ValueSlice = c.CsValueSlice;
 pub const FuncFn = c.CsFuncFn;

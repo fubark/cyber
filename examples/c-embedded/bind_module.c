@@ -101,10 +101,10 @@ void myCollectionFinalizer(CsVM* vm, void* obj) {
 
 bool typeLoader(CsVM* vm, CsTypeInfo info, CsTypeResult* out) {
     if (strncmp("MyCollection", info.name.buf, info.name.len) == 0) {
-        out->type = CS_TYPE_OBJECT;
-        out->data.object.outTypeId = &myCollectionId;
-        out->data.object.getChildren = myCollectionGetChildren;
-        out->data.object.finalizer = myCollectionFinalizer;
+        out->type = CS_BIND_TYPE_CUSTOM;
+        out->data.custom.out_type_id = &myCollectionId;
+        out->data.custom.get_children = myCollectionGetChildren;
+        out->data.custom.finalizer = myCollectionFinalizer;
         return true;
     } else {
         return false;
@@ -145,9 +145,9 @@ int main() {
     csSetPrinter(vm, print);
 
     // Initialize var array for loader.
-    vars[0] = (NameValue){"Root.MyConstant", csFloat(1.23)};
+    vars[0] = (NameValue){"MyConstant", csFloat(1.23)};
     CsValue myInt = csInteger(123);
-    vars[1] = (NameValue){"Root.MyList", csNewList(vm, &myInt, 1)};
+    vars[1] = (NameValue){"MyList", csNewList(vm, &myInt, 1)};
 
     CsStr main = STR(
         "import mod 'my_mod'\n"
@@ -168,9 +168,9 @@ int main() {
     if (res == CS_SUCCESS) {
         printf("Success!\n");
     } else {
-        const char* report = csNewLastErrorReport(vm);
-        printf("%s\n", report);
-        csFreeStrZ(vm, report);
+        CsStr s = csNewLastErrorSummary(vm);
+        printf("%.*s\n", (int)s.len, s.buf);
+        csFreeStr(vm, s);
     }
     csRelease(vm, vars[1].v);
     csDeinit(vm);

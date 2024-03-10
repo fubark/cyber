@@ -100,20 +100,23 @@ export fn csEval(vm: *cy.VM, src: c.Str, outVal: *cy.Value) c.ResultCode {
 }
 
 export fn csEvalExt(vm: *cy.VM, uri: c.Str, src: c.Str, config: c.EvalConfig, outVal: *cy.Value) c.ResultCode {
-    outVal.* = vm.eval(c.fromStr(uri), c.fromStr(src), config) catch |err| {
+    var res = c.Success;
+    outVal.* = vm.eval(c.fromStr(uri), c.fromStr(src), config) catch |err| b: {
         switch (err) {
             error.CompileError => {
-                return c.ErrorCompile;
+                res = c.ErrorCompile;
             },
             error.Panic => {
-                return c.ErrorPanic;
+                res = c.ErrorPanic;
             },
             else => {
-                return c.ErrorUnknown;
+                res = c.ErrorUnknown;
             },
         }
+        break :b undefined;
     };
-    return c.Success;
+    vm.last_res = res;
+    return res;
 }
 
 export fn csDefaultCompileConfig() c.CompileConfig {
@@ -129,34 +132,37 @@ export fn csDefaultCompileConfig() c.CompileConfig {
 }
 
 export fn csCompile(vm: *cy.VM, uri: c.Str, src: c.Str, config: c.CompileConfig) c.ResultCode {
+    var res = c.Success;
     _ = vm.compile(c.fromStr(uri), c.fromStr(src), config) catch |err| {
         switch (err) {
             error.CompileError => {
-                return c.ErrorCompile;
+                res = c.ErrorCompile;
             },
             else => {
-                return c.ErrorUnknown;
+                res = c.ErrorUnknown;
             },
         }
     };
-    return c.Success;
+    vm.last_res = res;
+    return res;
 }
 
 export fn csValidate(vm: *cy.VM, src: c.Str) c.ResultCode {
-    const res = vm.validate("main", c.fromStr(src), .{
+    var res = c.Success;
+    _ = vm.validate("main", c.fromStr(src), .{
         .file_modules = false,
     }) catch |err| {
         switch (err) {
             error.CompileError => {
-                return c.ErrorCompile;
+                res = c.ErrorCompile;
             },
             else => {
-                return c.ErrorUnknown;
+                res = c.ErrorUnknown;
             },
         }
     };
-    _ = res;
-    return c.Success;
+    vm.last_res = res;
+    return res;
 }
 
 test "csValidate()" {
@@ -185,7 +191,17 @@ export fn csResultName(code: c.ResultCode) c.Str {
 
 var tempBuf: [1024]u8 align(8) = undefined;
 
-export fn csNewFirstReportSummary(vm: *cy.VM) c.Str {
+export fn csNewLastErrorSummary(vm: *cy.VM) c.Str {
+    if (vm.last_res == c.ErrorCompile) {
+        return csNewErrorReportSummary(vm);
+    } else if (vm.last_res == c.ErrorPanic) {
+        return csNewPanicSummary(vm);
+    } else {
+        return c.null_str;
+    }
+}
+
+export fn csNewErrorReportSummary(vm: *cy.VM) c.Str {
     if (vm.compiler.reports.items.len == 0) {
         cy.panic("No report.");
     }

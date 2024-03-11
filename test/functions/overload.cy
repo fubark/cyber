@@ -3,10 +3,10 @@ import t 'test'
 func foo():
     return 2 + 2
 
-func foo(n):
+func foo(n int):
     return 2 + n
 
-func foo(n, m):
+func foo(n int, m int):
     return n * m
 
 t.eq(foo(), 4)

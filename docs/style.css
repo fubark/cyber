@@ -187,6 +187,12 @@ h3 {
     border-radius: 0rem;
 }
 
+main h2 > code {
+    color: var(--header);
+    font-size: 0.9em;
+    background-color: transparent;
+}
+
 main h3 > code {
     color: var(--header);
     font-size: 0.9em;

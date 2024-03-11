@@ -5,18 +5,18 @@ var .varList List = [1, 2, 3]
 var .varMap Map = [a: 1, b: 2, c: 3]
 var .varFunc = func():
     return 345
-var .varFunc1 = func(a):
+var .varFunc1 = func(a int):
     return a + 1
-var .varFunc2 = func(a, b):
+var .varFunc2 = func(a int, b int):
     return a + b
 
 var .varNoExport = 123
 
 func fn():
     return 234
-func fn1(a):
+func fn1(a int):
     return a + 1
-func fn2(a, b):
+func fn2(a int, b int):
     return a + b
 
 func barNoExport():
@@ -25,12 +25,12 @@ func barNoExport():
 -- Test that there is no main block execution for imported modules.
 panic(.ExecutedModuleMain)
 
-func toInt(val) int:
+func toInt(val any) int:
     return int(val)
 
 var .initOnce = incInitOnce(initOnceCount)
 var .initOnceCount = 0
-func incInitOnce(cur):
+func incInitOnce(cur int):
     initOnceCount = cur + 1
     return initOnceCount
 
@@ -41,7 +41,7 @@ var .varDep = 123
 func sameFuncName():
     return 123
 
-func useInt(a):
+func useInt(a any):
     return toInt(a)
 
 type Vec2:

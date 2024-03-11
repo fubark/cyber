@@ -19,7 +19,7 @@ t.eq(c2, 567)
 -- Dependent read runs after initial declaration.
 var .a3 = load(b3)
 var .b3 = 123
-func load(arg):
+func load(arg int):
     b3 = 234
 t.eq(b3, 234)
 

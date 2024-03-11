@@ -116,7 +116,7 @@ t.eq(staticAdd(123, 321), 444)
 -- Callback.
 ffi = os.newFFI()
 ffi.cfunc('testCallback', [.int, .int, .funcPtr], .int)
-var add = func(a, b):
+var add = func(a int, b int):
     return a + b
 lib = ffi.bindLib(libPath)
 var cadd = ffi.bindCallback(add, [.int, .int], .int)

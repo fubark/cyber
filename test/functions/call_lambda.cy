@@ -13,7 +13,7 @@ foo = (bar, inc) => bar + inc
 t.eq(foo(20, 10), 30)
 
 -- Pass lambda as arg.
-func call(f):
+func call(f dynamic):
     return f(14)
 t.eq(call(a => a + 1), 15)
 
@@ -30,12 +30,12 @@ foo = func ():
 t.eq(foo(), 4)
 
 -- Multi-line lambda, one param.
-foo = func (a):
+foo = func (a int):
     return a + 1
 t.eq(foo(10), 11)
 
 -- Multi-line lambda, multiple params.
-foo = func (bar, inc):
+foo = func (bar int, inc int):
     return bar + inc
 t.eq(foo(20, 10), 30)
 

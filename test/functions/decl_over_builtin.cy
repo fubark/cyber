@@ -1,6 +1,6 @@
 import t 'test'
 
-func print(v):
+func print(v int):
     return v + 2
 
 t.eq(print(1), 3)

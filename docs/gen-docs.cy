@@ -375,7 +375,7 @@ func text(text_t md.SPANTYPE, ptr pointer, len int, userdata pointer) int:
         out += str
     return 0
 
-func getAttrText(attr) String:
+func getAttrText(attr dynamic) String:
     if attr.size == 0:
         return ''
     return (attr.text as pointer).toArray(0, attr.size).decode()

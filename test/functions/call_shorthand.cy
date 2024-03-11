@@ -1,6 +1,6 @@
 import test
 
-func foo(n):
+func foo(n int):
     return n + 1
 
 -- Expression statement.
@@ -10,7 +10,7 @@ foo 123
 var a = foo 123
 test.eq(a, 124)
 
-func foo2(n, m):
+func foo2(n int, m int):
     return n + m
 
 -- Multiple arguments

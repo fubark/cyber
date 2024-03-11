@@ -25,7 +25,7 @@ var existing = ''
 -- Build skip map.
 existing = try os.readFile(args.o) catch ''
 if existing != '':
-    markerPos = existing.find('\n-- CBINDGEN MARKER') ?else existing.len()
+    markerPos = existing.find("\n-- CBINDGEN MARKER") ?else existing.len()
 
     -- Only parse section before the marker since the gen part could contain bad syntax.
     var res = parseCyber(existing[..markerPos])
@@ -118,7 +118,7 @@ out += "    return lib\n\n"
 genMacros(headerPath)
 
 -- Final output.
-out = existing[0..markerPos] + '\n-- CBINDGEN MARKER\n' + out
+out = existing[0..markerPos] + "\n-- CBINDGEN MARKER\n" + out
 
 os.writeFile(args.o, out)
 
@@ -139,7 +139,7 @@ var .funcs = []
 -- var .arrays = [:]     -- [n]typeName -> true
 -- var vars = [:]            -- varName -> bindingType
 
-func getTranslationUnit(headerPath):
+func getTranslationUnit(headerPath String):
     var rest List = args.rest[3..]
 
     var cargs = os.malloc(8 * rest.len())
@@ -153,7 +153,7 @@ func getTranslationUnit(headerPath):
         -- clang.CXTranslationUnit_DetailedPreprocessingRecord | clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_SingleFileParse)
         clang.CXTranslationUnit_DetailedPreprocessingRecord | clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_KeepGoing)
 
-func getMacrosTranslationUnit(hppPath):
+func getMacrosTranslationUnit(hppPath String):
     var rest List = args.rest[3..]
 
     var cargs = os.malloc(8 * rest.len())
@@ -182,7 +182,7 @@ type State:
     type StateType
     data dynamic
 
-func visitor(cursor, parent, client_data):
+my visitor(cursor, parent, client_data):
     var state State = client_data.asObject()
     switch state.type
     case StateType.root:
@@ -200,7 +200,7 @@ func visitor(cursor, parent, client_data):
     else:
         throw error.Unsupported
 
-func rootVisitor(cursor, parent, state):
+my rootVisitor(cursor, parent, state):
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
@@ -265,9 +265,9 @@ func rootVisitor(cursor, parent, state):
             if is(fieldt, .voidPtr) or
                 (typeof(fieldt) == String and fieldt.startsWith('[os.CArray')):
                 out += " -- $(struct.cxFieldTypes[i])"
-            out += '\n'
+            out += "\n"
 
-        out += '\n'
+        out += "\n"
         skipChildren = false
 
     case clang.CXCursor_EnumDecl:
@@ -282,7 +282,7 @@ func rootVisitor(cursor, parent, state):
         var cnewState = clang.ffi.bindObjPtr(newState)
         clang.lib.clang_visitChildren(cursor, cvisitor, cnewState)
         clang.ffi.unbindObjPtr(newState)
-        out += '\n'
+        out += "\n"
 
     case clang.CXCursor_FunctionDecl:
         -- print "func $(name)"
@@ -337,7 +337,7 @@ func rootVisitor(cursor, parent, state):
 
     return clang.CXChildVisit_Continue
 
-func structVisitor(cursor, parent, state):
+my structVisitor(cursor, parent, state):
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
@@ -357,7 +357,7 @@ func structVisitor(cursor, parent, state):
         print "unsupported $(cursor.kind) $(name)"
     return clang.CXChildVisit_Continue
 
-func enumVisitor(cursor, parent, state):
+my enumVisitor(cursor, parent, state):
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
     var val = clang.lib.clang_getEnumConstantDeclValue(cursor)
@@ -365,7 +365,7 @@ func enumVisitor(cursor, parent, state):
     out += "var .$(getApiName(name)) int = $(val)\n"
     return clang.CXChildVisit_Continue
 
-func genMacros(headerPath):
+func genMacros(headerPath String):
     var absPath = os.realPath(headerPath)
 
     var hpp = ''
@@ -388,7 +388,7 @@ func genMacros(headerPath):
     var cstate = clang.ffi.bindObjPtr(state)
     clang.lib.clang_visitChildren(cursor, cvisitor, cstate)
 
-func initListExpr(cursor, parent, state):
+my initListExpr(cursor, parent, state):
     switch cursor.kind
     case clang.CXCursor_IntegerLiteral:
         var eval = clang.lib.clang_Cursor_Evaluate(cursor)
@@ -400,7 +400,7 @@ func initListExpr(cursor, parent, state):
 
     return clang.CXChildVisit_Continue
 
-func initVarVisitor(cursor, parent, state):
+my initVarVisitor(cursor, parent, state):
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
@@ -420,7 +420,7 @@ func initVarVisitor(cursor, parent, state):
 
     return clang.CXChildVisit_Continue
 
-func macrosRootVisitor(cursor, parent, state):
+my macrosRootVisitor(cursor, parent, state):
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
@@ -496,11 +496,11 @@ func macrosRootVisitor(cursor, parent, state):
         throw error.Unsupported
     return clang.CXChildVisit_Continue
 
-func fromCXString(cxStr) String:
+func fromCXString(cxStr any) String:
     my cname = clang.lib.clang_getCString(cxStr)
     return cname.fromCstr(0).decode()
 
-func toCyType(nameOrSym, forRet):
+my toCyType(nameOrSym, forRet):
     if typeof(nameOrSym) == symbol:
         switch nameOrSym
         case .voidPtr   : return if (forRet) 'pointer' else 'any' -- `any` until Optionals are done
@@ -526,7 +526,7 @@ func toCyType(nameOrSym, forRet):
                 return 'any'
         return getApiName(nameOrSym)
 
-func ensureBindType(nameOrSym):
+func ensureBindType(nameOrSym any):
     if typeof(nameOrSym) == symbol:
         return nameOrSym
     else:
@@ -536,7 +536,7 @@ func ensureBindType(nameOrSym):
                 return og
         return nameOrSym
 
-func getStruct(name):
+func getStruct(name any):
     if structMap[name]:
         return structMap[name]
     if aliases[name]:
@@ -544,7 +544,7 @@ func getStruct(name):
         return structMap[alias]
     return false
 
-func toBindType(cxType):
+my toBindType(cxType):
     switch cxType.kind
     case clang.CXType_Float             : return .float
     case clang.CXType_Double            : return .double
@@ -603,7 +603,7 @@ func toBindType(cxType):
         print "Unsupported type $(cxType.kind)"
         throw error.Unsupported
 
-func getApiName(name):
+func getApiName(name String):
     if name.startsWith(args.stripPrefix):
         name = name[args.stripPrefix.len()..]
     if name.startsWith('_'):

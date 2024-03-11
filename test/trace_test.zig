@@ -179,7 +179,7 @@ test "ARC for passing call args." {
     // Temp list is retained when passed into function.
     try eval(.{},
         \\import t 'test'
-        \\func foo(list):
+        \\func foo(list List):
         \\  return list[0]
         \\t.eq(foo([1]), 1)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
@@ -308,7 +308,7 @@ test "ARC in loops." {
     // For iter initializes the temp value as the `any` type if the iterator has an `any` type,
     // so using it as a call arg will attempt to retain it.
     try eval(.{},
-        \\func foo(it):
+        \\func foo(it int):
         \\  pass
         \\var list = [123, 234] -- +1a +1 
         \\for list -> it:       -- +4a +4 (iterator is retained once, list is retained for iterator, and 2 retains for next() returning the child item.)

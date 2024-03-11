@@ -302,9 +302,10 @@ const NodeData = union {
     comptimeStmt: struct {
         expr: NodeId,
     },
-    func: struct {
+    func: packed struct {
         header: NodeId,
-        bodyHead: NodeId,
+        bodyHead: cy.Nullable(u24),
+        sig_t: FuncSigType,
     },
     funcHeader: struct {
         /// Can be NullNode for lambdas.
@@ -435,6 +436,12 @@ const NodeData = union {
         strHead: u24,
         numExprs: u8,
     },
+};
+
+const FuncSigType = enum(u8) {
+    func,
+    my,
+    infer,
 };
 
 /// TODO: See if separating `head`, `srcPos`, and `data` improves perf for a large project.

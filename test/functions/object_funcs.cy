@@ -53,10 +53,10 @@ type Node:
 func Node.getFn():
     return 123
 
-func Node.getFn2(param):
+func Node.getFn2(param int):
     return 123 + param
 
-func Node.getFn3(param, param2):
+func Node.getFn3(param int, param2 int):
     return 123 + param - param2
 
 func Node.flatGet(self):

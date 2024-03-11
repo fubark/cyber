@@ -69,10 +69,10 @@ type CXType:
     kind int
     data List
  
-my .lib = load(ffi) -- Make lib depedent on ffi.
+my .lib = load(ffi) -- Make lib dependent on ffi.
 my .ffi = false
 
-func load(dummy):
+func load(dummy any):
     ffi = os.newFFI()
 
     -- enum CXTypeKind kind, void *data[2]

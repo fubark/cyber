@@ -11,9 +11,9 @@ t.eq(a, 123)
 -- Invoke as function.
 var .a1 = func():
     return 123
-var .a2 = func(a):
+var .a2 = func(a int):
     return a + 1
-var .a3 = func(a, b):
+var .a3 = func(a int, b int):
     return a + b
 t.eq(a1(), 123)
 t.eq(a2(123), 124)

@@ -9,7 +9,7 @@
 - [FFI.](#ffi)
 - [Error Handling.](#error-handling)
 - [Concurrency.](#concurrency)
-- [Type System.](#type-system)
+- [Dynamic Typing.](#dynamic-typing)
 - [Metaprogramming.](#metaprogramming)
 - [Embedding.](#embedding)
 - [Memory.](#memory)
@@ -23,9 +23,10 @@
 
 Cyber is a fast, efficient, and concurrent scripting language. The landing page is at [cyberscript.dev](https://cyberscript.dev) and contains performance metrics and release notes.
 
-Cyber is easy to learn. These docs provide a reference manual for the language. You can read it in order or jump around using the navigation.
+These docs provide a reference manual for the language. You can read it in order or jump around using the navigation. You may come across features that are marked `Incomplete` or `Planned`. This is because the docs are written as if all features have been completed already.
 
-You may come across features that are marked `Incomplete` or `Planned`. This is because the docs are written as if all features have been completed already.
+## Type System.
+Cyber is a statically typed language so the documentation will provide examples using typed syntax. However, dynamic typing is also supported with a less restrictive syntax. If you're coming from a language such as Python, JavaScript, or Lua, it can be easier to get started with [Dynamic Typing](#dynamic-typing).
 
 ## Hello World.
 ```cy
@@ -46,9 +47,9 @@ for worlds -> w:
 * [Blocks.](#blocks)
 * [Variables.](#variables)
   * [Local variables.](#local-variables)
-  * [Dynamic variables.](#dynamic-variables)
+  * [Explicit type constraint.](#explicit-type-constraint)
   * [Variable scopes.](#variable-scopes)
-  * [Static variables.](#static-variables)
+  * [Namespace variables.](#namespace-variables)
 * [Reserved identifiers.](#reserved-identifiers)
   * [Keywords.](#keywords)
   * [Contextual keywords.](#contextual-keywords)
@@ -61,6 +62,8 @@ for worlds -> w:
   * [Logic operators.](#logic-operators)
   * [Bitwise operators.](#bitwise-operators)
   * [Operator overloading.](#operator-overloading)
+* [Zero values.](#zero-values)
+* [Type casting.](#type-casting)
 * [Comments.](#comments)
 * [CYON.](#cyon)
 </td>
@@ -129,7 +132,9 @@ func foo():
 ```
 
 ## Variables.
-Cyber supports dynamic and static typing. If you're used to a dynamic language such as Python, JavaScript, or Lua, use `my` to declare your variables and object fields. If you're used to a static language then use `var` instead. The documentation will use static typing by default.
+Variables allow values to be stored into named locations in memory.
+
+Local variables and namespace variables are supported.
 
 ### Local variables.
 Local variables exist until the end of their scope.
@@ -137,20 +142,25 @@ They are declared and initialized using the `var` keyword:
 ```cy
 var a = 123
 ```
-When declared without a type specifier next to the variable, it infers the type from the right initializer.
-To declare variables for a specific type, see [Typed variables](#typed-variables). 
+When declared without a type specifier next to the variable, the type is inferred from the right initializer. In the above example, the variable `a` is initialized with the type `int`.
 
-Variables can be set afterwards using the `=` operator:
+Variables can be assigned afterwards using the `=` operator:
 ```cy
 a = 234
 ```
 
-### Dynamic variables.
-Dynamically typed variables are easier to work with and there is no friction when using them. They are declared using the `my` keyword:
+### Explicit type constraint.
+When a type specifier is provided, the value assigned to the variable must satisfy the type constraint or a compile error is reported:
 ```cy
-my a = 123
+var a float = 123.0
+
+var b int = 123.0    --> CompileError. Expected `int`, got `float`.
 ```
-To understand more about dynamically and statically typed code, see [Type System](#type-system).
+
+Any operation afterwards that violates the type constraint of the variable will result in a compile error
+```cy
+a = 'hello'          --> CompileError. Expected `float`, got `String`.
+```
 
 ### Variable scopes.
 Blocks create a new variable scope. Variables declared in the current scope will take precedence over any parent variables with the same name:
@@ -160,28 +170,32 @@ func foo():
 
     if true:
         var a = 345     -- New `a` declared.
-        print a         -- Prints "345"
+        print a         --> 345
 
-    print a             -- Prints "234"
+    print a             --> 234
 ```
 
-### Static Variables.
-Static variables live until the end of the script.
+### Namespace variables.
+Namespace variables live until the end of the script.
 They act as global variables and are visible from anywhere in the script. 
 
-They are declared with `var` but a namespace must be provided before the variable name:
+Namespace variables are declared with `var` like local variables, but a namespace must be provided before the variable name:
 ```cy
 var .a = 123
 
 func foo():
-    print a     -- '123'
+    print a     --> 123
 ```
 The `.` prefix is used to reference the current module's namespace.
 
-Since static variables are initialized outside of a fiber's execution flow, they can not reference any local variables:
+Unlike local variables, namespace variables do not currently infer the type from the right hand side so a specific type must be specified or it will default to the `any` type:
 ```cy
--- Static declaration.
-var .b = a   -- Compile error, initializer can not reference a local variable.
+var .my_map Map = [:]
+```
+
+Since namespace variables are initialized outside of a fiber's execution flow, they can not reference any local variables:
+```cy
+var .b = a   --> Compile error, initializer can not reference a local variable.
 
 -- Main execution.
 var a = 123
@@ -195,7 +209,7 @@ var a = 123
 b = a            -- Reassigning after initializing.
 ```
 
-Static variable initializers have a natural order based on when it was encountered by the compiler.
+Namespace variable initializers have a natural order based on when it was encountered by the compiler.
 In the case of [imported](#importing) variables, the order of the import would affect this order.
 The following would print '123' before '234':
 ```cy
@@ -203,22 +217,22 @@ var .a = print(123)
 var .b = print(234)
 ```
 
-When the initializers reference other static variables, those child references are initialized first in DFS order and supersede the natural ordering. The following initializes `b` before `a`.
+When the initializers reference other namespace variables, those child references are initialized first in DFS order and supersede the natural ordering. The following initializes `b` before `a`.
 ```cy
 var .a = b + 321
 var .b = 123
 
-print a        -- '444'
+print a        --> 444
 ```
 
 Circular references in initializers are not allowed.
 When initialization encounters a reference that creates a circular dependency an error is reported.
 ```cy
 var .a = b
-var .b = a       -- CompileError. Referencing `a` creates a circular dependency.
+var .b = a     --> CompileError. Referencing `a` creates a circular dependency.
 ```
 
-Sometimes, you may want to initialize a static variable by executing multiple statements in order.
+Sometimes, you may want to initialize a namespace variable by executing multiple statements in order.
 For this use case, you can use a declaration block. *Planned Feature*
 ```cy
 var .myImage =:
@@ -227,7 +241,7 @@ var .myImage =:
     img.filter(.blur, 5)
     break img
 ```
-The final resulting value that is assigned to the static variable is provided by a `break` statement. If a `break` statement is not provided, `none` is assigned instead.
+The final resulting value that is assigned to the namespace variable is provided by a `break` statement. If a `break` statement is not provided, `none` is assigned instead.
 
 ## Reserved identifiers.
 
@@ -372,6 +386,44 @@ a << b
 ### Operator overloading.
 See [Operator overloading](#operator-overloading-1) in Metaprogramming.
 
+## Zero values.
+Uninitialized type fields currently default to their zero values. However, this implicit behavior will be removed in the future in favor of a default value clause. Zero values must then be expressed using the reserved `zero` literal.
+
+The following shows the zero values of builtin or created types:
+
+|Type|Zero value|
+|---|---|
+|`boolean`|`false`|
+|`int`|`0`|
+|`float`|`0.0`|
+|`String`|`''`|
+|`Array`|`Array('')`|
+|`List`|`[]`|
+|`Map`|`[:]`|
+|`type S`|`[S:]`|
+|`#host type S`|`S.$zero()`|
+|`dynamic`|`int(0)`|
+|`any`|`int(0)`|
+|`?S`|`Option(S).none`|
+
+## Type casting.
+The `as` keyword can be used to cast a value to a specific type. Casting lets the compiler know what the expected type is and does not perform any conversions.
+
+If the compiler knows the cast will always fail at runtime, a compile error is returned instead.
+```cy
+print('123' as int)       --> CompileError. Can not cast `String` to `int`.
+```
+
+If the cast fails at runtime, a panic is returned.
+```cy
+var erased any = 123
+add(1, erased as int)     --> Success.
+print(erased as String)   --> Panic. Can not cast `int` to `String`.
+
+func add(a int, b int):
+    return a + b
+```
+
 ## Comments.
 A single line comment starts with two hyphens and ends at the end of the line.
 ```cy
@@ -429,6 +481,9 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
   * [Map operations.](#map-operations)
   * [Map block.](#map-block)
 * [Symbols.](#symbols)
+* [`any`.](#any)
+  * [Invoking any values.](#invoking-any-values)
+* [`dynamic`.](#dynamic)
 </td>
 </tr></table>
 
@@ -798,6 +853,41 @@ print(currency == .usd)   -- 'true'
 print int(currency)       -- '123' or some arbitrary id.
 ```
 
+## `any`.
+A variable with the `any` type can hold any value, but copying it to narrowed type destination will result in a compile error:
+```cy
+func square(i int):
+    return i * i
+
+var a any = 123
+a = ['a', 'list']         --> Valid assignment to a value with a different type.
+a = 10
+
+print square(a)           --> CompileError. Expected `int`, got `any`.
+```
+`a` must be explicitly casted to satisfy the type constraint:
+```cy
+print square(a as int)    --> 100
+```
+
+### Invoking `any` values.
+Since `any` is a static type, invoking an `any` value must be explicitly casted to the appropriate function type.
+> _Planned Feature: Casting to a function type is not currently supported._
+
+```cy
+func add(a int, b int) int:
+    return a + b
+
+var op any = add
+print op(1, 2)         -- CompileError. Expected `func (int, int) any`
+
+var opFunc = op as (func (int, int) int)
+print opFunc(1, 2)     -- Prints "3".
+```
+
+## `dynamic`.
+The dynamic type defers type checking to runtime. See [Dynamic Typing](#dynamic-typing).
+
 # Custom Types.
 <table><tr>
 <td valign="top">
@@ -1098,6 +1188,8 @@ print s.!line     -- Prints '20'
 ```
 
 ## Optionals.
+Optionals provide **Null Safety** by forcing values to be unwrapped before they can be used.
+
 The generic `Option` type is a choice type that either holds a `none` value or contains `some` value. The option template is defined as:
 ```cy
 template(T type)
@@ -1471,7 +1563,7 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
 
 # Functions.
 
-* [Static functions.](#static-functions)
+* [Namespace functions.](#namespace-functions)
 * [Function overloading.](#function-overloading)
 * [Lambdas.](#lambdas)
 * [Closures.](#closures)
@@ -1485,12 +1577,12 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
 
 [^top](#table-of-contents)
 
-In Cyber, there are first-class functions (or function values) and static functions.
+In Cyber, there are first-class functions (or function values) and namespace functions.
 
-## Static functions.
-Static functions are not initially values themselves. They allow function calls to be optimal since they don't need to resolve a dynamic value.
+## Namespace functions.
+Namespace functions are not initially values themselves. They allow function calls to be optimal since they don't need to resolve a dynamic value.
 
-Static functions are declared with the `func` keyword and must have a name.
+Namespace functions are declared with the `func` keyword and must have a name.
 ```cy
 import math
 
@@ -1499,7 +1591,7 @@ func dist(x0 float, y0 float, x1 float, y1 float) float:
     var dy = y0-y1
     return math.sqrt(dx^2 + dy^2)
 ```
-Calling static functions is straightforward. You can also reassign or pass them around as function values.
+Calling namespace functions is straightforward. You can also reassign or pass them around as function values.
 ```cy
 print dist(0, 0, 10, 20)
 
@@ -1507,7 +1599,7 @@ print dist(0, 0, 10, 20)
 var bar = dist
 
 -- Passing `dist` as an argument.
-func squareDist(dist, size):
+func squareDist(dist float, size float) float:
     return dist(0.0, 0.0, size, size)
     
 print squareDist(dist, 30.0)
@@ -1517,27 +1609,27 @@ Functions can only return one value. However, the value can be destructured: *Pl
 ```cy
 import {cos, sin} 'math'
 
-func compute(rad):
+func compute(rad float) [float, float]:
     return [ cos(rad), sin(rad) ]
 
 var [ x, y ] = compute(pi)
 ```
 
 ## Function overloading.
-Functions can be overloaded by the number of parameters in its signature. [Typed functions](#functions-1) are further overloaded by their type signatures. 
+Functions can be overloaded by their type signature:
 ```cy
-func foo():
+func foo() int:
     return 2 + 2
 
-func foo(n):
+func foo(n int) int:
     return 10 + n
 
-func foo(n, m):
+func foo(n int, m int) int:
     return n * m
 
-print foo()         -- "4"
-print foo(2)        -- "12"
-print foo(20, 5)    -- "100"
+print foo()         --> 4
+print foo(2)        --> 12
+print foo(20, 5)    --> 100
 ```
 
 ## Lambdas.
@@ -1558,7 +1650,7 @@ canvas.onUpdate = delta_ms => print delta_ms
 Lambdas that need a block of statements can be declared with the `func` keyword without a name.
 ```cy
 -- Assigning lambda block to a variable.
-var add = func (a, b):
+var add = func (a int, b int) int:
     return a + b
 
 -- Passing a lambda block as an argument.
@@ -1572,9 +1664,9 @@ Passing a lambda block as a call argument is only possible in a call block. *Pla
 Lambdas can capture local variables from parent blocks. This example shows the lambda `f` capturing `a` from the main scope: *Incomplete, only variables one parent block away can be captured.*
 ```cy
 var a = 1
-var f = func():
+var f = func() int:
     return a + 2
-print f()         -- "3"
+print f()         --> 3
 ```
 
 The following lambda expression captures `a` from the function `add`:
@@ -1583,14 +1675,14 @@ func add():
     var a = 123
     return b => a + b
 var addTo = add()
-print addTo(10)   -- "133"
+print addTo(10)   --> 133
 ```
 
-Like static variables, static functions can not reference local variables outside of their scope:
+Like namespace variables, namespace functions can not reference local variables outside of their scope:
 ```cy
 var a = 1
 func foo():
-    print a       -- CompileError: Undeclared variable `a`.
+    print a       --> CompileError: Undeclared variable `a`.
 ```
 
 ## Named parameters.
@@ -1750,7 +1842,7 @@ func printA():
 func printC():
     print 'done'
 ```
-Static variable declarations from imports can have circular references. Read more about this in [Static Variables](#static-variables).
+Namespace variable declarations from imports can have circular references. Read more about this in [Namespace variables](#namespace-variables).
 
 Modules can also be destructured using the following syntax:
 > _Planned Feature_
@@ -1762,10 +1854,10 @@ print cos(pi)
 ## Exporting.
 All static declarations are exported when the script's module is loaded.
 ```cy
-func foo():         -- Exported static function.
+func foo():         -- Exported namespace function.
     print 123
 
-var .bar = 234      -- Exported static variable.
+var .bar = 234      -- Exported namespace variable.
 
 type Thing:  -- Exported type.
     var a float
@@ -2378,45 +2470,43 @@ The main execution context is a fiber as well. Once the main fiber has finished,
 ## Multi-thread.
 > _Planned Feature_
 
-# Type System.
+# Dynamic Typing.
 
-<table><tr>
-<td valign="top">
-
-* [Dynamic typing.](#dynamic-typing)
-  * [`my` declaration.](#my-declaration)
-  * [`dynamic` vs `any`.](#dynamic-vs-any)
-  * [Invoking dynamic values.](#invoking-dynamic-values)
-  * [Dynamic return value.](#dynamic-return-value)
-  * [Recent type inference.](#recent-type-inference)
-</td><td valign="top">
-
-* [Static typing.](#static-typing)
-  * [`var` declaration.](#var-declaration)
-  * [Typed variables.](#typed-variables)
-  * [Null safety.](#null-safety)
-  * [Zero values.](#zero-values)
-  * [Functions.](#functions-1)
-  * [`any` type.](#any-type)
-  * [Invoking any values.](#invoking-any-values)
-  * [Type casting.](#type-casting)
-</td>
-</tr></table>
+* [`my` variables.](#my-variables)
+* [Invoking dynamic values.](#invoking-dynamic-values)
+* [`my` functions.](#my-functions)
+* [`dynamic` vs `any`.](#dynamic-vs-any)
+* [Recent type inference.](#recent-type-inference)
+* [Assign to `var`.](#assign-to-var)
 
 [^top](#table-of-contents)
 
-Cyber supports the use of both dynamically and statically typed code.
+Cyber supports dynamic typing with a less restrictive syntax. This can reduce the amount of friction when writing code, but it can also result in more runtime errors.
 
-## Dynamic typing.
-Dynamic typing can reduce the amount of friction when writing code, but it can also result in more runtime errors.
-
-### `my` declaration.
-Variables declared with `my` are assigned the `dynamic` type:
+## `my` variables.
+Variables declared with `my` are implicitly given the `dynamic` type:
 ```cy
 my a = 123
 ```
 
-### `dynamic` vs `any`
+## Invoking `dynamic` values.
+When a `dynamic` value is invoked, checks on whether the callee is a function is deferred to runtime. 
+```cy
+my op = 123
+print op(1, 2, 3)      --> RuntimeError. Expected a function.
+```
+
+## `my` functions.
+Functions declared with `my` do not allow typed parameters or a return specifier.
+All parameters are implicitly given the `dynamic` type.
+
+The return specifier is also implicitly `dynamic` which indicates that the function can throw an error. This is only relevant when typed code calls a `my` function:
+```cy
+my foo(a, b, c):
+    return a + b() + a[c]
+```
+
+## `dynamic` vs `any`
 `dynamic` values can be freely used and copied without any compile errors (if there is a chance it can succeed at runtime, see [Recent type inference](#recent-type-inference)):
 ```cy
 my a = 123
@@ -2443,28 +2533,7 @@ The use of the `dynamic` type effectively defers type checking to runtime while 
 
 A `dynamic` value can be used in any operation. It can be invoked as the callee, invoked as the receiver of a method call, or used with operators.
 
-### Invoking `dynamic` values.
-When a `dynamic` value is invoked, checks on whether the callee is a function is deferred to runtime. 
-```cy
-my op = 123
-print op(1, 2, 3)      -- RuntimeError. Expected a function.
-```
-
-### Dynamic return value.
-When the return type of a function is not specified, it defaults to the `dynamic` type.
-This allows copying the return value to a typed destination without casting:
-```cy
-func getValue():
-    return 123
-
-func add(a int, b int):
-    return a + b
-
-print add(getValue(), 2)    -- Prints "125"
-```
-The `add` function defers type checking of `getValue()` to runtime because it has the `dynamic` type.
-
-### Recent type inference.
+## Recent type inference.
 Although a `dynamic` variable has the most flexibility, in some situations it is advantageous to know what type it could be.
 
 The compiler keeps a running record of a `dynamic` variable's most **recent type** to gain additional compile-time features without sacrificing flexibility. It can prevent inevitable runtime errors and avoid unnecessary type casts.
@@ -2500,126 +2569,15 @@ func foo(s String):
     pass
 ```
 
-## Static typing.
-Static typing can be incrementally applied which provides compile-time guarantees and prevents runtime errors.
-Static typing also makes it easier to maintain and refactor your code.
-
-There are [basic types](#basic-types) that are built into Cyber and `type` declarations to create [custom types](#custom-types).
-
-### `var` declaration.
-A `var` declaration automatically infers the type from the initializer:
-```cy
--- Initialized as an `int` variable.
-var a = 123
-```
+## Assign to `var`.
 
 `var` declarations are strictly for static typing. If the assigned value's type is `dynamic`, the variable's type becomes `any`.
 ```cy
-func getValue():
+my getValue():
     return ['a', 'list']
 
 -- Initialized as an `any` variable.
 var a = getValue()
-```
-
-### Typed variables.
-A typed local variable can be declared by attaching a type specifier after its name. The value assigned to the variable must satisfy the type constraint or a compile error is issued.
-```cy
-var a float = 123
-
-var b int = 123.0    -- CompileError. Expected `int`, got `float`.
-```
-
-Any operation afterwards that violates the type constraint of the variable will result in a compile error.
-```cy
-a = 'hello'          -- CompileError. Expected `float`, got `String`.
-```
-
-Static variables are declared in a similar way:
-```cy
-var .global Map = [:]
-```
-Unlike local variables, static variable declarations do not infer the type from the right hand side. A specific type must be specified or it will default to the `any` type.
-
-### Null safety.
-The type checker does not allow using `none` with an operation. Instead, [Optionals](#optionals) must be unwrapped to access the payload value.
-
-### Zero values.
-The following shows the zero values of builtin or created types.
-
-|Type|Zero value|
-|---|---|
-|`boolean`|`false`|
-|`int`|`0`|
-|`float`|`0.0`|
-|`String`|`''`|
-|`Array`|`Array('')`|
-|`List`|`[]`|
-|`Map`|`[:]`|
-|`type S`|`[S:]`|
-|`#host type S`|`S.$zero()`|
-|`dynamic`|`int(0)`|
-|`any`|`int(0)`|
-|`?S`|`Option(S).none`|
-
-### Functions.
-Function parameter and return type specifiers follows a similiar syntax.
-```cy
-func mul(a float, b float) float:
-    return a * b
-
-print mul(3, 4)
-print mul(3, '4')  -- CompileError. Function signature mismatch.
-```
-
-### `any` type.
-A variable with the `any` type can hold any value, but copying it to narrowed type destination will result in a compile error:
-```cy
-func square(i int):
-    return i * i
-
-var a any = 123
-a = ['a', 'list']         -- Valid assignment to a value with a different type.
-a = 10
-
-print square(a)           -- CompileError. Expected `int`, got `any`.
-```
-`a` must be explicitly casted to satisfy the type constraint:
-```cy
-print square(a as int)    -- Prints "100".
-```
-
-### Invoking `any` values.
-Since `any` is a static type, invoking an `any` value must be explicitly casted to the appropriate function type.
-> _Planned Feature: Casting to a function type is not currently supported._
-
-```cy
-func add(a int, b int) int:
-    return a + b
-
-var op any = add
-print op(1, 2)         -- CompileError. Expected `func (int, int) any`
-
-var opFunc = op as (func (int, int) int)
-print opFunc(1, 2)     -- Prints "3".
-```
-
-### Type casting.
-The `as` keyword can be used to cast a value to a specific type. Casting lets the compiler know what the expected type is and does not perform any conversions.
-
-If the compiler knows the cast will always fail at runtime, a compile error is returned instead.
-```cy
-print('123' as int)       -- CompileError. Can not cast `String` to `int`.
-```
-
-If the cast fails at runtime, a panic is returned.
-```cy
-var erased any = 123
-add(1, erased as int)     -- Success.
-print(erased as String)   -- Panic. Can not cast `int` to `String`.
-
-func add(a int, b int):
-    return a + b
 ```
 
 # Metaprogramming.

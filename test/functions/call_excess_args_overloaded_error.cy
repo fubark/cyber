@@ -1,7 +1,7 @@
 func foo():
     return 1
 
-func foo(n):
+func foo(n int):
     return n
 
 foo(1, 2)
@@ -10,7 +10,7 @@ foo(1, 2)
 --CompileError: Can not find compatible function for call: `foo(int, int)`.
 --Functions named `foo` in `main`:
 --    func foo() dynamic
---    func foo(dynamic) dynamic
+--    func foo(int) dynamic
 --
 --main:7:8:
 --foo(1, 2)

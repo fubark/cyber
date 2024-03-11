@@ -3,7 +3,7 @@ import t 'test'
 func fail():
     throw error.Fail
 
-func happy(a):
+func happy(a any):
     return a
 
 -- Returns result.

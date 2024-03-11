@@ -2246,6 +2246,10 @@ fn resolveFuncDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !FuncDecl {
     var res: FuncDecl = undefined;
     try updateFuncDeclNamePath(c, &res, parent, header.data.funcHeader.name);
 
+    const sig_t = func.data.func.sig_t;
+    if (sig_t == .infer) {
+        return error.Unexpected;
+    }
     var isMethod = false;
     var curParamId = header.data.funcHeader.paramHead;
     while (curParamId != cy.NullNode) {
@@ -2255,6 +2259,15 @@ fn resolveFuncDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !FuncDecl {
             isMethod = true;
             try c.typeStack.append(c.alloc, res.parent.getStaticType().?);
         } else {
+            if (sig_t == .func) {
+                if (param.data.funcParam.typeSpec == cy.NullNode) {
+                    return c.reportError("Expected type specifier.", curParamId);
+                }
+            } else {
+                if (param.data.funcParam.typeSpec != cy.NullNode) {
+                    return c.reportError("Type specifier not allowed in `my` declaration. Declare typed functions with `func`.", curParamId);
+                }
+            }
             const typeId = try resolveTypeSpecNode(c, param.data.funcParam.typeSpec);
             try c.typeStack.append(c.alloc, typeId);
         }
@@ -2266,6 +2279,51 @@ fn resolveFuncDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !FuncDecl {
 
     res.funcSigId = try c.sema.ensureFuncSig(c.typeStack.items[start..], retType);
     res.isMethod = isMethod;
+    return res;
+}
+
+fn resolveLambdaDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !FuncDecl {
+    const func = c.ast.node(nodeId);
+    const header = c.ast.node(func.data.func.header);
+
+    // Get params, build func signature.
+    const start = c.typeStack.items.len;
+    defer c.typeStack.items.len = start;
+
+    var res: FuncDecl = undefined;
+    try updateFuncDeclNamePath(c, &res, parent, header.data.funcHeader.name);
+
+    const sig_t = func.data.func.sig_t;
+    if (sig_t == .infer) {
+        return error.Unsupported;
+    }
+    var curParamId = header.data.funcHeader.paramHead;
+    while (curParamId != cy.NullNode) {
+        const param = c.ast.node(curParamId);
+        const paramName = c.ast.nodeStringById(param.data.funcParam.name);
+        if (std.mem.eql(u8, paramName, "self")) {
+            return c.reportError("`self` is a reserved parameter for methods.", curParamId);
+        }
+        if (sig_t == .func) {
+            if (param.data.funcParam.typeSpec == cy.NullNode) {
+                return c.reportError("Expected type specifier.", curParamId);
+            }
+        } else {
+            if (param.data.funcParam.typeSpec != cy.NullNode) {
+                return c.reportError("Type specifier not allowed in `my` declaration. Declare typed functions with `func`.", curParamId);
+            }
+        }
+        const typeId = try resolveTypeSpecNode(c, param.data.funcParam.typeSpec);
+        try c.typeStack.append(c.alloc, typeId);
+
+        curParamId = param.next();
+    }
+
+    // Get return type.
+    const retType = try resolveReturnTypeSpecNode(c, header.funcHeader_ret());
+
+    res.funcSigId = try c.sema.ensureFuncSig(c.typeStack.items[start..], retType);
+    res.isMethod = false;
     return res;
 }
 
@@ -4091,7 +4149,7 @@ pub const ChunkExt = struct {
                 return c.semaExpr(node.data.group.child, .{});
             },
             .lambda_expr => {
-                const decl = try resolveFuncDecl(c, @ptrCast(c.sym), nodeId);
+                const decl = try resolveLambdaDecl(c, @ptrCast(c.sym), nodeId);
                 const func = try c.addUserLambda(@ptrCast(c.sym), decl.funcSigId, nodeId);
                 _ = try pushLambdaProc(c, func);
                 const irIdx = c.proc().irStart;
@@ -4109,7 +4167,7 @@ pub const ChunkExt = struct {
                 return ExprResult.initStatic(irIdx, bt.Any);
             },
             .lambda_multi => {
-                const decl = try resolveFuncDecl(c, @ptrCast(c.sym), nodeId);
+                const decl = try resolveLambdaDecl(c, @ptrCast(c.sym), nodeId);
                 const func = try c.addUserLambda(@ptrCast(c.sym), decl.funcSigId, nodeId);
                 _ = try pushLambdaProc(c, func);
                 const irIdx = c.proc().irStart;

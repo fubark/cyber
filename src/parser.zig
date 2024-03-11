@@ -358,7 +358,8 @@ pub const Parser = struct {
 
         self.ast.setNodeData(id, .{ .func = .{
             .header = header,
-            .bodyHead = expr,
+            .bodyHead = @intCast(expr),
+            .sig_t = .my,
         }});
         return id;
     }
@@ -386,24 +387,50 @@ pub const Parser = struct {
 
         self.ast.setNodeData(id, .{ .func = .{
             .header = header,
-            .bodyHead = expr,
+            .bodyHead = @intCast(expr),
+            .sig_t = .my,
         }});
         return id;
     }
 
-    fn parseMultilineLambdaFunction(self: *Parser) !NodeId {
+    fn parseLeftAssignLambdaFunction(self: *Parser) !NodeId {
         const start = self.next_pos;
 
         // Assume first token is `func`.
         self.advance();
 
-        const params = try self.parseFuncParams();
+        const params = try self.parseParenAndFuncParams();
         const ret = try self.parseFuncReturn();
+
+        if (self.peek().tag() == .equal_greater) {
+            self.advance();
+            const id = try self.pushNode(.lambda_expr, start);
+
+            // Parse body expr.
+            try self.pushBlock();
+            const expr = (try self.parseExpr(.{})) orelse {
+                return self.reportError("Expected lambda body expression.", &.{});
+            };
+            _ = self.popBlock();
+
+            const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
+            self.ast.setNodeData(header, .{ .funcHeader = .{
+                .name = cy.NullNode,
+                .paramHead = params.head,
+            }});
+            
+            self.ast.setNodeData(id, .{ .func = .{
+                .header = header,
+                .bodyHead = @intCast(expr),
+                .sig_t = .func,
+            }});
+            return id;
+        }
 
         if (self.peek().tag() == .colon) {
             self.advance();
         } else {
-            return self.reportError("Expected colon.", &.{});
+            return self.reportError("Expected `:` or `=>`.", &.{});
         }
 
         const id = try self.pushNode(.lambda_multi, start);
@@ -420,7 +447,8 @@ pub const Parser = struct {
 
         self.ast.setNodeData(id, .{ .func = .{
             .header = header,
-            .bodyHead = res.first,
+            .bodyHead = @intCast(res.first),
+            .sig_t = .func,
         }});
         return id;
     }
@@ -428,12 +456,12 @@ pub const Parser = struct {
     fn parseLambdaFunction(self: *Parser) !NodeId {
         const start = self.next_pos;
 
-        const params = try self.parseFuncParams();
+        const params = try self.parseParenAndFuncParams();
         const ret = try self.parseFuncReturn();
 
         var token = self.peek();
         if (token.tag() != .equal_greater) {
-            return self.reportError("Expected =>.", &.{});
+            return self.reportError("Expected `=>`.", &.{});
         }
         self.advance();
 
@@ -444,8 +472,7 @@ pub const Parser = struct {
         const expr = (try self.parseExpr(.{})) orelse {
             return self.reportError("Expected lambda body expression.", &.{});
         };
-        const block = self.popBlock();
-        _ = block;
+        _ = self.popBlock();
 
         const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
         self.ast.setNodeData(header, .{ .funcHeader = .{
@@ -455,7 +482,8 @@ pub const Parser = struct {
         
         self.ast.setNodeData(id, .{ .func = .{
             .header = header,
-            .bodyHead = expr,
+            .bodyHead = @intCast(expr),
+            .sig_t = .my,
         }});
         return id;
     }
@@ -465,74 +493,83 @@ pub const Parser = struct {
         len: u32,
     };
 
-    fn parseFuncParams(self: *Parser) !ListResult {
-        var token = self.peek();
+    fn parseParenAndFuncParams(self: *Parser) !ListResult {
+        const token = self.peek();
         if (token.tag() != .left_paren) {
             return self.reportError("Expected open parenthesis.", &.{});
         }
         self.advance();
+        return self.parseFuncParams();
+    }
 
-        // Parse params.
-        token = self.peek();
-        if (token.tag() == .ident) {
-            var start = self.next_pos;
-            var name = try self.pushSpanNode(.ident, start);
-
-            self.advance();
-            var typeSpec = (try self.parseOptTypeSpec(false)) orelse cy.NullNode;
-
-            const paramHead = try self.pushNode(.funcParam, start);
-            self.ast.setNodeData(paramHead, .{ .funcParam = .{
-                .name = name,
-                .typeSpec = typeSpec,
-            }});
-
-            var numParams: u32 = 1;
-            var last = paramHead;
-            while (true) {
-                token = self.peek();
-                switch (token.tag()) {
-                    .comma => {
-                        self.advance();
-                    },
-                    .right_paren => {
-                        self.advance();
-                        break;
-                    },
-                    else => return self.reportError("Unexpected token {} in function param list.", &.{v(token.tag())}),
-                }
-
-                token = self.peek();
-                start = self.next_pos;
-                if (token.tag() != .ident and token.tag() != .type_k) {
-                    return self.reportError("Expected param identifier.", &.{});
-                }
-
-                name = try self.pushSpanNode(.ident, start);
-                self.advance();
-
-                typeSpec = (try self.parseOptTypeSpec(false)) orelse cy.NullNode;
-
-                const param = try self.pushNode(.funcParam, start);
-                self.ast.setNodeData(param, .{ .funcParam = .{
-                    .name = name,
-                    .typeSpec = typeSpec,
-                }});
-                self.ast.setNextNode(last, param);
-                numParams += 1;
-                last = param;
-            }
-            return ListResult{
-                .head = paramHead,
-                .len = numParams,
-            };
-        } else if (token.tag() == .right_paren) {
+    /// Assumes token at first param ident or right paren.
+    /// Let sema check whether param types are required since it depends on the context.
+    fn parseFuncParams(self: *Parser) !ListResult {
+        var token = self.peek();
+        if (token.tag() == .right_paren) {
             self.advance();
             return ListResult{
                 .head = cy.NullNode,
                 .len = 0,
             };
-        } else return self.reportError("Unexpected token in function param list.", &.{});
+        }
+
+        if (token.tag() != .ident) {
+            return self.reportError("Unexpected token in function param list.", &.{});
+        }
+    
+        // Parse params.
+        var start = self.next_pos;
+        var name = try self.pushSpanNode(.ident, start);
+
+        self.advance();
+        var type_spec = (try self.parseOptTypeSpec(false)) orelse cy.NullNode;
+
+        const paramHead = try self.pushNode(.funcParam, start);
+        self.ast.setNodeData(paramHead, .{ .funcParam = .{
+            .name = name,
+            .typeSpec = type_spec,
+        }});
+
+        var numParams: u32 = 1;
+        var last = paramHead;
+        while (true) {
+            token = self.peek();
+            switch (token.tag()) {
+                .comma => {
+                    self.advance();
+                },
+                .right_paren => {
+                    self.advance();
+                    break;
+                },
+                else => return self.reportError("Unexpected token {} in function param list.", &.{v(token.tag())}),
+            }
+
+            token = self.peek();
+            start = self.next_pos;
+            if (token.tag() != .ident) {
+                return self.reportError("Expected param identifier.", &.{});
+            }
+
+            name = try self.pushSpanNode(.ident, start);
+            self.advance();
+
+            type_spec = (try self.parseOptTypeSpec(false)) orelse cy.NullNode;
+
+            const param = try self.pushNode(.funcParam, start);
+            self.ast.setNodeData(param, .{ .funcParam = .{
+                .name = name,
+                .typeSpec = type_spec,
+            }});
+            self.ast.setNextNode(last, param);
+            numParams += 1;
+            last = param;
+        }
+        return ListResult{
+            .head = paramHead,
+            .len = numParams,
+        };
     }
 
     fn parseFuncReturn(self: *Parser) !?NodeId {
@@ -645,7 +682,7 @@ pub const Parser = struct {
         // Assumes first token is the `template` keyword.
         self.advance();
 
-        const params = try self.parseFuncParams();
+        const params = try self.parseParenAndFuncParams();
         self.consumeWhitespaceTokens();
 
         const ctNodeStart = self.ast.templateCtNodes.items.len;
@@ -1101,76 +1138,73 @@ pub const Parser = struct {
             return self.reportError("Expected function name identifier.", &.{});
         };
 
+        const params = try self.parseParenAndFuncParams();
+        const ret = try self.parseFuncReturn();
+
+        if (self.inTemplate) self.collectCtNodes = false;
+        defer {
+            if (self.inTemplate) self.collectCtNodes = true;
+        }
+
+        const nameN = self.ast.nodePtr(name);
+        const nameStr = self.ast.nodeString(nameN.*);
+        const block = &self.blockStack.items[self.blockStack.items.len-1];
+        try block.vars.put(self.alloc, nameStr, {});
+
         var token = self.peek();
-        if (token.tag() == .left_paren) {
-            const params = try self.parseFuncParams();
-            const ret = try self.parseFuncReturn();
+        if (token.tag() == .colon) {
+            self.advance();
 
-            if (self.inTemplate) self.collectCtNodes = false;
-            defer {
-                if (self.inTemplate) self.collectCtNodes = true;
+            try self.pushBlock();
+            const res = try self.parseSingleOrIndentedBodyStmts();
+            _ = self.popBlock();
+
+            const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
+            self.ast.setNodeData(header, .{ .funcHeader = .{
+                .name = name,
+                .paramHead = params.head,
+            }});
+            self.ast.nodePtr(header).head.data = .{ .funcHeader = .{ .modHead = @intCast(modifierHead) }};
+
+            const id = try self.pushNode(.funcDecl, start);
+            self.ast.setNodeData(id, .{ .func = .{
+                .header = header,
+                .bodyHead = @intCast(res.first),
+                .sig_t = .func,
+            }});
+
+            if (!self.inTemplate) {
+                try self.staticDecls.append(self.alloc, .{
+                    .declT = if (self.inObjectDecl) .implicit_method else .func,
+                    .nodeId = id,
+                    .data = undefined,
+                });
             }
-
-            const nameN = self.ast.nodePtr(name);
-            const nameStr = self.ast.nodeString(nameN.*);
-            const block = &self.blockStack.items[self.blockStack.items.len-1];
-            try block.vars.put(self.alloc, nameStr, {});
-
-            token = self.peek();
-            if (token.tag() == .colon) {
-                self.advance();
-
-                try self.pushBlock();
-                const res = try self.parseSingleOrIndentedBodyStmts();
-                _ = self.popBlock();
-
-                const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
-                self.ast.setNodeData(header, .{ .funcHeader = .{
-                    .name = name,
-                    .paramHead = params.head,
-                }});
-                self.ast.nodePtr(header).head.data = .{ .funcHeader = .{ .modHead = @intCast(modifierHead) }};
-
-                const id = try self.pushNode(.funcDecl, start);
-                self.ast.setNodeData(id, .{ .func = .{
-                    .header = header,
-                    .bodyHead = res.first,
-                }});
-
-                if (!self.inTemplate) {
-                    try self.staticDecls.append(self.alloc, .{
-                        .declT = if (self.inObjectDecl) .implicit_method else .func,
-                        .nodeId = id,
-                        .data = undefined,
-                    });
-                }
-                return id;
-            } else {
-                // Just a declaration, no body.
-                const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
-                self.ast.setNodeData(header, .{ .funcHeader = .{
-                    .name = name,
-                    .paramHead = params.head,
-                }});
-                self.ast.nodePtr(header).head.data = .{ .funcHeader = .{ .modHead = @intCast(modifierHead) }};
-
-                const id = try self.pushNode(.funcDecl, start);
-                self.ast.setNodeData(id, .{ .func = .{
-                    .header = header,
-                    .bodyHead = cy.NullNode,
-                }});
-
-                if (!self.inTemplate) {
-                    try self.staticDecls.append(self.alloc, .{
-                        .declT = if (self.inObjectDecl) .implicit_method else .funcInit,
-                        .nodeId = id,
-                        .data = undefined,
-                    });
-                }
-                return id;
-            }
+            return id;
         } else {
-            return self.reportError("Expected left paren.", &.{});
+            // Just a declaration, no body.
+            const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
+            self.ast.setNodeData(header, .{ .funcHeader = .{
+                .name = name,
+                .paramHead = params.head,
+            }});
+            self.ast.nodePtr(header).head.data = .{ .funcHeader = .{ .modHead = @intCast(modifierHead) }};
+
+            const id = try self.pushNode(.funcDecl, start);
+            self.ast.setNodeData(id, .{ .func = .{
+                .header = header,
+                .bodyHead = cy.NullNode,
+                .sig_t = .func,
+            }});
+
+            if (!self.inTemplate) {
+                try self.staticDecls.append(self.alloc, .{
+                    .declT = if (self.inObjectDecl) .implicit_method else .funcInit,
+                    .nodeId = id,
+                    .data = undefined,
+                });
+            }
+            return id;
         }
     }
 
@@ -1912,7 +1946,7 @@ pub const Parser = struct {
                 return try self.parseVarDecl(cy.NullNode, true);
             },
             .my_k => {
-                return try self.parseVarDecl(cy.NullNode, false);
+                return try self.parseMyDecl(cy.NullNode);
             },
             else => {},
         }
@@ -3324,7 +3358,7 @@ pub const Parser = struct {
     fn parseEndingExpr(self: *Parser) anyerror!cy.NodeId {
         switch (self.peek().tag()) {
             .func_k => {
-                return self.parseMultilineLambdaFunction();
+                return self.parseLeftAssignLambdaFunction();
             },
             .switch_k => {
                 return self.parseSwitch(false);
@@ -3335,6 +3369,64 @@ pub const Parser = struct {
                 };
             },
         }
+    }
+
+    fn parseMyDecl(self: *Parser, attr_head: cy.NodeId) !cy.NodeId {
+        const start = self.next_pos;
+        self.advance();
+
+        const root = self.peek().tag() == .dot;
+        if (root) {
+            self.advance();
+        }
+
+        const name = (try self.parseOptNamePath()) orelse {
+            return self.reportError("Expected local name identifier.", &.{});
+        };
+
+        if (self.peek().tag() == .left_paren) {
+            self.advance();
+            
+            // Parse as untyped function.
+            const params = try self.parseFuncParams();
+            if (self.peek().tag() != .colon) {
+                return self.reportError("Expected colon.", &.{});
+            }
+            self.advance();
+
+            try self.pushBlock();
+            const res = try self.parseSingleOrIndentedBodyStmts();
+            _ = self.popBlock();
+
+            const ret = cy.NullNode;
+            const header = try self.ast.pushNode(self.alloc, .funcHeader, ret);
+            self.ast.setNodeData(header, .{ .funcHeader = .{
+                .name = name,
+                .paramHead = params.head,
+            }});
+            self.ast.nodePtr(header).head.data = .{ .funcHeader = .{ .modHead = @intCast(attr_head) }};
+
+            const id = try self.pushNode(.funcDecl, start);
+            self.ast.setNodeData(id, .{ .func = .{
+                .header = header,
+                .bodyHead = @intCast(res.first),
+                .sig_t = .my,
+            }});
+
+            if (!self.inTemplate) {
+                try self.staticDecls.append(self.alloc, .{
+                    .declT = if (self.inObjectDecl) .implicit_method else .func,
+                    .nodeId = id,
+                    .data = undefined,
+                });
+            }
+            return id;
+        }
+
+        // Parse as dynamic var decl.
+        const has_name_path = self.ast.node(name).next() != cy.NullNode;
+        const is_static = has_name_path or root;
+        return self.parseVarDecl2(start, name, cy.NullNode, attr_head, is_static, root, false);
     }
 
     fn parseVarDecl(self: *Parser, modifierHead: cy.NodeId, typed: bool) !cy.NodeId {
@@ -3358,19 +3450,23 @@ pub const Parser = struct {
             typeSpec = (try self.parseOptTypeSpec(false)) orelse cy.NullNode;
         }
 
+        return self.parseVarDecl2(start, name, typeSpec, modifierHead, isStatic, root, typed);
+    }
+
+    fn parseVarDecl2(self: *cy.Parser, start: u32, name: cy.NodeId, type_spec: cy.NodeId, attr_head: cy.NodeId, is_static: bool, root: bool, typed: bool) !cy.NodeId {
         const varSpec = try self.pushNode(.varSpec, start);
         self.ast.setNodeData(varSpec, .{ .varSpec = .{
             .name = name,
-            .typeSpec = typeSpec,
+            .typeSpec = type_spec,
         }});
-        self.ast.nodePtr(varSpec).head.data = .{ .varSpec = .{ .modHead = @intCast(modifierHead) }};
+        self.ast.nodePtr(varSpec).head.data = .{ .varSpec = .{ .modHead = @intCast(attr_head) }};
 
         var decl: cy.NodeId = undefined;
-        if (isStatic) {
+        if (is_static) {
             decl = try self.pushNode(.staticDecl, start);
         } else {
-            if (modifierHead != cy.NullNode) {
-                return self.reportErrorAt("Annotations are not allowed for local var declarations.", &.{}, start);
+            if (attr_head != cy.NullNode) {
+                return self.reportErrorAt("Attributes are not allowed for local var declarations.", &.{}, start);
             }
             decl = try self.pushNode(.localDecl, start);
         }
@@ -3391,7 +3487,7 @@ pub const Parser = struct {
             right = try self.parseEndingExpr();
         }
 
-        if (isStatic) {
+        if (is_static) {
             self.ast.setNodeData(decl, .{ .staticDecl = .{
                 .varSpec = varSpec,
                 .right = @intCast(right),
@@ -3423,26 +3519,15 @@ pub const Parser = struct {
             .null => {
                 return try self.pushNode(.returnStmt, start);
             },
-            .func_k => {
-                const lambda = try self.parseMultilineLambdaFunction();
-                const id = try self.pushNode(.returnExprStmt, start);
-                self.ast.setNodeData(id, .{ .returnExprStmt = .{
-                    .child = lambda,
-                }});
-                return id;
-            },
             else => {
-                const expr = try self.parseExpr(.{}) orelse {
-                    return self.reportError("Expected expression.", &.{});
-                };
-                try self.consumeNewLineOrEnd();
+                const right = try self.parseEndingExpr();
 
                 const id = try self.pushNode(.returnExprStmt, start);
                 self.ast.setNodeData(id, .{ .returnExprStmt = .{
-                    .child = expr,
+                    .child = right,
                 }});
                 return id;
-            }
+            },
         }
     }
 

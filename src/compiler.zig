@@ -485,6 +485,7 @@ fn performChunkInitSema(self: *Compiler, c: *cy.Chunk) !void {
     c.parser.ast.setNodeData(decl, .{ .func = .{
         .header = header,
         .bodyHead = cy.NullNode,
+        .sig_t = .func,
     }});
     c.updateAstView(c.parser.ast.view());
 

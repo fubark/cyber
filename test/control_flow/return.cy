@@ -1,7 +1,7 @@
 import t 'test'
 
 -- if.
-func a(v):
+func a(v int):
     if v == 1:
         return 10
     return 20
@@ -9,7 +9,7 @@ t.eq(a(1), 10)
 t.eq(a(2), 20)
 
 -- else.
-func a2(v):
+func a2(v int):
     if v == 1:
         return 10
     else:
@@ -18,7 +18,7 @@ t.eq(a2(1), 10)
 t.eq(a2(2), 20)
 
 -- else if.
-func a3(v):
+func a3(v int):
     if v == 1:
         return 10
     else v == 2:

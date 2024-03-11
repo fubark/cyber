@@ -3,7 +3,7 @@ import t 'test'
 func fail():
     throw error.Fail
 
-func happy(a):
+func happy(a any):
     return a
 
 -- No error.
@@ -76,7 +76,7 @@ catch:
     pass
 
 -- Catch invokes lambda release inst one frame down.
-func foo5(f):
+func foo5(f dynamic):
     f()
 try:
     foo5(f)

@@ -2505,10 +2505,9 @@ The main execution context is a fiber as well. Once the main fiber has finished,
 # Dynamic Typing.
 
 * [`my` variables.](#my-variables)
-* [Invoking dynamic values.](#invoking-dynamic-values)
+* [Runtime type checking.](#runtime-type-checking)
 * [`my` functions.](#my-functions)
 * [`dynamic` vs `any`.](#dynamic-vs-any)
-* [Recent type inference.](#recent-type-inference)
 
 [^top](#table-of-contents)
 
@@ -2520,11 +2519,43 @@ Variables declared with `my` are implicitly given the `dynamic` type:
 my a = 123
 ```
 
-## Invoking `dynamic` values.
-When a `dynamic` value is invoked, checks on whether the callee is a function is deferred to runtime. 
+Typically a dynamic variable defers type checking to runtime, but if the compiler determines that an operation will always fail at runtime, a compile error is reported instead:
 ```cy
-my op = 123
-print op(1, 2, 3)      --> RuntimeError. Expected a function.
+my a = '100'
+
+print a / 2
+--> CompileError: Can not find the symbol `$infix/` in `String`
+```
+
+When `a` is assigned a different type of value, its **recent type** is updated so the compiler can continue to surface errors ahead of time:
+```cy
+a = [1, 2, 3]
+print a / 2
+--> CompileError: Can not find the symbol `$infix/` in `List`
+```
+
+## Runtime type checking.
+If the compiler can not determine the type of a dynamic variable, type checking is deferred to runtime.
+
+In this example, the type for `a` is unknown after assigning the return of a dynamic call to `erase`.
+Any operation on `a` would defer type checking to runtime:
+```cy
+my a = erase(123)
+
+print a(1, 2, 3)
+--> panic: Expected a function.
+```
+
+If a dynamic variable's **recent type** differs between two branches of execution, the type is considered unknown after the branches are merged. Any operations on the variable afterwards will defer type checking to runtime:
+```cy
+my a = 123
+if a > 20:
+    a = 'hello'
+
+-- Branches are merged. `a` has an unknown type.
+
+print a(1, 2, 3)
+--> panic: Expected a function.
 ```
 
 ## `my` functions.
@@ -2563,42 +2594,6 @@ This same setup will now fail at compile-time because `any` does not satisfy the
 The use of the `dynamic` type effectively defers type checking to runtime while `any` is a static type and must adhere to type constraints at compile-time.
 
 A `dynamic` value can be used in any operation. It can be invoked as the callee, invoked as the receiver of a method call, or used with operators.
-
-## Recent type inference.
-Although a `dynamic` variable has the most flexibility, in some situations it is advantageous to know what type it could be.
-
-The compiler keeps a running record of a `dynamic` variable's most **recent type** to gain additional compile-time features without sacrificing flexibility. It can prevent inevitable runtime errors and avoid unnecessary type casts.
-
-When a `dynamic` variable is first initialized, it has a recent type inferred from its initializer. In the following, `a` has the recent type of `int` at compile-time because numeric literals default to the `int` type:
-```cy
-my a = 123
-```
-
-The recent type can change at compile-time from another assignment. 
-If `a` is then assigned to a string literal, `a` from that point on has the recent type of `String` at compile-time:
-```cy
-my a = 123
-foo(a)           -- Valid call expression.
-a = 'hello'
-foo(a)           -- CompileError. Expected `int` argument, got `String`.
-
-func foo(n int):
-    pass
-```
-Even though `a` is `dynamic` and is usually allowed to defer type checking to runtime, the compiler knows that doing so in this context would **always** result in a runtime error, so it provides a compile error instead. This provides a quicker feedback to fix the problem.
-
-The recent type of `a` can also change in branches. However, after the branch block, `a` will have a recent type after merging the types assigned to `a` from the two branched code paths. Currently, the `any` type is used if the types from the two branches differ. At the end of the following `if` block, `a` has the recent type of `any` type after merging the `int` and `String` types: *Planned Feature*
-```cy
-my a = 123
-if a > 20:
-    a = 'hello'
-    foo(a)       -- Valid call expression. `foo` can be called without type casting.
-
-foo(a)           -- CompileError. Expected `String` argument, got `any`.
-
-func foo(s String):
-    pass
-```
 
 # Metaprogramming.
 

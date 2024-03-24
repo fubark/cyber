@@ -133,7 +133,6 @@ pub const HeapObject = extern union {
     arraySlice: ArraySlice,
 
     object: Object,
-    dynobject: DynObject,
     box: Box,
     tccState: if (cy.hasFFI) TccState else void,
     pointer: Pointer,
@@ -551,20 +550,6 @@ const ArraySlice = extern struct {
         if (self.offset != 0) {
             return @ptrFromInt(@intFromPtr(self.buf) - self.offset);
         } else return null;
-    }
-};
-
-pub const DynObject = extern struct {
-    typeId: cy.TypeId,
-    rc: u32,
-    undeclared: vmc.ValueMap,
-
-    pub fn getUndeclared(self: *DynObject) *cy.ValueMap {
-        return cy.ptrAlignCast(*cy.ValueMap, &self.undeclared);
-    }
-
-    pub inline fn getValuesPtr(self: *DynObject) [*]Value {
-        return @ptrFromInt(@intFromPtr(self) + @offsetOf(DynObject, "undeclared") + @sizeOf(vmc.ValueMap));
     }
 };
 
@@ -1036,73 +1021,6 @@ pub fn allocEmptyMap(self: *cy.VM) !Value {
             .available = 0,
         },
     };
-    return Value.initCycPtr(obj);
-}
-
-pub fn allocDynObject(self: *cy.VM, type_id: cy.TypeId, args: []const Value, keys: []const align(1) u16, undecls: []const Value) !Value {
-    const MapSize = @sizeOf(vmc.ValueMap) / 8;
-    const obj: *DynObject = @ptrCast(try allocExternalObject(self, (1 + args.len + MapSize) * @sizeOf(Value), true));
-    obj.* = .{
-        .typeId = type_id | vmc.CYC_TYPE_MASK,
-        .rc = 1,
-        .undeclared = .{
-            .metadata = null,
-            .entries = null,
-            .size = 0,
-            .cap = 0,
-            .available = 0,
-            .padding = undefined,
-        },
-    };
-    const dst = obj.getValuesPtr();
-    std.mem.copy(Value, dst[0..args.len], args);
-
-    const map = obj.getUndeclared();
-    for (keys, 0..) |idx, i| {
-        const val = undecls[i];
-
-        const keyVal = Value{ .val = self.consts[idx].val };
-        cy.arc.retain(self, keyVal);
-        const res = try map.getOrPut(self.alloc, keyVal);
-        if (res.foundExisting) {
-            // TODO: Handle reference count.
-            res.valuePtr.* = val;
-        } else {
-            res.valuePtr.* = val;
-        }
-    }
-    return Value.initCycPtr(obj);
-}
-
-pub fn allocDynObjectSmall(self: *cy.VM, type_id: cy.TypeId, keys: []const align(1) u16, undecls: []const Value) !Value {
-    const obj = try allocPoolObject(self);
-    obj.dynobject = .{
-        .typeId = type_id | vmc.CYC_TYPE_MASK,
-        .rc = 1,
-        .undeclared = .{
-            .metadata = null,
-            .entries = null,
-            .size = 0,
-            .cap = 0,
-            .available = 0,
-            .padding = undefined,
-        },
-    };
-
-    const map = obj.dynobject.getUndeclared();
-    for (keys, 0..) |idx, i| {
-        const val = undecls[i];
-
-        const keyVal = Value{ .val = self.consts[idx].val };
-        cy.arc.retain(self, keyVal);
-        const res = try map.getOrPut(self.alloc, keyVal);
-        if (res.foundExisting) {
-            // TODO: Handle reference count.
-            res.valuePtr.* = val;
-        } else {
-            res.valuePtr.* = val;
-        }
-    }
     return Value.initCycPtr(obj);
 }
 
@@ -2112,42 +2030,6 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                         }
                     }
                 },
-                .dynobject => {
-                    const numFields = entry.data.object.numFields;
-                    const undecls = cy.ptrAlignCast(*MapInner, &obj.map.inner);
-                    if (releaseChildren) {
-                        for (obj.dynobject.getValuesPtr()[0..numFields]) |child| {
-                            if (skipCycChildren and child.isGcConfirmedCyc()) {
-                                continue;
-                            }
-                            cy.arc.release(vm, child);
-                        }
-                        var iter = undecls.iterator();
-                        while (iter.next()) |undecl| {
-                            if (skipCycChildren) {
-                                if (!undecl.key.isGcConfirmedCyc()) {
-                                    cy.arc.release(vm, undecl.key);
-                                }
-                                if (!undecl.value.isGcConfirmedCyc()) {
-                                    cy.arc.release(vm, undecl.value);
-                                }
-                            } else {
-                                cy.arc.release(vm, undecl.key);
-                                cy.arc.release(vm, undecl.value);
-                            }
-                        }
-                    }
-
-                    if (free) {
-                        undecls.deinit(vm.alloc);
-                        if (numFields == 0) {
-                            freePoolObject(vm, obj);
-                        } else {
-                            const MapSize = @sizeOf(vmc.ValueMap) / 8;
-                            freeExternalObject(vm, obj, (1 + numFields + MapSize) * @sizeOf(Value), true);
-                        }
-                    }
-                },
                 .object => {
                     const numFields = entry.data.object.numFields;
                     if (releaseChildren) {
@@ -2372,7 +2254,6 @@ test "heap internals." {
     try t.eq(@offsetOf(Closure, "reqCallTypeCheck"), @offsetOf(vmc.Closure, "reqCallTypeCheck"));
     try t.eq(@offsetOf(Closure, "firstCapturedVal"), @offsetOf(vmc.Closure, "firstCapturedVal"));
 
-    try t.eq(@offsetOf(DynObject, "undeclared"), @offsetOf(vmc.DynObject, "undeclared"));
     try t.eq(@offsetOf(cy.ValueMap, "metadata"), @offsetOf(vmc.ValueMap, "metadata"));
     try t.eq(@offsetOf(cy.ValueMap, "entries"), @offsetOf(vmc.ValueMap, "entries"));
     try t.eq(@offsetOf(cy.ValueMap, "size"), @offsetOf(vmc.ValueMap, "size"));

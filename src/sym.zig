@@ -16,7 +16,6 @@ pub const SymType = enum(u8) {
     hostVar,
     func,
     custom_object_t,
-    dynobject_t,
     object_t,
     struct_t,
     // pointer_t,
@@ -127,12 +126,6 @@ pub const Sym = extern struct {
                 alloc.free(obj.fields[0..obj.numFields]);
                 size = @sizeOf(ObjectType);
             },
-            .dynobject_t => {
-                const obj = self.cast(.dynobject_t);
-                obj.getMod().deinit(alloc);
-                alloc.free(obj.fields[0..obj.numFields]);
-                size = @sizeOf(ObjectType);
-            },
             .object_t => {
                 const obj = self.cast(.object_t);
                 obj.getMod().deinit(alloc);
@@ -230,7 +223,6 @@ pub const Sym = extern struct {
             .float_t,
             .typeAlias,
             .struct_t,
-            .dynobject_t,
             .object_t,
             .enum_t => {
                 return true;
@@ -274,7 +266,6 @@ pub const Sym = extern struct {
             .enum_t          => return @ptrCast(&self.cast(.enum_t).mod),
             .struct_t        => return @ptrCast(&self.cast(.struct_t).mod),
             .object_t        => return @ptrCast(&self.cast(.object_t).mod),
-            .dynobject_t     => return @ptrCast(&self.cast(.dynobject_t).mod),
             .custom_object_t => return @ptrCast(&self.cast(.custom_object_t).mod),
             .bool_t          => return @ptrCast(&self.cast(.bool_t).mod),
             .int_t           => return @ptrCast(&self.cast(.int_t).mod),
@@ -323,7 +314,6 @@ pub const Sym = extern struct {
             .bool_t,
             .typeAlias,
             .custom_object_t,
-            .dynobject_t,
             .object_t   => return bt.MetaType,
             .func => {
                 const func = self.cast(.func);
@@ -350,7 +340,6 @@ pub const Sym = extern struct {
             .enum_t          => return self.cast(.enum_t).type,
             .typeAlias       => return self.cast(.typeAlias).type,
             .struct_t        => return self.cast(.struct_t).type,
-            .dynobject_t     => return self.cast(.dynobject_t).type,
             .object_t        => return self.cast(.object_t).type,
             .custom_object_t => return self.cast(.custom_object_t).type,
             .null,
@@ -373,7 +362,6 @@ pub const Sym = extern struct {
                 .{ .sym = undefined, .type = bt.Any },
             },
             .struct_t        => return self.cast(.struct_t).getFields(),
-            .dynobject_t     => return self.cast(.dynobject_t).getFields(),
             .object_t        => return self.cast(.object_t).getFields(),
             .bool_t,
             .int_t,
@@ -475,7 +463,6 @@ fn SymChild(comptime symT: SymType) type {
         .userVar => UserVar,
         .hostVar => HostVar,
         .struct_t,
-        .dynobject_t,
         .object_t => ObjectType,
         .custom_object_t => CustomObjectType,
         .bool_t => BoolType,

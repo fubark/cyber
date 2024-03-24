@@ -834,7 +834,7 @@ fn genStmt(c: *Chunk, loc: u32) anyerror!void {
         // .retStmt            => try retStmt(c),
         .setCallObjSymTern  => try setCallObjSymTern(c, loc, nodeId),
         // .setCaptured        => try setCaptured(c, idx, nodeId),
-        .setField           => try setField(c, loc, nodeId),
+        .set_field          => try setField(c, loc, nodeId),
         // .setFuncSym         => try setFuncSym(c, idx, nodeId),
         .setIndex           => try setIndex(c, loc, nodeId),
         .setLocal           => try setLocal(c, loc, nodeId),
@@ -1195,9 +1195,9 @@ fn setCallObjSymTern(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
 }
 
 fn setField(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
-    const data = c.ir.getStmtData(loc, .setField).generic;
+    const data = c.ir.getStmtData(loc, .set_field).set_field;
     // const requireTypeCheck = data.left_t.id != bt.Any and data.right_t.dynamic;
-    const field_data = c.ir.getExprData(data.left, .field);
+    const field_data = c.ir.getExprData(data.field, .field);
 
     const start = c.bufStart();
     _ = try genExpr(c, field_data.rec, Cstr.init());

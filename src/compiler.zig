@@ -249,6 +249,16 @@ pub const Compiler = struct {
         // Declare static vars and funcs after types have been resolved.
         try declareSymbols(self);
 
+        // Pass through type syms.
+        for (self.sema.types.items) |*type_e| {
+            if (type_e.sym.getMod().?.getSym("$get") != null) {
+                type_e.has_get_method = true;
+            }
+            if (type_e.sym.getMod().?.getSym("$set") != null) {
+                type_e.has_set_method = true;
+            }
+        }
+
         // Compute type sizes after type fields have been resolved.
         // try computeTypeSizesRec(self);
 
@@ -639,10 +649,6 @@ fn declareImportsAndTypes(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
                         const sym = try sema.declareStruct(chunk, decl.nodeId);
                         decl.data = .{ .sym = @ptrCast(sym) };
                     },
-                    .dynobject_t => {
-                        const sym = try sema.declareDynObject(chunk, decl.nodeId);
-                        decl.data = .{ .sym = @ptrCast(sym) };
-                    },
                     .object => {
                         const sym = try sema.declareObject(chunk, decl.nodeId);
                         // Persist for declareObjectMembers.
@@ -830,7 +836,6 @@ fn declareSymbols(self: *Compiler) !void {
                 .funcInit => {
                     try sema.declareFuncInit(chunk, @ptrCast(chunk.sym), decl.nodeId);
                 },
-                .dynobject_t,
                 .struct_t,
                 .object => {
                     try sema.declareObjectFields(chunk, decl.data.sym, decl.nodeId);

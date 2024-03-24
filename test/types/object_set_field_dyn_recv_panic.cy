@@ -9,7 +9,7 @@ o.a = []
 --cytest: error
 --panic: Assigning to `float` field with incompatible type `List`.
 --
---main:7:1 main:
+--main:7:3 main:
 --o.a = []
---^
+--  ^
 --

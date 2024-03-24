@@ -23,7 +23,6 @@ pub const TypeKind = enum(u8) {
     choice,
     @"struct",
     option,
-    dynobject,
 };
 
 pub const Type = extern struct {
@@ -31,6 +30,8 @@ pub const Type = extern struct {
     kind: TypeKind,
     // Duped to avoid lookup from `sym`.
     // symType: cy.sym.SymType,
+    has_get_method: bool = false,
+    has_set_method: bool = false,
     data: extern union {
         // This is duped from ObjectType so that object creation/destruction avoids the lookup from `sym`.
         object: extern struct {
@@ -45,9 +46,6 @@ pub const Type = extern struct {
         @"struct": extern struct {
             numFields: u16,
         },
-        dynobject: extern struct {
-            num_fields: u16,
-        },
     },
 };
 
@@ -55,6 +53,9 @@ test "types internals." {
     try t.eq(@sizeOf(Type), @sizeOf(vmc.TypeEntry));
     try t.eq(@offsetOf(Type, "sym"), @offsetOf(vmc.TypeEntry, "sym"));
     try t.eq(@offsetOf(Type, "kind"), @offsetOf(vmc.TypeEntry, "kind"));
+    try t.eq(@offsetOf(Type, "has_get_method"), @offsetOf(vmc.TypeEntry, "has_get_method"));
+    try t.eq(@offsetOf(Type, "has_set_method"), @offsetOf(vmc.TypeEntry, "has_set_method"));
+    try t.eq(@offsetOf(Type, "data"), @offsetOf(vmc.TypeEntry, "data"));
 }
 
 pub const CompactType = packed struct {
@@ -260,7 +261,6 @@ pub const SemaExt = struct {
                 switch (sym.type) {
                     .custom_object_t,
                     .struct_t,
-                    .dynobject_t,
                     .object_t => return true,
                     .enum_t => {
                         return sym.cast(.enum_t).isChoiceType;

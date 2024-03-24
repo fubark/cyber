@@ -65,6 +65,7 @@ pub const FuncSymbol = extern struct {
     /// this is needed during for the overloaded search path.
     is_method: bool,
 
+    /// A func requires type checking if at least one of the params is not the `any` or `dynamic` type.
     req_type_check: bool,
 
     nparams: u8,

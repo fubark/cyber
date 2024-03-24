@@ -35,15 +35,6 @@ pub fn genAll(c: *cy.Compiler) !void {
         const sym = stype.sym;
 
         switch (sym.type) {
-            .dynobject_t => {
-                const obj = sym.cast(.dynobject_t);
-                for (obj.fields[0..obj.numFields], 0..) |field, i| {
-                    const fieldSymId = try c.vm.ensureFieldSym(field.sym.name());
-                    // Apply fixed ValueMap offset.
-                    const mapOffset = @sizeOf(vmc.ValueMap) / 8;
-                    try c.vm.addFieldSym(@intCast(typeId), fieldSymId, @intCast(mapOffset + i), field.type);
-                }
-            },
             .object_t => {
                 const obj = sym.cast(.object_t);
                 for (obj.fields[0..obj.numFields], 0..) |field, i| {
@@ -199,7 +190,6 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
         .chunk,
         .field,
         .struct_t,
-        .dynobject_t,
         .object_t,
         .func,
         .typeAlias,
@@ -301,10 +291,10 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .retStmt            => try retStmt(c),
         .setCallObjSymTern  => try setCallObjSymTern(c, idx, nodeId),
         .setCaptured        => try setCaptured(c, idx, nodeId),
-        .setFieldDyn        => try setFieldDyn(c, idx, .{}, nodeId),
+        .set_field_dyn      => try setFieldDyn(c, idx, .{}, nodeId),
         .setIndex           => try setIndex(c, idx, nodeId),
         .setLocal           => try irSetLocal(c, idx, nodeId),
-        .setField           => try setField(c, idx, .{}, nodeId),
+        .set_field          => try setField(c, idx, .{}, nodeId),
         .setVarSym          => try setVarSym(c, idx, nodeId),
         .setLocalType       => try setLocalType(c, idx),
         .switchStmt         => try switchStmt(c, idx, nodeId),
@@ -398,7 +388,6 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .coinitCall         => genCoinitCall(c, idx, cstr, nodeId),
         .coresume           => genCoresume(c, idx, cstr, nodeId),
         .coyield            => genCoyield(c, idx, cstr, nodeId),
-        .dynobject_init     => genDynObjectInit(c, idx, cstr, nodeId),
         .enumMemberSym      => genEnumMemberSym(c, idx, cstr, nodeId),
         .errorv             => genError(c, idx, cstr, nodeId),
         .falsev             => genFalse(c, cstr, nodeId),
@@ -724,45 +713,6 @@ fn genField(c: *Chunk, idx: usize, cstr: Cstr, opts: FieldOptions, nodeId: cy.No
     return finishDstInst(c, inst, willRetain);
 }
 
-fn genDynObjectInit(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
-    const data = c.ir.getExprData(idx, .dynobject_init);
-
-    const inst = try c.rega.selectForDstInst(cstr, true, nodeId);
-
-    const args = c.ir.getArray(data.args, u32, data.nargs);
-    const argStart = c.rega.getNextTemp();
-    for (args) |argIdx| {
-        const temp = try c.rega.consumeNextTemp();
-        const val = try genAndPushExpr(c, argIdx, Cstr.toTempRetain(temp));
-        try pushUnwindValue(c, val);
-    }
-
-    const key_start = c.listDataStack.items.len;
-    defer c.listDataStack.items.len = key_start;
-
-    var undecl_vals: []const cy.chunk.ListData = &.{};
-    if (data.num_undecls > 0) {
-        const undecls = c.ir.getArray(data.undecls, u32, data.num_undecls * 2);
-        for (0..data.num_undecls) |i| {
-            const key_name = c.ast.nodeStringById(undecls[i*2]);
-            const constIdx = try c.buf.getOrPushStaticStringConst(key_name);
-            try c.listDataStack.append(c.alloc, .{ .constIdx = @intCast(constIdx) });
-
-            const temp = try c.rega.consumeNextTemp();
-            const val = try genAndPushExpr(c, undecls[i*2+1], Cstr.toTempRetain(temp));
-            try pushUnwindValue(c, val);
-        }
-        undecl_vals = c.listDataStack.items[key_start..];
-    }
-
-    try pushDynObjectInit(c, data.type, argStart, @intCast(data.nargs), undecl_vals, inst.dst, nodeId);
-
-    const argvs = popValues(c, data.nargs + data.num_undecls);
-    try popTempAndUnwinds(c, argvs);
-
-    return finishDstInst(c, inst, true);
-}
-
 fn genObjectInit(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const data = c.ir.getExprData(idx, .object_init);
 
@@ -906,8 +856,7 @@ const SetFieldDynOptions = struct {
 };
 
 fn setFieldDyn(c: *Chunk, idx: usize, opts: SetFieldDynOptions, nodeId: cy.NodeId) !void {
-    const setData = c.ir.getStmtData(idx, .setFieldDyn).generic;
-    const data = c.ir.getExprData(setData.left, .fieldDyn);
+    const data = c.ir.getStmtData(idx, .set_field_dyn).set_field_dyn;
 
     const fieldId = try c.compiler.vm.ensureFieldSym(data.name);
     const ownRecv = opts.recv == null;
@@ -926,13 +875,13 @@ fn setFieldDyn(c: *Chunk, idx: usize, opts: SetFieldDynOptions, nodeId: cy.NodeI
     if (opts.right) |right| {
         rightv = right;
     } else {
-        rightv = try genExpr(c, setData.right, Cstr.simpleRetain);
+        rightv = try genExpr(c, data.right, Cstr.simpleRetain);
         try pushUnwindValue(c, rightv);
     }
 
     // Performs runtime type check.
     const pc = c.buf.ops.items.len;
-    try c.pushFCode(.setFieldDyn, &.{ recv.reg, 0, 0, rightv.reg, 0, 0, 0, 0, 0 }, nodeId);
+    try c.pushFCode(.setFieldDyn, &.{ recv.reg, 0, 0, rightv.reg, 0, 0, 0, 0, 0, c.rega.nextTemp }, nodeId);
     c.buf.setOpArgU16(pc + 2, @intCast(fieldId));
 
     try popTempAndUnwind(c, rightv);
@@ -949,9 +898,8 @@ const SetFieldOptions = struct {
 };
 
 fn setField(c: *Chunk, idx: usize, opts: SetFieldOptions, nodeId: cy.NodeId) !void {
-    const data = c.ir.getStmtData(idx, .setField).generic;
-    const requireTypeCheck = data.left_t.id != bt.Any and data.right_t.dynamic;
-    const fieldData = c.ir.getExprData(data.left, .field);
+    const data = c.ir.getStmtData(idx, .set_field).set_field;
+    const fieldData = c.ir.getExprData(data.field, .field);
 
     // Receiver.
     var recv: GenValue = undefined;
@@ -971,7 +919,7 @@ fn setField(c: *Chunk, idx: usize, opts: SetFieldOptions, nodeId: cy.NodeId) !vo
         try pushUnwindValue(c, rightv);
     }
 
-    const type_id = c.ir.getExprType(data.left).id;
+    const type_id = c.ir.getExprType(data.field).id;
     const isStruct = c.sema.getTypeKind(type_id) == .@"struct";
     var getRef = false;
     var refTemp: RegisterId = undefined;
@@ -979,7 +927,7 @@ fn setField(c: *Chunk, idx: usize, opts: SetFieldOptions, nodeId: cy.NodeId) !vo
         // get ref.
         refTemp = try c.rega.consumeNextTemp();
         try pushFieldRef(c, recv.reg, fieldData.idx, fieldData.numNestedFields, refTemp, nodeId);
-        const fieldsLoc = c.ir.advanceExpr(data.left, .field);
+        const fieldsLoc = c.ir.advanceExpr(data.field, .field);
         const fields = c.ir.getArray(fieldsLoc, u8, fieldData.numNestedFields);
         try c.pushCodeBytes(fields);
         getRef = true;
@@ -996,13 +944,7 @@ fn setField(c: *Chunk, idx: usize, opts: SetFieldOptions, nodeId: cy.NodeId) !vo
         try popTemp(c, refTemp);
         try pushRelease(c, refTemp, nodeId);
     } else {
-        if (requireTypeCheck) {
-            const pc = c.buf.ops.items.len;
-            try c.pushFCode(.setFieldCheck, &.{ recv.reg, 0, 0, rightv.reg, fieldData.idx }, nodeId);
-            c.buf.setOpArgU16(pc + 2, @intCast(type_id));
-        } else {
-            try c.pushCode(.setField, &.{ recv.reg, fieldData.idx, rightv.reg }, nodeId);
-        }
+        try c.pushCode(.setField, &.{ recv.reg, fieldData.idx, rightv.reg }, nodeId);
     }
 
     try popTempAndUnwind(c, rightv);
@@ -1740,8 +1682,7 @@ fn reserveFuncRegs(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []ali
 fn setVarSym(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     _ = nodeId;
     const data = c.ir.getStmtData(idx, .setVarSym).generic;
-    const varSymIdx = c.ir.advanceStmt(idx, .setVarSym);
-    const varSym = c.ir.getExprData(varSymIdx, .varSym);
+    const varSym = c.ir.getExprData(data.left, .varSym);
 
     const id = c.compiler.genSymMap.get(varSym.sym).?.varSym.id;
     const rightv = try genExpr(c, data.right, Cstr.toVarSym(id));
@@ -1797,8 +1738,7 @@ fn declareLocal(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
 fn setCaptured(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     _ = nodeId;
     const data = c.ir.getStmtData(idx, .setCaptured).generic;
-    const capIdx = c.ir.advanceStmt(idx, .setCaptured);
-    const capData = c.ir.getExprData(capIdx, .captured);
+    const capData = c.ir.getExprData(data.left, .captured);
 
     // RHS.
     // const dstRetained = c.sema.isRcCandidateType(data.leftT.id);
@@ -1807,8 +1747,7 @@ fn setCaptured(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
 fn irSetLocal(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .setLocal).generic;
-    const localIdx = c.ir.advanceStmt(idx, .setLocal); 
-    const localData = c.ir.getExprData(localIdx, .local);
+    const localData = c.ir.getExprData(data.left, .local);
     const check_type: ?cy.TypeId = if (!data.left_t.dynamic and data.right_t.dynamic) data.left_t.id else null;
     try setLocal(c, localData, data.right, data.right_t.id, nodeId, .{ .check_type = check_type });
 }
@@ -1864,9 +1803,9 @@ fn setLocalType(c: *Chunk, idx: usize) !void {
 
 fn opSet(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     _ = nodeId;
+    const data = c.ir.getStmtData(idx, .opSet);
     // TODO: Perform optimizations depending on the next set* code.
-    const setIdx = c.ir.advanceStmt(idx, .opSet);
-    try genStmt(c, @intCast(setIdx));
+    try genStmt(c, data.set_stmt);
 }
 
 // fn opSetField(c: *Chunk, data: ir.OpSet, nodeId: cy.NodeId) !void {
@@ -3900,30 +3839,6 @@ fn getIntOpCode(op: cy.BinaryExprOp) cy.OpCode {
     };
 }
 
-fn pushDynObjectInit(c: *cy.Chunk, typeId: cy.TypeId, start_reg: u8, nargs: u8, undeclared: []const cy.chunk.ListData, dst: RegisterId, debugNodeId: cy.NodeId) !void {
-    if (nargs == 0) {
-        const start = c.buf.ops.items.len;
-        try c.pushFCode(.dynobject_small, &.{ 0, 0, start_reg, @as(u8, @intCast(undeclared.len)), dst }, debugNodeId);
-        c.buf.setOpArgU16(start + 1, @intCast(typeId)); 
-        if (undeclared.len > 0) {
-            const undecl_start = try c.buf.reserveData(undeclared.len * 2);
-            for (undeclared, 0..) |key, i| {
-                c.buf.setOpArgU16(undecl_start + i*2, @intCast(key.constIdx));
-            }
-        }
-    } else {
-        const start = c.buf.ops.items.len;
-        try c.pushFCode(.dynobject, &.{ 0, 0, start_reg, nargs, @as(u8, @intCast(undeclared.len)), dst }, debugNodeId);
-        c.buf.setOpArgU16(start + 1, @intCast(typeId)); 
-        if (undeclared.len > 0) {
-            const undecl_start = try c.buf.reserveData(undeclared.len * 2);
-            for (undeclared, 0..) |key, i| {
-                c.buf.setOpArgU16(undecl_start + i*2, @intCast(key.constIdx));
-            }
-        }
-    } 
-}
-
 fn pushObjectInit(c: *cy.Chunk, typeId: cy.TypeId, startLocal: u8, numFields: u8, dst: RegisterId, debugNodeId: cy.NodeId) !void {
     if (numFields <= 4) {
         const start = c.buf.ops.items.len;
@@ -3938,7 +3853,7 @@ fn pushObjectInit(c: *cy.Chunk, typeId: cy.TypeId, startLocal: u8, numFields: u8
 
 fn pushFieldDyn(c: *cy.Chunk, recv: u8, dst: u8, fieldId: u16, debugNodeId: cy.NodeId) !void {
     const start = c.buf.ops.items.len;
-    try c.pushFCode(.fieldDyn, &.{ recv, dst, 0, 0, 0, 0, 0 }, debugNodeId);
+    try c.pushFCode(.fieldDyn, &.{ recv, dst, 0, 0, 0, 0, 0, c.rega.nextTemp }, debugNodeId);
     c.buf.setOpArgU16(start + 3, fieldId);
 }
 

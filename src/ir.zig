@@ -59,8 +59,8 @@ pub const StmtCode = enum(u8) {
     set,
     setLocal,
     setCaptured,
-    setFieldDyn,
-    setField,
+    set_field_dyn,
+    set_field,
     setIndex,
     setCallObjSymTern,
     setVarSym,
@@ -82,7 +82,6 @@ pub const ExprCode = enum(u8) {
 
     local,
     object_init,
-    dynobject_init,
 
     fieldDyn,
     field,
@@ -258,6 +257,12 @@ pub const FieldDyn = struct {
     rec: Loc,
 };
 
+pub const SetFieldDyn = struct {
+    name: []const u8,
+    rec: Loc,
+    right: Loc,
+};
+
 /// Can have a chain of nested struct field indexes.
 /// The array of nested indexes are located after this struct.
 pub const Field = struct {
@@ -271,12 +276,9 @@ pub const Field = struct {
     numNestedFields: u8,
 };
 
-pub const DynObjectInit = struct {
-    type: TypeId,
-    args: Loc,
-    nargs: u8,
-    undecls: Loc,
-    num_undecls: u8,
+pub const SetField = struct {
+    field: Loc,
+    right: Loc,
 };
 
 pub const ObjectInit = struct {
@@ -433,6 +435,8 @@ pub const Set = union {
     index: SetIndex,
     generic: SetGeneric,
     callObjSymTern: SetCallObjSymTern,
+    set_field_dyn: SetFieldDyn,
+    set_field: SetField,
 };
 
 pub const SetCallObjSymTern = struct {
@@ -576,6 +580,11 @@ pub const Verbose = struct {
     verbose: bool,
 };
 
+pub const OpSet = struct {
+    op: cy.BinaryExprOp,
+    set_stmt: Loc,
+};
+
 pub fn StmtData(comptime code: StmtCode) type {
     return comptime switch (code) {
         .root => Root,
@@ -592,11 +601,12 @@ pub fn StmtData(comptime code: StmtCode) type {
         .setIndex,
         .setCallObjSymTern,
         .setLocal,
-        .setFieldDyn,
+        .set_field_dyn,
         .setCaptured,
-        .setField,
+        .set_field,
         .setVarSym,
         .set => Set,
+        .opSet => OpSet,
         .pushDebugLabel => PushDebugLabel,
         .verbose => Verbose,
         .destrElemsStmt => DestructureElems,
@@ -637,7 +647,6 @@ pub fn ExprData(comptime code: ExprCode) type {
         .string => String,
         .stringTemplate => StringTemplate,
         .object_init => ObjectInit,
-        .dynobject_init => DynObjectInit,
         .fieldDyn => FieldDyn,
         .field => Field,
         .cast => Cast,

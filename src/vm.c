@@ -555,6 +555,12 @@ static void panicCastFail(VM* vm, TypeId actTypeId, TypeId expTypeId) {
         vm->curStack = stack; \
     } while (false)
 
+#define RESTORE_STATE(code) \
+    do { \
+        pc = vm->curPc; \
+        stack = vm->curStack; \
+    } while (false)
+
 #define INTEGER_UNOP(...) \
     Value val = stack[pc[1]]; \
     /* Body... */ \
@@ -675,8 +681,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(NegFloat),
         JENTRY(ObjectSmall),
         JENTRY(Object),
-        JENTRY(DynObjectSmall),
-        JENTRY(DynObject),
         JENTRY(Ref),
         JENTRY(RefCopyObj),
         JENTRY(SetRef),
@@ -684,7 +688,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(SetFieldDyn),
         JENTRY(SetFieldDynIC),
         JENTRY(SetField),
-        JENTRY(SetFieldCheck),
         JENTRY(PushTry),
         JENTRY(PopTry),
         JENTRY(Throw),
@@ -1346,14 +1349,16 @@ beginSwitch:
                 pc[7] = offset;
             } else {
                 NameId name_id = ((FieldSymbolMap*)vm->fieldSyms.buf)[symId].nameId;
+                SAVE_STATE();
                 Value res = zGetFieldFallback(vm, obj, name_id);
                 if (res == VALUE_INTERRUPT) {
+                    RESTORE_STATE();
                     RETURN(RES_CODE_PANIC);
                 }
                 stack[dst] = res;
             }
             retain(vm, stack[dst]);
-            pc += 8;
+            pc += 9;
             NEXT();
         } else {
             panicFieldMissing(vm);
@@ -1368,7 +1373,7 @@ beginSwitch:
             if (OBJ_TYPEID(obj) == READ_U16(5)) {
                 stack[dst] = objectGetField((Object*)obj, pc[7]);
                 retain(vm, stack[dst]);
-                pc += 8;
+                pc += 9;
                 NEXT();
             } else {
                 // Deoptimize.
@@ -1515,35 +1520,6 @@ beginSwitch:
         pc += 6;
         NEXT();
     }
-    CASE(DynObjectSmall): {
-        u16 typeId = READ_U16(1);
-        u8 start = pc[3];
-        u8 num_undecls = pc[4];
-        u16* undecl_keys = (u16*)(pc + 6);
-        Value* undecls = stack + start;
-        ValueResult res = zAllocDynObjectSmall(vm, typeId, undecl_keys, undecls, num_undecls);
-        if (res.code != RES_CODE_SUCCESS) {
-            RETURN(res.code);
-        }
-        stack[pc[5]] = res.val;
-        pc += 6 + num_undecls * 2;
-        NEXT();
-    }
-    CASE(DynObject): {
-        u16 typeId = READ_U16(1);
-        u8 start = pc[3];
-        u8 nargs = pc[4];
-        u8 num_undecls = pc[5];
-        u16* undecl_keys = (u16*)(pc + 7);
-        Value* undecls = stack + start + nargs;
-        ValueResult res = zAllocDynObject(vm, typeId, stack + start, nargs, undecl_keys, undecls, num_undecls);
-        if (res.code != RES_CODE_SUCCESS) {
-            RETURN(res.code);
-        }
-        stack[pc[6]] = res.val;
-        pc += 7 + num_undecls * 2;
-        NEXT();
-    }
     CASE(Ref): {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
         Value* src = (Value*)obj->pointer.ptr;
@@ -1613,13 +1589,15 @@ beginSwitch:
                 WRITE_U16(7, rightTypeId);
                 pc[9] = offset;
             } else {
+                SAVE_STATE();
                 NameId name_id = ((FieldSymbolMap*)vm->fieldSyms.buf)[fieldId].nameId;
                 ResultCode code = zSetFieldFallback(vm, obj, name_id, val);
                 if (code != RES_CODE_SUCCESS) {
+                    RESTORE_STATE();
                     RETURN(code);
                 }
             }
-            pc += 10;
+            pc += 11;
             NEXT();
         } else {
             // return vm.setFieldNotObjectError();
@@ -1635,7 +1613,7 @@ beginSwitch:
                 Value* lastValue = objectGetFieldPtr((Object*)obj, pc[9]);
                 release(vm, *lastValue);
                 *lastValue = val;
-                pc += 10;
+                pc += 11;
                 NEXT();
             } else {
                 // Deoptimize.
@@ -1653,20 +1631,6 @@ beginSwitch:
         release(vm, *lastValue);
         *lastValue = stack[pc[3]];
         pc += 4;
-        NEXT();
-    }
-    CASE(SetFieldCheck): {
-        HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
-        TypeId cstrType = READ_U16(2);
-        TypeId valType = getTypeId(stack[pc[4]]);
-        if (!isTypeCompat(valType, cstrType)) {
-            panicIncompatibleFieldType(vm, cstrType, valType);
-            RETURN(RES_CODE_PANIC);
-        }
-        Value* lastValue = objectGetFieldPtr((Object*)obj, pc[5]);
-        release(vm, *lastValue);
-        *lastValue = stack[pc[4]];
-        pc += 6;
         NEXT();
     }
     CASE(PushTry): {

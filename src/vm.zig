@@ -704,7 +704,7 @@ pub const VM = struct {
         self.consts = buf.mconsts;
         self.types = self.compiler.sema.types.items;
 
-        try @call(.never_inline, evalLoopGrowStack, .{self});
+        try @call(.never_inline, evalLoopGrowStack, .{self, true});
         logger.tracev("main stack size: {}", .{buf.mainStackSize});
 
         if (self.endLocal == 255) {
@@ -729,6 +729,12 @@ pub const VM = struct {
                     const numArgs = vm.pc[2];
                     return ret.val + CallArgStart + numArgs.val;
                 },
+                .fieldDyn => {
+                    return vm.pc[8].val;
+                },
+                .setFieldDyn => {
+                    return vm.pc[10].val;
+                },
                 else => {
                     cy.panicFmt("TODO: getNewCallFuncFp {}", .{vm.pc[0].opcode()});
                 }
@@ -739,7 +745,11 @@ pub const VM = struct {
         }
     }
 
-    pub fn callFunc(vm: *VM, func: Value, args: []const Value) !Value {
+    const CallFuncConfig = struct {
+        from_external: bool = true,
+    };
+
+    pub fn callFunc(vm: *VM, func: Value, args: []const Value, config: CallFuncConfig) !Value {
         const fpOff = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
         const ret = vm.getNewCallFuncRet();
 
@@ -751,55 +761,74 @@ pub const VM = struct {
         // Should the stack grow, update pointer.
         vm.framePtr = vm.stack.ptr + fpOff;
 
-        // Create a new host frame so that it can be reported.
-        const retInfo = buildReturnInfoForRoot(false);
-        const retFramePtr = Value{ .retFramePtr = vm.framePtr };
-        vm.framePtr += ret;
+        var call_ret: u8 = undefined;
+        if (config.from_external) {
+            // Create a new host frame so that it can be reported.
+            const retInfo = buildReturnInfoForRoot(false);
+            const retFramePtr = Value{ .retFramePtr = vm.framePtr };
+            vm.framePtr += ret;
 
-        // Reserve extra slot for info about the call.
-        vm.framePtr[0].val = func.getTypeId();
-        vm.framePtr += 1;
+            // Reserve extra slot for info about the call.
+            vm.framePtr[0].val = func.getTypeId();
+            vm.framePtr += 1;
 
-        vm.framePtr[1] = retInfo;
-        // Return pc points to the call inst that entered host.
-        vm.framePtr[2] = Value{ .retPcPtr = pc };
-        vm.framePtr[3] = retFramePtr;
+            vm.framePtr[1] = retInfo;
+            // Return pc points to the call inst that entered host.
+            vm.framePtr[2] = Value{ .retPcPtr = pc };
+            vm.framePtr[3] = retFramePtr;
+            call_ret = 4;
+        } else {
+            call_ret = ret;
+        }
 
-        // Copy callee + args to a blank frame after the host frame.
-        vm.framePtr[4 + CalleeStart] = func;
-        @memcpy(vm.framePtr[4+CallArgStart..4+CallArgStart+args.len], args);
+        // Copy callee + args to a new blank frame.
+        vm.framePtr[call_ret + CalleeStart] = func;
+        @memcpy(vm.framePtr[call_ret+CallArgStart..call_ret+CallArgStart+args.len], args);
 
-        const callRet: u8 = 4;
         // Pass in an arbitrary `pc` to reuse the same `call` used by the VM.
-        const pcsp = try call(vm, vm.pc, vm.framePtr, func, callRet, @intCast(args.len), false);
+        const pcsp = try call(vm, vm.pc, vm.framePtr, func, call_ret, @intCast(args.len), false);
         vm.framePtr = pcsp.sp;
         vm.pc = pcsp.pc;
 
         // Only user funcs start eval loop.
         if (!func.isObjectType(bt.HostFunc)) {
-            @call(.never_inline, evalLoopGrowStack, .{vm}) catch |err| {
-                if (err == error.Panic) {
-                    // Dump for now.
-                    const frames = try cy.debug.allocStackTrace(vm, vm.stack, vm.compactTrace.items());
-                    defer vm.alloc.free(frames);
+            if (config.from_external) {
+                @call(.never_inline, evalLoopGrowStack, .{vm, true}) catch |err| {
+                    if (err == error.Panic) {
+                        // Dump for now.
+                        const frames = try cy.debug.allocStackTrace(vm, vm.stack, vm.compactTrace.items());
+                        defer vm.alloc.free(frames);
 
-                    const w = cy.fmt.lockStderrWriter();
-                    defer cy.fmt.unlockPrint();
-                    const msg = try cy.debug.allocPanicMsg(vm);
-                    defer vm.alloc.free(msg);
-                    try fmt.format(w, "{}\n\n", &.{v(msg)});
-                    try cy.debug.writeStackFrames(vm, w, frames);
-                }
-                logger.tracev("{}", .{err});
-                return error.Panic;
-                // return builtins.prepThrowZError(@ptrCast(vm), err, @errorReturnTrace());
-            };
+                        const w = cy.fmt.lockStderrWriter();
+                        defer cy.fmt.unlockPrint();
+                        const msg = try cy.debug.allocPanicMsg(vm);
+                        defer vm.alloc.free(msg);
+                        try fmt.format(w, "{}\n\n", &.{v(msg)});
+                        try cy.debug.writeStackFrames(vm, w, frames);
+                    }
+                    logger.tracev("{}", .{err});
+                    return error.Panic;
+                    // return builtins.prepThrowZError(@ptrCast(vm), err, @errorReturnTrace());
+                };
+            } else {
+                @call(.never_inline, evalLoopGrowStack, .{vm, false}) catch |err| {
+                    if (err == error.Panic) {
+                        return err;
+                    } else {
+                        return error.Unexpected;
+                    }
+                };
+            }
         }
 
         // Restore pc/sp.
         vm.framePtr = vm.stack.ptr + fpOff;
         vm.pc = pc;
-        return vm.framePtr[ret + 1 + 4];
+        if (config.from_external) {
+            return vm.framePtr[ret + 1 + 4];
+        } else {
+            return vm.framePtr[ret];
+        }
     }
 
     pub fn addAnonymousStruct(self: *VM, parent: *cy.Sym, baseName: []const u8, uniqId: u32, fields: []const []const u8) !cy.TypeId {
@@ -1125,19 +1154,49 @@ pub const VM = struct {
         }
     }
 
-    fn getFieldFallback(self: *VM, obj: *HeapObject, nameId: vmc.NameId) Value {
-        @setCold(true);
+    fn setFieldFallback(self: *VM, obj: *HeapObject, nameId: vmc.NameId, val: cy.Value) !void {
         const name = rt.getName(self, nameId);
-        if (self.types[obj.getTypeId()].kind == .dynobject) {
-            const undecls = obj.dynobject.getUndeclared();
-            if (undecls.getByString(name)) |val| {
-                return val;
-            } else {
-                return self.prepPanic("Missing field in object.");
-            }
-        } else {
+        const rec_t = obj.getTypeId();
+        if (!self.types[rec_t].has_set_method) {
+            _ = self.prepPanic("Missing field in object.");
+            return error.Panic;
+        }
+        const rec_arg = Value.initPtr(obj);
+        const name_arg = try self.allocString(name);
+        defer self.release(name_arg);
+
+        const args: []const Value = &.{rec_arg, name_arg, val};
+        const func = self.getCompatMethodFunc(rec_t, self.compiler.setMID, args[1..]) orelse {
+            return error.Unexpected;
+        };
+        const func_val = try cy.heap.allocFuncFromSym(self, func);
+        defer self.release(func_val);
+        const result = try self.callFunc(func_val, args, .{ .from_external = false });
+        if (result.isInterrupt()) {
+            return error.Panic;
+        }
+    }
+
+    fn getFieldFallback(self: *VM, obj: *HeapObject, nameId: vmc.NameId) !Value {
+        const name = rt.getName(self, nameId);
+        const rec_t = obj.getTypeId();
+        if (!self.types[rec_t].has_get_method) {
             return self.prepPanic("Missing field in object.");
         }
+
+        const rec_arg = Value.initPtr(obj);
+        const name_arg = try self.allocString(name);
+        defer self.release(name_arg);
+
+        const args: []const Value = &.{rec_arg, name_arg};
+        const func = self.getCompatMethodFunc(rec_t, self.compiler.getMID, args[1..]) orelse {
+            return error.Unexpected;
+        };
+
+        const func_val = try cy.heap.allocFuncFromSym(self, func);
+        defer self.release(func_val);
+        const result = try self.callFunc(func_val, args, .{ .from_external = false });
+        return result;
     }
 
     /// Assumes overloaded function. Finds first matching function at runtime.
@@ -1750,7 +1809,7 @@ pub fn handleInterrupt(vm: *VM, rootFp: u32) !void {
 
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM, assuming pc, framePtr, and virtual registers are already set.
-pub fn evalLoopGrowStack(vm: *VM) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, Unexpected, End}!void {
+pub fn evalLoopGrowStack(vm: *VM, handle_panic: bool) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, Unexpected, End}!void {
     logger.tracev("begin eval loop", .{});
 
     // Record the start fp offset, so that stack unwinding knows when to stop.
@@ -1779,7 +1838,15 @@ pub fn evalLoopGrowStack(vm: *VM) error{StackOverflow, OutOfMemory, Panic, NoDeb
             if (res == vmc.RES_CODE_SUCCESS) {
                 break;
             }
-            try @call(.never_inline, handleExecResult, .{vm, res, startFp});
+            if (handle_panic) {
+                try @call(.never_inline, handleExecResult, .{vm, res, startFp});
+            } else {
+                if (res == vmc.RES_CODE_PANIC or res == vmc.RES_CODE_UNKNOWN) {
+                    return error.Panic;
+                } else {
+                    try @call(.never_inline, handleExecResult, .{vm, res, startFp});
+                }
+            }
         }
     } else {
         @compileError("Unsupported engine.");
@@ -3512,7 +3579,6 @@ fn panicIncompatibleLambdaSig(vm: *cy.VM, args: []const Value, cstrFuncSigId: se
 }
 
 /// Runtime version of `sema.reportIncompatibleCallSig`.
-/// TODO: Consider using this for callObjSym too. The only problem is callObjSym does not use `overloaded_funcs`.
 fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Value) error{Panic, OutOfMemory} {
     const num_funcs = vm.overloaded_funcs.buf[overload_entry];
     const funcs = vm.overloaded_funcs.buf[overload_entry+1..overload_entry+1+num_funcs];
@@ -3556,7 +3622,6 @@ fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Va
     return vm.panic(msg.items);
 }
 
-/// TODO: Once methods are recorded in the object/builtin type's module, this should look there instead of the rt table.
 fn panicIncompatibleMethodSig(
     vm: *cy.VM, method_id: rt.MethodId, recv: Value, args: []const Value
 ) error{Panic, OutOfMemory} {
@@ -4196,33 +4261,6 @@ export fn zDumpValue(val: Value) void {
     cy.rt.log(fbuf.getWritten());
 }
 
-export fn zAllocDynObjectSmall(vm: *VM, type_id: cy.TypeId, keys: [*]const u16, undecls: [*]const Value, num_undecls: u8) vmc.ValueResult {
-    const val = cy.heap.allocDynObjectSmall(vm, type_id, keys[0..num_undecls], undecls[0..num_undecls]) catch {
-        return .{
-            .val = undefined,
-            .code = vmc.RES_CODE_UNKNOWN,
-        };
-    };
-    return .{
-        .val = @bitCast(val),
-        .code = vmc.RES_CODE_SUCCESS,
-    };
-}
-
-export fn zAllocDynObject(vm: *VM, type_id: cy.TypeId, args: [*]const Value, nargs: u8,
-    keys: [*]const u16, undecls: [*]const Value, num_undecls: u8) vmc.ValueResult {
-    const val = cy.heap.allocDynObject(vm, type_id, args[0..nargs], keys[0..num_undecls], undecls[0..num_undecls]) catch {
-        return .{
-            .val = undefined,
-            .code = vmc.RES_CODE_UNKNOWN,
-        };
-    };
-    return .{
-        .val = @bitCast(val),
-        .code = vmc.RES_CODE_SUCCESS,
-    };
-}
-
 export fn zAllocMap(vm: *VM, keyIdxes: [*] align(1) u16, vals: [*]Value, numEntries: u32) vmc.ValueResult {
     const val = cy.heap.allocMap(vm, keyIdxes[0..numEntries], vals[0..numEntries]) catch {
         return .{
@@ -4237,35 +4275,19 @@ export fn zAllocMap(vm: *VM, keyIdxes: [*] align(1) u16, vals: [*]Value, numEntr
 }
 
 export fn zGetFieldFallback(vm: *VM, obj: *HeapObject, nameId: vmc.NameId) Value {
-    const name = rt.getName(vm, nameId);
-    if (vm.types[obj.getTypeId()].kind == .dynobject) {
-        const undecls = obj.dynobject.getUndeclared();
-        if (undecls.getByString(name)) |val| {
-            return val;
-        }
-    }
-    return vm.prepPanic("Missing field in object.");
+    return vm.getFieldFallback(obj, nameId) catch {
+        return Value.Interrupt;
+    };
 }
 
 export fn zSetFieldFallback(vm: *VM, obj: *HeapObject, nameId: vmc.NameId, val: cy.Value) vmc.ResultCode {
-    const name = rt.getName(vm, nameId);
-    if (vm.types[obj.getTypeId()].kind != .dynobject) {
-        _ = vm.prepPanic("Missing field in object.");
-        return vmc.RES_CODE_PANIC;
-    }
-    const key = vm.allocString(name) catch {
-        return vmc.RES_CODE_UNKNOWN;
+    vm.setFieldFallback(obj, nameId, val) catch |err| {
+        if (err == error.Panic) {
+            return vmc.RES_CODE_PANIC;
+        } else {
+            return vmc.RES_CODE_UNKNOWN;
+        }
     };
-    const undecls = obj.dynobject.getUndeclared();
-    const res = undecls.getOrPut(vm.alloc, key) catch {
-        return vmc.RES_CODE_UNKNOWN;
-    };
-    if (res.foundExisting) {
-        cy.arc.release(vm, res.valuePtr.*);
-        cy.arc.release(vm, key);
-    }
-    cy.arc.retain(vm, val);
-    res.valuePtr.* = val;
     return vmc.RES_CODE_SUCCESS;
 }
 

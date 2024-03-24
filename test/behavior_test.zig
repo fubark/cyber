@@ -164,8 +164,6 @@ if (!aot) {
     run.case("types/choice_access_panic.cy");
     run.case("types/choice_type.cy");
     run.case("types/distinct.cy");
-    run.case("types/dynobject.cy"); 
-    run.case("types/dynobject_access_panic.cy"); 
 }
     run.case("types/dyn_recent_type_error.cy");
 if (!aot) {
@@ -232,7 +230,10 @@ if (!aot) {
 
     // Disabled test: printing to stdout hangs test runner.
     // run.case2(.{ .silent = true }, "meta/dump_locals.cy");
+    run.case("meta/get_panic.cy"); 
+    run.case("meta/get_set.cy"); 
     run.case("meta/metatype.cy");
+    run.case("meta/set_panic.cy"); 
 
     run.case("concurrency/fibers.cy");
 

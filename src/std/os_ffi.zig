@@ -1094,7 +1094,7 @@ fn cAllocList(vm: *cy.VM, elems: [*]Value, n: u32) callconv(.C) Value {
 fn cyCallFunc(vm: *cy.VM, func: Value, args: [*]const Value, nargs: u8) callconv(.C) Value {
     // TODO: Since the host may decide to ignore an error, force an exit here.
     //       A better approach is to return the error but disable the VM until the error has been acknowledged by the host.
-    return vm.callFunc(func, args[0..nargs]) catch {
+    return vm.callFunc(func, args[0..nargs], .{}) catch {
         cy.panic("cyCallFunc error.");
     };
 }

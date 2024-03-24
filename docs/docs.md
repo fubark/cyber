@@ -883,10 +883,6 @@ The dynamic type defers type checking to runtime. However, it also tracks its ow
   * [`self` variable.](#self-variable)
   * [Type functions.](#type-functions)
   * [Type variables.](#type-variables)
-* [Dynamic objects.](#dynamic-objects)
-  * [Undeclared fields.](#undeclared-fields)
-  * [Check field existence.](#check-field-existence)
-  * [Prototypes.](#prototypes)
 * [Structs.](#structs)
   * [Declare struct.](#declare-struct)
   * [Copy structs.](#copy-structs)
@@ -1061,40 +1057,6 @@ var Node.DefaultValue = 100
 
 print Node.DefaultValue    -- Prints "100"
 ```
-
-## Dynamic objects.
-A dynamic object type is an object type with additional dynamic behaviors.
-
-It is declared with `dynobject`. Fields and methods are declared just like an `object` type:
-```cy
-type Foo dynobject:
-    value int
-
-    func getValue() int:
-        return value
-```
-
-### Undeclared fields.
-Undeclared fields can be initialized and assigned to:
-```cy
-var f = Foo{value: 123, undeclared: 234}
-print f.value        --> 123
-print f.undeclared   --> 234
-
-f.data = 345
-print f.data         --> 345
-```
-
-However, accessing an undeclared field before it's initialized results in a panic:
-```cy
-f.foo                --> Panic. The field `foo` was not initialized.
-```
-
-### Check field existence.
-> _Planned Feature_
-
-### Prototypes.
-> _Planned Feature_
 
 ## Structs.
 Struct types can contain field and method members just like object types, but their instances are copied by value rather than by reference. In that sense, they behave like primitive data types.
@@ -2492,7 +2454,7 @@ The main execution context is a fiber as well. Once the main fiber has finished,
 * [Dynamic variables.](#dynamic-variables)
 * [Runtime type checking.](#runtime-type-checking)
 * [Dynamic functions.](#dynamic-functions)
-* [Dynamic objects.](#dynamic-objects-1)
+* [Dynamic objects.](#dynamic-objects)
 * [Custom objects.](#custom-objects)
 
 [^top](#table-of-contents)
@@ -2633,6 +2595,8 @@ let v = Vec3{1, 2, 3}
   * [Custom operators.](#custom-operators)
 * [Magic functions.](#magic-functions)
   * [Call module.](#call-module)
+  * [`$get` method.](#get-method)
+  * [`$set` method.](#set-method)
   * [Missing method.](#missing-method)
 </td><td valign="top">
 
@@ -2732,6 +2696,29 @@ func Vec2.'$call'(x float, y float) Vec2:
     return [Vec2 x: x, y: y]
 
 var v = Vec2(1, 2)
+```
+
+### `$get` method.
+The `$get` method allows overriding field accesses for **undeclared fields**:
+```cy
+type Foo:
+    func '$get'(name String):
+        return name.len()
+
+var f = Foo{}
+print f.abc      --> 3
+print f.hello    --> 5
+```
+
+### `$set` method.
+The `$set` method allows overriding field assignments for **undeclared fields**:
+```cy
+type Foo:
+    func '$set'(name String, value any):
+        print "setting $(name) $(value)"
+
+var f = Foo{}
+f.abc = 123      --> setting abc 123
 ```
 
 ### Missing method.

@@ -290,8 +290,6 @@ typedef enum {
     CodeNegFloat,
     CodeObjectSmall,
     CodeObject,
-    CodeDynObjectSmall,
-    CodeDynObject,
 
     CodeRef,
     CodeRefCopyObj,
@@ -304,7 +302,6 @@ typedef enum {
 
     /// Set field with predetermined field index.
     CodeSetField,
-    CodeSetFieldCheck,
     
     CodePushTry,
     CodePopTry,
@@ -556,13 +553,6 @@ typedef struct ValueMap {
     u32 padding;
 } ValueMap;
 
-typedef struct DynObject {
-    TypeId typeId;
-    uint32_t rc;
-    ValueMap undeclared;
-    Value first;
-} DynObject;
-
 typedef struct Box {
     TypeId typeId;
     uint32_t rc;
@@ -678,6 +668,8 @@ typedef struct ZList {
 typedef struct TypeEntry {
     void* sym;
     u8 kind;
+    bool has_get_method;
+    bool has_set_method;
     union {
         struct {
             u16 numFields;
@@ -1049,8 +1041,6 @@ HeapObjectResult zAllocExternalCycObject(VM* vm, size_t size);
 ValueResult zAllocStringTemplate(VM* vm, Inst* strs, u8 strCount, Value* vals, u8 valCount);
 ValueResult zAllocStringTemplate2(VM* vm, Value* strs, u8 strCount, Value* vals, u8 valCount);
 ValueResult zAllocMap(VM* vm, u16* keyIdxs, Value* vals, u32 numEntries);
-ValueResult zAllocDynObject(VM* vm, TypeId type, Value* args, u8 nargs, u16* keys, Value* undecls, u8 num_undecls);
-ValueResult zAllocDynObjectSmall(VM* vm, TypeId type, u16* keys, Value* undecls, u8 num_undecls);
 Value zGetFieldFallback(VM* vm, HeapObject* obj, NameId nameId);
 ResultCode zSetFieldFallback(VM* vm, HeapObject* obj, NameId nameId, Value val);
 ResultCode zGrowTryStackTotalCapacity(ZCyList* list, ZAllocator alloc, size_t minCap);

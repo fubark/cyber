@@ -447,35 +447,6 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn declareDynObjectType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId, opt_type_id: ?cy.TypeId) !*cy.sym.ObjectType {
-        const mod = parent.getMod().?;
-        try checkUniqueSym(c, mod, name, declId);
-
-        const typeId = opt_type_id orelse try c.sema.pushType();
-        const sym = try cy.sym.createSym(c.alloc, .dynobject_t, .{
-            .head = cy.Sym.init(.dynobject_t, parent, name),
-            .declId = declId,
-            .type = typeId,
-            .fields = undefined,
-            .variantId = cy.NullId,
-            .numFields = 0,
-            .rt_size = cy.NullId,
-            .mod = undefined,
-        });
-
-        @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
-
-        _ = try addSym(c, mod, name, @ptrCast(sym));
-        c.compiler.sema.types.items[typeId] = .{
-            .sym = @ptrCast(sym),
-            .kind = .dynobject,
-            .data = .{ .dynobject = .{
-                .num_fields = 0,
-            }},
-        };
-        return sym;
-    }
-
     pub fn declareStructType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId, opt_type_id: ?cy.TypeId) !*cy.sym.ObjectType {
         const mod = parent.getMod().?;
         try checkUniqueSym(c, mod, name, declId);
@@ -787,7 +758,6 @@ pub const ChunkExt = struct {
             .hostVar,
             .struct_t,
             .object_t,
-            .dynobject_t,
             .custom_object_t,
             .enum_t,
             .chunk,

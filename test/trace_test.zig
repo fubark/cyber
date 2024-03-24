@@ -110,8 +110,8 @@ test "ARC." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         var trace = run.getTrace();
-        try t.eq(trace.numRetains, 5);
-        try t.eq(trace.numReleases, 5);
+        try t.eq(trace.numRetains, 8);
+        try t.eq(trace.numReleases, 8);
     }}.func);
 
     // Non-initializer expr in if expr false branch is retained.
@@ -231,8 +231,8 @@ test "ARC on temp locals in expressions." {
         \\var ret = traceRetains()
         \\var rel = traceReleases()
         \\var res = { a: [123] }['a'][0]
-        \\test.eq(traceRetains() - ret, 5)
-        \\test.eq(traceReleases() - rel, 5)
+        \\test.eq(traceRetains() - ret, 8)
+        \\test.eq(traceReleases() - rel, 8)
         \\test.eq(res, 123)
     );
 
@@ -329,9 +329,9 @@ test "ARC in loops." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         var trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 14);
-        try t.eq(trace.numRetains, 14);
-        try t.eq(trace.numReleases, 14);
+        try t.eq(trace.numRetainAttempts, 20);
+        try t.eq(trace.numRetains, 18);
+        try t.eq(trace.numReleases, 18);
     }}.func);
 }
 

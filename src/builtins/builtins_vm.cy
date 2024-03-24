@@ -188,6 +188,8 @@ type Tuple:
 
 #host
 type Map:
+    #host func '$initPair'(key any, value any) void
+
     #host func '$index'(key any) any
     #host func '$setIndex'(key any, val any) void
 

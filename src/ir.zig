@@ -516,8 +516,7 @@ pub const ExprStmt = struct {
 };
 
 pub const Map = struct {
-    numArgs: u8,
-    args: u32,
+    placeholder: u8,
 };
 
 pub const List = struct {

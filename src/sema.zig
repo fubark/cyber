@@ -3531,7 +3531,7 @@ pub const ChunkExt = struct {
             bt.Integer  => return c.semaInt(0, nodeId),
             bt.Float    => return c.semaFloat(0, nodeId),
             bt.List     => return c.semaEmptyList(nodeId),
-            bt.Map      => return c.semaEmptyMap(nodeId),
+            bt.Map      => return c.semaMap(nodeId),
             bt.Array    => return c.semaArray("", nodeId),
             bt.String   => return c.semaString("", nodeId),
             else => {
@@ -3758,6 +3758,25 @@ pub const ChunkExt = struct {
                 const desc = try c.encoder.allocFmt(c.alloc, node.data.record_expr.left);
                 defer c.alloc.free(desc);
                 return c.reportErrorFmt("Expected a type symbol. `{}` is a type template and must be expanded to a type first.", &.{v(desc)}, node.data.record_expr.left);
+            },
+            .custom_object_t => {
+                // TODO: Implement `$initRecord` instead of hardcoding which custom types are allowed.
+                const object_t = sym.cast(.custom_object_t);
+                switch (object_t.type) {
+                    bt.Map => {
+                        const init = try c.ir.pushExpr(.map, c.alloc, object_t.type, node.data.record_expr.record, .{ .placeholder = undefined });
+                        const type_e = c.sema.types.items[object_t.type];
+                        if (!type_e.has_init_pair_method) {
+                            return error.Unexpected;
+                        }
+                        return semaWithInitPairs(c, sym, object_t.type, node.data.record_expr.record, init);
+                    },
+                    else => {
+                        const desc = try c.encoder.allocFmt(c.alloc, node.data.record_expr.left);
+                        defer c.alloc.free(desc);
+                        return c.reportErrorFmt("Can not initialize `{}`.", &.{v(desc)}, node.data.record_expr.left);
+                    },
+                }
             },
             else => {
                 const desc = try c.encoder.allocFmt(c.alloc, node.data.record_expr.left);
@@ -4311,35 +4330,13 @@ pub const ChunkExt = struct {
                     }
                 }
 
-                const numArgs = node.data.recordLit.numArgs;
-                const irIdx = try c.ir.pushEmptyExpr(.map, c.alloc, ir.ExprType.init(bt.Map), nodeId);
-                const irKeysIdx = try c.ir.pushEmptyArray(c.alloc, []const u8, numArgs);
-                const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, numArgs);
-
-                var i: u32 = 0;
-                var argId = node.data.recordLit.argHead;
-                while (argId != cy.NullNode) {
-                    const arg = c.ast.node(argId);
-                    const key = c.ast.node(arg.data.keyValue.key);
-                    switch (key.type()) {
-                        .ident => {
-                            const name = c.ast.nodeString(key);
-                            c.ir.setArrayItem(irKeysIdx, []const u8, i, name);
-                        },
-                        .raw_string_lit => {
-                            const name = c.ast.nodeString(key);
-                            c.ir.setArrayItem(irKeysIdx, []const u8, i, name);
-                        },
-                        else => cy.panicFmt("Unsupported key {}", .{key.type()}),
-                    }
-                    const argRes = try c.semaExpr(arg.data.keyValue.value, .{});
-                    c.ir.setArrayItem(irArgsIdx, u32, i, argRes.irIdx);
-                    i += 1;
-                    argId = arg.next();
+                const init = try c.ir.pushExpr(.map, c.alloc, bt.Map, nodeId, .{ .placeholder = undefined });
+                const type_e = c.sema.types.items[bt.Map];
+                if (!type_e.has_init_pair_method) {
+                    return error.Unexpected;
                 }
-
-                c.ir.setExprData(irIdx, .map, .{ .numArgs = numArgs, .args = irArgsIdx });
-                return ExprResult.initStatic(irIdx, bt.Map);
+                const type_sym = c.sema.getTypeSym(bt.Map);
+                return semaWithInitPairs(c, type_sym, bt.Map, nodeId, init);
             },
             .stringTemplate => {
                 const numExprs = node.data.stringTemplate.numExprs;
@@ -4671,8 +4668,8 @@ pub const ChunkExt = struct {
         return ExprResult.initStatic(irIdx, bt.List);
     }
 
-    pub fn semaEmptyMap(c: *cy.Chunk, nodeId: cy.NodeId) !ExprResult {
-        const irIdx = try c.ir.pushExpr(.map, c.alloc, bt.Map, nodeId, .{ .numArgs = 0, .args = 0 });
+    pub fn semaMap(c: *cy.Chunk, nodeId: cy.NodeId) !ExprResult {
+        const irIdx = try c.ir.pushExpr(.map, c.alloc, bt.Map, nodeId, .{ .placeholder = undefined });
         return ExprResult.initStatic(irIdx, bt.Map);
     }
 
@@ -5009,8 +5006,12 @@ pub const ChunkExt = struct {
 };
 
 fn semaWithInitPairs(c: *cy.Chunk, type_sym: *cy.Sym, type_id: cy.TypeId, record_id: cy.NodeId, init: u32) !ExprResult {
-    const init_pair = type_sym.getMod().?.getSym("$initPair").?;
     const record = c.ast.node(record_id);
+    if (record.data.recordLit.numArgs == 0) {
+        // Just return default initializer for no record pairs.
+        return ExprResult.init(init, CompactType.initStatic(type_id));
+    }
+    const init_pair = type_sym.getMod().?.getSym("$initPair").?;
 
     const expr = try c.ir.pushExpr(.blockExpr, c.alloc, type_id, record_id, .{ .bodyHead = cy.NullId });
     try pushBlock(c, record_id);

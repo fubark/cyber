@@ -1130,6 +1130,7 @@ fn genString(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     if (inst.requiresPreRelease) {
         try pushRelease(c, inst.dst, nodeId);
     }
+    // TODO: Ideally this shouldn't retain. But release ops *might* require them to be.
     try pushStringConst(c, data.raw, inst.dst, nodeId);
     return finishNoErrNoDepInst(c, inst, true);
 }
@@ -3005,43 +3006,9 @@ fn genSwitch(c: *Chunk, idx: usize, cstr: ?Cstr, nodeId: cy.NodeId) !GenValue {
 }
 
 fn genMap(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
-    const data = c.ir.getExprData(idx, .map);
-    const keysIdx = c.ir.advanceExpr(idx, .map);
-    const keys = c.ir.getArray(keysIdx, []const u8, data.numArgs);
-    const args = c.ir.getArray(data.args, u32, data.numArgs);
-
+    _ = idx;
     const inst = try c.rega.selectForDstInst(cstr, true, nodeId);
-
-    const constIdxStart = c.listDataStack.items.len;
-    for (keys) |key| {
-        const constIdx = try c.buf.getOrPushStaticStringConst(key);
-        try c.listDataStack.append(c.alloc, .{ .constIdx = @intCast(constIdx) });
-    }
-
-    const argStart = c.rega.getNextTemp();
-    for (args) |argIdx| {
-        const temp = try c.rega.consumeNextTemp();
-        const val = try genAndPushExpr(c, argIdx, Cstr.toTempRetain(temp));
-        try pushUnwindValue(c, val);
-    }
-
-    if (data.numArgs == 0) {
-        try c.buf.pushOp1(.mapEmpty, inst.dst);
-    } else {
-        const constIdxes = c.listDataStack.items[constIdxStart..];
-        c.listDataStack.items.len = constIdxStart;
-
-        try c.buf.pushOp3(.map, argStart, data.numArgs, inst.dst);
-        const start = try c.buf.reserveData(data.numArgs * 2);
-        for (constIdxes, 0..) |item, i| {
-            c.buf.setOpArgU16(start + i*2, @intCast(item.constIdx));
-        }
-
-        const argvs = popValues(c, data.numArgs);
-        try checkArgs(argStart, argvs);
-        try popTempAndUnwinds(c, argvs);
-    }
-
+    try c.buf.pushOp1(.map, inst.dst);
     return finishDstInst(c, inst, true);
 }
 

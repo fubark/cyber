@@ -634,12 +634,8 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
                 v(src), v(numLocals), fmt.sliceU8(locals)});
         },
         .map => {
-            const startLocal = pc[1].val;
-            const numEntries = pc[2].val;
-            const dst = pc[3].val;
-            const keyIdxes = std.mem.sliceAsBytes(pc[4..4+numEntries*2]);
-            len += try fmt.printCount(w, "startLocal={}, numEntries={}, dst={}, {}", &.{
-                v(startLocal), v(numEntries), v(dst), fmt.sliceU8(keyIdxes)});
+            const dst = pc[1].val;
+            len += try fmt.printCount(w, "%{} = new Map", &.{ v(dst) });
         },
         .object => {
             const typeId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
@@ -904,7 +900,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .release,
         .true,
         .false,
-        .mapEmpty => {
+        .map => {
             return 2;
         },
         .releaseN => {
@@ -960,10 +956,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .stringTemplate => {
             const numExprs = pc[2].val;
             return 4 + numExprs + 1;
-        },
-        .map => {
-            const numEntries = pc[2].val;
-            return 4 + numEntries * 2;
         },
         .range,
         .unwrapChoice,
@@ -1090,7 +1082,6 @@ pub const OpCode = enum(u8) {
     /// First operand points the first entry value and also the dst local. Second operand contains the number of elements.
     /// Const key indexes follow the size operand.
     map = vmc.CodeMap,
-    mapEmpty = vmc.CodeMapEmpty,
     sliceList = vmc.CodeSliceList,
     /// Pops top register, if value evals to false, jumps the pc forward by an offset.
     jumpNotCond = vmc.CodeJumpNotCond,
@@ -1235,7 +1226,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 116);
+    try t.eq(std.enums.values(OpCode).len, 115);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

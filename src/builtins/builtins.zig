@@ -117,6 +117,7 @@ const funcs = [_]NameFunc{
     .{"$index", bindings.tupleIndex},
 
     // Map
+    .{"$initPair", zErrFunc(bindings.mapSetIndex)},
     .{"$index", bindings.mapIndex},
     .{"$setIndex", zErrFunc(bindings.mapSetIndex)},
     .{"contains", bindings.mapContains},

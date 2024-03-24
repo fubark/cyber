@@ -237,7 +237,6 @@ typedef enum {
     CodeAppendList,
     CodeList,
     CodeMap,
-    CodeMapEmpty,
     CodeSliceList,
     CodeJumpNotCond,
     CodeJumpCond,
@@ -1041,7 +1040,6 @@ HeapObjectResult zAllocExternalObject(VM* vm, size_t size);
 HeapObjectResult zAllocExternalCycObject(VM* vm, size_t size);
 ValueResult zAllocStringTemplate(VM* vm, Inst* strs, u8 strCount, Value* vals, u8 valCount);
 ValueResult zAllocStringTemplate2(VM* vm, Value* strs, u8 strCount, Value* vals, u8 valCount);
-ValueResult zAllocMap(VM* vm, u16* keyIdxs, Value* vals, u32 numEntries);
 Value zGetFieldFallback(VM* vm, HeapObject* obj, NameId nameId);
 ResultCode zSetFieldFallback(VM* vm, HeapObject* obj, NameId nameId, Value val);
 ResultCode zGrowTryStackTotalCapacity(ZCyList* list, ZAllocator alloc, size_t minCap);

@@ -190,7 +190,7 @@ The `.` prefix is used to reference the current module's namespace.
 
 Unlike local variables, namespace variables do not currently infer the type from the right hand side so a specific type must be specified or it will default to the `any` type:
 ```cy
-var .my_map Map = {}
+var .my_map Map = Map{}
 ```
 
 Since namespace variables are initialized outside of a fiber's execution flow, they can not reference any local variables:
@@ -400,7 +400,7 @@ The following shows the zero values of builtin or created types:
 |`String`|`''`|
 |`Array`|`Array('')`|
 |`List`|`[]`|
-|`Map`|`{}`|
+|`Map`|`Map{}`|
 |`type S`|`S{}`|
 |`#host type S`|`S.$zero()`|
 |`dynamic`|`int(0)`|
@@ -476,8 +476,6 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
 * [Lists.](#lists)
 * [Tuples.](#tuples)
 * [Maps.](#maps)
-  * [Create map.](#create-map)
-  * [Empty map.](#empty-map)
   * [Map indexing.](#map-indexing)
   * [Map operations.](#map-operations)
   * [Map block.](#map-block)
@@ -774,24 +772,14 @@ list.remove(1)
 ## Maps.
 Maps are a builtin type that store key value pairs in dictionaries. See [`type Map`](#type-map).
 
-### Create map.
-Create a map using key value pairs inside a collection literal:
+Maps are initialized with the `Map` type and a record literal:
 ```cy
-var map = { a: 123, b: () => 5 }
+var map = Map{ a: 123, b: () => 5 }
 ```
 
-Maps entries can be listed in multiple lines:
+The empty record literal creates an empty map:
 ```cy
-var map = {
-    foo: 1,
-    bar: 2,
-}
-```
-
-### Empty map.
-The empty map is initialized using `{}`:
-```cy
-var empty = {}
+var empty = Map{}
 ```
 
 ### Map indexing.
@@ -802,7 +790,7 @@ print map['a']
 
 ### Map operations.
 ```cy
-var map = {}
+var map = Map{}
 
 -- Set a key value pair.
 map[123] = 234
@@ -1448,7 +1436,7 @@ for list -> n:
 
 Maps can be iterated. `next()` returns a key and value tuple:
 ```cy
-var map = { a: 123, b: 234 }
+var map = Map{ a: 123, b: 234 }
 
 for map -> entry:
     print entry[0]

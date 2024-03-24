@@ -4266,19 +4266,6 @@ export fn zDumpValue(val: Value) void {
     cy.rt.log(fbuf.getWritten());
 }
 
-export fn zAllocMap(vm: *VM, keyIdxes: [*] align(1) u16, vals: [*]Value, numEntries: u32) vmc.ValueResult {
-    const val = cy.heap.allocMap(vm, keyIdxes[0..numEntries], vals[0..numEntries]) catch {
-        return .{
-            .val = undefined,
-            .code = vmc.RES_CODE_UNKNOWN,
-        };
-    };
-    return .{
-        .val = @bitCast(val),
-        .code = vmc.RES_CODE_SUCCESS,
-    };
-}
-
 export fn zGetFieldFallback(vm: *VM, obj: *HeapObject, nameId: vmc.NameId) Value {
     return vm.getFieldFallback(obj, nameId) catch {
         return Value.Interrupt;

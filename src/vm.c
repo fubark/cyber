@@ -637,7 +637,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(AppendList),
         JENTRY(List),
         JENTRY(Map),
-        JENTRY(MapEmpty),
         JENTRY(SliceList),
         JENTRY(JumpNotCond),
         JENTRY(JumpCond),
@@ -987,19 +986,6 @@ beginSwitch:
         NEXT();
     }
     CASE(Map): {
-        u8 startLocal = pc[1];
-        u8 numEntries = pc[2];
-        u16* keyIdxes = (u16*)(pc + 4);
-        Value* vals = stack + startLocal;
-        ValueResult res = zAllocMap(vm, keyIdxes, vals, numEntries);
-        if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
-            RETURN(res.code);
-        }
-        stack[pc[3]] = res.val;
-        pc += 4 + numEntries * 2;
-        NEXT();
-    }
-    CASE(MapEmpty): {
         ValueResult res = allocEmptyMap(vm);
         if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
             RETURN(res.code);

@@ -3736,17 +3736,29 @@ pub const ChunkExt = struct {
         }
 
         try matcher.matchEnd(c, node);
-        return c.semaCallFuncSymResult(loc, sym, matcher.func, matcher.args_loc, matcher.nargs, node);
+
+        return c.semaCallFuncSymResult(loc, &matcher, node);
     }
 
-    pub fn semaCallFuncSymResult(c: *cy.Chunk, loc: u32, sym: *cy.sym.FuncSym, func: *cy.Func, args_loc: u32, nargs: u32, node: cy.NodeId) !ExprResult {
-        try referenceSym(c, @ptrCast(sym), node);
-        c.ir.setExprCode(loc, .preCallFuncSym);
-        c.ir.setExprType2(loc, .{ .id = @intCast(func.retType), .throws = func.throws });
-        c.ir.setExprData(loc, .preCallFuncSym, .{ .callFuncSym = .{
-            .func = func, .numArgs = @as(u8, @intCast(nargs)), .args = args_loc,
-        }});
-        return ExprResult.init(loc, CompactType.init(func.retType));
+    pub fn semaCallFuncSymResult(c: *cy.Chunk, loc: u32, matcher: *FuncMatcher, node: cy.NodeId) !ExprResult {
+        try referenceSym(c, @ptrCast(matcher.sym), node);
+        if (matcher.dyn_call) {
+            // Dynamic call.
+            c.ir.setExprCode(loc, .pre_call_sym_dyn);
+            c.ir.setExprType(loc, bt.Any);
+            c.ir.setExprData(loc, .pre_call_sym_dyn, .{ .call_sym_dyn = .{
+                .sym = matcher.sym, .nargs = @as(u8, @intCast(matcher.nargs)), .args = matcher.args_loc,
+            }});
+            return ExprResult.initDynamic(loc, bt.Any);
+        } else {
+            const func = matcher.func;
+            c.ir.setExprCode(loc, .preCallFuncSym);
+            c.ir.setExprType2(loc, .{ .id = @intCast(func.retType), .throws = func.throws });
+            c.ir.setExprData(loc, .preCallFuncSym, .{ .callFuncSym = .{
+                .func = func, .numArgs = @as(u8, @intCast(matcher.nargs)), .args = matcher.args_loc,
+            }});
+            return ExprResult.init(loc, CompactType.init(func.retType));
+        }
     }
 
     pub fn semaCallFuncSym1(c: *cy.Chunk, loc: u32, sym: *cy.sym.FuncSym, arg1_n: cy.NodeId, arg1: ExprResult,
@@ -3758,7 +3770,7 @@ pub const ChunkExt = struct {
         try matcher.matchArg(c, arg1_n, 0, arg1);
         try matcher.matchEnd(c, node);
 
-        return c.semaCallFuncSymResult(loc, sym, matcher.func, matcher.args_loc, matcher.nargs, node);
+        return c.semaCallFuncSymResult(loc, &matcher, node);
     }
 
     pub fn semaCallFuncSym2(c: *cy.Chunk, loc: u32, sym: *cy.sym.FuncSym, arg1_n: cy.NodeId, arg1: ExprResult,
@@ -3771,7 +3783,7 @@ pub const ChunkExt = struct {
         try matcher.matchArg(c, arg2_n, 1, arg2);
         try matcher.matchEnd(c, node);
 
-        return c.semaCallFuncSymResult(loc, sym, matcher.func, matcher.args_loc, matcher.nargs, node);
+        return c.semaCallFuncSymResult(loc, &matcher, node);
     }
 
     /// Match first overloaded function.
@@ -3792,7 +3804,7 @@ pub const ChunkExt = struct {
 
         try matcher.matchEnd(c, node);
 
-        return c.semaCallFuncSymResult(loc, sym, matcher.func, matcher.args_loc, matcher.nargs, node);
+        return c.semaCallFuncSymResult(loc, &matcher, node);
     }
 
     pub fn semaPushCallArgs(c: *cy.Chunk, argHead: cy.NodeId, numArgs: u8) !u32 {
@@ -5526,6 +5538,9 @@ pub const ObjectBuilder = struct {
     }
 };
 
+/// Currently this matches arguments one at a time. 
+/// If an argument can't be matched, this advances to the next function.
+/// TODO: A simpler way is to visit all the args first. (literals that have an inferred type can be adjusted afterwards).
 const FuncMatcher = struct {
     sym: *cy.sym.FuncSym,
     func: *cy.Func,
@@ -5534,6 +5549,10 @@ const FuncMatcher = struct {
     type_start: usize,
     ret_cstr: ReturnCstr,
     nargs: u32,
+
+    // Computed.
+    has_dyn_arg: bool,
+    dyn_call: bool,
 
     fn init(c: *cy.Chunk, func_sym: *cy.sym.FuncSym, nargs: u32, ret_cstr: ReturnCstr) !FuncMatcher {
         const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
@@ -5548,6 +5567,8 @@ const FuncMatcher = struct {
             .func_params = func_sig.params(),
             .ret_cstr = ret_cstr,
             .nargs = nargs,
+            .has_dyn_arg = false,
+            .dyn_call = false,
         };
     }
 
@@ -5579,6 +5600,9 @@ const FuncMatcher = struct {
             const arg_types = c.typeStack.items[self.type_start..];
             return reportIncompatibleCallSig(c, self.sym, arg_types, self.ret_cstr, node);
         }
+
+        // Becomes a dynamic call if this is an overloaded function with a dynamic arg.
+        self.dyn_call = self.has_dyn_arg and self.sym.numFuncs > 1;
     }
 
     fn matchNextFunc(self: *FuncMatcher, c: *cy.Chunk, arg_types: []const cy.TypeId) bool {
@@ -5622,7 +5646,7 @@ const FuncMatcher = struct {
             }
         }
         var ct_compat = cy.types.isTypeSymCompat(c.compiler, arg_res.type.id, self.func_params[arg_idx]);
-        const rt_compat = arg_res.type.dynamic and arg_res.type.id == bt.Any;
+        const rt_compat = arg_res.type.isDynAny();
         if (!ct_compat and !rt_compat) {
             const arg_types = c.typeStack.items[self.type_start..];
             while (!ct_compat) {
@@ -5631,7 +5655,7 @@ const FuncMatcher = struct {
                     return self.reportIncompatibleArg(c, arg, arg_res);
                 }
 
-                // Chunk next func has an unconsumed param.
+                // Check if next func has an unconsumed param.
                 if (arg_idx >= self.func_params.len) {
                     continue;
                 }
@@ -5640,17 +5664,24 @@ const FuncMatcher = struct {
             }
         }
 
+        self.has_dyn_arg = self.has_dyn_arg or rt_compat;
+
         if (ct_compat) {
             try c.typeStack.append(c.alloc, arg_res.type.id);
             c.ir.setArrayItem(self.args_loc, u32, arg_idx, arg_res.irIdx);
         } else {
-            // Insert type check at runtime.
-            const loc = try c.ir.pushExpr(.type_check, c.alloc, self.func_params[arg_idx], arg, .{
-                .expr = arg_res.irIdx,
-                .exp_type = self.func_params[arg_idx],
-            });
-            try c.typeStack.append(c.alloc, self.func_params[arg_idx]);
-            c.ir.setArrayItem(self.args_loc, u32, arg_idx, loc);
+            if (self.sym.numFuncs > 1) {
+                try c.typeStack.append(c.alloc, arg_res.type.id);
+                c.ir.setArrayItem(self.args_loc, u32, arg_idx, arg_res.irIdx);
+            } else {
+                // Insert rt arg type check if this is not an overloaded function.
+                const loc = try c.ir.pushExpr(.type_check, c.alloc, self.func_params[arg_idx], arg, .{
+                    .expr = arg_res.irIdx,
+                    .exp_type = self.func_params[arg_idx],
+                });
+                try c.typeStack.append(c.alloc, self.func_params[arg_idx]);
+                c.ir.setArrayItem(self.args_loc, u32, arg_idx, loc);
+            }
         }
     }
 };

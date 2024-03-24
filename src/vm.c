@@ -648,6 +648,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CallSym),
         JENTRY(CallFuncIC),
         JENTRY(CallNativeFuncIC),
+        JENTRY(CallSymDyn),
         JENTRY(Ret1),
         JENTRY(Ret0),
         JENTRY(Call),
@@ -1237,6 +1238,18 @@ beginSwitch:
         }
         newStack[0] = res;
         pc += CALL_SYM_INST_LEN;
+        NEXT();
+    }
+    CASE(CallSymDyn): {
+        u8 ret = pc[1];
+        u8 nargs = pc[2];
+        u16 entry = READ_U16(4);
+        PcSpResult res = zCallSymDyn(vm, pc, stack, entry, ret, nargs);
+        if (res.code != RES_CODE_SUCCESS) {
+            RETURN(res.code);
+        }
+        pc = res.pc;
+        stack = res.sp;
         NEXT();
     }
     CASE(Ret1): {

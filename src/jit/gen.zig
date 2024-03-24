@@ -1043,7 +1043,7 @@ fn funcBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
         try assm.genStoreSlot(c, 2, .temp);
     }
 
-    try c.compiler.genSymMap.putNoClobber(c.alloc, func, .{ .funcSym = .{ .id = 0, .pc = @intCast(funcPc) }});
+    try c.compiler.genSymMap.putNoClobber(c.alloc, func, .{ .func = .{ .id = 0, .pc = @intCast(funcPc) }});
 
     try bcgen.pushFuncBlock(c, data, params, nodeId);
 
@@ -1099,7 +1099,7 @@ pub fn gen(self: *cy.Compiler) !void {
                 if (func.type == .hostFunc) {
                     return error.Unexpected;
                 } else {
-                    const targetPc = self.genSymMap.get(func).?.funcSym.pc;
+                    const targetPc = self.genSymMap.get(func).?.func.pc;
                     assm.patchJumpRel(mainChunk, jumpPc, targetPc);
                 }
             }

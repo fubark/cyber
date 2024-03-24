@@ -80,6 +80,30 @@ pub fn genAll(c: *cy.Compiler) !void {
         }
     }
 
+    // After rt funcs are set up, prepare the overloaded func table.
+    for (c.chunks.items) |chunk| {
+        for (chunk.syms.items) |sym| {
+            if (sym.type == .func) {
+                const func_sym = sym.cast(.func);
+                if (func_sym.numFuncs > 1) {
+                    // Add overload entries.
+                    const rt_id = c.vm.overloaded_funcs.len;
+                    try c.vm.overloaded_funcs.append(c.alloc, func_sym.numFuncs);
+                    var cur: ?*cy.Func = func_sym.first;
+                    while (cur != null) {
+                        if (c.genSymMap.get(@ptrCast(cur))) |gen_sym| {
+                            try c.vm.overloaded_funcs.append(c.alloc, gen_sym.func.id);
+                        } else {
+                            return error.MissingFuncSym;
+                        }
+                        cur = cur.?.next;
+                    }
+                    try c.genSymMap.putNoClobber(c.alloc, sym, .{ .funcs = .{ .id = @intCast(rt_id) }});
+                }
+            }
+        }
+    }
+
     // Bind the rest that aren't in sema.
     try @call(.never_inline, cy.bindings.bindCore, .{c.vm});
 
@@ -211,7 +235,7 @@ fn addVmFunc(c: *cy.Compiler, func: *cy.Func, rtFunc: rt.FuncSymbol) !u32 {
         .namePtr = name.ptr, .nameLen = @intCast(name.len), .funcSigId = func.funcSigId,
     });
 
-    try c.genSymMap.putNoClobber(c.alloc, func, .{ .funcSym = .{ .id = @intCast(id), .pc = 0 }});
+    try c.genSymMap.putNoClobber(c.alloc, func, .{ .func = .{ .id = @intCast(id), .pc = 0 }});
     return @intCast(id);
 }
 
@@ -390,6 +414,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .preBinOp           => genBinOp(c, idx, cstr, .{}, nodeId),
         .preCallDyn         => genCallDyn(c, idx, cstr, nodeId),
         .preCallFuncSym     => genCallFuncSym(c, idx, cstr, nodeId),
+        .pre_call_sym_dyn   => genCallSymDyn(c, idx, cstr, nodeId),
         .preCallObjSym      => genCallObjSym(c, idx, cstr, nodeId),
         .preUnOp            => genUnOp(c, idx, cstr, nodeId),
         .range              => genRange(c, idx, cstr, nodeId),
@@ -479,7 +504,7 @@ fn funcBlock(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const stackSize = c.getMaxUsedRegisters();
 
     // Patch empty func sym slot.
-    const rtId = c.compiler.genSymMap.get(func).?.funcSym.id;
+    const rtId = c.compiler.genSymMap.get(func).?.func.id;
     const rtFunc = rt.FuncSymbol.initFunc(funcPc, stackSize, func.numParams, func.funcSigId, func.reqCallTypeCheck);
     c.compiler.vm.funcSyms.buf[rtId] = rtFunc;
 
@@ -577,7 +602,7 @@ fn genCoinitCall(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
     // Gen func call.
     const callRet: u8 = 1;
     if (callCode == .preCallFuncSym) {
-        const rtId = c.compiler.genSymMap.get(data.callFuncSym.func).?.funcSym.id;
+        const rtId = c.compiler.genSymMap.get(data.callFuncSym.func).?.func.id;
         try pushCallSym(c, callRet, numArgs, 1, rtId, callExprId);
     } else if (callCode == .preCallDyn) {
         try pushCall(c, callRet, numArgs, 1, callExprId);
@@ -1220,6 +1245,34 @@ fn genUnOp(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     return finishDstInst(c, inst, false);
 }
 
+fn genCallSymDyn(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+    const data = c.ir.getExprData(idx, .pre_call_sym_dyn).call_sym_dyn;
+
+    const inst = try beginCall(c, cstr, false, nodeId);
+
+    // Receiver.
+    const argStart = c.rega.nextTemp;
+
+    const args = c.ir.getArray(data.args, u32, data.nargs);
+    for (args, 0..) |argIdx, i| {
+        const temp = try c.rega.consumeNextTemp();
+        if (cy.Trace and temp != argStart + i) return error.Unexpected;
+        const val = try genAndPushExpr(c, argIdx, Cstr.toTemp(temp));
+        try pushUnwindValue(c, val);
+    }
+
+    const rt_id = c.compiler.genSymMap.get(data.sym).?.funcs.id;
+    try pushCallSymDyn(c, inst.ret, data.nargs, 1, rt_id, nodeId);
+
+    const argvs = popValues(c, data.nargs);
+    try checkArgs(argStart, argvs);
+
+    const retained = try popTempAndUnwinds2(c, argvs);
+    try pushReleaseVals(c, retained, nodeId);
+
+    return endCall(c, inst, true);
+}
+
 fn genCallObjSym(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const data = c.ir.getExprData(idx, .preCallObjSym).callObjSym;
 
@@ -1594,7 +1647,7 @@ fn genFuncSym(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const pc = c.buf.len();
     try c.pushOptionalDebugSym(nodeId);
     try c.buf.pushOp3(.staticFunc, 0, 0, inst.dst);
-    const rtId = c.compiler.genSymMap.get(data.func).?.funcSym.id;
+    const rtId = c.compiler.genSymMap.get(data.func).?.func.id;
     c.buf.setOpArgU16(pc + 1, @intCast(rtId));
 
     return finishDstInst(c, inst, true);
@@ -3128,13 +3181,16 @@ pub const Sym = union {
     varSym: struct {
         id: u32,
     },
-    funcSym: struct {
+    funcs: struct {
+        id: u32,
+    },
+    func: struct {
         id: u32,
 
         // Used by jit.
         pc: u32,
     },
-    hostFuncSym: struct {
+    hostFunc: struct {
         id: u32,
         ptr: vmc.HostFuncFn,
     },
@@ -3725,6 +3781,12 @@ fn pushTypeCheck(c: *cy.Chunk, local: RegisterId, typeId: cy.TypeId, nodeId: cy.
 fn pushCallSym(c: *cy.Chunk, startLocal: u8, numArgs: u32, numRet: u8, symId: u32, nodeId: cy.NodeId) !void {
     const start = c.buf.ops.items.len;
     try c.pushFCode(.callSym, &.{ startLocal, @as(u8, @intCast(numArgs)), numRet, 0, 0, 0, 0, 0, 0, 0, 0 }, nodeId);
+    c.buf.setOpArgU16(start + 4, @intCast(symId));
+}
+
+fn pushCallSymDyn(c: *cy.Chunk, startLocal: u8, numArgs: u32, numRet: u8, symId: u32, nodeId: cy.NodeId) !void {
+    const start = c.buf.ops.items.len;
+    try c.pushFCode(.call_sym_dyn, &.{ startLocal, @as(u8, @intCast(numArgs)), numRet, 0, 0, 0, 0, 0, 0, 0, 0 }, nodeId);
     c.buf.setOpArgU16(start + 4, @intCast(symId));
 }
 

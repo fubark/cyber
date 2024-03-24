@@ -1,5 +1,6 @@
 import t 'test'
 
+-- Overload by number of params.
 func foo():
     return 2 + 2
 

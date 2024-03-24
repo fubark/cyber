@@ -79,6 +79,9 @@ pub const VM = struct {
     funcSyms: cy.List(rt.FuncSymbol),
     funcSymDetails: cy.List(rt.FuncSymDetail),
 
+    /// Contiguous func ids. The first element in a segment contains the num of overloaded funcs for the func sym.
+    overloaded_funcs: cy.List(u32),
+
     /// Static vars. 
     varSyms: cy.List(rt.VarSym),
 
@@ -199,6 +202,7 @@ pub const VM = struct {
             .typeMethodGroupKeys = .{},
             .funcSyms = .{},
             .funcSymDetails = .{},
+            .overloaded_funcs = .{},
             .varSyms = .{},
             .fieldSyms = .{},
             .fieldTable = .{},
@@ -358,11 +362,11 @@ pub const VM = struct {
         if (reset) {
             self.funcSyms.clearRetainingCapacity();
             self.funcSymDetails.clearRetainingCapacity();
-            self.funcSymDeps.clearRetainingCapacity();
+            self.overloaded_funcs.clearRetainingCapacity();
         } else {
             self.funcSyms.deinit(self.alloc);
             self.funcSymDetails.deinit(self.alloc);
-            self.funcSymDeps.deinit(self.alloc);
+            self.overloaded_funcs.deinit(self.alloc);
         }
 
         if (reset) {
@@ -1034,22 +1038,6 @@ pub const VM = struct {
         }
     }
 
-    fn panicFmt(self: *VM, format: []const u8, args: []const fmt.FmtValue) error{Panic} {
-        @setCold(true);
-        const msg = fmt.allocFormat(self.alloc, format, args) catch |err| {
-            if (err == error.OutOfMemory) {
-                self.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
-                return error.Panic;
-            } else {
-                cy.panic("unexpected");
-            }
-        };
-        self.curFiber.panicPayload = @as(u64, @intFromPtr(msg.ptr)) | (@as(u64, msg.len) << 48);
-        self.curFiber.panicType = vmc.PANIC_MSG;
-        logger.tracev("{s}", .{msg});
-        return error.Panic;
-    }
-
     pub fn interruptThrowSymbol(self: *VM, sym: bindings.Symbol) error{Panic} {
         self.curFiber.panicPayload = Value.initErrorSymbol(@intFromEnum(sym)).val;
         self.curFiber.panicType = vmc.PANIC_NATIVE_THROW;
@@ -1063,12 +1051,28 @@ pub const VM = struct {
         return error.Panic;
     }
 
-    fn panic(self: *VM, comptime msg: []const u8) error{Panic, OutOfMemory} {
+    fn panic(self: *VM, msg: []const u8) error{Panic, OutOfMemory} {
         @setCold(true);
         const dupe = try self.alloc.dupe(u8, msg);
         self.curFiber.panicPayload = @as(u64, @intFromPtr(dupe.ptr)) | (@as(u64, dupe.len) << 48);
         self.curFiber.panicType = vmc.PANIC_MSG;
         logger.tracev("{s}", .{dupe});
+        return error.Panic;
+    }
+
+    fn panicFmt(self: *VM, format: []const u8, args: []const fmt.FmtValue) error{Panic} {
+        @setCold(true);
+        const msg = fmt.allocFormat(self.alloc, format, args) catch |err| {
+            if (err == error.OutOfMemory) {
+                self.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
+                return error.Panic;
+            } else {
+                cy.panic("unexpected");
+            }
+        };
+        self.curFiber.panicPayload = @as(u64, @intFromPtr(msg.ptr)) | (@as(u64, msg.len) << 48);
+        self.curFiber.panicType = vmc.PANIC_MSG;
+        logger.tracev("{s}", .{msg});
         return error.Panic;
     }
 
@@ -1186,6 +1190,79 @@ pub const VM = struct {
         } else {
             return self.prepPanic("Missing field in object.");
         }
+    }
+
+    /// Assumes overloaded function. Finds first matching function at runtime.
+    fn callSymDyn(
+        self: *VM, pc: [*]cy.Inst, fp: [*]Value, entry: u32, ret: u8, nargs: u8,
+    ) !cy.fiber.PcSp {
+        const num_funcs = self.overloaded_funcs.buf[entry];
+        const funcs = self.overloaded_funcs.buf[entry+1..entry+1+num_funcs];
+        const vals = fp[ret+CallArgStart..ret+CallArgStart+nargs];
+        for (funcs) |func_id| {
+            const func = self.funcSyms.buf[func_id];
+
+            const sig_id = switch (@as(rt.FuncSymbolType, @enumFromInt(func.entryT))) {
+                .hostFunc => func.innerExtra.hostFunc.funcSigId,
+                .func => func.innerExtra.func.funcSigId,
+                else => {
+                    return self.panic("Missing func");
+                },
+            };
+
+            // Perform type check on args.
+            const target = self.compiler.sema.getFuncSig(sig_id);
+            const target_params = target.params();
+            var compat = true;
+            for (vals, target_params) |val, target_t| {
+                const valTypeId = val.getTypeId();
+                if (!types.isTypeSymCompat(self.compiler, valTypeId, target_t)) {
+                    compat = false;
+                    break;
+                }
+            }
+            if (!compat) {
+                continue;
+            }
+
+            // Match, invoke function.
+            // TODO: Extract common code between this and `callSym`
+            switch (@as(rt.FuncSymbolType, @enumFromInt(func.entryT))) {
+                .hostFunc => {
+                    const newFramePtr = fp + ret;
+
+                    self.pc = pc;
+                    self.framePtr = fp;
+                    const res: Value = @bitCast(func.inner.hostFunc.?(@ptrCast(self), @ptrCast(newFramePtr + CallArgStart), nargs));
+                    if (res.isInterrupt()) {
+                        return error.Panic;
+                    }
+                    newFramePtr[0] = @bitCast(res);
+                    return cy.fiber.PcSp{
+                        .pc = pc + cy.bytecode.CallSymInstLen,
+                        .sp = fp,
+                    };
+                },
+                .func => {
+                    if (@intFromPtr(fp + ret + func.inner.func.stackSize) >= @intFromPtr(self.stackEndPtr)) {
+                        return error.StackOverflow;
+                    }
+
+                    const newFramePtr = fp + ret;
+                    newFramePtr[1] = buildReturnInfo(true, cy.bytecode.CallSymInstLen);
+                    newFramePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
+                    newFramePtr[3] = Value{ .retFramePtr = fp };
+                    return cy.fiber.PcSp{
+                        .pc = cy.fiber.toVmPc(self, func.inner.func.pc),
+                        .sp = newFramePtr,
+                    };
+                },
+                else => {
+                    return self.panic("Missing func");
+                },
+            }
+        }
+        return panicIncompatibleCallSymSig(self, entry, vals, ret);
     }
 
     /// startLocal points to the first arg in the current stack frame.
@@ -1640,6 +1717,7 @@ test "vm internals." {
     try t.eq(@offsetOf(VM, "typeMethodGroupKeys"), @offsetOf(vmc.VM, "typeMethodGroupKeys"));
     try t.eq(@offsetOf(VM, "funcSyms"), @offsetOf(vmc.VM, "funcSyms"));
     try t.eq(@offsetOf(VM, "funcSymDetails"), @offsetOf(vmc.VM, "funcSymDetails"));
+    try t.eq(@offsetOf(VM, "overloaded_funcs"), @offsetOf(vmc.VM, "overloaded_funcs"));
     try t.eq(@offsetOf(VM, "varSyms"), @offsetOf(vmc.VM, "varSyms"));
     try t.eq(@offsetOf(VM, "fieldSyms"), @offsetOf(vmc.VM, "fieldSyms"));
     try t.eq(@offsetOf(VM, "fieldTable"), @offsetOf(vmc.VM, "fieldTable"));
@@ -3480,38 +3558,6 @@ fn panicIncompatibleFieldType(vm: *cy.VM, fieldSemaTypeId: types.TypeId, rightv:
     );
 }
 
-fn panicIncompatibleFuncSig(vm: *cy.VM, funcId: rt.FuncId, args: []const Value, targetFuncSigId: sema.FuncSigId) error{Panic} {
-    const typeIds = allocValueTypeIds(vm, args) catch {
-        vm.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
-        return error.Panic;
-    };
-    defer vm.alloc.free(typeIds);
-
-    const details = vm.funcSymDetails.buf[funcId];
-    const name = details.namePtr[0..details.nameLen];
-
-    const sigStr = vm.compiler.sema.allocFuncSigTypesStr(typeIds, bt.Any) catch {
-        vm.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
-        return error.Panic;
-    };
-    const existingSigStr = vm.compiler.sema.allocFuncSigStr(targetFuncSigId, true) catch {
-        vm.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
-        return error.Panic;
-    };
-    defer {
-        vm.alloc.free(sigStr);
-        vm.alloc.free(existingSigStr);
-    }
-    return vm.panicFmt(
-        \\Can not find compatible function for `{}{}`.
-        \\Only `func {}{}` exists.
-        , &.{
-            v(name), v(sigStr),
-            v(name), v(existingSigStr),
-        },
-    );
-}
-
 pub fn getMruFuncSigId(vm: *cy.VM, mgExt: rt.MethodGroupExt) sema.FuncSigId {
     if (mgExt.mruTypeMethodGroupId == cy.NullId) {
         return mgExt.initialFuncSigId;
@@ -3535,6 +3581,51 @@ fn panicIncompatibleLambdaSig(vm: *cy.VM, args: []const Value, cstrFuncSigId: se
             v(argsSigStr), v(cstrFuncSigStr),
         },
     );
+}
+
+/// Runtime version of `sema.reportIncompatibleCallSig`.
+/// TODO: Consider using this for callObjSym too. The only problem is callObjSym does not use `overloaded_funcs`.
+fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Value, num_ret: u8) error{Panic, OutOfMemory} {
+    const num_funcs = vm.overloaded_funcs.buf[overload_entry];
+    const funcs = vm.overloaded_funcs.buf[overload_entry+1..overload_entry+1+num_funcs];
+
+    // Use first func to determine name.
+    const first_func = funcs[0];
+    const first_func_details = vm.funcSymDetails.buf[first_func];
+    const name = first_func_details.namePtr[0..first_func_details.nameLen];
+
+        // vm.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
+        // return error.Panic;
+
+    const arg_types = try allocValueTypeIds(vm, args);
+    defer vm.alloc.free(arg_types);
+
+    const call_args_str = try vm.compiler.sema.allocTypesStr(arg_types);
+    defer vm.alloc.free(call_args_str);
+
+    var msg: std.ArrayListUnmanaged(u8) = .{}; 
+    defer msg.deinit(vm.alloc);
+    const w = msg.writer(vm.alloc);
+    try w.print("Can not find compatible function for call: `{s}{s}`.", .{name, call_args_str});
+    if (num_ret == 1) {
+        try w.writeAll(" Expects non-void return.");
+    }
+    try w.writeAll("\n");
+    try w.print("Functions named `{s}`:\n", .{name});
+
+    var funcStr = vm.compiler.sema.formatFuncSig(first_func_details.funcSigId, &cy.tempBuf) catch {
+        return error.OutOfMemory;
+    };
+    try w.print("    func {s}{s}", .{name, funcStr});
+    for (funcs[1..]) |func| {
+        try w.writeByte('\n');
+        const func_details = vm.funcSymDetails.buf[func];
+        funcStr = vm.sema.formatFuncSig(func_details.funcSigId, &cy.tempBuf) catch {
+            return error.OutOfMemory;
+        };
+        try w.print("    func {s}{s}", .{name, funcStr});
+    }
+    return vm.panic(msg.items);
 }
 
 /// TODO: Once methods are recorded in the object/builtin type's module, this should look there instead of the rt table.
@@ -4030,6 +4121,35 @@ export fn zOpCodeName(code: vmc.OpCode) [*:0]const u8 {
 
 export fn zCallSym(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8, numArgs: u8) callconv(.C) vmc.PcSpResult {
     const res = @call(.always_inline, VM.callSym, .{vm, pc, framePtr, @as(u32, @intCast(symId)), ret, numArgs}) catch |err| {
+        if (err == error.Panic) {
+            return .{
+                .pc = undefined,
+                .sp = undefined,
+                .code = vmc.RES_CODE_PANIC,
+            };
+        } else if (err == error.StackOverflow) {
+            return .{
+                .pc = undefined,
+                .sp = undefined,
+                .code = vmc.RES_CODE_STACK_OVERFLOW,
+            };
+        } else {
+            return .{
+                .pc = undefined,
+                .sp = undefined,
+                .code = vmc.RES_CODE_UNKNOWN,
+            };
+        }
+    };
+    return .{
+        .pc = @ptrCast(res.pc),
+        .sp = @ptrCast(res.sp),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
+export fn zCallSymDyn(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8, numArgs: u8) callconv(.C) vmc.PcSpResult {
+    const res = @call(.always_inline, VM.callSymDyn, .{vm, pc, framePtr, @as(u32, @intCast(symId)), ret, numArgs}) catch |err| {
         if (err == error.Panic) {
             return .{
                 .pc = undefined,

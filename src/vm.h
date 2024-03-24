@@ -256,6 +256,7 @@ typedef enum {
     CodeCallSym,
     CodeCallFuncIC,
     CodeCallNativeFuncIC,
+    CodeCallSymDyn,
     CodeRet1,
     CodeRet0,
     CodeCall,
@@ -886,6 +887,7 @@ typedef struct VM {
 
     ZCyList funcSyms; // FuncSymbol
     ZCyList funcSymDetails;
+    ZCyList overloaded_funcs;
 
     ZCyList varSyms; // StaticVar
 
@@ -1041,6 +1043,7 @@ void zFatal();
 BufferResult zAlloc(ZAllocator alloc, size_t n);
 char* zOpCodeName(OpCode code);
 PcSpResult zCallSym(VM* vm, Inst* pc, Value* stack, u16 symId, u8 startLocal, u8 numArgs);
+PcSpResult zCallSymDyn(VM* vm, Inst* pc, Value* stack, u16 symId, u8 startLocal, u8 numArgs);
 void zDumpEvalOp(VM* vm, Inst* pc);
 void zDumpValue(Value val);
 void zFreeObject(VM* vm, HeapObject* obj);

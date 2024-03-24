@@ -1022,6 +1022,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             return 11 + numCaptured;
         },
         .callSym,
+        .call_sym_dyn,
         .callNativeFuncIC,
         .callFuncIC => {
             return CallSymInstLen;
@@ -1121,6 +1122,7 @@ pub const OpCode = enum(u8) {
     callObjNativeFuncIC = vmc.CodeCallObjNativeFuncIC,
     callObjFuncIC = vmc.CodeCallObjFuncIC,
     callSym = vmc.CodeCallSym,
+    call_sym_dyn = vmc.CodeCallSymDyn,
     callFuncIC = vmc.CodeCallFuncIC,
     callNativeFuncIC = vmc.CodeCallNativeFuncIC,
     ret1 = vmc.CodeRet1,

@@ -112,6 +112,7 @@ if (!aot) {
     run.case("functions/call_object_param_error.cy");
 if (!aot) {
     run.case("functions/call_op.cy");
+    run.case("functions/call_overloaded_dyn_arg_panic.cy");
     run.case("functions/call_param_panic.cy");
 }
     run.case("functions/call_pointer_param_error.cy");

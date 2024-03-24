@@ -985,7 +985,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 135-f3bda25</div>
+    <div class="sub-title">v0.4-dev 157-5826946</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -1162,7 +1162,7 @@ func foo():
 </code></pre>
 <p>The <code>.</code> prefix is used to reference the current module's namespace.</p>
 <p>Unlike local variables, namespace variables do not currently infer the type from the right hand side so a specific type must be specified or it will default to the <code>any</code> type:</p>
-<pre><code class="language-cy">var .my_map Map = [:]
+<pre><code class="language-cy">var .my_map Map = Map{}
 </code></pre>
 <p>Since namespace variables are initialized outside of a fiber's execution flow, they can not reference any local variables:</p>
 <pre><code class="language-cy">var .b = a   --> Compile error, initializer can not reference a local variable.
@@ -1210,13 +1210,14 @@ For this use case, you can use a declaration block. <em>Planned Feature</em></p>
 <ul>
 <li><a href="#control-flow" title="">Control Flow</a>: <code>if</code> <code>else</code> <code>switch</code> <code>case</code> <code>while</code> <code>for</code> <code>break</code> <code>continue</code> <code>pass</code></li>
 <li><a href="#operators" title="">Operators</a>: <code>or</code> <code>and</code> <code>not</code></li>
-<li><a href="#variables" title="">Variables</a>: <code>var</code> <code>my</code></li>
+<li><a href="#variables" title="">Variables</a>: <code>var</code></li>
 <li><a href="#functions" title="">Functions</a>: <code>func</code> <code>return</code></li>
 <li><a href="#fibers" title="">Coroutines</a>: <code>coinit</code> <code>coyield</code> <code>coresume</code></li>
 <li><a href="#custom-types" title="">Types</a>: <code>type</code>  <code>as</code></li>
 <li><a href="#metaprogramming" title="">Metaprogramming</a>: <code>template</code></li>
 <li><a href="#error-handling" title="">Error Handling</a>: <code>try</code> <code>catch</code> <code>throw</code></li>
 <li><a href="#modules" title="">Modules</a>: <code>import</code></li>
+<li><a href="#dynamic-typing" title="">Dynamic Typing</a>: <code>let</code></li>
 </ul>
 <a href="#syntax">^topic</a>
 <h3 id="contextual-keywords">Contextual keywords. <a href="#contextual-keywords">#</a></h3>
@@ -1257,11 +1258,11 @@ By default, a comparison operator evaluates to a <a href="#booleans" title="">Bo
 1 == 2      -- Evaluates to `false`
 1 == true   -- Evaluates to `false`
 
-my a = 'abc'
+var a = 'abc'
 a == 'abc'  -- Evaluates to `true`
 
 a = []
-my b = a
+var b = a
 a == b      -- Evaluates to `true`
 a == []     -- Evaluates to `false`
 </code></pre>
@@ -1324,7 +1325,7 @@ a << b
 <h2 id="zero-values">Zero values. <a href="#zero-values">#</a></h2>
 <p>Uninitialized type fields currently default to their zero values. However, this implicit behavior will be removed in the future in favor of a default value clause. Zero values must then be expressed using the reserved <code>zero</code> literal.</p>
 <p>The following shows the zero values of builtin or created types:</p>
-<table><thead><tr><th>Type</th><th>Zero value</th></tr></thead><tbody><tr><td><code>boolean</code></td><td><code>false</code></td></tr><tr><td><code>int</code></td><td><code>0</code></td></tr><tr><td><code>float</code></td><td><code>0.0</code></td></tr><tr><td><code>String</code></td><td><code>''</code></td></tr><tr><td><code>Array</code></td><td><code>Array('')</code></td></tr><tr><td><code>List</code></td><td><code>[]</code></td></tr><tr><td><code>Map</code></td><td><code>[:]</code></td></tr><tr><td><code>type S</code></td><td><code>[S:]</code></td></tr><tr><td><code>#host type S</code></td><td><code>S.$zero()</code></td></tr><tr><td><code>dynamic</code></td><td><code>int(0)</code></td></tr><tr><td><code>any</code></td><td><code>int(0)</code></td></tr><tr><td><code>?S</code></td><td><code>Option(S).none</code></td></tr></tbody></table><a href="#syntax">^topic</a>
+<table><thead><tr><th>Type</th><th>Zero value</th></tr></thead><tbody><tr><td><code>boolean</code></td><td><code>false</code></td></tr><tr><td><code>int</code></td><td><code>0</code></td></tr><tr><td><code>float</code></td><td><code>0.0</code></td></tr><tr><td><code>String</code></td><td><code>''</code></td></tr><tr><td><code>Array</code></td><td><code>Array('')</code></td></tr><tr><td><code>List</code></td><td><code>[]</code></td></tr><tr><td><code>Map</code></td><td><code>Map{}</code></td></tr><tr><td><code>type S</code></td><td><code>S{}</code></td></tr><tr><td><code>#host type S</code></td><td><code>S.$zero()</code></td></tr><tr><td><code>dynamic</code></td><td><code>int(0)</code></td></tr><tr><td><code>any</code></td><td><code>int(0)</code></td></tr><tr><td><code>?S</code></td><td><code>Option(S).none</code></td></tr></tbody></table><a href="#syntax">^topic</a>
 <h2 id="type-casting">Type casting. <a href="#type-casting">#</a></h2>
 <p>The <code>as</code> keyword can be used to cast a value to a specific type. Casting lets the compiler know what the expected type is and does not perform any conversions.</p>
 <p>If the compiler knows the cast will always fail at runtime, a compile error is returned instead.</p>
@@ -1349,7 +1350,7 @@ var a = 123   -- This is a comment on the same line as a statement.
 <a href="#syntax">^topic</a>
 <h2 id="cyon">CYON. <a href="#cyon">#</a></h2>
 <p>CYON or the Cyber object notation is similar to JSON. The format uses the same literal value semantics as Cyber.</p>
-<pre><code class="language-cy">[
+<pre><code class="language-cy">{
     name: 'John Doe',
     'age': 25,
     -- This is a comment
@@ -1358,7 +1359,7 @@ var a = 123   -- This is a comment on the same line as a statement.
         'San Francisco',
         'Tokyo',
     ],
-]
+}
 </code></pre>
 <a href="#syntax">^topic</a>
 <h1 id="basic-types">Basic Types. <a href="#basic-types">#</a></h1>
@@ -1391,19 +1392,20 @@ var a = 123   -- This is a comment on the same line as a statement.
 <li><a href="#arrays" title="">Arrays.</a></li>
 <li><a href="#lists" title="">Lists.</a></li>
 <li><a href="#tuples" title="">Tuples.</a></li>
+<li><a href="#tables" title="">Tables.</a><ul>
+<li><a href="#table-indexing" title="">Table indexing.</a></li>
+<li><a href="#check-field-existence" title="">Check field existence.</a></li>
+<li><a href="#prototypes" title="">Prototypes.</a></li>
+</ul>
+</li>
 <li><a href="#maps" title="">Maps.</a><ul>
-<li><a href="#create-map" title="">Create map.</a></li>
-<li><a href="#empty-map" title="">Empty map.</a></li>
 <li><a href="#map-indexing" title="">Map indexing.</a></li>
 <li><a href="#map-operations" title="">Map operations.</a></li>
 <li><a href="#map-block" title="">Map block.</a></li>
 </ul>
 </li>
 <li><a href="#symbols" title="">Symbols.</a></li>
-<li><a href="#any" title=""><code>any</code>.</a><ul>
-<li><a href="#invoking-any-values" title="">Invoking any values.</a></li>
-</ul>
-</li>
+<li><a href="#any" title=""><code>any</code>.</a></li>
 <li><a href="#dynamic" title=""><code>dynamic</code>.</a></li>
 </ul>
 </td>
@@ -1601,7 +1603,7 @@ list[2+..2]   -- [ 3, 4 ]
 <pre><code class="language-cy">var list = [234]
 
 -- Append a value.
-list.append 123
+list.append(123)
 
 -- Inserting a value at an index.
 list.insert(1, 345)
@@ -1623,35 +1625,55 @@ list.remove(1)
 <h2 id="tuples">Tuples. <a href="#tuples">#</a></h2>
 <blockquote><p><em>Incomplete: Tuples can only be created from #host funcs at the moment.</em></p>
 </blockquote><a href="#basic-types">^topic</a>
+<h2 id="tables">Tables. <a href="#tables">#</a></h2>
+<p>A <code>Table</code> is a versatile object that can have an arbitrary set of fields.</p>
+<p>By default, the record literal initializes a <code>Table</code>:</p>
+<pre><code class="language-cy">var o = {}
+
+o = {a: 123}
+print o.a          --> 123
+</code></pre>
+<p>A <code>Table</code> can be initialized explicitly using its type name:</p>
+<pre><code class="language-cy">var o = Table{a: 123}
+</code></pre>
+<p>Any field can be assigned a value.
+However, accessing a field before it's initialized results in a panic:</p>
+<pre><code class="language-cy">o.my_field = 234
+print o.my_field   --> 234
+
+print o.foo        --> panic. The field `foo` was not initialized.
+</code></pre>
+<a href="#basic-types">^topic</a>
+<h3 id="table-indexing">Table indexing. <a href="#table-indexing">#</a></h3>
+<p>Indexing can be used to access a field with a dynamic name. The key must be a <code>String</code>:</p>
+<pre><code class="language-cy">var o = { name: 'Nova' }
+var field = 'name'
+print o[field]     --> Nova
+</code></pre>
+<p>If the object is intended to be used like a hash map with varying key types, consider using <code>Map</code> instead.</p>
+<a href="#basic-types">^topic</a>
+<h3 id="check-field-existence">Check field existence. <a href="#check-field-existence">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#basic-types">^topic</a>
+<h3 id="prototypes">Prototypes. <a href="#prototypes">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#basic-types">^topic</a>
 <h2 id="maps">Maps. <a href="#maps">#</a></h2>
 <p>Maps are a builtin type that store key value pairs in dictionaries. See <a href="#type-map" title=""><code>type Map</code></a>.</p>
-<a href="#basic-types">^topic</a>
-<h3 id="create-map">Create map. <a href="#create-map">#</a></h3>
-<p>Create a map using key value pairs inside a collection literal:</p>
-<pre><code class="language-cy">var map = [ a: 123, b: () => 5 ]
+<p>Maps are initialized with the <code>Map</code> type and a record literal:</p>
+<pre><code class="language-cy">var map = Map{ a: 123, b: () => 5 }
 </code></pre>
-<p>Maps entries can be listed in multiple lines:</p>
-<pre><code class="language-cy">var map = [
-    foo: 1,
-    bar: 2,
-]
-</code></pre>
-<a href="#basic-types">^topic</a>
-<h3 id="empty-map">Empty map. <a href="#empty-map">#</a></h3>
-<p>The empty map is initialized using <code>[:]</code>:</p>
-<pre><code class="language-cy">var empty = [:]
+<p>The empty record literal creates an empty map:</p>
+<pre><code class="language-cy">var empty = Map{}
 </code></pre>
 <a href="#basic-types">^topic</a>
 <h3 id="map-indexing">Map indexing. <a href="#map-indexing">#</a></h3>
 <p>Get a value from the map using the index operator:</p>
 <pre><code class="language-cy">print map['a']
 </code></pre>
-<p>Maps can be accessed with the <code>.</code> dot operator as well:</p>
-<pre><code class="language-cy">print map.a
-</code></pre>
 <a href="#basic-types">^topic</a>
 <h3 id="map-operations">Map operations. <a href="#map-operations">#</a></h3>
-<pre><code class="language-cy">var map = [:]
+<pre><code class="language-cy">var map = Map{}
 
 -- Set a key value pair.
 map[123] = 234
@@ -1660,7 +1682,7 @@ map[123] = 234
 print map.size()
 
 -- Remove an entry by key.
-map.remove 123
+map.remove(123)
 
 -- Iterating a map.
 for map -> [val, key]:
@@ -1671,8 +1693,8 @@ for map -> [val, key]:
 <p>Entries can also follow a collection literal block.
 This gives structure to the entries and has
 the added benefit of allowing multi-line lambdas.
-<em>Planned Feature</em></p>
-<pre><code class="language-cy">var colors = []:
+<em>Most likely this will not be implemented in favor of a builder syntax</em></p>
+<pre><code class="language-cy">var colors = {}:
     red: 0xFF0000
     green: 0x00FF00
     blue: 0x0000FF
@@ -1682,7 +1704,7 @@ the added benefit of allowing multi-line lambdas.
         print c.blue
 
     -- Nested map.
-    darker []: 
+    darker {}: 
         red: 0xAA0000
         green: 0x00AA00
         blue: 0x0000AA
@@ -1696,7 +1718,8 @@ print int(currency)       -- '123' or some arbitrary id.
 </code></pre>
 <a href="#basic-types">^topic</a>
 <h2 id="any"><code>any</code>. <a href="#any">#</a></h2>
-<p>A variable with the <code>any</code> type can hold any value, but copying it to narrowed type destination will result in a compile error:</p>
+<p>Unlike <code>dynamic</code>, <code>any</code> is statically typed and performs type checks at compile-time.
+<code>any</code> type can hold any value, but copying it to narrowed type destination will result in a compile error:</p>
 <pre><code class="language-cy">func square(i int):
     return i * i
 
@@ -1710,21 +1733,8 @@ print square(a)           --> CompileError. Expected `int`, got `any`.
 <pre><code class="language-cy">print square(a as int)    --> 100
 </code></pre>
 <a href="#basic-types">^topic</a>
-<h3 id="invoking-any-values">Invoking <code>any</code> values. <a href="#invoking-any-values">#</a></h3>
-<p>Since <code>any</code> is a static type, invoking an <code>any</code> value must be explicitly casted to the appropriate function type.</p>
-<blockquote><p><em>Planned Feature: Casting to a function type is not currently supported.</em></p>
-</blockquote><pre><code class="language-cy">func add(a int, b int) int:
-    return a + b
-
-var op any = add
-print op(1, 2)         -- CompileError. Expected `func (int, int) any`
-
-var opFunc = op as (func (int, int) int)
-print opFunc(1, 2)     -- Prints "3".
-</code></pre>
-<a href="#basic-types">^topic</a>
 <h2 id="dynamic"><code>dynamic</code>. <a href="#dynamic">#</a></h2>
-<p>The dynamic type defers type checking to runtime. See <a href="#dynamic-typing" title="">Dynamic Typing</a>.</p>
+<p>The dynamic type defers type checking to runtime. However, it also tracks its own <strong>recent type</strong> in order to surface errors at compile-time. See <a href="#dynamic-typing" title="">Dynamic Typing</a>.</p>
 <a href="#basic-types">^topic</a>
 <h1 id="custom-types">Custom Types. <a href="#custom-types">#</a></h1>
 <table><tr>
@@ -1768,7 +1778,7 @@ print opFunc(1, 2)     -- Prints "3".
 </ul>
 </li>
 <li><a href="#type-aliases" title="">Type aliases.</a></li>
-<li><a href="#type-copies" title="">Type copies.</a></li>
+<li><a href="#distinct-types" title="">Distinct types.</a></li>
 <li><a href="#traits" title="">Traits.</a></li>
 <li><a href="#union-types" title="">Union types.</a></li>
 <li><a href="#generic-types" title="">Generic types.</a><ul>
@@ -1798,17 +1808,17 @@ type A:
 <a href="#custom-types">^topic</a>
 <h3 id="instantiate">Instantiate. <a href="#instantiate">#</a></h3>
 <p>New object instances are created using a record literal with a leading type name:</p>
-<pre><code class="language-cy">var node = [Node value: 123, next: none]
+<pre><code class="language-cy">var node = Node{value: 123, next: none}
 print node.value       -- Prints "123"
 </code></pre>
 <p>A record literal can also initialize to the inferred object type:</p>
-<pre><code class="language-cy">var node Node = [value: 234, next: none]
+<pre><code class="language-cy">var node Node = {value: 234, next: none}
 print node.value       -- Prints "234"
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="default-field-values">Default field values. <a href="#default-field-values">#</a></h3>
 <p>When a field is omitted in the record literal, it gets initialized to its <a href="#zero-values" title="">zero value</a>:</p>
-<pre><code class="language-cy">var node Node = [value: 234]
+<pre><code class="language-cy">var node Node = {value: 234}
 print node.next       -- Prints "Option.none"
 
 type Student:
@@ -1816,7 +1826,7 @@ type Student:
     age  int
     gpa  float
 
-var s = [Student:]
+var s = Student{}
 print s.name       -- Prints ""
 print s.age        -- Prints "0"
 print s.gpa        -- Prints "0.0"
@@ -1824,12 +1834,11 @@ print s.gpa        -- Prints "0.0"
 <a href="#custom-types">^topic</a>
 <h3 id="circular-references">Circular references. <a href="#circular-references">#</a></h3>
 <p>Circular type references are allowed if the object can be initialized:</p>
-<blockquote><p><em>Planned Feature: Optional types are not currently supported.</em></p>
-</blockquote><pre><code class="language-cy">type Node:
+<pre><code class="language-cy">type Node:
     val  any
     next ?Node
 
-var n = [Node:]    -- Initializes.
+var n = Node{}    -- Initializes.
 </code></pre>
 <p>In this example, <code>next</code> has an optional <code>?Node</code> type so it can be initialized to <code>none</code> when creating a new <code>Node</code> object.</p>
 <p>The following example will fail because this version of <code>Node</code> can not be initialized:</p>
@@ -1837,7 +1846,7 @@ var n = [Node:]    -- Initializes.
     val  any
     next Node
 
-var n = [Node:]    -- CompileError. Can not zero initialize `next`
+var n = Node{}    -- CompileError. Can not zero initialize `next`
                    -- because of circular dependency.
 </code></pre>
 <a href="#custom-types">^topic</a>
@@ -1849,10 +1858,10 @@ var n = [Node:]    -- CompileError. Can not zero initialize `next`
         b  float
     next  ?Node
 
-var node = [Node
-    value: [a: 123, b: 100.0],
+var node = Node{
+    value: {a: 123, b: 100.0},
     next: none,
-]
+}
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="methods">Methods. <a href="#methods">#</a></h3>
@@ -1868,7 +1877,7 @@ var node = [Node
         self.inc(321)
         print value
 
-var n = [Node value: 123, next: none]
+var n = Node{value: 123, next: none}
 n.incAndPrint()         -- Prints "444"
 </code></pre>
 <p>Methods can be declared outside of the type declaration. When using the flat declaration style, <code>self</code> must be the first parameter to distinguish it from a type function:</p>
@@ -1895,7 +1904,7 @@ n.incAndPrint()         -- Prints "444"
 
 -- Declare namespace function inside `Node`.
 func Node.new():
-    return [Node value: 123, next: none]
+    return Node{value: 123, next: none}
 
 var n = Node.new()
 </code></pre>
@@ -1918,12 +1927,12 @@ print Node.DefaultValue    -- Prints "100"
     x float
     y float
 
-var v = [Vec2 x: 30, y: 40]
+var v = Vec2{x: 30, y: 40}
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="copy-structs">Copy structs. <a href="#copy-structs">#</a></h3>
 <p>Since structs are copied by value, assigning a struct to another variable creates a new struct:</p>
-<pre><code class="language-cy">var v = [Vec2 x: 30, y: 40]
+<pre><code class="language-cy">var v = Vec2{x: 30, y: 40}
 var w = v
 v.x = 100
 print w.x    -- Prints '30'
@@ -1969,16 +1978,16 @@ type Rectangle:
 <a href="#custom-types">^topic</a>
 <h3 id="initialize-choice">Initialize choice. <a href="#initialize-choice">#</a></h3>
 <p>If the payload is an object type, the choice can be initialized with a simplified record literal:</p>
-<pre><code class="language-cy">var s = [Shape.rectangle width: 10, height: 20]
+<pre><code class="language-cy">var s = Shape.rectangle{width: 10, height: 20}
 </code></pre>
 <p>The general way to initialize a choice is to pass the payload as an argument:</p>
-<pre><code class="language-cy">var rect = [Rectangle width: 10, height: 20]
-var s = [Shape rectangle: rect]
+<pre><code class="language-cy">var rect = Rectangle{width: 10, height: 20}
+var s = Shape{rectangle: rect}
 
-s = [Shape line: 20]
+s = Shape{line: 20}
 </code></pre>
 <p>A choice without a payload is initialized with an empty record literal:</p>
-<pre><code class="language-cy">var s = [Shape.point:]
+<pre><code class="language-cy">var s = Shape.point{}
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="choice-switch">Choice <code>switch</code>. <a href="#choice-switch">#</a></h3>
@@ -2000,7 +2009,7 @@ else:
 <a href="#custom-types">^topic</a>
 <h3 id="access-choice">Access choice. <a href="#access-choice">#</a></h3>
 <p>A choice can be accessed by specifying the access operator <code>.!</code> before the tagged member name. This will either return the payload or panic at runtime: <em>Planned Feature</em></p>
-<pre><code class="language-cy">var s = [Shape line: 20]
+<pre><code class="language-cy">var s = Shape{line: 20}
 print s.!line     -- Prints '20'
 </code></pre>
 <a href="#custom-types">^topic</a>
@@ -2080,11 +2089,11 @@ Once declared, the alias and the target type can be used interchangeably.</p>
 
 type Pos2 = Vec2
 
-var pos = [Pos2 x: 3, y: 4]
+var pos = Pos2{x: 3, y: 4}
 </code></pre>
 <a href="#custom-types">^topic</a>
-<h2 id="type-copies">Type copies. <a href="#type-copies">#</a></h2>
-<p>A type copy creates a new type using the same type and memory layout of a target type.</p>
+<h2 id="distinct-types">Distinct types. <a href="#distinct-types">#</a></h2>
+<p>A distinct type creates a new type by copying a target type.</p>
 <p>It's declared with <code>type</code> name declaration followed by the target type specifier:</p>
 <pre><code class="language-cy">type Vec2:
     x float
@@ -2092,7 +2101,7 @@ var pos = [Pos2 x: 3, y: 4]
 
 type Pos2 Vec2
 
-var pos = [Pos2 x: 3, y: 4]
+var pos = Pos2{x: 3, y: 4}
 </code></pre>
 <p>Functions can be declared under the new type's namespace:</p>
 <pre><code class="language-">import math
@@ -2103,15 +2112,15 @@ type Pos2 Vec2:
         var dy = math.abs(o.y - y)
         return dx + dy
 
-var pos = [Pos2 x: 3, y: 4]
-var dst = [Pos2 x: 4, y: 5]
+var pos = Pos2{x: 3, y: 4}
+var dst = Pos2{x: 4, y: 5}
 print pos.blockDist(dst)     --> 2
 </code></pre>
 <p>Note that functions declared from the target type do not carry over to the new type.</p>
 <p>Unlike a type alias, the new type and the target type can not be used interchangeably since they are different types. However, instances of the new type can be casted to the target type, and vice versa: <em>Planned Feature</em></p>
 <pre><code class="language-cy">type Pos2 Vec2
 
-var a = [Pos2 x: 3, y: 4]
+var a = Pos2{x: 3, y: 4}
 
 var b Vec2 = a as Vec2
 </code></pre>
@@ -2136,7 +2145,7 @@ type MyContainer:
 <h3 id="expand-type-template">Expand type template. <a href="#expand-type-template">#</a></h3>
 <p>When the template is invoked with compile-time argument(s), a specialized version of the type is generated.</p>
 <p>In this example, <code>String</code> can be used as an argument since it satisfies the <code>type</code> parameter constraint:</p>
-<pre><code class="language-cy">var a MyContainer(String) = [id: 123, value: 'abc']
+<pre><code class="language-cy">var a MyContainer(String) = {id: 123, value: 'abc'}
 print a.get()      -- Prints 'abc'
 </code></pre>
 <p>Note that invoking the template again with the same argument(s) returns the same generated type. In other words, the generated type is always memoized from the input parameters.</p>
@@ -2253,7 +2262,7 @@ for list -> n:
     print n
 </code></pre>
 <p>Maps can be iterated. <code>next()</code> returns a key and value tuple:</p>
-<pre><code class="language-cy">var map = [ a: 123, b: 234 ]
+<pre><code class="language-cy">var map = Map{ a: 123, b: 234 }
 
 for map -> entry:
     print entry[0]
@@ -2509,7 +2518,8 @@ r = foo()         -- Calls the function `random`.
 <li><a href="#type-float" title=""><code>type float</code></a></li>
 <li><a href="#type-list" title=""><code>type List</code></a></li>
 <li><a href="#type-listiterator" title=""><code>type ListIterator</code></a></li>
-<li><a href="#type-tuple" title=""><code>type tuple</code></a></li>
+<li><a href="#type-tuple" title=""><code>type Tuple</code></a></li>
+<li><a href="#type-table" title=""><code>type Table</code></a></li>
 <li><a href="#type-map" title=""><code>type Map</code></a></li>
 <li><a href="#type-mapiterator" title=""><code>type MapIterator</code></a></li>
 <li><a href="#type-string" title=""><code>type String</code></a></li>
@@ -2532,9 +2542,9 @@ r = foo()         -- Calls the function `random`.
 <li><a href="#type-ffi" title=""><code>type FFI</code></a></li>
 <li><a href="#type-carray" title=""><code>type CArray</code></a></li>
 <li><a href="#type-cdimarray" title=""><code>type CDimArray</code></a></li>
-<li><a href="#map-direntry" title=""><code>map DirEntry</code></a></li>
-<li><a href="#map-dirwalkentry" title=""><code>map DirWalkEntry</code></a></li>
-<li><a href="#map-argoption" title=""><code>map ArgOption</code></a></li>
+<li><a href="#map-direntry" title=""><code>Map DirEntry</code></a></li>
+<li><a href="#map-dirwalkentry" title=""><code>Map DirWalkEntry</code></a></li>
+<li><a href="#table-argoption" title=""><code>Table ArgOption</code></a></li>
 </ul>
 </li>
 <li><a href="#test" title="">test.</a></li>
@@ -2691,40 +2701,40 @@ print typeof('my str').id()
 <h3 id="type-int"><code>type int</code> <a href="#type-int">#</a></h3>
 <blockquote><p><code>func $prefix~() int</code></p>
 </blockquote><blockquote><p><code>func $prefix-() int</code></p>
-</blockquote><blockquote><p><code>func $infix<(o any) bool</code></p>
-</blockquote><blockquote><p><code>func $infix<=(o any) bool</code></p>
-</blockquote><blockquote><p><code>func $infix>(o any) bool</code></p>
-</blockquote><blockquote><p><code>func $infix>=(o any) bool</code></p>
-</blockquote><blockquote><p><code>func $infix+(o any) int</code></p>
-</blockquote><blockquote><p><code>func $infix-(o any) int</code></p>
-</blockquote><blockquote><p><code>func $infix*(o any) int</code></p>
-</blockquote><blockquote><p><code>func $infix/(o any) int</code></p>
-</blockquote><blockquote><p><code>func $infix%(o any) int</code></p>
-</blockquote><blockquote><p><code>func $infix^(o any) int</code></p>
-</blockquote><blockquote><p><code>func $infix&(o any) int</code></p>
-</blockquote><blockquote><p><code>func $infix|(o any) int</code></p>
-</blockquote><blockquote><p><code>func $infix||(o any) int</code></p>
-</blockquote><blockquote><p><code>func $infix<<(o any) int</code></p>
-</blockquote><blockquote><p><code>func $infix>>(o any) int</code></p>
+</blockquote><blockquote><p><code>func $infix<(o int) bool</code></p>
+</blockquote><blockquote><p><code>func $infix<=(o int) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>(o int) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>=(o int) bool</code></p>
+</blockquote><blockquote><p><code>func $infix+(o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix-(o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix*(o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix/(o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix%(o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix^(o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix&(o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix|(o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix||(o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix<<(o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix>>(o int) int</code></p>
 </blockquote><blockquote><p><code>func fmt(kind symbol) String</code></p>
 <p>Formats the integer using a kind specifier which can be binary <code>.b</code>,  octal <code>.o</code>, decimal <code>.d</code>, hexadecimal <code>.x</code>, ASCII <code>.c</code>.</p>
-</blockquote><blockquote><p><code>func fmt(kind symbol, opts Map) String</code></p>
-<p><code>opts.pad</code> provides the ASCII rune that is used for padding with a string length of <code>opts.width</code>.</p>
+</blockquote><blockquote><p><code>func fmt(kind symbol, config Table) String</code></p>
+<p><code>opts.pad</code> provides the ASCII rune that is used for padding with a string length of <code>config.width</code>.</p>
 </blockquote><blockquote><p><code>func int.'$call'(val any) int</code></p>
 <p>Converts a value to an 48-bit integer.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-float"><code>type float</code> <a href="#type-float">#</a></h3>
 <blockquote><p><code>func $prefix-() float</code></p>
-</blockquote><blockquote><p><code>func $infix<(o any) bool</code></p>
-</blockquote><blockquote><p><code>func $infix<=(o any) bool</code></p>
-</blockquote><blockquote><p><code>func $infix>(o any) bool</code></p>
-</blockquote><blockquote><p><code>func $infix>=(o any) bool</code></p>
-</blockquote><blockquote><p><code>func $infix+(o any) float</code></p>
-</blockquote><blockquote><p><code>func $infix-(o any) float</code></p>
-</blockquote><blockquote><p><code>func $infix*(o any) float</code></p>
-</blockquote><blockquote><p><code>func $infix/(o any) float</code></p>
-</blockquote><blockquote><p><code>func $infix%(o any) float</code></p>
-</blockquote><blockquote><p><code>func $infix^(o any) float</code></p>
+</blockquote><blockquote><p><code>func $infix<(o float) bool</code></p>
+</blockquote><blockquote><p><code>func $infix<=(o float) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>(o float) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>=(o float) bool</code></p>
+</blockquote><blockquote><p><code>func $infix+(o float) float</code></p>
+</blockquote><blockquote><p><code>func $infix-(o float) float</code></p>
+</blockquote><blockquote><p><code>func $infix*(o float) float</code></p>
+</blockquote><blockquote><p><code>func $infix/(o float) float</code></p>
+</blockquote><blockquote><p><code>func $infix%(o float) float</code></p>
+</blockquote><blockquote><p><code>func $infix^(o float) float</code></p>
 </blockquote><blockquote><p><code>func float.'$call'(val any) float</code></p>
 <p>Converts the value to a <code>float</code>. Panics if type conversion fails.</p>
 </blockquote><a href="#modules">^topic</a>
@@ -2741,7 +2751,7 @@ print typeof('my str').id()
 <h3 id="type-type"><code>type type</code> <a href="#type-type">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-list"><code>type List</code> <a href="#type-list">#</a></h3>
-<blockquote><p><code>func $index(idx int) any</code></p>
+<blockquote><p><code>func $index(idx int) dynamic</code></p>
 </blockquote><blockquote><p><code>func $index(range Range) List</code></p>
 </blockquote><blockquote><p><code>func $setIndex(idx int, val any) <void></code></p>
 </blockquote><blockquote><p><code>func append(list List) <void></code></p>
@@ -2760,7 +2770,6 @@ print typeof('my str').id()
 <p>Removes an element at index <code>idx</code>.</p>
 </blockquote><blockquote><p><code>func resize(size int) <void></code></p>
 <p>Resizes the list to <code>len</code> elements. If the new size is bigger, <code>none</code> values  are appended to the list. If the new size is smaller, elements at the end of the list are removed.</p>
-</blockquote><blockquote><p><code>func slice(start any, end any) List</code></p>
 </blockquote><blockquote><p><code>func sort(lessFn any) <void></code></p>
 <p>Sorts the list with the given <code>less</code> function.  If element <code>a</code> should be ordered before <code>b</code>, the function should return <code>true</code> otherwise <code>false</code>.</p>
 </blockquote><blockquote><p><code>func List.fill(val any, n int) List</code></p>
@@ -2772,8 +2781,16 @@ print typeof('my str').id()
 <h3 id="type-tuple"><code>type Tuple</code> <a href="#type-tuple">#</a></h3>
 <blockquote><p><code>func $index(idx int) any</code></p>
 </blockquote><a href="#modules">^topic</a>
+<h3 id="type-table"><code>type Table</code> <a href="#type-table">#</a></h3>
+<blockquote><p><code>func $initPair(key String, value any) <void></code></p>
+</blockquote><blockquote><p><code>func $get(name String) dynamic</code></p>
+</blockquote><blockquote><p><code>func $set(name String, value any) </code></p>
+</blockquote><blockquote><p><code>func $index(key String) dynamic</code></p>
+</blockquote><blockquote><p><code>func $setIndex(key String, value any) <void></code></p>
+</blockquote><a href="#modules">^topic</a>
 <h3 id="type-map"><code>type Map</code> <a href="#type-map">#</a></h3>
-<blockquote><p><code>func $index(key any) any</code></p>
+<blockquote><p><code>func $initPair(key any, value any) <void></code></p>
+</blockquote><blockquote><p><code>func $index(key any) any</code></p>
 </blockquote><blockquote><p><code>func $setIndex(key any, val any) <void></code></p>
 </blockquote><blockquote><p><code>func contains(key any) bool</code></p>
 <p>Returns whether there is a value mapped to <code>key</code>.</p>
@@ -3117,8 +3134,8 @@ for map -> [k, v]:
 <p>Opens a directory at the given <code>path</code>. <code>iterable</code> indicates that the directory's entries can be iterated.</p>
 </blockquote><blockquote><p><code>func openFile(path String, mode symbol) File</code></p>
 <p>Opens a file at the given <code>path</code> with the <code>.read</code>, <code>.write</code>, or <code>.readWrite</code> mode.</p>
-</blockquote><blockquote><p><code>func parseArgs(options List) Map</code></p>
-<p>Given expected <code>ArgOption</code>s, returns a map of the options and a <code>rest</code> entry which contains the non-option arguments.</p>
+</blockquote><blockquote><p><code>func parseArgs(options List) Table</code></p>
+<p>Given expected <code>ArgOption</code>s, returns a <code>Table</code> of the options and a <code>rest</code> entry which contains the non-option arguments.</p>
 </blockquote><blockquote><p><code>func readAll() String</code></p>
 <p>Reads stdin to the EOF as a UTF-8 string.  To return the bytes instead, use <code>stdin.readAll()</code>.</p>
 </blockquote><blockquote><p><code>func readFile(path String) String</code></p>
@@ -3180,7 +3197,7 @@ for map -> [k, v]:
 <p>Creates an <code>ExternFunc</code> that contains a C function pointer with the given signature.  The extern function is a wrapper that calls the provided user function.  Once created, the extern function is retained and managed by the FFI context.</p>
 </blockquote><blockquote><p><code>func bindLib(path ?String) any</code></p>
 <p>Calls <code>bindLib(path, [:])</code>.</p>
-</blockquote><blockquote><p><code>func bindLib(path ?String, config Map) any</code></p>
+</blockquote><blockquote><p><code>func bindLib(path ?String, config Table) any</code></p>
 <p>Creates a handle to a dynamic library and functions declared from <code>cfunc</code>.  By default, an anonymous object is returned with the C-functions binded as the object's methods.  If <code>config</code> contains <code>genMap: true</code>, a <code>Map</code> is returned instead with C-functions  binded as function values.</p>
 </blockquote><blockquote><p><code>func bindObjPtr(obj any) pointer</code></p>
 <p>Returns a Cyber object's pointer. Operations on the pointer is unsafe,  but it can be useful when passing it to C as an opaque pointer.  The object is also retained and managed by the FFI context.</p>
@@ -3198,11 +3215,11 @@ for map -> [k, v]:
 <h3 id="type-cdimarray"><code>type CDimArray</code> <a href="#type-cdimarray">#</a></h3>
 <!-- os.end -->
 <a href="#modules">^topic</a>
-<h3 id="map-direntry"><code>map DirEntry</code> <a href="#map-direntry">#</a></h3>
+<h3 id="map-direntry"><code>Map DirEntry</code> <a href="#map-direntry">#</a></h3>
 <table><thead><tr><th>key</th><th>summary</th></tr></thead><tbody><tr><td><code>'name' -> Array</code></td><td>The name of the file or directory.</td></tr><tr><td><code>'type' -> #file | #dir | #unknown</code></td><td>The type of the entry.</td></tr></tbody></table><a href="#modules">^topic</a>
-<h3 id="map-dirwalkentry"><code>map DirWalkEntry</code> <a href="#map-dirwalkentry">#</a></h3>
+<h3 id="map-dirwalkentry"><code>Map DirWalkEntry</code> <a href="#map-dirwalkentry">#</a></h3>
 <table><thead><tr><th>key</th><th>summary</th></tr></thead><tbody><tr><td><code>'name' -> Array</code></td><td>The name of the file or directory.</td></tr><tr><td><code>'path' -> Array</code></td><td>The path of the file or directory relative to the walker's root directory.</td></tr><tr><td><code>'type' -> #file | #dir | #unknown</code></td><td>The type of the entry.</td></tr></tbody></table><a href="#modules">^topic</a>
-<h3 id="map-argoption"><code>map ArgOption</code> <a href="#map-argoption">#</a></h3>
+<h3 id="table-argoption"><code>Table ArgOption</code> <a href="#table-argoption">#</a></h3>
 <table><thead><tr><th>key</th><th>summary</th></tr></thead><tbody><tr><td><code>'name' -> String</code></td><td>The name of the option to match excluding the hyphen prefix. eg. <code>-path</code></td></tr><tr><td><code>'type' -> metatype(String | float | boolean)</code></td><td>Parse as given value type.</td></tr><tr><td><code>'default' -> any</code></td><td>Optional: Default value if option is missing. <code>none</code> is used if this is not provided.</td></tr></tbody></table><a href="#modules">^topic</a>
 <h2 id="test">test. <a href="#test">#</a></h2>
 <p>The <code>test</code> module contains utilities for testing.</p>
@@ -3265,10 +3282,10 @@ The second argument contains the function's parameter types and finally the last
 <a href="#ffi">^topic</a>
 <h2 id="bind-library">Bind library. <a href="#bind-library">#</a></h2>
 <p><code>bindLib</code> accepts the path to the library and returns a object which can be used to invoke the functions declared from <code>cfunc</code>:</p>
-<pre><code class="language-cy">my lib = ffi.bindLib('./mylib.so')
+<pre><code class="language-cy">let lib = ffi.bindLib('./mylib.so')
 lib.add(123, 321)
 </code></pre>
-<p>Note that <code>my</code> is used to allow <code>lib</code> to be used dynamically since the type is unknown at compile-time.</p>
+<p>Note that <code>let</code> is used to allow <code>lib</code> to be used dynamically since the type is unknown at compile-time.</p>
 <a href="#ffi">^topic</a>
 <h3 id="search-path">Search path. <a href="#search-path">#</a></h3>
 <p>If the path argument to <code>bindLib</code> is just a filename, the search steps for the library is specific to the operating system. Provide an absolute (eg. '/foo/mylib.so') or relative (eg. './mylib.so') path to load from a direct location instead. When the path argument is <code>none</code>, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own application/runtime.</p>
@@ -3299,9 +3316,9 @@ type MyObject:
 
 ffi.cbind(MyObject, [.float, .voidPtr, .bool])
 ffi.cfunc('foo', [MyObject], MyObject)
-my lib = ffi.bindLib('./mylib.so')
+let lib = ffi.bindLib('./mylib.so')
 
-var res = lib.foo([MyObject a: 123.0, b: os.cstr('foo'), c: true])
+var res = lib.foo(MyObject{a: 123.0, b: os.cstr('foo'), c: true})
 </code></pre>
 <p>The example above maps to these C declarations in <code>mylib.so</code>:</p>
 <pre><code class="language-c">typedef struct MyObject {
@@ -3316,9 +3333,9 @@ MyObject foo(MyObject o) {
 </code></pre>
 <p><code>cbind</code> also generates <code>ptrTo[Type]</code> as a helper function to dereference an opaque ptr to a new Cyber object:</p>
 <pre><code class="language-cy">ffi.cfunc('foo', [MyObject], .voidPtr)
-my lib = ffi.bindLib('./mylib.so')
+let lib = ffi.bindLib('./mylib.so')
 
-var ptr = lib.foo([MyObject a: 123, b: os.cstr('foo'), c: true])
+var ptr = lib.foo(MyObject{a: 123, b: os.cstr('foo'), c: true})
 var res = lib.ptrToMyObject(ptr)
 </code></pre>
 <a href="#ffi">^topic</a>
@@ -3407,8 +3424,7 @@ A thrown error continues to bubble up the call stack until it is caught by a <co
     throw error.Oops      -- Throws an error with the symbol `#Oops`
 
 func fail2():
-    throw 123             -- Panic. Can only throw an error
-                          -- that implement the `Error` trait.
+    throw 123             -- Panic. Can only throw an `error` value.
 </code></pre>
 <p><code>throw</code> can also be used as an expression.</p>
 <pre><code class="language-cy">func fail():
@@ -3680,92 +3696,98 @@ print fiber.status()   -- '.done'
 </blockquote><a href="#concurrency">^topic</a>
 <h1 id="dynamic-typing">Dynamic Typing. <a href="#dynamic-typing">#</a></h1>
 <ul>
-<li><a href="#my-variables" title=""><code>my</code> variables.</a></li>
-<li><a href="#invoking-dynamic-values" title="">Invoking dynamic values.</a></li>
-<li><a href="#my-functions" title=""><code>my</code> functions.</a></li>
-<li><a href="#dynamic-vs-any" title=""><code>dynamic</code> vs <code>any</code>.</a></li>
-<li><a href="#recent-type-inference" title="">Recent type inference.</a></li>
-<li><a href="#assign-to-var" title="">Assign to <code>var</code>.</a></li>
+<li><a href="#dynamic-variables" title="">Dynamic variables.</a></li>
+<li><a href="#runtime-type-checking" title="">Runtime type checking.</a></li>
+<li><a href="#dynamic-functions" title="">Dynamic functions.</a></li>
+<li><a href="#dynamic-objects" title="">Dynamic objects.</a></li>
+<li><a href="#custom-objects" title="">Custom objects.</a></li>
 </ul>
 <p><a href="#table-of-contents" title="">^top</a></p>
-<p>Cyber supports dynamic typing with a less restrictive syntax. This can reduce the amount of friction when writing code, but it can also result in more runtime errors.</p>
-<h2 id="my-variables"><code>my</code> variables. <a href="#my-variables">#</a></h2>
-<p>Variables declared with <code>my</code> are implicitly given the <code>dynamic</code> type:</p>
-<pre><code class="language-cy">my a = 123
+<p>Dynamic typing is supported with a less restrictive syntax. This can reduce the amount of friction when writing code, but it can also result in more runtime errors.</p>
+<p>In Cyber, the <code>let</code> keyword is used exclusively for dynamic declarations.</p>
+<h2 id="dynamic-variables">Dynamic variables. <a href="#dynamic-variables">#</a></h2>
+<p>Variables declared with <code>let</code> are implicitly given the <code>dynamic</code> type:</p>
+<pre><code class="language-cy">let a = 123
+</code></pre>
+<p>Typically a dynamic variable defers type checking to runtime, but if the compiler determines that an operation will always fail at runtime, a compile error is reported instead:</p>
+<pre><code class="language-cy">let a = '100'
+
+print a / 2
+--> CompileError: Can not find the symbol `$infix/` in `String`
+</code></pre>
+<p>When <code>a</code> is assigned a different type of value, its <strong>recent type</strong> is updated so the compiler can continue to surface errors ahead of time:</p>
+<pre><code class="language-cy">a = [1, 2, 3]
+print a / 2
+--> CompileError: Can not find the symbol `$infix/` in `List`
 </code></pre>
 <a href="#dynamic-typing">^topic</a>
-<h2 id="invoking-dynamic-values">Invoking <code>dynamic</code> values. <a href="#invoking-dynamic-values">#</a></h2>
-<p>When a <code>dynamic</code> value is invoked, checks on whether the callee is a function is deferred to runtime.</p>
-<pre><code class="language-cy">my op = 123
-print op(1, 2, 3)      --> RuntimeError. Expected a function.
-</code></pre>
-<a href="#dynamic-typing">^topic</a>
-<h2 id="my-functions"><code>my</code> functions. <a href="#my-functions">#</a></h2>
-<p>Functions declared with <code>my</code> do not allow typed parameters or a return specifier.
-All parameters are implicitly given the <code>dynamic</code> type.</p>
-<p>The return specifier is also implicitly <code>dynamic</code> which indicates that the function can throw an error. This is only relevant when typed code calls a <code>my</code> function:</p>
-<pre><code class="language-cy">my foo(a, b, c):
-    return a + b() + a[c]
-</code></pre>
-<a href="#dynamic-typing">^topic</a>
-<h2 id="dynamic-vs-any"><code>dynamic</code> vs <code>any</code> <a href="#dynamic-vs-any">#</a></h2>
-<p><code>dynamic</code> values can be freely used and copied without any compile errors (if there is a chance it can succeed at runtime, see <a href="#recent-type-inference" title="">Recent type inference</a>):</p>
-<pre><code class="language-cy">my a = 123
+<h2 id="runtime-type-checking">Runtime type checking. <a href="#runtime-type-checking">#</a></h2>
+<p>If the type of a dynamic variable can not be determined at compile-time, type checking is deferred to runtime.</p>
+<p>In this example, the type for <code>a</code> is unknown after assigning the return of a dynamic call to <code>erase</code>.
+Any operation on <code>a</code> would defer type checking to runtime:</p>
+<pre><code class="language-cy">let a = erase(123)
 
-func getFirstRune(s String):
-    return s[0]
-
-getFirstRune(a)       -- RuntimeError. Expected `String`.
+print a(1, 2, 3)
+--> panic: Expected a function.
 </code></pre>
-<p>Since <code>a</code> is dynamic, passing it to a typed function parameter is allowed at compile-time, but will fail when the function is invoked at runtime.</p>
-<p>The <code>any</code> type on the otherhand is a <strong>static type</strong> and must be explicitly declared using <code>var</code>:</p>
-<pre><code class="language-cy">var a any = 123
-
-func getFirstRune(s String):
-    return s[0]
-
-getFirstRune(a)       -- CompileError. Expected `String`.
-</code></pre>
-<p>This same setup will now fail at compile-time because <code>any</code> does not satisfy the destination's <code>String</code> type constraint.</p>
-<p>The use of the <code>dynamic</code> type effectively defers type checking to runtime while <code>any</code> is a static type and must adhere to type constraints at compile-time.</p>
-<p>A <code>dynamic</code> value can be used in any operation. It can be invoked as the callee, invoked as the receiver of a method call, or used with operators.</p>
-<a href="#dynamic-typing">^topic</a>
-<h2 id="recent-type-inference">Recent type inference. <a href="#recent-type-inference">#</a></h2>
-<p>Although a <code>dynamic</code> variable has the most flexibility, in some situations it is advantageous to know what type it could be.</p>
-<p>The compiler keeps a running record of a <code>dynamic</code> variable's most <strong>recent type</strong> to gain additional compile-time features without sacrificing flexibility. It can prevent inevitable runtime errors and avoid unnecessary type casts.</p>
-<p>When a <code>dynamic</code> variable is first initialized, it has a recent type inferred from its initializer. In the following, <code>a</code> has the recent type of <code>int</code> at compile-time because numeric literals default to the <code>int</code> type:</p>
-<pre><code class="language-cy">my a = 123
-</code></pre>
-<p>The recent type can change at compile-time from another assignment.
-If <code>a</code> is then assigned to a string literal, <code>a</code> from that point on has the recent type of <code>String</code> at compile-time:</p>
-<pre><code class="language-cy">my a = 123
-foo(a)           -- Valid call expression.
-a = 'hello'
-foo(a)           -- CompileError. Expected `int` argument, got `String`.
-
-func foo(n int):
-    pass
-</code></pre>
-<p>Even though <code>a</code> is <code>dynamic</code> and is usually allowed to defer type checking to runtime, the compiler knows that doing so in this context would <strong>always</strong> result in a runtime error, so it provides a compile error instead. This provides a quicker feedback to fix the problem.</p>
-<p>The recent type of <code>a</code> can also change in branches. However, after the branch block, <code>a</code> will have a recent type after merging the types assigned to <code>a</code> from the two branched code paths. Currently, the <code>any</code> type is used if the types from the two branches differ. At the end of the following <code>if</code> block, <code>a</code> has the recent type of <code>any</code> type after merging the <code>int</code> and <code>String</code> types: <em>Planned Feature</em></p>
-<pre><code class="language-cy">my a = 123
+<p>If a dynamic variable's <strong>recent type</strong> differs between two branches of execution, the type is considered unknown after the branches are merged. Any operations on the variable afterwards will defer type checking to runtime:</p>
+<pre><code class="language-cy">let a = 123
 if a > 20:
     a = 'hello'
-    foo(a)       -- Valid call expression. `foo` can be called without type casting.
 
-foo(a)           -- CompileError. Expected `String` argument, got `any`.
+-- Branches are merged. `a` has an unknown type.
 
-func foo(s String):
-    pass
+print a(1, 2, 3)
+--> panic: Expected a function.
 </code></pre>
 <a href="#dynamic-typing">^topic</a>
-<h2 id="assign-to-var">Assign to <code>var</code>. <a href="#assign-to-var">#</a></h2>
-<p><code>var</code> declarations are strictly for static typing. If the assigned value's type is <code>dynamic</code>, the variable's type becomes <code>any</code>.</p>
-<pre><code class="language-cy">my getValue():
-    return ['a', 'list']
+<h2 id="dynamic-functions">Dynamic functions. <a href="#dynamic-functions">#</a></h2>
+<p>Functions declared with <code>let</code> do not allow typed parameters or a return specifier.
+All parameters are implicitly given the <code>dynamic</code> type.</p>
+<p>The return specifier is also implicitly <code>!dynamic</code> which indicates that the function can throw an error. This is only relevant when typed code calls a dynamic function:</p>
+<pre><code class="language-cy">let foo(a, b, c):
+    return a + b() + a[c]
+</code></pre>
+<p>The function <code>foo</code> is a namespace function. It can't be reassigned like a variable after its declaration.</p>
+<p>However, function values (lambdas) assigned to variables allow reassignment. Lambdas can also capture variables from the parent scope:</p>
+<pre><code class="language-cy">let count = 123
+let f = (a, b):
+    return a + b(10) + count
 
--- Initialized as an `any` variable.
-var a = getValue()
+-- Reassign `f`.
+f = (a, b):
+    return count * 2 - b(a)
+</code></pre>
+<p>Lambdas that simply return an expression can be written as:</p>
+<pre><code class="language-cy">f = (a, b) => a + b(10)
+</code></pre>
+<a href="#dynamic-typing">^topic</a>
+<h2 id="dynamic-objects">Dynamic objects. <a href="#dynamic-objects">#</a></h2>
+<p>The builtin <code>Table</code> type is used to create dynamic objects.
+Tables are initialized with the record literal:</p>
+<pre><code class="language-cy">let a = {}
+a.name = 'Nova'
+print a.name     --> Nova
+</code></pre>
+<p>Read more about how to use tables <a href="#tables" title="">Tables</a>.</p>
+<a href="#dynamic-typing">^topic</a>
+<h2 id="custom-objects">Custom objects. <a href="#custom-objects">#</a></h2>
+<p>Custom objects allow declaring fields and methods. <em>Planned Feature</em></p>
+<pre><code class="language-cy">let Counter{ count }:
+    let inc():
+        count += 1
+        
+let c = Counter{ count: 0 }
+c.inc()
+print c.count       --> 1
+</code></pre>
+<p>Fields are declared inside the braces and separated with commas.
+Unlike typed declarations, the fields declared only serve as a subset constraint.
+Additional fields can still be initialized and used.</p>
+<p>Objects can be declared without any methods: <em>Planned Feature</em></p>
+<pre><code class="language-cy">let Vec3{x, y, z}
+
+let v = Vec3{1, 2, 3}
 </code></pre>
 <a href="#dynamic-typing">^topic</a>
 <h1 id="metaprogramming">Metaprogramming. <a href="#metaprogramming">#</a></h1>
@@ -3779,7 +3801,10 @@ var a = getValue()
 </li>
 <li><a href="#magic-functions" title="">Magic functions.</a><ul>
 <li><a href="#call-module" title="">Call module.</a></li>
-<li><a href="#gettersetter" title="">Getter/Setter.</a></li>
+<li><a href="#initrecord-method" title=""><code>$initRecord</code> method.</a></li>
+<li><a href="#initpair-method" title=""><code>$initPair</code> method.</a></li>
+<li><a href="#get-method" title=""><code>$get</code> method.</a></li>
+<li><a href="#set-method" title=""><code>$set</code> method.</a></li>
 <li><a href="#missing-method" title="">Missing method.</a></li>
 </ul>
 </li>
@@ -3804,8 +3829,7 @@ var a = getValue()
 <h2 id="operator-overloading-1">Operator overloading. <a href="#operator-overloading-1">#</a></h2>
 <p>All operators are implemented as object methods.</p>
 <blockquote><p><em>Incomplete: Not all operators have transitioned to the method paradigm.</em></p>
-</blockquote><p>Normally this would impact performance, but Cyber generates specialized bytecode for builtin types like <code>int</code> and <code>float</code>. The VM performs inline caching at runtime to eliminate the overhead of evaluating on dynamic operands.</p>
-<p>To overload an operator for an object type, declare <code>$prefix</code>, <code>$infix</code>, <code>$postfix</code> methods. See the available <a href="#builtin-operators" title="">builtin operators</a>. Since operator names aren't allowed as standard identifiers, they are contained in a string literal.</p>
+</blockquote><p>To overload an operator for an object type, declare <code>$prefix</code>, <code>$infix</code>, <code>$postfix</code> methods. See the available <a href="#builtin-operators" title="">builtin operators</a>. Since operator names aren't allowed as standard identifiers, they are contained in a string literal.</p>
 <pre><code class="language-cy">type Vec2:
     x float
     y float
@@ -3858,9 +3882,43 @@ func Vec2.'$call'(x float, y float) Vec2:
 var v = Vec2(1, 2)
 </code></pre>
 <a href="#metaprogramming">^topic</a>
-<h3 id="gettersetter">Getter/Setter. <a href="#gettersetter">#</a></h3>
+<h3 id="initrecord-method"><code>$initRecord</code> method. <a href="#initrecord-method">#</a></h3>
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#metaprogramming">^topic</a>
+<h3 id="initpair-method"><code>$initPair</code> method. <a href="#initpair-method">#</a></h3>
+<p>The <code>$initPair</code> method overrides the record initializer.
+After an instance of the type is created from its default record initializer, this method is invoked for each key-value pair in the record literal:</p>
+<pre><code class="language-cy">type MyMap:
+    func '$initPair'(key any, value any) void:
+        print "$(key): $(value)"
+
+var m = MyMap{ a: 123, b: 234 }
+--> a: 123
+--> b: 234
+</code></pre>
+<p><code>$initPair</code> is only allowed if the type has a default record initializer or <code>$initRecord</code> is declared.</p>
+<a href="#metaprogramming">^topic</a>
+<h3 id="get-method"><code>$get</code> method. <a href="#get-method">#</a></h3>
+<p>The <code>$get</code> method allows overriding field accesses for <strong>undeclared fields</strong>:</p>
+<pre><code class="language-cy">type Foo:
+    func '$get'(name String):
+        return name.len()
+
+var f = Foo{}
+print f.abc      --> 3
+print f.hello    --> 5
+</code></pre>
+<a href="#metaprogramming">^topic</a>
+<h3 id="set-method"><code>$set</code> method. <a href="#set-method">#</a></h3>
+<p>The <code>$set</code> method allows overriding field assignments for <strong>undeclared fields</strong>:</p>
+<pre><code class="language-cy">type Foo:
+    func '$set'(name String, value any):
+        print "setting $(name) $(value)"
+
+var f = Foo{}
+f.abc = 123      --> setting abc 123
+</code></pre>
+<a href="#metaprogramming">^topic</a>
 <h3 id="missing-method">Missing method. <a href="#missing-method">#</a></h3>
 <p>Declare a <code>$missing</code> method as a fallback when a method was not found in an instance.</p>
 <blockquote><p><em>Planned Feature</em></p>
@@ -4615,7 +4673,7 @@ hljs.registerLanguage('cy', function() {
     keywords: {
         keyword: [
             'template', 'func', 'import', 'for', 'coinit', 'coresume', 'coyield',
-            'return', 'if', 'else', 'as', 'while', 'var', 'my', 'object', 'struct', 'with', 'caught',
+            'return', 'if', 'else', 'as', 'while', 'var', 'let', 'dynobject', 'object', 'struct', 'with', 'caught',
             'break', 'continue', 'switch', 'pass', 'or', 'and', 'not', 'is', 'error', 'throws',
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case'
         ],

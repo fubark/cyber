@@ -17,7 +17,6 @@ a = [
     'c': 234
 ]
 t.eq(a['c'], 234)
-t.eq(a.c, 234)
 
 --| Different string keys.
 a = [:]
@@ -54,15 +53,15 @@ t.eq(a[1.02], 2)
 a[0xff] = 3
 t.eq(a[0xff], 3)
 
--- Access expression. One level.
+-- Indexing ident key.
 a = [
     b: 32
 ]
-t.eq(a.b, 32)
+t.eq(a['b'], 32)
 
--- Multiple levels of access from parent.
+-- Nested indexing.
 a = [ a: [ b: 5 ] ]
-t.eq(a.a.b, 5)
+t.eq(a['a']['b'], 5)
 
 -- String entry.
 a = [
@@ -79,16 +78,16 @@ t.eq(a[123], 234)
 a = [
     b: [ 1, 2 ]
 ]
-t.eq(a.b[1], 2)
+t.eq(a['b'][1], 2)
 
--- Nested list with items separated by new line.
+-- Nested list with items separated by commas.
 a = [
     b: [
         1,
         2,
     ]
 ]
-t.eq(a.b[1], 2)
+t.eq(a['b'][1], 2)
 
 -- Iterate maps.
 

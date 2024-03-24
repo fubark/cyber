@@ -29,7 +29,7 @@ if existing != '':
 
     -- Only parse section before the marker since the gen part could contain bad syntax.
     var res = parseCyber(existing[..markerPos])
-    for res.decls -> decl:
+    for res['decls'] -> decl:
         if decl.pos < markerPos:
             switch decl.type
             case 'func':

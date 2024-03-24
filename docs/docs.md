@@ -800,11 +800,6 @@ Get a value from the map using the index operator:
 print map['a']
 ```
 
-Maps can be accessed with the `.` dot operator as well:
-```cy
-print map.a
-```
-
 ### Map operations.
 ```cy
 var map = [:]
@@ -816,7 +811,7 @@ map[123] = 234
 print map.size()
 
 -- Remove an entry by key.
-map.remove 123
+map.remove(123)
 
 -- Iterating a map.
 for map -> [val, key]:

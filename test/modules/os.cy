@@ -25,7 +25,7 @@ catch:
     pass
 os.createDir('test/assets/tempdir')
 var dir = os.openDir('test/assets/tempdir')
-t.eq(dir.stat().type, .dir)
+t.eq(dir.stat()['type'], .dir)
 
 -- createFile() new file.
 try:
@@ -56,12 +56,12 @@ t.eq(os.dirName('/root/bar.txt').?, '/root')
 -- openDir()
 dir = os.openDir('test')
 my info = dir.stat()
-t.eq(info.type, .dir)
+t.eq(info['type'], .dir)
 
 -- openFile()
 file = os.openFile('test/assets/file.txt', .read)
 info = file.stat()
-t.eq(info.type, .file)
+t.eq(info['type'], .file)
 
 -- free() / malloc()
 var ptr = os.malloc(16)

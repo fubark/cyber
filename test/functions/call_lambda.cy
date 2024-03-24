@@ -19,7 +19,7 @@ t.eq(call(a => a + 1), 15)
 
 -- Using parentheses.
 var m = [ a: () => 4 ]
-t.eq((m.a)(), 4)
+t.eq((m['a'])(), 4)
 
 -- Invoking lambda temp.
 t.eq((a => a + 1)(14), 15)

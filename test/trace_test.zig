@@ -106,12 +106,12 @@ test "ARC." {
     // Map entry access expression retains the entry.
     try eval(.{},
         \\var a = [ foo: "abc$(123)" ]
-        \\var b = a.foo
+        \\var b = a['foo']
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         var trace = run.getTrace();
-        try t.eq(trace.numRetains, 4);
-        try t.eq(trace.numReleases, 4);
+        try t.eq(trace.numRetains, 5);
+        try t.eq(trace.numReleases, 5);
     }}.func);
 
     // Non-initializer expr in if expr false branch is retained.
@@ -230,9 +230,9 @@ test "ARC on temp locals in expressions." {
         \\import test
         \\var ret = traceRetains()
         \\var rel = traceReleases()
-        \\var res = [ a: [123] ].a[0]
-        \\test.eq(traceRetains() - ret, 4)
-        \\test.eq(traceReleases() - rel, 4)
+        \\var res = [ a: [123] ]['a'][0]
+        \\test.eq(traceRetains() - ret, 5)
+        \\test.eq(traceReleases() - rel, 5)
         \\test.eq(res, 123)
     );
 

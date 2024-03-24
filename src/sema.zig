@@ -4800,7 +4800,7 @@ pub const ChunkExt = struct {
         const right = c.ast.node(node.data.accessExpr.right);
         const left_t = rec.type;
 
-        if ((left_t.dynamic and left_t.id == bt.Any) or left_t.id == bt.Map) {
+        if (left_t.isDynAny()) {
             // Dynamic field access.
             const name = c.ast.nodeString(right);
 

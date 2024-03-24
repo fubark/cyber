@@ -43,7 +43,7 @@ t.eq(newList == oldList, false)
 t.eq(newList.len(), 2)
 t.eq(newList[0], 123)
 t.eq(newList[1], s)
-var oldMap = { a: 123, b: s }
+var oldMap = Map{ a: 123, b: s }
 let newMap = copy(oldMap)
 t.eq(newMap == oldMap, false)
 t.eq(newMap.size(), 2)
@@ -206,7 +206,8 @@ t.eq(typeof('abc'), typeof('xyz'))
 t.eq(typeof(Array('abc')), typeof(Array('xyz')))
 t.eq(typeof(error.Foo), error)
 t.eq(typeof([]), List)
-t.eq(typeof({}), Map)
+t.eq(typeof(Map{}), Map)
+t.eq(typeof({}), Table)
 
 -- typesym()
 t.eq(typesym(123), .int)

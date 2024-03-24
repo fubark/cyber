@@ -757,6 +757,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.Pointer,
         bt.MetaType,
         bt.Range,
+        bt.Table,
     };
 
     for (type_ids) |type_id| {

@@ -1,5 +1,5 @@
 type Foo:
-    a int
+    a Fiber
 
     func '$initPair'(key String, value any):
         pass
@@ -7,7 +7,7 @@ type Foo:
 var f = Foo{a: 123, b: 234}
 
 --cytest: error
---CompileError: Type `Foo` can not initialize with `$initPair` since it does not have a default record initializer.
+--CompileError: Unsupported zero initializer for `Fiber`.
 --
 --main:7:12:
 --var f = Foo{a: 123, b: 234}

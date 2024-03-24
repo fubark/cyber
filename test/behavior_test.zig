@@ -287,7 +287,8 @@ if (!aot) {
     run.case("builtins/string_slices_utf8.cy");
 if (!aot) {
     run.case("builtins/symbols.cy");
-    run.case("builtins/bool.cy");
+    run.case("builtins/table.cy");
+    run.case("builtins/table_access_panic.cy"); 
 }
 
     run.case("vars/local_assign_dyn_panic.cy");

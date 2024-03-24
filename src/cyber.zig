@@ -110,12 +110,12 @@ pub const getInstLenAt = bytecode.getInstLenAt;
 
 const cyon = @import("cyon.zig");
 pub const encodeCyon = cyon.encode;
-pub const decodeCyonMap = cyon.decodeMap;
+pub const decodeCyonTable = cyon.decodeTable;
 pub const decodeCyon = cyon.decode;
 pub const EncodeValueContext = cyon.EncodeValueContext;
-pub const EncodeMapContext = cyon.EncodeMapContext;
+pub const EncodeTableContext = cyon.EncodeTableContext;
 pub const EncodeListContext = cyon.EncodeListContext;
-pub const DecodeMapIR = cyon.DecodeMapIR;
+pub const DecodeTableIR = cyon.DecodeTableIR;
 pub const DecodeListIR = cyon.DecodeListIR;
 pub const DecodeValueIR = cyon.DecodeValueIR;
 

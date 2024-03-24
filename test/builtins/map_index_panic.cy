@@ -1,4 +1,4 @@
-var a = {}
+var a = Map{}
 a['foo']
 
 --cytest: error

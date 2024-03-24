@@ -70,7 +70,7 @@ var html = """<html lang="en">
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">$(args['version'])</div>
+    <div class="sub-title">$(args.version)</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -145,7 +145,7 @@ var .lastHLevel = 1
 
 -- Maps id names to the next unique count from 1.
 -- Mimics Githubs duplicate header id generation.
-var .idCounts = {}
+var .idCounts = Map{}
 
 type State enum:
     case main

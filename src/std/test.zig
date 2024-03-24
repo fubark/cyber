@@ -202,6 +202,7 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
                     return false;
                 }
             },
+            bt.Table,
             bt.Map,
             bt.List => {
                 const actv = act.asAnyOpaque();

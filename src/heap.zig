@@ -111,6 +111,7 @@ pub const HeapObject = extern union {
     tuple: Tuple,
     list: List,
     listIter: ListIterator,
+    table: Table,
     map: Map,
     mapIter: MapIterator,
     range: Range,
@@ -277,6 +278,20 @@ pub const ListIterator = extern struct {
     rc: u32,
     list: *List,
     nextIdx: u32,
+};
+
+pub const Table = extern struct {
+    typeId: cy.TypeId align (8),
+    rc: u32,
+    inner_map: Value,
+
+    pub fn get(self: *Table, key: Value) ?Value {
+        return self.inner_map.asHeapObject().map.map().get(key);
+    }
+
+    pub fn map(self: *Table) *MapInner {
+        return self.inner_map.asHeapObject().map.map();
+    }
 };
 
 pub const MapInner = cy.ValueMap;
@@ -1008,6 +1023,16 @@ pub fn allocListIterator(self: *cy.VM, list: *List) !Value {
     return Value.initCycPtr(obj);
 }
 
+pub fn allocTable(self: *cy.VM) !Value {
+    const obj = try allocPoolObject(self);
+    obj.table = .{
+        .typeId = bt.Table | vmc.CYC_TYPE_MASK,
+        .rc = 1,
+        .inner_map = try self.allocEmptyMap(),
+    };
+    return Value.initCycPtr(obj);
+}
+
 pub fn allocEmptyMap(self: *cy.VM) !Value {
     const obj = try allocPoolObject(self);
     obj.map = .{
@@ -1366,6 +1391,7 @@ pub const VmExt = struct {
     pub const allocArraySlice = Root.allocArraySlice;
     pub const allocArrayConcat = Root.allocArrayConcat;
     pub const allocHostFunc = Root.allocHostFunc;
+    pub const allocTable = Root.allocTable;
     pub const allocEmptyMap = Root.allocEmptyMap;
     pub const allocEmptyList = Root.allocEmptyList;
     pub const allocArray = Root.allocArray;

@@ -61,6 +61,8 @@ typedef enum {
     CS_TYPE_TCCSTATE,
     CS_TYPE_POINTER,
     CS_TYPE_METATYPE,
+    CS_TYPE_RANGE,
+    CS_TYPE_TABLE,
 } CsType;
 typedef uint32_t CsTypeId;
 

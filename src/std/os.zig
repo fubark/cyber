@@ -329,8 +329,8 @@ fn parseArgs(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     var optionMap: std.StringHashMapUnmanaged(Option) = .{};
     defer optionMap.deinit(vm.alloc);
     for (list) |opt| {
-        if (opt.isObjectType(bt.Map)) {
-            const entry = opt.asHeapObject().map.map();
+        if (opt.isObjectType(bt.Table)) {
+            const entry = opt.asHeapObject().table.map();
             const name = entry.getByString("name") orelse return error.InvalidArgument;
             if (!name.isString()) {
                 return error.InvalidArgument;
@@ -369,8 +369,8 @@ fn parseArgs(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
         }
     }
 
-    const res = try vm.allocEmptyMap();
-    const map = res.asHeapObject().map.map();
+    const res = try vm.allocTable();
+    const map = res.asHeapObject().table.map();
 
     var iter = try std.process.argsWithAllocator(vm.alloc);
     defer iter.deinit();
@@ -626,7 +626,7 @@ pub fn bindLibExt(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const genMapV = try vm.retainOrAllocAstring("genMap");
     defer vm.release(genMapV);
     var config: ffi.BindLibConfig = .{};
-    const val = configV.asHeapObject().map.map().get(genMapV) orelse Value.False;
+    const val = configV.asHeapObject().table.get(genMapV) orelse Value.False;
     if (val.isTrue()) {
         config.genMap = true;
     }

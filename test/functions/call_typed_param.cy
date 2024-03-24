@@ -98,14 +98,14 @@ func fooMap(a Map):
     return a['a'] == 123
 
 -- Literal.
-t.eq(fooMap({a: 123}), true)
+t.eq(fooMap(Map{a: 123}), true)
 
 -- From var.
-var map = {a: 123}
+var map = Map{a: 123}
 t.eq(fooMap(map), true)
 
 -- Cast erased type.
-map = t.erase({a: 123})
+map = t.erase(Map{a: 123})
 t.eq(fooMap(map as Map), true)
 
 --|

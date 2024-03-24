@@ -2,7 +2,7 @@ var .varInt = 123
 var .varTypedInt int = 123
 var .varAny = [1, 2, 3]
 var .varList List = [1, 2, 3]
-var .varMap Map = {a: 1, b: 2, c: 3}
+var .varMap Map = Map{a: 1, b: 2, c: 3}
 var .varFunc = func():
     return 345
 var .varFunc1 = func(a int):

@@ -207,6 +207,7 @@ const types = [_]NameType{
     .{"List", bt.List },
     .{"ListIterator", bt.ListIter },
     .{"Tuple", bt.Tuple },
+    .{"Table", bt.Table },
     .{"Map", bt.Map },
     .{"MapIterator", bt.MapIter },
     .{"String", bt.String },
@@ -248,6 +249,7 @@ const vm_types = [_]NameType2{
     .{"List", bt.List, true },
     .{"ListIterator", bt.ListIter, true },
     .{"Tuple", bt.Tuple, true },
+    .{"Table", bt.Table, false },
     .{"Map", bt.Map, true },
     .{"MapIterator", bt.MapIter, true },
     .{"String", bt.String, true },
@@ -521,31 +523,31 @@ pub fn toCyon(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 
 fn allocToCyon(vm: *cy.VM, alloc: std.mem.Allocator, root: Value) ![]const u8 {
     const S = struct {
-        fn encodeMap(ctx: *cy.EncodeMapContext, val: cy.Value) anyerror!void {
+        fn encodeTable(ctx: *cy.EncodeTableContext, val: cy.Value) anyerror!void {
             const uservm = cy.ptrAlignCast(*cy.VM, ctx.user_ctx);
-            var iter = val.asHeapObject().map.map().iterator();
+            var iter = val.asHeapObject().table.map().iterator();
             while (iter.next()) |e| {
                 const key = try uservm.getOrBufPrintValueStr(&cy.tempBuf, e.key);
-                switch (e.value.getUserTag()) {
-                    .float => {
+                switch (e.value.getTypeId()) {
+                    bt.Float => {
                         try ctx.encodeFloat(key, e.value.asF64());
                     },
-                    .int => {
+                    bt.Integer => {
                         try ctx.encodeInt(key, e.value.asInteger());
                     },
-                    .string => {
+                    bt.String => {
                         const keyDupe = try uservm.alloc.dupe(u8, key);
                         defer uservm.alloc.free(keyDupe);
                         const str = try uservm.getOrBufPrintValueStr(&cy.tempBuf, e.value);
                         try ctx.encodeString(keyDupe, str);
                     },
-                    .bool => {
+                    bt.Boolean => {
                         try ctx.encodeBool(key, e.value.asBool());
                     },
-                    .map => {
-                        try ctx.encodeMap(key, e.value, encodeMap);
+                    bt.Table => {
+                        try ctx.encodeTable(key, e.value, encodeTable);
                     },
-                    .list => {
+                    bt.List => {
                         try ctx.encodeList(key, e.value, encodeList);
                     },
                     else => {},
@@ -556,30 +558,30 @@ fn allocToCyon(vm: *cy.VM, alloc: std.mem.Allocator, root: Value) ![]const u8 {
             const items = val.asHeapObject().list.items();
             for (items) |it| {
                 try ctx.indent();
-                switch (it.getUserTag()) {
-                    .float => {
+                switch (it.getTypeId()) {
+                    bt.Float => {
                         try ctx.encodeFloat(it.asF64());
                         _ = try ctx.writer.write(",\n");
                     },
-                    .int => {
+                    bt.Integer => {
                         try ctx.encodeInt(it.asInteger());
                         _ = try ctx.writer.write(",\n");
                     },
-                    .string => {
+                    bt.String => {
                         const uservm = cy.ptrAlignCast(*cy.VM, ctx.user_ctx);
                         const str = try uservm.getOrBufPrintValueStr(&cy.tempBuf, it);
                         try ctx.encodeString(str);
                         _ = try ctx.writer.write(",\n");
                     },
-                    .bool => {
+                    bt.Boolean => {
                         try ctx.encodeBool(it.asBool());
                         _ = try ctx.writer.write(",\n");
                     },
-                    .map => {
-                        try ctx.encodeMap(it, encodeMap);
+                    bt.Table => {
+                        try ctx.encodeTable(it, encodeTable);
                         _ = try ctx.writer.write(",\n");
                     },
-                    .list => {
+                    bt.List => {
                         try ctx.encodeList(it, encodeList);
                         _ = try ctx.writer.write(",\n");
                     },
@@ -590,33 +592,33 @@ fn allocToCyon(vm: *cy.VM, alloc: std.mem.Allocator, root: Value) ![]const u8 {
         fn encodeRoot(ctx: *cy.EncodeValueContext, val: anytype) !void {
             const T = @TypeOf(val);
             if (T == Value) {
-                switch (val.getUserTag()) {
-                    .float => {
+                switch (val.getTypeId()) {
+                    bt.Float => {
                         try ctx.encodeFloat(val.asF64());
                     },
-                    .int => {
+                    bt.Integer => {
                         try ctx.encodeInt(val.asInteger());
                     },
-                    .string => {
+                    bt.String => {
                         const uservm = cy.ptrAlignCast(*cy.VM, ctx.user_ctx);
                         const str = try uservm.getOrBufPrintValueStr(&cy.tempBuf, val);
                         try ctx.encodeString(str);
                     },
-                    .bool => {
+                    bt.Boolean => {
                         try ctx.encodeBool(val.asBool());
                     },
-                    .list => {
+                    bt.List => {
                         if (val.asHeapObject().list.items().len == 0) {
                             _ = try ctx.writer.write("[]");
                         } else {
                             try ctx.encodeList(val, encodeList);
                         }
                     },
-                    .map => {
-                        if (val.asHeapObject().map.inner.size == 0) {
+                    bt.Table => {
+                        if (val.asHeapObject().table.map().size == 0) {
                             _ = try ctx.writer.write("{}");
                         } else {
-                            try ctx.encodeMap(val, encodeMap);
+                            try ctx.encodeTable(val, encodeTable);
                         }
                     },
                     else => {},
@@ -1542,7 +1544,7 @@ fn intFmt(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 fn intFmt2(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const val = args[0].asInteger();
     const kind = try std.meta.intToEnum(Symbol, args[1].asSymbolId());
-    const optsv = args[2].castHeapObject(*cy.heap.Map);
+    const optsv = args[2].castHeapObject(*cy.heap.Table);
     var opts: IntFmtOptions = .{};
     if (optsv.map().getByString("pad")) |pad| {
         if (!pad.isInteger()) return error.InvalidArgument;

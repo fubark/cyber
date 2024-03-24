@@ -1043,6 +1043,28 @@ fn checkSymGetField(c: *cy.Chunk, type_sym: *cy.Sym, name: []const u8, nodeId: c
     };
 }
 
+fn checkSymInitField(c: *cy.Chunk, type_sym: *cy.Sym, name: []const u8, nodeId: cy.NodeId) !InitFieldResult {
+    const sym = type_sym.getMod().?.getSym(name) orelse {
+        // // TODO: This depends on $get being known, make sure $get is a nested declaration.
+        // const type_e = c.sema.types.items[type_sym.getStaticType().?];
+        // if (type_e.has_get_method) {
+        //     return .{ .idx = undefined, .typeId = undefined, .use_get_method = true };
+        // } else {
+            const type_name = type_sym.name();
+            return c.reportErrorFmt("Field `{}` does not exist in `{}`.", &.{v(name), v(type_name)}, nodeId);
+        // }
+    };
+    if (sym.type != .field) {
+        const type_name = type_sym.name();
+        return c.reportErrorFmt("Type `{}` does not have a field named `{}`.", &.{v(type_name), v(name)}, nodeId);
+    }
+    const field = sym.cast(.field);
+    return .{
+        .idx = @intCast(field.idx),
+        .typeId = field.type,
+    };
+}
+
 fn symGetField(type_sym: *cy.Sym, name: []const u8) ?FieldResult {
     const sym = type_sym.getMod().?.getSym(name) orelse return null;
     if (sym.type != .field) return null;
@@ -1063,6 +1085,11 @@ const SetFieldResult = struct {
     typeId: TypeId,
     idx: u8,
     use_set_method: bool,
+};
+
+const InitFieldResult = struct {
+    typeId: TypeId,
+    idx: u8,
 };
 
 pub fn declareTypeTemplate(c: *cy.Chunk, nodeId: cy.NodeId, ctNodes: []const cy.NodeId) !void {
@@ -3564,9 +3591,21 @@ pub const ChunkExt = struct {
                 });
                 return semaWithInitPairs(c, @ptrCast(obj), obj.type, initializerId, init);
             } else {
-                const type_name = try c.sema.allocTypeName(obj.type);
-                defer c.alloc.free(type_name);
-                return c.reportErrorFmt("Type `{}` can not initialize with `$initPair` since it does not have a default record initializer.", &.{v(type_name)}, initializerId);
+                // Attempt to initialize fields with zero values.
+                const fields = obj.getFields();
+                const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, fields.len);
+                for (fields, 0..) |field, i| {
+                    try c.checkForZeroInit(field.type, initializerId);
+                    // const type_name = try c.sema.allocTypeName(obj.type);
+                    // defer c.alloc.free(type_name);
+                    // return c.reportErrorFmt("Type `{}` can not initialize with `$initPair` since it does not have a default record initializer.", &.{v(type_name)}, initializerId);
+                    const arg = try c.semaZeroInit(field.type, initializerId);
+                    c.ir.setArrayItem(args_loc, u32, i, arg.irIdx);
+                }
+                const init = try c.ir.pushExpr(.object_init, c.alloc, obj.type, initializerId, .{
+                    .typeId = obj.type, .numArgs = @as(u8, @intCast(fields.len)), .args = args_loc,
+                });
+                return semaWithInitPairs(c, @ptrCast(obj), obj.type, initializerId, init);
             }
         }
 
@@ -3576,6 +3615,7 @@ pub const ChunkExt = struct {
         defer c.listDataStack.items.len = fieldsDataStart;
 
         const undecl_start = c.listDataStack.items.len;
+        _ = undecl_start;
 
         // Initially set to NullId so missed mappings are known from a linear scan.
         const fieldNodes = c.listDataStack.items[fieldsDataStart..];
@@ -3589,12 +3629,12 @@ pub const ChunkExt = struct {
             const fieldN = c.ast.node(entry.data.keyValue.key);
             const fieldName = c.ast.nodeString(fieldN);
 
-            const info = try checkSymGetField(c, @ptrCast(obj), fieldName, entry.data.keyValue.key);
-            if (info.use_get_method) {
-                try c.listDataStack.append(c.alloc, .{ .nodeId = entryId });
-                entryId = entry.next();
-                continue;
-            }
+            const info = try checkSymInitField(c, @ptrCast(obj), fieldName, entry.data.keyValue.key);
+            // if (info.use_get_method) {
+            //     try c.listDataStack.append(c.alloc, .{ .nodeId = entryId });
+            //     entryId = entry.next();
+            //     continue;
+            // }
 
             fieldNodes[info.idx] = .{ .nodeId = entry.data.keyValue.value };
             entryId = entry.next();
@@ -3623,45 +3663,46 @@ pub const ChunkExt = struct {
             .typeId = obj.type, .numArgs = @as(u8, @intCast(obj.numFields)), .args = irArgsIdx,
         });
 
-        const undecls = c.listDataStack.items[undecl_start..];
-        if (undecls.len > 0) {
-            // Initialize object, then invoke $set on the undeclared fields.
-            const expr = try c.ir.pushExpr(.blockExpr, c.alloc, obj.type, initializerId, .{ .bodyHead = cy.NullId });
-            try pushBlock(c, initializerId);
-            {
-                // create temp with object.
-                const var_id = try declareLocalName(c, "$temp", obj.type, true, initializerId);
-                const temp_ir_id = c.varStack.items[var_id].inner.local.id;
-                const temp_ir = c.varStack.items[var_id].inner.local.declIrStart;
-                const decl_stmt = c.ir.getStmtDataPtr(temp_ir, .declareLocalInit);
-                decl_stmt.init = irIdx;
-                decl_stmt.initType = CompactType.initStatic(obj.type);
+        // TODO: Implement with $initPairMissing.
+        // const undecls = c.listDataStack.items[undecl_start..];
+        // if (undecls.len > 0) {
+        //     // Initialize object, then invoke $set on the undeclared fields.
+        //     const expr = try c.ir.pushExpr(.blockExpr, c.alloc, obj.type, initializerId, .{ .bodyHead = cy.NullId });
+        //     try pushBlock(c, initializerId);
+        //     {
+        //         // create temp with object.
+        //         const var_id = try declareLocalName(c, "$temp", obj.type, true, initializerId);
+        //         const temp_ir_id = c.varStack.items[var_id].inner.local.id;
+        //         const temp_ir = c.varStack.items[var_id].inner.local.declIrStart;
+        //         const decl_stmt = c.ir.getStmtDataPtr(temp_ir, .declareLocalInit);
+        //         decl_stmt.init = irIdx;
+        //         decl_stmt.initType = CompactType.initStatic(obj.type);
 
-                // setFieldDyn.
-                const temp_expr = try c.ir.pushExpr(.local, c.alloc, obj.type, initializerId, .{ .id = temp_ir_id });
-                for (undecls) |undecl| {
-                    const entry = c.ast.node(undecl.nodeId);
-                    const field_name = c.ast.nodeStringById(entry.data.keyValue.key);
-                    const field_value = try c.semaExpr(entry.data.keyValue.value, .{});
-                    _ = try c.ir.pushStmt(c.alloc, .set_field_dyn, initializerId, .{ .set_field_dyn = .{
-                        .name = field_name,
-                        .rec = temp_expr,
-                        .right = field_value.irIdx,
-                    }});
-                }
+        //         // setFieldDyn.
+        //         const temp_expr = try c.ir.pushExpr(.local, c.alloc, obj.type, initializerId, .{ .id = temp_ir_id });
+        //         for (undecls) |undecl| {
+        //             const entry = c.ast.node(undecl.nodeId);
+        //             const field_name = c.ast.nodeStringById(entry.data.keyValue.key);
+        //             const field_value = try c.semaExpr(entry.data.keyValue.value, .{});
+        //             _ = try c.ir.pushStmt(c.alloc, .set_field_dyn, initializerId, .{ .set_field_dyn = .{
+        //                 .name = field_name,
+        //                 .rec = temp_expr,
+        //                 .right = field_value.irIdx,
+        //             }});
+        //         }
 
-                // return temp.
-                _ = try c.ir.pushStmt(c.alloc, .exprStmt, initializerId, .{
-                    .expr = temp_expr,
-                    .isBlockResult = true,
-                });
-            }
-            const stmtBlock = try popBlock(c);
-            c.ir.getExprDataPtr(expr, .blockExpr).bodyHead = stmtBlock.first;
-            return ExprResult.initStatic(expr, obj.type);
-        } else {
+        //         // return temp.
+        //         _ = try c.ir.pushStmt(c.alloc, .exprStmt, initializerId, .{
+        //             .expr = temp_expr,
+        //             .isBlockResult = true,
+        //         });
+        //     }
+        //     const stmtBlock = try popBlock(c);
+        //     c.ir.getExprDataPtr(expr, .blockExpr).bodyHead = stmtBlock.first;
+        //     return ExprResult.initStatic(expr, obj.type);
+        // } else {
             return ExprResult.initStatic(irIdx, obj.type);
-        }
+        // }
     }
 
     pub fn semaObjectInit(c: *cy.Chunk, expr: Expr) !ExprResult {
@@ -4330,13 +4371,8 @@ pub const ChunkExt = struct {
                     }
                 }
 
-                const init = try c.ir.pushExpr(.map, c.alloc, bt.Map, nodeId, .{ .placeholder = undefined });
-                const type_e = c.sema.types.items[bt.Map];
-                if (!type_e.has_init_pair_method) {
-                    return error.Unexpected;
-                }
-                const type_sym = c.sema.getTypeSym(bt.Map);
-                return semaWithInitPairs(c, type_sym, bt.Map, nodeId, init);
+                const obj_t = c.sema.getTypeSym(bt.Table).cast(.object_t);
+                return c.semaObjectInit2(obj_t, nodeId);
             },
             .stringTemplate => {
                 const numExprs = node.data.stringTemplate.numExprs;

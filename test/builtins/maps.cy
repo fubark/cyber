@@ -60,7 +60,7 @@ a = Map{
 t.eq(a['b'], 32)
 
 -- Nested indexing.
-a = Map{ a: { b: 5 } }
+a = Map{ a: Map{ b: 5 } }
 t.eq(a['a']['b'], 5)
 
 -- String entry.

@@ -1333,6 +1333,7 @@ beginSwitch:
                 pc[0] = CodeFieldDynIC;
                 WRITE_U16(5, OBJ_TYPEID(obj));
                 pc[7] = offset;
+                retain(vm, stack[dst]);
             } else {
                 NameId name_id = ((FieldSymbolMap*)vm->fieldSyms.buf)[symId].nameId;
                 SAVE_STATE();
@@ -1343,7 +1344,6 @@ beginSwitch:
                 }
                 stack[dst] = res;
             }
-            retain(vm, stack[dst]);
             pc += 9;
             NEXT();
         } else {
@@ -1582,6 +1582,7 @@ beginSwitch:
                     RESTORE_STATE();
                     RETURN(code);
                 }
+                release(vm, val);
             }
             pc += 11;
             NEXT();

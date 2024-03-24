@@ -96,8 +96,8 @@ type int #int64_t:
     --| octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.
     #host func fmt(kind symbol) String
 
-    --| `opts.pad` provides the ASCII rune that is used for padding with a string length of `opts.width`.
-    #host func fmt(kind symbol, opts Map) String
+    --| `opts.pad` provides the ASCII rune that is used for padding with a string length of `config.width`.
+    #host func fmt(kind symbol, config Table) String
 
 --| Converts a value to an 48-bit integer.
 #host func int.'$call'(val any) int
@@ -185,6 +185,25 @@ type ListIterator:
 #host
 type Tuple:
     #host func '$index'(idx int) any
+
+#host
+type Table:
+    table_data Map
+
+    func '$initPair'(key String, value any) void:
+        table_data[key] = value
+
+    func '$get'(name String) dynamic:
+        return table_data[name]
+
+    func '$set'(name String, value any):
+        table_data[name] = value
+
+    func '$index'(key String) dynamic:
+        return table_data[key]
+
+    func '$setIndex'(key String, value any) void:
+        table_data[key] = value
 
 #host
 type Map:

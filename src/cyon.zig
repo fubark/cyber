@@ -32,16 +32,16 @@ pub const EncodeListContext = struct {
         _ = try self.writer.write("]");
     }
     
-    pub fn encodeMap(self: *EncodeListContext, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
+    pub fn encodeTable(self: *EncodeListContext, val: anytype, encode_table: fn (*EncodeTableContext, @TypeOf(val)) anyerror!void) !void {
         _ = try self.writer.write("{\n");
 
-        var map_ctx = EncodeMapContext{
+        var map_ctx = EncodeTableContext{
             .writer = self.writer,
             .tmp_buf = self.tmp_buf,
             .cur_indent = self.cur_indent + 1,
             .user_ctx = self.user_ctx,
         };
-        try encode_map(&map_ctx, val);
+        try encode_table(&map_ctx, val);
 
         try self.indent();
         _ = try self.writer.write("}");
@@ -90,16 +90,16 @@ pub const EncodeValueContext = struct {
         _ = try self.writer.write("]");
     }
 
-    pub fn encodeMap(self: *EncodeValueContext, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
+    pub fn encodeTable(self: *EncodeValueContext, val: anytype, encode_table: fn (*EncodeTableContext, @TypeOf(val)) anyerror!void) !void {
         _ = try self.writer.write("{\n");
 
-        var map_ctx = EncodeMapContext{
+        var table_ctx = EncodeTableContext{
             .writer = self.writer,
             .tmp_buf = self.tmp_buf,
             .cur_indent = self.cur_indent + 1,
             .user_ctx = self.user_ctx,
         };
-        try encode_map(&map_ctx, val);
+        try encode_table(&table_ctx, val);
 
         try self.indent();
         _ = try self.writer.write("}");
@@ -122,17 +122,17 @@ pub const EncodeValueContext = struct {
     }
 };
 
-pub const EncodeMapContext = struct {
+pub const EncodeTableContext = struct {
     writer: std.ArrayListUnmanaged(u8).Writer,
     tmp_buf: *std.ArrayList(u8),
     cur_indent: u32,
     user_ctx: ?*anyopaque,
 
-    fn indent(self: *EncodeMapContext) !void {
+    fn indent(self: *EncodeTableContext) !void {
         try self.writer.writeByteNTimes(' ', self.cur_indent * 4);
     }
 
-    pub fn encodeSlice(self: *EncodeMapContext, key: []const u8, slice: anytype, encode_value: fn (*EncodeValueContext, anytype) anyerror!void) !void {
+    pub fn encodeSlice(self: *EncodeTableContext, key: []const u8, slice: anytype, encode_value: fn (*EncodeValueContext, anytype) anyerror!void) !void {
         try self.indent();
         _ = try self.writer.print("{s}: [\n", .{key});
 
@@ -154,7 +154,7 @@ pub const EncodeMapContext = struct {
         _ = try self.writer.write("],\n");
     }
 
-    pub fn encodeList(self: *EncodeMapContext, key: []const u8, val: anytype, encode_list: fn (*EncodeListContext, @TypeOf(val)) anyerror!void) !void {
+    pub fn encodeList(self: *EncodeTableContext, key: []const u8, val: anytype, encode_list: fn (*EncodeListContext, @TypeOf(val)) anyerror!void) !void {
         try self.indent();
         _ = try self.writer.print("{s}: [\n", .{key});
 
@@ -170,92 +170,92 @@ pub const EncodeMapContext = struct {
         _ = try self.writer.write("]\n");
     }
 
-    pub fn encodeMap(self: *EncodeMapContext, key: []const u8, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
+    pub fn encodeTable(self: *EncodeTableContext, key: []const u8, val: anytype, encode_table: fn (*EncodeTableContext, @TypeOf(val)) anyerror!void) !void {
         try self.indent();
         _ = try self.writer.print("{s}: {{\n", .{key});
 
-        var map_ctx = EncodeMapContext{
+        var map_ctx = EncodeTableContext{
             .writer = self.writer,
             .tmp_buf = self.tmp_buf,
             .cur_indent = self.cur_indent + 1,
             .user_ctx = self.user_ctx,
         };
-        try encode_map(&map_ctx, val);
+        try encode_table(&map_ctx, val);
 
         try self.indent();
         _ = try self.writer.write("},\n");
     }
 
-    pub fn encodeMap2(self: *EncodeMapContext, key: []const u8, val: anytype, encode_map: fn (*EncodeMapContext, anytype) anyerror!void) !void {
+    pub fn encodeTable2(self: *EncodeTableContext, key: []const u8, val: anytype, encode_table: fn (*EncodeTableContext, anytype) anyerror!void) !void {
         try self.indent();
         _ = try self.writer.print("{s}: ", .{ key });
 
         _ = try self.writer.write("{\n");
 
-        var map_ctx = EncodeMapContext{
+        var table_ctx = EncodeTableContext{
             .writer = self.writer,
             .tmp_buf = self.tmp_buf,
             .cur_indent = self.cur_indent + 1,
             .user_ctx = self.user_ctx,
         };
-        try encode_map(&map_ctx, val);
+        try encode_table(&table_ctx, val);
 
         try self.indent();
         _ = try self.writer.write("}\n");
     }
 
-    pub fn encode(self: *EncodeMapContext, key: []const u8, val: anytype) !void {
+    pub fn encode(self: *EncodeTableContext, key: []const u8, val: anytype) !void {
         try self.indent();
         _ = try self.writer.print("{s}: ", .{key});
         try self.encodeValue(val);
         _ = try self.writer.write(",\n");
     }
 
-    pub fn encodeString(self: *EncodeMapContext, key: []const u8, val: []const u8) !void {
+    pub fn encodeString(self: *EncodeTableContext, key: []const u8, val: []const u8) !void {
         try self.indent();
         _ = try self.writer.print("{s}: ", .{key});
         try Common.encodeString(self.tmp_buf, self.writer, val);
         _ = try self.writer.write(",\n");
     }
 
-    pub fn encodeInt(self: *EncodeMapContext, key: []const u8, i: i48) !void {
+    pub fn encodeInt(self: *EncodeTableContext, key: []const u8, i: i48) !void {
         try self.indent();
         _ = try self.writer.print("{s}: ", .{key});
         try Common.encodeInt(self.writer, i);
         _ = try self.writer.write(",\n");
     }
 
-    pub fn encodeFloat(self: *EncodeMapContext, key: []const u8, f: f64) !void {
+    pub fn encodeFloat(self: *EncodeTableContext, key: []const u8, f: f64) !void {
         try self.indent();
         _ = try self.writer.print("{s}: ", .{key});
         try Common.encodeFloat(self.writer, f);
         _ = try self.writer.write(",\n");
     }
 
-    pub fn encodeBool(self: *EncodeMapContext, key: []const u8, b: bool) !void {
+    pub fn encodeBool(self: *EncodeTableContext, key: []const u8, b: bool) !void {
         try self.indent();
         _ = try self.writer.print("{s}: ", .{key});
         try Common.encodeBool(self.writer, b);
         _ = try self.writer.write(",\n");
     }
 
-    pub fn encodeAnyToMap(self: *EncodeMapContext, key: anytype, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
+    pub fn encodeAnyToTable(self: *EncodeTableContext, key: anytype, val: anytype, encode_table: fn (*EncodeTableContext, @TypeOf(val)) anyerror!void) !void {
         try self.encodeAnyKey_(key);
         _ = try self.writer.write("{\n");
 
-        var map_ctx = EncodeMapContext{
+        var table_ctx = EncodeTableContext{
             .writer = self.writer,
             .tmp_buf = self.tmp_buf,
             .cur_indent = self.cur_indent + 1,
             .user_ctx = self.user_ctx,
         };
-        try encode_map(&map_ctx, val);
+        try encode_table(&table_ctx, val);
 
         try self.indent();
         _ = try self.writer.write("}\n");
     }
 
-    fn encodeAnyKey_(self: *EncodeMapContext, key: anytype) !void {
+    fn encodeAnyKey_(self: *EncodeTableContext, key: anytype) !void {
         try self.indent();
         const T = @TypeOf(key);
         switch (T) {
@@ -270,19 +270,19 @@ pub const EncodeMapContext = struct {
         }
     }
 
-    pub fn encodeAnyToString(self: *EncodeMapContext, key: anytype, val: []const u8) !void {
+    pub fn encodeAnyToString(self: *EncodeTableContext, key: anytype, val: []const u8) !void {
         try self.encodeAnyKey_(key);
         try Common.encodeString(self.tmp_buf, self.writer, val);
         _ = try self.writer.write(",\n");
     }
 
-    pub fn encodeAnyToValue(self: *EncodeMapContext, key: anytype, val: anytype) !void {
+    pub fn encodeAnyToValue(self: *EncodeTableContext, key: anytype, val: anytype) !void {
         try self.encodeAnyKey_(key);
         try self.encodeValue(val);
         _ = try self.writer.write(",\n");
     }
 
-    fn encodeValue(self: *EncodeMapContext, val: anytype) !void {
+    fn encodeValue(self: *EncodeTableContext, val: anytype) !void {
         const T = @TypeOf(val);
         switch (T) {
             bool,
@@ -382,27 +382,27 @@ pub const DecodeListIR = struct {
         };
     }
 
-    pub fn decodeMap(self: DecodeListIR, idx: u32) !DecodeMapIR {
+    pub fn decodeTable(self: DecodeListIR, idx: u32) !DecodeTableIR {
         if (idx < self.arr.len) {
-            return try DecodeMapIR.init(self.alloc, self.ast, self.arr[idx]);
+            return try DecodeTableIR.init(self.alloc, self.ast, self.arr[idx]);
         } else return error.NoSuchEntry;
     }
 };
 
-pub const DecodeMapIR = struct {
+pub const DecodeTableIR = struct {
     alloc: std.mem.Allocator,
     ast: cy.ast.AstView,
 
     /// Preserve order of entries.
     map: std.StringArrayHashMapUnmanaged(NodeId),
 
-    fn init(alloc: std.mem.Allocator, ast: cy.ast.AstView, map_id: NodeId) !DecodeMapIR {
+    fn init(alloc: std.mem.Allocator, ast: cy.ast.AstView, map_id: NodeId) !DecodeTableIR {
         const map = ast.node(map_id);
         if (map.type() != .recordLit) {
             return error.NotAMap;
         }
 
-        var new = DecodeMapIR{
+        var new = DecodeTableIR{
             .alloc = alloc,
             .ast = ast,
             .map = .{},
@@ -430,15 +430,15 @@ pub const DecodeMapIR = struct {
         return new;
     }
 
-    pub fn deinit(self: *DecodeMapIR) void {
+    pub fn deinit(self: *DecodeTableIR) void {
         self.map.deinit(self.alloc);
     }
 
-    pub fn iterator(self: DecodeMapIR) std.StringArrayHashMapUnmanaged(NodeId).Iterator {
+    pub fn iterator(self: DecodeTableIR) std.StringArrayHashMapUnmanaged(NodeId).Iterator {
         return self.map.iterator();
     }
 
-    pub fn getValue(self: DecodeMapIR, key: []const u8) DecodeValueIR {
+    pub fn getValue(self: DecodeTableIR, key: []const u8) DecodeValueIR {
         return DecodeValueIR{
             .alloc = self.alloc,
             .ast = self.ast,
@@ -446,7 +446,7 @@ pub const DecodeMapIR = struct {
         };
     }
     
-    pub fn allocString(self: DecodeMapIR, key: []const u8) ![]const u8 {
+    pub fn allocString(self: DecodeTableIR, key: []const u8) ![]const u8 {
         if (self.map.get(key)) |val_id| {
             const val_n = self.ast.node(val_id);
             if (val_n.type() == .raw_string_lit) {
@@ -475,7 +475,7 @@ pub const DecodeMapIR = struct {
         } else return error.NoSuchEntry;
     }
 
-    pub fn getU32(self: DecodeMapIR, key: []const u8) !u32 {
+    pub fn getU32(self: DecodeTableIR, key: []const u8) !u32 {
         if (self.map.get(key)) |val_id| {
             const val_n = self.ast.node(val_id);
             switch (val_n.type()) {
@@ -500,11 +500,11 @@ pub const DecodeMapIR = struct {
         } else return error.NoSuchEntry;
     }
 
-    pub fn getBool(self: DecodeMapIR, key: []const u8) !bool {
+    pub fn getBool(self: DecodeTableIR, key: []const u8) !bool {
         return self.getBoolOpt(key) orelse return error.NoSuchEntry;
     }
 
-    pub fn getBoolOpt(self: DecodeMapIR, key: []const u8) !?bool {
+    pub fn getBoolOpt(self: DecodeTableIR, key: []const u8) !?bool {
         if (self.map.get(key)) |val_id| {
             const val_n = self.ast.node(val_id);
             if (val_n.type() == .trueLit) {
@@ -515,21 +515,21 @@ pub const DecodeMapIR = struct {
         } else return null;
     }
 
-    pub fn decodeList(self: DecodeMapIR, key: []const u8) !DecodeListIR {
+    pub fn decodeList(self: DecodeTableIR, key: []const u8) !DecodeListIR {
         if (self.map.get(key)) |val_id| {
             return DecodeListIR.init(self.alloc, self.ast, val_id);
         } else return error.NoSuchEntry;
     }
 
-    pub fn decodeMap(self: DecodeMapIR, key: []const u8) !DecodeMapIR {
+    pub fn decodeTable(self: DecodeTableIR, key: []const u8) !DecodeTableIR {
         if (self.map.get(key)) |val_id| {
-            return try DecodeMapIR.init(self.alloc, self.ast, val_id);
+            return try DecodeTableIR.init(self.alloc, self.ast, val_id);
         } else return error.NoSuchEntry;
     }
 };
 
 // Currently uses Cyber parser.
-pub fn decodeMap(alloc: std.mem.Allocator, parser: *Parser, ctx: anytype, out: anytype, decode_map: fn (DecodeMapIR, @TypeOf(ctx), @TypeOf(out)) anyerror!void, cdata: []const u8) !void {
+pub fn decodeTable(alloc: std.mem.Allocator, parser: *Parser, ctx: anytype, out: anytype, decode_map: fn (DecodeTableIR, @TypeOf(ctx), @TypeOf(out)) anyerror!void, cdata: []const u8) !void {
     const res = try parser.parse(cdata, .{});
     if (res.has_error) {
         return error.ParseError;
@@ -544,7 +544,7 @@ pub fn decodeMap(alloc: std.mem.Allocator, parser: *Parser, ctx: anytype, out: a
         return error.NotAMap;
     }
 
-    var map = try DecodeMapIR.init(alloc, res.ast, first_stmt.exprStmt_child());
+    var map = try DecodeTableIR.init(alloc, res.ast, first_stmt.exprStmt_child());
     defer map.deinit();
     try decode_map(map, ctx, out);
 }
@@ -607,8 +607,8 @@ pub const DecodeValueIR = struct {
         return DecodeListIR.init(self.alloc, self.ast, self.exprId);
     }
 
-    pub fn getMap(self: DecodeValueIR) !DecodeMapIR {
-        return DecodeMapIR.init(self.alloc, self.ast, self.exprId);
+    pub fn getMap(self: DecodeValueIR) !DecodeTableIR {
+        return DecodeTableIR.init(self.alloc, self.ast, self.exprId);
     }
 
     pub fn allocString(self: DecodeValueIR) ![]u8 {
@@ -649,14 +649,14 @@ pub const DecodeValueIR = struct {
 const TestRoot = struct {
     name: []const u8,
     list: []const TestListItem,
-    map: []const TestMapItem,
+    table: []const TestTableItem,
 };
 
 const TestListItem = struct {
     field: u32,
 };
 
-const TestMapItem = struct {
+const TestTableItem = struct {
     id: u32,
     val: []const u8,
 };
@@ -668,7 +668,7 @@ test "encode" {
             .{ .field = 1 },
             .{ .field = 2 },
         },
-        .map = &.{
+        .table = &.{
             .{ .id = 1, .val = "foo" },
             .{ .id = 2, .val = "bar" },
             .{ .id = 3, .val = "ba'r" },
@@ -678,25 +678,25 @@ test "encode" {
     };
 
     const S = struct {
-        fn encodeRoot(ctx: *EncodeMapContext, val: TestRoot) anyerror!void {
+        fn encodeRoot(ctx: *EncodeTableContext, val: TestRoot) anyerror!void {
             try ctx.encodeString("name", val.name);
             try ctx.encodeSlice("list", val.list, encodeValue);
-            try ctx.encodeMap("map", val.map, encodeMap);
+            try ctx.encodeTable("table", val.table, encodeTable);
         }
-        fn encodeMap(ctx: *EncodeMapContext, val: []const TestMapItem) anyerror!void {
+        fn encodeTable(ctx: *EncodeTableContext, val: []const TestTableItem) anyerror!void {
             for (val) |it| {
                 try ctx.encodeAnyToString(it.id, it.val);
             }
         }
-        fn encodeItem(ctx: *EncodeMapContext, val: TestListItem) anyerror!void {
+        fn encodeItem(ctx: *EncodeTableContext, val: TestListItem) anyerror!void {
             try ctx.encode("field", val.field);
         }
         fn encodeValue(ctx: *EncodeValueContext, val: anytype) !void {
             const T = @TypeOf(val);
             if (T == TestRoot) {
-                try ctx.encodeMap(val, encodeRoot);
+                try ctx.encodeTable(val, encodeRoot);
             } else if (T == TestListItem) {
-                try ctx.encodeMap(val, encodeItem);
+                try ctx.encodeTable(val, encodeItem);
             } else {
                 cy.panicFmt("unsupported: {s}", .{@typeName(T)});
             }
@@ -716,7 +716,7 @@ test "encode" {
         \\            field: 2,
         \\        },
         \\    ],
-        \\    map: {
+        \\    table: {
         \\        1: 'foo',
         \\        2: 'bar',
         \\        3: 'ba\'r',
@@ -729,9 +729,9 @@ test "encode" {
     );
 }
 
-test "decodeMap" {
+test "decodeTable" {
     const S = struct {
-        fn decodeRoot(map: DecodeMapIR, _: void, root: *TestRoot) anyerror!void {
+        fn decodeRoot(map: DecodeTableIR, _: void, root: *TestRoot) anyerror!void {
             root.name = try map.allocString("name");
 
             var list: std.ArrayListUnmanaged(TestListItem) = .{};
@@ -740,23 +740,23 @@ test "decodeMap" {
             var i: u32 = 0;
             while (i < list_ir.arr.len) : (i += 1) {
                 var item: TestListItem = undefined;
-                var item_map = try list_ir.decodeMap(i);
+                var item_map = try list_ir.decodeTable(i);
                 defer item_map.deinit();
                 item.field = try item_map.getU32("field");
                 try list.append(t.alloc, item);
             }
             root.list = try list.toOwnedSlice(t.alloc);
 
-            var map_items: std.ArrayListUnmanaged(TestMapItem) = .{};
-            var map_ = try map.decodeMap("map");
-            defer map_.deinit();
-            var iter = map_.iterator();
+            var table_items: std.ArrayListUnmanaged(TestTableItem) = .{};
+            var table_ = try map.decodeTable("table");
+            defer table_.deinit();
+            var iter = table_.iterator();
             while (iter.next()) |entry| {
                 const key = try std.fmt.parseInt(u32, entry.key_ptr.*, 10);
-                const value = try map_.allocString(entry.key_ptr.*);
-                try map_items.append(t.alloc, .{ .id = key, .val = value });
+                const value = try table_.allocString(entry.key_ptr.*);
+                try table_items.append(t.alloc, .{ .id = key, .val = value });
             }
-            root.map = try map_items.toOwnedSlice(t.alloc);
+            root.table = try table_items.toOwnedSlice(t.alloc);
         }
     };
 
@@ -764,14 +764,14 @@ test "decodeMap" {
     defer parser.deinit();
 
     var root: TestRoot = undefined;
-    try decodeMap(t.alloc, &parser, {}, &root, S.decodeRoot, 
+    try decodeTable(t.alloc, &parser, {}, &root, S.decodeRoot, 
         \\{
         \\    name: 'project',
         \\    list: [
         \\        { field: 1 },
         \\        { field: 2 },
         \\    ],
-        \\    map: {
+        \\    table: {
         \\        1: 'foo',
         \\        2: 'bar',
         \\        3: "ba\"r",
@@ -784,26 +784,26 @@ test "decodeMap" {
     defer {
         t.alloc.free(root.list);
         t.alloc.free(root.name);
-        for (root.map) |it| {
+        for (root.table) |it| {
             t.alloc.free(it.val);
         }
-        t.alloc.free(root.map);
+        t.alloc.free(root.table);
     }
 
     try t.eqStr(root.name, "project");
     try t.eq(root.list[0].field, 1);
     try t.eq(root.list[1].field, 2);
-    try t.eq(root.map.len, 5);
-    try t.eq(root.map[0].id, 1);
-    try t.eqStr(root.map[0].val, "foo");
-    try t.eq(root.map[1].id, 2);
-    try t.eqStr(root.map[1].val, "bar");
-    try t.eq(root.map[2].id, 3);
-    try t.eqStr(root.map[2].val, "ba\"r");
-    try t.eq(root.map[3].id, 4);
-    try t.eqStr(root.map[3].val, "ba\"r");
-    try t.eq(root.map[4].id, 5);
-    try t.eqStr(root.map[4].val, "bar `bar`\nbar");
+    try t.eq(root.table.len, 5);
+    try t.eq(root.table[0].id, 1);
+    try t.eqStr(root.table[0].val, "foo");
+    try t.eq(root.table[1].id, 2);
+    try t.eqStr(root.table[1].val, "bar");
+    try t.eq(root.table[2].id, 3);
+    try t.eqStr(root.table[2].val, "ba\"r");
+    try t.eq(root.table[3].id, 4);
+    try t.eqStr(root.table[3].val, "ba\"r");
+    try t.eq(root.table[4].id, 5);
+    try t.eqStr(root.table[4].val, "bar `bar`\nbar");
 }
 
 // Same as std.mem.replace except we write to an ArrayList.

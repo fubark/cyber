@@ -92,8 +92,8 @@
 --| Opens a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.
 #host func openFile(path String, mode symbol) File
 
---| Given expected `ArgOption`s, returns a map of the options and a `rest` entry which contains the non-option arguments.
-#host func parseArgs(options List) Map
+--| Given expected `ArgOption`s, returns a `Table` of the options and a `rest` entry which contains the non-option arguments.
+#host func parseArgs(options List) Table
 
 --| Reads stdin to the EOF as a UTF-8 string.
 --| To return the bytes instead, use `stdin.readAll()`.
@@ -202,7 +202,7 @@ type FFI:
     --| By default, an anonymous object is returned with the C-functions binded as the object's methods.
     --| If `config` contains `genMap: true`, a `Map` is returned instead with C-functions
     --| binded as function values.
-    #host func bindLib(path ?String, config Map) any
+    #host func bindLib(path ?String, config Table) any
 
     --| Returns a Cyber object's pointer. Operations on the pointer is unsafe,
     --| but it can be useful when passing it to C as an opaque pointer.

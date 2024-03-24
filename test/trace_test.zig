@@ -105,7 +105,7 @@ test "ARC." {
 
     // Map entry access expression retains the entry.
     try eval(.{},
-        \\var a = { foo: "abc$(123)" }
+        \\var a = Map{ foo: "abc$(123)" }
         \\var b = a['foo']
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
@@ -162,7 +162,7 @@ test "ARC assignments." {
     try eval(.{},
         \\import t 'test'
         \\var a = [123]
-        \\var b = {}
+        \\var b = Map{}
         \\a[0] = b
         \\t.eq(typesym(a[0]), .map)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
@@ -230,7 +230,7 @@ test "ARC on temp locals in expressions." {
         \\import test
         \\var ret = traceRetains()
         \\var rel = traceReleases()
-        \\var res = { a: [123] }['a'][0]
+        \\var res = Map{ a: [123] }['a'][0]
         \\test.eq(traceRetains() - ret, 8)
         \\test.eq(traceReleases() - rel, 8)
         \\test.eq(res, 123)
@@ -322,7 +322,7 @@ test "ARC in loops." {
 
     // For iter with `any` temp value, the last temp value is released at the end of the block.
     try eval(.{},
-        \\var list = [{a: 123}, {a: 234}] -- +3a +3
+        \\var list = [Map{a: 123}, Map{a: 234}] -- +3a +3
         \\for list -> it:                 -- +7a +7 -2
         \\  pass                      
         \\                                --        -8

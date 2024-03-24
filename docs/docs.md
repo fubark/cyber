@@ -475,6 +475,10 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
 * [Arrays.](#arrays)
 * [Lists.](#lists)
 * [Tuples.](#tuples)
+* [Tables.](#tables)
+  * [Table indexing.](#table-indexing)
+  * [Check field existence.](#check-field-existence)
+  * [Prototypes.](#prototypes)
 * [Maps.](#maps)
   * [Map indexing.](#map-indexing)
   * [Map operations.](#map-operations)
@@ -768,6 +772,46 @@ list.remove(1)
 
 ## Tuples.
 > _Incomplete: Tuples can only be created from #host funcs at the moment._
+
+## Tables.
+A `Table` is a versatile object that can have an arbitrary set of fields.
+
+By default, the record literal initializes a `Table`:
+```cy
+var o = {}
+
+o = {a: 123}
+print o.a          --> 123
+```
+
+A `Table` can be initialized explicitly using its type name:
+```cy
+var o = Table{a: 123}
+```
+
+Any field can be assigned a value.
+However, accessing a field before it's initialized results in a panic:
+```cy
+o.my_field = 234
+print o.my_field   --> 234
+
+print o.foo        --> panic. The field `foo` was not initialized.
+```
+
+### Table indexing.
+Indexing can be used to access a field with a dynamic name. The key must be a `String`:
+```cy
+var o = { name: 'Nova' }
+var field = 'name'
+print o[field]     --> Nova
+```
+If the object is intended to be used like a hash map with varying key types, consider using `Map` instead.
+
+### Check field existence.
+> _Planned Feature_
+
+### Prototypes.
+> _Planned Feature_
 
 ## Maps.
 Maps are a builtin type that store key value pairs in dictionaries. See [`type Map`](#type-map).
@@ -1722,7 +1766,8 @@ In the example above, the function `foo` is called with 4 arguments. The first a
   * [`type float`](#type-float)
   * [`type List`](#type-list)
   * [`type ListIterator`](#type-listiterator)
-  * [`type tuple`](#type-tuple)
+  * [`type Tuple`](#type-tuple)
+  * [`type Table`](#type-table)
   * [`type Map`](#type-map)
   * [`type MapIterator`](#type-mapiterator)
   * [`type String`](#type-string)
@@ -1743,9 +1788,9 @@ In the example above, the function `foo` is called with 4 arguments. The first a
   * [`type FFI`](#type-ffi)
   * [`type CArray`](#type-carray)
   * [`type CDimArray`](#type-cdimarray)
-  * [`map DirEntry`](#map-direntry)
-  * [`map DirWalkEntry`](#map-dirwalkentry)
-  * [`map ArgOption`](#map-argoption)
+  * [`Map DirEntry`](#map-direntry)
+  * [`Map DirWalkEntry`](#map-dirwalkentry)
+  * [`Table ArgOption`](#table-argoption)
 * [test.](#test)
 </td>
 </tr></table>
@@ -1895,20 +1940,20 @@ for map -> [k, v]:
 
 <!-- os.start -->
 <!-- os.end -->
-### `map DirEntry`
+### `Map DirEntry`
 | key | summary |
 | -- | -- |
 | `'name' -> Array` | The name of the file or directory. |
 | `'type' -> #file | #dir | #unknown` | The type of the entry. |
 
-### `map DirWalkEntry`
+### `Map DirWalkEntry`
 | key | summary |
 | -- | -- |
 | `'name' -> Array` | The name of the file or directory. |
 | `'path' -> Array` | The path of the file or directory relative to the walker's root directory. |
 | `'type' -> #file | #dir | #unknown` | The type of the entry. |
 
-### `map ArgOption`
+### `Table ArgOption`
 | key | summary |
 | -- | -- |
 | `'name' -> String` | The name of the option to match excluding the hyphen prefix. eg. `-path` |
@@ -2525,30 +2570,14 @@ f = (a, b) => a + b(10)
 ```
 
 ## Dynamic objects.
-Dynamic objects can contain arbitrary fields. An empty object can be initialized with the empty record literal:
+The builtin `Table` type is used to create dynamic objects.
+Tables are initialized with the record literal:
 ```cy
 let a = {}
 a.name = 'Nova'
 print a.name     --> Nova
 ```
-
-Accessing a field before it's initialized is a runtime error:
-```cy
-print a.age      --> panic: Field isn't initialized.
-```
-
-Objects can be initialized with fields set:
-```cy
-let a = { name: 'Nova' }
-print a.name     --> Nova
-```
-
-Indexing can be used to access a field with a dynamic name. The key must be a `String`: *Planned Feature*
-```cy
-let field = 'name'
-print a[field]   --> Nova
-```
-If the object is intended to be used like a hash map with varying key types, consider using `Map` instead.
+Read more about how to use tables [Tables](#tables).
 
 ## Custom objects.
 Custom objects allow declaring fields and methods. *Planned Feature*

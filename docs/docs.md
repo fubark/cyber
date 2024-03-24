@@ -2584,8 +2584,6 @@ let foo(a, b, c):
 All operators are implemented as object methods.
 > _Incomplete: Not all operators have transitioned to the method paradigm._ 
 
-Normally this would impact performance, but Cyber generates specialized bytecode for builtin types like `int` and `float`. The VM performs inline caching at runtime to eliminate the overhead of evaluating on dynamic operands.
-
 To overload an operator for an object type, declare `$prefix`, `$infix`, `$postfix` methods. See the available [builtin operators](#builtin-operators). Since operator names aren't allowed as standard identifiers, they are contained in a string literal.
 ```cy
 type Vec2:

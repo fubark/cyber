@@ -292,20 +292,6 @@ pub fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
                 try c.vm.addMethod(parentT, mgId, m);
             }
         }
-    } else if (func.type == .hostInlineFunc) {
-        // return error.TODO;
-        // const funcSig = c.sema.getFuncSig(func.funcSigId);
-        // const rtFunc = rt.FuncSymbol.initHostInlineFunc(@ptrCast(func.data.hostInlineFunc.ptr), funcSig.reqCallTypeCheck, funcSig.numParams(), func.funcSigId);
-        // _ = try addVmFunc(c, func, rtFunc);
-        // if (func.isMethod) {
-        //     log.tracev("ismethod", .{});
-        //     const name = func.name();
-        //     const mgId = try c.vm.ensureMethodGroup(name);
-        //     const parentT = func.sym.?.head.parent.?.getStaticType().?;
-        //     log.tracev("host inline method: {s}.{s} {} {}", .{c.sema.getTypeName(parentT), name, parentT, mgId});
-        //     const m = rt.MethodInit.initHostInline(func.funcSigId, func.data.hostInlineFunc.ptr, func.numParams);
-        //     try c.vm.addMethod(parentT, mgId, m);
-        // }
     } else if (func.type == .userFunc) {
         // Func is patched later once funcPc and stackSize is obtained.
         // Method entry is also added later.

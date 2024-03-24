@@ -152,11 +152,6 @@ typedef struct IndexSlice {
 
 #define VALUE_IS_ARRAY(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_ARRAY))
 #define VALUE_IS_STRING(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_STRING))
-#define VALUE_IS_LIST(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_LIST))
-#define VALUE_IS_TUPLE(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_TUPLE))
-#define VALUE_IS_MAP(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_MAP))
-#define VALUE_IS_RANGE(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_RANGE))
-#define VALUE_BOTH_FLOATS(a, b) (VALUE_IS_FLOAT(a) && VALUE_IS_FLOAT(b))
 #define VALUE_IS_INTEGER(v) ((v & TAGGED_UPPER_VALUE_MASK) == TAGGED_INTEGER_MASK)
 #define VALUE_BOTH_INTEGERS(a, b) ((a & b & TAGGED_UPPER_VALUE_MASK) == TAGGED_INTEGER_MASK)
 #define VALUE_ALL3_INTEGERS(a, b, c) ((a & b & c & TAGGED_UPPER_VALUE_MASK) == TAGGED_INTEGER_MASK)
@@ -1078,7 +1073,6 @@ void zCheckRetainDanglingPointer(VM* vm, HeapObject* obj);
 void zPanicFmt(VM* vm, const char* format, FmtValue* args, size_t numArgs);
 Value zValueMapGet(ValueMap* map, Value key, bool* found);
 ResultCode zMapSet(VM* vm, Map* map, Value key, Value val);
-Inst* zDeoptBinOp(VM* vm, Inst* pc);
 Str zGetTypeName(VM* vm, TypeId id);
 ResultCode zEnsureListCap(VM* vm, ZCyList* list, size_t cap);
 void zTraceRetain(VM* vm, Value v);

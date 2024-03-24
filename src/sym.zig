@@ -803,7 +803,6 @@ pub const Chunk = extern struct {
 
 pub const FuncType = enum {
     hostFunc,
-    hostInlineFunc,
     userFunc,
     userLambda,
 };

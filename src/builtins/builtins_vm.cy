@@ -76,21 +76,21 @@ type error #int64_t:
 type int #int64_t:
     #host func '$prefix~'() int
     #host func '$prefix-'() int
-    #host func '$infix<'(o any) bool
-    #host func '$infix<='(o any) bool
-    #host func '$infix>'(o any) bool
-    #host func '$infix>='(o any) bool
-    #host func '$infix+'(o any) int
-    #host func '$infix-'(o any) int
-    #host func '$infix*'(o any) int
-    #host func '$infix/'(o any) int
-    #host func '$infix%'(o any) int
-    #host func '$infix^'(o any) int
-    #host func '$infix&'(o any) int
-    #host func '$infix|'(o any) int
-    #host func '$infix||'(o any) int
-    #host func '$infix<<'(o any) int
-    #host func '$infix>>'(o any) int
+    #host func '$infix<'(o int) bool
+    #host func '$infix<='(o int) bool
+    #host func '$infix>'(o int) bool
+    #host func '$infix>='(o int) bool
+    #host func '$infix+'(o int) int
+    #host func '$infix-'(o int) int
+    #host func '$infix*'(o int) int
+    #host func '$infix/'(o int) int
+    #host func '$infix%'(o int) int
+    #host func '$infix^'(o int) int
+    #host func '$infix&'(o int) int
+    #host func '$infix|'(o int) int
+    #host func '$infix||'(o int) int
+    #host func '$infix<<'(o int) int
+    #host func '$infix>>'(o int) int
 
     --| Formats the integer using a kind specifier which can be binary `.b`,
     --| octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.
@@ -105,16 +105,16 @@ type int #int64_t:
 #host
 type float #float64_t:
     #host func '$prefix-'() float
-    #host func '$infix<'(o any) bool
-    #host func '$infix<='(o any) bool
-    #host func '$infix>'(o any) bool
-    #host func '$infix>='(o any) bool
-    #host func '$infix+'(o any) float
-    #host func '$infix-'(o any) float
-    #host func '$infix*'(o any) float
-    #host func '$infix/'(o any) float
-    #host func '$infix%'(o any) float
-    #host func '$infix^'(o any) float
+    #host func '$infix<'(o float) bool
+    #host func '$infix<='(o float) bool
+    #host func '$infix>'(o float) bool
+    #host func '$infix>='(o float) bool
+    #host func '$infix+'(o float) float
+    #host func '$infix-'(o float) float
+    #host func '$infix*'(o float) float
+    #host func '$infix/'(o float) float
+    #host func '$infix%'(o float) float
+    #host func '$infix^'(o float) float
 
 --| Converts the value to a `float`. Panics if type conversion fails.
 #host func float.'$call'(val any) float
@@ -159,8 +159,6 @@ type List:
     --| Resizes the list to `len` elements. If the new size is bigger, `none` values
     --| are appended to the list. If the new size is smaller, elements at the end of the list are removed.
     #host func resize(size int) void
-
-    #host func slice(start any, end any) List
 
     --| Sorts the list with the given `less` function.
     --| If element `a` should be ordered before `b`, the function should return `true` otherwise `false`.

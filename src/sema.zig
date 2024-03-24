@@ -1495,23 +1495,12 @@ pub fn declareHostFunc(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId, decl: F
     log.tracev("Invoke func loader for: {s}", .{decl.namePath});
     var res: cc.FuncResult = .{
         .ptr = null,
-        .type = cc.FuncTypeStandard,
     };
     if (!funcLoader(@ptrCast(c.compiler.vm), info, @ptrCast(&res))) {
         return c.reportErrorFmt("Host func `{}` failed to load.", &.{v(decl.name)}, nodeId);
     }
 
-    if (res.type == cc.FuncTypeStandard) {
-        return try c.declareHostFunc(decl.parent, decl.name, decl.funcSigId, nodeId, @ptrCast(@alignCast(res.ptr)), decl.isMethod);
-    } else if (res.type == cc.FuncTypeInline) {
-        // const funcSig = c.compiler.sema.getFuncSig(func.funcSigId);
-        // if (funcSig.reqCallTypeCheck) {
-        //     return c.reportErrorFmt("Failed to load: {}, Only untyped quicken func is supported.", &.{v(name)}, nodeId);
-        // }
-        return try c.declareHostInlineFunc(decl.parent, decl.name, decl.funcSigId, nodeId, @ptrCast(@alignCast(res.ptr)), decl.isMethod);
-    } else {
-        return error.Unexpected;
-    }
+    return try c.declareHostFunc(decl.parent, decl.name, decl.funcSigId, nodeId, @ptrCast(@alignCast(res.ptr)), decl.isMethod);
 }
 
 /// Declares a bytecode function in a given module.
@@ -3807,17 +3796,17 @@ pub const ChunkExt = struct {
     }
 
     pub fn semaPushCallArgs(c: *cy.Chunk, argHead: cy.NodeId, numArgs: u8) !u32 {
-        const irIdx = try c.ir.pushEmptyArray(c.alloc, u32, numArgs);
+        const loc = try c.ir.pushEmptyArray(c.alloc, u32, numArgs);
         var nodeId = argHead;
         var i: u32 = 0;
         while (nodeId != cy.NullNode) {
             const arg = c.ast.node(nodeId);
             const argRes = try c.semaExpr(nodeId, .{});
-            c.ir.setArrayItem(irIdx, u32, i, argRes.irIdx);
+            c.ir.setArrayItem(loc, u32, i, argRes.irIdx);
             i += 1;
             nodeId = arg.next();
         }
-        return irIdx;
+        return loc;
     }
 
     /// Skips emitting IR for a sym.
@@ -4146,17 +4135,17 @@ pub const ChunkExt = struct {
                 const index = try c.semaExprTarget(node.data.indexExpr.right, preferT);
 
                 if (left.type.isDynAny()) {
-                    c.ir.setExprCode(loc, .preCallObjSymBinOp);
-                    c.ir.setExprType(loc, bt.Any);
-                    c.ir.setExprData(loc, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
-                        .op = .index,
-                        .left = left.irIdx,
-                        .right = index.irIdx,
-                    }});
-                    return ExprResult.init(loc, left.type);
+                    return c.semaCallObjSym2(loc, left.irIdx, getBinOpName(.index), &.{index});
                 }
 
-                if (leftT == bt.List or leftT == bt.Tuple or leftT == bt.Map) {
+                // TODO: codegen should determine whether it is specialized, not here.
+                var specialized = false;
+                if ((leftT == bt.List or leftT == bt.Tuple) and (index.type.id == bt.Integer or index.type.id == bt.Range)) {
+                    specialized = true;
+                } else if (leftT == bt.Map) {
+                    specialized = true;
+                }
+                if (specialized) {
                     // Specialized.
                     var res_t = CompactType.initDynamic(bt.Any);
                     if (leftT == bt.List and index.type.id == bt.Range) {
@@ -4631,6 +4620,22 @@ pub const ChunkExt = struct {
         return ExprResult.initDynamic(preIdx, bt.Any);
     }
 
+    pub fn semaCallObjSym2(c: *cy.Chunk, preIdx: u32, recLoc: u32, name: []const u8, arg_exprs: []const ExprResult) !ExprResult {
+        const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, arg_exprs.len);
+        for (arg_exprs, 0..) |expr, i| {
+            c.ir.setArrayItem(args_loc, u32, i, expr.irIdx);
+        }
+
+        c.ir.setExprCode(preIdx, .preCallObjSym);
+        c.ir.setExprData(preIdx, .preCallObjSym, .{ .callObjSym = .{
+            .name = name,
+            .numArgs = @as(u8, @intCast(arg_exprs.len)),
+            .rec = recLoc,
+            .args = args_loc,
+        }});
+        return ExprResult.initDynamic(preIdx, bt.Any);
+    }
+
     pub fn semaUnExpr(c: *cy.Chunk, expr: Expr) !ExprResult {
         const nodeId = expr.nodeId;
         const node = c.ast.node(nodeId);
@@ -4642,12 +4647,7 @@ pub const ChunkExt = struct {
 
                 const child = try c.semaExprTarget(node.data.unary.child, expr.target_t);
                 if (child.type.isDynAny()) {
-                    // Generic callObjSym.
-                    c.ir.setExprCode(irIdx, .preCallObjSymUnOp);
-                    c.ir.setExprData(irIdx, .preCallObjSymUnOp, .{ .callObjSymUnOp = .{
-                        .op = op, .expr = child.irIdx,
-                    }});
-                    return ExprResult.init(irIdx, child.type);
+                    return c.semaCallObjSym2(irIdx, child.irIdx, getUnOpName(.minus), &.{});
                 }
 
                 if (child.type.id == bt.Integer or child.type.id == bt.Float) {
@@ -4679,11 +4679,7 @@ pub const ChunkExt = struct {
 
                 const child = try c.semaExprTarget(node.data.unary.child, expr.target_t);
                 if (child.type.isDynAny()) {
-                    c.ir.setExprCode(irIdx, .preCallObjSymUnOp);
-                    c.ir.setExprData(irIdx, .preCallObjSymUnOp, .{ .callObjSymUnOp = .{
-                        .op = op, .expr = child.irIdx,
-                    }});
-                    return ExprResult.init(irIdx, child.type);
+                    return c.semaCallObjSym2(irIdx, child.irIdx, getUnOpName(.bitwiseNot), &.{});
                 }
 
                 if (child.type.id == bt.Integer) {
@@ -4735,18 +4731,10 @@ pub const ChunkExt = struct {
                 const right = try c.semaExprTarget(rightId, left.type.id);
 
                 if (left.type.isDynAny()) {
-                    // Generic callObjSym.
-                    c.ir.setExprCode(loc, .preCallObjSymBinOp);
-                    c.ir.setExprType(loc, bt.Any);
-                    c.ir.setExprData(loc, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
-                        .op = op,
-                        .left = left.irIdx,
-                        .right = right.irIdx,
-                    }});
-                    return ExprResult.initDynamic(loc, bt.Any);
+                    return c.semaCallObjSym2(loc, left.irIdx, getBinOpName(op), &.{right});
                 }
 
-                if (left.type.id == bt.Integer) {
+                if (left.type.id == right.type.id and left.type.id == bt.Integer) {
                     // Specialized.
                     c.ir.setExprCode(loc, .preBinOp);
                     c.ir.setExprType(loc, bt.Integer);
@@ -4776,18 +4764,10 @@ pub const ChunkExt = struct {
                 const right = try c.semaExprTarget(rightId, left.type.id);
 
                 if (left.type.isDynAny()) {
-                    // Generic callObjSym.
-                    c.ir.setExprCode(loc, .preCallObjSymBinOp);
-                    c.ir.setExprType(loc, bt.Any);
-                    c.ir.setExprData(loc, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
-                        .op = op,
-                        .left = left.irIdx,
-                        .right = right.irIdx,
-                    }});
-                    return ExprResult.init(loc, left.type);
+                    return c.semaCallObjSym2(loc, left.irIdx, getBinOpName(op), &.{right});
                 }
 
-                if (left.type.id == bt.Float or left.type.id == bt.Integer) {
+                if (left.type.id == right.type.id and (left.type.id == bt.Float or left.type.id == bt.Integer)) {
                     // Specialized.
                     c.ir.setExprCode(loc, .preBinOp);
                     c.ir.setExprType(loc, bt.Boolean);
@@ -4819,18 +4799,10 @@ pub const ChunkExt = struct {
                 const right = try c.semaExprTarget(rightId, left.type.id);
 
                 if (left.type.isDynAny()) {
-                    // Generic callObjSym.
-                    c.ir.setExprCode(loc, .preCallObjSymBinOp);
-                    c.ir.setExprType(loc, bt.Any);
-                    c.ir.setExprData(loc, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
-                        .op = op,
-                        .left = left.irIdx,
-                        .right = right.irIdx,
-                    }});
-                    return ExprResult.init(loc, left.type);
+                    return c.semaCallObjSym2(loc, left.irIdx, getBinOpName(op), &.{right});
                 }
 
-                if (left.type.id == bt.Float or left.type.id == bt.Integer) {
+                if (left.type.id == right.type.id and (left.type.id == bt.Float or left.type.id == bt.Integer)) {
                     // Specialized.
                     c.ir.setExprCode(loc, .preBinOp);
                     c.ir.setExprType(loc, left.type.id);
@@ -5682,3 +5654,33 @@ const FuncMatcher = struct {
         }
     }
 };
+
+fn getUnOpName(op: cy.UnaryOp) []const u8 {
+    return switch (op) {
+        .minus => "$prefix-",
+        .bitwiseNot => "$prefix~",
+        else => @panic("unsupported"),
+    };
+}
+
+fn getBinOpName(op: cy.BinaryExprOp) []const u8 {
+    return switch (op) {
+        .index => "$index",
+        .less => "$infix<",
+        .greater => "$infix>",
+        .less_equal => "$infix<=",
+        .greater_equal => "$infix>=",
+        .minus => "$infix-",
+        .plus => "$infix+",
+        .star => "$infix*",
+        .slash => "$infix/",
+        .percent => "$infix%",
+        .caret => "$infix^",
+        .bitwiseAnd => "$infix&",
+        .bitwiseOr => "$infix|",
+        .bitwiseXor => "$infix||",
+        .bitwiseLeftShift => "$infix<<",
+        .bitwiseRightShift => "$infix>>",
+        else => @panic("unsupported"),
+    };
+}

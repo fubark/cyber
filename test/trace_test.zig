@@ -93,7 +93,7 @@ test "ARC." {
     // Object is released when returned rvalue field access.
     try eval(.{},
         \\type S:
-        \\  value any
+        \\  value dynamic
         \\1 + [S value: 123].value
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         const val = try res.getValue();

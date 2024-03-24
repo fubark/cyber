@@ -426,15 +426,9 @@ pub const VM = struct {
         var iter = self.inlineSaves.valueIterator();
         while (iter.next()) |it| {
             switch (@as(cy.bindings.QuickenType, @enumFromInt(it.*[0]))) {
-                .binOp => {
-                    self.alloc.free(it.*[0..vmc.CALL_OBJ_SYM_INST_LEN + 1]);
-                },
-                .binOpOneCopy => {
-                    self.alloc.free(it.*[0..vmc.CALL_OBJ_SYM_INST_LEN + 1 + 3]);
-                },
-                .binOpBothCopies => {
-                    self.alloc.free(it.*[0..vmc.CALL_OBJ_SYM_INST_LEN + 1 + 6]);
-                },
+                // .binOp => {
+                //     self.alloc.free(it.*[0..vmc.CALL_OBJ_SYM_INST_LEN + 1]);
+                // },
             }
         }
         if (reset) {
@@ -1216,18 +1210,6 @@ pub const VM = struct {
                 newFramePtr[0] = @bitCast(res);
                 return cy.fiber.PcSp{
                     .pc = pc + cy.bytecode.CallSymInstLen,
-                    .sp = framePtr,
-                };
-            },
-            .hostInlineFunc => {
-                const newFramePtr = framePtr + ret;
-                self.pc = pc;
-                const res: Value = @bitCast(sym.inner.hostInlineFunc.?(@ptrCast(self), @ptrCast(newFramePtr + CallArgStart), numArgs));
-                if (res.isInterrupt()) {
-                    return error.Panic;
-                }
-                return cy.fiber.PcSp{
-                    .pc = pc,
                     .sp = framePtr,
                 };
             },
@@ -3894,31 +3876,6 @@ fn callMethod(
                 .sp = sp,
             };
         },
-        .optimizing => {
-            if (numArgs != data.optimizing.numParams) {
-                return null;
-            }
-
-            // Perform type check on args.
-            const vals = sp[ret+CallArgStart+1..ret+CallArgStart+1+numArgs-1];
-            const target = vm.compiler.sema.getFuncSig(data.optimizing.func_sig);
-            for (vals, target.params()[1..]) |val, target_t| {
-                const valTypeId = val.getTypeId();
-                if (!types.isTypeSymCompat(vm.compiler, valTypeId, target_t)) {
-                    return null;
-                }
-            }
-
-            vm.pc = pc;
-            const res: Value = @bitCast(data.optimizing.ptr.?(@ptrCast(vm), @ptrCast(sp + ret + CallArgStart), numArgs));
-            if (res.isInterrupt()) {
-                return error.Panic;
-            }
-            return cy.fiber.PcSp{
-                .pc = pc,
-                .sp = sp,
-            };
-        },
         .typed => {
             if (numArgs != data.typed.numParams) {
                 return null;
@@ -4533,33 +4490,6 @@ pub fn defaultPrint(_: ?*cc.VM, _: cc.Str) callconv(.C) void {
 
 pub fn defaultPrintError(_: ?*cc.VM, _: cc.Str) callconv(.C) void {
     // Default is a nop.
-}
-
-export fn zDeoptBinOp(vm: *VM, pc: [*]cy.Inst) [*]cy.Inst {
-    const pcOff = @intFromPtr(pc) - @intFromPtr(vm.ops.ptr);
-    const data = vm.inlineSaves.get(@intCast(pcOff)).?;
-    _ = vm.inlineSaves.remove(@intCast(pcOff));
-    const pcPtr: [*]u8 = @ptrCast(pc);
-
-    const instLen = vmc.CALL_OBJ_SYM_INST_LEN;
-
-    switch (@as(cy.bindings.QuickenType, @enumFromInt(data[0]))) {
-        .binOp => {
-            @memcpy(pcPtr[0..instLen], data[1..instLen+1]);
-            vm.alloc.free(data[0..instLen + 1]);
-            return pc;
-        },
-        .binOpOneCopy => {
-            @memcpy((pcPtr-3)[0..instLen+3], data[1..instLen+1+3]);
-            vm.alloc.free(data[0..instLen + 1 + 3]);
-            return pc - 3;
-        },
-        .binOpBothCopies => {
-            @memcpy((pcPtr-6)[0..instLen+6], data[1..instLen+1+6]);
-            vm.alloc.free(data[0..instLen + 1 + 6]);
-            return pc - 6;
-        },
-    }
 }
 
 export fn zGetTypeName(vm: *VM, id: cy.TypeId) vmc.Str {

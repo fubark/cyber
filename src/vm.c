@@ -511,10 +511,6 @@ static inline void panicExpectedInteger(VM* vm) {
     panicStaticMsg(vm, "Expected integer operand.");
 }
 
-static inline void panicExpectedFloat(VM* vm) {
-    panicStaticMsg(vm, "Expected float operand.");
-}
-
 static inline void panicFieldMissing(VM* vm) {
     panicStaticMsg(vm, "Field not found in value.");
 }
@@ -549,27 +545,6 @@ static void panicCastFail(VM* vm, TypeId actTypeId, TypeId expTypeId) {
     }, 2);
 }
 
-#define DEOPTIMIZE_TERNOP() \
-    do { \
-        pc[0] = CodeCallObjSym; \
-        pc[1] = pc[8]; \
-        pc[2] = pc[9]; \
-        pc[3] = pc[10]; \
-        pc[4] = pc[11]; \
-    } while (false)
-
-#define DEOPTIMIZE_BINOP() \
-    do { \
-        pc = zDeoptBinOp(vm, pc); \
-    } while (false)
-
-#define DEOPTIMIZE_UNARYOP() \
-    do { \
-        pc[0] = CodeCallObjSym; \
-        pc[1] = pc[8]; \
-        pc[2] = pc[9]; \
-    } while (false)
-
 #define RETURN(code) \
     do { \
         vm->curPc = pc; \
@@ -585,64 +560,33 @@ static void panicCastFail(VM* vm, TypeId actTypeId, TypeId expTypeId) {
 
 #define INTEGER_UNOP(...) \
     Value val = stack[pc[1]]; \
-    if (VALUE_IS_INTEGER(val)) { \
-        /* Body... */ \
-        __VA_ARGS__; \
-        pc += CALL_OBJ_SYM_INST_LEN; \
-        NEXT(); \
-    } else { \
-        /* Always deopt, compiler would not gen if recv is dynamic. */ \
-        DEOPTIMIZE_UNARYOP(); \
-        NEXT(); \
-    }
-
-#define FLOAT_UNOP(...) \
-    Value val = stack[pc[1]]; \
-    if (VALUE_IS_FLOAT(val)) { \
-        /* Body... */ \
-        __VA_ARGS__; \
-        pc += CALL_OBJ_SYM_INST_LEN; \
-        NEXT(); \
-    } else { \
-        /* Always deopt, compiler would not gen if recv is dynamic. */ \
-        DEOPTIMIZE_UNARYOP(); \
-        NEXT(); \
-    }
+    /* Body... */ \
+    __VA_ARGS__; \
+    pc += CALL_OBJ_SYM_INST_LEN; \
+    NEXT(); \
 
 #define INTEGER_BINOP(...) \
     Value left = stack[pc[1]]; \
     Value right = stack[pc[2]]; \
-    if (VALUE_BOTH_INTEGERS(left, right)) { \
-        /* Body... */ \
-        __VA_ARGS__; \
-        pc += CALL_OBJ_SYM_INST_LEN; \
-        NEXT(); \
-    } else { \
-        if (!VALUE_IS_INTEGER(left)) { \
-            DEOPTIMIZE_BINOP(); \
-            NEXT(); \
-        } \
-        panicExpectedInteger(vm); \
-        RETURN(RES_CODE_PANIC); \
-    }
+    /* Body... */ \
+    __VA_ARGS__; \
+    pc += CALL_OBJ_SYM_INST_LEN; \
+    NEXT();
+
+#define FLOAT_UNOP(...) \
+    Value val = stack[pc[1]]; \
+    /* Body... */ \
+    __VA_ARGS__; \
+    pc += CALL_OBJ_SYM_INST_LEN; \
+    NEXT();
 
 #define FLOAT_BINOP(...) \
     Value left = stack[pc[1]]; \
     Value right = stack[pc[2]]; \
-    if (VALUE_BOTH_FLOATS(left, right)) { \
-        /* Body... */ \
-        __VA_ARGS__; \
-        pc += CALL_OBJ_SYM_INST_LEN; \
-        NEXT(); \
-    } else { \
-        /* Always deopt, compiler would not gen if recv is dynamic. */ \
-        if (!VALUE_IS_FLOAT(left)) { \
-            DEOPTIMIZE_BINOP(); \
-            NEXT(); \
-        } \
-        panicExpectedFloat(vm); \
-        RETURN(RES_CODE_PANIC); \
-    }
+    /* Body... */ \
+    __VA_ARGS__; \
+    pc += CALL_OBJ_SYM_INST_LEN; \
+    NEXT();
 
 ResultCode execBytecode(VM* vm) {
     #define READ_I16(offset) ((int16_t)(pc[offset] | ((uint16_t)pc[offset + 1] << 8)))
@@ -924,28 +868,19 @@ beginSwitch:
         Value listv = stack[pc[1]];
         Value index = stack[pc[2]];
         Value right = stack[pc[3]];
-        if (VALUE_IS_LIST(listv) && VALUE_IS_INTEGER(index)) {
-            HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
+        HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
 
-            _BitInt(48) idx = VALUE_AS_INTEGER(index);
-            if (idx >= 0 && idx < listo->list.list.len) {
-                Value existing = ((Value*)listo->list.list.buf)[idx];
-                release(vm, existing);
-                retain(vm, right);
-                ((Value*)listo->list.list.buf)[idx] = right;
-                stack[pc[4]] = VALUE_VOID;
-                pc += CALL_OBJ_SYM_INST_LEN;
-                NEXT();
-            } else {
-                panicOutOfBounds(vm);
-                RETURN(RES_CODE_PANIC);
-            }
+        _BitInt(48) idx = VALUE_AS_INTEGER(index);
+        if (idx >= 0 && idx < listo->list.list.len) {
+            Value existing = ((Value*)listo->list.list.buf)[idx];
+            release(vm, existing);
+            retain(vm, right);
+            ((Value*)listo->list.list.buf)[idx] = right;
+            stack[pc[4]] = VALUE_VOID;
+            pc += CALL_OBJ_SYM_INST_LEN;
+            NEXT();
         } else {
-            if (!VALUE_IS_LIST(listv)) {
-                DEOPTIMIZE_TERNOP();
-                NEXT();
-            }
-            panicExpectedInteger(vm);
+            panicOutOfBounds(vm);
             RETURN(RES_CODE_PANIC);
         }
     }
@@ -953,123 +888,91 @@ beginSwitch:
         Value mapv = stack[pc[1]];
         Value index = stack[pc[2]];
         Value right = stack[pc[3]];
-        if (VALUE_IS_MAP(mapv)) {
-            Map* mapo = (Map*)VALUE_AS_HEAPOBJECT(mapv);
-            ResultCode code = zMapSet(vm, mapo, index, right);
-            if (LIKELY(code == RES_CODE_SUCCESS)) {
-                stack[pc[4]] = VALUE_VOID;
-                pc += CALL_OBJ_SYM_INST_LEN;
-                NEXT();
-            }
-            RETURN(code);
-        } else {
-            DEOPTIMIZE_TERNOP();
+        Map* mapo = (Map*)VALUE_AS_HEAPOBJECT(mapv);
+        ResultCode code = zMapSet(vm, mapo, index, right);
+        if (LIKELY(code == RES_CODE_SUCCESS)) {
+            stack[pc[4]] = VALUE_VOID;
+            pc += CALL_OBJ_SYM_INST_LEN;
             NEXT();
         }
+        RETURN(code);
     }
     CASE(IndexList): {
         Value listv = stack[pc[1]];
         Value index = stack[pc[2]];
-        if (VALUE_IS_LIST(listv) && VALUE_IS_INTEGER(index)) {
-            HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
+        HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
 
-            _BitInt(48) idx = VALUE_AS_INTEGER(index);
-            if (idx >= 0 && idx < listo->list.list.len) {
-                Value val = ((Value*)listo->list.list.buf)[idx];
-                retain(vm, val);
-                stack[pc[3]] = val;
-                pc += CALL_OBJ_SYM_INST_LEN;
-                NEXT();
-            } else {
-                panicOutOfBounds(vm);
-                RETURN(RES_CODE_PANIC);
-            }
+        _BitInt(48) idx = VALUE_AS_INTEGER(index);
+        if (idx >= 0 && idx < listo->list.list.len) {
+            Value val = ((Value*)listo->list.list.buf)[idx];
+            retain(vm, val);
+            stack[pc[3]] = val;
+            pc += CALL_OBJ_SYM_INST_LEN;
+            NEXT();
         } else {
-            if (!VALUE_IS_LIST(listv)) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            }
-            panicExpectedInteger(vm);
+            panicOutOfBounds(vm);
             RETURN(RES_CODE_PANIC);
         }
     }
     CASE(IndexTuple): {
         Value tuplev = stack[pc[1]];
         Value index = stack[pc[2]];
-        if (VALUE_IS_TUPLE(tuplev) && VALUE_IS_INTEGER(index)) {
-            Tuple* tuple = (Tuple*)VALUE_AS_HEAPOBJECT(tuplev);
+        Tuple* tuple = (Tuple*)VALUE_AS_HEAPOBJECT(tuplev);
 
-            _BitInt(48) idx = VALUE_AS_INTEGER(index);
-            if (idx < 0) {
-                // Reverse index.
-                idx = tuple->len + idx;
-            }
-            if (idx >= 0 && idx < tuple->len) {
-                Value val = ((Value*)&tuple->firstValue)[idx];
-                retain(vm, val);
-                stack[pc[3]] = val;
-                pc += CALL_OBJ_SYM_INST_LEN;
-                NEXT();
-            } else {
-                panicOutOfBounds(vm);
-                RETURN(RES_CODE_PANIC);
-            }
+        _BitInt(48) idx = VALUE_AS_INTEGER(index);
+        if (idx < 0) {
+            // Reverse index.
+            idx = tuple->len + idx;
+        }
+        if (idx >= 0 && idx < tuple->len) {
+            Value val = ((Value*)&tuple->firstValue)[idx];
+            retain(vm, val);
+            stack[pc[3]] = val;
+            pc += CALL_OBJ_SYM_INST_LEN;
+            NEXT();
         } else {
-            if (!VALUE_IS_TUPLE(tuplev)) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            }
-            panicExpectedInteger(vm);
+            panicOutOfBounds(vm);
             RETURN(RES_CODE_PANIC);
         }
     }
     CASE(IndexMap): {
         Value mapv = stack[pc[1]];
         Value index = stack[pc[2]];
-        if (VALUE_IS_MAP(mapv)) {
-            HeapObject* mapo = VALUE_AS_HEAPOBJECT(mapv);
-            bool found;
-            Value val = zValueMapGet(&mapo->map.inner, index, &found);
-            if (found) {
-                retain(vm, val);
-                stack[pc[3]] = val;
-            } else {
-                panicFieldMissing(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
+        HeapObject* mapo = VALUE_AS_HEAPOBJECT(mapv);
+        bool found;
+        Value val = zValueMapGet(&mapo->map.inner, index, &found);
+        if (found) {
+            retain(vm, val);
+            stack[pc[3]] = val;
         } else {
-            DEOPTIMIZE_BINOP();
-            NEXT();
+            panicFieldMissing(vm);
+            RETURN(RES_CODE_PANIC);
         }
+        pc += CALL_OBJ_SYM_INST_LEN;
+        NEXT();
     }
     CASE(AppendList): {
         Value listv = stack[pc[1]];
         Value itemv = stack[pc[2]];
-        if (VALUE_IS_LIST(listv)) {
-            HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
 
-            size_t len = listo->list.list.len;
-            if (len == listo->list.list.cap) {
-                // ensure cap.
-                ResultCode code = zEnsureListCap(vm, &listo->list.list, len + 1);
-                if (code != RES_CODE_SUCCESS) {
-                    RETURN(code);
-                }
+        HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
+
+        size_t len = listo->list.list.len;
+        if (len == listo->list.list.cap) {
+            // ensure cap.
+            ResultCode code = zEnsureListCap(vm, &listo->list.list, len + 1);
+            if (code != RES_CODE_SUCCESS) {
+                RETURN(code);
             }
-
-            retain(vm, itemv);
-            ((Value*)listo->list.list.buf)[len] = itemv;
-            listo->list.list.len = len + 1;
-            stack[pc[3]] = VALUE_VOID;
-
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            DEOPTIMIZE_BINOP();
-            NEXT();
         }
+
+        retain(vm, itemv);
+        ((Value*)listo->list.list.buf)[len] = itemv;
+        listo->list.list.len = len + 1;
+        stack[pc[3]] = VALUE_VOID;
+
+        pc += CALL_OBJ_SYM_INST_LEN;
+        NEXT();
     }
     CASE(List): {
         uint8_t startLocal = pc[1];
@@ -1107,56 +1010,47 @@ beginSwitch:
     CASE(SliceList): {
         Value listv = stack[pc[1]];
         Value rangev = stack[pc[2]];
-        if (VALUE_IS_LIST(listv) && VALUE_IS_RANGE(rangev)) {
-            HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
-            HeapObject* rangeo = VALUE_AS_HEAPOBJECT(rangev);
+        HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
+        HeapObject* rangeo = VALUE_AS_HEAPOBJECT(rangev);
 
-            _BitInt(48) start;
-            if (rangeo->range.has_start) {
-                start = rangeo->range.start;
-            } else {
-                start = 0;
-            }
-            if (start < 0) {
-                panicOutOfBounds(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-
-            _BitInt(48) end;
-            if (rangeo->range.has_end) {
-                end = rangeo->range.end;
-            } else {
-                end = listo->list.list.len;
-            }
-            if (end > listo->list.list.len) {
-                panicOutOfBounds(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-
-            if (end < start) {
-                panicOutOfBounds(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-
-            Value* elems = ((Value*)listo->list.list.buf);
-            for (int i = start; i < end; i += 1) {
-                retain(vm, elems[i]);
-            }
-            ValueResult res = zAllocList(vm, elems + start, end - start);
-            if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
-                RETURN(res.code);
-            }
-            stack[pc[3]] = res.val;
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
+        _BitInt(48) start;
+        if (rangeo->range.has_start) {
+            start = rangeo->range.start;
         } else {
-            if (!VALUE_IS_LIST(listv)) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            }
-            panicExpectedInteger(vm);
+            start = 0;
+        }
+        if (start < 0) {
+            panicOutOfBounds(vm);
             RETURN(RES_CODE_PANIC);
         }
+
+        _BitInt(48) end;
+        if (rangeo->range.has_end) {
+            end = rangeo->range.end;
+        } else {
+            end = listo->list.list.len;
+        }
+        if (end > listo->list.list.len) {
+            panicOutOfBounds(vm);
+            RETURN(RES_CODE_PANIC);
+        }
+
+        if (end < start) {
+            panicOutOfBounds(vm);
+            RETURN(RES_CODE_PANIC);
+        }
+
+        Value* elems = ((Value*)listo->list.list.buf);
+        for (int i = start; i < end; i += 1) {
+            retain(vm, elems[i]);
+        }
+        ValueResult res = zAllocList(vm, elems + start, end - start);
+        if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
+            RETURN(res.code);
+        }
+        stack[pc[3]] = res.val;
+        pc += CALL_OBJ_SYM_INST_LEN;
+        NEXT();
     }
     CASE(JumpNotCond): {
         Value condv = stack[pc[1]];

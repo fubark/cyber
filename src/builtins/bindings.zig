@@ -167,6 +167,93 @@ pub fn listRemove(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     return Value.Void;
 }
 
+pub fn mapIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+    const map = args[0].asHeapObject();
+    if (map.map.map().get(args[1])) |val| {
+        vm.retain(val);
+        return val;
+    } else {
+        return vm.prepPanic("Missing key in map.");
+    }
+}
+
+pub fn mapSetIndex(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const map = args[0].asHeapObject();
+    try map.map.set(vm, args[1], args[2]);
+    return Value.Void;
+}
+
+pub fn tupleIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+    const index: i64 = @intCast(args[1].asInteger());
+    const tuple = args[0].asHeapObject();
+    if (index < 0 or index > tuple.tuple.len) {
+        return vm.prepPanic("Out of bounds.");
+    } 
+    const value = tuple.tuple.getElemsPtr()[@bitCast(index)];
+    vm.retain(value);
+    return value;
+}
+
+pub fn listIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+    const index: i64 = @intCast(args[1].asInteger());
+    const list = args[0].asHeapObject();
+    const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
+    if (index < 0 or index > inner.len) {
+        return vm.prepPanic("Out of bounds.");
+    } 
+    const value = inner.buf[@bitCast(index)];
+    vm.retain(value);
+    return value;
+}
+
+pub fn listSetIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+    const index: i64 = @intCast(args[1].asInteger());
+    const list = args[0].asHeapObject();
+    const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
+    if (index < 0 or index > inner.len) {
+        return vm.prepPanic("Out of bounds.");
+    } 
+    vm.release(inner.buf[@bitCast(index)]);
+    vm.retain(args[2]);
+    inner.buf[@bitCast(index)] = args[2];
+    return Value.Void;
+}
+
+pub fn listSlice(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const list = args[0].asHeapObject();
+    const range = args[1].asHeapObject();
+    const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
+    var start: i64 = undefined;
+    if (range.range.has_start) {
+        start = range.range.start;
+        if (start < 0) {
+            return vm.prepPanic("Out of bounds.");
+        }
+    } else {
+        start = 0;
+    }
+
+    var end: i64 = undefined;
+    if (range.range.has_end) {
+        end = range.range.end;
+        if (end > inner.len) {
+            return vm.prepPanic("Out of bounds.");
+        }
+    } else {
+        end = @intCast(inner.len);
+    }
+
+    if (end < start) {
+        return vm.prepPanic("Out of bounds.");
+    }
+
+    const elems = inner.buf[@bitCast(start)..@bitCast(end)];
+    for (elems) |elem| {
+        vm.retain(elem);
+    }
+    return cy.heap.allocList(vm, elems);
+}
+
 pub fn listInsert(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const index: i64 = @intCast(args[1].asInteger());
     const value = args[2];
@@ -245,6 +332,13 @@ pub fn listAppendList(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
         vm.retain(it);
         try obj.list.append(vm.alloc, it);
     }
+    return Value.Void;
+}
+
+pub fn listAppend(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const obj = args[0].asHeapObject();
+    vm.retain(args[1]);
+    try obj.list.append(vm.alloc, args[1]);
     return Value.Void;
 }
 
@@ -362,135 +456,135 @@ pub fn mapGet(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     } else return anyNone(vm) catch cy.fatal();
 }
 
-inline fn inlineUnaryOp(pc: [*]cy.Inst, code: cy.OpCode) void {
-    const ret = pc[1].val;
-    // Save callObjSym data.
-    pc[8].val = ret;
-    pc[9] = pc[2];
-
-    // Inline bin op.
-    pc[0] = cy.Inst.initOpCode(code);
-    pc[1].val = ret + cy.vm.CallArgStart;
-    pc[2].val = ret;
+pub fn intNeg(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initInt(-args[0].asInteger());
 }
 
-pub fn intBitwiseNot(vm: *cy.VM, _: [*]const Value, _: u8) Value {
-    inlineUnaryOp(vm.pc, .bitwiseNot);
-    return Value.Void;
+pub fn intLess(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initBool(args[0].asInteger() < args[1].asInteger());
 }
 
-pub fn intNeg(vm: *cy.VM, _: [*]const Value, _: u8) Value {
-    inlineUnaryOp(vm.pc, .negInt);
-    return Value.Void;
+pub fn intLessEq(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initBool(args[0].asInteger() <= args[1].asInteger());
 }
 
-pub fn floatNeg(vm: *cy.VM, _: [*]const Value, _: u8) Value {
-    inlineUnaryOp(vm.pc, .negFloat);
-    return Value.Void;
+pub fn intGreater(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initBool(args[0].asInteger() > args[1].asInteger());
 }
 
-pub fn inlineTernOp(comptime code: cy.OpCode) cy.ZHostFuncFn {
-    const S = struct {
-        pub fn method(vm: *cy.VM, _: [*]const Value, _: u8) Value {
-            const pc = vm.pc;
-            const ret = pc[1].val;
-            // Save callObjSym data.
-            pc[8].val = ret;
-            pc[9] = pc[2];
-            pc[10] = pc[3];
-            pc[11] = pc[4];
+pub fn intGreaterEq(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initBool(args[0].asInteger() >= args[1].asInteger());
+}
 
-            pc[0] = cy.Inst.initOpCode(code);
-            pc[1].val = ret + cy.vm.CallArgStart;
-            pc[2].val = ret + cy.vm.CallArgStart + 1;
-            pc[3].val = ret + cy.vm.CallArgStart + 2;
-            pc[4].val = ret;
-            return Value.Void;
+pub fn intAdd(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initInt(args[0].asInteger() + args[1].asInteger());
+}
+
+pub fn intSub(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initInt(args[0].asInteger() - args[1].asInteger());
+}
+
+pub fn intMul(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initInt(args[0].asInteger() * args[1].asInteger());
+}
+
+pub fn intDiv(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+    const right = args[1].asInteger();
+    if (right == 0) return vm.prepPanic("Division by zero.");
+    return Value.initInt(@divExact(args[0].asInteger(), right));
+}
+
+pub fn intMod(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+    const right = args[1].asInteger();
+    if (right == 0) return vm.prepPanic("Division by zero.");
+    return Value.initInt(@mod(args[0].asInteger(), right));
+}
+
+pub fn intPow(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+    const right = args[1].asInteger();
+    if (right == 0) return vm.prepPanic("Division by zero.");
+    return Value.initInt(std.math.powi(i48, args[0].asInteger(), right) catch |err| {
+        switch (err) {
+            error.Underflow => return vm.prepPanic("Underflow."),
+            error.Overflow => return vm.prepPanic("Overfloat."),
         }
-    };
-    return S.method;
+    });
+}
+
+pub fn intAnd(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initInt(args[0].asInteger() & args[1].asInteger());
+}
+
+pub fn intOr(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initInt(args[0].asInteger() | args[1].asInteger());
+}
+
+pub fn intXor(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initInt(args[0].asInteger() ^ args[1].asInteger());
+}
+
+pub fn intLeftShift(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+    const right = args[1].asInteger();
+    if (right > 48 or right < 0) return vm.prepPanic("Out of bounds.");
+    return Value.initInt(args[0].asInteger() << @intCast(right));
+}
+
+pub fn intRightShift(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+    const right = args[1].asInteger();
+    if (right > 48 or right < 0) return vm.prepPanic("Out of bounds.");
+    return Value.initInt(args[0].asInteger() >> @intCast(right));
+}
+
+pub fn intNot(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initInt(~args[0].asInteger());
+}
+
+pub fn floatNeg(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(-args[0].asF64());
+}
+
+pub fn floatLess(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initBool(args[0].asF64() < args[1].asF64());
+}
+
+pub fn floatLessEq(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initBool(args[0].asF64() <= args[1].asF64());
+}
+
+pub fn floatGreater(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initBool(args[0].asF64() > args[1].asF64());
+}
+
+pub fn floatGreaterEq(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initBool(args[0].asF64() >= args[1].asF64());
+}
+
+pub fn floatAdd(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(args[0].asF64() + args[1].asF64());
+}
+
+pub fn floatSub(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(args[0].asF64() - args[1].asF64());
+}
+
+pub fn floatMul(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(args[0].asF64() * args[1].asF64());
+}
+
+pub fn floatDiv(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(args[0].asF64() / args[1].asF64());
+}
+
+pub fn floatMod(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(@mod(args[0].asF64(), args[1].asF64()));
+}
+
+pub fn floatPow(_: *cy.VM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.pow(f64, args[0].asF64(), args[1].asF64()));
 }
 
 pub const QuickenType = enum(u8) {
-    binOp,
-    binOpOneCopy,
-    binOpBothCopies,
 };
-
-fn saveInst(vm: *cy.VM, qtype: QuickenType, pc: [*]cy.Inst) !void {
-    var data: []u8 = undefined;
-    const pcPtr: [*]const u8 = @ptrCast(pc);
-    const instLen = vmc.CALL_OBJ_SYM_INST_LEN;
-
-    switch (qtype) {
-        .binOp => {
-            data = try vm.alloc.alloc(u8, instLen + 1);
-            @memcpy(data[1..], pcPtr[0..instLen]);
-        },
-        .binOpOneCopy => {
-            data = try vm.alloc.alloc(u8, instLen + 3 + 1);
-            @memcpy(data[1..], (pcPtr - 3)[0..instLen+3]);
-        },
-        .binOpBothCopies => {
-            data = try vm.alloc.alloc(u8, instLen + 6 + 1);
-            @memcpy(data[1..], (pcPtr - 6)[0..instLen + 6]);
-        },
-    }
-    data[0] = @intFromEnum(qtype);
-    const pcOff = @intFromPtr(pc) - @intFromPtr(vm.ops.ptr);
-    try vm.inlineSaves.put(vm.alloc, @intCast(pcOff), data.ptr);
-}
-
-pub fn inlineBinOp(comptime code: cy.OpCode) fn (*cy.VM, [*]const Value, u8) anyerror!Value {
-    const S = struct {
-        pub fn method(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
-            const pc = vm.pc;
-
-            // Lower bits contain op inlining type.
-            const inlineType = pc[7].val & 0x7f;
-            if (inlineType == 1) {
-                try saveInst(vm, .binOpOneCopy, pc);
-
-                const ret = pc[1].val;
-                pc[0] = cy.Inst.initOpCode(code);
-                if (ret + cy.vm.CallArgStart == (pc-3)[2].val) {
-                    pc[1].val = (pc-3)[1].val;
-                    pc[2].val = ret + cy.vm.CallArgStart + 1;
-                } else {
-                    pc[1].val = ret + cy.vm.CallArgStart;
-                    pc[2].val = (pc-3)[1].val;
-                }
-                pc[3].val = ret;
-
-                (pc-3)[0] = cy.Inst.initOpCode(.jump);
-                @as(*align(1) i16, @ptrCast(pc-2)).* = 3;
-            } else if (inlineType == 2) {
-                try saveInst(vm, .binOpBothCopies, pc);
-
-                const ret = pc[1].val;
-                pc[0] = cy.Inst.initOpCode(code);
-                // Lhs copy is always the last inst.
-                pc[1].val = (pc-6)[4].val;
-                pc[2].val = (pc-6)[1].val;
-                pc[3].val = ret;
-
-                (pc-6)[0] = cy.Inst.initOpCode(.jump);
-                @as(*align(1) i16, @ptrCast(pc-5)).* = 6;
-            } else {
-                try saveInst(vm, .binOp, pc);
-
-                // Inline bin op.
-                const ret = pc[1].val;
-                pc[0] = cy.Inst.initOpCode(code);
-                pc[1].val = ret + cy.vm.CallArgStart;
-                pc[2].val = ret + cy.vm.CallArgStart + 1;
-                pc[3].val = ret;
-            }
-            return Value.Void;
-        }
-    };
-    return S.method;
-}
 
 pub fn nop(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
     return vm.returnPanic("Unsupported.");

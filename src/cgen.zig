@@ -700,7 +700,7 @@ fn genHead(c: *Compiler, w: std.ArrayListUnmanaged(u8).Writer, chunks: []Chunk) 
             if (func.type == .userLambda) {
                 continue;
             }
-            if (func.type == .hostFunc or func.type == .hostInlineFunc) {
+            if (func.type == .hostFunc) {
                 try w.print("extern {} {s}(CbRT*", .{
                     try chunk.cTypeName(func.retType), chunk.cSymName(func),
                 });
@@ -905,8 +905,6 @@ fn genExpr(c: *Chunk, loc: usize, cstr: Cstr) anyerror!Value {
         .preCallDyn         => genCallDyn(c, loc, cstr, nodeId),
         .preCallFuncSym     => genCallFuncSym(c, loc, cstr, nodeId),
         // .preCallObjSym      => genCallObjSym(c, idx, cstr, nodeId),
-        .preCallObjSymBinOp => genCallObjSymBinOp(c, loc, cstr, nodeId),
-        // .preCallObjSymUnOp  => genCallObjSymUnOp(c, idx, cstr, nodeId),
         // .preUnOp            => genUnOp(c, idx, cstr, nodeId),
         .string             => genString(c, loc, cstr, nodeId),
         // .stringTemplate     => genStringTemplate(c, idx, cstr, nodeId),
@@ -1008,25 +1006,6 @@ fn declareLocal(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
     return error.TODO;
 }
 
-fn genCallObjSymBinOp(c: *Chunk, loc: usize, cstr: Cstr, nodeId: cy.NodeId) !Value {
-    _ = cstr;
-    _ = nodeId;
-
-    const data = c.ir.getExprData(loc, .preCallObjSymBinOp).callObjSymBinOp;
-
-    // try popTempAndUnwind(c, rightv);
-    // try popTempAndUnwind(c, leftv);
-    // try releaseTempValue2(c, leftv, rightv, nodeId);
-
-    try c.bufPush("cbCallMethDyn(rt, ");
-    _ = try genExprAndBox(c, data.left, Cstr.init());
-    const name = getBinOpName(data.op);
-    try c.bufPushFmt(", \"{s}\", {}, (CbAny[]){{", .{ name, name.len });
-    _ = try genExprAndBox(c, data.right, Cstr.init());
-    try c.bufPush("}, 2)");
-    return Value{};
-}
-
 fn getBinOpName(op: cy.BinaryExprOp) []const u8 {
     return switch (op) {
         .index => "$index",
@@ -1075,82 +1054,53 @@ fn genCallFuncSym(c: *Chunk, loc: usize, cstr: Cstr, nodeId: cy.NodeId) !Value {
 
     const data = c.ir.getExprData(loc, .preCallFuncSym).callFuncSym;
 
-    if (data.func.type == .hostInlineFunc) {
-        // // TODO: Make this handle all host inline funcs.
-        // if (@intFromPtr(data.func.data.hostInlineFunc.ptr) == @intFromPtr(cy.builtins.appendList)) {
-        //     const inst = try c.rega.selectForDstInst(cstr, false);
-        //     const args = c.ir.getArray(data.args, u32, data.numArgs);
-        //     const recv = try genExpr(c, args[0], RegisterCstr.simple);
-        //     const itemv = try genExpr(c, args[1], RegisterCstr.simple);
+    // if (data.hasDynamicArg) {
+    //     try genCallTypeCheck(c, inst.ret + cy.vm.CallArgStart, data.numArgs, data.func.funcSigId, nodeId);
+    // }
 
-        //     if (data.hasDynamicArg) {
-        //         try pushTypeCheck(c, recv.local, bt.List, nodeId);
-        //     }
+    const args = c.ir.getArray(data.args, u32, data.numArgs);
 
-        //     try pushInlineBinExpr(c, .appendList, recv.local, itemv.local, inst.dst, nodeId);
-
-        //     const recvRetained = unwindAndFreeTemp(c, recv);
-        //     const itemvRetained = unwindAndFreeTemp(c, itemv);
-
-        //     // ARC cleanup.
-        //     try pushReleaseOpt2(c, recvRetained, recv.local, itemvRetained, itemv.local, nodeId);
-
-        //     const val = genValue(c, inst.dst, false);
-        //     return finishInst(c, val, inst.finalDst);
-        // } else {
-        //     return error.UnsupportedInline;
-        // }
-        return error.TODO;
-    } else {
-
-        // if (data.hasDynamicArg) {
-        //     try genCallTypeCheck(c, inst.ret + cy.vm.CallArgStart, data.numArgs, data.func.funcSigId, nodeId);
-        // }
-
-        const args = c.ir.getArray(data.args, u32, data.numArgs);
-
-        switch (data.func.type) {
-            .userFunc => {
-                try c.bufPushFmt("{s}(rt", .{c.cSymName(data.func)});
-                if (args.len > 0) {
-                    for (args) |idx| {
-                        try c.bufPush(", ");
-                        _ = try genExpr(c, idx, Cstr.init());
-                    }
+    switch (data.func.type) {
+        .userFunc => {
+            try c.bufPushFmt("{s}(rt", .{c.cSymName(data.func)});
+            if (args.len > 0) {
+                for (args) |idx| {
+                    try c.bufPush(", ");
+                    _ = try genExpr(c, idx, Cstr.init());
                 }
-            },
-            .hostFunc => {
-                // try c.bufPushTrySpan();
+            }
+        },
+        .hostFunc => {
+            // try c.bufPushTrySpan();
 
-                try c.bufPushFmt("{s}(rt, ", .{c.cSymName(data.func)});
-                if (args.len > 0) {
-                    _ = try genExpr(c, args[0], Cstr.init());
-                    for (args[1..]) |idx| {
-                        try c.bufPush(", ");
-                        _ = try genExpr(c, idx, Cstr.init());
-                    }
+            try c.bufPushFmt("{s}(rt, ", .{c.cSymName(data.func)});
+            if (args.len > 0) {
+                _ = try genExpr(c, args[0], Cstr.init());
+                for (args[1..]) |idx| {
+                    try c.bufPush(", ");
+                    _ = try genExpr(c, idx, Cstr.init());
                 }
+            }
 
-                // try c.bufPush(")");
-            },
-            else => return error.TODO,
-        }
-
-        try c.bufPush(")");
-
-        // const rtId = c.compiler.genSymMap.get(data.func).?.funcSym.id;
-        // try pushCallSym(c, inst.ret, data.numArgs, 1, rtId, nodeId);
-
-        // const argvs = popValues(c, data.numArgs);
-        // try checkArgs(argStart, argvs);
-
-        // const retained = unwindTemps(c, argvs);
-        // try pushReleaseVals(c, retained, nodeId);
-
-        // const retRetained = c.sema.isRcCandidateType(data.func.retType);
-        // return endCall(c, inst, retRetained);
-        return Value{};
+            // try c.bufPush(")");
+        },
+        else => return error.TODO,
     }
+
+    try c.bufPush(")");
+
+    // const rtId = c.compiler.genSymMap.get(data.func).?.funcSym.id;
+    // try pushCallSym(c, inst.ret, data.numArgs, 1, rtId, nodeId);
+
+    // const argvs = popValues(c, data.numArgs);
+    // try checkArgs(argStart, argvs);
+
+    // const retained = unwindTemps(c, argvs);
+    // try pushReleaseVals(c, retained, nodeId);
+
+    // const retRetained = c.sema.isRcCandidateType(data.func.retType);
+    // return endCall(c, inst, retRetained);
+    return Value{};
 }
 
 fn genString(c: *Chunk, loc: usize, cstr: Cstr, nodeId: cy.NodeId) !Value {

@@ -192,19 +192,6 @@ fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
                 try c.vm.addMethod(parentT, mgId, m);
             }
         }
-    } else if (func.type == .hostInlineFunc) {
-        const funcSig = c.sema.getFuncSig(func.funcSigId);
-        const rtFunc = rt.FuncSymbol.initHostInlineFunc(@ptrCast(func.data.hostInlineFunc.ptr), funcSig.reqCallTypeCheck, funcSig.numParams(), func.funcSigId);
-        _ = try addVmFunc(c, func, rtFunc);
-        if (func.isMethod) {
-            log.tracev("ismethod", .{});
-            const name = func.name();
-            const mgId = try c.vm.ensureMethodGroup(name);
-            const parentT = func.sym.?.head.parent.?.getStaticType().?;
-            log.tracev("host inline method: {s}.{s} {} {}", .{c.sema.getTypeBaseName(parentT), name, parentT, mgId});
-            const m = rt.MethodInit.initHostInline(func.funcSigId, func.data.hostInlineFunc.ptr, func.numParams);
-            try c.vm.addMethod(parentT, mgId, m);
-        }
     } else if (func.type == .userFunc) {
         _ = try addVmFunc(c, func, rt.FuncSymbol.initNone());
         // Func is patched later once funcPc and stackSize is obtained.
@@ -404,8 +391,6 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .preCallDyn         => genCallDyn(c, idx, cstr, nodeId),
         .preCallFuncSym     => genCallFuncSym(c, idx, cstr, nodeId),
         .preCallObjSym      => genCallObjSym(c, idx, cstr, nodeId),
-        .preCallObjSymBinOp => genCallObjSymBinOp(c, idx, cstr, nodeId),
-        .preCallObjSymUnOp  => genCallObjSymUnOp(c, idx, cstr, nodeId),
         .preUnOp            => genUnOp(c, idx, cstr, nodeId),
         .range              => genRange(c, idx, cstr, nodeId),
         .string             => genString(c, idx, cstr, nodeId),
@@ -1271,53 +1256,33 @@ fn genCallObjSym(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
 fn genCallFuncSym(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const data = c.ir.getExprData(idx, .preCallFuncSym).callFuncSym;
 
-    if (data.func.type == .hostInlineFunc) {
-        // TODO: Make this handle all host inline funcs.
-        if (@intFromPtr(data.func.data.hostInlineFunc.ptr) == @intFromPtr(cy.builtins.appendList)) {
-            const inst = try c.rega.selectForDstInst(cstr, false, nodeId);
-            const args = c.ir.getArray(data.args, u32, data.numArgs);
-            const recv = try genExpr(c, args[0], Cstr.simple);
-            try pushUnwindValue(c, recv);
-            const itemv = try genExpr(c, args[1], Cstr.simple);
-            try pushUnwindValue(c, itemv);
-
-            try pushInlineBinExpr(c, .appendList, recv.reg, itemv.reg, inst.dst, nodeId);
-
-            try popTempAndUnwind(c, itemv);
-            try popTempAndUnwind(c, recv);
-
-            // ARC cleanup.
-            try releaseTempValue2(c, recv, itemv, nodeId);
-
-            return finishDstInst(c, inst, false);
-        } else {
-            return error.UnsupportedInline;
-        }
-    } else {
-        const inst = try beginCall(c, cstr, false, nodeId);
-
-        const args = c.ir.getArray(data.args, u32, data.numArgs);
-
-        const argStart = c.rega.nextTemp;
-        for (args, 0..) |argIdx, i| {
-            const temp = try c.rega.consumeNextTemp();
-            if (cy.Trace and temp != argStart + i) return error.Unexpected;
-            const val = try genAndPushExpr(c, argIdx, Cstr.toTemp(temp));
-            try pushUnwindValue(c, val);
-        }
-
-        const rtId = c.compiler.genSymMap.get(data.func).?.funcSym.id;
-        try pushCallSym(c, inst.ret, data.numArgs, 1, rtId, nodeId);
-
-        const argvs = popValues(c, data.numArgs);
-        try checkArgs(argStart, argvs);
-
-        const retained = try popTempAndUnwinds2(c, argvs);
-        try pushReleaseVals(c, retained, nodeId);
-
-        const retRetained = c.sema.isRcCandidateType(data.func.retType);
-        return endCall(c, inst, retRetained);
+    if (true) {
+        // TODO: Handle specialized. (eg. listIndex, listAppend)
     }
+
+    const inst = try beginCall(c, cstr, false, nodeId);
+
+    const args = c.ir.getArray(data.args, u32, data.numArgs);
+
+    const argStart = c.rega.nextTemp;
+    for (args, 0..) |argIdx, i| {
+        const temp = try c.rega.consumeNextTemp();
+        if (cy.Trace and temp != argStart + i) return error.Unexpected;
+        const val = try genAndPushExpr(c, argIdx, Cstr.toTemp(temp));
+        try pushUnwindValue(c, val);
+    }
+
+    const rtId = c.compiler.genSymMap.get(data.func).?.func.id;
+    try pushCallSym(c, inst.ret, data.numArgs, 1, rtId, nodeId);
+
+    const argvs = popValues(c, data.numArgs);
+    try checkArgs(argStart, argvs);
+
+    const retained = try popTempAndUnwinds2(c, argvs);
+    try pushReleaseVals(c, retained, nodeId);
+
+    const retRetained = c.sema.isRcCandidateType(data.func.retType);
+    return endCall(c, inst, retRetained);
 }
 
 fn genCallDyn(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
@@ -1349,131 +1314,6 @@ fn genCallDyn(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     try pushReleaseVals(c, retained, nodeId);
 
     return endCall(c, inst, true);
-}
-
-const CopyInstSave = struct {
-    src: RegisterId,
-    dst: RegisterId,
-    desc: if (cy.Trace) cy.bytecode.InstDesc else void, 
-};
-
-fn extractIfCopyInst(c: *Chunk, leftPc: usize) ?CopyInstSave {
-    if (c.buf.ops.items.len - 3 == leftPc) {
-        if (c.buf.ops.items[leftPc].opcode() == .copy) {
-            var save = CopyInstSave{
-                .src = c.buf.ops.items[leftPc+1].val,
-                .dst = c.buf.ops.items[leftPc+2].val,
-                .desc = undefined,
-            };
-            if (cy.Trace) {
-                save.desc = c.buf.instDescs.items[c.buf.instDescs.items.len-1];
-                c.buf.instDescs.items.len -= 1;
-            }
-            c.buf.ops.items.len = leftPc;
-            return save;
-        }
-    }
-    return null;
-}
-
-fn genCallObjSymUnOp(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
-    const data = c.ir.getExprData(idx, .preCallObjSymUnOp).callObjSymUnOp;
-    const inst = try beginCall(c, cstr, false, nodeId);
-
-    var temp = try c.rega.consumeNextTemp();
-    const childv = try genExpr(c, data.expr, Cstr.toTemp(temp));
-    try pushUnwindValue(c, childv);
-
-    const mgId = try getUnMGID(c, data.op);
-
-    try pushCallObjSym(c, inst.ret, 1, @intCast(mgId), 0, nodeId);
-
-    try popTempAndUnwind(c, childv);
-    try releaseTempValue(c, childv, nodeId);
-
-    return endCall(c, inst, true);
-}
-
-fn genCallObjSymBinOp(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
-    const data = c.ir.getExprData(idx, .preCallObjSymBinOp).callObjSymBinOp;
-
-    const inst = try beginCall(c, cstr, false, nodeId);
-
-    const leftPc = c.buf.ops.items.len;
-    // copy inst doesn't create a debug symbol, otherwise that needs to be moved as well.
-
-    var temp = try c.rega.consumeNextTemp();
-    const leftv = try genExpr(c, data.left, Cstr.toTemp(temp));
-    try pushUnwindValue(c, leftv);
-
-    const leftCopySave = extractIfCopyInst(c, leftPc);
-    const hasLeftCopy = leftCopySave != null;
-
-    const rightPc = c.buf.ops.items.len;
-    temp = try c.rega.consumeNextTemp();
-    const rightv = try genExpr(c, data.right, Cstr.toTemp(temp));
-    try pushUnwindValue(c, rightv);
-
-    var hasRightCopy = false;
-    if (c.buf.ops.items.len - 3 == rightPc) {
-        if (c.buf.ops.items[rightPc].opcode() == .copy) {
-            hasRightCopy = true;
-        }
-    }
-
-    if (leftCopySave) |save| {
-        var desc = cy.bytecode.InstDesc{};
-        if (cy.Trace) desc = save.desc;
-        try c.buf.pushOp2Ext(.copy, save.src, save.dst, desc);
-    }
-
-    const mgId = try getInfixMGID(c, data.op);
-    const start = c.buf.len();
-    try pushCallObjSym(c, inst.ret, 2, @intCast(mgId), 0, nodeId);
-    // Provide hint to inlining that one or both args were copies.
-    if (hasLeftCopy or hasRightCopy) {
-        if (hasLeftCopy and hasRightCopy) {
-            c.buf.setOpArgs1(start + 7, 2);
-        } else {
-            c.buf.setOpArgs1(start + 7, 1);
-        }
-    }
-
-    try popTempAndUnwind(c, rightv);
-    try popTempAndUnwind(c, leftv);
-    try releaseTempValue2(c, leftv, rightv, nodeId);
-
-    return endCall(c, inst, true);
-}
-
-fn getUnMGID(c: *Chunk, op: cy.UnaryOp) !vmc.MethodGroupId {
-    return switch (op) {
-        .minus => c.compiler.@"prefix-MGID",
-        .bitwiseNot => c.compiler.@"prefix~MGID",
-        else => return error.Unexpected,
-    };
-}
-
-fn getInfixMGID(c: *Chunk, op: cy.BinaryExprOp) !vmc.MethodGroupId {
-    return switch (op) {
-        .index => c.compiler.indexMGID,
-        .less => c.compiler.@"infix<MGID",
-        .greater => c.compiler.@"infix>MGID",
-        .less_equal => c.compiler.@"infix<=MGID",
-        .greater_equal => c.compiler.@"infix>=MGID",
-        .minus => c.compiler.@"infix-MGID",
-        .plus => c.compiler.@"infix+MGID",
-        .star => c.compiler.@"infix*MGID",
-        .slash => c.compiler.@"infix/MGID",
-        .percent => c.compiler.@"infix%MGID",
-        .caret => c.compiler.@"infix^MGID",
-        .bitwiseAnd => c.compiler.@"infix&MGID",
-        .bitwiseOr => c.compiler.@"infix|MGID",
-        .bitwiseXor => c.compiler.@"infix||MGID",
-        .bitwiseLeftShift => c.compiler.@"infix<<MGID",
-        .bitwiseRightShift => c.compiler.@"infix>>MGID",
-        else => return error.Unexpected,
-    };
 }
 
 const BinOpOptions = struct {

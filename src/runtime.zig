@@ -22,10 +22,6 @@ pub const MethodType = enum {
     untyped,
     untypedHost,
 
-    /// Host func that intends to do custom optimization.
-    /// Only funcs with untyped params are supported.
-    optimizing,
-
     /// A func is typed if at least one of the params is not the any type.
     /// The return type does not count.
     typed,
@@ -41,11 +37,6 @@ pub const MethodData = extern union {
     },
     untypedHost: extern struct {
         ptr: vmc.HostFuncFn,
-        numParams: u8,
-    },
-    optimizing: extern struct {
-        ptr: vmc.HostFuncFn,
-        func_sig: sema.FuncSigId,
         numParams: u8,
     },
     typed: extern struct {
@@ -127,20 +118,6 @@ pub const MethodInit = struct {
             .funcSigId = funcSigId,
         };
     }
-
-    pub fn initHostInline(funcSigId: sema.FuncSigId, func: cy.ZHostFuncFn, numParams: u8) MethodInit {
-        return .{
-            .type = .optimizing,
-            .data = .{
-                .optimizing = .{
-                    .func_sig = funcSigId,
-                    .ptr = @ptrCast(func),
-                    .numParams = numParams,
-                },
-            },
-            .funcSigId = funcSigId,
-        };
-    }
 };
 
 pub const Method = struct {
@@ -192,8 +169,6 @@ pub const FuncId = u32;
 pub const FuncSymbolType = enum {
     func,
     hostFunc,
-    hostInlineFunc,
-    closure,
     none,
 };
 
@@ -224,7 +199,6 @@ pub const FuncSymbol = extern struct {
         },
     } = undefined,
     inner: extern union {
-        hostInlineFunc: vmc.HostFuncFn,
         hostFunc: vmc.HostFuncFn,
         func: extern struct {
             pc: u32,
@@ -240,22 +214,6 @@ pub const FuncSymbol = extern struct {
         return .{
             .entryT = @intFromEnum(FuncSymbolType.none),
             .inner = undefined,
-        };
-    }
-
-    pub fn initHostInlineFunc(func: vmc.HostFuncFn, isTyped: bool, numParams: u32, funcSigId: sema.FuncSigId) FuncSymbol {
-        const isTypedMask: u16 = if (isTyped) 1 << 15 else 0;
-        return .{
-            .entryT = @intFromEnum(FuncSymbolType.hostInlineFunc),
-            .innerExtra = .{
-                .hostFunc = .{
-                    .typedFlagNumParams = isTypedMask | @as(u16, @intCast(numParams)),
-                    .funcSigId = @intCast(funcSigId),
-                }
-            },
-            .inner = .{
-                .hostInlineFunc = func,
-            },
         };
     }
 

@@ -118,8 +118,6 @@ pub const ExprCode = enum(u8) {
     preUnOp,
     preCallDyn,
     preCallObjSym,
-    preCallObjSymUnOp,
-    preCallObjSymBinOp,
     preCallFuncSym,
 
     andOp,
@@ -404,8 +402,6 @@ pub const Prepare = union {
     unOp: UnOp,
     callFuncSym: CallFuncSym,
     callObjSym: CallObjSym,
-    callObjSymBinOp: CallObjSymBinOp,
-    callObjSymUnOp: CallObjSymUnOp,
 
     pub fn initCall(numArgs: u8) Prepare {
         return .{
@@ -482,17 +478,6 @@ pub const CallObjSym = struct {
 
     // Does not include rec.
     numArgs: u8,
-};
-
-pub const CallObjSymBinOp = struct {
-    op: cy.BinaryExprOp,
-    left: Loc,
-    right: Loc,
-};
-
-pub const CallObjSymUnOp = struct {
-    expr: Loc,
-    op: cy.UnaryOp,
 };
 
 pub const CallFuncSym = struct {
@@ -624,10 +609,8 @@ pub fn ExprData(comptime code: ExprCode) type {
         .preCallDyn,
         .preCallFuncSym,
         .preCallObjSym,
-        .preCallObjSymBinOp,
         .preBinOp,
         .preUnOp,
-        .preCallObjSymUnOp,
         .pre => Prepare,
         .varSym => VarSym,
         .enumMemberSym => EnumMemberSym,

@@ -134,19 +134,10 @@ typedef struct CsFuncInfo {
     uint32_t idx;
 } CsFuncInfo;
 
-typedef enum {
-    // Most #host funcs have this type.
-    CS_FUNC_STANDARD,
-    // Some internal functions need this to perform inline caching.
-    CS_FUNC_INLINE,
-} CsFuncType;
-
 // Result given to Cyber when binding a #host func.
 typedef struct CsFuncResult {
-    // Pointer to the binded function. (CsFuncFn/CsInlineFuncFn)
+    // Pointer to the binded function. (CsFuncFn)
     const void* ptr;
-    // `CsFuncType`. By default, this is `CS_FUNC_STANDARD`.
-    uint8_t type;
 } CsFuncResult;
 
 // Given info about a #host func, write it's function pointer to `out->ptr` and return true,

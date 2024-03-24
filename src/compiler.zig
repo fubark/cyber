@@ -70,29 +70,10 @@ pub const Compiler = struct {
     importBuiltins: bool = true,
 
     iteratorMGID: vmc.MethodGroupId = cy.NullId,
-    seqIteratorMGID: vmc.MethodGroupId = cy.NullId,
     nextMGID: vmc.MethodGroupId = cy.NullId,
-    nextSeqMGID: vmc.MethodGroupId = cy.NullId,
     indexMGID: vmc.MethodGroupId = cy.NullId,
     setIndexMGID: vmc.MethodGroupId = cy.NullId,
     sliceMGID: vmc.MethodGroupId = cy.NullId,
-    @"prefix~MGID": vmc.MethodGroupId = cy.NullId,
-    @"prefix-MGID": vmc.MethodGroupId = cy.NullId,
-    @"infix>MGID": vmc.MethodGroupId = cy.NullId,
-    @"infix>=MGID": vmc.MethodGroupId = cy.NullId,
-    @"infix<MGID": vmc.MethodGroupId = cy.NullId,
-    @"infix<=MGID": vmc.MethodGroupId = cy.NullId,
-    @"infix+MGID": vmc.MethodGroupId = cy.NullId,
-    @"infix-MGID": vmc.MethodGroupId = cy.NullId,
-    @"infix*MGID": vmc.MethodGroupId = cy.NullId,
-    @"infix/MGID": vmc.MethodGroupId = cy.NullId,
-    @"infix%MGID": vmc.MethodGroupId = cy.NullId,
-    @"infix^MGID": vmc.MethodGroupId = cy.NullId,
-    @"infix&MGID": vmc.MethodGroupId = cy.NullId,
-    @"infix|MGID": vmc.MethodGroupId = cy.NullId,
-    @"infix||MGID": vmc.MethodGroupId = cy.NullId,
-    @"infix<<MGID": vmc.MethodGroupId = cy.NullId,
-    @"infix>>MGID": vmc.MethodGroupId = cy.NullId,
 
     main_chunk: *cy.Chunk,
 
@@ -781,24 +762,6 @@ fn createDynMethodIds(self: *Compiler) !void {
     self.sliceMGID = try self.vm.ensureMethodGroup("$slice");
     self.iteratorMGID = try self.vm.ensureMethodGroup("iterator");
     self.nextMGID = try self.vm.ensureMethodGroup("next");
-    self.nextSeqMGID = try self.vm.ensureMethodGroup("nextSeq");
-    self.seqIteratorMGID = try self.vm.ensureMethodGroup("seqIterator");
-    self.@"infix<MGID" = try self.vm.ensureMethodGroup("$infix<");
-    self.@"infix<=MGID" = try self.vm.ensureMethodGroup("$infix<=");
-    self.@"infix>MGID" = try self.vm.ensureMethodGroup("$infix>");
-    self.@"infix>=MGID" = try self.vm.ensureMethodGroup("$infix>=");
-    self.@"infix+MGID" = try self.vm.ensureMethodGroup("$infix+");
-    self.@"infix-MGID" = try self.vm.ensureMethodGroup("$infix-");
-    self.@"infix*MGID" = try self.vm.ensureMethodGroup("$infix*");
-    self.@"infix/MGID" = try self.vm.ensureMethodGroup("$infix/");
-    self.@"infix%MGID" = try self.vm.ensureMethodGroup("$infix%");
-    self.@"infix^MGID" = try self.vm.ensureMethodGroup("$infix^");
-    self.@"infix&MGID" = try self.vm.ensureMethodGroup("$infix&");
-    self.@"infix|MGID" = try self.vm.ensureMethodGroup("$infix|");
-    self.@"infix||MGID" = try self.vm.ensureMethodGroup("$infix||");
-    self.@"infix<<MGID" = try self.vm.ensureMethodGroup("$infix<<");
-    self.@"infix>>MGID" = try self.vm.ensureMethodGroup("$infix>>");
-    self.@"prefix-MGID" = try self.vm.ensureMethodGroup("$prefix-");
 }
 
 // fn computeTypeSizesRec(self: *VMcompiler) !void {

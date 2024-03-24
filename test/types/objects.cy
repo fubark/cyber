@@ -20,11 +20,11 @@ var left Node = [value: 123]
 t.eq(left.value, 123)
 
 -- Init and default field to int(0).
-my n3 = [NodeHeap:]
+var n3 = [NodeHeap:]
 t.eq(n3.value, 0)
 
 type NodeHeap:
-    value any
+    value dynamic
 
 -- Init with heap value.
 n3 = [NodeHeap value: [123]]

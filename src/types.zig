@@ -67,10 +67,15 @@ pub const CompactType = packed struct {
     }
 
     pub fn init2(id: TypeId, dynamic: bool) CompactType {
-        return .{
-            .id = @intCast(id),
-            .dynamic = dynamic,
-        };
+        if (id == bt.Dynamic) {
+            return CompactType.initDynamic(bt.Any);
+        } else {
+            if (dynamic) {
+                return CompactType.initDynamic(id);
+            } else {
+                return CompactType.initStatic(id);
+            }
+        }
     }
 
     pub fn initStatic(id: TypeId) CompactType {

@@ -860,33 +860,76 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId, leftId: cy.NodeId, rightId: cy.No
     }
 }
 
-fn checkGetFieldFromObjMod(c: *cy.Chunk, obj: *cy.sym.ObjectType, fieldName: []const u8, nodeId: cy.NodeId) !FieldResult {
-    if (obj.head.getMod().?.getSym(fieldName)) |sym| {
-        if (sym.type != .field) {
-            const objectName = obj.head.name();
-            return c.reportErrorFmt("`{}` is not a field in `{}`.", &.{v(fieldName), v(objectName)}, nodeId);
-        }
-        const field = sym.cast(.field);
-        return .{
-            .idx = @intCast(field.idx),
-            .typeId = field.type,
-        };
+fn semaAccessField(c: *cy.Chunk, rec: ExprResult, field: cy.NodeId) !ExprResult {
+    const field_n = c.ast.node(field);
+    if (field_n.type() != .ident) {
+        return error.Unexpected;
+    }
+    const name = c.ast.nodeString(field_n);
+    return semaAccessFieldName(c, rec, name, field);
+}
+
+fn semaAccessFieldName(c: *cy.Chunk, rec: ExprResult, name: []const u8, field: cy.NodeId) !ExprResult {
+    if (rec.type.isDynAny()) {
+        const loc = try c.ir.pushExpr(.fieldDyn, c.alloc, bt.Any, field, .{
+            .name = name,
+            .rec = rec.irIdx,
+        });
+        return ExprResult.initCustom(loc, .fieldDyn, CompactType.initDynamic(bt.Any), undefined);
+    }
+
+    const info = try checkGetField(c, rec.type.id, name, field);
+    const field_t = CompactType.init2(info.typeId, rec.type.dynamic);
+
+    const recIsStructFromFieldAccess = rec.resType == .field and c.sema.getTypeKind(rec.type.id) == .@"struct";
+    if (recIsStructFromFieldAccess) {
+        // Continue the field chain.
+        const fidx = try c.ir.reserveData(c.alloc, u8);
+        fidx.* = info.idx;
+        const existing = c.ir.getExprDataPtr(rec.irIdx, .field);
+        c.ir.setExprType(rec.irIdx, field_t.id);
+        existing.numNestedFields += 1;
+        c.ir.setNode(rec.irIdx, field);
+        return ExprResult.initCustom(rec.irIdx, .field, field_t, undefined);
     } else {
-        const objectName = obj.head.name();
-        return c.reportErrorFmt("Field `{}` does not exist in `{}`.", &.{v(fieldName), v(objectName)}, nodeId);
+        const loc = try c.ir.pushExpr(.field, c.alloc, info.typeId, field, .{
+            .idx = info.idx,
+            .rec = rec.irIdx,
+            .numNestedFields = 0,
+        });
+        return ExprResult.initCustom(loc, .field, field_t, undefined);
     }
 }
 
-fn checkGetField(c: *cy.Chunk, recvT: TypeId, fieldName: []const u8, nodeId: cy.NodeId) !FieldResult {
-    const sym = c.sema.getTypeSym(recvT);
-    if (sym.type == .object_t) {
-        return checkGetFieldFromObjMod(c, sym.cast(.object_t), fieldName, nodeId);
-    } else if (sym.type == .struct_t) {
-        return checkGetFieldFromObjMod(c, sym.cast(.struct_t), fieldName, nodeId);
-    } else {
-        const name = c.sema.getTypeBaseName(recvT);
-        return c.reportErrorFmt("Type `{}` does not have a field named `{}`.", &.{v(name), v(fieldName)}, nodeId);
+fn checkGetField(c: *cy.Chunk, rec_t: TypeId, fieldName: []const u8, nodeId: cy.NodeId) !FieldResult {
+    const sym = c.sema.getTypeSym(rec_t);
+    switch (sym.type) {
+        .enum_t,
+        .object_t,
+        .struct_t => {
+            return checkSymGetField(c, sym, fieldName, nodeId);
+        },
+        else => {
+            const name = c.sema.getTypeBaseName(rec_t);
+            return c.reportErrorFmt("Field access unsupported for `{}`.", &.{v(name)}, nodeId);
+        },
     }
+}
+
+fn checkSymGetField(c: *cy.Chunk, type_sym: *cy.Sym, name: []const u8, nodeId: cy.NodeId) !FieldResult {
+    const sym = type_sym.getMod().?.getSym(name) orelse {
+        const type_name = type_sym.name();
+        return c.reportErrorFmt("Field `{}` does not exist in `{}`.", &.{v(name), v(type_name)}, nodeId);
+    };
+    if (sym.type != .field) {
+        const type_name = type_sym.name();
+        return c.reportErrorFmt("Type `{}` does not have a field named `{}`.", &.{v(type_name), v(name)}, nodeId);
+    }
+    const field = sym.cast(.field);
+    return .{
+        .idx = @intCast(field.idx),
+        .typeId = field.type,
+    };
 }
 
 const FieldResult = struct {
@@ -3029,7 +3072,6 @@ fn pushExprRes(c: *cy.Chunk, res: ExprResult) !void {
 
 const SymAccessType = enum {
     sym,
-    fieldDyn,
     field,
 };
 
@@ -3037,37 +3079,21 @@ const SymAccessResult = struct {
     type: SymAccessType,
     data: union {
         sym: *Sym,
-        fieldDyn: struct {
-            name: []const u8,
-        },
-        field: struct {
-            typeId: TypeId,
-            idx: u8,
-        },
+        field: ExprResult,
     },
 };
 
-fn resolveSymAccess(c: *cy.Chunk, sym: *Sym, rightId: cy.NodeId) !SymAccessResult {
-    const right = c.ast.node(rightId);
-    if (right.type() != .ident) {
-        return error.Unexpected;
-    }
-    const rightName = c.ast.nodeString(right);
-
+fn semaSymAccessRight(c: *cy.Chunk, sym: *Sym, sym_n: cy.NodeId, rightId: cy.NodeId) !SymAccessResult {
     if (sym.isVariable()) {
-        const leftT = (try sym.getValueType()).?;
-        if (leftT == bt.Dynamic or leftT == bt.Map) {
-            return .{ .type = .fieldDyn, .data = .{ .fieldDyn = .{
-                .name = rightName,
-            }}};
-        } else {
-            const res = try checkGetField(c, leftT, rightName, rightId);
-            return .{ .type = .field, .data = .{ .field = .{
-                .idx = res.idx,
-                .typeId = res.typeId,
-            }}};
-        }
+        const rec = try sema.symbol(c, sym, sym_n, true);
+        const res = try semaAccessField(c, rec, rightId);
+        return .{ .type = .field, .data = .{ .field = res }};
     } else {
+        const right = c.ast.node(rightId);
+        if (right.type() != .ident) {
+            return error.Unexpected;
+        }
+        const rightName = c.ast.nodeString(right);
         const rightSym = try c.findDistinctSym(sym, rightName, rightId, true);
         try referenceSym(c, rightSym, rightId);
         return .{ .type = .sym, .data = .{ .sym = rightSym }};
@@ -3424,7 +3450,7 @@ pub const ChunkExt = struct {
             const fieldN = c.ast.node(entry.data.keyValue.key);
             const fieldName = c.ast.nodeString(fieldN);
 
-            const field = try checkGetFieldFromObjMod(c, obj, fieldName, entry.data.keyValue.key);
+            const field = try checkSymGetField(c, @ptrCast(obj), fieldName, entry.data.keyValue.key);
             fieldNodes[field.idx] = .{ .nodeId = entry.data.keyValue.value };
             entryId = entry.next();
         }
@@ -4726,13 +4752,13 @@ pub const ChunkExt = struct {
                 .local => |id| {
                     // Local: [local].[right]
                     const rec = try semaLocal(c, id, node.data.accessExpr.left);
-                    return c.semaAccessExprLeftValue(rec, expr);
+                    return semaAccessField(c, rec, node.data.accessExpr.right);
                 },
                 .static => |crLeftSym| {
                     // Static symbol: [sym].[right]
                     try referenceSym(c, crLeftSym, node.data.accessExpr.left);
 
-                    const res = try resolveSymAccess(c, crLeftSym, node.data.accessExpr.right);
+                    const res = try semaSymAccessRight(c, crLeftSym, node.data.accessExpr.left, node.data.accessExpr.right);
                     switch (res.type) {
                         .sym => {
                             if (!symAsValue) {
@@ -4748,22 +4774,8 @@ pub const ChunkExt = struct {
                                 return try sema.symbol(c, res.data.sym, node.data.accessExpr.right, true);
                             }
                         },
-                        .fieldDyn => {
-                            const rec = try sema.symbol(c, crLeftSym, node.data.accessExpr.left, true);
-                            const loc = try c.ir.pushExpr(.fieldDyn, c.alloc, bt.Any, node.data.accessExpr.right, .{
-                                .name = res.data.fieldDyn.name,
-                                .rec = rec.irIdx,
-                            });
-                            return ExprResult.initCustom(loc, .fieldDyn, CompactType.initDynamic(bt.Any), undefined);
-                        },
                         .field => {
-                            const rec = try sema.symbol(c, crLeftSym, node.data.accessExpr.left, true);
-                            const loc = try c.ir.pushExpr(.field, c.alloc, res.data.field.typeId, node.data.accessExpr.right, .{
-                                .idx = res.data.field.idx,
-                                .rec = rec.irIdx,
-                                .numNestedFields = 0,
-                            });
-                            return ExprResult.initCustom(loc, .field, CompactType.init(res.data.field.typeId), undefined);
+                            return res.data.field;
                         },
                     }
                 },
@@ -4791,48 +4803,7 @@ pub const ChunkExt = struct {
     //     } else {
         } else {
             const rec = try c.semaExpr(node.data.accessExpr.left, .{});
-            return c.semaAccessExprLeftValue(rec, expr);
-        }
-    }
-
-    pub fn semaAccessExprLeftValue(c: *cy.Chunk, rec: ExprResult, expr: Expr) !ExprResult {
-        const node = c.ast.node(expr.nodeId);
-        const right = c.ast.node(node.data.accessExpr.right);
-        const left_t = rec.type;
-
-        if (left_t.isDynAny()) {
-            // Dynamic field access.
-            const name = c.ast.nodeString(right);
-
-            const loc = try c.ir.pushExpr(.fieldDyn, c.alloc, bt.Any, node.data.accessExpr.right, .{
-                .name = name,
-                .rec = rec.irIdx,
-            });
-            return ExprResult.initCustom(loc, .fieldDyn, CompactType.initDynamic(bt.Any), undefined);
-        }
-
-        const fieldName = c.ast.nodeString(right);
-        const field = try checkGetField(c, left_t.id, fieldName, node.data.accessExpr.right);
-        var field_t = CompactType.init(field.typeId);
-        field_t.dynamic = field_t.dynamic or left_t.dynamic;
-
-        const recIsStructFromFieldAccess = rec.resType == .field and c.sema.getTypeKind(left_t.id) == .@"struct";
-        if (recIsStructFromFieldAccess) {
-            // Continue the field chain.
-            const fidx = try c.ir.reserveData(c.alloc, u8);
-            fidx.* = field.idx;
-            const existing = c.ir.getExprDataPtr(rec.irIdx, .field);
-            c.ir.setExprType(rec.irIdx, field_t.id);
-            existing.numNestedFields += 1;
-            c.ir.setNode(rec.irIdx, node.data.accessExpr.right);
-            return ExprResult.initCustom(rec.irIdx, .field, field_t, undefined);
-        } else {
-            const loc = try c.ir.pushExpr(.field, c.alloc, field_t.id, node.data.accessExpr.right, .{
-                .idx = field.idx,
-                .rec = rec.irIdx,
-                .numNestedFields = 0,
-            });
-            return ExprResult.initCustom(loc, .field, field_t, undefined);
+            return semaAccessField(c, rec, node.data.accessExpr.right);
         }
     }
 };

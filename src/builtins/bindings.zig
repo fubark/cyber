@@ -189,7 +189,7 @@ pub fn tupleIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     if (index < 0 or index > tuple.tuple.len) {
         return vm.prepPanic("Out of bounds.");
     } 
-    const value = tuple.tuple.getElemsPtr()[@bitCast(index)];
+    const value = tuple.tuple.getElemsPtr()[@intCast(index)];
     vm.retain(value);
     return value;
 }
@@ -201,7 +201,7 @@ pub fn listIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     if (index < 0 or index > inner.len) {
         return vm.prepPanic("Out of bounds.");
     } 
-    const value = inner.buf[@bitCast(index)];
+    const value = inner.buf[@intCast(index)];
     vm.retain(value);
     return value;
 }
@@ -213,9 +213,9 @@ pub fn listSetIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     if (index < 0 or index > inner.len) {
         return vm.prepPanic("Out of bounds.");
     } 
-    vm.release(inner.buf[@bitCast(index)]);
+    vm.release(inner.buf[@intCast(index)]);
     vm.retain(args[2]);
-    inner.buf[@bitCast(index)] = args[2];
+    inner.buf[@intCast(index)] = args[2];
     return Value.Void;
 }
 
@@ -247,7 +247,7 @@ pub fn listSlice(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
         return vm.prepPanic("Out of bounds.");
     }
 
-    const elems = inner.buf[@bitCast(start)..@bitCast(end)];
+    const elems = inner.buf[@intCast(start)..@intCast(end)];
     for (elems) |elem| {
         vm.retain(elem);
     }

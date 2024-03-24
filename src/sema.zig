@@ -1883,7 +1883,7 @@ pub fn staticDecl(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId) !void {
 }
 
 const SemaExprOptions = struct {
-    target_t: TypeId = undefined,
+    target_t: TypeId = bt.Any,
     req_target_t: bool = false,
 };
 

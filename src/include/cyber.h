@@ -506,6 +506,7 @@ CsValue csNewVmObject(CsVM* vm, CsTypeId typeId);
 
 // Values.
 CsTypeId csGetTypeId(CsValue val);
+CsStr csNewValueDump(CsVM* vm, CsValue val);
 
 // Values to C.
 double csAsFloat(CsValue val);

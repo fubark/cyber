@@ -57,6 +57,7 @@ pub const listInsert = c.csListInsert;
 pub const asFloat = c.csAsFloat;
 pub const float = c.csFloat;
 pub const getTypeId = c.csGetTypeId;
+pub const newValueDump = c.csNewValueDump;
 pub const newFunc = c.csNewFunc;
 pub const newPointer = c.csNewPointer;
 pub const newType = c.csNewType;

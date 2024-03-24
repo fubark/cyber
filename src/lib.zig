@@ -588,6 +588,13 @@ test "csGetTypeId()" {
     try t.eq(c.getTypeId(c.float(123)), bt.Float);
 }
 
+export fn csNewValueDump(vm: *cy.VM, val: Value) c.Str {
+    var buf: std.ArrayListUnmanaged(u8) = .{};
+    const w = buf.writer(vm.alloc);
+    val.writeDump(w) catch cy.fatal();
+    return c.toStr(buf.toOwnedSlice(vm.alloc) catch cy.fatal());
+}
+
 export fn csListLen(list: Value) usize {
     return list.asHeapObject().list.list.len;
 }

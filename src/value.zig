@@ -445,53 +445,57 @@ pub const Value = packed union {
         return @intCast(self.val & 0xffffffff);
     }
 
-    pub fn dump(self: *const Value) void {
+    pub fn writeDump(self: *const Value, w: anytype) !void {
         switch (self.getTypeId()) {
+            bt.Void => {
+                _ = try w.writeAll("void");
+            },
             bt.Float => {
-                log.tracev("Float {}", .{self.asF64()});
+                try w.print("Float {}", .{self.asF64()});
             },
             bt.Integer => {
-                log.tracev("Integer {}", .{self.asInteger()});
+                try w.print("Integer {}", .{self.asInteger()});
             },
             bt.Error => {
-                log.tracev("Error {}", .{self.asErrorSymbol()});
+                try w.print("Error {}", .{self.asErrorSymbol()});
             },
             bt.Symbol => {
-                log.tracev("Symbol {}", .{self.asSymbolId()});
+                try w.print("Symbol {}", .{self.asSymbolId()});
             },
             else => |typeId| {
                 if (self.isPointer()) {
                     const obj = self.asHeapObject();
                     switch (obj.getTypeId()) {
-                        bt.List => log.tracev("List {*} rc={} len={}", .{obj, obj.head.rc, obj.list.list.len}),
-                        bt.Map => log.tracev("Map {*} rc={} size={}", .{obj, obj.head.rc, obj.map.inner.size}),
+                        bt.List => try w.print("List {*} rc={} len={}", .{obj, obj.head.rc, obj.list.list.len}),
+                        bt.Map => try w.print("Map {*} rc={} size={}", .{obj, obj.head.rc, obj.map.inner.size}),
                         bt.String => {
                             const str = obj.string.getSlice();
                             if (str.len > 20) {
-                                log.tracev("String {*} rc={} len={} str=\"{s}\"...", .{obj, obj.head.rc, str.len, str[0..20]});
+                                try w.print("String {*} rc={} len={} str=\"{s}\"...", .{obj, obj.head.rc, str.len, str[0..20]});
                             } else {
-                                log.tracev("String {*} rc={} len={} str={s}", .{obj, obj.head.rc, str.len, str});
+                                try w.print("String {*} rc={} len={} str={s}", .{obj, obj.head.rc, str.len, str});
                             }
                         },
-                        bt.Lambda => log.tracev("Lambda {*} rc={}", .{obj, obj.head.rc}),
-                        bt.Closure => log.tracev("Closure {*} rc={}", .{obj, obj.head.rc}),
-                        bt.Fiber => log.tracev("Fiber {*} rc={}", .{obj, obj.head.rc}),
-                        bt.HostFunc => return log.tracev("NativeFunc {*} rc={}", .{obj, obj.head.rc}),
-                        bt.Pointer => return log.tracev("Pointer {*} rc={} ptr={*}", .{obj, obj.head.rc, obj.pointer.ptr}),
+                        bt.Lambda => try w.print("Lambda {*} rc={}", .{obj, obj.head.rc}),
+                        bt.Closure => try w.print("Closure {*} rc={}", .{obj, obj.head.rc}),
+                        bt.Fiber => try w.print("Fiber {*} rc={}", .{obj, obj.head.rc}),
+                        bt.HostFunc => try w.print("NativeFunc {*} rc={}", .{obj, obj.head.rc}),
+                        bt.Pointer => try w.print("Pointer {*} rc={} ptr={*}", .{obj, obj.head.rc, obj.pointer.ptr}),
                         else => {
-                            log.tracev("HeapObject {*} type={} rc={}", .{obj, obj.getTypeId(), obj.head.rc});
+                            try w.print("HeapObject {*} type={} rc={}", .{obj, obj.getTypeId(), obj.head.rc});
                         },
                     }
                 } else {
                     if (self.isEnum()) {
-                        log.tracev("Enum {}", .{typeId});
+                        try w.print("Enum {}", .{typeId});
                     } else {
-                        log.tracev("Unknown {}", .{self.getTag()});
+                        try w.print("Unknown {}", .{self.getTag()});
                     }
                 }
             }
         }
     }
+
 
     pub fn getUserTag(self: *const Value) ValueUserTag {
         const typeId = self.getTypeId();

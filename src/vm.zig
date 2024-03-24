@@ -4478,7 +4478,10 @@ pub export fn zAllocStringTemplate2(vm: *cy.VM, strs: [*]cy.Value, strCount: u8,
 }
 
 export fn zDumpValue(val: Value) void {
-    val.dump();
+    var buf: [1024]u8 = undefined;
+    var fbuf = std.io.fixedBufferStream(&buf);
+    val.writeDump(fbuf.writer()) catch cy.fatal();
+    cy.rt.log(fbuf.getWritten());
 }
 
 export fn zAllocDynObjectSmall(vm: *VM, type_id: cy.TypeId, keys: [*]const u16, undecls: [*]const Value, num_undecls: u8) vmc.ValueResult {

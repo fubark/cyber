@@ -107,7 +107,11 @@ pub const VMrunner = struct {
     pub fn expectErrorReport(self: *VMrunner, res: EvalResult, expErr: c.ResultCode, expReport: []const u8) !void {
         var errorMismatch = false;
         if (res.code == c.Success) {
-            std.debug.print("expected error.{s}, found {any}\n", .{ c.fromStr(c.resultName(expErr)), res.value });
+            const val_dump = c.newValueDump(self.vm, res.value);
+            defer c.freeStr(self.vm, val_dump);
+            std.debug.print("expected error.{s}, found: {s}\n", .{
+                c.fromStr(c.resultName(expErr)), c.fromStr(val_dump),
+            });
             return error.TestUnexpectedError;
         } else {
             if (res.code != expErr) {
@@ -128,7 +132,9 @@ pub const VMrunner = struct {
     pub fn expectErrorReport2(self: *VMrunner, res: EvalResult, expReport: []const u8) !void {
         var errorMismatch = false;
         if (res.code == c.Success) {
-            std.debug.print("expected error, found {any}\n", .{ res.value });
+            const val_dump = c.newValueDump(self.vm, res.value);
+            defer c.freeStr(self.vm, val_dump);
+            std.debug.print("expected error, found: {s}\n", .{ c.fromStr(val_dump) });
             return error.TestUnexpectedError;
         }
         // Continue to compare report.

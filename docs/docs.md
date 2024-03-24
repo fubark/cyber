@@ -310,11 +310,11 @@ The equals operator returns true if the two values are equal. For primitive type
 1 == 2      -- Evaluates to `false`
 1 == true   -- Evaluates to `false`
 
-my a = 'abc'
+var a = 'abc'
 a == 'abc'  -- Evaluates to `true`
 
 a = []
-my b = a
+var b = a
 a == b      -- Evaluates to `true`
 a == []     -- Evaluates to `false`
 ```
@@ -983,7 +983,6 @@ print s.gpa        -- Prints "0.0"
 
 ### Circular references.
 Circular type references are allowed if the object can be initialized:
-> _Planned Feature: Optional types are not currently supported._
 ```cy
 type Node:
     val  any
@@ -2477,7 +2476,6 @@ The main execution context is a fiber as well. Once the main fiber has finished,
 * [`my` functions.](#my-functions)
 * [`dynamic` vs `any`.](#dynamic-vs-any)
 * [Recent type inference.](#recent-type-inference)
-* [Assign to `var`.](#assign-to-var)
 
 [^top](#table-of-contents)
 
@@ -2567,17 +2565,6 @@ foo(a)           -- CompileError. Expected `String` argument, got `any`.
 
 func foo(s String):
     pass
-```
-
-## Assign to `var`.
-
-`var` declarations are strictly for static typing. If the assigned value's type is `dynamic`, the variable's type becomes `any`.
-```cy
-my getValue():
-    return ['a', 'list']
-
--- Initialized as an `any` variable.
-var a = getValue()
 ```
 
 # Metaprogramming.

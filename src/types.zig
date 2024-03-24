@@ -89,12 +89,8 @@ pub const CompactType = packed struct {
         }
     }
 
-    pub fn toStaticDeclType(self: CompactType) TypeId {
-        if (self.dynamic) {
-            return bt.Any;
-        } else {
-            return self.id;
-        }
+    pub fn isDynAny(self: CompactType) bool {
+        return self.dynamic and self.id == bt.Any;
     }
 };
 

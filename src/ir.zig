@@ -430,7 +430,6 @@ pub const Set = union {
 
 pub const SetCallObjSymTern = struct {
     name: []const u8,
-    funcSigId: sema.FuncSigId,
     rec: Loc,
     index: Loc,
     right: Loc,
@@ -478,7 +477,6 @@ pub const CallObjSym = struct {
 
 pub const CallObjSymBinOp = struct {
     op: cy.BinaryExprOp,
-    funcSigId: sema.FuncSigId,
     left: Loc,
     right: Loc,
 };
@@ -486,7 +484,6 @@ pub const CallObjSymBinOp = struct {
 pub const CallObjSymUnOp = struct {
     expr: Loc,
     op: cy.UnaryOp,
-    funcSigId: sema.FuncSigId,
 };
 
 pub const CallFuncSym = struct {

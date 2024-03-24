@@ -292,6 +292,7 @@ if (!aot) {
     run.case("vars/local_assign.cy");
 }
     run.case("vars/local_attr_error.cy");
+    run.case("vars/local_decl_infers_dyn.cy");
     run.case("vars/local_dup_captured_error.cy");
     run.case("vars/local_dup_error.cy");
     run.case("vars/local_dup_static_error.cy");

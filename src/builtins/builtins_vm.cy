@@ -131,7 +131,7 @@ type float #float64_t:
 
 #host
 type List:
-    #host func '$index'(idx int) any
+    #host func '$index'(idx int) dynamic
     #host func '$index'(range Range) List
     #host func '$setIndex'(idx int, val any) void
 

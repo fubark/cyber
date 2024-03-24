@@ -799,7 +799,7 @@ fn setCallObjSymTern(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
 
     const mgId = try c.compiler.vm.ensureMethodGroup(data.name);
     try pushCallObjSym(c, inst.ret, 3,
-        @intCast(mgId), @intCast(data.funcSigId), nodeId);
+        @intCast(mgId), 0, nodeId);
 
     var retained = try popTempAndUnwinds2(c, args[0..3]);
 
@@ -1338,7 +1338,7 @@ fn genCallObjSymUnOp(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenV
 
     const mgId = try getUnMGID(c, data.op);
 
-    try pushCallObjSym(c, inst.ret, 1, @intCast(mgId), @intCast(data.funcSigId), nodeId);
+    try pushCallObjSym(c, inst.ret, 1, @intCast(mgId), 0, nodeId);
 
     try popTempAndUnwind(c, childv);
     try releaseTempValue(c, childv, nodeId);
@@ -1381,7 +1381,7 @@ fn genCallObjSymBinOp(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !Gen
 
     const mgId = try getInfixMGID(c, data.op);
     const start = c.buf.len();
-    try pushCallObjSym(c, inst.ret, 2, @intCast(mgId), @intCast(data.funcSigId), nodeId);
+    try pushCallObjSym(c, inst.ret, 2, @intCast(mgId), 0, nodeId);
     // Provide hint to inlining that one or both args were copies.
     if (hasLeftCopy or hasRightCopy) {
         if (hasLeftCopy and hasRightCopy) {

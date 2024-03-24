@@ -315,7 +315,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
     switch (node.type()) {
         .exprStmt => {
             const returnMain = node.data.exprStmt.isLastRootStmt;
-            const expr = try c.semaExprPrefer(node.data.exprStmt.child, bt.Void);
+            const expr = try c.semaExprTarget(node.data.exprStmt.child, bt.Void);
             _ = try c.ir.pushStmt(c.alloc, .exprStmt, nodeId, .{
                 .expr = expr.irIdx,
                 .isBlockResult = returnMain,
@@ -785,7 +785,7 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId, leftId: cy.NodeId, rightId: cy.No
             var specialized = false;
             var index: ExprResult = undefined;
             if (recv.type.id == bt.List) {
-                index = try c.semaExprPrefer(left.data.indexExpr.right, bt.Integer);
+                index = try c.semaExprTarget(left.data.indexExpr.right, bt.Integer);
                 specialized = true;
             } else if (recv.type.id == bt.Map) {
                 index = try c.semaExpr(left.data.indexExpr.right, .{});
@@ -809,13 +809,11 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId, leftId: cy.NodeId, rightId: cy.No
                     },
                 });
             } else {
-                const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, recv.type.id, right.type.id }, bt.Any);
                 c.ir.setStmtCode(irStart, .setCallObjSymTern);
                 c.ir.setStmtData(irStart, .setCallObjSymTern, .{
                     .callObjSymTern = .{
                         // .recvT = recvT.id,
                         .name = "$setIndex",
-                        .funcSigId = funcSigId,
                         .rec = recv.irIdx,
                         .index = index.irIdx,
                         .right = right.irIdx,
@@ -833,7 +831,7 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId, leftId: cy.NodeId, rightId: cy.No
             if (leftRes.resType == .local) {
                 right = try assignToLocalVar(c, leftRes, rightId, opts);
             } else {
-                const rightExpr = Expr{ .nodeId = rightId, .hasTypeCstr = true, .reqTypeCstr = !leftT.dynamic, .preferType = leftT.id };
+                const rightExpr = Expr{ .nodeId = rightId, .reqTypeCstr = !leftT.dynamic, .target_t = leftT.id };
                 right = try c.semaExprOrOpAssignBinExpr(rightExpr, opts.rhsOpAssignBinExpr);
             }
 
@@ -1632,7 +1630,6 @@ fn localDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     // Infer rhs type and enforce constraint.
     const right = try c.semaExpr(node.data.localDecl.right, .{
         .target_t = typeId,
-        .has_target_t = !inferType,
         .req_target_t = !inferType,
     });
 
@@ -1648,11 +1645,9 @@ fn localDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
     svar = &c.varStack.items[varId];
     if (inferType) {
-        var declType = right.type.toStaticDeclType();
-        var recentType = right.type.id;
-
+        var declType = right.type.toDeclType();
         svar.declT = declType;
-        svar.vtype.id = @intCast(recentType);
+        svar.vtype = right.type;
         // Patch IR.
         data.declType = declType;
     } else if (typeId == bt.Dynamic) {
@@ -1692,14 +1687,12 @@ pub fn staticDecl(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId) !void {
 
 const SemaExprOptions = struct {
     target_t: TypeId = undefined,
-    has_target_t: bool = false,
     req_target_t: bool = false,
 };
 
 fn semaExprCType(c: *cy.Chunk, nodeId: cy.NodeId, ctype: CompactType) !ExprResult {
     return try c.semaExpr(nodeId, .{
         .target_t = ctype.id,
-        .has_target_t = true,
         .req_target_t = !ctype.dynamic,
     });
 }
@@ -1777,40 +1770,32 @@ pub const ExprResult = struct {
 };
 
 pub const Expr = struct {
-    hasTypeCstr: bool,
-
     /// Whether to fail if incompatible with type cstr.
     reqTypeCstr: bool,
 
     nodeId: cy.NodeId,
-    preferType: TypeId,
+    target_t: TypeId,
 
     fn init(nodeId: cy.NodeId) Expr {
         return .{
             .nodeId = nodeId,
-            .preferType = undefined,
-            .hasTypeCstr = false,
+            .target_t = bt.Any,
             .reqTypeCstr = false,
         };
     }
 
+    fn hasTargetType(self: Expr) bool {
+        return self.target_t != bt.Any;
+    }
+
     fn getRetCstr(self: Expr) ReturnCstr {
-        if (self.hasTypeCstr and self.preferType == bt.Void) {
+        if (self.target_t == bt.Void) {
             return .any;
         } else {
             return .not_void;
         }
     }
 };
-
-fn toTypes(ctypes: []CompactType) []const TypeId {
-    for (ctypes) |*ctype| {
-        if (ctype.*.dynamic) {
-            ctype.* = @bitCast(bt.Any);
-        }
-    }
-    return @ptrCast(ctypes);
-}
 
 fn requireFuncSym(c: *cy.Chunk, sym: *Sym, node: cy.NodeId) !*cy.sym.FuncSym {
     if (sym.type != .func) {
@@ -3583,7 +3568,7 @@ pub const ChunkExt = struct {
 
         while (arg_idx < numArgs + 1) {
             const arg_n = c.ast.node(arg);
-            const arg_res = try c.semaExprPrefer(arg, matcher.getArgTypeHint(arg_idx));
+            const arg_res = try c.semaExprTarget(arg, matcher.getArgTypeHint(arg_idx));
             try matcher.matchArg(c, arg, arg_idx, arg_res);
             arg_idx += 1;
             arg = arg_n.next();
@@ -3638,7 +3623,7 @@ pub const ChunkExt = struct {
 
         while (arg_idx < numArgs) {
             const arg_n = c.ast.node(arg);
-            const arg_res = try c.semaExprPrefer(arg, matcher.getArgTypeHint(arg_idx));
+            const arg_res = try c.semaExprTarget(arg, matcher.getArgTypeHint(arg_idx));
             try matcher.matchArg(c, arg, arg_idx, arg_res);
             arg_idx += 1;
             arg = arg_n.next();
@@ -3686,10 +3671,9 @@ pub const ChunkExt = struct {
         }
     }
 
-    pub fn semaExprPrefer(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) !ExprResult {
+    pub fn semaExprTarget(c: *cy.Chunk, nodeId: cy.NodeId, target_t: TypeId) !ExprResult {
         return try semaExpr(c, nodeId, .{
-            .target_t = preferType,
-            .has_target_t = true,
+            .target_t = target_t,
             .req_target_t = false,
         });
     }
@@ -3697,7 +3681,6 @@ pub const ChunkExt = struct {
     pub fn semaExprCstr(c: *cy.Chunk, nodeId: cy.NodeId, typeId: TypeId) !ExprResult {
         return try semaExpr(c, nodeId, .{
             .target_t = typeId,
-            .has_target_t = true,
             .req_target_t = true,
         });
     }
@@ -3726,8 +3709,7 @@ pub const ChunkExt = struct {
         c.curNodeId = nodeId;
 
         const expr = Expr{
-            .preferType = opts.target_t,
-            .hasTypeCstr = opts.has_target_t,
+            .target_t = opts.target_t,
             .reqTypeCstr = opts.req_target_t,
             .nodeId = nodeId,
         };
@@ -3742,12 +3724,12 @@ pub const ChunkExt = struct {
             log.tracev("expr.{s}: end {s}", .{@tagName(c.ast.node(nodeId).type()), type_name});
         }
 
-        if (expr.hasTypeCstr) {
+        if (expr.hasTargetType()) {
             // TODO: Check for exact match first since it's the common case.
-            const type_e = c.sema.types.items[expr.preferType];
+            const type_e = c.sema.types.items[expr.target_t];
             if (type_e.kind == .option) {
                 // Already the same optional type.
-                if (res.type.id == expr.preferType) {
+                if (res.type.id == expr.target_t) {
                     return res;
                 }
                 // Check if type is compatible with Optional's some payload.
@@ -3755,16 +3737,16 @@ pub const ChunkExt = struct {
                 if (cy.types.isTypeSymCompat(c.compiler, res.type.id, someMember.payloadType)) {
                     // Generate IR to wrap value into optional.
                     var b: ObjectBuilder = .{ .c = c };
-                    try b.begin(expr.preferType, 2, expr.nodeId);
+                    try b.begin(expr.target_t, 2, expr.nodeId);
                     const tag = try c.semaInt(1, expr.nodeId);
                     b.pushArg(tag);
                     b.pushArg(res);
                     const irIdx = b.end();
 
-                    return ExprResult.initStatic(irIdx, expr.preferType);
+                    return ExprResult.initStatic(irIdx, expr.target_t);
                 }
             } else {
-                if (expr.preferType == bt.Any and res.type.id != bt.Any) {
+                if (expr.target_t == bt.Any and res.type.id != bt.Any) {
                     // Box value.
                     var newRes = res;
                     newRes.irIdx = try c.ir.pushExpr(.box, c.alloc, bt.Any, expr.nodeId, .{
@@ -3775,16 +3757,16 @@ pub const ChunkExt = struct {
             }
 
             if (expr.reqTypeCstr) {
-                if (!cy.types.isTypeSymCompat(c.compiler, res.type.id, expr.preferType)) {
+                if (!cy.types.isTypeSymCompat(c.compiler, res.type.id, expr.target_t)) {
                     if (res.type.dynamic) {
                         var new_res = res;
-                        new_res.irIdx = try c.ir.pushExpr(.type_check, c.alloc, expr.preferType, expr.nodeId, .{
+                        new_res.irIdx = try c.ir.pushExpr(.type_check, c.alloc, expr.target_t, expr.nodeId, .{
                             .expr = res.irIdx,
-                            .exp_type = expr.preferType,
+                            .exp_type = expr.target_t,
                         });
                         return new_res;
                     }
-                    const cstrName = try c.sema.allocTypeName(expr.preferType);
+                    const cstrName = try c.sema.allocTypeName(expr.target_t);
                     defer c.alloc.free(cstrName);
                     const typeName = try c.sema.allocTypeName(res.type.id);
                     defer c.alloc.free(typeName);
@@ -3807,8 +3789,8 @@ pub const ChunkExt = struct {
         c.curNodeId = nodeId;
         switch (node.type()) {
             .noneLit => {
-                if (expr.hasTypeCstr) {
-                    return c.semaNone(expr.preferType, nodeId);
+                if (expr.hasTargetType()) {
+                    return c.semaNone(expr.target_t, nodeId);
                 } else {
                     return c.reportErrorFmt("Could not determine optional type for `none`.", &.{}, nodeId);
                 }
@@ -3821,14 +3803,14 @@ pub const ChunkExt = struct {
             },
             .symbolLit => {
                 const name = c.ast.nodeString(node);
-                if (expr.hasTypeCstr and c.sema.isEnumType(expr.preferType)) {
-                    const sym = c.sema.getTypeSym(expr.preferType).cast(.enum_t);
+                if (expr.hasTargetType() and c.sema.isEnumType(expr.target_t)) {
+                    const sym = c.sema.getTypeSym(expr.target_t).cast(.enum_t);
                     if (sym.getMemberTag(name)) |tag| {
-                        const irIdx = try c.ir.pushExpr(.enumMemberSym, c.alloc, expr.preferType, nodeId, .{
-                            .type = expr.preferType,
+                        const irIdx = try c.ir.pushExpr(.enumMemberSym, c.alloc, expr.target_t, nodeId, .{
+                            .type = expr.target_t,
                             .val = @as(u8, @intCast(tag)),
                         });
-                        return ExprResult.initStatic(irIdx, expr.preferType);
+                        return ExprResult.initStatic(irIdx, expr.target_t);
                     }
                 }
                 const irIdx = try c.ir.pushExpr(.symbol, c.alloc, bt.Symbol, nodeId, .{ .name = name });
@@ -3846,7 +3828,7 @@ pub const ChunkExt = struct {
                 return ExprResult.initStatic(irIdx, bt.Float);
             },
             .decLit => {
-                if (expr.preferType == bt.Float) {
+                if (expr.target_t == bt.Float) {
                     const literal = c.ast.nodeString(node);
                     const val = try std.fmt.parseFloat(f64, literal);
                     return c.semaFloat(val, nodeId);
@@ -3909,8 +3891,8 @@ pub const ChunkExt = struct {
                 const ifBranch = c.ast.node(node.data.if_expr.if_branch);
 
                 const cond = try c.semaExprCstr(ifBranch.data.if_branch.cond, bt.Boolean);
-                const body = try c.semaExprCstr(ifBranch.data.if_branch.body_head, expr.preferType);
-                const else_body = try c.semaExprCstr(node.data.if_expr.else_expr, expr.preferType);
+                const body = try c.semaExprCstr(ifBranch.data.if_branch.body_head, expr.target_t);
+                const else_body = try c.semaExprCstr(node.data.if_expr.else_expr, expr.target_t);
 
                 const loc = try c.ir.pushExpr(.if_expr, c.alloc, body.type.id, nodeId, .{
                     .cond = cond.irIdx,
@@ -3989,29 +3971,28 @@ pub const ChunkExt = struct {
                 const left = try c.semaExpr(node.data.indexExpr.left, .{});
                 const leftT = left.type.id;
                 const preferT = if (leftT == bt.List or leftT == bt.Tuple) bt.Integer else bt.Any;
-                const index = try c.semaExprPrefer(node.data.indexExpr.right, preferT);
+                const index = try c.semaExprTarget(node.data.indexExpr.right, preferT);
 
-                if (left.type.dynamic) {
-                    const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, index.type.id }, bt.Any);
+                if (left.type.isDynAny()) {
                     c.ir.setExprCode(loc, .preCallObjSymBinOp);
                     c.ir.setExprType(loc, bt.Any);
                     c.ir.setExprData(loc, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
-                        .op = .index, .funcSigId = funcSigId,
+                        .op = .index,
                         .left = left.irIdx,
                         .right = index.irIdx,
                     }});
-                    return ExprResult.initDynamic(loc, bt.Any);
+                    return ExprResult.init(loc, left.type);
                 }
 
                 if (leftT == bt.List or leftT == bt.Tuple or leftT == bt.Map) {
                     // Specialized.
-                    var res_t = bt.Any;
+                    var res_t = CompactType.initDynamic(bt.Any);
                     if (leftT == bt.List and index.type.id == bt.Range) {
-                        res_t = bt.List;
+                        res_t = CompactType.initStatic(bt.List);
                     }
 
                     c.ir.setExprCode(loc, .preBinOp);
-                    c.ir.setExprType(loc, res_t);
+                    c.ir.setExprType(loc, res_t.id);
                     c.ir.setExprData(loc, .preBinOp, .{ .binOp = .{
                         .leftT = leftT,
                         .rightT = index.type.id,
@@ -4020,7 +4001,7 @@ pub const ChunkExt = struct {
                         .right = index.irIdx,
                     }});
 
-                    return ExprResult.initStatic(loc, res_t);
+                    return ExprResult.init(loc, res_t);
                 } else {
                     // Look for sym under left type's module.
                     const recTypeSym = c.sema.getTypeSym(leftT);
@@ -4076,13 +4057,13 @@ pub const ChunkExt = struct {
                 return ExprResult.initStatic(irIdx, bt.List);
             },
             .recordLit => {
-                if (expr.hasTypeCstr) {
-                    if (c.sema.isUserObjectType(expr.preferType)) {
+                if (expr.hasTargetType()) {
+                    if (c.sema.isUserObjectType(expr.target_t)) {
                         // Infer user object type.
-                        const obj = c.sema.getTypeSym(expr.preferType).cast(.object_t);
+                        const obj = c.sema.getTypeSym(expr.target_t).cast(.object_t);
                         return c.semaObjectInit2(obj, nodeId);
-                    } else if (c.sema.isStructType(expr.preferType)) {
-                        const obj = c.sema.getTypeSym(expr.preferType).cast(.struct_t);
+                    } else if (c.sema.isStructType(expr.target_t)) {
+                        const obj = c.sema.getTypeSym(expr.target_t).cast(.struct_t);
                         return c.semaObjectInit2(obj, nodeId);
                     }
                 }
@@ -4485,11 +4466,18 @@ pub const ChunkExt = struct {
         const op = node.data.unary.op;
         switch (op) {
             .minus => {
-                const preferT = if (expr.preferType == bt.Integer or expr.preferType == bt.Float) expr.preferType else bt.Any;
-
                 const irIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, nodeId);
 
-                const child = try c.semaExprPrefer(node.data.unary.child, preferT);
+                const child = try c.semaExprTarget(node.data.unary.child, expr.target_t);
+                if (child.type.isDynAny()) {
+                    // Generic callObjSym.
+                    c.ir.setExprCode(irIdx, .preCallObjSymUnOp);
+                    c.ir.setExprData(irIdx, .preCallObjSymUnOp, .{ .callObjSymUnOp = .{
+                        .op = op, .expr = child.irIdx,
+                    }});
+                    return ExprResult.init(irIdx, child.type);
+                }
+
                 if (child.type.id == bt.Integer or child.type.id == bt.Float) {
                     // Specialized.
                     c.ir.setExprCode(irIdx, .preUnOp);
@@ -4498,21 +4486,11 @@ pub const ChunkExt = struct {
                     }});
                     return ExprResult.initStatic(irIdx, child.type.id);
                 } else {
-                    if (child.type.dynamic) {
-                        // Generic callObjSym.
-                        const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any }, bt.Any);
-                        c.ir.setExprCode(irIdx, .preCallObjSymUnOp);
-                        c.ir.setExprData(irIdx, .preCallObjSymUnOp, .{ .callObjSymUnOp = .{
-                            .op = op, .funcSigId = funcSigId, .expr = child.irIdx,
-                        }});
-                        return ExprResult.initDynamic(irIdx, bt.Any);
-                    } else {
-                        // Look for sym under child type's module.
-                        const childTypeSym = c.sema.getTypeSym(child.type.id);
-                        const sym = try c.mustFindSym(childTypeSym, op.name(), nodeId);
-                        const func_sym = try requireFuncSym(c, sym, nodeId);
-                        return c.semaCallFuncSym1(irIdx, func_sym, node.data.unary.child, child, expr.getRetCstr(), nodeId);
-                    }
+                    // Look for sym under child type's module.
+                    const childTypeSym = c.sema.getTypeSym(child.type.id);
+                    const sym = try c.mustFindSym(childTypeSym, op.name(), nodeId);
+                    const func_sym = try requireFuncSym(c, sym, nodeId);
+                    return c.semaCallFuncSym1(irIdx, func_sym, node.data.unary.child, child, expr.getRetCstr(), nodeId);
                 }
             },
             .not => {
@@ -4525,11 +4503,17 @@ pub const ChunkExt = struct {
                 return ExprResult.initStatic(irIdx, bt.Boolean);
             },
             .bitwiseNot => {
-                const preferT = if (expr.preferType == bt.Integer) expr.preferType else bt.Any;
-
                 const irIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, nodeId);
 
-                const child = try c.semaExprPrefer(node.data.unary.child, preferT);
+                const child = try c.semaExprTarget(node.data.unary.child, expr.target_t);
+                if (child.type.isDynAny()) {
+                    c.ir.setExprCode(irIdx, .preCallObjSymUnOp);
+                    c.ir.setExprData(irIdx, .preCallObjSymUnOp, .{ .callObjSymUnOp = .{
+                        .op = op, .expr = child.irIdx,
+                    }});
+                    return ExprResult.init(irIdx, child.type);
+                }
+
                 if (child.type.id == bt.Integer) {
                     c.ir.setExprCode(irIdx, .preUnOp);
                     c.ir.setExprData(irIdx, .preUnOp, .{ .unOp = .{
@@ -4537,12 +4521,11 @@ pub const ChunkExt = struct {
                     }});
                     return ExprResult.initStatic(irIdx, bt.Float);
                 } else {
-                    const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any }, bt.Any);
-                    c.ir.setExprCode(irIdx, .preCallObjSymUnOp);
-                    c.ir.setExprData(irIdx, .preCallObjSymUnOp, .{ .callObjSymUnOp = .{
-                        .op = op, .funcSigId = funcSigId, .expr = child.irIdx,
-                    }});
-                    return ExprResult.initDynamic(irIdx, bt.Any);
+                    // Look for sym under child type's module.
+                    const childTypeSym = c.sema.getTypeSym(child.type.id);
+                    const sym = try c.mustFindSym(childTypeSym, op.name(), nodeId);
+                    const func_sym = try requireFuncSym(c, sym, nodeId);
+                    return c.semaCallFuncSym1(irIdx, func_sym, node.data.unary.child, child, expr.getRetCstr(), nodeId);
                 }
             },
             else => return c.reportErrorFmt("Unsupported unary op: {}", &.{v(op)}, nodeId),
@@ -4576,10 +4559,20 @@ pub const ChunkExt = struct {
             .bitwiseRightShift => {
                 const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, nodeId);
 
-                const leftPreferT = if (expr.preferType == bt.Integer) expr.preferType else bt.Any;
-                const left = try c.semaExprPrefer(leftId, leftPreferT);
-                const rightPreferT = if (left.type.id == bt.Integer) left.type.id else bt.Any;
-                const right = try c.semaExprPrefer(rightId, rightPreferT);
+                const left = try c.semaExprTarget(leftId, expr.target_t);
+                const right = try c.semaExprTarget(rightId, left.type.id);
+
+                if (left.type.isDynAny()) {
+                    // Generic callObjSym.
+                    c.ir.setExprCode(loc, .preCallObjSymBinOp);
+                    c.ir.setExprType(loc, bt.Any);
+                    c.ir.setExprData(loc, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
+                        .op = op,
+                        .left = left.irIdx,
+                        .right = right.irIdx,
+                    }});
+                    return ExprResult.initDynamic(loc, bt.Any);
+                }
 
                 if (left.type.id == bt.Integer) {
                     // Specialized.
@@ -4594,18 +4587,11 @@ pub const ChunkExt = struct {
                     }});
                     return ExprResult.initStatic(loc, bt.Integer);
                 } else {
-                    // Generic callObjSym.
-                    const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, right.type.id }, bt.Any);
-                    c.ir.setExprCode(loc, .preCallObjSymBinOp);
-                    c.ir.setExprType(loc, bt.Any);
-                    c.ir.setExprData(loc, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
-                        .op = op, .funcSigId = funcSigId,
-                        .left = left.irIdx,
-                        .right = right.irIdx,
-                    }});
-
-                    // TODO: Check func syms.
-                    return ExprResult.initDynamic(loc, bt.Any);
+                    // Look for sym under left type's module.
+                    const leftTypeSym = c.sema.getTypeSym(left.type.id);
+                    const sym = try c.mustFindSym(leftTypeSym, op.name(), nodeId);
+                    const funcSym = try requireFuncSym(c, sym, nodeId);
+                    return c.semaCallFuncSym2(loc, funcSym, leftId, left, rightId, right, expr.getRetCstr(), nodeId);
                 }
             },
             .greater,
@@ -4614,15 +4600,22 @@ pub const ChunkExt = struct {
             .less_equal => {
                 const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, nodeId);
 
-                var left: ExprResult = undefined;
-                if (expr.preferType == bt.Float or expr.preferType == bt.Integer) {
-                    left = try c.semaExprPrefer(leftId, expr.preferType);
-                } else {
-                    left = try c.semaExpr(leftId, .{});
+                const left = try c.semaExprTarget(leftId, expr.target_t);
+                const right = try c.semaExprTarget(rightId, left.type.id);
+
+                if (left.type.isDynAny()) {
+                    // Generic callObjSym.
+                    c.ir.setExprCode(loc, .preCallObjSymBinOp);
+                    c.ir.setExprType(loc, bt.Any);
+                    c.ir.setExprData(loc, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
+                        .op = op,
+                        .left = left.irIdx,
+                        .right = right.irIdx,
+                    }});
+                    return ExprResult.init(loc, left.type);
                 }
 
                 if (left.type.id == bt.Float or left.type.id == bt.Integer) {
-                    const right = try c.semaExprPrefer(rightId, left.type.id);
                     // Specialized.
                     c.ir.setExprCode(loc, .preBinOp);
                     c.ir.setExprType(loc, bt.Boolean);
@@ -4635,25 +4628,11 @@ pub const ChunkExt = struct {
                     }});
                     return ExprResult.initStatic(loc, bt.Boolean);
                 } else {
-                    const right = try c.semaExpr(rightId, .{});
-                    if (left.type.dynamic) {
-                        // Generic callObjSym.
-                        const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, right.type.id }, bt.Any);
-                        c.ir.setExprCode(loc, .preCallObjSymBinOp);
-                        c.ir.setExprType(loc, bt.Any);
-                        c.ir.setExprData(loc, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
-                            .op = op, .funcSigId = funcSigId,
-                            .left = left.irIdx,
-                            .right = right.irIdx,
-                        }});
-                        return ExprResult.initDynamic(loc, bt.Any);
-                    } else {
-                        // Look for sym under left type's module.
-                        const leftTypeSym = c.sema.getTypeSym(left.type.id);
-                        const sym = try c.mustFindSym(leftTypeSym, op.name(), nodeId);
-                        const funcSym = try requireFuncSym(c, sym, nodeId);
-                        return c.semaCallFuncSym2(loc, funcSym, leftId, left, rightId, right, expr.getRetCstr(), nodeId);
-                    }
+                    // Look for sym under left type's module.
+                    const leftTypeSym = c.sema.getTypeSym(left.type.id);
+                    const sym = try c.mustFindSym(leftTypeSym, op.name(), nodeId);
+                    const funcSym = try requireFuncSym(c, sym, nodeId);
+                    return c.semaCallFuncSym2(loc, funcSym, leftId, left, rightId, right, expr.getRetCstr(), nodeId);
                 }
             },
             .star,
@@ -4664,15 +4643,22 @@ pub const ChunkExt = struct {
             .minus => {
                 const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, nodeId);
 
-                var left: ExprResult = undefined;
-                if (expr.preferType == bt.Float or expr.preferType == bt.Integer) {
-                    left = try c.semaExprPrefer(leftId, expr.preferType);
-                } else {
-                    left = try c.semaExpr(leftId, .{});
+                const left = try c.semaExprTarget(leftId, expr.target_t);
+                const right = try c.semaExprTarget(rightId, left.type.id);
+
+                if (left.type.isDynAny()) {
+                    // Generic callObjSym.
+                    c.ir.setExprCode(loc, .preCallObjSymBinOp);
+                    c.ir.setExprType(loc, bt.Any);
+                    c.ir.setExprData(loc, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
+                        .op = op,
+                        .left = left.irIdx,
+                        .right = right.irIdx,
+                    }});
+                    return ExprResult.init(loc, left.type);
                 }
 
                 if (left.type.id == bt.Float or left.type.id == bt.Integer) {
-                    const right = try c.semaExprPrefer(rightId, left.type.id);
                     // Specialized.
                     c.ir.setExprCode(loc, .preBinOp);
                     c.ir.setExprType(loc, left.type.id);
@@ -4685,35 +4671,21 @@ pub const ChunkExt = struct {
                     }});
                     return ExprResult.initStatic(loc, left.type.id);
                 } else {
-                    const right = try c.semaExpr(rightId, .{});
-                    if (left.type.dynamic) {
-                        // Generic callObjSym.
-                        const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any, right.type.id }, bt.Any);
-                        c.ir.setExprCode(loc, .preCallObjSymBinOp);
-                        c.ir.setExprType(loc, bt.Any);
-                        c.ir.setExprData(loc, .preCallObjSymBinOp, .{ .callObjSymBinOp = .{
-                            .op = op, .funcSigId = funcSigId,
-                            .left = left.irIdx,
-                            .right = right.irIdx,
-                        }});
-                        return ExprResult.initDynamic(loc, bt.Any);
-                    } else {
-                        // Look for sym under left type's module.
-                        const leftTypeSym = c.sema.getTypeSym(left.type.id);
-                        const sym = try c.mustFindSym(leftTypeSym, op.name(), nodeId);
-                        const func_sym = try requireFuncSym(c, sym, nodeId);
-                        return c.semaCallFuncSym2(loc, func_sym, leftId, left, rightId, right, expr.getRetCstr(), nodeId);
-                    }
+                    // Look for sym under left type's module.
+                    const leftTypeSym = c.sema.getTypeSym(left.type.id);
+                    const sym = try c.mustFindSym(leftTypeSym, op.name(), nodeId);
+                    const func_sym = try requireFuncSym(c, sym, nodeId);
+                    return c.semaCallFuncSym2(loc, func_sym, leftId, left, rightId, right, expr.getRetCstr(), nodeId);
                 }
             },
             .bang_equal,
             .equal_equal => {
-                const leftPreferT = if (expr.preferType == bt.Float or expr.preferType == bt.Integer) expr.preferType else bt.Any;
+                const leftPreferT = if (expr.target_t == bt.Float or expr.target_t == bt.Integer) expr.target_t else bt.Any;
 
                 const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, nodeId);
 
-                const left = try c.semaExprPrefer(leftId, leftPreferT);
-                const right = try c.semaExprPrefer(rightId, left.type.id);
+                const left = try c.semaExprTarget(leftId, leftPreferT);
+                const right = try c.semaExprTarget(rightId, left.type.id);
 
                 if (left.type.id == right.type.id) {
                     const left_te = c.sema.types.items[left.type.id];
@@ -4940,7 +4912,7 @@ fn assignToLocalVar(c: *cy.Chunk, localRes: ExprResult, rhs: cy.NodeId, opts: As
     const id = localRes.data.local;
     var svar = &c.varStack.items[id];
 
-    const rightExpr = Expr{ .preferType = svar.vtype.id, .nodeId = rhs, .hasTypeCstr = true, .reqTypeCstr = !svar.vtype.dynamic };
+    const rightExpr = Expr{ .target_t = svar.vtype.id, .nodeId = rhs, .reqTypeCstr = !svar.vtype.dynamic };
     const right = try c.semaExprOrOpAssignBinExpr(rightExpr, opts.rhsOpAssignBinExpr);
     // Refresh pointer after rhs.
     svar = &c.varStack.items[id];

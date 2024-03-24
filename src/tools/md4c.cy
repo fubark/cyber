@@ -147,8 +147,8 @@ type RENDERER = PARSER
 func md_parse(text any, size SIZE, parser any, userdata any) int: pass
 
 import os
-my .ffi = false
-my .lib = load()
+let .ffi = false
+let .lib = load()
 func load():
     ffi = os.newFFI()
     ffi.cbind(ATTRIBUTE_S, [.voidPtr, .uint, .voidPtr, .voidPtr])
@@ -164,7 +164,7 @@ func load():
     ffi.cbind(SPAN_WIKILINK_S, [ATTRIBUTE])
     ffi.cbind(PARSER_S, [.uint, .uint, .voidPtr, .voidPtr, .voidPtr, .voidPtr, .voidPtr, .voidPtr, .voidPtr])
     ffi.cfunc('md_parse', [.voidPtr, .uint, .voidPtr, .voidPtr], .int)
-    my lib = ffi.bindLib([?String some: libPath], [genMap: true])
+    let lib = ffi.bindLib([?String some: libPath], [genMap: true])
     md_parse = lib['md_parse']
     return lib
 

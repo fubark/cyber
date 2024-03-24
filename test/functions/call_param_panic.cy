@@ -1,4 +1,4 @@
-my a = foo(123)
+let a = foo(123)
 a = foo(a)
 func foo(a float):
     return 'foo'

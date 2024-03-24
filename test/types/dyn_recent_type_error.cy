@@ -1,5 +1,5 @@
 -- CompileError when calling with dynamic value but the recent type can not be casted to the constraint type.
-my a = 123
+let a = 123
 a = 'hello'
 foo(a)
 func foo(n int):

@@ -1112,8 +1112,8 @@ func GetSymbols(ObjectFile any) SymbolIteratorRef: pass
 func IsSymbolIteratorAtEnd(ObjectFile any, SI any) Bool: pass
 
 import os
-my .ffi = false
-my .lib = load()
+let .ffi = false
+let .lib = load()
 func load():
     ffi = os.newFFI()
     ffi.cfunc('LLVMInstallFatalErrorHandler', [.voidPtr], .void)
@@ -1861,7 +1861,7 @@ func load():
     ffi.cfunc('LLVMIsSectionIteratorAtEnd', [.voidPtr, .voidPtr], .int)
     ffi.cfunc('LLVMGetSymbols', [.voidPtr], .voidPtr)
     ffi.cfunc('LLVMIsSymbolIteratorAtEnd', [.voidPtr, .voidPtr], .int)
-    my lib = ffi.bindLib([?String some: 'libLLVM.dylib'], [genMap: true])
+    let lib = ffi.bindLib([?String some: 'libLLVM.dylib'], [genMap: true])
     InstallFatalErrorHandler = lib.LLVMInstallFatalErrorHandler
     ResetFatalErrorHandler = lib.LLVMResetFatalErrorHandler
     EnablePrettyStackTrace = lib.LLVMEnablePrettyStackTrace

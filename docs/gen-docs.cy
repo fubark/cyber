@@ -10,7 +10,7 @@
 import os
 import md '../src/tools/md4c.cy'
 
-my args = os.parseArgs([
+let args = os.parseArgs([
     [ name: 'version', type: String, default: 'dev' ],
     [ name: 'import-style', type: bool, default: false ],
 ])
@@ -91,7 +91,7 @@ hljs.registerLanguage('cy', function() {
     keywords: {
         keyword: [
             'template', 'func', 'import', 'for', 'coinit', 'coresume', 'coyield',
-            'return', 'if', 'else', 'as', 'while', 'var', 'my', 'dynobject', 'object', 'struct', 'with', 'caught',
+            'return', 'if', 'else', 'as', 'while', 'var', 'let', 'dynobject', 'object', 'struct', 'with', 'caught',
             'break', 'continue', 'switch', 'pass', 'or', 'and', 'not', 'is', 'error', 'throws',
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case'
         ],
@@ -209,7 +209,7 @@ func enterBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         out += '<p>'
         return 0
     case md.BLOCK_CODE:
-        my detail = md.lib['ptrToBLOCK_CODE_DETAIL_S'](detail_p)
+        let detail = md.lib['ptrToBLOCK_CODE_DETAIL_S'](detail_p)
         var lang = getAttrText(detail.lang)
         out += """<pre><code class="language-$(lang)">"""
         return 0
@@ -261,10 +261,10 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         out += '</td>'
         return 0 
     case md.BLOCK_H:
-        my detail = md.lib['ptrToBLOCK_H_DETAIL_S'](detail_p)
+        let detail = md.lib['ptrToBLOCK_H_DETAIL_S'](detail_p)
         textContent = textContent.trim(.ends, " \n")
 
-        my id = textContent.replace(' ', '-')
+        let id = textContent.replace(' ', '-')
         id = id.replace('.', '')
         id = id.replace('/', '')
         id = id.replace('$', '')
@@ -324,7 +324,7 @@ func enterSpan(span_t md.SPANTYPE, detail_p pointer, userdata pointer) int:
             out += '<code>'
         return 0
     case md.SPAN_A:
-        my detail = md.lib['ptrToSPAN_A_DETAIL_S'](detail_p)
+        let detail = md.lib['ptrToSPAN_A_DETAIL_S'](detail_p)
 
         var href = getAttrText(detail.href)
         var title = getAttrText(detail.title)

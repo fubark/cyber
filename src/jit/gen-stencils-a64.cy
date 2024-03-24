@@ -8,7 +8,7 @@ import os
 var out = ''
 var curDir = os.dirName(#modUri)
 
-my outLLBuf = llvm.ffi.new(.voidPtr)
+let outLLBuf = llvm.ffi.new(.voidPtr)
 var outMsg = llvm.ffi.new(.charPtr)
 if llvm.CreateMemoryBufferWithContentsOfFile(os.cstr("$(curDir)/stencils.o"), outLLBuf, outMsg) != 0:
     throw error.Unexpected
@@ -25,7 +25,7 @@ if binType != llvm.BinaryTypeMachO64L:
     throw error.UnexpectedObjectFormat
 
 -- Find text section.
-my codeBuf = false
+let codeBuf = false
 var llSectIter = llvm.ObjectFileCopySectionIterator(llBin)
 while llvm.ObjectFileIsSectionIteratorAtEnd(llBin, llSectIter) == 0:
     var cname = llvm.GetSectionName(llSectIter)
@@ -52,7 +52,7 @@ type Sym:
     addr int
 
 -- First pass accumulates the unordered symbols.
-my syms = []
+let syms = []
 var symMap = [:]
 while llvm.ObjectFileIsSymbolIteratorAtEnd(llBin, llSymIter) == 0:
     if llvm.GetSectionContainsSymbol(llSectIter, llSymIter) == 0:
@@ -84,7 +84,7 @@ for syms -> sym, i:
     -- Skip ltmp0.
     if len == 0: continue 
 
-    my bin = codeBuf[sym.addr..sym.addr+len] 
+    let bin = codeBuf[sym.addr..sym.addr+len] 
 
     -- Remove ending continuation branch.
     if bin[bin.len()-4..].getInt32(0, .little) == 0x14000000:
@@ -118,7 +118,7 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
     var value = cname.fromCstr(0).decode()
 
     -- Find relevant func sym.
-    my found = false
+    let found = false
     for syms -> sym, i:
         if offset >= sym.addr:
             if i < syms.len()-1 and offset >= syms[i+1].addr:

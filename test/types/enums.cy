@@ -5,7 +5,7 @@ type Animal enum:
     case Tiger
 
 -- enum to int.
-my n = Animal.Tiger
+let n = Animal.Tiger
 t.eq(int(n), 1)
 
 -- Using enum declared afterwards.

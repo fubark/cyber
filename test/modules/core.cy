@@ -38,13 +38,13 @@ type S:
     bar any
 var s = [S:]
 var oldList = [123, s]
-my newList = copy(oldList)
+let newList = copy(oldList)
 t.eq(newList == oldList, false)
 t.eq(newList.len(), 2)
 t.eq(newList[0], 123)
 t.eq(newList[1], s)
 var oldMap = [ a: 123, b: s ]
-my newMap = copy(oldMap)
+let newMap = copy(oldMap)
 t.eq(newMap == oldMap, false)
 t.eq(newMap.size(), 2)
 t.eq(newMap['a'], 123)
@@ -55,7 +55,7 @@ t.eq(newStr, oldStr)
 var rcList = []
 s.foo = 123
 s.bar = rcList
-my newS = copy(s)
+let newS = copy(s)
 t.eq(newS == s, false)
 t.eq(newS.foo, 123)
 t.eq(newS.bar, rcList)
@@ -65,7 +65,7 @@ t.eq(newS.bar, rcList)
 -- float(), see float_test.cy
 
 -- int()
-my res = int('100')
+let res = int('100')
 t.eq(typesym(res), .int)
 t.eq(res, 100)
 t.eq(int(100.1), 100)
@@ -127,7 +127,7 @@ t.eq(res['decls'][0]['type'], 'enum_t')
 t.eq(res['decls'][0]['name'], 'foo')
 
 -- parseCyon()
-my val = parseCyon('123')
+let val = parseCyon('123')
 t.eq(val, 123)
 val = parseCyon('"foo"')
 t.eq(val, 'foo')

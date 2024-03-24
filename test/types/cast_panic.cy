@@ -1,4 +1,4 @@
-my a = 123
+let a = 123
 print(a as pointer)
 
 --cytest: error

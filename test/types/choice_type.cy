@@ -24,7 +24,7 @@ else:
     test.fail()
 
 -- Switch case on object payload. Expr.
-my res = switch s:
+let res = switch s:
     case .rectangle -> r => r
     else => test.fail()
 test.eq(res.width, 123.0)

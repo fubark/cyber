@@ -2365,7 +2365,7 @@ fn resolveFuncDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !FuncDecl {
                 }
             } else {
                 if (param.data.funcParam.typeSpec != cy.NullNode) {
-                    return c.reportError("Type specifier not allowed in `my` declaration. Declare typed functions with `func`.", curParamId);
+                    return c.reportError("Type specifier not allowed in `let` declaration. Declare typed functions with `func`.", curParamId);
                 }
             }
             const typeId = try resolveTypeSpecNode(c, param.data.funcParam.typeSpec);
@@ -2410,7 +2410,7 @@ fn resolveLambdaDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !FuncDecl {
             }
         } else {
             if (param.data.funcParam.typeSpec != cy.NullNode) {
-                return c.reportError("Type specifier not allowed in `my` declaration. Declare typed functions with `func`.", curParamId);
+                return c.reportError("Type specifier not allowed in `let` declaration. Declare typed functions with `func`.", curParamId);
             }
         }
         const typeId = try resolveTypeSpecNode(c, param.data.funcParam.typeSpec);

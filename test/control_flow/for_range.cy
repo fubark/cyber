@@ -57,7 +57,7 @@ t.eq(iters, 2)
 -- Break releases current block vars.
 for 0..10 -> i:
     if i == 2:
-        my a = []
+        let a = []
         break
 
 -- Continue.
@@ -71,7 +71,7 @@ t.eq(iters, 9)
 -- Continue releases current block vars.
 for 0..10 -> i:
     if i == 2:
-        my a = []
+        let a = []
         continue
 
 -- Single line block.

@@ -68,10 +68,10 @@ type Heap:
             self.last = self.root
             self.size = 1
             return
-        my new = false
+        let new = false
         if int(self.size + 1) & int(self.size) == 0:
             -- Insert at left most node.
-            my parent = self.root.getLeftmost()
+            let parent = self.root.getLeftmost()
             new = [Node
                 left: false,
                 right: false,
@@ -92,7 +92,7 @@ type Heap:
                 self.last.parent.right = new
                 self.last = new
             else:
-                my sibling = self.last.parent.getRightSibling()
+                let sibling = self.last.parent.getRightSibling()
                 new = [Node
                     left: false,
                     right: false,
@@ -107,10 +107,10 @@ type Heap:
     func swapUp(node):
         if self.last == node:
             self.last = node.parent
-        my parentSave = node.parent
-        my parentLeft = parentSave.left
-        my parentRight = parentSave.right
-        my parentParent = parentSave.parent
+        let parentSave = node.parent
+        let parentLeft = parentSave.left
+        let parentRight = parentSave.right
+        let parentParent = parentSave.parent
 
         parentSave.left = node.left
         if node.left != false:
@@ -165,7 +165,7 @@ type Heap:
             return res
 
         if self.size <= 3:
-            my top = self.root
+            let top = self.root
             self.swapUp(self.last)
             top.parent = false
             if self.size == 3:
@@ -177,7 +177,7 @@ type Heap:
             self.size = self.size - 1
             return top
 
-        my newLast = false
+        let newLast = false
         if int(self.size) & int(self.size - 1) == 0:
             newLast = self.root.getRightmost()
         else:

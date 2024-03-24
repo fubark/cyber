@@ -250,13 +250,14 @@ There are `26` general keywords. This list categorizes them:
 
 - [Control Flow](#control-flow): `if` `else` `switch` `case` `while` `for` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not`
-- [Variables](#variables): `var` `my`
+- [Variables](#variables): `var`
 - [Functions](#functions): `func` `return`
 - [Coroutines](#fibers): `coinit` `coyield` `coresume`
 - [Types](#custom-types): `type`  `as`
 - [Metaprogramming](#metaprogramming): `template`
 - [Error Handling](#error-handling): `try` `catch` `throw`
 - [Modules](#modules): `import`
+- [Dynamic Typing](#dynamic-typing): `let`
 
 ### Contextual keywords.
 These keywords only have meaning in a certain context.
@@ -2039,10 +2040,10 @@ int add(int a, int b) {
 ## Bind library.
 `bindLib` accepts the path to the library and returns a object which can be used to invoke the functions declared from `cfunc`:
 ```cy
-my lib = ffi.bindLib('./mylib.so')
+let lib = ffi.bindLib('./mylib.so')
 lib.add(123, 321)
 ```
-Note that `my` is used to allow `lib` to be used dynamically since the type is unknown at compile-time.
+Note that `let` is used to allow `lib` to be used dynamically since the type is unknown at compile-time.
 
 ### Search path.
 If the path argument to `bindLib` is just a filename, the search steps for the library is specific to the operating system. Provide an absolute (eg. '/foo/mylib.so') or relative (eg. './mylib.so') path to load from a direct location instead. When the path argument is `none`, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own application/runtime.
@@ -2091,7 +2092,7 @@ type MyObject:
 
 ffi.cbind(MyObject, [.float, .voidPtr, .bool])
 ffi.cfunc('foo', [MyObject], MyObject)
-my lib = ffi.bindLib('./mylib.so')
+let lib = ffi.bindLib('./mylib.so')
 
 var res = lib.foo([MyObject a: 123.0, b: os.cstr('foo'), c: true])
 ```
@@ -2112,7 +2113,7 @@ MyObject foo(MyObject o) {
 `cbind` also generates `ptrTo[Type]` as a helper function to dereference an opaque ptr to a new Cyber object:
 ```cy
 ffi.cfunc('foo', [MyObject], .voidPtr)
-my lib = ffi.bindLib('./mylib.so')
+let lib = ffi.bindLib('./mylib.so')
 
 var ptr = lib.foo([MyObject a: 123, b: os.cstr('foo'), c: true])
 var res = lib.ptrToMyObject(ptr)
@@ -2504,24 +2505,24 @@ The main execution context is a fiber as well. Once the main fiber has finished,
 
 # Dynamic Typing.
 
-* [`my` variables.](#my-variables)
+* [Dynamic variables.](#dynamic-variables)
 * [Runtime type checking.](#runtime-type-checking)
-* [`my` functions.](#my-functions)
+* [Dynamic functions.](#dynamic-functions)
 * [`dynamic` vs `any`.](#dynamic-vs-any)
 
 [^top](#table-of-contents)
 
 Cyber supports dynamic typing with a less restrictive syntax. This can reduce the amount of friction when writing code, but it can also result in more runtime errors.
 
-## `my` variables.
-Variables declared with `my` are implicitly given the `dynamic` type:
+## Dynamic variables.
+Variables declared with `let` are implicitly given the `dynamic` type:
 ```cy
-my a = 123
+let a = 123
 ```
 
 Typically a dynamic variable defers type checking to runtime, but if the compiler determines that an operation will always fail at runtime, a compile error is reported instead:
 ```cy
-my a = '100'
+let a = '100'
 
 print a / 2
 --> CompileError: Can not find the symbol `$infix/` in `String`
@@ -2540,7 +2541,7 @@ If the compiler can not determine the type of a dynamic variable, type checking 
 In this example, the type for `a` is unknown after assigning the return of a dynamic call to `erase`.
 Any operation on `a` would defer type checking to runtime:
 ```cy
-my a = erase(123)
+let a = erase(123)
 
 print a(1, 2, 3)
 --> panic: Expected a function.
@@ -2548,7 +2549,7 @@ print a(1, 2, 3)
 
 If a dynamic variable's **recent type** differs between two branches of execution, the type is considered unknown after the branches are merged. Any operations on the variable afterwards will defer type checking to runtime:
 ```cy
-my a = 123
+let a = 123
 if a > 20:
     a = 'hello'
 
@@ -2558,20 +2559,20 @@ print a(1, 2, 3)
 --> panic: Expected a function.
 ```
 
-## `my` functions.
-Functions declared with `my` do not allow typed parameters or a return specifier.
+## Dynamic functions.
+Functions declared with `let` do not allow typed parameters or a return specifier.
 All parameters are implicitly given the `dynamic` type.
 
-The return specifier is also implicitly `!dynamic` which indicates that the function can throw an error. This is only relevant when typed code calls a `my` function:
+The return specifier is also implicitly `!dynamic` which indicates that the function can throw an error. This is only relevant when typed code calls a dynamic function:
 ```cy
-my foo(a, b, c):
+let foo(a, b, c):
     return a + b() + a[c]
 ```
 
 ## `dynamic` vs `any`
 `dynamic` values can be freely used and copied without any compile errors (if there is a chance it can succeed at runtime, see [Recent type inference](#recent-type-inference)):
 ```cy
-my a = 123
+let a = 123
 
 func getFirstRune(s String):
     return s[0]

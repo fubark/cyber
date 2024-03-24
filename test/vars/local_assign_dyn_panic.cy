@@ -1,6 +1,6 @@
 import test
 
-my a = test.erase(123)
+let a = test.erase(123)
 var b = ''
 b = a
 

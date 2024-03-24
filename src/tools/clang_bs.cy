@@ -69,8 +69,8 @@ type CXType:
     kind int
     data List
  
-my .lib = load(ffi) -- Make lib dependent on ffi.
-my .ffi = false
+let .lib = load(ffi) -- Make lib dependent on ffi.
+let .ffi = false
 
 func load(dummy any):
     ffi = os.newFFI()

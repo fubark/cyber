@@ -18,7 +18,7 @@ while String(1) == '1':
     break
 
 -- b's narrow type becomes `any` after the if branch, `a = b` should generate copyRetainSrc.
-my b = []
+let b = []
 if false:
     b = 123
 a = b
@@ -36,7 +36,7 @@ var c = '$(a)'  -- If `a` isn't marked as a rcCandidate, `a` would be freed here
 -- Field retains local rec so that noerr prerelease doesn't free the rec too early.
 type Node:
     val int
-my foo = [Node val: 123]
+let foo = [Node val: 123]
 foo = foo.val
 t.eq(foo, 123)
 

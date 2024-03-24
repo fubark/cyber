@@ -107,7 +107,7 @@ func runExpectOut(src, expOut):
 func runPipeInput(cmd, src):
     os.writeFile('temp.cy', src)
     var cyber = os.exePath()
-    my res = none
+    let res = none
     if os.system == 'windows':
       res = os.execCmd([ 'powershell', '-c', '$(cmd) | $(cyber) temp.cy' ])
     else:

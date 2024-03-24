@@ -123,7 +123,7 @@ pub const Allocator = struct {
     /// A required dst can not be retained or a temp register is allocated and `requiresCopyRelease` will be set true.
     ///
     /// Handles the case where the inst depends and assigns to the same local:
-    /// > my node = [Node ...]
+    /// > let node = [Node ...]
     /// > node = node.val
     /// `node` rec gets +1 retain and saves to temp since the `node` cstr has `releaseDst=true`.
     pub fn selectForDstInst(self: *Allocator, cstr: Cstr, instCouldRetain: bool, nodeId: cy.NodeId) !DstInst {

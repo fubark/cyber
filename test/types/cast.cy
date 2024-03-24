@@ -1,7 +1,7 @@
 import t 'test'
 
 -- Cast to exact primitive type.
-my a = t.erase(1)
+let a = t.erase(1)
 t.eq(foo1(a as int), true)
 func foo1(a int):
     return true

@@ -17,7 +17,7 @@ t.eq(staticPrim(123.0), true)
 t.eq(staticPrim(123), true)
 
 -- Call static function with var.
-my n = 123.0
+let n = 123.0
 t.eq(staticPrim(n), true)
 
 -- Call static function from cast.

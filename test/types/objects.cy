@@ -47,7 +47,7 @@ nw.value += 1
 t.eq(nw.value, 124)
 
 -- Assign to object field when the object is a temp local.
-my nodes = [ [Node value: 123] ]
+let nodes = [ [Node value: 123] ]
 nodes[0].value = 234
 t.eq(nodes[0].value, 234)
 
@@ -130,7 +130,7 @@ t.eq(typesym(sym), .metatype)
 t.eq(String(sym), 'type: Node')
 
 -- Dynamic variable.
-my val = t.erase([Node value: 123])
+let val = t.erase([Node value: 123])
 var dst Node = val
 t.eq(dst.value, 123)
 

@@ -15,7 +15,7 @@ catch err:
 os.access('test/assets/file.txt', .read)
 
 -- args()
-my res = os.args()
+let res = os.args()
 t.eq(res.len() > 0, true)
 
 -- createDir()
@@ -55,7 +55,7 @@ t.eq(os.dirName('/root/bar.txt').?, '/root')
 
 -- openDir()
 dir = os.openDir('test')
-my info = dir.stat()
+let info = dir.stat()
 t.eq(info['type'], .dir)
 
 -- openFile()
@@ -129,7 +129,7 @@ t.eq(os.readFile('test/assets/write.txt'), 'foobarabcxyz')
 -- Dir.iterator()
 dir = os.openDir('test/assets/dir', true)
 var iter = dir.iterator()
-my entries = []
+let entries = []
 while iter.next() -> n:
     entries.append(n)
 t.eq(entries.len(), 3)

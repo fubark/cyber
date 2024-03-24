@@ -359,7 +359,7 @@ pub const Parser = struct {
         self.ast.setNodeData(id, .{ .func = .{
             .header = header,
             .bodyHead = @intCast(expr),
-            .sig_t = .my,
+            .sig_t = .let,
         }});
         return id;
     }
@@ -388,7 +388,7 @@ pub const Parser = struct {
         self.ast.setNodeData(id, .{ .func = .{
             .header = header,
             .bodyHead = @intCast(expr),
-            .sig_t = .my,
+            .sig_t = .let,
         }});
         return id;
     }
@@ -483,7 +483,7 @@ pub const Parser = struct {
         self.ast.setNodeData(id, .{ .func = .{
             .header = header,
             .bodyHead = @intCast(expr),
-            .sig_t = .my,
+            .sig_t = .let,
         }});
         return id;
     }
@@ -1915,7 +1915,7 @@ pub const Parser = struct {
                             return try self.parseFuncDecl(modifier);
                         } else if (self.peek().tag() == .var_k) {
                             return try self.parseVarDecl(modifier, true);
-                        } else if (self.peek().tag() == .my_k) {
+                        } else if (self.peek().tag() == .let_k) {
                             return try self.parseVarDecl(modifier, false);
                         } else if (self.peek().tag() == .type_k) {
                             return try self.parseTypeDecl(modifier, true);
@@ -1997,8 +1997,8 @@ pub const Parser = struct {
             .var_k => {
                 return try self.parseVarDecl(cy.NullNode, true);
             },
-            .my_k => {
-                return try self.parseMyDecl(cy.NullNode);
+            .let_k => {
+                return try self.parseLetDecl(cy.NullNode);
             },
             else => {},
         }
@@ -3423,7 +3423,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseMyDecl(self: *Parser, attr_head: cy.NodeId) !cy.NodeId {
+    fn parseLetDecl(self: *Parser, attr_head: cy.NodeId) !cy.NodeId {
         const start = self.next_pos;
         self.advance();
 
@@ -3462,7 +3462,7 @@ pub const Parser = struct {
             self.ast.setNodeData(id, .{ .func = .{
                 .header = header,
                 .bodyHead = @intCast(res.first),
-                .sig_t = .my,
+                .sig_t = .let,
             }});
 
             if (!self.inTemplate) {

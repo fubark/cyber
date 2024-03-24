@@ -199,7 +199,7 @@ test "ARC for function return values." {
         \\func foo():
         \\  var a = [S value: 123]
         \\  return a
-        \\my s = foo()
+        \\let s = foo()
         \\t.eq(s.value, 123)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
@@ -254,7 +254,7 @@ test "ARC on temp locals in expressions." {
 test "ARC in loops." {
     // A non-rcCandidate var is reassigned to a rcCandidate var inside a loop.
     try eval(.{},
-        \\my a = 123
+        \\let a = 123
         \\for 0..3:
         \\  a = 'abc{123}'   -- copyReleaseDst
     , struct { fn func(run: *Runner, res: EvalResult) !void {
@@ -266,7 +266,7 @@ test "ARC in loops." {
 
     // A non-rcCandidate var is reassigned to a rcCandidate var inside a loop and if branch.
     try eval(.{},
-        \\my a = 123
+        \\let a = 123
         \\for 0..3:
         \\  if true:
         \\    a = "abc$(123)"    -- copyReleaseDst
@@ -281,7 +281,7 @@ test "ARC in loops." {
     try eval(.{},
         \\type S:
         \\  foo any
-        \\my a = 123
+        \\let a = 123
         \\for 0..3:
         \\  a = [S foo: 123].foo
     , struct { fn func(run: *Runner, res: EvalResult) !void {
@@ -501,7 +501,7 @@ test "os constants" {
 test "Stack trace unwinding." {
     try eval(.{ .silent = true },
         \\import test
-        \\my a = test.erase(123)
+        \\let a = test.erase(123)
         \\1 + a.foo
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, c.ErrorPanic,
@@ -519,7 +519,7 @@ test "Stack trace unwinding." {
             .chunkId = 1,
             .line = 2,
             .col = 6,
-            .lineStartPos = 35,
+            .lineStartPos = 36,
         });
     }}.func);
 
@@ -527,7 +527,7 @@ test "Stack trace unwinding." {
     try eval(.{ .silent = true },
         \\import test
         \\func foo():
-        \\  my a = test.erase(123)
+        \\  let a = test.erase(123)
         \\  return 1 + a.foo
         \\foo()
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
@@ -549,14 +549,14 @@ test "Stack trace unwinding." {
             .chunkId = 1,
             .line = 3,
             .col = 15,
-            .lineStartPos = 49,
+            .lineStartPos = 50,
         });
         try eqStackFrame(trace.frames[1], .{
             .name = "main",
             .chunkId = 1,
             .line = 4,
             .col = 0,
-            .lineStartPos = 68,
+            .lineStartPos = 69,
         });
     }}.func);
 

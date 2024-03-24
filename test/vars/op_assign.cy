@@ -1,7 +1,7 @@
 import t 'test'
 
 -- Op assign to variable.
-my a = 1
+let a = 1
 a += 10
 t.eq(a, 11)
 

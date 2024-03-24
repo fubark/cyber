@@ -20,7 +20,7 @@ t.eqList(a[3..], [4, 5])
 -- Start of list to end index.
 t.eqList(a[..3], [1, 2, 3])
 -- Dynamic invocation.
-my b = t.erase(a)
+let b = t.erase(a)
 t.eqList(b[0..2], [1, 2])
 
 --| Slice retains rc elems.
@@ -137,7 +137,7 @@ t.eq(a[1], 2)
 a = [3, 1, 2]
 a.sort((a, b) => a < b)
 t.eqList(a, [1, 2, 3])
-my a2 = [ [3], [1], [2] ]
+let a2 = [ [3], [1], [2] ]
 a2.sort((a, b) => a[0] < b[0])
 t.eq(a2[0][0], 1)
 t.eq(a2[1][0], 2)

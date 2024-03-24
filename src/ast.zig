@@ -441,7 +441,7 @@ const NodeData = union {
 
 const FuncSigType = enum(u8) {
     func,
-    my,
+    let,
     infer,
 };
 
@@ -1085,7 +1085,7 @@ pub const Encoder = struct {
                 if (node.data.localDecl.typed) {
                     try w.writeAll("var ");
                 } else {
-                    try w.writeAll("my ");
+                    try w.writeAll("let ");
                 }
                 try self.writeNode(w, node.data.localDecl.varSpec);
                 try w.writeByte('=');

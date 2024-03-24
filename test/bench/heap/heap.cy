@@ -24,7 +24,7 @@ type Node:
         else:
             return self.parent.getLeftSibling2(1)
 
-    func getLeftSibling2(height):
+    func getLeftSibling2(height int):
         if self.parent.right == self:
             return self.parent.left.getRightN(height)
         else:
@@ -36,19 +36,19 @@ type Node:
         else:
             return self.parent.getRightSibling2(1)
 
-    func getRightSibling2(height):
+    func getRightSibling2(height int):
         if self.parent.left == self:
             return self.parent.right.getLeftN(height)
         else:
             return self.parent.getRightSibling2(height + 1)
 
-    func getRightN(n):
+    func getRightN(n int):
         if n == 1:
             return self.right
         else:
             return self.right.getRightN(n - 1)
 
-    func getLeftN(n):
+    func getLeftN(n int):
         if n == 1:
             return self.left
         else:
@@ -62,7 +62,7 @@ type Heap:
     size dynamic
     last dynamic
 
-    func insert(value):
+    func insert(value int):
         if self.root == false:
             self.root = Node{left: false, right: false, parent: false, value: value}
             self.last = self.root
@@ -104,7 +104,7 @@ type Heap:
         self.size = self.size + 1
         self.siftUp(new)
 
-    func swapUp(node):
+    func swapUp(node Node):
         if self.last == node:
             self.last = node.parent
         let parentSave = node.parent
@@ -140,7 +140,7 @@ type Heap:
             else:
                 parentParent.right = node
 
-    func siftUp(node):
+    func siftUp(node Node):
         if node.parent == false:
             return
         if node.value > node.parent.value:
@@ -148,7 +148,7 @@ type Heap:
             if self.root != node:
                 self.siftUp(node)
 
-    func siftDown(node):
+    func siftDown(node Node):
         if node.left != false and node.left.value > node.value:
             self.swapUp(node.left)
             self.siftDown(node)

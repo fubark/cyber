@@ -9,28 +9,28 @@ type Node:
     func getEx():
         return self.value
 
-    func getEx2(param):
+    func getEx2(param int):
         return self.value + param
 
-    func getEx3(param, param2):
+    func getEx3(param int, param2 int):
         return self.value + param - param2
 
     func setEx():
         self.value = 1
 
-    func setEx2(param):
+    func setEx2(param int):
         self.value += param
 
-    func setEx3(param):
+    func setEx3(param int):
         self.value = 1 + param
 
     func get():
         return value
 
-    func get2(param):
+    func get2(param int):
         return value + param
 
-    func get3(param, param2):
+    func get3(param int, param2 int):
         return value + param - param2
 
     func get4():
@@ -44,10 +44,10 @@ type Node:
     func set():
         value = 1
 
-    func set2(param):
+    func set2(param int):
         value += param
 
-    func set3(param):
+    func set3(param int):
         value = 1 + param
 
 func Node.getFn():

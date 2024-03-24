@@ -56,10 +56,12 @@ test "Tests." {
     run.case("syntax/comment_last_line.cy");
     run.case("syntax/comment_multiple.cy");
     run.case("syntax/compact_block_error.cy");
+    run.case("syntax/func_missing_param_type_error.cy");
 if (!aot) {
     run.case("syntax/indentation.cy");
 }
     run.case("syntax/last_line_empty_indent.cy");
+    run.case("syntax/let_func_param_error.cy");
     run.case("syntax/no_stmts.cy");
     run.case("syntax/object_decl_eof.cy");
     run.case("syntax/object_decl_typespec_eof.cy");
@@ -89,10 +91,6 @@ if (!aot) {
     run.case("functions/call_fiber_param.cy");
 }
     run.case("functions/call_float_param_error.cy");
-if (!aot) {
-    run.case("functions/call_lambda.cy");
-    run.case("functions/call_lambda_incompat_arg_panic.cy");
-}
 if (!aot) {
     run.case("functions/call_metatype_param.cy");
 }
@@ -125,10 +123,10 @@ if (!aot) {
     run.case("functions/call_typed_param.cy");
     run.case("functions/call_undeclared_error.cy");   
     run.case("functions/call_void_return_error.cy");
-    run.case("functions/decl_missing_param_type_error.cy");
     run.case("functions/decl_over_builtin.cy");
+    run.case("functions/lambda.cy");
+    run.case("functions/lambda_incompat_arg_panic.cy");
     run.case("functions/let_call_recursive.cy");
-    run.case("functions/let_decl_param_error.cy");
     run.case("functions/let_func.cy");
     run.case("functions/method_self_param_error.cy");
     run.case("functions/object_funcs.cy");

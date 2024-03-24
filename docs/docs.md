@@ -2191,8 +2191,7 @@ func fail():
     throw error.Oops      -- Throws an error with the symbol `#Oops`
 
 func fail2():
-    throw 123             -- Panic. Can only throw an error
-                          -- that implement the `Error` trait.
+    throw 123             -- Panic. Can only throw an `error` value.
 ```
 
 `throw` can also be used as an expression.
@@ -2493,10 +2492,14 @@ The main execution context is a fiber as well. Once the main fiber has finished,
 * [Dynamic variables.](#dynamic-variables)
 * [Runtime type checking.](#runtime-type-checking)
 * [Dynamic functions.](#dynamic-functions)
+* [Dynamic objects.](#dynamic-objects-1)
+* [Custom objects.](#custom-objects)
 
 [^top](#table-of-contents)
 
-Cyber supports dynamic typing with a less restrictive syntax. This can reduce the amount of friction when writing code, but it can also result in more runtime errors.
+Dynamic typing is supported with a less restrictive syntax. This can reduce the amount of friction when writing code, but it can also result in more runtime errors.
+
+In Cyber, the `let` keyword is used exclusively for dynamic declarations.
 
 ## Dynamic variables.
 Variables declared with `let` are implicitly given the `dynamic` type:
@@ -2520,7 +2523,7 @@ print a / 2
 ```
 
 ## Runtime type checking.
-If the compiler can not determine the type of a dynamic variable, type checking is deferred to runtime.
+If the type of a dynamic variable can not be determined at compile-time, type checking is deferred to runtime.
 
 In this example, the type for `a` is unknown after assigning the return of a dynamic call to `erase`.
 Any operation on `a` would defer type checking to runtime:
@@ -2551,6 +2554,73 @@ The return specifier is also implicitly `!dynamic` which indicates that the func
 ```cy
 let foo(a, b, c):
     return a + b() + a[c]
+```
+
+The function `foo` is a namespace function. It can't be reassigned like a variable after its declaration.
+
+However, function values (lambdas) assigned to variables allow reassignment. Lambdas can also capture variables from the parent scope:
+```cy
+let count = 123
+let f = (a, b):
+    return a + b(10) + count
+
+-- Reassign `f`.
+f = (a, b):
+    return count * 2 - b(a)
+```
+
+Lambdas that simply return an expression can be written as:
+```cy
+f = (a, b) => a + b(10)
+```
+
+## Dynamic objects.
+Dynamic objects can contain arbitrary fields. An empty object can be initialized with the empty record literal:
+```cy
+let a = {}
+a.name = 'Nova'
+print a.name     --> Nova
+```
+
+Accessing a field before it's initialized is a runtime error:
+```cy
+print a.age      --> panic: Field isn't initialized.
+```
+
+Objects can be initialized with fields set:
+```cy
+let a = { name: 'Nova' }
+print a.name     --> Nova
+```
+
+Indexing can be used to access a field with a dynamic name. The key must be a `String`: *Planned Feature*
+```cy
+let field = 'name'
+print a[field]   --> Nova
+```
+If the object is intended to be used like a hash map with varying key types, consider using `Map` instead.
+
+## Custom objects.
+Custom objects allow declaring fields and methods. *Planned Feature*
+
+```cy
+let Counter{ count }:
+    let inc():
+        count += 1
+        
+let c = Counter{ count: 0 }
+c.inc()
+print c.count       --> 1
+```
+Fields are declared inside the braces and separated with commas.
+Unlike typed declarations, the fields declared only serve as a subset constraint.
+Additional fields can still be initialized and used.
+
+Objects can be declared without any methods: *Planned Feature*
+```cy
+let Vec3{x, y, z}
+
+let v = Vec3{1, 2, 3}
 ```
 
 # Metaprogramming.

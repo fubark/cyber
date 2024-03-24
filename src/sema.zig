@@ -2390,9 +2390,6 @@ fn resolveLambdaDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !FuncDecl {
     try updateFuncDeclNamePath(c, &res, parent, header.data.funcHeader.name);
 
     const sig_t = func.data.func.sig_t;
-    if (sig_t == .infer) {
-        return error.Unsupported;
-    }
     var curParamId = header.data.funcHeader.paramHead;
     while (curParamId != cy.NullNode) {
         const param = c.ast.node(curParamId);
@@ -2406,7 +2403,7 @@ fn resolveLambdaDecl(c: *cy.Chunk, parent: *Sym, nodeId: cy.NodeId) !FuncDecl {
             }
         } else {
             if (param.data.funcParam.typeSpec != cy.NullNode) {
-                return c.reportError("Type specifier not allowed in `let` declaration. Declare typed functions with `func`.", curParamId);
+                return c.reportError("Type specifier not allowed. Declare typed lambdas with `func`.", curParamId);
             }
         }
         const typeId = try resolveTypeSpecNode(c, param.data.funcParam.typeSpec);

@@ -327,48 +327,11 @@ pub const Parser = struct {
         }
     }
 
-    fn parseLambdaFuncWithParam(self: *Parser, paramIdent: NodeId) !NodeId {
+    fn parseLambdaFunc(self: *Parser, params: ListResult) !NodeId {
         const start = self.next_pos;
         // Assumes first token is `=>`.
         self.advance();
         
-        const id = try self.pushNode(.lambda_expr, start);
-
-        // Parse body expr.
-        try self.pushBlock();
-        const expr = (try self.parseExpr(.{})) orelse {
-            return self.reportError("Expected lambda body expression.", &.{});
-        };
-        const block = self.popBlock();
-        _ = block;
-
-        const identPos = self.ast.nodePos(paramIdent);
-        const param = try self.ast.pushNode(self.alloc, .funcParam, identPos);
-        self.ast.setNodeData(param, .{ .funcParam = .{
-            .name = paramIdent,
-            .typeSpec = cy.NullNode,
-        }});
-
-        const ret = cy.NullNode;
-        const header = try self.ast.pushNode(self.alloc, .funcHeader, ret);
-        self.ast.setNodeData(header, .{ .funcHeader = .{
-            .name = cy.NullNode,
-            .paramHead = param,
-        }});
-
-        self.ast.setNodeData(id, .{ .func = .{
-            .header = header,
-            .bodyHead = @intCast(expr),
-            .sig_t = .let,
-        }});
-        return id;
-    }
-
-    fn parseNoParamLambdaFunc(self: *Parser) !NodeId {
-        const start = self.next_pos;
-        // Assumes first token is `=>`.
-        self.advance();
-
         const id = try self.pushNode(.lambda_expr, start);
 
         // Parse body expr.
@@ -377,18 +340,44 @@ pub const Parser = struct {
             return self.reportError("Expected lambda body expression.", &.{});
         };
         _ = self.popBlock();
-        
+
         const ret = cy.NullNode;
         const header = try self.ast.pushNode(self.alloc, .funcHeader, ret);
         self.ast.setNodeData(header, .{ .funcHeader = .{
             .name = cy.NullNode,
-            .paramHead = cy.NullNode,
+            .paramHead = params.head,
         }});
 
         self.ast.setNodeData(id, .{ .func = .{
             .header = header,
             .bodyHead = @intCast(expr),
-            .sig_t = .let,
+            .sig_t = .infer,
+        }});
+        return id;
+    }
+
+    fn parseLambdaBlock(self: *Parser, params: ListResult) !NodeId {
+        const start = self.next_pos;
+        // Assumes first token is `:`.
+        self.advance();
+        
+        const id = try self.pushNode(.lambda_multi, start);
+
+        try self.pushBlock();
+        const res = try self.parseSingleOrIndentedBodyStmts();
+        _ = self.popBlock();
+
+        const ret = cy.NullNode;
+        const header = try self.ast.pushNode(self.alloc, .funcHeader, ret);
+        self.ast.setNodeData(header, .{ .funcHeader = .{
+            .name = cy.NullNode,
+            .paramHead = params.head,
+        }});
+
+        self.ast.setNodeData(id, .{ .func = .{
+            .header = header,
+            .bodyHead = @intCast(res.first),
+            .sig_t = .infer,
         }});
         return id;
     }
@@ -453,41 +442,6 @@ pub const Parser = struct {
         return id;
     }
 
-    fn parseLambdaFunction(self: *Parser) !NodeId {
-        const start = self.next_pos;
-
-        const params = try self.parseParenAndFuncParams();
-        const ret = try self.parseFuncReturn();
-
-        var token = self.peek();
-        if (token.tag() != .equal_greater) {
-            return self.reportError("Expected `=>`.", &.{});
-        }
-        self.advance();
-
-        const id = try self.pushNode(.lambda_expr, start);
-
-        // Parse body expr.
-        try self.pushBlock();
-        const expr = (try self.parseExpr(.{})) orelse {
-            return self.reportError("Expected lambda body expression.", &.{});
-        };
-        _ = self.popBlock();
-
-        const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
-        self.ast.setNodeData(header, .{ .funcHeader = .{
-            .name = cy.NullNode,
-            .paramHead = params.head,
-        }});
-        
-        self.ast.setNodeData(id, .{ .func = .{
-            .header = header,
-            .bodyHead = @intCast(expr),
-            .sig_t = .let,
-        }});
-        return id;
-    }
-
     const ListResult = struct {
         head: cy.NodeId,
         len: u32,
@@ -499,12 +453,22 @@ pub const Parser = struct {
             return self.reportError("Expected open parenthesis.", &.{});
         }
         self.advance();
-        return self.parseFuncParams();
+        return self.parseFuncParams(true);
+    }
+
+    fn genDynFuncParam(self: *Parser, ident: cy.NodeId) !cy.NodeId {
+        const pos = self.ast.nodePos(ident);
+        const param = try self.ast.pushNode(self.alloc, .funcParam, pos);
+        self.ast.setNodeData(param, .{ .funcParam = .{
+            .name = ident,
+            .typeSpec = cy.NullNode,
+        }});
+        return param;
     }
 
     /// Assumes token at first param ident or right paren.
     /// Let sema check whether param types are required since it depends on the context.
-    fn parseFuncParams(self: *Parser) !ListResult {
+    fn parseFuncParams(self: *Parser, typed: bool) !ListResult {
         var token = self.peek();
         if (token.tag() == .right_paren) {
             self.advance();
@@ -523,7 +487,17 @@ pub const Parser = struct {
         var name = try self.pushSpanNode(.ident, start);
 
         self.advance();
-        var type_spec = (try self.parseOptTypeSpec(false)) orelse cy.NullNode;
+        var type_spec: cy.NodeId = cy.NullNode;
+        if (typed) {
+            if (try self.parseOptTypeSpec(false)) |spec| {
+                type_spec = spec;
+            } else {
+                const param_name = self.ast.src[token.pos()..token.data.end_pos];
+                if (!std.mem.eql(u8, param_name, "self")) {
+                    return self.reportError("Expected param type.", &.{});
+                }
+            }
+        }
 
         const paramHead = try self.pushNode(.funcParam, start);
         self.ast.setNodeData(paramHead, .{ .funcParam = .{
@@ -543,7 +517,7 @@ pub const Parser = struct {
                     self.advance();
                     break;
                 },
-                else => return self.reportError("Unexpected token {} in function param list.", &.{v(token.tag())}),
+                else => return self.reportError("Expected `,` or `)`.", &.{}),
             }
 
             token = self.peek();
@@ -555,7 +529,11 @@ pub const Parser = struct {
             name = try self.pushSpanNode(.ident, start);
             self.advance();
 
-            type_spec = (try self.parseOptTypeSpec(false)) orelse cy.NullNode;
+            if (typed) {
+                type_spec = (try self.parseOptTypeSpec(false)) orelse {
+                    return self.reportError("Expected param type.", &.{});
+                };
+            }
 
             const param = try self.pushNode(.funcParam, start);
             self.ast.setNodeData(param, .{ .funcParam = .{
@@ -1778,7 +1756,7 @@ pub const Parser = struct {
         var capture: u24 = cy.NullNode;
         if (token.tag() == .case_k) {
             self.advance();
-            firstCond = (try self.parseTightTermExpr(.{})) orelse {
+            firstCond = (try self.parseTermExprOpt(.{})) orelse {
                 return self.reportError("Expected case condition.", &.{});
             };
             numConds += 1;
@@ -1796,7 +1774,7 @@ pub const Parser = struct {
                 } else if (token.tag() == .comma) {
                     self.advance();
                     self.consumeWhitespaceTokens();
-                    const cond = (try self.parseTightTermExpr(.{})) orelse {
+                    const cond = (try self.parseTermExprOpt(.{})) orelse {
                         return self.reportError("Expected case condition.", &.{});
                     };
                     self.ast.setNextNode(lastCond, cond);
@@ -2233,7 +2211,7 @@ pub const Parser = struct {
     fn parseRecordEntry(self: *Parser) !NodeId {
         const start = self.next_pos;
 
-        const arg = (try self.parseTightTermExpr(.{})) orelse {
+        const arg = (try self.parseTermExprOpt(.{})) orelse {
             return self.reportError("Expected record key.", &.{});
         };
 
@@ -2281,15 +2259,6 @@ pub const Parser = struct {
         }
 
         return try self.parseExpr(.{});
-    }
-
-    fn parseAnyCallExpr(self: *Parser, callee: NodeId) !NodeId {
-        const token = self.peek();
-        if (token.tag() == .left_paren) {
-            return try self.parseCallExpression(callee);
-        } else {
-            return try self.parseNoParenCallExpression(callee);
-        }
     }
 
     fn parseCallArgs(self: *Parser, hasNamedArg: *bool) !ListResult {
@@ -2400,28 +2369,14 @@ pub const Parser = struct {
 
     /// Parses the right expression of a BinaryExpression.
     fn parseRightExpr(self: *Parser, left_op: cy.ast.BinaryExprOp) anyerror!NodeId {
-        var start = self.next_pos;
-        var token = self.peek();
-
-        switch (token.tag()) {
-            .null => {
-                return self.reportError("Expected right operand.", &.{});
-            },
-            .indent,
-            .new_line => {
-                self.advance();
-                self.consumeWhitespaceTokens();
-                start = self.next_pos;
-                token = self.peek();
-                if (token.tag() == .null) {
-                    return self.reportError("Expected right operand.", &.{});
-                }
-            },
-            else => {},
+        if (self.peek().tag() == .new_line) {
+            self.advance();
+            self.consumeWhitespaceTokens();
         }
-
-        const expr_id = try self.parseTermExpr(.{});
-        return self.parseRightExpr2(left_op, expr_id);
+        const right = (try self.parseExprLeft()) orelse {
+            return self.reportError("Expected right operand.", &.{});
+        };
+        return self.parseRightExpr2(left_op, right);
     }
 
     fn parseRightExpr2(self: *Parser, left_op: cy.ast.BinaryExprOp, right_id: cy.NodeId) anyerror!NodeId {
@@ -2610,180 +2565,161 @@ pub const Parser = struct {
         return id;
     }
 
+    /// Assumes at `coinit` keyword.
+    fn parseCoinitExpr(self: *Parser) !cy.NodeId {
+        const start = self.next_pos;
+        self.advance();
+
+        if (self.peek().tag() != .left_paren) {
+            return self.reportError("Expected ( after coinit.", &.{});
+        }
+        self.advance();
+
+        const callee = (try self.parseCallArg()) orelse {
+            return self.reportError("Expected entry function callee.", &.{});
+        };
+
+        var numArgs: u32 = 0;
+        var first: NodeId = cy.NullNode;
+        if (self.peek().tag() == .comma) {
+            self.advance();
+            inner: {
+                first = (try self.parseCallArg()) orelse {
+                    break :inner;
+                };
+                numArgs += 1;
+                var last = first;
+                while (true) {
+                    self.consumeWhitespaceTokens();
+
+                    if (self.peek().tag() != .comma) {
+                        break;
+                    }
+                    self.advance();
+                    const arg = (try self.parseCallArg()) orelse {
+                        break;
+                    };
+                    numArgs += 1;
+                    self.ast.setNextNode(last, arg);
+                    last = arg;
+                }
+            }
+        }
+
+        self.consumeWhitespaceTokens();
+        if (self.peek().tag() != .right_paren) {
+            return self.reportError("Expected closing `)`.", &.{});
+        }
+        self.advance();
+
+        const callExpr = try self.pushNode(.callExpr, start);
+        self.ast.setNodeData(callExpr, .{ .callExpr = .{
+            .callee = @intCast(callee),
+            .argHead = @intCast(first),
+            .hasNamedArg = false,
+            .numArgs = @intCast(numArgs),
+        }});
+
+        const coinit = try self.pushNode(.coinit, start);
+        self.ast.setNodeData(coinit, .{ .coinit = .{
+            .child = callExpr,
+        }});
+        return coinit;
+    }
+
     fn parseTermExpr(self: *Parser, config: ParseTermConfig) anyerror!NodeId {
         return (try self.parseTermExprOpt(config)) orelse {
             return self.reportError("Expected term expr. Got: {}.", &.{v(self.peek().tag())});
         };
     }
 
-    /// An expression term doesn't contain a binary expression at the top.
-    fn parseTermExprOpt(self: *Parser, config: ParseTermConfig) anyerror!?NodeId {
-        const start = self.next_pos;
-        var token = self.peek();
-        switch (token.tag()) {
-            // .await_k => {
-            //     // Await expression.
-            //     const expr_id = try self.pushNode(.await_expr, start);
-            //     self.advance();
-            //     const term_id = try self.parseTermExpr(.{});
-            //     self.nodes.items[expr_id].head = .{
-            //         .child_head = term_id,
-            //     };
-            //     return expr_id;
-            // },
-            .not_k => {
-                self.advance();
-                const expr = try self.pushNode(.unary_expr, start);
-                const child = try self.parseTermExpr(.{});
-                self.ast.setNodeData(expr, .{ .unary = .{
-                    .child = child,
-                    .op = .not,
-                }});
-                return expr;
-            },
-            .throw_k => {
-                self.advance();
-                const child = try self.parseTermExpr(.{});
-                const expr = try self.pushNode(.throwExpr, start);
-                self.ast.setNodeData(expr, .{ .throwExpr = .{
-                    .child = child,
-                }});
-                return expr;
-            },
-            .try_k => {
-                self.advance();
-                const tryExpr = try self.pushNode(.tryExpr, start);
-                const expr = try self.parseTermExpr(.{});
-
-                token = self.peek();
-                var catchExpr: cy.NodeId = cy.NullNode;
-                if (token.tag() == .catch_k) {
+    fn parseTermExprWithLeft(self: *Parser, start: u32, left: cy.NodeId, config: ParseTermConfig) !cy.NodeId {
+        var left_id = left;
+        while (true) {
+            const next = self.peek();
+            switch (next.tag()) {
+                .dot => {
+                    // Access expr.
                     self.advance();
-                    catchExpr = try self.parseTermExpr(.{});
-                }
 
-                self.ast.setNodeData(tryExpr, .{ .tryExpr = .{
-                    .expr = expr,
-                    .catchExpr = catchExpr,
-                }});
-                return tryExpr;
-            },
-            .if_k => {
-                return try self.parseIfExpr(start);
-            },
-            .coresume_k => {
-                self.advance();
-                const coresume = try self.pushNode(.coresume, start);
-                const fiberExpr = try self.parseTermExpr(.{});
-                self.ast.setNodeData(coresume, .{ .coresume = .{
-                    .child = fiberExpr,
-                }});
-                return coresume;
-            },
-            .coyield_k => {
-                self.advance();
-                const coyield = try self.pushNode(.coyield, start);
-                return coyield;
-            },
-            .coinit_k => {
-                self.advance();
+                    const right = (try self.parseOptName()) orelse {
+                        return self.reportError("Expected ident", &.{});
+                    };
 
-                if (self.peek().tag() != .left_paren) {
-                    return self.reportError("Expected ( after coinit.", &.{});
-                }
-                self.advance();
-
-                const callee = (try self.parseCallArg()) orelse {
-                    return self.reportError("Expected entry function callee.", &.{});
-                };
-
-                var numArgs: u32 = 0;
-                var first: NodeId = cy.NullNode;
-                if (self.peek().tag() == .comma) {
+                    const expr_id = try self.pushNode(.accessExpr, start);
+                    self.ast.setNodeData(expr_id, .{ .accessExpr = .{
+                        .left = left_id,
+                        .right = right,
+                    }});
+                    left_id = expr_id;
+                },
+                .dot_question => {
                     self.advance();
-                    inner: {
-                        first = (try self.parseCallArg()) orelse {
-                            break :inner;
-                        };
-                        numArgs += 1;
-                        var last = first;
-                        while (true) {
-                            self.consumeWhitespaceTokens();
-
-                            if (self.peek().tag() != .comma) {
-                                break;
-                            }
-                            self.advance();
-                            const arg = (try self.parseCallArg()) orelse {
-                                break;
-                            };
-                            numArgs += 1;
-                            self.ast.setNextNode(last, arg);
-                            last = arg;
-                        }
-                    }
-                }
-
-                self.consumeWhitespaceTokens();
-                token = self.peek();
-                if (token.tag() != .right_paren) {
-                    return self.reportError("Expected closing `)`.", &.{});
-                }
-                self.advance();
-
-                const callExpr = try self.pushNode(.callExpr, start);
-                self.ast.setNodeData(callExpr, .{ .callExpr = .{
-                    .callee = @intCast(callee),
-                    .argHead = @intCast(first),
-                    .hasNamedArg = false,
-                    .numArgs = @intCast(numArgs),
-                }});
-
-                const coinit = try self.pushNode(.coinit, start);
-                self.ast.setNodeData(coinit, .{ .coinit = .{
-                    .child = callExpr,
-                }});
-                return coinit;
-            },
-            .minusDotDot => {
-                // Start omitted.
-                self.advance();
-                const end = (try self.parseExpr(.{})) orelse {
-                    return self.reportError("Expected range end.", &.{});
-                };
-
-                const range = try self.pushNode(.range, start);
-                self.ast.setNodeData(range, .{ .range = .{
-                    .start = cy.NullNode,
-                    .end = @intCast(end),
-                    .inc = false,
-                }});
-                return range;
-            },
-            .dot_dot => {
-                // Start omitted.
-                self.advance();
-                const end = (try self.parseExpr(.{})) orelse {
-                    return self.reportError("Expected range end.", &.{});
-                };
-
-                const range = try self.pushNode(.range, start);
-                self.ast.setNodeData(range, .{ .range = .{
-                    .start = cy.NullNode,
-                    .end = @intCast(end),
-                    .inc = true,
-                }});
-                return range;
-            },
-            else => {},
+                    const expr = try self.pushNode(.unwrap, start);
+                    self.ast.setNodeData(expr, .{ .unwrap = .{
+                        .opt = left_id,
+                    }});
+                    left_id = expr;
+                },
+                .left_bracket => {
+                    const array = try self.parseArrayLiteral();
+                    const expr = try self.pushNode(.array_expr, start);
+                    self.ast.setNodeData(expr, .{ .array_expr = .{
+                        .left = left_id,
+                        .array = array,
+                    }});
+                    left_id = expr;
+                },
+                .left_brace => {
+                    if (!config.parse_record_expr) break;
+                    const record = try self.parseRecordLiteral();
+                    const expr = try self.pushNode(.record_expr, start);
+                    self.ast.setNodeData(expr, .{ .record_expr = .{
+                        .left = left_id,
+                        .record = record,
+                    }});
+                    left_id = expr;
+                },
+                .left_paren => {
+                    const call_id = try self.parseCallExpression(left_id);
+                    left_id = call_id;
+                },
+                .minusDotDot,
+                .dot_dot,
+                .right_bracket,
+                .right_paren,
+                .right_brace,
+                .else_k,
+                .catch_k,
+                .comma,
+                .colon,
+                .equal,
+                .operator,
+                .or_k,
+                .and_k,
+                .as_k,
+                .capture,
+                .raw_string,
+                .string,
+                .bin,
+                .oct,
+                .hex,
+                .dec,
+                .float,
+                .if_k,
+                .ident,
+                .templateString,
+                .equal_greater,
+                .new_line,
+                .null => break,
+                else => break,
+            }
         }
-        return self.parseTightTermExpr(config);
+        return left_id;
     }
 
-    /// A tight term expr also doesn't include various top expressions
-    /// that are separated by whitespace. eg. coinit <expr>
-    fn parseTightTermExpr(self: *Parser, config: ParseTermConfig) anyerror!?NodeId {
-    
+    /// An expression term doesn't contain a unary/binary expression at the top.
+    fn parseTermExprOpt(self: *Parser, config: ParseTermConfig) anyerror!?NodeId {
         var start = self.next_pos;
         var token = self.peek();
         var left_id = switch (token.tag()) {
@@ -2905,31 +2841,32 @@ pub const Parser = struct {
                 break :b try self.parseComptimeExpr();
             },
             .left_paren => b: {
-                _ = self.consume();
+                self.advance();
                 token = self.peek();
 
                 const expr_id = (try self.parseExpr(.{})) orelse {
                     token = self.peek();
                     if (token.tag() == .right_paren) {
-                        _ = self.consume();
+                        self.advance();
                     } else {
                         return self.reportError("Expected expression.", &.{});
                     }
                     // Assume empty args for lambda.
                     token = self.peek();
                     if (token.tag() == .equal_greater) {
-                        return try self.parseNoParamLambdaFunc();
+                        return try self.parseLambdaFunc(.{ .head = cy.NullNode, .len = 0 });
                     } else {
                         return self.reportError("Unexpected paren.", &.{});
                     }
                 };
                 token = self.peek();
                 if (token.tag() == .right_paren) {
-                    _ = self.consume();
+                    self.advance();
 
                     token = self.peek();
                     if (self.ast.nodeType(expr_id) == .ident and token.tag() == .equal_greater) {
-                        return try self.parseLambdaFuncWithParam(expr_id);
+                        const param = try self.genDynFuncParam(expr_id);
+                        return try self.parseLambdaFunc(.{ .head = param, .len = 1 });
                     }
 
                     const group = try self.pushNode(.group, start);
@@ -2938,8 +2875,13 @@ pub const Parser = struct {
                     }});
                     break :b group;
                 } else if (token.tag() == .comma) {
-                    self.next_pos = start;
-                    return try self.parseLambdaFunction();
+                    self.advance();
+                    var res = try self.parseFuncParams(false);
+                    const param = try self.genDynFuncParam(expr_id);
+                    self.ast.setNextNode(param, res.head);
+                    res.head = param;
+                    res.len += 1;
+                    return try self.parseLambdaFunc(res);
                 } else {
                     return self.reportError("Expected right parenthesis.", &.{});
                 }
@@ -2986,88 +2928,7 @@ pub const Parser = struct {
                 return null;
             }
         };
-
-        while (true) {
-            const next = self.peek();
-            switch (next.tag()) {
-                .dot => {
-                    // Access expr.
-                    self.advance();
-
-                    const right = (try self.parseOptName()) orelse {
-                        return self.reportError("Expected ident", &.{});
-                    };
-
-                    const expr_id = try self.pushNode(.accessExpr, start);
-                    self.ast.setNodeData(expr_id, .{ .accessExpr = .{
-                        .left = left_id,
-                        .right = right,
-                    }});
-                    left_id = expr_id;
-                },
-                .dot_question => {
-                    self.advance();
-                    const expr = try self.pushNode(.unwrap, start);
-                    self.ast.setNodeData(expr, .{ .unwrap = .{
-                        .opt = left_id,
-                    }});
-                    left_id = expr;
-                },
-                .left_bracket => {
-                    const array = try self.parseArrayLiteral();
-                    const expr = try self.pushNode(.array_expr, start);
-                    self.ast.setNodeData(expr, .{ .array_expr = .{
-                        .left = left_id,
-                        .array = array,
-                    }});
-                    left_id = expr;
-                },
-                .left_brace => {
-                    if (!config.parse_record_expr) break;
-                    const record = try self.parseRecordLiteral();
-                    const expr = try self.pushNode(.record_expr, start);
-                    self.ast.setNodeData(expr, .{ .record_expr = .{
-                        .left = left_id,
-                        .record = record,
-                    }});
-                    left_id = expr;
-                },
-                .left_paren => {
-                    const call_id = try self.parseCallExpression(left_id);
-                    left_id = call_id;
-                },
-                .minusDotDot,
-                .dot_dot,
-                .right_bracket,
-                .right_paren,
-                .right_brace,
-                .else_k,
-                .catch_k,
-                .comma,
-                .colon,
-                .equal,
-                .operator,
-                .or_k,
-                .and_k,
-                .as_k,
-                .capture,
-                .raw_string,
-                .string,
-                .bin,
-                .oct,
-                .hex,
-                .dec,
-                .float,
-                .if_k,
-                .ident,
-                .templateString,
-                .equal_greater,
-                .new_line,
-                .null => break,
-                else => break,
-            }
-        }
-        return left_id;
+        return try self.parseTermExprWithLeft(start, left_id, config);
     }
 
     fn returnLeftAssignExpr(self: *Parser, leftId: NodeId, outIsAssignStmt: *bool) !NodeId {
@@ -3129,35 +2990,141 @@ pub const Parser = struct {
     /// and the caller can assume next_pos did not change. Instead of reporting
     /// a generic error message, it delegates that to the caller.
     fn parseExpr(self: *Parser, config: ParseExprConfig) anyerror!?NodeId {
-        var start = self.next_pos;
-        var token = self.peek();
+        if (self.peek().tag() == .new_line) {
+            self.advance();
+            self.consumeWhitespaceTokens();
+        }
+        const start = self.next_pos;
+        const left = (try self.parseExprLeft()) orelse return null;
+        return try self.parseExprWithLeft(start, left, config);
+    }
 
-        var left_id: NodeId = undefined;
-        switch (token.tag()) {
+    fn parseExprLeft(self: *Parser) !?cy.NodeId {
+        const start = self.next_pos;
+        switch (self.peek().tag()) {
             .null => return null,
             .right_paren => return null,
             .right_bracket => return null,
-            .indent,
-            .new_line => {
+            // .await_k => {
+            //     // Await expression.
+            //     const expr_id = try self.pushNode(.await_expr, start);
+            //     self.advance();
+            //     const term_id = try self.parseTermExpr(.{});
+            //     self.nodes.items[expr_id].head = .{
+            //         .child_head = term_id,
+            //     };
+            //     return expr_id;
+            // },
+            .not_k => {
                 self.advance();
-                self.consumeWhitespaceTokens();
-                start = self.next_pos;
-                token = self.peek();
-                if (token.tag() == .null) {
-                    return null;
-                }
+                const expr = try self.pushNode(.unary_expr, start);
+                const child = (try self.parseExpr(.{})) orelse {
+                    return self.reportError("Expected `not` expression.", &.{});
+                };
+                self.ast.setNodeData(expr, .{ .unary = .{
+                    .child = child,
+                    .op = .not,
+                }});
+                return expr;
             },
-            else => {},
-        }
-        left_id = try self.parseTermExpr(.{});
+            .throw_k => {
+                self.advance();
+                const child = (try self.parseExpr(.{})) orelse {
+                    return self.reportError("Expected `throw` expression.", &.{});
+                };
+                const expr = try self.pushNode(.throwExpr, start);
+                self.ast.setNodeData(expr, .{ .throwExpr = .{
+                    .child = child,
+                }});
+                return expr;
+            },
+            .if_k => {
+                return try self.parseIfExpr(start);
+            },
+            .coresume_k => {
+                self.advance();
+                const coresume = try self.pushNode(.coresume, start);
+                const fiberExpr = (try self.parseExpr(.{})) orelse {
+                    return self.reportError("Expected `coresume` expression.", &.{});
+                };
+                self.ast.setNodeData(coresume, .{ .coresume = .{
+                    .child = fiberExpr,
+                }});
+                return coresume;
+            },
+            .coyield_k => {
+                self.advance();
+                const coyield = try self.pushNode(.coyield, start);
+                return coyield;
+            },
+            .try_k => {
+                self.advance();
+                const tryExpr = try self.pushNode(.tryExpr, start);
+                const expr = (try self.parseExpr(.{})) orelse {
+                    return self.reportError("Expected `try` expression.", &.{});
+                };
 
+                var catchExpr: cy.NodeId = cy.NullNode;
+                if (self.peek().tag() == .catch_k) {
+                    self.advance();
+                    catchExpr = (try self.parseExpr(.{})) orelse {
+                        return self.reportError("Expected `catch` expression.", &.{});
+                    };
+                }
+
+                self.ast.setNodeData(tryExpr, .{ .tryExpr = .{
+                    .expr = expr,
+                    .catchExpr = catchExpr,
+                }});
+                return tryExpr;
+            },
+            .coinit_k => {
+                return try self.parseCoinitExpr();
+            },
+            .minusDotDot => {
+                // Start omitted.
+                self.advance();
+                const end = (try self.parseExpr(.{})) orelse {
+                    return self.reportError("Expected range end.", &.{});
+                };
+
+                const range = try self.pushNode(.range, start);
+                self.ast.setNodeData(range, .{ .range = .{
+                    .start = cy.NullNode,
+                    .end = @intCast(end),
+                    .inc = false,
+                }});
+                return range;
+            },
+            .dot_dot => {
+                // Start omitted.
+                self.advance();
+                const end = (try self.parseExpr(.{})) orelse {
+                    return self.reportError("Expected range end.", &.{});
+                };
+
+                const range = try self.pushNode(.range, start);
+                self.ast.setNodeData(range, .{ .range = .{
+                    .start = cy.NullNode,
+                    .end = @intCast(end),
+                    .inc = true,
+                }});
+                return range;
+            },
+            else => {}
+        }
+        return try self.parseTermExpr(.{});
+    }
+
+    fn parseExprWithLeft(self: *Parser, start: u32, left: cy.NodeId, config: ParseExprConfig) !cy.NodeId {
+        var left_id = left;
         while (true) {
             const next = self.peek();
             switch (next.tag()) {
                 .equal_greater => {
                     if (self.ast.nodeType(left_id) == .ident) {
-                        // Lambda.
-                        return try self.parseLambdaFuncWithParam(left_id);
+                        const param = try self.genDynFuncParam(left_id);
+                        return try self.parseLambdaFunc(.{ .head = param, .len = 1 });
                     } else {
                         return self.reportError("Unexpected `=>` token", &.{});
                     }
@@ -3284,6 +3251,59 @@ pub const Parser = struct {
     /// Consumes the an expression or a expression block.
     fn parseEndingExpr(self: *Parser) anyerror!cy.NodeId {
         switch (self.peek().tag()) {
+            .left_paren => {
+                const start = self.next_pos;
+                self.advance();
+                const expr = (try self.parseExpr(.{})) orelse {
+                    if (self.peek().tag() == .right_paren) {
+                        self.advance();
+                    } else {
+                        return self.reportError("Expected expression.", &.{});
+                    }
+                    // Assume empty args for lambda.
+                    if (self.peek().tag() == .equal_greater) {
+                        return self.parseLambdaFunc(.{ .head = cy.NullNode, .len = 0 });
+                    } else if (self.peek().tag() == .colon) {
+                        return self.parseLambdaBlock(.{ .head = cy.NullNode, .len = 0 });
+                    } else {
+                        return self.reportError("Unexpected paren.", &.{});
+                    }
+                };
+                if (self.peek().tag() == .right_paren) {
+                    self.advance();
+                    if (self.ast.nodeType(expr) == .ident) {
+                        const param = try self.genDynFuncParam(expr);
+                        if (self.peek().tag() == .equal_greater) {
+                            return self.parseLambdaFunc(.{ .head = param, .len = 1 });
+                        } else if (self.peek().tag() == .colon) {
+                            return self.parseLambdaBlock(.{ .head = param, .len = 1 });
+                        }
+                    }
+
+                    const group = try self.pushNode(.group, start);
+                    self.ast.setNodeData(group, .{ .group = .{
+                        .child = expr,
+                    }});
+                    const term = try self.parseTermExprWithLeft(start, group, .{});
+                    return self.parseExprWithLeft(start, term, .{});
+                } else if (self.peek().tag() == .comma) {
+                    self.advance();
+                    var res = try self.parseFuncParams(false);
+                    const param = try self.genDynFuncParam(expr);
+                    self.ast.setNextNode(param, res.head);
+                    res.head = param;
+                    res.len += 1;
+                    if (self.peek().tag() == .equal_greater) {
+                        return self.parseLambdaFunc(res);
+                    } else if (self.peek().tag() == .colon) {
+                        return self.parseLambdaBlock(res);
+                    } else {
+                        return self.reportError("Expected `=>` or `:`.", &.{});
+                    }
+                } else {
+                    return self.reportError("Expected right parenthesis.", &.{});
+                }
+            },
             .func_k => {
                 return self.parseLeftAssignLambdaFunction();
             },
@@ -3315,7 +3335,7 @@ pub const Parser = struct {
             self.advance();
             
             // Parse as untyped function.
-            const params = try self.parseFuncParams();
+            const params = try self.parseFuncParams(false);
             if (self.peek().tag() != .colon) {
                 return self.reportError("Expected colon.", &.{});
             }

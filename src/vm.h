@@ -478,6 +478,7 @@ typedef struct TryFrame {
 
 /// Minimal stack frame to reconstruct a `StackFrame`.
 typedef struct CompactFrame {
+    // If `pcOffset == NULL_U32`, then this is a host frame.
     u32 pcOffset;
     u32 fpOffset;
 } CompactFrame;
@@ -1057,7 +1058,7 @@ PcSpOff zPopFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Value retValue)
 uint8_t zGetFieldOffsetFromTable(VM* vm, TypeId typeId, uint32_t symId);
 Value zEvalCompare(Value left, Value right);
 Value zEvalCompareNot(Value left, Value right);
-PcSpResult zCall(VM* vm, Inst* pc, Value* stack, Value callee, uint8_t startLocal, uint8_t numArgs, Value retInfo);
+PcSpResult zCall(VM* vm, Inst* pc, Value* stack, Value callee, uint8_t startLocal, uint8_t numArgs);
 HeapObjectResult zAllocPoolObject(VM* vm);
 HeapObjectResult zAllocExternalObject(VM* vm, size_t size);
 HeapObjectResult zAllocExternalCycObject(VM* vm, size_t size);

@@ -443,10 +443,9 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const ret = pc[1].val;
             const numArgs = pc[2].val;
             const numRet = pc[3].val;
-            const symId = pc[4].val;
-            const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
-            len += try fmt.printCount(w, "%{} = %{}.(methods[{}])(%{}..%{}) nret={} sig={}", &.{
-                v(ret), v(ret+5), v(symId), v(ret + 6), v(ret + 6 + numArgs-1), v(numRet), v(funcSigId),
+            const method = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
+            len += try fmt.printCount(w, "%{} = %{}.(methods[{}])(%{}..%{}) nret={}", &.{
+                v(ret), v(ret+5), v(method), v(ret + 6), v(ret + 6 + numArgs-1), v(numRet),
             });
         },
         .callSym => {

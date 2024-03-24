@@ -331,16 +331,19 @@ test "debug internals." {
     try t.eq(@sizeOf(vmc.CompactFrame), 8);
 }
 
+/// Can only rely on pc and other non-reference values to build the stack frame since
+/// unwinding could have already freed reference values.
 pub fn compactToStackFrame(vm: *cy.VM, stack: []const cy.Value, frame: vmc.CompactFrame) !StackFrame {
-    if (frame.fpOffset == 0 or cy.fiber.isVmFrame(vm, stack, frame.fpOffset)) {
+    if (frame.pcOffset != cy.NullId) {
         const sym = getDebugSymByPc(vm, frame.pcOffset) orelse {
             log.trace("at pc: {}", .{frame.pcOffset});
             return error.NoDebugSym;
         };
         return getStackFrame(vm, sym);
     } else {
-        const func = stack[frame.fpOffset+2];
-        if (func.isObjectType(bt.HostFunc)) {
+        // External frame.
+        const func_type = stack[frame.fpOffset-1].val;
+        if (func_type == bt.HostFunc) {
             return StackFrame{
                 .name = "call host func",
                 .chunkId = cy.NullId,
@@ -349,14 +352,8 @@ pub fn compactToStackFrame(vm: *cy.VM, stack: []const cy.Value, frame: vmc.Compa
                 .lineStartPos = cy.NullId,
             };
         } else {
-            var funcPc: u32 = undefined; 
-            if (func.isObjectType(bt.Lambda)) {
-                funcPc = func.asHeapObject().lambda.funcPc;
-            } else if (func.isObjectType(bt.Closure)) {
-                funcPc = func.asHeapObject().closure.funcPc;
-            } else return error.Unexpected;
-
-            // TODO: Determine lambda source from inspecting callee value.
+            // TODO: If there is a function debug table, the function name could be 
+            //       found with a pc value.
             return StackFrame{
                 .name = "call lambda",
                 .chunkId = cy.NullId,
@@ -429,6 +426,7 @@ pub fn allocStackTrace(vm: *cy.VM, stack: []const cy.Value, cframes: []const vmc
     log.tracev("build stacktrace {}", .{cframes.len});
     var frames = try vm.alloc.alloc(cy.StackFrame, cframes.len);
     for (cframes, 0..) |cframe, i| {
+        log.tracev("build stackframe pc={}, fp={}", .{cframe.pcOffset, cframe.fpOffset});
         frames[i] = try cy.debug.compactToStackFrame(vm, stack, cframe);
     }
     return frames;

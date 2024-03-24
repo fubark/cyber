@@ -726,9 +726,10 @@ pub const VM = struct {
         }
     }
 
+    /// Assumes `vm.pc` is at a call inst before entering host code.
     fn getNewCallFuncRet(vm: *VM) u8 {
-        const fpOff = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
-        if (fpOff == 0 or cy.fiber.isVmFrame(vm, vm.stack, fpOff)) {
+        const fp = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
+        if (fp == 0 or cy.fiber.isVmFrame(vm, vm.stack, fp)) {
             // Vm frame. Obtain current stack top from looking at the current inst.
             switch (vm.pc[0].opcode()) {
                 .callSym,
@@ -751,9 +752,9 @@ pub const VM = struct {
     }
 
     pub fn callFunc(vm: *VM, func: Value, args: []const Value) !Value {
+        const fpOff = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
         const ret = vm.getNewCallFuncRet();
 
-        const fpOff = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
         const pc = vm.pc;
 
         // Since the compiler isn't aware of a re-entry call, it can not predetermine the stack size required
@@ -762,21 +763,27 @@ pub const VM = struct {
         // Should the stack grow, update pointer.
         vm.framePtr = vm.stack.ptr + fpOff;
 
-        // Create a new frame so that this root callsite can be reported.
+        // Create a new host frame so that it can be reported.
         const retInfo = buildReturnInfoForRoot(false);
         const retFramePtr = Value{ .retFramePtr = vm.framePtr };
         vm.framePtr += ret;
+
+        // Reserve extra slot for info about the call.
+        vm.framePtr[0].val = func.getTypeId();
+        vm.framePtr += 1;
+
         vm.framePtr[1] = retInfo;
-        // Repurpose return pc for getting info about the call.
-        vm.framePtr[2] = func;
+        // Return pc points to the call inst that entered host.
+        vm.framePtr[2] = Value{ .retPcPtr = pc };
         vm.framePtr[3] = retFramePtr;
 
-        // Copy callee + args.
-        vm.framePtr[CalleeStart] = func;
-        @memcpy(vm.framePtr[CallArgStart..CallArgStart+args.len], args);
+        // Copy callee + args to a blank frame after the host frame.
+        vm.framePtr[4 + CalleeStart] = func;
+        @memcpy(vm.framePtr[4+CallArgStart..4+CallArgStart+args.len], args);
 
-        const callRet: u8 = 0;
-        const pcsp = try call(vm, vm.pc, vm.framePtr, func, callRet, @intCast(args.len), undefined, false);
+        const callRet: u8 = 4;
+        // Pass in an arbitrary `pc` to reuse the same `call` used by the VM.
+        const pcsp = try call(vm, vm.pc, vm.framePtr, func, callRet, @intCast(args.len), false);
         vm.framePtr = pcsp.sp;
         vm.pc = pcsp.pc;
 
@@ -800,12 +807,11 @@ pub const VM = struct {
                 // return builtins.prepThrowZError(@ptrCast(vm), err, @errorReturnTrace());
             };
         }
-        
-        // Restore pc/sp.
-        vm.pc = pc;
-        vm.framePtr = vm.stack.ptr + fpOff;
 
-        return vm.framePtr[ret];
+        // Restore pc/sp.
+        vm.framePtr = vm.stack.ptr + fpOff;
+        vm.pc = pc;
+        return vm.framePtr[ret + 1 + 4];
     }
 
     pub fn addAnonymousStruct(self: *VM, parent: *cy.Sym, baseName: []const u8, uniqId: u32, fields: []const []const u8) !cy.TypeId {
@@ -1272,14 +1278,14 @@ pub const VM = struct {
         const sym = self.funcSyms.buf[symId];
         switch (@as(rt.FuncSymbolType, @enumFromInt(sym.entryT))) {
             .hostFunc => {
-                const newFramePtr = framePtr + ret;
-
                 // Optimize.
                 pc[0] = cy.Inst.initOpCode(.callNativeFuncIC);
                 @as(*align(1) u48, @ptrCast(pc + 6)).* = @intCast(@intFromPtr(sym.inner.hostFunc));
 
                 self.pc = pc;
                 self.framePtr = framePtr;
+
+                const newFramePtr = framePtr + ret;
                 const res: Value = @bitCast(sym.inner.hostFunc.?(@ptrCast(self), @ptrCast(newFramePtr + CallArgStart), numArgs));
                 if (res.isInterrupt()) {
                     return error.Panic;
@@ -1381,7 +1387,6 @@ pub const VM = struct {
         }
     }
 
-    /// String is guaranteed to be valid UTF-8.
     pub fn bufPrintValueShortStr(self: *const VM, buf: []u8, val: Value) ![]const u8 {
         var fbuf = std.io.fixedBufferStream(buf);
         var w = fbuf.writer();
@@ -1820,6 +1825,7 @@ pub fn evalLoopGrowStack(vm: *VM) error{StackOverflow, OutOfMemory, Panic, NoDeb
 }
 
 fn handleExecResult(vm: *VM, res: vmc.ResultCode, fpStart: u32) !void {
+    logger.tracev("handle exec error: {}", .{res});
     if (res == vmc.RES_CODE_PANIC) {
         try handleInterrupt(vm, fpStart);
     } else if (res == vmc.RES_CODE_STACK_OVERFLOW) {
@@ -3399,7 +3405,7 @@ const FieldEntry = struct {
 
 /// See `reserveFuncParams` for stack layout.
 /// numArgs does not include the callee.
-pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8, retInfo: Value, comptime buildFrame: bool) !cy.fiber.PcSp {
+pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8, cont: bool) !cy.fiber.PcSp {
     if (callee.isPointer()) {
         const obj = callee.asHeapObject();
         switch (obj.getTypeId()) {
@@ -3426,12 +3432,10 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                     return error.StackOverflow;
                 }
 
-                if (buildFrame) {
-                    const retFramePtr = Value{ .retFramePtr = framePtr };
-                    framePtr[ret + 1] = retInfo;
-                    framePtr[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
-                    framePtr[ret + 3] = retFramePtr;
-                }
+                const retFramePtr = Value{ .retFramePtr = framePtr };
+                framePtr[ret + 1] = buildReturnInfo2(cont, cy.bytecode.CallInstLen);
+                framePtr[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
+                framePtr[ret + 3] = retFramePtr;
 
                 // Copy closure to local.
                 framePtr[ret + obj.closure.local] = callee;
@@ -3463,12 +3467,10 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                     return error.StackOverflow;
                 }
 
-                if (buildFrame) {
-                    const retFramePtr = Value{ .retFramePtr = framePtr };
-                    framePtr[ret + 1] = retInfo;
-                    framePtr[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
-                    framePtr[ret + 3] = retFramePtr;
-                }
+                const retFramePtr = Value{ .retFramePtr = framePtr };
+                framePtr[ret + 1] = buildReturnInfo2(cont, cy.bytecode.CallInstLen);
+                framePtr[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
+                framePtr[ret + 3] = retFramePtr;
                 return cy.fiber.PcSp{
                     .pc = cy.fiber.toVmPc(vm, obj.lambda.funcPc),
                     .sp = framePtr + ret,
@@ -3755,18 +3757,16 @@ fn callObjSymFallback(
     return vm.panic("Missing method.");
 }
 
+pub inline fn buildReturnInfo2(cont: bool, comptime callInstOffset: u8) Value {
+    return .{
+        .val = 0 | (@as(u32, @intFromBool(!cont)) << 8) | (@as(u32, callInstOffset) << 16),
+    };
+}
+
 pub inline fn buildReturnInfo(comptime cont: bool, comptime callInstOffset: u8) Value {
     return .{
         .val = 0 | (@as(u32, @intFromBool(!cont)) << 8) | (@as(u32, callInstOffset) << 16),
     };
-    // return .{
-    //     .retInfo = .{
-    //         .numRetVals = numRetVals,
-    //         // .retFlag = if (cont) 0 else 1,
-    //         .retFlag = @intFromBool(!cont),
-    //         .callInstOffset = callInstOffset,
-    //     },
-    // };
 }
 
 pub inline fn buildReturnInfoForRoot(comptime cont: bool) Value {
@@ -4321,8 +4321,8 @@ export fn zEvalCompareNot(left: Value, right: Value) vmc.Value {
     return @bitCast(evalCompareNot(left, right));
 }
 
-export fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8, retInfo: Value) vmc.PcSpResult {
-    const res = call(vm, pc, framePtr, callee, ret, numArgs, retInfo, true) catch |err| {
+export fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8) vmc.PcSpResult {
+    const res = call(vm, pc, framePtr, callee, ret, numArgs, true) catch |err| {
         if (err == error.Panic) {
             return .{
                 .pc = undefined,

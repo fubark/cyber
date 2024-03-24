@@ -209,7 +209,7 @@ func enterBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         out += '<p>'
         return 0
     case md.BLOCK_CODE:
-        let detail = md.lib['ptrToBLOCK_CODE_DETAIL_S'](detail_p)
+        let detail = md.lib.ptrToBLOCK_CODE_DETAIL_S(detail_p)
         var lang = getAttrText(detail.lang)
         out += """<pre><code class="language-$(lang)">"""
         return 0
@@ -261,7 +261,7 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         out += '</td>'
         return 0 
     case md.BLOCK_H:
-        let detail = md.lib['ptrToBLOCK_H_DETAIL_S'](detail_p)
+        let detail = md.lib.ptrToBLOCK_H_DETAIL_S(detail_p)
         textContent = textContent.trim(.ends, " \n")
 
         let id = textContent.replace(' ', '-')
@@ -324,7 +324,7 @@ func enterSpan(span_t md.SPANTYPE, detail_p pointer, userdata pointer) int:
             out += '<code>'
         return 0
     case md.SPAN_A:
-        let detail = md.lib['ptrToSPAN_A_DETAIL_S'](detail_p)
+        let detail = md.lib.ptrToSPAN_A_DETAIL_S(detail_p)
 
         var href = getAttrText(detail.href)
         var title = getAttrText(detail.title)

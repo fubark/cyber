@@ -1277,8 +1277,7 @@ beginSwitch:
         u8 numArgs = pc[2];
 
         Value callee = stack[ret + CALLEE_START];
-        Value retInfo = VALUE_RETINFO(false, CALL_INST_LEN);
-        PcSpResult res = zCall(vm, pc, stack, callee, ret, numArgs, retInfo);
+        PcSpResult res = zCall(vm, pc, stack, callee, ret, numArgs);
         if (LIKELY(res.code == RES_CODE_SUCCESS)) {
             pc = res.pc;
             stack = res.sp;

@@ -217,23 +217,30 @@ pub fn unwindStack(vm: *cy.VM, stack: []const Value, ctx: PcSpOff) !PcSpOff {
     vm.compactTrace.clearRetainingCapacity();
 
     while (true) {
-        try vm.compactTrace.append(vm.alloc, .{
-            .pcOffset = pc,
-            .fpOffset = fp,
-        });
+        log.tracev("frame pc={} fp={}", .{pc, fp});
         if (fp == 0 or isVmFrame(vm, stack, fp)) {
+            try vm.compactTrace.append(vm.alloc, .{
+                .pcOffset = pc,
+                .fpOffset = fp,
+            });
             try releaseFrame(vm, fp, pc);
             if (fp == 0) {
                 // Done, at main block.
                 return PcSpOff{ .pc = pc, .sp = fp };
             } else {
-                const prev = getPrevCallFrame(vm, stack, fp);
+                const prev = getVmFramePrev(vm, stack, fp);
                 pc = prev.pc;
                 fp = prev.sp;
             }
         } else {
-            log.tracev("Skip host frame.", .{});
-            fp = getPrevFp(vm, stack, fp);
+            try vm.compactTrace.append(vm.alloc, .{
+                .pcOffset = cy.NullId,
+                .fpOffset = fp,
+            });
+            // Skip releasing host frame. Record it.
+            const prev = getHostFramePrev(vm, stack, fp);
+            pc = prev.pc;
+            fp = prev.sp;
         }
     }
 }
@@ -248,21 +255,27 @@ pub fn recordCurFrames(vm: *cy.VM) !void {
     while (true) {
         log.tracev("pc: {}, fp: {}", .{pc, fp});
 
-        try vm.compactTrace.append(vm.alloc, .{
-            .pcOffset = pc,
-            .fpOffset = fp,
-        });
         if (fp == 0 or cy.fiber.isVmFrame(vm, vm.stack, fp)) {
+            try vm.compactTrace.append(vm.alloc, .{
+                .pcOffset = pc,
+                .fpOffset = fp,
+            });
             if (fp == 0) {
                 // Main.
                 break;
             } else {
-                const prev = getPrevCallFrame(vm, vm.stack, fp);
+                const prev = getVmFramePrev(vm, vm.stack, fp);
                 fp = prev.sp;
                 pc = prev.pc;
             }
         } else {
-            fp = getPrevFp(vm, vm.stack, fp);
+            try vm.compactTrace.append(vm.alloc, .{
+                .pcOffset = cy.NullId,
+                .fpOffset = fp,
+            });
+            const prev = getHostFramePrev(vm, vm.stack, fp);
+            fp = prev.sp;
+            pc = prev.pc;
         }
     }
 }
@@ -272,7 +285,7 @@ fn releaseFrame(vm: *cy.VM, fp: u32, pc: u32) !void {
     const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
     const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
     const locals = sym.getLocals();
-    log.tracev("release frame: {} {}, tempIdx: {}, locals: {}-{}", .{pc, vm.ops[pc].opcode(), tempIdx, locals.start, locals.end});
+    log.tracev("release frame: pc={} {}, fp={} tempIdx: {}, locals: {}-{}", .{pc, vm.ops[pc].opcode(), fp, tempIdx, locals.start, locals.end});
 
     // Release temps.
     if (tempIdx != cy.NullId) {
@@ -294,11 +307,13 @@ fn releaseFrameTemps(vm: *cy.VM, fp: u32, pc: u32) !void {
     cy.arc.runTempReleaseOps(vm, vm.stack.ptr + fp, tempIdx);
 }
 
-fn getPrevFp(_: *cy.VM, stack: []const Value, fp: u32) u32 {
-    return cy.fiber.getStackOffset(stack.ptr, stack[fp + 3].retFramePtr);
+fn getHostFramePrev(vm: *cy.VM, stack: []const Value, fp: u32) PcSpOff {
+    const prev_fp = getStackOffset(stack.ptr, stack[fp + 3].retFramePtr);
+    const prev_pc = getInstOffset(vm.ops.ptr, stack[fp + 2].retPcPtr);
+    return PcSpOff{ .pc = prev_pc, .sp = prev_fp };
 }
 
-fn getPrevCallFrame(vm: *cy.VM, stack: []const Value, fp: u32) PcSpOff {
+fn getVmFramePrev(vm: *cy.VM, stack: []const Value, fp: u32) PcSpOff {
     const prevPc = getInstOffset(vm.ops.ptr, stack[fp + 2].retPcPtr) - stack[fp + 1].retInfoCallInstOffset();
     const prevFp = getStackOffset(stack.ptr, stack[fp + 3].retFramePtr);
     return PcSpOff{ .pc = prevPc, .sp = prevFp };
@@ -346,7 +361,7 @@ pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcSpOff, err: Value) !PcSpOff {
             if (fp > tframe.fp) {
                 // Haven't reached target try block. Unwind frame.
                 try releaseFrame(vm, fp, pc);
-                const prev = getPrevCallFrame(vm, vm.stack, fp);
+                const prev = getVmFramePrev(vm, vm.stack, fp);
                 fp = prev.sp;
                 pc = prev.pc;
             } else {
@@ -375,7 +390,7 @@ pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcSpOff, err: Value) !PcSpOff {
             // Unwind frame.
             try releaseFrame(vm, fp, pc);
             if (fp > endFp) {
-                const prev = getPrevCallFrame(vm, vm.stack, fp);
+                const prev = getVmFramePrev(vm, vm.stack, fp);
                 fp = prev.sp;
                 pc = prev.pc;
             } else {

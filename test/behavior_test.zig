@@ -250,7 +250,7 @@ if (!aot) {
     run.case("builtins/arrays.cy");
     run.case("builtins/array_slices.cy");
     run.case("builtins/bitwise_ops.cy");
-    run.case("builtins/bools.cy");
+    run.case("builtins/bool.cy");
     run.case("builtins/compare_eq.cy");
     run.case("builtins/compare_neq.cy");
     run.case("builtins/compare_numbers.cy");

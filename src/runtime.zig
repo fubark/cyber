@@ -15,238 +15,106 @@ pub const TypeKey = cy.hash.KeyU64;
 pub const FieldTableKey = cy.hash.KeyU64;
 pub const FieldId = u32;
 
-pub const MethodGroupKey = vmc.NameId;
-pub const TypeMethodGroupKey = cy.hash.KeyU64;
+pub const MethodKey = vmc.NameId;
+pub const TypeMethodKey = cy.hash.KeyU64;
 
-pub const MethodType = enum {
-    untyped,
-    untypedHost,
+pub const TypeMethod = struct {
+    id: u32,
 
-    /// A func is typed if at least one of the params is not the any type.
-    /// The return type does not count.
-    typed,
-    typedHost,
-};
-
-pub const MethodData = extern union {
-    typedHost: extern struct {
-        ptr: vmc.HostFuncFn,
-        func_sig: sema.FuncSigId,
-        /// Includes self param.
-        numParams: u8,
-    },
-    untypedHost: extern struct {
-        ptr: vmc.HostFuncFn,
-        numParams: u8,
-    },
-    typed: extern struct {
-        func_sig: sema.FuncSigId,
-        pc: u32,
-        stackSize: u32,
-        numParams: u8,
-    },
-    untyped: extern struct {
-        numParams: u8,
-        pc: u32,
-        stackSize: u32,
-    },
-};
-
-pub const MethodExt = struct {
-    /// Signature is kept for every method.
-    funcSigId: sema.FuncSigId,
-};
-
-/// Used to initialize `Method` and `MethodExt`.
-pub const MethodInit = struct {
-    type: MethodType,
-    data: MethodData,
-    funcSigId: sema.FuncSigId,
-
-    pub fn initUntyped(funcSigId: sema.FuncSigId, pc: usize, stackSize: u32, numParams: u8) MethodInit {
-        return .{
-            .type = .untyped,
-            .data = .{
-                .untyped = .{
-                    .pc = @intCast(pc),
-                    .stackSize = stackSize,
-                    .numParams = numParams,
-                },
-            },
-            .funcSigId = funcSigId,
-        };
-    }
-
-    pub fn initHostUntyped(funcSigId: sema.FuncSigId, func: cy.ZHostFuncFn, numParams: u8) MethodInit {
-        return .{
-            .type = .untypedHost,
-            .data = .{
-                .untypedHost = .{
-                    .ptr = @ptrCast(func),
-                    .numParams = numParams,
-                },
-            },
-            .funcSigId = funcSigId,
-        };
-    }
-
-    pub fn initTyped(funcSigId: sema.FuncSigId, pc: usize, stackSize: u32, numParams: u8) MethodInit {
-        return .{
-            .type = .typed,
-            .data = .{
-                .typed = .{
-                    .func_sig = funcSigId,
-                    .pc = @intCast(pc),
-                    .stackSize = stackSize,
-                    .numParams = numParams,
-                },
-            },
-            .funcSigId = funcSigId,
-        };
-    }
-
-    pub fn initHostTyped(funcSigId: sema.FuncSigId, func: cy.ZHostFuncFn, numParams: u8) MethodInit {
-        return .{
-            .type = .typedHost,
-            .data = .{
-                .typedHost = .{
-                    .func_sig = funcSigId,
-                    .ptr = @ptrCast(func),
-                    .numParams = numParams,
-                },
-            },
-            .funcSigId = funcSigId,
-        };
-    }
-};
-
-pub const Method = struct {
-    type: MethodType,
-
-    data: MethodData,
-
-    next: vmc.MethodId,
-};
-
-pub const TypeMethodGroup = struct {
-    mruMethodId: vmc.MethodId,
-
-    head: vmc.MethodId,
-
-    /// For faster append.
-    tail: vmc.MethodId,
+    // TODO: Compact into u32.
+    overloaded: bool,
 };
 
 /// Keeping this small is better for function calls.
-/// Secondary symbol data should be moved to `methodGroupExts`.
-pub const MethodGroup = struct {
-    /// Most recent type  is cached to avoid hashmap lookup. 
-    mruTypeId: cy.TypeId,
+pub const Method = struct {
+    /// Most recent type is cached to avoid hashmap lookup. 
+    mru_type: cy.TypeId,
 
-    mruMethodType: MethodType,
-    mruMethodData: MethodData,
-    mruTypeMethodOverloaded: bool,
-};
+    /// If overloaded this is an index into `overloaded_funcs`, otherwise `funcSyms`
+    mru_id: u32,
+    mru_overloaded: bool,
 
-pub const MethodGroupExt = struct {
-    namePtr: [*]const u8,
-    /// NullId if only one method in the group.
-    mruTypeMethodGroupId: vmc.TypeMethodGroupId,
-    mruMethodId: vmc.MethodId,
-    /// So debug info can be obtained for a method group with just one method.
-    initialFuncSigId: sema.FuncSigId,
-
-    nameLen: u16,
-    nameIsOwned: bool,
-
-    pub fn getName(self: *const MethodGroupExt) []const u8 {
-        return self.namePtr[0..self.nameLen];
-    }
+    /// Whether there are multiple types that share this method name.
+    has_multiple_types: bool,
 };
 
 pub const FuncId = u32;
+pub const MethodId = u32;
+pub const TypeMethodId = u32;
 
-pub const FuncSymbolType = enum {
+pub const FuncSymbolType = enum(u8) {
     func,
-    hostFunc,
-    none,
+    host_func,
+    null,
 };
 
 pub const FuncSymDetail = struct {
     namePtr: [*]const u8,
     nameLen: u32,
     funcSigId: sema.FuncSigId,
+
+    pub fn name(self: FuncSymDetail) []const u8 {
+        return self.namePtr[0..self.nameLen];
+    }
 };
 
 pub const FuncSymbol = extern struct {
-    entryT: u32,
-    innerExtra: extern union {
-        // hostQuickenFunc shares the same field.
-        hostFunc: extern struct {
-            /// Used to wrap a host func as a function value.
-            typedFlagNumParams: u16,
-            funcSigId: u16,
+    type: FuncSymbolType,
 
-            pub fn numParams(self: @This()) u16 {
-                return self.typedFlagNumParams & ~(@as(u16, 1) << 15);
-            }
-        },
-        none: extern struct {
-            funcSigId: u32,
-        },
-        func: extern struct {
-            funcSigId: u32,
-        },
-    } = undefined,
-    inner: extern union {
-        hostFunc: vmc.HostFuncFn,
+    /// Since dynamic method calls reuse the same func symbol table,
+    /// this is needed during for the overloaded search path.
+    is_method: bool,
+
+    req_type_check: bool,
+
+    nparams: u8,
+
+    sig: cy.sema.FuncSigId,
+
+    data: extern union {
+        host_func: vmc.HostFuncFn,
         func: extern struct {
             pc: u32,
             /// Stack size required by the func.
             stackSize: u16,
-            /// Num params used to wrap as function value.
-            numParams: u8,
-            reqCallTypeCheck: bool,
         },
     },
 
-    pub fn initNone() FuncSymbol {
+    pub fn initNull() FuncSymbol {
         return .{
-            .entryT = @intFromEnum(FuncSymbolType.none),
-            .inner = undefined,
+            .type = .null,
+            .is_method = undefined,
+            .sig = undefined,
+            .nparams = undefined,
+            .req_type_check = undefined,
+            .data = undefined,
         };
     }
 
-    pub fn initHostFunc(func: vmc.HostFuncFn, isTyped: bool, numParams: u32, funcSigId: sema.FuncSigId) FuncSymbol {
-        const isTypedMask: u16 = if (isTyped) 1 << 15 else 0;
+    pub fn initHostFunc(func: vmc.HostFuncFn, req_type_check: bool, is_method: bool, numParams: u32, funcSigId: sema.FuncSigId) FuncSymbol {
         return .{
-            .entryT = @intFromEnum(FuncSymbolType.hostFunc),
-            .innerExtra = .{
-                .hostFunc = .{
-                    .typedFlagNumParams = isTypedMask | @as(u16, @intCast(numParams)),
-                    .funcSigId = @intCast(funcSigId),
-                }
-            },
-            .inner = .{
-                .hostFunc = func,
+            .type = .host_func,
+            .is_method = is_method,
+            .req_type_check = req_type_check,
+            .nparams = @intCast(numParams),
+            .sig = funcSigId,
+            .data = .{
+                .host_func = func,
             },
         };
     }
 
-    pub fn initFunc(pc: usize, stackSize: u16, numParams: u16, funcSigId: cy.sema.FuncSigId, reqCallTypeCheck: bool) FuncSymbol {
+    pub fn initFunc(pc: usize, stackSize: u16, numParams: u16, funcSigId: cy.sema.FuncSigId, reqCallTypeCheck: bool, is_method: bool) FuncSymbol {
         return .{
-            .entryT = @intFromEnum(FuncSymbolType.func),
-            .innerExtra = .{
-                .func = .{
-                    .funcSigId = funcSigId,
-                },
-            },
-            .inner = .{
+            .type = .func,
+            .is_method = is_method,
+            .req_type_check = reqCallTypeCheck,
+            .sig = funcSigId,
+            .nparams = @intCast(numParams),
+            .data = .{
                 .func = .{
                     .pc = @intCast(pc),
                     .stackSize = stackSize,
-                    .numParams = @intCast(numParams),
-                    .reqCallTypeCheck = reqCallTypeCheck,
                 },
             },
         };
@@ -301,27 +169,19 @@ pub fn ensureNameSymExt(vm: *cy.VM, name: []const u8, dupe: bool) !vmc.NameId {
 }
 
 test "runtime internals." {
-    try t.eq(@sizeOf(MethodData), 16);
-    try t.eq(@sizeOf(Method), 24);
-    try t.eq(@sizeOf(MethodExt), 4);
-    try t.eq(@sizeOf(TypeMethodGroup), 12);
-    try t.eq(@sizeOf(MethodGroup), 24);
+    try t.eq(@sizeOf(TypeMethod), 8);
+    try t.eq(@sizeOf(Method), 12);
+    try t.eq(@alignOf(Method), 4);
 
     try t.eq(@sizeOf(FuncSymbol), 16);
-    var funcSymEntry: FuncSymbol = undefined;
-    try t.eq(@intFromPtr(&funcSymEntry.entryT), @intFromPtr(&funcSymEntry));
-    try t.eq(@intFromPtr(&funcSymEntry.innerExtra), @intFromPtr(&funcSymEntry) + 4);
-    try t.eq(@intFromPtr(&funcSymEntry.inner), @intFromPtr(&funcSymEntry) + 8);
+    try t.eq(@offsetOf(FuncSymbol, "type"), @offsetOf(vmc.FuncSymbol, "type"));
+    try t.eq(@offsetOf(FuncSymbol, "sig"), @offsetOf(vmc.FuncSymbol, "sig"));
+    try t.eq(@offsetOf(FuncSymbol, "nparams"), @offsetOf(vmc.FuncSymbol, "nparams"));
+    try t.eq(@offsetOf(FuncSymbol, "is_method"), @offsetOf(vmc.FuncSymbol, "is_method"));
+    try t.eq(@offsetOf(FuncSymbol, "req_type_check"), @offsetOf(vmc.FuncSymbol, "req_type_check"));
+    try t.eq(@offsetOf(FuncSymbol, "data"), @offsetOf(vmc.FuncSymbol, "data"));
 
     try t.eq(@sizeOf(FieldSymbolMap), 16);
-
-    if (cy.is32Bit) {
-        try t.eq(@alignOf(MethodGroup), 4);
-        try t.eq(@sizeOf(MethodGroupExt), 20);
-    } else {
-        try t.eq(@alignOf(MethodGroup), 8);
-        try t.eq(@sizeOf(MethodGroupExt), 24);
-    }
 }
 
 pub fn ErrorUnion(comptime T: type) type {

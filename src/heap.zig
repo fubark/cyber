@@ -1185,7 +1185,7 @@ pub fn allocClosure(
     return Value.initCycPtr(obj);
 }
 
-pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, stackSize: u8, funcSigId: u16) !Value {
+pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, stackSize: u8, funcSigId: u16, req_type_check: bool) !Value {
     const obj = try allocPoolObject(self);
     obj.lambda = .{
         .typeId = bt.Lambda,
@@ -1194,6 +1194,7 @@ pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, stackSize: u8, fu
         .numParams = numParams,
         .stackSize = stackSize,
         .funcSigId = funcSigId,
+        .reqCallTypeCheck = req_type_check,
     };
     return Value.initNoCycPtr(obj);
 }
@@ -1763,26 +1764,20 @@ pub fn allocEmptyObjectSmall(self: *cy.VM, type_id: cy.TypeId) !Value {
     return Value.initCycPtr(obj);
 }
 
-pub fn allocFuncFromSym(self: *cy.VM, symId: cy.vm.SymbolId) !Value {
-    const sym = self.funcSyms.buf[symId];
-    switch (@as(cy.rt.FuncSymbolType, @enumFromInt(sym.entryT))) {
-        .nativeFunc1 => {
-            const funcSigId = sym.innerExtra.nativeFunc1.funcSigId;
-            const numParams = sym.innerExtra.nativeFunc1.numParams();
-            return allocHostFunc(self, sym.inner.nativeFunc1, numParams, funcSigId, null);
+pub fn allocFuncFromSym(self: *cy.VM, func: rt.FuncSymbol) !Value {
+    switch (func.type) {
+        .host_func => {
+            return allocHostFunc(self, @ptrCast(func.data.host_func), func.nparams, func.sig, null, func.req_type_check);
         },
         .func => {
-            return allocLambda(self, sym.inner.func.pc,
-                @intCast(sym.inner.func.numParams),
-                @intCast(sym.inner.func.stackSize),
-                @intCast(sym.innerExtra.func.funcSigId)
+            return allocLambda(self, func.data.func.pc,
+                @intCast(func.nparams),
+                @intCast(func.data.func.stackSize),
+                @intCast(func.sig),
+                func.req_type_check
             );
         },
-        .closure => {
-            cy.arc.retainObject(self, @ptrCast(sym.inner.closure));
-            return Value.initCycPtr(sym.inner.closure);
-        },
-        .none => return Value.None,
+        .null => return error.Unexpected,
     }
 }
 

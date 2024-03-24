@@ -409,8 +409,7 @@ typedef u32 FuncId;
 typedef u32 NodeId;
 typedef u32 ChunkId;
 typedef u32 MethodId;
-typedef u32 MethodGroupId;
-typedef u32 TypeMethodGroupId;
+typedef u32 TypeMethodId;
 typedef u32 SymbolId;
 typedef u32 FuncSigId;
 typedef u32 ModuleId;
@@ -797,35 +796,22 @@ typedef struct TraceInfo {
 typedef enum {
     FUNC_SYM_FUNC,
     FUNC_SYM_HOSTFUNC,
-    FUNC_SYM_INLINEFUNC,
-    FUNC_SYM_CLOSURE,
     FUNC_SYM_NONE,
 } FuncSymbolType;
 
 typedef struct FuncSymbol {
-    u32 entryT;
+    u8 type;
+    bool is_method;
+    bool req_type_check;
+    u8 nparams;
+    u32 sig;
     union {
-        struct {
-            u16 typedFlagNumParams;
-            u16 rFuncSigId;
-        } nativeFunc1;
-        struct {
-            u32 rFuncSigId;
-        } none;
-        struct {
-            u32 rFuncSigId;
-        } func;
-    } innerExtra;
-    union {
-        void* nativeFunc1;
+        void* host_func;
         struct {
             u32 pc;
             u16 stackSize;
-            u8 numParams;
-            bool reqCallTypeCheck;
         } func;
-        void* closure;
-    } inner;
+    } data;
 } FuncSymbol;
 
 typedef struct StaticVar {
@@ -881,10 +867,9 @@ typedef struct VM {
 #endif
 
     ZCyList methods;
-    ZCyList methodGroups;
-    ZHashMap methodGroupKeys;
-    ZCyList typeMethodGroups;
-    ZHashMap typeMethodGroupKeys;
+    ZHashMap method_map;
+    ZCyList type_methods;
+    ZHashMap type_method_map;
 
     ZCyList funcSyms; // FuncSymbol
     ZCyList funcSymDetails;
@@ -913,8 +898,7 @@ typedef struct VM {
 
     StackTrace stackTrace;
 
-    ZCyList methodGroupExts;
-    ZCyList methodExts;
+    ZList method_names;
     DebugSym* debugTablePtr;
     size_t debugTableLen;
     u32* debugTempIndexTablePtr;
@@ -1051,7 +1035,7 @@ void zFreeObject(VM* vm, HeapObject* obj);
 void zEnd(VM* vm, Inst* pc);
 ValueResult zAllocList(VM* vm, Value* elemStart, uint8_t nelems);
 double zOtherToF64(Value val);
-CallObjSymResult zCallObjSym(VM* vm, Inst* pc, Value* stack, Value recv, TypeId typeId, uint8_t mgId, u8 startLocal, u8 numArgs);
+CallObjSymResult zCallObjSym(VM* vm, Inst* pc, Value* stack, Value recv, TypeId typeId, u16 method, u8 startLocal, u8 numArgs);
 ValueResult zAllocFiber(VM* vm, uint32_t pc, Value* args, uint8_t nargs, uint8_t argDst, uint8_t initialStackSize);
 PcSp zPushFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Fiber* fiber, uint8_t parentDstLocal);
 PcSpOff zPopFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Value retValue);

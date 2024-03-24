@@ -12,9 +12,9 @@ pub const KeyU64 = extern union {
         modSymId: cy.SymId,
         funcSigId: sema.FuncSigId,
     },
-    rtTypeMethodGroupKey: extern struct {
+    rtTypeMethodKey: extern struct {
         typeId: cy.TypeId,
-        mgId: vmc.MethodGroupId,
+        mgId: rt.MethodId,
     },
     rtFieldTableKey: extern struct {
         typeId: cy.TypeId,
@@ -48,9 +48,9 @@ pub const KeyU64 = extern union {
         };
     }
 
-    pub fn initTypeMethodGroupKey(typeId: cy.TypeId, mgId: vmc.MethodGroupId) KeyU64 {
+    pub fn initTypeMethodKey(typeId: cy.TypeId, mgId: rt.MethodId) KeyU64 {
         return .{
-            .rtTypeMethodGroupKey = .{
+            .rtTypeMethodKey = .{
                 .typeId = typeId,
                 .mgId = mgId,
             },

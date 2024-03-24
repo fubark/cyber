@@ -81,6 +81,8 @@ pub fn genAll(c: *cy.Compiler) !void {
     }
 
     // After rt funcs are set up, prepare the overloaded func table.
+    // Methods entries are also registered at this point
+    // since they depend on overloaded func entries.
     for (c.chunks.items) |chunk| {
         for (chunk.syms.items) |sym| {
             if (sym.type == .func) {
@@ -90,7 +92,11 @@ pub fn genAll(c: *cy.Compiler) !void {
                     const rt_id = c.vm.overloaded_funcs.len;
                     try c.vm.overloaded_funcs.append(c.alloc, func_sym.numFuncs);
                     var cur: ?*cy.Func = func_sym.first;
+                    var has_method = false;
                     while (cur != null) {
+                        if (cur.?.isMethod) {
+                            has_method = true;
+                        }
                         if (c.genSymMap.get(@ptrCast(cur))) |gen_sym| {
                             try c.vm.overloaded_funcs.append(c.alloc, gen_sym.func.id);
                         } else {
@@ -99,6 +105,22 @@ pub fn genAll(c: *cy.Compiler) !void {
                         cur = cur.?.next;
                     }
                     try c.genSymMap.putNoClobber(c.alloc, sym, .{ .funcs = .{ .id = @intCast(rt_id) }});
+                    if (has_method) {
+                        const func = func_sym.first;
+                        const parentT = func.sym.?.head.parent.?.getStaticType().?;
+                        const name = func.name();
+                        const method = try c.vm.ensureMethod(name);
+                        try c.vm.addMethod(parentT, method, @intCast(rt_id), true);
+                    }
+                } else {
+                    const func = func_sym.first;
+                    if (func.isMethod) {
+                        const parentT = func.sym.?.head.parent.?.getStaticType().?;
+                        const name = func.name();
+                        const method = try c.vm.ensureMethod(name);
+                        const func_id = c.genSymMap.get(func).?.func.id;
+                        try c.vm.addMethod(parentT, method, func_id, false);
+                    }
                 }
             }
         }
@@ -202,22 +224,10 @@ fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
     }
     if (func.type == .hostFunc) {
         const funcSig = c.sema.getFuncSig(func.funcSigId);
-        const rtFunc = rt.FuncSymbol.initHostFunc(@ptrCast(func.data.hostFunc.ptr), funcSig.reqCallTypeCheck, funcSig.numParams(), func.funcSigId);
+        const rtFunc = rt.FuncSymbol.initHostFunc(@ptrCast(func.data.hostFunc.ptr), funcSig.reqCallTypeCheck, func.isMethod, funcSig.numParams(), func.funcSigId);
         _ = try addVmFunc(c, func, rtFunc);
-        if (func.isMethod) {
-            const parentT = func.sym.?.head.parent.?.getStaticType().?;
-            const name = func.name();
-            const mgId = try c.vm.ensureMethodGroup(name);
-            if (funcSig.reqCallTypeCheck) {
-                const m = rt.MethodInit.initHostTyped(func.funcSigId, @ptrCast(func.data.hostFunc.ptr), func.numParams);
-                try c.vm.addMethod(parentT, mgId, m);
-            } else {
-                const m = rt.MethodInit.initHostUntyped(func.funcSigId, @ptrCast(func.data.hostFunc.ptr), func.numParams);
-                try c.vm.addMethod(parentT, mgId, m);
-            }
-        }
     } else if (func.type == .userFunc) {
-        _ = try addVmFunc(c, func, rt.FuncSymbol.initNone());
+        _ = try addVmFunc(c, func, rt.FuncSymbol.initNull());
         // Func is patched later once funcPc and stackSize is obtained.
         // Method entry is also added later.
     } else {
@@ -227,14 +237,7 @@ fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
 }
 
 fn addVmFunc(c: *cy.Compiler, func: *cy.Func, rtFunc: rt.FuncSymbol) !u32 {
-    const id = c.vm.funcSyms.len;
-    try c.vm.funcSyms.append(c.alloc, rtFunc);
-
-    const name = func.name();
-    try c.vm.funcSymDetails.append(c.alloc, .{
-        .namePtr = name.ptr, .nameLen = @intCast(name.len), .funcSigId = func.funcSigId,
-    });
-
+    const id = try c.vm.addFunc(func.name(), func.funcSigId, rtFunc);
     try c.genSymMap.putNoClobber(c.alloc, func, .{ .func = .{ .id = @intCast(id), .pc = 0 }});
     return @intCast(id);
 }
@@ -505,21 +508,8 @@ fn funcBlock(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     // Patch empty func sym slot.
     const rtId = c.compiler.genSymMap.get(func).?.func.id;
-    const rtFunc = rt.FuncSymbol.initFunc(funcPc, stackSize, func.numParams, func.funcSigId, func.reqCallTypeCheck);
+    const rtFunc = rt.FuncSymbol.initFunc(funcPc, stackSize, func.numParams, func.funcSigId, func.reqCallTypeCheck, func.isMethod);
     c.compiler.vm.funcSyms.buf[rtId] = rtFunc;
-
-    // Add method entry.
-    if (func.isMethod) {
-        const mgId = try c.compiler.vm.ensureMethodGroup(func.name());
-        const funcSig = c.compiler.sema.getFuncSig(func.funcSigId);
-        if (funcSig.reqCallTypeCheck) {
-            const m = rt.MethodInit.initTyped(func.funcSigId, funcPc, stackSize, func.numParams);
-            try c.compiler.vm.addMethod(data.parentType, mgId, m);
-        } else {
-            const m = rt.MethodInit.initUntyped(func.funcSigId, funcPc, stackSize, func.numParams);
-            try c.compiler.vm.addMethod(data.parentType, mgId, m);
-        }
-    }
 
     try popFuncBlockCommon(c, func);
     c.patchJumpToCurPc(skipJump);
@@ -855,9 +845,9 @@ fn setCallObjSymTern(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
     args[2] = try genExpr(c, data.right, Cstr.toTemp(temp));
     try pushUnwindValue(c, args[2]);
 
-    const mgId = try c.compiler.vm.ensureMethodGroup(data.name);
+    const method = try c.compiler.vm.ensureMethod(data.name);
     try pushCallObjSym(c, inst.ret, 3,
-        @intCast(mgId), nodeId);
+        @intCast(method), nodeId);
 
     var retained = try popTempAndUnwinds2(c, args[0..3]);
 
@@ -1293,9 +1283,9 @@ fn genCallObjSym(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
         try pushUnwindValue(c, val);
     }
 
-    const mgId = try c.compiler.vm.ensureMethodGroup(data.name);
+    const method = try c.compiler.vm.ensureMethod(data.name);
     try pushCallObjSym(c, inst.ret, data.numArgs + 1,
-        @intCast(mgId), nodeId);
+        @intCast(method), nodeId);
 
     const argvs = popValues(c, data.numArgs+1);
     try checkArgs(argStart, argvs);
@@ -2486,7 +2476,7 @@ fn forIterStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     var extraIdx = try c.fmtExtraDesc("iterator()", .{});
     try pushCallObjSymExt(c, iterTemp, 1,
-        @intCast(c.compiler.iteratorMGID),
+        @intCast(c.compiler.iteratorMID),
         iterNodeId, extraIdx);
 
     try releaseIf(c, iterv.retained, iterv.reg, iterNodeId);
@@ -2557,7 +2547,7 @@ fn genIterNext(c: *Chunk, iterTemp: u8, hasCounter: bool, iterNodeId: cy.NodeId)
 
     extraIdx = try c.fmtExtraDesc("next()", .{});
     try pushCallObjSymExt(c, iterTemp + 1, 1,
-        @intCast(c.compiler.nextMGID),
+        @intCast(c.compiler.nextMID),
         iterNodeId, extraIdx);
 
     if (hasCounter) {

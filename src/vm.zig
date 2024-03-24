@@ -64,14 +64,13 @@ pub const VM = struct {
     refCounts: if (cy.TrackGlobalRC) usize else void,
 
     /// Cached buckets used to lookup object methods.
-    /// If the `MethodGroup.mruTypeId` matches, the mru func data stored in MethodGroup is used first.
-    /// Otherwise, `typeMethodGroups` is queried.
-    /// `Method`s, and `TypeMethodGroup`s are not created until `MethodGroup` has more than one method.
+    /// If the `MethodEntry.mru_type` matches, `mru_id` stored in MethodEntry is used first.
+    /// Otherwise, `type_method_map` is queried.
+    /// `TypeMethod`s are not created until at least 2 types share the same method name.
     methods: cy.List(rt.Method),
-    methodGroups: cy.List(rt.MethodGroup),
-    methodGroupKeys: std.AutoHashMapUnmanaged(rt.MethodGroupKey, vmc.MethodGroupId),
-    typeMethodGroups: cy.List(rt.TypeMethodGroup),
-    typeMethodGroupKeys: std.HashMapUnmanaged(rt.TypeMethodGroupKey, vmc.TypeMethodGroupId, cy.hash.KeyU64Context, 80),
+    method_map: std.AutoHashMapUnmanaged(rt.MethodKey, vmc.MethodId),
+    type_methods: cy.List(rt.TypeMethod),
+    type_method_map: std.HashMapUnmanaged(rt.TypeMethodKey, vmc.TypeMethodId, cy.hash.KeyU64Context, 80),
 
     /// Regular function symbol table.
     /// TODO: The only reason this exists right now is for FFI to dynamically set binded functions to empty static functions.
@@ -111,8 +110,8 @@ pub const VM = struct {
 
     stackTrace: cy.StackTrace,
 
-    methodGroupExts: cy.List(rt.MethodGroupExt),
-    methodExts: cy.List(rt.MethodExt),
+    /// This is needed for reporting since a method entry can be empty.
+    method_names: cy.List(vmc.NameId),
     debugTable: []const cy.DebugSym,
     debugTempIndexTable: []const u32,
     unwindTempRegs: []const u8,
@@ -194,12 +193,10 @@ pub const VM = struct {
             .framePtr = undefined,
             .tryStack = .{},
             .methods = .{},
-            .methodGroupExts = .{},
-            .methodExts = .{},
-            .methodGroups = .{},
-            .methodGroupKeys = .{},
-            .typeMethodGroups = .{},
-            .typeMethodGroupKeys = .{},
+            .method_map = .{},
+            .method_names = .{},
+            .type_methods = .{},
+            .type_method_map = .{},
             .funcSyms = .{},
             .funcSymDetails = .{},
             .overloaded_funcs = .{},
@@ -263,9 +260,9 @@ pub const VM = struct {
         try cy.fiber.stackEnsureTotalCapacityPrecise(self, 511);
 
         try self.funcSyms.ensureTotalCapacityPrecise(self.alloc, 255);
-        try self.methodGroups.ensureTotalCapacityPrecise(self.alloc, 170);
-        try self.methodGroupKeys.ensureTotalCapacity(self.alloc, 200);
-        std.debug.assert(cy.utils.getHashMapMemSize(rt.MethodGroupKey, vmc.MethodGroupId, self.methodGroupKeys.capacity()) < 4096);
+        try self.methods.ensureTotalCapacityPrecise(self.alloc, 340);
+        try self.method_map.ensureTotalCapacity(self.alloc, 200);
+        std.debug.assert(cy.utils.getHashMapMemSize(rt.MethodKey, vmc.MethodId, self.method_map.capacity()) < 4096);
 
         try self.fieldSyms.ensureTotalCapacityPrecise(alloc, 170);
 
@@ -336,27 +333,18 @@ pub const VM = struct {
             self.compactTrace.deinit(self.alloc);
         }
 
-        for (self.methodGroupExts.items()) |extra| {
-            if (extra.nameIsOwned) {
-                self.alloc.free(extra.getName());
-            }
-        }
         if (reset) {
             self.methods.clearRetainingCapacity();
-            self.methodGroups.clearRetainingCapacity();
-            self.methodGroupExts.clearRetainingCapacity();
-            self.methodExts.clearRetainingCapacity();
-            self.methodGroupKeys.clearRetainingCapacity();
-            self.typeMethodGroups.clearRetainingCapacity();
-            self.typeMethodGroupKeys.clearRetainingCapacity();
+            self.method_map.clearRetainingCapacity();
+            self.method_names.clearRetainingCapacity();
+            self.type_methods.clearRetainingCapacity();
+            self.type_method_map.clearRetainingCapacity();
         } else {
             self.methods.deinit(self.alloc);
-            self.methodGroups.deinit(self.alloc);
-            self.methodGroupExts.deinit(self.alloc);
-            self.methodExts.deinit(self.alloc);
-            self.methodGroupKeys.deinit(self.alloc);
-            self.typeMethodGroups.deinit(self.alloc);
-            self.typeMethodGroupKeys.deinit(self.alloc);
+            self.method_map.deinit(self.alloc);
+            self.method_names.deinit(self.alloc);
+            self.type_methods.deinit(self.alloc);
+            self.type_method_map.deinit(self.alloc);
         }
 
         if (reset) {
@@ -909,34 +897,18 @@ pub const VM = struct {
         }
     }
 
-    pub fn ensureMethodGroup(self: *VM, name: []const u8) !vmc.MethodGroupId {
-        return self.ensureMethodGroup2(name, false);
-    }
-
-    pub fn ensureMethodGroup2(self: *VM, name: []const u8, dupeName: bool) !vmc.MethodGroupId {
+    pub fn ensureMethod(self: *VM, name: []const u8) !rt.MethodId {
         const nameId = try rt.ensureNameSym(self, name);
-        const res = try @call(.never_inline, @TypeOf(self.methodGroupKeys).getOrPut, .{&self.methodGroupKeys, self.alloc, nameId});
+        const res = try @call(.never_inline, @TypeOf(self.method_map).getOrPut, .{&self.method_map, self.alloc, nameId});
         if (!res.found_existing) {
-            const id: u32 = @intCast(self.methodGroups.len);
-
-            try self.methodGroups.append(self.alloc, .{
-                .mruTypeId = cy.NullId,
-                .mruMethodType = undefined,
-                .mruMethodData = undefined,
-                .mruTypeMethodOverloaded = false,
+            const id: u32 = @intCast(self.methods.len);
+            try self.methods.append(self.alloc, .{
+                .mru_type = cy.NullId,
+                .mru_id = cy.NullId,
+                .mru_overloaded = false,
+                .has_multiple_types = false,
             });
-            var newName = name;
-            if (dupeName) {
-                newName = try self.alloc.dupe(u8, name);
-            }
-            try self.methodGroupExts.append(self.alloc, .{
-                .mruTypeMethodGroupId = cy.NullId,
-                .mruMethodId = cy.NullId,
-                .initialFuncSigId = cy.NullId,
-                .namePtr = newName.ptr,
-                .nameLen = @intCast(newName.len),
-                .nameIsOwned = dupeName,
-            });
+            try self.method_names.append(self.alloc, nameId);
             res.value_ptr.* = id;
             return id;
         } else {
@@ -970,78 +942,48 @@ pub const VM = struct {
         }
     }
 
-    pub fn ensureTypeMethodGroup(self: *VM, typeId: vmc.TypeId, mgId: vmc.MethodGroupId) !vmc.TypeMethodGroupId {
-        const key = rt.TypeMethodGroupKey.initTypeMethodGroupKey(typeId, mgId);
-        const res = try self.typeMethodGroupKeys.getOrPut(self.alloc, key);
-        if (!res.found_existing) {
-            const id: vmc.TypeMethodGroupId = @intCast(self.typeMethodGroups.len);
-            try self.typeMethodGroups.append(self.alloc, .{
-                .mruMethodId = cy.NullId,
-                .head = cy.NullId,
-                .tail = cy.NullId,
-            });
-            res.value_ptr.* = id;
-            return id;
-        } else {
-            return res.value_ptr.*;
+    pub fn addTypeMethod(self: *VM, typeId: cy.TypeId, mgId: rt.MethodId, func: u32, is_overloaded: bool) !rt.TypeMethodId {
+        const key = rt.TypeMethodKey.initTypeMethodKey(typeId, mgId);
+        const res = try self.type_method_map.getOrPut(self.alloc, key);
+        if (res.found_existing) {
+            return error.Unexpected;
         }
+        const id: rt.TypeMethodId = @intCast(self.type_methods.len);
+        try self.type_methods.append(self.alloc, .{
+            .id = func,
+            .overloaded = is_overloaded,
+        });
+        res.value_ptr.* = id;
+        return id;
     }
 
-    fn storeMethod(self: *VM, tmgId: vmc.TypeMethodGroupId, method: rt.Method, funcSigId: sema.FuncSigId) !vmc.MethodId {
-        const methodId: vmc.MethodId = @intCast(self.methods.len);
-        try self.methods.append(self.alloc, method);
-        try self.methodExts.append(self.alloc, .{ .funcSigId = funcSigId });
-
-        const tmg = &self.typeMethodGroups.buf[tmgId];
-        if (tmg.head == cy.NullId) {
-            tmg.head = methodId;
-            tmg.tail = methodId;
-            tmg.mruMethodId = methodId;
-        } else {
-            self.methods.buf[tmg.tail].next = methodId;
-            tmg.tail = methodId;
-        }
-        return methodId;
-    }
-
-    pub fn addMethod(self: *VM, id: cy.TypeId, mgId: vmc.MethodGroupId, method: rt.MethodInit) !void {
-        const mg = &self.methodGroups.buf[mgId];
-        const mgExt = &self.methodGroupExts.buf[mgId];
-        if (mg.mruTypeId != cy.NullId) {
-            if (mgExt.mruTypeMethodGroupId == cy.NullId) {
-                // Store existing method.
-                const tmgId = try self.ensureTypeMethodGroup(mg.mruTypeId, mgId);
-                const methodId = try self.storeMethod(tmgId, rt.Method{
-                    .type = mg.mruMethodType,
-                    .data = mg.mruMethodData,
-                    .next = cy.NullId,
-                }, method.funcSigId);
-                mgExt.mruTypeMethodGroupId = tmgId;
-                mgExt.mruMethodId = methodId;
+    pub fn addMethod(self: *VM, type_id: cy.TypeId, method_id: rt.MethodId, func: u32, is_overloaded_func: bool) !void {
+        _ = try self.addTypeMethod(type_id, method_id, func, is_overloaded_func);
+        const method = &self.methods.buf[method_id];
+        if (method.mru_type != cy.NullId) {
+            if (method.mru_type == type_id) {
+                return error.Unexpected;
             }
-
-            const tmgId = if (mg.mruTypeId == id) mgExt.mruTypeMethodGroupId
-                else try self.ensureTypeMethodGroup(id, mgId);
-            _ = try self.storeMethod(tmgId, rt.Method{
-                .type = method.type,
-                .data = method.data,
-                .next = cy.NullId,
-            }, method.funcSigId);
-
-            if (mg.mruTypeId == id and !mg.mruTypeMethodOverloaded) {
-                const tmg = self.typeMethodGroups.buf[tmgId];
-                mg.mruTypeMethodOverloaded = tmg.head != tmg.tail;
-            }
+            method.has_multiple_types = true;
         } else {
-            // Empty method group.
-            mg.* = .{
-                .mruTypeId = id,
-                .mruMethodType = method.type,
-                .mruMethodData = method.data,
-                .mruTypeMethodOverloaded = false,
+            // Empty method entry.
+            method.* = .{
+                .mru_type = type_id,
+                .mru_id = func,
+                .mru_overloaded = is_overloaded_func,
+                .has_multiple_types = false,
             };
-            mgExt.initialFuncSigId = method.funcSigId;
         }
+    }
+
+    pub fn addFunc(self: *VM, name: []const u8, sig: cy.sema.FuncSigId, rtFunc: rt.FuncSymbol) !u32 {
+        const id = self.funcSyms.len;
+        try self.funcSyms.append(self.alloc, rtFunc);
+
+        try self.funcSymDetails.append(self.alloc, .{
+            .namePtr = name.ptr, .nameLen = @intCast(name.len), .funcSigId = sig,
+        });
+        return @intCast(id);
     }
 
     pub fn interruptThrowSymbol(self: *VM, sym: bindings.Symbol) error{Panic} {
@@ -1207,39 +1149,19 @@ pub const VM = struct {
         const vals = fp[ret+CallArgStart..ret+CallArgStart+nargs];
         for (funcs) |func_id| {
             const func = self.funcSyms.buf[func_id];
-
-            const sig_id = switch (@as(rt.FuncSymbolType, @enumFromInt(func.entryT))) {
-                .hostFunc => func.innerExtra.hostFunc.funcSigId,
-                .func => func.innerExtra.func.funcSigId,
-                else => {
-                    return self.panic("Missing func");
-                },
-            };
-
-            // Perform type check on args.
-            const target = self.compiler.sema.getFuncSig(sig_id);
-            const target_params = target.params();
-            var compat = true;
-            for (vals, target_params) |val, target_t| {
-                const valTypeId = val.getTypeId();
-                if (!types.isTypeSymCompat(self.compiler, valTypeId, target_t)) {
-                    compat = false;
-                    break;
-                }
-            }
-            if (!compat) {
+            if (!self.isFuncCompat(func, vals)) {
                 continue;
             }
 
-            // Match, invoke function.
+            // Invoke function.
             // TODO: Extract common code between this and `callSym`
-            switch (@as(rt.FuncSymbolType, @enumFromInt(func.entryT))) {
-                .hostFunc => {
+            switch (func.type) {
+                .host_func => {
                     const newFramePtr = fp + ret;
 
                     self.pc = pc;
                     self.framePtr = fp;
-                    const res: Value = @bitCast(func.inner.hostFunc.?(@ptrCast(self), @ptrCast(newFramePtr + CallArgStart), nargs));
+                    const res: Value = @bitCast(func.data.host_func.?(@ptrCast(self), @ptrCast(newFramePtr + CallArgStart), nargs));
                     if (res.isInterrupt()) {
                         return error.Panic;
                     }
@@ -1250,7 +1172,7 @@ pub const VM = struct {
                     };
                 },
                 .func => {
-                    if (@intFromPtr(fp + ret + func.inner.func.stackSize) >= @intFromPtr(self.stackEndPtr)) {
+                    if (@intFromPtr(fp + ret + func.data.func.stackSize) >= @intFromPtr(self.stackEndPtr)) {
                         return error.StackOverflow;
                     }
 
@@ -1259,7 +1181,7 @@ pub const VM = struct {
                     newFramePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
                     newFramePtr[3] = Value{ .retFramePtr = fp };
                     return cy.fiber.PcSp{
-                        .pc = cy.fiber.toVmPc(self, func.inner.func.pc),
+                        .pc = cy.fiber.toVmPc(self, func.data.func.pc),
                         .sp = newFramePtr,
                     };
                 },
@@ -1268,25 +1190,25 @@ pub const VM = struct {
                 },
             }
         }
-        return panicIncompatibleCallSymSig(self, entry, vals, ret);
+        return panicIncompatibleCallSymSig(self, entry, vals);
     }
 
     /// startLocal points to the first arg in the current stack frame.
     fn callSym(
-        self: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: SymbolId, ret: u8, numArgs: u8,
+        self: *VM, pc: [*]cy.Inst, framePtr: [*]Value, func_id: rt.FuncId, ret: u8, numArgs: u8,
     ) !cy.fiber.PcSp {
-        const sym = self.funcSyms.buf[symId];
-        switch (@as(rt.FuncSymbolType, @enumFromInt(sym.entryT))) {
-            .hostFunc => {
+        const func = self.funcSyms.buf[func_id];
+        switch (func.type) {
+            .host_func => {
                 // Optimize.
                 pc[0] = cy.Inst.initOpCode(.callNativeFuncIC);
-                @as(*align(1) u48, @ptrCast(pc + 6)).* = @intCast(@intFromPtr(sym.inner.hostFunc));
+                @as(*align(1) u48, @ptrCast(pc + 6)).* = @intCast(@intFromPtr(func.data.host_func));
 
                 self.pc = pc;
                 self.framePtr = framePtr;
 
                 const newFramePtr = framePtr + ret;
-                const res: Value = @bitCast(sym.inner.hostFunc.?(@ptrCast(self), @ptrCast(newFramePtr + CallArgStart), numArgs));
+                const res: Value = @bitCast(func.data.host_func.?(@ptrCast(self), @ptrCast(newFramePtr + CallArgStart), numArgs));
                 if (res.isInterrupt()) {
                     return error.Panic;
                 }
@@ -1297,75 +1219,117 @@ pub const VM = struct {
                 };
             },
             .func => {
-                if (@intFromPtr(framePtr + ret + sym.inner.func.stackSize) >= @intFromPtr(self.stackEndPtr)) {
+                if (@intFromPtr(framePtr + ret + func.data.func.stackSize) >= @intFromPtr(self.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
                 // Optimize.
                 pc[0] = cy.Inst.initOpCode(.callFuncIC);
-                pc[4] = cy.Inst{ .val = @intCast(sym.inner.func.stackSize) };
-                @as(*align(1) u48, @ptrCast(pc + 6)).* = @intCast(@intFromPtr(cy.fiber.toVmPc(self, sym.inner.func.pc)));
+                pc[4] = cy.Inst{ .val = @intCast(func.data.func.stackSize) };
+                @as(*align(1) u48, @ptrCast(pc + 6)).* = @intCast(@intFromPtr(cy.fiber.toVmPc(self, func.data.func.pc)));
 
                 const newFramePtr = framePtr + ret;
                 newFramePtr[1] = buildReturnInfo(true, cy.bytecode.CallSymInstLen);
                 newFramePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
                 newFramePtr[3] = Value{ .retFramePtr = framePtr };
                 return cy.fiber.PcSp{
-                    .pc = cy.fiber.toVmPc(self, sym.inner.func.pc),
+                    .pc = cy.fiber.toVmPc(self, func.data.func.pc),
                     .sp = newFramePtr,
                 };
             },
-            .none => {
+            .null => {
                 return self.panic("Missing func");
             },
         }
     }
 
-    fn getTypeMethodGroup(
-        self: *VM, typeId: cy.TypeId, mgId: vmc.MethodGroupId,
-    ) ?vmc.TypeMethodGroupId {
-        const key = rt.TypeMethodGroupKey.initTypeMethodGroupKey(typeId, mgId);
-        return self.typeMethodGroupKeys.get(key);
+    /// Like `isFuncCompat` but does not check rec.
+    fn isMethodFuncCompat(self: *VM, func: rt.FuncSymbol, args: []const Value) bool {
+        // Perform type check on args.
+        const target = self.compiler.sema.getFuncSig(func.sig);
+        const target_params = target.params()[1..];
+
+        if (target_params.len != args.len) {
+            return false;
+        }
+
+        for (args, target_params) |val, target_t| {
+            const valTypeId = val.getTypeId();
+            if (!types.isTypeSymCompat(self.compiler, valTypeId, target_t)) {
+                return false;
+            }
+        }
+        return true;
     }
 
-    fn getCachedMethodGroupForType(self: *VM, typeId: vmc.TypeId, mgId: vmc.MethodGroupId) !?rt.MethodGroup {
-        const mg = self.methodGroups.buf[mgId];
-        if (mg.mruTypeId == typeId) {
-            return mg;
-        } else {
-            if (@call(.never_inline, getTypeMethodGroup, .{self, typeId, mgId})) |tmgId| {
-                const mgExt = &self.methodGroupExts.buf[mgId];
+    fn isFuncCompat(self: *VM, func: rt.FuncSymbol, args: []const Value) bool {
+        // Perform type check on args.
+        const target = self.compiler.sema.getFuncSig(func.sig);
+        const target_params = target.params();
 
-                if (mg.mruTypeId != cy.NullId) {
-                    // Persist most recent TypeMethodGroup data.
-                    if (mgExt.mruMethodId == cy.NullId) {
-                        const curTmgId = try self.ensureTypeMethodGroup(mg.mruTypeId, mgId);
-                        _ = try self.storeMethod(curTmgId, rt.Method{
-                            .type = mg.mruMethodType,
-                            .data = mg.mruMethodData,
-                            .next = cy.NullId,
-                        }, mgExt.initialFuncSigId);
-                    } else {
-                        self.typeMethodGroups.buf[mgExt.mruTypeMethodGroupId].mruMethodId = mgExt.mruMethodId;
-                    }
-                }
+        if (target_params.len != args.len) {
+            return false;
+        }
 
-                const newTmg = self.typeMethodGroups.buf[tmgId];
-                const newMethodId = newTmg.mruMethodId;
-                const newMethod = self.methods.buf[newMethodId];
-                const new = rt.MethodGroup{
-                    .mruTypeId = typeId,
-                    .mruMethodType = newMethod.type,
-                    .mruMethodData = newMethod.data,
-                    .mruTypeMethodOverloaded = newTmg.head != newTmg.tail,
-                };
-                self.methodGroups.buf[mgId] = new;
-                mgExt.mruMethodId = newMethodId;
-                mgExt.mruTypeMethodGroupId = tmgId;
-                return new;
+        for (args, target_params) |val, target_t| {
+            const valTypeId = val.getTypeId();
+            if (!types.isTypeSymCompat(self.compiler, valTypeId, target_t)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    fn getTypeMethod(self: *VM, rec_t: cy.TypeId, method: rt.MethodId) ?rt.TypeMethodId {
+        const key = rt.TypeMethodKey.initTypeMethodKey(rec_t, method);
+        return self.type_method_map.get(key);
+    }
+
+    /// Assumes args does not include rec.
+    fn getCompatMethodFunc(self: *VM, rec_t: cy.TypeId, method_id: rt.MethodId, args: []const cy.Value) ?rt.FuncSymbol {
+        var method = self.methods.buf[method_id];
+        if (method.mru_type != rec_t) {
+            if (!method.has_multiple_types) {
+                return null;
+            }
+            if (@call(.never_inline, getTypeMethod, .{self, rec_t, method_id})) |tm_id| {
+                const type_method = self.type_methods.buf[tm_id];
+                method.mru_type = rec_t;
+                method.mru_id = type_method.id;
+                method.mru_overloaded = type_method.overloaded;
+                self.methods.buf[method_id] = method;
             } else {
                 return null;
             }
+        }
+
+        // TODO: Skip type check for untyped params.
+
+        if (!method.mru_overloaded) {
+            // Check one function.
+            const func = self.funcSyms.buf[method.mru_id];
+            if (self.isMethodFuncCompat(func, args)) {
+                return func;
+            } else {
+                return null;
+            }
+        } else {
+            // Overloaded functions.
+            const num_funcs = self.overloaded_funcs.buf[method.mru_id];
+            const funcs = self.overloaded_funcs.buf[method.mru_id+1..method.mru_id+1+num_funcs];
+
+            for (funcs) |func_id| {
+                const func = self.funcSyms.buf[func_id];
+
+                if (!func.is_method) {
+                    continue;
+                }
+
+                if (self.isMethodFuncCompat(func, args)) {
+                    return func;
+                }
+            }
+            return null;
         }
     }
 
@@ -1716,10 +1680,9 @@ test "vm internals." {
         try t.eq(@offsetOf(VM, "refCounts"), @offsetOf(vmc.VM, "refCounts"));
     }
     try t.eq(@offsetOf(VM, "methods"), @offsetOf(vmc.VM, "methods"));
-    try t.eq(@offsetOf(VM, "methodGroups"), @offsetOf(vmc.VM, "methodGroups"));
-    try t.eq(@offsetOf(VM, "methodGroupKeys"), @offsetOf(vmc.VM, "methodGroupKeys"));
-    try t.eq(@offsetOf(VM, "typeMethodGroups"), @offsetOf(vmc.VM, "typeMethodGroups"));
-    try t.eq(@offsetOf(VM, "typeMethodGroupKeys"), @offsetOf(vmc.VM, "typeMethodGroupKeys"));
+    try t.eq(@offsetOf(VM, "method_map"), @offsetOf(vmc.VM, "method_map"));
+    try t.eq(@offsetOf(VM, "type_methods"), @offsetOf(vmc.VM, "type_methods"));
+    try t.eq(@offsetOf(VM, "type_method_map"), @offsetOf(vmc.VM, "type_method_map"));
     try t.eq(@offsetOf(VM, "funcSyms"), @offsetOf(vmc.VM, "funcSyms"));
     try t.eq(@offsetOf(VM, "funcSymDetails"), @offsetOf(vmc.VM, "funcSymDetails"));
     try t.eq(@offsetOf(VM, "overloaded_funcs"), @offsetOf(vmc.VM, "overloaded_funcs"));
@@ -1734,8 +1697,7 @@ test "vm internals." {
     try t.eq(@offsetOf(VM, "nameMap"), @offsetOf(vmc.VM, "nameMap"));
     try t.eq(@offsetOf(VM, "u8Buf"), @offsetOf(vmc.VM, "u8Buf"));
     try t.eq(@offsetOf(VM, "stackTrace"), @offsetOf(vmc.VM, "stackTrace"));
-    try t.eq(@offsetOf(VM, "methodGroupExts"), @offsetOf(vmc.VM, "methodGroupExts"));
-    try t.eq(@offsetOf(VM, "methodExts"), @offsetOf(vmc.VM, "methodExts"));
+    try t.eq(@offsetOf(VM, "method_names"), @offsetOf(vmc.VM, "method_names"));
     try t.eq(@offsetOf(VM, "debugTable"), @offsetOf(vmc.VM, "debugTablePtr"));
     try t.eq(@offsetOf(VM, "debugTempIndexTable"), @offsetOf(vmc.VM, "debugTempIndexTablePtr"));
     try t.eq(@offsetOf(VM, "unwindTempRegs"), @offsetOf(vmc.VM, "unwindTempRegsPtr"));
@@ -3224,36 +3186,6 @@ fn evalLoop(vm: *VM) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, End}!v
                 pc += 4;
                 continue;
             },
-            .callObjSym => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCallObjSym:"::);
-                }
-                const startLocal = pc[1].val;
-                const numArgs = pc[2].val;
-
-                const numRet = pc[3].val;
-                const mgId = pc[4].val;
-                const anySelfFuncSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
-
-                const recv = framePtr[startLocal + 4];
-                const typeId = recv.getTypeId();
-
-                if (try vm.getCachedMethodGroupForType(typeId, mgId)) |mg| {
-                    if (try @call(.never_inline, callMethodGroup, .{
-                        vm, pc, framePtr, mgId, mg, typeId, startLocal, numArgs, numRet, anySelfFuncSigId,
-                    })) |res| {
-                        pc = res.pc;
-                        framePtr = res.sp;
-                        continue;
-                    }
-                }
-                const res = try @call(.never_inline, callObjSymFallback, .{
-                    vm, pc, framePtr, recv, typeId, mgId, startLocal, numArgs, numRet
-                });
-                pc = res.pc;
-                framePtr = res.sp;
-                continue;
-            },
             .callSym => {
                 if (GenLabels) {
                     _ = asm volatile ("LOpCallSym:"::);
@@ -3364,8 +3296,9 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst) !void {
     switch (pc[0].opcode()) {
         .callObjSym => {
             const symId = pc[4].val;
-            const symName = vm.methodGroupExts.buf[symId].getName();
-            extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{symName});
+            const name_id = vm.method_names.buf[symId];
+            const name = rt.getName(vm, name_id);
+            extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{name});
         },
         .constOp => {
             const idx = @as(*const align (1) u16, @ptrCast(pc + 1)).*;
@@ -3378,8 +3311,9 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst) !void {
         },
         .callObjNativeFuncIC => {
             const symId = pc[4].val;
-            const symName = vm.methodGroupExts.buf[symId].getName();
-            extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{symName});
+            const name_id = vm.method_names.buf[symId];
+            const name = rt.getName(vm, name_id);
+            extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{name});
         },
         .callSym => {
             const symId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
@@ -3536,9 +3470,9 @@ fn allocValueTypeIds(vm: *cy.VM, vals: []const Value) ![]const cy.TypeId {
     return typeIds;
 }
 
-fn allocMethodCallTypeIds(vm: *cy.VM, vals: []const Value) ![]const cy.TypeId {
+fn allocMethodCallTypeIds(vm: *cy.VM, rec_t: cy.TypeId, vals: []const Value) ![]const cy.TypeId {
     const typeIds = try vm.alloc.alloc(cy.TypeId, vals.len + 1);
-    typeIds[0] = bt.Any;
+    typeIds[0] = rec_t;
     for (vals, 1..) |val, i| {
         typeIds[i] = val.getTypeId();
     }
@@ -3560,14 +3494,6 @@ fn panicIncompatibleFieldType(vm: *cy.VM, fieldSemaTypeId: types.TypeId, rightv:
     );
 }
 
-pub fn getMruFuncSigId(vm: *cy.VM, mgExt: rt.MethodGroupExt) sema.FuncSigId {
-    if (mgExt.mruTypeMethodGroupId == cy.NullId) {
-        return mgExt.initialFuncSigId;
-    } else {
-        return vm.methodExts.buf[mgExt.mruMethodId].funcSigId;
-    }
-}
-
 fn panicIncompatibleLambdaSig(vm: *cy.VM, args: []const Value, cstrFuncSigId: sema.FuncSigId) error{Panic, OutOfMemory} {
     const cstrFuncSigStr = try vm.compiler.sema.allocFuncSigStr(cstrFuncSigId, true);
     defer vm.alloc.free(cstrFuncSigStr);
@@ -3587,7 +3513,7 @@ fn panicIncompatibleLambdaSig(vm: *cy.VM, args: []const Value, cstrFuncSigId: se
 
 /// Runtime version of `sema.reportIncompatibleCallSig`.
 /// TODO: Consider using this for callObjSym too. The only problem is callObjSym does not use `overloaded_funcs`.
-fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Value, num_ret: u8) error{Panic, OutOfMemory} {
+fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Value) error{Panic, OutOfMemory} {
     const num_funcs = vm.overloaded_funcs.buf[overload_entry];
     const funcs = vm.overloaded_funcs.buf[overload_entry+1..overload_entry+1+num_funcs];
 
@@ -3609,9 +3535,9 @@ fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Va
     defer msg.deinit(vm.alloc);
     const w = msg.writer(vm.alloc);
     try w.print("Can not find compatible function for call: `{s}{s}`.", .{name, call_args_str});
-    if (num_ret == 1) {
-        try w.writeAll(" Expects non-void return.");
-    }
+    // if (num_ret == 1) {
+    //     try w.writeAll(" Expects non-void return.");
+    // }
     try w.writeAll("\n");
     try w.print("Functions named `{s}`:\n", .{name});
 
@@ -3632,79 +3558,75 @@ fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Va
 
 /// TODO: Once methods are recorded in the object/builtin type's module, this should look there instead of the rt table.
 fn panicIncompatibleMethodSig(
-    vm: *cy.VM, mgId: vmc.MethodGroupId, recv: Value, args: []const Value
+    vm: *cy.VM, method_id: rt.MethodId, recv: Value, args: []const Value
 ) error{Panic, OutOfMemory} {
     const typeId = recv.getTypeId();
 
-    const typeIds = try allocMethodCallTypeIds(vm, args);
+    const typeIds = try allocMethodCallTypeIds(vm, typeId, args);
     defer vm.alloc.free(typeIds);
 
-    const mgExt = vm.methodGroupExts.buf[mgId];
-    const name = mgExt.getName();
-    const methodSym = vm.methodGroups.buf[mgId];
-    if (methodSym.mruTypeId == typeId) {
-        var singleMethod = false;
-        if (mgExt.mruTypeMethodGroupId == cy.NullId) {
-            singleMethod = true;
-        } else {
-            const tmg = vm.typeMethodGroups.buf[mgExt.mruTypeMethodGroupId];
-            if (tmg.head == tmg.tail) {
-                singleMethod = true;
-            }
-        }
-        const sigStr = try vm.compiler.sema.allocFuncSigTypesStr(typeIds, bt.Any);
-        defer vm.alloc.free(sigStr);
-        if (singleMethod) {
-            const funcSigId = getMruFuncSigId(vm, mgExt);
-            const existingSigStr = try vm.compiler.sema.allocFuncSigStr(funcSigId, true);
-            defer vm.alloc.free(existingSigStr);
-
-            const typeName = vm.types[typeId].sym.name();
-            return vm.panicFmt(
-                \\Can not find compatible function for `{}{}` in `{}`.
-                \\Only `func {}{}` exists for the symbol `{}`.
-                , &.{
-                    v(name), v(sigStr), v(typeName),
-                    v(name), v(existingSigStr), v(name),
-                },
-            );
-        } else {
-            const typeName = vm.types[typeId].sym.name();
-            return vm.panicFmt(
-                \\Can not find compatible function for `{}{}` in `{}`.
-                \\Multiple signatures exist for `func {}`.
-                , &.{
-                    v(name), v(sigStr), v(typeName),
-                    v(name),
-                },
-            );
-        }
+    // Lookup `func_entry`.
+    const method = vm.methods.buf[method_id];
+    const name_id = vm.method_names.buf[method_id];
+    const name = rt.getName(vm, name_id);
+    const typeName = vm.types[typeId].sym.name();
+    var entry: u32 = undefined;
+    var overloaded: bool = undefined;
+    if (method.mru_type == typeId) {
+        entry = method.mru_id;
+        overloaded = method.mru_overloaded;
     } else {
-    //     const key = rt.MethodTableKey.initMethodTableKey(typeId, mgId);
-    //     if (vm.methodTable.get(key)) |_| {
-    //         const sigStr = try sema.allocFuncSigTypesStr(&vm.compiler, typeIds, bt.Any);
-    //         defer {
-    //             vm.alloc.free(sigStr);
-    //         }
-    //         return vm.panicFmt(
-    //             \\Can not find compatible function for `{}{}` in `{}`.
-    //             , &.{
-    //                 v(name), v(sigStr), v(vm.types.buf[typeId].name),
-    //             },
-    //         );
-    //     } else {
-            const sigStr = try vm.compiler.sema.allocFuncSigTypesStr(typeIds, bt.Any);
-            defer vm.alloc.free(sigStr);
-            const typeName = vm.types[typeId].sym.name();
-            return vm.panicFmt("`func {}{}` can not be found in `{}`.", &.{
-                v(name), v(sigStr), v(typeName),
+        if (method.has_multiple_types) {
+            const tm_id = vm.getTypeMethod(typeId, method_id) orelse {
+                return vm.panicFmt("The method `{}` can not be found in `{}`.", &.{
+                    v(name), v(typeName),
+                });
+            };
+            const tmethod = vm.type_methods.buf[tm_id];
+            entry = tmethod.id;
+            overloaded = tmethod.overloaded;
+        } else {
+            return vm.panicFmt("The method `{}` can not be found in `{}`.", &.{
+                v(name), v(typeName),
             });
-    //     }
+        }
     }
+
+    var msg: std.ArrayListUnmanaged(u8) = .{}; 
+    defer msg.deinit(vm.alloc);
+    const w = msg.writer(vm.alloc);
+    const call_args_str = try vm.compiler.sema.allocTypesStr(typeIds[1..]);
+    defer vm.alloc.free(call_args_str);
+
+    try w.print("Can not find compatible method for call: `({s}) {s}{s}`.", .{typeName, name, call_args_str});
+    try w.writeAll("\n");
+    try w.print("Methods named `{s}`:\n", .{name});
+
+    var funcs: []const rt.FuncId = undefined;
+    if (overloaded) {
+        const num_funcs = vm.overloaded_funcs.buf[entry];
+        funcs = vm.overloaded_funcs.buf[entry+1..entry+1+num_funcs];
+    } else {
+        funcs = &.{entry};
+    }
+    for (funcs, 0..) |func_id, i| {
+        const func = vm.funcSyms.buf[func_id];
+        if (!func.is_method) {
+            continue;
+        }
+        const funcStr = vm.sema.formatFuncSig(func.sig, &cy.tempBuf) catch {
+            return error.OutOfMemory;
+        };
+        try w.print("    func {s}{s}", .{name, funcStr});
+        if (i < funcs.len-1) {
+            try w.writeByte('\n');
+        }
+    }    
+    return vm.panic(msg.items);
 }
 
 fn getObjectFunctionFallback(
-    vm: *VM, pc: [*]cy.Inst, recv: Value, typeId: u32, rtSymId: SymbolId, vals: []const Value,
+    vm: *VM, pc: [*]cy.Inst, recv: Value, typeId: u32, method: rt.MethodId, vals: []const Value,
 ) !Value {
     @setCold(true);
     _ = typeId;
@@ -3729,7 +3651,7 @@ fn getObjectFunctionFallback(
         // const chunk = vm.compiler.chunks.items[sym.file];
         // const node = chunk.nodes[sym.loc];
         // if (node.node_t == .callExpr) {
-            return panicIncompatibleMethodSig(vm, rtSymId, recv, vals);
+            return panicIncompatibleMethodSig(vm, method, recv, vals);
         // } else {
         //     release(vm, recv);
         //     // Debug node is from:
@@ -3746,13 +3668,13 @@ fn getObjectFunctionFallback(
 
 /// Use new pc local to avoid deoptimization.
 fn callObjSymFallback(
-    vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, recv: Value, typeId: u32, mgId: vmc.MethodGroupId, 
-    ret: u8, numArgs: u8,
+    vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, recv: Value, typeId: u32, method: rt.MethodId, 
+    ret: u8, numArgs: u8
 ) !cy.fiber.PcSp {
     @setCold(true);
     // const func = try @call(.never_inline, getObjectFunctionFallback, .{obj, symId});
     const vals = framePtr[ret+CallArgStart+1..ret+CallArgStart+1+numArgs-1];
-    const func = try getObjectFunctionFallback(vm, pc, recv, typeId, mgId, vals);
+    const func = try getObjectFunctionFallback(vm, pc, recv, typeId, method, vals);
     _ = func;
     return vm.panic("Missing method.");
 }
@@ -3908,56 +3830,51 @@ fn getFuncSigIdOfSym(vm: *const VM, symId: SymbolId) sema.FuncSigId {
     }
 }
 
-fn callMethodNoInline(
-    vm: *VM, pc: [*]cy.Inst, sp: [*]cy.Value, methodType: rt.MethodType, data: rt.MethodData,
-    typeId: vmc.TypeId, startLocal: u8, numArgs: u8, 
-) !?cy.fiber.PcSp {
-    return @call(.always_inline, callMethod, .{vm, pc, sp, methodType, data, typeId, startLocal, numArgs});
-}
-
 pub const CallArgStart: u8 = vmc.CALL_ARG_START;
 pub const CalleeStart: u8 = vmc.CALLEE_START;
 
+/// Assumes args are compatible.
+/// Like `callSym` except inlines different op codes.
 fn callMethod(
-    vm: *VM, pc: [*]cy.Inst, sp: [*]cy.Value, methodType: rt.MethodType, data: rt.MethodData,
-    typeId: vmc.TypeId, ret: u8, numArgs: u8,
+    vm: *VM, pc: [*]cy.Inst, sp: [*]cy.Value, func: rt.FuncSymbol,
+    typeId: cy.TypeId, ret: u8, nargs: u8,
 ) !?cy.fiber.PcSp {
-    switch (methodType) {
-        .untyped => {
-            if (numArgs != data.untyped.numParams) {
-                return null;
-            }
-            if (@intFromPtr(sp + ret + data.untyped.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
+    switch (func.type) {
+        .func => {
+            if (@intFromPtr(sp + ret + func.data.func.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
                 return error.StackOverflow;
             }
 
             // Optimize.
-            pc[0] = cy.Inst.initOpCode(.callObjFuncIC);
-            pc[7] = cy.Inst{ .val = @intCast(data.untyped.stackSize) };
-            @as(*align(1) u32, @ptrCast(pc + 8)).* = data.untyped.pc;
-            @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
+            // TODO: callObjFuncIC (rt args typecheck) or callObjFuncNoCheckIC.
+            if (false) {
+                pc[0] = cy.Inst.initOpCode(.callObjFuncIC);
+                pc[7] = cy.Inst{ .val = @intCast(func.data.func.stackSize) };
+                @as(*align(1) u32, @ptrCast(pc + 8)).* = func.data.func.pc;
+                @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
+            }
 
             const newFp = sp + ret;
             newFp[1] = buildReturnInfo(true, cy.bytecode.CallObjSymInstLen);
             newFp[2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen };
             newFp[3] = Value{ .retFramePtr = sp };
             return cy.fiber.PcSp{
-                .pc = cy.fiber.toVmPc(vm, data.untyped.pc),
+                .pc = cy.fiber.toVmPc(vm, func.data.func.pc),
                 .sp = newFp,
             };
         },
-        .untypedHost => {
-            if (numArgs != data.untypedHost.numParams) {
-                return null;
-            }
+        .host_func => {
             // Optimize.
-            pc[0] = cy.Inst.initOpCode(.callObjNativeFuncIC);
-            @as(*align(1) u48, @ptrCast(pc + 8)).* = @intCast(@intFromPtr(data.untypedHost.ptr));
-            @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
+            // TODO: callObjHostFuncIC (rt args typecheck) or callObjHostFuncNoCheckIC
+            if (false) {
+                pc[0] = cy.Inst.initOpCode(.callObjNativeFuncIC);
+                @as(*align(1) u48, @ptrCast(pc + 8)).* = @intCast(@intFromPtr(func.data.hostFunc));
+                @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
+            }
 
             vm.pc = pc;
             vm.framePtr = sp;
-            const res: Value = @bitCast(data.untypedHost.ptr.?(@ptrCast(vm), @ptrCast(sp + ret + CallArgStart), numArgs));
+            const res: Value = @bitCast(func.data.host_func.?(@ptrCast(vm), @ptrCast(sp + ret + CallArgStart), nargs));
             if (res.isInterrupt()) {
                 return error.Panic;
             }
@@ -3967,139 +3884,10 @@ fn callMethod(
                 .sp = sp,
             };
         },
-        .typed => {
-            if (numArgs != data.typed.numParams) {
-                return null;
-            }
-            // Perform type check on args.
-            const vals = sp[ret+CallArgStart+1..ret+CallArgStart+1+numArgs-1];
-            const target = vm.compiler.sema.getFuncSig(data.typed.func_sig);
-            for (vals, target.params()[1..]) |val, target_t| {
-                const valTypeId = val.getTypeId();
-                if (!types.isTypeSymCompat(vm.compiler, valTypeId, target_t)) {
-                    return null;
-                }
-            }
-
-            if (@intFromPtr(sp + ret + data.typed.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
-                return error.StackOverflow;
-            }
-
-            if (pc[7].val & 0x80 == 0) {
-                // Check to inline function ptr.
-                // TODO: callObjTypedFuncIC
-                if (false) {
-                    pc[0] = cy.Inst.initOpCode(.callObjFuncIC);
-                    pc[7].val = @intCast(data.typed.stackSize);
-                    @as(*align(1) u32, @ptrCast(pc + 8)).* = data.typed.pc;
-                    @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
-                } else {
-                    // Don't keep checking.
-                    // TODO: Have a second inline that still does type checking after the initial recvT verification.
-                    //       That inline can then turn this bit off when it is deoptimized.
-                    pc[7].val = pc[7].val | 0x80;
-                }
-            }
-
-            const newFp = sp + ret;
-            newFp[1] = buildReturnInfo(true, cy.bytecode.CallObjSymInstLen);
-            newFp[2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen };
-            newFp[3] = Value{ .retFramePtr = sp };
-            return cy.fiber.PcSp{
-                .pc = cy.fiber.toVmPc(vm, data.typed.pc),
-                .sp = newFp,
-            };
-        },
-        .typedHost => {
-            if (numArgs != data.typedHost.numParams) {
-                return null;
-            }
-            // Perform type check on args.
-            const vals = sp[ret+CallArgStart+1..ret+CallArgStart+1+numArgs-1];
-            const target = vm.sema.getFuncSig(data.typedHost.func_sig);
-            for (vals, target.params()[1..]) |val, target_t| {
-                const valTypeId = val.getTypeId();
-                if (!types.isTypeSymCompat(vm.compiler, valTypeId, target_t)) {
-                    return null;
-                }
-            }
-
-            if (pc[7].val & 0x80 == 0) {
-                // Check to inline function ptr.
-                // TODO: callObjTypedHostFuncIC
-                if (false) {
-                    pc[0] = cy.Inst.initOpCode(.callObjNativeFuncIC);
-                    @as(*align(1) u48, @ptrCast(pc + 8)).* = @intCast(@intFromPtr(data.typedHost.ptr));
-                    @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
-                } else {
-                    // Don't keep checking.
-                    // TODO: Have a second inline that still does type checking after the initial recvT verification.
-                    //       That inline can then turn this bit off when it is deoptimized.
-                    pc[7].val = pc[7].val | 0x80;
-                }
-            }
-
-            vm.pc = pc;
-            vm.framePtr = sp;
-            const res: Value = @bitCast(data.typedHost.ptr.?(@ptrCast(vm), @ptrCast(sp + ret + CallArgStart), numArgs));
-            if (res.isInterrupt()) {
-                return error.Panic;
-            }
-            sp[ret] = res;
-            return cy.fiber.PcSp{
-                .pc = pc + cy.bytecode.CallObjSymInstLen,
-                .sp = sp,
-            };
+        .null => {
+            return vm.panic("Missing func");
         },
     }
-}
-
-/// Assumes there are overloaded methods.
-fn callFirstOverloadedMethod(
-    vm: *VM, pc: [*]cy.Inst, sp: [*]Value, mgId: vmc.MethodGroupId,
-    typeId: vmc.TypeId, ret: u8, numArgs: u8, 
-) !?cy.fiber.PcSp {
-    const mgExt = &vm.methodGroupExts.buf[mgId];
-    std.debug.assert(mgExt.mruTypeMethodGroupId != cy.NullId);
-
-    const tmg = vm.typeMethodGroups.buf[mgExt.mruTypeMethodGroupId];
-    std.debug.assert(tmg.head != tmg.tail);
-
-    var methodId = tmg.head;
-    while (methodId != cy.NullId) {
-        const method = vm.methods.buf[methodId];
-        if (methodId == mgExt.mruMethodId) {
-            // Skip mruMethod.
-            methodId = method.next;
-            continue;
-        }
-        if (try @call(.never_inline, callMethodNoInline, .{vm, pc, sp, method.type, method.data, typeId, ret, numArgs})) |res| {
-            // Update MethodGroup cache.
-            // TypeMethodGroup is updated on MethodGroup cache miss.
-            const mgPtr = &vm.methodGroups.buf[mgId];
-            mgPtr.mruMethodType = method.type;
-            mgPtr.mruMethodData = method.data;
-            mgExt.mruMethodId = methodId;
-
-            return res;
-        }
-        methodId = method.next;
-    }
-    return null;
-}
-
-/// Assumes cache hit on TypeMethodGroup.
-fn callMethodGroup(
-    vm: *VM, pc: [*]cy.Inst, sp: [*]Value, mgId: vmc.MethodGroupId, mg: rt.MethodGroup,
-    typeId: vmc.TypeId, startLocal: u8, numArgs: u8,
-) !?cy.fiber.PcSp {
-    if (try @call(.always_inline, callMethod, .{vm, pc, sp, mg.mruMethodType, mg.mruMethodData, typeId, startLocal, numArgs})) |res| {
-        return res;
-    }
-    if (mg.mruTypeMethodOverloaded) {
-        return @call(.never_inline, callFirstOverloadedMethod, .{vm, pc, sp, mgId, typeId, startLocal, numArgs});
-    }
-    return null;
 }
 
 inline fn deoptimizeBinOp(pc: [*]cy.Inst) void {
@@ -4209,19 +3997,11 @@ export fn zOtherToF64(val: Value) f64 {
 
 export fn zCallObjSym(
     vm: *cy.VM, pc: [*]cy.Inst, stack: [*]Value, recv: Value,
-    typeId: cy.TypeId, mgId: u8, startLocal: u8, numArgs: u8,
+    typeId: cy.TypeId, method: u16, ret: u8, numArgs: u8,
 ) vmc.CallObjSymResult {
-    const mbMethodGroup = vm.getCachedMethodGroupForType(typeId, mgId) catch {
-        return .{
-            .pc = undefined,
-            .stack = undefined,
-            .code = vmc.RES_CODE_UNKNOWN,
-        };
-    };
-    if (mbMethodGroup) |sym| {
-        const mb_res = @call(.always_inline, callMethodGroup, .{
-            vm, pc, stack, mgId, sym, typeId, startLocal, numArgs,
-        }) catch |err| {
+    const args = stack[ret+CallArgStart+1..ret+CallArgStart+1+numArgs-1];
+    if (vm.getCompatMethodFunc(typeId, method, args)) |func| {
+        const mb_res = callMethod(vm, pc, stack, func, typeId, ret, numArgs) catch |err| {
             if (err == error.Panic) {
                 return .{
                     .pc = undefined,
@@ -4244,7 +4024,7 @@ export fn zCallObjSym(
             };
         }
     }
-    const res = @call(.never_inline, callObjSymFallback, .{vm, pc, stack, recv, typeId, mgId, startLocal, numArgs}) catch |err| {
+    const res = @call(.never_inline, callObjSymFallback, .{vm, pc, stack, recv, typeId, method, ret, numArgs}) catch |err| {
         if (err == error.Panic) {
             return .{
                 .pc = undefined,

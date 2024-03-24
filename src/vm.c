@@ -442,25 +442,22 @@ static inline ValueResult allocHostFunc(VM* vm, void* func, u32 numParams, u32 r
 }
 
 static inline ValueResult allocFuncFromSym(VM* vm, FuncId funcId) {
-    FuncSymbol sym = ((FuncSymbol*)vm->funcSyms.buf)[funcId];
-    switch (sym.entryT) {
+    FuncSymbol func = ((FuncSymbol*)vm->funcSyms.buf)[funcId];
+    switch (func.type) {
         case FUNC_SYM_HOSTFUNC: {
-            u32 rFuncSigId = sym.innerExtra.nativeFunc1.rFuncSigId;
-            u16 numParams = sym.innerExtra.nativeFunc1.typedFlagNumParams & ~((u16)1 << 15);
-            bool reqCallTypeCheck = (sym.innerExtra.nativeFunc1.typedFlagNumParams & 0x8000) > 0;
-            return allocHostFunc(vm, sym.inner.nativeFunc1, numParams, rFuncSigId, reqCallTypeCheck);
-        }
-        case FUNC_SYM_FUNC: {
-            return allocLambda(vm, sym.inner.func.pc,
-                sym.inner.func.numParams,
-                sym.inner.func.stackSize,
-                sym.innerExtra.func.rFuncSigId,
-                sym.inner.func.reqCallTypeCheck
+            return allocHostFunc(vm, func.data.host_func,
+                func.nparams,
+                func.sig,
+                func.req_type_check
             );
         }
-        case FUNC_SYM_CLOSURE: {
-            retainObject(vm, sym.inner.closure);
-            return (ValueResult){ .val = VALUE_CYC_PTR(sym.inner.closure), .code = RES_CODE_SUCCESS };
+        case FUNC_SYM_FUNC: {
+            return allocLambda(vm, func.data.func.pc,
+                func.nparams,
+                func.data.func.stackSize,
+                func.sig,
+                func.req_type_check
+            );
         }
         default:
             zFatal();
@@ -1126,12 +1123,12 @@ beginSwitch:
     CASE(CallObjSym): {
         u8 ret = pc[1];
         u8 numArgs = pc[2];
-        u16 mgId = READ_U16(4);
+        u16 method = READ_U16(4);
 
         Value recv = stack[ret + CALL_ARG_START];
         TypeId typeId = getTypeId(recv);
 
-        CallObjSymResult res = zCallObjSym(vm, pc, stack, recv, typeId, mgId, ret, numArgs);
+        CallObjSymResult res = zCallObjSym(vm, pc, stack, recv, typeId, method, ret, numArgs);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }

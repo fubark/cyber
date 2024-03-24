@@ -276,22 +276,22 @@ pub fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
         log.tracev("jit prepare func: {s}", .{symPath});
     }
     if (func.type == .hostFunc) {
-        const funcSig = c.sema.getFuncSig(func.funcSigId);
+        // const funcSig = c.sema.getFuncSig(func.funcSigId);
         // const rtFunc = rt.FuncSymbol.initHostFunc(@ptrCast(func.data.hostFunc.ptr), funcSig.reqCallTypeCheck, funcSig.numParams(), func.funcSigId);
 
         // try c.genSymMap.putNoClobber(c.alloc, func, .{ .hostFuncSym = .{ .ptr = func.data.hostFunc }});
-        if (func.isMethod) {
-            const parentT = func.sym.?.head.parent.?.getStaticType().?;
-            const name = func.name();
-            const mgId = try c.vm.ensureMethodGroup(name);
-            if (funcSig.reqCallTypeCheck) {
-                const m = rt.MethodInit.initHostTyped(func.funcSigId, @ptrCast(func.data.hostFunc.ptr), func.numParams);
-                try c.vm.addMethod(parentT, mgId, m);
-            } else {
-                const m = rt.MethodInit.initHostUntyped(func.funcSigId, @ptrCast(func.data.hostFunc.ptr), func.numParams);
-                try c.vm.addMethod(parentT, mgId, m);
-            }
-        }
+        // if (func.isMethod) {
+        //     const parentT = func.sym.?.head.parent.?.getStaticType().?;
+        //     const name = func.name();
+        //     const mgId = try c.vm.ensureMethod(name);
+        //     if (funcSig.reqCallTypeCheck) {
+        //         const m = rt.MethodInit.initHostTyped(func.funcSigId, @ptrCast(func.data.hostFunc.ptr), func.numParams);
+        //         try c.vm.addMethod(parentT, mgId, m);
+        //     } else {
+        //         const m = rt.MethodInit.initHostUntyped(func.funcSigId, @ptrCast(func.data.hostFunc.ptr), func.numParams);
+        //         try c.vm.addMethod(parentT, mgId, m);
+        //     }
+        // }
     } else if (func.type == .userFunc) {
         // Func is patched later once funcPc and stackSize is obtained.
         // Method entry is also added later.
@@ -1051,19 +1051,20 @@ fn funcBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
 
     // Get stack size.
     const stackSize = c.getMaxUsedRegisters();
+    _ = stackSize;
 
-    // Add method entry.
-    if (func.isMethod) {
-        const mgId = try c.compiler.vm.ensureMethodGroup(func.name());
-        const funcSig = c.compiler.sema.getFuncSig(func.funcSigId);
-        if (funcSig.reqCallTypeCheck) {
-            const m = rt.MethodInit.initTyped(func.funcSigId, funcPc, stackSize, func.numParams);
-            try c.compiler.vm.addMethod(data.parentType, mgId, m);
-        } else {
-            const m = rt.MethodInit.initUntyped(func.funcSigId, funcPc, stackSize, func.numParams);
-            try c.compiler.vm.addMethod(data.parentType, mgId, m);
-        }
-    }
+    // // Add method entry.
+    // if (func.isMethod) {
+    //     const mgId = try c.compiler.vm.ensureMethod(func.name());
+    //     const funcSig = c.compiler.sema.getFuncSig(func.funcSigId);
+    //     if (funcSig.reqCallTypeCheck) {
+    //         const m = rt.MethodInit.initTyped(func.funcSigId, funcPc, stackSize, func.numParams);
+    //         try c.compiler.vm.addMethod(data.parentType, mgId, m);
+    //     } else {
+    //         const m = rt.MethodInit.initUntyped(func.funcSigId, funcPc, stackSize, func.numParams);
+    //         try c.compiler.vm.addMethod(data.parentType, mgId, m);
+    //     }
+    // }
 
     try bcgen.popFuncBlockCommon(c, func);
 }

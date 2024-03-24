@@ -13,8 +13,9 @@ let lib = ffi.bindLib(libPath)
 lib.testAdd(123, 234, 345)
 
 --cytest: error
---panic: Can not find compatible function for `testAdd(any, int, int, int) any` in `BindLib1`.
---Only `func testAdd(any, int, int) int` exists for the symbol `testAdd`.
+--panic: Can not find compatible method for call: `(BindLib1) testAdd(int, int, int)`.
+--Methods named `testAdd`:
+--    func testAdd(any, int, int) int
 --
 --main:13:1 main:
 --lib.testAdd(123, 234, 345)

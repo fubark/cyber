@@ -8,8 +8,9 @@ let o = S{}
 o.foo(234)
 
 --cytest: error
---panic: Can not find compatible function for `foo(any, int) any` in `S`.
---Only `func foo(S) dynamic` exists for the symbol `foo`.
+--panic: Can not find compatible method for call: `(S) foo(int)`.
+--Methods named `foo`:
+--    func foo(S) dynamic
 --
 --main:8:1 main:
 --o.foo(234)

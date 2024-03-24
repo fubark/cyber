@@ -1,5 +1,13 @@
 import t 'test'
 
+var a = true
+t.eq(a, true)
+
+a = false
+t.eq(a, false)
+
+t.assert(true != false)
+
 t.eq(bool(true), true)
 t.eq(bool(false), false)
 

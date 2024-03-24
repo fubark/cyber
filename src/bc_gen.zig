@@ -857,7 +857,7 @@ fn setCallObjSymTern(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
 
     const mgId = try c.compiler.vm.ensureMethodGroup(data.name);
     try pushCallObjSym(c, inst.ret, 3,
-        @intCast(mgId), 0, nodeId);
+        @intCast(mgId), nodeId);
 
     var retained = try popTempAndUnwinds2(c, args[0..3]);
 
@@ -1295,7 +1295,7 @@ fn genCallObjSym(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue
 
     const mgId = try c.compiler.vm.ensureMethodGroup(data.name);
     try pushCallObjSym(c, inst.ret, data.numArgs + 1,
-        @intCast(mgId), 0, nodeId);
+        @intCast(mgId), nodeId);
 
     const argvs = popValues(c, data.numArgs+1);
     try checkArgs(argStart, argvs);
@@ -2484,10 +2484,9 @@ fn forIterStmt(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const iterNodeId = header.data.forIterHeader.iterable;
     const eachNodeId = header.data.forIterHeader.eachClause;
 
-    const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any }, bt.Any);
     var extraIdx = try c.fmtExtraDesc("iterator()", .{});
     try pushCallObjSymExt(c, iterTemp, 1,
-        @intCast(c.compiler.iteratorMGID), @intCast(funcSigId),
+        @intCast(c.compiler.iteratorMGID),
         iterNodeId, extraIdx);
 
     try releaseIf(c, iterv.retained, iterv.reg, iterNodeId);
@@ -2556,10 +2555,9 @@ fn genIterNext(c: *Chunk, iterTemp: u8, hasCounter: bool, iterNodeId: cy.NodeId)
     var extraIdx = try c.fmtExtraDesc("push iterator arg", .{});
     try c.buf.pushOp2Ext(.copy, iterTemp, iterTemp + cy.vm.CallArgStart + 1, c.descExtra(iterNodeId, extraIdx));
 
-    const funcSigId = try c.sema.ensureFuncSig(&.{ bt.Any }, bt.Any);
     extraIdx = try c.fmtExtraDesc("next()", .{});
     try pushCallObjSymExt(c, iterTemp + 1, 1,
-        @intCast(c.compiler.nextMGID), @intCast(funcSigId),
+        @intCast(c.compiler.nextMGID),
         iterNodeId, extraIdx);
 
     if (hasCounter) {
@@ -3831,17 +3829,17 @@ pub fn reserveLocalReg(c: *Chunk, irVarId: u8, declType: types.TypeId, lifted: b
     return c.curBlock.nextLocalReg;
 }
 
-fn pushCallObjSym(c: *cy.Chunk, ret: u8, numArgs: u8, symId: u8, callSigId: u16, nodeId: cy.NodeId) !void {
-    try pushCallObjSymExt(c, ret, numArgs, symId, callSigId, nodeId, cy.NullId);
+fn pushCallObjSym(c: *cy.Chunk, ret: u8, numArgs: u8, method: u16, nodeId: cy.NodeId) !void {
+    try pushCallObjSymExt(c, ret, numArgs, method, nodeId, cy.NullId);
 }
 
-fn pushCallObjSymExt(c: *cy.Chunk, ret: u8, numArgs: u8, symId: u8, callSigId: u16, nodeId: cy.NodeId, extraIdx: u32) !void {
+fn pushCallObjSymExt(c: *cy.Chunk, ret: u8, numArgs: u8, method: u16, nodeId: cy.NodeId, extraIdx: u32) !void {
     try c.pushFailableDebugSym(nodeId);
     const start = c.buf.ops.items.len;
     try c.buf.pushOpSliceExt(.callObjSym, &.{
-        ret, numArgs, 0, symId, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ret, numArgs, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
     }, c.descExtra(nodeId, extraIdx));
-    c.buf.setOpArgU16(start + 5, callSigId);
+    c.buf.setOpArgU16(start + 4, method);
 }
 
 fn pushInlineUnExpr(c: *cy.Chunk, code: cy.OpCode, child: u8, dst: u8, nodeId: cy.NodeId) !void {

@@ -23,30 +23,30 @@ var existing = ''
 -- Determine where in the output file to emit generated bindings.
 -- Also collect existing symbols that should be skipped.
 -- Build skip map.
-existing = try os.readFile(args.o) catch ''
+existing = try os.readFile(args['o']) catch ''
 if existing != '':
     markerPos = existing.find("\n-- CBINDGEN MARKER") ?else existing.len()
 
     -- Only parse section before the marker since the gen part could contain bad syntax.
     var res = parseCyber(existing[..markerPos])
     for res['decls'] -> decl:
-        if decl.pos < markerPos:
-            switch decl.type
+        if decl['pos'] < markerPos:
+            switch decl['type']
             case 'func':
-                skipMap[decl.name] = true
+                skipMap[decl['name']] = true
             case 'funcInit':
-                skipMap[decl.name] = true
+                skipMap[decl['name']] = true
             case 'object':
-                skipMap[decl.name] = true
+                skipMap[decl['name']] = true
             case 'variable':
-                if decl.name == 'libPath':
+                if decl['name'] == 'libPath':
                     existingLibPath = true
 
-if args.rest.len() <= 2:
+if args['rest'].len() <= 2:
     print 'Missing path to header file.'
     os.exit(1)
 
-let headerPath = args.rest[2]
+let headerPath = args['rest'][2]
 print headerPath
 
 var headerSrc = os.readFile(headerPath)
@@ -103,15 +103,8 @@ for funcs -> fn:
             finalParams.append(param as symbol)
     var finalRet = ensureBindType(fn.ret)
     out += "    ffi.cfunc('$(fn.name)', [$(finalParams.join(', '))], $(finalRet))\n"
-var libPath = if (existingLibPath) 'libPath' else "'$(args.libpath)'"
-out += "    let lib = ffi.bindLib([?String some: $(libPath)], [genMap: true])\n"
-
--- Reassign to static funcs.
-for funcs -> fn:
-    if skipMap.contains(fn.name):
-        out += '-- '
-    out += "    $(getApiName(fn.name)) = lib['$(fn.name)']\n"
-
+var libPath = if (existingLibPath) 'libPath' else "'$(args['libpath'])'"
+out += "    let lib = ffi.bindLib([?String some: $(libPath)], [genMap: false])\n"
 out += "    return lib\n\n"
 
 -- Generate macros.
@@ -120,7 +113,7 @@ genMacros(headerPath)
 -- Final output.
 out = existing[0..markerPos] + "\n-- CBINDGEN MARKER\n" + out
 
-os.writeFile(args.o, out)
+os.writeFile(args['o'], out)
 
 -- Declarations.
 
@@ -140,7 +133,7 @@ var .funcs = []
 -- var vars = [:]            -- varName -> bindingType
 
 func getTranslationUnit(headerPath String):
-    var rest List = args.rest[3..]
+    var rest List = args['rest'][3..]
 
     var cargs = os.malloc(8 * rest.len())
     for rest -> arg, i:
@@ -154,7 +147,7 @@ func getTranslationUnit(headerPath String):
         clang.CXTranslationUnit_DetailedPreprocessingRecord | clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_KeepGoing)
 
 func getMacrosTranslationUnit(hppPath String):
-    var rest List = args.rest[3..]
+    var rest List = args['rest'][3..]
 
     var cargs = os.malloc(8 * rest.len())
     for rest -> arg, i:
@@ -250,7 +243,7 @@ let rootVisitor(cursor, parent, state):
             return clang.CXChildVisit_Continue
 
         structs.append(effName)
-        if skipMap[effName]:
+        if skipMap.contains(effName):
             out += "-- type $(getApiName(effName)):\n"
             skipChildren = true
         else:
@@ -289,8 +282,8 @@ let rootVisitor(cursor, parent, state):
 
         var cxName = clang.lib.clang_getCursorSpelling(cursor)
         var funcName = fromCXString(cxName)
-        var fn = [:]
-        fn['name'] = funcName
+        var fn = [Func:]
+        fn.name = funcName
 
         var cxFunc = clang.lib.clang_getCursorType(cursor)
         var cxRet = clang.lib.clang_getResultType(cxFunc)
@@ -304,7 +297,8 @@ let rootVisitor(cursor, parent, state):
             var cxParam = clang.lib.clang_Cursor_getArgument(cursor, i)
             var cxParamName = clang.lib.clang_getCursorSpelling(cxParam)
             var paramName = fromCXString(cxParamName)
-            if paramName == '': paramName = "param$(i)"
+            if paramName == '' or reserved_keywords.contains(paramName):
+                paramName = "param$(i)"
             var cxParamType = clang.lib.clang_getArgType(cxFunc, i)
             var paramT = toBindType(cxParamType)
 
@@ -317,15 +311,28 @@ let rootVisitor(cursor, parent, state):
         outFunc += ') '
 
         var retT = toBindType(cxRet)
-        outFunc += "$(toCyType(retT, true)): pass"
+        outFunc += toCyType(retT, true)
 
         if skipMap.contains(funcName):
-            outFunc = '-- ' + outFunc
+            outFunc = "--$(outFunc)\n"
+        else:
+            outFunc += ":\n"
+            outFunc += "    return lib.$(funcName)("
+            for 0..numParams -> i:
+                var cxParam = clang.lib.clang_Cursor_getArgument(cursor, i)
+                var cxParamName = clang.lib.clang_getCursorSpelling(cxParam)
+                var paramName = fromCXString(cxParamName)
+                if paramName == '' or reserved_keywords.contains(paramName):
+                    paramName = "param$(i)"
+                outFunc += paramName
+                if i < numParams-1:
+                    outFunc += ', '
+            outFunc += ")\n"
 
-        out += "$(outFunc)\n"
+        out += outFunc
 
-        fn['params'] = fnParamTypes
-        fn['ret'] = retT
+        fn.params = fnParamTypes
+        fn.ret = retT
         funcs.append(fn)
 
     case clang.CXCursor_VarDecl:
@@ -466,12 +473,12 @@ let macrosRootVisitor(cursor, parent, state):
                 clang.lib.clang_visitChildren(initCur, cvisitor, cstate)
                 clang.ffi.unbindObjPtr(state)
 
-                var initT = state.data.type
+                var initT = state.data['type']
 
                 let struct = getStruct(initT)
                 var kvs = []
                 for struct.fieldNames -> fieldn, i:
-                    kvs.append("$(fieldn): $(state.data.args[i])")
+                    kvs.append("$(fieldn): $(state.data['args'][i])")
                 out += "var .$(finalName) $(initT) = [$(initT) $(kvs.join(', '))]\n"
             else:
                 print "init $(initName) $(initCur.kind)"
@@ -537,9 +544,9 @@ func ensureBindType(nameOrSym any):
         return nameOrSym
 
 func getStruct(name any):
-    if structMap[name]:
+    if structMap.contains(name):
         return structMap[name]
-    if aliases[name]:
+    if aliases.contains(name):
         var alias = aliases[name]
         return structMap[alias]
     return false
@@ -604,8 +611,15 @@ let toBindType(cxType):
         throw error.Unsupported
 
 func getApiName(name String):
-    if name.startsWith(args.stripPrefix):
-        name = name[args.stripPrefix.len()..]
+    if name.startsWith(args['stripPrefix']):
+        name = name[args['stripPrefix'].len()..]
     if name.startsWith('_'):
         name = name[1..]
     return name
+
+var .reserved_keywords = ['type': true]
+
+type Func:
+    name dynamic
+    params dynamic
+    ret dynamic

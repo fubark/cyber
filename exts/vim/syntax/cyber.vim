@@ -1,8 +1,9 @@
 " Match language specific keywords
 syntax keyword cyberKeyword
-    \ if then else match while for each break continue pass
+    \ if else switch while for each break continue pass
     \ or and not is
-    \ var static capture as
+    \ var as
+    \ let
     \ func return
     \ coinit coyield coresume
     \ type object enum true false none

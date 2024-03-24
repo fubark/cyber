@@ -1126,8 +1126,7 @@ beginSwitch:
     CASE(CallObjSym): {
         u8 ret = pc[1];
         u8 numArgs = pc[2];
-        u8 mgId = pc[4];
-        // u16 anySelfFuncSigId = READ_U16(5);
+        u16 mgId = READ_U16(4);
 
         Value recv = stack[ret + CALL_ARG_START];
         TypeId typeId = getTypeId(recv);

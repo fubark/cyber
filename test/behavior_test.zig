@@ -232,6 +232,8 @@ if (!aot) {
     // run.case2(.{ .silent = true }, "meta/dump_locals.cy");
     run.case("meta/get_panic.cy"); 
     run.case("meta/get_set.cy"); 
+    run.case("meta/init_pair.cy"); 
+    run.case("meta/init_pair_error.cy"); 
     run.case("meta/metatype.cy");
     run.case("meta/set_panic.cy"); 
 

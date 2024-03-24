@@ -32,6 +32,7 @@ pub const Type = extern struct {
     // symType: cy.sym.SymType,
     has_get_method: bool = false,
     has_set_method: bool = false,
+    has_init_pair_method: bool = false,
     data: extern union {
         // This is duped from ObjectType so that object creation/destruction avoids the lookup from `sym`.
         object: extern struct {

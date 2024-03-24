@@ -2595,6 +2595,8 @@ let v = Vec3{1, 2, 3}
   * [Custom operators.](#custom-operators)
 * [Magic functions.](#magic-functions)
   * [Call module.](#call-module)
+  * [`$initRecord` method.](#initrecord-method)
+  * [`$initPair` method.](#initpair-method)
   * [`$get` method.](#get-method)
   * [`$set` method.](#set-method)
   * [Missing method.](#missing-method)
@@ -2697,6 +2699,23 @@ func Vec2.'$call'(x float, y float) Vec2:
 
 var v = Vec2(1, 2)
 ```
+
+### `$initRecord` method.
+> _Planned Feature_
+
+### `$initPair` method.
+The `$initPair` method overrides the record initializer.
+After an instance of the type is created from its default record initializer, this method is invoked for each key-value pair in the record literal:
+```cy
+type MyMap:
+    func '$initPair'(key any, value any) void:
+        print "$(key): $(value)"
+
+var m = MyMap{ a: 123, b: 234 }
+--> a: 123
+--> b: 234
+```
+`$initPair` is only allowed if the type has a default record initializer or `$initRecord` is declared.
 
 ### `$get` method.
 The `$get` method allows overriding field accesses for **undeclared fields**:

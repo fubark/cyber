@@ -3556,6 +3556,20 @@ pub const ChunkExt = struct {
 
     /// `initializerId` is a record literal node.
     pub fn semaObjectInit2(c: *cy.Chunk, obj: *cy.sym.ObjectType, initializerId: cy.NodeId) !ExprResult {
+        const type_e = c.sema.types.items[obj.type];
+        if (type_e.has_init_pair_method) {
+            if (obj.numFields == 0) {
+                const init = try c.ir.pushExpr(.object_init, c.alloc, obj.type, initializerId, .{
+                    .typeId = obj.type, .numArgs = 0, .args = 0,
+                });
+                return semaWithInitPairs(c, @ptrCast(obj), obj.type, initializerId, init);
+            } else {
+                const type_name = try c.sema.allocTypeName(obj.type);
+                defer c.alloc.free(type_name);
+                return c.reportErrorFmt("Type `{}` can not initialize with `$initPair` since it does not have a default record initializer.", &.{v(type_name)}, initializerId);
+            }
+        }
+
         // Set up a temp buffer to map initializer entries to type fields.
         const fieldsDataStart = c.listDataStack.items.len;
         try c.listDataStack.resize(c.alloc, c.listDataStack.items.len + obj.numFields);
@@ -3618,13 +3632,13 @@ pub const ChunkExt = struct {
                 // create temp with object.
                 const var_id = try declareLocalName(c, "$temp", obj.type, true, initializerId);
                 const temp_ir_id = c.varStack.items[var_id].inner.local.id;
-                var temp_expr = try c.ir.pushExpr(.local, c.alloc, obj.type, initializerId, .{ .id = temp_ir_id });
                 const temp_ir = c.varStack.items[var_id].inner.local.declIrStart;
                 const decl_stmt = c.ir.getStmtDataPtr(temp_ir, .declareLocalInit);
                 decl_stmt.init = irIdx;
                 decl_stmt.initType = CompactType.initStatic(obj.type);
 
                 // setFieldDyn.
+                const temp_expr = try c.ir.pushExpr(.local, c.alloc, obj.type, initializerId, .{ .id = temp_ir_id });
                 for (undecls) |undecl| {
                     const entry = c.ast.node(undecl.nodeId);
                     const field_name = c.ast.nodeStringById(entry.data.keyValue.key);
@@ -3637,7 +3651,6 @@ pub const ChunkExt = struct {
                 }
 
                 // return temp.
-                temp_expr = try c.ir.pushExpr(.local, c.alloc, obj.type, initializerId, .{ .id = temp_ir_id });
                 _ = try c.ir.pushStmt(c.alloc, .exprStmt, initializerId, .{
                     .expr = temp_expr,
                     .isBlockResult = true,
@@ -3822,6 +3835,19 @@ pub const ChunkExt = struct {
         try matcher.matchArg(c, arg2_n, 1, arg2);
         try matcher.matchEnd(c, node);
 
+        return c.semaCallFuncSymResult(loc, &matcher, node);
+    }
+
+    pub fn semaCallFuncSymN(c: *cy.Chunk, sym: *cy.sym.FuncSym, arg_nodes: []const cy.NodeId, args: []const ExprResult, ret_cstr: ReturnCstr, node: cy.NodeId) !ExprResult {
+        var matcher = try FuncMatcher.init(c, sym, @intCast(args.len), ret_cstr);
+        defer matcher.deinit(c);
+
+        for (args, 0..) |arg, i| {
+            try matcher.matchArg(c, arg_nodes[i], @intCast(i), arg);
+        }
+        try matcher.matchEnd(c, node);
+
+        const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
         return c.semaCallFuncSymResult(loc, &matcher, node);
     }
 
@@ -4981,6 +5007,57 @@ pub const ChunkExt = struct {
         }
     }
 };
+
+fn semaWithInitPairs(c: *cy.Chunk, type_sym: *cy.Sym, type_id: cy.TypeId, record_id: cy.NodeId, init: u32) !ExprResult {
+    const init_pair = type_sym.getMod().?.getSym("$initPair").?;
+    const record = c.ast.node(record_id);
+
+    const expr = try c.ir.pushExpr(.blockExpr, c.alloc, type_id, record_id, .{ .bodyHead = cy.NullId });
+    try pushBlock(c, record_id);
+    {
+        // create temp with object.
+        const var_id = try declareLocalName(c, "$temp", type_id, true, record_id);
+        const temp_ir_id = c.varStack.items[var_id].inner.local.id;
+        const temp_ir = c.varStack.items[var_id].inner.local.declIrStart;
+        const decl_stmt = c.ir.getStmtDataPtr(temp_ir, .declareLocalInit);
+        decl_stmt.init = init;
+        decl_stmt.initType = CompactType.initStatic(type_id);
+
+        // call $initPair for each record pair.
+        const temp_loc = try c.ir.pushExpr(.local, c.alloc, type_id, record_id, .{ .id = temp_ir_id });
+        const temp_expr = ExprResult.init(temp_loc, CompactType.initStatic(type_id));
+        var entry_id = record.data.recordLit.argHead;
+        while (entry_id != cy.NullNode) {
+            const entry = c.ast.node(entry_id);
+
+            const key = c.ast.node(entry.data.keyValue.key);
+            const key_name = c.ast.nodeString(key);
+            const key_expr = try c.semaString(key_name, entry.data.keyValue.key);
+            const val_expr = try c.semaExpr(entry.data.keyValue.value, .{});
+
+            const call = try c.semaCallFuncSymN(init_pair.cast(.func),
+                &.{record_id, entry.data.keyValue.key, entry.data.keyValue.value},
+                &.{temp_expr, key_expr, val_expr},
+                .any, entry_id);
+
+            _ = try c.ir.pushStmt(c.alloc, .exprStmt, entry_id, .{
+                .expr = call.irIdx,
+                .isBlockResult = false,
+            });
+
+            entry_id = entry.next();
+        }
+
+        // return temp.
+        _ = try c.ir.pushStmt(c.alloc, .exprStmt, record_id, .{
+            .expr = temp_loc,
+            .isBlockResult = true,
+        });
+    }
+    const stmtBlock = try popBlock(c);
+    c.ir.getExprDataPtr(expr, .blockExpr).bodyHead = stmtBlock.first;
+    return ExprResult.initStatic(expr, type_id);
+}
 
 fn semaStructCompare(c: *cy.Chunk, left: ExprResult, left_id: cy.NodeId, op: cy.BinaryExprOp,
     right: ExprResult, right_id: cy.NodeId, left_te: cy.types.Type, node_id: cy.NodeId) !ExprResult {

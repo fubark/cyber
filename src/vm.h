@@ -670,6 +670,7 @@ typedef struct TypeEntry {
     u8 kind;
     bool has_get_method;
     bool has_set_method;
+    bool has_init_pair_method;
     union {
         struct {
             u16 numFields;

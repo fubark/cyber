@@ -257,6 +257,9 @@ pub const Compiler = struct {
             if (type_e.sym.getMod().?.getSym("$set") != null) {
                 type_e.has_set_method = true;
             }
+            if (type_e.sym.getMod().?.getSym("$initPair") != null) {
+                type_e.has_init_pair_method = true;
+            }
         }
 
         // Compute type sizes after type fields have been resolved.

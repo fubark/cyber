@@ -26,7 +26,7 @@ pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callco
     return false;
 }
 
-const zErrFunc = cy.builtins.zErrFunc2;
+const zErrFunc = cy.builtins.zErrFunc;
 const cFunc = cy.builtins.cFunc;
 
 const NameHostFunc = struct { []const u8, cy.ZHostFuncFn };

@@ -429,6 +429,11 @@ pub const VM = struct {
             self.inlineSaves.deinit(self.alloc);
         }
 
+        for (self.names.items()) |name| {
+            if (name.owned) {
+                self.alloc.free(name.ptr[0..name.len]);
+            }
+        }
         if (reset) {
             self.varSymExtras.clearRetainingCapacity();
             self.names.clearRetainingCapacity();

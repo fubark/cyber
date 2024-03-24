@@ -32,21 +32,21 @@ const NameFunc = struct { []const u8, cy.ZHostFuncFn };
 const funcs = [_]NameFunc{
     // Utils.
     .{"copy",           copy},
-    .{"dump",           zErrFunc2(dump)},
-    .{"errorReport",    zErrFunc2(errorReport)},
-    .{"getObjectRc",    zErrFunc2(getObjectRc)},
+    .{"dump",           zErrFunc(dump)},
+    .{"errorReport",    zErrFunc(errorReport)},
+    .{"getObjectRc",    zErrFunc(getObjectRc)},
     .{"is",             is},
     .{"isAlpha",        isAlpha},
     .{"isDigit",        isDigit},
     .{"isNone",         isNone},
-    .{"must",           zErrFunc2(must)},
-    .{"panic",          zErrFunc2(panic)},
-    .{"parseCyber",     zErrFunc2(parseCyber)},
-    .{"parseCyon",      zErrFunc2(parseCyon)},
-    .{"performGC",      zErrFunc2(performGC)},
+    .{"must",           zErrFunc(must)},
+    .{"panic",          zErrFunc(panic)},
+    .{"parseCyber",     zErrFunc(parseCyber)},
+    .{"parseCyon",      zErrFunc(parseCyon)},
+    .{"performGC",      zErrFunc(performGC)},
     .{"print",          print},
-    .{"runestr",        zErrFunc2(runestr)},
-    .{"toCyon",         zErrFunc2(toCyon)},
+    .{"runestr",        zErrFunc(runestr)},
+    .{"toCyon",         zErrFunc(toCyon)},
     .{"typeof",         typeof},
     .{"typesym",        cFunc(typesym)},
 
@@ -77,8 +77,8 @@ const funcs = [_]NameFunc{
     .{"$infix||", bindings.intXor},
     .{"$infix<<", bindings.intLeftShift},
     .{"$infix>>", bindings.intRightShift},
-    .{"fmt", zErrFunc2(intFmt)},
-    .{"fmt", zErrFunc2(intFmt2)},
+    .{"fmt", zErrFunc(intFmt)},
+    .{"fmt", zErrFunc(intFmt2)},
     .{"int.'$call'", intCall},
 
     // float
@@ -97,13 +97,13 @@ const funcs = [_]NameFunc{
 
     // List
     .{"$index",     bindings.listIndex},
-    .{"$index",     zErrFunc2(bindings.listSlice)},
+    .{"$index",     zErrFunc(bindings.listSlice)},
     .{"$setIndex",  bindings.listSetIndex},
-    .{"append",     zErrFunc2(bindings.listAppendList)},
-    .{"append",     zErrFunc2(bindings.listAppend)},
+    .{"append",     zErrFunc(bindings.listAppendList)},
+    .{"append",     zErrFunc(bindings.listAppend)},
     .{"insert",     bindings.listInsert},
     .{"iterator",   bindings.listIterator},
-    .{"join",       zErrFunc2(bindings.listJoin)},
+    .{"join",       zErrFunc(bindings.listJoin)},
     .{"len",        bindings.listLen},
     .{"remove",     bindings.listRemove},
     .{"resize",     bindings.listResize},
@@ -118,7 +118,7 @@ const funcs = [_]NameFunc{
 
     // Map
     .{"$index", bindings.mapIndex},
-    .{"$setIndex", zErrFunc2(bindings.mapSetIndex)},
+    .{"$setIndex", zErrFunc(bindings.mapSetIndex)},
     .{"contains", bindings.mapContains},
     .{"get", bindings.mapGet},
     .{"remove", bindings.mapRemove},
@@ -136,22 +136,22 @@ const funcs = [_]NameFunc{
     .{"find", string.find},
     .{"findAnyRune", string.findAnyRune},
     .{"findRune", string.findRune},
-    .{"insert", zErrFunc2(string.insertFn)},
+    .{"insert", zErrFunc(string.insertFn)},
     .{"isAscii", string.isAscii},
     .{"len", string.lenFn},
     .{"less", string.less},
     .{"lower", string.lower},
     .{"replace", string.stringReplace},
     .{"repeat", string.repeat},
-    .{"seek", zErrFunc2(string.seek)},
-    .{"sliceAt", zErrFunc2(string.sliceAt)},
-    .{"$index", zErrFunc2(string.runeAt)},
+    .{"seek", zErrFunc(string.seek)},
+    .{"sliceAt", zErrFunc(string.sliceAt)},
+    .{"$index", zErrFunc(string.runeAt)},
     .{"$index", string.sliceFn},
-    .{"split", zErrFunc2(string.split)},
+    .{"split", zErrFunc(string.split)},
     .{"startsWith", string.startsWith},
     .{"trim", string.trim},
     .{"upper", string.upper},
-    .{"String.'$call'", zErrFunc2(string.stringCall)},
+    .{"String.'$call'", zErrFunc(string.stringCall)},
 
     // Array
     .{"$infix+",        arrayConcat},
@@ -162,29 +162,29 @@ const funcs = [_]NameFunc{
     .{"find",           arrayFind},
     .{"findAnyByte",    arrayFindAnyByte},
     .{"findByte",       arrayFindByte},
-    .{"fmt",            zErrFunc2(arrayFmt)},
-    .{"getByte",        zErrFunc2(arrayGetByte)},
-    .{"getInt",         zErrFunc2(arrayGetInt)},
-    .{"getInt32",       zErrFunc2(arrayGetInt32)},
+    .{"fmt",            zErrFunc(arrayFmt)},
+    .{"getByte",        zErrFunc(arrayGetByte)},
+    .{"getInt",         zErrFunc(arrayGetInt)},
+    .{"getInt32",       zErrFunc(arrayGetInt32)},
     .{"insert",         arrayInsert},
     .{"insertByte",     arrayInsertByte},
     .{"len",            arrayLen},
-    .{"repeat",         zErrFunc2(arrayRepeat)},
+    .{"repeat",         zErrFunc(arrayRepeat)},
     .{"replace",        arrayReplace},
-    .{"$index",         zErrFunc2(arrayGetByte)},
+    .{"$index",         zErrFunc(arrayGetByte)},
     .{"$index",         arraySlice},
-    .{"split",          zErrFunc2(arraySplit)},
+    .{"split",          zErrFunc(arraySplit)},
     .{"startsWith",     arrayStartsWith},
-    .{"trim",           zErrFunc2(arrayTrim)},
-    .{"Array.'$call'",  zErrFunc2(arrayCall)},
+    .{"trim",           zErrFunc(arrayTrim)},
+    .{"Array.'$call'",  zErrFunc(arrayCall)},
 
     // pointer
     .{"addr", pointerAddr},
     .{"asObject", pointerAsObject},
-    .{"fromCstr", zErrFunc2(pointerFromCstr)},
-    .{"get", zErrFunc2(pointerGet)},
-    .{"set", zErrFunc2(pointerSet)},
-    .{"toArray", zErrFunc2(pointerToArray)},
+    .{"fromCstr", zErrFunc(pointerFromCstr)},
+    .{"get", zErrFunc(pointerGet)},
+    .{"set", zErrFunc(pointerSet)},
+    .{"toArray", zErrFunc(pointerToArray)},
     .{"pointer.'$call'", pointerCall},
 
     // ExternFunc
@@ -343,7 +343,7 @@ pub fn cFunc(func: *const fn (vm: cy.Context, args: [*]const Value, nargs: u8) c
     return @ptrCast(func);
 }
 
-pub fn zErrFunc2(comptime func: fn (vm: *cy.VM, args: [*]const Value, nargs: u8) anyerror!Value) cy.ZHostFuncFn {
+pub fn zErrFunc(comptime func: fn (vm: *cy.VM, args: [*]const Value, nargs: u8) anyerror!Value) cy.ZHostFuncFn {
     const S = struct {
         pub fn genFunc(vm: *cy.VM, args: [*]const Value, nargs: u8) callconv(.C) Value {
             return @call(.always_inline, func, .{vm, args, nargs}) catch |err| {
@@ -352,17 +352,6 @@ pub fn zErrFunc2(comptime func: fn (vm: *cy.VM, args: [*]const Value, nargs: u8)
         }
     };
     return @ptrCast(&S.genFunc);
-}
-
-pub fn zErrFunc(comptime func: fn (vm: *cy.UserVM, args: [*]const Value, nargs: u8) anyerror!Value) cy.ZHostFuncFn {
-    const S = struct {
-        pub fn genFunc(vm: *cy.VM, args: [*]const Value, nargs: u8) Value {
-            return @call(.always_inline, func, .{@as(*cy.UserVM, @ptrCast(vm)), args, nargs}) catch |err| {
-                return @call(.never_inline, prepThrowZError, .{vm, err, @errorReturnTrace()});
-            };
-        }
-    };
-    return S.genFunc;
 }
 
 pub fn prepThrowZError(ctx: cy.Context, err: anyerror, optTrace: ?*std.builtin.StackTrace) Value {

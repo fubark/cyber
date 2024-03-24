@@ -733,6 +733,8 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(NegFloat),
         JENTRY(ObjectSmall),
         JENTRY(Object),
+        JENTRY(DynObjectSmall),
+        JENTRY(DynObject),
         JENTRY(Ref),
         JENTRY(RefCopyObj),
         JENTRY(SetRef),
@@ -1442,7 +1444,8 @@ beginSwitch:
                 WRITE_U16(5, OBJ_TYPEID(obj));
                 pc[7] = offset;
             } else {
-                Value res = zGetFieldFallback(vm, obj, ((FieldSymbolMap*)vm->fieldSyms.buf)[symId].nameId);
+                NameId name_id = ((FieldSymbolMap*)vm->fieldSyms.buf)[symId].nameId;
+                Value res = zGetFieldFallback(vm, obj, name_id);
                 if (res == VALUE_INTERRUPT) {
                     RETURN(RES_CODE_PANIC);
                 }
@@ -1611,6 +1614,35 @@ beginSwitch:
         pc += 6;
         NEXT();
     }
+    CASE(DynObjectSmall): {
+        u16 typeId = READ_U16(1);
+        u8 start = pc[3];
+        u8 num_undecls = pc[4];
+        u16* undecl_keys = (u16*)(pc + 6);
+        Value* undecls = stack + start;
+        ValueResult res = zAllocDynObjectSmall(vm, typeId, undecl_keys, undecls, num_undecls);
+        if (res.code != RES_CODE_SUCCESS) {
+            RETURN(res.code);
+        }
+        stack[pc[5]] = res.val;
+        pc += 6 + num_undecls * 2;
+        NEXT();
+    }
+    CASE(DynObject): {
+        u16 typeId = READ_U16(1);
+        u8 start = pc[3];
+        u8 nargs = pc[4];
+        u8 num_undecls = pc[5];
+        u16* undecl_keys = (u16*)(pc + 7);
+        Value* undecls = stack + start + nargs;
+        ValueResult res = zAllocDynObject(vm, typeId, stack + start, nargs, undecl_keys, undecls, num_undecls);
+        if (res.code != RES_CODE_SUCCESS) {
+            RETURN(res.code);
+        }
+        stack[pc[6]] = res.val;
+        pc += 7 + num_undecls * 2;
+        NEXT();
+    }
     CASE(Ref): {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
         Value* src = (Value*)obj->pointer.ptr;
@@ -1658,8 +1690,8 @@ beginSwitch:
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
             u16 fieldId = READ_U16(2);
             u8 offset = getFieldOffset(vm, obj, fieldId);
+            Value val = stack[pc[4]];
             if (offset != NULL_U8) {
-                Value val = stack[pc[4]];
                 FieldSymbolMap* symMap = ((FieldSymbolMap*)vm->fieldSyms.buf) + fieldId;
                 u32 fieldTypeId = symMap->mruFieldTypeSymId;
                 TypeId rightTypeId = getTypeId(val);
@@ -1679,12 +1711,15 @@ beginSwitch:
                 WRITE_U16(5, OBJ_TYPEID(obj));
                 WRITE_U16(7, rightTypeId);
                 pc[9] = offset;
-                pc += 10;
-                NEXT();
             } else {
-                panicFieldMissing(vm);
-                RETURN(RES_CODE_PANIC);
+                NameId name_id = ((FieldSymbolMap*)vm->fieldSyms.buf)[fieldId].nameId;
+                ResultCode code = zSetFieldFallback(vm, obj, name_id, val);
+                if (code != RES_CODE_SUCCESS) {
+                    RETURN(code);
+                }
             }
+            pc += 10;
+            NEXT();
         } else {
             // return vm.setFieldNotObjectError();
             RETURN(RES_CODE_UNKNOWN);

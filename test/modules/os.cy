@@ -133,13 +133,13 @@ my entries = []
 while iter.next() -> n:
     entries.append(n)
 t.eq(entries.len(), 3)
-entries.sort((a, b) => a.name.less(b.name))
-t.eq(entries[0].name, 'dir2')
-t.eq(entries[0].type, .dir)
-t.eq(entries[1].name, 'file.txt')
-t.eq(entries[1].type, .file)
-t.eq(entries[2].name, 'file2.txt')
-t.eq(entries[2].type, .file)
+entries.sort((a, b) => a['name'].less(b['name']))
+t.eq(entries[0]['name'], 'dir2')
+t.eq(entries[0]['type'], .dir)
+t.eq(entries[1]['name'], 'file.txt')
+t.eq(entries[1]['type'], .file)
+t.eq(entries[2]['name'], 'file2.txt')
+t.eq(entries[2]['type'], .file)
 
 -- Dir.walk()
 dir = os.openDir('test/assets/dir', true)
@@ -148,14 +148,14 @@ entries = []
 while iter.next() -> n:
     entries.append(n)
 t.eq(entries.len(), 4)
-entries.sort((a, b) => a.path.less(b.path))
-t.eq(entries[0].path, 'dir2')
+entries.sort((a, b) => a['path'].less(b['path']))
+t.eq(entries[0]['path'], 'dir2')
 if os.system == 'windows':
-    t.eq(entries[1].path, 'dir2\file.txt')
+    t.eq(entries[1]['path'], 'dir2\file.txt')
 else:
-    t.eq(entries[1].path, 'dir2/file.txt')
-t.eq(entries[2].path, 'file.txt')
-t.eq(entries[3].path, 'file2.txt')
+    t.eq(entries[1]['path'], 'dir2/file.txt')
+t.eq(entries[2]['path'], 'file.txt')
+t.eq(entries[3]['path'], 'file2.txt')
 
 -- writeFile()
 if os.cpu != 'wasm32':

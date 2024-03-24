@@ -29,6 +29,7 @@ pub const NodeType = enum(u8) {
     coyield,
     decLit,
     dirModifier,
+    dynobject_decl,
     eachClause,
     else_block,
     enumDecl,

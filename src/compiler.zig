@@ -656,6 +656,10 @@ fn declareImportsAndTypes(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
                         const sym = try sema.declareStruct(chunk, decl.nodeId);
                         decl.data = .{ .sym = @ptrCast(sym) };
                     },
+                    .dynobject_t => {
+                        const sym = try sema.declareDynObject(chunk, decl.nodeId);
+                        decl.data = .{ .sym = @ptrCast(sym) };
+                    },
                     .object => {
                         const sym = try sema.declareObject(chunk, decl.nodeId);
                         // Persist for declareObjectMembers.
@@ -859,6 +863,7 @@ fn declareSymbols(self: *Compiler) !void {
                 .funcInit => {
                     try sema.declareFuncInit(chunk, @ptrCast(chunk.sym), decl.nodeId);
                 },
+                .dynobject_t,
                 .struct_t,
                 .object => {
                     try sema.declareObjectFields(chunk, decl.data.sym, decl.nodeId);
@@ -869,7 +874,7 @@ fn declareSymbols(self: *Compiler) !void {
                 },
                 .distinct_t => {
                     if (decl.data.sym.type == .distinct_t) {
-                        const sym = try sema.resolveTypeCopy(chunk, @ptrCast(decl.data.sym));
+                        const sym = try sema.resolveDistinctType(chunk, @ptrCast(decl.data.sym));
                         last_type_sym = sym;
                     } else {
                         last_type_sym = decl.data.sym;

@@ -104,7 +104,7 @@ t.eq(testAdd(123, 321), 444)
 ffi = os.newFFI()
 ffi.cfunc('testAdd', [.int, .int], .int)
 lib = ffi.bindLib(libPath, [genMap: true])
-staticAdd = lib.testAdd
+staticAdd = lib['testAdd']
 func staticAdd(a int, b int) int:
     pass
 

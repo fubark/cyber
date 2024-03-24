@@ -82,7 +82,8 @@ pub const ExprCode = enum(u8) {
     coresume,
 
     local,
-    objectInit,
+    object_init,
+    dynobject_init,
 
     fieldDyn,
     field,
@@ -272,8 +273,17 @@ pub const Field = struct {
     numNestedFields: u8,
 };
 
+pub const DynObjectInit = struct {
+    type: TypeId,
+    args: Loc,
+    nargs: u8,
+    undecls: Loc,
+    num_undecls: u8,
+};
+
 pub const ObjectInit = struct {
     typeId: TypeId,
+    args: Loc,
     numArgs: u8,
 };
 
@@ -636,7 +646,8 @@ pub fn ExprData(comptime code: ExprCode) type {
         .array => Array,
         .string => String,
         .stringTemplate => StringTemplate,
-        .objectInit => ObjectInit,
+        .object_init => ObjectInit,
+        .dynobject_init => DynObjectInit,
         .fieldDyn => FieldDyn,
         .field => Field,
         .cast => Cast,

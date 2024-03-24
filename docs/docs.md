@@ -749,7 +749,7 @@ List operations.
 var list = [234]
 
 -- Append a value.
-list.append 123
+list.append(123)
 
 -- Inserting a value at an index.
 list.insert(1, 345)
@@ -897,6 +897,10 @@ The dynamic type defers type checking to runtime. See [Dynamic Typing](#dynamic-
   * [`self` variable.](#self-variable)
   * [Type functions.](#type-functions)
   * [Type variables.](#type-variables)
+* [Dynamic objects.](#dynamic-objects)
+  * [Undeclared fields.](#undeclared-fields)
+  * [Check field existence.](#check-field-existence)
+  * [Prototypes.](#prototypes)
 * [Structs.](#structs)
   * [Declare struct.](#declare-struct)
   * [Copy structs.](#copy-structs)
@@ -1071,6 +1075,40 @@ var Node.DefaultValue = 100
 
 print Node.DefaultValue    -- Prints "100"
 ```
+
+## Dynamic objects.
+A dynamic object type is an object type with additional dynamic behaviors.
+
+It is declared with `dynobject`. Fields and methods are declared just like an `object` type:
+```cy
+type Foo dynobject:
+    value int
+
+    func getValue() int:
+        return value
+```
+
+### Undeclared fields.
+Undeclared fields can be initialized and assigned to:
+```cy
+var f = [Foo value: 123, undeclared: 234]
+print f.value        --> 123
+print f.undeclared   --> 234
+
+f.data = 345
+print f.data         --> 345
+```
+
+However, accessing an undeclared field before it's initialized results in a panic:
+```cy
+f.foo                --> Panic. The field `foo` was not initialized.
+```
+
+### Check field existence.
+> _Planned Feature_
+
+### Prototypes.
+> _Planned Feature_
 
 ## Structs.
 Struct types can contain field and method members just like object types, but their instances are copied by value rather than by reference. In that sense, they behave like primitive data types.
@@ -2572,7 +2610,6 @@ func foo(s String):
   * [Custom operators.](#custom-operators)
 * [Magic functions.](#magic-functions)
   * [Call module.](#call-module)
-  * [Getter/Setter.](#gettersetter)
   * [Missing method.](#missing-method)
 </td><td valign="top">
 
@@ -2675,9 +2712,6 @@ func Vec2.'$call'(x float, y float) Vec2:
 
 var v = Vec2(1, 2)
 ```
-
-### Getter/Setter.
-> _Planned Feature_
 
 ### Missing method.
 Declare a `$missing` method as a fallback when a method was not found in an instance.

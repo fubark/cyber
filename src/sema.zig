@@ -356,6 +356,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
         .assignStmt => {
             try assignStmt(c, nodeId, node.data.assignStmt.left, node.data.assignStmt.right, .{});
         },
+        .dynobject_decl,
         .objectDecl,
         .structDecl,
         .passStmt,
@@ -878,26 +879,46 @@ fn semaAccessFieldName(c: *cy.Chunk, rec: ExprResult, name: []const u8, field: c
         return ExprResult.initCustom(loc, .fieldDyn, CompactType.initDynamic(bt.Any), undefined);
     }
 
-    const info = try checkGetField(c, rec.type.id, name, field);
-    const field_t = CompactType.init2(info.typeId, rec.type.dynamic);
-
-    const recIsStructFromFieldAccess = rec.resType == .field and c.sema.getTypeKind(rec.type.id) == .@"struct";
-    if (recIsStructFromFieldAccess) {
-        // Continue the field chain.
-        const fidx = try c.ir.reserveData(c.alloc, u8);
-        fidx.* = info.idx;
-        const existing = c.ir.getExprDataPtr(rec.irIdx, .field);
-        c.ir.setExprType(rec.irIdx, field_t.id);
-        existing.numNestedFields += 1;
-        c.ir.setNode(rec.irIdx, field);
-        return ExprResult.initCustom(rec.irIdx, .field, field_t, undefined);
-    } else {
+    const type_sym = c.sema.getTypeSym(rec.type.id);
+    if (type_sym.type == .dynobject_t) {
+        const info = symGetField(@ptrCast(type_sym.cast(.dynobject_t)), name) orelse {
+            const loc = try c.ir.pushExpr(.fieldDyn, c.alloc, bt.Any, field, .{
+                .name = name,
+                .rec = rec.irIdx,
+            });
+            return ExprResult.initCustom(loc, .fieldDyn, CompactType.initDynamic(bt.Any), undefined);
+        };
+        const field_t = CompactType.init2(info.typeId, rec.type.dynamic);
+        // Apply fixed ValueMap offset.
+        const MapSize = @sizeOf(vmc.ValueMap) / 8;
         const loc = try c.ir.pushExpr(.field, c.alloc, info.typeId, field, .{
-            .idx = info.idx,
+            .idx = MapSize + info.idx,
             .rec = rec.irIdx,
             .numNestedFields = 0,
         });
         return ExprResult.initCustom(loc, .field, field_t, undefined);
+    } else {
+        const info = try checkSymGetField(c, type_sym, name, field);
+        const field_t = CompactType.init2(info.typeId, rec.type.dynamic);
+
+        const recIsStructFromFieldAccess = rec.resType == .field and c.sema.getTypeKind(rec.type.id) == .@"struct";
+        if (recIsStructFromFieldAccess) {
+            // Continue the field chain.
+            const fidx = try c.ir.reserveData(c.alloc, u8);
+            fidx.* = info.idx;
+            const existing = c.ir.getExprDataPtr(rec.irIdx, .field);
+            c.ir.setExprType(rec.irIdx, field_t.id);
+            existing.numNestedFields += 1;
+            c.ir.setNode(rec.irIdx, field);
+            return ExprResult.initCustom(rec.irIdx, .field, field_t, undefined);
+        } else {
+            const loc = try c.ir.pushExpr(.field, c.alloc, info.typeId, field, .{
+                .idx = info.idx,
+                .rec = rec.irIdx,
+                .numNestedFields = 0,
+            });
+            return ExprResult.initCustom(loc, .field, field_t, undefined);
+        }
     }
 }
 
@@ -905,6 +926,7 @@ fn checkGetField(c: *cy.Chunk, rec_t: TypeId, fieldName: []const u8, nodeId: cy.
     const sym = c.sema.getTypeSym(rec_t);
     switch (sym.type) {
         .enum_t,
+        .dynobject_t,
         .object_t,
         .struct_t => {
             return checkSymGetField(c, sym, fieldName, nodeId);
@@ -925,6 +947,16 @@ fn checkSymGetField(c: *cy.Chunk, type_sym: *cy.Sym, name: []const u8, nodeId: c
         const type_name = type_sym.name();
         return c.reportErrorFmt("Type `{}` does not have a field named `{}`.", &.{v(type_name), v(name)}, nodeId);
     }
+    const field = sym.cast(.field);
+    return .{
+        .idx = @intCast(field.idx),
+        .typeId = field.type,
+    };
+}
+
+fn symGetField(type_sym: *cy.Sym, name: []const u8) ?FieldResult {
+    const sym = type_sym.getMod().?.getSym(name) orelse return null;
+    if (sym.type != .field) return null;
     const field = sym.cast(.field);
     return .{
         .idx = @intCast(field.idx),
@@ -1268,13 +1300,38 @@ pub fn declareObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
     }
 }
 
+pub fn declareDynObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
+    const node = c.ast.node(nodeId);
+
+    const header = c.ast.node(node.data.objectDecl.header);
+    const nameId = header.data.objectHeader.name;
+    if (nameId == cy.NullNode) {
+        // Unnamed.
+        return c.reportError("Unnamed `dynobject` type is not supported.", nodeId);
+    }
+
+    const name = c.ast.nodeStringById(nameId);
+
+    // Check for #host modifier.
+    var type_id: ?cy.TypeId = null;
+    if (header.head.data.objectHeader.modHead != cy.NullNode) {
+        const modifier = c.ast.node(header.head.data.objectHeader.modHead);
+        if (modifier.data.dirModifier.type == .host) {
+            type_id = try getHostTypeId(c, name, nodeId);
+        }
+    }
+
+    const sym = try c.declareDynObjectType(@ptrCast(c.sym), name, nodeId, type_id);
+    return @ptrCast(sym);
+}
+
 pub fn declareStruct(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
     const node = c.ast.node(nodeId);
 
     const header = c.ast.node(node.data.objectDecl.header);
     const nameId = header.data.objectHeader.name;
     if (nameId == cy.NullNode) {
-        // Unnamed object.
+        // Unnamed.
         const sym = try c.declareUnnamedStructType(@ptrCast(c.sym), nodeId);
         return @ptrCast(sym);
     }
@@ -1294,7 +1351,7 @@ pub fn declareStruct(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
     return @ptrCast(sym);
 }
 
-pub fn resolveTypeCopy(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType) !*cy.Sym {
+pub fn resolveDistinctType(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType) !*cy.Sym {
     const decl = c.ast.node(distinct_t.decl_id);
 
     const header = c.ast.node(decl.data.distinct_decl.header);
@@ -1325,11 +1382,11 @@ pub fn declareObjectFields(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !vo
     // Load fields.
     var i: u32 = 0;
 
-    if (modSym.type == .object_t or modSym.type == .struct_t) {
+    if (modSym.type == .object_t or modSym.type == .struct_t or modSym.type == .dynobject_t) {
         const header = c.ast.node(node.data.objectDecl.header);
 
         // Only object types can have fields.
-        const obj: *cy.sym.ObjectType = if (modSym.type == .object_t) modSym.cast(.object_t) else modSym.cast(.struct_t);
+        const obj: *cy.sym.ObjectType = @ptrCast(modSym);
 
         const fields = try c.alloc.alloc(cy.sym.FieldInfo, header.data.objectHeader.numFields);
         errdefer c.alloc.free(fields);
@@ -1350,9 +1407,24 @@ pub fn declareObjectFields(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !vo
         }
         obj.fields = fields.ptr;
         obj.numFields = @intCast(fields.len);
-        c.sema.types.items[obj.type].data.object = .{
-            .numFields = @intCast(obj.numFields),
-        };
+        switch (modSym.type) {
+            .object_t => {
+                c.sema.types.items[obj.type].data.object = .{
+                    .numFields = @intCast(obj.numFields),
+                };
+            },
+            .struct_t => {
+                c.sema.types.items[obj.type].data.@"struct" = .{
+                    .numFields = @intCast(obj.numFields),
+                };
+            },
+            .dynobject_t => {
+                c.sema.types.items[obj.type].data.dynobject = .{
+                    .num_fields = @intCast(obj.numFields),
+                };
+            },
+            else => return error.Unexpected,
+        }
     } 
 }
 
@@ -3417,10 +3489,10 @@ pub const ChunkExt = struct {
                 }
 
                 const obj = sym.cast(.object_t);
-                const irIdx = try c.ir.pushExpr(.objectInit, c.alloc, typeId, nodeId, .{
-                    .typeId = obj.type, .numArgs = @as(u8, @intCast(obj.numFields)),
-                });
                 const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, obj.numFields);
+                const irIdx = try c.ir.pushExpr(.object_init, c.alloc, typeId, nodeId, .{
+                    .typeId = obj.type, .numArgs = @as(u8, @intCast(obj.numFields)), .args = irArgsIdx,
+                });
                 for (obj.fields[0..obj.numFields], 0..) |field, i| {
                     const arg = try semaZeroInit(c, field.type, nodeId);
                     c.ir.setArrayItem(irArgsIdx, u32, i, arg.irIdx);
@@ -3431,7 +3503,75 @@ pub const ChunkExt = struct {
     }
 
     /// `initializerId` is a record literal node.
-    /// Explicit `typeId` since it can initialize a RC object or a value object.
+    pub fn semaDynObjectInit(c: *cy.Chunk, obj: *cy.sym.ObjectType, initializerId: cy.NodeId) !ExprResult {
+        // Set up a temp buffer to map initializer entries to type fields.
+        const fieldsDataStart = c.listDataStack.items.len;
+        try c.listDataStack.resize(c.alloc, c.listDataStack.items.len + obj.numFields);
+        defer c.listDataStack.items.len = fieldsDataStart;
+
+        const undeclared_start = c.listDataStack.items.len;
+
+        // Initially set to NullId so missed mappings are known from a linear scan.
+        const fieldNodes = c.listDataStack.items[fieldsDataStart..];
+        @memset(fieldNodes, .{ .nodeId = cy.NullNode });
+
+        const initializer = c.ast.node(initializerId);
+        var entryId = initializer.data.recordLit.argHead;
+        while (entryId != cy.NullNode) {
+            var entry = c.ast.node(entryId);
+
+            const fieldN = c.ast.node(entry.data.keyValue.key);
+            const fieldName = c.ast.nodeString(fieldN);
+
+            const field = symGetField(@ptrCast(obj), fieldName) orelse {
+                try c.listDataStack.append(c.alloc, .{ .nodeId = entryId });
+                entryId = entry.next();
+                continue;
+            };
+            fieldNodes[field.idx] = .{ .nodeId = entry.data.keyValue.value };
+            entryId = entry.next();
+        }
+
+        const irIdx = try c.ir.pushEmptyExpr(.dynobject_init, c.alloc, ir.ExprType.init(obj.type), initializerId);
+        const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, obj.numFields);
+
+        var i: u32 = 0;
+        for (fieldNodes, 0..) |item, fIdx| {
+            const fieldT = obj.fields[fIdx].type;
+            if (item.nodeId == cy.NullNode) {
+                // Check that unset fields can be zero initialized.
+                try c.checkForZeroInit(fieldT, initializerId);
+
+                const arg = try c.semaZeroInit(fieldT, initializerId);
+                c.ir.setArrayItem(irArgsIdx, u32, i, arg.irIdx);
+            } else {
+                const arg = try c.semaExprCstr(item.nodeId, fieldT);
+                c.ir.setArrayItem(irArgsIdx, u32, i, arg.irIdx);
+            }
+            i += 1;
+        }
+
+        var undecl_loc: u32 = cy.NullId;
+        const undecls = c.listDataStack.items[undeclared_start..];
+        if (undecls.len > 0) {
+            undecl_loc = try c.ir.pushEmptyArray(c.alloc, u32, undecls.len*2);
+            for (undecls, 0..) |entry, idx| {
+                const entry_n = c.ast.node(entry.nodeId);
+                const arg = try c.semaExpr(entry_n.data.keyValue.value, .{});
+                c.ir.setArrayItem(undecl_loc, u32, idx*2, entry_n.data.keyValue.key);
+                c.ir.setArrayItem(undecl_loc, u32, idx*2+1, arg.irIdx);
+            }
+        }
+
+        c.ir.setExprData(irIdx, .dynobject_init, .{
+            .type = obj.type, .nargs = @as(u8, @intCast(obj.numFields)), .args = irArgsIdx,
+            .num_undecls = @as(u8, @intCast(undecls.len)), .undecls = undecl_loc,
+        });
+
+        return ExprResult.initStatic(irIdx, obj.type);
+    }
+
+    /// `initializerId` is a record literal node.
     pub fn semaObjectInit2(c: *cy.Chunk, obj: *cy.sym.ObjectType, initializerId: cy.NodeId) !ExprResult {
         // Set up a temp buffer to map initializer entries to type fields.
         const fieldsDataStart = c.listDataStack.items.len;
@@ -3455,7 +3595,7 @@ pub const ChunkExt = struct {
             entryId = entry.next();
         }
 
-        const irIdx = try c.ir.pushEmptyExpr(.objectInit, c.alloc, ir.ExprType.init(obj.type), initializerId);
+        const irIdx = try c.ir.pushEmptyExpr(.object_init, c.alloc, ir.ExprType.init(obj.type), initializerId);
         const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, obj.numFields);
 
         var i: u32 = 0;
@@ -3474,8 +3614,8 @@ pub const ChunkExt = struct {
             i += 1;
         }
 
-        c.ir.setExprData(irIdx, .objectInit, .{
-            .typeId = obj.type, .numArgs = @as(u8, @intCast(obj.numFields)),
+        c.ir.setExprData(irIdx, .object_init, .{
+            .typeId = obj.type, .numArgs = @as(u8, @intCast(obj.numFields)), .args = irArgsIdx,
         });
 
         return ExprResult.initStatic(irIdx, obj.type);
@@ -3499,6 +3639,10 @@ pub const ChunkExt = struct {
             .object_t => {
                 const obj = sym.cast(.object_t);
                 return c.semaObjectInit2(obj, node.data.objectInit.initializer);
+            },
+            .dynobject_t => {
+                const obj = sym.cast(.dynobject_t);
+                return c.semaDynObjectInit(obj, node.data.objectInit.initializer);
             },
             .enum_t => {
                 const enumType = sym.cast(.enum_t);
@@ -5391,10 +5535,10 @@ pub const ObjectBuilder = struct {
 
     pub fn begin(b: *ObjectBuilder, typeId: cy.TypeId, numFields: u8, nodeId: cy.NodeId) !void {
         b.typeId = typeId;
-        b.irIdx = try b.c.ir.pushExpr(.objectInit, b.c.alloc, typeId, nodeId, .{
-            .typeId = typeId, .numArgs = @as(u8, @intCast(numFields)),
-        });
         b.irArgsIdx = try b.c.ir.pushEmptyArray(b.c.alloc, u32, numFields);
+        b.irIdx = try b.c.ir.pushExpr(.object_init, b.c.alloc, typeId, nodeId, .{
+            .typeId = typeId, .numArgs = @as(u8, @intCast(numFields)), .args = b.irArgsIdx,
+        });
         b.argIdx = 0;
     }
 

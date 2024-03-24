@@ -996,9 +996,15 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .forRangeReverse => {
             return 6;
         },
+        .dynobject_small => {
+            return 6 + pc[4].val * 2;
+        },
         .coinit,
         .sym => {
             return 7;
+        },
+        .dynobject => {
+            return 7 + pc[5].val * 2;
         },
         .fieldDyn,
         .fieldDynIC,
@@ -1157,6 +1163,8 @@ pub const OpCode = enum(u8) {
 
     objectSmall = vmc.CodeObjectSmall,
     object = vmc.CodeObject,
+    dynobject_small = vmc.CodeDynObjectSmall,
+    dynobject = vmc.CodeDynObject,
 
     ref = vmc.CodeRef,
     refCopyObj = vmc.CodeRefCopyObj,
@@ -1248,7 +1256,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 117);
+    try t.eq(std.enums.values(OpCode).len, 119);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

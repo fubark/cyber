@@ -766,6 +766,7 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
         .import => {
             name = ast.nodeStringById(node.data.importStmt.name);
         },
+        .dynobject_t,
         .struct_t,
         .object => {
             const header = ast.node(node.data.objectDecl.header);
@@ -773,7 +774,7 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
         },
         .enum_t => {
             name = ast.nodeStringById(node.data.enumDecl.name);
-        }
+        },
     }
     state.pos = node.srcPos;
     state.node = node;

@@ -23,6 +23,7 @@ pub const TypeKind = enum(u8) {
     choice,
     @"struct",
     option,
+    dynobject,
 };
 
 pub const Type = extern struct {
@@ -43,6 +44,9 @@ pub const Type = extern struct {
         },
         @"struct": extern struct {
             numFields: u16,
+        },
+        dynobject: extern struct {
+            num_fields: u16,
         },
     },
 };
@@ -256,6 +260,7 @@ pub const SemaExt = struct {
                 switch (sym.type) {
                     .custom_object_t,
                     .struct_t,
+                    .dynobject_t,
                     .object_t => return true,
                     .enum_t => {
                         return sym.cast(.enum_t).isChoiceType;

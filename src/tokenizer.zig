@@ -15,6 +15,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "continue", .continue_k },
     .{ "coresume", .coresume_k },
     .{ "coyield", .coyield_k },
+    .{ "dynobject", .dynobject_k },
     .{ "else", .else_k },
     .{ "enum", .enum_k },
     .{ "error", .error_k },
@@ -64,6 +65,7 @@ pub const TokenType = enum(u8) {
     dot,
     dot_question,
     dot_dot,
+    dynobject_k,
     else_k,
     enum_k,
     // Error token, returned if ignoreErrors = true.
@@ -1024,6 +1026,6 @@ test "tokenizer internals." {
     try tt.eq(@alignOf(Token), 4);
     try tt.eq(@sizeOf(TokenizeState), 4);
 
-    try tt.eq(std.enums.values(TokenType).len, 70);
-    try tt.eq(keywords.kvs.len, 34);
+    try tt.eq(std.enums.values(TokenType).len, 71);
+    try tt.eq(keywords.kvs.len, 35);
 }

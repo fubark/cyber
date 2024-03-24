@@ -1197,15 +1197,15 @@ pub const VM = struct {
         }
     }
 
-    fn getFieldFallback(self: *VM, obj: *const HeapObject, nameId: vmc.NameId) Value {
+    fn getFieldFallback(self: *VM, obj: *HeapObject, nameId: vmc.NameId) Value {
         @setCold(true);
         const name = rt.getName(self, nameId);
-        if (obj.getTypeId() == bt.Map) {
-            const map = cy.ptrAlignCast(*const cy.MapInner, &obj.map.inner);
-            if (map.getByString(name)) |val| {
+        if (self.types[obj.getTypeId()].kind == .dynobject) {
+            const undecls = obj.dynobject.getUndeclared();
+            if (undecls.getByString(name)) |val| {
                 return val;
             } else {
-                return self.prepPanic("Missing key in map.");
+                return self.prepPanic("Missing field in object.");
             }
         } else {
             return self.prepPanic("Missing field in object.");
@@ -4481,6 +4481,33 @@ export fn zDumpValue(val: Value) void {
     val.dump();
 }
 
+export fn zAllocDynObjectSmall(vm: *VM, type_id: cy.TypeId, keys: [*]const u16, undecls: [*]const Value, num_undecls: u8) vmc.ValueResult {
+    const val = cy.heap.allocDynObjectSmall(vm, type_id, keys[0..num_undecls], undecls[0..num_undecls]) catch {
+        return .{
+            .val = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .val = @bitCast(val),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
+export fn zAllocDynObject(vm: *VM, type_id: cy.TypeId, args: [*]const Value, nargs: u8,
+    keys: [*]const u16, undecls: [*]const Value, num_undecls: u8) vmc.ValueResult {
+    const val = cy.heap.allocDynObject(vm, type_id, args[0..nargs], keys[0..num_undecls], undecls[0..num_undecls]) catch {
+        return .{
+            .val = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .val = @bitCast(val),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
 export fn zAllocMap(vm: *VM, keyIdxes: [*] align(1) u16, vals: [*]Value, numEntries: u32) vmc.ValueResult {
     const val = cy.heap.allocMap(vm, keyIdxes[0..numEntries], vals[0..numEntries]) catch {
         return .{
@@ -4494,8 +4521,37 @@ export fn zAllocMap(vm: *VM, keyIdxes: [*] align(1) u16, vals: [*]Value, numEntr
     };
 }
 
-export fn zGetFieldFallback(vm: *VM, obj: *const HeapObject, nameId: vmc.NameId) vmc.Value {
-    return @bitCast(vm.getFieldFallback(obj, nameId));
+export fn zGetFieldFallback(vm: *VM, obj: *HeapObject, nameId: vmc.NameId) Value {
+    const name = rt.getName(vm, nameId);
+    if (vm.types[obj.getTypeId()].kind == .dynobject) {
+        const undecls = obj.dynobject.getUndeclared();
+        if (undecls.getByString(name)) |val| {
+            return val;
+        }
+    }
+    return vm.prepPanic("Missing field in object.");
+}
+
+export fn zSetFieldFallback(vm: *VM, obj: *HeapObject, nameId: vmc.NameId, val: cy.Value) vmc.ResultCode {
+    const name = rt.getName(vm, nameId);
+    if (vm.types[obj.getTypeId()].kind != .dynobject) {
+        _ = vm.prepPanic("Missing field in object.");
+        return vmc.RES_CODE_PANIC;
+    }
+    const key = vm.allocString(name) catch {
+        return vmc.RES_CODE_UNKNOWN;
+    };
+    const undecls = obj.dynobject.getUndeclared();
+    const res = undecls.getOrPut(vm.alloc, key) catch {
+        return vmc.RES_CODE_UNKNOWN;
+    };
+    if (res.foundExisting) {
+        cy.arc.release(vm, res.valuePtr.*);
+        cy.arc.release(vm, key);
+    }
+    cy.arc.retain(vm, val);
+    res.valuePtr.* = val;
+    return vmc.RES_CODE_SUCCESS;
 }
 
 export fn zAlloc(alloc: vmc.ZAllocator, n: usize) vmc.BufferResult {

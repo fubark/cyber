@@ -899,7 +899,7 @@ fn genExpr(c: *Chunk, loc: usize, cstr: Cstr) anyerror!Value {
         // .list               => genList(c, idx, cstr, nodeId),
         .local              => genLocal(c, loc, cstr, nodeId),
         // .map                => genMap(c, idx, cstr, nodeId),
-        .objectInit         => genObjectInit(c, loc, cstr, nodeId),
+        .object_init        => genObjectInit(c, loc, cstr, nodeId),
         // .pre                => return error.Unexpected,
         .preBinOp           => genBinOp(c, loc, cstr, .{}, nodeId),
         .preCallDyn         => genCallDyn(c, loc, cstr, nodeId),
@@ -1382,10 +1382,8 @@ fn genObjectInit(c: *Chunk, loc: usize, cstr: Cstr, nodeId: cy.NodeId) !Value {
     _ = cstr;
     _ = nodeId;
 
-    const data = c.ir.getExprData(loc, .objectInit);
-
-    const args_loc = c.ir.advanceExpr(loc, .objectInit);
-    const args = c.ir.getArray(args_loc, u32, data.numArgs);
+    const data = c.ir.getExprData(loc, .object_init);
+    const args = c.ir.getArray(data.args, u32, data.numArgs);
 
     const typ = c.sema.types.items[data.typeId];
     switch (typ.kind) {

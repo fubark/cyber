@@ -750,6 +750,26 @@ pub const Parser = struct {
                 }
                 return decl;
             },
+            .dynobject_k => {
+                var decl_idx: usize = undefined;
+                if (appendDecl) {
+                    decl_idx = self.staticDecls.items.len;
+                    try self.staticDecls.append(self.alloc, .{
+                        .declT = .dynobject_t,
+                        .nodeId = undefined,
+                        .data = undefined,
+                    });
+                }
+
+                const decl = try self.parseDynObjectDecl(start, .{
+                    .name = name,
+                    .modHead = modifierHead,
+                });
+                if (appendDecl) {
+                    self.staticDecls.items[decl_idx].nodeId = decl;
+                }
+                return decl;
+            },
             .struct_k => {
                 var decl_idx: usize = undefined;
                 if (appendDecl) {
@@ -1062,6 +1082,38 @@ pub const Parser = struct {
             }
         }
         return ListResult{ .head = first, .len = count };
+    }
+
+    fn parseDynObjectDecl(self: *Parser, start: TokenId, params: TypeDeclParams) anyerror!NodeId {
+        self.inObjectDecl = true;
+        defer self.inObjectDecl = false;
+
+        var token = self.peek();
+        if (token.tag() != .dynobject_k) {
+            return self.reportErrorAt("Expected `dynobject` keyword.", &.{}, self.next_pos);
+        }
+        self.advance();
+
+        token = self.peek();
+        if (token.tag() == .colon) {
+            self.advance();
+        } else {
+            // Only declaration. No members.
+            return self.pushObjectDecl(start, .dynobject_decl, params, cy.NullNode, 0, cy.NullNode, 0);
+        }
+
+        const req_indent = try self.parseFirstChildIndent(self.cur_indent);
+        const prev_indent = self.cur_indent;
+        defer self.cur_indent = prev_indent;
+        self.cur_indent = req_indent;
+
+        var has_more_members: bool = undefined;
+        const fields = try self.parseTypeFields(req_indent, &has_more_members);
+        if (!has_more_members) {
+            return self.pushObjectDecl(start, .dynobject_decl, params, fields.head, fields.len, cy.NullNode, 0);
+        }
+        const funcs = try self.parseTypeFuncs(req_indent);
+        return self.pushObjectDecl(start, .dynobject_decl, params, fields.head, fields.len, funcs.head, funcs.len);
     }
 
     fn parseStructDecl(self: *Parser, start: TokenId, params: TypeDeclParams) anyerror!NodeId {
@@ -3894,6 +3946,7 @@ const StaticDeclType = enum {
     import,
     object,
     struct_t,
+    dynobject_t,
     enum_t,
     typeTemplate,
 };

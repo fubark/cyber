@@ -110,7 +110,7 @@ out += "    my lib = ffi.bindLib([?String some: $(libPath)], [genMap: true])\n"
 for funcs -> fn:
     if skipMap.contains(fn.name):
         out += '-- '
-    out += "    $(getApiName(fn.name)) = lib.$(fn.name)\n"
+    out += "    $(getApiName(fn.name)) = lib['$(fn.name)']\n"
 
 out += "    return lib\n\n"
 

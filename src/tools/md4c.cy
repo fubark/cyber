@@ -165,7 +165,7 @@ func load():
     ffi.cbind(PARSER_S, [.uint, .uint, .voidPtr, .voidPtr, .voidPtr, .voidPtr, .voidPtr, .voidPtr, .voidPtr])
     ffi.cfunc('md_parse', [.voidPtr, .uint, .voidPtr, .voidPtr], .int)
     my lib = ffi.bindLib([?String some: libPath], [genMap: true])
-    md_parse = lib.md_parse
+    md_parse = lib['md_parse']
     return lib
 
 -- Macros

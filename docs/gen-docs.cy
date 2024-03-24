@@ -91,7 +91,7 @@ hljs.registerLanguage('cy', function() {
     keywords: {
         keyword: [
             'template', 'func', 'import', 'for', 'coinit', 'coresume', 'coyield',
-            'return', 'if', 'else', 'as', 'while', 'var', 'my', 'object', 'struct', 'with', 'caught',
+            'return', 'if', 'else', 'as', 'while', 'var', 'my', 'dynobject', 'object', 'struct', 'with', 'caught',
             'break', 'continue', 'switch', 'pass', 'or', 'and', 'not', 'is', 'error', 'throws',
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case'
         ],
@@ -267,6 +267,7 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         my id = textContent.replace(' ', '-')
         id = id.replace('.', '')
         id = id.replace('/', '')
+        id = id.replace('$', '')
         id = id.lower()
         if idCounts.get(id) -> count:
             var newId = "$(id)-$(count)"
@@ -401,33 +402,33 @@ func genDocsModules():
         var decls = parseCyber(src)['decls']
         var gen = "\n"
         for decls -> decl:
-            switch decl.type
+            switch decl['type']
             case 'funcInit':
                 var docLine = decl.get('docs') ?else ''
                 var params = []
-                for decl.header.params -> param:
-                    var typeSpec = if (param.typeSpec != '') param.typeSpec else 'any'
-                    params.append("$(param.name) $(typeSpec)")
+                for decl['header']['params'] -> param:
+                    var typeSpec = if (param['typeSpec'] != '') param['typeSpec'] else 'any'
+                    params.append("$(param['name']) $(typeSpec)")
                 var paramsStr = params.join(', ')
-                gen = gen + "> `func $(decl.header.name)($(paramsStr)) $(decl.header.ret)`\n>\n>$(docLine)\n\n"
+                gen = gen + "> `func $(decl['header']['name'])($(paramsStr)) $(decl['header']['ret'])`\n>\n>$(docLine)\n\n"
             case 'variable':
                 var docLine = decl.get('docs') ?else ''
-                var typeSpec = if (decl.typeSpec != '') decl.typeSpec else 'any'
-                gen = gen + "> `var $(decl.name) $(typeSpec)`\n>\n>$(docLine)\n\n"
-            case 'type_copy':
-                gen = gen + "### `type $(decl.name)`\n\n"
+                var typeSpec = if (decl['typeSpec'] != '') decl['typeSpec'] else 'any'
+                gen = gen + "> `var $(decl['name']) $(typeSpec)`\n>\n>$(docLine)\n\n"
+            case 'distinct_t':
+                gen = gen + "### `type $(decl['name'])`\n\n"
             case 'object':
-                gen = gen + "### `type $(decl.name)`\n\n"
+                gen = gen + "### `type $(decl['name'])`\n\n"
             case 'struct_t':
-                gen = gen + "### `type $(decl.name) struct`\n\n"
+                gen = gen + "### `type $(decl['name']) struct`\n\n"
             case 'implicit_method':
                 var docLine = decl.get('docs') ?else ''
                 var params = []
-                for decl.header.params -> param:
-                    var typeSpec = if (param.typeSpec != '') param.typeSpec else 'any'
-                    params.append("$(param.name) $(typeSpec)")
+                for decl['header']['params'] -> param:
+                    var typeSpec = if (param['typeSpec'] != '') param['typeSpec'] else 'any'
+                    params.append("$(param['name']) $(typeSpec)")
                 var paramsStr = params.join(', ')
-                gen = gen + "> `func $(decl.header.name)($(paramsStr)) $(decl.header.ret)`\n>\n>$(docLine)\n\n"
+                gen = gen + "> `func $(decl['header']['name'])($(paramsStr)) $(decl['header']['ret'])`\n>\n>$(docLine)\n\n"
 
         -- Replace section in modules.md.
         var needle = "<!-- $(mod.section).start -->"

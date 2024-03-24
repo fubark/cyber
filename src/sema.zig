@@ -846,7 +846,9 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId, leftId: cy.NodeId, rightId: cy.No
                 .fieldDyn       => c.ir.setStmtCode(irStart, .setFieldDyn),
                 .field          => c.ir.setStmtCode(irStart, .setField),
                 .varSym         => c.ir.setStmtCode(irStart, .setVarSym),
-                .func           => c.ir.setStmtCode(irStart, .setFuncSym),
+                .func           => {
+                    return c.reportErrorFmt("Can not reassign to a namespace function.", &.{}, nodeId);
+                },
                 .local          => c.ir.setStmtCode(irStart, .setLocal),
                 .capturedLocal  => c.ir.setStmtCode(irStart, .setCaptured),
                 else => {

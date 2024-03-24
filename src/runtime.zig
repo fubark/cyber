@@ -234,7 +234,6 @@ pub const FuncSymbol = extern struct {
             numParams: u8,
             reqCallTypeCheck: bool,
         },
-        closure: *cy.Closure,
     },
 
     pub fn initNone() FuncSymbol {
@@ -291,15 +290,6 @@ pub const FuncSymbol = extern struct {
                     .numParams = @intCast(numParams),
                     .reqCallTypeCheck = reqCallTypeCheck,
                 },
-            },
-        };
-    }
-
-    pub fn initClosure(closure: *cy.Closure) FuncSymbol {
-        return .{
-            .entryT = @intFromEnum(FuncSymbolType.closure),
-            .inner = .{
-                .closure = closure,
             },
         };
     }

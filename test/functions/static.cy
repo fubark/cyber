@@ -44,30 +44,4 @@ t.eqList(list, [1, 2, 3])
 func foo5(): return 2 + 2
 t.eq(foo5(), 4)
 
--- Static func can be reassigned.
-func foo6a(val int) int:
-    return val
-func foo6(val int) int:
-    pass
-foo6 = foo6a
-t.eq(foo6(123), 123)
-
--- Reassign with lambda.
-func foo7():
-    pass
-var .foo7dep = func ():
-    return 123
-foo7 = foo7dep
-t.eq(foo7(), 123)
-
--- Reassign with closure.
-func foo8():
-    pass
-var .foo8dep = func ():
-    var local = 123
-    return func():
-        return local
-foo8 = foo8dep()
-t.eq(foo8(), 123)
-
 --cytest: pass

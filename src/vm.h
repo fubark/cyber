@@ -351,7 +351,6 @@ typedef enum {
     CodeStaticFunc,
     CodeStaticVar,
     CodeSetStaticVar,
-    CodeSetStaticFunc,
     CodeSym,
     CodeEnd,
     NumCodes,
@@ -916,7 +915,6 @@ typedef struct VM {
 
     StackTrace stackTrace;
 
-    ZHashMap funcSymDeps;
     ZCyList methodGroupExts;
     ZCyList methodExts;
     DebugSym* debugTablePtr;
@@ -1072,7 +1070,6 @@ ValueResult zAllocDynObject(VM* vm, TypeId type, Value* args, u8 nargs, u16* key
 ValueResult zAllocDynObjectSmall(VM* vm, TypeId type, u16* keys, Value* undecls, u8 num_undecls);
 Value zGetFieldFallback(VM* vm, HeapObject* obj, NameId nameId);
 ResultCode zSetFieldFallback(VM* vm, HeapObject* obj, NameId nameId, Value val);
-ResultCode zSetStaticFunc(VM* vm, FuncId funcId, Value val);
 ResultCode zGrowTryStackTotalCapacity(ZCyList* list, ZAllocator alloc, size_t minCap);
 u16 zOpMatch(const Inst* pc, Value* framePtr);
 void zLog(const char* fmt, const FmtValue* vals, size_t len);

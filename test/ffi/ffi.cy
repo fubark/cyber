@@ -99,20 +99,6 @@ lib = ffi.bindLib(libPath, [genMap: true])
 var testAdd = lib['testAdd']
 t.eq(testAdd(123, 321), 444)
 
--- Reassign a binded function to a static function.
--- TODO: Use statements once initializer block is done.
-ffi = os.newFFI()
-ffi.cfunc('testAdd', [.int, .int], .int)
-lib = ffi.bindLib(libPath, [genMap: true])
-staticAdd = lib['testAdd']
-func staticAdd(a int, b int) int:
-    pass
-
-t.eq(staticAdd(123, 321), 444)
--- Freeing the lib reference should not affect `staticAdd`
-lib = false
-t.eq(staticAdd(123, 321), 444)
-
 -- Callback.
 ffi = os.newFFI()
 ffi.cfunc('testCallback', [.int, .int, .funcPtr], .int)

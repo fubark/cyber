@@ -784,7 +784,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(StaticFunc),
         JENTRY(StaticVar),
         JENTRY(SetStaticVar),
-        JENTRY(SetStaticFunc),
         JENTRY(Sym),
         JENTRY(End),
     };
@@ -2189,15 +2188,6 @@ beginSwitch:
         Value prev = ((StaticVar*)vm->varSyms.buf)[symId].value;
         ((StaticVar*)vm->varSyms.buf)[symId].value = stack[pc[3]];
         release(vm, prev);
-        pc += 4;
-        NEXT();
-    }
-    CASE(SetStaticFunc): {
-        u16 funcId = READ_U16(1);
-        ResultCode code = zSetStaticFunc(vm, funcId, stack[pc[3]]);
-        if (code != RES_CODE_SUCCESS) {
-            RETURN(code);
-        }
         pc += 4;
         NEXT();
     }

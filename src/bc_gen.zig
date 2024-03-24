@@ -288,7 +288,6 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .setCallObjSymTern  => try setCallObjSymTern(c, idx, nodeId),
         .setCaptured        => try setCaptured(c, idx, nodeId),
         .setFieldDyn        => try setFieldDyn(c, idx, .{}, nodeId),
-        .setFuncSym         => try setFuncSym(c, idx, nodeId),
         .setIndex           => try setIndex(c, idx, nodeId),
         .setLocal           => try irSetLocal(c, idx, nodeId),
         .setField           => try setField(c, idx, .{}, nodeId),
@@ -1853,22 +1852,6 @@ fn reserveFuncRegs(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []ali
     // Reset temp register state.
     const tempRegStart = nextReg + (maxIrLocals - numParams);
     c.rega.resetState(@intCast(tempRegStart));
-}
-
-fn setFuncSym(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
-    const setData = c.ir.getStmtData(idx, .setFuncSym).generic;
-    const funcSymIdx = c.ir.advanceStmt(idx, .setFuncSym);
-    const data = c.ir.getExprData(funcSymIdx, .funcSym);
-
-    const rightv = try genExpr(c, setData.right, Cstr.simpleRetain);
-    try pushUnwindValue(c, rightv);
-
-    const pc = c.buf.len();
-    try c.pushFCode(.setStaticFunc, &.{0, 0, rightv.reg}, nodeId);
-    const rtId = c.compiler.genSymMap.get(data.func).?.funcSym.id;
-    c.buf.setOpArgU16(pc + 1, @intCast(rtId));
-
-    try popTempAndUnwind(c, rightv);
 }
 
 fn setVarSym(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {

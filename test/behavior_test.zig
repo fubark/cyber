@@ -76,7 +76,7 @@ if (!aot) {
     run.case("syntax/wrap_stmts.cy");
 
     run.case("functions/assign_capture_local_error.cy");
-    run.case("functions/assign_panic.cy");
+    run.case("functions/assign_error.cy");
 }
     run.case("functions/call_bool_param_error.cy");
 if (!aot) {

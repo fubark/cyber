@@ -108,8 +108,6 @@ pub const VM = struct {
 
     stackTrace: cy.StackTrace,
 
-    /// Since func syms can be reassigned, track any RC dependencies.
-    funcSymDeps: std.AutoHashMapUnmanaged(SymbolId, Value),
     methodGroupExts: cy.List(rt.MethodGroupExt),
     methodExts: cy.List(rt.MethodExt),
     debugTable: []const cy.DebugSym,
@@ -226,7 +224,6 @@ pub const VM = struct {
             .debugPc = if (cy.Trace) cy.NullId else undefined,
             .deinited = false,
             .deinitedRtObjects = false,
-            .funcSymDeps = .{},
             .config = undefined,
             .httpClient = undefined,
             .stdHttpClient = undefined,
@@ -281,27 +278,12 @@ pub const VM = struct {
             return;
         }
 
-        logger.tracev("release funcSyms", .{});
-        for (self.funcSyms.items()) |sym| {
-            if (sym.entryT == @intFromEnum(rt.FuncSymbolType.closure)) {
-                cy.arc.releaseObject(self, @ptrCast(sym.inner.closure));
-            }
-        }
-
         logger.tracev("release varSyms", .{});
         for (self.varSyms.items(), 0..) |vsym, i| {
             logger.tracevIf(cy.logMemory, "release varSym: {s}", .{self.varSymExtras.buf[i].name()});
             release(self, vsym.value);
         }
         self.varSyms.clearRetainingCapacity();
-
-        {
-            logger.tracev("release funcSymDeps", .{});
-            var iter = self.funcSymDeps.iterator();
-            while (iter.next()) |e| {
-                release(self, e.value_ptr.*);
-            }
-        }
 
         // Release static strings.
         logger.tracev("release static objects {}", .{self.staticObjects.len});
@@ -1268,24 +1250,6 @@ pub const VM = struct {
                     .sp = newFramePtr,
                 };
             },
-            .closure => {
-                if (@intFromPtr(framePtr + ret + sym.inner.closure.stackSize) >= @intFromPtr(self.stackEndPtr)) {
-                    return error.StackOverflow;
-                }
-
-                const newFp = framePtr + ret;
-                newFp[1] = buildReturnInfo(true, cy.bytecode.CallSymInstLen);
-                newFp[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
-                newFp[3] = Value{ .retFramePtr = framePtr };
-
-                // Copy closure value to new frame pointer local.
-                newFp[sym.inner.closure.local] = Value.initNoCycPtr(sym.inner.closure);
-
-                return cy.fiber.PcSp{
-                    .pc = cy.fiber.toVmPc(self, sym.inner.closure.funcPc),
-                    .sp = newFp,
-                };
-            },
             .none => {
                 return self.panic("Missing func");
             },
@@ -1705,7 +1669,6 @@ test "vm internals." {
     try t.eq(@offsetOf(VM, "nameMap"), @offsetOf(vmc.VM, "nameMap"));
     try t.eq(@offsetOf(VM, "u8Buf"), @offsetOf(vmc.VM, "u8Buf"));
     try t.eq(@offsetOf(VM, "stackTrace"), @offsetOf(vmc.VM, "stackTrace"));
-    try t.eq(@offsetOf(VM, "funcSymDeps"), @offsetOf(vmc.VM, "funcSymDeps"));
     try t.eq(@offsetOf(VM, "methodGroupExts"), @offsetOf(vmc.VM, "methodGroupExts"));
     try t.eq(@offsetOf(VM, "methodExts"), @offsetOf(vmc.VM, "methodExts"));
     try t.eq(@offsetOf(VM, "debugTable"), @offsetOf(vmc.VM, "debugTablePtr"));
@@ -3225,35 +3188,6 @@ fn evalLoop(vm: *VM) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, End}!v
                 framePtr = res.sp;
                 continue;
             },
-            .callTypeCheck => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCallTypeCheck:"::);
-                }
-                const argStartReg = pc[1].val;
-                const numArgs = pc[2].val;
-                const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-                const funcSig = vm.compiler.sema.getFuncSig(funcSigId);
-                const args = framePtr[argStartReg .. argStartReg + funcSig.numParams()];
-
-                // TODO: numArgs and this check can be removed if overloaded symbols are grouped by numParams.
-                if (numArgs != funcSig.numParams()) {
-                    const funcId = @as(*const align(1) u16, @ptrCast(pc + 5 + 4)).*;
-                    return panicIncompatibleFuncSig(vm, funcId, args, funcSigId);
-                }
-
-                // Perform type check on args.
-                for (funcSig.params(), 0..) |cstrTypeId, i| {
-                    const argTypeId = args[i].getTypeId();
-                    const argSemaTypeId = vm.types.buf[argTypeId].rTypeSymId;
-                    if (!types.isTypeSymCompat(&vm.compiler, argSemaTypeId, cstrTypeId)) {
-                        // Assumes next inst is callSym/callNativeFuncIC/callFuncIC.
-                        const funcId = @as(*const align(1) u16, @ptrCast(pc + 5 + 4)).*;
-                        return panicIncompatibleFuncSig(vm, funcId, args, funcSigId);
-                    }
-                }
-                pc += 5;
-                continue;
-            },
             .callSym => {
                 if (GenLabels) {
                     _ = asm volatile ("LOpCallSym:"::);
@@ -3282,15 +3216,6 @@ fn evalLoop(vm: *VM) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, End}!v
                 const symId = @as(*const align(1) u32, @ptrCast(pc + 2)).*;
                 framePtr[pc[6].val] = try cy.heap.allocMetaType(vm, symType, symId);
                 pc += 7;
-                continue;
-            },
-            .setStaticFunc => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpSetStaticFunc:"::);
-                }
-                const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-                try @call(.never_inline, setStaticFunc, .{vm, symId, framePtr[pc[3].val]});
-                pc += 4;
                 continue;
             },
             .end => {
@@ -3888,76 +3813,6 @@ fn isAssignFuncSigCompat(vm: *VM, srcFuncSigId: sema.FuncSigId, dstFuncSigId: se
         return false;
     }
     return true;
-}
-
-fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) !void {
-    if (val.isPointer()) {
-        const obj = val.asHeapObject();
-        switch (obj.getTypeId()) {
-            bt.HostFunc => {
-                const dstRFuncSigId = getFuncSigIdOfSym(vm, symId);
-                if (!isAssignFuncSigCompat(vm, obj.hostFunc.funcSigId, dstRFuncSigId)) {
-                    return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, obj.hostFunc.funcSigId, dstRFuncSigId});
-                }
-                releaseFuncSymDep(vm, symId);
-
-                const funcSig = vm.compiler.sema.funcSigs.items[dstRFuncSigId];
-                vm.funcSyms.buf[symId] = .{
-                    .entryT = @intFromEnum(rt.FuncSymbolType.hostFunc),
-                    .innerExtra = .{
-                        .hostFunc = .{
-                            .typedFlagNumParams = funcSig.numParams(),
-                            .funcSigId = @intCast(dstRFuncSigId),
-                        }
-                    },
-                    .inner = .{
-                        .hostFunc = obj.hostFunc.func,
-                    },
-                };
-                vm.funcSymDeps.put(vm.alloc, symId, val) catch cy.fatal();
-            },
-            bt.Lambda => {
-                const dstRFuncSigId = getFuncSigIdOfSym(vm, symId);
-                if (!isAssignFuncSigCompat(vm, @intCast(obj.lambda.funcSigId), dstRFuncSigId)) {
-                    const sigId: u32 = @intCast(obj.lambda.funcSigId);
-                    return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, sigId, dstRFuncSigId});
-                }
-                releaseFuncSymDep(vm, symId);
-                vm.funcSyms.buf[symId] = .{
-                    .entryT = @intFromEnum(rt.FuncSymbolType.func),
-                    .inner = .{
-                        .func = .{
-                            .pc = obj.lambda.funcPc,
-                            .stackSize = obj.lambda.stackSize,
-                            .numParams = obj.lambda.numParams,
-                            .reqCallTypeCheck = obj.lambda.reqCallTypeCheck,
-                        },
-                    },
-                };
-                vm.funcSymDeps.put(vm.alloc, symId, val) catch cy.fatal();
-            },
-            bt.Closure => {
-                const dstRFuncSigId = getFuncSigIdOfSym(vm, symId);
-                if (!isAssignFuncSigCompat(vm, @intCast(obj.closure.funcSigId), dstRFuncSigId)) {
-                    const sigId: u32 = @intCast(obj.closure.funcSigId);
-                    return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, sigId, dstRFuncSigId});
-                }
-                releaseFuncSymDep(vm, symId);
-                vm.funcSyms.buf[symId] = .{
-                    .entryT = @intFromEnum(rt.FuncSymbolType.closure),
-                    .inner = .{
-                        .closure = val.castHeapObject(*cy.heap.Closure),
-                    },
-                };
-                // Don't set func sym dep since the closure is assigned into the func sym entry.
-            },
-            else => {
-                return vm.panicFmt("Assigning to static function with unsupported type {}.", &.{v(obj.getTypeId())});
-            }
-        }
-    } else {
-        return vm.panic("Assigning to static function with a non-function value.");
-    }
 }
 
 fn getFuncSigIdOfSym(vm: *const VM, symId: SymbolId) sema.FuncSigId {
@@ -4574,21 +4429,6 @@ export fn zAlloc(alloc: vmc.ZAllocator, n: usize) vmc.BufferResult {
         .len = buf.len,
         .code = vmc.RES_CODE_SUCCESS,
     };
-}
-
-export fn zPanicIncompatibleFuncSig(vm: *cy.VM, funcId: rt.FuncId, args: [*]const Value, numArgs: usize, targetFuncSigId: sema.FuncSigId) void {
-    panicIncompatibleFuncSig(vm, funcId, args[0..numArgs], targetFuncSigId) catch {};
-}
-
-export fn zSetStaticFunc(vm: *VM, funcId: SymbolId, val: Value) vmc.ResultCode {
-    setStaticFunc(vm, funcId, val) catch |err| {
-        if (err == error.Panic) {
-            return vmc.RES_CODE_PANIC;
-        } else {
-            return vmc.RES_CODE_UNKNOWN;
-        }
-    };
-    return vmc.RES_CODE_SUCCESS;
 }
 
 export fn zGrowTryStackTotalCapacity(list: *cy.List(vmc.TryFrame), alloc: vmc.ZAllocator, minCap: usize) vmc.ResultCode {

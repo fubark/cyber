@@ -953,7 +953,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .setStaticVar,
         .staticFunc,
         .field,
-        .setStaticFunc,
         .setField,
         .jumpNone,
         .jumpCond,
@@ -1234,10 +1233,6 @@ pub const OpCode = enum(u8) {
     /// Wraps a static function in a function value.
     /// [symId u16] [dstLocal]
     staticFunc = vmc.CodeStaticFunc,
-
-    /// Copies a local register to a static function.
-    /// [symId u16] [local] 
-    setStaticFunc = vmc.CodeSetStaticFunc,
 
     /// Allocates a symbol object to a destination local.
     /// [symType] [symId] [dst]

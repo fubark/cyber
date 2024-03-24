@@ -235,14 +235,14 @@ pub const ChunkExt = struct {
         _ = try addSym(c, mod, name, @ptrCast(sym));
     }
 
-    pub fn declareTypeCopy(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl_id: cy.NodeId, opt_type_id: ?cy.TypeId) !*cy.sym.TypeCopy {
+    pub fn declareDistinctType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl_id: cy.NodeId, opt_type_id: ?cy.TypeId) !*cy.sym.DistinctType {
         const mod = parent.getMod().?;
         try checkUniqueSym(c, mod, name, decl_id);
 
         const type_id = opt_type_id orelse try c.sema.pushType();
-        const sym: *cy.sym.TypeCopy = @ptrCast(try c.alloc.create(cy.sym.TypeSym));
+        const sym: *cy.sym.DistinctType = @ptrCast(try c.alloc.create(cy.sym.TypeSym));
         sym.* = .{
-            .head = cy.Sym.init(.type_copy, parent, name),
+            .head = cy.Sym.init(.distinct_t, parent, name),
             .decl_id = decl_id,
             .type = type_id,
         };
@@ -778,7 +778,7 @@ pub const ChunkExt = struct {
             .bool_t,
             .int_t,
             .float_t,
-            .type_copy,
+            .distinct_t,
             .typeTemplate,
             .enumMember => {
                 return sym;

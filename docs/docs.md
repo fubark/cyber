@@ -916,7 +916,7 @@ The dynamic type defers type checking to runtime. See [Dynamic Typing](#dynamic-
   * [`if` unwrap.](#if-unwrap)
   * [`while` unwrap.](#while-unwrap)
 * [Type aliases.](#type-aliases)
-* [Type copies.](#type-copies)
+* [Distinct types.](#distinct-types)
 * [Traits.](#traits)
 * [Union types.](#union-types)
 * [Generic types.](#generic-types)
@@ -1274,8 +1274,8 @@ type Pos2 = Vec2
 var pos = [Pos2 x: 3, y: 4]
 ```
 
-## Type copies.
-A type copy creates a new type using the same type and memory layout of a target type.
+## Distinct types.
+A distinct type creates a new type by copying a target type.
 
 It's declared with `type` name declaration followed by the target type specifier:
 ```cy
@@ -2493,7 +2493,7 @@ print op(1, 2, 3)      --> RuntimeError. Expected a function.
 Functions declared with `my` do not allow typed parameters or a return specifier.
 All parameters are implicitly given the `dynamic` type.
 
-The return specifier is also implicitly `dynamic` which indicates that the function can throw an error. This is only relevant when typed code calls a `my` function:
+The return specifier is also implicitly `!dynamic` which indicates that the function can throw an error. This is only relevant when typed code calls a `my` function:
 ```cy
 my foo(a, b, c):
     return a + b() + a[c]

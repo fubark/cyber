@@ -738,9 +738,9 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
             const typeSpec = try genTypeSpecString(vm, ast, varSpec.data.varSpec.typeSpec);
             try vm.mapSet(entry, try vm.retainOrAllocAstring("typeSpec"), typeSpec);
         },
-        .type_copy => {
-            const header = ast.node(node.data.type_copy_decl.header);
-            name = ast.nodeStringById(header.data.type_copy_header.name);
+        .distinct_t => {
+            const header = ast.node(node.data.distinct_decl.header);
+            name = ast.nodeStringById(header.data.distinct_header.name);
         },
         .typeAlias => {
             name = ast.nodeStringById(node.data.typeAliasDecl.name);

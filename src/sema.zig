@@ -361,7 +361,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
         .passStmt,
         .staticDecl,
         .typeAliasDecl,
-        .type_copy_decl,
+        .distinct_decl,
         .typeTemplate,
         .enumDecl,
         .funcDecl => {
@@ -917,10 +917,10 @@ pub fn declareTypeTemplate(c: *cy.Chunk, nodeId: cy.NodeId, ctNodes: []const cy.
     }
 }
 
-pub fn declareTypeCopy(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
+pub fn declareDistinctType(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     const node = c.ast.node(nodeId);
-    const header = c.ast.node(node.data.type_copy_decl.header);
-    const name = c.ast.nodeStringById(header.data.type_copy_header.name);
+    const header = c.ast.node(node.data.distinct_decl.header);
+    const name = c.ast.nodeStringById(header.data.distinct_header.name);
 
     // Check for #host modifier.
     var type_id: ?cy.TypeId = null;
@@ -932,7 +932,7 @@ pub fn declareTypeCopy(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     }
 
     // Check if target is a builtin type.
-    const target = c.ast.node(header.data.type_copy_header.target);
+    const target = c.ast.node(header.data.distinct_header.target);
     if (target.type() == .comptimeExpr) {
         const expr = c.ast.node(target.data.comptimeExpr.child);
         if (expr.type() == .ident) {
@@ -961,7 +961,7 @@ pub fn declareTypeCopy(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
         }
     }
 
-    const sym = try c.declareTypeCopy(@ptrCast(c.sym), name, nodeId, type_id);
+    const sym = try c.declareDistinctType(@ptrCast(c.sym), name, nodeId, type_id);
     return @ptrCast(sym);
 }
 
@@ -1251,15 +1251,15 @@ pub fn declareStruct(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
     return @ptrCast(sym);
 }
 
-pub fn resolveTypeCopy(c: *cy.Chunk, type_copy: *cy.sym.TypeCopy) !*cy.Sym {
-    const decl = c.ast.node(type_copy.decl_id);
+pub fn resolveTypeCopy(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType) !*cy.Sym {
+    const decl = c.ast.node(distinct_t.decl_id);
 
-    const header = c.ast.node(decl.data.type_copy_decl.header);
-    const target_t = try resolveTypeSpecNode(c, header.data.type_copy_header.target);
+    const header = c.ast.node(decl.data.distinct_decl.header);
+    const target_t = try resolveTypeSpecNode(c, header.data.distinct_header.target);
     const target_sym = c.sema.getTypeSym(target_t);
     if (target_sym.type == .object_t) {
-        const object_t: *cy.sym.ObjectType = @ptrCast(type_copy);
-        object_t.* = cy.sym.ObjectType.init(type_copy.head.parent.?, c, type_copy.head.name(), type_copy.decl_id, type_copy.type);
+        const object_t: *cy.sym.ObjectType = @ptrCast(distinct_t);
+        object_t.* = cy.sym.ObjectType.init(distinct_t.head.parent.?, c, distinct_t.head.name(), distinct_t.decl_id, distinct_t.type);
         c.compiler.sema.types.items[object_t.type] = .{
             .sym = @ptrCast(object_t),
             .kind = .object,
@@ -1268,7 +1268,7 @@ pub fn resolveTypeCopy(c: *cy.Chunk, type_copy: *cy.sym.TypeCopy) !*cy.Sym {
             }},
         };
         try sema.declareObjectFields(c, @ptrCast(object_t), target_sym.cast(.object_t).declId);
-        object_t.head.setTypeCopy(true);
+        object_t.head.setDistinctType(true);
         return @ptrCast(object_t);
     } else {
         return error.Unsupported;

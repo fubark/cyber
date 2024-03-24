@@ -810,7 +810,7 @@ pub const Parser = struct {
                 if (appendDecl) {
                     decl_idx = self.staticDecls.items.len;
                     try self.staticDecls.append(self.alloc, .{
-                        .declT = .type_copy,
+                        .declT = .distinct_t,
                         .nodeId = undefined,
                         .data = undefined,
                     });
@@ -881,15 +881,15 @@ pub const Parser = struct {
             num_funcs = funcs.len;
         }
 
-        const header = try self.pushNode(.type_copy_header, start);
-        self.ast.setNodeData(header, .{ .type_copy_header = .{
+        const header = try self.pushNode(.distinct_header, start);
+        self.ast.setNodeData(header, .{ .distinct_header = .{
             .target = target,
             .name = name,
         }});
-        self.ast.nodePtr(header).head.data = .{ .type_copy_header = .{ .attr_head = @intCast(attr_head) }};
+        self.ast.nodePtr(header).head.data = .{ .distinct_header = .{ .attr_head = @intCast(attr_head) }};
 
-        const id = try self.pushNode(.type_copy_decl, start);
-        self.ast.setNodeData(id, .{ .type_copy_decl = .{
+        const id = try self.pushNode(.distinct_decl, start);
+        self.ast.setNodeData(id, .{ .distinct_decl = .{
             .header = header,
             .func_head = @intCast(func_head),
             .num_funcs = @intCast(num_funcs),
@@ -3887,7 +3887,7 @@ const ParseExprOptions = struct {
 const StaticDeclType = enum {
     variable,
     typeAlias,
-    type_copy,
+    distinct_t,
     implicit_method,
     func,
     funcInit,

@@ -28,8 +28,8 @@ pub const SymType = enum(u8) {
     enumMember,
     typeAlias,
 
-    /// Unresolved type copy.
-    type_copy,
+    /// Unresolved distinct type.
+    distinct_t,
 
     typeTemplate,
     field,
@@ -48,7 +48,7 @@ pub const Sym = extern struct {
         return .{
             .namePtr = name_.ptr,
             .nameLen = @intCast(name_.len),
-            .metadata = @bitCast(Metadata{ .padding = undefined, .name_owned = false, .type_copy = false }),
+            .metadata = @bitCast(Metadata{ .padding = undefined, .name_owned = false, .distinct_t = false }),
             .type = symT,
             .parent = parent,
         };
@@ -155,7 +155,7 @@ pub const Sym = extern struct {
 
                 size = @sizeOf(TypeTemplate);
             },
-            .type_copy => {
+            .distinct_t => {
                 size = @sizeOf(TypeSym);
             },
             .field => {
@@ -187,7 +187,7 @@ pub const Sym = extern struct {
             // },
         }
 
-        if (self.getMetadata().type_copy) {
+        if (self.getMetadata().distinct_t) {
             size = @sizeOf(TypeSym);
         }
 
@@ -205,9 +205,9 @@ pub const Sym = extern struct {
         self.metadata = @bitCast(metadata);
     }
 
-    pub fn setTypeCopy(self: *Sym, type_copy: bool) void {
+    pub fn setDistinctType(self: *Sym, distinct_t: bool) void {
         var metadata = self.getMetadata();
-        metadata.type_copy = type_copy;
+        metadata.distinct_t = distinct_t;
         self.metadata = @bitCast(metadata);
     }
 
@@ -233,7 +233,7 @@ pub const Sym = extern struct {
             .import,
             .func,
             .typeTemplate,
-            .type_copy,
+            .distinct_t,
             .field,
             .enumMember,
             .chunk => {
@@ -271,7 +271,7 @@ pub const Sym = extern struct {
             .int_t           => return @ptrCast(&self.cast(.int_t).mod),
             .float_t         => return @ptrCast(&self.cast(.float_t).mod),
             .import,
-            .type_copy,
+            .distinct_t,
             .typeAlias,
             .typeTemplate,
             .enumMember,
@@ -326,7 +326,7 @@ pub const Sym = extern struct {
             .field,
             .null,
             .import,
-            .type_copy,
+            .distinct_t,
             .typeTemplate,
             .chunk => return null,
         }
@@ -348,7 +348,7 @@ pub const Sym = extern struct {
             .enumMember,
             .func,
             .import,
-            .type_copy,
+            .distinct_t,
             .chunk,
             .hostVar,
             .userVar         => return null,
@@ -374,7 +374,7 @@ pub const Sym = extern struct {
             .enumMember,
             .func,
             .import,
-            .type_copy,
+            .distinct_t,
             .chunk,
             .hostVar,
             .userVar         => return null,
@@ -437,7 +437,7 @@ pub const Sym = extern struct {
 
 const Metadata = packed struct {
     name_owned: bool,
-    type_copy: bool,
+    distinct_t: bool,
     padding: u14,
 };
 
@@ -471,7 +471,7 @@ fn SymChild(comptime symT: SymType) type {
         .enum_t => EnumType,
         .enumMember => EnumMember,
         .typeAlias => TypeAlias,
-        .type_copy => TypeCopy,
+        .distinct_t => DistinctType,
         .typeTemplate => TypeTemplate,
         .field => Field,
         .import => Import,
@@ -488,7 +488,7 @@ pub const TypeSym = extern union {
     int_t: IntType,
     float_t: FloatType,
     enum_t: EnumType,
-    type_copy: TypeCopy,
+    distinct_t: DistinctType,
 };
 
 pub const HostVar = extern struct {
@@ -526,7 +526,7 @@ pub const TypeAlias = extern struct {
     sym: *Sym,
 };
 
-pub const TypeCopy = extern struct {
+pub const DistinctType = extern struct {
     head: Sym,
     decl_id: cy.NodeId,
     type: cy.TypeId,

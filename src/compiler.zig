@@ -668,8 +668,8 @@ fn declareImportsAndTypes(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
                     .typeAlias => {
                         try sema.declareTypeAlias(chunk, decl.nodeId);
                     },
-                    .type_copy => {
-                        const sym = try sema.declareTypeCopy(chunk, decl.nodeId);
+                    .distinct_t => {
+                        const sym = try sema.declareDistinctType(chunk, decl.nodeId);
                         decl.data = .{ .sym = @ptrCast(sym) };
                     },
                     .typeTemplate => {
@@ -867,8 +867,8 @@ fn declareSymbols(self: *Compiler) !void {
                 .enum_t => {
                     try sema.declareEnumMembers(chunk, @ptrCast(decl.data.sym), decl.nodeId);
                 },
-                .type_copy => {
-                    if (decl.data.sym.type == .type_copy) {
+                .distinct_t => {
+                    if (decl.data.sym.type == .distinct_t) {
                         const sym = try sema.resolveTypeCopy(chunk, @ptrCast(decl.data.sym));
                         last_type_sym = sym;
                     } else {

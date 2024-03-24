@@ -164,6 +164,7 @@ if (!aot) {
     run.case("types/choice_access_error.cy");
     run.case("types/choice_access_panic.cy");
     run.case("types/choice_type.cy");
+    run.case("types/distinct.cy");
 }
     run.case("types/dyn_recent_type_error.cy");
 if (!aot) {
@@ -200,7 +201,6 @@ if (!aot) {
     run.case("types/template_object_expand_error.cy");
     run.case("types/template_objects.cy");
     run.case("types/type_alias.cy");
-    run.case("types/type_copy.cy");
     run.case("types/type_spec.cy");
     run.case("types/unnamed_object.cy");
 

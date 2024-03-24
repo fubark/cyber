@@ -15,8 +15,8 @@ t.eq(Array('foo') != Array('bar'), true)
 -- Comparing objects.
 type S:
     value any
-var o = [S value: 3]
-t.eq(o != [S value: 3], true)
+var o = S{value: 3}
+t.eq(o != S{value: 3}, true)
 var o2 = o
 t.eq(o != o2, false)
 

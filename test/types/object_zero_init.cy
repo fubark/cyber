@@ -4,7 +4,7 @@ type S:
     a float
 
 -- Zero initialize missing field.
-var o = [S:]
+var o = S{}
 test.eq(o.a, 0.0)
 
 type T:
@@ -12,7 +12,7 @@ type T:
     b float
 
 -- Zero initialize missing field. Nested object.
-var t = [T:]
+var t = T{}
 test.eq(t.a.a, 0.0)
 test.eq(t.b, 0.0)
 

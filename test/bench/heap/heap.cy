@@ -55,7 +55,7 @@ type Node:
             return self.left.getLeftN(n - 1)
 
 func Heap.new() Heap:
-    return [Heap root: false, size: 0, last: false]
+    return Heap{root: false, size: 0, last: false}
 
 type Heap:
     root dynamic
@@ -64,7 +64,7 @@ type Heap:
 
     func insert(value):
         if self.root == false:
-            self.root = [Node left: false, right: false, parent: false, value: value]
+            self.root = Node{left: false, right: false, parent: false, value: value}
             self.last = self.root
             self.size = 1
             return
@@ -72,33 +72,33 @@ type Heap:
         if int(self.size + 1) & int(self.size) == 0:
             -- Insert at left most node.
             let parent = self.root.getLeftmost()
-            new = [Node
+            new = Node{
                 left: false,
                 right: false,
                 parent: parent,
                 value: value,
-            ]
+            }
             parent.left = new
             self.last = new
         else:
             -- Insert after last node.
             if self.size % 2 == 0:
-                new = [Node
+                new = Node{
                     left: false,
                     right: false,
                     parent: self.last.parent,
                     value: value,
-                ]
+                }
                 self.last.parent.right = new
                 self.last = new
             else:
                 let sibling = self.last.parent.getRightSibling()
-                new = [Node
+                new = Node{
                     left: false,
                     right: false,
                     parent: sibling,
                     value: value,
-                ]
+                }
                 sibling.left = new
                 self.last = new
         self.size = self.size + 1

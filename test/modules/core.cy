@@ -36,14 +36,14 @@ t.eq(copy(123), 123)
 type S:
     foo any
     bar any
-var s = [S:]
+var s = S{}
 var oldList = [123, s]
 let newList = copy(oldList)
 t.eq(newList == oldList, false)
 t.eq(newList.len(), 2)
 t.eq(newList[0], 123)
 t.eq(newList[1], s)
-var oldMap = [ a: 123, b: s ]
+var oldMap = { a: 123, b: s }
 let newMap = copy(oldMap)
 t.eq(newMap == oldMap, false)
 t.eq(newMap.size(), 2)
@@ -139,9 +139,9 @@ val = parseCyon('[]')
 t.eqList(val, [])
 val = parseCyon('[1, 2, 3]')
 t.eqList(val, [1, 2, 3])
-val = parseCyon('[:]')
+val = parseCyon('{}')
 t.eq(val.size(), 0)
-val = parseCyon('[ a: 123 ]')
+val = parseCyon('{ a: 123 }')
 t.eq(val.size(), 1)
 t.eq(val['a'], 123)
 
@@ -190,12 +190,12 @@ t.eq(cyon, '''[
     2,
     3,
 ]''')
-cyon = toCyon([:])
-t.eq(cyon, '[:]')
-cyon = toCyon([ a: 123 ])
-t.eq(cyon, '''[
+cyon = toCyon({})
+t.eq(cyon, '{}')
+cyon = toCyon({ a: 123 })
+t.eq(cyon, '''{
     a: 123,
-]''')
+}''')
 
 -- typeof()
 t.eq(typeof(true), bool)
@@ -206,7 +206,7 @@ t.eq(typeof('abc'), typeof('xyz'))
 t.eq(typeof(Array('abc')), typeof(Array('xyz')))
 t.eq(typeof(error.Foo), error)
 t.eq(typeof([]), List)
-t.eq(typeof([:]), Map)
+t.eq(typeof({}), Map)
 
 -- typesym()
 t.eq(typesym(123), .int)

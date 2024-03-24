@@ -624,7 +624,7 @@ fn allocToCyon(vm: *cy.VM, alloc: std.mem.Allocator, root: Value) ![]const u8 {
                     },
                     .map => {
                         if (val.asHeapObject().map.inner.size == 0) {
-                            _ = try ctx.writer.write("[:]");
+                            _ = try ctx.writer.write("{}");
                         } else {
                             try ctx.encodeMap(val, encodeMap);
                         }
@@ -663,7 +663,7 @@ fn genTypeSpecString(vm: *cy.VM, ast: cy.ast.AstView, exprId: cy.NodeId) !cy.Val
         defer sb.deinit(vm.alloc);
 
         var enc = cy.ast.Encoder{ .ast = ast };
-        try enc.writeNode(sb.writer(vm.alloc), exprId);
+        try enc.write(sb.writer(vm.alloc), exprId);
 
         return try vm.retainOrAllocAstring(sb.items);
     } else {

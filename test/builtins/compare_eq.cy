@@ -22,8 +22,8 @@ t.eq(foo == 'foo', true)
 -- Object equals.
 type S:
     value any
-var s = [S value: 123]
-var a = [S value: 123]
+var s = S{value: 123}
+var a = S{value: 123}
 t.eq(a == s, false)
 a = s
 t.eq(a == s, true)

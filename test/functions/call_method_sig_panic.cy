@@ -4,7 +4,7 @@ type S:
     func foo():
         return 123
 
-let o = [S:]
+let o = S{}
 o.foo(234)
 
 --cytest: error

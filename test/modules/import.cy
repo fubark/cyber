@@ -47,8 +47,8 @@ type Vec2:
     x float
     y float
 -- Same name, different object types.
-var v1 = [Vec2 x: 1, y: 2]
-var v2 = [a.Vec2 x: 3, y: 4]
+var v1 = Vec2{x: 1, y: 2}
+var v2 = a.Vec2{x: 3, y: 4}
 t.eq(typeof(v1) != typeof(v2), true)
 t.eq(v1.x, 1.0)
 t.eq(v1.y, 2.0)
@@ -61,7 +61,7 @@ t.eq(v.x, 3.0)
 t.eq(v.y, 4.0)
 
 -- Templates from another module.
-var b a.TFoo(int) = [a: 123]
+var b a.TFoo(int) = {a: 123}
 t.eq(b.a, 123)
 
 --cytest: pass

@@ -2,7 +2,7 @@ type Choice enum:
     case A int
     case B String
 
-var c = [Choice A: 123]
+var c = Choice{A: 123}
 c.A
 
 --cytest: error

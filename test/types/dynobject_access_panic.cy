@@ -1,7 +1,7 @@
 type Foo dynobject:
     a int
 
-var f = [Foo a: 123]
+var f = Foo{a: 123}
 f.b
 
 --cytest: error

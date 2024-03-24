@@ -81,7 +81,7 @@ test "ARC." {
         \\type S:
         \\  value List
         \\var a = [123]
-        \\var s = [S value: a]
+        \\var s = S{value: a}
         \\t.eq(s.value[0], 123)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
@@ -94,7 +94,7 @@ test "ARC." {
     try eval(.{},
         \\type S:
         \\  value dynamic
-        \\1 + [S value: 123].value
+        \\1 + S{value: 123}.value
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         const val = try res.getValue();
         var trace = run.getTrace();
@@ -105,7 +105,7 @@ test "ARC." {
 
     // Map entry access expression retains the entry.
     try eval(.{},
-        \\var a = [ foo: "abc$(123)" ]
+        \\var a = { foo: "abc$(123)" }
         \\var b = a['foo']
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
@@ -162,7 +162,7 @@ test "ARC assignments." {
     try eval(.{},
         \\import t 'test'
         \\var a = [123]
-        \\var b = [:]
+        \\var b = {}
         \\a[0] = b
         \\t.eq(typesym(a[0]), .map)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
@@ -197,7 +197,7 @@ test "ARC for function return values." {
         \\type S:
         \\  value any
         \\func foo():
-        \\  var a = [S value: 123]
+        \\  var a = S{value: 123}
         \\  return a
         \\let s = foo()
         \\t.eq(s.value, 123)
@@ -213,7 +213,7 @@ test "ARC for function return values." {
         \\type S:
         \\  value any
         \\func foo():
-        \\  return [S value: 123]
+        \\  return S{value: 123}
         \\foo()
         \\return
     , struct { fn func(run: *Runner, res: EvalResult) !void {
@@ -230,7 +230,7 @@ test "ARC on temp locals in expressions." {
         \\import test
         \\var ret = traceRetains()
         \\var rel = traceReleases()
-        \\var res = [ a: [123] ]['a'][0]
+        \\var res = { a: [123] }['a'][0]
         \\test.eq(traceRetains() - ret, 5)
         \\test.eq(traceReleases() - rel, 5)
         \\test.eq(res, 123)
@@ -283,7 +283,7 @@ test "ARC in loops." {
         \\  foo any
         \\let a = 123
         \\for 0..3:
-        \\  a = [S foo: 123].foo
+        \\  a = S{foo: 123}.foo
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         var trace = run.getTrace();
@@ -322,7 +322,7 @@ test "ARC in loops." {
 
     // For iter with `any` temp value, the last temp value is released at the end of the block.
     try eval(.{},
-        \\var list = [[a: 123], [a: 234]] -- +3a +3
+        \\var list = [{a: 123}, {a: 234}] -- +3a +3
         \\for list -> it:                 -- +7a +7 -2
         \\  pass                      
         \\                                --        -8

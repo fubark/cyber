@@ -32,8 +32,8 @@ type T:
     d any
     e any
 func foo3():
-    var a = [T:]
-    var b = [T:]
+    var a = T{}
+    var b = T{}
     a.c = b
     b.c = a
 foo3()

@@ -1,7 +1,7 @@
 type S:
     a any
 
-let o = [S:]
+let o = S{}
 o.foo()
 
 --cytest: error

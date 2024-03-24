@@ -11,6 +11,7 @@ pub const NodeType = enum(u8) {
     @"null",
     accessExpr,
     arrayLit,
+    array_expr,
     assignStmt,
     await_expr,
     binExpr,
@@ -58,7 +59,6 @@ pub const NodeType = enum(u8) {
     if_unwrap,
     if_unwrap_stmt,
     importStmt,
-    indexExpr,
     keyValue,
     label_decl,
     lambda_expr, 
@@ -69,13 +69,13 @@ pub const NodeType = enum(u8) {
     objectDecl,
     objectField,
     objectHeader,
-    objectInit,
     octLit,
     opAssignStmt,
     passStmt,
     range,
     raw_string_lit,
     recordLit,
+    record_expr,
     returnExprStmt,
     returnStmt,
     root,
@@ -192,10 +192,6 @@ const NodeData = union {
         expr: NodeId,
         typeSpec: NodeId,
     },
-    indexExpr: struct {
-        left: NodeId,
-        right: NodeId,
-    },
     assignStmt: struct {
         left: NodeId,
         right: NodeId,
@@ -274,6 +270,14 @@ const NodeData = union {
         argHead: u24,
         hasNamedArg: bool,
     },
+    array_expr: struct {
+        left: NodeId,
+        array: NodeId,
+    },
+    record_expr: struct {
+        left: NodeId,
+        record: NodeId,
+    },
     unary: struct {
         child: NodeId,
         op: UnaryOp,
@@ -330,10 +334,6 @@ const NodeData = union {
     distinct_header: struct {
         name: NodeId,
         target: NodeId,
-    },
-    objectInit: struct {
-        name: NodeId,
-        initializer: NodeId, // Record literal.
     },
     objectField: packed struct {
         name: NodeId,
@@ -901,80 +901,89 @@ pub const Encoder = struct {
     ast: AstView,
     eventHandler: ?*const fn (Encoder, EncodeEvent, cy.NodeId) void = null,
 
-    pub fn formatNode(self: Encoder, nodeId: cy.NodeId, buf: []u8) ![]const u8 {
+    pub fn allocFmt(self: Encoder, alloc: std.mem.Allocator, node: cy.NodeId) ![]const u8 {
+        if (node == cy.NullNode) {
+            return "";
+        }
+        var buf: std.ArrayListUnmanaged(u8) = .{};
+        try self.write(buf.writer(alloc), node);
+        return buf.toOwnedSlice(alloc);
+    }
+
+    pub fn format(self: Encoder, nodeId: cy.NodeId, buf: []u8) ![]const u8 {
         if (nodeId == cy.NullNode) {
             return "";
         }
         var fbuf = std.io.fixedBufferStream(buf);
-        try self.writeNode(fbuf.writer(), nodeId);
+        try self.write(fbuf.writer(), nodeId);
         return fbuf.getWritten();
     }
 
-    pub fn writeNode(self: Encoder, w: anytype, nodeId: cy.NodeId) !void {
+    pub fn write(self: Encoder, w: anytype, nodeId: cy.NodeId) !void {
         const node = self.ast.node(nodeId);
         switch (node.type()) {
             .funcDecl => {
                 const header = self.ast.node(node.data.func.header);
                 try w.writeAll("func ");
-                try self.writeNode(w, header.data.funcHeader.name);
+                try self.write(w, header.data.funcHeader.name);
                 try w.writeAll("(");
                 var paramId = header.data.funcHeader.paramHead;
                 if (paramId != cy.NullNode) {
-                    try self.writeNode(w, paramId);
+                    try self.write(w, paramId);
                     paramId = self.ast.node(paramId).next();
 
                     while (paramId != cy.NullNode) {
                         try w.writeAll(", ");
-                        try self.writeNode(w, paramId);
+                        try self.write(w, paramId);
                         paramId = self.ast.node(paramId).next();
                     }
                 }
                 try w.writeAll(")");
                 if (header.funcHeader_ret() != cy.NullNode) {
                     try w.writeAll(" ");
-                    try self.writeNode(w, header.funcHeader_ret());
+                    try self.write(w, header.funcHeader_ret());
                 }
                 // node.data.func.bodyHead
             },
             .funcParam => {
                 const param = self.ast.node(nodeId);
-                try self.writeNode(w, param.data.funcParam.name);
+                try self.write(w, param.data.funcParam.name);
                 if (param.data.funcParam.typeSpec != cy.NullNode) {
                     try w.writeAll(" ");
-                    try self.writeNode(w, param.data.funcParam.typeSpec);
+                    try self.write(w, param.data.funcParam.typeSpec);
                 }
             },
             .assignStmt => {
-                try self.writeNode(w, node.data.assignStmt.left);
+                try self.write(w, node.data.assignStmt.left);
                 try w.writeByte('=');
-                try self.writeNode(w, node.data.assignStmt.right);
+                try self.write(w, node.data.assignStmt.right);
             },
             .opAssignStmt => {
-                try self.writeNode(w, node.data.opAssignStmt.left);
+                try self.write(w, node.data.opAssignStmt.left);
                 try w.writeAll(getBinOpStr(node.data.opAssignStmt.op));
                 try w.writeByte('=');
-                try self.writeNode(w, node.data.opAssignStmt.right);
+                try self.write(w, node.data.opAssignStmt.right);
             },
             .unary_expr => {
                 const op = node.data.unary.op;
                 try w.writeAll(getUnOpStr(op));
-                try self.writeNode(w, node.data.unary.child);
+                try self.write(w, node.data.unary.child);
             },
             .binExpr => {
-                try self.writeNode(w, node.data.binExpr.left);
+                try self.write(w, node.data.binExpr.left);
                 try w.writeAll(getBinOpStr(node.data.binExpr.op));
-                try self.writeNode(w, node.data.binExpr.right);
+                try self.write(w, node.data.binExpr.right);
             },
             .exprStmt => {
-                try self.writeNode(w, node.data.exprStmt.child);
+                try self.write(w, node.data.exprStmt.child);
             },
             .if_expr => {
                 const ifBranch = self.ast.node(node.data.if_expr.if_branch);
-                try self.writeNode(w, ifBranch.data.if_branch.cond);
+                try self.write(w, ifBranch.data.if_branch.cond);
                 try w.writeAll("?");
-                try self.writeNode(w, ifBranch.data.if_branch.body_head);
+                try self.write(w, ifBranch.data.if_branch.body_head);
                 try w.writeAll(" else ");
-                try self.writeNode(w, node.data.if_expr.else_expr);
+                try self.write(w, node.data.if_expr.else_expr);
             },
             .caseBlock => {
                 if (node.data.caseBlock.header == cy.NullNode) {
@@ -982,17 +991,17 @@ pub const Encoder = struct {
                 } else {
                     const header = self.ast.node(node.data.caseBlock.header);
                     var cond = header.data.caseHeader.condHead;
-                    try self.writeNode(w, cond);
+                    try self.write(w, cond);
                     cond = self.ast.node(cond).next();
                     while (cond != cy.NullNode) {
                         try w.writeByte(',');
-                        try self.writeNode(w, cond);
+                        try self.write(w, cond);
                         cond = self.ast.node(cond).next();
                     }
                 }
                 if (node.data.caseBlock.bodyIsExpr) {
                     try w.writeAll("=>");
-                    try self.writeNode(w, node.data.caseBlock.bodyHead);
+                    try self.write(w, node.data.caseBlock.bodyHead);
                 } else {
                     try w.writeAll(": ...");
                 }
@@ -1008,7 +1017,7 @@ pub const Encoder = struct {
             },
             .errorSymLit => {
                 try w.writeAll("error.");
-                try self.writeNode(w, node.data.errorSymLit.symbol);
+                try self.write(w, node.data.errorSymLit.symbol);
             },
             .symbolLit => {
                 try w.writeAll(".");
@@ -1028,46 +1037,52 @@ pub const Encoder = struct {
                 try w.writeAll(self.ast.nodeStringAndDelim(node));
             },
             .accessExpr => {
-                try self.writeNode(w, node.data.accessExpr.left);
+                try self.write(w, node.data.accessExpr.left);
                 try w.writeByte('.');
-                try self.writeNode(w, node.data.accessExpr.right);
+                try self.write(w, node.data.accessExpr.right);
             },
             .group => {
                 try w.writeByte('(');
-                try self.writeNode(w, node.data.group.child);
+                try self.write(w, node.data.group.child);
                 try w.writeByte(')');
             },
             .range => {
                 if (node.data.range.start != cy.NullNode) {
-                    try self.writeNode(w, node.data.range.start);
+                    try self.write(w, node.data.range.start);
                 }
                 try w.writeAll("..");
                 if (node.data.range.end != cy.NullNode) {
-                    try self.writeNode(w, node.data.range.end);
+                    try self.write(w, node.data.range.end);
                 }
             },
-            .indexExpr => {
-                try self.writeNode(w, node.data.indexExpr.left);
+            .array_expr => {
+                try self.write(w, node.data.array_expr.left);
                 try w.writeByte('[');
-                try self.writeNode(w, node.data.indexExpr.right);
+                try self.write(w, node.data.array_expr.array);
                 try w.writeByte(']');
+            },
+            .record_expr => {
+                try self.write(w, node.data.record_expr.left);
+                try w.writeByte('{');
+                try self.write(w, node.data.record_expr.record);
+                try w.writeByte('}');
             },
             .throwExpr => {
                 try w.writeAll("throw ");
-                try self.writeNode(w, node.data.throwExpr.child);
+                try self.write(w, node.data.throwExpr.child);
             },
             .callExpr => {
-                try self.writeNode(w, node.data.callExpr.callee);
+                try self.write(w, node.data.callExpr.callee);
 
                 try w.writeByte('(');
                 if (node.data.callExpr.numArgs > 0) {
                     var argId: cy.NodeId = node.data.callExpr.argHead;
-                    try self.writeNode(w, argId);
+                    try self.write(w, argId);
                     argId = self.ast.node(argId).next();
 
                     while (argId != cy.NullNode) {
                         try w.writeAll(", ");
-                        try self.writeNode(w, argId);
+                        try self.write(w, argId);
                         argId = self.ast.node(argId).next();
                     }
                 }
@@ -1075,10 +1090,10 @@ pub const Encoder = struct {
             },
             .tryExpr => {
                 try w.writeAll("try ");
-                try self.writeNode(w, node.data.tryExpr.expr);
+                try self.write(w, node.data.tryExpr.expr);
                 if (node.data.tryExpr.catchExpr != cy.NullNode) {
                     try w.writeAll(" catch ");
-                    try self.writeNode(w, node.data.tryExpr.catchExpr);
+                    try self.write(w, node.data.tryExpr.catchExpr);
                 }
             },
             .localDecl => {
@@ -1087,9 +1102,9 @@ pub const Encoder = struct {
                 } else {
                     try w.writeAll("let ");
                 }
-                try self.writeNode(w, node.data.localDecl.varSpec);
+                try self.write(w, node.data.localDecl.varSpec);
                 try w.writeByte('=');
-                try self.writeNode(w, node.data.localDecl.right);
+                try self.write(w, node.data.localDecl.right);
             },
             .arrayLit => {
                 try w.writeByte('[');
@@ -1097,32 +1112,27 @@ pub const Encoder = struct {
                 try w.writeByte(']');
             },
             .recordLit => {
-                try w.writeByte('[');
+                try w.writeByte('{');
                 try w.writeAll("...");
-                try w.writeByte(']');
-            },
-            .objectInit => {
-                try w.writeByte('[');
-                try self.writeNode(w, node.data.objectInit.name);
-                try w.writeAll(" ...]");
+                try w.writeByte('}');
             },
             .varSpec => {
-                try self.writeNode(w, node.data.varSpec.name);
+                try self.write(w, node.data.varSpec.name);
                 if (node.data.varSpec.typeSpec != cy.NullNode) {
                     try w.writeByte(' ');
                     var cur = node.data.varSpec.typeSpec;
-                    try self.writeNode(w, cur);
+                    try self.write(w, cur);
                     cur = self.ast.node(cur).next();
                     while (cur != cy.NullNode) {
                         try w.writeByte('.');
-                        try self.writeNode(w, cur);
+                        try self.write(w, cur);
                         cur = self.ast.node(cur).next();
                     }
                 }
             },
             .expandOpt => {
                 try w.writeByte('?');
-                try self.writeNode(w, node.data.expandOpt.param);
+                try self.write(w, node.data.expandOpt.param);
             },
             else => {
                 try w.writeByte('<');

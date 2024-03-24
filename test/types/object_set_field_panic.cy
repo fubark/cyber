@@ -3,7 +3,7 @@ type S:
 
 func foo(): return []
 
-var o = [S a: 123]
+var o = S{a: 123}
 o.a = foo()
 
 --cytest: error

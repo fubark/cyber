@@ -646,7 +646,7 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const cy.Inst
                         .ast = chunk.ast,
                     };
 
-                    try enc.writeNode(w, desc.nodeId);
+                    try enc.write(w, desc.nodeId);
                     extra = fbuf.getWritten();
                 }
             }

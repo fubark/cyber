@@ -812,7 +812,7 @@ fn genStmt(c: *Chunk, loc: u32) anyerror!void {
     errdefer if (c.errNodeId == cy.NullId) { c.errNodeId = nodeId; };
 
     if (cy.Trace) {
-        const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
+        const contextStr = try c.encoder.format(nodeId, &cy.tempBuf);
         log.tracev("----{s}: {{{s}}}", .{@tagName(code), contextStr});
     }
     switch (code) {
@@ -875,7 +875,7 @@ fn genExpr(c: *Chunk, loc: usize, cstr: Cstr) anyerror!Value {
     const nodeId = c.ir.getNode(loc);
 
     if (cy.Trace) {
-        const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
+        const contextStr = try c.encoder.format(nodeId, &cy.tempBuf);
         log.tracev("{s}: {{{s}}}", .{@tagName(code), contextStr});
     }
 

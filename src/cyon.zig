@@ -33,7 +33,7 @@ pub const EncodeListContext = struct {
     }
     
     pub fn encodeMap(self: *EncodeListContext, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
-        _ = try self.writer.write("[\n");
+        _ = try self.writer.write("{\n");
 
         var map_ctx = EncodeMapContext{
             .writer = self.writer,
@@ -44,7 +44,7 @@ pub const EncodeListContext = struct {
         try encode_map(&map_ctx, val);
 
         try self.indent();
-        _ = try self.writer.write("]");
+        _ = try self.writer.write("}");
     }
 
     pub fn encodeBool(self: *EncodeListContext, b: bool) !void {
@@ -91,7 +91,7 @@ pub const EncodeValueContext = struct {
     }
 
     pub fn encodeMap(self: *EncodeValueContext, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
-        _ = try self.writer.write("[\n");
+        _ = try self.writer.write("{\n");
 
         var map_ctx = EncodeMapContext{
             .writer = self.writer,
@@ -102,7 +102,7 @@ pub const EncodeValueContext = struct {
         try encode_map(&map_ctx, val);
 
         try self.indent();
-        _ = try self.writer.write("]");
+        _ = try self.writer.write("}");
     }
 
     pub fn encodeBool(self: *EncodeValueContext, b: bool) !void {
@@ -172,7 +172,7 @@ pub const EncodeMapContext = struct {
 
     pub fn encodeMap(self: *EncodeMapContext, key: []const u8, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
         try self.indent();
-        _ = try self.writer.print("{s}: [\n", .{key});
+        _ = try self.writer.print("{s}: {{\n", .{key});
 
         var map_ctx = EncodeMapContext{
             .writer = self.writer,
@@ -183,7 +183,7 @@ pub const EncodeMapContext = struct {
         try encode_map(&map_ctx, val);
 
         try self.indent();
-        _ = try self.writer.write("],\n");
+        _ = try self.writer.write("},\n");
     }
 
     pub fn encodeMap2(self: *EncodeMapContext, key: []const u8, val: anytype, encode_map: fn (*EncodeMapContext, anytype) anyerror!void) !void {
@@ -706,17 +706,17 @@ test "encode" {
     const res = try encode(t.alloc, null, root, S.encodeValue);
     defer t.alloc.free(res);
     try t.eqStr(res,
-        \\[
+        \\{
         \\    name: 'project',
         \\    list: [
-        \\        [
+        \\        {
         \\            field: 1,
-        \\        ],
-        \\        [
+        \\        },
+        \\        {
         \\            field: 2,
-        \\        ],
+        \\        },
         \\    ],
-        \\    map: [
+        \\    map: {
         \\        1: 'foo',
         \\        2: 'bar',
         \\        3: 'ba\'r',
@@ -724,8 +724,8 @@ test "encode" {
         \\bar`,
         \\        5: `bar \`bar\`
         \\bar`,
-        \\    ],
-        \\]
+        \\    },
+        \\}
     );
 }
 
@@ -765,21 +765,21 @@ test "decodeMap" {
 
     var root: TestRoot = undefined;
     try decodeMap(t.alloc, &parser, {}, &root, S.decodeRoot, 
-        \\[
+        \\{
         \\    name: 'project',
         \\    list: [
-        \\        [ field: 1 ],
-        \\        [ field: 2 ],
+        \\        { field: 1 },
+        \\        { field: 2 },
         \\    ],
-        \\    map: [
+        \\    map: {
         \\        1: 'foo',
         \\        2: 'bar',
         \\        3: "ba\"r",
         \\        4: """ba"r""",
         \\        5: """bar `bar`
         \\bar"""
-        \\    ]
-        \\]
+        \\    }
+        \\}
     );
     defer {
         t.alloc.free(root.list);

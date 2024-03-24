@@ -13,7 +13,7 @@ test.eq(b.?, 123)
 -- Wrap object.
 type Foo:
     a int
-var c ?Foo = [Foo a: 123]
+var c ?Foo = Foo{a: 123}
 test.eq(c.?.a, 123)
 
 -- Wrapping none implicitly.

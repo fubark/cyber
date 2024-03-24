@@ -76,16 +76,16 @@ func load(dummy any):
     ffi = os.newFFI()
 
     -- enum CXTypeKind kind, void *data[2]
-    ffi.cbind(CXType, [.int, [os.CArray n: 2, elem: .voidPtr]])
+    ffi.cbind(CXType, [.int, os.CArray{n: 2, elem: .voidPtr}])
 
     -- enum CXCursorKind kind, int xdata, const void *data[3]
-    ffi.cbind(CXCursor, [.int, .int, [os.CArray n: 3, elem: .voidPtr]])
+    ffi.cbind(CXCursor, [.int, .int, os.CArray{n: 3, elem: .voidPtr}])
 
     -- const void* data, unsigned private_flags
     ffi.cbind(CXString, [.voidPtr, .uint])
 
     -- const void* ptr_data [2], unsigned int_data
-    ffi.cbind(CXSourceLocation, [[os.CArray n: 2, elem: .voidPtr], .uint])
+    ffi.cbind(CXSourceLocation, [os.CArray{n: 2, elem: .voidPtr}, .uint])
 
     -- CXIndex (int excludeDeclarationsFromPCH, int displayDiagnostics)
     ffi.cfunc('clang_createIndex', [.int, .int], .voidPtr)
@@ -193,5 +193,5 @@ func load(dummy any):
     -- CXType clang_Type_getNamedType(CXType T);
     ffi.cfunc('clang_Type_getNamedType', [CXType], CXType)
 
-    return ffi.bindLib([?String some: 'libclang.dylib'])
+    return ffi.bindLib(?String{some: 'libclang.dylib'})
     -- return ffi.bindLib('/Library/Developer/CommandLineTools/usr/lib/libclang.dylib')

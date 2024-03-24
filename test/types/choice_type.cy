@@ -15,7 +15,7 @@ type Rectangle:
     height float
 
 -- Switch case on object payload.
-var s = [Shape.rectangle width: 123, height: 234]
+var s = Shape.rectangle{width: 123, height: 234}
 switch s
 case .rectangle -> r:
     test.eq(r.width, 123.0)
@@ -31,7 +31,7 @@ test.eq(res.width, 123.0)
 test.eq(res.height, 234.0)
 
 -- Switch case on unnamed object payload.
-s = [Shape.circle radius: 10]
+s = Shape.circle{radius: 10}
 switch s
 case .circle -> c:
     test.eq(c.radius, 10.0)
@@ -45,7 +45,7 @@ res = switch s:
 test.eq(res.radius, 10.0)
 
 -- Switch case on primitive payload.
-s = [Shape line: 20]
+s = Shape{line: 20}
 switch s
 case .line -> l:
     test.eq(l, 20.0)
@@ -59,7 +59,7 @@ res = switch s:
 test.eq(res, 20.0)
 
 -- Switch case on empty payload.
-s = [Shape.point:]
+s = Shape.point{}
 switch s
 case .point:
     pass
@@ -73,7 +73,7 @@ res = switch s:
 test.eq(res, 123)
 
 -- Switch else case.
-s = [Shape.point:]
+s = Shape.point{}
 switch s
 case .circle -> c:
     test.fail()

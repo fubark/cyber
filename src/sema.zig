@@ -309,7 +309,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
     if (cy.Trace) {
         var buf: [1024]u8 = undefined;
         var fbuf = std.io.fixedBufferStream(&buf);
-        try c.encoder.writeNode(fbuf.writer(), nodeId);
+        try c.encoder.write(fbuf.writer(), nodeId);
         log.tracev("stmt.{s}: \"{s}\"", .{@tagName(c.ast.node(nodeId).type()), fbuf.getWritten()});
     }
     switch (node.type()) {
@@ -779,20 +779,25 @@ const AssignOptions = struct {
 fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId, leftId: cy.NodeId, rightId: cy.NodeId, opts: AssignOptions) !void {
     const left = c.ast.node(leftId);
     switch (left.type()) {
-        .indexExpr => {
+        .array_expr => {
             const irStart = try c.ir.pushEmptyStmt(c.alloc, .set, nodeId);
 
-            const recv = try c.semaExpr(left.data.indexExpr.left, .{});
+            const array = c.ast.node(left.data.array_expr.array);
+            if (array.data.arrayLit.numArgs != 1) {
+                return c.reportErrorFmt("Unsupported array expr.", &.{}, left.data.array_expr.array);
+            }
+
+            const recv = try c.semaExpr(left.data.array_expr.left, .{});
             var specialized = false;
             var index: ExprResult = undefined;
             if (recv.type.id == bt.List) {
-                index = try c.semaExprTarget(left.data.indexExpr.right, bt.Integer);
+                index = try c.semaExprTarget(array.data.arrayLit.argHead, bt.Integer);
                 specialized = true;
             } else if (recv.type.id == bt.Map) {
-                index = try c.semaExpr(left.data.indexExpr.right, .{});
+                index = try c.semaExpr(array.data.arrayLit.argHead, .{});
                 specialized = true;
             } else {
-                index = try c.semaExpr(left.data.indexExpr.right, .{});
+                index = try c.semaExpr(array.data.arrayLit.argHead, .{});
             }
 
             // RHS.
@@ -3615,32 +3620,33 @@ pub const ChunkExt = struct {
     pub fn semaObjectInit(c: *cy.Chunk, expr: Expr) !ExprResult {
         const node = c.ast.node(expr.nodeId);
 
-        const left = try c.semaExprSkipSym(node.data.objectInit.name);
+        const left = try c.semaExprSkipSym(node.data.record_expr.left);
         if (left.resType != .sym) {
-            const name = c.ast.nodeStringById(node.data.objectInit.name);
-            return c.reportErrorFmt("Object type `{}` does not exist.", &.{v(name)}, node.data.objectInit.name);
+            const desc = try c.encoder.allocFmt(c.alloc, node.data.record_expr.left);
+            defer c.alloc.free(desc);
+            return c.reportErrorFmt("Type `{}` does not exist.", &.{v(desc)}, node.data.record_expr.left);
         }
 
         const sym = left.data.sym.resolved();
         switch (sym.type) {
             .struct_t => {
                 const obj = sym.cast(.struct_t);
-                return c.semaObjectInit2(obj, node.data.objectInit.initializer);
+                return c.semaObjectInit2(obj, node.data.record_expr.record);
             },
             .object_t => {
                 const obj = sym.cast(.object_t);
-                return c.semaObjectInit2(obj, node.data.objectInit.initializer);
+                return c.semaObjectInit2(obj, node.data.record_expr.record);
             },
             .dynobject_t => {
                 const obj = sym.cast(.dynobject_t);
-                return c.semaDynObjectInit(obj, node.data.objectInit.initializer);
+                return c.semaDynObjectInit(obj, node.data.record_expr.record);
             },
             .enum_t => {
                 const enumType = sym.cast(.enum_t);
 
-                const initializer = c.ast.node(node.data.objectInit.initializer);
+                const initializer = c.ast.node(node.data.record_expr.record);
                 if (initializer.data.recordLit.numArgs != 1) {
-                    return c.reportErrorFmt("Expected only one member to payload entry.", &.{}, node.data.objectInit.name);
+                    return c.reportErrorFmt("Expected only one member to payload entry.", &.{}, node.data.record_expr.record);
                 }
 
                 const entryId = initializer.data.recordLit.argHead;
@@ -3667,15 +3673,16 @@ pub const ChunkExt = struct {
                 const enumSym = member.head.parent.?.cast(.enum_t);
                 // Check if enum is choice type.
                 if (!enumSym.isChoiceType) {
-                    const name = c.ast.nodeStringById(node.data.objectInit.name);
-                    return c.reportErrorFmt("Can not initialize `{}`. It is not a choice type.", &.{v(name)}, node.data.objectInit.name);
+                    const desc = try c.encoder.allocFmt(c.alloc, node.data.record_expr.left);
+                    defer c.alloc.free(desc);
+                    return c.reportErrorFmt("Can not initialize `{}`. It is not a choice type.", &.{v(desc)}, node.data.record_expr.left);
                 }
 
                 if (member.payloadType == cy.NullId) {
                     // No payload type. Ensure empty record literal.
-                    const initializer = c.ast.node(node.data.objectInit.initializer);
+                    const initializer = c.ast.node(node.data.record_expr.record);
                     if (initializer.data.recordLit.numArgs != 0) {
-                        return c.reportErrorFmt("Expected empty record literal.", &.{}, node.data.objectInit.name);
+                        return c.reportErrorFmt("Expected empty record literal.", &.{}, node.data.record_expr.left);
                     }
 
                     var b: ObjectBuilder = .{ .c = c };
@@ -3689,7 +3696,7 @@ pub const ChunkExt = struct {
                 } else {
                     if (!c.sema.isUserObjectType(member.payloadType)) {
                         const payloadTypeName = c.sema.getTypeBaseName(member.payloadType);
-                        return c.reportErrorFmt("The payload type `{}` can not be initialized with key value pairs.", &.{v(payloadTypeName)}, node.data.objectInit.name);
+                        return c.reportErrorFmt("The payload type `{}` can not be initialized with key value pairs.", &.{v(payloadTypeName)}, node.data.record_expr.left);
                     }
 
                     const obj = c.sema.getTypeSym(member.payloadType).cast(.object_t);
@@ -3698,19 +3705,21 @@ pub const ChunkExt = struct {
                     try b.begin(member.type, 2, expr.nodeId);
                     const tag = try c.semaInt(member.val, expr.nodeId);
                     b.pushArg(tag);
-                    const payload = try c.semaObjectInit2(obj, node.data.objectInit.initializer);
+                    const payload = try c.semaObjectInit2(obj, node.data.record_expr.record);
                     b.pushArg(payload);
                     const irIdx = b.end();
                     return ExprResult.initStatic(irIdx, member.type);
                 }
             },
             .typeTemplate => {
-                const name = c.ast.nodeStringById(node.data.objectInit.name);
-                return c.reportErrorFmt("Expected a type symbol. `{}` is a type template and must be expanded to a type first.", &.{v(name)}, node.data.objectInit.name);
+                const desc = try c.encoder.allocFmt(c.alloc, node.data.record_expr.left);
+                defer c.alloc.free(desc);
+                return c.reportErrorFmt("Expected a type symbol. `{}` is a type template and must be expanded to a type first.", &.{v(desc)}, node.data.record_expr.left);
             },
             else => {
-                const name = c.ast.nodeStringById(node.data.objectInit.name);
-                return c.reportErrorFmt("Can not initialize `{}`.", &.{v(name)}, node.data.objectInit.name);
+                const desc = try c.encoder.allocFmt(c.alloc, node.data.record_expr.left);
+                defer c.alloc.free(desc);
+                return c.reportErrorFmt("Can not initialize `{}`.", &.{v(desc)}, node.data.record_expr.left);
             }
         }
     }
@@ -3953,7 +3962,7 @@ pub const ChunkExt = struct {
     pub fn semaExprNoCheck(c: *cy.Chunk, expr: Expr) anyerror!ExprResult {
         if (cy.Trace) {
             const nodeId = expr.nodeId;
-            const nodeStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
+            const nodeStr = try c.encoder.format(nodeId, &cy.tempBuf);
             log.tracev("expr.{s}: \"{s}\"", .{@tagName(c.ast.node(nodeId).type()), nodeStr});
         }
 
@@ -4138,13 +4147,18 @@ pub const ChunkExt = struct {
                 });
                 return ExprResult.initInheritDyn(loc, opt.type, payload_t);
             },
-            .indexExpr => {
+            .array_expr => {
                 const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, nodeId);
 
-                const left = try c.semaExpr(node.data.indexExpr.left, .{});
+                const array = c.ast.node(node.data.array_expr.array);
+                if (array.data.arrayLit.numArgs != 1) {
+                    return c.reportErrorFmt("Unsupported array expr.", &.{}, node.data.array_expr.array);
+                }
+
+                const left = try c.semaExpr(node.data.array_expr.left, .{});
                 const leftT = left.type.id;
                 const preferT = if (leftT == bt.List or leftT == bt.Tuple) bt.Integer else bt.Any;
-                const index = try c.semaExprTarget(node.data.indexExpr.right, preferT);
+                const index = try c.semaExprTarget(array.data.arrayLit.argHead, preferT);
 
                 if (left.type.isDynAny()) {
                     return c.semaCallObjSym2(loc, left.irIdx, getBinOpName(.index), &.{index});
@@ -4181,8 +4195,8 @@ pub const ChunkExt = struct {
                     const sym = try c.mustFindSym(recTypeSym, "$index", nodeId);
                     const func_sym = try requireFuncSym(c, sym, nodeId);
 
-                    return c.semaCallFuncSym2(loc, func_sym, node.data.indexExpr.left, left,
-                        node.data.indexExpr.right, index, expr.getRetCstr(), nodeId);
+                    return c.semaCallFuncSym2(loc, func_sym, node.data.array_expr.left, left,
+                        array.data.arrayLit.argHead, index, expr.getRetCstr(), nodeId);
                 }
             },
             .range => {
@@ -4334,7 +4348,7 @@ pub const ChunkExt = struct {
 
                 return ExprResult.initStatic(irIdx, bt.Any);
             },
-            .objectInit => {
+            .record_expr => {
                 return c.semaObjectInit(expr);
             },
             .throwExpr => {

@@ -18,10 +18,10 @@ t.eq(bool('cyber'), true)
 t.eq(bool(''), false)
 
 -- Heap objects evaluate to true.
-t.eq(bool([:]), true)
+t.eq(bool({}), true)
 t.eq(bool([]), true)
 type S:
     a any
-t.eq(bool([S a: 0]), true)
+t.eq(bool(S{a: 0}), true)
 
 --cytest: pass

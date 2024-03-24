@@ -10,12 +10,12 @@ t.eq(typeof(.abc).id(), 6)
 t.eq(typeof(123).id(), 7)
 t.eq(typeof(123.0).id(), 8)
 t.eq(typeof([]).id(), 13)
-t.eq(typeof([:]).id(), 15)
+t.eq(typeof({}).id(), 15)
 
 -- Referencing type object.
 type Foo:
     a float
-var foo = [Foo a: 123]
+var foo = Foo{a: 123}
 t.eq(typeof(foo), Foo)
 
 -- Referencing builtin types.

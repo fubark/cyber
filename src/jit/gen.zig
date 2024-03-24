@@ -163,7 +163,7 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
 
     var dumpEndPc: usize = undefined;
     if (cy.Trace) {
-        const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
+        const contextStr = try c.encoder.format(nodeId, &cy.tempBuf);
         log.tracev("----{s}: {{{s}}}", .{@tagName(code), contextStr});
 
         if (cc.verbose()) {
@@ -751,7 +751,7 @@ fn zDumpJitStmtSection(vm: *cy.VM, fp: [*]const cy.Value, chunkId: u64, irIdx: u
     const nodeId = c.ir.getNode(@intCast(irIdx));
 
     const mc = startPc[0..@intFromPtr(endPc)-@intFromPtr(startPc)];
-    const contextStr = c.encoder.formatNode(nodeId, &cy.tempBuf) catch cy.fatal();
+    const contextStr = c.encoder.format(nodeId, &cy.tempBuf) catch cy.fatal();
     log.tracev("{s} {{{s}}} {*} {} ({}:{})", .{@tagName(code), contextStr, fp, std.fmt.fmtSliceHexLower(mc), chunkId, irIdx});
 }
 
@@ -761,7 +761,7 @@ fn zDumpJitExprSection(vm: *cy.VM, fp: [*]const cy.Value, chunkId: u64, irIdx: u
     const nodeId = c.ir.getNode(@intCast(irIdx));
 
     const mc = startPc[0..@intFromPtr(endPc)-@intFromPtr(startPc)];
-    const contextStr = c.encoder.formatNode(nodeId, &cy.tempBuf) catch cy.fatal();
+    const contextStr = c.encoder.format(nodeId, &cy.tempBuf) catch cy.fatal();
     log.tracev("{s} {{{s}}} {*} {} ({}:{})", .{@tagName(code), contextStr, fp, std.fmt.fmtSliceHexLower(mc), chunkId, irIdx});
 }
 
@@ -790,7 +790,7 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
 
     var dumpEndPc: usize = undefined;
     if (cy.Trace) {
-        const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
+        const contextStr = try c.encoder.format(nodeId, &cy.tempBuf);
         log.tracev("{s}: {{{s}}} {s}", .{@tagName(code), contextStr, @tagName(cstr.type)});
 
         if (cc.verbose()) {

@@ -11,8 +11,8 @@ import os
 import md '../src/tools/md4c.cy'
 
 let args = os.parseArgs([
-    [ name: 'version', type: String, default: 'dev' ],
-    [ name: 'import-style', type: bool, default: false ],
+    { name: 'version', type: String, default: 'dev' },
+    { name: 'import-style', type: bool, default: false },
 ])
 
 genDocsModules()
@@ -145,7 +145,7 @@ var .lastHLevel = 1
 
 -- Maps id names to the next unique count from 1.
 -- Mimics Githubs duplicate header id generation.
-var .idCounts = [:] 
+var .idCounts = {}
 
 type State enum:
     case main
@@ -330,7 +330,7 @@ func enterSpan(span_t md.SPANTYPE, detail_p pointer, userdata pointer) int:
         var title = getAttrText(detail.title)
 
         if parsingToc:
-            tocLinks.append([Link href: href, title: title, text: ''])
+            tocLinks.append(Link{href: href, title: title, text: ''})
             textContent = ''
             bufContent = true
             return 0
@@ -387,10 +387,10 @@ type ModulePair:
 
 func genDocsModules():
     var modules = [
-        [ModulePair path: '../src/builtins/builtins_vm.cy', section: 'builtins'],
-        [ModulePair path: '../src/builtins/math.cy', section: 'math'],
-        [ModulePair path: '../src/std/os.cy', section: 'os'],
-        [ModulePair path: '../src/std/test.cy', section: 'test'],
+        ModulePair{path: '../src/builtins/builtins_vm.cy', section: 'builtins'},
+        ModulePair{path: '../src/builtins/math.cy', section: 'math'},
+        ModulePair{path: '../src/std/os.cy', section: 'os'},
+        ModulePair{path: '../src/std/test.cy', section: 'test'},
     ]
 
     var curDir = os.dirName(#modUri).?

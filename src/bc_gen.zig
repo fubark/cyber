@@ -261,7 +261,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
     const nodeId = c.ir.getNode(idx);
     c.curNodeId = nodeId;
     if (cy.Trace) {
-        const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
+        const contextStr = try c.encoder.format(nodeId, &cy.tempBuf);
         if (cc.verbose()) {
             rt.logFmt("{}| {}: `{}` unw={} ntmp={}", &.{
                 cy.fmt.repeat(' ', c.indent * 4), v(@tagName(code)), v(contextStr),
@@ -379,7 +379,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
     const nodeId = c.ir.getNode(idx);
     if (cy.Trace) {
         c.indent += 1;
-        const contextStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
+        const contextStr = try c.encoder.format(nodeId, &cy.tempBuf);
         if (cc.verbose()) {
             rt.logFmt("{}( {}: `{}` {} unw={} ntmp={}", &.{
                 cy.fmt.repeat(' ', c.indent * 4), v(@tagName(code)), v(contextStr), v(@tagName(cstr.type)),
@@ -3814,7 +3814,7 @@ fn reserveLocalRegAt(c: *Chunk, irLocalId: u8, declType: types.TypeId, lifted: b
     updateRegType(c, reg, declType);
 
     if (cy.Trace) {
-        const nodeStr = try c.encoder.formatNode(nodeId, &cy.tempBuf);
+        const nodeStr = try c.encoder.format(nodeId, &cy.tempBuf);
         log.tracev("reserve {} {}: {s}", .{c.curBlock.localStart, reg, nodeStr});
     }
 }

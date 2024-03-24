@@ -190,7 +190,7 @@ The `.` prefix is used to reference the current module's namespace.
 
 Unlike local variables, namespace variables do not currently infer the type from the right hand side so a specific type must be specified or it will default to the `any` type:
 ```cy
-var .my_map Map = [:]
+var .my_map Map = {}
 ```
 
 Since namespace variables are initialized outside of a fiber's execution flow, they can not reference any local variables:
@@ -400,8 +400,8 @@ The following shows the zero values of builtin or created types:
 |`String`|`''`|
 |`Array`|`Array('')`|
 |`List`|`[]`|
-|`Map`|`[:]`|
-|`type S`|`[S:]`|
+|`Map`|`{}`|
+|`type S`|`S{}`|
 |`#host type S`|`S.$zero()`|
 |`dynamic`|`int(0)`|
 |`any`|`int(0)`|
@@ -437,7 +437,7 @@ There will be multi-line comments in Cyber but the syntax has not been determine
 ## CYON.
 CYON or the Cyber object notation is similar to JSON. The format uses the same literal value semantics as Cyber.
 ```cy
-[
+{
     name: 'John Doe',
     'age': 25,
     -- This is a comment
@@ -446,7 +446,7 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
         'San Francisco',
         'Tokyo',
     ],
-]
+}
 ```
 
 # Basic Types.
@@ -777,21 +777,21 @@ Maps are a builtin type that store key value pairs in dictionaries. See [`type M
 ### Create map.
 Create a map using key value pairs inside a collection literal:
 ```cy
-var map = [ a: 123, b: () => 5 ]
+var map = { a: 123, b: () => 5 }
 ```
 
 Maps entries can be listed in multiple lines:
 ```cy
-var map = [
+var map = {
     foo: 1,
     bar: 2,
-]
+}
 ```
 
 ### Empty map.
-The empty map is initialized using `[:]`:
+The empty map is initialized using `{}`:
 ```cy
-var empty = [:]
+var empty = {}
 ```
 
 ### Map indexing.
@@ -802,7 +802,7 @@ print map['a']
 
 ### Map operations.
 ```cy
-var map = [:]
+var map = {}
 
 -- Set a key value pair.
 map[123] = 234
@@ -822,9 +822,9 @@ for map -> [val, key]:
 Entries can also follow a collection literal block.
 This gives structure to the entries and has
 the added benefit of allowing multi-line lambdas.
-*Planned Feature*
+*Most likely this will not be implemented in favor of a builder syntax*
 ```cy
-var colors = []:
+var colors = {}:
     red: 0xFF0000
     green: 0x00FF00
     blue: 0x0000FF
@@ -834,7 +834,7 @@ var colors = []:
         print c.blue
 
     -- Nested map.
-    darker []: 
+    darker {}: 
         red: 0xAA0000
         green: 0x00AA00
         blue: 0x0000AA
@@ -939,20 +939,20 @@ type Node:
 ### Instantiate.
 New object instances are created using a record literal with a leading type name:
 ```cy
-var node = [Node value: 123, next: none]
+var node = Node{value: 123, next: none}
 print node.value       -- Prints "123"
 ```
 
 A record literal can also initialize to the inferred object type:
 ```cy
-var node Node = [value: 234, next: none]
+var node Node = {value: 234, next: none}
 print node.value       -- Prints "234"
 ```
 
 ### Default field values.
 When a field is omitted in the record literal, it gets initialized to its [zero value](#zero-values):
 ```cy
-var node Node = [value: 234]
+var node Node = {value: 234}
 print node.next       -- Prints "Option.none"
 
 type Student:
@@ -960,7 +960,7 @@ type Student:
     age  int
     gpa  float
 
-var s = [Student:]
+var s = Student{}
 print s.name       -- Prints ""
 print s.age        -- Prints "0"
 print s.gpa        -- Prints "0.0"
@@ -973,7 +973,7 @@ type Node:
     val  any
     next ?Node
 
-var n = [Node:]    -- Initializes.
+var n = Node{}    -- Initializes.
 ```
 In this example, `next` has an optional `?Node` type so it can be initialized to `none` when creating a new `Node` object.
 
@@ -983,7 +983,7 @@ type Node:
     val  any
     next Node
 
-var n = [Node:]    -- CompileError. Can not zero initialize `next`
+var n = Node{}    -- CompileError. Can not zero initialize `next`
                    -- because of circular dependency.
 ```
 
@@ -996,10 +996,10 @@ type Node:
         b  float
     next  ?Node
 
-var node = [Node
-    value: [a: 123, b: 100.0],
+var node = Node{
+    value: {a: 123, b: 100.0},
     next: none,
-]
+}
 ```
 
 ### Methods.
@@ -1016,7 +1016,7 @@ type Node:
         self.inc(321)
         print value
 
-var n = [Node value: 123, next: none]
+var n = Node{value: 123, next: none}
 n.incAndPrint()         -- Prints "444"
 ```
 
@@ -1048,7 +1048,7 @@ type Node:
 
 -- Declare namespace function inside `Node`.
 func Node.new():
-    return [Node value: 123, next: none]
+    return Node{value: 123, next: none}
 
 var n = Node.new()
 ```
@@ -1077,7 +1077,7 @@ type Foo dynobject:
 ### Undeclared fields.
 Undeclared fields can be initialized and assigned to:
 ```cy
-var f = [Foo value: 123, undeclared: 234]
+var f = Foo{value: 123, undeclared: 234}
 print f.value        --> 123
 print f.undeclared   --> 234
 
@@ -1108,13 +1108,13 @@ type Vec2 struct:
     x float
     y float
 
-var v = [Vec2 x: 30, y: 40]
+var v = Vec2{x: 30, y: 40}
 ```
 
 ### Copy structs.
 Since structs are copied by value, assigning a struct to another variable creates a new struct:
 ```cy
-var v = [Vec2 x: 30, y: 40]
+var v = Vec2{x: 30, y: 40}
 var w = v
 v.x = 100
 print w.x    -- Prints '30'
@@ -1164,20 +1164,20 @@ type Rectangle:
 ### Initialize choice.
 If the payload is an object type, the choice can be initialized with a simplified record literal:
 ```cy
-var s = [Shape.rectangle width: 10, height: 20]
+var s = Shape.rectangle{width: 10, height: 20}
 ```
 
 The general way to initialize a choice is to pass the payload as an argument:
 ```cy
-var rect = [Rectangle width: 10, height: 20]
-var s = [Shape rectangle: rect]
+var rect = Rectangle{width: 10, height: 20}
+var s = Shape{rectangle: rect}
 
-s = [Shape line: 20]
+s = Shape{line: 20}
 ```
 
 A choice without a payload is initialized with an empty record literal:
 ```cy
-var s = [Shape.point:]
+var s = Shape.point{}
 ```
 
 ### Choice `switch`.
@@ -1201,7 +1201,7 @@ else:
 ### Access choice.
 A choice can be accessed by specifying the access operator `.!` before the tagged member name. This will either return the payload or panic at runtime: *Planned Feature*
 ```cy
-var s = [Shape line: 20]
+var s = Shape{line: 20}
 print s.!line     -- Prints '20'
 ```
 
@@ -1295,7 +1295,7 @@ type Vec2:
 
 type Pos2 = Vec2
 
-var pos = [Pos2 x: 3, y: 4]
+var pos = Pos2{x: 3, y: 4}
 ```
 
 ## Distinct types.
@@ -1309,7 +1309,7 @@ type Vec2:
 
 type Pos2 Vec2
 
-var pos = [Pos2 x: 3, y: 4]
+var pos = Pos2{x: 3, y: 4}
 ```
 
 Functions can be declared under the new type's namespace:
@@ -1322,8 +1322,8 @@ type Pos2 Vec2:
         var dy = math.abs(o.y - y)
         return dx + dy
 
-var pos = [Pos2 x: 3, y: 4]
-var dst = [Pos2 x: 4, y: 5]
+var pos = Pos2{x: 3, y: 4}
+var dst = Pos2{x: 4, y: 5}
 print pos.blockDist(dst)     --> 2
 ```
 Note that functions declared from the target type do not carry over to the new type.
@@ -1332,7 +1332,7 @@ Unlike a type alias, the new type and the target type can not be used interchang
 ```cy
 type Pos2 Vec2
 
-var a = [Pos2 x: 3, y: 4]
+var a = Pos2{x: 3, y: 4}
 
 var b Vec2 = a as Vec2
 ```
@@ -1360,7 +1360,7 @@ When the template is invoked with compile-time argument(s), a specialized versio
 
 In this example, `String` can be used as an argument since it satisfies the `type` parameter constraint:
 ```cy
-var a MyContainer(String) = [id: 123, value: 'abc']
+var a MyContainer(String) = {id: 123, value: 'abc'}
 print a.get()      -- Prints 'abc'
 ```
 Note that invoking the template again with the same argument(s) returns the same generated type. In other words, the generated type is always memoized from the input parameters.
@@ -1486,7 +1486,7 @@ for list -> n:
 
 Maps can be iterated. `next()` returns a key and value tuple:
 ```cy
-var map = [ a: 123, b: 234 ]
+var map = { a: 123, b: 234 }
 
 for map -> entry:
     print entry[0]
@@ -2079,7 +2079,7 @@ ffi.cbind(MyObject, [.float, .voidPtr, .bool])
 ffi.cfunc('foo', [MyObject], MyObject)
 let lib = ffi.bindLib('./mylib.so')
 
-var res = lib.foo([MyObject a: 123.0, b: os.cstr('foo'), c: true])
+var res = lib.foo(MyObject{a: 123.0, b: os.cstr('foo'), c: true})
 ```
 
 The example above maps to these C declarations in `mylib.so`:
@@ -2100,7 +2100,7 @@ MyObject foo(MyObject o) {
 ffi.cfunc('foo', [MyObject], .voidPtr)
 let lib = ffi.bindLib('./mylib.so')
 
-var ptr = lib.foo([MyObject a: 123, b: os.cstr('foo'), c: true])
+var ptr = lib.foo(MyObject{a: 123, b: os.cstr('foo'), c: true})
 var res = lib.ptrToMyObject(ptr)
 ```
 

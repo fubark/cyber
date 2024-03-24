@@ -483,7 +483,6 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
   * [Map block.](#map-block)
 * [Symbols.](#symbols)
 * [`any`.](#any)
-  * [Invoking any values.](#invoking-any-values)
 * [`dynamic`.](#dynamic)
 </td>
 </tr></table>
@@ -850,7 +849,8 @@ print int(currency)       -- '123' or some arbitrary id.
 ```
 
 ## `any`.
-A variable with the `any` type can hold any value, but copying it to narrowed type destination will result in a compile error:
+Unlike `dynamic`, `any` is statically typed and performs type checks at compile-time.
+`any` type can hold any value, but copying it to narrowed type destination will result in a compile error:
 ```cy
 func square(i int):
     return i * i
@@ -866,23 +866,8 @@ print square(a)           --> CompileError. Expected `int`, got `any`.
 print square(a as int)    --> 100
 ```
 
-### Invoking `any` values.
-Since `any` is a static type, invoking an `any` value must be explicitly casted to the appropriate function type.
-> _Planned Feature: Casting to a function type is not currently supported._
-
-```cy
-func add(a int, b int) int:
-    return a + b
-
-var op any = add
-print op(1, 2)         -- CompileError. Expected `func (int, int) any`
-
-var opFunc = op as (func (int, int) int)
-print opFunc(1, 2)     -- Prints "3".
-```
-
 ## `dynamic`.
-The dynamic type defers type checking to runtime. See [Dynamic Typing](#dynamic-typing).
+The dynamic type defers type checking to runtime. However, it also tracks its own **recent type** in order to surface errors at compile-time. See [Dynamic Typing](#dynamic-typing).
 
 # Custom Types.
 <table><tr>
@@ -2508,7 +2493,6 @@ The main execution context is a fiber as well. Once the main fiber has finished,
 * [Dynamic variables.](#dynamic-variables)
 * [Runtime type checking.](#runtime-type-checking)
 * [Dynamic functions.](#dynamic-functions)
-* [`dynamic` vs `any`.](#dynamic-vs-any)
 
 [^top](#table-of-contents)
 
@@ -2568,33 +2552,6 @@ The return specifier is also implicitly `!dynamic` which indicates that the func
 let foo(a, b, c):
     return a + b() + a[c]
 ```
-
-## `dynamic` vs `any`
-`dynamic` values can be freely used and copied without any compile errors (if there is a chance it can succeed at runtime, see [Recent type inference](#recent-type-inference)):
-```cy
-let a = 123
-
-func getFirstRune(s String):
-    return s[0]
-
-getFirstRune(a)       -- RuntimeError. Expected `String`.
-```
-Since `a` is dynamic, passing it to a typed function parameter is allowed at compile-time, but will fail when the function is invoked at runtime.
-
-The `any` type on the otherhand is a **static type** and must be explicitly declared using `var`:
-```cy
-var a any = 123
-
-func getFirstRune(s String):
-    return s[0]
-
-getFirstRune(a)       -- CompileError. Expected `String`.
-```
-This same setup will now fail at compile-time because `any` does not satisfy the destination's `String` type constraint.
-
-The use of the `dynamic` type effectively defers type checking to runtime while `any` is a static type and must adhere to type constraints at compile-time.
-
-A `dynamic` value can be used in any operation. It can be invoked as the callee, invoked as the receiver of a method call, or used with operators.
 
 # Metaprogramming.
 

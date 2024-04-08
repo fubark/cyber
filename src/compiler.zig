@@ -680,9 +680,10 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
             // Process static declarations.
             for (chunk.parser.staticDecls.items) |*decl| {
                 switch (decl.declT) {
-                    .use => {
-                        try sema.declareUse(chunk, decl.nodeId);
+                    .use_import => {
+                        try sema.declareUseImport(chunk, decl.nodeId);
                     },
+                    .use_alias => {},
                     .struct_t => {
                         const sym = try sema.declareStruct(chunk, decl.nodeId);
                         decl.data = .{ .sym = @ptrCast(sym) };
@@ -920,10 +921,13 @@ fn resolveSyms(self: *Compiler) !void {
                         last_type_sym = decl.data.sym;
                     }
                 },
+                .use_alias => {
+                    try sema.resolveUseAlias(chunk, decl.nodeId);
+                },
                 .typeAlias => {
                     try sema.resolveTypeAlias(chunk, @ptrCast(decl.data.sym));
                 },
-                .use,
+                .use_import,
                 .typeTemplate => {},
             }
         }

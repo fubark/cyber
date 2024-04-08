@@ -101,6 +101,7 @@ pub const NodeType = enum(u8) {
     unary_expr,
     unwrap,
     unwrap_or,
+    use_alias,
     varSpec,
     void,
     whileCondStmt,
@@ -323,6 +324,10 @@ const NodeData = union {
     funcParam: struct {
         name: NodeId,
         typeSpec: cy.Nullable(NodeId),
+    },
+    use_alias: struct {
+        name: NodeId,
+        target: NodeId,
     },
     typeAliasDecl: packed struct {
         name: NodeId,

@@ -750,8 +750,11 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
             const headerv = try genNodeValue(vm, ast, node.data.func.header);
             try vm.mapSet(entry, try vm.retainOrAllocAstring("header"), headerv);
         },
-        .use => {
+        .use_import => {
             name = ast.nodeStringById(node.data.import_stmt.name);
+        },
+        .use_alias => {
+            name = ast.nodeStringById(node.data.use_alias.name);
         },
         .table_t,
         .struct_t,

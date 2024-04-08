@@ -55,7 +55,6 @@ pub const TokenType = enum(u8) {
     bang_equal,
     bin,
     break_k,
-    capture,
     caret,
     case_k,
     catch_k,
@@ -96,6 +95,7 @@ pub const TokenType = enum(u8) {
     let_k,
     minus,
     minus_double_dot,
+    minus_right_angle,
     module_k,
     new_line,
     none_k,
@@ -341,7 +341,7 @@ pub const Tokenizer = struct {
                     return .{ .stateT = .end };
                 } else if (peek(t) == '>') {
                     advance(t);
-                    try t.pushToken(.capture, start);
+                    try t.pushToken(.minus_right_angle, start);
                 } else if (peek(t) == '.' and peekAhead(t, 1) == '.') {
                     advance(t);
                     advance(t);

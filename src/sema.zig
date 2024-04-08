@@ -591,6 +591,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
 
             c.ir.setStmtData(irIdx, .tryStmt, data);
         },
+        .use_alias,
         .import_stmt => {},
         .returnStmt => {
             _ = try c.ir.pushStmt(c.alloc, .retStmt, nodeId, {});
@@ -1217,7 +1218,19 @@ pub fn resolveModuleSpec(self: *cy.Chunk, buf: []u8, spec: []const u8, nodeId: c
     return resUri[0..resUriLen];
 }
 
-pub fn declareUse(c: *cy.Chunk, nodeId: cy.NodeId) !void {
+pub fn resolveUseAlias(c: *cy.Chunk, node_id: cy.NodeId) !void {
+    const node = c.ast.node(node_id);
+    const name = c.ast.nodeStringById(node.data.use_alias.name);
+
+    const sym = try resolveSym(c, node.data.use_alias.target);
+    const res = try c.use_syms.getOrPut(c.alloc, name);
+    if (res.found_existing) {
+        return c.reportErrorFmt("`{}` is already in the using namespace.", &.{v(name)}, node_id);
+    }
+    res.value_ptr.* = sym;
+}
+
+pub fn declareUseImport(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = c.ast.node(nodeId);
     const name_n = c.ast.node(node.data.import_stmt.name);
 
@@ -2405,7 +2418,7 @@ pub fn resolveTypeSpecNode(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!cy.TypeId {
     if (nodeId == cy.NullNode) {
         return bt.Dynamic;
     }
-    const type_id = try resolveTypeExpr(c, nodeId);
+    const type_id = try resolveSymType(c, nodeId);
     if (type_id == bt.Void) {
         return c.reportErrorFmt("`void` can not be used as common type specifier.", &.{}, nodeId);
     }
@@ -2416,7 +2429,7 @@ pub fn resolveReturnTypeSpecNode(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!cy.Ty
     if (nodeId == cy.NullNode) {
         return bt.Dynamic;
     }
-    return resolveTypeExpr(c, nodeId);
+    return resolveSymType(c, nodeId);
 }
 
 /// Creates `Placeholder`s for missing parent symbols.
@@ -2459,53 +2472,37 @@ pub fn resolveLocalNamePathSym(c: *cy.Chunk, head: cy.NodeId, end: cy.NodeId) an
     return sym;
 }
 
-fn resolveSymType(c: *cy.Chunk, sym: *cy.Sym, node_id: cy.NodeId) !cy.TypeId {
+fn resolveSymType(c: *cy.Chunk, expr_id: cy.NodeId) !cy.TypeId {
+    const sym = try resolveSym(c, expr_id);
     return sym.getStaticType() orelse {
         switch (sym.type) {
             .typeTemplate => {
-                return c.reportErrorFmt("Expected a type symbol. `{}` is a type template and must be expanded to a type first.", &.{v(sym.name())}, node_id);
+                return c.reportErrorFmt("Expected a type symbol. `{}` is a type template and must be expanded to a type first.", &.{v(sym.name())}, expr_id);
             },
             else => {
-                return c.reportErrorFmt("`{}` is not a type symbol.", &.{v(sym.name())}, node_id);
+                return c.reportErrorFmt("`{}` is not a type symbol.", &.{v(sym.name())}, expr_id);
             }
         }
     };
 }
 
-fn resolveSym(c: *cy.Chunk, node_id: cy.NodeId) !*cy.Sym {
-    const node = c.ast.node(node_id);
-    switch (node.type()) {
-        .ident => {
-            const name = c.ast.nodeString(node);
-            return (try getResolvedLocalSym(c, name, node_id, true)) orelse {
-                return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, node_id);
-            };
-        },
-        else => {
-            return c.reportErrorFmt("Expected symbol. Found `{}`.", &.{v(node.type())}, node_id);
-        },
-    }
-}
-
-fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !cy.TypeId {
+fn resolveSym(c: *cy.Chunk, exprId: cy.NodeId) !*cy.Sym {
     const expr = c.ast.node(exprId);
     switch (expr.type()) {
         .objectDecl => {
             // Unnamed object.
             const header = c.ast.node(expr.data.objectDecl.header);
             const symId = header.data.objectHeader.name;
-            const sym = c.sym.getMod().chunk.syms.items[symId];
-            return resolveSymType(c, sym, exprId);
+            return c.sym.getMod().chunk.syms.items[symId];
         },
         .void => {
-            return bt.Void;
+            return c.sema.getTypeSym(bt.Void);
         },
         .ident => {
             const name = c.ast.nodeString(expr);
-            const sym = (try getResolvedLocalSym(c, name, exprId, true)) orelse {
+            return (try getResolvedLocalSym(c, name, exprId, true)) orelse {
                 return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, exprId);
             };
-            return resolveSymType(c, sym, exprId);
         },
         .accessExpr => {
             const parent = try resolveSym(c, expr.data.accessExpr.left);
@@ -2514,30 +2511,27 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !cy.TypeId {
                 return c.reportErrorFmt("Expected identifier.", &.{}, expr.data.accessExpr.right);
             }
             const name = c.ast.nodeString(right);
-            const sym = try c.getResolvedDistinctSym(parent, name, expr.data.accessExpr.right, true);
-            return resolveSymType(c, sym, exprId);
+            return try c.getResolvedDistinctSym(parent, name, expr.data.accessExpr.right, true);
         },
         .comptimeExpr => {
             if (expr.data.comptimeExpr.patchIdx != cy.NullId) {
                 const patchNode = c.patchTemplateNodes[expr.data.comptimeExpr.patchIdx];
-                return resolveTypeExpr(c, patchNode);
+                return resolveSym(c, patchNode);
             } else {
                 return c.reportErrorFmt("Unexpected compile-time expression.", &.{}, exprId);
             }
         },
         .semaSym => {
-            return resolveSymType(c, expr.data.semaSym.sym, exprId);
+            return expr.data.semaSym.sym;
         },
         .callExpr => {
-            const sym = try cte.expandTemplateOnCallExpr(c, exprId);
-            return resolveSymType(c, sym, exprId);
+            return try cte.expandTemplateOnCallExpr(c, exprId);
         },
         .expandOpt => {
-            const sym = try cte.expandTemplateOnCallArgs(c, c.sema.option_tmpl, expr.data.expandOpt.param, exprId);
-            return resolveSymType(c, sym, exprId);
+            return try cte.expandTemplateOnCallArgs(c, c.sema.option_tmpl, expr.data.expandOpt.param, exprId);
         },
         else => {
-            return c.reportErrorFmt("Unsupported type expr: `{}`", &.{v(expr.type())}, exprId);
+            return c.reportErrorFmt("Unsupported symbol expr: `{}`", &.{v(expr.type())}, exprId);
         }
     }
 }

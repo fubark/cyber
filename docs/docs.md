@@ -1813,6 +1813,7 @@ In the example above, the function `foo` is called with 4 arguments. The first a
 * [Exporting.](#exporting)
 * [Module URI.](#module-uri)
 * [Symbol visibility.](#symbol-visibility)
+* [Symbol alias.](#symbol-alias)
 * [Builtin modules.](#builtin-modules)
 * [builtins.](#builtins)
   * [`type bool`](#type-bool)
@@ -1978,6 +1979,13 @@ All symbols have public visibility. However, when a symbol is declared with a `-
     return a + b
 ```
 Furthermore, the symbol is excluded when its module is included using `use *`.
+
+## Symbol alias.
+`use` can be used to create an alias to another symbol:
+```cy
+use eng 'lib/engine.cy'
+use Vec2 -> eng.Vector2
+```
 
 ## Builtin modules.
 Builtin modules are the bare minimum that comes with Cyber. The [embeddable library](#embedding) contains these modules and nothing more. They include:

@@ -1470,7 +1470,7 @@ pub const Parser = struct {
                 .else_block = else_block,
             }});
             return ifStmt;
-        } else if (token.tag() == .capture) {
+        } else if (token.tag() == .minus_right_angle) {
             self.advance();
 
             const unwrap = (try self.parseExpr(.{})) orelse {
@@ -1522,6 +1522,23 @@ pub const Parser = struct {
                 try self.consumeNewLineOrEnd();
             } else if (self.peek().tag() == .new_line) {
                 self.advance();
+            } else if (self.peek().tag() == .minus_right_angle) {
+                self.advance();
+                const target = (try self.parseExpr(.{})) orelse {
+                    return self.reportError("Expected condition expression.", &.{});
+                };
+                const alias = try self.pushNode(.use_alias, start);
+                self.ast.setNodeData(alias, .{ .use_alias = .{
+                    .name = name,
+                    .target = target,
+                }});
+                try self.staticDecls.append(self.alloc, .{
+                    .declT = .use_alias,
+                    .nodeId = alias,
+                    .data = undefined,
+                });
+                try self.consumeNewLineOrEnd();
+                return alias;
             } else {
                 return self.reportError("Expected a module specifier.", &.{});
             }
@@ -1546,7 +1563,7 @@ pub const Parser = struct {
         }});
 
         try self.staticDecls.append(self.alloc, .{
-            .declT = .use,
+            .declT = .use_import,
             .nodeId = import,
             .data = undefined,
         });
@@ -1588,7 +1605,7 @@ pub const Parser = struct {
                 .bodyHead = res.first,
             }});
             return whileStmt;
-        } else if (token.tag() == .capture) {
+        } else if (token.tag() == .minus_right_angle) {
             self.advance();
             token = self.peek();
             const ident = (try self.parseExpr(.{})) orelse {
@@ -1658,7 +1675,7 @@ pub const Parser = struct {
                 }});
                 self.ast.nodePtr(header).head.data = .{ .forRangeHeader = .{ .eachClause = cy.NullNode }};
                 return for_stmt;
-            } else if (token.tag() == .capture) {
+            } else if (token.tag() == .minus_right_angle) {
                 self.advance();
 
                 token = self.peek();
@@ -1706,7 +1723,7 @@ pub const Parser = struct {
                 .bodyHead = res.first,
             }});
             return forStmt;
-        } else if (token.tag() == .capture) {
+        } else if (token.tag() == .minus_right_angle) {
             self.advance();
             token = self.peek();
             var eachClause: NodeId = undefined;
@@ -1810,7 +1827,7 @@ pub const Parser = struct {
                     self.ast.setNextNode(lastCond, cond);
                     lastCond = cond;
                     numConds += 1;
-                } else if (token.tag() == .capture) {
+                } else if (token.tag() == .minus_right_angle) {
                     self.advance();
 
                     // Parse next token as expression.
@@ -2787,7 +2804,7 @@ pub const Parser = struct {
                 .and_k,
                 .or_k,
                 .as_k,
-                .capture,
+                .minus_right_angle,
                 .raw_string,
                 .string,
                 .bin,
@@ -3320,7 +3337,7 @@ pub const Parser = struct {
                 .else_k,
                 .comma,
                 .colon,
-                .capture,
+                .minus_right_angle,
                 .new_line,
                 .null => break,
                 else => {
@@ -3895,7 +3912,7 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .null,
         .as_k, .at,
         .bang, .bin, .break_k,
-        .capture, .case_k, .catch_k, .coinit_k, .colon, .comma, .continue_k, .coresume_k, .coyield_k,
+        .minus_right_angle, .case_k, .catch_k, .coinit_k, .colon, .comma, .continue_k, .coresume_k, .coyield_k,
         .dec, .dot, .dot_question, .dot_dot,
         .else_k, .enum_k, .err, .error_k, .equal, .equal_right_angle,
         .false_k, .float, .for_k, .func_k,
@@ -4027,7 +4044,8 @@ const StaticDeclType = enum {
     implicit_method,
     func,
     funcInit,
-    use,
+    use_import,
+    use_alias,
     object,
     table_t,
     struct_t,

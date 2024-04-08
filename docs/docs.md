@@ -910,8 +910,8 @@ The dynamic type defers type checking to runtime. However, it also tracks its ow
 <td valign="top">
 
 * [Objects.](#objects)
-  * [Fields.](#fields)
   * [Instantiate.](#instantiate)
+  * [Field visibility.](#field-visibility)
   * [Default field values.](#default-field-values)
   * [Circular references.](#circular-references)
   * [Unnamed object.](#unnamed-object)
@@ -961,7 +961,6 @@ type A:
     my_field int
 ```
 
-### Fields.
 Fields must be declared at the top of the `type` block with their names and type specifiers:
 ```cy
 type Node:
@@ -980,6 +979,15 @@ A record literal can also initialize to the inferred object type:
 ```cy
 var node Node = {value: 234, next: none}
 print node.value       -- Prints "234"
+```
+
+## Field visibility.
+All fields have public visibility. However, when a field is declared with a `-` prefix, it suggests that it should not be made available to an editor's autocomplete:
+```cy
+type Info:
+    a       int
+    -b      int
+    -secret String
 ```
 
 ### Default field values.
@@ -1796,7 +1804,7 @@ In the example above, the function `foo` is called with 4 arguments. The first a
 * [Importing.](#importing)
 * [Exporting.](#exporting)
 * [Module URI.](#module-uri)
-* [Visibility.](#visibility)
+* [Symbol visibility.](#symbol-visibility)
 * [Builtin modules.](#builtin-modules)
 * [builtins.](#builtins)
   * [`type bool`](#type-bool)
@@ -1925,8 +1933,17 @@ import os
 print os.dirName(#modUri)  -- Prints '/some/path'
 ```
 
-## Visibility.
-The annotation `@hide` provides a hint to editors that a static symbol should not appear in the auto-complete. Despite this, the symbol is still reachable.
+## Symbol visibility.
+All symbols have public visibility. However, when a symbol is declared with a `-` prefix, it suggests that it should not be made available to an editor's autocomplete:
+```cy
+-type Foo:
+    a int
+    b int
+
+-func add(a int, b int) int:
+    return a + b
+```
+Furthermore, the symbol is excluded when its module is include using `import *` or `use *`.
 
 ## Builtin modules.
 Builtin modules are the bare minimum that comes with Cyber. The [embeddable library](#embedding) contains these modules and nothing more. They include:

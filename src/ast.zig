@@ -308,7 +308,8 @@ const NodeData = union {
         expr: NodeId,
     },
     func: packed struct {
-        header: NodeId,
+        header: u31,
+        hidden: bool,
         bodyHead: cy.Nullable(u24),
         sig_t: FuncSigType,
     },
@@ -322,12 +323,14 @@ const NodeData = union {
         name: NodeId,
         typeSpec: cy.Nullable(NodeId),
     },
-    typeAliasDecl: struct {
+    typeAliasDecl: packed struct {
         name: NodeId,
-        typeSpec: NodeId,
+        typeSpec: u31,
+        hidden: bool,
     },
     distinct_decl: packed struct {
-        header: NodeId,
+        header: u31,
+        hidden: bool,
         func_head: u24,
         num_funcs: u8,
     },
@@ -337,7 +340,8 @@ const NodeData = union {
     },
     objectField: packed struct {
         name: NodeId,
-        typeSpec: NodeId,
+        typeSpec: u31,
+        hidden: bool,
     },
     objectDecl: packed struct {
         header: NodeId,
@@ -361,6 +365,7 @@ const NodeData = union {
         typed: bool,
         // Declared with `.` prefix.
         root: bool,
+        hidden: bool,
     },
     localDecl: packed struct {
         varSpec: NodeId,
@@ -376,6 +381,7 @@ const NodeData = union {
         numMembers: u8,
         memberHead: u24,
         isChoiceType: bool,
+        hidden: bool,
     },
     whileCondStmt: struct {
         cond: NodeId,
@@ -416,7 +422,8 @@ const NodeData = union {
     typeTemplate: packed struct {
         paramHead: cy.Nullable(u24),
         numParams: u8,
-        typeDecl: NodeId,
+        typeDecl: u31,
+        hidden: bool,
     },
     range: packed struct {
         start: cy.Nullable(NodeId),

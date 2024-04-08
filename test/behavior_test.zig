@@ -75,6 +75,7 @@ if (!aot) {
     run.case("syntax/skip_utf8_bom.cy");
     run.case("syntax/stmt_end_error.cy");
     run.case("syntax/tabs_spaces_error.cy");
+    run.case("syntax/visibility.cy");
     run.case("syntax/wrap_stmts.cy");
 
     run.case("functions/assign_capture_local_error.cy");

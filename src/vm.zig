@@ -564,7 +564,7 @@ pub const VM = struct {
             return self.evalByteCode(res.vm);
         } else {
             defer res.aot.deinit(self.alloc);
-            if (cy.isFreestanding or cy.isWasm) {
+            if (cy.isFreestanding or cy.isWasm or !cy.hasCLI) {
                 return error.Unsupported;
             }
 

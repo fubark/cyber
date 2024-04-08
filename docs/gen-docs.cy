@@ -90,7 +90,7 @@ hljs.registerLanguage('cy', function() {
     return {
     keywords: {
         keyword: [
-            'template', 'func', 'import', 'for', 'coinit', 'coresume', 'coyield',
+            'template', 'func', 'import', 'for', 'coinit', 'coresume', 'coyield', 'use',
             'return', 'if', 'else', 'as', 'while', 'var', 'let', 'dynobject', 'object', 'struct', 'with', 'caught',
             'break', 'continue', 'switch', 'pass', 'or', 'and', 'not', 'is', 'error', 'throws',
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case'

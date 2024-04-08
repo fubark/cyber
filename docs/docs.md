@@ -246,7 +246,7 @@ The final resulting value that is assigned to the namespace variable is provided
 ## Reserved identifiers.
 
 ### Keywords.
-There are `26` general keywords. This list categorizes them:
+There are `27` general keywords. This list categorizes them:
 
 - [Control Flow](#control-flow): `if` `else` `switch` `case` `while` `for` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not`
@@ -254,6 +254,7 @@ There are `26` general keywords. This list categorizes them:
 - [Functions](#functions): `func` `return`
 - [Coroutines](#fibers): `coinit` `coyield` `coresume`
 - [Types](#custom-types): `type`  `as`
+- [Type embedding](#type-embedding): `use`
 - [Metaprogramming](#metaprogramming): `template`
 - [Error Handling](#error-handling): `try` `catch` `throw`
 - [Modules](#modules): `import`
@@ -938,6 +939,7 @@ The dynamic type defers type checking to runtime. However, it also tracks its ow
   * [`while` unwrap.](#while-unwrap)
 * [Type aliases.](#type-aliases)
 * [Distinct types.](#distinct-types)
+* [Type embedding.](#type-embedding)
 * [Traits.](#traits)
 * [Union types.](#union-types)
 * [Generic types.](#generic-types)
@@ -1332,6 +1334,40 @@ type Pos2 Vec2
 var a = Pos2{x: 3, y: 4}
 
 var b Vec2 = a as Vec2
+```
+
+## Type embedding.
+Type embedding facilites composition of types by reusing the namespace of a child field's type: *Planned Feature*
+```cy
+type Base:
+    a int
+
+    func double() int:
+        return a * 2
+
+type Container:
+    b use Base
+
+var c = Container{b: Base{a: 123}}
+print c.a         --> 123
+print c.double()  --> 246
+```
+Note that embedding a type does not create new fields or methods in the containing type. It simply augments the type's using namespace.
+
+If there is a member name conflict, the containing type's member has a higher precedence:
+```cy
+type Container:
+    a int
+    b use Base
+
+var c = Container{a: 999, b: Base{a: 123}}
+print c.a         --> 999
+print c.double()  --> 246
+```
+
+Since the embedding field is named, it can be used just like any other field:
+```cy
+print c.b.a       --> 123
 ```
 
 ## Traits.

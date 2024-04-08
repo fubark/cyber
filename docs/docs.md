@@ -49,7 +49,7 @@ for worlds -> w:
   * [Local variables.](#local-variables)
   * [Explicit type constraint.](#explicit-type-constraint)
   * [Variable scopes.](#variable-scopes)
-  * [Namespace variables.](#namespace-variables)
+  * [Static variables.](#static-variables)
 * [Reserved identifiers.](#reserved-identifiers)
   * [Keywords.](#keywords)
   * [Contextual keywords.](#contextual-keywords)
@@ -134,7 +134,7 @@ func foo():
 ## Variables.
 Variables allow values to be stored into named locations in memory.
 
-Local variables and namespace variables are supported.
+Local variables and static variables are supported.
 
 ### Local variables.
 Local variables exist until the end of their scope.
@@ -175,11 +175,11 @@ func foo():
     print a             --> 234
 ```
 
-### Namespace variables.
-Namespace variables live until the end of the script.
+### Static variables.
+Static variables live until the end of the script.
 They act as global variables and are visible from anywhere in the script. 
 
-Namespace variables are declared with `var` like local variables, but a namespace must be provided before the variable name:
+Static variables are declared with `var` like local variables, but a namespace must be provided before the variable name:
 ```cy
 var .a = 123
 
@@ -188,12 +188,12 @@ func foo():
 ```
 The `.` prefix is used to reference the current module's namespace.
 
-Unlike local variables, namespace variables do not currently infer the type from the right hand side so a specific type must be specified or it will default to the `any` type:
+Unlike local variables, static variables do not currently infer the type from the right hand side so a specific type must be specified or it will default to the `any` type:
 ```cy
 var .my_map Map = Map{}
 ```
 
-Since namespace variables are initialized outside of a fiber's execution flow, they can not reference any local variables:
+Since static variables are initialized outside of a fiber's execution flow, they can not reference any local variables:
 ```cy
 var .b = a   --> Compile error, initializer can not reference a local variable.
 
@@ -209,7 +209,7 @@ var a = 123
 b = a            -- Reassigning after initializing.
 ```
 
-Namespace variable initializers have a natural order based on when it was encountered by the compiler.
+Static variable initializers have a natural order based on when it was encountered by the compiler.
 In the case of [imported](#importing) variables, the order of the import would affect this order.
 The following would print '123' before '234':
 ```cy
@@ -217,7 +217,7 @@ var .a = print(123)
 var .b = print(234)
 ```
 
-When the initializers reference other namespace variables, those child references are initialized first in DFS order and supersede the natural ordering. The following initializes `b` before `a`.
+When the initializers reference other static variables, those child references are initialized first in DFS order and supersede the natural ordering. The following initializes `b` before `a`.
 ```cy
 var .a = b + 321
 var .b = 123
@@ -232,7 +232,7 @@ var .a = b
 var .b = a     --> CompileError. Referencing `a` creates a circular dependency.
 ```
 
-Sometimes, you may want to initialize a namespace variable by executing multiple statements in order.
+Sometimes, you may want to initialize a static variable by executing multiple statements in order.
 For this use case, you can use a declaration block. *Planned Feature*
 ```cy
 var .myImage =:
@@ -241,7 +241,7 @@ var .myImage =:
     img.filter(.blur, 5)
     break img
 ```
-The final resulting value that is assigned to the namespace variable is provided by a `break` statement. If a `break` statement is not provided, `none` is assigned instead.
+The final resulting value that is assigned to the static variable is provided by a `break` statement. If a `break` statement is not provided, `none` is assigned instead.
 
 ## Reserved identifiers.
 
@@ -1087,7 +1087,7 @@ type Node:
     value int
     next  ?Node
 
--- Declare namespace function inside `Node`.
+-- Declare static function inside `Node`.
 func Node.new():
     return Node{value: 123, next: none}
 
@@ -1622,7 +1622,7 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
 
 # Functions.
 
-* [Namespace functions.](#namespace-functions)
+* [Static functions.](#static-functions)
 * [Function overloading.](#function-overloading)
 * [Lambdas.](#lambdas)
 * [Closures.](#closures)
@@ -1636,12 +1636,12 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
 
 [^top](#table-of-contents)
 
-In Cyber, there are first-class functions (or function values) and namespace functions.
+In Cyber, there are first-class functions (or function values) and static functions.
 
-## Namespace functions.
-Namespace functions are not initially values themselves. They allow function calls to be optimal since they don't need to resolve a dynamic value.
+## Static functions.
+Static functions are not initially values themselves. They allow function calls to be optimal since they don't need to resolve a dynamic value.
 
-Namespace functions are declared with the `func` keyword and must have a name.
+Static functions are declared with the `func` keyword and must have a name.
 ```cy
 use math
 
@@ -1650,7 +1650,7 @@ func dist(x0 float, y0 float, x1 float, y1 float) float:
     var dy = y0-y1
     return math.sqrt(dx^2 + dy^2)
 ```
-Calling namespace functions is straightforward. You can also reassign or pass them around as function values.
+Calling static functions is straightforward. You can also reassign or pass them around as function values.
 ```cy
 print dist(0, 0, 10, 20)
 
@@ -1737,7 +1737,7 @@ var addTo = add()
 print addTo(10)   --> 133
 ```
 
-Like namespace variables, namespace functions can not reference local variables outside of their scope:
+Like static variables, static functions can not reference local variables outside of their scope:
 ```cy
 var a = 1
 func foo():
@@ -1909,7 +1909,7 @@ func printA():
 func printC():
     print 'done'
 ```
-Namespace variable declarations from imports can have circular references. Read more about this in [Namespace variables](#namespace-variables).
+Static variable declarations from imports can have circular references. Read more about this in [Static variables](#static-variables).
 
 Modules can also be destructured using the following syntax:
 > _Planned Feature_
@@ -1921,10 +1921,10 @@ print cos(pi)
 ## Exporting.
 All symbols are exported when the script's module is loaded. However, symbols can be declared with a [hidden](#symbol-visibility) modifier.
 ```cy
-func foo():         -- Exported namespace function.
+func foo():         -- Exported static function.
     print 123
 
-var .bar = 234      -- Exported namespace variable.
+var .bar = 234      -- Exported static variable.
 
 type Thing:  -- Exported type.
     var a float
@@ -2614,7 +2614,7 @@ let foo(a, b, c):
     return a + b() + a[c]
 ```
 
-The function `foo` is a namespace function. It can't be reassigned like a variable after its declaration.
+The function `foo` is a static function. It can't be reassigned like a variable after its declaration.
 
 However, function values (lambdas) assigned to variables allow reassignment. Lambdas can also capture variables from the parent scope:
 ```cy

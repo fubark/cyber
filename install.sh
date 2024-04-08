@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# FIND: v0.4
+TAG=0.3
+if [[ "$@" != "" ]]
+then
+  TAG="$@"
+fi
+
 abort() {
   printf "%s\n" "$@" >&2
   exit 1
@@ -20,19 +27,18 @@ else
 fi
 
 # Required installation paths.
-# FIND: v0.4
 if [[ -n "${CYBER_MACOS}" ]]
 then
   UNAME_MACHINE="$(/usr/bin/uname -m)"
   if [[ "${UNAME_MACHINE}" == "arm64" ]]
   then
-    CYBER_BUNDLE="https://github.com/fubark/cyber/releases/download/0.3/cyber-macos-arm64.tar.gz"
+    CYBER_BUNDLE="https://github.com/fubark/cyber/releases/download/${TAG}/cyber-macos-arm64.tar.gz"
   else
-    CYBER_BUNDLE="https://github.com/fubark/cyber/releases/download/0.3/cyber-macos-x64.tar.gz"
+    CYBER_BUNDLE="https://github.com/fubark/cyber/releases/download/${TAG}/cyber-macos-x64.tar.gz"
   fi
 else
   UNAME_MACHINE="$(uname -m)"
-  CYBER_BUNDLE="https://github.com/fubark/cyber/releases/download/0.3/cyber-linux-x64.tar.gz"
+  CYBER_BUNDLE="https://github.com/fubark/cyber/releases/download/${TAG}/cyber-linux-x64.tar.gz"
 fi
 
 sudo sh -c "mkdir -p ${CYBER_PATH}; \

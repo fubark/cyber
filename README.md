@@ -24,9 +24,13 @@ Cyber is a fast, efficient, and concurrent scripting language. You can embed it 
 ### Install
 - Install using the command prompt (Linux, macOS)
 ```sh
+# Install most recent release.
 curl -fsSL https://cyberscript.dev/install.sh | bash
 # Alternative url.
 curl -fsSL https://raw.githubusercontent.com/fubark/cyber/master/install.sh | bash
+
+# Install most recent dev build.
+curl -fsSL https://cyberscript.dev/install.sh | bash -s latest
 ```
 - Install from [Downloads](https://github.com/fubark/cyber/releases).
 - Packages

@@ -623,12 +623,12 @@ pub fn bindLibExt(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasFFI) return vm.prepPanic("Unsupported.");
 
     var configV = args[2];
-    const genMapV = try vm.retainOrAllocAstring("genMap");
-    defer vm.release(genMapV);
+    const gen_table = try vm.retainOrAllocAstring("gen_table");
+    defer vm.release(gen_table);
     var config: ffi.BindLibConfig = .{};
-    const val = configV.asHeapObject().table.get(genMapV) orelse Value.False;
+    const val = configV.asHeapObject().table.get(gen_table) orelse Value.False;
     if (val.isTrue()) {
-        config.genMap = true;
+        config.gen_table = true;
     }
     return @call(.never_inline, ffi.ffiBindLib, .{vm, args, config});
 }

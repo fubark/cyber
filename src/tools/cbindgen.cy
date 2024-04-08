@@ -104,7 +104,7 @@ for funcs -> fn:
     var finalRet = ensureBindType(fn.ret)
     out += "    ffi.cfunc('$(fn.name)', [$(finalParams.join(', '))], $(finalRet))\n"
 var libPath = if (existingLibPath) 'libPath' else "'$(args['libpath'])'"
-out += "    let lib = ffi.bindLib(?String{some: $(libPath)}, {genMap: false})\n"
+out += "    let lib = ffi.bindLib(?String{some: $(libPath)}, {gen_table: false})\n"
 out += "    return lib\n\n"
 
 -- Generate macros.
@@ -248,7 +248,6 @@ let rootVisitor(cursor, parent, state):
                 out += "type $(getApiName(effName)) #int64_t\n"
             return clang.CXChildVisit_Continue
 
-        structs.append(effName)
         if skipMap.contains(effName):
             out += "-- type $(getApiName(effName)):\n"
             skipChildren = true

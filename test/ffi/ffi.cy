@@ -95,7 +95,7 @@ t.eq(lib.testBool(false), false)
 -- bindLib that returns a map of functions.
 ffi = os.newFFI()
 ffi.cfunc('testAdd', [.int, .int], .int)
-lib = ffi.bindLib(libPath, {genMap: true})
+lib = ffi.bindLib(libPath, {gen_table: true})
 var testAdd = lib['testAdd']
 t.eq(testAdd(123, 321), 444)
 

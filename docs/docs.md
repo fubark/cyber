@@ -2127,7 +2127,7 @@ Note that `let` is used to allow `lib` to be used dynamically since the type is 
 If the path argument to `bindLib` is just a filename, the search steps for the library is specific to the operating system. Provide an absolute (eg. '/foo/mylib.so') or relative (eg. './mylib.so') path to load from a direct location instead. When the path argument is `none`, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own application/runtime.
 
 ### Configuration.
-By default `bindLib` returns an anonymous object with the binded C-functions as methods. This is convenient for invoking functions using the method call syntax. If a config is passed into `bindLib` as the second argument, `genMap: true` makes `bindLib` return a map instead with the binded C-functions as Cyber functions.
+By default `bindLib` returns an anonymous object with the binded C-functions as methods. This is convenient for invoking functions using the method call syntax. If a config is passed into `bindLib` as the second argument, `gen_table: true` makes `bindLib` return a table instead with the binded C-functions as Cyber functions.
 
 ### Finalizer.
 The resulting object of `bindLib` holds a reference to an internal TCCState which owns the loaded JIT code.

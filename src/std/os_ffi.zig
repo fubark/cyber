@@ -319,7 +319,7 @@ const CGen = struct {
         }
         try w.print(");\n", .{});
 
-        const isMethod = !config.genMap;
+        const isMethod = !config.gen_table;
         try w.print("uint64_t cy{s}(UserVM* vm, uint64_t* args, char numArgs) {{\n", .{sym});
         if (isMethod) {
             try w.print("  uint64_t recv = args[0];\n", .{});
@@ -535,8 +535,8 @@ fn fmtBaseTypeName(buf: []u8, ctype: CType) ![]const u8 {
 
 pub const BindLibConfig = struct {
     /// Whether bindLib generates the binding to an anonymous object type as methods
-    /// or a map with functions.
-    genMap: bool = false,
+    /// or a table with functions.
+    gen_table: bool = false,
 };
 
 fn writeCType(w: anytype, ctype: CType) !void {
@@ -841,7 +841,7 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
 
         // Build function signature.
         tempTypes.len = 0;
-        if (!config.genMap) {
+        if (!config.gen_table) {
             // Self param.
             try tempTypes.append(bt.Any);
         }
@@ -860,7 +860,7 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
 
     for (ffi.cstructs.items) |cstruct| {
         // Generate ptrTo[Object].
-        const isMethod = !config.genMap;
+        const isMethod = !config.gen_table;
         try w.print("uint64_t cyPtrTo{s}(UserVM* vm, uint64_t* args, char numArgs) {{\n", .{vm.getTypeName(cstruct.type)});
         if (isMethod) {
             try w.print("  uint64_t ptr = *((uint64_t*)(args[1] & ~PointerMask) + 1);\n", .{});
@@ -916,9 +916,9 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
         cy.panic("Failed to relocate compiled code.");
     }
 
-    if (config.genMap) {
+    if (config.gen_table) {
         // Create map with binded C-functions as functions.
-        const map = try vm.allocEmptyMap();
+        const table = try vm.allocTable();
 
         const cyState = try cy.heap.allocTccState(vm, state.?, lib);
 
@@ -936,7 +936,7 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
             const funcSig = vm.compiler.sema.getFuncSig(cfunc.funcSigId);
             const funcVal = try cy.heap.allocHostFunc(vm, func, @intCast(cfunc.params.len),
                 cfunc.funcSigId, cyState, funcSig.reqCallTypeCheck);
-            try map.asHeapObject().map.set(vm, symKey, funcVal);
+            try table.asHeapObject().table.set(vm, symKey, funcVal);
             vm.release(symKey);
             vm.release(funcVal);
             numGenFuncs += 1;
@@ -955,12 +955,12 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
 
             const funcSigId = try vm.sema.ensureFuncSig(&.{bt.Dynamic}, bt.Dynamic);
             const funcVal = try cy.heap.allocHostFunc(vm, func, 1, funcSigId, cyState, false);
-            try map.asHeapObject().map.set(vm, symKey, funcVal);
+            try table.asHeapObject().table.set(vm, symKey, funcVal);
             vm.release(symKey);
             vm.release(funcVal);
         }
         success = true;
-        return map;
+        return table;
     } else {
         // Create anonymous struct with binded C-functions as methods.
         const osSym = vm.compiler.chunk_map.get("os").?.sym;

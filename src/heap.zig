@@ -289,6 +289,19 @@ pub const Table = extern struct {
         return self.inner_map.asHeapObject().map.map().get(key);
     }
 
+    pub fn set(self: *Table, vm: *cy.VM, index: Value, val: Value) !void {
+        const m = self.map();
+        const res = try m.getOrPut(vm.alloc, index);
+        if (res.foundExisting) {
+            cy.arc.release(vm, res.valuePtr.*);
+        } else {
+            // No previous entry, retain key.
+            cy.arc.retain(vm, index);
+        }
+        cy.arc.retain(vm, val);
+        res.valuePtr.* = val;
+    }
+
     pub fn map(self: *Table) *MapInner {
         return self.inner_map.asHeapObject().map.map();
     }

@@ -471,6 +471,7 @@ pub const Parser = struct {
     }
 
     fn parseLetTableFields(self: *Parser) !ListResult {
+        self.consumeWhitespaceTokens();
         if (self.peek().tag() == .right_brace) {
             return ListResult{
                 .head = cy.NullNode,
@@ -489,16 +490,19 @@ pub const Parser = struct {
         var first = field;
         var last = field;
         while (true) {
-            const token = self.peek();
-            switch (token.tag()) {
-                .comma => {
-                    self.advance();
-                },
-                .right_brace => {
-                    self.advance();
-                    break;
-                },
-                else => return self.reportError("Expected `,` or `}`.", &.{}),
+            self.consumeWhitespaceTokens();
+            if (self.peek().tag() == .comma) {
+                self.advance();
+                self.consumeWhitespaceTokens();
+            } else if(self.peek().tag() == .right_brace) {
+                self.advance();
+                break;
+            } else {
+                return self.reportError("Expected `,` or `}`.", &.{});
+            }
+            if (self.peek().tag() == .right_brace) {
+                self.advance();
+                break;
             }
 
             start = self.next_pos;

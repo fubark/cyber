@@ -492,7 +492,7 @@ pub fn intMul(_: *cy.VM, args: [*]const Value, _: u8) Value {
 pub fn intDiv(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const right = args[1].asInteger();
     if (right == 0) return vm.prepPanic("Division by zero.");
-    return Value.initInt(@divExact(args[0].asInteger(), right));
+    return Value.initInt(@divTrunc(args[0].asInteger(), right));
 }
 
 pub fn intMod(vm: *cy.VM, args: [*]const Value, _: u8) Value {

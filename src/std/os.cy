@@ -200,7 +200,7 @@ type FFI:
 
     --| Creates a handle to a dynamic library and functions declared from `cfunc`.
     --| By default, an anonymous object is returned with the C-functions binded as the object's methods.
-    --| If `config` contains `genMap: true`, a `Map` is returned instead with C-functions
+    --| If `config` contains `gen_table: true`, a `Table` is returned instead with C-functions
     --| binded as function values.
     #host func bindLib(path ?String, config Table) any
 

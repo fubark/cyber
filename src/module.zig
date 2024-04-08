@@ -142,8 +142,13 @@ fn prepareFuncSym(c: *cy.Chunk, parent: *cy.Sym, mod: *Module, name: []const u8,
     }
     // Create func sym.
     const func = try cy.sym.createSym(c.alloc, .func, undefined);
-    func.head = cy.Sym.init(.func, parent, name);
-    func.numFuncs = 0;
+    func.* = .{
+        .head = cy.Sym.init(.func, parent, name),
+        .numFuncs = 0,
+        .firstFuncSig = cy.NullId,
+        .first = undefined,
+        .last = undefined,
+    };
     _ = try addSym(c, mod, name, @ptrCast(func));
     return func;
 }

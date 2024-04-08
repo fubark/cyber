@@ -3772,8 +3772,9 @@ pub const ChunkExt = struct {
         const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, obj.numFields);
 
         var i: u32 = 0;
-        for (fieldNodes, 0..) |item, fIdx| {
-            const fieldT = obj.fields[fIdx].type;
+        while (i < fieldNodes.len) : (i += 1) {
+            const item = c.listDataStack.items[fieldsDataStart + i];
+            const fieldT = obj.fields[i].type;
             if (item.nodeId == cy.NullNode) {
                 // Check that unset fields can be zero initialized.
                 try c.checkForZeroInit(fieldT, initializerId);
@@ -3784,7 +3785,6 @@ pub const ChunkExt = struct {
                 const arg = try c.semaExprCstr(item.nodeId, fieldT);
                 c.ir.setArrayItem(irArgsIdx, u32, i, arg.irIdx);
             }
-            i += 1;
         }
 
         c.ir.setExprData(irIdx, .object_init, .{

@@ -985,7 +985,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 158-8344fa0</div>
+    <div class="sub-title">v0.4-dev 174-013c103</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -1019,7 +1019,7 @@ table tbody tr:nth-child(even) {
 <p>Cyber is a statically typed language so the documentation will provide examples using typed syntax. However, dynamic typing is also supported with a less restrictive syntax. If you're coming from a language such as Python, JavaScript, or Lua, it can be easier to get started with <a href="#dynamic-typing" title="">Dynamic Typing</a>.</p>
 <a href="#introduction">^topic</a>
 <h2 id="hello-world">Hello World. <a href="#hello-world">#</a></h2>
-<pre><code class="language-cy">import math
+<pre><code class="language-cy">use math
 
 var worlds = ['World', '世界', 'दुनिया', 'mundo']
 worlds.append(math.random())
@@ -1037,7 +1037,7 @@ for worlds -> w:
 <li><a href="#local-variables" title="">Local variables.</a></li>
 <li><a href="#explicit-type-constraint" title="">Explicit type constraint.</a></li>
 <li><a href="#variable-scopes" title="">Variable scopes.</a></li>
-<li><a href="#namespace-variables" title="">Namespace variables.</a></li>
+<li><a href="#static-variables" title="">Static variables.</a></li>
 </ul>
 </li>
 <li><a href="#reserved-identifiers" title="">Reserved identifiers.</a><ul>
@@ -1117,7 +1117,7 @@ if true: print 123
 <a href="#syntax">^topic</a>
 <h2 id="variables">Variables. <a href="#variables">#</a></h2>
 <p>Variables allow values to be stored into named locations in memory.</p>
-<p>Local variables and namespace variables are supported.</p>
+<p>Local variables and static variables are supported.</p>
 <a href="#syntax">^topic</a>
 <h3 id="local-variables">Local variables. <a href="#local-variables">#</a></h3>
 <p>Local variables exist until the end of their scope.
@@ -1151,20 +1151,20 @@ var b int = 123.0    --> CompileError. Expected `int`, got `float`.
     print a             --> 234
 </code></pre>
 <a href="#syntax">^topic</a>
-<h3 id="namespace-variables">Namespace variables. <a href="#namespace-variables">#</a></h3>
-<p>Namespace variables live until the end of the script.
+<h3 id="static-variables">Static variables. <a href="#static-variables">#</a></h3>
+<p>Static variables live until the end of the script.
 They act as global variables and are visible from anywhere in the script.</p>
-<p>Namespace variables are declared with <code>var</code> like local variables, but a namespace must be provided before the variable name:</p>
+<p>Static variables are declared with <code>var</code> like local variables, but a namespace must be provided before the variable name:</p>
 <pre><code class="language-cy">var .a = 123
 
 func foo():
     print a     --> 123
 </code></pre>
 <p>The <code>.</code> prefix is used to reference the current module's namespace.</p>
-<p>Unlike local variables, namespace variables do not currently infer the type from the right hand side so a specific type must be specified or it will default to the <code>any</code> type:</p>
+<p>Unlike local variables, static variables do not currently infer the type from the right hand side so a specific type must be specified or it will default to the <code>any</code> type:</p>
 <pre><code class="language-cy">var .my_map Map = Map{}
 </code></pre>
-<p>Since namespace variables are initialized outside of a fiber's execution flow, they can not reference any local variables:</p>
+<p>Since static variables are initialized outside of a fiber's execution flow, they can not reference any local variables:</p>
 <pre><code class="language-cy">var .b = a   --> Compile error, initializer can not reference a local variable.
 
 -- Main execution.
@@ -1176,13 +1176,13 @@ var a = 123
 var a = 123
 b = a            -- Reassigning after initializing.
 </code></pre>
-<p>Namespace variable initializers have a natural order based on when it was encountered by the compiler.
+<p>Static variable initializers have a natural order based on when it was encountered by the compiler.
 In the case of <a href="#importing" title="">imported</a> variables, the order of the import would affect this order.
 The following would print '123' before '234':</p>
 <pre><code class="language-cy">var .a = print(123)
 var .b = print(234)
 </code></pre>
-<p>When the initializers reference other namespace variables, those child references are initialized first in DFS order and supersede the natural ordering. The following initializes <code>b</code> before <code>a</code>.</p>
+<p>When the initializers reference other static variables, those child references are initialized first in DFS order and supersede the natural ordering. The following initializes <code>b</code> before <code>a</code>.</p>
 <pre><code class="language-cy">var .a = b + 321
 var .b = 123
 
@@ -1193,7 +1193,7 @@ When initialization encounters a reference that creates a circular dependency an
 <pre><code class="language-cy">var .a = b
 var .b = a     --> CompileError. Referencing `a` creates a circular dependency.
 </code></pre>
-<p>Sometimes, you may want to initialize a namespace variable by executing multiple statements in order.
+<p>Sometimes, you may want to initialize a static variable by executing multiple statements in order.
 For this use case, you can use a declaration block. <em>Planned Feature</em></p>
 <pre><code class="language-cy">var .myImage =:
     var img = loadImage('me.png')
@@ -1201,12 +1201,12 @@ For this use case, you can use a declaration block. <em>Planned Feature</em></p>
     img.filter(.blur, 5)
     break img
 </code></pre>
-<p>The final resulting value that is assigned to the namespace variable is provided by a <code>break</code> statement. If a <code>break</code> statement is not provided, <code>none</code> is assigned instead.</p>
+<p>The final resulting value that is assigned to the static variable is provided by a <code>break</code> statement. If a <code>break</code> statement is not provided, <code>none</code> is assigned instead.</p>
 <a href="#syntax">^topic</a>
 <h2 id="reserved-identifiers">Reserved identifiers. <a href="#reserved-identifiers">#</a></h2>
 <a href="#syntax">^topic</a>
 <h3 id="keywords">Keywords. <a href="#keywords">#</a></h3>
-<p>There are <code>26</code> general keywords. This list categorizes them:</p>
+<p>There are <code>28</code> general keywords. This list categorizes them:</p>
 <ul>
 <li><a href="#control-flow" title="">Control Flow</a>: <code>if</code> <code>else</code> <code>switch</code> <code>case</code> <code>while</code> <code>for</code> <code>break</code> <code>continue</code> <code>pass</code></li>
 <li><a href="#operators" title="">Operators</a>: <code>or</code> <code>and</code> <code>not</code></li>
@@ -1214,9 +1214,10 @@ For this use case, you can use a declaration block. <em>Planned Feature</em></p>
 <li><a href="#functions" title="">Functions</a>: <code>func</code> <code>return</code></li>
 <li><a href="#fibers" title="">Coroutines</a>: <code>coinit</code> <code>coyield</code> <code>coresume</code></li>
 <li><a href="#custom-types" title="">Types</a>: <code>type</code>  <code>as</code></li>
+<li><a href="#type-embedding" title="">Type embedding</a>: <code>use</code></li>
 <li><a href="#metaprogramming" title="">Metaprogramming</a>: <code>template</code></li>
 <li><a href="#error-handling" title="">Error Handling</a>: <code>try</code> <code>catch</code> <code>throw</code></li>
-<li><a href="#modules" title="">Modules</a>: <code>import</code></li>
+<li><a href="#modules" title="">Modules</a>: <code>use</code> <code>module</code></li>
 <li><a href="#dynamic-typing" title="">Dynamic Typing</a>: <code>let</code></li>
 </ul>
 <a href="#syntax">^topic</a>
@@ -1233,7 +1234,7 @@ For this use case, you can use a declaration block. <em>Planned Feature</em></p>
 <ul>
 <li><a href="#booleans" title="">Booleans</a>: <code>true</code> <code>false</code></li>
 <li><a href="#error-value" title="">Error Values</a>: <code>error</code></li>
-<li><a href="#none" title="">None</a>: <code>none</code></li>
+<li>None: <code>none</code></li>
 </ul>
 <a href="#syntax">^topic</a>
 <h2 id="operators">Operators. <a href="#operators">#</a></h2>
@@ -1645,12 +1646,15 @@ print o.foo        --> panic. The field `foo` was not initialized.
 </code></pre>
 <a href="#basic-types">^topic</a>
 <h3 id="table-indexing">Table indexing. <a href="#table-indexing">#</a></h3>
-<p>Indexing can be used to access a field with a dynamic name. The key must be a <code>String</code>:</p>
+<p>Indexing can be used to access a dynamic field or an arbitrary key:</p>
 <pre><code class="language-cy">var o = { name: 'Nova' }
 var field = 'name'
 print o[field]     --> Nova
+
+o[10] = [1, 2, 3]
+print o[10]        --> List (3)
 </code></pre>
-<p>If the object is intended to be used like a hash map with varying key types, consider using <code>Map</code> instead.</p>
+<p>If the key is not an identifier string, the value can only be obtained through indexing.</p>
 <a href="#basic-types">^topic</a>
 <h3 id="check-field-existence">Check field existence. <a href="#check-field-existence">#</a></h3>
 <blockquote><p><em>Planned Feature</em></p>
@@ -1741,8 +1745,8 @@ print square(a)           --> CompileError. Expected `int`, got `any`.
 <td valign="top">
 <ul>
 <li><a href="#objects" title="">Objects.</a><ul>
-<li><a href="#fields" title="">Fields.</a></li>
 <li><a href="#instantiate" title="">Instantiate.</a></li>
+<li><a href="#field-visibility" title="">Field visibility.</a></li>
 <li><a href="#default-field-values" title="">Default field values.</a></li>
 <li><a href="#circular-references" title="">Circular references.</a></li>
 <li><a href="#unnamed-object" title="">Unnamed object.</a></li>
@@ -1750,6 +1754,7 @@ print square(a)           --> CompileError. Expected `int`, got `any`.
 <li><a href="#self-variable" title=""><code>self</code> variable.</a></li>
 <li><a href="#type-functions" title="">Type functions.</a></li>
 <li><a href="#type-variables" title="">Type variables.</a></li>
+<li><a href="#type-embedding" title="">Type embedding.</a></li>
 </ul>
 </li>
 <li><a href="#structs" title="">Structs.</a><ul>
@@ -1798,8 +1803,6 @@ print square(a)           --> CompileError. Expected `int`, got `any`.
 type A:
     my_field int
 </code></pre>
-<a href="#custom-types">^topic</a>
-<h3 id="fields">Fields. <a href="#fields">#</a></h3>
 <p>Fields must be declared at the top of the <code>type</code> block with their names and type specifiers:</p>
 <pre><code class="language-cy">type Node:
     value int
@@ -1814,6 +1817,14 @@ print node.value       -- Prints "123"
 <p>A record literal can also initialize to the inferred object type:</p>
 <pre><code class="language-cy">var node Node = {value: 234, next: none}
 print node.value       -- Prints "234"
+</code></pre>
+<a href="#custom-types">^topic</a>
+<h2 id="field-visibility">Field visibility. <a href="#field-visibility">#</a></h2>
+<p>All fields have public visibility. However, when a field is declared with a <code>-</code> prefix, it suggests that it should not be made available to an editor's autocomplete:</p>
+<pre><code class="language-cy">type Info:
+    a       int
+    -b      int
+    -secret String
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="default-field-values">Default field values. <a href="#default-field-values">#</a></h3>
@@ -1902,7 +1913,7 @@ n.incAndPrint()         -- Prints "444"
     value int
     next  ?Node
 
--- Declare namespace function inside `Node`.
+-- Declare static function inside `Node`.
 func Node.new():
     return Node{value: 123, next: none}
 
@@ -1915,6 +1926,35 @@ var n = Node.new()
 var Node.DefaultValue = 100
 
 print Node.DefaultValue    -- Prints "100"
+</code></pre>
+<a href="#custom-types">^topic</a>
+<h3 id="type-embedding">Type embedding. <a href="#type-embedding">#</a></h3>
+<p>Type embedding facilitates type composition by using the namespace of a child field's type: <em>Planned Feature</em></p>
+<pre><code class="language-cy">type Base:
+    a int
+
+    func double() int:
+        return a * 2
+
+type Container:
+    b use Base
+
+var c = Container{b: Base{a: 123}}
+print c.a         --> 123
+print c.double()  --> 246
+</code></pre>
+<p>Note that embedding a type does not declare extra fields or methods in the containing type. It simply augments the type's using namespace by binding the embedding field.</p>
+<p>If there is a member name conflict, the containing type's member has a higher precedence:</p>
+<pre><code class="language-cy">type Container:
+    a int
+    b use Base
+
+var c = Container{a: 999, b: Base{a: 123}}
+print c.a         --> 999
+print c.double()  --> 246
+</code></pre>
+<p>Since the embedding field is named, it can be used just like any other field:</p>
+<pre><code class="language-cy">print c.b.a       --> 123
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h2 id="structs">Structs. <a href="#structs">#</a></h2>
@@ -2104,7 +2144,7 @@ type Pos2 Vec2
 var pos = Pos2{x: 3, y: 4}
 </code></pre>
 <p>Functions can be declared under the new type's namespace:</p>
-<pre><code class="language-">import math
+<pre><code class="language-">use math
 
 type Pos2 Vec2:
     func blockDist(o Pos2):
@@ -2348,7 +2388,7 @@ case 0..5:
 </blockquote><a href="#control-flow">^topic</a>
 <h1 id="functions">Functions. <a href="#functions">#</a></h1>
 <ul>
-<li><a href="#namespace-functions" title="">Namespace functions.</a></li>
+<li><a href="#static-functions" title="">Static functions.</a></li>
 <li><a href="#function-overloading" title="">Function overloading.</a></li>
 <li><a href="#lambdas" title="">Lambdas.</a></li>
 <li><a href="#closures" title="">Closures.</a></li>
@@ -2363,31 +2403,31 @@ case 0..5:
 <li><a href="#generic-functions" title="">Generic functions.</a></li>
 </ul>
 <p><a href="#table-of-contents" title="">^top</a></p>
-<p>In Cyber, there are first-class functions (or function values) and namespace functions.</p>
-<h2 id="namespace-functions">Namespace functions. <a href="#namespace-functions">#</a></h2>
-<p>Namespace functions are not initially values themselves. They allow function calls to be optimal since they don't need to resolve a dynamic value.</p>
-<p>Namespace functions are declared with the <code>func</code> keyword and must have a name.</p>
-<pre><code class="language-cy">import math
+<p>In Cyber, there are first-class functions (or function values) and static functions.</p>
+<h2 id="static-functions">Static functions. <a href="#static-functions">#</a></h2>
+<p>Functions are declared with the <code>func</code> keyword and must have a name.</p>
+<pre><code class="language-cy">use math
 
 func dist(x0 float, y0 float, x1 float, y1 float) float:
     var dx = x0-x1
     var dy = y0-y1
     return math.sqrt(dx^2 + dy^2)
 </code></pre>
-<p>Calling namespace functions is straightforward. You can also reassign or pass them around as function values.</p>
+<p>Functions can be invoked with arguments:</p>
 <pre><code class="language-cy">print dist(0, 0, 10, 20)
-
--- Assigning to a local variable.
+</code></pre>
+<p>Functions are initially static, but they can be passed around as a lambda or assigned to a variable:</p>
+<pre><code class="language-cy">-- Assigning to a local variable.
 var bar = dist
 
--- Passing `dist` as an argument.
-func squareDist(dist float, size float) float:
+func squareDist(dist dynamic, size float) float:
     return dist(0.0, 0.0, size, size)
     
+-- Passing `dist` as an argument.
 print squareDist(dist, 30.0)
 </code></pre>
 <p>Functions can only return one value. However, the value can be destructured: <em>Planned Feature</em></p>
-<pre><code class="language-cy">import {cos, sin} 'math'
+<pre><code class="language-cy">use {cos, sin} 'math'
 
 func compute(rad float) [float, float]:
     return [ cos(rad), sin(rad) ]
@@ -2449,7 +2489,7 @@ print f()         --> 3
 var addTo = add()
 print addTo(10)   --> 133
 </code></pre>
-<p>Like namespace variables, namespace functions can not reference local variables outside of their scope:</p>
+<p>Like static variables, static functions can not reference local variables outside of their scope:</p>
 <pre><code class="language-cy">var a = 1
 func foo():
     print a       --> CompileError: Undeclared variable `a`.
@@ -2506,10 +2546,19 @@ r = foo()         -- Calls the function `random`.
 <table><tr>
 <td valign="top">
 <ul>
-<li><a href="#importing" title="">Importing.</a></li>
+<li><a href="#importing" title="">Importing.</a><ul>
+<li><a href="#import-file" title="">Import file.</a></li>
+<li><a href="#import-url" title="">Import URL.</a></li>
+<li><a href="#import-all" title="">Import all.</a></li>
+<li><a href="#main-module" title="">Main module.</a></li>
+<li><a href="#circular-imports" title="">Circular imports.</a></li>
+<li><a href="#destructure-import" title="">Destructure import.</a></li>
+</ul>
+</li>
 <li><a href="#exporting" title="">Exporting.</a></li>
 <li><a href="#module-uri" title="">Module URI.</a></li>
-<li><a href="#visibility" title="">Visibility.</a></li>
+<li><a href="#symbol-visibility" title="">Symbol visibility.</a></li>
+<li><a href="#symbol-alias" title="">Symbol alias.</a></li>
 <li><a href="#builtin-modules" title="">Builtin modules.</a></li>
 <li><a href="#builtins" title="">builtins.</a><ul>
 <li><a href="#type-bool" title=""><code>type bool</code></a></li>
@@ -2554,30 +2603,50 @@ r = foo()         -- Calls the function `random`.
 <p><a href="#table-of-contents" title="">^top</a></p>
 <p>Modules have their own namespace and contain accessible static symbols. By default, importing another Cyber script returns a module with its declared symbols.</p>
 <h2 id="importing">Importing. <a href="#importing">#</a></h2>
-<p>Import declarations create a local alias to the module referenced by the import specifier. The Cyber CLI comes with some builtin modules like <code>math</code> and <code>test</code>. If the specifier does not refer to a builtin module, it looks for a Cyber script file relative to the current script's directory. An embedder can integrate their own module loader and resolver.</p>
-<pre><code class="language-cy">import test
+<p>When a <code>use</code> declaration contains only a single identifier, it creates a local alias to a module using the identifier as the module specifier. Cyber's CLI comes with some builtin modules like <code>math</code> and <code>test</code>.</p>
+<pre><code class="language-cy">use test
 test.eq(123, 123)
 
--- Imports are static declarations so they can be anywhere in the script.
-import math
+use math
 print math.cos(0)
 </code></pre>
-<p>When the imported alias needs to be renamed, the import specifier comes after the alias name and must be a string literal.</p>
-<pre><code class="language-cy">import m 'math'
+<p>The explicit import syntax requires an alias name followed by a module specifier as a raw string:</p>
+<pre><code class="language-cy">use m 'math'
 print m.random()
-
--- Loading a Cyber module from the local directory.
-import foo 'bar.cy'
-print foo.myFunc()
-print foo.myVar
 </code></pre>
-<p>A Cyber script that is imported doesn't evaluate its main block. Only static declarations are effectively loaded. If there is code in the main block, it will skip evaluation. In the following, only the <code>print</code> statement in the <code>main.cy</code> is evaluated.</p>
+<p>When Cyber is embedded into a host application, the module resolver and loader can be overridden using the <a href="#embedding" title="">Embed API</a>.</p>
+<a href="#modules">^topic</a>
+<h3 id="import-file">Import file. <a href="#import-file">#</a></h3>
+<p>File modules can be imported:</p>
+<pre><code class="language-cy">-- Importing a module from the local directory.
+use b 'bar.cy'
+print b.myFunc()
+print b.myVar
+</code></pre>
+<a href="#modules">^topic</a>
+<h3 id="import-url">Import URL. <a href="#import-url">#</a></h3>
+<p>Modules can be imported over the Internet:</p>
+<pre><code class="language-cy">-- Importing a module from a CDN.
+use rl 'https://mycdn.com/raylib'
+</code></pre>
+<p>When importing using a URL without a file name, Cyber's CLI will look for a <code>mod.cy</code> from the path instead.</p>
+<a href="#modules">^topic</a>
+<h3 id="import-all">Import all. <a href="#import-all">#</a></h3>
+<p>If the alias name is the wildcard character, all symbols from the module are imported into the using namespace: <em>This feature is experimental and may be removed in a future version.</em></p>
+<pre><code class="language-cy">use * 'math'
+print random()
+</code></pre>
+<a href="#modules">^topic</a>
+<h3 id="main-module">Main module. <a href="#main-module">#</a></h3>
+<p>Only the main module can have top-level statements that aren't static declarations.
+If an imported module contains top-level statements, they are ignored.
+In the future, it may result in a compile error instead:</p>
 <pre><code class="language-cy">-- main.cy
-import a 'foo.cy'
+use a 'foo.cy'
 print a.foo
 
 -- foo.cy
-import 'bar.cy'
+use 'bar.cy'
 var .foo = 123
 print foo         -- Statement is ignored.
 
@@ -2585,9 +2654,11 @@ print foo         -- Statement is ignored.
 var .bar = 321
 print bar         -- Statement is ignored.
 </code></pre>
-<p>You can have circular imports in Cyber. In the following example, <code>main.cy</code> and <code>foo.cy</code> import each other without any problems.</p>
+<a href="#modules">^topic</a>
+<h3 id="circular-imports">Circular imports. <a href="#circular-imports">#</a></h3>
+<p>Circular imports are allowed. In the following example, <code>main.cy</code> and <code>foo.cy</code> import each other without any problems.</p>
 <pre><code class="language-cy">-- main.cy
-import foo 'foo.cy'
+use foo 'foo.cy'
 
 func printB():
     foo.printC()
@@ -2595,7 +2666,7 @@ func printB():
 foo.printA()
 
 -- foo.cy
-import main 'main.cy'
+use main 'main.cy'
 
 func printA():
     main.printB()
@@ -2603,19 +2674,21 @@ func printA():
 func printC():
     print 'done'
 </code></pre>
-<p>Namespace variable declarations from imports can have circular references. Read more about this in <a href="#namespace-variables" title="">Namespace variables</a>.</p>
+<p>Static variable declarations from imports can have circular references. Read more about this in <a href="#static-variables" title="">Static variables</a>.</p>
+<a href="#modules">^topic</a>
+<h3 id="destructure-import">Destructure import. <a href="#destructure-import">#</a></h3>
 <p>Modules can also be destructured using the following syntax:</p>
 <blockquote><p><em>Planned Feature</em></p>
-</blockquote><pre><code class="language-cy">import { cos, pi } 'math'
+</blockquote><pre><code class="language-cy">use { cos, pi } 'math'
 print cos(pi)
 </code></pre>
 <a href="#modules">^topic</a>
 <h2 id="exporting">Exporting. <a href="#exporting">#</a></h2>
-<p>All static declarations are exported when the script's module is loaded.</p>
-<pre><code class="language-cy">func foo():         -- Exported namespace function.
+<p>All symbols are exported when the script's module is loaded. However, symbols can be declared with a <a href="#symbol-visibility" title="">hidden</a> modifier.</p>
+<pre><code class="language-cy">func foo():         -- Exported static function.
     print 123
 
-var .bar = 234      -- Exported namespace variable.
+var .bar = 234      -- Exported static variable.
 
 type Thing:  -- Exported type.
     var a float
@@ -2626,12 +2699,26 @@ type Thing:  -- Exported type.
 This can be used with <code>os.dirName</code> to get the current module directory.</p>
 <pre><code class="language-cy">print #modUri              -- Prints '/some/path/foo.cy'
 
-import os
+use os
 print os.dirName(#modUri)  -- Prints '/some/path'
 </code></pre>
 <a href="#modules">^topic</a>
-<h2 id="visibility">Visibility. <a href="#visibility">#</a></h2>
-<p>The annotation <code>@hide</code> provides a hint to editors that a static symbol should not appear in the auto-complete. Despite this, the symbol is still reachable.</p>
+<h2 id="symbol-visibility">Symbol visibility. <a href="#symbol-visibility">#</a></h2>
+<p>All symbols have public visibility. However, when a symbol is declared with a <code>-</code> prefix, it suggests that it should not be made available to an editor's autocomplete:</p>
+<pre><code class="language-cy">-type Foo:
+    a int
+    b int
+
+-func add(a int, b int) int:
+    return a + b
+</code></pre>
+<p>Furthermore, the symbol is excluded when its module is included using <code>use *</code>.</p>
+<a href="#modules">^topic</a>
+<h2 id="symbol-alias">Symbol alias. <a href="#symbol-alias">#</a></h2>
+<p><code>use</code> can be used to create an alias to another symbol:</p>
+<pre><code class="language-cy">use eng 'lib/engine.cy'
+use Vec2 -> eng.Vector2
+</code></pre>
 <a href="#modules">^topic</a>
 <h2 id="builtin-modules">Builtin modules. <a href="#builtin-modules">#</a></h2>
 <p>Builtin modules are the bare minimum that comes with Cyber. The <a href="#embedding" title="">embeddable library</a> contains these modules and nothing more. They include:</p>
@@ -2687,7 +2774,7 @@ print typeof('my str').id()
 <h3 id="type-void"><code>type void</code> <a href="#type-void">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-bool"><code>type bool</code> <a href="#type-bool">#</a></h3>
-<blockquote><p><code>func bool.'$call'(val any) bool</code></p>
+<blockquote><p><code>func bool.$call(val any) bool</code></p>
 <p>Converts a value to either <code>true</code> or <code>false</code>.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-symbol"><code>type symbol</code> <a href="#type-symbol">#</a></h3>
@@ -2695,7 +2782,7 @@ print typeof('my str').id()
 <h3 id="type-error"><code>type error</code> <a href="#type-error">#</a></h3>
 <blockquote><p><code>func sym() symbol</code></p>
 <p>Return the underlying <code>symbol</code>.</p>
-</blockquote><blockquote><p><code>func error.'$call'(val any) </code></p>
+</blockquote><blockquote><p><code>func error.$call(val any) </code></p>
 <p>Create an error from an enum or symbol.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-int"><code>type int</code> <a href="#type-int">#</a></h3>
@@ -2720,7 +2807,7 @@ print typeof('my str').id()
 <p>Formats the integer using a kind specifier which can be binary <code>.b</code>,  octal <code>.o</code>, decimal <code>.d</code>, hexadecimal <code>.x</code>, ASCII <code>.c</code>.</p>
 </blockquote><blockquote><p><code>func fmt(kind symbol, config Table) String</code></p>
 <p><code>opts.pad</code> provides the ASCII rune that is used for padding with a string length of <code>config.width</code>.</p>
-</blockquote><blockquote><p><code>func int.'$call'(val any) int</code></p>
+</blockquote><blockquote><p><code>func int.$call(val any) int</code></p>
 <p>Converts a value to an 48-bit integer.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-float"><code>type float</code> <a href="#type-float">#</a></h3>
@@ -2735,7 +2822,7 @@ print typeof('my str').id()
 </blockquote><blockquote><p><code>func $infix/(o float) float</code></p>
 </blockquote><blockquote><p><code>func $infix%(o float) float</code></p>
 </blockquote><blockquote><p><code>func $infix^(o float) float</code></p>
-</blockquote><blockquote><p><code>func float.'$call'(val any) float</code></p>
+</blockquote><blockquote><p><code>func float.$call(val any) float</code></p>
 <p>Converts the value to a <code>float</code>. Panics if type conversion fails.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-placeholder1"><code>type placeholder1</code> <a href="#type-placeholder1">#</a></h3>
@@ -2785,8 +2872,8 @@ print typeof('my str').id()
 <blockquote><p><code>func $initPair(key String, value any) <void></code></p>
 </blockquote><blockquote><p><code>func $get(name String) dynamic</code></p>
 </blockquote><blockquote><p><code>func $set(name String, value any) </code></p>
-</blockquote><blockquote><p><code>func $index(key String) dynamic</code></p>
-</blockquote><blockquote><p><code>func $setIndex(key String, value any) <void></code></p>
+</blockquote><blockquote><p><code>func $index(key any) dynamic</code></p>
+</blockquote><blockquote><p><code>func $setIndex(key any, value any) <void></code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-map"><code>type Map</code> <a href="#type-map">#</a></h3>
 <blockquote><p><code>func $initPair(key any, value any) <void></code></p>
@@ -2851,7 +2938,7 @@ print typeof('my str').id()
 <p>Returns the string with ends trimmed from runes in <code>delims</code>. <code>mode</code> can be .left, .right, or .ends.</p>
 </blockquote><blockquote><p><code>func upper() String</code></p>
 <p>Returns this string in uppercase.</p>
-</blockquote><blockquote><p><code>func String.'$call'(val any) String</code></p>
+</blockquote><blockquote><p><code>func String.$call(val any) String</code></p>
 <p>Converts a value to a string.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-array"><code>type Array</code> <a href="#type-array">#</a></h3>
@@ -2899,7 +2986,7 @@ print typeof('my str').id()
 <p>Returns whether the array starts with <code>prefix</code>.</p>
 </blockquote><blockquote><p><code>func trim(mode symbol, delims Array) Array</code></p>
 <p>Returns the array with ends trimmed from runes in <code>delims</code>. <code>mode</code> can be .left, .right, or .ends.</p>
-</blockquote><blockquote><p><code>func Array.'$call'(val any) Array</code></p>
+</blockquote><blockquote><p><code>func Array.$call(val any) Array</code></p>
 <p>Converts a string to an byte <code>Array</code>.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-arrayiterator"><code>type ArrayIterator</code> <a href="#type-arrayiterator">#</a></h3>
@@ -2918,7 +3005,7 @@ print typeof('my str').id()
 <p>Unsafe. Converts the value to a compatible C value and writes it to a byte offset from this pointer.</p>
 </blockquote><blockquote><p><code>func toArray(offset int, len int) Array</code></p>
 <p>Unsafe. Returns an <code>Array</code> with a copy of the byte data starting from an offset to the specified length.</p>
-</blockquote><blockquote><p><code>func pointer.'$call'(val any) pointer</code></p>
+</blockquote><blockquote><p><code>func pointer.$call(val any) pointer</code></p>
 <p>Converts a <code>int</code> to a <code>pointer</code> value, or casts to a <code>pointer</code>. This is usually used with FFI.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-closure"><code>type Closure</code> <a href="#type-closure">#</a></h3>
@@ -2947,7 +3034,7 @@ print typeof('my str').id()
 <h2 id="math">math. <a href="#math">#</a></h2>
 <p>The math module contains commonly used math constants and functions.</p>
 <p>Sample usage:</p>
-<pre><code class="language-cy">import math
+<pre><code class="language-cy">use math
 
 var r = 10.0
 print(math.pi * r^2)
@@ -3067,7 +3154,7 @@ print(math.pi * r^2)
 <h2 id="os">os. <a href="#os">#</a></h2>
 <p>Cyber's os module contains system level functions. It's still undecided as to how much should be included here so it's incomplete. You can still access os and libc functions yourself using Cyber's FFI or embedding API.</p>
 <p>Sample usage:</p>
-<pre><code class="language-cy">import os
+<pre><code class="language-cy">use os
 
 var map = os.getEnvAll()
 for map -> [k, v]:
@@ -3198,7 +3285,7 @@ for map -> [k, v]:
 </blockquote><blockquote><p><code>func bindLib(path ?String) any</code></p>
 <p>Calls <code>bindLib(path, [:])</code>.</p>
 </blockquote><blockquote><p><code>func bindLib(path ?String, config Table) any</code></p>
-<p>Creates a handle to a dynamic library and functions declared from <code>cfunc</code>.  By default, an anonymous object is returned with the C-functions binded as the object's methods.  If <code>config</code> contains <code>genMap: true</code>, a <code>Map</code> is returned instead with C-functions  binded as function values.</p>
+<p>Creates a handle to a dynamic library and functions declared from <code>cfunc</code>.  By default, an anonymous object is returned with the C-functions binded as the object's methods.  If <code>config</code> contains <code>gen_table: true</code>, a <code>Table</code> is returned instead with C-functions  binded as function values.</p>
 </blockquote><blockquote><p><code>func bindObjPtr(obj any) pointer</code></p>
 <p>Returns a Cyber object's pointer. Operations on the pointer is unsafe,  but it can be useful when passing it to C as an opaque pointer.  The object is also retained and managed by the FFI context.</p>
 </blockquote><blockquote><p><code>func cbind(mt metatype, fields List) <void></code></p>
@@ -3224,7 +3311,7 @@ for map -> [k, v]:
 <h2 id="test">test. <a href="#test">#</a></h2>
 <p>The <code>test</code> module contains utilities for testing.</p>
 <p>Sample usage:</p>
-<pre><code class="language-cy">import t 'test'
+<pre><code class="language-cy">use t 'test'
 
 var a = 123 + 321
 t.eq(a, 444)
@@ -3263,7 +3350,7 @@ Cyber uses <code>libtcc</code> to JIT compile the bindings so function calls are
 The example shown below can be found in <a href="https://github.com/fubark/cyber/blob/master/examples/ffi.cy" title="">Examples</a>.</p>
 <h2 id="ffi-context">FFI context. <a href="#ffi-context">#</a></h2>
 <p>An FFI context contains declarations that map C to Cyber. Afterwards, it allows you to bind to a dynamic library or create interoperable objects. To create a new <code>FFI</code> context:</p>
-<pre><code class="language-cy">import os
+<pre><code class="language-cy">use os
 
 var ffi = os.newFFI()
 </code></pre>
@@ -3291,7 +3378,7 @@ lib.add(123, 321)
 <p>If the path argument to <code>bindLib</code> is just a filename, the search steps for the library is specific to the operating system. Provide an absolute (eg. '/foo/mylib.so') or relative (eg. './mylib.so') path to load from a direct location instead. When the path argument is <code>none</code>, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own application/runtime.</p>
 <a href="#ffi">^topic</a>
 <h3 id="configuration">Configuration. <a href="#configuration">#</a></h3>
-<p>By default <code>bindLib</code> returns an anonymous object with the binded C-functions as methods. This is convenient for invoking functions using the method call syntax. If a config is passed into <code>bindLib</code> as the second argument, <code>genMap: true</code> makes <code>bindLib</code> return a map instead with the binded C-functions as Cyber functions.</p>
+<p>By default <code>bindLib</code> returns an anonymous object with the binded C-functions as methods. This is convenient for invoking functions using the method call syntax. If a config is passed into <code>bindLib</code> as the second argument, <code>gen_table: true</code> makes <code>bindLib</code> return a table instead with the binded C-functions as Cyber functions.</p>
 <a href="#ffi">^topic</a>
 <h3 id="finalizer">Finalizer. <a href="#finalizer">#</a></h3>
 <p>The resulting object of <code>bindLib</code> holds a reference to an internal TCCState which owns the loaded JIT code.
@@ -3307,7 +3394,7 @@ Once the object is released by ARC, the TCCState is also released which removes 
 <a href="#ffi">^topic</a>
 <h2 id="bind-to-cyber-type">Bind to Cyber type. <a href="#bind-to-cyber-type">#</a></h2>
 <p><code>cbind</code> is used to bind a C struct to a Cyber object type. Once declared, the Cyber type can be used as a binding type in function declarations:</p>
-<pre><code class="language-cy">import os
+<pre><code class="language-cy">use os
 
 type MyObject:
     a float
@@ -3699,8 +3786,8 @@ print fiber.status()   -- '.done'
 <li><a href="#dynamic-variables" title="">Dynamic variables.</a></li>
 <li><a href="#runtime-type-checking" title="">Runtime type checking.</a></li>
 <li><a href="#dynamic-functions" title="">Dynamic functions.</a></li>
-<li><a href="#dynamic-objects" title="">Dynamic objects.</a></li>
-<li><a href="#custom-objects" title="">Custom objects.</a></li>
+<li><a href="#dynamic-tables" title="">Dynamic tables.</a></li>
+<li><a href="#custom-tables" title="">Custom tables.</a></li>
 </ul>
 <p><a href="#table-of-contents" title="">^top</a></p>
 <p>Dynamic typing is supported with a less restrictive syntax. This can reduce the amount of friction when writing code, but it can also result in more runtime errors.</p>
@@ -3748,7 +3835,7 @@ All parameters are implicitly given the <code>dynamic</code> type.</p>
 <pre><code class="language-cy">let foo(a, b, c):
     return a + b() + a[c]
 </code></pre>
-<p>The function <code>foo</code> is a namespace function. It can't be reassigned like a variable after its declaration.</p>
+<p>The function <code>foo</code> is a static function. It can't be reassigned like a variable after its declaration.</p>
 <p>However, function values (lambdas) assigned to variables allow reassignment. Lambdas can also capture variables from the parent scope:</p>
 <pre><code class="language-cy">let count = 123
 let f = (a, b):
@@ -3762,17 +3849,17 @@ f = (a, b):
 <pre><code class="language-cy">f = (a, b) => a + b(10)
 </code></pre>
 <a href="#dynamic-typing">^topic</a>
-<h2 id="dynamic-objects">Dynamic objects. <a href="#dynamic-objects">#</a></h2>
+<h2 id="dynamic-tables">Dynamic tables. <a href="#dynamic-tables">#</a></h2>
 <p>The builtin <code>Table</code> type is used to create dynamic objects.
 Tables are initialized with the record literal:</p>
 <pre><code class="language-cy">let a = {}
 a.name = 'Nova'
 print a.name     --> Nova
 </code></pre>
-<p>Read more about how to use tables <a href="#tables" title="">Tables</a>.</p>
+<p>Read more about how to use <a href="#tables" title="">Tables</a>.</p>
 <a href="#dynamic-typing">^topic</a>
-<h2 id="custom-objects">Custom objects. <a href="#custom-objects">#</a></h2>
-<p>Custom objects allow declaring fields and methods. <em>Planned Feature</em></p>
+<h2 id="custom-tables">Custom tables. <a href="#custom-tables">#</a></h2>
+<p>Custom tables allow declaring fields and methods.</p>
 <pre><code class="language-cy">let Counter{ count }:
     let inc():
         count += 1
@@ -3784,10 +3871,10 @@ print c.count       --> 1
 <p>Fields are declared inside the braces and separated with commas.
 Unlike typed declarations, the fields declared only serve as a subset constraint.
 Additional fields can still be initialized and used.</p>
-<p>Objects can be declared without any methods: <em>Planned Feature</em></p>
+<p>Tables can be declared without any methods:</p>
 <pre><code class="language-cy">let Vec3{x, y, z}
 
-let v = Vec3{1, 2, 3}
+let v = Vec3{x: 1, y: 2, z: 3}
 </code></pre>
 <a href="#dynamic-typing">^topic</a>
 <h1 id="metaprogramming">Metaprogramming. <a href="#metaprogramming">#</a></h1>
@@ -3851,10 +3938,10 @@ var c = -a
 <pre><code class="language-cy">type MyCollection:
     arr List
 
-    func '$index'(idx):
+    func $index(idx):
         return arr[idx * 2]
 
-    func '$setIndex'(idx, val):
+    func $setIndex(idx, val):
         arr[idx * 2] = val 
 
 var a = MyCollection{arr: [1, 2, 3, 4]}
@@ -3876,7 +3963,7 @@ type Vec2:
     x float
     y float
 
-func Vec2.'$call'(x float, y float) Vec2:
+func Vec2.$call(x float, y float) Vec2:
     return Vec2{x: x, y: y}
 
 var v = Vec2(1, 2)
@@ -3889,7 +3976,7 @@ var v = Vec2(1, 2)
 <p>The <code>$initPair</code> method overrides the record initializer.
 After an instance of the type is created from its default record initializer, this method is invoked for each key-value pair in the record literal:</p>
 <pre><code class="language-cy">type MyMap:
-    func '$initPair'(key any, value any) void:
+    func $initPair(key any, value any) void:
         print "$(key): $(value)"
 
 var m = MyMap{ a: 123, b: 234 }
@@ -3901,7 +3988,7 @@ var m = MyMap{ a: 123, b: 234 }
 <h3 id="get-method"><code>$get</code> method. <a href="#get-method">#</a></h3>
 <p>The <code>$get</code> method allows overriding field accesses for <strong>undeclared fields</strong>:</p>
 <pre><code class="language-cy">type Foo:
-    func '$get'(name String):
+    func $get(name String):
         return name.len()
 
 var f = Foo{}
@@ -3912,7 +3999,7 @@ print f.hello    --> 5
 <h3 id="set-method"><code>$set</code> method. <a href="#set-method">#</a></h3>
 <p>The <code>$set</code> method allows overriding field assignments for <strong>undeclared fields</strong>:</p>
 <pre><code class="language-cy">type Foo:
-    func '$set'(name String, value any):
+    func $set(name String, value any):
         print "setting $(name) $(value)"
 
 var f = Foo{}
@@ -3924,7 +4011,7 @@ f.abc = 123      --> setting abc 123
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><pre><code class="language-cy">type A:
 
-    func '$missing'(args...):
+    func $missing(args...):
         return args.len
 
 var a = A{}
@@ -4057,7 +4144,7 @@ Memory is managed by ARC so a value that points to a heap object requires a <cod
 <p><code>csEval</code> returns a result code that indicates whether it was successful.</p>
 <a href="#embedding">^topic</a>
 <h2 id="module-loader">Module Loader. <a href="#module-loader">#</a></h2>
-<p>A module loader describes how a module is loaded when an <code>import</code> statement is encountered during script execution.
+<p>A module loader describes how a module is loaded when <code>use</code> import statement is encountered during script execution.
 Only one module loader can be active and is set using <code>csSetModuleLoader</code>:</p>
 <pre><code class="language-c">bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
     if (strncmp("my_mod", spec.buf, spec.len) == 0) {
@@ -4672,7 +4759,7 @@ hljs.registerLanguage('cy', function() {
     return {
     keywords: {
         keyword: [
-            'template', 'func', 'import', 'for', 'coinit', 'coresume', 'coyield',
+            'template', 'func', 'module', 'for', 'coinit', 'coresume', 'coyield', 'use',
             'return', 'if', 'else', 'as', 'while', 'var', 'let', 'dynobject', 'object', 'struct', 'with', 'caught',
             'break', 'continue', 'switch', 'pass', 'or', 'and', 'not', 'is', 'error', 'throws',
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case'

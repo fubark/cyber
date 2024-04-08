@@ -520,21 +520,25 @@ pub const Tokenizer = struct {
             '#' => try t.pushToken(.pound, start),
             '?' => try t.pushToken(.question, start),
             else => {
-                if (std.ascii.isAlphabetic(ch)) {
-                    try tokenizeKeywordOrIdent(t, start);
-                    return .{ .stateT = .token };
-                }
-                if (ch >= '0' and ch <= '9') {
-                    try tokenizeNumber(t, start);
-                    return .{ .stateT = .token };
-                }
-                if (t.ignoreErrors) {
-                    try t.pushToken(.err, start);
-                    return .{ .stateT = .token };
-                } else {
-                    try t.reportErrorAt("unknown character: {} ({}) at {}", &.{
-                        cy.fmt.char(ch), v(ch), v(start)
-                    }, start);
+                switch (ch) {
+                    'A'...'Z', 'a'...'z', '$' => {
+                        try tokenizeKeywordOrIdent(t, start);
+                        return .{ .stateT = .token };
+                    },
+                    '0'...'9' => {
+                        try tokenizeNumber(t, start);
+                        return .{ .stateT = .token };
+                    },
+                    else => {
+                        if (t.ignoreErrors) {
+                            try t.pushToken(.err, start);
+                            return .{ .stateT = .token };
+                        } else {
+                            try t.reportErrorAt("unknown character: {} ({}) at {}", &.{
+                                cy.fmt.char(ch), v(ch), v(start)
+                            }, start);
+                        }
+                    },
                 }
             }
         }
@@ -747,34 +751,20 @@ pub const Tokenizer = struct {
         }
     }
 
+    /// Assume first character is consumed already.
     fn consumeIdent(t: *Tokenizer) void {
-        // Consume alpha.
         while (true) {
             if (isAtEnd(t)) {
                 return;
             }
             const ch = peek(t);
-            if (std.ascii.isAlphabetic(ch)) {
-                advance(t);
-                continue;
-            } else break;
-        }
-
-        // Consume alpha, numeric, underscore.
-        while (true) {
-            if (isAtEnd(t)) {
-                return;
+            switch (ch) {
+                '0'...'9', 'A'...'Z', 'a'...'z', '$', '_' => {
+                    advance(t);
+                    continue;
+                },
+                else => return,
             }
-            const ch = peek(t);
-            if (std.ascii.isAlphanumeric(ch)) {
-                advance(t);
-                continue;
-            }
-            if (ch == '_') {
-                advance(t);
-                continue;
-            }
-            return;
         }
     }
 

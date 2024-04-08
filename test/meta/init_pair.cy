@@ -4,7 +4,7 @@ var .keys = []
 var .values = []
 
 type Foo:
-    func '$initPair'(key String, value any):
+    func $initPair(key String, value any):
         keys.append(key)
         values.append(value)
 

@@ -60,7 +60,7 @@
 #host type bool #bool_t
 
 --| Converts a value to either `true` or `false`.
-#host func bool.'$call'(val any) bool
+#host func bool.$call(val any) bool
 
 #host type symbol #int64_t
 
@@ -70,7 +70,7 @@ type error #int64_t:
     #host func sym() symbol
 
 --| Create an error from an enum or symbol.
-#host func error.'$call'(val any) error
+#host func error.$call(val any) error
 
 #host
 type int #int64_t:
@@ -100,7 +100,7 @@ type int #int64_t:
     #host func fmt(kind symbol, config Table) String
 
 --| Converts a value to an 48-bit integer.
-#host func int.'$call'(val any) int
+#host func int.$call(val any) int
 
 #host
 type float #float64_t:
@@ -117,7 +117,7 @@ type float #float64_t:
     #host func '$infix^'(o float) float
 
 --| Converts the value to a `float`. Panics if type conversion fails.
-#host func float.'$call'(val any) float
+#host func float.$call(val any) float
 
 #host type placeholder1
 #host type placeholder2
@@ -131,9 +131,9 @@ type float #float64_t:
 
 #host
 type List:
-    #host func '$index'(idx int) dynamic
-    #host func '$index'(range Range) List
-    #host func '$setIndex'(idx int, val any) void
+    #host func $index(idx int) dynamic
+    #host func $index(range Range) List
+    #host func $setIndex(idx int, val any) void
 
     --| Appends the elements of another list to the end of this list.
     #host func append(list List) void
@@ -184,33 +184,33 @@ type ListIterator:
 
 #host
 type Tuple:
-    #host func '$index'(idx int) any
+    #host func $index(idx int) any
 
 #host
 type Table:
     table_data Map
 
-    func '$initPair'(key String, value any) void:
+    func $initPair(key String, value any) void:
         table_data[key] = value
 
-    func '$get'(name String) dynamic:
+    func $get(name String) dynamic:
         return table_data[name]
 
-    func '$set'(name String, value any):
+    func $set(name String, value any):
         table_data[name] = value
 
-    func '$index'(key String) dynamic:
+    func $index(key String) dynamic:
         return table_data[key]
 
-    func '$setIndex'(key String, value any) void:
+    func $setIndex(key String, value any) void:
         table_data[key] = value
 
 #host
 type Map:
-    #host func '$initPair'(key any, value any) void
+    #host func $initPair(key any, value any) void
 
-    #host func '$index'(key any) any
-    #host func '$setIndex'(key any, val any) void
+    #host func $index(key any) any
+    #host func $setIndex(key any, val any) void
 
     --| Returns whether there is a value mapped to `key`.
     #host func contains(key any) bool
@@ -282,10 +282,10 @@ type String:
     #host func sliceAt(idx int) String
 
     --| Returns the rune at byte index `idx`. The replacement character (0xFFFD) is returned for an invalid UTF-8 rune.
-    #host func '$index'(idx int) String
+    #host func $index(idx int) String
 
     --| Returns a slice into this string from a `Range` with `start` (inclusive) to `end` (exclusive) byte indexes.
-    #host func '$index'(range Range) String
+    #host func $index(range Range) String
 
     --| Returns a list of UTF-8 strings split at occurrences of `sep`.
     #host func split(sep String) List
@@ -300,7 +300,7 @@ type String:
     #host func upper() String
 
 --| Converts a value to a string.
-#host func String.'$call'(val any) String
+#host func String.$call(val any) String
 
 #host
 type Array:
@@ -361,10 +361,10 @@ type Array:
     --| Returns a new array with all occurrences of `needle` replaced with `replacement`.
     #host func replace(needle Array, replacement Array) Array
 
-    #host func '$index'(idx int) int
+    #host func $index(idx int) int
 
     --| Returns a slice into this array from a `Range` with `start` (inclusive) to `end` (exclusive) indexes.
-    #host func '$index'(range Range) Array
+    #host func $index(range Range) Array
 
     --| Returns a list of arrays split at occurrences of `sep`.
     #host func split(sep Array) List
@@ -376,7 +376,7 @@ type Array:
     #host func trim(mode symbol, delims Array) Array
 
 --| Converts a string to an byte `Array`.
-#host func Array.'$call'(val any) Array
+#host func Array.$call(val any) Array
 
 type ArrayIterator:
     arr     Array
@@ -411,7 +411,7 @@ type pointer:
     #host func toArray(offset int, len int) Array
 
 --| Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI.
-#host func pointer.'$call'(val any) pointer
+#host func pointer.$call(val any) pointer
 
 #host type Closure
 #host type Lambda

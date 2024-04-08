@@ -51,11 +51,11 @@ const funcs = [_]NameFunc{
     .{"typesym",        cFunc(typesym)},
 
     // bool
-    .{"bool.'$call'", boolCall},
+    .{"bool.$call", boolCall},
 
     // error
     .{"sym", errorSym},
-    .{"error.'$call'", errorCall},
+    .{"error.$call", errorCall},
     
     // int
     .{"$prefix~", bindings.intNot},
@@ -79,7 +79,7 @@ const funcs = [_]NameFunc{
     .{"$infix>>", bindings.intRightShift},
     .{"fmt", zErrFunc(intFmt)},
     .{"fmt", zErrFunc(intFmt2)},
-    .{"int.'$call'", intCall},
+    .{"int.$call", intCall},
 
     // float
     .{"$prefix-", bindings.floatNeg},
@@ -93,7 +93,7 @@ const funcs = [_]NameFunc{
     .{"$infix/", bindings.floatDiv},
     .{"$infix%", bindings.floatMod},
     .{"$infix^", bindings.floatPow},
-    .{"float.'$call'", floatCall},
+    .{"float.$call", floatCall},
 
     // List
     .{"$index",     bindings.listIndex},
@@ -152,7 +152,7 @@ const funcs = [_]NameFunc{
     .{"startsWith", string.startsWith},
     .{"trim", string.trim},
     .{"upper", string.upper},
-    .{"String.'$call'", zErrFunc(string.stringCall)},
+    .{"String.$call", zErrFunc(string.stringCall)},
 
     // Array
     .{"$infix+",        arrayConcat},
@@ -177,7 +177,7 @@ const funcs = [_]NameFunc{
     .{"split",          zErrFunc(arraySplit)},
     .{"startsWith",     arrayStartsWith},
     .{"trim",           zErrFunc(arrayTrim)},
-    .{"Array.'$call'",  zErrFunc(arrayCall)},
+    .{"Array.$call",  zErrFunc(arrayCall)},
 
     // pointer
     .{"addr", pointerAddr},
@@ -186,7 +186,7 @@ const funcs = [_]NameFunc{
     .{"get", zErrFunc(pointerGet)},
     .{"set", zErrFunc(pointerSet)},
     .{"toArray", zErrFunc(pointerToArray)},
-    .{"pointer.'$call'", pointerCall},
+    .{"pointer.$call", pointerCall},
 
     // ExternFunc
     .{"addr", externFuncAddr},

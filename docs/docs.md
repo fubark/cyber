@@ -2662,10 +2662,10 @@ Some special operators have their own name. This example overloads the `index` o
 type MyCollection:
     arr List
 
-    func '$index'(idx):
+    func $index(idx):
         return arr[idx * 2]
 
-    func '$setIndex'(idx, val):
+    func $setIndex(idx, val):
         arr[idx * 2] = val 
 
 var a = MyCollection{arr: [1, 2, 3, 4]}
@@ -2711,7 +2711,7 @@ type Vec2:
     x float
     y float
 
-func Vec2.'$call'(x float, y float) Vec2:
+func Vec2.$call(x float, y float) Vec2:
     return Vec2{x: x, y: y}
 
 var v = Vec2(1, 2)
@@ -2725,7 +2725,7 @@ The `$initPair` method overrides the record initializer.
 After an instance of the type is created from its default record initializer, this method is invoked for each key-value pair in the record literal:
 ```cy
 type MyMap:
-    func '$initPair'(key any, value any) void:
+    func $initPair(key any, value any) void:
         print "$(key): $(value)"
 
 var m = MyMap{ a: 123, b: 234 }
@@ -2738,7 +2738,7 @@ var m = MyMap{ a: 123, b: 234 }
 The `$get` method allows overriding field accesses for **undeclared fields**:
 ```cy
 type Foo:
-    func '$get'(name String):
+    func $get(name String):
         return name.len()
 
 var f = Foo{}
@@ -2750,7 +2750,7 @@ print f.hello    --> 5
 The `$set` method allows overriding field assignments for **undeclared fields**:
 ```cy
 type Foo:
-    func '$set'(name String, value any):
+    func $set(name String, value any):
         print "setting $(name) $(value)"
 
 var f = Foo{}
@@ -2763,7 +2763,7 @@ Declare a `$missing` method as a fallback when a method was not found in an inst
 ```cy
 type A:
 
-    func '$missing'(args...):
+    func $missing(args...):
         return args.len
 
 var a = A{}

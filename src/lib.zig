@@ -61,9 +61,9 @@ export fn csTraceDumpLiveObjects(vm: *cy.VM) void {
 }
 
 /// This is useful when calling into wasm to allocate some memory.
-export fn csAlloc(vm: *cy.VM, size: usize) c.Slice {
+export fn csAlloc(vm: *cy.VM, size: usize) [*]const u8 {
     const slice = vm.alloc.alignedAlloc(u8, 8, size) catch fatal();
-    return .{ .buf = slice.ptr, .len = size };
+    return slice.ptr;
 }
 
 export fn csFree(vm: *cy.VM, slice: c.Slice) void {

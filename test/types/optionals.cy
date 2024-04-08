@@ -6,15 +6,20 @@ test.eq(a == none, false)
 test.eq(a != none, true)
 test.eq(a.?, 123)
 
--- Shorthand.
+-- Shorthand. Wrap literal.
 var b ?int = 123
 test.eq(b.?, 123)
+
+-- Wrap variable.
+var ca = 123
+var c ?int = ca
+test.eq(c.?, 123)
 
 -- Wrap object.
 type Foo:
     a int
-var c ?Foo = Foo{a: 123}
-test.eq(c.?.a, 123)
+var d ?Foo = Foo{a: 123}
+test.eq(d.?.a, 123)
 
 -- Wrapping none implicitly.
 b = none

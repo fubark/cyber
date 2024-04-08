@@ -440,7 +440,8 @@ void csTraceDumpLiveObjects(CsVM* vm);
 // If the host uses a different allocator than Cyber, use `csAlloc` to allocate memory
 // that is handed over to Cyber so it knows how to free it.
 // This is also used to manage accessible buffers when embedding WASM.
-CsSlice csAlloc(CsVM* vm, size_t size);
+// Only pointer is returned so wasm callsite can just receive the return value.
+void* csAlloc(CsVM* vm, size_t size);
 
 // When using the Zig allocator, you'll need to pass the original memory size.
 // For all other allocators, use 1 for `len`.

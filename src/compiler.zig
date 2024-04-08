@@ -704,7 +704,8 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
                         decl.data = .{ .sym = @ptrCast(sym) };
                     },
                     .typeAlias => {
-                        try sema.declareTypeAlias(chunk, decl.nodeId);
+                        const sym = try sema.reserveTypeAlias(chunk, decl.nodeId);
+                        decl.data = .{ .sym = @ptrCast(sym) };
                     },
                     .distinct_t => {
                         const sym = try sema.reserveDistinctType(chunk, decl.nodeId);
@@ -919,9 +920,11 @@ fn resolveSyms(self: *Compiler) !void {
                         last_type_sym = decl.data.sym;
                     }
                 },
+                .typeAlias => {
+                    try sema.resolveTypeAlias(chunk, @ptrCast(decl.data.sym));
+                },
                 .use,
-                .typeTemplate,
-                .typeAlias => {},
+                .typeTemplate => {},
             }
         }
 

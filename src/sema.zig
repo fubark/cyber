@@ -1163,10 +1163,34 @@ pub fn reserveDistinctType(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     return @ptrCast(sym);
 }
 
-pub fn declareTypeAlias(c: *cy.Chunk, nodeId: cy.NodeId) !void {
+pub fn reserveTypeAlias(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.TypeAlias {
     const node = c.ast.node(nodeId);
     const name = c.ast.nodeStringById(node.data.typeAliasDecl.name);
-    try c.declareTypeAlias(@ptrCast(c.sym), name, nodeId);
+    return c.reserveTypeAlias(@ptrCast(c.sym), name, nodeId);
+}
+
+pub fn resolveTypeAlias(c: *cy.Chunk, sym: *cy.sym.TypeAlias) !void {
+    const node = c.ast.node(sym.declId);
+    sym.type = try cy.sema.resolveTypeSpecNode(c, node.data.typeAliasDecl.typeSpec);
+    sym.sym = c.sema.types.items[sym.type].sym;
+    // Merge modules.
+    const mod = sym.getMod();
+    const src_sym = sym.sym;
+    const src_mod = src_sym.getMod().?;
+    var iter = mod.symMap.iterator();
+    while (iter.next()) |e| {
+        const name = e.key_ptr.*;
+        const child = e.value_ptr.*;
+        if (src_mod.symMap.contains(name)) {
+            try cy.module.reportDupSym(c, child, name, sym.declId);
+        }
+        child.parent = src_sym;
+        try src_mod.symMap.putNoClobber(c.alloc, name, child);
+    }
+    mod.retainedVars.clearAndFree(c.alloc);
+    mod.symMap.clearAndFree(c.alloc);
+    mod.overloadedFuncMap.clearAndFree(c.alloc);
+    sym.resolved = true;
 }
 
 pub fn resolveModuleSpec(self: *cy.Chunk, buf: []u8, spec: []const u8, nodeId: cy.NodeId) ![]const u8 {
@@ -2136,7 +2160,7 @@ fn requireFuncSym(c: *cy.Chunk, sym: *Sym, node: cy.NodeId) !*cy.sym.FuncSym {
 // Invoke a type's sym as the callee.
 fn callTypeSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.NodeId, argHead: cy.NodeId, typeId: cy.TypeId, ret_cstr: ReturnCstr) !ExprResult {
     _ = typeId;
-    const typeCallSym = try c.findDistinctSym(sym, "$call", cy.NullNode, true);
+    const typeCallSym = try c.getResolvedDistinctSym(sym, "$call", cy.NullNode, true);
     const funcSym = try requireFuncSym(c, typeCallSym, symNodeId);
     return c.semaCallFuncSym(preIdx, funcSym, argHead, numArgs, ret_cstr, symNodeId);
 }
@@ -2304,13 +2328,28 @@ fn semaIdent(c: *cy.Chunk, nodeId: cy.NodeId, comptime symAsValue: bool) !ExprRe
         .local => |id| {
             return semaLocal(c, id, nodeId);
         },
-        .static => |csymId| {
-            return try sema.symbol(c, csymId, nodeId, symAsValue);
+        .static => |sym| {
+            return try sema.symbol(c, sym, nodeId, symAsValue);
         },
     }
 }
 
-pub fn resolveLocalRootSym(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId, distinct: bool) !?*Sym {
+pub fn getLocalDistinctSym(c: *cy.Chunk, name: []const u8, node: cy.NodeId) !?*Sym {
+    // if (c.sym_cache.get(name)) |sym| {
+    //     if (!sym.isDistinct()) {
+    //         return c.reportErrorFmt("`{}` is not a unique symbol.", &.{v(name)}, node);
+    //     }
+    //     return sym;
+    // }
+
+    if (try c.getDistinctSym(@ptrCast(c.sym), name, node, false)) |res| {
+        // try c.sym_cache.putNoClobber(c.alloc, name, res);
+        return res;
+    }
+    return null;
+}
+
+pub fn getResolvedLocalSym(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId, distinct: bool) !?*Sym {
     if (c.sym_cache.get(name)) |sym| {
         if (distinct and !sym.isDistinct()) {
             return c.reportErrorFmt("`{}` is not a unique symbol.", &.{v(name)}, nodeId);
@@ -2320,7 +2359,7 @@ pub fn resolveLocalRootSym(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId, di
 
     // Look in the current chunk module.
     if (distinct) {
-        if (try c.findDistinctSym(@ptrCast(c.sym), name, nodeId, false)) |res| {
+        if (try c.getResolvedDistinctSym(@ptrCast(c.sym), name, nodeId, false)) |res| {
             try c.sym_cache.putNoClobber(c.alloc, name, res);
             return res;
         }
@@ -2346,7 +2385,7 @@ pub fn resolveLocalRootSym(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId, di
         i -= 1;
         const mod_sym = c.use_alls.items[i];
         if (distinct) {
-            if (try c.findDistinctSym(@ptrCast(mod_sym), name, nodeId, false)) |res| {
+            if (try c.getResolvedDistinctSym(@ptrCast(mod_sym), name, nodeId, false)) |res| {
                 try c.sym_cache.putNoClobber(c.alloc, name, res);
                 return res;
             }
@@ -2386,7 +2425,7 @@ fn ensureLocalNamePathSym(c: *cy.Chunk, head: cy.NodeId, end: cy.NodeId) !*Sym {
     var node = c.ast.node(nodeId);
     var name = c.ast.nodeString(node);
 
-    var sym = (try resolveLocalRootSym(c, name, nodeId, true)) orelse b: {
+    var sym = (try getLocalDistinctSym(c, name, nodeId)) orelse b: {
         const placeholder = try c.addPlaceholder(@ptrCast(c.sym), name);
         break :b @as(*cy.Sym, @ptrCast(placeholder));
     };
@@ -2395,7 +2434,7 @@ fn ensureLocalNamePathSym(c: *cy.Chunk, head: cy.NodeId, end: cy.NodeId) !*Sym {
     while (nodeId != end) {
         node = c.ast.node(nodeId);
         name = c.ast.nodeString(node);
-        sym = try c.findDistinctSym(sym, name, nodeId, true);
+        sym = try c.getDistinctSym(sym, name, nodeId, true);
         nodeId = node.next();
     }
     return sym;
@@ -2406,7 +2445,7 @@ pub fn resolveLocalNamePathSym(c: *cy.Chunk, head: cy.NodeId, end: cy.NodeId) an
     var node = c.ast.node(nodeId);
     var name = c.ast.nodeString(node);
 
-    var sym = (try resolveLocalRootSym(c, name, nodeId, true)) orelse {
+    var sym = (try getResolvedLocalSym(c, name, nodeId, true)) orelse {
         return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, nodeId);
     };
 
@@ -2438,7 +2477,7 @@ fn resolveSym(c: *cy.Chunk, node_id: cy.NodeId) !*cy.Sym {
     switch (node.type()) {
         .ident => {
             const name = c.ast.nodeString(node);
-            return (try resolveLocalRootSym(c, name, node_id, true)) orelse {
+            return (try getResolvedLocalSym(c, name, node_id, true)) orelse {
                 return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, node_id);
             };
         },
@@ -2463,7 +2502,7 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !cy.TypeId {
         },
         .ident => {
             const name = c.ast.nodeString(expr);
-            const sym = (try resolveLocalRootSym(c, name, exprId, true)) orelse {
+            const sym = (try getResolvedLocalSym(c, name, exprId, true)) orelse {
                 return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, exprId);
             };
             return resolveSymType(c, sym, exprId);
@@ -2475,7 +2514,7 @@ fn resolveTypeExpr(c: *cy.Chunk, exprId: cy.NodeId) !cy.TypeId {
                 return c.reportErrorFmt("Expected identifier.", &.{}, expr.data.accessExpr.right);
             }
             const name = c.ast.nodeString(right);
-            const sym = try c.findDistinctSym(parent, name, expr.data.accessExpr.right, true);
+            const sym = try c.getResolvedDistinctSym(parent, name, expr.data.accessExpr.right, true);
             return resolveSymType(c, sym, exprId);
         },
         .comptimeExpr => {
@@ -3190,7 +3229,7 @@ fn lookupStaticVar(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId, staticLook
     if (!staticLookup) {
         return null;
     }
-    const res = (try resolveLocalRootSym(c, name, nodeId, false)) orelse {
+    const res = (try getResolvedLocalSym(c, name, nodeId, false)) orelse {
         return null;
     };
     return VarLookupResult{ .static = res };
@@ -3340,7 +3379,7 @@ fn semaSymAccessRight(c: *cy.Chunk, sym: *Sym, sym_n: cy.NodeId, rightId: cy.Nod
             return error.Unexpected;
         }
         const rightName = c.ast.nodeString(right);
-        const rightSym = try c.findDistinctSym(sym, rightName, rightId, true);
+        const rightSym = try c.getResolvedDistinctSym(sym, rightName, rightId, true);
         try referenceSym(c, rightSym, rightId);
         return .{ .type = .sym, .data = .{ .sym = rightSym }};
     }

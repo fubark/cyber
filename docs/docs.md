@@ -1890,7 +1890,7 @@ use rl 'https://mycdn.com/raylib'
 When importing using a URL without a file name, Cyber's CLI will look for a `mod.cy` from the path instead.
 
 ### Import all.
-If the alias name is the wildcard character, all symbols from the module are imported into the using namespace:
+If the alias name is the wildcard character, all symbols from the module are imported into the using namespace: *This feature is experimental and may be removed in a future version.*
 ```cy
 use * 'math'
 print random()

@@ -163,7 +163,7 @@ fn nodeToCtValue(c: *cy.Chunk, nodeId: cy.NodeId) !CtValue {
                 }
             }
 
-            const sym = (try sema.resolveLocalRootSym(c, name, nodeId, true)) orelse {
+            const sym = (try sema.getResolvedLocalSym(c, name, nodeId, true)) orelse {
                 return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, nodeId);
             };
 

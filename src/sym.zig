@@ -283,8 +283,8 @@ pub const Sym = extern struct {
             .float_t         => return @ptrCast(&self.cast(.float_t).mod),
             .placeholder     => return @ptrCast(&self.cast(.placeholder).mod),
             .distinct_t      => return @ptrCast(&self.cast(.distinct_t).mod),
+            .typeAlias       => return @ptrCast(&self.cast(.typeAlias).mod),
             .module_alias,
-            .typeAlias,
             .typeTemplate,
             .enumMember,
             .func,
@@ -547,12 +547,17 @@ pub const FuncSym = extern struct {
     firstFuncSig: cy.sema.FuncSigId,
 };
 
-/// Type aliases are lazily loaded.
 pub const TypeAlias = extern struct {
     head: Sym,
     declId: cy.NodeId,
     type: cy.TypeId,
     sym: *Sym,
+    mod: vmc.Module,
+    resolved: bool,
+
+    pub fn getMod(self: *TypeAlias) *cy.Module {
+        return @ptrCast(&self.mod);
+    }
 };
 
 pub const DistinctType = extern struct {

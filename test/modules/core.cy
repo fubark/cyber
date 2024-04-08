@@ -115,7 +115,7 @@ t.eq(res['decls'][0]['type'], 'func')
 t.eq(res['decls'][0]['name'], 'Foo.foo')
 
 res = parseCyber("use foo 'bar'")
-t.eq(res['decls'][0]['type'], 'import')
+t.eq(res['decls'][0]['type'], 'use')
 t.eq(res['decls'][0]['name'], 'foo')
 
 res = parseCyber("type foo:\n  a any")

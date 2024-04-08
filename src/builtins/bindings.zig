@@ -15,6 +15,7 @@ const Value = cy.Value;
 const vm_ = @import("../vm.zig");
 const TrackGlobalRC = vm_.TrackGlobalRC;
 const fmt = @import("../fmt.zig");
+const cc = @import("../capi.zig");
 
 const debug = builtin.mode == .Debug;
 const log = cy.log.scoped(.bindings);
@@ -615,8 +616,8 @@ pub const ModuleBuilder = struct {
         try self.getMod().setTypedVar(self.compiler, name, typeId, val);
     }
 
-    pub fn declareFuncSig(self: *const ModuleBuilder, name: []const u8, params: []const types.TypeId, ret: types.TypeId, ptr: cy.ZHostFuncFn) !void {
-        _ = try self.chunk.declareHostFuncSig(self.sym, name, params, ret, cy.NullId, ptr, false);
+    pub fn declareFuncSig(self: *const ModuleBuilder, name: [*:0]const u8, params: []const types.TypeId, ret: types.TypeId, ptr: cy.ZHostFuncFn) !void {
+        cc.declareFunc(self.sym.toC(), name, params.ptr, params.len, ret, @ptrCast(ptr));
     }
 
     pub fn ensureMethodGroup(self: *const ModuleBuilder, name: []const u8) !vmc.MethodGroupId {

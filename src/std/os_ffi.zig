@@ -963,7 +963,7 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
         return map;
     } else {
         // Create anonymous struct with binded C-functions as methods.
-        const osSym = vm.compiler.chunkMap.get("os").?.sym;
+        const osSym = vm.compiler.chunk_map.get("os").?.sym;
         const sid = try vm.addAnonymousStruct(@ptrCast(osSym), "BindLib", os.nextUniqId, &.{ "tcc" });
         os.nextUniqId += 1;
         const tccField = try vm.ensureFieldSym("tcc");

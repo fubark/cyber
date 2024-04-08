@@ -265,7 +265,7 @@ export fn csPerformGC(vm: *cy.VM) c.GCResult {
     };
 }
 
-export fn csDeclareUntypedFunc(mod: c.Sym, name: [*:0]const u8, numParams: u32, funcPtr: c.FuncFn) void {
+export fn csDeclareDynFunc(mod: c.Sym, name: [*:0]const u8, numParams: u32, funcPtr: c.FuncFn) void {
     const modSym = cy.Sym.fromC(mod);
     var symName: []const u8 = std.mem.sliceTo(name, 0);
     var nameOwned = false;
@@ -275,14 +275,15 @@ export fn csDeclareUntypedFunc(mod: c.Sym, name: [*:0]const u8, numParams: u32, 
         symName = chunk.alloc.dupe(u8, symName) catch fatal();
         nameOwned = true;
     }
-    const func = chunk.declareHostFunc(modSym, symName, funcSigId, cy.NullId, @ptrCast(funcPtr), false) catch cy.fatal();
+    const func = chunk.reserveHostFunc(modSym, symName, cy.NullId, false) catch cy.fatal();
+    chunk.resolveHostFunc(func, funcSigId, @ptrCast(funcPtr)) catch cy.fatal();
     if (nameOwned) {
         const sym = func.sym.?;
         sym.head.setNameOwned(true);
     }
 }
 
-export fn csDeclareFunc(mod: c.Sym, name: [*:0]const u8, params: [*]const cy.TypeId, numParams: u32, retType: cy.TypeId, funcPtr: c.FuncFn) void {
+export fn csDeclareFunc(mod: c.Sym, name: [*:0]const u8, params: [*]const cy.TypeId, numParams: usize, retType: cy.TypeId, funcPtr: c.FuncFn) void {
     const modSym = cy.Sym.fromC(mod);
     var symName: []const u8 = std.mem.sliceTo(name, 0);
     var nameOwned = false;
@@ -292,11 +293,16 @@ export fn csDeclareFunc(mod: c.Sym, name: [*:0]const u8, params: [*]const cy.Typ
         symName = chunk.alloc.dupe(u8, symName) catch fatal();
         nameOwned = true;
     }
-    const func = chunk.declareHostFunc(modSym, symName, funcSigId, cy.NullId, @ptrCast(funcPtr), false) catch cy.fatal();
+    const func = chunk.reserveHostFunc(modSym, symName, cy.NullId, false) catch cy.fatal();
+    chunk.resolveHostFunc(func, funcSigId, @ptrCast(funcPtr)) catch cy.fatal();
     if (nameOwned) {
         const sym = func.sym.?;
         sym.head.setNameOwned(true);
     }
+}
+
+export fn csDeclareDynVar(mod: c.Sym, name: [*:0]const u8, val: c.Value) void {
+    csDeclareVar(mod, name, bt.Dynamic, val);
 }
 
 export fn csDeclareVar(mod: c.Sym, name: [*:0]const u8, typeId: cy.TypeId, val: c.Value) void {
@@ -308,7 +314,8 @@ export fn csDeclareVar(mod: c.Sym, name: [*:0]const u8, typeId: cy.TypeId, val: 
         symName = chunk.alloc.dupe(u8, symName) catch fatal();
         nameOwned = true;
     }
-    const sym = chunk.declareHostVar(modSym, symName, cy.NullId, typeId, @bitCast(val)) catch cy.fatal();
+    const sym = chunk.reserveHostVar(modSym, symName, cy.NullId) catch cy.fatal();
+    chunk.resolveHostVar(sym, typeId, @bitCast(val)) catch cy.fatal();
     if (nameOwned) {
         sym.head.setNameOwned(true);
     }

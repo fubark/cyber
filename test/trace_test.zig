@@ -428,10 +428,8 @@ test "Multiple evals persisting state." {
     c.setModuleLoader(@ptrCast(run.vm), struct {
         fn onLoad(vm_: ?*c.VM, mod: c.Sym) callconv(.C) void {
             const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-            const sym: *cy.Sym = cy.Sym.fromC(mod);
             const g = cy.ptrAlignCast(*cy.Value, vm.userData).*;
-            const chunk = sym.getMod().?.chunk;
-            _ = chunk.declareHostVar(sym, "g", cy.NullId, bt.Dynamic, g) catch cy.fatal();
+            c.declareVar(mod, "g", bt.Dynamic, @bitCast(g));
         }
         fn loader(vm: ?*c.VM, spec: c.Str, out_: [*c]c.ModuleLoaderResult) callconv(.C) bool {
             const out: *c.ModuleLoaderResult = out_;
@@ -667,7 +665,7 @@ test "Custom modules." {
             // Test dangling pointer.
             const s1 = allocString("test\x00");
             defer t.alloc.free(s1);
-            c.declareUntypedFunc(mod, s1.ptr, 0, @ptrCast(&test3));
+            c.declareDynFunc(mod, s1.ptr, 0, @ptrCast(&test3));
         }
         fn postLoadMod1(_: ?*c.VM, mod: c.Sym) callconv(.C) void {
             // Test dangling pointer.
@@ -676,8 +674,8 @@ test "Custom modules." {
             defer t.alloc.free(s1);
             defer t.alloc.free(s2);
 
-            c.declareUntypedFunc(mod, s1.ptr, 0, @ptrCast(&test1));
-            c.declareUntypedFunc(mod, s2.ptr, 0, @ptrCast(&test2));
+            c.declareDynFunc(mod, s1.ptr, 0, @ptrCast(&test1));
+            c.declareDynFunc(mod, s2.ptr, 0, @ptrCast(&test2));
         }
         fn loader(vm_: ?*c.VM, spec: c.Str, out_: [*c]c.ModuleLoaderResult) callconv(.C) bool {
             const out: *c.ModuleLoaderResult = out_;

@@ -51,14 +51,14 @@ pub const Compiler = struct {
     /// Compilation units for iteration.
     chunks: std.ArrayListUnmanaged(*cy.Chunk),
 
-    /// Chunk srcUri to chunk.
-    chunkMap: std.StringHashMapUnmanaged(*cy.Chunk),
+    /// Resolved URI to chunk.
+    chunk_map: std.StringHashMapUnmanaged(*cy.Chunk),
 
     /// Key is either a *Sym or *Func.
     genSymMap: std.AutoHashMapUnmanaged(*anyopaque, bcgen.Sym),
 
     /// Imports are queued.
-    importTasks: std.ArrayListUnmanaged(ImportTask),
+    import_tasks: std.ArrayListUnmanaged(ImportTask),
 
     config: cc.CompileConfig,
 
@@ -90,9 +90,9 @@ pub const Compiler = struct {
             .moduleLoader = defaultModuleLoader,
             .moduleResolver = defaultModuleResolver,
             .chunks = .{},
-            .chunkMap = .{},
+            .chunk_map = .{},
             .genSymMap = .{},
-            .importTasks = .{},
+            .import_tasks = .{},
             .config = cc.defaultCompileConfig(), 
             .hasApiError = false,
             .apiError = "",
@@ -127,8 +127,8 @@ pub const Compiler = struct {
         self.deinitModRetained();
 
         // Free any remaining import tasks.
-        for (self.importTasks.items) |task| {
-            self.alloc.free(task.absSpec);
+        for (self.import_tasks.items) |task| {
+            self.alloc.free(task.resolved_spec);
         }
 
         for (self.chunks.items) |chunk| {
@@ -141,14 +141,14 @@ pub const Compiler = struct {
         }
         if (reset) {
             self.chunks.clearRetainingCapacity();
-            self.chunkMap.clearRetainingCapacity();
+            self.chunk_map.clearRetainingCapacity();
             self.genSymMap.clearRetainingCapacity();
-            self.importTasks.clearRetainingCapacity();
+            self.import_tasks.clearRetainingCapacity();
         } else {
             self.chunks.deinit(self.alloc);
-            self.chunkMap.deinit(self.alloc);
+            self.chunk_map.deinit(self.alloc);
             self.genSymMap.deinit(self.alloc);
-            self.importTasks.deinit(self.alloc);
+            self.import_tasks.deinit(self.alloc);
         }
 
         // Chunks depends on modules.
@@ -219,17 +219,18 @@ pub const Compiler = struct {
         var core_sym: *cy.sym.Chunk = undefined;
         if (self.importBuiltins) {
             const importCore = ImportTask{
-                .fromChunk = null,
+                .type = .nop,
+                .from = null,
                 .nodeId = cy.NullNode,
-                .absSpec = try self.alloc.dupe(u8, "builtins"),
-                .import = null,
+                .resolved_spec = try self.alloc.dupe(u8, "builtins"),
+                .data = undefined,
             };
-            try self.importTasks.append(self.alloc, importCore);
+            try self.import_tasks.append(self.alloc, importCore);
             const core_chunk = performImportTask(self, importCore) catch |err| {
                 return err;
             };
             core_sym = core_chunk.sym;
-            _ = self.importTasks.orderedRemove(0);
+            _ = self.import_tasks.orderedRemove(0);
             try reserveCoreTypes(self);
             try createDynMethodIds(self);
         }
@@ -241,13 +242,16 @@ pub const Compiler = struct {
         mainChunk.sym = try mainChunk.createChunkSym(finalSrcUri);
         self.main_chunk = mainChunk;
         try self.chunks.append(self.alloc, mainChunk);
-        try self.chunkMap.put(self.alloc, finalSrcUri, mainChunk);
+        try self.chunk_map.put(self.alloc, finalSrcUri, mainChunk);
 
-        // All modules and data types are loaded first.
-        try declareImportsAndTypes(self, core_sym);
+        // All symbols are reserved by loading all modules and looking at the declarations.
+        try reserveSyms(self, core_sym);
 
-        // Declare static vars and funcs after types have been resolved.
-        try declareSymbols(self);
+        // Resolve symbols:
+        // - Variable types are resolved.
+        // - Function signatures are resolved.
+        // - Type fields are resolved.
+        try resolveSyms(self);
 
         // Pass through type syms.
         for (self.sema.types.items) |*type_e| {
@@ -486,7 +490,8 @@ fn performChunkInitSema(self: *Compiler, c: *cy.Chunk) !void {
     }});
     c.updateAstView(c.parser.ast.view());
 
-    const func = try c.declareUserFunc(@ptrCast(c.sym), "$init", funcSigId, decl, false);
+    const func = try c.reserveUserFunc(@ptrCast(c.sym), "$init", decl, false);
+    try c.resolveUserFunc(func, funcSigId);
 
     _ = try sema.pushFuncProc(c, func);
 
@@ -550,7 +555,36 @@ fn appendSymInitIrDFS(c: *cy.Chunk, sym: *cy.Sym, info: *cy.chunk.SymInitInfo, r
     info.visited = true;
 }
 
+fn completeImportTask(self: *Compiler, task: ImportTask, res: *cy.Chunk) !void {
+    switch (task.type) {
+        .nop => {},
+        .module_alias => {
+            task.data.module_alias.sym.sym = @ptrCast(res.sym);
+        },
+        .use_alias => {
+            const c = task.from.?;
+
+            const node = c.ast.node(task.nodeId);
+            const name_n = c.ast.node(node.data.import_stmt.name);
+            if (name_n.type() == .all) {
+                try c.use_alls.append(self.alloc, @ptrCast(res.sym));
+            } else {
+                const name = c.ast.nodeString(name_n);
+                try c.use_syms.put(self.alloc, name, @ptrCast(res.sym));
+            }
+        },
+    }
+}
+
 fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
+    // Check cache if module src was already obtained from the module loader.
+    const cache = try self.chunk_map.getOrPut(self.alloc, task.resolved_spec);
+    if (cache.found_existing) {
+        try completeImportTask(self, task, cache.value_ptr.*);
+        self.alloc.free(task.resolved_spec);
+        return cache.value_ptr.*;
+    }
+
     // Initialize defaults.
     var res: cc.ModuleLoaderResult = .{
         .src = "",
@@ -565,26 +599,26 @@ fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
     };
 
     self.hasApiError = false;
-    log.tracev("Invoke module loader: {s}", .{task.absSpec});
+    log.tracev("Invoke module loader: {s}", .{task.resolved_spec});
 
-    if (!self.moduleLoader.?(@ptrCast(self.vm), cc.toStr(task.absSpec), &res)) {
-        if (task.fromChunk) |from| {
+    if (!self.moduleLoader.?(@ptrCast(self.vm), cc.toStr(task.resolved_spec), &res)) {
+        if (task.from) |from| {
             if (task.nodeId == cy.NullNode) {
                 if (self.hasApiError) {
                     return from.reportError(self.apiError, null);
                 } else {
-                    return from.reportErrorFmt("Failed to load module: {}", &.{v(task.absSpec)}, null);
+                    return from.reportErrorFmt("Failed to load module: {}", &.{v(task.resolved_spec)}, null);
                 }
             } else {
                 const stmt = from.ast.node(task.nodeId);
                 if (self.hasApiError) {
-                    return from.reportErrorFmt(self.apiError, &.{}, stmt.data.importStmt.spec);
+                    return from.reportErrorFmt(self.apiError, &.{}, stmt.data.import_stmt.spec);
                 } else {
-                    return from.reportErrorFmt("Failed to load module: {}", &.{v(task.absSpec)}, stmt.data.importStmt.spec);
+                    return from.reportErrorFmt("Failed to load module: {}", &.{v(task.resolved_spec)}, stmt.data.import_stmt.spec);
                 }
             }
         } else {
-            try self.addReportFmt(.compile_err, null, null, "Failed to load module: {}", &.{v(task.absSpec)});
+            try self.addReportFmt(.compile_err, null, null, "Failed to load module: {}", &.{v(task.resolved_spec)});
             return error.CompileError;
         }
     }
@@ -608,8 +642,8 @@ fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
     // uri is already duped.
     var newChunk = try self.alloc.create(cy.Chunk);
 
-    newChunk.* = try cy.Chunk.init(self, newChunkId, task.absSpec, srcDup);
-    newChunk.sym = try newChunk.createChunkSym(task.absSpec);
+    newChunk.* = try cy.Chunk.init(self, newChunkId, task.resolved_spec, srcDup);
+    newChunk.sym = try newChunk.createChunkSym(task.resolved_spec);
     newChunk.funcLoader = res.funcLoader;
     newChunk.varLoader = res.varLoader;
     newChunk.typeLoader = res.typeLoader;
@@ -618,45 +652,47 @@ fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
     newChunk.srcOwned = true;
     newChunk.onDestroy = res.onDestroy;
 
-    if (task.import) |import| {
-        import.sym = @ptrCast(newChunk.sym);
-    }
-
     try self.chunks.append(self.alloc, newChunk);
-    try self.chunkMap.put(self.alloc, task.absSpec, newChunk);
+    
+    try completeImportTask(self, task, newChunk);
+    cache.value_ptr.* = newChunk;
 
     return newChunk;
 }
 
-fn declareImportsAndTypes(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
-    log.tracev("Load imports and types.", .{});
+fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
+    log.tracev("Reserve symbols.", .{});
 
     var id: u32 = 0;
     while (true) {
         while (id < self.chunks.items.len) : (id += 1) {
+            var last_type_sym: *cy.Sym = undefined;
+
             const chunk = self.chunks.items[id];
             log.tracev("chunk parse: {}", .{chunk.id});
             try performChunkParse(self, chunk);
 
             if (self.importBuiltins) {
                 // Import builtin module into local namespace.
-                try sema.declareUsingModule(chunk, @ptrCast(core_sym));
+                try chunk.use_alls.append(self.alloc, @ptrCast(core_sym));
             }
 
             // Process static declarations.
             for (chunk.parser.staticDecls.items) |*decl| {
                 switch (decl.declT) {
-                    .import => {
-                        try sema.declareImport(chunk, decl.nodeId);
+                    .use => {
+                        try sema.declareUse(chunk, decl.nodeId);
                     },
                     .struct_t => {
                         const sym = try sema.declareStruct(chunk, decl.nodeId);
                         decl.data = .{ .sym = @ptrCast(sym) };
+                        last_type_sym = sym;
                     },
                     .object => {
-                        const sym = try sema.declareObject(chunk, decl.nodeId);
+                        const sym = try sema.reserveObjectType(chunk, decl.nodeId);
                         // Persist for declareObjectMembers.
                         decl.data = .{ .sym = @ptrCast(sym) };
+                        last_type_sym = sym;
                     },
                     .enum_t => {
                         const sym = try sema.declareEnum(chunk, decl.nodeId);
@@ -666,17 +702,33 @@ fn declareImportsAndTypes(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
                         try sema.declareTypeAlias(chunk, decl.nodeId);
                     },
                     .distinct_t => {
-                        const sym = try sema.declareDistinctType(chunk, decl.nodeId);
+                        const sym = try sema.reserveDistinctType(chunk, decl.nodeId);
                         decl.data = .{ .sym = @ptrCast(sym) };
+                        last_type_sym = sym;
                     },
                     .typeTemplate => {
                         const ctNodes = chunk.parser.ast.templateCtNodes.items[decl.data.typeTemplate.ctNodeStart..decl.data.typeTemplate.ctNodeEnd];
                         try sema.declareTypeTemplate(chunk, decl.nodeId, ctNodes);
                     },
-                    .variable,
-                    .implicit_method,
-                    .func,
-                    .funcInit => {},
+                    .variable => {
+                        const sym = try sema.reserveVar(chunk, decl.nodeId);
+                        decl.data = .{ .sym = sym };
+                        if (sym.type == .userVar) {
+                            chunk.hasStaticInit = true;
+                        }
+                    },
+                    .implicit_method => {
+                        const func = try sema.reserveImplicitMethod(chunk, last_type_sym, decl.nodeId);
+                        decl.data = .{ .implicit_method = func };
+                    },
+                    .func => {
+                        const func = try sema.reserveUserFunc(chunk, decl.nodeId);
+                        decl.data = .{ .func = func };
+                    },
+                    .funcInit => {
+                        const func = try sema.reserveHostFunc(chunk, decl.nodeId);
+                        decl.data = .{ .func = func };
+                    },
                 }
             }
 
@@ -686,13 +738,13 @@ fn declareImportsAndTypes(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
         }
 
         // Check for import tasks.
-        for (self.importTasks.items, 0..) |task, i| {
+        for (self.import_tasks.items, 0..) |task, i| {
             _ = performImportTask(self, task) catch |err| {
-                try self.importTasks.replaceRange(self.alloc, 0, i, &.{});
+                try self.import_tasks.replaceRange(self.alloc, 0, i, &.{});
                 return err;
             };
         }
-        self.importTasks.clearRetainingCapacity();
+        self.import_tasks.clearRetainingCapacity();
 
         if (id == self.chunks.items.len) {
             // No more chunks were added from import tasks.
@@ -814,8 +866,8 @@ fn createDynMethodIds(self: *Compiler) !void {
 //     object_t.rt_size = size;
 // }
 
-fn declareSymbols(self: *Compiler) !void {
-    log.tracev("Load module symbols.", .{});
+fn resolveSyms(self: *Compiler) !void {
+    log.tracev("Resolve syms.", .{});
     for (self.chunks.items) |chunk| {
         // Process static declarations.
         var last_type_sym: *cy.Sym = undefined;
@@ -823,23 +875,20 @@ fn declareSymbols(self: *Compiler) !void {
             log.tracev("Load {s}", .{@tagName(decl.declT)});
             switch (decl.declT) {
                 .variable => {
-                    const sym = try sema.declareVar(chunk, decl.nodeId);
-                    decl.data = .{ .sym = sym };
-                    if (sym.type == .userVar) {
-                        chunk.hasStaticInit = true;
+                    if (decl.data.sym.type == .userVar) {
+                        try sema.resolveUserVar(chunk, @ptrCast(decl.data.sym));
+                    } else {
+                        try sema.resolveHostVar(chunk, @ptrCast(decl.data.sym));
                     }
                 },
                 .implicit_method => {
-                    const method = try sema.resolveImplicitMethodDecl(chunk, last_type_sym, decl.nodeId);
-                    const func = try sema.declareMethod(chunk, last_type_sym, decl.nodeId, method);
-                    decl.data = .{ .implicit_method = func };
+                    try sema.resolveImplicitMethod(chunk, decl.data.implicit_method);
                 },
                 .func => {
-                    const func = try sema.declareFunc(chunk, @ptrCast(chunk.sym), decl.nodeId);
-                    decl.data = .{ .func = func };
+                    try sema.resolveUserFunc(chunk, decl.data.func);
                 },
                 .funcInit => {
-                    try sema.declareFuncInit(chunk, @ptrCast(chunk.sym), decl.nodeId);
+                    try sema.resolveHostFunc(chunk, decl.data.func);
                 },
                 .struct_t,
                 .object => {
@@ -857,7 +906,7 @@ fn declareSymbols(self: *Compiler) !void {
                         last_type_sym = decl.data.sym;
                     }
                 },
-                .import,
+                .use,
                 .typeTemplate,
                 .typeAlias => {},
             }
@@ -912,11 +961,22 @@ pub fn replaceIntoShorterList(comptime T: type, input: []const T, needle: []cons
 
 const unexpected = cy.fatal;
 
+const ImportTaskType = enum(u8) {
+    nop,
+    use_alias,
+    module_alias,
+};
+
 const ImportTask = struct {
-    fromChunk: ?*cy.Chunk,
+    type: ImportTaskType,
+    from: ?*cy.Chunk,
     nodeId: cy.NodeId,
-    absSpec: []const u8,
-    import: ?*cy.sym.Import,
+    resolved_spec: []const u8,
+    data: union {
+        module_alias: struct {
+            sym: *cy.sym.ModuleAlias,
+        },
+    },
 };
 
 pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *Compiler, modId: cy.ModuleId) anyerror!void) cy.ModuleLoaderFunc {

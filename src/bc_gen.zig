@@ -195,7 +195,7 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
         .typeAlias,
         .enum_t,
         .enumMember,
-        .import => {},
+        .module_alias => {},
         else => {
             log.tracev("{}", .{sym.type});
             return error.Unsupported;

@@ -200,7 +200,7 @@ pub const Parser = struct {
         }
 
         try self.pushBlock();
-        const res = try self.parseBodyStatements(0);
+        const res = try self.parseBodyStatements(0, .{ .allow_decls = true });
 
         // Mark last expression stmt.
         const last = self.ast.nodePtr(res.last);
@@ -259,30 +259,30 @@ pub const Parser = struct {
         var token = self.peek();
         if (token.tag() != .new_line) {
             // Parse single statement only.
-            const stmt = try self.parseStatement();
+            const stmt = try self.parseStatement(.{});
             return .{
                 .first = stmt,
                 .last = stmt,
             };
         } else {
             self.advance();
-            return self.parseIndentedBodyStatements();
+            return self.parseIndentedBodyStatements(.{});
         }
     }
 
     /// Indent is determined by the first body statement.
-    fn parseIndentedBodyStatements(self: *Parser) !FirstLastStmt {
+    fn parseIndentedBodyStatements(self: *Parser, config: ParseStmtConfig) !FirstLastStmt {
         const reqIndent = try self.parseFirstChildIndent(self.cur_indent);
-        return self.parseBodyStatements(reqIndent);
+        return self.parseBodyStatements(reqIndent, config);
     }
 
     // Assumes the first indent is already consumed.
-    fn parseBodyStatements(self: *Parser, reqIndent: u32) !FirstLastStmt {
+    fn parseBodyStatements(self: *Parser, reqIndent: u32, config: ParseStmtConfig) !FirstLastStmt {
         const prevIndent = self.cur_indent;
         self.cur_indent = reqIndent;
         defer self.cur_indent = prevIndent;
 
-        var first = try self.parseStatement();
+        var first = try self.parseStatement(config);
         var last = first;
 
         // Parse body statements until indentation goes back to at least the previous indent.
@@ -290,7 +290,7 @@ pub const Parser = struct {
             const start = self.next_pos;
             const indent = (try self.consumeIndentBeforeStmt()) orelse break;
             if (indent == reqIndent) {
-                const id = try self.parseStatement();
+                const id = try self.parseStatement(config);
                 self.ast.setNextNode(last, id);
                 last = id;
             } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
@@ -665,7 +665,10 @@ pub const Parser = struct {
         return field;
     }
 
-    fn parseTemplate(self: *Parser, hidden: bool) !NodeId {
+    fn parseTemplate(self: *Parser, hidden: bool, allow_decl: bool) !NodeId {
+        if (!allow_decl) {
+            return self.reportError("`template` declarations are not allowed here.", &.{});
+        }
         const start = self.next_pos;
 
         // Assumes first token is the `template` keyword.
@@ -687,7 +690,7 @@ pub const Parser = struct {
         if (token.tag() == .type_k) {
             const id = try self.pushNode(.typeTemplate, start);
 
-            const decl = try self.parseTypeDecl(.{ .attr_head = cy.NullNode, .hidden = false }, false);
+            const decl = try self.parseTypeDecl(.{ .attr_head = cy.NullNode, .hidden = false, .allow_decl = true }, false);
             const ctNodeEnd = self.ast.templateCtNodes.items.len;
 
             self.ast.setNodeData(id, .{ .typeTemplate = .{
@@ -714,9 +717,14 @@ pub const Parser = struct {
     const TypeDeclConfig = struct {
         attr_head: cy.NodeId,
         hidden: bool,
+        allow_decl: bool,
     };
 
     fn parseTypeDecl(self: *Parser, config: TypeDeclConfig, append_decl: bool) !NodeId {
+        if (!config.allow_decl) {
+            return self.reportError("`type` declarations are not allowed here.", &.{});
+        }
+
         const start = self.next_pos;
         // Assumes first token is the `type` keyword.
         self.advance();
@@ -823,6 +831,7 @@ pub const Parser = struct {
                     const decl = try self.parseObjectDecl(token.pos(), null, .{
                         .hidden = false,
                         .attr_head = cy.NullNode,
+                        .allow_decl = true,
                     });
                     try self.staticDecls.append(self.alloc, .{
                         .declT = .object,
@@ -1022,7 +1031,7 @@ pub const Parser = struct {
         if (self.isAtEnd()) {
             return ListResult{ .head = cy.NullNode, .len = 0 };
         }
-        const first = try self.parseStatement();
+        const first = try self.parseStatement(.{ .allow_decls = true });
         var node_t = self.ast.nodeType(first);
         if (node_t != .funcDecl) {
             return self.reportErrorAtSrc("Expected function.", &.{}, self.ast.nodePos(first));
@@ -1035,7 +1044,7 @@ pub const Parser = struct {
             const start = self.next_pos;
             const indent = (try self.consumeIndentBeforeStmt()) orelse break;
             if (indent == req_indent) {
-                const func = try self.parseStatement();
+                const func = try self.parseStatement(.{ .allow_decls = true });
                 node_t = self.ast.nodeType(func);
                 if (node_t != .funcDecl) {
                     return self.reportErrorAtSrc("Expected function.", &.{}, self.ast.nodePos(func));
@@ -1118,9 +1127,13 @@ pub const Parser = struct {
     const FuncDeclConfig = struct {
         attr_head: cy.NodeId,
         hidden: bool,
+        allow_decl: bool,
     };
 
     fn parseFuncDecl(self: *Parser, config: FuncDeclConfig) !NodeId {
+        if (!config.allow_decl) {
+            return self.reportError("`func` declarations are not allowed here.", &.{});
+        }
         const start = self.next_pos;
         // Assumes first token is the `func` keyword.
         self.advance();
@@ -1444,47 +1457,52 @@ pub const Parser = struct {
         }
     }
 
-    fn parseImportStmt(self: *Parser) !NodeId {
+    fn parseUseStmt(self: *Parser) !NodeId {
         const start = self.next_pos;
-        // Assumes first token is the `import` keyword.
+        // Assumes first token is the `use` keyword.
         self.advance();
 
-        var token = self.peek();
-        if (token.tag() == .ident) {
-            const ident = try self.pushSpanNode(.ident, self.next_pos);
+        var name: cy.NodeId = undefined;
+        var spec: cy.NodeId = cy.NullNode;
+        if (self.peek().tag() == .ident) {
+            name = try self.pushSpanNode(.ident, self.next_pos);
             self.advance();
 
-            token = self.peek();
-            var spec: cy.NodeId = cy.NullNode;
-            if (token.tag() != .new_line) {
-                spec = (try self.parseExpr(.{})) orelse {
-                    return self.reportError("Expected import specifier.", &.{});
-                };
-                const spec_t = self.ast.nodeType(spec);
-                if (spec_t == .raw_string_lit) {
-                    try self.consumeNewLineOrEnd();
-                } else {
-                    return self.reportError("Expected import specifier to be a string. {}", &.{fmt.v(spec_t)});
-                }
-            } else {
+            if (self.peek().tag() == .raw_string) {
+                spec = try self.pushSpanNode(.raw_string_lit, self.next_pos);
                 self.advance();
+                try self.consumeNewLineOrEnd();
+            } else if (self.peek().tag() == .new_line) {
+                self.advance();
+            } else {
+                return self.reportError("Expected a module specifier.", &.{});
             }
+        } else if (self.peek().tag() == .star) {
+            name = try self.pushNode(.all, self.next_pos);
+            self.advance();
 
-            const import = try self.pushNode(.importStmt, start);
-            self.ast.setNodeData(import, .{ .importStmt = .{
-                .name = ident,
-                .spec = spec,
-            }});
-
-            try self.staticDecls.append(self.alloc, .{
-                .declT = .import,
-                .nodeId = import,
-                .data = undefined,
-            });
-            return import;
+            if (self.peek().tag() != .raw_string) {
+                return self.reportError("Expected a module specifier.", &.{});
+            }
+            spec = try self.pushSpanNode(.raw_string_lit, self.next_pos);
+            self.advance();
+            try self.consumeNewLineOrEnd();
         } else {
             return self.reportError("Expected import clause.", &.{});
         }
+
+        const import = try self.pushNode(.import_stmt, start);
+        self.ast.setNodeData(import, .{ .import_stmt = .{
+            .name = name,
+            .spec = spec,
+        }});
+
+        try self.staticDecls.append(self.alloc, .{
+            .declT = .use,
+            .nodeId = import,
+            .data = undefined,
+        });
+        return import;
     }
 
     fn parseWhileStatement(self: *Parser) !NodeId {
@@ -1811,7 +1829,11 @@ pub const Parser = struct {
         return case;
     }
 
-    fn parseStatement(self: *Parser) anyerror!NodeId {
+    const ParseStmtConfig = struct {
+        allow_decls: bool = false,
+    };
+
+    fn parseStatement(self: *Parser, config: ParseStmtConfig) anyerror!NodeId {
         var token = self.peek();
         switch (token.tag()) {
             .ident => {
@@ -1860,15 +1882,16 @@ pub const Parser = struct {
                         }
 
                         if (self.peek().tag() == .func_k) {
-                            return try self.parseFuncDecl(.{ .hidden = hidden, .attr_head = modifier });
+                            return try self.parseFuncDecl(.{ .hidden = hidden, .attr_head = modifier, .allow_decl = config.allow_decls });
                         } else if (self.peek().tag() == .var_k) {
-                            return try self.parseVarDecl(.{ .hidden = hidden, .attr_head = modifier, .typed = true});
+                            return try self.parseVarDecl(.{ .hidden = hidden, .attr_head = modifier, .typed = true, .allow_static = config.allow_decls });
                         } else if (self.peek().tag() == .let_k) {
-                            return try self.parseVarDecl(.{ .hidden = hidden, .attr_head = modifier, .typed = false});
+                            return try self.parseVarDecl(.{ .hidden = hidden, .attr_head = modifier, .typed = false, .allow_static = config.allow_decls });
                         } else if (self.peek().tag() == .type_k) {
                             return try self.parseTypeDecl(.{
                                 .attr_head = modifier,
                                 .hidden = hidden,
+                                .allow_decl = config.allow_decls,
                             }, true);
                         } else {
                             return self.reportError("Expected declaration statement.", &.{});
@@ -1895,7 +1918,7 @@ pub const Parser = struct {
                 }
             },
             .template_k => {
-                return self.parseTemplate(false);
+                return self.parseTemplate(false, config.allow_decls);
             },
             .minus => {
                 const next = self.peekAhead(1).tag();
@@ -1905,6 +1928,7 @@ pub const Parser = struct {
                         return try self.parseTypeDecl(.{
                             .attr_head = cy.NullNode,
                             .hidden = true,
+                            .allow_decl = config.allow_decls,
                         }, true);
                     },
                     .func_k => {
@@ -1912,28 +1936,29 @@ pub const Parser = struct {
                         return try self.parseFuncDecl(.{
                             .attr_head = cy.NullNode,
                             .hidden = true,
+                            .allow_decl = config.allow_decls,
                         });
                     },
                     .template_k => {
                         self.advance();
-                        return self.parseTemplate(true);
+                        return self.parseTemplate(true, config.allow_decls);
                     },
                     .let_k => {
                         self.advance();
-                        return self.parseLetDecl(cy.NullNode, true);
+                        return self.parseLetDecl(cy.NullNode, true, config.allow_decls);
                     },
                     .var_k => {
                         self.advance();
-                        return self.parseVarDecl(.{ .attr_head = cy.NullNode, .typed = true, .hidden = true });
+                        return self.parseVarDecl(.{ .attr_head = cy.NullNode, .typed = true, .hidden = true, .allow_static = config.allow_decls });
                     },
                     else => {},
                 }
             },
             .type_k => {
-                return try self.parseTypeDecl(.{ .attr_head = cy.NullNode, .hidden = false}, true);
+                return try self.parseTypeDecl(.{ .attr_head = cy.NullNode, .hidden = false, .allow_decl = config.allow_decls}, true);
             },
             .func_k => {
-                return try self.parseFuncDecl(.{ .attr_head = cy.NullNode, .hidden = false});
+                return try self.parseFuncDecl(.{ .attr_head = cy.NullNode, .hidden = false, .allow_decl = config.allow_decls});
             },
             .if_k => {
                 return try self.parseIfStatement();
@@ -1953,6 +1978,9 @@ pub const Parser = struct {
                 return try self.parseWhileStatement();
             },
             .use_k => {
+                if (!config.allow_decls) {
+                    return self.reportError("`use` declarations are not allowed here.", &.{});
+                }
                 return try self.parseUseStmt();
             },
             .pass_k => {
@@ -1978,10 +2006,10 @@ pub const Parser = struct {
                 return try self.parseReturnStatement();
             },
             .var_k => {
-                return try self.parseVarDecl(.{ .attr_head = cy.NullNode, .typed = true, .hidden = false });
+                return try self.parseVarDecl(.{ .attr_head = cy.NullNode, .typed = true, .hidden = false, .allow_static = config.allow_decls });
             },
             .let_k => {
-                return try self.parseLetDecl(cy.NullNode, false);
+                return try self.parseLetDecl(cy.NullNode, false, config.allow_decls);
             },
             else => {},
         }
@@ -3337,7 +3365,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseLetDecl(self: *Parser, attr_head: cy.NodeId, hidden: bool) !cy.NodeId {
+    fn parseLetDecl(self: *Parser, attr_head: cy.NodeId, hidden: bool, allow_static: bool) !cy.NodeId {
         const start = self.next_pos;
         self.advance();
 
@@ -3397,6 +3425,7 @@ pub const Parser = struct {
             .attr_head = attr_head,
             .typed = false,
             .hidden = hidden,
+            .allow_static = allow_static,
         });
     }
 
@@ -3404,6 +3433,7 @@ pub const Parser = struct {
         attr_head: cy.NodeId,
         hidden: bool,
         typed: bool,
+        allow_static: bool,
     };
 
     fn parseVarDecl(self: *Parser, config: VarDeclConfig) !cy.NodeId {
@@ -3435,6 +3465,10 @@ pub const Parser = struct {
     }
 
     fn parseVarDecl2(self: *cy.Parser, start: u32, name: cy.NodeId, type_spec: cy.NodeId, is_static: bool, root: bool, config: VarDeclConfig) !cy.NodeId {
+        if (is_static and !config.allow_static) {
+            return self.reportError("Static variable declarations are not allowed here.", &.{});
+        }
+
         const varSpec = try self.pushNode(.varSpec, start);
         self.ast.setNodeData(varSpec, .{ .varSpec = .{
             .name = name,
@@ -3884,7 +3918,7 @@ const StaticDeclType = enum {
     implicit_method,
     func,
     funcInit,
-    import,
+    use,
     object,
     struct_t,
     enum_t,

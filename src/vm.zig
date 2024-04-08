@@ -846,7 +846,7 @@ pub const VM = struct {
         if (mod.getSym(name)) |_| {
             return error.DuplicateSym;
         }
-        const sym = c.declareObjectType(parent, name, cy.NullId, null) catch return error.Unexpected;
+        const sym = c.reserveObjectType(parent, name, cy.NullId, null) catch return error.Unexpected;
         sym.head.setNameOwned(true);
 
         const infos = try c.alloc.alloc(cy.sym.FieldInfo, fields.len);
@@ -1506,7 +1506,7 @@ pub const VM = struct {
             if (val.isEnum()) {
                 const sym = self.types[typeId].sym;
                 const enumv = val.getEnumValue();
-                const name = sym.cast(.enum_t).getValueSym(enumv).name();
+                const name = sym.cast(.enum_t).getValueSym(enumv).head.name();
                 try std.fmt.format(w, "{s}.{s}", .{sym.name(), name});
             } else {
                 try w.writeAll("Unknown");

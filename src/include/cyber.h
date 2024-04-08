@@ -396,11 +396,12 @@ extern bool csSilent;
 // -----------------------------------
 
 // Declares a function in a module.
-void csDeclareUntypedFunc(CsSym mod, const char* name, uint32_t numParams, CsFuncFn fn);
-void csDeclareFunc(CsSym mod, const char* name, const CsTypeId* params, uint32_t numParams, CsTypeId retType, CsFuncFn fn);
+void csDeclareDynFunc(CsSym mod, const char* name, uint32_t numParams, CsFuncFn fn);
+void csDeclareFunc(CsSym mod, const char* name, const CsTypeId* params, size_t numParams, CsTypeId retType, CsFuncFn fn);
 
 // Declares a variable in a module.
-void csDeclareVar(CsSym mod, const char* name, CsValue val);
+void csDeclareDynVar(CsSym mod, const char* name, CsTypeId type, CsValue val);
+void csDeclareVar(CsSym mod, const char* name, CsTypeId type, CsValue val);
 
 // Expand type template for given arguments.
 CsTypeId csExpandTypeTemplate(CsSym type_t, CsValue* args, uint32_t nargs);

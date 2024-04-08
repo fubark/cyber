@@ -99,15 +99,17 @@ pub const Chunk = struct {
     /// Main sema block id.
     mainSemaProcId: sema.ProcId,
 
-    /// Local sym names to mod syms. eg. imports, type aliases.
-    /// Most syms are cached while syms like `Root` are always included.
-    localSymMap: std.StringHashMapUnmanaged(*cy.Sym),
+    /// Names to chunk syms or using namespace (use imports, use aliases).
+    /// Chunk syms have a higher precedence.
+    /// This is populated after symbol queries.
+    sym_cache: std.StringHashMapUnmanaged(*cy.Sym),
+
+    /// Symbols in the using namespace.
+    use_syms: std.StringHashMapUnmanaged(*cy.Sym),
+    use_alls: std.ArrayListUnmanaged(*cy.Sym),
 
     /// Successful module func signature matches are cached.
     funcCheckCache: std.HashMapUnmanaged(sema.ModFuncSigKey, *cy.Func, cy.hash.KeyU96Context, 80),
-
-    /// Using modules.
-    usingModules: std.ArrayListUnmanaged(*cy.Sym),
 
     /// Object type dependency graph.
     /// This is only needed for default initializers so it is created on demand per chunk.
@@ -116,6 +118,7 @@ pub const Chunk = struct {
 
     /// Syms.
     syms: std.ArrayListUnmanaged(*cy.Sym),
+    placeholder_syms: std.ArrayListUnmanaged(*cy.sym.Placeholder),
 
     /// Functions. Includes lambdas which are not linked from a named sym.
     funcs: std.ArrayListUnmanaged(*cy.Func),
@@ -245,13 +248,14 @@ pub const Chunk = struct {
             .tempBufU8 = .{},
             .srcOwned = true,
             .mainSemaProcId = cy.NullId,
-            .localSymMap = .{},
+            .sym_cache = .{},
+            .use_syms = .{},
+            .use_alls = .{},
             .funcCheckCache = .{},
             .rega = cy.register.Allocator.init(c, id),
             .curHostFuncIdx = 0,
             .curHostVarIdx = 0,
             .curHostTypeIdx = 0,
-            .usingModules = .{},
             .tempTypeRefs = undefined,
             .tempValueRefs = undefined,
             .builder = undefined,
@@ -272,6 +276,7 @@ pub const Chunk = struct {
                 .last = cy.NullId,
             },
             .syms = .{},
+            .placeholder_syms = .{},
             .funcs = .{},
         };
 
@@ -337,14 +342,20 @@ pub const Chunk = struct {
         self.typeDeps.deinit(self.alloc);
         self.typeDepsMap.deinit(self.alloc);
 
-        self.localSymMap.deinit(self.alloc);
-        self.usingModules.deinit(self.alloc);
+        self.sym_cache.deinit(self.alloc);
+        self.use_syms.deinit(self.alloc);
+        self.use_alls.deinit(self.alloc);
 
         // Deinit chunk syms.
         for (self.syms.items) |sym| {
             sym.destroy(self.vm, self.alloc);
         }
         self.syms.deinit(self.alloc);
+
+        for (self.placeholder_syms.items) |sym| {
+            sym.head.destroy(self.vm, self.alloc);
+        }
+        self.placeholder_syms.deinit(self.alloc);
 
         for (self.funcs.items) |func| {
             self.alloc.destroy(func);

@@ -44,7 +44,6 @@ pub const CompileResult = compiler.CompileResult;
 pub const chunk = @import("chunk.zig");
 pub const Chunk = chunk.Chunk;
 pub const ChunkId = chunk.ChunkId;
-pub const SymId = chunk.SymId;
 pub const FuncId = chunk.FuncId;
 
 pub const register = @import("register.zig");

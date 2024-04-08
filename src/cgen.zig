@@ -482,7 +482,7 @@ pub fn gen(self: *cy.Compiler) !cy.compiler.AotCompileResult {
     }
 
     // Sym overrides to match rt library.
-    const builtins_c = self.chunkMap.get("builtins").?;
+    const builtins_c = self.chunk_map.get("builtins").?;
     try compiler.overrideSymName(builtins_c, "int", "CbInt");
     try compiler.overrideSymName(builtins_c, "bool", "CbBool");
     try compiler.overrideSymName(builtins_c, "none", "CbNone");
@@ -496,7 +496,7 @@ pub fn gen(self: *cy.Compiler) !cy.compiler.AotCompileResult {
     try compiler.overrideSymName(builtins_c, "any", "CbAny");
     try compiler.overrideSymName(builtins_c, "type", "CbType");
     try compiler.overrideFuncName(builtins_c, "print", "cb_print");
-    if (self.chunkMap.get("test")) |chunk| {
+    if (self.chunk_map.get("test")) |chunk| {
         try compiler.overrideFuncName(chunk, "eq", "cb_test_eq");
     }
 

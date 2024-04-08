@@ -669,7 +669,7 @@ fn genNodeValue(vm: *cy.VM, ast: cy.ast.AstView, nodeId: cy.NodeId) !cy.Value {
     const map = res.castHeapObject(*cy.heap.Map);
     switch (node.type()) {
         .funcHeader => {
-            const name = ast.getNamePathInfoById(node.data.funcHeader.name).namePath;
+            const name = ast.getNamePathInfo(node.data.funcHeader.name).name_path;
             try vm.mapSet(map, try vm.retainOrAllocAstring("name"), try vm.allocString(name));
 
             const params = try vm.allocEmptyList();
@@ -720,7 +720,7 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
         },
         .variable => {
             const varSpec = ast.node(node.data.staticDecl.varSpec);
-            name = ast.getNamePathInfoById(varSpec.data.varSpec.name).namePath;
+            name = ast.getNamePathInfo(varSpec.data.varSpec.name).name_path;
 
             const typeSpec = try genTypeSpecString(vm, ast, varSpec.data.varSpec.typeSpec);
             try vm.mapSet(entry, try vm.retainOrAllocAstring("typeSpec"), typeSpec);
@@ -734,24 +734,24 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
         },
         .implicit_method => {
             const header = ast.node(node.data.func.header);
-            name = ast.getNamePathInfoById(header.data.funcHeader.name).namePath;
+            name = ast.getNamePathInfo(header.data.funcHeader.name).name_path;
             
             const headerv = try genNodeValue(vm, ast, node.data.func.header);
             try vm.mapSet(entry, try vm.retainOrAllocAstring("header"), headerv);
         },
         .func => {
             const header = ast.node(node.data.func.header);
-            name = ast.getNamePathInfoById(header.data.funcHeader.name).namePath;
+            name = ast.getNamePathInfo(header.data.funcHeader.name).name_path;
         },
         .funcInit => {
             const header = ast.node(node.data.func.header);
-            name = ast.getNamePathInfoById(header.data.funcHeader.name).namePath;
+            name = ast.getNamePathInfo(header.data.funcHeader.name).name_path;
 
             const headerv = try genNodeValue(vm, ast, node.data.func.header);
             try vm.mapSet(entry, try vm.retainOrAllocAstring("header"), headerv);
         },
-        .import => {
-            name = ast.nodeStringById(node.data.importStmt.name);
+        .use => {
+            name = ast.nodeStringById(node.data.import_stmt.name);
         },
         .struct_t,
         .object => {
@@ -1526,7 +1526,7 @@ fn errorCall(vm: *cy.VM, args: [*]const Value, _: u8) Value {
         } else if (val.isEnum()) {
             const enumT = val.getEnumType();
             const enumv = val.getEnumValue();
-            const name = vm.types[enumT].sym.cast(.enum_t).getValueSym(enumv).name();
+            const name = vm.types[enumT].sym.cast(.enum_t).getValueSym(enumv).head.name();
             const symId = vm.ensureSymbol(name) catch cy.unexpected();
             return Value.initErrorSymbol(symId);
         } else {

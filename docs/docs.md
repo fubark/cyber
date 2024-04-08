@@ -1802,6 +1802,12 @@ In the example above, the function `foo` is called with 4 arguments. The first a
 <td valign="top">
 
 * [Importing.](#importing)
+  * [Import file.](#import-file)
+  * [Import URL.](#import-url)
+  * [Import all.](#import-all)
+  * [Main module.](#main-module)
+  * [Circular imports.](#circular-imports)
+  * [Destructure import.](#destructure-import)
 * [Exporting.](#exporting)
 * [Module URI.](#module-uri)
 * [Symbol visibility.](#symbol-visibility)
@@ -1861,21 +1867,37 @@ The explicit import syntax requires an alias name followed by a module specifier
 use m 'math'
 print m.random()
 ```
+When Cyber is embedded into a host application, the module resolver and loader can be overridden using the [Embed API](#embedding).
 
-The explicit syntax also allows importing modules over a file system or the Internet using the module specifier as the URI. When Cyber is embedded into a host application, this can also be overridden using the [Embed API](#embedding).
+### Import file.
+File modules can be imported:
 
 ```cy
 -- Importing a module from the local directory.
 use b 'bar.cy'
 print b.myFunc()
 print b.myVar
+```
 
+### Import URL.
+Modules can be imported over the Internet:
+```cy
 -- Importing a module from a CDN.
 use rl 'https://mycdn.com/raylib'
 ```
 When importing using a URL without a file name, Cyber's CLI will look for a `mod.cy` from the path instead.
 
-An imported module doesn't evaluate its main block. Only namespace declarations are effectively loaded. If there is code in the main block, it will skip evaluation. In the following, only the `print` statement in the `main.cy` is evaluated.
+### Import all.
+If the alias name is the wildcard character, all symbols from the module are imported into the using namespace:
+```cy
+use * 'math'
+print random()
+```
+
+### Main module.
+Only the main module can have top-level statements that aren't static declarations.
+If an imported module contains top-level statements, they are ignored.
+In the future, it may result in a compile error instead:
 ```cy
 -- main.cy
 use a 'foo.cy'
@@ -1890,6 +1912,8 @@ print foo         -- Statement is ignored.
 var .bar = 321
 print bar         -- Statement is ignored.
 ```
+
+### Circular imports.
 Circular imports are allowed. In the following example, `main.cy` and `foo.cy` import each other without any problems.
 ```cy
 -- main.cy
@@ -1911,6 +1935,7 @@ func printC():
 ```
 Static variable declarations from imports can have circular references. Read more about this in [Static variables](#static-variables).
 
+### Destructure import.
 Modules can also be destructured using the following syntax:
 > _Planned Feature_
 ```cy

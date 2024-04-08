@@ -219,6 +219,7 @@ if (!aot) {
         run.case2(Config.initFileModules("../import_rel_path.cy").withChdir("./test/modules/test_mods"), "modules/import_rel_path.cy");
 
         run.case2(Config.initFileModules("./test/modules/import.cy"), "modules/import.cy");
+        run.case2(Config.initFileModules("./test/modules/import_all.cy"), "modules/import_all.cy");
     }
     run.case("modules/core.cy");
     run.case("modules/math.cy");

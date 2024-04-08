@@ -10,6 +10,7 @@ pub const NodeId = u32;
 pub const NodeType = enum(u8) {
     @"null",
     accessExpr,
+    all,
     arrayLit,
     array_expr,
     assignStmt,
@@ -58,7 +59,7 @@ pub const NodeType = enum(u8) {
     if_stmt,
     if_unwrap,
     if_unwrap_stmt,
-    importStmt,
+    import_stmt,
     keyValue,
     label_decl,
     lambda_expr, 
@@ -155,7 +156,7 @@ const NodeData = union {
     returnExprStmt: struct {
         child: NodeId,
     },
-    importStmt: struct {
+    import_stmt: struct {
         name: cy.NodeId,
         spec: cy.Nullable(cy.NodeId),
     },
@@ -786,43 +787,42 @@ pub const AstView = struct {
             return self.srcGen[n.data.span.pos-1..n.data.span.pos+n.data.span.len+1];
         } else {
             return self.src[n.data.span.pos-1..n.data.span.pos+n.data.span.len+1];
-        }
+        } 
     }
 
-    const NamePathInfo = struct {
-        namePath: []const u8,
-        lastName: []const u8,
-        lastId: cy.NodeId,
-    };
+    pub fn isMethodDecl(self: AstView, func_head: cy.Node) bool {
+        if (func_head.data.funcHeader.paramHead == cy.NullNode) {
+            return false;
+        }
+        const param = self.node(func_head.data.funcHeader.paramHead);
+        const param_name = self.nodeStringById(param.data.funcParam.name);
+        return std.mem.eql(u8, param_name, "self");
+    }
 
-    pub fn getNamePathInfo(self: AstView, n: cy.Node, nameId: cy.NodeId) NamePathInfo {
-        if (n.next() == cy.NullNode) {
-            const name = self.nodeString(n);
+    pub fn getNamePathInfo(self: AstView, name: cy.NodeId) NamePathInfo {
+        const name_n = self.node(name);
+        if (name_n.next() == cy.NullNode) {
+            const base = self.nodeString(name_n);
             return .{
-                .namePath = name,
-                .lastName = name,
-                .lastId = nameId,
+                .name_path = base,
+                .base_name = base,
+                .base = name,
             };
         } else {
-            const lastId = self.getLastNameNode(n.next());
-            const last = self.nodes[lastId];
-            const lastName = self.nodeString(last);
+            const last = self.getLastNameNode(name_n.next());
+            const last_n = self.node(last);
+            const base = self.nodeString(last_n);
 
-            var end = last.srcPos + last.data.span.len;
-            if (last.type() == .raw_string_lit) {
+            var end = last_n.srcPos + base.len;
+            if (last_n.type() == .raw_string_lit) {
                 end += 1;
             }
             return .{
-                .namePath = self.src[n.srcPos..end],
-                .lastName = lastName,
-                .lastId = lastId,
+                .name_path = self.src[name_n.srcPos..end],
+                .base_name = base,
+                .base = last,
             };
         }
-    }
-
-    pub fn getNamePathInfoById(self: AstView, nameId: cy.NodeId) NamePathInfo {
-        const n = self.nodes[nameId];
-        return self.getNamePathInfo(n, nameId);
     }
 
     pub fn getLastNameNode(self: AstView, nameId: cy.NodeId) cy.NodeId {
@@ -857,6 +857,12 @@ pub const AstView = struct {
         }
         return true;
     }
+};
+
+pub const NamePathInfo = struct {
+    name_path: []const u8,
+    base_name: []const u8,
+    base: cy.NodeId,
 };
 
 const EncodeEvent = enum {

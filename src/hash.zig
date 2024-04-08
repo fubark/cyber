@@ -9,7 +9,7 @@ const vmc = cy.vmc;
 pub const KeyU64 = extern union {
     val: u64,
     modFuncKey: extern struct {
-        modSymId: cy.SymId,
+        modSymId: cy.chunk.SymId,
         funcSigId: sema.FuncSigId,
     },
     rtTypeMethodKey: extern struct {
@@ -21,7 +21,7 @@ pub const KeyU64 = extern union {
         fieldId: rt.FieldId,
     },
 
-    pub fn initModFuncKey(modSymId: cy.SymId, funcSigId: sema.FuncSigId) KeyU64 {
+    pub fn initModFuncKey(modSymId: cy.chunk.SymId, funcSigId: sema.FuncSigId) KeyU64 {
         return .{
             .modFuncKey = .{
                 .modSymId = modSymId,
@@ -91,7 +91,7 @@ pub const KeyU96 = extern union {
         b: u32,
     },
 
-    pub fn initModFuncSigKey(sym: *cy.Sym, funcSigId: cy.sema.FuncSigId) KeyU96 {
+    pub fn initModFuncKey(sym: *cy.sym.FuncSym, funcSigId: cy.sema.FuncSigId) KeyU96 {
         return .{ .val = .{
             .a = @intFromPtr(sym),
             .b = funcSigId,

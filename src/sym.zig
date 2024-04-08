@@ -22,7 +22,7 @@ pub const SymType = enum(u8) {
     bool_t,
     int_t,
     float_t,
-    import,
+    module_alias,
     chunk,
     enum_t,
     enumMember,
@@ -33,6 +33,13 @@ pub const SymType = enum(u8) {
 
     typeTemplate,
     field,
+
+    /// During the reserving symbol phase, any intermediate sym that
+    /// hasn't been visited yet is assigned a `Placeholder`
+    /// so that child syms can be reserved.
+    /// Once the intermediate sym is visited, the placeholder sym is replaced
+    /// and it's module is copied.
+    placeholder,
 };
 
 /// Base symbol. All symbols stem from the same header.
@@ -167,8 +174,8 @@ pub const Sym = extern struct {
             .enumMember => {
                 size = @sizeOf(EnumMember);
             },
-            .import => {
-                size = @sizeOf(Import);
+            .module_alias => {
+                size = @sizeOf(ModuleAlias);
             },
             .func => {
                 size = @sizeOf(FuncSym);
@@ -178,6 +185,9 @@ pub const Sym = extern struct {
             },
             .hostVar => {
                 size = @sizeOf(HostVar);
+            },
+            .placeholder => {
+                size = @sizeOf(Placeholder);
             },
             .null => {
                 size = 0;
@@ -230,12 +240,13 @@ pub const Sym = extern struct {
             .null,
             .userVar,
             .hostVar,
-            .import,
+            .module_alias,
             .func,
             .typeTemplate,
             .distinct_t,
             .field,
             .enumMember,
+            .placeholder,
             .chunk => {
                 return false;
             },
@@ -270,8 +281,9 @@ pub const Sym = extern struct {
             .bool_t          => return @ptrCast(&self.cast(.bool_t).mod),
             .int_t           => return @ptrCast(&self.cast(.int_t).mod),
             .float_t         => return @ptrCast(&self.cast(.float_t).mod),
-            .import,
-            .distinct_t,
+            .placeholder     => return @ptrCast(&self.cast(.placeholder).mod),
+            .distinct_t      => return @ptrCast(&self.cast(.distinct_t).mod),
+            .module_alias,
             .typeAlias,
             .typeTemplate,
             .enumMember,
@@ -323,9 +335,10 @@ pub const Sym = extern struct {
                     return error.AmbiguousSymbol;
                 }
             },
+            .placeholder,
             .field,
             .null,
-            .import,
+            .module_alias,
             .distinct_t,
             .typeTemplate,
             .chunk => return null,
@@ -342,12 +355,13 @@ pub const Sym = extern struct {
             .struct_t        => return self.cast(.struct_t).type,
             .object_t        => return self.cast(.object_t).type,
             .custom_object_t => return self.cast(.custom_object_t).type,
+            .placeholder,
             .null,
             .field,
             .typeTemplate,
             .enumMember,
             .func,
-            .import,
+            .module_alias,
             .distinct_t,
             .chunk,
             .hostVar,
@@ -363,6 +377,7 @@ pub const Sym = extern struct {
             },
             .struct_t        => return self.cast(.struct_t).getFields(),
             .object_t        => return self.cast(.object_t).getFields(),
+            .placeholder,
             .bool_t,
             .int_t,
             .float_t,
@@ -373,7 +388,7 @@ pub const Sym = extern struct {
             .typeTemplate,
             .enumMember,
             .func,
-            .import,
+            .module_alias,
             .distinct_t,
             .chunk,
             .hostVar,
@@ -382,8 +397,8 @@ pub const Sym = extern struct {
     }
 
     pub fn resolved(self: *Sym) *Sym {
-        if (self.type == .import) {
-            return self.cast(.import).sym;
+        if (self.type == .module_alias) {
+            return self.cast(.module_alias).sym;
         } else if (self.type == .typeAlias) {
             return self.cast(.typeAlias).sym;
         } else {
@@ -474,11 +489,25 @@ fn SymChild(comptime symT: SymType) type {
         .distinct_t => DistinctType,
         .typeTemplate => TypeTemplate,
         .field => Field,
-        .import => Import,
+        .module_alias => ModuleAlias,
         .chunk => Chunk,
+        .placeholder => Placeholder,
         .null => void,
     };
 }
+
+pub const Placeholder = extern struct {
+    head: Sym,
+    mod: vmc.Module,
+
+    /// Once the placeholder is replaced, keep a reference to the sym so that
+    /// parent references can be updated during the sym resolve step.
+    sym: *cy.Sym,
+
+    pub fn getMod(self: *Placeholder) *cy.Module {
+        return @ptrCast(&self.mod);
+    }
+};
 
 /// A type sym union is defined so that TypeCopy can allocate enough memory for the largest Sym.
 pub const TypeSym = extern union {
@@ -530,6 +559,11 @@ pub const DistinctType = extern struct {
     head: Sym,
     decl_id: cy.NodeId,
     type: cy.TypeId,
+    mod: vmc.Module,
+
+    pub fn getMod(self: *DistinctType) *cy.Module {
+        return @ptrCast(&self.mod);
+    }
 };
 
 pub const ValueType = extern struct {
@@ -722,7 +756,7 @@ pub const BoolType = extern struct {
 pub const EnumType = extern struct {
     head: Sym,
     type: cy.TypeId,
-    members: [*]const cy.SymId,
+    members: [*]*EnumMember,
     numMembers: u32,
     mod: vmc.Module,
 
@@ -731,9 +765,8 @@ pub const EnumType = extern struct {
 
     isChoiceType: bool,
 
-    pub fn getValueSym(self: *EnumType, val: u16) *Sym {
-        const symId = self.members[val];
-        return self.getMod().chunk.syms.items[symId];
+    pub fn getValueSym(self: *EnumType, val: u16) *EnumMember {
+        return self.members[val];
     }
 
     pub fn getMod(self: *EnumType) *cy.Module {
@@ -741,9 +774,7 @@ pub const EnumType = extern struct {
     }
 
     pub fn getMemberByIdx(self: *EnumType, idx: u32) *EnumMember {
-        const mod = self.head.getMod().?;
-        const symId = self.members[idx];
-        return mod.chunk.syms.items[symId].cast(.enumMember);
+        return self.members[idx];
     }
 
     pub fn getMember(self: *EnumType, name: []const u8) ?*EnumMember {
@@ -769,7 +800,7 @@ pub const EnumMember = extern struct {
     payloadType: cy.Nullable(cy.TypeId),
 };
 
-pub const Import = extern struct {
+pub const ModuleAlias = extern struct {
     head: Sym,
     declId: cy.NodeId,
     sym: *Sym,

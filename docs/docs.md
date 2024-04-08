@@ -799,13 +799,16 @@ print o.foo        --> panic. The field `foo` was not initialized.
 ```
 
 ### Table indexing.
-Indexing can be used to access a field with a dynamic name. The key must be a `String`:
+Indexing can be used to access a dynamic field or an arbitrary key:
 ```cy
 var o = { name: 'Nova' }
 var field = 'name'
 print o[field]     --> Nova
+
+o[10] = [1, 2, 3]
+print o[10]        --> List (3)
 ```
-If the object is intended to be used like a hash map with varying key types, consider using `Map` instead.
+If the key is not an identifier string, the value can only be obtained through indexing.
 
 ### Check field existence.
 > _Planned Feature_
@@ -2577,7 +2580,7 @@ let a = {}
 a.name = 'Nova'
 print a.name     --> Nova
 ```
-Read more about how to use tables [Tables](#tables).
+Read more about how to use [Tables](#tables).
 
 ## Custom objects.
 Custom objects allow declaring fields and methods. *Planned Feature*

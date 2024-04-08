@@ -199,10 +199,10 @@ type Table:
     func $set(name String, value any):
         table_data[name] = value
 
-    func $index(key String) dynamic:
+    func $index(key any) dynamic:
         return table_data[key]
 
-    func $setIndex(key String, value any) void:
+    func $setIndex(key any, value any) void:
         table_data[key] = value
 
 #host

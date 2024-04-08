@@ -17,4 +17,8 @@ test.eq(o[key], 123)
 o[key] = 999
 test.eq(o[key], 999)
 
+-- Indexing with non-string key.
+o[10] = [1, 2, 3]
+test.eq(o[10].len(), 3)
+
 --cytest: pass

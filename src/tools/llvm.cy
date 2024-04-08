@@ -12,44 +12,64 @@ func EnablePrettyStackTrace() void:
     return lib.LLVMEnablePrettyStackTrace()
 type Bool = int
 
+type OpaqueMemoryBuffer_S #int64_t
 type MemoryBufferRef = pointer
 
+type OpaqueContext_S #int64_t
 type ContextRef = pointer
 
+type OpaqueModule_S #int64_t
 type ModuleRef = pointer
 
+type OpaqueType_S #int64_t
 type TypeRef = pointer
 
+type OpaqueValue_S #int64_t
 type ValueRef = pointer
 
+type OpaqueBasicBlock_S #int64_t
 type BasicBlockRef = pointer
 
+type OpaqueMetadata_S #int64_t
 type MetadataRef = pointer
 
+type OpaqueNamedMDNode_S #int64_t
 type NamedMDNodeRef = pointer
 
+type OpaqueValueMetadataEntry_S #int64_t
 type ValueMetadataEntry = OpaqueValueMetadataEntry_S
 
+type OpaqueBuilder_S #int64_t
 type BuilderRef = pointer
 
+type OpaqueDIBuilder_S #int64_t
 type DIBuilderRef = pointer
 
+type OpaqueModuleProvider_S #int64_t
 type ModuleProviderRef = pointer
 
+type OpaquePassManager_S #int64_t
 type PassManagerRef = pointer
 
+type OpaqueUse_S #int64_t
 type UseRef = pointer
 
+type OpaqueAttributeRef_S #int64_t
 type AttributeRef = pointer
 
+type OpaqueDiagnosticInfo_S #int64_t
 type DiagnosticInfoRef = pointer
 
+type Comdat_S #int64_t
 type ComdatRef = pointer
 
+type OpaqueModuleFlagEntry_S #int64_t
 type ModuleFlagEntry = OpaqueModuleFlagEntry_S
 
+type OpaqueJITEventListener_S #int64_t
 type JITEventListenerRef = pointer
 
+type OpaqueBinary_S #int64_t
 type BinaryRef = pointer
 
 type Opcode = int
@@ -1755,10 +1775,13 @@ func StopMultithreaded() void:
     return lib.LLVMStopMultithreaded()
 func IsMultithreaded() Bool:
     return lib.LLVMIsMultithreaded()
+type OpaqueSectionIterator_S #int64_t
 type SectionIteratorRef = pointer
 
+type OpaqueSymbolIterator_S #int64_t
 type SymbolIteratorRef = pointer
 
+type OpaqueRelocationIterator_S #int64_t
 type RelocationIteratorRef = pointer
 
 type BinaryType = int
@@ -1841,6 +1864,7 @@ func GetRelocationTypeName(RI any) pointer:
     return lib.LLVMGetRelocationTypeName(RI)
 func GetRelocationValueString(RI any) pointer:
     return lib.LLVMGetRelocationValueString(RI)
+type OpaqueObjectFile_S #int64_t
 type ObjectFileRef = pointer
 
 func CreateObjectFile(MemBuf any) ObjectFileRef:
@@ -1861,6 +1885,30 @@ let .ffi = false
 let .lib = load()
 func load():
     ffi = os.newFFI()
+    ffi.cbind(OpaqueMemoryBuffer_S, [])
+    ffi.cbind(OpaqueContext_S, [])
+    ffi.cbind(OpaqueModule_S, [])
+    ffi.cbind(OpaqueType_S, [])
+    ffi.cbind(OpaqueValue_S, [])
+    ffi.cbind(OpaqueBasicBlock_S, [])
+    ffi.cbind(OpaqueMetadata_S, [])
+    ffi.cbind(OpaqueNamedMDNode_S, [])
+    ffi.cbind(OpaqueValueMetadataEntry_S, [])
+    ffi.cbind(OpaqueBuilder_S, [])
+    ffi.cbind(OpaqueDIBuilder_S, [])
+    ffi.cbind(OpaqueModuleProvider_S, [])
+    ffi.cbind(OpaquePassManager_S, [])
+    ffi.cbind(OpaqueUse_S, [])
+    ffi.cbind(OpaqueAttributeRef_S, [])
+    ffi.cbind(OpaqueDiagnosticInfo_S, [])
+    ffi.cbind(Comdat_S, [])
+    ffi.cbind(OpaqueModuleFlagEntry_S, [])
+    ffi.cbind(OpaqueJITEventListener_S, [])
+    ffi.cbind(OpaqueBinary_S, [])
+    ffi.cbind(OpaqueSectionIterator_S, [])
+    ffi.cbind(OpaqueSymbolIterator_S, [])
+    ffi.cbind(OpaqueRelocationIterator_S, [])
+    ffi.cbind(OpaqueObjectFile_S, [])
     ffi.cfunc('LLVMInstallFatalErrorHandler', [.voidPtr], .void)
     ffi.cfunc('LLVMResetFatalErrorHandler', [], .void)
     ffi.cfunc('LLVMEnablePrettyStackTrace', [], .void)

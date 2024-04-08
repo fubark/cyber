@@ -117,16 +117,16 @@ os.writeFile(args['o'], out)
 
 -- Declarations.
 
-var .skipMap = {}
+var .skipMap = Map{}
 var .macros = []
 var .cvisitor = pointer(0)
 -- Build output string.
 var .out = ''
 var .skipChildren = false
-var .aliases = {}    -- aliasName -> structName or binding symbol (eg: .voidPtr)
+var .aliases = Map{}    -- aliasName -> structName or binding symbol (eg: .voidPtr)
 let .struct = false
-var .structMap = {}  -- structName -> list of fields (symOrName)
-var .enumMap = {}
+var .structMap = Map{}  -- structName -> list of fields (symOrName)
+var .enumMap = Map{}
 var .structs = []
 var .funcs = []
 -- var .arrays = {}     -- [n]typeName -> true
@@ -238,8 +238,14 @@ let rootVisitor(cursor, parent, state):
         clang.lib.clang_visitChildren(cursor, cvisitor, cnewState)
         clang.ffi.unbindObjPtr(newState)
 
+        structs.append(effName)
         if struct.fieldTypes.len() == 0:
-            -- Empty struct, skip.
+            -- Empty struct. (Usually an incomplete struct).
+            -- TODO: Create a builtin type for opaque.
+            if skipMap.contains(effName):
+                out += "-- type $(getApiName(effName)) #int64_t\n"
+            else:
+                out += "type $(getApiName(effName)) #int64_t\n"
             return clang.CXChildVisit_Continue
 
         structs.append(effName)
@@ -256,7 +262,7 @@ let rootVisitor(cursor, parent, state):
             let fieldt = struct.fieldTypes[i]
             out += "    $(name) $(toCyType(fieldt, false))"
             if is(fieldt, .voidPtr) or
-                (typeof(fieldt) == String and fieldt.startsWith('[os.CArray')):
+                (typeof(fieldt) == String and fieldt.startsWith('os.CArray{')):
                 out += " -- $(struct.cxFieldTypes[i])"
             out += "\n"
 
@@ -479,7 +485,7 @@ let macrosRootVisitor(cursor, parent, state):
                 var kvs = []
                 for struct.fieldNames -> fieldn, i:
                     kvs.append("$(fieldn): $(state.data['args'][i])")
-                out += "var .$(finalName) $(initT) = [$(initT) $(kvs.join(', '))]\n"
+                out += "var .$(finalName) $(initT) = $(initT){$(kvs.join(', '))}\n"
             else:
                 print "init $(initName) $(initCur.kind)"
                 throw error.Unsupported
@@ -526,7 +532,7 @@ let toCyType(nameOrSym, forRet):
             print "Unsupported type $(nameOrSym)"
             throw error.Unsupported
     else:
-        if nameOrSym.startsWith('[os.CArray'):
+        if nameOrSym.startsWith('os.CArray{'):
             return 'List'
         if !forRet and aliases.contains(nameOrSym):
             if aliases[nameOrSym] == .voidPtr:
@@ -605,7 +611,7 @@ let toBindType(cxType):
         var n = clang.lib.clang_getNumElements(cxType)
         var cxElem = clang.lib.clang_getElementType(cxType)
         var elem = toBindType(cxElem)
-        return "[os.CArray n: $(n), elem: $(elem)]"
+        return "os.CArray{n: $(n), elem: $(elem)}"
     else:
         print "Unsupported type $(cxType.kind)"
         throw error.Unsupported
@@ -617,7 +623,7 @@ func getApiName(name String):
         name = name[1..]
     return name
 
-var .reserved_keywords = {'type': true}
+var .reserved_keywords = Map{'type': true}
 
 type Func:
     name dynamic

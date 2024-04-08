@@ -357,7 +357,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
         .assignStmt => {
             _ = try assignStmt(c, nodeId, node.data.assignStmt.left, node.data.assignStmt.right, .{});
         },
-        .dynobject_decl,
+        .table_decl,
         .objectDecl,
         .structDecl,
         .passStmt,
@@ -1406,7 +1406,7 @@ pub fn declareTemplateVariant(c: *cy.Chunk, template: *cy.sym.TypeTemplate, vari
             const mod = sym.getMod();
             const start = mod.chunk.funcs.items.len;
 
-            try declareObjectFields(tchunk, @ptrCast(sym), template_n.data.typeTemplate.typeDecl);
+            try resolveObjectFields(tchunk, @ptrCast(sym), template_n.data.typeTemplate.typeDecl);
 
             const object_n = tchunk.ast.node(template_n.data.typeTemplate.typeDecl);
             var func_id: cy.NodeId = object_n.data.objectDecl.funcHead;
@@ -1433,6 +1433,38 @@ pub fn declareTemplateVariant(c: *cy.Chunk, template: *cy.sym.TypeTemplate, vari
             return @ptrCast(sym);
         },
     }
+}
+
+pub fn reserveTableMethods(c: *cy.Chunk, obj: *cy.sym.ObjectType) !void {
+    const table_mod = c.sema.table_type.getMod();
+    const set_decl = table_mod.getSym("$set").?.cast(.func).first.declId;
+    const table_c = table_mod.chunk;
+
+    const start = table_c.funcs.items.len;
+
+    _ = try reserveImplicitMethod(table_c, @ptrCast(obj), set_decl);
+    const get_decl = table_mod.getSym("$get").?.cast(.func).first.declId;
+    _ = try reserveImplicitMethod(table_c, @ptrCast(obj), get_decl);
+    const index_decl = table_mod.getSym("$index").?.cast(.func).first.declId;
+    _ = try reserveImplicitMethod(table_c, @ptrCast(obj), index_decl);
+    const set_index_decl = table_mod.getSym("$setIndex").?.cast(.func).first.declId;
+    _ = try reserveImplicitMethod(table_c, @ptrCast(obj), set_index_decl);
+
+    try table_c.variantFuncSyms.appendSlice(c.alloc, table_c.funcs.items[start..]);
+}
+
+pub fn resolveTableMethods(c: *cy.Chunk, obj: *cy.sym.ObjectType) !void {
+    const table_c = c.sema.table_type.getMod().chunk;
+    const mod = obj.getMod();
+
+    const set = mod.getSym("$set").?.cast(.func).first;
+    _ = try resolveImplicitMethod(table_c, set);
+    const get = mod.getSym("$get").?.cast(.func).first;
+    _ = try resolveImplicitMethod(table_c, get);
+    const index = mod.getSym("$index").?.cast(.func).first;
+    _ = try resolveImplicitMethod(table_c, index);
+    const set_index = mod.getSym("$setIndex").?.cast(.func).first;
+    _ = try resolveImplicitMethod(table_c, set_index);
 }
 
 pub fn reserveObjectType(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
@@ -1504,7 +1536,7 @@ pub fn resolveDistinctType(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType) !*cy.
                 .numFields = 0,
             }},
         };
-        try sema.declareObjectFields(c, @ptrCast(object_t), target_sym.cast(.object_t).declId);
+        try sema.resolveObjectFields(c, @ptrCast(object_t), target_sym.cast(.object_t).declId);
         object_t.head.setDistinctType(true);
         return @ptrCast(object_t);
     } else {
@@ -1512,8 +1544,43 @@ pub fn resolveDistinctType(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType) !*cy.
     }
 }
 
-/// modSym can be an object or core type.
-pub fn declareObjectFields(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !void {
+pub fn resolveTableFields(c: *cy.Chunk, obj: *cy.sym.ObjectType, nodeId: cy.NodeId) !void {
+    const node = c.ast.node(nodeId);
+    const header = c.ast.node(node.data.objectDecl.header);
+
+    const fields = try c.alloc.alloc(cy.sym.FieldInfo, header.data.objectHeader.numFields + 1);
+    errdefer c.alloc.free(fields);
+
+    // First field is reserved as `table_data Map`.
+    var field_sym = try c.declareField(@ptrCast(obj), "table_data", 0, bt.Map, cy.NullNode);
+    fields[0] = .{
+        .sym = @ptrCast(field_sym),
+        .type = bt.Map,
+    };
+
+    // Load custom fields.
+    var i: u32 = 1;
+
+    var fieldId: cy.NodeId = header.data.objectHeader.fieldHead;
+    while (fieldId != cy.NullNode) : (i += 1) {
+        const field = c.ast.node(fieldId);
+        const field_name = c.ast.nodeString(field);
+        field_sym = try c.declareField(@ptrCast(obj), field_name, i, bt.Dynamic, fieldId);
+        fields[i] = .{
+            .sym = @ptrCast(field_sym),
+            .type = bt.Dynamic,
+        };
+
+        fieldId = field.next();
+    }
+    obj.fields = fields.ptr;
+    obj.numFields = @intCast(fields.len);
+    c.sema.types.items[obj.type].data.object = .{
+        .numFields = @intCast(obj.numFields),
+    };
+}
+
+pub fn resolveObjectFields(c: *cy.Chunk, modSym: *cy.Sym, nodeId: cy.NodeId) !void {
     const node = c.ast.node(nodeId);
 
     // Load fields.
@@ -5377,6 +5444,7 @@ pub const Sema = struct {
     funcSigMap: std.HashMapUnmanaged(FuncSigKey, FuncSigId, FuncSigKeyContext, 80),
 
     option_tmpl: *cy.sym.TypeTemplate,
+    table_type: *cy.sym.ObjectType,
     builtins: std.StringHashMapUnmanaged(BuiltinSym),
 
     pub fn init(alloc: std.mem.Allocator, compiler: *cy.Compiler) Sema {
@@ -5384,6 +5452,7 @@ pub const Sema = struct {
             .alloc = alloc,
             .compiler = compiler,
             .option_tmpl = undefined,
+            .table_type = undefined,
             .funcSigs = .{},
             .funcSigMap = .{},
             .types = .{},

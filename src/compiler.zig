@@ -690,7 +690,12 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
                     },
                     .object => {
                         const sym = try sema.reserveObjectType(chunk, decl.nodeId);
-                        // Persist for declareObjectMembers.
+                        decl.data = .{ .sym = @ptrCast(sym) };
+                        last_type_sym = sym;
+                    },
+                    .table_t => {
+                        const sym = try sema.reserveObjectType(chunk, decl.nodeId);
+                        try sema.reserveTableMethods(chunk, @ptrCast(sym));
                         decl.data = .{ .sym = @ptrCast(sym) };
                         last_type_sym = sym;
                     },
@@ -735,6 +740,13 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
             if (chunk.onTypeLoad) |onTypeLoad| {
                 onTypeLoad(@ptrCast(self.vm), chunk.sym.sym().toC());
             }
+
+            if (id == 0) {
+                // Extract special syms. Assumes chunks[0] is the builtins chunk.
+                const builtins = self.chunks.items[0].sym.getMod();
+                self.sema.option_tmpl = builtins.getSym("Option").?.cast(.typeTemplate);
+                self.sema.table_type = builtins.getSym("Table").?.cast(.object_t);
+            }
         }
 
         // Check for import tasks.
@@ -751,10 +763,6 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
             break;
         }
     }
-
-    // Extract special syms. Assumes chunks[0] is the builtins chunk.
-    const builtins = self.chunks.items[0].sym.getMod();
-    self.sema.option_tmpl = builtins.getSym("Option").?.cast(.typeTemplate);
 }
 
 fn loadBuiltins(self: *Compiler) !void {
@@ -892,7 +900,12 @@ fn resolveSyms(self: *Compiler) !void {
                 },
                 .struct_t,
                 .object => {
-                    try sema.declareObjectFields(chunk, decl.data.sym, decl.nodeId);
+                    try sema.resolveObjectFields(chunk, decl.data.sym, decl.nodeId);
+                    last_type_sym = decl.data.sym;
+                },
+                .table_t => {
+                    try sema.resolveTableFields(chunk, @ptrCast(decl.data.sym), decl.nodeId);
+                    try sema.resolveTableMethods(chunk, @ptrCast(decl.data.sym));
                     last_type_sym = decl.data.sym;
                 },
                 .enum_t => {

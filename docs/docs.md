@@ -1639,9 +1639,7 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
 In Cyber, there are first-class functions (or function values) and static functions.
 
 ## Static functions.
-Static functions are not initially values themselves. They allow function calls to be optimal since they don't need to resolve a dynamic value.
-
-Static functions are declared with the `func` keyword and must have a name.
+Functions are declared with the `func` keyword and must have a name.
 ```cy
 use math
 
@@ -1650,17 +1648,21 @@ func dist(x0 float, y0 float, x1 float, y1 float) float:
     var dy = y0-y1
     return math.sqrt(dx^2 + dy^2)
 ```
-Calling static functions is straightforward. You can also reassign or pass them around as function values.
+
+Functions can be invoked with arguments:
 ```cy
 print dist(0, 0, 10, 20)
+```
 
+Functions are initially static, but they can be passed around as a lambda or assigned to a variable:
+```cy
 -- Assigning to a local variable.
 var bar = dist
 
--- Passing `dist` as an argument.
-func squareDist(dist float, size float) float:
+func squareDist(dist dynamic, size float) float:
     return dist(0.0, 0.0, size, size)
     
+-- Passing `dist` as an argument.
 print squareDist(dist, 30.0)
 ```
 
@@ -2575,8 +2577,8 @@ The main execution context is a fiber as well. Once the main fiber has finished,
 * [Dynamic variables.](#dynamic-variables)
 * [Runtime type checking.](#runtime-type-checking)
 * [Dynamic functions.](#dynamic-functions)
-* [Dynamic objects.](#dynamic-objects)
-* [Custom objects.](#custom-objects)
+* [Dynamic tables.](#dynamic-tables)
+* [Custom tables.](#custom-tables)
 
 [^top](#table-of-contents)
 
@@ -2657,7 +2659,7 @@ Lambdas that simply return an expression can be written as:
 f = (a, b) => a + b(10)
 ```
 
-## Dynamic objects.
+## Dynamic tables.
 The builtin `Table` type is used to create dynamic objects.
 Tables are initialized with the record literal:
 ```cy
@@ -2667,8 +2669,8 @@ print a.name     --> Nova
 ```
 Read more about how to use [Tables](#tables).
 
-## Custom objects.
-Custom objects allow declaring fields and methods. *Planned Feature*
+## Custom tables.
+Custom tables allow declaring fields and methods.
 
 ```cy
 let Counter{ count }:
@@ -2683,11 +2685,11 @@ Fields are declared inside the braces and separated with commas.
 Unlike typed declarations, the fields declared only serve as a subset constraint.
 Additional fields can still be initialized and used.
 
-Objects can be declared without any methods: *Planned Feature*
+Tables can be declared without any methods:
 ```cy
 let Vec3{x, y, z}
 
-let v = Vec3{1, 2, 3}
+let v = Vec3{x: 1, y: 2, z: 3}
 ```
 
 # Metaprogramming.

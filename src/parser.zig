@@ -470,6 +470,54 @@ pub const Parser = struct {
         return param;
     }
 
+    fn parseLetTableFields(self: *Parser) !ListResult {
+        if (self.peek().tag() == .right_brace) {
+            return ListResult{
+                .head = cy.NullNode,
+                .len = 0,
+            };
+        }
+        if (self.peek().tag() != .ident) {
+            return self.reportError("Expected field identifier.", &.{});
+        }
+
+        var start = self.next_pos;
+        var field = try self.pushSpanNode(.ident, start);
+        self.advance();
+
+        var num_fields: u32 = 1;
+        var first = field;
+        var last = field;
+        while (true) {
+            const token = self.peek();
+            switch (token.tag()) {
+                .comma => {
+                    self.advance();
+                },
+                .right_brace => {
+                    self.advance();
+                    break;
+                },
+                else => return self.reportError("Expected `,` or `}`.", &.{}),
+            }
+
+            start = self.next_pos;
+            if (self.peek().tag() != .ident) {
+                return self.reportError("Expected field identifier.", &.{});
+            }
+
+            field = try self.pushSpanNode(.ident, start);
+            self.advance();
+            self.ast.setNextNode(last, field);
+            num_fields += 1;
+            last = field;
+        }
+        return ListResult{
+            .head = first,
+            .len = num_fields,
+        };
+    }
+
     /// Assumes token at first param ident or right paren.
     /// Let sema check whether param types are required since it depends on the context.
     fn parseFuncParams(self: *Parser, typed: bool) !ListResult {
@@ -3416,6 +3464,67 @@ pub const Parser = struct {
                 });
             }
             return id;
+        } else if (self.peek().tag() == .left_brace) {
+            self.advance();
+
+            const decl = try self.pushNode(.table_decl, start);
+            try self.staticDecls.append(self.alloc, .{
+                .declT = .table_t,
+                .nodeId = decl,
+                .data = undefined,
+            });
+
+            // Parse as custom table declaration.
+            const fields = try self.parseLetTableFields();
+            if (self.peek().tag() == .new_line) {
+                self.advance();
+                const header = try self.pushNode(.objectHeader, start);
+                self.ast.setNodeData(header, .{ .objectHeader = .{
+                    .name = @intCast(name),
+                    .fieldHead = @intCast(fields.head),
+                    .unnamed = false,
+                    .numFields = @intCast(fields.len),
+                }});
+                self.ast.nodePtr(header).head.data = .{ .objectHeader = .{ .modHead = @intCast(attr_head) }};
+
+                self.ast.setNodeData(decl, .{ .objectDecl = .{
+                    .header = header,
+                    .funcHead = @intCast(cy.NullNode),
+                    .numFuncs = 0,
+                }});
+
+                return decl;
+            }
+
+            if (self.peek().tag() != .colon) {
+                return self.reportError("Expected `:`.", &.{});
+            }
+            self.advance();
+            
+            self.inObjectDecl = true;
+            defer self.inObjectDecl = false;
+
+            const req_indent = try self.parseFirstChildIndent(self.cur_indent);
+            const prev_indent = self.cur_indent;
+            defer self.cur_indent = prev_indent;
+            self.cur_indent = req_indent;
+            const funcs = try self.parseTypeFuncs(req_indent);
+
+            const header = try self.pushNode(.objectHeader, start);
+            self.ast.setNodeData(header, .{ .objectHeader = .{
+                .name = @intCast(name),
+                .fieldHead = @intCast(fields.head),
+                .unnamed = false,
+                .numFields = @intCast(fields.len),
+            }});
+            self.ast.nodePtr(header).head.data = .{ .objectHeader = .{ .modHead = @intCast(attr_head) }};
+
+            self.ast.setNodeData(decl, .{ .objectDecl = .{
+                .header = header,
+                .funcHead = @intCast(funcs.head),
+                .numFuncs = @intCast(funcs.len),
+            }});
+            return decl;
         }
 
         // Parse as dynamic var decl.
@@ -3920,6 +4029,7 @@ const StaticDeclType = enum {
     funcInit,
     use,
     object,
+    table_t,
     struct_t,
     enum_t,
     typeTemplate,

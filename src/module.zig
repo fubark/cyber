@@ -167,7 +167,7 @@ fn createFunc(c: *cy.Chunk, ftype: cy.sym.FuncType, parent: *cy.Sym, sym: ?*cy.s
     return func;
 }
 
-fn addFuncToSym(c: *cy.Chunk, mod: *Module, sym: *cy.sym.FuncSym, func: *cy.Func) !void {
+fn addFuncToSym(c: *cy.Chunk, sym: *cy.sym.FuncSym, func: *cy.Func) !void {
     if (sym.numFuncs == 0) {
         // First func for sym.
         sym.numFuncs = 1;
@@ -179,7 +179,7 @@ fn addFuncToSym(c: *cy.Chunk, mod: *Module, sym: *cy.sym.FuncSym, func: *cy.Func
         sym.last = func;
         sym.numFuncs += 1;
     }
-    try mod.chunk.funcs.append(c.alloc, func);
+    try c.funcs.append(c.alloc, func);
 }
 
 pub const ChunkExt = struct {
@@ -652,7 +652,7 @@ pub const ChunkExt = struct {
         func.data = .{ .hostFunc = .{
             .ptr = undefined,
         }};
-        try addFuncToSym(c, mod, sym, func);
+        try addFuncToSym(c, sym, func);
         return func;
     }
 
@@ -667,7 +667,7 @@ pub const ChunkExt = struct {
         const mod = parent.getMod().?;
         const sym = try prepareFuncSym(c, parent, mod, name, node);
         const func = try createFunc(c, .userFunc, parent, sym, node, is_method);
-        try addFuncToSym(c, mod, sym, func);
+        try addFuncToSym(c, sym, func);
         return func;
     }
 

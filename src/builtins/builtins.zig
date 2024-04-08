@@ -753,6 +753,7 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
         .use => {
             name = ast.nodeStringById(node.data.import_stmt.name);
         },
+        .table_t,
         .struct_t,
         .object => {
             const header = ast.node(node.data.objectDecl.header);

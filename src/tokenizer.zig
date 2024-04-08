@@ -46,13 +46,17 @@ const keywords = std.ComptimeStringMap(TokenType, .{
 pub const TokenType = enum(u8) {
     /// Used to indicate no token.
     null,
+    ampersand,
     and_k,
     as_k,
     at,
     // await_k,
+    bang,
+    bang_equal,
     bin,
     break_k,
     capture,
+    caret,
     case_k,
     catch_k,
     coinit_k,
@@ -65,13 +69,17 @@ pub const TokenType = enum(u8) {
     dot,
     dot_question,
     dot_dot,
+    double_left_angle,
+    double_right_angle,
+    double_vert_bar,
     else_k,
     enum_k,
     // Error token, returned if ignoreErrors = true.
     err,
     error_k,
     equal,
-    equal_greater,
+    equal_equal,
+    equal_right_angle,
     false_k,
     float,
     for_k,
@@ -81,29 +89,36 @@ pub const TokenType = enum(u8) {
     if_k,
     import_k,
     indent,
+    left_angle,
+    left_angle_equal,
     left_brace,
     left_bracket,
     left_paren,
-    logic_op,
-    minusDotDot,
+    minus,
+    minus_double_dot,
     let_k,
     new_line,
     none_k,
     not_k,
     object_k,
     oct,
-    operator,
     or_k,
     pass_k,
+    percent,
     placeholder,
+    plus,
     pound,
     question,
     return_k,
+    right_angle,
+    right_angle_equal,
     right_brace,
     right_bracket,
     right_paren,
     rune,
     raw_string,
+    slash,
+    star,
     string,
     struct_k,
     switch_k,
@@ -111,11 +126,13 @@ pub const TokenType = enum(u8) {
     templateString,
     template_k,
     throw_k,
+    tilde,
     true_k,
     try_k,
     type_k,
     use_k,
     var_k,
+    vert_bar,
     void_k,
     while_k,
 };
@@ -125,7 +142,6 @@ pub const Token = extern struct {
     head: u32,
     data: extern union {
         end_pos: u32,
-        operator_t: OperatorType,
         // Num indent spaces.
         indent: u32,
     },
@@ -149,28 +165,6 @@ pub const Token = extern struct {
 const StringDelim = enum(u2) {
     single,
     triple,
-};
-
-pub const OperatorType = enum(u8) {
-    plus,
-    minus,
-    star,
-    caret,
-    slash,
-    percent,
-    ampersand,
-    verticalBar,
-    doubleVerticalBar,
-    tilde,
-    lessLess,
-    greaterGreater,
-    bang,
-    bang_equal,
-    less,
-    less_equal,
-    greater,
-    greater_equal,
-    equal_equal,
 };
 
 pub const TokenizeState = struct {
@@ -351,43 +345,43 @@ pub const Tokenizer = struct {
                 } else if (peek(t) == '.' and peekAhead(t, 1) == '.') {
                     advance(t);
                     advance(t);
-                    try t.pushToken(.minusDotDot, start);
+                    try t.pushToken(.minus_double_dot, start);
                 } else {
-                    try t.pushOpToken(.minus, start);
+                    try t.pushToken(.minus, start);
                 }
             },
-            '%' => try t.pushOpToken(.percent, start),
-            '&' => try t.pushOpToken(.ampersand, start),
+            '%' => try t.pushToken(.percent, start),
+            '&' => try t.pushToken(.ampersand, start),
             '|' => {
                 if (peek(t) == '|') {
                     advance(t);
-                    try t.pushOpToken(.doubleVerticalBar, start);
+                    try t.pushToken(.double_vert_bar, start);
                 } else {
-                    try t.pushOpToken(.verticalBar, start);
+                    try t.pushToken(.vert_bar, start);
                 }
             },
-            '~' => try t.pushOpToken(.tilde, start),
+            '~' => try t.pushToken(.tilde, start),
             '+' => {
-                try t.pushOpToken(.plus, start);
+                try t.pushToken(.plus, start);
             },
             '_' => {
                 try t.pushToken(.placeholder, start);
             },
             '^' => {
-                try t.pushOpToken(.caret, start);
+                try t.pushToken(.caret, start);
             },
             '*' => {
-                try t.pushOpToken(.star, start);
+                try t.pushToken(.star, start);
             },
             '/' => {
-                try t.pushOpToken(.slash, start);
+                try t.pushToken(.slash, start);
             },
             '!' => {
                 if (isNextChar(t, '=')) {
-                    try t.pushOpToken(.bang_equal, start);
+                    try t.pushToken(.bang_equal, start);
                     advance(t);
                 } else {
-                    try t.pushOpToken(.bang, start);
+                    try t.pushToken(.bang, start);
                 }
             },
             '=' => {
@@ -395,11 +389,11 @@ pub const Tokenizer = struct {
                     switch (peek(t)) {
                         '=' => {
                             advance(t);
-                            try t.pushOpToken(.equal_equal, start);
+                            try t.pushToken(.equal_equal, start);
                         },
                         '>' => {
                             advance(t);
-                            try t.pushToken(.equal_greater, start);
+                            try t.pushToken(.equal_right_angle, start);
                         },
                         else => {
                             try t.pushToken(.equal, start);
@@ -412,25 +406,25 @@ pub const Tokenizer = struct {
             '<' => {
                 const ch2 = peek(t);
                 if (ch2 == '=') {
-                    try t.pushOpToken(.less_equal, start);
+                    try t.pushToken(.left_angle_equal, start);
                     advance(t);
                 } else if (ch2 == '<') {
-                    try t.pushOpToken(.lessLess, start);
+                    try t.pushToken(.double_left_angle, start);
                     advance(t);
                 } else {
-                    try t.pushOpToken(.less, start);
+                    try t.pushToken(.left_angle, start);
                 }
             },
             '>' => {
                 const ch2 = peek(t);
                 if (ch2 == '=') {
-                    try t.pushOpToken(.greater_equal, start);
+                    try t.pushToken(.right_angle_equal, start);
                     advance(t);
                 } else if (ch2 == '>') {
-                    try t.pushOpToken(.greaterGreater, start);
+                    try t.pushToken(.double_right_angle, start);
                     advance(t);
                 } else {
-                    try t.pushOpToken(.greater, start);
+                    try t.pushToken(.right_angle, start);
                 }
             },
             ' ',
@@ -973,12 +967,6 @@ pub const Tokenizer = struct {
         return;
     }
 
-    fn pushOpToken(self: *Tokenizer, operator_t: OperatorType, start_pos: u32) !void {
-        try self.tokens.append(self.alloc, Token.init(.operator, start_pos, .{
-            .operator_t = operator_t,
-        }));
-    }
-
     fn pushIndentToken(self: *Tokenizer, count: u32, start_pos: u32, spaces: bool) !void {
         try self.tokens.append(self.alloc, Token.init(.indent, start_pos, .{
             .indent = if (spaces) count else count | 0x80000000,
@@ -1016,6 +1004,6 @@ test "tokenizer internals." {
     try tt.eq(@alignOf(Token), 4);
     try tt.eq(@sizeOf(TokenizeState), 4);
 
-    try tt.eq(std.enums.values(TokenType).len, 71);
+    try tt.eq(std.enums.values(TokenType).len, 88);
     try tt.eq(keywords.kvs.len, 35);
 }

@@ -391,7 +391,7 @@ pub const Parser = struct {
         const params = try self.parseParenAndFuncParams();
         const ret = try self.parseFuncReturn();
 
-        if (self.peek().tag() == .equal_greater) {
+        if (self.peek().tag() == .equal_right_angle) {
             self.advance();
             const id = try self.pushNode(.lambda_expr, start);
 
@@ -1715,7 +1715,7 @@ pub const Parser = struct {
                 if (token.tag() == .colon) {
                     self.advance();
                     break;
-                } else if (token.tag() == .equal_greater) {
+                } else if (token.tag() == .equal_right_angle) {
                     self.advance();
                     bodyExpr = true;
                     break;
@@ -1738,7 +1738,7 @@ pub const Parser = struct {
                     if (token.tag() == .colon) {
                         self.advance();
                         break;
-                    } else if (token.tag() == .equal_greater) {
+                    } else if (token.tag() == .equal_right_angle) {
                         self.advance();
                         bodyExpr = true;
                         break;
@@ -1756,7 +1756,7 @@ pub const Parser = struct {
 
             if (self.peek().tag() == .colon) {
                 self.advance();
-            } else if (self.peek().tag() == .equal_greater) {
+            } else if (self.peek().tag() == .equal_right_angle) {
                 self.advance();
                 bodyExpr = true;
             } else {
@@ -2331,13 +2331,9 @@ pub const Parser = struct {
         // Check if next token is an operator with higher precedence.
         var token = self.peek();
 
-        var rightOp: cy.ast.BinaryExprOp = undefined;
-        switch (token.tag()) {
-            .operator => rightOp = toBinExprOp(token.data.operator_t),
-            .and_k => rightOp = .and_op,
-            .or_k => rightOp = .or_op,
-            else => return right_id,
-        }
+        const rightOp = toBinExprOp(token.tag()) orelse {
+            return right_id;
+        };
 
         const op_prec = getBinOpPrecedence(left_op);
         const right_op_prec = getBinOpPrecedence(rightOp);
@@ -2365,13 +2361,9 @@ pub const Parser = struct {
             while (true) {
                 token = self.peek();
 
-                var rightOp2: cy.ast.BinaryExprOp = undefined;
-                switch (token.tag()) {
-                    .operator => rightOp2 = toBinExprOp(token.data.operator_t),
-                    .and_k => rightOp2 = .and_op,
-                    .or_k => rightOp2 = .or_op,
-                    else => return left,
-                }
+                const rightOp2 = toBinExprOp(token.tag()) orelse {
+                    return left;
+                };
                 const right2_op_prec = getBinOpPrecedence(rightOp2);
                 if (right2_op_prec > op_prec) {
                     self.advance();
@@ -2632,7 +2624,7 @@ pub const Parser = struct {
                     const call_id = try self.parseCallExpression(left_id);
                     left_id = call_id;
                 },
-                .minusDotDot,
+                .minus_double_dot,
                 .dot_dot,
                 .right_bracket,
                 .right_paren,
@@ -2641,10 +2633,26 @@ pub const Parser = struct {
                 .catch_k,
                 .comma,
                 .colon,
-                .equal,
-                .operator,
-                .or_k,
+                .equal,   
+                .plus,
+                .minus,
+                .star,
+                .slash,
+                .ampersand,
+                .vert_bar,
+                .double_vert_bar,
+                .double_left_angle,
+                .double_right_angle,
+                .caret,
+                .left_angle,
+                .left_angle_equal,
+                .right_angle,
+                .right_angle_equal,
+                .percent,
+                .equal_equal,
+                .bang_equal,
                 .and_k,
+                .or_k,
                 .as_k,
                 .capture,
                 .raw_string,
@@ -2657,7 +2665,7 @@ pub const Parser = struct {
                 .if_k,
                 .ident,
                 .templateString,
-                .equal_greater,
+                .equal_right_angle,
                 .new_line,
                 .null => break,
                 else => break,
@@ -2801,7 +2809,7 @@ pub const Parser = struct {
                     }
                     // Assume empty args for lambda.
                     token = self.peek();
-                    if (token.tag() == .equal_greater) {
+                    if (token.tag() == .equal_right_angle) {
                         return try self.parseLambdaFunc(.{ .head = cy.NullNode, .len = 0 });
                     } else {
                         return self.reportError("Unexpected paren.", &.{});
@@ -2812,7 +2820,7 @@ pub const Parser = struct {
                     self.advance();
 
                     token = self.peek();
-                    if (self.ast.nodeType(expr_id) == .ident and token.tag() == .equal_greater) {
+                    if (self.ast.nodeType(expr_id) == .ident and token.tag() == .equal_right_angle) {
                         const param = try self.genDynFuncParam(expr_id);
                         return try self.parseLambdaFunc(.{ .head = param, .len = 1 });
                     }
@@ -2842,35 +2850,35 @@ pub const Parser = struct {
                 const lit = try self.parseRecordLiteral();
                 break :b lit;
             },
-            .operator => {
-                if (token.data.operator_t == .minus) {
-                    self.advance();
-                    const expr_id = try self.pushNode(.unary_expr, start);
-                    const term_id = try self.parseTermExpr(.{});
-                    self.ast.setNodeData(expr_id, .{ .unary = .{
-                        .child = term_id,
-                        .op = .minus,
-                    }});
-                    return expr_id;
-                } else if (token.data.operator_t == .tilde) {
-                    self.advance();
-                    const expr_id = try self.pushNode(.unary_expr, start);
-                    const term_id = try self.parseTermExpr(.{});
-                    self.ast.setNodeData(expr_id, .{ .unary = .{
-                        .child = term_id,
-                        .op = .bitwiseNot,
-                    }});
-                    return expr_id;
-                } else if (token.data.operator_t == .bang) {
-                    self.advance();
-                    const expr = try self.pushNode(.unary_expr, start);
-                    const child = try self.parseTermExpr(.{});
-                    self.ast.setNodeData(expr, .{ .unary = .{
-                        .child = child,
-                        .op = .not,
-                    }});
-                    return expr;
-                } else return self.reportError("Unexpected operator.", &.{});
+            .minus => {
+                self.advance();
+                const expr_id = try self.pushNode(.unary_expr, start);
+                const term_id = try self.parseTermExpr(.{});
+                self.ast.setNodeData(expr_id, .{ .unary = .{
+                    .child = term_id,
+                    .op = .minus,
+                }});
+                return expr_id;
+            },
+            .tilde => {
+                self.advance();
+                const expr_id = try self.pushNode(.unary_expr, start);
+                const term_id = try self.parseTermExpr(.{});
+                self.ast.setNodeData(expr_id, .{ .unary = .{
+                    .child = term_id,
+                    .op = .bitwiseNot,
+                }});
+                return expr_id;
+            },
+            .bang => {
+                self.advance();
+                const expr = try self.pushNode(.unary_expr, start);
+                const child = try self.parseTermExpr(.{});
+                self.ast.setNodeData(expr, .{ .unary = .{
+                    .child = child,
+                    .op = .not,
+                }});
+                return expr;
             },
             else => {
                 return null;
@@ -3029,7 +3037,7 @@ pub const Parser = struct {
             .coinit_k => {
                 return try self.parseCoinitExpr();
             },
-            .minusDotDot => {
+            .minus_double_dot => {
                 // Start omitted.
                 self.advance();
                 const end = (try self.parseExpr(.{})) orelse {
@@ -3069,7 +3077,7 @@ pub const Parser = struct {
         while (true) {
             const next = self.peek();
             switch (next.tag()) {
-                .equal_greater => {
+                .equal_right_angle => {
                     if (self.ast.nodeType(left_id) == .ident) {
                         const param = try self.genDynFuncParam(left_id);
                         return try self.parseLambdaFunc(.{ .head = param, .len = 1 });
@@ -3085,27 +3093,39 @@ pub const Parser = struct {
                         break;
                     }
                 },
-                .operator => {
-                    const op_t = next.data.operator_t;
-                    switch (op_t) {
-                        .plus,
-                        .minus,
-                        .star,
-                        .slash => {
-                            if (self.peekAhead(1).tag() == .equal) {
-                                if (config.returnLeftAssignExpr) {
-                                    return try self.returnLeftAssignExpr(left_id, config.outIsAssignStmt);
-                                } else {
-                                    break;
-                                }
-                            }
-                        },
-                        else => {},
+                .plus,
+                .minus,
+                .star,
+                .slash => {
+                    if (self.peekAhead(1).tag() == .equal) {
+                        if (config.returnLeftAssignExpr) {
+                            return try self.returnLeftAssignExpr(left_id, config.outIsAssignStmt);
+                        } else {
+                            break;
+                        }
                     }
-                    const bin_op = toBinExprOp(op_t);
+                    const bin_op = toBinExprOp(next.tag()).?;
                     left_id = try self.parseBinExpr(left_id, bin_op);
                 },
-                .minusDotDot => {
+                .ampersand,
+                .vert_bar,
+                .double_vert_bar,
+                .double_left_angle,
+                .double_right_angle,
+                .caret,
+                .left_angle,
+                .left_angle_equal,
+                .right_angle,
+                .percent,
+                .equal_equal,
+                .bang_equal,
+                .and_k,
+                .or_k,
+                .right_angle_equal => {
+                    const bin_op = toBinExprOp(next.tag()).?;
+                    left_id = try self.parseBinExpr(left_id, bin_op);
+                },
+                .minus_double_dot => {
                     self.advance();
                     const end: cy.NodeId = if (try self.parseTermExprOpt(.{})) |right| b: {
                         break :b try self.parseRightExpr2(.reverse_range, right);
@@ -3144,12 +3164,6 @@ pub const Parser = struct {
                         .typeSpec = typeSpec,
                     }});
                     left_id = expr;
-                },
-                .and_k => {
-                    left_id = try self.parseBinExpr(left_id, .and_op);
-                },
-                .or_k => {
-                    left_id = try self.parseBinExpr(left_id, .or_op);
                 },
                 .question => {
                     self.advance();
@@ -3209,7 +3223,7 @@ pub const Parser = struct {
                         return self.reportError("Expected expression.", &.{});
                     }
                     // Assume empty args for lambda.
-                    if (self.peek().tag() == .equal_greater) {
+                    if (self.peek().tag() == .equal_right_angle) {
                         return self.parseLambdaFunc(.{ .head = cy.NullNode, .len = 0 });
                     } else if (self.peek().tag() == .colon) {
                         return self.parseLambdaBlock(.{ .head = cy.NullNode, .len = 0 });
@@ -3221,7 +3235,7 @@ pub const Parser = struct {
                     self.advance();
                     if (self.ast.nodeType(expr) == .ident) {
                         const param = try self.genDynFuncParam(expr);
-                        if (self.peek().tag() == .equal_greater) {
+                        if (self.peek().tag() == .equal_right_angle) {
                             return self.parseLambdaFunc(.{ .head = param, .len = 1 });
                         } else if (self.peek().tag() == .colon) {
                             return self.parseLambdaBlock(.{ .head = param, .len = 1 });
@@ -3241,7 +3255,7 @@ pub const Parser = struct {
                     self.ast.setNextNode(param, res.head);
                     res.head = param;
                     res.len += 1;
-                    if (self.peek().tag() == .equal_greater) {
+                    if (self.peek().tag() == .equal_right_angle) {
                         return self.parseLambdaFunc(res);
                     } else if (self.peek().tag() == .colon) {
                         return self.parseLambdaBlock(res);
@@ -3457,26 +3471,20 @@ pub const Parser = struct {
                         .right = right,
                     }});
                 },
-                .operator => {
-                    const op_t = token.data.operator_t;
-                    switch (op_t) {
-                        .plus,
-                        .minus,
-                        .star,
-                        .slash => {
-                            self.advance();
-                            right = (try self.parseExpr(.{})) orelse {
-                                return self.reportError("Expected right expression for assignment statement.", &.{});
-                            };
-                            assignStmt = try self.ast.pushNode(self.alloc, .opAssignStmt, start);
-                            self.ast.setNodeData(assignStmt, .{ .opAssignStmt = .{
-                                .left = expr_id,
-                                .right = @intCast(right),
-                                .op = toBinExprOp(op_t),
-                            }});
-                        },
-                        else => fmt.panic("Unexpected operator assignment.", &.{}),
-                    }
+                .plus,
+                .minus,
+                .star,
+                .slash => {
+                    self.advance();
+                    right = (try self.parseExpr(.{})) orelse {
+                        return self.reportError("Expected right expression for assignment statement.", &.{});
+                    };
+                    assignStmt = try self.ast.pushNode(self.alloc, .opAssignStmt, start);
+                    self.ast.setNodeData(assignStmt, .{ .opAssignStmt = .{
+                        .left = expr_id,
+                        .right = @intCast(right),
+                        .op = toBinExprOp(assignTag).?,
+                    }});
                 },
                 else => return self.reportErrorAt("Unsupported assignment operator.", &.{}, opStart),
             }
@@ -3647,7 +3655,7 @@ pub const ResultView = struct {
     }
 };
 
-fn toBinExprOp(op: cy.tokenizer.OperatorType) cy.ast.BinaryExprOp {
+fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
     return switch (op) {
         .plus => .plus,
         .minus => .minus,
@@ -3656,18 +3664,31 @@ fn toBinExprOp(op: cy.tokenizer.OperatorType) cy.ast.BinaryExprOp {
         .slash => .slash,
         .percent => .percent,
         .ampersand => .bitwiseAnd,
-        .verticalBar => .bitwiseOr,
-        .doubleVerticalBar => .bitwiseXor,
-        .lessLess => .bitwiseLeftShift,
-        .greaterGreater => .bitwiseRightShift,
+        .vert_bar => .bitwiseOr,
+        .double_vert_bar => .bitwiseXor,
+        .double_left_angle => .bitwiseLeftShift,
+        .double_right_angle => .bitwiseRightShift,
         .bang_equal => .bang_equal,
-        .less => .less,
-        .less_equal => .less_equal,
-        .greater => .greater,
-        .greater_equal => .greater_equal,
+        .left_angle => .less,
+        .left_angle_equal => .less_equal,
+        .right_angle => .greater,
+        .right_angle_equal => .greater_equal,
         .equal_equal => .equal_equal,
-        .bang,
-        .tilde => unreachable,
+        .and_k => .and_op,
+        .or_k => .or_op,
+        .null,
+        .as_k, .at,
+        .bang, .bin, .break_k,
+        .capture, .case_k, .catch_k, .coinit_k, .colon, .comma, .continue_k, .coresume_k, .coyield_k,
+        .dec, .dot, .dot_question, .dot_dot,
+        .else_k, .enum_k, .err, .error_k, .equal, .equal_right_angle,
+        .false_k, .float, .for_k, .func_k,
+        .hex, .ident, .if_k, .import_k, .indent,
+        .left_brace, .left_bracket, .left_paren, .let_k,
+        .minus_double_dot, .new_line, .none_k, .not_k, .object_k, .oct, .pass_k, .placeholder, .pound, .question,
+        .return_k, .right_brace, .right_bracket, .right_paren, .rune, .raw_string,
+        .string, .struct_k, .switch_k, .templateExprStart, .templateString, .template_k,
+        .throw_k, .tilde, .true_k, .try_k, .type_k, .use_k, .var_k, .void_k, .while_k => null,
     };
 }
 

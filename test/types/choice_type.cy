@@ -1,4 +1,4 @@
-import test
+use test
 
 type Shape enum:
     case rectangle Rectangle

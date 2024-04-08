@@ -1,5 +1,5 @@
-import a './test_mods/a.cy'
-import t 'test'
+use a './test_mods/a.cy'
+use t 'test'
 
 -- Type alias of imported type.
 type Vec2 = a.Vec2

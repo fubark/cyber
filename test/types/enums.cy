@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 type Animal enum:
     case Bear

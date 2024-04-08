@@ -1,6 +1,6 @@
 -- Same tests as astring_test.cy except using a slice.
 
-import t 'test'
+use t 'test'
 
 var pre = 'abc'
 var str = "$(pre)xyz"

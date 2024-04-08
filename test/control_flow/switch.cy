@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Switch no case.
 var a = 123

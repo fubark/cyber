@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Once a numeric literal is assigned to untyped local, it becomes an integer.
 var a = 10

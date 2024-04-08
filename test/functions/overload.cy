@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Overload by number of params.
 func foo():

@@ -1856,7 +1856,7 @@ func GetSymbols(ObjectFile any) SymbolIteratorRef:
 func IsSymbolIteratorAtEnd(ObjectFile any, SI any) Bool:
     return lib.LLVMIsSymbolIteratorAtEnd(ObjectFile, SI)
 
-import os
+use os
 let .ffi = false
 let .lib = load()
 func load():

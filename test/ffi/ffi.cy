@@ -1,5 +1,5 @@
-import t 'test'
-import os
+use t 'test'
+use os
 
 -- Not found.
 var ffi = os.newFFI()

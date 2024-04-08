@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 func foo(a Fiber):
     return typesym(a) == .fiber

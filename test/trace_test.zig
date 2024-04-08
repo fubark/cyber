@@ -77,7 +77,7 @@ test "ARC." {
 
     // Object is retained when assigned to struct literal.
     try eval(.{},
-        \\import t 'test'
+        \\use t 'test'
         \\type S:
         \\  value List
         \\var a = [123]
@@ -129,7 +129,7 @@ test "ARC." {
 test "ARC for static variable declarations." {
     // Static variable is freed on vm end.
     try eval(.{},
-        \\import t 'test'
+        \\use t 'test'
         \\var .a = [123]
         \\t.eq(a[0], 123)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
@@ -144,7 +144,7 @@ test "ARC for static variable declarations." {
 test "ARC assignments." {
     // Set index on rc-candidate child to primitive.
     try eval(.{},
-        \\import t 'test'
+        \\use t 'test'
         \\var a = [123]
         \\var b = 234
         \\a[0] = b
@@ -160,7 +160,7 @@ test "ARC assignments." {
 
     // Set index on rc-candidate child to rc-candidate.
     try eval(.{},
-        \\import t 'test'
+        \\use t 'test'
         \\var a = [123]
         \\var b = Map{}
         \\a[0] = b
@@ -178,7 +178,7 @@ test "ARC assignments." {
 test "ARC for passing call args." {
     // Temp list is retained when passed into function.
     try eval(.{},
-        \\import t 'test'
+        \\use t 'test'
         \\func foo(list List):
         \\  return list[0]
         \\t.eq(foo([1]), 1)
@@ -193,7 +193,7 @@ test "ARC for passing call args." {
 test "ARC for function return values." {
     // Local object is retained when returned.
     try eval(.{},
-        \\import t 'test'
+        \\use t 'test'
         \\type S:
         \\  value any
         \\func foo():
@@ -227,7 +227,7 @@ test "ARC for function return values." {
 test "ARC on temp locals in expressions." {
     // Only the map literal is retained and released at the end of the arc expression.
     try evalPass(.{},
-        \\import test
+        \\use test
         \\var ret = traceRetains()
         \\var rel = traceReleases()
         \\var res = Map{ a: [123] }['a'][0]
@@ -371,15 +371,15 @@ test "Import http spec." {
     client.retReqError = error.UnknownHostName;
     vm.httpClient = client.iface();
     try run.eval(Config.initFileModules("./test/modules/import.cy").withSilent().withReload(),
-        \\import a 'https://doesnotexist123.com/'
+        \\use a 'https://doesnotexist123.com/'
         \\b = a
     , struct { fn func(run_: *VMrunner, res: EvalResult) !void {
         try run_.expectErrorReport(res, c.ErrorCompile,
             \\CompileError: Can not connect to `doesnotexist123.com`.
             \\
-            \\@AbsPath(test/modules/import.cy):1:11:
-            \\import a 'https://doesnotexist123.com/'
-            \\          ^
+            \\@AbsPath(test/modules/import.cy):1:8:
+            \\use a 'https://doesnotexist123.com/'
+            \\       ^
             \\
         );
     }}.func);
@@ -389,15 +389,15 @@ test "Import http spec." {
     client.retStatusCode = std.http.Status.not_found;
     vm.httpClient = client.iface();
     try run.eval(Config.initFileModules("./test/modules/import.cy").withSilent().withReload(),
-        \\import a 'https://exists.com/missing'
+        \\use a 'https://exists.com/missing'
         \\b = a
     , struct { fn func(run_: *VMrunner, res: EvalResult) !void {
         try run_.expectErrorReport(res, c.ErrorCompile,
             \\CompileError: Can not load `https://exists.com/missing`. Response code: not_found
             \\
-            \\@AbsPath(test/modules/import.cy):1:11:
-            \\import a 'https://exists.com/missing'
-            \\          ^
+            \\@AbsPath(test/modules/import.cy):1:8:
+            \\use a 'https://exists.com/missing'
+            \\       ^
             \\
         );
 
@@ -410,8 +410,8 @@ test "Import http spec." {
         ;
     vm.httpClient = client.iface();
     _ = try run.evalPass(Config.initFileModules("./test/modules/import.cy").withReload(),
-        \\import a 'https://exists.com/a.cy'
-        \\import t 'test'
+        \\use a 'https://exists.com/a.cy'
+        \\use t 'test'
         \\t.eq(a.foo, 123)
     );
 }
@@ -451,7 +451,7 @@ test "Multiple evals persisting state." {
         .enableFileModules = false,
         .checkGlobalRc = false,
     },
-        \\import m 'mod'
+        \\use m 'mod'
         \\m.g['a'] = 1
     );
 
@@ -459,15 +459,15 @@ test "Multiple evals persisting state." {
         .enableFileModules = false,
         .checkGlobalRc = false,
     },
-        \\import m 'mod'
-        \\import t 'test'
+        \\use m 'mod'
+        \\use t 'test'
         \\t.eq(m.g['a'], 1)
     );
 }
 
 test "os constants" {
     try eval(.{},
-        \\import os
+        \\use os
         \\os.system
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         const val = try res.getValue();
@@ -476,7 +476,7 @@ test "os constants" {
     }}.func);
 
     try eval(.{},
-        \\import os
+        \\use os
         \\os.cpu
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         const val = try res.getValue();
@@ -485,7 +485,7 @@ test "os constants" {
     }}.func);
 
     try eval(.{},
-        \\import os
+        \\use os
         \\os.endian
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         const val = try res.getValue();
@@ -500,7 +500,7 @@ test "os constants" {
 
 test "Stack trace unwinding." {
     try eval(.{ .silent = true },
-        \\import test
+        \\use test
         \\let a = test.erase(123)
         \\1 + a.foo
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
@@ -519,13 +519,13 @@ test "Stack trace unwinding." {
             .chunkId = 1,
             .line = 2,
             .col = 6,
-            .lineStartPos = 36,
+            .lineStartPos = 33,
         });
     }}.func);
 
     // Function stack trace.
     try eval(.{ .silent = true },
-        \\import test
+        \\use test
         \\func foo():
         \\  let a = test.erase(123)
         \\  return 1 + a.foo
@@ -549,14 +549,14 @@ test "Stack trace unwinding." {
             .chunkId = 1,
             .line = 3,
             .col = 15,
-            .lineStartPos = 50,
+            .lineStartPos = 47,
         });
         try eqStackFrame(trace.frames[1], .{
             .name = "main",
             .chunkId = 1,
             .line = 4,
             .col = 0,
-            .lineStartPos = 69,
+            .lineStartPos = 66,
         });
     }}.func);
 
@@ -564,8 +564,8 @@ test "Stack trace unwinding." {
     
         // panic from another module.
         try eval(.{ .silent = true, .uri = "./test/main.cy" },
-            \\import a 'modules/test_mods/init_panic_error.cy'
-            \\import t 'test'
+            \\use a 'modules/test_mods/init_panic_error.cy'
+            \\use t 'test'
             \\t.eq(a.foo, 123)
         , struct { fn func(run: *VMrunner, res: EvalResult) !void {
             try run.expectErrorReport(res, c.ErrorPanic,
@@ -598,8 +598,8 @@ test "Stack trace unwinding." {
 
         // `throw` from another module's var initializer.
         try eval(.{ .silent = true, .uri = "./test/main.cy" },
-            \\import a 'modules/test_mods/init_throw_error.cy'
-            \\import t 'test'
+            \\use a 'modules/test_mods/init_throw_error.cy'
+            \\use t 'test'
             \\t.eq(a.foo, 123)
         , struct { fn func(run: *VMrunner, res: EvalResult) !void {
             try run.expectErrorReport(res, c.ErrorPanic,
@@ -706,8 +706,8 @@ test "Custom modules." {
     c.setModuleLoader(@ptrCast(run.vm), @ptrCast(&S.loader));
 
     const src1 = try t.alloc.dupe(u8, 
-        \\import m 'mod1'
-        \\import n 'mod2'
+        \\use m 'mod1'
+        \\use n 'mod2'
         \\m.test()
         \\m.test2()
         \\n.test()
@@ -718,8 +718,8 @@ test "Custom modules." {
     t.alloc.free(src1);
 
     _ = try run.evalPass(.{},
-        \\import m 'mod1'
-        \\import n 'mod2'
+        \\use m 'mod1'
+        \\use n 'mod2'
         \\m.test()
         \\m.test2()
         \\n.test()

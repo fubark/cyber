@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 var err = error.FileNotFound
 t.eq(typesym(err), .error)

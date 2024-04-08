@@ -1,4 +1,4 @@
-import test
+use test
 
 -- Explicit type.
 var a Option(int) = 123

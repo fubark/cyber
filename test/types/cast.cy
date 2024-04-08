@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Cast to exact primitive type.
 let a = t.erase(1)

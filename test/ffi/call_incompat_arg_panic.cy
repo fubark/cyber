@@ -1,4 +1,4 @@
-import os 'os'
+use os 'os'
 
 var libPath ?String = none
 if os.system == 'macos':

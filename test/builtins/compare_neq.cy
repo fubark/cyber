@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Integers.
 t.eq(3 != 2, true)

@@ -1,4 +1,4 @@
-import test
+use test
 
 func foo(n int):
     return n + 1

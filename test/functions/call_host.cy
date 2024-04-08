@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 var list = []
 for 0..10 -> i:

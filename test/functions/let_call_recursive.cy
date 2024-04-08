@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 let foo(n):
     if n == 0:

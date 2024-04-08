@@ -1,4 +1,4 @@
-import os
+use os
 
 var str = 'abcdefghijklmnopqrstuvwxyz123456'.repeat(1000000)
 str = str.concat('waldo')

@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 func Node.flatGet2(self):
     return 123

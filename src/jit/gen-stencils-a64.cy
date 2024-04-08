@@ -1,5 +1,5 @@
-import llvm '../tools/llvm.cy'
-import os
+use llvm '../tools/llvm.cy'
+use os
 
 --|
 --| Takes stencils.o and generates a64_stencils.zig

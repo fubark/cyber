@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Expressions are allowed to wrap to the next line.
 var a = 0

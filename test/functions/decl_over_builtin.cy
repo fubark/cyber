@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 func print(v int):
     return v + 2

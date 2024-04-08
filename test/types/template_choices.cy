@@ -1,4 +1,4 @@
-import test
+use test
 
 template(T type)
 type Foo enum:

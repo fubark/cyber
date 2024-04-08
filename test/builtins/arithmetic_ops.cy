@@ -1,5 +1,5 @@
-import t 'test'
-import m 'math'
+use t 'test'
+use m 'math'
 
 -- Addition.
 t.eq(1 + 2, 3)

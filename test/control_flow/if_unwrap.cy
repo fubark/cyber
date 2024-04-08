@@ -1,4 +1,4 @@
-import test
+use test
 
 var opt ?String = 'abc'
 var unwrapped = ''

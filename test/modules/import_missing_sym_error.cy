@@ -1,4 +1,4 @@
-import a 'test_mods/a.cy'
+use a 'test_mods/a.cy'
 var b = a.missing
 
 --cytest: error

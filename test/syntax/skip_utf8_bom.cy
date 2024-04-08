@@ -1,5 +1,5 @@
 ﻿-- File starts with UTF-8 BOM.
-import test
+use test
 
 test.eq(1, 1)
 

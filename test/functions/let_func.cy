@@ -1,4 +1,4 @@
-import test
+use test
 
 -- No params
 let foo():

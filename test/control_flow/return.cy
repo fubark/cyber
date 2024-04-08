@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- if.
 func a(v int):

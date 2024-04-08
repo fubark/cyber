@@ -30,7 +30,7 @@ Cyber is a statically typed language so the documentation will provide examples 
 
 ## Hello World.
 ```cy
-import math
+use math
 
 var worlds = ['World', '世界', 'दुनिया', 'mundo']
 worlds.append(math.random())
@@ -246,7 +246,7 @@ The final resulting value that is assigned to the namespace variable is provided
 ## Reserved identifiers.
 
 ### Keywords.
-There are `27` general keywords. This list categorizes them:
+There are `28` general keywords. This list categorizes them:
 
 - [Control Flow](#control-flow): `if` `else` `switch` `case` `while` `for` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not`
@@ -257,7 +257,7 @@ There are `27` general keywords. This list categorizes them:
 - [Type embedding](#type-embedding): `use`
 - [Metaprogramming](#metaprogramming): `template`
 - [Error Handling](#error-handling): `try` `catch` `throw`
-- [Modules](#modules): `import`
+- [Modules](#modules): `use` `module`
 - [Dynamic Typing](#dynamic-typing): `let`
 
 ### Contextual keywords.
@@ -270,7 +270,7 @@ These keywords only have meaning in a certain context.
 ### Literals.
 - [Booleans](#booleans): `true` `false`
 - [Error Values](#error-value): `error`
-- [None](#none): `none`
+- None: `none`
 
 ## Operators.
 Cyber supports the following operators. They are ordered from highest to lowest precedence.
@@ -919,6 +919,7 @@ The dynamic type defers type checking to runtime. However, it also tracks its ow
   * [`self` variable.](#self-variable)
   * [Type functions.](#type-functions)
   * [Type variables.](#type-variables)
+  * [Type embedding.](#type-embedding)
 * [Structs.](#structs)
   * [Declare struct.](#declare-struct)
   * [Copy structs.](#copy-structs)
@@ -939,7 +940,6 @@ The dynamic type defers type checking to runtime. However, it also tracks its ow
   * [`while` unwrap.](#while-unwrap)
 * [Type aliases.](#type-aliases)
 * [Distinct types.](#distinct-types)
-* [Type embedding.](#type-embedding)
 * [Traits.](#traits)
 * [Union types.](#union-types)
 * [Generic types.](#generic-types)
@@ -1101,6 +1101,40 @@ Similarily, type variables are declared outside of the `type` block:
 var Node.DefaultValue = 100
 
 print Node.DefaultValue    -- Prints "100"
+```
+
+### Type embedding.
+Type embedding facilitates type composition by using the namespace of a child field's type: *Planned Feature*
+```cy
+type Base:
+    a int
+
+    func double() int:
+        return a * 2
+
+type Container:
+    b use Base
+
+var c = Container{b: Base{a: 123}}
+print c.a         --> 123
+print c.double()  --> 246
+```
+Note that embedding a type does not declare extra fields or methods in the containing type. It simply augments the type's using namespace by binding the embedding field.
+
+If there is a member name conflict, the containing type's member has a higher precedence:
+```cy
+type Container:
+    a int
+    b use Base
+
+var c = Container{a: 999, b: Base{a: 123}}
+print c.a         --> 999
+print c.double()  --> 246
+```
+
+Since the embedding field is named, it can be used just like any other field:
+```cy
+print c.b.a       --> 123
 ```
 
 ## Structs.
@@ -1321,7 +1355,7 @@ var pos = Pos2{x: 3, y: 4}
 
 Functions can be declared under the new type's namespace:
 ```
-import math
+use math
 
 type Pos2 Vec2:
     func blockDist(o Pos2):
@@ -1342,40 +1376,6 @@ type Pos2 Vec2
 var a = Pos2{x: 3, y: 4}
 
 var b Vec2 = a as Vec2
-```
-
-## Type embedding.
-Type embedding facilites composition of types by reusing the namespace of a child field's type: *Planned Feature*
-```cy
-type Base:
-    a int
-
-    func double() int:
-        return a * 2
-
-type Container:
-    b use Base
-
-var c = Container{b: Base{a: 123}}
-print c.a         --> 123
-print c.double()  --> 246
-```
-Note that embedding a type does not create new fields or methods in the containing type. It simply augments the type's using namespace.
-
-If there is a member name conflict, the containing type's member has a higher precedence:
-```cy
-type Container:
-    a int
-    b use Base
-
-var c = Container{a: 999, b: Base{a: 123}}
-print c.a         --> 999
-print c.double()  --> 246
-```
-
-Since the embedding field is named, it can be used just like any other field:
-```cy
-print c.b.a       --> 123
 ```
 
 ## Traits.
@@ -1643,7 +1643,7 @@ Namespace functions are not initially values themselves. They allow function cal
 
 Namespace functions are declared with the `func` keyword and must have a name.
 ```cy
-import math
+use math
 
 func dist(x0 float, y0 float, x1 float, y1 float) float:
     var dx = x0-x1
@@ -1666,7 +1666,7 @@ print squareDist(dist, 30.0)
 
 Functions can only return one value. However, the value can be destructured: *Planned Feature*
 ```cy
-import {cos, sin} 'math'
+use {cos, sin} 'math'
 
 func compute(rad float) [float, float]:
     return [ cos(rad), sin(rad) ]
@@ -1847,35 +1847,42 @@ In the example above, the function `foo` is called with 4 arguments. The first a
 Modules have their own namespace and contain accessible static symbols. By default, importing another Cyber script returns a module with its declared symbols.
 
 ## Importing.
-Import declarations create a local alias to the module referenced by the import specifier. The Cyber CLI comes with some builtin modules like `math` and `test`. If the specifier does not refer to a builtin module, it looks for a Cyber script file relative to the current script's directory. An embedder can integrate their own module loader and resolver.
+When a `use` declaration contains only a single identifier, it creates a local alias to a module using the identifier as the module specifier. Cyber's CLI comes with some builtin modules like `math` and `test`. 
 ```cy
-import test
+use test
 test.eq(123, 123)
 
--- Imports are static declarations so they can be anywhere in the script.
-import math
+use math
 print math.cos(0)
 ```
 
-When the imported alias needs to be renamed, the import specifier comes after the alias name and must be a string literal.
+The explicit import syntax requires an alias name followed by a module specifier as a raw string:
 ```cy
-import m 'math'
+use m 'math'
 print m.random()
-
--- Loading a Cyber module from the local directory.
-import foo 'bar.cy'
-print foo.myFunc()
-print foo.myVar
 ```
 
-A Cyber script that is imported doesn't evaluate its main block. Only static declarations are effectively loaded. If there is code in the main block, it will skip evaluation. In the following, only the `print` statement in the `main.cy` is evaluated.
+The explicit syntax also allows importing modules over a file system or the Internet using the module specifier as the URI. When Cyber is embedded into a host application, this can also be overridden using the [Embed API](#embedding).
+
+```cy
+-- Importing a module from the local directory.
+use b 'bar.cy'
+print b.myFunc()
+print b.myVar
+
+-- Importing a module from a CDN.
+use rl 'https://mycdn.com/raylib'
+```
+When importing using a URL without a file name, Cyber's CLI will look for a `mod.cy` from the path instead.
+
+An imported module doesn't evaluate its main block. Only namespace declarations are effectively loaded. If there is code in the main block, it will skip evaluation. In the following, only the `print` statement in the `main.cy` is evaluated.
 ```cy
 -- main.cy
-import a 'foo.cy'
+use a 'foo.cy'
 print a.foo
 
 -- foo.cy
-import 'bar.cy'
+use 'bar.cy'
 var .foo = 123
 print foo         -- Statement is ignored.
 
@@ -1883,10 +1890,10 @@ print foo         -- Statement is ignored.
 var .bar = 321
 print bar         -- Statement is ignored.
 ```
-You can have circular imports in Cyber. In the following example, `main.cy` and `foo.cy` import each other without any problems.
+Circular imports are allowed. In the following example, `main.cy` and `foo.cy` import each other without any problems.
 ```cy
 -- main.cy
-import foo 'foo.cy'
+use foo 'foo.cy'
 
 func printB():
     foo.printC()
@@ -1894,7 +1901,7 @@ func printB():
 foo.printA()
 
 -- foo.cy
-import main 'main.cy'
+use main 'main.cy'
 
 func printA():
     main.printB()
@@ -1907,12 +1914,12 @@ Namespace variable declarations from imports can have circular references. Read 
 Modules can also be destructured using the following syntax:
 > _Planned Feature_
 ```cy
-import { cos, pi } 'math'
+use { cos, pi } 'math'
 print cos(pi)
 ```
 
 ## Exporting.
-All static declarations are exported when the script's module is loaded.
+All symbols are exported when the script's module is loaded. However, symbols can be declared with a [hidden](#symbol-visibility) modifier.
 ```cy
 func foo():         -- Exported namespace function.
     print 123
@@ -1929,7 +1936,7 @@ This can be used with `os.dirName` to get the current module directory.
 ```cy
 print #modUri              -- Prints '/some/path/foo.cy'
 
-import os
+use os
 print os.dirName(#modUri)  -- Prints '/some/path'
 ```
 
@@ -1943,7 +1950,7 @@ All symbols have public visibility. However, when a symbol is declared with a `-
 -func add(a int, b int) int:
     return a + b
 ```
-Furthermore, the symbol is excluded when its module is include using `import *` or `use *`.
+Furthermore, the symbol is excluded when its module is included using `use *`.
 
 ## Builtin modules.
 Builtin modules are the bare minimum that comes with Cyber. The [embeddable library](#embedding) contains these modules and nothing more. They include:
@@ -1968,7 +1975,7 @@ The math module contains commonly used math constants and functions.
 
 Sample usage:
 ```cy
-import math
+use math
 
 var r = 10.0
 print(math.pi * r^2)
@@ -1987,7 +1994,7 @@ Cyber's os module contains system level functions. It's still undecided as to ho
 
 Sample usage:
 ```cy
-import os
+use os
 
 var map = os.getEnvAll()
 for map -> [k, v]:
@@ -2021,7 +2028,7 @@ The `test` module contains utilities for testing.
 
 Sample usage:
 ```cy
-import t 'test'
+use t 'test'
 
 var a = 123 + 321
 t.eq(a, 444)
@@ -2053,7 +2060,7 @@ The example shown below can be found in [Examples](https://github.com/fubark/cyb
 ## FFI context.
 An FFI context contains declarations that map C to Cyber. Afterwards, it allows you to bind to a dynamic library or create interoperable objects. To create a new `FFI` context:
 ```cy
-import os
+use os
 
 var ffi = os.newFFI()
 ```
@@ -2119,7 +2126,7 @@ When using `cfunc` or `cbind` declarations, [symbols](#symbols-1) are used to re
 ## Bind to Cyber type.
 `cbind` is used to bind a C struct to a Cyber object type. Once declared, the Cyber type can be used as a binding type in function declarations:
 ```cy
-import os
+use os
 
 type MyObject:
     a float
@@ -2964,7 +2971,7 @@ Memory is managed by ARC so a value that points to a heap object requires a `csR
 `csEval` returns a result code that indicates whether it was successful.
 
 ## Module Loader.
-A module loader describes how a module is loaded when an `import` statement is encountered during script execution.
+A module loader describes how a module is loaded when `use` import statement is encountered during script execution.
 Only one module loader can be active and is set using `csSetModuleLoader`:
 ```c
 bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {

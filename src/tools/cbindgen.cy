@@ -1,10 +1,10 @@
 #!cyber
-import os
+use os
 
 -- usage: ./cbindgen.cy -o llvm.cy /path/to/LLVM.h -libpath 'libLLVM.dylib' -stripPrefix LLVM
 -- `-I/opt/homebrew/Cellar/llvm/17.0.6/lib/clang/17/include` if missing libc headers.
 
-import clang 'clang_bs.cy'
+use clang 'clang_bs.cy'
 
 var POST_HEADER = '''
 '''
@@ -77,7 +77,7 @@ cvisitor = clang.ffi.bindCallback(visitor, [clang.CXCursor, clang.CXCursor, .voi
 clang.lib.clang_visitChildren(cursor, cvisitor, cstate)
 
 -- Generate ffi init.
-out += "\nimport os\n"
+out += "\nuse os\n"
 out += "let .ffi = false\n"
 out += "let .lib = load()\n"
 out += "func load():\n"

@@ -1,4 +1,4 @@
-import test
+use test
 
 type S:
     a float

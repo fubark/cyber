@@ -7,8 +7,8 @@
 -- * docs.md does not handle custom header ids since Github md doesn't support it.
 -- * The version string can be overrided with `-version`
 
-import os
-import md '../src/tools/md4c.cy'
+use os
+use md '../src/tools/md4c.cy'
 
 let args = os.parseArgs([
     { name: 'version', type: String, default: 'dev' },
@@ -90,7 +90,7 @@ hljs.registerLanguage('cy', function() {
     return {
     keywords: {
         keyword: [
-            'template', 'func', 'import', 'for', 'coinit', 'coresume', 'coyield', 'use',
+            'template', 'func', 'module', 'for', 'coinit', 'coresume', 'coyield', 'use',
             'return', 'if', 'else', 'as', 'while', 'var', 'let', 'dynobject', 'object', 'struct', 'with', 'caught',
             'break', 'continue', 'switch', 'pass', 'or', 'and', 'not', 'is', 'error', 'throws',
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case'

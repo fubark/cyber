@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 type S:
     a float

@@ -5,7 +5,7 @@
 -- gcc -c -fPIC foo.c -o foo.o
 -- gcc -shared foo.o -o libfoo.so
 
-import os
+use os
 
 var ffi = os.newFFI()
 ffi.cfunc('add', [.int, .int], .int)

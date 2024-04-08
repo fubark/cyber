@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 func fib(n int) int:
     if n < 2:

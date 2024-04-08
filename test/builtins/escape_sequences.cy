@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Double quote literal with escaped double quote.
 var str = "ab\"c"

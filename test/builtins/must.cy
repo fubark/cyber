@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 var a = 123
 -- no error, must returns argument.

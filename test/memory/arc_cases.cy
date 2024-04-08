@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Temporary rc if expr cond is released before entering body.
 var a = if (String(1) == '1') 123 else false

@@ -6,7 +6,7 @@
 -- Total wall time, and the difference from script time (load time) are also measured.
 -- Finally the command is passed into `/usr/bin/time -v {cmd}` to get the peak memory usage.
 
-import os
+use os
 
 var MaxRuns = 50
 

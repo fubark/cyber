@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Closure read over number in main block.
 var a = 123

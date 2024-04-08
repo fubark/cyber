@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- GC is able to detect reference cycle.
 func foo():

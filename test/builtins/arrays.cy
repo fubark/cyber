@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 var arr = Array('abc🦊xyz🐶')
 t.eq(arr, Array('abc🦊xyz🐶'))

@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Basic.
 var list = [1, 2, 3]

@@ -147,7 +147,7 @@ type RENDERER = PARSER
 func md_parse(text any, size SIZE, parser any, userdata any) int:
     return lib.md_parse(text, size, parser, userdata)
 
-import os
+use os
 let .ffi = false
 let .lib = load()
 func load():

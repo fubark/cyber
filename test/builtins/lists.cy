@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Omits last comma for multiline initializer.
 var a = [

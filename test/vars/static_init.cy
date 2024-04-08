@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Reading from a static variable before it is declared.
 t.eq(a, 123)

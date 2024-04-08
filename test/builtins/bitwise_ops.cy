@@ -1,5 +1,5 @@
-import t 'test'
-import m 'math'
+use t 'test'
+use m 'math'
 
 -- Bitwise and
 t.eq(4 & 2, 0)

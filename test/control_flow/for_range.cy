@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Basic.
 var iters = 0

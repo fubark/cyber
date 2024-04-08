@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Detect end of block.
 var f = func ():

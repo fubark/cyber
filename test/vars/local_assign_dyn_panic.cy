@@ -1,4 +1,4 @@
-import test
+use test
 
 let a = test.erase(123)
 var b = ''

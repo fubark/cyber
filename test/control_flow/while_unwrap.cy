@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Assign to variable.
 var a = 0 

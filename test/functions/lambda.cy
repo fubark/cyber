@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Untyped, shorthand, no params.
 var foo = () => 2 + 2

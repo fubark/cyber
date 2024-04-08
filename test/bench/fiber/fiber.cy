@@ -1,4 +1,4 @@
-import os
+use os
 
 var start = os.now()
 

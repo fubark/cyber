@@ -1,5 +1,5 @@
-import m 'math'
-import t 'test'
+use m 'math'
+use t 'test'
 
 t.eqNear(m.pi, 3.14159265)
 t.eqNear(m.ln2, 0.69314718)

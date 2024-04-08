@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 var a = true
 t.eq(a, true)

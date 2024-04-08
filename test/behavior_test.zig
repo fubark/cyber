@@ -405,7 +405,7 @@ test "Multiple evals with same VM." {
     defer run.deinit();
 
     const src =
-        \\import t 'test'
+        \\use t 'test'
         \\var a = 1
         \\t.eq(a, 1)
         ;

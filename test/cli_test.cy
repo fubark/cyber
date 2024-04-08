@@ -1,5 +1,5 @@
 import os
-import t 'test'
+use t 'test'
 
 var printCmd = ''
 if os.system == 'windows':
@@ -9,7 +9,7 @@ else:
 
 -- os.readLine() returns error.EndOfStream
 runPipeInput('$(printCmd) "abc"', "
-import test
+use test
 import os
 if os.system == 'windows':
   test.eq(os.readLine(), 'abc\\r')
@@ -20,7 +20,7 @@ else:
 
 -- os.readLine() returns user input before new line.
 runPipeInput('$(printCmd) "abc\n"', "
-import test
+use test
 import os
 test.eq(os.readLine(), 'abc')
 ")
@@ -28,7 +28,7 @@ test.eq(os.readLine(), 'abc')
 -- os.stdin.streamLines()
 runPipeInput('$(printCmd) "abc\nfoo\r\nbar"', "
 import os
-import test
+use test
 var lines = []
 for os.stdin.streamLines() -> line:
   lines.append(line)
@@ -44,7 +44,7 @@ else:
 -- os.stdin.streamLines() with small buffer size to test string building.
 runPipeInput('$(printCmd) "abcxyz\nfoobar\r\ndeadbeef"', "
 import os
-import test
+use test
 var lines = []
 for os.stdin.streamLines(4) -> line:
   lines.append(line)
@@ -62,7 +62,7 @@ else:
 ")
 
 runArgs(['123', 'foobar'], "
-import test
+use test
 import os
 var args = os.args()
 test.eq(args.len(), 4)

@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 t.eq(a, 123)
 

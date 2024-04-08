@@ -1,4 +1,4 @@
-import test
+use test
 
 var foo = true
 test.eq(if (foo) 123 else 456, 123)

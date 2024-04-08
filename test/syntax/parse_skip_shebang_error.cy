@@ -1,10 +1,10 @@
 #!cyber
-import
+use
 
 --cytest: error
 --ParseError: Expected import clause.
 --
---main:2:7:
---import
---      ^
+--main:2:4:
+--use
+--   ^
 --

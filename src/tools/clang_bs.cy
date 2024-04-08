@@ -1,4 +1,4 @@
-import os
+use os
 
 -- Manual bindings for clang. This is used to bootstrap cbindgen.
 

@@ -1,4 +1,4 @@
-import test
+use test
 
 func foo(a int):
     pass

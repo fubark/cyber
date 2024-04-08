@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Declaration that depends on another.
 var .a = 123

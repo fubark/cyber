@@ -1,6 +1,6 @@
 -- Copyright (c) 2023 Cyber (See LICENSE)
 
-import t 'test'
+use t 'test'
 
 -- Init fiber without starting.
 func foo(list List):

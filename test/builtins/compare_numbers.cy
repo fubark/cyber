@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 t.eq(1 < 2, true)
 t.eq(2 < 1, false)

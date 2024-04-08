@@ -1,6 +1,6 @@
 -- Same tests as array.cy except using a slice.
 
-import t 'test'
+use t 'test'
 
 var arr = Array('abc🦊xyz🐶')
 arr = arr[0..]  -- Sets up the slice.

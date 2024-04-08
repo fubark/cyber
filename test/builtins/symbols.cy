@@ -1,4 +1,4 @@
-import test
+use test
 
 var n = .Tiger
 test.eq(int(n), 63)

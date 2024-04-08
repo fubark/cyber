@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 var .g any = 0
 var a = []

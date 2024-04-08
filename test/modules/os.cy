@@ -1,5 +1,5 @@
-import os
-import t 'test'
+use os
+use t 'test'
 
 if os.system != 'windows':
     os.setEnv('testfoo', 'testbar')

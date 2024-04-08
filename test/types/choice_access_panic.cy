@@ -1,4 +1,4 @@
-import test
+use test
 
 type Choice enum:
     case A int

@@ -1,5 +1,5 @@
-import t 'test'
-import m 'math'
+use t 'test'
+use m 'math'
 
 -- Default notation.
 t.eq(1.0, 1.0)

@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- id()
 t.eq(typeof(true).id(), 1)
@@ -35,7 +35,7 @@ t.eq((Fiber).id(), 23)
 t.eq((metatype).id(), 27)
 
 -- Referencing type name path.
-import os
+use os
 t.eq(typesym(os.CArray), .metatype)
 
 --cytest: pass

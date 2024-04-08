@@ -1,4 +1,4 @@
-import t 'test'
+use t 'test'
 
 -- Single quote literal.
 var str = 'abc🦊xyz🐶'

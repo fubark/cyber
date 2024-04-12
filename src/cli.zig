@@ -11,7 +11,7 @@ const log = cy.log.scoped(.cli);
 const rt = cy.rt;
 
 const builtins = std.ComptimeStringMap(void, .{
-    .{"builtins"},
+    .{"core"},
     .{"math"},
 });
 

@@ -1832,7 +1832,7 @@ In the example above, the function `foo` is called with 4 arguments. The first a
 * [Symbol visibility.](#symbol-visibility)
 * [Symbol alias.](#symbol-alias)
 * [Builtin modules.](#builtin-modules)
-* [builtins.](#builtins)
+* [core.](#core)
   * [`type bool`](#type-bool)
   * [`type error`](#type-error)
   * [`type int`](#type-int)
@@ -2006,11 +2006,11 @@ use Vec2 -> eng.Vector2
 
 ## Builtin modules.
 Builtin modules are the bare minimum that comes with Cyber. The [embeddable library](#embedding) contains these modules and nothing more. They include:
-- [builtins](#builtins): Cyber related functions and commonly used utilities.
+- [core](#core): Cyber related functions and commonly used utilities.
 - [math](#math): Math constants and functions.
 
-## builtins.
-The `builtins` module contains functions related to Cyber and common utilities. It is automatically imported into each script's namespace. 
+## core.
+The `core` module contains functions related to Cyber and common utilities. It is automatically imported into each script's namespace. 
 
 Sample usage:
 ```cy
@@ -2019,8 +2019,8 @@ print 'hello'
 print typeof('my str').id()
 ```
 
-<!-- builtins.start -->
-<!-- builtins.end -->
+<!-- core.start -->
+<!-- core.end -->
 
 ## math.
 The math module contains commonly used math constants and functions.
@@ -3043,7 +3043,7 @@ bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
         out->typeLoader = typeLoader;
         return true;
     } else {
-        // Fallback to the default module loader to load `builtins`.
+        // Fallback to the default module loader to load `core`.
         return csDefaultModuleLoader(vm, spec, out);
     }
 }
@@ -3057,7 +3057,7 @@ int main() {
 The above example checks whether "my_mod" was imported and returns it's source code. Additional loaders are returned to load the functions, variables, and types from the source code.
 
 ### Default module loader.
-Since only one module loader can be set to the VM instance, a custom loader is required to handle the "builtins" import which contains all of the core types and functions in Cyber. This can simply be delegated to `csDefaultModuleLoader`.
+Since only one module loader can be set to the VM instance, a custom loader is required to handle the "core" import which contains all of the core types and functions in Cyber. This can simply be delegated to `csDefaultModuleLoader`.
 
 ### Function loader.
 A function loader describes how to load a `#host` function when it's encountered by the compiler.

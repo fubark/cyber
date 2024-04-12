@@ -66,8 +66,8 @@ pub const Compiler = struct {
     hasApiError: bool,
     apiError: []const u8, // Duped so Cyber owns the msg.
 
-    /// Whether builtins should be imported.
-    importBuiltins: bool = true,
+    /// Whether core should be imported.
+    importCore: bool = true,
 
     iteratorMID: vmc.MethodId = cy.NullId,
     nextMID: vmc.MethodId = cy.NullId,
@@ -682,8 +682,8 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
             log.tracev("chunk parse: {}", .{chunk.id});
             try performChunkParse(self, chunk);
 
-            if (self.importBuiltins) {
-                // Import builtin module into local namespace.
+            if (self.importCore) {
+                // Import all from core module into local namespace.
                 try chunk.use_alls.append(self.alloc, @ptrCast(core_sym));
             }
 
@@ -755,9 +755,9 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
 
             if (id == 0) {
                 // Extract special syms. Assumes chunks[0] is the builtins chunk.
-                const builtins = self.chunks.items[0].sym.getMod();
-                self.sema.option_tmpl = builtins.getSym("Option").?.cast(.typeTemplate);
-                self.sema.table_type = builtins.getSym("Table").?.cast(.object_t);
+                const core = self.chunks.items[0].sym.getMod();
+                self.sema.option_tmpl = core.getSym("Option").?.cast(.typeTemplate);
+                self.sema.table_type = core.getSym("Table").?.cast(.object_t);
             }
         }
 
@@ -1030,7 +1030,7 @@ pub fn defaultModuleResolver(_: ?*cc.VM, params: cc.ResolverParams) callconv(.C)
 pub fn defaultModuleLoader(vm_: ?*cc.VM, spec: cc.Str, out_: [*c]cc.ModuleLoaderResult) callconv(.C) bool {
     const out: *cc.ModuleLoaderResult = out_;
     const name = cc.fromStr(spec);
-    if (std.mem.eql(u8, name, "builtins")) {
+    if (std.mem.eql(u8, name, "core")) {
         const vm: *cy.VM = @ptrCast(@alignCast(vm_));
         const aot = cy.isAot(vm.compiler.config.backend);
         out.* = .{

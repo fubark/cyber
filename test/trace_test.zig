@@ -681,19 +681,21 @@ test "Custom modules." {
             const out: *c.ModuleLoaderResult = out_;
 
             const name = c.fromStr(spec);
-            if (std.mem.eql(u8, name, "builtins")) {
+            if (std.mem.eql(u8, name, "core")) {
                 const defaultLoader = c.defaultModuleLoader;
                 return defaultLoader(vm_, spec, @ptrCast(out));
             }
             if (std.mem.eql(u8, name, "mod1")) {
                 out.* = std.mem.zeroInit(c.ModuleLoaderResult, .{
                     .src = "",
+                    .srcLen = 0,
                     .onLoad = &postLoadMod1,
                 });
                 return true;
             } else if (std.mem.eql(u8, name, "mod2")) {
                 out.* = std.mem.zeroInit(c.ModuleLoaderResult, .{
                     .src = "",
+                    .srcLen = 0,
                     .onLoad = &postLoadMod2,
                 });
                 return true;

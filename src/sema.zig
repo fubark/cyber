@@ -1213,16 +1213,17 @@ pub fn resolveTypeAlias(c: *cy.Chunk, sym: *cy.sym.TypeAlias) !void {
     sym.resolved = true;
 }
 
-pub fn resolveUseAlias(c: *cy.Chunk, node_id: cy.NodeId) !void {
-    const node = c.ast.node(node_id);
-    const name = c.ast.nodeStringById(node.data.use_alias.name);
+pub fn reserveUseAlias(c: *cy.Chunk, node: cy.NodeId) !*cy.sym.UseAlias {
+    const nodev = c.ast.node(node);
+    const name = c.ast.nodeStringById(nodev.data.use_alias.name);
+    return c.reserveUseAlias(@ptrCast(c.sym), name, node);
+}
 
-    const sym = try resolveSym(c, node.data.use_alias.target);
-    const res = try c.use_syms.getOrPut(c.alloc, name);
-    if (res.found_existing) {
-        return c.reportErrorFmt("`{}` is already in the using namespace.", &.{v(name)}, node_id);
-    }
-    res.value_ptr.* = sym;
+pub fn resolveUseAlias(c: *cy.Chunk, sym: *cy.sym.UseAlias) anyerror!void {
+    const decl = c.ast.node(sym.decl);
+    const r_sym = try resolveSym(c, decl.data.use_alias.target);
+    sym.sym = r_sym;
+    sym.resolved = true;
 }
 
 pub fn declareUseImport(c: *cy.Chunk, nodeId: cy.NodeId) !void {
@@ -1272,13 +1273,21 @@ pub fn declareUseImport(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const dupedResUri = try c.alloc.dupe(u8, uri);
 
     // Queue import task.
-    try c.compiler.import_tasks.append(c.alloc, .{
+    var task = cy.compiler.ImportTask{
         .type = .use_alias,
         .from = c,
         .nodeId = nodeId,
         .resolved_spec = dupedResUri,
         .data = undefined,
-    });
+    };
+    if (name_n.type() != .all) {
+        const name = c.ast.nodeString(name_n);
+        const sym = try c.reserveUseAlias(@ptrCast(c.sym), name, nodeId);
+        task.data = .{ .use_alias = .{
+            .sym = sym,
+        }};
+    }
+    try c.compiler.import_tasks.append(c.alloc, task);
 }
 
 pub fn declareModuleAlias(c: *cy.Chunk, nodeId: cy.NodeId) !void {
@@ -2411,15 +2420,6 @@ pub fn getResolvedLocalSym(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId, di
             try c.sym_cache.putNoClobber(c.alloc, name, sym);
             return sym;
         }
-    }
-
-    // Look in use syms.
-    if (c.use_syms.get(name)) |sym| {
-        if (distinct and !sym.isDistinct()) {
-            return c.reportErrorFmt("`{}` is not a unique symbol.", &.{v(name)}, nodeId);
-        }
-        try c.sym_cache.putNoClobber(c.alloc, name, sym);
-        return sym;
     }
 
     // Look in use alls.

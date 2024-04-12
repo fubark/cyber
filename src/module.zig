@@ -210,6 +210,18 @@ pub const ChunkExt = struct {
         return sym;
     }
 
+    pub fn reserveUseAlias(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: cy.NodeId) !*cy.sym.UseAlias {
+        const sym = try cy.sym.createSym(c.alloc, .use_alias, .{
+            .head = cy.Sym.init(.use_alias, parent, name),
+            .decl = decl,
+            .sym = undefined,
+            .resolved = false,
+        });
+        const mod = parent.getMod().?;
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl);
+        return sym;
+    } 
+
     pub fn reserveTypeAlias(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId) !*cy.sym.TypeAlias {
         const sym = try cy.sym.createSym(c.alloc, .typeAlias, .{
             .head = cy.Sym.init(.typeAlias, parent, name),
@@ -718,6 +730,13 @@ pub const ChunkExt = struct {
             .module_alias => {
                 return sym.cast(.module_alias).sym;
             },
+            .use_alias => {
+                const alias = sym.cast(.use_alias);
+                if (!alias.resolved) {
+                    try sema.resolveUseAlias(mod.chunk, alias);
+                }
+                return alias.sym;
+            },
             .typeAlias => {
                 const alias = sym.cast(.typeAlias);
                 if (!alias.resolved) {
@@ -779,6 +798,13 @@ pub const ChunkExt = struct {
             },
             .module_alias => {
                 return sym.cast(.module_alias).sym;
+            },
+            .use_alias => {
+                const alias = sym.cast(.use_alias);
+                if (!alias.resolved) {
+                    try sema.resolveUseAlias(mod.chunk, alias);
+                }
+                return alias.sym;
             },
             .typeAlias => {
                 const alias = sym.cast(.typeAlias);
@@ -843,6 +869,7 @@ pub const ChunkExt = struct {
             .distinct_t,
             .typeTemplate,
             .placeholder,
+            .use_alias,
             .module_alias,
             .typeAlias,
             .enumMember => {

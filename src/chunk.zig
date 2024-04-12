@@ -104,8 +104,7 @@ pub const Chunk = struct {
     /// This is populated after symbol queries.
     sym_cache: std.StringHashMapUnmanaged(*cy.Sym),
 
-    /// Symbols in the using namespace.
-    use_syms: std.StringHashMapUnmanaged(*cy.Sym),
+    /// Symbols in the fallback using namespace.
     use_alls: std.ArrayListUnmanaged(*cy.Sym),
     use_global: bool,
 
@@ -250,7 +249,6 @@ pub const Chunk = struct {
             .srcOwned = true,
             .mainSemaProcId = cy.NullId,
             .sym_cache = .{},
-            .use_syms = .{},
             .use_alls = .{},
             .use_global = false,
             .funcCheckCache = .{},
@@ -345,7 +343,6 @@ pub const Chunk = struct {
         self.typeDepsMap.deinit(self.alloc);
 
         self.sym_cache.deinit(self.alloc);
-        self.use_syms.deinit(self.alloc);
         self.use_alls.deinit(self.alloc);
 
         // Deinit chunk syms.

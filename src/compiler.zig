@@ -577,8 +577,8 @@ fn completeImportTask(self: *Compiler, task: ImportTask, res: *cy.Chunk) !void {
             if (name_n.type() == .all) {
                 try c.use_alls.append(self.alloc, @ptrCast(res.sym));
             } else {
-                const name = c.ast.nodeString(name_n);
-                try c.use_syms.put(self.alloc, name, @ptrCast(res.sym));
+                task.data.use_alias.sym.sym = @ptrCast(res.sym);
+                task.data.use_alias.sym.resolved = true;
             }
         },
     }
@@ -693,7 +693,10 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
                     .use_import => {
                         try sema.declareUseImport(chunk, decl.nodeId);
                     },
-                    .use_alias => {},
+                    .use_alias => {
+                        const sym = try sema.reserveUseAlias(chunk, decl.nodeId);
+                        decl.data = .{ .sym = @ptrCast(sym) };
+                    },
                     .struct_t => {
                         const sym = try sema.declareStruct(chunk, decl.nodeId);
                         decl.data = .{ .sym = @ptrCast(sym) };
@@ -932,7 +935,7 @@ fn resolveSyms(self: *Compiler) !void {
                     }
                 },
                 .use_alias => {
-                    try sema.resolveUseAlias(chunk, decl.nodeId);
+                    try sema.resolveUseAlias(chunk, @ptrCast(decl.data.sym));
                 },
                 .typeAlias => {
                     try sema.resolveTypeAlias(chunk, @ptrCast(decl.data.sym));
@@ -997,7 +1000,7 @@ const ImportTaskType = enum(u8) {
     module_alias,
 };
 
-const ImportTask = struct {
+pub const ImportTask = struct {
     type: ImportTaskType,
     from: ?*cy.Chunk,
     nodeId: cy.NodeId,
@@ -1005,6 +1008,9 @@ const ImportTask = struct {
     data: union {
         module_alias: struct {
             sym: *cy.sym.ModuleAlias,
+        },
+        use_alias: struct {
+            sym: *cy.sym.UseAlias,
         },
     },
 };

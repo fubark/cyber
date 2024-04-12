@@ -23,6 +23,7 @@ pub const SymType = enum(u8) {
     int_t,
     float_t,
     module_alias,
+    use_alias,
     chunk,
     enum_t,
     enumMember,
@@ -176,6 +177,9 @@ pub const Sym = extern struct {
             .enumMember => {
                 size = @sizeOf(EnumMember);
             },
+            .use_alias => {
+                size = @sizeOf(UseAlias);
+            },
             .module_alias => {
                 size = @sizeOf(ModuleAlias);
             },
@@ -227,8 +231,9 @@ pub const Sym = extern struct {
         return self.type == .userVar or self.type == .hostVar;
     }
 
-    pub fn isType(self: Sym) bool {
+    pub fn isType(self: *Sym) bool {
         switch (self.type) {
+            .use_alias => return self.cast(.use_alias).sym.isType(),
             .custom_object_t,
             .bool_t,
             .int_t,
@@ -286,6 +291,7 @@ pub const Sym = extern struct {
             .placeholder     => return @ptrCast(&self.cast(.placeholder).mod),
             .distinct_t      => return @ptrCast(&self.cast(.distinct_t).mod),
             .typeAlias       => return @ptrCast(&self.cast(.typeAlias).mod),
+            .use_alias,
             .module_alias,
             .typeTemplate,
             .enumMember,
@@ -321,6 +327,7 @@ pub const Sym = extern struct {
             .userVar    => return self.cast(.userVar).type,
             .hostVar    => return self.cast(.hostVar).type,
             .enumMember => return self.cast(.enumMember).type,
+            .use_alias  => return self.cast(.use_alias).sym.getValueType(),
             .enum_t,
             .int_t,
             .float_t,
@@ -357,6 +364,7 @@ pub const Sym = extern struct {
             .struct_t        => return self.cast(.struct_t).type,
             .object_t        => return self.cast(.object_t).type,
             .custom_object_t => return self.cast(.custom_object_t).type,
+            .use_alias       => return self.cast(.use_alias).sym.getStaticType(),
             .placeholder,
             .null,
             .field,
@@ -384,6 +392,7 @@ pub const Sym = extern struct {
             .int_t,
             .float_t,
             .typeAlias,
+            .use_alias,
             .custom_object_t,
             .null,
             .field,
@@ -491,6 +500,7 @@ fn SymChild(comptime symT: SymType) type {
         .distinct_t => DistinctType,
         .typeTemplate => TypeTemplate,
         .field => Field,
+        .use_alias => UseAlias,
         .module_alias => ModuleAlias,
         .chunk => Chunk,
         .placeholder => Placeholder,
@@ -811,6 +821,13 @@ pub const ModuleAlias = extern struct {
     head: Sym,
     declId: cy.NodeId,
     sym: *Sym,
+};
+
+pub const UseAlias = extern struct {
+    head: Sym,
+    decl: cy.NodeId,
+    sym: *Sym,
+    resolved: bool,
 };
 
 pub const Chunk = extern struct {

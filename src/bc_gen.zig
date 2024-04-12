@@ -195,6 +195,7 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
         .typeAlias,
         .enum_t,
         .enumMember,
+        .use_alias,
         .module_alias => {},
         else => {
             log.tracev("{}", .{sym.type});

@@ -36,6 +36,6 @@ t.eq((metatype).id(), 27)
 
 -- Referencing type name path.
 use os
-t.eq(typesym(os.CArray), .metatype)
+t.eq(typeof(os.CArray), metatype)
 
 --cytest: pass

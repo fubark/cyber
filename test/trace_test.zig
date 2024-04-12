@@ -164,14 +164,14 @@ test "ARC assignments." {
         \\var a = [123]
         \\var b = Map{}
         \\a[0] = b
-        \\t.eq(typesym(a[0]), .map)
+        \\t.eq(typeof(a[0]), Map)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         var trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 4);
-        try t.eq(trace.numReleaseAttempts, 5);
-        try t.eq(trace.numRetains, 4);
-        try t.eq(trace.numReleases, 4);
+        try t.eq(trace.numRetainAttempts, 6);
+        try t.eq(trace.numReleaseAttempts, 7);
+        try t.eq(trace.numRetains, 6);
+        try t.eq(trace.numReleases, 6);
     }}.func);
 }
 

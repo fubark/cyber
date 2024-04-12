@@ -65,7 +65,7 @@ t.eq(info['type'], .file)
 
 -- free() / malloc()
 var ptr = os.malloc(16)
-t.eq(typesym(ptr), .pointer)
+t.eq(typeof(ptr), pointer)
 os.free(ptr)
 
 -- File.read()

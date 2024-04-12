@@ -1,7 +1,7 @@
 use t 'test'
 
 func foo(a Fiber):
-    return typesym(a) == .fiber
+    return typeof(a) == Fiber
 
 func start():
     pass

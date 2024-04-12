@@ -51,10 +51,6 @@
 --| Returns the value's type as a `metatype` object.
 #host func typeof(val any) metatype
 
---| Returns the value's type as one of the predefined symbols:
---| .float, .int, .bool, .object, .list, .map, .string, .array, .function, .fiber, .pointer, .symbol, .metatype, .none, .error
-#host func typesym(val any) symbol
-
 #host type void
 
 #host type bool #bool_t

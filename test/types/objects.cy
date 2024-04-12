@@ -126,7 +126,7 @@ t.eq(nc.b, 6)
 
 -- Using Object sym as a value.
 var sym = Node
-t.eq(typesym(sym), .metatype)
+t.eq(typeof(sym), metatype)
 t.eq(String(sym), 'type: Node')
 
 -- Dynamic variable.

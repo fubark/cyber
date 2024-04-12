@@ -48,7 +48,6 @@ const funcs = [_]NameFunc{
     .{"runestr",        zErrFunc(runestr)},
     .{"toCyon",         zErrFunc(toCyon)},
     .{"typeof",         typeof},
-    .{"typesym",        cFunc(typesym)},
 
     // bool
     .{"bool.$call", boolCall},
@@ -982,30 +981,6 @@ pub fn typeof(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     const typeId = val.getTypeId();
     return cy.heap.allocMetaType(vm, @intFromEnum(cy.heap.MetaTypeKind.object), typeId) catch fatal();
-}
-
-pub fn typesym(_: cy.Context, args: [*]const Value, _: u8) callconv(.C) Value {
-    const val = args[0];
-    switch (val.getUserTag()) {
-        .float => return Value.initSymbol(@intFromEnum(Symbol.float)),
-        .object => return Value.initSymbol(@intFromEnum(Symbol.object)),
-        .err => return Value.initSymbol(@intFromEnum(Symbol.@"error")),
-        .bool => return Value.initSymbol(@intFromEnum(Symbol.bool)),
-        .map => return Value.initSymbol(@intFromEnum(Symbol.map)),
-        .int => return Value.initSymbol(@intFromEnum(Symbol.int)),
-        .list => return Value.initSymbol(@intFromEnum(Symbol.list)),
-        .string => return Value.initSymbol(@intFromEnum(Symbol.string)),
-        .array => return Value.initSymbol(@intFromEnum(Symbol.array)),
-        .fiber => return Value.initSymbol(@intFromEnum(Symbol.fiber)),
-        .nativeFunc,
-        .closure,
-        .lambda => return Value.initSymbol(@intFromEnum(Symbol.function)),
-        .none => return Value.initSymbol(@intFromEnum(Symbol.none)),
-        .symbol => return Value.initSymbol(@intFromEnum(Symbol.symbol)),
-        .metatype => return Value.initSymbol(@intFromEnum(Symbol.metatype)),
-        .pointer => return Value.initSymbol(@intFromEnum(Symbol.pointer)),
-        else => fmt.panic("Unsupported {}", &.{fmt.v(val.getUserTag())}),
-    }
 }
 
 fn arrayConcat(vm: *cy.VM, args: [*]const Value, _: u8) Value {

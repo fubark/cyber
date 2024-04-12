@@ -219,7 +219,7 @@ pub fn build(b: *std.build.Builder) !void {
         try addBuildOptions(b, step, opts);
         step.addModule("stdx", stdx);
         step.addAnonymousModule("tcc", .{
-            .source_file = .{ .path = thisDir() ++ "/src/nopkg.zig" },
+            .source_file = .{ .path = thisDir() ++ "/src/tcc_stub.zig" },
         });
 
         opts = getDefaultOptions(target, optimize);
@@ -299,18 +299,18 @@ pub fn buildAndLinkDeps(step: *std.build.Step.Compile, opts: Options) !void {
         });
     } else {
         step.addAnonymousModule("tcc", .{
-            .source_file = .{ .path = thisDir() ++ "/src/nopkg.zig" },
+            .source_file = .{ .path = thisDir() ++ "/src/tcc_stub.zig" },
         });
         // Disable stack protector since the compiler isn't linking __stack_chk_guard/__stack_chk_fail.
         step.stack_protector = false;
     }
 
-    if (opts.cli and opts.target.getOsTag() != .windows) {
+    if (opts.cli and opts.target.getOsTag() != .windows and opts.target.getOsTag() != .wasi) {
         addLinenoiseModule(step, "linenoise", linenoise);
         buildAndLinkLinenoise(b, step);
     } else {
-        step.addAnonymousModule("tcc", .{
-            .source_file = .{ .path = thisDir() ++ "/src/nopkg.zig" },
+        step.addAnonymousModule("linenoise", .{
+            .source_file = .{ .path = thisDir() ++ "/src/ln_stub.zig" },
         });
     }
 

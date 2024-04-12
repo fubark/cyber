@@ -171,7 +171,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     try cy.debug.dumpBytecode(&vm, .{ .pcContext = pc });
 }
 
-const use_ln = builtin.os.tag != .windows;
+const use_ln = builtin.os.tag != .windows and builtin.os.tag != .wasi;
 
 fn getReplInput(alloc: std.mem.Allocator, indent: u32) ![]const u8 {
     if (use_ln) {

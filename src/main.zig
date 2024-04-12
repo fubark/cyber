@@ -144,9 +144,6 @@ const Command = enum {
 };
 
 fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
-    const src = try std.fs.cwd().readFileAlloc(alloc, path, 1e9);
-    defer alloc.free(src);
-    
     c.setVerbose(verbose);
 
     try vm.init(alloc);
@@ -158,7 +155,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     config.file_modules = true;
     config.gen_debug_func_markers = true;
     config.backend = backend;
-    _ = vm.compile(path, src, config) catch |err| {
+    _ = vm.compile(path, null, config) catch |err| {
         if (err == error.CompileError) {
             if (!c.silent()) {
                 const report = c.newErrorReportSummary(@ptrCast(&vm));
@@ -174,9 +171,6 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
 }
 
 fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
-    const src = try std.fs.cwd().readFileAllocOptions(alloc, path, 1e9, 4096, @alignOf(u8), null);
-    defer alloc.free(src);
-
     c.setVerbose(verbose);
 
     try vm.init(alloc);
@@ -189,20 +183,20 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     config.reload = reload;
     config.backend = backend;
     config.spawn_exe = true;
-    _ = vm.eval(path, src, config) catch |err| {
+    _ = vm.eval(path, null, config) catch |err| {
         switch (err) {
             error.Panic => {
                 if (!c.silent()) {
                     const report = c.newPanicSummary(@ptrCast(&vm));
                     defer c.freeStr(@ptrCast(&vm), report);
-                    cy.rt.writeStderr(c.fromStr(report));
+                    try std.io.getStdErr().writeAll(c.fromStr(report));
                 }
             },
             error.CompileError => {
                 if (!c.silent()) {
                     const report = c.newErrorReportSummary(@ptrCast(&vm));
                     defer c.freeStr(@ptrCast(&vm), report);
-                    cy.rt.writeStderr(c.fromStr(report));
+                    try std.io.getStdErr().writeAll(c.fromStr(report));
                 }
             },
             else => {

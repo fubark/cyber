@@ -169,12 +169,12 @@ pub const Compiler = struct {
         self.reports.clearRetainingCapacity();
     }
 
-    pub fn compile(self: *Compiler, srcUri: []const u8, src: []const u8, config: cc.CompileConfig) !CompileResult {
+    pub fn compile(self: *Compiler, uri: []const u8, src: ?[]const u8, config: cc.CompileConfig) !CompileResult {
         defer {
             // Update VM types view.
             self.vm.types = self.sema.types.items;
         }
-        const res = self.compileInner(srcUri, src, config) catch |err| {
+        const res = self.compileInner(uri, src, config) catch |err| {
             if (dumpCompileErrorStackTrace and !cc.silent()) {
                 std.debug.dumpStackTrace(@errorReturnTrace().?.*);
             }
@@ -185,7 +185,7 @@ pub const Compiler = struct {
                 // Report other errors using the main chunk.
                 return self.main_chunk.reportErrorFmt("Error: {}", &.{v(err)}, null);
             } else {
-                try self.addReportFmt(.compile_err, null, null, "Error: {}", &.{v(err)});
+                try self.addReportFmt(.compile_err, "Error: {}", &.{v(err)}, null, null);
                 return error.CompileError;
             }
         };
@@ -193,21 +193,24 @@ pub const Compiler = struct {
     }
 
     /// Wrap compile so all errors can be handled in one place.
-    fn compileInner(self: *Compiler, srcUri: []const u8, src: []const u8, config: cc.CompileConfig) !CompileResult {
+    fn compileInner(self: *Compiler, uri: []const u8, src_opt: ?[]const u8, config: cc.CompileConfig) !CompileResult {
         self.config = config;
 
-        var finalSrcUri: []const u8 = undefined;
-        if (!cy.isWasm and builtin.os.tag != .freestanding and config.file_modules) {
-            // Ensure that `srcUri` is resolved.
-            finalSrcUri = std.fs.cwd().realpathAlloc(self.alloc, srcUri) catch |err| {
-                log.tracev("Could not resolve main src uri: {s}", .{srcUri});
-                return err;
-            };
+        var r_uri: []const u8 = undefined;
+        var src: []const u8 = undefined;
+        if (src_opt) |src_temp| {
+            src = try self.alloc.dupe(u8, src_temp);
+            r_uri = try self.alloc.dupe(u8, uri);
         } else {
-            finalSrcUri = try self.alloc.dupe(u8, srcUri);
+            var buf: [4096]u8 = undefined;
+            const r_uri_temp = try resolveModuleUri(self, &buf, uri);
+            r_uri = try self.alloc.dupe(u8, r_uri_temp);
+            const res = (try loadModule(self, r_uri_temp)) orelse {
+                try self.addReportFmt(.compile_err, "Failed to load module: {}", &.{v(r_uri_temp)}, null, null);
+                return error.CompileError;
+            };
+            src = res.src[0..res.srcLen];
         }
-
-        const srcDup = try self.alloc.dupe(u8, src);
 
         try loadBuiltins(self);
 
@@ -238,11 +241,11 @@ pub const Compiler = struct {
         // Main chunk.
         const nextId: u32 = @intCast(self.chunks.items.len);
         var mainChunk = try self.alloc.create(cy.Chunk);
-        mainChunk.* = try cy.Chunk.init(self, nextId, finalSrcUri, srcDup);
-        mainChunk.sym = try mainChunk.createChunkSym(finalSrcUri);
+        mainChunk.* = try cy.Chunk.init(self, nextId, r_uri, src);
+        mainChunk.sym = try mainChunk.createChunkSym(r_uri);
         self.main_chunk = mainChunk;
         try self.chunks.append(self.alloc, mainChunk);
-        try self.chunk_map.put(self.alloc, finalSrcUri, mainChunk);
+        try self.chunk_map.put(self.alloc, r_uri, mainChunk);
 
         // All symbols are reserved by loading all modules and looking at the declarations.
         try reserveSyms(self, core_sym);
@@ -349,13 +352,13 @@ pub const Compiler = struct {
         return CompileResult{ .vm = undefined };
     }
 
-    pub fn addReportFmt(self: *Compiler, report_t: ReportType, chunk: ?cy.ChunkId, loc: ?u32, format: []const u8, args: []const fmt.FmtValue) !void {
+    pub fn addReportFmt(self: *Compiler, report_t: ReportType, format: []const u8, args: []const fmt.FmtValue, chunk: ?cy.ChunkId, loc: ?u32) !void {
         const msg = try fmt.allocFormat(self.alloc, format, args);
-        try self.addReportConsume(report_t, chunk, loc, msg);
+        try self.addReportConsume(report_t, msg, chunk, loc);
     }
 
     /// Assumes `msg` is heap allocated.
-    pub fn addReportConsume(self: *Compiler, report_t: ReportType, chunk: ?cy.ChunkId, loc: ?u32, msg: []const u8) !void {
+    pub fn addReportConsume(self: *Compiler, report_t: ReportType, msg: []const u8, chunk: ?cy.ChunkId, loc: ?u32) !void {
         try self.reports.append(self.alloc, .{
             .type = report_t,
             .chunk = chunk orelse cy.NullId,
@@ -364,9 +367,9 @@ pub const Compiler = struct {
         });
     }
 
-    pub fn addReport(self: *Compiler, report_t: ReportType, chunk: ?cy.ChunkId, loc: ?u32, msg: []const u8) !void {
+    pub fn addReport(self: *Compiler, report_t: ReportType, msg: []const u8, chunk: ?cy.ChunkId, loc: ?u32) !void {
         const dupe = try self.alloc.dupe(u8, msg);
-        try self.addReportConsume(report_t, chunk, loc, dupe);
+        try self.addReportConsume(report_t, dupe, chunk, loc);
     }
 };
 
@@ -410,13 +413,13 @@ fn performChunkParse(self: *Compiler, chunk: *cy.Chunk) !void {
     const S = struct {
         fn parserReport(ctx: *anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror {
             const c: *cy.Chunk = @ptrCast(@alignCast(ctx));
-            try c.compiler.addReportFmt(.parse_err, c.id, pos, format, args);
+            try c.compiler.addReportFmt(.parse_err, format, args, c.id, pos);
             return error.ParseError;
         }
 
         fn tokenizerReport(ctx: *anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror!void {
             const c: *cy.Chunk = @ptrCast(@alignCast(ctx));
-            try c.compiler.addReportFmt(.token_err, c.id, pos, format, args);
+            try c.compiler.addReportFmt(.token_err, format, args, c.id, pos);
             return error.TokenError;
         }
     };
@@ -576,15 +579,7 @@ fn completeImportTask(self: *Compiler, task: ImportTask, res: *cy.Chunk) !void {
     }
 }
 
-fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
-    // Check cache if module src was already obtained from the module loader.
-    const cache = try self.chunk_map.getOrPut(self.alloc, task.resolved_spec);
-    if (cache.found_existing) {
-        try completeImportTask(self, task, cache.value_ptr.*);
-        self.alloc.free(task.resolved_spec);
-        return cache.value_ptr.*;
-    }
-
+fn loadModule(self: *Compiler, r_uri: []const u8) !?cc.ModuleLoaderResult {
     // Initialize defaults.
     var res: cc.ModuleLoaderResult = .{
         .src = "",
@@ -599,9 +594,31 @@ fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
     };
 
     self.hasApiError = false;
-    log.tracev("Invoke module loader: {s}", .{task.resolved_spec});
+    log.tracev("Invoke module loader: {s}", .{r_uri});
 
-    if (!self.moduleLoader.?(@ptrCast(self.vm), cc.toStr(task.resolved_spec), &res)) {
+    if (self.moduleLoader.?(@ptrCast(self.vm), cc.toStr(r_uri), &res)) {
+        const src_temp = res.src[0..res.srcLen];
+        const src = try self.alloc.dupe(u8, src_temp);
+        if (res.onReceipt) |onReceipt| {
+            onReceipt(@ptrCast(self.vm), &res);
+        }
+        res.src = src.ptr;
+        return res;
+    } else {
+        return null;
+    }
+}
+
+fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
+    // Check cache if module src was already obtained from the module loader.
+    const cache = try self.chunk_map.getOrPut(self.alloc, task.resolved_spec);
+    if (cache.found_existing) {
+        try completeImportTask(self, task, cache.value_ptr.*);
+        self.alloc.free(task.resolved_spec);
+        return cache.value_ptr.*;
+    }
+
+    var res = (try loadModule(self, task.resolved_spec)) orelse {
         if (task.from) |from| {
             if (task.nodeId == cy.NullNode) {
                 if (self.hasApiError) {
@@ -618,31 +635,19 @@ fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
                 }
             }
         } else {
-            try self.addReportFmt(.compile_err, null, null, "Failed to load module: {}", &.{v(task.resolved_spec)});
+            try self.addReportFmt(.compile_err, "Failed to load module: {}", &.{v(task.resolved_spec)}, null, null);
             return error.CompileError;
         }
-    }
-
-    var src: []const u8 = undefined;
-    if (res.srcLen > 0) {
-        src = res.src[0..res.srcLen];
-    } else {
-        src = std.mem.sliceTo(@as([*:0]const u8, @ptrCast(res.src)), 0);
-    }
+    };
+    const src = res.src[0..res.srcLen];
 
     // Push another chunk.
     const newChunkId: u32 = @intCast(self.chunks.items.len);
 
-    // Dupe src.
-    const srcDup = try self.alloc.dupe(u8, src);
-    if (res.onReceipt) |onReceipt| {
-        onReceipt(@ptrCast(self.vm), &res);
-    }
-    
     // uri is already duped.
     var newChunk = try self.alloc.create(cy.Chunk);
 
-    newChunk.* = try cy.Chunk.init(self, newChunkId, task.resolved_spec, srcDup);
+    newChunk.* = try cy.Chunk.init(self, newChunkId, task.resolved_spec, src);
     newChunk.sym = try newChunk.createChunkSym(task.resolved_spec);
     newChunk.funcLoader = res.funcLoader;
     newChunk.varLoader = res.varLoader;
@@ -1012,8 +1017,8 @@ pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *Com
 }
 
 pub fn defaultModuleResolver(_: ?*cc.VM, params: cc.ResolverParams) callconv(.C) bool {
-    params.resUri.* = params.spec.buf;
-    params.resUriLen.* = params.spec.len;
+    params.resUri.* = params.uri.buf;
+    params.resUriLen.* = params.uri.len;
     return true;
 }
 
@@ -1050,6 +1055,56 @@ pub fn defaultModuleLoader(vm_: ?*cc.VM, spec: cc.Str, out_: [*c]cc.ModuleLoader
         return true;
     }
     return false;
+}
+
+pub fn resolveModuleUriFrom(self: *cy.Chunk, buf: []u8, uri: []const u8, nodeId: cy.NodeId) ![]const u8 {
+    self.compiler.hasApiError = false;
+
+    var r_uri: [*]const u8 = undefined;
+    var r_uri_len: usize = undefined;
+    const params: cc.ResolverParams = .{
+        .chunkId = self.id,
+        .curUri = cc.toStr(self.srcUri),
+        .uri = cc.toStr(uri),
+        .buf = buf.ptr,
+        .bufLen = buf.len,
+        .resUri = @ptrCast(&r_uri),
+        .resUriLen = &r_uri_len,
+    };
+    if (!self.compiler.moduleResolver.?(@ptrCast(self.compiler.vm), params)) {
+        if (self.compiler.hasApiError) {
+            return self.reportErrorFmt(self.compiler.apiError, &.{}, nodeId);
+        } else {
+            return self.reportErrorFmt("Failed to resolve module.", &.{}, nodeId);
+        }
+    }
+    return r_uri[0..r_uri_len];
+}
+
+pub fn resolveModuleUri(self: *cy.Compiler, buf: []u8, uri: []const u8) ![]const u8 {
+    self.hasApiError = false;
+
+    var r_uri: [*]const u8 = undefined;
+    var r_uri_len: usize = undefined;
+    const params: cc.ResolverParams = .{
+        .chunkId = cy.NullId,
+        .curUri = cc.NullStr,
+        .uri = cc.toStr(uri),
+        .buf = buf.ptr,
+        .bufLen = buf.len,
+        .resUri = @ptrCast(&r_uri),
+        .resUriLen = &r_uri_len,
+    };
+    if (!self.moduleResolver.?(@ptrCast(self.vm), params)) {
+        if (self.hasApiError) {
+            try self.addReport(.compile_err, self.apiError, null, null);
+            return error.CompileError;
+        } else {
+            try self.addReport(.compile_err, "Failed to resolve module.", null, null);
+            return error.CompileError;
+        }
+    }
+    return r_uri[0..r_uri_len];
 }
 
 test "vm compiler internals." {

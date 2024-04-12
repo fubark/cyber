@@ -124,6 +124,7 @@ bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
             "    #host func asList() any"
             "\n"
             "#host func MyCollection.new(a, b) MyCollection\n";
+        out->srcLen = strlen(out->src);
         out->funcLoader = funcLoader;
         out->varLoader = varLoader;
         out->typeLoader = typeLoader;

@@ -89,9 +89,16 @@ typedef CsValue (*CsFuncFn)(CsVM* vm, const CsValue* args, uint8_t nargs);
 typedef void (*CsInlineFuncFn)(CsVM* vm, uint8_t* pc, const CsValue* args, uint8_t nargs);
 
 typedef struct CsResolverParams {
+    /// Chunk that invoked the resolver.
+    /// If `CS_NULLID`, then the invoker did not originate from another chunk module.
     uint32_t chunkId;
+
+    /// The current URI.
+    /// If it's the empty string, then the invoker did not originate from another chunk module.
     CsStr curUri;
-    CsStr spec;
+
+    /// The unresolved URI.
+    CsStr uri;
 
     // Buffer to write a dynamic the result to.
     char* buf;
@@ -234,9 +241,6 @@ typedef void (*CsModuleOnReceiptFn)(CsVM* vm, CsModuleLoaderResult* res);
 typedef struct CsModuleLoaderResult {
     // The Cyber source code for the module.
     const char* src;
-
-    // If `src` is not null terminated, `srcLen` needs to be set.
-    // Defaults to 0 which indicates that `src` is null terminated.
     size_t srcLen;
 
     CsModuleOnReceiptFn onReceipt;   // Pointer to callback or null.
@@ -360,7 +364,13 @@ CsCompileConfig csDefaultCompileConfig(void);
 // Evalutes the source code and returns the result code.
 // If the last statement of the script is an expression, `outVal` will contain the value.
 CsResultCode csEval(CsVM* vm, CsStr src, CsValue* outVal);
+
+// Accepts an eval config. Unlike `csEvalPath`, `uri` does not get resolved and only serves to identify `src` origin.
 CsResultCode csEvalExt(CsVM* vm, CsStr uri, CsStr src, CsEvalConfig config, CsValue* outVal);
+
+// Resolves `uri` and evaluates the module.
+CsResultCode csEvalPath(CsVM* vm, CsStr uri, CsEvalConfig config, CsValue* outVal);
+
 CsResultCode csCompile(CsVM* vm, CsStr uri, CsStr src, CsCompileConfig config);
 CsResultCode csValidate(CsVM* vm, CsStr src);
 

@@ -669,12 +669,12 @@ pub const Chunk = struct {
     }
 
     pub fn reportError(self: *Chunk, msg: []const u8, nodeId: ?cy.NodeId) error{OutOfMemory, CompileError} {
-        try self.compiler.addReport(.compile_err, self.id, nodeId, msg);
+        try self.compiler.addReport(.compile_err, msg, self.id, nodeId);
         return error.CompileError;
     }
 
     pub fn reportErrorFmt(self: *Chunk, format: []const u8, args: []const fmt.FmtValue, nodeId: ?cy.NodeId) error{CompileError, OutOfMemory, FormatError} {
-        try self.compiler.addReportFmt(.compile_err, self.id, nodeId, format, args);
+        try self.compiler.addReportFmt(.compile_err, format, args, self.id, nodeId);
         return error.CompileError;
     }
 

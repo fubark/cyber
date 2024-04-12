@@ -461,14 +461,14 @@ pub const VM = struct {
         self.lastExeError = "";
     }
 
-    pub fn validate(self: *VM, srcUri: []const u8, src: []const u8, config: cc.ValidateConfig) !void {
+    pub fn validate(self: *VM, srcUri: []const u8, src: ?[]const u8, config: cc.ValidateConfig) !void {
         var compile_c = cc.defaultCompileConfig();
         compile_c.file_modules = config.file_modules;
         compile_c.skip_codegen = true;
         _ = try self.compile(srcUri, src, compile_c);
     }
 
-    pub fn compile(self: *VM, srcUri: []const u8, src: []const u8, config: cc.CompileConfig) !cy.CompileResult {
+    pub fn compile(self: *VM, srcUri: []const u8, src: ?[]const u8, config: cc.CompileConfig) !cy.CompileResult {
         try self.resetVM();
         self.config = cc.defaultEvalConfig();
         self.config.single_run = config.single_run;
@@ -493,7 +493,7 @@ pub const VM = struct {
         try self.compiler.reinit();
     }
 
-    pub fn eval(self: *VM, srcUri: []const u8, src: []const u8, config: cc.EvalConfig) !Value {
+    pub fn eval(self: *VM, src_uri: []const u8, src: ?[]const u8, config: cc.EvalConfig) !Value {
         try self.resetVM();
         self.config = config;
         var tt = cy.debug.timer();
@@ -503,7 +503,7 @@ pub const VM = struct {
         compile_c.file_modules = config.file_modules;
         compile_c.gen_all_debug_syms = cy.Trace;
         compile_c.backend = config.backend;
-        const res = try self.compiler.compile(srcUri, src, compile_c);
+        const res = try self.compiler.compile(src_uri, src, compile_c);
         tt.endPrint("compile");
 
         if (config.backend == cc.BackendJIT) {

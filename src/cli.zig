@@ -147,15 +147,15 @@ fn onModuleReceipt(vm_: ?*c.VM, res_: [*c]c.ModuleLoaderResult) callconv(.C) voi
 
 fn resolve(vm_: ?*c.VM, params: c.ResolverParams) callconv(.C) bool {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const spec = c.fromStr(params.spec);
-    if (builtins.get(spec) != null) {
-        params.resUri.* = spec.ptr;
-        params.resUriLen.* = spec.len;
+    const uri = c.fromStr(params.uri);
+    if (builtins.get(uri) != null) {
+        params.resUri.* = uri.ptr;
+        params.resUriLen.* = uri.len;
         return true;
     }
-    if (stdMods.get(spec) != null) {
-        params.resUri.* = spec.ptr;
-        params.resUriLen.* = spec.len;
+    if (stdMods.get(uri) != null) {
+        params.resUri.* = uri.ptr;
+        params.resUriLen.* = uri.len;
         return true;
     }
 
@@ -163,24 +163,29 @@ fn resolve(vm_: ?*c.VM, params: c.ResolverParams) callconv(.C) bool {
         return false;
     }
 
+    var cur_uri: ?[]const u8 = null;
+    if (params.chunkId != cy.NullId) {
+        cur_uri = c.fromStr(params.curUri);
+    }
+
     const alloc = vm.alloc;
-    const uri = zResolve(vm, alloc, params.chunkId, params.buf[0..params.bufLen], c.fromStr(params.curUri), spec) catch |e| {
+    const r_uri = zResolve(vm, alloc, params.chunkId, params.buf[0..params.bufLen], cur_uri, uri) catch |e| {
         if (e == error.HandledError) {
             return false;
         } else {
-            const msg = cy.fmt.allocFormat(alloc, "Resolve module `{}`, error: `{}`", &.{v(spec), v(e)}) catch return false;
+            const msg = cy.fmt.allocFormat(alloc, "Resolve module `{}`, error: `{}`", &.{v(uri), v(e)}) catch return false;
             defer alloc.free(msg);
             c.reportApiError(@ptrCast(vm), c.toStr(msg));
             return false;
         }
     };
 
-    params.resUri.* = uri.ptr;
-    params.resUriLen.* = uri.len;
+    params.resUri.* = r_uri.ptr;
+    params.resUriLen.* = r_uri.len;
     return true;
 }
 
-fn zResolve(vm: *cy.VM, alloc: std.mem.Allocator, chunkId: cy.ChunkId, buf: []u8, curUri: []const u8, spec: []const u8) ![]const u8 {
+fn zResolve(vm: *cy.VM, alloc: std.mem.Allocator, chunkId: cy.ChunkId, buf: []u8, cur_uri_opt: ?[]const u8, spec: []const u8) ![]const u8 {
     _ = chunkId;
     if (std.mem.startsWith(u8, spec, "http://") or std.mem.startsWith(u8, spec, "https://")) {
         const uri = try std.Uri.parse(spec);
@@ -200,13 +205,16 @@ fn zResolve(vm: *cy.VM, alloc: std.mem.Allocator, chunkId: cy.ChunkId, buf: []u8
         return spec;
     }
 
-    // Create path from the current script.
-    // There should always be a parent directory since `curUri` should be absolute when dealing with file modules.
-    const dir = std.fs.path.dirname(curUri) orelse return error.NoParentDir;
-
     var pathBuf: [4096]u8 = undefined;
     var fbuf = std.io.fixedBufferStream(&pathBuf);
-    try fbuf.writer().print("{s}/{s}", .{dir, spec});
+    if (cur_uri_opt) |cur_uri| {
+        // Create path from the current script.
+        // There should always be a parent directory since `curUri` should be absolute when dealing with file modules.
+        const dir = std.fs.path.dirname(cur_uri) orelse return error.NoParentDir;
+        try fbuf.writer().print("{s}/{s}", .{dir, spec});
+    } else {
+        _ = try fbuf.write(spec);
+    }
     const path = fbuf.getWritten();
 
     // Get canonical path.

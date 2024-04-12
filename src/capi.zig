@@ -111,7 +111,7 @@ pub fn toStr(s: []const u8) Str {
         .len = s.len,
     };
 }
-pub const null_str = Str{ .buf = null, .len = 0 };
+pub const NullStr = Str{ .buf = null, .len = 0 };
 
 pub const ValueSlice = c.CsValueSlice;
 pub const FuncFn = c.CsFuncFn;

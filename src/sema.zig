@@ -1194,30 +1194,6 @@ pub fn resolveTypeAlias(c: *cy.Chunk, sym: *cy.sym.TypeAlias) !void {
     sym.resolved = true;
 }
 
-pub fn resolveModuleSpec(self: *cy.Chunk, buf: []u8, spec: []const u8, nodeId: cy.NodeId) ![]const u8 {
-    self.compiler.hasApiError = false;
-
-    var resUri: [*]const u8 = undefined;
-    var resUriLen: usize = undefined;
-    const params: cc.ResolverParams = .{
-        .chunkId = self.id,
-        .curUri = cc.toStr(self.srcUri),
-        .spec = cc.toStr(spec),
-        .buf = buf.ptr,
-        .bufLen = buf.len,
-        .resUri = @ptrCast(&resUri),
-        .resUriLen = &resUriLen,
-    };
-    if (!self.compiler.moduleResolver.?(@ptrCast(self.compiler.vm), params)) {
-        if (self.compiler.hasApiError) {
-            return self.reportErrorFmt(self.compiler.apiError, &.{}, nodeId);
-        } else {
-            return self.reportErrorFmt("Failed to resolve module.", &.{}, nodeId);
-        }
-    }
-    return resUri[0..resUriLen];
-}
-
 pub fn resolveUseAlias(c: *cy.Chunk, node_id: cy.NodeId) !void {
     const node = c.ast.node(node_id);
     const name = c.ast.nodeStringById(node.data.use_alias.name);
@@ -1253,7 +1229,7 @@ pub fn declareUseImport(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     }
 
     var buf: [4096]u8 = undefined;
-    const uri = try resolveModuleSpec(c, &buf, specPath, node.data.import_stmt.spec);
+    const uri = try cy.compiler.resolveModuleUriFrom(c, &buf, specPath, node.data.import_stmt.spec);
 
     // resUri is duped. Moves to chunk afterwards.
     const dupedResUri = try c.alloc.dupe(u8, uri);
@@ -1282,7 +1258,7 @@ pub fn declareModuleAlias(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     }
 
     var buf: [4096]u8 = undefined;
-    const uri = try resolveModuleSpec(c, &buf, specPath, node.data.import_stmt.spec);
+    const uri = try cy.compiler.resolveModuleUri(c, &buf, specPath, node.data.import_stmt.spec);
 
     const import = try c.declareModuleAlias(@ptrCast(c.sym), name, undefined, nodeId);
 
@@ -3299,7 +3275,7 @@ fn reportIncompatibleCallSig(c: *cy.Chunk, sym: *cy.sym.FuncSym, args: []const c
             cur = curFunc.next;
         }
     }
-    try c.compiler.addReportConsume(.compile_err, c.id, nodeId, try msg.toOwnedSlice(c.alloc));
+    try c.compiler.addReportConsume(.compile_err, try msg.toOwnedSlice(c.alloc), c.id, nodeId);
     return error.CompileError;
 }
 

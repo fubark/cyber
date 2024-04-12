@@ -119,6 +119,26 @@ export fn csEvalExt(vm: *cy.VM, uri: c.Str, src: c.Str, config: c.EvalConfig, ou
     return res;
 }
 
+export fn csEvalPath(vm: *cy.VM, uri: c.Str, config: c.EvalConfig, outVal: *cy.Value) c.ResultCode {
+    var res = c.Success;
+    outVal.* = vm.eval(c.fromStr(uri), null, config) catch |err| b: {
+        switch (err) {
+            error.CompileError => {
+                res = c.ErrorCompile;
+            },
+            error.Panic => {
+                res = c.ErrorPanic;
+            },
+            else => {
+                res = c.ErrorUnknown;
+            },
+        }
+        break :b undefined;
+    };
+    vm.last_res = res;
+    return res;
+}
+
 export fn csDefaultCompileConfig() c.CompileConfig {
     return .{
         .single_run = false,
@@ -197,7 +217,7 @@ export fn csNewLastErrorSummary(vm: *cy.VM) c.Str {
     } else if (vm.last_res == c.ErrorPanic) {
         return csNewPanicSummary(vm);
     } else {
-        return c.null_str;
+        return c.NullStr;
     }
 }
 

@@ -25,4 +25,8 @@ test.eq(v.payload, 999)
 v[123] = 'abc'
 test.eq(v[123], 'abc')
 
+-- Table with no fields declared.
+let A{}
+let a = A{}
+
 --cytest: pass

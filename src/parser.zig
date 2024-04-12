@@ -473,6 +473,7 @@ pub const Parser = struct {
     fn parseLetTableFields(self: *Parser) !ListResult {
         self.consumeWhitespaceTokens();
         if (self.peek().tag() == .right_brace) {
+            self.advance();
             return ListResult{
                 .head = cy.NullNode,
                 .len = 0,

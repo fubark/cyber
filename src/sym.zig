@@ -163,6 +163,8 @@ pub const Sym = extern struct {
                 size = @sizeOf(TypeTemplate);
             },
             .distinct_t => {
+                const distinct_t = self.cast(.distinct_t);
+                distinct_t.getMod().deinit(alloc);
                 size = @sizeOf(TypeSym);
             },
             .field => {

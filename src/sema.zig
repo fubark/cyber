@@ -2480,7 +2480,7 @@ fn resolveSymType(c: *cy.Chunk, expr_id: cy.NodeId) !cy.TypeId {
                 return c.reportErrorFmt("Expected a type symbol. `{}` is a type template and must be expanded to a type first.", &.{v(sym.name())}, expr_id);
             },
             else => {
-                return c.reportErrorFmt("`{}` is not a type symbol.", &.{v(sym.name())}, expr_id);
+                return c.reportErrorFmt("`{}` is not a type symbol. Found `{}`.", &.{v(sym.name()), v(sym.type)}, expr_id);
             }
         }
     };
@@ -2569,6 +2569,7 @@ fn resolveTemplateSig(c: *cy.Chunk, paramHead: cy.NodeId, numParams: u32, outSig
     defer c.typeStack.items.len = typeStart;
 
     const params = try c.alloc.alloc(cy.sym.TemplateParam, numParams);
+    errdefer c.alloc.free(params);
 
     var param = paramHead;
     var i: u32 = 0;

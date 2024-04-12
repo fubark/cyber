@@ -328,6 +328,8 @@ if (!aot) {
     run.case("vars/static_init_dependencies.cy");
     run.case("vars/static_init_error.cy");
     run.case("vars/static_init_read_self_error.cy");
+    run.case("vars/use_global.cy");
+    run.case("vars/use_global_panic.cy");
 
     run.case("control_flow/for_iter.cy");
     run.case("control_flow/for_iter_unsupported_panic.cy");

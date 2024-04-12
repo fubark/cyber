@@ -151,7 +151,7 @@ fn nodeToCtValue(c: *cy.Chunk, nodeId: cy.NodeId) !CtValue {
             const name = c.ast.nodeString(node);
 
             if (c.semaProcs.items.len > 0) {
-                const res = try sema.getOrLookupVar(c, name, true, nodeId);
+                const res = try sema.getOrLookupVar(c, name, nodeId);
                 switch (res) {
                     .local => |id| {
                         _ = id;

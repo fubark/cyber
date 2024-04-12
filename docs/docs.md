@@ -50,6 +50,7 @@ for worlds -> w:
   * [Explicit type constraint.](#explicit-type-constraint)
   * [Variable scopes.](#variable-scopes)
   * [Static variables.](#static-variables)
+  * [`use $global`](#use-global)
 * [Reserved identifiers.](#reserved-identifiers)
   * [Keywords.](#keywords)
   * [Contextual keywords.](#contextual-keywords)
@@ -243,6 +244,22 @@ var .myImage =:
 ```
 The final resulting value that is assigned to the static variable is provided by a `break` statement. If a `break` statement is not provided, `none` is assigned instead.
 
+### `use $global`
+When `use $global` is declared in the module, it allows the use of undeclared variables:
+```cy
+use $global
+
+a = 123
+print a    --> 123
+```
+
+Accessing an undeclared variable before it's initialized results in a runtime error:
+```cy
+use $global
+
+print a    --> panic: `a` is not defined in `$global`.
+```
+
 ## Reserved identifiers.
 
 ### Keywords.
@@ -420,7 +437,7 @@ If the cast fails at runtime, a panic is returned.
 ```cy
 var erased any = 123
 add(1, erased as int)     --> Success.
-print(erased as String)   --> Panic. Can not cast `int` to `String`.
+print(erased as String)   --> panic: Can not cast `int` to `String`.
 
 func add(a int, b int):
     return a + b
@@ -796,7 +813,7 @@ However, accessing a field before it's initialized results in a panic:
 o.my_field = 234
 print o.my_field   --> 234
 
-print o.foo        --> panic. The field `foo` was not initialized.
+print o.foo        --> panic: The field `foo` was not initialized.
 ```
 
 ### Table indexing.
@@ -2284,7 +2301,7 @@ func fail():
     throw error.Oops      -- Throws an error with the symbol `#Oops`
 
 func fail2():
-    throw 123             -- Panic. Can only throw an `error` value.
+    throw 123             -- panic: Can only throw an `error` value.
 ```
 
 `throw` can also be used as an expression.

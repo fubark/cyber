@@ -168,6 +168,17 @@ pub fn listRemove(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     return Value.Void;
 }
 
+/// `mapIndex` with a different error message.
+pub fn getGlobal(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+    const map = args[0].asHeapObject();
+    if (map.map.map().get(args[1])) |val| {
+        vm.retain(val);
+        return val;
+    } else {
+        return vm.prepPanic("Variable is not defined in `$global`.");
+    }
+}
+
 pub fn mapIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const map = args[0].asHeapObject();
     if (map.map.map().get(args[1])) |val| {

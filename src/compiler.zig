@@ -79,6 +79,9 @@ pub const Compiler = struct {
 
     main_chunk: *cy.Chunk,
 
+    global_sym: ?*cy.sym.UserVar,
+    get_global: ?*cy.Func,
+
     pub fn init(self: *Compiler, vm: *cy.VM) !void {
         self.* = .{
             .alloc = vm.alloc,
@@ -97,6 +100,8 @@ pub const Compiler = struct {
             .hasApiError = false,
             .apiError = "",
             .main_chunk = undefined,
+            .global_sym = null,
+            .get_global = null,
         };
         try self.reinit();    
     }

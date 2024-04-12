@@ -107,6 +107,7 @@ pub const Chunk = struct {
     /// Symbols in the using namespace.
     use_syms: std.StringHashMapUnmanaged(*cy.Sym),
     use_alls: std.ArrayListUnmanaged(*cy.Sym),
+    use_global: bool,
 
     /// Successful module func signature matches are cached.
     funcCheckCache: std.HashMapUnmanaged(sema.ModFuncSigKey, *cy.Func, cy.hash.KeyU96Context, 80),
@@ -251,6 +252,7 @@ pub const Chunk = struct {
             .sym_cache = .{},
             .use_syms = .{},
             .use_alls = .{},
+            .use_global = false,
             .funcCheckCache = .{},
             .rega = cy.register.Allocator.init(c, id),
             .curHostFuncIdx = 0,

@@ -113,7 +113,7 @@ pub fn printTraceAtNode(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
 pub fn printTraceAtPc(vm: *cy.VM, pc: u32, title: []const u8, msg: []const u8) !void {
     if (pc == cy.NullId) {
-        rt.printErrorFmt(vm, "{}: {} (external)\n", &.{v(title), v(msg)});
+        rt.errFmt(vm, "{}: {} (external)\n", &.{v(title), v(msg)});
         return;
     }
     if (getIndexOfDebugSym(vm, pc)) |idx| {
@@ -122,7 +122,7 @@ pub fn printTraceAtPc(vm: *cy.VM, pc: u32, title: []const u8, msg: []const u8) !
         const node = chunk.ast.node(sym.loc);
         try printUserError(vm, title, msg, sym.file, node.srcPos);
     } else {
-        rt.printErrorFmt(vm, "{}: {}\nMissing debug sym for {}, pc: {}.\n", &.{
+        rt.errFmt(vm, "{}: {}\nMissing debug sym for {}, pc: {}.\n", &.{
             v(title), v(msg), v(vm.ops[pc].opcode()), v(pc)});
     }
 }

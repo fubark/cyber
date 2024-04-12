@@ -269,8 +269,8 @@ pub fn wrapErrorValue(comptime T: type, val: T) ErrorUnion(T) {
     return .{ .err = @bitCast(@as(u64, 0)), .val = val };
 }
 
-pub fn wrapError(comptime T: type, err: Error) ErrorUnion(T) {
-    return .{ .err = err, .val = undefined };
+pub fn wrapError(comptime T: type, e: Error) ErrorUnion(T) {
+    return .{ .err = e, .val = undefined };
 }
 
 const StaticAny = extern struct {
@@ -320,7 +320,7 @@ pub const ErrorWriter = struct {
     }
 
     pub fn writeAll(self: ErrorWriter, bytes: []const u8) !void {
-        printError(self.c, bytes);
+        err(self.c, bytes);
     }
 
     pub fn writeByte(self: ErrorWriter, byte: u8) !void {
@@ -341,7 +341,7 @@ pub const ErrorWriter = struct {
     }
 };
 
-pub fn printError(c: Context, str: []const u8) void {
+pub fn err(c: Context, str: []const u8) void {
     if (build_options.rt == .vm) {
         c.print_err.?(@ptrCast(c), api.toStr(str));
     } else {
@@ -350,7 +350,7 @@ pub fn printError(c: Context, str: []const u8) void {
     }
 }
 
-pub fn printErrorFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) void {
+pub fn errFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) void {
     if (build_options.rt == .vm) {
         const w = c.clearTempString();
         cy.fmt.print(w, format, args);
@@ -361,7 +361,7 @@ pub fn printErrorFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtVal
     }
 }
 
-pub fn printErrorZFmt(c: Context, comptime format: []const u8, args: anytype) void {
+pub fn errZFmt(c: Context, comptime format: []const u8, args: anytype) void {
     if (build_options.rt == .vm) {
         const w = c.clearTempString();
         std.fmt.format(w, format, args) catch cy.fatal();
@@ -437,8 +437,8 @@ pub fn writeStderr(s: []const u8) void {
     @setCold(true);
     const w = cy.fmt.lockStderrWriter();
     defer cy.fmt.unlockPrint();
-    _ = w.writeAll(s) catch |err| {
-        logger.tracev("{}", .{err});
+    _ = w.writeAll(s) catch |e| {
+        logger.tracev("{}", .{e});
         cy.fatal();
     };
 }

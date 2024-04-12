@@ -82,8 +82,8 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
     const exp_t = exp.getTypeId();
 
     if (act_t != exp_t) {
-        rt.printErrorFmt(c, "Types do not match:\n", &.{});
-        rt.printErrorFmt(c, "actual: {} != {}\n", &.{v(rt.getTypeName(c, act_t)), v(rt.getTypeName(c, exp_t))});
+        rt.errFmt(c, "Types do not match:\n", &.{});
+        rt.errFmt(c, "actual: {} != {}\n", &.{v(rt.getTypeName(c, act_t)), v(rt.getTypeName(c, exp_t))});
         return false;
     }
 
@@ -118,7 +118,7 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
                 if (act.asInteger() == exp.asInteger()) {
                     return true;
                 } else {
-                    rt.printErrorFmt(c, "actual: {} != {}\n", &.{v(act.asInteger()), v(exp.asInteger())});
+                    rt.errFmt(c, "actual: {} != {}\n", &.{v(act.asInteger()), v(exp.asInteger())});
                     return false;
                 }
             },
@@ -126,7 +126,7 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
                 if (act.asF64() == exp.asF64()) {
                     return true;
                 } else {
-                    rt.printErrorFmt(c, "actual: {} != {}\n", &.{v(act.asF64()), v(exp.asF64())});
+                    rt.errFmt(c, "actual: {} != {}\n", &.{v(act.asF64()), v(exp.asF64())});
                     return false;
                 }
             },
@@ -136,7 +136,7 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
                 if (std.mem.eql(u8, actStr, expStr)) {
                     return true;
                 } else {
-                    rt.printErrorFmt(c, "actual: '{}' != '{}'\n", &.{v(actStr), v(expStr)});
+                    rt.errFmt(c, "actual: '{}' != '{}'\n", &.{v(actStr), v(expStr)});
                     return false;
                 }
             },
@@ -146,7 +146,7 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
                 if (std.mem.eql(u8, actStr, expStr)) {
                     return true;
                 } else {
-                    rt.printErrorFmt(c, "actual: '{}' != '{}'\n", &.{v(actStr), v(expStr)});
+                    rt.errFmt(c, "actual: '{}' != '{}'\n", &.{v(actStr), v(expStr)});
                     return false;
                 }
             },
@@ -156,7 +156,7 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
                 if (actPtr == expPtr) {
                     return true;
                 } else {
-                    rt.printErrorFmt(c, "actual: {} != {}\n", &.{v(actPtr), v(expPtr)});
+                    rt.errFmt(c, "actual: {} != {}\n", &.{v(actPtr), v(expPtr)});
                     return false;
                 }
             },
@@ -166,7 +166,7 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
                 if (actv == expv) {
                     return true;
                 } else {
-                    rt.printErrorFmt(c, "actual: {} != {}\n", &.{v(actv), v(expv)});
+                    rt.errFmt(c, "actual: {} != {}\n", &.{v(actv), v(expv)});
                     return false;
                 }
             },
@@ -176,7 +176,7 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
                 if (actv == expv) {
                     return true;
                 } else {
-                    rt.printErrorFmt(c, "actual: {} != {}\n", &.{v(rt.getSymName(c, actv)), v(rt.getSymName(c, expv))});
+                    rt.errFmt(c, "actual: {} != {}\n", &.{v(rt.getSymName(c, actv)), v(rt.getSymName(c, expv))});
                     return false;
                 }
             },
@@ -188,7 +188,7 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
                 } else {
                     const actName: []const u8 = if (act.isInterrupt()) "Interrupt" else rt.getSymName(c, actv);
                     const expName: []const u8 = if (exp.isInterrupt()) "Interrupt" else rt.getSymName(c, expv);
-                    rt.printErrorFmt(c, "actual: error.{} != error.{}\n", &.{v(actName), v(expName)});
+                    rt.errFmt(c, "actual: error.{} != error.{}\n", &.{v(actName), v(expName)});
                     return false;
                 }
             },
@@ -198,7 +198,7 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
                 if (std.meta.eql(actv, expv)) {
                     return true;
                 } else {
-                    rt.printErrorFmt(c, "actual: {} != {}\n", &.{v(actv.type), v(expv.type)});
+                    rt.errFmt(c, "actual: {} != {}\n", &.{v(actv.type), v(expv.type)});
                     return false;
                 }
             },
@@ -210,7 +210,7 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
                 if (actv == expv) {
                     return true;
                 } else {
-                    rt.printErrorFmt(c, "actual: {} != {}\n", &.{v(actv), v(expv)});
+                    rt.errFmt(c, "actual: {} != {}\n", &.{v(actv), v(expv)});
                     return false;
                 }
             },
@@ -223,7 +223,7 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
                     if (actv == expv) {
                         return true;
                     } else {
-                        rt.printErrorFmt(c, "actual: {} != {}\n", &.{v(actv), v(expv)});
+                        rt.errFmt(c, "actual: {} != {}\n", &.{v(actv), v(expv)});
                         return false;
                     }
                 }
@@ -236,7 +236,7 @@ pub fn assert(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (args[0].asBool()) {
         return Value.Void;
     } else {
-        rt.printError(vm, "Assertion failed.\n");
+        rt.err(vm, "Assertion failed.\n");
         return rt.prepThrowError(vm, .AssertError);
     }
 }
@@ -252,16 +252,16 @@ pub fn eqNear(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
             if (std.math.approxEqAbs(f64, act.asF64(), exp.asF64(), 1e-5)) {
                 return Value.True;
             } else {
-                rt.printErrorFmt(vm, "actual: {} != {}\n", &.{v(act.asF64()), v(exp.asF64())});
+                rt.errFmt(vm, "actual: {} != {}\n", &.{v(act.asF64()), v(exp.asF64())});
                 return rt.prepThrowError(vm, .AssertError);
             }
         } else {
-            rt.printErrorFmt(vm, "Expected float, actual: {}\n", &.{v(actType)});
+            rt.errFmt(vm, "Expected float, actual: {}\n", &.{v(actType)});
             return rt.prepThrowError(vm, .AssertError);
         }
     } else {
-        rt.printErrorFmt(vm, "Types do not match:\n", &.{});
-        rt.printErrorFmt(vm, "actual: {} != {}\n", &.{v(actType), v(expType)});
+        rt.errFmt(vm, "Types do not match:\n", &.{});
+        rt.errFmt(vm, "actual: {} != {}\n", &.{v(actType), v(expType)});
         return rt.prepThrowError(vm, .AssertError);
     }
 }
@@ -282,22 +282,22 @@ pub fn eqList(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
                 const expItems = expo.list.items();
                 while (i < acto.list.list.len) : (i += 1) {
                     if (!eq2(vm, actItems[i], expItems[i])) {
-                        rt.printErrorFmt(vm, "Item mismatch at idx: {}\n", &.{v(i)});
+                        rt.errFmt(vm, "Item mismatch at idx: {}\n", &.{v(i)});
                         return rt.prepThrowError(vm, .AssertError);
                     }
                 }
                 return Value.True;
             } else {
-                rt.printErrorFmt(vm, "actual list len: {} != {}\n", &.{v(acto.list.list.len), v(expo.list.list.len)});
+                rt.errFmt(vm, "actual list len: {} != {}\n", &.{v(acto.list.list.len), v(expo.list.list.len)});
                 return rt.prepThrowError(vm, .AssertError);
             }
         } else {
-            rt.printErrorFmt(vm, "Expected list, actual: {}\n", &.{v(actType)});
+            rt.errFmt(vm, "Expected list, actual: {}\n", &.{v(actType)});
             return rt.prepThrowError(vm, .AssertError);
         }
     } else {
-        rt.printErrorFmt(vm, "Types do not match:\n", &.{});
-        rt.printErrorFmt(vm, "actual: {} != {}\n", &.{v(actType), v(expType)});
+        rt.errFmt(vm, "Types do not match:\n", &.{});
+        rt.errFmt(vm, "actual: {} != {}\n", &.{v(actType), v(expType)});
         return rt.prepThrowError(vm, .AssertError);
     }
 }

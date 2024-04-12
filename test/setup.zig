@@ -213,13 +213,13 @@ pub const VMrunner = struct {
             };
             cb(run, res) catch |err| {
                 if (err == error.EvalError) {
-                    printErrorReport(vm, res_code);
+                    errReport(vm, res_code);
                 }
                 return err;
             };
         }  else {
             if (res_code != c.Success) {
-                printErrorReport(vm, res_code);
+                errReport(vm, res_code);
                 return error.EvalError;
             }
         }
@@ -319,7 +319,7 @@ pub fn compile(config: Config, src: []const u8) !void {
 
     const res_code = c.compile(run.vm, c.toStr(config.uri), c.toStr(src), compile_c);
     if (res_code != c.Success) {
-        printErrorReport(run.vm, res_code);
+        errReport(run.vm, res_code);
         return error.CompileError;
     }
 }
@@ -349,7 +349,7 @@ pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalR
     try run.eval(config, src, optCb);
 }
 
-pub fn printErrorReport(vm: *c.VM, code: c.ResultCode) void {
+pub fn errReport(vm: *c.VM, code: c.ResultCode) void {
     if (c.silent()) {
         return;
     }

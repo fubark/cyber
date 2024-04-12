@@ -985,7 +985,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 174-013c103</div>
+    <div class="sub-title">v0.4-dev 186-1ad836c</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -1007,7 +1007,7 @@ table tbody tr:nth-child(even) {
 <li><a href="#metaprogramming">Metaprogramming.</a></li>
 <li><a href="#embedding">Embedding.</a></li>
 <li><a href="#memory">Memory.</a></li>
-<li><a href="#backends">Backends.</a></li>
+<li><a href="#cli">CLI.</a></li>
     </ul>
 </header>
 <main>
@@ -1038,6 +1038,7 @@ for worlds -> w:
 <li><a href="#explicit-type-constraint" title="">Explicit type constraint.</a></li>
 <li><a href="#variable-scopes" title="">Variable scopes.</a></li>
 <li><a href="#static-variables" title="">Static variables.</a></li>
+<li><a href="#use-global" title=""><code>use $global</code></a></li>
 </ul>
 </li>
 <li><a href="#reserved-identifiers" title="">Reserved identifiers.</a><ul>
@@ -1203,6 +1204,19 @@ For this use case, you can use a declaration block. <em>Planned Feature</em></p>
 </code></pre>
 <p>The final resulting value that is assigned to the static variable is provided by a <code>break</code> statement. If a <code>break</code> statement is not provided, <code>none</code> is assigned instead.</p>
 <a href="#syntax">^topic</a>
+<h3 id="use-global"><code>use $global</code> <a href="#use-global">#</a></h3>
+<p>When <code>use $global</code> is declared in the module, it allows the use of undeclared variables:</p>
+<pre><code class="language-cy">use $global
+
+a = 123
+print a    --> 123
+</code></pre>
+<p>Accessing an undeclared variable before it's initialized results in a runtime error:</p>
+<pre><code class="language-cy">use $global
+
+print a    --> panic: `a` is not defined in `$global`.
+</code></pre>
+<a href="#syntax">^topic</a>
 <h2 id="reserved-identifiers">Reserved identifiers. <a href="#reserved-identifiers">#</a></h2>
 <a href="#syntax">^topic</a>
 <h3 id="keywords">Keywords. <a href="#keywords">#</a></h3>
@@ -1335,7 +1349,7 @@ a << b
 <p>If the cast fails at runtime, a panic is returned.</p>
 <pre><code class="language-cy">var erased any = 123
 add(1, erased as int)     --> Success.
-print(erased as String)   --> Panic. Can not cast `int` to `String`.
+print(erased as String)   --> panic: Can not cast `int` to `String`.
 
 func add(a int, b int):
     return a + b
@@ -1642,7 +1656,7 @@ However, accessing a field before it's initialized results in a panic:</p>
 <pre><code class="language-cy">o.my_field = 234
 print o.my_field   --> 234
 
-print o.foo        --> panic. The field `foo` was not initialized.
+print o.foo        --> panic: The field `foo` was not initialized.
 </code></pre>
 <a href="#basic-types">^topic</a>
 <h3 id="table-indexing">Table indexing. <a href="#table-indexing">#</a></h3>
@@ -2560,7 +2574,7 @@ r = foo()         -- Calls the function `random`.
 <li><a href="#symbol-visibility" title="">Symbol visibility.</a></li>
 <li><a href="#symbol-alias" title="">Symbol alias.</a></li>
 <li><a href="#builtin-modules" title="">Builtin modules.</a></li>
-<li><a href="#builtins" title="">builtins.</a><ul>
+<li><a href="#core" title="">core.</a><ul>
 <li><a href="#type-bool" title=""><code>type bool</code></a></li>
 <li><a href="#type-error" title=""><code>type error</code></a></li>
 <li><a href="#type-int" title=""><code>type int</code></a></li>
@@ -2723,18 +2737,18 @@ use Vec2 -> eng.Vector2
 <h2 id="builtin-modules">Builtin modules. <a href="#builtin-modules">#</a></h2>
 <p>Builtin modules are the bare minimum that comes with Cyber. The <a href="#embedding" title="">embeddable library</a> contains these modules and nothing more. They include:</p>
 <ul>
-<li><a href="#builtins" title="">builtins</a>: Cyber related functions and commonly used utilities.</li>
+<li><a href="#core" title="">core</a>: Cyber related functions and commonly used utilities.</li>
 <li><a href="#math" title="">math</a>: Math constants and functions.</li>
 </ul>
 <a href="#modules">^topic</a>
-<h2 id="builtins">builtins. <a href="#builtins">#</a></h2>
-<p>The <code>builtins</code> module contains functions related to Cyber and common utilities. It is automatically imported into each script's namespace.</p>
+<h2 id="core">core. <a href="#core">#</a></h2>
+<p>The <code>core</code> module contains functions related to Cyber and common utilities. It is automatically imported into each script's namespace.</p>
 <p>Sample usage:</p>
 <pre><code class="language-cy">-- `print` and `typeof` are available without imports.
 print 'hello'
 print typeof('my str').id()
 </code></pre>
-<!-- builtins.start -->
+<!-- core.start -->
 <blockquote><p><code>func copy(val any) any</code></p>
 <p>Copies a primitive value or creates a shallow copy of an object value.</p>
 </blockquote><blockquote><p><code>func dump(val any) <void></code></p>
@@ -2768,8 +2782,6 @@ print typeof('my str').id()
 <p>Encodes a value to CYON string.</p>
 </blockquote><blockquote><p><code>func typeof(val any) metatype</code></p>
 <p>Returns the value's type as a <code>metatype</code> object.</p>
-</blockquote><blockquote><p><code>func typesym(val any) symbol</code></p>
-<p>Returns the value's type as one of the predefined symbols:  .float, .int, .bool, .object, .list, .map, .string, .array, .function, .fiber, .pointer, .symbol, .metatype, .none, .error</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-void"><code>type void</code> <a href="#type-void">#</a></h3>
 <a href="#modules">^topic</a>
@@ -2841,10 +2853,10 @@ print typeof('my str').id()
 <blockquote><p><code>func $index(idx int) dynamic</code></p>
 </blockquote><blockquote><p><code>func $index(range Range) List</code></p>
 </blockquote><blockquote><p><code>func $setIndex(idx int, val any) <void></code></p>
-</blockquote><blockquote><p><code>func append(list List) <void></code></p>
-<p>Appends the elements of another list to the end of this list.</p>
 </blockquote><blockquote><p><code>func append(val any) <void></code></p>
 <p>Appends a value to the end of the list.</p>
+</blockquote><blockquote><p><code>func appendAll(list List) <void></code></p>
+<p>Appends the elements of another list to the end of this list.</p>
 </blockquote><blockquote><p><code>func insert(idx int, val any) <void></code></p>
 <p>Inserts a value at index <code>idx</code>.</p>
 </blockquote><blockquote><p><code>func iterator() ListIterator</code></p>
@@ -3029,7 +3041,7 @@ print typeof('my str').id()
 <h3 id="type-box"><code>type Box</code> <a href="#type-box">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-tccstate"><code>type TccState</code> <a href="#type-tccstate">#</a></h3>
-<!-- builtins.end -->
+<!-- core.end -->
 <a href="#modules">^topic</a>
 <h2 id="math">math. <a href="#math">#</a></h2>
 <p>The math module contains commonly used math constants and functions.</p>
@@ -3511,7 +3523,7 @@ A thrown error continues to bubble up the call stack until it is caught by a <co
     throw error.Oops      -- Throws an error with the symbol `#Oops`
 
 func fail2():
-    throw 123             -- Panic. Can only throw an `error` value.
+    throw 123             -- panic: Can only throw an `error` value.
 </code></pre>
 <p><code>throw</code> can also be used as an expression.</p>
 <pre><code class="language-cy">func fail():
@@ -4163,7 +4175,7 @@ Only one module loader can be active and is set using <code>csSetModuleLoader</c
         out->typeLoader = typeLoader;
         return true;
     } else {
-        // Fallback to the default module loader to load `builtins`.
+        // Fallback to the default module loader to load `core`.
         return csDefaultModuleLoader(vm, spec, out);
     }
 }
@@ -4177,7 +4189,7 @@ int main() {
 <p>The above example checks whether "my_mod" was imported and returns it's source code. Additional loaders are returned to load the functions, variables, and types from the source code.</p>
 <a href="#embedding">^topic</a>
 <h3 id="default-module-loader">Default module loader. <a href="#default-module-loader">#</a></h3>
-<p>Since only one module loader can be set to the VM instance, a custom loader is required to handle the "builtins" import which contains all of the core types and functions in Cyber. This can simply be delegated to <code>csDefaultModuleLoader</code>.</p>
+<p>Since only one module loader can be set to the VM instance, a custom loader is required to handle the "core" import which contains all of the core types and functions in Cyber. This can simply be delegated to <code>csDefaultModuleLoader</code>.</p>
 <a href="#embedding">^topic</a>
 <h3 id="function-loader">Function loader. <a href="#function-loader">#</a></h3>
 <p>A function loader describes how to load a <code>#host</code> function when it's encountered by the compiler.
@@ -4370,20 +4382,63 @@ print res['numCycFreed']      -- Output: 2
 print res['numObjFreed']      -- Output: 2
 </code></pre>
 <a href="#memory">^topic</a>
-<h1 id="backends">Backends. <a href="#backends">#</a></h1>
+<h1 id="cli">CLI. <a href="#cli">#</a></h1>
 <ul>
-<li><a href="#jit" title="">JIT.</a></li>
-<li><a href="#aot" title="">AOT.</a></li>
+<li><a href="#repl" title="">REPL.</a></li>
+<li><a href="#jit-compiler" title="">JIT compiler.</a></li>
+<li><a href="#aot-compiler" title="">AOT compiler.</a></li>
 </ul>
 <p><a href="#table-of-contents" title="">^top</a></p>
-<h2 id="jit">JIT. <a href="#jit">#</a></h2>
+<h2 id="repl">REPL. <a href="#repl">#</a></h2>
+<p>The REPL is started by running the CLI without any arguments:</p>
+<pre><code class="language-bash">cyber
+</code></pre>
+<p>The REPL starts new sessions with <a href="#use-global" title=""><code>use $global</code></a>. This allows undeclared variables to be used similar to other dynamic languages:</p>
+<pre><code class="language-bash">> a = 123
+> a * 2
+`int` 246
+</code></pre>
+<p>When the first input ends with <code>:</code>, the REPL will automatically indent the next line. To recede the indentation, provide an empty input. Once the indent returns to the beginning, the entire code block is submitted for evaluation:</p>
+<pre><code class="language-bash">> if true:
+    | print 'hello!'
+    | 
+hello!
+</code></pre>
+<p>Top level declarations such as imports, types, and functions can be referenced in subsequent evals:</p>
+<pre><code class="language-bash">> use math
+> math.random()
+`float` 0.3650744641604983
+</code></pre>
+<pre><code class="language-bash">> type Foo:
+    | a int
+    |
+> f = Foo{a: 123}
+> f.a
+`int` 123
+</code></pre>
+<p>Local variables <strong>can not</strong> be referenced in subsequent evals, since their scope ends with each eval input:</p>
+<pre><code class="language-bash">> let a = 123
+> a
+panic: Variable is not defined in `$global`.
+
+input:1:1 main:
+a
+^
+</code></pre>
+<a href="#cli">^topic</a>
+<h2 id="jit-compiler">JIT compiler. <a href="#jit-compiler">#</a></h2>
 <p>Cyber's just-in-time compiler is incomplete and unstable. To run your script with JIT enabled:</p>
 <pre><code class="language-bash">cyber -jit &lt;script&gt;
 </code></pre>
-<p>The JIT compiler is just as fast as the bytecode generation so when it's enabled, the entire script is compiled from the start.</p>
-<a href="#backends">^topic</a>
-<h2 id="aot">AOT <a href="#aot">#</a></h2>
-<p>Work on the ahead-of-time compiler has not begun.</p>
+<p>The goal of the JIT compiler is to be fast at compilation while still being significantly faster than the interpreter. The codegen involves stitching together pregenerated machine code that targets the same runtime stack slots used by the VM. This technique is also known as <code>copy-and-patch</code>. As the VM transitions to unboxed data types, the generated code will see more performance gains.</p>
+<a href="#cli">^topic</a>
+<h2 id="aot-compiler">AOT compiler. <a href="#aot-compiler">#</a></h2>
+<p>The ahead-of-time compiler generates a static or dynamic binary from Cyber source code.
+This is done by first compiling Cyber code into C code, and using a C compiler to generate the final binary.
+The user can specify the system's <code>cc</code> compiler or the builtin <code>tinyc</code> compiler that is bundled with the CLI.
+<em>This is currently in progress.</em></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
 
 </main>
 <script>/*!

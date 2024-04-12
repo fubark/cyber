@@ -343,6 +343,7 @@ void csDestroy(CsVM* vm);
 
 CsResolverFn csGetResolver(CsVM* vm);
 void csSetResolver(CsVM* vm, CsResolverFn resolver);
+CsStr csResolve(CsVM* vm, CsStr uri);
 
 // The default module resolver. It returns `spec`.
 bool csDefaultResolver(CsVM* vm, CsResolverParams params);

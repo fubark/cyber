@@ -76,6 +76,7 @@ pub const declareDynVar = c.csDeclareDynVar;
 pub const declareVar = c.csDeclareVar;
 pub const expandTypeTemplate = c.csExpandTypeTemplate;
 pub const setResolver = c.csSetResolver;
+pub const resolve = c.csResolve;
 pub const setModuleLoader = c.csSetModuleLoader;
 pub const setPrinter = c.csSetPrinter;
 pub const setErrorPrinter = c.csSetErrorPrinter;

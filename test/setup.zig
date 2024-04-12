@@ -196,15 +196,24 @@ pub const VMrunner = struct {
             preEval(run);
         }
 
+        var r_uri = config.uri;
+        if (config.enableFileModules) {
+            r_uri = c.fromStr(c.resolve(vm, c.toStr(config.uri)));
+        }
+        defer if (config.enableFileModules) {
+            c.freeStr(vm, c.toStr(r_uri));
+        };
+
         var resv: c.Value = undefined;
-        const res_code = c.evalExt(vm, c.toStr(config.uri), c.toStr(src), .{ 
+        const c_config = c.EvalConfig{
             .single_run = false,
             .file_modules = config.enableFileModules,
             .gen_all_debug_syms = config.debug,
             .backend = cy.fromTestBackend(build_options.testBackend),
             .spawn_exe = false,
             .reload = config.reload,
-        }, @ptrCast(&resv));
+        };
+        const res_code = c.evalExt(vm, c.toStr(r_uri), c.toStr(src), c_config, @ptrCast(&resv));
 
         if (optCb) |cb| {
             const res = EvalResult{

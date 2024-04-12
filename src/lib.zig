@@ -251,6 +251,13 @@ export fn csSetResolver(vm: *cy.VM, resolver: c.ResolverFn) void {
     vm.compiler.moduleResolver = resolver;
 }
 
+export fn csResolve(vm: *cy.VM, uri: c.Str) c.Str {
+    var buf: [4096]u8 = undefined;
+    const r_uri_temp = cy.compiler.resolveModuleUri(vm.compiler, &buf, c.fromStr(uri)) catch fatal();
+    const r_uri = vm.alloc.dupe(u8, r_uri_temp) catch fatal();
+    return c.toStr(r_uri);
+}
+
 export fn csGetModuleLoader(vm: *cy.VM) c.ModuleLoaderFn {
     return vm.compiler.moduleLoader;
 }

@@ -326,7 +326,7 @@ pub fn listJoin(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     }
 }
 
-pub fn listAppendList(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn listAppendAll(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const obj = args[0].asHeapObject();
     const list = args[1].asHeapObject();
     for (list.list.items()) |it| {

@@ -40,17 +40,17 @@ a.append(1)
 t.eq(a.len(), 1)
 t.eq(a[0], 1)
 
--- append(List)
-a = [1, 2, 3]
-a.append([4, 5, 6])
-t.eqList(a, [1, 2, 3, 4, 5, 6])
-
 -- append(any)
 a = []
 var elem = t.erase(123)
 a.append(elem)
 t.eq(a.len(), 1)
 t.eq(a[0], 123)
+
+-- appendAll(List)
+a = [1, 2, 3]
+a.appendAll([4, 5, 6])
+t.eqList(a, [1, 2, 3, 4, 5, 6])
 
 -- insert() in empty
 a = []

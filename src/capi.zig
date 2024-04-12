@@ -42,6 +42,7 @@ pub const deinit = c.csDeinit;
 pub const destroy = c.csDestroy;
 pub const validate = c.csValidate;
 pub const defaultEvalConfig = c.csDefaultEvalConfig;
+pub const reset = c.csReset;
 pub const eval = c.csEval;
 pub const defaultCompileConfig = c.csDefaultCompileConfig;
 pub const compile = c.csCompile;

@@ -2755,21 +2755,23 @@ pub fn semaMainBlock(compiler: *cy.Compiler, mainc: *cy.Chunk) !u32 {
     const id = try pushProc(mainc, null);
     mainc.mainSemaProcId = id;
 
-    if (compiler.global_sym) |global| {
-        const set = try mainc.ir.pushEmptyStmt(compiler.alloc, .setVarSym, cy.NullNode);
-        const sym = try mainc.ir.pushExpr(.varSym, compiler.alloc, bt.Map, cy.NullNode, .{ .sym = @as(*cy.Sym, @ptrCast(global)) });
-        const map = try mainc.semaMap(cy.NullNode);
-        mainc.ir.setStmtData(set, .setVarSym, .{ .generic = .{
-            .left_t = CompactType.initStatic(bt.Map),
-            .right_t = CompactType.initStatic(bt.Map),
-            .left = sym,
-            .right = map.irIdx,
-        }});
+    if (!compiler.cont) {
+        if (compiler.global_sym) |global| {
+            const set = try mainc.ir.pushEmptyStmt(compiler.alloc, .setVarSym, cy.NullNode);
+            const sym = try mainc.ir.pushExpr(.varSym, compiler.alloc, bt.Map, cy.NullNode, .{ .sym = @as(*cy.Sym, @ptrCast(global)) });
+            const map = try mainc.semaMap(cy.NullNode);
+            mainc.ir.setStmtData(set, .setVarSym, .{ .generic = .{
+                .left_t = CompactType.initStatic(bt.Map),
+                .right_t = CompactType.initStatic(bt.Map),
+                .left = sym,
+                .right = map.irIdx,
+            }});
+        }
     }
 
     // Emit IR for initializers. DFS order. Stop at circular dependency.
     // TODO: Allow circular dependency between chunks but not symbols.
-    for (compiler.chunks.items) |c| {
+    for (compiler.newChunks()) |c| {
         if (c.hasStaticInit and !c.initializerVisited) {
             try visitChunkInit(compiler, c, );
         }

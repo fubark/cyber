@@ -82,6 +82,12 @@ pub const Compiler = struct {
     global_sym: ?*cy.sym.UserVar,
     get_global: ?*cy.Func,
 
+    /// Whether this is a subsequent compilation reusing the same state.
+    cont: bool,
+
+    chunk_start: u32,
+    type_start: u32,
+
     pub fn init(self: *Compiler, vm: *cy.VM) !void {
         self.* = .{
             .alloc = vm.alloc,
@@ -102,8 +108,11 @@ pub const Compiler = struct {
             .main_chunk = undefined,
             .global_sym = null,
             .get_global = null,
+            .cont = false,
+            .chunk_start = 0,
+            .type_start = 0,
         };
-        try self.reinit();    
+        try self.reinitPerRun();    
     }
 
     pub fn deinitModRetained(self: *Compiler) void {
@@ -163,7 +172,7 @@ pub const Compiler = struct {
         self.apiError = "";
     }
 
-    pub fn reinit(self: *Compiler) !void {
+    pub fn reinitPerRun(self: *Compiler) !void {
         self.clearReports();
     }
 
@@ -174,11 +183,17 @@ pub const Compiler = struct {
         self.reports.clearRetainingCapacity();
     }
 
+    pub fn newTypes(self: *Compiler) []cy.types.Type {
+        return self.sema.types.items[self.type_start..];
+    }
+
+    pub fn newChunks(self: *Compiler) []*cy.Chunk {
+        return self.chunks.items[self.chunk_start..];
+    }
+
     pub fn compile(self: *Compiler, uri: []const u8, src: ?[]const u8, config: cc.CompileConfig) !CompileResult {
-        defer {
-            // Update VM types view.
-            self.vm.types = self.sema.types.items;
-        }
+        self.chunk_start = @intCast(self.chunks.items.len);
+        self.type_start = @intCast(self.sema.types.items.len);
         const res = self.compileInner(uri, src, config) catch |err| {
             if (dumpCompileErrorStackTrace and !cc.silent()) {
                 std.debug.dumpStackTrace(@errorReturnTrace().?.*);
@@ -194,6 +209,12 @@ pub const Compiler = struct {
                 return error.CompileError;
             }
         };
+
+        // Update VM types view.
+        self.vm.types = self.sema.types.items;
+
+        // Successful.
+        self.cont = true;
         return res;
     }
 
@@ -217,7 +238,9 @@ pub const Compiler = struct {
             src = res.src[0..res.srcLen];
         }
 
-        try loadBuiltins(self);
+        if (!self.cont) {
+            try loadBuiltins(self);
+        }
 
         // TODO: Types and symbols should be loaded recursively for single-threaded.
         //       Separate into two passes one for types and function signatures, and
@@ -225,22 +248,26 @@ pub const Compiler = struct {
 
         // Load core module first since the members are imported into each user module.
         var core_sym: *cy.sym.Chunk = undefined;
-        if (self.importBuiltins) {
-            const importCore = ImportTask{
-                .type = .nop,
-                .from = null,
-                .nodeId = cy.NullNode,
-                .resolved_spec = try self.alloc.dupe(u8, "builtins"),
-                .data = undefined,
-            };
-            try self.import_tasks.append(self.alloc, importCore);
-            const core_chunk = performImportTask(self, importCore) catch |err| {
-                return err;
-            };
-            core_sym = core_chunk.sym;
-            _ = self.import_tasks.orderedRemove(0);
-            try reserveCoreTypes(self);
-            try createDynMethodIds(self);
+        if (self.importCore) {
+            if (!self.cont) {
+                const importCore = ImportTask{
+                    .type = .nop,
+                    .from = null,
+                    .nodeId = cy.NullNode,
+                    .resolved_spec = try self.alloc.dupe(u8, "core"),
+                    .data = undefined,
+                };
+                try self.import_tasks.append(self.alloc, importCore);
+                const core_chunk = performImportTask(self, importCore) catch |err| {
+                    return err;
+                };
+                core_sym = core_chunk.sym;
+                _ = self.import_tasks.orderedRemove(0);
+                try reserveCoreTypes(self);
+                try createDynMethodIds(self);
+            } else {
+                core_sym = self.chunk_map.get("core").?.sym;
+            }
         }
 
         // Main chunk.
@@ -248,9 +275,31 @@ pub const Compiler = struct {
         var mainChunk = try self.alloc.create(cy.Chunk);
         mainChunk.* = try cy.Chunk.init(self, nextId, r_uri, src);
         mainChunk.sym = try mainChunk.createChunkSym(r_uri);
-        self.main_chunk = mainChunk;
         try self.chunks.append(self.alloc, mainChunk);
         try self.chunk_map.put(self.alloc, r_uri, mainChunk);
+
+        if (self.cont) {
+            // Use all top level syms from previous main.
+            var iter = self.main_chunk.sym.getMod().symMap.iterator();
+            while (iter.next()) |e| {
+                const name = e.key_ptr.*;
+                const sym = e.value_ptr.*;
+
+                const alias = try mainChunk.reserveUseAlias(@ptrCast(mainChunk.sym), name, cy.NullNode);
+                if (sym.type == .use_alias) {
+                    alias.sym = sym.cast(.use_alias).sym;
+                } else {
+                    alias.sym = sym;
+                }
+                alias.resolved = true;
+            }
+
+            if (self.main_chunk.use_global) {
+                mainChunk.use_global = true;
+            }
+        }
+
+        self.main_chunk = mainChunk;
 
         // All symbols are reserved by loading all modules and looking at the declarations.
         try reserveSyms(self, core_sym);
@@ -262,7 +311,7 @@ pub const Compiler = struct {
         try resolveSyms(self);
 
         // Pass through type syms.
-        for (self.sema.types.items) |*type_e| {
+        for (self.newTypes()) |*type_e| {
             if (type_e.sym.getMod().?.getSym("$get") != null) {
                 type_e.has_get_method = true;
             }
@@ -279,7 +328,7 @@ pub const Compiler = struct {
 
         // Perform sema on static initializers.
         log.tracev("Perform init sema.", .{});
-        for (self.chunks.items) |chunk| {
+        for (self.newChunks()) |chunk| {
             // First stmt is root at index 0.
             _ = try chunk.ir.pushEmptyStmt2(chunk.alloc, .root, chunk.parserAstRootId, false);
             try chunk.ir.pushStmtBlock2(chunk.alloc, chunk.rootStmtBlock);
@@ -295,7 +344,7 @@ pub const Compiler = struct {
 
         // Perform sema on all chunks.
         log.tracev("Perform sema.", .{});
-        for (self.chunks.items) |chunk| {
+        for (self.newChunks()) |chunk| {
             performChunkSema(self, chunk) catch |err| {
                 if (err == error.CompileError) {
                     return err;
@@ -308,7 +357,7 @@ pub const Compiler = struct {
         }
 
         // Perform deferred sema.
-        for (self.chunks.items) |chunk| {
+        for (self.newChunks()) |chunk| {
             try chunk.ir.pushStmtBlock2(chunk.alloc, chunk.rootStmtBlock);
             for (chunk.variantFuncSyms.items) |func| {
                 if (func.isMethod) {
@@ -673,7 +722,7 @@ fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
 fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
     log.tracev("Reserve symbols.", .{});
 
-    var id: u32 = 0;
+    var id: u32 = self.chunk_start;
     while (true) {
         while (id < self.chunks.items.len) : (id += 1) {
             var last_type_sym: *cy.Sym = undefined;
@@ -891,7 +940,7 @@ fn createDynMethodIds(self: *Compiler) !void {
 
 fn resolveSyms(self: *Compiler) !void {
     log.tracev("Resolve syms.", .{});
-    for (self.chunks.items) |chunk| {
+    for (self.newChunks()) |chunk| {
         // Process static declarations.
         var last_type_sym: *cy.Sym = undefined;
         for (chunk.parser.staticDecls.items) |*decl| {

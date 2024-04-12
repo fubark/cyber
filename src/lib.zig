@@ -93,8 +93,11 @@ export fn csDefaultEvalConfig() c.EvalConfig {
     };
 }
 
+export fn csReset(vm: *cy.VM) void {
+    vm.resetVM() catch cy.fatal();
+}
+
 export fn csEval(vm: *cy.VM, src: c.Str, outVal: *cy.Value) c.ResultCode {
-    vm.deinit(true);
     const uri: []const u8 = "main";
     return csEvalExt(vm, c.toStr(uri), src, c.defaultEvalConfig(), outVal);
 }
@@ -625,7 +628,7 @@ test "csGetTypeId()" {
 export fn csNewValueDump(vm: *cy.VM, val: Value) c.Str {
     var buf: std.ArrayListUnmanaged(u8) = .{};
     const w = buf.writer(vm.alloc);
-    val.writeDump(w) catch cy.fatal();
+    cy.debug.dumpValue(vm, w, val, .{}) catch cy.fatal();
     return c.toStr(buf.toOwnedSlice(vm.alloc) catch cy.fatal());
 }
 

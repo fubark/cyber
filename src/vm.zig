@@ -170,6 +170,13 @@ pub const VM = struct {
     lastExeError: []const u8,
     last_res: cc.ResultCode,
 
+    num_evals: u32,
+
+    /// Save vm state at the end of execution so that a subsequent eval knows where it left off
+    /// from a the previous bytecode buffer.
+    num_cont_evals: u32,
+    last_bc_len: u32,
+
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
             .alloc = alloc,
@@ -237,6 +244,9 @@ pub const VM = struct {
             .tempBuf = undefined,
             .lastExeError = "",
             .last_res = cc.Success,
+            .num_evals = 0,
+            .num_cont_evals = 0,
+            .last_bc_len = 0,
         };
         self.mainFiber.panicType = vmc.PANIC_NONE;
         self.curFiber = &self.mainFiber;
@@ -481,8 +491,9 @@ pub const VM = struct {
         return res;
     }
 
-    fn resetVM(self: *VM) !void {
+    pub fn resetVM(self: *VM) !void {
         self.deinit(true);
+        self.num_cont_evals = 0;
 
         // Reset flags for next reset/deinit.
         self.deinitedRtObjects = false;
@@ -490,13 +501,15 @@ pub const VM = struct {
 
         // Before reinit, everything in VM, VMcompiler should be cleared.
 
-        try self.compiler.reinit();
+        try self.compiler.reinitPerRun();
+        self.compiler.cont = false;
     }
 
     pub fn eval(self: *VM, src_uri: []const u8, src: ?[]const u8, config: cc.EvalConfig) !Value {
-        try self.resetVM();
-        self.config = config;
         var tt = cy.debug.timer();
+
+        self.config = config;
+        try self.compiler.reinitPerRun();
 
         var compile_c = cc.defaultCompileConfig();
         compile_c.single_run = config.single_run;
@@ -590,7 +603,7 @@ pub const VM = struct {
                     return error.Panic;
                 }
             }
-            return Value.initInt(0);
+            return Value.Void;
         }
     }
 
@@ -701,7 +714,11 @@ pub const VM = struct {
         self.unwindTempPrevIndexes = buf.unwindTempPrevIndexes.items;
 
         // Set these last to hint location to cache before eval.
-        self.pc = @ptrCast(buf.ops.items.ptr);
+        if (self.num_cont_evals > 0) {
+            self.pc = @ptrCast(&buf.ops.items[self.last_bc_len]);
+        } else {
+            self.pc = @ptrCast(buf.ops.items.ptr);
+        }
         try cy.fiber.stackEnsureTotalCapacity(self, buf.mainStackSize);
         self.framePtr = @ptrCast(self.stack.ptr);
 
@@ -709,11 +726,16 @@ pub const VM = struct {
         self.consts = buf.mconsts;
         self.types = self.compiler.sema.types.items;
 
+        defer {
+            self.num_cont_evals += 1;
+            self.num_evals += 1;
+            self.last_bc_len = @intCast(self.ops.len);
+        }
         try @call(.never_inline, evalLoopGrowStack, .{self, true});
         logger.tracev("main stack size: {}", .{buf.mainStackSize});
 
         if (self.endLocal == 255) {
-            return Value.initInt(0);
+            return Value.Void;
         } else {
             return self.stack[self.endLocal];
         }
@@ -4259,10 +4281,10 @@ pub export fn zAllocStringTemplate2(vm: *cy.VM, strs: [*]cy.Value, strCount: u8,
     };
 }
 
-export fn zDumpValue(val: Value) void {
+export fn zDumpValue(vm: *VM, val: Value) void {
     var buf: [1024]u8 = undefined;
     var fbuf = std.io.fixedBufferStream(&buf);
-    val.writeDump(fbuf.writer()) catch cy.fatal();
+    cy.debug.dumpValue(vm, fbuf.writer(), val, .{}) catch cy.fatal();
     cy.rt.log(fbuf.getWritten());
 }
 

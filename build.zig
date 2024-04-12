@@ -20,6 +20,7 @@ var optRT: ?config.Runtime = undefined;
 
 var stdx: *std.build.Module = undefined;
 var tcc: *std.build.Module = undefined;
+var linenoise: *std.build.Module = undefined;
 var mimalloc: *std.build.Module = undefined;
 
 pub fn build(b: *std.build.Builder) !void {
@@ -42,6 +43,7 @@ pub fn build(b: *std.build.Builder) !void {
     });
     tcc = tcc_lib.createModule(b);
     mimalloc = mimalloc_lib.createModule(b);
+    linenoise = createLinenoiseModule(b);
 
     {
         const step = b.step("cli", "Build main cli.");
@@ -303,6 +305,15 @@ pub fn buildAndLinkDeps(step: *std.build.Step.Compile, opts: Options) !void {
         step.stack_protector = false;
     }
 
+    if (opts.cli and opts.target.getOsTag() != .windows) {
+        addLinenoiseModule(step, "linenoise", linenoise);
+        buildAndLinkLinenoise(b, step);
+    } else {
+        step.addAnonymousModule("tcc", .{
+            .source_file = .{ .path = thisDir() ++ "/src/nopkg.zig" },
+        });
+    }
+
     if (opts.jit) {
         // step.addIncludePath(.{ .path = "/opt/homebrew/Cellar/llvm/17.0.1/include" });
         // step.addLibraryPath(.{ .path = "/opt/homebrew/Cellar/llvm/17.0.1/lib" });
@@ -377,7 +388,7 @@ fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.Optimize
 fn createBuildOptions(b: *std.build.Builder, opts: Options) !*std.build.Step.Options {
     const buildTag = std.process.getEnvVarOwned(b.allocator, "BUILD") catch |err| b: {
         if (err == error.EnvironmentVariableNotFound) {
-            break :b "local";
+            break :b "0";
         } else {
             return err;
         }
@@ -571,4 +582,40 @@ fn buildLib(b: *std.Build, opts: Options) !*std.build.Step.Compile {
 
     try buildAndLinkDeps(lib, opts);
     return lib;
+}
+
+pub fn createLinenoiseModule(b: *std.Build) *std.build.Module {
+    return b.createModule(.{
+        .source_file = .{ .path = thisDir() ++ "/lib/linenoise/linenoise.zig" },
+    });
+}
+
+pub fn addLinenoiseModule(step: *std.build.CompileStep, name: []const u8, mod: *std.build.Module) void {
+    step.addModule(name, mod);
+    step.addIncludePath(.{ .path = thisDir() ++ "/lib/linenoise" });
+}
+
+pub fn buildAndLinkLinenoise(b: *std.Build, step: *std.build.CompileStep) void {
+    const lib = b.addStaticLibrary(.{
+        .name = "linenoise",
+        .target = step.target,
+        .optimize = step.optimize,
+    });
+    lib.addIncludePath(.{ .path = thisDir() ++ "/lib/linenoise" });
+    lib.linkLibC();
+    // lib.disable_sanitize_c = true;
+
+    var c_flags = std.ArrayList([]const u8).init(b.allocator);
+
+    var sources = std.ArrayList([]const u8).init(b.allocator);
+    sources.appendSlice(&.{
+        "/lib/linenoise/linenoise.c",
+    }) catch @panic("error");
+    for (sources.items) |src| {
+        lib.addCSourceFile(.{
+            .file = .{ .path = b.fmt("{s}{s}", .{thisDir(), src}) },
+            .flags = c_flags.items,
+        });
+    }
+    step.linkLibrary(lib);
 }

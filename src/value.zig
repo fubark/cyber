@@ -445,58 +445,6 @@ pub const Value = packed union {
         return @intCast(self.val & 0xffffffff);
     }
 
-    pub fn writeDump(self: *const Value, w: anytype) !void {
-        switch (self.getTypeId()) {
-            bt.Void => {
-                _ = try w.writeAll("void");
-            },
-            bt.Float => {
-                try w.print("Float {}", .{self.asF64()});
-            },
-            bt.Integer => {
-                try w.print("Integer {}", .{self.asInteger()});
-            },
-            bt.Error => {
-                try w.print("Error {}", .{self.asErrorSymbol()});
-            },
-            bt.Symbol => {
-                try w.print("Symbol {}", .{self.asSymbolId()});
-            },
-            else => |typeId| {
-                if (self.isPointer()) {
-                    const obj = self.asHeapObject();
-                    switch (obj.getTypeId()) {
-                        bt.List => try w.print("List {*} rc={} len={}", .{obj, obj.head.rc, obj.list.list.len}),
-                        bt.Map => try w.print("Map {*} rc={} size={}", .{obj, obj.head.rc, obj.map.inner.size}),
-                        bt.String => {
-                            const str = obj.string.getSlice();
-                            if (str.len > 20) {
-                                try w.print("String {*} rc={} len={} str=\"{s}\"...", .{obj, obj.head.rc, str.len, str[0..20]});
-                            } else {
-                                try w.print("String {*} rc={} len={} str={s}", .{obj, obj.head.rc, str.len, str});
-                            }
-                        },
-                        bt.Lambda => try w.print("Lambda {*} rc={}", .{obj, obj.head.rc}),
-                        bt.Closure => try w.print("Closure {*} rc={}", .{obj, obj.head.rc}),
-                        bt.Fiber => try w.print("Fiber {*} rc={}", .{obj, obj.head.rc}),
-                        bt.HostFunc => try w.print("NativeFunc {*} rc={}", .{obj, obj.head.rc}),
-                        bt.Pointer => try w.print("Pointer {*} rc={} ptr={*}", .{obj, obj.head.rc, obj.pointer.ptr}),
-                        else => {
-                            try w.print("HeapObject {*} type={} rc={}", .{obj, obj.getTypeId(), obj.head.rc});
-                        },
-                    }
-                } else {
-                    if (self.isEnum()) {
-                        try w.print("Enum {}", .{typeId});
-                    } else {
-                        try w.print("Unknown {}", .{self.getTag()});
-                    }
-                }
-            }
-        }
-    }
-
-
     pub fn getUserTag(self: *const Value) ValueUserTag {
         const typeId = self.getTypeId();
         switch (typeId) {

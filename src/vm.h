@@ -1023,7 +1023,7 @@ char* zOpCodeName(OpCode code);
 PcSpResult zCallSym(VM* vm, Inst* pc, Value* stack, u16 symId, u8 startLocal, u8 numArgs);
 PcSpResult zCallSymDyn(VM* vm, Inst* pc, Value* stack, u16 symId, u8 startLocal, u8 numArgs);
 void zDumpEvalOp(VM* vm, Inst* pc);
-void zDumpValue(Value val);
+void zDumpValue(VM* vm, Value val);
 void zFreeObject(VM* vm, HeapObject* obj);
 void zEnd(VM* vm, Inst* pc);
 ValueResult zAllocList(VM* vm, Value* elemStart, uint8_t nelems);

@@ -13,7 +13,7 @@
 - [Metaprogramming.](#metaprogramming)
 - [Embedding.](#embedding)
 - [Memory.](#memory)
-- [Backends.](#backends)
+- [CLI.](#cli)
 
 <!--TOC-END-->
 
@@ -3261,20 +3261,76 @@ print res['numCycFreed']      -- Output: 2
 print res['numObjFreed']      -- Output: 2
 ```
 
-# Backends.
+# CLI.
 
-* [JIT.](#jit)
-* [AOT.](#aot)
+* [REPL.](#repl)
+* [JIT compiler.](#jit-compiler)
+* [AOT compiler.](#aot-compiler)
 
 [^top](#table-of-contents)
 
-## JIT.
+## REPL.
+The REPL is started by running the CLI without any arguments:
+```bash
+cyber
+```
+
+The REPL starts new sessions with [`use $global`](#use-global). This allows undeclared variables to be used similar to other dynamic languages:
+```bash
+> a = 123
+> a * 2
+`int` 246
+```
+
+When the first input ends with `:`, the REPL will automatically indent the next line. To recede the indentation, provide an empty input. Once the indent returns to the beginning, the entire code block is submitted for evaluation:
+```bash
+> if true:
+    | print 'hello!'
+    | 
+hello!
+```
+
+Top level declarations such as imports, types, and functions can be referenced in subsequent evals:
+```bash
+> use math
+> math.random()
+`float` 0.3650744641604983
+```
+
+```bash
+> type Foo:
+    | a int
+    |
+> f = Foo{a: 123}
+> f.a
+`int` 123
+```
+
+Local variables **can not** be referenced in subsequent evals, since their scope ends with each eval input:
+```bash
+> let a = 123
+> a
+panic: Variable is not defined in `$global`.
+
+input:1:1 main:
+a
+^
+```
+
+## JIT compiler.
 Cyber's just-in-time compiler is incomplete and unstable. To run your script with JIT enabled:
 ```bash
 cyber -jit &lt;script&gt;
 ```
 
-The JIT compiler is just as fast as the bytecode generation so when it's enabled, the entire script is compiled from the start.
+The goal of the JIT compiler is to be fast at compilation while still being significantly faster than the interpreter. The codegen involves stitching together pregenerated machine code that targets the same runtime stack slots used by the VM. This technique is also known as `copy-and-patch`. As the VM transitions to unboxed data types, the generated code will see more performance gains.
 
-## AOT
-Work on the ahead-of-time compiler has not begun.
+## AOT compiler.
+The ahead-of-time compiler generates a static or dynamic binary from Cyber source code.
+This is done by first compiling Cyber code into C code, and using a C compiler to generate the final binary.
+The user can specify the system's `cc` compiler or the builtin `tinyc` compiler that is bundled with the CLI.
+*This is currently in progress.*
+
+&nbsp;
+
+&nbsp;

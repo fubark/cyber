@@ -1521,31 +1521,37 @@ pub const Parser = struct {
             name = try self.pushSpanNode(.ident, self.next_pos);
             self.advance();
 
-            if (self.peek().tag() == .raw_string) {
-                spec = try self.pushSpanNode(.raw_string_lit, self.next_pos);
-                self.advance();
-                try self.consumeNewLineOrEnd();
-            } else if (self.peek().tag() == .new_line) {
-                self.advance();
-            } else if (self.peek().tag() == .minus_right_angle) {
-                self.advance();
-                const target = (try self.parseExpr(.{})) orelse {
-                    return self.reportError("Expected condition expression.", &.{});
-                };
-                const alias = try self.pushNode(.use_alias, start);
-                self.ast.setNodeData(alias, .{ .use_alias = .{
-                    .name = name,
-                    .target = target,
-                }});
-                try self.staticDecls.append(self.alloc, .{
-                    .declT = .use_alias,
-                    .nodeId = alias,
-                    .data = undefined,
-                });
-                try self.consumeNewLineOrEnd();
-                return alias;
-            } else {
-                return self.reportError("Expected a module specifier.", &.{});
+            switch (self.peek().tag()) {
+                .raw_string => {
+                    spec = try self.pushSpanNode(.raw_string_lit, self.next_pos);
+                    self.advance();
+                    try self.consumeNewLineOrEnd();
+                },
+                .new_line => {
+                    self.advance();
+                },
+                .null => {},
+                .minus_right_angle => {
+                    self.advance();
+                    const target = (try self.parseExpr(.{})) orelse {
+                        return self.reportError("Expected condition expression.", &.{});
+                    };
+                    const alias = try self.pushNode(.use_alias, start);
+                    self.ast.setNodeData(alias, .{ .use_alias = .{
+                        .name = name,
+                        .target = target,
+                    }});
+                    try self.staticDecls.append(self.alloc, .{
+                        .declT = .use_alias,
+                        .nodeId = alias,
+                        .data = undefined,
+                    });
+                    try self.consumeNewLineOrEnd();
+                    return alias;
+                },
+                else => {
+                    return self.reportError("Expected a module specifier.", &.{});
+                },
             }
         } else if (self.peek().tag() == .star) {
             name = try self.pushNode(.all, self.next_pos);

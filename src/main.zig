@@ -7,6 +7,7 @@ const log = cy.log.scoped(.main);
 const cli = @import("cli.zig");
 const build_options = @import("build_options");
 const fmt = @import("fmt.zig");
+const ln = @import("linenoise");
 comptime {
     const lib = @import("lib.zig");
     std.testing.refAllDecls(lib);
@@ -41,7 +42,7 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
 
-    var cmd = Command.none;
+    var cmd = Command.repl;
     var arg0: ?[]const u8 = null;
 
     var i: usize = 1;
@@ -78,7 +79,7 @@ pub fn main() !void {
                 // Ignore unrecognized options so a script can use them.
             }
         } else {
-            if (cmd == .none) {
+            if (cmd == .repl) {
                 if (std.mem.eql(u8, arg, "compile")) {
                     cmd = .compile;
                 } else if (std.mem.eql(u8, arg, "version")) {
@@ -122,8 +123,8 @@ pub fn main() !void {
         .version => {
             version();
         },
-        .none => {
-            help();
+        .repl => {
+            try repl(alloc);
         },
     }
 }
@@ -140,7 +141,7 @@ const Command = enum {
     compile,
     help,
     version,
-    none,
+    repl,
 };
 
 fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
@@ -168,6 +169,166 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
         }
     };
     try cy.debug.dumpBytecode(&vm, .{ .pcContext = pc });
+}
+
+const use_ln = builtin.os.tag != .windows;
+
+fn getReplInput(alloc: std.mem.Allocator, indent: u32) ![]const u8 {
+    if (use_ln) {
+        var linez: [*c]const u8 = undefined;
+        if (indent == 0) {
+            linez = ln.linenoise("> ");
+            if (linez == null) {
+                return error.EndOfInput;
+            }
+        } else {
+            var buf: [1024]u8 = undefined;
+            var fbuf = std.io.fixedBufferStream(&buf);
+            const w = fbuf.writer();
+            try w.writeByteNTimes(' ', indent * 4);
+            try w.writeAll("| \x00");
+            linez = ln.linenoise(&buf);
+        }
+
+        _ = ln.linenoiseHistoryAdd(linez);
+        return std.mem.sliceTo(linez, 0);
+    } else {
+        const stdin = std.io.getStdIn();
+        const stdout = std.io.getStdOut();
+        if (indent == 0) {
+            try stdout.writeAll("> ");
+        } else {
+            try stdout.writer().writeByteNTimes(' ', indent * 4);
+            try stdout.writeAll("| ");
+        }
+        return stdin.reader().readUntilDelimiterAlloc(alloc, '\n', 10e8);
+    }
+}
+
+fn freeReplInput(alloc: std.mem.Allocator, input: []const u8) void {
+    if (use_ln) {
+        ln.linenoiseFree(@constCast(input.ptr));
+    } else {
+        alloc.free(input);
+    }
+}
+
+fn repl(alloc: std.mem.Allocator) !void {
+    const stdout = std.io.getStdOut();
+
+    c.setVerbose(verbose);
+    try vm.init(alloc);
+    cli.csSetupForCLI(@ptrCast(&vm));
+    defer vm.deinit(false);
+
+    var config = c.defaultEvalConfig();
+    config.single_run = builtin.mode == .ReleaseFast;
+    config.file_modules = true;
+    config.reload = reload;
+    config.backend = c.BackendVM;
+    config.spawn_exe = false;
+
+    // TODO: Record inputs that successfully compiled. Can then be exported to file.
+
+    // Initial input includes `use $global`.
+    // Can also include additional source if needed.
+    const init_src =
+        \\use $global
+        \\
+        ;
+    _ = vm.eval("repl_init", init_src, config) catch return error.Unexpected;
+
+    // Build multi-line input.
+    var input_builder: std.ArrayListUnmanaged(u8) = .{};
+    defer input_builder.deinit(alloc);
+    var indent: u32 = 0;
+
+    try stdout.writer().print("{s} REPL\n", .{build_options.full_version});
+    try stdout.writeAll("Commands: .exit\n");
+    while (true) {
+        var input = try getReplInput(alloc, indent);
+        defer freeReplInput(alloc, input);
+
+        if (std.mem.eql(u8, ".exit", input)) {
+            break;
+        }
+
+        if (std.mem.endsWith(u8, input, ":")) {
+            try input_builder.appendSlice(alloc, input);
+            indent += 1;
+            continue;
+        }
+
+        if (input_builder.items.len > 0) {
+            if (input.len == 0) {
+                indent -= 1;
+                if (indent > 0) {
+                    continue;
+                } else {
+                    // Build input and submit.
+                    freeReplInput(alloc, input);
+                    if (use_ln) {
+                        // malloc so that `freeReplInput` performs `free`.
+                        const inputz: [*]u8 = @ptrCast(std.c.malloc(input_builder.items.len + 1).?);
+                        @memcpy(inputz[0..input_builder.items.len], input_builder.items);
+                        inputz[input_builder.items.len] = 0;
+                        input = inputz[0..input_builder.items.len];
+                        input_builder.clearRetainingCapacity();
+                    } else {
+                        input = try input_builder.toOwnedSlice(alloc);
+                    }
+                }
+            } else {
+                try input_builder.append(alloc, '\n');
+                try input_builder.appendNTimes(alloc, ' ', indent * 4);
+                try input_builder.appendSlice(alloc, input);
+                continue;
+            }
+        }
+
+        const val_opt: ?cy.Value = vm.eval("input", input, config) catch |err| b: {
+            switch (err) {
+                error.Panic => {
+                    if (!c.silent()) {
+                        const report = c.newPanicSummary(@ptrCast(&vm));
+                        defer c.freeStr(@ptrCast(&vm), report);
+                        try std.io.getStdErr().writeAll(c.fromStr(report));
+                    }
+                },
+                error.CompileError => {
+                    if (!c.silent()) {
+                        const report = c.newErrorReportSummary(@ptrCast(&vm));
+                        defer c.freeStr(@ptrCast(&vm), report);
+                        try std.io.getStdErr().writeAll(c.fromStr(report));
+                    }
+                },
+                else => {
+                    std.debug.print("unexpected {}\n", .{err});
+                },
+            }
+            break :b null;
+        };
+
+        if (val_opt) |val| {
+            if (!val.isVoid()) {
+                try cy.debug.dumpValue(&vm, stdout.writer(), val, .{});
+                try stdout.writeAll("\n");
+            }
+        }
+    }
+
+    if (verbose) {
+        std.debug.print("\n==VM Info==\n", .{});
+        try vm.dumpInfo();
+    }
+    if (cy.Trace and dumpStats) {
+        vm.dumpStats();
+    }
+    if (cy.TrackGlobalRC) {
+        vm.deinitRtObjects();
+        vm.compiler.deinitModRetained();
+        try cy.arc.checkGlobalRC(&vm);
+    }
 }
 
 fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
@@ -232,6 +393,7 @@ fn help() void {
         \\Usage: cyber [command?] [options] [source]
         \\
         \\Commands:
+        \\  cyber                   Run the REPL.
         \\  cyber [source]          Compile and run.
         \\  cyber compile [source]  Compile and dump the code.
         \\  cyber help              Print usage.

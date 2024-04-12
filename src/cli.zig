@@ -207,10 +207,14 @@ fn zResolve(vm: *cy.VM, alloc: std.mem.Allocator, chunkId: cy.ChunkId, buf: []u8
 
     var pathBuf: [4096]u8 = undefined;
     var fbuf = std.io.fixedBufferStream(&pathBuf);
-    if (cur_uri_opt) |cur_uri| {
+    if (cur_uri_opt) |cur_uri| b: {
         // Create path from the current script.
         // There should always be a parent directory since `curUri` should be absolute when dealing with file modules.
-        const dir = std.fs.path.dirname(cur_uri) orelse return error.NoParentDir;
+        const dir = std.fs.path.dirname(cur_uri) orelse {
+            // Likely from an in-memory chunk uri such as `main` or `input` (repl).
+            _ = try fbuf.write(spec);
+            break :b;
+        };
         try fbuf.writer().print("{s}/{s}", .{dir, spec});
     } else {
         _ = try fbuf.write(spec);

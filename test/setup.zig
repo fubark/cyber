@@ -213,6 +213,7 @@ pub const VMrunner = struct {
             .spawn_exe = false,
             .reload = config.reload,
         };
+        c.reset(vm);
         const res_code = c.evalExt(vm, c.toStr(r_uri), c.toStr(src), c_config, @ptrCast(&resv));
 
         if (optCb) |cb| {

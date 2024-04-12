@@ -26,12 +26,12 @@ pub fn genAll(c: *cy.Compiler) !void {
     try c.vm.staticObjects.append(c.alloc, c.vm.emptyArray.asHeapObject());
 
     // Prepare types.
-    for (c.sema.types.items, 0..) |stype, typeId| {
+    for (c.newTypes(), c.type_start..) |stype, typeId| {
         if (stype.kind == .null) {
             // Skip placeholders.
             continue;
         }
-        log.tracev("bc prepare type: {s}", .{stype.sym.name()});
+        log.tracev("prep type: {s}", .{stype.sym.name()});
         const sym = stype.sym;
 
         switch (sym.type) {
@@ -61,7 +61,7 @@ pub fn genAll(c: *cy.Compiler) !void {
         }
     }
 
-    for (c.chunks.items) |chunk| {
+    for (c.newChunks()) |chunk| {
         log.tracev("prep chunk", .{});
         for (chunk.syms.items) |sym| {
             try prepareSym(c, sym);
@@ -74,7 +74,7 @@ pub fn genAll(c: *cy.Compiler) !void {
     // After rt funcs are set up, prepare the overloaded func table.
     // Methods entries are also registered at this point
     // since they depend on overloaded func entries.
-    for (c.chunks.items) |chunk| {
+    for (c.newChunks()) |chunk| {
         for (chunk.syms.items) |sym| {
             if (sym.type == .func) {
                 const func_sym = sym.cast(.func);
@@ -120,7 +120,7 @@ pub fn genAll(c: *cy.Compiler) !void {
     // Bind the rest that aren't in sema.
     try @call(.never_inline, cy.bindings.bindCore, .{c.vm});
 
-    for (c.chunks.items) |chunk| {
+    for (c.newChunks()) |chunk| {
         log.tracev("Perform codegen for chunk{}: {s}", .{chunk.id, chunk.srcUri});
         chunk.buf = &c.buf;
         try genChunk(chunk);
@@ -134,9 +134,7 @@ pub fn genAll(c: *cy.Compiler) !void {
     }
     const constAddr = std.mem.alignForward(usize, @intFromPtr(c.buf.ops.items.ptr) + c.buf.ops.items.len, @alignOf(cy.Value));
     const constDst = @as([*]cy.Value, @ptrFromInt(constAddr))[0..c.buf.consts.items.len];
-    const constSrc = try c.buf.consts.toOwnedSlice(c.alloc);
-    std.mem.copy(cy.Value, constDst, constSrc);
-    c.alloc.free(constSrc);
+    std.mem.copy(cy.Value, constDst, c.buf.consts.items);
     c.buf.mconsts = constDst;
 
     // Final op address is known. Patch pc offsets.
@@ -166,6 +164,7 @@ pub fn genAll(c: *cy.Compiler) !void {
 }
 
 fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
+    log.tracev("prep sym: {s}", .{sym.name()});
     switch (sym.type) {
         .hostVar => {
             const id = c.vm.varSyms.len;
@@ -211,7 +210,7 @@ fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
     if (cy.Trace) {
         const symPath = try func.sym.?.head.allocAbsPath(c.alloc);
         defer c.alloc.free(symPath);
-        log.tracev("bc prepare func: {s}", .{symPath});
+        log.tracev("prep func: {s}", .{symPath});
     }
     if (func.type == .hostFunc) {
         const funcSig = c.sema.getFuncSig(func.funcSigId);

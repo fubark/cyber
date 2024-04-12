@@ -655,6 +655,178 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const cy.Inst
     try bytecode.dumpInst(vm, pcOffset, code, pc, .{ .extra = extra, .prefix = prefix });
 }
 
+const DumpValueConfig = struct {
+    show_rc: bool = false,
+    show_ptr: bool = false,
+    max_depth: u32 = 4,
+    force_types: bool = false,
+};
+
+const DumpValueState = struct {
+    depth: u32,
+};
+
+pub fn dumpValue(vm: *cy.VM, w: anytype, val: cy.Value, config: DumpValueConfig) !void {
+    var state = DumpValueState{
+        .depth = 1,
+    };
+    try dumpValue2(vm, &state, w, val, config);
+}
+
+fn getTypeName(vm: *cy.VM, type_id: cy.TypeId) []const u8 {
+    return vm.sema.getTypeBaseName(type_id);
+}
+
+fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, config: DumpValueConfig) !void {
+    const type_id = val.getTypeId();
+    switch (type_id) {
+        bt.Map => {
+            try w.writeByte('`');
+            const name = getTypeName(vm, type_id);
+            _ = try w.writeAll(name);
+            _ = try w.print("[{}]` ", .{val.asHeapObject().map.map().size});
+        },
+        bt.Table => {
+            if (state.depth == 1 or config.force_types) {
+                try w.writeByte('`');
+                const name = getTypeName(vm, type_id);
+                _ = try w.writeAll(name);
+                _ = try w.print("[{}]` ", .{val.asHeapObject().table.map().size});
+            }
+        },
+        bt.List => {
+            if (state.depth == 1 or config.force_types) {
+                try w.writeByte('`');
+                const name = getTypeName(vm, type_id);
+                _ = try w.writeAll(name);
+                _ = try w.print("[{}]` ", .{val.asHeapObject().list.list.len});
+            }
+        },
+        bt.Error,
+        bt.String,
+        bt.Integer,
+        bt.Float => {
+            if (state.depth == 1 or config.force_types) {
+                const name = getTypeName(vm, type_id);
+                try w.writeByte('`');
+                _ = try w.writeAll(name);
+                _ = try w.writeAll("` ");
+            }
+        },
+        else => {
+            const name = getTypeName(vm, type_id);
+            try w.writeByte('`');
+            _ = try w.writeAll(name);
+            if (type_id == bt.Void) {
+                _ = try w.writeAll("`");
+            } else {
+                _ = try w.writeAll("` ");
+            }
+        },
+    }
+
+    switch (type_id) {
+        bt.Integer => try w.print("{}", .{val.asInteger()}),
+        bt.Float => {
+            const f = val.asF64();
+            if (cy.Value.floatCanBeInteger(f)) {
+                try std.fmt.format(w, "{d:.0}", .{f});
+            } else {
+                try std.fmt.format(w, "{d}", .{f});
+            }
+        },
+        bt.Void => {},
+        bt.Error => {
+            try w.print(".{}", .{val.asErrorSymbol()});
+        },
+        bt.Symbol => {
+            try w.print(".{}", .{val.asSymbolId()});
+        },
+        else => {
+            if (val.isPointer()) {
+                const obj = val.asHeapObject();
+                if (config.show_ptr) {
+                    try w.print(" {*}", .{obj});
+                }
+                if (config.show_rc) {
+                    try w.print(" rc={}", .{obj.head.rc});
+                }
+                switch (type_id) {
+                    bt.List => {
+                        if (state.depth < config.max_depth) {
+                            state.depth += 1;
+                            _ = try w.writeAll("[");
+                            const children = obj.list.items();
+                            for (children, 0..) |childv, i| {
+                                try dumpValue2(vm, state, w, childv, config);
+                                if (i < children.len - 1) {
+                                    _ = try w.writeAll(", ");
+                                }
+                            }
+                            _ = try w.writeByte(']');
+                        }
+                    },
+                    bt.Table => {
+                        const size = obj.table.map().size;
+                        if (state.depth < config.max_depth) {
+                            state.depth += 1;
+                            _ = try w.writeAll("{");
+                            var iter = obj.table.map().iterator();
+                            var i: u32 = 0;
+                            while (iter.next()) |e| {
+                                try dumpValue2(vm, state, w, e.key, config);
+                                _ = try w.writeAll(": ");
+                                try dumpValue2(vm, state, w, e.value, config);
+                                if (i < size - 1) {
+                                    _ = try w.writeAll(", ");
+                                }
+                                i += 1;
+                            }
+                            _ = try w.writeByte('}');
+                        }
+                    },
+                    bt.Map => {
+                        const size = obj.map.map().size;
+                        if (state.depth < config.max_depth) {
+                            state.depth += 1;
+                            _ = try w.writeAll("{");
+                            var iter = obj.map.map().iterator();
+                            var i: u32 = 0;
+                            while (iter.next()) |e| {
+                                try dumpValue2(vm, state, w, e.key, config);
+                                _ = try w.writeAll(": ");
+                                try dumpValue2(vm, state, w, e.value, config);
+                                if (i < size - 1) {
+                                    _ = try w.writeAll(", ");
+                                }
+                                i += 1;
+                            }
+                            _ = try w.writeByte('}');
+                        }
+                    },
+                    bt.String => {
+                        const MaxStrLen = 30;
+                        const str = obj.string.getSlice();
+                        if (str.len > MaxStrLen) {
+                            try w.print("'{s}'...", .{str[0..MaxStrLen]});
+                        } else {
+                            try w.print("'{s}'", .{str});
+                        }
+                    },
+                    // bt.Lambda => try w.print("Lambda {*}", .{obj}),
+                    // bt.Closure => try w.print("Closure {*}", .{obj}),
+                    // bt.Fiber => try w.print("Fiber {*}", .{obj}),
+                    // bt.HostFunc => try w.print("NativeFunc {*}", .{obj}),
+                    // bt.Pointer => try w.print("Pointer {*} ptr={*}", .{obj, obj.pointer.ptr}),
+                    else => {},
+                }
+            } else {
+                try w.print("unsupported", .{});
+            }
+        },
+    }
+}
+
 const EnableTimerTrace = builtin.os.tag != .freestanding and builtin.mode == .Debug;
 
 const TimerTrace = struct {

@@ -362,7 +362,11 @@ void csSetErrorPrinter(CsVM* vm, CsPrintErrorFn print);
 CsEvalConfig csDefaultEvalConfig(void);
 CsCompileConfig csDefaultCompileConfig(void);
 
+// Resets the compiler and runtime state.
+void csReset(CsVM* vm);
+
 // Evalutes the source code and returns the result code.
+// Subsequent evals will reuse the same compiler and runtime state.
 // If the last statement of the script is an expression, `outVal` will contain the value.
 CsResultCode csEval(CsVM* vm, CsStr src, CsValue* outVal);
 

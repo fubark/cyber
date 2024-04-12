@@ -1,10 +1,12 @@
+use test
+
 type S:
     a any
 
     func foo():
         return 123
 
-let o = S{}
+let o = test.erase(S{})
 o.foo(234)
 
 --cytest: error
@@ -12,7 +14,7 @@ o.foo(234)
 --Methods named `foo`:
 --    func foo(S) dynamic
 --
---main:8:1 main:
+--main:10:1 main:
 --o.foo(234)
 --^
 --

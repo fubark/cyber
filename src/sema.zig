@@ -4693,7 +4693,7 @@ pub const ChunkExt = struct {
                 const right = c.ast.node(rightId);
                 const rightName = c.ast.nodeString(right);
 
-                if (leftRes.type.dynamic) {
+                if (leftRes.type.isDynAny()) {
                     // Runtime method call.
                     const recv = try sema.symbol(c, leftSym, callee.data.accessExpr.left, true);
                     const args = try c.semaPushCallArgs(node.data.callExpr.argHead, numArgs);
@@ -4714,7 +4714,7 @@ pub const ChunkExt = struct {
                     return try callSym(c, preIdx, rightSym, numArgs, rightId, node.data.callExpr.argHead, expr.getRetCstr());
                 }
             } else {
-                if (leftRes.type.dynamic) {
+                if (leftRes.type.isDynAny()) {
                     // preCallObjSym.
                     const args = try c.semaPushCallArgs(node.data.callExpr.argHead, numArgs);
                     return c.semaCallObjSym(preIdx, leftRes.irIdx, rightId, numArgs, args);

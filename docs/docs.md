@@ -11,7 +11,7 @@
 - [Concurrency.](#concurrency)
 - [Dynamic Typing.](#dynamic-typing)
 - [Metaprogramming.](#metaprogramming)
-- [Embedding.](#embedding)
+- [libcyber.](#libcyber)
 - [Memory.](#memory)
 - [CLI.](#cli)
 
@@ -1887,7 +1887,7 @@ The explicit import syntax requires an alias name followed by a module specifier
 use m 'math'
 print m.random()
 ```
-When Cyber is embedded into a host application, the module resolver and loader can be overridden using the [Embed API](#embedding).
+When Cyber is embedded into a host application, the module resolver and loader can be overridden using [libcyber](#libcyber).
 
 ### Import file.
 File modules can be imported:
@@ -2900,7 +2900,7 @@ print bool          -- 'type: bool'
 Directives start with `#` and are used as modifiers.
 > `#host`
 >
->Modifier to bind a function, variable, or type to the host. See [Embedding](#embedding).
+>Modifier to bind a function, variable, or type to the host. See [libcyber](#libcyber).
 
 ## Generics.
 Generics enables parametric polymorphism for types and functions. Compile-time arguments are passed to templates to generate specialized code. This facilitates developing container types and algorithms that operate on different types.
@@ -2937,7 +2937,7 @@ Builtin types are used internally by the compiler to define it's own primitive t
 ## Runtime execution.
 > _Planned Feature_
 
-# Embedding.
+# libcyber.
 
 <table><tr>
 <td valign="top">
@@ -2962,24 +2962,24 @@ Builtin types are used internally by the compiler to define it's own primitive t
 
 [^top](#table-of-contents)
 
-The Embed API allows embedding the Cyber compiler and VM as a library into applications. Cyber's core types and the CLI app were built using the Embed API.
+`libcyber` allows embedding the Cyber compiler and VM into applications. Cyber's core types and the CLI app were built using the library.
 
 The API is defined in the [C header file](https://github.com/fubark/cyber/blob/master/src/include/cyber.h).
 The examples shown below can be found in the repository under [c-embedded](https://github.com/fubark/cyber/blob/master/examples/c-embedded). C is used as the host language, but it can be easily translated to C++ or any C-ABI compatible language.
 
-Types from the Embed API begin with `Cs`, constants begin with `CS`, and functions begin with `cs`.
+Types and constants from the C-API begin with `CL` and functions begin with `cl`.
 
 ## Getting started.
 
 ### Create VM.
-Most operations are tied to a VM handle. To create a new VM instance, call `csCreate`:
+Most operations are tied to a VM handle. To create a new VM instance, call `clCreate`:
 ```c
 #include "cyber.h"
 
 int main() {
-    CsVM* vm = csCreate();
+    CLVM* vm = clCreate();
     // ...
-    csDestroy(vm);
+    clDestroy(vm);
     return 0;
 }
 ```
@@ -2987,46 +2987,47 @@ int main() {
 ### Override `print`.
 The builtin `print` function does nothing by default, so it needs to be overrided to print to stdout for example:
 ```c
-void print(CsVM* vm, CsStr str) {
-    printf("My print: %.*s\n", (int)str.len, str.buf);
+void printer(CLVM* vm, CLStr str) {
+    printf("Invoked printer: %.*s\n", (int)str.len, str.buf);
 }
 
 int main() {
     // ...
-    csSetPrinter(vm, print);
+    clSetPrinter(vm, printer);
     // ...
 }
 ```
+Note that `print` invokes the printer twice, once for the value's string and another for the new line character.
 
 ### Eval script.
-`csEval` compiles and evaluates a script:
+`clEval` compiles and evaluates a script:
 ```c
-CsStr src = STR(
+CLStr src = STR(
     "var a = 1\n"
     "print(a + 2)\n"
 );
 
-CsValue val;
-int res = csEval(vm, src, &val);
+CLValue val;
+int res = clEval(vm, src, &val);
 if (res == CS_SUCCESS) {
     printf("Success!\n");
-    csRelease(vm, val);
+    clRelease(vm, val);
 } else {
-    const char* report = csNewLastErrorReport(vm);
+    const char* report = clNewLastErrorReport(vm);
     printf("%s\n", report);
-    csFreeStrZ(report);
+    clFreeStrZ(report);
 }
 ```
 If a value is returned from the main block of the script, it's saved to the result value argument.
-Memory is managed by ARC so a value that points to a heap object requires a `csRelease` when it's no longer needed.
+Memory is managed by ARC so a value that points to a heap object requires a `clRelease` when it's no longer needed.
 
-`csEval` returns a result code that indicates whether it was successful.
+`clEval` returns a result code that indicates whether it was successful.
 
 ## Module Loader.
 A module loader describes how a module is loaded when `use` import statement is encountered during script execution.
-Only one module loader can be active and is set using `csSetModuleLoader`:
+Only one module loader can be active and is set using `clSetModuleLoader`:
 ```c
-bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
+bool modLoader(CLVM* vm, CLStr spec, CLModuleLoaderResult* out) {
     if (strncmp("my_mod", spec.buf, spec.len) == 0) {
         out->src =
             "#host func add(a float, b float) float\n"
@@ -3044,32 +3045,32 @@ bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
         return true;
     } else {
         // Fallback to the default module loader to load `core`.
-        return csDefaultModuleLoader(vm, spec, out);
+        return clDefaultModuleLoader(vm, spec, out);
     }
 }
 
 int main() {
     //...
-    csSetModuleLoader(vm, modLoader);
+    clSetModuleLoader(vm, modLoader);
     //...
 }
 ```
 The above example checks whether "my_mod" was imported and returns it's source code. Additional loaders are returned to load the functions, variables, and types from the source code.
 
 ### Default module loader.
-Since only one module loader can be set to the VM instance, a custom loader is required to handle the "core" import which contains all of the core types and functions in Cyber. This can simply be delegated to `csDefaultModuleLoader`.
+Since only one module loader can be set to the VM instance, a custom loader is required to handle the "core" import which contains all of the core types and functions in Cyber. This can simply be delegated to `clDefaultModuleLoader`.
 
 ### Function loader.
 A function loader describes how to load a `#host` function when it's encountered by the compiler.
 The loader can bind functions and type methods:
 ```c
-struct { char* n; CsFuncFn fn; } funcs[] = {
+struct { char* n; CLFuncFn fn; } funcs[] = {
     {"add", add},
     {"asList", myCollectionAsList},
     {"MyCollection.new", myCollectionNew},
 };
 
-bool funcLoader(CsVM* vm, CsFuncInfo info, CsFuncResult* out) {
+bool funcLoader(CLVM* vm, CLFuncInfo info, CLFuncResult* out) {
     // Check that the name matches before setting the function pointer.
     if (strncmp(funcs[info.idx].n, info.name.buf, info.name.len) == 0) {
         out->ptr = funcs[info.idx].fn;
@@ -3079,7 +3080,7 @@ bool funcLoader(CsVM* vm, CsFuncInfo info, CsFuncResult* out) {
     }
 }
 ```
-This example uses the `CsFuncInfo.idx` of a #host function to index into an array and return a [Host function](#host-functions) pointer. The name is also compared to ensure it's binding to the correct pointer.
+This example uses the `CLFuncInfo.idx` of a #host function to index into an array and return a [Host function](#host-functions) pointer. The name is also compared to ensure it's binding to the correct pointer.
 
 This is an efficient way to map Cyber functions to host functions. A different implementation might use a hash table to map the name of the function to it's pointer.
 
@@ -3087,10 +3088,10 @@ This is an efficient way to map Cyber functions to host functions. A different i
 A variable loader describes how to load a `#host` variable when it's encountered by the compiler:
 ```c
 // C has limited static initializers (and objects require a vm instance) so initialize them in `main`.
-typedef struct { char* n; CsValue v; } NameValue;
+typedef struct { char* n; CLValue v; } NameValue;
 NameValue vars[2];
 
-bool varLoader(CsVM* vm, CsVarInfo info, CsValue* out) {
+bool varLoader(CLVM* vm, CLVarInfo info, CLValue* out) {
     // Check that the name matches before setting the value.
     if (strncmp(vars[info.idx].n, info.name.buf, info.name.len) == 0) {
         // Objects are consumed by the module.
@@ -3105,21 +3106,21 @@ int main() {
     // ...
 
     // Initialize var array for loader.
-    vars[0] = (NameValue){".MyConstant", csFloat(1.23)};
-    CsValue myInt = csInteger(123);
-    vars[1] = (NameValue){".MyList", csNewList(vm, &myInt, 1)};
+    vars[0] = (NameValue){".MyConstant", clFloat(1.23)};
+    CLValue myInt = clInteger(123);
+    vars[1] = (NameValue){".MyList", clNewList(vm, &myInt, 1)};
 
     // ...
 }
 ```
-This example uses the same technique as the function loader, but it can be much simpler. It doesn't matter how the mapping is done as long as the variable loader returns a `CsValue`.
+This example uses the same technique as the function loader, but it can be much simpler. It doesn't matter how the mapping is done as long as the variable loader returns a `CLValue`.
 
 ### Type loader.
 A type loader describes how to load a `#host` type when it's encountered by the compiler:
 ```c
-CsTypeId myCollectionId;
+CLTypeId myCollectionId;
 
-bool typeLoader(CsVM* vm, CsTypeInfo info, CsTypeResult* out) {
+bool typeLoader(CLVM* vm, CLTypeInfo info, CLTypeResult* out) {
     if (strncmp("MyCollection", info.name.buf, info.name.len) == 0) {
         out->type = CS_TYPE_OBJECT;
         out->data.object.outTypeId = &myCollectionId;
@@ -3136,12 +3137,12 @@ When binding to the "MyCollection" type, it's typeId is saved to `outTypeId`. Th
 ## Host functions.
 A host function requires a specific function signature:
 ```c
-CsValue add(CsVM* vm, const CsValue* args, uint8_t nargs) {
-    double res = csAsFloat(args[0]) + csAsFloat(args[1]);
-    return csFloat(res);
+CLValue add(CLVM* vm, const CLValue* args, uint8_t nargs) {
+    double res = clAsFloat(args[0]) + clAsFloat(args[1]);
+    return clFloat(res);
 }
 ```
-A host function should always return a `CsValue`. `csNone()` can be returned if the function does not intend to return any value.
+A host function should always return a `CLValue`. `clNone()` can be returned if the function does not intend to return any value.
 
 ## Host types.
 A host type are types that are opaque to Cyber scripts but still behave like an object. They can have type functions and methods.
@@ -3151,22 +3152,22 @@ Only the host application can directly create new instances of them, so usually 
 // Binding a C struct with it's own children and finalizer.
 // This struct retains 2 VM values and has 2 arbitrary data values unrelated to the VM.
 typedef struct MyCollection {
-    CsValue val1;
-    CsValue val2;
+    CLValue val1;
+    CLValue val2;
     int a;
     double b;
 } MyCollection;
 
 // Implement the `new` function in MyCollection.
-CsValue myCollectionNew(CsVM* vm, const CsValue* args, uint8_t nargs) {
+CLValue myCollectionNew(CLVM* vm, const CLValue* args, uint8_t nargs) {
     // Instantiate our object.
-    CsValue new = csNewHostObject(vm, myCollectionId, sizeof(MyCollection));
-    MyCollection* my = (MyCollection*)csAsHostObject(new);
+    CLValue new = clNewHostObject(vm, myCollectionId, sizeof(MyCollection));
+    MyCollection* my = (MyCollection*)clAsHostObject(new);
 
     // Assign the constructor args passed in and retain them since the new object now references them.
-    csRetain(vm, args[0]);
+    clRetain(vm, args[0]);
     my->val1 = args[0];
-    csRetain(vm, args[1]);
+    clRetain(vm, args[1]);
     my->val2 = args[1];
 
     // Assign non VM values.
@@ -3175,14 +3176,14 @@ CsValue myCollectionNew(CsVM* vm, const CsValue* args, uint8_t nargs) {
     return new;
 }
 ```
-`csNewHostObject` takes the type id (returned from the [Type loader](#type-loader)) and size (in bytes) and returns a new heap object. Note that the size is allowed to vary. Different instances of the same type can occupy different amounts of memory.
+`clNewHostObject` takes the type id (returned from the [Type loader](#type-loader)) and size (in bytes) and returns a new heap object. Note that the size is allowed to vary. Different instances of the same type can occupy different amounts of memory.
 
 ### `getChildren`
-Since `MyCollection` contains `CsValue` children, the [Type loader](#type-loader) requires a `getChildren` callback so that memory management can reach them:
+Since `MyCollection` contains `CLValue` children, the [Type loader](#type-loader) requires a `getChildren` callback so that memory management can reach them:
 ```c
-CsValueSlice myCollectionGetChildren(CsVM* vm, void* obj) {
+CLValueSlice myCollectionGetChildren(CLVM* vm, void* obj) {
     MyCollection* my = (MyCollection*)obj;
-    return (CsValueSlice){ .ptr = &my->val1, .len = 2 };
+    return (CLValueSlice){ .ptr = &my->val1, .len = 2 };
 }
 ```
 
@@ -3190,7 +3191,7 @@ CsValueSlice myCollectionGetChildren(CsVM* vm, void* obj) {
 A type finalizer is optional since the memory and children of an instance will be freed automatically by ARC.
 However, it can be useful to perform additional cleanup tasks for instances that contain external resources.
 ```c
-void myCollectionFinalizer(CsVM* vm, void* obj) {
+void myCollectionFinalizer(CLVM* vm, void* obj) {
     printf("MyCollection finalizer was called.\n");
 }
 ```
@@ -3308,7 +3309,7 @@ Top level declarations such as imports, types, and functions can be referenced i
 
 Local variables **can not** be referenced in subsequent evals, since their scope ends with each eval input:
 ```bash
-> let a = 123
+> var a = 123
 > a
 panic: Variable is not defined in `$global`.
 

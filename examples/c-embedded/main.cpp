@@ -5,30 +5,34 @@
 // Compile this program with a C++ compiler. `zig c++` is used here as an example.
 // zig c++ main.cpp -I ../../src/include ../../zig-out/lib/libcyber.a -o main
 
-#define STR(s) ((CsStr){ s, strlen(s) })
+#define STR(s) ((CLStr){ s, strlen(s) })
 
-void print(CsVM* vm, CsStr str) {
-    printf("My print: %.*s\n", (int)str.len, str.buf);
+void print(CLVM* vm, CLStr str) {
+    if (str.len == 1 && str.ptr[0] == '\n') {
+        // Skip second invocation by `print` for the new line character.
+        return;
+    }
+    printf("My print: %.*s\n", (int)str.len, str.ptr);
 }
 
 int main() {
-    CsVM* vm = csCreate();
-    csSetPrinter(vm, print);
+    CLVM* vm = clCreate();
+    clSetPrinter(vm, print);
 
-    CsStr src = STR(
+    CLStr src = STR(
         "var a = 1\n"
         "print(a + 2)\n"
     );
-    CsValue val;
-    int res = csEval(vm, src, &val);
-    if (res == CS_SUCCESS) {
+    CLValue val;
+    int res = clEval(vm, src, &val);
+    if (res == CL_SUCCESS) {
         printf("Success!\n");
-        csRelease(vm, val);
+        clRelease(vm, val);
     } else {
-        CsStr s = csNewLastErrorSummary(vm);
-        printf("%.*s\n", (int)s.len, s.buf);
-        csFreeStr(vm, s);
+        CLStr s = clNewLastErrorSummary(vm);
+        printf("%.*s\n", (int)s.len, s.ptr);
+        clFreeStr(vm, s);
     }
-    csDestroy(vm);
+    clDestroy(vm);
     return 0;
 }

@@ -46,7 +46,7 @@ pub fn funcLoader(_: ?*c.VM, func: c.FuncInfo, out_: [*c]c.FuncResult) callconv(
 
 extern fn hostPrint(str: [*]const u8, strLen: usize) void;
 fn print(_: ?*c.VM, str: c.Str) callconv(.C) void {
-    hostPrint(str.buf, str.len);
+    hostPrint(str.ptr, str.len);
 }
 
 extern fn hostEvalJS(ptr: [*]const u8, len: usize) void;

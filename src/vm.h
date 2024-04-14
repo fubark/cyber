@@ -1014,7 +1014,7 @@ typedef Value (*HostFuncFn)(VM* vm, const Value* args, uint8_t nargs);
 ResultCode execBytecode(VM* vm);
 
 // Zig vars.
-extern bool csVerbose;
+extern bool clVerbose;
 
 // Zig functions.
 void zFatal();

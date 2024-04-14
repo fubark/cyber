@@ -10,26 +10,26 @@
 // zig cc bind_module.c -I ../../src/include ../../zig-out/lib/libcyber.a -o main
 
 // Convenience macros to deal with Cyber string slices.
-#define STR(s) ((CsStr){ s, strlen(s) })
+#define STR(s) ((CLStr){ s, strlen(s) })
 
-CsValue add(CsVM* vm, const CsValue* args, uint8_t nargs) {
-    double res = csAsFloat(args[0]) + csAsFloat(args[1]);
-    return csFloat(res);
+CLValue add(CLVM* vm, const CLValue* args, uint8_t nargs) {
+    double res = clAsFloat(args[0]) + clAsFloat(args[1]);
+    return clFloat(res);
 }
 
 // Forward declaration.
-CsValue myCollectionNew(CsVM* vm, const CsValue* args, uint8_t nargs);
-CsValue myCollectionAsList(CsVM* vm, const CsValue* args, uint8_t nargs);
+CLValue myCollectionNew(CLVM* vm, const CLValue* args, uint8_t nargs);
+CLValue myCollectionAsList(CLVM* vm, const CLValue* args, uint8_t nargs);
 
-struct { char* n; CsFuncFn fn; } funcs[] = {
+struct { char* n; CLFuncFn fn; } funcs[] = {
     {"add", add},
     {"asList", myCollectionAsList},
     {"MyCollection.new", myCollectionNew},
 };
 
-bool funcLoader(CsVM* vm, CsFuncInfo info, CsFuncResult* out) {
+bool funcLoader(CLVM* vm, CLFuncInfo info, CLFuncResult* out) {
     // Check that the name matches before setting the function pointer.
-    if (strncmp(funcs[info.idx].n, info.name.buf, info.name.len) == 0) {
+    if (strncmp(funcs[info.idx].n, info.name.ptr, info.name.len) == 0) {
         out->ptr = funcs[info.idx].fn;
         return true;
     } else {
@@ -38,12 +38,12 @@ bool funcLoader(CsVM* vm, CsFuncInfo info, CsFuncResult* out) {
 }
 
 // C has limited static initializers (and objects need a vm instance) so initialize them in `main`.
-typedef struct { char* n; CsValue v; } NameValue;
+typedef struct { char* n; CLValue v; } NameValue;
 NameValue vars[2];
 
-bool varLoader(CsVM* vm, CsVarInfo info, CsValue* out) {
+bool varLoader(CLVM* vm, CLVarInfo info, CLValue* out) {
     // Check that the name matches before setting the value.
-    if (strncmp(vars[info.idx].n, info.name.buf, info.name.len) == 0) {
+    if (strncmp(vars[info.idx].n, info.name.ptr, info.name.len) == 0) {
         // Objects are consumed by the module.
         *out = vars[info.idx].v;
         return true;
@@ -55,24 +55,24 @@ bool varLoader(CsVM* vm, CsVarInfo info, CsValue* out) {
 // Binding a C struct with it's own children and finalizer.
 // This struct retains 2 VM values and has 2 arbitrary data values unrelated to the VM.
 typedef struct MyCollection {
-    CsValue val1;
-    CsValue val2;
+    CLValue val1;
+    CLValue val2;
     int a;
     double b;
 } MyCollection;
 
-CsTypeId myCollectionId;
+CLTypeId myCollectionId;
 
 // Implement the `new` function in MyCollection.
-CsValue myCollectionNew(CsVM* vm, const CsValue* args, uint8_t nargs) {
+CLValue myCollectionNew(CLVM* vm, const CLValue* args, uint8_t nargs) {
     // Instantiate our object.
-    CsValue new = csNewHostObject(vm, myCollectionId, sizeof(MyCollection));
-    MyCollection* my = (MyCollection*)csAsHostObject(new);
+    CLValue new = clNewHostObject(vm, myCollectionId, sizeof(MyCollection));
+    MyCollection* my = (MyCollection*)clAsHostObject(new);
 
     // Assign the constructor args passed in and retain them since the new object now references them.
-    csRetain(vm, args[0]);
+    clRetain(vm, args[0]);
     my->val1 = args[0];
-    csRetain(vm, args[1]);
+    clRetain(vm, args[1]);
     my->val2 = args[1];
 
     // Assign non VM values.
@@ -82,26 +82,26 @@ CsValue myCollectionNew(CsVM* vm, const CsValue* args, uint8_t nargs) {
 }
 
 // Implement the `asList` method in MyCollection.
-CsValue myCollectionAsList(CsVM* vm, const CsValue* args, uint8_t nargs) {
+CLValue myCollectionAsList(CLVM* vm, const CLValue* args, uint8_t nargs) {
     // First argument is `self`.
-    MyCollection* my = (MyCollection*)csAsHostObject(args[0]);
+    MyCollection* my = (MyCollection*)clAsHostObject(args[0]);
 
-    CsValue vals[4] = {my->val1, my->val2, csInteger(my->a), csFloat(my->b)};
-    return csNewList(vm, &vals[0], 4);
+    CLValue vals[4] = {my->val1, my->val2, clInteger(my->a), clFloat(my->b)};
+    return clNewList(vm, &vals[0], 4);
 }
 
-CsValueSlice myCollectionGetChildren(CsVM* vm, void* obj) {
+CLValueSlice myCollectionGetChildren(CLVM* vm, void* obj) {
     MyCollection* my = (MyCollection*)obj;
-    return (CsValueSlice){ .ptr = &my->val1, .len = 2 };
+    return (CLValueSlice){ .ptr = &my->val1, .len = 2 };
 }
 
-void myCollectionFinalizer(CsVM* vm, void* obj) {
+void myCollectionFinalizer(CLVM* vm, void* obj) {
     printf("MyCollection finalizer was called.\n");
 }
 
-bool typeLoader(CsVM* vm, CsTypeInfo info, CsTypeResult* out) {
-    if (strncmp("MyCollection", info.name.buf, info.name.len) == 0) {
-        out->type = CS_BIND_TYPE_CUSTOM;
+bool typeLoader(CLVM* vm, CLTypeInfo info, CLTypeResult* out) {
+    if (strncmp("MyCollection", info.name.ptr, info.name.len) == 0) {
+        out->type = CL_BIND_TYPE_CUSTOM;
         out->data.custom.out_type_id = &myCollectionId;
         out->data.custom.get_children = myCollectionGetChildren;
         out->data.custom.finalizer = myCollectionFinalizer;
@@ -112,8 +112,8 @@ bool typeLoader(CsVM* vm, CsTypeInfo info, CsTypeResult* out) {
 }
 
 // This module loader provides the source code and callbacks to load #host funcs, vars, and types.
-bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
-    if (strncmp("my_mod", spec.buf, spec.len) == 0) {
+bool modLoader(CLVM* vm, CLStr spec, CLModuleLoaderResult* out) {
+    if (strncmp("my_mod", spec.ptr, spec.len) == 0) {
         out->src =
             "#host func add(a float, b float) float\n"
             "#host var .MyConstant float\n"
@@ -123,7 +123,7 @@ bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
             "type MyCollection:\n"
             "    #host func asList() any"
             "\n"
-            "#host func MyCollection.new(a, b) MyCollection\n";
+            "#host func MyCollection.new(a any, b any) MyCollection\n";
         out->srcLen = strlen(out->src);
         out->funcLoader = funcLoader;
         out->varLoader = varLoader;
@@ -131,27 +131,31 @@ bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
         return true;
     } else {
         // Fallback to the default module loader to load `builtins`.
-        return csDefaultModuleLoader(vm, spec, out);
+        return clDefaultModuleLoader(vm, spec, out);
     }
 }
 
-void print(CsVM* vm, CsStr str) {
-    printf("My print: %.*s\n", (int)str.len, str.buf);
+void printer(CLVM* vm, CLStr str) {
+    if (str.len == 1 && str.ptr[0] == '\n') {
+        // Skip second invocation by `print` for the new line character.
+        return;
+    }
+    printf("My print: %.*s\n", (int)str.len, str.ptr);
 }
 
 int main() {
-    // csVerbose = true;
-    CsVM* vm = csCreate();
-    csSetModuleLoader(vm, modLoader);
-    csSetPrinter(vm, print);
+    // clVerbose = true;
+    CLVM* vm = clCreate();
+    clSetModuleLoader(vm, modLoader);
+    clSetPrinter(vm, printer);
 
     // Initialize var array for loader.
-    vars[0] = (NameValue){"MyConstant", csFloat(1.23)};
-    CsValue myInt = csInteger(123);
-    vars[1] = (NameValue){"MyList", csNewList(vm, &myInt, 1)};
+    vars[0] = (NameValue){"MyConstant", clFloat(1.23)};
+    CLValue myInt = clInteger(123);
+    vars[1] = (NameValue){"MyList", clNewList(vm, &myInt, 1)};
 
-    CsStr main = STR(
-        "import mod 'my_mod'\n"
+    CLStr main = STR(
+        "use mod 'my_mod'\n"
         "\n"
         "var a = 1.0\n"
         "print mod.add(a, 2)\n"
@@ -164,21 +168,21 @@ int main() {
         "var myc = mod.MyCollection.new(1, 2)\n"
         "dump myc.asList()"
     );
-    CsValue resv;
-    CsResultCode res = csEval(vm, main, &resv);
-    if (res == CS_SUCCESS) {
+    CLValue resv;
+    CLResultCode res = clEval(vm, main, &resv);
+    if (res == CL_SUCCESS) {
         printf("Success!\n");
     } else {
-        CsStr s = csNewLastErrorSummary(vm);
-        printf("%.*s\n", (int)s.len, s.buf);
-        csFreeStr(vm, s);
+        CLStr s = clNewLastErrorSummary(vm);
+        printf("%.*s\n", (int)s.len, s.ptr);
+        clFreeStr(vm, s);
     }
-    csRelease(vm, vars[1].v);
-    csDeinit(vm);
+    clRelease(vm, vars[1].v);
+    clDeinit(vm);
 
     // Check that all references were accounted for. (Should be 0)
-    printf("Live objects: %zu\n", csCountObjects(vm));
-    csDestroy(vm);
+    printf("Live objects: %zu\n", clCountObjects(vm));
+    clDestroy(vm);
 
     return 0;
 }

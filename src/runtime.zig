@@ -405,7 +405,7 @@ pub fn printZFmt(c: Context, comptime format: []const u8, args: anytype) void {
 
 pub fn log(str: []const u8) void {
     if (build_options.rt == .vm) {
-        lib.csLog.?(api.toStr(str));
+        lib.clLog.?(api.toStr(str));
     } else {
         const w = std.io.getStdErr().writer();
         w.writeAll(str) catch cy.fatal();

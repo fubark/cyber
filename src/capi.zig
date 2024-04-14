@@ -5,18 +5,18 @@ const c = @cImport({
 });
 
 pub fn verbose() bool {
-    return c.csVerbose;
+    return c.clVerbose;
 }
 pub fn setVerbose(v: bool) void {
-    c.csVerbose = v;
+    c.clVerbose = v;
 }
 pub fn silent() bool {
-    return c.csSilent;
+    return c.clSilent;
 }
 pub fn setSilent(v: bool) void {
-    c.csSilent = v;
+    c.clSilent = v;
 }
-pub const Allocator = c.CsAllocator;
+pub const Allocator = c.CLAllocator;
 pub fn toAllocator(alloc: std.mem.Allocator) Allocator {
     return .{ .ptr = alloc.ptr, .vtable = @ptrCast(alloc.vtable) };
 }
@@ -24,175 +24,175 @@ pub fn fromAllocator(alloc: Allocator) std.mem.Allocator {
     return .{ .ptr = @ptrCast(alloc.ptr), .vtable = @ptrCast(@alignCast(alloc.vtable)) };
 }
 pub fn getLog() LogFn {
-    return c.csLog;
+    return c.clLog;
 }
 pub fn setLog(func: LogFn) void {
-    c.csLog = func;
+    c.clLog = func;
 }
-pub const getAllocator = c.csGetAllocator;
-pub const reportApiError = c.csReportApiError;
-pub const defaultResolver = c.csDefaultResolver;
-pub const defaultModuleLoader = c.csDefaultModuleLoader;
-pub const getVersion = c.csGetVersion;
-pub const getFullVersion = c.csGetFullVersion;
-pub const getCommit = c.csGetCommit;
-pub const getBuild = c.csGetBuild;
-pub const create = c.csCreate;
-pub const deinit = c.csDeinit;
-pub const destroy = c.csDestroy;
-pub const validate = c.csValidate;
-pub const defaultEvalConfig = c.csDefaultEvalConfig;
-pub const reset = c.csReset;
-pub const eval = c.csEval;
-pub const defaultCompileConfig = c.csDefaultCompileConfig;
-pub const compile = c.csCompile;
-pub const freeStr = c.csFreeStr;
-pub const free = c.csFree;
-pub const evalExt = c.csEvalExt;
-pub const listLen = c.csListLen;
-pub const listCap = c.csListCap;
-pub const listAppend = c.csListAppend;
-pub const listGet = c.csListGet;
-pub const listSet = c.csListSet;
-pub const listInsert = c.csListInsert;
-pub const asFloat = c.csAsFloat;
-pub const float = c.csFloat;
-pub const getTypeId = c.csGetTypeId;
-pub const newValueDump = c.csNewValueDump;
-pub const newFunc = c.csNewFunc;
-pub const newPointer = c.csNewPointer;
-pub const newType = c.csNewType;
-pub const newEmptyMap = c.csNewEmptyMap;
-pub const symbol = c.csSymbol;
-pub const asSymbolId = c.csAsSymbolId;
-pub const csTrue = c.csTrue;
-pub const csFalse = c.csFalse;
-pub const asInteger = c.csAsInteger;
-pub const integer = c.csInteger;
-pub const asBool = c.csAsBool;
-pub const toBool = c.csToBool;
-pub const declareDynFunc = c.csDeclareDynFunc;
-pub const declareFunc = c.csDeclareFunc;
-pub const declareDynVar = c.csDeclareDynVar;
-pub const declareVar = c.csDeclareVar;
-pub const expandTypeTemplate = c.csExpandTypeTemplate;
-pub const setResolver = c.csSetResolver;
-pub const resolve = c.csResolve;
-pub const setModuleLoader = c.csSetModuleLoader;
-pub const setPrinter = c.csSetPrinter;
-pub const setErrorPrinter = c.csSetErrorPrinter;
-pub const setUserData = c.csSetUserData;
-pub const getUserData = c.csGetUserData;
-pub const getGlobalRC = c.csGetGlobalRC;
-pub const newLastErrorSummary = c.csNewLastErrorSummary;
-pub const newErrorReportSummary = c.csNewErrorReportSummary;
-pub const newPanicSummary = c.csNewPanicSummary;
-pub const release = c.csRelease;
-pub const retain = c.csRetain;
-pub const performGC = c.csPerformGC;
-pub const traceDumpLiveObjects = c.csTraceDumpLiveObjects;
-pub const resultName = c.csResultName;
+pub const getAllocator = c.clGetAllocator;
+pub const reportApiError = c.clReportApiError;
+pub const defaultResolver = c.clDefaultResolver;
+pub const defaultModuleLoader = c.clDefaultModuleLoader;
+pub const getVersion = c.clGetVersion;
+pub const getFullVersion = c.clGetFullVersion;
+pub const getCommit = c.clGetCommit;
+pub const getBuild = c.clGetBuild;
+pub const create = c.clCreate;
+pub const deinit = c.clDeinit;
+pub const destroy = c.clDestroy;
+pub const validate = c.clValidate;
+pub const defaultEvalConfig = c.clDefaultEvalConfig;
+pub const reset = c.clReset;
+pub const eval = c.clEval;
+pub const defaultCompileConfig = c.clDefaultCompileConfig;
+pub const compile = c.clCompile;
+pub const freeStr = c.clFreeStr;
+pub const free = c.clFree;
+pub const evalExt = c.clEvalExt;
+pub const listLen = c.clListLen;
+pub const listCap = c.clListCap;
+pub const listAppend = c.clListAppend;
+pub const listGet = c.clListGet;
+pub const listSet = c.clListSet;
+pub const listInsert = c.clListInsert;
+pub const asFloat = c.clAsFloat;
+pub const float = c.clFloat;
+pub const getTypeId = c.clGetTypeId;
+pub const newValueDump = c.clNewValueDump;
+pub const newFunc = c.clNewFunc;
+pub const newPointer = c.clNewPointer;
+pub const newType = c.clNewType;
+pub const newEmptyMap = c.clNewEmptyMap;
+pub const symbol = c.clSymbol;
+pub const asSymbolId = c.clAsSymbolId;
+pub const clTrue = c.clTrue;
+pub const clFalse = c.clFalse;
+pub const asInteger = c.clAsInteger;
+pub const integer = c.clInteger;
+pub const asBool = c.clAsBool;
+pub const toBool = c.clToBool;
+pub const declareDynFunc = c.clDeclareDynFunc;
+pub const declareFunc = c.clDeclareFunc;
+pub const declareDynVar = c.clDeclareDynVar;
+pub const declareVar = c.clDeclareVar;
+pub const expandTypeTemplate = c.clExpandTypeTemplate;
+pub const setResolver = c.clSetResolver;
+pub const resolve = c.clResolve;
+pub const setModuleLoader = c.clSetModuleLoader;
+pub const setPrinter = c.clSetPrinter;
+pub const setErrorPrinter = c.clSetErrorPrinter;
+pub const setUserData = c.clSetUserData;
+pub const getUserData = c.clGetUserData;
+pub const getGlobalRC = c.clGetGlobalRC;
+pub const newLastErrorSummary = c.clNewLastErrorSummary;
+pub const newErrorReportSummary = c.clNewErrorReportSummary;
+pub const newPanicSummary = c.clNewPanicSummary;
+pub const release = c.clRelease;
+pub const retain = c.clRetain;
+pub const performGC = c.clPerformGC;
+pub const traceDumpLiveObjects = c.clTraceDumpLiveObjects;
+pub const resultName = c.clResultName;
 
-pub const Slice = c.CsSlice;
+pub const Slice = c.CLSlice;
 pub fn fromSlice(str: Slice) []const u8 {
-    return str.buf[0..str.len];
+    return str.ptr[0..str.len];
 }
 pub fn toSlice(s: []const u8) Slice {
     return .{
-        .buf = s.ptr,
+        .ptr = s.ptr,
         .len = s.len,
     };
 }
-pub const Str = c.CsStr;
+pub const Str = c.CLStr;
 pub fn fromStr(str: Str) []const u8 {
-    return str.buf[0..str.len];
+    return str.ptr[0..str.len];
 }
 pub fn toStr(s: []const u8) Str {
     return .{
-        .buf = s.ptr,
+        .ptr = s.ptr,
         .len = s.len,
     };
 }
-pub const NullStr = Str{ .buf = null, .len = 0 };
+pub const NullStr = Str{ .ptr = null, .len = 0 };
 
-pub const ValueSlice = c.CsValueSlice;
-pub const FuncFn = c.CsFuncFn;
-pub const PrintFn = c.CsPrintFn;
-pub const PrintErrorFn = c.CsPrintErrorFn;
-pub const LogFn = c.CsLogFn;
-pub const ValidateConfig = c.CsValidateConfig;
-pub const CompileConfig = c.CsCompileConfig;
-pub const EvalConfig = c.CsEvalConfig;
-pub const FuncInfo = c.CsFuncInfo;
-pub const FuncResult = c.CsFuncResult;
-pub const ModuleLoaderFn = c.CsModuleLoaderFn;
-pub const ResolverFn = c.CsResolverFn;
-pub const ResolverParams = c.CsResolverParams;
-pub const FuncLoaderFn = c.CsFuncLoaderFn;
-pub const VarLoaderFn = c.CsVarLoaderFn;
-pub const TypeLoaderFn = c.CsTypeLoaderFn;
-pub const ModuleOnDeinitRtFn = c.CsModuleOnDeinitRtFn;
-pub const ModuleLoaderResult = c.CsModuleLoaderResult;
-pub const ModuleOnTypeLoadFn = c.CsModuleOnTypeLoadFn;
-pub const ModuleOnLoadFn = c.CsModuleOnLoadFn;
-pub const ModuleOnDestroyFn = c.CsModuleOnDestroyFn;
-pub const TypeInfo = c.CsTypeInfo;
-pub const TypeResult = c.CsTypeResult;
-pub const FuncType = c.CsFuncType;
-pub const FuncTypeStandard = c.CS_FUNC_STANDARD;
-pub const FuncTypeInline = c.CS_FUNC_INLINE;
-pub const VarInfo = c.CsVarInfo;
-pub const VarResult = c.CsVarResult;
-pub const Value = c.CsValue;
-pub const VM = c.CsVM;
-pub const Sym = c.CsSym;
-pub const GCResult = c.CsGCResult;
+pub const ValueSlice = c.CLValueSlice;
+pub const FuncFn = c.CLFuncFn;
+pub const PrintFn = c.CLPrintFn;
+pub const PrintErrorFn = c.CLPrintErrorFn;
+pub const LogFn = c.CLLogFn;
+pub const ValidateConfig = c.CLValidateConfig;
+pub const CompileConfig = c.CLCompileConfig;
+pub const EvalConfig = c.CLEvalConfig;
+pub const FuncInfo = c.CLFuncInfo;
+pub const FuncResult = c.CLFuncResult;
+pub const ModuleLoaderFn = c.CLModuleLoaderFn;
+pub const ResolverFn = c.CLResolverFn;
+pub const ResolverParams = c.CLResolverParams;
+pub const FuncLoaderFn = c.CLFuncLoaderFn;
+pub const VarLoaderFn = c.CLVarLoaderFn;
+pub const TypeLoaderFn = c.CLTypeLoaderFn;
+pub const ModuleOnDeinitRtFn = c.CLModuleOnDeinitRtFn;
+pub const ModuleLoaderResult = c.CLModuleLoaderResult;
+pub const ModuleOnTypeLoadFn = c.CLModuleOnTypeLoadFn;
+pub const ModuleOnLoadFn = c.CLModuleOnLoadFn;
+pub const ModuleOnDestroyFn = c.CLModuleOnDestroyFn;
+pub const TypeInfo = c.CLTypeInfo;
+pub const TypeResult = c.CLTypeResult;
+pub const FuncType = c.CLFuncType;
+pub const FuncTypeStandard = c.CL_FUNC_STANDARD;
+pub const FuncTypeInline = c.CL_FUNC_INLINE;
+pub const VarInfo = c.CLVarInfo;
+pub const VarResult = c.CLVarResult;
+pub const Value = c.CLValue;
+pub const VM = c.CLVM;
+pub const Sym = c.CLSym;
+pub const GCResult = c.CLGCResult;
 
-pub const ObjectGetChildrenFn = c.CsObjectGetChildrenFn;
-pub const ObjectFinalizerFn = c.CsObjectFinalizerFn;
+pub const ObjectGetChildrenFn = c.CLObjectGetChildrenFn;
+pub const ObjectFinalizerFn = c.CLObjectFinalizerFn;
 
 pub const FuncEnumType = enum(u8) {
-    standard = c.CS_FUNC_STANDARD,
-    inlinec = c.CS_FUNC_INLINE,
+    standard = c.CL_FUNC_STANDARD,
+    inlinec = c.CL_FUNC_INLINE,
 };
 
-pub const BindTypeCustom = c.CS_BIND_TYPE_CUSTOM;
-pub const BindTypeDecl = c.CS_BIND_TYPE_DECL;
+pub const BindTypeCustom = c.CL_BIND_TYPE_CUSTOM;
+pub const BindTypeDecl = c.CL_BIND_TYPE_DECL;
 
-pub const Backend = c.CsBackend;
-pub const BackendVM = c.CS_VM;
-pub const BackendJIT = c.CS_JIT;
-pub const BackendTCC = c.CS_TCC;
-pub const BackendCC = c.CS_CC;
-pub const BackendLLVM = c.CS_LLVM;
+pub const Backend = c.CLBackend;
+pub const BackendVM = c.CL_VM;
+pub const BackendJIT = c.CL_JIT;
+pub const BackendTCC = c.CL_TCC;
+pub const BackendCC = c.CL_CC;
+pub const BackendLLVM = c.CL_LLVM;
 
-pub const TypeId = c.CsTypeId;
-pub const TypeVoid = c.CS_TYPE_VOID;
-pub const TypeBoolean = c.CS_TYPE_BOOLEAN;
-pub const TypeError = c.CS_TYPE_ERROR;
-pub const TypeSymbol = c.CS_TYPE_SYMBOL;
-pub const TypeInteger = c.CS_TYPE_INTEGER;
-pub const TypeFloat = c.CS_TYPE_FLOAT;
-pub const TypeList = c.CS_TYPE_LIST;
-pub const TypeListIter = c.CS_TYPE_LISTITER;
-pub const TypeMap = c.CS_TYPE_MAP;
-pub const TypeMapIter = c.CS_TYPE_MAPITER;
-pub const TypeClosure = c.CS_TYPE_CLOSURE;
-pub const TypeLambda = c.CS_TYPE_LAMBDA;
-pub const TypeString = c.CS_TYPE_STRING;
-pub const TypeArray = c.CS_TYPE_ARRAY;
-pub const TypeFiber = c.CS_TYPE_FIBER;
-pub const TypeBox = c.CS_TYPE_BOX;
-pub const TypeHostFunc = c.CS_TYPE_HOST_FUNC;
-pub const TypeExternFunc = c.CS_TYPE_EXTERN_FUNC;
-pub const TypeTccState = c.CS_TYPE_TCCSTATE;
-pub const TypePointer = c.CS_TYPE_POINTER;
-pub const TypeTuple = c.CS_TYPE_TUPLE;
-pub const TypeType = c.CS_TYPE_TYPE;
-pub const TypeMetaType = c.CS_TYPE_METATYPE;
+pub const TypeId = c.CLTypeId;
+pub const TypeVoid = c.CL_TYPE_VOID;
+pub const TypeBoolean = c.CL_TYPE_BOOLEAN;
+pub const TypeError = c.CL_TYPE_ERROR;
+pub const TypeSymbol = c.CL_TYPE_SYMBOL;
+pub const TypeInteger = c.CL_TYPE_INTEGER;
+pub const TypeFloat = c.CL_TYPE_FLOAT;
+pub const TypeList = c.CL_TYPE_LIST;
+pub const TypeListIter = c.CL_TYPE_LISTITER;
+pub const TypeMap = c.CL_TYPE_MAP;
+pub const TypeMapIter = c.CL_TYPE_MAPITER;
+pub const TypeClosure = c.CL_TYPE_CLOSURE;
+pub const TypeLambda = c.CL_TYPE_LAMBDA;
+pub const TypeString = c.CL_TYPE_STRING;
+pub const TypeArray = c.CL_TYPE_ARRAY;
+pub const TypeFiber = c.CL_TYPE_FIBER;
+pub const TypeBox = c.CL_TYPE_BOX;
+pub const TypeHostFunc = c.CL_TYPE_HOST_FUNC;
+pub const TypeExternFunc = c.CL_TYPE_EXTERN_FUNC;
+pub const TypeTccState = c.CL_TYPE_TCCSTATE;
+pub const TypePointer = c.CL_TYPE_POINTER;
+pub const TypeTuple = c.CL_TYPE_TUPLE;
+pub const TypeType = c.CL_TYPE_TYPE;
+pub const TypeMetaType = c.CL_TYPE_METATYPE;
 
-pub const ResultCode = c.CsResultCode;
-pub const Success = c.CS_SUCCESS;
-pub const ErrorCompile = c.CS_ERROR_COMPILE;
-pub const ErrorPanic = c.CS_ERROR_PANIC;
-pub const ErrorUnknown = c.CS_ERROR_UNKNOWN;
+pub const ResultCode = c.CLResultCode;
+pub const Success = c.CL_SUCCESS;
+pub const ErrorCompile = c.CL_ERROR_COMPILE;
+pub const ErrorPanic = c.CL_ERROR_PANIC;
+pub const ErrorUnknown = c.CL_ERROR_UNKNOWN;

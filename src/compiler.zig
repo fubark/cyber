@@ -1077,7 +1077,7 @@ pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *Com
 }
 
 pub fn defaultModuleResolver(_: ?*cc.VM, params: cc.ResolverParams) callconv(.C) bool {
-    params.resUri.* = params.uri.buf;
+    params.resUri.* = params.uri.ptr;
     params.resUriLen.* = params.uri.len;
     return true;
 }

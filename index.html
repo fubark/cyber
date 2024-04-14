@@ -985,7 +985,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 186-1ad836c</div>
+    <div class="sub-title">v0.4-dev 188-a302fb5</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -1005,7 +1005,7 @@ table tbody tr:nth-child(even) {
 <li><a href="#concurrency">Concurrency.</a></li>
 <li><a href="#dynamic-typing">Dynamic Typing.</a></li>
 <li><a href="#metaprogramming">Metaprogramming.</a></li>
-<li><a href="#embedding">Embedding.</a></li>
+<li><a href="#libcyber">libcyber.</a></li>
 <li><a href="#memory">Memory.</a></li>
 <li><a href="#cli">CLI.</a></li>
     </ul>
@@ -2628,7 +2628,7 @@ print math.cos(0)
 <pre><code class="language-cy">use m 'math'
 print m.random()
 </code></pre>
-<p>When Cyber is embedded into a host application, the module resolver and loader can be overridden using the <a href="#embedding" title="">Embed API</a>.</p>
+<p>When Cyber is embedded into a host application, the module resolver and loader can be overridden using <a href="#libcyber" title="">libcyber</a>.</p>
 <a href="#modules">^topic</a>
 <h3 id="import-file">Import file. <a href="#import-file">#</a></h3>
 <p>File modules can be imported:</p>
@@ -4043,7 +4043,7 @@ print bool          -- 'type: bool'
 <h2 id="directives">Directives. <a href="#directives">#</a></h2>
 <p>Directives start with <code>#</code> and are used as modifiers.</p>
 <blockquote><p><code>#host</code></p>
-<p>Modifier to bind a function, variable, or type to the host. See <a href="#embedding" title="">Embedding</a>.</p>
+<p>Modifier to bind a function, variable, or type to the host. See <a href="#libcyber" title="">libcyber</a>.</p>
 </blockquote><a href="#metaprogramming">^topic</a>
 <h2 id="generics">Generics. <a href="#generics">#</a></h2>
 <p>Generics enables parametric polymorphism for types and functions. Compile-time arguments are passed to templates to generate specialized code. This facilitates developing container types and algorithms that operate on different types.</p>
@@ -4072,7 +4072,7 @@ print bool          -- 'type: bool'
 <h2 id="runtime-execution">Runtime execution. <a href="#runtime-execution">#</a></h2>
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#metaprogramming">^topic</a>
-<h1 id="embedding">Embedding. <a href="#embedding">#</a></h1>
+<h1 id="libcyber">libcyber. <a href="#libcyber">#</a></h1>
 <table><tr>
 <td valign="top">
 <ul>
@@ -4102,63 +4102,64 @@ print bool          -- 'type: bool'
 </td>
 </tr></table>
 <p><a href="#table-of-contents" title="">^top</a></p>
-<p>The Embed API allows embedding the Cyber compiler and VM as a library into applications. Cyber's core types and the CLI app were built using the Embed API.</p>
+<p><code>libcyber</code> allows embedding the Cyber compiler and VM into applications. Cyber's core types and the CLI app were built using the library.</p>
 <p>The API is defined in the <a href="https://github.com/fubark/cyber/blob/master/src/include/cyber.h" title="">C header file</a>.
 The examples shown below can be found in the repository under <a href="https://github.com/fubark/cyber/blob/master/examples/c-embedded" title="">c-embedded</a>. C is used as the host language, but it can be easily translated to C++ or any C-ABI compatible language.</p>
-<p>Types from the Embed API begin with <code>Cs</code>, constants begin with <code>CS</code>, and functions begin with <code>cs</code>.</p>
+<p>Types and constants from the C-API begin with <code>CL</code> and functions begin with <code>cl</code>.</p>
 <h2 id="getting-started">Getting started. <a href="#getting-started">#</a></h2>
-<a href="#embedding">^topic</a>
+<a href="#libcyber">^topic</a>
 <h3 id="create-vm">Create VM. <a href="#create-vm">#</a></h3>
-<p>Most operations are tied to a VM handle. To create a new VM instance, call <code>csCreate</code>:</p>
+<p>Most operations are tied to a VM handle. To create a new VM instance, call <code>clCreate</code>:</p>
 <pre><code class="language-c">#include "cyber.h"
 
 int main() {
-    CsVM* vm = csCreate();
+    CLVM* vm = clCreate();
     // ...
-    csDestroy(vm);
+    clDestroy(vm);
     return 0;
 }
 </code></pre>
-<a href="#embedding">^topic</a>
+<a href="#libcyber">^topic</a>
 <h3 id="override-print">Override <code>print</code>. <a href="#override-print">#</a></h3>
 <p>The builtin <code>print</code> function does nothing by default, so it needs to be overrided to print to stdout for example:</p>
-<pre><code class="language-c">void print(CsVM* vm, CsStr str) {
-    printf("My print: %.*s\n", (int)str.len, str.buf);
+<pre><code class="language-c">void printer(CLVM* vm, CLStr str) {
+    printf("Invoked printer: %.*s\n", (int)str.len, str.buf);
 }
 
 int main() {
     // ...
-    csSetPrinter(vm, print);
+    clSetPrinter(vm, printer);
     // ...
 }
 </code></pre>
-<a href="#embedding">^topic</a>
+<p>Note that <code>print</code> invokes the printer twice, once for the value's string and another for the new line character.</p>
+<a href="#libcyber">^topic</a>
 <h3 id="eval-script">Eval script. <a href="#eval-script">#</a></h3>
-<p><code>csEval</code> compiles and evaluates a script:</p>
-<pre><code class="language-c">CsStr src = STR(
+<p><code>clEval</code> compiles and evaluates a script:</p>
+<pre><code class="language-c">CLStr src = STR(
     "var a = 1\n"
     "print(a + 2)\n"
 );
 
-CsValue val;
-int res = csEval(vm, src, &val);
+CLValue val;
+int res = clEval(vm, src, &val);
 if (res == CS_SUCCESS) {
     printf("Success!\n");
-    csRelease(vm, val);
+    clRelease(vm, val);
 } else {
-    const char* report = csNewLastErrorReport(vm);
+    const char* report = clNewLastErrorReport(vm);
     printf("%s\n", report);
-    csFreeStrZ(report);
+    clFreeStrZ(report);
 }
 </code></pre>
 <p>If a value is returned from the main block of the script, it's saved to the result value argument.
-Memory is managed by ARC so a value that points to a heap object requires a <code>csRelease</code> when it's no longer needed.</p>
-<p><code>csEval</code> returns a result code that indicates whether it was successful.</p>
-<a href="#embedding">^topic</a>
+Memory is managed by ARC so a value that points to a heap object requires a <code>clRelease</code> when it's no longer needed.</p>
+<p><code>clEval</code> returns a result code that indicates whether it was successful.</p>
+<a href="#libcyber">^topic</a>
 <h2 id="module-loader">Module Loader. <a href="#module-loader">#</a></h2>
 <p>A module loader describes how a module is loaded when <code>use</code> import statement is encountered during script execution.
-Only one module loader can be active and is set using <code>csSetModuleLoader</code>:</p>
-<pre><code class="language-c">bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
+Only one module loader can be active and is set using <code>clSetModuleLoader</code>:</p>
+<pre><code class="language-c">bool modLoader(CLVM* vm, CLStr spec, CLModuleLoaderResult* out) {
     if (strncmp("my_mod", spec.buf, spec.len) == 0) {
         out->src =
             "#host func add(a float, b float) float\n"
@@ -4176,31 +4177,31 @@ Only one module loader can be active and is set using <code>csSetModuleLoader</c
         return true;
     } else {
         // Fallback to the default module loader to load `core`.
-        return csDefaultModuleLoader(vm, spec, out);
+        return clDefaultModuleLoader(vm, spec, out);
     }
 }
 
 int main() {
     //...
-    csSetModuleLoader(vm, modLoader);
+    clSetModuleLoader(vm, modLoader);
     //...
 }
 </code></pre>
 <p>The above example checks whether "my_mod" was imported and returns it's source code. Additional loaders are returned to load the functions, variables, and types from the source code.</p>
-<a href="#embedding">^topic</a>
+<a href="#libcyber">^topic</a>
 <h3 id="default-module-loader">Default module loader. <a href="#default-module-loader">#</a></h3>
-<p>Since only one module loader can be set to the VM instance, a custom loader is required to handle the "core" import which contains all of the core types and functions in Cyber. This can simply be delegated to <code>csDefaultModuleLoader</code>.</p>
-<a href="#embedding">^topic</a>
+<p>Since only one module loader can be set to the VM instance, a custom loader is required to handle the "core" import which contains all of the core types and functions in Cyber. This can simply be delegated to <code>clDefaultModuleLoader</code>.</p>
+<a href="#libcyber">^topic</a>
 <h3 id="function-loader">Function loader. <a href="#function-loader">#</a></h3>
 <p>A function loader describes how to load a <code>#host</code> function when it's encountered by the compiler.
 The loader can bind functions and type methods:</p>
-<pre><code class="language-c">struct { char* n; CsFuncFn fn; } funcs[] = {
+<pre><code class="language-c">struct { char* n; CLFuncFn fn; } funcs[] = {
     {"add", add},
     {"asList", myCollectionAsList},
     {"MyCollection.new", myCollectionNew},
 };
 
-bool funcLoader(CsVM* vm, CsFuncInfo info, CsFuncResult* out) {
+bool funcLoader(CLVM* vm, CLFuncInfo info, CLFuncResult* out) {
     // Check that the name matches before setting the function pointer.
     if (strncmp(funcs[info.idx].n, info.name.buf, info.name.len) == 0) {
         out->ptr = funcs[info.idx].fn;
@@ -4210,16 +4211,16 @@ bool funcLoader(CsVM* vm, CsFuncInfo info, CsFuncResult* out) {
     }
 }
 </code></pre>
-<p>This example uses the <code>CsFuncInfo.idx</code> of a #host function to index into an array and return a <a href="#host-functions" title="">Host function</a> pointer. The name is also compared to ensure it's binding to the correct pointer.</p>
+<p>This example uses the <code>CLFuncInfo.idx</code> of a #host function to index into an array and return a <a href="#host-functions" title="">Host function</a> pointer. The name is also compared to ensure it's binding to the correct pointer.</p>
 <p>This is an efficient way to map Cyber functions to host functions. A different implementation might use a hash table to map the name of the function to it's pointer.</p>
-<a href="#embedding">^topic</a>
+<a href="#libcyber">^topic</a>
 <h3 id="variable-loader">Variable loader. <a href="#variable-loader">#</a></h3>
 <p>A variable loader describes how to load a <code>#host</code> variable when it's encountered by the compiler:</p>
 <pre><code class="language-c">// C has limited static initializers (and objects require a vm instance) so initialize them in `main`.
-typedef struct { char* n; CsValue v; } NameValue;
+typedef struct { char* n; CLValue v; } NameValue;
 NameValue vars[2];
 
-bool varLoader(CsVM* vm, CsVarInfo info, CsValue* out) {
+bool varLoader(CLVM* vm, CLVarInfo info, CLValue* out) {
     // Check that the name matches before setting the value.
     if (strncmp(vars[info.idx].n, info.name.buf, info.name.len) == 0) {
         // Objects are consumed by the module.
@@ -4234,20 +4235,20 @@ int main() {
     // ...
 
     // Initialize var array for loader.
-    vars[0] = (NameValue){".MyConstant", csFloat(1.23)};
-    CsValue myInt = csInteger(123);
-    vars[1] = (NameValue){".MyList", csNewList(vm, &myInt, 1)};
+    vars[0] = (NameValue){".MyConstant", clFloat(1.23)};
+    CLValue myInt = clInteger(123);
+    vars[1] = (NameValue){".MyList", clNewList(vm, &myInt, 1)};
 
     // ...
 }
 </code></pre>
-<p>This example uses the same technique as the function loader, but it can be much simpler. It doesn't matter how the mapping is done as long as the variable loader returns a <code>CsValue</code>.</p>
-<a href="#embedding">^topic</a>
+<p>This example uses the same technique as the function loader, but it can be much simpler. It doesn't matter how the mapping is done as long as the variable loader returns a <code>CLValue</code>.</p>
+<a href="#libcyber">^topic</a>
 <h3 id="type-loader">Type loader. <a href="#type-loader">#</a></h3>
 <p>A type loader describes how to load a <code>#host</code> type when it's encountered by the compiler:</p>
-<pre><code class="language-c">CsTypeId myCollectionId;
+<pre><code class="language-c">CLTypeId myCollectionId;
 
-bool typeLoader(CsVM* vm, CsTypeInfo info, CsTypeResult* out) {
+bool typeLoader(CLVM* vm, CLTypeInfo info, CLTypeResult* out) {
     if (strncmp("MyCollection", info.name.buf, info.name.len) == 0) {
         out->type = CS_TYPE_OBJECT;
         out->data.object.outTypeId = &myCollectionId;
@@ -4260,38 +4261,38 @@ bool typeLoader(CsVM* vm, CsTypeInfo info, CsTypeResult* out) {
 }
 </code></pre>
 <p>When binding to the "MyCollection" type, it's typeId is saved to <code>outTypeId</code>. This id is then used to create new instances of this type. See <a href="#host-types" title="">Host types</a>.</p>
-<a href="#embedding">^topic</a>
+<a href="#libcyber">^topic</a>
 <h2 id="host-functions">Host functions. <a href="#host-functions">#</a></h2>
 <p>A host function requires a specific function signature:</p>
-<pre><code class="language-c">CsValue add(CsVM* vm, const CsValue* args, uint8_t nargs) {
-    double res = csAsFloat(args[0]) + csAsFloat(args[1]);
-    return csFloat(res);
+<pre><code class="language-c">CLValue add(CLVM* vm, const CLValue* args, uint8_t nargs) {
+    double res = clAsFloat(args[0]) + clAsFloat(args[1]);
+    return clFloat(res);
 }
 </code></pre>
-<p>A host function should always return a <code>CsValue</code>. <code>csNone()</code> can be returned if the function does not intend to return any value.</p>
-<a href="#embedding">^topic</a>
+<p>A host function should always return a <code>CLValue</code>. <code>clNone()</code> can be returned if the function does not intend to return any value.</p>
+<a href="#libcyber">^topic</a>
 <h2 id="host-types">Host types. <a href="#host-types">#</a></h2>
 <p>A host type are types that are opaque to Cyber scripts but still behave like an object. They can have type functions and methods.</p>
 <p>Only the host application can directly create new instances of them, so usually a function is binded to expose a constructor to the user script:</p>
 <pre><code class="language-c">// Binding a C struct with it's own children and finalizer.
 // This struct retains 2 VM values and has 2 arbitrary data values unrelated to the VM.
 typedef struct MyCollection {
-    CsValue val1;
-    CsValue val2;
+    CLValue val1;
+    CLValue val2;
     int a;
     double b;
 } MyCollection;
 
 // Implement the `new` function in MyCollection.
-CsValue myCollectionNew(CsVM* vm, const CsValue* args, uint8_t nargs) {
+CLValue myCollectionNew(CLVM* vm, const CLValue* args, uint8_t nargs) {
     // Instantiate our object.
-    CsValue new = csNewHostObject(vm, myCollectionId, sizeof(MyCollection));
-    MyCollection* my = (MyCollection*)csAsHostObject(new);
+    CLValue new = clNewHostObject(vm, myCollectionId, sizeof(MyCollection));
+    MyCollection* my = (MyCollection*)clAsHostObject(new);
 
     // Assign the constructor args passed in and retain them since the new object now references them.
-    csRetain(vm, args[0]);
+    clRetain(vm, args[0]);
     my->val1 = args[0];
-    csRetain(vm, args[1]);
+    clRetain(vm, args[1]);
     my->val2 = args[1];
 
     // Assign non VM values.
@@ -4300,24 +4301,24 @@ CsValue myCollectionNew(CsVM* vm, const CsValue* args, uint8_t nargs) {
     return new;
 }
 </code></pre>
-<p><code>csNewHostObject</code> takes the type id (returned from the <a href="#type-loader" title="">Type loader</a>) and size (in bytes) and returns a new heap object. Note that the size is allowed to vary. Different instances of the same type can occupy different amounts of memory.</p>
-<a href="#embedding">^topic</a>
+<p><code>clNewHostObject</code> takes the type id (returned from the <a href="#type-loader" title="">Type loader</a>) and size (in bytes) and returns a new heap object. Note that the size is allowed to vary. Different instances of the same type can occupy different amounts of memory.</p>
+<a href="#libcyber">^topic</a>
 <h3 id="getchildren"><code>getChildren</code> <a href="#getchildren">#</a></h3>
-<p>Since <code>MyCollection</code> contains <code>CsValue</code> children, the <a href="#type-loader" title="">Type loader</a> requires a <code>getChildren</code> callback so that memory management can reach them:</p>
-<pre><code class="language-c">CsValueSlice myCollectionGetChildren(CsVM* vm, void* obj) {
+<p>Since <code>MyCollection</code> contains <code>CLValue</code> children, the <a href="#type-loader" title="">Type loader</a> requires a <code>getChildren</code> callback so that memory management can reach them:</p>
+<pre><code class="language-c">CLValueSlice myCollectionGetChildren(CLVM* vm, void* obj) {
     MyCollection* my = (MyCollection*)obj;
-    return (CsValueSlice){ .ptr = &my->val1, .len = 2 };
+    return (CLValueSlice){ .ptr = &my->val1, .len = 2 };
 }
 </code></pre>
-<a href="#embedding">^topic</a>
+<a href="#libcyber">^topic</a>
 <h3 id="finalizer-1"><code>finalizer</code> <a href="#finalizer-1">#</a></h3>
 <p>A type finalizer is optional since the memory and children of an instance will be freed automatically by ARC.
 However, it can be useful to perform additional cleanup tasks for instances that contain external resources.</p>
-<pre><code class="language-c">void myCollectionFinalizer(CsVM* vm, void* obj) {
+<pre><code class="language-c">void myCollectionFinalizer(CLVM* vm, void* obj) {
     printf("MyCollection finalizer was called.\n");
 }
 </code></pre>
-<a href="#embedding">^topic</a>
+<a href="#libcyber">^topic</a>
 <h1 id="memory">Memory. <a href="#memory">#</a></h1>
 <ul>
 <li><a href="#arc" title="">ARC.</a><ul>
@@ -4417,7 +4418,7 @@ hello!
 `int` 123
 </code></pre>
 <p>Local variables <strong>can not</strong> be referenced in subsequent evals, since their scope ends with each eval input:</p>
-<pre><code class="language-bash">> let a = 123
+<pre><code class="language-bash">> var a = 123
 > a
 panic: Variable is not defined in `$global`.
 

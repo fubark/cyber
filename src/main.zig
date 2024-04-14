@@ -8,7 +8,6 @@ const cli = @import("cli.zig");
 const cy_mod = @import("builtins/cy.zig");
 const build_options = @import("build_options");
 const fmt = @import("fmt.zig");
-const ln = @import("linenoise");
 comptime {
     const lib = @import("lib.zig");
     std.testing.refAllDecls(lib);

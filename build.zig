@@ -58,7 +58,10 @@ pub fn build(b: *std.build.Builder) !void {
             .optimize = optimize,
         });
         if (exe.optimize != .Debug) {
-            exe.strip = true;
+            // Sometimes there are issues with strip for ReleaseFast + wasi.
+            if (opts.target.getOsTag() != .wasi) {
+                exe.strip = true;
+            }
         }
         exe.addIncludePath(.{ .path = thisDir() ++ "/src" });
 

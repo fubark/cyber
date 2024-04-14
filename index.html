@@ -985,7 +985,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 188-a302fb5</div>
+    <div class="sub-title">v0.4-dev 191-0e01e3f</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -2574,7 +2574,7 @@ r = foo()         -- Calls the function `random`.
 <li><a href="#symbol-visibility" title="">Symbol visibility.</a></li>
 <li><a href="#symbol-alias" title="">Symbol alias.</a></li>
 <li><a href="#builtin-modules" title="">Builtin modules.</a></li>
-<li><a href="#core" title="">core.</a><ul>
+<li><a href="#module-core" title=""><code>module core</code></a><ul>
 <li><a href="#type-bool" title=""><code>type bool</code></a></li>
 <li><a href="#type-error" title=""><code>type error</code></a></li>
 <li><a href="#type-int" title=""><code>type int</code></a></li>
@@ -2596,9 +2596,11 @@ r = foo()         -- Calls the function `random`.
 </ul>
 </td><td valign="top">
 <ul>
-<li><a href="#math" title="">math.</a></li>
+<li><a href="#module-cy" title=""><code>module cy</code></a></li>
+<li><a href="#module-math" title=""><code>module math</code></a></li>
 <li><a href="#std-modules" title="">Std modules.</a></li>
-<li><a href="#os" title="">os.</a><ul>
+<li><a href="#module-cli" title=""><code>module cli</code></a></li>
+<li><a href="#module-os" title=""><code>module os</code></a><ul>
 <li><a href="#type-file" title=""><code>type File</code></a></li>
 <li><a href="#type-dir" title=""><code>type Dir</code></a></li>
 <li><a href="#type-diriterator" title=""><code>type DirIterator</code></a></li>
@@ -2610,7 +2612,7 @@ r = foo()         -- Calls the function `random`.
 <li><a href="#table-argoption" title=""><code>Table ArgOption</code></a></li>
 </ul>
 </li>
-<li><a href="#test" title="">test.</a></li>
+<li><a href="#module-test" title=""><code>module test</code></a></li>
 </ul>
 </td>
 </tr></table>
@@ -2737,17 +2739,19 @@ use Vec2 -> eng.Vector2
 <h2 id="builtin-modules">Builtin modules. <a href="#builtin-modules">#</a></h2>
 <p>Builtin modules are the bare minimum that comes with Cyber. The <a href="#embedding" title="">embeddable library</a> contains these modules and nothing more. They include:</p>
 <ul>
-<li><a href="#core" title="">core</a>: Cyber related functions and commonly used utilities.</li>
-<li><a href="#math" title="">math</a>: Math constants and functions.</li>
+<li><a href="#module-core" title="">core</a>: Commonly used utilities.</li>
+<li><a href="#module-cy" title="">cy</a>: Cyber related functions.</li>
+<li><a href="#module-math" title="">math</a>: Math constants and functions.</li>
 </ul>
 <a href="#modules">^topic</a>
-<h2 id="core">core. <a href="#core">#</a></h2>
+<h2 id="module-core"><code>module core</code> <a href="#module-core">#</a></h2>
 <p>The <code>core</code> module contains functions related to Cyber and common utilities. It is automatically imported into each script's namespace.</p>
 <p>Sample usage:</p>
 <pre><code class="language-cy">-- `print` and `typeof` are available without imports.
 print 'hello'
 print typeof('my str').id()
 </code></pre>
+<p><a href="#modules" title="">^topic</a></p>
 <!-- core.start -->
 <blockquote><p><code>func copy(val any) any</code></p>
 <p>Copies a primitive value or creates a shallow copy of an object value.</p>
@@ -2768,18 +2772,12 @@ print typeof('my str').id()
 <p>If <code>val</code> is an error, <code>panic(val)</code> is invoked. Otherwise, <code>val</code> is returned.</p>
 </blockquote><blockquote><p><code>func panic(err any) dynamic</code></p>
 <p>Stop execution in the current fiber and starts unwinding the call stack. See <a href="#unexpected-errors" title="">Unexpected Errors</a>.</p>
-</blockquote><blockquote><p><code>func parseCyber(src String) Map</code></p>
-<p>Parses Cyber source string into structured map object.  Currently, only metadata about static declarations is made available but this will be extended to include an AST.</p>
-</blockquote><blockquote><p><code>func parseCyon(src String) any</code></p>
-<p>Parses a CYON string into a value.</p>
 </blockquote><blockquote><p><code>func performGC() Map</code></p>
 <p>Runs the garbage collector once to detect reference cycles and abandoned objects.  Returns the statistics of the run in a map value.</p>
 </blockquote><blockquote><p><code>func print(str any) <void></code></p>
 <p>Prints a value. The host determines how it is printed.</p>
 </blockquote><blockquote><p><code>func runestr(val int) String</code></p>
 <p>Converts a rune to a string.</p>
-</blockquote><blockquote><p><code>func toCyon(val any) String</code></p>
-<p>Encodes a value to CYON string.</p>
 </blockquote><blockquote><p><code>func typeof(val any) metatype</code></p>
 <p>Returns the value's type as a <code>metatype</code> object.</p>
 </blockquote><a href="#modules">^topic</a>
@@ -3043,7 +3041,25 @@ print typeof('my str').id()
 <h3 id="type-tccstate"><code>type TccState</code> <a href="#type-tccstate">#</a></h3>
 <!-- core.end -->
 <a href="#modules">^topic</a>
-<h2 id="math">math. <a href="#math">#</a></h2>
+<h2 id="module-cy"><code>module cy</code> <a href="#module-cy">#</a></h2>
+<p>The <code>cy</code> module contains functions related to the Cyber language.</p>
+<p>Sample usage:</p>
+<pre><code class="language-cy">use cy
+print cy.toCyon([1, 2, 3])
+</code></pre>
+<p><a href="#modules" title="">^topic</a></p>
+<!-- cy.start -->
+<blockquote><p><code>func parse(src String) Map</code></p>
+<p>Parses Cyber source string into a structured map object.  Currently, only metadata about static declarations is made available but this will be extended to include an AST.</p>
+</blockquote><blockquote><p><code>func parseCyon(src String) any</code></p>
+<p>Parses a CYON string into a value.</p>
+</blockquote><blockquote><p><code>func repl(read_line any) <void></code></p>
+<p>Starts an isolated REPL session.  The callback <code>read_line(prefix String) String</code> is responsible for obtaining the input.</p>
+</blockquote><blockquote><p><code>func toCyon(val any) String</code></p>
+<p>Encodes a value to CYON string.</p>
+</blockquote><!-- cy.end -->
+<a href="#modules">^topic</a>
+<h2 id="module-math"><code>module math</code> <a href="#module-math">#</a></h2>
 <p>The math module contains commonly used math constants and functions.</p>
 <p>Sample usage:</p>
 <pre><code class="language-cy">use math
@@ -3051,6 +3067,7 @@ print typeof('my str').id()
 var r = 10.0
 print(math.pi * r^2)
 </code></pre>
+<p><a href="#modules" title="">^topic</a></p>
 <!-- math.start -->
 <blockquote><p><code>var e float</code></p>
 <p>Euler's number and the base of natural logarithms; approximately 2.718.</p>
@@ -3159,11 +3176,26 @@ print(math.pi * r^2)
 <h2 id="std-modules">Std modules. <a href="#std-modules">#</a></h2>
 <p>Std modules come with Cyber's CLI. They include:</p>
 <ul>
-<li><a href="#os" title="">os</a>: System level functions.</li>
-<li><a href="#test" title="">test</a>: Utilities for testing.</li>
+<li><a href="#module-cli" title="">cli</a>: Related to the command line.</li>
+<li><a href="#module-os" title="">os</a>: System level functions.</li>
+<li><a href="#module-test" title="">test</a>: Utilities for testing.</li>
 </ul>
 <a href="#modules">^topic</a>
-<h2 id="os">os. <a href="#os">#</a></h2>
+<h2 id="module-cli"><code>module cli</code> <a href="#module-cli">#</a></h2>
+<p>The <code>cli</code> module contains functions related to the command line.</p>
+<p>Sample usage:</p>
+<pre><code class="language-cy">use cli
+cli.repl()
+</code></pre>
+<p><a href="#modules" title="">^topic</a></p>
+<!-- cli.start -->
+<blockquote><p><code>func repl() <void></code></p>
+<p>Starts an isolated REPL session.  Invokes <code>cy.repl(replReadLine)</code>.</p>
+</blockquote><blockquote><p><code>func replReadLine(prefix String) String</code></p>
+<p>Default implementation to read a line from the CLI for a REPL.</p>
+</blockquote><!-- cli.end -->
+<a href="#modules">^topic</a>
+<h2 id="module-os"><code>module os</code> <a href="#module-os">#</a></h2>
 <p>Cyber's os module contains system level functions. It's still undecided as to how much should be included here so it's incomplete. You can still access os and libc functions yourself using Cyber's FFI or embedding API.</p>
 <p>Sample usage:</p>
 <pre><code class="language-cy">use os
@@ -3172,6 +3204,7 @@ var map = os.getEnvAll()
 for map -> [k, v]:
     print "$(k) -> $(v)"
 </code></pre>
+<p><a href="#modules" title="">^topic</a></p>
 <!-- os.start -->
 <blockquote><p><code>var cpu String</code></p>
 <p>The current cpu arch's tag name.</p>
@@ -3320,7 +3353,7 @@ for map -> [k, v]:
 <table><thead><tr><th>key</th><th>summary</th></tr></thead><tbody><tr><td><code>'name' -> Array</code></td><td>The name of the file or directory.</td></tr><tr><td><code>'path' -> Array</code></td><td>The path of the file or directory relative to the walker's root directory.</td></tr><tr><td><code>'type' -> #file | #dir | #unknown</code></td><td>The type of the entry.</td></tr></tbody></table><a href="#modules">^topic</a>
 <h3 id="table-argoption"><code>Table ArgOption</code> <a href="#table-argoption">#</a></h3>
 <table><thead><tr><th>key</th><th>summary</th></tr></thead><tbody><tr><td><code>'name' -> String</code></td><td>The name of the option to match excluding the hyphen prefix. eg. <code>-path</code></td></tr><tr><td><code>'type' -> metatype(String | float | boolean)</code></td><td>Parse as given value type.</td></tr><tr><td><code>'default' -> any</code></td><td>Optional: Default value if option is missing. <code>none</code> is used if this is not provided.</td></tr></tbody></table><a href="#modules">^topic</a>
-<h2 id="test">test. <a href="#test">#</a></h2>
+<h2 id="module-test"><code>module test</code> <a href="#module-test">#</a></h2>
 <p>The <code>test</code> module contains utilities for testing.</p>
 <p>Sample usage:</p>
 <pre><code class="language-cy">use t 'test'
@@ -3328,6 +3361,7 @@ for map -> [k, v]:
 var a = 123 + 321
 t.eq(a, 444)
 </code></pre>
+<p><a href="#modules" title="">^topic</a></p>
 <!-- test.start -->
 <blockquote><p><code>func assert(pred bool) <void></code></p>
 <p>Panics if <code>pred</code> is <code>false</code>.</p>

@@ -387,7 +387,7 @@ pub const ChunkExt = struct {
             .fields = undefined,
             .variantId = variantId,
             .rt_size = cy.NullId,
-            .numFields = 0,
+            .numFields = cy.NullId,
             .mod = undefined,
         });
 
@@ -397,7 +397,7 @@ pub const ChunkExt = struct {
             .sym = @ptrCast(sym),
             .kind = .object,
             .data = .{ .object = .{
-                .numFields = 0,
+                .numFields = cy.NullU16,
             }},
         };
         return sym;
@@ -447,7 +447,7 @@ pub const ChunkExt = struct {
             .sym = @ptrCast(sym),
             .kind = .object,
             .data = .{ .object = .{
-                .numFields = 0,
+                .numFields = cy.NullU16,
             }},
         };
         return sym;
@@ -463,7 +463,7 @@ pub const ChunkExt = struct {
             .type = typeId,
             .fields = undefined,
             .variantId = cy.NullId,
-            .numFields = 0,
+            .numFields = cy.NullId,
             .rt_size = cy.NullId,
             .mod = undefined,
         });
@@ -475,7 +475,7 @@ pub const ChunkExt = struct {
             .sym = @ptrCast(sym),
             .kind = .@"struct",
             .data = .{ .@"struct" = .{
-                .numFields = 0,
+                .numFields = cy.NullU16,
             }},
         };
         return sym;
@@ -500,7 +500,7 @@ pub const ChunkExt = struct {
             .type = typeId,
             .fields = undefined,
             .variantId = cy.NullId,
-            .numFields = 0,
+            .numFields = cy.NullId,
             .rt_size = cy.NullId,
             .mod = undefined,
         });
@@ -517,7 +517,7 @@ pub const ChunkExt = struct {
             .sym = @ptrCast(sym),
             .kind = .object,
             .data = .{ .object = .{
-                .numFields = 0,
+                .numFields = cy.NullU16,
             }},
         };
         return sym;
@@ -538,7 +538,7 @@ pub const ChunkExt = struct {
             .type = typeId,
             .fields = undefined,
             .variantId = cy.NullId,
-            .numFields = 0,
+            .numFields = cy.NullId,
             .rt_size = cy.NullId,
             .mod = undefined,
         });
@@ -555,7 +555,7 @@ pub const ChunkExt = struct {
             .sym = @ptrCast(sym),
             .kind = .@"struct",
             .data = .{ .@"struct" = .{
-                .numFields = 0,
+                .numFields = cy.NullU16,
             }},
         };
         return sym;

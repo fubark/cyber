@@ -279,11 +279,22 @@ pub const Compiler = struct {
         try self.chunk_map.put(self.alloc, r_uri, mainChunk);
 
         if (self.cont) {
-            // Use all top level syms from previous main.
+            // Use all *resolved* top level syms from previous main.
+            // If a symbol wasn't resolved, it either failed during compilation or didn't end up getting used.
             var iter = self.main_chunk.sym.getMod().symMap.iterator();
             while (iter.next()) |e| {
                 const name = e.key_ptr.*;
                 const sym = e.value_ptr.*;
+
+                const resolved = switch (sym.type) {
+                    .object_t => sym.cast(.object_t).isResolved(),
+                    .struct_t => sym.cast(.struct_t).isResolved(),
+                    .func => sym.cast(.func).isResolved(),
+                    else => true,
+                };
+                if (!resolved) {
+                    continue;
+                }
 
                 const alias = try mainChunk.reserveUseAlias(@ptrCast(mainChunk.sym), name, cy.NullNode);
                 if (sym.type == .use_alias) {

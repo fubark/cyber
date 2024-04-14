@@ -131,13 +131,17 @@ pub const Sym = extern struct {
             .struct_t => {
                 const obj = self.cast(.struct_t);
                 obj.getMod().deinit(alloc);
-                alloc.free(obj.fields[0..obj.numFields]);
+                if (obj.isResolved()) {
+                    alloc.free(obj.fields[0..obj.numFields]);
+                }
                 size = @sizeOf(ObjectType);
             },
             .object_t => {
                 const obj = self.cast(.object_t);
                 obj.getMod().deinit(alloc);
-                alloc.free(obj.fields[0..obj.numFields]);
+                if (obj.isResolved()) {
+                    alloc.free(obj.fields[0..obj.numFields]);
+                }
                 size = @sizeOf(ObjectType);
             },
             .enum_t => {
@@ -557,6 +561,10 @@ pub const FuncSym = extern struct {
 
     /// Duped to perform uniqueness check without dereferencing the first ModuleFunc.
     firstFuncSig: cy.sema.FuncSigId,
+
+    pub fn isResolved(self: *FuncSym) bool {
+        return self.firstFuncSig != cy.NullId;
+    }
 };
 
 pub const TypeAlias = extern struct {
@@ -701,6 +709,10 @@ pub const ObjectType = extern struct {
 
     mod: vmc.Module,
 
+    pub fn isResolved(self: *ObjectType) bool {
+        return self.numFields != cy.NullId;
+    }
+
     pub fn init(parent: *Sym, chunk: *cy.Chunk, name: []const u8, decl_id: cy.NodeId, type_id: cy.TypeId) ObjectType {
         var new = ObjectType{
             .head = cy.Sym.init(.object_t, parent, name),
@@ -708,7 +720,7 @@ pub const ObjectType = extern struct {
             .type = type_id,
             .fields = undefined,
             .variantId = cy.NullId,
-            .numFields = 0,
+            .numFields = cy.NullId,
             .rt_size = cy.NullId,
             .mod = undefined,
         };
@@ -872,6 +884,10 @@ pub const Func = struct {
     numParams: u8,
     isMethod: bool,
     throws: bool,
+
+    pub fn isResolved(self: Func) bool {
+        return self.funcSigId != cy.NullId;
+    }
 
     pub fn isGenerated(self: Func) bool {
         return self.declId == cy.NullId;

@@ -391,6 +391,7 @@ func genDocsModules():
         ModulePair{path: '../src/builtins/builtins_vm.cy', section: 'core'},
         ModulePair{path: '../src/builtins/cy.cy', section: 'cy'},
         ModulePair{path: '../src/builtins/math.cy', section: 'math'},
+        ModulePair{path: '../src/std/cli.cy', section: 'cli'},
         ModulePair{path: '../src/std/os.cy', section: 'os'},
         ModulePair{path: '../src/std/test.cy', section: 'test'},
     ]

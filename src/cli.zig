@@ -6,6 +6,7 @@ const os_mod = @import("std/os.zig");
 const test_mod = @import("std/test.zig");
 const cache = @import("cache.zig");
 const c = @import("capi.zig");
+const zErrFunc = cy.builtins.zErrFunc;
 const v = cy.fmt.v;
 const log = cy.log.scoped(.cli);
 const rt = cy.rt;
@@ -13,7 +14,37 @@ const rt = cy.rt;
 const builtins = std.ComptimeStringMap(void, .{
     .{"core"},
     .{"math"},
+    .{"cy"},
 });
+
+const Src = @embedFile("std/cli.cy");
+
+const NameFunc = struct { []const u8, cy.ZHostFuncFn };
+const funcs = [_]NameFunc{
+    .{"replReadLine",     zErrFunc(replReadLine)},
+};
+
+pub fn funcLoader(_: ?*c.VM, func: c.FuncInfo, out_: [*c]c.FuncResult) callconv(.C) bool {
+    const out: *c.FuncResult = out_;
+    const name = c.fromStr(func.name);
+    if (std.mem.eql(u8, funcs[func.idx].@"0", name)) {
+        out.ptr = @ptrCast(funcs[func.idx].@"1");
+        return true;
+    }
+    return false;
+}
+
+const cli_res = c.ModuleLoaderResult{
+    .src = Src,
+    .srcLen = Src.len,
+    .funcLoader = funcLoader,
+    .onLoad = null,
+    .onReceipt = null,
+    .varLoader = null,
+    .typeLoader = null,
+    .onDestroy = null,
+    .onTypeLoad = null,
+};
 
 const os_res = c.ModuleLoaderResult{
     .src = os_mod.Src,
@@ -40,6 +71,7 @@ const test_res = c.ModuleLoaderResult{
 };
 
 const stdMods = std.ComptimeStringMap(c.ModuleLoaderResult, .{
+    .{"cli", cli_res},
     .{"os", os_res},
     .{"test", test_res},
 });
@@ -320,3 +352,55 @@ fn loadUrl(vm: *cy.VM, alloc: std.mem.Allocator, url: []const u8) ![]const u8 {
 
     return try buf.toOwnedSlice(alloc);
 }
+
+pub const use_ln = builtin.os.tag != .windows and builtin.os.tag != .wasi;
+const ln = @import("linenoise");
+
+pub fn replReadLine(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
+    const prefix = try vm.alloc.dupeZ(u8, args[0].asString());
+    defer vm.alloc.free(prefix);
+    if (use_ln) {
+        const line = try LnReadLine.read(undefined, prefix);
+        defer LnReadLine.free(undefined, line);
+        return vm.allocString(line);
+    } else {
+        var read_line = FallbackReadLine{
+            .alloc = vm.alloc,
+        };
+        const line = try FallbackReadLine.read(&read_line, prefix);
+        defer FallbackReadLine.free(&read_line, line);
+        return vm.allocString(line);
+    }
+}
+
+pub const LnReadLine = struct {
+    pub fn read(ptr: *anyopaque, prefix: [:0]const u8) anyerror![]const u8 {
+        _ = ptr;
+        var linez = ln.linenoise(prefix);
+        if (linez == null) {
+            return error.EndOfInput;
+        }
+        _ = ln.linenoiseHistoryAdd(linez);
+        return std.mem.sliceTo(linez, 0);
+    }
+
+    pub fn free(ptr: *anyopaque, line: []const u8) void {
+        _ = ptr;
+        ln.linenoiseFree(@constCast(line.ptr));
+    }
+};
+
+pub const FallbackReadLine = struct {
+    alloc: std.mem.Allocator,
+
+    pub fn read(ptr: *anyopaque, prefix: [:0]const u8) anyerror![]const u8 {
+        const self: *@This() = @ptrCast(@alignCast(ptr));
+        try std.io.getStdOut().writeAll(prefix);
+        return std.io.getStdIn().reader().readUntilDelimiterAlloc(self.alloc, '\n', 10e8);
+    }
+
+    pub fn free(ptr: *anyopaque, line: []const u8) void {
+        const self: *@This() = @ptrCast(@alignCast(ptr));
+        self.alloc.free(line);
+    }
+};

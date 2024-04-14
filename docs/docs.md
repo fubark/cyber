@@ -1855,7 +1855,8 @@ In the example above, the function `foo` is called with 4 arguments. The first a
 * [`module cy`](#module-cy)
 * [`module math`](#module-math)
 * [Std modules.](#std-modules)
-* [os.](#os)
+* [`module cli`](#module-cli)
+* [`module os`](#module-os)
   * [`type File`](#type-file)
   * [`type Dir`](#type-dir)
   * [`type DirIterator`](#type-diriterator)
@@ -2058,10 +2059,25 @@ print(math.pi * r^2)
 
 ## Std modules.
 Std modules come with Cyber's CLI. They include:
-- [os](#os): System level functions.
-- [test](#test): Utilities for testing.
+- [cli](#module-cli): Related to the command line.
+- [os](#module-os): System level functions.
+- [test](#module-test): Utilities for testing.
 
-## os.
+## `module cli`
+The `cli` module contains functions related to the command line.
+
+Sample usage:
+```cy
+use cli
+cli.repl()
+```
+
+[^topic](#modules)
+
+<!-- cli.start -->
+<!-- cli.end -->
+
+## `module os`
 Cyber's os module contains system level functions. It's still undecided as to how much should be included here so it's incomplete. You can still access os and libc functions yourself using Cyber's FFI or embedding API.
 
 Sample usage:
@@ -2072,6 +2088,8 @@ var map = os.getEnvAll()
 for map -> [k, v]:
     print "$(k) -> $(v)"
 ```
+
+[^topic](#modules)
 
 <!-- os.start -->
 <!-- os.end -->

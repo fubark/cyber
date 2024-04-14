@@ -7,6 +7,7 @@
 -- * docs.md does not handle custom header ids since Github md doesn't support it.
 -- * The version string can be overrided with `-version`
 
+use cy
 use os
 use md '../src/tools/md4c.cy'
 
@@ -388,6 +389,7 @@ type ModulePair:
 func genDocsModules():
     var modules = [
         ModulePair{path: '../src/builtins/builtins_vm.cy', section: 'core'},
+        ModulePair{path: '../src/builtins/cy.cy', section: 'cy'},
         ModulePair{path: '../src/builtins/math.cy', section: 'math'},
         ModulePair{path: '../src/std/os.cy', section: 'os'},
         ModulePair{path: '../src/std/test.cy', section: 'test'},
@@ -399,11 +401,11 @@ func genDocsModules():
 
     for modules -> mod:
         var src = os.readFile("$(curDir)/$(mod.path)")
-        var decls = parseCyber(src)['decls']
+        var decls = cy.parse(src)['decls']
         var gen = "\n"
         for decls -> decl:
             switch decl['type']
-            case 'funcInit':
+            case 'funcInit', 'func':
                 var docLine = decl.get('docs') ?else ''
                 var params = []
                 for decl['header']['params'] -> param:

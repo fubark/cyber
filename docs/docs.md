@@ -1832,7 +1832,7 @@ In the example above, the function `foo` is called with 4 arguments. The first a
 * [Symbol visibility.](#symbol-visibility)
 * [Symbol alias.](#symbol-alias)
 * [Builtin modules.](#builtin-modules)
-* [core.](#core)
+* [`module core`](#module-core)
   * [`type bool`](#type-bool)
   * [`type error`](#type-error)
   * [`type int`](#type-int)
@@ -1852,7 +1852,8 @@ In the example above, the function `foo` is called with 4 arguments. The first a
 
 </td><td valign="top">
 
-* [math.](#math)
+* [`module cy`](#module-cy)
+* [`module math`](#module-math)
 * [Std modules.](#std-modules)
 * [os.](#os)
   * [`type File`](#type-file)
@@ -1864,7 +1865,7 @@ In the example above, the function `foo` is called with 4 arguments. The first a
   * [`Map DirEntry`](#map-direntry)
   * [`Map DirWalkEntry`](#map-dirwalkentry)
   * [`Table ArgOption`](#table-argoption)
-* [test.](#test)
+* [`module test`](#module-test)
 </td>
 </tr></table>
 
@@ -2006,10 +2007,11 @@ use Vec2 -> eng.Vector2
 
 ## Builtin modules.
 Builtin modules are the bare minimum that comes with Cyber. The [embeddable library](#embedding) contains these modules and nothing more. They include:
-- [core](#core): Cyber related functions and commonly used utilities.
-- [math](#math): Math constants and functions.
+- [core](#module-core): Commonly used utilities.
+- [cy](#module-cy): Cyber related functions.
+- [math](#module-math): Math constants and functions.
 
-## core.
+## `module core`
 The `core` module contains functions related to Cyber and common utilities. It is automatically imported into each script's namespace. 
 
 Sample usage:
@@ -2019,10 +2021,26 @@ print 'hello'
 print typeof('my str').id()
 ```
 
+[^topic](#modules)
+
 <!-- core.start -->
 <!-- core.end -->
 
-## math.
+## `module cy`
+The `cy` module contains functions related to the Cyber language. 
+
+Sample usage:
+```cy
+use cy
+print cy.toCyon([1, 2, 3])
+```
+
+[^topic](#modules)
+
+<!-- cy.start -->
+<!-- cy.end -->
+
+## `module math`
 The math module contains commonly used math constants and functions.
 
 Sample usage:
@@ -2032,6 +2050,8 @@ use math
 var r = 10.0
 print(math.pi * r^2)
 ```
+
+[^topic](#modules)
 
 <!-- math.start -->
 <!-- math.end -->
@@ -2075,7 +2095,7 @@ for map -> [k, v]:
 | `'type' -> metatype(String | float | boolean)` | Parse as given value type. |
 | `'default' -> any` | Optional: Default value if option is missing. `none` is used if this is not provided. |
 
-## test.
+## `module test`
 The `test` module contains utilities for testing.
 
 Sample usage:
@@ -2085,6 +2105,8 @@ use t 'test'
 var a = 123 + 321
 t.eq(a, 444)
 ```
+
+[^topic](#modules)
 
 <!-- test.start -->
 <!-- test.end -->

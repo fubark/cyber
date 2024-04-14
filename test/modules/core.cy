@@ -97,54 +97,6 @@ t.eq(isNone(1), false)
 opt = 123
 t.eq(isNone(opt), false)
 
--- parseCyber()
-res = parseCyber('var .foo = 123')
-t.eq(res['decls'][0]['type'], 'variable')
-t.eq(res['decls'][0]['name'], 'foo')
-
-res = parseCyber('type foo = bar')
-t.eq(res['decls'][0]['type'], 'typeAlias')
-t.eq(res['decls'][0]['name'], 'foo')
-
-res = parseCyber('func foo(): pass')
-t.eq(res['decls'][0]['type'], 'func')
-t.eq(res['decls'][0]['name'], 'foo')
-
-res = parseCyber('func Foo.foo(): pass')
-t.eq(res['decls'][0]['type'], 'func')
-t.eq(res['decls'][0]['name'], 'Foo.foo')
-
-res = parseCyber("use foo 'bar'")
-t.eq(res['decls'][0]['type'], 'use_import')
-t.eq(res['decls'][0]['name'], 'foo')
-
-res = parseCyber("type foo:\n  a any")
-t.eq(res['decls'][0]['type'], 'object')
-t.eq(res['decls'][0]['name'], 'foo')
-
-res = parseCyber("type foo enum:\n  case a")
-t.eq(res['decls'][0]['type'], 'enum_t')
-t.eq(res['decls'][0]['name'], 'foo')
-
--- parseCyon()
-let val = parseCyon('123')
-t.eq(val, 123)
-val = parseCyon('"foo"')
-t.eq(val, 'foo')
-val = parseCyon('true')
-t.eq(val, true)
-val = parseCyon('false')
-t.eq(val, false)
-val = parseCyon('[]')
-t.eqList(val, [])
-val = parseCyon('[1, 2, 3]')
-t.eqList(val, [1, 2, 3])
-val = parseCyon('{}')
-t.eq(val.size(), 0)
-val = parseCyon('{ a: 123 }')
-t.eq(val.size(), 1)
-t.eq(val['a'], 123)
-
 -- pointer()
 var ptr = pointer(0xDEADBEEF)
 t.eq(ptr.addr(), 3735928559)
@@ -170,32 +122,6 @@ t.eq(String(int(123)), '123')
 t.eq(String(error.foo), 'error.foo')
 t.eq(String(.foo), '.foo')
 t.eq(String(float), 'type: float')
-
--- toCyon()
-var cyon = toCyon(123)
-t.eq(cyon, '123')
-cyon = toCyon(123.0)
-t.eq(cyon, '123.0')
-cyon = toCyon('foo')
-t.eq(cyon, "'foo'")
-cyon = toCyon(true)
-t.eq(cyon, 'true')
-cyon = toCyon(false)
-t.eq(cyon, 'false')
-cyon = toCyon([])
-t.eq(cyon, '[]')
-cyon = toCyon([1, 2, 3])
-t.eq(cyon, '''[
-    1,
-    2,
-    3,
-]''')
-cyon = toCyon({})
-t.eq(cyon, '{}')
-cyon = toCyon({ a: 123 })
-t.eq(cyon, '''{
-    a: 123,
-}''')
 
 -- typeof()
 t.eq(typeof(true), bool)

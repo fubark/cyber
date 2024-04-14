@@ -395,11 +395,11 @@ pub fn printFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) v
 pub fn printZFmt(c: Context, comptime format: []const u8, args: anytype) void {
     if (build_options.rt == .vm) {
         const w = c.clearTempString();
-        std.fmt.format(w, format, args);
+        std.fmt.format(w, format, args) catch cy.fatal();
         c.print.?(@ptrCast(c), api.toStr(c.getTempString()));
     } else {
         const w = std.io.getStdOut().writer();
-        std.fmt.format(w, format, args);
+        std.fmt.format(w, format, args) catch cy.fatal();
     }
 }
 

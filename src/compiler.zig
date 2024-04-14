@@ -11,7 +11,8 @@ const v = fmt.v;
 const vmc = @import("vm_c.zig");
 const sema = cy.sema;
 const bt = cy.types.BuiltinTypes;
-const cy_mod = @import("builtins/builtins.zig");
+const core_mod = @import("builtins/builtins.zig");
+const cy_mod = @import("builtins/cy.zig");
 const math_mod = @import("builtins/math.zig");
 const llvm_gen = @import("llvm_gen.zig");
 const cgen = @import("cgen.zig");
@@ -1100,11 +1101,11 @@ pub fn defaultModuleLoader(vm_: ?*cc.VM, spec: cc.Str, out_: [*c]cc.ModuleLoader
         const vm: *cy.VM = @ptrCast(@alignCast(vm_));
         const aot = cy.isAot(vm.compiler.config.backend);
         out.* = .{
-            .src = if (aot) cy_mod.Src else cy_mod.VmSrc,
-            .srcLen = if (aot) cy_mod.Src.len else cy_mod.VmSrc.len,
-            .funcLoader = cy_mod.funcLoader,
-            .typeLoader = if (aot) cy_mod.typeLoader else cy_mod.vmTypeLoader,
-            .onLoad = cy_mod.onLoad,
+            .src = if (aot) core_mod.Src else core_mod.VmSrc,
+            .srcLen = if (aot) core_mod.Src.len else core_mod.VmSrc.len,
+            .funcLoader = core_mod.funcLoader,
+            .typeLoader = if (aot) core_mod.typeLoader else core_mod.vmTypeLoader,
+            .onLoad = core_mod.onLoad,
             .onReceipt = null,
             .varLoader = null,
             .onTypeLoad = null,
@@ -1117,6 +1118,19 @@ pub fn defaultModuleLoader(vm_: ?*cc.VM, spec: cc.Str, out_: [*c]cc.ModuleLoader
             .srcLen = math_mod.Src.len,
             .funcLoader = math_mod.funcLoader,
             .varLoader = math_mod.varLoader,
+            .typeLoader = null,
+            .onLoad = null,
+            .onReceipt = null,
+            .onTypeLoad = null,
+            .onDestroy = null,
+        };
+        return true;
+    } else if (std.mem.eql(u8, name, "cy")) {
+        out.* = .{
+            .src = cy_mod.Src,
+            .srcLen = cy_mod.Src.len,
+            .funcLoader = cy_mod.funcLoader,
+            .varLoader = null,
             .typeLoader = null,
             .onLoad = null,
             .onReceipt = null,

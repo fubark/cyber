@@ -28,13 +28,6 @@
 --| Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors](#unexpected-errors).
 #host func panic(err any) dynamic
 
---| Parses Cyber source string into structured map object.
---| Currently, only metadata about static declarations is made available but this will be extended to include an AST.
-#host func parseCyber(src String) Map
-
---| Parses a CYON string into a value.
-#host func parseCyon(src String) any
-
 --| Runs the garbage collector once to detect reference cycles and abandoned objects.
 --| Returns the statistics of the run in a map value.
 #host func performGC() Map
@@ -44,9 +37,6 @@
 
 --| Converts a rune to a string.
 #host func runestr(val int) String
-
---| Encodes a value to CYON string.
-#host func toCyon(val any) String
 
 --| Returns the value's type as a `metatype` object.
 #host func typeof(val any) metatype

@@ -1,5 +1,6 @@
 #!cyber
 use os
+use cy
 
 -- usage: ./cbindgen.cy -o llvm.cy /path/to/LLVM.h -libpath 'libLLVM.dylib' -stripPrefix LLVM
 -- `-I/opt/homebrew/Cellar/llvm/17.0.6/lib/clang/17/include` if missing libc headers.
@@ -28,7 +29,7 @@ if existing != '':
     markerPos = existing.find("\n-- CBINDGEN MARKER") ?else existing.len()
 
     -- Only parse section before the marker since the gen part could contain bad syntax.
-    var res = parseCyber(existing[..markerPos])
+    var res = cy.parse(existing[..markerPos])
     for res['decls'] -> decl:
         if decl['pos'] < markerPos:
             switch decl['type']

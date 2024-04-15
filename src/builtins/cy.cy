@@ -1,3 +1,7 @@
+--| Evaluates source code in an isolated VM.
+--| If the last statement is an expression, a primitive or a String can be returned.
+#host func eval(src String) any
+
 --| Parses Cyber source string into a structured map object.
 --| Currently, only metadata about static declarations is made available but this will be extended to include an AST.
 #host func parse(src String) Map

@@ -10,6 +10,7 @@ const zErrFunc = cy.builtins.zErrFunc;
 
 const NameFunc = struct { []const u8, cy.ZHostFuncFn };
 const funcs = [_]NameFunc{
+    .{"eval",           zErrFunc(eval)},
     .{"parse",          zErrFunc(parse)},
     .{"parseCyon",      zErrFunc(parseCyon)},
     .{"repl",           zErrFunc(repl)},
@@ -305,7 +306,7 @@ fn fromCyonValue(vm: *cy.VM, val: cy.DecodeValueIR) !cy.Value {
             while (iter.next()) |entry| {
                 const child = try fromCyonValue(vm, dmap.getValue(entry.key_ptr.*));
                 const key = try vm.allocString(entry.key_ptr.*);
-                try map.map.set(vm, key, child);
+                try map.map.setConsume(vm, key, child);
             }
             return mapVal;
         },
@@ -545,6 +546,61 @@ pub fn repl2(vm: *cy.VM, config: c.EvalConfig, read_line: IReplReadLine) !void {
                 defer c.freeStr(@ptrCast(vm), str);
                 rt.printZFmt(vm, "{s}\n", .{c.fromStr(str)});
             }
+        }
+    }
+}
+
+fn eval(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
+    // Create an isolated VM.
+    const ivm: *cy.VM = @ptrCast(@alignCast(c.create()));
+    defer c.destroy(@ptrCast(ivm));
+
+    // Use the same printers as the parent VM.
+    c.setPrinter(@ptrCast(ivm), c.getPrinter(@ptrCast(vm)));
+    c.setErrorPrinter(@ptrCast(ivm), c.getErrorPrinter(@ptrCast(vm)));
+
+    var config = c.defaultEvalConfig();
+    config.single_run = false;
+    config.file_modules = false;
+    config.reload = false;
+    config.backend = c.BackendVM;
+    config.spawn_exe = false;
+
+    const src = args[0].asString();
+    var val: cy.Value = undefined;
+    const res = c.evalExt(@ptrCast(ivm), c.toStr("eval"), c.toStr(src), config, @ptrCast(&val));
+    if (res != c.Success) {
+        switch (res) {
+            c.ErrorCompile => {
+                const report = c.newErrorReportSummary(@ptrCast(ivm));
+                defer c.freeStr(@ptrCast(ivm), report);
+                rt.err(vm, c.fromStr(report));
+            },
+            c.ErrorPanic => {
+                const report = c.newPanicSummary(@ptrCast(ivm));
+                defer c.freeStr(@ptrCast(ivm), report);
+                rt.err(vm, c.fromStr(report));
+            },
+            else => {
+                rt.err(vm, "unknown error\n");
+            },
+        }
+        return error.EvalError;
+    }
+
+    switch (val.getTypeId()) {
+        bt.Boolean,
+        bt.Integer,
+        bt.Float => {
+            return val;
+        },
+        bt.String => {
+            defer ivm.release(val);
+            return vm.allocString(val.asString());
+        },
+        else => {
+            defer ivm.release(val);
+            return error.InvalidResult;
         }
     }
 }

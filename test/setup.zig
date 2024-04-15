@@ -243,9 +243,10 @@ pub const VMrunner = struct {
         }
 
         if (config.checkGlobalRc) {
-            if (c.getGlobalRC(vm) != 0) {
+            const grc = c.getGlobalRC(vm);
+            if (grc != 0) {
                 c.traceDumpLiveObjects(vm);
-                cy.panic("unreleased refcount");
+                cy.panicFmt("unreleased refcount {}", .{grc});
             }
         }
     }

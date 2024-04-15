@@ -224,6 +224,7 @@ if (!aot) {
         run.case2(Config.initFileModules("./test/modules/import_sym_alias.cy"), "modules/import_sym_alias.cy");
     }
     run.case("modules/core.cy");
+    run.case("modules/cy.cy");
     run.case("modules/math.cy");
     run.case("modules/test_eq_panic.cy");
     run.case("modules/test.cy");

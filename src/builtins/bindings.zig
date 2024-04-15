@@ -57,10 +57,12 @@ pub const Symbol = enum {
     bytes,
 
     AssertError,
+    EvalError,
     FileNotFound,
     MissingSymbol,
     EndOfStream,
     OutOfBounds,
+    InvalidResult,
     InvalidArgument,
     InvalidSignature,
     InvalidRune,

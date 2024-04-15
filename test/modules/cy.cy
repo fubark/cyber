@@ -1,6 +1,20 @@
 use t 'test'
 use cy
 
+-- eval()
+let res = cy.eval('1')
+t.eq(res, 1)
+res = cy.eval('1 + 2')
+t.eq(res, 3)
+res = cy.eval('''
+func mul(a int, b int) int:
+    return a * b
+mul(10, 5)''')
+t.eq(res, 50)
+res = cy.eval('"hello $(123)"')
+t.eq(res, 'hello 123')
+t.throws(() => cy.eval('a'), error.EvalError)
+
 -- parse()
 res = cy.parse('var .foo = 123')
 t.eq(res['decls'][0]['type'], 'variable')
@@ -74,3 +88,5 @@ cyon = cy.toCyon({ a: 123 })
 t.eq(cyon, '''{
     a: 123,
 }''')
+
+--cytest: pass

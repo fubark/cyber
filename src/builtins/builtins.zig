@@ -379,7 +379,9 @@ pub fn prepThrowZError2(ctx: cy.Context, err: anyerror, optTrace: ?*std.builtin.
 fn errorSymbol(err: anyerror) Symbol {
     switch (err) {
         error.AssertError           => return .AssertError,
+        error.EvalError             => return .EvalError,
         error.Unicode               => return .Unicode,
+        error.InvalidResult         => return .InvalidResult,
         error.InvalidArgument       => return .InvalidArgument,
         error.InvalidEnumTag        => return .InvalidArgument,
         error.FileNotFound          => return .FileNotFound,

@@ -2975,7 +2975,14 @@ Builtin types are used internally by the compiler to define it's own primitive t
 >Evaluates to the module's URI as a string. See [Module URI](#module-uri).
 
 ## Runtime execution.
-> _Planned Feature_
+`cy.eval` evaluates source code in an isolated VM.
+If the last statement is an expression, a primitive or String can be returned to the caller:
+```cy
+use cy
+
+var res = cy.eval('1 + 2')
+print res        --> 3
+```
 
 # libcyber.
 

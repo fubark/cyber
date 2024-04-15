@@ -12,4 +12,17 @@
 --| Returns `true` if two numbers are near each other within epsilon 1e-5.
 #host func eqNear(a any, b any) bool
 
-#host func fail() any
+func fail():
+    throw error.AssertError
+
+func fail(msg String):
+    eprint(msg)
+    throw error.AssertError
+
+--| Asserts that an error was thrown when invoking a function.
+func throws(fn any, err error):
+    var res = try fn()
+    if typeof(res) != error:
+        fail('Expected error.')
+    if res != err:
+        fail("Expected `$(err)`, found `$(res)`.")

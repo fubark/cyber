@@ -35,7 +35,6 @@ const funcs = [_]NameHostFunc{
     .{"eq", eq},
     .{"eqList", zErrFunc(eqList)},
     .{"eqNear", zErrFunc(eqNear)},
-    .{"fail", fail},
 };
 
 pub fn onLoad(vm_: ?*cc.VM, mod: cc.Sym) callconv(.C) void {
@@ -44,10 +43,6 @@ pub fn onLoad(vm_: ?*cc.VM, mod: cc.Sym) callconv(.C) void {
 
     // Only available for zig test, until `any` local type specifier is implemented.
     b.declareFuncSig("erase", &.{bt.Any}, bt.Dynamic, erase) catch cy.fatal();
-}
-
-fn fail(vm: *cy.VM, _: [*]const Value, _: u8) Value {
-    return rt.prepThrowError(vm, .AssertError);
 }
 
 /// Simply returns the value so the caller get's an erased `any` type.

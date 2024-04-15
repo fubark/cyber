@@ -900,7 +900,7 @@ pub const Parser = struct {
             .pound,
             .void_k,
             .type_k,
-            .none_k,
+            .error_k,
             .ident => {
                 return try self.parseTermExpr(.{});
             },

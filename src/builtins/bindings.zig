@@ -75,19 +75,7 @@ pub const Symbol = enum {
     paused,
     done,
 
-    @"error",
     float,
-    object,
-    map,
-    list,
-    function,
-    fiber,
-    string,
-    array,
-    none,
-    symbol,
-    pointer,
-    metatype,
 
     // Open modes.
     read,

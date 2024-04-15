@@ -4,6 +4,9 @@
 --| Prints the result of `toCyon` on a value.
 #host func dump(val any) void
 
+--| Prints a value to the error stream. The host determines how it is printed.
+#host func eprint(str any) void
+
 #host func errorReport() String
 
 --| Returns the current reference count of an object.

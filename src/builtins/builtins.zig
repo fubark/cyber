@@ -34,6 +34,7 @@ const funcs = [_]NameFunc{
     // Utils.
     .{"copy",           copy},
     .{"dump",           zErrFunc(dump)},
+    .{"eprint",         eprint},
     .{"errorReport",    zErrFunc(errorReport)},
     .{"getObjectRc",    zErrFunc(getObjectRc)},
     .{"is",             is},
@@ -524,6 +525,30 @@ pub fn performGC(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
     try map.asHeapObject().map.set(vm, cycKey, Value.initInt(@intCast(res.numCycFreed)));
     try map.asHeapObject().map.set(vm, objKey, Value.initInt(@intCast(res.numObjFreed)));
     return map;
+}
+
+pub fn eprint(vm: *cy.VM, args: [*]const cy.Value, _: u8) Value {
+    const err = eprint_c(vm, args[0]);
+    if (!err.isNull()) {
+        return Value.Interrupt;
+    }
+    return Value.Void;
+}
+
+pub fn eprint_c(ctx: cy.Context, arg: rt.Any) callconv(.C) rt.Error {
+    if (build_options.rt == .vm) {
+        const str = ctx.getOrBufPrintValueStr(&cy.tempBuf, arg) catch |err| {
+            return cy.builtins.prepThrowZError2(ctx, err, @errorReturnTrace());
+        };
+        rt.err(ctx, str);
+        rt.err(ctx, "\n");
+    } else {
+        const str = arg.type.toPrintString(ctx, arg);
+        rt.err(ctx, str.slice());
+        rt.err(ctx, "\n");
+        ctx.release(str.buf);
+    }
+    return rt.Error.initNull();
 }
 
 pub fn print(vm: *cy.VM, args: [*]const cy.Value, _: u8) Value {

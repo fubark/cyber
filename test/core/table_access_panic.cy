@@ -4,7 +4,7 @@ o.b
 --cytest: error
 --panic: Field not found in value.
 --
---core:183:16 $get:
+--core:186:16 $get:
 --        return table_data[name]
 --               ^
 --main:2:3 main:

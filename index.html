@@ -985,7 +985,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 191-0e01e3f</div>
+    <div class="sub-title">v0.4-dev 195-2fbe57c</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -2757,6 +2757,8 @@ print typeof('my str').id()
 <p>Copies a primitive value or creates a shallow copy of an object value.</p>
 </blockquote><blockquote><p><code>func dump(val any) <void></code></p>
 <p>Prints the result of <code>toCyon</code> on a value.</p>
+</blockquote><blockquote><p><code>func eprint(str any) <void></code></p>
+<p>Prints a value to the error stream. The host determines how it is printed.</p>
 </blockquote><blockquote><p><code>func errorReport() String</code></p>
 </blockquote><blockquote><p><code>func getObjectRc(val any) int</code></p>
 <p>Returns the current reference count of an object.</p>
@@ -2792,7 +2794,7 @@ print typeof('my str').id()
 <h3 id="type-error"><code>type error</code> <a href="#type-error">#</a></h3>
 <blockquote><p><code>func sym() symbol</code></p>
 <p>Return the underlying <code>symbol</code>.</p>
-</blockquote><blockquote><p><code>func error.$call(val any) </code></p>
+</blockquote><blockquote><p><code>func error.$call(val any) error</code></p>
 <p>Create an error from an enum or symbol.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-int"><code>type int</code> <a href="#type-int">#</a></h3>
@@ -3049,7 +3051,9 @@ print cy.toCyon([1, 2, 3])
 </code></pre>
 <p><a href="#modules" title="">^topic</a></p>
 <!-- cy.start -->
-<blockquote><p><code>func parse(src String) Map</code></p>
+<blockquote><p><code>func eval(src String) any</code></p>
+<p>Evaluates source code in an isolated VM.  If the last statement is an expression, a primitive or a String can be returned.</p>
+</blockquote><blockquote><p><code>func parse(src String) Map</code></p>
 <p>Parses Cyber source string into a structured map object.  Currently, only metadata about static declarations is made available but this will be extended to include an AST.</p>
 </blockquote><blockquote><p><code>func parseCyon(src String) any</code></p>
 <p>Parses a CYON string into a value.</p>
@@ -3371,7 +3375,10 @@ t.eq(a, 444)
 <p>Returns <code>true</code> if two lists have the same size and the elements are equal  as if <code>eq</code> was called on those corresponding elements.</p>
 </blockquote><blockquote><p><code>func eqNear(a any, b any) bool</code></p>
 <p>Returns <code>true</code> if two numbers are near each other within epsilon 1e-5.</p>
-</blockquote><blockquote><p><code>func fail() any</code></p>
+</blockquote><blockquote><p><code>func fail() </code></p>
+</blockquote><blockquote><p><code>func fail(msg String) </code></p>
+</blockquote><blockquote><p><code>func throws(fn any, err error) </code></p>
+<p>Asserts that an error was thrown when invoking a function.</p>
 </blockquote><!-- test.end -->
 <a href="#modules">^topic</a>
 <h1 id="ffi">FFI. <a href="#ffi">#</a></h1>
@@ -4104,8 +4111,14 @@ print bool          -- 'type: bool'
 <p>Evaluates to the module's URI as a string. See <a href="#module-uri" title="">Module URI</a>.</p>
 </blockquote><a href="#metaprogramming">^topic</a>
 <h2 id="runtime-execution">Runtime execution. <a href="#runtime-execution">#</a></h2>
-<blockquote><p><em>Planned Feature</em></p>
-</blockquote><a href="#metaprogramming">^topic</a>
+<p><code>cy.eval</code> evaluates source code in an isolated VM.
+If the last statement is an expression, a primitive or String can be returned to the caller:</p>
+<pre><code class="language-cy">use cy
+
+var res = cy.eval('1 + 2')
+print res        --> 3
+</code></pre>
+<a href="#metaprogramming">^topic</a>
 <h1 id="libcyber">libcyber. <a href="#libcyber">#</a></h1>
 <table><tr>
 <td valign="top">

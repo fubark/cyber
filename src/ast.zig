@@ -270,9 +270,10 @@ const NodeData = union {
         argHead: u24,
         hasNamedArg: bool,
     },
-    array_expr: struct {
+    array_expr: packed struct {
         left: NodeId,
-        array: NodeId,
+        arg_head: u24,
+        nargs: u8,
     },
     record_expr: struct {
         left: NodeId,
@@ -1118,7 +1119,16 @@ pub const Encoder = struct {
             .array_expr => {
                 try self.write(w, node.data.array_expr.left);
                 try w.writeByte('[');
-                try self.write(w, node.data.array_expr.array);
+                if (node.data.array_expr.nargs > 0) {
+                    var arg: cy.NodeId = node.data.array_expr.arg_head;
+                    try self.write(w, arg);
+                    arg = self.ast.node(arg).next();
+                    while (arg != cy.NullNode) {
+                        try w.writeAll(", ");
+                        try self.write(w, arg);
+                        arg = self.ast.node(arg).next();
+                    }
+                }
                 try w.writeByte(']');
             },
             .record_expr => {
@@ -1168,7 +1178,16 @@ pub const Encoder = struct {
             },
             .arrayLit => {
                 try w.writeByte('[');
-                try w.writeAll("...");
+                if (node.data.arrayLit.numArgs > 0) {
+                    var arg: cy.NodeId = node.data.arrayLit.argHead;
+                    try self.write(w, arg);
+                    arg = self.ast.node(arg).next();
+                    while (arg != cy.NullNode) {
+                        try w.writeAll(", ");
+                        try self.write(w, arg);
+                        arg = self.ast.node(arg).next();
+                    }
+                }
                 try w.writeByte(']');
             },
             .recordLit => {

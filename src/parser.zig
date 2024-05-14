@@ -2734,13 +2734,16 @@ pub const Parser = struct {
                     left_id = expr;
                 },
                 .left_bracket => {
-                    const array = try self.parseArrayLiteral();
-                    const expr = try self.pushNode(.array_expr, start);
-                    self.ast.setNodeData(expr, .{ .array_expr = .{
+                    const array_lit = try self.parseArrayLiteral();
+                    const array_lit_n = self.ast.nodes.items[array_lit];
+                    self.ast.nodes.items[array_lit].head.type = .array_expr;
+                    self.ast.nodes.items[array_lit].srcPos = self.tokens[start].pos();
+                    self.ast.setNodeData(array_lit, .{ .array_expr = .{
                         .left = left_id,
-                        .array = array,
+                        .arg_head = @intCast(array_lit_n.data.arrayLit.argHead),
+                        .nargs = array_lit_n.data.arrayLit.numArgs,
                     }});
-                    left_id = expr;
+                    left_id = array_lit;
                 },
                 .left_brace => {
                     if (!config.parse_record_expr) break;

@@ -7,7 +7,7 @@ var f = Foo[String, int]{a: 'abc'}
 --cytest: error
 --CompileError: Expected template signature `Foo[type]`.
 --
---main:5:12:
+--main:5:9:
 --var f = Foo[String, int]{a: 'abc'}
---           ^
+--        ^
 --

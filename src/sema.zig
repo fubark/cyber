@@ -945,6 +945,29 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId, leftId: cy.NodeId, rightId: cy.No
     }
 }
 
+fn semaIndexExpr(c: *cy.Chunk, left_id: cy.NodeId, left: ExprResult, expr: Expr) !ExprResult {
+    const array = c.ast.node(expr.nodeId);
+    if (array.data.array_expr.nargs != 1) {
+        return c.reportErrorFmt("Unsupported array expr.", &.{}, expr.nodeId);
+    }
+
+    const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, expr.nodeId);
+
+    const leftT = left.type.id;
+    if (left.type.isDynAny()) {
+        const index = try c.semaExpr(array.data.array_expr.arg_head, .{});
+        return c.semaCallObjSym2(loc, left.irIdx, getBinOpName(.index), &.{index});
+    }
+
+    const recTypeSym = c.sema.getTypeSym(leftT);
+    const sym = try c.mustFindSym(recTypeSym, "$index", expr.nodeId);
+    const func_sym = try requireFuncSym(c, sym, expr.nodeId);
+
+    return c.semaCallFuncSymRec(loc, func_sym,
+        left_id, left,
+        array.data.array_expr.arg_head, array.data.array_expr.nargs, expr.getRetCstr(), expr.nodeId);
+}
+
 fn semaAccessField(c: *cy.Chunk, rec: ExprResult, field: cy.NodeId) !ExprResult {
     const field_n = c.ast.node(field);
     if (field_n.type() != .ident) {
@@ -4643,65 +4666,16 @@ pub const ChunkExt = struct {
                 return ExprResult.initInheritDyn(loc, opt.type, payload_t);
             },
             .array_expr => {
-                const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, nodeId);
-
-                const array = c.ast.node(node.data.array_expr.array);
                 var left = try c.semaExprSkipSym(node.data.array_expr.left);
                 if (left.resType == .sym) {
                     if (left.data.sym.type == .template) {
-                        const final_sym = try cte.expandTemplateOnCallArgs(c, left.data.sym.cast(.template), array.data.arrayLit.argHead, node.data.array_expr.array);
-                        return sema.symbol(c, final_sym, expr.nodeId, false);
+                        const final_sym = try cte.expandTemplateOnCallArgs(c, left.data.sym.cast(.template), node.data.array_expr.arg_head, nodeId);
+                        return sema.symbol(c, final_sym, expr.nodeId, true);
                     } else {
                         left = try sema.symbol(c, left.data.sym, expr.nodeId, true);
                     }
                 }
-
-                if (array.data.arrayLit.numArgs != 1) {
-                    return c.reportErrorFmt("Unsupported array expr.", &.{}, node.data.array_expr.array);
-                }
-
-                const leftT = left.type.id;
-                const preferT = if (leftT == bt.List or leftT == bt.Tuple) bt.Integer else bt.Any;
-                const index = try c.semaExprTarget(array.data.arrayLit.argHead, preferT);
-
-                if (left.type.isDynAny()) {
-                    return c.semaCallObjSym2(loc, left.irIdx, getBinOpName(.index), &.{index});
-                }
-
-                // TODO: codegen should determine whether it is specialized, not here.
-                var specialized = false;
-                if ((leftT == bt.List or leftT == bt.Tuple) and (index.type.id == bt.Integer or index.type.id == bt.Range)) {
-                    specialized = true;
-                } else if (leftT == bt.Map) {
-                    specialized = true;
-                }
-                if (specialized) {
-                    // Specialized.
-                    var res_t = CompactType.initDynamic(bt.Any);
-                    if (leftT == bt.List and index.type.id == bt.Range) {
-                        res_t = CompactType.initStatic(bt.List);
-                    }
-
-                    c.ir.setExprCode(loc, .preBinOp);
-                    c.ir.setExprType(loc, res_t.id);
-                    c.ir.setExprData(loc, .preBinOp, .{ .binOp = .{
-                        .leftT = leftT,
-                        .rightT = index.type.id,
-                        .op = .index,
-                        .left = left.irIdx,
-                        .right = index.irIdx,
-                    }});
-
-                    return ExprResult.init(loc, res_t);
-                } else {
-                    // Look for sym under left type's module.
-                    const recTypeSym = c.sema.getTypeSym(leftT);
-                    const sym = try c.mustFindSym(recTypeSym, "$index", nodeId);
-                    const func_sym = try requireFuncSym(c, sym, nodeId);
-
-                    return c.semaCallFuncSym2(loc, func_sym, node.data.array_expr.left, left,
-                        array.data.arrayLit.argHead, index, expr.getRetCstr(), nodeId);
-                }
+                return semaIndexExpr(c, node.data.array_expr.left, left, expr);
             },
             .range => {
                 var start: u32 = cy.NullId;

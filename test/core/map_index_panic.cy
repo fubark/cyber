@@ -2,7 +2,7 @@ var a = Map{}
 a['foo']
 
 --cytest: error
---panic: Field not found in value.
+--panic: Missing key in map.
 --
 --main:2:1 main:
 --a['foo']

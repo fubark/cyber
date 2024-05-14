@@ -1169,13 +1169,17 @@ pub fn declareTemplate(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Template {
             sym.params[tidx].infer_from_func_param = @intCast(i);
         }
         // Verify each template param has a mapping.
-        var can_infer_params = true;
+        var infer_min_params: u8 = 0;
         for (sym.params) |param| {
             if (param.infer_from_func_param == cy.NullU8) {
-                can_infer_params = false;
+                infer_min_params = cy.NullU8;
+                break;
+            }
+            if (param.infer_from_func_param + 1 > infer_min_params) {
+                infer_min_params = param.infer_from_func_param + 1;
             }
         }
-        sym.can_infer_params = can_infer_params;
+        sym.infer_min_params = infer_min_params;
     }
     return sym;
 }
@@ -1829,6 +1833,7 @@ fn resolveHostFunc2(c: *cy.Chunk, func: *cy.Func, func_sig: FuncSigId) !void {
         .name = cc.toStr(name.name_path),
         .funcSigId = func_sig,
         .idx = c.curHostFuncIdx,
+        .variant = func.sym.?.variant != cy.NullId,
     };
     c.curHostFuncIdx += 1;
     const funcLoader = c.funcLoader orelse {
@@ -2310,17 +2315,20 @@ fn callTemplateSym(c: *cy.Chunk, loc: u32, template: *cy.sym.Template, arg_head:
         return error.Unsupported;
     }
 
-    if (!template.can_infer_params) {
+    if (!template.canInferFuncTemplateParams()) {
+        return c.reportError("Can not infer template params.", node);
+    }
+    if (template.infer_min_params > nargs) {
         return c.reportError("Can not infer template params.", node);
     }
 
-    // Gen args IR.
+    // First resolve args up to `min_infer_params` without a target arg type.
     const start = c.typeStack.items.len;
     defer c.typeStack.items.len = start;
     const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
     var arg_id = arg_head;
     var arg_idx: u32 = 0;
-    while (arg_idx < nargs) {
+    while (arg_idx < template.infer_min_params) {
         const arg_res = try c.semaExpr(arg_id, .{});
         c.ir.setArrayItem(args_loc, u32, arg_idx, arg_res.irIdx);
         try c.typeStack.append(c.alloc, arg_res.type.id);
@@ -2328,8 +2336,8 @@ fn callTemplateSym(c: *cy.Chunk, loc: u32, template: *cy.sym.Template, arg_head:
         const arg = c.ast.node(arg_id);
         arg_id = arg.next();
     }
-    const arg_types = c.typeStack.items[start..];
 
+    // Infer template params.
     const targ_start = c.valueStack.items.len;
     try c.valueStack.resize(c.alloc, targ_start + template.params.len);
     const targs = c.valueStack.items[targ_start..];
@@ -2340,13 +2348,8 @@ fn callTemplateSym(c: *cy.Chunk, loc: u32, template: *cy.sym.Template, arg_head:
             c.vm.release(targ);
         }
     }
-
-    // Get template params.
     for (template.params, 0..) |param, i| {
-        if (param.infer_from_func_param >= arg_types.len) {
-            return c.reportError("Can not infer template params.", node);
-        }
-        c.valueStack.items[targ_start + i] = try c.vm.allocType(arg_types[param.infer_from_func_param]);
+        c.valueStack.items[targ_start + i] = try c.vm.allocType(c.typeStack.items[start+param.infer_from_func_param]);
     }
     const targ_types_start = c.typeStack.items.len;
     try c.typeStack.resize(c.alloc, targ_types_start + template.params.len);
@@ -2354,6 +2357,25 @@ fn callTemplateSym(c: *cy.Chunk, loc: u32, template: *cy.sym.Template, arg_head:
     @memset(targ_types, bt.Type);
     const func_sym = (try cte.expandTemplate(c, template, targs, targ_types)).cast(.func);
     const func = func_sym.first;
+    c.typeStack.items.len = targ_types_start;
+
+    // The rest of the args are resolved with target arg type.
+    const sig = c.sema.getFuncSig(func.funcSigId);
+    const params = sig.params();
+    while (arg_idx < nargs) {
+        var arg_res: ExprResult = undefined;
+        if (arg_idx < params.len) {
+            arg_res = try c.semaExprTarget(arg_id, params[arg_idx]);
+        } else {
+            arg_res = try c.semaExpr(arg_id, .{});
+        }
+        c.ir.setArrayItem(args_loc, u32, arg_idx, arg_res.irIdx);
+        try c.typeStack.append(c.alloc, arg_res.type.id);
+        arg_idx += 1;
+        const arg = c.ast.node(arg_id);
+        arg_id = arg.next();
+    }
+    const arg_types = c.typeStack.items[start..];
 
     // Check func sig against args.
     const func_params = c.sema.getFuncSig(func.funcSigId).params();
@@ -2422,6 +2444,9 @@ fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.Node
             const callee = try sema.symbol(c, sym, symNodeId, true);
             const args = try c.semaPushCallArgs(argHead, numArgs);
             return c.semaCallValue(preIdx, callee.irIdx, numArgs, args);
+        },
+        .template => {
+            return callTemplateSym(c, preIdx, sym.cast(.template), argHead, numArgs, ret_cstr, symNodeId);
         },
         else => {
             // try pushCallArgs(c, node.data.callExpr.argHead, numArgs, true);
@@ -3594,7 +3619,11 @@ fn reportIncompatibleCallSig(c: *cy.Chunk, sym: *cy.sym.FuncSym, args: []const c
         try w.writeAll(" Expects non-void return.");
     }
     try w.writeAll("\n");
-    try w.print("Functions named `{s}` in `{s}`:\n", .{name, sym.head.parent.?.name() });
+    if (sym.variant != cy.NullId) {
+        try w.print("Functions named `{s}` in `{s}`:\n", .{name, sym.head.parent.?.parent.?.name() });
+    } else {
+        try w.print("Functions named `{s}` in `{s}`:\n", .{name, sym.head.parent.?.name() });
+    }
 
     var funcStr = try c.sema.formatFuncSig(sym.firstFuncSig, &cy.tempBuf);
     try w.print("    func {s}{s}", .{name, funcStr});
@@ -4929,9 +4958,9 @@ pub const ChunkExt = struct {
                 const leftSym = leftRes.data.sym;
 
                 if (leftSym.type == .template) {
-                    return callTemplateSym(c, preIdx, leftSym.cast(.template), node.data.callExpr.argHead, numArgs, expr.getRetCstr(), expr.nodeId);
+                    return c.reportErrorFmt("Can not access template symbol `{}`.", &.{
+                        v(c.ast.nodeStringById(callee.data.accessExpr.left))}, callee.data.accessExpr.right);
                 }
-
                 if (leftSym.type == .func) {
                     return c.reportErrorFmt("Can not access function symbol `{}`.", &.{
                         v(c.ast.nodeStringById(callee.data.accessExpr.left))}, callee.data.accessExpr.right);
@@ -4988,9 +5017,6 @@ pub const ChunkExt = struct {
                     return c.semaCallValue(preIdx, calleeRes.irIdx, numArgs, args);
                 },
                 .static => |sym| {
-                    if (sym.type == .template) {
-                        return callTemplateSym(c, preIdx, sym.cast(.template), node.data.callExpr.argHead, numArgs, expr.getRetCstr(), expr.nodeId);
-                    }
                     return callSym(c, preIdx, sym, numArgs, node.data.callExpr.callee, node.data.callExpr.argHead, expr.getRetCstr());
                 },
             }
@@ -5178,7 +5204,7 @@ pub const ChunkExt = struct {
                     c.ir.setExprData(irIdx, .preUnOp, .{ .unOp = .{
                         .childT = child.type.id, .op = op, .expr = child.irIdx,
                     }});
-                    return ExprResult.initStatic(irIdx, bt.Float);
+                    return ExprResult.initStatic(irIdx, bt.Integer);
                 } else {
                     // Look for sym under child type's module.
                     const childTypeSym = c.sema.getTypeSym(child.type.id);

@@ -266,7 +266,7 @@ type String:
     @host func sliceAt(idx int) String
 
     --| Returns the rune at byte index `idx`. The replacement character (0xFFFD) is returned for an invalid UTF-8 rune.
-    @host func $index(idx int) String
+    @host func $index(idx int) int
 
     --| Returns a slice into this string from a `Range` with `start` (inclusive) to `end` (exclusive) byte indexes.
     @host func $index(range Range) String

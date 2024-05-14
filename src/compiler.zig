@@ -380,6 +380,9 @@ pub const Compiler = struct {
         for (self.newChunks()) |chunk| {
             try chunk.ir.pushStmtBlock2(chunk.alloc, chunk.rootStmtBlock);
             for (chunk.variantFuncSyms.items) |func| {
+                if (func.type != .userFunc) {
+                    continue;
+                }
                 if (func.isMethod) {
                     try sema.methodDecl(chunk, func);
                 } else {

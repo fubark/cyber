@@ -740,6 +740,9 @@ pub const Parser = struct {
             .func_k => {
                 decl = try self.parseFuncDecl(.{ .attr_head = cy.NullNode, .hidden = false, .allow_decl = true }, true);
             },
+            .at => {
+                decl = try self.parseAtDecl(true, true);
+            },
             else => {
                 return self.reportError("Unsupported template declaration.", &.{});
             },
@@ -1893,45 +1896,7 @@ pub const Parser = struct {
                 }
             },
             .at => {
-                self.advance();
-                token = self.peek();
-                if (token.tag() != .ident) {
-                    return self.reportError("Expected ident after `@`.", &.{});
-                }
-
-                const name = self.ast.src[token.pos()..token.data.end_pos];
-                const attr_t = attributes.get(name) orelse {
-                    return self.reportError("Unknown attribute.", &.{});
-                };
-
-                const attr = try self.pushNode(.attribute, self.next_pos);
-                self.ast.setNodeData(attr, .{ .attribute = .{
-                    .type = attr_t,
-                }});
-                self.advance();
-                self.consumeWhitespaceTokens();
-
-                var hidden = false;
-                if (self.peek().tag() == .minus) {
-                    hidden = true;
-                    self.advance();
-                }
-
-                if (self.peek().tag() == .func_k) {
-                    return try self.parseFuncDecl(.{ .hidden = hidden, .attr_head = attr, .allow_decl = config.allow_decls }, false);
-                } else if (self.peek().tag() == .var_k) {
-                    return try self.parseVarDecl(.{ .hidden = hidden, .attr_head = attr, .typed = true, .allow_static = config.allow_decls });
-                } else if (self.peek().tag() == .let_k) {
-                    return try self.parseVarDecl(.{ .hidden = hidden, .attr_head = attr, .typed = false, .allow_static = config.allow_decls });
-                } else if (self.peek().tag() == .type_k) {
-                    return try self.parseTypeDecl(.{
-                        .attr_head = attr,
-                        .hidden = hidden,
-                        .allow_decl = config.allow_decls,
-                    }, false);
-                } else {
-                    return self.reportError("Expected declaration statement.", &.{});
-                }
+                return self.parseAtDecl(config.allow_decls, false);
             },
             .pound => {
                 const start = self.next_pos;
@@ -2100,6 +2065,48 @@ pub const Parser = struct {
                 },
                 else => return,
             }
+        }
+    }
+
+    fn parseAtDecl(self: *Parser, allow_decls: bool, template: bool) !NodeId {
+        self.advance();
+        const token = self.peek();
+        if (token.tag() != .ident) {
+            return self.reportError("Expected ident after `@`.", &.{});
+        }
+
+        const name = self.ast.src[token.pos()..token.data.end_pos];
+        const attr_t = attributes.get(name) orelse {
+            return self.reportError("Unknown attribute.", &.{});
+        };
+
+        const attr = try self.pushNode(.attribute, self.next_pos);
+        self.ast.setNodeData(attr, .{ .attribute = .{
+            .type = attr_t,
+        }});
+        self.advance();
+        self.consumeWhitespaceTokens();
+
+        var hidden = false;
+        if (self.peek().tag() == .minus) {
+            hidden = true;
+            self.advance();
+        }
+
+        if (self.peek().tag() == .func_k) {
+            return try self.parseFuncDecl(.{ .hidden = hidden, .attr_head = attr, .allow_decl = allow_decls }, template);
+        } else if (self.peek().tag() == .var_k) {
+            return try self.parseVarDecl(.{ .hidden = hidden, .attr_head = attr, .typed = true, .allow_static = allow_decls });
+        } else if (self.peek().tag() == .let_k) {
+            return try self.parseVarDecl(.{ .hidden = hidden, .attr_head = attr, .typed = false, .allow_static = allow_decls });
+        } else if (self.peek().tag() == .type_k) {
+            return try self.parseTypeDecl(.{
+                .attr_head = attr,
+                .hidden = hidden,
+                .allow_decl = allow_decls,
+            }, false);
+        } else {
+            return self.reportError("Expected declaration statement.", &.{});
         }
     }
 

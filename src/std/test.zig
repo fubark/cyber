@@ -19,11 +19,18 @@ pub const Src = @embedFile("test.cy");
 pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callconv(.C) bool {
     const out: *cc.FuncResult = out_;
     const name = cc.fromStr(func.name);
-    if (std.mem.eql(u8, funcs[func.idx].@"0", name)) {
+    if (func.variant) {
+        out.ptr = variant_funcs.get(name) orelse {
+            return false;
+        };
+        return true;
+    } else {
+        if (!std.mem.eql(u8, funcs[func.idx].@"0", name)) {
+            return false;
+        }
         out.ptr = @ptrCast(funcs[func.idx].@"1");
         return true;
     }
-    return false;
 }
 
 const zErrFunc = cy.builtins.zErrFunc;
@@ -32,10 +39,13 @@ const cFunc = cy.builtins.cFunc;
 const NameHostFunc = struct { []const u8, cy.ZHostFuncFn };
 const funcs = [_]NameHostFunc{
     .{"assert", zErrFunc(assert)},
-    .{"eq", eq},
     .{"eqList", zErrFunc(eqList)},
     .{"eqNear", zErrFunc(eqNear)},
 };
+
+const variant_funcs = std.ComptimeStringMap(cy.ZHostFuncFn, .{
+    .{ "eq", eq },
+});
 
 pub fn onLoad(vm_: ?*cc.VM, mod: cc.Sym) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));

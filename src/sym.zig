@@ -591,13 +591,18 @@ pub const Template = struct {
     /// Owned.
     params: []TemplateParam,
 
-    /// Whether template params can be inferred from function params.
-    can_infer_params: bool,
+    /// The minimum number of params that can infer the template params.
+    /// If NullU8, then the template function can not infer the params.
+    infer_min_params: u8,
 
     /// Template args to variant. Keys are not owned.
     variantCache: std.HashMapUnmanaged([]const cy.Value, u32, VariantKeyContext, 80),
 
     variants: std.ArrayListUnmanaged(Variant),
+
+    pub fn canInferFuncTemplateParams(self: *Template) bool {
+        return self.infer_min_params != cy.NullU8;
+    }
 
     pub fn chunk(self: *const Template) *cy.Chunk {
         return self.head.parent.?.getMod().?.chunk;
@@ -1057,7 +1062,7 @@ pub const ChunkExt = struct {
             .child_decl = child_decl,
             .params = params,
             .sigId = sigId,
-            .can_infer_params = false,
+            .infer_min_params = cy.NullU8,
             .variants = .{},
             .variantCache = .{},
         });

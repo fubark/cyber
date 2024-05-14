@@ -141,6 +141,8 @@ typedef struct CLFuncInfo {
     // A counter that tracks it's current position among all @host funcs in the module.
     // This is useful if you want to bind an array of function pointers to @host funcs.
     uint32_t idx;
+    // `true` if this func was generated from a template.
+    bool variant;
 } CLFuncInfo;
 
 // Result given to Cyber when binding a @host func.

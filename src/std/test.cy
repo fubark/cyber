@@ -3,7 +3,8 @@
 
 --| Returns whether two values are equal.
 --| Panics with `error.AssertError` if types or values do not match up.
-@host func eq(a any, b any) bool
+template[T type]
+@host func eq(a #T, b #T) bool
 
 --| Returns `true` if two lists have the same size and the elements are equal
 --| as if `eq` was called on those corresponding elements.

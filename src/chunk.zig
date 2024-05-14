@@ -116,11 +116,11 @@ pub const Chunk = struct {
     typeDeps: std.ArrayListUnmanaged(TypeDepNode),
     typeDepsMap: std.AutoHashMapUnmanaged(*cy.Sym, u32),
 
-    /// Syms.
+    /// Syms owned by this chunk. Does not include field syms.
     syms: std.ArrayListUnmanaged(*cy.Sym),
-    placeholder_syms: std.ArrayListUnmanaged(*cy.sym.Placeholder),
 
-    /// Functions. Includes lambdas which are not linked from a named sym.
+    /// Functions owned by this chunk.
+    /// Includes lambdas which are not linked from a named sym.
     funcs: std.ArrayListUnmanaged(*cy.Func),
 
     ///
@@ -276,7 +276,6 @@ pub const Chunk = struct {
                 .last = cy.NullId,
             },
             .syms = .{},
-            .placeholder_syms = .{},
             .funcs = .{},
         };
 
@@ -350,11 +349,6 @@ pub const Chunk = struct {
             sym.destroy(self.vm, self.alloc);
         }
         self.syms.deinit(self.alloc);
-
-        for (self.placeholder_syms.items) |sym| {
-            sym.head.destroy(self.vm, self.alloc);
-        }
-        self.placeholder_syms.deinit(self.alloc);
 
         for (self.funcs.items) |func| {
             self.alloc.destroy(func);

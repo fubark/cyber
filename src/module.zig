@@ -98,13 +98,29 @@ pub const Module = struct {
         const key = ModFuncKey.initModFuncKey(func, func_sig);
         return !m.overloadedFuncMap.contains(key);
     }
+
+    pub fn updateParentRefs(m: *Module, parent: *cy.Sym) void {
+        var iter = m.symMap.valueIterator();
+        while (iter.next()) |val_ptr| {
+            val_ptr.*.parent = parent;
+            if (val_ptr.*.type == .func) {
+                const func_sym = val_ptr.*.cast(.func);
+                var opt_func: ?*cy.Func = func_sym.first;
+                while (opt_func) |func| {
+                    func.parent = parent;
+                    opt_func = func.next;
+                }
+            }
+        }
+    }
 };
 
 pub fn reportDupSym(c: *cy.Chunk, sym: *cy.Sym, name: []const u8, declId: cy.NodeId) !void {
     return c.reportErrorFmt("`{}` has already been declared as a `{}`.", &.{v(name), v(sym.type)}, declId);
 }
 
-fn addUniqueSym(c: *cy.Chunk, mod: *Module, name: []const u8, sym: *cy.Sym, decl: cy.NodeId) !void {
+/// `is_top_decl`: If true, gets appended to the chunk's `syms`. Would be false when adding field and enum members symbols.
+fn addUniqueSym(c: *cy.Chunk, mod: *Module, name: []const u8, sym: *cy.Sym, is_top_decl: bool, decl: cy.NodeId) !void {
     errdefer sym.destroy(c.compiler.vm, c.alloc);
     const res = try mod.symMap.getOrPut(c.alloc, name);
     if (res.found_existing) {
@@ -119,15 +135,18 @@ fn addUniqueSym(c: *cy.Chunk, mod: *Module, name: []const u8, sym: *cy.Sym, decl
         // Replace placeholder sym. Copy module.
         const placeholder = existing.cast(.placeholder);
         sym_mod.* = placeholder.getMod().*;
-        placeholder.sym = sym;
+        sym_mod.updateParentRefs(sym);
+        placeholder.resolved = true;
     }
-    try mod.chunk.syms.append(c.alloc, sym);
+    if (is_top_decl) {
+        try c.syms.append(c.alloc, sym);
+    }
     res.value_ptr.* = sym;
 }
 
 fn addSym(c: *cy.Chunk, mod: *Module, name: []const u8, sym: *cy.Sym) !cy.chunk.SymId {
-    const id: cy.chunk.SymId = @intCast(mod.chunk.syms.items.len);
-    try mod.chunk.syms.append(c.alloc, sym);
+    const id: cy.chunk.SymId = @intCast(c.syms.items.len);
+    try c.syms.append(c.alloc, sym);
     try mod.symMap.putNoClobber(c.alloc, name, sym);
     return id;
 }
@@ -218,7 +237,7 @@ pub const ChunkExt = struct {
             .resolved = false,
         });
         const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), true, decl);
         return sym;
     } 
 
@@ -233,22 +252,22 @@ pub const ChunkExt = struct {
         });
         const mod = parent.getMod().?;
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(c);
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), true, declId);
         return sym;
     } 
 
     pub fn reserveDistinctType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl_id: cy.NodeId, opt_type_id: ?cy.TypeId) !*cy.sym.DistinctType {
         const type_id = opt_type_id orelse try c.sema.pushType();
-        const sym: *cy.sym.DistinctType = @ptrCast(try c.alloc.create(cy.sym.TypeSym));
-        sym.* = .{
+        const sym = try cy.sym.createSym(c.alloc, .distinct_t, .{
             .head = cy.Sym.init(.distinct_t, parent, name),
-            .decl_id = decl_id,
+            .decl = decl_id,
             .type = type_id,
             .mod = undefined,
-        };
+            .resolved = false,
+        });
         const mod = parent.getMod().?;
         sym.getMod().* = Module.init(mod.chunk);
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl_id);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), true, decl_id);
 
         c.compiler.sema.types.items[type_id] = .{
             .sym = @ptrCast(sym),
@@ -273,14 +292,16 @@ pub const ChunkExt = struct {
             .ctNodes = ctNodes,
         });
         const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), true, declId);
+        return sym;
     }
 
-    pub fn declareEnumType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, isChoiceType: bool, declId: cy.NodeId) !*cy.sym.EnumType {
+    pub fn reserveEnumType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, isChoiceType: bool, declId: cy.NodeId) !*cy.sym.EnumType {
         const typeId = try c.sema.pushType();
         const sym = try cy.sym.createSym(c.alloc, .enum_t, .{
             .head = cy.Sym.init(.enum_t, parent, name),
             .type = typeId,
+            .decl = declId,
             .members = undefined,
             .numMembers = 0,
             .isChoiceType = isChoiceType,
@@ -289,7 +310,7 @@ pub const ChunkExt = struct {
         });
         const mod = parent.getMod().?;
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), true, declId);
         c.compiler.sema.types.items[typeId] = .{
             .sym = @ptrCast(sym),
             .kind = if (isChoiceType) .choice else .@"enum",
@@ -307,7 +328,7 @@ pub const ChunkExt = struct {
             .is_choice_type = is_choice_type,
         });
         const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), false, declId);
         return sym;
     }
 
@@ -321,7 +342,7 @@ pub const ChunkExt = struct {
         });
 
         const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), true, declId);
         return sym;
     }
 
@@ -344,7 +365,7 @@ pub const ChunkExt = struct {
             .type = cy.NullId,
         });
         const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), true, declId);
         return sym;
     }
 
@@ -358,11 +379,11 @@ pub const ChunkExt = struct {
         const sym = try cy.sym.createSym(c.alloc, .placeholder, .{
             .head = cy.Sym.init(.placeholder, parent, name),
             .mod = undefined,
-            .sym = undefined,
+            .resolved = false,
         });
         const mod = parent.getMod().?;
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
-        try mod.chunk.placeholder_syms.append(c.alloc, sym);
+        try mod.chunk.syms.append(c.alloc, @ptrCast(sym));
         try mod.symMap.putNoClobber(c.alloc, name, @ptrCast(sym));
         return sym;
     }
@@ -374,7 +395,7 @@ pub const ChunkExt = struct {
             .type = typeId,
         });
         const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), false, declId);
         return sym;
     }
 
@@ -442,7 +463,7 @@ pub const ChunkExt = struct {
         const sym = try cy.sym.createSym(c.alloc, .object_t,
             cy.sym.ObjectType.init(parent, mod.chunk, name, declId, type_id)
         );
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), true, declId);
 
         c.compiler.sema.types.items[type_id] = .{
             .sym = @ptrCast(sym),
@@ -454,7 +475,7 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn declareStructType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId, opt_type_id: ?cy.TypeId) !*cy.sym.ObjectType {
+    pub fn reserveStructType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId, opt_type_id: ?cy.TypeId) !*cy.sym.ObjectType {
         const mod = parent.getMod().?;
 
         const typeId = opt_type_id orelse try c.sema.pushType();
@@ -471,7 +492,7 @@ pub const ChunkExt = struct {
 
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
 
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), true, declId);
         c.compiler.sema.types.items[typeId] = .{
             .sym = @ptrCast(sym),
             .kind = .@"struct",
@@ -580,7 +601,7 @@ pub const ChunkExt = struct {
         });
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
 
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), true, declId);
         c.compiler.sema.types.items[type_id] = .{
             .sym = @ptrCast(sym),
             .kind = .custom_object,
@@ -604,7 +625,7 @@ pub const ChunkExt = struct {
         });
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
 
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), node_id);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), true, node_id);
         c.compiler.sema.types.items[type_id] = .{
             .sym = @ptrCast(sym),
             .kind = .float,
@@ -624,7 +645,7 @@ pub const ChunkExt = struct {
             .bits = bits,
         });
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), node_id);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), true, node_id);
         c.compiler.sema.types.items[type_id] = .{
             .sym = @ptrCast(sym),
             .kind = .int,
@@ -643,7 +664,7 @@ pub const ChunkExt = struct {
             .mod = undefined,
         });
         @as(*Module, @ptrCast(&sym.mod)).* = Module.init(mod.chunk);
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), node_id);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), true, node_id);
 
         c.compiler.sema.types.items[type_id] = .{
             .sym = @ptrCast(sym),
@@ -654,14 +675,13 @@ pub const ChunkExt = struct {
     }
 
     pub fn addUserLambda(c: *cy.Chunk, parent: *cy.Sym, funcSigId: sema.FuncSigId, declId: cy.NodeId) !*cy.Func {
-        const mod = parent.getMod().?;
         const func = try createFunc(c, .userLambda, parent, null, declId, false);
         const func_sig = c.compiler.sema.getFuncSig(funcSigId);
         func.funcSigId = funcSigId;
         func.retType = func_sig.getRetType();
         func.reqCallTypeCheck = func_sig.reqCallTypeCheck;
         func.numParams = @intCast(func_sig.paramLen);
-        try mod.chunk.funcs.append(c.alloc, func);
+        try c.funcs.append(c.alloc, func);
         return func;
     }
 
@@ -705,9 +725,6 @@ pub const ChunkExt = struct {
         }
         if (sym.first == func) {
             sym.firstFuncSig = func_sig_id;
-            if (sym.head.parent.?.type == .placeholder) {
-                sym.head.parent = sym.head.parent.?.cast(.placeholder).sym;
-            }
         }
         if (sym.numFuncs > 1) {
             const key = ModFuncKey.initModFuncKey(sym, func_sig_id);

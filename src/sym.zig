@@ -56,7 +56,7 @@ pub const Sym = extern struct {
         return .{
             .namePtr = name_.ptr,
             .nameLen = @intCast(name_.len),
-            .metadata = @bitCast(Metadata{ .padding = undefined, .name_owned = false, .distinct_t = false }),
+            .metadata = @bitCast(Metadata{ .padding = undefined, .name_owned = false }),
             .type = symT,
             .parent = parent,
         };
@@ -100,119 +100,100 @@ pub const Sym = extern struct {
 
     pub fn destroy(self: *Sym, vm: *cy.VM, alloc: std.mem.Allocator) void {
         self.deinit(alloc);
-
-        var size: usize = undefined;
         switch (self.type) {
             .custom_object_t => {
                 const hostType = self.cast(.custom_object_t);
                 hostType.getMod().deinit(alloc);
-                size = @sizeOf(CustomObjectType);
+                alloc.destroy(hostType);
             },
             .bool_t => {
                 const bool_t = self.cast(.bool_t);
                 bool_t.getMod().deinit(alloc);
-                size = @sizeOf(BoolType);
+                alloc.destroy(bool_t);
             },
             .int_t => {
                 const int_t = self.cast(.int_t);
                 int_t.getMod().deinit(alloc);
-                size = @sizeOf(IntType);
+                alloc.destroy(int_t);
             },
             .float_t => {
                 const float_t = self.cast(.float_t);
                 float_t.getMod().deinit(alloc);
-                size = @sizeOf(FloatType);
+                alloc.destroy(float_t);
             },
             .chunk => {
                 const chunk = self.cast(.chunk);
                 chunk.getMod().deinit(alloc);
-                size = @sizeOf(Chunk);
+                alloc.destroy(chunk);
             },
             .struct_t => {
                 const obj = self.cast(.struct_t);
-                obj.getMod().deinit(alloc);
-                if (obj.isResolved()) {
-                    alloc.free(obj.fields[0..obj.numFields]);
-                }
-                size = @sizeOf(ObjectType);
+                obj.deinit(alloc);
+                alloc.destroy(obj);
             },
             .object_t => {
                 const obj = self.cast(.object_t);
-                obj.getMod().deinit(alloc);
-                if (obj.isResolved()) {
-                    alloc.free(obj.fields[0..obj.numFields]);
-                }
-                size = @sizeOf(ObjectType);
+                obj.deinit(alloc);
+                alloc.destroy(obj);
             },
             .enum_t => {
                 const enumType = self.cast(.enum_t);
-                enumType.getMod().deinit(alloc);
+                enumType.deinit(alloc);
                 alloc.free(enumType.members[0..enumType.numMembers]);
-                size = @sizeOf(EnumType);
+                alloc.destroy(enumType);
             },
-            .typeTemplate => {
-                const typeTemplate = self.cast(.typeTemplate);
+            .template => {
+                const template = self.cast(.template);
 
-                for (typeTemplate.variants.items) |variant| {
+                for (template.variants.items) |variant| {
                     for (variant.params) |param| {
                         vm.release(param);
                     }
                     alloc.free(variant.params);
-                    alloc.free(variant.patchNodes);
                     variant.sym.destroy(vm, alloc);
                 }
-                typeTemplate.variants.deinit(alloc);
-                typeTemplate.variantCache.deinit(alloc);
-                alloc.free(typeTemplate.params);
-
-                size = @sizeOf(TypeTemplate);
+                template.variants.deinit(alloc);
+                template.variantCache.deinit(alloc);
+                alloc.free(template.params);
+                alloc.destroy(template);
             },
             .distinct_t => {
                 const distinct_t = self.cast(.distinct_t);
-                distinct_t.getMod().deinit(alloc);
-                size = @sizeOf(TypeSym);
-            },
-            .field => {
-                size = @sizeOf(Field);
+                if (!distinct_t.resolved) {
+                    distinct_t.getMod().deinit(alloc);
+                }
+                alloc.destroy(distinct_t);
             },
             .typeAlias => {
-                size = @sizeOf(TypeAlias);
-            },
-            .enumMember => {
-                size = @sizeOf(EnumMember);
+                alloc.destroy(self.cast(.typeAlias));
             },
             .use_alias => {
-                size = @sizeOf(UseAlias);
+                alloc.destroy(self.cast(.use_alias));
             },
             .module_alias => {
-                size = @sizeOf(ModuleAlias);
+                alloc.destroy(self.cast(.module_alias));
             },
             .func => {
-                size = @sizeOf(FuncSym);
+                alloc.destroy(self.cast(.func));
             },
             .userVar => {
-                size = @sizeOf(UserVar);
+                alloc.destroy(self.cast(.userVar));
             },
             .hostVar => {
-                size = @sizeOf(HostVar);
+                alloc.destroy(self.cast(.hostVar));
             },
             .placeholder => {
-                size = @sizeOf(Placeholder);
+                const placeholder = self.cast(.placeholder);
+                if (!placeholder.resolved) {
+                    placeholder.getMod().deinit(alloc);
+                }
+                alloc.destroy(placeholder);
             },
-            .null => {
-                size = 0;
+            .null,
+            .enumMember,
+            .field => {
             },
-            //     const child = self.cast(symT);
-            //     size = @sizeOf();
-            // },
         }
-
-        if (self.getMetadata().distinct_t) {
-            size = @sizeOf(TypeSym);
-        }
-
-        const slice = @as([*]const align(8) u8, @ptrCast(self))[0..size];
-        alloc.free(slice);
     }
 
     pub fn getMetadata(self: Sym) Metadata {
@@ -222,12 +203,6 @@ pub const Sym = extern struct {
     pub fn setNameOwned(self: *Sym, name_owned: bool) void {
         var metadata = self.getMetadata();
         metadata.name_owned = name_owned;
-        self.metadata = @bitCast(metadata);
-    }
-
-    pub fn setDistinctType(self: *Sym, distinct_t: bool) void {
-        var metadata = self.getMetadata();
-        metadata.distinct_t = distinct_t;
         self.metadata = @bitCast(metadata);
     }
 
@@ -473,8 +448,7 @@ pub const Sym = extern struct {
 
 const Metadata = packed struct {
     name_owned: bool,
-    distinct_t: bool,
-    padding: u14,
+    padding: u15,
 };
 
 const SymDumpOptions = struct {
@@ -521,25 +495,10 @@ fn SymChild(comptime symT: SymType) type {
 pub const Placeholder = extern struct {
     head: Sym,
     mod: vmc.Module,
-
-    /// Once the placeholder is replaced, keep a reference to the sym so that
-    /// parent references can be updated during the sym resolve step.
-    sym: *cy.Sym,
-
+    resolved: bool,
     pub fn getMod(self: *Placeholder) *cy.Module {
         return @ptrCast(&self.mod);
     }
-};
-
-/// A type sym union is defined so that TypeCopy can allocate enough memory for the largest Sym.
-pub const TypeSym = extern union {
-    object_t: ObjectType,
-    custom_object_t: CustomObjectType,
-    bool_t: BoolType,
-    int_t: IntType,
-    float_t: FloatType,
-    enum_t: EnumType,
-    distinct_t: DistinctType,
 };
 
 pub const HostVar = extern struct {
@@ -556,6 +515,10 @@ pub const UserVar = extern struct {
     head: Sym,
     declId: cy.NodeId,
     type: cy.TypeId,
+
+    pub fn isResolved(self: *UserVar) bool {
+        return self.type != cy.NullId;
+    }
 };
 
 /// Sym that links to overloaded functions.
@@ -586,11 +549,13 @@ pub const TypeAlias = extern struct {
     }
 };
 
+/// Like Placeholder with a reserved type id.
 pub const DistinctType = extern struct {
     head: Sym,
-    decl_id: cy.NodeId,
+    decl: cy.NodeId,
     type: cy.TypeId,
     mod: vmc.Module,
+    resolved: bool,
 
     pub fn getMod(self: *DistinctType) *cy.Module {
         return @ptrCast(&self.mod);
@@ -697,7 +662,7 @@ pub const Field = extern struct {
 };
 
 pub const FieldInfo = packed struct {
-    sym: *cy.Sym,
+    sym: *cy.sym.Field,
     type: cy.TypeId,
 };
 
@@ -732,6 +697,17 @@ pub const ObjectType = extern struct {
         };
         @as(*cy.Module, @ptrCast(&new.mod)).* = cy.Module.init(chunk);
         return new;
+    }
+
+    pub fn deinit(self: *ObjectType, alloc: std.mem.Allocator) void {
+        self.getMod().deinit(alloc);
+        if (self.isResolved()) {
+            const fields = self.getFields();
+            for (fields) |f| {
+                alloc.destroy(f.sym);
+            }
+            alloc.free(fields);
+        }
     }
 
     pub fn getMod(self: *ObjectType) *cy.Module {
@@ -790,15 +766,23 @@ pub const BoolType = extern struct {
 
 pub const EnumType = extern struct {
     head: Sym,
+    decl: cy.NodeId,
     type: cy.TypeId,
     members: [*]*EnumMember,
     numMembers: u32,
     mod: vmc.Module,
 
-    /// If not null, the parent points to TypeTemplate sym.
+    /// If not null, the parent points to Template sym.
     variantId: u32,
 
     isChoiceType: bool,
+
+    pub fn deinit(self: *EnumType, alloc: std.mem.Allocator) void {
+        self.getMod().deinit(alloc);
+        for (self.members[0..self.numMembers]) |m| {
+            alloc.destroy(m);
+        }
+    }
 
     pub fn getValueSym(self: *EnumType, val: u16) *EnumMember {
         return self.members[val];
@@ -890,14 +874,14 @@ pub const Func = struct {
     reqCallTypeCheck: bool,
     numParams: u8,
     isMethod: bool,
+    is_implicit_method: bool,
     throws: bool,
+
+    /// Whether it has already emitted IR.
+    emitted: bool,
 
     pub fn isResolved(self: Func) bool {
         return self.funcSigId != cy.NullId;
-    }
-
-    pub fn isGenerated(self: Func) bool {
-        return self.declId == cy.NullId;
     }
 
     pub fn isStatic(self: Func) bool {

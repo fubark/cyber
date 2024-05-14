@@ -779,6 +779,54 @@ pub const AstView = struct {
         return self.nodeString(self.nodes[nodeId]);
     }
 
+    pub fn declNamePath(self: AstView, node_id: cy.NodeId) ![]const u8 {
+        const n = self.node(node_id);
+        switch (n.type()) {
+            .table_decl,
+            .structDecl,
+            .objectDecl => {
+                const header = self.node(n.data.objectDecl.header);
+                if (header.data.objectHeader.name == cy.NullNode) {
+                    return "";
+                }
+                return self.nodeStringById(header.data.objectHeader.name);
+            },
+            .distinct_decl => {
+                const header = self.node(n.data.distinct_decl.header);
+                return self.nodeStringById(header.data.distinct_header.name);
+            },
+            .enumDecl => {
+                return self.nodeStringById(n.data.enumDecl.name);
+            },
+            .import_stmt => {
+                const name_n = self.node(n.data.import_stmt.name);
+                if (name_n.type() == .all) {
+                    return "*";
+                }
+                return self.nodeStringById(n.data.import_stmt.name);
+            },
+            .use_alias => {
+                return self.nodeStringById(n.data.use_alias.name);
+            },
+            .template => {
+                return self.declNamePath(n.data.template.decl);
+            },
+            .staticDecl => {
+                const varSpec = self.node(n.data.staticDecl.varSpec);
+                return self.getNamePathInfo(varSpec.data.varSpec.name).name_path;
+            },
+            .typeAliasDecl => return self.nodeStringById(n.data.typeAliasDecl.name),
+            .funcDecl => {
+                const header = self.node(n.data.func.header);
+                return self.getNamePathInfo(header.data.funcHeader.name).name_path;
+            },
+            else => {
+                log.tracev("{}", .{n.type()});
+                return error.Unsupported;
+            }
+        }
+    }
+
     pub fn nodeString(self: AstView, n: cy.Node) []const u8 {
         if (n.data.span.srcGen) {
             return self.srcGen[n.data.span.pos..n.data.span.pos+n.data.span.len];

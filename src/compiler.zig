@@ -52,6 +52,9 @@ pub const Compiler = struct {
     /// Compilation units for iteration.
     chunks: std.ArrayListUnmanaged(*cy.Chunk),
 
+    /// Special chunks managed separately.
+    ct_builtins_chunk: ?*cy.Chunk,
+
     /// Resolved URI to chunk.
     chunk_map: std.StringHashMapUnmanaged(*cy.Chunk),
 
@@ -100,6 +103,7 @@ pub const Compiler = struct {
             .moduleLoader = defaultModuleLoader,
             .moduleResolver = defaultModuleResolver,
             .chunks = .{},
+            .ct_builtins_chunk = null,
             .chunk_map = .{},
             .genSymMap = .{},
             .import_tasks = .{},
@@ -151,6 +155,10 @@ pub const Compiler = struct {
             if (chunk.onDestroy) |onDestroy| {
                 onDestroy(@ptrCast(self.vm), cy.Sym.toC(@ptrCast(chunk.sym)));
             }
+            chunk.deinit();
+            self.alloc.destroy(chunk);
+        }
+        if (self.ct_builtins_chunk) |chunk| {
             chunk.deinit();
             self.alloc.destroy(chunk);
         }
@@ -240,7 +248,8 @@ pub const Compiler = struct {
         }
 
         if (!self.cont) {
-            try loadBuiltins(self);
+            try reserveCoreTypes(self);
+            try loadCtBuiltins(self);
         }
 
         // TODO: Types and symbols should be loaded recursively for single-threaded.
@@ -264,7 +273,6 @@ pub const Compiler = struct {
                 };
                 core_sym = core_chunk.sym;
                 _ = self.import_tasks.orderedRemove(0);
-                try reserveCoreTypes(self);
                 try createDynMethodIds(self);
             } else {
                 core_sym = self.chunk_map.get("core").?.sym;
@@ -418,22 +426,22 @@ pub const Compiler = struct {
         return CompileResult{ .vm = undefined };
     }
 
-    pub fn addReportFmt(self: *Compiler, report_t: ReportType, format: []const u8, args: []const fmt.FmtValue, chunk: ?cy.ChunkId, loc: ?u32) !void {
+    pub fn addReportFmt(self: *Compiler, report_t: ReportType, format: []const u8, args: []const fmt.FmtValue, chunk: ?cy.ChunkId, loc: ?cy.NodeId) !void {
         const msg = try fmt.allocFormat(self.alloc, format, args);
         try self.addReportConsume(report_t, msg, chunk, loc);
     }
 
     /// Assumes `msg` is heap allocated.
-    pub fn addReportConsume(self: *Compiler, report_t: ReportType, msg: []const u8, chunk: ?cy.ChunkId, loc: ?u32) !void {
+    pub fn addReportConsume(self: *Compiler, report_t: ReportType, msg: []const u8, chunk: ?cy.ChunkId, loc: ?cy.NodeId) !void {
         try self.reports.append(self.alloc, .{
             .type = report_t,
             .chunk = chunk orelse cy.NullId,
-            .loc = loc orelse cy.NullId,
+            .loc = loc orelse cy.NullNode,
             .msg = msg,
         });
     }
 
-    pub fn addReport(self: *Compiler, report_t: ReportType, msg: []const u8, chunk: ?cy.ChunkId, loc: ?u32) !void {
+    pub fn addReport(self: *Compiler, report_t: ReportType, msg: []const u8, chunk: ?cy.ChunkId, loc: ?cy.NodeId) !void {
         const dupe = try self.alloc.dupe(u8, msg);
         try self.addReportConsume(report_t, dupe, chunk, loc);
     }
@@ -519,18 +527,22 @@ fn performChunkSema(self: *Compiler, chunk: *cy.Chunk) !void {
 }
 
 fn performChunkSemaDecls(c: *cy.Chunk) !void {
-    for (c.parser.staticDecls.items) |decl| {
-        switch (decl.declT) {
-            .func => {
-                if (decl.data.func.isMethod) {
-                    try sema.methodDecl(c, decl.data.func);
-                } else {
-                    try sema.funcDecl(c, decl.data.func);
+    // Iterate funcs with explicit index since lambdas could be appended.
+    var i: u32 = 0;
+    var num_funcs: u32 = @intCast(c.funcs.items.len);
+    while (i < num_funcs) : (i += 1) {
+        const func = c.funcs.items[i];
+        switch (func.type) {
+            .userFunc => {
+                // Skip already emitted functions such as `$init`.
+                if (func.emitted) {
+                    continue;
                 }
-            },
-            .implicit_method => {
-                if (decl.data.implicit_method.type == .userFunc) {
-                    try sema.methodDecl(c, decl.data.implicit_method);
+                log.tracev("sema func: {s}", .{func.name()});
+                if (func.isMethod) {
+                    try sema.methodDecl(c, func);
+                } else {
+                    try sema.funcDecl(c, func);
                 }
             },
             else => {},
@@ -564,13 +576,11 @@ fn performChunkInitSema(self: *Compiler, c: *cy.Chunk) !void {
 
     _ = try sema.pushFuncProc(c, func);
 
-    for (c.parser.staticDecls.items) |sdecl| {
-        switch (sdecl.declT) {
-            .variable => {
-                const node = c.ast.node(sdecl.nodeId);
-                if (node.type() == .staticDecl) {
-                    try sema.staticDecl(c, sdecl.data.sym, sdecl.nodeId);
-                }
+    for (c.syms.items) |sym| {
+        switch (sym.type) {
+            .userVar => {
+                const user_var = sym.cast(.userVar);
+                try sema.staticDecl(c, sym, user_var.declId);
             },
             else => {},
         }
@@ -582,20 +592,18 @@ fn performChunkInitSema(self: *Compiler, c: *cy.Chunk) !void {
     try c.ir.pushStmtBlock(c.alloc);
 
     // Reorder local declarations in DFS order by patching next stmt IR.
-    for (c.parser.staticDecls.items) |sdecl| {
-        switch (sdecl.declT) {
-            .variable => {
-                const node = c.ast.node(sdecl.nodeId);
-                if (node.type() == .staticDecl) {
-                    const info = c.symInitInfos.getPtr(sdecl.data.sym).?;
-                    try appendSymInitIrDFS(c, sdecl.data.sym, info, cy.NullNode);
-                }
+    for (c.syms.items) |sym| {
+        switch (sym.type) {
+            .userVar => {
+                const info = c.symInitInfos.getPtr(sym).?;
+                try appendSymInitIrDFS(c, sym, info, cy.NullNode);
             },
             else => {},
         }
     }
 
     try sema.popFuncBlock(c);
+    func.emitted = true;
 }
 
 fn appendSymInitIrDFS(c: *cy.Chunk, sym: *cy.Sym, info: *cy.chunk.SymInitInfo, refNodeId: cy.NodeId) !void {
@@ -731,14 +739,12 @@ fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
     return newChunk;
 }
 
-fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
+fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
     log.tracev("Reserve symbols.", .{});
 
     var id: u32 = self.chunk_start;
     while (true) {
         while (id < self.chunks.items.len) : (id += 1) {
-            var last_type_sym: *cy.Sym = undefined;
-
             const chunk = self.chunks.items[id];
             log.tracev("chunk parse: {}", .{chunk.id});
             try performChunkParse(self, chunk);
@@ -750,65 +756,72 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
 
             // Process static declarations.
             for (chunk.parser.staticDecls.items) |*decl| {
+                log.tracev("reserve: {s}", .{try chunk.ast.declNamePath(decl.nodeId)});
                 switch (decl.declT) {
                     .use_import => {
                         try sema.declareUseImport(chunk, decl.nodeId);
                     },
                     .use_alias => {
-                        const sym = try sema.reserveUseAlias(chunk, decl.nodeId);
-                        decl.data = .{ .sym = @ptrCast(sym) };
+                        _ = try sema.reserveUseAlias(chunk, decl.nodeId);
                     },
                     .struct_t => {
-                        const sym = try sema.declareStruct(chunk, decl.nodeId);
-                        decl.data = .{ .sym = @ptrCast(sym) };
-                        last_type_sym = sym;
+                        const sym = try sema.reserveStruct(chunk, decl.nodeId);
+                        const node = chunk.ast.node(decl.nodeId);
+                        var cur: cy.NodeId = node.data.objectDecl.funcHead;
+                        while (cur != cy.NullNode) {
+                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), cur);
+                            cur = chunk.ast.node(cur).next();
+                        }
                     },
                     .object => {
                         const sym = try sema.reserveObjectType(chunk, decl.nodeId);
-                        decl.data = .{ .sym = @ptrCast(sym) };
-                        last_type_sym = sym;
+                        const node = chunk.ast.node(decl.nodeId);
+                        var cur: cy.NodeId = node.data.objectDecl.funcHead;
+                        while (cur != cy.NullNode) {
+                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), cur);
+                            cur = chunk.ast.node(cur).next();
+                        }
                     },
                     .table_t => {
                         const sym = try sema.reserveObjectType(chunk, decl.nodeId);
                         try sema.reserveTableMethods(chunk, @ptrCast(sym));
-                        decl.data = .{ .sym = @ptrCast(sym) };
-                        last_type_sym = sym;
+
+                        const node = chunk.ast.node(decl.nodeId);
+                        var cur: cy.NodeId = node.data.objectDecl.funcHead;
+                        while (cur != cy.NullNode) {
+                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), cur);
+                            cur = chunk.ast.node(cur).next();
+                        }
                     },
                     .enum_t => {
-                        const sym = try sema.declareEnum(chunk, decl.nodeId);
-                        decl.data = .{ .sym = @ptrCast(sym) };
+                        _ = try sema.reserveEnum(chunk, decl.nodeId);
                     },
                     .typeAlias => {
-                        const sym = try sema.reserveTypeAlias(chunk, decl.nodeId);
-                        decl.data = .{ .sym = @ptrCast(sym) };
+                        _ = try sema.reserveTypeAlias(chunk, decl.nodeId);
                     },
                     .distinct_t => {
                         const sym = try sema.reserveDistinctType(chunk, decl.nodeId);
-                        decl.data = .{ .sym = @ptrCast(sym) };
-                        last_type_sym = sym;
+                        const node = chunk.ast.node(decl.nodeId);
+                        var cur: cy.NodeId = node.data.distinct_decl.func_head;
+                        while (cur != cy.NullNode) {
+                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), cur);
+                            cur = chunk.ast.node(cur).next();
+                        }
                     },
-                    .typeTemplate => {
-                        const ctNodes = chunk.parser.ast.templateCtNodes.items[decl.data.typeTemplate.ctNodeStart..decl.data.typeTemplate.ctNodeEnd];
-                        try sema.declareTypeTemplate(chunk, decl.nodeId, ctNodes);
+                    .template => {
+                        _ = try sema.declareTemplate(chunk, decl.nodeId);
                     },
                     .variable => {
                         const sym = try sema.reserveVar(chunk, decl.nodeId);
-                        decl.data = .{ .sym = sym };
                         if (sym.type == .userVar) {
                             chunk.hasStaticInit = true;
                         }
                     },
-                    .implicit_method => {
-                        const func = try sema.reserveImplicitMethod(chunk, last_type_sym, decl.nodeId);
-                        decl.data = .{ .implicit_method = func };
-                    },
                     .func => {
-                        const func = try sema.reserveUserFunc(chunk, decl.nodeId);
-                        decl.data = .{ .func = func };
+                        _ = try sema.reserveUserFunc(chunk, decl.nodeId);
                     },
                     .funcInit => {
-                        const func = try sema.reserveHostFunc(chunk, decl.nodeId);
-                        decl.data = .{ .func = func };
+                        _ = try sema.reserveHostFunc(chunk, decl.nodeId);
                     },
                 }
             }
@@ -841,15 +854,16 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void {
     }
 }
 
-fn loadBuiltins(self: *Compiler) !void {
-    const builtins = &self.sema.builtins;
-    try builtins.putNoClobber(self.alloc, "int64_t", .{ .type = .int_t, .data = .{ .int_t = .{
-        .bits = 64,
-    }}});
-    try builtins.putNoClobber(self.alloc, "float64_t", .{ .type = .int_t, .data = .{ .int_t = .{
-        .bits = 64,
-    }}});
-    try builtins.putNoClobber(self.alloc, "bool_t", .{ .type = .bool_t, .data = undefined });
+fn loadCtBuiltins(self: *Compiler) !void {
+    const bc = try self.alloc.create(cy.Chunk);
+    const ct_builtins_uri = try self.alloc.dupe(u8, "ct");
+    bc.* = try cy.Chunk.init(self, cy.NullId, ct_builtins_uri, "");
+    bc.sym = try bc.createChunkSym(ct_builtins_uri);
+    self.ct_builtins_chunk = bc;
+
+    _ = try bc.declareBoolType(@ptrCast(bc.sym), "bool_t", null, cy.NullNode);
+    _ = try bc.declareIntType(@ptrCast(bc.sym), "int64_t", 64, null, cy.NullNode);
+    _ = try bc.declareFloatType(@ptrCast(bc.sym), "float64_t", 64, null, cy.NullNode);
 }
 
 fn reserveCoreTypes(self: *Compiler) !void {
@@ -953,56 +967,71 @@ fn createDynMethodIds(self: *Compiler) !void {
 fn resolveSyms(self: *Compiler) !void {
     log.tracev("Resolve syms.", .{});
     for (self.newChunks()) |chunk| {
-        // Process static declarations.
-        var last_type_sym: *cy.Sym = undefined;
-        for (chunk.parser.staticDecls.items) |*decl| {
-            log.tracev("Load {s}", .{@tagName(decl.declT)});
-            switch (decl.declT) {
-                .variable => {
-                    if (decl.data.sym.type == .userVar) {
-                        try sema.resolveUserVar(chunk, @ptrCast(decl.data.sym));
+        // Iterate funcs with explicit index since unnamed types could be appended.
+        var i: u32 = 0;
+        while (i < chunk.syms.items.len) : (i += 1) {
+            const sym = chunk.syms.items[i];
+            log.tracev("resolve: {s}", .{sym.name()});
+            switch (sym.type) {
+                .userVar => {
+                    try sema.resolveUserVar(chunk, @ptrCast(sym));
+                },
+                .hostVar => {
+                    try sema.resolveHostVar(chunk, @ptrCast(sym));
+                },
+                .func => {},
+                .struct_t => {
+                    const struct_t = sym.cast(.struct_t);
+                    try sema.resolveObjectFields(chunk, sym, struct_t.declId);
+                },
+                .object_t => {
+                    const object_t = sym.cast(.object_t);
+                    const decl = chunk.ast.node(object_t.declId);
+                    if (decl.type() == .table_decl) {
+                        try sema.resolveTableFields(chunk, @ptrCast(sym));
+                        try sema.resolveTableMethods(chunk, @ptrCast(sym));
                     } else {
-                        try sema.resolveHostVar(chunk, @ptrCast(decl.data.sym));
+                        try sema.resolveObjectFields(chunk, sym, object_t.declId);
                     }
-                },
-                .implicit_method => {
-                    try sema.resolveImplicitMethod(chunk, decl.data.implicit_method);
-                },
-                .func => {
-                    try sema.resolveUserFunc(chunk, decl.data.func);
-                },
-                .funcInit => {
-                    try sema.resolveHostFunc(chunk, decl.data.func);
-                },
-                .struct_t,
-                .object => {
-                    try sema.resolveObjectFields(chunk, decl.data.sym, decl.nodeId);
-                    last_type_sym = decl.data.sym;
-                },
-                .table_t => {
-                    try sema.resolveTableFields(chunk, @ptrCast(decl.data.sym), decl.nodeId);
-                    try sema.resolveTableMethods(chunk, @ptrCast(decl.data.sym));
-                    last_type_sym = decl.data.sym;
                 },
                 .enum_t => {
-                    try sema.declareEnumMembers(chunk, @ptrCast(decl.data.sym), decl.nodeId);
+                    const enum_t = sym.cast(.enum_t);
+                    try sema.declareEnumMembers(chunk, @ptrCast(sym), enum_t.decl);
                 },
                 .distinct_t => {
-                    if (decl.data.sym.type == .distinct_t) {
-                        const sym = try sema.resolveDistinctType(chunk, @ptrCast(decl.data.sym));
-                        last_type_sym = sym;
-                    } else {
-                        last_type_sym = decl.data.sym;
-                    }
+                    _ = try sema.resolveDistinctType(chunk, @ptrCast(sym));
                 },
                 .use_alias => {
-                    try sema.resolveUseAlias(chunk, @ptrCast(decl.data.sym));
+                    const use_alias = sym.cast(.use_alias);
+                    const decl = chunk.ast.node(use_alias.decl);
+                    if (decl.type() == .use_alias) {
+                        try sema.resolveUseAlias(chunk, @ptrCast(sym));
+                    }
                 },
                 .typeAlias => {
-                    try sema.resolveTypeAlias(chunk, @ptrCast(decl.data.sym));
+                    try sema.resolveTypeAlias(chunk, @ptrCast(sym));
                 },
-                .use_import,
-                .typeTemplate => {},
+                else => {},
+            }
+        }
+
+        for (chunk.funcs.items) |func| {
+            switch (func.type) {
+                .hostFunc => {
+                    if (func.is_implicit_method) {
+                        try sema.resolveImplicitMethod(chunk, func);
+                    } else {
+                        try sema.resolveHostFunc(chunk, func);
+                    }
+                },
+                .userFunc => {
+                    if (func.is_implicit_method) {
+                        try sema.resolveImplicitMethod(chunk, func);
+                    } else {
+                        try sema.resolveUserFunc(chunk, func);
+                    }
+                },
+                .userLambda => {},
             }
         }
 

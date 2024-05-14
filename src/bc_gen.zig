@@ -38,14 +38,14 @@ pub fn genAll(c: *cy.Compiler) !void {
             .object_t => {
                 const obj = sym.cast(.object_t);
                 for (obj.fields[0..obj.numFields], 0..) |field, i| {
-                    const fieldSymId = try c.vm.ensureFieldSym(field.sym.name());
+                    const fieldSymId = try c.vm.ensureFieldSym(field.sym.head.name());
                     try c.vm.addFieldSym(@intCast(typeId), fieldSymId, @intCast(i), field.type);
                 }
             },
             .struct_t => {
                 const obj = sym.cast(.struct_t);
                 for (obj.fields[0..obj.numFields], 0..) |field, i| {
-                    const fieldSymId = try c.vm.ensureFieldSym(field.sym.name());
+                    const fieldSymId = try c.vm.ensureFieldSym(field.sym.head.name());
                     try c.vm.addFieldSym(@intCast(typeId), fieldSymId, @intCast(i), field.type);
                 }
             },
@@ -192,6 +192,8 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
         .object_t,
         .func,
         .typeAlias,
+        .distinct_t,
+        .placeholder,
         .enum_t,
         .enumMember,
         .use_alias,

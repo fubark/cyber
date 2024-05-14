@@ -681,25 +681,25 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
     const type_id = val.getTypeId();
     switch (type_id) {
         bt.Map => {
-            try w.writeByte('`');
+            try w.writeByte('<');
             const name = getTypeName(vm, type_id);
             _ = try w.writeAll(name);
-            _ = try w.print("[{}]` ", .{val.asHeapObject().map.map().size});
+            _ = try w.print("[{}]> ", .{val.asHeapObject().map.map().size});
         },
         bt.Table => {
             if (state.depth == 1 or config.force_types) {
-                try w.writeByte('`');
+                try w.writeByte('<');
                 const name = getTypeName(vm, type_id);
                 _ = try w.writeAll(name);
-                _ = try w.print("[{}]` ", .{val.asHeapObject().table.map().size});
+                _ = try w.print("[{}]> ", .{val.asHeapObject().table.map().size});
             }
         },
         bt.ListDyn => {
             if (state.depth == 1 or config.force_types) {
-                try w.writeByte('`');
+                try w.writeByte('<');
                 const name = getTypeName(vm, type_id);
                 _ = try w.writeAll(name);
-                _ = try w.print("[{}]` ", .{val.asHeapObject().list.list.len});
+                _ = try w.print("[{}]> ", .{val.asHeapObject().list.list.len});
             }
         },
         bt.Error,
@@ -708,19 +708,19 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
         bt.Float => {
             if (state.depth == 1 or config.force_types) {
                 const name = getTypeName(vm, type_id);
-                try w.writeByte('`');
+                try w.writeByte('<');
                 _ = try w.writeAll(name);
-                _ = try w.writeAll("` ");
+                _ = try w.writeAll("> ");
             }
         },
         else => {
             const name = getTypeName(vm, type_id);
-            try w.writeByte('`');
+            try w.writeByte('<');
             _ = try w.writeAll(name);
             if (type_id == bt.Void) {
-                _ = try w.writeAll("`");
+                _ = try w.writeAll(">");
             } else {
-                _ = try w.writeAll("` ");
+                _ = try w.writeAll("> ");
             }
         },
     }

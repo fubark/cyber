@@ -422,7 +422,7 @@ The following shows the zero values of builtin or created types:
 |`Map`|`Map{}`|
 |`type S`|`S{}`|
 |`@host type S`|`S.$zero()`|
-|`dynamic`|`int(0)`|
+|`dyn`|`int(0)`|
 |`any`|`int(0)`|
 |`?S`|`Option[S].none`|
 
@@ -504,7 +504,7 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
   * [Map block.](#map-block)
 * [Symbols.](#symbols)
 * [`any`.](#any)
-* [`dynamic`.](#dynamic)
+* [`dyn`.](#dyn)
 </td>
 </tr></table>
 
@@ -904,7 +904,7 @@ print int(currency)      --> <unique ID>
 ```
 
 ## `any`.
-Unlike `dynamic`, `any` is statically typed and performs type checks at compile-time.
+Unlike `dyn`, `any` is statically typed and performs type checks at compile-time.
 `any` type can hold any value, but copying it to narrowed type destination will result in a compile error:
 ```cy
 func square(i int):
@@ -921,7 +921,7 @@ print square(a)           --> CompileError. Expected `int`, got `any`.
 print square(a as int)    --> 100
 ```
 
-## `dynamic`.
+## `dyn`.
 The dynamic type defers type checking to runtime. However, it also tracks its own **recent type** in order to surface errors at compile-time. See [Dynamic Typing](#dynamic-typing).
 
 # Custom Types.
@@ -1680,7 +1680,7 @@ Functions are initially static, but they can be passed around as a lambda or ass
 -- Assigning to a local variable.
 var bar = dist
 
-func squareDist(dist dynamic, size float) float:
+func squareDist(dist dyn, size float) float:
     return dist(0.0, 0.0, size, size)
     
 -- Passing `dist` as an argument.
@@ -2678,7 +2678,7 @@ Dynamic typing is supported with a less restrictive syntax. This can reduce the 
 In Cyber, the `let` keyword is used exclusively for dynamic declarations.
 
 ## Dynamic variables.
-Variables declared with `let` are implicitly given the `dynamic` type:
+Variables declared with `let` are implicitly given the `dyn` type:
 ```cy
 let a = 123
 ```
@@ -2724,9 +2724,9 @@ print a(1, 2, 3)
 
 ## Dynamic functions.
 Functions declared with `let` do not allow typed parameters or a return specifier.
-All parameters are implicitly given the `dynamic` type.
+All parameters are implicitly given the `dyn` type.
 
-The return specifier is also implicitly `!dynamic` which indicates that the function can throw an error. This is only relevant when typed code calls a dynamic function:
+The return specifier is also implicitly `!dyn` which indicates that the function can throw an error. This is only relevant when typed code calls a dynamic function:
 ```cy
 let foo(a, b, c):
     return a + b() + a[c]

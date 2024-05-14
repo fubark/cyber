@@ -97,7 +97,7 @@ hljs.registerLanguage('cy', function() {
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case'
         ],
         type: [
-            'float', 'String', 'Array', 'bool', 'any', 'int', 'List', 'Map', 'symbol', 'pointer', 'dynamic'
+            'float', 'String', 'Array', 'bool', 'any', 'int', 'List', 'Map', 'symbol', 'pointer', 'dyn'
         ],
     },
     contains: [
@@ -377,7 +377,7 @@ func text(text_t md.SPANTYPE, ptr pointer, len int, userdata pointer) int:
         out += str
     return 0
 
-func getAttrText(attr dynamic) String:
+func getAttrText(attr dyn) String:
     if attr.size == 0:
         return ''
     return (attr.text as pointer).toArray(0, attr.size).decode()

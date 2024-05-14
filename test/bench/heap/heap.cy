@@ -3,10 +3,10 @@ use os
 var start = os.now()
 
 type Node:
-    left   dynamic
-    right  dynamic
-    parent dynamic
-    value  dynamic
+    left   dyn
+    right  dyn
+    parent dyn
+    value  dyn
 
     func getLeftmost():
         if self.left == false:
@@ -58,9 +58,9 @@ func Heap.new() Heap:
     return Heap{root: false, size: 0, last: false}
 
 type Heap:
-    root dynamic
-    size dynamic
-    last dynamic
+    root dyn
+    size dyn
+    last dyn
 
     func insert(value int):
         if self.root == false:

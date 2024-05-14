@@ -76,7 +76,7 @@ catch:
     pass
 
 -- Catch invokes lambda release inst one frame down.
-func foo5(f dynamic):
+func foo5(f dyn):
     f()
 try:
     foo5(f)

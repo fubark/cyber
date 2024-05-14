@@ -42,7 +42,7 @@ typedef enum {
     CL_TYPE_SYMBOL,
     CL_TYPE_INTEGER,
     CL_TYPE_FLOAT,
-    CL_TYPE_DYNAMIC,
+    CL_TYPE_DYN,
     CL_TYPE_ANY,
     CL_TYPE_TYPE,
     CL_TYPE_TUPLE,

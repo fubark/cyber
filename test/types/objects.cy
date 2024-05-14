@@ -24,7 +24,7 @@ var n3 = NodeHeap{}
 t.eq(n3.value, 0)
 
 type NodeHeap:
-    value dynamic
+    value dyn
 
 -- Init with heap value.
 n3 = NodeHeap{value: [123]}

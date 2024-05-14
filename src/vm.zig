@@ -3916,10 +3916,10 @@ fn isAssignFuncSigCompat(vm: *VM, srcFuncSigId: sema.FuncSigId, dstFuncSigId: se
         if (srcParam == dstParam) {
             continue;
         }
-        if (srcParam == bt.Any and dstParam == bt.Dynamic) {
+        if (srcParam == bt.Any and dstParam == bt.Dyn) {
             continue;
         }
-        if (srcParam == bt.Dynamic and dstParam == bt.Any) {
+        if (srcParam == bt.Dyn and dstParam == bt.Any) {
             continue;
         }
         return false;

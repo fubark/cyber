@@ -193,7 +193,7 @@ static inline bool isTypeCompat(TypeId typeId, TypeId cstrType) {
     if (typeId == cstrType) {
         return true;
     }
-    if (cstrType == TYPE_ANY || cstrType == TYPE_DYNAMIC) {
+    if (cstrType == TYPE_ANY || cstrType == TYPE_DYN) {
         return true;
     }
     return false;
@@ -1572,7 +1572,7 @@ beginSwitch:
                 FieldSymbolMap* symMap = ((FieldSymbolMap*)vm->fieldSyms.buf) + fieldId;
                 u32 fieldTypeId = symMap->mruFieldTypeSymId;
                 TypeId rightTypeId = getTypeId(val);
-                if (fieldTypeId != TYPE_DYNAMIC) {
+                if (fieldTypeId != TYPE_DYN) {
                     // Must perform type check on rhs.
                     if (!isTypeCompat(rightTypeId, fieldTypeId)) {
                         panicIncompatibleFieldType(vm, fieldTypeId, rightTypeId);

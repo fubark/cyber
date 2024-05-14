@@ -12,8 +12,8 @@ foo(arg)
 --cytest: error
 --panic: Can not find compatible function for call: `foo(String)`.
 --Functions named `foo`:
---    func foo(int) dynamic
---    func foo(bool) dynamic
+--    func foo(int) dyn
+--    func foo(bool) dyn
 --
 --main:10:1 main:
 --foo(arg)

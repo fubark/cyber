@@ -206,7 +206,7 @@ pub const vm_types = [_]C.HostTypeEntry{
     htype("placeholder1",  C.CORE_TYPE(bt.Placeholder1)), 
     htype("placeholder2",  C.CORE_TYPE(bt.Placeholder2)), 
     htype("taglit",        C.CORE_TYPE(bt.TagLit)), 
-    htype("dynamic",       C.CORE_TYPE(bt.Dynamic)),
+    htype("dyn",           C.CORE_TYPE(bt.Dyn)),
     htype("any",           C.CORE_TYPE(bt.Any)),
     htype("type",          C.CORE_TYPE(bt.Type)),
     htype("List",          C.CUSTOM_TYPE(null, listGetChildren, listFinalizer)),
@@ -275,7 +275,7 @@ pub fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
 
     const list_tmpl = chunk_sym.getMod().getSym("List").?.toC();
 
-    const dynamic_t = C.newType(vm_, bt.Dynamic);
+    const dynamic_t = C.newType(vm_, bt.Dyn);
     defer C.release(vm_, dynamic_t);
     _ = C.expandTemplateType(list_tmpl, @constCast(&[_]C.Value{ dynamic_t }), 1);
 

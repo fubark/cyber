@@ -199,13 +199,13 @@ t.eq(res, 36)
 t.eq(idxRes, 9)
 
 -- List.fill with primitive.
-a = List[dynamic].fill(123, 10)
+a = List[dyn].fill(123, 10)
 t.eq(a.len(), 10)
 for 0..10 -> i:
     t.eq(a[i], 123)
 
 -- List.fill with object performs shallow copy.
-a = List[dynamic].fill([], 2)
+a = List[dyn].fill([], 2)
 t.eq(a.len(), 2)
 t.eq(a[0] == a[1], false)
 

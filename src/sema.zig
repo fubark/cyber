@@ -111,7 +111,7 @@ pub const LocalVar = struct {
     /// Whether the variable is dynamic or statically typed.
     /// This should provide the same result as `vtype.dynamic`.
     pub fn isDynamic(self: LocalVar) bool {
-        return self.declT == bt.Dynamic;
+        return self.declT == bt.Dyn;
     }
 
     pub fn name(self: LocalVar) []const u8 {
@@ -384,7 +384,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
             if (header.data.forIterHeader.eachClause != cy.NullNode) {
                 const eachClause = c.ast.node(header.data.forIterHeader.eachClause);
                 if (eachClause.type() == .ident) {
-                    const varId = try declareLocal(c, header.data.forIterHeader.eachClause, bt.Dynamic, false);
+                    const varId = try declareLocal(c, header.data.forIterHeader.eachClause, bt.Dyn, false);
                     eachLocal = c.varStack.items[varId].inner.local.id;
 
                     if (header.forIterHeader_count() != cy.NullNode) {
@@ -392,7 +392,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
                         countLocal = c.varStack.items[countVarId].inner.local.id;
                     }
                 } else if (eachClause.type() == .seqDestructure) {
-                    const varId = try declareLocalName(c, "$elem", bt.Dynamic, false, header.data.forIterHeader.eachClause);
+                    const varId = try declareLocalName(c, "$elem", bt.Dyn, false, header.data.forIterHeader.eachClause);
                     eachLocal = c.varStack.items[varId].inner.local.id;
 
                     if (header.forIterHeader_count() != cy.NullNode) {
@@ -404,7 +404,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
 
                     seqIrVarStart = @intCast(c.dataU8Stack.items.len);
                     while (curId != cy.NullNode) {
-                        const varId2 = try declareLocal(c, curId, bt.Dynamic, false);
+                        const varId2 = try declareLocal(c, curId, bt.Dyn, false);
                         const irVarId = c.varStack.items[varId2].inner.local.id;
                         try c.dataU8Stack.append(c.alloc, .{ .irLocal = irVarId });
                         const cur = c.ast.node(curId);
@@ -535,7 +535,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !cy.NodeId {
                 var decl_head: u32 = undefined;
                 var unwrap_local: u8 = undefined;
                 {
-                    const unwrap_t = if (opt.type.dynamic) bt.Dynamic else b: {
+                    const unwrap_t = if (opt.type.dynamic) bt.Dyn else b: {
                         break :b c.sema.getTypeSym(opt.type.id).cast(.enum_t).getMemberByIdx(1).payloadType;
                     };
                     const unwrap_var = try declareLocal(c, header.data.whileOptHeader.capture, unwrap_t, false);
@@ -690,7 +690,7 @@ fn semaIfUnwrapStmt(c: *cy.Chunk, nodeId: cy.NodeId, node: cy.Node) !void {
     var decl_head: u32 = undefined;
     var unwrap_local: u8 = undefined;
     {
-        const unwrap_t = if (opt.type.dynamic) bt.Dynamic else b: {
+        const unwrap_t = if (opt.type.dynamic) bt.Dyn else b: {
             break :b c.sema.getTypeSym(opt.type.id).cast(.enum_t).getMemberByIdx(1).payloadType;
         };
         const unwrap_var = try declareLocal(c, if_unwrap.data.if_unwrap.unwrap, unwrap_t, false);
@@ -1395,7 +1395,7 @@ pub fn declareUseImport(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             c.compiler.global_sym = global;
 
             const func = try c.reserveHostFunc(@ptrCast(c.compiler.main_chunk.sym), "$getGlobal", cy.NullNode, false);
-            const func_sig = try c.sema.ensureFuncSig(&.{ bt.Map, bt.Any }, bt.Dynamic);
+            const func_sig = try c.sema.ensureFuncSig(&.{ bt.Map, bt.Any }, bt.Dyn);
             try c.resolveHostFunc(func, func_sig, cy.bindings.getGlobal);
             c.compiler.get_global = func;
         }
@@ -1717,7 +1717,7 @@ pub fn resolveTableMethods(c: *cy.Chunk, obj: *cy.sym.ObjectType) !void {
     const mod = obj.getMod();
 
     const get = mod.getSym("$get").?.cast(.func).first;
-    var sig = try c.sema.ensureFuncSig(&.{ obj.type, bt.String }, bt.Dynamic);
+    var sig = try c.sema.ensureFuncSig(&.{ obj.type, bt.String }, bt.Dyn);
     try c.resolveHostFunc(get, sig, cy.bindings.tableGet);
 
     const set = mod.getSym("$set").?.cast(.func).first;
@@ -1725,7 +1725,7 @@ pub fn resolveTableMethods(c: *cy.Chunk, obj: *cy.sym.ObjectType) !void {
     try c.resolveHostFunc(set, sig, cy.builtins.zErrFunc(cy.bindings.tableSet));
 
     const index = mod.getSym("$index").?.cast(.func).first;
-    sig = try c.sema.ensureFuncSig(&.{ obj.type, bt.Any }, bt.Dynamic);
+    sig = try c.sema.ensureFuncSig(&.{ obj.type, bt.Any }, bt.Dyn);
     try c.resolveHostFunc(index, sig, cy.bindings.tableIndex);
 
     const set_index = mod.getSym("$setIndex").?.cast(.func).first;
@@ -1883,10 +1883,10 @@ pub fn resolveTableFields(c: *cy.Chunk, obj: *cy.sym.ObjectType) !void {
     while (fieldId != cy.NullNode) : (i += 1) {
         const field = c.ast.node(fieldId);
         const field_name = c.ast.nodeString(field);
-        field_sym = try c.declareField(@ptrCast(obj), field_name, i, bt.Dynamic, fieldId);
+        field_sym = try c.declareField(@ptrCast(obj), field_name, i, bt.Dyn, fieldId);
         fields[i] = .{
             .sym = @ptrCast(field_sym),
-            .type = bt.Dynamic,
+            .type = bt.Dyn,
         };
 
         fieldId = field.next();
@@ -2354,7 +2354,7 @@ fn localDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             typeId = try resolveTypeSpecNode(c, varSpec.data.varSpec.typeSpec);
         }
     } else {
-        typeId = bt.Dynamic;
+        typeId = bt.Dyn;
     }
 
     const varId = try declareLocal(c, varSpec.data.varSpec.name, typeId, true);
@@ -2386,7 +2386,7 @@ fn localDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         svar.vtype = right.type;
         // Patch IR.
         data.declType = declType;
-    } else if (typeId == bt.Dynamic) {
+    } else if (typeId == bt.Dyn) {
         // Update recent static type.
         svar.vtype.id = right.type.id;
     }
@@ -2912,7 +2912,7 @@ pub fn getResolvedLocalSym(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId, di
 /// Returns the final resolved type sym.
 pub fn resolveTypeSpecNode(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!cy.TypeId {
     if (nodeId == cy.NullNode) {
-        return bt.Dynamic;
+        return bt.Dyn;
     }
     const type_id = try resolveSymType(c, nodeId);
     if (type_id == bt.Void) {
@@ -2923,7 +2923,7 @@ pub fn resolveTypeSpecNode(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!cy.TypeId {
 
 pub fn resolveReturnTypeSpecNode(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!cy.TypeId {
     if (nodeId == cy.NullNode) {
-        return bt.Dynamic;
+        return bt.Dyn;
     }
     return resolveSymType(c, nodeId);
 }
@@ -4101,7 +4101,7 @@ fn semaSwitchCase(c: *cy.Chunk, info: SwitchInfo, nodeId: cy.NodeId) !u32 {
     }
 
     if (hasCapture) {
-        const declT = if (info.exprType.dynamic) bt.Dynamic else state.captureType;
+        const declT = if (info.exprType.dynamic) bt.Dyn else state.captureType;
         const capVarId = try declareLocal(c, header.data.caseHeader.capture, declT, true);
         const declareLoc = c.varStack.items[capVarId].inner.local.declIrStart;
 
@@ -4190,7 +4190,7 @@ pub const ChunkExt = struct {
     pub fn semaZeroInit(c: *cy.Chunk, typeId: cy.TypeId, nodeId: cy.NodeId) !ExprResult {
         switch (typeId) {
             bt.Any,
-            bt.Dynamic  => return c.semaInt(0, nodeId),
+            bt.Dyn  => return c.semaInt(0, nodeId),
             bt.Boolean  => return c.semaFalse(nodeId),
             bt.Integer  => return c.semaInt(0, nodeId),
             bt.Float    => return c.semaFloat(0, nodeId),
@@ -4552,7 +4552,7 @@ pub const ChunkExt = struct {
         var i: u32 = 0;
         while (nodeId != cy.NullNode) {
             const arg = c.ast.node(nodeId);
-            const argRes = try c.semaExprTarget(nodeId, bt.Dynamic);
+            const argRes = try c.semaExprTarget(nodeId, bt.Dyn);
             c.ir.setArrayItem(loc, u32, i, argRes.irIdx);
             i += 1;
             nodeId = arg.next();
@@ -4740,7 +4740,7 @@ pub const ChunkExt = struct {
                 }
                 const name = c.ast.nodeString(node);
                 switch (expr.target_t) {
-                    bt.Dynamic => {
+                    bt.Dyn => {
                         const irIdx = try c.ir.pushExpr(.tag_lit, c.alloc, bt.TagLit, nodeId, .{ .name = name });
                         return ExprResult.initStatic(irIdx, bt.TagLit);
                     },
@@ -5988,8 +5988,8 @@ pub const Sema = struct {
     pub fn ensureUntypedFuncSig(s: *Sema, numParams: u32) !FuncSigId {
         const buf = std.mem.bytesAsSlice(cy.TypeId, &cy.tempBuf);
         if (buf.len < numParams) return error.TooBig;
-        @memset(buf[0..numParams], bt.Dynamic);
-        return try s.ensureFuncSig(buf[0..numParams], bt.Dynamic);
+        @memset(buf[0..numParams], bt.Dyn);
+        return try s.ensureFuncSig(buf[0..numParams], bt.Dyn);
     }
 
     pub fn ensureFuncSig(s: *Sema, params: []const TypeId, ret: TypeId) !FuncSigId {
@@ -6005,7 +6005,7 @@ pub const Sema = struct {
             const new = try s.alloc.dupe(TypeId, params);
             var reqCallTypeCheck = false;
             for (params) |symId| {
-                if (symId != bt.Dynamic and symId != bt.Any) {
+                if (symId != bt.Dyn and symId != bt.Any) {
                     reqCallTypeCheck = true;
                     break;
                 }

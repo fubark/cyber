@@ -92,7 +92,7 @@
 @host func openFile(path String, mode symbol) File
 
 --| Given expected `ArgOption`s, returns a `Table` of the options and a `rest` entry which contains the non-option arguments.
-@host func parseArgs(options List[dynamic]) Table
+@host func parseArgs(options List[dyn]) Table
 
 --| Reads stdin to the EOF as a UTF-8 string.
 --| To return the bytes instead, use `stdin.readAll()`.
@@ -192,7 +192,7 @@ type FFI _:
     --| Creates an `ExternFunc` that contains a C function pointer with the given signature.
     --| The extern function is a wrapper that calls the provided user function.
     --| Once created, the extern function is retained and managed by the FFI context.
-    @host func bindCallback(fn any, params List[dynamic], ret symbol) ExternFunc
+    @host func bindCallback(fn any, params List[dyn], ret symbol) ExternFunc
 
     --| Calls `bindLib(path, [:])`. 
     @host func bindLib(path ?String) any
@@ -209,10 +209,10 @@ type FFI _:
     @host func bindObjPtr(obj any) pointer
 
     --| Binds a Cyber type to a C struct.
-    @host func cbind(mt metatype, fields List[dynamic]) void
+    @host func cbind(mt metatype, fields List[dyn]) void
 
     --| Declares a C function which will get binded to the library handle created from `bindLib`.
-    @host func cfunc(name String, params List[dynamic], ret any) void
+    @host func cfunc(name String, params List[dyn], ret any) void
 
     --| Allocates memory for a C struct or primitive with the given C type specifier.
     --| A `pointer` to the allocated memory is returned.

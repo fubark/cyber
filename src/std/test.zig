@@ -33,7 +33,7 @@ pub fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
     const b = bindings.ModuleBuilder.init(vm.compiler, cy.Sym.fromC(mod));
 
     // Only available for zig test, until `any` local type specifier is implemented.
-    b.declareFuncSig("erase", &.{bt.Any}, bt.Dynamic, erase) catch cy.fatal();
+    b.declareFuncSig("erase", &.{bt.Any}, bt.Dyn, erase) catch cy.fatal();
 }
 
 /// Simply returns the value so the caller get's an erased `any` type.

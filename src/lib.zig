@@ -328,7 +328,7 @@ export fn clDeclareFunc(mod: c.Sym, name: [*:0]const u8, params: [*]const cy.Typ
 }
 
 export fn clDeclareDynVar(mod: c.Sym, name: [*:0]const u8, val: c.Value) void {
-    clDeclareVar(mod, name, bt.Dynamic, val);
+    clDeclareVar(mod, name, bt.Dyn, val);
 }
 
 export fn clDeclareVar(mod: c.Sym, name: [*:0]const u8, typeId: cy.TypeId, val: c.Value) void {
@@ -462,7 +462,7 @@ test "clNewFunc()" {
     const vm = c.create();
     defer c.destroy(vm);
 
-    const val = c.newFunc(vm, &[_]cy.TypeId{}, 0, bt.Dynamic, @ptrFromInt(8));
+    const val = c.newFunc(vm, &[_]cy.TypeId{}, 0, bt.Dyn, @ptrFromInt(8));
     try t.eq(c.getTypeId(val), bt.HostFunc);
 }
 

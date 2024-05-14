@@ -1652,7 +1652,7 @@ fn reserveFuncRegs(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []ali
                     .defined = true,
                     .rcCandidate = c.sema.isRcCandidateType(param.declType),
                     .lifted = param.lifted,
-                    .isDynamic = param.declType == bt.Dynamic,
+                    .isDynamic = param.declType == bt.Dyn,
                     .type = param.declType,
                     .isStructValue = c.sema.getTypeKind(param.declType) == .@"struct",
                 },
@@ -1676,7 +1676,7 @@ fn reserveFuncRegs(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []ali
                     .defined = true,
                     .rcCandidate = c.sema.isRcCandidateType(param.declType),
                     .lifted = false,
-                    .isDynamic = param.declType == bt.Dynamic,
+                    .isDynamic = param.declType == bt.Dyn,
                     .type = param.declType,
                     .isStructValue = c.sema.getTypeKind(param.declType) == .@"struct",
                 },
@@ -1719,7 +1719,7 @@ fn declareLocalInit(c: *Chunk, idx: u32, nodeId: cy.NodeId) !void {
     }
 
     var cstr = Cstr.toLocal(reg, false);
-    if (data.declType != bt.Dynamic and data.initType.dynamic) {
+    if (data.declType != bt.Dyn and data.initType.dynamic) {
         cstr.data.reg.check_type = data.declType;
     }
     const val = try genExpr(c, data.init, cstr);
@@ -3722,7 +3722,7 @@ fn reserveLocalRegAt(c: *Chunk, irLocalId: u8, declType: types.TypeId, lifted: b
             .defined = false,
 
             .lifted = lifted,
-            .isDynamic = declType == bt.Dynamic,
+            .isDynamic = declType == bt.Dyn,
             .rcCandidate = undefined,
             .isStructValue = undefined,
             .type = undefined,

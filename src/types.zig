@@ -66,7 +66,7 @@ pub const CompactType = packed struct {
     dynamic: bool,
 
     pub fn init(id: TypeId) CompactType {
-        if (id == bt.Dynamic) {
+        if (id == bt.Dyn) {
             return CompactType.initDynamic(bt.Any);
         } else {
             return CompactType.initStatic(id);
@@ -74,7 +74,7 @@ pub const CompactType = packed struct {
     }
 
     pub fn init2(id: TypeId, dynamic: bool) CompactType {
-        if (id == bt.Dynamic) {
+        if (id == bt.Dyn) {
             return CompactType.initDynamic(bt.Any);
         } else {
             if (dynamic) {
@@ -95,7 +95,7 @@ pub const CompactType = packed struct {
 
     pub fn toDeclType(self: CompactType) TypeId {
         if (self.dynamic) {
-            return bt.Dynamic;
+            return bt.Dyn;
         } else {
             return self.id;
         }
@@ -146,7 +146,7 @@ pub const BuiltinTypes = struct {
 
     /// A dynamic type does not have a static type.
     /// This is not the same as bt.Any which is a static type.
-    pub const Dynamic: TypeId = vmc.TYPE_DYNAMIC;
+    pub const Dyn: TypeId = vmc.TYPE_DYN;
 };
 
 pub const SemaExt = struct {
@@ -255,7 +255,7 @@ pub const SemaExt = struct {
             bt.Pointer,
             bt.Fiber,
             bt.MetaType,
-            bt.Dynamic,
+            bt.Dyn,
             bt.ExternFunc,
             bt.Any => return true,
             bt.Integer,
@@ -311,7 +311,7 @@ pub const ChunkExt = struct {
 };
 
 pub fn isAnyOrDynamic(id: TypeId) bool {
-    return id == bt.Any or id == bt.Dynamic;
+    return id == bt.Any or id == bt.Dyn;
 }
 
 /// Check type constraints on target func signature.
@@ -366,7 +366,7 @@ pub fn isTypeSymCompat(_: *cy.Compiler, typeId: TypeId, cstrType: TypeId) bool {
     if (typeId == cstrType) {
         return true;
     }
-    if (cstrType == bt.Any or cstrType == bt.Dynamic) {
+    if (cstrType == bt.Any or cstrType == bt.Dyn) {
         return true;
     }
     return false;
@@ -395,7 +395,7 @@ pub fn isFuncSigCompat(c: *cy.Compiler, id: sema.FuncSigId, targetId: sema.FuncS
 
 pub fn toRtConcreteType(typeId: TypeId) ?cy.TypeId {
     return switch (typeId) {
-        bt.Dynamic,
+        bt.Dyn,
         bt.Any => null,
         else => return typeId,
     };
@@ -421,8 +421,8 @@ pub fn unionOf(c: *cy.Compiler, a: TypeId, b: TypeId) TypeId {
     if (a == b) {
         return a;
     } else {
-        if (a == bt.Dynamic or b == bt.Dynamic) {
-            return bt.Dynamic;
+        if (a == bt.Dyn or b == bt.Dyn) {
+            return bt.Dyn;
         } else {
             return bt.Any;
         }
@@ -438,7 +438,7 @@ const ZeroInitResult = enum {
 
 fn hasZeroInit(c: *cy.Chunk, typeId: TypeId) ZeroInitResult {
     switch (typeId) {
-        bt.Dynamic,
+        bt.Dyn,
         bt.Any,
         bt.Boolean,
         bt.Integer,

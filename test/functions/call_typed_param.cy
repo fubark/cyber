@@ -111,7 +111,7 @@ t.eq(fooMap(map as Map), true)
 --|
 --| List
 --|
-func fooList(a List[dynamic]):
+func fooList(a List[dyn]):
     return a[0] == 123
 
 -- Literal.
@@ -123,7 +123,7 @@ t.eq(fooList(list), true)
 
 -- Cast erased type.
 list = t.erase([123])
-t.eq(fooList(list as List[dynamic]), true)
+t.eq(fooList(list as List[dyn]), true)
 
 --|
 --| symbol

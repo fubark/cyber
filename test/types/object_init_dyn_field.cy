@@ -1,5 +1,5 @@
 type S:
-    a dynamic
+    a dyn
 
 func foo():
     return 123

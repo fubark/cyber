@@ -972,7 +972,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.Float,
 
         // Unions.
-        bt.Dynamic,
+        bt.Dyn,
         bt.Any,
 
         // VM specific types.

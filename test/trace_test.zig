@@ -79,7 +79,7 @@ test "ARC." {
     try eval(.{},
         \\use t 'test'
         \\type S:
-        \\  value List[dynamic]
+        \\  value List[dyn]
         \\var a = [123]
         \\var s = S{value: a}
         \\t.eq(s.value[0], 123)
@@ -93,7 +93,7 @@ test "ARC." {
     // Object is released when returned rvalue field access.
     try eval(.{},
         \\type S:
-        \\  value dynamic
+        \\  value dyn
         \\1 + S{value: 123}.value
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         const val = try res.getValue();
@@ -179,7 +179,7 @@ test "ARC for passing call args." {
     // Temp list is retained when passed into function.
     try eval(.{},
         \\use t 'test'
-        \\func foo(list List[dynamic]):
+        \\func foo(list List[dyn]):
         \\  return list[0]
         \\t.eq(foo([1]), 1)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
@@ -429,7 +429,7 @@ test "Multiple evals persisting state." {
         fn onLoad(vm_: ?*c.VM, mod: c.Sym) callconv(.C) void {
             const vm: *cy.VM = @ptrCast(@alignCast(vm_));
             const g = cy.ptrAlignCast(*cy.Value, vm.userData).*;
-            c.declareVar(mod, "g", bt.Dynamic, @bitCast(g));
+            c.declareVar(mod, "g", bt.Dyn, @bitCast(g));
         }
         fn loader(vm: ?*c.VM, spec: c.Str, out_: [*c]c.ModuleLoaderResult) callconv(.C) bool {
             const out: *c.ModuleLoaderResult = out_;

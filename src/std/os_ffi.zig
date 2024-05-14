@@ -953,7 +953,7 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
             const symKey = try vm.allocAstringConcat("ptrTo", typeName);
             const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
 
-            const funcSigId = try vm.sema.ensureFuncSig(&.{bt.Dynamic}, bt.Dynamic);
+            const funcSigId = try vm.sema.ensureFuncSig(&.{bt.Dyn}, bt.Dyn);
             const funcVal = try cy.heap.allocHostFunc(vm, func, 1, funcSigId, cyState, false);
             try table.asHeapObject().table.set(vm, symKey, funcVal);
             vm.release(symKey);

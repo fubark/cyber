@@ -28,7 +28,7 @@ foo = (a, b):
 t.eq(foo(10, 11), 21)
 
 -- Pass lambda as arg.
-func call(f dynamic):
+func call(f dyn):
     return f(14)
 t.eq(call(a => a + 1), 15)
 

@@ -29,7 +29,7 @@
 @host func must(val any) any
 
 --| Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors](#unexpected-errors).
-@host func panic(err any) dynamic
+@host func panic(err any) dyn
 
 --| Runs the garbage collector once to detect reference cycles and abandoned objects.
 --| Returns the statistics of the run in a map value.
@@ -112,7 +112,7 @@ type float #float64_t:
 @host type placeholder2 _
 @host type taglit _
 
-@host type dynamic _
+@host type dyn _
 
 @host type any _
 
@@ -164,7 +164,7 @@ template[T type]
             self[j + 1] = cur
 
 @host='ListDyn'
-type List[dynamic] _
+type List[dyn] _
 
 template
 --| Creates a list with initial capacity of `n` and values set to `val`.
@@ -176,7 +176,7 @@ template[T type]
     @host func next() ?T
 
 @host='ListIterDyn'
-type ListIterator[dynamic] _
+type ListIterator[dyn] _
 
 @host
 type Tuple _:
@@ -188,11 +188,11 @@ type Table:
 
     @host func $initPair(key String, value any) void
 
-    @host func $get(name String) dynamic
+    @host func $get(name String) dyn
 
     @host func $set(name String, value any)
 
-    @host func $index(key any) dynamic
+    @host func $index(key any) dyn
 
     @host func $setIndex(key any, value any) void
 
@@ -200,7 +200,7 @@ type Table:
 type Map _:
     @host func $initPair(key any, value any) void
 
-    @host func $index(key any) dynamic
+    @host func $index(key any) dyn
     @host func $setIndex(key any, val any) void
 
     --| Returns whether there is a value mapped to `key`.

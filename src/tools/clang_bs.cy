@@ -53,7 +53,7 @@ var .CXChildVisit_Continue = 1
 var .CXChildVisit_Recurse = 2
 
 type CXSourceLocation:
-    ptr_data List[dynamic]
+    ptr_data List[dyn]
     int_data int
 
 type CXString:
@@ -63,11 +63,11 @@ type CXString:
 type CXCursor:
     kind  int
     xdata int
-    data  List[dynamic]
+    data  List[dyn]
 
 type CXType:
     kind int
-    data List[dynamic]
+    data List[dyn]
  
 let .lib = load(ffi) -- Make lib dependent on ffi.
 let .ffi = false

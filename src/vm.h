@@ -367,7 +367,7 @@ enum {
     TYPE_FLOAT = 8,
 
     // Common types for VM and AOT.
-    TYPE_DYNAMIC = 9,
+    TYPE_DYN = 9,
     TYPE_ANY = 10,
 
     // VM exclusive types.

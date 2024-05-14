@@ -307,7 +307,7 @@ const Chunk = struct {
             // bt.Pointer,
             // bt.Fiber,
             // bt.MetaType,
-            bt.Dynamic => TypeName.init("CbAny"),
+            bt.Dyn => TypeName.init("CbAny"),
             // bt.ExternFunc,
             bt.Any => TypeName.init("CbAny"),
             bt.Integer => TypeName.init("i64"),

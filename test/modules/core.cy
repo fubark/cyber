@@ -131,7 +131,7 @@ t.eq(typeof(pointer(123)), pointer)
 t.eq(typeof('abc'), String)
 t.eq(typeof(Array('abc')), typeof(Array('xyz')))
 t.eq(typeof(error.Foo), error)
-t.eq(typeof([]), List[dynamic])
+t.eq(typeof([]), List[dyn])
 t.eq(typeof(Map{}), Map)
 t.eq(typeof({}), Table)
 

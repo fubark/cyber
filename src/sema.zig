@@ -1185,11 +1185,11 @@ pub fn reserveDistinctType(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     const header = c.ast.node(node.data.distinct_decl.header);
     const name = c.ast.nodeStringById(header.data.distinct_header.name);
 
-    // Check for #host modifier.
+    // Check for @host modifier.
     var type_id: ?cy.TypeId = null;
     if (header.head.data.objectHeader.modHead != cy.NullNode) {
         const modifier = c.ast.node(header.head.data.objectHeader.modHead);
-        if (modifier.data.dirModifier.type == .host) {
+        if (modifier.data.attribute.type == .host) {
             type_id = try getHostTypeId(c, name, nodeId);
         }
     }
@@ -1400,7 +1400,7 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Sym {
     };
     log.tracev("Invoke type loader for: {s}", .{name});
     if (!typeLoader(@ptrCast(c.compiler.vm), info, &res)) {
-        return c.reportErrorFmt("Failed to load #host type `{}` object.", &.{v(name)}, nodeId);
+        return c.reportErrorFmt("Failed to load @host type `{}` object.", &.{v(name)}, nodeId);
     }
 
     switch (res.type) {
@@ -1449,7 +1449,7 @@ pub fn getHostTypeId(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId) !cy.Type
     };
     log.tracev("Invoke type loader for: {s}", .{name});
     if (!typeLoader(@ptrCast(c.compiler.vm), info, &res)) {
-        return c.reportErrorFmt("Failed to load #host type `{}`.", &.{v(name)}, nodeId);
+        return c.reportErrorFmt("Failed to load @host type `{}`.", &.{v(name)}, nodeId);
     }
 
     switch (res.type) {
@@ -1574,10 +1574,10 @@ pub fn reserveObjectType(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
 
     const header = c.ast.node(node.data.objectDecl.header);
 
-    // Check for #host modifier.
+    // Check for @host modifier.
     if (header.head.data.objectHeader.modHead != cy.NullNode) {
         const modifier = c.ast.node(header.head.data.objectHeader.modHead);
-        if (modifier.data.dirModifier.type == .host) {
+        if (modifier.data.attribute.type == .host) {
             return @ptrCast(try declareHostObject(c, nodeId));
         }
     }
@@ -1615,11 +1615,11 @@ pub fn reserveStruct(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
 
     const name = c.ast.nodeStringById(nameId);
 
-    // Check for #host modifier.
+    // Check for @host modifier.
     var type_id: ?cy.TypeId = null;
     if (header.head.data.objectHeader.modHead != cy.NullNode) {
-        const modifier = c.ast.node(header.head.data.objectHeader.modHead);
-        if (modifier.data.dirModifier.type == .host) {
+        const attr = c.ast.node(header.head.data.objectHeader.modHead);
+        if (attr.data.attribute.type == .host) {
             type_id = try getHostTypeId(c, name, nodeId);
         }
     }
@@ -1777,13 +1777,13 @@ pub fn reserveHostFunc(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Func {
     if (node.data.func.bodyHead != cy.NullNode) {
         return error.Unexpected;
     }
-    // Check if #host func.
+    // Check if @host func.
     const header = c.ast.node(node.data.func.header);
     const decl = try ensureDeclNamePath(c, @ptrCast(c.sym), header.data.funcHeader.name);
-    const modifierId = header.funcHeader_modHead();
-    if (modifierId != cy.NullNode) {
-        const modifier = c.ast.node(modifierId);
-        if (modifier.data.dirModifier.type == .host) {
+    const attr_id = header.funcHeader_modHead();
+    if (attr_id != cy.NullNode) {
+        const attr = c.ast.node(attr_id);
+        if (attr.data.attribute.type == .host) {
             const is_method = c.ast.isMethodDecl(header);
             return c.reserveHostFunc(decl.parent, decl.name.base_name, nodeId, is_method);
         }
@@ -1869,11 +1869,11 @@ pub fn reserveImplicitMethod(c: *cy.Chunk, parent: *cy.Sym, nodeId: cy.NodeId) !
         return func;
     }
 
-    // No initializer. Check if #host func.
-    const modifierId = c.ast.node(node.data.func.header).head.data.funcHeader.modHead;
-    if (modifierId != cy.NullNode) {
-        const modifier = c.ast.node(modifierId);
-        if (modifier.data.dirModifier.type == .host) {
+    // No initializer. Check if @host func.
+    const attr_id = c.ast.node(node.data.func.header).head.data.funcHeader.modHead;
+    if (attr_id != cy.NullNode) {
+        const attr = c.ast.node(attr_id);
+        if (attr.data.attribute.type == .host) {
             const func = try c.reserveHostFunc(decl.parent, decl.name.base_name, nodeId, true);
             func.is_implicit_method = true;
             return func;
@@ -1925,11 +1925,11 @@ pub fn reserveVar(c: *cy.Chunk, nodeId: cy.NodeId) !*Sym {
     const varSpec = c.ast.node(node.data.staticDecl.varSpec);
     const decl = try ensureDeclNamePath(c, @ptrCast(c.sym), varSpec.data.varSpec.name);
     if (node.data.staticDecl.right == cy.NullNode) {
-        // No initializer. Check if #host var.
-        const modifierId = varSpec.head.data.varSpec.modHead;
-        if (modifierId != cy.NullNode) {
-            const modifier = c.ast.node(modifierId);
-            if (modifier.data.dirModifier.type == .host) {
+        // No initializer. Check if @host var.
+        const attr_id = varSpec.head.data.varSpec.modHead;
+        if (attr_id != cy.NullNode) {
+            const attr = c.ast.node(attr_id);
+            if (attr.data.attribute.type == .host) {
                 return @ptrCast(try c.reserveHostVar(decl.parent, decl.name.base_name, nodeId));
             }
         }

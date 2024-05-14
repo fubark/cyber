@@ -1,17 +1,17 @@
 --| Evaluates source code in an isolated VM.
 --| If the last statement is an expression, a primitive or a String can be returned.
-#host func eval(src String) any
+@host func eval(src String) any
 
 --| Parses Cyber source string into a structured map object.
 --| Currently, only metadata about static declarations is made available but this will be extended to include an AST.
-#host func parse(src String) Map
+@host func parse(src String) Map
 
 --| Parses a CYON string into a value.
-#host func parseCyon(src String) any
+@host func parseCyon(src String) any
 
 --| Starts an isolated REPL session.
 --| The callback `read_line(prefix String) String` is responsible for obtaining the input.
-#host func repl(read_line any) void
+@host func repl(read_line any) void
 
 --| Encodes a value to CYON string.
-#host func toCyon(val any) String
+@host func toCyon(val any) String

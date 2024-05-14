@@ -6,4 +6,4 @@ func repl() void:
     cy.repl(replReadLine)
 
 --| Default implementation to read a line from the CLI for a REPL.
-#host func replReadLine(prefix String) String
+@host func replReadLine(prefix String) String

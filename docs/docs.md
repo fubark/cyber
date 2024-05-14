@@ -420,7 +420,7 @@ The following shows the zero values of builtin or created types:
 |`List`|`[]`|
 |`Map`|`Map{}`|
 |`type S`|`S{}`|
-|`#host type S`|`S.$zero()`|
+|`@host type S`|`S.$zero()`|
 |`dynamic`|`int(0)`|
 |`any`|`int(0)`|
 |`?S`|`Option[S].none`|
@@ -789,7 +789,7 @@ list.remove(1)
 ```
 
 ## Tuples.
-> _Incomplete: Tuples can only be created from #host funcs at the moment._
+> _Incomplete: Tuples can only be created from @host funcs at the moment._
 
 ## Tables.
 A `Table` is a versatile object that can have an arbitrary set of fields.
@@ -2798,7 +2798,7 @@ let v = Vec3{x: 1, y: 2, z: 3}
 </td><td valign="top">
 
 * [Reflection.](#reflection)
-* [Directives.](#directives)
+* [Attributes.](#attributes)
 * [Generics.](#generics)
 * [Macros.](#macros)
 * [Compile-time execution.](#compile-time-execution)
@@ -2959,11 +2959,11 @@ print typeof(val)   -- 'type: float'
 print bool          -- 'type: bool'
 ```
 
-## Directives.
-Directives start with `#` and are used as modifiers.
-> `#host`
+## Attributes.
+Attributes start with `@`. They are used as declaration modifiers.
+> `@host`
 >
->Modifier to bind a function, variable, or type to the host. See [libcyber](#libcyber).
+>Bind a function, variable, or type to the host. See [libcyber](#libcyber).
 
 ## Generics.
 Generics enables parametric polymorphism for types and functions. Compile-time arguments are passed to templates to generate specialized code. This facilitates developing container types and algorithms that operate on different types.
@@ -3100,15 +3100,15 @@ Only one module loader can be active and is set using `clSetModuleLoader`:
 bool modLoader(CLVM* vm, CLStr spec, CLModuleLoaderResult* out) {
     if (strncmp("my_mod", spec.buf, spec.len) == 0) {
         out->src =
-            "#host func add(a float, b float) float\n"
-            "#host var .MyConstant float\n"
-            "#host var .MyList     List\n"
+            "@host func add(a float, b float) float\n"
+            "@host var .MyConstant float\n"
+            "@host var .MyList     List\n"
             "\n"
-            "#host\n"
+            "@host\n"
             "type MyCollection:\n"
-            "    #host func asList() any"
+            "    @host func asList() any"
             "\n"
-            "#host func MyCollection.new(a, b) MyCollection\n";
+            "@host func MyCollection.new(a, b) MyCollection\n";
         out->funcLoader = funcLoader;
         out->varLoader = varLoader;
         out->typeLoader = typeLoader;
@@ -3131,7 +3131,7 @@ The above example checks whether "my_mod" was imported and returns it's source c
 Since only one module loader can be set to the VM instance, a custom loader is required to handle the "core" import which contains all of the core types and functions in Cyber. This can simply be delegated to `clDefaultModuleLoader`.
 
 ### Function loader.
-A function loader describes how to load a `#host` function when it's encountered by the compiler.
+A function loader describes how to load a `@host` function when it's encountered by the compiler.
 The loader can bind functions and type methods:
 ```c
 struct { char* n; CLFuncFn fn; } funcs[] = {
@@ -3150,12 +3150,12 @@ bool funcLoader(CLVM* vm, CLFuncInfo info, CLFuncResult* out) {
     }
 }
 ```
-This example uses the `CLFuncInfo.idx` of a #host function to index into an array and return a [Host function](#host-functions) pointer. The name is also compared to ensure it's binding to the correct pointer.
+This example uses the `CLFuncInfo.idx` of a @host function to index into an array and return a [Host function](#host-functions) pointer. The name is also compared to ensure it's binding to the correct pointer.
 
 This is an efficient way to map Cyber functions to host functions. A different implementation might use a hash table to map the name of the function to it's pointer.
 
 ### Variable loader.
-A variable loader describes how to load a `#host` variable when it's encountered by the compiler:
+A variable loader describes how to load a `@host` variable when it's encountered by the compiler:
 ```c
 // C has limited static initializers (and objects require a vm instance) so initialize them in `main`.
 typedef struct { char* n; CLValue v; } NameValue;
@@ -3186,7 +3186,7 @@ int main() {
 This example uses the same technique as the function loader, but it can be much simpler. It doesn't matter how the mapping is done as long as the variable loader returns a `CLValue`.
 
 ### Type loader.
-A type loader describes how to load a `#host` type when it's encountered by the compiler:
+A type loader describes how to load a `@host` type when it's encountered by the compiler:
 ```c
 CLTypeId myCollectionId;
 

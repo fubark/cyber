@@ -14,6 +14,7 @@ pub const NodeType = enum(u8) {
     arrayLit,
     array_expr,
     assignStmt,
+    attribute,
     await_expr,
     binExpr,
     binLit,
@@ -110,7 +111,7 @@ pub const NodeType = enum(u8) {
     whileOptStmt,
 };
 
-pub const DirModifierType = enum(u8) {
+pub const AttributeType = enum(u8) {
     host,
 };
 
@@ -224,8 +225,8 @@ const NodeData = union {
         caseHead: u24,
         numCases: u8,
     },
-    dirModifier: struct {
-        type: DirModifierType,
+    attribute: struct {
+        type: AttributeType,
     },
     throwExpr: struct {
         child: NodeId,

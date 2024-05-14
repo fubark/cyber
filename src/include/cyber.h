@@ -82,10 +82,10 @@ typedef struct CLSym {
     void* ptr;
 } CLSym;
 
-// #host func is binded to this function pointer signature.
+// @host func is binded to this function pointer signature.
 typedef CLValue (*CLFuncFn)(CLVM* vm, const CLValue* args, uint8_t nargs);
 
-// Internal #host func used to do inline caching.
+// Internal @host func used to do inline caching.
 typedef void (*CLInlineFuncFn)(CLVM* vm, uint8_t* pc, const CLValue* args, uint8_t nargs);
 
 typedef struct CLResolverParams {
@@ -119,7 +119,7 @@ typedef struct CLResolverParams {
 typedef bool (*CLResolverFn)(CLVM* vm, CLResolverParams params);
 
 // Callback invoked after all type symbols in the module's src are loaded.
-// This could be used to set up an array or hashmap for binding #host vars.
+// This could be used to set up an array or hashmap for binding @host vars.
 typedef void (*CLModuleOnTypeLoadFn)(CLVM* vm, CLSym mod);
 
 // Callback invoked after all symbols in the module's src are loaded.
@@ -130,7 +130,7 @@ typedef void (*CLModuleOnLoadFn)(CLVM* vm, CLSym mod);
 // This could be used to cleanup (eg. release) injected symbols from `CLPostLoadModuleFn`,
 typedef void (*CLModuleOnDestroyFn)(CLVM* vm, CLSym mod);
 
-// Info about a #host func.
+// Info about a @host func.
 typedef struct CLFuncInfo {
     // The module it belongs to.
     CLSym mod;
@@ -138,45 +138,45 @@ typedef struct CLFuncInfo {
     CLStr name;
     // The function's signature.
     uint32_t funcSigId;
-    // A counter that tracks it's current position among all #host funcs in the module.
-    // This is useful if you want to bind an array of function pointers to #host funcs.
+    // A counter that tracks it's current position among all @host funcs in the module.
+    // This is useful if you want to bind an array of function pointers to @host funcs.
     uint32_t idx;
 } CLFuncInfo;
 
-// Result given to Cyber when binding a #host func.
+// Result given to Cyber when binding a @host func.
 typedef struct CLFuncResult {
     // Pointer to the binded function. (CLFuncFn)
     const void* ptr;
 } CLFuncResult;
 
-// Given info about a #host func, write it's function pointer to `out->ptr` and return true,
+// Given info about a @host func, write it's function pointer to `out->ptr` and return true,
 // or return false.
 typedef bool (*CLFuncLoaderFn)(CLVM* vm, CLFuncInfo funcInfo, CLFuncResult* out);
 
-// Info about a #host var.
+// Info about a @host var.
 typedef struct CLVarInfo {
     // The module it belongs to.
     CLSym mod;
     // The name of the var.
     CLStr name;
-    // A counter that tracks it's current position among all #host vars in the module.
-    // This is useful if you want to bind an array of `CLValue`s to #host vars.
+    // A counter that tracks it's current position among all @host vars in the module.
+    // This is useful if you want to bind an array of `CLValue`s to @host vars.
     uint32_t idx;
 } CLVarInfo;
 
-// Given info about a #host var, write a value to `out` and return true, or return false.
+// Given info about a @host var, write a value to `out` and return true, or return false.
 // The value is consumed by the module. If the value should outlive the module,
 // call `clRetain` before handing it over.
 typedef bool (*CLVarLoaderFn)(CLVM* vm, CLVarInfo funcInfo, CLValue* out);
 
-// Info about a #host type.
+// Info about a @host type.
 typedef struct CLTypeInfo {
     // The module it belongs to.
     CLSym mod;
     // The name of the type.
     CLStr name;
-    // A counter that tracks it's current position among all #host types in the module.
-    // This is useful if you want to bind an array of data to #host types.
+    // A counter that tracks it's current position among all @host types in the module.
+    // This is useful if you want to bind an array of data to @host types.
     uint32_t idx;
 } CLTypeInfo;
 
@@ -204,7 +204,7 @@ typedef CLValueSlice (*CLObjectGetChildrenFn)(CLVM* vm, void* obj);
 //       because they could have freed before the finalizer was invoked.
 typedef void (*CLObjectFinalizerFn)(CLVM* vm, void* obj);
 
-// Result given to Cyber when binding a #host type.
+// Result given to Cyber when binding a @host type.
 typedef struct CLTypeResult {
     union {
         struct {
@@ -230,7 +230,7 @@ typedef struct CLTypeResult {
     uint8_t type;
 } CLTypeResult;
 
-// Given info about a #host type, write the result to `out` and return true, or return false.
+// Given info about a @host type, write the result to `out` and return true, or return false.
 typedef bool (*CLTypeLoaderFn)(CLVM* vm, CLTypeInfo typeInfo, CLTypeResult* out);
 
 // This callback is invoked after receiving the module loader's result.
@@ -502,7 +502,7 @@ CLValue clNewFunc(CLVM* vm, const CLTypeId* params, uint32_t numParams, CLTypeId
 CLValue clNewPointer(CLVM* vm, void* ptr);
 CLValue clNewType(CLVM* vm, CLTypeId type_id);
 
-// Instantiating a `#host type` requires the `typeId` obtained from `CLTypeLoader` and
+// Instantiating a `@host type` requires the `typeId` obtained from `CLTypeLoader` and
 // the number of bytes the object will occupy. Objects of the same type can have different sizes.
 // A `CLValue` which contains the object pointer is returned. Call `clAsHostObject` to obtain the pointer
 // or use `clNewHostObjectPtr` to instantiate instead.

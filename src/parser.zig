@@ -16,7 +16,7 @@ const IndexSlice = cy.IndexSlice(u32);
 
 const dumpParseErrorStackTrace = !cy.isFreestanding and builtin.mode == .Debug and !cy.isWasm and true;
 
-const dirModifiers = std.ComptimeStringMap(cy.ast.DirModifierType, .{
+const attributes = std.ComptimeStringMap(cy.ast.AttributeType, .{
     .{ "host", .host },
 });
 
@@ -1893,74 +1893,67 @@ pub const Parser = struct {
                 }
             },
             .at => {
-                const start = self.next_pos;
-                _ = start;
                 self.advance();
                 token = self.peek();
+                if (token.tag() != .ident) {
+                    return self.reportError("Expected ident after `@`.", &.{});
+                }
 
-                if (token.tag() == .ident) {
-                    return self.reportError("Unsupported @.", &.{});
+                const name = self.ast.src[token.pos()..token.data.end_pos];
+                const attr_t = attributes.get(name) orelse {
+                    return self.reportError("Unknown attribute.", &.{});
+                };
+
+                const attr = try self.pushNode(.attribute, self.next_pos);
+                self.ast.setNodeData(attr, .{ .attribute = .{
+                    .type = attr_t,
+                }});
+                self.advance();
+                self.consumeWhitespaceTokens();
+
+                var hidden = false;
+                if (self.peek().tag() == .minus) {
+                    hidden = true;
+                    self.advance();
+                }
+
+                if (self.peek().tag() == .func_k) {
+                    return try self.parseFuncDecl(.{ .hidden = hidden, .attr_head = attr, .allow_decl = config.allow_decls }, false);
+                } else if (self.peek().tag() == .var_k) {
+                    return try self.parseVarDecl(.{ .hidden = hidden, .attr_head = attr, .typed = true, .allow_static = config.allow_decls });
+                } else if (self.peek().tag() == .let_k) {
+                    return try self.parseVarDecl(.{ .hidden = hidden, .attr_head = attr, .typed = false, .allow_static = config.allow_decls });
+                } else if (self.peek().tag() == .type_k) {
+                    return try self.parseTypeDecl(.{
+                        .attr_head = attr,
+                        .hidden = hidden,
+                        .allow_decl = config.allow_decls,
+                    }, false);
                 } else {
-                    return self.reportError("Expected ident after @.", &.{});
+                    return self.reportError("Expected declaration statement.", &.{});
                 }
             },
             .pound => {
                 const start = self.next_pos;
                 self.advance();
-                token = self.peek();
-
-                if (token.tag() == .ident) {
-                    const name = self.ast.src[token.pos()..token.data.end_pos];
-
-                    if (dirModifiers.get(name)) |dir| {
-                        const modifier = try self.pushNode(.dirModifier, self.next_pos);
-                        self.ast.setNodeData(modifier, .{ .dirModifier = .{
-                            .type = dir,
-                        }});
-                        self.advance();
-                        self.consumeWhitespaceTokens();
-
-                        var hidden = false;
-                        if (self.peek().tag() == .minus) {
-                            hidden = true;
-                            self.advance();
-                        }
-
-                        if (self.peek().tag() == .func_k) {
-                            return try self.parseFuncDecl(.{ .hidden = hidden, .attr_head = modifier, .allow_decl = config.allow_decls }, false);
-                        } else if (self.peek().tag() == .var_k) {
-                            return try self.parseVarDecl(.{ .hidden = hidden, .attr_head = modifier, .typed = true, .allow_static = config.allow_decls });
-                        } else if (self.peek().tag() == .let_k) {
-                            return try self.parseVarDecl(.{ .hidden = hidden, .attr_head = modifier, .typed = false, .allow_static = config.allow_decls });
-                        } else if (self.peek().tag() == .type_k) {
-                            return try self.parseTypeDecl(.{
-                                .attr_head = modifier,
-                                .hidden = hidden,
-                                .allow_decl = config.allow_decls,
-                            }, false);
-                        } else {
-                            return self.reportError("Expected declaration statement.", &.{});
-                        }
-                    } else {
-                        const ident = try self.pushSpanNode(.ident, self.next_pos);
-                        self.advance();
-
-                        if (self.peek().tag() != .left_paren) {
-                            return self.reportError("Expected ( after ident.", &.{});
-                        }
-
-                        const callExpr = try self.parseCallExpression(ident);
-                        try self.consumeNewLineOrEnd();
-
-                        const stmt = try self.pushNode(.comptimeStmt, start);
-                        self.ast.setNodeData(stmt, .{ .comptimeStmt = .{
-                            .expr = callExpr,
-                        }});
-                        return stmt;
-                    }
-                } else {
-                    return self.reportError("Expected ident after #.", &.{});
+                if (self.peek().tag() != .ident) {
+                    return self.reportError("Unsupported compile-time statement.", &.{});
                 }
+                const ident = try self.pushSpanNode(.ident, self.next_pos);
+                self.advance();
+
+                if (self.peek().tag() != .left_paren) {
+                    return self.reportError("Expected ( after ident.", &.{});
+                }
+
+                const callExpr = try self.parseCallExpression(ident);
+                try self.consumeNewLineOrEnd();
+
+                const stmt = try self.pushNode(.comptimeStmt, start);
+                self.ast.setNodeData(stmt, .{ .comptimeStmt = .{
+                    .expr = callExpr,
+                }});
+                return stmt;
             },
             .template_k => {
                 return self.parseTemplate(false, config.allow_decls);

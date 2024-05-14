@@ -31,7 +31,7 @@ int main() {
     } else {
         CLStr s = clNewLastErrorSummary(vm);
         printf("%.*s\n", (int)s.len, s.ptr);
-        clFreeStr(vm, s);
+        clFree(vm, s);
     }
     clDestroy(vm);
     return 0;

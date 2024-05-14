@@ -160,7 +160,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
         if (err == error.CompileError) {
             if (!c.silent()) {
                 const report = c.newErrorReportSummary(@ptrCast(&vm));
-                defer c.freeStr(@ptrCast(&vm), report);
+                defer c.free(@ptrCast(&vm), report);
                 cy.rt.writeStderr(c.fromStr(report));
             }
             exit(1);
@@ -233,14 +233,14 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
             error.Panic => {
                 if (!c.silent()) {
                     const report = c.newPanicSummary(@ptrCast(&vm));
-                    defer c.freeStr(@ptrCast(&vm), report);
+                    defer c.free(@ptrCast(&vm), report);
                     try std.io.getStdErr().writeAll(c.fromStr(report));
                 }
             },
             error.CompileError => {
                 if (!c.silent()) {
                     const report = c.newErrorReportSummary(@ptrCast(&vm));
-                    defer c.freeStr(@ptrCast(&vm), report);
+                    defer c.free(@ptrCast(&vm), report);
                     try std.io.getStdErr().writeAll(c.fromStr(report));
                 }
             },

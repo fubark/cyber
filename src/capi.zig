@@ -46,7 +46,6 @@ pub const reset = c.clReset;
 pub const eval = c.clEval;
 pub const defaultCompileConfig = c.clDefaultCompileConfig;
 pub const compile = c.clCompile;
-pub const freeStr = c.clFreeStr;
 pub const free = c.clFree;
 pub const evalExt = c.clEvalExt;
 pub const listLen = c.clListLen;
@@ -75,7 +74,7 @@ pub const declareDynFunc = c.clDeclareDynFunc;
 pub const declareFunc = c.clDeclareFunc;
 pub const declareDynVar = c.clDeclareDynVar;
 pub const declareVar = c.clDeclareVar;
-pub const expandTypeTemplate = c.clExpandTypeTemplate;
+pub const expandTemplateType = c.clExpandTemplateType;
 pub const setResolver = c.clSetResolver;
 pub const resolve = c.clResolve;
 pub const setModuleLoader = c.clSetModuleLoader;
@@ -96,12 +95,15 @@ pub const traceDumpLiveObjects = c.clTraceDumpLiveObjects;
 pub const resultName = c.clResultName;
 
 pub const Slice = c.CLSlice;
-pub fn fromSlice(str: Slice) []const u8 {
-    return str.ptr[0..str.len];
+pub fn fromSlice(comptime T: type, s: Slice) []const T {
+    if (s.len == 0) {
+        return &.{};
+    }
+    return @as([*]T, @ptrCast(@alignCast(s.ptr)))[0..s.len];
 }
-pub fn toSlice(s: []const u8) Slice {
+pub fn toSlice(comptime T: type, s: []const T) Slice {
     return .{
-        .ptr = s.ptr,
+        .ptr = @constCast(s.ptr),
         .len = s.len,
     };
 }
@@ -116,6 +118,7 @@ pub fn toStr(s: []const u8) Str {
     };
 }
 pub const NullStr = Str{ .ptr = null, .len = 0 };
+pub const NullSlice = Slice{ .ptr = null, .len = 0};
 
 pub const ValueSlice = c.CLValueSlice;
 pub const FuncFn = c.CLFuncFn;

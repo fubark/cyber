@@ -66,15 +66,11 @@ export fn clAlloc(vm: *cy.VM, size: usize) [*]const u8 {
     return slice.ptr;
 }
 
-export fn clFree(vm: *cy.VM, slice: c.Slice) void {
-    vm.alloc.free(slice.ptr[0..slice.len]);
+export fn clFree(vm: *cy.VM, bytes: c.Str) void {
+    vm.alloc.free(bytes.ptr[0..bytes.len]);
 }
 
-export fn clFreeStr(vm: *cy.VM, str: c.Str) void {
-    vm.alloc.free(c.fromStr(str));
-}
-
-export fn clFreeStrZ(vm: *cy.VM, str: [*:0]const u8) void {
+export fn clFreeZ(vm: *cy.VM, str: [*:0]const u8) void {
     vm.alloc.free(std.mem.sliceTo(str, 0));
 }
 

@@ -76,7 +76,10 @@ typedef struct CLStr {
     size_t len;
 } CLStr;
 
-typedef CLStr CLSlice;
+typedef struct CLSlice {
+    void* ptr;
+    size_t len;
+} CLSlice;
 
 typedef struct CLSym {
     void* ptr;
@@ -387,10 +390,10 @@ CLResultCode clValidate(CLVM* vm, CLStr src);
 /// or the null string.
 CLStr clNewLastErrorSummary(CLVM* vm);
 
-/// Returns first compile-time report summary. Must be freed with `clFreeStr`.
+/// Returns first compile-time report summary. Must be freed with `clFree`.
 CLStr clNewErrorReportSummary(CLVM* vm);
 
-/// Returns runtime panic summary. Must be freed with `clFreeStr`.
+/// Returns runtime panic summary. Must be freed with `clFree`.
 CLStr clNewPanicSummary(CLVM* vm);
 
 /// Some API callbacks use this to report errors.
@@ -463,9 +466,8 @@ void* clAlloc(CLVM* vm, size_t size);
 
 // When using the Zig allocator, you'll need to pass the original memory size.
 // For all other allocators, use 1 for `len`.
-void clFree(CLVM* vm, CLSlice slice);
-void clFreeStr(CLVM* vm, CLStr str);
-void clFreeStrZ(CLVM* vm, const char* str);
+void clFree(CLVM* vm, CLStr bytes);
+void clFreeZ(CLVM* vm, const char* str);
 
 CLAllocator clGetAllocator(CLVM* vm);
 

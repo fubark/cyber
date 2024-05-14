@@ -485,6 +485,9 @@ pub const Value = packed union {
     }
 
     pub fn fromSliceC(self: c.ValueSlice) []const Value {
+        if (self.len == 0) {
+            return &.{};
+        }
         return @ptrCast(self.ptr[0..self.len]);
     }
 

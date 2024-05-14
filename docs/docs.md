@@ -3087,7 +3087,7 @@ if (res == CS_SUCCESS) {
 } else {
     const char* report = clNewLastErrorReport(vm);
     printf("%s\n", report);
-    clFreeStrZ(report);
+    clFreeZ(report);
 }
 ```
 If a value is returned from the main block of the script, it's saved to the result value argument.

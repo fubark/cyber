@@ -108,7 +108,7 @@ pub const VMrunner = struct {
         var errorMismatch = false;
         if (res.code == c.Success) {
             const val_dump = c.newValueDump(self.vm, res.value);
-            defer c.freeStr(self.vm, val_dump);
+            defer c.free(self.vm, val_dump);
             std.debug.print("expected error.{s}, found: {s}\n", .{
                 c.fromStr(c.resultName(expErr)), c.fromStr(val_dump),
             });
@@ -121,7 +121,7 @@ pub const VMrunner = struct {
             }
         }
         const report = try self.getErrorSummary(res.code);
-        defer c.freeStr(self.vm, report);
+        defer c.free(self.vm, report);
         try eqUserError(t.alloc, c.fromStr(report), expReport);
 
         if (errorMismatch) {
@@ -133,13 +133,13 @@ pub const VMrunner = struct {
         var errorMismatch = false;
         if (res.code == c.Success) {
             const val_dump = c.newValueDump(self.vm, res.value);
-            defer c.freeStr(self.vm, val_dump);
+            defer c.free(self.vm, val_dump);
             std.debug.print("expected error, found: {s}\n", .{ c.fromStr(val_dump) });
             return error.TestUnexpectedError;
         }
         // Continue to compare report.
         const report = try self.getErrorSummary(res.code);
-        defer c.freeStr(self.vm, report);
+        defer c.free(self.vm, report);
         try eqUserError(t.alloc, c.fromStr(report), expReport);
 
         if (errorMismatch) {
@@ -201,7 +201,7 @@ pub const VMrunner = struct {
             r_uri = c.fromStr(c.resolve(vm, c.toStr(config.uri)));
         }
         defer if (config.enableFileModules) {
-            c.freeStr(vm, c.toStr(r_uri));
+            c.free(vm, c.toStr(r_uri));
         };
 
         var resv: c.Value = undefined;
@@ -367,12 +367,12 @@ pub fn errReport(vm: *c.VM, code: c.ResultCode) void {
     switch (code) {
         c.ErrorPanic => {
             const summary = c.newPanicSummary(vm);
-            defer c.freeStr(vm, summary);
+            defer c.free(vm, summary);
             std.debug.print("{s}", .{c.fromStr(summary)});
         },
         c.ErrorCompile => {
             const summary = c.newErrorReportSummary(vm);
-            defer c.freeStr(vm, summary);
+            defer c.free(vm, summary);
             std.debug.print("{s}", .{c.fromStr(summary)});
         },
         else => {},

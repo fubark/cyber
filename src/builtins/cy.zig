@@ -528,12 +528,12 @@ pub fn repl2(vm: *cy.VM, config: c.EvalConfig, read_line: IReplReadLine) !void {
             switch (err) {
                 error.Panic => {
                     const report = c.newPanicSummary(@ptrCast(vm));
-                    defer c.freeStr(@ptrCast(vm), report);
+                    defer c.free(@ptrCast(vm), report);
                     rt.err(vm, c.fromStr(report));
                 },
                 error.CompileError => {
                     const report = c.newErrorReportSummary(@ptrCast(vm));
-                    defer c.freeStr(@ptrCast(vm), report);
+                    defer c.free(@ptrCast(vm), report);
                     rt.err(vm, c.fromStr(report));
                 },
                 else => {
@@ -546,7 +546,7 @@ pub fn repl2(vm: *cy.VM, config: c.EvalConfig, read_line: IReplReadLine) !void {
         if (val_opt) |val| {
             if (!val.isVoid()) {
                 const str = c.newValueDump(@ptrCast(vm), @bitCast(val));
-                defer c.freeStr(@ptrCast(vm), str);
+                defer c.free(@ptrCast(vm), str);
                 rt.printZFmt(vm, "{s}\n", .{c.fromStr(str)});
             }
         }
@@ -576,12 +576,12 @@ fn eval(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
         switch (res) {
             c.ErrorCompile => {
                 const report = c.newErrorReportSummary(@ptrCast(ivm));
-                defer c.freeStr(@ptrCast(ivm), report);
+                defer c.free(@ptrCast(ivm), report);
                 rt.err(vm, c.fromStr(report));
             },
             c.ErrorPanic => {
                 const report = c.newPanicSummary(@ptrCast(ivm));
-                defer c.freeStr(@ptrCast(ivm), report);
+                defer c.free(@ptrCast(ivm), report);
                 rt.err(vm, c.fromStr(report));
             },
             else => {

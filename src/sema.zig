@@ -782,53 +782,47 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId, leftId: cy.NodeId, rightId: cy.No
     const left = c.ast.node(leftId);
     switch (left.type()) {
         .array_expr => {
-            const irStart = try c.ir.pushEmptyStmt(c.alloc, .set, nodeId);
-
-            const array = c.ast.node(left.data.array_expr.array);
-            if (array.data.arrayLit.numArgs != 1) {
-                return c.reportErrorFmt("Unsupported array expr.", &.{}, left.data.array_expr.array);
+            if (left.data.array_expr.nargs != 1) {
+                return c.reportErrorFmt("Unsupported array expr.", &.{}, leftId);
             }
 
-            const recv = try c.semaExpr(left.data.array_expr.left, .{});
-            var specialized = false;
-            var index: ExprResult = undefined;
-            if (recv.type.id == bt.List) {
-                index = try c.semaExprTarget(array.data.arrayLit.argHead, bt.Integer);
-                specialized = true;
-            } else if (recv.type.id == bt.Map) {
-                index = try c.semaExpr(array.data.arrayLit.argHead, .{});
-                specialized = true;
-            } else {
-                index = try c.semaExpr(array.data.arrayLit.argHead, .{});
+            const rec = try c.semaExpr(left.data.array_expr.left, .{});
+
+            var final_right = rightId;
+            if (opts.rhsOpAssignBinExpr) {
+                // Push bin expr.
+                const op_assign = c.ast.node(rightId);
+                const bin_expr = try c.parser.ast.pushNode(c.alloc, .binExpr, op_assign.srcPos);
+                c.parser.ast.setNodeData(bin_expr, .{ .binExpr = .{
+                    .left = leftId,
+                    .right = @intCast(op_assign.data.opAssignStmt.right),
+                    .op = op_assign.data.opAssignStmt.op,
+                }});
+                c.updateAstView(c.parser.ast.view());
+                final_right = bin_expr;
             }
 
-            // RHS.
-            const rightExpr = Expr.init(rightId);
-            const right = try c.semaExprOrOpAssignBinExpr(rightExpr, opts.rhsOpAssignBinExpr);
-
-            if (specialized) {
-                c.ir.setStmtCode(irStart, .setIndex);
-                c.ir.setStmtData(irStart, .setIndex, .{
-                    .index = .{
-                        .recvT = recv.type.id,
-                        .rec = recv.irIdx,
-                        .index = index.irIdx,
-                        .right = right.irIdx,
-                    },
-                });
-            } else {
-                c.ir.setStmtCode(irStart, .setCallObjSymTern);
-                c.ir.setStmtData(irStart, .setCallObjSymTern, .{
-                    .callObjSymTern = .{
-                        // .recvT = recvT.id,
-                        .name = "$setIndex",
-                        .rec = recv.irIdx,
-                        .index = index.irIdx,
-                        .right = right.irIdx,
-                    },
+            if (rec.type.isDynAny()) {
+                const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, nodeId);
+                const index = try c.semaExpr(left.data.array_expr.arg_head, .{});
+                const right = try c.semaExpr(final_right, .{});
+                const res = try c.semaCallObjSym2(loc, rec.irIdx, "$setIndex", &.{index, right});
+                return c.ir.pushStmt(c.alloc, .exprStmt, nodeId, .{
+                    .expr = res.irIdx,
+                    .isBlockResult = false,
                 });
             }
-            return irStart;
+
+            const rec_type_sym = c.sema.getTypeSym(rec.type.id);
+            const set_index_sym = try c.mustFindSym(rec_type_sym, "$setIndex", leftId);
+            const func_sym = try requireFuncSym(c, set_index_sym, leftId);
+
+            const res = try c.semaCallFuncSymRecArgs(func_sym, left.data.array_expr.left, rec,
+                &.{ left.data.array_expr.arg_head, final_right }, .any, nodeId);
+            return c.ir.pushStmt(c.alloc, .exprStmt, nodeId, .{
+                .expr = res.irIdx,
+                .isBlockResult = false,
+            });
         },
         .accessExpr => {
             const rec = try c.semaExpr(left.data.accessExpr.left, .{});
@@ -4199,6 +4193,27 @@ pub const ChunkExt = struct {
 
         try matcher.matchEnd(c, node);
 
+        return c.semaCallFuncSymResult(loc, &matcher, node);
+    }
+
+    pub fn semaCallFuncSymRecArgs(c: *cy.Chunk, sym: *cy.sym.FuncSym,
+        rec_id: cy.NodeId, rec: ExprResult,
+        args: []const cy.NodeId, ret_cstr: ReturnCstr, node: cy.NodeId) !ExprResult {
+        var matcher = try FuncMatcher.init(c, sym, @intCast(args.len + 1), ret_cstr);
+        defer matcher.deinit(c);
+
+        // Receiver.
+        try matcher.matchArg(c, rec_id, 0, rec);
+
+        var i: u32 = 0;
+        while (i < args.len) : (i += 1) {
+            const arg_id = args[i];
+            const arg_res = try c.semaExprTarget(arg_id, matcher.getArgTypeHint(i + 1));
+            try matcher.matchArg(c, arg_id, i + 1, arg_res);
+        }
+        try matcher.matchEnd(c, node);
+
+        const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
         return c.semaCallFuncSymResult(loc, &matcher, node);
     }
 

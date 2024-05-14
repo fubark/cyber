@@ -282,7 +282,7 @@ if (!aot) {
     run.case("core/rune_empty_lit_error.cy");
     run.case("core/rune_multiple_lit_error.cy");
     run.case("core/rune_grapheme_cluster_lit_error.cy");
-    run.case("core/set_index_unsupported_panic.cy");
+    run.case("core/set_index_unsupported_error.cy");
     run.case("core/string_new_line_error.cy");
     run.case("core/string_interpolation.cy");
 }

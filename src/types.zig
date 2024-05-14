@@ -188,9 +188,9 @@ pub const SemaExt = struct {
         }
     }
 
-    pub fn writeTypeName(s: *cy.Sema, w: anytype, id: TypeId) !void {
-        const typ = s.types.items[id];
-        try w.writeAll(typ.sym.name());
+    pub fn writeTypeName(s: *cy.Sema, w: anytype, id: TypeId, from: ?*cy.Chunk) !void {
+        const sym = s.getTypeSym(id);
+        try cy.sym.writeSymName(s, w, sym, .{ .from = from });
     }
 
     pub fn writeCompactType(s: *cy.Sema, w: anytype, ctype: CompactType, comptime showRecentType: bool) !void {
@@ -319,7 +319,7 @@ pub fn isAnyOrDynamic(id: TypeId) bool {
 pub fn isTypeFuncSigCompat(c: *cy.Compiler, args: []const CompactType, ret_cstr: ReturnCstr, targetId: sema.FuncSigId) bool {
     const target = c.sema.getFuncSig(targetId);
     if (cy.Trace) {
-        const sigStr = c.sema.formatFuncSig(targetId, &cy.tempBuf) catch cy.fatal();
+        const sigStr = c.sema.formatFuncSig(targetId, &cy.tempBuf, null) catch cy.fatal();
         log.tracev("matching against: {s}", .{sigStr});
     }
 

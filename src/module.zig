@@ -397,12 +397,12 @@ pub const ChunkExt = struct {
 
     pub fn mustFindSym(c: *cy.Chunk, modSym: *cy.Sym, name: []const u8, nodeId: cy.NodeId) !*cy.Sym {
         const mod = modSym.getMod() orelse {
-            const symPath = try modSym.formatAbsPath(&cy.tempBuf);
-            return c.reportErrorFmt("Can not access `{}` from parent `{}`. Parent is not a module.", &.{v(name), v(symPath)}, nodeId);
+            const mod_name = try cy.sym.formatSymName(c.sema, &cy.tempBuf, modSym, .{ .from = c });
+            return c.reportErrorFmt("Can not access `{}` from parent `{}`. Parent is not a module.", &.{v(name), v(mod_name)}, nodeId);
         };
         const sym = mod.getSym(name) orelse {
-            const symPath = try modSym.resolved().formatAbsPath(&cy.tempBuf);
-            return c.reportErrorFmt("Can not find the symbol `{}` in `{}`.", &.{v(name), v(symPath)}, nodeId);
+            const mod_name = try cy.sym.formatSymName(c.sema, &cy.tempBuf, modSym.resolved(), .{ .from = c });
+            return c.reportErrorFmt("Can not find the symbol `{}` in `{}`.", &.{v(name), v(mod_name)}, nodeId);
         };
         return sym;
     }
@@ -411,8 +411,8 @@ pub const ChunkExt = struct {
         c: *cy.Chunk, modSym: *cy.Sym, name: []const u8, nodeId: cy.NodeId, comptime must: bool,
     ) anyerror!(if (must) *cy.Sym else ?*cy.Sym) {
         const mod = modSym.getMod() orelse {
-            const symPath = try modSym.formatAbsPath(&cy.tempBuf);
-            return c.reportErrorFmt("Can not access `{}` from parent `{}`. Parent is not a module.", &.{v(name), v(symPath)}, nodeId);
+            const mod_name = try cy.sym.formatSymName(c.sema, &cy.tempBuf, modSym, .{ .from = c });
+            return c.reportErrorFmt("Can not access `{}` from parent `{}`. Parent is not a module.", &.{v(name), v(mod_name)}, nodeId);
         };
         const sym = mod.symMap.get(name) orelse {
             if (must) {
@@ -486,8 +486,8 @@ pub const ChunkExt = struct {
         c: *cy.Chunk, modSym: *cy.Sym, name: []const u8, nodeId: cy.NodeId, comptime must: bool,
     ) anyerror!(if (must) *cy.Sym else ?*cy.Sym) {
         const mod = modSym.getMod() orelse {
-            const symPath = try modSym.formatAbsPath(&cy.tempBuf);
-            return c.reportErrorFmt("Can not access `{}` from parent `{}`. Parent is not a module.", &.{v(name), v(symPath)}, nodeId);
+            const mod_name = try cy.sym.formatSymName(c.sema, &cy.tempBuf, modSym, .{ .from = c });
+            return c.reportErrorFmt("Can not access `{}` from parent `{}`. Parent is not a module.", &.{v(name), v(mod_name)}, nodeId);
         };
         const sym = mod.symMap.get(name) orelse {
             if (must) {

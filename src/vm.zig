@@ -639,7 +639,7 @@ pub const VM = struct {
             for (self.funcSyms.items(), 0..) |_, i| {
                 const details = self.funcSymDetails.buf[i];
                 const name = details.namePtr[0..details.nameLen];
-                const sigStr = try self.sema.formatFuncSig(details.funcSigId, &cy.tempBuf);
+                const sigStr = try self.sema.formatFuncSig(details.funcSigId, &cy.tempBuf, null);
                 fmt.printStderr("\t{}{}: {}\n", &.{v(name), v(sigStr), v(i)});
             }
         }
@@ -3589,11 +3589,11 @@ fn panicIncompatibleFieldType(vm: *cy.VM, fieldSemaTypeId: types.TypeId, rightv:
 }
 
 fn panicIncompatibleLambdaSig(vm: *cy.VM, args: []const Value, cstrFuncSigId: sema.FuncSigId) error{Panic, OutOfMemory} {
-    const cstrFuncSigStr = try vm.compiler.sema.allocFuncSigStr(cstrFuncSigId, true);
+    const cstrFuncSigStr = vm.compiler.sema.allocFuncSigStr(cstrFuncSigId, true, null) catch return error.OutOfMemory;
     defer vm.alloc.free(cstrFuncSigStr);
     const argTypes = try allocValueTypeIds(vm, args);
     defer vm.alloc.free(argTypes);
-    const argsSigStr = try vm.compiler.sema.allocFuncSigTypesStr(argTypes, bt.Any);
+    const argsSigStr = vm.compiler.sema.allocFuncSigTypesStr(argTypes, bt.Any, null) catch return error.OutOfMemory;
     defer vm.alloc.free(argsSigStr);
 
     return vm.panicFmt(
@@ -3621,7 +3621,7 @@ fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Va
     const arg_types = try allocValueTypeIds(vm, args);
     defer vm.alloc.free(arg_types);
 
-    const call_args_str = try vm.compiler.sema.allocTypesStr(arg_types);
+    const call_args_str = vm.compiler.sema.allocTypesStr(arg_types, null) catch return error.OutOfMemory;
     defer vm.alloc.free(call_args_str);
 
     var msg: std.ArrayListUnmanaged(u8) = .{}; 
@@ -3634,16 +3634,14 @@ fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Va
     try w.writeAll("\n");
     try w.print("Functions named `{s}`:\n", .{name});
 
-    var funcStr = vm.compiler.sema.formatFuncSig(first_func_details.funcSigId, &cy.tempBuf) catch {
+    var funcStr = vm.compiler.sema.formatFuncSig(first_func_details.funcSigId, &cy.tempBuf, null) catch {
         return error.OutOfMemory;
     };
     try w.print("    func {s}{s}", .{name, funcStr});
     for (funcs[1..]) |func| {
         try w.writeByte('\n');
         const func_details = vm.funcSymDetails.buf[func];
-        funcStr = vm.sema.formatFuncSig(func_details.funcSigId, &cy.tempBuf) catch {
-            return error.OutOfMemory;
-        };
+        funcStr = vm.sema.formatFuncSig(func_details.funcSigId, &cy.tempBuf, null) catch return error.OutOfMemory;
         try w.print("    func {s}{s}", .{name, funcStr});
     }
     return vm.panic(msg.items);
@@ -3687,7 +3685,7 @@ fn panicIncompatibleMethodSig(
     var msg: std.ArrayListUnmanaged(u8) = .{}; 
     defer msg.deinit(vm.alloc);
     const w = msg.writer(vm.alloc);
-    const call_args_str = try vm.compiler.sema.allocTypesStr(typeIds[1..]);
+    const call_args_str = vm.compiler.sema.allocTypesStr(typeIds[1..], null) catch return error.OutOfMemory;
     defer vm.alloc.free(call_args_str);
 
     try w.print("Can not find compatible method for call: `({s}) {s}{s}`.", .{typeName, name, call_args_str});
@@ -3706,7 +3704,7 @@ fn panicIncompatibleMethodSig(
         if (!func.is_method) {
             continue;
         }
-        const funcStr = vm.sema.formatFuncSig(func.sig, &cy.tempBuf) catch {
+        const funcStr = vm.sema.formatFuncSig(func.sig, &cy.tempBuf, null) catch {
             return error.OutOfMemory;
         };
         try w.print("    func {s}{s}", .{name, funcStr});

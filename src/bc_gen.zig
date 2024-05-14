@@ -210,7 +210,7 @@ fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
         return;
     }
     if (cy.Trace) {
-        const symPath = try func.sym.?.head.allocAbsPath(c.alloc);
+        const symPath = try cy.sym.allocSymName(&c.sema, c.alloc, @ptrCast(func.sym.?), .{});
         defer c.alloc.free(symPath);
         log.tracev("prep func: {s}", .{symPath});
     }

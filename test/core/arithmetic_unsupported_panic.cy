@@ -4,7 +4,7 @@ type S:
 var a = S{a: 123} + 123
 
 --cytest: error
---CompileError: Can not find the symbol `$infix+` in `main.S`.
+--CompileError: Can not find the symbol `$infix+` in `S`.
 --
 --main:4:19:
 --var a = S{a: 123} + 123

@@ -401,36 +401,6 @@ pub const Sym = extern struct {
         }
     }
 
-    pub fn formatAbsPath(self: *const Sym, buf: []u8) ![]const u8 {
-        var fbuf = std.io.fixedBufferStream(buf);
-        try self.writeAbsPath(fbuf.writer());
-        return fbuf.getWritten();
-    }
-
-    pub fn allocAbsPath(self: *const Sym, alloc: std.mem.Allocator) ![]const u8 {
-        const parent = self.parent orelse {
-            return alloc.dupe(u8, self.name());
-        };
-
-        var buf: std.ArrayListUnmanaged(u8) = .{};
-        defer buf.deinit(alloc);
-        const w = buf.writer(alloc);
-        try parent.writeAbsPath(w);
-        try buf.append(alloc, '.');
-        try buf.appendSlice(alloc, self.name());
-        return buf.toOwnedSlice(alloc);
-    }
-
-    fn writeAbsPath(self: *const Sym, w: anytype) !void {
-        const parent = self.parent orelse {
-            try w.writeAll(self.name());
-            return;
-        };
-        try parent.writeAbsPath(w);
-        try w.writeByte('.');
-        try w.writeAll(self.name());
-    }
-
     pub fn dump(self: *Sym, opts: SymDumpOptions) !void {
         if (!cy.Trace) return;
         const path = try self.writeAbsPathToBuf(&cy.tempBuf);
@@ -1319,6 +1289,79 @@ pub const ChunkExt = struct {
         return sym;
     }
 };
+
+const SymFormatConfig = struct {
+    from: ?*cy.Chunk = null,
+    emit_template_args: bool = true,
+};
+
+pub fn writeFuncName(s: *cy.Sema, w: anytype, func: *cy.Func, config: SymFormatConfig) !void {
+    try writeParentPrefix(s, w, @ptrCast(func.sym.?), config);
+    try w.writeAll(func.name());
+}
+
+pub fn allocSymName(s: *cy.Sema, alloc: std.mem.Allocator, sym: *cy.Sym, config: SymFormatConfig) ![]const u8 {
+    var b: std.ArrayListUnmanaged(u8) = .{};
+    const w = b.writer(alloc);
+    try writeSymName(s, w, sym, config);
+    return b.toOwnedSlice(alloc);
+}
+
+pub fn formatSymName(s: *cy.Sema, buf: []u8, sym: *Sym, config: SymFormatConfig) ![]const u8 {
+    var fbs = std.io.fixedBufferStream(buf);
+    try writeSymName(s, fbs.writer(), sym, config);
+    return fbs.getWritten();
+}
+
+pub fn writeSymName(s: *cy.Sema, w: anytype, sym: *cy.Sym, config: SymFormatConfig) anyerror!void {
+    try writeParentPrefix(s, w, sym, config);
+    try w.writeAll(sym.name());
+    if (config.emit_template_args) {
+        if (sym.getVariant()) |variant| {
+            try w.writeByte('[');
+            try writeLocalTemplateArgs(s, w, variant, config);
+            try w.writeByte(']');
+        }
+    }
+}
+
+fn writeParentPrefix(s: *cy.Sema, w: anytype, sym: *cy.Sym, config: SymFormatConfig) !void {
+    const parent = sym.parent orelse return;
+    if (parent.type == .chunk) {
+        const chunk = parent.cast(.chunk);
+        if (config.from != null and chunk.chunk != config.from.?) {
+            // TODO: Print chunk name if different chunk and has a binded module name.
+        }
+        return;
+    }
+    try writeParentPrefix(s, w, parent, config);
+    try w.print("{s}", .{parent.name()});
+    if (config.emit_template_args) {
+        if (parent.getVariant()) |variant| {
+            try w.writeByte('[');
+            try writeLocalTemplateArgs(s, w, variant, config);
+            try w.writeByte(']');
+        }
+    }
+    try w.writeByte('.');
+}
+
+fn writeLocalTemplateArgs(s: *cy.Sema, w: anytype, variant: *cy.sym.Variant, config: SymFormatConfig) !void {
+    const args = variant.args;
+    if (args[0].getTypeId() != bt.Type) {
+        return error.Unsupported;
+    }
+    var sym = s.getTypeSym(args[0].asHeapObject().type.type);
+    try writeSymName(s, w, sym, config);
+    for (args[1..]) |arg| {
+        try w.writeByte(',');
+        if (arg.getTypeId() != bt.Type) {
+            return error.Unsupported;
+        }
+        sym = s.getTypeSym(arg.asHeapObject().type.type);
+        try writeSymName(s, w, sym, config);
+    }
+}
 
 test "sym internals" {
     if (builtin.mode == .ReleaseFast) {

@@ -3567,7 +3567,7 @@ fn reportIncompatibleCallSig(c: *cy.Chunk, sym: *cy.sym.FuncSym, args: []const c
     const name = sym.head.name();
     var msg: std.ArrayListUnmanaged(u8) = .{};
     const w = msg.writer(c.alloc);
-    const callSigStr = try c.sema.allocTypesStr(args);
+    const callSigStr = try c.sema.allocTypesStr(args, c);
     defer c.alloc.free(callSigStr);
 
     try w.print("Can not find compatible function for call: `{s}{s}`.", .{name, callSigStr});
@@ -3575,19 +3575,17 @@ fn reportIncompatibleCallSig(c: *cy.Chunk, sym: *cy.sym.FuncSym, args: []const c
         try w.writeAll(" Expects non-void return.");
     }
     try w.writeAll("\n");
-    if (sym.variant != cy.NullId) {
-        try w.print("Functions named `{s}` in `{s}`:\n", .{name, sym.head.parent.?.parent.?.name() });
-    } else {
-        try w.print("Functions named `{s}` in `{s}`:\n", .{name, sym.head.parent.?.name() });
-    }
+    const parent_name = try cy.sym.allocSymName(c.sema, c.alloc, sym.head.parent.?, .{ .from = c });
+    defer c.alloc.free(parent_name);
+    try w.print("Functions named `{s}` in `{s}`:\n", .{name, parent_name });
 
-    var funcStr = try c.sema.formatFuncSig(sym.firstFuncSig, &cy.tempBuf);
+    var funcStr = try c.sema.formatFuncSig(sym.firstFuncSig, &cy.tempBuf, c);
     try w.print("    func {s}{s}", .{name, funcStr});
     if (sym.numFuncs > 1) {
         var cur: ?*cy.Func = sym.first.next;
         while (cur) |curFunc| {
             try w.writeByte('\n');
-            funcStr = try c.sema.formatFuncSig(curFunc.funcSigId, &cy.tempBuf);
+            funcStr = try c.sema.formatFuncSig(curFunc.funcSigId, &cy.tempBuf, c);
             try w.print("    func {s}{s}", .{name, funcStr});
             cur = curFunc.next;
         }
@@ -5767,9 +5765,9 @@ pub const Sema = struct {
         }
     }
 
-    pub fn formatFuncSig(s: *Sema, funcSigId: FuncSigId, buf: []u8) ![]const u8 {
+    pub fn formatFuncSig(s: *Sema, funcSigId: FuncSigId, buf: []u8, from: ?*cy.Chunk) ![]const u8 {
         var fbuf = std.io.fixedBufferStream(buf);
-        try s.writeFuncSigStr(fbuf.writer(), funcSigId);
+        try s.writeFuncSigStr(fbuf.writer(), funcSigId, from);
         return fbuf.getWritten();
     }
 
@@ -5802,71 +5800,71 @@ pub const Sema = struct {
         return buf.items;
     }
 
-    pub fn allocTypesStr(s: *Sema, types: []const TypeId) ![]const u8 {
+    pub fn allocTypesStr(s: *Sema, types: []const TypeId, from: ?*cy.Chunk) ![]const u8 {
         var buf: std.ArrayListUnmanaged(u8) = .{};
         defer buf.deinit(s.alloc);
 
         const w = buf.writer(s.alloc);
         try w.writeAll("(");
-        try writeFuncParams(s, w, types);
+        try writeFuncParams(s, w, types, from);
         try w.writeAll(")");
         return buf.toOwnedSlice(s.alloc);
     }
 
-    pub fn allocFuncSigTypesStr(s: *Sema, params: []const TypeId, ret: TypeId) ![]const u8 {
+    pub fn allocFuncSigTypesStr(s: *Sema, params: []const TypeId, ret: TypeId, from: ?*cy.Chunk) ![]const u8 {
         var buf: std.ArrayListUnmanaged(u8) = .{};
         defer buf.deinit(s.alloc);
 
         const w = buf.writer(s.alloc);
-        try writeFuncSigTypesStr(s, w, params, ret);
+        try writeFuncSigTypesStr(s, w, params, ret, from);
         return buf.toOwnedSlice(s.alloc);
     }
 
-    pub fn allocFuncParamsStr(s: *Sema, params: []const TypeId) ![]const u8 {
+    pub fn allocFuncParamsStr(s: *Sema, params: []const TypeId, from: ?*cy.Chunk) ![]const u8 {
         var buf: std.ArrayListUnmanaged(u8) = .{};
         defer buf.deinit(s.alloc);
 
         const w = buf.writer(s.alloc);
-        try writeFuncParams(s, w, params);
+        try writeFuncParams(s, w, params, from);
         return buf.toOwnedSlice(s.alloc);
     }
 
-    pub fn allocFuncSigStr(s: *Sema, funcSigId: FuncSigId, show_ret: bool) ![]const u8 {
+    pub fn allocFuncSigStr(s: *Sema, funcSigId: FuncSigId, show_ret: bool, from: ?*cy.Chunk) ![]const u8 {
         var buf: std.ArrayListUnmanaged(u8) = .{};
         defer buf.deinit(s.alloc);
 
         const w = buf.writer(s.alloc);
         const funcSig = s.funcSigs.items[funcSigId];
         try w.writeAll("(");
-        try writeFuncParams(s, w, funcSig.params());
+        try writeFuncParams(s, w, funcSig.params(), from);
         try w.writeAll(")");
         if (show_ret) {
             try w.writeAll(" ");
-            try s.writeTypeName(w, funcSig.ret);
+            try s.writeTypeName(w, funcSig.ret, from);
         }
         return buf.toOwnedSlice(s.alloc);
     }
 
-    pub fn writeFuncSigStr(s: *Sema, w: anytype, funcSigId: FuncSigId) !void {
+    pub fn writeFuncSigStr(s: *Sema, w: anytype, funcSigId: FuncSigId, from: ?*cy.Chunk) !void {
         const funcSig = s.funcSigs.items[funcSigId];
-        try writeFuncSigTypesStr(s, w, funcSig.params(), funcSig.ret);
+        try writeFuncSigTypesStr(s, w, funcSig.params(), funcSig.ret, from);
     }
 
-    pub fn writeFuncSigTypesStr(s: *Sema, w: anytype, params: []const TypeId, ret: TypeId) !void {
+    pub fn writeFuncSigTypesStr(s: *Sema, w: anytype, params: []const TypeId, ret: TypeId, from: ?*cy.Chunk) !void {
         try w.writeAll("(");
-        try writeFuncParams(s, w, params);
+        try writeFuncParams(s, w, params, from);
         try w.writeAll(") ");
-        try s.writeTypeName(w, ret);
+        try s.writeTypeName(w, ret, from);
     }
 
-    pub fn writeFuncParams(s: *Sema, w: anytype, params: []const TypeId) !void {
+    pub fn writeFuncParams(s: *Sema, w: anytype, params: []const TypeId, from: ?*cy.Chunk) !void {
         if (params.len > 0) {
-            try s.writeTypeName(w, params[0]);
+            try s.writeTypeName(w, params[0], from);
 
             if (params.len > 1) {
                 for (params[1..]) |paramT| {
                     try w.writeAll(", ");
-                    try s.writeTypeName(w, paramT);
+                    try s.writeTypeName(w, paramT, from);
                 }
             }
         }

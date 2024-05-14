@@ -1,10 +1,14 @@
 use test
 
--- Explicit type.
+-- Wrap some, implicitly.
 var a Option(int) = 123
 test.eq(a == none, false)
 test.eq(a != none, true)
 test.eq(a.?, 123)
+
+-- Wrap some, explicitly.
+var a2 = Option(int).some(123)
+test.eq(a2.?, 123)
 
 -- Shorthand. Wrap literal.
 var b ?int = 123
@@ -21,10 +25,14 @@ type Foo:
 var d ?Foo = Foo{a: 123}
 test.eq(d.?.a, 123)
 
--- Wrapping none implicitly.
+-- Wrap none, implicitly.
 b = none
 test.eq(b == none, true)
 test.eq(b != none, false)
+
+-- Wrap none, explicitly.
+var b2 = Option(Foo).none
+test.eq(b2 == none, true)
 
 -- Unwrap or default.
 b = none

@@ -165,7 +165,7 @@ func load():
     ffi.cbind(SPAN_WIKILINK_S, [ATTRIBUTE])
     ffi.cbind(PARSER_S, [.uint, .uint, .voidPtr, .voidPtr, .voidPtr, .voidPtr, .voidPtr, .voidPtr, .voidPtr])
     ffi.cfunc('md_parse', [.voidPtr, .uint, .voidPtr, .voidPtr], .int)
-    let lib = ffi.bindLib(?String{some: libPath}, {genMap: false})
+    let lib = ffi.bindLib(Option(String).some(libPath), {genMap: false})
     return lib
 
 -- Macros

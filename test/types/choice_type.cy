@@ -45,7 +45,7 @@ res = switch s:
 test.eq(res.radius, 10.0)
 
 -- Switch case on primitive payload.
-s = Shape{line: 20}
+s = Shape.line(20)
 switch s
 case .line -> l:
     test.eq(l, 20.0)

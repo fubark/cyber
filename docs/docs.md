@@ -1220,17 +1220,17 @@ type Rectangle:
 ```
 
 ### Initialize choice.
-If the payload is an object type, the choice can be initialized with a simplified record literal:
-```cy
-var s = Shape.rectangle{width: 10, height: 20}
-```
-
-The general way to initialize a choice is to pass the payload as an argument:
+The general way to initialize a choice is to invoke the initializer with the payload as the argument:
 ```cy
 var rect = Rectangle{width: 10, height: 20}
-var s = Shape{rectangle: rect}
+var s = Shape.rectangle(rect)
 
-s = Shape{line: 20}
+s = Shape.line(20)
+```
+
+If the payload is a record-like type, the choice can be initialized with a record literal:
+```cy
+var s = Shape.rectangle{width: 10, height: 20}
 ```
 
 A choice without a payload is initialized like an enum member:

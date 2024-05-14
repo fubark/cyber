@@ -2654,7 +2654,7 @@ func load():
     ffi.cfunc('LLVMIsSectionIteratorAtEnd', [.voidPtr, .voidPtr], .int)
     ffi.cfunc('LLVMGetSymbols', [.voidPtr], .voidPtr)
     ffi.cfunc('LLVMIsSymbolIteratorAtEnd', [.voidPtr, .voidPtr], .int)
-    let lib = ffi.bindLib(?String{some: 'libLLVM.dylib'}, {genMap: false})
+    let lib = ffi.bindLib(Option(String).some('libLLVM.dylib'), {genMap: false})
     return lib
 
 -- Macros

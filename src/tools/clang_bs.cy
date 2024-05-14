@@ -193,5 +193,5 @@ func load(dummy any):
     -- CXType clang_Type_getNamedType(CXType T);
     ffi.cfunc('clang_Type_getNamedType', [CXType], CXType)
 
-    return ffi.bindLib(?String{some: 'libclang.dylib'})
+    return ffi.bindLib(Option(String).some('libclang.dylib'))
     -- return ffi.bindLib('/Library/Developer/CommandLineTools/usr/lib/libclang.dylib')

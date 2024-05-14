@@ -105,7 +105,7 @@ for funcs -> fn:
     var finalRet = ensureBindType(fn.ret)
     out += "    ffi.cfunc('$(fn.name)', [$(finalParams.join(', '))], $(finalRet))\n"
 var libPath = if (existingLibPath) 'libPath' else "'$(args['libpath'])'"
-out += "    let lib = ffi.bindLib(?String{some: $(libPath)}, {gen_table: false})\n"
+out += "    let lib = ffi.bindLib(Option(String).some($(libPath))}, {gen_table: false})\n"
 out += "    return lib\n\n"
 
 -- Generate macros.

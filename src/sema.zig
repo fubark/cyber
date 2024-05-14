@@ -2232,6 +2232,17 @@ fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.Node
             const type_id = sym.cast(.object_t).type;
             return callTypeSym(c, preIdx, sym, numArgs, symNodeId, argHead, type_id, ret_cstr);
         },
+        .enumMember => {
+            const member = sym.cast(.enumMember);
+            if (member.payloadType == cy.NullId) {
+                return c.reportErrorFmt("Can not initialize choice member without a payload type.", &.{}, symNodeId);
+            }
+            if (numArgs != 1) {
+                return c.reportErrorFmt("Expected only one payload argument for choice initializer. Found `{}`.", &.{v(numArgs)}, symNodeId);
+            }
+            const payload = try c.semaExprCstr(argHead, member.payloadType);
+            return semaInitChoice(c, member, payload, symNodeId);
+        },
         .userVar,
         .hostVar => {
             // preCall.
@@ -2299,7 +2310,7 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId, symAsValue: bool) !Exp
             .enumMember => {
                 const member = sym.cast(.enumMember);
                 if (member.is_choice_type) {
-                    return semaEmptyChoiceMember(c, member, nodeId);
+                    return semaInitChoiceNoPayload(c, member, nodeId);
                 } else {
                     const irIdx = try c.ir.pushExpr(.enumMemberSym, c.alloc, typeId, nodeId, .{
                         .type = member.type,
@@ -3881,31 +3892,7 @@ pub const ChunkExt = struct {
                 return c.semaObjectInit2(obj, node.data.record_expr.record);
             },
             .enum_t => {
-                const enumType = sym.cast(.enum_t);
-
-                const initializer = c.ast.node(node.data.record_expr.record);
-                if (initializer.data.recordLit.numArgs != 1) {
-                    return c.reportErrorFmt("Expected only one member to payload entry.", &.{}, node.data.record_expr.record);
-                }
-
-                const entryId = initializer.data.recordLit.argHead;
-                const entry = c.ast.node(entryId);
-
-                const field = c.ast.node(entry.data.keyValue.key);
-                const fieldName = c.ast.nodeString(field);
-
-                const member = enumType.getMember(fieldName) orelse {
-                    return c.reportErrorFmt("`{}` is not a member of `{}`", &.{v(fieldName), v(enumType.head.name())}, entry.data.keyValue.key);
-                };
-
-                var b: ObjectBuilder = .{ .c = c };
-                try b.begin(member.type, 2, expr.nodeId);
-                const tag = try c.semaInt(member.val, expr.nodeId);
-                b.pushArg(tag);
-                const payload = try c.semaExprCstr(entry.data.keyValue.value, member.payloadType);
-                b.pushArg(payload);
-                const irIdx = b.end();
-                return ExprResult.initStatic(irIdx, member.type);
+                return c.reportErrorFmt("Only enum members can be used as initializers.", &.{}, node.data.record_expr.left);
             },
             .enumMember => {
                 const member = sym.cast(.enumMember);
@@ -3926,15 +3913,8 @@ pub const ChunkExt = struct {
                     }
 
                     const obj = c.sema.getTypeSym(member.payloadType).cast(.object_t);
-
-                    var b: ObjectBuilder = .{ .c = c };
-                    try b.begin(member.type, 2, expr.nodeId);
-                    const tag = try c.semaInt(member.val, expr.nodeId);
-                    b.pushArg(tag);
                     const payload = try c.semaObjectInit2(obj, node.data.record_expr.record);
-                    b.pushArg(payload);
-                    const irIdx = b.end();
-                    return ExprResult.initStatic(irIdx, member.type);
+                    return semaInitChoice(c, member, payload, expr.nodeId);
                 }
             },
             .typeTemplate => {
@@ -5121,30 +5101,30 @@ pub const ChunkExt = struct {
         }
 
         var left = c.ast.node(node.data.accessExpr.left);
+        var rec: ExprResult = undefined;
         if (left.type() == .ident) {
-            const rec = try semaIdent(c, node.data.accessExpr.left, false);
-            if (rec.resType == .sym) {
-                const sym = rec.data.sym;
-                const rightName = c.ast.nodeString(right);
-                const rightSym = try c.getResolvedDistinctSym(sym, rightName, right_id, true);
-                try referenceSym(c, rightSym, right_id);
+            rec = try semaIdent(c, node.data.accessExpr.left, false);
+        } else {
+            rec = try c.semaExpr(node.data.accessExpr.left, .{});
+        }
+        if (rec.resType == .sym) {
+            const sym = rec.data.sym;
+            const rightName = c.ast.nodeString(right);
+            const rightSym = try c.getResolvedDistinctSym(sym, rightName, right_id, true);
+            try referenceSym(c, rightSym, right_id);
 
-                if (!symAsValue) {
-                    var typeId: CompactType = undefined;
-                    if (rightSym.isType()) {
-                        typeId = CompactType.init(rightSym.getStaticType().?);
-                    } else {
-                        typeId = CompactType.init((try rightSym.getValueType()) orelse bt.Void);
-                    }
-                    return ExprResult.initCustom(cy.NullId, .sym, typeId, .{ .sym = rightSym });
+            if (!symAsValue) {
+                var typeId: CompactType = undefined;
+                if (rightSym.isType()) {
+                    typeId = CompactType.init(rightSym.getStaticType().?);
                 } else {
-                    return try sema.symbol(c, rightSym, node.data.accessExpr.right, true);
+                    typeId = CompactType.init((try rightSym.getValueType()) orelse bt.Void);
                 }
+                return ExprResult.initCustom(cy.NullId, .sym, typeId, .{ .sym = rightSym });
             } else {
-                return semaAccessField(c, rec, node.data.accessExpr.right);
+                return try sema.symbol(c, rightSym, node.data.accessExpr.right, true);
             }
         } else {
-            const rec = try c.semaExpr(node.data.accessExpr.left, .{});
             return semaAccessField(c, rec, node.data.accessExpr.right);
         }
     }
@@ -5205,7 +5185,17 @@ fn semaWithInitPairs(c: *cy.Chunk, type_sym: *cy.Sym, type_id: cy.TypeId, record
     return ExprResult.initStatic(expr, type_id);
 }
 
-fn semaEmptyChoiceMember(c: *cy.Chunk, member: *cy.sym.EnumMember, node: cy.NodeId) !ExprResult {
+fn semaInitChoice(c: *cy.Chunk, member: *cy.sym.EnumMember, payload: ExprResult, node: cy.NodeId) !ExprResult {
+    var b: ObjectBuilder = .{ .c = c };
+    try b.begin(member.type, 2, node);
+    const tag = try c.semaInt(member.val, node);
+    b.pushArg(tag);
+    b.pushArg(payload);
+    const irIdx = b.end();
+    return ExprResult.initStatic(irIdx, member.type);
+}
+
+fn semaInitChoiceNoPayload(c: *cy.Chunk, member: *cy.sym.EnumMember, node: cy.NodeId) !ExprResult {
     // No payload type.
     var b: ObjectBuilder = .{ .c = c };
     try b.begin(member.type, 2, node);

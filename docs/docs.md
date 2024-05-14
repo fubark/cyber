@@ -1233,9 +1233,9 @@ var s = Shape{rectangle: rect}
 s = Shape{line: 20}
 ```
 
-A choice without a payload is initialized with an empty record literal:
+A choice without a payload is initialized like an enum member:
 ```cy
-var s = Shape.point{}
+var s = Shape.point
 ```
 
 ### Choice `switch`.

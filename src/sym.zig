@@ -330,7 +330,13 @@ pub const Sym = extern struct {
         switch (self.type) {
             .userVar    => return self.cast(.userVar).type,
             .hostVar    => return self.cast(.hostVar).type,
-            .enumMember => return self.cast(.enumMember).type,
+            .enumMember => {
+                const member = self.cast(.enumMember);
+                if (member.payloadType != cy.NullId and member.is_choice_type) {
+                    return null;
+                }
+                return member.type;
+            },
             .use_alias  => return self.cast(.use_alias).sym.getValueType(),
             .enum_t,
             .int_t,
@@ -827,6 +833,7 @@ pub const EnumMember = extern struct {
     type: cy.TypeId,
     val: u32,
     payloadType: cy.Nullable(cy.TypeId),
+    is_choice_type: bool,
 };
 
 pub const ModuleAlias = extern struct {

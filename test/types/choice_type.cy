@@ -59,7 +59,7 @@ res = switch s:
 test.eq(res, 20.0)
 
 -- Switch case on empty payload.
-s = Shape.point{}
+s = Shape.point
 switch s
 case .point:
     pass
@@ -73,7 +73,7 @@ res = switch s:
 test.eq(res, 123)
 
 -- Switch else case.
-s = Shape.point{}
+s = Shape.point
 switch s
 case .circle -> c:
     test.fail()

@@ -237,6 +237,13 @@ pub const SemaExt = struct {
         return s.types.items[typeId].kind == .@"enum";
     }
 
+    pub fn isChoiceType(s: *cy.Sema, typeId: TypeId) bool {
+        if (typeId < PrimitiveEnd) {
+            return false;
+        }
+        return s.types.items[typeId].kind == .choice;
+    }
+
     pub fn isRcCandidateType(s: *cy.Sema, id: TypeId) bool {
         switch (id) {
             bt.String,

@@ -298,12 +298,13 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn declareEnumMember(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, typeId: types.TypeId, val: u32, payloadType: cy.TypeId, declId: cy.NodeId) !*cy.sym.EnumMember {
+    pub fn declareEnumMember(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, typeId: types.TypeId, is_choice_type: bool, val: u32, payloadType: cy.TypeId, declId: cy.NodeId) !*cy.sym.EnumMember {
         const sym = try cy.sym.createSym(c.alloc, .enumMember, .{
             .head = cy.Sym.init(.enumMember, parent, name),
             .type = typeId,
             .val = val,
             .payloadType = payloadType,
+            .is_choice_type = is_choice_type,
         });
         const mod = parent.getMod().?;
         _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);

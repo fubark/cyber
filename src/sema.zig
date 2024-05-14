@@ -1348,7 +1348,7 @@ pub fn declareEnumMembers(c: *cy.Chunk, sym: *cy.sym.EnumType, nodeId: cy.NodeId
         if (member.data.enumMember.typeSpec != cy.NullNode) {
             payloadType = try resolveTypeSpecNode(c, member.data.enumMember.typeSpec);
         }
-        const modSymId = try c.declareEnumMember(@ptrCast(sym), mName, sym.type, i, payloadType, cur);
+        const modSymId = try c.declareEnumMember(@ptrCast(sym), mName, sym.type, sym.isChoiceType, i, payloadType, cur);
         members[i] = modSymId;
         cur = member.next();
     }
@@ -2297,12 +2297,16 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, nodeId: cy.NodeId, symAsValue: bool) !Exp
                 return ExprResult.init(irIdx, ctype);
             },
             .enumMember => {
-                const mem = sym.cast(.enumMember);
-                const irIdx = try c.ir.pushExpr(.enumMemberSym, c.alloc, typeId, nodeId, .{
-                    .type = mem.type,
-                    .val = @as(u8, @intCast(mem.val)),
-                });
-                return ExprResult.init(irIdx, ctype);
+                const member = sym.cast(.enumMember);
+                if (member.is_choice_type) {
+                    return semaEmptyChoiceMember(c, member, nodeId);
+                } else {
+                    const irIdx = try c.ir.pushExpr(.enumMemberSym, c.alloc, typeId, nodeId, .{
+                        .type = member.type,
+                        .val = @as(u8, @intCast(member.val)),
+                    });
+                    return ExprResult.init(irIdx, ctype);
+                }
             },
             else => {
                 return error.Unsupported;
@@ -3664,6 +3668,10 @@ fn semaCaseCond(c: *cy.Chunk, info: SwitchInfo, state: *CaseState) !void {
 
     if (info.exprIsChoiceType) {
         if (cond.type() == .symbolLit) {
+            if (info.exprTypeSym.type != .enum_t) {
+                const type_name = info.exprTypeSym.name();
+                return c.reportErrorFmt("Can only match symbol literal for an enum type. Found `{}`.", &.{v(type_name)}, state.condId);
+            }
             const name = c.ast.nodeString(cond);
             if (info.exprTypeSym.cast(.enum_t).getMember(name)) |member| {
                 const condRes = try c.semaInt(member.val, state.condId);
@@ -3910,20 +3918,7 @@ pub const ChunkExt = struct {
                 }
 
                 if (member.payloadType == cy.NullId) {
-                    // No payload type. Ensure empty record literal.
-                    const initializer = c.ast.node(node.data.record_expr.record);
-                    if (initializer.data.recordLit.numArgs != 0) {
-                        return c.reportErrorFmt("Expected empty record literal.", &.{}, node.data.record_expr.left);
-                    }
-
-                    var b: ObjectBuilder = .{ .c = c };
-                    try b.begin(member.type, 2, expr.nodeId);
-                    const tag = try c.semaInt(member.val, expr.nodeId);
-                    b.pushArg(tag);
-                    const payload = try c.semaZeroInit(bt.Any, expr.nodeId);
-                    b.pushArg(payload);
-                    const irIdx = b.end();
-                    return ExprResult.initStatic(irIdx, member.type);
+                    return c.reportErrorFmt("Expected enum member with a payload type.", &.{}, node.data.record_expr.left);
                 } else {
                     if (!c.sema.isUserObjectType(member.payloadType)) {
                         const payloadTypeName = c.sema.getTypeBaseName(member.payloadType);
@@ -5208,6 +5203,18 @@ fn semaWithInitPairs(c: *cy.Chunk, type_sym: *cy.Sym, type_id: cy.TypeId, record
     const stmtBlock = try popBlock(c);
     c.ir.getExprDataPtr(expr, .blockExpr).bodyHead = stmtBlock.first;
     return ExprResult.initStatic(expr, type_id);
+}
+
+fn semaEmptyChoiceMember(c: *cy.Chunk, member: *cy.sym.EnumMember, node: cy.NodeId) !ExprResult {
+    // No payload type.
+    var b: ObjectBuilder = .{ .c = c };
+    try b.begin(member.type, 2, node);
+    const tag = try c.semaInt(member.val, node);
+    b.pushArg(tag);
+    const payload = try c.semaZeroInit(bt.Any, node);
+    b.pushArg(payload);
+    const irIdx = b.end();
+    return ExprResult.initStatic(irIdx, member.type);
 }
 
 fn semaStructCompare(c: *cy.Chunk, left: ExprResult, left_id: cy.NodeId, op: cy.BinaryExprOp,

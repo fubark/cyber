@@ -56,7 +56,7 @@ pub const Sym = extern struct {
         return .{
             .namePtr = name_.ptr,
             .nameLen = @intCast(name_.len),
-            .metadata = @bitCast(Metadata{ .padding = undefined, .name_owned = false }),
+            .metadata = @bitCast(Metadata{ .padding = undefined, .name_owned = false, .resolving = false }),
             .type = symT,
             .parent = parent,
         };
@@ -86,12 +86,14 @@ pub const Sym = extern struct {
             .template => {
                 const template = self.cast(.template);
 
-                for (template.variants.items) |*variant| {
-                    for (variant.params) |param| {
-                        cy.arc.release(vm, param);
+                var iter = template.variant_cache.iterator();
+                while (iter.next()) |e| {
+                    const variant = e.value_ptr.*;
+                    for (variant.args) |arg| {
+                        cy.arc.release(vm, arg);
                     }
-                    vm.alloc.free(variant.params);
-                    variant.params = &.{};
+                    vm.alloc.free(variant.args);
+                    variant.args = &.{};
                 }
             },
             else => {},
@@ -144,16 +146,7 @@ pub const Sym = extern struct {
             },
             .template => {
                 const template = self.cast(.template);
-
-                for (template.variants.items) |variant| {
-                    for (variant.params) |param| {
-                        vm.release(param);
-                    }
-                    alloc.free(variant.params);
-                }
-                template.variants.deinit(alloc);
-                template.variantCache.deinit(alloc);
-                alloc.free(template.params);
+                template.deinit(alloc, vm);
                 alloc.destroy(template);
             },
             .distinct_t => {
@@ -203,6 +196,19 @@ pub const Sym = extern struct {
         var metadata = self.getMetadata();
         metadata.name_owned = name_owned;
         self.metadata = @bitCast(metadata);
+    }
+
+    pub fn setResolving(self: *Sym, resolving: bool) void {
+        var metadata = self.getMetadata();
+        metadata.resolving = resolving;
+        self.metadata = @bitCast(metadata);
+    }
+
+    pub fn getVariant(self: *Sym) ?*Variant {
+        switch (self.type) {
+            .custom_t => return self.cast(.custom_t).variant,
+            else => return null,
+        }
     }
 
     pub fn isVariable(self: Sym) bool {
@@ -269,9 +275,9 @@ pub const Sym = extern struct {
             .placeholder     => return @ptrCast(&self.cast(.placeholder).mod),
             .distinct_t      => return @ptrCast(&self.cast(.distinct_t).mod),
             .typeAlias       => return @ptrCast(&self.cast(.typeAlias).mod),
+            .template        => return @ptrCast(&self.cast(.template).mod),
             .use_alias,
             .module_alias,
-            .template,
             .enumMember,
             .func,
             .userVar,
@@ -417,7 +423,11 @@ pub const Sym = extern struct {
 
 const Metadata = packed struct {
     name_owned: bool,
-    padding: u15,
+
+    /// Used to detect circular reference when resolving.
+    resolving: bool,
+
+    padding: u14,
 };
 
 const SymDumpOptions = struct {
@@ -496,7 +506,7 @@ pub const FuncSym = extern struct {
     first: *Func,
     last: *Func,
     numFuncs: u16,
-    variant: u32,
+    variant: ?*Variant,
 
     /// Duped to perform uniqueness check without dereferencing the first ModuleFunc.
     firstFuncSig: cy.sema.FuncSigId,
@@ -539,6 +549,7 @@ pub const DistinctType = extern struct {
     decl: cy.NodeId,
     type: cy.TypeId,
     mod: vmc.Module,
+    variant: u32,
     resolved: bool,
 
     pub fn getMod(self: *DistinctType) *cy.Module {
@@ -566,11 +577,31 @@ pub const Template = struct {
     infer_min_params: u8,
 
     /// Template args to variant. Keys are not owned.
-    variantCache: std.HashMapUnmanaged([]const cy.Value, u32, VariantKeyContext, 80),
+    variant_cache: std.HashMapUnmanaged([]const cy.Value, *Variant, VariantKeyContext, 80),
 
-    variants: std.ArrayListUnmanaged(Variant),
+    mod: vmc.Module,
 
-    pub fn canInferFuncTemplateParams(self: *Template) bool {
+    fn deinit(self: *Template, alloc: std.mem.Allocator, vm: *cy.VM) void {
+        self.getMod().deinit(alloc);
+
+        var iter = self.variant_cache.iterator();
+        while (iter.next()) |e| {
+            const variant = e.value_ptr.*;
+            for (variant.args) |arg| {
+                vm.release(arg);
+            }
+            alloc.free(variant.args);
+            alloc.destroy(variant);
+        }
+        self.variant_cache.deinit(alloc);
+        alloc.free(self.params);
+    }
+
+    pub fn getMod(self: *Template) *cy.Module {
+        return @ptrCast(&self.mod);
+    }
+
+    pub fn canInferFuncTemplateArgs(self: *Template) bool {
         return self.infer_min_params != cy.NullU8;
     }
 
@@ -596,11 +627,21 @@ pub const TemplateParam = struct {
     infer_from_func_param: u8,
 };
 
-pub const Variant = struct {
-    /// Owned args. Can be used to print params along with the template type.
-    params: []const cy.Value,
+const VariantType = enum(u8) {
+    specialization,
+    sym,
+};
 
-    sym: *Sym,
+pub const Variant = struct {
+    type: VariantType,
+
+    /// Owned args. Can be used to print params along with the template type.
+    args: []const cy.Value,
+
+    data: union {
+        specialization: cy.NodeId,
+        sym: *Sym,
+    },
 };
 
 const VariantKeyContext = struct {
@@ -666,9 +707,7 @@ pub const ObjectType = extern struct {
     numFields: u32,
 
     rt_size: cy.Nullable(u32),
-
-    /// If not null, the parent points to Template sym.
-    variantId: u32,
+    variant: ?*Variant,
 
     mod: vmc.Module,
 
@@ -682,7 +721,7 @@ pub const ObjectType = extern struct {
             .declId = decl_id,
             .type = type_id,
             .fields = undefined,
-            .variantId = cy.NullId,
+            .variant = null,
             .numFields = cy.NullId,
             .rt_size = cy.NullId,
             .mod = undefined,
@@ -718,6 +757,7 @@ pub const CustomType = extern struct {
     getChildrenFn: cc.GetChildrenFn,
     finalizerFn: cc.FinalizerFn,
     mod: vmc.Module,
+    variant: ?*Variant,
 
     pub fn getMod(self: *CustomType) *cy.Module {
         return @ptrCast(&self.mod);
@@ -764,8 +804,7 @@ pub const EnumType = extern struct {
     numMembers: u32,
     mod: vmc.Module,
 
-    /// If not null, the parent points to Template sym.
-    variantId: u32,
+    variant: ?*Variant,
 
     isChoiceType: bool,
 
@@ -827,6 +866,7 @@ pub const UseAlias = extern struct {
 
 pub const Chunk = extern struct {
     head: Sym,
+    chunk: *cy.Chunk,
     mod: vmc.Module,
 
     pub fn sym(self: *Chunk) *Sym {
@@ -1028,9 +1068,10 @@ pub const ChunkExt = struct {
             .params = params,
             .sigId = sigId,
             .infer_min_params = cy.NullU8,
-            .variants = .{},
-            .variantCache = .{},
+            .variant_cache = .{},
+            .mod = undefined,
         });
+        sym.getMod().* = cy.Module.init(c);
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }
@@ -1038,6 +1079,7 @@ pub const ChunkExt = struct {
     pub fn createChunkSym(c: *cy.Chunk, name: []const u8) !*Chunk {
         const sym = try createSym(c.alloc, .chunk, .{
             .head = Sym.init(.chunk, null, name),
+            .chunk = c,
             .mod = undefined,
         });
         @as(*cy.Module, @ptrCast(&sym.mod)).* = cy.Module.init(c);
@@ -1108,7 +1150,7 @@ pub const ChunkExt = struct {
             .declId = declId,
             .type = typeId,
             .fields = undefined,
-            .variantId = cy.NullId,
+            .variant = null,
             .numFields = cy.NullId,
             .rt_size = cy.NullId,
             .mod = undefined,
@@ -1140,7 +1182,7 @@ pub const ChunkExt = struct {
             .declId = declId,
             .type = typeId,
             .fields = undefined,
-            .variantId = cy.NullId,
+            .variant = null,
             .numFields = cy.NullId,
             .rt_size = cy.NullId,
             .mod = undefined,
@@ -1192,7 +1234,7 @@ pub const ChunkExt = struct {
             .firstFuncSig = cy.NullId,
             .first = undefined,
             .last = undefined,
-            .variant = cy.NullId,
+            .variant = null,
         });
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
@@ -1206,20 +1248,6 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createObjectTypeVariant(c: *cy.Chunk, parent: *Template, variantId: u32) !*ObjectType {
-        const name = parent.head.name();
-        const sym = try createObjectType(c, @ptrCast(parent), name, parent.child_decl, null);
-        sym.variantId = variantId;
-        c.compiler.sema.types.items[sym.type] = .{
-            .sym = @ptrCast(sym),
-            .kind = .object,
-            .data = .{ .object = .{
-                .numFields = cy.NullU16,
-            }},
-        };
-        return sym;
-    }
-
     pub fn createEnumType(c: *cy.Chunk, parent: *Sym, name: []const u8, isChoiceType: bool, declId: cy.NodeId) !*EnumType {
         const typeId = try c.sema.pushType();
         const sym = try createSym(c.alloc, .enum_t, .{
@@ -1229,7 +1257,7 @@ pub const ChunkExt = struct {
             .members = undefined,
             .numMembers = 0,
             .isChoiceType = isChoiceType,
-            .variantId = cy.NullId,
+            .variant = null,
             .mod = undefined,
         });
         @as(*cy.Module, @ptrCast(&sym.mod)).* = cy.Module.init(c);
@@ -1242,11 +1270,11 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createEnumTypeVariant(c: *cy.Chunk, parent: *Template, isChoiceType: bool, variantId: u32) !*EnumType {
-        const name = parent.head.name();
-        const sym = try createEnumType(c, @ptrCast(parent), name, isChoiceType, parent.child_decl);
-        sym.variantId = variantId;
-        if (parent == c.sema.option_tmpl) {
+    pub fn createEnumTypeVariant(c: *cy.Chunk, parent: *Sym, template: *Template, isChoiceType: bool, variant: *Variant) !*EnumType {
+        const name = template.head.name();
+        const sym = try createEnumType(c, parent, name, isChoiceType, template.child_decl);
+        sym.variant = variant;
+        if (template == c.sema.option_tmpl) {
             c.compiler.sema.types.items[sym.type].kind = .option;
         }
         return sym;

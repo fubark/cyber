@@ -127,6 +127,7 @@ pub const Chunk = struct {
 
     /// This is used for lookups when resolving const expressions.
     cur_template_params: std.StringHashMapUnmanaged(cy.Value),
+    cur_template_ctx: ?sema.TemplateContext,
 
     ///
     /// Codegen pass
@@ -276,6 +277,7 @@ pub const Chunk = struct {
             .syms = .{},
             .funcs = .{},
             .cur_template_params = .{},
+            .cur_template_ctx = null,
             .in_ct_expr = false,
             .host_types = .{},
             .host_funcs = .{},

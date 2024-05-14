@@ -841,8 +841,63 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                     .template => {
                         _ = try sema.declareTemplate(chunk, decl_id);
                     },
-                    .variable => {
-                        const sym = try sema.reserveVar(chunk, decl.nodeId);
+                    .specialization => {
+                        // For now template declaration must already be declared.
+                        const child_decl = chunk.ast.node(decl.data.specialization.decl);
+                        switch (child_decl.type()) {
+                            .custom_decl => {
+                                const custom_header = chunk.ast.node(child_decl.data.custom_decl.header);
+                                const template_name = custom_header.data.custom_header.name;
+                                const sym = try sema.resolveSym(chunk, template_name);
+                                if (sym.type != .template) {
+                                    return chunk.reportError("Expected template.", null);
+                                }
+                                const template = sym.cast(.template);
+
+                                // TODO: Check that specialization doesn't exist already.
+                                const array_args = chunk.ast.node(decl.data.specialization.args);
+
+                                // Get CT template args.
+                                const typeStart = chunk.typeStack.items.len;
+                                const valueStart = chunk.valueStack.items.len;
+                                defer {
+                                    chunk.typeStack.items.len = typeStart;
+
+                                    // Values need to be released.
+                                    const values = chunk.valueStack.items[valueStart..];
+                                    for (values) |val| {
+                                        chunk.vm.release(val);
+                                    }
+                                    chunk.valueStack.items.len = valueStart;
+                                }
+                                try cy.cte.pushNodeValues(chunk, array_args.data.arrayLit.argHead);
+                                const arg_types = chunk.typeStack.items[typeStart..];
+                                const args = chunk.valueStack.items[valueStart..];
+
+                                // Check against template signature.
+                                if (!cy.types.isTypeFuncSigCompat(chunk.compiler, @ptrCast(arg_types), .not_void, template.sigId)) {
+                                    return error.IncompatSig;
+                                }
+
+                                const args_dupe = try chunk.alloc.dupe(cy.Value, args);
+                                for (args_dupe) |arg| {
+                                    chunk.vm.retain(arg);
+                                }
+
+                                const variant = try chunk.alloc.create(cy.sym.Variant);
+                                variant.* = .{
+                                    .type = .specialization,
+                                    .template = template,
+                                    .args = args_dupe,
+                                    .data = .{ .specialization = decl.data.specialization.decl },
+                                };
+                                try template.variant_cache.put(chunk.alloc, args_dupe, variant);
+                            },
+                            else => return error.Unsupported,
+                        }
+                    },
+                    .staticDecl => {
+                        const sym = try sema.reserveVar(chunk, decl_id);
                         if (sym.type == .userVar) {
                             chunk.hasStaticInit = true;
                         }

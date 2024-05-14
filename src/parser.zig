@@ -722,12 +722,11 @@ pub const Parser = struct {
         // Assumes first token is the `template` keyword.
         self.advance();
 
-        if (self.peek().tag() != .left_bracket) {
-            return self.reportError("Expected open bracket.", &.{});
+        var params = ListResult{ .head = cy.NullNode, .len = 0 };
+        if (self.peek().tag() == .left_bracket) {
+            self.advance();
+            params = try self.parseFuncParams(true, true);
         }
-        self.advance();
-        const params = try self.parseFuncParams(true, true);
-
         self.consumeWhitespaceTokens();
 
         const id = try self.pushNode(.template, start);
@@ -736,7 +735,11 @@ pub const Parser = struct {
         var decl: cy.NodeId = undefined;
         switch (token.tag()) {
             .type_k => {
-                decl = try self.parseTypeDecl(.{ .attr_head = cy.NullNode, .hidden = false, .allow_decl = true }, true);
+                decl = try self.parseTypeDecl(.{
+                    .attr_head = cy.NullNode,
+                    .hidden = false,
+                    .allow_decl = true,
+                }, true);
             },
             .func_k => {
                 decl = try self.parseFuncDecl(.{ .attr_head = cy.NullNode, .hidden = false, .allow_decl = true }, true);
@@ -779,18 +782,30 @@ pub const Parser = struct {
             return self.reportError("Expected type name identifier.", &.{});
         };
 
-        var token = self.peek();
-        switch (token.tag()) {
-            .enum_k => {
-                var decl_idx: usize = undefined;
-                if (!template) {
-                    decl_idx = self.staticDecls.items.len;
-                    try self.staticDecls.append(self.alloc, .{
-                        .declT = .enum_t,
-                        .nodeId = undefined,
-                    });
-                }
+        if (self.peek().tag() == .left_bracket) {
+            // Parse template specialization.
+            if (template) {
+                return self.reportError("Template specialization cannot be in a `template` declaration.", &.{});
+            }
+            const args = try self.parseArrayLiteral();
+            var decl: cy.NodeId = undefined;
+            switch (self.peek().tag()) {
+                .underscore => {
+                    decl = try self.parseCustomTypeDecl(start, name, config);
+                },
+                else => return error.Unsupported,
+            }
+            const id = try self.pushNode(.specialization, start);
+            self.ast.setNodeData(id, .{ .specialization = .{
+                .args = args,
+                .decl = @intCast(decl),
+            }});
+            try self.staticDecls.append(self.alloc, id);
+            return id;
+        }
 
+        switch (self.peek().tag()) {
+            .enum_k => {
                 const decl = try self.parseEnumDecl(start, name, config);
                 if (!template) {
                     try self.staticDecls.append(self.alloc, decl);

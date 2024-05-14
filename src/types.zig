@@ -173,10 +173,9 @@ pub const SemaExt = struct {
         const type_e = s.types.items[id];
         switch (type_e.kind) {
             .option => {
-                const template = type_e.sym.parent.?.cast(.template);
-                const variant = template.variants.items[type_e.sym.cast(.enum_t).variantId];
-                const param = variant.params[0].asHeapObject();
-                const name = s.getTypeBaseName(param.type.type);
+                const variant = type_e.sym.cast(.enum_t).variant.?;
+                const arg = variant.args[0].asHeapObject();
+                const name = s.getTypeBaseName(arg.type.type);
                 return try std.fmt.allocPrint(s.alloc, "?{s}", .{name});
             },
             .choice => {

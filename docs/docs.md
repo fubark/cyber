@@ -2811,6 +2811,7 @@ print str.trim(.left, ' ')
 * [Reflection.](#reflection)
 * [Attributes.](#attributes)
 * [Generics.](#generics)
+  * [Template specialization.](#template-specialization)
 * [Macros.](#macros)
 * [Compile-time execution.](#compile-time-execution)
   * [Builtin types.](#builtin-types)
@@ -2980,6 +2981,9 @@ Attributes start with `@`. They are used as declaration modifiers.
 Generics enables parametric polymorphism for types and functions. Compile-time arguments are passed to templates to generate specialized code. This facilitates developing container types and algorithms that operate on different types.
 
 See [Custom Types / Generic types](#generic-types) and [Functions / Generic functions](#generic-functions).
+
+### Template specialization.
+> _Planned Feature_
 
 ## Macros.
 > _Planned Feature_

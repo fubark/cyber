@@ -3,6 +3,7 @@ const cy = @import("cyber.zig");
 const bt = cy.types.BuiltinTypes;
 const sema = cy.sema;
 const v = cy.fmt.v;
+const log = cy.log.scoped(.cte);
 
 const cte = @This();
 
@@ -19,6 +20,16 @@ pub fn expandTemplateOnCallExpr(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
     return cte.expandTemplateOnCallArgs(c, sym.cast(.template), node.data.callExpr.argHead, nodeId);
 }
 
+pub fn pushNodeValues(c: *cy.Chunk, head: cy.NodeId) !void {
+    var arg: cy.NodeId = head;
+    while (arg != cy.NullNode) {
+        const res = try nodeToCtValue(c, arg);
+        try c.typeStack.append(c.alloc, res.type);
+        try c.valueStack.append(c.alloc, res.value);
+        arg = c.ast.node(arg).next();
+    }
+}
+
 pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, argHead: cy.NodeId, nodeId: cy.NodeId) !*cy.Sym {
     // Accumulate compile-time args.
     const typeStart = c.typeStack.items.len;
@@ -33,13 +44,7 @@ pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, argHea
         }
         c.valueStack.items.len = valueStart;
     }
-    var arg: cy.NodeId = argHead;
-    while (arg != cy.NullNode) {
-        const res = try nodeToCtValue(c, arg);
-        try c.typeStack.append(c.alloc, res.type);
-        try c.valueStack.append(c.alloc, res.value);
-        arg = c.ast.node(arg).next();
-    }
+    try pushNodeValues(c, argHead);
     const argTypes = c.typeStack.items[typeStart..];
     const args = c.valueStack.items[valueStart..];
 
@@ -64,31 +69,52 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
     }
 
     // Ensure variant type.
-    const res = try template.variantCache.getOrPut(c.alloc, args);
+    const res = try template.variant_cache.getOrPut(c.alloc, args);
     if (!res.found_existing) {
         // Dupe args and retain
-        const params = try c.alloc.dupe(cy.Value, args);
-        for (params) |param| {
+        const args_dupe = try c.alloc.dupe(cy.Value, args);
+        for (args_dupe) |param| {
             c.vm.retain(param);
         }
 
         // Generate variant type.
-        const id = template.variants.items.len;
-        try template.variants.append(c.alloc, .{
-            .params = params,
-            .sym = undefined,
-        });
+        const variant = try c.alloc.create(cy.sym.Variant);
+        variant.* = .{
+            .type = .sym,
+            .template = template,
+            .args = args_dupe,
+            .data = .{ .sym = undefined },
+        };
 
-        const newSym = try sema.declareTemplateVariant(c, template, @intCast(id));
-        template.variants.items[id].sym = newSym;
+        const new_sym = try sema.reserveTemplateVariant(c, template, template.child_decl, variant);
+        variant.data.sym = new_sym;
+        res.key_ptr.* = args_dupe;
+        res.value_ptr.* = variant;
 
-        res.key_ptr.* = params;
-        res.value_ptr.* = @intCast(id);
+        // Allow circular reference by resolving after the new symbol has been added to the cache.
+        try sema.resolveTemplateVariant(c, template, new_sym);
+        return new_sym;
+    } 
+
+    const variant = res.value_ptr.*;
+    if (variant.type == .specialization) {
+        const child_decl = c.ast.node(variant.data.specialization);
+        if (child_decl.type() != .custom_decl) {
+            return error.Unsupported;
+        }
+        if (child_decl.data.custom_decl.func_head != cy.NullNode) {
+            return error.Unsupported;
+        }
+
+        const new_sym = try sema.reserveTemplateVariant(c, template, variant.data.specialization, variant);
+        variant.type = .sym;
+        variant.data = .{ .sym = new_sym };
+
+        try sema.resolveTemplateVariant(c, template, new_sym);
+        return new_sym;
     }
 
-    const variantId = res.value_ptr.*;
-    const variantSym = template.variants.items[variantId].sym;
-    return variantSym;
+    return variant.data.sym;
 }
 
 /// Visit each top level ctNode, perform template param substitution or CTE,
@@ -142,40 +168,15 @@ const CtValue = struct {
     value: cy.Value,
 };
 
-fn nodeToCtValue(c: *cy.Chunk, nodeId: cy.NodeId) !CtValue {
-    const node = c.ast.node(nodeId);
-    switch (node.type()) {
-        .ident => {
-            const name = c.ast.nodeString(node);
-
-            if (c.semaProcs.items.len > 0) {
-                const res = try sema.getOrLookupVar(c, name, nodeId);
-                switch (res) {
-                    .local => |id| {
-                        _ = id;
-                    
-                        // Check for constant var.
-                        return error.TODO;
-                    },
-                    else => {},
-                }
-            }
-
-            const sym = (try sema.getResolvedLocalSym(c, name, nodeId, true)) orelse {
-                return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, nodeId);
-            };
-
-            if (sym.getStaticType()) |type_id| {
-                return CtValue{
-                    .type = bt.Type,
-                    .value = try c.vm.allocType(type_id),
-                };
-            } else {
-                return c.reportErrorFmt("Unsupported conversion to compile-time value: {}", &.{v(sym.type)}, nodeId);
-            }
-        },
-        else => {
-            return error.TODO;
-        },
+fn nodeToCtValue(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!CtValue {
+    // TODO: Evaluate const expressions.
+    const sym = try sema.resolveSym(c, nodeId);
+    if (sym.getStaticType()) |type_id| {
+        return CtValue{
+            .type = bt.Type,
+            .value = try c.vm.allocType(type_id),
+        };
     }
+
+    return c.reportErrorFmt("Unsupported conversion to compile-time value: {}", &.{v(sym.type)}, nodeId);
 }

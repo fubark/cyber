@@ -87,6 +87,7 @@ pub const NodeType = enum(u8) {
     runeLit,
     semaSym,
     seqDestructure,
+    specialization,
     staticDecl,
     stringLit,
     stringTemplate,
@@ -434,6 +435,10 @@ const NodeData = union {
     seqDestructure: struct {
         head: NodeId,
         numArgs: u8,
+    },
+    specialization: struct {
+        args: NodeId,
+        decl: NodeId,
     },
     template: packed struct {
         paramHead: cy.Nullable(u24),
@@ -818,6 +823,9 @@ pub const AstView = struct {
             },
             .template => {
                 return self.declNamePath(n.data.template.decl);
+            },
+            .specialization => {
+                return self.declNamePath(n.data.specialization.decl);
             },
             .staticDecl => {
                 const varSpec = self.node(n.data.staticDecl.varSpec);

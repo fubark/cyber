@@ -567,10 +567,10 @@ test "Stack trace unwinding." {
             \\t.eq(a.foo, 123)
         , struct { fn func(run: *VMrunner, res: EvalResult) !void {
             try run.expectErrorReport(res, c.ErrorPanic,
-                \\panic: .boom
+                \\panic: boom
                 \\
                 \\@AbsPath(test/modules/test_mods/init_panic_error.cy):1:12 $init:
-                \\var .foo = panic(.boom)
+                \\var .foo = panic('boom')
                 \\           ^
                 \\./test/main.cy: main
                 \\

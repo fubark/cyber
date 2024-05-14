@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <string.h>
 
 #ifndef CYBER_H
 #define CYBER_H
@@ -234,10 +235,12 @@ typedef struct CLHostType {
     uint8_t type;
 } CLHostType;
 
-#define CL_CORE_TYPE(t) ((CLHostType){ .data = { .core_custom = { .type_id = t, .get_children = NULL, .finalizer = NULL }}, .type = CL_BIND_TYPE_CORE_CUSTOM })
-#define CL_CORE_TYPE_EXT(t, gc, f) ((CLHostType){ .data = { .core_custom = { .type_id = t, .get_children = gc, .finalizer = f }}, .type = CL_BIND_TYPE_CORE_CUSTOM })
-#define CL_CORE_TYPE_DECL(t) ((CLHostType){ .data = { .core_decl = { .type_id = t }}, .type = CL_BIND_TYPE_CORE_DECL })
-#define CL_CUSTOM_TYPE(ot, gc, f) ((CLHostType){ .data = { .custom = { .out_type_id = ot, .get_children = gc, .finalizer = f }}, .type = CL_BIND_TYPE_CUSTOM })
+#define CL_STR(str) ((CLStr){ .ptr = str, .len = strlen(str) })
+#define CL_FUNC(name, fn) ((CLHostFuncEntry){ CL_STR(name), fn })
+// #define CL_CORE_TYPE(t) ((CLHostType){ .data = { .core_custom = { .type_id = t, .get_children = NULL, .finalizer = NULL }}, .type = CL_BIND_TYPE_CORE_CUSTOM })
+// #define CL_CORE_TYPE_EXT(t, gc, f) ((CLHostType){ .data = { .core_custom = { .type_id = t, .get_children = gc, .finalizer = f }}, .type = CL_BIND_TYPE_CORE_CUSTOM })
+// #define CL_CORE_TYPE_DECL(t) ((CLHostType){ .data = { .core_decl = { .type_id = t }}, .type = CL_BIND_TYPE_CORE_DECL })
+#define CL_CUSTOM_TYPE(name, ot, gc, f) ((CLHostTypeEntry){ CL_STR(name), (CLHostType){ .data = { .custom = { .out_type_id = ot, .get_children = gc, .finalizer = f }}, .type = CL_BIND_TYPE_CUSTOM }})
 
 // A mapping from a matching symbol string to a CLHostType.
 typedef struct CLHostTypeEntry {

@@ -614,6 +614,7 @@ pub const Parser = struct {
             .enum_k,
             .type_k,
             .error_k,
+            .symbol_k,
             .none_k,
             .ident => {
                 self.advance();
@@ -888,6 +889,7 @@ pub const Parser = struct {
             .pound,
             .void_k,
             .type_k,
+            .symbol_k,
             .error_k,
             .ident => {
                 return try self.parseTermExpr(.{});
@@ -2839,13 +2841,9 @@ pub const Parser = struct {
                     self.advance();
                     token = self.peek();
                     if (token.tag() == .ident) {
-                        const symbol = try self.pushSpanNode(.ident, self.next_pos);
+                        const lit = try self.pushSpanNode(.error_lit, self.next_pos);
                         self.advance();
-                        const id = try self.pushNode(.errorSymLit, start);
-                        self.ast.setNodeData(id, .{ .errorSymLit = .{
-                            .symbol = symbol,
-                        }});
-                        break :b id;
+                        break :b lit;
                     } else {
                         return self.reportError("Expected symbol identifier.", &.{});
                     }
@@ -2869,8 +2867,25 @@ pub const Parser = struct {
                 const name = (try self.parseOptName()) orelse {
                     return self.reportError("Expected symbol identifier.", &.{});
                 };
-                self.ast.nodePtr(name).head.type = .symbolLit;
+                self.ast.nodePtr(name).head.type = .dot_lit;
                 return name;
+            },
+            .symbol_k => b: {
+                self.advance();
+                token = self.peek();
+                if (token.tag() == .dot) {
+                    self.advance();
+                    token = self.peek();
+                    const name = (try self.parseOptName()) orelse {
+                        return self.reportError("Expected symbol identifier.", &.{});
+                    };
+                    self.ast.nodePtr(name).head.type = .symbol_lit;
+                    break :b name;
+                } else {
+                    // Becomes an ident.
+                    const id = try self.pushSpanNode(.ident, start);
+                    break :b id;
+                }
             },
             .true_k => {
                 self.advance();
@@ -3887,7 +3902,7 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .left_brace, .left_bracket, .left_paren, .let_k,
         .minus_double_dot, .new_line, .none_k, .not_k, .object_k, .oct, .pass_k, .placeholder, .pound, .question,
         .return_k, .right_brace, .right_bracket, .right_paren, .rune, .raw_string,
-        .string, .struct_k, .switch_k, .templateExprStart, .templateString, .template_k,
+        .string, .struct_k, .switch_k, .symbol_k, .templateExprStart, .templateString, .template_k,
         .throw_k, .tilde, .true_k, .try_k, .type_k, .use_k, .var_k, .void_k, .while_k => null,
     };
 }

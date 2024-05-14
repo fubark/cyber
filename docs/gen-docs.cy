@@ -24,11 +24,11 @@ var csrc = os.cstr(src)
 var csrcLen = Array(src).len()
 
 var parser = os.malloc(64)
-var enterBlock_c = md.ffi.bindCallback(enterBlock, [.int, .voidPtr, .voidPtr], .int)
-var leaveBlock_c = md.ffi.bindCallback(leaveBlock, [.int, .voidPtr, .voidPtr], .int)
-var enterSpan_c = md.ffi.bindCallback(enterSpan, [.int, .voidPtr, .voidPtr], .int)
-var leaveSpan_c = md.ffi.bindCallback(leaveSpan, [.int, .voidPtr, .voidPtr], .int)
-var text_c = md.ffi.bindCallback(text, [.int, .voidPtr, .int, .voidPtr], .int)
+var enterBlock_c = md.ffi.bindCallback(enterBlock, [symbol.int, symbol.voidPtr, symbol.voidPtr], symbol.int)
+var leaveBlock_c = md.ffi.bindCallback(leaveBlock, [symbol.int, symbol.voidPtr, symbol.voidPtr], symbol.int)
+var enterSpan_c = md.ffi.bindCallback(enterSpan, [symbol.int, symbol.voidPtr, symbol.voidPtr], symbol.int)
+var leaveSpan_c = md.ffi.bindCallback(leaveSpan, [symbol.int, symbol.voidPtr, symbol.voidPtr], symbol.int)
+var text_c = md.ffi.bindCallback(text, [symbol.int, symbol.voidPtr, symbol.int, symbol.voidPtr], symbol.int)
 var nullptr = pointer(0)
 parser.set(0, .int, 0)
 parser.set(4, .int, md.FLAG_TABLES)
@@ -136,7 +136,7 @@ os.writeFile("$(curDir)/docs.html", html)
 
 var .out = ''
 var .htmlContent = ''
-var .textContent = ''
+let .textContent = ''
 var .state = State.main
 var .parsingToc = false
 var .tocLinks = []

@@ -1,10 +1,10 @@
 if true:
-    panic(.boom)
+    panic('Boom')
 
 --cytest: error
---panic: .boom
+--panic: Boom
 --
 --main:2:5 main:
---    panic(.boom)
+--    panic('Boom')
 --    ^
 --

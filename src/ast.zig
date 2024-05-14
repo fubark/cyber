@@ -31,12 +31,12 @@ pub const NodeType = enum(u8) {
     coresume,
     coyield,
     decLit,
-    dirModifier,
+    dot_lit,
     eachClause,
     else_block,
     enumDecl,
     enumMember,
-    errorSymLit,
+    error_lit,
     expandOpt,
     exprStmt,
     falseLit,
@@ -89,7 +89,7 @@ pub const NodeType = enum(u8) {
     structDecl,
     switchExpr,
     switchStmt,
-    symbolLit,
+    symbol_lit,
     table_decl,
     throwExpr,
     trueLit,
@@ -187,9 +187,6 @@ const NodeData = union {
     tryExpr: struct {
         expr: NodeId,
         catchExpr: cy.Nullable(NodeId),
-    },
-    errorSymLit: struct {
-        symbol: NodeId,
     },
     castExpr: struct {
         expr: NodeId,
@@ -1074,12 +1071,16 @@ pub const Encoder = struct {
             .trueLit => {
                 try w.writeAll("true");
             },
-            .errorSymLit => {
-                try w.writeAll("error.");
-                try self.write(w, node.data.errorSymLit.symbol);
-            },
-            .symbolLit => {
+            .dot_lit => {
                 try w.writeAll(".");
+                try w.writeAll(self.ast.nodeString(node));
+            },
+            .error_lit => {
+                try w.writeAll("error.");
+                try w.writeAll(self.ast.nodeString(node));
+            },
+            .symbol_lit => {
+                try w.writeAll("symbol.");
                 try w.writeAll(self.ast.nodeString(node));
             },
             .hexLit,

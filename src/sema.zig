@@ -3952,7 +3952,7 @@ fn semaCaseCond(c: *cy.Chunk, info: SwitchInfo, state: *CaseState) !void {
     const cond = c.ast.node(state.condId);
 
     if (info.exprIsChoiceType) {
-        if (cond.type() == .symbolLit) {
+        if (cond.type() == .dot_lit) {
             if (info.exprTypeSym.type != .enum_t) {
                 const type_name = info.exprTypeSym.name();
                 return c.reportErrorFmt("Can only match symbol literal for an enum type. Found `{}`.", &.{v(type_name)}, state.condId);
@@ -4489,26 +4489,40 @@ pub const ChunkExt = struct {
                     return c.reportErrorFmt("Could not determine optional type for `none`.", &.{}, nodeId);
                 }
             },
-            .errorSymLit => {
-                const sym = c.ast.node(node.data.errorSymLit.symbol);
-                const name = c.ast.nodeString(sym);
+            .error_lit => {
+                const name = c.ast.nodeString(node);
                 const loc = try c.ir.pushExpr(.errorv, c.alloc, bt.Error, nodeId, .{ .name = name });
                 return ExprResult.initStatic(loc, bt.Error);
             },
-            .symbolLit => {
+            .symbol_lit => {
                 const name = c.ast.nodeString(node);
-                if (expr.hasTargetType() and c.sema.isEnumType(expr.target_t)) {
-                    const sym = c.sema.getTypeSym(expr.target_t).cast(.enum_t);
-                    if (sym.getMemberTag(name)) |tag| {
-                        const irIdx = try c.ir.pushExpr(.enumMemberSym, c.alloc, expr.target_t, nodeId, .{
-                            .type = expr.target_t,
-                            .val = @as(u8, @intCast(tag)),
-                        });
-                        return ExprResult.initStatic(irIdx, expr.target_t);
-                    }
-                }
                 const irIdx = try c.ir.pushExpr(.symbol, c.alloc, bt.Symbol, nodeId, .{ .name = name });
                 return ExprResult.initStatic(irIdx, bt.Symbol);
+            },
+            .dot_lit => {
+                if (!expr.hasTargetType()) {
+                    return c.reportErrorFmt("Can not infer dot literal.", &.{}, nodeId);
+                }
+                const name = c.ast.nodeString(node);
+                switch (expr.target_t) {
+                    bt.Symbol => {
+                        const irIdx = try c.ir.pushExpr(.symbol, c.alloc, bt.Symbol, nodeId, .{ .name = name });
+                        return ExprResult.initStatic(irIdx, bt.Symbol);
+                    },
+                    else => {
+                        if (c.sema.isEnumType(expr.target_t)) {
+                            const sym = c.sema.getTypeSym(expr.target_t).cast(.enum_t);
+                            if (sym.getMemberTag(name)) |tag| {
+                                const irIdx = try c.ir.pushExpr(.enumMemberSym, c.alloc, expr.target_t, nodeId, .{
+                                    .type = expr.target_t,
+                                    .val = @as(u8, @intCast(tag)),
+                                });
+                                return ExprResult.initStatic(irIdx, expr.target_t);
+                            }
+                        }
+                    }
+                }
+                return c.reportErrorFmt("Can not infer dot literal.", &.{}, nodeId);
             },
             .trueLit => {
                 const irIdx = try c.ir.pushExpr(.truev, c.alloc, bt.Boolean, nodeId, {});

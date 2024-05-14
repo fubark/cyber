@@ -58,7 +58,7 @@ type error #int64_t:
     --| Return the underlying `symbol`.
     @host func sym() symbol
 
---| Create an error from an enum or symbol.
+--| Create an error from symbol.
 @host func error.$call(val any) error
 
 @host

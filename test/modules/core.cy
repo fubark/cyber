@@ -120,7 +120,7 @@ t.eq(String(123.456), '123.456')
 t.eq(String(123.00000123), '123.00000123')
 t.eq(String(int(123)), '123')
 t.eq(String(error.foo), 'error.foo')
-t.eq(String(.foo), '.foo')
+t.eq(String(symbol.foo), 'symbol.foo')
 t.eq(String(float), 'type: float')
 
 -- typeof()

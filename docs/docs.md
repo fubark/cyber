@@ -285,8 +285,9 @@ These keywords only have meaning in a certain context.
 - Function Return: `void`
 
 ### Literals.
-- [Booleans](#booleans): `true` `false`
-- [Error Values](#error-value): `error`
+- [Boolean literal](#booleans): `true` `false`
+- [Symbol literal](#symbols): `symbol`
+- [Error literal](#error-value): `error`
 - None: `none`
 
 ## Operators.
@@ -511,7 +512,7 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
 
 In Cyber, there are primitive types and object types. By default, primitives are copied around by value and don't need additional heap memory or reference counts.
 
-Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integers), [Enums](#enums), [Symbols](#symbols-1), and [Error Values](#error-value).
+Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integers), [Enums](#enums), [Symbols](#symbols), and [Error Values](#error-value).
 
 Object types include [Lists](#lists), [Tuples](#tuples), [Maps](#maps), [Strings](#strings), [Arrays](#arrays), [Objects](#objects), [Lambdas](#lambdas), [Fibers](#fibers), [Choices](#choices), [Optionals](#optionals), [Pointers](#pointers), and several internal object types.
 
@@ -894,11 +895,12 @@ var colors = {}:
 ```
 
 ## Symbols.
-Symbol literals begin with `.`, followed by an identifier. They have their own global unique id.
+Symbol literals begin with `symbol.`, followed by an identifier.
+Each symbol has a global unique ID.
 ```cy
-var currency = .usd
-print(currency == .usd)   -- 'true'
-print int(currency)       -- '123' or some arbitrary id.
+var currency = symbol.usd
+print currency == .usd   --> true
+print int(currency)      --> <unique ID>
 ```
 
 ## `any`.
@@ -2214,7 +2216,7 @@ The resulting object of `bindLib` holds a reference to an internal TCCState whic
 Once the object is released by ARC, the TCCState is also released which removes the JIT code from memory.
 
 ## Mappings.
-When using `cfunc` or `cbind` declarations, [symbols](#symbols-1) are used to represent default type mappings from Cyber to C and back:
+When using `cfunc` or `cbind` declarations, [symbols](#symbols) are used to represent default type mappings from Cyber to C and back:
 > _Incomplete: This is not the final API for dynamically loading and interfacing with C libraries. The plan is to parse a subset of C headers to bind to Cyber types and functions._
 
 | Binding | Cyber | C |

@@ -135,11 +135,11 @@ func fooSymbol(a symbol):
 t.eq(fooSymbol(.sometag), true)
 
 -- From var.
-var tag = .sometag
+var tag = symbol.sometag
 t.eq(fooSymbol(tag), true)
 
 -- Cast erased type.
-tag = t.erase(.sometag)
+tag = t.erase(symbol.sometag)
 t.eq(fooSymbol(tag as symbol), true)
 
 --cytest: pass

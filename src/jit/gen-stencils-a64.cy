@@ -8,12 +8,12 @@ use os
 var out = ''
 var curDir = os.dirName(#modUri)
 
-let outLLBuf = llvm.ffi.new(.voidPtr)
-var outMsg = llvm.ffi.new(.charPtr)
+let outLLBuf = llvm.ffi.new(symbol.voidPtr)
+var outMsg = llvm.ffi.new(symbol.charPtr)
 if llvm.CreateMemoryBufferWithContentsOfFile(os.cstr("$(curDir)/stencils.o"), outLLBuf, outMsg) != 0:
     throw error.Unexpected
 
-var llBuf = outLLBuf.get(0, .voidPtr)
+var llBuf = outLLBuf.get(0, symbol.voidPtr)
 var cbuf = llvm.GetBufferStart(llBuf)
 var size = llvm.GetBufferSize(llBuf)
 var buf = cbuf.toArray(0, size)

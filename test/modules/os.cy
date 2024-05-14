@@ -25,7 +25,7 @@ catch:
     pass
 os.createDir('test/assets/tempdir')
 var dir = os.openDir('test/assets/tempdir')
-t.eq(dir.stat()['type'], .dir)
+t.eq(dir.stat()['type'], symbol.dir)
 
 -- createFile() new file.
 try:
@@ -56,12 +56,12 @@ t.eq(os.dirName('/root/bar.txt').?, '/root')
 -- openDir()
 dir = os.openDir('test')
 let info = dir.stat()
-t.eq(info['type'], .dir)
+t.eq(info['type'], symbol.dir)
 
 -- openFile()
 file = os.openFile('test/assets/file.txt', .read)
 info = file.stat()
-t.eq(info['type'], .file)
+t.eq(info['type'], symbol.file)
 
 -- free() / malloc()
 var ptr = os.malloc(16)
@@ -135,11 +135,11 @@ while iter.next() -> n:
 t.eq(entries.len(), 3)
 entries.sort((a, b) => a['name'].less(b['name']))
 t.eq(entries[0]['name'], 'dir2')
-t.eq(entries[0]['type'], .dir)
+t.eq(entries[0]['type'], symbol.dir)
 t.eq(entries[1]['name'], 'file.txt')
-t.eq(entries[1]['type'], .file)
+t.eq(entries[1]['type'], symbol.file)
 t.eq(entries[2]['name'], 'file2.txt')
-t.eq(entries[2]['type'], .file)
+t.eq(entries[2]['type'], symbol.file)
 
 -- Dir.walk()
 dir = os.openDir('test/assets/dir', true)

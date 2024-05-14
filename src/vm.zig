@@ -1514,7 +1514,7 @@ pub const VM = struct {
             },
             bt.Symbol => {
                 const litId = val.asSymbolId();
-                try std.fmt.format(w, ".{s}", .{self.getSymbolName(litId)});
+                try std.fmt.format(w, "symbol.{s}", .{self.getSymbolName(litId)});
                 return;
             },
             bt.Integer => {

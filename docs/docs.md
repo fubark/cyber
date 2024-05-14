@@ -274,7 +274,7 @@ There are `28` general keywords. This list categorizes them:
 - [Type embedding](#type-embedding): `use`
 - [Metaprogramming](#metaprogramming): `template`
 - [Error Handling](#error-handling): `try` `catch` `throw`
-- [Modules](#modules): `use` `module`
+- [Modules](#modules): `use` `mod`
 - [Dynamic Typing](#dynamic-typing): `let`
 
 ### Contextual keywords.
@@ -1832,7 +1832,7 @@ In the example above, the function `foo` is called with 4 arguments. The first a
 * [Symbol visibility.](#symbol-visibility)
 * [Symbol alias.](#symbol-alias)
 * [Builtin modules.](#builtin-modules)
-* [`module core`](#module-core)
+* [`mod core`](#mod-core)
   * [`type bool`](#type-bool)
   * [`type error`](#type-error)
   * [`type int`](#type-int)
@@ -1852,11 +1852,11 @@ In the example above, the function `foo` is called with 4 arguments. The first a
 
 </td><td valign="top">
 
-* [`module cy`](#module-cy)
-* [`module math`](#module-math)
+* [`mod cy`](#mod-cy)
+* [`mod math`](#mod-math)
 * [Std modules.](#std-modules)
-* [`module cli`](#module-cli)
-* [`module os`](#module-os)
+* [`mod cli`](#mod-cli)
+* [`mod os`](#mod-os)
   * [`type File`](#type-file)
   * [`type Dir`](#type-dir)
   * [`type DirIterator`](#type-diriterator)
@@ -1866,7 +1866,7 @@ In the example above, the function `foo` is called with 4 arguments. The first a
   * [`Map DirEntry`](#map-direntry)
   * [`Map DirWalkEntry`](#map-dirwalkentry)
   * [`Table ArgOption`](#table-argoption)
-* [`module test`](#module-test)
+* [`mod test`](#mod-test)
 </td>
 </tr></table>
 
@@ -2008,11 +2008,11 @@ use Vec2 -> eng.Vector2
 
 ## Builtin modules.
 Builtin modules are the bare minimum that comes with Cyber. The [embeddable library](#embedding) contains these modules and nothing more. They include:
-- [core](#module-core): Commonly used utilities.
-- [cy](#module-cy): Cyber related functions.
-- [math](#module-math): Math constants and functions.
+- [core](#mod-core): Commonly used utilities.
+- [cy](#mod-cy): Cyber related functions.
+- [math](#mod-math): Math constants and functions.
 
-## `module core`
+## `mod core`
 The `core` module contains functions related to Cyber and common utilities. It is automatically imported into each script's namespace. 
 
 Sample usage:
@@ -2027,7 +2027,7 @@ print typeof('my str').id()
 <!-- core.start -->
 <!-- core.end -->
 
-## `module cy`
+## `mod cy`
 The `cy` module contains functions related to the Cyber language. 
 
 Sample usage:
@@ -2041,7 +2041,7 @@ print cy.toCyon([1, 2, 3])
 <!-- cy.start -->
 <!-- cy.end -->
 
-## `module math`
+## `mod math`
 The math module contains commonly used math constants and functions.
 
 Sample usage:
@@ -2059,11 +2059,11 @@ print(math.pi * r^2)
 
 ## Std modules.
 Std modules come with Cyber's CLI. They include:
-- [cli](#module-cli): Related to the command line.
-- [os](#module-os): System level functions.
-- [test](#module-test): Utilities for testing.
+- [cli](#mod-cli): Related to the command line.
+- [os](#mod-os): System level functions.
+- [test](#mod-test): Utilities for testing.
 
-## `module cli`
+## `mod cli`
 The `cli` module contains functions related to the command line.
 
 Sample usage:
@@ -2077,7 +2077,7 @@ cli.repl()
 <!-- cli.start -->
 <!-- cli.end -->
 
-## `module os`
+## `mod os`
 Cyber's os module contains system level functions. It's still undecided as to how much should be included here so it's incomplete. You can still access os and libc functions yourself using Cyber's FFI or embedding API.
 
 Sample usage:
@@ -2113,7 +2113,7 @@ for map -> [k, v]:
 | `'type' -> metatype(String | float | boolean)` | Parse as given value type. |
 | `'default' -> any` | Optional: Default value if option is missing. `none` is used if this is not provided. |
 
-## `module test`
+## `mod test`
 The `test` module contains utilities for testing.
 
 Sample usage:

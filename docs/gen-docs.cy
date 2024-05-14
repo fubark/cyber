@@ -91,7 +91,7 @@ hljs.registerLanguage('cy', function() {
     return {
     keywords: {
         keyword: [
-            'template', 'func', 'module', 'for', 'coinit', 'coresume', 'coyield', 'use',
+            'template', 'func', 'mod', 'for', 'coinit', 'coresume', 'coyield', 'use',
             'return', 'if', 'else', 'as', 'while', 'var', 'let', 'dynobject', 'object', 'struct', 'with', 'caught',
             'break', 'continue', 'switch', 'pass', 'or', 'and', 'not', 'is', 'error', 'throws',
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case'
@@ -400,8 +400,8 @@ func genDocsModules():
     -- var md = os.readFile("$(curDir)/../modules.md")
     var md = os.readFile("$(curDir)/docs.md")
 
-    for modules -> mod:
-        var src = os.readFile("$(curDir)/$(mod.path)")
+    for modules -> m:
+        var src = os.readFile("$(curDir)/$(m.path)")
         var decls = cy.parse(src)['decls']
         var gen = "\n"
         for decls -> decl:
@@ -434,9 +434,9 @@ func genDocsModules():
                 gen = gen + "> `func $(decl['header']['name'])($(paramsStr)) $(decl['header']['ret'])`\n>\n>$(docLine)\n\n"
 
         -- Replace section in modules.md.
-        var needle = "<!-- $(mod.section).start -->"
+        var needle = "<!-- $(m.section).start -->"
         var startIdx = md.find(needle).? + needle.len()
-        var endIdx = md.find("<!-- $(mod.section).end -->").?
+        var endIdx = md.find("<!-- $(m.section).end -->").?
         md = md[0..startIdx] + gen + md[endIdx..]
 
     os.writeFile("$(curDir)/docs-modules.md", md)

@@ -3927,7 +3927,7 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .dec, .dot, .dot_question, .dot_dot,
         .else_k, .enum_k, .err, .error_k, .equal, .equal_right_angle,
         .false_k, .float, .for_k, .func_k,
-        .hex, .ident, .if_k, .module_k, .indent,
+        .hex, .ident, .if_k, .mod_k, .indent,
         .left_brace, .left_bracket, .left_paren, .let_k,
         .minus_double_dot, .new_line, .none_k, .not_k, .object_k, .oct, .pass_k, .placeholder, .pound, .question,
         .return_k, .right_brace, .right_bracket, .right_paren, .rune, .raw_string,

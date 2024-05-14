@@ -562,6 +562,7 @@ fn performChunkInitSema(self: *Compiler, c: *cy.Chunk) !void {
     c.parser.ast.setNodeData(header, .{ .funcHeader = .{
         .name = name,
         .paramHead = cy.NullNode,
+        .nparams = 0,
     }});
     c.parser.ast.setNodeData(decl, .{ .func = .{
         .header = @intCast(header),

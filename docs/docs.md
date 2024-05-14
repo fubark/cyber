@@ -423,7 +423,7 @@ The following shows the zero values of builtin or created types:
 |`#host type S`|`S.$zero()`|
 |`dynamic`|`int(0)`|
 |`any`|`int(0)`|
-|`?S`|`Option(S).none`|
+|`?S`|`Option[S].none`|
 
 ## Type casting.
 The `as` keyword can be used to cast a value to a specific type. Casting lets the compiler know what the expected type is and does not perform any conversions.
@@ -1011,7 +1011,7 @@ type Info:
 When a field is omitted in the record literal, it gets initialized to its [zero value](#zero-values):
 ```cy
 var node Node = {value: 234}
-print node.next       -- Prints "Option.none"
+print node.next    --> Option.none
 
 type Student:
     name String
@@ -1019,9 +1019,9 @@ type Student:
     gpa  float
 
 var s = Student{}
-print s.name       -- Prints ""
-print s.age        -- Prints "0"
-print s.gpa        -- Prints "0.0"
+print s.name       -->
+print s.age        --> 0
+print s.gpa        --> 0.0
 ```
 
 ### Circular references.
@@ -1260,7 +1260,7 @@ else:
 A choice can be accessed by specifying the access operator `.!` before the tagged member name. This will either return the payload or panic at runtime: *Planned Feature*
 ```cy
 var s = Shape{line: 20}
-print s.!line     -- Prints '20'
+print s.!line     --> 20
 ```
 
 ## Optionals.
@@ -1268,14 +1268,14 @@ Optionals provide **Null Safety** by forcing values to be unwrapped before they 
 
 The generic `Option` type is a choice type that either holds a `none` value or contains `some` value. The option template is defined as:
 ```cy
-template(T type)
+template[T type]
 type Option enum:
     case none
     case some #T
 ```
 A type prefixed with `?` is the idiomatic way to create an option type. The following String optional types are equivalent:
 ```cy
-Option(String)
+Option[String]
 ?String
 ```
 
@@ -1319,7 +1319,7 @@ var v = opt ?else:
 ```
 
 ### Optional chaining.
-Given the last member's type `T` in a chain of `?.` access operators, the chain's execution will either return `Option(T).none` on the first encounter of `none` or returns the last member as an `Option(T).some`: *Planned Feature*
+Given the last member's type `T` in a chain of `?.` access operators, the chain's execution will either return `Option[T].none` on the first encounter of `none` or returns the last member as an `Option[T].some`: *Planned Feature*
 ```cy
 print root?.a?.b?.c?.last
 ```
@@ -1404,7 +1404,7 @@ var b Vec2 = a as Vec2
 ## Generic types.
 Templates are used to specialize type declarations. Since template parameters only exist at compile-time, the `#` prefix is used to reference them in the template body:
 ```cy
-template(T type)
+template[T type]
 type MyContainer:
     id    int
     value #T
@@ -1418,7 +1418,7 @@ When the template is invoked with compile-time argument(s), a specialized versio
 
 In this example, `String` can be used as an argument since it satisfies the `type` parameter constraint:
 ```cy
-var a MyContainer(String) = {id: 123, value: 'abc'}
+var a MyContainer[String] = {id: 123, value: 'abc'}
 print a.get()      -- Prints 'abc'
 ```
 Note that invoking the template again with the same argument(s) returns the same generated type. In other words, the generated type is always memoized from the input parameters.
@@ -1818,7 +1818,7 @@ In the example above, the function `foo` is called with 4 arguments. The first a
 ## Generic functions.
 Templates are used to specialize function declarations. Since template parameters only exist at compile-time, the `#` prefix is used to reference them in the function declaration:
 ```cy
-template(T type)
+template[T type]
 func add(a #T, b #T) #T:
     return a + b
 ```
@@ -1826,14 +1826,14 @@ func add(a #T, b #T) #T:
 ### Expand function template.
 When the template is invoked with compile-time argument(s), a specialized version of the function is generated:
 ```cy
-print add(int)(1, 2)    --> 3
-print add(float)(1, 2)  --> 3.0
+print add[int](1, 2)    --> 3
+print add[float](1, 2)  --> 3.0
 ```
 Note that invoking the template again with the same argument(s) returns the same generated function. In other words, the generated function is always memoized from the input parameters.
 
 ### Infer template function.
 When invoking template functions, it is possible to infer the template parameters from the call arguments.
-In the following example, `add(int)` and `add(float)` are inferred from the function calls: *Planned Feature*
+In the following example, `add[int]` and `add[float]` are inferred from the function calls:
 ```cy
 print add(1, 2)      --> 3
 print add(1.0, 2.0)  --> 3.0

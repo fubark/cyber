@@ -312,11 +312,12 @@ const NodeData = union {
         bodyHead: cy.Nullable(u24),
         sig_t: FuncSigType,
     },
-    funcHeader: struct {
+    funcHeader: packed struct {
         /// Can be NullNode for lambdas.
         name: cy.Nullable(NodeId),
         /// Params.
-        paramHead: cy.Nullable(NodeId),
+        paramHead: cy.Nullable(u24),
+        nparams: u8,
     },
     funcParam: struct {
         name: NodeId,
@@ -984,7 +985,7 @@ pub const Encoder = struct {
                 try w.writeAll("func ");
                 try self.write(w, header.data.funcHeader.name);
                 try w.writeAll("(");
-                var paramId = header.data.funcHeader.paramHead;
+                var paramId: cy.NodeId = header.data.funcHeader.paramHead;
                 if (paramId != cy.NullNode) {
                     try self.write(w, paramId);
                     paramId = self.ast.node(paramId).next();

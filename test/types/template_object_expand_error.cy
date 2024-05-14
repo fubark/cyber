@@ -1,13 +1,13 @@
-template(T type)
+template[T type]
 type Foo:
     a #T
 
-var f = Foo(String, int){a: 'abc'}
+var f = Foo[String, int]{a: 'abc'}
 
 --cytest: error
---CompileError: Expected template signature `Foo(type) type`.
+--CompileError: Expected template signature `Foo[type]`.
 --
---main:5:9:
---var f = Foo(String, int){a: 'abc'}
---        ^
+--main:5:12:
+--var f = Foo[String, int]{a: 'abc'}
+--           ^
 --

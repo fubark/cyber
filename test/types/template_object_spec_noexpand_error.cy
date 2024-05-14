@@ -1,4 +1,4 @@
-template(T type)
+template[T type]
 type Foo:
     a #T
 

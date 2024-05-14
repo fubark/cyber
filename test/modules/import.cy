@@ -61,7 +61,7 @@ t.eq(v.x, 3.0)
 t.eq(v.y, 4.0)
 
 -- Templates from another module.
-var b a.TFoo(int) = {a: 123}
+var b a.TFoo[int] = {a: 123}
 t.eq(b.a, 123)
 
 --cytest: pass

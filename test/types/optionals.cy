@@ -1,13 +1,13 @@
 use test
 
 -- Wrap some, implicitly.
-var a Option(int) = 123
+var a Option[int] = 123
 test.eq(a == none, false)
 test.eq(a != none, true)
 test.eq(a.?, 123)
 
 -- Wrap some, explicitly.
-var a2 = Option(int).some(123)
+var a2 = Option[int].some(123)
 test.eq(a2.?, 123)
 
 -- Shorthand. Wrap literal.
@@ -31,7 +31,7 @@ test.eq(b == none, true)
 test.eq(b != none, false)
 
 -- Wrap none, explicitly.
-var b2 = Option(Foo).none
+var b2 = Option[Foo].none
 test.eq(b2 == none, true)
 
 -- Unwrap or default.

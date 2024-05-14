@@ -17,7 +17,7 @@ test.eq(v.y, 2.0)
 
 -- Type template.
 use TFoo -> a.TFoo
-var o = TFoo(int){a: 555}
+var o = TFoo[int]{a: 555}
 test.eq(o.a, 555)
 
 --cytest: pass

@@ -45,11 +45,12 @@ pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, argHea
 
     return expandTemplate(c, template, args, argTypes) catch |err| {
         if (err == error.IncompatSig) {
-            const expSig = try c.sema.allocFuncSigStr(template.sigId, true);
-            defer c.alloc.free(expSig);
+            const sig = c.sema.getFuncSig(template.sigId);
+            const params_s = try c.sema.allocFuncParamsStr(sig.params());
+            defer c.alloc.free(params_s);
             return c.reportErrorFmt(
-                \\Expected template signature `{}{}`.
-            , &.{v(template.head.name()), v(expSig)}, nodeId);
+                \\Expected template signature `{}[{}]`.
+            , &.{v(template.head.name()), v(params_s)}, nodeId);
         } else {
             return err;
         }

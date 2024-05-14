@@ -10,7 +10,7 @@
 -type Foo3 Foo
 
 -- Type template
--template(T type)
+-template[T type]
 type Foo4:
     a int
  

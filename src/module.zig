@@ -182,7 +182,7 @@ pub const ChunkExt = struct {
     }
 
     pub fn declareTemplate(c: *cy.Chunk, parent: *cy.Sym, name: []const u8,
-        sigId: cy.sema.FuncSigId, params: []const cy.sym.TemplateParam, kind: cy.sym.SymType,
+        sigId: cy.sema.FuncSigId, params: []cy.sym.TemplateParam, kind: cy.sym.SymType,
         child_decl: cy.NodeId, declId: cy.NodeId) !*cy.sym.Template {
 
         const sym = try c.createTemplate(parent, name, sigId, params, kind, child_decl);

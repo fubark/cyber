@@ -419,7 +419,7 @@ type metatype:
 #host type Box
 #host type TccState
 
-template(T type)
+template[T type]
 type Option enum:
     case none
     case some #T 

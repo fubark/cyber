@@ -334,7 +334,8 @@ pub const Parser = struct {
         const header = try self.ast.pushNode(self.alloc, .funcHeader, ret);
         self.ast.setNodeData(header, .{ .funcHeader = .{
             .name = cy.NullNode,
-            .paramHead = params.head,
+            .paramHead = @intCast(params.head),
+            .nparams = @intCast(params.len),
         }});
 
         self.ast.setNodeData(id, .{ .func = .{
@@ -361,7 +362,8 @@ pub const Parser = struct {
         const header = try self.ast.pushNode(self.alloc, .funcHeader, ret);
         self.ast.setNodeData(header, .{ .funcHeader = .{
             .name = cy.NullNode,
-            .paramHead = params.head,
+            .paramHead = @intCast(params.head),
+            .nparams = @intCast(params.len),
         }});
 
         self.ast.setNodeData(id, .{ .func = .{
@@ -396,7 +398,8 @@ pub const Parser = struct {
             const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
             self.ast.setNodeData(header, .{ .funcHeader = .{
                 .name = cy.NullNode,
-                .paramHead = params.head,
+                .paramHead = @intCast(params.head),
+                .nparams = @intCast(params.len),
             }});
             
             self.ast.setNodeData(id, .{ .func = .{
@@ -423,7 +426,8 @@ pub const Parser = struct {
         const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
         self.ast.setNodeData(header, .{ .funcHeader = .{
             .name = cy.NullNode,
-            .paramHead = params.head,
+            .paramHead = @intCast(params.head),
+            .nparams = @intCast(params.len)
         }});
 
         self.ast.setNodeData(id, .{ .func = .{
@@ -446,7 +450,7 @@ pub const Parser = struct {
             return self.reportError("Expected open parenthesis.", &.{});
         }
         self.advance();
-        return self.parseFuncParams(true);
+        return self.parseFuncParams(true, false);
     }
 
     fn genDynFuncParam(self: *Parser, ident: cy.NodeId) !cy.NodeId {
@@ -514,9 +518,10 @@ pub const Parser = struct {
 
     /// Assumes token at first param ident or right paren.
     /// Let sema check whether param types are required since it depends on the context.
-    fn parseFuncParams(self: *Parser, typed: bool) !ListResult {
+    fn parseFuncParams(self: *Parser, typed: bool, comptime template: bool) !ListResult {
+        const CloseDelim: cy.TokenType = if (template) .right_bracket else .right_paren;
         var token = self.peek();
-        if (token.tag() == .right_paren) {
+        if (token.tag() == CloseDelim) {
             self.advance();
             return ListResult{
                 .head = cy.NullNode,
@@ -559,11 +564,11 @@ pub const Parser = struct {
                 .comma => {
                     self.advance();
                 },
-                .right_paren => {
+                CloseDelim => {
                     self.advance();
                     break;
                 },
-                else => return self.reportError("Expected `,` or `)`.", &.{}),
+                else => return self.reportError("Expected `,`.", &.{}),
             }
 
             token = self.peek();
@@ -716,7 +721,12 @@ pub const Parser = struct {
         // Assumes first token is the `template` keyword.
         self.advance();
 
-        const params = try self.parseParenAndFuncParams();
+        if (self.peek().tag() != .left_bracket) {
+            return self.reportError("Expected open bracket.", &.{});
+        }
+        self.advance();
+        const params = try self.parseFuncParams(true, true);
+
         self.consumeWhitespaceTokens();
 
         const id = try self.pushNode(.template, start);
@@ -1181,7 +1191,8 @@ pub const Parser = struct {
             const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
             self.ast.setNodeData(header, .{ .funcHeader = .{
                 .name = name,
-                .paramHead = params.head,
+                .paramHead = @intCast(params.head),
+                .nparams = @intCast(params.len),
             }});
             self.ast.nodePtr(header).head.data = .{ .funcHeader = .{ .modHead = @intCast(config.attr_head) }};
 
@@ -1205,7 +1216,8 @@ pub const Parser = struct {
             const header = try self.ast.pushNode(self.alloc, .funcHeader, ret orelse cy.NullNode);
             self.ast.setNodeData(header, .{ .funcHeader = .{
                 .name = name,
-                .paramHead = params.head,
+                .paramHead = @intCast(params.head),
+                .nparams = @intCast(params.len),
             }});
             self.ast.nodePtr(header).head.data = .{ .funcHeader = .{ .modHead = @intCast(config.attr_head) }};
 
@@ -2950,7 +2962,7 @@ pub const Parser = struct {
                     break :b group;
                 } else if (token.tag() == .comma) {
                     self.advance();
-                    var res = try self.parseFuncParams(false);
+                    var res = try self.parseFuncParams(false, false);
                     const param = try self.genDynFuncParam(expr_id);
                     self.ast.setNextNode(param, res.head);
                     res.head = param;
@@ -3360,7 +3372,7 @@ pub const Parser = struct {
                     return self.parseExprWithLeft(start, term, .{});
                 } else if (self.peek().tag() == .comma) {
                     self.advance();
-                    var res = try self.parseFuncParams(false);
+                    var res = try self.parseFuncParams(false, false);
                     const param = try self.genDynFuncParam(expr);
                     self.ast.setNextNode(param, res.head);
                     res.head = param;
@@ -3407,7 +3419,7 @@ pub const Parser = struct {
             self.advance();
             
             // Parse as untyped function.
-            const params = try self.parseFuncParams(false);
+            const params = try self.parseFuncParams(false, false);
             if (self.peek().tag() != .colon) {
                 return self.reportError("Expected colon.", &.{});
             }
@@ -3421,7 +3433,8 @@ pub const Parser = struct {
             const header = try self.ast.pushNode(self.alloc, .funcHeader, ret);
             self.ast.setNodeData(header, .{ .funcHeader = .{
                 .name = name,
-                .paramHead = params.head,
+                .paramHead = @intCast(params.head),
+                .nparams = @intCast(params.len),
             }});
             self.ast.nodePtr(header).head.data = .{ .funcHeader = .{ .modHead = @intCast(attr_head) }};
 

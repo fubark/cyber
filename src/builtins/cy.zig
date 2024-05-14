@@ -69,7 +69,7 @@ fn genNodeValue(vm: *cy.VM, ast: cy.ast.AstView, nodeId: cy.NodeId) !cy.Value {
             try vm.mapSet(map, try vm.retainOrAllocAstring("name"), try vm.allocString(name));
 
             const params = try vm.allocEmptyList();
-            var paramId = node.data.funcHeader.paramHead;
+            var paramId: cy.NodeId = node.data.funcHeader.paramHead;
             while (paramId != cy.NullNode) {
                 const param = try genNodeValue(vm, ast, paramId);
                 try params.asHeapObject().list.append(vm.alloc, param);

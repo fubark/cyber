@@ -589,7 +589,10 @@ pub const Template = struct {
     kind: SymType,
 
     /// Owned.
-    params: []const TemplateParam,
+    params: []TemplateParam,
+
+    /// Whether template params can be inferred from function params.
+    can_infer_params: bool,
 
     /// Template args to variant. Keys are not owned.
     variantCache: std.HashMapUnmanaged([]const cy.Value, u32, VariantKeyContext, 80),
@@ -599,11 +602,23 @@ pub const Template = struct {
     pub fn chunk(self: *const Template) *cy.Chunk {
         return self.head.parent.?.getMod().?.chunk;
     }
+
+    pub fn indexOfParam(self: *Template, name: []const u8) ?u32 {
+        for (self.params, 0..) |param, i| {
+            if (std.mem.eql(u8, name, param.name)) {
+                return @intCast(i);
+            }
+        }
+        return null;
+    }
 };
 
 pub const TemplateParam = struct {
     name: []const u8,
     type: cy.TypeId,
+
+    // For function templates, this maps to a function param that can infer this `type` param.
+    infer_from_func_param: u8,
 };
 
 pub const Variant = struct {
@@ -1034,7 +1049,7 @@ pub const ChunkExt = struct {
     }
 
     pub fn createTemplate(c: *cy.Chunk, parent: *Sym, name: []const u8,
-        sigId: cy.sema.FuncSigId, params: []const TemplateParam, kind: SymType,
+        sigId: cy.sema.FuncSigId, params: []TemplateParam, kind: SymType,
         child_decl: cy.NodeId) !*Template {
         const sym = try createSym(c.alloc, .template, .{
             .head = Sym.init(.template, parent, name),
@@ -1042,6 +1057,7 @@ pub const ChunkExt = struct {
             .child_decl = child_decl,
             .params = params,
             .sigId = sigId,
+            .can_infer_params = false,
             .variants = .{},
             .variantCache = .{},
         });

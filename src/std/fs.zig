@@ -15,7 +15,7 @@ pub var DirIterT: cy.TypeId = undefined;
 pub const File = extern struct {
     readBuf: [*]u8,
     /// Can be up to 8 bytes on windows, otherwise 4 bytes.
-    fd: if (cy.hasStdFiles) std.os.fd_t else u32,
+    fd: if (cy.hasStdFiles) std.posix.fd_t else u32,
     curPos: u32,
     readBufCap: u32,
     readBufEnd: u32,
@@ -27,8 +27,6 @@ pub const File = extern struct {
     pub fn getStdFile(self: *const File) std.fs.File {
         return std.fs.File{
             .handle = self.fd,
-            .capable_io_mode = .blocking,
-            .intended_io_mode = .blocking,
         };
     }
 
@@ -64,21 +62,13 @@ pub fn dirFinalizer(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) void {
 pub const Dir = extern struct {
     /// Padding to make Dir.fd match the offset of File.fd.
     padding: usize = 0,
-    fd: if (cy.hasStdFiles) std.os.fd_t else u32,
+    fd: if (cy.hasStdFiles) std.posix.fd_t else u32,
     iterable: bool,
     closed: bool,
 
     pub fn getStdDir(self: *const Dir) std.fs.Dir {
         return std.fs.Dir{
             .fd = self.fd,
-        };
-    }
-
-    pub fn getStdIterableDir(self: *const Dir) std.fs.IterableDir {
-        return std.fs.IterableDir{
-            .dir = std.fs.Dir{
-                .fd = self.fd,
-            },
         };
     }
 
@@ -95,7 +85,7 @@ pub fn dirIterFinalizer(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) void {
     if (cy.hasStdFiles) {
         var dir: *DirIterator = @ptrCast(@alignCast(obj));
         if (dir.recursive) {
-            const walker = cy.ptrAlignCast(*std.fs.IterableDir.Walker, &dir.inner.walker);
+            const walker = cy.ptrAlignCast(*std.fs.Dir.Walker, &dir.inner.walker);
             walker.deinit();   
         }
     }
@@ -112,14 +102,14 @@ pub fn dirIterGetChildren(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) C.ValueSlice
 pub const DirIterator = extern struct {
     dir: Value, // `Dir` object.
     inner: extern union {
-        iter: if (cy.hasStdFiles) [@sizeOf(std.fs.IterableDir.Iterator)]u8 else void,
-        walker: if (cy.hasStdFiles) [@sizeOf(std.fs.IterableDir.Walker)]u8 else void,
+        iter: if (cy.hasStdFiles) [@sizeOf(std.fs.Dir.Iterator)]u8 else void,
+        walker: if (cy.hasStdFiles) [@sizeOf(std.fs.Dir.Walker)]u8 else void,
     },
     /// If `recursive` is true, `walker` is used.
     recursive: bool,
 };
 
-pub fn allocFile(vm: *cy.VM, fd: if (cy.hasStdFiles) std.os.fd_t else u32) !Value {
+pub fn allocFile(vm: *cy.VM, fd: if (cy.hasStdFiles) std.posix.fd_t else u32) !Value {
     const file: *File = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, FileT, @sizeOf(File))));
     file.* = .{
         .fd = fd,
@@ -135,7 +125,7 @@ pub fn allocFile(vm: *cy.VM, fd: if (cy.hasStdFiles) std.os.fd_t else u32) !Valu
     return Value.initHostNoCycPtr(file);
 }
 
-pub fn allocDir(vm: *cy.VM, fd: std.os.fd_t, iterable: bool) !Value {
+pub fn allocDir(vm: *cy.VM, fd: std.posix.fd_t, iterable: bool) !Value {
     const dir: *Dir = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, DirT, @sizeOf(Dir))));
     dir.* = .{
         .fd = fd,
@@ -154,11 +144,11 @@ pub fn allocDirIterator(vm: *cy.VM, dirv: Value, recursive: bool) !Value {
     };
     const dir = dirv.castHostObject(*Dir);
     if (recursive) {
-        const walker = cy.ptrAlignCast(*std.fs.IterableDir.Walker, &dirIter.inner.walker);
-        walker.* = try dir.getStdIterableDir().walk(vm.alloc);
+        const walker = cy.ptrAlignCast(*std.fs.Dir.Walker, &dirIter.inner.walker);
+        walker.* = try dir.getStdDir().walk(vm.alloc);
     } else {
-        const iter = cy.ptrAlignCast(*std.fs.IterableDir.Iterator, &dirIter.inner.iter);
-        iter.* = dir.getStdIterableDir().iterate();
+        const iter = cy.ptrAlignCast(*std.fs.Dir.Iterator, &dirIter.inner.iter);
+        iter.* = dir.getStdDir().iterate();
     }
     return Value.initHostNoCycPtr(dirIter);
 }
@@ -307,7 +297,7 @@ pub fn fileWrite(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
         return rt.prepThrowError(vm, .Closed);
     }
 
-    var buf = try vm.getOrBufPrintValueRawStr(&cy.tempBuf, args[1]);
+    const buf = try vm.getOrBufPrintValueRawStr(&cy.tempBuf, args[1]);
     const file = fileo.getStdFile();
     const numWritten = try file.write(buf);
     return Value.initInt(@intCast(numWritten));
@@ -499,7 +489,7 @@ pub fn dirIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 
     const iter = args[0].castHostObject(*DirIterator);
     if (iter.recursive) {
-        const walker = cy.ptrAlignCast(*std.fs.IterableDir.Walker, &iter.inner.walker);
+        const walker = cy.ptrAlignCast(*std.fs.Dir.Walker, &iter.inner.walker);
         const entryOpt = try walker.next();
         if (entryOpt) |entry| {
             const mapv = try vm.allocEmptyMap();
@@ -531,7 +521,7 @@ pub fn dirIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
             return MapNone(vm);
         }
     } else {
-        const stdIter = cy.ptrAlignCast(*std.fs.IterableDir.Iterator, &iter.inner.iter);
+        const stdIter = cy.ptrAlignCast(*std.fs.Dir.Iterator, &iter.inner.iter);
         const entryOpt = try stdIter.next();
         if (entryOpt) |entry| {
             const mapv = try vm.allocEmptyMap();

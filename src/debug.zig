@@ -80,7 +80,7 @@ pub fn dumpObjectTrace(vm: *cy.VM, obj: *cy.HeapObject) !void {
     if (vm.objectTraceMap.get(obj)) |trace| {
         if (trace.allocPc != cy.NullId) {
             const msg = try std.fmt.allocPrint(vm.alloc, "{*} at pc: {}({s})", .{
-                obj, trace.allocPc, @tagName(vm.ops[trace.allocPc].opcode()),
+                obj, trace.allocPc, @tagName(vm.c.ops[trace.allocPc].opcode()),
             });
             defer vm.alloc.free(msg);
             try printTraceAtPc(vm, trace.allocPc, "alloced", msg);
@@ -91,7 +91,7 @@ pub fn dumpObjectTrace(vm: *cy.VM, obj: *cy.HeapObject) !void {
         if (trace.freePc != cy.NullId) {
             const msg = try std.fmt.allocPrint(vm.alloc, "{}({s}) at pc: {}({s})", .{
                 trace.freeTypeId, vm.getTypeName(trace.freeTypeId),
-                trace.freePc, @tagName(vm.ops[trace.freePc].opcode()),
+                trace.freePc, @tagName(vm.c.ops[trace.freePc].opcode()),
             });
             defer vm.alloc.free(msg);
             try printTraceAtPc(vm, trace.freePc, "freed", msg);
@@ -123,7 +123,7 @@ pub fn printTraceAtPc(vm: *cy.VM, pc: u32, title: []const u8, msg: []const u8) !
         try printUserError(vm, title, msg, sym.file, node.srcPos);
     } else {
         rt.errFmt(vm, "{}: {}\nMissing debug sym for {}, pc: {}.\n", &.{
-            v(title), v(msg), v(vm.ops[pc].opcode()), v(pc)});
+            v(title), v(msg), v(vm.c.ops[pc].opcode()), v(pc)});
     }
 }
 
@@ -138,7 +138,7 @@ pub fn printLastUserPanicError(vm: *cy.VM) !void {
     if (cc.silent()) {
         return;
     }
-    var w = rt.ErrorWriter{ .c = vm };
+    const w = rt.ErrorWriter{ .c = vm };
     try writeLastUserPanicError(vm, w);
 }
 
@@ -186,7 +186,7 @@ pub fn printUserError(vm: *cy.VM, title: []const u8, msg: []const u8, chunkId: u
     if (cc.silent()) {
         return;
     }
-    var w = rt.ErrorWriter{ .c = vm };
+    const w = rt.ErrorWriter{ .c = vm };
     try writeUserError(vm.compiler, w, title, msg, chunkId, pos);
 }
 
@@ -234,14 +234,14 @@ pub fn writeUserError(c: *const cy.Compiler, w: anytype, title: []const u8, msg:
 }
 
 pub fn allocPanicMsg(vm: *const cy.VM) ![]const u8 {
-    switch (@as(cy.fiber.PanicType, @enumFromInt(vm.curFiber.panicType))) {
+    switch (@as(cy.fiber.PanicType, @enumFromInt(vm.c.curFiber.panicType))) {
         .uncaughtError => {
-            const str = try vm.getOrBufPrintValueStr(&cy.tempBuf, cy.Value{ .val = vm.curFiber.panicPayload });
+            const str = try vm.getOrBufPrintValueStr(&cy.tempBuf, cy.Value{ .val = vm.c.curFiber.panicPayload });
             return try fmt.allocFormat(vm.alloc, "{}", &.{v(str)});
         },
         .msg => {
-            const ptr: usize = @intCast(vm.curFiber.panicPayload & ((1 << 48) - 1));
-            const len: usize = @intCast(vm.curFiber.panicPayload >> 48);
+            const ptr: usize = @intCast(vm.c.curFiber.panicPayload & ((1 << 48) - 1));
+            const len: usize = @intCast(vm.c.curFiber.panicPayload >> 48);
             // Check for zero delimited.
             const str = @as([*]const u8, @ptrFromInt(ptr))[0..len];
             if (str[len-1] == 0) {
@@ -251,14 +251,14 @@ pub fn allocPanicMsg(vm: *const cy.VM) ![]const u8 {
             }
         },
         .staticMsg => {
-            const ptr: usize = @intCast(vm.curFiber.panicPayload & ((1 << 48) - 1));
-            const len: usize = @intCast(vm.curFiber.panicPayload >> 48);
+            const ptr: usize = @intCast(vm.c.curFiber.panicPayload & ((1 << 48) - 1));
+            const len: usize = @intCast(vm.c.curFiber.panicPayload >> 48);
             return vm.alloc.dupe(u8, @as([*]const u8, @ptrFromInt(ptr))[0..len]);
         },
         .inflightOom,
         .nativeThrow,
         .none => {
-            cy.panicFmt("Unexpected panic type. {}", .{vm.curFiber.panicType});
+            cy.panicFmt("Unexpected panic type. {}", .{vm.c.curFiber.panicType});
         },
     }
 }
@@ -475,7 +475,7 @@ const DumpBytecodeOptions = struct {
 /// When `optPcContext` is non null, it will dump a trace at `optPcContext` and the surrounding bytecode with extra details.
 pub fn dumpBytecode(vm: *cy.VM, opts: DumpBytecodeOptions) !void {
     var pcOffset: u32 = 0;
-    var opsLen = vm.compiler.buf.ops.items.len;
+    const opsLen = vm.compiler.buf.ops.items.len;
     var pc = vm.compiler.buf.ops.items.ptr;
     var instIdx: u32 = 0;
     const debugTable = vm.compiler.buf.debugTable.items;

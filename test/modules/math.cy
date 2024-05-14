@@ -14,7 +14,7 @@ t.eqNear(m.sqrt2, 1.41421356)
 t.eq(m.isNaN(m.nan), true)
 t.eq(m.isNaN(1), false)
 t.eq(m.nan == m.nan, true)
-t.eq(m.nan == m.nan + 1, false)
+t.eq(m.nan == m.nan + 1, true)
 
 t.eq(m.abs(1), 1.0)
 t.eq(m.abs(-1), 1.0)

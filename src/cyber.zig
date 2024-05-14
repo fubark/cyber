@@ -55,6 +55,7 @@ pub const hash = @import("hash.zig");
 pub const rt = @import("runtime.zig");
 pub const Context = rt.Context;
 pub const fmt = @import("fmt.zig");
+pub const http = @import("http.zig");
 
 pub const value = @import("value.zig");
 pub const Value = value.Value;
@@ -151,9 +152,9 @@ pub fn Nullable(comptime T: type) type {
 }
 
 pub const ZHostFuncFn = *const fn (*VM, [*]const Value, u8) Value;
-pub fn hostFuncEntry(name: []const u8, func: ZHostFuncFn) c.HostFuncEntry {
+pub fn hostFuncEntry(name: []const u8, func: ZHostFuncFn) C.HostFuncEntry {
     return .{
-        .name = c.toStr(name),
+        .name = C.toStr(name),
         .func = @ptrCast(func),
     };
 }
@@ -179,16 +180,16 @@ pub inline fn fatal() noreturn {
     panic("error");
 }
 
-pub fn fromTestBackend(backend: @TypeOf(build_options.testBackend)) c.Backend {
+pub fn fromTestBackend(backend: @TypeOf(build_options.testBackend)) C.Backend {
     return switch (backend) {
-        .jit => c.BackendJIT,
-        .vm => c.BackendVM,
-        .tcc => c.BackendTCC,
-        .cc => c.BackendCC,
+        .jit => C.BackendJIT,
+        .vm => C.BackendVM,
+        .tcc => C.BackendTCC,
+        .cc => C.BackendCC,
     };
 }
 
-pub const c = @import("capi.zig");
-pub fn isAot(backend: c.Backend) bool {
-    return backend == c.BackendTCC or backend == c.BackendCC or backend == c.BackendLLVM;
+pub const C = @import("capi.zig");
+pub fn isAot(backend: C.Backend) bool {
+    return backend == C.BackendTCC or backend == C.BackendCC or backend == C.BackendLLVM;
 }

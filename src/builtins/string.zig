@@ -335,7 +335,7 @@ pub fn sliceAt(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const obj = args[0].asHeapObject();
     const str = obj.string.getSlice();
     const stype = obj.string.getType();
-    var idx = args[1].asInteger();
+    const idx = args[1].asInteger();
 
     if (idx < 0 or idx >= str.len) {
         return error.OutOfBounds;
@@ -470,7 +470,7 @@ pub fn repeat(vm: *cy.VM, args: [*]const Value, _: u8) Value {
         return rt.prepThrowError(vm, .InvalidArgument);
     }
 
-    var un: u32 = @intCast(n);
+    const un: u32 = @intCast(n);
     const len = un * str.len;
     if (un > 1 and len > 0) {
         var new: *cy.HeapObject = undefined;
@@ -488,7 +488,7 @@ pub fn repeat(vm: *cy.VM, args: [*]const Value, _: u8) Value {
         var i: u32 = 0;
         var dst: u32 = 0;
         while (i < un) : (i += 1) {
-            std.mem.copy(u8, buf[dst..dst + str.len], str);
+            @memcpy(buf[dst..dst + str.len], str);
             dst += @intCast(str.len);
         }
 

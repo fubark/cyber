@@ -5,10 +5,11 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 const zeroInit = std.mem.zeroInit;
 
-const cy = @import("../src/cyber.zig");
-const cli = @import("../src/cli.zig");
+const all = @import("all");
+const cy = all.cy;
+const cli = all.cli;
 const log = cy.log.scoped(.behavior_test);
-const c = @import("../src/capi.zig");
+const c = cy.C;
 const setup = @import("setup.zig");
 const eval = setup.eval;
 const compile = setup.compile;
@@ -691,11 +692,11 @@ fn case2(config: ?Config, path: []const u8) !void {
         fconfig.ctx = &ctx;
         try eval(fconfig, contents
         , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-            var ctx_: *Context = @ptrCast(@alignCast(run.ctx));
+            const ctx_: *Context = @ptrCast(@alignCast(run.ctx));
             try run.expectErrorReport2(res, ctx_.exp);
         }}.func);
     } else if (std.mem.eql(u8, test_t, "pass")) {
-        var fconfig: Config = config orelse .{};
+        const fconfig: Config = config orelse .{};
         try evalPass(fconfig, contents);
     } else {
         return error.UnsupportedTestType;

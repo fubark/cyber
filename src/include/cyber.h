@@ -344,6 +344,7 @@ CLStr clGetFullVersion(void);
 CLStr clGetVersion(void);
 CLStr clGetBuild(void);
 CLStr clGetCommit(void);
+CLStr clResultName(CLResultCode code);
 extern CLLogFn clLog;
 
 // -----------------------------------
@@ -416,7 +417,7 @@ void clReportApiError(CLVM* vm, CLStr msg);
 void* clGetUserData(CLVM* vm);
 void clSetUserData(CLVM* vm, void* userData);
 
-CLStr clResultName(CLResultCode code);
+void* clSetNewMockHttp(CLVM* vm);
 
 // Verbose flag. In a debug build, this would print more logs.
 extern bool clVerbose;

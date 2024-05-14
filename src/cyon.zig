@@ -662,7 +662,7 @@ const TestTableItem = struct {
 };
 
 test "encode" {
-    var root = TestRoot{
+    const root = TestRoot{
         .name = "project",
         .list = &.{
             .{ .field = 1 },

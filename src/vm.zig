@@ -30,20 +30,73 @@ const UserVM = cy.UserVM;
 
 const logger = cy.log.scoped(.vm);
 
-pub const VM = struct {
-    alloc: std.mem.Allocator,
-
+const VMC = extern struct {
     /// Program counter. Pointer to the current instruction data in `ops`.
     pc: [*]cy.Inst,
+
     /// Current stack frame ptr.
     framePtr: [*]Value,
 
     /// Value stack.
-    stack: []Value,
+    stack: [*]Value,
+    stack_len: usize,
     stackEndPtr: [*]const Value,
 
-    ops: []cy.Inst,
-    consts: []const Value,
+    ops: [*]cy.Inst,
+    ops_len: usize,
+
+    consts: [*]const Value,
+    consts_len: usize,
+
+    curFiber: *cy.Fiber,
+    mainFiber: cy.Fiber,
+
+    fieldSyms: [*]rt.FieldSymbolMap,
+    fieldSyms_cap: usize,
+    fieldSyms_len: usize,
+
+    /// Static vars. 
+    varSyms: [*]rt.VarSym,
+    varSyms_cap: usize,
+    varSyms_len: usize,
+
+    tryStack: [*]vmc.TryFrame,
+    tryStack_cap: usize,
+    tryStack_len: usize,
+
+    /// Types.
+    types: [*]const types.Type,
+    types_len: usize,
+
+    refCounts: if (cy.TrackGlobalRC) usize else void,
+
+    trace: if (cy.Trace) *vmc.TraceInfo else void,
+
+    /// In debug mode, always save the current pc so tracing can be obtained.
+    /// debugPc == NullId indicates execution has not started.
+    debugPc: if (cy.Trace) u32 else void,
+
+    pub fn getTryStack(self: *VMC) *cy.List(vmc.TryFrame) {
+        return @ptrCast(&self.tryStack);
+    }
+
+    pub fn getVarSyms(self: *VMC) *cy.List(rt.VarSym) {
+        return @ptrCast(&self.varSyms);
+    }
+
+    pub fn getFieldSyms(self: *VMC) *cy.List(rt.FieldSymbolMap) {
+        return @ptrCast(&self.fieldSyms);
+    }
+
+    pub fn getStack(self: *VMC) []Value {
+        return @as(*[]Value, @ptrCast(&self.stack)).*;
+    }
+};
+
+pub const VM = struct {
+    alloc: std.mem.Allocator,
+
+    c: VMC,
 
     /// Holds unique heap string interns (*Astring, *Ustring).
     /// By default, small strings (at most 64 bytes) are interned.
@@ -58,10 +111,6 @@ pub const VM = struct {
     /// GC: Contains the head to the first cyclable object.
     /// Always contains one dummy node to avoid null checking.
     cyclableHead: if (cy.hasGC) *cy.heap.DListNode else void,
-
-    tryStack: cy.List(vmc.TryFrame),
-
-    refCounts: if (cy.TrackGlobalRC) usize else void,
 
     /// Cached buckets used to lookup object methods.
     /// If the `MethodEntry.mru_type` matches, `mru_id` stored in MethodEntry is used first.
@@ -81,16 +130,9 @@ pub const VM = struct {
     /// Contiguous func ids. The first element in a segment contains the num of overloaded funcs for the func sym.
     overloaded_funcs: cy.List(u32),
 
-    /// Static vars. 
-    varSyms: cy.List(rt.VarSym),
-
     /// Struct fields symbol table.
-    fieldSyms: cy.List(rt.FieldSymbolMap),
     fieldTable: std.HashMapUnmanaged(rt.FieldTableKey, FieldEntry, cy.hash.KeyU64Context, 80),
     fieldSymSignatures: std.StringHashMapUnmanaged(rt.FieldId),
-
-    /// Types.
-    types: []const types.Type,
 
     /// Stores insts that were modified to restore them later.
     inlineSaves: std.AutoHashMapUnmanaged(u32, [*]const u8),
@@ -117,14 +159,9 @@ pub const VM = struct {
     unwindTempRegs: []const u8,
     unwindTempPrevIndexes: []const u32,
 
-    curFiber: *cy.Fiber,
-    mainFiber: cy.Fiber,
-
     /// Records a minimal trace when walking the stack.
     /// Stack frames are then constructed from them.
     compactTrace: cy.List(vmc.CompactFrame),
-
-    trace: if (cy.Trace) *vmc.TraceInfo else void,
 
     compiler: *cy.Compiler,
     sema: *cy.sema.Sema,
@@ -138,10 +175,6 @@ pub const VM = struct {
 
     /// Object to pc of instruction that allocated it.
     objectTraceMap: if (cy.Trace) std.AutoHashMapUnmanaged(*HeapObject, debug.ObjectTrace) else void,
-
-    /// In debug mode, always save the current pc so tracing can be obtained.
-    /// debugPc == NullId indicates execution has not started.
-    debugPc: if (cy.Trace) u32 else void,
 
     /// Interface used for imports and fetch.
     httpClient: http.HttpClient,
@@ -182,23 +215,43 @@ pub const VM = struct {
             .alloc = alloc,
             .compiler = undefined,
             .sema = undefined,
-            .ops = undefined,
-            .consts = undefined,
             .emptyString = undefined,
             .emptyArray = undefined,
             .strInterns = .{},
             .staticObjects = .{},
-            .stack = &.{},
-            .stackEndPtr = undefined,
             .names = .{},
             .nameMap = .{},
             .heapPages = .{},
             .heapFreeHead = null,
             .heapFreeTail = if (cy.Trace) null else undefined,
             .cyclableHead = if (cy.hasGC) @ptrCast(&dummyCyclableHead) else {},
-            .pc = undefined,
-            .framePtr = undefined,
-            .tryStack = .{},
+            .c = .{
+                .pc = undefined,
+                .framePtr = undefined,
+                .stack = undefined,
+                .stack_len = 0,
+                .ops = undefined,
+                .ops_len = 0,
+                .consts = undefined,
+                .consts_len = 0,
+                .stackEndPtr = undefined,
+                .varSyms = undefined,
+                .varSyms_cap = 0,
+                .varSyms_len = 0,
+                .fieldSyms = undefined,
+                .fieldSyms_cap = 0,
+                .fieldSyms_len = 0,
+                .tryStack = undefined,
+                .tryStack_len = 0,
+                .tryStack_cap = 0,
+                .types = undefined,
+                .types_len = 0,
+                .trace = undefined,
+                .refCounts = if (cy.TrackGlobalRC) 0 else undefined,
+                .mainFiber = undefined,
+                .curFiber = undefined,
+                .debugPc = if (cy.Trace) cy.NullId else undefined,
+            },
             .methods = .{},
             .method_map = .{},
             .method_names = .{},
@@ -207,29 +260,21 @@ pub const VM = struct {
             .funcSyms = .{},
             .funcSymDetails = .{},
             .overloaded_funcs = .{},
-            .varSyms = .{},
-            .fieldSyms = .{},
             .fieldTable = .{},
             .fieldSymSignatures = .{},
-            .types = &.{},
             .syms = .{},
             .symSignatures = .{},
             .inlineSaves = .{},
-            .trace = undefined,
             .u8Buf = .{},
             .stackTrace = .{},
             .debugTable = undefined,
             .debugTempIndexTable = undefined,
             .unwindTempRegs = undefined,
             .unwindTempPrevIndexes = undefined,
-            .refCounts = if (cy.TrackGlobalRC) 0 else undefined,
             .compactTrace = .{},
-            .mainFiber = undefined,
-            .curFiber = undefined,
             .endLocal = undefined,
             .objectTraceMap = if (cy.Trace) .{} else undefined,
             // Initialize to NullId to indicate vm is still in initing.
-            .debugPc = if (cy.Trace) cy.NullId else undefined,
             .deinited = false,
             .deinitedRtObjects = false,
             .config = undefined,
@@ -248,8 +293,8 @@ pub const VM = struct {
             .num_cont_evals = 0,
             .last_bc_len = 0,
         };
-        self.mainFiber.panicType = vmc.PANIC_NONE;
-        self.curFiber = &self.mainFiber;
+        self.c.mainFiber.panicType = vmc.PANIC_NONE;
+        self.c.curFiber = &self.c.mainFiber;
         self.compiler = try self.alloc.create(cy.Compiler);
         self.sema = &self.compiler.sema;
         try self.compiler.init(self);
@@ -261,7 +306,7 @@ pub const VM = struct {
         }
 
         if (cy.Trace) {
-            self.trace = try alloc.create(vmc.TraceInfo);
+            self.c.trace = try alloc.create(vmc.TraceInfo);
         }
 
         // Perform decently sized allocation for hot data paths since the allocator
@@ -274,7 +319,7 @@ pub const VM = struct {
         try self.method_map.ensureTotalCapacity(self.alloc, 200);
         std.debug.assert(cy.utils.getHashMapMemSize(rt.MethodKey, vmc.MethodId, self.method_map.capacity()) < 4096);
 
-        try self.fieldSyms.ensureTotalCapacityPrecise(alloc, 170);
+        try self.c.getFieldSyms().ensureTotalCapacityPrecise(alloc, 170);
 
         // Initialize heap.
         const list = try cy.heap.growHeapPages(self, 1);
@@ -290,11 +335,11 @@ pub const VM = struct {
         }
 
         logger.tracev("release varSyms", .{});
-        for (self.varSyms.items(), 0..) |vsym, i| {
+        for (self.c.getVarSyms().items(), 0..) |vsym, i| {
             logger.tracevIf(cy.logMemory, "release varSym: {s}", .{self.varSymExtras.buf[i].name()});
             release(self, vsym.value);
         }
-        self.varSyms.clearRetainingCapacity();
+        self.c.getVarSyms().clearRetainingCapacity();
 
         // Release static strings.
         logger.tracev("release static objects {}", .{self.staticObjects.len});
@@ -314,7 +359,7 @@ pub const VM = struct {
             return;
         }
 
-        cy.fiber.freeFiberPanic(self, &self.mainFiber);
+        cy.fiber.freeFiberPanic(self, &self.c.mainFiber);
 
         // Deinit runtime related resources first, since they may depend on
         // compiled/debug resources.
@@ -331,15 +376,15 @@ pub const VM = struct {
         if (reset) {
             // `stack` is kept with previous size.
         } else {
-            self.alloc.free(self.stack);
-            self.stack = &.{};
+            self.alloc.free(self.c.getStack());
+            self.c.stack_len = 0;
         }
 
         if (reset) {
-            self.tryStack.clearRetainingCapacity();
+            self.c.getTryStack().clearRetainingCapacity();
             self.compactTrace.clearRetainingCapacity();
         } else {
-            self.tryStack.deinit(self.alloc);
+            self.c.getTryStack().deinit(self.alloc);
             self.compactTrace.deinit(self.alloc);
         }
 
@@ -368,17 +413,17 @@ pub const VM = struct {
         }
 
         if (reset) {
-            self.varSyms.clearRetainingCapacity();
+            self.c.getVarSyms().clearRetainingCapacity();
         } else {
-            self.varSyms.deinit(self.alloc);
+            self.c.getVarSyms().deinit(self.alloc);
         }
 
         if (reset) {
-            self.fieldSyms.clearRetainingCapacity();
+            self.c.getFieldSyms().clearRetainingCapacity();
             self.fieldTable.clearRetainingCapacity();
             self.fieldSymSignatures.clearRetainingCapacity();
         } else {
-            self.fieldSyms.deinit(self.alloc);
+            self.c.getFieldSyms().deinit(self.alloc);
             self.fieldTable.deinit(self.alloc);
             self.fieldSymSignatures.deinit(self.alloc);
         }
@@ -392,7 +437,7 @@ pub const VM = struct {
             self.heapPages.deinit(self.alloc);
         }
 
-        self.types = &.{};
+        self.c.types_len = 0;
 
         for (self.syms.items()) |sym| {
             if (sym.nameOwned) {
@@ -421,7 +466,7 @@ pub const VM = struct {
                 self.objectTraceMap.clearRetainingCapacity();
             } else {
                 self.objectTraceMap.deinit(self.alloc);
-                self.alloc.destroy(self.trace);
+                self.alloc.destroy(self.c.trace);
             }
         }
 
@@ -526,16 +571,16 @@ pub const VM = struct {
 
             const jitRes = res.jit.buf;
             try cy.fiber.stackEnsureTotalCapacity(self, res.jit.mainStackSize);
-            self.framePtr = @ptrCast(self.stack.ptr);
+            self.c.framePtr = @ptrCast(self.c.stack);
 
             // Mark code executable.
             const PROT_READ = 1;
             const PROT_WRITE = 2;
             const PROT_EXEC = 4;
-            try std.os.mprotect(jitRes.buf.items.ptr[0..jitRes.buf.capacity], PROT_READ | PROT_EXEC);
+            try std.posix.mprotect(jitRes.buf.items.ptr[0..jitRes.buf.capacity], PROT_READ | PROT_EXEC);
             
             // Memory must be reset to original setting in order to be freed.
-            defer std.os.mprotect(jitRes.buf.items.ptr[0..jitRes.buf.capacity], PROT_WRITE) catch cy.fatal();
+            defer std.posix.mprotect(jitRes.buf.items.ptr[0..jitRes.buf.capacity], PROT_WRITE) catch cy.fatal();
 
             if (jitRes.buf.items.len > 500*4) {
                 logger.tracev("jit code (size: {}) {}...", .{jitRes.buf.items.len, std.fmt.fmtSliceHexLower(jitRes.buf.items[0..100*4])});
@@ -548,7 +593,7 @@ pub const VM = struct {
 
             const main: *const fn(*VM, [*]Value) callconv(.C) void = @ptrCast(@alignCast(jitRes.buf.items.ptr + jitRes.mainPc));
             // @breakpoint();
-            main(self, self.framePtr);
+            main(self, self.c.framePtr);
             return Value.initInt(0);
         } else if (config.backend == cc.BackendVM) {
             if (cc.verbose()) {
@@ -557,18 +602,18 @@ pub const VM = struct {
 
             if (cy.Trace) {
                 var i: u32 = 0;
-                while (i < self.trace.opCounts.len) : (i += 1) {
-                    self.trace.opCounts[i] = .{
+                while (i < self.c.trace.opCounts.len) : (i += 1) {
+                    self.c.trace.opCounts[i] = .{
                         .code = i,
                         .count = 0,
                     };
                 }
-                self.trace.totalOpCounts = 0;
-                self.trace.numReleases = 0;
-                self.trace.numReleaseAttempts = 0;
-                self.trace.numRetains = 0;
-                self.trace.numRetainAttempts = 0;
-                self.trace.numCycFrees = 0;
+                self.c.trace.totalOpCounts = 0;
+                self.c.trace.numReleases = 0;
+                self.c.trace.numReleaseAttempts = 0;
+                self.c.trace.numRetains = 0;
+                self.c.trace.numRetainAttempts = 0;
+                self.c.trace.numCycFrees = 0;
             }
 
             tt = cy.debug.timer();
@@ -592,7 +637,7 @@ pub const VM = struct {
                     return error.Panic;
                 }
             } else {
-                const exeRes = try std.ChildProcess.exec(.{
+                const exeRes = try std.ChildProcess.run(.{
                     .allocator = self.alloc,
                     .argv = &.{res.aot.exePath},
                 });
@@ -613,24 +658,24 @@ pub const VM = struct {
                 return a.count > b.count;
             }
         };
-        std.debug.print("total ops evaled: {}\n", .{self.trace.totalOpCounts});
-        std.sort.pdq(vmc.OpCount, &self.trace.opCounts, {}, S.opCountLess);
+        std.debug.print("total ops evaled: {}\n", .{self.c.trace.totalOpCounts});
+        std.sort.pdq(vmc.OpCount, &self.c.trace.opCounts, {}, S.opCountLess);
         var i: u32 = 0;
 
         while (i < vmc.NumCodes) : (i += 1) {
-            if (self.trace.opCounts[i].count > 0) {
-                const op = std.meta.intToEnum(cy.OpCode, self.trace.opCounts[i].code) catch continue;
-                std.debug.print("\t{s} {}\n", .{@tagName(op), self.trace.opCounts[i].count});
+            if (self.c.trace.opCounts[i].count > 0) {
+                const op = std.meta.intToEnum(cy.OpCode, self.c.trace.opCounts[i].code) catch continue;
+                std.debug.print("\t{s} {}\n", .{@tagName(op), self.c.trace.opCounts[i].count});
             }
         }
     }
 
     pub fn dumpInfo(self: *VM) !void {
-        fmt.printStderr("stack size: {}\n", &.{v(self.stack.len)});
-        fmt.printStderr("stack framePtr: {}\n", &.{v(getStackOffset(self, self.framePtr))});
+        fmt.printStderr("stack size: {}\n", &.{v(self.c.stack_len)});
+        fmt.printStderr("stack framePtr: {}\n", &.{v(getStackOffset(self, self.c.framePtr))});
         fmt.printStderr("heap pages: {}\n", &.{v(self.heapPages.len)});
         if (cy.TrackGlobalRC) {
-            fmt.printStderr("global rc: {}\n", &.{v(self.refCounts)});
+            fmt.printStderr("global rc: {}\n", &.{v(self.c.refCounts)});
         }
 
         // Dump func symbols.
@@ -656,8 +701,8 @@ pub const VM = struct {
 
     pub fn getFiberContext(vm: *const cy.VM) cy.fiber.PcSpOff {
         return .{
-            .pc = cy.fiber.getInstOffset(vm.ops.ptr, vm.pc),
-            .sp = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr),
+            .pc = cy.fiber.getInstOffset(vm.c.ops, vm.c.pc),
+            .sp = cy.fiber.getStackOffset(vm.c.stack, vm.c.framePtr),
         };
     }
 
@@ -706,8 +751,8 @@ pub const VM = struct {
             return error.NoEndOp;
         }
 
-        cy.fiber.freeFiberPanic(self, &self.mainFiber);
-        self.curFiber.panicType = vmc.PANIC_NONE;
+        cy.fiber.freeFiberPanic(self, &self.c.mainFiber);
+        self.c.curFiber.panicType = vmc.PANIC_NONE;
         self.debugTable = buf.debugTable.items;
         self.debugTempIndexTable = buf.debugTempIndexTable.items;
         self.unwindTempRegs = buf.unwindTempRegs.items;
@@ -715,21 +760,24 @@ pub const VM = struct {
 
         // Set these last to hint location to cache before eval.
         if (self.num_cont_evals > 0) {
-            self.pc = @ptrCast(&buf.ops.items[self.last_bc_len]);
+            self.c.pc = @ptrCast(&buf.ops.items[self.last_bc_len]);
         } else {
-            self.pc = @ptrCast(buf.ops.items.ptr);
+            self.c.pc = @ptrCast(buf.ops.items.ptr);
         }
         try cy.fiber.stackEnsureTotalCapacity(self, buf.mainStackSize);
-        self.framePtr = @ptrCast(self.stack.ptr);
+        self.c.framePtr = @ptrCast(self.c.stack);
 
-        self.ops = buf.ops.items;
-        self.consts = buf.mconsts;
-        self.types = self.compiler.sema.types.items;
+        self.c.ops = buf.ops.items.ptr;
+        self.c.ops_len = buf.ops.items.len;
+        self.c.consts = buf.mconsts.ptr;
+        self.c.consts_len = buf.mconsts.len;
+        self.c.types = self.compiler.sema.types.items.ptr;
+        self.c.types_len = self.compiler.sema.types.items.len;
 
         defer {
             self.num_cont_evals += 1;
             self.num_evals += 1;
-            self.last_bc_len = @intCast(self.ops.len);
+            self.last_bc_len = @intCast(self.c.ops_len);
         }
         try @call(.never_inline, evalLoopGrowStack, .{self, true});
         logger.tracev("main stack size: {}", .{buf.mainStackSize});
@@ -737,33 +785,33 @@ pub const VM = struct {
         if (self.endLocal == 255) {
             return Value.Void;
         } else {
-            return self.stack[self.endLocal];
+            return self.c.stack[self.endLocal];
         }
     }
 
     /// Assumes `vm.pc` is at a call inst before entering host code.
     fn getNewCallFuncRet(vm: *VM) u8 {
-        const fp = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
-        if (fp == 0 or cy.fiber.isVmFrame(vm, vm.stack, fp)) {
+        const fp = cy.fiber.getStackOffset(vm.c.stack, vm.c.framePtr);
+        if (fp == 0 or cy.fiber.isVmFrame(vm, vm.c.getStack(), fp)) {
             // Vm frame. Obtain current stack top from looking at the current inst.
-            switch (vm.pc[0].opcode()) {
+            switch (vm.c.pc[0].opcode()) {
                 .callSym,
                 .callNativeFuncIC,
                 .call,
                 .callObjNativeFuncIC,
                 .callObjSym => {
-                    const ret = vm.pc[1];
-                    const numArgs = vm.pc[2];
+                    const ret = vm.c.pc[1];
+                    const numArgs = vm.c.pc[2];
                     return ret.val + CallArgStart + numArgs.val;
                 },
                 .fieldDyn => {
-                    return vm.pc[8].val;
+                    return vm.c.pc[8].val;
                 },
                 .setFieldDyn => {
-                    return vm.pc[10].val;
+                    return vm.c.pc[10].val;
                 },
                 else => {
-                    cy.panicFmt("TODO: getNewCallFuncFp {}", .{vm.pc[0].opcode()});
+                    cy.panicFmt("TODO: getNewCallFuncFp {}", .{vm.c.pc[0].opcode()});
                 }
             }
         } else {
@@ -777,45 +825,45 @@ pub const VM = struct {
     };
 
     pub fn callFunc(vm: *VM, func: Value, args: []const Value, config: CallFuncConfig) !Value {
-        const fpOff = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
+        const fpOff = cy.fiber.getStackOffset(vm.c.stack, vm.c.framePtr);
         const ret = vm.getNewCallFuncRet();
 
-        const pc = vm.pc;
+        const pc = vm.c.pc;
 
         // Since the compiler isn't aware of a re-entry call, it can not predetermine the stack size required
         // for the arguments.
         try cy.fiber.ensureTotalStackCapacity(vm, fpOff + ret + CallArgStart + args.len);
         // Should the stack grow, update pointer.
-        vm.framePtr = vm.stack.ptr + fpOff;
+        vm.c.framePtr = vm.c.stack + fpOff;
 
         var call_ret: u8 = undefined;
         if (config.from_external) {
             // Create a new host frame so that it can be reported.
             const retInfo = buildReturnInfoForRoot(false);
-            const retFramePtr = Value{ .retFramePtr = vm.framePtr };
-            vm.framePtr += ret;
+            const retFramePtr = Value{ .retFramePtr = vm.c.framePtr };
+            vm.c.framePtr += ret;
 
             // Reserve extra slot for info about the call.
-            vm.framePtr[0].val = func.getTypeId();
-            vm.framePtr += 1;
+            vm.c.framePtr[0].val = func.getTypeId();
+            vm.c.framePtr += 1;
 
-            vm.framePtr[1] = retInfo;
+            vm.c.framePtr[1] = retInfo;
             // Return pc points to the call inst that entered host.
-            vm.framePtr[2] = Value{ .retPcPtr = pc };
-            vm.framePtr[3] = retFramePtr;
+            vm.c.framePtr[2] = Value{ .retPcPtr = pc };
+            vm.c.framePtr[3] = retFramePtr;
             call_ret = 4;
         } else {
             call_ret = ret;
         }
 
         // Copy callee + args to a new blank frame.
-        vm.framePtr[call_ret + CalleeStart] = func;
-        @memcpy(vm.framePtr[call_ret+CallArgStart..call_ret+CallArgStart+args.len], args);
+        vm.c.framePtr[call_ret + CalleeStart] = func;
+        @memcpy(vm.c.framePtr[call_ret+CallArgStart..call_ret+CallArgStart+args.len], args);
 
         // Pass in an arbitrary `pc` to reuse the same `call` used by the VM.
-        const pcsp = try call(vm, vm.pc, vm.framePtr, func, call_ret, @intCast(args.len), false);
-        vm.framePtr = pcsp.sp;
-        vm.pc = pcsp.pc;
+        const pcsp = try call(vm, vm.c.pc, vm.c.framePtr, func, call_ret, @intCast(args.len), false);
+        vm.c.framePtr = pcsp.sp;
+        vm.c.pc = pcsp.pc;
 
         // Only user funcs start eval loop.
         if (!func.isObjectType(bt.HostFunc)) {
@@ -823,7 +871,7 @@ pub const VM = struct {
                 @call(.never_inline, evalLoopGrowStack, .{vm, true}) catch |err| {
                     if (err == error.Panic) {
                         // Dump for now.
-                        const frames = try cy.debug.allocStackTrace(vm, vm.stack, vm.compactTrace.items());
+                        const frames = try cy.debug.allocStackTrace(vm, vm.c.getStack(), vm.compactTrace.items());
                         defer vm.alloc.free(frames);
 
                         const w = cy.fmt.lockStderrWriter();
@@ -849,12 +897,12 @@ pub const VM = struct {
         }
 
         // Restore pc/sp.
-        vm.framePtr = vm.stack.ptr + fpOff;
-        vm.pc = pc;
+        vm.c.framePtr = vm.c.stack + fpOff;
+        vm.c.pc = pc;
         if (config.from_external) {
-            return vm.framePtr[ret + 1 + 4];
+            return vm.c.framePtr[ret + 1 + 4];
         } else {
-            return vm.framePtr[ret];
+            return vm.c.framePtr[ret];
         }
     }
 
@@ -887,7 +935,8 @@ pub const VM = struct {
         };
 
         // Update vm types view.
-        self.types = c.sema.types.items;
+        self.c.types = c.sema.types.items.ptr;
+        self.c.types_len = c.sema.types.items.len;
         return sym.type;
     }
 
@@ -940,8 +989,8 @@ pub const VM = struct {
         const nameId = try rt.ensureNameSym(self, name);
         const res = try self.fieldSymSignatures.getOrPut(self.alloc, name);
         if (!res.found_existing) {
-            const id: u32 = @intCast(self.fieldSyms.len);
-            try self.fieldSyms.append(self.alloc, .{
+            const id: u32 = @intCast(self.c.fieldSyms_len);
+            try self.c.getFieldSyms().append(self.alloc, .{
                 .mruTypeId = cy.NullId,
                 .mruOffset = undefined,
                 .mruFieldTypeSymId = undefined,
@@ -974,7 +1023,7 @@ pub const VM = struct {
     }
 
     pub fn addFieldSym(self: *VM, sid: cy.TypeId, fieldId: u32, offset: u16, typeSymId: types.TypeId) !void {
-        const sym = &self.fieldSyms.buf[fieldId];
+        const sym = &self.c.fieldSyms[fieldId];
         if (sym.mruTypeId != cy.NullId) {
             // Add prev mru if it doesn't exist in hashmap.
             const prev = rt.FieldTableKey.initFieldTableKey(sym.mruTypeId, fieldId);
@@ -1044,23 +1093,23 @@ pub const VM = struct {
     }
 
     pub fn interruptThrowSymbol(self: *VM, sym: bindings.Symbol) error{Panic} {
-        self.curFiber.panicPayload = Value.initErrorSymbol(@intFromEnum(sym)).val;
-        self.curFiber.panicType = vmc.PANIC_NATIVE_THROW;
+        self.c.curFiber.panicPayload = Value.initErrorSymbol(@intFromEnum(sym)).val;
+        self.c.curFiber.panicType = vmc.PANIC_NATIVE_THROW;
         return error.Panic;
     }
 
     pub fn panicWithUncaughtError(self: *VM, err: Value) error{Panic} {
         @setCold(true);
-        self.curFiber.panicPayload = err.val;
-        self.curFiber.panicType = vmc.PANIC_UNCAUGHT_ERROR;
+        self.c.curFiber.panicPayload = err.val;
+        self.c.curFiber.panicType = vmc.PANIC_UNCAUGHT_ERROR;
         return error.Panic;
     }
 
     fn panic(self: *VM, msg: []const u8) error{Panic, OutOfMemory} {
         @setCold(true);
         const dupe = try self.alloc.dupe(u8, msg);
-        self.curFiber.panicPayload = @as(u64, @intFromPtr(dupe.ptr)) | (@as(u64, dupe.len) << 48);
-        self.curFiber.panicType = vmc.PANIC_MSG;
+        self.c.curFiber.panicPayload = @as(u64, @intFromPtr(dupe.ptr)) | (@as(u64, dupe.len) << 48);
+        self.c.curFiber.panicType = vmc.PANIC_MSG;
         logger.tracev("{s}", .{dupe});
         return error.Panic;
     }
@@ -1069,14 +1118,14 @@ pub const VM = struct {
         @setCold(true);
         const msg = fmt.allocFormat(self.alloc, format, args) catch |err| {
             if (err == error.OutOfMemory) {
-                self.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
+                self.c.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
                 return error.Panic;
             } else {
                 cy.panic("unexpected");
             }
         };
-        self.curFiber.panicPayload = @as(u64, @intFromPtr(msg.ptr)) | (@as(u64, msg.len) << 48);
-        self.curFiber.panicType = vmc.PANIC_MSG;
+        self.c.curFiber.panicPayload = @as(u64, @intFromPtr(msg.ptr)) | (@as(u64, msg.len) << 48);
+        self.c.curFiber.panicType = vmc.PANIC_MSG;
         logger.tracev("{s}", .{msg});
         return error.Panic;
     }
@@ -1084,7 +1133,7 @@ pub const VM = struct {
     fn setField(self: *VM, recv: Value, fieldId: SymbolId, val: Value) !void {
         if (recv.isPointer()) {
             const obj = recv.asHeapObject();
-            const symMap = &self.fieldSyms.buf[fieldId];
+            const symMap = &self.c.fieldSyms.buf[fieldId];
 
             if (obj.getTypeId() == symMap.mruTypeId) {
                 obj.object.getValuePtr(symMap.mruOffset).* = val;
@@ -1116,7 +1165,7 @@ pub const VM = struct {
     pub fn getFieldOffsetFromTable(self: *VM, typeId: cy.TypeId, symId: SymbolId) u8 {
         const key = rt.FieldTableKey.initFieldTableKey(typeId, symId);
         if (self.fieldTable.get(key)) |res| {
-            const sym = &self.fieldSyms.buf[symId];
+            const sym = &self.c.fieldSyms[symId];
             sym.mruTypeId = typeId;
             sym.mruOffset = res.offset;
             sym.mruFieldTypeSymId = res.typeId;
@@ -1127,7 +1176,7 @@ pub const VM = struct {
     }
 
     pub fn getFieldOffset(self: *VM, obj: *HeapObject, symId: SymbolId) u8 {
-        const symMap = self.fieldSyms.buf[symId];
+        const symMap = self.c.fieldSyms[symId];
         if (obj.getTypeId() == symMap.mruTypeId) {
             return @intCast(symMap.mruOffset);
         } else {
@@ -1159,7 +1208,7 @@ pub const VM = struct {
             if (offset != cy.NullU8) {
                 return obj.object.getValue(offset);
             } else {
-                const sym = self.fieldSyms.buf[symId];
+                const sym = self.c.fieldSyms.buf[symId];
                 return self.getFieldFallback(obj, sym.nameId);
             }
         } else {
@@ -1174,7 +1223,7 @@ pub const VM = struct {
             if (offset != cy.NullU8) {
                 return obj.object.getValue(offset);
             } else {
-                const sym = self.fieldSyms.buf[symId];
+                const sym = self.c.fieldSyms[symId];
                 return self.getFieldFallback(obj, sym.nameId);
             }
         } else {
@@ -1185,7 +1234,7 @@ pub const VM = struct {
     fn setFieldFallback(self: *VM, obj: *HeapObject, nameId: vmc.NameId, val: cy.Value) !void {
         const name = rt.getName(self, nameId);
         const rec_t = obj.getTypeId();
-        if (!self.types[rec_t].has_set_method) {
+        if (!self.c.types[rec_t].has_set_method) {
             _ = self.prepPanic("Missing field in object.");
             return error.Panic;
         }
@@ -1208,7 +1257,7 @@ pub const VM = struct {
     fn getFieldFallback(self: *VM, obj: *HeapObject, nameId: vmc.NameId) !Value {
         const name = rt.getName(self, nameId);
         const rec_t = obj.getTypeId();
-        if (!self.types[rec_t].has_get_method) {
+        if (!self.c.types[rec_t].has_get_method) {
             return self.prepPanic("Missing field in object.");
         }
 
@@ -1246,8 +1295,8 @@ pub const VM = struct {
                 .host_func => {
                     const newFramePtr = fp + ret;
 
-                    self.pc = pc;
-                    self.framePtr = fp;
+                    self.c.pc = pc;
+                    self.c.framePtr = fp;
                     const res: Value = @bitCast(func.data.host_func.?(@ptrCast(self), @ptrCast(newFramePtr + CallArgStart), nargs));
                     if (res.isInterrupt()) {
                         return error.Panic;
@@ -1259,7 +1308,7 @@ pub const VM = struct {
                     };
                 },
                 .func => {
-                    if (@intFromPtr(fp + ret + func.data.func.stackSize) >= @intFromPtr(self.stackEndPtr)) {
+                    if (@intFromPtr(fp + ret + func.data.func.stackSize) >= @intFromPtr(self.c.stackEndPtr)) {
                         return error.StackOverflow;
                     }
 
@@ -1291,8 +1340,8 @@ pub const VM = struct {
                 pc[0] = cy.Inst.initOpCode(.callNativeFuncIC);
                 @as(*align(1) u48, @ptrCast(pc + 6)).* = @intCast(@intFromPtr(func.data.host_func));
 
-                self.pc = pc;
-                self.framePtr = framePtr;
+                self.c.pc = pc;
+                self.c.framePtr = framePtr;
 
                 const newFramePtr = framePtr + ret;
                 const res: Value = @bitCast(func.data.host_func.?(@ptrCast(self), @ptrCast(newFramePtr + CallArgStart), numArgs));
@@ -1306,7 +1355,7 @@ pub const VM = struct {
                 };
             },
             .func => {
-                if (@intFromPtr(framePtr + ret + func.data.func.stackSize) >= @intFromPtr(self.stackEndPtr)) {
+                if (@intFromPtr(framePtr + ret + func.data.func.stackSize) >= @intFromPtr(self.c.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
@@ -1461,7 +1510,7 @@ pub const VM = struct {
     /// String is guaranteed to be valid UTF-8.
     pub fn getOrBufPrintValueStr(self: *const VM, buf: []u8, val: Value) ![]const u8 {
         var fbuf = std.io.fixedBufferStream(buf);
-        var w = fbuf.writer();
+        const w = fbuf.writer();
 
         if (val.isString()) {
             return val.asString();
@@ -1473,7 +1522,7 @@ pub const VM = struct {
 
     pub fn getOrBufPrintValueStr2(self: *const VM, buf: []u8, val: Value, out_ascii: *bool) ![]const u8 {
         var fbuf = std.io.fixedBufferStream(buf);
-        var w = fbuf.writer();
+        const w = fbuf.writer();
 
         if (val.isString()) {
             out_ascii.* = val.asHeapObject().string.getType().isAstring();
@@ -1530,7 +1579,7 @@ pub const VM = struct {
 
         if (!val.isPointer()) {
             if (val.isEnum()) {
-                const sym = self.types[typeId].sym;
+                const sym = self.c.types[typeId].sym;
                 const enumv = val.getEnumValue();
                 const name = sym.cast(.enum_t).getValueSym(enumv).head.name();
                 try std.fmt.format(w, "{s}.{s}", .{sym.name(), name});
@@ -1587,8 +1636,8 @@ pub const VM = struct {
     pub fn prepPanic(vm: *VM, msg: []const u8) Value {
         @setCold(true);
         const dupe = vm.alloc.dupe(u8, msg) catch cy.fatal();
-        vm.curFiber.panicPayload = @as(u64, @intCast(@intFromPtr(dupe.ptr))) | (@as(u64, dupe.len) << 48);
-        vm.curFiber.panicType = vmc.PANIC_MSG;
+        vm.c.curFiber.panicPayload = @as(u64, @intCast(@intFromPtr(dupe.ptr))) | (@as(u64, dupe.len) << 48);
+        vm.c.curFiber.panicType = vmc.PANIC_MSG;
         return Value.Interrupt;
     }
 
@@ -1602,7 +1651,7 @@ pub const VM = struct {
     }
 
     pub fn getNewFramePtrOffset(self: *VM, args: [*]const Value, nargs: u8) u32 {
-        return @intCast(cy.fiber.getStackOffset(self.stack.ptr, args + nargs));
+        return @intCast(cy.fiber.getStackOffset(self.c.stack, args + nargs));
     }
 
     pub usingnamespace cy.heap.VmExt;
@@ -1721,7 +1770,7 @@ pub fn panicExpectedFloat(vm: *cy.VM) error{Panic, OutOfMemory} {
 fn panicConvertFloatError(vm: *cy.VM, val: Value) error{Panic, OutOfMemory} {
     @setCold(true);
     const typeId = val.getTypeId();
-    return vm.panicFmt("Cannot convert `{}` to float.", &.{v(vm.types.buf[typeId].name)});
+    return vm.panicFmt("Cannot convert `{}` to float.", &.{v(vm.c.types[typeId].name)});
 }
 
 const SymbolMapType = enum {
@@ -1746,78 +1795,30 @@ test "vm internals." {
     try t.eq(@alignOf(VM), 8);
 
     // Check Zig/C structs.
-
-    // cy.verbose = true;
     // inline for (std.meta.fields(VM)) |field| {
-    //     logger.tracev("{s} {}", .{field.name, @offsetOf(VM, field.name)});
+    //     std.debug.print("{s} {}\n", .{field.name, @offsetOf(VM, field.name)});
     // }
 
-    try t.eq(@offsetOf(VM, "alloc"), @offsetOf(vmc.VM, "alloc"));
-    try t.eq(@offsetOf(VM, "pc"), @offsetOf(vmc.VM, "curPc"));
-    try t.eq(@offsetOf(VM, "framePtr"), @offsetOf(vmc.VM, "curStack"));
-    try t.eq(@offsetOf(VM, "stack"), @offsetOf(vmc.VM, "stackPtr"));
-    try t.eq(@offsetOf(VM, "stackEndPtr"), @offsetOf(vmc.VM, "stackEndPtr"));
-    try t.eq(@offsetOf(VM, "ops"), @offsetOf(vmc.VM, "instPtr"));
-    try t.eq(@offsetOf(VM, "consts"), @offsetOf(vmc.VM, "constPtr"));
-    try t.eq(@offsetOf(VM, "strInterns"), @offsetOf(vmc.VM, "strInterns"));
-    try t.eq(@offsetOf(VM, "heapPages"), @offsetOf(vmc.VM, "heapPages"));
-    try t.eq(@offsetOf(VM, "heapFreeHead"), @offsetOf(vmc.VM, "heapFreeHead"));
-    if (cy.hasGC) {
-        try t.eq(@offsetOf(VM, "cyclableHead"), @offsetOf(vmc.VM, "cyclableHead"));
-    }
-    try t.eq(@offsetOf(VM, "tryStack"), @offsetOf(vmc.VM, "tryStack"));
+    try t.eq(@offsetOf(VMC, "pc"), @offsetOf(vmc.VMC, "curPc"));
+    try t.eq(@offsetOf(VMC, "framePtr"), @offsetOf(vmc.VMC, "curStack"));
+    try t.eq(@offsetOf(VMC, "stack"), @offsetOf(vmc.VMC, "stackPtr"));
+    try t.eq(@offsetOf(VMC, "stackEndPtr"), @offsetOf(vmc.VMC, "stackEndPtr"));
+    try t.eq(@offsetOf(VMC, "ops"), @offsetOf(vmc.VMC, "instPtr"));
+    try t.eq(@offsetOf(VMC, "consts"), @offsetOf(vmc.VMC, "constPtr"));
+    try t.eq(@offsetOf(VMC, "tryStack"), @offsetOf(vmc.VMC, "tryStack"));
     if (cy.TrackGlobalRC) {
-        try t.eq(@offsetOf(VM, "refCounts"), @offsetOf(vmc.VM, "refCounts"));
+        try t.eq(@offsetOf(VMC, "refCounts"), @offsetOf(vmc.VMC, "refCounts"));
     }
-    try t.eq(@offsetOf(VM, "methods"), @offsetOf(vmc.VM, "methods"));
-    try t.eq(@offsetOf(VM, "method_map"), @offsetOf(vmc.VM, "method_map"));
-    try t.eq(@offsetOf(VM, "type_methods"), @offsetOf(vmc.VM, "type_methods"));
-    try t.eq(@offsetOf(VM, "type_method_map"), @offsetOf(vmc.VM, "type_method_map"));
-    try t.eq(@offsetOf(VM, "funcSyms"), @offsetOf(vmc.VM, "funcSyms"));
-    try t.eq(@offsetOf(VM, "funcSymDetails"), @offsetOf(vmc.VM, "funcSymDetails"));
-    try t.eq(@offsetOf(VM, "overloaded_funcs"), @offsetOf(vmc.VM, "overloaded_funcs"));
-    try t.eq(@offsetOf(VM, "varSyms"), @offsetOf(vmc.VM, "varSyms"));
-    try t.eq(@offsetOf(VM, "fieldSyms"), @offsetOf(vmc.VM, "fieldSyms"));
-    try t.eq(@offsetOf(VM, "fieldTable"), @offsetOf(vmc.VM, "fieldTable"));
-    try t.eq(@offsetOf(VM, "fieldSymSignatures"), @offsetOf(vmc.VM, "fieldSymSignatures"));
-    try t.eq(@offsetOf(VM, "inlineSaves"), @offsetOf(vmc.VM, "inlineSaves"));
-    try t.eq(@offsetOf(VM, "syms"), @offsetOf(vmc.VM, "syms"));
-    try t.eq(@offsetOf(VM, "symSignatures"), @offsetOf(vmc.VM, "symSignatures"));
-    try t.eq(@offsetOf(VM, "names"), @offsetOf(vmc.VM, "names"));
-    try t.eq(@offsetOf(VM, "nameMap"), @offsetOf(vmc.VM, "nameMap"));
-    try t.eq(@offsetOf(VM, "u8Buf"), @offsetOf(vmc.VM, "u8Buf"));
-    try t.eq(@offsetOf(VM, "stackTrace"), @offsetOf(vmc.VM, "stackTrace"));
-    try t.eq(@offsetOf(VM, "method_names"), @offsetOf(vmc.VM, "method_names"));
-    try t.eq(@offsetOf(VM, "debugTable"), @offsetOf(vmc.VM, "debugTablePtr"));
-    try t.eq(@offsetOf(VM, "debugTempIndexTable"), @offsetOf(vmc.VM, "debugTempIndexTablePtr"));
-    try t.eq(@offsetOf(VM, "unwindTempRegs"), @offsetOf(vmc.VM, "unwindTempRegsPtr"));
-    try t.eq(@offsetOf(VM, "unwindTempPrevIndexes"), @offsetOf(vmc.VM, "unwindTempPrevIndexesPtr"));
-    try t.eq(@offsetOf(VM, "curFiber"), @offsetOf(vmc.VM, "curFiber"));
-    try t.eq(@offsetOf(VM, "mainFiber"), @offsetOf(vmc.VM, "mainFiber"));
-    try t.eq(@offsetOf(VM, "compactTrace"), @offsetOf(vmc.VM, "compactTrace"));
-    try t.eq(@offsetOf(VM, "compiler"), @offsetOf(vmc.VM, "compiler"));
-    try t.eq(@offsetOf(VM, "userData"), @offsetOf(vmc.VM, "userData"));
-    try t.eq(@offsetOf(VM, "print"), @offsetOf(vmc.VM, "print"));
-    try t.eq(@offsetOf(VM, "print_err"), @offsetOf(vmc.VM, "print_err"));
-    try t.eq(@offsetOf(VM, "httpClient"), @offsetOf(vmc.VM, "httpClient"));
-    try t.eq(@offsetOf(VM, "stdHttpClient"), @offsetOf(vmc.VM, "stdHttpClient"));
-    try t.eq(@offsetOf(VM, "emptyString"), @offsetOf(vmc.VM, "emptyString"));
-    try t.eq(@offsetOf(VM, "emptyArray"), @offsetOf(vmc.VM, "emptyArray"));
-
-    try t.eq(@offsetOf(VM, "varSymExtras"), @offsetOf(vmc.VM, "varSymExtras"));
-    try t.eq(@offsetOf(VM, "endLocal"), @offsetOf(vmc.VM, "endLocal"));
-
+    try t.eq(@offsetOf(VMC, "varSyms"), @offsetOf(vmc.VMC, "varSyms"));
+    try t.eq(@offsetOf(VMC, "fieldSyms"), @offsetOf(vmc.VMC, "fieldSyms"));
+    try t.eq(@offsetOf(VMC, "curFiber"), @offsetOf(vmc.VMC, "curFiber"));
+    try t.eq(@offsetOf(VMC, "mainFiber"), @offsetOf(vmc.VMC, "mainFiber"));
     if (cy.Trace) {
-        try t.eq(@offsetOf(VM, "trace"), @offsetOf(vmc.VM, "trace"));
-        try t.eq(@offsetOf(VM, "objectTraceMap"), @offsetOf(vmc.VM, "objectTraceMap"));
+        try t.eq(@offsetOf(VMC, "trace"), @offsetOf(vmc.VMC, "trace"));
+        try t.eq(@offsetOf(VMC, "debugPc"), @offsetOf(vmc.VMC, "debugPc"));
     }
 
-    try t.eq(@offsetOf(VM, "config"), @offsetOf(vmc.VM, "config"));
-    try t.eq(@offsetOf(VM, "lastExeError"), @offsetOf(vmc.VM, "lastExeError"));
-
-    if (cy.Trace) {
-        try t.eq(@offsetOf(VM, "debugPc"), @offsetOf(vmc.VM, "debugPc"));
-    }
+    try t.eq(@offsetOf(VM, "c"), @offsetOf(vmc.VM, "c"));
 }
 
 pub const SymbolId = u32;
@@ -1826,15 +1827,15 @@ const Root = @This();
 
 /// If successful, execution should continue.
 pub fn handleInterrupt(vm: *VM, rootFp: u32) !void {
-    if (vm.curFiber.panicType == vmc.PANIC_NATIVE_THROW) {
+    if (vm.c.curFiber.panicType == vmc.PANIC_NATIVE_THROW) {
         const res = try @call(.never_inline, cy.fiber.throw, .{
-            vm, rootFp, vm.getFiberContext(), Value.initRaw(vm.curFiber.panicPayload) });
-        vm.pc = vm.ops.ptr + res.pc;
-        vm.framePtr = vm.stack.ptr + res.sp;
+            vm, rootFp, vm.getFiberContext(), Value.initRaw(vm.c.curFiber.panicPayload) });
+        vm.c.pc = vm.c.ops + res.pc;
+        vm.c.framePtr = vm.c.stack + res.sp;
     } else {
         const res = try @call(.never_inline, panicCurFiber, .{ vm });
-        vm.pc = vm.ops.ptr + res.pc;
-        vm.framePtr = vm.stack.ptr + res.sp;
+        vm.c.pc = vm.c.ops + res.pc;
+        vm.c.framePtr = vm.c.stack + res.sp;
     }
 }
 
@@ -1845,24 +1846,10 @@ pub fn evalLoopGrowStack(vm: *VM, handle_panic: bool) error{StackOverflow, OutOf
 
     // Record the start fp offset, so that stack unwinding knows when to stop.
     // This is useful for having nested eval stacks.
-    const startFp = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
+    const startFp = cy.fiber.getStackOffset(vm.c.stack, vm.c.framePtr);
 
     if (comptime build_options.vmEngine == .zig) {
-        while (true) {
-            @call(.always_inline, evalLoop, .{vm}) catch |err| {
-                if (err == error.StackOverflow) {
-                    logger.debug("grow stack", .{});
-                    try @call(.never_inline, cy.fiber.growStackAuto, .{vm});
-                    continue;
-                } else if (err == error.End) {
-                    return;
-                } else if (err == error.Panic) {
-                    try @call(.never_inline, handleInterrupt, .{vm});
-                    continue;
-                } else return err;
-            };
-            return;
-        }
+        return error.Unsupported;
     } else if (comptime build_options.vmEngine == .c) {
         while (true) {
             const res = vmc.execBytecode(@ptrCast(vm));
@@ -1894,16 +1881,16 @@ fn handleExecResult(vm: *VM, res: vmc.ResultCode, fpStart: u32) !void {
     } else if (res == vmc.RES_CODE_UNKNOWN) {
         logger.tracev("Unknown error code.", .{});
         const cont = try @call(.never_inline, panicCurFiber, .{ vm });
-        vm.pc = vm.ops.ptr + cont.pc;
-        vm.framePtr = vm.stack.ptr + cont.sp;
+        vm.c.pc = vm.c.ops + cont.pc;
+        vm.c.framePtr = vm.c.stack + cont.sp;
     }
 }
 
 fn panicCurFiber(vm: *VM) !cy.fiber.PcSpOff {
     var ctx = vm.getFiberContext();
-    ctx = try cy.fiber.unwindStack(vm, vm.stack, ctx);
+    ctx = try cy.fiber.unwindStack(vm, vm.c.getStack(), ctx);
 
-    const frames = try debug.allocStackTrace(vm, vm.stack, vm.compactTrace.items());
+    const frames = try debug.allocStackTrace(vm, vm.c.getStack(), vm.compactTrace.items());
     vm.stackTrace.deinit(vm.alloc);
     vm.stackTrace.frames = frames;
 
@@ -1916,1416 +1903,6 @@ fn panicCurFiber(vm: *VM) !cy.fiber.PcSpOff {
 const GenLabels = builtin.mode != .Debug and !builtin.cpu.arch.isWasm() and false;
 
 const DebugTraceStopAtNumOps: ?u32 = null;
-
-fn evalLoop(vm: *VM) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, End}!void {
-    if (GenLabels) {
-        _ = asm volatile ("LEvalLoop:"::);
-    }
-
-    var pc = vm.pc;
-    var framePtr = vm.framePtr;
-    defer {
-        vm.pc = pc;
-        vm.framePtr = framePtr;
-        if (cy.Trace) {
-            vm.debugPc = getInstOffset(vm, pc);
-        }
-    } 
-
-    while (true) {
-        if (cy.Trace) {
-            const op = pc[0].opcode();
-            vm.trace.opCounts[@intFromEnum(op)].count += 1;
-            vm.trace.totalOpCounts += 1;
-        }
-        if (cy.Trace) {
-            if (cy.verbose) {
-                dumpEvalOp(vm, pc) catch cy.fatal();
-            }
-            vm.debugPc = getInstOffset(vm, pc);
-            if (DebugTraceStopAtNumOps) |target| {
-                if (vm.trace.totalOpCounts == target) {
-                    return vm.panic("DebugTraceStop reached.");
-                }
-            }
-        }
-        if (GenLabels) {
-            // _ = asm volatile ("LOpBase:"::);
-        }
-        switch (pc[0].opcode()) {
-            .none => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpNone:"::);
-                }
-                framePtr[pc[1].val] = Value.None;
-                pc += 2;
-                continue;
-            },
-            .constOp => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpConstOp:"::);
-                }
-                const idx = @as(*align (1) u16, @ptrCast(pc + 1)).*;
-                framePtr[pc[3].val] = Value.initRaw(vm.consts[idx].val);
-                pc += 4;
-                continue;
-            },
-            .constI8 => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpConstI8:"::);
-                }
-                framePtr[pc[2].val] = Value.initInt(@intCast(@as(i8, @bitCast(pc[1].val))));
-                pc += 3;
-                continue;
-            },
-            .release => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpRelease:"::);
-                }
-                release(vm, framePtr[pc[1].val]);
-                pc += 2;
-                continue;
-            },
-            .releaseN => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpReleaseN:"::);
-                }
-                const numLocals = pc[1].val;
-                for (pc[2..2+numLocals]) |local| {
-                    release(vm, framePtr[local.val]);
-                }
-                pc += 2 + numLocals;
-                continue;
-            },
-            .fieldIC => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpFieldIC:"::);
-                }
-                const recv = framePtr[pc[1].val];
-                const dst = pc[2].val;
-                if (recv.isPointer()) {
-                    const obj = recv.asHeapObject();
-                    if (obj.getTypeId() == @as(*align (1) u16, @ptrCast(pc + 5)).*) {
-                        framePtr[dst] = obj.object.getValue(pc[7].val);
-                        pc += 8;
-                        continue;
-                    }
-                } else {
-                    return vm.getFieldMissingSymbolError();
-                }
-                // Deoptimize.
-                pc[0] = cy.Inst.initOpCode(.field);
-                continue;
-            },
-            .copyRetainSrc => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCopyRetainSrc:"::);
-                }
-                const val = framePtr[pc[1].val];
-                framePtr[pc[2].val] = val;
-                retain(vm, val);
-                pc += 3;
-                continue;
-            },
-            .jumpNotCond => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpJumpNotCond:"::);
-                }
-                const cond = framePtr[pc[1].val];
-                const condVal = if (cond.isBool()) b: {
-                    break :b cond.asBool();
-                } else b: {
-                    break :b cond.assumeNotBoolToBool();
-                };
-                if (!condVal) {
-                    pc += @as(*const align(1) u16, @ptrCast(pc + 2)).*;
-                } else {
-                    pc += 4;
-                }
-                continue;
-            },
-            .neg => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpNeg:"::);
-                }
-                const dst = &framePtr[pc[1].val];
-                const val = dst.*;
-                if (val.isFloat()) {
-                    dst.* = Value.initF64(-val.asF64());
-                    pc += 2;
-                    continue;
-                } else {
-                    return @call(.never_inline, panicExpectedFloat, .{vm});
-                }
-            },
-            .compare => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCompare:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                // Can immediately match numbers, objects, primitives.
-                framePtr[pc[3].val] = if (left.val == right.val) Value.True else 
-                    @call(.never_inline, evalCompare, .{vm, left, right});
-                pc += 4;
-                continue;
-            },
-            .compareNot => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCompareNot:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                // Can immediately match numbers, objects, primitives.
-                framePtr[pc[3].val] = if (left.val == right.val) Value.False else 
-                    @call(.never_inline, evalCompareNot, .{vm, left, right});
-                pc += 4;
-                continue;
-            },
-            // .lessNumber => {
-            //     @setRuntimeSafety(debug);
-            //     const left = vm.stack[vm.framePtr + pc[1].val];
-            //     const right = vm.stack[vm.framePtr + pc[2].val];
-            //     const dst = pc[3].val;
-            //     pc += 4;
-            //     vm.stack[vm.framePtr + dst] = Value.initBool(left.asF64() < right.asF64());
-            //     continue;
-            // },
-            .addFloat => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpAddFloat:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothFloats(left, right)) {
-                    framePtr[pc[3].val] = Value.initF64(left.asF64() + right.asF64());
-                    pc += cy.bytecode.CallObjSymInstLen;
-                    continue;
-                } else {
-                    if (pc[4].val == 1) {
-                        deoptimizeBinOp(pc);
-                        continue;
-                    } else {
-                        return @call(.never_inline, panicExpectedFloat, .{vm});
-                    }
-                }
-            },
-            .addInt => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpAddInt:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothIntegers(left, right)) {
-                    framePtr[pc[3].val] = Value.initI32(left.asInteger() + right.asInteger());
-                    pc += cy.bytecode.CallObjSymInstLen;
-                    continue;
-                } else {
-                    if (pc[4].val == 1) {
-                        deoptimizeBinOp(pc);
-                        continue;
-                    } else {
-                        return @call(.never_inline, panicExpectedInteger, .{vm});
-                    }
-                }
-            },
-            .subFloat => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpSubFloat:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothFloats(left, right)) {
-                    framePtr[pc[3].val] = Value.initF64(left.asF64() - right.asF64());
-                    pc += cy.bytecode.CallObjSymInstLen;
-                    continue;
-                } else {
-                    if (pc[4].val == 1) {
-                        deoptimizeBinOp(pc);
-                        continue;
-                    } else {
-                        return @call(.never_inline, panicExpectedFloat, .{vm});
-                    }
-                }
-            },
-            .subInt => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpSubInt:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothIntegers(left, right)) {
-                    framePtr[pc[3].val] = Value.initI32(left.asInteger() - right.asInteger());
-                    pc += cy.bytecode.CallObjSymInstLen;
-                    continue;
-                } else {
-                    if (pc[4].val == 1) {
-                        deoptimizeBinOp(pc);
-                        continue;
-                    } else {
-                        return @call(.never_inline, panicExpectedInteger, .{vm});
-                    }
-                }
-            },
-            .less => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpLess:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothFloats(left, right)) {
-                    framePtr[pc[3].val] = Value.initBool(left.asF64() < right.asF64());
-                } else {
-                    return @call(.never_inline, panicExpectedFloat, .{vm});
-                }
-                pc += 4;
-                continue;
-            },
-            .lessInt => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpLessInt:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                framePtr[pc[3].val] = Value.initBool(left.asInteger() < right.asInteger());
-                pc += 4;
-                continue;
-            },
-            .greater => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpGreater:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothFloats(left, right)) {
-                    framePtr[pc[3].val] = Value.initBool(left.asF64() > right.asF64());
-                } else {
-                    return @call(.never_inline, panicExpectedFloat, .{vm});
-                }
-                pc += 4;
-                continue;
-            },
-            .lessEqual => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpLessEqual:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothFloats(left, right)) {
-                    framePtr[pc[3].val] = Value.initBool(left.asF64() <= right.asF64());
-                } else {
-                    return @call(.never_inline, panicExpectedFloat, .{vm});
-                }
-                pc += 4;
-                continue;
-            },
-            .greaterEqual => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpGreaterEqual:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothFloats(left, right)) {
-                    framePtr[pc[3].val] = Value.initBool(left.asF64() >= right.asF64());
-                } else {
-                    return @call(.never_inline, panicExpectedFloat, .{vm});
-                }
-                pc += 4;
-                continue;
-            },
-            .true => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpTrue:"::);
-                }
-                framePtr[pc[1].val] = Value.True;
-                pc += 2;
-                continue;
-            },
-            .false => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpFalse:"::);
-                }
-                framePtr[pc[1].val] = Value.False;
-                pc += 2;
-                continue;
-            },
-            .not => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpNot:"::);
-                }
-                const dst = &framePtr[pc[1].val];
-                const val = dst.*;
-
-                const bval = if (val.isBool()) b: {
-                    break :b val.asBool();
-                } else b: {
-                    break :b val.assumeNotBoolToBool();
-                };
-                dst.* = Value.initBool(!bval);
-                pc += 2;
-                continue;
-            },
-            .stringTemplate => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpStringTemplate:"::);
-                }
-                const startLocal = pc[1].val;
-                const exprCount = pc[2].val;
-                const dst = pc[3].val;
-                const strCount = exprCount + 1;
-                const strs = pc[4 .. 4 + strCount];
-                pc += 4 + strCount;
-                const vals = framePtr[startLocal .. startLocal + exprCount];
-                const res = try @call(.never_inline, cy.heap.allocStringTemplate, .{vm, strs, vals});
-                framePtr[dst] = res;
-                continue;
-            },
-            .list => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpList:"::);
-                }
-                const startLocal = pc[1].val;
-                const numElems = pc[2].val;
-                const dst = pc[3].val;
-                pc += 4;
-                const elems = framePtr[startLocal..startLocal + numElems];
-                const list = try cy.heap.allocList(vm, elems);
-                framePtr[dst] = list;
-                continue;
-            },
-            .mapEmpty => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpMapEmpty:"::);
-                }
-                const dst = pc[1].val;
-                pc += 2;
-                framePtr[dst] = try cy.heap.allocEmptyMap(vm);
-                continue;
-            },
-            .objectSmall => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpObjectSmall:"::);
-                }
-                const sid = pc[1].val;
-                const startLocal = pc[2].val;
-                const numFields = pc[3].val;
-                const fields = framePtr[startLocal .. startLocal + numFields];
-                framePtr[pc[4].val] = try cy.heap.allocObjectSmall(vm, sid, fields);
-                pc += 5;
-                continue;
-            },
-            .object => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpObject:"::);
-                }
-                const sid = pc[1].val;
-                const startLocal = pc[2].val;
-                const numFields = pc[3].val;
-                const fields = framePtr[startLocal .. startLocal + numFields];
-                framePtr[pc[4].val] = try cy.heap.allocObject(vm, sid, fields);
-                pc += 5;
-                continue;
-            },
-            .map => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpMap:"::);
-                }
-                const startLocal = pc[1].val;
-                const numEntries = pc[2].val;
-                const dst = pc[3].val;
-                const keyIdxes = @as([*]const align(1) u16, @ptrCast(pc + 4))[0..numEntries];
-                const vals = framePtr[startLocal .. startLocal + numEntries];
-                framePtr[dst] = try cy.heap.allocMap(vm, keyIdxes, vals);
-                pc += 4 + numEntries * 2;
-                continue;
-            },
-            .init => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpInit:"::);
-                }
-                const start = pc[1].val;
-                const numLocals = pc[2].val;
-                for (start..start+numLocals) |i| {
-                    framePtr[i] = Value.None;
-                }
-                pc += 3;
-                continue;
-            },
-            .copy => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCopy:"::);
-                }
-                framePtr[pc[2].val] = framePtr[pc[1].val];
-                pc += 3;
-                continue;
-            },
-            .copyRetainRelease => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCopyRetainRelease:"::);
-                }
-                const src = pc[1].val;
-                const dst = pc[2].val;
-                retain(vm, framePtr[src]);
-                release(vm, framePtr[dst]);
-                framePtr[dst] = framePtr[src];
-                pc += 3;
-                continue;
-            },
-            .copyReleaseDst => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCopyReleaseDst:"::);
-                }
-                const dst = pc[2].val;
-                release(vm, framePtr[dst]);
-                framePtr[dst] = framePtr[pc[1].val];
-                pc += 3;
-                continue;
-            },
-            .retain => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpRetain:"::);
-                }
-                retain(vm, framePtr[pc[1].val]);
-                pc += 2;
-                continue;
-            },
-            .index => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpIndex:"::);
-                }
-                const recv = &framePtr[pc[1].val];
-                const indexv = framePtr[pc[2].val];
-                framePtr[pc[3].val] = try @call(.never_inline, VM.getIndex, .{vm, recv, indexv});
-                pc += 4;
-                continue;
-            },
-            .reverseIndex => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpReverseIndex:"::);
-                }
-                const recv = &framePtr[pc[1].val];
-                const indexv = framePtr[pc[2].val];
-                framePtr[pc[3].val] = try @call(.never_inline, VM.getReverseIndex, .{vm, recv, indexv});
-                pc += 4;
-                continue;
-            },
-            .jump => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpJump:"::);
-                }
-                @setRuntimeSafety(false);
-                pc += @as(usize, @intCast(@as(*const align(1) i16, @ptrCast(&pc[1])).*));
-                continue;
-            },
-            .jumpCond => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpJumpCond:"::);
-                }
-                const jump = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
-                const cond = framePtr[pc[3].val];
-                const condVal = if (cond.isBool()) b: {
-                    break :b cond.asBool();
-                } else b: {
-                    break :b cond.assumeNotBoolToBool();
-                };
-                if (condVal) {
-                    @setRuntimeSafety(false);
-                    pc += @as(usize, @intCast(jump));
-                } else {
-                    pc += 4;
-                }
-                continue;
-            },
-            .call => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCall:"::);
-                }
-                const startLocal = pc[1].val;
-                const numArgs = pc[2].val;
-                const numRet = pc[3].val;
-
-                const callee = framePtr[startLocal + numArgs + 4];
-                const retInfo = buildReturnInfo(numRet, true, cy.bytecode.CallInstLen);
-                const res = try @call(.always_inline, call, .{vm, pc, framePtr, callee, startLocal, numArgs, retInfo});
-                pc = res.pc;
-                framePtr = res.sp;
-                continue;
-            },
-            .callObjFuncIC => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCallObjFuncIC:"::);
-                }
-                const startLocal = pc[1].val;
-                const recv = framePtr[startLocal + 4];
-                const typeId = recv.getTypeId();
-
-                const cachedStruct = @as(*align (1) u16, @ptrCast(pc + 14)).*;
-                if (typeId == cachedStruct) {
-                    const stackSize = pc[7].val;
-                    if (@intFromPtr(framePtr + startLocal + stackSize) >= @intFromPtr(vm.stackEndPtr)) {
-                        return error.StackOverflow;
-                    }
-                    const retFramePtr = Value{ .retFramePtr = framePtr };
-                    framePtr += startLocal;
-                    framePtr[1] = buildReturnInfo(pc[3].val, true, cy.bytecode.CallObjSymInstLen);
-                    framePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen };
-                    framePtr[3] = retFramePtr;
-                    pc = vm.ops.ptr + @as(*align(1) u32, @ptrCast(pc + 8)).*;
-                    continue;
-                }
-
-                // Deoptimize.
-                pc[0] = cy.Inst.initOpCode(.callObjSym);
-                continue;
-            },
-            .callObjNativeFuncIC => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCallObjNativeFuncIC:"::);
-                }
-                const startLocal = pc[1].val;
-                const numArgs = pc[2].val;
-                const recv = framePtr[startLocal + 4];
-                const typeId = recv.getTypeId();
-
-                const cachedStruct = @as(*align (1) u16, @ptrCast(pc + 14)).*;
-                if (typeId == cachedStruct) {
-                    // const newFramePtr = framePtr + startLocal;
-                    vm.framePtr = framePtr;
-                    const func: cy.NativeObjFuncPtr = @ptrFromInt(@as(usize, @intCast(@as(*align (1) u48, @ptrCast(pc + 8)).*)));
-                    const res = func(@ptrCast(vm), recv, @ptrCast(framePtr + startLocal + 5), numArgs);
-                    if (res.isInterrupt()) {
-                        return error.Panic;
-                    }
-                    const numRet = pc[3].val;
-                    if (numRet == 1) {
-                        framePtr[startLocal] = res;
-                    } else {
-                        switch (numRet) {
-                            0 => {
-                                // Nop.
-                            },
-                            1 => cy.panic("not possible"),
-                            else => {
-                                cy.panic("unsupported numret");
-                            },
-                        }
-                    }
-                    pc += cy.bytecode.CallObjSymInstLen;
-                    // In the future, we might allow native functions to change the pc and framePtr.
-                    // pc = vm.pc;
-                    // framePtr = vm.framePtr;
-                    continue;
-                }
-
-                // Deoptimize.
-                pc[0] = cy.Inst.initOpCode(.callObjSym);
-                continue;
-            },
-            .callFuncIC => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCallFuncIC:"::);
-                }
-                const startLocal = pc[1].val;
-                const stackSize = pc[4].val;
-                if (@intFromPtr(framePtr + startLocal + stackSize) >= @intFromPtr(vm.stackEndPtr)) {
-                    return error.StackOverflow;
-                }
-
-                const retFramePtr = Value{ .retFramePtr = framePtr };
-                framePtr += startLocal;
-                framePtr[1] = buildReturnInfo(pc[3].val, true, cy.bytecode.CallSymInstLen);
-                framePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
-                framePtr[3] = retFramePtr;
-
-                pc = @ptrFromInt(@as(usize, @intCast(@as(*align(1) u48, @ptrCast(pc + 6)).*)));
-                continue;
-            },
-            .callNativeFuncIC => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCallNativeFuncIC:"::);
-                }
-                const startLocal = pc[1].val;
-                const numArgs = pc[2].val;
-
-                const newFramePtr = framePtr + startLocal;
-                vm.pc = pc;
-                vm.framePtr = newFramePtr;
-                const func: cy.NativeFuncPtr = @ptrFromInt(@as(usize, @intCast(@as(*align (1) u48, @ptrCast(pc + 6)).*)));
-                const res = func(@ptrCast(vm), @ptrCast(newFramePtr + 4), numArgs);
-                if (res.isInterrupt()) {
-                    return error.Panic;
-                }
-                const numRet = pc[3].val;
-                if (numRet == 1) {
-                    newFramePtr[0] = res;
-                } else {
-                    switch (numRet) {
-                        0 => {
-                            // Nop.
-                        },
-                        1 => cy.panic("not possible"),
-                        else => cy.panic("unsupported"),
-                    }
-                }
-                pc += cy.bytecode.CallSymInstLen;
-                continue;
-            },
-            .ret1 => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpRet1:"::);
-                }
-                if (@call(.always_inline, popStackFrameLocal1, .{vm, &pc, &framePtr})) {
-                    continue;
-                } else {
-                    return;
-                }
-            },
-            .ret0 => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpRet0:"::);
-                }
-                if (@call(.always_inline, popStackFrameLocal0, .{&pc, &framePtr})) {
-                    continue;
-                } else {
-                    return;
-                }
-            },
-            .pushTry => {
-                const errDst = pc[1].val;
-                const catchPcOffset = @as(*align (1) u16, @ptrCast(pc + 2)).*;
-                if (vm.tryStack.len == vm.tryStack.buf.len) {
-                    try @call(.never_inline, @TypeOf(vm.tryStack).growTotalCapacity, .{&vm.tryStack, vm.alloc, vm.tryStack.len + 1});
-                }
-                vm.tryStack.appendAssumeCapacity(.{
-                    .fp = @ptrCast(framePtr),
-                    .catchPc = getInstOffset(vm, pc) + catchPcOffset,
-                    .catchErrDst = errDst,
-                });
-                pc += 4;
-                continue;
-            },
-            .popTry => {
-                vm.tryStack.len -= 1;
-                pc += @as(*align (1) u16, @ptrCast(pc + 1)).*;
-                continue;
-            },
-            .throw => {
-                const err = framePtr[pc[1].val];
-                if (err.isError()) {
-                    if (try @call(.never_inline, cy.fiber.throw, .{vm, framePtr, pc, err})) |res| {
-                        framePtr = res.sp;
-                        pc = res.pc;
-                        continue;
-                    } else {
-                        return vm.panicWithUncaughtError(err);
-                    }
-                } else {
-                    // Not an error.
-                    return @call(.never_inline, VM.panic, .{vm, "Not an error."});
-                }
-            },
-            .setFieldReleaseIC => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpSetFieldReleaseIC:"::);
-                }
-                const recv = framePtr[pc[1].val];
-                if (recv.isPointer()) {
-                    const obj = recv.asHeapObject();
-                    if (obj.getTypeId() == @as(*align (1) u16, @ptrCast(pc + 4)).*) {
-                        const lastValue = obj.object.getValuePtr(pc[6].val);
-                        release(vm, lastValue.*);
-                        lastValue.* = framePtr[pc[2].val];
-                        pc += 7;
-                        continue;
-                    }
-                } else {
-                    return vm.getFieldMissingSymbolError();
-                }
-                // Deoptimize.
-                pc[0] = cy.Inst.initOpCode(.setFieldRelease);
-                try @call(.never_inline, VM.setFieldRelease, .{ vm, recv, pc[3].val, framePtr[pc[2].val] });
-                pc += 7;
-                continue;
-            },
-            .fieldRetainIC => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpFieldRetainIC:"::);
-                }
-                const recv = framePtr[pc[1].val];
-                const dst = pc[2].val;
-                if (recv.isPointer()) {
-                    const obj = recv.asHeapObject();
-                    if (obj.getTypeId() == @as(*align (1) u16, @ptrCast(pc + 5)).*) {
-                        framePtr[dst] = obj.object.getValue(pc[7].val);
-                        retain(vm, framePtr[dst]);
-                        pc += 8;
-                        continue;
-                    }
-                } else {
-                    return vm.getFieldMissingSymbolError();
-                }
-                // Deoptimize.
-                pc[0] = cy.Inst.initOpCode(.fieldRetain);
-                continue;
-            },
-            .forRangeInit => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpForRangeInit:"::);
-                }
-                const start = framePtr[pc[1].val].toF64();
-                const end = framePtr[pc[2].val].toF64();
-                framePtr[pc[2].val] = Value.initF64(end);
-                var step = framePtr[pc[3].val].toF64();
-                if (step < 0) {
-                    step = -step;
-                }
-                framePtr[pc[3].val] = Value.initF64(step);
-                if (start == end) {
-                    pc += @as(*const align(1) u16, @ptrCast(pc + 6)).* + 7;
-                } else {
-                    framePtr[pc[4].val] = Value.initF64(start);
-                    framePtr[pc[5].val] = Value.initF64(start);
-                    const offset = @as(*const align(1) u16, @ptrCast(pc + 6)).*;
-                    pc[offset] = if (start < end)
-                        cy.Inst.initOpCode(.forRange)
-                    else
-                        cy.Inst.initOpCode(.forRangeReverse);
-                    pc += 8;
-                }
-                continue;
-            },
-            .forRange => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpForRange:"::);
-                }
-                const counter = framePtr[pc[1].val].asF64() + framePtr[pc[2].val].asF64();
-                if (counter < framePtr[pc[3].val].asF64()) {
-                    framePtr[pc[1].val] = Value.initF64(counter);
-                    framePtr[pc[4].val] = Value.initF64(counter);
-                    pc -= @as(*const align(1) u16, @ptrCast(pc + 5)).*;
-                } else {
-                    pc += 7;
-                }
-                continue;
-            },
-            .forRangeReverse => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpForRangeReverse:"::);
-                }
-                const counter = framePtr[pc[1].val].asF64() - framePtr[pc[2].val].asF64();
-                if (counter > framePtr[pc[3].val].asF64()) {
-                    framePtr[pc[1].val] = Value.initF64(counter);
-                    framePtr[pc[4].val] = Value.initF64(counter);
-                    pc -= @as(*const align(1) u16, @ptrCast(pc + 5)).*;
-                } else {
-                    pc += 7;
-                }
-                continue;
-            },
-            .jumpNotNone => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpJumpNotNone:"::);
-                }
-                const offset = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
-                if (!framePtr[pc[3].val].isNone()) {
-                    @setRuntimeSafety(false);
-                    pc += @as(usize, @intCast(offset));
-                } else {
-                    pc += 4;
-                }
-                continue;
-            },
-            .setField => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpSetField:"::);
-                }
-                const fieldId = pc[1].val;
-                const left = pc[2].val;
-                const right = pc[3].val;
-
-                const recv = framePtr[left];
-                const val = framePtr[right];
-                try vm.setField(recv, fieldId, val);
-                // try @call(.never_inline, vm.setField, .{recv, fieldId, val});
-                pc += 4;
-                continue;
-            },
-            .field => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpField:"::);
-                }
-                const left = pc[1].val;
-                const dst = pc[2].val;
-                const symId = @as(*align (1) u16, @ptrCast(pc + 3)).*;
-                const recv = framePtr[left];
-                if (recv.isPointer()) {
-                    const obj = recv.asHeapObject();
-                    // const offset = @call(.never_inline, vm.getFieldOffset, .{obj, symId });
-                    const offset = vm.getFieldOffset(obj, symId);
-                    if (offset != cy.NullU8) {
-                        framePtr[dst] = obj.object.getValue(offset);
-                        // Inline cache.
-                        pc[0] = cy.Inst.initOpCode(.fieldIC);
-                        @as(*align (1) u16, @ptrCast(pc + 5)).* = @intCast(obj.getTypeId());
-                        pc[7] = cy.Inst{ .val = offset };
-                    } else {
-                        const sym = vm.fieldSyms.buf[symId];
-                        framePtr[dst] = @call(.never_inline, VM.getFieldFallback, .{vm, obj, sym.nameId});
-                    }
-                    pc += 8;
-                    continue;
-                } else {
-                    return vm.getFieldMissingSymbolError();
-                }
-            },
-            .fieldRetain => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpFieldRetain:"::);
-                }
-                const recv = framePtr[pc[1].val];
-                const dst = pc[2].val;
-                const symId = @as(*align (1) u16, @ptrCast(pc + 3)).*;
-                if (recv.isPointer()) {
-                    const obj = recv.asHeapObject();
-                    // const offset = @call(.never_inline, vm.getFieldOffset, .{obj, symId });
-                    const offset = vm.getFieldOffset(obj, symId);
-                    if (offset != cy.NullU8) {
-                        framePtr[dst] = obj.object.getValue(offset);
-                        // Inline cache.
-                        pc[0] = cy.Inst.initOpCode(.fieldRetainIC);
-                        @as(*align (1) u16, @ptrCast(pc + 5)).* = @intCast(obj.getTypeId());
-                        pc[7] = cy.Inst { .val = offset };
-                    } else {
-                        const sym = vm.fieldSyms.buf[symId];
-                        framePtr[dst] = @call(.never_inline, VM.getFieldFallback, .{vm, obj, sym.nameId});
-                    }
-                    retain(vm, framePtr[dst]);
-                    pc += 8;
-                    continue;
-                } else {
-                    return vm.getFieldMissingSymbolError();
-                }
-            },
-            .setFieldRelease => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpSetFieldRelease:"::);
-                }
-                const recv = framePtr[pc[1].val];
-                const val = framePtr[pc[2].val];
-                const symId = pc[3].val;
-                if (recv.isPointer()) {
-                    const obj = recv.asHeapObject();
-                    const offset = vm.getFieldOffset(obj, symId);
-                    if (offset != cy.NullU8) {
-                        const lastValue = obj.object.getValuePtr(offset);
-                        release(vm, lastValue.*);
-                        lastValue.* = val;
-
-                        // Inline cache.
-                        pc[0] = cy.Inst.initOpCode(.setFieldReleaseIC);
-                        @as(*align (1) u16, @ptrCast(pc + 4)).* = @intCast(obj.getTypeId());
-                        pc[6] = cy.Inst { .val = offset };
-                        pc += 7;
-                        continue;
-                    } else {
-                        return vm.getFieldMissingSymbolError();
-                    }
-                } else {
-                    return vm.setFieldNotObjectError();
-                }
-            },
-            .setCheckFieldRelease => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpSetFieldRelease:"::);
-                }
-                const recv = framePtr[pc[1].val];
-                const val = framePtr[pc[2].val];
-                const symId = pc[3].val;
-                if (recv.isPointer()) {
-                    const obj = recv.asHeapObject();
-                    const offset = vm.getFieldOffset(obj, symId);
-                    if (offset != cy.NullU8) {
-                        const fieldSemaTypeId = vm.fieldSyms.buf[symId].mruFieldTypeSymId;
-                        const rightTypeId = val.getTypeId();
-                        const rightSemaTypeId = vm.types.buf[rightTypeId].rTypeSymId;
-                        if (!types.isTypeSymCompat(&vm.compiler, rightSemaTypeId, fieldSemaTypeId)) {
-                            return panicIncompatibleFieldType(vm, fieldSemaTypeId, val);
-                        }
-
-                        const lastValue = obj.object.getValuePtr(offset);
-                        release(vm, lastValue.*);
-                        lastValue.* = val;
-
-                        // TODO: Inline cache.
-                        pc += 7;
-                        continue;
-                    } else {
-                        return vm.getFieldMissingSymbolError();
-                    }
-                } else {
-                    return vm.setFieldNotObjectError();
-                }
-            },
-            .lambda => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpLambda:"::);
-                }
-                const funcPc = getInstOffset(vm, pc) - pc[1].val;
-                const numParams = pc[2].val;
-                const stackSize = pc[3].val;
-                const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
-                const dst = pc[6].val;
-                pc += 7;
-                framePtr[dst] = try @call(.never_inline, cy.heap.allocLambda, .{vm, funcPc, numParams, stackSize, funcSigId });
-                continue;
-            },
-            .closure => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpClosure:"::);
-                }
-                const funcPc = getInstOffset(vm, pc) - pc[1].val;
-                const numParams = pc[2].val;
-                const numCaptured = pc[3].val;
-                const stackSize = pc[4].val;
-                const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
-                const local = pc[7].val;
-                const dst = pc[8].val;
-                const capturedVals = pc[9..9+numCaptured];
-                pc += 9 + numCaptured;
-
-                framePtr[dst] = try @call(.never_inline, cy.heap.allocClosure, .{vm, framePtr, funcPc, numParams, stackSize, funcSigId, capturedVals, local});
-                continue;
-            },
-            .staticVar => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpStaticVar:"::);
-                }
-                const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-                const sym = vm.varSyms.buf[symId];
-                retain(vm, sym.value);
-                framePtr[pc[3].val] = sym.value;
-                pc += 4;
-                continue;
-            },
-            .setStaticVar => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpSetStaticVar:"::);
-                }
-                const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-                const prev = vm.varSyms.buf[symId].value;
-                vm.varSyms.buf[symId].value = framePtr[pc[3].val];
-                release(vm, prev);
-                pc += 4;
-                continue;
-            },
-            .staticFunc => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpStaticFunc:"::);
-                }
-                const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-                framePtr[pc[3].val] = try cy.heap.allocFuncFromSym(vm, symId);
-                pc += 4;
-                continue;
-            },
-            .coreturn => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCoreturn:"::);
-                }
-                pc += 1;
-                if (vm.curFiber != &vm.mainFiber) {
-                    const res = cy.fiber.popFiber(vm, cy.NullId, framePtr, framePtr[1]);
-                    pc = res.pc;
-                    framePtr = res.sp;
-                }
-                continue;
-            },
-            .coresume => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCoresume:"::);
-                }
-                const val = framePtr[pc[1].val];
-                if (val.isPointer()) {
-                    const fiber = val.asPointer(*vmc.Fiber);
-                    if (fiber.typeId == bt.Fiber) {
-                        if (fiber != vm.curFiber) {
-                            // Only resume fiber if it's not done.
-                            if (fiber.pcOffset != cy.NullId) {
-                                const res = cy.fiber.pushFiber(vm, getInstOffset(vm, pc + 3), framePtr, fiber, pc[2].val);
-                                pc = res.pc;
-                                framePtr = res.sp;
-                                continue;
-                            }
-                        }
-                    }
-                    cy.arc.releaseObject(vm, cy.ptrAlignCast(*HeapObject, fiber));
-                }
-                pc += 3;
-                continue;
-            },
-            .coyield => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCoyield:"::);
-                }
-                if (vm.curFiber != &vm.mainFiber) {
-                    // Only yield on user fiber.
-                    const res = cy.fiber.popFiber(vm, getInstOffset(vm, pc), framePtr, Value.None);
-                    pc = res.pc;
-                    framePtr = res.sp;
-                } else {
-                    pc += 3;
-                }
-                continue;
-            },
-            .coinit => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCoinit:"::);
-                }
-                const startArgsLocal = pc[1].val;
-                const numArgs = pc[2].val;
-                const jump = pc[3].val;
-                const initialStackSize = pc[4].val;
-                const dst = pc[5].val;
-
-                const val = framePtr[startArgsLocal..startArgsLocal + numArgs];
-                const fiber = try @call(.never_inline, cy.fiber.allocFiber, .{vm, getInstOffset(vm, pc + 6), val, initialStackSize});
-                framePtr[dst] = fiber;
-                pc += jump;
-                continue;
-            },
-            .mul => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpMul:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothFloats(left, right)) {
-                    framePtr[pc[3].val] = Value.initF64(left.asF64() * right.asF64());
-                } else {
-                    return @call(.never_inline, panicExpectedFloat, .{vm});
-                }
-                pc += 4;
-                continue;
-            },
-            .div => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpDiv:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothFloats(left, right)) {
-                    framePtr[pc[3].val] = Value.initF64(left.asF64() / right.asF64());
-                } else {
-                    return @call(.never_inline, panicExpectedFloat, .{vm});
-                }
-                pc += 4;
-                continue;
-            },
-            .mod => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpMod:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothFloats(left, right)) {
-                    framePtr[pc[3].val] = Value.initF64(std.math.mod(f64, left.asF64(), right.asF64()) catch std.math.nan_f64);
-                } else {
-                    return @call(.never_inline, panicExpectedFloat, .{vm});
-                }
-                pc += 4;
-                continue;
-            },
-            .pow => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpPow:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothFloats(left, right)) {
-                    framePtr[pc[3].val] = Value.initF64(std.math.pow(f64, left.asF64(), right.asF64()));
-                } else {
-                    return @call(.never_inline, panicExpectedFloat, .{vm});
-                }
-                pc += 4;
-                continue;
-            },
-            .box => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpBox:"::);
-                }
-                const value = framePtr[pc[1].val];
-                framePtr[pc[2].val] = try cy.heap.allocBox(vm, value);
-                pc += 3;
-                continue;
-            },
-            .setBoxValue => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpSetBoxValue:"::);
-                }
-                const box = framePtr[pc[1].val];
-                const rval = framePtr[pc[2].val];
-                if (builtin.mode == .Debug) {
-                    std.debug.assert(box.isPointer());
-                }
-                const obj = box.asHeapObject();
-                if (builtin.mode == .Debug) {
-                    std.debug.assert(obj.getTypeId() == bt.Box);
-                }
-                obj.box.val = rval;
-                pc += 3;
-                continue;
-            },
-            .setBoxValueRelease => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpBoxValueRelease:"::);
-                }
-                const box = framePtr[pc[1].val];
-                const rval = framePtr[pc[2].val];
-                if (builtin.mode == .Debug) {
-                    std.debug.assert(box.isPointer());
-                }
-                const obj = box.asHeapObject();
-                if (builtin.mode == .Debug) {
-                    std.debug.assert(obj.getTypeId() == bt.Box);
-                }
-                @call(.never_inline, release, .{vm, obj.box.val});
-                obj.box.val = rval;
-                pc += 3;
-                continue;
-            },
-            .boxValue => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpBoxValue:"::);
-                }
-                const box = framePtr[pc[1].val];
-                if (builtin.mode == .Debug) {
-                    if (!box.isBox()) {
-                        cy.panic("Expected box value.");
-                    }
-                }
-                framePtr[pc[2].val] = box.asHeapObject().box.val;
-                pc += 3;
-                continue;
-            },
-            .boxValueRetain => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpBoxValueRetain:"::);
-                }
-                const box = framePtr[pc[1].val];
-                if (builtin.mode == .Debug) {
-                    if (!box.isBox()) {
-                        cy.panic("Expected box value.");
-                    }
-                }
-                const val = box.asHeapObject().box.val;
-                framePtr[pc[2].val] = val;
-                retain(vm, val);
-                pc += 3;
-                continue;
-            },
-            .captured => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCaptured:"::);
-                }
-                const closure = framePtr[pc[1].val];
-                if (builtin.mode == .Debug) {
-                    if (!closure.isClosure()) {
-                        cy.panic("Expected closure value.");
-                    }
-                }
-                framePtr[pc[3].val] = closure.asHeapObject().closure.getCapturedValuesPtr()[pc[2].val];
-                pc += 4;
-                continue;
-            },
-            .tag => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpTag:"::);
-                }
-                const tagId = pc[1].val;
-                const val = pc[2].val;
-                framePtr[pc[3].val] = Value.initEnum(tagId, val);
-                pc += 4;
-                continue;
-            },
-            .tagLiteral => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpTagLiteral:"::);
-                }
-                const symId = pc[1].val;
-                framePtr[pc[2].val] = Value.initSymbol(symId);
-                pc += 3;
-                continue;
-            },
-            .cast => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCast:"::);
-                }
-                const val = framePtr[pc[1].val];
-                const expTypeId = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
-                if (val.getTypeId() == expTypeId) {
-                    pc += 4;
-                    continue;
-                } else {
-                    return @call(.never_inline, panicCastError, .{ vm, val, expTypeId });
-                }
-            },
-            .castAbstract => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCastAbstract:"::);
-                }
-                const val = framePtr[pc[1].val];
-                const expTypeSymId = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
-                if (expTypeSymId == bt.Any) {
-                    pc += 4;
-                    continue;
-                } else if (expTypeSymId == bt.String) {
-                    if (val.isString()) {
-                        pc += 4;
-                        continue;
-                    }
-                } else if (expTypeSymId == bt.Rawstring) {
-                    if (val.isArray()) {
-                        pc += 4;
-                        continue;
-                    }
-                }
-                return @call(.never_inline, panicCastAbstractError, .{ vm, val, expTypeSymId });
-            },
-            .bitwiseAnd => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpBitwiseAnd:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothFloats(left, right)) {
-                    const f: f64 = @floatFromInt(left.asF64toI32() & right.asF64toI32());
-                    framePtr[pc[3].val] = Value.initF64(f);
-                } else {
-                    return @call(.never_inline, panicExpectedFloat, .{vm});
-                }
-                pc += 4;
-                continue;
-            },
-            .bitwiseOr => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpBitwiseOr:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothFloats(left, right)) {
-                    const f: f64 = @floatFromInt(left.asF64toI32() | right.asF64toI32());
-                    framePtr[pc[3].val] = Value.initF64(f);
-                } else {
-                    return @call(.never_inline, panicExpectedFloat, .{vm});
-                }
-                pc += 4;
-                continue;
-            },
-            .bitwiseXor => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpBitwiseXor:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothFloats(left, right)) {
-                    const f: f64 = @floatFromInt(left.asF64toI32() ^ right.asF64toI32());
-                    framePtr[pc[3].val] = Value.initF64(f);
-                } else {
-                    return @call(.never_inline, panicExpectedFloat, .{vm});
-                }
-                pc += 4;
-                continue;
-            },
-            .bitwiseNot => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpBitwiseNot:"::);
-                }
-                const dst = &framePtr[pc[1].val];
-                const val = dst.*;
-                if (val.isFloat()) {
-                    const f: f64 = @floatFromInt(~val.asF64toI32());
-                    dst.* = Value.initF64(f);
-                    pc += 2;
-                    continue;
-                } else {
-                    return @call(.never_inline, panicExpectedFloat, .{vm});
-                }
-            },
-            .bitwiseLeftShift => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpBitwiseLeftShift:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothFloats(left, right)) {
-                    const mod: u64 = @bitCast(@mod(right.asF64toI64(), 32));
-                    const amt: u5 = @intCast(mod);
-                    const res: f64 = @floatFromInt(left.asF64toI32() << amt);
-                    framePtr[pc[3].val] = Value.initF64(res);
-                } else {
-                    return @call(.never_inline, panicExpectedFloat, .{vm});
-                }
-                pc += 4;
-                continue;
-            },
-            .bitwiseRightShift => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpBitwiseRightShift:"::);
-                }
-                const left = framePtr[pc[1].val];
-                const right = framePtr[pc[2].val];
-                if (Value.bothFloats(left, right)) {
-                    const mod: u64 = @bitCast(@mod(right.asF64toI64(), 32));
-                    const amt: u5 = @intCast(mod);
-                    const res: f64 = @floatFromInt(left.asF64toI32() >> amt);
-                    framePtr[pc[3].val] = Value.initF64(res);
-                } else {
-                    return @call(.never_inline, panicExpectedFloat, .{vm});
-                }
-                pc += 4;
-                continue;
-            },
-            .callSym => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpCallSym:"::);
-                }
-                const startLocal = pc[1].val;
-                const numArgs = pc[2].val;
-                const numRet: u2 = @intCast(pc[3].val);
-                const symId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
-                const res = try @call(.never_inline, VM.callSym, .{vm, pc, framePtr, symId, startLocal, numArgs, numRet});
-                pc = res.pc;
-                framePtr = res.sp;
-                continue;
-            },
-            .match => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpMatch:"::);
-                }
-                pc += @call(.never_inline, opMatch, .{vm, pc, framePtr});
-                continue;
-            },
-            .sym => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpSym:"::);
-                }
-                const symType = pc[1].val;
-                const symId = @as(*const align(1) u32, @ptrCast(pc + 2)).*;
-                framePtr[pc[6].val] = try cy.heap.allocMetaType(vm, symType, symId);
-                pc += 7;
-                continue;
-            },
-            .end => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpEnd:"::);
-                }
-                vm.endLocal = pc[1].val;
-                pc += 2;
-                vm.curFiber.pcOffset = @intCast(getInstOffset(vm, pc));
-                return error.End;
-            },
-        }
-    }
-}
 
 fn popStackFrameLocal0(pc: *[*]const cy.Inst, framePtr: *[*]Value) bool {
     const retFlag = framePtr.*[1].retInfoRetFlag();
@@ -3402,7 +1979,7 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst) !void {
             const idx = @as(*const align (1) u16, @ptrCast(pc + 1)).*;
             const dst = pc[3].val;
             _ = dst;
-            const val = Value{ .val = vm.consts[idx].val };
+            const val = Value{ .val = vm.c.consts[idx].val };
             extra = try std.fmt.bufPrint(&S.buf, "rt: constVal={s}", .{
                 try vm.getOrBufPrintValueStr(&cy.tempBuf, val)
             });
@@ -3421,7 +1998,7 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst) !void {
         },
         .fieldDyn => {
             const symId = pc[3].val;
-            const sym = vm.fieldSyms.buf[symId];
+            const sym = vm.c.fieldSyms[symId];
             const name = rt.getName(vm, sym.nameId);
             extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{name});
         },
@@ -3437,7 +2014,7 @@ const FieldEntry = struct {
 
 fn inferArg(vm: *VM, args: []Value, arg_idx: usize, arg: Value, target_t: cy.TypeId) bool {
     if (arg.getTypeId() == bt.TagLit) {
-        const type_e = vm.types[target_t];
+        const type_e = vm.c.types[target_t];
         if (type_e.kind == .@"enum") {
             const name = vm.syms.buf[arg.asSymbolId()].name;
             if (type_e.sym.cast(.enum_t).getMemberTag(name)) |value| {
@@ -3479,7 +2056,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                     }
                 }
 
-                if (@intFromPtr(framePtr + ret + obj.closure.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
+                if (@intFromPtr(framePtr + ret + obj.closure.stackSize) >= @intFromPtr(vm.c.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
@@ -3516,7 +2093,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                     }
                 }
 
-                if (@intFromPtr(framePtr + ret + obj.lambda.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
+                if (@intFromPtr(framePtr + ret + obj.lambda.stackSize) >= @intFromPtr(vm.c.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
@@ -3550,8 +2127,8 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                     }
                 }
 
-                vm.pc = pc;
-                vm.framePtr = framePtr;
+                vm.c.pc = pc;
+                vm.c.framePtr = framePtr;
                 const newFramePtr = framePtr + ret;
                 const res = obj.hostFunc.func.?(@ptrCast(vm), @ptrCast(newFramePtr + CallArgStart), numArgs);
                 newFramePtr[0] = @bitCast(res);
@@ -3573,13 +2150,13 @@ fn panicCastAbstractError(vm: *cy.VM, val: Value, expTypeSymId: cy.sema.SymbolId
     const sym = vm.compiler.sema.getSymbol(expTypeSymId);
     const name = cy.sema.getName(&vm.compiler, sym.key.resolvedSymKey.nameId);
     return vm.panicFmt("Can not cast `{}` to `{}`.", &.{
-         v(vm.types.buf[val.getTypeId()].name), v(name), 
+         v(vm.c.types.buf[val.getTypeId()].name), v(name), 
     });
 }
 
 fn panicCastError(vm: *cy.VM, val: Value, expTypeId: cy.TypeId) !void {
     return vm.panicFmt("Can not cast `{}` to `{}`.", &.{
-         v(vm.types.buf[val.getTypeId()].name), v(vm.types.buf[expTypeId].name), 
+         v(vm.c.types.buf[val.getTypeId()].name), v(vm.c.types.buf[expTypeId].name), 
     });
 }
 
@@ -3605,7 +2182,7 @@ fn panicIncompatibleFieldType(vm: *cy.VM, fieldSemaTypeId: types.TypeId, rightv:
 
     const fieldTypeName = sema.getSymName(&vm.compiler, fieldSemaTypeId);
     const rightTypeId = rightv.getTypeId();
-    const rightSemaTypeId = vm.types.buf[rightTypeId].rTypeSymId;
+    const rightSemaTypeId = vm.c.types[rightTypeId].rTypeSymId;
     const rightTypeName = sema.getSymName(&vm.compiler, rightSemaTypeId);
     return vm.panicFmt(
         \\Assigning to `{}` field with incompatible type `{}`.
@@ -3686,7 +2263,7 @@ fn panicIncompatibleMethodSig(
     const method = vm.methods.buf[method_id];
     const name_id = vm.method_names.buf[method_id];
     const name = rt.getName(vm, name_id);
-    const typeName = vm.types[typeId].sym.name();
+    const typeName = vm.c.types[typeId].sym.name();
     var entry: u32 = undefined;
     var overloaded: bool = undefined;
     if (method.mru_type == typeId) {
@@ -3815,11 +2392,11 @@ pub inline fn buildReturnInfoForRoot(comptime cont: bool) Value {
 }
 
 pub inline fn getInstOffset(vm: *const VM, to: [*]const cy.Inst) u32 {
-    return @intCast(cy.fiber.getInstOffset(vm.ops.ptr, to));
+    return @intCast(cy.fiber.getInstOffset(vm.c.ops, to));
 }
 
 pub inline fn getStackOffset(vm: *const VM, to: [*]const Value) u32 {
-    return @intCast(cy.fiber.getStackOffset(vm.stack.ptr, to));
+    return @intCast(cy.fiber.getStackOffset(vm.c.stack, to));
 }
 
 /// Like Value.dump but shows heap values.
@@ -3958,7 +2535,7 @@ fn callMethod(
 ) !?cy.fiber.PcSp {
     switch (func.type) {
         .func => {
-            if (@intFromPtr(sp + ret + func.data.func.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
+            if (@intFromPtr(sp + ret + func.data.func.stackSize) >= @intFromPtr(vm.c.stackEndPtr)) {
                 return error.StackOverflow;
             }
 
@@ -3989,8 +2566,8 @@ fn callMethod(
                 @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
             }
 
-            vm.pc = pc;
-            vm.framePtr = sp;
+            vm.c.pc = pc;
+            vm.c.framePtr = sp;
             const res: Value = @bitCast(func.data.host_func.?(@ptrCast(vm), @ptrCast(sp + ret + CallArgStart), nargs));
             if (res.isInterrupt()) {
                 return error.Panic;
@@ -4015,16 +2592,16 @@ inline fn deoptimizeBinOp(pc: [*]cy.Inst) void {
     pc[4] = pc[11];
 }
 
-export fn zFatal() void {
+fn zFatal() callconv(.C) void {
     cy.fatal();
 }
 
-export fn zOpCodeName(code: vmc.OpCode) [*:0]const u8 {
+fn zOpCodeName(code: vmc.OpCode) callconv(.C) [*:0]const u8 {
     const ecode: cy.OpCode = @enumFromInt(code);
     return @tagName(ecode);
 }
 
-export fn zCallSym(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8, numArgs: u8) callconv(.C) vmc.PcSpResult {
+fn zCallSym(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8, numArgs: u8) callconv(.C) vmc.PcSpResult {
     const res = @call(.always_inline, VM.callSym, .{vm, pc, framePtr, @as(u32, @intCast(symId)), ret, numArgs}) catch |err| {
         if (err == error.Panic) {
             return .{
@@ -4053,7 +2630,7 @@ export fn zCallSym(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret:
     };
 }
 
-export fn zCallSymDyn(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8, numArgs: u8) callconv(.C) vmc.PcSpResult {
+fn zCallSymDyn(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8, numArgs: u8) callconv(.C) vmc.PcSpResult {
     const res = @call(.always_inline, VM.callSymDyn, .{vm, pc, framePtr, @as(u32, @intCast(symId)), ret, numArgs}) catch |err| {
         if (err == error.Panic) {
             return .{
@@ -4082,20 +2659,33 @@ export fn zCallSymDyn(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, r
     };
 }
 
-export fn zDumpEvalOp(vm: *VM, pc: [*]const cy.Inst) void {
+fn zDumpEvalOp(vm: *VM, pc: [*]const cy.Inst) callconv(.C) void {
     dumpEvalOp(vm, pc) catch cy.fatal();
 }
 
-pub export fn zFreeObject(vm: *cy.VM, obj: *HeapObject) void {
+pub fn zFreeObject(vm: *cy.VM, obj: *HeapObject) callconv(.C) void {
     cy.heap.freeObject(vm, obj, true, false, true);
 } 
 
-export fn zEnd(vm: *cy.VM, pc: [*]const cy.Inst) void {
+fn zEnd(vm: *cy.VM, pc: [*]const cy.Inst) callconv(.C) void {
     vm.endLocal = pc[1].val;
-    vm.curFiber.pcOffset = @intCast(getInstOffset(vm, pc + 2));
+    vm.c.curFiber.pcOffset = @intCast(getInstOffset(vm, pc + 2));
 }
 
-export fn zAllocList(vm: *cy.VM, type_id: cy.TypeId, elemStart: [*]const Value, nElems: u8) vmc.ValueResult {
+fn zAllocFuncFromSym(vm: *cy.VM, id: u16) callconv(.C) vmc.ValueResult {
+    const func = cy.heap.allocFuncFromSym(vm, vm.funcSyms.buf[id]) catch {
+        return .{
+            .val = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .val = @bitCast(func),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
+fn zAllocList(vm: *cy.VM, type_id: cy.TypeId, elemStart: [*]const Value, nElems: u8) callconv(.C) vmc.ValueResult {
     const list = cy.heap.allocList(vm, type_id, elemStart[0..nElems]) catch {
         return .{
             .val = undefined,
@@ -4108,7 +2698,7 @@ export fn zAllocList(vm: *cy.VM, type_id: cy.TypeId, elemStart: [*]const Value, 
     };
 }
 
-export fn zAllocListDyn(vm: *cy.VM, elemStart: [*]const Value, nElems: u8) vmc.ValueResult {
+fn zAllocListDyn(vm: *cy.VM, elemStart: [*]const Value, nElems: u8) callconv(.C) vmc.ValueResult {
     const list = cy.heap.allocListDyn(vm, elemStart[0..nElems]) catch {
         return .{
             .val = undefined,
@@ -4121,14 +2711,14 @@ export fn zAllocListDyn(vm: *cy.VM, elemStart: [*]const Value, nElems: u8) vmc.V
     };
 }
 
-export fn zOtherToF64(val: Value) f64 {
+fn zOtherToF64(val: Value) callconv(.C) f64 {
     return val.otherToF64() catch fatal();
 }
 
-export fn zCallObjSym(
+fn zCallObjSym(
     vm: *cy.VM, pc: [*]cy.Inst, stack: [*]Value, recv: Value,
     typeId: cy.TypeId, method: u16, ret: u8, numArgs: u8,
-) vmc.CallObjSymResult {
+) callconv(.C) vmc.CallObjSymResult {
     const args = stack[ret+CallArgStart+1..ret+CallArgStart+1+numArgs-1];
     if (vm.getCompatMethodFunc(typeId, method, args)) |func| {
         const mb_res = callMethod(vm, pc, stack, func, typeId, ret, numArgs) catch |err| {
@@ -4176,7 +2766,7 @@ export fn zCallObjSym(
     };
 }
 
-export fn zAllocFiber(vm: *cy.VM, pc: u32, args: [*]const Value, nargs: u8, argDst: u8, initialStackSize: u8) vmc.ValueResult {
+fn zAllocFiber(vm: *cy.VM, pc: u32, args: [*]const Value, nargs: u8, argDst: u8, initialStackSize: u8) callconv(.C) vmc.ValueResult {
     const fiber = cy.fiber.allocFiber(vm, pc, args[0..nargs], argDst, initialStackSize) catch {
         return .{
             .val = undefined,
@@ -4189,7 +2779,7 @@ export fn zAllocFiber(vm: *cy.VM, pc: u32, args: [*]const Value, nargs: u8, argD
     };
 }
 
-export fn zPushFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, fiber: *cy.Fiber, parentDstLocal: u8) vmc.PcSp {
+fn zPushFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, fiber: *cy.Fiber, parentDstLocal: u8) callconv(.C) vmc.PcSp {
     const res = cy.fiber.pushFiber(vm, curFiberEndPc, curStack, fiber, parentDstLocal);
     return .{
         .pc = @ptrCast(res.pc),
@@ -4197,8 +2787,8 @@ export fn zPushFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, fiber
     };
 }
 
-export fn zPopFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, retValue: Value) vmc.PcSpOff {
-    const fp = cy.fiber.getStackOffset(vm.stack.ptr, curStack);
+fn zPopFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, retValue: Value) callconv(.C) vmc.PcSpOff {
+    const fp = cy.fiber.getStackOffset(vm.c.stack, curStack);
     const res = cy.fiber.popFiber(vm, .{ .pc = @intCast(curFiberEndPc), .sp = fp }, retValue);
     return .{
         .pc = res.pc,
@@ -4206,7 +2796,7 @@ export fn zPopFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, retVal
     };
 }
 
-export fn zAllocObjectSmall(vm: *cy.VM, typeId: cy.TypeId, fields: [*]const Value, nfields: u8) vmc.ValueResult {
+fn zAllocObjectSmall(vm: *cy.VM, typeId: cy.TypeId, fields: [*]const Value, nfields: u8) callconv(.C) vmc.ValueResult {
     const res = cy.heap.allocObjectSmall(vm, typeId, fields[0..nfields]) catch {
         return .{
             .val = undefined,
@@ -4219,19 +2809,19 @@ export fn zAllocObjectSmall(vm: *cy.VM, typeId: cy.TypeId, fields: [*]const Valu
     };
 }
 
-export fn zGetFieldOffsetFromTable(vm: *VM, typeId: cy.TypeId, symId: SymbolId) u8 {
+fn zGetFieldOffsetFromTable(vm: *VM, typeId: cy.TypeId, symId: SymbolId) callconv(.C) u8 {
     return vm.getFieldOffsetFromTable(typeId, symId);
 }
 
-export fn zEvalCompare(left: Value, right: Value) vmc.Value {
+fn zEvalCompare(left: Value, right: Value) callconv(.C) vmc.Value {
     return @bitCast(evalCompare(left, right));
 }
 
-export fn zEvalCompareNot(left: Value, right: Value) vmc.Value {
+fn zEvalCompareNot(left: Value, right: Value) callconv(.C) vmc.Value {
     return @bitCast(evalCompareNot(left, right));
 }
 
-export fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8) vmc.PcSpResult {
+fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8) callconv(.C) vmc.PcSpResult {
     const res = call(vm, pc, framePtr, callee, ret, numArgs, true) catch |err| {
         if (err == error.Panic) {
             return .{
@@ -4254,7 +2844,7 @@ export fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret:
     };
 }
 
-export fn zAllocPoolObject(vm: *cy.VM) vmc.HeapObjectResult {
+fn zAllocPoolObject(vm: *cy.VM) callconv(.C) vmc.HeapObjectResult {
     const obj = cy.heap.allocPoolObject(vm) catch {
         return .{
             .obj = undefined,
@@ -4267,7 +2857,7 @@ export fn zAllocPoolObject(vm: *cy.VM) vmc.HeapObjectResult {
     };
 }
 
-export fn zAllocExternalCycObject(vm: *cy.VM, size: usize) vmc.HeapObjectResult {
+fn zAllocExternalCycObject(vm: *cy.VM, size: usize) callconv(.C) vmc.HeapObjectResult {
     const obj = cy.heap.allocExternalObject(vm, size, true) catch {
         return .{
             .obj = undefined,
@@ -4280,7 +2870,7 @@ export fn zAllocExternalCycObject(vm: *cy.VM, size: usize) vmc.HeapObjectResult 
     };
 }
 
-export fn zAllocExternalObject(vm: *cy.VM, size: usize) vmc.HeapObjectResult {
+fn zAllocExternalObject(vm: *cy.VM, size: usize) callconv(.C) vmc.HeapObjectResult {
     const obj = cy.heap.allocExternalObject(vm, size, false) catch {
         return .{
             .obj = undefined,
@@ -4293,7 +2883,7 @@ export fn zAllocExternalObject(vm: *cy.VM, size: usize) vmc.HeapObjectResult {
     };
 }
 
-export fn zAllocStringTemplate(vm: *cy.VM, strs: [*]cy.Inst, strCount: u8, vals: [*]Value, valCount: u8) vmc.ValueResult {
+fn zAllocStringTemplate(vm: *cy.VM, strs: [*]cy.Inst, strCount: u8, vals: [*]Value, valCount: u8) callconv(.C) vmc.ValueResult {
     const val = cy.heap.allocStringTemplate(vm, strs[0..strCount], vals[0..valCount]) catch {
         return .{
             .val = undefined,
@@ -4306,7 +2896,7 @@ export fn zAllocStringTemplate(vm: *cy.VM, strs: [*]cy.Inst, strCount: u8, vals:
     };
 }
 
-pub export fn zAllocStringTemplate2(vm: *cy.VM, strs: [*]cy.Value, strCount: u8, vals: [*]Value, valCount: u8) vmc.ValueResult {
+pub fn zAllocStringTemplate2(vm: *cy.VM, strs: [*]cy.Value, strCount: u8, vals: [*]Value, valCount: u8) callconv(.C) vmc.ValueResult {
     const val = cy.heap.allocStringTemplate2(vm, strs[0..strCount], vals[0..valCount]) catch {
         return .{
             .val = undefined,
@@ -4319,20 +2909,20 @@ pub export fn zAllocStringTemplate2(vm: *cy.VM, strs: [*]cy.Value, strCount: u8,
     };
 }
 
-export fn zDumpValue(vm: *VM, val: Value) void {
+fn zDumpValue(vm: *VM, val: Value) callconv(.C) void {
     var buf: [1024]u8 = undefined;
     var fbuf = std.io.fixedBufferStream(&buf);
     cy.debug.dumpValue(vm, fbuf.writer(), val, .{}) catch cy.fatal();
     cy.rt.log(fbuf.getWritten());
 }
 
-export fn zGetFieldFallback(vm: *VM, obj: *HeapObject, nameId: vmc.NameId) Value {
+fn zGetFieldFallback(vm: *VM, obj: *HeapObject, nameId: vmc.NameId) callconv(.C) Value {
     return vm.getFieldFallback(obj, nameId) catch {
         return Value.Interrupt;
     };
 }
 
-export fn zSetFieldFallback(vm: *VM, obj: *HeapObject, nameId: vmc.NameId, val: cy.Value) vmc.ResultCode {
+fn zSetFieldFallback(vm: *VM, obj: *HeapObject, nameId: vmc.NameId, val: cy.Value) callconv(.C) vmc.ResultCode {
     vm.setFieldFallback(obj, nameId, val) catch |err| {
         if (err == error.Panic) {
             return vmc.RES_CODE_PANIC;
@@ -4343,7 +2933,7 @@ export fn zSetFieldFallback(vm: *VM, obj: *HeapObject, nameId: vmc.NameId, val: 
     return vmc.RES_CODE_SUCCESS;
 }
 
-export fn zAlloc(alloc: vmc.ZAllocator, n: usize) vmc.BufferResult {
+fn zAlloc(alloc: vmc.ZAllocator, n: usize) callconv(.C) vmc.BufferResult {
     const zalloc = std.mem.Allocator{
         .ptr = @ptrCast(alloc.ptr),
         .vtable = @ptrCast(@alignCast(alloc.vtable)),
@@ -4362,64 +2952,60 @@ export fn zAlloc(alloc: vmc.ZAllocator, n: usize) vmc.BufferResult {
     };
 }
 
-export fn zGrowTryStackTotalCapacity(list: *cy.List(vmc.TryFrame), alloc: vmc.ZAllocator, minCap: usize) vmc.ResultCode {
-    const zalloc = std.mem.Allocator{
-        .ptr = @ptrCast(alloc.ptr),
-        .vtable = @ptrCast(@alignCast(alloc.vtable)),
-    };
-    list.growTotalCapacity(zalloc, minCap) catch {
+fn zGrowTryStackTotalCapacity(vm: *cy.VM) callconv(.C) vmc.ResultCode {
+    vm.c.getTryStack().growTotalCapacity(vm.alloc, vm.c.tryStack_len + 1) catch {
         return vmc.RES_CODE_UNKNOWN;
     };
     return vmc.RES_CODE_SUCCESS;
 }
 
-export fn zOpMatch(pc: [*]const cy.Inst, framePtr: [*]const Value) u16 {
+fn zOpMatch(pc: [*]const cy.Inst, framePtr: [*]const Value) callconv(.C) u16 {
     return opMatch(pc, framePtr);
 }
 
-export fn zLog(fmtz: [*:0]const u8, valsPtr: [*]const fmt.FmtValue, len: usize) void {
+fn zLog(fmtz: [*:0]const u8, valsPtr: [*]const fmt.FmtValue, len: usize) callconv(.C) void {
     const format = std.mem.sliceTo(fmtz, 0);
     const vals = valsPtr[0..len];
     rt.logFmt(format, vals);
 }
 
-export fn zCheckDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) void {
+fn zCheckDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) callconv(.C) void {
     if (cy.Trace) {
         cy.arc.checkDoubleFree(vm, obj);
     }
 }
 
-export fn zCheckRetainDanglingPointer(vm: *cy.VM, obj: *cy.HeapObject) void {
+fn zCheckRetainDanglingPointer(vm: *cy.VM, obj: *cy.HeapObject) callconv(.C) void {
     if (cy.Trace) {
         cy.arc.checkRetainDanglingPointer(vm, obj);
     }
 }
 
-export fn zPanicFmt(vm: *VM, formatz: [*:0]const u8, argsPtr: [*]const fmt.FmtValue, numArgs: usize) void {
+fn zPanicFmt(vm: *VM, formatz: [*:0]const u8, argsPtr: [*]const fmt.FmtValue, numArgs: usize) callconv(.C) void {
     const format = formatz[0..std.mem.sliceTo(formatz, 0).len];
     const args = argsPtr[0..numArgs];
 
     const msg = fmt.allocFormat(vm.alloc, format, args) catch |err| {
         if (err == error.OutOfMemory) {
-            vm.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
+            vm.c.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
             return;
         } else {
             cy.panic("unexpected");
         }
     };
-    vm.curFiber.panicPayload = @as(u64, @intFromPtr(msg.ptr)) | (@as(u64, msg.len) << 48);
-    vm.curFiber.panicType = vmc.PANIC_MSG;
+    vm.c.curFiber.panicPayload = @as(u64, @intFromPtr(msg.ptr)) | (@as(u64, msg.len) << 48);
+    vm.c.curFiber.panicType = vmc.PANIC_MSG;
     logger.tracev("{s}", .{msg});
 }
 
-export fn zMapSet(vm: *VM, map: *cy.heap.Map, key: Value, val: Value) vmc.ResultCode {
+fn zMapSet(vm: *VM, map: *cy.heap.Map, key: Value, val: Value) callconv(.C) vmc.ResultCode {
     map.set(vm, key, val) catch {
         return vmc.RES_CODE_UNKNOWN;
     };
     return vmc.RES_CODE_SUCCESS;
 }
 
-export fn zValueMapGet(map: *cy.ValueMap, key: Value, found: *bool) Value {
+fn zValueMapGet(map: *cy.ValueMap, key: Value, found: *bool) callconv(.C) Value {
     if (map.get(key)) |val| {
         found.* = true;
         return val;
@@ -4439,8 +3025,50 @@ fn c_pow(b: f64, e: f64) callconv(.C) f64 {
 
 comptime {
     if (cy.isWasmFreestanding and build_options.vmEngine == .c) {
-        @export(c_strlen, .{ .name = "strlen", .linkage = .Strong });
-        @export(c_pow, .{ .name = "pow", .linkage = .Strong });
+        @export(c_strlen, .{ .name = "strlen", .linkage = .strong });
+        @export(c_pow, .{ .name = "pow", .linkage = .strong });
+    }
+
+    if (build_options.export_vmz) {
+        @export(zPopFiber, .{ .name = "zPopFiber", .linkage = .strong });
+        @export(zPushFiber, .{ .name = "zPushFiber", .linkage = .strong });
+        @export(zGetFieldFallback, .{ .name = "zGetFieldFallback", .linkage = .strong });
+        @export(zSetFieldFallback, .{ .name = "zSetFieldFallback", .linkage = .strong });
+        @export(zMapSet, .{ .name = "zMapSet", .linkage = .strong });
+        @export(zValueMapGet, .{ .name = "zValueMapGet", .linkage = .strong });
+        @export(zPanicFmt, .{ .name = "zPanicFmt", .linkage = .strong });
+        @export(zOtherToF64, .{ .name = "zOtherToF64", .linkage = .strong });
+        @export(zAllocExternalObject, .{ .name = "zAllocExternalObject", .linkage = .strong });
+        @export(zAllocExternalCycObject, .{ .name = "zAllocExternalCycObject", .linkage = .strong });
+        @export(zAllocStringTemplate, .{ .name = "zAllocStringTemplate", .linkage = .strong });
+        @export(zAllocStringTemplate2, .{ .name = "zAllocStringTemplate2", .linkage = .strong });
+        @export(zAllocPoolObject, .{ .name = "zAllocPoolObject", .linkage = .strong });
+        @export(zAllocObjectSmall, .{ .name = "zAllocObjectSmall", .linkage = .strong });
+        @export(zAllocFiber, .{ .name = "zAllocFiber", .linkage = .strong });
+        @export(zAllocFuncFromSym, .{ .name = "zAllocFuncFromSym", .linkage = .strong });
+        @export(zAlloc, .{ .name = "zAlloc", .linkage = .strong });
+        @export(zAllocList, .{ .name = "zAllocList", .linkage = .strong });
+        @export(zAllocListDyn, .{ .name = "zAllocListDyn", .linkage = .strong });
+        @export(zCall, .{ .name = "zCall", .linkage = .strong });
+        @export(zCallSym, .{ .name = "zCallSym", .linkage = .strong });
+        @export(zCallSymDyn, .{ .name = "zCallSymDyn", .linkage = .strong });
+        @export(zCallObjSym, .{ .name = "zCallObjSym", .linkage = .strong });
+        @export(zOpMatch, .{ .name = "zOpMatch", .linkage = .strong });
+        @export(zOpCodeName, .{ .name = "zOpCodeName", .linkage = .strong });
+        @export(zLog, .{ .name = "zLog", .linkage = .strong });
+        @export(zGrowTryStackTotalCapacity, .{ .name = "zGrowTryStackTotalCapacity", .linkage = .strong });
+        @export(zGetTypeName, .{ .name = "zGetTypeName", .linkage = .strong });
+        @export(zFreeObject, .{ .name = "zFreeObject", .linkage = .strong });
+        @export(zDumpValue, .{ .name = "zDumpValue", .linkage = .strong });
+        @export(zDumpEvalOp, .{ .name = "zDumpEvalOp", .linkage = .strong });
+        @export(zCheckDoubleFree, .{ .name = "zCheckDoubleFree", .linkage = .strong });
+        @export(zCheckRetainDanglingPointer, .{ .name = "zCheckRetainDanglingPointer", .linkage = .strong });
+        @export(zFatal, .{ .name = "zFatal", .linkage = .strong });
+        @export(zEvalCompareNot, .{ .name = "zEvalCompareNot", .linkage = .strong });
+        @export(zEvalCompare, .{ .name = "zEvalCompare", .linkage = .strong });
+        @export(zEnsureListCap, .{ .name = "zEnsureListCap", .linkage = .strong });
+        @export(zEnd, .{ .name = "zEnd", .linkage = .strong });
+        @export(zGetFieldOffsetFromTable, .{ .name = "zGetFieldOffsetFromTable", .linkage = .strong });
     }
 }
 
@@ -4466,43 +3094,27 @@ pub fn defaultPrintError(_: ?*cc.VM, _: cc.Str) callconv(.C) void {
     // Default is a nop.
 }
 
-export fn zGetTypeName(vm: *VM, id: cy.TypeId) vmc.Str {
+fn zGetTypeName(vm: *VM, id: cy.TypeId) callconv(.C) vmc.Str {
     if (cy.Trace) {
         if ((id & vmc.TYPE_MASK) == vmc.TYPE_MASK) {
             return vmc.Str{ .ptr = "DanglingObject", .len = "DanglingObject".len };
         }
-        if (vm.types[id].kind == .null) {
+        if (vm.c.types[id].kind == .null) {
             cy.panicFmt("Type `{}` is uninited.", .{ id });
         }
     }
-    const name = vm.types[id].sym.name();
+    const name = vm.c.types[id].sym.name();
     return vmc.Str{
         .ptr = name.ptr,
         .len = name.len,
     };
 }
 
-export fn zEnsureListCap(vm: *VM, list: *cy.List(Value), cap: usize) vmc.ResultCode {
+fn zEnsureListCap(vm: *VM, list: *cy.List(Value), cap: usize) callconv(.C) vmc.ResultCode {
     list.ensureTotalCapacity(vm.alloc, cap) catch {
         return vmc.RES_CODE_UNKNOWN;
     };
     return vmc.RES_CODE_SUCCESS;
-}
-
-export fn zTraceRetain(vm: *VM, val: Value) void {
-    _ = vm;
-    _ = val;
-
-    // if (val.isString()) {
-    //     if (std.mem.eql(u8, val.asString(), "Color_S")) {
-    //         const res = traceObjRetains.getOrPut(vm.alloc, vm.debugPc) catch cy.fatal();
-    //         if (res.found_existing) {
-    //             res.value_ptr.* += 1;
-    //         } else {
-    //             res.value_ptr.* = 0;
-    //         }
-    //     }
-    // }
 }
 
 /// pc -> number of retains.
@@ -4515,7 +3127,7 @@ fn spawn(args: struct {
     cwd_dir: ?std.fs.Dir = null,
     env_map: ?*const std.process.EnvMap = null,
     max_output_bytes: usize = 50 * 1024,
-    expand_arg0: std.os.Arg0Expand = .no_expand,
+    expand_arg0: std.posix.Arg0Expand = .no_expand,
 }) !std.ChildProcess.Term {
     var child = std.ChildProcess.init(args.argv, args.allocator);
     child.stdin_behavior = .Ignore;

@@ -434,7 +434,7 @@ pub const Tokenizer = struct {
             '\t' => {
                 // Consume whitespace.
                 while (!isAtEnd(t)) {
-                    var ch2 = peek(t);
+                    const ch2 = peek(t);
                     switch (ch2) {
                         ' ',
                         '\r',
@@ -1006,6 +1006,6 @@ test "tokenizer internals." {
     try tt.eq(@alignOf(Token), 4);
     try tt.eq(@sizeOf(TokenizeState), 4);
 
-    try tt.eq(std.enums.values(TokenType).len, 88);
-    try tt.eq(keywords.kvs.len, 35);
+    try tt.eq(std.enums.values(TokenType).len, 89);
+    try tt.eq(keywords.kvs.len, 36);
 }

@@ -220,7 +220,8 @@ pub const Compiler = struct {
         };
 
         // Update VM types view.
-        self.vm.types = self.sema.types.items;
+        self.vm.c.types = self.sema.types.items.ptr;
+        self.vm.c.types_len = self.sema.types.items.len;
 
         // Successful.
         self.cont = true;
@@ -532,7 +533,7 @@ fn performChunkSema(self: *Compiler, chunk: *cy.Chunk) !void {
 fn performChunkSemaDecls(c: *cy.Chunk) !void {
     // Iterate funcs with explicit index since lambdas could be appended.
     var i: u32 = 0;
-    var num_funcs: u32 = @intCast(c.funcs.items.len);
+    const num_funcs: u32 = @intCast(c.funcs.items.len);
     while (i < num_funcs) : (i += 1) {
         const func = c.funcs.items[i];
         switch (func.type) {
@@ -1301,7 +1302,4 @@ pub fn resolveModuleUri(self: *cy.Compiler, buf: []u8, uri: []const u8) ![]const
 }
 
 test "vm compiler internals." {
-    try t.eq(@offsetOf(Compiler, "buf"), @offsetOf(vmc.Compiler, "buf"));
-    try t.eq(@offsetOf(Compiler, "reports"), @offsetOf(vmc.Compiler, "reports"));
-    try t.eq(@offsetOf(Compiler, "sema"), @offsetOf(vmc.Compiler, "sema"));
 }

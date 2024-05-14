@@ -4,9 +4,9 @@ const build_options = @import("build_options");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const fatal = cy.fatal;
-const c = @import("../src/capi.zig");
-const cy = @import("../src/cyber.zig");
-const cli = @import("../src/cli.zig");
+const all = @import("all");
+const c = all.cy.C;
+const cy = all.cy;
 const vmc = cy.vmc;
 const log = cy.log.scoped(.setup);
 
@@ -101,7 +101,7 @@ pub const VMrunner = struct {
     }
 
     pub fn getTrace(self: *VMrunner) *vmc.TraceInfo {
-        return self.internal().trace;
+        return self.internal().c.trace;
     }
 
     pub fn expectErrorReport(self: *VMrunner, res: EvalResult, expErr: c.ResultCode, expReport: []const u8) !void {
@@ -130,7 +130,7 @@ pub const VMrunner = struct {
     }
 
     pub fn expectErrorReport2(self: *VMrunner, res: EvalResult, expReport: []const u8) !void {
-        var errorMismatch = false;
+        const errorMismatch = false;
         if (res.code == c.Success) {
             const val_dump = c.newValueDump(self.vm, res.value);
             defer c.free(self.vm, val_dump);
@@ -181,13 +181,13 @@ pub const VMrunner = struct {
 
         // Set and restore cwd.
         var cwdBuf: [1024]u8 = undefined;
-        const cwd = try std.os.getcwd(&cwdBuf);
+        const cwd = try std.posix.getcwd(&cwdBuf);
         if (config.chdir) |chdir| {
-            try std.os.chdir(chdir);
+            try std.posix.chdir(chdir);
         }
         defer {
             if (config.chdir != null) {
-                std.os.chdir(cwd) catch @panic("error");
+                std.posix.chdir(cwd) catch @panic("error");
             }
         }
 
@@ -390,7 +390,7 @@ pub fn eqUserError(alloc: std.mem.Allocator, act: []const u8, expTmpl: []const u
     var curTmpl = expTmpl;
     while (true) {
         var found = false;
-        var pos: usize = 0;
+        const pos: usize = 0;
         if (!cy.isWasm) {
             if (std.mem.indexOfPos(u8, curTmpl, pos, "@AbsPath(")) |idx| {
                 if (std.mem.indexOfScalarPos(u8, curTmpl, idx, ')')) |endIdx| {

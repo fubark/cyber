@@ -14,7 +14,7 @@ const bt = cy.types.BuiltinTypes;
 
 pub fn release(vm: *cy.VM, val: cy.Value) void {
     if (cy.Trace) {
-        vm.trace.numReleaseAttempts += 1;
+        vm.c.trace.numReleaseAttempts += 1;
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
@@ -27,15 +27,15 @@ pub fn release(vm: *cy.VM, val: cy.Value) void {
         obj.head.rc -= 1;
         if (cy.TrackGlobalRC) {
             if (cy.Trace) {
-                if (vm.refCounts == 0) {
+                if (vm.c.refCounts == 0) {
                     rt.errFmt(vm, "Double free. {}\n", &.{cy.fmt.v(obj.getTypeId())});
                     cy.fatal();
                 }
             }
-            vm.refCounts -= 1;
+            vm.c.refCounts -= 1;
         }
         if (cy.Trace) {
-            vm.trace.numReleases += 1;
+            vm.c.trace.numReleases += 1;
         }
         if (obj.head.rc == 0) {
             // Free children and the object.
@@ -69,10 +69,10 @@ pub fn isObjectAlreadyFreed(vm: *cy.VM, obj: *cy.HeapObject) bool {
 pub fn checkDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) void {
     if (isObjectAlreadyFreed(vm, obj)) {
         const msg = std.fmt.allocPrint(vm.alloc, "{*} at pc: {}({s})", .{
-            obj, vm.debugPc, @tagName(vm.ops[vm.debugPc].opcode()),
+            obj, vm.c.debugPc, @tagName(vm.c.ops[vm.c.debugPc].opcode()),
         }) catch cy.fatal();
         defer vm.alloc.free(msg);
-        cy.debug.printTraceAtPc(vm, vm.debugPc, "double free", msg) catch cy.fatal();
+        cy.debug.printTraceAtPc(vm, vm.c.debugPc, "double free", msg) catch cy.fatal();
 
         cy.debug.dumpObjectTrace(vm, obj) catch cy.fatal();
         cy.fatal();
@@ -88,11 +88,11 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) void {
     }
     obj.head.rc -= 1;
     if (cy.TrackGlobalRC) {
-        vm.refCounts -= 1;
+        vm.c.refCounts -= 1;
     }
     if (cy.Trace) {
-        vm.trace.numReleases += 1;
-        vm.trace.numReleaseAttempts += 1;
+        vm.c.trace.numReleases += 1;
+        vm.c.trace.numReleaseAttempts += 1;
     }
     if (obj.head.rc == 0) {
         @call(.never_inline, cy.heap.freeObject, .{vm, obj, true, false, true});
@@ -130,11 +130,11 @@ pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) void {
         }
     }
     if (cy.TrackGlobalRC) {
-        self.refCounts += 1;
+        self.c.refCounts += 1;
     }
     if (cy.Trace) {
-        self.trace.numRetains += 1;
-        self.trace.numRetainAttempts += 1;
+        self.c.trace.numRetains += 1;
+        self.c.trace.numRetainAttempts += 1;
     }
 }
 
@@ -150,10 +150,10 @@ pub const VmExt = struct {
 pub fn checkRetainDanglingPointer(vm: *cy.VM, obj: *cy.HeapObject) void {
     if (isObjectAlreadyFreed(vm, obj)) {
         const msg = std.fmt.allocPrint(vm.alloc, "{*} at pc: {}({s})", .{
-            obj, vm.debugPc, @tagName(vm.ops[vm.debugPc].opcode()),
+            obj, vm.c.debugPc, @tagName(vm.c.ops[vm.c.debugPc].opcode()),
         }) catch cy.fatal();
         defer vm.alloc.free(msg);
-        cy.debug.printTraceAtPc(vm, vm.debugPc, "retain dangling ptr", msg) catch cy.fatal();
+        cy.debug.printTraceAtPc(vm, vm.c.debugPc, "retain dangling ptr", msg) catch cy.fatal();
 
         if (cy.Trace) {
             cy.debug.dumpObjectTrace(vm, obj) catch cy.fatal();
@@ -164,7 +164,7 @@ pub fn checkRetainDanglingPointer(vm: *cy.VM, obj: *cy.HeapObject) void {
 
 pub inline fn retain(self: *cy.VM, val: cy.Value) void {
     if (cy.Trace) {
-        self.trace.numRetainAttempts += 1;
+        self.c.trace.numRetainAttempts += 1;
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
@@ -176,17 +176,17 @@ pub inline fn retain(self: *cy.VM, val: cy.Value) void {
         }
         obj.head.rc += 1;
         if (cy.TrackGlobalRC) {
-            self.refCounts += 1;
+            self.c.refCounts += 1;
         }
         if (cy.Trace) {
-            self.trace.numRetains += 1;
+            self.c.trace.numRetains += 1;
         }
     }
 }
 
 pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) void {
     if (cy.Trace) {
-        self.trace.numRetainAttempts += inc;
+        self.c.trace.numRetainAttempts += inc;
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
@@ -198,17 +198,17 @@ pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) void {
         }
         obj.head.rc += inc;
         if (cy.TrackGlobalRC) {
-            self.refCounts += inc;
+            self.c.refCounts += inc;
         }
         if (cy.Trace) {
-            self.trace.numRetains += inc;
+            self.c.trace.numRetains += inc;
         }
     }
 }
 
 pub fn getGlobalRC(self: *const cy.VM) usize {
     if (cy.TrackGlobalRC) {
-        return self.refCounts;
+        return self.c.refCounts;
     } else {
         cy.panic("Enable TrackGlobalRC.");
     }
@@ -240,7 +240,7 @@ fn performMark(vm: *cy.VM) !void {
     try markMainStackRoots(vm);
 
     // Mark globals.
-    for (vm.varSyms.items()) |sym| {
+    for (vm.c.getVarSyms().items()) |sym| {
         if (sym.value.isCycPointer()) {
             markValue(vm, sym.value);
         }
@@ -303,14 +303,14 @@ fn performSweep(vm: *cy.VM) !c.GCResult {
             checkDoubleFree(vm, obj);
         }
         if (cy.TrackGlobalRC) {
-            vm.refCounts -= obj.head.rc;
+            vm.c.refCounts -= obj.head.rc;
         }
         // No need to bother with their refcounts.
         cy.heap.freeObject(vm, obj, false, false, true);
     }
 
     if (cy.Trace) {
-        vm.trace.numCycFrees += @intCast(cycObjs.items.len);
+        vm.c.trace.numCycFrees += @intCast(cycObjs.items.len);
         vm.numFreed += @intCast(cycObjs.items.len);
     }
 
@@ -323,22 +323,22 @@ fn performSweep(vm: *cy.VM) !c.GCResult {
 }
 
 fn markMainStackRoots(vm: *cy.VM) !void {
-    if (vm.pc[0].opcode() == .end) {
+    if (vm.c.pc[0].opcode() == .end) {
         return;
     }
 
-    var pcOff = cy.fiber.getInstOffset(vm.ops.ptr, vm.pc);
-    var fpOff = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
+    var pcOff = cy.fiber.getInstOffset(vm.c.ops, vm.c.pc);
+    var fpOff = cy.fiber.getStackOffset(vm.c.stack, vm.c.framePtr);
 
     while (true) {
         const symIdx = try cy.debug.indexOfDebugSym(vm, pcOff);
         const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
         const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
         const locals = sym.getLocals();
-        log.tracev("mark frame: pc={} {s} fp={} {}, locals={}..{}", .{pcOff, @tagName(vm.ops[pcOff].opcode()), fpOff, tempIdx, locals.start, locals.end});
+        log.tracev("mark frame: pc={} {s} fp={} {}, locals={}..{}", .{pcOff, @tagName(vm.c.ops[pcOff].opcode()), fpOff, tempIdx, locals.start, locals.end});
 
         if (tempIdx != cy.NullId) {
-            const fp = vm.stack.ptr + fpOff;
+            const fp = vm.c.stack + fpOff;
             log.tracev("mark temps", .{});
             var curIdx = tempIdx;
             while (curIdx != cy.NullId) {
@@ -352,7 +352,7 @@ fn markMainStackRoots(vm: *cy.VM) !void {
         }
 
         if (locals.len() > 0) {
-            for (vm.stack[fpOff+locals.start..fpOff+locals.end]) |val| {
+            for (vm.c.stack[fpOff+locals.start..fpOff+locals.end]) |val| {
                 if (val.isCycPointer()) {
                     markValue(vm, val);
                 }
@@ -363,8 +363,8 @@ fn markMainStackRoots(vm: *cy.VM) !void {
             return;
         } else {
             // Unwind.
-            pcOff = cy.fiber.getInstOffset(vm.ops.ptr, vm.stack[fpOff + 2].retPcPtr) - vm.stack[fpOff + 1].retInfoCallInstOffset();
-            fpOff = cy.fiber.getStackOffset(vm.stack.ptr, vm.stack[fpOff + 3].retFramePtr);
+            pcOff = cy.fiber.getInstOffset(vm.c.ops, vm.c.stack[fpOff + 2].retPcPtr) - vm.c.stack[fpOff + 1].retInfoCallInstOffset();
+            fpOff = cy.fiber.getStackOffset(vm.c.stack, vm.c.stack[fpOff + 3].retFramePtr);
         }
     }
 }
@@ -415,7 +415,7 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
         },
         else => {
             // Assume caller used isCycPointer and obj is cyclable.
-            const entry = vm.types[typeId];
+            const entry = vm.c.types[typeId];
             if (entry.kind == .object) {
                 // User type.
                 const members = obj.object.getValuesConstPtr()[0..entry.data.object.numFields];

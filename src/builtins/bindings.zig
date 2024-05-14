@@ -343,15 +343,15 @@ pub fn listJoin(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 
         // Copy.
         str = try vm.getOrBufPrintValueStr(&cy.tempBuf, items[0]);
-        std.mem.copy(u8, buf[0..str.len], str);
+        @memcpy(buf[0..str.len], str);
 
         var dst: usize = str.len;
         for (items[1..]) |item| {
-            std.mem.copy(u8, buf[dst..dst+sep.len], sep);
+            @memcpy(buf[dst..dst+sep.len], sep);
             dst += sep.len;
 
             str = try vm.getOrBufPrintValueStr(&cy.tempBuf, item);
-            std.mem.copy(u8, buf[dst..dst+str.len], str);
+            @memcpy(buf[dst..dst+str.len], str);
             dst += str.len;
         }
         return Value.initNoCycPtr(newObj);

@@ -8,9 +8,12 @@ const cli = @import("cli.zig");
 const cy_mod = @import("builtins/cy.zig");
 const build_options = @import("build_options");
 const fmt = @import("fmt.zig");
+
 comptime {
     const lib = @import("lib.zig");
-    std.testing.refAllDecls(lib);
+    for (std.meta.declarations(lib)) |decl| {
+        _ = &@field(lib, decl.name);
+    }
 }
 
 var verbose = false;
@@ -133,7 +136,7 @@ fn exit(code: u8) noreturn {
     if (builtin.os.tag == .windows) {
         _ = std.os.windows.kernel32.SetConsoleOutputCP(prevWinConsoleOutputCP);
     }
-    std.os.exit(code);
+    std.posix.exit(code);
 }
 
 const Command = enum {

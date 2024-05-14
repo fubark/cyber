@@ -128,13 +128,13 @@ pub fn genAll(c: *cy.Compiler) !void {
     }
 
     // Merge inst and const buffers.
-    var reqLen = c.buf.ops.items.len + c.buf.consts.items.len * @sizeOf(cy.Value) + @alignOf(cy.Value) - 1;
+    const reqLen = c.buf.ops.items.len + c.buf.consts.items.len * @sizeOf(cy.Value) + @alignOf(cy.Value) - 1;
     if (c.buf.ops.capacity < reqLen) {
         try c.buf.ops.ensureTotalCapacityPrecise(c.alloc, reqLen);
     }
     const constAddr = std.mem.alignForward(usize, @intFromPtr(c.buf.ops.items.ptr) + c.buf.ops.items.len, @alignOf(cy.Value));
     const constDst = @as([*]cy.Value, @ptrFromInt(constAddr))[0..c.buf.consts.items.len];
-    std.mem.copy(cy.Value, constDst, c.buf.consts.items);
+    @memcpy(constDst, c.buf.consts.items);
     c.buf.mconsts = constDst;
 
     // Final op address is known. Patch pc offsets.
@@ -167,17 +167,17 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
     log.tracev("prep sym: {s}", .{sym.name()});
     switch (sym.type) {
         .hostVar => {
-            const id = c.vm.varSyms.len;
+            const id = c.vm.c.varSyms_len;
             const rtVar = rt.VarSym.init(sym.cast(.hostVar).val);
             cy.arc.retain(c.vm, rtVar.value);
-            try c.vm.varSyms.append(c.alloc, rtVar);
+            try c.vm.c.getVarSyms().append(c.alloc, rtVar);
             try c.vm.varSymExtras.append(c.alloc, sym);
             try c.genSymMap.putNoClobber(c.alloc, sym, .{ .varSym = .{ .id = @intCast(id) }});
         },
         .userVar => {
-            const id = c.vm.varSyms.len;
+            const id = c.vm.c.varSyms_len;
             const rtVar = rt.VarSym.init(cy.Value.initInt(0));
-            try c.vm.varSyms.append(c.alloc, rtVar);
+            try c.vm.c.getVarSyms().append(c.alloc, rtVar);
             try c.vm.varSymExtras.append(c.alloc, sym);
             try c.genSymMap.putNoClobber(c.alloc, sym, .{ .varSym = .{ .id = @intCast(id) }});
         },
@@ -1743,7 +1743,7 @@ const SetLocalOptions = struct {
 
 fn setLocal(c: *Chunk, data: ir.Local, rightIdx: u32, right_t: cy.TypeId, nodeId: cy.NodeId, opts: SetLocalOptions) !void {
     const reg = toLocalReg(c, data.id);
-    var local = getLocalInfoPtr(c, reg);
+    const local = getLocalInfoPtr(c, reg);
 
     var dst: Cstr = undefined;
     if (local.some.lifted) {
@@ -2213,7 +2213,7 @@ pub fn beginCall(c: *Chunk, cstr: Cstr, hasCalleeValue: bool, nodeId: cy.NodeId)
     }
 
     // Compute the number of preludes to be unwinded after the call inst.
-    var numPreludeTemps = c.rega.nextTemp - tempStart;
+    const numPreludeTemps = c.rega.nextTemp - tempStart;
     var finalDst: ?Cstr = null;
     switch (cstr.type) {
         .tempReg,
@@ -2676,7 +2676,7 @@ fn genUnwrapOr(c: *Chunk, loc: usize, cstr: Cstr, node: cy.NodeId) !GenValue {
     try pushUnwindValue(c, optv);
     const jump_none = try c.pushEmptyJumpNone(optv.reg);
 
-    var retain_some = true;
+    const retain_some = true;
     const inst = try c.rega.selectForDstInst(cstr, retain_some, node);
     try pushField(c, optv.reg, 1, inst.dst, node);
     const somev = finishDstInst(c, inst, retain_some);
@@ -2732,11 +2732,11 @@ fn genIfExpr(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
 fn ifUnwrapStmt(c: *cy.Chunk, loc: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(loc, .ifUnwrapStmt);
 
-    var opt_nid = c.ir.getNode(data.opt);
+    const opt_nid = c.ir.getNode(data.opt);
     var optv = try genExpr(c, data.opt, Cstr.simple);
     try pushUnwindValue(c, optv);
 
-    var jump_none = try c.pushEmptyJumpNone(optv.reg);
+    const jump_none = try c.pushEmptyJumpNone(optv.reg);
     {
         try pushBlock(c, false, nodeId);
         try genStmts(c, data.decl_head);
@@ -2779,11 +2779,11 @@ fn ifUnwrapStmt(c: *cy.Chunk, loc: usize, nodeId: cy.NodeId) !void {
 fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .ifStmt);
 
-    var condNodeId = c.ir.getNode(data.cond);
-    var condv = try genExpr(c, data.cond, Cstr.simple);
+    const condNodeId = c.ir.getNode(data.cond);
+    const condv = try genExpr(c, data.cond, Cstr.simple);
     try pushUnwindValue(c, condv);
 
-    var jump_miss = try c.pushEmptyJumpNotCond(condv.reg);
+    const jump_miss = try c.pushEmptyJumpNotCond(condv.reg);
 
     // ARC cleanup for true case.
     try popTempAndUnwind(c, condv);

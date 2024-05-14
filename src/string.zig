@@ -67,7 +67,7 @@ pub const HeapStringBuilder = struct {
         try self.ensureTotalCapacity(alloc, self.len + str.len);
         const oldLen = self.len;
         self.len += @intCast(str.len);
-        std.mem.copy(u8, self.buf[oldLen..self.len], str);
+        @memcpy(self.buf[oldLen..self.len], str);
         if (self.isAstring and utf8) {
             // Upgrade to Ustring.
             const obj = self.getHeapObject();
@@ -98,7 +98,7 @@ pub const HeapStringBuilder = struct {
                     .bufStart = undefined,
                 };
                 self.buf = objSlice[16..newCap];
-                std.mem.copy(u8, self.buf[0..self.len], old[0..self.len]);
+                @memcpy(self.buf[0..self.len], old[0..self.len]);
                 alloc.free(oldHead);
             }
         } else {
@@ -113,7 +113,7 @@ pub const HeapStringBuilder = struct {
                 .bufStart = undefined,
             };
             self.buf = objSlice[16..newCap];
-            std.mem.copy(u8, self.buf[0..self.len], old[0..self.len]);
+            @memcpy(self.buf[0..self.len], old[0..self.len]);
 
             // Free pool object.
             oldObj.astring.len = self.len;
@@ -183,7 +183,7 @@ pub const HeapArrayBuilder = struct {
         try self.ensureTotalCapacity(alloc, self.len + str.len);
         const oldLen = self.len;
         self.len += @intCast(str.len);
-        std.mem.copy(u8, self.buf[oldLen..self.len], str);
+        @memcpy(self.buf[oldLen..self.len], str);
     }
 
     pub inline fn ensureTotalCapacity(self: *HeapArrayBuilder, alloc: std.mem.Allocator, newCap: usize) !void {
@@ -208,7 +208,7 @@ pub const HeapArrayBuilder = struct {
                     .bufStart = undefined,
                 };
                 self.buf = objSlice[cy.Array.BufOffset..cy.Array.BufOffset+newCap];
-                std.mem.copy(u8, self.buf[0..self.len], old[0..self.len]);
+                @memcpy(self.buf[0..self.len], old[0..self.len]);
                 alloc.free(oldHead);
             }
         } else {
@@ -223,7 +223,7 @@ pub const HeapArrayBuilder = struct {
                 .bufStart = undefined,
             };
             self.buf = objSlice[cy.Array.BufOffset..cy.Array.BufOffset+newCap];
-            std.mem.copy(u8, self.buf[0..self.len], old[0..self.len]);
+            @memcpy(self.buf[0..self.len], old[0..self.len]);
 
             // Free pool object.
             oldObj.array.headerAndLen = self.len;
@@ -253,7 +253,7 @@ fn isAstringScalar(str: []const u8) bool {
 }
 
 pub fn isAstring(str: []const u8) bool {
-    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+    if (comptime std.simd.suggestVectorLength(u8)) |VecSize| {
         var vbuf: @Vector(VecSize, u8) = undefined;
         var i: usize = 0;
         while (i + VecSize <= str.len) : (i += VecSize) {
@@ -530,7 +530,7 @@ inline fn unsetLowestBit(mask: anytype, idx: anytype) @TypeOf(mask) {
 
 /// `needle.len` is assumed to be at most `str.len`.
 pub fn indexOf(str: []const u8, needle: []const u8) ?usize {
-    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+    if (comptime std.simd.suggestVectorLength(u8)) |VecSize| {
         var i: usize = 0;
         // Ensure that there is `needle.len` additional bytes after the fixed width.
         const iters = @divTrunc(str.len - needle.len, VecSize);
@@ -704,7 +704,7 @@ pub fn indexOfAsciiSetSimdFixed(comptime VecSize: usize, str: []const u8, set: [
 }
 
 pub fn indexOfAsciiSet(str: []const u8, set: []const u8) ?usize {
-    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+    if (comptime std.simd.suggestVectorLength(u8)) |VecSize| {
         var i: usize = 0;
         const iters = @divTrunc(str.len, VecSize);
         if (iters > 0) {
@@ -727,7 +727,7 @@ pub fn indexOfAsciiSet(str: []const u8, set: []const u8) ?usize {
 /// For Ascii needle.
 pub fn indexOfChar(buf: []const u8, needle: u8) ?usize {
     // SIMD is approx 5x faster than scalar.
-    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+    if (comptime std.simd.suggestVectorLength(u8)) |VecSize| {
         var i: usize = 0;
         var iters = @divTrunc(buf.len, VecSize * 4);
         if (iters > 0) {
@@ -805,7 +805,7 @@ test "getLineEndCpu()" {
 }
 
 pub fn getLineEnd(buf: []const u8) ?usize {
-    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+    if (comptime std.simd.suggestVectorLength(u8)) |VecSize| {
         const MaskInt = std.meta.Int(.unsigned, VecSize);
         var vbuf: @Vector(VecSize, u8) = undefined;
         const lfNeedle: @Vector(VecSize, u8) = @splat(@as(u8, '\n'));
@@ -867,16 +867,16 @@ pub fn replaceAtIdxes(dst: []u8, src: []const u8, needleLen: u32, replacement: [
     for (idxes) |idx| {
         // First copy segment between last `idx` and this `idx`.
         const preSegmentLen = idx - srcIdx;
-        std.mem.copy(u8, dst[dstIdx..dstIdx + preSegmentLen], src[srcIdx..idx]);
+        @memcpy(dst[dstIdx..dstIdx + preSegmentLen], src[srcIdx..idx]);
         dstIdx += preSegmentLen;
 
         // Copy replacement.
-        std.mem.copy(u8, dst[dstIdx..dstIdx + replacement.len], replacement);
+        @memcpy(dst[dstIdx..dstIdx + replacement.len], replacement);
         dstIdx += replacement.len;
         srcIdx = idx + needleLen;
     }
     // Copy end segment.
-    std.mem.copy(u8, dst[dstIdx..], src[srcIdx..]);
+    @memcpy(dst[dstIdx..], src[srcIdx..]);
 }
 
 pub fn utf8CodeAtNoCheck(str: []const u8, idx: usize) u21 {

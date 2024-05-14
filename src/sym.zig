@@ -898,11 +898,11 @@ pub const Func = struct {
     funcSigId: cy.sema.FuncSigId,
     declId: cy.NodeId,
     retType: cy.TypeId,
-    data: extern union {
-        hostFunc: extern struct {
+    data: union {
+        hostFunc: struct {
             ptr: cy.ZHostFuncFn,
         },
-        hostInlineFunc: extern struct {
+        hostInlineFunc: struct {
             ptr: cy.ZHostFuncFn,
         },
     },
@@ -1371,7 +1371,7 @@ test "sym internals" {
         if (cy.is32Bit) {
             try t.eq(@sizeOf(Func), 8);
         } else {
-            try t.eq(@sizeOf(Func), 56);
+            try t.eq(@sizeOf(Func), 64);
         }
     }
 

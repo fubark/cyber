@@ -72,7 +72,7 @@ fn genNodeValue(vm: *cy.VM, ast: cy.ast.AstView, nodeId: cy.NodeId) !cy.Value {
             try vm.mapSet(map, try vm.retainOrAllocAstring("ret"), ret);
         },
         .funcParam => {
-            var name = ast.nodeStringById(node.data.funcParam.name);
+            const name = ast.nodeStringById(node.data.funcParam.name);
             try vm.mapSet(map, try vm.retainOrAllocAstring("name"), try vm.allocString(name));
 
             const typeSpec = try genTypeSpecString(vm, ast, node.data.funcParam.typeSpec);

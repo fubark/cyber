@@ -6,8 +6,7 @@ const cy = @import("cyber.zig");
 const sema = cy.sema;
 const vmc = @import("vm_c.zig");
 const pmc = @import("pm_c.zig");
-const api = @import("capi.zig");
-const lib = @import("lib.zig");
+const C = @import("capi.zig");
 const logger = cy.log.scoped(.runtime);
 
 pub const TypeKey = cy.hash.KeyU64;
@@ -284,7 +283,7 @@ const StaticAny = extern struct {
 
 pub fn getTypeName(c: Context, type_h: TypeHandle) []const u8 {
     if (build_options.rt == .vm) {
-        return c.types[type_h].sym.name();
+        return c.c.types[type_h].sym.name();
     } else {
         return std.mem.span(type_h.name);
     }
@@ -293,8 +292,8 @@ pub fn getTypeName(c: Context, type_h: TypeHandle) []const u8 {
 pub fn prepThrowError(c: Context, tag: cy.bindings.Symbol) CompatError {
     if (build_options.rt == .vm) {
         const id: u8 = @intFromEnum(tag);
-        c.curFiber.panicPayload = cy.Value.initErrorSymbol(id).val;
-        c.curFiber.panicType = vmc.PANIC_NATIVE_THROW;
+        c.c.curFiber.panicPayload = cy.Value.initErrorSymbol(id).val;
+        c.c.curFiber.panicType = vmc.PANIC_NATIVE_THROW;
         return cy.Value.Interrupt;
     } else {
         c.panicPayload = 0;
@@ -339,11 +338,18 @@ pub const ErrorWriter = struct {
             remaining -= to_write;
         }
     }
+
+    pub fn writeBytesNTimes(self: ErrorWriter, bytes: []const u8, n: usize) anyerror!void {
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            try self.writeAll(bytes);
+        }
+    }
 };
 
 pub fn err(c: Context, str: []const u8) void {
     if (build_options.rt == .vm) {
-        c.print_err.?(@ptrCast(c), api.toStr(str));
+        c.print_err.?(@ptrCast(c), C.toStr(str));
     } else {
         const w = std.io.getStdErr().writer();
         w.writeAll(str) catch cy.fatal();
@@ -354,7 +360,7 @@ pub fn errFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) voi
     if (build_options.rt == .vm) {
         const w = c.clearTempString();
         cy.fmt.print(w, format, args);
-        c.print_err.?(@ptrCast(c), api.toStr(c.getTempString()));
+        c.print_err.?(@ptrCast(c), C.toStr(c.getTempString()));
     } else {
         const w = std.io.getStdErr().writer();
         cy.fmt.print(w, format, args);
@@ -365,7 +371,7 @@ pub fn errZFmt(c: Context, comptime format: []const u8, args: anytype) void {
     if (build_options.rt == .vm) {
         const w = c.clearTempString();
         std.fmt.format(w, format, args) catch cy.fatal();
-        c.print_err.?(@ptrCast(c), api.toStr(c.getTempString()));
+        c.print_err.?(@ptrCast(c), C.toStr(c.getTempString()));
     } else {
         const w = std.io.getStdErr().writer();
         std.fmt.format(w, format, args) catch cy.fatal();
@@ -374,7 +380,7 @@ pub fn errZFmt(c: Context, comptime format: []const u8, args: anytype) void {
 
 pub fn print(c: Context, str: []const u8) void {
     if (build_options.rt == .vm) {
-        c.print.?(@ptrCast(c), api.toStr(str));
+        c.print.?(@ptrCast(c), C.toStr(str));
     } else {
         const w = std.io.getStdOut().writer();
         w.writeAll(str) catch cy.fatal();
@@ -385,7 +391,7 @@ pub fn printFmt(c: Context, format: []const u8, args: []const cy.fmt.FmtValue) v
     if (build_options.rt == .vm) {
         const w = c.clearTempString();
         cy.fmt.print(w, format, args);
-        c.print.?(@ptrCast(c), api.toStr(c.getTempString()));
+        c.print.?(@ptrCast(c), C.toStr(c.getTempString()));
     } else {
         const w = std.io.getStdOut().writer();
         cy.fmt.print(w, format, args);
@@ -396,7 +402,7 @@ pub fn printZFmt(c: Context, comptime format: []const u8, args: anytype) void {
     if (build_options.rt == .vm) {
         const w = c.clearTempString();
         std.fmt.format(w, format, args) catch cy.fatal();
-        c.print.?(@ptrCast(c), api.toStr(c.getTempString()));
+        c.print.?(@ptrCast(c), C.toStr(c.getTempString()));
     } else {
         const w = std.io.getStdOut().writer();
         std.fmt.format(w, format, args) catch cy.fatal();
@@ -405,7 +411,7 @@ pub fn printZFmt(c: Context, comptime format: []const u8, args: anytype) void {
 
 pub fn log(str: []const u8) void {
     if (build_options.rt == .vm) {
-        lib.clLog.?(api.toStr(str));
+        C.getLog().?(C.toStr(str));
     } else {
         const w = std.io.getStdErr().writer();
         w.writeAll(str) catch cy.fatal();

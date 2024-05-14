@@ -9,7 +9,7 @@ pub fn load(comptime Size: usize, comptime T: type, buf: []const T) @Vector(Size
 }
 
 pub fn negIotaIntExt(comptime len: usize, comptime offset: u32, comptime factor: u32) @Vector(len, i32) {
-    var out: [len]i32 = undefined;
+    const out: [len]i32 = undefined;
     for (out, 0..) |*element, i| {
         element.* = ~@as(i32, @intCast(offset + i * factor));
     }
@@ -17,7 +17,7 @@ pub fn negIotaIntExt(comptime len: usize, comptime offset: u32, comptime factor:
 }
 
 pub fn iotaExt(comptime T: type, comptime len: usize, comptime offset: T, comptime factor: T) @Vector(len, T) {
-    var out: [len]T = undefined;
+    const out: [len]T = undefined;
     for (out, 0..) |*element, i| {
         element.* = switch (@typeInfo(T)) {
             .Int => offset + @as(T, @intCast(i)) * factor,

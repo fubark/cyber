@@ -1609,6 +1609,7 @@ pub fn reserveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, opt_head
             return @ptrCast(sym);
         },
         else => {
+            log.tracev("{}", .{template.kind});
             return error.Unsupported;
         },
     }
@@ -2381,7 +2382,7 @@ fn localDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
     svar = &c.varStack.items[varId];
     if (inferType) {
-        var declType = right.type.toDeclType();
+        const declType = right.type.toDeclType();
         svar.declT = declType;
         svar.vtype = right.type;
         // Patch IR.
@@ -3317,7 +3318,7 @@ pub fn pushProc(self: *cy.Chunk, func: ?*cy.Func) !ProcId {
         nodeId = self.parserAstRootId;
     }
 
-    var new = Proc.init(nodeId, func, @intCast(self.semaBlocks.items.len), isStaticFuncBlock, @intCast(self.varStack.items.len));
+    const new = Proc.init(nodeId, func, @intCast(self.semaBlocks.items.len), isStaticFuncBlock, @intCast(self.varStack.items.len));
     const idx = self.semaProcs.items.len;
     try self.semaProcs.append(self.alloc, new);
 
@@ -3722,7 +3723,7 @@ pub fn getOrLookupVar(self: *cy.Chunk, name: []const u8, nodeId: cy.NodeId) !Var
         if (res.isObjectField) {
             const parentBlock = &self.semaProcs.items[res.blockIdx];
             const selfId = parentBlock.nameToVar.get("self").?.varId;
-            var resVarId = res.varId;
+            const resVarId = res.varId;
             const selfVar = &self.varStack.items[selfId];
             if (!selfVar.inner.local.isParamCopied) {
                 selfVar.inner.local.isParamCopied = true;
@@ -6270,11 +6271,6 @@ test "sema internals." {
     }
 
     try t.eq(@sizeOf(CapVarDesc), 4);
-
-    try t.eq(@offsetOf(Sema, "alloc"), @offsetOf(vmc.Sema, "alloc"));
-    try t.eq(@offsetOf(Sema, "compiler"), @offsetOf(vmc.Sema, "compiler"));
-    try t.eq(@offsetOf(Sema, "funcSigs"), @offsetOf(vmc.Sema, "funcSigs"));
-    try t.eq(@offsetOf(Sema, "funcSigMap"), @offsetOf(vmc.Sema, "funcSigMap"));
 }
 
 pub const ObjectBuilder = struct {

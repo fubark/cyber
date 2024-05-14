@@ -631,7 +631,7 @@ pub fn gen(self: *cy.Compiler) !cy.compiler.AotCompileResult {
             return error.TCCError;
         }
     } else {
-        var res = try std.ChildProcess.exec(.{
+        const res = try std.ChildProcess.run(.{
             .allocator = self.alloc,
             .argv = &.{"clang", "-o", exePath, outPath, "zig-out/lib/librt.a"},
         });
@@ -1593,7 +1593,7 @@ fn ifStmt(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
     c.popBlock();
 
     if (data.else_block != cy.NullId) {
-        var else_loc = data.else_block;
+        const else_loc = data.else_block;
         while (else_loc != cy.NullId) {
             try c.pushLineNoMapping("} else {");
             c.pushBlock();

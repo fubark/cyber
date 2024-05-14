@@ -20,9 +20,9 @@ fn getCyberPath(alloc: std.mem.Allocator) ![]const u8 {
     if (CyberPath.len == 0) {
         const homePath = (try platform.getPath(alloc, .home)) orelse return error.MissingHomeDir;
         defer alloc.free(homePath);
-        std.mem.copy(u8, &S.buf, homePath);
+        std.mem.copyForwards(u8, &S.buf, homePath);
         S.buf[homePath.len] = std.fs.path.sep;
-        std.mem.copy(u8, S.buf[homePath.len+1..homePath.len+1+CyberDir.len], CyberDir);
+        std.mem.copyForwards(u8, S.buf[homePath.len+1..homePath.len+1+CyberDir.len], CyberDir);
         CyberPath = S.buf[0..homePath.len+1+CyberDir.len];
 
         // Also ensure sub directories exist.

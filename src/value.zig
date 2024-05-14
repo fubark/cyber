@@ -519,7 +519,7 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) Value {
                 fmt.panic("Unsupported copy pointer.", &.{});
             },
             else => {
-                const entry = &@as(*const cy.VM, @ptrCast(vm)).types[obj.getTypeId()];
+                const entry = &@as(*const cy.VM, @ptrCast(vm)).c.types[obj.getTypeId()];
                 if (entry.kind == .object) {
                     const numFields = entry.data.object.numFields;
                     const fields = obj.object.getValuesConstPtr()[0..numFields];

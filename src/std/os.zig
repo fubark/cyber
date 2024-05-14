@@ -127,7 +127,7 @@ pub fn onTypeLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
 
 pub fn zPostTypeLoad(c: *cy.Compiler, mod: C.Sym) !void {
     vars[0] = .{ "cpu", try cy.heap.allocString(c.vm, @tagName(builtin.cpu.arch)) };
-    if (builtin.cpu.arch.endian() == .Little) {
+    if (builtin.cpu.arch.endian() == .little) {
         vars[1] = .{ "endian", cy.Value.initSymbol(@intFromEnum(Symbol.little)) };
     } else {
         vars[1] = .{ "endian", cy.Value.initSymbol(@intFromEnum(Symbol.big)) };
@@ -158,7 +158,7 @@ pub fn zPostTypeLoad(c: *cy.Compiler, mod: C.Sym) !void {
     }
     vars[5] = .{ "system", try cy.heap.allocString(c.vm, @tagName(builtin.os.tag)) };
     
-    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+    if (comptime std.simd.suggestVectorLength(u8)) |VecSize| {
         vars[6] = .{ "vecBitSize", cy.Value.initI32(VecSize * 8) };
     } else {
         vars[6] = .{ "vecBitSize", cy.Value.initI32(0) };
@@ -198,14 +198,10 @@ fn openDir2(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const path = args[0].asString();
     const iterable = args[1].asBool();
-    var fd: std.os.fd_t = undefined;
-    if (iterable) {
-        const dir = try std.fs.cwd().openIterableDir(path, .{});
-        fd = dir.dir.fd;
-    } else {
-        const dir = try std.fs.cwd().openDir(path, .{});
-        fd = dir.fd;
-    }
+    const dir = try std.fs.cwd().openDir(path, .{
+        .iterate = iterable,
+    });
+    const fd = dir.fd;
     return fs.allocDir(vm, fd, iterable) catch fatal();
 }
 
@@ -443,7 +439,7 @@ const StringSome = cy.builtins.StringSome;
 pub fn getEnv(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm or builtin.os.tag == .windows) return vm.prepPanic("Unsupported.");
     const key = args[0].asString();
-    const res = std.os.getenv(key) orelse return StringNone(vm);
+    const res = std.posix.getenv(key) orelse return StringNone(vm);
     return StringSome(vm, try vm.allocString(res));
 }
 
@@ -507,7 +503,7 @@ pub fn now(_: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
     }
 
     // WASI timestamps are directly in nanoseconds
-    if (builtin.os.tag == .wasi and !builtin.link_libc) {
+    if (builtin.os.tag == .wasi) {
         return Value.initF64(@as(f64, @floatFromInt(i.timestamp)) / @as(f64, std.time.ns_per_s));
     }
 
@@ -564,7 +560,7 @@ pub fn sleep(_: *cy.VM, args: [*]const Value, _: u8) Value {
         if (cy.isWasm) {
             hostSleep(secs, nsecs);
         } else {
-            std.os.nanosleep(secs, nsecs);
+            std.posix.nanosleep(secs, nsecs);
         }
     }
     return Value.Void;
@@ -658,7 +654,7 @@ pub fn execCmd(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
         try buf.append(vm.alloc, str);
     }
 
-    const res = try std.ChildProcess.exec(.{
+    const res = try std.ChildProcess.run(.{
         .allocator = vm.alloc,
         .argv = buf.items,
         .max_output_bytes = 1024 * 1024 * 10,
@@ -692,7 +688,7 @@ pub fn execCmd(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 
 pub fn exit(_: *cy.VM, args: [*]const Value, _: u8) Value {
     const status: u8 = @intCast(args[0].asInteger());
-    std.os.exit(status);
+    std.posix.exit(status);
 }
 
 pub fn fetchUrl(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {

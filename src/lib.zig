@@ -89,6 +89,13 @@ export fn clDefaultEvalConfig() c.EvalConfig {
     };
 }
 
+export fn clSetNewMockHttp(vm: *cy.VM) *anyopaque {
+    const client = vm.alloc.create(cy.http.MockHttpClient) catch fatal();
+    client.* = cy.http.MockHttpClient.init(vm.alloc);
+    vm.httpClient = client.iface();
+    return client;
+}
+
 export fn clReset(vm: *cy.VM) void {
     vm.resetVM() catch cy.fatal();
 }
@@ -476,7 +483,7 @@ export fn clNewHostObjectPtr(vm: *cy.VM, typeId: cy.TypeId, size: usize) *anyopa
 }
 
 export fn clNewVmObject(vm: *cy.VM, typeId: cy.TypeId, argsPtr: [*]const Value, numArgs: usize) Value {
-    const entry = &vm.types[typeId];
+    const entry = &vm.c.types[typeId];
     std.debug.assert(entry.kind == .object);
     std.debug.assert(numArgs == entry.data.object.numFields);
     const args = argsPtr[0..numArgs];
@@ -742,7 +749,7 @@ pub export fn zig_log_u32(buf: [*c]const u8, val: u32) void {
 
 comptime {
     if (build_options.rt != .pm) {
-        @export(cy.compiler.defaultModuleResolver, .{ .name = "clDefaultResolver", .linkage = .Strong });
-        @export(cy.compiler.defaultModuleLoader, .{ .name = "clDefaultModuleLoader", .linkage = .Strong });
+        @export(cy.compiler.defaultModuleResolver, .{ .name = "clDefaultResolver", .linkage = .strong });
+        @export(cy.compiler.defaultModuleLoader, .{ .name = "clDefaultModuleLoader", .linkage = .strong });
     }
 }

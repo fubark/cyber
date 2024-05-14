@@ -72,7 +72,13 @@ const stdMods = std.ComptimeStringMap(C.ModuleLoaderResult, .{
     .{"test", test_res},
 });
 
-pub export fn clSetupForCLI(vm: *C.VM) void {
+comptime {
+    if (!builtin.is_test) {
+        @export(clSetupForCLI, .{ .name = "clSetupForCLI", .linkage = .strong });
+    }
+}
+
+pub fn clSetupForCLI(vm: *C.VM) callconv(.C) void {
     C.setResolver(@ptrCast(vm), resolve);
     C.setModuleLoader(@ptrCast(vm), loader);
     C.setPrinter(@ptrCast(vm), print);
@@ -217,14 +223,14 @@ fn zResolve(vm: *cy.VM, alloc: std.mem.Allocator, chunkId: cy.ChunkId, buf: []u8
     _ = chunkId;
     if (std.mem.startsWith(u8, spec, "http://") or std.mem.startsWith(u8, spec, "https://")) {
         const uri = try std.Uri.parse(spec);
-        if (std.mem.endsWith(u8, uri.host.?, "github.com")) {
-            if (std.mem.count(u8, uri.path, "/") == 2 and uri.path[uri.path.len-1] != '/') {
+        if (std.mem.endsWith(u8, uri.host.?.percent_encoded, "github.com")) {
+            if (std.mem.count(u8, uri.path.percent_encoded, "/") == 2 and uri.path.percent_encoded[uri.path.percent_encoded.len-1] != '/') {
                 var fbuf = std.io.fixedBufferStream(buf);
                 const w = fbuf.writer();
 
                 try w.writeAll(uri.scheme);
                 try w.writeAll("://raw.githubusercontent.com");
-                try w.writeAll(uri.path);
+                try w.writeAll(uri.path.percent_encoded);
                 try w.writeAll("/master/mod.cy");
                 std.debug.print("{s}\n", .{fbuf.getWritten()});
                 return fbuf.getWritten();
@@ -252,7 +258,7 @@ fn zResolve(vm: *cy.VM, alloc: std.mem.Allocator, chunkId: cy.ChunkId, buf: []u8
     // Get canonical path.
     const absPath = std.fs.cwd().realpath(path, buf) catch |e| {
         if (e == error.FileNotFound) {
-            var msg = try cy.fmt.allocFormat(alloc, "Import path does not exist: `{}`", &.{v(path)});
+            const msg = try cy.fmt.allocFormat(alloc, "Import path does not exist: `{}`", &.{v(path)});
             if (builtin.os.tag == .windows) {
                 _ = std.mem.replaceScalar(u8, msg, '/', '\\');
             }
@@ -304,9 +310,9 @@ fn loadUrl(vm: *cy.VM, alloc: std.mem.Allocator, url: []const u8) ![]const u8 {
     }
 
     const uri = try std.Uri.parse(url);
-    var req = client.request(.GET, uri, .{ .allocator = vm.alloc }) catch |e| {
+    const res = client.fetch(vm.alloc, .GET, uri, .{}) catch |e| {
         if (e == error.UnknownHostName) {
-            const msg = try cy.fmt.allocFormat(alloc, "Can not connect to `{}`.", &.{v(uri.host.?)});
+            const msg = try cy.fmt.allocFormat(alloc, "Can not connect to `{}`.", &.{v(uri.host.?.percent_encoded)});
             defer alloc.free(msg);
             C.reportApiError(@ptrCast(vm), C.toStr(msg));
             return error.HandledError;
@@ -314,39 +320,21 @@ fn loadUrl(vm: *cy.VM, alloc: std.mem.Allocator, url: []const u8) ![]const u8 {
             return e;
         }
     };
-    defer client.deinitRequest(&req);
+    errdefer vm.alloc.free(res.body);
 
-    try client.startRequest(&req);
-    try client.waitRequest(&req);
-
-    switch (req.response.status) {
-        .ok => {
-            // Whitelisted status codes.
-        },
-        else => {
-            // Stop immediately.
-            const e = try cy.fmt.allocFormat(alloc, "Can not load `{}`. Response code: {}", &.{v(url), v(req.response.status)});
-            defer alloc.free(e);
-            C.reportApiError(@ptrCast(vm), C.toStr(e));
-            return error.HandledError;
-        },
-    }
-
-    var buf: std.ArrayListUnmanaged(u8) = .{};
-    errdefer buf.deinit(alloc);
-    var readBuf: [4096]u8 = undefined;
-    var read: usize = readBuf.len;
-
-    while (read == readBuf.len) {
-        read = try client.readAll(&req, &readBuf);
-        try buf.appendSlice(alloc, readBuf[0..read]);
+    if (res.status != .ok) {
+        // Stop immediately.
+        const e = try cy.fmt.allocFormat(alloc, "Can not load `{}`. Response code: {}", &.{v(url), v(res.status)});
+        defer alloc.free(e);
+        C.reportApiError(@ptrCast(vm), C.toStr(e));
+        return error.HandledError;
     }
 
     // Cache to local.
-    const entry = try cache.saveNewSpecFile(alloc, specGroup, url, buf.items);
+    const entry = try cache.saveNewSpecFile(alloc, specGroup, url, res.body);
     entry.deinit(alloc);
 
-    return try buf.toOwnedSlice(alloc);
+    return res.body;
 }
 
 pub const use_ln = builtin.os.tag != .windows and builtin.os.tag != .wasi;
@@ -372,7 +360,7 @@ pub fn replReadLine(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Valu
 pub const LnReadLine = struct {
     pub fn read(ptr: *anyopaque, prefix: [:0]const u8) anyerror![]const u8 {
         _ = ptr;
-        var linez = ln.linenoise(prefix);
+        const linez = ln.linenoise(prefix);
         if (linez == null) {
             return error.EndOfInput;
         }

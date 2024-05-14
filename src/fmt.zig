@@ -304,7 +304,7 @@ fn formatValue(writer: anytype, val: FmtValue) !void {
             try std.fmt.formatInt(val.data.u64, 10, .lower, .{}, writer);
         },
         .f64 => {
-            try std.fmt.formatFloatDecimal(val.data.f64, .{}, writer);
+            try formatFloatValue(val.data.f64, "d", .{}, writer);
         },
         .err,
         .enumt,
@@ -335,6 +335,36 @@ fn formatValue(writer: anytype, val: FmtValue) !void {
             try writer.writeByteNTimes(val.data.repeat.char, val.data.repeat.n);
         },
         // else => cy.panicFmt("unsupported {}", .{val.type}),
+    }
+}
+
+/// Extracted from std/fmt.zig
+fn formatFloatValue(
+    value: anytype,
+    comptime fmt: []const u8,
+    options: std.fmt.FormatOptions,
+    writer: anytype,
+) !void {
+    var buf: [std.fmt.format_float.bufferSize(.decimal, f64)]u8 = undefined;
+
+    if (fmt.len == 0 or comptime std.mem.eql(u8, fmt, "e")) {
+        const s = std.fmt.formatFloat(&buf, value, .{ .mode = .scientific, .precision = options.precision }) catch |err| switch (err) {
+            error.BufferTooSmall => "(float)",
+        };
+        return std.fmt.formatBuf(s, options, writer);
+    } else if (comptime std.mem.eql(u8, fmt, "d")) {
+        const s = std.fmt.formatFloat(&buf, value, .{ .mode = .decimal, .precision = options.precision }) catch |err| switch (err) {
+            error.BufferTooSmall => "(float)",
+        };
+        return std.fmt.formatBuf(s, options, writer);
+    } else if (comptime std.mem.eql(u8, fmt, "x")) {
+        var buf_stream = std.io.fixedBufferStream(&buf);
+        std.fmt.formatFloatHexadecimal(value, options, buf_stream.writer()) catch |err| switch (err) {
+            error.NoSpaceLeft => unreachable,
+        };
+        return std.fmt.formatBuf(buf_stream.getWritten(), options, writer);
+    } else {
+        std.fmt.invalidFmtError(fmt, value);
     }
 }
 
@@ -371,7 +401,7 @@ pub fn allocFormat(alloc: std.mem.Allocator, fmt: []const u8, vals: []const FmtV
     @setCold(true);
     var buf: std.ArrayListUnmanaged(u8) = .{};
     defer buf.deinit(alloc);
-    var w = buf.writer(alloc);
+    const w = buf.writer(alloc);
     try format(w, fmt, vals);
     return buf.toOwnedSlice(alloc);
 }
@@ -479,6 +509,13 @@ const HostFileWriter = struct {
             remaining -= to_write;
         }
     }
+
+    pub fn writeBytesNTimes(self: HostFileWriter, bytes: []const u8, n: usize) anyerror!void {
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            try self.writeAll(bytes);
+        }
+    }
 };
 
 pub fn CountingWriter(comptime ChildWriter: type) type {
@@ -513,6 +550,13 @@ pub fn CountingWriter(comptime ChildWriter: type) type {
                 remaining -= to_write;
             }
             self.numBytesWritten.* += n;
+        }
+
+        pub fn writeBytesNTimes(self: Self, bytes: []const u8, n: usize) anyerror!void {
+            var i: usize = 0;
+            while (i < n) : (i += 1) {
+                try self.writeAll(bytes);
+            }
         }
 
         // pub fn writer(self: *Self) Writer {

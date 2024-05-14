@@ -26,7 +26,7 @@ const vars = [_]NameVar{
     .{"ln2", Value.initF64(std.math.ln2)},
     .{"maxSafeInt", Value.initF64(9007199254740991)},
     .{"minSafeInt", Value.initF64(-9007199254740991)},
-    .{"nan", Value.initF64(std.math.nan_f64)},
+    .{"nan", Value.initF64(std.math.nan(f64))},
     .{"neginf", Value.initF64(-std.math.inf(f64))},
     .{"pi", Value.initF64(std.math.pi)},
     .{"sqrt1_2", Value.initF64(std.math.sqrt1_2)},
@@ -77,7 +77,7 @@ pub const funcs = [_]c.HostFuncEntry{
 
 /// Returns the absolute value of x.
 pub fn abs(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(@fabs(args[0].asF64()));
+    return Value.initF64(@abs(args[0].asF64()));
 }
 
 /// Returns the arccosine of x.
@@ -107,7 +107,7 @@ pub fn atan(_: *cy.VM, args: [*]const Value, _: u8) Value {
 
 /// Returns the arctangent of the quotient of its arguments.
 pub fn atan2(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(std.math.atan2(f64, args[0].asF64(), args[1].asF64()));
+    return Value.initF64(std.math.atan2(args[0].asF64(), args[1].asF64()));
 }
 
 /// Returns the hyperbolic arctangent of x.
@@ -163,7 +163,7 @@ pub fn frac(_: *cy.VM, args: [*]const Value, _: u8) Value {
 
 /// Returns the square root of the sum of squares of its arguments.
 pub fn hypot(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(std.math.hypot(f64, args[0].asF64(), args[1].asF64()));
+    return Value.initF64(std.math.hypot(args[0].asF64(), args[1].asF64()));
 }
 
 pub fn isInt(_: *cy.VM, args: [*]const Value, _: u8) Value {

@@ -4,6 +4,7 @@ const build_options = @import("build_options");
 const cy = @import("cyber.zig");
 
 const c = @cImport({
+    @cDefine("RT_SAFETY", if (std.debug.runtime_safety) "1" else "0");
     @cDefine("DEBUG", if (builtin.mode == .Debug) "1" else "0");
     @cDefine("TRACK_GLOBAL_RC", if (build_options.trackGlobalRC) "1" else "0");
     @cDefine("TRACE", if (build_options.trace) "1" else "0");

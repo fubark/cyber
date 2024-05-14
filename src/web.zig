@@ -5,7 +5,7 @@ const cy = @import("cyber.zig");
 comptime {
     // Include lib exports.
     const lib = @import("lib.zig");
-    inline for (std.meta.declarations(lib)) |decl| {
+    for (std.meta.declarations(lib)) |decl| {
         _ = &@field(lib, decl.name);
     }
 }
@@ -17,7 +17,7 @@ export fn clSetupForWeb(vm: *cy.VM) void {
 
 pub fn loader(vm: ?*c.VM, spec_: c.Str, out_: [*c]c.ModuleLoaderResult) callconv(.C) bool {
     const out: *c.ModuleLoaderResult = out_;
-    const spec = c.fromSlice(spec_);
+    const spec = c.fromStr(spec_);
     if (std.mem.eql(u8, "web", spec)) {
         const src = (
             \\--| Evals JS from the host environment.
@@ -26,7 +26,7 @@ pub fn loader(vm: ?*c.VM, spec_: c.Str, out_: [*c]c.ModuleLoaderResult) callconv
         out.* = std.mem.zeroInit(c.ModuleLoaderResult, .{
             .src = src,
             .srcLen = src.len,
-            .funcLoader = funcLoader,
+            .func_loader = funcLoader,
         });
         return true;
     } else {
@@ -34,11 +34,11 @@ pub fn loader(vm: ?*c.VM, spec_: c.Str, out_: [*c]c.ModuleLoaderResult) callconv
     }
 }
 
-pub fn funcLoader(_: ?*c.VM, func: c.FuncInfo, out_: [*c]c.FuncResult) callconv(.C) bool {
-    const out: *c.FuncResult = out_;
-    const name = c.fromSlice(func.name);
+pub fn funcLoader(_: ?*c.VM, func: c.FuncInfo, out_: [*c]c.FuncFn) callconv(.C) bool {
+    const out: *c.FuncFn = out_;
+    const name = c.fromStr(func.name);
     if (std.mem.eql(u8, "eval", name)) {
-        out.ptr = @ptrCast(&eval);
+        out.* = @ptrCast(&eval);
         return true;
     }
     return false;

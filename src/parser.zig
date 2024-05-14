@@ -271,7 +271,7 @@ pub const Parser = struct {
         self.cur_indent = reqIndent;
         defer self.cur_indent = prevIndent;
 
-        var first = try self.parseStatement(config);
+        const first = try self.parseStatement(config);
         var last = first;
 
         // Parse body statements until indentation goes back to at least the previous indent.
@@ -481,7 +481,7 @@ pub const Parser = struct {
         self.advance();
 
         var num_fields: u32 = 1;
-        var first = field;
+        const first = field;
         var last = field;
         while (true) {
             self.consumeWhitespaceTokens();
@@ -986,7 +986,7 @@ pub const Parser = struct {
         self.cur_indent = reqIndent;
         defer self.cur_indent = prevIndent;
 
-        var firstMember = try self.parseEnumMember();
+        const firstMember = try self.parseEnumMember();
         var lastMember = firstMember;
         var numMembers: u32 = 1;
         var isChoiceType = false;
@@ -1350,7 +1350,7 @@ pub const Parser = struct {
             return self.reportError("Expected colon after switch condition.", &.{});
         }
 
-        var firstCase = (try self.parseCaseBlock()) orelse {
+        const firstCase = (try self.parseCaseBlock()) orelse {
             return self.reportError("Expected case or else block.", &.{});
         };
         var lastCase = firstCase;
@@ -2054,7 +2054,7 @@ pub const Parser = struct {
     }
 
     fn consumeNewLineOrEnd(self: *Parser) !void {
-        var tag = self.peek().tag();
+        const tag = self.peek().tag();
         if (tag == .new_line) {
             self.advance();
             return;
@@ -2224,7 +2224,7 @@ pub const Parser = struct {
             return array;
         }
 
-        var first = (try self.parseExpr(.{})) orelse {
+        const first = (try self.parseExpr(.{})) orelse {
             return self.reportError("Expected element expression.", &.{});
         };
         var last = first;
@@ -2279,7 +2279,7 @@ pub const Parser = struct {
             return record;
         }
 
-        var first = try self.parseRecordEntry();
+        const first = try self.parseRecordEntry();
         var last = first;
         var nentries: u32 = 1;
         while (true) {
@@ -2352,7 +2352,7 @@ pub const Parser = struct {
                 const name = try self.pushSpanNode(.ident, start);
                 _ = self.consume();
                 _ = self.consume();
-                var arg = (try self.parseExpr(.{})) orelse {
+                const arg = (try self.parseExpr(.{})) orelse {
                     return self.reportError("Expected arg expression.", &.{});
                 };
                 const namedArg = try self.pushNode(.namedArg, start);
@@ -2498,7 +2498,7 @@ pub const Parser = struct {
         if (right_op_prec > op_prec) {
             // Continue parsing right.
             _ = self.consume();
-            var start = self.next_pos;
+            const start = self.next_pos;
             const next_right = try self.parseRightExpr(rightOp);
 
             const binExpr = try self.pushNode(.binExpr, start);
@@ -2851,9 +2851,9 @@ pub const Parser = struct {
 
     /// An expression term doesn't contain a unary/binary expression at the top.
     fn parseTermExprOpt(self: *Parser, config: ParseTermConfig) anyerror!?NodeId {
-        var start = self.next_pos;
+        const start = self.next_pos;
         var token = self.peek();
-        var left_id = switch (token.tag()) {
+        const left_id = switch (token.tag()) {
             .ident => b: {
                 self.advance();
                 const id = try self.pushSpanNode(.ident, start);

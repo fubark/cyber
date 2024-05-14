@@ -736,11 +736,11 @@ pub fn allocExternalObject(vm: *cy.VM, size: usize, comptime cyclable: bool) !*H
         cy.arc.log.tracev("0 +1 alloc external object: {*}", .{slice.ptr + PayloadSize});
     }
     if (cy.TrackGlobalRC) {
-        vm.refCounts += 1;
+        vm.c.refCounts += 1;
     }
     if (cy.Trace) {
-        vm.trace.numRetains += 1;
-        vm.trace.numRetainAttempts += 1;
+        vm.c.trace.numRetains += 1;
+        vm.c.trace.numRetainAttempts += 1;
     }
     return @ptrCast(slice.ptr + PayloadSize);
 }
@@ -767,11 +767,11 @@ pub fn allocPoolObject(self: *cy.VM) !*HeapObject {
             cy.arc.log.tracev("0 +1 alloc pool object: {*}", .{ptr});
         }
         if (cy.TrackGlobalRC) {
-            self.refCounts += 1;
+            self.c.refCounts += 1;
         }
         if (cy.Trace) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
+            self.c.trace.numRetains += 1;
+            self.c.trace.numRetainAttempts += 1;
         }
     }
     if (ptr.freeSpan.len == 1) {
@@ -812,7 +812,7 @@ fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize, comptime cyclabl
     }
     if (cy.Trace) {
         if (vm.objectTraceMap.getPtr(obj)) |trace| {
-            trace.freePc = vm.debugPc;
+            trace.freePc = vm.c.debugPc;
             trace.freeTypeId = obj.getTypeId();
         } else {
             log.trace("Missing object trace {*} {}", .{obj, obj.getTypeId()});
@@ -829,7 +829,7 @@ fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize, comptime cyclabl
 pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) void {
     if (cy.Trace) {
         if (vm.objectTraceMap.getPtr(obj)) |trace| {
-            trace.freePc = vm.debugPc;
+            trace.freePc = vm.c.debugPc;
             trace.freeTypeId = obj.getTypeId();
         } else {
             log.trace("Missing object trace {*} {}", .{obj, obj.getTypeId()});
@@ -918,7 +918,7 @@ pub fn allocEmptyList(self: *cy.VM, type_id: cy.TypeId) !Value {
             .cap = 0,
         },
     };
-    if (self.types[type_id].cyclable) {
+    if (self.c.types[type_id].cyclable) {
         obj.list.typeId |= vmc.CYC_TYPE_MASK;
         return Value.initCycPtr(obj);
     } else {
@@ -1017,12 +1017,12 @@ pub fn allocTuple(vm: *cy.VM, elems: []const Value) !Value {
         .firstValue = undefined,
     };
     const dst = obj.tuple.getElemsPtr()[0..elems.len];
-    std.mem.copy(Value, dst, elems);
+    @memcpy(dst, elems);
     return Value.initCycPtr(obj);
 }
 
 pub fn allocList(self: *cy.VM, type_id: cy.TypeId, elems: []const Value) !Value {
-    const cyclable = self.types[type_id].cyclable;
+    const cyclable = self.c.types[type_id].cyclable;
     const obj = try allocPoolObject(self);
     const cyc_mask = if (cyclable) vmc.CYC_TYPE_MASK else 0;
     obj.list = .{
@@ -1038,7 +1038,7 @@ pub fn allocList(self: *cy.VM, type_id: cy.TypeId, elems: []const Value) !Value 
     // Initializes capacity to exact size.
     try list.ensureTotalCapacityPrecise(self.alloc, elems.len);
     list.len = elems.len;
-    std.mem.copy(Value, list.items(), elems);
+    @memcpy(list.items(), elems);
     if (cyclable) {
         return Value.initCycPtr(obj);
     } else {
@@ -1061,7 +1061,7 @@ pub fn allocListDyn(self: *cy.VM, elems: []const Value) !Value {
     // Initializes capacity to exact size.
     try list.ensureTotalCapacityPrecise(self.alloc, elems.len);
     list.len = elems.len;
-    std.mem.copy(Value, list.items(), elems);
+    @memcpy(list.items(), elems);
     return Value.initCycPtr(obj);
 }
 
@@ -1199,10 +1199,10 @@ pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, stackSize: u8, fu
 }
 
 pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.Inst, vals: []const Value) !Value {
-    const firstStr = Value.initRaw(self.consts[strs[0].val].val).asHeapObject();
+    const firstStr = Value.initRaw(self.c.consts[strs[0].val].val).asHeapObject();
     const firstSlice = firstStr.string.getSlice();
     try self.u8Buf.resize(self.alloc, firstSlice.len);
-    std.mem.copy(u8, self.u8Buf.items(), firstSlice);
+    @memcpy(self.u8Buf.items(), firstSlice);
 
     const writer = self.u8Buf.writer(self.alloc);
     var is_ascii = true;
@@ -1212,7 +1212,7 @@ pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.Inst, vals: []const Va
         is_ascii = is_ascii and out_ascii;
         _ = try writer.write(valstr);
 
-        const str = Value.initRaw(self.consts[strs[i+1].val].val).asHeapObject();
+        const str = Value.initRaw(self.c.consts[strs[i+1].val].val).asHeapObject();
         is_ascii = is_ascii and str.string.getType().isAstring();
         try self.u8Buf.appendSlice(self.alloc, str.string.getSlice());
     }
@@ -1228,7 +1228,7 @@ pub fn allocStringTemplate2(self: *cy.VM, strs: []const Value, vals: []const Val
     const firstStr = strs[0].asHeapObject();
     const firstSlice = firstStr.string.getSlice();
     try self.u8Buf.resize(self.alloc, firstSlice.len);
-    std.mem.copy(u8, self.u8Buf.items(), firstSlice);
+    @memcpy(self.u8Buf.items(), firstSlice);
 
     const writer = self.u8Buf.writer(self.alloc);
     var is_ascii = true;
@@ -1274,49 +1274,49 @@ pub fn allocArrayConcat(self: *cy.VM, slice: []const u8, other: []const u8) !Val
         .bufStart = undefined,
     };
     const dst = @as([*]u8, @ptrCast(&obj.array.bufStart))[0..len];
-    std.mem.copy(u8, dst[0..slice.len], slice);
-    std.mem.copy(u8, dst[slice.len..], other);
+    @memcpy(dst[0..slice.len], slice);
+    @memcpy(dst[slice.len..], other);
     return Value.initNoCycPtr(obj);
 }
 
 fn allocUstringConcat3Object(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8) !*HeapObject {
     const obj = try allocUnsetUstringObject(self, str1.len + str2.len + str3.len);
     const dst = obj.ustring.getMutSlice();
-    std.mem.copy(u8, dst[0..str1.len], str1);
-    std.mem.copy(u8, dst[str1.len..str1.len+str2.len], str2);
-    std.mem.copy(u8, dst[str1.len+str2.len..], str3);
+    @memcpy(dst[0..str1.len], str1);
+    @memcpy(dst[str1.len..str1.len+str2.len], str2);
+    @memcpy(dst[str1.len+str2.len..], str3);
     return obj;
 }
 
 fn allocUstringConcatObject(self: *cy.VM, str1: []const u8, str2: []const u8) !*HeapObject {
     const obj = try allocUnsetUstringObject(self, str1.len + str2.len);
     const dst = obj.ustring.getMutSlice();
-    std.mem.copy(u8, dst[0..str1.len], str1);
-    std.mem.copy(u8, dst[str1.len..], str2);
+    @memcpy(dst[0..str1.len], str1);
+    @memcpy(dst[str1.len..], str2);
     return obj;
 }
     
 fn allocAstringObject(self: *cy.VM, str: []const u8) !*HeapObject {
     const obj = try allocUnsetAstringObject(self, str.len);
     const dst = obj.astring.getMutSlice();
-    std.mem.copy(u8, dst, str);
+    @memcpy(dst, str);
     return obj;
 }
 
 fn allocAstringConcat3Object(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8) !*HeapObject {
     const obj = try allocUnsetAstringObject(self, str1.len + str2.len + str3.len);
     const dst = obj.astring.getMutSlice();
-    std.mem.copy(u8, dst[0..str1.len], str1);
-    std.mem.copy(u8, dst[str1.len..str1.len+str2.len], str2);
-    std.mem.copy(u8, dst[str1.len+str2.len..], str3);
+    @memcpy(dst[0..str1.len], str1);
+    @memcpy(dst[str1.len..str1.len+str2.len], str2);
+    @memcpy(dst[str1.len+str2.len..], str3);
     return obj;
 }
 
 fn allocAstringConcatObject(self: *cy.VM, str1: []const u8, str2: []const u8) !*HeapObject {
     const obj = try allocUnsetAstringObject(self, str1.len + str2.len);
     const dst = obj.astring.getMutSlice();
-    std.mem.copy(u8, dst[0..str1.len], str1);
-    std.mem.copy(u8, dst[str1.len..], str2);
+    @memcpy(dst[0..str1.len], str1);
+    @memcpy(dst[str1.len..], str2);
     return obj;
 }
 
@@ -1477,7 +1477,7 @@ pub fn allocString(self: *cy.VM, str: []const u8) !Value {
 pub fn allocAstring(self: *cy.VM, str: []const u8) !Value {
     const obj = try allocUnsetAstringObject(self, str.len);
     const dst = obj.astring.getSlice();
-    std.mem.copy(u8, dst, str);
+    @memcpy(dst, str);
     return Value.initNoCycPtr(obj);
 }
 
@@ -1563,7 +1563,7 @@ pub fn allocUstring(self: *cy.VM, str: []const u8, charLen: u32) !Value {
 pub fn allocUstringObject(self: *cy.VM, str: []const u8) !*HeapObject {
     const obj = try allocUnsetUstringObject(self, str.len);
     const dst = obj.ustring.getMutSlice();
-    std.mem.copy(u8, dst, str);
+    @memcpy(dst, str);
     return obj;
 }
 
@@ -1626,7 +1626,7 @@ pub fn allocUnsetArrayObject(self: *cy.VM, len: usize) !*HeapObject {
 pub fn allocArray(vm: *cy.VM, buf: []const u8) !Value {
     const obj = try allocUnsetArrayObject(vm, buf.len);
     const dst = @as([*]u8, @ptrCast(&obj.array.bufStart))[0..buf.len];
-    std.mem.copy(u8, dst, buf);
+    @memcpy(dst, buf);
     return Value.initNoCycPtr(obj);
 }
 
@@ -1724,7 +1724,7 @@ pub fn allocObject(self: *cy.VM, type_id: cy.TypeId, fields: []const Value) !Val
         .firstValue = undefined,
     };
     const dst = obj.getValuesPtr();
-    std.mem.copy(Value, dst[0..fields.len], fields);
+    @memcpy(dst[0..fields.len], fields);
 
     return Value.initCycPtr(obj);
 }
@@ -1749,7 +1749,7 @@ pub fn allocObjectSmall(self: *cy.VM, type_id: cy.TypeId, fields: []const Value)
     };
 
     const dst = obj.object.getValuesPtr();
-    std.mem.copy(Value, dst[0..fields.len], fields);
+    @memcpy(dst[0..fields.len], fields);
 
     return Value.initCycPtr(obj);
 }
@@ -2044,14 +2044,14 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                 log.tracev("free {s}", .{vm.getTypeName(typeId)});
 
                 // Check range.
-                if (typeId >= vm.types.len) {
+                if (typeId >= vm.c.types_len) {
                     log.tracev("unsupported struct type {}", .{typeId});
                     cy.fatal();
                 }
             }
             // TODO: Determine isHostObject from object to avoid extra read from `rt.Type`
             // TODO: Use a dispatch table for host objects only.
-            const entry = vm.types[typeId];
+            const entry = vm.c.types[typeId];
             log.tracev("free {s} {}", .{@tagName(entry.kind), typeId});
             switch (entry.kind) {
                 .option => {
@@ -2161,9 +2161,9 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
 pub const MaxPoolObjectUserBytes = @sizeOf(HeapObject) - 8;
 
 pub fn traceAlloc(vm: *cy.VM, ptr: *HeapObject) void {
-    // log.tracev("alloc {*} {} {}", .{ptr, ptr.getTypeId(), vm.debugPc});
+    // log.tracev("alloc {*} {} {}", .{ptr, ptr.getTypeId(), vm.c.debugPc});
     vm.objectTraceMap.put(vm.alloc, ptr, .{
-        .allocPc = vm.debugPc,
+        .allocPc = vm.c.debugPc,
         .freePc = cy.NullId,
         .freeTypeId = cy.NullId,
     }) catch cy.fatal();
@@ -2195,7 +2195,7 @@ test "Free object invalidation." {
         // Free external object invalidates object pointer.
         obj = try allocExternalObject(&vm, 40, false);
         obj.head.typeId = 100;
-        vm.debugPc = 123;
+        vm.c.debugPc = 123;
         freeExternalObject(&vm, obj, 40, false);
         try t.eq(cy.arc.isObjectAlreadyFreed(&vm, obj), true);
     }
@@ -2205,9 +2205,9 @@ test "heap internals." {
     if (cy.is32Bit) {
         try t.eq(@sizeOf(MapInner), 20);
         try t.eq(@alignOf(List), 4);
-        try t.eq(@alignOf(ListIterator), 4);
+        try t.eq(@alignOf(ListIterator), 8);
         try t.eq(@sizeOf(List), 20);
-        try t.eq(@sizeOf(ListIterator), 16);
+        try t.eq(@sizeOf(ListIterator), 24);
         try t.eq(@sizeOf(Map), 32);
         try t.eq(@sizeOf(MapIterator), 16);
         try t.eq(@sizeOf(Pointer), 16);

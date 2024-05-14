@@ -29,6 +29,7 @@ pub fn getLog() LogFn {
 pub fn setLog(func: LogFn) void {
     c.clLog = func;
 }
+pub const setNewMockHttp = c.clSetNewMockHttp;
 pub const getAllocator = c.clGetAllocator;
 pub const reportApiError = c.clReportApiError;
 pub const defaultResolver = c.clDefaultResolver;

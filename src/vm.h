@@ -657,8 +657,11 @@ typedef struct ZAllocator {
 
 typedef struct ZHashMap {
     void* metadata;
-    uint32_t size;
-    uint32_t available;
+    u32 size;
+    u32 available;
+#if RT_SAFETY
+    u8 pointer_stability;
+#endif
 } ZHashMap;
 
 typedef struct ZList {
@@ -676,6 +679,7 @@ typedef struct TypeEntry {
     bool has_get_method;
     bool has_set_method;
     bool has_init_pair_method;
+    bool cyclable;
     union {
         struct {
             u16 numFields;
@@ -710,38 +714,6 @@ typedef struct FieldSymbolMap {
 } FieldSymbolMap;
 
 typedef struct VM VM;
-typedef struct Compiler Compiler;
-
-typedef struct JitCodeBuffer {
-    ZList buf;
-    u32 mainPc;
-    ZList relocs;
-} JitCodeBuffer;
-
-typedef struct ByteCodeBuffer {
-    ZAllocator alloc;
-    ZList ops;
-    ZList consts;
-    ZHashMap constMap;
-
-    void* mconsts_buf;
-    size_t mconsts_len;
-
-    VM* vm;
-
-    ZList debugTable;
-    ZList debugReleaseTable;
-
-    ZList debugMarkers;
-
-    ZList unwindReleaseRegs;
-    ZList unwindReleaseBacklinks;
-#if TRACE
-    ZList instDescs;
-    ZList instDescExtras;
-#endif
-    u32 mainStackSize;
-} ByteCodeBuffer;
 
 typedef struct Module {
     ZHashMap symMap;
@@ -749,30 +721,6 @@ typedef struct Module {
     ZList retainedVars;
     void* chunk;
 } Module;
-
-typedef struct Sema {
-    ZAllocator alloc;
-    Compiler* compiler;
-
-    ZList types;
-
-    ZList funcSigs;
-    ZHashMap funcSigMap;
-
-    ZList modules;
-    ZHashMap moduleMap;
-} Sema;
-
-typedef struct Compiler {
-    ZAllocator alloc;
-    VM* vm;
-    ByteCodeBuffer buf;
-    JitCodeBuffer jitBuf;
-
-    ZList reports;
-
-    Sema sema;
-} Compiler;
 
 typedef struct OpCount {
     u32 code;
@@ -825,14 +773,7 @@ typedef struct EvalConfig {
     bool spawn_exe;
 } EvalConfig;
 
-typedef struct VM {
-#if IS_32BIT
-    Fiber mainFiber;
-    Value emptyString;
-    Value emptyArray;
-#endif
-    ZAllocator alloc;
-
+typedef struct VMC {
     Inst* curPc;
     Value* curStack;
 
@@ -847,122 +788,32 @@ typedef struct VM {
     Const* constPtr;
     size_t constLen;
 
-    ZHashMap strInterns;
+    Fiber* curFiber;
+    Fiber mainFiber;
 
-    ZCyList heapPages;
-    HeapObject* heapFreeHead;
-#if TRACE
-    HeapObject* heapFreeTail;
-#endif
-#if HAS_GC
-    void* cyclableHead;
-#endif
+    ZCyList fieldSyms;
+
+    ZCyList varSyms; // StaticVar
 
     ZCyList tryStack;
+
+    void* typesPtr;
+    size_t typesLen;
 
 #if TRACK_GLOBAL_RC
     size_t refCounts;
 #endif
 
-    ZCyList methods;
-    ZHashMap method_map;
-    ZCyList type_methods;
-    ZHashMap type_method_map;
-
-    ZCyList funcSyms; // FuncSymbol
-    ZCyList funcSymDetails;
-    ZCyList overloaded_funcs;
-
-    ZCyList varSyms; // StaticVar
-
-    ZCyList fieldSyms;
-    ZHashMap fieldTable;
-    ZHashMap fieldSymSignatures;
-
-    void* typesPtr;
-    size_t typesLen;
-
-    ZHashMap inlineSaves;
-
-    ZCyList syms;
-    ZHashMap symSignatures;
-
-    ZList names;
-    ZHashMap nameMap;
-
-    ZList staticStrings;
-
-    ZCyList u8Buf;
-
-    StackTrace stackTrace;
-
-    ZList method_names;
-    DebugSym* debugTablePtr;
-    size_t debugTableLen;
-    u32* debugTempIndexTablePtr;
-    size_t debugTempIndexTableLen;
-    u8* unwindTempRegsPtr;
-    size_t unwindTempRegsLen;
-    u8* unwindTempPrevIndexesPtr;
-    size_t unwindTempPrevIndexesLen;
-
-    Fiber* curFiber;
-#if !IS_32BIT
-    Fiber mainFiber;
-#endif
-
-    ZCyList compactTrace;
 #if TRACE
     TraceInfo* trace;
-#endif
-    Compiler* compiler;
-    Sema* sema;
-    void* userData;
-    void* print;
-    void* print_err;
-#if TRACE
-    ZHashMap objectTraceMap;
-#endif
-
-#if IS_32BIT
-    #if TRACE
     u32 debugPc;
-    #endif
-
-    struct {
-        void* ptr;
-        void* vtable;
-    } httpClient;
-    void* stdHttpClient;
-    ZList varSymExtras;
-    size_t endLocal;
-
-    EvalConfig config;
-    u32 padding1;
-#if TRACE
-    u32 padding2;
 #endif
-    Str lastExeError;
-#else
-    struct {
-        void* ptr;
-        void* vtable;
-    } httpClient;
-    void* stdHttpClient;
-    Value emptyString;
-    Value emptyArray;
-    ZCyList varSymExtras;
+} VMC;
 
-    size_t endLocal;
+typedef struct VM {
+    ZAllocator alloc;
 
-    Str lastExeError;
-
-    #if TRACE
-    u32 debugPc;
-    #endif
-    EvalConfig config;
-#endif
-
+    VMC c;
 } VM;
 
 
@@ -1047,9 +898,10 @@ HeapObjectResult zAllocExternalObject(VM* vm, size_t size);
 HeapObjectResult zAllocExternalCycObject(VM* vm, size_t size);
 ValueResult zAllocStringTemplate(VM* vm, Inst* strs, u8 strCount, Value* vals, u8 valCount);
 ValueResult zAllocStringTemplate2(VM* vm, Value* strs, u8 strCount, Value* vals, u8 valCount);
+ValueResult zAllocFuncFromSym(VM* vm, u16 id);
 Value zGetFieldFallback(VM* vm, HeapObject* obj, NameId nameId);
 ResultCode zSetFieldFallback(VM* vm, HeapObject* obj, NameId nameId, Value val);
-ResultCode zGrowTryStackTotalCapacity(ZCyList* list, ZAllocator alloc, size_t minCap);
+ResultCode zGrowTryStackTotalCapacity(VM* vm);
 u16 zOpMatch(const Inst* pc, Value* framePtr);
 void zLog(const char* fmt, const FmtValue* vals, size_t len);
 void zCheckDoubleFree(VM* vm, HeapObject* obj);

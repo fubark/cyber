@@ -27,14 +27,6 @@
 
 static inline TypeId getTypeId(Value val);
 
-static inline uintptr_t getStackOffset(VM* vm, Value* to) {
-    return (((uintptr_t)to) - ((uintptr_t)vm->stackPtr)) >> 3;
-}
-
-static inline uintptr_t getInstOffset(VM* vm, Inst* to) {
-    return ((uintptr_t)to) - ((uintptr_t)vm->instPtr);
-}
-
 static inline Value objectGetField(Object* obj, uint8_t idx) {
     return (&obj->firstValue)[idx];
 }
@@ -53,7 +45,7 @@ static inline Value* closureGetCapturedValuesPtr(Closure* closure) {
 
 static inline void release(VM* vm, Value val) {
 #if TRACE
-    vm->trace->numReleaseAttempts += 1;
+    vm->c.trace->numReleaseAttempts += 1;
 #endif
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
@@ -64,15 +56,15 @@ static inline void release(VM* vm, Value val) {
         obj->head.rc -= 1;
 #if TRACK_GLOBAL_RC
     #if TRACE
-        if (vm->refCounts == 0) {
+        if (vm->c.refCounts == 0) {
             LOG("Double free. {}", FMT_U32(getTypeId(val)));
             zFatal();
         }
     #endif
-        vm->refCounts -= 1;
+        vm->c.refCounts -= 1;
 #endif
 #if TRACE
-        vm->trace->numReleases += 1;
+        vm->c.trace->numReleases += 1;
 #endif
         if (obj->head.rc == 0) {
             zFreeObject(vm, obj);
@@ -90,16 +82,16 @@ static inline void releaseObject(VM* vm, HeapObject* obj) {
     obj->head.rc -= 1;
 #if TRACK_GLOBAL_RC
     #if TRACE
-    if (vm->refCounts == 0) {
+    if (vm->c.refCounts == 0) {
         LOG("Double free. {}", FMT_U32(OBJ_TYPEID(obj)));
         zFatal();
     }
     #endif
-    vm->refCounts -= 1;
+    vm->c.refCounts -= 1;
 #endif
 #if TRACE
-    vm->trace->numReleases += 1;
-    vm->trace->numReleaseAttempts += 1;
+    vm->c.trace->numReleases += 1;
+    vm->c.trace->numReleaseAttempts += 1;
 #endif
     if (obj->head.rc == 0) {
         zFreeObject(vm, obj);
@@ -113,17 +105,17 @@ static inline void retainObject(VM* vm, HeapObject* obj) {
     zCheckRetainDanglingPointer(vm, obj);
 #endif
 #if TRACK_GLOBAL_RC
-    vm->refCounts += 1;
+    vm->c.refCounts += 1;
 #endif
 #if TRACE
-    vm->trace->numRetains += 1;
-    vm->trace->numRetainAttempts += 1;
+    vm->c.trace->numRetains += 1;
+    vm->c.trace->numRetainAttempts += 1;
 #endif
 }
 
 static inline void retain(VM* vm, Value val) {
 #if TRACE
-    vm->trace->numRetainAttempts += 1;
+    vm->c.trace->numRetainAttempts += 1;
 #endif
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
@@ -133,10 +125,10 @@ static inline void retain(VM* vm, Value val) {
         zCheckRetainDanglingPointer(vm, obj);
 #endif
 #if TRACK_GLOBAL_RC
-        vm->refCounts += 1;
+        vm->c.refCounts += 1;
 #endif
 #if TRACE
-        vm->trace->numRetains += 1;
+        vm->c.trace->numRetains += 1;
 #endif
         // zTraceRetain(vm, val);
     } else {
@@ -173,15 +165,15 @@ static inline TypeId getTypeId(Value val) {
 }
 
 static inline uint32_t pcOffset(VM* vm, Inst* pc) {
-    return (uintptr_t)pc - (uintptr_t)vm->instPtr;
+    return (uintptr_t)pc - (uintptr_t)vm->c.instPtr;
 }
 
 static inline uint32_t stackOffset(VM* vm, Value* stack) {
-    return ((uintptr_t)stack - (uintptr_t)vm->stackPtr) >> 3;
+    return ((uintptr_t)stack - (uintptr_t)vm->c.stackPtr) >> 3;
 }
 
 static inline uint8_t getFieldOffset(VM* vm, HeapObject* obj, uint32_t symId) {
-    FieldSymbolMap* symMap = ((FieldSymbolMap*)vm->fieldSyms.buf) + symId;
+    FieldSymbolMap* symMap = ((FieldSymbolMap*)vm->c.fieldSyms.buf) + symId;
     if (OBJ_TYPEID(obj) == symMap->mruTypeId) {
         return (uint8_t)symMap->mruOffset;
     } else {
@@ -197,15 +189,6 @@ static inline bool isTypeCompat(TypeId typeId, TypeId cstrType) {
         return true;
     }
     return false;
-}
-
-static inline Str getName(VM* vm, NameId nameId) {
-    Name name = ((Name*)vm->names.buf)[nameId];
-    return (Str){ .ptr = name.ptr, .len = name.len };
-}
-
-static inline FuncSig getResolvedFuncSig(VM* vm, FuncSigId id) {
-    return ((FuncSig*)vm->compiler->sema.funcSigs.buf)[id];
 }
 
 static inline ValueResult allocPointer(VM* vm, void* ptr) {
@@ -292,7 +275,7 @@ static ValueResult copyObj(VM* vm, HeapObject* obj, u8 numFields) {
     Value* dst = objectGetValuesPtr(&VALUE_AS_HEAPOBJECT(res.val)->object);
     for (int i = 0; i < numFields; i += 1) {
         TypeId typeId = getTypeId(values[i]);
-        TypeEntry entry = ((TypeEntry*)vm->typesPtr)[typeId];
+        TypeEntry entry = ((TypeEntry*)vm->c.typesPtr)[typeId];
         if (entry.kind == TYPE_KIND_STRUCT) {
             u8 childNumFields = entry.data.struct_t.numFields;
             ValueResult res = copyObj(vm, VALUE_AS_HEAPOBJECT(values[i]), childNumFields);
@@ -441,30 +424,6 @@ static inline ValueResult allocHostFunc(VM* vm, void* func, u32 numParams, u32 r
     return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
-static inline ValueResult allocFuncFromSym(VM* vm, FuncId funcId) {
-    FuncSymbol func = ((FuncSymbol*)vm->funcSyms.buf)[funcId];
-    switch (func.type) {
-        case FUNC_SYM_HOSTFUNC: {
-            return allocHostFunc(vm, func.data.host_func,
-                func.nparams,
-                func.sig,
-                func.req_type_check
-            );
-        }
-        case FUNC_SYM_FUNC: {
-            return allocLambda(vm, func.data.func.pc,
-                func.nparams,
-                func.data.func.stackSize,
-                func.sig,
-                func.req_type_check
-            );
-        }
-        default:
-            zFatal();
-            __builtin_unreachable();
-    }
-}
-
 // Exponentiation by squaring.
 static _BitInt(48) ipow(_BitInt(48) b, _BitInt(48) e) {
     if (e < 0) {
@@ -491,8 +450,8 @@ static _BitInt(48) ipow(_BitInt(48) b, _BitInt(48) e) {
 }
 
 static void panicStaticMsg(VM* vm, const char* msg) {
-    vm->curFiber->panicPayload = (u64)msg | (((u64)(strlen(msg))) << 48);
-    vm->curFiber->panicType = PANIC_STATIC_MSG;
+    vm->c.curFiber->panicPayload = (u64)msg | (((u64)(strlen(msg))) << 48);
+    vm->c.curFiber->panicType = PANIC_STATIC_MSG;
     TRACEV("{}", FMT_STRZ(msg));
 }
 
@@ -544,21 +503,21 @@ static void panicCastFail(VM* vm, TypeId actTypeId, TypeId expTypeId) {
 
 #define RETURN(code) \
     do { \
-        vm->curPc = pc; \
-        vm->curStack = stack; \
+        vm->c.curPc = pc; \
+        vm->c.curStack = stack; \
         return code; \
     } while (false)
 
 #define SAVE_STATE(code) \
     do { \
-        vm->curPc = pc; \
-        vm->curStack = stack; \
+        vm->c.curPc = pc; \
+        vm->c.curStack = stack; \
     } while (false)
 
 #define RESTORE_STATE(code) \
     do { \
-        pc = vm->curPc; \
-        stack = vm->curStack; \
+        pc = vm->c.curPc; \
+        stack = vm->c.curStack; \
     } while (false)
 
 #define INTEGER_UNOP(...) \
@@ -601,13 +560,13 @@ ResultCode execBytecode(VM* vm) {
 
 #if TRACE
     #define PRE_TRACE() \
-        vm->trace->opCounts[pc[0]].count += 1; \
-        vm->trace->totalOpCounts += 1;
+        vm->c.trace->opCounts[pc[0]].count += 1; \
+        vm->c.trace->totalOpCounts += 1;
     #define PRE_DUMP() \
         if (clVerbose) { \
             zDumpEvalOp(vm, pc); \
         } \
-        vm->debugPc = pcOffset(vm, pc);
+        vm->c.debugPc = pcOffset(vm, pc);
 #else
     #define PRE_TRACE()
     #define PRE_DUMP()
@@ -755,8 +714,8 @@ ResultCode execBytecode(VM* vm) {
     register Inst* pc; 
     register Value* stack;
 
-    pc = vm->curPc;
-    stack = vm->curStack;
+    pc = vm->c.curPc;
+    stack = vm->c.curStack;
 
 #if CGOTO
     // Goto first instruction.
@@ -766,12 +725,12 @@ beginSwitch:
     switch ((OpCode)*pc) {
 #endif
     CASE(ConstOp): {
-        stack[pc[3]] = VALUE_RAW(vm->constPtr[READ_U16(1)]);
+        stack[pc[3]] = VALUE_RAW(vm->c.constPtr[READ_U16(1)]);
         pc += 4;
         NEXT();
     }
     CASE(ConstRetain): {
-        Value val = VALUE_RAW(vm->constPtr[READ_U16(1)]);
+        Value val = VALUE_RAW(vm->c.constPtr[READ_U16(1)]);
         retain(vm, val);
         stack[pc[3]] = val;
         pc += 4;
@@ -851,7 +810,7 @@ beginSwitch:
         // Check that src is actually a value type.
         Value src = stack[pc[1]];
         TypeId typeId = getTypeId(src);
-        TypeEntry entry = ((TypeEntry*)vm->typesPtr)[typeId];
+        TypeEntry entry = ((TypeEntry*)vm->c.typesPtr)[typeId];
         if (entry.kind == TYPE_KIND_STRUCT) {
             u8 numFields = (u8)entry.data.object.numFields;
             HeapObject* obj = VALUE_AS_HEAPOBJECT(src);
@@ -1095,7 +1054,7 @@ beginSwitch:
         i16 offset = READ_I16(2);
 #if TRACE
         TypeId typeId = getTypeId(opt);
-        TypeEntry entry = ((TypeEntry*)vm->typesPtr)[typeId];
+        TypeEntry entry = ((TypeEntry*)vm->c.typesPtr)[typeId];
         if (entry.kind != TYPE_KIND_OPTION) {
             panicStaticMsg(vm, "Unexpected. Insert type check.");
         }
@@ -1186,7 +1145,7 @@ beginSwitch:
         // }
 
         u8 numLocals = pc[7];
-        if (stack + ret + numLocals >= vm->stackEndPtr) {
+        if (stack + ret + numLocals >= vm->c.stackEndPtr) {
             RETURN(RES_CODE_STACK_OVERFLOW);
         }
         Value retFramePtr = (uintptr_t)stack;
@@ -1194,7 +1153,7 @@ beginSwitch:
         stack[1] = VALUE_RETINFO(false, CALL_OBJ_SYM_INST_LEN);
         stack[2] = (uintptr_t)(pc + CALL_OBJ_SYM_INST_LEN);
         stack[3] = retFramePtr;
-        pc = vm->instPtr + READ_U32(8);
+        pc = vm->c.instPtr + READ_U32(8);
         NEXT();
     }
     CASE(CallSym): {
@@ -1212,7 +1171,7 @@ beginSwitch:
     CASE(CallFuncIC): {
         u8 ret = pc[1];
         u8 numLocals = pc[4];
-        if (stack + ret + numLocals >= vm->stackEndPtr) {
+        if (stack + ret + numLocals >= vm->c.stackEndPtr) {
             RETURN(RES_CODE_STACK_OVERFLOW);
         }
 
@@ -1299,7 +1258,7 @@ beginSwitch:
     CASE(TypeCheckOption): {
         Value val = stack[pc[1]];
         TypeId typeId = getTypeId(val);
-        TypeEntry entry = ((TypeEntry*)vm->typesPtr)[typeId];
+        TypeEntry entry = ((TypeEntry*)vm->c.typesPtr)[typeId];
         if (entry.kind != TYPE_KIND_OPTION) {
             panicStaticMsg(vm, "Expected `Option` type.");
             RETURN(RES_CODE_PANIC);
@@ -1349,7 +1308,7 @@ beginSwitch:
                 pc[7] = offset;
                 retain(vm, stack[dst]);
             } else {
-                NameId name_id = ((FieldSymbolMap*)vm->fieldSyms.buf)[symId].nameId;
+                NameId name_id = ((FieldSymbolMap*)vm->c.fieldSyms.buf)[symId].nameId;
                 SAVE_STATE();
                 Value res = zGetFieldFallback(vm, obj, name_id);
                 if (res == VALUE_INTERRUPT) {
@@ -1387,7 +1346,7 @@ beginSwitch:
     }
     CASE(Lambda): {
         u16 funcOff = READ_U16(1);
-        u32 funcPc = ((uint32_t)getInstOffset(vm, pc)) - funcOff;
+        u32 funcPc = ((uint32_t)pcOffset(vm, pc)) - funcOff;
         u8 numParams = pc[3];
         u8 stackSize = pc[4];
         bool reqCallTypeCheck = pc[5];
@@ -1402,7 +1361,7 @@ beginSwitch:
     }
     CASE(Closure): {
         u16 funcOff = READ_U16(1);
-        u32 funcPc = getInstOffset(vm, pc) - funcOff;
+        u32 funcPc = pcOffset(vm, pc) - funcOff;
         u8 numParams = pc[3];
         u8 numCaptured = pc[4];
         u8 stackSize = pc[5];
@@ -1569,7 +1528,7 @@ beginSwitch:
             u8 offset = getFieldOffset(vm, obj, fieldId);
             Value val = stack[pc[4]];
             if (offset != NULL_U8) {
-                FieldSymbolMap* symMap = ((FieldSymbolMap*)vm->fieldSyms.buf) + fieldId;
+                FieldSymbolMap* symMap = ((FieldSymbolMap*)vm->c.fieldSyms.buf) + fieldId;
                 u32 fieldTypeId = symMap->mruFieldTypeSymId;
                 TypeId rightTypeId = getTypeId(val);
                 if (fieldTypeId != TYPE_DYN) {
@@ -1590,7 +1549,7 @@ beginSwitch:
                 pc[9] = offset;
             } else {
                 SAVE_STATE();
-                NameId name_id = ((FieldSymbolMap*)vm->fieldSyms.buf)[fieldId].nameId;
+                NameId name_id = ((FieldSymbolMap*)vm->c.fieldSyms.buf)[fieldId].nameId;
                 ResultCode code = zSetFieldFallback(vm, obj, name_id, val);
                 if (code != RES_CODE_SUCCESS) {
                     RESTORE_STATE();
@@ -1638,32 +1597,32 @@ beginSwitch:
         u8 errDst = pc[1];
         bool releaseDst = pc[2];
         u16 catchPcOffset = READ_U16(3);
-        if (vm->tryStack.len == vm->tryStack.cap) {
-            ResultCode code = zGrowTryStackTotalCapacity(&vm->tryStack, vm->alloc, vm->tryStack.len + 1);
+        if (vm->c.tryStack.len == vm->c.tryStack.cap) {
+            ResultCode code = zGrowTryStackTotalCapacity(vm);
             if (code != RES_CODE_SUCCESS) {
                 RETURN(code);
             }
         }
-        ((TryFrame*)vm->tryStack.buf)[vm->tryStack.len] = (TryFrame){
-            .fp = getStackOffset(vm, stack),
-            .catchPc = getInstOffset(vm, pc) + catchPcOffset,
+        ((TryFrame*)vm->c.tryStack.buf)[vm->c.tryStack.len] = (TryFrame){
+            .fp = stackOffset(vm, stack),
+            .catchPc = pcOffset(vm, pc) + catchPcOffset,
             .catchErrDst = errDst,
             .releaseDst = releaseDst,
         };
-        vm->tryStack.len += 1; 
+        vm->c.tryStack.len += 1; 
         pc += 5;
         NEXT();
     }
     CASE(PopTry): {
-        vm->tryStack.len -= 1; 
+        vm->c.tryStack.len -= 1; 
         pc += READ_U16(1);
         NEXT();
     }
     CASE(Throw): {
         Value err = stack[pc[1]];
         if (VALUE_IS_ERROR(err)) {
-            vm->curFiber->panicPayload = err;
-            vm->curFiber->panicType = PANIC_NATIVE_THROW;
+            vm->c.curFiber->panicPayload = err;
+            vm->c.curFiber->panicType = PANIC_NATIVE_THROW;
             RETURN(RES_CODE_PANIC);
         } else {
             panicStaticMsg(vm, "Not an error.");
@@ -1687,10 +1646,10 @@ beginSwitch:
         NEXT();
     }
     CASE(Coyield):
-        if (vm->curFiber != &vm->mainFiber) {
+        if (vm->c.curFiber != &vm->c.mainFiber) {
             PcSpOff res = zPopFiber(vm, pcOffset(vm, pc), stack, VALUE_INTEGER(0));
-            pc = vm->instPtr + res.pc;
-            stack = vm->stackPtr + res.sp;
+            pc = vm->c.instPtr + res.pc;
+            stack = vm->c.stackPtr + res.sp;
         } else {
             pc += 3;
         }
@@ -1700,7 +1659,7 @@ beginSwitch:
         if (VALUE_IS_POINTER(fiber)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(fiber);
             if (OBJ_TYPEID(obj) == TYPE_FIBER) {
-                if ((Fiber*)obj != vm->curFiber) {
+                if ((Fiber*)obj != vm->c.curFiber) {
                     if (obj->fiber.pcOffset != NULL_U32) {
                         PcSp res = zPushFiber(vm, pcOffset(vm, pc + 3), stack, (Fiber*)obj, pc[2]);
                         pc = res.pc;
@@ -1716,10 +1675,10 @@ beginSwitch:
     }
     CASE(Coreturn): {
         pc += 1;
-        if (vm->curFiber != &vm->mainFiber) {
+        if (vm->c.curFiber != &vm->c.mainFiber) {
             PcSpOff res = zPopFiber(vm, NULL_U32, stack, stack[1]);
-            pc = vm->instPtr + res.pc;
-            stack = vm->stackPtr + res.sp;
+            pc = vm->c.instPtr + res.pc;
+            stack = vm->c.stackPtr + res.sp;
         }
         NEXT();
     }
@@ -2040,7 +1999,7 @@ beginSwitch:
     }
     CASE(StaticFunc): {
         u16 funcId = READ_U16(1);
-        ValueResult res = allocFuncFromSym(vm, funcId);
+        ValueResult res = zAllocFuncFromSym(vm, funcId);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
@@ -2050,7 +2009,7 @@ beginSwitch:
     }
     CASE(StaticVar): {
         u16 symId = READ_U16(1);
-        Value sym = ((StaticVar*)vm->varSyms.buf)[symId].value;
+        Value sym = ((StaticVar*)vm->c.varSyms.buf)[symId].value;
         retain(vm, sym);
         stack[pc[3]] = sym;
         pc += 4;
@@ -2058,8 +2017,8 @@ beginSwitch:
     }
     CASE(SetStaticVar): {
         u16 symId = READ_U16(1);
-        Value prev = ((StaticVar*)vm->varSyms.buf)[symId].value;
-        ((StaticVar*)vm->varSyms.buf)[symId].value = stack[pc[3]];
+        Value prev = ((StaticVar*)vm->c.varSyms.buf)[symId].value;
+        ((StaticVar*)vm->c.varSyms.buf)[symId].value = stack[pc[3]];
         release(vm, prev);
         pc += 4;
         NEXT();

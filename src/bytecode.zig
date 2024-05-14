@@ -1235,14 +1235,4 @@ test "bytecode internals." {
         try t.eq(@sizeOf(DebugMarker), 24);
     }
     try t.eq(@sizeOf(DebugSym), 16);
-
-    try t.eq(@offsetOf(ByteCodeBuffer, "alloc"), @offsetOf(vmc.ByteCodeBuffer, "alloc"));
-    try t.eq(@offsetOf(ByteCodeBuffer, "ops"), @offsetOf(vmc.ByteCodeBuffer, "ops"));
-    try t.eq(@offsetOf(ByteCodeBuffer, "consts"), @offsetOf(vmc.ByteCodeBuffer, "consts"));
-    try t.eq(@offsetOf(ByteCodeBuffer, "constMap"), @offsetOf(vmc.ByteCodeBuffer, "constMap"));
-    try t.eq(@offsetOf(ByteCodeBuffer, "mconsts"), @offsetOf(vmc.ByteCodeBuffer, "mconsts_buf"));
-    try t.eq(@offsetOf(ByteCodeBuffer, "vm"), @offsetOf(vmc.ByteCodeBuffer, "vm"));
-    try t.eq(@offsetOf(ByteCodeBuffer, "debugTable"), @offsetOf(vmc.ByteCodeBuffer, "debugTable"));
-    try t.eq(@offsetOf(ByteCodeBuffer, "debugMarkers"), @offsetOf(vmc.ByteCodeBuffer, "debugMarkers"));
-    try t.eq(@offsetOf(ByteCodeBuffer, "mainStackSize"), @offsetOf(vmc.ByteCodeBuffer, "mainStackSize"));
 }

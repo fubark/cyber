@@ -38,7 +38,7 @@ pub fn ListAligned(comptime T: type, comptime Align: ?u29) type {
         }
 
         pub fn remove(self: *ListT, idx: usize) void {
-            std.mem.copy(T, self.buf[idx..self.len-1], self.buf[idx+1..self.len]);
+            std.mem.copyForwards(T, self.buf[idx..self.len-1], self.buf[idx+1..self.len]);
             self.len -= 1;
         }
 
@@ -57,7 +57,7 @@ pub fn ListAligned(comptime T: type, comptime Align: ?u29) type {
             try self.ensureTotalCapacity(alloc, self.len + slice.len);
             const oldLen = self.len;
             self.len += slice.len;
-            std.mem.copy(T, self.buf[oldLen..self.len], slice);
+            @memcpy(self.buf[oldLen..self.len], slice);
         }
 
         pub inline fn writer(self: *ListT, alloc: std.mem.Allocator) Writer {
@@ -112,7 +112,7 @@ pub fn ListAligned(comptime T: type, comptime Align: ?u29) type {
             } else {
                 const old = self.buf;
                 self.buf = try alloc.alignedAlloc(T, Align, newCap);
-                std.mem.copy(T, self.buf[0..self.len], old[0..self.len]);
+                @memcpy(self.buf[0..self.len], old[0..self.len]);
                 alloc.free(old);
             }
         }
@@ -142,20 +142,20 @@ pub fn ListAligned(comptime T: type, comptime Align: ?u29) type {
                 return self.list.buf[idx..self.list.len];
             }
 
-            pub fn write(self: WriterT, data: []const u8) Error!usize {
+            pub fn write(self: WriterT, data: []const u8) !usize {
                 try self.list.appendSlice(self.alloc, data);
                 return data.len;
             }
 
-            pub fn writeAll(self: WriterT, data: []const u8) Error!void {
+            pub fn writeAll(self: WriterT, data: []const u8) !void {
                 _ = try self.write(data);
             }
 
-            pub fn writeByte(self: WriterT, b: u8) Error!void {
+            pub fn writeByte(self: WriterT, b: u8) !void {
                 try self.list.append(self.alloc, b);
             }
 
-            pub fn writeByteNTimes(self: WriterT, byte: u8, n: usize) Error!void {
+            pub fn writeByteNTimes(self: WriterT, byte: u8, n: usize) !void {
                 var bytes: [256]u8 = undefined;
                 @memset(bytes[0..], byte);
 
@@ -167,7 +167,15 @@ pub fn ListAligned(comptime T: type, comptime Align: ?u29) type {
                 }
             }
 
-            pub const Error = error{OutOfMemory};
+            pub fn writeBytesNTimes(self: WriterT, bytes: []const u8, n: usize) anyerror!void {
+                var i: usize = 0;
+                while (i < n) : (i += 1) {
+                    try self.writeAll(bytes);
+                }
+            }
+
+            // pub const Error = error{OutOfMemory};
+            pub const Error = anyerror;
         };
     };
 }

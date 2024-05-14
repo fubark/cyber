@@ -1,25 +1,23 @@
 const std = @import("std");
 
-pub fn createModule(b: *std.Build) *std.build.Module {
-    return b.createModule(.{
-        .source_file = .{ .path = thisDir() ++ "/mimalloc.zig" },
+pub fn createModule(b: *std.Build) *std.Build.Module {
+    const mod = b.createModule(.{
+        .root_source_file = .{ .path = thisDir() ++ "/mimalloc.zig" },
     });
-}
-
-pub fn addModule(step: *std.build.CompileStep, name: []const u8, mod: *std.build.Module) void {
-    step.addModule(name, mod);
-    step.addIncludePath(.{ .path = thisDir() ++ "/vendor/include" });
+    mod.addIncludePath(.{ .path = thisDir() ++ "/vendor/include" });
+    return mod;
 }
 
 const BuildOptions = struct {
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
 };
 
-pub fn buildAndLink(b: *std.Build, step: *std.build.CompileStep, opts: BuildOptions) void {
-    _ = opts;
+pub fn buildAndLink(b: *std.Build, mod: *std.Build.Module, opts: BuildOptions) void {
     const lib = b.addStaticLibrary(.{
         .name = "mimalloc",
-        .target = step.target,
-        .optimize = step.optimize,
+        .target = opts.target,
+        .optimize = opts.optimize,
     });
     lib.addIncludePath(.{ .path = thisDir() ++ "/vendor/include" });
     lib.linkLibC();
@@ -27,9 +25,9 @@ pub fn buildAndLink(b: *std.Build, step: *std.build.CompileStep, opts: BuildOpti
 
     var c_flags = std.ArrayList([]const u8).init(b.allocator);
     // c_flags.append("-D_GNU_SOURCE=1") catch @panic("error");
-    if (lib.target.getOsTag() == .windows) {
-    } else if (lib.target.getOsTag() == .macos) {
-        if (lib.target.getCpuArch() == .aarch64) {
+    if (opts.target.result.os.tag == .windows) {
+    } else if (opts.target.result.os.tag == .macos) {
+        if (opts.target.result.cpu.arch == .aarch64) {
             lib.addSystemIncludePath(.{ .path = "/Applications/Xcode_15.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" });
         } else {
             // Github macos-12 runner (https://github.com/actions/runner-images/blob/main/images/macos/macos-12-Readme.md).
@@ -38,7 +36,7 @@ pub fn buildAndLink(b: *std.Build, step: *std.build.CompileStep, opts: BuildOpti
         lib.addSystemIncludePath(.{ .path = "/Library/Developer/CommandLineTools/SDKs/MacOSX12.1.sdk/usr/include" });
         lib.addSystemIncludePath(.{ .path = "/Library/Developer/CommandLineTools/SDKs/MacOSX12.3.sdk/usr/include" });
     }
-    if (lib.optimize == .Debug) {
+    if (opts.optimize == .Debug) {
         // For debugging:
         // c_flags.append("-O0") catch @panic("error");
         // if (step.target.getCpuArch().isWasm()) {
@@ -55,8 +53,8 @@ pub fn buildAndLink(b: *std.Build, step: *std.build.CompileStep, opts: BuildOpti
         c_flags.append("-DMI_STAT=0") catch @panic("error");
     }
 
-    if (lib.target.getOsTag() == .windows) {
-        step.linkSystemLibrary("bcrypt");
+    if (opts.target.result.os.tag == .windows) {
+        mod.linkSystemLibrary("bcrypt", .{});
     }
 
     var sources = std.ArrayList([]const u8).init(b.allocator);
@@ -81,7 +79,7 @@ pub fn buildAndLink(b: *std.Build, step: *std.build.CompileStep, opts: BuildOpti
             .flags = c_flags.items,
         });
     }
-    step.linkLibrary(lib);
+    mod.linkLibrary(lib);
 }
 
 inline fn thisDir() []const u8 {

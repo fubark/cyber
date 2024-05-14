@@ -348,11 +348,11 @@ fn errorSymbol(err: anyerror) Symbol {
 }
 
 fn traceRetains(vm: *cy.VM, _: [*]const Value, _: u8) Value {
-    return Value.initInt(vm.trace.numRetains);
+    return Value.initInt(vm.c.trace.numRetains);
 }
 
 fn traceReleases(vm: *cy.VM, _: [*]const Value, _: u8) Value {
-    return Value.initInt(vm.trace.numReleases);
+    return Value.initInt(vm.c.trace.numReleases);
 }
 
 pub fn listFill(vm: *cy.VM, args: [*]const Value, _: u8) Value {
@@ -375,7 +375,7 @@ pub fn errorReport(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
         vm.compactTrace.remove(curFrameLen);
     }
 
-    const trace = try cy.debug.allocStackTrace(vm, vm.stack, vm.compactTrace.items());
+    const trace = try cy.debug.allocStackTrace(vm, vm.c.getStack(), vm.compactTrace.items());
     defer vm.alloc.free(trace);
 
     var buf: std.ArrayListUnmanaged(u8) = .{};
@@ -429,7 +429,7 @@ pub fn isDigit(vm: *cy.VM, args: [*]const Value, _: u8) Value {
 }
 
 pub fn isNone(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const type_e = vm.types[args[0].getTypeId()];
+    const type_e = vm.c.types[args[0].getTypeId()];
     if (type_e.kind != .option) {
         return Value.False;
     }
@@ -537,7 +537,7 @@ pub fn typeof(vm: *cy.VM, args: [*]const Value, _: u8) Value {
 }
 
 pub fn listFinalizer(vm_: ?*C.VM, obj: ?*anyopaque) callconv(.C) void {
-    var vm: *cy.VM = @ptrCast(@alignCast(vm_));
+    const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     var list: *cy.heap.ListInner = @ptrCast(@alignCast(obj));
     list.getList().deinit(vm.alloc);
 }
@@ -611,9 +611,9 @@ fn arrayInsert(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const new = vm.allocUnsetArrayObject(slice.len + insert.len) catch cy.fatal();
     const buf = new.array.getMutSlice();
     const uidx: u32 = @intCast(idx);
-    std.mem.copy(u8, buf[0..uidx], slice[0..uidx]);
-    std.mem.copy(u8, buf[uidx..uidx+insert.len], insert);
-    std.mem.copy(u8, buf[uidx+insert.len..], slice[uidx..]);
+    @memcpy(buf[0..uidx], slice[0..uidx]);
+    @memcpy(buf[uidx..uidx+insert.len], insert);
+    @memcpy(buf[uidx+insert.len..], slice[uidx..]);
     return Value.initNoCycPtr(new);
 }
 
@@ -695,8 +695,8 @@ fn arrayGetInt(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const idx = args[1].asInteger();
     const sym = try std.meta.intToEnum(Symbol, args[2].asSymbolId());
     const endian: std.builtin.Endian = switch (sym) {
-        .little => .Little,
-        .big => .Big,
+        .little => .little,
+        .big => .big,
         else => return error.InvalidArgument,
     };
 
@@ -713,8 +713,8 @@ fn arrayGetInt32(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const idx = args[1].asInteger();
     const sym = try std.meta.intToEnum(Symbol, args[2].asSymbolId());
     const endian: std.builtin.Endian = switch (sym) {
-        .little => .Little,
-        .big => .Big,
+        .little => .little,
+        .big => .big,
         else => return error.InvalidArgument,
     };
 
@@ -799,7 +799,7 @@ fn arrayFmt(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 
         var buf: std.ArrayListUnmanaged(u8) = .{};
         defer buf.deinit(vm.alloc);
-        var w = buf.writer(vm.alloc);
+        const w = buf.writer(vm.alloc);
         for (arr) |byte| {
             try std.fmt.formatInt(byte, base, .lower, .{ .width = width, .fill = '0' }, w);
         }
@@ -869,9 +869,9 @@ fn arrayInsertByte(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const new = vm.allocUnsetArrayObject(str.len + 1) catch cy.fatal();
     const buf = new.array.getMutSlice();
     const uidx: usize = @intCast(index);
-    std.mem.copy(u8, buf[0..uidx], str[0..uidx]);
+    @memcpy(buf[0..uidx], str[0..uidx]);
     buf[uidx] = byte;
-    std.mem.copy(u8, buf[uidx+1..], str[uidx..]);
+    @memcpy(buf[uidx+1..], str[uidx..]);
     return Value.initNoCycPtr(new);
 }
 
@@ -884,7 +884,7 @@ fn arrayRepeat(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
         return rt.prepThrowError(vm, .InvalidArgument);
     }
 
-    var un: u32 = @intCast(n);
+    const un: u32 = @intCast(n);
     const len = un * slice.len;
     if (un > 1 and len > 0) {
         const new = try vm.allocUnsetArrayObject(len);
@@ -895,7 +895,7 @@ fn arrayRepeat(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
         var i: u32 = 0;
         var dst: u32 = 0;
         while (i < un) : (i += 1) {
-            std.mem.copy(u8, buf[dst..dst + slice.len], slice);
+            @memcpy(buf[dst..dst + slice.len], slice);
             dst += @intCast(slice.len);
         }
 
@@ -939,7 +939,7 @@ fn arrayCall(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 fn fiberStatus(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const fiber = args[0].castHeapObject(*vmc.Fiber);
 
-    if (vm.curFiber == fiber) {
+    if (vm.c.curFiber == fiber) {
         return Value.initSymbol(@intFromEnum(Symbol.running));
     } else {
         // Check if done.
@@ -1081,7 +1081,7 @@ fn errorCall(vm: *cy.VM, args: [*]const Value, _: u8) Value {
         } else if (val.isEnum()) {
             const enumT = val.getEnumType();
             const enumv = val.getEnumValue();
-            const name = vm.types[enumT].sym.cast(.enum_t).getValueSym(enumv).head.name();
+            const name = vm.c.types[enumT].sym.cast(.enum_t).getValueSym(enumv).head.name();
             const symId = vm.ensureSymbol(name) catch cy.unexpected();
             return Value.initErrorSymbol(symId);
         } else {

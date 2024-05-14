@@ -3,13 +3,13 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 
-const cy = @import("../src/cyber.zig");
+const all = @import("all");
+const cy = all.cy;
 const bt = cy.types.BuiltinTypes;
-const bindings = @import("../src/builtins/bindings.zig");
-const cli = @import("../src/cli.zig");
-const c = @import("../src/capi.zig");
-const vmc = @import("../src/vm_c.zig");
-const http = @import("../src/http.zig");
+const cli = all.cli;
+const c = all.cy.C;
+const bindings = cy.bindings;
+const http = cy.http;
 const log = cy.log.scoped(.trace_test);
 
 const setup = @import("setup.zig");
@@ -23,14 +23,6 @@ const eqUserError = setup.eqUserError;
 
 // Tracing tests and tests that depend on Zig source code.
 
-test {
-    // Include exports for C vm.
-    std.testing.refAllDecls(cy.vm);
-
-    const lib = @import("../src/lib.zig");
-    std.testing.refAllDecls(lib);
-}
-
 test "ARC." {
     // Assigning to another variable increases the ref count.
     try eval(.{},
@@ -38,7 +30,7 @@ test "ARC." {
         \\var b = a
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetains, 2);
         try t.eq(trace.numReleases, 2);
     }}.func);
@@ -49,7 +41,7 @@ test "ARC." {
         \\var b = if (true) a else 234
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetains, 2);
         try t.eq(trace.numReleases, 2);
     }}.func);
@@ -60,7 +52,7 @@ test "ARC." {
         \\return
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetains, 1);
         try t.eq(trace.numReleases, 1);
     }}.func);
@@ -70,7 +62,7 @@ test "ARC." {
         \\var a = [1, 2]
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetains, 1);
         try t.eq(trace.numReleases, 1);
     }}.func);
@@ -85,7 +77,7 @@ test "ARC." {
         \\t.eq(s.value[0], 123)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetains, 4);
         try t.eq(trace.numReleases, 4);
     }}.func);
@@ -97,7 +89,7 @@ test "ARC." {
         \\1 + S{value: 123}.value
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         const val = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(val.asInteger(), 124);
         try t.eq(trace.numRetains, 1);
         try t.eq(trace.numReleases, 1);
@@ -109,7 +101,7 @@ test "ARC." {
         \\var b = a['foo']
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetains, 8);
         try t.eq(trace.numReleases, 8);
     }}.func);
@@ -120,7 +112,7 @@ test "ARC." {
         \\var b = if (false) 234 else a
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetains, 2);
         try t.eq(trace.numReleases, 2);
     }}.func);
@@ -135,7 +127,7 @@ test "ARC for static variable declarations." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         c.deinit(run.vm);
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetainAttempts, 3);
         try t.eq(trace.numRetains, 2);
     }}.func);
@@ -151,7 +143,7 @@ test "ARC assignments." {
         \\t.eq(a[0], 234)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetainAttempts, 3);
         try t.eq(trace.numReleaseAttempts, 4);
         try t.eq(trace.numRetains, 1);
@@ -167,7 +159,7 @@ test "ARC assignments." {
         \\t.eq(typeof(a[0]), Map)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetainAttempts, 6);
         try t.eq(trace.numReleaseAttempts, 7);
         try t.eq(trace.numRetains, 6);
@@ -184,7 +176,7 @@ test "ARC for passing call args." {
         \\t.eq(foo([1]), 1)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetains, 1);
         try t.eq(trace.numReleases, 1);
     }}.func);
@@ -203,7 +195,7 @@ test "ARC for function return values." {
         \\t.eq(s.value, 123)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetains, 2);
         try t.eq(trace.numReleases, 2);
     }}.func);
@@ -218,7 +210,7 @@ test "ARC for function return values." {
         \\return
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetains, 1);
         try t.eq(trace.numReleases, 1);
     }}.func);
@@ -245,7 +237,7 @@ test "ARC on temp locals in expressions." {
         try run.valueIsString(val, "Hello World 123");
         const vm = run.internal();
         vm.release(val);
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetains, 2);
         try t.eq(trace.numReleases, 2);
     }}.func);
@@ -259,7 +251,7 @@ test "ARC in loops." {
         \\  a = 'abc{123}'   -- copyReleaseDst
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetains, 3);
         try t.eq(trace.numReleases, 3);
     }}.func);
@@ -272,7 +264,7 @@ test "ARC in loops." {
         \\    a = "abc$(123)"    -- copyReleaseDst
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetains, 3);
         try t.eq(trace.numReleases, 3);
     }}.func);
@@ -286,7 +278,7 @@ test "ARC in loops." {
         \\  a = S{foo: 123}.foo
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetainAttempts, 6);
         try t.eq(trace.numRetains, 3);
         try t.eq(trace.numReleaseAttempts, 10);
@@ -299,7 +291,7 @@ test "ARC in loops." {
         \\  var a = "abc$(123)"
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetains, 3);
         // The inner set inst should be a releaseSet.
         try t.eq(trace.numReleases, 3);
@@ -315,7 +307,7 @@ test "ARC in loops." {
         \\  foo(it)             -- +0a +0
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetainAttempts, 10);
         try t.eq(trace.numRetains, 6);
     }}.func);
@@ -328,7 +320,7 @@ test "ARC in loops." {
         \\                                --        -8
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        var trace = run.getTrace();
+        const trace = run.getTrace();
         try t.eq(trace.numRetainAttempts, 20);
         try t.eq(trace.numRetains, 18);
         try t.eq(trace.numReleases, 18);
@@ -367,9 +359,8 @@ test "Import http spec." {
     defer t.alloc.free(basePath);
 
     // Import error.UnknownHostName.
-    var client = http.MockHttpClient.init(t.alloc);
-    client.retReqError = error.UnknownHostName;
-    vm.httpClient = client.iface();
+    var client: *http.MockHttpClient = @ptrCast(@alignCast(c.setNewMockHttp(@ptrCast(vm))));
+    client.retReqError = .UnknownHostName;
     try run.eval(Config.initFileModules("./test/modules/import.cy").withSilent().withReload(),
         \\use a 'https://doesnotexist123.com/'
         \\b = a
@@ -383,11 +374,11 @@ test "Import http spec." {
             \\
         );
     }}.func);
+    vm.alloc.destroy(client);
 
     // Import NotFound response code.
-    client = http.MockHttpClient.init(t.alloc);
+    client = @ptrCast(@alignCast(c.setNewMockHttp(@ptrCast(vm))));
     client.retStatusCode = std.http.Status.not_found;
-    vm.httpClient = client.iface();
     try run.eval(Config.initFileModules("./test/modules/import.cy").withSilent().withReload(),
         \\use a 'https://exists.com/missing'
         \\b = a
@@ -402,18 +393,19 @@ test "Import http spec." {
         );
 
     }}.func);
+    vm.alloc.destroy(client);
 
     // Successful import.
-    client = http.MockHttpClient.init(t.alloc);
+    client = @ptrCast(@alignCast(c.setNewMockHttp(@ptrCast(vm))));
     client.retBody =
         \\var .foo = 123
         ;
-    vm.httpClient = client.iface();
     _ = try run.evalPass(Config.initFileModules("./test/modules/import.cy").withReload(),
         \\use a 'https://exists.com/a.cy'
         \\use t 'test'
         \\t.eq(a.foo, 123)
     );
+    vm.alloc.destroy(client);
 }
 
 test "Multiple evals persisting state." {
@@ -487,7 +479,7 @@ test "os constants" {
         \\os.endian
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         const val = try res.getValue();
-        if (builtin.cpu.arch.endian() == .Little) {
+        if (builtin.cpu.arch.endian() == .little) {
             try t.eq(val.asSymbolId(), @intFromEnum(bindings.Symbol.little));
         } else {
             try t.eq(val.asSymbolId(), @intFromEnum(bindings.Symbol.big));

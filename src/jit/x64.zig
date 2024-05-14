@@ -83,7 +83,7 @@ pub const Encoder = struct {
 
     pub fn jumpReg(self: Encoder, reg: Register) !void {
         const enc = Encoding.init(.m, 4, .none, .none);
-        var out = try self.prepInstBuf();
+        const out = try self.prepInstBuf();
         var len = self.encodeHeader(out, enc, &.{0xff}, &.{ Op.reg(reg) });
         self.encodeMOp(out, &len, enc, Op.reg(reg));
         self.buf.items.len += len;
@@ -91,7 +91,7 @@ pub const Encoder = struct {
 
     pub fn cmp(self: Encoder, left: Register, right: Register) !void {
         const enc = Encoding.init(.mr, 0, .long, .none);
-        var out = try self.prepInstBuf();
+        const out = try self.prepInstBuf();
         var len = self.encodeHeader(out, enc, &.{ 0x3b}, &.{ Op.reg(left), Op.reg(right) });
         self.encodeRMOps(out, &len, enc, Op.reg(left), Op.reg(right));
         self.buf.items.len += len;
@@ -104,14 +104,14 @@ pub const Encoder = struct {
 
     pub fn pushReg(self: Encoder, r: Register) !void {
         const enc = Encoding.init(.o, 0, .none, .none);
-        var out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, &.{ 0x50 }, &.{ Op.reg(r) });
+        const out = try self.prepInstBuf();
+        const len = self.encodeHeader(out, enc, &.{ 0x50 }, &.{ Op.reg(r) });
         self.buf.items.len += len;
     }
 
     pub fn movImm(self: Encoder, dst: Register, imm: u64) !void {
         const enc = Encoding.init(.oi, 0, .long, .none);
-        var out = try self.prepInstBuf();
+        const out = try self.prepInstBuf();
         var len = self.encodeHeader(out, enc, &.{ 0xb8 }, &.{ Op.reg(dst), Op.imm(imm) });
         encodeImm64(out, &len, imm);
         self.buf.items.len += len;
@@ -119,7 +119,7 @@ pub const Encoder = struct {
 
     pub fn movReg(self: Encoder, dst: Register, src: Register) !void {
         const enc = Encoding.init(.rm, 0, .long, .none);
-        var out = try self.prepInstBuf();
+        const out = try self.prepInstBuf();
         var len = self.encodeHeader(out, enc, &.{ 0x8b }, &.{ Op.reg(dst), Op.reg(src) });
         self.encodeRMOps(out, &len, enc, Op.reg(dst), Op.reg(src));
         self.buf.items.len += len;
@@ -127,7 +127,7 @@ pub const Encoder = struct {
 
     pub fn movMem(self: Encoder, dst: Register, mem: Memory) !void {
         const enc = Encoding.init(.rm, 0, .long, .none);
-        var out = try self.prepInstBuf();
+        const out = try self.prepInstBuf();
         var len = self.encodeHeader(out, enc, &.{ 0x8b }, &.{ Op.reg(dst), Op.mem(mem)});
         self.encodeRMOps(out, &len, enc, Op.reg(dst), Op.mem(mem));
         self.buf.items.len += len;
@@ -135,7 +135,7 @@ pub const Encoder = struct {
 
     pub fn movToMem(self: Encoder, mem: Memory, dst: Register) !void {
         const enc = Encoding.init(.mr, 0, .long, .none);
-        var out = try self.prepInstBuf();
+        const out = try self.prepInstBuf();
         var len = self.encodeHeader(out, enc, &.{ 0x89 }, &.{ Op.mem(mem), Op.reg(dst) });
         self.encodeRMOps(out, &len, enc, Op.reg(dst), Op.mem(mem));
         self.buf.items.len += len;
@@ -152,7 +152,7 @@ pub const Encoder = struct {
 
     pub fn callReg(self: Encoder, reg: Register) !void {
         const enc = Encoding.init(.m, 2, .none, .none);
-        var out = try self.prepInstBuf();
+        const out = try self.prepInstBuf();
         var len = self.encodeHeader(out, enc, &.{ 0xff }, &.{ Op.reg(reg) });
         self.encodeMOp(out, &len, enc, Op.reg(reg));
         self.buf.items.len += len;
@@ -601,7 +601,7 @@ const Encoding = struct {
     feature: Feature,
 
     fn init(opEn_: OpEn, modrm_ext_: modrm_ext, mode_: Mode, feature_: Feature) Encoding {
-        var new = Encoding{
+        const new = Encoding{
             .opEn = opEn_,
             .modrm_ext = modrm_ext_,
             .mode = mode_,

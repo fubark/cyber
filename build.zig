@@ -18,14 +18,18 @@ var optStatic: ?bool = undefined;
 var optJIT: ?bool = undefined;
 var optRT: ?config.Runtime = undefined;
 
-var stdx: *std.build.Module = undefined;
-var tcc: *std.build.Module = undefined;
-var linenoise: *std.build.Module = undefined;
-var mimalloc: *std.build.Module = undefined;
+var tcc: *std.Build.Module = undefined;
+var linenoise: *std.Build.Module = undefined;
+var mimalloc: *std.Build.Module = undefined;
 
-pub fn build(b: *std.build.Builder) !void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+var rtarget: std.Build.ResolvedTarget = undefined;
+var target: std.Target = undefined;
+var optimize: std.builtin.OptimizeMode = undefined;
+
+pub fn build(b: *std.Build) !void {
+    rtarget = b.standardTargetOptions(.{});
+    target = rtarget.result;
+    optimize = b.standardOptimizeOption(.{});
 
     selinux = b.option(bool, "selinux", "Whether you are building on linux distro with selinux. eg. Fedora.") orelse false;
     testFilter = b.option([]const u8, "test-filter", "Test filter.");
@@ -38,9 +42,6 @@ pub fn build(b: *std.build.Builder) !void {
     optJIT = b.option(bool, "jit", "Build with JIT.");
     optRT = b.option(config.Runtime, "rt", "Runtime.");
 
-    stdx = b.createModule(.{
-        .source_file = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
-    });
     tcc = tcc_lib.createModule(b);
     mimalloc = mimalloc_lib.createModule(b);
     linenoise = createLinenoiseModule(b);
@@ -48,30 +49,30 @@ pub fn build(b: *std.build.Builder) !void {
     {
         const step = b.step("cli", "Build main cli.");
 
-        var opts = getDefaultOptions(target, optimize);
+        var opts = getDefaultOptions();
         opts.applyOverrides();
 
         const exe = b.addExecutable(.{
             .name = "cyber",
             .root_source_file = .{ .path = "src/main.zig" },
-            .target = target,
+            .target = rtarget,
             .optimize = optimize,
         });
-        if (exe.optimize != .Debug) {
+        if (optimize != .Debug) {
             // Sometimes there are issues with strip for ReleaseFast + wasi.
-            if (opts.target.getOsTag() != .wasi) {
-                exe.strip = true;
+            if (opts.target.os.tag != .wasi) {
+                exe.root_module.strip = true;
             }
         }
         exe.addIncludePath(.{ .path = thisDir() ++ "/src" });
 
         // Allow dynamic libraries to be loaded by filename in the cwd.
-        if (target.getOsTag() == .linux) {
+        if (target.os.tag == .linux) {
             exe.addRPath(.{ .path = ":$ORIGIN"});
-            if (target.getCpuArch() == .x86_64) {
+            if (target.cpu.arch == .x86_64) {
                 exe.addRPath(.{ .path = "/usr/lib/x86_64-linux-gnu"});
             }
-        } else if (target.getOsTag() == .macos) {
+        } else if (target.os.tag == .macos) {
             exe.addRPath(.{ .path = "@loader_path"});
         }
 
@@ -81,20 +82,24 @@ pub fn build(b: *std.build.Builder) !void {
         // step.dependOn(&b.addInstallFileWithDir(
         //     exe.getEmittedAsm(), .prefix, "cyber.s",
         // ).step);
-        try buildAndLinkDeps(exe, opts);  
-        step.dependOn(&exe.step);
+        
+        const build_options = try createBuildOptions(b, opts);
+        const stdx = b.createModule(.{
+            .root_source_file = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
+        });
+        try buildAndLinkDeps(&exe.root_module, build_options, stdx, opts);  
         step.dependOn(&b.addInstallArtifact(exe, .{}).step);
     }
 
     {
         const step = b.step("vm-lib", "Build vm as a library.");
 
-        var opts = getDefaultOptions(target, optimize);
+        const opts = getDefaultOptions();
         const obj = try buildCVM(b, opts);
 
         const lib = b.addStaticLibrary(.{
             .name = "vm",
-            .target = target,
+            .target = rtarget,
             .optimize = optimize,
         });
         lib.addObject(obj);
@@ -103,170 +108,114 @@ pub fn build(b: *std.build.Builder) !void {
         step.dependOn(&b.addInstallArtifact(lib, .{}).step);
     }
 
-    {
-        const step = b.step("rt", "Build runtime for AOT.");
+    // {
+    //     const step = b.step("rt", "Build runtime for AOT.");
 
-        var opts = getDefaultOptions(target, optimize);
-        opts.ffi = false;
-        opts.malloc = if (target.getCpuArch().isWasm()) .zig else .malloc;
-        opts.cli = false;
-        opts.rt = .pm;
-        opts.applyOverrides();
+    //     var opts = getDefaultOptions();
+    //     opts.ffi = false;
+    //     opts.malloc = if (target.cpu.arch.isWasm()) .zig else .malloc;
+    //     opts.cli = false;
+    //     opts.rt = .pm;
+    //     opts.applyOverrides();
 
-        const lib = b.addStaticLibrary(.{
-            .name = "rt",
-            .root_source_file = .{ .path = "src/runtime_static.zig" },
-            .target = target,
-            .optimize = optimize,
-        });
-        if (lib.optimize != .Debug) {
-            lib.strip = true;
-        }
-        lib.addIncludePath(.{. path = thisDir() ++ "/src" });
+    //     const lib = b.addStaticLibrary(.{
+    //         .name = "rt",
+    //         .root_source_file = .{ .path = "src/runtime_static.zig" },
+    //         .target = rtarget,
+    //         .optimize = optimize,
+    //     });
+    //     if (optimize != .Debug) {
+    //         lib.root_module.strip = true;
+    //     }
+    //     lib.addIncludePath(.{. path = thisDir() ++ "/src" });
 
-        try buildAndLinkDeps(lib, opts);
-        step.dependOn(&lib.step);
-        step.dependOn(&b.addInstallArtifact(lib, .{}).step);
-    }
+    //     try buildAndLinkDeps(&lib.root_module, opts);
+    //     step.dependOn(&lib.step);
+    //     step.dependOn(&b.addInstallArtifact(lib, .{}).step);
+    // }
 
     {
         const step = b.step("lib", "Build as a library.");
 
-        var opts = getDefaultOptions(target, optimize);
+        var opts = getDefaultOptions();
         opts.ffi = false;
-        opts.malloc = if (target.getCpuArch().isWasm()) .zig else .malloc;
+        opts.malloc = if (target.cpu.arch.isWasm()) .zig else .malloc;
         opts.cli = false;
         opts.applyOverrides();
 
         const lib = try buildLib(b, opts);
-        step.dependOn(&lib.step);
         step.dependOn(&b.addInstallArtifact(lib, .{}).step);
     }
 
     {
-        const step = b.step("web-lib", "Build wasm lib for web.");
+        const main_step = b.step("web-lib", "Build wasm lib for web.");
 
-        var opts = getDefaultOptions(target, optimize);
+        var opts = getDefaultOptions();
         opts.ffi = false;
-        opts.malloc = if (target.getCpuArch().isWasm()) .zig else .malloc;
+        opts.malloc = if (target.cpu.arch.isWasm()) .zig else .malloc;
         opts.cli = false;
         opts.applyOverrides();
 
-        const lib = b.addSharedLibrary(.{
+        const lib = b.addExecutable(.{
             .name = "cyber-web",
             .root_source_file = .{ .path = "src/web.zig" },
-            .target = target,
+            .target = rtarget,
             .optimize = optimize,
         });
-        if (lib.optimize != .Debug) {
-            lib.strip = true;
+        lib.entry = .disabled;
+        if (optimize != .Debug) {
+            lib.root_module.strip = true;
         }
         lib.addIncludePath(.{. path = thisDir() ++ "/src" });
 
-        if (target.getCpuArch().isWasm()) {
+        if (target.cpu.arch.isWasm()) {
             // Export table so non-exported functions can still be invoked from:
             // `instance.exports.__indirect_function_table`
             lib.export_table = true;
         }
         lib.rdynamic = true;
 
-        try buildAndLinkDeps(lib, opts);
-        step.dependOn(&lib.step);
-        step.dependOn(&b.addInstallArtifact(lib, .{}).step);
+        const build_options = try createBuildOptions(b, opts);
+        const stdx = b.createModule(.{
+            .root_source_file = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
+        });
+
+        try buildAndLinkDeps(&lib.root_module, build_options, stdx, opts);
+        main_step.dependOn(&b.addInstallArtifact(lib, .{}).step);
     }
 
     {
-        const mainStep = b.step("build-test", "Build test.");
+        const main_step = b.step("build-test", "Build test.");
 
-        var opts = getDefaultOptions(target, optimize);
+        var opts = getDefaultOptions();
         opts.trackGlobalRc = true;
         opts.applyOverrides();
 
-        var step = b.addTest(.{
-            .root_source_file = .{ .path = "./test/main_test.zig" },
-            .target = target,
-            .optimize = optimize,
-            .filter = testFilter,
-            .main_pkg_path = .{ .path = "." },
-        });
-        step.addIncludePath(.{ .path = thisDir() ++ "/src" });
-        step.rdynamic = true;
+        var step = try addUnitTest(b, opts);
+        main_step.dependOn(&b.addInstallArtifact(step, .{}).step);
 
-        try buildAndLinkDeps(step, opts);
-        mainStep.dependOn(&b.addInstallArtifact(step, .{}).step);
+        step = try addBehaviorTest(b, opts);
+        main_step.dependOn(&b.addInstallArtifact(step, .{}).step);
 
         step = try addTraceTest(b, opts);
-        mainStep.dependOn(&b.addInstallArtifact(step, .{}).step);
+        main_step.dependOn(&b.addInstallArtifact(step, .{}).step);
     }
 
     {
-        const mainStep = b.step("build-link-test", "Build link test.");
+        const main_step = b.step("test", "Run tests.");
 
-        var opts = getDefaultOptions(target, optimize);
-        opts.trackGlobalRc = true;
-        opts.ffi = false;
-        opts.link_test = true;
-        opts.applyOverrides();
-
-        var step = b.addTest(.{
-            // Lib test includes main tests.
-            .root_source_file = .{ .path = "./test/behavior_test.zig" },
-            .target = target,
-            .optimize = optimize,
-            .filter = testFilter,
-            .main_pkg_path = .{ .path = "." },
-        });
-        step.addIncludePath(.{ .path = thisDir() ++ "/src" });
-        step.rdynamic = true;
-
-        try addBuildOptions(b, step, opts);
-        step.addModule("stdx", stdx);
-        step.addAnonymousModule("tcc", .{
-            .source_file = .{ .path = thisDir() ++ "/src/tcc_stub.zig" },
-        });
-
-        opts = getDefaultOptions(target, optimize);
-        opts.trackGlobalRc = true;
-        opts.cli = true;
-        opts.applyOverrides();
-        const lib = try buildLib(b, opts);
-        step.linkLibrary(lib);
-        mainStep.dependOn(&b.addInstallArtifact(step, .{}).step);
-    }
-
-    {
-        const mainStep = b.step("test", "Run tests.");
-
-        var opts = getDefaultOptions(target, optimize);
+        var opts = getDefaultOptions();
         opts.trackGlobalRc = true;
         opts.applyOverrides();
 
-        var step = b.addTest(.{
-            .root_source_file = .{ .path = "./test/main_test.zig" },
-            .target = target,
-            .optimize = optimize,
-            .filter = testFilter,
-            .main_pkg_path = .{ .path = "." },
-        });
-        step.addIncludePath(.{ .path = thisDir() ++ "/src" });
-        step.rdynamic = true;
+        var step = try addUnitTest(b, opts);
+        main_step.dependOn(&b.addRunArtifact(step).step);
 
-        try buildAndLinkDeps(step, opts);
-        mainStep.dependOn(&b.addRunArtifact(step).step);
+        step = try addBehaviorTest(b, opts);
+        main_step.dependOn(&b.addRunArtifact(step).step);
 
         step = try addTraceTest(b, opts);
-        mainStep.dependOn(&b.addRunArtifact(step).step);
-    }
-
-    {
-        // Just trace test.
-        const mainStep = b.step("test-trace", "Run trace tests.");
-        var opts = getDefaultOptions(target, optimize);
-        opts.trackGlobalRc = true;
-        opts.applyOverrides();
-
-        const step = try addTraceTest(b, opts);
-        mainStep.dependOn(&b.addRunArtifact(step).step);
+        main_step.dependOn(&b.addRunArtifact(step).step);
     }
 
     const printStep = b.allocator.create(PrintStep) catch unreachable;
@@ -274,46 +223,63 @@ pub fn build(b: *std.build.Builder) !void {
     b.step("version", "Get the short version.").dependOn(&printStep.step);
 }
 
-pub fn buildAndLinkDeps(step: *std.build.Step.Compile, opts: Options) !void {
-    const b = step.step.owner;
+fn createAllModule(b: *std.Build, build_options: *std.Build.Module, stdx: *std.Build.Module, opts: Options) !*std.Build.Module {
+    const mod = b.createModule(.{
+        .root_source_file = .{ .path = thisDir() ++ "/src/all.zig" },
+    });
+    mod.addIncludePath(.{ .path = thisDir() ++ "/src" });
+    try buildAndLinkDeps(mod, build_options, stdx, opts);
+    return mod;
+}
 
-    try addBuildOptions(b, step, opts);
-    step.addModule("stdx", stdx);
+pub fn buildAndLinkDeps(mod: *std.Build.Module, build_options: *std.Build.Module, stdx: *std.Build.Module, opts: Options) !void {
+    const b = mod.owner;
 
-    step.linkLibC();
+    mod.addIncludePath(.{ .path = thisDir() ++ "/src" });
+    mod.addImport("build_options", build_options);
+    mod.addImport("stdx", stdx);
+
+    mod.link_libc = true;
 
     if (opts.malloc == .mimalloc) {
-        mimalloc_lib.addModule(step, "mimalloc", mimalloc);
-        mimalloc_lib.buildAndLink(b, step, .{});
+        mod.addImport("mimalloc", mimalloc);
+        mimalloc_lib.buildAndLink(b, mod, .{
+            .target = rtarget,
+            .optimize = optimize,
+        });
     }
 
     if (vmEngine == .c) {
         const lib = try buildCVM(b, opts);
-        if (opts.target.getCpuArch().isWasm()) {
-            lib.stack_protector = false;
+        if (opts.target.cpu.arch.isWasm()) {
+            lib.root_module.stack_protector = false;
         }
-        step.addObject(lib);
+        mod.addObject(lib);
     }
 
     if (opts.ffi) {
-        tcc_lib.addModule(step, "tcc", tcc);
-        tcc_lib.buildAndLink(b, step, .{
+        const tcc_ = tcc_lib.createModule(b);
+        tcc_lib.addImport(mod, "tcc", tcc_);
+        tcc_lib.buildAndLink(b, mod, .{
             .selinux = selinux,
+            .target = rtarget,
+            .optimize = optimize,
         });
     } else {
-        step.addAnonymousModule("tcc", .{
-            .source_file = .{ .path = thisDir() ++ "/src/tcc_stub.zig" },
+        mod.addAnonymousImport("tcc", .{
+            .root_source_file = .{ .path = thisDir() ++ "/src/tcc_stub.zig" },
         });
         // Disable stack protector since the compiler isn't linking __stack_chk_guard/__stack_chk_fail.
-        step.stack_protector = false;
+        mod.stack_protector = false;
     }
 
-    if (opts.cli and opts.target.getOsTag() != .windows and opts.target.getOsTag() != .wasi) {
-        addLinenoiseModule(step, "linenoise", linenoise);
-        buildAndLinkLinenoise(b, step);
+    if (opts.cli and target.os.tag != .windows and target.os.tag != .wasi) {
+        const linenoise_ = createLinenoiseModule(b);
+        mod.addImport("linenoise", linenoise_);
+        buildAndLinkLinenoise(b, mod);
     } else {
-        step.addAnonymousModule("linenoise", .{
-            .source_file = .{ .path = thisDir() ++ "/src/ln_stub.zig" },
+        mod.addAnonymousImport("linenoise", .{
+            .root_source_file = .{ .path = thisDir() ++ "/src/ln_stub.zig" },
         });
     }
 
@@ -328,7 +294,7 @@ pub const Options = struct {
     selinux: bool,
     trackGlobalRc: bool,
     trace: bool,
-    target: std.zig.CrossTarget,
+    target: std.Target,
     optimize: std.builtin.OptimizeMode,
     malloc: config.Allocator,
     static: bool,
@@ -338,6 +304,7 @@ pub const Options = struct {
     jit: bool,
     rt: config.Runtime,
     link_test: bool,
+    export_vmz: bool,
 
     fn applyOverrides(self: *Options) void {
         if (optMalloc) |malloc| {
@@ -355,14 +322,10 @@ pub const Options = struct {
     }
 };
 
-    // deps: struct {
-    //     tcc: *std.build.Module,
-    // },
-
-fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.OptimizeMode) Options {
+fn getDefaultOptions() Options {
     var malloc: config.Allocator = undefined;
     // Use mimalloc for fast builds.
-    if (target.getCpuArch().isWasm()) {
+    if (target.cpu.arch.isWasm()) {
         malloc = .zig;
     } else {
         if (optimize != .Debug) {
@@ -379,16 +342,17 @@ fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.Optimize
         .optimize = optimize,
         .gc = true,
         .malloc = malloc,
-        .static = !target.getCpuArch().isWasm(),
-        .ffi = !target.getCpuArch().isWasm(),
-        .cli = !target.getCpuArch().isWasm(),
+        .static = true,
+        .ffi = !target.cpu.arch.isWasm(),
+        .cli = !target.cpu.arch.isWasm(),
         .jit = false,
         .rt = .vm,
         .link_test = false,
+        .export_vmz = true,
     };
 }
 
-fn createBuildOptions(b: *std.build.Builder, opts: Options) !*std.build.Step.Options {
+fn createBuildOptions(b: *std.Build, opts: Options) !*std.Build.Module {
     const buildTag = std.process.getEnvVarOwned(b.allocator, "BUILD") catch |err| b: {
         if (err == error.EnvironmentVariableNotFound) {
             break :b "0";
@@ -403,77 +367,119 @@ fn createBuildOptions(b: *std.build.Builder, opts: Options) !*std.build.Step.Opt
             return err;
         }
     };
-    const build_options = b.addOptions();
-    build_options.addOption([]const u8, "version", Version);
-    build_options.addOption([]const u8, "build", buildTag);
-    build_options.addOption([]const u8, "commit", commitTag);
-    build_options.addOption(config.Allocator, "malloc", opts.malloc);
-    build_options.addOption(config.Engine, "vmEngine", vmEngine);
-    build_options.addOption(bool, "trace", opts.trace);
-    build_options.addOption(bool, "trackGlobalRC", opts.trackGlobalRc);
-    build_options.addOption(bool, "is32Bit", is32Bit(opts.target));
-    build_options.addOption(bool, "gc", opts.gc);
-    build_options.addOption(bool, "ffi", opts.ffi);
-    build_options.addOption(bool, "cli", opts.cli);
-    build_options.addOption(bool, "jit", opts.jit);
-    build_options.addOption(config.TestBackend, "testBackend", testBackend);
-    build_options.addOption(config.Runtime, "rt", opts.rt);
-    build_options.addOption(bool, "link_test", opts.link_test);
-    build_options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
-    return build_options;
+    const options = b.addOptions();
+    options.addOption([]const u8, "version", Version);
+    options.addOption([]const u8, "build", buildTag);
+    options.addOption([]const u8, "commit", commitTag);
+    options.addOption(config.Allocator, "malloc", opts.malloc);
+    options.addOption(config.Engine, "vmEngine", vmEngine);
+    options.addOption(bool, "trace", opts.trace);
+    options.addOption(bool, "trackGlobalRC", opts.trackGlobalRc);
+    options.addOption(bool, "is32Bit", is32Bit(opts.target));
+    options.addOption(bool, "gc", opts.gc);
+    options.addOption(bool, "ffi", opts.ffi);
+    options.addOption(bool, "cli", opts.cli);
+    options.addOption(bool, "jit", opts.jit);
+    options.addOption(config.TestBackend, "testBackend", testBackend);
+    options.addOption(config.Runtime, "rt", opts.rt);
+    options.addOption(bool, "link_test", opts.link_test);
+    options.addOption(bool, "export_vmz", opts.export_vmz);
+    options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
+    return options.createModule();
 }
 
-fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, opts: Options) !void {
-    const build_options = try createBuildOptions(b, opts);
-    step.addOptions("build_options", build_options);
-}
-
-fn addTraceTest(b: *std.build.Builder, opts: Options) !*std.build.LibExeObjStep {
+fn addUnitTest(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
     const step = b.addTest(.{
-        .name = "trace_test",
-        .root_source_file = .{ .path = "./test/trace_test.zig" },
-        .optimize = opts.optimize,
-        .target = opts.target,
+        .name = "unit_test",
+        .root_source_file = .{ .path = "./src/unit_test.zig" },
+        .target = rtarget,
+        .optimize = optimize,
         .filter = testFilter,
-        .main_pkg_path = .{ .path = "." },
     });
-    step.addIncludePath(.{ .path = thisDir() ++ "/src" });
-
-    var newOpts = opts;
-    newOpts.trace = true;
-    newOpts.applyOverrides();
-
-    // Include all deps since it contains tests that depend on Zig source.
-    try buildAndLinkDeps(step, newOpts);
+    const build_options = try createBuildOptions(b, opts);
+    const stdx = b.createModule(.{
+        .root_source_file = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
+    });
+    try buildAndLinkDeps(&step.root_module, build_options, stdx, opts);
     return step;
 }
 
-fn is32Bit(target: std.zig.CrossTarget) bool {
-    switch (target.getCpuArch()) {
+fn addBehaviorTest(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
+    const step = b.addTest(.{
+        .name = "test",
+        .root_source_file = .{ .path = "./test/main_test.zig" },
+        .target = rtarget,
+        .optimize = optimize,
+        .filter = testFilter,
+    });
+
+    const build_options = try createBuildOptions(b, opts);
+    step.root_module.addImport("build_options", build_options);
+
+    const stdx = b.createModule(.{
+        .root_source_file = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
+    });
+    step.root_module.addImport("stdx", stdx);
+
+    const all = try createAllModule(b, build_options, stdx, opts);
+    step.root_module.addImport("all", all);
+
+    const lib = try buildLib(b, opts);
+    step.linkLibrary(lib);
+    return step;
+}
+
+fn addTraceTest(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
+    const step = b.addTest(.{
+        .name = "trace_test",
+        .root_source_file = .{ .path = "./test/trace_test.zig" },
+        .optimize = optimize,
+        .target = rtarget,
+        .filter = testFilter,
+    });
+    step.addIncludePath(.{ .path = thisDir() ++ "/src" });
+
+    var opts_ = opts;
+    opts_.trace = true;
+    const lib = try buildLib(b, opts_);
+    step.linkLibrary(lib);
+
+    opts_.export_vmz = false;
+    const build_options = try createBuildOptions(b, opts_);
+    step.root_module.addImport("build_options", build_options);
+
+    const stdx = b.createModule(.{
+        .root_source_file = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
+    });
+    step.root_module.addImport("stdx", stdx);
+
+    const all = try createAllModule(b, build_options, stdx, opts_);
+    step.root_module.addImport("all", all);
+
+    return step;
+}
+
+fn is32Bit(target_: std.Target) bool {
+    switch (target_.cpu.arch) {
         .wasm32,
         .x86 => return true,
         else => return false,
     }
 }
 
-const stdxPkg = std.build.Pkg{
-    .name = "stdx",
-    .source = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
-};
-
 inline fn thisDir() []const u8 {
     return comptime std.fs.path.dirname(@src().file) orelse unreachable;
 }
 
 pub const PrintStep = struct {
-    step: std.build.Step,
+    step: std.Build.Step,
     build: *std.Build,
     str: []const u8,
 
     pub fn init(build_: *std.Build, str: []const u8) PrintStep {
         return PrintStep{
             .build = build_,
-            .step = std.build.Step.init(.{
+            .step = std.Build.Step.init(.{
                 .id = .custom,
                 .name = "print",
                 .owner = build_,
@@ -483,25 +489,36 @@ pub const PrintStep = struct {
         };
     }
 
-    fn make(step: *std.build.Step, _: *std.Progress.Node) anyerror!void {
-        const self = @fieldParentPtr(PrintStep, "step", step);
+    fn make(step: *std.Build.Step, _: *std.Progress.Node) anyerror!void {
+        const self: *PrintStep = @fieldParentPtr("step", step);
         std.io.getStdOut().writer().writeAll(self.str) catch unreachable;
     }
 };
 
-pub fn buildCVM(b: *std.Build, opts: Options) !*std.build.Step.Compile {
+pub fn buildCVM(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
     const lib = b.addObject(.{
         .name = "vm",
-        .target = opts.target,
-        .optimize = opts.optimize,
+        .target = rtarget,
+        .optimize = optimize,
     });
     lib.linkLibC();
-    if (lib.optimize != .Debug) {
-        lib.strip = true;
+    if (optimize != .Debug) {
+        lib.root_module.strip = true;
     }
 
     var cflags = std.ArrayList([]const u8).init(b.allocator);
-    if (opts.optimize == .Debug) {
+    const rt_safety = optimize == .Debug or optimize == .ReleaseSafe;
+    if (rt_safety) {
+        try cflags.append("-DRT_SAFETY=1");
+    } else {
+        try cflags.append("-DRT_SAFETY=0");
+    }
+    if (optimize == .Debug) {
+        try cflags.append("-DDEBUG=1");
+    } else {
+        try cflags.append("-DDEBUG=0");
+    }
+    if (optimize == .Debug) {
         try cflags.append("-DDEBUG=1");
     } else {
         try cflags.append("-DDEBUG=0");
@@ -528,7 +545,7 @@ pub fn buildCVM(b: *std.Build, opts: Options) !*std.build.Step.Compile {
 
     // Disable traps for arithmetic/bitshift overflows.
     // Note that changing this alone doesn't clear the build cache.
-    lib.disable_sanitize_c = true;
+    lib.root_module.sanitize_c = false;
 
     lib.addIncludePath(.{ .path = thisDir() ++ "/src"});
     lib.addCSourceFile(.{
@@ -538,41 +555,41 @@ pub fn buildCVM(b: *std.Build, opts: Options) !*std.build.Step.Compile {
     return lib;
 }
 
-fn buildLib(b: *std.Build, opts: Options) !*std.build.Step.Compile {
-    var lib: *std.build.Step.Compile = undefined;
+fn buildLib(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
+    var lib: *std.Build.Step.Compile = undefined;
     if (opts.static) {
         lib = b.addStaticLibrary(.{
             .name = "cyber",
             .root_source_file = .{ .path = "src/lib.zig" },
-            .target = opts.target,
-            .optimize = opts.optimize,
+            .target = rtarget,
+            .optimize = optimize,
         });
     } else {
         lib = b.addSharedLibrary(.{
             .name = "cyber",
             .root_source_file = .{ .path = "src/lib.zig" },
-            .target = opts.target,
-            .optimize = opts.optimize,
+            .target = rtarget,
+            .optimize = optimize,
         });
     }
-    if (lib.optimize != .Debug) {
-        lib.strip = true;
-    }
-    lib.addIncludePath(.{. path = thisDir() ++ "/src" });
 
-    if (opts.target.getCpuArch().isWasm()) {
+    if (optimize != .Debug) {
+        lib.root_module.strip = true;
+    }
+
+    if (target.cpu.arch.isWasm()) {
         // Export table so non-exported functions can still be invoked from:
         // `instance.exports.__indirect_function_table`
         lib.export_table = true;
     }
 
     if (opts.cli) {
-        if (opts.target.getOsTag() == .windows) {
+        if (target.os.tag == .windows) {
             lib.linkSystemLibrary("ole32");
             lib.linkSystemLibrary("crypt32");
             lib.linkSystemLibrary("ws2_32");
 
-            if (opts.target.getAbi() == .msvc) {
+            if (target.abi == .msvc) {
                 lib.linkSystemLibrary("advapi32");
                 lib.linkSystemLibrary("shell32");
             }
@@ -583,32 +600,32 @@ fn buildLib(b: *std.Build, opts: Options) !*std.build.Step.Compile {
     // Also needed to export symbols in wasm lib.
     lib.rdynamic = true;
 
-    try buildAndLinkDeps(lib, opts);
+    const build_options = try createBuildOptions(b, opts);
+    const stdx = b.createModule(.{
+        .root_source_file = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
+    });
+    try buildAndLinkDeps(&lib.root_module, build_options, stdx, opts);
     return lib;
 }
 
-pub fn createLinenoiseModule(b: *std.Build) *std.build.Module {
-    return b.createModule(.{
-        .source_file = .{ .path = thisDir() ++ "/lib/linenoise/linenoise.zig" },
+pub fn createLinenoiseModule(b: *std.Build) *std.Build.Module {
+    const mod = b.createModule(.{
+        .root_source_file = .{ .path = thisDir() ++ "/lib/linenoise/linenoise.zig" },
     });
+    mod.addIncludePath(.{ .path = thisDir() ++ "/lib/linenoise" });
+    return mod;
 }
 
-pub fn addLinenoiseModule(step: *std.build.CompileStep, name: []const u8, mod: *std.build.Module) void {
-    step.addModule(name, mod);
-    step.addIncludePath(.{ .path = thisDir() ++ "/lib/linenoise" });
-}
-
-pub fn buildAndLinkLinenoise(b: *std.Build, step: *std.build.CompileStep) void {
+pub fn buildAndLinkLinenoise(b: *std.Build, mod: *std.Build.Module) void {
     const lib = b.addStaticLibrary(.{
         .name = "linenoise",
-        .target = step.target,
-        .optimize = step.optimize,
+        .target = rtarget,
+        .optimize = optimize,
     });
-    lib.addIncludePath(.{ .path = thisDir() ++ "/lib/linenoise" });
     lib.linkLibC();
     // lib.disable_sanitize_c = true;
 
-    var c_flags = std.ArrayList([]const u8).init(b.allocator);
+    const c_flags = std.ArrayList([]const u8).init(b.allocator);
 
     var sources = std.ArrayList([]const u8).init(b.allocator);
     sources.appendSlice(&.{
@@ -620,5 +637,5 @@ pub fn buildAndLinkLinenoise(b: *std.Build, step: *std.build.CompileStep) void {
             .flags = c_flags.items,
         });
     }
-    step.linkLibrary(lib);
+    mod.linkLibrary(lib);
 }

@@ -19,10 +19,6 @@ var optStatic: ?bool = undefined;
 var optJIT: ?bool = undefined;
 var optRT: ?config.Runtime = undefined;
 
-var tcc: *std.Build.Module = undefined;
-var linenoise: *std.Build.Module = undefined;
-var mimalloc: *std.Build.Module = undefined;
-
 var rtarget: std.Build.ResolvedTarget = undefined;
 var target: std.Target = undefined;
 var optimize: std.builtin.OptimizeMode = undefined;
@@ -43,10 +39,6 @@ pub fn build(b: *std.Build) !void {
     optJIT = b.option(bool, "jit", "Build with JIT.");
     optRT = b.option(config.Runtime, "rt", "Runtime.");
     link_test = b.option(bool, "link-test", "Build test by linking lib. Disable for better stack traces.") orelse true;
-
-    tcc = tcc_lib.createModule(b);
-    mimalloc = mimalloc_lib.createModule(b);
-    linenoise = createLinenoiseModule(b);
 
     {
         const step = b.step("cli", "Build main cli.");
@@ -228,6 +220,7 @@ pub fn build(b: *std.Build) !void {
 fn createAllModule(b: *std.Build, build_options: *std.Build.Module, stdx: *std.Build.Module, opts: Options) !*std.Build.Module {
     const mod = b.createModule(.{
         .root_source_file = .{ .path = thisDir() ++ "/src/all.zig" },
+        .target = rtarget,
     });
     mod.addIncludePath(.{ .path = thisDir() ++ "/src" });
     try buildAndLinkDeps(mod, build_options, stdx, opts);
@@ -244,6 +237,7 @@ pub fn buildAndLinkDeps(mod: *std.Build.Module, build_options: *std.Build.Module
     mod.link_libc = true;
 
     if (opts.malloc == .mimalloc) {
+        const mimalloc = mimalloc_lib.createModule(b);
         mod.addImport("mimalloc", mimalloc);
         mimalloc_lib.buildAndLink(b, mod, .{
             .target = rtarget,
@@ -260,8 +254,8 @@ pub fn buildAndLinkDeps(mod: *std.Build.Module, build_options: *std.Build.Module
     }
 
     if (opts.ffi) {
-        const tcc_ = tcc_lib.createModule(b);
-        tcc_lib.addImport(mod, "tcc", tcc_);
+        const tcc = tcc_lib.createModule(b);
+        tcc_lib.addImport(mod, "tcc", tcc);
         tcc_lib.buildAndLink(b, mod, .{
             .selinux = selinux,
             .target = rtarget,
@@ -276,8 +270,8 @@ pub fn buildAndLinkDeps(mod: *std.Build.Module, build_options: *std.Build.Module
     }
 
     if (opts.cli and target.os.tag != .windows and target.os.tag != .wasi) {
-        const linenoise_ = createLinenoiseModule(b);
-        mod.addImport("linenoise", linenoise_);
+        const linenoise = createLinenoiseModule(b);
+        mod.addImport("linenoise", linenoise);
         buildAndLinkLinenoise(b, mod);
     } else {
         mod.addAnonymousImport("linenoise", .{
@@ -419,6 +413,9 @@ fn addBehaviorTest(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
         .filter = testFilter,
     });
 
+    // For linux FFI test.
+    step.rdynamic = true;
+
     const build_options = try createBuildOptions(b, opts);
     step.root_module.addImport("build_options", build_options);
 
@@ -520,11 +517,6 @@ pub fn buildCVM(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
         try cflags.append("-DRT_SAFETY=1");
     } else {
         try cflags.append("-DRT_SAFETY=0");
-    }
-    if (optimize == .Debug) {
-        try cflags.append("-DDEBUG=1");
-    } else {
-        try cflags.append("-DDEBUG=0");
     }
     if (optimize == .Debug) {
         try cflags.append("-DDEBUG=1");

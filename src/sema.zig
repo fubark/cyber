@@ -5965,7 +5965,7 @@ pub fn unescapeSeq(seq: []const u8) !CharAdvance {
 test "sema internals." {
     if (builtin.mode == .ReleaseFast) {
         if (cy.is32Bit) {
-            try t.eq(@sizeOf(LocalVar), 36);
+            try t.eq(@sizeOf(LocalVar), 32);
         } else {
             try t.eq(@sizeOf(LocalVar), 40);
         }

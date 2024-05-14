@@ -1024,13 +1024,15 @@ const CFuncData = struct {
 
 fn dlopen(path: []const u8) !std.DynLib {
     if (builtin.os.tag == .linux and builtin.link_libc) {
-        const path_c = try std.os.toPosixPath(path);
+        const path_c = try std.posix.toPosixPath(path);
         // Place the lookup scope of the symbols in this library ahead of the global scope.
         const RTLD_DEEPBIND = 0x00008;
         return std.DynLib{
-            .handle = std.os.system.dlopen(&path_c, std.os.system.RTLD.LAZY | RTLD_DEEPBIND) orelse {
-                return error.FileNotFound;
-            }
+            .inner = .{
+                .handle = std.c.dlopen(&path_c, std.c.RTLD.LAZY | RTLD_DEEPBIND) orelse {
+                    return error.FileNotFound;
+                },
+            },
         };
     } else {
         return std.DynLib.open(path);

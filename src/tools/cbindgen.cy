@@ -33,13 +33,11 @@ if existing != '':
     for res['decls'] -> decl:
         if decl['pos'] < markerPos:
             switch decl['type']
-            case 'func':
+            case 'funcDecl':
                 skipMap[decl['name']] = true
-            case 'funcInit':
+            case 'objectDecl':
                 skipMap[decl['name']] = true
-            case 'object':
-                skipMap[decl['name']] = true
-            case 'variable':
+            case 'staticDecl':
                 if decl['name'] == 'libPath':
                     existingLibPath = true
 

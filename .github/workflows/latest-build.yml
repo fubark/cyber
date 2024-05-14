@@ -200,14 +200,14 @@ jobs:
           restore-keys:
             build-${{ env.BUILD_TARGET }}-${{ env.BUILD_MODE }}-1
 
-      - name: Run tests. (cli, debug)
-        if: env.BUILD_TARGET != 'wasm32-wasi' && env.BUILD_CMD == 'cli'
+      - name: Run tests. (debug)
+        if: env.BUILD_TARGET != 'wasm32-wasi' && (env.BUILD_CMD == 'cli' || (env.BUILD_CMD == 'lib' && env.BUILD_TARGET != 'x86_64-windows-msvc'))
         run: |
           zig build test ${{ env.ZIG_TARGET_FLAG }} 
 
       # Optimize with ReleaseSafe since there are issues with Zig 0.11.0 and building tests for ReleaseFast.
-      - name: Run tests. (cli, release)
-        if: env.BUILD_TARGET != 'wasm32-wasi' && env.BUILD_CMD == 'cli'
+      - name: Run tests. (release)
+        if: env.BUILD_TARGET != 'wasm32-wasi' && (env.BUILD_CMD == 'cli' || (env.BUILD_CMD == 'lib' && env.BUILD_TARGET != 'x86_64-windows-msvc'))
         run: |
           zig build test ${{ env.ZIG_TARGET_FLAG }} -Doptimize=ReleaseSafe
 
@@ -286,7 +286,7 @@ jobs:
       - name: Move. (wasm)
         if: env.BUILD_TARGET == 'wasm32-freestanding'
         run: |
-          mv zig-out/lib/cyber-web.wasm ${{ env.BIN_ZIP }}
+          mv zig-out/bin/cyber-web.wasm ${{ env.BIN_ZIP }}
 
       - name: Move. (wasi)
         if: env.BUILD_TARGET == 'wasm32-wasi'

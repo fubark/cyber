@@ -800,13 +800,11 @@ typedef struct VMC {
     void* typesPtr;
     size_t typesLen;
 
-#if TRACK_GLOBAL_RC
-    size_t refCounts;
-#endif
-
-#if TRACE
     TraceInfo* trace;
     u32 debugPc;
+
+#if TRACK_GLOBAL_RC
+    size_t refCounts;
 #endif
 } VMC;
 

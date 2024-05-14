@@ -68,13 +68,13 @@ const VMC = extern struct {
     types: [*]const types.Type,
     types_len: usize,
 
-    refCounts: if (cy.TrackGlobalRC) usize else void,
-
-    trace: if (cy.Trace) *vmc.TraceInfo else void,
+    trace: *vmc.TraceInfo,
 
     /// In debug mode, always save the current pc so tracing can be obtained.
     /// debugPc == NullId indicates execution has not started.
-    debugPc: if (cy.Trace) u32 else void,
+    debugPc: u32,
+
+    refCounts: if (cy.TrackGlobalRC) usize else void,
 
     pub fn getTryStack(self: *VMC) *cy.List(vmc.TryFrame) {
         return @ptrCast(&self.tryStack);
@@ -105,8 +105,8 @@ pub const VM = struct {
     /// Object heap pages.
     heapPages: cy.List(*cy.heap.HeapPage),
     heapFreeHead: ?*HeapObject,
-    /// Tail is only used in trace mode.
-    heapFreeTail: if (cy.Trace) ?*HeapObject else void,
+    /// Trace mode.
+    heapFreeTail: ?*HeapObject,
 
     /// GC: Contains the head to the first cyclable object.
     /// Always contains one dummy node to avoid null checking.
@@ -173,8 +173,8 @@ pub const VM = struct {
     print: cc.PrintFn,
     print_err: cc.PrintErrorFn,
 
-    /// Object to pc of instruction that allocated it.
-    objectTraceMap: if (cy.Trace) std.AutoHashMapUnmanaged(*HeapObject, debug.ObjectTrace) else void,
+    /// Object to pc of instruction that allocated it. Trace mode.
+    objectTraceMap: std.AutoHashMapUnmanaged(*HeapObject, debug.ObjectTrace),
 
     /// Interface used for imports and fetch.
     httpClient: http.HttpClient,
@@ -191,8 +191,9 @@ pub const VM = struct {
 
     config: cc.EvalConfig,
 
-    countFrees: if (cy.Trace) bool else void,
-    numFreed: if (cy.Trace) u32 else void,
+    // Trace mode.
+    countFrees: bool,
+    numFreed: u32,
 
     /// Whether this VM is already deinited. Used to skip the next deinit to avoid using undefined memory.
     deinited: bool,
@@ -250,7 +251,7 @@ pub const VM = struct {
                 .refCounts = if (cy.TrackGlobalRC) 0 else undefined,
                 .mainFiber = undefined,
                 .curFiber = undefined,
-                .debugPc = if (cy.Trace) cy.NullId else undefined,
+                .debugPc = cy.NullId,
             },
             .methods = .{},
             .method_map = .{},
@@ -273,7 +274,7 @@ pub const VM = struct {
             .unwindTempPrevIndexes = undefined,
             .compactTrace = .{},
             .endLocal = undefined,
-            .objectTraceMap = if (cy.Trace) .{} else undefined,
+            .objectTraceMap = .{},
             // Initialize to NullId to indicate vm is still in initing.
             .deinited = false,
             .deinitedRtObjects = false,
@@ -284,8 +285,8 @@ pub const VM = struct {
             .varSymExtras = .{},
             .print = defaultPrint,
             .print_err = defaultPrintError,
-            .countFrees = if (cy.Trace) false else {},
-            .numFreed = if (cy.Trace) 0 else {},
+            .countFrees = false,
+            .numFreed = 0,
             .tempBuf = undefined,
             .lastExeError = "",
             .last_res = cc.Success,
@@ -1806,18 +1807,16 @@ test "vm internals." {
     try t.eq(@offsetOf(VMC, "ops"), @offsetOf(vmc.VMC, "instPtr"));
     try t.eq(@offsetOf(VMC, "consts"), @offsetOf(vmc.VMC, "constPtr"));
     try t.eq(@offsetOf(VMC, "tryStack"), @offsetOf(vmc.VMC, "tryStack"));
-    if (cy.TrackGlobalRC) {
-        try t.eq(@offsetOf(VMC, "refCounts"), @offsetOf(vmc.VMC, "refCounts"));
-    }
     try t.eq(@offsetOf(VMC, "varSyms"), @offsetOf(vmc.VMC, "varSyms"));
     try t.eq(@offsetOf(VMC, "fieldSyms"), @offsetOf(vmc.VMC, "fieldSyms"));
     try t.eq(@offsetOf(VMC, "curFiber"), @offsetOf(vmc.VMC, "curFiber"));
     try t.eq(@offsetOf(VMC, "mainFiber"), @offsetOf(vmc.VMC, "mainFiber"));
-    if (cy.Trace) {
-        try t.eq(@offsetOf(VMC, "trace"), @offsetOf(vmc.VMC, "trace"));
-        try t.eq(@offsetOf(VMC, "debugPc"), @offsetOf(vmc.VMC, "debugPc"));
+    try t.eq(@offsetOf(VMC, "types"), @offsetOf(vmc.VMC, "typesPtr"));
+    if (cy.TrackGlobalRC) {
+        try t.eq(@offsetOf(VMC, "refCounts"), @offsetOf(vmc.VMC, "refCounts"));
     }
-
+    try t.eq(@offsetOf(VMC, "trace"), @offsetOf(vmc.VMC, "trace"));
+    try t.eq(@offsetOf(VMC, "debugPc"), @offsetOf(vmc.VMC, "debugPc"));
     try t.eq(@offsetOf(VM, "c"), @offsetOf(vmc.VM, "c"));
 }
 

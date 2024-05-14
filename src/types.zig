@@ -9,6 +9,7 @@ const fmt = @import("fmt.zig");
 const v = fmt.v;
 const vmc = @import("vm_c.zig");
 const log = cy.log.scoped(.types);
+const ast = cy.ast;
 
 pub const TypeId = u32;
 
@@ -285,7 +286,7 @@ pub const SemaExt = struct {
 
 pub const ChunkExt = struct {
 
-    pub fn checkForZeroInit(c: *cy.Chunk, typeId: TypeId, nodeId: cy.NodeId) !void {
+    pub fn checkForZeroInit(c: *cy.Chunk, typeId: TypeId, node: *ast.Node) !void {
         var res = hasZeroInit(c, typeId);
         if (res == .missingEntry) {
             const sym = c.sema.getTypeSym(typeId);
@@ -300,11 +301,11 @@ pub const ChunkExt = struct {
             .missingEntry => return error.Unexpected,
             .unsupported => {
                 const name = c.sema.getTypeBaseName(typeId);
-                return c.reportErrorFmt("Unsupported zero initializer for `{}`.", &.{v(name)}, nodeId);
+                return c.reportErrorFmt("Unsupported zero initializer for `{}`.", &.{v(name)}, node);
             },
             .circularDep => {
                 const name = c.sema.getTypeBaseName(typeId);
-                return c.reportErrorFmt("Can not zero initialize `{}` because of circular dependency.", &.{v(name)}, nodeId);
+                return c.reportErrorFmt("Can not zero initialize `{}` because of circular dependency.", &.{v(name)}, node);
             }
         }
     }

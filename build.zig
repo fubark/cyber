@@ -13,6 +13,7 @@ var vmEngine: config.Engine = undefined;
 var testFilter: ?[]const u8 = undefined;
 var testBackend: config.TestBackend = undefined;
 var trace: bool = undefined;
+var link_test: bool = undefined;
 var optFFI: ?bool = undefined; 
 var optStatic: ?bool = undefined; 
 var optJIT: ?bool = undefined;
@@ -41,6 +42,7 @@ pub fn build(b: *std.Build) !void {
     trace = b.option(bool, "trace", "Enable tracing features.") orelse (optimize == .Debug);
     optJIT = b.option(bool, "jit", "Build with JIT.");
     optRT = b.option(config.Runtime, "rt", "Runtime.");
+    link_test = b.option(bool, "link-test", "Build test by linking lib. Disable for better stack traces.") orelse true;
 
     tcc = tcc_lib.createModule(b);
     mimalloc = mimalloc_lib.createModule(b);
@@ -303,7 +305,11 @@ pub const Options = struct {
     cli: bool,
     jit: bool,
     rt: config.Runtime,
+
+    /// Link with the lib when building test root.
+    /// Disable to see better Zig stack traces.
     link_test: bool,
+
     export_vmz: bool,
 
     fn applyOverrides(self: *Options) void {
@@ -347,7 +353,7 @@ fn getDefaultOptions() Options {
         .cli = !target.cpu.arch.isWasm(),
         .jit = false,
         .rt = .vm,
-        .link_test = false,
+        .link_test = link_test,
         .export_vmz = true,
     };
 }
@@ -424,8 +430,10 @@ fn addBehaviorTest(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
     const all = try createAllModule(b, build_options, stdx, opts);
     step.root_module.addImport("all", all);
 
-    const lib = try buildLib(b, opts);
-    step.linkLibrary(lib);
+    if (opts.link_test) {
+        const lib = try buildLib(b, opts);
+        step.linkLibrary(lib);
+    }
     return step;
 }
 

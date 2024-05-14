@@ -389,11 +389,11 @@ type ModulePair:
 func genFuncDecl(decl Map) String:
     var docLine = decl.get('docs') ?else ''
     var params = []
-    for decl['header']['params'] -> param:
+    for decl['params'] -> param:
         var typeSpec = if (param['typeSpec'] != '') param['typeSpec'] else 'any'
         params.append("$(param['name']) $(typeSpec)")
     var paramsStr = params.join(', ')
-    return "> `func $(decl['header']['name'])($(paramsStr)) $(decl['header']['ret'])`\n>\n>$(docLine)\n\n"
+    return "> `func $(decl['name'])($(paramsStr)) $(decl['ret'])`\n>\n>$(docLine)\n\n"
 
 func genDocsModules():
     var modules = [

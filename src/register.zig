@@ -2,6 +2,7 @@ const std = @import("std");
 const stdx = @import("stdx");
 const cy = @import("cyber.zig");
 const log = cy.log.scoped(.reg);
+const ast = cy.ast;
 
 const NullReg = 255;
 pub const RegisterId = u8;
@@ -56,14 +57,14 @@ pub const Allocator = struct {
 
     /// Selecting for a non local inst that can not fail.
     /// A required dst can be retained but `requiresPreRelease` will be set to true.
-    pub fn selectForNoErrNoDepInst(self: *Allocator, cstr: Cstr, instCouldRetain: bool, nodeId: cy.NodeId) !NoErrInst {
+    pub fn selectForNoErrNoDepInst(self: *Allocator, cstr: Cstr, instCouldRetain: bool, node: *ast.Node) !NoErrInst {
         switch (cstr.type) {
             .varSym => {
                 return .{
                     .dst = try self.consumeNextTemp(),
                     .requiresPreRelease = false,
                     .finalDst = cstr,
-                    .nodeId = nodeId,
+                    .node = node,
                 };
             },
             .localReg,
@@ -72,7 +73,7 @@ pub const Allocator = struct {
                     .dst = cstr.data.reg.dst,
                     .requiresPreRelease = cstr.data.reg.releaseDst,
                     .finalDst = null,
-                    .nodeId = nodeId,
+                    .node = node,
                 };
             },
             .liftedLocal => {
@@ -80,7 +81,7 @@ pub const Allocator = struct {
                     .dst = try self.consumeNextTemp(),
                     .requiresPreRelease = false,
                     .finalDst = cstr,
-                    .nodeId = nodeId,
+                    .node = node,
                 };
             },
             .captured => {
@@ -88,7 +89,7 @@ pub const Allocator = struct {
                     .dst = try self.consumeNextTemp(),
                     .requiresPreRelease = false,
                     .finalDst = cstr,
-                    .nodeId = nodeId,
+                    .node = node,
                 };
             },
             .preferVolatile => {
@@ -97,14 +98,14 @@ pub const Allocator = struct {
                         .dst = try self.consumeNextTemp(),
                         .requiresPreRelease = false,
                         .finalDst = null,
-                        .nodeId = nodeId,
+                        .node = node,
                     };
                 }
                 return .{
                     .dst = cstr.data.preferVolatile,
                     .requiresPreRelease = false,
                     .finalDst = null,
-                    .nodeId = nodeId,
+                    .node = node,
                 };
             },
             .simple => {
@@ -112,7 +113,7 @@ pub const Allocator = struct {
                     .dst = try self.consumeNextTemp(),
                     .requiresPreRelease = false,
                     .finalDst = null,
-                    .nodeId = nodeId,
+                    .node = node,
                 };
             },
             .none => return error.Unsupported,
@@ -126,20 +127,20 @@ pub const Allocator = struct {
     /// > let node = [Node ...]
     /// > node = node.val
     /// `node` rec gets +1 retain and saves to temp since the `node` cstr has `releaseDst=true`.
-    pub fn selectForDstInst(self: *Allocator, cstr: Cstr, instCouldRetain: bool, nodeId: cy.NodeId) !DstInst {
+    pub fn selectForDstInst(self: *Allocator, cstr: Cstr, instCouldRetain: bool, node: *ast.Node) !DstInst {
         switch (cstr.type) {
             .varSym => {
                 return .{
                     .dst = try self.consumeNextTemp(),
                     .finalDst = cstr,
-                    .nodeId = nodeId,
+                    .node = node,
                 };
             },
             .captured => {
                 return .{
                     .dst = try self.consumeNextTemp(),
                     .finalDst = cstr,
-                    .nodeId = nodeId,
+                    .node = node,
                 };
             },
             .localReg,
@@ -148,13 +149,13 @@ pub const Allocator = struct {
                     return .{
                         .dst = try self.consumeNextTemp(),
                         .finalDst = cstr,
-                        .nodeId = nodeId,
+                        .node = node,
                     };
                 } else {
                     return .{
                         .dst = cstr.data.reg.dst,
                         .finalDst = null,
-                        .nodeId = nodeId,
+                        .node = node,
                     };
                 }
             },
@@ -162,7 +163,7 @@ pub const Allocator = struct {
                 return .{
                     .dst = try self.consumeNextTemp(),
                     .finalDst = cstr,
-                    .nodeId = nodeId,
+                    .node = node,
                 };
             },
             .preferVolatile => {
@@ -170,20 +171,20 @@ pub const Allocator = struct {
                     return .{
                         .dst = try self.consumeNextTemp(),
                         .finalDst = null,
-                        .nodeId = nodeId,
+                        .node = node,
                     };
                 }
                 return .{
                     .dst = cstr.data.preferVolatile,
                     .finalDst = null,
-                    .nodeId = nodeId,
+                    .node = node,
                 };
             },
             .simple => {
                 return .{
                     .dst = try self.consumeNextTemp(),
                     .finalDst = null,
-                    .nodeId = nodeId,
+                    .node = node,
                 };
             },
             .none => return error.Unsupported,
@@ -216,13 +217,13 @@ pub const NoErrInst = struct {
     dst: RegisterId,
     requiresPreRelease: bool,
     finalDst: ?Cstr,
-    nodeId: cy.NodeId,
+    node: *ast.Node,
 };
 
 pub const DstInst = struct {
     dst: RegisterId,
     finalDst: ?Cstr,
-    nodeId: cy.NodeId,
+    node: *ast.Node,
 };
 
 const CstrType = enum(u8) {

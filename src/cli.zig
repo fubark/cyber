@@ -73,7 +73,7 @@ const stdMods = std.ComptimeStringMap(C.ModuleLoaderResult, .{
 });
 
 comptime {
-    if (!builtin.is_test) {
+    if (!builtin.is_test or !build_options.link_test) {
         @export(clSetupForCLI, .{ .name = "clSetupForCLI", .linkage = .strong });
     }
 }

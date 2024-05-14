@@ -118,9 +118,7 @@ pub fn printTraceAtPc(vm: *cy.VM, pc: u32, title: []const u8, msg: []const u8) !
     }
     if (getIndexOfDebugSym(vm, pc)) |idx| {
         const sym = vm.debugTable[idx];
-        const chunk = vm.compiler.chunks.items[sym.file];
-        const node = chunk.ast.node(sym.loc);
-        try printUserError(vm, title, msg, sym.file, node.srcPos);
+        try printUserError(vm, title, msg, sym.file, sym.loc);
     } else {
         rt.errFmt(vm, "{}: {}\nMissing debug sym for {}, pc: {}.\n", &.{
             v(title), v(msg), v(vm.c.ops[pc].opcode()), v(pc)});
@@ -170,10 +168,8 @@ pub fn allocReportSummary(c: *const cy.Compiler, report: cy.Report) ![]const u8 
 
 fn writeCompileErrorSummary(c: *const cy.Compiler, w: anytype, report: cy.Report) !void {
     if (report.chunk != cy.NullId) {
-        const chunk = c.chunks.items[report.chunk];
         if (report.loc != cy.NullId) {
-            const node = chunk.ast.node(report.loc);
-            try writeUserError(c, w, "CompileError", report.msg, report.chunk, node.srcPos);
+            try writeUserError(c, w, "CompileError", report.msg, report.chunk, report.loc);
         } else {
             try writeUserError(c, w, "CompileError", report.msg, report.chunk, cy.NullId);
         }
@@ -365,58 +361,32 @@ pub fn compactToStackFrame(vm: *cy.VM, stack: []const cy.Value, frame: vmc.Compa
     }
 }
 
-fn getStackFrame(vm: *cy.VM, sym: cy.DebugSym) StackFrame {
-    if (sym.frameLoc == cy.NullNode) {
-        const chunk = vm.compiler.chunks.items[sym.file];
-        if (sym.loc != cy.NullNode) {
-            const node = chunk.ast.node(sym.loc);
-            var line: u32 = undefined;
-            var col: u32 = undefined;
-            var lineStart: u32 = undefined;
-            chunk.ast.computeLinePos(node.srcPos, &line, &col, &lineStart);
-            return StackFrame{
-                .name = "main",
-                .chunkId = sym.file,
-                .line = line,
-                .col = col,
-                .lineStartPos = lineStart,
-            };
-        } else {
-            // Invoking $init.
-            return StackFrame{
-                .name = "main",
-                .chunkId = sym.file,
-                .line = 0,
-                .col = 0,
-                .lineStartPos = cy.NullId,
-            };
-        }
-    } else {
-        const chunk = vm.compiler.chunks.items[sym.file]; 
-        var name: []const u8 = undefined;
-        const proc = chunk.ast.node(sym.frameLoc);
-        if (proc.type() == .coinit) {
-            name = "coroutine";
-        } else {
-            const header = chunk.ast.node(proc.data.func.header);
-            if (header.data.funcHeader.name == cy.NullNode) {
-                name = "lambda";
-            } else {
-                name = chunk.ast.nodeStringById(header.data.funcHeader.name);
-            }
-        }
+pub const CoinitFramePos = cy.NullId - 1;
+pub const FramePos = cy.NullId - 1;
 
-        const node = chunk.ast.node(sym.loc);
+fn getStackFrame(vm: *cy.VM, sym: cy.DebugSym) StackFrame {
+    const chunk = vm.compiler.chunks.items[sym.file];
+    if (sym.loc != cy.NullId) {
+        const proc_name = chunk.procs.items[sym.frameLoc];
         var line: u32 = undefined;
         var col: u32 = undefined;
         var lineStart: u32 = undefined;
-        chunk.ast.computeLinePos(node.srcPos, &line, &col, &lineStart);
+        chunk.ast.computeLinePos(sym.loc, &line, &col, &lineStart);
         return StackFrame{
-            .name = name,
+            .name = proc_name,
             .chunkId = sym.file,
             .line = line,
             .col = col,
             .lineStartPos = lineStart,
+        };
+    } else {
+        // Invoking $init.
+        return StackFrame{
+            .name = "main",
+            .chunkId = sym.file,
+            .line = 0,
+            .col = 0,
+            .lineStartPos = cy.NullId,
         };
     }
 }
@@ -490,6 +460,7 @@ pub fn dumpBytecode(vm: *cy.VM, opts: DumpBytecodeOptions) !void {
         };
         const sym = debugTable[idx];
         const chunk = vm.compiler.chunks.items[sym.file];
+        _ = chunk;
 
         if (sym.frameLoc == 0) {
             // rt.print(vm, "Block: main");
@@ -509,10 +480,9 @@ pub fn dumpBytecode(vm: *cy.VM, opts: DumpBytecodeOptions) !void {
         }
         rt.print(vm, "\n");
 
-        const node = chunk.ast.node(sym.loc);
-        const msg = try std.fmt.allocPrint(vm.alloc, "pc={} op={s} node={s}", .{ pcContext, @tagName(pc[pcContext].opcode()), @tagName(node.type()) });
+        const msg = try std.fmt.allocPrint(vm.alloc, "pc={} op={s}", .{ pcContext, @tagName(pc[pcContext].opcode()) });
         defer vm.alloc.free(msg);
-        try printUserError(vm, "Trace", msg, sym.file, node.srcPos);
+        try printUserError(vm, "Trace", msg, sym.file, sym.loc);
 
         rt.print(vm, "Bytecode:\n");
         const ContextSize = 40;
@@ -629,26 +599,17 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const cy.Inst
         else => {
             if (cy.Trace) {
                 const desc = vm.compiler.buf.instDescs.items[instIdx];
-                if (desc.nodeId != cy.NullId) {
+                if (desc != cy.NullId) {
                     var fbuf = std.io.fixedBufferStream(&buf);
                     var w = fbuf.writer();
 
-                    if (desc.extraIdx != cy.NullId) {
-                        const descExtra = vm.compiler.buf.instDescExtras.items[desc.extraIdx];
-                        try w.writeByte('"');
-                        try w.writeAll(descExtra.text);
-                        try w.writeAll("\" ");
-                    }
-
-                    const chunk = vm.compiler.chunks.items[desc.chunkId];
-
-                    const enc = cy.ast.Encoder{
-                        .ast = chunk.ast,
-                    };
-
-                    try enc.write(w, desc.nodeId);
-                    extra = fbuf.getWritten();
+                    const descExtra = vm.compiler.buf.instDescExtras.items[desc];
+                    try w.writeByte('"');
+                    try w.writeAll(descExtra.text);
+                    try w.writeAll("\" ");
                 }
+
+                // TODO: Dump src code from optional debug entry
             }
         },
     }

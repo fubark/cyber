@@ -9,6 +9,7 @@ const t = stdx.testing;
 const log = cy.log.scoped(.sym);
 const fmt = cy.fmt;
 const v = fmt.v;
+const ast = cy.ast;
 
 pub const SymType = enum(u8) {
     null,
@@ -482,7 +483,7 @@ pub const Placeholder = extern struct {
 
 pub const HostVar = extern struct {
     head: Sym,
-    declId: cy.Nullable(cy.NodeId),
+    decl: ?*ast.StaticVarDecl,
     type: cy.TypeId,
     val: cy.Value,
 
@@ -492,7 +493,7 @@ pub const HostVar = extern struct {
 
 pub const UserVar = extern struct {
     head: Sym,
-    declId: cy.NodeId,
+    decl: ?*ast.StaticVarDecl,
     type: cy.TypeId,
 
     pub fn isResolved(self: *UserVar) bool {
@@ -532,7 +533,7 @@ pub const FuncSym = extern struct {
 
 pub const TypeAlias = extern struct {
     head: Sym,
-    declId: cy.NodeId,
+    decl: *ast.TypeAliasDecl,
     type: cy.TypeId,
     sym: *Sym,
     mod: vmc.Module,
@@ -546,7 +547,7 @@ pub const TypeAlias = extern struct {
 /// Like Placeholder with a reserved type id.
 pub const DistinctType = extern struct {
     head: Sym,
-    decl: cy.NodeId,
+    decl: *ast.DistinctDecl,
     type: cy.TypeId,
     mod: vmc.Module,
     variant: u32,
@@ -563,7 +564,7 @@ pub const ValueType = extern struct {
 
 pub const Template = struct {
     head: Sym,
-    child_decl: cy.NodeId,
+    child_decl: *ast.Node,
 
     sigId: cy.sema.FuncSigId,
 
@@ -642,7 +643,7 @@ pub const Variant = struct {
     args: []const cy.Value,
 
     data: union {
-        specialization: cy.NodeId,
+        specialization: *ast.Node,
         sym: *Sym,
     },
 };
@@ -705,7 +706,9 @@ pub const FieldInfo = packed struct {
 pub const ObjectType = extern struct {
     head: Sym,
     type: cy.TypeId,
-    declId: cy.NodeId,
+
+    // Can be ObjectDecl / TableDecl.
+    decl: ?*ast.Node,
     fields: [*]const FieldInfo,
     numFields: u32,
 
@@ -718,10 +721,10 @@ pub const ObjectType = extern struct {
         return self.numFields != cy.NullId;
     }
 
-    pub fn init(parent: *Sym, chunk: *cy.Chunk, name: []const u8, decl_id: cy.NodeId, type_id: cy.TypeId) ObjectType {
+    pub fn init(parent: *Sym, chunk: *cy.Chunk, name: []const u8, decl: ?*ast.Node, type_id: cy.TypeId) ObjectType {
         var new = ObjectType{
             .head = Sym.init(.object_t, parent, name),
-            .declId = decl_id,
+            .decl = decl,
             .type = type_id,
             .fields = undefined,
             .variant = null,
@@ -756,7 +759,7 @@ pub const ObjectType = extern struct {
 pub const CustomType = extern struct {
     head: Sym,
     type: cy.TypeId,
-    declId: cy.NodeId,
+    decl: *ast.CustomDecl,
     getChildrenFn: cc.GetChildrenFn,
     finalizerFn: cc.FinalizerFn,
     mod: vmc.Module,
@@ -801,7 +804,7 @@ pub const BoolType = extern struct {
 
 pub const EnumType = extern struct {
     head: Sym,
-    decl: cy.NodeId,
+    decl: *ast.EnumDecl,
     type: cy.TypeId,
     members: [*]*EnumMember,
     numMembers: u32,
@@ -856,13 +859,15 @@ pub const EnumMember = extern struct {
 
 pub const ModuleAlias = extern struct {
     head: Sym,
-    declId: cy.NodeId,
+    declId: *ast.Node,
     sym: *Sym,
 };
 
 pub const UseAlias = extern struct {
     head: Sym,
-    decl: cy.NodeId,
+
+    /// Can be UseAlias or ImportStmt.
+    decl: ?*ast.Node,
     sym: *Sym,
     resolved: bool,
 };
@@ -896,7 +901,8 @@ pub const Func = struct {
     parent: *Sym,
 
     funcSigId: cy.sema.FuncSigId,
-    declId: cy.NodeId,
+    // FuncDecl/LambdaExpr
+    decl: ?*ast.Node,
     retType: cy.TypeId,
     data: union {
         hostFunc: struct {
@@ -937,10 +943,10 @@ pub const Func = struct {
 
 pub const ChunkExt = struct {
 
-    pub fn createDistinctType(c: *cy.Chunk, parent: *Sym, name: []const u8, decl_id: cy.NodeId) !*DistinctType {
+    pub fn createDistinctType(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: *ast.DistinctDecl) !*DistinctType {
         const sym = try createSym(c.alloc, .distinct_t, .{
             .head = Sym.init(.distinct_t, parent, name),
-            .decl = decl_id,
+            .decl = decl,
             .type = cy.NullId,
             .mod = undefined,
             .resolved = false,
@@ -951,10 +957,10 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createTypeAlias(c: *cy.Chunk, parent: *Sym, name: []const u8, declId: cy.NodeId) !*TypeAlias {
+    pub fn createTypeAlias(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: *ast.TypeAliasDecl) !*TypeAlias {
         const sym = try createSym(c.alloc, .typeAlias, .{
             .head = Sym.init(.typeAlias, parent, name),
-            .declId = declId,
+            .decl = decl,
             .type = cy.NullId,  // Null indicates it needs to be resolved later on.
             .sym = undefined,
             .mod = undefined,
@@ -1018,10 +1024,10 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createField(c: *cy.Chunk, parent: *Sym, name: []const u8, idx: u32, typeId: cy.TypeId) !*Field {
+    pub fn createField(c: *cy.Chunk, parent: *Sym, name: []const u8, idx: usize, typeId: cy.TypeId) !*Field {
         const sym = try createSym(c.alloc, .field, .{
             .head = Sym.init(.field, parent, name),
-            .idx = idx,
+            .idx = @intCast(idx),
             .type = typeId,
         });
         return sym;
@@ -1039,22 +1045,22 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createUserVar(c: *cy.Chunk, parent: *Sym, name: []const u8, declId: cy.NodeId) !*UserVar {
+    pub fn createUserVar(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: ?*ast.StaticVarDecl) !*UserVar {
         const sym = try createSym(c.alloc, .userVar, .{
             .head = Sym.init(.userVar, parent, name),
-            .declId = declId,
+            .decl = decl,
             .type = cy.NullId,
         });
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }
 
-    pub fn createHostVar(c: *cy.Chunk, parent: *Sym, name: []const u8, declId: cy.NodeId) !*HostVar {
+    pub fn createHostVar(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: ?*ast.StaticVarDecl) !*HostVar {
         const sym = try createSym(c.alloc, .hostVar, .{
             .head = Sym.init(.hostVar, parent, name),
             .retainedIdx = cy.NullU16,
             .val = cy.Value.Void,
-            .declId = declId,
+            .decl = decl,
             .type = cy.NullId,
         });
         try c.syms.append(c.alloc, @ptrCast(sym));
@@ -1063,7 +1069,7 @@ pub const ChunkExt = struct {
 
     pub fn createTemplate(c: *cy.Chunk, parent: *Sym, name: []const u8,
         sigId: cy.sema.FuncSigId, params: []TemplateParam, kind: SymType,
-        child_decl: cy.NodeId) !*Template {
+        child_decl: *ast.Node) !*Template {
         const sym = try createSym(c.alloc, .template, .{
             .head = Sym.init(.template, parent, name),
             .kind = kind,
@@ -1090,7 +1096,7 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createUseAlias(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: cy.NodeId) !*UseAlias {
+    pub fn createUseAlias(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: ?*ast.Node) !*UseAlias {
         const sym = try createSym(c.alloc, .use_alias, .{
             .head = Sym.init(.use_alias, parent, name),
             .decl = decl,
@@ -1101,7 +1107,7 @@ pub const ChunkExt = struct {
         return sym;
     } 
 
-    pub fn createModuleAlias(c: *cy.Chunk, parent: *Sym, name: []const u8, importedSym: *Sym, declId: cy.NodeId) !*ModuleAlias {
+    pub fn createModuleAlias(c: *cy.Chunk, parent: *Sym, name: []const u8, importedSym: *Sym, declId: *ast.Node) !*ModuleAlias {
         const sym = try createSym(c.alloc, .module_alias, .{
             .head = Sym.init(.import, parent, name),
             .declId = declId,
@@ -1112,11 +1118,11 @@ pub const ChunkExt = struct {
     }
 
     pub fn createCustomType(
-        c: *cy.Chunk, parent: *Sym, name: []const u8, declId: cy.NodeId,
+        c: *cy.Chunk, parent: *Sym, name: []const u8, decl: *ast.CustomDecl,
     ) !*CustomType {
         const sym = try createSym(c.alloc, .custom_t, .{
             .head = Sym.init(.custom_t, parent, name),
-            .declId = declId,
+            .decl = decl,
             .type = cy.NullId,
             .getChildrenFn = null,
             .finalizerFn = null,
@@ -1128,10 +1134,10 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createStructType(c: *cy.Chunk, parent: *Sym, name: []const u8, declId: cy.NodeId) !*ObjectType {
+    pub fn createStructType(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: *ast.ObjectDecl) !*ObjectType {
         const sym = try createSym(c.alloc, .struct_t, .{
             .head = Sym.init(.struct_t, parent, name),
-            .declId = declId,
+            .decl = @ptrCast(decl),
             .type = cy.NullId,
             .fields = undefined,
             .variant = null,
@@ -1144,13 +1150,14 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createStructTypeUnnamed(c: *cy.Chunk, parent: *Sym, name: []const u8, declId: cy.NodeId) !*ObjectType {
+    pub fn createStructTypeUnnamed(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: *ast.ObjectDecl) !*ObjectType {
         const mod = parent.getMod().?;
+        _ = mod;
 
         const typeId = try c.sema.pushType();
         const sym = try createSym(c.alloc, .struct_t, .{
             .head = Sym.init(.struct_t, parent, name),
-            .declId = declId,
+            .decl = @ptrCast(decl),
             .type = typeId,
             .fields = undefined,
             .variant = null,
@@ -1167,22 +1174,20 @@ pub const ChunkExt = struct {
             }},
         };
 
-        const sym_id = c.syms.items.len;
         try c.syms.append(c.alloc, @ptrCast(sym));
 
         // Update node's `name` so it can do a lookup during resolving.
-        const node = mod.chunk.ast.node(declId);
-        mod.chunk.parser.ast.nodePtr(node.data.objectDecl.header).data.objectHeader.name = @intCast(sym_id);
+        decl.name = @ptrCast(sym);
 
         return sym;
     }
 
     /// TODO: Hash object members for static casting.
-    pub fn createObjectTypeUnnamed(c: *cy.Chunk, parent: *Sym, name: []const u8, declId: cy.NodeId) !*ObjectType {
+    pub fn createObjectTypeUnnamed(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: *ast.ObjectDecl) !*ObjectType {
         const typeId = try c.sema.pushType();
         const sym = try createSym(c.alloc, .object_t, .{
             .head = Sym.init(.object_t, parent, name),
-            .declId = declId,
+            .decl = @ptrCast(decl),
             .type = typeId,
             .fields = undefined,
             .variant = null,
@@ -1199,16 +1204,14 @@ pub const ChunkExt = struct {
             }},
         };
 
-        const sym_id = c.syms.items.len;
         try c.syms.append(c.alloc, @ptrCast(sym));
 
         // Update node's `name` so it can do a lookup during resolving.
-        const node = c.ast.node(declId);
-        c.parser.ast.nodePtr(node.data.objectDecl.header).data.objectHeader.name = @intCast(sym_id);
+        decl.name = @ptrCast(sym);
         return sym;
     }
 
-    pub fn createFunc(c: *cy.Chunk, ftype: FuncType, parent: *Sym, sym: ?*FuncSym, nodeId: cy.NodeId, isMethod: bool) !*Func {
+    pub fn createFunc(c: *cy.Chunk, ftype: FuncType, parent: *Sym, sym: ?*FuncSym, node: ?*ast.Node, isMethod: bool) !*Func {
         const func = try c.alloc.create(Func);
         func.* = .{
             .type = ftype,
@@ -1221,7 +1224,7 @@ pub const ChunkExt = struct {
             .isMethod = isMethod,
             .is_implicit_method = false,
             .numParams = undefined,
-            .declId = nodeId,
+            .decl = node,
             .next = null,
             .data = undefined,
             .emitted = false,
@@ -1243,20 +1246,20 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createObjectType(c: *cy.Chunk, parent: *Sym, name: []const u8, declId: cy.NodeId) !*ObjectType {
+    pub fn createObjectType(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: ?*ast.Node) !*ObjectType {
         const sym = try createSym(c.alloc, .object_t,
-            ObjectType.init(parent, c, name, declId, cy.NullId)
+            ObjectType.init(parent, c, name, decl, cy.NullId)
         );
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }
 
-    pub fn createEnumType(c: *cy.Chunk, parent: *Sym, name: []const u8, isChoiceType: bool, declId: cy.NodeId) !*EnumType {
+    pub fn createEnumType(c: *cy.Chunk, parent: *Sym, name: []const u8, isChoiceType: bool, decl: *ast.EnumDecl) !*EnumType {
         const typeId = try c.sema.pushType();
         const sym = try createSym(c.alloc, .enum_t, .{
             .head = Sym.init(.enum_t, parent, name),
             .type = typeId,
-            .decl = declId,
+            .decl = decl,
             .members = undefined,
             .numMembers = 0,
             .isChoiceType = isChoiceType,
@@ -1275,7 +1278,7 @@ pub const ChunkExt = struct {
 
     pub fn createEnumTypeVariant(c: *cy.Chunk, parent: *Sym, template: *Template, isChoiceType: bool, variant: *Variant) !*EnumType {
         const name = template.head.name();
-        const sym = try createEnumType(c, parent, name, isChoiceType, template.child_decl);
+        const sym = try createEnumType(c, parent, name, isChoiceType, template.child_decl.cast(.enumDecl));
         sym.variant = variant;
         if (template == c.sema.option_tmpl) {
             c.compiler.sema.types.items[sym.type].kind = .option;
@@ -1367,10 +1370,11 @@ test "sym internals" {
             try t.eq(@sizeOf(Func), 56);
         }
     } else {
-        try t.eq(@sizeOf(Sym), 24);
         if (cy.is32Bit) {
-            try t.eq(@sizeOf(Func), 8);
+            try t.eq(@sizeOf(Sym), 16);
+            try t.eq(@sizeOf(Func), 40);
         } else {
+            try t.eq(@sizeOf(Sym), 24);
             try t.eq(@sizeOf(Func), 64);
         }
     }

@@ -231,7 +231,7 @@ if (!aot) {
     run.case("modules/test_eq_panic.cy");
     run.case("modules/test.cy");
     if (!cy.isWasm and !build_options.link_test) {
-        // Disabled for link_test because os.args().len check fails.
+        // Disabled when linking with lib because os.args().len check fails.
         run.case("modules/os.cy");
     }
 

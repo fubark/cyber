@@ -12,6 +12,7 @@ const fmt = cy.fmt;
 const v = fmt.v;
 const vmc = cy.vmc;
 const log = cy.log.scoped(.module);
+const ast = cy.ast;
 
 pub const ModFuncKey = cy.hash.KeyU96;
 
@@ -119,11 +120,11 @@ pub const Module = struct {
     }
 };
 
-pub fn reportDupSym(c: *cy.Chunk, sym: *cy.Sym, name: []const u8, declId: cy.NodeId) !void {
-    return c.reportErrorFmt("`{}` has already been declared as a `{}`.", &.{v(name), v(sym.type)}, declId);
+pub fn reportDupSym(c: *cy.Chunk, sym: *cy.Sym, name: []const u8, decl: ?*ast.Node) !void {
+    return c.reportErrorFmt("`{}` has already been declared as a `{}`.", &.{v(name), v(sym.type)}, decl);
 }
 
-fn addUniqueSym(c: *cy.Chunk, mod: *Module, name: []const u8, sym: *cy.Sym, decl: cy.NodeId) !void {
+fn addUniqueSym(c: *cy.Chunk, mod: *Module, name: []const u8, sym: *cy.Sym, decl: ?*ast.Node) !void {
     const res = try mod.symMap.getOrPut(c.alloc, name);
     if (res.found_existing) {
         const existing = res.value_ptr.*;
@@ -144,12 +145,12 @@ fn addUniqueSym(c: *cy.Chunk, mod: *Module, name: []const u8, sym: *cy.Sym, decl
     res.value_ptr.* = sym;
 }
 
-fn prepareFuncSym(c: *cy.Chunk, parent: *cy.Sym, mod: *Module, name: []const u8, declId: cy.NodeId) !*cy.sym.FuncSym {
+fn prepareFuncSym(c: *cy.Chunk, parent: *cy.Sym, mod: *Module, name: []const u8, decl: ?*ast.FuncDecl) !*cy.sym.FuncSym {
     if (mod.symMap.get(name)) |sym| {
         if (sym.type == .func) {
             return sym.cast(.func);
         } else {
-            try reportDupSym(c, sym, name, declId);
+            try reportDupSym(c, sym, name, @ptrCast(decl));
         }
     }
     // Create func sym.
@@ -160,56 +161,56 @@ fn prepareFuncSym(c: *cy.Chunk, parent: *cy.Sym, mod: *Module, name: []const u8,
 
 pub const ChunkExt = struct {
     
-    pub fn reserveUseAlias(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: cy.NodeId) !*cy.sym.UseAlias {
+    pub fn reserveUseAlias(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: ?*ast.Node) !*cy.sym.UseAlias {
         const sym = try c.createUseAlias(parent, name, decl);
         const mod = parent.getMod().?;
         _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl);
         return sym;
     } 
 
-    pub fn reserveTypeAlias(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId) !*cy.sym.TypeAlias {
-        const sym = try c.createTypeAlias(parent, name, declId);
+    pub fn reserveTypeAlias(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.TypeAliasDecl) !*cy.sym.TypeAlias {
+        const sym = try c.createTypeAlias(parent, name, decl);
         const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
         return sym;
     } 
 
-    pub fn reserveDistinctType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl_id: cy.NodeId) !*cy.sym.DistinctType {
-        const sym = try c.createDistinctType(parent, name, decl_id);
+    pub fn reserveDistinctType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.DistinctDecl) !*cy.sym.DistinctType {
+        const sym = try c.createDistinctType(parent, name, decl);
         const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl_id);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
         return sym;
     }
 
-    pub fn reserveCustomType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl_id: cy.NodeId) !*cy.sym.CustomType {
-        const sym = try c.createCustomType(parent, name, decl_id);
+    pub fn reserveCustomType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.CustomDecl) !*cy.sym.CustomType {
+        const sym = try c.createCustomType(parent, name, decl);
         const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl_id);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
         return sym;
     }
 
     pub fn declareTemplate(c: *cy.Chunk, parent: *cy.Sym, name: []const u8,
         sigId: cy.sema.FuncSigId, params: []cy.sym.TemplateParam, kind: cy.sym.SymType,
-        child_decl: cy.NodeId, declId: cy.NodeId) !*cy.sym.Template {
+        child_decl: *ast.Node, decl: *ast.TemplateDecl) !*cy.sym.Template {
 
         const sym = try c.createTemplate(parent, name, sigId, params, kind, child_decl);
         const mod = parent.getMod().?;
-        try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
         return sym;
     }
 
     pub fn declareEnumMember(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, typeId: types.TypeId,
-        is_choice_type: bool, val: u32, payloadType: cy.TypeId, declId: cy.NodeId) !*cy.sym.EnumMember {
+        is_choice_type: bool, val: u32, payloadType: cy.TypeId, decl: *ast.EnumMember) !*cy.sym.EnumMember {
         const sym = try c.createEnumMember(parent, name, typeId, is_choice_type, val, payloadType);
         const mod = parent.getMod().?;
-        try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
         return sym;
     }
 
-    pub fn reserveHostVar(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId) !*cy.sym.HostVar {
-        const sym = try c.createHostVar(parent, name, declId);
+    pub fn reserveHostVar(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: ?*ast.StaticVarDecl) !*cy.sym.HostVar {
+        const sym = try c.createHostVar(parent, name, decl);
         const mod = parent.getMod().?;
-        try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
         return sym;
     }
 
@@ -225,10 +226,10 @@ pub const ChunkExt = struct {
         sym.val = value;
     } 
 
-    pub fn reserveUserVar(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId) !*cy.sym.UserVar {
-        const sym = try c.createUserVar(parent, name, declId);
+    pub fn reserveUserVar(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: ?*ast.StaticVarDecl) !*cy.sym.UserVar {
+        const sym = try c.createUserVar(parent, name, decl);
         const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
         return sym;
     }
 
@@ -251,55 +252,55 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn declareField(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, idx: u32, typeId: cy.TypeId, declId: cy.NodeId) !*cy.sym.Field {
+    pub fn declareField(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, idx: usize, typeId: cy.TypeId, decl: ?*ast.Node) !*cy.sym.Field {
         const sym = try c.createField(parent, name, idx, typeId);
         const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl);
         return sym;
     }
 
-    pub fn reserveStructType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId) !*cy.sym.ObjectType {
-        const sym = try c.createStructType(parent, name, declId);
+    pub fn reserveStructType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.ObjectDecl) !*cy.sym.ObjectType {
+        const sym = try c.createStructType(parent, name, decl);
         const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
         return sym;
     }
 
-    pub fn reserveEnumType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, isChoiceType: bool, declId: cy.NodeId) !*cy.sym.EnumType {
-        const sym = try c.createEnumType(parent, name, isChoiceType, declId);
-        _ = try addUniqueSym(c, c.sym.getMod(), name, @ptrCast(sym), declId);
+    pub fn reserveEnumType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, isChoiceType: bool, decl: *ast.EnumDecl) !*cy.sym.EnumType {
+        const sym = try c.createEnumType(parent, name, isChoiceType, decl);
+        _ = try addUniqueSym(c, c.sym.getMod(), name, @ptrCast(sym), @ptrCast(decl));
         return sym;
     }
 
-    pub fn reserveObjectType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId) !*cy.sym.ObjectType {
-        const sym = try c.createObjectType(parent, name, declId);
-        _ = try addUniqueSym(c, c.sym.getMod(), name, @ptrCast(sym), declId);
+    pub fn reserveObjectType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.Node) !*cy.sym.ObjectType {
+        const sym = try c.createObjectType(parent, name, decl);
+        _ = try addUniqueSym(c, c.sym.getMod(), name, @ptrCast(sym), decl);
         return sym;
     }
 
-    pub fn declareFloatType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, bits: u8, opt_type_id: ?types.TypeId, decl: cy.NodeId) !*cy.sym.FloatType {
+    pub fn declareFloatType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, bits: u8, opt_type_id: ?types.TypeId, decl: ?*ast.Node) !*cy.sym.FloatType {
         const sym = try c.createFloatType(parent, name, bits, opt_type_id);
         const mod = parent.getMod().?;
         _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl);
         return sym;
     }
 
-    pub fn declareIntType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, bits: u8, opt_type_id: ?types.TypeId, decl: cy.NodeId) !*cy.sym.IntType {
+    pub fn declareIntType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, bits: u8, opt_type_id: ?types.TypeId, decl: ?*ast.Node) !*cy.sym.IntType {
         const sym = try c.createIntType(parent, name, bits, opt_type_id);
         const mod = parent.getMod().?;
         _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl);
         return sym;
     }
 
-    pub fn declareBoolType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, opt_type_id: ?types.TypeId, decl: cy.NodeId) !*cy.sym.BoolType {
+    pub fn declareBoolType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, opt_type_id: ?types.TypeId, decl: ?*ast.Node) !*cy.sym.BoolType {
         const sym = try c.createBoolType(parent, name, opt_type_id);
         const mod = parent.getMod().?;
         _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl);
         return sym;
     }
 
-    pub fn addUserLambda(c: *cy.Chunk, parent: *cy.Sym, funcSigId: sema.FuncSigId, declId: cy.NodeId) !*cy.Func {
-        const func = try c.createFunc(.userLambda, parent, null, declId, false);
+    pub fn addUserLambda(c: *cy.Chunk, parent: *cy.Sym, funcSigId: sema.FuncSigId, decl: *ast.LambdaExpr) !*cy.Func {
+        const func = try c.createFunc(.userLambda, parent, null, @ptrCast(decl), false);
         const func_sig = c.compiler.sema.getFuncSig(funcSigId);
         func.funcSigId = funcSigId;
         func.retType = func_sig.getRetType();
@@ -309,11 +310,11 @@ pub const ChunkExt = struct {
     }
 
     pub fn reserveHostFunc(
-        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: cy.NodeId, is_method: bool,
+        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: ?*ast.FuncDecl, is_method: bool,
     ) !*cy.Func {
         const mod = parent.getMod().?;
         const sym = try prepareFuncSym(c, parent, mod, name, node);
-        const func = try c.createFunc(.hostFunc, parent, sym, node, is_method);
+        const func = try c.createFunc(.hostFunc, parent, sym, @ptrCast(node), is_method);
         func.data = .{ .hostFunc = .{
             .ptr = undefined,
         }};
@@ -327,11 +328,11 @@ pub const ChunkExt = struct {
     }
 
     pub fn reserveUserFunc(
-        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: cy.NodeId, is_method: bool,
+        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: *ast.FuncDecl, is_method: bool,
     ) !*cy.Func {
         const mod = parent.getMod().?;
         const sym = try prepareFuncSym(c, parent, mod, name, node);
-        const func = try c.createFunc(.userFunc, parent, sym, node, is_method);
+        const func = try c.createFunc(.userFunc, parent, sym, @ptrCast(node), is_method);
         sym.addFunc(func);
         return func;
     }
@@ -344,7 +345,7 @@ pub const ChunkExt = struct {
         const mod = func.parent.getMod().?;
         const sym = func.sym.?;
         if (!mod.isFuncUnique(sym, func_sig_id)) {
-            return c.reportErrorFmt("`{}` has already been declared with the same function signature.", &.{v(func.name())}, func.declId);
+            return c.reportErrorFmt("`{}` has already been declared with the same function signature.", &.{v(func.name())}, @ptrCast(func.decl));
         }
         if (sym.first == func) {
             sym.firstFuncSig = func_sig_id;
@@ -392,7 +393,7 @@ pub const ChunkExt = struct {
         }
     }
 
-    pub fn mustFindSym(c: *cy.Chunk, modSym: *cy.Sym, name: []const u8, nodeId: cy.NodeId) !*cy.Sym {
+    pub fn mustFindSym(c: *cy.Chunk, modSym: *cy.Sym, name: []const u8, nodeId: *ast.Node) !*cy.Sym {
         const mod = modSym.getMod() orelse {
             const mod_name = try cy.sym.formatSymName(c.sema, &cy.tempBuf, modSym, .{ .from = c });
             return c.reportErrorFmt("Can not access `{}` from parent `{}`. Parent is not a module.", &.{v(name), v(mod_name)}, nodeId);
@@ -405,17 +406,17 @@ pub const ChunkExt = struct {
     }
 
     pub fn getResolvedDistinctSym(
-        c: *cy.Chunk, modSym: *cy.Sym, name: []const u8, nodeId: cy.NodeId, comptime must: bool,
+        c: *cy.Chunk, modSym: *cy.Sym, name: []const u8, node: ?*ast.Node, comptime must: bool,
     ) anyerror!(if (must) *cy.Sym else ?*cy.Sym) {
         const mod = modSym.getMod() orelse {
             const mod_name = try cy.sym.formatSymName(c.sema, &cy.tempBuf, modSym, .{ .from = c });
-            return c.reportErrorFmt("Can not access `{}` from parent `{}`. Parent is not a module.", &.{v(name), v(mod_name)}, nodeId);
+            return c.reportErrorFmt("Can not access `{}` from parent `{}`. Parent is not a module.", &.{v(name), v(mod_name)}, node);
         };
         const sym = mod.symMap.get(name) orelse {
             if (must) {
                 return c.reportErrorFmt(
                     \\Can not find the symbol `{}` in `{}`.
-                , &.{v(name), v(modSym.name())}, nodeId);
+                , &.{v(name), v(modSym.name())}, node);
             } else {
                 return null;
             }
@@ -460,7 +461,7 @@ pub const ChunkExt = struct {
                 if (func.numFuncs > 1) {
                     if (must) {
                         // More than one func for sym.
-                        return c.reportErrorFmt("Symbol `{}` is ambiguous. There are multiple functions with the same name.", &.{v(name)}, nodeId);
+                        return c.reportErrorFmt("Symbol `{}` is ambiguous. There are multiple functions with the same name.", &.{v(name)}, node);
                     } else {
                         return null;
                     }
@@ -470,7 +471,7 @@ pub const ChunkExt = struct {
             },
             .field => {
                 if (must) {
-                    return c.reportErrorFmt("Can not reference `{}` as a symbol.", &.{v(name)}, nodeId);
+                    return c.reportErrorFmt("Can not reference `{}` as a symbol.", &.{v(name)}, node);
                 } else {
                     return null;
                 }
@@ -480,7 +481,7 @@ pub const ChunkExt = struct {
     }
 
     pub fn getDistinctSym(
-        c: *cy.Chunk, modSym: *cy.Sym, name: []const u8, nodeId: cy.NodeId, comptime must: bool,
+        c: *cy.Chunk, modSym: *cy.Sym, name: []const u8, nodeId: *ast.Node, comptime must: bool,
     ) anyerror!(if (must) *cy.Sym else ?*cy.Sym) {
         const mod = modSym.getMod() orelse {
             const mod_name = try cy.sym.formatSymName(c.sema, &cy.tempBuf, modSym, .{ .from = c });

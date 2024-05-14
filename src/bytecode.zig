@@ -8,6 +8,7 @@ const log = cy.log.scoped(.bytecode);
 const fmt = @import("fmt.zig");
 const debug = @import("debug.zig");
 const v = fmt.v;
+const ast = cy.ast;
 const vmc = @import("vm_c.zig");
 
 /// Holds vm instructions.
@@ -37,8 +38,8 @@ pub const ByteCodeBuffer = struct {
     unwindTempRegs: std.ArrayListUnmanaged(u8),
     unwindTempPrevIndexes: std.ArrayListUnmanaged(u32),
 
-    /// Inst descriptions. Each instruction can have an optional description.
-    instDescs: if (cy.Trace) std.ArrayListUnmanaged(InstDesc) else void,
+    /// Currently each inst maps to a nullable desc idx, but ideally it should be sparser like the debug table.
+    instDescs: if (cy.Trace) std.ArrayListUnmanaged(cy.Nullable(u32)) else void,
     instDescExtras: if (cy.Trace) std.ArrayListUnmanaged(InstDescExtra) else void,
 
     /// The required stack size for the main frame.
@@ -171,52 +172,52 @@ pub const ByteCodeBuffer = struct {
     }
 
     pub fn pushOp(self: *ByteCodeBuffer, code: OpCode) !void {
-        try self.pushOpExt(code, .{});
+        try self.pushOpExt(code, null);
     }
 
-    pub fn pushOpExt(self: *ByteCodeBuffer, code: OpCode, desc: InstDesc) !void {
+    pub fn pushOpExt(self: *ByteCodeBuffer, code: OpCode, desc: ?u32) !void {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + 1);
         self.ops.items[start] = Inst.initOpCode(code);
         if (cy.Trace) {
-            try self.instDescs.append(self.alloc, desc);
+            try self.instDescs.append(self.alloc, desc orelse cy.NullId);
         }
     }
 
     pub fn pushOp1(self: *ByteCodeBuffer, code: OpCode, arg: u8) !void {
-        try self.pushOp1Ext(code, arg, .{});
+        try self.pushOp1Ext(code, arg, null);
     }
 
-    pub fn pushOp1Ext(self: *ByteCodeBuffer, code: OpCode, arg: u8, desc: InstDesc) !void {
+    pub fn pushOp1Ext(self: *ByteCodeBuffer, code: OpCode, arg: u8, desc: ?u32) !void {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + 2);
         self.ops.items[start] = Inst.initOpCode(code);
         self.ops.items[start+1] = .{ .val = arg };
         if (cy.Trace) {
-            try self.instDescs.append(self.alloc, desc);
+            try self.instDescs.append(self.alloc, desc orelse cy.NullId);
         }
     }
 
     pub fn pushOp2(self: *ByteCodeBuffer, code: OpCode, arg: u8, arg2: u8) !void {
-        try self.pushOp2Ext(code, arg, arg2, .{});
+        try self.pushOp2Ext(code, arg, arg2, null);
     }
 
-    pub fn pushOp2Ext(self: *ByteCodeBuffer, code: OpCode, arg: u8, arg2: u8, desc: InstDesc) !void {
+    pub fn pushOp2Ext(self: *ByteCodeBuffer, code: OpCode, arg: u8, arg2: u8, desc: ?u32) !void {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + 3);
         self.ops.items[start] = Inst.initOpCode(code);
         self.ops.items[start+1] = .{ .val = arg };
         self.ops.items[start+2] = .{ .val = arg2 };
         if (cy.Trace) {
-            try self.instDescs.append(self.alloc, desc);
+            try self.instDescs.append(self.alloc, desc orelse cy.NullId);
         }
     }
 
     pub fn pushOp3(self: *ByteCodeBuffer, code: OpCode, arg: u8, arg2: u8, arg3: u8) !void {
-        try self.pushOp3Ext(code, arg, arg2, arg3, .{});
+        try self.pushOp3Ext(code, arg, arg2, arg3, null);
     }
 
-    pub fn pushOp3Ext(self: *ByteCodeBuffer, code: OpCode, arg: u8, arg2: u8, arg3: u8, desc: InstDesc) !void {
+    pub fn pushOp3Ext(self: *ByteCodeBuffer, code: OpCode, arg: u8, arg2: u8, arg3: u8, desc: ?u32) !void {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + 4);
         self.ops.items[start] = Inst.initOpCode(code);
@@ -224,7 +225,7 @@ pub const ByteCodeBuffer = struct {
         self.ops.items[start+2] = .{ .val = arg2 };
         self.ops.items[start+3] = .{ .val = arg3 };
         if (cy.Trace) {
-            try self.instDescs.append(self.alloc, desc);
+            try self.instDescs.append(self.alloc, desc orelse cy.NullId);
         }
     }
 
@@ -246,7 +247,7 @@ pub const ByteCodeBuffer = struct {
         try self.pushOpSliceExt(code, args, .{});
     }
     
-    pub fn pushOpSliceExt(self: *ByteCodeBuffer, code: OpCode, args: []const u8, desc: InstDesc) !void {
+    pub fn pushOpSliceExt(self: *ByteCodeBuffer, code: OpCode, args: []const u8, desc: ?u32) !void {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + args.len + 1);
         self.ops.items[start] = Inst.initOpCode(code);
@@ -254,7 +255,7 @@ pub const ByteCodeBuffer = struct {
             self.ops.items[start+i+1] = .{ .val = arg };
         }
         if (cy.Trace) {
-            try self.instDescs.append(self.alloc, desc);
+            try self.instDescs.append(self.alloc, desc orelse cy.NullId);
         }
     }
 
@@ -314,8 +315,7 @@ pub const InstDescExtra = struct {
 };
 
 pub const InstDesc = struct {
-    chunkId: cy.ChunkId = cy.NullId,
-    nodeId: cy.NodeId = cy.NullId,
+    debug_idx: u32 = cy.NullId,
     extraIdx: u32 = cy.NullId,
 };
 
@@ -820,13 +820,13 @@ pub const DebugSym = extern struct {
     /// Start position of an inst.
     pc: u32,
 
-    /// Points to a cy.NodeId.
+    /// Source pos.
     loc: u32,
 
-    /// Points to the parent function or coinit declaration node. 0 if it's in the main block.
+    /// Indexes into `Chunk.procs`.
     frameLoc: u32,
 
-    /// CompileChunkId.
+    /// ChunkId.
     file: u16,
 
     /// Which locals are alive before this instruction.

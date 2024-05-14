@@ -149,6 +149,9 @@ pub fn toSlice(comptime T: type, s: []const T) Slice {
 }
 pub const Str = c.CLStr;
 pub fn fromStr(str: Str) []const u8 {
+    if (str.len == 0) {
+        return "";
+    }
     return str.ptr[0..str.len];
 }
 pub fn toStr(s: []const u8) Str {

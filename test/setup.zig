@@ -375,6 +375,9 @@ pub fn errReport(vm: *c.VM, code: c.ResultCode) void {
             defer c.free(vm, summary);
             std.debug.print("{s}", .{c.fromStr(summary)});
         },
+        c.ErrorUnknown => {
+            std.debug.print("Unknown error.\n", .{});
+        },
         else => {},
     }
 }

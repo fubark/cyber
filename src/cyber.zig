@@ -3,9 +3,6 @@
 const builtin = @import("builtin");
 
 pub const ast = @import("ast.zig");
-pub const Node = ast.Node;
-pub const NodeType = ast.NodeType;
-pub const NodeId = ast.NodeId;
 pub const BinaryExprOp = ast.BinaryExprOp;
 pub const UnaryOp = ast.UnaryOp;
 
@@ -140,7 +137,6 @@ pub const Malloc = build_options.malloc;
 pub var tempBuf: [1000]u8 align(4) = undefined;
 
 const std = @import("std");
-pub const NullNode: NodeId = 0;
 pub const NullId = std.math.maxInt(u32);
 pub const NullU8 = std.math.maxInt(u8);
 pub const NullU16 = std.math.maxInt(u16);

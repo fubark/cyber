@@ -14,10 +14,10 @@ catch err:
     t.eq(err, error.FileNotFound)
 os.access('test/assets/file.txt', .read)
 
--- -- args()
+-- args()
 -- Not available from static linking.
--- let res = os.args()
--- t.eq(res.len() > 0, true)
+let res = os.args()
+t.eq(res.len() > 0, true)
 
 -- createDir()
 try:
@@ -86,7 +86,7 @@ t.eq(file.readAll(), Array(''))
 -- File.close()
 file = os.openFile('test/assets/file.txt', .read)
 file.close()
-let res = try file.stat()
+res = try file.stat()
 t.eq(res, error.Closed)
 
 -- File.seek()

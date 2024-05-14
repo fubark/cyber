@@ -22,6 +22,7 @@ const assm = @import("jit/assembler.zig");
 const A64 = @import("jit/a64.zig");
 const bindings = cy.bindings;
 const module = cy.module;
+const ast = cy.ast;
 
 const log = cy.log.scoped(.compiler);
 
@@ -264,7 +265,7 @@ pub const Compiler = struct {
                 const importCore = ImportTask{
                     .type = .nop,
                     .from = null,
-                    .nodeId = cy.NullNode,
+                    .node = null,
                     .resolved_spec = try self.alloc.dupe(u8, "core"),
                     .data = undefined,
                 };
@@ -283,7 +284,7 @@ pub const Compiler = struct {
         // Main chunk.
         const nextId: u32 = @intCast(self.chunks.items.len);
         var mainChunk = try self.alloc.create(cy.Chunk);
-        mainChunk.* = try cy.Chunk.init(self, nextId, r_uri, src);
+        try mainChunk.init(self, nextId, r_uri, src);
         mainChunk.sym = try mainChunk.createChunkSym(r_uri);
         try self.chunks.append(self.alloc, mainChunk);
         try self.chunk_map.put(self.alloc, r_uri, mainChunk);
@@ -306,7 +307,7 @@ pub const Compiler = struct {
                     continue;
                 }
 
-                const alias = try mainChunk.reserveUseAlias(@ptrCast(mainChunk.sym), name, cy.NullNode);
+                const alias = try mainChunk.reserveUseAlias(@ptrCast(mainChunk.sym), name, null);
                 if (sym.type == .use_alias) {
                     alias.sym = sym.cast(.use_alias).sym;
                 } else {
@@ -351,7 +352,7 @@ pub const Compiler = struct {
         log.tracev("Perform init sema.", .{});
         for (self.newChunks()) |chunk| {
             // First stmt is root at index 0.
-            _ = try chunk.ir.pushEmptyStmt2(chunk.alloc, .root, chunk.parserAstRootId, false);
+            _ = try chunk.ir.pushEmptyStmt2(chunk.alloc, .root, @ptrCast(chunk.ast.root), false);
             try chunk.ir.pushStmtBlock2(chunk.alloc, chunk.rootStmtBlock);
 
             chunk.initializerVisited = false;
@@ -371,7 +372,7 @@ pub const Compiler = struct {
                     return err;
                 } else {
                     // Wrap all other errors as a CompileError.
-                    return chunk.reportErrorFmt("error.{}", &.{v(err)}, chunk.curNodeId);
+                    return chunk.reportErrorFmt("error.{}", &.{v(err)}, chunk.curNode);
                 }
                 return err;
             };
@@ -430,22 +431,22 @@ pub const Compiler = struct {
         return CompileResult{ .vm = undefined };
     }
 
-    pub fn addReportFmt(self: *Compiler, report_t: ReportType, format: []const u8, args: []const fmt.FmtValue, chunk: ?cy.ChunkId, loc: ?cy.NodeId) !void {
+    pub fn addReportFmt(self: *Compiler, report_t: ReportType, format: []const u8, args: []const fmt.FmtValue, chunk: ?cy.ChunkId, loc: ?u32) !void {
         const msg = try fmt.allocFormat(self.alloc, format, args);
         try self.addReportConsume(report_t, msg, chunk, loc);
     }
 
     /// Assumes `msg` is heap allocated.
-    pub fn addReportConsume(self: *Compiler, report_t: ReportType, msg: []const u8, chunk: ?cy.ChunkId, loc: ?cy.NodeId) !void {
+    pub fn addReportConsume(self: *Compiler, report_t: ReportType, msg: []const u8, chunk: ?cy.ChunkId, loc: ?u32) !void {
         try self.reports.append(self.alloc, .{
             .type = report_t,
             .chunk = chunk orelse cy.NullId,
-            .loc = loc orelse cy.NullNode,
+            .loc = loc orelse cy.NullId,
             .msg = msg,
         });
     }
 
-    pub fn addReport(self: *Compiler, report_t: ReportType, msg: []const u8, chunk: ?cy.ChunkId, loc: ?cy.NodeId) !void {
+    pub fn addReport(self: *Compiler, report_t: ReportType, msg: []const u8, chunk: ?cy.ChunkId, loc: ?u32) !void {
         const dupe = try self.alloc.dupe(u8, msg);
         try self.addReportConsume(report_t, dupe, chunk, loc);
     }
@@ -513,7 +514,6 @@ fn performChunkParse(self: *Compiler, chunk: *cy.Chunk) !void {
     if (res.has_error) {
         return error.CompileError;
     }
-    chunk.parserAstRootId = res.root_id;
 }
 
 /// Sema pass.
@@ -560,20 +560,17 @@ fn performChunkInitSema(self: *Compiler, c: *cy.Chunk) !void {
 
     const funcSigId = try c.sema.ensureFuncSig(&.{}, bt.Void);
 
-    const decl = try c.parser.ast.pushNode(self.alloc, .funcDecl, cy.NullId);
-    const header = try c.parser.ast.pushNode(self.alloc, .funcHeader, cy.NullNode);
-    const name = try c.parser.ast.genSpanNode(self.alloc, .ident, "$init", null);
-    c.parser.ast.setNodeData(header, .{ .funcHeader = .{
-        .name = name,
-        .paramHead = cy.NullNode,
-        .nparams = 0,
-    }});
-    c.parser.ast.setNodeData(decl, .{ .func = .{
-        .header = @intCast(header),
-        .bodyHead = cy.NullNode,
+    const name = try c.parser.ast.genSpanNode(self.alloc, .ident, "$init");
+    const decl = try c.parser.ast.newNode(.funcDecl, .{
+        .name = @ptrCast(name),
+        .attrs = &.{},
+        .params = &.{},
+        .ret = null,
+        .stmts = &.{},
+        .pos = cy.NullId,
         .sig_t = .func,
         .hidden = true,
-    }});
+    });
     c.updateAstView(c.parser.ast.view());
 
     const func = try c.reserveUserFunc(@ptrCast(c.sym), "$init", decl, false);
@@ -585,7 +582,7 @@ fn performChunkInitSema(self: *Compiler, c: *cy.Chunk) !void {
         switch (sym.type) {
             .userVar => {
                 const user_var = sym.cast(.userVar);
-                try sema.staticDecl(c, sym, user_var.declId);
+                try sema.staticDecl(c, sym, user_var.decl.?);
             },
             else => {},
         }
@@ -601,7 +598,7 @@ fn performChunkInitSema(self: *Compiler, c: *cy.Chunk) !void {
         switch (sym.type) {
             .userVar => {
                 const info = c.symInitInfos.getPtr(sym).?;
-                try appendSymInitIrDFS(c, sym, info, cy.NullNode);
+                try appendSymInitIrDFS(c, sym, info, null);
             },
             else => {},
         }
@@ -611,12 +608,12 @@ fn performChunkInitSema(self: *Compiler, c: *cy.Chunk) !void {
     func.emitted = true;
 }
 
-fn appendSymInitIrDFS(c: *cy.Chunk, sym: *cy.Sym, info: *cy.chunk.SymInitInfo, refNodeId: cy.NodeId) !void {
+fn appendSymInitIrDFS(c: *cy.Chunk, sym: *cy.Sym, info: *cy.chunk.SymInitInfo, refNode: ?*ast.Node) !void {
     if (info.visited) {
         return;
     }
     if (info.visiting) {
-        return c.reportErrorFmt("Referencing `{}` creates a circular dependency in the module.", &.{v(sym.name())}, refNodeId);
+        return c.reportErrorFmt("Referencing `{}` creates a circular dependency in the module.", &.{v(sym.name())}, refNode);
     }
     info.visiting = true;
 
@@ -646,9 +643,8 @@ fn completeImportTask(self: *Compiler, task: ImportTask, res: *cy.Chunk) !void {
         .use_alias => {
             const c = task.from.?;
 
-            const node = c.ast.node(task.nodeId);
-            const name_n = c.ast.node(node.data.import_stmt.name);
-            if (name_n.type() == .all) {
+            const node = task.node.?;
+            if (node.name.type() == .all) {
                 try c.use_alls.append(self.alloc, @ptrCast(res.sym));
             } else {
                 task.data.use_alias.sym.sym = @ptrCast(res.sym);
@@ -701,18 +697,17 @@ fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
 
     var res = (try loadModule(self, task.resolved_spec)) orelse {
         if (task.from) |from| {
-            if (task.nodeId == cy.NullNode) {
+            if (task.node) |node| {
+                if (self.hasApiError) {
+                    return from.reportErrorFmt(self.apiError, &.{}, node.spec);
+                } else {
+                    return from.reportErrorFmt("Failed to load module: {}", &.{v(task.resolved_spec)}, node.spec);
+                }
+            } else {
                 if (self.hasApiError) {
                     return from.reportError(self.apiError, null);
                 } else {
                     return from.reportErrorFmt("Failed to load module: {}", &.{v(task.resolved_spec)}, null);
-                }
-            } else {
-                const stmt = from.ast.node(task.nodeId);
-                if (self.hasApiError) {
-                    return from.reportErrorFmt(self.apiError, &.{}, stmt.data.import_stmt.spec);
-                } else {
-                    return from.reportErrorFmt("Failed to load module: {}", &.{v(task.resolved_spec)}, stmt.data.import_stmt.spec);
                 }
             }
         } else {
@@ -728,7 +723,7 @@ fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
     // uri is already duped.
     var newChunk = try self.alloc.create(cy.Chunk);
 
-    newChunk.* = try cy.Chunk.init(self, newChunkId, task.resolved_spec, src);
+    try newChunk.init(self, newChunkId, task.resolved_spec, src);
     newChunk.sym = try newChunk.createChunkSym(task.resolved_spec);
     newChunk.varLoader = res.varLoader;
     newChunk.onTypeLoad = res.onTypeLoad;
@@ -776,87 +771,76 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
             }
 
             // Process static declarations.
-            for (chunk.parser.staticDecls.items) |decl_id| {
-                log.tracev("reserve: {s}", .{try chunk.ast.declNamePath(decl_id)});
-                const decl = chunk.ast.node(decl_id);
-                switch (decl.type()) {
+            for (chunk.parser.staticDecls.items) |node| {
+                log.tracev("reserve: {s}", .{try chunk.ast.declNamePath(node)});
+                switch (node.type()) {
                     .import_stmt => {
-                        try sema.declareUseImport(chunk, decl_id);
+                        try sema.declareUseImport(chunk, node.cast(.import_stmt));
                     },
                     .use_alias => {
-                        _ = try sema.reserveUseAlias(chunk, decl_id);
+                        _ = try sema.reserveUseAlias(chunk, node.cast(.use_alias));
                     },
                     .structDecl => {
-                        const sym = try sema.reserveStruct(chunk, decl_id);
-                        const node = chunk.ast.node(decl_id);
-                        var cur: cy.NodeId = node.data.objectDecl.funcHead;
-                        while (cur != cy.NullNode) {
-                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), cur);
-                            cur = chunk.ast.node(cur).next();
+                        const decl = node.cast(.structDecl);
+                        const sym = try sema.reserveStruct(chunk, decl);
+                        for (decl.funcs) |func| {
+                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func);
                         }
                     },
                     .objectDecl => {
-                        const sym = try sema.reserveObjectType(chunk, decl_id);
-                        const node = chunk.ast.node(decl_id);
-                        var cur: cy.NodeId = node.data.objectDecl.funcHead;
-                        while (cur != cy.NullNode) {
-                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), cur);
-                            cur = chunk.ast.node(cur).next();
+                        const decl = node.cast(.objectDecl);
+                        const sym = try sema.reserveObjectType(chunk, decl);
+                        for (decl.funcs) |func| {
+                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func);
                         }
                     },
                     .table_decl => {
-                        const sym = try sema.reserveObjectType(chunk, decl_id);
+                        const decl = node.cast(.table_decl);
+                        const sym = try sema.reserveTableType(chunk, decl);
                         try sema.reserveTableMethods(chunk, @ptrCast(sym));
 
-                        const node = chunk.ast.node(decl_id);
-                        var cur: cy.NodeId = node.data.objectDecl.funcHead;
-                        while (cur != cy.NullNode) {
-                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), cur);
-                            cur = chunk.ast.node(cur).next();
+                        for (decl.funcs) |func| {
+                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func);
                         }
                     },
                     .enumDecl => {
-                        _ = try sema.reserveEnum(chunk, decl_id);
+                        _ = try sema.reserveEnum(chunk, node.cast(.enumDecl));
                     },
                     .typeAliasDecl => {
-                        _ = try sema.reserveTypeAlias(chunk, decl_id);
+                        _ = try sema.reserveTypeAlias(chunk, node.cast(.typeAliasDecl));
                     },
                     .custom_decl => {
-                        const sym = try sema.declareCustomType(chunk, decl_id);
-                        const node = chunk.ast.node(decl_id);
-                        var cur: cy.NodeId = node.data.custom_decl.func_head;
-                        while (cur != cy.NullNode) {
-                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), cur);
-                            cur = chunk.ast.node(cur).next();
+                        const decl = node.cast(.custom_decl);
+                        const sym = try sema.declareCustomType(chunk, decl);
+
+                        for (decl.funcs) |func| {
+                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func);
                         }
                     },
                     .distinct_decl => {
-                        const sym = try sema.reserveDistinctType(chunk, decl_id);
-                        const node = chunk.ast.node(decl_id);
-                        var cur: cy.NodeId = node.data.distinct_decl.func_head;
-                        while (cur != cy.NullNode) {
-                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), cur);
-                            cur = chunk.ast.node(cur).next();
+                        const decl = node.cast(.distinct_decl);
+                        const sym = try sema.reserveDistinctType(chunk, decl);
+
+                        for (decl.funcs) |func| {
+                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func);
                         }
                     },
                     .template => {
-                        _ = try sema.declareTemplate(chunk, decl_id);
+                        _ = try sema.declareTemplate(chunk, node.cast(.template));
                     },
                     .specialization => {
                         // For now template declaration must already be declared.
-                        const child_decl = chunk.ast.node(decl.data.specialization.decl);
-                        switch (child_decl.type()) {
+                        const decl = node.cast(.specialization);
+                        switch (decl.decl.type()) {
                             .custom_decl => {
-                                const custom_header = chunk.ast.node(child_decl.data.custom_decl.header);
-                                const template_name = custom_header.data.custom_header.name;
-                                const sym = try sema.resolveSym(chunk, template_name);
+                                const child_decl = decl.decl.cast(.custom_decl);
+                                const sym = try sema.resolveSym(chunk, child_decl.name);
                                 if (sym.type != .template) {
                                     return chunk.reportError("Expected template.", null);
                                 }
                                 const template = sym.cast(.template);
 
                                 // TODO: Check that specialization doesn't exist already.
-                                const array_args = chunk.ast.node(decl.data.specialization.args);
 
                                 // Get CT template args.
                                 const typeStart = chunk.typeStack.items.len;
@@ -871,7 +855,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                                     }
                                     chunk.valueStack.items.len = valueStart;
                                 }
-                                try cy.cte.pushNodeValues(chunk, array_args.data.arrayLit.argHead);
+                                try cy.cte.pushNodeValues(chunk, decl.args);
                                 const arg_types = chunk.typeStack.items[typeStart..];
                                 const args = chunk.valueStack.items[valueStart..];
 
@@ -890,7 +874,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                                     .type = .specialization,
                                     .template = template,
                                     .args = args_dupe,
-                                    .data = .{ .specialization = decl.data.specialization.decl },
+                                    .data = .{ .specialization = decl.decl },
                                 };
                                 try template.variant_cache.put(chunk.alloc, args_dupe, variant);
                             },
@@ -898,16 +882,17 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         }
                     },
                     .staticDecl => {
-                        const sym = try sema.reserveVar(chunk, decl_id);
+                        const sym = try sema.reserveVar(chunk, node.cast(.staticDecl));
                         if (sym.type == .userVar) {
                             chunk.hasStaticInit = true;
                         }
                     },
                     .funcDecl => {
-                        if (decl.data.func.bodyHead == cy.NullNode) {
-                            _ = try sema.reserveHostFunc(chunk, decl_id);
+                        const decl = node.cast(.funcDecl);
+                        if (decl.stmts.len == 0) {
+                            _ = try sema.reserveHostFunc(chunk, decl);
                         } else {
-                            _ = try sema.reserveUserFunc(chunk, decl_id);
+                            _ = try sema.reserveUserFunc(chunk, decl);
                         }
                     },
                     else => return error.Unsupported,
@@ -946,13 +931,13 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
 fn loadCtBuiltins(self: *Compiler) !void {
     const bc = try self.alloc.create(cy.Chunk);
     const ct_builtins_uri = try self.alloc.dupe(u8, "ct");
-    bc.* = try cy.Chunk.init(self, cy.NullId, ct_builtins_uri, "");
+    try bc.init(self, cy.NullId, ct_builtins_uri, "");
     bc.sym = try bc.createChunkSym(ct_builtins_uri);
     self.ct_builtins_chunk = bc;
 
-    _ = try bc.declareBoolType(@ptrCast(bc.sym), "bool_t", null, cy.NullNode);
-    _ = try bc.declareIntType(@ptrCast(bc.sym), "int64_t", 64, null, cy.NullNode);
-    _ = try bc.declareFloatType(@ptrCast(bc.sym), "float64_t", 64, null, cy.NullNode);
+    _ = try bc.declareBoolType(@ptrCast(bc.sym), "bool_t", null, null);
+    _ = try bc.declareIntType(@ptrCast(bc.sym), "int64_t", 64, null, null);
+    _ = try bc.declareFloatType(@ptrCast(bc.sym), "float64_t", 64, null, null);
 }
 
 fn reserveCoreTypes(self: *Compiler) !void {
@@ -1071,16 +1056,16 @@ fn resolveSyms(self: *Compiler) !void {
                 .func => {},
                 .struct_t => {
                     const struct_t = sym.cast(.struct_t);
-                    try sema.resolveObjectFields(chunk, sym, struct_t.declId);
+                    try sema.resolveObjectFields(chunk, sym, struct_t.decl.?);
                 },
                 .object_t => {
                     const object_t = sym.cast(.object_t);
-                    const decl = chunk.ast.node(object_t.declId);
+                    const decl = object_t.decl.?;
                     if (decl.type() == .table_decl) {
                         try sema.resolveTableFields(chunk, @ptrCast(sym));
                         try sema.resolveTableMethods(chunk, @ptrCast(sym));
                     } else {
-                        try sema.resolveObjectFields(chunk, sym, object_t.declId);
+                        try sema.resolveObjectFields(chunk, sym, decl);
                     }
                 },
                 .enum_t => {
@@ -1092,8 +1077,7 @@ fn resolveSyms(self: *Compiler) !void {
                 },
                 .use_alias => {
                     const use_alias = sym.cast(.use_alias);
-                    const decl = chunk.ast.node(use_alias.decl);
-                    if (decl.type() == .use_alias) {
+                    if (use_alias.decl.?.type() == .use_alias) {
                         try sema.resolveUseAlias(chunk, @ptrCast(sym));
                     }
                 },
@@ -1167,7 +1151,7 @@ const ImportTaskType = enum(u8) {
 pub const ImportTask = struct {
     type: ImportTaskType,
     from: ?*cy.Chunk,
-    nodeId: cy.NodeId,
+    node: ?*ast.ImportStmt,
     resolved_spec: []const u8,
     data: union {
         module_alias: struct {
@@ -1251,7 +1235,7 @@ pub fn defaultModuleLoader(vm_: ?*C.VM, spec: C.Str, out_: [*c]C.ModuleLoaderRes
     return false;
 }
 
-pub fn resolveModuleUriFrom(self: *cy.Chunk, buf: []u8, uri: []const u8, nodeId: cy.NodeId) ![]const u8 {
+pub fn resolveModuleUriFrom(self: *cy.Chunk, buf: []u8, uri: []const u8, node: ?*ast.Node) ![]const u8 {
     self.compiler.hasApiError = false;
 
     var r_uri: [*]const u8 = undefined;
@@ -1267,9 +1251,9 @@ pub fn resolveModuleUriFrom(self: *cy.Chunk, buf: []u8, uri: []const u8, nodeId:
     };
     if (!self.compiler.moduleResolver.?(@ptrCast(self.compiler.vm), params)) {
         if (self.compiler.hasApiError) {
-            return self.reportErrorFmt(self.compiler.apiError, &.{}, nodeId);
+            return self.reportErrorFmt(self.compiler.apiError, &.{}, node);
         } else {
-            return self.reportErrorFmt("Failed to resolve module.", &.{}, nodeId);
+            return self.reportErrorFmt("Failed to resolve module.", &.{}, node);
         }
     }
     return r_uri[0..r_uri_len];

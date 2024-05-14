@@ -13,6 +13,7 @@ const cc = @import("../capi.zig");
 const v = cy.fmt.v;
 const rt = cy.rt;
 const ir = cy.ir;
+const ast = cy.ast;
 const assm = @import("assembler.zig");
 const a64 = @import("a64_assembler.zig");
 const A64 = @import("a64.zig");
@@ -158,12 +159,12 @@ pub fn pushStencil(c: *cy.Chunk, code: []const u8) !usize {
 
 fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
     const code = c.ir.getStmtCode(idx);
-    const nodeId = c.ir.getNode(idx);
-    c.curNodeId = nodeId;
+    const node = c.ir.getNode(idx);
+    c.curNode = node;
 
     var dumpEndPc: usize = undefined;
     if (cy.Trace) {
-        const contextStr = try c.encoder.format(nodeId, &cy.tempBuf);
+        const contextStr = try c.encoder.format(node, &cy.tempBuf);
         log.tracev("----{s}: {{{s}}}", .{@tagName(code), contextStr});
 
         if (cc.verbose()) {
@@ -179,7 +180,7 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
 
     var tempRetainedStart: usize = undefined;
     var tempStart: usize = undefined;
-    if (cy.Trace and c.procs.items.len > 0) {
+    if (cy.Trace and c.proc_stack.items.len > 0) {
         tempRetainedStart = @intCast(c.unwindTempIndexStack.items.len);
         tempStart = c.rega.nextTemp;
     }
@@ -187,17 +188,17 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
     switch (code) {
         // .breakStmt          => try breakStmt(c, nodeId),
         // .contStmt           => try contStmt(c, nodeId),
-        .declareLocal       => try declareLocal(c, idx, nodeId),
+        .declareLocal       => try declareLocal(c, idx, node),
         // .destrElemsStmt     => try destrElemsStmt(c, idx, nodeId),
-        .exprStmt           => try exprStmt(c, idx, nodeId),
+        .exprStmt           => try exprStmt(c, idx, node),
         // .forIterStmt        => try forIterStmt(c, idx, nodeId),
         // .forRangeStmt       => try forRangeStmt(c, idx, nodeId),
-        .funcBlock          => try funcBlock(c, idx, nodeId),
-        .ifStmt             => try ifStmt(c, idx, nodeId),
-        .mainBlock          => try mainBlock(c, idx, nodeId),
+        .funcBlock          => try funcBlock(c, idx, node),
+        .ifStmt             => try ifStmt(c, idx, node),
+        .mainBlock          => try mainBlock(c, idx, node),
         // .opSet              => try opSet(c, idx, nodeId),
         // .pushDebugLabel     => try pushDebugLabel(c, idx),
-        .retExprStmt        => try retExprStmt(c, idx, nodeId),
+        .retExprStmt        => try retExprStmt(c, idx, node),
         // .retStmt            => try retStmt(c),
         // .setCaptured        => try setCaptured(c, idx, nodeId),
         // .setField           => try setField(c, idx, .{}, nodeId),
@@ -209,7 +210,7 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
         // .setLocalType       => try setLocalType(c, idx),
         // .switchStmt         => try switchStmt(c, idx, nodeId),
         // .tryStmt            => try tryStmt(c, idx, nodeId),
-        .verbose            => try verbose(c, idx, nodeId),
+        .verbose            => try verbose(c, idx, node),
         // .whileCondStmt      => try whileCondStmt(c, idx, nodeId),
         // .whileInfStmt       => try whileInfStmt(c, idx, nodeId),
         // .whileOptStmt       => try whileOptStmt(c, idx, nodeId),
@@ -219,15 +220,15 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
     }
 
     // Check stack after statement.
-    if (cy.Trace and c.procs.items.len > 0) {
+    if (cy.Trace and c.proc_stack.items.len > 0) {
         if (c.unwindTempIndexStack.items.len != tempRetainedStart) {
             return c.reportErrorFmt("Expected {} unwindable retained temps, got {}",
-                &.{v(tempRetainedStart), v(c.unwindTempIndexStack.items.len)}, nodeId);
+                &.{v(tempRetainedStart), v(c.unwindTempIndexStack.items.len)}, node);
         }
 
         if (c.rega.nextTemp != tempStart) {
             return c.reportErrorFmt("Expected {} temp start, got {}",
-                &.{v(tempStart), v(c.rega.nextTemp)}, nodeId);
+                &.{v(tempStart), v(c.rega.nextTemp)}, node);
         }
     }
     log.tracev("----{s}: end", .{@tagName(code)});
@@ -239,7 +240,7 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
     }
 }
 
-fn exprStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
+fn exprStmt(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
     _ = nodeId;
     const data = c.ir.getStmtData(idx, .exprStmt);
     const expr = c.ir.advanceStmt(idx, .exprStmt);
@@ -304,7 +305,7 @@ const BinOpOptions = struct {
     left: ?GenValue = null,
 };
 
-fn genBinOp(c: *cy.Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy.NodeId) !GenValue {
+fn genBinOp(c: *cy.Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: *ast.Node) !GenValue {
     const data = c.ir.getExprData(idx, .preBinOp).binOp;
     log.tracev("binop {} {}", .{data.op, data.leftT});
 
@@ -500,7 +501,7 @@ pub const JitCondFlagType = enum {
     lt,
 };
 
-fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
+fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
     const data = c.ir.getStmtData(idx, .ifStmt);
     const bodyEndJumpsStart = c.listDataStack.items.len;
 
@@ -587,7 +588,7 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     }
 }
 
-fn genFloat(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+fn genFloat(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenValue {
     const data = c.ir.getExprData(idx, .float);
     const inst = try c.rega.selectForNoErrNoDepInst(cstr, false, nodeId);
     if (inst.requiresPreRelease) {
@@ -601,7 +602,7 @@ fn genFloat(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     return finishInst(c, value, inst.finalDst);
 }
 
-fn genInt(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+fn genInt(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenValue {
     const data = c.ir.getExprData(idx, .int);
 
     const val = cy.Value.initInt(@intCast(data.val));
@@ -634,15 +635,14 @@ fn finishInst(c: *cy.Chunk, val: GenValue, optDst: ?Cstr) !GenValue {
 fn genToFinalDst(c: *cy.Chunk, val: GenValue, dst: Cstr) !GenValue {
     log.tracev("genToFinalDst src: {} dst: {s}", .{val.reg, @tagName(dst.type)});
 
-    const desc = cy.bytecode.InstDesc{};
-    const res = try genToExact(c, val, dst, desc);
+    const res = try genToExact(c, val, dst, null);
 
     // Check to remove the temp that is used to move to final dst.
     if (val.isTemp()) try bcgen.popTemp(c, val.reg);
     return res;
 }
 
-fn genToExact(c: *cy.Chunk, val: GenValue, dst: Cstr, desc: cy.bytecode.InstDesc) !GenValue {
+fn genToExact(c: *cy.Chunk, val: GenValue, dst: Cstr, desc: ?u32) !GenValue {
     _ = desc;
     switch (dst.type) {
         .localReg => {
@@ -693,7 +693,7 @@ fn genToExact(c: *cy.Chunk, val: GenValue, dst: Cstr, desc: cy.bytecode.InstDesc
     }
 }
 
-fn genCallFuncSym(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+fn genCallFuncSym(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenValue {
     const data = c.ir.getExprData(idx, .preCallFuncSym).callFuncSym;
     const inst = try bcgen.beginCall(c, cstr, false, nodeId);
 
@@ -861,12 +861,11 @@ fn genStmts(c: *cy.Chunk, idx: u32) !void {
     }
 }
 
-fn mainBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
+fn mainBlock(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
     const data = c.ir.getStmtData(idx, .mainBlock);
     log.tracev("main block: {}", .{data.maxLocals});
 
-    try bcgen.pushProc(c, .main, nodeId);
-    c.curBlock.frameLoc = 0;
+    try bcgen.pushProc(c, .main, "main", nodeId);
 
     try bcgen.reserveMainRegs(c, data.maxLocals);
 
@@ -911,7 +910,7 @@ fn mainEnd(c: *cy.Chunk, optReg: ?u8) !void {
     try assm.genMainReturn(c);
 }
 
-fn genStringTemplate(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+fn genStringTemplate(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenValue {
     const data = c.ir.getExprData(idx, .stringTemplate);
     const strsIdx = c.ir.advanceExpr(idx, .stringTemplate);
     const strs = c.ir.getArray(strsIdx, []const u8, data.numExprs+1);
@@ -974,7 +973,7 @@ fn genStringTemplate(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !G
     return finishInst(c, val, inst.finalDst);
 }
 
-fn pushReleaseVals(c: *cy.Chunk, vals: []const GenValue, debugNodeId: cy.NodeId) !void {
+fn pushReleaseVals(c: *cy.Chunk, vals: []const GenValue, debugNodeId: *ast.Node) !void {
     _ = debugNodeId;
     if (vals.len > 1) {
         // try self.pushOptionalDebugSym(debugNodeId);
@@ -994,7 +993,7 @@ fn pushReleaseVals(c: *cy.Chunk, vals: []const GenValue, debugNodeId: cy.NodeId)
     }
 }
 
-fn declareLocalInit(c: *cy.Chunk, idx: u32, nodeId: cy.NodeId) !void {
+fn declareLocalInit(c: *cy.Chunk, idx: u32, nodeId: *ast.Node) !void {
     const data = c.ir.getStmtData(idx, .declareLocalInit);
 
     // Don't advance nextLocalReg yet since the rhs hasn't generated so the
@@ -1016,16 +1015,16 @@ fn declareLocalInit(c: *cy.Chunk, idx: u32, nodeId: cy.NodeId) !void {
     log.tracev("declare {}, rced: {} ", .{val.local, local.some.rcCandidate});
 }
 
-fn declareLocal(c: *cy.Chunk, idx: u32, nodeId: cy.NodeId) !void {
+fn declareLocal(c: *cy.Chunk, idx: u32, node: *ast.Node) !void {
     const data = c.ir.getStmtData(idx, .declareLocal);
 
-    const reg = try bcgen.reserveLocalReg(c, data.id, data.declType, data.lifted, nodeId, true);
+    const reg = try bcgen.reserveLocalReg(c, data.id, data.declType, data.lifted, node, true);
 
     // Not yet initialized, so it does not have a refcount.
     bcgen.getLocalInfoPtr(c, reg).some.rcCandidate = false;
 }
 
-fn funcBlock(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
+fn funcBlock(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
     const data = c.ir.getStmtData(idx, .funcBlock);
     const func = data.func;
     const paramsIdx = c.ir.advanceStmt(idx, .funcBlock);
@@ -1115,7 +1114,7 @@ fn genChunk(c: *cy.Chunk) !void {
     genChunkInner(c) catch |err| {
         if (err != error.CompileError) {
             // Wrap all other errors as a CompileError.
-            return c.reportErrorFmt("error.{}", &.{v(err)}, c.curNodeId);
+            return c.reportErrorFmt("error.{}", &.{v(err)}, c.curNode);
         } else return err;
     };
 }
@@ -1135,13 +1134,13 @@ fn genChunkInner(c: *cy.Chunk) !void {
 
     // Ensure that all cstr and values were accounted for.
     if (c.genValueStack.items.len > 0) {
-        return c.reportErrorFmt("Remaining gen values: {}", &.{v(c.genValueStack.items.len)}, cy.NullId);
+        return c.reportErrorFmt("Remaining gen values: {}", &.{v(c.genValueStack.items.len)}, null);
     }
     if (c.unwindTempIndexStack.items.len > 0) {
-        return c.reportErrorFmt("Remaining unwind temp index: {}", &.{v(c.unwindTempIndexStack.items.len)}, cy.NullId);
+        return c.reportErrorFmt("Remaining unwind temp index: {}", &.{v(c.unwindTempIndexStack.items.len)}, null);
     }
     if (c.unwindTempRegStack.items.len > 0) {
-        return c.reportErrorFmt("Remaining unwind temp reg: {}", &.{v(c.unwindTempRegStack.items.len)}, cy.NullId);
+        return c.reportErrorFmt("Remaining unwind temp reg: {}", &.{v(c.unwindTempRegStack.items.len)}, null);
     }
 
     if (cy.Trace and !cy.isWasm) {
@@ -1157,7 +1156,9 @@ fn genChunkInner(c: *cy.Chunk) !void {
     }
 }
 
-fn genLocalReg(c: *cy.Chunk, reg: RegisterId, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+fn genLocalReg(c: *cy.Chunk, reg: RegisterId, cstr: Cstr, nodeId: *ast.Node) !GenValue {
+    _ = nodeId;
+
     const local = bcgen.getLocalInfo(c, reg);
 
     if (!local.some.lifted) {
@@ -1174,7 +1175,7 @@ fn genLocalReg(c: *cy.Chunk, reg: RegisterId, cstr: Cstr, nodeId: cy.NodeId) !Ge
             },
             else => {},
         }
-        return genToExact(c, srcv, exact_cstr, c.desc(nodeId));
+        return genToExact(c, srcv, exact_cstr, null);
     } else {
         // // Special case when src local is boxed.
         // const retainSrc = local.some.rcCandidate and (cstr.mustRetain or cstr.type == .local or cstr.type == .boxedLocal);
@@ -1192,13 +1193,13 @@ fn genLocalReg(c: *cy.Chunk, reg: RegisterId, cstr: Cstr, nodeId: cy.NodeId) !Ge
     }
 }
 
-fn genLocal(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+fn genLocal(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenValue {
     const data = c.ir.getExprData(idx, .local);
     const reg = bcgen.toLocalReg(c, data.id);
     return genLocalReg(c, reg, cstr, nodeId);
 }
 
-fn retExprStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
+fn retExprStmt(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
     _ = nodeId;
     const childIdx = c.ir.advanceStmt(idx, .retExprStmt);
 
@@ -1222,7 +1223,7 @@ fn retExprStmt(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
     }
 }
 
-fn verbose(c: *cy.Chunk, idx: usize, nodeId: cy.NodeId) !void {
+fn verbose(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
     _ = nodeId;
     const data = c.ir.getStmtData(idx, .verbose);
     cc.setVerbose(data.verbose);

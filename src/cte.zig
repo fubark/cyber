@@ -4,33 +4,31 @@ const bt = cy.types.BuiltinTypes;
 const sema = cy.sema;
 const v = cy.fmt.v;
 const log = cy.log.scoped(.cte);
+const ast = cy.ast;
 
 const cte = @This();
 
-pub fn expandTemplateOnCallExpr(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
-    const node = c.ast.node(nodeId);
-    const calleeRes = try c.semaExprSkipSym(node.data.callExpr.callee);
+pub fn expandTemplateOnCallExpr(c: *cy.Chunk, node: *ast.CallExpr) !*cy.Sym {
+    const calleeRes = try c.semaExprSkipSym(node.callee);
     if (calleeRes.resType != .sym) {
-        return c.reportErrorFmt("Expected template symbol.", &.{}, node.data.callExpr.callee);
+        return c.reportErrorFmt("Expected template symbol.", &.{}, node.callee);
     }
     const sym = calleeRes.data.sym;
     if (sym.type != .template) {
-        return c.reportErrorFmt("Expected template symbol.", &.{}, node.data.callExpr.callee);
+        return c.reportErrorFmt("Expected template symbol.", &.{}, node.callee);
     }
-    return cte.expandTemplateOnCallArgs(c, sym.cast(.template), node.data.callExpr.argHead, nodeId);
+    return cte.expandTemplateOnCallArgs(c, sym.cast(.template), node.args, @ptrCast(node));
 }
 
-pub fn pushNodeValues(c: *cy.Chunk, head: cy.NodeId) !void {
-    var arg: cy.NodeId = head;
-    while (arg != cy.NullNode) {
+pub fn pushNodeValues(c: *cy.Chunk, args: []const *ast.Node) !void {
+    for (args) |arg| {
         const res = try nodeToCtValue(c, arg);
         try c.typeStack.append(c.alloc, res.type);
         try c.valueStack.append(c.alloc, res.value);
-        arg = c.ast.node(arg).next();
     }
 }
 
-pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, argHead: cy.NodeId, nodeId: cy.NodeId) !*cy.Sym {
+pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, args: []const *ast.Node, node: *ast.Node) !*cy.Sym {
     // Accumulate compile-time args.
     const typeStart = c.typeStack.items.len;
     const valueStart = c.valueStack.items.len;
@@ -44,18 +42,18 @@ pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, argHea
         }
         c.valueStack.items.len = valueStart;
     }
-    try pushNodeValues(c, argHead);
+    try pushNodeValues(c, args);
     const argTypes = c.typeStack.items[typeStart..];
-    const args = c.valueStack.items[valueStart..];
+    const arg_vals = c.valueStack.items[valueStart..];
 
-    return expandTemplate(c, template, args, argTypes) catch |err| {
+    return expandTemplate(c, template, arg_vals, argTypes) catch |err| {
         if (err == error.IncompatSig) {
             const sig = c.sema.getFuncSig(template.sigId);
             const params_s = try c.sema.allocFuncParamsStr(sig.params(), c);
             defer c.alloc.free(params_s);
             return c.reportErrorFmt(
                 \\Expected template signature `{}[{}]`.
-            , &.{v(template.head.name()), v(params_s)}, nodeId);
+            , &.{v(template.head.name()), v(params_s)}, node);
         } else {
             return err;
         }
@@ -98,11 +96,12 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
 
     const variant = res.value_ptr.*;
     if (variant.type == .specialization) {
-        const child_decl = c.ast.node(variant.data.specialization);
+        const child_decl = variant.data.specialization;
         if (child_decl.type() != .custom_decl) {
             return error.Unsupported;
         }
-        if (child_decl.data.custom_decl.func_head != cy.NullNode) {
+        const custom_decl = child_decl.cast(.custom_decl);
+        if (custom_decl.funcs.len > 0) {
             return error.Unsupported;
         }
 
@@ -119,7 +118,7 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
 
 /// Visit each top level ctNode, perform template param substitution or CTE,
 /// and generate new nodes. Return the root of each resulting node.
-fn execTemplateCtNodes(c: *cy.Chunk, template: *cy.sym.Template, params: []const cy.Value) ![]const cy.NodeId {
+fn execTemplateCtNodes(c: *cy.Chunk, template: *cy.sym.Template, params: []const cy.Value) ![]const *ast.Node {
     // Build name to template param.
     var paramMap: std.StringHashMapUnmanaged(cy.Value) = .{};
     defer paramMap.deinit(c.alloc);
@@ -128,7 +127,7 @@ fn execTemplateCtNodes(c: *cy.Chunk, template: *cy.sym.Template, params: []const
     }
 
     const tchunk = template.chunk();
-    const res = try c.alloc.alloc(cy.NodeId, template.ctNodes.len);
+    const res = try c.alloc.alloc(*ast.Node, template.ctNodes.len);
     for (template.ctNodes, 0..) |ctNodeId, i| {
         const node = tchunk.ast.node(ctNodeId);
 
@@ -149,7 +148,7 @@ fn execTemplateCtNodes(c: *cy.Chunk, template: *cy.sym.Template, params: []const
     return res;
 }
 
-fn genNodeFromValue(c: *cy.Chunk, val: cy.Value, srcPos: u32) !cy.NodeId {
+fn genNodeFromValue(c: *cy.Chunk, val: cy.Value, srcPos: u32) !*ast.Node {
     switch (val.getTypeId()) {
         bt.Type => {
             const node = try c.parser.ast.pushNode(c.alloc, .semaSym, srcPos);
@@ -168,9 +167,9 @@ const CtValue = struct {
     value: cy.Value,
 };
 
-fn nodeToCtValue(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!CtValue {
+fn nodeToCtValue(c: *cy.Chunk, node: *ast.Node) anyerror!CtValue {
     // TODO: Evaluate const expressions.
-    const sym = try sema.resolveSym(c, nodeId);
+    const sym = try sema.resolveSym(c, node);
     if (sym.getStaticType()) |type_id| {
         return CtValue{
             .type = bt.Type,
@@ -178,5 +177,5 @@ fn nodeToCtValue(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!CtValue {
         };
     }
 
-    return c.reportErrorFmt("Unsupported conversion to compile-time value: {}", &.{v(sym.type)}, nodeId);
+    return c.reportErrorFmt("Unsupported conversion to compile-time value: {}", &.{v(sym.type)}, node);
 }

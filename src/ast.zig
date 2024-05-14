@@ -5,10 +5,11 @@ const t = stdx.testing;
 const cy = @import("cyber.zig");
 const log = cy.log.scoped(.ast);
 
-pub const NodeId = u32;
-
 pub const NodeType = enum(u8) {
-    @"null",
+    // To allow non optional nodes.
+    // Can be used to simplify code by accepting *Node only instead of ?*Node.
+    null,
+
     accessExpr,
     all,
     arrayLit,
@@ -23,7 +24,6 @@ pub const NodeType = enum(u8) {
     caseBlock,
     callExpr,
     castExpr,
-    caseHeader,
     catchStmt,
     coinit,
     comptimeExpr,
@@ -32,12 +32,9 @@ pub const NodeType = enum(u8) {
     coresume,
     coyield,
     custom_decl,
-    custom_header,
     decLit,
     distinct_decl,
-    distinct_header,
     dot_lit,
-    eachClause,
     else_block,
     enumDecl,
     enumMember,
@@ -45,24 +42,16 @@ pub const NodeType = enum(u8) {
     expandOpt,
     exprStmt,
     falseLit,
-    forIterHeader,
     forIterStmt,
-    forRangeHeader,
     forRangeStmt,
     floatLit,
     funcDecl,
-    funcHeader,
     funcParam,
     group,
     hexLit,
     ident,
-
-    // Used by if_stmt and if_expr.
-    if_branch,
-    
     if_expr,
     if_stmt,
-    if_unwrap,
     if_unwrap_stmt,
     import_stmt,
     keyValue,
@@ -70,11 +59,11 @@ pub const NodeType = enum(u8) {
     lambda_expr, 
     lambda_multi,
     localDecl,
+    name_path,
     namedArg,
     noneLit,
     objectDecl,
     objectField,
-    objectHeader,
     octLit,
     opAssignStmt,
     passStmt,
@@ -107,11 +96,9 @@ pub const NodeType = enum(u8) {
     unwrap,
     unwrap_or,
     use_alias,
-    varSpec,
     void,
     whileCondStmt,
     whileInfStmt,
-    whileOptHeader,
     whileOptStmt,
 };
 
@@ -119,358 +106,410 @@ pub const AttributeType = enum(u8) {
     host,
 };
 
-const NodeHead = packed struct {
-    type: NodeType,
-    data: packed union {
-        // Statements use next to advance to the next statement.
-        // Expressions also use this for sequential arguments.
-        next: u24,
-        distinct_header: packed struct {
-            attr_head: cy.Nullable(u24),
-        },
-        funcHeader: packed struct {
-            modHead: cy.Nullable(u24),
-        },
-        objectHeader: packed struct {
-            modHead: cy.Nullable(u24),
-        },
-        varSpec: packed struct {
-            modHead: cy.Nullable(u24),
-        },
-        forRangeHeader: packed struct {
-            eachClause: u24,
-        },
-        forIterHeader: packed struct {
-            count: cy.Nullable(u24),
-        },
-        if_unwrap: packed struct {
-            body_head: u24,
-        },
-    },
+const ExpandOpt = struct {
+    param: *Node align(8),
+    pos: u32,
 };
 
-/// At most 8 bytes for ReleaseFast.
-const NodeData = union {
-    uninit: void,
-    expandOpt: struct {
-        param: NodeId,
-    },
-    exprStmt: struct {
-        child: NodeId,
-        isLastRootStmt: bool = false, 
-    },
-    returnExprStmt: struct {
-        child: NodeId,
-    },
-    import_stmt: struct {
-        name: cy.NodeId,
-        spec: cy.Nullable(cy.NodeId),
-    },
-    // idents and literals.
-    span: struct {
-        // This can be different from Node.srcPos if the literal was generated.
-        pos: u32,
-        len: u16,
-        srcGen: bool,
-    },
-    namedArg: struct {
-        name: NodeId,
-        arg: NodeId,
-    },
-    tryStmt: struct {
-        bodyHead: NodeId,
-        catchStmt: NodeId,
-    },
-    catchStmt: struct {
-        errorVar: cy.Nullable(NodeId),
-        bodyHead: NodeId,
-    },
-    whileInfStmt: struct {
-        bodyHead: NodeId,
-    },
-    tryExpr: struct {
-        expr: NodeId,
-        catchExpr: cy.Nullable(NodeId),
-    },
-    castExpr: struct {
-        expr: NodeId,
-        typeSpec: NodeId,
-    },
-    assignStmt: struct {
-        left: NodeId,
-        right: NodeId,
-    },
-    binExpr: packed struct {
-        left: NodeId,
-        right: u24,
-        op: BinaryExprOp,
-    },
-    opAssignStmt: packed struct {
-        left: NodeId,
-        right: u24,
-        op: BinaryExprOp,
-    },
-    caseBlock: packed struct {
-        // Null if `else` case.
-        header: NodeId,
-        bodyHead: u24,
-        bodyIsExpr: bool,
-    },
-    caseHeader: packed struct {
-        condHead: cy.Nullable(NodeId),
-        capture: cy.Nullable(u24),
-        numConds: u8,
-    },
-    switchBlock: packed struct {
-        expr: NodeId,
-        caseHead: u24,
-        numCases: u8,
-    },
-    attribute: struct {
-        type: AttributeType,
-        value: NodeId,
-    },
-    throwExpr: struct {
-        child: NodeId,
-    },
-    group: struct {
-        child: NodeId,
-    },
-    coresume: struct {
-        child: NodeId,
-    },
-    coinit: struct {
-        child: NodeId,
-    },
-    if_branch: struct {
-        cond: NodeId,
-        body_head: NodeId,
-    },
-    if_stmt: packed struct {
-        if_branch: NodeId,
-        else_block: cy.Nullable(NodeId),
-    },
-    if_unwrap_stmt: packed struct {
-        if_unwrap: NodeId,
-        else_block: cy.Nullable(NodeId),
-    },
-    if_unwrap: struct {
-        opt: NodeId,
-        unwrap: NodeId,
-    },
-    accessExpr: struct {
-        left: NodeId,
-        right: NodeId,
-    },
-    unwrap: struct {
-        opt: NodeId,
-    },
-    unwrap_or: struct {
-        opt: NodeId,
-        default: NodeId,
-    },
-    callExpr: packed struct {
-        callee: u24,
-        numArgs: u8,
-        argHead: u24,
-        hasNamedArg: bool,
-    },
-    array_expr: packed struct {
-        left: NodeId,
-        arg_head: u24,
-        nargs: u8,
-    },
-    array_init: packed struct {
-        left: NodeId,
-        arg_head: u24,
-        nargs: u8,
-    },
-    record_expr: struct {
-        left: NodeId,
-        record: NodeId,
-    },
-    unary: struct {
-        child: NodeId,
-        op: UnaryOp,
-    },
-    root: struct {
-        bodyHead: NodeId,
-    },
-    arrayLit: struct {
-        argHead: NodeId,
-        numArgs: u8,
-    },
-    recordLit: packed struct {
-        argHead: NodeId,
-        argTail: u24, // For appending additional args from block syntax.
-        numArgs: u8,
-    },
-    keyValue: struct {
-        key: NodeId,
-        value: NodeId,
-    },
-    comptimeExpr: struct {
-        child: NodeId,
-    },
-    comptimeStmt: struct {
-        expr: NodeId,
-    },
-    func: packed struct {
-        header: u31,
-        hidden: bool,
-        bodyHead: cy.Nullable(u24),
-        sig_t: FuncSigType,
-    },
-    funcHeader: packed struct {
-        /// Can be NullNode for lambdas.
-        name: cy.Nullable(NodeId),
-        /// Params.
-        paramHead: cy.Nullable(u24),
-        nparams: u8,
-    },
-    funcParam: struct {
-        name: NodeId,
-        typeSpec: cy.Nullable(NodeId),
-    },
-    use_alias: struct {
-        name: NodeId,
-        target: NodeId,
-    },
-    typeAliasDecl: packed struct {
-        name: NodeId,
-        typeSpec: u31,
-        hidden: bool,
-    },
-    custom_decl: packed struct {
-        header: NodeId,
-        func_head: u24,
-        num_funcs: u8,
-    },
-    custom_header: packed struct {
-        name: NodeId,
-        attr_head: u31,
-        hidden: bool,
-    },
-    distinct_decl: packed struct {
-        header: u31,
-        hidden: bool,
-        func_head: u24,
-        num_funcs: u8,
-    },
-    distinct_header: struct {
-        name: NodeId,
-        target: NodeId,
-    },
-    objectField: packed struct {
-        name: NodeId,
-        typeSpec: u31,
-        hidden: bool,
-    },
-    objectDecl: packed struct {
-        header: NodeId,
-        funcHead: u24,
-        numFuncs: u8,
-    },
-    objectHeader: packed struct {
-        name: u24,
-        /// When true, a non null `name` references an unnamed `ModuleSymId`.
-        unnamed: bool,
-        fieldHead: u24,
-        numFields: u8,
-    },
-    varSpec: struct {
-        name: NodeId,
-        typeSpec: cy.Nullable(NodeId),
-    },
-    staticDecl: packed struct {
-        varSpec: NodeId,
-        right: u24,
-        typed: bool,
-        // Declared with `.` prefix.
-        root: bool,
-        hidden: bool,
-    },
-    localDecl: packed struct {
-        varSpec: NodeId,
-        right: u24,
-        typed: bool,
-    },
-    enumMember: struct {
-        name: NodeId,
-        typeSpec: cy.Nullable(NodeId),
-    },
-    enumDecl: packed struct {
-        name: u24,
-        numMembers: u8,
-        memberHead: u24,
-        isChoiceType: bool,
-        hidden: bool,
-    },
-    whileCondStmt: struct {
-        cond: NodeId,
-        bodyHead: NodeId,
-    },
-    whileOptStmt: struct {
-        header: NodeId,
-        bodyHead: NodeId,
-    },
-    whileOptHeader: struct {
-        opt: NodeId,
-        capture: NodeId,
-    },
-    forRangeStmt: struct {
-        header: NodeId,
-        bodyHead: NodeId,
-    },
-    forRangeHeader: packed struct {
-        start: NodeId,
-        end: u24,
-        increment: bool,
-    },
-    forIterStmt: struct {
-        header: NodeId,
-        bodyHead: NodeId,
-    },
-    forIterHeader: struct {
-        iterable: NodeId,
-        eachClause: NodeId,
-    },
-    semaSym: struct {
-        sym: *cy.Sym,
-    },
-    seqDestructure: struct {
-        head: NodeId,
-        numArgs: u8,
-    },
-    specialization: struct {
-        args: NodeId,
-        decl: NodeId,
-    },
-    template: packed struct {
-        paramHead: cy.Nullable(u24),
-        numParams: u8,
-        decl: u31,
-        hidden: bool,
-    },
-    range: packed struct {
-        start: cy.Nullable(NodeId),
-        end: cy.Nullable(u24),
-        inc: bool,
-    },
-    if_expr: struct {
-        if_branch: NodeId,
-        else_expr: NodeId,
-    },
-    else_block: struct {
-        // for else ifs only.
-        cond: cy.Nullable(NodeId),
-        body_head: NodeId,
-    },
-    stringTemplate: packed struct {
-        exprHead: NodeId,
-        strHead: u24,
-        numExprs: u8,
-    },
+const ExprStmt = struct {
+    child: *Node align(8),
+    isLastRootStmt: bool = false, 
+};
+
+const ReturnExprStmt = struct {
+    child: *Node align(8),
+    pos: u32,
+};
+
+pub const ImportStmt = struct {
+    name: *Node align(8),
+    spec: ?*Node,
+    pos: u32,
+};
+
+pub const Token = struct {
+    pos: u32 align(8),
+};
+
+// idents and literals.
+pub const Span = struct {
+    // This can be different from Node.srcPos if the literal was generated.
+    pos: u32 align(8),
+    len: u16,
+    srcGen: bool,
+};
+
+pub const NamePath = struct {
+    path: []*Node align(8),
+};
+
+const NamedArg = struct {
+    name_pos: u32 align(8),
+    name_len: u32,
+    arg: *Node,
+};
+
+pub const TryStmt = struct {
+    stmts: []*Node align(8),
+    catchStmt: *CatchStmt,
+    pos: u32,
+};
+
+const CatchStmt = struct {
+    errorVar: ?*Node align(8),
+    stmts: []*Node,
+    pos: u32,
+};
+
+const TryExpr = struct {
+    expr: *Node align(8),
+    catchExpr: ?*Node,
+    pos: u32,
+};
+
+const CastExpr = struct {
+    expr: *Node align(8),
+    typeSpec: *Node,
+};
+
+const AssignStmt = struct {
+    left: *Node align(8),
+    right: *Node,
+};
+
+pub const BinExpr = struct {
+    left: *Node align(8),
+    right: *Node,
+    op: BinaryExprOp,
+    op_pos: u32,
+};
+
+const OpAssignStmt = struct {
+    left: *Node align(8),
+    right: *Node,
+    op: BinaryExprOp,
+    assign_pos: u32,
+};
+
+pub const CaseBlock = struct {
+    // conds.len == 0 if `else` case.
+    conds: []*Node align(8),
+    capture: ?*Node,
+    stmts: []*Node,
+    bodyIsExpr: bool,
+    pos: u32,
+};
+
+pub const SwitchBlock = struct {
+    expr: *Node align(8),
+    cases: []*CaseBlock,
+    pos: u32,
+};
+
+pub const Attribute = struct {
+    type: AttributeType align(8),
+    value: ?*Node,
+    pos: u32,
+};
+
+const ThrowExpr = struct {
+    child: *Node align(8),
+    pos: u32,
+};
+
+const Group = struct {
+    child: *Node align(8),
+    pos: u32,
+};
+
+const Coresume = struct {
+    child: *Node align(8),
+    pos: u32,
+};
+
+const Coinit = struct {
+    child: *CallExpr align(8),
+    pos: u32,
+};
+
+pub const IfStmt = struct {
+    cond: *Node align(8),
+    stmts: []const *Node,
+    else_blocks: []*ElseBlock,
+    pos: u32,
+};
+
+pub const ElseBlock = struct {
+    // for else ifs only.
+    cond: ?*Node align(8),
+    stmts: []const *Node,
+    pos: u32,
+};
+
+pub const IfUnwrapStmt = struct {
+    opt: *Node align(8),
+    unwrap: *Node,
+    stmts: []const *Node,
+    else_blocks: []*ElseBlock,
+    pos: u32,
+};
+
+const AccessExpr = struct {
+    left: *Node align(8),
+    right: *Node,
+};
+
+const Unwrap = struct {
+    opt: *Node align(8),
+};
+
+const UnwrapOr = struct {
+    opt: *Node align(8),
+    default: *Node,
+};
+
+pub const CallExpr = struct {
+    callee: *Node align(8),
+    args: []*Node,
+    hasNamedArg: bool,
+};
+
+pub const ArrayLit = struct {
+    args: []*Node align(8),
+    pos: u32,
+};
+
+const ArrayExpr = struct {
+    left: *Node align(8),
+    args: []*Node,
+};
+
+const ArrayInit = struct {
+    left: *Node align(8),
+    args: []*Node,
+};
+
+const RecordExpr = struct {
+    left: *Node align(8),
+    record: *RecordLit,
+};
+
+pub const RecordLit = struct {
+    args: []*KeyValue align(8),
+    pos: u32,
+};
+
+const Unary = struct {
+    child: *Node align(8),
+    op: UnaryOp,
+};
+
+pub const Root = struct {
+    stmts: []const *Node align(8),
+};
+
+pub const KeyValue = struct {
+    key: *Node align(8),
+    value: *Node,
+};
+
+pub const ComptimeExpr = struct {
+    child: *Node align(8),
+};
+
+const ComptimeStmt = struct {
+    expr: *Node align(8),
+    pos: u32,
+};
+
+pub const LambdaExpr = struct {
+    params: []const *FuncParam align(8),
+    // For single expr lambda, `stmts.ptr` refers to the node.
+    stmts: []const *Node,
+    sig_t: FuncSigType,
+    ret: ?*Node,
+    pos: u32,
+};
+
+pub const FuncDecl = struct {
+    name: *Node align(8),
+    attrs: []*Attribute,
+    params: []const *FuncParam,
+    ret: ?*Node,
+    hidden: bool,
+    stmts: []*Node,
+    sig_t: FuncSigType,
+    pos: u32,
+};
+
+pub const FuncParam = struct {
+    name_pos: u32 align(8),
+    name_len: u32,
+    typeSpec: ?*Node,
+};
+
+pub const UseAlias = struct {
+    name: *Node align(8),
+    target: *Node,
+    pos: u32,
+};
+
+pub const TypeAliasDecl = struct {
+    name: *Node align(8),
+    typeSpec: *Node,
+    hidden: bool,
+    pos: u32,
+};
+
+pub const CustomDecl = struct {
+    name: *Node align(8),
+    attrs: []*Attribute,
+    hidden: bool,
+    funcs: []*FuncDecl,
+    pos: u32,
+};
+
+pub const DistinctDecl = struct {
+    name: *Node align(8),
+    attrs: []*Attribute,
+    target: *Node,
+    hidden: bool,
+    funcs: []*FuncDecl,
+    pos: u32,
+};
+
+pub const Field = struct {
+    name: *Node align(8),
+    typeSpec: *Node,
+    hidden: bool,
+};
+
+pub const TableDecl = struct {
+    name: *Node align(8),
+    attrs: []*Attribute,
+    fields: []*Node,
+    funcs: []*FuncDecl,
+    pos: u32,
+};
+
+pub const ObjectDecl = struct {
+    /// If unnamed, this points to the *Sym.
+    name: ?*Node align(8),
+    attrs: []*Attribute,
+    fields: []*Field,
+    funcs: []*FuncDecl,
+    unnamed: bool,
+    pos: u32,
+};
+
+pub const StaticVarDecl = struct {
+    name: *Node align(8),
+    attrs: []*Attribute,
+    typeSpec: ?*Node,
+    right: ?*Node,
+    typed: bool,
+    // Declared with `.` prefix.
+    root: bool,
+    hidden: bool,
+    pos: u32,
+};
+
+pub const VarDecl = struct {
+    name: *Node align(8),
+    typeSpec: ?*Node,
+    right: *Node,
+    typed: bool,
+    pos: u32
+};
+
+pub const EnumMember = struct {
+    name: *Node align(8),
+    typeSpec: ?*Node,
+    pos: u32,
+};
+
+pub const EnumDecl = struct {
+    name: *Node align(8),
+    members: []*EnumMember,
+    isChoiceType: bool,
+    hidden: bool,
+    pos: u32,
+};
+
+const WhileInfStmt = struct {
+    stmts: []*Node align(8),
+    pos: u32,
+};
+
+const WhileCondStmt = struct {
+    cond: *Node align(8),
+    stmts: []const *Node,
+    pos: u32,
+};
+
+const WhileOptStmt = struct {
+    opt: *Node align(8),
+    capture: *Node,
+    stmts: []const *Node,
+    pos: u32,
+};
+
+const ForRangeStmt = struct {
+    start: *Node align(8),
+    end: *Node,
+    each: ?*Node,
+    increment: bool,
+    stmts: []*Node,
+    pos: u32,
+};
+
+const ForIterStmt = struct {
+    iterable: *Node align(8),
+    each: ?*Node,
+    count: ?*Node,
+    stmts: []const *Node,
+    pos: u32,
+};
+
+const SemaSym = struct {
+    sym: *cy.Sym align(8),
+};
+
+pub const SeqDestructure = struct {
+    args: []*Node align(8),
+    pos: u32,
+};
+
+const Specialization = struct {
+    args: []*Node align(8),
+    decl: *Node,
+    pos: u32,
+};
+
+pub const TemplateDecl = struct {
+    params: []*FuncParam align(8),
+    decl: *Node,
+    hidden: bool,
+    pos: u32,
+};
+
+const Range = struct {
+    start: ?*Node align(8),
+    end: ?*Node,
+    inc: bool,
+    pos: u32,
+};
+
+const IfExpr = struct {
+    cond: *Node align(8),
+    body: *Node,
+    else_expr: *Node,
+    pos: u32,
+};
+
+pub const StringTemplate = struct {
+    // Begins with a string lit and alternates between expr and string lits.
+    parts: []*Node align(8),
 };
 
 const FuncSigType = enum(u8) {
@@ -479,62 +518,216 @@ const FuncSigType = enum(u8) {
     infer,
 };
 
-/// TODO: See if separating `head`, `srcPos`, and `data` improves perf for a large project.
+fn NodeData(comptime node_t: NodeType) type {
+    return switch (node_t) {
+        .null           => Node,
+        .accessExpr     => AccessExpr,
+        .all            => Token,
+        .arrayLit       => ArrayLit,
+        .array_expr     => ArrayExpr,
+        .array_init     => ArrayInit,
+        .assignStmt     => AssignStmt,
+        .attribute      => Attribute,
+        .await_expr     => void,
+        .binExpr        => BinExpr,
+        .binLit         => Span,
+        .breakStmt      => Token,
+        .caseBlock      => CaseBlock,
+        .callExpr       => CallExpr,
+        .castExpr       => CastExpr,
+        .catchStmt      => CatchStmt,
+        .coinit         => Coinit,
+        .comptimeExpr   => ComptimeExpr,
+        .comptimeStmt   => ComptimeStmt,
+        .continueStmt   => Token,
+        .coresume       => Coresume,
+        .coyield        => Token,
+        .custom_decl    => CustomDecl,
+        .decLit         => Span,
+        .distinct_decl  => DistinctDecl,
+        .dot_lit        => Span,
+        .else_block     => ElseBlock,
+        .enumDecl       => EnumDecl,
+        .enumMember     => EnumMember,
+        .error_lit      => Span,
+        .expandOpt      => ExpandOpt,
+        .exprStmt       => ExprStmt,
+        .falseLit       => Token,
+        .forIterStmt    => ForIterStmt,
+        .forRangeStmt   => ForRangeStmt,
+        .floatLit       => Span,
+        .funcDecl       => FuncDecl,
+        .funcParam      => FuncParam,
+        .group          => Group,
+        .hexLit         => Span,
+        .ident          => Span,
+        .if_expr        => IfExpr,
+        .if_stmt        => IfStmt,
+        .if_unwrap_stmt => IfUnwrapStmt,
+        .import_stmt    => ImportStmt,
+        .keyValue       => KeyValue,
+        .label_decl     => void,
+        .lambda_expr    => LambdaExpr,
+        .lambda_multi   => LambdaExpr,
+        .localDecl      => VarDecl,
+        .name_path      => NamePath,
+        .namedArg       => NamedArg,
+        .noneLit        => Token,
+        .objectDecl     => ObjectDecl,
+        .objectField    => Field,
+        .octLit         => Span,
+        .opAssignStmt   => OpAssignStmt,
+        .passStmt       => Token,
+        .range          => Range,
+        .raw_string_lit => Span,
+        .recordLit      => RecordLit,
+        .record_expr    => RecordExpr,
+        .returnExprStmt => ReturnExprStmt,
+        .returnStmt     => Token,
+        .root           => Root,
+        .runeLit        => Span,
+        .semaSym        => SemaSym,
+        .seqDestructure => SeqDestructure,
+        .specialization => Specialization,
+        .staticDecl     => StaticVarDecl,
+        .stringLit      => Span,
+        .stringTemplate => StringTemplate,
+        .structDecl     => ObjectDecl,
+        .switchExpr     => SwitchBlock,
+        .switchStmt     => SwitchBlock,
+        .symbol_lit     => Span,
+        .table_decl     => TableDecl,
+        .throwExpr      => ThrowExpr,
+        .trueLit        => Token,
+        .tryExpr        => TryExpr,
+        .tryStmt        => TryStmt,
+        .typeAliasDecl  => TypeAliasDecl,
+        .template       => TemplateDecl,
+        .unary_expr     => Unary,
+        .unwrap         => Unwrap,
+        .unwrap_or      => UnwrapOr,
+        .use_alias      => UseAlias,
+        .void           => Token,
+        .whileCondStmt  => WhileCondStmt,
+        .whileInfStmt   => WhileInfStmt,
+        .whileOptStmt   => WhileOptStmt,
+    };
+}
+
 pub const Node = struct {
-    head: NodeHead,
+    dummy: u8 align(8) = undefined,
 
-    // Can be repurposed for secondary node data:
-    // funcHeader.ret NodeId
-    srcPos: u32,
-
-    data: NodeData,
-
-    pub fn @"type"(self: Node) NodeType {
-        return self.head.type;
+    pub fn @"type"(self: *Node) NodeType {
+        return @as(*NodeType, @ptrFromInt(@intFromPtr(self) - 1)).*;
     }
 
-    pub fn next(self: Node) NodeId {
-        return self.head.data.next;
+    pub fn setType(self: *Node, node_t: NodeType) void {
+        @as(*NodeType, @ptrFromInt(@intFromPtr(self) - 1)).* = node_t;
     }
 
-    pub fn forIterHeader_count(self: Node) NodeId {
-        return self.head.data.forIterHeader.count;
+    pub fn cast(self: *Node, comptime node_t: NodeType) *NodeData(node_t) {
+        if (cy.Trace) {
+            if (self.type() != node_t) {
+                std.debug.panic("Expected {}, found {}.", .{node_t, self.type()});
+            }
+        }
+        return @ptrCast(@alignCast(self));
     }
 
-    pub fn funcDecl_header(self: Node) NodeId {
-        return self.data.func.header;
-    }
-
-    pub fn funcHeader_name(self: Node) NodeId {
-        return self.data.funcHeader.name;
-    }
-
-    pub fn funcHeader_ret(self: Node) NodeId {
-        return self.srcPos;
-    }
-
-    pub fn funcHeader_modHead(self: Node) NodeId {
-        return self.head.data.funcHeader.modHead;
-    }
-
-    pub fn root_bodyHead(self: Node) NodeId {
-        return self.data.root.bodyHead;
-    }
-
-    pub fn exprStmt_child(self: Node) NodeId {
-        return self.data.exprStmt.child; 
-    }
-
-    pub fn recordLit_argHead(self: Node) NodeId {
-        return self.data.recordLit.argHead;
-    }
-
-    pub fn keyValue_key(self: Node) NodeId {
-        return self.data.keyValue.key;
-    }
-
-    pub fn keyValue_value(self: Node) NodeId {
-        return self.data.keyValue.value;
+    pub fn pos(self: *Node) u32 {
+        return switch (self.type()) {
+            .null           => cy.NullId,
+            .all            => self.cast(.all).pos,
+            .accessExpr     => self.cast(.accessExpr).left.pos(),
+            .arrayLit       => self.cast(.arrayLit).pos,
+            .array_expr     => self.cast(.array_expr).left.pos(),
+            .array_init     => self.cast(.array_init).left.pos(),
+            .assignStmt     => self.cast(.assignStmt).left.pos(),
+            .attribute      => self.cast(.attribute).pos,
+            .await_expr     => cy.NullId,
+            .binExpr        => self.cast(.binExpr).op_pos,
+            .binLit         => self.cast(.binLit).pos,
+            .breakStmt      => self.cast(.breakStmt).pos,
+            .callExpr       => self.cast(.callExpr).callee.pos(),
+            .caseBlock      => self.cast(.caseBlock).pos,
+            .castExpr       => self.cast(.castExpr).expr.pos(),
+            .catchStmt      => self.cast(.catchStmt).pos,
+            .coinit         => self.cast(.coinit).pos,
+            .comptimeExpr   => self.cast(.comptimeExpr).child.pos()-1,
+            .comptimeStmt   => self.cast(.comptimeStmt).pos,
+            .continueStmt   => self.cast(.continueStmt).pos,
+            .coresume       => self.cast(.coresume).pos,
+            .coyield        => self.cast(.coyield).pos,
+            .custom_decl    => self.cast(.custom_decl).pos,
+            .decLit         => self.cast(.decLit).pos,
+            .distinct_decl  => self.cast(.distinct_decl).pos,
+            .dot_lit        => self.cast(.dot_lit).pos-1,
+            .else_block     => self.cast(.else_block).pos,
+            .enumDecl       => self.cast(.enumDecl).pos,
+            .enumMember     => self.cast(.enumMember).name.pos(),
+            .error_lit      => self.cast(.error_lit).pos-6,
+            .expandOpt      => self.cast(.expandOpt).pos,
+            .exprStmt       => self.cast(.exprStmt).child.pos(),
+            .falseLit       => self.cast(.falseLit).pos,
+            .floatLit       => self.cast(.floatLit).pos,
+            .forIterStmt    => self.cast(.forIterStmt).pos,
+            .forRangeStmt   => self.cast(.forRangeStmt).pos,
+            .funcDecl       => self.cast(.funcDecl).pos,
+            .funcParam      => self.cast(.funcParam).name_pos,
+            .group          => self.cast(.group).pos,
+            .hexLit         => self.cast(.hexLit).pos,
+            .ident          => self.cast(.ident).pos,
+            .if_expr        => self.cast(.if_expr).pos,
+            .if_stmt        => self.cast(.if_stmt).pos,
+            .if_unwrap_stmt => self.cast(.if_unwrap_stmt).pos,
+            .keyValue       => self.cast(.keyValue).key.pos(),
+            .import_stmt    => self.cast(.import_stmt).pos,
+            .label_decl     => cy.NullId,
+            .lambda_expr    => self.cast(.lambda_expr).pos,
+            .lambda_multi   => self.cast(.lambda_multi).pos,
+            .localDecl      => self.cast(.localDecl).pos,
+            .name_path      => self.cast(.name_path).path[0].pos(),
+            .namedArg       => self.cast(.namedArg).name_pos,
+            .noneLit        => self.cast(.noneLit).pos,
+            .objectDecl     => self.cast(.objectDecl).pos,
+            .objectField    => self.cast(.objectField).name.pos(),
+            .octLit         => self.cast(.octLit).pos,
+            .opAssignStmt   => self.cast(.opAssignStmt).left.pos(),
+            .passStmt       => self.cast(.passStmt).pos,
+            .range          => self.cast(.range).pos,
+            .raw_string_lit => self.cast(.raw_string_lit).pos,
+            .record_expr    => self.cast(.record_expr).left.pos(),
+            .recordLit      => self.cast(.recordLit).pos,
+            .returnExprStmt => self.cast(.returnExprStmt).pos,
+            .returnStmt     => self.cast(.returnStmt).pos,
+            .root           => self.cast(.root).stmts[0].pos(),
+            .runeLit        => self.cast(.runeLit).pos,
+            .seqDestructure => self.cast(.seqDestructure).pos,
+            .semaSym        => cy.NullId,
+            .specialization => self.cast(.specialization).pos,
+            .staticDecl     => self.cast(.staticDecl).pos,
+            .stringLit      => self.cast(.stringLit).pos,
+            .stringTemplate => self.cast(.stringTemplate).parts[0].pos(),
+            .structDecl     => self.cast(.structDecl).pos,
+            .switchExpr     => self.cast(.switchExpr).pos,
+            .switchStmt     => self.cast(.switchStmt).pos,
+            .symbol_lit     => self.cast(.symbol_lit).pos,
+            .table_decl     => self.cast(.table_decl).pos,
+            .template       => self.cast(.template).pos,
+            .throwExpr      => self.cast(.throwExpr).pos,
+            .trueLit        => self.cast(.trueLit).pos,
+            .tryExpr        => self.cast(.tryExpr).pos,
+            .tryStmt        => self.cast(.tryStmt).pos,
+            .typeAliasDecl  => self.cast(.typeAliasDecl).pos,
+            .unary_expr     => self.cast(.unary_expr).child.pos()-1,
+            .unwrap         => self.cast(.unwrap).opt.pos(),
+            .unwrap_or      => self.cast(.unwrap_or).opt.pos(),
+            .use_alias      => self.cast(.use_alias).pos,
+            .void           => self.cast(.void).pos,
+            .whileInfStmt   => self.cast(.whileInfStmt).pos,
+            .whileCondStmt  => self.cast(.whileCondStmt).pos,
+            .whileOptStmt   => self.cast(.whileOptStmt).pos,
+        };
     }
 };
 
@@ -604,20 +797,14 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    if (builtin.mode == .ReleaseFast) {
-        try t.eq(@sizeOf(NodeHead), 4);
-        try t.eq(@sizeOf(NodeData), 8);
-        try t.eq(@sizeOf(Node), 16);
-    } else {
-        try t.eq(@sizeOf(NodeHead), 4);
-        try t.eq(@sizeOf(NodeData), 16);
-        try t.eq(@sizeOf(Node), 24);
-    }
 }
 
 pub const Ast = struct {
+    node_alloc_handle: std.heap.ArenaAllocator,
+    node_alloc: std.mem.Allocator,
+    root: ?*Root,
+    null_node: *Node,
     src: []const u8,
-    nodes: std.ArrayListUnmanaged(Node),
 
     /// Generated source literals from templates or CTE.
     srcGen: std.ArrayListUnmanaged(u8),
@@ -631,20 +818,23 @@ pub const Ast = struct {
     /// Optionally parsed by tokenizer.
     comments: std.ArrayListUnmanaged(cy.IndexSlice(u32)),
 
-    pub fn init(alloc: std.mem.Allocator, src: []const u8) !Ast {
-        var ast = Ast{
+    pub fn init(self: *Ast, alloc: std.mem.Allocator, src: []const u8) !void {
+        self.* = .{
+            .node_alloc_handle = std.heap.ArenaAllocator.init(alloc),
+            .node_alloc = undefined,
+            .root = null,
+            .null_node = undefined,
             .src = src,
-            .nodes = .{},
             .srcGen = .{},
             .strs = .{},
             .comments = .{},
         };
-        try ast.clearNodes(alloc);
-        return ast;
+        self.node_alloc = self.node_alloc_handle.allocator();
+        try self.clearNodes();
     }
 
     pub fn deinit(self: *Ast, alloc: std.mem.Allocator) void {
-        self.nodes.deinit(alloc);
+        self.node_alloc_handle.deinit();
         self.srcGen.deinit(alloc);
         for (self.strs.items) |str| {
             alloc.free(str);
@@ -653,110 +843,76 @@ pub const Ast = struct {
         self.comments.deinit(alloc);
     }
 
-    pub fn clearNodes(self: *Ast, alloc: std.mem.Allocator) !void {
-        self.nodes.clearRetainingCapacity();
-        // Insert dummy for cy.NullNode.
-        try self.nodes.append(alloc, .{
-            .head = .{ .type = .null, .data = undefined },
-            .data = undefined,
-            .srcPos = 0,
-        });
+    pub fn clearNodes(self: *Ast) !void {
+        _ = self.node_alloc_handle.reset(.retain_capacity);
+        self.null_node = try self.newEmptyNode(.null);
     }
 
     pub fn view(self: *const Ast) AstView {
         return .{
+            .root = self.root,
+            .null_node = self.null_node,
             .src = self.src,
             .srcGen = self.srcGen.items,
-            .nodes = self.nodes.items,
         };
     }
 
-    pub fn pushNode(self: *Ast, alloc: std.mem.Allocator, node_t: cy.NodeType, srcPos: u32) !NodeId {
-        const id = self.nodes.items.len;
-        try self.nodes.append(alloc, .{
-            .head = .{
-                .type = node_t,
-                .data = .{ .next = cy.NullNode },
-            }, 
-            .data = .{ .uninit = {} },
-            .srcPos = srcPos,
-        });
-        return @intCast(id);
+    pub fn dupeNodes(self: *Ast, nodes: []const *Node) ![]*Node {
+        return self.node_alloc.dupe(*Node, nodes);
     }
 
-    pub fn genSpanNode(self: *Ast, alloc: std.mem.Allocator, node_t: cy.NodeType, str: []const u8, srcPos: ?u32) !NodeId {
+    pub fn newEmptyNode(self: *Ast, comptime node_t: NodeType) !*NodeData(node_t) {
+        const Align = @alignOf(NodeData(node_t));
+        const slice = try self.node_alloc.alignedAlloc(u8, Align, @sizeOf(NodeData(node_t)) + Align);
+        @as(*NodeType, @ptrFromInt(@intFromPtr(slice.ptr) + Align - 1)).* = node_t;
+        return @ptrFromInt(@intFromPtr(slice.ptr) + Align);
+    }
+
+    pub fn newNode(self: *Ast, comptime node_t: NodeType, data: NodeData(node_t)) !*NodeData(node_t) {
+        const n = try self.newEmptyNode(node_t);
+        n.* = data;
+        return n;
+    }
+
+    pub fn newNodeErase(self: *Ast, comptime node_t: NodeType, data: NodeData(node_t)) !*Node {
+        const n = try self.newEmptyNode(node_t);
+        n.* = data;
+        return @ptrCast(n);
+    }
+
+    pub fn genSpanNode(self: *Ast, alloc: std.mem.Allocator, comptime node_t: NodeType, str: []const u8) !*Span {
         const pos = self.srcGen.items.len;
         try self.srcGen.appendSlice(alloc, str);
-        const id = self.nodes.items.len;
-        try self.nodes.append(alloc, .{
-            .head = .{
-                .type = node_t,
-                .data = .{ .next = cy.NullNode },
-            }, 
-            .data = .{ .span = .{
-                .pos = @intCast(pos),
-                .len = @intCast(str.len),
-                .srcGen = true,
-            }},
-            .srcPos = srcPos orelse cy.NullId,
-        });
-        return @intCast(id);
+        const span = try self.newSpanNode(node_t, pos, pos + str.len);
+        span.srcGen = true;
+        return span;
     }
 
-    pub fn pushSpanNode(self: *Ast, alloc: std.mem.Allocator, node_t: cy.NodeType, srcPos: u32, srcEnd: u32) !NodeId {
-        const id = self.nodes.items.len;
-        try self.nodes.append(alloc, .{
-            .head = .{
-                .type = node_t,
-                .data = .{ .next = cy.NullNode },
-            }, 
-            .data = .{ .span = .{
-                .pos = srcPos,
-                .len = @intCast(srcEnd-srcPos),
-                .srcGen = false,
-            }},
-            .srcPos = srcPos,
-        });
-        return @intCast(id);
+    pub fn newSpanNode(self: *Ast, comptime node_t: NodeType, src_pos: usize, src_end: usize) !*Span {
+        const span = try self.newEmptyNode(node_t);
+        span.* = .{
+            .pos = @intCast(src_pos),
+            .len = @intCast(src_end-src_pos),
+            .srcGen = false,
+        };
+        return span;
     }
 
-    pub fn setNodeData(self: *Ast, id: NodeId, data: NodeData) void {
-        self.nodes.items[id].data = data;
-    }
-
-    pub fn setNextNode(self: *Ast, id: NodeId, next: NodeId) void {
-        self.nodes.items[id].head.data = .{ .next = @intCast(next) };
-    }
-    
-    pub fn node(self: Ast, nodeId: NodeId) Node {
-        return self.nodes.items[nodeId];
-    }
-
-    pub fn nodePtr(self: Ast, nodeId: NodeId) *Node {
-        return &self.nodes.items[nodeId];
-    }
-
-    pub fn nodeType(self: Ast, nodeId: NodeId) NodeType {
-        return self.nodes.items[nodeId].head.type;
-    }
-
-    pub fn nodePos(self: Ast, nodeId: NodeId) u32 {
-        return self.nodes.items[nodeId].srcPos;
-    }
-    
-    pub fn nodeString(self: Ast, n: Node) []const u8 {
-        if (n.data.span.srcGen) {
-            return self.srcGen.items[n.data.span.pos..n.data.span.pos+n.data.span.len];
+    pub fn nodeString(self: Ast, n: *Node) []const u8 {
+        const span: *Span = @ptrCast(@alignCast(n));
+        if (span.srcGen) {
+            return self.srcGen.items[span.pos..span.pos+span.len];
         } else {
-            return self.src[n.data.span.pos..n.data.span.pos+n.data.span.len];
+            return self.src[span.pos..span.pos+span.len];
         }
     }
 };
 
 pub const AstView = struct {
+    root: ?*Root,
+    null_node: *Node,
     src: []const u8,
     srcGen: []const u8,
-    nodes: []const Node,
 
     /// Find the line/col in `src` at `pos`.
     /// Iterating tokens could be faster but it would still require counting new lines for skipped segments like comments, multiline strings.
@@ -778,69 +934,58 @@ pub const AstView = struct {
         outLineStart.* = lineStart;
     }
 
-    pub fn node(self: AstView, nodeId: NodeId) Node {
-        return self.nodes[nodeId];
-    }
-
-    pub fn nodeType(self: AstView, nodeId: NodeId) NodeType {
-        return self.nodes[nodeId].head.type;
-    }
-
-    pub fn nodePos(self: AstView, nodeId: NodeId) u32 {
-        return self.nodes[nodeId].srcPos;
-    }
-
-    pub fn nodeStringById(self: AstView, nodeId: cy.NodeId) []const u8 {
-        return self.nodeString(self.nodes[nodeId]);
-    }
-
-    pub fn declNamePath(self: AstView, node_id: cy.NodeId) ![]const u8 {
-        const n = self.node(node_id);
+    pub fn declNamePath(self: AstView, n: *Node) ![]const u8 {
         switch (n.type()) {
-            .table_decl,
-            .structDecl,
+            .table_decl => {
+                const object_decl = n.cast(.table_decl);
+                return self.nodeString(object_decl.name);
+            },
+            .structDecl => {
+                const object_decl = n.cast(.structDecl);
+                if (object_decl.name) |name| {
+                    return self.nodeString(name);
+                } else return "";
+            },
             .objectDecl => {
-                const header = self.node(n.data.objectDecl.header);
-                if (header.data.objectHeader.name == cy.NullNode) {
-                    return "";
-                }
-                return self.nodeStringById(header.data.objectHeader.name);
+                const object_decl = n.cast(.objectDecl);
+                if (object_decl.name) |name| {
+                    return self.nodeString(name);
+                } else return "";
             },
             .custom_decl => {
-                const header = self.node(n.data.custom_decl.header);
-                return self.nodeStringById(header.data.custom_header.name);
+                const custom_decl = n.cast(.custom_decl);
+                return self.nodeString(custom_decl.name);
             },
             .distinct_decl => {
-                const header = self.node(n.data.distinct_decl.header);
-                return self.nodeStringById(header.data.distinct_header.name);
+                const distinct_decl = n.cast(.distinct_decl);
+                return self.nodeString(distinct_decl.name);
             },
             .enumDecl => {
-                return self.nodeStringById(n.data.enumDecl.name);
+                const enum_decl = n.cast(.enumDecl);
+                return self.nodeString(enum_decl.name);
             },
             .import_stmt => {
-                const name_n = self.node(n.data.import_stmt.name);
-                if (name_n.type() == .all) {
+                const import_stmt = n.cast(.import_stmt);
+                if (import_stmt.name.type() == .all) {
                     return "*";
                 }
-                return self.nodeStringById(n.data.import_stmt.name);
+                return self.nodeString(import_stmt.name);
             },
             .use_alias => {
-                return self.nodeStringById(n.data.use_alias.name);
+                return self.nodeString(n.cast(.use_alias).name);
             },
             .template => {
-                return self.declNamePath(n.data.template.decl);
+                return self.declNamePath(n.cast(.template).decl);
             },
             .specialization => {
-                return self.declNamePath(n.data.specialization.decl);
+                return self.declNamePath(n.cast(.specialization).decl);
             },
             .staticDecl => {
-                const varSpec = self.node(n.data.staticDecl.varSpec);
-                return self.getNamePathInfo(varSpec.data.varSpec.name).name_path;
+                return self.getNamePathInfo(n.cast(.staticDecl).name).name_path;
             },
-            .typeAliasDecl => return self.nodeStringById(n.data.typeAliasDecl.name),
+            .typeAliasDecl => return self.nodeString(n.cast(.typeAliasDecl).name),
             .funcDecl => {
-                const header = self.node(n.data.func.header);
-                return self.getNamePathInfo(header.data.funcHeader.name).name_path;
+                return self.getNamePathInfo(n.cast(.funcDecl).name).name_path;
             },
             else => {
                 log.tracev("{}", .{n.type()});
@@ -849,65 +994,59 @@ pub const AstView = struct {
         }
     }
 
-    pub fn nodeString(self: AstView, n: cy.Node) []const u8 {
-        if (n.data.span.srcGen) {
-            return self.srcGen[n.data.span.pos..n.data.span.pos+n.data.span.len];
+    pub fn funcParamName(self: AstView, param: *FuncParam) []const u8 {
+        return self.src[param.name_pos..param.name_pos+param.name_len];
+    }
+
+    pub fn nodeString(self: AstView, n: *Node) []const u8 {
+        const span: *Span = @ptrCast(@alignCast(n));
+        if (span.srcGen) {
+            return self.srcGen[span.pos..span.pos+span.len];
         } else {
-            return self.src[n.data.span.pos..n.data.span.pos+n.data.span.len];
+            return self.src[span.pos..span.pos+span.len];
         }
     }
 
-    pub fn nodeStringAndDelim(self: AstView, n: cy.Node) []const u8 {
-        if (n.data.span.srcGen) {
-            return self.srcGen[n.data.span.pos-1..n.data.span.pos+n.data.span.len+1];
+    pub fn nodeStringAndDelim(self: AstView, n: *Node) []const u8 {
+        const span: *Span = @ptrCast(n);
+        if (span.srcGen) {
+            return self.srcGen[span.pos-1..span.pos+span.len+1];
         } else {
-            return self.src[n.data.span.pos-1..n.data.span.pos+n.data.span.len+1];
+            return self.src[span.pos-1..span.pos+span.len+1];
         } 
     }
 
-    pub fn isMethodDecl(self: AstView, func_head: cy.Node) bool {
-        if (func_head.data.funcHeader.paramHead == cy.NullNode) {
+    pub fn isMethodDecl(self: AstView, decl: *FuncDecl) bool {
+        if (decl.params.len == 0) {
             return false;
         }
-        const param = self.node(func_head.data.funcHeader.paramHead);
-        const param_name = self.nodeStringById(param.data.funcParam.name);
+        const param_name = self.funcParamName(decl.params[0]);
         return std.mem.eql(u8, param_name, "self");
     }
 
-    pub fn getNamePathInfo(self: AstView, name: cy.NodeId) NamePathInfo {
-        const name_n = self.node(name);
-        if (name_n.next() == cy.NullNode) {
-            const base = self.nodeString(name_n);
+    pub fn getNamePathInfo(self: AstView, name: *Node) NamePathInfo {
+        if (name.type() != .name_path) {
+            const base = self.nodeString(name);
             return .{
                 .name_path = base,
                 .base_name = base,
                 .base = name,
             };
         } else {
-            const last = self.getLastNameNode(name_n.next());
-            const last_n = self.node(last);
-            const base = self.nodeString(last_n);
+            const path = name.cast(.name_path).path;
+            const last = path[path.len-1];
+            const base = self.nodeString(last);
 
-            var end = last_n.srcPos + base.len;
-            if (last_n.type() == .raw_string_lit) {
+            var end = last.pos() + base.len;
+            if (last.type() == .raw_string_lit) {
                 end += 1;
             }
             return .{
-                .name_path = self.src[name_n.srcPos..end],
+                .name_path = self.src[name.pos()..end],
                 .base_name = base,
                 .base = last,
             };
         }
-    }
-
-    pub fn getLastNameNode(self: AstView, nameId: cy.NodeId) cy.NodeId {
-        var name = self.nodes[nameId];
-        var curId = nameId;
-        while (name.next() != cy.NullNode) {
-            name = self.nodes[name.next()];
-            curId = name.next();
-        }
-        return curId;
     }
 
     // Returns whether two lines are connected by a new line and optional indentation.
@@ -937,7 +1076,7 @@ pub const AstView = struct {
 pub const NamePathInfo = struct {
     name_path: []const u8,
     base_name: []const u8,
-    base: cy.NodeId,
+    base: *Node,
 };
 
 const EncodeEvent = enum {
@@ -987,109 +1126,104 @@ fn getBinOpStr(op: BinaryExprOp) []const u8 {
 /// provide a quick context summary next to generated code.
 pub const Encoder = struct {
     ast: AstView,
-    eventHandler: ?*const fn (Encoder, EncodeEvent, cy.NodeId) void = null,
+    eventHandler: ?*const fn (Encoder, EncodeEvent, *Node) void = null,
 
-    pub fn allocFmt(self: Encoder, alloc: std.mem.Allocator, node: cy.NodeId) ![]const u8 {
-        if (node == cy.NullNode) {
+    pub fn allocFmt(self: Encoder, alloc: std.mem.Allocator, node: ?*Node) ![]const u8 {
+        if (node == null) {
             return "";
         }
         var buf: std.ArrayListUnmanaged(u8) = .{};
-        try self.write(buf.writer(alloc), node);
+        try self.write(buf.writer(alloc), node.?);
         return buf.toOwnedSlice(alloc);
     }
 
-    pub fn format(self: Encoder, nodeId: cy.NodeId, buf: []u8) ![]const u8 {
-        if (nodeId == cy.NullNode) {
+    pub fn format(self: Encoder, node: ?*Node, buf: []u8) ![]const u8 {
+        if (node == null) {
             return "";
         }
         var fbuf = std.io.fixedBufferStream(buf);
-        try self.write(fbuf.writer(), nodeId);
+        try self.write(fbuf.writer(), node.?);
         return fbuf.getWritten();
     }
 
-    pub fn write(self: Encoder, w: anytype, nodeId: cy.NodeId) !void {
-        const node = self.ast.node(nodeId);
+    pub fn write(self: Encoder, w: anytype, node: *Node) !void {
         switch (node.type()) {
             .funcDecl => {
-                const header = self.ast.node(node.data.func.header);
+                const decl = node.cast(.funcDecl);
                 try w.writeAll("func ");
-                try self.write(w, header.data.funcHeader.name);
+                try self.write(w, decl.name);
                 try w.writeAll("(");
-                var paramId: cy.NodeId = header.data.funcHeader.paramHead;
-                if (paramId != cy.NullNode) {
-                    try self.write(w, paramId);
-                    paramId = self.ast.node(paramId).next();
-
-                    while (paramId != cy.NullNode) {
+                if (decl.params.len > 0) {
+                    try self.write(w, @ptrCast(decl.params[0]));
+                    for (decl.params[1..]) |param| {
                         try w.writeAll(", ");
-                        try self.write(w, paramId);
-                        paramId = self.ast.node(paramId).next();
+                        try self.write(w, @ptrCast(param));
                     }
                 }
                 try w.writeAll(")");
-                if (header.funcHeader_ret() != cy.NullNode) {
+                if (decl.ret) |ret| {
                     try w.writeAll(" ");
-                    try self.write(w, header.funcHeader_ret());
+                    try self.write(w, ret);
                 }
                 // node.data.func.bodyHead
             },
             .funcParam => {
-                const param = self.ast.node(nodeId);
-                try self.write(w, param.data.funcParam.name);
-                if (param.data.funcParam.typeSpec != cy.NullNode) {
+                const param = node.cast(.funcParam);
+                try w.writeAll(self.ast.funcParamName(param));
+                if (param.typeSpec) |type_spec| {
                     try w.writeAll(" ");
-                    try self.write(w, param.data.funcParam.typeSpec);
+                    try self.write(w, type_spec);
                 }
             },
             .assignStmt => {
-                try self.write(w, node.data.assignStmt.left);
+                const stmt = node.cast(.assignStmt);
+                try self.write(w, stmt.left);
                 try w.writeByte('=');
-                try self.write(w, node.data.assignStmt.right);
+                try self.write(w, stmt.right);
             },
             .opAssignStmt => {
-                try self.write(w, node.data.opAssignStmt.left);
-                try w.writeAll(getBinOpStr(node.data.opAssignStmt.op));
+                const stmt = node.cast(.opAssignStmt);
+                try self.write(w, stmt.left);
+                try w.writeAll(getBinOpStr(stmt.op));
                 try w.writeByte('=');
-                try self.write(w, node.data.opAssignStmt.right);
+                try self.write(w, stmt.right);
             },
             .unary_expr => {
-                const op = node.data.unary.op;
-                try w.writeAll(getUnOpStr(op));
-                try self.write(w, node.data.unary.child);
+                const expr = node.cast(.unary_expr);
+                try w.writeAll(getUnOpStr(expr.op));
+                try self.write(w, expr.child);
             },
             .binExpr => {
-                try self.write(w, node.data.binExpr.left);
-                try w.writeAll(getBinOpStr(node.data.binExpr.op));
-                try self.write(w, node.data.binExpr.right);
+                const expr = node.cast(.binExpr);
+                try self.write(w, expr.left);
+                try w.writeAll(getBinOpStr(expr.op));
+                try self.write(w, expr.right);
             },
             .exprStmt => {
-                try self.write(w, node.data.exprStmt.child);
+                try self.write(w, node.cast(.exprStmt).child);
             },
             .if_expr => {
-                const ifBranch = self.ast.node(node.data.if_expr.if_branch);
-                try self.write(w, ifBranch.data.if_branch.cond);
+                const expr = node.cast(.if_expr);
+                try self.write(w, expr.cond);
                 try w.writeAll("?");
-                try self.write(w, ifBranch.data.if_branch.body_head);
+                try self.write(w, expr.body);
                 try w.writeAll(" else ");
-                try self.write(w, node.data.if_expr.else_expr);
+                try self.write(w, expr.else_expr);
             },
             .caseBlock => {
-                if (node.data.caseBlock.header == cy.NullNode) {
+                const block = node.cast(.caseBlock);
+                if (block.conds.len == 0) {
                     try w.writeAll("else");
                 } else {
-                    const header = self.ast.node(node.data.caseBlock.header);
-                    var cond = header.data.caseHeader.condHead;
-                    try self.write(w, cond);
-                    cond = self.ast.node(cond).next();
-                    while (cond != cy.NullNode) {
+                    try self.write(w, block.conds[0]);
+                    for (block.conds[1..]) |cond| {
                         try w.writeByte(',');
                         try self.write(w, cond);
-                        cond = self.ast.node(cond).next();
                     }
                 }
-                if (node.data.caseBlock.bodyIsExpr) {
+                if (block.bodyIsExpr) {
                     try w.writeAll("=>");
-                    try self.write(w, node.data.caseBlock.bodyHead);
+                    try self.write(w, @ptrCast(@alignCast(block.stmts.ptr)));
                 } else {
                     try w.writeAll(": ...");
                 }
@@ -1118,7 +1252,9 @@ pub const Encoder = struct {
             .hexLit,
             .binLit,
             .octLit,
-            .decLit,
+            .decLit => {
+                try w.writeAll(self.ast.nodeString(node));
+            },
             .ident => {
                 try w.writeAll(self.ast.nodeString(node));
             },
@@ -1129,94 +1265,102 @@ pub const Encoder = struct {
                 try w.writeAll(self.ast.nodeStringAndDelim(node));
             },
             .accessExpr => {
-                try self.write(w, node.data.accessExpr.left);
+                const expr = node.cast(.accessExpr);
+                try self.write(w, expr.left);
                 try w.writeByte('.');
-                try self.write(w, node.data.accessExpr.right);
+                try self.write(w, expr.right);
             },
             .group => {
                 try w.writeByte('(');
-                try self.write(w, node.data.group.child);
+                try self.write(w, node.cast(.group).child);
                 try w.writeByte(')');
             },
             .range => {
-                if (node.data.range.start != cy.NullNode) {
-                    try self.write(w, node.data.range.start);
+                const expr = node.cast(.range);
+                if (expr.start) |start| {
+                    try self.write(w, start);
                 }
                 try w.writeAll("..");
-                if (node.data.range.end != cy.NullNode) {
-                    try self.write(w, node.data.range.end);
+                if (expr.end) |end| {
+                    try self.write(w, end);
                 }
             },
             .array_expr => {
-                try self.write(w, node.data.array_expr.left);
+                const expr = node.cast(.array_expr);
+                try self.write(w, expr.left);
                 try w.writeByte('[');
-                if (node.data.array_expr.nargs > 0) {
-                    var arg: cy.NodeId = node.data.array_expr.arg_head;
-                    try self.write(w, arg);
-                    arg = self.ast.node(arg).next();
-                    while (arg != cy.NullNode) {
+                if (expr.args.len > 0) {
+                    try self.write(w, expr.args[0]);
+                    for (expr.args[1..]) |arg| {
                         try w.writeAll(", ");
                         try self.write(w, arg);
-                        arg = self.ast.node(arg).next();
                     }
                 }
                 try w.writeByte(']');
             },
             .record_expr => {
-                try self.write(w, node.data.record_expr.left);
-                try w.writeByte('{');
-                try self.write(w, node.data.record_expr.record);
-                try w.writeByte('}');
+                const expr = node.cast(.record_expr);
+                try self.write(w, expr.left);
+                try self.write(w, @ptrCast(expr.record));
             },
             .throwExpr => {
                 try w.writeAll("throw ");
-                try self.write(w, node.data.throwExpr.child);
+                try self.write(w, node.cast(.throwExpr).child);
             },
             .callExpr => {
-                try self.write(w, node.data.callExpr.callee);
+                const expr = node.cast(.callExpr);
+                try self.write(w, expr.callee);
 
                 try w.writeByte('(');
-                if (node.data.callExpr.numArgs > 0) {
-                    var argId: cy.NodeId = node.data.callExpr.argHead;
-                    try self.write(w, argId);
-                    argId = self.ast.node(argId).next();
-
-                    while (argId != cy.NullNode) {
+                if (expr.args.len > 0) {
+                    try self.write(w, expr.args[0]);
+                    for (expr.args[1..]) |arg| {
                         try w.writeAll(", ");
-                        try self.write(w, argId);
-                        argId = self.ast.node(argId).next();
+                        try self.write(w, arg);
                     }
                 }
                 try w.writeByte(')');
             },
             .tryExpr => {
+                const expr = node.cast(.tryExpr);
                 try w.writeAll("try ");
-                try self.write(w, node.data.tryExpr.expr);
-                if (node.data.tryExpr.catchExpr != cy.NullNode) {
+                try self.write(w, expr.expr);
+                if (expr.catchExpr) |catch_expr| {
                     try w.writeAll(" catch ");
-                    try self.write(w, node.data.tryExpr.catchExpr);
+                    try self.write(w, catch_expr);
+                }
+            },
+            .name_path => {
+                const path = node.cast(.name_path).path;
+                try self.write(w, path[0]);
+                for (path[1..]) |part| {
+                    try w.writeByte('.');
+                    try self.write(w, part);
                 }
             },
             .localDecl => {
-                if (node.data.localDecl.typed) {
+                const local_decl = node.cast(.localDecl);
+                if (local_decl.typed) {
                     try w.writeAll("var ");
                 } else {
                     try w.writeAll("let ");
                 }
-                try self.write(w, node.data.localDecl.varSpec);
+                try self.write(w, local_decl.name);
+                if (local_decl.typeSpec) |typeSpec| {
+                    try w.writeByte(' ');
+                    try self.write(w, typeSpec);
+                }
                 try w.writeByte('=');
-                try self.write(w, node.data.localDecl.right);
+                try self.write(w, local_decl.right);
             },
             .arrayLit => {
+                const expr = node.cast(.arrayLit);
                 try w.writeByte('[');
-                if (node.data.arrayLit.numArgs > 0) {
-                    var arg: cy.NodeId = node.data.arrayLit.argHead;
-                    try self.write(w, arg);
-                    arg = self.ast.node(arg).next();
-                    while (arg != cy.NullNode) {
+                if (expr.args.len > 0) {
+                    try self.write(w, expr.args[0]);
+                    for (expr.args[1..]) |arg| {
                         try w.writeAll(", ");
                         try self.write(w, arg);
-                        arg = self.ast.node(arg).next();
                     }
                 }
                 try w.writeByte(']');
@@ -1226,23 +1370,9 @@ pub const Encoder = struct {
                 try w.writeAll("...");
                 try w.writeByte('}');
             },
-            .varSpec => {
-                try self.write(w, node.data.varSpec.name);
-                if (node.data.varSpec.typeSpec != cy.NullNode) {
-                    try w.writeByte(' ');
-                    var cur = node.data.varSpec.typeSpec;
-                    try self.write(w, cur);
-                    cur = self.ast.node(cur).next();
-                    while (cur != cy.NullNode) {
-                        try w.writeByte('.');
-                        try self.write(w, cur);
-                        cur = self.ast.node(cur).next();
-                    }
-                }
-            },
             .expandOpt => {
                 try w.writeByte('?');
-                try self.write(w, node.data.expandOpt.param);
+                try self.write(w, node.cast(.expandOpt).param);
             },
             else => {
                 try w.writeByte('<');
@@ -1253,73 +1383,73 @@ pub const Encoder = struct {
     }
 };
 
-const VisitNode = packed struct {
-    nodeId: u31,
-    visited: bool,
-};
+// const VisitNode = packed struct {
+//     nodeId: u31,
+//     visited: bool,
+// };
 
-pub const Visitor = struct {
-    alloc: std.mem.Allocator,
-    ast: AstView,
-    stack: std.ArrayListUnmanaged(VisitNode),
+// pub const Visitor = struct {
+//     alloc: std.mem.Allocator,
+//     ast: AstView,
+//     stack: std.ArrayListUnmanaged(VisitNode),
 
-    pub fn deinit(self: *Visitor) void {
-        self.stack.deinit(self.alloc);
-    }
+//     pub fn deinit(self: *Visitor) void {
+//         self.stack.deinit(self.alloc);
+//     }
 
-    pub fn visit(self: *Visitor, rootId: cy.NodeId,
-        comptime C: type, ctx: C, visitFn: *const fn(ctx: C, nodeId: NodeId, enter: bool) bool) !void {
+//     pub fn visit(self: *Visitor, rootId: *Node,
+//         comptime C: type, ctx: C, visitFn: *const fn(ctx: C, nodeId: NodeId, enter: bool) bool) !void {
 
-        self.stack.clearRetainingCapacity();
-        try self.pushNode(rootId);
-        while (self.stack.items.len > 0) {
-            const vnode = &self.stack.items[self.stack.items.len-1];
-            if (!vnode.visited) {
-                if (visitFn(ctx, vnode.nodeId, true)) {
-                    vnode.visited = true;
-                    const node = self.ast.node(vnode.nodeId);
-                    switch (node.type()) {
-                        .objectField => {},
-                        .objectDecl => {
-                            try self.pushNodeList(node.data.objectDecl.funcHead, node.data.objectDecl.numFuncs);
-                            const header = self.ast.node(node.data.objectDecl.header);
-                            try self.pushNodeList(header.data.objectHeader.fieldHead, header.data.objectHeader.numFields);
-                        },
-                        else => {
-                            cy.rt.logZFmt("TODO: {}", .{node.type()});
-                            return error.TODO;
-                        }
-                    }
-                } else {
-                    self.stack.items.len -= 1;
-                }
-            } else {
-                _ = visitFn(ctx, vnode.nodeId, false);
-                self.stack.items.len -= 1;
-            }
-        }
-    }
+//         self.stack.clearRetainingCapacity();
+//         try self.pushNode(rootId);
+//         while (self.stack.items.len > 0) {
+//             const vnode = &self.stack.items[self.stack.items.len-1];
+//             if (!vnode.visited) {
+//                 if (visitFn(ctx, vnode.nodeId, true)) {
+//                     vnode.visited = true;
+//                     const node = self.ast.node(vnode.nodeId);
+//                     switch (node.type()) {
+//                         .objectField => {},
+//                         .objectDecl => {
+//                             try self.pushNodeList(node.data.objectDecl.funcHead, node.data.objectDecl.numFuncs);
+//                             const header = self.ast.node(node.data.objectDecl.header);
+//                             try self.pushNodeList(header.data.objectHeader.fieldHead, header.data.objectHeader.numFields);
+//                         },
+//                         else => {
+//                             cy.rt.logZFmt("TODO: {}", .{node.type()});
+//                             return error.TODO;
+//                         }
+//                     }
+//                 } else {
+//                     self.stack.items.len -= 1;
+//                 }
+//             } else {
+//                 _ = visitFn(ctx, vnode.nodeId, false);
+//                 self.stack.items.len -= 1;
+//             }
+//         }
+//     }
 
-    fn pushNode(self: *Visitor, nodeId: NodeId) !void {
-        try self.stack.append(self.alloc, .{
-            .nodeId = @intCast(nodeId),
-            .visited = false,
-        });
-    }
+//     fn pushNode(self: *Visitor, nodeId: NodeId) !void {
+//         try self.stack.append(self.alloc, .{
+//             .nodeId = @intCast(nodeId),
+//             .visited = false,
+//         });
+//     }
 
-    fn pushNodeList(self: *Visitor, head: NodeId, size: u32) !void {
-        try self.stack.ensureUnusedCapacity(self.alloc, size);
-        self.stack.items.len += size;
+//     fn pushNodeList(self: *Visitor, head: NodeId, size: u32) !void {
+//         try self.stack.ensureUnusedCapacity(self.alloc, size);
+//         self.stack.items.len += size;
 
-        var i: u32 = 0;
-        var cur = head;
-        while (cur != cy.NullNode) {
-            self.stack.items[self.stack.items.len-1-i] = .{
-                .nodeId = @intCast(cur),
-                .visited = false,
-            };
-            i += 1;
-            cur = self.ast.node(cur).next();
-        }
-    }
-};
+//         var i: u32 = 0;
+//         var cur = head;
+//         while (cur != cy.NullNode) {
+//             self.stack.items[self.stack.items.len-1-i] = .{
+//                 .nodeId = @intCast(cur),
+//                 .visited = false,
+//             };
+//             i += 1;
+//             cur = self.ast.node(cur).next();
+//         }
+//     }
+// };

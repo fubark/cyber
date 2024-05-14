@@ -15,6 +15,7 @@ const llvm_gen = @import("llvm_gen.zig");
 const bc_gen = @import("bc_gen.zig");
 const jitgen = @import("jit/gen.zig");
 const X64 = @import("jit/x64.zig");
+const ast = cy.ast;
 
 pub const ChunkId = u32;
 pub const SymId = u32;
@@ -39,7 +40,6 @@ pub const Chunk = struct {
     srcUri: []const u8,
 
     parser: cy.Parser,
-    parserAstRootId: cy.NodeId,
 
     /// Used for temp string building.
     tempBufU8: std.ArrayListUnmanaged(u8),
@@ -47,7 +47,7 @@ pub const Chunk = struct {
     /// Since nodes are currently processed recursively,
     /// set the current node so that error reporting has a better
     /// location context for helper methods that simply return no context errors.
-    curNodeId: cy.NodeId,
+    curNode: ?*ast.Node,
 
     in_ct_expr: bool,
 
@@ -133,7 +133,8 @@ pub const Chunk = struct {
     /// Codegen pass
     ///
     rega: cy.register.Allocator,
-    procs: std.ArrayListUnmanaged(bc_gen.Proc),
+    proc_stack: std.ArrayListUnmanaged(bc_gen.Proc),
+    procs: std.ArrayListUnmanaged([]const u8),
     blocks: std.ArrayListUnmanaged(bc_gen.Block),
     blockJumpStack: std.ArrayListUnmanaged(BlockJump),
 
@@ -200,8 +201,8 @@ pub const Chunk = struct {
     llvmFuncs: if (cy.hasJIT) []LLVM_Func else void, // One-to-one with `semaFuncDecls`
 
     /// Chunk owns `srcUri` and `src`.
-    pub fn init(c: *cy.Compiler, id: ChunkId, srcUri: []const u8, src: []const u8) !Chunk {
-        var new = Chunk{
+    pub fn init(self: *Chunk, c: *cy.Compiler, id: ChunkId, srcUri: []const u8, src: []const u8) !void {
+        self.* = .{
             .id = id,
             .alloc = c.alloc,
             .compiler = c,
@@ -211,11 +212,11 @@ pub const Chunk = struct {
             .ast = undefined,
             .srcUri = srcUri,
             .sym = undefined,
-            .parser = try cy.Parser.init(c.alloc),
-            .parserAstRootId = cy.NullId,
+            .parser = undefined,
             .semaProcs = .{},
             .semaBlocks = .{},
             .capVarDescs = .{},
+            .proc_stack = .{},
             .procs = .{},
             .blocks = .{},
             .blockJumpStack = .{},
@@ -241,7 +242,7 @@ pub const Chunk = struct {
             .buf = undefined,
             .jitBuf = undefined,
             .x64Enc = undefined,
-            .curNodeId = cy.NullId,
+            .curNode = null,
             .symInitDeps = .{},
             .symInitInfos = .{},
             .curInitingSym = null,
@@ -282,15 +283,15 @@ pub const Chunk = struct {
             .host_types = .{},
             .host_funcs = .{},
         };
+        try self.parser.init(c.alloc);
 
         if (cy.hasJIT) {
-            new.tempTypeRefs = .{};
-            new.tempValueRefs = .{};
-            // new.exprResStack = .{};
-            // new.exprStack = .{};
-            new.llvmFuncs = &.{};
+            self.tempTypeRefs = .{};
+            self.tempValueRefs = .{};
+            // self.exprResStack = .{};
+            // self.exprStack = .{};
+            self.llvmFuncs = &.{};
         }
-        return new;
     }
 
     pub fn deinit(self: *Chunk) void {
@@ -309,6 +310,7 @@ pub const Chunk = struct {
         }
         self.semaProcs.deinit(self.alloc);
 
+        self.proc_stack.deinit(self.alloc);
         self.procs.deinit(self.alloc);
         self.blocks.deinit(self.alloc); 
 
@@ -372,9 +374,9 @@ pub const Chunk = struct {
         }
     }
 
-    pub fn updateAstView(self: *cy.Chunk, ast: cy.ast.AstView) void {
-        self.ast = ast;
-        self.encoder.ast = ast;
+    pub fn updateAstView(self: *cy.Chunk, view: cy.ast.AstView) void {
+        self.ast = view;
+        self.encoder.ast = view;
     }
 
     pub fn genBlock(self: *cy.Chunk) *bc_gen.Block {
@@ -533,9 +535,9 @@ pub const Chunk = struct {
         return start;
     }
 
-    pub fn pushEmptyJumpExt(self: *Chunk, desc_: cy.bytecode.InstDesc) !u32 {
+    pub fn pushEmptyJumpExt(self: *Chunk, desc: ?u32) !u32 {
         const start: u32 = @intCast(self.buf.ops.items.len);
-        try self.buf.pushOp2Ext(.jump, 0, 0, desc_);
+        try self.buf.pushOp2Ext(.jump, 0, 0, desc);
         return start;
     }
 
@@ -669,13 +671,15 @@ pub const Chunk = struct {
         }
     }
 
-    pub fn reportError(self: *Chunk, msg: []const u8, nodeId: ?cy.NodeId) error{OutOfMemory, CompileError} {
-        try self.compiler.addReport(.compile_err, msg, self.id, nodeId);
+    pub fn reportError(self: *Chunk, msg: []const u8, opt_node: ?*ast.Node) error{OutOfMemory, CompileError} {
+        const pos = if (opt_node) |node| node.pos() else null;
+        try self.compiler.addReport(.compile_err, msg, self.id, pos);
         return error.CompileError;
     }
 
-    pub fn reportErrorFmt(self: *Chunk, format: []const u8, args: []const fmt.FmtValue, nodeId: ?cy.NodeId) error{CompileError, OutOfMemory, FormatError} {
-        try self.compiler.addReportFmt(.compile_err, format, args, self.id, nodeId);
+    pub fn reportErrorFmt(self: *Chunk, format: []const u8, args: []const fmt.FmtValue, opt_node: ?*ast.Node) error{CompileError, OutOfMemory, FormatError} {
+        const pos = if (opt_node) |node| node.pos() else null;
+        try self.compiler.addReportFmt(.compile_err, format, args, self.id, pos);
         return error.CompileError;
     }
 
@@ -775,25 +779,25 @@ pub const Chunk = struct {
     }
 
     /// An optional debug sym is only included in Trace builds.
-    pub fn pushOptionalDebugSym(c: *Chunk, nodeId: cy.NodeId) !void {
+    pub fn pushOptionalDebugSym(c: *Chunk, node: *ast.Node) !void {
         if (cy.Trace or c.compiler.vm.config.gen_all_debug_syms) {
             try c.buf.pushFailableDebugSym(
-                c.buf.ops.items.len, c.id, nodeId, c.curBlock.frameLoc,
+                c.buf.ops.items.len, c.id, node.pos(), c.curBlock.id,
                 cy.NullId, 0, 0,
             );
         }
     }
 
-    pub fn pushFailableDebugSym(self: *Chunk, nodeId: cy.NodeId) !void {
+    pub fn pushFailableDebugSym(self: *Chunk, node: *ast.Node) !void {
         const unwindTempIdx = try self.getLastUnwindTempIndex();
         try self.buf.pushFailableDebugSym(
-            self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc,
+            self.buf.ops.items.len, self.id, node.pos(), self.curBlock.id,
             unwindTempIdx, self.curBlock.startLocalReg, self.curBlock.nextLocalReg,
         );
     }
 
-    fn pushFailableDebugSymAt(self: *Chunk, pc: usize, nodeId: cy.NodeId, unwindTempIdx: u32) !void {
-        try self.buf.pushFailableDebugSym(pc, self.id, nodeId, self.curBlock.frameLoc, unwindTempIdx);
+    fn pushFailableDebugSymAt(self: *Chunk, pc: usize, node: *ast.Node, unwindTempIdx: u32) !void {
+        try self.buf.pushFailableDebugSym(pc, self.id, node, self.curBlock.frameLoc, unwindTempIdx);
     }
 
     pub fn fmtExtraDesc(self: *Chunk, comptime format: []const u8, vals: anytype) !u32 {
@@ -810,36 +814,20 @@ pub const Chunk = struct {
         }
     }
 
-    pub fn desc(self: *Chunk, nodeId: cy.NodeId) cy.bytecode.InstDesc {
-        return .{
-            .chunkId = self.id,
-            .nodeId = nodeId,
-            .extraIdx = cy.NullId,
-        };
-    }
-
-    pub fn descExtra(self: *Chunk, nodeId: cy.NodeId, extraIdx: u32) cy.bytecode.InstDesc {
-        return .{
-            .chunkId = self.id,
-            .nodeId = nodeId,
-            .extraIdx = extraIdx,
-        };
-    }
-
     /// An instruction that can fail (can throw or panic).
-    pub fn pushFCode(c: *Chunk, code: cy.OpCode, args: []const u8, nodeId: cy.NodeId) !void {
-        try c.pushFailableDebugSym(nodeId);
-        try c.buf.pushOpSliceExt(code, args, c.desc(nodeId));
+    pub fn pushFCode(c: *Chunk, code: cy.OpCode, args: []const u8, node: *ast.Node) !void {
+        try c.pushFailableDebugSym(node);
+        try c.buf.pushOpSliceExt(code, args, null);
     }
 
-    pub fn pushCode(c: *Chunk, code: cy.OpCode, args: []const u8, nodeId: cy.NodeId) !void {
-        try c.pushOptionalDebugSym(nodeId);
-        try c.buf.pushOpSliceExt(code, args, c.desc(nodeId));
+    pub fn pushCode(c: *Chunk, code: cy.OpCode, args: []const u8, node: *ast.Node) !void {
+        try c.pushOptionalDebugSym(node);
+        try c.buf.pushOpSliceExt(code, args, null);
     }
 
-    pub fn pushCodeExt(c: *Chunk, code: cy.OpCode, args: []const u8, nodeId: cy.NodeId, extraIdx: ?u32) !void {
-        try c.pushOptionalDebugSym(nodeId);
-        try c.buf.pushOpSliceExt(code, args, c.descExtra(nodeId, extraIdx orelse cy.NullId));
+    pub fn pushCodeExt(c: *Chunk, code: cy.OpCode, args: []const u8, node: *ast.Node, desc: ?u32) !void {
+        try c.pushOptionalDebugSym(node);
+        try c.buf.pushOpSliceExt(code, args, desc);
     }
 
     pub fn pushCodeBytes(c: *Chunk, bytes: []const u8) !void {
@@ -895,7 +883,7 @@ pub const SymInitInfo = struct {
 
 const SymInitDep = struct {
     sym: *cy.Sym,
-    refNodeId: cy.NodeId,
+    refNodeId: *ast.Node,
 };
 
 pub const LLVM_Func = struct {
@@ -911,7 +899,7 @@ pub const TypeDepNode = struct {
 
 pub const ListData = union {
     pc: u32,
-    nodeId: cy.NodeId,
+    node: ?*ast.Node,
     constIdx: u16,
     jumpToEndPc: u32,
 };

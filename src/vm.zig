@@ -916,13 +916,13 @@ pub const VM = struct {
         if (mod.getSym(name)) |_| {
             return error.DuplicateSym;
         }
-        const sym = c.createObjectType(parent, name, cy.NullId) catch return error.Unexpected;
+        const sym = c.createObjectType(parent, name, null) catch return error.Unexpected;
         try sema.resolveObjectTypeId2(c, sym, null);
         sym.head.setNameOwned(true);
 
         const infos = try c.alloc.alloc(cy.sym.FieldInfo, fields.len);
         for (fields, 0..) |field, i| {
-            const field_sym = c.declareField(@ptrCast(sym), field, @intCast(i), bt.Any, cy.NullId) catch return error.Unexpected;
+            const field_sym = c.declareField(@ptrCast(sym), field, @intCast(i), bt.Any, null) catch return error.Unexpected;
             infos[i] = .{
                 .sym = @ptrCast(field_sym),
                 .type = bt.Any,

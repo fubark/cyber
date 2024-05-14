@@ -741,7 +741,7 @@ fn sizeOf(ctype: Symbol) !usize {
 fn toCyType(ctype: CType, forRet: bool) !types.TypeId {
     switch (ctype) {
         .object => |objectT| return objectT,
-        .arr => return bt.List,
+        .arr => return bt.ListDyn,
         .sym => |sym| {
             switch (sym) {
                 .bool => return bt.Boolean,
@@ -1088,7 +1088,7 @@ fn cAllocObject(vm: *cy.VM, id: cy.TypeId) callconv(.C) Value {
 }
 
 fn cAllocList(vm: *cy.VM, elems: [*]Value, n: u32) callconv(.C) Value {
-    return cy.heap.allocList(vm, elems[0..n]) catch cy.fatal();
+    return cy.heap.allocListDyn(vm, elems[0..n]) catch cy.fatal();
 }
 
 fn cyCallFunc(vm: *cy.VM, func: Value, args: [*]const Value, nargs: u8) callconv(.C) Value {

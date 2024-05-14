@@ -46,8 +46,8 @@ typedef enum {
     CL_TYPE_ANY,
     CL_TYPE_TYPE,
     CL_TYPE_TUPLE,
-    CL_TYPE_LIST,
-    CL_TYPE_LISTITER,
+    CL_TYPE_LIST_DYN,
+    CL_TYPE_LISTITER_DYN,
     CL_TYPE_MAP,
     CL_TYPE_MAPITER,
     CL_TYPE_CLOSURE,
@@ -496,8 +496,15 @@ CLValue clNewAstring(CLVM* vm, CLStr str);
 CLValue clNewUstring(CLVM* vm, CLStr str, uint32_t charLen);
 
 CLValue clNewTuple(CLVM* vm, const CLValue* vals, size_t len);
-CLValue clNewEmptyList(CLVM* vm);
-CLValue clNewList(CLVM* vm, const CLValue* vals, size_t len);
+
+// List[dyn], this is equivalent to a List initialized from the array literal `[...]`.
+CLValue clNewEmptyListDyn(CLVM* vm);
+CLValue clNewListDyn(CLVM* vm, const CLValue* vals, size_t len);
+
+// List[T], `type_id` should be obtained from `clExpandTemplateType`.
+CLValue clNewEmptyList(CLVM* vm, CLTypeId type_id);
+CLValue clNewList(CLVM* vm, CLTypeId type_id, const CLValue* vals, size_t len);
+
 CLValue clNewEmptyMap(CLVM* vm);
 CLValue clNewUntypedFunc(CLVM* vm, uint32_t numParams, CLFuncFn func);
 CLValue clNewFunc(CLVM* vm, const CLTypeId* params, uint32_t numParams, CLTypeId retType, CLFuncFn func);

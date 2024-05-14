@@ -33,6 +33,7 @@ pub const Type = extern struct {
     has_get_method: bool = false,
     has_set_method: bool = false,
     has_init_pair_method: bool = false,
+    cyclable: bool = true,
     data: extern union {
         // This is duped from ObjectType so that object creation/destruction avoids the lookup from `sym`.
         object: extern struct {
@@ -121,8 +122,8 @@ pub const BuiltinTypes = struct {
     pub const Array: TypeId = vmc.TYPE_ARRAY;
     pub const Symbol: TypeId = vmc.TYPE_SYMBOL;
     pub const Tuple: TypeId = vmc.TYPE_TUPLE;
-    pub const List: TypeId = vmc.TYPE_LIST;
-    pub const ListIter: TypeId = vmc.TYPE_LIST_ITER;
+    pub const ListDyn: TypeId = vmc.TYPE_LIST_DYN;
+    pub const ListIterDyn: TypeId = vmc.TYPE_LIST_ITER_DYN;
     pub const Map: TypeId = vmc.TYPE_MAP;
     pub const MapIter: TypeId = vmc.TYPE_MAP_ITER;
     pub const Pointer: TypeId = vmc.TYPE_POINTER;
@@ -248,8 +249,8 @@ pub const SemaExt = struct {
         switch (id) {
             bt.String,
             bt.Array,
-            bt.List,
-            bt.ListIter,
+            bt.ListDyn,
+            bt.ListIterDyn,
             bt.Map,
             bt.MapIter,
             bt.Pointer,
@@ -443,7 +444,7 @@ fn hasZeroInit(c: *cy.Chunk, typeId: TypeId) ZeroInitResult {
         bt.Boolean,
         bt.Integer,
         bt.Float,
-        bt.List,
+        bt.ListDyn,
         bt.Map,
         bt.Array,
         bt.String => return .hasZeroInit,

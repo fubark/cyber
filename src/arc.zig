@@ -381,14 +381,6 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
     // Visit children.
     const typeId = obj.getTypeId();
     switch (typeId) {
-        bt.List => {
-            const items = obj.list.items();
-            for (items) |it| {
-                if (it.isCycPointer()) {
-                    markValue(vm, it);
-                }
-            }
-        },
         bt.Map => {
             const map = obj.map.map();
             var iter = map.iterator();
@@ -400,9 +392,6 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
                     markValue(vm, entry.value);
                 }
             }
-        },
-        bt.ListIter => {
-            markValue(vm, cy.Value.initNoCycPtr(obj.listIter.list));
         },
         bt.MapIter => {
             markValue(vm, cy.Value.initNoCycPtr(obj.mapIter.map));

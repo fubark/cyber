@@ -511,7 +511,7 @@ pub fn split(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const parent = obj.string.getParentByType(stype);
     const delim = args[1].asString();
 
-    const res = try vm.allocEmptyList();
+    const res = try vm.allocEmptyListDyn();
     if (delim.len == 0) {
         return res;
     }

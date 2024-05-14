@@ -15,7 +15,7 @@ t.eq(sum, 10)
 
 -- Assign rc value to variable.
 a = 0 
-next = func () ?List:
+next = func () ?List[dynamic]:
     if a < 4:
         a += 1
         return [a]

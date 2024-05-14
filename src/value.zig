@@ -465,7 +465,7 @@ pub const Value = packed union {
         }
 
         switch (typeId) {
-            bt.List => return .list,
+            bt.ListDyn => return .list,
             bt.Map => return .map,
             bt.String => return .string,
             bt.Array => return .array,
@@ -529,11 +529,11 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) Value {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         switch (obj.getTypeId()) {
-            bt.List => {
+            bt.ListDyn => {
                 const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                const new = cy.heap.allocList(vm, list.items()) catch cy.fatal();
+                const new = cy.heap.allocListDyn(vm, list.items()) catch cy.fatal();
                 for (list.items()) |item| {
-                    cy.arc.retain(vm, item);
+                    vm.retain(item);
                 }
                 return new;
             },

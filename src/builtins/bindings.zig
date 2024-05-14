@@ -288,7 +288,7 @@ pub fn listSlice(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     for (elems) |elem| {
         vm.retain(elem);
     }
-    return cy.heap.allocList(vm, elems);
+    return cy.heap.allocListDyn(vm, elems);
 }
 
 pub fn listInsert(vm: *cy.VM, args: [*]const Value, _: u8) Value {
@@ -381,19 +381,18 @@ pub fn listAppend(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 
 pub fn listIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
-    const list = obj.listIter.list;
-    if (obj.listIter.nextIdx < list.list.len) {
-        defer obj.listIter.nextIdx += 1;
-        const val = list.list.ptr[obj.listIter.nextIdx];
+    const list = &obj.listIter.inner.list.asHeapObject().list;
+    if (obj.listIter.inner.nextIdx < list.list.len) {
+        defer obj.listIter.inner.nextIdx += 1;
+        const val = list.list.ptr[obj.listIter.inner.nextIdx];
         vm.retain(val);
         return anySome(vm, val) catch cy.fatal();
     } else return anyNone(vm) catch cy.fatal();
 }
 
 pub fn listIterator(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    vm.retainObject(obj);
-    return vm.allocListIterator(&obj.list) catch fatal();
+    vm.retain(args[0]);
+    return vm.allocListIterDyn(args[0]) catch fatal();
 }
 
 pub fn listResize(vm: *cy.VM, args: [*]const Value, _: u8) Value {

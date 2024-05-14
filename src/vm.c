@@ -977,7 +977,7 @@ beginSwitch:
     CASE(List): {
         uint8_t startLocal = pc[1];
         uint8_t numElems = pc[2];
-        ValueResult res = zAllocList(vm, stack + startLocal, numElems);
+        ValueResult res = zAllocListDyn(vm, stack + startLocal, numElems);
         if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
             RETURN(res.code);
         }
@@ -1031,7 +1031,7 @@ beginSwitch:
         for (int i = start; i < end; i += 1) {
             retain(vm, elems[i]);
         }
-        ValueResult res = zAllocList(vm, elems + start, end - start);
+        ValueResult res = zAllocListDyn(vm, elems + start, end - start);
         if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
             RETURN(res.code);
         }

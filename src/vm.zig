@@ -1548,7 +1548,7 @@ pub const VM = struct {
                     try std.fmt.format(w, "Array ({})", .{obj.array.len()});
                 }
             },
-            bt.List => {
+            bt.ListDyn => {
                 try std.fmt.format(w, "List ({})", .{obj.list.list.len});
             },
             bt.Map => {
@@ -3805,7 +3805,7 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
         if (val.isPointer()) {
             const obj = val.asHeapObject();
             switch (obj.getTypeId()) {
-                bt.List => fmt.printStdout("List {} len={}\n", &.{v(obj), v(obj.list.list.len)}),
+                bt.ListDyn => fmt.printStdout("List {} len={}\n", &.{v(obj), v(obj.list.list.len)}),
                 bt.Map => fmt.printStdout("Map {} size={}\n", &.{v(obj), v(obj.map.inner.size)}),
                 bt.String => {
                     const str = obj.string.getSlice();
@@ -4070,8 +4070,8 @@ export fn zEnd(vm: *cy.VM, pc: [*]const cy.Inst) void {
     vm.curFiber.pcOffset = @intCast(getInstOffset(vm, pc + 2));
 }
 
-export fn zAllocList(vm: *cy.VM, elemStart: [*]const Value, nElems: u8) vmc.ValueResult {
-    const list = cy.heap.allocList(vm, elemStart[0..nElems]) catch {
+export fn zAllocListDyn(vm: *cy.VM, elemStart: [*]const Value, nElems: u8) vmc.ValueResult {
+    const list = cy.heap.allocListDyn(vm, elemStart[0..nElems]) catch {
         return .{
             .val = undefined,
             .code = vmc.RES_CODE_UNKNOWN,

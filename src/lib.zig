@@ -594,8 +594,8 @@ test "Constants." {
     try t.eq(c.TypeSymbol, bt.Symbol);
     try t.eq(c.TypeInteger, bt.Integer);
     try t.eq(c.TypeFloat, bt.Float);
-    try t.eq(c.TypeList, bt.List);
-    try t.eq(c.TypeListIter, bt.ListIter);
+    try t.eq(c.TypeListDyn, bt.ListDyn);
+    try t.eq(c.TypeListIterDyn, bt.ListIterDyn);
     try t.eq(c.TypeMap, bt.Map);
     try t.eq(c.TypeMapIter, bt.MapIter);
     try t.eq(c.TypeClosure, bt.Closure);

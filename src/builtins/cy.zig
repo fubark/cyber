@@ -68,7 +68,7 @@ fn genNodeValue(vm: *cy.VM, ast: cy.ast.AstView, nodeId: cy.NodeId) !cy.Value {
             const name = ast.getNamePathInfo(node.data.funcHeader.name).name_path;
             try vm.mapSet(map, try vm.retainOrAllocAstring("name"), try vm.allocString(name));
 
-            const params = try vm.allocEmptyList();
+            const params = try vm.allocEmptyListDyn();
             var paramId: cy.NodeId = node.data.funcHeader.paramHead;
             while (paramId != cy.NullNode) {
                 const param = try genNodeValue(vm, ast, paramId);
@@ -254,7 +254,7 @@ fn parseCyberGenResult(vm: *cy.VM, parser: *const cy.Parser) !cy.Value {
 
     const map = root.asHeapObject().map.map();
 
-    const decls = try vm.allocEmptyList();
+    const decls = try vm.allocEmptyListDyn();
     errdefer vm.release(decls);
 
     const declsList = decls.asHeapObject().list.getList();
@@ -363,7 +363,7 @@ pub fn allocToCyon(vm: *cy.VM, alloc: std.mem.Allocator, root: cy.Value) ![]cons
                     bt.Table => {
                         try ctx.encodeTable(key, e.value, encodeTable);
                     },
-                    bt.List => {
+                    bt.ListDyn => {
                         try ctx.encodeList(key, e.value, encodeList);
                     },
                     else => {},
@@ -397,7 +397,7 @@ pub fn allocToCyon(vm: *cy.VM, alloc: std.mem.Allocator, root: cy.Value) ![]cons
                         try ctx.encodeTable(it, encodeTable);
                         _ = try ctx.writer.write(",\n");
                     },
-                    bt.List => {
+                    bt.ListDyn => {
                         try ctx.encodeList(it, encodeList);
                         _ = try ctx.writer.write(",\n");
                     },
@@ -423,7 +423,7 @@ pub fn allocToCyon(vm: *cy.VM, alloc: std.mem.Allocator, root: cy.Value) ![]cons
                     bt.Boolean => {
                         try ctx.encodeBool(val.asBool());
                     },
-                    bt.List => {
+                    bt.ListDyn => {
                         if (val.asHeapObject().list.items().len == 0) {
                             _ = try ctx.writer.write("[]");
                         } else {

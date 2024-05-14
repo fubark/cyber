@@ -168,8 +168,8 @@ pub const HeapObject = extern union {
         return (self.head.typeId & vmc.CYC_TYPE_MASK) == vmc.CYC_TYPE_MASK;
     }
 
-    pub inline fn isPoolObject(self: *HeapObject) bool {
-        return (self.head.typeId & vmc.POOL_TYPE_MASK) == vmc.POOL_TYPE_MASK;
+    pub inline fn isExternalObject(self: *HeapObject) bool {
+        return (self.head.typeId & vmc.EXTERNAL_MASK) == vmc.EXTERNAL_MASK;
     }
 
     pub inline fn getDListNode(self: *HeapObject) *DListNode {
@@ -182,7 +182,7 @@ pub const HeapObject = extern union {
 
     pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
         switch (self.getTypeId()) {
-            bt.List => return .list,
+            bt.ListDyn => return .list,
             bt.Map => return .map,
             bt.String => return .string,
             bt.Array => return .array,
@@ -239,14 +239,24 @@ pub const Range = extern struct {
     end: i64,
 };
 
+pub const ListInner = extern struct {
+    ptr: [*]Value,
+    cap: usize,
+    len: usize,
+
+    pub fn getList(self: *ListInner) *cy.List(Value) {
+        return cy.ptrAlignCast(*cy.List(Value), self);
+    }
+
+    pub inline fn items(self: *ListInner) []Value {
+        return self.ptr[0..self.len];
+    }
+};
+
 pub const List = extern struct {
     typeId: cy.TypeId,
     rc: u32,
-    list: extern struct {
-        ptr: [*]Value,
-        cap: usize,
-        len: usize,
-    },
+    list: ListInner,
 
     pub fn getList(self: *List) *cy.List(Value) {
         return cy.ptrAlignCast(*cy.List(Value), &self.list);
@@ -273,11 +283,15 @@ pub const List = extern struct {
     }
 };
 
+pub const ListIterInner = extern struct {
+    list: Value,
+    nextIdx: u32,
+};
+
 pub const ListIterator = extern struct {
     typeId: cy.TypeId,
     rc: u32,
-    list: *List,
-    nextIdx: u32,
+    inner: ListIterInner
 };
 
 pub const Table = extern struct {
@@ -898,10 +912,10 @@ pub fn allocMetaType(self: *cy.VM, typeKind: u8, typeId: cy.TypeId) !Value {
     return Value.initNoCycPtr(obj);
 }
 
-pub fn allocEmptyList(self: *cy.VM) !Value {
+pub fn allocEmptyListDyn(self: *cy.VM) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .typeId = bt.List | vmc.CYC_TYPE_MASK,
+        .typeId = bt.ListDyn | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .list = .{
             .ptr = undefined,
@@ -912,10 +926,29 @@ pub fn allocEmptyList(self: *cy.VM) !Value {
     return Value.initCycPtr(obj);
 }
 
+pub fn allocEmptyList(self: *cy.VM, type_id: cy.TypeId) !Value {
+    const obj = try allocPoolObject(self);
+    obj.list = .{
+        .typeId = type_id | vmc.CYC_TYPE_MASK,
+        .rc = 1,
+        .list = .{
+            .ptr = undefined,
+            .len = 0,
+            .cap = 0,
+        },
+    };
+    if (self.types[type_id].cyclable) {
+        obj.list.typeId |= vmc.CYC_TYPE_MASK;
+        return Value.initCycPtr(obj);
+    } else {
+        return Value.initNoCycPtr(obj);
+    }
+}
+
 pub fn allocOwnedList(self: *cy.VM, elems: []Value) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .typeId = bt.List | vmc.CYC_TYPE_MASK,
+        .typeId = bt.ListDyn | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .list = .{
             .ptr = elems.ptr,
@@ -929,7 +962,7 @@ pub fn allocOwnedList(self: *cy.VM, elems: []Value) !Value {
 pub fn allocListFill(self: *cy.VM, val: Value, n: u32) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .typeId = bt.List | vmc.CYC_TYPE_MASK,
+        .typeId = bt.ListDyn | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .list = .{
             .ptr = undefined,
@@ -956,14 +989,14 @@ pub fn allocHostNoCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) !*al
     if (numBytes <= MaxPoolObjectUserBytes) {
         const obj = try allocPoolObject(vm);
         obj.head = .{
-            .typeId = typeId | vmc.POOL_TYPE_MASK,
+            .typeId = typeId,
             .rc = 1,
         };
         return @ptrFromInt(@intFromPtr(obj) + 8);
     } else {
         const obj = try allocExternalObject(vm, numBytes + 8, false);
         obj.head = .{
-            .typeId = typeId,
+            .typeId = typeId | vmc.EXTERNAL_MASK,
             .rc = 1,
         };
         return @ptrFromInt(@intFromPtr(obj) + 8);
@@ -974,14 +1007,14 @@ pub fn allocHostCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) !*anyo
     if (numBytes <= MaxPoolObjectUserBytes) {
         const obj = try allocPoolObject(vm);
         obj.head = .{
-            .typeId = typeId | vmc.CYC_TYPE_MASK | vmc.POOL_TYPE_MASK,
+            .typeId = typeId | vmc.CYC_TYPE_MASK,
             .rc = 1,
         };
         return @ptrFromInt(@intFromPtr(obj) + 8);
     } else {
         const obj = try allocExternalObject(vm, numBytes + 8, true);
         obj.head = .{
-            .typeId = typeId | vmc.CYC_TYPE_MASK,
+            .typeId = typeId | vmc.CYC_TYPE_MASK | vmc.EXTERNAL_MASK,
             .rc = 1,
         };
         return @ptrFromInt(@intFromPtr(obj) + 8);
@@ -1010,7 +1043,7 @@ pub fn allocTuple(vm: *cy.VM, elems: []const Value) !Value {
 pub fn allocList(self: *cy.VM, elems: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .typeId = bt.List | vmc.CYC_TYPE_MASK,
+        .typeId = bt.ListDyn | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .list = .{
             .ptr = undefined,
@@ -1027,13 +1060,15 @@ pub fn allocList(self: *cy.VM, elems: []const Value) !Value {
 }
 
 /// Assumes list is already retained for the iterator.
-pub fn allocListIterator(self: *cy.VM, list: *List) !Value {
+pub fn allocListIterDyn(self: *cy.VM, list: Value) !Value {
     const obj = try allocPoolObject(self);
     obj.listIter = .{
-        .typeId = bt.ListIter | vmc.CYC_TYPE_MASK,
+        .typeId = bt.ListIterDyn | vmc.CYC_TYPE_MASK,
         .rc = 1,
-        .list = list,
-        .nextIdx = 0,
+        .inner = .{
+            .list = list,
+            .nextIdx = 0,
+        },
     };
     return Value.initCycPtr(obj);
 }
@@ -1408,14 +1443,14 @@ pub const VmExt = struct {
     pub const allocHostFunc = Root.allocHostFunc;
     pub const allocTable = Root.allocTable;
     pub const allocEmptyMap = Root.allocEmptyMap;
-    pub const allocEmptyList = Root.allocEmptyList;
+    pub const allocEmptyListDyn = Root.allocEmptyListDyn;
     pub const allocArray = Root.allocArray;
     pub const allocPointer = Root.allocPointer;
     pub const allocUnsetArrayObject = Root.allocUnsetArrayObject;
     pub const allocUnsetAstringObject = Root.allocUnsetAstringObject;
     pub const allocUnsetUstringObject = Root.allocUnsetUstringObject;
     pub const allocListFill = Root.allocListFill;
-    pub const allocListIterator = Root.allocListIterator;
+    pub const allocListIterDyn = Root.allocListIterDyn;
     pub const allocMapIterator = Root.allocMapIterator;
     pub const allocObjectSmall = Root.allocObjectSmall;
     pub const allocType = Root.allocType;
@@ -1779,35 +1814,6 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                 freePoolObject(vm, obj);
             }
         },
-        bt.List => {
-            const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
-            if (releaseChildren) {
-                for (list.items()) |it| {
-                    if (skipCycChildren and it.isGcConfirmedCyc()) {
-                        continue;
-                    }
-                    cy.arc.release(vm, it);
-                }
-            }
-            if (free) {
-                list.deinit(vm.alloc);
-                freePoolObject(vm, obj);
-            }
-        },
-        bt.ListIter => {
-            if (releaseChildren) {
-                if (skipCycChildren) {
-                    if (!@as(*HeapObject, @ptrCast(@alignCast(obj.listIter.list))).isGcConfirmedCyc()) {
-                        cy.arc.releaseObject(vm, cy.ptrAlignCast(*HeapObject, obj.listIter.list));
-                    }
-                } else {
-                    cy.arc.releaseObject(vm, cy.ptrAlignCast(*HeapObject, obj.listIter.list));
-                }
-            }
-            if (free) {
-                freePoolObject(vm, obj);
-            }
-        },
         bt.Map => {
             const map = cy.ptrAlignCast(*MapInner, &obj.map.inner);
             if (releaseChildren) {
@@ -2117,7 +2123,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                     if (free) {
                         if (entry.data.custom_object.finalizerFn) |finalizer| {
                             finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                            if (obj.isPoolObject()) {
+                            if (!obj.isExternalObject()) {
                                 freePoolObject(vm, obj);
                             } else {
                                 if (obj.isCyclable()) {

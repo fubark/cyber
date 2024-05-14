@@ -23,9 +23,8 @@
 --| Throws an error if unsuccessful.
 @host func access(path String, mode symbol) void
 
---| Returns the command line arguments in a `List`.
---| Each argument is converted to a `String`.
-@host func args() List
+--| Returns the command line arguments in a `List[String]`.
+@host func args() List[String]
 
 --| Returns the path of a locally cached file of `url`.
 --| If no such file exists locally, it's fetched from `url`.
@@ -50,7 +49,7 @@
 @host func dirName(path String) ?String
 
 --| Runs a shell command and returns the stdout/stderr.
-@host func execCmd(args List) Map
+@host func execCmd(args List[String]) Map
 
 --| Returns the current executable's path.
 @host func exePath() String
@@ -93,7 +92,7 @@
 @host func openFile(path String, mode symbol) File
 
 --| Given expected `ArgOption`s, returns a `Table` of the options and a `rest` entry which contains the non-option arguments.
-@host func parseArgs(options List) Table
+@host func parseArgs(options List[dynamic]) Table
 
 --| Reads stdin to the EOF as a UTF-8 string.
 --| To return the bytes instead, use `stdin.readAll()`.
@@ -193,7 +192,7 @@ type FFI:
     --| Creates an `ExternFunc` that contains a C function pointer with the given signature.
     --| The extern function is a wrapper that calls the provided user function.
     --| Once created, the extern function is retained and managed by the FFI context.
-    @host func bindCallback(fn any, params List, ret symbol) ExternFunc
+    @host func bindCallback(fn any, params List[dynamic], ret symbol) ExternFunc
 
     --| Calls `bindLib(path, [:])`. 
     @host func bindLib(path ?String) any
@@ -210,10 +209,10 @@ type FFI:
     @host func bindObjPtr(obj any) pointer
 
     --| Binds a Cyber type to a C struct.
-    @host func cbind(mt metatype, fields List) void
+    @host func cbind(mt metatype, fields List[dynamic]) void
 
     --| Declares a C function which will get binded to the library handle created from `bindLib`.
-    @host func cfunc(name String, params List, ret any) void
+    @host func cfunc(name String, params List[dynamic], ret any) void
 
     --| Allocates memory for a C struct or primitive with the given C type specifier.
     --| A `pointer` to the allocated memory is returned.

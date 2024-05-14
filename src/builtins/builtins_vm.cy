@@ -118,23 +118,23 @@ type float #float64_t:
 
 @host type type
 
-@host
-type List:
-    @host func $index(idx int) dynamic
-    @host func $index(range Range) List
-    @host func $setIndex(idx int, val any) void
+template[T type]
+@host type List _:
+    @host func $index(idx int) T
+    @host='List.$indexRange' func $index(range Range) List[T]
+    @host func $setIndex(idx int, val T) void
 
     --| Appends a value to the end of the list.
     @host func append(val any) void
 
     --| Appends the elements of another list to the end of this list.
-    @host func appendAll(list List) void
+    @host func appendAll(list List[T]) void
 
     --| Inserts a value at index `idx`.
-    @host func insert(idx int, val any) void
+    @host func insert(idx int, val T) void
 
     --| Returns a new iterator over the list elements.
-    @host func iterator() ListIterator
+    @host func iterator() ListIterator[T]
 
     --| Returns a new string that joins the elements with `separator`.
     @host func join(sep String) String
@@ -163,13 +163,20 @@ type List:
                 else: break
             self[j + 1] = cur
 
+@host='ListDyn'
+type List[dynamic] _
+
+template
 --| Creates a list with initial capacity of `n` and values set to `val`.
 --| If the value is an object, it is shallow copied `n` times.
-@host func List.fill(val any, n int) List
+@host func List.fill(val T, n int) List[T]
 
-@host
-type ListIterator:
-    @host func next() ?any
+template[T type]
+@host type ListIterator _:
+    @host func next() ?T
+
+@host='ListIterDyn'
+type ListIterator[dynamic] _
 
 @host
 type Tuple:
@@ -272,7 +279,7 @@ type String:
     @host func $index(range Range) String
 
     --| Returns a list of UTF-8 strings split at occurrences of `sep`.
-    @host func split(sep String) List
+    @host func split(sep String) List[String]
 
     --| Returns whether the string starts with `prefix`.
     @host func startsWith(prefix String) bool
@@ -351,7 +358,7 @@ type Array:
     @host func $index(range Range) Array
 
     --| Returns a list of arrays split at occurrences of `sep`.
-    @host func split(sep Array) List
+    @host func split(sep Array) List[Array]
 
     --| Returns whether the array starts with `prefix`.
     @host func startsWith(prefix Array) bool

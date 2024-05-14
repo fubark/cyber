@@ -694,7 +694,7 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
                 _ = try w.print("[{}]` ", .{val.asHeapObject().table.map().size});
             }
         },
-        bt.List => {
+        bt.ListDyn => {
             if (state.depth == 1 or config.force_types) {
                 try w.writeByte('`');
                 const name = getTypeName(vm, type_id);
@@ -752,7 +752,7 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
                     try w.print(" rc={}", .{obj.head.rc});
                 }
                 switch (type_id) {
-                    bt.List => {
+                    bt.ListDyn => {
                         if (state.depth < config.max_depth) {
                             state.depth += 1;
                             _ = try w.writeAll("[");

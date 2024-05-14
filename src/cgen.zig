@@ -1230,7 +1230,7 @@ fn setField(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
 
 fn setIndex(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(loc, .setIndex).index;
-    if (data.recvT != bt.List and data.recvT != bt.Map) {
+    if (data.recvT != bt.ListDyn and data.recvT != bt.Map) {
         return error.Unexpected;
     }
 
@@ -1676,8 +1676,8 @@ fn genBinOp(c: *Chunk, loc: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy.No
 
     switch (data.op) {
         .index => {
-            if (data.leftT == bt.List) {
-                const sym = c.sema.getTypeSym(bt.List);
+            if (data.leftT == bt.ListDyn) {
+                const sym = c.sema.getTypeSym(bt.ListDyn);
                 try c.bufPushFmt("{s}(rt, ", .{
                     c.cSymName(sym.getMod().?.getFirstFunc("$index").?),
                 });
@@ -1697,7 +1697,7 @@ fn genBinOp(c: *Chunk, loc: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy.No
     var retained = false;
     switch (data.op) {
         .index => {
-            if (data.leftT == bt.List) {
+            if (data.leftT == bt.ListDyn) {
                 try c.bufPush(", ");
             // } else if (data.leftT == bt.Tuple) {
             //     try pushInlineBinExpr(c, .indexTuple, leftv.local, rightv.local, inst.dst, nodeId);
@@ -1761,7 +1761,7 @@ fn genBinOp(c: *Chunk, loc: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy.No
 
     switch (data.op) {
         .index => {
-            if (data.leftT == bt.List) {
+            if (data.leftT == bt.ListDyn) {
                 try c.bufPush(")");
             }
         },

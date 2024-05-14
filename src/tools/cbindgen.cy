@@ -84,7 +84,7 @@ out += "let .lib = load()\n"
 out += "func load():\n"
 out += "    ffi = os.newFFI()\n"
 for structs -> name:
-    var fieldTypes = structMap[name].fieldTypes as List
+    var fieldTypes = structMap[name].fieldTypes as List[dynamic]
     var finalFieldTypes = []
     for fieldTypes -> ftype:
         ftype = ensureBindType(ftype)
@@ -134,7 +134,7 @@ var .funcs = []
 -- var vars = {}            -- varName -> bindingType
 
 func getTranslationUnit(headerPath String):
-    var rest List = args['rest'][3..]
+    var rest = args.rest[3..] as List[dynamic]
 
     var cargs = os.malloc(8 * rest.len())
     for rest -> arg, i:
@@ -148,7 +148,7 @@ func getTranslationUnit(headerPath String):
         clang.CXTranslationUnit_DetailedPreprocessingRecord | clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_KeepGoing)
 
 func getMacrosTranslationUnit(hppPath String):
-    var rest List = args['rest'][3..]
+    var rest = args.rest[3..] as List[dynamic]
 
     var cargs = os.malloc(8 * rest.len())
     for rest -> arg, i:
@@ -160,9 +160,9 @@ func getMacrosTranslationUnit(hppPath String):
         clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_KeepGoing)
 
 type Struct:
-    fieldTypes   List
-    fieldNames   List
-    cxFieldTypes List
+    fieldTypes   List[dynamic]
+    fieldNames   List[dynamic]
+    cxFieldTypes List[dynamic]
 
 type StateType enum:
     case root
@@ -533,7 +533,7 @@ let toCyType(nameOrSym, forRet):
             throw error.Unsupported
     else:
         if nameOrSym.startsWith('os.CArray{'):
-            return 'List'
+            return 'List[dynamic]'
         if !forRet and aliases.contains(nameOrSym):
             if aliases[nameOrSym] == symbol.voidPtr:
                 return 'any'

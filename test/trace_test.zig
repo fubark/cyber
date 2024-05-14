@@ -79,7 +79,7 @@ test "ARC." {
     try eval(.{},
         \\use t 'test'
         \\type S:
-        \\  value List
+        \\  value List[dynamic]
         \\var a = [123]
         \\var s = S{value: a}
         \\t.eq(s.value[0], 123)
@@ -179,7 +179,7 @@ test "ARC for passing call args." {
     // Temp list is retained when passed into function.
     try eval(.{},
         \\use t 'test'
-        \\func foo(list List):
+        \\func foo(list List[dynamic]):
         \\  return list[0]
         \\t.eq(foo([1]), 1)
     , struct { fn func(run: *Runner, res: EvalResult) !void {

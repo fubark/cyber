@@ -3,7 +3,7 @@
 use t 'test'
 
 -- Init fiber without starting.
-func foo(list List):
+func foo(list List[dynamic]):
     coyield
     list.append(123)
 var list = []
@@ -11,7 +11,7 @@ var f = coinit(foo, list)
 t.eq(list.len(), 0)
 
 -- Start fiber with yield at start.
-func foo2(list List):
+func foo2(list List[dynamic]):
     coyield
     list.append(123)
 list = []
@@ -20,7 +20,7 @@ coresume f
 t.eq(list.len(), 0)
 
 -- Start fiber without yield.
-func foo3(list List):
+func foo3(list List[dynamic]):
     list.append(123)
 list = []
 f = coinit(foo3, list)
@@ -28,7 +28,7 @@ coresume f
 t.eq(list[0], 123)
 
 -- coresume returns final value.
-func foo4(list List):
+func foo4(list List[dynamic]):
     list.append(123)
     return list[0]
 list = []
@@ -39,7 +39,7 @@ t.eq(coresume f, 123)
 func bar():
     var alist = [] -- This should be released after fiber is freed.
     coyield
-func foo5(list List):
+func foo5(list List[dynamic]):
     bar()
     list.append(123)
 list = []
@@ -48,7 +48,7 @@ coresume f
 t.eq(list.len(), 0)
 
 -- Continue to resume fiber.
-func foo6(list List):
+func foo6(list List[dynamic]):
     list.append(123)
     coyield
     list.append(234)
@@ -88,7 +88,7 @@ var res = coresume f
 t.eq(res, 210)
 
 -- coinit lambda
-var foof = func (list List):
+var foof = func (list List[dynamic]):
     list.append(123)
 list = []
 f = coinit(foof, list)

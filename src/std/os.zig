@@ -374,7 +374,7 @@ fn parseArgs(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 
     var iter = try std.process.argsWithAllocator(vm.alloc);
     defer iter.deinit();
-    const rest = try vm.allocEmptyList();
+    const rest = try vm.allocEmptyListDyn();
     const restList = rest.asHeapObject().list.getList();
     while (iter.next()) |arg| {
         if (arg[0] == '-') {
@@ -437,7 +437,7 @@ fn osArgs(vm: *cy.VM, _: [*]const Value, _: u8) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
     var iter = try std.process.argsWithAllocator(vm.alloc);
     defer iter.deinit();
-    const listv = try vm.allocEmptyList();
+    const listv = try vm.allocEmptyListDyn();
     const listo = listv.asHeapObject();
     while (iter.next()) |arg| {
         const str = try vm.allocString(arg);

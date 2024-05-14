@@ -896,8 +896,8 @@ fn reserveCoreTypes(self: *Compiler) !void {
 
         // Object types.
         bt.Tuple,
-        bt.List,
-        bt.ListIter,
+        bt.ListDyn,
+        bt.ListIterDyn,
         bt.Map,
         bt.MapIter,
         bt.Closure,
@@ -971,7 +971,7 @@ fn createDynMethodIds(self: *Compiler) !void {
 fn resolveSyms(self: *Compiler) !void {
     log.tracev("Resolve syms.", .{});
     for (self.newChunks()) |chunk| {
-        // Iterate funcs with explicit index since unnamed types could be appended.
+        // Iterate with explicit index since unnamed types could be appended.
         var i: u32 = 0;
         while (i < chunk.syms.items.len) : (i += 1) {
             const sym = chunk.syms.items[i];
@@ -1020,6 +1020,7 @@ fn resolveSyms(self: *Compiler) !void {
         }
 
         for (chunk.funcs.items) |func| {
+            log.tracev("resolve: {s}", .{func.name()});
             try sema.resolveFunc(chunk, func);
         }
 

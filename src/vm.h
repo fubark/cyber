@@ -95,8 +95,8 @@ typedef struct IndexSlice {
 // 0001111111111111
 #define TYPE_MASK ((u32)0x1fffffff)
 
-// 0010000000000000: Pool object bit. VM checks this bit to free host objects (allocated from embedded API).
-#define POOL_TYPE_MASK ((u32)0x20000000)
+// 0010000000000000: External object bit (allocated using the GPA). VM checks this bit to free host objects (allocated from libcyber).
+#define EXTERNAL_MASK ((u32)0x20000000)
 
 // 0100000000000000: Cyclable type bit. Currently has two purposes.
 //                   1. Since heap pages don't segregate non-cyc from cyc, it's used
@@ -369,8 +369,8 @@ enum {
     TYPE_TYPE = 11,
 
     TYPE_TUPLE = 12,
-    TYPE_LIST = 13,
-    TYPE_LIST_ITER = 14,
+    TYPE_LIST_DYN = 13,
+    TYPE_LIST_ITER_DYN = 14,
     TYPE_MAP = 15,
     TYPE_MAP_ITER = 16,
     TYPE_CLOSURE = 17,
@@ -1026,7 +1026,7 @@ void zDumpEvalOp(VM* vm, Inst* pc);
 void zDumpValue(VM* vm, Value val);
 void zFreeObject(VM* vm, HeapObject* obj);
 void zEnd(VM* vm, Inst* pc);
-ValueResult zAllocList(VM* vm, Value* elemStart, uint8_t nelems);
+ValueResult zAllocListDyn(VM* vm, Value* elemStart, uint8_t nelems);
 double zOtherToF64(Value val);
 CallObjSymResult zCallObjSym(VM* vm, Inst* pc, Value* stack, Value recv, TypeId typeId, u16 method, u8 startLocal, u8 numArgs);
 ValueResult zAllocFiber(VM* vm, uint32_t pc, Value* args, uint8_t nargs, uint8_t argDst, uint8_t initialStackSize);

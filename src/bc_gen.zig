@@ -815,7 +815,7 @@ fn setCallObjSymTern(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
 
 fn setIndex(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const data = c.ir.getStmtData(idx, .setIndex).index;
-    if (data.recvT != bt.List and data.recvT != bt.Map) {
+    if (data.recvT != bt.ListDyn and data.recvT != bt.Map) {
         return error.Unexpected;
     }
 
@@ -839,7 +839,7 @@ fn setIndex(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {
     const argvs = c.genValueStack.items[valsStart..];
     c.genValueStack.items.len = valsStart;
 
-    if (data.recvT == bt.List) {
+    if (data.recvT == bt.ListDyn) {
         try pushInlineTernExpr(c, .setIndexList, recv.reg, indexv.reg, rightv.reg, noneRet, nodeId);
     } else if (data.recvT == bt.Map) {
         try pushInlineTernExpr(c, .setIndexMap, recv.reg, indexv.reg, rightv.reg, noneRet, nodeId);
@@ -1349,7 +1349,7 @@ fn genBinOp(c: *Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: cy.No
     var retained = false;
     switch (data.op) {
         .index => {
-            if (data.leftT == bt.List) {
+            if (data.leftT == bt.ListDyn) {
                 if (data.rightT == bt.Range) {
                     try pushInlineBinExpr(c, .sliceList, leftv.reg, rightv.reg, inst.dst, nodeId);
                 } else {

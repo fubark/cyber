@@ -332,9 +332,18 @@ pub fn onLoad(vm_: ?*c.VM, mod: c.Sym) callconv(.C) void {
     defer c.release(vm_, array_t);
     OptionArray = c.expandTypeTemplate(option_tmpl, @constCast(&[_]c.Value{ array_t }), 1);
 
-    const string_t = c.newType(vm_, bt.String);
-    defer c.release(vm_, string_t);
-    OptionString = c.expandTypeTemplate(option_tmpl, @constCast(&[_]c.Value{ string_t }), 1);
+    const string_t = C.newType(vm_, bt.String);
+    defer C.release(vm_, string_t);
+    OptionString = C.expandTemplateType(option_tmpl, @constCast(&[_]C.Value{ string_t }), 1);
+
+    const list_tmpl = chunk_sym.getMod().getSym("List").?.toC();
+
+    const dynamic_t = C.newType(vm_, bt.Dynamic);
+    defer C.release(vm_, dynamic_t);
+    _ = C.expandTemplateType(list_tmpl, @constCast(&[_]C.Value{ dynamic_t }), 1);
+
+    const list_iter_tmpl = chunk_sym.getMod().getSym("ListIterator").?.toC();
+    _ = C.expandTemplateType(list_iter_tmpl, @constCast(&[_]C.Value{ dynamic_t }), 1);
 
     // Verify all core types have been initialized.
     if (cy.Trace) {
@@ -588,6 +597,29 @@ pub fn typeof(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     const typeId = val.getTypeId();
     return cy.heap.allocMetaType(vm, @intFromEnum(cy.heap.MetaTypeKind.object), typeId) catch fatal();
+}
+
+pub fn listFinalizer(vm_: ?*C.VM, obj: ?*anyopaque) callconv(.C) void {
+    var vm: *cy.VM = @ptrCast(@alignCast(vm_));
+    var list: *cy.heap.ListInner = @ptrCast(@alignCast(obj));
+    list.getList().deinit(vm.alloc);
+}
+
+pub fn listGetChildren(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) C.ValueSlice {
+    var list: *cy.heap.ListInner = @ptrCast(@alignCast(obj));
+    const items = list.items();
+    return .{
+        .ptr = @ptrCast(items.ptr),
+        .len = items.len,
+    };
+}
+
+pub fn listIterGetChildren(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) C.ValueSlice {
+    var iter: *cy.heap.ListIterInner = @ptrCast(@alignCast(obj));
+    return .{
+        .ptr = @ptrCast(&iter.list),
+        .len = 1,
+    };
 }
 
 fn arrayConcat(vm: *cy.VM, args: [*]const Value, _: u8) Value {
@@ -946,7 +978,7 @@ fn arraySplit(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const slice = obj.array.getSlice();
     const delim = args[1].asArray();
 
-    const res = try vm.allocEmptyList();
+    const res = try vm.allocEmptyListDyn();
     if (delim.len == 0) {
         return res;
     }

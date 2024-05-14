@@ -2574,7 +2574,7 @@ fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, numArgs: u8, symNodeId: cy.Node
         .hostVar => {
             // preCall.
             const callee = try sema.symbol(c, sym, symNodeId, true);
-            const args = try c.semaPushCallArgs(argHead, numArgs);
+            const args = try c.semaPushDynCallArgs(argHead, numArgs);
             return c.semaCallValue(preIdx, callee.irIdx, numArgs, args);
         },
         .template => {
@@ -4439,13 +4439,13 @@ pub const ChunkExt = struct {
         return c.semaCallFuncSymResult(loc, &matcher, node);
     }
 
-    pub fn semaPushCallArgs(c: *cy.Chunk, argHead: cy.NodeId, numArgs: u8) !u32 {
+    pub fn semaPushDynCallArgs(c: *cy.Chunk, argHead: cy.NodeId, numArgs: u8) !u32 {
         const loc = try c.ir.pushEmptyArray(c.alloc, u32, numArgs);
         var nodeId = argHead;
         var i: u32 = 0;
         while (nodeId != cy.NullNode) {
             const arg = c.ast.node(nodeId);
-            const argRes = try c.semaExpr(nodeId, .{});
+            const argRes = try c.semaExprTarget(nodeId, bt.Dynamic);
             c.ir.setArrayItem(loc, u32, i, argRes.irIdx);
             i += 1;
             nodeId = arg.next();
@@ -4616,6 +4616,10 @@ pub const ChunkExt = struct {
                 }
                 const name = c.ast.nodeString(node);
                 switch (expr.target_t) {
+                    bt.Dynamic => {
+                        const irIdx = try c.ir.pushExpr(.tag_lit, c.alloc, bt.TagLit, nodeId, .{ .name = name });
+                        return ExprResult.initStatic(irIdx, bt.TagLit);
+                    },
                     bt.Symbol => {
                         const irIdx = try c.ir.pushExpr(.symbol, c.alloc, bt.Symbol, nodeId, .{ .name = name });
                         return ExprResult.initStatic(irIdx, bt.Symbol);
@@ -4743,7 +4747,7 @@ pub const ChunkExt = struct {
                 return ExprResult.init(irIdx, CompactType.init(typeId));
             },
             .callExpr => {
-                return try c.semaCallExpr(expr);
+                return c.semaCallExpr(expr);
             },
             .expandOpt => {
                 const sym = try cte.expandTemplateOnCallArgs(c, c.sema.option_tmpl, node.data.expandOpt.param, nodeId);
@@ -4984,7 +4988,7 @@ pub const ChunkExt = struct {
                 } else {
                     // preCall.
                     const numArgs = callExpr.data.callExpr.numArgs;
-                    const args = try c.semaPushCallArgs(callExpr.data.callExpr.argHead, numArgs);
+                    const args = try c.semaPushDynCallArgs(callExpr.data.callExpr.argHead, numArgs);
                     _ = try c.semaCallValue(irCallIdx, callee.irIdx, numArgs, args);
                 }
 
@@ -5047,7 +5051,7 @@ pub const ChunkExt = struct {
                 if (leftRes.type.isDynAny()) {
                     // Runtime method call.
                     const recv = try sema.symbol(c, leftSym, callee.data.accessExpr.left, true);
-                    const args = try c.semaPushCallArgs(node.data.callExpr.argHead, numArgs);
+                    const args = try c.semaPushDynCallArgs(node.data.callExpr.argHead, numArgs);
                     return c.semaCallObjSym(preIdx, recv.irIdx, rightId, numArgs, args);
                 }
 
@@ -5067,7 +5071,7 @@ pub const ChunkExt = struct {
             } else {
                 if (leftRes.type.isDynAny()) {
                     // preCallObjSym.
-                    const args = try c.semaPushCallArgs(node.data.callExpr.argHead, numArgs);
+                    const args = try c.semaPushDynCallArgs(node.data.callExpr.argHead, numArgs);
                     return c.semaCallObjSym(preIdx, leftRes.irIdx, rightId, numArgs, args);
                 } else {
                     // Look for sym under left type's module.
@@ -5089,7 +5093,7 @@ pub const ChunkExt = struct {
                 .local => {
                     // preCall.
                     const calleeRes = try c.semaExpr(node.data.callExpr.callee, .{});
-                    const args = try c.semaPushCallArgs(node.data.callExpr.argHead, numArgs);
+                    const args = try c.semaPushDynCallArgs(node.data.callExpr.argHead, numArgs);
                     return c.semaCallValue(preIdx, calleeRes.irIdx, numArgs, args);
                 },
                 .static => |sym| {
@@ -5098,11 +5102,11 @@ pub const ChunkExt = struct {
             }
         } else {
             // preCall.
-            const calleeRes = try c.semaExpr(node.data.callExpr.callee, .{});
+            const calleeRes = try c.semaExprSkipSym(node.data.callExpr.callee);
             if (calleeRes.resType == .sym) {
                 return callSym(c, preIdx, calleeRes.data.sym, numArgs, node.data.callExpr.callee, node.data.callExpr.argHead, expr.getRetCstr());
             } else {
-                const args = try c.semaPushCallArgs(node.data.callExpr.argHead, numArgs);
+                const args = try c.semaPushDynCallArgs(node.data.callExpr.argHead, numArgs);
                 return c.semaCallValue(preIdx, calleeRes.irIdx, numArgs, args);
             }
         }

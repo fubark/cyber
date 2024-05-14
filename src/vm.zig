@@ -1193,13 +1193,13 @@ pub const VM = struct {
         const name_arg = try self.allocString(name);
         defer self.release(name_arg);
 
-        const args: []const Value = &.{rec_arg, name_arg, val};
+        var args: [3]Value = .{rec_arg, name_arg, val};
         const func = self.getCompatMethodFunc(rec_t, self.compiler.setMID, args[1..]) orelse {
             return error.Unexpected;
         };
         const func_val = try cy.heap.allocFuncFromSym(self, func);
         defer self.release(func_val);
-        const result = try self.callFunc(func_val, args, .{ .from_external = false });
+        const result = try self.callFunc(func_val, &args, .{ .from_external = false });
         if (result.isInterrupt()) {
             return error.Panic;
         }
@@ -1216,14 +1216,14 @@ pub const VM = struct {
         const name_arg = try self.allocString(name);
         defer self.release(name_arg);
 
-        const args: []const Value = &.{rec_arg, name_arg};
+        var args: [2]Value = .{rec_arg, name_arg};
         const func = self.getCompatMethodFunc(rec_t, self.compiler.getMID, args[1..]) orelse {
             return error.Unexpected;
         };
 
         const func_val = try cy.heap.allocFuncFromSym(self, func);
         defer self.release(func_val);
-        const result = try self.callFunc(func_val, args, .{ .from_external = false });
+        const result = try self.callFunc(func_val, &args, .{ .from_external = false });
         return result;
     }
 
@@ -1331,7 +1331,7 @@ pub const VM = struct {
     }
 
     /// Like `isFuncCompat` but does not check rec.
-    fn isMethodFuncCompat(self: *VM, func: rt.FuncSymbol, args: []const Value) bool {
+    fn isMethodFuncCompat(self: *VM, func: rt.FuncSymbol, args: []Value) bool {
         // Perform type check on args.
         const target = self.compiler.sema.getFuncSig(func.sig);
         const target_params = target.params()[1..];
@@ -1340,10 +1340,13 @@ pub const VM = struct {
             return false;
         }
 
-        for (args, target_params) |val, target_t| {
-            const valTypeId = val.getTypeId();
-            if (!types.isTypeSymCompat(self.compiler, valTypeId, target_t)) {
-                return false;
+        for (args, 0..) |arg, i| {
+            const target_t = target_params[i];
+            const arg_t = arg.getTypeId();
+            if (!types.isTypeSymCompat(self.compiler, arg_t, target_t)) {
+                if (!@call(.never_inline, inferArg, .{self, args, i, arg, target_t})) {
+                    return false;
+                }
             }
         }
         return true;
@@ -1373,7 +1376,7 @@ pub const VM = struct {
     }
 
     /// Assumes args does not include rec.
-    fn getCompatMethodFunc(self: *VM, rec_t: cy.TypeId, method_id: rt.MethodId, args: []const cy.Value) ?rt.FuncSymbol {
+    fn getCompatMethodFunc(self: *VM, rec_t: cy.TypeId, method_id: rt.MethodId, args: []cy.Value) ?rt.FuncSymbol {
         var method = self.methods.buf[method_id];
         if (method.mru_type != rec_t) {
             if (!method.has_multiple_types) {
@@ -3432,6 +3435,23 @@ const FieldEntry = struct {
     typeId: types.TypeId,
 };
 
+fn inferArg(vm: *VM, args: []Value, arg_idx: usize, arg: Value, target_t: cy.TypeId) bool {
+    if (arg.getTypeId() == bt.TagLit) {
+        const type_e = vm.types[target_t];
+        if (type_e.kind == .@"enum") {
+            const name = vm.syms.buf[arg.asSymbolId()].name;
+            if (type_e.sym.cast(.enum_t).getMemberTag(name)) |value| {
+                args[arg_idx] = Value.initEnum(target_t, @intCast(value));
+                return true;
+            }
+        } else if (target_t == bt.Symbol) {
+            args[arg_idx] = Value.initSymbol(arg.asSymbolId());
+            return true;
+        }
+    }
+    return false;
+}
+
 /// See `reserveFuncParams` for stack layout.
 /// numArgs does not include the callee.
 pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8, cont: bool) !cy.fiber.PcSp {
@@ -3452,7 +3472,9 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                         const cstrType = cstrFuncSig.paramPtr[i];
                         const argType = arg.getTypeId();
                         if (!types.isTypeSymCompat(vm.compiler, argType, cstrType)) {
-                            return panicIncompatibleLambdaSig(vm, args, obj.closure.funcSigId);
+                            if (!@call(.never_inline, inferArg, .{vm, args, i, arg, cstrType})) {
+                                return panicIncompatibleLambdaSig(vm, args, obj.closure.funcSigId);
+                            }
                         }
                     }
                 }
@@ -3487,7 +3509,9 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                         const cstrType = cstrFuncSig.paramPtr[i];
                         const argType = arg.getTypeId();
                         if (!types.isTypeSymCompat(vm.compiler, argType, cstrType)) {
-                            return panicIncompatibleLambdaSig(vm, args, obj.lambda.funcSigId);
+                            if (!@call(.never_inline, inferArg, .{vm, args, i, arg, cstrType})) {
+                                return panicIncompatibleLambdaSig(vm, args, obj.lambda.funcSigId);
+                            }
                         }
                     }
                 }
@@ -3519,7 +3543,9 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                         const cstrType = cstrFuncSig.paramPtr[i];
                         const argType = arg.getTypeId();
                         if (!types.isTypeSymCompat(vm.compiler, argType, cstrType)) {
-                            return panicIncompatibleLambdaSig(vm, args, obj.hostFunc.funcSigId);
+                            if (!@call(.never_inline, inferArg, .{vm, args, i, arg, cstrType})) {
+                                return panicIncompatibleLambdaSig(vm, args, obj.hostFunc.funcSigId);
+                            }
                         }
                     }
                 }

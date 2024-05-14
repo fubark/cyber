@@ -910,7 +910,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.Error,
         bt.Placeholder1,
         bt.Placeholder2,
-        bt.Placeholder3,
+        bt.TagLit,
         bt.Symbol,
         bt.Integer,
         bt.Float,

@@ -416,6 +416,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .stringTemplate     => genStringTemplate(c, idx, cstr, nodeId),
         .switchExpr         => genSwitch(c, idx, cstr, nodeId),
         .symbol             => genSymbol(c, idx, cstr, nodeId),
+        .tag_lit            => genTagLit(c, idx, cstr, nodeId),
         .type_check         => genTypeCheck(c, idx, cstr, nodeId),
         .typeCheckOption    => genTypeCheckOption(c, idx, cstr, nodeId),
         .throw              => genThrow(c, idx, nodeId),
@@ -1000,6 +1001,18 @@ fn genRange(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     return finishDstInst(c, inst, true);
 }
 
+fn genTagLit(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
+    const data = c.ir.getExprData(idx, .tag_lit);
+
+    const sym = try c.compiler.vm.ensureSymbol(data.name);
+    const inst = try c.rega.selectForNoErrNoDepInst(cstr, false, nodeId);
+    if (inst.requiresPreRelease) {
+        try pushRelease(c, inst.dst, nodeId);
+    }
+    try c.buf.pushOp2(.tag_lit, @intCast(sym), inst.dst);
+    return finishNoErrNoDepInst(c, inst, false);
+}
+
 fn genSymbol(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const data = c.ir.getExprData(idx, .symbol);
 
@@ -1008,7 +1021,7 @@ fn genSymbol(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     if (inst.requiresPreRelease) {
         try pushRelease(c, inst.dst, nodeId);
     }
-    try c.buf.pushOp2(.tagLiteral, @intCast(symId), inst.dst);
+    try c.buf.pushOp2(.symbol, @intCast(symId), inst.dst);
     return finishNoErrNoDepInst(c, inst, false);
 }
 
@@ -1592,7 +1605,7 @@ fn genTypeSym(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
     const data = c.ir.getExprData(idx, .typeSym);
 
     const inst = try c.rega.selectForDstInst(cstr, true, nodeId);
-    try c.buf.pushOp1(.sym, @intFromEnum(cy.heap.MetaTypeKind.object));
+    try c.buf.pushOp1(.metatype, @intFromEnum(cy.heap.MetaTypeKind.object));
     try c.pushCodeBytes(std.mem.asBytes(&data.typeId));
     try c.buf.pushOperand(inst.dst);
 

@@ -2669,6 +2669,7 @@ The main execution context is a fiber as well. Once the main fiber has finished,
 * [Dynamic functions.](#dynamic-functions)
 * [Dynamic tables.](#dynamic-tables)
 * [Custom tables.](#custom-tables)
+* [Dynamic inference.](#dynamic-inference)
 
 [^top](#table-of-contents)
 
@@ -2780,6 +2781,14 @@ Tables can be declared without any methods:
 let Vec3{x, y, z}
 
 let v = Vec3{x: 1, y: 2, z: 3}
+```
+
+## Dynamic inference.
+When the inference tag is used in a dynamic context, it will attempt to resolve its value at runtime.
+In this example, the dynamic value `a` resolves to a `String` at runtime and invokes the typed method `trim`.
+`.left` then infers to the correct value at runtime:
+```cy
+print str.trim(.left, ' ')
 ```
 
 # Metaprogramming.

@@ -702,8 +702,9 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(BoxValueRetain),
         JENTRY(Captured),
         JENTRY(SetCaptured),
-        JENTRY(Tag),
-        JENTRY(TagLiteral),
+        JENTRY(TagLit),
+        JENTRY(Enum),
+        JENTRY(Symbol),
         JENTRY(Range),
         JENTRY(Cast),
         JENTRY(CastAbstract),
@@ -728,7 +729,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(StaticFunc),
         JENTRY(StaticVar),
         JENTRY(SetStaticVar),
-        JENTRY(Sym),
+        JENTRY(Metatype),
         JENTRY(End),
     };
     STATIC_ASSERT(sizeof(jumpTable) == (CodeEnd + 1) * sizeof(void*), JUMP_TABLE_INCOMPLETE);
@@ -1818,14 +1819,20 @@ beginSwitch:
         pc += 4;
         NEXT();
     }
-    CASE(Tag): {
+    CASE(TagLit): {
+        u8 sym = pc[1];
+        stack[pc[2]] = VALUE_TAGLIT(sym);
+        pc += 3;
+        NEXT();
+    }
+    CASE(Enum): {
         u8 tagId = pc[1];
         u8 val = pc[2];
         stack[pc[3]] = VALUE_ENUM(tagId, val);
         pc += 4;
         NEXT();
     }
-    CASE(TagLiteral): {
+    CASE(Symbol): {
         u8 symId = pc[1];
         stack[pc[2]] = VALUE_SYMBOL(symId);
         pc += 3;
@@ -2044,7 +2051,7 @@ beginSwitch:
         pc += 4;
         NEXT();
     }
-    CASE(Sym): {
+    CASE(Metatype): {
         u8 symType = pc[1];
         u32 symId = READ_U32(2);
         ValueResult res = allocMetaType(vm, symType, symId);

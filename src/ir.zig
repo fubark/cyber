@@ -93,6 +93,7 @@ pub const ExprCode = enum(u8) {
     falsev,
     errorv,
     symbol,
+    tag_lit,
     float,
     int,
     unOpEnd,
@@ -236,6 +237,10 @@ pub const ThrowExpr = struct {
 pub const TryExpr = struct {
     expr: Loc,
     catchBody: u32,
+};
+
+pub const TagLit = struct {
+    name: []const u8,
 };
 
 pub const Symbol = struct {
@@ -652,6 +657,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .errorv => Error,
         .captured => Captured,
         .symbol => Symbol,
+        .tag_lit => TagLit,
         .blockExpr => BlockExpr,
         .coresume => Coresume,
         .unwrapChoice => UnwrapChoice,

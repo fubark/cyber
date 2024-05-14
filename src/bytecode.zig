@@ -925,7 +925,8 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .boxValueRetain,
         .ref,
         .setRef,
-        .tagLiteral => {
+        .tag_lit,
+        .symbol => {
             return 3;
         },
         .seqDestructure => {
@@ -947,7 +948,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .compare,
         .compareNot,
         .list,
-        .tag,
+        .enumOp,
         .setCaptured,
         .refCopyObj,
         .jumpNotCond => {
@@ -979,7 +980,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             return 6;
         },
         .coinit,
-        .sym => {
+        .metatype => {
             return 7;
         },
         .forRangeInit => {
@@ -1167,10 +1168,9 @@ pub const OpCode = enum(u8) {
     boxValueRetain = vmc.CodeBoxValueRetain,
     captured = vmc.CodeCaptured,
     setCaptured = vmc.CodeSetCaptured,
-    /// TODO: Rename to enumOp.
-    tag = vmc.CodeTag,
-    /// TODO: Rename to symbol.
-    tagLiteral = vmc.CodeTagLiteral,
+    tag_lit = vmc.CodeTagLit,
+    enumOp = vmc.CodeEnum,
+    symbol = vmc.CodeSymbol,
     range = vmc.CodeRange,
 
     seqDestructure = vmc.CodeSeqDestructure,
@@ -1211,8 +1211,7 @@ pub const OpCode = enum(u8) {
 
     /// Allocates a symbol object to a destination local.
     /// [symType] [symId] [dst]
-    /// TODO: Rename to typeOp.
-    sym = vmc.CodeSym,
+    metatype = vmc.CodeMetatype,
 
     cast = vmc.CodeCast,
     castAbstract = vmc.CodeCastAbstract,
@@ -1226,7 +1225,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 115);
+    try t.eq(std.enums.values(OpCode).len, 116);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

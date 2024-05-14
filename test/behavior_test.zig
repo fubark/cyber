@@ -295,6 +295,7 @@ if (!aot) {
     run.case("core/symbols.cy");
     run.case("core/table.cy");
     run.case("core/table_access_panic.cy"); 
+    run.case("core/tag_lit.cy");
 }
 
     run.case("vars/local_assign_dyn_panic.cy");

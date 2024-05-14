@@ -81,6 +81,7 @@ typedef struct IndexSlice {
 #define TAG_VOID ((uint8_t)0)
 #define TAG_BOOLEAN ((uint8_t)1)
 #define TAG_ERROR ((uint8_t)2)
+#define TAG_TAGLIT ((uint8_t)5)
 #define TAG_SYMBOL ((uint8_t)6)
 #define FALSE_MASK BOOLEAN_MASK
 #define TRUE_BIT_MASK ((uint64_t)1)
@@ -88,6 +89,7 @@ typedef struct IndexSlice {
 
 #define ERROR_MASK (TAGGED_VALUE_MASK | ((u64)TAG_ERROR << 32))
 #define SYMBOL_MASK (TAGGED_VALUE_MASK | ((u64)TAG_SYMBOL << 32))
+#define TAGLIT_MASK (TAGGED_VALUE_MASK | ((u64)TAG_TAGLIT << 32))
 #define BEFORE_TAG_MASK ((u32)(0x00007fff << 3))
 #define NULL_U32 UINT32_MAX
 #define NULL_U8 UINT8_MAX
@@ -128,6 +130,7 @@ typedef struct IndexSlice {
 #define VALUE_NOCYC_PTR(ptr) (NOCYC_POINTER_MASK | ((size_t)ptr & POINTER_PAYLOAD_MASK))
 #define VALUE_CYC_PTR(ptr) (CYC_POINTER_MASK | ((size_t)ptr & POINTER_PAYLOAD_MASK))
 #define VALUE_SYMBOL(symId) (SYMBOL_MASK | symId)
+#define VALUE_TAGLIT(symId) (TAGLIT_MASK | symId)
 #define VALUE_ERROR(symId) (ERROR_MASK | symId)
 
 // [Value ops]
@@ -317,8 +320,9 @@ typedef enum {
     CodeBoxValueRetain,
     CodeCaptured,
     CodeSetCaptured,
-    CodeTag,
-    CodeTagLiteral,
+    CodeTagLit,
+    CodeEnum,
+    CodeSymbol,
     CodeRange,
     CodeCast,
     CodeCastAbstract,
@@ -343,7 +347,7 @@ typedef enum {
     CodeStaticFunc,
     CodeStaticVar,
     CodeSetStaticVar,
-    CodeSym,
+    CodeMetatype,
     CodeEnd,
     NumCodes,
 } OpCode;
@@ -356,7 +360,7 @@ enum {
     TYPE_ERROR = 2,
     TYPE_PLACEHOLDER1 = 3,
     TYPE_PLACEHOLDER2 = 4,
-    TYPE_PLACEHOLDER3 = 5,
+    TYPE_TAGLIT = 5,
     TYPE_SYMBOL = 6,
     TYPE_INTEGER = 7,
     TYPE_FLOAT = 8,

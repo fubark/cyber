@@ -47,7 +47,7 @@ pub const Parser = struct {
     cur_indent: u32,
 
     /// Use the parser pass to record static declarations.
-    staticDecls: std.ArrayListUnmanaged(StaticDecl),
+    staticDecls: std.ArrayListUnmanaged(cy.NodeId),
 
     // TODO: This should be implemented by user callbacks.
     /// @name arg.
@@ -755,10 +755,7 @@ pub const Parser = struct {
             .hidden = hidden,
         }});
 
-        try self.staticDecls.append(self.alloc, .{
-            .declT = .template,
-            .nodeId = id,
-        });
+        try self.staticDecls.append(self.alloc, id);
         return id;
     }
 
@@ -796,23 +793,14 @@ pub const Parser = struct {
 
                 const decl = try self.parseEnumDecl(start, name, config);
                 if (!template) {
-                    self.staticDecls.items[decl_idx].nodeId = decl;
+                    try self.staticDecls.append(self.alloc, decl);
                 }
                 return decl;
             },
             .struct_k => {
-                var decl_idx: usize = undefined;
-                if (!template) {
-                    decl_idx = self.staticDecls.items.len;
-                    try self.staticDecls.append(self.alloc, .{
-                        .declT = .struct_t,
-                        .nodeId = undefined,
-                    });
-                }
-
                 const decl = try self.parseStructDecl(start, name, config);
                 if (!template) {
-                    self.staticDecls.items[decl_idx].nodeId = decl;
+                    try self.staticDecls.append(self.alloc, decl);
                 }
                 return decl;
             },
@@ -820,46 +808,30 @@ pub const Parser = struct {
             .object_k,
             .new_line,
             .colon => {
-                var decl_idx: usize = undefined;
-                if (!template) {
-                    decl_idx = self.staticDecls.items.len;
-                    try self.staticDecls.append(self.alloc, .{
-                        .declT = .object,
-                        .nodeId = undefined,
-                    });
-                }
-
                 const decl = try self.parseObjectDecl(start, name, config);
-
                 if (!template) {
-                    self.staticDecls.items[decl_idx].nodeId = decl;
+                    try self.staticDecls.append(self.alloc, decl);
                 }
                 return decl;
             },
             .equal => {
                 const decl = try self.parseTypeAliasDecl(start, name, config);
                 if (!template) {
-                    try self.staticDecls.append(self.alloc, .{
-                        .declT = .typeAlias,
-                        .nodeId = decl,
-                    });
+                    try self.staticDecls.append(self.alloc, decl);
                 }
                 return decl;
             },
             else => {
                 var decl_idx: usize = undefined;
                 if (!template) {
-                    decl_idx = self.staticDecls.items.len;
-                    try self.staticDecls.append(self.alloc, .{
-                        .declT = .distinct_t,
-                        .nodeId = undefined,
-                    });
+                    try self.staticDecls.append(self.alloc, decl);
                 }
-
+                return decl;
+            },
+            else => {
                 const decl = try self.parseDistinctTypeDecl(start, name, config);
-
                 if (!template) {
-                    self.staticDecls.items[decl_idx].nodeId = decl;
+                    try self.staticDecls.append(self.alloc, decl);
                 }
                 return decl;
             }
@@ -876,10 +848,7 @@ pub const Parser = struct {
                         .attr_head = cy.NullNode,
                         .allow_decl = true,
                     });
-                    try self.staticDecls.append(self.alloc, .{
-                        .declT = .object,
-                        .nodeId = decl,
-                    });
+                    try self.staticDecls.append(self.alloc, decl);
                     return decl;
                 } else {
                     return self.reportError("Unnamed type is not allowed in this context.", &.{});
@@ -1210,10 +1179,7 @@ pub const Parser = struct {
             }});
 
             if (!template and self.cur_indent == 0) {
-                try self.staticDecls.append(self.alloc, .{
-                    .declT = .func,
-                    .nodeId = id,
-                });
+                try self.staticDecls.append(self.alloc, id);
             }
             return id;
         } else {
@@ -1235,10 +1201,7 @@ pub const Parser = struct {
             }});
 
             if (!template and self.cur_indent == 0) {
-                try self.staticDecls.append(self.alloc, .{
-                    .declT = .funcInit,
-                    .nodeId = id,
-                });
+                try self.staticDecls.append(self.alloc, id);
             }
             return id;
         }
@@ -1517,10 +1480,7 @@ pub const Parser = struct {
                         .name = name,
                         .target = target,
                     }});
-                    try self.staticDecls.append(self.alloc, .{
-                        .declT = .use_alias,
-                        .nodeId = alias,
-                    });
+                    try self.staticDecls.append(self.alloc, alias);
                     try self.consumeNewLineOrEnd();
                     return alias;
                 },
@@ -1548,10 +1508,7 @@ pub const Parser = struct {
             .spec = spec,
         }});
 
-        try self.staticDecls.append(self.alloc, .{
-            .declT = .use_import,
-            .nodeId = import,
-        });
+        try self.staticDecls.append(self.alloc, import);
         return import;
     }
 
@@ -3465,20 +3422,14 @@ pub const Parser = struct {
             }});
 
             if (self.cur_indent == 0) {
-                try self.staticDecls.append(self.alloc, .{
-                    .declT = .func,
-                    .nodeId = id,
-                });
+                try self.staticDecls.append(self.alloc, id);
             }
             return id;
         } else if (self.peek().tag() == .left_brace) {
             self.advance();
 
             const decl = try self.pushNode(.table_decl, start);
-            try self.staticDecls.append(self.alloc, .{
-                .declT = .table_t,
-                .nodeId = decl,
-            });
+            try self.staticDecls.append(self.alloc, decl);
 
             // Parse as custom table declaration.
             const fields = try self.parseLetTableFields();
@@ -3622,10 +3573,7 @@ pub const Parser = struct {
                 .root = root,
                 .hidden = config.hidden,
             }});
-            try self.staticDecls.append(self.alloc, .{
-                .declT = .variable,
-                .nodeId = decl,
-            });
+            try self.staticDecls.append(self.alloc, decl);
         } else {
             self.ast.setNodeData(decl, .{ .localDecl = .{
                 .varSpec = varSpec,
@@ -4020,26 +3968,6 @@ const ParseExprConfig = struct {
 
 const ParseTermConfig = struct {
     parse_record_expr: bool = true,
-};
-
-pub const StaticDeclType = enum {
-    variable,
-    typeAlias,
-    distinct_t,
-    func,
-    funcInit,
-    use_import,
-    use_alias,
-    object,
-    table_t,
-    struct_t,
-    enum_t,
-    template,
-};
-
-pub const StaticDecl = struct {
-    declT: StaticDeclType,
-    nodeId: cy.NodeId,
 };
 
 fn isRecedingIndent(p: *Parser, prevIndent: u32, curIndent: u32, indent: u32) !bool {

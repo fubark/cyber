@@ -414,25 +414,7 @@ func genDocsModules():
         var decls = cy.parse(src)['decls']
         var gen = "\n"
         for decls -> decl:
-            switch decl['type']
-            case 'funcInit', 'func':
-                gen += genFuncDecl(decl)
-            case 'variable':
-                var docLine = decl.get('docs') ?else ''
-                var typeSpec = if (decl['typeSpec'] != '') decl['typeSpec'] else 'any'
-                gen += "> `var $(decl['name']) $(typeSpec)`\n>\n>$(docLine)\n\n"
-            case 'distinct_t':
-                gen += "### `type $(decl['name'])`\n\n"
-                for decl['funcs'] -> fdecl:
-                    gen += genFuncDecl(fdecl)
-            case 'object':
-                gen += "### `type $(decl['name'])`\n\n"
-                for decl['funcs'] -> fdecl:
-                    gen += genFuncDecl(fdecl)
-            case 'struct_t':
-                gen += "### `type $(decl['name']) struct`\n\n"
-                for decl['funcs'] -> fdecl:
-                    gen += genFuncDecl(fdecl)
+            gen += genDecl(decl)
 
         -- Replace section in modules.md.
         var needle = "<!-- $(m.section).start -->"
@@ -441,3 +423,40 @@ func genDocsModules():
         md = md[0..startIdx] + gen + md[endIdx..]
 
     os.writeFile("$(curDir)/docs-modules.md", md)
+
+func genDecl(decl Map) String:
+    var gen = ''
+    switch decl['type']
+    case 'funcDecl':
+        gen += genFuncDecl(decl)
+    case 'staticDecl':
+        var docLine = decl.get('docs') ?else ''
+        var typeSpec = if (decl['typeSpec'] != '') decl['typeSpec'] else 'any'
+        gen += "> `var $(decl['name']) $(typeSpec)`\n>\n>$(docLine)\n\n"
+    case 'distinct_decl':
+        gen += "### `type $(decl['name'])`\n\n"
+        for decl['funcs'] -> fdecl:
+            gen += genFuncDecl(fdecl)
+    case 'objectDecl':
+        gen += "### `type $(decl['name'])`\n\n"
+        for decl['funcs'] -> fdecl:
+            gen += genFuncDecl(fdecl)
+    case 'structDecl':
+        gen += "### `type $(decl['name'])`\n\n"
+        for decl['funcs'] -> fdecl:
+            gen += genFuncDecl(fdecl)
+    case 'custom_decl':
+        gen += "### `type $(decl['name'])`\n\n"
+        for decl['funcs'] -> fdecl:
+            gen += genFuncDecl(fdecl)
+    case 'template':
+        gen += genDecl(decl['child'])
+    case 'specialization':
+        pass
+    case 'import_stmt':
+        pass
+    case 'enumDecl':
+        pass
+    else:
+        panic("Unsupported $(decl['type'])")
+    return gen

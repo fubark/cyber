@@ -17,31 +17,31 @@ t.throws(() => cy.eval('a'), error.EvalError)
 
 -- parse()
 res = cy.parse('var .foo = 123')
-t.eq(res['decls'][0]['type'], 'variable')
+t.eq(res['decls'][0]['type'], 'staticDecl')
 t.eq(res['decls'][0]['name'], 'foo')
 
 res = cy.parse('type foo = bar')
-t.eq(res['decls'][0]['type'], 'typeAlias')
+t.eq(res['decls'][0]['type'], 'typeAliasDecl')
 t.eq(res['decls'][0]['name'], 'foo')
 
 res = cy.parse('func foo(): pass')
-t.eq(res['decls'][0]['type'], 'func')
+t.eq(res['decls'][0]['type'], 'funcDecl')
 t.eq(res['decls'][0]['name'], 'foo')
 
 res = cy.parse('func Foo.foo(): pass')
-t.eq(res['decls'][0]['type'], 'func')
+t.eq(res['decls'][0]['type'], 'funcDecl')
 t.eq(res['decls'][0]['name'], 'Foo.foo')
 
 res = cy.parse("use foo 'bar'")
-t.eq(res['decls'][0]['type'], 'use_import')
+t.eq(res['decls'][0]['type'], 'import_stmt')
 t.eq(res['decls'][0]['name'], 'foo')
 
 res = cy.parse("type foo:\n  a any")
-t.eq(res['decls'][0]['type'], 'object')
+t.eq(res['decls'][0]['type'], 'objectDecl')
 t.eq(res['decls'][0]['name'], 'foo')
 
 res = cy.parse("type foo enum:\n  case a")
-t.eq(res['decls'][0]['type'], 'enum_t')
+t.eq(res['decls'][0]['type'], 'enumDecl')
 t.eq(res['decls'][0]['name'], 'foo')
 
 -- parseCyon()

@@ -759,53 +759,63 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
             }
 
             // Process static declarations.
-            for (chunk.parser.staticDecls.items) |*decl| {
-                log.tracev("reserve: {s}", .{try chunk.ast.declNamePath(decl.nodeId)});
-                switch (decl.declT) {
-                    .use_import => {
-                        try sema.declareUseImport(chunk, decl.nodeId);
+            for (chunk.parser.staticDecls.items) |decl_id| {
+                log.tracev("reserve: {s}", .{try chunk.ast.declNamePath(decl_id)});
+                const decl = chunk.ast.node(decl_id);
+                switch (decl.type()) {
+                    .import_stmt => {
+                        try sema.declareUseImport(chunk, decl_id);
                     },
                     .use_alias => {
-                        _ = try sema.reserveUseAlias(chunk, decl.nodeId);
+                        _ = try sema.reserveUseAlias(chunk, decl_id);
                     },
-                    .struct_t => {
-                        const sym = try sema.reserveStruct(chunk, decl.nodeId);
-                        const node = chunk.ast.node(decl.nodeId);
+                    .structDecl => {
+                        const sym = try sema.reserveStruct(chunk, decl_id);
+                        const node = chunk.ast.node(decl_id);
                         var cur: cy.NodeId = node.data.objectDecl.funcHead;
                         while (cur != cy.NullNode) {
                             _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), cur);
                             cur = chunk.ast.node(cur).next();
                         }
                     },
-                    .object => {
-                        const sym = try sema.reserveObjectType(chunk, decl.nodeId);
-                        const node = chunk.ast.node(decl.nodeId);
+                    .objectDecl => {
+                        const sym = try sema.reserveObjectType(chunk, decl_id);
+                        const node = chunk.ast.node(decl_id);
                         var cur: cy.NodeId = node.data.objectDecl.funcHead;
                         while (cur != cy.NullNode) {
                             _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), cur);
                             cur = chunk.ast.node(cur).next();
                         }
                     },
-                    .table_t => {
-                        const sym = try sema.reserveObjectType(chunk, decl.nodeId);
+                    .table_decl => {
+                        const sym = try sema.reserveObjectType(chunk, decl_id);
                         try sema.reserveTableMethods(chunk, @ptrCast(sym));
 
-                        const node = chunk.ast.node(decl.nodeId);
+                        const node = chunk.ast.node(decl_id);
                         var cur: cy.NodeId = node.data.objectDecl.funcHead;
                         while (cur != cy.NullNode) {
                             _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), cur);
                             cur = chunk.ast.node(cur).next();
                         }
                     },
-                    .enum_t => {
-                        _ = try sema.reserveEnum(chunk, decl.nodeId);
+                    .enumDecl => {
+                        _ = try sema.reserveEnum(chunk, decl_id);
                     },
-                    .typeAlias => {
-                        _ = try sema.reserveTypeAlias(chunk, decl.nodeId);
+                    .typeAliasDecl => {
+                        _ = try sema.reserveTypeAlias(chunk, decl_id);
                     },
-                    .distinct_t => {
-                        const sym = try sema.reserveDistinctType(chunk, decl.nodeId);
-                        const node = chunk.ast.node(decl.nodeId);
+                    .custom_decl => {
+                        const sym = try sema.declareCustomType(chunk, decl_id);
+                        const node = chunk.ast.node(decl_id);
+                        var cur: cy.NodeId = node.data.custom_decl.func_head;
+                        while (cur != cy.NullNode) {
+                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), cur);
+                            cur = chunk.ast.node(cur).next();
+                        }
+                    },
+                    .distinct_decl => {
+                        const sym = try sema.reserveDistinctType(chunk, decl_id);
+                        const node = chunk.ast.node(decl_id);
                         var cur: cy.NodeId = node.data.distinct_decl.func_head;
                         while (cur != cy.NullNode) {
                             _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), cur);
@@ -813,7 +823,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         }
                     },
                     .template => {
-                        _ = try sema.declareTemplate(chunk, decl.nodeId);
+                        _ = try sema.declareTemplate(chunk, decl_id);
                     },
                     .variable => {
                         const sym = try sema.reserveVar(chunk, decl.nodeId);
@@ -821,12 +831,14 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                             chunk.hasStaticInit = true;
                         }
                     },
-                    .func => {
-                        _ = try sema.reserveUserFunc(chunk, decl.nodeId);
+                    .funcDecl => {
+                        if (decl.data.func.bodyHead == cy.NullNode) {
+                            _ = try sema.reserveHostFunc(chunk, decl_id);
+                        } else {
+                            _ = try sema.reserveUserFunc(chunk, decl_id);
+                        }
                     },
-                    .funcInit => {
-                        _ = try sema.reserveHostFunc(chunk, decl.nodeId);
-                    },
+                    else => return error.Unsupported,
                 }
             }
 

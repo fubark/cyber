@@ -199,7 +199,6 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
         // .pushDebugLabel     => try pushDebugLabel(c, idx),
         .retExprStmt        => try retExprStmt(c, idx, nodeId),
         // .retStmt            => try retStmt(c),
-        // .setCallObjSymTern  => try setCallObjSymTern(c, idx, nodeId),
         // .setCaptured        => try setCaptured(c, idx, nodeId),
         // .setField           => try setField(c, idx, .{}, nodeId),
         // .setFuncSym         => try setFuncSym(c, idx, nodeId),

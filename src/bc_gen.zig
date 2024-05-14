@@ -291,7 +291,6 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .pushDebugLabel     => try pushDebugLabel(c, idx),
         .retExprStmt        => try gen.retExprStmt(c, idx, nodeId),
         .retStmt            => try retStmt(c),
-        .setCallObjSymTern  => try setCallObjSymTern(c, idx, nodeId),
         .setCaptured        => try setCaptured(c, idx, nodeId),
         .set_field_dyn      => try setFieldDyn(c, idx, .{}, nodeId),
         .setIndex           => try setIndex(c, idx, nodeId),
@@ -780,38 +779,6 @@ fn genThrow(c: *Chunk, idx: usize, nodeId: cy.NodeId) !GenValue {
 
     try popTempAndUnwind(c, childv);
     return GenValue.initNoValue();
-}
-
-fn setCallObjSymTern(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
-    const data = c.ir.getStmtData(loc, .setCallObjSymTern).callObjSymTern;
-
-    const inst = try beginCall(c, Cstr.none, false, nodeId);
-
-    var args: [4]GenValue = undefined;
-    var temp = try c.rega.consumeNextTemp();
-    args[0] = try genExpr(c, data.rec, Cstr.toTemp(temp));
-    try pushUnwindValue(c, args[0]);
-    temp = try c.rega.consumeNextTemp();
-    args[1] = try genExpr(c, data.index, Cstr.toTemp(temp));
-    try pushUnwindValue(c, args[1]);
-    temp = try c.rega.consumeNextTemp();
-    args[2] = try genExpr(c, data.right, Cstr.toTemp(temp));
-    try pushUnwindValue(c, args[2]);
-
-    const method = try c.compiler.vm.ensureMethod(data.name);
-    try pushCallObjSym(c, inst.ret, 3,
-        @intCast(method), nodeId);
-
-    var retained = try popTempAndUnwinds2(c, args[0..3]);
-
-    // Include ret value for release.
-    retained.len += 1;
-    retained[retained.len-1] = GenValue.initTempValue(inst.ret, true);
-
-    try pushReleaseVals(c, retained, nodeId);
-
-    // Unwind return temp as well.
-    c.rega.freeTemps(inst.numPreludeTemps + 1);
 }
 
 fn setIndex(c: *Chunk, idx: usize, nodeId: cy.NodeId) !void {

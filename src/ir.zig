@@ -62,7 +62,6 @@ pub const StmtCode = enum(u8) {
     set_field_dyn,
     set_field,
     setIndex,
-    setCallObjSymTern,
     setVarSym,
 
     /// Upon merging branches back, a dynamic local may have a new recent type.
@@ -604,7 +603,6 @@ pub fn StmtData(comptime code: StmtCode) type {
         .forRangeStmt => ForRangeStmt,
         .setLocalType => SetLocalType,
         .setIndex,
-        .setCallObjSymTern,
         .setLocal,
         .set_field_dyn,
         .setCaptured,

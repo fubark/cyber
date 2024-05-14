@@ -832,7 +832,6 @@ fn genStmt(c: *Chunk, loc: u32) anyerror!void {
         // .pushDebugLabel     => try pushDebugLabel(c, idx),
         .retExprStmt        => try retExprStmt(c, loc, nodeId),
         // .retStmt            => try retStmt(c),
-        .setCallObjSymTern  => try setCallObjSymTern(c, loc, nodeId),
         // .setCaptured        => try setCaptured(c, idx, nodeId),
         .set_field          => try setField(c, loc, nodeId),
         // .setFuncSym         => try setFuncSym(c, idx, nodeId),
@@ -1176,22 +1175,6 @@ fn opSet(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
     _ = nodeId;
     const setIdx = c.ir.advanceStmt(loc, .opSet);
     try genStmt(c, @intCast(setIdx));
-}
-
-fn setCallObjSymTern(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
-    const data = c.ir.getStmtData(loc, .setCallObjSymTern).callObjSymTern;
-
-    const start = c.bufStart();
-    try c.bufPush("cbCallMethDyn(rt, ");
-    _ = try genExprAndBox(c, data.rec, Cstr.init());
-    try c.bufPushFmt(", \"{s}\", {}, (CbAny[]){{", .{data.name, data.name.len});
-    _ = try genExprAndBox(c, data.index, Cstr.init());
-    try c.bufPush(", ");
-    _ = try genExprAndBox(c, data.right, Cstr.init());
-
-    try c.beginLine(nodeId);
-    try c.pushSpan(c.bufPop(start));
-    try c.pushSpanEnd("}, 3);");
 }
 
 fn setField(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {

@@ -4912,6 +4912,35 @@ pub const ChunkExt = struct {
                 });
                 return ExprResult.initInheritDyn(loc, opt.type, payload_t);
             },
+            .array_init => {
+                var left = try c.semaExprSkipSym(node.data.array_init.left);
+                if (left.resType == .sym) {
+                    if (left.data.sym.getStaticType()) |type_id| {
+                        if (left.data.sym.getVariant()) |variant| {
+                            if (variant.template == c.sema.list_tmpl) {
+                                const nargs = node.data.array_init.nargs;
+                                const loc = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(type_id), nodeId);
+                                const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
+
+                                const elem_t = variant.args[0].asHeapObject().type.type;
+
+                                var arg: cy.NodeId = node.data.array_init.arg_head;
+                                var i: u32 = 0;
+                                while (arg != cy.NullNode) {
+                                    const res = try c.semaExprTarget(arg, elem_t);
+                                    c.ir.setArrayItem(args_loc, u32, i, res.irIdx);
+                                    arg = c.ast.node(arg).next();
+                                    i += 1;
+                                }
+
+                                c.ir.setExprData(loc, .list, .{ .type = type_id, .numArgs = nargs });
+                                return ExprResult.initStatic(loc, type_id);
+                            }
+                        }
+                    }
+                }
+                return c.reportError("Unsupported array initializer", expr.nodeId);
+            },
             .array_expr => {
                 var left = try c.semaExprSkipSym(node.data.array_expr.left);
                 if (left.resType == .sym) {
@@ -4952,7 +4981,7 @@ pub const ChunkExt = struct {
             },
             .arrayLit => {
                 const numArgs = node.data.arrayLit.numArgs;
-                const irIdx = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(bt.List), nodeId);
+                const irIdx = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(bt.ListDyn), nodeId);
                 const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, numArgs);
 
                 var argId = node.data.arrayLit.argHead;
@@ -4965,8 +4994,8 @@ pub const ChunkExt = struct {
                     i += 1;
                 }
 
-                c.ir.setExprData(irIdx, .list, .{ .numArgs = numArgs });
-                return ExprResult.initStatic(irIdx, bt.List);
+                c.ir.setExprData(irIdx, .list, .{ .type = bt.ListDyn, .numArgs = numArgs });
+                return ExprResult.initStatic(irIdx, bt.ListDyn);
             },
             .recordLit => {
                 if (expr.hasTargetType()) {
@@ -5306,8 +5335,8 @@ pub const ChunkExt = struct {
     }
 
     pub fn semaEmptyList(c: *cy.Chunk, nodeId: cy.NodeId) !ExprResult {
-        const irIdx = try c.ir.pushExpr(.list, c.alloc, bt.List, nodeId, .{ .numArgs = 0 });
-        return ExprResult.initStatic(irIdx, bt.List);
+        const irIdx = try c.ir.pushExpr(.list, c.alloc, bt.ListDyn, nodeId, .{ .type = bt.ListDyn, .numArgs = 0 });
+        return ExprResult.initStatic(irIdx, bt.ListDyn);
     }
 
     pub fn semaMap(c: *cy.Chunk, nodeId: cy.NodeId) !ExprResult {
@@ -5925,6 +5954,7 @@ pub const Sema = struct {
     funcSigMap: std.HashMapUnmanaged(FuncSigKey, FuncSigId, FuncSigKeyContext, 80),
 
     option_tmpl: *cy.sym.Template,
+    list_tmpl: *cy.sym.Template,
     table_type: *cy.sym.ObjectType,
 
     pub fn init(alloc: std.mem.Allocator, compiler: *cy.Compiler) Sema {
@@ -5932,6 +5962,7 @@ pub const Sema = struct {
             .alloc = alloc,
             .compiler = compiler,
             .option_tmpl = undefined,
+            .list_tmpl = undefined,
             .table_type = undefined,
             .funcSigs = .{},
             .funcSigMap = .{},

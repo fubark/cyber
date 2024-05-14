@@ -238,6 +238,7 @@ typedef enum {
     CodeIndexTuple,
     CodeIndexMap,
     CodeAppendList,
+    CodeListDyn,
     CodeList,
     CodeMap,
     CodeSliceList,
@@ -1030,6 +1031,7 @@ void zDumpEvalOp(VM* vm, Inst* pc);
 void zDumpValue(VM* vm, Value val);
 void zFreeObject(VM* vm, HeapObject* obj);
 void zEnd(VM* vm, Inst* pc);
+ValueResult zAllocList(VM* vm, TypeId type_id, Value* elemStart, uint8_t nelems);
 ValueResult zAllocListDyn(VM* vm, Value* elemStart, uint8_t nelems);
 double zOtherToF64(Value val);
 CallObjSymResult zCallObjSym(VM* vm, Inst* pc, Value* stack, Value recv, TypeId typeId, u16 method, u8 startLocal, u8 numArgs);

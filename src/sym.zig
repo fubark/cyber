@@ -635,6 +635,9 @@ const VariantType = enum(u8) {
 pub const Variant = struct {
     type: VariantType,
 
+    /// Back link to template.
+    template: *Template,
+
     /// Owned args. Can be used to print params along with the template type.
     args: []const cy.Value,
 

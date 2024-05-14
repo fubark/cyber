@@ -13,6 +13,7 @@ pub const NodeType = enum(u8) {
     all,
     arrayLit,
     array_expr,
+    array_init,
     assignStmt,
     attribute,
     await_expr,
@@ -275,6 +276,11 @@ const NodeData = union {
         hasNamedArg: bool,
     },
     array_expr: packed struct {
+        left: NodeId,
+        arg_head: u24,
+        nargs: u8,
+    },
+    array_init: packed struct {
         left: NodeId,
         arg_head: u24,
         nargs: u8,

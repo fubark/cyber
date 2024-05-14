@@ -2737,19 +2737,33 @@ pub const Parser = struct {
             const next = self.peek();
             switch (next.tag()) {
                 .dot => {
-                    // Access expr.
                     self.advance();
 
-                    const right = (try self.parseOptName()) orelse {
-                        return self.reportError("Expected ident", &.{});
-                    };
+                    if (self.peek().tag() == .left_bracket) {
+                        // Array initializer.
+                        const array_lit = try self.parseArrayLiteral();
+                        const array_lit_n = self.ast.nodes.items[array_lit];
+                        self.ast.nodes.items[array_lit].head.type = .array_init;
+                        self.ast.nodes.items[array_lit].srcPos = self.tokens[start].pos();
+                        self.ast.setNodeData(array_lit, .{ .array_init = .{
+                            .left = left_id,
+                            .arg_head = @intCast(array_lit_n.data.arrayLit.argHead),
+                            .nargs = array_lit_n.data.arrayLit.numArgs,
+                        }});
+                        left_id = array_lit;
+                    } else {
+                        // Access expr.
+                        const right = (try self.parseOptName()) orelse {
+                            return self.reportError("Expected ident", &.{});
+                        };
 
-                    const expr_id = try self.pushNode(.accessExpr, start);
-                    self.ast.setNodeData(expr_id, .{ .accessExpr = .{
-                        .left = left_id,
-                        .right = right,
-                    }});
-                    left_id = expr_id;
+                        const expr_id = try self.pushNode(.accessExpr, start);
+                        self.ast.setNodeData(expr_id, .{ .accessExpr = .{
+                            .left = left_id,
+                            .right = right,
+                        }});
+                        left_id = expr_id;
+                    }
                 },
                 .dot_question => {
                     self.advance();

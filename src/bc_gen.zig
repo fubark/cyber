@@ -3041,7 +3041,13 @@ fn genList(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !GenValue {
         try pushUnwindValue(c, val);
     }
 
-    try c.pushFCode(.list, &.{argStart, data.numArgs, inst.dst}, nodeId);
+    if (data.type == bt.ListDyn) {
+        try c.pushFCode(.list_dyn, &.{argStart, data.numArgs, inst.dst}, nodeId);
+    } else {
+        const start = c.buf.ops.items.len;
+        try c.pushFCode(.list, &.{argStart, data.numArgs, 0, 0, inst.dst}, nodeId);
+        c.buf.setOpArgU16(start + 3, @intCast(data.type)); 
+    }
 
     const argvs = popValues(c, data.numArgs);
     try checkArgs(argStart, argvs);

@@ -525,6 +525,7 @@ pub const Map = struct {
 };
 
 pub const List = struct {
+    type: cy.TypeId,
     numArgs: u8,
 };
 

@@ -947,7 +947,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .jumpCond,
         .compare,
         .compareNot,
-        .list,
+        .list_dyn,
         .enumOp,
         .setCaptured,
         .refCopyObj,
@@ -973,6 +973,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numNestedFields = pc[3].val;
             return 5 + numNestedFields;
         },
+        .list,
         .object,
         .objectSmall,
         .forRange,
@@ -1079,6 +1080,7 @@ pub const OpCode = enum(u8) {
     appendList = vmc.CodeAppendList,
 
     /// First operand points the first elem and also the dst local. Second operand contains the number of elements.
+    list_dyn = vmc.CodeListDyn,
     list = vmc.CodeList,
     /// First operand points the first entry value and also the dst local. Second operand contains the number of elements.
     /// Const key indexes follow the size operand.
@@ -1225,7 +1227,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 116);
+    try t.eq(std.enums.values(OpCode).len, 117);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

@@ -1040,7 +1040,32 @@ pub fn allocTuple(vm: *cy.VM, elems: []const Value) !Value {
     return Value.initCycPtr(obj);
 }
 
-pub fn allocList(self: *cy.VM, elems: []const Value) !Value {
+pub fn allocList(self: *cy.VM, type_id: cy.TypeId, elems: []const Value) !Value {
+    const cyclable = self.types[type_id].cyclable;
+    const obj = try allocPoolObject(self);
+    const cyc_mask = if (cyclable) vmc.CYC_TYPE_MASK else 0;
+    obj.list = .{
+        .typeId = type_id | cyc_mask,
+        .rc = 1,
+        .list = .{
+            .ptr = undefined,
+            .len = 0,
+            .cap = 0,
+        },
+    };
+    const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
+    // Initializes capacity to exact size.
+    try list.ensureTotalCapacityPrecise(self.alloc, elems.len);
+    list.len = elems.len;
+    std.mem.copy(Value, list.items(), elems);
+    if (cyclable) {
+        return Value.initCycPtr(obj);
+    } else {
+        return Value.initNoCycPtr(obj);
+    }
+}
+
+pub fn allocListDyn(self: *cy.VM, elems: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
         .typeId = bt.ListDyn | vmc.CYC_TYPE_MASK,

@@ -7,6 +7,12 @@ var a = [
 ]
 t.eq(a.len(), 2)
 
+-- Typed initializer.
+var ta = List[int].[1, 2, 3]
+t.eq(typeof(ta), List[int])
+t.eq(ta.len(), 3)
+t.eq(ta[0], 1)
+
 -- Index access.
 a = [1, 2, 3]
 t.eq(a[0], 1)

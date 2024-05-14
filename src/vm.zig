@@ -4095,6 +4095,19 @@ export fn zEnd(vm: *cy.VM, pc: [*]const cy.Inst) void {
     vm.curFiber.pcOffset = @intCast(getInstOffset(vm, pc + 2));
 }
 
+export fn zAllocList(vm: *cy.VM, type_id: cy.TypeId, elemStart: [*]const Value, nElems: u8) vmc.ValueResult {
+    const list = cy.heap.allocList(vm, type_id, elemStart[0..nElems]) catch {
+        return .{
+            .val = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .val = @bitCast(list),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
 export fn zAllocListDyn(vm: *cy.VM, elemStart: [*]const Value, nElems: u8) vmc.ValueResult {
     const list = cy.heap.allocListDyn(vm, elemStart[0..nElems]) catch {
         return .{

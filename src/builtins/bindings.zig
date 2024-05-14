@@ -169,6 +169,41 @@ pub fn getGlobal(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     }
 }
 
+pub fn tableInitPair(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const table = args[0].asHeapObject();
+    try table.table.set(vm, args[1], args[2]);
+    return Value.Void;
+}
+
+pub fn tableGet(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+    const table = args[0].asHeapObject();
+    const name = args[1].asString();
+    if (table.table.map().getByString(name)) |val| {
+        vm.retain(val);
+        return val;
+    } else {
+        return vm.prepPanic("Missing field.");
+    }
+    return Value.Void;
+}
+
+pub fn tableSet(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const table = args[0].asHeapObject();
+    try table.table.set(vm, args[1], args[2]);
+    return Value.Void;
+}
+
+pub fn tableIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+    const table = args[0].asHeapObject();
+    if (table.table.map().get(args[1])) |val| {
+        vm.retain(val);
+        return val;
+    } else {
+        return vm.prepPanic("Missing field.");
+    }
+    return Value.Void;
+}
+
 pub fn mapIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const map = args[0].asHeapObject();
     if (map.map.map().get(args[1])) |val| {

@@ -114,6 +114,13 @@ const funcs = [_]NameFunc{
     // Tuple
     .{"$index", bindings.tupleIndex},
 
+    // Table
+    .{"$initPair", zErrFunc(bindings.tableInitPair)},
+    .{"$get", bindings.tableGet},
+    .{"$set", zErrFunc(bindings.tableSet)},
+    .{"$index", bindings.tableIndex},
+    .{"$setIndex", zErrFunc(bindings.tableSet)},
+
     // Map
     .{"$initPair", zErrFunc(bindings.mapSetIndex)},
     .{"$index", bindings.mapIndex},

@@ -179,20 +179,15 @@ type Tuple:
 type Table:
     table_data Map
 
-    func $initPair(key String, value any) void:
-        table_data[key] = value
+    #host func $initPair(key String, value any) void
 
-    func $get(name String) dynamic:
-        return table_data[name]
+    #host func $get(name String) dynamic
 
-    func $set(name String, value any):
-        table_data[name] = value
+    #host func $set(name String, value any)
 
-    func $index(key any) dynamic:
-        return table_data[key]
+    #host func $index(key any) dynamic
 
-    func $setIndex(key any, value any) void:
-        table_data[key] = value
+    #host func $setIndex(key any, value any) void
 
 #host
 type Map:

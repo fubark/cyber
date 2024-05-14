@@ -283,10 +283,12 @@ pub const ListIterator = extern struct {
 pub const Table = extern struct {
     typeId: cy.TypeId align (8),
     rc: u32,
-    inner_map: Value,
+
+    /// Map occupies the first slot so that custom tables can be created using the same host method bindings.
+    inner_map: cy.Value,
 
     pub fn get(self: *Table, key: Value) ?Value {
-        return self.inner_map.asHeapObject().map.map().get(key);
+        return self.map().get(key);
     }
 
     pub fn set(self: *Table, vm: *cy.VM, index: Value, val: Value) !void {

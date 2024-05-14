@@ -1496,34 +1496,36 @@ pub fn declareTemplateVariant(c: *cy.Chunk, template: *cy.sym.TypeTemplate, vari
 
 pub fn reserveTableMethods(c: *cy.Chunk, obj: *cy.sym.ObjectType) !void {
     const table_mod = c.sema.table_type.getMod();
-    const set_decl = table_mod.getSym("$set").?.cast(.func).first.declId;
     const table_c = table_mod.chunk;
 
     const start = table_c.funcs.items.len;
 
-    _ = try reserveImplicitMethod(table_c, @ptrCast(obj), set_decl);
-    const get_decl = table_mod.getSym("$get").?.cast(.func).first.declId;
-    _ = try reserveImplicitMethod(table_c, @ptrCast(obj), get_decl);
-    const index_decl = table_mod.getSym("$index").?.cast(.func).first.declId;
-    _ = try reserveImplicitMethod(table_c, @ptrCast(obj), index_decl);
-    const set_index_decl = table_mod.getSym("$setIndex").?.cast(.func).first.declId;
-    _ = try reserveImplicitMethod(table_c, @ptrCast(obj), set_index_decl);
+    _ = try c.reserveHostFunc(@ptrCast(obj), "$get", cy.NullNode, true);
+    _ = try c.reserveHostFunc(@ptrCast(obj), "$set", cy.NullNode, true);
+    _ = try c.reserveHostFunc(@ptrCast(obj), "$index", cy.NullNode, true);
+    _ = try c.reserveHostFunc(@ptrCast(obj), "$setIndex", cy.NullNode, true);
 
     try table_c.variantFuncSyms.appendSlice(c.alloc, table_c.funcs.items[start..]);
 }
 
 pub fn resolveTableMethods(c: *cy.Chunk, obj: *cy.sym.ObjectType) !void {
-    const table_c = c.sema.table_type.getMod().chunk;
     const mod = obj.getMod();
 
-    const set = mod.getSym("$set").?.cast(.func).first;
-    _ = try resolveImplicitMethod(table_c, set);
     const get = mod.getSym("$get").?.cast(.func).first;
-    _ = try resolveImplicitMethod(table_c, get);
+    var sig = try c.sema.ensureFuncSig(&.{ obj.type, bt.String }, bt.Dynamic);
+    try c.resolveHostFunc(get, sig, cy.bindings.tableGet);
+
+    const set = mod.getSym("$set").?.cast(.func).first;
+    sig = try c.sema.ensureFuncSig(&.{ obj.type, bt.String, bt.Any }, bt.Void);
+    try c.resolveHostFunc(set, sig, cy.builtins.zErrFunc(cy.bindings.tableSet));
+
     const index = mod.getSym("$index").?.cast(.func).first;
-    _ = try resolveImplicitMethod(table_c, index);
+    sig = try c.sema.ensureFuncSig(&.{ obj.type, bt.Any }, bt.Dynamic);
+    try c.resolveHostFunc(index, sig, cy.bindings.tableIndex);
+
     const set_index = mod.getSym("$setIndex").?.cast(.func).first;
-    _ = try resolveImplicitMethod(table_c, set_index);
+    sig = try c.sema.ensureFuncSig(&.{ obj.type, bt.Any, bt.Any }, bt.Void);
+    try c.resolveHostFunc(set_index, sig, cy.builtins.zErrFunc(cy.bindings.tableSet));
 }
 
 pub fn reserveObjectType(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
@@ -1603,8 +1605,8 @@ pub fn resolveDistinctType(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType) !*cy.
     }
 }
 
-pub fn resolveTableFields(c: *cy.Chunk, obj: *cy.sym.ObjectType, nodeId: cy.NodeId) !void {
-    const node = c.ast.node(nodeId);
+pub fn resolveTableFields(c: *cy.Chunk, obj: *cy.sym.ObjectType) !void {
+    const node = c.ast.node(obj.declId);
     const header = c.ast.node(node.data.objectDecl.header);
 
     const fields = try c.alloc.alloc(cy.sym.FieldInfo, header.data.objectHeader.numFields + 1);

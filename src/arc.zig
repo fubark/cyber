@@ -426,7 +426,7 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
                 }
             } else {
                 // Custom object type.
-                if (entry.sym.cast(.custom_object_t).getChildrenFn) |getChildren| {
+                if (entry.sym.cast(.custom_t).getChildrenFn) |getChildren| {
                     const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
                     for (cy.Value.fromSliceC(children)) |child| {
                         if (child.isCycPointer()) {

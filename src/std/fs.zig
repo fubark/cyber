@@ -6,7 +6,7 @@ const log = cy.log.scoped(.fs);
 const cy = @import("../cyber.zig");
 const rt = cy.rt;
 const Value = cy.Value;
-const cc = @import("../capi.zig");
+const C = @import("../capi.zig");
 
 pub var FileT: cy.TypeId = undefined;
 pub var DirT: cy.TypeId = undefined;
@@ -41,7 +41,7 @@ pub const File = extern struct {
     }
 };
 
-pub fn fileFinalizer(vm_: ?*cc.VM, obj: ?*anyopaque) callconv(.C) void {
+pub fn fileFinalizer(vm_: ?*C.VM, obj: ?*anyopaque) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     if (cy.hasStdFiles) {
         const file: *File = @ptrCast(@alignCast(obj));
@@ -54,7 +54,7 @@ pub fn fileFinalizer(vm_: ?*cc.VM, obj: ?*anyopaque) callconv(.C) void {
     }
 }
 
-pub fn dirFinalizer(_: ?*cc.VM, obj: ?*anyopaque) callconv(.C) void {
+pub fn dirFinalizer(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) void {
     if (cy.hasStdFiles) {
         const dir: *Dir = @ptrCast(@alignCast(obj));
         dir.close();
@@ -91,7 +91,7 @@ pub const Dir = extern struct {
     }
 };
 
-pub fn dirIteratorFinalizer(_: ?*cc.VM, obj: ?*anyopaque) callconv(.C) void {
+pub fn dirIterFinalizer(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) void {
     if (cy.hasStdFiles) {
         var dir: *DirIterator = @ptrCast(@alignCast(obj));
         if (dir.recursive) {
@@ -101,7 +101,7 @@ pub fn dirIteratorFinalizer(_: ?*cc.VM, obj: ?*anyopaque) callconv(.C) void {
     }
 }
 
-pub fn dirIteratorGetChildren(_: ?*cc.VM, obj: ?*anyopaque) callconv(.C) cc.ValueSlice {
+pub fn dirIterGetChildren(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) C.ValueSlice {
     const dirIter: *DirIterator = @ptrCast(@alignCast(obj));
     return .{
         .ptr = @ptrCast(&dirIter.dir),

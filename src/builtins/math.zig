@@ -1,23 +1,14 @@
 const std = @import("std");
 const cy = @import("../cyber.zig");
-const cc = @import("../capi.zig");
+const c = @import("../capi.zig");
 const vmc = cy.vmc;
 const Value = cy.Value;
 const bt = cy.types.BuiltinTypes;
 
 pub const Src = @embedFile("math.cy");
-pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callconv(.C) bool {
-    const out: *cc.FuncResult = out_;
-    const name = cc.fromStr(func.name);
-    if (std.mem.eql(u8, funcs[func.idx].@"0", name)) {
-        out.ptr = @ptrCast(funcs[func.idx].@"1");
-        return true;
-    }
-    return false;
-}
-pub fn varLoader(_: ?*cc.VM, v: cc.VarInfo, out_: [*c]cc.Value) callconv(.C) bool {
-    const out: *cc.Value = out_;
-    const name = cc.fromStr(v.name);
+pub fn varLoader(_: ?*c.VM, v: c.VarInfo, out_: [*c]c.Value) callconv(.C) bool {
+    const out: *c.Value = out_;
+    const name = c.fromStr(v.name);
     if (std.mem.eql(u8, vars[v.idx].@"0", name)) {
         out.* = vars[v.idx].@"1".val;
         return true;
@@ -42,46 +33,46 @@ const vars = [_]NameVar{
     .{"sqrt2", Value.initF64(std.math.sqrt2)},
 };
 
-const NameFunc = struct { []const u8, cy.ZHostFuncFn };
-const funcs = [_]NameFunc{
-    .{"abs",    abs},
-    .{"acos",   acos},
-    .{"acosh",  acosh},
-    .{"asin",   asin},
-    .{"asinh",  asinh},
-    .{"atan",   atan},
-    .{"atan2",  atan2},
-    .{"atanh",  atanh},
-    .{"cbrt",   cbrt},
-    .{"ceil",   ceil},
-    .{"clz32",  clz32},
-    .{"cos",    cos},
-    .{"cosh",   cosh},
-    .{"exp",    exp},
-    .{"expm1",  expm1},
-    .{"floor",  floor},
-    .{"frac",   frac},
-    .{"hypot",  hypot},
-    .{"isInt",  isInt},
-    .{"isNaN",  isNaN},
-    .{"ln",     ln},
-    .{"log",    log},
-    .{"log10",  log10},
-    .{"log1p",  log1p},
-    .{"log2",   log2},
-    .{"max",    max},
-    .{"min",    min},
-    .{"mul32",  mul32},
-    .{"pow",    pow},
-    .{"random", random},
-    .{"round",  round},
-    .{"sign",   sign},
-    .{"sin",    sin},
-    .{"sinh",   sinh},
-    .{"sqrt",   sqrt},
-    .{"tan",    tan},
-    .{"tanh",   tanh},
-    .{"trunc",  trunc},
+const func = cy.hostFuncEntry;
+pub const funcs = [_]c.HostFuncEntry{
+    func("abs",    abs),
+    func("acos",   acos),
+    func("acosh",  acosh),
+    func("asin",   asin),
+    func("asinh",  asinh),
+    func("atan",   atan),
+    func("atan2",  atan2),
+    func("atanh",  atanh),
+    func("cbrt",   cbrt),
+    func("ceil",   ceil),
+    func("clz32",  clz32),
+    func("cos",    cos),
+    func("cosh",   cosh),
+    func("exp",    exp),
+    func("expm1",  expm1),
+    func("floor",  floor),
+    func("frac",   frac),
+    func("hypot",  hypot),
+    func("isInt",  isInt),
+    func("isNaN",  isNaN),
+    func("ln",     ln),
+    func("log",    log),
+    func("log10",  log10),
+    func("log1p",  log1p),
+    func("log2",   log2),
+    func("max",    max),
+    func("min",    min),
+    func("mul32",  mul32),
+    func("pow",    pow),
+    func("random", random),
+    func("round",  round),
+    func("sign",   sign),
+    func("sin",    sin),
+    func("sinh",   sinh),
+    func("sqrt",   sqrt),
+    func("tan",    tan),
+    func("tanh",   tanh),
+    func("trunc",  trunc),
 };
 
 /// Returns the absolute value of x.

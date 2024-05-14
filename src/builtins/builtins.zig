@@ -4,7 +4,7 @@ const build_options = @import("build_options");
 const stdx = @import("stdx");
 const fatal = cy.fatal;
 const cy = @import("../cyber.zig");
-const c = @import("../capi.zig");
+const C = @import("../capi.zig");
 const Value = cy.Value;
 const bindings = @import("bindings.zig");
 const cy_mod = @import("cy.zig");
@@ -19,280 +19,217 @@ const log = cy.log.scoped(.core);
 
 pub const VmSrc = @embedFile("builtins_vm.cy");
 pub const Src = @embedFile("builtins.cy");
-pub fn funcLoader(_: ?*c.VM, func: c.FuncInfo, out_: [*c]c.FuncResult) callconv(.C) bool {
-    const out: *c.FuncResult = out_;
-    const name = c.fromStr(func.name);
-    if (std.mem.eql(u8, funcs[func.idx].@"0", name)) {
-        out.ptr = @ptrCast(@alignCast(funcs[func.idx].@"1"));
-        return true;
-    }
-    return false;
-}
 
-const NameFunc = struct { []const u8, cy.ZHostFuncFn };
-const funcs = [_]NameFunc{
+const func = cy.hostFuncEntry;
+pub const funcs = [_]C.HostFuncEntry{
     // Utils.
-    .{"copy",           copy},
-    .{"dump",           zErrFunc(dump)},
-    .{"eprint",         eprint},
-    .{"errorReport",    zErrFunc(errorReport)},
-    .{"getObjectRc",    zErrFunc(getObjectRc)},
-    .{"is",             is},
-    .{"isAlpha",        isAlpha},
-    .{"isDigit",        isDigit},
-    .{"isNone",         isNone},
-    .{"must",           zErrFunc(must)},
-    .{"panic",          zErrFunc(panic)},
-    .{"performGC",      zErrFunc(performGC)},
-    .{"print",          print},
-    .{"runestr",        zErrFunc(runestr)},
-    .{"typeof",         typeof},
+    func("copy",           copy),
+    func("dump",           zErrFunc(dump)),
+    func("eprint",         eprint),
+    func("errorReport",    zErrFunc(errorReport)),
+    func("getObjectRc",    zErrFunc(getObjectRc)),
+    func("is",             is),
+    func("isAlpha",        isAlpha),
+    func("isDigit",        isDigit),
+    func("isNone",         isNone),
+    func("must",           zErrFunc(must)),
+    func("panic",          zErrFunc(panic)),
+    func("performGC",      zErrFunc(performGC)),
+    func("print",          print),
+    func("runestr",        zErrFunc(runestr)),
+    func("typeof",         typeof),
 
     // bool
-    .{"bool.$call", boolCall},
+    func("bool.$call",     boolCall),
 
     // error
-    .{"sym", errorSym},
-    .{"error.$call", errorCall},
-    
+    func("error.sym",      errorSym),
+    func("error.$call",    errorCall),
+
     // int
-    .{"$prefix~", bindings.intNot},
-    .{"$prefix-", bindings.intNeg},
-    // Inlined opcodes allow the right arg to be dynamic so the compiler can gen more of those.
-    // So for now, the runtime signature reflects that.
-    .{"$infix<", bindings.intLess},
-    .{"$infix<=", bindings.intLessEq},
-    .{"$infix>", bindings.intGreater},
-    .{"$infix>=", bindings.intGreaterEq},
-    .{"$infix+", bindings.intAdd},
-    .{"$infix-", bindings.intSub},
-    .{"$infix*", bindings.intMul},
-    .{"$infix/", bindings.intDiv},
-    .{"$infix%", bindings.intMod},
-    .{"$infix^", bindings.intPow},
-    .{"$infix&", bindings.intAnd},
-    .{"$infix|", bindings.intOr},
-    .{"$infix||", bindings.intXor},
-    .{"$infix<<", bindings.intLeftShift},
-    .{"$infix>>", bindings.intRightShift},
-    .{"fmt", zErrFunc(intFmt)},
-    .{"fmt", zErrFunc(intFmt2)},
-    .{"int.$call", intCall},
+    func("int.$prefix~",   bindings.intNot),
+    func("int.$prefix-",   bindings.intNeg),
+    func("int.$infix<",    bindings.intLess),
+    func("int.$infix<=",   bindings.intLessEq),
+    func("int.$infix>",    bindings.intGreater),
+    func("int.$infix>=",   bindings.intGreaterEq),
+    func("int.$infix+",    bindings.intAdd),
+    func("int.$infix-",    bindings.intSub),
+    func("int.$infix*",    bindings.intMul),
+    func("int.$infix/",    bindings.intDiv),
+    func("int.$infix%",    bindings.intMod),
+    func("int.$infix^",    bindings.intPow),
+    func("int.$infix&",    bindings.intAnd),
+    func("int.$infix|",    bindings.intOr),
+    func("int.$infix||",   bindings.intXor),
+    func("int.$infix<<",   bindings.intLeftShift),
+    func("int.$infix>>",   bindings.intRightShift),
+    func("int.fmt",        zErrFunc(intFmt)),
+    func("int.fmt2",       zErrFunc(intFmt2)),
+    func("int.$call",      intCall),
 
     // float
-    .{"$prefix-", bindings.floatNeg},
-    .{"$infix<", bindings.floatLess},
-    .{"$infix<=", bindings.floatLessEq},
-    .{"$infix>", bindings.floatGreater},
-    .{"$infix>=", bindings.floatGreaterEq},
-    .{"$infix+", bindings.floatAdd},
-    .{"$infix-", bindings.floatSub},
-    .{"$infix*", bindings.floatMul},
-    .{"$infix/", bindings.floatDiv},
-    .{"$infix%", bindings.floatMod},
-    .{"$infix^", bindings.floatPow},
-    .{"float.$call", floatCall},
+    func("float.$prefix-", bindings.floatNeg),
+    func("float.$infix<",  bindings.floatLess),
+    func("float.$infix<=", bindings.floatLessEq),
+    func("float.$infix>",  bindings.floatGreater),
+    func("float.$infix>=", bindings.floatGreaterEq),
+    func("float.$infix+",  bindings.floatAdd),
+    func("float.$infix-",  bindings.floatSub),
+    func("float.$infix*",  bindings.floatMul),
+    func("float.$infix/",  bindings.floatDiv),
+    func("float.$infix%",  bindings.floatMod),
+    func("float.$infix^",  bindings.floatPow),
+    func("float.$call",    floatCall),
 
     // List
-    .{"$index",     bindings.listIndex},
-    .{"$index",     zErrFunc(bindings.listSlice)},
-    .{"$setIndex",  bindings.listSetIndex},
-    .{"append",     zErrFunc(bindings.listAppend)},
-    .{"appendAll",  zErrFunc(bindings.listAppendAll)},
-    .{"insert",     bindings.listInsert},
-    .{"iterator",   bindings.listIterator},
-    .{"join",       zErrFunc(bindings.listJoin)},
-    .{"len",        bindings.listLen},
-    .{"remove",     bindings.listRemove},
-    .{"resize",     bindings.listResize},
+    func("List.$index",      bindings.listIndex),
+    func("List.$indexRange", zErrFunc(bindings.listSlice)),
+    func("List.$setIndex",   bindings.listSetIndex),
+    func("List.append",      zErrFunc(bindings.listAppend)),
+    func("List.appendAll",   zErrFunc(bindings.listAppendAll)),
+    func("List.insert",      bindings.listInsert),
+    func("List.iterator",    bindings.listIterator),
+    func("List.join",        zErrFunc(bindings.listJoin)),
+    func("List.len",         bindings.listLen),
+    func("List.remove",      bindings.listRemove),
+    func("List.resize",      bindings.listResize),
     // .{"sort", bindings.listSort, .standard},
-    .{"List.fill",  listFill},
+    func("List.fill",        listFill),
 
     // ListIterator
-    .{"next", bindings.listIteratorNext},
+    func("ListIterator.next",  bindings.listIteratorNext),
 
     // Tuple
-    .{"$index", bindings.tupleIndex},
+    func("Tuple.$index",       bindings.tupleIndex),
 
     // Table
-    .{"$initPair", zErrFunc(bindings.tableInitPair)},
-    .{"$get", bindings.tableGet},
-    .{"$set", zErrFunc(bindings.tableSet)},
-    .{"$index", bindings.tableIndex},
-    .{"$setIndex", zErrFunc(bindings.tableSet)},
+    func("Table.$initPair",    zErrFunc(bindings.tableInitPair)),
+    func("Table.$get",         bindings.tableGet),
+    func("Table.$set",         zErrFunc(bindings.tableSet)),
+    func("Table.$index",       bindings.tableIndex),
+    func("Table.$setIndex",    zErrFunc(bindings.tableSet)),
 
     // Map
-    .{"$initPair", zErrFunc(bindings.mapSetIndex)},
-    .{"$index", bindings.mapIndex},
-    .{"$setIndex", zErrFunc(bindings.mapSetIndex)},
-    .{"contains", bindings.mapContains},
-    .{"get", bindings.mapGet},
-    .{"remove", bindings.mapRemove},
-    .{"size", bindings.mapSize},
-    .{"iterator", bindings.mapIterator},
+    func("Map.$initPair",      zErrFunc(bindings.mapSetIndex)),
+    func("Map.$index",         bindings.mapIndex),
+    func("Map.$setIndex",      zErrFunc(bindings.mapSetIndex)),
+    func("Map.contains",       bindings.mapContains),
+    func("Map.get",            bindings.mapGet),
+    func("Map.remove",         bindings.mapRemove),
+    func("Map.size",           bindings.mapSize),
+    func("Map.iterator",       bindings.mapIterator),
 
     // MapIterator
-    .{"next", bindings.mapIteratorNext},
+    func("MapIterator.next",   bindings.mapIteratorNext),
 
     // String
-    .{"$infix+", string.concat},
-    .{"concat", string.concat},
-    .{"count", string.count},
-    .{"endsWith", string.endsWith},
-    .{"find", string.find},
-    .{"findAnyRune", string.findAnyRune},
-    .{"findRune", string.findRune},
-    .{"insert", zErrFunc(string.insertFn)},
-    .{"isAscii", string.isAscii},
-    .{"len", string.lenFn},
-    .{"less", string.less},
-    .{"lower", string.lower},
-    .{"replace", string.stringReplace},
-    .{"repeat", string.repeat},
-    .{"seek", zErrFunc(string.seek)},
-    .{"sliceAt", zErrFunc(string.sliceAt)},
-    .{"$index", zErrFunc(string.runeAt)},
-    .{"$index", string.sliceFn},
-    .{"split", zErrFunc(string.split)},
-    .{"startsWith", string.startsWith},
-    .{"trim", string.trim},
-    .{"upper", string.upper},
-    .{"String.$call", zErrFunc(string.stringCall)},
+    func("String.$infix+",     string.concat),
+    func("String.concat",      string.concat),
+    func("String.count",       string.count),
+    func("String.endsWith",    string.endsWith),
+    func("String.find",        string.find),
+    func("String.findAnyRune", string.findAnyRune),
+    func("String.findRune",    string.findRune),
+    func("String.insert",      zErrFunc(string.insertFn)),
+    func("String.isAscii",     string.isAscii),
+    func("String.len",         string.lenFn),
+    func("String.less",        string.less),
+    func("String.lower",       string.lower),
+    func("String.replace",     string.stringReplace),
+    func("String.repeat",      string.repeat),
+    func("String.seek",        zErrFunc(string.seek)),
+    func("String.sliceAt",     zErrFunc(string.sliceAt)),
+    func("String.$index",      zErrFunc(string.runeAt)),
+    func("String.$indexRange", string.sliceFn),
+    func("String.split",       zErrFunc(string.split)),
+    func("String.startsWith",  string.startsWith),
+    func("String.trim",        string.trim),
+    func("String.upper",       string.upper),
+    func("String.$call",       zErrFunc(string.stringCall)),
 
     // Array
-    .{"$infix+",        arrayConcat},
-    .{"concat",         arrayConcat},
-    .{"decode",         arrayDecode},
-    .{"decode",         arrayDecode1},
-    .{"endsWith",       arrayEndsWith},
-    .{"find",           arrayFind},
-    .{"findAnyByte",    arrayFindAnyByte},
-    .{"findByte",       arrayFindByte},
-    .{"fmt",            zErrFunc(arrayFmt)},
-    .{"getByte",        zErrFunc(arrayGetByte)},
-    .{"getInt",         zErrFunc(arrayGetInt)},
-    .{"getInt32",       zErrFunc(arrayGetInt32)},
-    .{"insert",         arrayInsert},
-    .{"insertByte",     arrayInsertByte},
-    .{"len",            arrayLen},
-    .{"repeat",         zErrFunc(arrayRepeat)},
-    .{"replace",        arrayReplace},
-    .{"$index",         zErrFunc(arrayGetByte)},
-    .{"$index",         arraySlice},
-    .{"split",          zErrFunc(arraySplit)},
-    .{"startsWith",     arrayStartsWith},
-    .{"trim",           zErrFunc(arrayTrim)},
-    .{"Array.$call",  zErrFunc(arrayCall)},
+    func("Array.$infix+",      arrayConcat),
+    func("Array.concat",       arrayConcat),
+    func("Array.decode",       arrayDecode),
+    func("Array.decode2",      arrayDecode2),
+    func("Array.endsWith",     arrayEndsWith),
+    func("Array.find",         arrayFind),
+    func("Array.findAnyByte",  arrayFindAnyByte),
+    func("Array.findByte",     arrayFindByte),
+    func("Array.fmt",          zErrFunc(arrayFmt)),
+    func("Array.getByte",      zErrFunc(arrayGetByte)),
+    func("Array.getInt",       zErrFunc(arrayGetInt)),
+    func("Array.getInt32",     zErrFunc(arrayGetInt32)),
+    func("Array.insert",       arrayInsert),
+    func("Array.insertByte",   arrayInsertByte),
+    func("Array.len",          arrayLen),
+    func("Array.repeat",       zErrFunc(arrayRepeat)),
+    func("Array.replace",      arrayReplace),
+    func("Array.$index",       zErrFunc(arrayGetByte)),
+    func("Array.$indexRange",  arraySlice),
+    func("Array.split",        zErrFunc(arraySplit)),
+    func("Array.startsWith",   arrayStartsWith),
+    func("Array.trim",         zErrFunc(arrayTrim)),
+    func("Array.$call",        zErrFunc(arrayCall)),
 
     // pointer
-    .{"addr", pointerAddr},
-    .{"asObject", pointerAsObject},
-    .{"fromCstr", zErrFunc(pointerFromCstr)},
-    .{"get", zErrFunc(pointerGet)},
-    .{"set", zErrFunc(pointerSet)},
-    .{"toArray", zErrFunc(pointerToArray)},
-    .{"pointer.$call", pointerCall},
+    func("pointer.addr",       pointerAddr),
+    func("pointer.asObject",   pointerAsObject),
+    func("pointer.fromCstr",   zErrFunc(pointerFromCstr)),
+    func("pointer.get",        zErrFunc(pointerGet)),
+    func("pointer.set",        zErrFunc(pointerSet)),
+    func("pointer.toArray",    zErrFunc(pointerToArray)),
+    func("pointer.$call",      pointerCall),
 
     // ExternFunc
-    .{"addr", externFuncAddr},
+    func("ExternFunc.addr",    externFuncAddr),
 
     // Fiber
-    .{"status", fiberStatus},
+    func("Fiber.status",       fiberStatus),
 
     // metatype
-    .{"id", metatypeId},
+    func("metatype.id",        metatypeId),
 };
 
-const NameType = struct { []const u8, cy.TypeId };
-const types = [_]NameType{
-    .{"bool", bt.Boolean },
-    .{"error", bt.Error },
-    .{"int", bt.Integer },
-    .{"float", bt.Float }, 
-    .{"List", bt.List },
-    .{"ListIterator", bt.ListIter },
-    .{"Tuple", bt.Tuple },
-    .{"Table", bt.Table },
-    .{"Map", bt.Map },
-    .{"MapIterator", bt.MapIter },
-    .{"String", bt.String },
-    .{"Array", bt.Array },
-    .{"pointer", bt.Pointer },
-    .{"ExternFunc", bt.ExternFunc },
-    .{"Fiber", bt.Fiber },
-    .{"metatype", bt.MetaType },
+pub const types = [_]C.HostTypeEntry{
 };
 
-pub fn typeLoader(_: ?*c.VM, info: c.TypeInfo, out_: [*c]c.TypeResult) callconv(.C) bool {
-    const out: *c.TypeResult = out_;
-    const name = c.fromStr(info.name);
-    if (std.mem.eql(u8, types[info.idx].@"0", name)) {
-        out.type = c.BindTypeDecl;
-        out.data.decl = .{
-            .type_id = types[info.idx].@"1",
-        };
-        return true;
-    }
-    return false;
-}
-
-const CustomType = bool;
-const NameType2 = struct { []const u8, cy.TypeId, CustomType };
-const vm_types = [_]NameType2{
-    .{"void", bt.Void, true },
-    .{"bool", bt.Boolean, false },
-    .{"symbol", bt.Symbol, false },
-    .{"error", bt.Error, false },
-    .{"int", bt.Integer, false },
-    .{"float", bt.Float, false }, 
-    .{"placeholder1", bt.Placeholder1, true }, 
-    .{"placeholder2", bt.Placeholder2, true }, 
-    .{"placeholder3", bt.Placeholder3, true }, 
-    .{"dynamic", bt.Dynamic, true },
-    .{"any", bt.Any, true },
-    .{"type", bt.Type, true },
-    .{"List", bt.List, true },
-    .{"ListIterator", bt.ListIter, true },
-    .{"Tuple", bt.Tuple, true },
-    .{"Table", bt.Table, false },
-    .{"Map", bt.Map, true },
-    .{"MapIterator", bt.MapIter, true },
-    .{"String", bt.String, true },
-    .{"Array", bt.Array, true },
-    .{"pointer", bt.Pointer, true },
-    .{"Closure", bt.Closure, true },
-    .{"Lambda", bt.Lambda, true },
-    .{"HostFunc", bt.HostFunc, true },
-    .{"ExternFunc", bt.ExternFunc, true },
-    .{"Fiber", bt.Fiber, true },
-    .{"metatype", bt.MetaType, true },
-    .{"Range", bt.Range, true },
-    .{"Box", bt.Box, true },
-    .{"TccState", bt.TccState, true },
+const htype = C.hostTypeEntry;
+pub const vm_types = [_]C.HostTypeEntry{
+    htype("void",          C.CORE_TYPE(bt.Void)),
+    htype("bool",          C.CORE_TYPE_DECL(bt.Boolean)),
+    htype("symbol",        C.CORE_TYPE_DECL(bt.Symbol)),
+    htype("error",         C.CORE_TYPE_DECL(bt.Error)),
+    htype("int",           C.CORE_TYPE_DECL(bt.Integer)),
+    htype("float",         C.CORE_TYPE_DECL(bt.Float)), 
+    htype("placeholder1",  C.CORE_TYPE(bt.Placeholder1)), 
+    htype("placeholder2",  C.CORE_TYPE(bt.Placeholder2)), 
+    htype("taglit",        C.CORE_TYPE(bt.TagLit)), 
+    htype("dynamic",       C.CORE_TYPE(bt.Dynamic)),
+    htype("any",           C.CORE_TYPE(bt.Any)),
+    htype("type",          C.CORE_TYPE(bt.Type)),
+    htype("List",          C.CUSTOM_TYPE(null, listGetChildren, listFinalizer)),
+    htype("ListDyn",       C.CORE_TYPE_EXT(bt.ListDyn, listGetChildren, listFinalizer)),
+    htype("ListIterator",  C.CUSTOM_TYPE(null, listIterGetChildren, null)),
+    htype("ListIterDyn",   C.CORE_TYPE_EXT(bt.ListIterDyn, listIterGetChildren, null)),
+    htype("Tuple",         C.CORE_TYPE(bt.Tuple)),
+    htype("Table",         C.CORE_TYPE_DECL(bt.Table)),
+    htype("Map",           C.CORE_TYPE(bt.Map)),
+    htype("MapIterator",   C.CORE_TYPE(bt.MapIter)),
+    htype("String",        C.CORE_TYPE(bt.String)),
+    htype("Array",         C.CORE_TYPE(bt.Array)),
+    htype("pointer",       C.CORE_TYPE(bt.Pointer)),
+    htype("Closure",       C.CORE_TYPE(bt.Closure)),
+    htype("Lambda",        C.CORE_TYPE(bt.Lambda)),
+    htype("HostFunc",      C.CORE_TYPE(bt.HostFunc)),
+    htype("ExternFunc",    C.CORE_TYPE(bt.ExternFunc)),
+    htype("Fiber",         C.CORE_TYPE(bt.Fiber)),
+    htype("metatype",      C.CORE_TYPE(bt.MetaType)),
+    htype("Range",         C.CORE_TYPE(bt.Range)),
+    htype("Box",           C.CORE_TYPE(bt.Box)),
+    htype("TccState",      C.CORE_TYPE(bt.TccState)),
 };
-
-pub fn vmTypeLoader(_: ?*c.VM, info: c.TypeInfo, out_: [*c]c.TypeResult) callconv(.C) bool {
-    const out: *c.TypeResult = out_;
-    const name = c.fromStr(info.name);
-    if (std.mem.eql(u8, vm_types[info.idx].@"0", name)) {
-        if (vm_types[info.idx].@"2") {
-            out.type = c.BindTypeCustom;
-            out.data.custom = .{
-                .out_type_id = null,
-                .type_id = vm_types[info.idx].@"1",
-                .get_children = null,
-                .finalizer = null,
-            };
-        } else {
-            out.type = c.BindTypeDecl;
-            out.data.decl = .{
-                .type_id = vm_types[info.idx].@"1",
-            };
-        }
-        return true;
-    }
-    return false;
-}
 
 pub var OptionInt: cy.TypeId = undefined;
 pub var OptionAny: cy.TypeId = undefined;
@@ -301,7 +238,7 @@ pub var OptionMap: cy.TypeId = undefined;
 pub var OptionArray: cy.TypeId = undefined;
 pub var OptionString: cy.TypeId = undefined;
 
-pub fn onLoad(vm_: ?*c.VM, mod: c.Sym) callconv(.C) void {
+pub fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     const chunk_sym = cy.Sym.fromC(mod).cast(.chunk);
     const b = bindings.ModuleBuilder.init(vm.compiler, @ptrCast(chunk_sym));
@@ -312,25 +249,25 @@ pub fn onLoad(vm_: ?*c.VM, mod: c.Sym) callconv(.C) void {
 
     const option_tmpl = chunk_sym.getMod().getSym("Option").?.toC();
 
-    const int_t = c.newType(vm_, bt.Integer);
-    defer c.release(vm_, int_t);
-    OptionInt = c.expandTypeTemplate(option_tmpl, @constCast(&[_]c.Value{ int_t }), 1);
+    const int_t = C.newType(vm_, bt.Integer);
+    defer C.release(vm_, int_t);
+    OptionInt = C.expandTemplateType(option_tmpl, @constCast(&[_]C.Value{ int_t }), 1);
 
-    const any_t = c.newType(vm_, bt.Any);
-    defer c.release(vm_, any_t);
-    OptionAny = c.expandTypeTemplate(option_tmpl, @constCast(&[_]c.Value{ any_t }), 1);
+    const any_t = C.newType(vm_, bt.Any);
+    defer C.release(vm_, any_t);
+    OptionAny = C.expandTemplateType(option_tmpl, @constCast(&[_]C.Value{ any_t }), 1);
 
-    const tuple_t = c.newType(vm_, bt.Tuple);
-    defer c.release(vm_, tuple_t);
-    OptionTuple = c.expandTypeTemplate(option_tmpl, @constCast(&[_]c.Value{ tuple_t }), 1);
+    const tuple_t = C.newType(vm_, bt.Tuple);
+    defer C.release(vm_, tuple_t);
+    OptionTuple = C.expandTemplateType(option_tmpl, @constCast(&[_]C.Value{ tuple_t }), 1);
 
-    const map_t = c.newType(vm_, bt.Map);
-    defer c.release(vm_, map_t);
-    OptionMap = c.expandTypeTemplate(option_tmpl, @constCast(&[_]c.Value{ map_t }), 1);
+    const map_t = C.newType(vm_, bt.Map);
+    defer C.release(vm_, map_t);
+    OptionMap = C.expandTemplateType(option_tmpl, @constCast(&[_]C.Value{ map_t }), 1);
 
-    const array_t = c.newType(vm_, bt.Array);
-    defer c.release(vm_, array_t);
-    OptionArray = c.expandTypeTemplate(option_tmpl, @constCast(&[_]c.Value{ array_t }), 1);
+    const array_t = C.newType(vm_, bt.Array);
+    defer C.release(vm_, array_t);
+    OptionArray = C.expandTemplateType(option_tmpl, @constCast(&[_]C.Value{ array_t }), 1);
 
     const string_t = C.newType(vm_, bt.String);
     defer C.release(vm_, string_t);
@@ -356,14 +293,14 @@ pub fn onLoad(vm_: ?*c.VM, mod: c.Sym) callconv(.C) void {
     }
 }
 
-pub fn cFunc(func: *const fn (vm: cy.Context, args: [*]const Value, nargs: u8) callconv(.C) Value) cy.ZHostFuncFn {
-    return @ptrCast(func);
+pub fn cFunc(f: *const fn (vm: cy.Context, args: [*]const Value, nargs: u8) callconv(.C) Value) cy.ZHostFuncFn {
+    return @ptrCast(f);
 }
 
-pub fn zErrFunc(comptime func: fn (vm: *cy.VM, args: [*]const Value, nargs: u8) anyerror!Value) cy.ZHostFuncFn {
+pub fn zErrFunc(comptime f: fn (vm: *cy.VM, args: [*]const Value, nargs: u8) anyerror!Value) cy.ZHostFuncFn {
     const S = struct {
         pub fn genFunc(vm: *cy.VM, args: [*]const Value, nargs: u8) callconv(.C) Value {
-            return @call(.always_inline, func, .{vm, args, nargs}) catch |err| {
+            return @call(.always_inline, f, .{vm, args, nargs}) catch |err| {
                 return @call(.never_inline, prepThrowZError, .{vm, err, @errorReturnTrace()});
             };
         }
@@ -372,7 +309,7 @@ pub fn zErrFunc(comptime func: fn (vm: *cy.VM, args: [*]const Value, nargs: u8) 
 }
 
 pub fn prepThrowZError(ctx: cy.Context, err: anyerror, optTrace: ?*std.builtin.StackTrace) Value {
-    if (!cy.isFreestanding and c.verbose()) {
+    if (!cy.isFreestanding and C.verbose()) {
         if (optTrace) |trace| {
             std.debug.dumpStackTrace(trace.*);
         }
@@ -382,7 +319,7 @@ pub fn prepThrowZError(ctx: cy.Context, err: anyerror, optTrace: ?*std.builtin.S
 }
 
 pub fn prepThrowZError2(ctx: cy.Context, err: anyerror, optTrace: ?*std.builtin.StackTrace) rt.Error {
-    if (!cy.isFreestanding and c.verbose()) {
+    if (!cy.isFreestanding and C.verbose()) {
         if (optTrace) |trace| {
             std.debug.dumpStackTrace(trace.*);
         }
@@ -713,10 +650,10 @@ fn arrayEndsWith(_: *cy.VM, args: [*]const Value, _: u8) Value {
 
 fn arrayDecode(vm: *cy.VM, args: [*]const Value, nargs: u8) Value {
     const encoding = Value.initSymbol(@intFromEnum(Symbol.utf8));
-    return arrayDecode1(vm, &[_]Value{args[0], encoding}, nargs);
+    return arrayDecode2(vm, &[_]Value{args[0], encoding}, nargs);
 }
 
-fn arrayDecode1(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+fn arrayDecode2(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
 
     const encoding = bindings.getBuiltinSymbol(args[1].asSymbolId()) orelse {

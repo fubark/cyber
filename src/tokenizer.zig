@@ -106,7 +106,7 @@ pub const TokenType = enum(u8) {
     or_k,
     pass_k,
     percent,
-    placeholder,
+    underscore,
     plus,
     pound,
     question,
@@ -367,7 +367,7 @@ pub const Tokenizer = struct {
                 try t.pushToken(.plus, start);
             },
             '_' => {
-                try t.pushToken(.placeholder, start);
+                try t.pushToken(.underscore, start);
             },
             '^' => {
                 try t.pushToken(.caret, start);

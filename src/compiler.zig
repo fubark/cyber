@@ -4,7 +4,7 @@ const build_options = @import("build_options");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
-const cc = @import("capi.zig");
+const C = @import("capi.zig");
 const rt = cy.rt;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
@@ -44,10 +44,10 @@ pub const Compiler = struct {
     sema: sema.Sema,
 
     /// Determines how modules are loaded.
-    moduleLoader: cc.ModuleLoaderFn,
+    moduleLoader: C.ModuleLoaderFn,
 
     /// Determines how module uris are resolved.
-    moduleResolver: cc.ResolverFn,
+    moduleResolver: C.ResolverFn,
 
     /// Compilation units for iteration.
     chunks: std.ArrayListUnmanaged(*cy.Chunk),
@@ -64,7 +64,7 @@ pub const Compiler = struct {
     /// Imports are queued.
     import_tasks: std.ArrayListUnmanaged(ImportTask),
 
-    config: cc.CompileConfig,
+    config: C.CompileConfig,
 
     /// Tracks whether an error was set from the API.
     hasApiError: bool,
@@ -107,7 +107,7 @@ pub const Compiler = struct {
             .chunk_map = .{},
             .genSymMap = .{},
             .import_tasks = .{},
-            .config = cc.defaultCompileConfig(), 
+            .config = C.defaultCompileConfig(), 
             .hasApiError = false,
             .apiError = "",
             .main_chunk = undefined,
@@ -200,11 +200,11 @@ pub const Compiler = struct {
         return self.chunks.items[self.chunk_start..];
     }
 
-    pub fn compile(self: *Compiler, uri: []const u8, src: ?[]const u8, config: cc.CompileConfig) !CompileResult {
+    pub fn compile(self: *Compiler, uri: []const u8, src: ?[]const u8, config: C.CompileConfig) !CompileResult {
         self.chunk_start = @intCast(self.chunks.items.len);
         self.type_start = @intCast(self.sema.types.items.len);
         const res = self.compileInner(uri, src, config) catch |err| {
-            if (dumpCompileErrorStackTrace and !cc.silent()) {
+            if (dumpCompileErrorStackTrace and !C.silent()) {
                 std.debug.dumpStackTrace(@errorReturnTrace().?.*);
             }
             if (err == error.CompileError) {
@@ -228,7 +228,7 @@ pub const Compiler = struct {
     }
 
     /// Wrap compile so all errors can be handled in one place.
-    fn compileInner(self: *Compiler, uri: []const u8, src_opt: ?[]const u8, config: cc.CompileConfig) !CompileResult {
+    fn compileInner(self: *Compiler, uri: []const u8, src_opt: ?[]const u8, config: C.CompileConfig) !CompileResult {
         self.config = config;
 
         var r_uri: []const u8 = undefined;
@@ -398,7 +398,7 @@ pub const Compiler = struct {
             log.tracev("Perform codegen.", .{});
 
             switch (self.config.backend) {
-                cc.BackendJIT => {
+                C.BackendJIT => {
                     if (cy.isWasm) return error.Unsupported;
                     try jitgen.gen(self);
                     return .{ .jit = .{
@@ -406,16 +406,16 @@ pub const Compiler = struct {
                         .buf = self.jitBuf,
                     }};
                 },
-                cc.BackendTCC, cc.BackendCC => {
+                C.BackendTCC, C.BackendCC => {
                     if (cy.isWasm or !cy.hasCLI) return error.Unsupported;
                     const res = try cgen.gen(self);
                     return .{ .aot = res };
                 },
-                cc.BackendLLVM => {
+                C.BackendLLVM => {
                     // try llvm_gen.genNativeBinary(self);
                     return error.TODO;
                 },
-                cc.BackendVM => {
+                C.BackendVM => {
                     try bcgen.genAll(self);
                     return .{
                         .vm = self.buf,
@@ -657,14 +657,16 @@ fn completeImportTask(self: *Compiler, task: ImportTask, res: *cy.Chunk) !void {
     }
 }
 
-fn loadModule(self: *Compiler, r_uri: []const u8) !?cc.ModuleLoaderResult {
+fn loadModule(self: *Compiler, r_uri: []const u8) !?C.ModuleLoaderResult {
     // Initialize defaults.
-    var res: cc.ModuleLoaderResult = .{
+    var res: C.ModuleLoaderResult = .{
         .src = "",
         .srcLen = 0,
-        .funcLoader = null,
+        .funcs = C.NullSlice,
+        .func_loader = null,
         .varLoader = null,
-        .typeLoader = null,
+        .types = C.NullSlice,
+        .type_loader = null,
         .onTypeLoad = null,
         .onLoad = null,
         .onDestroy = null,
@@ -674,7 +676,7 @@ fn loadModule(self: *Compiler, r_uri: []const u8) !?cc.ModuleLoaderResult {
     self.hasApiError = false;
     log.tracev("Invoke module loader: {s}", .{r_uri});
 
-    if (self.moduleLoader.?(@ptrCast(self.vm), cc.toStr(r_uri), &res)) {
+    if (self.moduleLoader.?(@ptrCast(self.vm), C.toStr(r_uri), &res)) {
         const src_temp = res.src[0..res.srcLen];
         const src = try self.alloc.dupe(u8, src_temp);
         if (res.onReceipt) |onReceipt| {
@@ -727,13 +729,27 @@ fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
 
     newChunk.* = try cy.Chunk.init(self, newChunkId, task.resolved_spec, src);
     newChunk.sym = try newChunk.createChunkSym(task.resolved_spec);
-    newChunk.funcLoader = res.funcLoader;
     newChunk.varLoader = res.varLoader;
-    newChunk.typeLoader = res.typeLoader;
     newChunk.onTypeLoad = res.onTypeLoad;
     newChunk.onLoad = res.onLoad;
     newChunk.srcOwned = true;
     newChunk.onDestroy = res.onDestroy;
+
+    // Allocate func mapping.
+    var funcs: std.StringHashMapUnmanaged(C.FuncFn) = .{};
+    for (C.fromSlice(C.HostFuncEntry, res.funcs)) |entry| {
+        try funcs.put(self.alloc, C.fromStr(entry.name), entry.func); 
+    }
+    newChunk.host_funcs = funcs;
+    newChunk.func_loader = res.func_loader;
+
+    // Allocate host type mapping.
+    var types: std.StringHashMapUnmanaged(C.HostType) = .{};
+    for (C.fromSlice(C.HostTypeEntry, res.types)) |entry| {
+        try types.put(self.alloc, C.fromStr(entry.name), entry.host_t); 
+    }
+    newChunk.host_types = types;
+    newChunk.type_loader = res.type_loader;
 
     try self.chunks.append(self.alloc, newChunk);
     
@@ -1118,23 +1134,25 @@ pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *Com
     }.initCompat;
 }
 
-pub fn defaultModuleResolver(_: ?*cc.VM, params: cc.ResolverParams) callconv(.C) bool {
+pub fn defaultModuleResolver(_: ?*C.VM, params: C.ResolverParams) callconv(.C) bool {
     params.resUri.* = params.uri.ptr;
     params.resUriLen.* = params.uri.len;
     return true;
 }
 
-pub fn defaultModuleLoader(vm_: ?*cc.VM, spec: cc.Str, out_: [*c]cc.ModuleLoaderResult) callconv(.C) bool {
-    const out: *cc.ModuleLoaderResult = out_;
-    const name = cc.fromStr(spec);
+pub fn defaultModuleLoader(vm_: ?*C.VM, spec: C.Str, out_: [*c]C.ModuleLoaderResult) callconv(.C) bool {
+    const out: *C.ModuleLoaderResult = out_;
+    const name = C.fromStr(spec);
     if (std.mem.eql(u8, name, "core")) {
         const vm: *cy.VM = @ptrCast(@alignCast(vm_));
         const aot = cy.isAot(vm.compiler.config.backend);
         out.* = .{
             .src = if (aot) core_mod.Src else core_mod.VmSrc,
             .srcLen = if (aot) core_mod.Src.len else core_mod.VmSrc.len,
-            .funcLoader = core_mod.funcLoader,
-            .typeLoader = if (aot) core_mod.typeLoader else core_mod.vmTypeLoader,
+            .types = if (aot) C.toSlice(C.HostTypeEntry, &core_mod.types) else C.toSlice(C.HostTypeEntry, &core_mod.vm_types),
+            .type_loader = null,
+            .funcs = C.toSlice(C.HostFuncEntry, &core_mod.funcs),
+            .func_loader = null,
             .onLoad = core_mod.onLoad,
             .onReceipt = null,
             .varLoader = null,
@@ -1146,9 +1164,11 @@ pub fn defaultModuleLoader(vm_: ?*cc.VM, spec: cc.Str, out_: [*c]cc.ModuleLoader
         out.* = .{
             .src = math_mod.Src,
             .srcLen = math_mod.Src.len,
-            .funcLoader = math_mod.funcLoader,
+            .funcs = C.toSlice(C.HostFuncEntry, &math_mod.funcs),
+            .func_loader = null,
             .varLoader = math_mod.varLoader,
-            .typeLoader = null,
+            .types = C.toSlice(C.HostTypeEntry, &.{}),
+            .type_loader = null,
             .onLoad = null,
             .onReceipt = null,
             .onTypeLoad = null,
@@ -1159,9 +1179,11 @@ pub fn defaultModuleLoader(vm_: ?*cc.VM, spec: cc.Str, out_: [*c]cc.ModuleLoader
         out.* = .{
             .src = cy_mod.Src,
             .srcLen = cy_mod.Src.len,
-            .funcLoader = cy_mod.funcLoader,
+            .funcs = C.toSlice(C.HostFuncEntry, &cy_mod.funcs),
+            .func_loader = null,
             .varLoader = null,
-            .typeLoader = null,
+            .types = C.toSlice(C.HostTypeEntry, &.{}),
+            .type_loader = null,
             .onLoad = null,
             .onReceipt = null,
             .onTypeLoad = null,
@@ -1177,10 +1199,10 @@ pub fn resolveModuleUriFrom(self: *cy.Chunk, buf: []u8, uri: []const u8, nodeId:
 
     var r_uri: [*]const u8 = undefined;
     var r_uri_len: usize = undefined;
-    const params: cc.ResolverParams = .{
+    const params: C.ResolverParams = .{
         .chunkId = self.id,
-        .curUri = cc.toStr(self.srcUri),
-        .uri = cc.toStr(uri),
+        .curUri = C.toStr(self.srcUri),
+        .uri = C.toStr(uri),
         .buf = buf.ptr,
         .bufLen = buf.len,
         .resUri = @ptrCast(&r_uri),
@@ -1201,10 +1223,10 @@ pub fn resolveModuleUri(self: *cy.Compiler, buf: []u8, uri: []const u8) ![]const
 
     var r_uri: [*]const u8 = undefined;
     var r_uri_len: usize = undefined;
-    const params: cc.ResolverParams = .{
+    const params: C.ResolverParams = .{
         .chunkId = cy.NullId,
-        .curUri = cc.NullStr,
-        .uri = cc.toStr(uri),
+        .curUri = C.NullStr,
+        .uri = C.toStr(uri),
         .buf = buf.ptr,
         .bufLen = buf.len,
         .resUri = @ptrCast(&r_uri),

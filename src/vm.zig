@@ -868,7 +868,8 @@ pub const VM = struct {
         if (mod.getSym(name)) |_| {
             return error.DuplicateSym;
         }
-        const sym = c.createObjectType(parent, name, cy.NullId, null) catch return error.Unexpected;
+        const sym = c.createObjectType(parent, name, cy.NullId) catch return error.Unexpected;
+        try sema.resolveObjectTypeId2(c, sym, null);
         sym.head.setNameOwned(true);
 
         const infos = try c.alloc.alloc(cy.sym.FieldInfo, fields.len);

@@ -153,6 +153,12 @@ pub fn Nullable(comptime T: type) type {
 }
 
 pub const ZHostFuncFn = *const fn (*VM, [*]const Value, u8) Value;
+pub fn hostFuncEntry(name: []const u8, func: ZHostFuncFn) c.HostFuncEntry {
+    return .{
+        .name = c.toStr(name),
+        .func = @ptrCast(func),
+    };
+}
 pub const ZHostFuncCFn = *const fn (*VM, [*]const Value, u8) callconv(.C) Value;
 
 pub const log = @import("log.zig");

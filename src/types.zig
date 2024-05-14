@@ -2,7 +2,7 @@ const std = @import("std");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
-const cc = @import("capi.zig");
+const C = @import("capi.zig");
 const rt = cy.rt;
 const sema = cy.sema;
 const fmt = @import("fmt.zig");
@@ -18,7 +18,7 @@ pub const TypeKind = enum(u8) {
     int,
     float,
     object,
-    custom_object,
+    custom,
     @"enum",
     choice,
     @"struct",
@@ -41,9 +41,9 @@ pub const Type = extern struct {
         },
         // Even though this increases the size of other type entries, it might not be worth
         // separating into another table since it would add another indirection.
-        custom_object: extern struct {
-            getChildrenFn: cc.ObjectGetChildrenFn,
-            finalizerFn: cc.ObjectFinalizerFn,
+        custom: extern struct {
+            getChildrenFn: C.GetChildrenFn,
+            finalizerFn: C.FinalizerFn,
         },
         @"struct": extern struct {
             numFields: u16,
@@ -269,7 +269,7 @@ pub const SemaExt = struct {
             else => {
                 const sym = s.getTypeSym(id);
                 switch (sym.type) {
-                    .custom_object_t,
+                    .custom_t,
                     .struct_t,
                     .object_t => return true,
                     .enum_t => {

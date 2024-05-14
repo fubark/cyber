@@ -52,7 +52,7 @@ pub fn genAll(c: *cy.Compiler) !void {
             .int_t,
             .float_t,
             .bool_t,
-            .custom_object_t,
+            .custom_t,
             .enum_t => {},
             else => {
                 log.tracev("{}", .{sym.type});
@@ -182,7 +182,7 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
             try c.genSymMap.putNoClobber(c.alloc, sym, .{ .varSym = .{ .id = @intCast(id) }});
         },
         .template,
-        .custom_object_t,
+        .custom_t,
         .bool_t,
         .int_t,
         .float_t,

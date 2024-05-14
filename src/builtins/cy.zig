@@ -4,28 +4,19 @@ const c = @import("../capi.zig");
 const bt = cy.types.BuiltinTypes;
 const build_options = @import("build_options");
 const rt = cy.rt;
+const log = cy.log.scoped(.cy);
 
 pub const Src = @embedFile("cy.cy");
 const zErrFunc = cy.builtins.zErrFunc;
 
-const NameFunc = struct { []const u8, cy.ZHostFuncFn };
-const mod_funcs = [_]NameFunc{
-    .{"eval",           zErrFunc(eval)},
-    .{"parse",          zErrFunc(parse)},
-    .{"parseCyon",      zErrFunc(parseCyon)},
-    .{"repl",           zErrFunc(repl)},
-    .{"toCyon",         zErrFunc(toCyon)},
+const func = cy.hostFuncEntry;
+pub const funcs = [_]c.HostFuncEntry{
+    func("eval",           zErrFunc(eval)),
+    func("parse",          zErrFunc(parse)),
+    func("parseCyon",      zErrFunc(parseCyon)),
+    func("repl",           zErrFunc(repl)),
+    func("toCyon",         zErrFunc(toCyon)),
 };
-
-pub fn funcLoader(_: ?*c.VM, func: c.FuncInfo, out_: [*c]c.FuncResult) callconv(.C) bool {
-    const out: *c.FuncResult = out_;
-    const name = c.fromStr(func.name);
-    if (std.mem.eql(u8, mod_funcs[func.idx].@"0", name)) {
-        out.ptr = @ptrCast(mod_funcs[func.idx].@"1");
-        return true;
-    }
-    return false;
-}
 
 pub fn parse(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
     const src = args[0].asString();

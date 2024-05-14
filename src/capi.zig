@@ -93,6 +93,45 @@ pub const retain = c.clRetain;
 pub const performGC = c.clPerformGC;
 pub const traceDumpLiveObjects = c.clTraceDumpLiveObjects;
 pub const resultName = c.clResultName;
+pub const STR = c.CL_STR;
+pub inline fn CORE_TYPE(type_id: TypeId) HostType {
+    return HostType{
+        .type = c.CL_BIND_TYPE_CORE_CUSTOM,
+        .data = .{ .core_custom = .{
+            .type_id = type_id,
+            .get_children = null,
+            .finalizer = null,
+        }},
+    };
+}
+pub inline fn CORE_TYPE_EXT(type_id: TypeId, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
+    return HostType{
+        .type = c.CL_BIND_TYPE_CORE_CUSTOM,
+        .data = .{ .core_custom = .{
+            .type_id = type_id,
+            .get_children = get_children,
+            .finalizer = finalizer,
+        }},
+    };
+}
+pub inline fn CORE_TYPE_DECL(type_id: TypeId) HostType {
+    return HostType{
+        .type = c.CL_BIND_TYPE_CORE_DECL,
+        .data = .{ .core_decl = .{
+            .type_id = type_id,
+        }},
+    };
+}
+pub inline fn CUSTOM_TYPE(out_type_id: ?*TypeId, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
+    return HostType{
+        .type = c.CL_BIND_TYPE_CUSTOM,
+        .data = .{ .custom = .{
+            .out_type_id = out_type_id,
+            .get_children = get_children,
+            .finalizer = finalizer,
+        }},
+    };
+}
 
 pub const Slice = c.CLSlice;
 pub fn fromSlice(comptime T: type, s: Slice) []const T {
@@ -129,7 +168,6 @@ pub const ValidateConfig = c.CLValidateConfig;
 pub const CompileConfig = c.CLCompileConfig;
 pub const EvalConfig = c.CLEvalConfig;
 pub const FuncInfo = c.CLFuncInfo;
-pub const FuncResult = c.CLFuncResult;
 pub const ModuleLoaderFn = c.CLModuleLoaderFn;
 pub const ResolverFn = c.CLResolverFn;
 pub const ResolverParams = c.CLResolverParams;
@@ -142,7 +180,15 @@ pub const ModuleOnTypeLoadFn = c.CLModuleOnTypeLoadFn;
 pub const ModuleOnLoadFn = c.CLModuleOnLoadFn;
 pub const ModuleOnDestroyFn = c.CLModuleOnDestroyFn;
 pub const TypeInfo = c.CLTypeInfo;
-pub const TypeResult = c.CLTypeResult;
+pub const HostType = c.CLHostType;
+pub const HostTypeEntry = c.CLHostTypeEntry;
+pub fn hostTypeEntry(name: []const u8, host_t: HostType) HostTypeEntry {
+    return .{
+        .name = toStr(name),
+        .host_t = host_t,
+    };
+}
+pub const HostFuncEntry = c.CLHostFuncEntry;
 pub const FuncType = c.CLFuncType;
 pub const FuncTypeStandard = c.CL_FUNC_STANDARD;
 pub const FuncTypeInline = c.CL_FUNC_INLINE;
@@ -153,8 +199,8 @@ pub const VM = c.CLVM;
 pub const Sym = c.CLSym;
 pub const GCResult = c.CLGCResult;
 
-pub const ObjectGetChildrenFn = c.CLObjectGetChildrenFn;
-pub const ObjectFinalizerFn = c.CLObjectFinalizerFn;
+pub const GetChildrenFn = c.CLGetChildrenFn;
+pub const FinalizerFn = c.CLFinalizerFn;
 
 pub const FuncEnumType = enum(u8) {
     standard = c.CL_FUNC_STANDARD,
@@ -162,7 +208,8 @@ pub const FuncEnumType = enum(u8) {
 };
 
 pub const BindTypeCustom = c.CL_BIND_TYPE_CUSTOM;
-pub const BindTypeDecl = c.CL_BIND_TYPE_DECL;
+pub const BindTypeCoreCustom = c.CL_BIND_TYPE_CORE_CUSTOM;
+pub const BindTypeCoreDecl = c.CL_BIND_TYPE_CORE_DECL;
 
 pub const Backend = c.CLBackend;
 pub const BackendVM = c.CL_VM;

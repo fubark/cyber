@@ -468,7 +468,7 @@ pub fn gen(self: *cy.Compiler) !cy.compiler.AotCompileResult {
                     try compiler.genSymName(sym, name);
                 },
                 .bool_t,
-                .custom_object_t,
+                .custom_t,
                 .object_t => {
                     try compiler.genSymName(sym, sym.name());
                 },

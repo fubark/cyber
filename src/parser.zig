@@ -821,8 +821,8 @@ pub const Parser = struct {
                 }
                 return decl;
             },
-            else => {
-                var decl_idx: usize = undefined;
+            .underscore => {
+                const decl = try self.parseCustomTypeDecl(start, name, config);
                 if (!template) {
                     try self.staticDecls.append(self.alloc, decl);
                 }
@@ -867,6 +867,40 @@ pub const Parser = struct {
                 return null;
             },
         }
+    }
+
+    fn parseCustomTypeDecl(self: *Parser, start: TokenId, name: NodeId, config: TypeDeclConfig) !NodeId {
+        // Assumes `_`.
+        self.advance();
+
+        var func_head: cy.NodeId = cy.NullNode;
+        var num_funcs: u32 = 0;
+        if (self.peek().tag() == .colon) {
+            self.advance();
+            const req_indent = try self.parseFirstChildIndent(self.cur_indent);
+            const prev_indent = self.cur_indent;
+            defer self.cur_indent = prev_indent;
+            self.cur_indent = req_indent;
+
+            const funcs = try self.parseTypeFuncs(req_indent);
+            func_head = funcs.head;
+            num_funcs = funcs.len;
+        }
+
+        const header = try self.pushNode(.custom_header, start);
+        self.ast.setNodeData(header, .{ .custom_header = .{
+            .name = name,
+            .attr_head = @intCast(config.attr_head),
+            .hidden = config.hidden,
+        }});
+
+        const id = try self.pushNode(.custom_decl, start);
+        self.ast.setNodeData(id, .{ .custom_decl = .{
+            .header = @intCast(header),
+            .func_head = @intCast(func_head),
+            .num_funcs = @intCast(num_funcs),
+        }});
+        return id;
     }
 
     fn parseDistinctTypeDecl(self: *Parser, start: TokenId, name: NodeId, config: TypeDeclConfig) !NodeId {
@@ -1917,7 +1951,11 @@ pub const Parser = struct {
                 }
             },
             .type_k => {
-                return try self.parseTypeDecl(.{ .attr_head = cy.NullNode, .hidden = false, .allow_decl = config.allow_decls}, false);
+                return try self.parseTypeDecl(.{
+                    .attr_head = cy.NullNode,
+                    .hidden = false,
+                    .allow_decl = config.allow_decls,
+                }, false);
             },
             .func_k => {
                 return try self.parseFuncDecl(.{ .attr_head = cy.NullNode, .hidden = false, .allow_decl = config.allow_decls}, false);
@@ -2027,23 +2065,39 @@ pub const Parser = struct {
         }
     }
 
-    fn parseAtDecl(self: *Parser, allow_decls: bool, template: bool) !NodeId {
+    /// Assumes at `@` token.
+    fn parseAttr(self: *Parser) !NodeId {
         self.advance();
         const token = self.peek();
         if (token.tag() != .ident) {
             return self.reportError("Expected ident after `@`.", &.{});
         }
-
+        const start = self.next_pos;
         const name = self.ast.src[token.pos()..token.data.end_pos];
         const attr_t = attributes.get(name) orelse {
             return self.reportError("Unknown attribute.", &.{});
         };
+        self.advance();
 
-        const attr = try self.pushNode(.attribute, self.next_pos);
+        // Check for arguments.
+        var value: cy.NodeId = cy.NullNode;
+        if (self.peek().tag() == .equal) {
+            self.advance();
+            value = (try self.parseExpr(.{})) orelse {
+                return self.reportError("Expected assignment value.", &.{});
+            };
+        }
+
+        const attr = try self.pushNode(.attribute, start);
         self.ast.setNodeData(attr, .{ .attribute = .{
             .type = attr_t,
+            .value = value,
         }});
-        self.advance();
+        return attr;
+    }
+
+    fn parseAtDecl(self: *Parser, allow_decls: bool, template: bool) !NodeId {
+        const attr = try self.parseAttr();
         self.consumeWhitespaceTokens();
 
         var hidden = false;
@@ -2063,7 +2117,7 @@ pub const Parser = struct {
                 .attr_head = attr,
                 .hidden = hidden,
                 .allow_decl = allow_decls,
-            }, false);
+            }, template);
         } else {
             return self.reportError("Expected declaration statement.", &.{});
         }
@@ -3851,7 +3905,7 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .false_k, .float, .for_k, .func_k,
         .hex, .ident, .if_k, .mod_k, .indent,
         .left_brace, .left_bracket, .left_paren, .let_k,
-        .minus_double_dot, .new_line, .none_k, .not_k, .object_k, .oct, .pass_k, .placeholder, .pound, .question,
+        .minus_double_dot, .new_line, .none_k, .not_k, .object_k, .oct, .pass_k, .underscore, .pound, .question,
         .return_k, .right_brace, .right_bracket, .right_paren, .rune, .raw_string,
         .string, .struct_k, .switch_k, .symbol_k, .templateExprStart, .templateString, .template_k,
         .throw_k, .tilde, .true_k, .try_k, .type_k, .use_k, .var_k, .void_k, .while_k => null,

@@ -44,7 +44,7 @@
 --| Returns the value's type as a `metatype` object.
 @host func typeof(val any) metatype
 
-@host type void
+@host type void _
 
 @host type bool #bool_t
 
@@ -86,7 +86,7 @@ type int #int64_t:
     @host func fmt(kind symbol) String
 
     --| `opts.pad` provides the ASCII rune that is used for padding with a string length of `config.width`.
-    @host func fmt(kind symbol, config Table) String
+    @host='int.fmt2' func fmt(kind symbol, config Table) String
 
 --| Converts a value to an 48-bit integer.
 @host func int.$call(val any) int
@@ -108,15 +108,15 @@ type float #float64_t:
 --| Converts the value to a `float`. Panics if type conversion fails.
 @host func float.$call(val any) float
 
-@host type placeholder1
-@host type placeholder2
-@host type placeholder3
+@host type placeholder1 _
+@host type placeholder2 _
+@host type taglit _
 
-@host type dynamic
+@host type dynamic _
 
-@host type any
+@host type any _
 
-@host type type
+@host type type _
 
 template[T type]
 @host type List _:
@@ -179,7 +179,7 @@ template[T type]
 type ListIterator[dynamic] _
 
 @host
-type Tuple:
+type Tuple _:
     @host func $index(idx int) any
 
 @host
@@ -197,10 +197,10 @@ type Table:
     @host func $setIndex(key any, value any) void
 
 @host
-type Map:
+type Map _:
     @host func $initPair(key any, value any) void
 
-    @host func $index(key any) any
+    @host func $index(key any) dynamic
     @host func $setIndex(key any, val any) void
 
     --| Returns whether there is a value mapped to `key`.
@@ -219,11 +219,11 @@ type Map:
     @host func iterator() MapIterator
 
 @host
-type MapIterator:
+type MapIterator _:
     @host func next() ?any
   
 @host
-type String:
+type String _:
     --| Returns a new string that concats this string and `str`.
     @host func '$infix+'(o any) String
 
@@ -276,7 +276,7 @@ type String:
     @host func $index(idx int) int
 
     --| Returns a slice into this string from a `Range` with `start` (inclusive) to `end` (exclusive) byte indexes.
-    @host func $index(range Range) String
+    @host='String.$indexRange' func $index(range Range) String
 
     --| Returns a list of UTF-8 strings split at occurrences of `sep`.
     @host func split(sep String) List[String]
@@ -294,7 +294,7 @@ type String:
 @host func String.$call(val any) String
 
 @host
-type Array:
+type Array _:
     @host func '$infix+'(o any) Array
 
     --| Returns a new array that concats this array and `other`.
@@ -305,7 +305,7 @@ type Array:
 
     --| Decodes the array based on an `encoding`. Supported encodings: `.utf8`.
     --| Returns the decoded string or throws `error.Decode`.
-    @host func decode(encoding symbol) String
+    @host='Array.decode2' func decode(encoding symbol) String
 
     --| Returns whether the array ends with `suffix`.
     @host func endsWith(suffix Array) bool
@@ -355,7 +355,7 @@ type Array:
     @host func $index(idx int) int
 
     --| Returns a slice into this array from a `Range` with `start` (inclusive) to `end` (exclusive) indexes.
-    @host func $index(range Range) Array
+    @host='Array.$indexRange' func $index(range Range) Array
 
     --| Returns a list of arrays split at occurrences of `sep`.
     @host func split(sep Array) List[Array]
@@ -381,7 +381,7 @@ type ArrayIterator:
         return res
 
 @host
-type pointer:
+type pointer _:
     --| Returns the memory address as an `int`. The value may be negative since it's
     --| bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
     @host func addr() int
@@ -404,27 +404,27 @@ type pointer:
 --| Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI.
 @host func pointer.$call(val any) pointer
 
-@host type Closure
-@host type Lambda
-@host type HostFunc
+@host type Closure _
+@host type Lambda _
+@host type HostFunc _
 
 @host
-type ExternFunc:
+type ExternFunc _:
     --| Returns the memory address as an `int`. The value may be negative since it's
     --| bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
     @host func addr() int
 
 @host
-type Fiber:
+type Fiber _:
     @host func status() symbol
 
 @host
-type metatype:
+type metatype _:
     @host func id() int
 
-@host type Range
-@host type Box
-@host type TccState
+@host type Range _
+@host type Box _
+@host type TccState _
 
 template[T type]
 type Option enum:

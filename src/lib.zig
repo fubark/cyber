@@ -347,7 +347,7 @@ export fn clDeclareVar(mod: c.Sym, name: [*:0]const u8, typeId: cy.TypeId, val: 
     }
 }
 
-export fn clExpandTypeTemplate(ctemplate: c.Sym, args_ptr: [*]const cy.Value, nargs: u32) c.TypeId {
+export fn clExpandTemplateType(ctemplate: c.Sym, args_ptr: [*]const cy.Value, nargs: u32) c.TypeId {
     const template = cy.Sym.fromC(ctemplate).cast(.template);
     const chunk = template.chunk();
     const args = args_ptr[0..nargs];
@@ -431,23 +431,23 @@ export fn clNewTuple(vm: *cy.VM, ptr: [*]const Value, len: usize) Value {
     return cy.heap.allocTuple(vm, elems) catch fatal();
 }
 
-export fn clNewEmptyList(vm: *cy.VM) Value {
-    return vm.allocEmptyList() catch fatal();
+export fn clNewEmptyListDyn(vm: *cy.VM) Value {
+    return vm.allocEmptyListDyn() catch fatal();
 }
 
-export fn clNewList(vm: *cy.VM, ptr: [*]const Value, len: usize) Value {
+export fn clNewListDyn(vm: *cy.VM, ptr: [*]const Value, len: usize) Value {
     const elems = ptr[0..len];
     for (elems) |elem| {
         cy.arc.retain(vm, elem);
     }
-    return cy.heap.allocList(vm, elems) catch fatal();
+    return cy.heap.allocListDyn(vm, elems) catch fatal();
 }
 
 export fn clNewEmptyMap(vm: *cy.VM) Value {
     return cy.heap.allocEmptyMap(vm) catch fatal();
 }
 
-export fn clNewUntypedFunc(vm: *cy.VM, numParams: u32, func: c.FuncFn) Value {
+export fn clNewFuncDyn(vm: *cy.VM, numParams: u32, func: c.FuncFn) Value {
     const funcSigId = vm.sema.ensureUntypedFuncSig(numParams) catch fatal();
     return vm.allocHostFunc(@ptrCast(func), numParams, funcSigId, null, false) catch fatal();
 }

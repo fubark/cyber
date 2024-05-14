@@ -30,7 +30,11 @@ pub const NodeType = enum(u8) {
     continueStmt,
     coresume,
     coyield,
+    custom_decl,
+    custom_header,
     decLit,
+    distinct_decl,
+    distinct_header,
     dot_lit,
     eachClause,
     else_block,
@@ -96,8 +100,6 @@ pub const NodeType = enum(u8) {
     tryExpr,
     tryStmt,
     typeAliasDecl,
-    distinct_decl,
-    distinct_header,
     template,
     unary_expr,
     unwrap,
@@ -224,6 +226,7 @@ const NodeData = union {
     },
     attribute: struct {
         type: AttributeType,
+        value: NodeId,
     },
     throwExpr: struct {
         child: NodeId,
@@ -329,6 +332,16 @@ const NodeData = union {
     typeAliasDecl: packed struct {
         name: NodeId,
         typeSpec: u31,
+        hidden: bool,
+    },
+    custom_decl: packed struct {
+        header: NodeId,
+        func_head: u24,
+        num_funcs: u8,
+    },
+    custom_header: packed struct {
+        name: NodeId,
+        attr_head: u31,
         hidden: bool,
     },
     distinct_decl: packed struct {
@@ -781,6 +794,10 @@ pub const AstView = struct {
                     return "";
                 }
                 return self.nodeStringById(header.data.objectHeader.name);
+            },
+            .custom_decl => {
+                const header = self.node(n.data.custom_decl.header);
+                return self.nodeStringById(header.data.custom_header.name);
             },
             .distinct_decl => {
                 const header = self.node(n.data.distinct_decl.header);

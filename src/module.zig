@@ -4,7 +4,7 @@ const build_options = @import("build_options");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
-const cc = @import("capi.zig");
+const C = @import("capi.zig");
 const sema = cy.sema;
 const types = cy.types;
 const bt = types.BuiltinTypes;
@@ -174,8 +174,15 @@ pub const ChunkExt = struct {
         return sym;
     } 
 
-    pub fn reserveDistinctType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl_id: cy.NodeId, opt_type_id: ?cy.TypeId) !*cy.sym.DistinctType {
-        const sym = try c.createDistinctType(parent, name, decl_id, opt_type_id);
+    pub fn reserveDistinctType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl_id: cy.NodeId) !*cy.sym.DistinctType {
+        const sym = try c.createDistinctType(parent, name, decl_id);
+        const mod = parent.getMod().?;
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl_id);
+        return sym;
+    }
+
+    pub fn reserveCustomType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl_id: cy.NodeId) !*cy.sym.CustomType {
+        const sym = try c.createCustomType(parent, name, decl_id);
         const mod = parent.getMod().?;
         _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl_id);
         return sym;
@@ -251,18 +258,8 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn reserveStructType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId, opt_type_id: ?cy.TypeId) !*cy.sym.ObjectType {
-        const sym = try c.createStructType(parent, name, declId, opt_type_id);
-        const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
-        return sym;
-    }
-
-    pub fn declareCustomObjectType(
-        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId,
-        getChildrenFn: cc.ObjectGetChildrenFn, finalizerFn: cc.ObjectFinalizerFn, opt_type_id: ?cy.TypeId,
-    ) !*cy.sym.CustomObjectType {
-        const sym = try c.createCustomObjectType(parent, name, declId, getChildrenFn, finalizerFn, opt_type_id);
+    pub fn reserveStructType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId) !*cy.sym.ObjectType {
+        const sym = try c.createStructType(parent, name, declId);
         const mod = parent.getMod().?;
         _ = try addUniqueSym(c, mod, name, @ptrCast(sym), declId);
         return sym;
@@ -274,8 +271,8 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn reserveObjectType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId, opt_type_id: ?cy.TypeId) !*cy.sym.ObjectType {
-        const sym = try c.createObjectType(parent, name, declId, opt_type_id);
+    pub fn reserveObjectType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, declId: cy.NodeId) !*cy.sym.ObjectType {
+        const sym = try c.createObjectType(parent, name, declId);
         _ = try addUniqueSym(c, c.sym.getMod(), name, @ptrCast(sym), declId);
         return sym;
     }
@@ -428,7 +425,7 @@ pub const ChunkExt = struct {
             .hostVar,
             .struct_t,
             .object_t,
-            .custom_object_t,
+            .custom_t,
             .enum_t,
             .chunk,
             .bool_t,
@@ -504,7 +501,7 @@ pub const ChunkExt = struct {
             .hostVar,
             .struct_t,
             .object_t,
-            .custom_object_t,
+            .custom_t,
             .enum_t,
             .chunk,
             .bool_t,

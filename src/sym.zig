@@ -15,7 +15,7 @@ pub const SymType = enum(u8) {
     userVar,
     hostVar,
     func,
-    custom_object_t,
+    custom_t,
     object_t,
     struct_t,
     // pointer_t,
@@ -101,8 +101,8 @@ pub const Sym = extern struct {
     pub fn destroy(self: *Sym, vm: *cy.VM, alloc: std.mem.Allocator) void {
         self.deinit(alloc);
         switch (self.type) {
-            .custom_object_t => {
-                const hostType = self.cast(.custom_object_t);
+            .custom_t => {
+                const hostType = self.cast(.custom_t);
                 hostType.getMod().deinit(alloc);
                 alloc.destroy(hostType);
             },
@@ -212,7 +212,7 @@ pub const Sym = extern struct {
     pub fn isType(self: *Sym) bool {
         switch (self.type) {
             .use_alias => return self.cast(.use_alias).sym.isType(),
-            .custom_object_t,
+            .custom_t,
             .bool_t,
             .int_t,
             .float_t,
@@ -262,7 +262,7 @@ pub const Sym = extern struct {
             .enum_t          => return @ptrCast(&self.cast(.enum_t).mod),
             .struct_t        => return @ptrCast(&self.cast(.struct_t).mod),
             .object_t        => return @ptrCast(&self.cast(.object_t).mod),
-            .custom_object_t => return @ptrCast(&self.cast(.custom_object_t).mod),
+            .custom_t        => return @ptrCast(&self.cast(.custom_t).mod),
             .bool_t          => return @ptrCast(&self.cast(.bool_t).mod),
             .int_t           => return @ptrCast(&self.cast(.int_t).mod),
             .float_t         => return @ptrCast(&self.cast(.float_t).mod),
@@ -318,7 +318,7 @@ pub const Sym = extern struct {
             .struct_t,
             .bool_t,
             .typeAlias,
-            .custom_object_t,
+            .custom_t,
             .object_t   => return bt.MetaType,
             .func => {
                 const func = self.cast(.func);
@@ -347,7 +347,7 @@ pub const Sym = extern struct {
             .typeAlias       => return self.cast(.typeAlias).type,
             .struct_t        => return self.cast(.struct_t).type,
             .object_t        => return self.cast(.object_t).type,
-            .custom_object_t => return self.cast(.custom_object_t).type,
+            .custom_t        => return self.cast(.custom_t).type,
             .use_alias       => return self.cast(.use_alias).sym.getStaticType(),
             .placeholder,
             .null,
@@ -377,7 +377,7 @@ pub const Sym = extern struct {
             .float_t,
             .typeAlias,
             .use_alias,
-            .custom_object_t,
+            .custom_t,
             .null,
             .field,
             .template,
@@ -443,7 +443,7 @@ fn SymChild(comptime symT: SymType) type {
         .hostVar => HostVar,
         .struct_t,
         .object_t => ObjectType,
-        .custom_object_t => CustomObjectType,
+        .custom_t => CustomType,
         .bool_t => BoolType,
         .int_t => IntType,
         .float_t => FloatType,
@@ -711,15 +711,15 @@ pub const ObjectType = extern struct {
     }
 };
 
-pub const CustomObjectType = extern struct {
+pub const CustomType = extern struct {
     head: Sym,
     type: cy.TypeId,
     declId: cy.NodeId,
-    getChildrenFn: cc.ObjectGetChildrenFn,
-    finalizerFn: cc.ObjectFinalizerFn,
+    getChildrenFn: cc.GetChildrenFn,
+    finalizerFn: cc.FinalizerFn,
     mod: vmc.Module,
 
-    pub fn getMod(self: *CustomObjectType) *cy.Module {
+    pub fn getMod(self: *CustomType) *cy.Module {
         return @ptrCast(&self.mod);
     }
 };
@@ -894,21 +894,16 @@ pub const Func = struct {
 
 pub const ChunkExt = struct {
 
-    pub fn createDistinctType(c: *cy.Chunk, parent: *Sym, name: []const u8, decl_id: cy.NodeId, opt_type_id: ?cy.TypeId) !*DistinctType {
-        const type_id = opt_type_id orelse try c.sema.pushType();
+    pub fn createDistinctType(c: *cy.Chunk, parent: *Sym, name: []const u8, decl_id: cy.NodeId) !*DistinctType {
         const sym = try createSym(c.alloc, .distinct_t, .{
             .head = Sym.init(.distinct_t, parent, name),
             .decl = decl_id,
-            .type = type_id,
+            .type = cy.NullId,
             .mod = undefined,
             .resolved = false,
+            .variant = cy.NullId,
         });
         sym.getMod().* = cy.Module.init(c);
-        c.compiler.sema.types.items[type_id] = .{
-            .sym = @ptrCast(sym),
-            .kind = .null,
-            .data = undefined,
-        };
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }
@@ -1071,52 +1066,35 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createCustomObjectType(
+    pub fn createCustomType(
         c: *cy.Chunk, parent: *Sym, name: []const u8, declId: cy.NodeId,
-        getChildrenFn: cc.ObjectGetChildrenFn, finalizerFn: cc.ObjectFinalizerFn, opt_type_id: ?cy.TypeId,
-    ) !*CustomObjectType {
-        const type_id = opt_type_id orelse try c.sema.pushType();
-        const sym = try createSym(c.alloc, .custom_object_t, .{
-            .head = Sym.init(.custom_object_t, parent, name),
+    ) !*CustomType {
+        const sym = try createSym(c.alloc, .custom_t, .{
+            .head = Sym.init(.custom_t, parent, name),
             .declId = declId,
-            .type = type_id,
-            .getChildrenFn = getChildrenFn,
-            .finalizerFn = finalizerFn,
+            .type = cy.NullId,
+            .getChildrenFn = null,
+            .finalizerFn = null,
+            .variant = null,
             .mod = undefined,
         });
         @as(*cy.Module, @ptrCast(&sym.mod)).* = cy.Module.init(c);
-        c.compiler.sema.types.items[type_id] = .{
-            .sym = @ptrCast(sym),
-            .kind = .custom_object,
-            .data = .{ .custom_object = .{
-                .getChildrenFn = getChildrenFn,
-                .finalizerFn = finalizerFn,
-            }},
-        };
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }
 
-    pub fn createStructType(c: *cy.Chunk, parent: *Sym, name: []const u8, declId: cy.NodeId, opt_type_id: ?cy.TypeId) !*ObjectType {
-        const typeId = opt_type_id orelse try c.sema.pushType();
+    pub fn createStructType(c: *cy.Chunk, parent: *Sym, name: []const u8, declId: cy.NodeId) !*ObjectType {
         const sym = try createSym(c.alloc, .struct_t, .{
             .head = Sym.init(.struct_t, parent, name),
             .declId = declId,
-            .type = typeId,
+            .type = cy.NullId,
             .fields = undefined,
-            .variantId = cy.NullId,
+            .variant = null,
             .numFields = cy.NullId,
             .rt_size = cy.NullId,
             .mod = undefined,
         });
         @as(*cy.Module, @ptrCast(&sym.mod)).* = cy.Module.init(c);
-        c.compiler.sema.types.items[typeId] = .{
-            .sym = @ptrCast(sym),
-            .kind = .@"struct",
-            .data = .{ .@"struct" = .{
-                .numFields = cy.NullU16,
-            }},
-        };
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }
@@ -1220,25 +1198,10 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createFuncSymVariant(c: *cy.Chunk, parent: *Template, variant: u32) !*FuncSym {
-        const name = parent.head.name();
-        const sym = try createFuncSym(c, @ptrCast(parent), name);
-        sym.variant = variant;
-        return sym;
-    }
-
-    pub fn createObjectType(c: *cy.Chunk, parent: *Sym, name: []const u8, declId: cy.NodeId, opt_type_id: ?cy.TypeId) !*ObjectType {
-        const type_id = opt_type_id orelse try c.sema.pushType();
+    pub fn createObjectType(c: *cy.Chunk, parent: *Sym, name: []const u8, declId: cy.NodeId) !*ObjectType {
         const sym = try createSym(c.alloc, .object_t,
-            ObjectType.init(parent, c, name, declId, type_id)
+            ObjectType.init(parent, c, name, declId, cy.NullId)
         );
-        c.compiler.sema.types.items[type_id] = .{
-            .sym = @ptrCast(sym),
-            .kind = .object,
-            .data = .{ .object = .{
-                .numFields = cy.NullU16,
-            }},
-        };
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }

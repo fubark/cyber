@@ -3,7 +3,7 @@ const stdx = @import("stdx");
 const fatal = cy.fatal;
 const builtin = @import("builtin");
 const cy = @import("../cyber.zig");
-const cc = @import("../capi.zig");
+const C = @import("../capi.zig");
 const vmc = cy.vmc;
 const rt = cy.rt;
 const Value = cy.Value;
@@ -27,91 +27,82 @@ pub var CDimArrayT: cy.TypeId = undefined;
 pub var nextUniqId: u32 = undefined;
 
 pub const Src = @embedFile("os.cy");
-pub fn funcLoader(_: ?*cc.VM, func: cc.FuncInfo, out_: [*c]cc.FuncResult) callconv(.C) bool {
-    const out: *cc.FuncResult = out_;
-    const name = cc.fromStr(func.name);
-    if (std.mem.eql(u8, funcs[func.idx].@"0", name)) {
-        out.ptr = @ptrCast(funcs[func.idx].@"1");
-        return true;
-    }
-    return false;
-}
 
-const NameFunc = struct { []const u8, cy.ZHostFuncFn };
-const funcs = [_]NameFunc{
+const func = cy.hostFuncEntry;
+pub const funcs = [_]C.HostFuncEntry{
     // Top level
-    .{"access",         zErrFunc(access)},
-    .{"args",           zErrFunc(osArgs)},
-    .{"cacheUrl",       zErrFunc(cacheUrl)},
-    .{"copyFile",       zErrFunc(copyFile)},
-    .{"createDir",      zErrFunc(createDir)},
-    .{"createFile",     zErrFunc(createFile)},
-    .{"cstr",           zErrFunc(cstr)},
-    .{"cwd",            zErrFunc(cwd)},
-    .{"dirName",        zErrFunc(dirName)},
-    .{"execCmd",        zErrFunc(execCmd)},
-    .{"exePath",        zErrFunc(exePath)},
-    .{"exit",           exit},
-    .{"fetchUrl",       zErrFunc(fetchUrl)},
-    .{"free",           free},
-    .{"getEnv",         zErrFunc(getEnv)},
-    .{"getEnvAll",      zErrFunc(getEnvAll)},
-    .{"malloc",         zErrFunc(malloc)},
-    .{"milliTime",      milliTime},
-    .{"newFFI",         newFFI},
-    .{"now",            zErrFunc(now)},
-    .{"openDir",        zErrFunc(openDir)},
-    .{"openDir",        zErrFunc(openDir2)},
-    .{"openFile",       zErrFunc(openFile)},
-    .{"parseArgs",      zErrFunc(parseArgs)},
-    .{"readAll",        zErrFunc(readAll)},
-    .{"readFile",       zErrFunc(readFile)},
-    .{"readLine",       zErrFunc(readLine)},
-    .{"realPath",       zErrFunc(realPath)},
-    .{"removeDir",      zErrFunc(removeDir)},
-    .{"removeFile",     zErrFunc(removeFile)},
-    .{"setEnv",         zErrFunc(setEnv)},
-    .{"sleep",          sleep},
-    .{"unsetEnv",       unsetEnv},
-    .{"writeFile",      zErrFunc(writeFile)},
+    func("access",         zErrFunc(access)),
+    func("args",           zErrFunc(osArgs)),
+    func("cacheUrl",       zErrFunc(cacheUrl)),
+    func("copyFile",       zErrFunc(copyFile)),
+    func("createDir",      zErrFunc(createDir)),
+    func("createFile",     zErrFunc(createFile)),
+    func("cstr",           zErrFunc(cstr)),
+    func("cwd",            zErrFunc(cwd)),
+    func("dirName",        zErrFunc(dirName)),
+    func("execCmd",        zErrFunc(execCmd)),
+    func("exePath",        zErrFunc(exePath)),
+    func("exit",           exit),
+    func("fetchUrl",       zErrFunc(fetchUrl)),
+    func("free",           free),
+    func("getEnv",         zErrFunc(getEnv)),
+    func("getEnvAll",      zErrFunc(getEnvAll)),
+    func("malloc",         zErrFunc(malloc)),
+    func("milliTime",      milliTime),
+    func("newFFI",         newFFI),
+    func("now",            zErrFunc(now)),
+    func("openDir",        zErrFunc(openDir)),
+    func("openDir",        zErrFunc(openDir2)),
+    func("openFile",       zErrFunc(openFile)),
+    func("parseArgs",      zErrFunc(parseArgs)),
+    func("readAll",        zErrFunc(readAll)),
+    func("readFile",       zErrFunc(readFile)),
+    func("readLine",       zErrFunc(readLine)),
+    func("realPath",       zErrFunc(realPath)),
+    func("removeDir",      zErrFunc(removeDir)),
+    func("removeFile",     zErrFunc(removeFile)),
+    func("setEnv",         zErrFunc(setEnv)),
+    func("sleep",          sleep),
+    func("unsetEnv",       unsetEnv),
+    func("writeFile",      zErrFunc(writeFile)),
 
     // File
-    .{"close",          fs.fileClose},
-    .{"iterator",       zErrFunc(fs.fileIterator)},
-    .{"next",           zErrFunc(fs.fileNext)},
-    .{"read",           zErrFunc(fs.fileRead)},
-    .{"readAll",        zErrFunc(fs.fileReadAll)},
-    .{"seek",           zErrFunc(fs.fileSeek)},
-    .{"seekFromCur",    zErrFunc(fs.fileSeekFromCur)},
-    .{"seekFromEnd",    zErrFunc(fs.fileSeekFromEnd)},
-    .{"stat",           zErrFunc(fs.fileOrDirStat)},
-    .{"streamLines",    zErrFunc(fs.fileStreamLines)},
-    .{"streamLines",    zErrFunc(fs.fileStreamLines1)},
-    .{"write",          zErrFunc(fs.fileWrite)},
+    func("File.close",          fs.fileClose),
+    func("File.iterator",       zErrFunc(fs.fileIterator)),
+    func("File.next",           zErrFunc(fs.fileNext)),
+    func("File.read",           zErrFunc(fs.fileRead)),
+    func("File.readAll",        zErrFunc(fs.fileReadAll)),
+    func("File.seek",           zErrFunc(fs.fileSeek)),
+    func("File.seekFromCur",    zErrFunc(fs.fileSeekFromCur)),
+    func("File.seekFromEnd",    zErrFunc(fs.fileSeekFromEnd)),
+    func("File.stat",           zErrFunc(fs.fileOrDirStat)),
+    func("File.streamLines",    zErrFunc(fs.fileStreamLines)),
+    func("File.streamLines",    zErrFunc(fs.fileStreamLines1)),
+    func("File.write",          zErrFunc(fs.fileWrite)),
 
     // Dir
-    .{"iterator",   fs.dirIterator},
-    .{"stat",       zErrFunc(fs.fileOrDirStat)},
-    .{"walk",       fs.dirWalk},
+    func("Dir.iterator",   fs.dirIterator),
+    func("Dir.stat",       zErrFunc(fs.fileOrDirStat)),
+    func("Dir.walk",       fs.dirWalk),
 
     // DirIterator
-    .{"next", zErrFunc(fs.dirIteratorNext)},
+    func("DirIterator.next", zErrFunc(fs.dirIteratorNext)),
 
     // FFI
-    .{"bindCallback",   zErrFunc(ffi.ffiBindCallback)},
-    .{"bindLib",        zErrFunc(bindLib)},
-    .{"bindLib",        zErrFunc(bindLibExt)},
-    .{"bindObjPtr",     zErrFunc(ffi.ffiBindObjPtr)},
-    .{"cbind",          zErrFunc(ffi.ffiCbind)},
-    .{"cfunc",          zErrFunc(ffi.ffiCfunc)},
-    .{"new",            zErrFunc(ffi.ffiNew)},
-    .{"unbindObjPtr",   zErrFunc(ffi.ffiUnbindObjPtr)},
+    func("FFI.bindCallback",   zErrFunc(ffi.ffiBindCallback)),
+    func("FFI.bindLib",        zErrFunc(bindLib)),
+    func("FFI.bindLib2",       zErrFunc(bindLibExt)),
+    func("FFI.bindObjPtr",     zErrFunc(ffi.ffiBindObjPtr)),
+    func("FFI.cbind",          zErrFunc(ffi.ffiCbind)),
+    func("FFI.cfunc",          zErrFunc(ffi.ffiCfunc)),
+    func("FFI.new",            zErrFunc(ffi.ffiNew)),
+    func("FFI.unbindObjPtr",   zErrFunc(ffi.ffiUnbindObjPtr)),
 };
 
 const NameValue = struct { []const u8, cy.Value };
 var vars: [7]NameValue = undefined;
-pub fn varLoader(_: ?*cc.VM, v: cc.VarInfo, out: [*c]cc.Value) callconv(.C) bool {
-    const name = cc.fromStr(v.name);
+pub fn varLoader(_: ?*C.VM, v: C.VarInfo, out: [*c]C.Value) callconv(.C) bool {
+    const name = C.fromStr(v.name);
     if (std.mem.eql(u8, vars[v.idx].@"0", name)) {
         out.* = vars[v.idx].@"1".val;
         return true;
@@ -119,38 +110,22 @@ pub fn varLoader(_: ?*cc.VM, v: cc.VarInfo, out: [*c]cc.Value) callconv(.C) bool
     return false;
 }
 
-const NameType = struct { []const u8, *cy.TypeId, cc.ObjectGetChildrenFn, cc.ObjectFinalizerFn };
-const types = [_]NameType{
-    .{"File", &fs.FileT, null, fs.fileFinalizer },
-    .{"Dir", &fs.DirT, null, fs.dirFinalizer },
-    .{"DirIterator", &fs.DirIterT, fs.dirIteratorGetChildren, fs.dirIteratorFinalizer },
-    .{"FFI", &ffi.FFIT, ffi.ffiGetChildren, ffi.ffiFinalizer },
+const htype = C.hostTypeEntry;
+pub const types = [_]C.HostTypeEntry{
+    htype("File",         C.CUSTOM_TYPE(&fs.FileT, null, fs.fileFinalizer)),
+    htype("Dir",          C.CUSTOM_TYPE(&fs.DirT, null, fs.dirFinalizer)),
+    htype("DirIterator",  C.CUSTOM_TYPE(&fs.DirIterT, fs.dirIterGetChildren, fs.dirIterFinalizer)),
+    htype("FFI",          C.CUSTOM_TYPE(&ffi.FFIT, ffi.ffiGetChildren, ffi.ffiFinalizer)),
 };
 
-pub fn typeLoader(_: ?*cc.VM, info: cc.TypeInfo, out_: [*c]cc.TypeResult) callconv(.C) bool {
-    const out: *cc.TypeResult = out_;
-    const name = cc.fromStr(info.name);
-    if (std.mem.eql(u8, types[info.idx].@"0", name)) {
-        out.type = cc.BindTypeCustom;
-        out.data.custom = .{
-            .out_type_id = types[info.idx].@"1",
-            .type_id = cy.NullId,
-            .get_children = types[info.idx].@"2",
-            .finalizer = types[info.idx].@"3",
-        };
-        return true;
-    }
-    return false;
-}
-
-pub fn onTypeLoad(vm_: ?*cc.VM, mod: cc.Sym) callconv(.C) void {
+pub fn onTypeLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     zPostTypeLoad(vm.compiler, mod) catch |err| {
         cy.panicFmt("os module: {}", .{err});
     };
 }
 
-pub fn zPostTypeLoad(c: *cy.Compiler, mod: cc.Sym) !void {
+pub fn zPostTypeLoad(c: *cy.Compiler, mod: C.Sym) !void {
     vars[0] = .{ "cpu", try cy.heap.allocString(c.vm, @tagName(builtin.cpu.arch)) };
     if (builtin.cpu.arch.endian() == .Little) {
         vars[1] = .{ "endian", cy.Value.initSymbol(@intFromEnum(Symbol.little)) };
@@ -196,14 +171,14 @@ pub fn zPostTypeLoad(c: *cy.Compiler, mod: cc.Sym) !void {
     nextUniqId = 1;
 }
 
-pub fn onLoad(vm_: ?*cc.VM, mod: cc.Sym) callconv(.C) void {
+pub fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     zPostLoad(vm.compiler, mod) catch |err| {
         cy.panicFmt("os module: {}", .{err});
     };
 }
 
-fn zPostLoad(self: *cy.Compiler, mod: cc.Sym) anyerror!void {
+fn zPostLoad(self: *cy.Compiler, mod: C.Sym) anyerror!void {
     const b = bindings.ModuleBuilder.init(self, cy.Sym.fromC(mod));
     _ = b;
 

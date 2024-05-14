@@ -128,7 +128,7 @@
 @host func writeFile(path String, contents any) void
 
 @host
-type File:
+type File _:
 
     --| Closes the file handle. File ops invoked afterwards will return `error.Closed`.
     @host func close() void
@@ -169,7 +169,7 @@ type File:
     @host func write(val any) int
 
 @host
-type Dir:
+type Dir _:
 
     --| Returns a new iterator over the directory entries.
     --| If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
@@ -183,11 +183,11 @@ type Dir:
     @host func walk() DirIterator
 
 @host
-type DirIterator:
+type DirIterator _:
     @host func next() ?Map
 
 @host
-type FFI:
+type FFI _:
 
     --| Creates an `ExternFunc` that contains a C function pointer with the given signature.
     --| The extern function is a wrapper that calls the provided user function.
@@ -201,7 +201,7 @@ type FFI:
     --| By default, an anonymous object is returned with the C-functions binded as the object's methods.
     --| If `config` contains `gen_table: true`, a `Table` is returned instead with C-functions
     --| binded as function values.
-    @host func bindLib(path ?String, config Table) any
+    @host='FFI.bindLib2' func bindLib(path ?String, config Table) any
 
     --| Returns a Cyber object's pointer. Operations on the pointer is unsafe,
     --| but it can be useful when passing it to C as an opaque pointer.

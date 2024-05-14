@@ -141,22 +141,17 @@ typedef struct CLFuncInfo {
     CLStr name;
     // The function's signature.
     uint32_t funcSigId;
-    // A counter that tracks it's current position among all @host funcs in the module.
-    // This is useful if you want to bind an array of function pointers to @host funcs.
-    uint32_t idx;
-    // `true` if this func was generated from a template.
-    bool variant;
 } CLFuncInfo;
 
-// Result given to Cyber when binding a @host func.
-typedef struct CLFuncResult {
-    // Pointer to the binded function. (CLFuncFn)
-    const void* ptr;
-} CLFuncResult;
+// A mapping from a matching symbol string to a CLFuncFn.
+typedef struct CLHostFuncEntry {
+    CLStr name;
+    CLFuncFn func;
+} CLHostFuncEntry;
 
 // Given info about a @host func, write it's function pointer to `out->ptr` and return true,
 // or return false.
-typedef bool (*CLFuncLoaderFn)(CLVM* vm, CLFuncInfo funcInfo, CLFuncResult* out);
+typedef bool (*CLFuncLoaderFn)(CLVM* vm, CLFuncInfo funcInfo, CLFuncFn* out);
 
 // Info about a @host var.
 typedef struct CLVarInfo {
@@ -180,22 +175,22 @@ typedef struct CLTypeInfo {
     CLSym mod;
     // The name of the type.
     CLStr name;
-    // A counter that tracks it's current position among all @host types in the module.
-    // This is useful if you want to bind an array of data to @host types.
-    uint32_t idx;
 } CLTypeInfo;
 
 typedef enum {
     // Create a new object type with it's own memory layout and finalizer.
     CL_BIND_TYPE_CUSTOM,
 
+    // Create a new type that has has a predefined type id.
+    CL_BIND_TYPE_CORE_CUSTOM,
+
     // Create a new type from the given type declaration with a predefined type id.
-    CL_BIND_TYPE_DECL,
+    CL_BIND_TYPE_CORE_DECL,
 } CLBindTypeKind;
 
 // Given an object, return the pointer of an array and the number of children.
 // If there are no children, return NULL and 0 for the length.
-typedef CLValueSlice (*CLObjectGetChildrenFn)(CLVM* vm, void* obj);
+typedef CLValueSlice (*CLGetChildrenFn)(CLVM* vm, void* obj);
 
 // Use the finalizer to perform cleanup tasks for the object (eg. free a resource handle)
 // before it is finally freed by the VM.
@@ -207,36 +202,52 @@ typedef CLValueSlice (*CLObjectGetChildrenFn)(CLVM* vm, void* obj);
 //
 // NOTE: If the object retains child VM objects, accessing them is undefined behavior
 //       because they could have freed before the finalizer was invoked.
-typedef void (*CLObjectFinalizerFn)(CLVM* vm, void* obj);
+typedef void (*CLFinalizerFn)(CLVM* vm, void* obj);
 
 // Result given to Cyber when binding a @host type.
-typedef struct CLTypeResult {
+typedef struct CLHostType {
     union {
+        struct {
+            // The reserved `typeId` is used for the new type.
+            CLTypeId type_id;
+            // Pointer to callback or null.
+            CLGetChildrenFn get_children;
+            // Pointer to callback or null.
+            CLFinalizerFn finalizer;
+        } core_custom;
         struct {
             // If not null, the created runtime type id will be written to `outTypeId`.
             // This typeId is then used to allocate a new instance of the object.
             // Defaults to null.
             CLTypeId* out_type_id;
-
-            // If NullId, the next type id is consumed and written to `out_type_id`.
-            CLTypeId type_id;
-
             // Pointer to callback or null.
-            CLObjectGetChildrenFn get_children;
+            CLGetChildrenFn get_children;
             // Pointer to callback or null.
-            CLObjectFinalizerFn finalizer;
+            CLFinalizerFn finalizer;
         } custom;
         struct {
             // The reserved `typeId` is used for the new type.
             CLTypeId type_id;
-        } decl;
+        } core_decl;
     } data;
-    // `CLBindTypeKind`. By default, this is `CL_BIND_TYPE_CUSTOM`.
+    // `CLBindTypeKind`.
     uint8_t type;
-} CLTypeResult;
+} CLHostType;
 
+#define CL_CORE_TYPE(t) ((CLHostType){ .data = { .core_custom = { .type_id = t, .get_children = NULL, .finalizer = NULL }}, .type = CL_BIND_TYPE_CORE_CUSTOM })
+#define CL_CORE_TYPE_EXT(t, gc, f) ((CLHostType){ .data = { .core_custom = { .type_id = t, .get_children = gc, .finalizer = f }}, .type = CL_BIND_TYPE_CORE_CUSTOM })
+#define CL_CORE_TYPE_DECL(t) ((CLHostType){ .data = { .core_decl = { .type_id = t }}, .type = CL_BIND_TYPE_CORE_DECL })
+#define CL_CUSTOM_TYPE(ot, gc, f) ((CLHostType){ .data = { .custom = { .out_type_id = ot, .get_children = gc, .finalizer = f }}, .type = CL_BIND_TYPE_CUSTOM })
+
+// A mapping from a matching symbol string to a CLHostType.
+typedef struct CLHostTypeEntry {
+    CLStr name;
+    CLHostType host_t;
+} CLHostTypeEntry;
+
+// Optional callback if a host type could not be found in `CLModuleLoaderResult.types`.
 // Given info about a @host type, write the result to `out` and return true, or return false.
-typedef bool (*CLTypeLoaderFn)(CLVM* vm, CLTypeInfo typeInfo, CLTypeResult* out);
+typedef bool (*CLTypeLoaderFn)(CLVM* vm, CLTypeInfo typeInfo, CLHostType* out);
 
 // This callback is invoked after receiving the module loader's result.
 // If `res->src` was allocated, this can be a good time to free the memory.
@@ -249,9 +260,11 @@ typedef struct CLModuleLoaderResult {
     size_t srcLen;
 
     CLModuleOnReceiptFn onReceipt;   // Pointer to callback or null.
-    CLFuncLoaderFn funcLoader;       // Pointer to callback or null.
+    CLSlice funcs;                   // `CLHostFuncEntry` slice.
+    CLFuncLoaderFn func_loader;      // Pointer to callback or null.
     CLVarLoaderFn varLoader;         // Pointer to callback or null.
-    CLTypeLoaderFn typeLoader;       // Pointer to callback or null.
+    CLSlice types;                   // `CLHostTypeEntry` slice.
+    CLTypeLoaderFn type_loader;      // Pointer to callback or null.
     CLModuleOnTypeLoadFn onTypeLoad; // Pointer to callback or null.
     CLModuleOnLoadFn onLoad;         // Pointer to callback or null.
     CLModuleOnDestroyFn onDestroy;   // Pointer to callback or null.
@@ -424,7 +437,7 @@ void clDeclareDynVar(CLSym mod, const char* name, CLTypeId type, CLValue val);
 void clDeclareVar(CLSym mod, const char* name, CLTypeId type, CLValue val);
 
 // Expand type template for given arguments.
-CLTypeId clExpandTypeTemplate(CLSym type_t, CLValue* args, uint32_t nargs);
+CLTypeId clExpandTemplateType(CLSym type_t, CLValue* args, uint32_t nargs);
 
 // -----------------------------------
 // [ Memory ]
@@ -508,7 +521,7 @@ CLValue clNewEmptyList(CLVM* vm, CLTypeId type_id);
 CLValue clNewList(CLVM* vm, CLTypeId type_id, const CLValue* vals, size_t len);
 
 CLValue clNewEmptyMap(CLVM* vm);
-CLValue clNewUntypedFunc(CLVM* vm, uint32_t numParams, CLFuncFn func);
+CLValue clNewFuncDyn(CLVM* vm, uint32_t numParams, CLFuncFn func);
 CLValue clNewFunc(CLVM* vm, const CLTypeId* params, uint32_t numParams, CLTypeId retType, CLFuncFn func);
 CLValue clNewPointer(CLVM* vm, void* ptr);
 CLValue clNewType(CLVM* vm, CLTypeId type_id);

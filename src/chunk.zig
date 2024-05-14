@@ -156,23 +156,21 @@ pub const Chunk = struct {
     sym: *cy.sym.Chunk,
 
     /// For binding @host func declarations.
-    funcLoader: cc.FuncLoaderFn = null,
+    host_funcs: std.StringHashMapUnmanaged(cc.FuncFn),
+    func_loader: cc.FuncLoaderFn = null,
     /// For binding @host var declarations.
     varLoader: cc.VarLoaderFn = null,
     /// For binding @host type declarations.
-    typeLoader: cc.TypeLoaderFn = null,
+    host_types: std.StringHashMapUnmanaged(cc.HostType),
+    type_loader: cc.TypeLoaderFn = null,
     /// Run after type declarations are loaded.
     onTypeLoad: cc.ModuleOnTypeLoadFn = null,
     /// Run after declarations have been loaded.
     onLoad: cc.ModuleOnLoadFn = null,
     /// Run before chunk is destroyed.
     onDestroy: cc.ModuleOnDestroyFn = null,
-    /// Counter for loading @host funcs.
-    curHostFuncIdx: u32,
     /// Counter for loading @host vars.
     curHostVarIdx: u32,
-    /// Counter for loading @host types.
-    curHostTypeIdx: u32,
 
     hasStaticInit: bool,
     initializerVisiting: bool,
@@ -256,9 +254,7 @@ pub const Chunk = struct {
             .use_global = false,
             .funcCheckCache = .{},
             .rega = cy.register.Allocator.init(c, id),
-            .curHostFuncIdx = 0,
             .curHostVarIdx = 0,
-            .curHostTypeIdx = 0,
             .tempTypeRefs = undefined,
             .tempValueRefs = undefined,
             .builder = undefined,
@@ -281,6 +277,8 @@ pub const Chunk = struct {
             .funcs = .{},
             .cur_template_params = .{},
             .in_ct_expr = false,
+            .host_types = .{},
+            .host_funcs = .{},
         };
 
         if (cy.hasJIT) {
@@ -295,6 +293,9 @@ pub const Chunk = struct {
 
     pub fn deinit(self: *Chunk) void {
         self.tempBufU8.deinit(self.alloc);
+
+        self.host_funcs.deinit(self.alloc);
+        self.host_types.deinit(self.alloc);
 
         for (self.semaBlocks.items) |*b| {
             b.deinit(self.alloc);

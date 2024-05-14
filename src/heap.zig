@@ -2108,9 +2108,9 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                         freePoolObject(vm, obj);
                     }
                 },
-                .custom_object => {
+                .custom => {
                     if (releaseChildren) {
-                        if (entry.data.custom_object.getChildrenFn) |getChildren| {
+                        if (entry.data.custom.getChildrenFn) |getChildren| {
                             const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
                             for (Value.fromSliceC(children)) |child| {
                                 if (skipCycChildren and child.isGcConfirmedCyc()) {
@@ -2121,7 +2121,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                         }
                     }
                     if (free) {
-                        if (entry.data.custom_object.finalizerFn) |finalizer| {
+                        if (entry.data.custom.finalizerFn) |finalizer| {
                             finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
                             if (!obj.isExternalObject()) {
                                 freePoolObject(vm, obj);

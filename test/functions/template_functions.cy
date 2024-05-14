@@ -1,7 +1,7 @@
 use test
 
 template[T type]
-func add(a #T, b #T) #T:
+func add(a T, b T) T:
     return a + b
 
 -- Expand template params.

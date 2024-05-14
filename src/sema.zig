@@ -1151,14 +1151,10 @@ pub fn declareTemplate(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.sym.Template {
                 break;
             }
             const paramt = c.ast.node(param.data.funcParam.typeSpec);
-            if (paramt.type() != .comptimeExpr) {
+            if (paramt.type() != .ident) {
                 continue;
             }
-            const paramt_child = c.ast.node(paramt.data.comptimeExpr.child);
-            if (paramt_child.type() != .ident) {
-                continue;
-            }
-            const pname = c.ast.nodeString(paramt_child);
+            const pname = c.ast.nodeString(paramt);
             const tidx = sym.indexOfParam(pname) orelse {
                 continue;
             };
@@ -2635,6 +2631,20 @@ pub fn getResolvedLocalSym(c: *cy.Chunk, name: []const u8, nodeId: cy.NodeId, di
         }
     }
 
+    // Look in template context.
+    if (c.cur_template_params.size > 0) {
+        if (c.cur_template_params.get(name)) |param| {
+            if (param.getTypeId() != bt.Type) {
+                const param_type_name = c.sema.getTypeBaseName(param.getTypeId());
+                return c.reportErrorFmt("Can not use a `{}` template param here.", &.{v(param_type_name)}, nodeId);
+            }
+            const sym = c.sema.getTypeSym(param.asHeapObject().type.type);
+            if (!distinct or sym.isDistinct()) {
+                return sym;
+            }
+        }
+    }
+
     // Look in use alls.
     var i = c.use_alls.items.len;
     while (i > 0) {
@@ -2716,7 +2726,7 @@ pub fn resolveLocalNamePathSym(c: *cy.Chunk, head: cy.NodeId, end: cy.NodeId) an
 }
 
 fn resolveSymType(c: *cy.Chunk, expr_id: cy.NodeId) !cy.TypeId {
-    const sym = try resolveConstSym(c, expr_id);
+    const sym = try resolveSym(c, expr_id);
     return sym.getStaticType() orelse {
         switch (sym.type) {
             .template => {
@@ -2729,7 +2739,7 @@ fn resolveSymType(c: *cy.Chunk, expr_id: cy.NodeId) !cy.TypeId {
     };
 }
 
-fn resolveSym(c: *cy.Chunk, exprId: cy.NodeId) !*cy.Sym {
+pub fn resolveSym(c: *cy.Chunk, exprId: cy.NodeId) !*cy.Sym {
     const expr = c.ast.node(exprId);
     switch (expr.type()) {
         .objectDecl => {
@@ -2743,6 +2753,15 @@ fn resolveSym(c: *cy.Chunk, exprId: cy.NodeId) !*cy.Sym {
         },
         .ident => {
             const name = c.ast.nodeString(expr);
+
+            if (c.in_ct_expr) {
+                // Check for ct builtins.
+                const mod = c.compiler.ct_builtins_chunk.?.sym.getMod();
+                if (mod.getSym(name)) |sym| {
+                    return sym;
+                }
+            }
+
             return (try getResolvedLocalSym(c, name, exprId, true)) orelse {
                 return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, exprId);
             };
@@ -2754,71 +2773,7 @@ fn resolveSym(c: *cy.Chunk, exprId: cy.NodeId) !*cy.Sym {
                 return c.reportErrorFmt("Expected identifier.", &.{}, expr.data.accessExpr.right);
             }
             const name = c.ast.nodeString(right);
-            return try c.getResolvedDistinctSym(parent, name, expr.data.accessExpr.right, true);
-        },
-        .comptimeExpr => {
-            c.in_ct_expr = true;
-            defer c.in_ct_expr = false;
-            // TODO: Check for ct builtins.
-            return try resolveConstSym(c, expr.data.comptimeExpr.child);
-        },
-        .semaSym => {
-            return expr.data.semaSym.sym;
-        },
-        .callExpr => {
-            return try cte.expandTemplateOnCallExpr(c, exprId);
-        },
-        .expandOpt => {
-            return try cte.expandTemplateOnCallArgs(c, c.sema.option_tmpl, expr.data.expandOpt.param, exprId);
-        },
-        else => {
-            return c.reportErrorFmt("Unsupported symbol expr: `{}`", &.{v(expr.type())}, exprId);
-        }
-    }
-}
-
-fn resolveConstSym(c: *cy.Chunk, exprId: cy.NodeId) !*cy.Sym {
-    const expr = c.ast.node(exprId);
-    switch (expr.type()) {
-        .objectDecl => {
-            // Unnamed object.
-            const header = c.ast.node(expr.data.objectDecl.header);
-            const symId = header.data.objectHeader.name;
-            return c.sym.getMod().chunk.syms.items[symId];
-        },
-        .void => {
-            return c.sema.getTypeSym(bt.Void);
-        },
-        .ident => {
-            // First check for template parameters.
-            const name = c.ast.nodeString(expr);
-            if (c.cur_template_params.get(name)) |val| {
-                if (val.getTypeId() == bt.Type) {
-                    return c.sema.getTypeSym(val.asHeapObject().type.type);
-                } else {
-                    const param_type_name = c.sema.getTypeBaseName(val.getTypeId());
-                    return c.reportErrorFmt("Can not use a `{}` template param here.", &.{v(param_type_name)}, exprId);
-                }
-            }
-
-            // Check for ct builtins.
-            const mod = c.compiler.ct_builtins_chunk.?.sym.getMod();
-            if (mod.getSym(name)) |sym| {
-                return sym;
-            }
-
-            return (try getResolvedLocalSym(c, name, exprId, true)) orelse {
-                return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, exprId);
-            };
-        },
-        .accessExpr => {
-            const parent = try resolveConstSym(c, expr.data.accessExpr.left);
-            const right = c.ast.node(expr.data.accessExpr.right);
-            if (right.type() != .ident) {
-                return c.reportErrorFmt("Expected identifier.", &.{}, expr.data.accessExpr.right);
-            }
-            const name = c.ast.nodeString(right);
-            return try c.getResolvedDistinctSym(parent, name, expr.data.accessExpr.right, true);
+            return c.getResolvedDistinctSym(parent, name, expr.data.accessExpr.right, true);
         },
         .comptimeExpr => {
             if (c.in_ct_expr) {
@@ -2826,20 +2781,21 @@ fn resolveConstSym(c: *cy.Chunk, exprId: cy.NodeId) !*cy.Sym {
             }
             c.in_ct_expr = true;
             defer c.in_ct_expr = false;
-            return try resolveConstSym(c, expr.data.comptimeExpr.child);
+            // TODO: Check for ct builtins.
+            return resolveSym(c, expr.data.comptimeExpr.child);
+        },
+        .array_expr => {
+            var left = try resolveSym(c, expr.data.array_expr.left);
+            if (left.type == .template) {
+                return cte.expandTemplateOnCallArgs(c, left.cast(.template), expr.data.array_expr.arg_head, exprId);
+            }
+            return c.reportErrorFmt("Unsupported array expression.", &.{}, exprId);
         },
         .semaSym => {
             return expr.data.semaSym.sym;
         },
-        .array_expr => {
-            const array = c.ast.node(expr.data.array_expr.array);
-            var left = try c.semaExprSkipSym(expr.data.array_expr.left);
-            if (left.resType == .sym) {
-                if (left.data.sym.type == .template) {
-                    return cte.expandTemplateOnCallArgs(c, left.data.sym.cast(.template), array.data.arrayLit.argHead, expr.data.array_expr.array);
-                }
-            }
-            return c.reportErrorFmt("Unsupported array expression.", &.{}, exprId);
+        .callExpr => {
+            return try cte.expandTemplateOnCallExpr(c, exprId);
         },
         .expandOpt => {
             return try cte.expandTemplateOnCallArgs(c, c.sema.option_tmpl, expr.data.expandOpt.param, exprId);

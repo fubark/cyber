@@ -445,45 +445,6 @@ pub const Value = packed union {
         return @intCast(self.val & 0xffffffff);
     }
 
-    pub fn getUserTag(self: *const Value) ValueUserTag {
-        const typeId = self.getTypeId();
-        switch (typeId) {
-            bt.Float => return .float,
-            bt.Boolean => return .bool,
-            bt.Symbol => return .symbol,
-            bt.Error => return .err,
-            bt.Integer => return .int,
-            else => {} // Fall-through.
-        }
-
-        if (!self.isPointer()) {
-            if (self.isEnum()) {
-                return .enumT;
-            } else {
-                return .unknown;
-            }
-        }
-
-        switch (typeId) {
-            bt.ListDyn => return .list,
-            bt.Map => return .map,
-            bt.String => return .string,
-            bt.Array => return .array,
-            bt.Closure => return .closure,
-            bt.Lambda => return .lambda,
-            bt.Fiber => return .fiber,
-            bt.Box => return .box,
-            bt.HostFunc => return .nativeFunc,
-            bt.TccState => return .tccState,
-            bt.Pointer => return .pointer,
-            bt.MetaType => return .metatype,
-            cy.NullId => return .danglingObject,
-            else => {
-                return .object;
-            },
-        }
-    }
-
     pub fn fromSliceC(self: c.ValueSlice) []const Value {
         if (self.len == 0) {
             return &.{};
@@ -501,31 +462,6 @@ pub const Value = packed union {
     pub fn toC(self: Value) c.Value {
         return @bitCast(self);
     }
-};
-
-pub const ValueUserTag = enum {
-    float,
-    int,
-    bool,
-    object,
-    list,
-    map,
-    string,
-    array,
-    closure,
-    lambda,
-    fiber,
-    box,
-    nativeFunc,
-    tccState,
-    pointer,
-    enumT,
-    symbol,
-    err,
-    metatype,
-    danglingObject,
-    unknown,
-    none,
 };
 
 pub fn shallowCopy(vm: *cy.VM, val: Value) Value {

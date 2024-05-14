@@ -59,8 +59,6 @@ pub const fmt = @import("fmt.zig");
 pub const value = @import("value.zig");
 pub const Value = value.Value;
 
-pub const ValueUserTag = value.ValueUserTag;
-
 pub const vm = @import("vm.zig");
 pub const VM = vm.VM;
 pub const buildReturnInfo = vm.buildReturnInfo;

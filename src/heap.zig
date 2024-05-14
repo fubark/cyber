@@ -179,25 +179,6 @@ pub const HeapObject = extern union {
             return @ptrCast(@as([*]DListNode, @ptrCast(self)) - 1);
         }
     }
-
-    pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
-        switch (self.getTypeId()) {
-            bt.ListDyn => return .list,
-            bt.Map => return .map,
-            bt.String => return .string,
-            bt.Array => return .array,
-            bt.Closure => return .closure,
-            bt.Lambda => return .lambda,
-            bt.Fiber => return .fiber,
-            bt.HostFunc => return .nativeFunc,
-            bt.TccState => return .tccState,
-            bt.Pointer => return .pointer,
-            bt.Box => return .box,
-            else => {
-                return .object;
-            },
-        }
-    }
 };
 
 pub const Type = extern struct {

@@ -19,7 +19,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) void {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         if (cy.TraceRC) {
-            log.tracevIf(cy.logMemory, "{} -1 release: {s}, {*}", .{obj.head.rc, @tagName(val.getUserTag()), obj});
+            log.tracevIf(cy.logMemory, "{} -1 release: {s}, {*}", .{obj.head.rc, vm.getTypeName(val.getTypeId()), obj});
         }
         if (cy.Trace) {
             checkDoubleFree(vm, obj);
@@ -48,7 +48,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) void {
             }
         }
     } else {
-        log.tracevIf(cy.logMemory, "release: {s}, nop", .{@tagName(val.getUserTag())});
+        log.tracevIf(cy.logMemory, "release: {s}, nop", .{vm.getTypeName(val.getTypeId())});
     }
 }
 
@@ -84,7 +84,7 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) void {
         checkDoubleFree(vm, obj);
     }
     if (cy.TraceRC) {
-        log.tracevIf(cy.logMemory, "{} -1 release: {s}", .{obj.head.rc, @tagName(obj.getUserTag())});
+        log.tracevIf(cy.logMemory, "{} -1 release: {s}", .{obj.head.rc, vm.getTypeName(obj.getTypeId())});
     }
     obj.head.rc -= 1;
     if (cy.TrackGlobalRC) {
@@ -126,7 +126,7 @@ pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) void {
     if (cy.Trace) {
         checkRetainDanglingPointer(self, obj);
         if (cy.TraceRC) {
-            log.tracev("{} +1 retain: {}", .{obj.head.rc, obj.getUserTag()});
+            log.tracev("{} +1 retain: {s}", .{obj.head.rc, self.getTypeName(obj.getTypeId())});
         }
     }
     if (cy.TrackGlobalRC) {
@@ -171,7 +171,7 @@ pub inline fn retain(self: *cy.VM, val: cy.Value) void {
         if (cy.Trace) {
             checkRetainDanglingPointer(self, obj);
             if (cy.TraceRC) {
-                log.tracev("{} +1 retain: {}", .{obj.head.rc, obj.getUserTag()});
+                log.tracev("{} +1 retain: {s}", .{obj.head.rc, self.getTypeName(obj.getTypeId())});
             }
         }
         obj.head.rc += 1;
@@ -193,7 +193,7 @@ pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) void {
         if (cy.Trace) {
             checkRetainDanglingPointer(self, obj);
             if (cy.TraceRC) {
-                log.tracev("{} +{} retain: {}", .{obj.head.rc, inc, obj.getUserTag()});
+                log.tracev("{} +{} retain: {s}", .{obj.head.rc, inc, self.getTypeName(obj.getTypeId())});
             }
         }
         obj.head.rc += inc;

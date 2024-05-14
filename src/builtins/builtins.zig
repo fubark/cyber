@@ -1149,11 +1149,11 @@ fn intFmtExt(vm: *cy.VM, val: i48, kind: Symbol, opts: IntFmtOptions) !Value {
 
 fn intCall(_: *cy.VM, args: [*]const Value, _: u8) Value {
     const val = args[0];
-    switch (val.getUserTag()) {
-        .float => {
+    switch (val.getTypeId()) {
+        bt.Float => {
             return Value.initInt(@intFromFloat(@trunc(val.asF64())));
         },
-        .string => {
+        bt.String => {
             var str = val.asString();
             if (std.mem.indexOfScalar(u8, str, '.')) |idx| {
                 str = str[0..idx];
@@ -1163,12 +1163,14 @@ fn intCall(_: *cy.VM, args: [*]const Value, _: u8) Value {
             };
             return Value.initInt(res);
         },
-        .enumT => return Value.initInt(val.getEnumValue()),
-        .symbol => return Value.initInt(@intCast(val.val & @as(u64, 0xFF))),
-        .int => {
+        bt.Symbol => return Value.initInt(@intCast(val.val & @as(u64, 0xFF))),
+        bt.Integer => {
             return val;
         },
         else => {
+            if (val.isEnum()) {
+                return Value.initInt(val.getEnumValue());
+            }
             return Value.initInt(0);
         }
     }
@@ -1180,20 +1182,22 @@ fn boolCall(_: *cy.VM, args: [*]const Value, _: u8) Value {
 
 fn floatCall(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const val = args[0];
-    switch (val.getUserTag()) {
-        .float => return val,
-        .string => {
+    switch (val.getTypeId()) {
+        bt.Float => return val,
+        bt.String => {
             const res = std.fmt.parseFloat(f64, val.asString()) catch {
                 return Value.initF64(0);
             };
             return Value.initF64(res);
         },
-        .enumT => return Value.initF64(@floatFromInt(val.getEnumValue())),
-        .symbol => return Value.initF64(@floatFromInt(val.val & @as(u64, 0xFF))),
-        .int => return Value.initF64(@floatFromInt(val.asInteger())),
-        .none => return Value.initF64(0),
-        .bool => return Value.initF64(if (val.asBool()) 1 else 0),
+        bt.Symbol => return Value.initF64(@floatFromInt(val.val & @as(u64, 0xFF))),
+        bt.Integer => return Value.initF64(@floatFromInt(val.asInteger())),
+        bt.Void => return Value.initF64(0),
+        bt.Boolean => return Value.initF64(if (val.asBool()) 1 else 0),
         else => {
+            if (val.isEnum()) {
+                return Value.initF64(@floatFromInt(val.getEnumValue()));
+            }
             vm.release(val);
             return vm.prepPanic("Not a type that can be converted to `float`.");
         }

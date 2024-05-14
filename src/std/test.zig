@@ -42,10 +42,6 @@ fn erase(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     return args[0];
 }
 
-fn getComparableTag(val: Value) cy.ValueUserTag {
-    return val.getUserTag();
-}
-
 pub fn eq(vm: *cy.VM, args: [*]const cy.Value, _: u8) Value {
     const res = eq_c(vm, args[0], args[1]);
     if (res.hasError()) {
@@ -231,10 +227,10 @@ pub fn eqNear(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const act = args[0];
     const exp = args[1];
 
-    const actType = act.getUserTag();
-    const expType = exp.getUserTag();
+    const actType = act.getTypeId();
+    const expType = exp.getTypeId();
     if (actType == expType) {
-        if (actType == .float) {
+        if (actType == bt.Float) {
             if (std.math.approxEqAbs(f64, act.asF64(), exp.asF64(), 1e-5)) {
                 return Value.True;
             } else {
@@ -256,10 +252,10 @@ pub fn eqList(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const act = args[0];
     const exp = args[1];
 
-    const actType = act.getUserTag();
-    const expType = exp.getUserTag();
+    const actType = act.getTypeId();
+    const expType = exp.getTypeId();
     if (actType == expType) {
-        if (actType == .list) {
+        if (actType == bt.ListDyn) {
             const acto = act.asHeapObject();
             const expo = exp.asHeapObject();
             if (acto.list.list.len == expo.list.list.len) {

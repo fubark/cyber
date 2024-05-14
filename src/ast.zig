@@ -97,7 +97,7 @@ pub const NodeType = enum(u8) {
     typeAliasDecl,
     distinct_decl,
     distinct_header,
-    typeTemplate,
+    template,
     unary_expr,
     unwrap,
     unwrap_or,
@@ -302,9 +302,6 @@ const NodeData = union {
     },
     comptimeExpr: struct {
         child: NodeId,
-
-        /// Used for expanding templates to get the variant replacement node.
-        patchIdx: cy.Nullable(u32),
     },
     comptimeStmt: struct {
         expr: NodeId,
@@ -425,10 +422,10 @@ const NodeData = union {
         head: NodeId,
         numArgs: u8,
     },
-    typeTemplate: packed struct {
+    template: packed struct {
         paramHead: cy.Nullable(u24),
         numParams: u8,
-        typeDecl: u31,
+        decl: u31,
         hidden: bool,
     },
     range: packed struct {
@@ -601,9 +598,6 @@ pub const Ast = struct {
     /// Generated source literals from templates or CTE.
     srcGen: std.ArrayListUnmanaged(u8),
 
-    /// Collected ct nodes for templates.
-    templateCtNodes: std.ArrayListUnmanaged(NodeId),
-
     /// Heap generated strings, stable pointers unlike `srcGen`.
     /// Used for:
     /// - Unnamed struct identifiers.
@@ -620,7 +614,6 @@ pub const Ast = struct {
             .srcGen = .{},
             .strs = .{},
             .comments = .{},
-            .templateCtNodes = .{},
         };
         try ast.clearNodes(alloc);
         return ast;
@@ -628,7 +621,6 @@ pub const Ast = struct {
 
     pub fn deinit(self: *Ast, alloc: std.mem.Allocator) void {
         self.nodes.deinit(alloc);
-        self.templateCtNodes.deinit(alloc);
         self.srcGen.deinit(alloc);
         for (self.strs.items) |str| {
             alloc.free(str);
@@ -639,7 +631,6 @@ pub const Ast = struct {
 
     pub fn clearNodes(self: *Ast, alloc: std.mem.Allocator) !void {
         self.nodes.clearRetainingCapacity();
-        self.templateCtNodes.clearRetainingCapacity();
         // Insert dummy for cy.NullNode.
         try self.nodes.append(alloc, .{
             .head = .{ .type = .null, .data = undefined },

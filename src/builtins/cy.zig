@@ -9,7 +9,7 @@ pub const Src = @embedFile("cy.cy");
 const zErrFunc = cy.builtins.zErrFunc;
 
 const NameFunc = struct { []const u8, cy.ZHostFuncFn };
-const funcs = [_]NameFunc{
+const mod_funcs = [_]NameFunc{
     .{"eval",           zErrFunc(eval)},
     .{"parse",          zErrFunc(parse)},
     .{"parseCyon",      zErrFunc(parseCyon)},
@@ -20,8 +20,8 @@ const funcs = [_]NameFunc{
 pub fn funcLoader(_: ?*c.VM, func: c.FuncInfo, out_: [*c]c.FuncResult) callconv(.C) bool {
     const out: *c.FuncResult = out_;
     const name = c.fromStr(func.name);
-    if (std.mem.eql(u8, funcs[func.idx].@"0", name)) {
-        out.ptr = @ptrCast(funcs[func.idx].@"1");
+    if (std.mem.eql(u8, mod_funcs[func.idx].@"0", name)) {
+        out.ptr = @ptrCast(mod_funcs[func.idx].@"1");
         return true;
     }
     return false;
@@ -92,78 +92,23 @@ fn genNodeValue(vm: *cy.VM, ast: cy.ast.AstView, nodeId: cy.NodeId) !cy.Value {
     return res;
 }
 
-fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, state: *ParseCyberState) !cy.Value {
+fn genImplicitFuncDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, node_id: cy.NodeId, state: *ParseCyberState) !cy.Value {
     const entryv = try vm.allocEmptyMap();
     const entry = entryv.castHeapObject(*cy.heap.Map);
-    try vm.mapSet(entry, try vm.retainOrAllocAstring("type"), try vm.retainOrAllocAstring(@tagName(decl.declT)));
     var name: []const u8 = undefined;
-    const node = ast.node(decl.nodeId);
-    switch (decl.declT) {
-        .typeTemplate => {
-            const typeDecl = ast.node(node.data.typeTemplate.typeDecl);
-            switch (typeDecl.type()) {
-                .objectDecl => {
-                    const header = ast.node(typeDecl.data.objectDecl.header);
-                    name = ast.nodeStringById(header.data.objectHeader.name);
-                },
-                .enumDecl => {
-                    name = ast.nodeStringById(typeDecl.data.enumDecl.name);
-                },
-                else => {
-                    return error.Unsupported;
-                },
-            }
-        },
-        .variable => {
-            const varSpec = ast.node(node.data.staticDecl.varSpec);
-            name = ast.getNamePathInfo(varSpec.data.varSpec.name).name_path;
+    const node = ast.node(node_id);
 
-            const typeSpec = try genTypeSpecString(vm, ast, varSpec.data.varSpec.typeSpec);
-            try vm.mapSet(entry, try vm.retainOrAllocAstring("typeSpec"), typeSpec);
-        },
-        .distinct_t => {
-            const header = ast.node(node.data.distinct_decl.header);
-            name = ast.nodeStringById(header.data.distinct_header.name);
-        },
-        .typeAlias => {
-            name = ast.nodeStringById(node.data.typeAliasDecl.name);
-        },
-        .implicit_method => {
-            const header = ast.node(node.data.func.header);
-            name = ast.getNamePathInfo(header.data.funcHeader.name).name_path;
-            
-            const headerv = try genNodeValue(vm, ast, node.data.func.header);
-            try vm.mapSet(entry, try vm.retainOrAllocAstring("header"), headerv);
-        },
-        .funcInit,
-        .func => {
-            const header = ast.node(node.data.func.header);
-            name = ast.getNamePathInfo(header.data.funcHeader.name).name_path;
+    const header = ast.node(node.data.func.header);
+    name = ast.getNamePathInfo(header.data.funcHeader.name).name_path;
+    
+    const headerv = try genNodeValue(vm, ast, node.data.func.header);
+    try vm.mapSet(entry, try vm.retainOrAllocAstring("header"), headerv);
 
-            const headerv = try genNodeValue(vm, ast, node.data.func.header);
-            try vm.mapSet(entry, try vm.retainOrAllocAstring("header"), headerv);
-        },
-        .use_import => {
-            name = ast.nodeStringById(node.data.import_stmt.name);
-        },
-        .use_alias => {
-            name = ast.nodeStringById(node.data.use_alias.name);
-        },
-        .table_t,
-        .struct_t,
-        .object => {
-            const header = ast.node(node.data.objectDecl.header);
-            name = ast.nodeStringById(header.data.objectHeader.name);
-        },
-        .enum_t => {
-            name = ast.nodeStringById(node.data.enumDecl.name);
-        },
-    }
     state.pos = node.srcPos;
     state.node = node;
 
     // Find doc comments.
-    if (try genDocComment(vm, ast, decl, state)) |docStr| {
+    if (try genDocComment(vm, ast, .func, state)) |docStr| {
         try vm.mapSet(entry, try vm.retainOrAllocAstring("docs"), docStr);
     }
 
@@ -172,7 +117,66 @@ fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, sta
     return entryv;
 }
 
-fn genDocComment(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, state: *ParseCyberState) !?cy.Value {
+fn genDeclEntry(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, state: *ParseCyberState) !cy.Value {
+    const entryv = try vm.allocEmptyMap();
+    const entry = entryv.castHeapObject(*cy.heap.Map);
+    try vm.mapSet(entry, try vm.retainOrAllocAstring("type"), try vm.retainOrAllocAstring(@tagName(decl.declT)));
+    const name = try ast.declNamePath(decl.nodeId);
+    const node = ast.node(decl.nodeId);
+
+    switch (decl.declT) {
+        .variable => {
+            const varSpec = ast.node(node.data.staticDecl.varSpec);
+            const typeSpec = try genTypeSpecString(vm, ast, varSpec.data.varSpec.typeSpec);
+            try vm.mapSet(entry, try vm.retainOrAllocAstring("typeSpec"), typeSpec);
+        },
+        .enum_t,
+        .use_alias,
+        .use_import,
+        .template,
+        .typeAlias => {},
+        .funcInit,
+        .func => {
+            const headerv = try genNodeValue(vm, ast, node.data.func.header);
+            try vm.mapSet(entry, try vm.retainOrAllocAstring("header"), headerv);
+        },
+        .table_t,
+        .struct_t,
+        .object => {
+            const funcs = try vm.allocEmptyList();
+            var cur: cy.NodeId = node.data.objectDecl.funcHead;
+            while (cur != cy.NullNode) {
+                const func = try genImplicitFuncDeclEntry(vm, ast, cur, state);
+                try funcs.asHeapObject().list.append(vm.alloc, func);
+                cur = ast.node(cur).next();
+            }
+            try vm.mapSet(entry, try vm.retainOrAllocAstring("funcs"), funcs);
+        },
+        .distinct_t => {
+            const funcs = try vm.allocEmptyList();
+            var cur: cy.NodeId = node.data.distinct_decl.func_head;
+            while (cur != cy.NullNode) {
+                const func = try genImplicitFuncDeclEntry(vm, ast, cur, state);
+                try funcs.asHeapObject().list.append(vm.alloc, func);
+                cur = ast.node(cur).next();
+            }
+            try vm.mapSet(entry, try vm.retainOrAllocAstring("funcs"), funcs);
+        },
+    }
+    state.pos = node.srcPos;
+    state.node = node;
+
+    // Find doc comments.
+    if (try genDocComment(vm, ast, decl.declT, state)) |docStr| {
+        try vm.mapSet(entry, try vm.retainOrAllocAstring("docs"), docStr);
+    }
+
+    try vm.mapSet(entry, try vm.retainOrAllocAstring("name"), try vm.retainOrAllocAstring(name));
+    try vm.mapSet(entry, try vm.retainOrAllocAstring("pos"), cy.Value.initInt(@intCast(node.srcPos)));
+    return entryv;
+}
+
+fn genDocComment(vm: *cy.VM, ast: cy.ast.AstView, decl_type: cy.parser.StaticDeclType, state: *ParseCyberState) !?cy.Value {
     const comments = state.comments;
     if (state.commentIdx < comments.len) {
         var docStartIdx = state.commentIdx;
@@ -204,7 +208,7 @@ fn genDocComment(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, st
             const last = comments[docEndIdx - 1];
 
             var posWithModifiers = state.pos;
-            switch (decl.declT) {
+            switch (decl_type) {
                 .variable => {
                     const varSpec = ast.node(state.node.data.staticDecl.varSpec);
                     if (varSpec.head.data.varSpec.modHead != cy.NullNode) {
@@ -212,7 +216,6 @@ fn genDocComment(vm: *cy.VM, ast: cy.ast.AstView, decl: cy.parser.StaticDecl, st
                         posWithModifiers = modifier.srcPos - 1;
                     }
                 },
-                .implicit_method,
                 .funcInit,
                 .func => {
                     const header = ast.node(state.node.data.func.header);

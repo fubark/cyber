@@ -868,7 +868,7 @@ pub const VM = struct {
         if (mod.getSym(name)) |_| {
             return error.DuplicateSym;
         }
-        const sym = c.reserveObjectType(parent, name, cy.NullId, null) catch return error.Unexpected;
+        const sym = c.createObjectType(parent, name, cy.NullId, null) catch return error.Unexpected;
         sym.head.setNameOwned(true);
 
         const infos = try c.alloc.alloc(cy.sym.FieldInfo, fields.len);
@@ -1492,7 +1492,7 @@ pub const VM = struct {
                     try std.fmt.format(w, "{}", .{f});
                 } else {
                     if (Value.floatCanBeInteger(f)) {
-                        try std.fmt.format(w, "{d:.0}", .{f});
+                        try std.fmt.format(w, "{d:.1}", .{f});
                     } else {
                         try std.fmt.format(w, "{d}", .{f});
                     }

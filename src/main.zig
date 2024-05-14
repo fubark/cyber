@@ -148,7 +148,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     c.setVerbose(verbose);
 
     try vm.init(alloc);
-    cli.csSetupForCLI(@ptrCast(&vm));
+    cli.clSetupForCLI(@ptrCast(&vm));
     defer vm.deinit(false);
 
     var config = c.defaultCompileConfig();
@@ -174,7 +174,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
 fn repl(alloc: std.mem.Allocator) !void {
     c.setVerbose(verbose);
     try vm.init(alloc);
-    cli.csSetupForCLI(@ptrCast(&vm));
+    cli.clSetupForCLI(@ptrCast(&vm));
     defer vm.deinit(false);
 
     var config = c.defaultEvalConfig();
@@ -219,7 +219,7 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     c.setVerbose(verbose);
 
     try vm.init(alloc);
-    cli.csSetupForCLI(@ptrCast(&vm));
+    cli.clSetupForCLI(@ptrCast(&vm));
     defer vm.deinit(false);
 
     var config = c.defaultEvalConfig();

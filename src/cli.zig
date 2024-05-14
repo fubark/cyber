@@ -76,7 +76,7 @@ const stdMods = std.ComptimeStringMap(c.ModuleLoaderResult, .{
     .{"test", test_res},
 });
 
-pub export fn csSetupForCLI(vm: *c.VM) void {
+pub export fn clSetupForCLI(vm: *c.VM) void {
     c.setResolver(@ptrCast(vm), resolve);
     c.setModuleLoader(@ptrCast(vm), loader);
     c.setPrinter(@ptrCast(vm), print);

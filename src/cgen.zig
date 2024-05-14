@@ -738,9 +738,9 @@ fn genObjectDecl(c: *Chunk, sym: *cy.Sym, w: std.ArrayListUnmanaged(u8).Writer) 
 
     const object_t = sym.cast(.object_t);
     for (object_t.getFields()) |field| {
-        if (field.sym.type == .struct_t) {
-        } else if (field.sym.type == .object_t) {
-            try genObjectDecl(c, field.sym, w);
+        if (field.sym.head.type == .struct_t) {
+        } else if (field.sym.head.type == .object_t) {
+            try genObjectDecl(c, @ptrCast(field.sym), w);
         }
     }
 
@@ -748,7 +748,7 @@ fn genObjectDecl(c: *Chunk, sym: *cy.Sym, w: std.ArrayListUnmanaged(u8).Writer) 
     try w.print("typedef struct {s} {{\n", .{ c_name });
     for (object_t.getFields()) |field| {
         try w.print("    {} {s};\n", .{
-            try c.cTypeName(field.type), field.sym.name(),
+            try c.cTypeName(field.type), field.sym.head.name(),
         });
     }
     try w.print("}} {s};\n", .{ c_name });
@@ -1208,12 +1208,12 @@ fn setField(c: *Chunk, loc: usize, nodeId: cy.NodeId) !void {
         try c.bufPush("->");
         const obj_t = c.sema.getTypeSym(rec_t).cast(.object_t);
         const field = obj_t.fields[field_data.idx];
-        try c.bufPush(field.sym.name());
+        try c.bufPush(field.sym.head.name());
     } else {
         try c.bufPush(".");
         const struct_t = c.sema.getTypeSym(rec_t).cast(.struct_t);
         const field = struct_t.fields[field_data.idx];
-        try c.bufPush(field.sym.name());
+        try c.bufPush(field.sym.head.name());
     }
 
     // try pushUnwindValue(c, recv);
@@ -1391,12 +1391,12 @@ fn genField(c: *Chunk, idx: usize, cstr: Cstr, nodeId: cy.NodeId) !Value {
         try c.bufPush("->");
         const obj_t = c.sema.getTypeSym(rec_t).cast(.object_t);
         const field = obj_t.fields[data.idx];
-        try c.bufPush(field.sym.name());
+        try c.bufPush(field.sym.head.name());
     } else {
         try c.bufPush(".");
         const struct_t = c.sema.getTypeSym(rec_t).cast(.struct_t);
         const field = struct_t.fields[data.idx];
-        try c.bufPush(field.sym.name());
+        try c.bufPush(field.sym.head.name());
     }
 
     return Value{};

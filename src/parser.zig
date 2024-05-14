@@ -55,13 +55,6 @@ pub const Parser = struct {
     /// Variable dependencies.
     deps: std.StringHashMapUnmanaged(NodeId),
 
-    inObjectDecl: bool,
-
-    /// Whether to append to `ast.templateCtNodes` depending on the context.
-    inTemplate: bool,
-    collectCtNodes: bool,
-    ctNodePatchIdx: u32,
-
     reportFn: *const fn(*anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror,
     tokenizerReportFn: *const fn(*anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror!void,
     ctx: *anyopaque,
@@ -93,10 +86,6 @@ pub const Parser = struct {
             .deps = .{},
             .user = undefined,
             .staticDecls = .{},
-            .inObjectDecl = false,
-            .inTemplate = false,
-            .collectCtNodes = false,
-            .ctNodePatchIdx = 0,
             .reportFn = defaultReportFn,
             .tokenizerReportFn = cy.tokenizer.defaultReportFn,
             .ctx = undefined,
@@ -730,41 +719,33 @@ pub const Parser = struct {
         const params = try self.parseParenAndFuncParams();
         self.consumeWhitespaceTokens();
 
-        const ctNodeStart = self.ast.templateCtNodes.items.len;
-        self.ctNodePatchIdx = 0;
-        self.inTemplate = true;
-        self.collectCtNodes = true;
-        defer {
-            self.inTemplate = false;
-            self.collectCtNodes = false;
-        }
+        const id = try self.pushNode(.template, start);
 
         const token = self.peek();
-        if (token.tag() == .type_k) {
-            const id = try self.pushNode(.typeTemplate, start);
-
-            const decl = try self.parseTypeDecl(.{ .attr_head = cy.NullNode, .hidden = false, .allow_decl = true }, false);
-            const ctNodeEnd = self.ast.templateCtNodes.items.len;
-
-            self.ast.setNodeData(id, .{ .typeTemplate = .{
-                .paramHead = @intCast(params.head),
-                .numParams = @intCast(params.len),
-                .typeDecl = @intCast(decl),
-                .hidden = hidden,
-            }});
-
-            try self.staticDecls.append(self.alloc, .{
-                .declT = .typeTemplate,
-                .nodeId = id,
-                .data = .{ .typeTemplate = .{
-                    .ctNodeStart = @intCast(ctNodeStart),
-                    .ctNodeEnd = @intCast(ctNodeEnd),
-                }},
-            });
-            return id;
-        } else {
-            return self.reportError("Unsupported template declaration.", &.{});
+        var decl: cy.NodeId = undefined;
+        switch (token.tag()) {
+            .type_k => {
+                decl = try self.parseTypeDecl(.{ .attr_head = cy.NullNode, .hidden = false, .allow_decl = true }, true);
+            },
+            .func_k => {
+                decl = try self.parseFuncDecl(.{ .attr_head = cy.NullNode, .hidden = false, .allow_decl = true }, true);
+            },
+            else => {
+                return self.reportError("Unsupported template declaration.", &.{});
+            },
         }
+        self.ast.setNodeData(id, .{ .template = .{
+            .paramHead = @intCast(params.head),
+            .numParams = @intCast(params.len),
+            .decl = @intCast(decl),
+            .hidden = hidden,
+        }});
+
+        try self.staticDecls.append(self.alloc, .{
+            .declT = .template,
+            .nodeId = id,
+        });
+        return id;
     }
 
     const TypeDeclConfig = struct {
@@ -773,7 +754,7 @@ pub const Parser = struct {
         allow_decl: bool,
     };
 
-    fn parseTypeDecl(self: *Parser, config: TypeDeclConfig, append_decl: bool) !NodeId {
+    fn parseTypeDecl(self: *Parser, config: TypeDeclConfig, template: bool) !NodeId {
         if (!config.allow_decl) {
             return self.reportError("`type` declarations are not allowed here.", &.{});
         }
@@ -791,34 +772,32 @@ pub const Parser = struct {
         switch (token.tag()) {
             .enum_k => {
                 var decl_idx: usize = undefined;
-                if (append_decl) {
+                if (!template) {
                     decl_idx = self.staticDecls.items.len;
                     try self.staticDecls.append(self.alloc, .{
                         .declT = .enum_t,
                         .nodeId = undefined,
-                        .data = undefined,
                     });
                 }
 
                 const decl = try self.parseEnumDecl(start, name, config);
-                if (append_decl) {
+                if (!template) {
                     self.staticDecls.items[decl_idx].nodeId = decl;
                 }
                 return decl;
             },
             .struct_k => {
                 var decl_idx: usize = undefined;
-                if (append_decl) {
+                if (!template) {
                     decl_idx = self.staticDecls.items.len;
                     try self.staticDecls.append(self.alloc, .{
                         .declT = .struct_t,
                         .nodeId = undefined,
-                        .data = undefined,
                     });
                 }
 
                 const decl = try self.parseStructDecl(start, name, config);
-                if (append_decl) {
+                if (!template) {
                     self.staticDecls.items[decl_idx].nodeId = decl;
                 }
                 return decl;
@@ -828,47 +807,44 @@ pub const Parser = struct {
             .new_line,
             .colon => {
                 var decl_idx: usize = undefined;
-                if (append_decl) {
+                if (!template) {
                     decl_idx = self.staticDecls.items.len;
                     try self.staticDecls.append(self.alloc, .{
                         .declT = .object,
                         .nodeId = undefined,
-                        .data = undefined,
                     });
                 }
 
                 const decl = try self.parseObjectDecl(start, name, config);
 
-                if (append_decl) {
+                if (!template) {
                     self.staticDecls.items[decl_idx].nodeId = decl;
                 }
                 return decl;
             },
             .equal => {
                 const decl = try self.parseTypeAliasDecl(start, name, config);
-                if (append_decl) {
+                if (!template) {
                     try self.staticDecls.append(self.alloc, .{
                         .declT = .typeAlias,
                         .nodeId = decl,
-                        .data = undefined,
                     });
                 }
                 return decl;
             },
             else => {
                 var decl_idx: usize = undefined;
-                if (append_decl) {
+                if (!template) {
                     decl_idx = self.staticDecls.items.len;
                     try self.staticDecls.append(self.alloc, .{
                         .declT = .distinct_t,
                         .nodeId = undefined,
-                        .data = undefined,
                     });
                 }
 
                 const decl = try self.parseDistinctTypeDecl(start, name, config);
 
-                if (append_decl) {
+                if (!template) {
                     self.staticDecls.items[decl_idx].nodeId = decl;
                 }
                 return decl;
@@ -889,7 +865,6 @@ pub const Parser = struct {
                     try self.staticDecls.append(self.alloc, .{
                         .declT = .object,
                         .nodeId = decl,
-                        .data = undefined,
                     });
                     return decl;
                 } else {
@@ -911,9 +886,6 @@ pub const Parser = struct {
     }
 
     fn parseDistinctTypeDecl(self: *Parser, start: TokenId, name: NodeId, config: TypeDeclConfig) !NodeId {
-        self.inObjectDecl = true;
-        defer self.inObjectDecl = false;
-
         const target = (try self.parseOptTypeSpec(false)) orelse {
             return self.reportError("Expected type specifier.", &.{});
         };
@@ -1114,9 +1086,6 @@ pub const Parser = struct {
     }
 
     fn parseStructDecl(self: *Parser, start: TokenId, name: ?cy.NodeId, config: TypeDeclConfig) anyerror!NodeId {
-        self.inObjectDecl = true;
-        defer self.inObjectDecl = false;
-
         var token = self.peek();
         if (token.tag() != .struct_k) {
             return self.reportErrorAt("Expected `struct` keyword.", &.{}, self.next_pos);
@@ -1146,9 +1115,6 @@ pub const Parser = struct {
     }
 
     fn parseObjectDecl(self: *Parser, start: TokenId, name: ?cy.NodeId, config: TypeDeclConfig) anyerror!NodeId {
-        self.inObjectDecl = true;
-        defer self.inObjectDecl = false;
-
         var token = self.peek();
         // Optional `object` keyword.
         if (token.tag() == .object_k) {
@@ -1183,7 +1149,7 @@ pub const Parser = struct {
         allow_decl: bool,
     };
 
-    fn parseFuncDecl(self: *Parser, config: FuncDeclConfig) !NodeId {
+    fn parseFuncDecl(self: *Parser, config: FuncDeclConfig, template: bool) !NodeId {
         if (!config.allow_decl) {
             return self.reportError("`func` declarations are not allowed here.", &.{});
         }
@@ -1198,11 +1164,6 @@ pub const Parser = struct {
 
         const params = try self.parseParenAndFuncParams();
         const ret = try self.parseFuncReturn();
-
-        if (self.inTemplate) self.collectCtNodes = false;
-        defer {
-            if (self.inTemplate) self.collectCtNodes = true;
-        }
 
         const nameN = self.ast.nodePtr(name);
         const nameStr = self.ast.nodeString(nameN.*);
@@ -1232,11 +1193,10 @@ pub const Parser = struct {
                 .hidden = config.hidden,
             }});
 
-            if (!self.inTemplate) {
+            if (!template and self.cur_indent == 0) {
                 try self.staticDecls.append(self.alloc, .{
-                    .declT = if (self.inObjectDecl) .implicit_method else .func,
+                    .declT = .func,
                     .nodeId = id,
-                    .data = undefined,
                 });
             }
             return id;
@@ -1257,11 +1217,10 @@ pub const Parser = struct {
                 .hidden = config.hidden,
             }});
 
-            if (!self.inTemplate) {
+            if (!template and self.cur_indent == 0) {
                 try self.staticDecls.append(self.alloc, .{
-                    .declT = if (self.inObjectDecl) .implicit_method else .funcInit,
+                    .declT = .funcInit,
                     .nodeId = id,
-                    .data = undefined,
                 });
             }
             return id;
@@ -1544,7 +1503,6 @@ pub const Parser = struct {
                     try self.staticDecls.append(self.alloc, .{
                         .declT = .use_alias,
                         .nodeId = alias,
-                        .data = undefined,
                     });
                     try self.consumeNewLineOrEnd();
                     return alias;
@@ -1576,7 +1534,6 @@ pub const Parser = struct {
         try self.staticDecls.append(self.alloc, .{
             .declT = .use_import,
             .nodeId = import,
-            .data = undefined,
         });
         return import;
     }
@@ -1958,7 +1915,7 @@ pub const Parser = struct {
                         }
 
                         if (self.peek().tag() == .func_k) {
-                            return try self.parseFuncDecl(.{ .hidden = hidden, .attr_head = modifier, .allow_decl = config.allow_decls });
+                            return try self.parseFuncDecl(.{ .hidden = hidden, .attr_head = modifier, .allow_decl = config.allow_decls }, false);
                         } else if (self.peek().tag() == .var_k) {
                             return try self.parseVarDecl(.{ .hidden = hidden, .attr_head = modifier, .typed = true, .allow_static = config.allow_decls });
                         } else if (self.peek().tag() == .let_k) {
@@ -1968,7 +1925,7 @@ pub const Parser = struct {
                                 .attr_head = modifier,
                                 .hidden = hidden,
                                 .allow_decl = config.allow_decls,
-                            }, true);
+                            }, false);
                         } else {
                             return self.reportError("Expected declaration statement.", &.{});
                         }
@@ -2005,7 +1962,7 @@ pub const Parser = struct {
                             .attr_head = cy.NullNode,
                             .hidden = true,
                             .allow_decl = config.allow_decls,
-                        }, true);
+                        }, false);
                     },
                     .func_k => {
                         self.advance();
@@ -2013,7 +1970,7 @@ pub const Parser = struct {
                             .attr_head = cy.NullNode,
                             .hidden = true,
                             .allow_decl = config.allow_decls,
-                        });
+                        }, false);
                     },
                     .template_k => {
                         self.advance();
@@ -2031,10 +1988,10 @@ pub const Parser = struct {
                 }
             },
             .type_k => {
-                return try self.parseTypeDecl(.{ .attr_head = cy.NullNode, .hidden = false, .allow_decl = config.allow_decls}, true);
+                return try self.parseTypeDecl(.{ .attr_head = cy.NullNode, .hidden = false, .allow_decl = config.allow_decls}, false);
             },
             .func_k => {
-                return try self.parseFuncDecl(.{ .attr_head = cy.NullNode, .hidden = false, .allow_decl = config.allow_decls});
+                return try self.parseFuncDecl(.{ .attr_head = cy.NullNode, .hidden = false, .allow_decl = config.allow_decls}, false);
             },
             .if_k => {
                 return try self.parseIfStatement();
@@ -3087,16 +3044,8 @@ pub const Parser = struct {
             return self.reportError("Expected expression.", &.{});
         };
 
-        var patchIdx: u32 = cy.NullId;
-        if (self.collectCtNodes) {
-            patchIdx = self.ctNodePatchIdx;
-            self.ctNodePatchIdx += 1;
-            try self.ast.templateCtNodes.append(self.alloc, expr);
-        }
-
         self.ast.setNodeData(expr, .{ .comptimeExpr = .{
             .child = child,
-            .patchIdx = patchIdx,
         }});
 
         return expr;
@@ -3484,11 +3433,10 @@ pub const Parser = struct {
                 .hidden = hidden,
             }});
 
-            if (!self.inTemplate) {
+            if (self.cur_indent == 0) {
                 try self.staticDecls.append(self.alloc, .{
-                    .declT = if (self.inObjectDecl) .implicit_method else .func,
+                    .declT = .func,
                     .nodeId = id,
-                    .data = undefined,
                 });
             }
             return id;
@@ -3499,7 +3447,6 @@ pub const Parser = struct {
             try self.staticDecls.append(self.alloc, .{
                 .declT = .table_t,
                 .nodeId = decl,
-                .data = undefined,
             });
 
             // Parse as custom table declaration.
@@ -3529,9 +3476,6 @@ pub const Parser = struct {
             }
             self.advance();
             
-            self.inObjectDecl = true;
-            defer self.inObjectDecl = false;
-
             const req_indent = try self.parseFirstChildIndent(self.cur_indent);
             const prev_indent = self.cur_indent;
             defer self.cur_indent = prev_indent;
@@ -3650,7 +3594,6 @@ pub const Parser = struct {
             try self.staticDecls.append(self.alloc, .{
                 .declT = .variable,
                 .nodeId = decl,
-                .data = undefined,
             });
         } else {
             self.ast.setNodeData(decl, .{ .localDecl = .{
@@ -4048,11 +3991,10 @@ const ParseTermConfig = struct {
     parse_record_expr: bool = true,
 };
 
-const StaticDeclType = enum {
+pub const StaticDeclType = enum {
     variable,
     typeAlias,
     distinct_t,
-    implicit_method,
     func,
     funcInit,
     use_import,
@@ -4061,21 +4003,12 @@ const StaticDeclType = enum {
     table_t,
     struct_t,
     enum_t,
-    typeTemplate,
+    template,
 };
 
 pub const StaticDecl = struct {
     declT: StaticDeclType,
     nodeId: cy.NodeId,
-    data: union {
-        implicit_method: *cy.Func,
-        func: *cy.Func,
-        sym: *cy.Sym,
-        typeTemplate: struct {
-            ctNodeStart: u32,
-            ctNodeEnd: u32,
-        },
-    },
 };
 
 fn isRecedingIndent(p: *Parser, prevIndent: u32, curIndent: u32, indent: u32) !bool {

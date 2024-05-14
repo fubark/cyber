@@ -352,7 +352,7 @@ export fn clDeclareVar(mod: c.Sym, name: [*:0]const u8, typeId: cy.TypeId, val: 
 }
 
 export fn clExpandTypeTemplate(ctemplate: c.Sym, args_ptr: [*]const cy.Value, nargs: u32) c.TypeId {
-    const template = cy.Sym.fromC(ctemplate).cast(.typeTemplate);
+    const template = cy.Sym.fromC(ctemplate).cast(.template);
     const chunk = template.chunk();
     const args = args_ptr[0..nargs];
 

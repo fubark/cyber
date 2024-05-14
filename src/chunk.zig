@@ -49,6 +49,8 @@ pub const Chunk = struct {
     /// location context for helper methods that simply return no context errors.
     curNodeId: cy.NodeId,
 
+    in_ct_expr: bool,
+
     ///
     /// Sema pass
     ///
@@ -123,6 +125,9 @@ pub const Chunk = struct {
     /// Includes lambdas which are not linked from a named sym.
     funcs: std.ArrayListUnmanaged(*cy.Func),
 
+    /// This is used for lookups when resolving const expressions.
+    cur_template_params: std.StringHashMapUnmanaged(cy.Value),
+
     ///
     /// Codegen pass
     ///
@@ -181,8 +186,6 @@ pub const Chunk = struct {
     nextUnnamedId: u32,
 
     indent: u32,
-
-    patchTemplateNodes: []const cy.NodeId,
 
     /// Variant func syms are accumulated and processed after the initial sema pass.
     variantFuncSyms: std.ArrayListUnmanaged(*cy.Func),
@@ -269,7 +272,6 @@ pub const Chunk = struct {
             .encoder = undefined,
             .nextUnnamedId = 1,
             .indent = 0,
-            .patchTemplateNodes = &.{},
             .variantFuncSyms = .{},
             .rootStmtBlock = .{
                 .first = cy.NullId,
@@ -277,6 +279,8 @@ pub const Chunk = struct {
             },
             .syms = .{},
             .funcs = .{},
+            .cur_template_params = .{},
+            .in_ct_expr = false,
         };
 
         if (cy.hasJIT) {
@@ -319,6 +323,7 @@ pub const Chunk = struct {
         self.symInitDeps.deinit(self.alloc);
         self.symInitInfos.deinit(self.alloc);
         self.curInitingSymDeps.deinit(self.alloc);
+        self.cur_template_params.deinit(self.alloc);      
 
         self.typeStack.deinit(self.alloc);
         self.valueStack.deinit(self.alloc);
@@ -838,6 +843,7 @@ pub const Chunk = struct {
         try c.buf.pushOperands(bytes);
     }
 
+    pub usingnamespace cy.sym.ChunkExt;
     pub usingnamespace cy.module.ChunkExt;
     pub usingnamespace cy.types.ChunkExt;
     pub usingnamespace cy.sema.ChunkExt;

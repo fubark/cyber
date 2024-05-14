@@ -730,7 +730,7 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
         bt.Float => {
             const f = val.asF64();
             if (cy.Value.floatCanBeInteger(f)) {
-                try std.fmt.format(w, "{d:.0}", .{f});
+                try std.fmt.format(w, "{d:.1}", .{f});
             } else {
                 try std.fmt.format(w, "{d}", .{f});
             }

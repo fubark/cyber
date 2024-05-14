@@ -833,7 +833,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
             if (id == 0) {
                 // Extract special syms. Assumes chunks[0] is the builtins chunk.
                 const core = self.chunks.items[0].sym.getMod();
-                self.sema.option_tmpl = core.getSym("Option").?.cast(.typeTemplate);
+                self.sema.option_tmpl = core.getSym("Option").?.cast(.template);
                 self.sema.table_type = core.getSym("Table").?.cast(.object_t);
             }
         }
@@ -1016,23 +1016,7 @@ fn resolveSyms(self: *Compiler) !void {
         }
 
         for (chunk.funcs.items) |func| {
-            switch (func.type) {
-                .hostFunc => {
-                    if (func.is_implicit_method) {
-                        try sema.resolveImplicitMethod(chunk, func);
-                    } else {
-                        try sema.resolveHostFunc(chunk, func);
-                    }
-                },
-                .userFunc => {
-                    if (func.is_implicit_method) {
-                        try sema.resolveImplicitMethod(chunk, func);
-                    } else {
-                        try sema.resolveUserFunc(chunk, func);
-                    }
-                },
-                .userLambda => {},
-            }
+            try sema.resolveFunc(chunk, func);
         }
 
         if (chunk.onLoad) |onLoad| {

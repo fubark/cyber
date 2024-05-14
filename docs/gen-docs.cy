@@ -386,6 +386,15 @@ type ModulePair:
     path    String
     section String
 
+func genFuncDecl(decl Map) String:
+    var docLine = decl.get('docs') ?else ''
+    var params = []
+    for decl['header']['params'] -> param:
+        var typeSpec = if (param['typeSpec'] != '') param['typeSpec'] else 'any'
+        params.append("$(param['name']) $(typeSpec)")
+    var paramsStr = params.join(', ')
+    return "> `func $(decl['header']['name'])($(paramsStr)) $(decl['header']['ret'])`\n>\n>$(docLine)\n\n"
+
 func genDocsModules():
     var modules = [
         ModulePair{path: '../src/builtins/builtins_vm.cy', section: 'core'},
@@ -407,31 +416,23 @@ func genDocsModules():
         for decls -> decl:
             switch decl['type']
             case 'funcInit', 'func':
-                var docLine = decl.get('docs') ?else ''
-                var params = []
-                for decl['header']['params'] -> param:
-                    var typeSpec = if (param['typeSpec'] != '') param['typeSpec'] else 'any'
-                    params.append("$(param['name']) $(typeSpec)")
-                var paramsStr = params.join(', ')
-                gen = gen + "> `func $(decl['header']['name'])($(paramsStr)) $(decl['header']['ret'])`\n>\n>$(docLine)\n\n"
+                gen += genFuncDecl(decl)
             case 'variable':
                 var docLine = decl.get('docs') ?else ''
                 var typeSpec = if (decl['typeSpec'] != '') decl['typeSpec'] else 'any'
-                gen = gen + "> `var $(decl['name']) $(typeSpec)`\n>\n>$(docLine)\n\n"
+                gen += "> `var $(decl['name']) $(typeSpec)`\n>\n>$(docLine)\n\n"
             case 'distinct_t':
-                gen = gen + "### `type $(decl['name'])`\n\n"
+                gen += "### `type $(decl['name'])`\n\n"
+                for decl['funcs'] -> fdecl:
+                    gen += genFuncDecl(fdecl)
             case 'object':
-                gen = gen + "### `type $(decl['name'])`\n\n"
+                gen += "### `type $(decl['name'])`\n\n"
+                for decl['funcs'] -> fdecl:
+                    gen += genFuncDecl(fdecl)
             case 'struct_t':
-                gen = gen + "### `type $(decl['name']) struct`\n\n"
-            case 'implicit_method':
-                var docLine = decl.get('docs') ?else ''
-                var params = []
-                for decl['header']['params'] -> param:
-                    var typeSpec = if (param['typeSpec'] != '') param['typeSpec'] else 'any'
-                    params.append("$(param['name']) $(typeSpec)")
-                var paramsStr = params.join(', ')
-                gen = gen + "> `func $(decl['header']['name'])($(paramsStr)) $(decl['header']['ret'])`\n>\n>$(docLine)\n\n"
+                gen += "### `type $(decl['name']) struct`\n\n"
+                for decl['funcs'] -> fdecl:
+                    gen += genFuncDecl(fdecl)
 
         -- Replace section in modules.md.
         var needle = "<!-- $(m.section).start -->"

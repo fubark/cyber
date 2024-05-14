@@ -1650,6 +1650,8 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
   * [Shorthand syntax.](#shorthand-syntax)
   * [Call block syntax.](#call-block-syntax)
 * [Generic functions.](#generic-functions)
+  * [Expand function template.](#expand-function-template)
+  * [Infer template function.](#infer-template-function)
 
 [^top](#table-of-contents)
 
@@ -1814,7 +1816,28 @@ foo(123):
 In the example above, the function `foo` is called with 4 arguments. The first argument `123` is included in the starting call expression. The second argument is a function value inside the call expression block. The third argument is mapped to the param `param3`. Finally, the fourth argument is a list that contains `234`, `bar()`, and `'hello'`. 
 
 ## Generic functions.
-> _Planned Feature_
+Templates are used to specialize function declarations. Since template parameters only exist at compile-time, the `#` prefix is used to reference them in the function declaration:
+```cy
+template(T type)
+func add(a #T, b #T) #T:
+    return a + b
+```
+
+### Expand function template.
+When the template is invoked with compile-time argument(s), a specialized version of the function is generated:
+```cy
+print add(int)(1, 2)    --> 3
+print add(float)(1, 2)  --> 3.0
+```
+Note that invoking the template again with the same argument(s) returns the same generated function. In other words, the generated function is always memoized from the input parameters.
+
+### Infer template function.
+When invoking template functions, it is possible to infer the template parameters from the call arguments.
+In the following example, `add(int)` and `add(float)` are inferred from the function calls: *Planned Feature*
+```cy
+print add(1, 2)      --> 3
+print add(1.0, 2.0)  --> 3.0
+```
 
 # Modules.
 <table><tr>
@@ -2284,8 +2307,8 @@ print ptr.value()     --'3735928559'
 </td><td valign="top">
 
 * [Semantic checks.](#semantic-checks)
-  * [throws specifier.](#throws-specifier)
-  * [throws check.](#throws-check)
+  * [Throws modifier.](#throws-modifier)
+  * [Throws check.](#throws-check)
 * [Stack trace.](#stack-trace)
 * [Unexpected errors.](#unexpected-errors)
   * [Panics.](#panics)
@@ -2413,10 +2436,10 @@ if res == error.Failed:
 ```
 
 ## Semantic checks.
-### throws specifier.
-The throws specifier `!` indicates that a function contains a throwing expression that was not caught with `try catch`.
+### Throws modifier.
+The throws modifier `!` indicates that a function contains a throwing expression that was not caught with `try catch`.
 
-The specifier is attached to the function return type as a prefix:
+The modifier is attached to the function return type as a prefix:
 ```cy
 func foo() !void:
     throw error.Failure
@@ -2431,8 +2454,8 @@ func result(cond bool) !int:
         throw error.Failure
 ```
 
-### throws check.
-The compiler requires a throws specifier if the function contains an uncaught throwing expression: *Planned Feature*
+### Throws check.
+The compiler requires a throws modifier if the function contains an uncaught throwing expression: *Planned Feature*
 ```cy
 func foo(a int) int:
     if a == 10:
@@ -2441,7 +2464,7 @@ func foo(a int) int:
         return a * 2
 
 --> CompileError. Uncaught throwing expression.
---> `foo` requires the `!` throws specifier or
+--> `foo` requires the `!` throws modifier or
 --> the expression must be caught with `try`.
 ```
 

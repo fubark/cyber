@@ -13,13 +13,13 @@ pub fn expandTemplateOnCallExpr(c: *cy.Chunk, nodeId: cy.NodeId) !*cy.Sym {
         return c.reportErrorFmt("Expected template symbol.", &.{}, node.data.callExpr.callee);
     }
     const sym = calleeRes.data.sym;
-    if (sym.type != .typeTemplate) {
+    if (sym.type != .template) {
         return c.reportErrorFmt("Expected template symbol.", &.{}, node.data.callExpr.callee);
     }
-    return cte.expandTemplateOnCallArgs(c, sym.cast(.typeTemplate), node.data.callExpr.argHead, nodeId);
+    return cte.expandTemplateOnCallArgs(c, sym.cast(.template), node.data.callExpr.argHead, nodeId);
 }
 
-pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.TypeTemplate, argHead: cy.NodeId, nodeId: cy.NodeId) !*cy.Sym {
+pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, argHead: cy.NodeId, nodeId: cy.NodeId) !*cy.Sym {
     // Accumulate compile-time args.
     const typeStart = c.typeStack.items.len;
     const valueStart = c.valueStack.items.len;
@@ -56,7 +56,7 @@ pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.TypeTemplate, ar
     };
 }
 
-pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.TypeTemplate, args: []const cy.Value, arg_types: []const cy.TypeId) !*cy.Sym {
+pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy.Value, arg_types: []const cy.TypeId) !*cy.Sym {
     // Check against template signature.
     if (!cy.types.isTypeFuncSigCompat(c.compiler, @ptrCast(arg_types), .not_void, template.sigId)) {
         return error.IncompatSig;
@@ -65,8 +65,6 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.TypeTemplate, args: []cons
     // Ensure variant type.
     const res = try template.variantCache.getOrPut(c.alloc, args);
     if (!res.found_existing) {
-        const patchNodes = try execTemplateCtNodes(c, template, args);
-
         // Dupe args and retain
         const params = try c.alloc.dupe(cy.Value, args);
         for (params) |param| {
@@ -76,7 +74,6 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.TypeTemplate, args: []cons
         // Generate variant type.
         const id = template.variants.items.len;
         try template.variants.append(c.alloc, .{
-            .patchNodes = patchNodes,
             .params = params,
             .sym = undefined,
         });
@@ -95,7 +92,7 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.TypeTemplate, args: []cons
 
 /// Visit each top level ctNode, perform template param substitution or CTE,
 /// and generate new nodes. Return the root of each resulting node.
-fn execTemplateCtNodes(c: *cy.Chunk, template: *cy.sym.TypeTemplate, params: []const cy.Value) ![]const cy.NodeId {
+fn execTemplateCtNodes(c: *cy.Chunk, template: *cy.sym.Template, params: []const cy.Value) ![]const cy.NodeId {
     // Build name to template param.
     var paramMap: std.StringHashMapUnmanaged(cy.Value) = .{};
     defer paramMap.deinit(c.alloc);

@@ -181,7 +181,7 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
             try c.vm.varSymExtras.append(c.alloc, sym);
             try c.genSymMap.putNoClobber(c.alloc, sym, .{ .varSym = .{ .id = @intCast(id) }});
         },
-        .typeTemplate,
+        .template,
         .custom_object_t,
         .bool_t,
         .int_t,

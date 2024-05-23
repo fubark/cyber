@@ -2149,23 +2149,23 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                     if (free) {
                         if (entry.data.custom.finalizerFn) |finalizer| {
                             finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                            if (!obj.isExternalObject()) {
-                                freePoolObject(vm, obj);
-                            } else {
-                                if (obj.isCyclable()) {
-                                    if (cy.Malloc == .zig) {
-                                        const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
-                                        freeExternalObject(vm, obj, @intCast(size), true);
-                                    } else {
-                                        freeExternalObject(vm, obj, 1, true);
-                                    }
+                        }
+                        if (!obj.isExternalObject()) {
+                            freePoolObject(vm, obj);
+                        } else {
+                            if (obj.isCyclable()) {
+                                if (cy.Malloc == .zig) {
+                                    const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
+                                    freeExternalObject(vm, obj, @intCast(size), true);
                                 } else {
-                                    if (cy.Malloc == .zig) {
-                                        const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
-                                        freeExternalObject(vm, obj, @intCast(size), false);
-                                    } else {
-                                        freeExternalObject(vm, obj, 1, false);
-                                    }
+                                    freeExternalObject(vm, obj, 1, true);
+                                }
+                            } else {
+                                if (cy.Malloc == .zig) {
+                                    const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
+                                    freeExternalObject(vm, obj, @intCast(size), false);
+                                } else {
+                                    freeExternalObject(vm, obj, 1, false);
                                 }
                             }
                         }

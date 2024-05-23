@@ -86,6 +86,7 @@ pub const setErrorPrinter = c.clSetErrorPrinter;
 pub const setUserData = c.clSetUserData;
 pub const getUserData = c.clGetUserData;
 pub const getGlobalRC = c.clGetGlobalRC;
+pub const countObjects = c.clCountObjects;
 pub const newLastErrorSummary = c.clNewLastErrorSummary;
 pub const newErrorReportSummary = c.clNewErrorReportSummary;
 pub const newPanicSummary = c.clNewPanicSummary;

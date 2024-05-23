@@ -440,6 +440,7 @@ test "Multiple evals persisting state." {
     _ = try run.evalPass(.{ 
         .enableFileModules = false,
         .checkGlobalRc = false,
+        .check_object_count = false,
     },
         \\use m 'mod'
         \\m.g['a'] = 1
@@ -448,6 +449,7 @@ test "Multiple evals persisting state." {
     _ = try run.evalPass(.{ 
         .enableFileModules = false,
         .checkGlobalRc = false,
+        .check_object_count = false,
     },
         \\use m 'mod'
         \\use t 'test'

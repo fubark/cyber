@@ -19,6 +19,7 @@ pub const Config = struct {
     enableFileModules: bool = false,
 
     checkGlobalRc: bool = true,
+    check_object_count: bool = true,
 
     // Whether to performGC at end of eval.
     cleanupGC: bool = false,
@@ -246,7 +247,15 @@ pub const VMrunner = struct {
             const grc = c.getGlobalRC(vm);
             if (grc != 0) {
                 c.traceDumpLiveObjects(vm);
-                cy.panicFmt("unreleased refcount {}", .{grc});
+                cy.panicFmt("unreleased refcount: {}", .{grc});
+            }
+        }
+
+        if (config.check_object_count) {
+            const count = c.countObjects(vm);
+            if (count != 0) {
+                c.traceDumpLiveObjects(vm);
+                cy.panicFmt("unfreed objects: {}", .{count});
             }
         }
     }

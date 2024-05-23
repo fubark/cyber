@@ -365,6 +365,9 @@ pub const Chunk = struct {
         }
         self.funcs.deinit(self.alloc);
 
+        for (self.variantFuncSyms.items) |func| {
+            self.alloc.destroy(func);
+        }
         self.variantFuncSyms.deinit(self.alloc);
 
         self.alloc.free(self.srcUri);

@@ -309,7 +309,7 @@ export fn clDeclareDynFunc(mod: c.Sym, name: [*:0]const u8, numParams: u32, func
         symName = chunk.alloc.dupe(u8, symName) catch fatal();
         nameOwned = true;
     }
-    const func = chunk.reserveHostFunc(modSym, symName, null, false) catch cy.fatal();
+    const func = chunk.reserveHostFunc(modSym, symName, null, false, false) catch cy.fatal();
     chunk.resolveHostFunc(func, funcSigId, @ptrCast(funcPtr)) catch cy.fatal();
     if (nameOwned) {
         const sym = func.sym.?;
@@ -327,7 +327,7 @@ export fn clDeclareFunc(mod: c.Sym, name: [*:0]const u8, params: [*]const cy.Typ
         symName = chunk.alloc.dupe(u8, symName) catch fatal();
         nameOwned = true;
     }
-    const func = chunk.reserveHostFunc(modSym, symName, null, false) catch cy.fatal();
+    const func = chunk.reserveHostFunc(modSym, symName, null, false, false) catch cy.fatal();
     chunk.resolveHostFunc(func, funcSigId, @ptrCast(funcPtr)) catch cy.fatal();
     if (nameOwned) {
         const sym = func.sym.?;

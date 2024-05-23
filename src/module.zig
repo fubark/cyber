@@ -190,10 +190,10 @@ pub const ChunkExt = struct {
     }
 
     pub fn declareTemplate(c: *cy.Chunk, parent: *cy.Sym, name: []const u8,
-        sigId: cy.sema.FuncSigId, params: []cy.sym.TemplateParam, kind: cy.sym.SymType,
+        sigId: cy.sema.FuncSigId, is_root: bool, params: []cy.sym.TemplateParam, kind: cy.sym.SymType,
         child_decl: *ast.Node, decl: *ast.TemplateDecl) !*cy.sym.Template {
 
-        const sym = try c.createTemplate(parent, name, sigId, params, kind, child_decl);
+        const sym = try c.createTemplate(parent, name, sigId, is_root, params, kind, child_decl);
         const mod = parent.getMod().?;
         try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
         return sym;
@@ -301,6 +301,7 @@ pub const ChunkExt = struct {
 
     pub fn addUserLambda(c: *cy.Chunk, parent: *cy.Sym, funcSigId: sema.FuncSigId, decl: *ast.LambdaExpr) !*cy.Func {
         const func = try c.createFunc(.userLambda, parent, null, @ptrCast(decl), false);
+        try c.funcs.append(c.alloc, func);
         const func_sig = c.compiler.sema.getFuncSig(funcSigId);
         func.funcSigId = funcSigId;
         func.retType = func_sig.getRetType();
@@ -310,11 +311,16 @@ pub const ChunkExt = struct {
     }
 
     pub fn reserveHostFunc(
-        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: ?*ast.FuncDecl, is_method: bool,
+        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: ?*ast.FuncDecl, is_method: bool, is_variant: bool,
     ) !*cy.Func {
         const mod = parent.getMod().?;
         const sym = try prepareFuncSym(c, parent, mod, name, node);
         const func = try c.createFunc(.hostFunc, parent, sym, @ptrCast(node), is_method);
+        if (is_variant) {
+            try c.variantFuncSyms.append(c.alloc, func);
+        } else {
+            try c.funcs.append(c.alloc, func);
+        }
         func.data = .{ .hostFunc = .{
             .ptr = undefined,
         }};
@@ -328,11 +334,16 @@ pub const ChunkExt = struct {
     }
 
     pub fn reserveUserFunc(
-        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: *ast.FuncDecl, is_method: bool,
+        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: *ast.FuncDecl, is_method: bool, is_variant: bool,
     ) !*cy.Func {
         const mod = parent.getMod().?;
         const sym = try prepareFuncSym(c, parent, mod, name, node);
         const func = try c.createFunc(.userFunc, parent, sym, @ptrCast(node), is_method);
+        if (is_variant) {
+           try c.variantFuncSyms.append(c.alloc, func);
+        } else {
+           try c.funcs.append(c.alloc, func);
+        }
         sym.addFunc(func);
         return func;
     }

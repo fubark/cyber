@@ -573,7 +573,7 @@ fn performChunkInitSema(self: *Compiler, c: *cy.Chunk) !void {
     });
     c.updateAstView(c.parser.ast.view());
 
-    const func = try c.reserveUserFunc(@ptrCast(c.sym), "$init", decl, false);
+    const func = try c.reserveUserFunc(@ptrCast(c.sym), "$init", decl, false, false);
     try c.resolveUserFunc(func, funcSigId);
 
     _ = try sema.pushFuncProc(c, func);
@@ -784,14 +784,14 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         const decl = node.cast(.structDecl);
                         const sym = try sema.reserveStruct(chunk, decl);
                         for (decl.funcs) |func| {
-                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func);
+                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func, false);
                         }
                     },
                     .objectDecl => {
                         const decl = node.cast(.objectDecl);
                         const sym = try sema.reserveObjectType(chunk, decl);
                         for (decl.funcs) |func| {
-                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func);
+                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func, false);
                         }
                     },
                     .table_decl => {
@@ -800,7 +800,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         try sema.reserveTableMethods(chunk, @ptrCast(sym));
 
                         for (decl.funcs) |func| {
-                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func);
+                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func, false);
                         }
                     },
                     .enumDecl => {
@@ -814,7 +814,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         const sym = try sema.declareCustomType(chunk, decl);
 
                         for (decl.funcs) |func| {
-                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func);
+                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func, false);
                         }
                     },
                     .distinct_decl => {
@@ -822,7 +822,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         const sym = try sema.reserveDistinctType(chunk, decl);
 
                         for (decl.funcs) |func| {
-                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func);
+                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func, false);
                         }
                     },
                     .template => {
@@ -872,7 +872,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                                 const variant = try chunk.alloc.create(cy.sym.Variant);
                                 variant.* = .{
                                     .type = .specialization,
-                                    .template = template,
+                                    .root_template = template,
                                     .args = args_dupe,
                                     .data = .{ .specialization = decl.decl },
                                 };

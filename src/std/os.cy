@@ -201,7 +201,8 @@ type FFI _:
     --| By default, an anonymous object is returned with the C-functions binded as the object's methods.
     --| If `config` contains `gen_table: true`, a `Table` is returned instead with C-functions
     --| binded as function values.
-    @host='FFI.bindLib2' func bindLib(path ?String, config Table) any
+    @host='FFI.bindLib2'
+    func bindLib(path ?String, config Table) any
 
     --| Returns a Cyber object's pointer. Operations on the pointer is unsafe,
     --| but it can be useful when passing it to C as an opaque pointer.

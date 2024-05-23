@@ -684,6 +684,10 @@ pub const Parser = struct {
                     .allow_decl = true,
                 }, true);
             },
+            .minus => {
+                self.advance();
+                decl = @ptrCast(try self.parseFuncDecl(.{ .attrs = &.{}, .hidden = true, .allow_decl = true }, true));
+            },
             .func_k => {
                 decl = @ptrCast(try self.parseFuncDecl(.{ .attrs = &.{}, .hidden = false, .allow_decl = true }, true));
             },

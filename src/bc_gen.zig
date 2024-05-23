@@ -70,6 +70,9 @@ pub fn genAll(c: *cy.Compiler) !void {
         for (chunk.funcs.items) |func| {
             try prepareFunc(c, func);
         }
+        for (chunk.variantFuncSyms.items) |func| {
+            try prepareFunc(c, func);
+        }
     }
 
     // After rt funcs are set up, prepare the overloaded func table.

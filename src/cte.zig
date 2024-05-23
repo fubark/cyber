@@ -61,13 +61,15 @@ pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, args: 
 }
 
 pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy.Value, arg_types: []const cy.TypeId) !*cy.Sym {
+    const root_template = template.root();
+
     // Check against template signature.
-    if (!cy.types.isTypeFuncSigCompat(c.compiler, @ptrCast(arg_types), .not_void, template.sigId)) {
+    if (!cy.types.isTypeFuncSigCompat(c.compiler, @ptrCast(arg_types), .not_void, root_template.sigId)) {
         return error.IncompatSig;
     }
 
     // Ensure variant type.
-    const res = try template.variant_cache.getOrPut(c.alloc, args);
+    const res = try root_template.variant_cache.getOrPut(c.alloc, args);
     if (!res.found_existing) {
         // Dupe args and retain
         const args_dupe = try c.alloc.dupe(cy.Value, args);
@@ -79,19 +81,25 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
         const variant = try c.alloc.create(cy.sym.Variant);
         variant.* = .{
             .type = .sym,
-            .template = template,
+            .root_template = root_template,
             .args = args_dupe,
             .data = .{ .sym = undefined },
         };
 
-        const new_sym = try sema.reserveTemplateVariant(c, template, template.child_decl, variant);
+        const new_sym = try sema.reserveTemplateVariant(c, root_template, root_template.child_decl, variant);
         variant.data.sym = new_sym;
         res.key_ptr.* = args_dupe;
         res.value_ptr.* = variant;
 
         // Allow circular reference by resolving after the new symbol has been added to the cache.
-        try sema.resolveTemplateVariant(c, template, new_sym);
-        return new_sym;
+        try sema.resolveTemplateVariant(c, root_template, new_sym);
+
+        if (root_template == template) {
+            return new_sym;
+        } else {
+            // Access the child expansion from the root.
+            return template.getExpandedSymFrom(root_template, new_sym);
+        }
     } 
 
     const variant = res.value_ptr.*;
@@ -113,7 +121,11 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
         return new_sym;
     }
 
-    return variant.data.sym;
+    if (root_template == template) {
+        return variant.data.sym;
+    } else {
+        return template.getExpandedSymFrom(root_template, variant.data.sym);
+    }
 }
 
 /// Visit each top level ctNode, perform template param substitution or CTE,

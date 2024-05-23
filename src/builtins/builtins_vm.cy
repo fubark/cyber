@@ -86,7 +86,8 @@ type int #int64_t:
     @host func fmt(kind symbol) String
 
     --| `opts.pad` provides the ASCII rune that is used for padding with a string length of `config.width`.
-    @host='int.fmt2' func fmt(kind symbol, config Table) String
+    @host='int.fmt2'
+    func fmt(kind symbol, config Table) String
 
 --| Converts a value to an 48-bit integer.
 @host func int.$call(val any) int
@@ -121,11 +122,14 @@ type float #float64_t:
 template[T type]
 @host type List _:
     @host func $index(idx int) T
-    @host='List.$indexRange' func $index(range Range) List[T]
+
+    @host='List.$indexRange'
+    func $index(range Range) List[T]
+
     @host func $setIndex(idx int, val T) void
 
     --| Appends a value to the end of the list.
-    @host func append(val any) void
+    @host func append(val T) void
 
     --| Appends the elements of another list to the end of this list.
     @host func appendAll(list List[T]) void
@@ -279,7 +283,8 @@ type String _:
     @host func $index(idx int) int
 
     --| Returns a slice into this string from a `Range` with `start` (inclusive) to `end` (exclusive) byte indexes.
-    @host='String.$indexRange' func $index(range Range) String
+    @host='String.$indexRange'
+    func $index(range Range) String
 
     --| Returns a list of UTF-8 strings split at occurrences of `sep`.
     @host func split(sep String) List[String]
@@ -308,7 +313,8 @@ type Array _:
 
     --| Decodes the array based on an `encoding`. Supported encodings: `.utf8`.
     --| Returns the decoded string or throws `error.Decode`.
-    @host='Array.decode2' func decode(encoding symbol) String
+    @host='Array.decode2'
+    func decode(encoding symbol) String
 
     --| Returns whether the array ends with `suffix`.
     @host func endsWith(suffix Array) bool
@@ -358,7 +364,8 @@ type Array _:
     @host func $index(idx int) int
 
     --| Returns a slice into this array from a `Range` with `start` (inclusive) to `end` (exclusive) indexes.
-    @host='Array.$indexRange' func $index(range Range) Array
+    @host='Array.$indexRange'
+    func $index(range Range) Array
 
     --| Returns a list of arrays split at occurrences of `sep`.
     @host func split(sep Array) List[Array]

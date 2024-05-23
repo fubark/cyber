@@ -562,6 +562,7 @@ pub const ValueType = extern struct {
     head: Sym,
 };
 
+/// TODO: Consider splitting into Template and FuncTemplate.
 pub const Template = struct {
     head: Sym,
     child_decl: *ast.Node,
@@ -570,8 +571,13 @@ pub const Template = struct {
 
     kind: SymType,
 
-    /// Owned.
+    is_root: bool,
+
+    /// Owned by root template.
     params: []TemplateParam,
+
+    /// For function templates, this maps to a function param that can infer this `type` param.
+    infer_from_func_params: []u8,
 
     /// The minimum number of params that can infer the template params.
     /// If NullU8, then the template function can not infer the params.
@@ -595,11 +601,31 @@ pub const Template = struct {
             alloc.destroy(variant);
         }
         self.variant_cache.deinit(alloc);
-        alloc.free(self.params);
+        if (self.is_root) {
+            alloc.free(self.params);
+        }
+
+        alloc.free(self.infer_from_func_params);
     }
 
     pub fn getMod(self: *Template) *cy.Module {
         return @ptrCast(&self.mod);
+    }
+
+    pub fn root(self: *Template) *Template {
+        if (self.is_root) {
+            return self;
+        } else {
+            return self.head.parent.?.cast(.template).root();
+        }
+    }
+
+    pub fn getExpandedSymFrom(self: *Template, from_template: *Template, from: *Sym) *Sym {
+        if (self == from_template) {
+            return from;
+        }
+        const parent = self.head.parent.?.cast(.template).getExpandedSymFrom(from_template, from);
+        return parent.getMod().?.getSym(self.head.name()).?;
     }
 
     pub fn canInferFuncTemplateArgs(self: *Template) bool {
@@ -623,9 +649,6 @@ pub const Template = struct {
 pub const TemplateParam = struct {
     name: []const u8,
     type: cy.TypeId,
-
-    // For function templates, this maps to a function param that can infer this `type` param.
-    infer_from_func_param: u8,
 };
 
 const VariantType = enum(u8) {
@@ -636,8 +659,9 @@ const VariantType = enum(u8) {
 pub const Variant = struct {
     type: VariantType,
 
-    /// Back link to template.
-    template: *Template,
+    /// Back link to the root template.
+    /// Can be used to check what template the symbol comes from. Also used for pushing the variant context.
+    root_template: *Template,
 
     /// Owned args. Can be used to print params along with the template type.
     args: []const cy.Value,
@@ -1068,15 +1092,17 @@ pub const ChunkExt = struct {
     }
 
     pub fn createTemplate(c: *cy.Chunk, parent: *Sym, name: []const u8,
-        sigId: cy.sema.FuncSigId, params: []TemplateParam, kind: SymType,
+        sigId: cy.sema.FuncSigId, is_root: bool, params: []TemplateParam, kind: SymType,
         child_decl: *ast.Node) !*Template {
         const sym = try createSym(c.alloc, .template, .{
             .head = Sym.init(.template, parent, name),
             .kind = kind,
             .child_decl = child_decl,
+            .is_root = is_root,
             .params = params,
             .sigId = sigId,
             .infer_min_params = cy.NullU8,
+            .infer_from_func_params = &.{},
             .variant_cache = .{},
             .mod = undefined,
         });
@@ -1229,7 +1255,6 @@ pub const ChunkExt = struct {
             .data = undefined,
             .emitted = false,
         };
-        try c.funcs.append(c.alloc, func);
         return func;
     }
 
@@ -1295,6 +1320,13 @@ const SymFormatConfig = struct {
 pub fn writeFuncName(s: *cy.Sema, w: anytype, func: *cy.Func, config: SymFormatConfig) !void {
     try writeParentPrefix(s, w, @ptrCast(func.sym.?), config);
     try w.writeAll(func.name());
+    if (config.emit_template_args) {
+        if (func.sym.?.variant) |variant| {
+            try w.writeByte('[');
+            try writeLocalTemplateArgs(s, w, variant, config);
+            try w.writeByte(']');
+        }
+    }
 }
 
 pub fn allocSymName(s: *cy.Sema, alloc: std.mem.Allocator, sym: *cy.Sym, config: SymFormatConfig) ![]const u8 {

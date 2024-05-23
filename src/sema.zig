@@ -1127,9 +1127,18 @@ pub fn declareTemplate(c: *cy.Chunk, node: *ast.TemplateDecl) !*cy.sym.Template 
     const decl_path = try ensureDeclNamePath(c, @ptrCast(c.sym), name_n);
 
     var sigId: FuncSigId = undefined;
-    const params = try resolveTemplateSig(c, node.params, &sigId);
-    const sym = try c.declareTemplate(decl_path.parent, decl_path.name.base_name, sigId, params, decl_t, node.decl, node);
+    const is_root = decl_path.parent.type != .template;
+    var params: []cy.sym.TemplateParam = undefined;
+    if (is_root) {
+        params = try resolveTemplateSig(c, node.params, &sigId);
+    } else {
+        params = decl_path.parent.cast(.template).params;
+        sigId = decl_path.parent.cast(.template).sigId;
+    }
+    const sym = try c.declareTemplate(decl_path.parent, decl_path.name.base_name, sigId, is_root, params, decl_t, node.decl, node);
     if (decl_t == .func) {
+        const infer_from_func_params = try c.alloc.alloc(u8, params.len);
+        @memset(infer_from_func_params, cy.NullU8);
         const child_decl = node.decl.cast(.funcDecl);
 
         for (child_decl.params, 0..) |param, i| {
@@ -1143,24 +1152,25 @@ pub fn declareTemplate(c: *cy.Chunk, node: *ast.TemplateDecl) !*cy.sym.Template 
             const tidx = sym.indexOfParam(pname) orelse {
                 continue;
             };
-            if (sym.params[tidx].infer_from_func_param != cy.NullU8) {
+            if (infer_from_func_params[tidx] != cy.NullU8) {
                 // Already a mapping.
                 continue;
             }
-            sym.params[tidx].infer_from_func_param = @intCast(i);
+            infer_from_func_params[tidx] = @intCast(i);
         }
         // Verify each template param has a mapping.
         var infer_min_params: u8 = 0;
-        for (sym.params) |param| {
-            if (param.infer_from_func_param == cy.NullU8) {
+        for (infer_from_func_params) |func_idx| {
+            if (func_idx == cy.NullU8) {
                 infer_min_params = cy.NullU8;
                 break;
             }
-            if (param.infer_from_func_param + 1 > infer_min_params) {
-                infer_min_params = param.infer_from_func_param + 1;
+            if (func_idx + 1 > infer_min_params) {
+                infer_min_params = func_idx + 1;
             }
         }
         sym.infer_min_params = infer_min_params;
+        sym.infer_from_func_params = infer_from_func_params;
     }
     return sym;
 }
@@ -1341,7 +1351,7 @@ pub fn declareUseImport(c: *cy.Chunk, node: *ast.ImportStmt) !void {
             c.resolveUserVar(global, bt.Map);
             c.compiler.global_sym = global;
 
-            const func = try c.reserveHostFunc(@ptrCast(c.compiler.main_chunk.sym), "$getGlobal", null, false);
+            const func = try c.reserveHostFunc(@ptrCast(c.compiler.main_chunk.sym), "$getGlobal", null, false, false);
             const func_sig = try c.sema.ensureFuncSig(&.{ bt.Map, bt.Any }, bt.Dyn);
             try c.resolveHostFunc(func, func_sig, cy.bindings.getGlobal);
             c.compiler.get_global = func;
@@ -1469,7 +1479,7 @@ pub const TemplateContext = struct {
 };
 
 fn pushTemplateContext(c: *cy.Chunk, variant: *cy.sym.Variant) !?TemplateContext {
-    const template = variant.template;
+    const template = variant.root_template;
     for (template.params, 0..) |param, i| {
         const arg = variant.args[i];
         try c.cur_template_params.put(c.alloc, param.name, arg);
@@ -1534,6 +1544,7 @@ pub fn reserveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, opt_head
             } else {
                 func = try c.createFunc(.userFunc, @ptrCast(c.sym), sym, @ptrCast(decl), false);
             }
+            try c.variantFuncSyms.append(c.alloc, func);
             sym.addFunc(func);
             return @ptrCast(sym);
         },
@@ -1545,6 +1556,7 @@ pub fn reserveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, opt_head
 }
 
 pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy.sym.Sym) !void {
+    _ = c;
     const tchunk = template.chunk();
     switch (sym.type) {
         .object_t => {
@@ -1556,28 +1568,21 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
 
             try resolveObjectFields(tchunk, @ptrCast(sym), template.child_decl);
 
-            const mod = object_t.getMod();
-            const start = mod.chunk.funcs.items.len;
             for (object_decl.funcs) |func_n| {
-                const func = try reserveImplicitMethod(c, @ptrCast(object_t), func_n);
+                const func = try reserveImplicitMethod(tchunk, @ptrCast(object_t), func_n, true);
                 func.sym.?.variant = object_t.variant.?;
-                try resolveImplicitMethod(c, func);
+                try resolveImplicitMethod(tchunk, func);
             }
-
-            // Defer method sema.
-            try mod.chunk.variantFuncSyms.appendSlice(c.alloc, mod.chunk.funcs.items[start..]);
         },
         .custom_t => {
             const custom_t = sym.cast(.custom_t);
             const prev = try pushTemplateContext(tchunk, custom_t.variant.?);
             defer popTemplateContext(tchunk, prev) catch @panic("error");
 
-            const mod = custom_t.getMod();
-            const start = mod.chunk.funcs.items.len;
             const custom_decl = template.child_decl.cast(.custom_decl);
 
             for (custom_decl.funcs) |func_n| {
-                const func = try reserveImplicitMethod(tchunk, @ptrCast(custom_t), func_n);
+                const func = try reserveImplicitMethod(tchunk, @ptrCast(custom_t), func_n, true);
                 func.sym.?.variant = custom_t.variant.?;
                 try resolveImplicitMethod(tchunk, func);
             }
@@ -1595,16 +1600,15 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
 
                 const func_decl = child_template.child_decl.cast(.funcDecl);
                 if (func_decl.stmts.len == 0) {
-                    const func = try sema.reserveHostFunc2(tchunk, @ptrCast(custom_t), child_template.head.name(), @ptrCast(child_template.child_decl));
+                    const func = try sema.reserveHostFunc2(tchunk, @ptrCast(custom_t), child_template.head.name(), func_decl, true);
                     func.sym.?.variant = custom_t.variant.?;
                     try sema.resolveFunc(tchunk, func);
                 } else {
-                    return error.Unsupported;
+                    const func = try sema.reserveUserFunc2(tchunk, @ptrCast(custom_t), child_template.head.name(), func_decl, true);
+                    func.sym.?.variant = custom_t.variant.?;
+                    try sema.resolveFunc(tchunk, func);
                 }
             }
-
-            // Defer method sema.
-            try mod.chunk.variantFuncSyms.appendSlice(c.alloc, mod.chunk.funcs.items[start..]);
         },
         .enum_t => {
             const enum_t = sym.cast(.enum_t);
@@ -1621,7 +1625,6 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
             defer popTemplateContext(tchunk, prev) catch @panic("error");
 
             try resolveFunc(tchunk, func.first);
-            try c.variantFuncSyms.append(c.alloc, func.first);
         },
         else => {
             return error.Unsupported;
@@ -1630,17 +1633,10 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
 }
 
 pub fn reserveTableMethods(c: *cy.Chunk, obj: *cy.sym.ObjectType) !void {
-    const table_mod = c.sema.table_type.getMod();
-    const table_c = table_mod.chunk;
-
-    const start = table_c.funcs.items.len;
-
-    _ = try c.reserveHostFunc(@ptrCast(obj), "$get", null, true);
-    _ = try c.reserveHostFunc(@ptrCast(obj), "$set", null, true);
-    _ = try c.reserveHostFunc(@ptrCast(obj), "$index", null, true);
-    _ = try c.reserveHostFunc(@ptrCast(obj), "$setIndex", null, true);
-
-    try table_c.variantFuncSyms.appendSlice(c.alloc, table_c.funcs.items[start..]);
+    _ = try c.reserveHostFunc(@ptrCast(obj), "$get", null, true, true);
+    _ = try c.reserveHostFunc(@ptrCast(obj), "$set", null, true, true);
+    _ = try c.reserveHostFunc(@ptrCast(obj), "$index", null, true, true);
+    _ = try c.reserveHostFunc(@ptrCast(obj), "$setIndex", null, true, true);
 }
 
 pub fn resolveTableMethods(c: *cy.Chunk, obj: *cy.sym.ObjectType) !void {
@@ -1900,13 +1896,13 @@ pub fn reserveHostFunc(c: *cy.Chunk, node: *ast.FuncDecl) !*cy.Func {
     if (node.attrs.len > 0) {
         if (node.attrs[0].type == .host) {
             const is_method = c.ast.isMethodDecl(node);
-            return c.reserveHostFunc(decl_path.parent, decl_path.name.base_name, node, is_method);
+            return c.reserveHostFunc(decl_path.parent, decl_path.name.base_name, node, is_method, false);
         }
     }
     return c.reportErrorFmt("`{}` is not a host function.", &.{v(decl_path.name.name_path)}, @ptrCast(node));
 }
 
-pub fn reserveHostFunc2(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: *ast.FuncDecl) !*cy.Func {
+pub fn reserveHostFunc2(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: *ast.FuncDecl, is_variant: bool) !*cy.Func {
     if (node.stmts.len > 0) {
         return error.Unexpected;
     }
@@ -1914,7 +1910,7 @@ pub fn reserveHostFunc2(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: *
     if (node.attrs.len > 0) {
         if (node.attrs[0].type == .host) {
             const is_method = c.ast.isMethodDecl(node);
-            return c.reserveHostFunc(parent, name, node, is_method);
+            return c.reserveHostFunc(parent, name, node, is_method, is_variant);
         }
     }
     return c.reportErrorFmt("`{}` is not a host function.", &.{v(name)}, @ptrCast(node));
@@ -1995,8 +1991,12 @@ fn resolveHostFunc2(c: *cy.Chunk, func: *cy.Func, func_sig: FuncSigId) !void {
 /// Declares a bytecode function in a given module.
 pub fn reserveUserFunc(c: *cy.Chunk, decl: *ast.FuncDecl) !*cy.Func {
     const decl_path = try ensureDeclNamePath(c, @ptrCast(c.sym), decl.name);
+    return reserveUserFunc2(c, decl_path.parent, decl_path.name.base_name, decl, false);
+}
+
+pub fn reserveUserFunc2(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.FuncDecl, is_variant: bool) !*cy.Func {
     const is_method = c.ast.isMethodDecl(decl);
-    return c.reserveUserFunc(decl_path.parent, decl_path.name.base_name, decl, is_method);
+    return c.reserveUserFunc(parent, name, decl, is_method, is_variant);
 }
 
 pub fn resolveUserFunc(c: *cy.Chunk, func: *cy.Func) !void {
@@ -2004,10 +2004,10 @@ pub fn resolveUserFunc(c: *cy.Chunk, func: *cy.Func) !void {
     try c.resolveUserFunc(func, func_sig);
 }
 
-pub fn reserveImplicitMethod(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.FuncDecl) !*cy.Func {
+pub fn reserveImplicitMethod(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.FuncDecl, is_variant: bool) !*cy.Func {
     const decl_path = try ensureDeclNamePath(c, parent, decl.name);
     if (decl.stmts.len > 0) {
-        const func = try c.reserveUserFunc(decl_path.parent, decl_path.name.base_name, decl, true);
+        const func = try c.reserveUserFunc(decl_path.parent, decl_path.name.base_name, decl, true, is_variant);
         func.is_implicit_method = true;
         return func;
     }
@@ -2015,7 +2015,7 @@ pub fn reserveImplicitMethod(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.FuncDecl)
     // No initializer. Check if @host func.
     if (decl.attrs.len > 0) {
         if (decl.attrs[0].type == .host) {
-            const func = try c.reserveHostFunc(decl_path.parent, decl_path.name.base_name, decl, true);
+            const func = try c.reserveHostFunc(decl_path.parent, decl_path.name.base_name, decl, true, is_variant);
             func.is_implicit_method = true;
             return func;
         }
@@ -2484,8 +2484,9 @@ fn callTemplateSym(c: *cy.Chunk, loc: u32, template: *cy.sym.Template, args: []*
             c.vm.release(targ);
         }
     }
-    for (template.params, 0..) |param, i| {
-        c.valueStack.items[targ_start + i] = try c.vm.allocType(c.typeStack.items[start+param.infer_from_func_param]);
+    for (0..template.params.len) |i| {
+        const func_idx = template.infer_from_func_params[i];
+        c.valueStack.items[targ_start + i] = try c.vm.allocType(c.typeStack.items[start+func_idx]);
     }
     const targ_types_start = c.typeStack.items.len;
     try c.typeStack.resize(c.alloc, targ_types_start + template.params.len);
@@ -2955,7 +2956,6 @@ fn resolveTemplateSig(c: *cy.Chunk, params: []*ast.FuncParam, outSigId: *FuncSig
         tparams[i] = .{
             .name = c.ast.funcParamName(param),
             .type = typeId,
-            .infer_from_func_param = cy.NullU8,
         };
     }
 
@@ -4682,7 +4682,7 @@ pub const ChunkExt = struct {
                 if (left.resType == .sym) {
                     if (left.data.sym.getStaticType()) |type_id| {
                         if (left.data.sym.getVariant()) |variant| {
-                            if (variant.template == c.sema.list_tmpl) {
+                            if (variant.root_template == c.sema.list_tmpl) {
                                 const nargs = array_init.args.len;
                                 const loc = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(type_id), node);
                                 const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
@@ -4941,10 +4941,6 @@ pub const ChunkExt = struct {
             if (leftRes.resType == .sym) {
                 const leftSym = leftRes.data.sym;
 
-                if (leftSym.type == .template) {
-                    return c.reportErrorFmt("Can not access template symbol `{}`.", &.{
-                        v(c.ast.nodeString(callee.left))}, callee.right);
-                }
                 if (leftSym.type == .func) {
                     return c.reportErrorFmt("Can not access function symbol `{}`.", &.{
                         v(c.ast.nodeString(callee.left))}, callee.right);

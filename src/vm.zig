@@ -700,10 +700,10 @@ pub const VM = struct {
         }
     }
 
-    pub fn getFiberContext(vm: *const cy.VM) cy.fiber.PcSpOff {
+    pub fn getFiberContext(vm: *const cy.VM) cy.fiber.PcFpOff {
         return .{
             .pc = cy.fiber.getInstOffset(vm.c.ops, vm.c.pc),
-            .sp = cy.fiber.getStackOffset(vm.c.stack, vm.c.framePtr),
+            .fp = cy.fiber.getStackOffset(vm.c.stack, vm.c.framePtr),
         };
     }
 
@@ -863,7 +863,7 @@ pub const VM = struct {
 
         // Pass in an arbitrary `pc` to reuse the same `call` used by the VM.
         const pcsp = try call(vm, vm.c.pc, vm.c.framePtr, func, call_ret, @intCast(args.len), false);
-        vm.c.framePtr = pcsp.sp;
+        vm.c.framePtr = pcsp.fp;
         vm.c.pc = pcsp.pc;
 
         // Only user funcs start eval loop.
@@ -1280,7 +1280,7 @@ pub const VM = struct {
     /// Assumes overloaded function. Finds first matching function at runtime.
     fn callSymDyn(
         self: *VM, pc: [*]cy.Inst, fp: [*]Value, entry: u32, ret: u8, nargs: u8,
-    ) !cy.fiber.PcSp {
+    ) !cy.fiber.PcFp {
         const num_funcs = self.overloaded_funcs.buf[entry];
         const funcs = self.overloaded_funcs.buf[entry+1..entry+1+num_funcs];
         const vals = fp[ret+CallArgStart..ret+CallArgStart+nargs];
@@ -1303,9 +1303,9 @@ pub const VM = struct {
                         return error.Panic;
                     }
                     newFramePtr[0] = @bitCast(res);
-                    return cy.fiber.PcSp{
+                    return cy.fiber.PcFp{
                         .pc = pc + cy.bytecode.CallSymInstLen,
-                        .sp = fp,
+                        .fp = fp,
                     };
                 },
                 .func => {
@@ -1317,9 +1317,9 @@ pub const VM = struct {
                     newFramePtr[1] = buildReturnInfo(true, cy.bytecode.CallSymInstLen);
                     newFramePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
                     newFramePtr[3] = Value{ .retFramePtr = fp };
-                    return cy.fiber.PcSp{
+                    return cy.fiber.PcFp{
                         .pc = cy.fiber.toVmPc(self, func.data.func.pc),
-                        .sp = newFramePtr,
+                        .fp = newFramePtr,
                     };
                 },
                 else => {
@@ -1333,7 +1333,7 @@ pub const VM = struct {
     /// startLocal points to the first arg in the current stack frame.
     fn callSym(
         self: *VM, pc: [*]cy.Inst, framePtr: [*]Value, func_id: rt.FuncId, ret: u8, numArgs: u8,
-    ) !cy.fiber.PcSp {
+    ) !cy.fiber.PcFp {
         const func = self.funcSyms.buf[func_id];
         switch (func.type) {
             .host_func => {
@@ -1350,9 +1350,9 @@ pub const VM = struct {
                     return error.Panic;
                 }
                 newFramePtr[0] = @bitCast(res);
-                return cy.fiber.PcSp{
+                return cy.fiber.PcFp{
                     .pc = pc + cy.bytecode.CallSymInstLen,
-                    .sp = framePtr,
+                    .fp = framePtr,
                 };
             },
             .func => {
@@ -1369,9 +1369,9 @@ pub const VM = struct {
                 newFramePtr[1] = buildReturnInfo(true, cy.bytecode.CallSymInstLen);
                 newFramePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
                 newFramePtr[3] = Value{ .retFramePtr = framePtr };
-                return cy.fiber.PcSp{
+                return cy.fiber.PcFp{
                     .pc = cy.fiber.toVmPc(self, func.data.func.pc),
-                    .sp = newFramePtr,
+                    .fp = newFramePtr,
                 };
             },
             .null => {
@@ -1830,11 +1830,11 @@ pub fn handleInterrupt(vm: *VM, rootFp: u32) !void {
         const res = try @call(.never_inline, cy.fiber.throw, .{
             vm, rootFp, vm.getFiberContext(), Value.initRaw(vm.c.curFiber.panicPayload) });
         vm.c.pc = vm.c.ops + res.pc;
-        vm.c.framePtr = vm.c.stack + res.sp;
+        vm.c.framePtr = vm.c.stack + res.fp;
     } else {
         const res = try @call(.never_inline, panicCurFiber, .{ vm });
         vm.c.pc = vm.c.ops + res.pc;
-        vm.c.framePtr = vm.c.stack + res.sp;
+        vm.c.framePtr = vm.c.stack + res.fp;
     }
 }
 
@@ -1881,11 +1881,11 @@ fn handleExecResult(vm: *VM, res: vmc.ResultCode, fpStart: u32) !void {
         logger.tracev("Unknown error code.", .{});
         const cont = try @call(.never_inline, panicCurFiber, .{ vm });
         vm.c.pc = vm.c.ops + cont.pc;
-        vm.c.framePtr = vm.c.stack + cont.sp;
+        vm.c.framePtr = vm.c.stack + cont.fp;
     }
 }
 
-fn panicCurFiber(vm: *VM) !cy.fiber.PcSpOff {
+fn panicCurFiber(vm: *VM) !cy.fiber.PcFpOff {
     var ctx = vm.getFiberContext();
     ctx = try cy.fiber.unwindStack(vm, vm.c.getStack(), ctx);
 
@@ -2030,7 +2030,7 @@ fn inferArg(vm: *VM, args: []Value, arg_idx: usize, arg: Value, target_t: cy.Typ
 
 /// See `reserveFuncParams` for stack layout.
 /// numArgs does not include the callee.
-pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8, cont: bool) !cy.fiber.PcSp {
+pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8, cont: bool) !cy.fiber.PcFp {
     if (callee.isPointer()) {
         const obj = callee.asHeapObject();
         switch (obj.getTypeId()) {
@@ -2066,9 +2066,9 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
 
                 // Copy closure to local.
                 framePtr[ret + obj.closure.local] = callee;
-                return cy.fiber.PcSp{
+                return cy.fiber.PcFp{
                     .pc = cy.fiber.toVmPc(vm, obj.closure.funcPc),
-                    .sp = framePtr + ret,
+                    .fp = framePtr + ret,
                 };
             },
             bt.Lambda => {
@@ -2100,9 +2100,9 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                 framePtr[ret + 1] = buildReturnInfo2(cont, cy.bytecode.CallInstLen);
                 framePtr[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
                 framePtr[ret + 3] = retFramePtr;
-                return cy.fiber.PcSp{
+                return cy.fiber.PcFp{
                     .pc = cy.fiber.toVmPc(vm, obj.lambda.funcPc),
-                    .sp = framePtr + ret,
+                    .fp = framePtr + ret,
                 };
             },
             bt.HostFunc => {
@@ -2131,9 +2131,9 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                 const newFramePtr = framePtr + ret;
                 const res = obj.hostFunc.func.?(@ptrCast(vm), @ptrCast(newFramePtr + CallArgStart), numArgs);
                 newFramePtr[0] = @bitCast(res);
-                return cy.fiber.PcSp{
+                return cy.fiber.PcFp{
                     .pc = pc + cy.bytecode.CallInstLen,
-                    .sp = framePtr,
+                    .fp = framePtr,
                 };
             },
             else => {
@@ -2363,7 +2363,7 @@ fn getObjectFunctionFallback(
 fn callObjSymFallback(
     vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, recv: Value, typeId: u32, method: rt.MethodId, 
     ret: u8, numArgs: u8
-) !cy.fiber.PcSp {
+) !cy.fiber.PcFp {
     @setCold(true);
     // const func = try @call(.never_inline, getObjectFunctionFallback, .{obj, symId});
     const vals = framePtr[ret+CallArgStart+1..ret+CallArgStart+1+numArgs-1];
@@ -2531,7 +2531,7 @@ pub const CalleeStart: u8 = vmc.CALLEE_START;
 fn callMethod(
     vm: *VM, pc: [*]cy.Inst, sp: [*]cy.Value, func: rt.FuncSymbol,
     typeId: cy.TypeId, ret: u8, nargs: u8,
-) !?cy.fiber.PcSp {
+) !?cy.fiber.PcFp {
     switch (func.type) {
         .func => {
             if (@intFromPtr(sp + ret + func.data.func.stackSize) >= @intFromPtr(vm.c.stackEndPtr)) {
@@ -2551,9 +2551,9 @@ fn callMethod(
             newFp[1] = buildReturnInfo(true, cy.bytecode.CallObjSymInstLen);
             newFp[2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen };
             newFp[3] = Value{ .retFramePtr = sp };
-            return cy.fiber.PcSp{
+            return cy.fiber.PcFp{
                 .pc = cy.fiber.toVmPc(vm, func.data.func.pc),
-                .sp = newFp,
+                .fp = newFp,
             };
         },
         .host_func => {
@@ -2572,9 +2572,9 @@ fn callMethod(
                 return error.Panic;
             }
             sp[ret] = res;
-            return cy.fiber.PcSp{
+            return cy.fiber.PcFp{
                 .pc = pc + cy.bytecode.CallObjSymInstLen,
-                .sp = sp,
+                .fp = sp,
             };
         },
         .null => {
@@ -2600,60 +2600,60 @@ fn zOpCodeName(code: vmc.OpCode) callconv(.C) [*:0]const u8 {
     return @tagName(ecode);
 }
 
-fn zCallSym(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8, numArgs: u8) callconv(.C) vmc.PcSpResult {
+fn zCallSym(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8, numArgs: u8) callconv(.C) vmc.PcFpResult {
     const res = @call(.always_inline, VM.callSym, .{vm, pc, framePtr, @as(u32, @intCast(symId)), ret, numArgs}) catch |err| {
         if (err == error.Panic) {
             return .{
                 .pc = undefined,
-                .sp = undefined,
+                .fp = undefined,
                 .code = vmc.RES_CODE_PANIC,
             };
         } else if (err == error.StackOverflow) {
             return .{
                 .pc = undefined,
-                .sp = undefined,
+                .fp = undefined,
                 .code = vmc.RES_CODE_STACK_OVERFLOW,
             };
         } else {
             return .{
                 .pc = undefined,
-                .sp = undefined,
+                .fp = undefined,
                 .code = vmc.RES_CODE_UNKNOWN,
             };
         }
     };
     return .{
         .pc = @ptrCast(res.pc),
-        .sp = @ptrCast(res.sp),
+        .fp = @ptrCast(res.fp),
         .code = vmc.RES_CODE_SUCCESS,
     };
 }
 
-fn zCallSymDyn(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8, numArgs: u8) callconv(.C) vmc.PcSpResult {
+fn zCallSymDyn(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8, numArgs: u8) callconv(.C) vmc.PcFpResult {
     const res = @call(.always_inline, VM.callSymDyn, .{vm, pc, framePtr, @as(u32, @intCast(symId)), ret, numArgs}) catch |err| {
         if (err == error.Panic) {
             return .{
                 .pc = undefined,
-                .sp = undefined,
+                .fp = undefined,
                 .code = vmc.RES_CODE_PANIC,
             };
         } else if (err == error.StackOverflow) {
             return .{
                 .pc = undefined,
-                .sp = undefined,
+                .fp = undefined,
                 .code = vmc.RES_CODE_STACK_OVERFLOW,
             };
         } else {
             return .{
                 .pc = undefined,
-                .sp = undefined,
+                .fp = undefined,
                 .code = vmc.RES_CODE_UNKNOWN,
             };
         }
     };
     return .{
         .pc = @ptrCast(res.pc),
-        .sp = @ptrCast(res.sp),
+        .fp = @ptrCast(res.fp),
         .code = vmc.RES_CODE_SUCCESS,
     };
 }
@@ -2738,7 +2738,7 @@ fn zCallObjSym(
         if (mb_res) |res| {
             return .{
                 .pc = @ptrCast(res.pc),
-                .stack = @ptrCast(res.sp),
+                .stack = @ptrCast(res.fp),
                 .code = vmc.RES_CODE_SUCCESS,
             };
         }
@@ -2760,7 +2760,7 @@ fn zCallObjSym(
     };
     return .{
         .pc = @ptrCast(res.pc),
-        .stack = @ptrCast(res.sp),
+        .stack = @ptrCast(res.fp),
         .code = vmc.RES_CODE_SUCCESS,
     };
 }
@@ -2778,20 +2778,20 @@ fn zAllocFiber(vm: *cy.VM, pc: u32, args: [*]const Value, nargs: u8, argDst: u8,
     };
 }
 
-fn zPushFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, fiber: *cy.Fiber, parentDstLocal: u8) callconv(.C) vmc.PcSp {
+fn zPushFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, fiber: *cy.Fiber, parentDstLocal: u8) callconv(.C) vmc.PcFp {
     const res = cy.fiber.pushFiber(vm, curFiberEndPc, curStack, fiber, parentDstLocal);
     return .{
         .pc = @ptrCast(res.pc),
-        .sp = @ptrCast(res.sp),
+        .fp = @ptrCast(res.fp),
     };
 }
 
-fn zPopFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, retValue: Value) callconv(.C) vmc.PcSpOff {
+fn zPopFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, retValue: Value) callconv(.C) vmc.PcFpOff {
     const fp = cy.fiber.getStackOffset(vm.c.stack, curStack);
-    const res = cy.fiber.popFiber(vm, .{ .pc = @intCast(curFiberEndPc), .sp = fp }, retValue);
+    const res = cy.fiber.popFiber(vm, .{ .pc = @intCast(curFiberEndPc), .fp = fp }, retValue);
     return .{
         .pc = res.pc,
-        .sp = res.sp,
+        .fp = res.fp,
     };
 }
 
@@ -2820,25 +2820,25 @@ fn zEvalCompareNot(left: Value, right: Value) callconv(.C) vmc.Value {
     return @bitCast(evalCompareNot(left, right));
 }
 
-fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8) callconv(.C) vmc.PcSpResult {
+fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8) callconv(.C) vmc.PcFpResult {
     const res = call(vm, pc, framePtr, callee, ret, numArgs, true) catch |err| {
         if (err == error.Panic) {
             return .{
                 .pc = undefined,
-                .sp = undefined,
+                .fp = undefined,
                 .code = vmc.RES_CODE_PANIC,
             };
         } else {
             return .{
                 .pc = undefined,
-                .sp = undefined,
+                .fp = undefined,
                 .code = vmc.RES_CODE_UNKNOWN,
             };
         }
     };
     return .{
         .pc = @ptrCast(res.pc),
-        .sp = @ptrCast(res.sp),
+        .fp = @ptrCast(res.fp),
         .code = vmc.RES_CODE_SUCCESS,
     };
 }

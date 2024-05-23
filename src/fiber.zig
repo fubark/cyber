@@ -69,7 +69,7 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, argDst: u8, ini
 }
 
 /// Since this is called from a coresume expression, the fiber should already be retained.
-pub fn pushFiber(vm: *cy.VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *cy.Fiber, parentDstLocal: u8) PcSp {
+pub fn pushFiber(vm: *cy.VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *cy.Fiber, parentDstLocal: u8) PcFp {
     // Save current fiber.
     vm.c.curFiber.stackPtr = @ptrCast(vm.c.stack);
     vm.c.curFiber.stackLen = @intCast(vm.c.stack_len);
@@ -88,22 +88,22 @@ pub fn pushFiber(vm: *cy.VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber:
         log.tracev("fiber set to {} {*}", .{fiber.pcOffset + 3, vm.c.framePtr});
         return .{
             .pc = toVmPc(vm, fiber.pcOffset + 3),
-            .sp = @ptrCast(fiber.stackPtr + fiber.stackOffset),
+            .fp = @ptrCast(fiber.stackPtr + fiber.stackOffset),
         };
     } else {
         log.tracev("fiber set to {} {*}", .{fiber.pcOffset, vm.c.framePtr});
         return .{
             .pc = toVmPc(vm, fiber.pcOffset),
-            .sp = @ptrCast(fiber.stackPtr + fiber.stackOffset),
+            .fp = @ptrCast(fiber.stackPtr + fiber.stackOffset),
         };
     }
 }
 
-pub fn popFiber(vm: *cy.VM, cur: PcSpOff, retValue: Value) PcSpOff {
+pub fn popFiber(vm: *cy.VM, cur: PcFpOff, retValue: Value) PcFpOff {
     vm.c.curFiber.stackPtr = @ptrCast(vm.c.stack);
     vm.c.curFiber.stackLen = @intCast(vm.c.stack_len);
     vm.c.curFiber.pcOffset = cur.pc;
-    vm.c.curFiber.stackOffset = cur.sp;
+    vm.c.curFiber.stackOffset = cur.fp;
     const dstLocal = vm.c.curFiber.parentDstLocal;
 
     // Release current fiber.
@@ -124,9 +124,9 @@ pub fn popFiber(vm: *cy.VM, cur: PcSpOff, retValue: Value) PcSpOff {
     vm.c.stack_len = vm.c.curFiber.stackLen;
     vm.c.stackEndPtr = vm.c.stack + vm.c.curFiber.stackLen;
     log.tracev("fiber set to {} {*}", .{vm.c.curFiber.pcOffset, vm.c.framePtr});
-    return PcSpOff{
+    return PcFpOff{
         .pc = vm.c.curFiber.pcOffset,
-        .sp = vm.c.curFiber.stackOffset,
+        .fp = vm.c.curFiber.stackOffset,
     };
 }
 
@@ -211,10 +211,10 @@ pub fn isVmFrame(_: *cy.VM, stack: []const Value, fpOff: u32) bool {
 
 /// Unwind from `ctx` and release each frame.
 /// TODO: See if releaseFiberStack can resuse the same code.
-pub fn unwindStack(vm: *cy.VM, stack: []const Value, ctx: PcSpOff) !PcSpOff {
-    log.tracev("panic unwind {*}", .{stack.ptr + ctx.sp});
+pub fn unwindStack(vm: *cy.VM, stack: []const Value, ctx: PcFpOff) !PcFpOff {
+    log.tracev("panic unwind {*}", .{stack.ptr + ctx.fp});
     var pc = ctx.pc;
-    var fp = ctx.sp;
+    var fp = ctx.fp;
 
     vm.compactTrace.clearRetainingCapacity();
 
@@ -228,11 +228,11 @@ pub fn unwindStack(vm: *cy.VM, stack: []const Value, ctx: PcSpOff) !PcSpOff {
             try releaseFrame(vm, fp, pc);
             if (fp == 0) {
                 // Done, at main block.
-                return PcSpOff{ .pc = pc, .sp = fp };
+                return PcFpOff{ .pc = pc, .fp = fp };
             } else {
                 const prev = getVmFramePrev(vm, stack, fp);
                 pc = prev.pc;
-                fp = prev.sp;
+                fp = prev.fp;
             }
         } else {
             try vm.compactTrace.append(vm.alloc, .{
@@ -242,7 +242,7 @@ pub fn unwindStack(vm: *cy.VM, stack: []const Value, ctx: PcSpOff) !PcSpOff {
             // Skip releasing host frame. Record it.
             const prev = getHostFramePrev(vm, stack, fp);
             pc = prev.pc;
-            fp = prev.sp;
+            fp = prev.fp;
         }
     }
 }
@@ -267,7 +267,7 @@ pub fn recordCurFrames(vm: *cy.VM) !void {
                 break;
             } else {
                 const prev = getVmFramePrev(vm, vm.c.getStack(), fp);
-                fp = prev.sp;
+                fp = prev.fp;
                 pc = prev.pc;
             }
         } else {
@@ -276,7 +276,7 @@ pub fn recordCurFrames(vm: *cy.VM) !void {
                 .fpOffset = fp,
             });
             const prev = getHostFramePrev(vm, vm.c.getStack(), fp);
-            fp = prev.sp;
+            fp = prev.fp;
             pc = prev.pc;
         }
     }
@@ -309,20 +309,20 @@ fn releaseFrameTemps(vm: *cy.VM, fp: u32, pc: u32) !void {
     cy.arc.runTempReleaseOps(vm, vm.c.stack + fp, tempIdx);
 }
 
-fn getHostFramePrev(vm: *cy.VM, stack: []const Value, fp: u32) PcSpOff {
+fn getHostFramePrev(vm: *cy.VM, stack: []const Value, fp: u32) PcFpOff {
     const prev_fp = getStackOffset(stack.ptr, stack[fp + 3].retFramePtr);
     const prev_pc = getInstOffset(vm.c.ops, stack[fp + 2].retPcPtr);
-    return PcSpOff{ .pc = prev_pc, .sp = prev_fp };
+    return PcFpOff{ .pc = prev_pc, .fp = prev_fp };
 }
 
-fn getVmFramePrev(vm: *cy.VM, stack: []const Value, fp: u32) PcSpOff {
+fn getVmFramePrev(vm: *cy.VM, stack: []const Value, fp: u32) PcFpOff {
     const prevPc = getInstOffset(vm.c.ops, stack[fp + 2].retPcPtr) - stack[fp + 1].retInfoCallInstOffset();
     const prevFp = getStackOffset(stack.ptr, stack[fp + 3].retFramePtr);
-    return PcSpOff{ .pc = prevPc, .sp = prevFp };
+    return PcFpOff{ .pc = prevPc, .fp = prevFp };
 }
 
 // Returns a continuation if there is a parent fiber otherwise null.
-pub fn fiberEnd(vm: *cy.VM, ctx: PcSpOff) ?PcSpOff {
+pub fn fiberEnd(vm: *cy.VM, ctx: PcFpOff) ?PcFpOff {
     if (vm.c.curFiber != &vm.c.mainFiber) {
         if (cy.Trace) {
             // Print fiber panic.
@@ -336,7 +336,7 @@ pub fn fiberEnd(vm: *cy.VM, ctx: PcSpOff) ?PcSpOff {
 /// is reached or `endFp` is reached.
 /// If the main rootFp is reached without a catch block, the error is elevated to an uncaught panic error.
 /// Records frames in `compactTrace`.
-pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcSpOff, err: Value) !PcSpOff {
+pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcFpOff, err: Value) !PcFpOff {
     log.tracev("throw", .{});
     var tframe: vmc.TryFrame = undefined;
     var hasTryFrame = false;
@@ -351,7 +351,7 @@ pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcSpOff, err: Value) !PcSpOff {
     }
 
     vm.compactTrace.clearRetainingCapacity();
-    var fp = ctx.sp;
+    var fp = ctx.fp;
     var pc = ctx.pc;
 
     while (true) {
@@ -364,7 +364,7 @@ pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcSpOff, err: Value) !PcSpOff {
                 // Haven't reached target try block. Unwind frame.
                 try releaseFrame(vm, fp, pc);
                 const prev = getVmFramePrev(vm, vm.c.getStack(), fp);
-                fp = prev.sp;
+                fp = prev.fp;
                 pc = prev.pc;
             } else {
                 if (cy.Trace and fp != tframe.fp) {
@@ -383,9 +383,9 @@ pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcSpOff, err: Value) !PcSpOff {
                     vm.c.stack[tframe.fp + tframe.catchErrDst] = @bitCast(err);
                 }
                 // Goto catch block in the current frame.
-                return PcSpOff{
+                return PcFpOff{
                     .pc = tframe.catchPc,
-                    .sp = fp,
+                    .fp = fp,
                 };
             }
         } else {
@@ -393,7 +393,7 @@ pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcSpOff, err: Value) !PcSpOff {
             try releaseFrame(vm, fp, pc);
             if (fp > endFp) {
                 const prev = getVmFramePrev(vm, vm.c.getStack(), fp);
-                fp = prev.sp;
+                fp = prev.fp;
                 pc = prev.pc;
             } else {
                 if (cy.Trace and fp != endFp) {
@@ -412,7 +412,7 @@ pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcSpOff, err: Value) !PcSpOff {
                     vm.stackTrace.deinit(vm.alloc);
                     vm.stackTrace.frames = frames;
 
-                    return fiberEnd(vm, .{ .pc = pc, .sp = fp }) orelse {
+                    return fiberEnd(vm, .{ .pc = pc, .fp = fp }) orelse {
                         return error.Panic;
                     };
                 } else {
@@ -553,12 +553,12 @@ fn growStackPrecise(vm: *cy.VM, newCap: usize) !void {
     }
 }
 
-pub const PcSpOff = struct {
+pub const PcFpOff = struct {
     pc: u32,
-    sp: u32,
+    fp: u32,
 };
 
-pub const PcSp = struct {
+pub const PcFp = struct {
     pc: [*]cy.Inst,
-    sp: [*]Value,
+    fp: [*]Value,
 };

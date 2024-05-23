@@ -846,21 +846,21 @@ typedef struct CallObjSymResult {
     ResultCode code;
 } CallObjSymResult;
 
-typedef struct PcSp {
+typedef struct PcFp {
     Inst* pc;
-    Value* sp;
-} PcSp;
+    Value* fp;
+} PcFp;
 
-typedef struct PcSpOff {
+typedef struct PcFpOff {
     u32 pc;
-    u32 sp;
-} PcSpOff;
+    u32 fp;
+} PcFpOff;
 
-typedef struct PcSpResult {
+typedef struct PcFpResult {
     Inst* pc;
-    Value* sp;
+    Value* fp;
     ResultCode code;
-} PcSpResult;
+} PcFpResult;
 
 typedef Value (*HostFuncFn)(VM* vm, const Value* args, uint8_t nargs);
 
@@ -874,8 +874,8 @@ extern bool clVerbose;
 void zFatal();
 BufferResult zAlloc(ZAllocator alloc, size_t n);
 char* zOpCodeName(OpCode code);
-PcSpResult zCallSym(VM* vm, Inst* pc, Value* stack, u16 symId, u8 startLocal, u8 numArgs);
-PcSpResult zCallSymDyn(VM* vm, Inst* pc, Value* stack, u16 symId, u8 startLocal, u8 numArgs);
+PcFpResult zCallSym(VM* vm, Inst* pc, Value* stack, u16 symId, u8 startLocal, u8 numArgs);
+PcFpResult zCallSymDyn(VM* vm, Inst* pc, Value* stack, u16 symId, u8 startLocal, u8 numArgs);
 void zDumpEvalOp(VM* vm, Inst* pc);
 void zDumpValue(VM* vm, Value val);
 void zFreeObject(VM* vm, HeapObject* obj);
@@ -890,7 +890,7 @@ PcSpOff zPopFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Value retValue)
 uint8_t zGetFieldOffsetFromTable(VM* vm, TypeId typeId, uint32_t symId);
 Value zEvalCompare(Value left, Value right);
 Value zEvalCompareNot(Value left, Value right);
-PcSpResult zCall(VM* vm, Inst* pc, Value* stack, Value callee, uint8_t startLocal, uint8_t numArgs);
+PcFpResult zCall(VM* vm, Inst* pc, Value* stack, Value callee, uint8_t startLocal, uint8_t numArgs);
 HeapObjectResult zAllocPoolObject(VM* vm);
 HeapObjectResult zAllocExternalObject(VM* vm, size_t size);
 HeapObjectResult zAllocExternalCycObject(VM* vm, size_t size);

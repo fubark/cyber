@@ -134,7 +134,10 @@ template[T type]
     @host func insert(idx int, val T) void
 
     --| Returns a new iterator over the list elements.
-    @host func iterator() ListIterator[T]
+    func iterator() ListIterator[T]:
+        return self.iterator_((ListIterator[T]).id())
+
+    @host -func iterator_(ret_type int) ListIterator[T]
 
     --| Returns a new string that joins the elements with `separator`.
     @host func join(sep String) String

@@ -89,7 +89,7 @@ pub const funcs = [_]C.HostFuncEntry{
     func("List.append",      zErrFunc(bindings.listAppend)),
     func("List.appendAll",   zErrFunc(bindings.listAppendAll)),
     func("List.insert",      bindings.listInsert),
-    func("List.iterator",    bindings.listIterator),
+    func("List.iterator_",   bindings.listIterator),
     func("List.join",        zErrFunc(bindings.listJoin)),
     func("List.len",         bindings.listLen),
     func("List.remove",      bindings.listRemove),

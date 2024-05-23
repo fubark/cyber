@@ -1065,6 +1065,25 @@ pub fn allocListDyn(self: *cy.VM, elems: []const Value) !Value {
     return Value.initCycPtr(obj);
 }
 
+pub fn allocListIter(self: *cy.VM, type_id: cy.TypeId, list: Value) !Value {
+    const cyclable = self.c.types[type_id].cyclable;
+    const obj = try allocPoolObject(self);
+    const cyc_mask = if (cyclable) vmc.CYC_TYPE_MASK else 0;
+    obj.listIter = .{
+        .typeId = type_id | cyc_mask,
+        .rc = 1,
+        .inner = .{
+            .list = list,
+            .nextIdx = 0,
+        },
+    };
+    if (cyclable) {
+        return Value.initCycPtr(obj);
+    } else {
+        return Value.initNoCycPtr(obj);
+    }
+}
+
 /// Assumes list is already retained for the iterator.
 pub fn allocListIterDyn(self: *cy.VM, list: Value) !Value {
     const obj = try allocPoolObject(self);
@@ -1456,6 +1475,7 @@ pub const VmExt = struct {
     pub const allocUnsetAstringObject = Root.allocUnsetAstringObject;
     pub const allocUnsetUstringObject = Root.allocUnsetUstringObject;
     pub const allocListFill = Root.allocListFill;
+    pub const allocListIter = Root.allocListIter;
     pub const allocListIterDyn = Root.allocListIterDyn;
     pub const allocMapIterator = Root.allocMapIterator;
     pub const allocObjectSmall = Root.allocObjectSmall;

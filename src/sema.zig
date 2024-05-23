@@ -1468,7 +1468,8 @@ pub const TemplateContext = struct {
     variant: *cy.sym.Variant,
 };
 
-fn pushTemplateContext(c: *cy.Chunk, template: *cy.sym.Template, variant: *cy.sym.Variant) !?TemplateContext {
+fn pushTemplateContext(c: *cy.Chunk, variant: *cy.sym.Variant) !?TemplateContext {
+    const template = variant.template;
     for (template.params, 0..) |param, i| {
         const arg = variant.args[i];
         try c.cur_template_params.put(c.alloc, param.name, arg);
@@ -1550,7 +1551,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
             const object_t = sym.cast(.object_t);
             const object_decl = template.child_decl.cast(.objectDecl);
 
-            const prev = try pushTemplateContext(tchunk, template, object_t.variant.?);
+            const prev = try pushTemplateContext(tchunk, object_t.variant.?);
             defer popTemplateContext(tchunk, prev) catch @panic("error");
 
             try resolveObjectFields(tchunk, @ptrCast(sym), template.child_decl);
@@ -1559,6 +1560,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
             const start = mod.chunk.funcs.items.len;
             for (object_decl.funcs) |func_n| {
                 const func = try reserveImplicitMethod(c, @ptrCast(object_t), func_n);
+                func.sym.?.variant = object_t.variant.?;
                 try resolveImplicitMethod(c, func);
             }
 
@@ -1567,7 +1569,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
         },
         .custom_t => {
             const custom_t = sym.cast(.custom_t);
-            const prev = try pushTemplateContext(tchunk, template, custom_t.variant.?);
+            const prev = try pushTemplateContext(tchunk, custom_t.variant.?);
             defer popTemplateContext(tchunk, prev) catch @panic("error");
 
             const mod = custom_t.getMod();
@@ -1576,6 +1578,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
 
             for (custom_decl.funcs) |func_n| {
                 const func = try reserveImplicitMethod(tchunk, @ptrCast(custom_t), func_n);
+                func.sym.?.variant = custom_t.variant.?;
                 try resolveImplicitMethod(tchunk, func);
             }
 
@@ -1593,6 +1596,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
                 const func_decl = child_template.child_decl.cast(.funcDecl);
                 if (func_decl.stmts.len == 0) {
                     const func = try sema.reserveHostFunc2(tchunk, @ptrCast(custom_t), child_template.head.name(), @ptrCast(child_template.child_decl));
+                    func.sym.?.variant = custom_t.variant.?;
                     try sema.resolveFunc(tchunk, func);
                 } else {
                     return error.Unsupported;
@@ -1605,15 +1609,15 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
         .enum_t => {
             const enum_t = sym.cast(.enum_t);
 
-            const prev = try pushTemplateContext(tchunk, template, enum_t.variant.?);
+            const prev = try pushTemplateContext(tchunk, enum_t.variant.?);
             defer popTemplateContext(tchunk, prev) catch @panic("error");
 
             try declareEnumMembers(tchunk, enum_t, @ptrCast(template.child_decl));
         },
         .func => {
-            const func = sym.cast(.func);
+            const func = sym.cast(.func); 
 
-            const prev = try pushTemplateContext(tchunk, template, func.variant.?);
+            const prev = try pushTemplateContext(tchunk, func.variant.?);
             defer popTemplateContext(tchunk, prev) catch @panic("error");
 
             try resolveFunc(tchunk, func.first);
@@ -2029,6 +2033,16 @@ pub fn resolveImplicitMethod(c: *cy.Chunk, func: *cy.Func) !void {
 }
 
 pub fn methodDecl(c: *cy.Chunk, func: *cy.Func) !void {
+    if (func.sym.?.variant) |variant| {
+        const ctx = try pushTemplateContext(c, variant);
+        defer popTemplateContext(c, ctx) catch @panic("error");
+        try methodDecl2(c, func);
+    } else {
+        try methodDecl2(c, func);
+    }
+}
+
+pub fn methodDecl2(c: *cy.Chunk, func: *cy.Func) !void {
     const parent = func.parent;
 
     c.curSelfSym = parent;
@@ -2045,6 +2059,16 @@ pub fn methodDecl(c: *cy.Chunk, func: *cy.Func) !void {
 }
 
 pub fn funcDecl(c: *cy.Chunk, func: *cy.Func) !void {
+    if (func.sym.?.variant) |variant| {
+        const ctx = try pushTemplateContext(c, variant);
+        defer popTemplateContext(c, ctx) catch @panic("error");
+        try funcDecl2(c, func);
+    } else {
+        try funcDecl2(c, func);
+    }
+}
+
+pub fn funcDecl2(c: *cy.Chunk, func: *cy.Func) !void {
     const node = func.decl.?.cast(.funcDecl);
     _ = try pushFuncProc(c, func);
     try appendFuncParamVars(c, func, node.params);

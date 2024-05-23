@@ -387,6 +387,8 @@ type ModulePair:
     section String
 
 func genFuncDecl(decl Map) String:
+    if (decl['hidden']): return ''
+    
     var docLine = decl.get('docs') ?else ''
     var params = []
     for decl['params'] -> param:

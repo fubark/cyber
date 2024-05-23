@@ -392,7 +392,7 @@ pub fn listIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) Value {
 
 pub fn listIterator(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     vm.retain(args[0]);
-    return vm.allocListIterDyn(args[0]) catch fatal();
+    return vm.allocListIter(@intCast(args[1].asInteger()), args[0]) catch fatal();
 }
 
 pub fn listResize(vm: *cy.VM, args: [*]const Value, _: u8) Value {

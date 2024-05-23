@@ -1,13 +1,12 @@
 use test
 
-template[T type]
-type Foo:
-    a #T
+type Foo[T type]:
+    a T
 
-    func get() #T:
+    func get() T:
         return self.a
 
-    func set(a #T):
+    func set(a T):
         self.a = a
 
 -- Infer decl type.

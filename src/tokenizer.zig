@@ -33,7 +33,6 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "struct", .struct_k },
     .{ "switch", .switch_k },
     .{ "symbol", .symbol_k },
-    .{ "template", .template_k },
     .{ "throw", .throw_k },
     .{ "true", .true_k },
     .{ "try", .try_k },
@@ -126,7 +125,6 @@ pub const TokenType = enum(u8) {
     symbol_k,
     templateExprStart,
     templateString,
-    template_k,
     throw_k,
     tilde,
     true_k,
@@ -1006,6 +1004,6 @@ test "tokenizer internals." {
     try tt.eq(@alignOf(Token), 4);
     try tt.eq(@sizeOf(TokenizeState), 4);
 
-    try tt.eq(std.enums.values(TokenType).len, 90);
-    try tt.eq(keywords.kvs.len, 37);
+    try tt.eq(std.enums.values(TokenType).len, 89);
+    try tt.eq(keywords.kvs.len, 36);
 }

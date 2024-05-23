@@ -10,8 +10,7 @@
 -type Foo3 Foo
 
 -- Type template
--template[T type]
-type Foo4:
+-type Foo4[T type]:
     a int
  
 -- Function declaration.

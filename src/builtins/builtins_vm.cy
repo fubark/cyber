@@ -122,8 +122,7 @@ type float #float64_t:
 
 @host type type _
 
-template[T type]
-@host type List _:
+@host type List[T type] _:
     @host func $index(idx int) T
 
     @host='List.$indexRange'
@@ -176,13 +175,11 @@ template[T type]
 @host='ListDyn'
 type List[dyn] _
 
-template
 --| Creates a list with initial capacity of `n` and values set to `val`.
 --| If the value is an object, it is shallow copied `n` times.
-@host func List.fill(val T, n int) List[T]
+@host func List.fill[](val T, n int) List[T]
 
-template[T type]
-@host type ListIterator _:
+@host type ListIterator[T type] _:
     @host func next() ?T
 
 @host='ListIterDyn'
@@ -439,30 +436,23 @@ type metatype _:
 @host type Box _
 @host type TccState _
 
-template[T type]
-type Option enum:
+type Option[T type] enum:
     case none
-    case some #T 
+    case some T 
 
-template[T type]
-@host type Future _
+@host type Future[T type] _
 
-template
 --| Returns a `Future[T]` that has a completed value.
-func Future.complete(val T) Future[T]:
+func Future.complete[](val T) Future[T]:
     return Future.complete_(val, (Future[T]).id())
     
-template
-@host -func Future.complete_(val T, ret_type int) Future[T]
+@host -func Future.complete_[](val T, ret_type int) Future[T]
 
-template[T type]
-@host type FutureResolver _:
+@host type FutureResolver[T type] _:
     @host func complete(val T) void
     @host func future() Future[T]
 
-template
-func FutureResolver.new() FutureResolver[T]:
+func FutureResolver.new[]() FutureResolver[T]:
     return FutureResolver.new_[T]((Future[T]).id(), (FutureResolver[T]).id())
 
-template
-@host -func FutureResolver.new_(future_t int, ret_t int) FutureResolver[T]
+@host -func FutureResolver.new_[](future_t int, ret_t int) FutureResolver[T]

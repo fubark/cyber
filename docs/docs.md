@@ -263,7 +263,7 @@ print a    --> panic: `a` is not defined in `$global`.
 ## Reserved identifiers.
 
 ### Keywords.
-There are `29` general keywords. This list categorizes them:
+There are `28` general keywords. This list categorizes them:
 
 - [Control Flow](#control-flow): `if` `else` `switch` `case` `while` `for` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not`
@@ -273,7 +273,6 @@ There are `29` general keywords. This list categorizes them:
 - [Async](#async): `await`
 - [Types](#custom-types): `type`  `as`
 - [Type embedding](#type-embedding): `use`
-- [Metaprogramming](#metaprogramming): `template`
 - [Error Handling](#error-handling): `try` `catch` `throw`
 - [Modules](#modules): `use` `mod`
 - [Dynamic Typing](#dynamic-typing): `let`
@@ -1271,8 +1270,7 @@ Optionals provide **Null Safety** by forcing values to be unwrapped before they 
 
 The generic `Option` type is a choice type that either holds a `none` value or contains `some` value. The option template is defined as:
 ```cy
-template[T type]
-type Option enum:
+type Option[T type] enum:
     case none
     case some T
 ```
@@ -1405,10 +1403,9 @@ var b Vec2 = a as Vec2
 > _Planned Feature_
 
 ## Generic types.
-Templates are used to specialize type declarations. Since template parameters only exist at compile-time, the `#` prefix is used to reference them in the template body:
+Templates are used to specialize type declarations:
 ```cy
-template[T type]
-type MyContainer:
+type MyContainer[T type]:
     id    int
     value T
 
@@ -1827,10 +1824,9 @@ Button('Count'):
 Arguments assigned in the call block can be unordered.
 
 ## Generic functions.
-Templates are used to specialize function declarations. Since template parameters only exist at compile-time, the `#` prefix is used to reference them in the function declaration:
+Templates are used to specialize function declarations:
 ```cy
-template[T type]
-func add(a T, b T) T:
+func add[T type](a T, b T) T:
     return a + b
 ```
 

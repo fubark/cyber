@@ -55,6 +55,5 @@ type Vec2Alias = Vec2
 type Bar:
     a float
 
-template[T type]
-type TFoo:
-    a #T
+type TFoo[T type]:
+    a T

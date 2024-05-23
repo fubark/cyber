@@ -1,9 +1,8 @@
 use test
 
-template[T type]
-type Foo enum:
+type Foo[T type] enum:
     case a String
-    case b #T
+    case b T
 
 -- Infer decl type.
 var f = Foo[int].b(123)

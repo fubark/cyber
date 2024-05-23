@@ -46,7 +46,7 @@ contexts:
     - match: '\b(coyield|coresume|coinit)\b'
       scope: keyword.coroutine.cyber
 
-    - match: '\b(type|template|object|struct|enum|trait|true|false|none|symbol)\b'
+    - match: '\b(type|object|struct|enum|trait|true|false|none|symbol)\b'
       scope: keyword.type.cyber
 
     - match: '\b(try|catch|error|throw)\b'

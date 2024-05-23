@@ -836,7 +836,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                                 const child_decl = decl.decl.cast(.custom_decl);
                                 const sym = try sema.resolveSym(chunk, child_decl.name);
                                 if (sym.type != .template) {
-                                    return chunk.reportError("Expected template.", null);
+                                    return chunk.reportError("Expected template.", @ptrCast(decl));
                                 }
                                 const template = sym.cast(.template);
 

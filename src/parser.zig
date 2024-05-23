@@ -724,64 +724,32 @@ pub const Parser = struct {
         });
     }
 
-    fn parseTemplate(self: *Parser, hidden: bool, allow_decl: bool) !*ast.TemplateDecl {
-        if (!allow_decl) {
-            return self.reportError("`template` declarations are not allowed here.", &.{});
-        }
-        const start = self.next_pos;
-
-        // Assumes first token is the `template` keyword.
-        self.advance();
-
-        var params: []*ast.FuncParam = &.{};
-        if (self.peek().tag() == .left_bracket) {
-            self.advance();
-            params = try self.parseFuncParams(&.{}, true, true);
-        }
-        self.consumeWhitespaceTokens();
-
-        const token = self.peek();
-        var decl: *ast.Node = undefined;
-        switch (token.tag()) {
-            .type_k => {
-                decl = try self.parseTypeDecl(.{
-                    .attrs = &.{},
-                    .hidden = false,
-                    .allow_decl = true,
-                }, true);
-            },
-            .minus => {
-                self.advance();
-                decl = @ptrCast(try self.parseFuncDecl(.{ .attrs = &.{}, .hidden = true, .allow_decl = true }, true));
-            },
-            .func_k => {
-                decl = @ptrCast(try self.parseFuncDecl(.{ .attrs = &.{}, .hidden = false, .allow_decl = true }, true));
-            },
-            .at => {
-                decl = try self.parseAtDecl(true, true);
-            },
-            else => {
-                return self.reportError("Unsupported template declaration.", &.{});
-            },
-        }
-
-        const template = try self.ast.newNode(.template, .{
-            .params = params,
-            .decl = decl,
-            .hidden = hidden,
-            .pos = self.tokenSrcPos(start),
-        });
-        try self.staticDecls.append(self.alloc, @ptrCast(template));
-        return template;
-    }
-
     const TypeDeclConfig = struct {
         attrs: []*ast.Attribute,
         hidden: bool,
         allow_decl: bool,
     };
 
-    fn parseTypeDecl(self: *Parser, config: TypeDeclConfig, template: bool) !*ast.Node {
+    fn parseTemplateOrSpecialization(self: *Parser) !*ast.Node {
+        // Assumes starting with '['.
+        const tag = self.peekAhead(2).tag();
+        if (tag == .right_bracket or tag == .comma) {
+            const args = try self.parseArrayLiteral2();
+            return self.ast.newNodeErase(.specialization, .{
+                .args = args,
+                .decl = undefined,
+            });
+        } else {
+            self.advance();
+            const params = try self.parseFuncParams(&.{}, true, true);
+            return self.ast.newNodeErase(.template, .{
+                .params = params,
+                .decl = undefined,
+            });
+        }
+    }
+
+    fn parseTypeDecl(self: *Parser, config: TypeDeclConfig) !*ast.Node {
         if (!config.allow_decl) {
             return self.reportError("`type` declarations are not allowed here.", &.{});
         }
@@ -795,74 +763,48 @@ pub const Parser = struct {
             return self.reportError("Expected type name identifier.", &.{});
         };
 
+        var opt_template: ?*ast.Node = null;
         if (self.peek().tag() == .left_bracket) {
-            // Parse template specialization.
-            if (template) {
-                return self.reportError("Template specialization cannot be in a `template` declaration.", &.{});
-            }
-            const args = try self.parseArrayLiteral2();
-            var decl: *ast.Node = undefined;
-            switch (self.peek().tag()) {
-                .underscore => {
-                    decl = @ptrCast(try self.parseCustomTypeDecl(start, name, config));
-                },
-                else => return error.Unsupported,
-            }
-            const n = try self.ast.newNodeErase(.specialization, .{
-                .args = args,
-                .decl = decl,
-                .pos = self.tokenSrcPos(start),
-            });
-            try self.staticDecls.append(self.alloc, n);
-            return n;
+            opt_template = try self.parseTemplateOrSpecialization();
+            try self.staticDecls.append(self.alloc, @ptrCast(opt_template));
+            self.consumeWhitespaceTokens();
         }
 
+        var decl: *ast.Node = undefined;
         switch (self.peek().tag()) {
             .enum_k => {
-                const decl = try self.parseEnumDecl(start, name, config);
-                if (!template) {
-                    try self.staticDecls.append(self.alloc, @ptrCast(decl));
-                }
-                return @ptrCast(decl);
+                decl = @ptrCast(try self.parseEnumDecl(start, name, config));
             },
             .struct_k => {
-                const decl = try self.parseStructDecl(start, name, config);
-                if (!template) {
-                    try self.staticDecls.append(self.alloc, @ptrCast(decl));
-                }
-                return @ptrCast(decl);
+                decl = @ptrCast(try self.parseStructDecl(start, name, config));
             },
             // `object` is optional.
             .object_k,
             .new_line,
             .colon => {
-                const decl = try self.parseObjectDecl(start, name, config);
-                if (!template) {
-                    try self.staticDecls.append(self.alloc, @ptrCast(decl));
-                }
-                return @ptrCast(decl);
+                decl = @ptrCast(try self.parseObjectDecl(start, name, config));
             },
             .equal => {
-                const decl = try self.parseTypeAliasDecl(start, name, config);
-                if (!template) {
-                    try self.staticDecls.append(self.alloc, @ptrCast(decl));
-                }
-                return @ptrCast(decl);
+                decl = @ptrCast(try self.parseTypeAliasDecl(start, name, config));
             },
             .underscore => {
-                const decl = try self.parseCustomTypeDecl(start, name, config);
-                if (!template) {
-                    try self.staticDecls.append(self.alloc, @ptrCast(decl));
-                }
-                return @ptrCast(decl);
+                decl = @ptrCast(try self.parseCustomTypeDecl(start, name, config));
             },
             else => {
-                const decl = try self.parseDistinctTypeDecl(start, name, config);
-                if (!template) {
-                    try self.staticDecls.append(self.alloc, @ptrCast(decl));
-                }
-                return @ptrCast(decl);
+                decl = @ptrCast(try self.parseDistinctTypeDecl(start, name, config));
             }
+        }
+
+        if (opt_template) |template| {
+            if (template.type() == .specialization) {
+                template.cast(.specialization).decl = decl;
+            } else {
+                template.cast(.template).decl = decl;
+            }
+            return template;
+        } else {
+            try self.staticDecls.append(self.alloc, @ptrCast(decl));
+            return decl;
         }
     }
 
@@ -1133,7 +1075,7 @@ pub const Parser = struct {
         allow_decl: bool,
     };
 
-    fn parseFuncDecl(self: *Parser, config: FuncDeclConfig, template: bool) !*ast.FuncDecl {
+    fn parseFuncDecl(self: *Parser, config: FuncDeclConfig) !*ast.Node {
         if (!config.allow_decl) {
             return self.reportError("`func` declarations are not allowed here.", &.{});
         }
@@ -1146,6 +1088,13 @@ pub const Parser = struct {
             return self.reportError("Expected function name identifier.", &.{});
         };
 
+        var opt_template: ?*ast.Node = null;
+        if (self.peek().tag() == .left_bracket) {
+            opt_template = try self.parseTemplateOrSpecialization();
+            try self.staticDecls.append(self.alloc, @ptrCast(opt_template));
+            self.consumeWhitespaceTokens();
+        }
+
         const params = try self.parseParenAndFuncParams();
         const ret = try self.parseFuncReturn();
 
@@ -1154,6 +1103,7 @@ pub const Parser = struct {
         // try block.vars.put(self.alloc, nameStr, {});
 
         var token = self.peek();
+        var decl: *ast.FuncDecl = undefined;
         if (token.tag() == .colon) {
             self.advance();
 
@@ -1161,7 +1111,7 @@ pub const Parser = struct {
             const stmts = try self.parseSingleOrIndentedBodyStmts();
             _ = self.popBlock();
 
-            const func = try self.ast.newNode(.funcDecl, .{
+            decl = try self.ast.newNode(.funcDecl, .{
                 .name = name,
                 .attrs = config.attrs,
                 .params = params,
@@ -1171,14 +1121,9 @@ pub const Parser = struct {
                 .hidden = config.hidden,
                 .pos = self.tokenSrcPos(start),
             });
-
-            if (!template and self.cur_indent == 0) {
-                try self.staticDecls.append(self.alloc, @ptrCast(func));
-            }
-            return func;
         } else {
             // Just a declaration, no body.
-            const func = try self.ast.newNode(.funcDecl, .{
+            decl = try self.ast.newNode(.funcDecl, .{
                 .attrs = config.attrs,
                 .ret = ret,
                 .name = name,
@@ -1188,10 +1133,20 @@ pub const Parser = struct {
                 .hidden = config.hidden,
                 .pos = self.tokenSrcPos(start),
             });
-            if (!template and self.cur_indent == 0) {
-                try self.staticDecls.append(self.alloc, @ptrCast(func));
+        }
+
+        if (opt_template) |template| {
+            if (template.type() == .specialization) {
+                template.cast(.specialization).decl = @ptrCast(decl);
+            } else {
+                template.cast(.template).decl = @ptrCast(decl);
             }
-            return func;
+            return template;
+        } else {
+            if (self.cur_indent == 0) {
+                try self.staticDecls.append(self.alloc, @ptrCast(decl));
+            }
+            return @ptrCast(decl);
         }
     }
 
@@ -1772,7 +1727,7 @@ pub const Parser = struct {
                 }
             },
             .at => {
-                return self.parseAtDecl(config.allow_decls, false);
+                return self.parseAtDecl(config.allow_decls);
             },
             .pound => {
                 self.advance();
@@ -1792,9 +1747,6 @@ pub const Parser = struct {
                     .pos = self.tokenSrcPos(start),
                 });
             },
-            .template_k => {
-                return @ptrCast(try self.parseTemplate(false, config.allow_decls));
-            },
             .minus => {
                 const next = self.peekAhead(1).tag();
                 switch (next) {
@@ -1804,19 +1756,15 @@ pub const Parser = struct {
                             .attrs = &.{},
                             .hidden = true,
                             .allow_decl = config.allow_decls,
-                        }, false);
+                        });
                     },
                     .func_k => {
                         self.advance();
-                        return @ptrCast(try self.parseFuncDecl(.{
+                        return self.parseFuncDecl(.{
                             .attrs = &.{},
                             .hidden = true,
                             .allow_decl = config.allow_decls,
-                        }, false));
-                    },
-                    .template_k => {
-                        self.advance();
-                        return @ptrCast(try self.parseTemplate(true, config.allow_decls));
+                        });
                     },
                     .let_k => {
                         self.advance();
@@ -1834,10 +1782,10 @@ pub const Parser = struct {
                     .attrs = &.{},
                     .hidden = false,
                     .allow_decl = config.allow_decls,
-                }, false);
+                });
             },
             .func_k => {
-                return @ptrCast(try self.parseFuncDecl(.{ .attrs = &.{}, .hidden = false, .allow_decl = config.allow_decls}, false));
+                return self.parseFuncDecl(.{ .attrs = &.{}, .hidden = false, .allow_decl = config.allow_decls});
             },
             .if_k => {
                 return try self.parseIfStatement();
@@ -1973,7 +1921,7 @@ pub const Parser = struct {
         });
     }
 
-    fn parseAtDecl(self: *Parser, allow_decls: bool, template: bool) !*ast.Node {
+    fn parseAtDecl(self: *Parser, allow_decls: bool) !*ast.Node {
         const attr: *ast.Node = @ptrCast(try self.parseAttr());
         self.consumeWhitespaceTokens();
 
@@ -1985,7 +1933,7 @@ pub const Parser = struct {
 
         const attrs: []*ast.Attribute = @ptrCast(try self.ast.dupeNodes(&.{attr}));
         if (self.peek().tag() == .func_k) {
-            return @ptrCast(try self.parseFuncDecl(.{ .hidden = hidden, .attrs = attrs, .allow_decl = allow_decls }, template));
+            return self.parseFuncDecl(.{ .hidden = hidden, .attrs = attrs, .allow_decl = allow_decls });
         } else if (self.peek().tag() == .var_k) {
             return try self.parseVarDecl(.{ .hidden = hidden, .attrs = attrs, .typed = true, .allow_static = allow_decls });
         } else if (self.peek().tag() == .let_k) {
@@ -1995,7 +1943,7 @@ pub const Parser = struct {
                 .attrs = attrs,
                 .hidden = hidden,
                 .allow_decl = allow_decls,
-            }, template);
+            });
         } else {
             return self.reportError("Expected declaration statement.", &.{});
         }
@@ -3624,7 +3572,7 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .left_brace, .left_bracket, .left_paren, .let_k,
         .minus_double_dot, .new_line, .none_k, .not_k, .object_k, .oct, .pass_k, .underscore, .pound, .question,
         .return_k, .right_brace, .right_bracket, .right_paren, .rune, .raw_string,
-        .string, .struct_k, .switch_k, .symbol_k, .templateExprStart, .templateString, .template_k,
+        .string, .struct_k, .switch_k, .symbol_k, .templateExprStart, .templateString,
         .throw_k, .tilde, .true_k, .try_k, .type_k, .use_k, .var_k, .void_k, .while_k => null,
     };
 }

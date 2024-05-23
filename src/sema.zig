@@ -1209,6 +1209,7 @@ fn resolveCustomType(c: *cy.Chunk, sym: *cy.sym.CustomType, decl: *ast.CustomDec
                 .out_type_id = null,
                 .get_children = null,
                 .finalizer = null,
+                .pre = false,
             },
         },
         .type = C.BindTypeCustom,
@@ -1222,12 +1223,13 @@ fn resolveCustomType(c: *cy.Chunk, sym: *cy.sym.CustomType, decl: *ast.CustomDec
 }
 
 fn resolveCustomType2(c: *cy.Chunk, custom_t: *cy.sym.CustomType,
-    get_children: C.GetChildrenFn, finalizer: C.FinalizerFn, opt_type: ?cy.TypeId) !void {
+    get_children: C.GetChildrenFn, finalizer: C.FinalizerFn, opt_type: ?cy.TypeId, pre: bool) !void {
     const typeid = opt_type orelse try c.sema.pushType();
     custom_t.type = typeid;
     c.compiler.sema.types.items[typeid] = .{
         .sym = @ptrCast(custom_t),
         .kind = .custom,
+        .custom_pre = pre,
         .data = .{ .custom = .{
             .getChildrenFn = get_children,
             .finalizerFn = finalizer,
@@ -1242,6 +1244,7 @@ fn resolveCustomTypeResult(c: *cy.Chunk, custom_t: *cy.sym.CustomType, host_t: C
                 host_t.data.core_custom.get_children,
                 host_t.data.core_custom.finalizer,
                 host_t.data.core_custom.type_id,
+                false,
             );
         },
         C.BindTypeCustom => {
@@ -1249,6 +1252,7 @@ fn resolveCustomTypeResult(c: *cy.Chunk, custom_t: *cy.sym.CustomType, host_t: C
                 host_t.data.custom.get_children,
                 host_t.data.custom.finalizer,
                 null,
+                host_t.data.custom.pre,
             );
             if (host_t.data.custom.out_type_id) |out_type_id| {
                 out_type_id.* = custom_t.type;

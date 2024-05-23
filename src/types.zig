@@ -36,6 +36,10 @@ pub const Type = extern struct {
     has_set_method: bool = false,
     has_init_pair_method: bool = false,
     cyclable: bool = true,
+
+    /// If `true`, invoke finalizer before releasing children.
+    custom_pre: bool = false,
+
     data: extern union {
         // This is duped from ObjectType so that object creation/destruction avoids the lookup from `sym`.
         object: extern struct {

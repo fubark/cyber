@@ -682,6 +682,7 @@ typedef struct TypeEntry {
     bool has_set_method;
     bool has_init_pair_method;
     bool cyclable;
+    bool custom_pre;
     union {
         struct {
             u16 numFields;

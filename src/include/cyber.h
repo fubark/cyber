@@ -228,6 +228,8 @@ typedef struct CLHostType {
             // This typeId is then used to allocate a new instance of the object.
             // Defaults to null.
             CLTypeId* out_type_id;
+            // If `true`, invokes finalizer before visiting children.
+            bool pre;
             // Pointer to callback or null.
             CLGetChildrenFn get_children;
             // Pointer to callback or null.
@@ -250,7 +252,8 @@ typedef struct CLHostType {
 // #define CL_CORE_TYPE(t) ((CLHostType){ .data = { .core_custom = { .type_id = t, .get_children = NULL, .finalizer = NULL }}, .type = CL_BIND_TYPE_CORE_CUSTOM })
 // #define CL_CORE_TYPE_EXT(t, gc, f) ((CLHostType){ .data = { .core_custom = { .type_id = t, .get_children = gc, .finalizer = f }}, .type = CL_BIND_TYPE_CORE_CUSTOM })
 // #define CL_CORE_TYPE_DECL(t) ((CLHostType){ .data = { .core_decl = { .type_id = t }}, .type = CL_BIND_TYPE_CORE_DECL })
-#define CL_CUSTOM_TYPE(name, ot, gc, f) ((CLHostTypeEntry){ CL_STR(name), (CLHostType){ .data = { .custom = { .out_type_id = ot, .get_children = gc, .finalizer = f }}, .type = CL_BIND_TYPE_CUSTOM }})
+#define CL_CUSTOM_TYPE(name, ot, gc, f) ((CLHostTypeEntry){ CL_STR(name), (CLHostType){ .data = { .custom = { .out_type_id = ot, .get_children = gc, .finalizer = f, .pre = false }}, .type = CL_BIND_TYPE_CUSTOM }})
+#define CL_CUSTOM_PRE_TYPE(name, ot, gc, f) ((CLHostTypeEntry){ CL_STR(name), (CLHostType){ .data = { .custom = { .out_type_id = ot, .get_children = gc, .finalizer = f, .pre = true }}, .type = CL_BIND_TYPE_CUSTOM }})
 
 // A mapping from a matching symbol string to a CLHostType.
 typedef struct CLHostTypeEntry {

@@ -142,6 +142,18 @@ pub inline fn CUSTOM_TYPE(out_type_id: ?*TypeId, get_children: GetChildrenFn, fi
             .out_type_id = out_type_id,
             .get_children = get_children,
             .finalizer = finalizer,
+            .pre = false,
+        }},
+    };
+}
+pub inline fn CUSTOM_PRE_TYPE(out_type_id: ?*TypeId, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
+    return HostType{
+        .type = c.CL_BIND_TYPE_CUSTOM,
+        .data = .{ .custom = .{
+            .out_type_id = out_type_id,
+            .get_children = get_children,
+            .finalizer = finalizer,
+            .pre = true,
         }},
     };
 }

@@ -284,7 +284,7 @@ pub const Compiler = struct {
         if (self.cont) {
             // Use all *resolved* top level syms from previous main.
             // If a symbol wasn't resolved, it either failed during compilation or didn't end up getting used.
-            var iter = self.main_chunk.sym.getMod().symMap.iterator();
+            var iter = prev_main.sym.getMod().symMap.iterator();
             while (iter.next()) |e| {
                 const name = e.key_ptr.*;
                 const sym = e.value_ptr.*;
@@ -1028,8 +1028,10 @@ fn resolveSyms(self: *Compiler) !void {
                 },
                 .use_alias => {
                     const use_alias = sym.cast(.use_alias);
-                    if (use_alias.decl.?.type() == .use_alias) {
-                        try sema.resolveUseAlias(chunk, @ptrCast(sym));
+                    if (!use_alias.resolved) {
+                        if (use_alias.decl.?.type() == .use_alias) {
+                            try sema.resolveUseAlias(chunk, @ptrCast(sym));
+                        }
                     }
                 },
                 .typeAlias => {

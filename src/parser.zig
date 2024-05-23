@@ -460,13 +460,15 @@ pub const Parser = struct {
         const stmts = try self.parseSingleOrIndentedBodyStmts();
         _ = self.popBlock();
 
-        return self.ast.newNode(.lambda_multi, .{
+        const lambda = try self.ast.newNode(.lambda_multi, .{
             .params = params,
             .sig_t = .func,
             .stmts = stmts,
             .pos = self.tokenSrcPos(start),
             .ret = ret,
         });
+        @as(*ast.Node, @ptrCast(lambda)).setBlockExpr(true);
+        return lambda;
     }
 
     fn parseParenAndFuncParams(self: *Parser) ![]*ast.FuncParam {
@@ -2211,7 +2213,7 @@ pub const Parser = struct {
         return self.parseExpr(.{});
     }
 
-    fn parseCallArgs(self: *Parser, hasNamedArg: *bool) ![]*ast.Node {
+    fn parseCallArgs(self: *Parser, hasNamedArg: *bool, allow_block_expr: bool) ![]*ast.Node {
         // Assume first token is left paren.
         self.advance();
 
@@ -2251,12 +2253,47 @@ pub const Parser = struct {
         }
         self.advance();
 
+        if (allow_block_expr) {
+            // Parse call block syntax.
+            const block_start = self.next_pos;
+            if (self.peek().tag() == .colon) {
+                self.advance();
+                const child_indent = try self.parseFirstChildIndent(self.cur_indent);
+                const prev_indent = self.pushIndent(child_indent);
+                defer self.cur_indent = prev_indent;
+
+                const stmt_start = self.node_stack.items.len;
+
+                while (true) {
+                    const stmt = try self.parseStatement(.{});
+                    try self.pushNode(stmt);
+
+                    const parse_indent_start = self.next_pos;
+                    if (!try self.consumeNextLineIndent(child_indent)) {
+                        self.next_pos = parse_indent_start;
+                        break;
+                    }
+                }
+
+                const stmts = try self.ast.dupeNodes(self.node_stack.items[stmt_start..]);
+                self.node_stack.items.len = stmt_start;
+
+                const lambda = try self.ast.newNodeErase(.lambda_multi, .{
+                    .sig_t = .infer,
+                    .stmts = stmts,
+                    .params = &.{},
+                    .pos = self.tokenSrcPos(block_start),
+                    .ret = null,
+                });
+                try self.pushNode(lambda);
+            }
+        }
         return self.ast.dupeNodes(self.node_stack.items[start..]);
     }
 
-    fn parseCallExpression(self: *Parser, callee: *ast.Node) !*ast.CallExpr {
+    fn parseCallExpression(self: *Parser, callee: *ast.Node, allow_block_expr: bool) !*ast.CallExpr {
         var hasNamedArg: bool = undefined;
-        const args = try self.parseCallArgs(&hasNamedArg);
+        const args = try self.parseCallArgs(&hasNamedArg, allow_block_expr);
         return self.ast.newNode(.callExpr, .{
             .callee = callee,
             .args = args,
@@ -2301,18 +2338,21 @@ pub const Parser = struct {
     }
 
     /// Parses the right expression of a BinaryExpression.
-    fn parseRightExpr(self: *Parser, left_op: cy.ast.BinaryExprOp) anyerror!*ast.Node {
+    fn parseRightExpr(self: *Parser, left_op: cy.ast.BinaryExprOp, allow_block_expr: bool) anyerror!*ast.Node {
         if (self.peek().tag() == .new_line) {
             self.advance();
             self.consumeWhitespaceTokens();
         }
-        const right = (try self.parseTermExpr()) orelse {
+        const right = (try self.parseTermExpr(.{ .allow_block_expr = allow_block_expr })) orelse {
             return self.reportError("Expected right operand.", &.{});
         };
-        return self.parseRightExpr2(left_op, right);
+        if (right.isBlockExpr()) {
+            return right;
+        }
+        return self.parseRightExpr2(left_op, right, allow_block_expr);
     }
 
-    fn parseRightExpr2(self: *Parser, left_op: cy.ast.BinaryExprOp, right_id: *ast.Node) anyerror!*ast.Node {
+    fn parseRightExpr2(self: *Parser, left_op: cy.ast.BinaryExprOp, right_id: *ast.Node, allow_block_expr: bool) anyerror!*ast.Node {
         // Check if next token is an operator with higher precedence.
         var token = self.peek();
 
@@ -2326,7 +2366,7 @@ pub const Parser = struct {
             // Continue parsing right.
             _ = self.consume();
             const start = self.next_pos;
-            const next_right = try self.parseRightExpr(rightOp);
+            const next_right = try self.parseRightExpr(rightOp, allow_block_expr);
 
             const binExpr = try self.ast.newNode(.binExpr, .{
                 .left = right_id,
@@ -2352,7 +2392,7 @@ pub const Parser = struct {
                 const right2_op_prec = getBinOpPrecedence(rightOp2);
                 if (right2_op_prec > op_prec) {
                     self.advance();
-                    const rightExpr = try self.parseRightExpr(rightOp);
+                    const rightExpr = try self.parseRightExpr(rightOp, allow_block_expr);
                     const newBinExpr = try self.ast.newNode(.binExpr, .{
                         .left = left,
                         .right = rightExpr,
@@ -2574,7 +2614,7 @@ pub const Parser = struct {
                     });
                 },
                 .left_paren => {
-                    left = @ptrCast(try self.parseCallExpression(left));
+                    left = @ptrCast(try self.parseCallExpression(left, config.allow_block_expr));
                 },
                 .minus_double_dot,
                 .dot_dot,
@@ -2854,11 +2894,14 @@ pub const Parser = struct {
             self.consumeWhitespaceTokens();
         }
         const start = self.next_pos;
-        const left = (try self.parseExprLeft()) orelse return null;
+        const left = (try self.parseTermExpr(.{ .allow_block_expr = config.allow_block_expr })) orelse return null;
+        if (left.isBlockExpr()) {
+            return left;
+        }
         return try self.parseExprWithLeft(start, left, config);
     }
 
-    fn parseTermExpr(self: *Parser) !?*ast.Node {
+    fn parseTermExpr(self: *Parser, config: ParseTermConfig) !?*ast.Node {
         const start = self.next_pos;
         switch (self.peek().tag()) {
             .null => return null,
@@ -3021,7 +3064,7 @@ pub const Parser = struct {
             },
             else => {}
         }
-        return try self.parseTermExpr2(.{});
+        return try self.parseTermExpr2(config);
     }
 
     fn parseExprWithLeft(self: *Parser, start: u32, left_: *ast.Node, config: ParseExprConfig) !*ast.Node {
@@ -3051,7 +3094,7 @@ pub const Parser = struct {
                     const bin_op = toBinExprOp(next.tag()).?;
                     const op_start = self.next_pos;
                     self.advance();
-                    const right = try self.parseRightExpr(bin_op);
+                    const right = try self.parseRightExpr(bin_op, config.allow_block_expr);
                     left = try self.ast.newNodeErase(.binExpr, .{
                         .left = left,
                         .right = right,
@@ -3077,7 +3120,7 @@ pub const Parser = struct {
                     const bin_op = toBinExprOp(next.tag()).?;
                     const op_start = self.next_pos;
                     self.advance();
-                    const right = try self.parseRightExpr(bin_op);
+                    const right = try self.parseRightExpr(bin_op, config.allow_block_expr);
                     left = try self.ast.newNodeErase(.binExpr, .{
                         .left = left,
                         .right = right,
@@ -3088,7 +3131,7 @@ pub const Parser = struct {
                 .minus_double_dot => {
                     self.advance();
                     const end: ?*ast.Node = if (try self.parseTermExpr2Opt(.{})) |right| b: {
-                        break :b try self.parseRightExpr2(.reverse_range, right);
+                        break :b try self.parseRightExpr2(.reverse_range, right, config.allow_block_expr);
                     } else null;
                     left = try self.ast.newNodeErase(.range, .{
                         .start = left,
@@ -3100,7 +3143,7 @@ pub const Parser = struct {
                 .dot_dot => {
                     self.advance();
                     const end: ?*ast.Node = if (try self.parseTermExpr2Opt(.{})) |right| b: {
-                        break :b try self.parseRightExpr2(.range, right);
+                        break :b try self.parseRightExpr2(.range, right, config.allow_block_expr);
                     } else null;
                     left = try self.ast.newNodeErase(.range, .{
                         .start = left,
@@ -3319,7 +3362,7 @@ pub const Parser = struct {
             self.advance();
 
             // Continue parsing right expr.
-            right = try self.parseExpr(.{});
+            right = try self.parseExpr(.{ .allow_block_expr = true });
         }
 
         if (is_static) {
@@ -3412,7 +3455,7 @@ pub const Parser = struct {
         }
 
         // Right can be an expr or stmt.
-        const right = (try self.parseExpr(.{})) orelse {
+        const right = (try self.parseExpr(.{ .allow_block_expr = true })) orelse {
             return self.reportError("Expected right expression for assignment statement.", &.{});
         };
 
@@ -3675,10 +3718,12 @@ pub fn logSrcPos(src: []const u8, start: u32, len: u32) void {
 
 const ParseExprConfig = struct {
     parseShorthandCallExpr: bool = true,
+    allow_block_expr: bool = false,
 };
 
 const ParseTermConfig = struct {
     parse_record_expr: bool = true,
+    allow_block_expr: bool = false,
 };
 
 fn isRecordKeyNodeType(node_t: ast.NodeType) bool {

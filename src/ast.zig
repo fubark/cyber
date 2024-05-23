@@ -5,7 +5,7 @@ const t = stdx.testing;
 const cy = @import("cyber.zig");
 const log = cy.log.scoped(.ast);
 
-pub const NodeType = enum(u8) {
+pub const NodeType = enum(u7) {
     // To allow non optional nodes.
     // Can be used to simplify code by accepting *Node only instead of ?*Node.
     null,
@@ -614,15 +614,28 @@ fn NodeData(comptime node_t: NodeType) type {
     };
 }
 
+const NodeHeader = packed struct {
+    type: NodeType,
+    is_block_expr: bool,
+};
+
 pub const Node = struct {
     dummy: u8 align(8) = undefined,
 
     pub fn @"type"(self: *Node) NodeType {
-        return @as(*NodeType, @ptrFromInt(@intFromPtr(self) - 1)).*;
+        return @as(*NodeHeader, @ptrFromInt(@intFromPtr(self) - 1)).*.type;
     }
 
     pub fn setType(self: *Node, node_t: NodeType) void {
-        @as(*NodeType, @ptrFromInt(@intFromPtr(self) - 1)).* = node_t;
+        @as(*NodeHeader, @ptrFromInt(@intFromPtr(self) - 1)).*.type = node_t;
+    }
+
+    pub fn isBlockExpr(self: *Node) bool {
+        return @as(*NodeHeader, @ptrFromInt(@intFromPtr(self) - 1)).*.is_block_expr;
+    }
+
+    pub fn setBlockExpr(self: *Node, is_block_expr: bool) void {
+        @as(*NodeHeader, @ptrFromInt(@intFromPtr(self) - 1)).*.is_block_expr = is_block_expr;
     }
 
     pub fn cast(self: *Node, comptime node_t: NodeType) *NodeData(node_t) {
@@ -797,6 +810,8 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
+    try t.eq(std.enums.values(NodeType).len, 91);
+    try t.eq(@sizeOf(NodeHeader), 1);
 }
 
 pub const Ast = struct {

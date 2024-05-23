@@ -1804,18 +1804,26 @@ r = foo()         -- Calls the function `random`.
 ```
 
 ### Call block syntax.
-The call expression block continues to add arguments from the block's body. If arguments are omitted from the initial call expression they can be added inside using the `..` syntax. Arguments mapped to named parameters have a key value syntax separated by a `:`. All other arguments are added into a list and passed as the last argument.
-> _Planned Feature_
+The call block appends a lambda to a call expression's arguments:
 ```cy
-foo(123):
-    ..func ():
-        return 123
-    param3: 123
-    234
-    bar()
-    'hello'
+func Button(name String, size int, on_click any):
+    return {
+        name: name,
+        size: size,
+        on_click: on_click,
+    }
+
+Button('Count', 10):
+    print 'on click'
 ```
-In the example above, the function `foo` is called with 4 arguments. The first argument `123` is included in the starting call expression. The second argument is a function value inside the call expression block. The third argument is mapped to the param `param3`. Finally, the fourth argument is a list that contains `234`, `bar()`, and `'hello'`. 
+
+If arguments are omitted from the call expression they can be appended inside the call block using named arguments: *Planned Feature*
+```cy
+Button('Count'):
+    .size = 10
+    print 'on click'
+```
+Arguments assigned in the call block can be unordered.
 
 ## Generic functions.
 Templates are used to specialize function declarations. Since template parameters only exist at compile-time, the `#` prefix is used to reference them in the function declaration:

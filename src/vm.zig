@@ -1219,21 +1219,6 @@ pub const VM = struct {
         }
     }
 
-    pub fn getField2(self: *VM, recv: Value, symId: SymbolId) !Value {
-        if (recv.isPointer()) {
-            const obj = recv.asHeapObject();
-            const offset = self.getFieldOffset(obj, symId);
-            if (offset != cy.NullU8) {
-                return obj.object.getValue(offset);
-            } else {
-                const sym = self.c.fieldSyms.buf[symId];
-                return self.getFieldFallback(obj, sym.nameId);
-            }
-        } else {
-            return self.getFieldMissingSymbolError();
-        }
-    }
-
     pub fn getField(self: *VM, recv: Value, symId: SymbolId) !Value {
         if (recv.isPointer()) {
             const obj = recv.asHeapObject();
@@ -1247,6 +1232,16 @@ pub const VM = struct {
         } else {
             return self.getFieldMissingSymbolError();
         }
+    }
+
+    /// Does not invoke `getFieldFallback`.
+    pub fn getObjectField(self: *VM, obj: *cy.heap.Object, field: []const u8) !Value {
+        const field_id = try self.ensureFieldSym(field);
+        const offset = self.getFieldOffset(@ptrCast(obj), field_id);
+        if (offset == cy.NullU8) {
+            return error.MissingField;
+        }
+        return obj.getValue(offset);
     }
 
     fn setFieldFallback(self: *VM, obj: *HeapObject, nameId: vmc.NameId, val: cy.Value) !void {

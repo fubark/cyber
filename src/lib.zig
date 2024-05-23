@@ -102,7 +102,7 @@ export fn clReset(vm: *cy.VM) void {
 }
 
 export fn clEval(vm: *cy.VM, src: c.Str, outVal: *cy.Value) c.ResultCode {
-    const uri: []const u8 = "main";
+    const uri: []const u8 = "eval";
     return clEvalExt(vm, c.toStr(uri), src, c.defaultEvalConfig(), outVal);
 }
 

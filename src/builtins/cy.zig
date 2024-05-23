@@ -12,11 +12,19 @@ const zErrFunc = cy.builtins.zErrFunc;
 
 pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
     const core_data = vm.getData(*cy.builtins.CoreData, "core");
-    _ = core_data;
     const mod = C.createModule(@ptrCast(vm), C.toStr(r_uri), C.toStr(Src));
+
+    const htype = C.hostTypeEntry;
+    const types = [_]C.HostTypeEntry{
+        htype("EvalConfig", C.DECL_TYPE(&core_data.EvalConfigT)),
+        htype("EvalResult", C.DECL_TYPE(&core_data.EvalResultT)),
+        htype("Value",      C.CUSTOM_PRE_TYPE(&core_data.ValueT, UserValue_getChildren, UserValue_finalizer)),
+        htype("VM",         C.CUSTOM_TYPE(&core_data.VMT,    null, UserVM_finalizer)),
+    };
 
     var config = C.ModuleConfig{
         .funcs = C.toSlice(C.HostFuncEntry, &funcs),
+        .types = C.toSlice(C.HostTypeEntry, &types),
     };
     C.setModuleConfig(@ptrCast(vm), mod, &config);
     return mod;
@@ -24,12 +32,155 @@ pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
 
 const func = cy.hostFuncEntry;
 const funcs = [_]C.HostFuncEntry{
-    func("eval",           zErrFunc(eval)),
-    func("parse",          zErrFunc(parse)),
-    func("parseCyon",      zErrFunc(parseCyon)),
-    func("repl",           zErrFunc(repl)),
-    func("toCyon",         zErrFunc(toCyon)),
+    func("parse",              zErrFunc(parse)),
+    func("parseCyon",          zErrFunc(parseCyon)),
+    func("repl",               zErrFunc(repl)),
+    func("toCyon",             zErrFunc(toCyon)), 
+
+    func("Value.toHost",       zErrFunc(UserValue_toHost)), 
+
+    func("VM.eval",            zErrFunc(UserVM_eval)),
+    func("VM.eval2",           zErrFunc(UserVM_evalExt)),
+    func("VM.getErrorSummary", zErrFunc(UserVM_getErrorSummary)),
+    func("VM.getPanicSummary", zErrFunc(UserVM_getPanicSummary)),
+    func("VM.new",             zErrFunc(UserVM_new)),
 };
+
+const UserVM = struct {
+    vm: *cy.VM,
+};
+
+pub fn UserVM_new(vm: *cy.VM, _: [*]const cy.Value, _: u8) anyerror!cy.Value {
+    const core_data = vm.getData(*cy.builtins.CoreData, "core");
+
+    // Create an isolated VM.
+    const new: *cy.VM = @ptrCast(@alignCast(C.create()));
+
+    // Use the same printers as the parent VM.
+    C.setPrinter(@ptrCast(new), C.getPrinter(@ptrCast(vm)));
+    C.setErrorPrinter(@ptrCast(new), C.getErrorPrinter(@ptrCast(vm)));
+
+    const uvm: *UserVM = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.VMT, @sizeOf(UserVM))));
+    uvm.* = .{
+        .vm = new,
+    };
+    return cy.Value.initHostNoCycPtr(uvm);
+}
+
+pub fn UserVM_getErrorSummary(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
+    const uvm = args[0].castHostObject(*UserVM);
+    const summary = C.newErrorReportSummary(@ptrCast(uvm.vm));
+    defer C.free(@ptrCast(uvm.vm), summary);
+    return vm.allocString(C.fromStr(summary));
+}
+
+pub fn UserVM_getPanicSummary(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
+    const uvm = args[0].castHostObject(*UserVM);
+    const summary = C.newPanicSummary(@ptrCast(uvm.vm));
+    defer C.free(@ptrCast(uvm.vm), summary);
+    return vm.allocString(C.fromStr(summary));
+}
+
+pub fn UserValue_toHost(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
+    const uval = args[0].castHostObject(*UserValue);
+    const val: cy.Value = @bitCast(uval.val);
+    switch (val.getTypeId()) {
+        bt.Void => return cy.Value.False,
+        bt.Integer,
+        bt.Float,
+        bt.Boolean => {
+            return val;
+        },
+        bt.String => {
+            return vm.allocString(val.asString());
+        },
+        else => {
+            return error.InvalidResult;
+        }
+    }
+}
+
+pub fn UserVM_eval(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
+    const core_data = vm.getData(*cy.builtins.CoreData, "core");
+    const uvm = args[0].castHostObject(*UserVM);
+    const src = args[1].asString();
+
+    var res: C.Value = @bitCast(cy.Value.Void);
+    const code = C.eval(@ptrCast(uvm.vm), C.toStr(src), &res);
+
+    const value: *UserValue = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.ValueT, @sizeOf(UserValue))));
+    vm.retain(args[0]);
+    value.vm = args[0];
+    value.val = @bitCast(res);
+
+    const eval_res: *EvalResult = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.EvalResultT, @sizeOf(EvalResult))));
+    eval_res.* = .{
+        .code = cy.Value.initInt(@intCast(code)),
+        .value = cy.Value.initHostNoCycPtr(value),
+    };
+    return cy.Value.initHostNoCycPtr(eval_res);
+}
+
+pub fn UserVM_evalExt(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
+    const core_data = vm.getData(*cy.builtins.CoreData, "core");
+    const uvm = args[0].castHostObject(*UserVM);
+    const uri = args[1].asString();
+    const src = args[2].asString();
+    const config = &args[3].asHeapObject().object;
+
+    const config_c = C.EvalConfig{
+        .single_run = (try vm.getObjectField(config, "single_run")).asBool(),
+        .file_modules = (try vm.getObjectField(config, "file_modules")).asBool(),
+        .gen_all_debug_syms = (try vm.getObjectField(config, "gen_all_debug_syms")).asBool(),
+        .backend = (try vm.getObjectField(config, "backend")).getEnumValue(),
+        .reload = (try vm.getObjectField(config, "reload")).asBool(),
+        .spawn_exe = (try vm.getObjectField(config, "spawn_exe")).asBool(),
+    };
+
+    var res: C.Value = @bitCast(cy.Value.Void);
+    const code = C.evalExt(@ptrCast(uvm.vm), C.toStr(uri), C.toStr(src), config_c, &res);
+
+    const value: *UserValue = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.ValueT, @sizeOf(UserValue))));
+    vm.retain(args[0]);
+    value.vm = args[0];
+    value.val = @bitCast(res);
+
+    const eval_res: *EvalResult = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.EvalResultT, @sizeOf(EvalResult))));
+    eval_res.* = .{
+        .code = cy.Value.initInt(@intCast(code)),
+        .value = cy.Value.initHostNoCycPtr(value),
+    };
+    return cy.Value.initHostNoCycPtr(eval_res);
+}
+
+pub fn UserVM_finalizer(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) void {
+    const uvm: *UserVM = @ptrCast(@alignCast(obj));
+    C.destroy(@ptrCast(uvm.vm));
+}
+
+const UserValue = extern struct {
+    vm: cy.Value,
+    val: u64, 
+};
+
+const EvalResult = extern struct {
+    code: cy.Value,
+    value: cy.Value,
+};
+
+pub fn UserValue_getChildren(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) C.ValueSlice {
+    const value: *UserValue = @ptrCast(@alignCast(obj));
+    return .{
+        .ptr = @ptrCast(&value.vm),
+        .len = 1,
+    };
+}
+
+pub fn UserValue_finalizer(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) void {
+    const value: *UserValue = @ptrCast(@alignCast(obj));
+    const ivm = value.vm.castHostObject(*UserVM);
+    ivm.vm.release(@bitCast(value.val));
+}
 
 pub fn parse(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
     const src = args[0].asString();
@@ -567,61 +718,6 @@ pub fn repl2(vm: *cy.VM, config: C.EvalConfig, read_line: IReplReadLine) !void {
                 defer C.free(@ptrCast(vm), str);
                 rt.printZFmt(vm, "{s}\n", .{C.fromStr(str)});
             }
-        }
-    }
-}
-
-fn eval(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
-    // Create an isolated VM.
-    const ivm: *cy.VM = @ptrCast(@alignCast(C.create()));
-    defer C.destroy(@ptrCast(ivm));
-
-    // Use the same printers as the parent VM.
-    C.setPrinter(@ptrCast(ivm), C.getPrinter(@ptrCast(vm)));
-    C.setErrorPrinter(@ptrCast(ivm), C.getErrorPrinter(@ptrCast(vm)));
-
-    var config = C.defaultEvalConfig();
-    config.single_run = false;
-    config.file_modules = false;
-    config.reload = false;
-    config.backend = C.BackendVM;
-    config.spawn_exe = false;
-
-    const src = args[0].asString();
-    var val: cy.Value = undefined;
-    const res = C.evalExt(@ptrCast(ivm), C.toStr("eval"), C.toStr(src), config, @ptrCast(&val));
-    if (res != C.Success) {
-        switch (res) {
-            C.ErrorCompile => {
-                const report = C.newErrorReportSummary(@ptrCast(ivm));
-                defer C.free(@ptrCast(ivm), report);
-                rt.err(vm, C.fromStr(report));
-            },
-            C.ErrorPanic => {
-                const report = C.newPanicSummary(@ptrCast(ivm));
-                defer C.free(@ptrCast(ivm), report);
-                rt.err(vm, C.fromStr(report));
-            },
-            else => {
-                rt.err(vm, "unknown error\n");
-            },
-        }
-        return error.EvalError;
-    }
-
-    switch (val.getTypeId()) {
-        bt.Boolean,
-        bt.Integer,
-        bt.Float => {
-            return val;
-        },
-        bt.String => {
-            defer ivm.release(val);
-            return vm.allocString(val.asString());
-        },
-        else => {
-            defer ivm.release(val);
-            return error.InvalidResult;
         }
     }
 }

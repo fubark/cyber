@@ -36,7 +36,7 @@ func repl(read_line any) void:
     var ctx = ReplContext.new()
     ctx.printIntro()
     try:
-        while ctx.read(read_line) -> code:
+        while ctx.read(read_line, false) -> code:
             ctx.evalPrint(code)
     catch e:
         if e != error.EndOfStream:
@@ -92,10 +92,15 @@ type ReplContext:
         print "$(#build_full_version) REPL"
         print "Commands: .exit"
 
-    func read(read_line any) ?String:
+    func read(read_line any, async bool) ?String:
         while:
             var prefix = self.getPrefix()
-            var input = read_line(prefix) as String
+            var input = ''
+            if async:
+                var f = read_line(prefix) as Future[any]
+                input = (await f) as String
+            else:
+                input = read_line(prefix) as String
 
             if input == '.exit':
                 return none

@@ -59,6 +59,7 @@ pub const listInsert = c.clListInsert;
 pub const asFloat = c.clAsFloat;
 pub const float = c.clFloat;
 pub const getTypeId = c.clGetTypeId;
+pub const isFuture = c.clIsFuture;
 pub const newValueDump = c.clNewValueDump;
 pub const newFunc = c.clNewFunc;
 pub const newPointer = c.clNewPointer;

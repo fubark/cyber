@@ -24,7 +24,15 @@ pub const TypeKind = enum(u8) {
     choice,
     @"struct",
     option,
-    future,
+};
+
+pub const TypeInfo = packed struct {
+    is_future: bool = false,
+
+    /// If `true`, invoke finalizer before releasing children.
+    custom_pre: bool = false,
+
+    padding: u6 = undefined,
 };
 
 pub const Type = extern struct {
@@ -37,8 +45,7 @@ pub const Type = extern struct {
     has_init_pair_method: bool = false,
     cyclable: bool = true,
 
-    /// If `true`, invoke finalizer before releasing children.
-    custom_pre: bool = false,
+    info: TypeInfo,
 
     data: extern union {
         // This is duped from ObjectType so that object creation/destruction avoids the lookup from `sym`.
@@ -163,6 +170,7 @@ pub const SemaExt = struct {
             .sym = undefined,
             .kind = .null,
             .data = undefined,
+            .info = .{},
         });
         return @intCast(typeId);
     }

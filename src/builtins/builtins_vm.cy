@@ -448,6 +448,11 @@ func Future.complete[](val T) Future[T]:
     
 @host -func Future.complete_[](val T, ret_type int) Future[T]
 
+func Future.new[]() Future[T]:
+    return Future.new_[T]((Future[T]).id())
+
+@host -func Future.new_[](ret_type int) Future[T]
+
 @host type FutureResolver[T type] _:
     @host func complete(val T) void
     @host func future() Future[T]

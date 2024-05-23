@@ -454,7 +454,7 @@ void clDeclareDynVar(CLSym mod, const char* name, CLTypeId type, CLValue val);
 void clDeclareVar(CLSym mod, const char* name, CLTypeId type, CLValue val);
 
 // Expand type template for given arguments.
-CLTypeId clExpandTemplateType(CLSym type_t, CLValue* args, uint32_t nargs);
+CLTypeId clExpandTemplateType(CLSym type_t, const CLValue* args, uint32_t nargs);
 
 // -----------------------------------
 // [ Memory ]
@@ -557,6 +557,7 @@ CLValue clNewVmObject(CLVM* vm, CLTypeId typeId);
 
 // Values.
 CLTypeId clGetTypeId(CLValue val);
+bool clIsFuture(CLVM* vm, CLValue val);
 CLStr clNewValueDump(CLVM* vm, CLValue val);
 
 // Values to C.

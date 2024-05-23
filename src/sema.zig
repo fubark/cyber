@@ -1229,7 +1229,9 @@ fn resolveCustomType2(c: *cy.Chunk, custom_t: *cy.sym.CustomType,
     c.compiler.sema.types.items[typeid] = .{
         .sym = @ptrCast(custom_t),
         .kind = .custom,
-        .custom_pre = pre,
+        .info = .{
+            .custom_pre = pre,
+        },
         .data = .{ .custom = .{
             .getChildrenFn = get_children,
             .finalizerFn = finalizer,
@@ -1538,6 +1540,9 @@ pub fn reserveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, opt_head
 
             const header_decl = opt_header_decl orelse template.child_decl;
             try resolveCustomType(tchunk, custom_t, header_decl.cast(.custom_decl));
+            if (template == c.sema.future_tmpl) {
+                c.sema.types.items[custom_t.type].info.is_future = true;
+            }
 
             return @ptrCast(custom_t);
         },
@@ -1721,6 +1726,7 @@ pub fn resolveObjectTypeId2(c: *cy.Chunk, object_t: *cy.sym.ObjectType, opt_type
         .data = .{ .object = .{
             .numFields = cy.NullU16,
         }},
+        .info = .{},
     };
 }
 
@@ -1836,6 +1842,7 @@ pub fn resolveDistinctTypeId(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType, opt
         .sym = @ptrCast(distinct_t),
         .kind = .null,
         .data = undefined,
+        .info = .{},
     };
 }
 
@@ -1848,6 +1855,7 @@ pub fn resolveStructTypeId(c: *cy.Chunk, struct_t: *cy.sym.ObjectType, opt_type:
         .data = .{ .@"struct" = .{
             .numFields = cy.NullU16,
         }},
+        .info = .{},
     };
 }
 

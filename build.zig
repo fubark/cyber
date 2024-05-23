@@ -162,6 +162,7 @@ pub fn build(b: *std.Build) !void {
         });
         lib.entry = .disabled;
         if (optimize != .Debug) {
+            // Disable to see better symbols when debugging wasm.
             lib.root_module.strip = true;
         }
         lib.addIncludePath(.{. path = thisDir() ++ "/src" });

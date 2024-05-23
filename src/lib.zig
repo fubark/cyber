@@ -749,6 +749,10 @@ test "clGetTypeId()" {
     try t.eq(c.getTypeId(c.float(123)), bt.Float);
 }
 
+export fn clIsFuture(vm: *cy.VM, val: Value) bool {
+    return vm.c.types[val.getTypeId()].info.is_future;
+}
+
 export fn clNewValueDump(vm: *cy.VM, val: Value) c.Str {
     var buf: std.ArrayListUnmanaged(u8) = .{};
     const w = buf.writer(vm.alloc);

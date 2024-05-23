@@ -2993,7 +2993,7 @@ pub fn zAllocStringTemplate2(vm: *cy.VM, strs: [*]cy.Value, strCount: u8, vals: 
     };
 }
 
-fn zDumpValue(vm: *VM, val: Value) callconv(.C) void {
+pub fn zDumpValue(vm: *VM, val: Value) callconv(.C) void {
     var buf: [1024]u8 = undefined;
     var fbuf = std.io.fixedBufferStream(&buf);
     cy.debug.dumpValue(vm, fbuf.writer(), val, .{}) catch cy.fatal();

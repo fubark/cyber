@@ -200,7 +200,8 @@ const funcs = [_]C.HostFuncEntry{
     func("metatype.id",        metatypeId),
 
     // Future
-    func("Future.complete_",   zErrFunc(futureComplete)),
+    func("Future.complete_",   zErrFunc(Future_complete)),
+    func("Future.new_",        zErrFunc(Future_new)),
 
     // FutureResolver
     func("FutureResolver.complete", zErrFunc(futureResolverComplete)),
@@ -283,36 +284,36 @@ fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
 
     const int_t = C.newType(vm_, bt.Integer);
     defer C.release(vm_, int_t);
-    OptionInt = C.expandTemplateType(option_tmpl, @constCast(&[_]C.Value{ int_t }), 1);
+    OptionInt = C.expandTemplateType(option_tmpl, &int_t, 1);
 
     const any_t = C.newType(vm_, bt.Any);
     defer C.release(vm_, any_t);
-    OptionAny = C.expandTemplateType(option_tmpl, @constCast(&[_]C.Value{ any_t }), 1);
+    OptionAny = C.expandTemplateType(option_tmpl, &any_t, 1);
 
     const tuple_t = C.newType(vm_, bt.Tuple);
     defer C.release(vm_, tuple_t);
-    OptionTuple = C.expandTemplateType(option_tmpl, @constCast(&[_]C.Value{ tuple_t }), 1);
+    OptionTuple = C.expandTemplateType(option_tmpl, &tuple_t, 1);
 
     const map_t = C.newType(vm_, bt.Map);
     defer C.release(vm_, map_t);
-    OptionMap = C.expandTemplateType(option_tmpl, @constCast(&[_]C.Value{ map_t }), 1);
+    OptionMap = C.expandTemplateType(option_tmpl, &map_t, 1);
 
     const array_t = C.newType(vm_, bt.Array);
     defer C.release(vm_, array_t);
-    OptionArray = C.expandTemplateType(option_tmpl, @constCast(&[_]C.Value{ array_t }), 1);
+    OptionArray = C.expandTemplateType(option_tmpl, &array_t, 1);
 
     const string_t = C.newType(vm_, bt.String);
     defer C.release(vm_, string_t);
-    OptionString = C.expandTemplateType(option_tmpl, @constCast(&[_]C.Value{ string_t }), 1);
+    OptionString = C.expandTemplateType(option_tmpl, &string_t, 1);
 
     const list_tmpl = chunk_sym.getMod().getSym("List").?.toC();
 
     const dynamic_t = C.newType(vm_, bt.Dyn);
     defer C.release(vm_, dynamic_t);
-    _ = C.expandTemplateType(list_tmpl, @constCast(&[_]C.Value{ dynamic_t }), 1);
+    _ = C.expandTemplateType(list_tmpl, &dynamic_t, 1);
 
     const list_iter_tmpl = chunk_sym.getMod().getSym("ListIterator").?.toC();
-    _ = C.expandTemplateType(list_iter_tmpl, @constCast(&[_]C.Value{ dynamic_t }), 1);
+    _ = C.expandTemplateType(list_iter_tmpl, &dynamic_t, 1);
 
     // Verify all core types have been initialized.
     if (cy.Trace) {
@@ -624,21 +625,26 @@ pub fn futureResolverGetChildren(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) C.Val
     };
 }
 
+/// Assumes `val` retained +1.
+pub fn completeFuture(vm: *cy.VM, future: *cy.heap.Future, val: cy.Value) !void {
+    future.val = val;
+    future.completed = true;
+
+    // Copy continuations to the ready queue.
+    var opt_node = future.cont_head;
+    while (opt_node) |node| {
+        try vm.ready_tasks.writeItem(node.task);
+        opt_node = node.next;
+        vm.alloc.destroy(node);
+    }
+}
+
 pub fn futureResolverComplete(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const resolver = args[0].castHostObject(*cy.heap.FutureResolver);
     const future = resolver.future.castHostObject(*cy.heap.Future);
     if (!future.completed) {
         vm.retain(args[1]);
-        future.val = args[1];
-        future.completed = true;
-
-        // Copy continuations to the ready queue.
-        var opt_node = future.cont_head;
-        while (opt_node) |node| {
-            try vm.ready_tasks.writeItem(node.task);
-            opt_node = node.next;
-            vm.alloc.destroy(node);
-        }
+        try completeFuture(vm, future, args[1]);
     } 
     return cy.Value.Void;
 }
@@ -1048,7 +1054,12 @@ fn fiberStatus(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     }
 }
 
-fn futureComplete(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+fn Future_new(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const type_id: cy.TypeId = @intCast(args[0].asInteger());
+    return vm.allocFuture(type_id);
+}
+
+fn Future_complete(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     const type_id: cy.TypeId = @intCast(args[1].asInteger());
     const future = try vm.allocFuture(type_id);
     vm.retain(args[0]);

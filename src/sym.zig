@@ -1012,6 +1012,7 @@ pub const ChunkExt = struct {
             .sym = @ptrCast(sym),
             .kind = .float,
             .data = undefined,
+            .info = .{},
         };
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
@@ -1030,6 +1031,7 @@ pub const ChunkExt = struct {
             .sym = @ptrCast(sym),
             .kind = .int,
             .data = undefined,
+            .info = .{},
         };
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
@@ -1047,6 +1049,7 @@ pub const ChunkExt = struct {
             .sym = @ptrCast(sym),
             .kind = .bool,
             .data = undefined,
+            .info = .{},
         };
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
@@ -1202,6 +1205,7 @@ pub const ChunkExt = struct {
             .data = .{ .@"struct" = .{
                 .numFields = cy.NullU16,
             }},
+            .info = .{},
         };
 
         try c.syms.append(c.alloc, @ptrCast(sym));
@@ -1232,6 +1236,7 @@ pub const ChunkExt = struct {
             .data = .{ .object = .{
                 .numFields = cy.NullU16,
             }},
+            .info = .{},
         };
 
         try c.syms.append(c.alloc, @ptrCast(sym));
@@ -1299,6 +1304,7 @@ pub const ChunkExt = struct {
         c.compiler.sema.types.items[typeId] = .{
             .sym = @ptrCast(sym),
             .kind = if (isChoiceType) .choice else .@"enum",
+            .info = .{},
             .data = undefined,
         };
         try c.syms.append(c.alloc, @ptrCast(sym));

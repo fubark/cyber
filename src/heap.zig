@@ -2222,7 +2222,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                 },
                 .custom => {
                     if (releaseChildren) {
-                        if (entry.custom_pre) {
+                        if (entry.info.custom_pre) {
                             if (entry.data.custom.finalizerFn) |finalizer| {
                                 finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
                             }
@@ -2238,7 +2238,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                         }
                     }
                     if (free) {
-                        if (!entry.custom_pre) {
+                        if (!entry.info.custom_pre) {
                             if (entry.data.custom.finalizerFn) |finalizer| {
                                 finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
                             }

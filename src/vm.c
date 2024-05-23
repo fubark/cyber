@@ -9,6 +9,8 @@
 
 #define STATIC_ASSERT(cond, msg) typedef char static_assertion_##msg[(cond)?1:-1]
 
+#define TRACEV_IF(cond, msg, ...) \
+    do { if (TRACE && clVerbose && cond) zLog(msg, (FmtValue[]){__VA_ARGS__}, sizeof((FmtValue[]){__VA_ARGS__})/sizeof(FmtValue)); } while (false)
 #define TRACEV(msg, ...) \
     do { if (TRACE && clVerbose) zLog(msg, (FmtValue[]){__VA_ARGS__}, sizeof((FmtValue[]){__VA_ARGS__})/sizeof(FmtValue)); } while (false)
 #define LTRACE(msg, ...) \
@@ -49,7 +51,7 @@ static inline void release(VM* vm, Value val) {
 #endif
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
-        TRACEV("arc | {} -1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_PTR(obj));
+        TRACEV_IF(LOG_MEM, "arc | {} -1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_PTR(obj));
 #if TRACE
         zCheckDoubleFree(vm, obj);
 #endif
@@ -75,7 +77,7 @@ static inline void release(VM* vm, Value val) {
 }
 
 static inline void releaseObject(VM* vm, HeapObject* obj) {
-    TRACEV("arc | {} -1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_PTR(obj));
+    TRACEV_IF(LOG_MEM, "arc | {} -1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_PTR(obj));
 #if (TRACE)
     zCheckDoubleFree(vm, obj);
 #endif
@@ -99,7 +101,7 @@ static inline void releaseObject(VM* vm, HeapObject* obj) {
 }
 
 static inline void retainObject(VM* vm, HeapObject* obj) {
-    TRACEV("arc | {} +1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_PTR(obj));
+    TRACEV_IF(LOG_MEM, "arc | {} +1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_PTR(obj));
     obj->head.rc += 1;
 #if TRACE
     zCheckRetainDanglingPointer(vm, obj);
@@ -119,7 +121,7 @@ static inline void retain(VM* vm, Value val) {
 #endif
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
-        TRACEV("arc | {} +1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_PTR(obj));
+        TRACEV_IF(LOG_MEM, "arc | {} +1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_PTR(obj));
         obj->head.rc += 1;
 #if TRACE
         zCheckRetainDanglingPointer(vm, obj);

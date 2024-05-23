@@ -113,9 +113,6 @@ pub const DecodeTableIR = cyon.DecodeTableIR;
 pub const DecodeListIR = cyon.DecodeListIR;
 pub const DecodeValueIR = cyon.DecodeValueIR;
 
-/// Whether to print verbose logs.
-pub var logMemory = false;
-
 pub const simd = @import("simd.zig");
 
 pub const isFreestanding = builtin.os.tag == .freestanding;

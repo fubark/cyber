@@ -337,7 +337,7 @@ pub const VM = struct {
 
         logger.tracev("release varSyms", .{});
         for (self.c.getVarSyms().items(), 0..) |vsym, i| {
-            logger.tracevIf(cy.logMemory, "release varSym: {s}", .{self.varSymExtras.buf[i].name()});
+            logger.tracevIf(build_options.log_mem, "release varSym: {s}", .{self.varSymExtras.buf[i].name()});
             release(self, vsym.value);
         }
         self.c.getVarSyms().clearRetainingCapacity();
@@ -345,7 +345,7 @@ pub const VM = struct {
         // Release static strings.
         logger.tracev("release static objects {}", .{self.staticObjects.len});
         for (self.staticObjects.items()) |obj| {
-            logger.tracevIf(cy.logMemory, "release static object", .{});
+            logger.tracevIf(build_options.log_mem, "release static object", .{});
             cy.arc.releaseObject(self, obj);
         }
         logger.tracev("release static objects end", .{});

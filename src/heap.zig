@@ -18,6 +18,7 @@ const tcc = @import("tcc");
 const log = cy.log.scoped(.heap);
 const NullId = std.math.maxInt(u32);
 const NullU8 = std.math.maxInt(u8);
+const log_mem = build_options.log_mem;
 
 var gpa: std.heap.GeneralPurposeAllocator(.{
     .enable_memory_limit = false,
@@ -1811,7 +1812,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             cy.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});
         } else {
             const desc = vm.bufPrintValueShortStr(&cy.tempBuf, Value.initPtr(obj)) catch cy.fatal();
-            log.tracevIf(cy.logMemory, "free type={}({s}) {*}: `{s}`", .{
+            log.tracevIf(log_mem, "free type={}({s}) {*}: `{s}`", .{
                 obj.getTypeId(), vm.getTypeName(obj.getTypeId()), obj, desc,
             });
         }
@@ -2061,7 +2062,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
         },
         else => {
             if (cy.Trace) {
-                log.tracev("free {s}", .{vm.getTypeName(typeId)});
+                log.tracev("free {s} {}", .{vm.getTypeName(typeId), typeId});
 
                 // Check range.
                 if (typeId >= vm.c.types_len) {
@@ -2072,7 +2073,6 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             // TODO: Determine isHostObject from object to avoid extra read from `rt.Type`
             // TODO: Use a dispatch table for host objects only.
             const entry = vm.c.types[typeId];
-            log.tracev("free {s} {}", .{@tagName(entry.kind), typeId});
             switch (entry.kind) {
                 .option => {
                     if (releaseChildren) {

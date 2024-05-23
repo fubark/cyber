@@ -13,6 +13,7 @@ var vmEngine: config.Engine = undefined;
 var testFilter: ?[]const u8 = undefined;
 var testBackend: config.TestBackend = undefined;
 var trace: bool = undefined;
+var log_mem: bool = undefined;
 var link_test: bool = undefined;
 var optFFI: ?bool = undefined; 
 var optStatic: ?bool = undefined; 
@@ -39,6 +40,7 @@ pub fn build(b: *std.Build) !void {
     optJIT = b.option(bool, "jit", "Build with JIT.");
     optRT = b.option(config.Runtime, "rt", "Runtime.");
     link_test = b.option(bool, "link-test", "Build test by linking lib. Disable for better stack traces.") orelse true;
+    log_mem = b.option(bool, "log-mem", "Log memory traces.") orelse false;
 
     {
         const step = b.step("cli", "Build main cli.");
@@ -312,6 +314,7 @@ pub const Options = struct {
     selinux: bool,
     trackGlobalRc: bool,
     trace: bool,
+    log_mem: bool,
     target: std.Target,
     optimize: std.builtin.OptimizeMode,
     malloc: config.Allocator,
@@ -360,6 +363,7 @@ fn getDefaultOptions() Options {
         .selinux = selinux,
         .trackGlobalRc = optimize == .Debug,
         .trace = trace,
+        .log_mem = log_mem,
         .target = target,
         .optimize = optimize,
         .gc = true,
@@ -396,6 +400,7 @@ fn createBuildOptions(b: *std.Build, opts: Options) !*std.Build.Module {
     options.addOption(config.Allocator, "malloc", opts.malloc);
     options.addOption(config.Engine, "vmEngine", vmEngine);
     options.addOption(bool, "trace", opts.trace);
+    options.addOption(bool, "log_mem", opts.log_mem);
     options.addOption(bool, "trackGlobalRC", opts.trackGlobalRc);
     options.addOption(bool, "is32Bit", is32Bit(opts.target));
     options.addOption(bool, "gc", opts.gc);
@@ -553,6 +558,11 @@ pub fn buildCVM(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
         try cflags.append("-DTRACE=1");
     } else {
         try cflags.append("-DTRACE=0");
+    }
+    if (opts.log_mem) {
+        try cflags.append("-DLOG_MEM=1");
+    } else {
+        try cflags.append("-DLOG_MEM=0");
     }
     if (is32Bit(opts.target)) {
         try cflags.append("-DIS_32BIT=1");

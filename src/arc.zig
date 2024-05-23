@@ -11,6 +11,8 @@ const c = @import("capi.zig");
 const vmc = cy.vmc;
 const rt = cy.rt;
 const bt = cy.types.BuiltinTypes;
+const build_options = @import("build_options");
+const log_mem = build_options.log_mem;
 
 pub fn release(vm: *cy.VM, val: cy.Value) void {
     if (cy.Trace) {
@@ -19,7 +21,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) void {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         if (cy.TraceRC) {
-            log.tracevIf(cy.logMemory, "{} -1 release: {s}, {*}", .{obj.head.rc, vm.getTypeName(val.getTypeId()), obj});
+            log.tracevIf(log_mem, "{} -1 release: {s}, {*}", .{obj.head.rc, vm.getTypeName(val.getTypeId()), obj});
         }
         if (cy.Trace) {
             checkDoubleFree(vm, obj);
@@ -48,7 +50,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) void {
             }
         }
     } else {
-        log.tracevIf(cy.logMemory, "release: {s}, nop", .{vm.getTypeName(val.getTypeId())});
+        log.tracevIf(log_mem, "release: {s}, nop", .{vm.getTypeName(val.getTypeId())});
     }
 }
 
@@ -84,7 +86,7 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) void {
         checkDoubleFree(vm, obj);
     }
     if (cy.TraceRC) {
-        log.tracevIf(cy.logMemory, "{} -1 release: {s}", .{obj.head.rc, vm.getTypeName(obj.getTypeId())});
+        log.tracevIf(log_mem, "{} -1 release: {s}", .{obj.head.rc, vm.getTypeName(obj.getTypeId())});
     }
     obj.head.rc -= 1;
     if (cy.TrackGlobalRC) {
@@ -126,7 +128,7 @@ pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) void {
     if (cy.Trace) {
         checkRetainDanglingPointer(self, obj);
         if (cy.TraceRC) {
-            log.tracev("{} +1 retain: {s}", .{obj.head.rc, self.getTypeName(obj.getTypeId())});
+            log.tracevIf(log_mem, "{} +1 retain: {s}", .{obj.head.rc, self.getTypeName(obj.getTypeId())});
         }
     }
     if (cy.TrackGlobalRC) {

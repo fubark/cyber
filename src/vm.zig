@@ -2149,7 +2149,10 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
             vm.c.pc = pc;
             vm.c.framePtr = framePtr;
             const newFramePtr = framePtr + ret;
-            const res = obj.hostFunc.func.?(@ptrCast(vm), @ptrCast(newFramePtr + CallArgStart), numArgs);
+            const res: cy.Value = @bitCast(obj.hostFunc.func.?(@ptrCast(vm), @ptrCast(newFramePtr + CallArgStart), numArgs));
+            if (res.isInterrupt()) {
+                return error.Panic;
+            }
             newFramePtr[0] = @bitCast(res);
             return cy.fiber.PcFp{
                 .pc = pc + cy.bytecode.CallInstLen,

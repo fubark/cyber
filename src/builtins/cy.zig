@@ -34,9 +34,10 @@ const func = cy.hostFuncEntry;
 const funcs = [_]C.HostFuncEntry{
     func("parse",              zErrFunc(parse)),
     func("parseCyon",          zErrFunc(parseCyon)),
-    func("repl",               zErrFunc(repl)),
     func("toCyon",             zErrFunc(toCyon)), 
 
+    func("Value.dump",         zErrFunc(UserValue_dump)), 
+    func("Value.getTypeId",    zErrFunc(UserValue_getTypeId)), 
     func("Value.toHost",       zErrFunc(UserValue_toHost)), 
 
     func("VM.eval",            zErrFunc(UserVM_eval)),
@@ -79,6 +80,22 @@ pub fn UserVM_getPanicSummary(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerr
     const summary = C.newPanicSummary(@ptrCast(uvm.vm));
     defer C.free(@ptrCast(uvm.vm), summary);
     return vm.allocString(C.fromStr(summary));
+}
+
+pub fn UserValue_dump(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
+    const uval = args[0].castHostObject(*UserValue);
+    const uvm = uval.vm.castHostObject(*UserVM);
+
+    const str = C.newValueDump(@ptrCast(uvm.vm), uval.val);
+    defer C.free(@ptrCast(uvm.vm), str);
+    return vm.allocString(C.fromStr(str));
+}
+
+pub fn UserValue_getTypeId(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
+    _ = vm;
+    const uval = args[0].castHostObject(*UserValue);
+    const val: cy.Value = @bitCast(uval.val);
+    return cy.Value.initInt(@intCast(val.getTypeId()));
 }
 
 pub fn UserValue_toHost(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
@@ -622,106 +639,6 @@ pub const IReplReadLine = struct {
     free: *const fn(ptr: *anyopaque, line: []const u8) void,
 };
 
-fn getReplPrefix(buf: []u8, indent: u32, head: []const u8) ![:0]const u8 {
-    var fbuf = std.io.fixedBufferStream(buf);
-    const w = fbuf.writer();
-    try w.writeByteNTimes(' ', indent * 4);
-    try w.writeAll(head);
-    try w.writeByte(0);
-    const slice = fbuf.getWritten();
-    return slice[0..slice.len-1 :0];
-}
-
-pub fn repl2(vm: *cy.VM, config: C.EvalConfig, read_line: IReplReadLine) !void {
-    const alloc = vm.alloc;
-
-    // TODO: Record inputs that successfully compiled. Can then be exported to file.
-
-    // Initial input includes `use $global`.
-    // Can also include additional source if needed.
-    const init_src =
-        \\use $global
-        \\
-        ;
-    var res: C.Value = undefined;
-    _ = C.evalExt(@ptrCast(vm), C.toStr("repl_init"), C.toStr(init_src), config, &res);
-
-    // Build multi-line input.
-    var input_builder: std.ArrayListUnmanaged(u8) = .{};
-    defer input_builder.deinit(alloc);
-    var indent: u32 = 0;
-
-    var prefix_buf: [1024]u8 = undefined;
-
-    rt.printZFmt(vm, "{s} REPL\n", .{build_options.full_version});
-    rt.print(vm, "Commands: .exit\n");
-    while (true) {
-        const prefix_head = if (indent == 0) "> " else "| ";
-        const prefix = try getReplPrefix(&prefix_buf, indent, prefix_head);
-        const read_res = try read_line.read(read_line.ptr, prefix);
-        defer read_line.free(read_line.ptr, read_res);
-
-        // Dupe line so that a consistent allocator is used.
-        var input = try alloc.dupe(u8, read_res);
-        defer alloc.free(input);
-
-        if (std.mem.eql(u8, ".exit", input)) {
-            break;
-        }
-
-        if (std.mem.endsWith(u8, input, ":")) {
-            try input_builder.appendSlice(alloc, input);
-            indent += 1;
-            continue;
-        }
-
-        if (input_builder.items.len > 0) {
-            if (input.len == 0) {
-                indent -= 1;
-                if (indent > 0) {
-                    continue;
-                } else {
-                    // Build input and submit.
-                    alloc.free(input);
-                    input = try input_builder.toOwnedSlice(alloc);
-                }
-            } else {
-                try input_builder.append(alloc, '\n');
-                try input_builder.appendNTimes(alloc, ' ', indent * 4);
-                try input_builder.appendSlice(alloc, input);
-                continue;
-            }
-        }
-
-        const val_opt: ?cy.Value = vm.eval("input", input, config) catch |err| b: {
-            switch (err) {
-                error.Panic => {
-                    const report = C.newPanicSummary(@ptrCast(vm));
-                    defer C.free(@ptrCast(vm), report);
-                    rt.err(vm, C.fromStr(report));
-                },
-                error.CompileError => {
-                    const report = C.newErrorReportSummary(@ptrCast(vm));
-                    defer C.free(@ptrCast(vm), report);
-                    rt.err(vm, C.fromStr(report));
-                },
-                else => {
-                    rt.errZFmt(vm, "unexpected {}\n", .{err});
-                },
-            }
-            break :b null;
-        };
-
-        if (val_opt) |val| {
-            if (!val.isVoid()) {
-                const str = C.newValueDump(@ptrCast(vm), @bitCast(val));
-                defer C.free(@ptrCast(vm), str);
-                rt.printZFmt(vm, "{s}\n", .{C.fromStr(str)});
-            }
-        }
-    }
-}
-
 const VmReadLine = struct {
     vm: *cy.VM,
     read_line: cy.Value,
@@ -743,35 +660,3 @@ const VmReadLine = struct {
         self.vm.alloc.free(line);
     }
 };
-
-pub fn repl(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
-    // TODO: Allow returning a result (primitive or String).
-
-    // Create an isolated VM.
-    const ivm: *cy.VM = @ptrCast(@alignCast(c.create()));
-    defer c.destroy(@ptrCast(ivm));
-
-    // Use the same printers as the parent VM.
-    c.setPrinter(@ptrCast(ivm), c.getPrinter(@ptrCast(vm)));
-    c.setErrorPrinter(@ptrCast(ivm), c.getErrorPrinter(@ptrCast(vm)));
-
-    var config = c.defaultEvalConfig();
-    config.single_run = false;
-    config.file_modules = false;
-    config.reload = false;
-    config.backend = c.BackendVM;
-    config.spawn_exe = false;
-
-    var read_line = VmReadLine{
-        .vm = vm, 
-        .read_line = args[0],
-    };
-
-    try repl2(@ptrCast(ivm), config, .{
-        .ptr = &read_line,
-        .read = VmReadLine.read,
-        .free = VmReadLine.free,
-    });
-
-    return cy.Value.Void;
-}

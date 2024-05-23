@@ -3519,11 +3519,28 @@ print res['numObjFreed']      -- Output: 2
 
 # CLI.
 
+* [Basic commands.](#basic-commands)
 * [REPL.](#repl)
 * [JIT compiler.](#jit-compiler)
 * [AOT compiler.](#aot-compiler)
 
 [^top](#table-of-contents)
+
+## Basic commands.
+To compile and run a program with the VM, provide the path to the main Cyber source file:
+```bash
+cyber foo.cy
+cyber path/to/main.cy
+```
+
+To see more options and commands, print the help screen:
+```bash
+cyber help
+
+# These are aliases to the help command.
+cyber -h
+cyber --help
+```
 
 ## REPL.
 The REPL is started by running the CLI without any arguments:

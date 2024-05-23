@@ -266,6 +266,7 @@ pub const Compiler = struct {
             }
         }
 
+        const prev_main = self.main_chunk;
         var mainChunk: *cy.Chunk = undefined;
         if (src_opt) |src_temp| {
             mainChunk = try createModule(self, uri, src_temp);
@@ -307,7 +308,7 @@ pub const Compiler = struct {
                 alias.resolved = true;
             }
 
-            if (self.main_chunk.use_global) {
+            if (prev_main.use_global) {
                 mainChunk.use_global = true;
             }
         }

@@ -72,6 +72,10 @@ pub fn main() !void {
                     std.debug.print("Missing pc arg.\n", .{});
                     exit(1);
                 }
+            } else if (std.mem.eql(u8, arg, "-h")) {
+                cmd = .help;
+            } else if (std.mem.eql(u8, arg, "--help")) {
+                cmd = .help;
             } else {
                 if (cy.Trace) {
                     if (std.mem.eql(u8, arg, "-stats")) {
@@ -193,22 +197,40 @@ fn repl(alloc: std.mem.Allocator) !void {
     config.backend = c.BackendVM;
     config.spawn_exe = false;
 
-    if (cli.use_ln) {
-        try cy_mod.repl2(&vm, config, .{
-            .ptr = undefined,
-            .read = cli.LnReadLine.read,
-            .free = cli.LnReadLine.free,
-        });
-    } else {
-        var read_line = cli.FallbackReadLine{
-            .alloc = alloc,
-        };
-        try cy_mod.repl2(&vm, config, .{
-            .ptr = &read_line,
-            .read = cli.FallbackReadLine.read,
-            .free = cli.FallbackReadLine.free,
-        });
-    }
+    const src = 
+        \\use cli
+        \\
+        \\cli.repl()
+        \\
+        ;
+    _ = vm.eval("main", src, config) catch |err| {
+        switch (err) {
+            error.Panic => {
+                if (!c.silent()) {
+                    const report = c.newPanicSummary(@ptrCast(&vm));
+                    defer c.free(@ptrCast(&vm), report);
+                    try std.io.getStdErr().writeAll(c.fromStr(report));
+                }
+            },
+            error.CompileError => {
+                if (!c.silent()) {
+                    const report = c.newErrorReportSummary(@ptrCast(&vm));
+                    defer c.free(@ptrCast(&vm), report);
+                    try std.io.getStdErr().writeAll(c.fromStr(report));
+                }
+            },
+            else => {
+                std.debug.print("unexpected {}\n", .{err});
+            },
+        }
+        if (builtin.mode == .Debug) {
+            // Report error trace.
+            return err;
+        } else {
+            // Exit early.
+            exit(1);
+        }
+    };
 
     if (verbose) {
         std.debug.print("\n==VM Info==\n", .{});

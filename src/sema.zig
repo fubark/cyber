@@ -4888,6 +4888,8 @@ pub const ChunkExt = struct {
                     const name = c.ast.nodeString(child);
                     if (std.mem.eql(u8, name, "modUri")) {
                         return c.semaRawString(c.srcUri, node);
+                    } else if (std.mem.eql(u8, name, "build_full_version")) {
+                        return c.semaRawString(build_options.full_version, node);
                     } else {
                         return c.reportErrorFmt("Compile-time symbol does not exist: {}", &.{v(name)}, child);
                     }

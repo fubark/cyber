@@ -340,7 +340,7 @@ pub const LnReadLine = struct {
         _ = ptr;
         const linez = ln.linenoise(prefix);
         if (linez == null) {
-            return error.EndOfInput;
+            return error.EndOfStream;
         }
         _ = ln.linenoiseHistoryAdd(linez);
         return std.mem.sliceTo(linez, 0);

@@ -161,7 +161,7 @@ jobs:
       - name: Run tests. (release)
         if: env.BUILD_TARGET != 'wasm32-wasi' && (env.BUILD_CMD == 'cli' || (env.BUILD_CMD == 'lib' && env.BUILD_TARGET != 'x86_64-windows-msvc'))
         run: |
-          zig build test ${{ env.ZIG_TARGET_FLAG }} -Doptimize=ReleaseSafe
+          zig build test ${{ env.ZIG_TARGET_FLAG }} -Doptimize=ReleaseFast
 
       - name: Run tests.
         if: env.BUILD_TARGET == 'wasm32-freestanding' || env.BUILD_TARGET == 'wasm32-wasi'

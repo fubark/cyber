@@ -59,7 +59,7 @@ pub fn isObjectAlreadyFreed(vm: *cy.VM, obj: *cy.HeapObject) bool {
     }
     if (vm.objectTraceMap.get(obj)) |trace| {
         // For external objects check for trace entry.
-        if (trace.freePc != cy.NullId) {
+        if (trace.free_pc != null) {
             return true;
         }
     }

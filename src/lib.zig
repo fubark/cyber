@@ -53,8 +53,8 @@ export fn clTraceDumpLiveObjects(vm: *cy.VM) void {
         var iter = vm.objectTraceMap.iterator();
         while (iter.next()) |it| {
             const trace = it.value_ptr.*;
-            if (trace.freePc == cy.NullId) {
-                cy.arc.dumpObjectAllocTrace(vm, it.key_ptr.*, trace.allocPc) catch fatal();
+            if (trace.free_pc == null) {
+                cy.arc.dumpObjectAllocTrace(vm, it.key_ptr.*, trace.alloc_pc) catch fatal();
             }
         }
     }

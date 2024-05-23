@@ -78,25 +78,29 @@ pub fn indexOfDebugSymFromTable(table: []const cy.DebugSym, pc: usize) ?usize {
 
 pub fn dumpObjectTrace(vm: *cy.VM, obj: *cy.HeapObject) !void {
     if (vm.objectTraceMap.get(obj)) |trace| {
-        if (trace.allocPc != cy.NullId) {
+        if (trace.alloc_pc != cy.NullId) {
             const msg = try std.fmt.allocPrint(vm.alloc, "{*} at pc: {}({s})", .{
-                obj, trace.allocPc, @tagName(vm.c.ops[trace.allocPc].opcode()),
+                obj, trace.alloc_pc, @tagName(vm.c.ops[trace.alloc_pc].opcode()),
             });
             defer vm.alloc.free(msg);
-            try printTraceAtPc(vm, trace.allocPc, "alloced", msg);
+            try printTraceAtPc(vm, trace.alloc_pc, "alloced", msg);
         } else {
-            try printTraceAtPc(vm, trace.allocPc, "alloced", "");
+            try printTraceAtPc(vm, trace.alloc_pc, "alloced", "");
         }
 
-        if (trace.freePc != cy.NullId) {
-            const msg = try std.fmt.allocPrint(vm.alloc, "{}({s}) at pc: {}({s})", .{
-                trace.freeTypeId, vm.getTypeName(trace.freeTypeId),
-                trace.freePc, @tagName(vm.c.ops[trace.freePc].opcode()),
-            });
-            defer vm.alloc.free(msg);
-            try printTraceAtPc(vm, trace.freePc, "freed", msg);
+        if (trace.free_pc) |free_pc| {
+            if (free_pc == cy.NullId) {
+                const msg = try std.fmt.allocPrint(vm.alloc, "{}({s}) at pc: {}({s})", .{
+                    trace.free_type.?, vm.getTypeName(trace.free_type.?),
+                    free_pc, @tagName(vm.c.ops[free_pc].opcode()),
+                });
+                defer vm.alloc.free(msg);
+                try printTraceAtPc(vm, free_pc, "freed", msg);
+            } else {
+                try printTraceAtPc(vm, free_pc, "freed", "");
+            }
         } else {
-            try printTraceAtPc(vm, trace.freePc, "freed", "");
+            rt.errFmt(vm, "not freed\n", &.{});
         }
     } else {
         log.tracev("No trace for {*}.", .{obj});
@@ -404,13 +408,14 @@ pub fn allocStackTrace(vm: *cy.VM, stack: []const cy.Value, cframes: []const vmc
 
 pub const ObjectTrace = struct {
     /// Points to inst that allocated the object.
-    allocPc: u32,
+    alloc_pc: u32,
 
     /// Points to inst that freed the object.
-    freePc: u32,
+    /// `NullId` indicates allocation from outside the VM.
+    free_pc: ?u32,
 
     /// Type when freed.
-    freeTypeId: cy.TypeId,
+    free_type: ?cy.TypeId,
 };
 
 fn getOpCodeAtPc(ops: []const cy.Inst, atPc: u32) ?cy.OpCode {

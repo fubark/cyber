@@ -812,8 +812,8 @@ fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize, comptime cyclabl
     }
     if (cy.Trace) {
         if (vm.objectTraceMap.getPtr(obj)) |trace| {
-            trace.freePc = vm.c.debugPc;
-            trace.freeTypeId = obj.getTypeId();
+            trace.free_pc = vm.c.debugPc;
+            trace.free_type = obj.getTypeId();
         } else {
             log.trace("Missing object trace {*} {}", .{obj, obj.getTypeId()});
         }
@@ -829,8 +829,8 @@ fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize, comptime cyclabl
 pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) void {
     if (cy.Trace) {
         if (vm.objectTraceMap.getPtr(obj)) |trace| {
-            trace.freePc = vm.c.debugPc;
-            trace.freeTypeId = obj.getTypeId();
+            trace.free_pc = vm.c.debugPc;
+            trace.free_type = obj.getTypeId();
         } else {
             log.trace("Missing object trace {*} {}", .{obj, obj.getTypeId()});
         }
@@ -2183,9 +2183,9 @@ pub const MaxPoolObjectUserBytes = @sizeOf(HeapObject) - 8;
 pub fn traceAlloc(vm: *cy.VM, ptr: *HeapObject) void {
     // log.tracev("alloc {*} {} {}", .{ptr, ptr.getTypeId(), vm.c.debugPc});
     vm.objectTraceMap.put(vm.alloc, ptr, .{
-        .allocPc = vm.c.debugPc,
-        .freePc = cy.NullId,
-        .freeTypeId = cy.NullId,
+        .alloc_pc = vm.c.debugPc,
+        .free_pc = null,
+        .free_type = null,
     }) catch cy.fatal();
 }
 

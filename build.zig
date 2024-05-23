@@ -14,6 +14,7 @@ var testFilter: ?[]const u8 = undefined;
 var testBackend: config.TestBackend = undefined;
 var trace: bool = undefined;
 var log_mem: bool = undefined;
+var no_cache: bool = undefined;
 var link_test: bool = undefined;
 var optFFI: ?bool = undefined; 
 var optStatic: ?bool = undefined; 
@@ -41,6 +42,7 @@ pub fn build(b: *std.Build) !void {
     optRT = b.option(config.Runtime, "rt", "Runtime.");
     link_test = b.option(bool, "link-test", "Build test by linking lib. Disable for better stack traces.") orelse true;
     log_mem = b.option(bool, "log-mem", "Log memory traces.") orelse false;
+    no_cache = b.option(bool, "no-cache", "Disable caching when running tests.") orelse false;
 
     {
         const step = b.step("cli", "Build main cli.");
@@ -205,7 +207,9 @@ pub fn build(b: *std.Build) !void {
         opts.applyOverrides();
 
         const step = try addBehaviorTest(b, opts);
-        main_step.dependOn(&b.addRunArtifact(step).step);
+        const run = b.addRunArtifact(step);
+        run.has_side_effects = no_cache;
+        main_step.dependOn(&run.step);
     }
 
     {
@@ -216,7 +220,9 @@ pub fn build(b: *std.Build) !void {
         opts.applyOverrides();
 
         const step = try addUnitTest(b, opts);
-        main_step.dependOn(&b.addRunArtifact(step).step);
+        const run = b.addRunArtifact(step);
+        run.has_side_effects = no_cache;
+        main_step.dependOn(&run.step);
     }
 
     {
@@ -227,13 +233,19 @@ pub fn build(b: *std.Build) !void {
         opts.applyOverrides();
 
         var step = try addUnitTest(b, opts);
-        main_step.dependOn(&b.addRunArtifact(step).step);
+        var run = b.addRunArtifact(step);
+        run.has_side_effects = no_cache;
+        main_step.dependOn(&run.step);
 
         step = try addBehaviorTest(b, opts);
-        main_step.dependOn(&b.addRunArtifact(step).step);
+        run = b.addRunArtifact(step);
+        run.has_side_effects = no_cache;
+        main_step.dependOn(&run.step);
 
         step = try addTraceTest(b, opts);
-        main_step.dependOn(&b.addRunArtifact(step).step);
+        run = b.addRunArtifact(step);
+        run.has_side_effects = no_cache;
+        main_step.dependOn(&run.step);
     }
 
     const printStep = b.allocator.create(PrintStep) catch unreachable;

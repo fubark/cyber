@@ -1420,6 +1420,9 @@ pub fn reserveEnum(c: *cy.Chunk, node: *ast.EnumDecl) !*cy.sym.EnumType {
 
 /// Explicit `decl` node for distinct type declarations. Must belong to `c`.
 pub fn declareEnumMembers(c: *cy.Chunk, sym: *cy.sym.EnumType, decl: *ast.EnumDecl) !void {
+    if (sym.isResolved()) {
+        return;
+    }
     const members = try c.alloc.alloc(*cy.sym.EnumMember, decl.members.len);
     for (decl.members, 0..) |member, i| {
         const mName = c.ast.nodeString(member.name);

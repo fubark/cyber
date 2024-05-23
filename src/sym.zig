@@ -845,6 +845,10 @@ pub const EnumType = extern struct {
         }
     }
 
+    pub fn isResolved(self: *EnumType) bool {
+        return self.numMembers != 0;
+    }
+
     pub fn getValueSym(self: *EnumType, val: u16) *EnumMember {
         return self.members[val];
     }

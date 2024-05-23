@@ -1,5 +1,5 @@
 var .Success      int = 0
-var .Await        int = 0
+var .Await        int = 1
 var .ErrorCompile int = 2
 var .ErrorPanic   int = 3
 

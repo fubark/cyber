@@ -94,9 +94,9 @@ CLHostTypeEntry types[] = {
 };
 
 // This module loader provides the source code and callbacks to load @host funcs, vars, and types.
-bool modLoader(CLVM* vm, CLStr spec, CLModuleLoaderResult* out) {
+bool modLoader(CLVM* vm, CLStr spec, CLModule* res) {
     if (strncmp("my_mod", spec.ptr, spec.len) == 0) {
-        out->src =
+        CLStr src = STR(
             "@host func add(a float, b float) float\n"
             "@host var .MyConstant float\n"
             "@host var .MyList     List[dyn]\n"
@@ -105,15 +105,19 @@ bool modLoader(CLVM* vm, CLStr spec, CLModuleLoaderResult* out) {
             "type MyNode _:\n"
             "    @host func asList() any"
             "\n"
-            "@host func MyNode.new(a any, b any) MyNode\n";
-        out->srcLen = strlen(out->src);
-        out->funcs = (CLSlice){ .ptr = funcs, .len = 3 };
-        out->types = (CLSlice){ .ptr = types, .len = 1 };
-        out->varLoader = varLoader;
+            "@host func MyNode.new(a any, b any) MyNode\n"
+        );
+        *res = clCreateModule(vm, spec, src);
+        CLModuleConfig config = (CLModuleConfig){
+            .funcs = (CLSlice){ .ptr = funcs, .len = 3 },
+            .types = (CLSlice){ .ptr = types, .len = 1 },
+            .varLoader = varLoader,
+        };
+        clSetModuleConfig(vm, *res, &config);
         return true;
     } else {
         // Fallback to the default module loader to load `builtins`.
-        return clDefaultModuleLoader(vm, spec, out);
+        return clDefaultModuleLoader(vm, spec, res);
     }
 }
 

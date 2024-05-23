@@ -3203,9 +3203,9 @@ print res        --> 3
   * [Eval script.](#eval-script)
 * [Module Loader.](#module-loader)
   * [Default module loader.](#default-module-loader)
-  * [Function loader.](#function-loader)
+  * [Bind functions.](#bind-functions)
   * [Variable loader.](#variable-loader)
-  * [Type loader.](#type-loader)
+  * [Bind types.](#bind-types)
 </td><td valign="top">
 
 * [Host functions.](#host-functions)
@@ -3263,14 +3263,14 @@ CLStr src = STR(
 );
 
 CLValue val;
-int res = clEval(vm, src, &val);
-if (res == CS_SUCCESS) {
+CLResultCode res = clEval(vm, src, &val);
+if (res == CL_SUCCESS) {
     printf("Success!\n");
     clRelease(vm, val);
 } else {
-    const char* report = clNewLastErrorReport(vm);
+    CLStr report = clNewLastErrorReport(vm);
     printf("%s\n", report);
-    clFreeZ(report);
+    clFree(vm, report);
 }
 ```
 If a value is returned from the main block of the script, it's saved to the result value argument.
@@ -3282,21 +3282,26 @@ Memory is managed by ARC so a value that points to a heap object requires a `clR
 A module loader describes how a module is loaded when `use` import statement is encountered during script execution.
 Only one module loader can be active and is set using `clSetModuleLoader`:
 ```c
-bool modLoader(CLVM* vm, CLStr spec, CLModuleLoaderResult* out) {
+bool modLoader(CLVM* vm, CLStr spec, CLModule* res) {
     if (strncmp("my_mod", spec.buf, spec.len) == 0) {
-        out->src =
+        CLStr src = STR(
             "@host func add(a float, b float) float\n"
             "@host var .MyConstant float\n"
-            "@host var .MyList     List\n"
+            "@host var .MyList     List[dyn]\n"
             "\n"
             "@host\n"
-            "type MyCollection:\n"
+            "type MyNode _:\n"
             "    @host func asList() any"
             "\n"
-            "@host func MyCollection.new(a, b) MyCollection\n";
-        out->funcLoader = funcLoader;
-        out->varLoader = varLoader;
-        out->typeLoader = typeLoader;
+            "@host func MyNode.new(a any, b any) MyNode\n"
+        );
+        *res = clCreateModule(vm, spec, src);
+        CLModuleConfig config = (CLModuleConfig){
+            .funcs = (CLSlice){ .ptr = funcs, .len = 3 },
+            .types = (CLSlice){ .ptr = types, .len = 1 },
+            .varLoader = varLoader,
+        };
+        clSetModuleConfig(vm, *res, &config);
         return true;
     } else {
         // Fallback to the default module loader to load `core`.
@@ -3315,29 +3320,30 @@ The above example checks whether "my_mod" was imported and returns it's source c
 ### Default module loader.
 Since only one module loader can be set to the VM instance, a custom loader is required to handle the "core" import which contains all of the core types and functions in Cyber. This can simply be delegated to `clDefaultModuleLoader`.
 
-### Function loader.
-A function loader describes how to load a `@host` function when it's encountered by the compiler.
-The loader can bind functions and type methods:
+### Bind functions.
+An array of function definitions can be assigned to `CLModuleConfig.funcs`.
+When a `@host` function is encountered by the compiler, it will use this mapping to find the correct function pointer:
 ```c
-struct { char* n; CLFuncFn fn; } funcs[] = {
-    {"add", add},
-    {"asList", myCollectionAsList},
-    {"MyCollection.new", myCollectionNew},
+CLHostFuncEntry funcs[] = {
+    CL_FUNC("add",           add),
+    CL_FUNC("MyNode.asList", myNodeAsList),
+    CL_FUNC("MyNode.new",    myNodeNew),
 };
+```
 
+A fallback function loader can be assigned to `CLModuleConfig.func_loader`.
+It's invoked if a function could not be found in `CLModuleConfig.funcs`.
+```c
 bool funcLoader(CLVM* vm, CLFuncInfo info, CLFuncResult* out) {
     // Check that the name matches before setting the function pointer.
-    if (strncmp(funcs[info.idx].n, info.name.buf, info.name.len) == 0) {
-        out->ptr = funcs[info.idx].fn;
+    if (strncmp("missing_func", info.name.buf, info.name.len) == 0) {
+        out->ptr = myMissingFunc;
         return true;
     } else {
         return false;
     }
 }
 ```
-This example uses the `CLFuncInfo.idx` of a @host function to index into an array and return a [Host function](#host-functions) pointer. The name is also compared to ensure it's binding to the correct pointer.
-
-This is an efficient way to map Cyber functions to host functions. A different implementation might use a hash table to map the name of the function to it's pointer.
 
 ### Variable loader.
 A variable loader describes how to load a `@host` variable when it's encountered by the compiler:
@@ -3370,24 +3376,33 @@ int main() {
 ```
 This example uses the same technique as the function loader, but it can be much simpler. It doesn't matter how the mapping is done as long as the variable loader returns a `CLValue`.
 
-### Type loader.
-A type loader describes how to load a `@host` type when it's encountered by the compiler:
+### Bind types.
+An array of type definitions can be assigned to `CLModuleConfig.types`.
+When a `@host` type is encountered by the compiler, it will use this mapping to initialize the type:
 ```c
-CLTypeId myCollectionId;
+CLTypeId myNodeId;
 
+CLHostTypeEntry types[] = {
+    CL_CUSTOM_TYPE("MyNode", &myNodeId, myNodeGetChildren, myNodeFinalizer),
+};
+```
+When binding to the "MyNode" type, it's type id is saved to `myNodeId`. This id is then used to create new instances of this type. See [Host types](#host-types).
+
+A fallback type loader can be assigned to `CLModuleConfig.type_loader`.
+It's invoked if a type could not be found in `CLModuleConfig.types`.
+```c
 bool typeLoader(CLVM* vm, CLTypeInfo info, CLTypeResult* out) {
-    if (strncmp("MyCollection", info.name.buf, info.name.len) == 0) {
+    if (strncmp("MissingType", info.name.buf, info.name.len) == 0) {
         out->type = CS_TYPE_OBJECT;
-        out->data.object.outTypeId = &myCollectionId;
-        out->data.object.getChildren = myCollectionGetChildren;
-        out->data.object.finalizer = myCollectionFinalizer;
+        out->data.object.outTypeId = &myNodeId;
+        out->data.object.getChildren = myNodeGetChildren;
+        out->data.object.finalizer = myNodeFinalizer;
         return true;
     } else {
         return false;
     }
 }
 ```
-When binding to the "MyCollection" type, it's typeId is saved to `outTypeId`. This id is then used to create new instances of this type. See [Host types](#host-types).
 
 ## Host functions.
 A host function requires a specific function signature:
@@ -3406,18 +3421,18 @@ Only the host application can directly create new instances of them, so usually 
 ```c
 // Binding a C struct with it's own children and finalizer.
 // This struct retains 2 VM values and has 2 arbitrary data values unrelated to the VM.
-typedef struct MyCollection {
+typedef struct MyNode {
     CLValue val1;
     CLValue val2;
     int a;
     double b;
-} MyCollection;
+} MyNode;
 
-// Implement the `new` function in MyCollection.
-CLValue myCollectionNew(CLVM* vm, const CLValue* args, uint8_t nargs) {
+// Implement the `new` function in MyNode.
+CLValue myNodeNew(CLVM* vm, const CLValue* args, uint8_t nargs) {
     // Instantiate our object.
-    CLValue new = clNewHostObject(vm, myCollectionId, sizeof(MyCollection));
-    MyCollection* my = (MyCollection*)clAsHostObject(new);
+    CLValue new = clNewHostObject(vm, myNodeId, sizeof(MyNode));
+    MyNode* my = (MyNode*)clAsHostObject(new);
 
     // Assign the constructor args passed in and retain them since the new object now references them.
     clRetain(vm, args[0]);
@@ -3431,13 +3446,13 @@ CLValue myCollectionNew(CLVM* vm, const CLValue* args, uint8_t nargs) {
     return new;
 }
 ```
-`clNewHostObject` takes the type id (returned from the [Type loader](#type-loader)) and size (in bytes) and returns a new heap object. Note that the size is allowed to vary. Different instances of the same type can occupy different amounts of memory.
+`clNewHostObject` takes the type id (returned from the [Type loader](#bind-types)) and size (in bytes) and returns a new heap object. Note that the size is allowed to vary. Different instances of the same type can occupy different amounts of memory.
 
 ### `getChildren`
-Since `MyCollection` contains `CLValue` children, the [Type loader](#type-loader) requires a `getChildren` callback so that memory management can reach them:
+Since `MyNode` contains `CLValue` children, the [Type loader](#bind-types) requires a `getChildren` callback so that memory management can reach them:
 ```c
-CLValueSlice myCollectionGetChildren(CLVM* vm, void* obj) {
-    MyCollection* my = (MyCollection*)obj;
+CLValueSlice myNodeGetChildren(CLVM* vm, void* obj) {
+    MyNode* my = (MyNode*)obj;
     return (CLValueSlice){ .ptr = &my->val1, .len = 2 };
 }
 ```
@@ -3446,8 +3461,8 @@ CLValueSlice myCollectionGetChildren(CLVM* vm, void* obj) {
 A type finalizer is optional since the memory and children of an instance will be freed automatically by ARC.
 However, it can be useful to perform additional cleanup tasks for instances that contain external resources.
 ```c
-void myCollectionFinalizer(CLVM* vm, void* obj) {
-    printf("MyCollection finalizer was called.\n");
+void myNodeFinalizer(CLVM* vm, void* obj) {
+    printf("MyNode finalizer was called.\n");
 }
 ```
 

@@ -122,7 +122,7 @@ typedef struct IndexSlice {
 #define VALUE_VOID VOID_MASK
 #define VALUE_FLOAT(n) ((ValueUnion){ .d = n }.u)
 #define VALUE_ENUM(tag, val) ((Value)(ENUM_MASK | tag << 8 | val ))
-#define VALUE_RETINFO(retFlag, callInstOff) ((Value)(0 | ((u32)retFlag << 8) | ((u32)callInstOff << 16)))
+#define VALUE_CALLINFO(retFlag, callInstOff, stack_size) ((Value)(retFlag | ((u32)callInstOff << 1) | ((u32)stack_size << 8)))
 #define VALUE_TRUE TRUE_MASK
 #define VALUE_FALSE FALSE_MASK
 #define VALUE_INTERRUPT (ERROR_MASK | 0xffff) 
@@ -143,8 +143,7 @@ typedef struct IndexSlice {
 #define VALUE_AS_FLOAT_TO_INT64(v) ((int64_t)VALUE_AS_FLOAT(v))
 #define VALUE_AS_BOOLEAN(v) (v == TRUE_MASK)
 #define VALUE_GET_TAG(v) ((BITCAST(u32, v >> 32)) & TAG_MASK)
-// #define VALUE_RETINFO_NUMRETVALS(v) (v & 0xff)
-#define VALUE_RETINFO_RETFLAG(v) ((v & 0xff00) >> 8)
+#define VALUE_CALLINFO_RETFLAG(v) (v & 0x1)
 
 #define VALUE_IS_BOOLEAN(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == BOOLEAN_MASK)
 #define VALUE_IS_POINTER(v) (v >= NOCYC_POINTER_MASK)
@@ -517,6 +516,7 @@ typedef struct Fiber {
 
     u8 argStart;
     u8 numArgs;
+    u8 stack_size;
 } Fiber;
 
 /// One data structure for astring/ustring slice it can fit into a pool object

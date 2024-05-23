@@ -984,17 +984,17 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .metatype => {
             return 7;
         },
+        .fieldDyn,
+        .fieldDynIC,
         .forRangeInit => {
             return 8;
         },
-        .fieldDyn,
-        .fieldDynIC,
         .lambda => {
             return 9;
         },
         .setFieldDyn,
         .setFieldDynIC => {
-            return 11;
+            return 10;
         },
         .closure => {
             const numCaptured = pc[4].val;

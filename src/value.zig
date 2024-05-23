@@ -50,24 +50,9 @@ pub const TagInteger: TagId = 7;
 pub const Value = packed union {
     val: u64,
 
-    /// Call frame return info.
-    // retInfo: packed struct {
-    //     numRetVals: u8,
-    //     retFlag: u8,
-
-    //     /// Since there are different call insts with varying lengths,
-    //     /// the call convention prefers to advance the pc before saving it so
-    //     /// stepping over the call will already have the correct pc.
-    //     /// An offset is stored to the original call inst for stack unwinding.
-    //     callInstOffset: u8,
-    // },
-
+    call_info: cy.vm.CallInfo,
     retPcPtr: [*]const cy.Inst,
     retFramePtr: [*]Value,
-    // two: packed struct {
-    //     low: u32,
-    //     high: u32,
-    // },
 
     /// This is only used to return something from binded functions that have void return.
     /// It should never be encountered by user code.
@@ -80,18 +65,6 @@ pub const Value = packed union {
     /// Interrupt value. Represented as an error tag literal with a null tag id.
     /// Returned from native funcs.
     pub const Interrupt = Value{ .val = ErrorMask | (@as(u32, 0xFF) << 8) | std.math.maxInt(u8) };
-
-    pub inline fn retInfoCallInstOffset(self: *const Value) u8 {
-        return @intCast((self.val & 0xff0000) >> 16);
-    }
-
-    pub inline fn retInfoRetFlag(self: *const Value) u8 {
-        return @intCast((self.val & 0xff00) >> 8);
-    }
-
-    pub inline fn retInfoNumRet(self: *const Value) u8 {
-        return @intCast(self.val & 0xff);
-    }
 
     pub inline fn asInteger(self: *const Value) i48 {
         return @bitCast(@as(u48, @intCast(self.val & 0xffffffffffff)));

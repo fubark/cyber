@@ -1150,7 +1150,7 @@ beginSwitch:
         }
         Value retFramePtr = (uintptr_t)stack;
         stack += ret;
-        stack[1] = VALUE_RETINFO(false, CALL_OBJ_SYM_INST_LEN);
+        stack[1] = VALUE_CALLINFO(false, CALL_OBJ_SYM_INST_LEN, numLocals);
         stack[2] = (uintptr_t)(pc + CALL_OBJ_SYM_INST_LEN);
         stack[3] = retFramePtr;
         pc = vm->c.instPtr + READ_U32(8);
@@ -1177,7 +1177,7 @@ beginSwitch:
 
         Value retFramePtr = (uintptr_t)stack;
         stack += ret;
-        stack[1] = VALUE_RETINFO(false, CALL_SYM_INST_LEN);
+        stack[1] = VALUE_CALLINFO(false, CALL_SYM_INST_LEN, numLocals);
         stack[2] = (uintptr_t)(pc + CALL_SYM_INST_LEN);
         stack[3] = retFramePtr;
         pc = (Inst*)READ_U48(6);
@@ -1211,7 +1211,7 @@ beginSwitch:
         NEXT();
     }
     CASE(Ret1): {
-        u8 retFlag = VALUE_RETINFO_RETFLAG(stack[1]);
+        u8 retFlag = VALUE_CALLINFO_RETFLAG(stack[1]);
         if (retFlag == 0) {
             pc = (Inst*)stack[2];
             stack = (Value*)stack[3];
@@ -1221,7 +1221,7 @@ beginSwitch:
         }
     }
     CASE(Ret0): {
-        u8 retFlag = VALUE_RETINFO_RETFLAG(stack[1]);
+        u8 retFlag = VALUE_CALLINFO_RETFLAG(stack[1]);
         stack[0] = VALUE_VOID;
         if (retFlag == 0) {
             pc = (Inst*)stack[2];
@@ -1317,7 +1317,7 @@ beginSwitch:
                 }
                 stack[dst] = res;
             }
-            pc += 9;
+            pc += 8;
             NEXT();
         } else {
             panicFieldMissing(vm);
@@ -1332,7 +1332,7 @@ beginSwitch:
             if (OBJ_TYPEID(obj) == READ_U16(5)) {
                 stack[dst] = objectGetField((Object*)obj, pc[7]);
                 retain(vm, stack[dst]);
-                pc += 9;
+                pc += 8;
                 NEXT();
             } else {
                 // Deoptimize.
@@ -1557,7 +1557,7 @@ beginSwitch:
                 }
                 release(vm, val);
             }
-            pc += 11;
+            pc += 10;
             NEXT();
         } else {
             // return vm.setFieldNotObjectError();
@@ -1573,7 +1573,7 @@ beginSwitch:
                 Value* lastValue = objectGetFieldPtr((Object*)obj, pc[9]);
                 release(vm, *lastValue);
                 *lastValue = val;
-                pc += 11;
+                pc += 10;
                 NEXT();
             } else {
                 // Deoptimize.

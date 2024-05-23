@@ -59,7 +59,6 @@ pub const Value = value.Value;
 
 pub const vm = @import("vm.zig");
 pub const VM = vm.VM;
-pub const buildReturnInfo = vm.buildReturnInfo;
 pub const getStackOffset = vm.getStackOffset;
 pub const getInstOffset = vm.getInstOffset;
 

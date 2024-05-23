@@ -63,6 +63,7 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, argDst: u8, ini
         .panicPayload = undefined,
         .panicType = vmc.PANIC_NONE,
         .prevFiber = undefined,
+        .stack_size = @intCast(initialStackSize),
     };
 
     return Value.initCycPtr(obj);
@@ -151,7 +152,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
             }
 
             // Prev frame.
-            pc = @intCast(getInstOffset(vm.c.ops, stack[framePtr + 2].retPcPtr) - stack[framePtr + 1].retInfoCallInstOffset());
+            pc = @intCast(getInstOffset(vm.c.ops, stack[framePtr + 2].retPcPtr) - stack[framePtr + 1].call_info.call_inst_off);
             framePtr = @intCast(getStackOffset(stack.ptr, stack[framePtr + 3].retFramePtr));
 
             // Unwind stack and release all locals.
@@ -171,7 +172,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
                 }
 
                 // Prev frame.
-                pc = @intCast(getInstOffset(vm.c.ops, stack[framePtr + 2].retPcPtr) - stack[framePtr + 1].retInfoCallInstOffset());
+                pc = @intCast(getInstOffset(vm.c.ops, stack[framePtr + 2].retPcPtr) - stack[framePtr + 1].call_info.call_inst_off);
                 framePtr = @intCast(getStackOffset(stack.ptr, stack[framePtr + 3].retFramePtr));
             }
         }
@@ -206,7 +207,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
 
 // Determine whether it's a vm or host frame.
 pub fn isVmFrame(_: *cy.VM, stack: []const Value, fpOff: u32) bool {
-    return stack[fpOff+1].retInfoCallInstOffset() > 0;
+    return stack[fpOff+1].call_info.call_inst_off > 0;
 }
 
 /// Unwind from `ctx` and release each frame.
@@ -316,7 +317,7 @@ fn getHostFramePrev(vm: *cy.VM, stack: []const Value, fp: u32) PcFpOff {
 }
 
 fn getVmFramePrev(vm: *cy.VM, stack: []const Value, fp: u32) PcFpOff {
-    const prevPc = getInstOffset(vm.c.ops, stack[fp + 2].retPcPtr) - stack[fp + 1].retInfoCallInstOffset();
+    const prevPc = getInstOffset(vm.c.ops, stack[fp + 2].retPcPtr) - stack[fp + 1].call_info.call_inst_off;
     const prevFp = getStackOffset(stack.ptr, stack[fp + 3].retFramePtr);
     return PcFpOff{ .pc = prevPc, .fp = prevFp };
 }
@@ -502,6 +503,7 @@ pub inline fn toVmPc(self: *const cy.VM, offset: usize) [*]cy.Inst {
 
 // Performs stackGrowTotalCapacityPrecise in addition to patching the frame pointers.
 pub fn growStackAuto(vm: *cy.VM) !void {
+    log.tracev("grow stack", .{});
     @setCold(true);
     // Grow by 50% with minimum of 16.
     var growSize = vm.c.stack_len / 2;

@@ -207,6 +207,17 @@ pub fn build(b: *std.Build) !void {
     }
 
     {
+        const main_step = b.step("unit-test", "Run unit tests.");
+
+        var opts = getDefaultOptions();
+        opts.trackGlobalRc = true;
+        opts.applyOverrides();
+
+        const step = try addUnitTest(b, opts);
+        main_step.dependOn(&b.addRunArtifact(step).step);
+    }
+
+    {
         const main_step = b.step("test", "Run all tests.");
 
         var opts = getDefaultOptions();

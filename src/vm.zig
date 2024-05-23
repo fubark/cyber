@@ -766,6 +766,7 @@ pub const VM = struct {
             self.c.pc = @ptrCast(buf.ops.items.ptr);
         }
         try cy.fiber.stackEnsureTotalCapacity(self, buf.mainStackSize);
+        self.c.mainFiber.stack_size = @intCast(buf.mainStackSize);
         self.c.framePtr = @ptrCast(self.c.stack);
 
         self.c.ops = buf.ops.items.ptr;
@@ -793,28 +794,11 @@ pub const VM = struct {
     /// Assumes `vm.pc` is at a call inst before entering host code.
     fn getNewCallFuncRet(vm: *VM) u8 {
         const fp = cy.fiber.getStackOffset(vm.c.stack, vm.c.framePtr);
-        if (fp == 0 or cy.fiber.isVmFrame(vm, vm.c.getStack(), fp)) {
-            // Vm frame. Obtain current stack top from looking at the current inst.
-            switch (vm.c.pc[0].opcode()) {
-                .callSym,
-                .callNativeFuncIC,
-                .call,
-                .callObjNativeFuncIC,
-                .callObjSym => {
-                    const ret = vm.c.pc[1];
-                    const numArgs = vm.c.pc[2];
-                    return ret.val + CallArgStart + numArgs.val;
-                },
-                .fieldDyn => {
-                    return vm.c.pc[8].val;
-                },
-                .setFieldDyn => {
-                    return vm.c.pc[10].val;
-                },
-                else => {
-                    cy.panicFmt("TODO: getNewCallFuncFp {}", .{vm.c.pc[0].opcode()});
-                }
-            }
+        if (fp == 0) {
+            return vm.c.curFiber.stack_size;
+        } else if (cy.fiber.isVmFrame(vm, vm.c.getStack(), fp)) {
+            // Vm frame.
+            return vm.c.framePtr[1].call_info.stack_size;
         } else {
             // Host frame.
             cy.panic("TODO getNewCallFuncFp");
@@ -840,7 +824,7 @@ pub const VM = struct {
         var call_ret: u8 = undefined;
         if (config.from_external) {
             // Create a new host frame so that it can be reported.
-            const retInfo = buildReturnInfoForRoot(false);
+            const retInfo = buildRootCallInfo(false);
             const retFramePtr = Value{ .retFramePtr = vm.c.framePtr };
             vm.c.framePtr += ret;
 
@@ -1314,7 +1298,7 @@ pub const VM = struct {
                     }
 
                     const newFramePtr = fp + ret;
-                    newFramePtr[1] = buildReturnInfo(true, cy.bytecode.CallSymInstLen);
+                    newFramePtr[1] = buildCallInfo(true, cy.bytecode.CallSymInstLen, @intCast(func.data.func.stackSize));
                     newFramePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
                     newFramePtr[3] = Value{ .retFramePtr = fp };
                     return cy.fiber.PcFp{
@@ -1366,7 +1350,7 @@ pub const VM = struct {
                 @as(*align(1) u48, @ptrCast(pc + 6)).* = @intCast(@intFromPtr(cy.fiber.toVmPc(self, func.data.func.pc)));
 
                 const newFramePtr = framePtr + ret;
-                newFramePtr[1] = buildReturnInfo(true, cy.bytecode.CallSymInstLen);
+                newFramePtr[1] = buildCallInfo(true, cy.bytecode.CallSymInstLen, @intCast(func.data.func.stackSize));
                 newFramePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
                 newFramePtr[3] = Value{ .retFramePtr = framePtr };
                 return cy.fiber.PcFp{
@@ -1875,7 +1859,6 @@ fn handleExecResult(vm: *VM, res: vmc.ResultCode, fpStart: u32) !void {
     if (res == vmc.RES_CODE_PANIC) {
         try handleInterrupt(vm, fpStart);
     } else if (res == vmc.RES_CODE_STACK_OVERFLOW) {
-        logger.tracev("grow stack", .{});
         try @call(.never_inline, cy.fiber.growStackAuto, .{vm});
     } else if (res == vmc.RES_CODE_UNKNOWN) {
         logger.tracev("Unknown error code.", .{});
@@ -2060,7 +2043,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                 }
 
                 const retFramePtr = Value{ .retFramePtr = framePtr };
-                framePtr[ret + 1] = buildReturnInfo2(cont, cy.bytecode.CallInstLen);
+                framePtr[ret + 1] = buildCallInfo2(cont, cy.bytecode.CallInstLen, obj.closure.stackSize);
                 framePtr[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
                 framePtr[ret + 3] = retFramePtr;
 
@@ -2097,7 +2080,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                 }
 
                 const retFramePtr = Value{ .retFramePtr = framePtr };
-                framePtr[ret + 1] = buildReturnInfo2(cont, cy.bytecode.CallInstLen);
+                framePtr[ret + 1] = buildCallInfo2(cont, cy.bytecode.CallInstLen, obj.lambda.stackSize);
                 framePtr[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
                 framePtr[ret + 3] = retFramePtr;
                 return cy.fiber.PcFp{
@@ -2372,22 +2355,43 @@ fn callObjSymFallback(
     return vm.panic("Missing method.");
 }
 
-pub inline fn buildReturnInfo2(cont: bool, comptime callInstOffset: u8) Value {
-    return .{
-        .val = 0 | (@as(u32, @intFromBool(!cont)) << 8) | (@as(u32, callInstOffset) << 16),
-    };
+pub const CallInfo = packed struct {
+    /// Whether a ret op should return from the VM loop.
+    ret_flag: bool,
+
+    /// Since there are different call insts with varying lengths,
+    /// the call convention prefers to advance the pc before saving it so
+    /// stepping over the call will already have the correct pc.
+    /// An offset is stored to the original call inst for stack unwinding.
+    call_inst_off: u7,
+
+    /// Stack size of the function.
+    /// Used to dynamically push stack frames when calling into the VM.
+    stack_size: u8,
+};
+
+pub inline fn buildCallInfo2(cont: bool, comptime callInstOffset: u8, stack_size: u8) Value {
+    return .{ .call_info = .{
+        .ret_flag = !cont,
+        .call_inst_off = callInstOffset,
+        .stack_size = stack_size,
+    }};
 }
 
-pub inline fn buildReturnInfo(comptime cont: bool, comptime callInstOffset: u8) Value {
-    return .{
-        .val = 0 | (@as(u32, @intFromBool(!cont)) << 8) | (@as(u32, callInstOffset) << 16),
-    };
+pub inline fn buildCallInfo(comptime cont: bool, comptime callInstOffset: u8, stack_size: u8) Value {
+    return .{ .call_info = .{
+        .ret_flag = !cont,
+        .call_inst_off = callInstOffset,
+        .stack_size = stack_size,
+    }};
 }
 
-pub inline fn buildReturnInfoForRoot(comptime cont: bool) Value {
-    return .{
-        .val = 0 | (@as(u32, @intFromBool(!cont)) << 8),
-    };
+pub inline fn buildRootCallInfo(comptime cont: bool) Value {
+    return .{ .call_info = .{
+        .ret_flag = !cont,
+        .call_inst_off = 0,
+        .stack_size = 4,
+    }};
 }
 
 pub inline fn getInstOffset(vm: *const VM, to: [*]const cy.Inst) u32 {
@@ -2529,12 +2533,12 @@ pub const CalleeStart: u8 = vmc.CALLEE_START;
 /// Assumes args are compatible.
 /// Like `callSym` except inlines different op codes.
 fn callMethod(
-    vm: *VM, pc: [*]cy.Inst, sp: [*]cy.Value, func: rt.FuncSymbol,
+    vm: *VM, pc: [*]cy.Inst, fp: [*]cy.Value, func: rt.FuncSymbol,
     typeId: cy.TypeId, ret: u8, nargs: u8,
 ) !?cy.fiber.PcFp {
     switch (func.type) {
         .func => {
-            if (@intFromPtr(sp + ret + func.data.func.stackSize) >= @intFromPtr(vm.c.stackEndPtr)) {
+            if (@intFromPtr(fp + ret + func.data.func.stackSize) >= @intFromPtr(vm.c.stackEndPtr)) {
                 return error.StackOverflow;
             }
 
@@ -2547,10 +2551,10 @@ fn callMethod(
                 @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
             }
 
-            const newFp = sp + ret;
-            newFp[1] = buildReturnInfo(true, cy.bytecode.CallObjSymInstLen);
+            const newFp = fp + ret;
+            newFp[1] = buildCallInfo(true, cy.bytecode.CallObjSymInstLen, @intCast(func.data.func.stackSize));
             newFp[2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen };
-            newFp[3] = Value{ .retFramePtr = sp };
+            newFp[3] = Value{ .retFramePtr = fp };
             return cy.fiber.PcFp{
                 .pc = cy.fiber.toVmPc(vm, func.data.func.pc),
                 .fp = newFp,
@@ -2566,15 +2570,15 @@ fn callMethod(
             }
 
             vm.c.pc = pc;
-            vm.c.framePtr = sp;
-            const res: Value = @bitCast(func.data.host_func.?(@ptrCast(vm), @ptrCast(sp + ret + CallArgStart), nargs));
+            vm.c.framePtr = fp;
+            const res: Value = @bitCast(func.data.host_func.?(@ptrCast(vm), @ptrCast(fp + ret + CallArgStart), nargs));
             if (res.isInterrupt()) {
                 return error.Panic;
             }
-            sp[ret] = res;
+            fp[ret] = res;
             return cy.fiber.PcFp{
                 .pc = pc + cy.bytecode.CallObjSymInstLen,
-                .fp = sp,
+                .fp = fp,
             };
         },
         .null => {

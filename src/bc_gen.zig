@@ -853,7 +853,7 @@ fn setFieldDyn(c: *Chunk, idx: usize, opts: SetFieldDynOptions, node: *ast.Node)
 
     // Performs runtime type check.
     const pc = c.buf.ops.items.len;
-    try c.pushFCode(.setFieldDyn, &.{ recv.reg, 0, 0, rightv.reg, 0, 0, 0, 0, 0, c.rega.nextTemp }, node);
+    try c.pushFCode(.setFieldDyn, &.{ recv.reg, 0, 0, rightv.reg, 0, 0, 0, 0, 0 }, node);
     c.buf.setOpArgU16(pc + 2, @intCast(fieldId));
 
     try popTempAndUnwind(c, rightv);
@@ -1585,10 +1585,9 @@ fn genTypeSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
 
 /// Reserve params and captured vars.
 /// Function stack layout:
-/// [startLocal/retLocal] [retInfo] [retAddress] [prevFramePtr] [callee] [params...] [var locals...] [temp locals...]
+/// [retLocal] [retInfo] [retAddress] [prevFramePtr] [callee] [params...] [var locals...] [temp locals...]
 /// `callee` is reserved so that function values can call static functions with the same call convention.
-/// For this reason, `callee` isn't freed in the function body and a separate release inst is required for lambda calls.
-/// A closure can also occupy the callee and is used to do captured var lookup.
+/// Captured vars are accessed from the closure in the callee slot.
 fn reserveFuncRegs(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []align(1) const ir.FuncParam) !void {
     const numParams = params.len;
     try c.genIrLocalMapStack.resize(c.alloc, c.curBlock.irLocalMapStart + maxIrLocals);
@@ -3663,15 +3662,15 @@ fn pushTypeCheck(c: *cy.Chunk, local: RegisterId, typeId: cy.TypeId, node: *ast.
     c.buf.setOpArgU16(start + 2, @intCast(typeId));
 }
 
-fn pushCallSym(c: *cy.Chunk, startLocal: u8, numArgs: u32, numRet: u8, symId: u32, node: *ast.Node) !void {
+fn pushCallSym(c: *cy.Chunk, ret: u8, numArgs: u32, numRet: u8, symId: u32, node: *ast.Node) !void {
     const start = c.buf.ops.items.len;
-    try c.pushFCode(.callSym, &.{ startLocal, @as(u8, @intCast(numArgs)), numRet, 0, 0, 0, 0, 0, 0, 0, 0 }, node);
+    try c.pushFCode(.callSym, &.{ ret, @as(u8, @intCast(numArgs)), numRet, 0, 0, 0, 0, 0, 0, 0, 0 }, node);
     c.buf.setOpArgU16(start + 4, @intCast(symId));
 }
 
-fn pushCallSymDyn(c: *cy.Chunk, startLocal: u8, numArgs: u32, numRet: u8, symId: u32, node: *ast.Node) !void {
+fn pushCallSymDyn(c: *cy.Chunk, ret: u8, numArgs: u32, numRet: u8, symId: u32, node: *ast.Node) !void {
     const start = c.buf.ops.items.len;
-    try c.pushFCode(.call_sym_dyn, &.{ startLocal, @as(u8, @intCast(numArgs)), numRet, 0, 0, 0, 0, 0, 0, 0, 0 }, node);
+    try c.pushFCode(.call_sym_dyn, &.{ ret, @as(u8, @intCast(numArgs)), numRet, 0, 0, 0, 0, 0, 0, 0, 0 }, node);
     c.buf.setOpArgU16(start + 4, @intCast(symId));
 }
 
@@ -3811,7 +3810,7 @@ fn pushObjectInit(c: *cy.Chunk, typeId: cy.TypeId, startLocal: u8, numFields: u8
 
 fn pushFieldDyn(c: *cy.Chunk, recv: u8, dst: u8, fieldId: u16, debugNode: *ast.Node) !void {
     const start = c.buf.ops.items.len;
-    try c.pushFCode(.fieldDyn, &.{ recv, dst, 0, 0, 0, 0, 0, c.rega.nextTemp }, debugNode);
+    try c.pushFCode(.fieldDyn, &.{ recv, dst, 0, 0, 0, 0, 0 }, debugNode);
     c.buf.setOpArgU16(start + 3, fieldId);
 }
 

@@ -363,7 +363,7 @@ fn markMainStackRoots(vm: *cy.VM) !void {
             return;
         } else {
             // Unwind.
-            pcOff = cy.fiber.getInstOffset(vm.c.ops, vm.c.stack[fpOff + 2].retPcPtr) - vm.c.stack[fpOff + 1].retInfoCallInstOffset();
+            pcOff = cy.fiber.getInstOffset(vm.c.ops, vm.c.stack[fpOff + 2].retPcPtr) - vm.c.stack[fpOff + 1].call_info.call_inst_off;
             fpOff = cy.fiber.getStackOffset(vm.c.stack, vm.c.stack[fpOff + 3].retFramePtr);
         }
     }

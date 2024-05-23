@@ -387,6 +387,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
     }
 
     const res = try switch (code) {
+        .await_expr         => genAwait(c, idx, cstr, node),
         .box                => genBox(c, idx, cstr, node),
         .captured           => genCaptured(c, idx, cstr, node),
         .cast               => genCast(c, idx, cstr, node),
@@ -509,6 +510,19 @@ fn funcBlock(c: *Chunk, idx: usize, node: *ast.Node) !void {
     c.patchJumpToCurPc(skipJump);
 }
 
+fn genAwait(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
+    const data = c.ir.getExprData(idx, .await_expr);
+    const inst = try c.rega.selectForDstInst(cstr, true, node);
+    const childv = try genExpr(c, data.expr, Cstr.simple);
+
+    try c.pushCode(.await_op, &.{childv.reg}, node);
+    try c.pushCode(.future_value, &.{childv.reg, inst.dst }, node);
+    try popTempValue(c, childv);
+    try releaseTempValue(c, childv, node);
+
+    return finishDstInst(c, inst, true);
+}
+
 fn genCoresume(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     const data = c.ir.getExprData(idx, .coresume);
     const inst = try c.rega.selectForDstInst(cstr, true, node);
@@ -516,8 +530,7 @@ fn genCoresume(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     const childv = try genExpr(c, data.expr, Cstr.simpleRetain);
 
     try c.pushCode(.coresume, &.{childv.reg, inst.dst}, node);
-
-    try popTempAndUnwind(c, childv);
+    try popTempValue(c, childv);
 
     return finishDstInst(c, inst, true);
 }

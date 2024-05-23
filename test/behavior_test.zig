@@ -246,6 +246,7 @@ if (!aot) {
     run.case("meta/set_panic.cy"); 
 
     run.case("concurrency/fibers.cy");
+    run.case("concurrency/await.cy");
 
     run.case("errors/error_values.cy");
     run.case("errors/throw.cy");
@@ -591,45 +592,6 @@ test "windows new lines" {
 //         );
 //         try t.eqStr(compile_res.output, "(function () {});");
 //     }
-// }
-
-// test "implicit await" {
-//     const run = VMrunner.create();
-//     defer run.destroy();
-
-//     var val = try run.eval(
-//         \\func foo() apromise:
-//         \\  task = @asyncTask()
-//         \\  @queueTask(func () => task.resolve(123))
-//         \\  return task.promise
-//         \\1 + foo()
-//     );
-//     try t.eq(val.asF64toI32(), 124);
-//     run.deinitValue(val);
-// }
-
-// test "await" {
-//     const run = VMrunner.create();
-//     defer run.destroy();
-
-//     var val = try run.eval(
-//         \\func foo():
-//         \\  task = @asyncTask()
-//         \\  @queueTask(func () => task.resolve(123))
-//         \\  return task.promise
-//         \\await foo()
-//     );
-//     try t.eq(val.asF64toI32(), 123);
-//     run.deinitValue(val);
-
-//     // await on value.
-//     val = try run.eval(
-//         \\func foo():
-//         \\  return 234
-//         \\await foo()
-//     );
-//     try t.eq(val.asF64toI32(), 234);
-//     run.deinitValue(val);
 // }
 
 test "Return from main." {

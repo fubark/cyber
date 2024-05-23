@@ -31,7 +31,7 @@ contexts:
       scope: punctuation.definition.comment.cyber
       push: line_comment
 
-    - match: '\b(if|else|switch|while|for|break|continue|pass|case)\b'
+    - match: '\b(if|else|switch|while|for|break|continue|pass|case|await)\b'
       scope: keyword.control.cyber
 
     - match: '\b(or|and|not)\b'

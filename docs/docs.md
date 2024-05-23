@@ -263,13 +263,14 @@ print a    --> panic: `a` is not defined in `$global`.
 ## Reserved identifiers.
 
 ### Keywords.
-There are `28` general keywords. This list categorizes them:
+There are `29` general keywords. This list categorizes them:
 
 - [Control Flow](#control-flow): `if` `else` `switch` `case` `while` `for` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not`
 - [Variables](#variables): `var`
 - [Functions](#functions): `func` `return`
 - [Coroutines](#fibers): `coinit` `coyield` `coresume`
+- [Async](#async): `await`
 - [Types](#custom-types): `type`  `as`
 - [Type embedding](#type-embedding): `use`
 - [Metaprogramming](#metaprogramming): `template`
@@ -1273,7 +1274,7 @@ The generic `Option` type is a choice type that either holds a `none` value or c
 template[T type]
 type Option enum:
     case none
-    case some #T
+    case some T
 ```
 A type prefixed with `?` is the idiomatic way to create an option type. The following String optional types are equivalent:
 ```cy
@@ -1409,9 +1410,9 @@ Templates are used to specialize type declarations. Since template parameters on
 template[T type]
 type MyContainer:
     id    int
-    value #T
+    value T
 
-    func get() #T:
+    func get() T:
         return self.value
 ```
 
@@ -1829,7 +1830,7 @@ Arguments assigned in the call block can be unordered.
 Templates are used to specialize function declarations. Since template parameters only exist at compile-time, the `#` prefix is used to reference them in the function declaration:
 ```cy
 template[T type]
-func add(a #T, b #T) #T:
+func add(a T, b T) T:
     return a + b
 ```
 
@@ -2507,6 +2508,21 @@ Panics can not be caught using `try catch`. Once `panic` is invoked, the current
 
 # Concurrency.
 
+<table><tr>
+<td valign="top">
+
+* [Async.](#async)
+  * [Futures.](#futures)
+  * [`await`.](#await)
+  * [Colorless async.](#colorless-async)
+  * [Future chains.](#future-chains)
+  * [Resolving futures.](#resolving-futures)
+  * [Structured concurrency.](#structured-concurrency)
+  * [Finish policies.](#finish-policy)
+  * [Task cancellation.](#task-cancellation)
+  * [Threads.](#threads)
+</td><td valign="top">
+
 * [Fibers.](#fibers)
   * [Creating fibers.](#creating-fibers)
   * [Passing arguments.](#passing-arguments)
@@ -2516,12 +2532,168 @@ Panics can not be caught using `try catch`. Once `panic` is invoked, the current
   * [Pause and resume.](#pause-and-resume)
   * [Fiber state.](#fiber-state)
 * [Gas mileage.](#gas-mileage)
-* [Async.](#async)
-* [Multi-thread.](#multi-thread)
+</td>
+</tr></table>
 
 [^top](#table-of-contents)
 
-Cyber supports fibers as a concurrency mechanism. There are plans to support preemptive concurrency with async/await as well as multithreading.
+Cyber supports asynchronous and cooperative concurrency.
+
+## Async.
+Cyber supports asynchronous execution which provides preemptive concurrency.
+Tasks can be scheduled over a single thread. *Multi-threaded execution is planned.*
+
+### Futures.
+A `Future` is a promise that some work will either complete or fail at some point in the future.
+This abstraction allows the current thread to continue execution without waiting for the completion of the future.
+
+The asynchronous work encapsulated by the future has the opportunity to run in parallel.
+For example, I/O bound work can be delegated to the operating system and CPU bound work can be run across multiple threads.
+Some work may simply run on the same thread.
+
+If an API function is meant to do work asynchronously, it would return a `Future`:
+```cy
+use aio
+
+var f = aio.delay(1000)
+print f          --> Future(void)
+```
+
+Futures can hold a result value when they are completed:
+```cy
+use aio
+
+var f = aio.readFile('foo.txt')
+print f          --> Future(String)
+```
+
+Futures can be created with a completed value:
+```cy
+var f = Future.complete(100)
+print f          --> Future(int)
+print f.get().?  --> 100
+```
+
+Future are also created when composing them together.
+
+### `await`.
+The `await` expression asynchronously waits for a `Future` to resolve.
+It guarantees that the current execution flow will not resume until the future is completed.
+Once resumed, the expression evaluates to the completed result:
+```cy
+use aio
+
+var res = await aio.readFile('foo.txt')
+print res        --> bar
+```
+In the above example, the file contents of `foo.txt` is "bar".
+
+`await` suspends the current fiber so the scheduler can execute tasks in its ready queue.
+When the future resolves, the suspended task is moved to the ready queue waiting to resume execution.
+
+Performing `await` on other values besides a `Future` type will evaluate to the value and will not perform any waiting:
+```cy
+var v = await 123
+print v          --> 123
+```
+
+### Colorless async.
+`await` can be used in any function.
+This means that async functions are colorless and don't require a special function modifier.
+
+### Future chains.
+`Future.then` is used to attach a callback that will only be invoked when the future completes, thereby creating an asynchronous chain: *Planned Feature*
+```cy
+use aio
+
+var f = aio.readFile('foo.txt').then() -> res:
+    print res    --> bar
+
+print f          --> Future(void)
+```
+By default `Future.then` evaluates to a new `Future(void)` and represents the completion of the callback.
+A callback that returns a result requires a generic parameter or inferred from the lambda: *Planned Feature*
+```cy
+var f = aio.readFile('foo.txt').then() -> res:
+    return res.len()
+
+print f          --> Future(int)
+print await f    --> 3
+```
+
+Similarily, `Future.catch` attaches a callback that will only be invoked when the future fails: *Planned Feature*
+```cy
+var f = aio.readFile('foo.txt').catch() -> err:
+    print err    --> error.FileNotFound
+```
+
+### Resolving futures. 
+`FutureResolver` produces a completable `Future`. In the following example, a future is completed with the `FutureResolver` after a queued task runs:
+```cy
+var r = FutureResolver[int].new()
+
+queueTask():
+    r.complete(234)
+
+var v = await r.future()
+print v
+```
+
+### Structured concurrency.
+> _Planned Feature_
+
+Asychronous tasks must be created with an `Async` context which groups together related tasks.
+This gives tasks well-defined lifetimes and allows policies to be applied to a task group.
+
+Every program begins by pushing a new `Async.waitAll` context to the `async` context variable. 
+`waitAll` is a [finish policy](#finish-policies) that waits for all tasks to complete before it marks its finish task as completed.
+In the following example, the created tasks are attached to the current `Async` context:
+```cy
+use aio
+
+aio.delay(1000)
+addMoreTasks()
+```
+Since the program did not explicitly wait for the completion of the current `Async` context, execution will end before 1 second has elapsed. 
+
+To wait for all the tasks to complete, the program can wait for the `Async` context to finish:
+```cy
+use aio
+
+context async Async
+
+aio.delay(1000)
+addMoreTasks()
+
+await async.finish()
+```
+The context variable `async` is declared to access the current `Async` context.
+`finish` applies the finish policy `waitAll` which completes when all tasks under the async context have been completed.
+
+After invoking `finish`, new tasks can no longer be created under the async context.
+Doing so would result in a runtime error.
+A future is returned to indicate the completion of the finish task.
+
+Explicitly invoking `finish` isn't idiomatic and was only demonstrated to show how an async context works. The same feat can be achieved with helpers that can wrap a block of related async logic:
+```cy
+use aio
+
+await Async.block(.waitAll):
+    aio.delay(1000)
+    addMoreTasks()
+```
+`Async.block` begins by creating a new async context and pushing the context to `async`.
+The callback is then invoked which creates a new task under the `async` context. 
+Once the callback returns, the `async` context and the result of `Async.finish` is returned.
+
+### Finish policies.
+> _Planned Feature_
+
+### Task cancellation.
+> _Planned Feature_
+
+### Threads.
+> _Planned Feature_
 
 ## Fibers.
 A fiber represents a separate execution context as a first-class value. It contains it's own call stack and program counter. Fibers by themselves do not enable parallelism.
@@ -2662,12 +2834,6 @@ print fiber.status()   -- '.done'
 The main execution context is a fiber as well. Once the main fiber has finished, the VM is done and control is returned to the host.
 
 ## Gas mileage.
-> _Planned Feature_
-
-## Async.
-> _Planned Feature_
-
-## Multi-thread.
 > _Planned Feature_
 
 # Dynamic Typing.

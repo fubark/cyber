@@ -254,6 +254,11 @@ pub const IfUnwrapStmt = struct {
     pos: u32,
 };
 
+const AwaitExpr = struct {
+    child: *Node align(8),
+    pos: u32,
+};
+
 const AccessExpr = struct {
     left: *Node align(8),
     right: *Node,
@@ -528,7 +533,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .array_init     => ArrayInit,
         .assignStmt     => AssignStmt,
         .attribute      => Attribute,
-        .await_expr     => void,
+        .await_expr     => AwaitExpr,
         .binExpr        => BinExpr,
         .binLit         => Span,
         .breakStmt      => Token,
@@ -657,7 +662,7 @@ pub const Node = struct {
             .array_init     => self.cast(.array_init).left.pos(),
             .assignStmt     => self.cast(.assignStmt).left.pos(),
             .attribute      => self.cast(.attribute).pos,
-            .await_expr     => cy.NullId,
+            .await_expr     => self.cast(.await_expr).pos,
             .binExpr        => self.cast(.binExpr).op_pos,
             .binLit         => self.cast(.binLit).pos,
             .breakStmt      => self.cast(.breakStmt).pos,

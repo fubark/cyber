@@ -906,6 +906,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
             if (id == 0) {
                 // Extract special syms. Assumes chunks[0] is the builtins chunk.
                 const core = self.chunks.items[0].sym.getMod();
+                self.sema.future_tmpl = core.getSym("Future").?.cast(.template);
                 self.sema.option_tmpl = core.getSym("Option").?.cast(.template);
                 self.sema.list_tmpl = core.getSym("List").?.cast(.template);
                 self.sema.table_type = core.getSym("Table").?.cast(.object_t);

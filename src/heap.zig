@@ -601,6 +601,90 @@ pub const Object = extern struct {
     }
 };
 
+const AsyncTaskType = enum(u8) {
+    /// Invoke callback on a new fiber.
+    callback,
+
+    /// Resumes a fiber.
+    cont,
+};
+
+pub const AsyncTaskNode = extern struct {
+    /// Tasks are linked together by a Future's continuation.
+    next: ?*AsyncTaskNode,
+
+    task: AsyncTask,
+};
+
+pub const AsyncTask = extern struct {
+    type: AsyncTaskType,
+    data: extern union {
+        callback: Value,
+        cont: *vmc.Fiber,
+    },
+};
+
+pub const FutureResolver = extern struct {
+    future: Value,
+};
+
+pub const Future = extern struct {
+    val: Value,
+    cont_head: ?*AsyncTaskNode,
+    cont_tail: ?*AsyncTaskNode,
+    completed: bool,
+
+    pub fn appendCont(self: *Future, node: *AsyncTaskNode) void {
+        if (self.cont_head == null) {
+            self.cont_head = node;
+            self.cont_tail = node;
+            return;
+        }
+
+        self.cont_tail.?.next = node;
+        self.cont_tail = node;
+    }
+};
+
+pub fn allocFuture(vm: *cy.VM, type_id: cy.TypeId) !Value {
+    const cyclable = vm.c.types[type_id].cyclable;
+    var new: *Future = undefined;
+    if (cyclable) {
+        new = @ptrCast(try allocHostCycObject(vm, type_id, @sizeOf(Future)));
+    } else {
+        new = @ptrCast(try allocHostNoCycObject(vm, type_id, @sizeOf(Future)));
+    }
+    new.* = .{
+        .val = undefined,
+        .completed = false,
+        .cont_head = null,
+        .cont_tail = null,
+    };
+    if (cyclable) {
+        return Value.initHostCycPtr(new);
+    } else {
+        return Value.initHostNoCycPtr(new);
+    }
+}
+
+pub fn allocFutureResolver(vm: *cy.VM, type_id: cy.TypeId, future: Value) !Value {
+    const cyclable = vm.c.types[type_id].cyclable;
+    var new: *FutureResolver = undefined;
+    if (cyclable) {
+        new = @ptrCast(try allocHostCycObject(vm, type_id, @sizeOf(FutureResolver)));
+    } else {
+        new = @ptrCast(try allocHostNoCycObject(vm, type_id, @sizeOf(FutureResolver)));
+    }
+    new.* = .{
+        .future = future,
+    };
+    if (cyclable) {
+        return Value.initHostCycPtr(new);
+    } else {
+        return Value.initHostNoCycPtr(new);
+    }
+}
+
 const Box = extern struct {
     typeId: cy.TypeId align(8),
     rc: u32,
@@ -985,7 +1069,7 @@ pub fn allocHostNoCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) !*al
     }
 }
 
-pub fn allocHostCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) !*anyopaque {
+pub fn allocHostCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) !*align(8) anyopaque {
     if (numBytes <= MaxPoolObjectUserBytes) {
         const obj = try allocPoolObject(vm);
         obj.head = .{
@@ -1481,6 +1565,8 @@ pub const VmExt = struct {
     pub const allocMapIterator = Root.allocMapIterator;
     pub const allocObjectSmall = Root.allocObjectSmall;
     pub const allocType = Root.allocType;
+    pub const allocFuture = Root.allocFuture;
+    pub const allocFutureResolver = Root.allocFutureResolver;
 
     pub fn mapSet(vm: *cy.VM, map: *Map, key: Value, val: Value) !void {
         try map.map().put(vm.alloc, key, val);
@@ -2222,6 +2308,7 @@ test "Free object invalidation." {
 }
 
 test "heap internals." {
+    try t.eq(@sizeOf(AsyncTask), 16);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(MapInner), 20);
         try t.eq(@alignOf(List), 4);

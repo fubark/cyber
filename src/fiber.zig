@@ -69,6 +69,17 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, argDst: u8, ini
     return Value.initCycPtr(obj);
 }
 
+pub fn saveCurFiber(vm: *cy.VM) void {
+    vm.c.curFiber.stackPtr = @ptrCast(vm.c.stack);
+    vm.c.curFiber.stackLen = @intCast(vm.c.stack_len);
+
+    const pc_off = cy.fiber.getInstOffset(vm.c.ops, vm.c.pc);
+    vm.c.curFiber.pcOffset = @intCast(pc_off);
+
+    const fp_off = cy.fiber.getStackOffset(vm.c.stack, vm.c.framePtr);
+    vm.c.curFiber.stackOffset = @intCast(fp_off);
+}
+
 /// Since this is called from a coresume expression, the fiber should already be retained.
 pub fn pushFiber(vm: *cy.VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *cy.Fiber, parentDstLocal: u8) PcFp {
     // Save current fiber.

@@ -152,6 +152,10 @@ pub const VM = struct {
 
     stackTrace: cy.StackTrace,
 
+    /// Tasks in this queue are ready to be executed (not in a waiting state).
+    /// `queueTask` appends tasks here.
+    ready_tasks: std.fifo.LinearFifo(cy.heap.AsyncTask, .Dynamic),
+
     /// This is needed for reporting since a method entry can be empty.
     method_names: cy.List(vmc.NameId),
     debugTable: []const cy.DebugSym,
@@ -293,7 +297,9 @@ pub const VM = struct {
             .num_evals = 0,
             .num_cont_evals = 0,
             .last_bc_len = 0,
+            .ready_tasks = std.fifo.LinearFifo(cy.heap.AsyncTask, .Dynamic).init(alloc),
         };
+        self.c.mainFiber.rc = 1;
         self.c.mainFiber.panicType = vmc.PANIC_NONE;
         self.c.curFiber = &self.c.mainFiber;
         self.compiler = try self.alloc.create(cy.Compiler);
@@ -314,6 +320,8 @@ pub const VM = struct {
         // will likely use a more consistent allocation.
         // Also try to allocate them in the same bucket.
         try cy.fiber.stackEnsureTotalCapacityPrecise(self, 511);
+        self.c.mainFiber.stackPtr = @ptrCast(self.c.stack);
+        self.c.mainFiber.stackLen = @intCast(self.c.stack_len);
 
         try self.funcSyms.ensureTotalCapacityPrecise(self.alloc, 255);
         try self.methods.ensureTotalCapacityPrecise(self.alloc, 340);
@@ -377,7 +385,8 @@ pub const VM = struct {
         if (reset) {
             // `stack` is kept with previous size.
         } else {
-            self.alloc.free(self.c.getStack());
+            self.alloc.free(self.c.mainFiber.stackPtr[0..self.c.mainFiber.stackLen]);
+            self.c.mainFiber.stackLen = 0;
             self.c.stack_len = 0;
         }
 
@@ -387,6 +396,13 @@ pub const VM = struct {
         } else {
             self.c.getTryStack().deinit(self.alloc);
             self.compactTrace.deinit(self.alloc);
+        }
+
+        if (reset) {
+            self.ready_tasks.deinit();
+            self.ready_tasks = std.fifo.LinearFifo(cy.heap.AsyncTask, .Dynamic).init(self.alloc);
+        } else {
+            self.ready_tasks.deinit();
         }
 
         if (reset) {
@@ -1824,7 +1840,7 @@ pub fn handleInterrupt(vm: *VM, rootFp: u32) !void {
 
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM, assuming pc, framePtr, and virtual registers are already set.
-pub fn evalLoopGrowStack(vm: *VM, handle_panic: bool) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, Unexpected, End}!void {
+pub fn evalLoopGrowStack(vm: *VM, handle_panic: bool) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, Unexpected, Await, End}!void {
     logger.tracev("begin eval loop", .{});
 
     // Record the start fp offset, so that stack unwinding knows when to stop.
@@ -1836,9 +1852,16 @@ pub fn evalLoopGrowStack(vm: *VM, handle_panic: bool) error{StackOverflow, OutOf
     } else if (comptime build_options.vmEngine == .c) {
         while (true) {
             const res = vmc.execBytecode(@ptrCast(vm));
+            cy.fiber.saveCurFiber(vm);
+
             if (res == vmc.RES_CODE_SUCCESS) {
                 break;
             }
+
+            if (res == vmc.RES_CODE_AWAIT) {
+                return error.Await;
+            }
+
             if (handle_panic) {
                 try @call(.never_inline, handleExecResult, .{vm, res, startFp});
             } else {
@@ -2014,117 +2037,116 @@ fn inferArg(vm: *VM, args: []Value, arg_idx: usize, arg: Value, target_t: cy.Typ
 /// See `reserveFuncParams` for stack layout.
 /// numArgs does not include the callee.
 pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8, cont: bool) !cy.fiber.PcFp {
-    if (callee.isPointer()) {
-        const obj = callee.asHeapObject();
-        switch (obj.getTypeId()) {
-            bt.Closure => {
-                if (numArgs != obj.closure.numParams) {
-                    logger.tracev("closure params/args mismatch {} {}", .{numArgs, obj.closure.numParams});
-                    return vm.interruptThrowSymbol(.InvalidSignature);
-                }
-
-                if (obj.closure.reqCallTypeCheck) {
-                    // Perform type check on args.
-                    const args = framePtr[ret+CallArgStart..ret+CallArgStart+numArgs];
-                    const cstrFuncSig = vm.compiler.sema.getFuncSig(obj.closure.funcSigId);
-                    for (args, 0..) |arg, i| {
-                        const cstrType = cstrFuncSig.paramPtr[i];
-                        const argType = arg.getTypeId();
-                        if (!types.isTypeSymCompat(vm.compiler, argType, cstrType)) {
-                            if (!@call(.never_inline, inferArg, .{vm, args, i, arg, cstrType})) {
-                                return panicIncompatibleLambdaSig(vm, args, obj.closure.funcSigId);
-                            }
-                        }
-                    }
-                }
-
-                if (@intFromPtr(framePtr + ret + obj.closure.stackSize) >= @intFromPtr(vm.c.stackEndPtr)) {
-                    return error.StackOverflow;
-                }
-
-                const retFramePtr = Value{ .retFramePtr = framePtr };
-                framePtr[ret + 1] = buildCallInfo2(cont, cy.bytecode.CallInstLen, obj.closure.stackSize);
-                framePtr[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
-                framePtr[ret + 3] = retFramePtr;
-
-                // Copy closure to local.
-                framePtr[ret + obj.closure.local] = callee;
-                return cy.fiber.PcFp{
-                    .pc = cy.fiber.toVmPc(vm, obj.closure.funcPc),
-                    .fp = framePtr + ret,
-                };
-            },
-            bt.Lambda => {
-                if (numArgs != obj.lambda.numParams) {
-                    logger.tracev("lambda params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
-                    return vm.interruptThrowSymbol(.InvalidSignature);
-                }
-
-                if (obj.lambda.reqCallTypeCheck) {
-                    // Perform type check on args.
-                    const args = framePtr[ret+CallArgStart..ret+CallArgStart+numArgs];
-                    const cstrFuncSig = vm.compiler.sema.getFuncSig(obj.lambda.funcSigId);
-                    for (args, 0..) |arg, i| {
-                        const cstrType = cstrFuncSig.paramPtr[i];
-                        const argType = arg.getTypeId();
-                        if (!types.isTypeSymCompat(vm.compiler, argType, cstrType)) {
-                            if (!@call(.never_inline, inferArg, .{vm, args, i, arg, cstrType})) {
-                                return panicIncompatibleLambdaSig(vm, args, obj.lambda.funcSigId);
-                            }
-                        }
-                    }
-                }
-
-                if (@intFromPtr(framePtr + ret + obj.lambda.stackSize) >= @intFromPtr(vm.c.stackEndPtr)) {
-                    return error.StackOverflow;
-                }
-
-                const retFramePtr = Value{ .retFramePtr = framePtr };
-                framePtr[ret + 1] = buildCallInfo2(cont, cy.bytecode.CallInstLen, obj.lambda.stackSize);
-                framePtr[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
-                framePtr[ret + 3] = retFramePtr;
-                return cy.fiber.PcFp{
-                    .pc = cy.fiber.toVmPc(vm, obj.lambda.funcPc),
-                    .fp = framePtr + ret,
-                };
-            },
-            bt.HostFunc => {
-                if (numArgs != obj.hostFunc.numParams) {
-                    logger.tracev("hostfunc params/args mismatch {} {}", .{numArgs, obj.hostFunc.numParams});
-                    return vm.interruptThrowSymbol(.InvalidSignature);
-                }
-
-                if (obj.hostFunc.reqCallTypeCheck) {
-                    // Perform type check on args.
-                    const args = framePtr[ret+CallArgStart..ret+CallArgStart+numArgs];
-                    const cstrFuncSig = vm.compiler.sema.getFuncSig(obj.hostFunc.funcSigId);
-                    for (args, 0..) |arg, i| {
-                        const cstrType = cstrFuncSig.paramPtr[i];
-                        const argType = arg.getTypeId();
-                        if (!types.isTypeSymCompat(vm.compiler, argType, cstrType)) {
-                            if (!@call(.never_inline, inferArg, .{vm, args, i, arg, cstrType})) {
-                                return panicIncompatibleLambdaSig(vm, args, obj.hostFunc.funcSigId);
-                            }
-                        }
-                    }
-                }
-
-                vm.c.pc = pc;
-                vm.c.framePtr = framePtr;
-                const newFramePtr = framePtr + ret;
-                const res = obj.hostFunc.func.?(@ptrCast(vm), @ptrCast(newFramePtr + CallArgStart), numArgs);
-                newFramePtr[0] = @bitCast(res);
-                return cy.fiber.PcFp{
-                    .pc = pc + cy.bytecode.CallInstLen,
-                    .fp = framePtr,
-                };
-            },
-            else => {
-                return vm.interruptThrowSymbol(.InvalidArgument);
-            },
-        }
-    } else {
+    if (!callee.isPointer()) {
         return vm.interruptThrowSymbol(.InvalidArgument);
+    }
+    const obj = callee.asHeapObject();
+    switch (obj.getTypeId()) {
+        bt.Closure => {
+            if (numArgs != obj.closure.numParams) {
+                logger.tracev("closure params/args mismatch {} {}", .{numArgs, obj.closure.numParams});
+                return vm.interruptThrowSymbol(.InvalidSignature);
+            }
+
+            if (obj.closure.reqCallTypeCheck) {
+                // Perform type check on args.
+                const args = framePtr[ret+CallArgStart..ret+CallArgStart+numArgs];
+                const cstrFuncSig = vm.compiler.sema.getFuncSig(obj.closure.funcSigId);
+                for (args, 0..) |arg, i| {
+                    const cstrType = cstrFuncSig.paramPtr[i];
+                    const argType = arg.getTypeId();
+                    if (!types.isTypeSymCompat(vm.compiler, argType, cstrType)) {
+                        if (!@call(.never_inline, inferArg, .{vm, args, i, arg, cstrType})) {
+                            return panicIncompatibleLambdaSig(vm, args, obj.closure.funcSigId);
+                        }
+                    }
+                }
+            }
+
+            if (@intFromPtr(framePtr + ret + obj.closure.stackSize) >= @intFromPtr(vm.c.stackEndPtr)) {
+                return error.StackOverflow;
+            }
+
+            const retFramePtr = Value{ .retFramePtr = framePtr };
+            framePtr[ret + 1] = buildCallInfo2(cont, cy.bytecode.CallInstLen, obj.closure.stackSize);
+            framePtr[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
+            framePtr[ret + 3] = retFramePtr;
+
+            // Copy closure to local.
+            framePtr[ret + obj.closure.local] = callee;
+            return cy.fiber.PcFp{
+                .pc = cy.fiber.toVmPc(vm, obj.closure.funcPc),
+                .fp = framePtr + ret,
+            };
+        },
+        bt.Lambda => {
+            if (numArgs != obj.lambda.numParams) {
+                logger.tracev("lambda params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
+                return vm.interruptThrowSymbol(.InvalidSignature);
+            }
+
+            if (obj.lambda.reqCallTypeCheck) {
+                // Perform type check on args.
+                const args = framePtr[ret+CallArgStart..ret+CallArgStart+numArgs];
+                const cstrFuncSig = vm.compiler.sema.getFuncSig(obj.lambda.funcSigId);
+                for (args, 0..) |arg, i| {
+                    const cstrType = cstrFuncSig.paramPtr[i];
+                    const argType = arg.getTypeId();
+                    if (!types.isTypeSymCompat(vm.compiler, argType, cstrType)) {
+                        if (!@call(.never_inline, inferArg, .{vm, args, i, arg, cstrType})) {
+                            return panicIncompatibleLambdaSig(vm, args, obj.lambda.funcSigId);
+                        }
+                    }
+                }
+            }
+
+            if (@intFromPtr(framePtr + ret + obj.lambda.stackSize) >= @intFromPtr(vm.c.stackEndPtr)) {
+                return error.StackOverflow;
+            }
+
+            const retFramePtr = Value{ .retFramePtr = framePtr };
+            framePtr[ret + 1] = buildCallInfo2(cont, cy.bytecode.CallInstLen, obj.lambda.stackSize);
+            framePtr[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
+            framePtr[ret + 3] = retFramePtr;
+            return cy.fiber.PcFp{
+                .pc = cy.fiber.toVmPc(vm, obj.lambda.funcPc),
+                .fp = framePtr + ret,
+            };
+        },
+        bt.HostFunc => {
+            if (numArgs != obj.hostFunc.numParams) {
+                logger.tracev("hostfunc params/args mismatch {} {}", .{numArgs, obj.hostFunc.numParams});
+                return vm.interruptThrowSymbol(.InvalidSignature);
+            }
+
+            if (obj.hostFunc.reqCallTypeCheck) {
+                // Perform type check on args.
+                const args = framePtr[ret+CallArgStart..ret+CallArgStart+numArgs];
+                const cstrFuncSig = vm.compiler.sema.getFuncSig(obj.hostFunc.funcSigId);
+                for (args, 0..) |arg, i| {
+                    const cstrType = cstrFuncSig.paramPtr[i];
+                    const argType = arg.getTypeId();
+                    if (!types.isTypeSymCompat(vm.compiler, argType, cstrType)) {
+                        if (!@call(.never_inline, inferArg, .{vm, args, i, arg, cstrType})) {
+                            return panicIncompatibleLambdaSig(vm, args, obj.hostFunc.funcSigId);
+                        }
+                    }
+                }
+            }
+
+            vm.c.pc = pc;
+            vm.c.framePtr = framePtr;
+            const newFramePtr = framePtr + ret;
+            const res = obj.hostFunc.func.?(@ptrCast(vm), @ptrCast(newFramePtr + CallArgStart), numArgs);
+            newFramePtr[0] = @bitCast(res);
+            return cy.fiber.PcFp{
+                .pc = pc + cy.bytecode.CallInstLen,
+                .fp = framePtr,
+            };
+        },
+        else => {
+            return vm.interruptThrowSymbol(.InvalidArgument);
+        },
     }
 }
 
@@ -2799,6 +2821,50 @@ fn zPopFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, retValue: Val
     };
 }
 
+fn zFutureValue(vm: *cy.VM, mb_future: Value) callconv(.C) vmc.Value {
+    const type_s = vm.c.types[mb_future.getTypeId()].sym;
+    if (type_s.getVariant()) |variant| {
+        if (variant.root_template == vm.sema.future_tmpl) {
+            const future = mb_future.castHostObject(*cy.heap.Future);
+            vm.retain(future.val);
+            return @bitCast(future.val);
+        }
+    }
+    vm.retain(mb_future);
+    return @bitCast(mb_future);
+}
+
+fn zAwait(vm: *cy.VM, value: Value) callconv(.C) vmc.ResultCode {
+    const type_s = vm.c.types[value.getTypeId()].sym;
+    if (type_s.getVariant()) |variant| {
+        if (variant.root_template == vm.sema.future_tmpl) {
+            const future = value.castHostObject(*cy.heap.Future);
+            if (future.completed) {
+                // Continue if completed Future.
+                return vmc.RES_CODE_SUCCESS;
+            }
+
+            // Persist fiber state.
+            cy.fiber.saveCurFiber(vm);
+
+            // Add task to future's continuation list.
+            vm.retainObject(@ptrCast(vm.c.curFiber));
+            const task_n = vm.alloc.create(cy.heap.AsyncTaskNode) catch @panic("error");
+            task_n.* = .{
+                .next = null,
+                .task = .{
+                    .type = .cont,
+                    .data = .{ .cont = vm.c.curFiber },
+                },
+            };
+            future.appendCont(task_n);
+
+            return vmc.RES_CODE_AWAIT;
+        }
+    }
+    return vmc.RES_CODE_SUCCESS;
+}
+
 fn zAllocObjectSmall(vm: *cy.VM, typeId: cy.TypeId, fields: [*]const Value, nfields: u8) callconv(.C) vmc.ValueResult {
     const res = cy.heap.allocObjectSmall(vm, typeId, fields[0..nfields]) catch {
         return .{
@@ -3033,6 +3099,8 @@ comptime {
     }
 
     if (build_options.export_vmz) {
+        @export(zAwait, .{ .name = "zAwait", .linkage = .strong });
+        @export(zFutureValue, .{ .name = "zFutureValue", .linkage = .strong });
         @export(zPopFiber, .{ .name = "zPopFiber", .linkage = .strong });
         @export(zPushFiber, .{ .name = "zPushFiber", .linkage = .strong });
         @export(zGetFieldFallback, .{ .name = "zGetFieldFallback", .linkage = .strong });

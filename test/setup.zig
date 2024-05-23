@@ -228,10 +228,22 @@ pub const VMrunner = struct {
                 }
                 return err;
             };
-        }  else {
-            if (res_code != c.Success) {
-                errReport(vm, res_code);
-                return error.EvalError;
+        } else {
+            if (res_code == c.Await) {
+                // Consume all ready tasks.
+                var cont_code = res_code;
+                while (cont_code == c.Await) {
+                    cont_code = c.runReadyTasks(vm);
+                }
+                if (cont_code != c.Success) {
+                    errReport(vm, cont_code);
+                    return error.EvalError;
+                }
+            } else {
+                if (res_code != c.Success) {
+                    errReport(vm, res_code);
+                    return error.EvalError;
+                }
             }
         }
 

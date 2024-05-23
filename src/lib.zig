@@ -10,6 +10,7 @@ const t = stdx.testing;
 const log = cy.log.scoped(.lib);
 const bt = cy.types.BuiltinTypes;
 const c = @import("capi.zig");
+const vmc = cy.vmc;
 
 const cli = @import("cli.zig");
 
@@ -115,6 +116,9 @@ export fn clEvalExt(vm: *cy.VM, uri: c.Str, src: c.Str, config: c.EvalConfig, ou
             error.Panic => {
                 res = c.ErrorPanic;
             },
+            error.Await => {
+                res = c.Await;
+            },
             else => {
                 log.tracev("{}", .{err});
                 res = c.ErrorUnknown;
@@ -136,7 +140,11 @@ export fn clEvalPath(vm: *cy.VM, uri: c.Str, config: c.EvalConfig, outVal: *cy.V
             error.Panic => {
                 res = c.ErrorPanic;
             },
+            error.Await => {
+                res = c.Await;
+            },
             else => {
+                log.tracev("{}", .{err});
                 res = c.ErrorUnknown;
             },
         }
@@ -144,6 +152,86 @@ export fn clEvalPath(vm: *cy.VM, uri: c.Str, config: c.EvalConfig, outVal: *cy.V
     };
     vm.last_res = res;
     return res;
+}
+
+export fn clRunReadyTasks(vm: *cy.VM) c.ResultCode {
+    var res = c.Success;
+    runReadyTasks(vm) catch |err| {
+        switch (err) {
+            error.CompileError => {
+                res = c.ErrorCompile;
+            },
+            error.Panic => {
+                res = c.ErrorPanic;
+            },
+            error.Await => {
+                res = c.Await;
+            },
+            else => {
+                log.tracev("{}", .{err});
+                res = c.ErrorUnknown;
+            },
+        }
+    };
+    vm.last_res = res;
+    return res;
+}
+
+fn runReadyTasks(vm: *cy.VM) anyerror!void {
+    log.tracev("run ready tasks", .{});
+
+    while (vm.ready_tasks.readItem()) |task| {
+        switch (task.type) {
+            .cont => {
+                const fiber = task.data.cont;
+                vm.c.curFiber = fiber;
+                vm.c.stack = @ptrCast(fiber.stackPtr);
+                vm.c.stack_len = fiber.stackLen;
+                vm.c.stackEndPtr = vm.c.stack + fiber.stackLen;
+                vm.c.framePtr = vm.c.stack + fiber.stackOffset;
+                vm.c.pc = vm.c.ops + fiber.pcOffset;
+                @call(.never_inline, cy.vm.evalLoopGrowStack, .{vm, true}) catch |err| {
+                    if (err == error.Await) {
+                        // Nop.
+                    } else {
+                        return err;
+                    }
+                };
+
+                // Release fiber.
+                vm.releaseObject(@ptrCast(fiber));
+            },
+            .callback => {
+                // Create fiber.
+                const arg_dst = 1;
+                const initial_stack_size: u32 = 16;
+                const fiberv = try cy.fiber.allocFiber(vm, cy.NullId, &.{}, arg_dst, initial_stack_size);
+                const fiber: *vmc.Fiber = @ptrCast(fiberv.asHeapObject());
+                vm.c.curFiber = fiber;
+                vm.c.pc = vm.c.ops;
+                vm.c.framePtr = @ptrCast(fiber.stackPtr);
+                vm.c.stack = @ptrCast(fiber.stackPtr);
+                vm.c.stack_len = fiber.stackLen;
+                vm.c.stackEndPtr = @ptrCast(fiber.stackPtr + fiber.stackLen);
+                _ = vm.callFunc(task.data.callback, &.{}, .{ .from_external = false }) catch |err| {
+                    if (err == error.Await) {
+                        return error.TODO;
+                    } else {
+                        return err;
+                    }
+                };
+
+                cy.fiber.saveCurFiber(vm);
+                fiber.pcOffset = cy.NullId;
+
+                // Release callback.
+                vm.release(task.data.callback);
+
+                // Release fiber.
+                vm.release(fiberv);
+            },
+        }
+    }
 }
 
 export fn clDefaultCompileConfig() c.CompileConfig {

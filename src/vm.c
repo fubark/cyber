@@ -656,6 +656,8 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Coyield),
         JENTRY(Coresume),
         JENTRY(Coreturn),
+        JENTRY(Await),
+        JENTRY(FutureValue),
         JENTRY(Retain),
         JENTRY(Box),
         JENTRY(SetBoxValue),
@@ -1680,8 +1682,25 @@ beginSwitch:
         if (vm->c.curFiber != &vm->c.mainFiber) {
             PcFpOff res = zPopFiber(vm, NULL_U32, stack, stack[1]);
             pc = vm->c.instPtr + res.pc;
-            stack = vm->c.stackPtr + res.sp;
+            stack = vm->c.stackPtr + res.fp;
         }
+        NEXT();
+    }
+    CASE(Await): {
+        Value mb_future = stack[pc[1]];
+        pc += 2;
+        vm->c.curPc = pc;
+        vm->c.curStack = stack;
+        ResultCode code = zAwait(vm, mb_future);
+        if (code == RES_CODE_AWAIT) {
+            RETURN(RES_CODE_AWAIT);
+        }
+        NEXT();
+    }
+    CASE(FutureValue): { 
+        Value mb_future = stack[pc[1]];
+        stack[pc[2]] = zFutureValue(vm, mb_future);
+        pc += 3;
         NEXT();
     }
     CASE(Retain): {

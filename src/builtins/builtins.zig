@@ -36,6 +36,7 @@ pub const funcs = [_]C.HostFuncEntry{
     func("panic",          zErrFunc(panic)),
     func("performGC",      zErrFunc(performGC)),
     func("print",          print),
+    func("queueTask",      zErrFunc(queueTask)),
     func("runestr",        zErrFunc(runestr)),
     func("typeof",         typeof),
 
@@ -190,6 +191,14 @@ pub const funcs = [_]C.HostFuncEntry{
 
     // metatype
     func("metatype.id",        metatypeId),
+
+    // Future
+    func("Future.complete_",   zErrFunc(futureComplete)),
+
+    // FutureResolver
+    func("FutureResolver.complete", zErrFunc(futureResolverComplete)),
+    func("FutureResolver.future",   zErrFunc(futureResolverFuture)),
+    func("FutureResolver.new_",     zErrFunc(futureResolverNew)),
 };
 
 pub const types = [_]C.HostTypeEntry{
@@ -197,38 +206,40 @@ pub const types = [_]C.HostTypeEntry{
 
 const htype = C.hostTypeEntry;
 pub const vm_types = [_]C.HostTypeEntry{
-    htype("void",          C.CORE_TYPE(bt.Void)),
-    htype("bool",          C.CORE_TYPE_DECL(bt.Boolean)),
-    htype("symbol",        C.CORE_TYPE_DECL(bt.Symbol)),
-    htype("error",         C.CORE_TYPE_DECL(bt.Error)),
-    htype("int",           C.CORE_TYPE_DECL(bt.Integer)),
-    htype("float",         C.CORE_TYPE_DECL(bt.Float)), 
-    htype("placeholder1",  C.CORE_TYPE(bt.Placeholder1)), 
-    htype("placeholder2",  C.CORE_TYPE(bt.Placeholder2)), 
-    htype("taglit",        C.CORE_TYPE(bt.TagLit)), 
-    htype("dyn",           C.CORE_TYPE(bt.Dyn)),
-    htype("any",           C.CORE_TYPE(bt.Any)),
-    htype("type",          C.CORE_TYPE(bt.Type)),
-    htype("List",          C.CUSTOM_TYPE(null, listGetChildren, listFinalizer)),
-    htype("ListDyn",       C.CORE_TYPE_EXT(bt.ListDyn, listGetChildren, listFinalizer)),
-    htype("ListIterator",  C.CUSTOM_TYPE(null, listIterGetChildren, null)),
-    htype("ListIterDyn",   C.CORE_TYPE_EXT(bt.ListIterDyn, listIterGetChildren, null)),
-    htype("Tuple",         C.CORE_TYPE(bt.Tuple)),
-    htype("Table",         C.CORE_TYPE_DECL(bt.Table)),
-    htype("Map",           C.CORE_TYPE(bt.Map)),
-    htype("MapIterator",   C.CORE_TYPE(bt.MapIter)),
-    htype("String",        C.CORE_TYPE(bt.String)),
-    htype("Array",         C.CORE_TYPE(bt.Array)),
-    htype("pointer",       C.CORE_TYPE(bt.Pointer)),
-    htype("Closure",       C.CORE_TYPE(bt.Closure)),
-    htype("Lambda",        C.CORE_TYPE(bt.Lambda)),
-    htype("HostFunc",      C.CORE_TYPE(bt.HostFunc)),
-    htype("ExternFunc",    C.CORE_TYPE(bt.ExternFunc)),
-    htype("Fiber",         C.CORE_TYPE(bt.Fiber)),
-    htype("metatype",      C.CORE_TYPE(bt.MetaType)),
-    htype("Range",         C.CORE_TYPE(bt.Range)),
-    htype("Box",           C.CORE_TYPE(bt.Box)),
-    htype("TccState",      C.CORE_TYPE(bt.TccState)),
+    htype("void",           C.CORE_TYPE(bt.Void)),
+    htype("bool",           C.CORE_TYPE_DECL(bt.Boolean)),
+    htype("symbol",         C.CORE_TYPE_DECL(bt.Symbol)),
+    htype("error",          C.CORE_TYPE_DECL(bt.Error)),
+    htype("int",            C.CORE_TYPE_DECL(bt.Integer)),
+    htype("float",          C.CORE_TYPE_DECL(bt.Float)), 
+    htype("placeholder1",   C.CORE_TYPE(bt.Placeholder1)), 
+    htype("placeholder2",   C.CORE_TYPE(bt.Placeholder2)), 
+    htype("taglit",         C.CORE_TYPE(bt.TagLit)), 
+    htype("dyn",            C.CORE_TYPE(bt.Dyn)),
+    htype("any",            C.CORE_TYPE(bt.Any)),
+    htype("type",           C.CORE_TYPE(bt.Type)),
+    htype("List",           C.CUSTOM_TYPE(null, listGetChildren, listFinalizer)),
+    htype("ListDyn",        C.CORE_TYPE_EXT(bt.ListDyn, listGetChildren, listFinalizer)),
+    htype("ListIterator",   C.CUSTOM_TYPE(null, listIterGetChildren, null)),
+    htype("ListIterDyn",    C.CORE_TYPE_EXT(bt.ListIterDyn, listIterGetChildren, null)),
+    htype("Tuple",          C.CORE_TYPE(bt.Tuple)),
+    htype("Table",          C.CORE_TYPE_DECL(bt.Table)),
+    htype("Map",            C.CORE_TYPE(bt.Map)),
+    htype("MapIterator",    C.CORE_TYPE(bt.MapIter)),
+    htype("String",         C.CORE_TYPE(bt.String)),
+    htype("Array",          C.CORE_TYPE(bt.Array)),
+    htype("pointer",        C.CORE_TYPE(bt.Pointer)),
+    htype("Closure",        C.CORE_TYPE(bt.Closure)),
+    htype("Lambda",         C.CORE_TYPE(bt.Lambda)),
+    htype("HostFunc",       C.CORE_TYPE(bt.HostFunc)),
+    htype("ExternFunc",     C.CORE_TYPE(bt.ExternFunc)),
+    htype("Fiber",          C.CORE_TYPE(bt.Fiber)),
+    htype("metatype",       C.CORE_TYPE(bt.MetaType)),
+    htype("Range",          C.CORE_TYPE(bt.Range)),
+    htype("Box",            C.CORE_TYPE(bt.Box)),
+    htype("TccState",       C.CORE_TYPE(bt.TccState)),
+    htype("Future",         C.CUSTOM_TYPE(null, futureGetChildren, null)),
+    htype("FutureResolver", C.CUSTOM_TYPE(null, futureResolverGetChildren, null)),
 };
 
 pub var OptionInt: cy.TypeId = undefined;
@@ -530,6 +541,16 @@ pub fn print_c(ctx: cy.Context, arg: rt.Any) callconv(.C) rt.Error {
     return rt.Error.initNull();
 }
 
+pub fn queueTask(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!Value {
+    vm.retain(args[0]);
+    const task = cy.heap.AsyncTask{
+        .type = .callback,
+        .data = .{ .callback = args[0] },
+    };
+    try vm.ready_tasks.writeItem(task);
+    return Value.Void;
+}
+
 pub fn typeof(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     const typeId = val.getTypeId();
@@ -557,6 +578,61 @@ pub fn listIterGetChildren(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) C.ValueSlic
         .ptr = @ptrCast(&iter.list),
         .len = 1,
     };
+}
+
+pub fn futureGetChildren(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) C.ValueSlice {
+    var future: *cy.heap.Future = @ptrCast(@alignCast(obj));
+    if (future.completed) {
+        return .{
+            .ptr = @ptrCast(&future.val),
+            .len = 1,
+        };
+    } else {
+        return .{
+            .ptr = null,
+            .len = 0,
+        };
+    }
+}
+
+pub fn futureResolverGetChildren(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) C.ValueSlice {
+    var resolver: *cy.heap.FutureResolver = @ptrCast(@alignCast(obj));
+    return .{
+        .ptr = @ptrCast(&resolver.future),
+        .len = 1,
+    };
+}
+
+pub fn futureResolverComplete(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const resolver = args[0].castHostObject(*cy.heap.FutureResolver);
+    const future = resolver.future.castHostObject(*cy.heap.Future);
+    if (!future.completed) {
+        vm.retain(args[1]);
+        future.val = args[1];
+        future.completed = true;
+
+        // Copy continuations to the ready queue.
+        var opt_node = future.cont_head;
+        while (opt_node) |node| {
+            try vm.ready_tasks.writeItem(node.task);
+            opt_node = node.next;
+            vm.alloc.destroy(node);
+        }
+    } 
+    return cy.Value.Void;
+}
+
+pub fn futureResolverFuture(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const resolver = args[0].castHostObject(*cy.heap.FutureResolver);
+    vm.retain(resolver.future);
+    return resolver.future;
+}
+
+pub fn futureResolverNew(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const future_t: cy.TypeId = @intCast(args[0].asInteger());
+    const resolver_t: cy.TypeId = @intCast(args[1].asInteger());
+    const future = try vm.allocFuture(future_t);
+    return vm.allocFutureResolver(resolver_t, future);
 }
 
 fn arrayConcat(vm: *cy.VM, args: [*]const Value, _: u8) Value {
@@ -949,6 +1025,15 @@ fn fiberStatus(vm: *cy.VM, args: [*]const Value, _: u8) Value {
             return Value.initSymbol(@intFromEnum(Symbol.paused));
         }
     }
+}
+
+fn futureComplete(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+    const type_id: cy.TypeId = @intCast(args[1].asInteger());
+    const future = try vm.allocFuture(type_id);
+    vm.retain(args[0]);
+    future.castHostObject(*cy.heap.Future).val = args[0];
+    future.castHostObject(*cy.heap.Future).completed = true;
+    return future;
 }
 
 fn metatypeId(_: *cy.VM, args: [*]const Value, _: u8) Value {

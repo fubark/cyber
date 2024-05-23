@@ -2907,16 +2907,16 @@ pub const Parser = struct {
             .null => return null,
             .right_paren => return null,
             .right_bracket => return null,
-            // .await_k => {
-            //     // Await expression.
-            //     const expr_id = try self.pushNode(.await_expr, start);
-            //     self.advance();
-            //     const term_id = try self.parseTermExpr(.{});
-            //     self.nodes.items[expr_id].head = .{
-            //         .child_head = term_id,
-            //     };
-            //     return expr_id;
-            // },
+            .await_k => {
+                self.advance();
+                const child = (try self.parseExpr(.{})) orelse {
+                    return self.reportError("Expected `await` expression.", &.{});
+                };
+                return self.ast.newNodeErase(.await_expr, .{
+                    .child = child,
+                    .pos = self.tokenSrcPos(start),
+                });
+            },
             .not_k => {
                 self.advance();
                 const child = (try self.parseExpr(.{})) orelse {
@@ -3614,7 +3614,7 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .and_k => .and_op,
         .or_k => .or_op,
         .null,
-        .as_k, .at,
+        .as_k, .at, .await_k,
         .bang, .bin, .break_k,
         .minus_right_angle, .case_k, .catch_k, .coinit_k, .colon, .comma, .continue_k, .coresume_k, .coyield_k,
         .dec, .dot, .dot_question, .dot_dot,

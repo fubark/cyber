@@ -28,6 +28,7 @@ typedef int CLResultCode;
 
 enum {
     CL_SUCCESS = 0,
+    CL_AWAIT,
     CL_ERROR_COMPILE,
     CL_ERROR_PANIC,
     CL_ERROR_UNKNOWN,
@@ -39,7 +40,7 @@ typedef enum {
     CL_TYPE_ERROR,
     CL_TYPE_PLACEHOLDER1,
     CL_TYPE_PLACEHOLDER2,
-    CL_TYPE_PLACEHOLDER3,
+    CL_TYPE_TAGLIT,
     CL_TYPE_SYMBOL,
     CL_TYPE_INTEGER,
     CL_TYPE_FLOAT,
@@ -397,6 +398,9 @@ CLResultCode clEvalExt(CLVM* vm, CLStr uri, CLStr src, CLEvalConfig config, CLVa
 
 // Resolves `uri` and evaluates the module.
 CLResultCode clEvalPath(CLVM* vm, CLStr uri, CLEvalConfig config, CLValue* outVal);
+
+// Consumes and evaluates all ready tasks. Returns `CL_SUCCESS` if succesfully emptied the ready queue.
+CLResultCode clRunReadyTasks(CLVM* vm);
 
 CLResultCode clCompile(CLVM* vm, CLStr uri, CLStr src, CLCompileConfig config);
 CLResultCode clValidate(CLVM* vm, CLStr src);

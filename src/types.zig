@@ -24,6 +24,7 @@ pub const TypeKind = enum(u8) {
     choice,
     @"struct",
     option,
+    future,
 };
 
 pub const Type = extern struct {

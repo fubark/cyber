@@ -4915,6 +4915,30 @@ pub const ChunkExt = struct {
             .switchExpr => {
                 return semaSwitchExpr(c, node.cast(.switchExpr));
             },
+            .await_expr => {
+                const child = try c.semaExpr(node.cast(.await_expr).child, .{});
+
+                const type_s = c.sema.getTypeSym(child.type.id);
+                if (type_s.getVariant()) |variant| {
+                    if (variant.root_template == c.sema.future_tmpl) {
+                        const ret = variant.args[0].asHeapObject().type.type;
+                        const irIdx = try c.ir.pushExpr(.await_expr, c.alloc, ret, node, .{
+                            .expr = child.irIdx,
+                        });
+                        return ExprResult.initInheritDyn(irIdx, child.type, ret);
+                    }
+                }
+
+                if (child.type.isDynAny()) {
+                    const irIdx = try c.ir.pushExpr(.await_expr, c.alloc, bt.Any, node, .{
+                        .expr = child.irIdx,
+                    });
+                    return ExprResult.initDynamic(irIdx, bt.Any);
+                } else {
+                    // Can simply evaluate the expression.
+                    return child;
+                }
+            },
             else => {
                 return c.reportErrorFmt("Unsupported node: {}", &.{v(node.type())}, node);
             },
@@ -5687,6 +5711,7 @@ pub const Sema = struct {
     funcSigs: std.ArrayListUnmanaged(FuncSig),
     funcSigMap: std.HashMapUnmanaged(FuncSigKey, FuncSigId, FuncSigKeyContext, 80),
 
+    future_tmpl: *cy.sym.Template,
     option_tmpl: *cy.sym.Template,
     list_tmpl: *cy.sym.Template,
     table_type: *cy.sym.ObjectType,
@@ -5695,6 +5720,7 @@ pub const Sema = struct {
         return .{
             .alloc = alloc,
             .compiler = compiler,
+            .future_tmpl = undefined,
             .option_tmpl = undefined,
             .list_tmpl = undefined,
             .table_type = undefined,

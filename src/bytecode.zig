@@ -900,6 +900,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .release,
         .true,
         .false,
+        .await_op,
         .map => {
             return 2;
         },
@@ -916,6 +917,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .copyObjDyn,
         .constI8,
         .jump,
+        .future_value,
         .coyield,
         .coresume,
         .box,
@@ -1222,12 +1224,15 @@ pub const OpCode = enum(u8) {
     popTry = vmc.CodePopTry,
     throw = vmc.CodeThrow,
 
+    await_op = vmc.CodeAwait,
+    future_value = vmc.CodeFutureValue,
+
     /// Indicates the end of the main script.
     end = vmc.CodeEnd,
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 117);
+    try t.eq(std.enums.values(OpCode).len, 119);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

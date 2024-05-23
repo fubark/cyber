@@ -7,7 +7,7 @@ const v = cy.fmt.v;
 const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "and", .and_k },
     .{ "as", .as_k },
-    // .{ "await", .await_k },
+    .{ "await", .await_k },
     .{ "break", .break_k },
     .{ "case", .case_k },
     .{ "catch", .catch_k },
@@ -51,7 +51,7 @@ pub const TokenType = enum(u8) {
     and_k,
     as_k,
     at,
-    // await_k,
+    await_k,
     bang,
     bang_equal,
     bin,
@@ -1006,6 +1006,6 @@ test "tokenizer internals." {
     try tt.eq(@alignOf(Token), 4);
     try tt.eq(@sizeOf(TokenizeState), 4);
 
-    try tt.eq(std.enums.values(TokenType).len, 89);
-    try tt.eq(keywords.kvs.len, 36);
+    try tt.eq(std.enums.values(TokenType).len, 90);
+    try tt.eq(keywords.kvs.len, 37);
 }

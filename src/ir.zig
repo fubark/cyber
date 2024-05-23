@@ -80,6 +80,8 @@ pub const ExprCode = enum(u8) {
     coyield,
     coresume,
 
+    await_expr,
+
     local,
     object_init,
 
@@ -148,6 +150,10 @@ pub const ExprType = packed struct {
     pub fn initThrows(id: cy.TypeId) ExprType {
         return .{ .id = @intCast(id), .throws = true };
     }
+};
+
+pub const Await = struct {
+    expr: Loc,
 };
 
 pub const Range = struct {
@@ -666,6 +672,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .typeCheckOption => TypeCheckOption,
         .box => Box,
         .range => Range,
+        .await_expr => Await,
         else => void,
     };
 }

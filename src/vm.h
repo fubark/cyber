@@ -312,6 +312,8 @@ typedef enum {
     CodeCoyield,
     CodeCoresume,
     CodeCoreturn,
+    CodeAwait,
+    CodeFutureValue,
     CodeRetain,
     CodeBox,
     CodeSetBoxValue,
@@ -814,11 +816,11 @@ typedef struct VM {
     VMC c;
 } VM;
 
-
 typedef int ResultCode;
 
 enum {
     RES_CODE_SUCCESS = 0,
+    RES_CODE_AWAIT,
     RES_CODE_PANIC,
     RES_CODE_STACK_OVERFLOW,
     RES_CODE_UNKNOWN,
@@ -885,8 +887,10 @@ ValueResult zAllocListDyn(VM* vm, Value* elemStart, uint8_t nelems);
 double zOtherToF64(Value val);
 CallObjSymResult zCallObjSym(VM* vm, Inst* pc, Value* stack, Value recv, TypeId typeId, u16 method, u8 startLocal, u8 numArgs);
 ValueResult zAllocFiber(VM* vm, uint32_t pc, Value* args, uint8_t nargs, uint8_t argDst, uint8_t initialStackSize);
-PcSp zPushFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Fiber* fiber, uint8_t parentDstLocal);
-PcSpOff zPopFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Value retValue);
+PcFp zPushFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Fiber* fiber, uint8_t parentDstLocal);
+PcFpOff zPopFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Value retValue);
+ResultCode zAwait(VM* vm, Value value);
+Value zFutureValue(VM* vm, Value mb_future);
 uint8_t zGetFieldOffsetFromTable(VM* vm, TypeId typeId, uint32_t symId);
 Value zEvalCompare(Value left, Value right);
 Value zEvalCompareNot(Value left, Value right);

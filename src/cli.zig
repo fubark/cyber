@@ -24,66 +24,51 @@ const funcs = [_]C.HostFuncEntry{
     func("replReadLine",     zErrFunc(replReadLine)),
 };
 
-const cli_res = C.ModuleLoaderResult{
-    .src = Src,
-    .srcLen = Src.len,
-    .funcs = C.toSlice(C.HostFuncEntry, &funcs),
-    .func_loader = null,
-    .onLoad = null,
-    .onReceipt = null,
-    .types = C.NullSlice,
-    .varLoader = null,
-    .type_loader = null,
-    .onDestroy = null,
-    .onTypeLoad = null,
-};
+pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
+    const mod = C.createModule(@ptrCast(vm), C.toStr(r_uri), C.toStr(Src));
+    var config = C.ModuleConfig{
+        .funcs = C.toSlice(C.HostFuncEntry, &funcs),
+    };
+    C.setModuleConfig(@ptrCast(vm), mod, &config);
+    return mod;
+}
 
-const os_res = C.ModuleLoaderResult{
-    .src = os_mod.Src,
-    .srcLen = os_mod.Src.len,
-    .varLoader = os_mod.varLoader,
-    .funcs = C.toSlice(C.HostFuncEntry, &os_mod.funcs),
-    .func_loader = null,
-    .types = C.toSlice(C.HostTypeEntry, &os_mod.types),
-    .type_loader = null,
-    .onTypeLoad = os_mod.onTypeLoad,
-    .onLoad = os_mod.onLoad,
-    .onReceipt = null,
-    .onDestroy = null,
-};
-
-const test_res = C.ModuleLoaderResult{
-    .src = test_mod.Src,
-    .srcLen = test_mod.Src.len,
-    .funcs = C.toSlice(C.HostFuncEntry, &test_mod.funcs),
-    .func_loader = null,
-    .onLoad = test_mod.onLoad,
-    .onReceipt = null,
-    .varLoader = null,
-    .types = C.NullSlice,
-    .type_loader = null,
-    .onDestroy = null,
-    .onTypeLoad = null,
-};
-
-const stdMods = std.ComptimeStringMap(C.ModuleLoaderResult, .{
-    .{"cli", cli_res},
-    .{"os", os_res},
-    .{"test", test_res},
+const stdMods = std.ComptimeStringMap(*const fn(*cy.VM, r_uri: []const u8) C.Module, .{
+    .{"cli", create},
+    .{"os", os_mod.create},
+    .{"test", test_mod.create},
 });
+
+pub const CliData = struct {
+    FileT: cy.TypeId,
+    DirT: cy.TypeId,
+    DirIterT: cy.TypeId,
+    CArrayT: cy.TypeId,
+    CDimArrayT: cy.TypeId,
+    FFIT: cy.TypeId,
+};
 
 comptime {
     if (!builtin.is_test or !build_options.link_test) {
-        @export(clSetupForCLI, .{ .name = "clSetupForCLI", .linkage = .strong });
+        @export(clInitCLI, .{ .name = "clInitCLI", .linkage = .strong });
+        @export(clDeinitCLI, .{ .name = "clDeinitCLI", .linkage = .strong });
     }
 }
 
-pub fn clSetupForCLI(vm: *C.VM) callconv(.C) void {
+pub fn clInitCLI(vm: *cy.VM) callconv(.C) void {
     C.setResolver(@ptrCast(vm), resolve);
     C.setModuleLoader(@ptrCast(vm), loader);
     C.setPrinter(@ptrCast(vm), print);
     C.setErrorPrinter(@ptrCast(vm), err);
     C.setLog(logFn);
+
+    const cli_data = vm.alloc.create(CliData) catch @panic("error");
+    vm.data.put(vm.alloc, "cli", cli_data) catch @panic("error");
+}
+
+pub fn clDeinitCLI(vm: *cy.VM) callconv(.C) void {
+    const cli_data = vm.getData(*CliData, "cli");
+    vm.alloc.destroy(cli_data);
 }
 
 fn logFn(str: C.Str) callconv(.C) void {
@@ -127,15 +112,14 @@ fn print(_: ?*C.VM, str: C.Str) callconv(.C) void {
     }
 }
 
-pub fn loader(vm_: ?*C.VM, spec_: C.Str, out_: [*c]C.ModuleLoaderResult) callconv(.C) bool {
+pub fn loader(vm_: ?*C.VM, spec_: C.Str, res: ?*C.Module) callconv(.C) bool {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const out: *C.ModuleLoaderResult = out_;
     const spec = C.fromStr(spec_);
     if (builtins.get(spec) != null) {
-        return C.defaultModuleLoader(vm_, spec_, out);
+        return C.defaultModuleLoader(vm_, spec_, res);
     }
-    if (stdMods.get(spec)) |res| {
-        out.* = res;
+    if (stdMods.get(spec)) |create_fn| {
+        res.?.* = create_fn(vm, spec);
         return true;
     }
 
@@ -167,16 +151,10 @@ pub fn loader(vm_: ?*C.VM, spec_: C.Str, out_: [*c]C.ModuleLoaderResult) callcon
         };
     }
 
-    out.*.src = src.ptr;
-    out.*.srcLen = src.len;
-    out.*.onReceipt = onModuleReceipt;
+    const mod = C.createModule(vm_, C.toStr(spec), C.toStr(src));
+    alloc.free(src);
+    res.?.* = mod;
     return true;
-}
-
-fn onModuleReceipt(vm_: ?*C.VM, res_: [*c]C.ModuleLoaderResult) callconv(.C) void {
-    const vm: *C.VM = @ptrCast(vm_);
-    const res: *C.ModuleLoaderResult = res_;
-    C.free(vm, C.toStr(res.src[0..res.srcLen]));
 }
 
 fn resolve(vm_: ?*C.VM, params: C.ResolverParams) callconv(.C) bool {

@@ -225,10 +225,10 @@ type FFI _:
     --| or point to the correct object.
     @host func unbindObjPtr(obj any) void
 
-type CArray:
+@host type CArray:
     elem any
     n    any
 
-type CDimArray:
+@host type CDimArray:
     elem any
     dims any

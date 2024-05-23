@@ -17,11 +17,18 @@ const string = @import("string.zig");
 
 const log = cy.log.scoped(.core);
 
-pub const VmSrc = @embedFile("builtins_vm.cy");
-pub const Src = @embedFile("builtins.cy");
+const VmSrc = @embedFile("builtins_vm.cy");
+const Src = @embedFile("builtins.cy");
+
+pub const CoreData = struct {
+    ValueT: cy.TypeId,
+    VMT: cy.TypeId,
+    EvalResultT: cy.TypeId,
+    EvalConfigT: cy.TypeId,
+};
 
 const func = cy.hostFuncEntry;
-pub const funcs = [_]C.HostFuncEntry{
+const funcs = [_]C.HostFuncEntry{
     // Utils.
     func("copy",           copy),
     func("dump",           zErrFunc(dump)),
@@ -201,11 +208,11 @@ pub const funcs = [_]C.HostFuncEntry{
     func("FutureResolver.new_",     zErrFunc(futureResolverNew)),
 };
 
-pub const types = [_]C.HostTypeEntry{
+const types = [_]C.HostTypeEntry{
 };
 
 const htype = C.hostTypeEntry;
-pub const vm_types = [_]C.HostTypeEntry{
+const vm_types = [_]C.HostTypeEntry{
     htype("void",           C.CORE_TYPE(bt.Void)),
     htype("bool",           C.CORE_TYPE_DECL(bt.Boolean)),
     htype("symbol",         C.CORE_TYPE_DECL(bt.Symbol)),
@@ -249,7 +256,21 @@ pub var OptionMap: cy.TypeId = undefined;
 pub var OptionArray: cy.TypeId = undefined;
 pub var OptionString: cy.TypeId = undefined;
 
-pub fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
+pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
+    const aot = cy.isAot(vm.compiler.config.backend);
+    const src = if (aot) C.toStr(Src) else C.toStr(VmSrc);
+    const mod = C.createModule(@ptrCast(vm), C.toStr(r_uri), src);
+
+    var config = C.ModuleConfig{
+        .types = if (aot) C.toSlice(C.HostTypeEntry, &types) else C.toSlice(C.HostTypeEntry, &vm_types),
+        .funcs = C.toSlice(C.HostFuncEntry, &funcs),
+        .onLoad = onLoad,
+    };
+    C.setModuleConfig(@ptrCast(vm), mod, &config);
+    return mod;
+}
+
+fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     const chunk_sym = cy.Sym.fromC(mod).cast(.chunk);
     const b = bindings.ModuleBuilder.init(vm.compiler, @ptrCast(chunk_sym));

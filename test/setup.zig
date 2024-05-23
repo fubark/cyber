@@ -66,7 +66,8 @@ pub const Config = struct {
     }
 };
 
-extern fn clSetupForCLI(vm: *c.VM) void;
+extern fn clInitCLI(vm: *c.VM) void;
+extern fn clDeinitCLI(vm: *c.VM) void;
 
 pub const VMrunner = struct {
     vm: *c.VM,
@@ -74,13 +75,14 @@ pub const VMrunner = struct {
 
     pub fn init() VMrunner {
         const vm = c.create();
-        clSetupForCLI(@ptrCast(vm));
+        clInitCLI(@ptrCast(vm));
         return .{
             .vm = @ptrCast(vm),
         };
     }
 
     pub fn deinit(self: *VMrunner) void {
+        clDeinitCLI(self.vm);
         c.deinit(self.vm);
         c.destroy(self.vm);
     }

@@ -151,8 +151,11 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     c.setVerbose(verbose);
 
     try vm.init(alloc);
-    cli.clSetupForCLI(@ptrCast(&vm));
-    defer vm.deinit(false);
+    cli.clInitCLI(@ptrCast(&vm));
+    defer {
+        cli.clDeinitCLI(@ptrCast(&vm));
+        vm.deinit(false);
+    }
 
     var config = c.defaultCompileConfig();
     config.single_run = builtin.mode == .ReleaseFast;
@@ -177,8 +180,11 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
 fn repl(alloc: std.mem.Allocator) !void {
     c.setVerbose(verbose);
     try vm.init(alloc);
-    cli.clSetupForCLI(@ptrCast(&vm));
-    defer vm.deinit(false);
+    cli.clInitCLI(@ptrCast(&vm));
+    defer {
+        cli.clDeinitCLI(@ptrCast(&vm));
+        vm.deinit(false);
+    }
 
     var config = c.defaultEvalConfig();
     config.single_run = builtin.mode == .ReleaseFast;
@@ -222,8 +228,11 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     c.setVerbose(verbose);
 
     try vm.init(alloc);
-    cli.clSetupForCLI(@ptrCast(&vm));
-    defer vm.deinit(false);
+    cli.clInitCLI(@ptrCast(&vm));
+    defer {
+        cli.clDeinitCLI(@ptrCast(&vm));
+        vm.deinit(false);
+    }
 
     var config = c.defaultEvalConfig();
     config.single_run = builtin.mode == .ReleaseFast;

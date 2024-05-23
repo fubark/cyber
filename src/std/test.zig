@@ -15,20 +15,30 @@ const v = fmt.v;
 const rt = cy.rt;
 const log = cy.log.scoped(.testmod);
 
-pub const Src = @embedFile("test.cy");
+const Src = @embedFile("test.cy");
 
 const zErrFunc = cy.builtins.zErrFunc;
 const cFunc = cy.builtins.cFunc;
 
 const func = cy.hostFuncEntry;
-pub const funcs = [_]C.HostFuncEntry{
+const funcs = [_]C.HostFuncEntry{
     func("assert", zErrFunc(assert)),
     func("eq",  eq ),
     func("eqList", zErrFunc(eqList)),
     func("eqNear", zErrFunc(eqNear)),
 };
 
-pub fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
+pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
+    const mod = C.createModule(@ptrCast(vm), C.toStr(r_uri), C.toStr(Src));
+    var config = C.ModuleConfig{
+        .funcs = C.toSlice(C.HostFuncEntry, &funcs),
+        .onLoad = onLoad,
+    };
+    C.setModuleConfig(@ptrCast(vm), mod, &config);
+    return mod;
+}
+
+fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     const b = bindings.ModuleBuilder.init(vm.compiler, cy.Sym.fromC(mod));
 

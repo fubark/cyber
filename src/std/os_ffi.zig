@@ -4,6 +4,7 @@ const stdx = @import("stdx");
 const tcc = @import("tcc");
 const cy = @import("../cyber.zig");
 const c = @import("../capi.zig");
+const cli = @import("../cli.zig");
 const rt = cy.rt;
 const Value = cy.Value;
 const builtins = @import("../builtins/builtins.zig");
@@ -40,8 +41,6 @@ const CStructInfo = struct {
     fields: []const CType,
 };
 
-pub var FFIT: cy.TypeId = undefined;
-
 pub const FFI = struct {
     /// Ordered to handle C decl rules.
     cstructs: std.ArrayListUnmanaged(CStructInfo),
@@ -56,8 +55,10 @@ pub const FFI = struct {
     /// Managed ExternFunc or Objects.
     managed: std.ArrayListUnmanaged(Value),
 
+    CArrayT: cy.TypeId,
+
     fn toCType(self: *FFI, vm: *cy.VM, spec: Value) !CType {
-        if (spec.isObjectType(os.CArrayT)) {
+        if (spec.isObjectType(self.CArrayT)) {
             const nField = try vm.ensureFieldSym("n");
             const n: u32 = @intCast((try vm.getField(spec, nField)).asInteger());
             const elemField = try vm.ensureFieldSym("elem");
@@ -103,7 +104,8 @@ pub const FFI = struct {
 };
 
 pub fn allocFFI(vm: *cy.VM) !Value {
-    const ffi: *FFI = @ptrCast(try cy.heap.allocHostNoCycObject(vm, FFIT, @sizeOf(FFI)));
+    const cli_data = vm.getData(*cli.CliData, "cli");
+    const ffi: *FFI = @ptrCast(try cy.heap.allocHostNoCycObject(vm, cli_data.FFIT, @sizeOf(FFI)));
     ffi.* = .{
         .cstructs = .{},
         .typeToCStruct = .{},
@@ -111,6 +113,7 @@ pub fn allocFFI(vm: *cy.VM) !Value {
         .carrayMap = .{},
         .cfuncs = .{},
         .managed = .{},
+        .CArrayT = cli_data.CArrayT,
     };
     return Value.initHostNoCycPtr(ffi);
 }
@@ -122,7 +125,6 @@ pub fn ffiGetChildren(_: ?*c.VM, obj: ?*anyopaque) callconv(.C) c.ValueSlice {
 
 pub fn ffiFinalizer(vm_: ?*c.VM, obj: ?*anyopaque) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    log.tracev("ffi finalize", .{});
 
     const alloc = vm.alloc;
     var ffi: *FFI = @ptrCast(@alignCast(obj));

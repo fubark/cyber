@@ -80,6 +80,8 @@ pub const expandTemplateType = c.clExpandTemplateType;
 pub const setResolver = c.clSetResolver;
 pub const resolve = c.clResolve;
 pub const setModuleLoader = c.clSetModuleLoader;
+pub const setModuleConfig = c.clSetModuleConfig;
+pub const createModule = c.clCreateModule;
 pub const getPrinter = c.clGetPrinter;
 pub const setPrinter = c.clSetPrinter;
 pub const getErrorPrinter = c.clGetErrorPrinter;
@@ -122,6 +124,14 @@ pub inline fn CORE_TYPE_DECL(type_id: TypeId) HostType {
         .type = c.CL_BIND_TYPE_CORE_DECL,
         .data = .{ .core_decl = .{
             .type_id = type_id,
+        }},
+    };
+}
+pub inline fn DECL_TYPE(out_type_id: ?*TypeId) HostType {
+    return HostType{
+        .type = c.CL_BIND_TYPE_DECL,
+        .data = .{ .decl = .{
+            .out_type_id = out_type_id,
         }},
     };
 }
@@ -181,7 +191,8 @@ pub const FuncLoaderFn = c.CLFuncLoaderFn;
 pub const VarLoaderFn = c.CLVarLoaderFn;
 pub const TypeLoaderFn = c.CLTypeLoaderFn;
 pub const ModuleOnDeinitRtFn = c.CLModuleOnDeinitRtFn;
-pub const ModuleLoaderResult = c.CLModuleLoaderResult;
+pub const Module = c.CLModule;
+pub const ModuleConfig = c.CLModuleConfig;
 pub const ModuleOnTypeLoadFn = c.CLModuleOnTypeLoadFn;
 pub const ModuleOnLoadFn = c.CLModuleOnLoadFn;
 pub const ModuleOnDestroyFn = c.CLModuleOnDestroyFn;
@@ -216,6 +227,7 @@ pub const FuncEnumType = enum(u8) {
 pub const BindTypeCustom = c.CL_BIND_TYPE_CUSTOM;
 pub const BindTypeCoreCustom = c.CL_BIND_TYPE_CORE_CUSTOM;
 pub const BindTypeCoreDecl = c.CL_BIND_TYPE_CORE_DECL;
+pub const BindTypeDecl = c.CL_BIND_TYPE_DECL;
 
 pub const Backend = c.CLBackend;
 pub const BackendVM = c.CL_VM;

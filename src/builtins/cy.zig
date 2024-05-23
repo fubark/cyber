@@ -1,17 +1,29 @@
 const std = @import("std");
 const cy = @import("../cyber.zig");
-const c = @import("../capi.zig");
+const C = @import("../capi.zig");
 const bt = cy.types.BuiltinTypes;
 const build_options = @import("build_options");
 const rt = cy.rt;
 const log = cy.log.scoped(.cy);
 const ast = cy.ast;
 
-pub const Src = @embedFile("cy.cy");
+const Src = @embedFile("cy.cy");
 const zErrFunc = cy.builtins.zErrFunc;
 
+pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
+    const core_data = vm.getData(*cy.builtins.CoreData, "core");
+    _ = core_data;
+    const mod = C.createModule(@ptrCast(vm), C.toStr(r_uri), C.toStr(Src));
+
+    var config = C.ModuleConfig{
+        .funcs = C.toSlice(C.HostFuncEntry, &funcs),
+    };
+    C.setModuleConfig(@ptrCast(vm), mod, &config);
+    return mod;
+}
+
 const func = cy.hostFuncEntry;
-pub const funcs = [_]c.HostFuncEntry{
+const funcs = [_]C.HostFuncEntry{
     func("eval",           zErrFunc(eval)),
     func("parse",          zErrFunc(parse)),
     func("parseCyon",      zErrFunc(parseCyon)),
@@ -469,7 +481,7 @@ fn getReplPrefix(buf: []u8, indent: u32, head: []const u8) ![:0]const u8 {
     return slice[0..slice.len-1 :0];
 }
 
-pub fn repl2(vm: *cy.VM, config: c.EvalConfig, read_line: IReplReadLine) !void {
+pub fn repl2(vm: *cy.VM, config: C.EvalConfig, read_line: IReplReadLine) !void {
     const alloc = vm.alloc;
 
     // TODO: Record inputs that successfully compiled. Can then be exported to file.
@@ -480,8 +492,8 @@ pub fn repl2(vm: *cy.VM, config: c.EvalConfig, read_line: IReplReadLine) !void {
         \\use $global
         \\
         ;
-    var res: c.Value = undefined;
-    _ = c.evalExt(@ptrCast(vm), c.toStr("repl_init"), c.toStr(init_src), config, &res);
+    var res: C.Value = undefined;
+    _ = C.evalExt(@ptrCast(vm), C.toStr("repl_init"), C.toStr(init_src), config, &res);
 
     // Build multi-line input.
     var input_builder: std.ArrayListUnmanaged(u8) = .{};
@@ -533,14 +545,14 @@ pub fn repl2(vm: *cy.VM, config: c.EvalConfig, read_line: IReplReadLine) !void {
         const val_opt: ?cy.Value = vm.eval("input", input, config) catch |err| b: {
             switch (err) {
                 error.Panic => {
-                    const report = c.newPanicSummary(@ptrCast(vm));
-                    defer c.free(@ptrCast(vm), report);
-                    rt.err(vm, c.fromStr(report));
+                    const report = C.newPanicSummary(@ptrCast(vm));
+                    defer C.free(@ptrCast(vm), report);
+                    rt.err(vm, C.fromStr(report));
                 },
                 error.CompileError => {
-                    const report = c.newErrorReportSummary(@ptrCast(vm));
-                    defer c.free(@ptrCast(vm), report);
-                    rt.err(vm, c.fromStr(report));
+                    const report = C.newErrorReportSummary(@ptrCast(vm));
+                    defer C.free(@ptrCast(vm), report);
+                    rt.err(vm, C.fromStr(report));
                 },
                 else => {
                     rt.errZFmt(vm, "unexpected {}\n", .{err});
@@ -551,9 +563,9 @@ pub fn repl2(vm: *cy.VM, config: c.EvalConfig, read_line: IReplReadLine) !void {
 
         if (val_opt) |val| {
             if (!val.isVoid()) {
-                const str = c.newValueDump(@ptrCast(vm), @bitCast(val));
-                defer c.free(@ptrCast(vm), str);
-                rt.printZFmt(vm, "{s}\n", .{c.fromStr(str)});
+                const str = C.newValueDump(@ptrCast(vm), @bitCast(val));
+                defer C.free(@ptrCast(vm), str);
+                rt.printZFmt(vm, "{s}\n", .{C.fromStr(str)});
             }
         }
     }
@@ -561,34 +573,34 @@ pub fn repl2(vm: *cy.VM, config: c.EvalConfig, read_line: IReplReadLine) !void {
 
 fn eval(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
     // Create an isolated VM.
-    const ivm: *cy.VM = @ptrCast(@alignCast(c.create()));
-    defer c.destroy(@ptrCast(ivm));
+    const ivm: *cy.VM = @ptrCast(@alignCast(C.create()));
+    defer C.destroy(@ptrCast(ivm));
 
     // Use the same printers as the parent VM.
-    c.setPrinter(@ptrCast(ivm), c.getPrinter(@ptrCast(vm)));
-    c.setErrorPrinter(@ptrCast(ivm), c.getErrorPrinter(@ptrCast(vm)));
+    C.setPrinter(@ptrCast(ivm), C.getPrinter(@ptrCast(vm)));
+    C.setErrorPrinter(@ptrCast(ivm), C.getErrorPrinter(@ptrCast(vm)));
 
-    var config = c.defaultEvalConfig();
+    var config = C.defaultEvalConfig();
     config.single_run = false;
     config.file_modules = false;
     config.reload = false;
-    config.backend = c.BackendVM;
+    config.backend = C.BackendVM;
     config.spawn_exe = false;
 
     const src = args[0].asString();
     var val: cy.Value = undefined;
-    const res = c.evalExt(@ptrCast(ivm), c.toStr("eval"), c.toStr(src), config, @ptrCast(&val));
-    if (res != c.Success) {
+    const res = C.evalExt(@ptrCast(ivm), C.toStr("eval"), C.toStr(src), config, @ptrCast(&val));
+    if (res != C.Success) {
         switch (res) {
-            c.ErrorCompile => {
-                const report = c.newErrorReportSummary(@ptrCast(ivm));
-                defer c.free(@ptrCast(ivm), report);
-                rt.err(vm, c.fromStr(report));
+            C.ErrorCompile => {
+                const report = C.newErrorReportSummary(@ptrCast(ivm));
+                defer C.free(@ptrCast(ivm), report);
+                rt.err(vm, C.fromStr(report));
             },
-            c.ErrorPanic => {
-                const report = c.newPanicSummary(@ptrCast(ivm));
-                defer c.free(@ptrCast(ivm), report);
-                rt.err(vm, c.fromStr(report));
+            C.ErrorPanic => {
+                const report = C.newPanicSummary(@ptrCast(ivm));
+                defer C.free(@ptrCast(ivm), report);
+                rt.err(vm, C.fromStr(report));
             },
             else => {
                 rt.err(vm, "unknown error\n");

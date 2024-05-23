@@ -19,7 +19,6 @@ typedef struct CLValueSlice {
 } CLValueSlice;
 
 typedef struct CLResolverParams CLResolverParams;
-typedef struct CLModuleLoaderResult CLModuleLoaderResult;
 typedef struct CLModule CLModule;
 
 #define CL_NULLID UINT32_MAX
@@ -86,6 +85,10 @@ typedef struct CLSlice {
 typedef struct CLSym {
     void* ptr;
 } CLSym;
+
+typedef struct CLModule {
+    void* ptr;
+} CLModule;
 
 // @host func is binded to this function pointer signature.
 typedef CLValue (*CLFuncFn)(CLVM* vm, const CLValue* args, uint8_t nargs);
@@ -183,6 +186,9 @@ typedef enum {
     // Create a new object type with it's own memory layout and finalizer.
     CL_BIND_TYPE_CUSTOM,
 
+    // Create a new type and bind the generated type id.
+    CL_BIND_TYPE_DECL,
+
     // Create a new type that has has a predefined type id.
     CL_BIND_TYPE_CORE_CUSTOM,
 
@@ -231,6 +237,9 @@ typedef struct CLHostType {
             // The reserved `typeId` is used for the new type.
             CLTypeId type_id;
         } core_decl;
+        struct {
+            CLTypeId* out_type_id;
+        } decl;
     } data;
     // `CLBindTypeKind`.
     uint8_t type;
@@ -253,17 +262,11 @@ typedef struct CLHostTypeEntry {
 // Given info about a @host type, write the result to `out` and return true, or return false.
 typedef bool (*CLTypeLoaderFn)(CLVM* vm, CLTypeInfo typeInfo, CLHostType* out);
 
-// This callback is invoked after receiving the module loader's result.
-// If `res->src` was allocated, this can be a good time to free the memory.
-typedef void (*CLModuleOnReceiptFn)(CLVM* vm, CLModuleLoaderResult* res);
+// Given the resolved import specifier of the module, set the module's src in `res->src`,
+// set symbol loaders, and return true. Otherwise, return false.
+typedef bool (*CLModuleLoaderFn)(CLVM* vm, CLStr resolved_uri, CLModule* res);
 
-// Module loader config.
-typedef struct CLModuleLoaderResult {
-    // The Cyber source code for the module.
-    const char* src;
-    size_t srcLen;
-
-    CLModuleOnReceiptFn onReceipt;   // Pointer to callback or null.
+typedef struct CLModuleConfig {
     CLSlice funcs;                   // `CLHostFuncEntry` slice.
     CLFuncLoaderFn func_loader;      // Pointer to callback or null.
     CLVarLoaderFn varLoader;         // Pointer to callback or null.
@@ -272,11 +275,7 @@ typedef struct CLModuleLoaderResult {
     CLModuleOnTypeLoadFn onTypeLoad; // Pointer to callback or null.
     CLModuleOnLoadFn onLoad;         // Pointer to callback or null.
     CLModuleOnDestroyFn onDestroy;   // Pointer to callback or null.
-} CLModuleLoaderResult;
-
-// Given the resolved import specifier of the module, set the module's src in `res->src`,
-// set symbol loaders, and return true. Otherwise, return false.
-typedef bool (*CLModuleLoaderFn)(CLVM* vm, CLStr resolvedSpec, CLModuleLoaderResult* out);
+} CLModuleConfig;
 
 // Handler for printing. The builtin `print` would invoke this.
 // The default behavior is a no-op.
@@ -375,7 +374,7 @@ CLModuleLoaderFn clGetModuleLoader(CLVM* vm);
 void clSetModuleLoader(CLVM* vm, CLModuleLoaderFn loader);
 
 // The default module loader. It knows how to load the `builtins` module.
-bool clDefaultModuleLoader(CLVM* vm, CLStr resolvedSpec, CLModuleLoaderResult* out);
+bool clDefaultModuleLoader(CLVM* vm, CLStr resolved_uri, CLModule* res);
 
 CLPrintFn clGetPrinter(CLVM* vm);
 void clSetPrinter(CLVM* vm, CLPrintFn print);
@@ -431,6 +430,13 @@ extern bool clVerbose;
 
 // Silent flag. Whether to print errors.
 extern bool clSilent;
+
+// -----------------------------------
+// [ Modules ]
+// -----------------------------------
+
+CLModule clCreateModule(CLVM* vm, CLStr resolved_uri, CLStr src);
+void clSetModuleConfig(CLVM* vm, CLModule mod, CLModuleConfig* config);
 
 // -----------------------------------
 // [ Symbols ]

@@ -7,10 +7,7 @@ const cy = @import("../cyber.zig");
 const rt = cy.rt;
 const Value = cy.Value;
 const C = @import("../capi.zig");
-
-pub var FileT: cy.TypeId = undefined;
-pub var DirT: cy.TypeId = undefined;
-pub var DirIterT: cy.TypeId = undefined;
+const cli = @import("../cli.zig");
 
 pub const File = extern struct {
     readBuf: [*]u8,
@@ -110,7 +107,8 @@ pub const DirIterator = extern struct {
 };
 
 pub fn allocFile(vm: *cy.VM, fd: if (cy.hasStdFiles) std.posix.fd_t else u32) !Value {
-    const file: *File = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, FileT, @sizeOf(File))));
+    const cli_data = vm.getData(*cli.CliData, "cli");
+    const file: *File = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, cli_data.FileT, @sizeOf(File))));
     file.* = .{
         .fd = fd,
         .curPos = 0,
@@ -126,7 +124,8 @@ pub fn allocFile(vm: *cy.VM, fd: if (cy.hasStdFiles) std.posix.fd_t else u32) !V
 }
 
 pub fn allocDir(vm: *cy.VM, fd: std.posix.fd_t, iterable: bool) !Value {
-    const dir: *Dir = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, DirT, @sizeOf(Dir))));
+    const cli_data = vm.getData(*cli.CliData, "cli");
+    const dir: *Dir = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, cli_data.DirT, @sizeOf(Dir))));
     dir.* = .{
         .fd = fd,
         .iterable = iterable,
@@ -136,7 +135,8 @@ pub fn allocDir(vm: *cy.VM, fd: std.posix.fd_t, iterable: bool) !Value {
 }
 
 pub fn allocDirIterator(vm: *cy.VM, dirv: Value, recursive: bool) !Value {
-    const dirIter: *DirIterator = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, DirIterT, @sizeOf(DirIterator))));
+    const cli_data = vm.getData(*cli.CliData, "cli");
+    const dirIter: *DirIterator = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, cli_data.DirIterT, @sizeOf(DirIterator))));
     dirIter.* = .{
         .dir = dirv,
         .inner = undefined,
@@ -371,14 +371,16 @@ pub fn fileReadAll(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
 pub fn fileOrDirStat(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
+    const cli_data = vm.getData(*cli.CliData, "cli");
+
     const obj = args[0].asHeapObject();
     const typeId = obj.getTypeId();
-    if (typeId == FileT) {
+    if (typeId == cli_data.FileT) {
         const file = args[0].castHostObject(*File);
         if (file.closed) {
             return rt.prepThrowError(vm, .Closed);
         }
-    } else if (typeId == DirT) {
+    } else if (typeId == cli_data.DirT) {
         const dir = args[0].castHostObject(*Dir);
         if (dir.closed) {
             return rt.prepThrowError(vm, .Closed);

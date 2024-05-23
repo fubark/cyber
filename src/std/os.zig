@@ -19,17 +19,16 @@ const ffi = @import("os_ffi.zig");
 const http = @import("../http.zig");
 const cache = @import("../cache.zig");
 const fs = @import("fs.zig");
+const cli = @import("../cli.zig");
 
 const log = cy.log.scoped(.os);
 
-pub var CArrayT: cy.TypeId = undefined;
-pub var CDimArrayT: cy.TypeId = undefined;
 pub var nextUniqId: u32 = undefined;
 
-pub const Src = @embedFile("os.cy");
+const Src = @embedFile("os.cy");
 
 const func = cy.hostFuncEntry;
-pub const funcs = [_]C.HostFuncEntry{
+const funcs = [_]C.HostFuncEntry{
     // Top level
     func("access",         zErrFunc(access)),
     func("args",           zErrFunc(osArgs)),
@@ -99,9 +98,35 @@ pub const funcs = [_]C.HostFuncEntry{
     func("FFI.unbindObjPtr",   zErrFunc(ffi.ffiUnbindObjPtr)),
 };
 
+pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
+    const mod = C.createModule(@ptrCast(vm), C.toStr(r_uri), C.toStr(Src));
+
+    const cli_data = vm.getData(*cli.CliData, "cli");
+
+    const htype = C.hostTypeEntry;
+    const types = [_]C.HostTypeEntry{
+        htype("File",         C.CUSTOM_TYPE(&cli_data.FileT, null, fs.fileFinalizer)),
+        htype("Dir",          C.CUSTOM_TYPE(&cli_data.DirT, null, fs.dirFinalizer)),
+        htype("DirIterator",  C.CUSTOM_TYPE(&cli_data.DirIterT, fs.dirIterGetChildren, fs.dirIterFinalizer)),
+        htype("FFI",          C.CUSTOM_TYPE(&cli_data.FFIT, ffi.ffiGetChildren, ffi.ffiFinalizer)),
+        htype("CArray",       C.DECL_TYPE(&cli_data.CArrayT)),
+        htype("CDimArray",    C.DECL_TYPE(&cli_data.CDimArrayT)),
+    };
+
+    var config = C.ModuleConfig{
+        .types = C.toSlice(C.HostTypeEntry, &types),
+        .funcs = C.toSlice(C.HostFuncEntry, &funcs),
+        .varLoader = varLoader,
+        .onLoad = onLoad,
+        .onTypeLoad = onTypeLoad,
+    };
+    C.setModuleConfig(@ptrCast(vm), mod, &config);
+    return mod;
+}
+
 const NameValue = struct { []const u8, cy.Value };
 var vars: [7]NameValue = undefined;
-pub fn varLoader(_: ?*C.VM, v: C.VarInfo, out: [*c]C.Value) callconv(.C) bool {
+fn varLoader(_: ?*C.VM, v: C.VarInfo, out: [*c]C.Value) callconv(.C) bool {
     const name = C.fromStr(v.name);
     if (std.mem.eql(u8, vars[v.idx].@"0", name)) {
         out.* = vars[v.idx].@"1".val;
@@ -110,22 +135,16 @@ pub fn varLoader(_: ?*C.VM, v: C.VarInfo, out: [*c]C.Value) callconv(.C) bool {
     return false;
 }
 
-const htype = C.hostTypeEntry;
-pub const types = [_]C.HostTypeEntry{
-    htype("File",         C.CUSTOM_TYPE(&fs.FileT, null, fs.fileFinalizer)),
-    htype("Dir",          C.CUSTOM_TYPE(&fs.DirT, null, fs.dirFinalizer)),
-    htype("DirIterator",  C.CUSTOM_TYPE(&fs.DirIterT, fs.dirIterGetChildren, fs.dirIterFinalizer)),
-    htype("FFI",          C.CUSTOM_TYPE(&ffi.FFIT, ffi.ffiGetChildren, ffi.ffiFinalizer)),
-};
-
-pub fn onTypeLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
+fn onTypeLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     zPostTypeLoad(vm.compiler, mod) catch |err| {
         cy.panicFmt("os module: {}", .{err});
     };
 }
 
-pub fn zPostTypeLoad(c: *cy.Compiler, mod: C.Sym) !void {
+fn zPostTypeLoad(c: *cy.Compiler, mod: C.Sym) !void {
+    _ = mod;
+
     vars[0] = .{ "cpu", try cy.heap.allocString(c.vm, @tagName(builtin.cpu.arch)) };
     if (builtin.cpu.arch.endian() == .little) {
         vars[1] = .{ "endian", cy.Value.initSymbol(@intFromEnum(Symbol.little)) };
@@ -163,15 +182,10 @@ pub fn zPostTypeLoad(c: *cy.Compiler, mod: C.Sym) !void {
     } else {
         vars[6] = .{ "vecBitSize", cy.Value.initI32(0) };
     }
-
-    const sym = cy.Sym.fromC(mod);
-    const chunkMod = sym.getMod().?;
-    CArrayT = chunkMod.getSym("CArray").?.cast(.object_t).type;
-    CDimArrayT = chunkMod.getSym("CDimArray").?.cast(.object_t).type;
     nextUniqId = 1;
 }
 
-pub fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
+fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     zPostLoad(vm.compiler, mod) catch |err| {
         cy.panicFmt("os module: {}", .{err});

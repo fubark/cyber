@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const cy = @import("cyber.zig");
-const cc = @import("capi.zig");
+const C = @import("capi.zig");
 const vmc = cy.vmc;
 const bt = cy.types.BuiltinTypes;
 const stdx = @import("stdx");
@@ -69,10 +69,10 @@ pub const Sym = extern struct {
         }
     }
 
-    pub fn toC(self: *Sym) cc.Sym {
+    pub fn toC(self: *Sym) C.Sym {
         return .{ .ptr = self };
     }
-    pub fn fromC(sym: cc.Sym) *Sym {
+    pub fn fromC(sym: C.Sym) *Sym {
         return @ptrCast(@alignCast(sym.ptr));
     }
 
@@ -784,8 +784,8 @@ pub const CustomType = extern struct {
     head: Sym,
     type: cy.TypeId,
     decl: *ast.CustomDecl,
-    getChildrenFn: cc.GetChildrenFn,
-    finalizerFn: cc.FinalizerFn,
+    getChildrenFn: C.GetChildrenFn,
+    finalizerFn: C.FinalizerFn,
     mod: vmc.Module,
     variant: ?*Variant,
 

@@ -1441,10 +1441,19 @@ pub fn declareEnumMembers(c: *cy.Chunk, sym: *cy.sym.EnumType, decl: *ast.EnumDe
 pub fn getHostTypeId(c: *cy.Chunk, type_sym: *cy.Sym, opt_name: ?[]const u8, node: ?*ast.Node) !cy.TypeId {
     const bind_name = opt_name orelse type_sym.name();
     if (c.host_types.get(bind_name)) |host_t| {
-        if (host_t.type != C.BindTypeCoreDecl) {
-            return error.Unsupported;
+        switch (host_t.type) {
+            C.BindTypeCoreDecl => {
+                return host_t.data.core_decl.type_id;
+            },
+            C.BindTypeDecl => {
+                const type_id = try c.sema.pushType();
+                if (host_t.data.decl.out_type_id) |out_type_id| {
+                    out_type_id.* = type_id;
+                }
+                return type_id;
+            },
+            else => return error.Unsupported,
         }
-        return host_t.data.core_decl.type_id;
     }
 
     const loader = c.type_loader orelse {

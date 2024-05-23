@@ -562,6 +562,38 @@ test "clNewFunc()" {
     try t.eq(c.getTypeId(val), bt.HostFunc);
 }
 
+export fn clCreateModule(vm: *cy.VM, r_uri: c.Str, src: c.Str) c.Module {
+    const chunk = cy.compiler.createModule(vm.compiler, c.fromStr(r_uri), c.fromStr(src)) catch @panic("error");
+    return .{ .ptr = @ptrCast(chunk) };
+}
+
+export fn clSetModuleConfig(vm: *cy.VM, mod: c.Module, config: *c.ModuleConfig) void {
+    const chunk = cy.Chunk.fromC(mod);
+
+    chunk.varLoader = config.varLoader;
+    chunk.onTypeLoad = config.onTypeLoad;
+    chunk.onLoad = config.onLoad;
+    chunk.onDestroy = config.onDestroy;
+
+    // Allocate func mapping.
+    var funcs: std.StringHashMapUnmanaged(c.FuncFn) = .{};
+    for (c.fromSlice(c.HostFuncEntry, config.funcs)) |entry| {
+        funcs.put(vm.alloc, c.fromStr(entry.name), entry.func) catch @panic("error"); 
+    }
+    chunk.host_funcs.deinit(vm.alloc);
+    chunk.host_funcs = funcs;
+    chunk.func_loader = config.func_loader;
+
+    // Allocate host type mapping.
+    var types: std.StringHashMapUnmanaged(c.HostType) = .{};
+    for (c.fromSlice(c.HostTypeEntry, config.types)) |entry| {
+        types.put(vm.alloc, c.fromStr(entry.name), entry.host_t) catch @panic("error"); 
+    }
+    chunk.host_types.deinit(vm.alloc);
+    chunk.host_types = types;
+    chunk.type_loader = config.type_loader;
+}
+
 export fn clNewHostObject(vm: *cy.VM, typeId: cy.TypeId, size: usize) Value {
     const ptr = cy.heap.allocHostCycObject(vm, typeId, size) catch cy.fatal();
     return Value.initHostCycPtr(ptr);

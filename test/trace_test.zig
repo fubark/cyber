@@ -423,16 +423,17 @@ test "Multiple evals persisting state." {
             const g = cy.ptrAlignCast(*cy.Value, vm.userData).*;
             c.declareVar(mod, "g", bt.Dyn, @bitCast(g));
         }
-        fn loader(vm: ?*c.VM, spec: c.Str, out_: [*c]c.ModuleLoaderResult) callconv(.C) bool {
-            const out: *c.ModuleLoaderResult = out_;
+        fn loader(vm: ?*c.VM, spec: c.Str, res: ?*c.Module) callconv(.C) bool {
             if (std.mem.eql(u8, c.fromStr(spec), "mod")) {
-                out.* = std.mem.zeroInit(c.ModuleLoaderResult, .{
-                    .src = "",
+                const mod = c.createModule(vm, spec, c.toStr(""));
+                var config = c.ModuleConfig{
                     .onLoad = onLoad,
-                });
+                };
+                c.setModuleConfig(vm, mod, &config);
+                res.?.* = mod;
                 return true;
             } else {
-                return cli.loader(vm, spec, out);
+                return cli.loader(vm, spec, res);
             }
         }
     }.loader);
@@ -671,27 +672,27 @@ test "Custom modules." {
             c.declareDynFunc(mod, s1.ptr, 0, @ptrCast(&test1));
             c.declareDynFunc(mod, s2.ptr, 0, @ptrCast(&test2));
         }
-        fn loader(vm_: ?*c.VM, spec: c.Str, out_: [*c]c.ModuleLoaderResult) callconv(.C) bool {
-            const out: *c.ModuleLoaderResult = out_;
-
+        fn loader(vm_: ?*c.VM, spec: c.Str, res: ?*c.Module) callconv(.C) bool {
             const name = c.fromStr(spec);
             if (std.mem.eql(u8, name, "core")) {
                 const defaultLoader = c.defaultModuleLoader;
-                return defaultLoader(vm_, spec, @ptrCast(out));
+                return defaultLoader(vm_, spec, res);
             }
             if (std.mem.eql(u8, name, "mod1")) {
-                out.* = std.mem.zeroInit(c.ModuleLoaderResult, .{
-                    .src = "",
-                    .srcLen = 0,
-                    .onLoad = &postLoadMod1,
-                });
+                const mod = c.createModule(vm_, spec, c.toStr(""));
+                var config = c.ModuleConfig{
+                    .onLoad = postLoadMod1,
+                };
+                c.setModuleConfig(vm_, mod, &config);
+                res.?.* = mod;
                 return true;
             } else if (std.mem.eql(u8, name, "mod2")) {
-                out.* = std.mem.zeroInit(c.ModuleLoaderResult, .{
-                    .src = "",
-                    .srcLen = 0,
-                    .onLoad = &postLoadMod2,
-                });
+                const mod = c.createModule(vm_, spec, c.toStr(""));
+                var config = c.ModuleConfig{
+                    .onLoad = postLoadMod2,
+                };
+                c.setModuleConfig(vm_, mod, &config);
+                res.?.* = mod;
                 return true;
             }
             return false;

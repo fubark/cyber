@@ -1,14 +1,26 @@
 const std = @import("std");
 const cy = @import("../cyber.zig");
-const c = @import("../capi.zig");
+const C = @import("../capi.zig");
 const vmc = cy.vmc;
 const Value = cy.Value;
 const bt = cy.types.BuiltinTypes;
 
-pub const Src = @embedFile("math.cy");
-pub fn varLoader(_: ?*c.VM, v: c.VarInfo, out_: [*c]c.Value) callconv(.C) bool {
-    const out: *c.Value = out_;
-    const name = c.fromStr(v.name);
+const Src = @embedFile("math.cy");
+
+pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
+    const mod = C.createModule(@ptrCast(vm), C.toStr(r_uri), C.toStr(Src));
+    var config = C.ModuleConfig{
+        .funcs = C.toSlice(C.HostFuncEntry, &funcs),
+        .varLoader = varLoader,
+        .types = C.toSlice(C.HostTypeEntry, &.{}),
+    };
+    C.setModuleConfig(@ptrCast(vm), mod, &config);
+    return mod;
+}
+
+fn varLoader(_: ?*C.VM, v: C.VarInfo, out_: [*c]C.Value) callconv(.C) bool {
+    const out: *C.Value = out_;
+    const name = C.fromStr(v.name);
     if (std.mem.eql(u8, vars[v.idx].@"0", name)) {
         out.* = vars[v.idx].@"1".val;
         return true;
@@ -34,7 +46,7 @@ const vars = [_]NameVar{
 };
 
 const func = cy.hostFuncEntry;
-pub const funcs = [_]c.HostFuncEntry{
+const funcs = [_]C.HostFuncEntry{
     func("abs",    abs),
     func("acos",   acos),
     func("acosh",  acosh),

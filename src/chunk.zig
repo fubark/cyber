@@ -4,7 +4,7 @@ const t = stdx.testing;
 const builtin = @import("builtin");
 const cy = @import("cyber.zig");
 const rt = cy.rt;
-const cc = @import("capi.zig");
+const C = @import("capi.zig");
 const fmt = cy.fmt;
 const v = fmt.v;
 const sema = cy.sema;
@@ -158,19 +158,19 @@ pub const Chunk = struct {
     sym: *cy.sym.Chunk,
 
     /// For binding @host func declarations.
-    host_funcs: std.StringHashMapUnmanaged(cc.FuncFn),
-    func_loader: cc.FuncLoaderFn = null,
+    host_funcs: std.StringHashMapUnmanaged(C.FuncFn),
+    func_loader: C.FuncLoaderFn = null,
     /// For binding @host var declarations.
-    varLoader: cc.VarLoaderFn = null,
+    varLoader: C.VarLoaderFn = null,
     /// For binding @host type declarations.
-    host_types: std.StringHashMapUnmanaged(cc.HostType),
-    type_loader: cc.TypeLoaderFn = null,
+    host_types: std.StringHashMapUnmanaged(C.HostType),
+    type_loader: C.TypeLoaderFn = null,
     /// Run after type declarations are loaded.
-    onTypeLoad: cc.ModuleOnTypeLoadFn = null,
+    onTypeLoad: C.ModuleOnTypeLoadFn = null,
     /// Run after declarations have been loaded.
-    onLoad: cc.ModuleOnLoadFn = null,
+    onLoad: C.ModuleOnLoadFn = null,
     /// Run before chunk is destroyed.
-    onDestroy: cc.ModuleOnDestroyFn = null,
+    onDestroy: C.ModuleOnDestroyFn = null,
     /// Counter for loading @host vars.
     curHostVarIdx: u32,
 
@@ -375,6 +375,10 @@ pub const Chunk = struct {
         if (self.srcOwned) {
             self.alloc.free(self.src);
         }
+    }
+
+    pub fn fromC(mod: C.Module) *cy.Chunk {
+        return @ptrCast(@alignCast(mod.ptr));
     }
 
     pub fn updateAstView(self: *cy.Chunk, view: cy.ast.AstView) void {

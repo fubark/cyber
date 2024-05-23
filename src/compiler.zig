@@ -148,7 +148,7 @@ pub const Compiler = struct {
 
         // Free any remaining import tasks.
         for (self.import_tasks.items) |task| {
-            self.alloc.free(task.resolved_spec);
+            task.deinit(self.alloc);
         }
 
         for (self.chunks.items) |chunk| {
@@ -233,22 +233,6 @@ pub const Compiler = struct {
     fn compileInner(self: *Compiler, uri: []const u8, src_opt: ?[]const u8, config: C.CompileConfig) !CompileResult {
         self.config = config;
 
-        var r_uri: []const u8 = undefined;
-        var src: []const u8 = undefined;
-        if (src_opt) |src_temp| {
-            src = try self.alloc.dupe(u8, src_temp);
-            r_uri = try self.alloc.dupe(u8, uri);
-        } else {
-            var buf: [4096]u8 = undefined;
-            const r_uri_temp = try resolveModuleUri(self, &buf, uri);
-            r_uri = try self.alloc.dupe(u8, r_uri_temp);
-            const res = (try loadModule(self, r_uri_temp)) orelse {
-                try self.addReportFmt(.compile_err, "Failed to load module: {}", &.{v(r_uri_temp)}, null, null);
-                return error.CompileError;
-            };
-            src = res.src[0..res.srcLen];
-        }
-
         if (!self.cont) {
             try reserveCoreTypes(self);
             try loadCtBuiltins(self);
@@ -274,6 +258,7 @@ pub const Compiler = struct {
                     return err;
                 };
                 core_sym = core_chunk.sym;
+                importCore.deinit(self.alloc);
                 _ = self.import_tasks.orderedRemove(0);
                 try createDynMethodIds(self);
             } else {
@@ -281,13 +266,19 @@ pub const Compiler = struct {
             }
         }
 
-        // Main chunk.
-        const nextId: u32 = @intCast(self.chunks.items.len);
-        var mainChunk = try self.alloc.create(cy.Chunk);
-        try mainChunk.init(self, nextId, r_uri, src);
-        mainChunk.sym = try mainChunk.createChunkSym(r_uri);
-        try self.chunks.append(self.alloc, mainChunk);
-        try self.chunk_map.put(self.alloc, r_uri, mainChunk);
+        var mainChunk: *cy.Chunk = undefined;
+        if (src_opt) |src_temp| {
+            mainChunk = try createModule(self, uri, src_temp);
+            try self.chunk_map.put(self.alloc, mainChunk.srcUri, mainChunk);
+        } else {
+            var buf: [4096]u8 = undefined;
+            const r_uri = try resolveModuleUri(self, &buf, uri);
+            mainChunk = (try loadModule(self, r_uri)) orelse {
+                try self.addReportFmt(.compile_err, "Failed to load module: {}", &.{v(r_uri)}, null, null);
+                return error.CompileError;
+            };
+        }
+        self.main_chunk = mainChunk;
 
         if (self.cont) {
             // Use all *resolved* top level syms from previous main.
@@ -320,8 +311,6 @@ pub const Compiler = struct {
                 mainChunk.use_global = true;
             }
         }
-
-        self.main_chunk = mainChunk;
 
         // All symbols are reserved by loading all modules and looking at the declarations.
         try reserveSyms(self, core_sym);
@@ -654,48 +643,42 @@ fn completeImportTask(self: *Compiler, task: ImportTask, res: *cy.Chunk) !void {
     }
 }
 
-fn loadModule(self: *Compiler, r_uri: []const u8) !?C.ModuleLoaderResult {
+fn loadModule(self: *Compiler, r_uri: []const u8) !?*cy.Chunk {
+    // Check cache first.
+    const cache = try self.chunk_map.getOrPut(self.alloc, r_uri);
+    if (cache.found_existing) {
+        return cache.value_ptr.*;
+    }
+
     // Initialize defaults.
-    var res: C.ModuleLoaderResult = .{
-        .src = "",
-        .srcLen = 0,
-        .funcs = C.NullSlice,
-        .func_loader = null,
-        .varLoader = null,
-        .types = C.NullSlice,
-        .type_loader = null,
-        .onTypeLoad = null,
-        .onLoad = null,
-        .onDestroy = null,
-        .onReceipt = null,
-    };
+    var res: C.Module = undefined;
 
     self.hasApiError = false;
     log.tracev("Invoke module loader: {s}", .{r_uri});
 
-    if (self.moduleLoader.?(@ptrCast(self.vm), C.toStr(r_uri), &res)) {
-        const src_temp = res.src[0..res.srcLen];
-        const src = try self.alloc.dupe(u8, src_temp);
-        if (res.onReceipt) |onReceipt| {
-            onReceipt(@ptrCast(self.vm), &res);
-        }
-        res.src = src.ptr;
-        return res;
-    } else {
+    if (!self.moduleLoader.?(@ptrCast(self.vm), C.toStr(r_uri), &res)) {
         return null;
     }
+    const chunk: *cy.Chunk = @ptrCast(@alignCast(res.ptr));
+    cache.key_ptr.* = chunk.srcUri;
+    cache.value_ptr.* = chunk;
+    return chunk;
+}
+
+pub fn createModule(self: *Compiler, r_uri: []const u8, src: []const u8) !*cy.Chunk {
+    const src_dupe = try self.alloc.dupe(u8, src);
+    const r_uri_dupe = try self.alloc.dupe(u8, r_uri);
+
+    const chunk_id: u32 = @intCast(self.chunks.items.len);
+    const chunk = try self.alloc.create(cy.Chunk);
+    try chunk.init(self, chunk_id, r_uri_dupe, src_dupe);
+    chunk.sym = try chunk.createChunkSym(r_uri_dupe);
+    try self.chunks.append(self.alloc, chunk);
+    return chunk;
 }
 
 fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
-    // Check cache if module src was already obtained from the module loader.
-    const cache = try self.chunk_map.getOrPut(self.alloc, task.resolved_spec);
-    if (cache.found_existing) {
-        try completeImportTask(self, task, cache.value_ptr.*);
-        self.alloc.free(task.resolved_spec);
-        return cache.value_ptr.*;
-    }
-
-    var res = (try loadModule(self, task.resolved_spec)) orelse {
+    const chunk = (try loadModule(self, task.resolved_spec)) orelse {
         if (task.from) |from| {
             if (task.node) |node| {
                 if (self.hasApiError) {
@@ -715,44 +698,8 @@ fn performImportTask(self: *Compiler, task: ImportTask) !*cy.Chunk {
             return error.CompileError;
         }
     };
-    const src = res.src[0..res.srcLen];
-
-    // Push another chunk.
-    const newChunkId: u32 = @intCast(self.chunks.items.len);
-
-    // uri is already duped.
-    var newChunk = try self.alloc.create(cy.Chunk);
-
-    try newChunk.init(self, newChunkId, task.resolved_spec, src);
-    newChunk.sym = try newChunk.createChunkSym(task.resolved_spec);
-    newChunk.varLoader = res.varLoader;
-    newChunk.onTypeLoad = res.onTypeLoad;
-    newChunk.onLoad = res.onLoad;
-    newChunk.srcOwned = true;
-    newChunk.onDestroy = res.onDestroy;
-
-    // Allocate func mapping.
-    var funcs: std.StringHashMapUnmanaged(C.FuncFn) = .{};
-    for (C.fromSlice(C.HostFuncEntry, res.funcs)) |entry| {
-        try funcs.put(self.alloc, C.fromStr(entry.name), entry.func); 
-    }
-    newChunk.host_funcs = funcs;
-    newChunk.func_loader = res.func_loader;
-
-    // Allocate host type mapping.
-    var types: std.StringHashMapUnmanaged(C.HostType) = .{};
-    for (C.fromSlice(C.HostTypeEntry, res.types)) |entry| {
-        try types.put(self.alloc, C.fromStr(entry.name), entry.host_t); 
-    }
-    newChunk.host_types = types;
-    newChunk.type_loader = res.type_loader;
-
-    try self.chunks.append(self.alloc, newChunk);
-    
-    try completeImportTask(self, task, newChunk);
-    cache.value_ptr.* = newChunk;
-
-    return newChunk;
+    try completeImportTask(self, task, chunk);
+    return chunk;
 }
 
 fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
@@ -914,11 +861,13 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
         }
 
         // Check for import tasks.
-        for (self.import_tasks.items, 0..) |task, i| {
+        for (self.import_tasks.items) |task| {
             _ = performImportTask(self, task) catch |err| {
-                try self.import_tasks.replaceRange(self.alloc, 0, i, &.{});
                 return err;
             };
+        }
+        for (self.import_tasks.items) |task| {
+            task.deinit(self.alloc);
         }
         self.import_tasks.clearRetainingCapacity();
 
@@ -1162,6 +1111,10 @@ pub const ImportTask = struct {
             sym: *cy.sym.UseAlias,
         },
     },
+
+    fn deinit(self: ImportTask, alloc: std.mem.Allocator) void {
+        alloc.free(self.resolved_spec);
+    }
 };
 
 pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *Compiler, modId: cy.ModuleId) anyerror!void) cy.ModuleLoaderFunc {
@@ -1182,55 +1135,17 @@ pub fn defaultModuleResolver(_: ?*C.VM, params: C.ResolverParams) callconv(.C) b
     return true;
 }
 
-pub fn defaultModuleLoader(vm_: ?*C.VM, spec: C.Str, out_: [*c]C.ModuleLoaderResult) callconv(.C) bool {
-    const out: *C.ModuleLoaderResult = out_;
+pub fn defaultModuleLoader(vm_: ?*C.VM, spec: C.Str, res: ?*C.Module) callconv(.C) bool {
+    const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     const name = C.fromStr(spec);
     if (std.mem.eql(u8, name, "core")) {
-        const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-        const aot = cy.isAot(vm.compiler.config.backend);
-        out.* = .{
-            .src = if (aot) core_mod.Src else core_mod.VmSrc,
-            .srcLen = if (aot) core_mod.Src.len else core_mod.VmSrc.len,
-            .types = if (aot) C.toSlice(C.HostTypeEntry, &core_mod.types) else C.toSlice(C.HostTypeEntry, &core_mod.vm_types),
-            .type_loader = null,
-            .funcs = C.toSlice(C.HostFuncEntry, &core_mod.funcs),
-            .func_loader = null,
-            .onLoad = core_mod.onLoad,
-            .onReceipt = null,
-            .varLoader = null,
-            .onTypeLoad = null,
-            .onDestroy = null,
-        };
+        res.?.* = core_mod.create(vm, name);
         return true;
     } else if (std.mem.eql(u8, name, "math")) {
-        out.* = .{
-            .src = math_mod.Src,
-            .srcLen = math_mod.Src.len,
-            .funcs = C.toSlice(C.HostFuncEntry, &math_mod.funcs),
-            .func_loader = null,
-            .varLoader = math_mod.varLoader,
-            .types = C.toSlice(C.HostTypeEntry, &.{}),
-            .type_loader = null,
-            .onLoad = null,
-            .onReceipt = null,
-            .onTypeLoad = null,
-            .onDestroy = null,
-        };
+        res.?.* = math_mod.create(vm, name);
         return true;
     } else if (std.mem.eql(u8, name, "cy")) {
-        out.* = .{
-            .src = cy_mod.Src,
-            .srcLen = cy_mod.Src.len,
-            .funcs = C.toSlice(C.HostFuncEntry, &cy_mod.funcs),
-            .func_loader = null,
-            .varLoader = null,
-            .types = C.toSlice(C.HostTypeEntry, &.{}),
-            .type_loader = null,
-            .onLoad = null,
-            .onReceipt = null,
-            .onTypeLoad = null,
-            .onDestroy = null,
-        };
+        res.?.* = cy_mod.create(vm, name);
         return true;
     }
     return false;

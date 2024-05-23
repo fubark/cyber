@@ -173,6 +173,9 @@ pub const VM = struct {
     /// User data ptr. Useful for embedders.
     userData: ?*anyopaque,
 
+    /// Map of arbitrary data pointers.
+    data: std.StringHashMapUnmanaged(?*anyopaque),
+
     /// Host write hook.
     print: cc.PrintFn,
     print_err: cc.PrintErrorFn,
@@ -286,6 +289,7 @@ pub const VM = struct {
             .httpClient = undefined,
             .stdHttpClient = undefined,
             .userData = null,
+            .data = .{},
             .varSymExtras = .{},
             .print = defaultPrint,
             .print_err = defaultPrintError,
@@ -305,6 +309,9 @@ pub const VM = struct {
         self.compiler = try self.alloc.create(cy.Compiler);
         self.sema = &self.compiler.sema;
         try self.compiler.init(self);
+
+        const core_data = try self.alloc.create(builtins.CoreData);
+        try self.data.put(self.alloc, "core", core_data);
 
         if (cy.hasCLI) {
             self.stdHttpClient = try alloc.create(http.StdHttpClient);
@@ -519,6 +526,12 @@ pub const VM = struct {
         }
 
         if (!reset) {
+            const core_data = self.getData(*builtins.CoreData, "core");
+            self.alloc.destroy(core_data);
+            self.data.deinit(self.alloc);
+        }
+
+        if (!reset) {
             if (cy.hasCLI) {
                 self.httpClient.deinit();
                 self.alloc.destroy(self.stdHttpClient);
@@ -721,6 +734,10 @@ pub const VM = struct {
             .pc = cy.fiber.getInstOffset(vm.c.ops, vm.c.pc),
             .fp = cy.fiber.getStackOffset(vm.c.stack, vm.c.framePtr),
         };
+    }
+
+    pub fn getData(self: *cy.VM, comptime T: type, key: []const u8) T {
+        return @ptrCast(@alignCast(self.data.get(key).?));
     }
 
     pub fn getTypeName(vm: *const cy.VM, typeId: cy.TypeId) []const u8 {

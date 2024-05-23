@@ -985,7 +985,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 226-6d3dca8</div>
+    <div class="sub-title">v0.4-dev 245-7d74153</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -1227,9 +1227,9 @@ print a    --> panic: `a` is not defined in `$global`.
 <li><a href="#variables" title="">Variables</a>: <code>var</code></li>
 <li><a href="#functions" title="">Functions</a>: <code>func</code> <code>return</code></li>
 <li><a href="#fibers" title="">Coroutines</a>: <code>coinit</code> <code>coyield</code> <code>coresume</code></li>
+<li><a href="#async" title="">Async</a>: <code>await</code></li>
 <li><a href="#custom-types" title="">Types</a>: <code>type</code>  <code>as</code></li>
 <li><a href="#type-embedding" title="">Type embedding</a>: <code>use</code></li>
-<li><a href="#metaprogramming" title="">Metaprogramming</a>: <code>template</code></li>
 <li><a href="#error-handling" title="">Error Handling</a>: <code>try</code> <code>catch</code> <code>throw</code></li>
 <li><a href="#modules" title="">Modules</a>: <code>use</code> <code>mod</code></li>
 <li><a href="#dynamic-typing" title="">Dynamic Typing</a>: <code>let</code></li>
@@ -2072,10 +2072,9 @@ print s.!line     --> 20
 <h2 id="optionals">Optionals. <a href="#optionals">#</a></h2>
 <p>Optionals provide <strong>Null Safety</strong> by forcing values to be unwrapped before they can be used.</p>
 <p>The generic <code>Option</code> type is a choice type that either holds a <code>none</code> value or contains <code>some</code> value. The option template is defined as:</p>
-<pre><code class="language-cy">template[T type]
-type Option enum:
+<pre><code class="language-cy">type Option[T type] enum:
     case none
-    case some #T
+    case some T
 </code></pre>
 <p>A type prefixed with <code>?</code> is the idiomatic way to create an option type. The following String optional types are equivalent:</p>
 <pre><code class="language-cy">Option[String]
@@ -2188,13 +2187,12 @@ var b Vec2 = a as Vec2
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#custom-types">^topic</a>
 <h2 id="generic-types">Generic types. <a href="#generic-types">#</a></h2>
-<p>Templates are used to specialize type declarations. Since template parameters only exist at compile-time, the <code>#</code> prefix is used to reference them in the template body:</p>
-<pre><code class="language-cy">template[T type]
-type MyContainer:
+<p>Templates are used to specialize type declarations:</p>
+<pre><code class="language-cy">type MyContainer[T type]:
     id    int
-    value #T
+    value T
 
-    func get() #T:
+    func get() T:
         return self.value
 </code></pre>
 <a href="#custom-types">^topic</a>
@@ -2547,22 +2545,27 @@ r = foo()         -- Calls the function `random`.
 </code></pre>
 <a href="#functions">^topic</a>
 <h3 id="call-block-syntax">Call block syntax. <a href="#call-block-syntax">#</a></h3>
-<p>The call expression block continues to add arguments from the block's body. If arguments are omitted from the initial call expression they can be added inside using the <code>..</code> syntax. Arguments mapped to named parameters have a key value syntax separated by a <code>:</code>. All other arguments are added into a list and passed as the last argument.</p>
-<blockquote><p><em>Planned Feature</em></p>
-</blockquote><pre><code class="language-cy">foo(123):
-    ..func ():
-        return 123
-    param3: 123
-    234
-    bar()
-    'hello'
+<p>The call block appends a lambda to a call expression's arguments:</p>
+<pre><code class="language-cy">func Button(name String, size int, on_click any):
+    return {
+        name: name,
+        size: size,
+        on_click: on_click,
+    }
+
+Button('Count', 10):
+    print 'on click'
 </code></pre>
-<p>In the example above, the function <code>foo</code> is called with 4 arguments. The first argument <code>123</code> is included in the starting call expression. The second argument is a function value inside the call expression block. The third argument is mapped to the param <code>param3</code>. Finally, the fourth argument is a list that contains <code>234</code>, <code>bar()</code>, and <code>'hello'</code>.</p>
+<p>If arguments are omitted from the call expression they can be appended inside the call block using named arguments: <em>Planned Feature</em></p>
+<pre><code class="language-cy">Button('Count'):
+    .size = 10
+    print 'on click'
+</code></pre>
+<p>Arguments assigned in the call block can be unordered.</p>
 <a href="#functions">^topic</a>
 <h2 id="generic-functions">Generic functions. <a href="#generic-functions">#</a></h2>
-<p>Templates are used to specialize function declarations. Since template parameters only exist at compile-time, the <code>#</code> prefix is used to reference them in the function declaration:</p>
-<pre><code class="language-cy">template[T type]
-func add(a #T, b #T) #T:
+<p>Templates are used to specialize function declarations:</p>
+<pre><code class="language-cy">func add[T type](a T, b T) T:
     return a + b
 </code></pre>
 <a href="#functions">^topic</a>
@@ -2802,6 +2805,8 @@ print typeof('my str').id()
 <p>Runs the garbage collector once to detect reference cycles and abandoned objects.  Returns the statistics of the run in a map value.</p>
 </blockquote><blockquote><p><code>func print(str any) <void></code></p>
 <p>Prints a value. The host determines how it is printed.</p>
+</blockquote><blockquote><p><code>func queueTask(fn any) <void></code></p>
+<p>Queues a callback function as an async task.</p>
 </blockquote><blockquote><p><code>func runestr(val int) String</code></p>
 <p>Converts a rune to a string.</p>
 </blockquote><blockquote><p><code>func typeof(val any) metatype</code></p>
@@ -2877,7 +2882,7 @@ print typeof('my str').id()
 <blockquote><p><code>func $index(idx int) T</code></p>
 </blockquote><blockquote><p><code>func $index(range Range) List[T]</code></p>
 </blockquote><blockquote><p><code>func $setIndex(idx int, val T) <void></code></p>
-</blockquote><blockquote><p><code>func append(val any) <void></code></p>
+</blockquote><blockquote><p><code>func append(val T) <void></code></p>
 <p>Appends a value to the end of the list.</p>
 </blockquote><blockquote><p><code>func appendAll(list List[T]) <void></code></p>
 <p>Appends the elements of another list to the end of this list.</p>
@@ -3065,7 +3070,17 @@ print typeof('my str').id()
 <h3 id="type-box"><code>type Box</code> <a href="#type-box">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-tccstate"><code>type TccState</code> <a href="#type-tccstate">#</a></h3>
-<!-- core.end -->
+<a href="#modules">^topic</a>
+<h3 id="type-future"><code>type Future</code> <a href="#type-future">#</a></h3>
+<blockquote><p><code>func Future.complete(val T) Future[T]</code></p>
+<p>Returns a <code>Future[T]</code> that has a completed value.</p>
+</blockquote><blockquote><p><code>func Future.new() Future[T]</code></p>
+</blockquote><a href="#modules">^topic</a>
+<h3 id="type-futureresolver"><code>type FutureResolver</code> <a href="#type-futureresolver">#</a></h3>
+<blockquote><p><code>func complete(val T) <void></code></p>
+</blockquote><blockquote><p><code>func future() Future[T]</code></p>
+</blockquote><blockquote><p><code>func FutureResolver.new() FutureResolver[T]</code></p>
+</blockquote><!-- core.end -->
 <a href="#modules">^topic</a>
 <h2 id="mod-cy"><code>mod cy</code> <a href="#mod-cy">#</a></h2>
 <p>The <code>cy</code> module contains functions related to the Cyber language.</p>
@@ -3075,7 +3090,12 @@ print cy.toCyon([1, 2, 3])
 </code></pre>
 <p><a href="#modules" title="">^topic</a></p>
 <!-- cy.start -->
-<blockquote><p><code>func eval(src String) any</code></p>
+<blockquote><p><code>var Success int</code></p>
+</blockquote><blockquote><p><code>var Await int</code></p>
+</blockquote><blockquote><p><code>var ErrorCompile int</code></p>
+</blockquote><blockquote><p><code>var ErrorPanic int</code></p>
+</blockquote><blockquote><p><code>var TypeVoid int</code></p>
+</blockquote><blockquote><p><code>func eval(src String) any</code></p>
 <p>Evaluates source code in an isolated VM.  If the last statement is an expression, a primitive or a String can be returned.</p>
 </blockquote><blockquote><p><code>func parse(src String) Map</code></p>
 <p>Parses Cyber source string into a structured map object.  Currently, only metadata about static declarations is made available but this will be extended to include an AST.</p>
@@ -3085,6 +3105,30 @@ print cy.toCyon([1, 2, 3])
 <p>Starts an isolated REPL session.  The callback <code>read_line(prefix String) String</code> is responsible for obtaining the input.</p>
 </blockquote><blockquote><p><code>func toCyon(val any) String</code></p>
 <p>Encodes a value to CYON string.</p>
+</blockquote><a href="#modules">^topic</a>
+<h3 id="type-evalconfig"><code>type EvalConfig</code> <a href="#type-evalconfig">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-evalresult"><code>type EvalResult</code> <a href="#type-evalresult">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-value"><code>type Value</code> <a href="#type-value">#</a></h3>
+<blockquote><p><code>func dump() String</code></p>
+</blockquote><blockquote><p><code>func getTypeId() int</code></p>
+</blockquote><blockquote><p><code>func toHost() any</code></p>
+</blockquote><a href="#modules">^topic</a>
+<h3 id="type-vm"><code>type VM</code> <a href="#type-vm">#</a></h3>
+<blockquote><p><code>func eval(code String) EvalResult</code></p>
+</blockquote><blockquote><p><code>func eval(uri String, code String, config EvalConfig) EvalResult</code></p>
+</blockquote><blockquote><p><code>func getErrorSummary() String</code></p>
+</blockquote><blockquote><p><code>func getPanicSummary() String</code></p>
+</blockquote><blockquote><p><code>func VM.new() VM</code></p>
+<p>Create an isolated VM.</p>
+</blockquote><a href="#modules">^topic</a>
+<h3 id="type-replcontext"><code>type ReplContext</code> <a href="#type-replcontext">#</a></h3>
+<blockquote><p><code>func printIntro() </code></p>
+</blockquote><blockquote><p><code>func read(read_line any, async bool) ?String</code></p>
+</blockquote><blockquote><p><code>func evalPrint(code String) <void></code></p>
+</blockquote><blockquote><p><code>func getPrefix() String</code></p>
+</blockquote><blockquote><p><code>func ReplContext.new() ReplContext</code></p>
 </blockquote><!-- cy.end -->
 <a href="#modules">^topic</a>
 <h2 id="mod-math"><code>mod math</code> <a href="#mod-math">#</a></h2>
@@ -3394,6 +3438,7 @@ t.eq(a, 444)
 <blockquote><p><code>func assert(pred bool) <void></code></p>
 <p>Panics if <code>pred</code> is <code>false</code>.</p>
 </blockquote><blockquote><p><code>func eq(a T, b T) bool</code></p>
+<p>Returns whether two values are equal.  Panics with <code>error.AssertError</code> if types or values do not match up.</p>
 </blockquote><blockquote><p><code>func eqList(a any, b any) bool</code></p>
 <p>Returns <code>true</code> if two lists have the same size and the elements are equal  as if <code>eq</code> was called on those corresponding elements.</p>
 </blockquote><blockquote><p><code>func eqNear(a any, b any) bool</code></p>
@@ -3702,6 +3747,23 @@ kaboom()     -- Script ends and prints the stack trace.
 <p>Panics can not be caught using <code>try catch</code>. Once <code>panic</code> is invoked, the current fiber stops execution and begins to unwind its call stack. Once the error is propagated to the root, the fiber ends and transitions to a panic state. If the main fiber ends this way, the VM begins to shutdown. Otherwise, execution resumes on the next fiber which allows recovery from a panic.</p>
 <a href="#error-handling">^topic</a>
 <h1 id="concurrency">Concurrency. <a href="#concurrency">#</a></h1>
+<table><tr>
+<td valign="top">
+<ul>
+<li><a href="#async" title="">Async.</a><ul>
+<li><a href="#futures" title="">Futures.</a></li>
+<li><a href="#await" title=""><code>await</code>.</a></li>
+<li><a href="#colorless-async" title="">Colorless async.</a></li>
+<li><a href="#future-chains" title="">Future chains.</a></li>
+<li><a href="#resolving-futures" title="">Resolving futures.</a></li>
+<li><a href="#structured-concurrency" title="">Structured concurrency.</a></li>
+<li><a href="#finish-policy" title="">Finish policies.</a></li>
+<li><a href="#task-cancellation" title="">Task cancellation.</a></li>
+<li><a href="#threads" title="">Threads.</a></li>
+</ul>
+</li>
+</ul>
+</td><td valign="top">
 <ul>
 <li><a href="#fibers" title="">Fibers.</a><ul>
 <li><a href="#creating-fibers" title="">Creating fibers.</a></li>
@@ -3714,11 +3776,142 @@ kaboom()     -- Script ends and prints the stack trace.
 </ul>
 </li>
 <li><a href="#gas-mileage" title="">Gas mileage.</a></li>
-<li><a href="#async" title="">Async.</a></li>
-<li><a href="#multi-thread" title="">Multi-thread.</a></li>
 </ul>
+</td>
+</tr></table>
 <p><a href="#table-of-contents" title="">^top</a></p>
-<p>Cyber supports fibers as a concurrency mechanism. There are plans to support preemptive concurrency with async/await as well as multithreading.</p>
+<p>Cyber supports asynchronous and cooperative concurrency.</p>
+<h2 id="async">Async. <a href="#async">#</a></h2>
+<p>Cyber supports asynchronous execution which provides preemptive concurrency.
+Tasks can be scheduled over a single thread. <em>Multi-threaded execution is planned.</em></p>
+<a href="#concurrency">^topic</a>
+<h3 id="futures">Futures. <a href="#futures">#</a></h3>
+<p>A <code>Future</code> is a promise that some work will either complete or fail at some point in the future.
+This abstraction allows the current thread to continue execution without waiting for the completion of the future.</p>
+<p>The asynchronous work encapsulated by the future has the opportunity to run in parallel.
+For example, I/O bound work can be delegated to the operating system and CPU bound work can be run across multiple threads.
+Some work may simply run on the same thread.</p>
+<p>If an API function is meant to do work asynchronously, it would return a <code>Future</code>:</p>
+<pre><code class="language-cy">use aio
+
+var f = aio.delay(1000)
+print f          --> Future(void)
+</code></pre>
+<p>Futures can hold a result value when they are completed:</p>
+<pre><code class="language-cy">use aio
+
+var f = aio.readFile('foo.txt')
+print f          --> Future(String)
+</code></pre>
+<p>Futures can be created with a completed value:</p>
+<pre><code class="language-cy">var f = Future.complete(100)
+print f          --> Future(int)
+print f.get().?  --> 100
+</code></pre>
+<p>Future are also created when composing them together.</p>
+<a href="#concurrency">^topic</a>
+<h3 id="await"><code>await</code>. <a href="#await">#</a></h3>
+<p>The <code>await</code> expression asynchronously waits for a <code>Future</code> to resolve.
+It guarantees that the current execution flow will not resume until the future is completed.
+Once resumed, the expression evaluates to the completed result:</p>
+<pre><code class="language-cy">use aio
+
+var res = await aio.readFile('foo.txt')
+print res        --> bar
+</code></pre>
+<p>In the above example, the file contents of <code>foo.txt</code> is "bar".</p>
+<p><code>await</code> suspends the current fiber so the scheduler can execute tasks in its ready queue.
+When the future resolves, the suspended task is moved to the ready queue waiting to resume execution.</p>
+<p>Performing <code>await</code> on other values besides a <code>Future</code> type will evaluate to the value and will not perform any waiting:</p>
+<pre><code class="language-cy">var v = await 123
+print v          --> 123
+</code></pre>
+<a href="#concurrency">^topic</a>
+<h3 id="colorless-async">Colorless async. <a href="#colorless-async">#</a></h3>
+<p><code>await</code> can be used in any function.
+This means that async functions are colorless and don't require a special function modifier.</p>
+<a href="#concurrency">^topic</a>
+<h3 id="future-chains">Future chains. <a href="#future-chains">#</a></h3>
+<p><code>Future.then</code> is used to attach a callback that will only be invoked when the future completes, thereby creating an asynchronous chain: <em>Planned Feature</em></p>
+<pre><code class="language-cy">use aio
+
+var f = aio.readFile('foo.txt').then() -> res:
+    print res    --> bar
+
+print f          --> Future(void)
+</code></pre>
+<p>By default <code>Future.then</code> evaluates to a new <code>Future(void)</code> and represents the completion of the callback.
+A callback that returns a result requires a generic parameter or inferred from the lambda: <em>Planned Feature</em></p>
+<pre><code class="language-cy">var f = aio.readFile('foo.txt').then() -> res:
+    return res.len()
+
+print f          --> Future(int)
+print await f    --> 3
+</code></pre>
+<p>Similarily, <code>Future.catch</code> attaches a callback that will only be invoked when the future fails: <em>Planned Feature</em></p>
+<pre><code class="language-cy">var f = aio.readFile('foo.txt').catch() -> err:
+    print err    --> error.FileNotFound
+</code></pre>
+<a href="#concurrency">^topic</a>
+<h3 id="resolving-futures">Resolving futures. <a href="#resolving-futures">#</a></h3>
+<p><code>FutureResolver</code> produces a completable <code>Future</code>. In the following example, a future is completed with the <code>FutureResolver</code> after a queued task runs:</p>
+<pre><code class="language-cy">var r = FutureResolver[int].new()
+
+queueTask():
+    r.complete(234)
+
+var v = await r.future()
+print v
+</code></pre>
+<a href="#concurrency">^topic</a>
+<h3 id="structured-concurrency">Structured concurrency. <a href="#structured-concurrency">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><p>Asychronous tasks must be created with an <code>Async</code> context which groups together related tasks.
+This gives tasks well-defined lifetimes and allows policies to be applied to a task group.</p>
+<p>Every program begins by pushing a new <code>Async.waitAll</code> context to the <code>async</code> context variable.
+<code>waitAll</code> is a <a href="#finish-policies" title="">finish policy</a> that waits for all tasks to complete before it marks its finish task as completed.
+In the following example, the created tasks are attached to the current <code>Async</code> context:</p>
+<pre><code class="language-cy">use aio
+
+aio.delay(1000)
+addMoreTasks()
+</code></pre>
+<p>Since the program did not explicitly wait for the completion of the current <code>Async</code> context, execution will end before 1 second has elapsed.</p>
+<p>To wait for all the tasks to complete, the program can wait for the <code>Async</code> context to finish:</p>
+<pre><code class="language-cy">use aio
+
+context async Async
+
+aio.delay(1000)
+addMoreTasks()
+
+await async.finish()
+</code></pre>
+<p>The context variable <code>async</code> is declared to access the current <code>Async</code> context.
+<code>finish</code> applies the finish policy <code>waitAll</code> which completes when all tasks under the async context have been completed.</p>
+<p>After invoking <code>finish</code>, new tasks can no longer be created under the async context.
+Doing so would result in a runtime error.
+A future is returned to indicate the completion of the finish task.</p>
+<p>Explicitly invoking <code>finish</code> isn't idiomatic and was only demonstrated to show how an async context works. The same feat can be achieved with helpers that can wrap a block of related async logic:</p>
+<pre><code class="language-cy">use aio
+
+await Async.block(.waitAll):
+    aio.delay(1000)
+    addMoreTasks()
+</code></pre>
+<p><code>Async.block</code> begins by creating a new async context and pushing the context to <code>async</code>.
+The callback is then invoked which creates a new task under the <code>async</code> context.
+Once the callback returns, the <code>async</code> context and the result of <code>Async.finish</code> is returned.</p>
+<a href="#concurrency">^topic</a>
+<h3 id="finish-policies">Finish policies. <a href="#finish-policies">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#concurrency">^topic</a>
+<h3 id="task-cancellation">Task cancellation. <a href="#task-cancellation">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#concurrency">^topic</a>
+<h3 id="threads">Threads. <a href="#threads">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#concurrency">^topic</a>
 <h2 id="fibers">Fibers. <a href="#fibers">#</a></h2>
 <p>A fiber represents a separate execution context as a first-class value. It contains it's own call stack and program counter. Fibers by themselves do not enable parallelism.</p>
 <a href="#concurrency">^topic</a>
@@ -3849,12 +4042,6 @@ print fiber.status()   -- '.done'
 <p>The main execution context is a fiber as well. Once the main fiber has finished, the VM is done and control is returned to the host.</p>
 <a href="#concurrency">^topic</a>
 <h2 id="gas-mileage">Gas mileage. <a href="#gas-mileage">#</a></h2>
-<blockquote><p><em>Planned Feature</em></p>
-</blockquote><a href="#concurrency">^topic</a>
-<h2 id="async">Async. <a href="#async">#</a></h2>
-<blockquote><p><em>Planned Feature</em></p>
-</blockquote><a href="#concurrency">^topic</a>
-<h2 id="multi-thread">Multi-thread. <a href="#multi-thread">#</a></h2>
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#concurrency">^topic</a>
 <h1 id="dynamic-typing">Dynamic Typing. <a href="#dynamic-typing">#</a></h1>
@@ -4469,11 +4656,25 @@ print res['numObjFreed']      -- Output: 2
 <a href="#memory">^topic</a>
 <h1 id="cli">CLI. <a href="#cli">#</a></h1>
 <ul>
+<li><a href="#basic-commands" title="">Basic commands.</a></li>
 <li><a href="#repl" title="">REPL.</a></li>
 <li><a href="#jit-compiler" title="">JIT compiler.</a></li>
 <li><a href="#aot-compiler" title="">AOT compiler.</a></li>
 </ul>
 <p><a href="#table-of-contents" title="">^top</a></p>
+<h2 id="basic-commands">Basic commands. <a href="#basic-commands">#</a></h2>
+<p>To compile and run a program with the VM, provide the path to the main Cyber source file:</p>
+<pre><code class="language-bash">cyber foo.cy
+cyber path/to/main.cy
+</code></pre>
+<p>To see more options and commands, print the help screen:</p>
+<pre><code class="language-bash">cyber help
+
+# These are aliases to the help command.
+cyber -h
+cyber --help
+</code></pre>
+<a href="#cli">^topic</a>
 <h2 id="repl">REPL. <a href="#repl">#</a></h2>
 <p>The REPL is started by running the CLI without any arguments:</p>
 <pre><code class="language-bash">cyber
@@ -4899,7 +5100,7 @@ hljs.registerLanguage('cy', function() {
     return {
     keywords: {
         keyword: [
-            'template', 'func', 'mod', 'for', 'coinit', 'coresume', 'coyield', 'use',
+            'func', 'mod', 'for', 'coinit', 'coresume', 'coyield', 'use', 'await', 'context',
             'return', 'if', 'else', 'as', 'while', 'var', 'let', 'dynobject', 'object', 'struct', 'with', 'caught',
             'break', 'continue', 'switch', 'pass', 'or', 'and', 'not', 'is', 'error', 'throws',
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case'

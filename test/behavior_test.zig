@@ -531,7 +531,7 @@ test "windows new lines" {
     try eval(.{ .silent = true }, "a = 123\r\nb = 234\r\nc =",
     struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, c.ErrorCompile,
-            \\ParseError: Expected expression.
+            \\ParseError: Expected right expression for assignment statement.
             \\
             \\main:3:4:
             \\c =

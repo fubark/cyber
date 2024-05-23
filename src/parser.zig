@@ -179,7 +179,7 @@ pub const Parser = struct {
         self.blockStack.clearRetainingCapacity();
         self.cur_indent = 0;
 
-        const indent = (try self.consumeIndentBeforeStmt()) orelse {
+        const indent = (try self.consumeFirstIndent()) orelse {
             return self.ast.newNode(.root, .{
                 .stmts = &.{},
             });
@@ -199,33 +199,106 @@ pub const Parser = struct {
 
         _ = self.popBlock();
 
+        try self.consumeNewLineOrEnd();
+        if (try self.consumeFirstIndent()) |_| {
+            return self.reportError("Unexpected indentation.", &.{});
+        }
+
         return self.ast.newNode(.root, .{
             .stmts = stmts,
         });
     }
 
-    /// Returns number of spaces that precedes a statement.
-    /// The current line is consumed if there is no statement.
-    fn consumeIndentBeforeStmt(self: *Parser) !?u32 {
+    /// Returns `true` for a valid indent preceding a statement.
+    fn consumeNextLineIndent(self: *Parser, req_indent: u32) !bool {
+        // Must consume at least one line.
+        if (self.peek().tag() != .new_line) {
+            return false;
+        }
+        self.advance();
         while (true) {
-            // Spaces, count = 0.
-            var res: u32 = 0;
-            var token = self.peek();
-            if (token.tag() == .indent) {
-                res = token.data.indent;
-                self.advance();
-                token = self.peek();
+            const token = self.peek();
+            switch (token.tag()) {
+                .indent => {
+                    const res = token.data.indent;
+                    self.advance();
+                    switch (self.peek().tag()) {
+                        .indent => {
+                            // If another indent token is encountered, it would be a different type.
+                            return self.reportError("Can not mix tabs and spaces for indentation.", &.{});
+                        },
+                        .new_line => {
+                            self.advance();
+                            continue;
+                        },
+                        .null => {
+                            return false;
+                        },
+                        else => {
+                            if (res == req_indent) {
+                                return true;
+                            } else {
+                                if (res ^ req_indent < 0x80000000) {
+                                    // Same type but different indent.
+                                    return false;
+                                } else {
+                                    if (res & 0x80000000 == 0x80000000) {
+                                        return self.reportError("Expected tabs for indentation.", &.{});
+                                    } else {
+                                        return self.reportError("Expected spaces for indentation.", &.{});
+                                    }
+                                }
+                            }
+                        },
+                    }
+                },
+                .new_line => {
+                    self.advance();
+                },
+                .null => {
+                    return false;
+                },
+                else => {
+                    return req_indent == 0;
+                },
             }
-            if (token.tag() == .new_line) {
-                self.advance();
-                continue;
-            } else if (token.tag() == .indent) {
-                // If another indent token is encountered, it would be a different type.
-                return self.reportError("Can not mix tabs and spaces for indentation.", &.{});
-            } else if (token.tag() == .null) {
-                return null;
-            } else {
-                return res;
+        }
+    }
+
+    /// Returns number of spaces that precedes a statement.
+    fn consumeFirstIndent(self: *Parser) !?u32 {
+        while (true) {
+            const token = self.peek();
+            switch (token.tag()) {
+                .indent => {
+                    const res = token.data.indent;
+                    self.advance();
+                    switch (self.peek().tag()) {
+                        .indent => {
+                            // If another indent token is encountered, it would be a different type.
+                            return self.reportError("Can not mix tabs and spaces for indentation.", &.{});
+                        },
+                        .new_line => {
+                            self.advance();
+                            continue;
+                        },
+                        .null => {
+                            return null;
+                        },
+                        else => {
+                            return res;
+                        },
+                    }
+                },
+                .new_line => {
+                    self.advance();
+                },
+                .null => {
+                    return null;
+                },
+                else => {
+                    return 0;
+                },
             }
         }
     }
@@ -279,23 +352,19 @@ pub const Parser = struct {
         // Parse body statements until indentation goes back to at least the previous indent.
         while (true) {
             const start = self.next_pos;
-            const indent = (try self.consumeIndentBeforeStmt()) orelse break;
-            if (indent == reqIndent) {
-                stmt = try self.parseStatement(config);
-                try self.pushNode(stmt);
-            } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
+            if (!try self.consumeNextLineIndent(reqIndent)) {
                 self.next_pos = start;
                 break;
-            } else {
-                return self.reportError("Unexpected indentation.", &.{});
             }
+            stmt = try self.parseStatement(config);
+            try self.pushNode(stmt);
         }
         return self.ast.dupeNodes(self.node_stack.items[stmt_start..]);
     }
 
     /// Parses the first child indent and returns the indent size.
     fn parseFirstChildIndent(self: *Parser, fromIndent: u32) !u32 {
-        const indent = (try self.consumeIndentBeforeStmt()) orelse {
+        const indent = (try self.consumeFirstIndent()) orelse {
             return self.reportError("Block requires an indented child statement. Use the `pass` statement as a placeholder.", &.{});
         };
         if ((fromIndent ^ indent < 0x80000000) or fromIndent == 0) {
@@ -623,8 +692,6 @@ pub const Parser = struct {
             if (try self.parseOptTypeSpec(true)) |res| {
                 typeSpec = res;
             }
-        } else {
-            try self.consumeNewLineOrEnd();
         }
         return self.ast.newNode(.enumMember, .{
             .name = name,
@@ -647,9 +714,6 @@ pub const Parser = struct {
         const typeSpec = try self.parseOptTypeSpec(true) orelse {
             return self.reportError("Expected field type specifier.", &.{});
         };
-        if (typeSpec.type() != .objectDecl) {
-            try self.consumeNewLineOrEnd();
-        }
 
         return self.ast.newNode(.objectField, .{
             .name = name,
@@ -823,7 +887,7 @@ pub const Parser = struct {
             .symbol_k,
             .error_k,
             .ident => {
-                return try self.parseTermExpr(.{});
+                return try self.parseTermExpr2(.{});
             },
             else => {
                 return null;
@@ -839,9 +903,8 @@ pub const Parser = struct {
         if (self.peek().tag() == .colon) {
             self.advance();
             const req_indent = try self.parseFirstChildIndent(self.cur_indent);
-            const prev_indent = self.cur_indent;
+            const prev_indent = self.pushIndent(req_indent);
             defer self.cur_indent = prev_indent;
-            self.cur_indent = req_indent;
 
             funcs = try self.parseTypeFuncs(req_indent);
         }
@@ -863,9 +926,8 @@ pub const Parser = struct {
         if (self.peek().tag() == .colon) {
             self.advance();
             const req_indent = try self.parseFirstChildIndent(self.cur_indent);
-            const prev_indent = self.cur_indent;
+            const prev_indent = self.pushIndent(req_indent);
             defer self.cur_indent = prev_indent;
-            self.cur_indent = req_indent;
 
             funcs = try self.parseTypeFuncs(req_indent);
         }
@@ -904,10 +966,9 @@ pub const Parser = struct {
             return self.reportError("Expected colon.", &.{});
         }
 
-        const reqIndent = try self.parseFirstChildIndent(self.cur_indent);
-        const prevIndent = self.cur_indent;
-        self.cur_indent = reqIndent;
-        defer self.cur_indent = prevIndent;
+        const req_indent = try self.parseFirstChildIndent(self.cur_indent);
+        const prev_indent = self.pushIndent(req_indent);
+        defer self.cur_indent = prev_indent;
 
         var member = try self.parseEnumMember();
 
@@ -919,21 +980,17 @@ pub const Parser = struct {
 
         while (true) {
             const start2 = self.next_pos;
-            const indent = (try self.consumeIndentBeforeStmt()) orelse break;
-            if (indent == reqIndent) {
-                member = try self.parseEnumMember();
-                if (!isChoiceType) {
-                    if (member.typeSpec != null) {
-                        isChoiceType = true;
-                    }
-                }
-                try self.pushNode(@ptrCast(member));
-            } else if (try isRecedingIndent(self, prevIndent, reqIndent, indent)) {
+            if (!try self.consumeNextLineIndent(req_indent)) {
                 self.next_pos = start2;
                 break;
-            } else {
-                return self.reportError("Unexpected indentation.", &.{});
             }
+            member = try self.parseEnumMember();
+            if (!isChoiceType) {
+                if (member.typeSpec != null) {
+                    isChoiceType = true;
+                }
+            }
+            try self.pushNode(@ptrCast(member));
         }
         const members: []*ast.EnumMember = @ptrCast(try self.ast.dupeNodes(self.node_stack.items[member_start..]));
         return self.ast.newNode(.enumDecl, .{
@@ -970,21 +1027,16 @@ pub const Parser = struct {
 
         while (true) {
             const start = self.next_pos;
-            const indent = (try self.consumeIndentBeforeStmt()) orelse {
-                has_more_members.* = false;
-                break;
-            };
-            if (indent == req_indent) {
-                field = (try self.parseObjectField()) orelse {
-                    has_more_members.* = true;
-                    break;
-                };
-                try self.pushNode(@ptrCast(field));
-            } else {
+            if (!try self.consumeNextLineIndent(req_indent)) {
                 self.next_pos = start;
                 has_more_members.* = false;
                 break;
             }
+            field = (try self.parseObjectField()) orelse {
+                has_more_members.* = true;
+                break;
+            };
+            try self.pushNode(@ptrCast(field));
         }
         return @ptrCast(try self.ast.dupeNodes(self.node_stack.items[field_start..]));
     }
@@ -1004,17 +1056,15 @@ pub const Parser = struct {
 
         while (true) {
             const start = self.next_pos;
-            const indent = (try self.consumeIndentBeforeStmt()) orelse break;
-            if (indent == req_indent) {
-                func = try self.parseStatement(.{ .allow_decls = true });
-                if (func.type() != .funcDecl) {
-                    return self.reportErrorAtSrc("Expected function.", &.{}, func.pos());
-                }
-                try self.pushNode(func);
-            } else {
+            if (!try self.consumeNextLineIndent(req_indent)) {
                 self.next_pos = start;
                 break;
             }
+            func = try self.parseStatement(.{ .allow_decls = true });
+            if (func.type() != .funcDecl) {
+                return self.reportErrorAtSrc("Expected function.", &.{}, func.pos());
+            }
+            try self.pushNode(func);
         }
         return @ptrCast(try self.ast.dupeNodes(self.node_stack.items[func_start..]));
     }
@@ -1035,9 +1085,8 @@ pub const Parser = struct {
         }
 
         const req_indent = try self.parseFirstChildIndent(self.cur_indent);
-        const prev_indent = self.cur_indent;
+        const prev_indent = self.pushIndent(req_indent);
         defer self.cur_indent = prev_indent;
-        self.cur_indent = req_indent;
 
         var has_more_members: bool = undefined;
         const fields = try self.parseTypeFields(req_indent, &has_more_members);
@@ -1064,9 +1113,8 @@ pub const Parser = struct {
         }
 
         const req_indent = try self.parseFirstChildIndent(self.cur_indent);
-        const prev_indent = self.cur_indent;
+        const prev_indent = self.pushIndent(req_indent);
         defer self.cur_indent = prev_indent;
-        self.cur_indent = req_indent;
 
         var has_more_members: bool = undefined;
         const fields = try self.parseTypeFields(req_indent, &has_more_members);
@@ -1162,7 +1210,7 @@ pub const Parser = struct {
 
     fn parseElseStmt(self: *Parser) anyerror!?*ast.ElseBlock {
         const save = self.next_pos;
-        const indent = try self.consumeIndentBeforeStmt();
+        const indent = try self.consumeFirstIndent();
         if (indent != self.cur_indent) {
             self.next_pos = save;
             return null;
@@ -1208,25 +1256,6 @@ pub const Parser = struct {
         }
     }
 
-    fn consumeStmtIndentTo(self: *Parser, reqIndent: u32) !void {
-        const indent = (try self.consumeIndentBeforeStmt()) orelse {
-            return self.reportError("Expected statement.", &.{});
-        };
-        if (reqIndent != indent) {
-            return self.reportError("Unexpected statement indentation.", &.{});
-        }
-    }
-
-    fn tryConsumeStmtIndentTo(self: *Parser, reqIndent: u32) !bool {
-        const save = self.next_pos;
-        const indent = (try self.consumeIndentBeforeStmt()) orelse return false;
-        if (reqIndent != indent) {
-            self.next_pos = save;
-            return false;
-        }
-        return true;
-    }
-
     fn parseSwitch(self: *Parser, isStmt: bool) !*ast.SwitchBlock {
         const start = self.next_pos;
         // Assumes first token is the `switch` keyword.
@@ -1242,10 +1271,8 @@ pub const Parser = struct {
             isBlock = true;
             self.advance();
             caseIndent = try self.parseFirstChildIndent(self.cur_indent);
-        } else if (self.peek().tag() == .new_line) {
-            try self.consumeStmtIndentTo(caseIndent);
         } else {
-            return self.reportError("Expected colon after switch condition.", &.{});
+            self.consumeWhitespaceTokens();
         }
 
         var case = (try self.parseCaseBlock()) orelse {
@@ -1259,7 +1286,8 @@ pub const Parser = struct {
         // Parse body statements until no more case blocks indentation recedes.
         while (true) {
             const save = self.next_pos;
-            if (!try self.tryConsumeStmtIndentTo(caseIndent)) {
+            if (!try self.consumeNextLineIndent(caseIndent)) {
+                self.next_pos = save;
                 break;
             }
             case = (try self.parseCaseBlock()) orelse {
@@ -1293,7 +1321,7 @@ pub const Parser = struct {
 
         const tryStmts = try self.parseSingleOrIndentedBodyStmts();
 
-        const indent = try self.consumeIndentBeforeStmt();
+        const indent = try self.consumeFirstIndent();
         if (indent != self.cur_indent) {
             return self.reportError("Expected catch block.", &.{});
         }
@@ -1394,10 +1422,8 @@ pub const Parser = struct {
                 .raw_string => {
                     spec = @ptrCast(try self.newSpanNode(.raw_string_lit, self.next_pos));
                     self.advance();
-                    try self.consumeNewLineOrEnd();
                 },
                 .new_line => {
-                    self.advance();
                 },
                 .null => {},
                 .minus_right_angle => {
@@ -1411,7 +1437,6 @@ pub const Parser = struct {
                         .pos = self.tokenSrcPos(start),
                     });
                     try self.staticDecls.append(self.alloc, @ptrCast(alias));
-                    try self.consumeNewLineOrEnd();
                     return @ptrCast(alias);
                 },
                 else => {
@@ -1427,7 +1452,6 @@ pub const Parser = struct {
             }
             spec = @ptrCast(try self.newSpanNode(.raw_string_lit, self.next_pos));
             self.advance();
-            try self.consumeNewLineOrEnd();
         } else {
             return self.reportError("Expected import clause.", &.{});
         }
@@ -1649,7 +1673,7 @@ pub const Parser = struct {
 
         if (token.tag() == .case_k) {
             self.advance();
-            var cond = (try self.parseTermExprOpt(.{})) orelse {
+            var cond = (try self.parseTermExpr2Opt(.{})) orelse {
                 return self.reportError("Expected case condition.", &.{});
             };
             try self.pushNode(cond);
@@ -1666,7 +1690,7 @@ pub const Parser = struct {
                 } else if (token.tag() == .comma) {
                     self.advance();
                     self.consumeWhitespaceTokens();
-                    cond = (try self.parseTermExprOpt(.{})) orelse {
+                    cond = (try self.parseTermExpr2Opt(.{})) orelse {
                         return self.reportError("Expected case condition.", &.{});
                     };
                     try self.pushNode(cond);
@@ -1674,7 +1698,7 @@ pub const Parser = struct {
                     self.advance();
 
                     // Parse next token as expression.
-                    capture = try self.parseTermExpr(.{});
+                    capture = try self.parseTermExpr2(.{});
 
                     token = self.peek();
                     if (token.tag() == .colon) {
@@ -1730,6 +1754,7 @@ pub const Parser = struct {
         allow_decls: bool = false,
     };
 
+    /// Does not consume line end.
     fn parseStatement(self: *Parser, config: ParseStmtConfig) anyerror!*ast.Node {
         const start = self.next_pos;
         switch (self.peek().tag()) {
@@ -1759,9 +1784,7 @@ pub const Parser = struct {
                     return self.reportError("Expected ( after ident.", &.{});
                 }
 
-                const call: *ast.Node = @ptrCast(try self.parseCallExpression(@ptrCast(ident)));
-                try self.consumeNewLineOrEnd();
-
+                const call: *ast.Node = @ptrCast(try self.parseCallExpression(@ptrCast(ident), false));
                 return self.ast.newNodeErase(.comptimeStmt, .{
                     .expr = call,
                     .pos = self.tokenSrcPos(start),
@@ -1839,21 +1862,18 @@ pub const Parser = struct {
             },
             .pass_k => {
                 self.advance();
-                try self.consumeNewLineOrEnd();
                 return self.ast.newNodeErase(.passStmt, .{
                     .pos = self.tokenSrcPos(start),
                 });
             },
             .continue_k => {
                 self.advance();
-                try self.consumeNewLineOrEnd();
                 return self.ast.newNodeErase(.continueStmt, .{
                     .pos = self.tokenSrcPos(start),
                 });
             },
             .break_k => {
                 self.advance();
-                try self.consumeNewLineOrEnd();
                 return self.ast.newNodeErase(.breakStmt, .{
                     .pos = self.tokenSrcPos(start),
                 });
@@ -2148,7 +2168,7 @@ pub const Parser = struct {
     }
 
     fn parseRecordEntry(self: *Parser) !*ast.KeyValue {
-        const arg = (try self.parseTermExprOpt(.{})) orelse {
+        const arg = (try self.parseTermExpr2Opt(.{})) orelse {
             return self.reportError("Expected record key.", &.{});
         };
 
@@ -2286,7 +2306,7 @@ pub const Parser = struct {
             self.advance();
             self.consumeWhitespaceTokens();
         }
-        const right = (try self.parseExprLeft()) orelse {
+        const right = (try self.parseTermExpr()) orelse {
             return self.reportError("Expected right operand.", &.{});
         };
         return self.parseRightExpr2(left_op, right);
@@ -2499,8 +2519,8 @@ pub const Parser = struct {
         });
     }
 
-    fn parseTermExpr(self: *Parser, config: ParseTermConfig) anyerror!*ast.Node {
-        return (try self.parseTermExprOpt(config)) orelse {
+    fn parseTermExpr2(self: *Parser, config: ParseTermConfig) anyerror!*ast.Node {
+        return (try self.parseTermExpr2Opt(config)) orelse {
             return self.reportError("Expected term expr. Got: {}.", &.{v(self.peek().tag())});
         };
     }
@@ -2607,7 +2627,7 @@ pub const Parser = struct {
     }
 
     /// An expression term doesn't contain a unary/binary expression at the top.
-    fn parseTermExprOpt(self: *Parser, config: ParseTermConfig) anyerror!?*ast.Node {
+    fn parseTermExpr2Opt(self: *Parser, config: ParseTermConfig) anyerror!?*ast.Node {
         const start = self.next_pos;
         var token = self.peek();
         const left: *ast.Node = switch (token.tag()) {
@@ -2649,7 +2669,7 @@ pub const Parser = struct {
             },
             .question => b: {
                 self.advance();
-                const param = try self.parseTermExpr(.{ .parse_record_expr = false });
+                const param = try self.parseTermExpr2(.{ .parse_record_expr = false });
                 break :b try self.ast.newNodeErase(.expandOpt, .{
                     .param = param,
                     .pos = self.tokenSrcPos(start),
@@ -2782,7 +2802,7 @@ pub const Parser = struct {
             },
             .minus => {
                 self.advance();
-                const child = try self.parseTermExpr(.{});
+                const child = try self.parseTermExpr2(.{});
                 return self.ast.newNodeErase(.unary_expr, .{
                     .child = child,
                     .op = .minus,
@@ -2790,7 +2810,7 @@ pub const Parser = struct {
             },
             .tilde => {
                 self.advance();
-                const child = try self.parseTermExpr(.{});
+                const child = try self.parseTermExpr2(.{});
                 return self.ast.newNodeErase(.unary_expr, .{
                     .child = child,
                     .op = .bitwiseNot,
@@ -2798,7 +2818,7 @@ pub const Parser = struct {
             },
             .bang => {
                 self.advance();
-                const child = try self.parseTermExpr(.{});
+                const child = try self.parseTermExpr2(.{});
                 return self.ast.newNodeErase(.unary_expr, .{
                     .child = child,
                     .op = .not,
@@ -2809,34 +2829,6 @@ pub const Parser = struct {
             }
         };
         return try self.parseTermExprWithLeft(start, left, config);
-    }
-
-    fn returnLeftAssignExpr(self: *Parser, left: *ast.Node, outIsAssignStmt: *bool) !*ast.Node {
-        switch (left.type()) {
-            .accessExpr,
-            .array_expr,
-            .ident => {
-                outIsAssignStmt.* = true;
-                return left;
-            },
-            else => {
-                return self.reportError("Expected variable to left of assignment operator.", &.{});
-            },
-        }
-    }
-
-    fn parseBinExpr(self: *Parser, left: *ast.Node, op: cy.ast.BinaryExprOp) !*ast.BinExpr {
-        const start = self.next_pos;
-        // Assumes current token is the operator.
-        self.advance();
-
-        const right = try self.parseRightExpr(op);
-        return self.ast.newNode(.binExpr, .{
-            .left = left,
-            .right = right,
-            .op = op,
-            .op_pos = self.tokenSrcPos(start),
-        });
     }
 
     fn parseComptimeExpr(self: *Parser) !*ast.ComptimeExpr {
@@ -2866,7 +2858,7 @@ pub const Parser = struct {
         return try self.parseExprWithLeft(start, left, config);
     }
 
-    fn parseExprLeft(self: *Parser) !?*ast.Node {
+    fn parseTermExpr(self: *Parser) !?*ast.Node {
         const start = self.next_pos;
         switch (self.peek().tag()) {
             .null => return null,
@@ -2970,9 +2962,66 @@ pub const Parser = struct {
                     .pos = self.tokenSrcPos(start),
                 });
             },
+            .func_k => {
+                return @ptrCast(try self.parseLeftAssignLambdaFunction());
+            },
+            .left_paren => {
+                self.advance();
+                const expr = (try self.parseExpr(.{})) orelse {
+                    if (self.peek().tag() == .right_paren) {
+                        self.advance();
+                    } else {
+                        return self.reportError("Expected expression.", &.{});
+                    }
+                    // Assume empty args for lambda.
+                    if (self.peek().tag() == .equal_right_angle) {
+                        return @ptrCast(try self.parseLambdaFunc(&.{}));
+                    } else if (self.peek().tag() == .colon) {
+                        return @ptrCast(try self.parseLambdaBlock(&.{}, null));
+                    } else {
+                        return self.reportError("Unexpected paren.", &.{});
+                    }
+                };
+                if (self.peek().tag() == .right_paren) {
+                    self.advance();
+                    if (expr.type() == .ident) {
+                        const param: *ast.Node = @ptrCast(try self.genDynFuncParam(expr));
+                        if (self.peek().tag() == .equal_right_angle) {
+                            const params = try self.ast.dupeNodes(&.{param});
+                            return @ptrCast(try self.parseLambdaFunc(@ptrCast(params)));
+                        } else if (self.peek().tag() == .colon) {
+                            const params = try self.ast.dupeNodes(&.{param});
+                            return @ptrCast(try self.parseLambdaBlock(@ptrCast(params), null));
+                        }
+                    }
+
+                    const group = try self.ast.newNodeErase(.group, .{
+                        .child = expr,
+                        .pos = self.tokenSrcPos(start),
+                    });
+                    const term = try self.parseTermExprWithLeft(start, group, .{});
+                    return self.parseExprWithLeft(start, term, .{});
+                } else if (self.peek().tag() == .comma) {
+                    self.advance();
+                    const param = try self.genDynFuncParam(expr);
+                    const params = try self.parseFuncParams(&.{ param }, false, false);
+                    if (self.peek().tag() == .equal_right_angle) {
+                        return @ptrCast(try self.parseLambdaFunc(params));
+                    } else if (self.peek().tag() == .colon) {
+                        return @ptrCast(try self.parseLambdaBlock(params, null));
+                    } else {
+                        return self.reportError("Expected `=>` or `:`.", &.{});
+                    }
+                } else {
+                    return self.reportError("Expected right parenthesis.", &.{});
+                }
+            },
+            .switch_k => {
+                return @ptrCast(try self.parseSwitch(false));
+            },
             else => {}
         }
-        return try self.parseTermExpr(.{});
+        return try self.parseTermExpr2(.{});
     }
 
     fn parseExprWithLeft(self: *Parser, start: u32, left_: *ast.Node, config: ParseExprConfig) !*ast.Node {
@@ -2990,26 +3039,25 @@ pub const Parser = struct {
                     }
                 },
                 .equal => {
-                    // If left is an accessor expression or identifier, parse as assignment statement.
-                    if (config.returnLeftAssignExpr) {
-                        return try self.returnLeftAssignExpr(left, config.outIsAssignStmt);
-                    } else {
-                        break;
-                    }
+                    break;
                 },
                 .plus,
                 .minus,
                 .star,
                 .slash => {
                     if (self.peekAhead(1).tag() == .equal) {
-                        if (config.returnLeftAssignExpr) {
-                            return try self.returnLeftAssignExpr(left, config.outIsAssignStmt);
-                        } else {
-                            break;
-                        }
+                        break;
                     }
                     const bin_op = toBinExprOp(next.tag()).?;
-                    left = @ptrCast(try self.parseBinExpr(left, bin_op));
+                    const op_start = self.next_pos;
+                    self.advance();
+                    const right = try self.parseRightExpr(bin_op);
+                    left = try self.ast.newNodeErase(.binExpr, .{
+                        .left = left,
+                        .right = right,
+                        .op = bin_op,
+                        .op_pos = self.tokenSrcPos(op_start),
+                    });
                 },
                 .ampersand,
                 .vert_bar,
@@ -3027,11 +3075,19 @@ pub const Parser = struct {
                 .or_k,
                 .right_angle_equal => {
                     const bin_op = toBinExprOp(next.tag()).?;
-                    left = @ptrCast(try self.parseBinExpr(left, bin_op));
+                    const op_start = self.next_pos;
+                    self.advance();
+                    const right = try self.parseRightExpr(bin_op);
+                    left = try self.ast.newNodeErase(.binExpr, .{
+                        .left = left,
+                        .right = right,
+                        .op = bin_op,
+                        .op_pos = self.tokenSrcPos(op_start),
+                    });
                 },
                 .minus_double_dot => {
                     self.advance();
-                    const end: ?*ast.Node = if (try self.parseTermExprOpt(.{})) |right| b: {
+                    const end: ?*ast.Node = if (try self.parseTermExpr2Opt(.{})) |right| b: {
                         break :b try self.parseRightExpr2(.reverse_range, right);
                     } else null;
                     left = try self.ast.newNodeErase(.range, .{
@@ -3043,7 +3099,7 @@ pub const Parser = struct {
                 },
                 .dot_dot => {
                     self.advance();
-                    const end: ?*ast.Node = if (try self.parseTermExprOpt(.{})) |right| b: {
+                    const end: ?*ast.Node = if (try self.parseTermExpr2Opt(.{})) |right| b: {
                         break :b try self.parseRightExpr2(.range, right);
                     } else null;
                     left = try self.ast.newNodeErase(.range, .{
@@ -3109,73 +3165,9 @@ pub const Parser = struct {
         return left;
     }
 
-    /// Consumes the an expression or a expression block.
-    fn parseEndingExpr(self: *Parser) anyerror!*ast.Node {
-        switch (self.peek().tag()) {
-            .left_paren => {
-                const start = self.next_pos;
-                self.advance();
-                const expr = (try self.parseExpr(.{})) orelse {
-                    if (self.peek().tag() == .right_paren) {
-                        self.advance();
-                    } else {
-                        return self.reportError("Expected expression.", &.{});
-                    }
-                    // Assume empty args for lambda.
-                    if (self.peek().tag() == .equal_right_angle) {
-                        return @ptrCast(try self.parseLambdaFunc(&.{}));
-                    } else if (self.peek().tag() == .colon) {
-                        return @ptrCast(try self.parseLambdaBlock(&.{}, null));
-                    } else {
-                        return self.reportError("Unexpected paren.", &.{});
-                    }
-                };
-                if (self.peek().tag() == .right_paren) {
-                    self.advance();
-                    if (expr.type() == .ident) {
-                        const param: *ast.Node = @ptrCast(try self.genDynFuncParam(expr));
-                        if (self.peek().tag() == .equal_right_angle) {
-                            const params = try self.ast.dupeNodes(&.{param});
-                            return @ptrCast(try self.parseLambdaFunc(@ptrCast(params)));
-                        } else if (self.peek().tag() == .colon) {
-                            const params = try self.ast.dupeNodes(&.{param});
-                            return @ptrCast(try self.parseLambdaBlock(@ptrCast(params), null));
-                        }
-                    }
-
-                    const group = try self.ast.newNodeErase(.group, .{
-                        .child = expr,
-                        .pos = self.tokenSrcPos(start),
-                    });
-                    const term = try self.parseTermExprWithLeft(start, group, .{});
-                    return self.parseExprWithLeft(start, term, .{});
-                } else if (self.peek().tag() == .comma) {
-                    self.advance();
-                    const param = try self.genDynFuncParam(expr);
-                    const params = try self.parseFuncParams(&.{ param }, false, false);
-                    if (self.peek().tag() == .equal_right_angle) {
-                        return @ptrCast(try self.parseLambdaFunc(params));
-                    } else if (self.peek().tag() == .colon) {
-                        return @ptrCast(try self.parseLambdaBlock(params, null));
-                    } else {
-                        return self.reportError("Expected `=>` or `:`.", &.{});
-                    }
-                } else {
-                    return self.reportError("Expected right parenthesis.", &.{});
-                }
-            },
-            .func_k => {
-                return @ptrCast(try self.parseLeftAssignLambdaFunction());
-            },
-            .switch_k => {
-                return @ptrCast(try self.parseSwitch(false));
-            },
-            else => {
-                return (try self.parseExpr(.{})) orelse {
-                    return self.reportError("Expected expression.", &.{});
-                };
-            },
-        }
+    fn pushIndent(self: *Parser, indent: u32) u32 {
+        defer self.cur_indent = indent;
+        return self.cur_indent;
     }
 
     fn parseLetDecl(self: *Parser, attrs: []*ast.Attribute, hidden: bool, allow_static: bool) !*ast.Node {
@@ -3226,7 +3218,6 @@ pub const Parser = struct {
             // Parse as custom table declaration.
             const fields = try self.parseLetTableFields();
             if (self.peek().tag() == .new_line) {
-                self.advance();
                 const decl = try self.ast.newNode(.table_decl, .{
                     .name = name,
                     .attrs = attrs,
@@ -3244,9 +3235,8 @@ pub const Parser = struct {
             self.advance();
             
             const req_indent = try self.parseFirstChildIndent(self.cur_indent);
-            const prev_indent = self.cur_indent;
+            const prev_indent = self.pushIndent(req_indent);
             defer self.cur_indent = prev_indent;
-            self.cur_indent = req_indent;
             const funcs = try self.parseTypeFuncs(req_indent);
             const decl = try self.ast.newNode(.table_decl, .{
                 .name = name,
@@ -3329,7 +3319,7 @@ pub const Parser = struct {
             self.advance();
 
             // Continue parsing right expr.
-            right = try self.parseEndingExpr();
+            right = try self.parseExpr(.{});
         }
 
         if (is_static) {
@@ -3370,7 +3360,7 @@ pub const Parser = struct {
                 return self.ast.newNodeErase(.returnStmt, .{ .pos = self.tokenSrcPos(start) });
             },
             else => {
-                const right = try self.parseEndingExpr();
+                const right = (try self.parseExpr(.{})).?;
                 return self.ast.newNodeErase(.returnExprStmt, .{
                     .child = right,
                     .pos = self.tokenSrcPos(start),
@@ -3380,78 +3370,77 @@ pub const Parser = struct {
     }
 
     fn parseExprOrAssignStatement(self: *Parser) !?*ast.Node {
-        var is_assign_stmt = false;
         const expr = (try self.parseExpr(.{
-            .returnLeftAssignExpr = true,
-            .outIsAssignStmt = &is_assign_stmt
+            .allow_block_expr = true,
         })) orelse {
             return null;
         };
 
-        if (is_assign_stmt) {
-            var token = self.peek();
-            const opStart = self.next_pos;
-            const assignTag = token.tag();
-            // Assumes next token is an assignment operator: =, +=.
-            self.advance();
+        var is_assign_stmt = false;
+        const tag = self.peek().tag();
+        const op_start = self.next_pos;
+        switch (tag) {
+            .equal => {
+                self.advance();
+                is_assign_stmt = true;
+            },
+            .plus,
+            .minus,
+            .star,
+            .slash => {
+                // +=, -=, etc.
+                self.advance();
+                self.advance();
+                is_assign_stmt = true;
+            },
+            else => {},
+        }
 
-            const start = expr.pos();
-            _ = start;
-            var assignStmt: *ast.Node = undefined;
-
-            // Right can be an expr or stmt.
-            var right: *ast.Node = undefined;
-            switch (assignTag) {
-                .equal => {
-                    right = try self.parseEndingExpr();
-                    assignStmt = try self.ast.newNodeErase(.assignStmt, .{
-                        .left = expr,
-                        .right = right,
-                    });
-                },
-                .plus,
-                .minus,
-                .star,
-                .slash => {
-                    self.advance();
-                    right = (try self.parseExpr(.{})) orelse {
-                        return self.reportError("Expected right expression for assignment statement.", &.{});
-                    };
-                    assignStmt = try self.ast.newNodeErase(.opAssignStmt, .{
-                        .left = expr,
-                        .right = right,
-                        .op = toBinExprOp(assignTag).?,
-                        .assign_pos = self.tokenSrcPos(opStart),
-                    });
-                },
-                else => return self.reportErrorAt("Unsupported assignment operator.", &.{}, opStart),
-            }
-
-            if (expr.type() == .ident) {
-                const name = self.ast.nodeString(expr);
-                const block = &self.blockStack.items[self.blockStack.items.len-1];
-                if (self.deps.get(name)) |node| {
-                    if (node == expr) {
-                        // Remove dependency now that it's recognized as assign statement.
-                        _ = self.deps.remove(name);
-                    }
-                }
-                try block.vars.put(self.alloc, name, {});
-            }
-
-            if (right.type() != .lambda_multi) {
-                token = self.peek();
-                try self.consumeNewLineOrEnd();
-                return assignStmt;
-            } else {
-                return assignStmt;
-            }
-        } else {
-            try self.consumeNewLineOrEnd();
+        if (!is_assign_stmt) {
             return self.ast.newNodeErase(.exprStmt, .{
                 .child = expr,
             });
         }
+
+        switch (expr.type()) {
+            .accessExpr,
+            .array_expr,
+            .ident => {},
+            else => {
+                return self.reportError("Unsupported assignment left expression: {}", &.{v(expr.type())});
+            },
+        }
+
+        // Right can be an expr or stmt.
+        const right = (try self.parseExpr(.{})) orelse {
+            return self.reportError("Expected right expression for assignment statement.", &.{});
+        };
+
+        if (tag == .equal) {
+            return self.ast.newNodeErase(.assignStmt, .{
+                .left = expr,
+                .right = right,
+            });
+        } else {
+            return self.ast.newNodeErase(.opAssignStmt, .{
+                .left = expr,
+                .right = right,
+                .op = toBinExprOp(tag).?,
+                .assign_pos = self.tokenSrcPos(op_start),
+            });
+        }
+
+        // if (expr.type() == .ident) {
+        //     const name = self.ast.nodeString(expr);
+        //     const block = &self.blockStack.items[self.blockStack.items.len-1];
+        //     if (self.deps.get(name)) |node| {
+        //         if (node == expr) {
+        //             // Remove dependency now that it's recognized as assign statement.
+        //             _ = self.deps.remove(name);
+        //         }
+        //     }
+        //     try block.vars.put(self.alloc, name, {});
+        // }
     }
 
     fn tokenSrcPos(self: *Parser, idx: u32) u32 {
@@ -3685,30 +3674,12 @@ pub fn logSrcPos(src: []const u8, start: u32, len: u32) void {
 }
 
 const ParseExprConfig = struct {
-    returnLeftAssignExpr: bool = false,
-    outIsAssignStmt: *bool = undefined,
     parseShorthandCallExpr: bool = true,
 };
 
 const ParseTermConfig = struct {
     parse_record_expr: bool = true,
 };
-
-fn isRecedingIndent(p: *Parser, prevIndent: u32, curIndent: u32, indent: u32) !bool {
-    if (indent ^ curIndent < 0x80000000) {
-        return indent <= prevIndent;
-    } else {
-        if (indent == 0) {
-            return true;
-        } else {
-            if (curIndent & 0x80000000 == 0x80000000) {
-                return p.reportError("Expected tabs for indentation.", &.{});
-            } else {
-                return p.reportError("Expected spaces for indentation.", &.{});
-            }
-        }
-    }
-}
 
 fn isRecordKeyNodeType(node_t: ast.NodeType) bool {
     switch (node_t) {

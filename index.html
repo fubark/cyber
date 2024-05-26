@@ -985,7 +985,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 250-bf0e7a1</div>
+    <div class="sub-title">v0.4-dev 251-fcd6d95</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -4606,6 +4606,7 @@ However, it can be useful to perform additional cleanup tasks for instances that
 <ul>
 <li><a href="#arc" title="">ARC.</a><ul>
 <li><a href="#reference-counting" title="">Reference counting.</a></li>
+<li><a href="#object-destructor" title="">Object destructor.</a></li>
 <li><a href="#optimizations" title="">Optimizations.</a></li>
 <li><a href="#closures-1" title="">Closures.</a></li>
 <li><a href="#fibers-1" title="">Fibers.</a></li>
@@ -4626,7 +4627,18 @@ ARC is deterministic and has less overhead compared to a tracing garbage collect
 <h3 id="reference-counting">Reference counting. <a href="#reference-counting">#</a></h3>
 <p>In Cyber, there are <a href="#basic-types" title="">primitive and object</a> values. Primitives don't need any memory management, since they are copied by value and no heap allocation is required (with the exception of primitives being captured by a <a href="#closures-1" title="">closure</a>.</p>
 <p>Objects are managed by ARC. Each object has its own reference counter. Upon creating a new object, it receives a reference count of 1. When the object is copied, it's <strong>retained</strong> and the reference count increments by 1. When an object value is removed from it's parent or is no longer reachable in the current stack frame, it is <strong>released</strong> and the reference count decrements by 1.</p>
-<p>Once the reference count reaches 0 the object begins its destruction procedure. First, child references are released thereby decrementing their reference counts by 1. If the object is a host object, it will invoke its <code>finalizer</code> function. Afterwards, the object is freed from memory.</p>
+<p>Once the reference count reaches 0 the object begins its <a href="#object-destructor" title="">destruction</a> procedure.</p>
+<a href="#memory">^topic</a>
+<h3 id="object-destructor">Object destructor. <a href="#object-destructor">#</a></h3>
+<p>An object's destructor invoked from ARC performs the following in order:</p>
+<ol>
+<li>Release child references thereby decrementing their reference counts by 1. If any child reference counts reach 0, their destructors are invoked.</li>
+<li>If the object has a finalizer, it's invoked.</li>
+<li>The object is freed from memory.</li>
+</ol>
+<p>If the destructor is invoked by the GC instead of ARC, cyclable child references are not released in step 1.
+Since objects freed by the GC either belongs to a reference cycle or branched from one, the GC will still end up invoking the destructor of all unreachable objects.
+This implies that the destructor order is not reliable, but destructors are guaranteed to be invoked for all unreachable objects.</p>
 <a href="#memory">^topic</a>
 <h3 id="optimizations">Optimizations. <a href="#optimizations">#</a></h3>
 <p>The compiler can reduce the number of retain/release ops since it can infer value types even though they are dynamically typed to the user. Arguments passed to functions are only retained depending on the analysis from the callsite.</p>

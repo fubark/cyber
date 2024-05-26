@@ -86,9 +86,11 @@ pub const StdHttpClient = struct {
     fn fetch(ptr: *anyopaque, alloc: std.mem.Allocator, method: std.http.Method, uri: std.Uri, headers: Headers) anyerror!Response {
         const self = cy.ptrAlignCast(*StdHttpClient, ptr);
         var buf = std.ArrayList(u8).init(alloc);
+        defer buf.deinit();
         const res = try self.client.fetch(.{
             .response_storage = .{ .dynamic = &buf },
             .method = method,
+            .max_append_size = 1e9,
             .location = .{ .uri = uri },
             .headers = headers,
         });

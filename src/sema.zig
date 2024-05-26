@@ -2121,8 +2121,12 @@ pub fn resolveUserVar(c: *cy.Chunk, sym: *cy.sym.UserVar) !void {
     if (sym.isResolved()) {
         return;
     }
-    const typeId = try resolveTypeSpecNode(c, sym.decl.?.typeSpec);
-    c.resolveUserVar(sym, typeId);
+    if (sym.decl.?.typed) {
+        const typeId = try resolveTypeSpecNode(c, sym.decl.?.typeSpec);
+        c.resolveUserVar(sym, typeId);
+    } else {
+        c.resolveUserVar(sym, bt.Dyn);
+    }
 }
 
 pub fn resolveHostVar(c: *cy.Chunk, sym: *cy.sym.HostVar) !void {

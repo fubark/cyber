@@ -343,6 +343,7 @@ pub fn zErrFunc(comptime f: fn (vm: *cy.VM, args: [*]const Value, nargs: u8) any
 
 pub fn prepThrowZError(ctx: cy.Context, err: anyerror, optTrace: ?*std.builtin.StackTrace) Value {
     if (!cy.isFreestanding and C.verbose()) {
+        log.tracev("{}", .{err});
         if (optTrace) |trace| {
             std.debug.dumpStackTrace(trace.*);
         }

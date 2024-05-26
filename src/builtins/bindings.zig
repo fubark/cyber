@@ -419,12 +419,12 @@ pub fn listResize(vm: *cy.VM, args: [*]const Value, _: u8) Value {
 pub fn mapIterator(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
     vm.retainObject(obj);
-    return vm.allocMapIterator(&obj.map) catch fatal();
+    return vm.allocMapIterator(args[0]) catch fatal();
 }
 
 pub fn mapIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     const obj = args[0].asHeapObject();
-    const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.inner);
+    const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.castHeapObject(*cy.heap.Map).inner);
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
         vm.retain(entry.key);
         vm.retain(entry.value);

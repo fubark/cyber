@@ -227,7 +227,7 @@ pub const HeapArrayBuilder = struct {
 
             // Free pool object.
             oldObj.array.headerAndLen = self.len;
-            cy.heap.freeObject(self.vm, oldObj, true, false, true);
+            cy.heap.freeObject(self.vm, oldObj, false);
         }
     }
 

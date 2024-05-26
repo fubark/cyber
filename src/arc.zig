@@ -41,7 +41,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) void {
         }
         if (obj.head.rc == 0) {
             // Free children and the object.
-            @call(.never_inline, cy.heap.freeObject, .{vm, obj, true, false, true});
+            @call(.never_inline, cy.heap.freeObject, .{vm, obj, false});
 
             if (cy.Trace) {
                 if (vm.countFrees) {
@@ -97,12 +97,7 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) void {
         vm.c.trace.numReleaseAttempts += 1;
     }
     if (obj.head.rc == 0) {
-        @call(.never_inline, cy.heap.freeObject, .{vm, obj, true, false, true});
-        if (cy.Trace) {
-            if (vm.countFrees) {
-                vm.numFreed += 1;
-            }
-        }
+        @call(.never_inline, cy.heap.freeObject, .{vm, obj, false});
     }
 }
 
@@ -127,9 +122,7 @@ pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) void {
     obj.head.rc += 1;
     if (cy.Trace) {
         checkRetainDanglingPointer(self, obj);
-        if (cy.TraceRC) {
-            log.tracevIf(log_mem, "{} +1 retain: {s}", .{obj.head.rc, self.getTypeName(obj.getTypeId())});
-        }
+        log.tracevIf(log_mem, "{} +1 retain: {s}", .{obj.head.rc, self.getTypeName(obj.getTypeId())});
     }
     if (cy.TrackGlobalRC) {
         self.c.refCounts += 1;
@@ -172,9 +165,7 @@ pub inline fn retain(self: *cy.VM, val: cy.Value) void {
         const obj = val.asHeapObject();
         if (cy.Trace) {
             checkRetainDanglingPointer(self, obj);
-            if (cy.TraceRC) {
-                log.tracev("{} +1 retain: {s}", .{obj.head.rc, self.getTypeName(obj.getTypeId())});
-            }
+            log.tracevIf(log_mem, "{} +1 retain: {s}", .{obj.head.rc, self.getTypeName(obj.getTypeId())});
         }
         obj.head.rc += 1;
         if (cy.TrackGlobalRC) {
@@ -194,9 +185,7 @@ pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) void {
         const obj = val.asHeapObject();
         if (cy.Trace) {
             checkRetainDanglingPointer(self, obj);
-            if (cy.TraceRC) {
-                log.tracev("{} +{} retain: {s}", .{obj.head.rc, inc, self.getTypeName(obj.getTypeId())});
-            }
+            log.tracevIf(log_mem, "{} +{} retain: {s}", .{obj.head.rc, inc, self.getTypeName(obj.getTypeId())});
         }
         obj.head.rc += inc;
         if (cy.TrackGlobalRC) {
@@ -252,17 +241,9 @@ fn performMark(vm: *cy.VM) !void {
 fn performSweep(vm: *cy.VM) !c.GCResult {
     log.tracev("Perform sweep.", .{});
     // Collect cyc nodes and release their children (child cyc nodes are skipped).
-    if (cy.Trace) {
-        vm.countFrees = true;
-        vm.numFreed = 0;
-    }
-    defer {
-        if (cy.Trace) {
-            vm.countFrees = false;
-        }
-    }
-    var cycObjs: std.ArrayListUnmanaged(*cy.HeapObject) = .{};
-    defer cycObjs.deinit(vm.alloc);
+    // TODO: Report `num_freed` after flattening recursive release.
+    const num_freed: u32 = 0;
+    var num_cyc_freed: u32 = 0;
 
     log.tracev("Sweep heap pages.", .{});
     for (vm.heapPages.items()) |page| {
@@ -270,9 +251,16 @@ fn performSweep(vm: *cy.VM) !c.GCResult {
         while (i < page.objects.len) {
             const obj = &page.objects[i];
             if (obj.freeSpan.typeId != cy.NullId) {
-                if (obj.isGcConfirmedCyc()) {
-                    try cycObjs.append(vm.alloc, obj);
-                    cy.heap.freeObject(vm, obj, true, true, false);
+                if (obj.isNoMarkCyc()) {
+                    log.tracev("gc free: {s}, rc={}", .{vm.getTypeName(obj.getTypeId()), obj.head.rc});
+                    if (cy.Trace) {
+                        checkDoubleFree(vm, obj);
+                    }
+                    if (cy.TrackGlobalRC) {
+                        vm.c.refCounts -= obj.head.rc;
+                    }
+                    cy.heap.freeObject(vm, obj, true);
+                    num_cyc_freed += 1;
                 } else if (obj.isGcMarked()) {
                     obj.resetGcMarked();
                 }
@@ -288,37 +276,32 @@ fn performSweep(vm: *cy.VM) !c.GCResult {
     log.tracev("Sweep non-pool cyc nodes.", .{});
     var mbNode: ?*cy.heap.DListNode = vm.cyclableHead;
     while (mbNode) |node| {
+        // Obtain next before node is freed.
+        mbNode = node.next;
+
         const obj = node.getHeapObject();
-        if (obj.isGcConfirmedCyc()) {
-            try cycObjs.append(vm.alloc, obj);
-            cy.heap.freeObject(vm, obj, true, true, false);
+        if (obj.isNoMarkCyc()) {
+            log.tracev("gc free: {s}, rc={}", .{vm.getTypeName(obj.getTypeId()), obj.head.rc});
+            if (cy.Trace) {
+                checkDoubleFree(vm, obj);
+            }
+            if (cy.TrackGlobalRC) {
+                vm.c.refCounts -= obj.head.rc;
+            }
+            cy.heap.freeObject(vm, obj, true);
+            num_cyc_freed += 1;
         } else if (obj.isGcMarked()) {
             obj.resetGcMarked();
         }
-        mbNode = node.next;
-    }
-
-    // Free cyc nodes.
-    for (cycObjs.items) |obj| {
-        log.tracev("cyc free: {s}, rc={}", .{vm.getTypeName(obj.getTypeId()), obj.head.rc});
-        if (cy.Trace) {
-            checkDoubleFree(vm, obj);
-        }
-        if (cy.TrackGlobalRC) {
-            vm.c.refCounts -= obj.head.rc;
-        }
-        // No need to bother with their refcounts.
-        cy.heap.freeObject(vm, obj, false, false, true);
     }
 
     if (cy.Trace) {
-        vm.c.trace.numCycFrees += @intCast(cycObjs.items.len);
-        vm.numFreed += @intCast(cycObjs.items.len);
+        vm.c.trace.numCycFrees += num_cyc_freed;
     }
 
     const res = c.GCResult{
-        .numCycFreed = @intCast(cycObjs.items.len),
-        .numObjFreed = if (cy.Trace) vm.numFreed else 0,
+        .numCycFreed = num_cyc_freed,
+        .numObjFreed = num_freed,
     };
     log.tracev("gc result: num cyc {}, num obj {}", .{res.numCycFreed, res.numObjFreed});
     return res;
@@ -396,7 +379,7 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
             }
         },
         bt.MapIter => {
-            markValue(vm, cy.Value.initNoCycPtr(obj.mapIter.map));
+            markValue(vm, obj.mapIter.map);
         },
         bt.Closure => {
             const vals = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];

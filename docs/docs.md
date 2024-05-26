@@ -3470,6 +3470,7 @@ void myNodeFinalizer(CLVM* vm, void* obj) {
 
 * [ARC.](#arc)
   * [Reference counting.](#reference-counting)
+  * [Object destructor.](#object-destructor)
   * [Optimizations.](#optimizations)
   * [Closures.](#closures-1)
   * [Fibers.](#fibers-1)
@@ -3490,7 +3491,17 @@ In Cyber, there are [primitive and object](#basic-types) values. Primitives don'
 
 Objects are managed by ARC. Each object has its own reference counter. Upon creating a new object, it receives a reference count of 1. When the object is copied, it's **retained** and the reference count increments by 1. When an object value is removed from it's parent or is no longer reachable in the current stack frame, it is **released** and the reference count decrements by 1.
 
-Once the reference count reaches 0 the object begins its destruction procedure. First, child references are released thereby decrementing their reference counts by 1. If the object is a host object, it will invoke its `finalizer` function. Afterwards, the object is freed from memory.
+Once the reference count reaches 0 the object begins its [destruction](#object-destructor) procedure. 
+
+### Object destructor.
+An object's destructor invoked from ARC performs the following in order:
+1. Release child references thereby decrementing their reference counts by 1. If any child reference counts reach 0, their destructors are invoked.
+2. If the object has a finalizer, it's invoked.
+3. The object is freed from memory.
+
+If the destructor is invoked by the GC instead of ARC, cyclable child references are not released in step 1.
+Since objects freed by the GC either belongs to a reference cycle or branched from one, the GC will still end up invoking the destructor of all unreachable objects.
+This implies that the destructor order is not reliable, but destructors are guaranteed to be invoked for all unreachable objects.
 
 ### Optimizations.
 The compiler can reduce the number of retain/release ops since it can infer value types even though they are dynamically typed to the user. Arguments passed to functions are only retained depending on the analysis from the callsite.

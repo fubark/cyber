@@ -229,6 +229,19 @@ pub fn build(b: *std.Build) !void {
     }
 
     {
+        const main_step = b.step("trace-test", "Run trace tests.");
+
+        var opts = getDefaultOptions();
+        opts.trackGlobalRc = true;
+        opts.applyOverrides();
+
+        const step = try addTraceTest(b, opts);
+        const run = b.addRunArtifact(step);
+        run.has_side_effects = no_cache;
+        main_step.dependOn(&run.step);
+    }
+
+    {
         const main_step = b.step("test", "Run all tests.");
 
         var opts = getDefaultOptions();

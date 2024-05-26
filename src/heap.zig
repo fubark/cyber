@@ -161,7 +161,7 @@ pub const HeapObject = extern union {
         self.head.typeId = self.head.typeId & ~vmc.GC_MARK_MASK;
     }
 
-    pub inline fn isGcConfirmedCyc(self: *HeapObject) bool {
+    pub inline fn isNoMarkCyc(self: *HeapObject) bool {
         return (self.head.typeId & vmc.GC_MARK_CYC_TYPE_MASK) == vmc.CYC_TYPE_MASK;
     }
 
@@ -354,7 +354,7 @@ pub const Map = extern struct {
 pub const MapIterator = extern struct {
     typeId: cy.TypeId,
     rc: u32,
-    map: *Map,
+    map: Value,
     nextIdx: u32,
 };
 
@@ -817,9 +817,7 @@ pub fn allocExternalObject(vm: *cy.VM, size: usize, comptime cyclable: bool) !*H
     if (cy.Malloc == .zig) {
         @as(*u64, @ptrCast(slice.ptr + PayloadSize - ZigLenSize)).* = size;
     }
-    if (cy.TraceRC) {
-        cy.arc.log.tracev("0 +1 alloc external object: {*}", .{slice.ptr + PayloadSize});
-    }
+    cy.arc.log.tracevIf(log_mem, "0 +1 alloc external object: {*}", .{slice.ptr + PayloadSize});
     if (cy.TrackGlobalRC) {
         vm.c.refCounts += 1;
     }
@@ -848,9 +846,7 @@ pub fn allocPoolObject(self: *cy.VM) !*HeapObject {
                 self.heapFreeTail = self.heapFreeHead;
             }
         }
-        if (cy.TraceRC) {
-            cy.arc.log.tracev("0 +1 alloc pool object: {*}", .{ptr});
-        }
+        cy.arc.log.tracevIf(log_mem, "0 +1 alloc pool object: {*}", .{ptr});
         if (cy.TrackGlobalRC) {
             self.c.refCounts += 1;
         }
@@ -1242,7 +1238,7 @@ pub fn allocMap(self: *cy.VM, keyIdxs: []const align(1) u16, vals: []const Value
 }
 
 /// Assumes map is already retained for the iterator.
-pub fn allocMapIterator(self: *cy.VM, map: *Map) !Value {
+pub fn allocMapIterator(self: *cy.VM, map: Value) !Value {
     const obj = try allocPoolObject(self);
     obj.mapIter = .{
         .typeId = bt.MapIter | vmc.CYC_TYPE_MASK,
@@ -1888,11 +1884,10 @@ pub fn allocFuncFromSym(self: *cy.VM, func: rt.FuncSymbol) !Value {
     }
 }
 
+/// `skip_cyc_children` is important for reducing the work for the GC mark/sweep.
 /// Use comptime options to keep closely related logic together.
 /// TODO: flatten recursion.
-pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
-    comptime releaseChildren: bool, comptime skipCycChildren: bool, comptime free: bool,
-) void {
+pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool) void {
     if (cy.Trace) {
         if (obj.isFreed()) {
             cy.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});
@@ -1906,245 +1901,175 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
     const typeId = obj.getTypeId();
     switch (typeId) {
         bt.Tuple => {
-            if (releaseChildren) {
-                for (obj.tuple.getElemsPtr()[0..obj.tuple.len]) |it| {
-                    if (skipCycChildren and it.isGcConfirmedCyc()) {
-                        continue;
-                    }
-                    cy.arc.release(vm, it);
+            for (obj.tuple.getElemsPtr()[0..obj.tuple.len]) |it| {
+                if (skip_cyc_children and it.isCycPointer()) {
+                    continue;
                 }
+                cy.arc.release(vm, it);
             }
-            if (free) {
-                if (obj.tuple.len <= 3) {
-                    freePoolObject(vm, obj);
-                } else {
-                    freeExternalObject(vm, obj, (2 + obj.tuple.len) * @sizeOf(Value), true);
-                }
+            if (obj.tuple.len <= 3) {
+                freePoolObject(vm, obj);
+            } else {
+                freeExternalObject(vm, obj, (2 + obj.tuple.len) * @sizeOf(Value), true);
             }
         },
         bt.Range => {
-            if (free) {
-                freePoolObject(vm, obj);
-            }
+            freePoolObject(vm, obj);
         },
         bt.Map => {
             const map = cy.ptrAlignCast(*MapInner, &obj.map.inner);
-            if (releaseChildren) {
-                var iter = map.iterator();
-                while (iter.next()) |entry| {
-                    if (skipCycChildren) {
-                        if (!entry.key.isGcConfirmedCyc()) {
-                            cy.arc.release(vm, entry.key);
-                        }
-                        if (!entry.value.isGcConfirmedCyc()) {
-                            cy.arc.release(vm, entry.value);
-                        }
-                    } else {
+            var iter = map.iterator();
+            while (iter.next()) |entry| {
+                if (skip_cyc_children) {
+                    if (!entry.key.isCycPointer()) {
                         cy.arc.release(vm, entry.key);
+                    }
+                    if (!entry.value.isCycPointer()) {
                         cy.arc.release(vm, entry.value);
                     }
+                } else {
+                    cy.arc.release(vm, entry.key);
+                    cy.arc.release(vm, entry.value);
                 }
             }
-            if (free) {
-                map.deinit(vm.alloc);
-                freePoolObject(vm, obj);
-            }
+            map.deinit(vm.alloc);
+            freePoolObject(vm, obj);
         },
         bt.MapIter => {
-            if (releaseChildren) {
-                if (skipCycChildren) {
-                    if (!@as(*HeapObject, @ptrCast(@alignCast(obj.mapIter.map))).isGcConfirmedCyc()) {
-                        cy.arc.releaseObject(vm, cy.ptrAlignCast(*HeapObject, obj.mapIter.map));
-                    }
-                } else {
-                    cy.arc.releaseObject(vm, cy.ptrAlignCast(*HeapObject, obj.mapIter.map));
-                }
+            if (!skip_cyc_children or !obj.mapIter.map.isCycPointer()) {
+                cy.arc.release(vm, obj.mapIter.map);
             }
-            if (free) {
-                freePoolObject(vm, obj);
-            }
+            freePoolObject(vm, obj);
         },
         bt.Closure => {
-            if (releaseChildren) {
-                const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
-                for (src) |capturedVal| {
-                    if (skipCycChildren and capturedVal.isGcConfirmedCyc()) {
-                        continue;
-                    }
-                    cy.arc.release(vm, capturedVal);
+            const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
+            for (src) |capturedVal| {
+                if (skip_cyc_children and capturedVal.isCycPointer()) {
+                    continue;
                 }
+                cy.arc.release(vm, capturedVal);
             }
-            if (free) {
-                if (obj.closure.numCaptured <= 2) {
-                    freePoolObject(vm, obj);
-                } else {
-                    freeExternalObject(vm, obj, (3 + obj.closure.numCaptured) * @sizeOf(Value), true);
-                }
+            if (obj.closure.numCaptured <= 2) {
+                freePoolObject(vm, obj);
+            } else {
+                freeExternalObject(vm, obj, (3 + obj.closure.numCaptured) * @sizeOf(Value), true);
             }
         },
         bt.Lambda => {
-            if (free) {
-                freePoolObject(vm, obj);
-            }
+            freePoolObject(vm, obj);
         },
         bt.String => {
             switch (obj.string.getType()) {
                 .astring => {
-                    if (free) {
-                        const len = obj.string.len();
-                        if (len <= DefaultStringInternMaxByteLen) {
+                    const len = obj.string.len();
+                    if (len <= DefaultStringInternMaxByteLen) {
 
-                            // Check both the key and value to make sure this object is the intern entry.
-                            // TODO: Use a flag bit instead of a map query.
-                            const key = obj.astring.getSlice();
-                            if (vm.strInterns.get(key)) |val| {
-                                if (val == obj) {
-                                    _ = vm.strInterns.remove(key);
-                                }
+                        // Check both the key and value to make sure this object is the intern entry.
+                        // TODO: Use a flag bit instead of a map query.
+                        const key = obj.astring.getSlice();
+                        if (vm.strInterns.get(key)) |val| {
+                            if (val == obj) {
+                                _ = vm.strInterns.remove(key);
                             }
                         }
-                        if (len <= MaxPoolObjectAstringByteLen) {
-                            freePoolObject(vm, obj);
-                        } else {
-                            freeExternalObject(vm, obj, Astring.BufOffset + len, false);
-                        }
+                    }
+                    if (len <= MaxPoolObjectAstringByteLen) {
+                        freePoolObject(vm, obj);
+                    } else {
+                        freeExternalObject(vm, obj, Astring.BufOffset + len, false);
                     }
                 },
                 .ustring => {
-                    if (free) {
-                        const len = obj.string.len();
-                        if (len <= DefaultStringInternMaxByteLen) {
-                            const key = obj.ustring.getSlice();
-                            if (vm.strInterns.get(key)) |val| {
-                                if (val == obj) {
-                                    _ = vm.strInterns.remove(key);
-                                }
+                    const len = obj.string.len();
+                    if (len <= DefaultStringInternMaxByteLen) {
+                        const key = obj.ustring.getSlice();
+                        if (vm.strInterns.get(key)) |val| {
+                            if (val == obj) {
+                                _ = vm.strInterns.remove(key);
                             }
                         }
-                        if (len <= MaxPoolObjectUstringByteLen) {
-                            freePoolObject(vm, obj);
-                        } else {
-                            freeExternalObject(vm, obj, Ustring.BufOffset + len, false);
-                        }
+                    }
+                    if (len <= MaxPoolObjectUstringByteLen) {
+                        freePoolObject(vm, obj);
+                    } else {
+                        freeExternalObject(vm, obj, Ustring.BufOffset + len, false);
                     }
                 },
                 .aslice => {
-                    if (releaseChildren) {
-                        if (obj.aslice.parent) |parent| {
-                            cy.arc.releaseObject(vm, parent);
-                        }
+                    if (obj.aslice.parent) |parent| {
+                        cy.arc.releaseObject(vm, parent);
                     }
-                    if (free) {
-                        freePoolObject(vm, obj);
-                    }
+                    freePoolObject(vm, obj);
                 },
                 .uslice => {
-                    if (releaseChildren) {
-                        if (obj.uslice.parent) |parent| {
-                            cy.arc.releaseObject(vm, parent);
-                        }
+                    if (obj.uslice.parent) |parent| {
+                        cy.arc.releaseObject(vm, parent);
                     }
-                    if (free) {
-                        freePoolObject(vm, obj);
-                    }
+                    freePoolObject(vm, obj);
                 },
             }
         },
         bt.Array => {
             if (obj.array.isSlice()) {
-                if (releaseChildren) {
-                    if (obj.arraySlice.getParentPtr()) |parent| {
-                        cy.arc.releaseObject(vm, parent);
-                    }
+                if (obj.arraySlice.getParentPtr()) |parent| {
+                    cy.arc.releaseObject(vm, parent);
                 }
-                if (free) {
-                    freePoolObject(vm, obj);
-                }
+                freePoolObject(vm, obj);
             } else {
-                if (free) {
-                    const len = obj.array.len();
-                    if (len <= MaxPoolObjectArrayByteLen) {
-                        freePoolObject(vm, obj);
-                    } else {
-                        freeExternalObject(vm, obj, Array.BufOffset + len, false);
-                    }
+                const len = obj.array.len();
+                if (len <= MaxPoolObjectArrayByteLen) {
+                    freePoolObject(vm, obj);
+                } else {
+                    freeExternalObject(vm, obj, Array.BufOffset + len, false);
                 }
             }
         },
         bt.Fiber => {
-            if (releaseChildren) {
-                const fiber: *vmc.Fiber = @ptrCast(obj);
-                // TODO: isCyc.
-                cy.fiber.releaseFiberStack(vm, fiber) catch |err| {
-                    cy.panicFmt("release fiber: {}", .{err});
-                };
-            }
-            if (free) {
-                cy.fiber.freeFiberPanic(vm, @ptrCast(obj));
-                freeExternalObject(vm, obj, @sizeOf(vmc.Fiber), true);
-            }
+            const fiber: *vmc.Fiber = @ptrCast(obj);
+            // TODO: isCyc.
+            cy.fiber.releaseFiberStack(vm, fiber) catch |err| {
+                cy.panicFmt("release fiber: {}", .{err});
+            };
+            cy.fiber.freeFiberPanic(vm, @ptrCast(obj));
+            freeExternalObject(vm, obj, @sizeOf(vmc.Fiber), true);
         },
         bt.Box => {
-            if (releaseChildren) {
-                if (skipCycChildren) {
-                    if (!obj.box.val.isGcConfirmedCyc()) {
-                        cy.arc.release(vm, obj.box.val);
-                    }
-                } else {
-                    cy.arc.release(vm, obj.box.val);
-                }
+            if (!skip_cyc_children or !obj.box.val.isCycPointer()) {
+                cy.arc.release(vm, obj.box.val);
             }
-            if (free) {
-                freePoolObject(vm, obj);
-            }
+            freePoolObject(vm, obj);
         },
         bt.ExternFunc => {
-            if (releaseChildren) {
-                cy.arc.releaseObject(vm, obj.externFunc.tccState.asHeapObject());
-                cy.arc.releaseObject(vm, obj.externFunc.func.asHeapObject());
-            }
-            if (free) {
-                freePoolObject(vm, obj);
-            }
+            cy.arc.releaseObject(vm, obj.externFunc.tccState.asHeapObject());
+            cy.arc.releaseObject(vm, obj.externFunc.func.asHeapObject());
+            freePoolObject(vm, obj);
         },
         bt.HostFunc => {
-            if (releaseChildren) {
-                if (obj.hostFunc.hasTccState) {
-                    cy.arc.releaseObject(vm, obj.hostFunc.tccState.asHeapObject());
-                }
+            if (obj.hostFunc.hasTccState) {
+                cy.arc.releaseObject(vm, obj.hostFunc.tccState.asHeapObject());
             }
-            if (free) {
-                freePoolObject(vm, obj);
-            }
+            freePoolObject(vm, obj);
         },
         bt.TccState => {
             if (cy.hasFFI) {
-                if (free) {
-                    tcc.tcc_delete(obj.tccState.state);
-                    if (obj.tccState.hasDynLib) {
-                        obj.tccState.lib.close();
-                        vm.alloc.destroy(obj.tccState.lib);
-                    }
-                    freePoolObject(vm, obj);
+                tcc.tcc_delete(obj.tccState.state);
+                if (obj.tccState.hasDynLib) {
+                    obj.tccState.lib.close();
+                    vm.alloc.destroy(obj.tccState.lib);
                 }
+                freePoolObject(vm, obj);
             } else {
                 unreachable;
             }
         },
         bt.Pointer => {
-            if (free) {
-                freePoolObject(vm, obj);
-            }
+            freePoolObject(vm, obj);
         },
         bt.Type => {
-            if (free) {
-                freePoolObject(vm, obj);
-            }
+            freePoolObject(vm, obj);
         },
         bt.MetaType => {
-            if (free) {
-                freePoolObject(vm, obj);
-            }
+            freePoolObject(vm, obj);
         },
         else => {
             if (cy.Trace) {
@@ -2161,105 +2086,83 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             const entry = vm.c.types[typeId];
             switch (entry.kind) {
                 .option => {
-                    if (releaseChildren) {
-                        const child = obj.object.getValuesConstPtr()[1];
-                        if (!skipCycChildren or !child.isGcConfirmedCyc()) {
-                            cy.arc.release(vm, child);
-                        }
+                    const child = obj.object.getValuesConstPtr()[1];
+                    if (!skip_cyc_children or !child.isCycPointer()) {
+                        cy.arc.release(vm, child);
                     }
-                    if (free) {
-                        freePoolObject(vm, obj);
-                    }
+                    freePoolObject(vm, obj);
                 },
                 .@"struct" => {
                     const numFields = entry.data.@"struct".numFields;
-                    if (releaseChildren) {
-                        for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
-                            if (skipCycChildren and child.isGcConfirmedCyc()) {
-                                continue;
-                            }
-                            cy.arc.release(vm, child);
+                    for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
+                        if (skip_cyc_children and child.isCycPointer()) {
+                            continue;
                         }
+                        cy.arc.release(vm, child);
                     }
-                    if (free) {
-                        if (numFields <= 4) {
-                            freePoolObject(vm, obj);
-                        } else {
-                            freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value), true);
-                        }
+                    if (numFields <= 4) {
+                        freePoolObject(vm, obj);
+                    } else {
+                        freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value), true);
                     }
                 },
                 .object => {
                     const numFields = entry.data.object.numFields;
-                    if (releaseChildren) {
-                        for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
-                            if (skipCycChildren and child.isGcConfirmedCyc()) {
+                    for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
+                        if (skip_cyc_children and child.isCycPointer()) {
+                            continue;
+                        }
+                        cy.arc.release(vm, child);
+                    }
+                    if (numFields <= 4) {
+                        freePoolObject(vm, obj);
+                    } else {
+                        freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value), true);
+                    }
+                },
+                .choice => {
+                    const value = obj.object.getValuesConstPtr()[1];
+                    if (!skip_cyc_children or !value.isCycPointer()) {
+                        cy.arc.release(vm, value);
+                    }
+                    freePoolObject(vm, obj);
+                },
+                .custom => {
+                    if (entry.info.custom_pre) {
+                        if (entry.data.custom.finalizerFn) |finalizer| {
+                            finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
+                        }
+                    }
+                    if (entry.data.custom.getChildrenFn) |getChildren| {
+                        const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
+                        for (Value.fromSliceC(children)) |child| {
+                            if (skip_cyc_children and child.isCycPointer()) {
                                 continue;
                             }
                             cy.arc.release(vm, child);
                         }
                     }
-                    if (free) {
-                        if (numFields <= 4) {
-                            freePoolObject(vm, obj);
-                        } else {
-                            freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value), true);
+                    if (!entry.info.custom_pre) {
+                        if (entry.data.custom.finalizerFn) |finalizer| {
+                            finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
                         }
                     }
-                },
-                .choice => {
-                    if (releaseChildren) {
-                        const value = obj.object.getValuesConstPtr()[1];
-                        if (skipCycChildren and value.isGcConfirmedCyc()) {
-                            // nop.
-                        } else {
-                            cy.arc.release(vm, value);
-                        }
-                    }
-                    if (free) {
+                    if (!obj.isExternalObject()) {
                         freePoolObject(vm, obj);
-                    }
-                },
-                .custom => {
-                    if (releaseChildren) {
-                        if (entry.info.custom_pre) {
-                            if (entry.data.custom.finalizerFn) |finalizer| {
-                                finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                            }
-                        }
-                        if (entry.data.custom.getChildrenFn) |getChildren| {
-                            const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                            for (Value.fromSliceC(children)) |child| {
-                                if (skipCycChildren and child.isGcConfirmedCyc()) {
-                                    continue;
-                                }
-                                cy.arc.release(vm, child);
-                            }
-                        }
-                    }
-                    if (free) {
-                        if (!entry.info.custom_pre) {
-                            if (entry.data.custom.finalizerFn) |finalizer| {
-                                finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                            }
-                        }
-                        if (!obj.isExternalObject()) {
-                            freePoolObject(vm, obj);
-                        } else {
-                            if (obj.isCyclable()) {
-                                if (cy.Malloc == .zig) {
-                                    const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
-                                    freeExternalObject(vm, obj, @intCast(size), true);
-                                } else {
-                                    freeExternalObject(vm, obj, 1, true);
-                                }
+                    } else {
+                        if (obj.isCyclable()) {
+                            if (cy.Malloc == .zig) {
+                                const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
+                                freeExternalObject(vm, obj, @intCast(size), true);
                             } else {
-                                if (cy.Malloc == .zig) {
-                                    const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
-                                    freeExternalObject(vm, obj, @intCast(size), false);
-                                } else {
-                                    freeExternalObject(vm, obj, 1, false);
-                                }
+                                freeExternalObject(vm, obj, 1, true);
+                            }
+                        } else {
+                            if (cy.Malloc == .zig) {
+                                const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
+                                freeExternalObject(vm, obj, @intCast(size), false);
+                            } else {
+                                freeExternalObject(vm, obj, 1, false);
                             }
                         }
                     }
@@ -2323,7 +2226,7 @@ test "heap internals." {
         try t.eq(@sizeOf(List), 20);
         try t.eq(@sizeOf(ListIterator), 24);
         try t.eq(@sizeOf(Map), 32);
-        try t.eq(@sizeOf(MapIterator), 16);
+        try t.eq(@sizeOf(MapIterator), 24);
         try t.eq(@sizeOf(Pointer), 16);
     } else {
         try t.eq(@sizeOf(MapInner), 32);

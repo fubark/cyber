@@ -2704,7 +2704,7 @@ fn zDumpEvalOp(vm: *VM, pc: [*]const cy.Inst) callconv(.C) void {
 }
 
 pub fn zFreeObject(vm: *cy.VM, obj: *HeapObject) callconv(.C) void {
-    cy.heap.freeObject(vm, obj, true, false, true);
+    cy.heap.freeObject(vm, obj, false);
 } 
 
 fn zEnd(vm: *cy.VM, pc: [*]const cy.Inst) callconv(.C) void {

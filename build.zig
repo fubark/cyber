@@ -24,6 +24,7 @@ var optRT: ?config.Runtime = undefined;
 var rtarget: std.Build.ResolvedTarget = undefined;
 var target: std.Target = undefined;
 var optimize: std.builtin.OptimizeMode = undefined;
+var dev: bool = undefined;
 
 pub fn build(b: *std.Build) !void {
     rtarget = b.standardTargetOptions(.{});
@@ -43,6 +44,7 @@ pub fn build(b: *std.Build) !void {
     link_test = b.option(bool, "link-test", "Build test by linking lib. Disable for better stack traces.") orelse true;
     log_mem = b.option(bool, "log-mem", "Log memory traces.") orelse false;
     no_cache = b.option(bool, "no-cache", "Disable caching when running tests.") orelse false;
+    dev = b.option(bool, "dev", "Marks version as dev.") orelse true;
 
     {
         const step = b.step("cli", "Build main cli.");
@@ -407,7 +409,14 @@ fn createBuildOptions(b: *std.Build, opts: Options) !*std.Build.Module {
         }
     };
     const options = b.addOptions();
-    options.addOption([]const u8, "version", Version);
+    options.addOption(bool, "dev", dev);
+    if (dev) {
+        options.addOption([]const u8, "version", b.fmt("{s}-DEV", .{Version}));
+        options.addOption([]const u8, "full_version", b.fmt("Cyber {s}-DEV build-{s}-{s}", .{Version, buildTag, commitTag}));
+    } else {
+        options.addOption([]const u8, "version", Version);
+        options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
+    }
     options.addOption([]const u8, "build", buildTag);
     options.addOption([]const u8, "commit", commitTag);
     options.addOption(config.Allocator, "malloc", opts.malloc);
@@ -424,7 +433,6 @@ fn createBuildOptions(b: *std.Build, opts: Options) !*std.Build.Module {
     options.addOption(config.Runtime, "rt", opts.rt);
     options.addOption(bool, "link_test", opts.link_test);
     options.addOption(bool, "export_vmz", opts.export_vmz);
-    options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
     return options.createModule();
 }
 

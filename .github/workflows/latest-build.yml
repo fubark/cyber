@@ -107,6 +107,7 @@ jobs:
       BIN_NAME: cyber
       BIN_EXT: ${{ contains(matrix.config.target, 'windows') && '.exe' || '' }}
       ZIG_MODE_FLAG: ${{ (matrix.config.mode == 'release' && '-Doptimize=ReleaseFast') || '' }}
+      DEV_FLAG: ${{ startsWith(github.ref, 'refs/tags/') && '-Ddev=false' || '' }}
       ZIG_VERSION: 0.12.0
     steps:
       - name: Install Linux deps.
@@ -203,24 +204,24 @@ jobs:
       - name: Run tests. (debug)
         if: env.BUILD_TARGET != 'wasm32-wasi' && (env.BUILD_CMD == 'cli' || (env.BUILD_CMD == 'lib' && env.BUILD_TARGET != 'x86_64-windows-msvc'))
         run: |
-          zig build test ${{ env.ZIG_TARGET_FLAG }} 
+          zig build test ${{ env.ZIG_TARGET_FLAG }} ${{ env.DEV_FLAG }}
 
       # Optimize with ReleaseSafe since there are issues with Zig 0.11.0 and building tests for ReleaseFast.
       - name: Run tests. (release)
         if: env.BUILD_TARGET != 'wasm32-wasi' && (env.BUILD_CMD == 'cli' || (env.BUILD_CMD == 'lib' && env.BUILD_TARGET != 'x86_64-windows-msvc'))
         run: |
-          zig build test ${{ env.ZIG_TARGET_FLAG }} -Doptimize=ReleaseFast
+          zig build test ${{ env.ZIG_TARGET_FLAG }} ${{ env.DEV_FLAG}} -Doptimize=ReleaseFast
 
       - name: Run tests.
         if: env.BUILD_TARGET == 'wasm32-freestanding' || env.BUILD_TARGET == 'wasm32-wasi'
         run: |
-          zig build build-test -Dtarget=wasm32-wasi ${{ env.ZIG_MODE_FLAG }} 
+          zig build build-test -Dtarget=wasm32-wasi ${{ env.ZIG_MODE_FLAG }} ${{ env.DEV_FLAG }}
           wasm3/build/wasm3 zig-out/bin/unit_test.wasm
           wasm3/build/wasm3 zig-out/bin/test.wasm
           wasm3/build/wasm3 zig-out/bin/trace_test.wasm
 
       - name: Build.
-        run: zig build ${{ env.BUILD_CMD }} ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }}
+        run: zig build ${{ env.BUILD_CMD }} ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }} ${{ env.DEV_FLAG }}
 
       # Remove when zig strip is fixed.
       - name: Strip (Linux)
@@ -395,7 +396,7 @@ jobs:
       - name: Generate docs. (Dev)
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
-          LD_LIBRARY_PATH=`pwd`/md4c/build/src zig-out/bin/cyber docs/gen-docs.cy -version "${{ format('v{0}-dev {1}-{2}', env.SHORT_VERSION, env.BUILD, env.COMMIT) }}"
+          LD_LIBRARY_PATH=`pwd`/md4c/build/src zig-out/bin/cyber docs/gen-docs.cy -version "${{ format('v{0}-DEV {1}-{2}', env.SHORT_VERSION, env.BUILD, env.COMMIT) }}"
           mv docs/docs-modules.md docs.md
           mv docs/docs.html docs.html
 
@@ -424,7 +425,7 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           automatic_release_tag: latest
           prerelease: false
-          title: v${{ needs.build.outputs.short_version }}-dev
+          title: v${{ needs.build.outputs.short_version }}-DEV
           files: |
             cyber-linux-x64.tar.gz
             cyber-selinux-x64.tar.gz

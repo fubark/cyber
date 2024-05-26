@@ -33,10 +33,10 @@ func eval(src String) any:
 --| Starts an isolated REPL session.
 --| The callback `read_line(prefix String) String` is responsible for obtaining the input.
 func repl(read_line any) void:
-    var ctx = ReplContext.new()
+    var ctx = REPL.new()
     ctx.printIntro()
     try:
-        while ctx.read(read_line, false) -> code:
+        while ctx.read(read_line) -> code:
             ctx.evalPrint(code)
     catch e:
         if e != error.EndOfStream:
@@ -81,7 +81,7 @@ type Backend enum:
 --| Create an isolated VM.
 @host func VM.new() VM
 
-type ReplContext:
+type REPL:
     vm     VM
     indent int
 
@@ -92,15 +92,11 @@ type ReplContext:
         print "$(#build_full_version) REPL"
         print "Commands: .exit"
 
-    func read(read_line any, async bool) ?String:
+    func read(read_line dyn) ?String:
         while:
             var prefix = self.getPrefix()
-            var input = ''
-            if async:
-                var f = read_line(prefix) as Future[any]
-                input = (await f) as String
-            else:
-                input = read_line(prefix) as String
+            var str_or_future = read_line(prefix)
+            var input = (await str_or_future) as String
 
             if input == '.exit':
                 return none
@@ -149,8 +145,8 @@ type ReplContext:
         var s = ' '.repeat(self.indent * 4)
         return s + head
 
-func ReplContext.new() ReplContext:
-    var ctx = ReplContext{
+func REPL.new() REPL:
+    var ctx = REPL{
         vm: VM.new(),
         indent: 0,
         input_buffer: '',

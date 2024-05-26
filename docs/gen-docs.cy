@@ -12,7 +12,7 @@ use os
 use md '../src/tools/md4c.cy'
 
 let args = os.parseArgs([
-    { name: 'version', type: String, default: 'dev' },
+    { name: 'version', type: String, default: 'DEV' },
     { name: 'import-style', type: bool, default: false },
 ])
 

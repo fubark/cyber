@@ -4767,8 +4767,15 @@ pub const ChunkExt = struct {
                 const if_expr = node.cast(.if_expr);
 
                 const cond = try c.semaExprCstr(if_expr.cond, bt.Boolean);
-                const body = try c.semaExprCstr(if_expr.body, expr.target_t);
-                const else_body = try c.semaExprCstr(if_expr.else_expr, expr.target_t);
+                var body: ExprResult = undefined;
+                var else_body: ExprResult = undefined;
+                if (expr.hasTargetType()) {
+                    body = try c.semaExprCstr(if_expr.body, expr.target_t);
+                    else_body = try c.semaExprCstr(if_expr.else_expr, expr.target_t);
+                } else {
+                    body = try c.semaExpr(if_expr.body, .{});
+                    else_body = try c.semaExprCstr(if_expr.else_expr, body.type.id);
+                }
 
                 const loc = try c.ir.pushExpr(.if_expr, c.alloc, body.type.id, node, .{
                     .cond = cond.irIdx,

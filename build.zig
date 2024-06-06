@@ -11,7 +11,7 @@ var optMalloc: ?config.Allocator = undefined;
 var selinux: bool = undefined;
 var vmEngine: config.Engine = undefined;
 var testFilter: ?[]const u8 = undefined;
-var testBackend: config.TestBackend = undefined;
+var test_backend: config.TestBackend = undefined;
 var trace: bool = undefined;
 var log_mem: bool = undefined;
 var no_cache: bool = undefined;
@@ -33,7 +33,7 @@ pub fn build(b: *std.Build) !void {
 
     selinux = b.option(bool, "selinux", "Whether you are building on linux distro with selinux. eg. Fedora.") orelse false;
     testFilter = b.option([]const u8, "test-filter", "Test filter.");
-    testBackend = b.option(config.TestBackend, "test-backend", "Test compiler backend.") orelse .vm;
+    test_backend = b.option(config.TestBackend, "test-backend", "Test compiler backend.") orelse .vm;
     vmEngine = b.option(config.Engine, "vm", "Build with `zig` or `c` VM.") orelse .c;
     optMalloc = b.option(config.Allocator, "malloc", "Override default allocator: `malloc`, `mimalloc`, `zig`");
     optFFI = b.option(bool, "ffi", "Override default FFI: true, false");
@@ -442,7 +442,7 @@ fn createBuildOptions(b: *std.Build, opts: Options) !*std.Build.Module {
     options.addOption(bool, "ffi", opts.ffi);
     options.addOption(bool, "cli", opts.cli);
     options.addOption(bool, "jit", opts.jit);
-    options.addOption(config.TestBackend, "testBackend", testBackend);
+    options.addOption(config.TestBackend, "testBackend", test_backend);
     options.addOption(config.Runtime, "rt", opts.rt);
     options.addOption(bool, "link_test", opts.link_test);
     options.addOption(bool, "export_vmz", opts.export_vmz);

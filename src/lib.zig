@@ -387,7 +387,7 @@ export fn clPerformGC(vm: *cy.VM) c.GCResult {
     };
 }
 
-export fn clDeclareDynFunc(mod: c.Sym, name: [*:0]const u8, numParams: u32, funcPtr: c.FuncFn) void {
+export fn clDeclareFuncDyn(mod: c.Sym, name: [*:0]const u8, numParams: u32, funcPtr: c.FuncFn) void {
     const modSym = cy.Sym.fromC(mod);
     var symName: []const u8 = std.mem.sliceTo(name, 0);
     var nameOwned = false;

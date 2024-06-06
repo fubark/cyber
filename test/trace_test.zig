@@ -660,7 +660,7 @@ test "Custom modules." {
             // Test dangling pointer.
             const s1 = allocString("test\x00");
             defer t.alloc.free(s1);
-            c.declareDynFunc(mod, s1.ptr, 0, @ptrCast(&test3));
+            c.declareFuncDyn(mod, s1.ptr, 0, @ptrCast(&test3));
         }
         fn postLoadMod1(_: ?*c.VM, mod: c.Sym) callconv(.C) void {
             // Test dangling pointer.
@@ -669,8 +669,8 @@ test "Custom modules." {
             defer t.alloc.free(s1);
             defer t.alloc.free(s2);
 
-            c.declareDynFunc(mod, s1.ptr, 0, @ptrCast(&test1));
-            c.declareDynFunc(mod, s2.ptr, 0, @ptrCast(&test2));
+            c.declareFuncDyn(mod, s1.ptr, 0, @ptrCast(&test1));
+            c.declareFuncDyn(mod, s2.ptr, 0, @ptrCast(&test2));
         }
         fn loader(vm_: ?*c.VM, spec: c.Str, res: ?*c.Module) callconv(.C) bool {
             const name = c.fromStr(spec);

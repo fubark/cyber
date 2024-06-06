@@ -446,7 +446,7 @@ void clSetModuleConfig(CLVM* vm, CLModule mod, CLModuleConfig* config);
 // -----------------------------------
 
 // Declares a function in a module.
-void clDeclareDynFunc(CLSym mod, const char* name, uint32_t numParams, CLFuncFn fn);
+void clDeclareFuncDyn(CLSym mod, const char* name, uint32_t numParams, CLFuncFn fn);
 void clDeclareFunc(CLSym mod, const char* name, const CLTypeId* params, size_t numParams, CLTypeId retType, CLFuncFn fn);
 
 // Declares a variable in a module.

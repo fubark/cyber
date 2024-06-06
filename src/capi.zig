@@ -110,13 +110,14 @@ pub inline fn CORE_TYPE(type_id: TypeId) HostType {
         }},
     };
 }
-pub inline fn CORE_TYPE_EXT(type_id: TypeId, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
+pub inline fn CORE_TYPE_EXT(type_id: TypeId, get_children: GetChildrenFn, finalizer: FinalizerFn, load_all_methods: bool) HostType {
     return HostType{
         .type = c.CL_BIND_TYPE_CORE_CUSTOM,
         .data = .{ .core_custom = .{
             .type_id = type_id,
             .get_children = get_children,
             .finalizer = finalizer,
+            .load_all_methods = load_all_methods,
         }},
     };
 }

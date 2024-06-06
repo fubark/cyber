@@ -618,7 +618,7 @@ fn case(path: []const u8) !void {
 fn case2(config: ?Config, path: []const u8) !void {
     const fpath = try std.mem.concat(t.alloc, u8, &.{ thisDir(), "/", path });
     defer t.alloc.free(fpath);
-    const contents = try std.fs.cwd().readFileAlloc(t.alloc, fpath, 1e9);
+    const contents = try std.fs.cwd().readFileAllocOptions(t.alloc, fpath, 1e9, null, @alignOf(u8), 0);
     defer t.alloc.free(contents);
 
     var idx = std.mem.indexOf(u8, contents, "cytest:") orelse {

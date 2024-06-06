@@ -1665,10 +1665,14 @@ pub const VM = struct {
                 const symType: cy.heap.MetaTypeKind = @enumFromInt(obj.metatype.type);
                 if (symType == .object) {
                     const name = self.compiler.sema.getTypeBaseName(obj.metatype.type);
-                    try std.fmt.format(w, "type: {s}", .{name});
+                    try std.fmt.format(w, "metatype: {s}", .{name});
                 } else {
                     try w.writeAll("Unknown Symbol");
                 }
+            },
+            bt.Type => {
+                const name = self.compiler.sema.getTypeBaseName(obj.type.type);
+                try std.fmt.format(w, "type: {s}", .{name});
             },
             else => {
                 if (typeId == cy.NullId >> 3) {
@@ -2107,10 +2111,10 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                 const args = framePtr[ret+CallArgStart..ret+CallArgStart+numArgs];
                 const cstrFuncSig = vm.compiler.sema.getFuncSig(obj.closure.funcSigId);
                 for (args, 0..) |arg, i| {
-                    const cstrType = cstrFuncSig.paramPtr[i];
+                    const cstrType = cstrFuncSig.params_ptr[i];
                     const argType = arg.getTypeId();
-                    if (!types.isTypeSymCompat(vm.compiler, argType, cstrType)) {
-                        if (!@call(.never_inline, inferArg, .{vm, args, i, arg, cstrType})) {
+                    if (!types.isTypeSymCompat(vm.compiler, argType, cstrType.type)) {
+                        if (!@call(.never_inline, inferArg, .{vm, args, i, arg, cstrType.type})) {
                             return panicIncompatibleLambdaSig(vm, args, obj.closure.funcSigId);
                         }
                     }
@@ -2144,10 +2148,10 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                 const args = framePtr[ret+CallArgStart..ret+CallArgStart+numArgs];
                 const cstrFuncSig = vm.compiler.sema.getFuncSig(obj.lambda.funcSigId);
                 for (args, 0..) |arg, i| {
-                    const cstrType = cstrFuncSig.paramPtr[i];
+                    const cstrType = cstrFuncSig.params_ptr[i];
                     const argType = arg.getTypeId();
-                    if (!types.isTypeSymCompat(vm.compiler, argType, cstrType)) {
-                        if (!@call(.never_inline, inferArg, .{vm, args, i, arg, cstrType})) {
+                    if (!types.isTypeSymCompat(vm.compiler, argType, cstrType.type)) {
+                        if (!@call(.never_inline, inferArg, .{vm, args, i, arg, cstrType.type})) {
                             return panicIncompatibleLambdaSig(vm, args, obj.lambda.funcSigId);
                         }
                     }
@@ -2178,10 +2182,10 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                 const args = framePtr[ret+CallArgStart..ret+CallArgStart+numArgs];
                 const cstrFuncSig = vm.compiler.sema.getFuncSig(obj.hostFunc.funcSigId);
                 for (args, 0..) |arg, i| {
-                    const cstrType = cstrFuncSig.paramPtr[i];
+                    const cstrType = cstrFuncSig.params_ptr[i];
                     const argType = arg.getTypeId();
-                    if (!types.isTypeSymCompat(vm.compiler, argType, cstrType)) {
-                        if (!@call(.never_inline, inferArg, .{vm, args, i, arg, cstrType})) {
+                    if (!types.isTypeSymCompat(vm.compiler, argType, cstrType.type)) {
+                        if (!@call(.never_inline, inferArg, .{vm, args, i, arg, cstrType.type})) {
                             return panicIncompatibleLambdaSig(vm, args, obj.hostFunc.funcSigId);
                         }
                     }
@@ -2258,7 +2262,7 @@ fn panicIncompatibleLambdaSig(vm: *cy.VM, args: []const Value, cstrFuncSigId: se
     defer vm.alloc.free(cstrFuncSigStr);
     const argTypes = try allocValueTypeIds(vm, args);
     defer vm.alloc.free(argTypes);
-    const argsSigStr = vm.compiler.sema.allocFuncSigTypesStr(argTypes, bt.Any, null) catch return error.OutOfMemory;
+    const argsSigStr = vm.compiler.sema.allocTypesStr(argTypes, null) catch return error.OutOfMemory;
     defer vm.alloc.free(argsSigStr);
 
     return vm.panicFmt(

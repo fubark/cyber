@@ -199,14 +199,18 @@ t.eq(res, 36)
 t.eq(idxRes, 9)
 
 -- List.fill with primitive.
-a = List[dyn].fill(123, 10)
-t.eq(a.len(), 10)
-for 0..10 -> i:
-    t.eq(a[i], 123)
+func testFill():
+    var a = List.fill(123, 10)
+    t.eq(a.len(), 10)
+    for 0..10 -> i:
+        t.eq(a[i], 123)
+testFill()
 
 -- List.fill with object performs shallow copy.
-a = List[dyn].fill([], 2)
-t.eq(a.len(), 2)
-t.eq(a[0] == a[1], false)
+func testFill2():
+    var a = List.fill([], 2)
+    t.eq(a.len(), 2)
+    t.eq(a[0] == a[1], false)
+testFill2()
 
 --cytest: pass

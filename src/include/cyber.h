@@ -222,6 +222,7 @@ typedef struct CLHostType {
             CLGetChildrenFn get_children;
             // Pointer to callback or null.
             CLFinalizerFn finalizer;
+            bool load_all_methods;
         } core_custom;
         struct {
             // If not null, the created runtime type id will be written to `outTypeId`.

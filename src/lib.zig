@@ -410,7 +410,7 @@ export fn clDeclareFunc(mod: c.Sym, name: [*:0]const u8, params: [*]const cy.Typ
     var symName: []const u8 = std.mem.sliceTo(name, 0);
     var nameOwned = false;
     const chunk = modSym.cast(.chunk).getMod().chunk;
-    const funcSigId = chunk.sema.ensureFuncSig(params[0..numParams], retType) catch cy.fatal();
+    const funcSigId = chunk.sema.ensureFuncSig(@ptrCast(params[0..numParams]), retType) catch cy.fatal();
     if (modSym.getMod().?.getSym(symName) == null) {
         symName = chunk.alloc.dupe(u8, symName) catch fatal();
         nameOwned = true;
@@ -455,7 +455,13 @@ export fn clExpandTemplateType(ctemplate: c.Sym, args_ptr: [*]const cy.Value, na
         chunk.typeStack.append(chunk.alloc, arg.getTypeId()) catch cy.fatal();
     }
     const arg_types = chunk.typeStack.items[typeStart..];
-    const sym = cy.cte.expandTemplate(chunk, template, args, arg_types) catch cy.fatal();
+
+    // Check against template signature.
+    if (!cy.types.isTypeFuncSigCompat(chunk.compiler, @ptrCast(arg_types), .not_void, template.sigId)) {
+        cy.fatal();
+    }
+
+    const sym = cy.cte.expandTemplate(chunk, template, args) catch cy.fatal();
     return sym.getStaticType().?;
 }
 
@@ -549,7 +555,7 @@ export fn clNewFuncDyn(vm: *cy.VM, numParams: u32, func: c.FuncFn) Value {
 }
 
 export fn clNewFunc(vm: *cy.VM, params: [*]const cy.TypeId, numParams: u32, retType: cy.TypeId, func: c.FuncFn) Value {
-    const funcSigId = vm.sema.ensureFuncSig(params[0..numParams], retType) catch fatal();
+    const funcSigId = vm.sema.ensureFuncSig(@ptrCast(params[0..numParams]), retType) catch fatal();
     const funcSig = vm.sema.funcSigs.items[funcSigId];
     return vm.allocHostFunc(@ptrCast(func), numParams, funcSigId, null, funcSig.reqCallTypeCheck) catch fatal();
 }

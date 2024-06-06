@@ -177,7 +177,7 @@ type List[dyn] _
 
 --| Creates a list with initial capacity of `n` and values set to `val`.
 --| If the value is an object, it is shallow copied `n` times.
-@host func List.fill[](val T, n int) List[T]
+@host func List.fill(val #T, n int) List[T]
 
 @host type ListIterator[T type] _:
     @host func next() ?T
@@ -443,21 +443,21 @@ type Option[T type] enum:
 @host type Future[T type] _
 
 --| Returns a `Future[T]` that has a completed value.
-func Future.complete[](val T) Future[T]:
+func Future.complete(val #T) Future[T]:
     return Future.complete_(val, (Future[T]).id())
     
-@host -func Future.complete_[](val T, ret_type int) Future[T]
+@host -func Future.complete_(val #T, ret_type int) Future[T]
 
-func Future.new[]() Future[T]:
-    return Future.new_[T]((Future[T]).id())
+func Future.new(#T type) Future[T]:
+    return Future.new_(T, (Future[T]).id())
 
-@host -func Future.new_[](ret_type int) Future[T]
+@host -func Future.new_(#T type, ret_type int) Future[T]
 
 @host type FutureResolver[T type] _:
     @host func complete(val T) void
     @host func future() Future[T]
 
-func FutureResolver.new[]() FutureResolver[T]:
-    return FutureResolver.new_[T]((Future[T]).id(), (FutureResolver[T]).id())
+func FutureResolver.new(#T type) FutureResolver[T]:
+    return FutureResolver.new_(T, (Future[T]).id(), (FutureResolver[T]).id())
 
-@host -func FutureResolver.new_[](future_t int, ret_t int) FutureResolver[T]
+@host -func FutureResolver.new_(#T type, future_t int, ret_t int) FutureResolver[T]

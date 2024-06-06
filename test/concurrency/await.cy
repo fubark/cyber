@@ -9,14 +9,14 @@ var f = Future.complete(123)
 test.eq(await f, 123)
 
 -- Await completion from queued task.
-var r = FutureResolver[int].new()
+var r = FutureResolver.new(int)
 queueTask():
     r.complete(234)
 test.eq(await r.future(), 234)
 
 -- Await from function call.
 func foo():
-    var r = FutureResolver[int].new()
+    var r = FutureResolver.new(int)
     queueTask():
         r.complete(234)
     return await r.future()

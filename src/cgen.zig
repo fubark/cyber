@@ -707,7 +707,7 @@ fn genHead(c: *Compiler, w: std.ArrayListUnmanaged(u8).Writer, chunks: []Chunk) 
                 const params = base.sema.getFuncSig(func.funcSigId).params();
                 if (params.len > 0) {
                     for (params) |param| {
-                        try w.print(", {}", .{ try chunk.cTypeName(param) });
+                        try w.print(", {}", .{ try chunk.cTypeName(param.type) });
                     }
                 }
                 try w.writeAll(");\n");
@@ -719,7 +719,7 @@ fn genHead(c: *Compiler, w: std.ArrayListUnmanaged(u8).Writer, chunks: []Chunk) 
                 const params = funcSig.params();
                 if (params.len > 0) {
                     for (params) |param| {
-                        try w.print(", {}", .{ try chunk.cTypeName(param) });
+                        try w.print(", {}", .{ try chunk.cTypeName(param.type) });
                     }
                 }
                 try w.writeAll(");\n");

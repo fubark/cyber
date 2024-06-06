@@ -9,15 +9,11 @@ const ast = cy.ast;
 const cte = @This();
 
 pub fn expandTemplateOnCallExpr(c: *cy.Chunk, node: *ast.CallExpr) !*cy.Sym {
-    const calleeRes = try c.semaExprSkipSym(node.callee);
-    if (calleeRes.resType != .sym) {
+    var callee = try cy.sema.resolveSym(c, node.callee);
+    if (callee.type != .template) {
         return c.reportErrorFmt("Expected template symbol.", &.{}, node.callee);
     }
-    const sym = calleeRes.data.sym;
-    if (sym.type != .template) {
-        return c.reportErrorFmt("Expected template symbol.", &.{}, node.callee);
-    }
-    return cte.expandTemplateOnCallArgs(c, sym.cast(.template), node.args, @ptrCast(node));
+    return cte.expandTemplateOnCallArgs(c, callee.cast(.template), node.args, @ptrCast(node));
 }
 
 pub fn pushNodeValues(c: *cy.Chunk, args: []const *ast.Node) !void {
@@ -42,31 +38,96 @@ pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, args: 
         }
         c.valueStack.items.len = valueStart;
     }
+
     try pushNodeValues(c, args);
+
     const argTypes = c.typeStack.items[typeStart..];
     const arg_vals = c.valueStack.items[valueStart..];
 
-    return expandTemplate(c, template, arg_vals, argTypes) catch |err| {
-        if (err == error.IncompatSig) {
-            const sig = c.sema.getFuncSig(template.sigId);
-            const params_s = try c.sema.allocFuncParamsStr(sig.params(), c);
-            defer c.alloc.free(params_s);
-            return c.reportErrorFmt(
-                \\Expected template signature `{}[{}]`.
-            , &.{v(template.head.name()), v(params_s)}, node);
-        } else {
-            return err;
-        }
-    };
+    // Check against template signature.
+    if (!cy.types.isTypeFuncSigCompat(c.compiler, @ptrCast(argTypes), .not_void, template.sigId)) {
+        const sig = c.sema.getFuncSig(template.sigId);
+        const params_s = try c.sema.allocFuncParamsStr(sig.params(), c);
+        defer c.alloc.free(params_s);
+        return c.reportErrorFmt(
+            \\Expected template signature `{}[{}]`.
+        , &.{v(template.head.name()), v(params_s)}, node);
+    }
+
+    return expandTemplate(c, template, arg_vals);
 }
 
-pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy.Value, arg_types: []const cy.TypeId) !*cy.Sym {
-    const root_template = template.root();
+pub fn expandFuncTemplateOnCallArgs(c: *cy.Chunk, template: *cy.Func, args: []const *ast.Node, node: *ast.Node) !*cy.Func {
+    // Accumulate compile-time args.
+    const typeStart = c.typeStack.items.len;
+    const valueStart = c.valueStack.items.len;
+    defer {
+        c.typeStack.items.len = typeStart;
+
+        // Values need to be released.
+        const values = c.valueStack.items[valueStart..];
+        for (values) |val| {
+            c.vm.release(val);
+        }
+        c.valueStack.items.len = valueStart;
+    }
+
+    try pushNodeValues(c, args);
+
+    const argTypes = c.typeStack.items[typeStart..];
+    const arg_vals = c.valueStack.items[valueStart..];
 
     // Check against template signature.
-    if (!cy.types.isTypeFuncSigCompat(c.compiler, @ptrCast(arg_types), .not_void, root_template.sigId)) {
-        return error.IncompatSig;
+    const func_template = template.data.template;
+    if (!cy.types.isTypeFuncSigCompat(c.compiler, @ptrCast(argTypes), .not_void, func_template.sig)) {
+        const sig = c.sema.getFuncSig(func_template.sig);
+        const params_s = try c.sema.allocFuncParamsStr(sig.params(), c);
+        defer c.alloc.free(params_s);
+        return c.reportErrorFmt(
+            \\Expected template expansion signature `{}[{}]`.
+        , &.{v(template.name()), v(params_s)}, node);
     }
+
+    return expandFuncTemplate(c, template, arg_vals);
+}
+
+pub fn expandFuncTemplate(c: *cy.Chunk, tfunc: *cy.sym.Func, args: []const cy.Value) !*cy.Func {
+    const template = tfunc.data.template;
+
+    // Ensure variant func.
+    const res = try template.variant_cache.getOrPut(c.alloc, args);
+    if (!res.found_existing) {
+        // Dupe args and retain
+        const args_dupe = try c.alloc.dupe(cy.Value, args);
+        for (args_dupe) |param| {
+            c.vm.retain(param);
+        }
+
+        // Generate variant type.
+        const variant = try c.alloc.create(cy.sym.FuncVariant);
+        variant.* = .{
+            .args = args_dupe,
+            .template = tfunc.data.template,
+            .func = undefined,
+        };
+
+        const tchunk = tfunc.chunk();
+        const new_func = try sema.reserveFuncTemplateVariant(tchunk, tfunc, tfunc.decl, variant);
+        variant.func = new_func;
+        res.key_ptr.* = args_dupe;
+        res.value_ptr.* = variant;
+
+        // Allow circular reference by resolving after the new symbol has been added to the cache.
+        try sema.resolveFuncVariant(tchunk, new_func);
+
+        return new_func;
+    } 
+    const variant = res.value_ptr.*;
+    return variant.func;
+}
+
+pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy.Value) !*cy.Sym {
+    const root_template = template.root();
 
     // Ensure variant type.
     const res = try root_template.variant_cache.getOrPut(c.alloc, args);
@@ -75,6 +136,24 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
         const args_dupe = try c.alloc.dupe(cy.Value, args);
         for (args_dupe) |param| {
             c.vm.retain(param);
+        }
+
+        var ct_infer = false;
+        var ct_ref = false;
+        for (args) |arg| {
+            if (arg.getTypeId() == bt.Type) {
+                const type_id = arg.asHeapObject().type.type;
+                switch (type_id) {
+                    bt.CTInfer => {
+                        ct_infer = true;
+                    },
+                    else => {
+                        const type_e = c.sema.types.items[type_id];
+                        ct_infer = ct_infer or type_e.info.ct_infer;
+                        ct_ref = ct_ref or type_e.info.ct_ref;
+                    },
+                }
+            }
         }
 
         // Generate variant type.
@@ -90,6 +169,10 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
         variant.data.sym = new_sym;
         res.key_ptr.* = args_dupe;
         res.value_ptr.* = variant;
+
+        const new_type = new_sym.getStaticType().?;
+        c.sema.types.items[new_type].info.ct_infer = ct_infer;
+        c.sema.types.items[new_type].info.ct_ref = ct_ref;
 
         // Allow circular reference by resolving after the new symbol has been added to the cache.
         try sema.resolveTemplateVariant(c, root_template, new_sym);
@@ -179,7 +262,7 @@ const CtValue = struct {
     value: cy.Value,
 };
 
-fn nodeToCtValue(c: *cy.Chunk, node: *ast.Node) anyerror!CtValue {
+pub fn nodeToCtValue(c: *cy.Chunk, node: *ast.Node) anyerror!CtValue {
     // TODO: Evaluate const expressions.
     const sym = try sema.resolveSym(c, node);
     if (sym.getStaticType()) |type_id| {

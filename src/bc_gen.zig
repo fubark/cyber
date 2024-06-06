@@ -40,6 +40,10 @@ pub fn genAll(c: *cy.Compiler) !void {
         log.tracev("prep type: {s}", .{stype.sym.name()});
         const sym = stype.sym;
 
+        if (stype.info.ct_infer or stype.info.ct_ref) {
+            continue;
+        }
+
         switch (sym.type) {
             .object_t => {
                 const obj = sym.cast(.object_t);
@@ -55,6 +59,7 @@ pub fn genAll(c: *cy.Compiler) !void {
                     try c.vm.addFieldSym(@intCast(typeId), fieldSymId, @intCast(i), field.type);
                 }
             },
+            .dummy_t,
             .trait_t,
             .int_t,
             .float_t,

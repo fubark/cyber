@@ -354,6 +354,7 @@ pub const FuncParam = struct {
     name_pos: u32 align(8),
     name_len: u32,
     typeSpec: ?*Node,
+    ct_param: bool,
 };
 
 pub const UseAlias = struct {

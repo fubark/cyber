@@ -486,6 +486,7 @@ pub const Parser = struct {
             .name_pos = name.pos,
             .name_len = name.len,
             .typeSpec = null,
+            .ct_param = false,
         });
     }
 
@@ -535,6 +536,44 @@ pub const Parser = struct {
         return self.ast.dupeNodes(self.node_stack.items[field_start..]);
     }
 
+    fn parseFuncParam(self: *Parser, typed: bool, allow_self: bool) !*ast.FuncParam {
+        var name_token = self.peek();
+        var ct_param = false;
+        if (name_token.tag() != .ident) {
+            if (name_token.tag() == .pound) {
+                self.advance();
+                name_token = self.peek();
+                ct_param = true;
+                if (self.peek().tag() != .ident) {
+                    return self.reportError("Expected param name.", &.{});
+                }
+            }
+        }
+
+        self.advance();
+        var type_spec: ?*ast.Node = null;
+        if (typed) {
+            if (try self.parseOptTypeSpec(false)) |spec| {
+                type_spec = spec;
+            } else {
+                if (allow_self) {
+                    const param_name = self.ast.src[name_token.pos()..name_token.data.end_pos];
+                    if (!std.mem.eql(u8, param_name, "self")) {
+                        return self.reportError("Expected param type.", &.{});
+                    }
+                } else {
+                    return self.reportError("Expected param type.", &.{});
+                }
+            }
+        }
+        return self.ast.newNode(.funcParam, .{
+            .name_pos = name_token.pos(),
+            .name_len = name_token.data.end_pos - name_token.pos(),
+            .typeSpec = type_spec,
+            .ct_param = ct_param,
+        });
+    }
+
     /// Assumes token at first param ident or right paren.
     /// Let sema check whether param types are required since it depends on the context.
     fn parseFuncParams(self: *Parser, pre_params: []const *ast.FuncParam, typed: bool, comptime template: bool) ![]*ast.FuncParam {
@@ -547,43 +586,17 @@ pub const Parser = struct {
             try self.node_stack.appendSlice(self.alloc, @ptrCast(pre_params));
         }
 
-        var token = self.peek();
-        if (token.tag() == CloseDelim) {
+        if (self.peek().tag() == CloseDelim) {
             self.advance();
             return &.{};
         }
 
-        if (token.tag() != .ident) {
-            return self.reportError("Unexpected token in function param list.", &.{});
-        }
-    
         // Parse params.
-        var start = self.next_pos;
-        var name_token = self.tokens[start];
-
-        self.advance();
-        var type_spec: ?*ast.Node = null;
-        if (typed) {
-            if (try self.parseOptTypeSpec(false)) |spec| {
-                type_spec = spec;
-            } else {
-                const param_name = self.ast.src[token.pos()..token.data.end_pos];
-                if (!std.mem.eql(u8, param_name, "self")) {
-                    return self.reportError("Expected param type.", &.{});
-                }
-            }
-        }
-
-        var param = try self.ast.newNode(.funcParam, .{
-            .name_pos = name_token.pos(),
-            .name_len = name_token.data.end_pos - name_token.pos(),
-            .typeSpec = type_spec,
-        });
+        var param = try self.parseFuncParam(typed, true);
         try self.pushNode(@ptrCast(param));
 
         while (true) {
-            token = self.peek();
-            switch (token.tag()) {
+            switch (self.peek().tag()) {
                 .comma => {
                     self.advance();
                 },
@@ -593,27 +606,7 @@ pub const Parser = struct {
                 },
                 else => return self.reportError("Expected `,`.", &.{}),
             }
-
-            token = self.peek();
-            start = self.next_pos;
-            if (token.tag() != .ident) {
-                return self.reportError("Expected param identifier.", &.{});
-            }
-
-            name_token = self.tokens[start];
-            self.advance();
-
-            if (typed) {
-                type_spec = (try self.parseOptTypeSpec(false)) orelse {
-                    return self.reportError("Expected param type.", &.{});
-                };
-            }
-
-            param = try self.ast.newNode(.funcParam, .{
-                .name_pos = name_token.pos(),
-                .name_len = name_token.data.end_pos - name_token.pos(),
-                .typeSpec = type_spec,
-            });
+            param = try self.parseFuncParam(typed, false);
             try self.pushNode(@ptrCast(param));
         }
         const params = self.node_stack.items[param_start..];
@@ -1163,7 +1156,11 @@ pub const Parser = struct {
 
         var opt_template: ?*ast.Node = null;
         if (self.peek().tag() == .left_bracket) {
-            opt_template = try self.parseTemplateOrSpecialization();
+            const args = try self.parseArrayLiteral2();
+            opt_template = try self.ast.newNodeErase(.specialization, .{
+                .args = args,
+                .decl = undefined,
+            });
             try self.staticDecls.append(self.alloc, @ptrCast(opt_template));
             self.consumeWhitespaceTokens();
         }

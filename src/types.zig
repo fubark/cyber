@@ -25,6 +25,8 @@ pub const TypeKind = enum(u8) {
     @"struct",
     option,
     trait,
+    bare,
+    ct_ref,
 };
 
 pub const TypeInfo = packed struct {
@@ -33,7 +35,14 @@ pub const TypeInfo = packed struct {
     /// If `true`, invoke finalizer before releasing children.
     custom_pre: bool = false,
 
-    padding: u6 = undefined,
+    ct_infer: bool = false,
+
+    /// Whether this type or a child parameter contains a ct_ref.
+    ct_ref: bool = false,
+
+    load_all_methods: bool = false,
+
+    padding: u3 = undefined,
 };
 
 pub const Type = extern struct {
@@ -61,6 +70,9 @@ pub const Type = extern struct {
         },
         @"struct": extern struct {
             numFields: u16,
+        },
+        ct_ref: extern struct {
+            param_idx: u32,
         },
     },
 };
@@ -154,6 +166,7 @@ pub const BuiltinTypes = struct {
     pub const ExternFunc: TypeId = vmc.TYPE_EXTERN_FUNC;
     pub const Range: TypeId = vmc.TYPE_RANGE;
     pub const Table: TypeId = vmc.TYPE_TABLE;
+    pub const CTInfer: TypeId = vmc.TYPE_CTINFER;
 
     /// Used to indicate no type value.
     // pub const Undefined: TypeId = vmc.TYPE_UNDEFINED;
@@ -331,22 +344,22 @@ pub fn isTypeFuncSigCompat(c: *cy.Compiler, args: []const CompactType, ret_cstr:
     }
 
     // First check params length.
-    if (args.len != target.paramLen) {
+    if (args.len != target.params_len) {
         return false;
     }
 
     // Check each param type. Attempt to satisfy constraints.
     for (target.params(), args) |cstrType, argType| {
-        if (isTypeSymCompat(c, argType.id, cstrType)) {
+        if (isTypeSymCompat(c, argType.id, cstrType.type)) {
             continue;
         }
         if (argType.dynamic) {
-            if (isTypeSymCompat(c, cstrType, argType.id)) {
+            if (isTypeSymCompat(c, cstrType.type, argType.id)) {
                 // Only defer to runtime type check if arg type is a parent type of cstrType.
                 continue;
             }
         }
-        log.tracev("`{s}` not compatible with param `{s}`", .{c.sema.getTypeBaseName(argType.id), c.sema.getTypeBaseName(cstrType)});
+        log.tracev("`{s}` not compatible with param `{s}`", .{c.sema.getTypeBaseName(argType.id), c.sema.getTypeBaseName(cstrType.type)});
         return false;
     }
 
@@ -386,7 +399,7 @@ pub fn isFuncSigCompat(c: *cy.Compiler, id: sema.FuncSigId, targetId: sema.FuncS
     const target = c.sema.getFuncSig(targetId);
 
     // First check params length.
-    if (src.paramLen != target.paramLen) {
+    if (src.params_len != target.params_len) {
         return false;
     }
 

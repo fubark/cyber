@@ -125,9 +125,8 @@ pub const Chunk = struct {
     /// Includes lambdas which are not linked from a named sym.
     funcs: std.ArrayListUnmanaged(*cy.Func),
 
-    /// This is used for lookups when resolving const expressions.
-    cur_template_params: std.StringHashMapUnmanaged(cy.Value),
-    cur_template_ctx: ?sema.TemplateContext,
+    /// Reference the current resolve context.
+    resolve_stack: std.ArrayListUnmanaged(sema.ResolveContext),
 
     ///
     /// Codegen pass
@@ -277,8 +276,7 @@ pub const Chunk = struct {
             },
             .syms = .{},
             .funcs = .{},
-            .cur_template_params = .{},
-            .cur_template_ctx = null,
+            .resolve_stack = .{},
             .in_ct_expr = false,
             .host_types = .{},
             .host_funcs = .{},
@@ -328,7 +326,6 @@ pub const Chunk = struct {
         self.symInitDeps.deinit(self.alloc);
         self.symInitInfos.deinit(self.alloc);
         self.curInitingSymDeps.deinit(self.alloc);
-        self.cur_template_params.deinit(self.alloc);      
 
         self.typeStack.deinit(self.alloc);
         self.valueStack.deinit(self.alloc);
@@ -339,6 +336,7 @@ pub const Chunk = struct {
         self.listDataStack.deinit(self.alloc);
         self.genIrLocalMapStack.deinit(self.alloc);
         self.genLocalStack.deinit(self.alloc);
+        self.resolve_stack.deinit(self.alloc);
 
         if (cy.hasJIT) {
             self.tempTypeRefs.deinit(self.alloc);
@@ -354,16 +352,17 @@ pub const Chunk = struct {
         self.sym_cache.deinit(self.alloc);
         self.use_alls.deinit(self.alloc);
 
+        for (self.funcs.items) |func| {
+            func.deinit(self.alloc);
+            self.alloc.destroy(func);
+        }
+        self.funcs.deinit(self.alloc);
+
         // Deinit chunk syms.
         for (self.syms.items) |sym| {
             sym.destroy(self.vm, self.alloc);
         }
         self.syms.deinit(self.alloc);
-
-        for (self.funcs.items) |func| {
-            self.alloc.destroy(func);
-        }
-        self.funcs.deinit(self.alloc);
 
         for (self.variantFuncSyms.items) |func| {
             self.alloc.destroy(func);

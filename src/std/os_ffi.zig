@@ -830,7 +830,7 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
 
     // Begin func binding generation.
 
-    var tempTypes: std.BoundedArray(cy.TypeId, 16) = .{};
+    var tempTypes: std.BoundedArray(sema.FuncParam, 16) = .{};
     for (ffi.cfuncs.items) |*cfunc| {
         // Check that symbol exists.
         cfunc.skip = false;
@@ -845,11 +845,13 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
         tempTypes.len = 0;
         if (!config.gen_table) {
             // Self param.
-            try tempTypes.append(bt.Any);
+            const param_t = sema.FuncParam.initRt(bt.Any);
+            try tempTypes.append(param_t);
         }
         for (cfunc.params) |param| {
             const typeId = try toCyType(param, false);
-            try tempTypes.append(typeId);
+            const param_t = sema.FuncParam.initRt(typeId);
+            try tempTypes.append(param_t);
         }
 
         const retType = try toCyType(cfunc.ret, true);
@@ -955,7 +957,7 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
             const symKey = try vm.allocAstringConcat("ptrTo", typeName);
             const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
 
-            const funcSigId = try vm.sema.ensureFuncSig(&.{bt.Dyn}, bt.Dyn);
+            const funcSigId = try vm.sema.ensureFuncSigRt(&.{ bt.Dyn }, bt.Dyn);
             const funcVal = try cy.heap.allocHostFunc(vm, func, 1, funcSigId, cyState, false);
             try table.asHeapObject().table.set(vm, symKey, funcVal);
             vm.release(symKey);

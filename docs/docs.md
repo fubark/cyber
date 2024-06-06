@@ -312,7 +312,7 @@ There are `29` general keywords. This list categorizes them:
 - [Operators](#operators): `or` `and` `not`
 - [Variables](#variables): [`var`](#local-variables) [`context`](#context-variables)
 - [Functions](#functions): `func` `return`
-- [Coroutines](#fibers): `coinit` `coyield` `coresume`
+- [Fibers](#fibers): `coinit` `coyield` `coresume`
 - [Async](#async): `await`
 - [Types](#custom-types): `type`  `as`
 - [Type embedding](#type-embedding): `use`
@@ -1004,7 +1004,7 @@ The dynamic type defers type checking to runtime. However, it also tracks its ow
 * [Distinct types.](#distinct-types)
 * [Traits.](#traits)
 * [Union types.](#union-types)
-* [Generic types.](#generic-types)
+* [Type templates.](#type-templates)
   * [Expand type template.](#expand-type-template)
 </td>
 </tr></table>
@@ -1311,7 +1311,7 @@ print s.!line     --> 20
 ## Optionals.
 Optionals provide **Null Safety** by forcing values to be unwrapped before they can be used.
 
-The generic `Option` type is a choice type that either holds a `none` value or contains `some` value. The option template is defined as:
+The `Option` template type is a choice type that either holds a `none` value or contains `some` value. The option template is defined as:
 ```cy
 type Option[T type] enum:
     case none
@@ -1477,8 +1477,8 @@ print s.area()         --> 20
 ## Union types.
 > _Planned Feature_
 
-## Generic types.
-Templates are used to specialize type declarations:
+## Type templates.
+Type declarations can include template parameters to create a type template:
 ```cy
 type MyContainer[T type]:
     id    int
@@ -1489,7 +1489,7 @@ type MyContainer[T type]:
 ```
 
 ### Expand type template.
-When the template is invoked with compile-time argument(s), a specialized version of the type is generated.
+When the type template is invoked with template argument(s), a special version of the type is generated.
 
 In this example, `String` can be used as an argument since it satisfies the `type` parameter constraint:
 ```cy
@@ -1725,9 +1725,10 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
 * [Function calls.](#function-calls)
   * [Shorthand syntax.](#shorthand-syntax)
   * [Call block syntax.](#call-block-syntax)
-* [Generic functions.](#generic-functions)
-  * [Expand function template.](#expand-function-template)
-  * [Infer template function.](#infer-template-function)
+* [Function templates.](#function-templates)
+  * [Explicit template call.](#explicit-template-call)
+  * [Expand function.](#expand-function)
+  * [Infer param type.](#infer-param-type)
 
 [^top](#table-of-contents)
 
@@ -1902,27 +1903,45 @@ Button('Count'):
 ```
 Arguments assigned in the call block can be unordered.
 
-## Generic functions.
-Templates are used to specialize function declarations:
+## Function templates.
+Function declarations can include template parameters to create a function template:
 ```cy
-func add[T type](a T, b T) T:
+func add(#T type, a T, b T) T:
     return a + b
 ```
+Template parameters are prefixed with `#`.
+Unlike type templates, function templates allow template parameters to be declared alongside runtime parameters.
 
-### Expand function template.
-When the template is invoked with compile-time argument(s), a specialized version of the function is generated:
+### Explicit template call.
+When the function is invoked with template argument(s), a special version of the function is generated and used:
 ```cy
-print add[int](1, 2)    --> 3
-print add[float](1, 2)  --> 3.0
+print add(int, 1, 2)    --> 3
+print add(float, 1, 2)  --> 3.0
 ```
-Note that invoking the template again with the same argument(s) returns the same generated function. In other words, the generated function is always memoized from the input parameters.
+Note that invoking the function again with the same argument(s) uses the same generated function. In other words, the generated function is always memoized from the template arguments.
 
-### Infer template function.
-When invoking template functions, it is possible to infer the template parameters from the call arguments.
-In the following example, `add[int]` and `add[float]` are inferred from the function calls:
+### Expand function.
+Since functions may contain template and runtime parameters, the index operator is used to expand the function with just template arguments and return the generated function:
 ```cy
-print add(1, 2)      --> 3
-print add(1.0, 2.0)  --> 3.0
+var addInt = add[int]
+print addInt(1, 2)      --> 3
+```
+
+### Infer param type.
+When a template parameter is declared in the type specifier, it's inferred from the argument's type:
+```cy
+func add(a #T, b T) T:
+    return a + b
+
+print add(1, 2)         --> 3
+print add(1.0, 2.0)     --> 3.0
+```
+In the above example, `add[int]` and `add[float]` were inferred from the function calls:
+
+Nested compile-time parameters can also be inferred:
+```cy
+func set(m Map[#K, #V], key K, val V):
+    m.set(key, val)
 ```
 
 # Modules.
@@ -3059,7 +3078,7 @@ print str.trim(.left, ' ')
 
 * [Reflection.](#reflection)
 * [Attributes.](#attributes)
-* [Generics.](#generics)
+* [Templates.](#templates)
   * [Template specialization.](#template-specialization)
 * [Macros.](#macros)
 * [Compile-time execution.](#compile-time-execution)
@@ -3226,10 +3245,10 @@ Attributes start with `@`. They are used as declaration modifiers.
 >
 >Bind a function, variable, or type to the host. See [libcyber](#libcyber).
 
-## Generics.
-Generics enables parametric polymorphism for types and functions. Compile-time arguments are passed to templates to generate specialized code. This facilitates developing container types and algorithms that operate on different types.
+## Templates.
+Templates enables parametric polymorphism for types and functions. Template arguments are passed to templates to generate specialized code. This facilitates developing container types and algorithms that operate on different types.
 
-See [Custom Types / Generic types](#generic-types) and [Functions / Generic functions](#generic-functions).
+See [Custom Types / Type templates](#type-templates) and [Functions / Function templates](#function-templates).
 
 ### Template specialization.
 > _Planned Feature_

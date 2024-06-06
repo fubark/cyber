@@ -95,7 +95,7 @@ pub const Module = struct {
         }
 
         const func = sym.cast(.func).first;
-        if (!func.isMethod) {
+        if (!func.isMethod()) {
             return null;
         }
         const trait_sig = c.sema.getFuncSig(member.func.funcSigId);
@@ -103,8 +103,8 @@ pub const Module = struct {
 
         const trait_params = trait_sig.params()[1..];
         const func_params = func_sig.params()[1..];
-        for (trait_params, 0..) |type_id, i| {
-            if (type_id != func_params[i]) {
+        for (trait_params, 0..) |trait_param, i| {
+            if (trait_param.type != func_params[i].type) {
                 return null;
             }
         }
@@ -351,8 +351,24 @@ pub const ChunkExt = struct {
         func.funcSigId = funcSigId;
         func.retType = func_sig.getRetType();
         func.reqCallTypeCheck = func_sig.reqCallTypeCheck;
-        func.numParams = @intCast(func_sig.paramLen);
+        func.numParams = @intCast(func_sig.params_len);
         return func;
+    }
+
+    pub fn reserveTemplateFunc(
+        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: ?*ast.FuncDecl, is_method: bool,
+    ) !*cy.Func {
+        const mod = parent.getMod().?;
+        const sym = try prepareFuncSym(c, parent, mod, name, node);
+        const func = try c.createFunc(.template, parent, sym, @ptrCast(node), is_method);
+        try c.funcs.append(c.alloc, func);
+        sym.addFunc(func);
+        return func;
+    }
+
+    pub fn resolveTemplateFunc(c: *cy.Chunk, func: *cy.Func, func_sig: sema.FuncSigId, template: *cy.sym.FuncTemplate) !void {
+        func.data = .{ .template = template };
+        try resolveFunc(c, func, func_sig);
     }
 
     pub fn reserveHostFunc(
@@ -434,7 +450,7 @@ pub const ChunkExt = struct {
         func.funcSigId = func_sig_id;
         func.retType = func_sig.getRetType();
         func.reqCallTypeCheck = func_sig.reqCallTypeCheck;
-        func.numParams = @intCast(func_sig.paramLen);
+        func.numParams = @intCast(func_sig.params_len);
     }
 
     pub fn getOptResolvedSym(_: *cy.Chunk, modSym: *cy.Sym, name: []const u8) !?*cy.Sym {
@@ -474,11 +490,19 @@ pub const ChunkExt = struct {
             const mod_name = try cy.sym.formatSymName(c.sema, &cy.tempBuf, modSym, .{ .from = c });
             return c.reportErrorFmt("Can not access `{}` from parent `{}`. Parent is not a module.", &.{v(name), v(mod_name)}, nodeId);
         };
-        const sym = mod.getSym(name) orelse {
-            const mod_name = try cy.sym.formatSymName(c.sema, &cy.tempBuf, modSym.resolved(), .{ .from = c });
-            return c.reportErrorFmt("Can not find the symbol `{}` in `{}`.", &.{v(name), v(mod_name)}, nodeId);
-        };
-        return sym;
+        if (mod.getSym(name)) |sym| {
+            return sym;
+        }
+
+        // TODO: A type variant sym's module should cache expanded methods.
+        if (modSym.getVariant()) |variant| {
+            if (variant.root_template.getMod().getSym(name)) |sym| {
+                return sym;
+            }
+        }
+
+        const mod_name = try cy.sym.formatSymName(c.sema, &cy.tempBuf, modSym.resolved(), .{ .from = c });
+        return c.reportErrorFmt("Can not find the symbol `{}` in `{}`.", &.{v(name), v(mod_name)}, nodeId);
     }
 
     pub fn getResolvedDistinctSym(
@@ -513,6 +537,7 @@ pub const ChunkExt = struct {
             .distinct_t,
             .template,
             .placeholder,
+            .dummy_t,
             .enumMember => {
                 return sym;
             },
@@ -583,6 +608,7 @@ pub const ChunkExt = struct {
             .object_t,
             .trait_t,
             .custom_t,
+            .dummy_t,
             .enum_t,
             .chunk,
             .bool_t,

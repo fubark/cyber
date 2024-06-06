@@ -134,6 +134,9 @@ pub const Compiler = struct {
             for (chunk.syms.items) |sym| {
                 sym.deinitRetained(self.vm);
             }
+            for (chunk.funcs.items) |func| {
+                func.deinitRetained(self.vm);
+            }
         }
     }
 
@@ -340,14 +343,16 @@ pub const Compiler = struct {
 
         // Pass through type syms.
         for (self.newTypes()) |*type_e| {
-            if (type_e.sym.getMod().?.getSym("$get") != null) {
-                type_e.has_get_method = true;
-            }
-            if (type_e.sym.getMod().?.getSym("$set") != null) {
-                type_e.has_set_method = true;
-            }
-            if (type_e.sym.getMod().?.getSym("$initPair") != null) {
-                type_e.has_init_pair_method = true;
+            if (type_e.sym.getMod()) |mod| {
+                if (mod.getSym("$get") != null) {
+                    type_e.has_get_method = true;
+                }
+                if (mod.getSym("$set") != null) {
+                    type_e.has_set_method = true;
+                }
+                if (mod.getSym("$initPair") != null) {
+                    type_e.has_init_pair_method = true;
+                }
             }
             switch (type_e.sym.type) {
                 .object_t => {
@@ -419,7 +424,7 @@ pub const Compiler = struct {
                 if (func.type != .userFunc) {
                     continue;
                 }
-                if (func.isMethod) {
+                if (func.isMethod()) {
                     try sema.methodDecl(chunk, func);
                 } else {
                     try sema.funcDecl(chunk, func);
@@ -556,6 +561,9 @@ fn performChunkSema(self: *Compiler, chunk: *cy.Chunk) !void {
     try chunk.ir.pushStmtBlock2(chunk.alloc, chunk.rootStmtBlock);
 
     if (chunk == self.main_chunk) {
+        try sema.pushResolveContext(chunk);
+        defer sema.popResolveContext(chunk);
+
         _ = try sema.semaMainBlock(self, chunk);
     }
     // Top level declarations only.
@@ -577,7 +585,7 @@ fn performChunkSemaDecls(c: *cy.Chunk) !void {
                     continue;
                 }
                 log.tracev("sema func: {s}", .{func.name()});
-                if (func.isMethod) {
+                if (func.isMethod()) {
                     try sema.methodDecl(c, func);
                 } else {
                     try sema.funcDecl(c, func);
@@ -834,7 +842,9 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         }
                     },
                     .template => {
-                        _ = try sema.declareTemplate(chunk, node.cast(.template));
+                        const decl = node.cast(.template);
+                        const sym = try sema.declareTemplate(chunk, decl);
+                        _ = sym;
                     },
                     .specialization => {
                         // For now template declaration must already be declared.
@@ -886,7 +896,10 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                                 };
                                 try template.variant_cache.put(chunk.alloc, args_dupe, variant);
                             },
-                            else => return error.Unsupported,
+                            else => {
+                                log.tracev("{}", .{decl.decl.type()});
+                                return error.Unsupported;
+                            }
                         }
                     },
                     .staticDecl => {
@@ -997,6 +1010,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.MetaType,
         bt.Range,
         bt.Table,
+        bt.CTInfer,
     };
 
     for (type_ids) |type_id| {
@@ -1005,7 +1019,16 @@ fn reserveCoreTypes(self: *Compiler) !void {
     }
 
     std.debug.assert(self.sema.types.items.len == cy.types.BuiltinEnd);
+
+    self.sema.types.items[bt.CTInfer].kind = .bare;
+    self.sema.types.items[bt.CTInfer].sym = @ptrCast(&CTInferType);
+    self.sema.types.items[bt.CTInfer].info.ct_infer = true;
 }
+
+pub var CTInferType = cy.sym.DummyType{
+    .head = cy.Sym.init(.dummy_t, null, "compt-infer"),
+    .type = bt.CTInfer,
+};
 
 fn createDynMethodIds(self: *Compiler) !void {
     self.indexMID = try self.vm.ensureMethod("$index");
@@ -1087,7 +1110,7 @@ fn resolveSyms(self: *Compiler) !void {
                 },
                 .enum_t => {
                     const enum_t = sym.cast(.enum_t);
-                    try sema.declareEnumMembers(chunk, @ptrCast(sym), enum_t.decl);
+                    try sema.resolveEnumType(chunk, @ptrCast(sym), enum_t.decl);
                 },
                 .distinct_t => {
                     _ = try sema.resolveDistinctType(chunk, @ptrCast(sym));

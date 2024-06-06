@@ -44,6 +44,8 @@ pub const SymType = enum(u8) {
     /// Once the intermediate sym is visited, the placeholder sym is replaced
     /// and it's module is copied.
     placeholder,
+
+    dummy_t,
 };
 
 /// Base symbol. All symbols stem from the same header.
@@ -185,6 +187,9 @@ pub const Sym = extern struct {
             .hostVar => {
                 alloc.destroy(self.cast(.hostVar));
             },
+            .dummy_t => {
+                alloc.destroy(self.cast(.dummy_t));
+            },
             .placeholder => {
                 const placeholder = self.cast(.placeholder);
                 if (!placeholder.resolved) {
@@ -217,7 +222,9 @@ pub const Sym = extern struct {
 
     pub fn getVariant(self: *Sym) ?*Variant {
         switch (self.type) {
+            .object_t => return self.cast(.object_t).variant,
             .custom_t => return self.cast(.custom_t).variant,
+            .enum_t   => return self.cast(.enum_t).variant,
             else => return null,
         }
     }
@@ -237,6 +244,7 @@ pub const Sym = extern struct {
             .struct_t,
             .object_t,
             .trait_t,
+            .dummy_t,
             .enum_t => {
                 return true;
             },
@@ -297,6 +305,7 @@ pub const Sym = extern struct {
             .context_var,
             .userVar,
             .field,
+            .dummy_t,
             .hostVar => {
                 return null;
             },
@@ -351,6 +360,7 @@ pub const Sym = extern struct {
                     return error.AmbiguousSymbol;
                 }
             },
+            .dummy_t,
             .placeholder,
             .field,
             .null,
@@ -373,6 +383,7 @@ pub const Sym = extern struct {
             .trait_t         => return self.cast(.trait_t).type,
             .custom_t        => return self.cast(.custom_t).type,
             .use_alias       => return self.cast(.use_alias).sym.getStaticType(),
+            .dummy_t         => return self.cast(.dummy_t).type,
             .placeholder,
             .null,
             .field,
@@ -414,6 +425,7 @@ pub const Sym = extern struct {
             .chunk,
             .context_var,
             .hostVar,
+            .dummy_t,
             .userVar         => return null,
         }
     }
@@ -490,9 +502,15 @@ fn SymChild(comptime symT: SymType) type {
         .module_alias => ModuleAlias,
         .chunk => Chunk,
         .placeholder => Placeholder,
+        .dummy_t => DummyType,
         .null => void,
     };
 }
+
+pub const DummyType = extern struct {
+    head: Sym,
+    type: cy.TypeId,
+};
 
 pub const Placeholder = extern struct {
     head: Sym,
@@ -540,7 +558,6 @@ pub const FuncSym = extern struct {
     first: *Func,
     last: *Func,
     numFuncs: u16,
-    variant: ?*Variant,
 
     /// Duped to perform uniqueness check without dereferencing the first ModuleFunc.
     firstFuncSig: cy.sema.FuncSigId,
@@ -609,13 +626,6 @@ pub const Template = struct {
     /// Owned by root template.
     params: []TemplateParam,
 
-    /// For function templates, this maps to a function param that can infer this `type` param.
-    infer_from_func_params: []u8,
-
-    /// The minimum number of params that can infer the template params.
-    /// If NullU8, then the template function can not infer the params.
-    infer_min_params: u8,
-
     /// Template args to variant. Keys are not owned.
     variant_cache: std.HashMapUnmanaged([]const cy.Value, *Variant, VariantKeyContext, 80),
 
@@ -637,8 +647,6 @@ pub const Template = struct {
         if (self.is_root) {
             alloc.free(self.params);
         }
-
-        alloc.free(self.infer_from_func_params);
     }
 
     pub fn getMod(self: *Template) *cy.Module {
@@ -659,10 +667,6 @@ pub const Template = struct {
         }
         const parent = self.head.parent.?.cast(.template).getExpandedSymFrom(from_template, from);
         return parent.getMod().?.getSym(self.head.name()).?;
-    }
-
-    pub fn canInferFuncTemplateArgs(self: *Template) bool {
-        return self.infer_min_params != cy.NullU8;
     }
 
     pub fn chunk(self: *const Template) *cy.Chunk {
@@ -1008,11 +1012,43 @@ pub const Chunk = extern struct {
     }
 };
 
+pub const FuncVariant = struct {
+    /// Owned args. Can be used to print params along with the template func.
+    args: []const cy.Value,
+
+    template: *FuncTemplate,
+
+    func: *Func,
+};
+
+pub const FuncTemplate = struct {
+    sig: cy.sema.FuncSigId,
+
+    params: []const FuncTemplateParam,
+
+    /// Template args to variant. Keys are not owned.
+    variant_cache: std.HashMapUnmanaged([]const cy.Value, *FuncVariant, VariantKeyContext, 80),
+
+    pub fn deinit(self: *FuncTemplate, alloc: std.mem.Allocator) void {
+        var iter = self.variant_cache.iterator();
+        while (iter.next()) |e| {
+            alloc.destroy(e.value_ptr.*);
+        }
+        self.variant_cache.deinit(alloc);
+        alloc.free(self.params);
+    }
+};
+
+pub const FuncTemplateParam = struct {
+    name: []const u8,
+};
+
 pub const FuncType = enum {
     hostFunc,
     userFunc,
     userLambda,
     trait,
+    template,
 };
 
 pub const Func = struct {
@@ -1037,15 +1073,45 @@ pub const Func = struct {
         trait: struct {
             vtable_idx: u32,
         },
+        template: *FuncTemplate,
     },
+    variant: ?*FuncVariant,
     reqCallTypeCheck: bool,
     numParams: u8,
-    isMethod: bool,
+
+    is_method: bool,
+
     is_implicit_method: bool,
     throws: bool,
 
     /// Whether it has already emitted IR.
     emitted: bool,
+
+    pub fn deinit(self: *Func, alloc: std.mem.Allocator) void {
+        if (self.type == .template and self.isResolved()) {
+            self.data.template.deinit(alloc);
+            alloc.destroy(self.data.template);
+        }
+    }
+
+    pub fn deinitRetained(self: *Func, vm: *cy.VM) void {
+        if (self.type != .template) {
+            return;
+        }
+        if (self.isResolved()) {
+            const template = self.data.template;
+
+            var iter = template.variant_cache.iterator();
+            while (iter.next()) |e| {
+                const variant = e.value_ptr.*;
+                for (variant.args) |arg| {
+                    vm.release(arg);
+                }
+                vm.alloc.free(variant.args);
+                variant.args = &.{};
+            }
+        }
+    }
 
     pub fn isResolved(self: Func) bool {
         return self.funcSigId != cy.NullId;
@@ -1055,8 +1121,16 @@ pub const Func = struct {
         return self.type != .userLambda;
     }
 
+    pub fn isMethod(self: Func) bool {
+        return self.is_method;
+    }
+
     pub fn hasStaticInitializer(self: Func) bool {
         return self.type == .hostFunc;
+    }
+
+    pub fn chunk(self: *const Func) *cy.Chunk {
+        return self.parent.getMod().?.chunk;
     }
 
     pub fn name(self: Func) []const u8 {
@@ -1217,8 +1291,6 @@ pub const ChunkExt = struct {
             .is_root = is_root,
             .params = params,
             .sigId = sigId,
-            .infer_min_params = cy.NullU8,
-            .infer_from_func_params = &.{},
             .variant_cache = .{},
             .mod = undefined,
         });
@@ -1371,9 +1443,10 @@ pub const ChunkExt = struct {
             .sym = sym,
             .throws = false,
             .parent = parent,
-            .isMethod = isMethod,
+            .is_method = isMethod,
             .is_implicit_method = false,
             .numParams = undefined,
+            .variant = null,
             .decl = node,
             .next = null,
             .data = undefined,
@@ -1389,7 +1462,6 @@ pub const ChunkExt = struct {
             .firstFuncSig = cy.NullId,
             .first = undefined,
             .last = undefined,
-            .variant = null,
         });
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
@@ -1460,9 +1532,9 @@ pub fn writeFuncName(s: *cy.Sema, w: anytype, func: *cy.Func, config: SymFormatC
     try writeParentPrefix(s, w, @ptrCast(func.sym.?), config);
     try w.writeAll(func.name());
     if (config.emit_template_args) {
-        if (func.sym.?.variant) |variant| {
+        if (func.variant) |variant| {
             try w.writeByte('[');
-            try writeLocalTemplateArgs(s, w, variant, config);
+            try writeLocalFuncTemplateArgs(s, w, variant, config);
             try w.writeByte(']');
         }
     }
@@ -1540,14 +1612,31 @@ fn writeLocalTemplateArgs(s: *cy.Sema, w: anytype, variant: *cy.sym.Variant, con
     }
 }
 
+fn writeLocalFuncTemplateArgs(s: *cy.Sema, w: anytype, variant: *cy.sym.FuncVariant, config: SymFormatConfig) !void {
+    const args = variant.args;
+    if (args[0].getTypeId() != bt.Type) {
+        return error.Unsupported;
+    }
+    var sym = s.getTypeSym(args[0].asHeapObject().type.type);
+    try writeSymName(s, w, sym, config);
+    for (args[1..]) |arg| {
+        try w.writeByte(',');
+        if (arg.getTypeId() != bt.Type) {
+            return error.Unsupported;
+        }
+        sym = s.getTypeSym(arg.asHeapObject().type.type);
+        try writeSymName(s, w, sym, config);
+    }
+}
+
 test "sym internals" {
     if (builtin.mode == .ReleaseFast) {
         if (cy.is32Bit) {
             try t.eq(@sizeOf(Sym), 16);
-            try t.eq(@sizeOf(Func), 36);
+            try t.eq(@sizeOf(Func), 40);
         } else {
             try t.eq(@sizeOf(Sym), 24);
-            try t.eq(@sizeOf(Func), 56);
+            try t.eq(@sizeOf(Func), 64);
         }
     } else {
         if (cy.is32Bit) {
@@ -1555,7 +1644,7 @@ test "sym internals" {
             try t.eq(@sizeOf(Func), 40);
         } else {
             try t.eq(@sizeOf(Sym), 24);
-            try t.eq(@sizeOf(Func), 64);
+            try t.eq(@sizeOf(Func), 72);
         }
     }
 

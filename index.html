@@ -985,7 +985,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 251-921723e</div>
+    <div class="sub-title">v0.4-dev 259-b87a37c</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -1038,6 +1038,8 @@ for worlds -> w:
 <li><a href="#explicit-type-constraint" title="">Explicit type constraint.</a></li>
 <li><a href="#variable-scopes" title="">Variable scopes.</a></li>
 <li><a href="#static-variables" title="">Static variables.</a></li>
+<li><a href="#context-variables" title="">Context variables.</a></li>
+<li><a href="#extern-variables" title=""><code>extern</code> variables.</a></li>
 <li><a href="#use-global" title=""><code>use $global</code></a></li>
 </ul>
 </li>
@@ -1153,6 +1155,7 @@ var b int = 123.0    --> CompileError. Expected `int`, got `float`.
 </code></pre>
 <a href="#syntax">^topic</a>
 <h3 id="static-variables">Static variables. <a href="#static-variables">#</a></h3>
+<p><em>Static variables will likely be removed in favor of <a href="#context-variables" title="">context variables</a>, constants, and <a href="#extern-variables" title=""><code>extern</code> variables</a>.</em></p>
 <p>Static variables live until the end of the script.
 They act as global variables and are visible from anywhere in the script.</p>
 <p>Static variables are declared with <code>var</code> like local variables, but a namespace must be provided before the variable name:</p>
@@ -1204,6 +1207,39 @@ For this use case, you can use a declaration block. <em>Planned Feature</em></p>
 </code></pre>
 <p>The final resulting value that is assigned to the static variable is provided by a <code>break</code> statement. If a <code>break</code> statement is not provided, <code>none</code> is assigned instead.</p>
 <a href="#syntax">^topic</a>
+<h3 id="context-variables">Context variables. <a href="#context-variables">#</a></h3>
+<p>Context variables are bound to each virtual thread and are accessible anywhere on the call stack.
+All fibers created in the same virtual thread reference the same context variables.</p>
+<p>Context variables used in the program must be declared in the main source file with a default value: <em>Planned Feature</em></p>
+<pre><code class="language-cy">-- main.cy
+
+context MyInt = 123
+context MyString = 'abc'
+
+print MyInt        --> 123
+print MyString     --> abc
+</code></pre>
+<p>To reference a context variable in a different source file, redeclare it with the same type:</p>
+<pre><code class="language-cy">-- foo.cy
+
+context MyInt int
+
+func foo():
+    print MyInt    --> 123
+</code></pre>
+<p>Since this is a redeclaration, an assignment statement is not allowed.</p>
+<p>Some context variables such as <code>mem</code> for <a href="#memory-allocations" title="">memory allocations</a> are already declared in every program, so it only needs a redeclaration:</p>
+<pre><code class="language-cy">context mem Memory
+
+var a = mem.new(int)
+a.* = 123
+print a.*          --> 123
+mem.free(a)
+</code></pre>
+<a href="#syntax">^topic</a>
+<h3 id="extern-variables"><code>extern</code> variables. <a href="#extern-variables">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#syntax">^topic</a>
 <h3 id="use-global"><code>use $global</code> <a href="#use-global">#</a></h3>
 <p>When <code>use $global</code> is declared in the module, it allows the use of undeclared variables:</p>
 <pre><code class="language-cy">use $global
@@ -1220,13 +1256,13 @@ print a    --> panic: `a` is not defined in `$global`.
 <h2 id="reserved-identifiers">Reserved identifiers. <a href="#reserved-identifiers">#</a></h2>
 <a href="#syntax">^topic</a>
 <h3 id="keywords">Keywords. <a href="#keywords">#</a></h3>
-<p>There are <code>28</code> general keywords. This list categorizes them:</p>
+<p>There are <code>29</code> general keywords. This list categorizes them:</p>
 <ul>
 <li><a href="#control-flow" title="">Control Flow</a>: <code>if</code> <code>else</code> <code>switch</code> <code>case</code> <code>while</code> <code>for</code> <code>break</code> <code>continue</code> <code>pass</code></li>
 <li><a href="#operators" title="">Operators</a>: <code>or</code> <code>and</code> <code>not</code></li>
-<li><a href="#variables" title="">Variables</a>: <code>var</code></li>
+<li><a href="#variables" title="">Variables</a>: <a href="#local-variables" title=""><code>var</code></a> <a href="#context-variables" title=""><code>context</code></a></li>
 <li><a href="#functions" title="">Functions</a>: <code>func</code> <code>return</code></li>
-<li><a href="#fibers" title="">Coroutines</a>: <code>coinit</code> <code>coyield</code> <code>coresume</code></li>
+<li><a href="#fibers" title="">Fibers</a>: <code>coinit</code> <code>coyield</code> <code>coresume</code></li>
 <li><a href="#async" title="">Async</a>: <code>await</code></li>
 <li><a href="#custom-types" title="">Types</a>: <code>type</code>  <code>as</code></li>
 <li><a href="#type-embedding" title="">Type embedding</a>: <code>use</code></li>
@@ -1239,7 +1275,7 @@ print a    --> panic: `a` is not defined in `$global`.
 <p>These keywords only have meaning in a certain context.</p>
 <ul>
 <li><a href="#methods" title="">Methods</a>: <code>self</code> <code>Self</code></li>
-<li><a href="#custom-types" title="">Types</a>: <a href="#objects" title=""><code>object</code></a> <a href="#structs" title=""><code>struct</code></a> <a href="#enums" title=""><code>enum</code></a></li>
+<li><a href="#custom-types" title="">Types</a>: <a href="#objects" title=""><code>object</code></a> <a href="#structs" title=""><code>struct</code></a> <a href="#enums" title=""><code>enum</code></a> <a href="#traits" title=""><code>trait</code></a></li>
 <li><a href="#caught-variable" title="">Catching Errors</a>: <code>caught</code></li>
 <li>Function Return: <code>void</code></li>
 </ul>
@@ -1802,7 +1838,7 @@ print square(a)           --> CompileError. Expected `int`, got `any`.
 <li><a href="#distinct-types" title="">Distinct types.</a></li>
 <li><a href="#traits" title="">Traits.</a></li>
 <li><a href="#union-types" title="">Union types.</a></li>
-<li><a href="#generic-types" title="">Generic types.</a><ul>
+<li><a href="#type-templates" title="">Type templates.</a><ul>
 <li><a href="#expand-type-template" title="">Expand type template.</a></li>
 </ul>
 </li>
@@ -2071,7 +2107,7 @@ print s.!line     --> 20
 <a href="#custom-types">^topic</a>
 <h2 id="optionals">Optionals. <a href="#optionals">#</a></h2>
 <p>Optionals provide <strong>Null Safety</strong> by forcing values to be unwrapped before they can be used.</p>
-<p>The generic <code>Option</code> type is a choice type that either holds a <code>none</code> value or contains <code>some</code> value. The option template is defined as:</p>
+<p>The <code>Option</code> template type is a choice type that either holds a <code>none</code> value or contains <code>some</code> value. The option template is defined as:</p>
 <pre><code class="language-cy">type Option[T type] enum:
     case none
     case some T
@@ -2181,13 +2217,40 @@ var b Vec2 = a as Vec2
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h2 id="traits">Traits. <a href="#traits">#</a></h2>
-<blockquote><p><em>Planned Feature</em></p>
-</blockquote><a href="#custom-types">^topic</a>
+<p>A trait type defines a common interface for implementing types. A trait type is declared with the <code>trait</code> keyword:</p>
+<pre><code class="language-cy">type Shape trait:
+    func area() float
+</code></pre>
+<p>Types can implement a trait using the <code>with</code> keyword:</p>
+<pre><code class="language-cy">type Circle:
+    with Shape
+    radius float
+
+    func area() float:
+        return 3.14 * self.radius^2
+
+type Rectangle:
+    with Shape
+    width  float
+    height float
+
+    func area() float:
+        return self.width * self.height
+</code></pre>
+<p>A type that intends to implement a trait but does not satisfy the trait's interface results in a compile error.</p>
+<p>Implementing types become assignable to the trait type:</p>
+<pre><code class="language-cy">var s Shape = Circle{ radius: 2 }
+print s.area()         --> 12.57
+
+s = Rectangle{ width: 4, height: 5 }
+print s.area()         --> 20
+</code></pre>
+<a href="#custom-types">^topic</a>
 <h2 id="union-types">Union types. <a href="#union-types">#</a></h2>
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#custom-types">^topic</a>
-<h2 id="generic-types">Generic types. <a href="#generic-types">#</a></h2>
-<p>Templates are used to specialize type declarations:</p>
+<h2 id="type-templates">Type templates. <a href="#type-templates">#</a></h2>
+<p>Type declarations can include template parameters to create a type template:</p>
 <pre><code class="language-cy">type MyContainer[T type]:
     id    int
     value T
@@ -2197,7 +2260,7 @@ var b Vec2 = a as Vec2
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="expand-type-template">Expand type template. <a href="#expand-type-template">#</a></h3>
-<p>When the template is invoked with compile-time argument(s), a specialized version of the type is generated.</p>
+<p>When the type template is invoked with template argument(s), a special version of the type is generated.</p>
 <p>In this example, <code>String</code> can be used as an argument since it satisfies the <code>type</code> parameter constraint:</p>
 <pre><code class="language-cy">var a MyContainer[String] = {id: 123, value: 'abc'}
 print a.get()      -- Prints 'abc'
@@ -2406,6 +2469,7 @@ case 0..5:
 <li><a href="#function-overloading" title="">Function overloading.</a></li>
 <li><a href="#lambdas" title="">Lambdas.</a></li>
 <li><a href="#closures" title="">Closures.</a></li>
+<li><a href="#extern-functions" title=""><code>extern</code> functions.</a></li>
 <li><a href="#named-parameters" title="">Named parameters.</a></li>
 <li><a href="#optional-parameters" title="">Optional parameters.</a></li>
 <li><a href="#variadic-parameters" title="">Variadic parameters.</a></li>
@@ -2414,9 +2478,10 @@ case 0..5:
 <li><a href="#call-block-syntax" title="">Call block syntax.</a></li>
 </ul>
 </li>
-<li><a href="#generic-functions" title="">Generic functions.</a><ul>
-<li><a href="#expand-function-template" title="">Expand function template.</a></li>
-<li><a href="#infer-template-function" title="">Infer template function.</a></li>
+<li><a href="#function-templates" title="">Function templates.</a><ul>
+<li><a href="#explicit-template-call" title="">Explicit template call.</a></li>
+<li><a href="#expand-function" title="">Expand function.</a></li>
+<li><a href="#infer-param-type" title="">Infer param type.</a></li>
 </ul>
 </li>
 </ul>
@@ -2513,6 +2578,9 @@ func foo():
     print a       --> CompileError: Undeclared variable `a`.
 </code></pre>
 <a href="#functions">^topic</a>
+<h2 id="extern-functions"><code>extern</code> functions. <a href="#extern-functions">#</a></h2>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#functions">^topic</a>
 <h2 id="named-parameters">Named parameters. <a href="#named-parameters">#</a></h2>
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#functions">^topic</a>
@@ -2563,24 +2631,39 @@ Button('Count', 10):
 </code></pre>
 <p>Arguments assigned in the call block can be unordered.</p>
 <a href="#functions">^topic</a>
-<h2 id="generic-functions">Generic functions. <a href="#generic-functions">#</a></h2>
-<p>Templates are used to specialize function declarations:</p>
-<pre><code class="language-cy">func add[T type](a T, b T) T:
+<h2 id="function-templates">Function templates. <a href="#function-templates">#</a></h2>
+<p>Function declarations can include template parameters to create a function template:</p>
+<pre><code class="language-cy">func add(#T type, a T, b T) T:
     return a + b
 </code></pre>
+<p>Template parameters are prefixed with <code>#</code>.
+Unlike type templates, function templates allow template parameters to be declared alongside runtime parameters.</p>
 <a href="#functions">^topic</a>
-<h3 id="expand-function-template">Expand function template. <a href="#expand-function-template">#</a></h3>
-<p>When the template is invoked with compile-time argument(s), a specialized version of the function is generated:</p>
-<pre><code class="language-cy">print add[int](1, 2)    --> 3
-print add[float](1, 2)  --> 3.0
+<h3 id="explicit-template-call">Explicit template call. <a href="#explicit-template-call">#</a></h3>
+<p>When the function is invoked with template argument(s), a special version of the function is generated and used:</p>
+<pre><code class="language-cy">print add(int, 1, 2)    --> 3
+print add(float, 1, 2)  --> 3.0
 </code></pre>
-<p>Note that invoking the template again with the same argument(s) returns the same generated function. In other words, the generated function is always memoized from the input parameters.</p>
+<p>Note that invoking the function again with the same argument(s) uses the same generated function. In other words, the generated function is always memoized from the template arguments.</p>
 <a href="#functions">^topic</a>
-<h3 id="infer-template-function">Infer template function. <a href="#infer-template-function">#</a></h3>
-<p>When invoking template functions, it is possible to infer the template parameters from the call arguments.
-In the following example, <code>add[int]</code> and <code>add[float]</code> are inferred from the function calls:</p>
-<pre><code class="language-cy">print add(1, 2)      --> 3
-print add(1.0, 2.0)  --> 3.0
+<h3 id="expand-function">Expand function. <a href="#expand-function">#</a></h3>
+<p>Since functions may contain template and runtime parameters, the index operator is used to expand the function with just template arguments and return the generated function:</p>
+<pre><code class="language-cy">var addInt = add[int]
+print addInt(1, 2)      --> 3
+</code></pre>
+<a href="#functions">^topic</a>
+<h3 id="infer-param-type">Infer param type. <a href="#infer-param-type">#</a></h3>
+<p>When a template parameter is declared in the type specifier, it's inferred from the argument's type:</p>
+<pre><code class="language-cy">func add(a #T, b T) T:
+    return a + b
+
+print add(1, 2)         --> 3
+print add(1.0, 2.0)     --> 3.0
+</code></pre>
+<p>In the above example, <code>add[int]</code> and <code>add[float]</code> were inferred from the function calls:</p>
+<p>Nested compile-time parameters can also be inferred:</p>
+<pre><code class="language-cy">func set(m Map[#K, #V], key K, val V):
+    m.set(key, val)
 </code></pre>
 <a href="#functions">^topic</a>
 <h1 id="modules">Modules. <a href="#modules">#</a></h1>
@@ -2900,7 +2983,7 @@ print typeof('my str').id()
 <p>Resizes the list to <code>len</code> elements. If the new size is bigger, <code>none</code> values  are appended to the list. If the new size is smaller, elements at the end of the list are removed.</p>
 </blockquote><blockquote><p><code>func sort(lessFn any) <void></code></p>
 <p>Sorts the list with the given <code>less</code> function.  If element <code>a</code> should be ordered before <code>b</code>, the function should return <code>true</code> otherwise <code>false</code>.</p>
-</blockquote><blockquote><p><code>func List.fill(val T, n int) List[T]</code></p>
+</blockquote><blockquote><p><code>func List.fill(val <comptimeExpr>, n int) List[T]</code></p>
 <p>Creates a list with initial capacity of <code>n</code> and values set to <code>val</code>.  If the value is an object, it is shallow copied <code>n</code> times.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-listiterator"><code>type ListIterator</code> <a href="#type-listiterator">#</a></h3>
@@ -3072,14 +3155,14 @@ print typeof('my str').id()
 <h3 id="type-tccstate"><code>type TccState</code> <a href="#type-tccstate">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-future"><code>type Future</code> <a href="#type-future">#</a></h3>
-<blockquote><p><code>func Future.complete(val T) Future[T]</code></p>
+<blockquote><p><code>func Future.complete(val <comptimeExpr>) Future[T]</code></p>
 <p>Returns a <code>Future[T]</code> that has a completed value.</p>
-</blockquote><blockquote><p><code>func Future.new() Future[T]</code></p>
+</blockquote><blockquote><p><code>func Future.new(T type) Future[T]</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-futureresolver"><code>type FutureResolver</code> <a href="#type-futureresolver">#</a></h3>
 <blockquote><p><code>func complete(val T) <void></code></p>
 </blockquote><blockquote><p><code>func future() Future[T]</code></p>
-</blockquote><blockquote><p><code>func FutureResolver.new() FutureResolver[T]</code></p>
+</blockquote><blockquote><p><code>func FutureResolver.new(T type) FutureResolver[T]</code></p>
 </blockquote><!-- core.end -->
 <a href="#modules">^topic</a>
 <h2 id="mod-cy"><code>mod cy</code> <a href="#mod-cy">#</a></h2>
@@ -3437,11 +3520,11 @@ t.eq(a, 444)
 <!-- test.start -->
 <blockquote><p><code>func assert(pred bool) <void></code></p>
 <p>Panics if <code>pred</code> is <code>false</code>.</p>
-</blockquote><blockquote><p><code>func eq(a T, b T) bool</code></p>
+</blockquote><blockquote><p><code>func eq(a <comptimeExpr>, b T) bool</code></p>
 <p>Returns whether two values are equal.  Panics with <code>error.AssertError</code> if types or values do not match up.</p>
 </blockquote><blockquote><p><code>func eqList(a any, b any) bool</code></p>
 <p>Returns <code>true</code> if two lists have the same size and the elements are equal  as if <code>eq</code> was called on those corresponding elements.</p>
-</blockquote><blockquote><p><code>func eqNear(a any, b any) bool</code></p>
+</blockquote><blockquote><p><code>func eqNear(a <comptimeExpr>, b T) bool</code></p>
 <p>Returns <code>true</code> if two numbers are near each other within epsilon 1e-5.</p>
 </blockquote><blockquote><p><code>func fail() </code></p>
 </blockquote><blockquote><p><code>func fail(msg String) </code></p>
@@ -3924,12 +4007,12 @@ var foo = func ():
     coyield
     count += 1
 
-var fiber = coinit(foo)
+var task = coinit(foo)
 
 print count          -- '0'
-coresume fiber
+coresume task
 print count          -- '1'
-coresume fiber
+coresume task
 print count          -- '2'
 </code></pre>
 <p>A fiber does not start execution until <code>coresume</code> is invoked on it.
@@ -3942,8 +4025,8 @@ print count          -- '2'
 var increment = func (inc):
     count += inc
 
-var fiber = coinit(increment, 5)
-coresume fiber
+var task = coinit(increment, 5)
+coresume task
 print count          -- '5'
 </code></pre>
 <p>When the fiber is created, the arguments are saved inside the fiber's stack. Once the first <code>coresume</code> is invoked, the entry function is invoked with the saved arguments.</p>
@@ -3965,7 +4048,7 @@ print(coresume task)    -- Prints "9"
 print(coresume task)    -- Prints "8"
 
 -- Reset back to the start with the `.init` state.
-fiber.reset()
+task.reset()
 print(coresume task)    -- Prints "10"
 </code></pre>
 <a href="#concurrency">^topic</a>
@@ -3976,12 +4059,12 @@ This allows fiber reuse, instead of creating a new fiber:</p>
 
 -- Run task to completion.
 var res = 0
-while fiber.status() != .done:
+while task.status() != .done:
     res = coresume fiber
 print res
 
-fiber.reset()
-fiber.bindArgs(20)
+task.reset()
+task.bindArgs(20)
 
 -- Run task again with the new argument...
 </code></pre>
@@ -3990,15 +4073,15 @@ fiber.bindArgs(20)
 <p>A fiber block is used to construct a fiber without an entry function. <em>Planned Feature</em> The counting example can be rewritten to:</p>
 <pre><code class="language-cy">var count = 0
 
-var fiber = coinit:
+var task = coinit:
     count += 1       -- `count is captured`
     coyield
     count += 1
 
 print count          -- '0'
-coresume fiber
+coresume task
 print count          -- '1'
-coresume fiber
+coresume task
 print count          -- '2'
 </code></pre>
 <p>Referencing parent variables from the fiber block automatically captures them just like a function closure.</p>
@@ -4014,15 +4097,15 @@ func bar():
     coyield
     print 'bar'
 
-var fiber = coinit(foo)
-coresume fiber
+var task = coinit(foo)
+coresume task
 </code></pre>
 <p><code>coresume</code> also returns the resulting value.</p>
 <pre><code class="language-cy">func foo():
     return 123
 
-var fiber = coinit(foo)
-print(coresume fiber)    -- '123'
+var task = coinit(foo)
+print(coresume task)    -- '123'
 </code></pre>
 <p><code>coyield</code> can return a value back to <code>coresume</code>. <em>Planned Feature</em></p>
 <a href="#concurrency">^topic</a>
@@ -4032,12 +4115,12 @@ print(coresume fiber)    -- '123'
     coyield
     print 'done'
 
-var fiber = coinit(foo)
-print fiber.status()   -- '.paused'
-coresume fiber
-print fiber.status()   -- '.paused'
-coresume fiber
-print fiber.status()   -- '.done'
+var task = coinit(foo)
+print task.status()   -- '.paused'
+coresume task
+print task.status()   -- '.paused'
+coresume task
+print task.status()   -- '.done'
 </code></pre>
 <p>The main execution context is a fiber as well. Once the main fiber has finished, the VM is done and control is returned to the host.</p>
 <a href="#concurrency">^topic</a>
@@ -4171,7 +4254,7 @@ In this example, the dynamic value <code>a</code> resolves to a <code>String</co
 <ul>
 <li><a href="#reflection" title="">Reflection.</a></li>
 <li><a href="#attributes" title="">Attributes.</a></li>
-<li><a href="#generics" title="">Generics.</a><ul>
+<li><a href="#templates" title="">Templates.</a><ul>
 <li><a href="#template-specialization" title="">Template specialization.</a></li>
 </ul>
 </li>
@@ -4307,9 +4390,9 @@ print bool          -- 'type: bool'
 <blockquote><p><code>@host</code></p>
 <p>Bind a function, variable, or type to the host. See <a href="#libcyber" title="">libcyber</a>.</p>
 </blockquote><a href="#metaprogramming">^topic</a>
-<h2 id="generics">Generics. <a href="#generics">#</a></h2>
-<p>Generics enables parametric polymorphism for types and functions. Compile-time arguments are passed to templates to generate specialized code. This facilitates developing container types and algorithms that operate on different types.</p>
-<p>See <a href="#generic-types" title="">Custom Types / Generic types</a> and <a href="#generic-functions" title="">Functions / Generic functions</a>.</p>
+<h2 id="templates">Templates. <a href="#templates">#</a></h2>
+<p>Templates enables parametric polymorphism for types and functions. Template arguments are passed to templates to generate specialized code. This facilitates developing container types and algorithms that operate on different types.</p>
+<p>See <a href="#type-templates" title="">Custom Types / Type templates</a> and <a href="#function-templates" title="">Functions / Function templates</a>.</p>
 <a href="#metaprogramming">^topic</a>
 <h3 id="template-specialization">Template specialization. <a href="#template-specialization">#</a></h3>
 <blockquote><p><em>Planned Feature</em></p>
@@ -4617,6 +4700,10 @@ However, it can be useful to perform additional cleanup tasks for instances that
 <li><a href="#cycle-detection" title="">Cycle detection.</a></li>
 </ul>
 </li>
+<li><a href="#manual-memory" title="">Manual memory.</a><ul>
+<li><a href="#memory-allocations" title="">Memory allocations.</a></li>
+</ul>
+</li>
 </ul>
 <p><a href="#table-of-contents" title="">^top</a></p>
 <p>Cyber provides memory safety by default.</p>
@@ -4652,10 +4739,10 @@ This implies that the destructor order is not reliable, but destructors are guar
 <h2 id="heap">Heap. <a href="#heap">#</a></h2>
 <p>Many object types in Cyber are small enough to be at or under 40 bytes. To take advantage of this, Cyber can reserve object pools to quickly allocate and free these small objects with very little bookkeeping. Bigger objects are allocated and managed by <code>mimalloc</code> which has proven to be a fast and reliable general-purpose heap allocator.</p>
 <a href="#memory">^topic</a>
-<h2 id="weak-references">Weak references. <a href="#weak-references">#</a></h2>
+<h3 id="weak-references">Weak references. <a href="#weak-references">#</a></h3>
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#memory">^topic</a>
-<h2 id="cycle-detection">Cycle detection. <a href="#cycle-detection">#</a></h2>
+<h3 id="cycle-detection">Cycle detection. <a href="#cycle-detection">#</a></h3>
 <p>The cycle detector is also considered a GC and frees abandoned objects managed by ARC. Although weak references can remove cycles altogether, Cyber does not force you to use them and provides a manual GC as a one-time catch all solution.</p>
 <blockquote><p><em>Incomplete Feature: Only the main fiber stack is cleaned up at the moment.</em></p>
 </blockquote><p>To invoke the GC, call the builtin function: <code>performGC</code>.</p>
@@ -4678,6 +4765,12 @@ print res['numCycFreed']      -- Output: 2
 print res['numObjFreed']      -- Output: 2
 </code></pre>
 <a href="#memory">^topic</a>
+<h2 id="manual-memory">Manual memory. <a href="#manual-memory">#</a></h2>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#memory">^topic</a>
+<h3 id="memory-allocations">Memory allocations. <a href="#memory-allocations">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#memory">^topic</a>
 <h1 id="cli">CLI. <a href="#cli">#</a></h1>
 <ul>
 <li><a href="#basic-commands" title="">Basic commands.</a></li>
@@ -5127,7 +5220,7 @@ hljs.registerLanguage('cy', function() {
             'func', 'mod', 'for', 'coinit', 'coresume', 'coyield', 'use', 'await', 'context',
             'return', 'if', 'else', 'as', 'while', 'var', 'let', 'dynobject', 'object', 'struct', 'with', 'caught',
             'break', 'continue', 'switch', 'pass', 'or', 'and', 'not', 'is', 'error', 'throws',
-            'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case'
+            'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case', 'trait'
         ],
         type: [
             'float', 'String', 'Array', 'bool', 'any', 'int', 'List', 'Map', 'symbol', 'pointer', 'dyn'

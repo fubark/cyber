@@ -24,6 +24,7 @@ pub const TypeKind = enum(u8) {
     choice,
     @"struct",
     option,
+    trait,
 };
 
 pub const TypeInfo = packed struct {
@@ -282,6 +283,7 @@ pub const SemaExt = struct {
             else => {
                 const sym = s.getTypeSym(id);
                 switch (sym.type) {
+                    .trait_t,
                     .custom_t,
                     .struct_t,
                     .object_t => return true,

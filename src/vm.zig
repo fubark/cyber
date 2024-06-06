@@ -156,6 +156,9 @@ pub const VM = struct {
     /// `queueTask` appends tasks here.
     ready_tasks: std.fifo.LinearFifo(cy.heap.AsyncTask, .Dynamic),
 
+    /// vtables for trait impls, each vtable contains func ids.
+    vtables: cy.List([]const u32),
+
     /// This is needed for reporting since a method entry can be empty.
     method_names: cy.List(vmc.NameId),
     debugTable: []const cy.DebugSym,
@@ -302,6 +305,7 @@ pub const VM = struct {
             .num_cont_evals = 0,
             .last_bc_len = 0,
             .ready_tasks = std.fifo.LinearFifo(cy.heap.AsyncTask, .Dynamic).init(alloc),
+            .vtables = .{},
         };
         self.c.mainFiber.rc = 1;
         self.c.mainFiber.panicType = vmc.PANIC_NONE;
@@ -506,6 +510,15 @@ pub const VM = struct {
             self.inlineSaves.clearRetainingCapacity();
         } else {
             self.inlineSaves.deinit(self.alloc);
+        }
+
+        for (self.vtables.items()) |vtable| {
+            self.alloc.free(vtable);
+        }
+        if (reset) {
+            self.vtables.clearRetainingCapacity();
+        } else {
+            self.vtables.deinit(self.alloc);
         }
 
         for (self.names.items()) |name| {
@@ -935,7 +948,8 @@ pub const VM = struct {
             return error.DuplicateSym;
         }
         const sym = c.createObjectType(parent, name, null) catch return error.Unexpected;
-        try sema.resolveObjectTypeId2(c, sym, null);
+        const type_id = try self.sema.pushType();
+        try sema.resolveObjectTypeId(c, sym, type_id);
         sym.head.setNameOwned(true);
 
         const infos = try c.alloc.alloc(cy.sym.FieldInfo, fields.len);
@@ -1342,11 +1356,9 @@ pub const VM = struct {
         return panicIncompatibleCallSymSig(self, entry, vals);
     }
 
-    /// startLocal points to the first arg in the current stack frame.
     fn callSym(
-        self: *VM, pc: [*]cy.Inst, framePtr: [*]Value, func_id: rt.FuncId, ret: u8, numArgs: u8,
+        self: *VM, pc: [*]cy.Inst, framePtr: [*]Value, func: rt.FuncSymbol, ret: u8, numArgs: u8,
     ) !cy.fiber.PcFp {
-        const func = self.funcSyms.buf[func_id];
         switch (func.type) {
             .host_func => {
                 // Optimize.
@@ -2641,8 +2653,47 @@ fn zOpCodeName(code: vmc.OpCode) callconv(.C) [*:0]const u8 {
     return @tagName(ecode);
 }
 
+fn zCallTrait(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, vtable_idx: u16, ret: u8, numArgs: u8) callconv(.C) vmc.PcFpResult {
+    // Get func from vtable.
+    const trait = framePtr[ret+4].asHeapObject();
+    const vtable = vm.vtables.buf[trait.trait.vtable];
+    const func_id = vtable[vtable_idx];
+    const func = vm.funcSyms.buf[func_id];
+
+    // Unwrap impl to first arg slot.
+    framePtr[ret+5] = trait.trait.impl;
+
+    const res = @call(.always_inline, VM.callSym, .{vm, pc, framePtr, func, ret, numArgs}) catch |err| {
+        if (err == error.Panic) {
+            return .{
+                .pc = undefined,
+                .fp = undefined,
+                .code = vmc.RES_CODE_PANIC,
+            };
+        } else if (err == error.StackOverflow) {
+            return .{
+                .pc = undefined,
+                .fp = undefined,
+                .code = vmc.RES_CODE_STACK_OVERFLOW,
+            };
+        } else {
+            return .{
+                .pc = undefined,
+                .fp = undefined,
+                .code = vmc.RES_CODE_UNKNOWN,
+            };
+        }
+    };
+    return .{
+        .pc = @ptrCast(res.pc),
+        .fp = @ptrCast(res.fp),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
 fn zCallSym(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8, numArgs: u8) callconv(.C) vmc.PcFpResult {
-    const res = @call(.always_inline, VM.callSym, .{vm, pc, framePtr, @as(u32, @intCast(symId)), ret, numArgs}) catch |err| {
+    const func = vm.funcSyms.buf[symId];
+    const res = @call(.always_inline, VM.callSym, .{vm, pc, framePtr, func, ret, numArgs}) catch |err| {
         if (err == error.Panic) {
             return .{
                 .pc = undefined,
@@ -3137,6 +3188,7 @@ comptime {
         @export(zAllocListDyn, .{ .name = "zAllocListDyn", .linkage = .strong });
         @export(zCall, .{ .name = "zCall", .linkage = .strong });
         @export(zCallSym, .{ .name = "zCallSym", .linkage = .strong });
+        @export(zCallTrait, .{ .name = "zCallTrait", .linkage = .strong });
         @export(zCallSymDyn, .{ .name = "zCallSymDyn", .linkage = .strong });
         @export(zCallObjSym, .{ .name = "zCallObjSym", .linkage = .strong });
         @export(zOpMatch, .{ .name = "zOpMatch", .linkage = .strong });

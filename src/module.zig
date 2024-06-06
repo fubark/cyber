@@ -88,6 +88,32 @@ pub const Module = struct {
         return m.symMap.get(name);
     }
 
+    pub fn getTraitMethodImpl(m: *Module, c: *cy.Compiler, member: cy.sym.TraitMember) ?*cy.Func {
+        const sym = m.getSym(member.func.name()) orelse return null;
+        if (sym.type != .func) {
+            return null;
+        }
+
+        const func = sym.cast(.func).first;
+        if (!func.isMethod) {
+            return null;
+        }
+        const trait_sig = c.sema.getFuncSig(member.func.funcSigId);
+        const func_sig = c.sema.getFuncSig(func.funcSigId);
+
+        const trait_params = trait_sig.params()[1..];
+        const func_params = func_sig.params()[1..];
+        for (trait_params, 0..) |type_id, i| {
+            if (type_id != func_params[i]) {
+                return null;
+            }
+        }
+        if (trait_sig.ret != func_sig.ret) {
+            return null;
+        }
+        return func;
+    }
+
     fn isFuncUnique(m: *Module, func: *cy.sym.FuncSym, func_sig: sema.FuncSigId) bool {
         if (func.firstFuncSig == func_sig) {
             return false;
@@ -272,6 +298,12 @@ pub const ChunkExt = struct {
         return sym;
     }
 
+    pub fn reserveTraitType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.TraitDecl) !*cy.sym.TraitType {
+        const sym = try c.createTraitType(parent, name, decl);
+        _ = try addUniqueSym(c, c.sym.getMod(), name, @ptrCast(sym), @ptrCast(decl));
+        return sym;
+    }
+
     pub fn reserveObjectType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.Node) !*cy.sym.ObjectType {
         const sym = try c.createObjectType(parent, name, decl);
         _ = try addUniqueSym(c, c.sym.getMod(), name, @ptrCast(sym), decl);
@@ -331,6 +363,26 @@ pub const ChunkExt = struct {
     pub fn resolveHostFunc(c: *cy.Chunk, func: *cy.Func, func_sig: sema.FuncSigId, func_ptr: cy.ZHostFuncFn) !void {
         try resolveFunc(c, func, func_sig);
         func.data.hostFunc.ptr = func_ptr;
+    }
+
+    pub fn reserveTraitFunc(
+        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: *ast.FuncDecl, vtable_idx: usize, is_variant: bool,
+    ) !*cy.Func {
+        const mod = parent.getMod().?;
+        const sym = try prepareFuncSym(c, parent, mod, name, node);
+        const func = try c.createFunc(.trait, parent, sym, @ptrCast(node), true);
+        func.data = .{
+            .trait = .{
+                .vtable_idx = @intCast(vtable_idx),
+            },
+        };
+        if (is_variant) {
+           try c.variantFuncSyms.append(c.alloc, func);
+        } else {
+           try c.funcs.append(c.alloc, func);
+        }
+        sym.addFunc(func);
+        return func;
     }
 
     pub fn reserveUserFunc(
@@ -438,6 +490,7 @@ pub const ChunkExt = struct {
             .struct_t,
             .object_t,
             .custom_t,
+            .trait_t,
             .enum_t,
             .chunk,
             .bool_t,
@@ -513,6 +566,7 @@ pub const ChunkExt = struct {
             .hostVar,
             .struct_t,
             .object_t,
+            .trait_t,
             .custom_t,
             .enum_t,
             .chunk,

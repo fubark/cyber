@@ -34,6 +34,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "switch", .switch_k },
     .{ "symbol", .symbol_k },
     .{ "throw", .throw_k },
+    .{ "trait", .trait_k },
     .{ "true", .true_k },
     .{ "try", .try_k },
     .{ "type", .type_k },
@@ -41,6 +42,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "var", .var_k },
     .{ "void", .void_k },
     .{ "while", .while_k },
+    .{ "with", .with_k },
 });
 
 pub const TokenType = enum(u8) {
@@ -127,6 +129,7 @@ pub const TokenType = enum(u8) {
     templateString,
     throw_k,
     tilde,
+    trait_k,
     true_k,
     try_k,
     type_k,
@@ -135,6 +138,7 @@ pub const TokenType = enum(u8) {
     vert_bar,
     void_k,
     while_k,
+    with_k,
 };
 
 pub const Token = extern struct {
@@ -1004,6 +1008,6 @@ test "tokenizer internals." {
     try tt.eq(@alignOf(Token), 4);
     try tt.eq(@sizeOf(TokenizeState), 4);
 
-    try tt.eq(std.enums.values(TokenType).len, 89);
-    try tt.eq(keywords.kvs.len, 36);
+    try tt.eq(std.enums.values(TokenType).len, 91);
+    try tt.eq(keywords.kvs.len, 38);
 }

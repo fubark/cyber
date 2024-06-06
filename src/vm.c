@@ -261,6 +261,20 @@ static inline ValueResult allocObject(VM* vm, TypeId typeId, Value* fields, u8 n
     return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
+static inline ValueResult allocTrait(VM* vm, TypeId typeId, u16 vtable, Value impl) {
+    HeapObjectResult res = zAllocPoolObject(vm);
+    if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
+        return (ValueResult){ .code = res.code };
+    }
+    res.obj->trait = (Trait){
+        .typeId = typeId | CYC_TYPE_MASK,
+        .rc = 1,
+        .impl = impl,
+        .vtable = vtable,
+    };
+    return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
+}
+
 static ValueResult copyObj(VM* vm, HeapObject* obj, u8 numFields) {
     TypeId typeId = OBJ_TYPEID(obj);
     Value* values = objectGetValuesPtr(&obj->object);
@@ -612,6 +626,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CallSym),
         JENTRY(CallFuncIC),
         JENTRY(CallNativeFuncIC),
+        JENTRY(CallTrait),
         JENTRY(CallSymDyn),
         JENTRY(Ret1),
         JENTRY(Ret0),
@@ -642,6 +657,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(NegFloat),
         JENTRY(ObjectSmall),
         JENTRY(Object),
+        JENTRY(Trait),
         JENTRY(Ref),
         JENTRY(RefCopyObj),
         JENTRY(SetRef),
@@ -1202,6 +1218,18 @@ beginSwitch:
         pc += CALL_SYM_INST_LEN;
         NEXT();
     }
+    CASE(CallTrait): {
+        u8 ret = pc[1];
+        u8 nargs = pc[2];
+        u16 vtable_idx = READ_U16(4);
+        PcFpResult res = zCallTrait(vm, pc, stack, vtable_idx, ret, nargs);
+        if (res.code != RES_CODE_SUCCESS) {
+            RETURN(res.code);
+        }
+        pc = res.pc;
+        stack = res.fp;
+        NEXT();
+    }
     CASE(CallSymDyn): {
         u8 ret = pc[1];
         u8 nargs = pc[2];
@@ -1481,6 +1509,18 @@ beginSwitch:
         }
         stack[pc[5]] = res.val;
         pc += 6;
+        NEXT();
+    }
+    CASE(Trait): {
+        Value impl = stack[pc[1]];
+        u16 type_id = READ_U16(2);
+        u16 vtable = READ_U16(4);
+        ValueResult res = allocTrait(vm, type_id, vtable, impl);
+        if (res.code != RES_CODE_SUCCESS) {
+            RETURN(res.code);
+        }
+        stack[pc[6]] = res.val;
+        pc += 7;
         NEXT();
     }
     CASE(Ref): {

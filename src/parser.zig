@@ -778,6 +778,9 @@ pub const Parser = struct {
             .struct_k => {
                 decl = @ptrCast(try self.parseStructDecl(start, name, config));
             },
+            .trait_k => {
+                decl = @ptrCast(try self.parseTraitDecl(start, name, config));
+            },
             // `object` is optional.
             .object_k,
             .new_line,
@@ -946,10 +949,11 @@ pub const Parser = struct {
         });
     }
 
-    fn newObjectDecl(self: *Parser, start: TokenId, node_t: ast.NodeType, opt_name: ?*ast.Node, config: TypeDeclConfig, fields: []*ast.Field, funcs: []*ast.FuncDecl) !*ast.ObjectDecl {
+    fn newObjectDecl(self: *Parser, start: TokenId, node_t: ast.NodeType, opt_name: ?*ast.Node, config: TypeDeclConfig, impl_withs: []*ast.ImplWith, fields: []*ast.Field, funcs: []*ast.FuncDecl) !*ast.ObjectDecl {
         const n = try self.ast.newNodeErase(.objectDecl, .{
             .name = opt_name,
             .pos = self.tokenSrcPos(start),
+            .impl_withs = impl_withs,
             .fields = fields,
             .attrs = config.attrs,
             .unnamed = opt_name == null,
@@ -957,6 +961,39 @@ pub const Parser = struct {
         });
         n.setType(node_t);
         return @ptrCast(@alignCast(n));
+    }
+
+    fn parseImplWiths(self: *Parser, req_indent: u32) ![]*ast.ImplWith {
+        if (self.peek().tag() != .with_k) {
+            return &.{};
+        }
+
+        const with_start = self.node_stack.items.len;
+        defer self.node_stack.items.len = with_start;
+
+        while (true) {
+            if (self.peek().tag() != .with_k) {
+                break;
+            }
+            const start = self.next_pos;
+            self.advance();
+
+            const trait = (try self.parseExpr(.{})) orelse {
+                return self.reportError("Expected trait type.", &.{});
+            };
+            const with = try self.ast.newNode(.impl_with, .{
+                .trait = trait,
+                .pos = self.tokenSrcPos(start),
+            });
+            try self.pushNode(@ptrCast(with));
+
+            if (!try self.consumeNextLineIndent(req_indent)) {
+                self.next_pos = start;
+                break;
+            }
+        }
+
+        return @ptrCast(try self.ast.dupeNodes(self.node_stack.items[with_start..]));
     }
 
     fn parseTypeFields(self: *Parser, req_indent: u32, has_more_members: *bool) ![]*ast.Field {
@@ -1013,6 +1050,39 @@ pub const Parser = struct {
         return @ptrCast(try self.ast.dupeNodes(self.node_stack.items[func_start..]));
     }
 
+    fn parseTraitDecl(self: *Parser, start: TokenId, name: *ast.Node, config: TypeDeclConfig) anyerror!*ast.TraitDecl {
+        var token = self.peek();
+        if (token.tag() != .trait_k) {
+            return self.reportErrorAt("Expected `trait` keyword.", &.{}, self.next_pos);
+        }
+        self.advance();
+
+        token = self.peek();
+        if (token.tag() == .colon) {
+            self.advance();
+        } else {
+            // Only declaration. No members.
+            return self.ast.newNode(.trait_decl, .{
+                .name = name,
+                .pos = self.tokenSrcPos(start),
+                .attrs = config.attrs,
+                .funcs = &.{},
+            });
+        }
+
+        const req_indent = try self.parseFirstChildIndent(self.cur_indent);
+        const prev_indent = self.pushIndent(req_indent);
+        defer self.cur_indent = prev_indent;
+        const funcs = try self.parseTypeFuncs(req_indent);
+
+        return self.ast.newNode(.trait_decl, .{
+            .name = name,
+            .pos = self.tokenSrcPos(start),
+            .attrs = config.attrs,
+            .funcs = funcs,
+        });
+    }
+
     fn parseStructDecl(self: *Parser, start: TokenId, name: ?*ast.Node, config: TypeDeclConfig) anyerror!*ast.ObjectDecl {
         var token = self.peek();
         if (token.tag() != .struct_k) {
@@ -1025,7 +1095,7 @@ pub const Parser = struct {
             self.advance();
         } else {
             // Only declaration. No members.
-            return self.newObjectDecl(start, .structDecl, name, config, &.{}, &.{});
+            return self.newObjectDecl(start, .structDecl, name, config, &.{}, &.{}, &.{});
         }
 
         const req_indent = try self.parseFirstChildIndent(self.cur_indent);
@@ -1035,10 +1105,10 @@ pub const Parser = struct {
         var has_more_members: bool = undefined;
         const fields = try self.parseTypeFields(req_indent, &has_more_members);
         if (!has_more_members) {
-            return self.newObjectDecl(start, .structDecl, name, config, fields, &.{});
+            return self.newObjectDecl(start, .structDecl, name, config, &.{}, fields, &.{});
         }
         const funcs = try self.parseTypeFuncs(req_indent);
-        return self.newObjectDecl(start, .structDecl, name, config, fields, funcs);
+        return self.newObjectDecl(start, .structDecl, name, config, &.{}, fields, funcs);
     }
 
     fn parseObjectDecl(self: *Parser, start: TokenId, name: ?*ast.Node, config: TypeDeclConfig) anyerror!*ast.ObjectDecl {
@@ -1053,20 +1123,23 @@ pub const Parser = struct {
             self.advance();
         } else {
             // Only declaration. No members.
-            return self.newObjectDecl(start, .objectDecl, name, config, &.{}, &.{});
+            return self.newObjectDecl(start, .objectDecl, name, config, &.{}, &.{}, &.{});
         }
 
         const req_indent = try self.parseFirstChildIndent(self.cur_indent);
         const prev_indent = self.pushIndent(req_indent);
         defer self.cur_indent = prev_indent;
 
+        // Check for impl `with`.
+        const impl_withs = try self.parseImplWiths(req_indent);
+
         var has_more_members: bool = undefined;
         const fields = try self.parseTypeFields(req_indent, &has_more_members);
         if (!has_more_members) {
-            return self.newObjectDecl(start, .objectDecl, name, config, fields, &.{});
+            return self.newObjectDecl(start, .objectDecl, name, config, impl_withs, fields, &.{});
         }
         const funcs = try self.parseTypeFuncs(req_indent);
-        return self.newObjectDecl(start, .objectDecl, name, config, fields, funcs);
+        return self.newObjectDecl(start, .objectDecl, name, config, impl_withs, fields, funcs);
     }
 
     const FuncDeclConfig = struct {
@@ -3573,7 +3646,7 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .minus_double_dot, .new_line, .none_k, .not_k, .object_k, .oct, .pass_k, .underscore, .pound, .question,
         .return_k, .right_brace, .right_bracket, .right_paren, .rune, .raw_string,
         .string, .struct_k, .switch_k, .symbol_k, .templateExprStart, .templateString,
-        .throw_k, .tilde, .true_k, .try_k, .type_k, .use_k, .var_k, .void_k, .while_k => null,
+        .throw_k, .tilde, .trait_k, .true_k, .try_k, .type_k, .use_k, .var_k, .void_k, .while_k, .with_k => null,
     };
 }
 

@@ -135,6 +135,7 @@ pub const HeapObject = extern union {
     arraySlice: ArraySlice,
 
     object: Object,
+    trait: Trait,
     box: Box,
     tccState: if (cy.hasFFI) TccState else void,
     pointer: Pointer,
@@ -577,6 +578,13 @@ const ArraySlice = extern struct {
             return @ptrFromInt(@intFromPtr(self.buf) - self.offset);
         } else return null;
     }
+};
+
+pub const Trait = extern struct {
+    typeId: cy.TypeId align(8),
+    rc: u32,
+    impl: Value,
+    vtable: u32,
 };
 
 pub const Object = extern struct {
@@ -1885,7 +1893,6 @@ pub fn allocFuncFromSym(self: *cy.VM, func: rt.FuncSymbol) !Value {
 }
 
 /// `skip_cyc_children` is important for reducing the work for the GC mark/sweep.
-/// Use comptime options to keep closely related logic together.
 /// TODO: flatten recursion.
 pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool) void {
     if (cy.Trace) {
@@ -2105,6 +2112,13 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                     } else {
                         freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value), true);
                     }
+                },
+                .trait => {
+                    const impl = obj.trait.impl;
+                    if (!skip_cyc_children or !impl.isCycPointer()) {
+                        cy.arc.release(vm, impl);
+                    }
+                    freePoolObject(vm, obj);
                 },
                 .object => {
                     const numFields = entry.data.object.numFields;

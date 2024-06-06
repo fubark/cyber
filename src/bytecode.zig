@@ -457,6 +457,15 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
                 v(ret), v(symId), v(ret + 5), v(ret + 5 + numArgs), v(numRet)
             });
         },
+        .call_trait => {
+            const ret = pc[1].val;
+            const numArgs = pc[2].val;
+            const numRet = pc[3].val;
+            const vtable_idx = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
+            len += try fmt.printCount(w, "%{} = syms[id](%{}..%{}), id=%{}.vtable[{}] nret={}", &.{
+                v(ret), v(ret + 5), v(ret + 5 + numArgs), v(ret + 4), v(vtable_idx), v(numRet)
+            });
+        },
         .callFuncIC => {
             const ret = pc[1].val;
             const numRet = pc[3].val;
@@ -636,6 +645,16 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
         .map => {
             const dst = pc[1].val;
             len += try fmt.printCount(w, "%{} = new Map", &.{ v(dst) });
+        },
+        .trait => {
+            const src = pc[1].val;
+            const type_id = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
+            const vtable = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
+            const dst = pc[6].val;
+
+            len += try fmt.printCount(w, "%{} = trait(type={}, vtable={}, %{})", &.{
+                v(dst), v(type_id), v(vtable), v(src),
+            });
         },
         .object => {
             const typeId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
@@ -982,6 +1001,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .forRangeReverse => {
             return 6;
         },
+        .trait,
         .coinit,
         .metatype => {
             return 7;
@@ -1002,6 +1022,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numCaptured = pc[4].val;
             return 11 + numCaptured;
         },
+        .call_trait,
         .callSym,
         .call_sym_dyn,
         .callNativeFuncIC,
@@ -1106,6 +1127,7 @@ pub const OpCode = enum(u8) {
     call_sym_dyn = vmc.CodeCallSymDyn,
     callFuncIC = vmc.CodeCallFuncIC,
     callNativeFuncIC = vmc.CodeCallNativeFuncIC,
+    call_trait = vmc.CodeCallTrait,
     ret1 = vmc.CodeRet1,
     ret0 = vmc.CodeRet0,
 
@@ -1145,6 +1167,7 @@ pub const OpCode = enum(u8) {
 
     objectSmall = vmc.CodeObjectSmall,
     object = vmc.CodeObject,
+    trait = vmc.CodeTrait,
 
     ref = vmc.CodeRef,
     refCopyObj = vmc.CodeRefCopyObj,
@@ -1232,7 +1255,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 119);
+    try t.eq(std.enums.values(OpCode).len, 121);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

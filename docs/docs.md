@@ -280,7 +280,7 @@ There are `28` general keywords. This list categorizes them:
 ### Contextual keywords.
 These keywords only have meaning in a certain context.
 - [Methods](#methods): `self` `Self`
-- [Types](#custom-types): [`object`](#objects) [`struct`](#structs) [`enum`](#enums) 
+- [Types](#custom-types): [`object`](#objects) [`struct`](#structs) [`enum`](#enums) [`trait`](#traits)
 - [Catching Errors](#caught-variable): `caught`
 - Function Return: `void`
 
@@ -1397,7 +1397,39 @@ var b Vec2 = a as Vec2
 ```
 
 ## Traits.
-> _Planned Feature_
+A trait type defines a common interface for implementing types. A trait type is declared with the `trait` keyword:
+```cy
+type Shape trait:
+    func area() float
+```
+
+Types can implement a trait using the `with` keyword:
+```cy
+type Circle:
+    with Shape
+    radius float
+
+    func area() float:
+        return 3.14 * self.radius^2
+
+type Rectangle:
+    with Shape
+    width  float
+    height float
+
+    func area() float:
+        return self.width * self.height
+```
+A type that intends to implement a trait but does not satisfy the trait's interface results in a compile error.
+
+Implementing types become assignable to the trait type:
+```cy
+var s Shape = Circle{ radius: 2 }
+print s.area()         --> 12.57
+
+s = Rectangle{ width: 4, height: 5 }
+print s.area()         --> 20
+```
 
 ## Union types.
 > _Planned Feature_

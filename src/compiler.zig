@@ -62,6 +62,9 @@ pub const Compiler = struct {
     /// Key is either a *Sym or *Func.
     genSymMap: std.AutoHashMapUnmanaged(*anyopaque, bcgen.Sym),
 
+    /// Key to VM.vtables index.
+    gen_vtables: std.AutoHashMapUnmanaged(bcgen.VtableKey, u32),
+
     /// Imports are queued.
     import_tasks: std.ArrayListUnmanaged(ImportTask),
 
@@ -107,6 +110,7 @@ pub const Compiler = struct {
             .ct_builtins_chunk = null,
             .chunk_map = .{},
             .genSymMap = .{},
+            .gen_vtables = .{},
             .import_tasks = .{},
             .config = C.defaultCompileConfig(), 
             .hasApiError = false,
@@ -167,11 +171,13 @@ pub const Compiler = struct {
             self.chunks.clearRetainingCapacity();
             self.chunk_map.clearRetainingCapacity();
             self.genSymMap.clearRetainingCapacity();
+            self.gen_vtables.clearRetainingCapacity();
             self.import_tasks.clearRetainingCapacity();
         } else {
             self.chunks.deinit(self.alloc);
             self.chunk_map.deinit(self.alloc);
             self.genSymMap.deinit(self.alloc);
+            self.gen_vtables.deinit(self.alloc);
             self.import_tasks.deinit(self.alloc);
         }
 
@@ -332,6 +338,34 @@ pub const Compiler = struct {
             }
             if (type_e.sym.getMod().?.getSym("$initPair") != null) {
                 type_e.has_init_pair_method = true;
+            }
+            switch (type_e.sym.type) {
+                .object_t => {
+                    const object_t = type_e.sym.cast(.object_t);
+                    const impls = object_t.impls();
+                    if (impls.len > 0) {
+                        const decl = object_t.decl.?.cast(.objectDecl);
+                        const mod = object_t.getMod();
+
+                        for (impls, 0..) |*impl, i| {
+                            const trait_members = impl.trait.members();
+                            const funcs = try self.alloc.alloc(*cy.Func, trait_members.len);
+                            errdefer self.alloc.free(funcs);
+
+                            for (trait_members) |member| {
+                                const func = mod.getTraitMethodImpl(self, member) orelse {
+                                    const sig_str = try self.sema.allocFuncSigStr(member.func.funcSigId, true, mod.chunk);
+                                    defer self.alloc.free(sig_str);
+                                    return mod.chunk.reportErrorFmt("`{}` does not implement `func {}{}` from `{}`.", &.{v(object_t.head.name()), v(member.func.name()), v(sig_str), v(impl.trait.head.name()) }, @ptrCast(decl.impl_withs[i].trait));
+                                };
+                                funcs[i] = func;
+                            }
+
+                            impl.funcs = funcs;
+                        }
+                    }
+                },
+                else => {},
             }
         }
 
@@ -742,6 +776,22 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                             _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func, false);
                         }
                     },
+                    .trait_decl => {
+                        const decl = node.cast(.trait_decl);
+                        const sym = try sema.reserveTraitType(chunk, decl);
+
+                        const members = try self.alloc.alloc(cy.sym.TraitMember, decl.funcs.len);
+                        errdefer self.alloc.free(members);
+                        for (decl.funcs, 0..) |func_decl, i| {
+                            const func = try sema.reserveImplicitTraitMethod(chunk, @ptrCast(sym), func_decl, i, false);
+                            members[i] = .{
+                                .func = func,
+                            };
+                        }
+
+                        sym.members_ptr = members.ptr;
+                        sym.members_len = @intCast(members.len);
+                    },
                     .table_decl => {
                         const decl = node.cast(.table_decl);
                         const sym = try sema.reserveTableType(chunk, decl);
@@ -1007,7 +1057,7 @@ fn resolveSyms(self: *Compiler) !void {
                 .func => {},
                 .struct_t => {
                     const struct_t = sym.cast(.struct_t);
-                    try sema.resolveObjectFields(chunk, sym, struct_t.decl.?);
+                    try sema.resolveObjectLikeType(chunk, sym, struct_t.decl.?);
                 },
                 .object_t => {
                     const object_t = sym.cast(.object_t);
@@ -1016,7 +1066,7 @@ fn resolveSyms(self: *Compiler) !void {
                         try sema.resolveTableFields(chunk, @ptrCast(sym));
                         try sema.resolveTableMethods(chunk, @ptrCast(sym));
                     } else {
-                        try sema.resolveObjectFields(chunk, sym, decl);
+                        try sema.resolveObjectLikeType(chunk, sym, decl);
                     }
                 },
                 .enum_t => {
@@ -1037,6 +1087,7 @@ fn resolveSyms(self: *Compiler) !void {
                 .typeAlias => {
                     try sema.resolveTypeAlias(chunk, @ptrCast(sym));
                 },
+                .trait_t => {},
                 else => {},
             }
         }

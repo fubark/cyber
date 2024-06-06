@@ -258,6 +258,7 @@ typedef enum {
     CodeCallSym,
     CodeCallFuncIC,
     CodeCallNativeFuncIC,
+    CodeCallTrait,
     CodeCallSymDyn,
     CodeRet1,
     CodeRet0,
@@ -292,6 +293,7 @@ typedef enum {
     CodeNegFloat,
     CodeObjectSmall,
     CodeObject,
+    CodeTrait,
 
     CodeRef,
     CodeRefCopyObj,
@@ -551,6 +553,13 @@ typedef struct Object {
     Value firstValue;
 } Object;
 
+typedef struct Trait {
+    TypeId typeId;
+    uint32_t rc;
+    Value impl;
+    u32 vtable;
+} Trait;
+
 typedef struct ValueMap {
     u64* metadata;
     void* entries;
@@ -640,6 +649,7 @@ typedef union HeapObject {
     } head;
     Fiber fiber;
     Object object;
+    Trait trait;
     Range range;
     MetaType metatype;
     Lambda lambda;
@@ -877,8 +887,9 @@ extern bool clVerbose;
 void zFatal();
 BufferResult zAlloc(ZAllocator alloc, size_t n);
 char* zOpCodeName(OpCode code);
-PcFpResult zCallSym(VM* vm, Inst* pc, Value* stack, u16 symId, u8 startLocal, u8 numArgs);
-PcFpResult zCallSymDyn(VM* vm, Inst* pc, Value* stack, u16 symId, u8 startLocal, u8 numArgs);
+PcFpResult zCallSym(VM* vm, Inst* pc, Value* stack, u16 symId, u8 ret, u8 nargs);
+PcFpResult zCallTrait(VM* vm, Inst* pc, Value* stack, u16 vtable_idx, u8 ret, u8 nargs);
+PcFpResult zCallSymDyn(VM* vm, Inst* pc, Value* stack, u16 symId, u8 ret, u8 nargs);
 void zDumpEvalOp(VM* vm, Inst* pc);
 void zDumpValue(VM* vm, Value val);
 void zFreeObject(VM* vm, HeapObject* obj);

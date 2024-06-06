@@ -357,6 +357,7 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
             _ = try assignStmt(c, node, stmt.left, stmt.right, .{});
         },
         .table_decl,
+        .trait_decl,
         .objectDecl,
         .structDecl,
         .passStmt,
@@ -1185,12 +1186,12 @@ fn resolveCustomType(c: *cy.Chunk, sym: *cy.sym.CustomType, decl: *ast.CustomDec
             name = try getHostAttrName(c, decl.attrs[0]);
         }
     }
-    log.tracev("host name: {any}", .{name});
     if (!has_host_attr) {
         return c.reportErrorFmt("Custom type requires a `@host` attribute.", &.{}, @ptrCast(decl));
     }
 
     const bind_name = name orelse sym.head.name();
+    log.tracev("bind name: {s}", .{bind_name});
     if (c.host_types.get(bind_name)) |host_t| {
         try resolveCustomTypeResult(c, sym, host_t);
         return;
@@ -1530,7 +1531,8 @@ pub fn reserveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, opt_head
             object_t.variant = variant;
 
             const header_decl = opt_header_decl orelse template.child_decl;
-            try resolveObjectTypeId(c, object_t, header_decl.cast(.objectDecl).attrs);
+            const type_id = try resolveTypeIdFromDecl(c, @ptrCast(object_t), header_decl.cast(.objectDecl).attrs, header_decl);
+            try resolveObjectTypeId(c, object_t, type_id);
 
             return @ptrCast(object_t);
         },
@@ -1587,7 +1589,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
             const prev = try pushTemplateContext(tchunk, object_t.variant.?);
             defer popTemplateContext(tchunk, prev) catch @panic("error");
 
-            try resolveObjectFields(tchunk, @ptrCast(sym), template.child_decl);
+            try resolveObjectLikeType(tchunk, @ptrCast(sym), template.child_decl);
 
             for (object_decl.funcs) |func_n| {
                 const func = try reserveImplicitMethod(tchunk, @ptrCast(object_t), func_n, true);
@@ -1683,7 +1685,16 @@ pub fn resolveTableMethods(c: *cy.Chunk, obj: *cy.sym.ObjectType) !void {
 pub fn reserveTableType(c: *cy.Chunk, decl: *ast.TableDecl) !*cy.sym.ObjectType {
     const name = c.ast.nodeString(decl.name);
     const sym = try c.reserveObjectType(@ptrCast(c.sym), name, @ptrCast(decl));
-    try resolveObjectTypeId(c, sym, decl.attrs);
+    const type_id = try resolveTypeIdFromDecl(c, @ptrCast(sym), decl.attrs, @ptrCast(decl));
+    try resolveObjectTypeId(c, sym, type_id);
+    return sym;
+}
+
+pub fn reserveTraitType(c: *cy.Chunk, decl: *ast.TraitDecl) !*cy.sym.TraitType {
+    const name = c.ast.nodeString(decl.name);
+    const sym = try c.reserveTraitType(@ptrCast(c.sym), name, @ptrCast(decl));
+    const type_id = try resolveTypeIdFromDecl(c, @ptrCast(sym), decl.attrs, @ptrCast(decl));
+    try resolveTraitTypeId(c, sym, type_id);
     return sym;
 }
 
@@ -1699,28 +1710,40 @@ pub fn reserveObjectType(c: *cy.Chunk, decl: *ast.ObjectDecl) !*cy.sym.ObjectTyp
 
     const name = c.ast.nodeString(decl.name.?);
     const sym = try c.reserveObjectType(@ptrCast(c.sym), name, @ptrCast(decl));
-    try resolveObjectTypeId(c, sym, decl.attrs);
+    const type_id = try resolveTypeIdFromDecl(c, @ptrCast(sym), decl.attrs, @ptrCast(decl));
+    try resolveObjectTypeId(c, sym, type_id);
     return sym;
 }
 
-fn resolveObjectTypeId(c: *cy.Chunk, sym: *cy.sym.ObjectType, attrs: []const *ast.Attribute) !void {
+fn resolveTypeIdFromDecl(c: *cy.Chunk, sym: *cy.Sym, attrs: []const *ast.Attribute, decl: ?*ast.Node) !cy.TypeId {
     var opt_type: ?cy.TypeId = null;
 
     // Check for @host modifier.
     if (attrs.len > 0) {
         if (attrs[0].type == .host) {
             const name = try getHostAttrName(c, attrs[0]);
-            opt_type = try getHostTypeId(c, @ptrCast(sym), name, sym.decl);
+            opt_type = try getHostTypeId(c, sym, name, decl);
         }
     }
 
-    try resolveObjectTypeId2(c, sym, opt_type);
+    return opt_type orelse {
+        return c.sema.pushType();
+    };
 }
 
-pub fn resolveObjectTypeId2(c: *cy.Chunk, object_t: *cy.sym.ObjectType, opt_type: ?cy.TypeId) !void {
-    const typeid = opt_type orelse try c.sema.pushType();
-    object_t.type = typeid;
-    c.compiler.sema.types.items[typeid] = .{
+pub fn resolveTraitTypeId(c: *cy.Chunk, trait_t: *cy.sym.TraitType, type_id: cy.TypeId) !void {
+    trait_t.type = type_id;
+    c.compiler.sema.types.items[type_id] = .{
+        .sym = @ptrCast(trait_t),
+        .kind = .trait,
+        .data = undefined,
+        .info = .{},
+    };
+}
+
+pub fn resolveObjectTypeId(c: *cy.Chunk, object_t: *cy.sym.ObjectType, type_id: cy.TypeId) !void {
+    object_t.type = type_id;
+    c.compiler.sema.types.items[type_id] = .{
         .sym = @ptrCast(object_t),
         .kind = .object,
         .data = .{ .object = .{
@@ -1767,11 +1790,11 @@ pub fn resolveDistinctType(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType) !*cy.
         .object_t => {
             const object_t = target_sym.cast(.object_t);
             const new = try c.createObjectType(distinct_t.head.parent.?, name, object_t.decl);
-            try resolveObjectTypeId2(c, new, distinct_t.type);
+            try resolveObjectTypeId(c, new, distinct_t.type);
             new.getMod().* = distinct_t.getMod().*;
             new.getMod().updateParentRefs(@ptrCast(new));
 
-            try sema.resolveObjectFields(c, @ptrCast(new), object_t.decl.?);
+            try sema.resolveObjectLikeType(c, @ptrCast(new), object_t.decl.?);
             new_sym = @ptrCast(new);
         },
         .bool_t => {
@@ -1857,6 +1880,31 @@ pub fn resolveStructTypeId(c: *cy.Chunk, struct_t: *cy.sym.ObjectType, opt_type:
         }},
         .info = .{},
     };
+}
+
+pub fn resolveObjectLikeType(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Node) !void {
+    try resolveObjectFields(c, object_like, decl);
+    if (object_like.type == .object_t) {
+        const object_t = object_like.cast(.object_t);
+        const object_decl = decl.cast(.objectDecl);
+
+        const impls = try c.alloc.alloc(cy.sym.Impl, object_decl.impl_withs.len);
+        errdefer c.alloc.free(impls);
+
+        for (object_decl.impl_withs, 0..) |with, i| {
+            const trait_t = try resolveTypeSpecNode(c, with.trait);
+            const trait_sym = c.sema.getTypeSym(trait_t);
+            if (trait_sym.type != .trait_t) {
+                return c.reportErrorFmt("Expected `{}` to be trait type. Found {}.", &.{v(trait_sym.name()), v(trait_sym.type)}, @ptrCast(with.trait));
+            }
+            impls[i] = .{
+                .trait = trait_sym.cast(.trait_t),
+                .funcs = &.{},
+            };
+        }
+        object_t.impls_ptr = impls.ptr;
+        object_t.impls_len = @intCast(impls.len);
+    }
 }
 
 /// Explicit `decl` node for distinct type declarations. Must belong to `c`.
@@ -1956,6 +2004,9 @@ pub fn resolveFunc(c: *cy.Chunk, func: *cy.Func) !void {
                 try sema.resolveUserFunc(c, func);
             }
         },
+        .trait => {
+            try sema.resolveImplicitTraitMethod(c, func);
+        },
         .userLambda => {},
     }
 }
@@ -2025,6 +2076,21 @@ pub fn reserveUserFunc2(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *
 
 pub fn resolveUserFunc(c: *cy.Chunk, func: *cy.Func) !void {
     const func_sig = try resolveFuncSig(c, func);
+    try c.resolveUserFunc(func, func_sig);
+}
+
+pub fn reserveImplicitTraitMethod(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.FuncDecl, vtable_idx: usize, is_variant: bool) !*cy.Func {
+    const decl_path = try ensureDeclNamePath(c, parent, decl.name);
+    if (decl.stmts.len > 0) {
+        return c.reportErrorFmt("Trait methods should not have a body.", &.{}, @ptrCast(decl));
+    }
+    const func = try c.reserveTraitFunc(decl_path.parent, decl_path.name.base_name, decl, vtable_idx, is_variant);
+    func.is_implicit_method = true;
+    return func;
+}
+
+pub fn resolveImplicitTraitMethod(c: *cy.Chunk, func: *cy.Func) !void {
+    const func_sig = try resolveImplicitMethodSig(c, func);
     try c.resolveUserFunc(func, func_sig);
 }
 
@@ -4232,20 +4298,39 @@ pub const ChunkExt = struct {
     pub fn semaCallFuncSymRec(c: *cy.Chunk, loc: u32, sym: *cy.sym.FuncSym, rec: *ast.Node, rec_res: ExprResult,
         args: []*ast.Node, ret_cstr: ReturnCstr, node: *ast.Node) !ExprResult {
 
-        var matcher = try FuncMatcher.init(c, sym, args.len + 1, ret_cstr);
-        defer matcher.deinit(c);
+        if (sym.first.type == .trait) {
+            var matcher = try FuncMatcher.init(c, sym, args.len + 1, ret_cstr);
 
-        // Receiver.
-        try matcher.matchArg(c, rec, 0, rec_res);
+            // Trait function will always match first argument.
 
-        for (args, 1..) |arg, i| {
-            const arg_res = try c.semaExprTarget(arg, matcher.getArgTypeHint(i));
-            try matcher.matchArg(c, arg, i, arg_res);
+            for (args, 1..) |arg, i| {
+                const arg_res = try c.semaExprTarget(arg, matcher.getArgTypeHint(i));
+                try matcher.matchArg(c, arg, i, arg_res);
+            }
+            try matcher.matchEnd(c, node);
+
+            const func = matcher.func;
+            c.ir.setExprCode(loc, .pre_call_trait);
+            c.ir.setExprType2(loc, .{ .id = @intCast(func.retType), .throws = func.throws });
+
+            c.ir.setExprData(loc, .pre_call_trait, .{ .call_trait = .{
+                .trait = rec_res.irIdx, .vtable_idx = @intCast(func.data.trait.vtable_idx),
+                .nargs = @as(u8, @intCast(matcher.nargs)), .args = matcher.args_loc,
+            }});
+            return ExprResult.init(loc, CompactType.init(func.retType));
+        } else {
+            var matcher = try FuncMatcher.init(c, sym, args.len + 1, ret_cstr);
+            defer matcher.deinit(c);
+
+            try matcher.matchArg(c, rec, 0, rec_res);
+
+            for (args, 1..) |arg, i| {
+                const arg_res = try c.semaExprTarget(arg, matcher.getArgTypeHint(i));
+                try matcher.matchArg(c, arg, i, arg_res);
+            }
+            try matcher.matchEnd(c, node);
+            return c.semaCallFuncSymResult(loc, &matcher, node);
         }
-
-        try matcher.matchEnd(c, node);
-
-        return c.semaCallFuncSymResult(loc, &matcher, node);
     }
 
     pub fn semaCallFuncSymRecArgs(c: *cy.Chunk, sym: *cy.sym.FuncSym,
@@ -4473,6 +4558,20 @@ pub const ChunkExt = struct {
                         .expr = res.irIdx,
                     });
                     return newRes;
+                }
+                if (type_e.kind == .trait) {
+                    const res_type_e = c.sema.types.items[res.type.id];
+                    if (res_type_e.kind == .object) {
+                        const object_t = res_type_e.sym.cast(.object_t);
+                        if (object_t.implements(type_e.sym.cast(.trait_t))) {
+                            const loc = try c.ir.pushExpr(.trait, c.alloc, expr.target_t, expr.node, .{
+                                .expr = res.irIdx,
+                                .expr_t = res.type.id,
+                                .trait_t = expr.target_t,
+                            });
+                            return ExprResult.initStatic(loc, expr.target_t);
+                        }
+                    }
                 }
             }
 

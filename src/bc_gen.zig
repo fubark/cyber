@@ -20,6 +20,11 @@ const Chunk = cy.chunk.Chunk;
 
 const gen = @This();
 
+pub const VtableKey = packed struct {
+    type: cy.TypeId,
+    trait: cy.TypeId,
+};
+
 pub fn genAll(c: *cy.Compiler) !void {
     // Constants.
     c.vm.emptyString = try c.buf.getOrPushStaticAstring("");
@@ -50,6 +55,7 @@ pub fn genAll(c: *cy.Compiler) !void {
                     try c.vm.addFieldSym(@intCast(typeId), fieldSymId, @intCast(i), field.type);
                 }
             },
+            .trait_t,
             .int_t,
             .float_t,
             .bool_t,
@@ -80,43 +86,62 @@ pub fn genAll(c: *cy.Compiler) !void {
     // since they depend on overloaded func entries.
     for (c.newChunks()) |chunk| {
         for (chunk.syms.items) |sym| {
-            if (sym.type == .func) {
-                const func_sym = sym.cast(.func);
-                if (func_sym.numFuncs > 1) {
-                    // Add overload entries.
-                    const rt_id = c.vm.overloaded_funcs.len;
-                    try c.vm.overloaded_funcs.append(c.alloc, func_sym.numFuncs);
-                    var cur: ?*cy.Func = func_sym.first;
-                    var has_method = false;
-                    while (cur != null) {
-                        if (cur.?.isMethod) {
-                            has_method = true;
+            switch (sym.type) {
+                .object_t => {
+                    // rt funcs have been reserved. Create impl vtables.
+                    const object_t = sym.cast(.object_t);
+                    for (object_t.impls()) |impl| {
+                        const vtable = try c.alloc.alloc(u32, impl.funcs.len);
+                        for (impl.funcs, 0..) |func, i| {
+                            vtable[i] = c.genSymMap.get(func).?.func.id;
                         }
-                        if (c.genSymMap.get(@ptrCast(cur))) |gen_sym| {
-                            try c.vm.overloaded_funcs.append(c.alloc, gen_sym.func.id);
-                        } else {
-                            return error.MissingFuncSym;
-                        }
-                        cur = cur.?.next;
+                        const vtable_idx = c.vm.vtables.len;
+                        try c.vm.vtables.append(c.alloc, vtable);
+                        try c.gen_vtables.put(c.alloc, VtableKey{ .type = object_t.type, .trait = impl.trait.type }, @intCast(vtable_idx));
                     }
-                    try c.genSymMap.putNoClobber(c.alloc, sym, .{ .funcs = .{ .id = @intCast(rt_id) }});
-                    if (has_method) {
+                },
+                .func => {
+                    const func_sym = sym.cast(.func);
+                    if (func_sym.first.type == .trait) {
+                        continue;
+                    }
+                    if (func_sym.numFuncs > 1) {
+                        // Add overload entries.
+                        const rt_id = c.vm.overloaded_funcs.len;
+                        try c.vm.overloaded_funcs.append(c.alloc, func_sym.numFuncs);
+                        var cur: ?*cy.Func = func_sym.first;
+                        var has_method = false;
+                        while (cur != null) {
+                            if (cur.?.isMethod) {
+                                has_method = true;
+                            }
+                            if (c.genSymMap.get(@ptrCast(cur))) |gen_sym| {
+                                try c.vm.overloaded_funcs.append(c.alloc, gen_sym.func.id);
+                            } else {
+                                return error.MissingFuncSym;
+                            }
+                            cur = cur.?.next;
+                        }
+                        try c.genSymMap.putNoClobber(c.alloc, sym, .{ .funcs = .{ .id = @intCast(rt_id) }});
+                        if (has_method) {
+                            const func = func_sym.first;
+                            const parentT = func.sym.?.head.parent.?.getStaticType().?;
+                            const name = func.name();
+                            const method = try c.vm.ensureMethod(name);
+                            try c.vm.addMethod(parentT, method, @intCast(rt_id), true);
+                        }
+                    } else {
                         const func = func_sym.first;
-                        const parentT = func.sym.?.head.parent.?.getStaticType().?;
-                        const name = func.name();
-                        const method = try c.vm.ensureMethod(name);
-                        try c.vm.addMethod(parentT, method, @intCast(rt_id), true);
+                        if (func.isMethod) {
+                            const parentT = func.sym.?.head.parent.?.getStaticType().?;
+                            const name = func.name();
+                            const method = try c.vm.ensureMethod(name);
+                            const func_id = c.genSymMap.get(func).?.func.id;
+                            try c.vm.addMethod(parentT, method, func_id, false);
+                        }
                     }
-                } else {
-                    const func = func_sym.first;
-                    if (func.isMethod) {
-                        const parentT = func.sym.?.head.parent.?.getStaticType().?;
-                        const name = func.name();
-                        const method = try c.vm.ensureMethod(name);
-                        const func_id = c.genSymMap.get(func).?.func.id;
-                        try c.vm.addMethod(parentT, method, func_id, false);
-                    }
-                }
+                },
+                else => {},
             }
         }
     }
@@ -194,6 +219,7 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
         .field,
         .struct_t,
         .object_t,
+        .trait_t,
         .func,
         .typeAlias,
         .distinct_t,
@@ -210,25 +236,30 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
 }
 
 fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
-    if (func.type == .userLambda) {
-        return;
-    }
-    if (cy.Trace) {
-        const symPath = try cy.sym.allocSymName(&c.sema, c.alloc, @ptrCast(func.sym.?), .{});
-        defer c.alloc.free(symPath);
-        log.tracev("prep func: {s}", .{symPath});
-    }
-    if (func.type == .hostFunc) {
-        const funcSig = c.sema.getFuncSig(func.funcSigId);
-        const rtFunc = rt.FuncSymbol.initHostFunc(@ptrCast(func.data.hostFunc.ptr), funcSig.reqCallTypeCheck, func.isMethod, funcSig.numParams(), func.funcSigId);
-        _ = try addVmFunc(c, func, rtFunc);
-    } else if (func.type == .userFunc) {
-        _ = try addVmFunc(c, func, rt.FuncSymbol.initNull());
-        // Func is patched later once funcPc and stackSize is obtained.
-        // Method entry is also added later.
-    } else {
-        log.tracev("{}", .{func.type});
-        return error.Unsupported;
+    switch (func.type) {
+        .trait,
+        .userLambda => return,
+
+        .hostFunc => {
+            if (cy.Trace) {
+                const symPath = try cy.sym.allocSymName(&c.sema, c.alloc, @ptrCast(func.sym.?), .{});
+                defer c.alloc.free(symPath);
+                log.tracev("prep func: {s}", .{symPath});
+            }
+            const funcSig = c.sema.getFuncSig(func.funcSigId);
+            const rtFunc = rt.FuncSymbol.initHostFunc(@ptrCast(func.data.hostFunc.ptr), funcSig.reqCallTypeCheck, func.isMethod, funcSig.numParams(), func.funcSigId);
+            _ = try addVmFunc(c, func, rtFunc);
+        },
+        .userFunc => {
+            if (cy.Trace) {
+                const symPath = try cy.sym.allocSymName(&c.sema, c.alloc, @ptrCast(func.sym.?), .{});
+                defer c.alloc.free(symPath);
+                log.tracev("prep func: {s}", .{symPath});
+            }
+            _ = try addVmFunc(c, func, rt.FuncSymbol.initNull());
+            // Func is patched later once funcPc and stackSize is obtained.
+            // Method entry is also added later.
+        },
     }
 }
 
@@ -413,6 +444,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .preCallDyn         => genCallDyn(c, idx, cstr, node),
         .preCallFuncSym     => genCallFuncSym(c, idx, cstr, node),
         .pre_call_sym_dyn   => genCallSymDyn(c, idx, cstr, node),
+        .pre_call_trait     => genCallTrait(c, idx, cstr, node),
         .preCallObjSym      => genCallObjSym(c, idx, cstr, node),
         .preUnOp            => genUnOp(c, idx, cstr, node),
         .range              => genRange(c, idx, cstr, node),
@@ -424,6 +456,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .type_check         => genTypeCheck(c, idx, cstr, node),
         .typeCheckOption    => genTypeCheckOption(c, idx, cstr, node),
         .throw              => genThrow(c, idx, node),
+        .trait              => genTrait(c, idx, cstr, node),
         .truev              => genTrue(c, cstr, node),
         .tryExpr            => genTryExpr(c, idx, cstr, node),
         .typeSym            => genTypeSym(c, idx, cstr, node),
@@ -1238,6 +1271,45 @@ fn genCallObjSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     return endCall(c, inst, true);
 }
 
+fn genCallTrait(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
+    const data = c.ir.getExprData(idx, .pre_call_trait).call_trait;
+    const inst = try beginCall(c, cstr, true, node);
+
+    // Trait ref.
+    const argStart = c.rega.nextTemp;
+    var temp = try c.rega.consumeNextTemp();
+    const traitv = try genExpr(c, data.trait, Cstr.toTemp(temp));
+    try pushUnwindValue(c, traitv);
+    try c.genValueStack.append(c.alloc, traitv);
+
+    // Reserve slot for unwrapped impl.
+    const impl_slot = try c.rega.consumeNextTemp();
+
+    // Args. Skip impl placeholder.
+    const args = c.ir.getArray(data.args, u32, data.nargs)[1..];
+    for (args, 2..) |argIdx, i| {
+        temp = try c.rega.consumeNextTemp();
+        if (cy.Trace and temp != argStart + i) return error.Unexpected;
+        const val = try genAndPushExpr(c, argIdx, Cstr.toTemp(temp));
+        try pushUnwindValue(c, val);
+    }
+
+    const start = c.buf.ops.items.len;
+    try c.pushFCode(.call_trait, &.{inst.ret, data.nargs, 1, 0, 0, 0, 0, 0, 0, 0, 0 }, node);
+    c.buf.setOpArgU16(start + 4, @intCast(data.vtable_idx));
+
+    const vals = popValues(c, args.len);
+    const retained = try popTempAndUnwinds2(c, vals);
+    try pushReleaseVals(c, retained, node);
+
+    try popTemp(c, impl_slot);
+    try popTempAndUnwind(c, traitv);
+    try releaseTempValue(c, traitv, node);
+    _ = popValues(c, 1);
+
+    return endCall(c, inst, true);
+}
+
 fn genCallFuncSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     const data = c.ir.getExprData(idx, .preCallFuncSym).callFuncSym;
 
@@ -1416,6 +1488,25 @@ fn genBinOp(c: *Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, node: *ast.No
     try releaseCond2(c, retainedLeft, leftv.reg, retainedRight, rightv.reg, node);
 
     return finishDstInst(c, inst, retained);
+}
+
+fn genTrait(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
+    const data = c.ir.getExprData(idx, .trait);
+
+    const inst = try c.rega.selectForDstInst(cstr, true, node);
+    const exprv = try genExpr(c, data.expr, Cstr.simpleRetain);
+    try pushUnwindValue(c, exprv);
+
+    const key = VtableKey{ .type = data.expr_t, .trait = data.trait_t };
+    const vtable_idx = c.compiler.gen_vtables.get(key).?;
+
+    const pc = c.buf.len();
+    try c.pushFCode(.trait, &.{ exprv.reg, 0, 0, 0, 0, inst.dst }, node);
+    c.buf.setOpArgU16(pc + 2, @intCast(data.trait_t));
+    c.buf.setOpArgU16(pc + 4, @intCast(vtable_idx));
+
+    try popTempAndUnwind(c, exprv);
+    return finishDstInst(c, inst, true);
 }
 
 fn genBox(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
@@ -3463,7 +3554,7 @@ fn popUnwindValue(c: *cy.Chunk, val: GenValue) !bool {
     return false;
 }
 
-pub fn popValues(c: *Chunk, n: u32) []GenValue {
+pub fn popValues(c: *Chunk, n: usize) []GenValue {
     const vals = c.genValueStack.items[c.genValueStack.items.len-n..];
     c.genValueStack.items.len = c.genValueStack.items.len-n;
     return vals;

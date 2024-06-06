@@ -122,6 +122,7 @@ pub const ExprCode = enum(u8) {
     preCallObjSym,
     preCallFuncSym,
     pre_call_sym_dyn,
+    pre_call_trait,
 
     andOp,
     orOp,
@@ -137,6 +138,7 @@ pub const ExprCode = enum(u8) {
     unwrap_or,
     box,
     range,
+    trait,
 };
 
 pub const ExprType = packed struct {
@@ -160,6 +162,12 @@ pub const Range = struct {
     start: cy.Nullable(Loc),
     end: cy.Nullable(Loc),
     inc: bool,
+};
+
+pub const Trait = struct {
+    expr: Loc,
+    expr_t: cy.TypeId,
+    trait_t: cy.TypeId,
 };
 
 pub const Box = struct {
@@ -417,6 +425,7 @@ pub const Prepare = union {
     call_sym_dyn: CallSymDyn,
     callFuncSym: CallFuncSym,
     callObjSym: CallObjSym,
+    call_trait: CallTrait,
 
     pub fn initCall(numArgs: u8) Prepare {
         return .{
@@ -507,6 +516,13 @@ pub const CallSymDyn = struct {
     sym: *cy.sym.FuncSym,
     nargs: u8,
     args: Loc,
+};
+
+pub const CallTrait = struct {
+    trait: Loc,
+    args: Loc,
+    nargs: u8,
+    vtable_idx: u8,
 };
 
 pub const CallDyn = struct {
@@ -636,6 +652,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .else_block => ElseBlock,
         .preCallDyn,
         .preCallFuncSym,
+        .pre_call_trait,
         .pre_call_sym_dyn,
         .preCallObjSym,
         .preBinOp,
@@ -673,6 +690,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .box => Box,
         .range => Range,
         .await_expr => Await,
+        .trait => Trait,
         else => void,
     };
 }

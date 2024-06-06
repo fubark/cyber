@@ -53,6 +53,7 @@ pub const NodeType = enum(u7) {
     if_expr,
     if_stmt,
     if_unwrap_stmt,
+    impl_with,
     import_stmt,
     keyValue,
     label_decl,
@@ -87,6 +88,7 @@ pub const NodeType = enum(u7) {
     symbol_lit,
     table_decl,
     throwExpr,
+    trait_decl,
     trueLit,
     tryExpr,
     tryStmt,
@@ -397,10 +399,23 @@ pub const TableDecl = struct {
     pos: u32,
 };
 
+pub const TraitDecl = struct {
+    name: *Node align(8),
+    attrs: []*Attribute,
+    funcs: []*FuncDecl,
+    pos: u32,
+};
+
+pub const ImplWith = struct {
+    trait: *Node align(8),
+    pos: u32,
+};
+
 pub const ObjectDecl = struct {
     /// If unnamed, this points to the *Sym.
     name: ?*Node align(8),
     attrs: []*Attribute,
+    impl_withs: []*ImplWith,
     fields: []*Field,
     funcs: []*FuncDecl,
     unnamed: bool,
@@ -566,6 +581,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .if_expr        => IfExpr,
         .if_stmt        => IfStmt,
         .if_unwrap_stmt => IfUnwrapStmt,
+        .impl_with      => ImplWith,
         .import_stmt    => ImportStmt,
         .keyValue       => KeyValue,
         .label_decl     => void,
@@ -600,6 +616,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .symbol_lit     => Span,
         .table_decl     => TableDecl,
         .throwExpr      => ThrowExpr,
+        .trait_decl     => TraitDecl,
         .trueLit        => Token,
         .tryExpr        => TryExpr,
         .tryStmt        => TryStmt,
@@ -695,6 +712,7 @@ pub const Node = struct {
             .if_expr        => self.cast(.if_expr).pos,
             .if_stmt        => self.cast(.if_stmt).pos,
             .if_unwrap_stmt => self.cast(.if_unwrap_stmt).pos,
+            .impl_with      => self.cast(.impl_with).pos,
             .keyValue       => self.cast(.keyValue).key.pos(),
             .import_stmt    => self.cast(.import_stmt).pos,
             .label_decl     => cy.NullId,
@@ -730,6 +748,7 @@ pub const Node = struct {
             .table_decl     => self.cast(.table_decl).pos,
             .template       => self.cast(.template).decl.pos(),
             .throwExpr      => self.cast(.throwExpr).pos,
+            .trait_decl     => self.cast(.trait_decl).pos,
             .trueLit        => self.cast(.trueLit).pos,
             .tryExpr        => self.cast(.tryExpr).pos,
             .tryStmt        => self.cast(.tryStmt).pos,
@@ -812,7 +831,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 91);
+    try t.eq(std.enums.values(NodeType).len, 93);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 
@@ -972,6 +991,10 @@ pub const AstView = struct {
             .custom_decl => {
                 const custom_decl = n.cast(.custom_decl);
                 return self.nodeString(custom_decl.name);
+            },
+            .trait_decl => {
+                const trait_decl = n.cast(.trait_decl);
+                return self.nodeString(trait_decl.name);
             },
             .distinct_decl => {
                 const distinct_decl = n.cast(.distinct_decl);

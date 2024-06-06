@@ -362,6 +362,7 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
         .structDecl,
         .passStmt,
         .staticDecl,
+        .context_decl,
         .typeAliasDecl,
         .distinct_decl,
         .template,
@@ -2168,6 +2169,16 @@ pub fn funcDecl2(c: *cy.Chunk, func: *cy.Func) !void {
     func.emitted = true;
 }
 
+pub fn reserveContextVar(c: *cy.Chunk, decl: *ast.ContextDecl) !*cy.sym.ContextVar {
+    const name = c.ast.nodeString(decl.name);
+    if (decl.right) |_| {
+        return error.TODO;
+    }
+
+    // No initializer, redeclaration.
+    return c.reserveContextVar(@ptrCast(c.sym), name, decl);
+}
+
 pub fn reserveVar(c: *cy.Chunk, decl: *ast.StaticVarDecl) !*Sym {
     const decl_path = try ensureDeclNamePath(c, @ptrCast(c.sym), decl.name);
     if (decl.right == null) {
@@ -2181,6 +2192,31 @@ pub fn reserveVar(c: *cy.Chunk, decl: *ast.StaticVarDecl) !*Sym {
     } else {
         return @ptrCast(try c.reserveUserVar(decl_path.parent, decl_path.name.base_name, decl));
     }
+}
+
+pub fn resolveContextVar(c: *cy.Chunk, sym: *cy.sym.ContextVar) !void {
+    if (sym.isResolved()) {
+        return;
+    }
+    if (sym.decl.right != null) {
+        return error.TODO;
+    }
+
+    const name = sym.head.name();
+    const exp_var = c.compiler.context_vars.get(name) orelse {
+        return c.reportErrorFmt("Context variable `{}` does not exist.", &.{v(sym.head.name())}, @ptrCast(sym.decl.name));
+    };
+
+    const type_id = try resolveTypeSpecNode(c, sym.decl.type);
+    if (exp_var.type != type_id) {
+        const exp_type_name = c.sema.getTypeBaseName(exp_var.type);
+        const act_type_name = c.sema.getTypeBaseName(type_id);
+        const node = if (sym.decl.right != null) sym.decl.right.? else sym.decl.type.?;
+        return c.reportErrorFmt("Expected type `{}` for context variable `{}`, found `{}`.", &.{
+            v(exp_type_name), v(name), v(act_type_name),
+        }, node);
+    }
+    c.resolveContextVar(sym, exp_var.type, exp_var.idx);
 }
 
 pub fn resolveUserVar(c: *cy.Chunk, sym: *cy.sym.UserVar) !void {
@@ -2693,6 +2729,10 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, node: *ast.Node, symAsValue: bool) !ExprR
         };
         const ctype = CompactType.init(typeId);
         switch (sym.type) {
+            .context_var => {
+                const loc = try c.ir.pushExpr(.context, c.alloc, typeId, node, .{ .sym = @ptrCast(sym) });
+                return ExprResult.init(loc, ctype);
+            },
             .userVar,
             .hostVar => {
                 const loc = try c.ir.pushExpr(.varSym, c.alloc, typeId, node, .{ .sym = sym });

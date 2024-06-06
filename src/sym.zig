@@ -13,6 +13,7 @@ const ast = cy.ast;
 
 pub const SymType = enum(u8) {
     null,
+    context_var,
     userVar,
     hostVar,
     func,
@@ -175,6 +176,9 @@ pub const Sym = extern struct {
             .func => {
                 alloc.destroy(self.cast(.func));
             },
+            .context_var => {
+                alloc.destroy(self.cast(.context_var));
+            },
             .userVar => {
                 alloc.destroy(self.cast(.userVar));
             },
@@ -237,6 +241,7 @@ pub const Sym = extern struct {
                 return true;
             },
             .null,
+            .context_var,
             .userVar,
             .hostVar,
             .module_alias,
@@ -289,6 +294,7 @@ pub const Sym = extern struct {
             .module_alias,
             .enumMember,
             .func,
+            .context_var,
             .userVar,
             .field,
             .hostVar => {
@@ -317,6 +323,7 @@ pub const Sym = extern struct {
 
     pub fn getValueType(self: *Sym) !?cy.TypeId {
         switch (self.type) {
+            .context_var => return self.cast(.context_var).type,
             .userVar    => return self.cast(.userVar).type,
             .hostVar    => return self.cast(.hostVar).type,
             .enumMember => {
@@ -375,6 +382,7 @@ pub const Sym = extern struct {
             .module_alias,
             .distinct_t,
             .chunk,
+            .context_var,
             .hostVar,
             .userVar         => return null,
         }
@@ -404,6 +412,7 @@ pub const Sym = extern struct {
             .module_alias,
             .distinct_t,
             .chunk,
+            .context_var,
             .hostVar,
             .userVar         => return null,
         }
@@ -461,6 +470,7 @@ fn getFuncType(func: *Func) cy.TypeId {
 fn SymChild(comptime symT: SymType) type {
     return switch (symT) {
         .func => FuncSym,
+        .context_var => ContextVar,
         .userVar => UserVar,
         .hostVar => HostVar,
         .struct_t,
@@ -501,6 +511,17 @@ pub const HostVar = extern struct {
 
     // Index into `retainedVars`.
     retainedIdx: u16,
+};
+
+pub const ContextVar = extern struct {
+    head: Sym,
+    decl: *ast.ContextDecl,
+    type: cy.TypeId,
+    idx: u8,
+
+    pub fn isResolved(self: *ContextVar) bool {
+        return self.type != cy.NullId;
+    }
 };
 
 pub const UserVar = extern struct {
@@ -1150,6 +1171,17 @@ pub const ChunkExt = struct {
             .payloadType = payloadType,
             .is_choice_type = is_choice_type,
         });
+        return sym;
+    }
+
+    pub fn createContextVar(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: *ast.ContextDecl) !*ContextVar {
+        const sym = try createSym(c.alloc, .context_var, .{
+            .head = Sym.init(.context_var, parent, name),
+            .decl = decl,
+            .type = cy.NullId,
+            .idx = cy.NullU8,
+        });
+        try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }
 

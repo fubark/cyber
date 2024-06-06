@@ -59,6 +59,9 @@ pub const Compiler = struct {
     /// Resolved URI to chunk.
     chunk_map: std.StringHashMapUnmanaged(*cy.Chunk),
 
+    /// Context vars.
+    context_vars: std.StringHashMapUnmanaged(ContextVar),
+
     /// Key is either a *Sym or *Func.
     genSymMap: std.AutoHashMapUnmanaged(*anyopaque, bcgen.Sym),
 
@@ -121,6 +124,7 @@ pub const Compiler = struct {
             .cont = false,
             .chunk_start = 0,
             .type_start = 0,
+            .context_vars = .{},
         };
         try self.reinitPerRun();    
     }
@@ -173,12 +177,14 @@ pub const Compiler = struct {
             self.genSymMap.clearRetainingCapacity();
             self.gen_vtables.clearRetainingCapacity();
             self.import_tasks.clearRetainingCapacity();
+            self.context_vars.clearRetainingCapacity();
         } else {
             self.chunks.deinit(self.alloc);
             self.chunk_map.deinit(self.alloc);
             self.genSymMap.deinit(self.alloc);
             self.gen_vtables.deinit(self.alloc);
             self.import_tasks.deinit(self.alloc);
+            self.context_vars.deinit(self.alloc);
         }
 
         // Chunks depends on modules.
@@ -242,6 +248,10 @@ pub const Compiler = struct {
         if (!self.cont) {
             try reserveCoreTypes(self);
             try loadCtBuiltins(self);
+            try self.context_vars.put(self.alloc, "test_int", .{
+                .type = bt.Integer,
+                .idx = 0,
+            });
         }
 
         // TODO: Types and symbols should be loaded recursively for single-threaded.
@@ -885,6 +895,9 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                             chunk.hasStaticInit = true;
                         }
                     },
+                    .context_decl => {
+                        _ = try sema.reserveContextVar(chunk, node.cast(.context_decl));
+                    },
                     .funcDecl => {
                         const decl = node.cast(.funcDecl);
                         if (decl.stmts.len == 0) {
@@ -1048,6 +1061,9 @@ fn resolveSyms(self: *Compiler) !void {
             const sym = chunk.syms.items[i];
             log.tracev("resolve: {s}", .{sym.name()});
             switch (sym.type) {
+                .context_var => {
+                    try sema.resolveContextVar(chunk, @ptrCast(sym));
+                },
                 .userVar => {
                     try sema.resolveUserVar(chunk, @ptrCast(sym));
                 },
@@ -1254,6 +1270,11 @@ pub fn resolveModuleUri(self: *cy.Compiler, buf: []u8, uri: []const u8) ![]const
     }
     return r_uri[0..r_uri_len];
 }
+
+const ContextVar = struct {
+    type: cy.TypeId,
+    idx: u8,
+};
 
 test "vm compiler internals." {
 }

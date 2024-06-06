@@ -60,6 +60,11 @@ const VMC = extern struct {
     varSyms_cap: usize,
     varSyms_len: usize,
 
+    /// Context vars.
+    context_vars: [*]rt.ContextVar,
+    context_vars_cap: usize,
+    context_vars_len: usize,
+
     tryStack: [*]vmc.TryFrame,
     tryStack_cap: usize,
     tryStack_len: usize,
@@ -82,6 +87,10 @@ const VMC = extern struct {
 
     pub fn getVarSyms(self: *VMC) *cy.List(rt.VarSym) {
         return @ptrCast(&self.varSyms);
+    }
+
+    pub fn getContextVars(self: *VMC) *cy.List(rt.ContextVar) {
+        return @ptrCast(&self.context_vars);
     }
 
     pub fn getFieldSyms(self: *VMC) *cy.List(rt.FieldSymbolMap) {
@@ -249,6 +258,9 @@ pub const VM = struct {
                 .varSyms = undefined,
                 .varSyms_cap = 0,
                 .varSyms_len = 0,
+                .context_vars = undefined,
+                .context_vars_cap = 0,
+                .context_vars_len = 0,
                 .fieldSyms = undefined,
                 .fieldSyms_cap = 0,
                 .fieldSyms_len = 0,
@@ -442,8 +454,10 @@ pub const VM = struct {
 
         if (reset) {
             self.c.getVarSyms().clearRetainingCapacity();
+            self.c.getContextVars().clearRetainingCapacity();
         } else {
             self.c.getVarSyms().deinit(self.alloc);
+            self.c.getContextVars().deinit(self.alloc);
         }
 
         if (reset) {
@@ -1832,6 +1846,7 @@ test "vm internals." {
     try t.eq(@offsetOf(VMC, "consts"), @offsetOf(vmc.VMC, "constPtr"));
     try t.eq(@offsetOf(VMC, "tryStack"), @offsetOf(vmc.VMC, "tryStack"));
     try t.eq(@offsetOf(VMC, "varSyms"), @offsetOf(vmc.VMC, "varSyms"));
+    try t.eq(@offsetOf(VMC, "context_vars"), @offsetOf(vmc.VMC, "context_vars"));
     try t.eq(@offsetOf(VMC, "fieldSyms"), @offsetOf(vmc.VMC, "fieldSyms"));
     try t.eq(@offsetOf(VMC, "curFiber"), @offsetOf(vmc.VMC, "curFiber"));
     try t.eq(@offsetOf(VMC, "mainFiber"), @offsetOf(vmc.VMC, "mainFiber"));

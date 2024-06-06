@@ -351,6 +351,7 @@ typedef enum {
     CodeStaticFunc,
     CodeStaticVar,
     CodeSetStaticVar,
+    CodeContext,
     CodeMetatype,
     CodeEnd,
     NumCodes,
@@ -777,6 +778,10 @@ typedef struct StaticVar {
     Value value;
 } StaticVar;
 
+typedef struct ContextVar {
+    Value value;
+} ContextVar;
+
 typedef struct EvalConfig {
     bool single_run;
     bool file_modules;
@@ -807,6 +812,8 @@ typedef struct VMC {
     ZCyList fieldSyms;
 
     ZCyList varSyms; // StaticVar
+
+    ZCyList context_vars; // ContextVar
 
     ZCyList tryStack;
 

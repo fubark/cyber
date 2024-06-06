@@ -1907,6 +1907,9 @@ pub const Parser = struct {
             .var_k => {
                 return try self.parseVarDecl(.{ .attrs = &.{}, .typed = true, .hidden = false, .allow_static = config.allow_decls });
             },
+            .context_k => {
+                return @ptrCast(try self.parseContextDecl());
+            },
             .let_k => {
                 return try self.parseLetDecl(&.{}, false, config.allow_decls);
             },
@@ -3324,6 +3327,33 @@ pub const Parser = struct {
         });
     }
 
+    fn parseContextDecl(self: *Parser) !*ast.ContextDecl {
+        const start = self.next_pos;
+        // Assume `context` keyword.
+        self.advance();
+
+        // Var name.
+        const name = (try self.parseOptName()) orelse {
+            return self.reportError("Expected context name.", &.{});
+        };
+
+        if (self.peek().tag() == .equal) {
+            return error.TODO;
+        }
+
+        const type_spec = (try self.parseOptTypeSpec(false)) orelse {
+            return self.reportError("Expected context variable type.", &.{});
+        };
+        const decl = try self.ast.newNode(.context_decl, .{
+            .name = name,
+            .type = type_spec,
+            .right = null,
+            .pos = self.tokenSrcPos(start),
+        });
+        try self.staticDecls.append(self.alloc, @ptrCast(decl));
+        return decl;
+    }
+
     const VarDeclConfig = struct {
         attrs: []*ast.Attribute,
         hidden: bool,
@@ -3637,7 +3667,7 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .null,
         .as_k, .at, .await_k,
         .bang, .bin, .break_k,
-        .minus_right_angle, .case_k, .catch_k, .coinit_k, .colon, .comma, .continue_k, .coresume_k, .coyield_k,
+        .minus_right_angle, .case_k, .catch_k, .coinit_k, .colon, .comma, .context_k, .continue_k, .coresume_k, .coyield_k,
         .dec, .dot, .dot_question, .dot_dot,
         .else_k, .enum_k, .err, .error_k, .equal, .equal_right_angle,
         .false_k, .float, .for_k, .func_k,

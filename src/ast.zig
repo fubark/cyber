@@ -28,6 +28,7 @@ pub const NodeType = enum(u7) {
     coinit,
     comptimeExpr,
     comptimeStmt,
+    context_decl,
     continueStmt,
     coresume,
     coyield,
@@ -442,6 +443,13 @@ pub const VarDecl = struct {
     pos: u32
 };
 
+pub const ContextDecl = struct {
+    name: *Node align(8),
+    type: ?*Node,
+    right: ?*Node,
+    pos: u32
+};
+
 pub const EnumMember = struct {
     name: *Node align(8),
     typeSpec: ?*Node,
@@ -556,6 +564,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .coinit         => Coinit,
         .comptimeExpr   => ComptimeExpr,
         .comptimeStmt   => ComptimeStmt,
+        .context_decl   => ContextDecl,
         .continueStmt   => Token,
         .coresume       => Coresume,
         .coyield        => Token,
@@ -687,6 +696,7 @@ pub const Node = struct {
             .coinit         => self.cast(.coinit).pos,
             .comptimeExpr   => self.cast(.comptimeExpr).child.pos()-1,
             .comptimeStmt   => self.cast(.comptimeStmt).pos,
+            .context_decl   => self.cast(.context_decl).pos,
             .continueStmt   => self.cast(.continueStmt).pos,
             .coresume       => self.cast(.coresume).pos,
             .coyield        => self.cast(.coyield).pos,
@@ -831,7 +841,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 93);
+    try t.eq(std.enums.values(NodeType).len, 94);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 
@@ -1022,6 +1032,9 @@ pub const AstView = struct {
             },
             .staticDecl => {
                 return self.getNamePathInfo(n.cast(.staticDecl).name).name_path;
+            },
+            .context_decl => {
+                return self.nodeString(n.cast(.context_decl).name);
             },
             .typeAliasDecl => return self.nodeString(n.cast(.typeAliasDecl).name),
             .funcDecl => {

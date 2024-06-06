@@ -303,6 +303,8 @@ if (!aot) {
     run.case("core/tag_lit.cy");
 }
 
+    run.case("vars/context_var_redeclare_error.cy");
+    run.case("vars/context_var.cy");
     run.case("vars/local_assign_dyn_panic.cy");
     run.case("vars/local_assign_error.cy");
 if (!aot) {

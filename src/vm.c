@@ -709,6 +709,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(StaticFunc),
         JENTRY(StaticVar),
         JENTRY(SetStaticVar),
+        JENTRY(Context),
         JENTRY(Metatype),
         JENTRY(End),
     };
@@ -2082,6 +2083,14 @@ beginSwitch:
         ((StaticVar*)vm->c.varSyms.buf)[symId].value = stack[pc[3]];
         release(vm, prev);
         pc += 4;
+        NEXT();
+    }
+    CASE(Context): {
+        u8 idx = pc[1];
+        Value val = ((ContextVar*)vm->c.context_vars.buf)[idx].value;
+        retain(vm, val);
+        stack[pc[2]] = val;
+        pc += 3;
         NEXT();
     }
     CASE(Metatype): {

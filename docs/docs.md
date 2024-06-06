@@ -50,6 +50,8 @@ for worlds -> w:
   * [Explicit type constraint.](#explicit-type-constraint)
   * [Variable scopes.](#variable-scopes)
   * [Static variables.](#static-variables)
+  * [Context variables.](#context-variables)
+  * [`extern` variables.](#extern-variables)
   * [`use $global`](#use-global)
 * [Reserved identifiers.](#reserved-identifiers)
   * [Keywords.](#keywords)
@@ -177,6 +179,8 @@ func foo():
 ```
 
 ### Static variables.
+*Static variables will likely be removed in favor of [context variables](#context-variables), constants, and [`extern` variables](#extern-variables).*
+
 Static variables live until the end of the script.
 They act as global variables and are visible from anywhere in the script. 
 
@@ -244,6 +248,45 @@ var .myImage =:
 ```
 The final resulting value that is assigned to the static variable is provided by a `break` statement. If a `break` statement is not provided, `none` is assigned instead.
 
+### Context variables.
+Context variables are bound to each virtual thread and are accessible anywhere on the call stack.
+All fibers created in the same virtual thread reference the same context variables.
+
+Context variables used in the program must be declared in the main source file with a default value: *Planned Feature*
+```cy
+-- main.cy
+
+context MyInt = 123
+context MyString = 'abc'
+
+print MyInt        --> 123
+print MyString     --> abc
+```
+
+To reference a context variable in a different source file, redeclare it with the same type:
+```cy
+-- foo.cy
+
+context MyInt int
+
+func foo():
+    print MyInt    --> 123
+```
+Since this is a redeclaration, an assignment statement is not allowed.
+
+Some context variables such as `mem` for [memory allocations](#memory-allocations) are already declared in every program, so it only needs a redeclaration:
+```cy
+context mem Memory
+
+var a = mem.new(int)
+a.* = 123
+print a.*          --> 123
+mem.free(a)
+```
+
+### `extern` variables.
+> _Planned Feature_
+
 ### `use $global`
 When `use $global` is declared in the module, it allows the use of undeclared variables:
 ```cy
@@ -263,11 +306,11 @@ print a    --> panic: `a` is not defined in `$global`.
 ## Reserved identifiers.
 
 ### Keywords.
-There are `28` general keywords. This list categorizes them:
+There are `29` general keywords. This list categorizes them:
 
 - [Control Flow](#control-flow): `if` `else` `switch` `case` `while` `for` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not`
-- [Variables](#variables): `var`
+- [Variables](#variables): [`var`](#local-variables) [`context`](#context-variables)
 - [Functions](#functions): `func` `return`
 - [Coroutines](#fibers): `coinit` `coyield` `coresume`
 - [Async](#async): `await`
@@ -1675,6 +1718,7 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
 * [Function overloading.](#function-overloading)
 * [Lambdas.](#lambdas)
 * [Closures.](#closures)
+* [`extern` functions.](#extern-functions)
 * [Named parameters.](#named-parameters)
 * [Optional parameters.](#optional-parameters)
 * [Variadic parameters.](#variadic-parameters)
@@ -1796,6 +1840,9 @@ var a = 1
 func foo():
     print a       --> CompileError: Undeclared variable `a`.
 ```
+
+## `extern` functions.
+> _Planned Feature_
 
 ## Named parameters.
 > _Planned Feature_
@@ -2736,12 +2783,12 @@ var foo = func ():
     coyield
     count += 1
 
-var fiber = coinit(foo)
+var task = coinit(foo)
 
 print count          -- '0'
-coresume fiber
+coresume task
 print count          -- '1'
-coresume fiber
+coresume task
 print count          -- '2'
 ```
 A fiber does not start execution until `coresume` is invoked on it.
@@ -2755,8 +2802,8 @@ var count = 0
 var increment = func (inc):
     count += inc
 
-var fiber = coinit(increment, 5)
-coresume fiber
+var task = coinit(increment, 5)
+coresume task
 print count          -- '5'
 ```
 When the fiber is created, the arguments are saved inside the fiber's stack. Once the first `coresume` is invoked, the entry function is invoked with the saved arguments.
@@ -2779,7 +2826,7 @@ print(coresume task)    -- Prints "9"
 print(coresume task)    -- Prints "8"
 
 -- Reset back to the start with the `.init` state.
-fiber.reset()
+task.reset()
 print(coresume task)    -- Prints "10"
 ```
 
@@ -2791,12 +2838,12 @@ var task = coinit(fib, 10)
 
 -- Run task to completion.
 var res = 0
-while fiber.status() != .done:
+while task.status() != .done:
     res = coresume fiber
 print res
 
-fiber.reset()
-fiber.bindArgs(20)
+task.reset()
+task.bindArgs(20)
 
 -- Run task again with the new argument...
 ```
@@ -2806,15 +2853,15 @@ A fiber block is used to construct a fiber without an entry function. *Planned F
 ```cy
 var count = 0
 
-var fiber = coinit:
+var task = coinit:
     count += 1       -- `count is captured`
     coyield
     count += 1
 
 print count          -- '0'
-coresume fiber
+coresume task
 print count          -- '1'
-coresume fiber
+coresume task
 print count          -- '2'
 ```
 Referencing parent variables from the fiber block automatically captures them just like a function closure.
@@ -2831,16 +2878,16 @@ func bar():
     coyield
     print 'bar'
 
-var fiber = coinit(foo)
-coresume fiber
+var task = coinit(foo)
+coresume task
 ```
 `coresume` also returns the resulting value.
 ```cy
 func foo():
     return 123
 
-var fiber = coinit(foo)
-print(coresume fiber)    -- '123'
+var task = coinit(foo)
+print(coresume task)    -- '123'
 ```
 
 `coyield` can return a value back to `coresume`. *Planned Feature*
@@ -2852,12 +2899,12 @@ func foo():
     coyield
     print 'done'
 
-var fiber = coinit(foo)
-print fiber.status()   -- '.paused'
-coresume fiber
-print fiber.status()   -- '.paused'
-coresume fiber
-print fiber.status()   -- '.done'
+var task = coinit(foo)
+print task.status()   -- '.paused'
+coresume task
+print task.status()   -- '.paused'
+coresume task
+print task.status()   -- '.done'
 ```
 The main execution context is a fiber as well. Once the main fiber has finished, the VM is done and control is returned to the host.
 
@@ -3509,6 +3556,8 @@ void myNodeFinalizer(CLVM* vm, void* obj) {
 * [Heap.](#heap)
   * [Weak references.](#weak-references)
   * [Cycle detection.](#cycle-detection)
+* [Manual memory.](#manual-memory)
+  * [Memory allocations.](#memory-allocations)
 
 [^top](#table-of-contents)
 
@@ -3547,10 +3596,10 @@ When primitive variables are captured by a [closure](#closures), they are boxed 
 ## Heap.
 Many object types in Cyber are small enough to be at or under 40 bytes. To take advantage of this, Cyber can reserve object pools to quickly allocate and free these small objects with very little bookkeeping. Bigger objects are allocated and managed by `mimalloc` which has proven to be a fast and reliable general-purpose heap allocator.
 
-## Weak references.
+### Weak references.
 > _Planned Feature_
 
-## Cycle detection.
+### Cycle detection.
 The cycle detector is also considered a GC and frees abandoned objects managed by ARC. Although weak references can remove cycles altogether, Cyber does not force you to use them and provides a manual GC as a one-time catch all solution.
 > _Incomplete Feature: Only the main fiber stack is cleaned up at the moment._
 
@@ -3574,6 +3623,12 @@ var res = performGC()
 print res['numCycFreed']      -- Output: 2
 print res['numObjFreed']      -- Output: 2
 ```
+
+## Manual memory.
+> _Planned Feature_
+
+### Memory allocations.
+> _Planned Feature_
 
 # CLI.
 

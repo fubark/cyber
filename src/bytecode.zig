@@ -947,6 +947,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .ref,
         .setRef,
         .tag_lit,
+        .context,
         .symbol => {
             return 3;
         },
@@ -1232,6 +1233,8 @@ pub const OpCode = enum(u8) {
     /// [symId u16] [local]
     setStaticVar = vmc.CodeSetStaticVar,
 
+    context = vmc.CodeContext,
+
     /// Wraps a static function in a function value.
     /// [symId u16] [dstLocal]
     staticFunc = vmc.CodeStaticFunc,
@@ -1255,7 +1258,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 121);
+    try t.eq(std.enums.values(OpCode).len, 122);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

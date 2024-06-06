@@ -81,6 +81,11 @@ pub fn genAll(c: *cy.Compiler) !void {
         }
     }
 
+    if (!c.cont) {
+        // test_int.
+        try c.vm.c.getContextVars().append(c.alloc, .{ .value = cy.Value.initInt(123) });
+    }
+
     // After rt funcs are set up, prepare the overloaded func table.
     // Methods entries are also registered at this point
     // since they depend on overloaded func entries.
@@ -210,6 +215,7 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
             try c.vm.varSymExtras.append(c.alloc, sym);
             try c.genSymMap.putNoClobber(c.alloc, sym, .{ .varSym = .{ .id = @intCast(id) }});
         },
+        .context_var,
         .template,
         .custom_t,
         .bool_t,
@@ -423,6 +429,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .captured           => genCaptured(c, idx, cstr, node),
         .cast               => genCast(c, idx, cstr, node),
         .coinitCall         => genCoinitCall(c, idx, cstr, node),
+        .context            => genContext(c, idx, cstr, node),
         .coresume           => genCoresume(c, idx, cstr, node),
         .coyield            => genCoyield(c, idx, cstr, node),
         .enumMemberSym      => genEnumMemberSym(c, idx, cstr, node),
@@ -1642,6 +1649,20 @@ fn genEnumMemberSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValu
     try genConst(c, constIdx, inst.dst, false, null);
 
     return finishNoErrNoDepInst(c, inst, false);
+}
+
+fn genContext(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
+    const data = c.ir.getExprData(idx, .context);
+
+    const inst = try c.rega.selectForNoErrNoDepInst(cstr, true, node);
+    if (inst.requiresPreRelease) {
+        try pushRelease(c, inst.dst, node);
+    }
+
+    try c.pushOptionalDebugSym(node);       
+    try c.buf.pushOp2(.context, data.sym.idx, inst.dst);
+
+    return finishNoErrNoDepInst(c, inst, true);
 }
 
 fn genVarSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {

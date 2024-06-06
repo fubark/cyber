@@ -121,6 +121,10 @@ pub const FuncSymbol = extern struct {
     }
 };
 
+pub const ContextVar = struct {
+    value: cy.Value,
+};
+
 pub const VarSym = struct {
     value: cy.Value,
 

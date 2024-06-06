@@ -101,6 +101,7 @@ pub const ExprCode = enum(u8) {
     unOpEnd,
     funcSym,
     varSym,
+    context,
     typeSym,
     enumMemberSym,
     string,
@@ -480,6 +481,10 @@ pub const SetIndex = struct {
     right: Loc,
 };
 
+pub const Context = struct {
+    sym: *cy.sym.ContextVar,
+};
+
 pub const VarSym = struct {
     sym: *cy.Sym,
 };
@@ -659,6 +664,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .preUnOp,
         .pre => Prepare,
         .varSym => VarSym,
+        .context => Context,
         .enumMemberSym => EnumMemberSym,
         .funcSym => FuncSym,
         .typeSym => TypeSym,

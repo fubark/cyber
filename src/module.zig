@@ -264,6 +264,19 @@ pub const ChunkExt = struct {
         sym.type = type_id;
     }
 
+    pub fn reserveContextVar(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.ContextDecl) !*cy.sym.ContextVar {
+        const sym = try c.createContextVar(parent, name, decl);
+        const mod = parent.getMod().?;
+        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
+        return sym;
+    }
+
+    pub fn resolveContextVar(c: *cy.Chunk, sym: *cy.sym.ContextVar, type_id: cy.TypeId, idx: u8) void {
+        _ = c;
+        sym.type = type_id;
+        sym.idx = idx;
+    }
+
     /// Can assume sym name is unique.
     pub fn addPlaceholder(c: *cy.Chunk, parent: *cy.Sym, name: []const u8) !*cy.sym.Placeholder {
         const sym = try cy.sym.createSym(c.alloc, .placeholder, .{
@@ -485,6 +498,7 @@ pub const ChunkExt = struct {
             }
         };
         switch (sym.type) {
+            .context_var,
             .userVar,
             .hostVar,
             .struct_t,
@@ -562,6 +576,7 @@ pub const ChunkExt = struct {
         };
 
         switch (sym.type) {
+            .context_var,
             .userVar,
             .hostVar,
             .struct_t,

@@ -1483,14 +1483,23 @@ pub fn formatSymName(s: *cy.Sema, buf: []u8, sym: *Sym, config: SymFormatConfig)
 
 pub fn writeSymName(s: *cy.Sema, w: anytype, sym: *cy.Sym, config: SymFormatConfig) anyerror!void {
     try writeParentPrefix(s, w, sym, config);
-    try w.writeAll(sym.name());
+
     if (config.emit_template_args) {
         if (sym.getVariant()) |variant| {
+            if (variant.root_template == s.option_tmpl) {
+                const arg = variant.args[0].asHeapObject();
+                const name = s.getTypeBaseName(arg.type.type);
+                try w.print("?{s}", .{name});
+                return;
+            }
+            try w.writeAll(sym.name());
             try w.writeByte('[');
             try writeLocalTemplateArgs(s, w, variant, config);
             try w.writeByte(']');
+            return;
         }
     }
+    try w.writeAll(sym.name());
 }
 
 fn writeParentPrefix(s: *cy.Sema, w: anytype, sym: *cy.Sym, config: SymFormatConfig) !void {

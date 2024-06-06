@@ -185,24 +185,16 @@ pub const SemaExt = struct {
     }
 
     pub fn allocTypeName(s: *cy.Sema, id: TypeId) ![]const u8 {
-        const type_e = s.types.items[id];
-        switch (type_e.kind) {
-            .option => {
-                const variant = type_e.sym.cast(.enum_t).variant.?;
-                const arg = variant.args[0].asHeapObject();
-                const name = s.getTypeBaseName(arg.type.type);
-                return try std.fmt.allocPrint(s.alloc, "?{s}", .{name});
-            },
-            .choice => {
-                return try s.alloc.dupe(u8, type_e.sym.name());
-            },
-            else => {
-                return try s.alloc.dupe(u8, type_e.sym.name());
-            }
-        }
+        var buf: std.ArrayListUnmanaged(u8) = .{};
+        defer buf.deinit(s.alloc);
+
+        const w = buf.writer(s.alloc);
+        const sym = s.getTypeSym(id);
+        try cy.sym.writeSymName(s, w, sym, .{ .from = null });
+        return buf.toOwnedSlice(s.alloc);
     }
 
-    pub fn writeTypeName(s: *cy.Sema, w: anytype, id: TypeId, from: ?*cy.Chunk) !void {
+    pub fn writeTypeName(s: *cy.Sema, w: anytype, id: cy.TypeId, from: ?*cy.Chunk) !void {
         const sym = s.getTypeSym(id);
         try cy.sym.writeSymName(s, w, sym, .{ .from = from });
     }

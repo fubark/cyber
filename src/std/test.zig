@@ -253,7 +253,7 @@ pub fn eqNear(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
         }
     } else {
         rt.errFmt(vm, "Types do not match:\n", &.{});
-        rt.errFmt(vm, "actual: {} != {}\n", &.{v(actType), v(expType)});
+        rt.errFmt(vm, "actual: {} != {}\n", &.{v(rt.getTypeName(vm, actType)), v(rt.getTypeName(vm, expType))});
         return rt.prepThrowError(vm, .AssertError);
     }
 }

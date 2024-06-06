@@ -10,7 +10,7 @@
 @host func eqList(a any, b any) bool
 
 --| Returns `true` if two numbers are near each other within epsilon 1e-5.
-@host func eqNear(a any, b any) bool
+@host func eqNear[T type](a T, b T) bool
 
 func fail():
     throw error.AssertError

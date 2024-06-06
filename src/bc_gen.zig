@@ -73,11 +73,8 @@ pub fn genAll(c: *cy.Compiler) !void {
         for (chunk.syms.items) |sym| {
             try prepareSym(c, sym);
         }
-        for (chunk.funcs.items) |func| {
-            try prepareFunc(c, func);
-        }
         for (chunk.variantFuncSyms.items) |func| {
-            try prepareFunc(c, func);
+            try prepareFunc(c, null, func);
         }
     }
 
@@ -86,9 +83,6 @@ pub fn genAll(c: *cy.Compiler) !void {
         try c.vm.c.getContextVars().append(c.alloc, .{ .value = cy.Value.initInt(123) });
     }
 
-    // After rt funcs are set up, prepare the overloaded func table.
-    // Methods entries are also registered at this point
-    // since they depend on overloaded func entries.
     for (c.newChunks()) |chunk| {
         for (chunk.syms.items) |sym| {
             switch (sym.type) {
@@ -103,47 +97,6 @@ pub fn genAll(c: *cy.Compiler) !void {
                         const vtable_idx = c.vm.vtables.len;
                         try c.vm.vtables.append(c.alloc, vtable);
                         try c.gen_vtables.put(c.alloc, VtableKey{ .type = object_t.type, .trait = impl.trait.type }, @intCast(vtable_idx));
-                    }
-                },
-                .func => {
-                    const func_sym = sym.cast(.func);
-                    if (func_sym.first.type == .trait) {
-                        continue;
-                    }
-                    if (func_sym.numFuncs > 1) {
-                        // Add overload entries.
-                        const rt_id = c.vm.overloaded_funcs.len;
-                        try c.vm.overloaded_funcs.append(c.alloc, func_sym.numFuncs);
-                        var cur: ?*cy.Func = func_sym.first;
-                        var has_method = false;
-                        while (cur != null) {
-                            if (cur.?.isMethod) {
-                                has_method = true;
-                            }
-                            if (c.genSymMap.get(@ptrCast(cur))) |gen_sym| {
-                                try c.vm.overloaded_funcs.append(c.alloc, gen_sym.func.id);
-                            } else {
-                                return error.MissingFuncSym;
-                            }
-                            cur = cur.?.next;
-                        }
-                        try c.genSymMap.putNoClobber(c.alloc, sym, .{ .funcs = .{ .id = @intCast(rt_id) }});
-                        if (has_method) {
-                            const func = func_sym.first;
-                            const parentT = func.sym.?.head.parent.?.getStaticType().?;
-                            const name = func.name();
-                            const method = try c.vm.ensureMethod(name);
-                            try c.vm.addMethod(parentT, method, @intCast(rt_id), true);
-                        }
-                    } else {
-                        const func = func_sym.first;
-                        if (func.isMethod) {
-                            const parentT = func.sym.?.head.parent.?.getStaticType().?;
-                            const name = func.name();
-                            const method = try c.vm.ensureMethod(name);
-                            const func_id = c.genSymMap.get(func).?.func.id;
-                            try c.vm.addMethod(parentT, method, func_id, false);
-                        }
                     }
                 },
                 else => {},
@@ -215,6 +168,29 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
             try c.vm.varSymExtras.append(c.alloc, sym);
             try c.genSymMap.putNoClobber(c.alloc, sym, .{ .varSym = .{ .id = @intCast(id) }});
         },
+        .func => {
+            const func_sym = sym.cast(.func);
+            if (func_sym.first.type == .trait) {
+                return;
+            }
+            const name = func_sym.head.name();
+
+            const group = try c.vm.addFuncGroup();
+            var cur: ?*cy.Func = func_sym.first;
+            var has_method = false;
+            while (cur) |func| {
+                if (func.isMethod()) {
+                    has_method = true;
+                }
+                try prepareFunc(c, group, func);
+                cur = func.next;
+            }
+            try c.genSymMap.putNoClobber(c.alloc, sym, .{ .func_sym = .{ .group = @intCast(group) }});
+            if (has_method) {
+                const parentT = func_sym.head.parent.?.getStaticType().?;
+                try c.vm.setMethodGroup(parentT, name, @intCast(group));
+            }
+        },
         .context_var,
         .template,
         .custom_t,
@@ -226,7 +202,6 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
         .struct_t,
         .object_t,
         .trait_t,
-        .func,
         .typeAlias,
         .distinct_t,
         .placeholder,
@@ -241,8 +216,9 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
     }
 }
 
-fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
+fn prepareFunc(c: *cy.Compiler, opt_group: ?rt.FuncGroupId, func: *cy.Func) !void {
     switch (func.type) {
+        .template,
         .trait,
         .userLambda => return,
 
@@ -253,8 +229,12 @@ fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
                 log.tracev("prep func: {s}", .{symPath});
             }
             const funcSig = c.sema.getFuncSig(func.funcSigId);
-            const rtFunc = rt.FuncSymbol.initHostFunc(@ptrCast(func.data.hostFunc.ptr), funcSig.reqCallTypeCheck, func.isMethod, funcSig.numParams(), func.funcSigId);
-            _ = try addVmFunc(c, func, rtFunc);
+            const rtFunc = rt.FuncSymbol.initHostFunc(@ptrCast(func.data.hostFunc.ptr), funcSig.reqCallTypeCheck, func.isMethod(), funcSig.numParams(), func.funcSigId);
+            if (opt_group) |group| {
+                _ = try addGroupFunc(c, group, func, rtFunc);
+            } else {
+                _ = try addFunc(c, func, rtFunc);
+            }
         },
         .userFunc => {
             if (cy.Trace) {
@@ -262,14 +242,23 @@ fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
                 defer c.alloc.free(symPath);
                 log.tracev("prep func: {s}", .{symPath});
             }
-            _ = try addVmFunc(c, func, rt.FuncSymbol.initNull());
+            if (opt_group) |group| {
+                _ = try addGroupFunc(c, group, func, rt.FuncSymbol.initNull());
+            } else {
+                _ = try addFunc(c, func, rt.FuncSymbol.initNull());
+            }
             // Func is patched later once funcPc and stackSize is obtained.
-            // Method entry is also added later.
         },
     }
 }
 
-fn addVmFunc(c: *cy.Compiler, func: *cy.Func, rtFunc: rt.FuncSymbol) !u32 {
+fn addGroupFunc(c: *cy.Compiler, group: rt.FuncGroupId, func: *cy.Func, rtFunc: rt.FuncSymbol) !u32 {
+    const id = try c.vm.addGroupFunc(group, func.name(), func.funcSigId, rtFunc);
+    try c.genSymMap.putNoClobber(c.alloc, func, .{ .func = .{ .id = @intCast(id), .pc = 0 }});
+    return @intCast(id);
+}
+
+fn addFunc(c: *cy.Compiler, func: *cy.Func, rtFunc: rt.FuncSymbol) !u32 {
     const id = try c.vm.addFunc(func.name(), func.funcSigId, rtFunc);
     try c.genSymMap.putNoClobber(c.alloc, func, .{ .func = .{ .id = @intCast(id), .pc = 0 }});
     return @intCast(id);
@@ -543,7 +532,7 @@ fn funcBlock(c: *Chunk, idx: usize, node: *ast.Node) !void {
 
     // Patch empty func sym slot.
     const rtId = c.compiler.genSymMap.get(func).?.func.id;
-    const rtFunc = rt.FuncSymbol.initFunc(funcPc, stackSize, func.numParams, func.funcSigId, func.reqCallTypeCheck, func.isMethod);
+    const rtFunc = rt.FuncSymbol.initFunc(funcPc, stackSize, func.numParams, func.funcSigId, func.reqCallTypeCheck, func.isMethod());
     c.compiler.vm.funcSyms.buf[rtId] = rtFunc;
 
     try popFuncBlockCommon(c, func);
@@ -1233,8 +1222,9 @@ fn genCallSymDyn(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
         try pushUnwindValue(c, val);
     }
 
-    const rt_id = c.compiler.genSymMap.get(data.sym).?.funcs.id;
-    try pushCallSymDyn(c, inst.ret, data.nargs, 1, rt_id, node);
+    const sym = c.compiler.genSymMap.get(data.sym).?;
+    const group = c.vm.func_groups.buf[sym.func_sym.group];
+    try pushCallSymDyn(c, inst.ret, data.nargs, 1, group.id, node);
 
     const argvs = popValues(c, data.nargs);
     try checkArgs(argStart, argvs);
@@ -3184,8 +3174,8 @@ pub const Sym = union {
     varSym: struct {
         id: u32,
     },
-    funcs: struct {
-        id: u32,
+    func_sym: struct {
+        group: u32,
     },
     func: struct {
         id: u32,
@@ -3200,7 +3190,7 @@ pub const Sym = union {
 };
 
 pub fn pushFuncBlock(c: *Chunk, data: ir.FuncBlock, params: []align(1) const ir.FuncParam, node: *ast.Node) !void {
-    log.tracev("push func block: {}, {}, {}, {}", .{data.func.numParams, data.maxLocals, data.func.isMethod, node});
+    log.tracev("push func block: {}, {}, {}, {}", .{data.func.numParams, data.maxLocals, data.func.isMethod(), node});
     try pushFuncBlockCommon(c, data.maxLocals, data.numParamCopies, params, data.func, node);
 }
 

@@ -102,6 +102,11 @@ const VMC = extern struct {
     }
 };
 
+const OverloadedFuncEntry = struct {
+    id: u32,
+    next: u32,
+};
+
 pub const VM = struct {
     alloc: std.mem.Allocator,
 
@@ -125,10 +130,8 @@ pub const VM = struct {
     /// If the `MethodEntry.mru_type` matches, `mru_id` stored in MethodEntry is used first.
     /// Otherwise, `type_method_map` is queried.
     /// `TypeMethod`s are not created until at least 2 types share the same method name.
-    methods: cy.List(rt.Method),
     method_map: std.AutoHashMapUnmanaged(rt.MethodKey, vmc.MethodId),
-    type_methods: cy.List(rt.TypeMethod),
-    type_method_map: std.HashMapUnmanaged(rt.TypeMethodKey, vmc.TypeMethodId, cy.hash.KeyU64Context, 80),
+    type_method_map: std.HashMapUnmanaged(rt.TypeMethodKey, rt.FuncGroupId, cy.hash.KeyU64Context, 80),
 
     /// Regular function symbol table.
     /// TODO: The only reason this exists right now is for FFI to dynamically set binded functions to empty static functions.
@@ -137,7 +140,9 @@ pub const VM = struct {
     funcSymDetails: cy.List(rt.FuncSymDetail),
 
     /// Contiguous func ids. The first element in a segment contains the num of overloaded funcs for the func sym.
-    overloaded_funcs: cy.List(u32),
+    overloaded_funcs: cy.List(OverloadedFuncEntry),
+
+    func_groups: cy.List(rt.FuncGroup),
 
     /// Struct fields symbol table.
     fieldTable: std.HashMapUnmanaged(rt.FieldTableKey, FieldEntry, cy.hash.KeyU64Context, 80),
@@ -169,7 +174,7 @@ pub const VM = struct {
     vtables: cy.List([]const u32),
 
     /// This is needed for reporting since a method entry can be empty.
-    method_names: cy.List(vmc.NameId),
+    methods: cy.List(rt.Method),
     debugTable: []const cy.DebugSym,
     debugTempIndexTable: []const u32,
     unwindTempRegs: []const u8,
@@ -275,14 +280,13 @@ pub const VM = struct {
                 .curFiber = undefined,
                 .debugPc = cy.NullId,
             },
-            .methods = .{},
             .method_map = .{},
-            .method_names = .{},
-            .type_methods = .{},
+            .methods = .{},
             .type_method_map = .{},
             .funcSyms = .{},
             .funcSymDetails = .{},
             .overloaded_funcs = .{},
+            .func_groups = .{},
             .fieldTable = .{},
             .fieldSymSignatures = .{},
             .syms = .{},
@@ -347,7 +351,6 @@ pub const VM = struct {
         self.c.mainFiber.stackLen = @intCast(self.c.stack_len);
 
         try self.funcSyms.ensureTotalCapacityPrecise(self.alloc, 255);
-        try self.methods.ensureTotalCapacityPrecise(self.alloc, 340);
         try self.method_map.ensureTotalCapacity(self.alloc, 200);
         std.debug.assert(cy.utils.getHashMapMemSize(rt.MethodKey, vmc.MethodId, self.method_map.capacity()) < 4096);
 
@@ -429,16 +432,12 @@ pub const VM = struct {
         }
 
         if (reset) {
-            self.methods.clearRetainingCapacity();
             self.method_map.clearRetainingCapacity();
-            self.method_names.clearRetainingCapacity();
-            self.type_methods.clearRetainingCapacity();
+            self.methods.clearRetainingCapacity();
             self.type_method_map.clearRetainingCapacity();
         } else {
-            self.methods.deinit(self.alloc);
             self.method_map.deinit(self.alloc);
-            self.method_names.deinit(self.alloc);
-            self.type_methods.deinit(self.alloc);
+            self.methods.deinit(self.alloc);
             self.type_method_map.deinit(self.alloc);
         }
 
@@ -446,10 +445,12 @@ pub const VM = struct {
             self.funcSyms.clearRetainingCapacity();
             self.funcSymDetails.clearRetainingCapacity();
             self.overloaded_funcs.clearRetainingCapacity();
+            self.func_groups.clearRetainingCapacity();
         } else {
             self.funcSyms.deinit(self.alloc);
             self.funcSymDetails.deinit(self.alloc);
             self.overloaded_funcs.deinit(self.alloc);
+            self.func_groups.deinit(self.alloc);
         }
 
         if (reset) {
@@ -1049,18 +1050,22 @@ pub const VM = struct {
         }
     }
 
+    pub fn addFuncGroup(self: *VM) !u32 {
+        const id = self.func_groups.len;
+        try self.func_groups.append(self.alloc, .{
+            .id = undefined,
+            .empty = true,
+            .overloaded = false,
+        });
+        return @intCast(id);
+    }
+
     pub fn ensureMethod(self: *VM, name: []const u8) !rt.MethodId {
         const nameId = try rt.ensureNameSym(self, name);
         const res = try @call(.never_inline, @TypeOf(self.method_map).getOrPut, .{&self.method_map, self.alloc, nameId});
         if (!res.found_existing) {
             const id: u32 = @intCast(self.methods.len);
-            try self.methods.append(self.alloc, .{
-                .mru_type = cy.NullId,
-                .mru_id = cy.NullId,
-                .mru_overloaded = false,
-                .has_multiple_types = false,
-            });
-            try self.method_names.append(self.alloc, nameId);
+            try self.methods.append(self.alloc, .{ .name = nameId });
             res.value_ptr.* = id;
             return id;
         } else {
@@ -1094,48 +1099,66 @@ pub const VM = struct {
         }
     }
 
-    pub fn addTypeMethod(self: *VM, typeId: cy.TypeId, mgId: rt.MethodId, func: u32, is_overloaded: bool) !rt.TypeMethodId {
-        const key = rt.TypeMethodKey.initTypeMethodKey(typeId, mgId);
-        const res = try self.type_method_map.getOrPut(self.alloc, key);
-        if (res.found_existing) {
-            return error.Unexpected;
+    /// Walking the linked list is ok since overloaded functions are less common
+    /// and eventually insertion will need to match the same order as the sema order.
+    fn getLastOverloadedFunc(self: *VM, head: u32) u32 {
+        var cur_id = head;
+        var cur = self.overloaded_funcs.buf[head];
+        while (cur.next != cy.NullId) {
+            cur_id = cur.next;
+            cur = self.overloaded_funcs.buf[cur_id];
         }
-        const id: rt.TypeMethodId = @intCast(self.type_methods.len);
-        try self.type_methods.append(self.alloc, .{
-            .id = func,
-            .overloaded = is_overloaded,
-        });
-        res.value_ptr.* = id;
-        return id;
+        return cur_id;
     }
 
-    pub fn addMethod(self: *VM, type_id: cy.TypeId, method_id: rt.MethodId, func: u32, is_overloaded_func: bool) !void {
-        _ = try self.addTypeMethod(type_id, method_id, func, is_overloaded_func);
-        const method = &self.methods.buf[method_id];
-        if (method.mru_type != cy.NullId) {
-            if (method.mru_type == type_id) {
-                return error.Unexpected;
-            }
-            method.has_multiple_types = true;
-        } else {
-            // Empty method entry.
-            method.* = .{
-                .mru_type = type_id,
-                .mru_id = func,
-                .mru_overloaded = is_overloaded_func,
-                .has_multiple_types = false,
-            };
-        }
+    pub fn setMethodGroup(self: *VM, type_id: cy.TypeId, name: []const u8, group: rt.FuncGroupId) !void {   
+        const method = try self.ensureMethod(name);
+        const key = rt.TypeMethodKey.initTypeMethodKey(type_id, method);
+        try self.type_method_map.put(self.alloc, key, group);
     }
 
-    pub fn addFunc(self: *VM, name: []const u8, sig: cy.sema.FuncSigId, rtFunc: rt.FuncSymbol) !u32 {
+    pub fn addFunc(self: *VM, name: []const u8, sig: cy.sema.FuncSigId, func: rt.FuncSymbol) !u32 {
         const id = self.funcSyms.len;
-        try self.funcSyms.append(self.alloc, rtFunc);
+        try self.funcSyms.append(self.alloc, func);
 
         try self.funcSymDetails.append(self.alloc, .{
             .namePtr = name.ptr, .nameLen = @intCast(name.len), .funcSigId = sig,
         });
         return @intCast(id);
+    }
+
+    pub fn addGroupFunc(self: *VM, group_id: rt.FuncGroupId, name: []const u8, sig: cy.sema.FuncSigId, rtFunc: rt.FuncSymbol) !u32 {
+        const id = try self.addFunc(name, sig, rtFunc);
+
+        const group = &self.func_groups.buf[group_id];
+        if (group.empty) {
+            group.id = @intCast(id);
+            group.empty = false;
+            return id;
+        }
+
+        if (!group.overloaded) {
+            const func_head = self.overloaded_funcs.len;
+            try self.overloaded_funcs.append(self.alloc, .{
+                .id = group.id,
+                .next = @intCast(func_head + 1),
+            });
+            try self.overloaded_funcs.append(self.alloc, .{
+                .id = @intCast(id),
+                .next = cy.NullId,
+            });
+            group.id = @intCast(func_head);
+            group.overloaded = true;
+        } else {
+            const last = self.getLastOverloadedFunc(group.id);
+            const next = self.overloaded_funcs.len;
+            try self.overloaded_funcs.append(self.alloc, .{
+                .id = @intCast(id),
+                .next = cy.NullId,
+            });
+            self.overloaded_funcs.buf[last].next = @intCast(next);
+        }
+        return id;
     }
 
     pub fn interruptThrowSymbol(self: *VM, sym: bindings.Symbol) error{Panic} {
@@ -1321,12 +1344,14 @@ pub const VM = struct {
     fn callSymDyn(
         self: *VM, pc: [*]cy.Inst, fp: [*]Value, entry: u32, ret: u8, nargs: u8,
     ) !cy.fiber.PcFp {
-        const num_funcs = self.overloaded_funcs.buf[entry];
-        const funcs = self.overloaded_funcs.buf[entry+1..entry+1+num_funcs];
         const vals = fp[ret+CallArgStart..ret+CallArgStart+nargs];
-        for (funcs) |func_id| {
-            const func = self.funcSyms.buf[func_id];
+
+        var cur = entry;
+        while (cur != cy.NullId) {
+            const ofunc = self.overloaded_funcs.buf[cur];
+            const func = self.funcSyms.buf[ofunc.id];
             if (!self.isFuncCompat(func, vals)) {
+                cur = ofunc.next;
                 continue;
             }
 
@@ -1366,6 +1391,7 @@ pub const VM = struct {
                     return self.panic("Missing func");
                 },
             }
+            cur = ofunc.next;
         }
         return panicIncompatibleCallSymSig(self, entry, vals);
     }
@@ -1431,8 +1457,8 @@ pub const VM = struct {
         for (args, 0..) |arg, i| {
             const target_t = target_params[i];
             const arg_t = arg.getTypeId();
-            if (!types.isTypeSymCompat(self.compiler, arg_t, target_t)) {
-                if (!@call(.never_inline, inferArg, .{self, args, i, arg, target_t})) {
+            if (!types.isTypeSymCompat(self.compiler, arg_t, target_t.type)) {
+                if (!@call(.never_inline, inferArg, .{self, args, i, arg, target_t.type})) {
                     return false;
                 }
             }
@@ -1451,41 +1477,29 @@ pub const VM = struct {
 
         for (args, target_params) |val, target_t| {
             const valTypeId = val.getTypeId();
-            if (!types.isTypeSymCompat(self.compiler, valTypeId, target_t)) {
+            if (!types.isTypeSymCompat(self.compiler, valTypeId, target_t.type)) {
                 return false;
             }
         }
         return true;
     }
 
-    fn getTypeMethod(self: *VM, rec_t: cy.TypeId, method: rt.MethodId) ?rt.TypeMethodId {
+    fn getTypeMethod(self: *VM, rec_t: cy.TypeId, method: rt.MethodId) ?rt.FuncGroupId {
         const key = rt.TypeMethodKey.initTypeMethodKey(rec_t, method);
         return self.type_method_map.get(key);
     }
 
     /// Assumes args does not include rec.
     fn getCompatMethodFunc(self: *VM, rec_t: cy.TypeId, method_id: rt.MethodId, args: []cy.Value) ?rt.FuncSymbol {
-        var method = self.methods.buf[method_id];
-        if (method.mru_type != rec_t) {
-            if (!method.has_multiple_types) {
-                return null;
-            }
-            if (@call(.never_inline, getTypeMethod, .{self, rec_t, method_id})) |tm_id| {
-                const type_method = self.type_methods.buf[tm_id];
-                method.mru_type = rec_t;
-                method.mru_id = type_method.id;
-                method.mru_overloaded = type_method.overloaded;
-                self.methods.buf[method_id] = method;
-            } else {
-                return null;
-            }
-        }
+        const group_id = @call(.never_inline, getTypeMethod, .{self, rec_t, method_id}) orelse {
+            return null;
+        };
 
         // TODO: Skip type check for untyped params.
-
-        if (!method.mru_overloaded) {
+        const group = self.func_groups.buf[group_id];
+        if (!group.overloaded) {
             // Check one function.
-            const func = self.funcSyms.buf[method.mru_id];
+            const func = self.funcSyms.buf[group.id];
             if (self.isMethodFuncCompat(func, args)) {
                 return func;
             } else {
@@ -1493,19 +1507,20 @@ pub const VM = struct {
             }
         } else {
             // Overloaded functions.
-            const num_funcs = self.overloaded_funcs.buf[method.mru_id];
-            const funcs = self.overloaded_funcs.buf[method.mru_id+1..method.mru_id+1+num_funcs];
-
-            for (funcs) |func_id| {
-                const func = self.funcSyms.buf[func_id];
+            var cur: u32 = group.id;
+            while (cur != cy.NullId) {
+                const entry = self.overloaded_funcs.buf[cur];
+                const func = self.funcSyms.buf[entry.id];
 
                 if (!func.is_method) {
+                    cur = entry.next;
                     continue;
                 }
 
                 if (self.isMethodFuncCompat(func, args)) {
                     return func;
                 }
+                cur = entry.next;
             }
             return null;
         }
@@ -2015,7 +2030,7 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst) !void {
     switch (pc[0].opcode()) {
         .callObjSym => {
             const symId = pc[4].val;
-            const name_id = vm.method_names.buf[symId];
+            const name_id = vm.methods.buf[symId].name;
             const name = rt.getName(vm, name_id);
             extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{name});
         },
@@ -2030,7 +2045,7 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst) !void {
         },
         .callObjNativeFuncIC => {
             const symId = pc[4].val;
-            const name_id = vm.method_names.buf[symId];
+            const name_id = vm.methods.buf[symId].name;
             const name = rt.getName(vm, name_id);
             extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{name});
         },
@@ -2257,12 +2272,9 @@ fn panicIncompatibleLambdaSig(vm: *cy.VM, args: []const Value, cstrFuncSigId: se
 
 /// Runtime version of `sema.reportIncompatibleCallSig`.
 fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Value) error{Panic, OutOfMemory} {
-    const num_funcs = vm.overloaded_funcs.buf[overload_entry];
-    const funcs = vm.overloaded_funcs.buf[overload_entry+1..overload_entry+1+num_funcs];
-
     // Use first func to determine name.
-    const first_func = funcs[0];
-    const first_func_details = vm.funcSymDetails.buf[first_func];
+    const first_ofunc = vm.overloaded_funcs.buf[overload_entry];
+    const first_func_details = vm.funcSymDetails.buf[first_ofunc.id];
     const name = first_func_details.namePtr[0..first_func_details.nameLen];
 
         // vm.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
@@ -2288,11 +2300,15 @@ fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Va
         return error.OutOfMemory;
     };
     try w.print("    func {s}{s}", .{name, funcStr});
-    for (funcs[1..]) |func| {
+
+    var cur = first_ofunc.next;
+    while (cur != cy.NullId) {
+        const ofunc = vm.overloaded_funcs.buf[cur];
         try w.writeByte('\n');
-        const func_details = vm.funcSymDetails.buf[func];
+        const func_details = vm.funcSymDetails.buf[ofunc.id];
         funcStr = vm.sema.formatFuncSig(func_details.funcSigId, &cy.tempBuf, null) catch return error.OutOfMemory;
         try w.print("    func {s}{s}", .{name, funcStr});
+        cur = ofunc.next;
     }
     return vm.panic(msg.items);
 }
@@ -2307,30 +2323,13 @@ fn panicIncompatibleMethodSig(
 
     // Lookup `func_entry`.
     const method = vm.methods.buf[method_id];
-    const name_id = vm.method_names.buf[method_id];
-    const name = rt.getName(vm, name_id);
+    const name = rt.getName(vm, method.name);
     const typeName = vm.c.types[typeId].sym.name();
-    var entry: u32 = undefined;
-    var overloaded: bool = undefined;
-    if (method.mru_type == typeId) {
-        entry = method.mru_id;
-        overloaded = method.mru_overloaded;
-    } else {
-        if (method.has_multiple_types) {
-            const tm_id = vm.getTypeMethod(typeId, method_id) orelse {
-                return vm.panicFmt("The method `{}` can not be found in `{}`.", &.{
-                    v(name), v(typeName),
-                });
-            };
-            const tmethod = vm.type_methods.buf[tm_id];
-            entry = tmethod.id;
-            overloaded = tmethod.overloaded;
-        } else {
-            return vm.panicFmt("The method `{}` can not be found in `{}`.", &.{
-                v(name), v(typeName),
-            });
-        }
-    }
+    const group_id = vm.getTypeMethod(typeId, method_id) orelse {
+        return vm.panicFmt("The method `{}` can not be found in `{}`.", &.{
+            v(name), v(typeName),
+        });
+    };
 
     var msg: std.ArrayListUnmanaged(u8) = .{}; 
     defer msg.deinit(vm.alloc);
@@ -2342,26 +2341,35 @@ fn panicIncompatibleMethodSig(
     try w.writeAll("\n");
     try w.print("Methods named `{s}`:\n", .{name});
 
-    var funcs: []const rt.FuncId = undefined;
-    if (overloaded) {
-        const num_funcs = vm.overloaded_funcs.buf[entry];
-        funcs = vm.overloaded_funcs.buf[entry+1..entry+1+num_funcs];
+    const group = vm.func_groups.buf[group_id];
+    if (!group.overloaded) {
+        const func = vm.funcSyms.buf[group.id];
+        if (func.is_method) {
+            const funcStr = vm.sema.formatFuncSig(func.sig, &cy.tempBuf, null) catch {
+                return error.OutOfMemory;
+            };
+            try w.print("    func {s}{s}", .{name, funcStr});
+        }
     } else {
-        funcs = &.{entry};
+        var cur: u32 = group.id;
+        while (cur != cy.NullId) {
+            const ofunc = vm.overloaded_funcs.buf[cur];
+            const func = vm.funcSyms.buf[ofunc.id];
+            if (!func.is_method) {
+                cur = ofunc.next;
+                continue;
+            }
+
+            const funcStr = vm.sema.formatFuncSig(func.sig, &cy.tempBuf, null) catch {
+                return error.OutOfMemory;
+            };
+            try w.print("    func {s}{s}", .{name, funcStr});
+            if (ofunc.next != cy.NullId) {
+                try w.writeByte('\n');
+            }
+            cur = ofunc.next;
+        }
     }
-    for (funcs, 0..) |func_id, i| {
-        const func = vm.funcSyms.buf[func_id];
-        if (!func.is_method) {
-            continue;
-        }
-        const funcStr = vm.sema.formatFuncSig(func.sig, &cy.tempBuf, null) catch {
-            return error.OutOfMemory;
-        };
-        try w.print("    func {s}{s}", .{name, funcStr});
-        if (i < funcs.len-1) {
-            try w.writeByte('\n');
-        }
-    }    
     return vm.panic(msg.items);
 }
 

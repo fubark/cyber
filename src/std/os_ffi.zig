@@ -984,9 +984,9 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
 
             const func_sig = vm.compiler.sema.getFuncSig(cfunc.funcSigId);
             const func_sym = rt.FuncSymbol.initHostFunc(@ptrCast(func), func_sig.reqCallTypeCheck, true, func_sig.numParams(), cfunc.funcSigId);
-            const func_id = try vm.addFunc(cfunc.namez, cfunc.funcSigId, func_sym);
-            const method = try vm.ensureMethod(cfunc.namez);
-            try @call(.never_inline, cy.VM.addMethod, .{vm, sid, method, func_id, false});
+            const group = try vm.addFuncGroup();
+            _ = try vm.addGroupFunc(group, cfunc.namez, cfunc.funcSigId, func_sym);
+            try @call(.never_inline, cy.VM.setMethodGroup, .{vm, sid, cfunc.namez, group});
         }
         for (ffi.cstructs.items) |cstruct| {
             const typeName = vm.getTypeName(cstruct.type);
@@ -1003,12 +1003,11 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
             const name_id = try rt.ensureNameSymExt(vm, methodName, true);
             const managed_name = rt.getName(vm, name_id);
 
-            const funcSigId = try vm.sema.ensureFuncSig(&.{ bt.Any, bt.Pointer }, cstruct.type);
+            const funcSigId = try vm.sema.ensureFuncSigRt(&.{ bt.Any, bt.Pointer }, cstruct.type);
+            const group = try vm.addFuncGroup();
             const func_sym = rt.FuncSymbol.initHostFunc(@ptrCast(func), true, true, 2, funcSigId);
-            const func_id = try vm.addFunc(managed_name, funcSigId, func_sym);
-
-            const method = try vm.ensureMethod(managed_name);
-            try @call(.never_inline, cy.VM.addMethod, .{vm, sid, method, func_id, false});
+            _ = try vm.addGroupFunc(group, managed_name, funcSigId, func_sym);
+            try @call(.never_inline, cy.VM.setMethodGroup, .{vm, sid, managed_name, group});
         }
         success = true;
         return try vm.allocObjectSmall(sid, &.{cyState});

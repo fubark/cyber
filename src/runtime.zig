@@ -17,34 +17,26 @@ pub const FieldId = u32;
 pub const MethodKey = vmc.NameId;
 pub const TypeMethodKey = cy.hash.KeyU64;
 
-pub const TypeMethod = struct {
-    id: u32,
-
-    // TODO: Compact into u32.
-    overloaded: bool,
-};
-
-/// Keeping this small is better for function calls.
 pub const Method = struct {
-    /// Most recent type is cached to avoid hashmap lookup. 
-    mru_type: cy.TypeId,
-
-    /// If overloaded this is an index into `overloaded_funcs`, otherwise `funcSyms`
-    mru_id: u32,
-    mru_overloaded: bool,
-
-    /// Whether there are multiple types that share this method name.
-    has_multiple_types: bool,
+    name: u32,
 };
 
 pub const FuncId = u32;
 pub const MethodId = u32;
-pub const TypeMethodId = u32;
+pub const TypeFuncId = u32;
+pub const FuncGroupId = u32;
 
 pub const FuncSymbolType = enum(u8) {
     func,
     host_func,
     null,
+};
+
+pub const FuncGroup = packed struct {
+    /// Either points to a func or the first `overloaded_func` entry.
+    id: u30,
+    empty: bool,
+    overloaded: bool,
 };
 
 pub const FuncSymDetail = struct {
@@ -173,8 +165,8 @@ pub fn ensureNameSymExt(vm: *cy.VM, name: []const u8, dupe: bool) !vmc.NameId {
 }
 
 test "runtime internals." {
-    try t.eq(@sizeOf(TypeMethod), 8);
-    try t.eq(@sizeOf(Method), 12);
+    try t.eq(@sizeOf(FuncGroup), 4);
+    try t.eq(@sizeOf(Method), 4);
     try t.eq(@alignOf(Method), 4);
 
     try t.eq(@sizeOf(FuncSymbol), 16);

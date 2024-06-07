@@ -5395,10 +5395,19 @@ pub const ChunkExt = struct {
                     const rightName = c.ast.nodeString(callee.right);
                     const leftTypeSym = c.sema.getTypeSym(leftRes.type.id);
                     const rightSym = try c.mustFindSym(leftTypeSym, rightName, callee.right);
-                    const func_sym = try requireFuncSym(c, rightSym, callee.right);
 
-                    return c.semaCallFuncSymRec(preIdx, func_sym, callee.left, leftRes,
-                        node.args, expr.getRetCstr(), expr.node);
+                    if (rightSym.type == .func) {
+                        return c.semaCallFuncSymRec(preIdx, rightSym.cast(.func), callee.left, leftRes,
+                            node.args, expr.getRetCstr(), expr.node);
+                    } else {
+                        const callee_v = try c.semaExpr(node.callee, .{});
+                        if (callee_v.type.isDynAny()) {
+                            const args = try c.semaPushDynCallArgs(node.args);
+                            return c.semaCallValue(preIdx, callee_v.irIdx, node.args.len, args);
+                        } else {
+                            return c.reportErrorFmt("Expected `{}` to be a function.", &.{v(rightName)}, callee.right);
+                        }
+                    }
                 }
             }
         } else if (node.callee.type() == .ident) {

@@ -88,6 +88,8 @@ if (!aot) {
     run.case("functions/call_closure.cy");
     run.case("functions/call_closure_param_panic.cy");
 }
+
+    run.case("functions/call_dyn_object_member.cy");
     run.case("functions/call_excess_args_error.cy");
     run.case("functions/call_excess_args_overloaded_error.cy");
 if (!aot) {

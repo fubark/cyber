@@ -76,16 +76,16 @@ func load(dummy any):
     ffi = os.newFFI()
 
     -- enum CXTypeKind kind, void *data[2]
-    ffi.cbind(CXType, [symbol.int, os.CArray{n: 2, elem: symbol.voidPtr}])
+    ffi.cbind(CXType, [symbol.int, os.CArray{n=2, elem=symbol.voidPtr}])
 
     -- enum CXCursorKind kind, int xdata, const void *data[3]
-    ffi.cbind(CXCursor, [symbol.int, symbol.int, os.CArray{n: 3, elem: symbol.voidPtr}])
+    ffi.cbind(CXCursor, [symbol.int, symbol.int, os.CArray{n=3, elem=symbol.voidPtr}])
 
     -- const void* data, unsigned private_flags
     ffi.cbind(CXString, [symbol.voidPtr, symbol.uint])
 
     -- const void* ptr_data [2], unsigned int_data
-    ffi.cbind(CXSourceLocation, [os.CArray{n: 2, elem: symbol.voidPtr}, symbol.uint])
+    ffi.cbind(CXSourceLocation, [os.CArray{n=2, elem=symbol.voidPtr}, symbol.uint])
 
     -- CXIndex (int excludeDeclarationsFromPCH, int displayDiagnostics)
     ffi.cfunc('clang_createIndex', [symbol.int, symbol.int], symbol.voidPtr)

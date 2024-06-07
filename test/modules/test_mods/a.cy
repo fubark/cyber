@@ -2,7 +2,7 @@ var .varInt = 123
 var .varTypedInt int = 123
 var .varAny = [1, 2, 3]
 var .varList List[dyn] = [1, 2, 3]
-var .varMap Map = Map{a: 1, b: 2, c: 3}
+var .varMap Map = Map{a=1, b=2, c=3}
 var .varFunc = func():
     return 345
 var .varFunc1 = func(a int):
@@ -49,7 +49,7 @@ type Vec2:
     y float
 
 func Vec2.new(x float, y float):
-    return Vec2{x: x, y: y}
+    return Vec2{x=x, y=y}
 type Vec2Alias = Vec2
 
 type Bar:

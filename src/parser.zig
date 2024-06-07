@@ -2195,8 +2195,8 @@ pub const Parser = struct {
             return self.reportError("Expected record key.", &.{});
         };
 
-        if (self.peek().tag() != .colon) {
-            return self.reportError("Expected `:`.", &.{});
+        if (self.peek().tag() != .equal) {
+            return self.reportError("Expected `=`.", &.{});
         }
         self.advance();
 

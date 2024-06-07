@@ -12,8 +12,8 @@ use os
 use md '../src/tools/md4c.cy'
 
 let args = os.parseArgs([
-    { name: 'version', type: String, default: 'DEV' },
-    { name: 'import-style', type: bool, default: false },
+    { name='version', type=String, default='DEV' },
+    { name='import-style', type=bool, default=false },
 ])
 
 genDocsModules()
@@ -331,7 +331,7 @@ func enterSpan(span_t md.SPANTYPE, detail_p pointer, userdata pointer) int:
         var title = getAttrText(detail.title)
 
         if parsingToc:
-            tocLinks.append(Link{href: href, title: title, text: ''})
+            tocLinks.append(Link{href=href, title=title, text=''})
             textContent = ''
             bufContent = true
             return 0
@@ -399,12 +399,12 @@ func genFuncDecl(decl Map) String:
 
 func genDocsModules():
     var modules = [
-        ModulePair{path: '../src/builtins/builtins_vm.cy', section: 'core'},
-        ModulePair{path: '../src/builtins/cy.cy', section: 'cy'},
-        ModulePair{path: '../src/builtins/math.cy', section: 'math'},
-        ModulePair{path: '../src/std/cli.cy', section: 'cli'},
-        ModulePair{path: '../src/std/os.cy', section: 'os'},
-        ModulePair{path: '../src/std/test.cy', section: 'test'},
+        ModulePair{path='../src/builtins/builtins_vm.cy', section='core'},
+        ModulePair{path='../src/builtins/cy.cy', section='cy'},
+        ModulePair{path='../src/builtins/math.cy', section='math'},
+        ModulePair{path='../src/std/cli.cy', section='cli'},
+        ModulePair{path='../src/std/os.cy', section='os'},
+        ModulePair{path='../src/std/test.cy', section='test'},
     ]
 
     var curDir = os.dirName(#modUri).?

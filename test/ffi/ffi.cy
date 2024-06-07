@@ -39,7 +39,7 @@ ffi.cfunc('testVoid', [], symbol.void)
 ffi.cfunc('testBool', [symbol.bool], symbol.bool)
 ffi.cfunc('testObject', [MyObject], MyObject)
 ffi.cfunc('testRetObjectPtr', [MyObject], symbol.voidPtr)
-ffi.cfunc('testArray', [os.CArray{n: 2, elem: symbol.double}], symbol.double)
+ffi.cfunc('testArray', [os.CArray{n=2, elem=symbol.double}], symbol.double)
 lib = ffi.bindLib(libPath)
 
 t.eq(lib.testAdd(123, 321), 444)
@@ -58,7 +58,7 @@ t.eq(lib.testArray([123.0, 321.0]), 444.0)
 
 -- object arg and return type.
 var cstr = os.cstr('foo')
-let res = lib.testObject(MyObject{a: 123.0, b: 10, c: cstr, d: true})
+let res = lib.testObject(MyObject{a=123.0, b=10, c=cstr, d=true})
 t.eq(res.a, 123.0)
 t.eq(res.b, 10)
 t.eq(res.c.fromCstr(0), Array('foo'))
@@ -67,7 +67,7 @@ os.free(cstr)
 
 -- Return struct ptr and convert to Cyber object.
 cstr = os.cstr('foo')
-var ptr = lib.testRetObjectPtr(MyObject{a: 123.0, b: 10, c: cstr, d: true})
+var ptr = lib.testRetObjectPtr(MyObject{a=123.0, b=10, c=cstr, d=true})
 t.eq(typeof(ptr), pointer)
 res = lib.ptrToMyObject(pointer(ptr))
 t.eq(res.a, 123.0)
@@ -95,7 +95,7 @@ t.eq(lib.testBool(false), false)
 -- bindLib that returns a map of functions.
 ffi = os.newFFI()
 ffi.cfunc('testAdd', [symbol.int, symbol.int], symbol.int)
-lib = ffi.bindLib(libPath, {gen_table: true})
+lib = ffi.bindLib(libPath, {gen_table=true})
 var testAdd = lib['testAdd']
 t.eq(testAdd(123, 321), 444)
 
@@ -110,7 +110,7 @@ t.eq(lib.testCallback(10, 20, cadd), 30)
 
 -- bindObjPtr.
 ffi = os.newFFI()
-var obj = {a: 123}
+var obj = {a=123}
 var objPtr = ffi.bindObjPtr(obj)
 var obj2 = objPtr.asObject()
 t.eq(obj, obj2 as Table)

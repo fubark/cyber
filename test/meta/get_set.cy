@@ -10,7 +10,7 @@ type Foo:
     func $set(name String, value int):
         data[name] = value
 
-var f = Foo{a: 123}
+var f = Foo{a=123}
 
 -- $set was not called for `a`.
 test.eq(f.data.contains('a'), false)

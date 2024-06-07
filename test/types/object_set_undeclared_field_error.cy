@@ -1,7 +1,7 @@
 type S:
     a any
 
-var o = S{a: 100}
+var o = S{a=100}
 o.b = 200
 
 --cytest: error

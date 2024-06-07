@@ -8,7 +8,7 @@ type Foo:
         keys.append(key)
         values.append(value)
 
-var f = Foo{a: 123, b: 234}
+var f = Foo{a=123, b=234}
 test.eq(keys.len(), 2)
 test.eq(keys[0], 'a')
 test.eq(keys[1], 'b')

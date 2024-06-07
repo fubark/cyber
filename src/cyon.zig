@@ -134,7 +134,7 @@ pub const EncodeTableContext = struct {
 
     pub fn encodeSlice(self: *EncodeTableContext, key: []const u8, slice: anytype, encode_value: fn (*EncodeValueContext, anytype) anyerror!void) !void {
         try self.indent();
-        _ = try self.writer.print("{s}: [\n", .{key});
+        _ = try self.writer.print("{s} = [\n", .{key});
 
         var val_ctx = EncodeValueContext{
             .writer = self.writer,
@@ -156,7 +156,7 @@ pub const EncodeTableContext = struct {
 
     pub fn encodeList(self: *EncodeTableContext, key: []const u8, val: anytype, encode_list: fn (*EncodeListContext, @TypeOf(val)) anyerror!void) !void {
         try self.indent();
-        _ = try self.writer.print("{s}: [\n", .{key});
+        _ = try self.writer.print("{s} = [\n", .{key});
 
         var list_ctx = EncodeListContext{
             .writer = self.writer,
@@ -172,7 +172,7 @@ pub const EncodeTableContext = struct {
 
     pub fn encodeTable(self: *EncodeTableContext, key: []const u8, val: anytype, encode_table: fn (*EncodeTableContext, @TypeOf(val)) anyerror!void) !void {
         try self.indent();
-        _ = try self.writer.print("{s}: {{\n", .{key});
+        _ = try self.writer.print("{s} = {{\n", .{key});
 
         var map_ctx = EncodeTableContext{
             .writer = self.writer,
@@ -188,7 +188,7 @@ pub const EncodeTableContext = struct {
 
     pub fn encodeTable2(self: *EncodeTableContext, key: []const u8, val: anytype, encode_table: fn (*EncodeTableContext, anytype) anyerror!void) !void {
         try self.indent();
-        _ = try self.writer.print("{s}: ", .{ key });
+        _ = try self.writer.print("{s} = ", .{ key });
 
         _ = try self.writer.write("{\n");
 
@@ -206,35 +206,35 @@ pub const EncodeTableContext = struct {
 
     pub fn encode(self: *EncodeTableContext, key: []const u8, val: anytype) !void {
         try self.indent();
-        _ = try self.writer.print("{s}: ", .{key});
+        _ = try self.writer.print("{s} = ", .{key});
         try self.encodeValue(val);
         _ = try self.writer.write(",\n");
     }
 
     pub fn encodeString(self: *EncodeTableContext, key: []const u8, val: []const u8) !void {
         try self.indent();
-        _ = try self.writer.print("{s}: ", .{key});
+        _ = try self.writer.print("{s} = ", .{key});
         try Common.encodeString(self.tmp_buf, self.writer, val);
         _ = try self.writer.write(",\n");
     }
 
     pub fn encodeInt(self: *EncodeTableContext, key: []const u8, i: i48) !void {
         try self.indent();
-        _ = try self.writer.print("{s}: ", .{key});
+        _ = try self.writer.print("{s} = ", .{key});
         try Common.encodeInt(self.writer, i);
         _ = try self.writer.write(",\n");
     }
 
     pub fn encodeFloat(self: *EncodeTableContext, key: []const u8, f: f64) !void {
         try self.indent();
-        _ = try self.writer.print("{s}: ", .{key});
+        _ = try self.writer.print("{s} = ", .{key});
         try Common.encodeFloat(self.writer, f);
         _ = try self.writer.write(",\n");
     }
 
     pub fn encodeBool(self: *EncodeTableContext, key: []const u8, b: bool) !void {
         try self.indent();
-        _ = try self.writer.print("{s}: ", .{key});
+        _ = try self.writer.print("{s} = ", .{key});
         try Common.encodeBool(self.writer, b);
         _ = try self.writer.write(",\n");
     }
@@ -261,7 +261,7 @@ pub const EncodeTableContext = struct {
         switch (T) {
             // Don't support string types since there can be many variations. Use `encode` instead.
             u32 => {
-                _ = try self.writer.print("{}: ", .{key});
+                _ = try self.writer.print("{} = ", .{key});
             },
             else => {
                 log.tracev("unsupported: {s}", .{@typeName(T)});
@@ -691,22 +691,22 @@ test "encode" {
     defer t.alloc.free(res);
     try t.eqStr(res,
         \\{
-        \\    name: 'project',
-        \\    list: [
+        \\    name = 'project',
+        \\    list = [
         \\        {
-        \\            field: 1,
+        \\            field = 1,
         \\        },
         \\        {
-        \\            field: 2,
+        \\            field = 2,
         \\        },
         \\    ],
-        \\    table: {
-        \\        1: 'foo',
-        \\        2: 'bar',
-        \\        3: 'ba\'r',
-        \\        4: `bar
+        \\    table = {
+        \\        1 = 'foo',
+        \\        2 = 'bar',
+        \\        3 = 'ba\'r',
+        \\        4 = `bar
         \\bar`,
-        \\        5: `bar \`bar\`
+        \\        5 = `bar \`bar\`
         \\bar`,
         \\    },
         \\}
@@ -751,17 +751,17 @@ test "decodeTable" {
     var root: TestRoot = undefined;
     try decodeTable(t.alloc, &parser, {}, &root, S.decodeRoot, 
         \\{
-        \\    name: 'project',
-        \\    list: [
-        \\        { field: 1 },
-        \\        { field: 2 },
+        \\    name = 'project',
+        \\    list = [
+        \\        {field=1},
+        \\        {field=2},
         \\    ],
-        \\    table: {
-        \\        1: 'foo',
-        \\        2: 'bar',
-        \\        3: "ba\"r",
-        \\        4: """ba"r""",
-        \\        5: """bar `bar`
+        \\    table = {
+        \\        1 = 'foo',
+        \\        2 = 'bar',
+        \\        3 = "ba\"r",
+        \\        4 = """ba"r""",
+        \\        5 = """bar `bar`
         \\bar"""
         \\    }
         \\}

@@ -55,7 +55,7 @@ type Node:
             return self.left.getLeftN(n - 1)
 
 func Heap.new() Heap:
-    return Heap{root: false, size: 0, last: false}
+    return Heap{root=false, size=0, last=false}
 
 type Heap:
     root dyn
@@ -64,7 +64,7 @@ type Heap:
 
     func insert(value int):
         if self.root == false:
-            self.root = Node{left: false, right: false, parent: false, value: value}
+            self.root = Node{left=false, right=false, parent=false, value=value}
             self.last = self.root
             self.size = 1
             return
@@ -73,10 +73,10 @@ type Heap:
             -- Insert at left most node.
             let parent = self.root.getLeftmost()
             new = Node{
-                left: false,
-                right: false,
-                parent: parent,
-                value: value,
+                left   = false,
+                right  = false,
+                parent = parent,
+                value  = value,
             }
             parent.left = new
             self.last = new
@@ -84,20 +84,20 @@ type Heap:
             -- Insert after last node.
             if self.size % 2 == 0:
                 new = Node{
-                    left: false,
-                    right: false,
-                    parent: self.last.parent,
-                    value: value,
+                    left   = false,
+                    right  = false,
+                    parent = self.last.parent,
+                    value  = value,
                 }
                 self.last.parent.right = new
                 self.last = new
             else:
                 let sibling = self.last.parent.getRightSibling()
                 new = Node{
-                    left: false,
-                    right: false,
-                    parent: sibling,
-                    value: value,
+                    left   = false,
+                    right  = false,
+                    parent = sibling,
+                    value  = value,
                 }
                 sibling.left = new
                 self.last = new

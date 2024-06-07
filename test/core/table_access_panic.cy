@@ -1,4 +1,4 @@
-var o = {a: 123}
+var o = {a=123}
 o.b
 
 --cytest: error

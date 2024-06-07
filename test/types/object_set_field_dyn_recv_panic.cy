@@ -3,7 +3,7 @@ use t 'test'
 type S:
     a float
 
-let o = t.erase(S{a: 123})
+let o = t.erase(S{a=123})
 o.a = []
 
 --cytest: error

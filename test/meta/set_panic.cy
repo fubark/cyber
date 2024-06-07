@@ -4,7 +4,7 @@ type Foo:
     func $set(name String, val any):
         panic('error')
 
-var f = Foo{a: 123}
+var f = Foo{a=123}
 f.foo = 234
 
 --cytest: error

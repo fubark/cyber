@@ -350,7 +350,7 @@ type Array _:
 
     --| Returns a new iterator over the array bytes.
     @host func iterator() ArrayIterator:
-        return ArrayIterator{arr: self, nextIdx: 0}
+        return ArrayIterator{arr=self, nextIdx=0}
 
     --| Returns the number of bytes in the array.
     @host func len() int

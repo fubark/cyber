@@ -15,7 +15,7 @@ type Account:
         print "$(title), $(name), $(balance)"
 
 func Account.new(name String) Account:
-    return Account{name: name, balance: 0.0}
+    return Account{name=name, balance=0.0}
 
 var a = Account.new('Savings')
 a.show('Initial')

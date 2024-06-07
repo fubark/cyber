@@ -64,7 +64,7 @@ while llvm.ObjectFileIsSymbolIteratorAtEnd(llBin, llSymIter) == 0:
     var name = cname.fromCstr(0).decode()
     var addr = llvm.GetSymbolAddress(llSymIter)
     -- Size is missing, calculate by sorting symbols and using their address.
-    var sym = Sym{name: name, addr: addr}
+    var sym = Sym{name=name, addr=addr}
     syms.append(sym)
     symMap[name] = sym
 
@@ -94,7 +94,7 @@ for syms -> sym, i:
 
     var bytes = []
     for bin -> byte:
-        bytes.append("0x$(byte.fmt(.x, {pad: `0`, width: 2}))")
+        bytes.append("0x$(byte.fmt(.x, {pad=`0`, width=2}))")
 
     out += "pub const $(sym.name[1..]) = [_]u8{ $(bytes.join(', ')) };\n"
 

@@ -43,7 +43,7 @@ t.eq(newList == oldList, false)
 t.eq(newList.len(), 2)
 t.eq(newList[0], 123)
 t.eq(newList[1], s)
-var oldMap = Map{ a: 123, b: s }
+var oldMap = Map{a=123, b=s}
 let newMap = copy(oldMap)
 t.eq(newMap == oldMap, false)
 t.eq(newMap.size(), 2)

@@ -147,9 +147,9 @@ type REPL:
 
 func REPL.new() REPL:
     var ctx = REPL{
-        vm: VM.new(),
-        indent: 0,
-        input_buffer: '',
+        vm = VM.new(),
+        indent = 0,
+        input_buffer = '',
     }
 
     -- TODO: Record inputs that successfully compiled. Can then be exported to file.

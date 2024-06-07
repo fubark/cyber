@@ -70,7 +70,7 @@ while llvm.ObjectFileIsSymbolIteratorAtEnd(llBin, llSymIter) == 0:
     var addr = llvm.GetSymbolAddress(llSymIter)
     var size = llvm.GetSymbolSize(llSymIter)
     var code = codeBuf[addr..addr+size] as Array
-    var sym = Sym{name: name, addr: addr, code: code}
+    var sym = Sym{name=name, addr=addr, code=code}
     syms.append(sym)
     symMap[name] = sym
 
@@ -140,7 +140,7 @@ for syms -> sym, i:
 
     var bytes = []
     for sym.code -> byte:
-        bytes.append("0x$(byte.fmt(.x, {pad: `0`, width: 2}))")
+        bytes.append("0x$(byte.fmt(.x, {pad=`0`, width=2}))")
 
     out += "pub const $(sym.name) = [_]u8{ $(bytes.join(', ')) };\n"
 

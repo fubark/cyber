@@ -500,10 +500,11 @@ There will be multi-line comments in Cyber but the syntax has not been determine
 CYON or the Cyber object notation is similar to JSON. The format uses the same literal value semantics as Cyber.
 ```cy
 {
-    name: 'John Doe',
-    'age': 25,
+    name  = 'John Doe',
+    'age' = 25,
+
     -- This is a comment
-    cities: [
+    cities = [
         'New York',
         'San Francisco',
         'Tokyo',
@@ -842,13 +843,13 @@ By default, the record literal initializes a `Table`:
 ```cy
 var o = {}
 
-o = {a: 123}
+o = {a=123}
 print o.a          --> 123
 ```
 
 A `Table` can be initialized explicitly using its type name:
 ```cy
-var o = Table{a: 123}
+var o = Table{a=123}
 ```
 
 Any field can be assigned a value.
@@ -863,7 +864,7 @@ print o.foo        --> panic: The field `foo` was not initialized.
 ### Table indexing.
 Indexing can be used to access a dynamic field or an arbitrary key:
 ```cy
-var o = { name: 'Nova' }
+var o = {name='Nova'}
 var field = 'name'
 print o[field]     --> Nova
 
@@ -883,7 +884,7 @@ Maps are a builtin type that store key value pairs in dictionaries. See [`type M
 
 Maps are initialized with the `Map` type and a record literal:
 ```cy
-var map = Map{ a: 123, b: () => 5 }
+var map = Map{a=123, b=() => 5}
 ```
 
 The empty record literal creates an empty map:
@@ -922,19 +923,19 @@ the added benefit of allowing multi-line lambdas.
 *Most likely this will not be implemented in favor of a builder syntax*
 ```cy
 var colors = {}:
-    red: 0xFF0000
-    green: 0x00FF00
-    blue: 0x0000FF
-    dump func (c):
+    .red   = 0xFF0000
+    .green = 0x00FF00
+    .blue  = 0x0000FF
+    .dump  = func (c):
         print c.red
         print c.green
         print c.blue
 
     -- Nested map.
-    darker {}: 
-        red: 0xAA0000
-        green: 0x00AA00
-        blue: 0x0000AA
+    .darker = {}: 
+        .red   = 0xAA0000
+        .green = 0x00AA00
+        .blue  = 0x0000AA
 ```
 
 ## Symbols.
@@ -1033,13 +1034,13 @@ type Node:
 ### Instantiate.
 New object instances are created using a record literal with a leading type name:
 ```cy
-var node = Node{value: 123, next: none}
+var node = Node{value=123, next=none}
 print node.value       -- Prints "123"
 ```
 
 A record literal can also initialize to the inferred object type:
 ```cy
-var node Node = {value: 234, next: none}
+var node Node = {value=234, next=none}
 print node.value       -- Prints "234"
 ```
 
@@ -1055,7 +1056,7 @@ type Info:
 ### Default field values.
 When a field is omitted in the record literal, it gets initialized to its [zero value](#zero-values):
 ```cy
-var node Node = {value: 234}
+var node Node = {value=234}
 print node.next    --> Option.none
 
 type Student:
@@ -1100,8 +1101,8 @@ type Node:
     next  ?Node
 
 var node = Node{
-    value: {a: 123, b: 100.0},
-    next: none,
+    value = {a=123, b=100.0},
+    next  = none,
 }
 ```
 
@@ -1119,7 +1120,7 @@ type Node:
         self.inc(321)
         print value
 
-var n = Node{value: 123, next: none}
+var n = Node{value=123, next=none}
 n.incAndPrint()         -- Prints "444"
 ```
 
@@ -1151,7 +1152,7 @@ type Node:
 
 -- Declare static function inside `Node`.
 func Node.new():
-    return Node{value: 123, next: none}
+    return Node{value=123, next=none}
 
 var n = Node.new()
 ```
@@ -1177,7 +1178,7 @@ type Base:
 type Container:
     b use Base
 
-var c = Container{b: Base{a: 123}}
+var c = Container{b = Base{a=123}}
 print c.a         --> 123
 print c.double()  --> 246
 ```
@@ -1189,7 +1190,7 @@ type Container:
     a int
     b use Base
 
-var c = Container{a: 999, b: Base{a: 123}}
+var c = Container{a=999, b = Base{a=123}}
 print c.a         --> 999
 print c.double()  --> 246
 ```
@@ -1211,13 +1212,13 @@ type Vec2 struct:
     x float
     y float
 
-var v = Vec2{x: 30, y: 40}
+var v = Vec2{x=30, y=40}
 ```
 
 ### Copy structs.
 Since structs are copied by value, assigning a struct to another variable creates a new struct:
 ```cy
-var v = Vec2{x: 30, y: 40}
+var v = Vec2{x=30, y=40}
 var w = v
 v.x = 100
 print w.x    -- Prints '30'
@@ -1267,7 +1268,7 @@ type Rectangle:
 ### Initialize choice.
 The general way to initialize a choice is to invoke the initializer with the payload as the argument:
 ```cy
-var rect = Rectangle{width: 10, height: 20}
+var rect = Rectangle{width=10, height=20}
 var s = Shape.rectangle(rect)
 
 s = Shape.line(20)
@@ -1275,7 +1276,7 @@ s = Shape.line(20)
 
 If the payload is a record-like type, the choice can be initialized with a record literal:
 ```cy
-var s = Shape.rectangle{width: 10, height: 20}
+var s = Shape.rectangle{width=10, height=20}
 ```
 
 A choice without a payload is initialized like an enum member:
@@ -1304,7 +1305,7 @@ else:
 ### Access choice.
 A choice can be accessed by specifying the access operator `.!` before the tagged member name. This will either return the payload or panic at runtime: *Planned Feature*
 ```cy
-var s = Shape{line: 20}
+var s = Shape{line=20}
 print s.!line     --> 20
 ```
 
@@ -1397,7 +1398,7 @@ type Vec2:
 
 type Pos2 = Vec2
 
-var pos = Pos2{x: 3, y: 4}
+var pos = Pos2{x=3, y=4}
 ```
 
 ## Distinct types.
@@ -1411,7 +1412,7 @@ type Vec2:
 
 type Pos2 Vec2
 
-var pos = Pos2{x: 3, y: 4}
+var pos = Pos2{x=3, y=4}
 ```
 
 Functions can be declared under the new type's namespace:
@@ -1424,8 +1425,8 @@ type Pos2 Vec2:
         var dy = math.abs(o.y - y)
         return dx + dy
 
-var pos = Pos2{x: 3, y: 4}
-var dst = Pos2{x: 4, y: 5}
+var pos = Pos2{x=3, y=4}
+var dst = Pos2{x=4, y=5}
 print pos.blockDist(dst)     --> 2
 ```
 Note that functions declared from the target type do not carry over to the new type.
@@ -1434,7 +1435,7 @@ Unlike a type alias, the new type and the target type can not be used interchang
 ```cy
 type Pos2 Vec2
 
-var a = Pos2{x: 3, y: 4}
+var a = Pos2{x=3, y=4}
 
 var b Vec2 = a as Vec2
 ```
@@ -1467,10 +1468,10 @@ A type that intends to implement a trait but does not satisfy the trait's interf
 
 Implementing types become assignable to the trait type:
 ```cy
-var s Shape = Circle{ radius: 2 }
+var s Shape = Circle{radius=2}
 print s.area()         --> 12.57
 
-s = Rectangle{ width: 4, height: 5 }
+s = Rectangle{width=4, height=5}
 print s.area()         --> 20
 ```
 
@@ -1493,7 +1494,7 @@ When the type template is invoked with template argument(s), a special version o
 
 In this example, `String` can be used as an argument since it satisfies the `type` parameter constraint:
 ```cy
-var a MyContainer[String] = {id: 123, value: 'abc'}
+var a MyContainer[String] = {id=123, value='abc'}
 print a.get()      -- Prints 'abc'
 ```
 Note that invoking the template again with the same argument(s) returns the same generated type. In other words, the generated type is always memoized from the input parameters.
@@ -1619,7 +1620,7 @@ for list -> n:
 
 Maps can be iterated. `next()` returns a key and value tuple:
 ```cy
-var map = Map{ a: 123, b: 234 }
+var map = Map{ a=123, b=234 }
 
 for map -> entry:
     print entry[0]
@@ -1666,8 +1667,10 @@ The `switch` statement branches to a case block from a matching case condition. 
 ```cy
 var val = 1000
 switch val
-case 0..100: print 'at or between 0 and 99'
-case 100   : print 'val is 100'
+case 0..100:
+    print 'at or between 0 and 99'
+case 100:
+    print 'val is 100'
 case 200:
     print 'val is 200'
 case 300, 400:
@@ -1864,7 +1867,7 @@ var d = dist(100, 100, 200, 200)
 You can call functions with named parameters.
 > _Planned Feature_
 ```cy
-var d = dist(x0: 10, x1: 20, y0: 30, y1: 40)
+var d = dist(x0=10, x1=20, y0=30, y1=40)
 ```
 
 ### Shorthand syntax.
@@ -1886,9 +1889,9 @@ The call block appends a lambda to a call expression's arguments:
 ```cy
 func Button(name String, size int, on_click any):
     return {
-        name: name,
-        size: size,
-        on_click: on_click,
+        name = name,
+        size = size,
+        on_click = on_click,
     }
 
 Button('Count', 10):
@@ -1938,7 +1941,7 @@ print add(1.0, 2.0)     --> 3.0
 ```
 In the above example, `add[int]` and `add[float]` were inferred from the function calls:
 
-Nested compile-time parameters can also be inferred:
+Nested template parameters can also be inferred:
 ```cy
 func set(m Map[#K, #V], key K, val V):
     m.set(key, val)
@@ -2312,7 +2315,7 @@ Note that `let` is used to allow `lib` to be used dynamically since the type is 
 If the path argument to `bindLib` is just a filename, the search steps for the library is specific to the operating system. Provide an absolute (eg. '/foo/mylib.so') or relative (eg. './mylib.so') path to load from a direct location instead. When the path argument is `none`, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own application/runtime.
 
 ### Configuration.
-By default `bindLib` returns an anonymous object with the binded C-functions as methods. This is convenient for invoking functions using the method call syntax. If a config is passed into `bindLib` as the second argument, `gen_table: true` makes `bindLib` return a table instead with the binded C-functions as Cyber functions.
+By default `bindLib` returns an anonymous object with the binded C-functions as methods. This is convenient for invoking functions using the method call syntax. If a config is passed into `bindLib` as the second argument, `gen_table=true` makes `bindLib` return a table instead with the binded C-functions as Cyber functions.
 
 ### Finalizer.
 The resulting object of `bindLib` holds a reference to an internal TCCState which owns the loaded JIT code.
@@ -2357,7 +2360,7 @@ ffi.cbind(MyObject, [.float, .voidPtr, .bool])
 ffi.cfunc('foo', [MyObject], MyObject)
 let lib = ffi.bindLib('./mylib.so')
 
-var res = lib.foo(MyObject{a: 123.0, b: os.cstr('foo'), c: true})
+var res = lib.foo(MyObject{a=123.0, b=os.cstr('foo'), c=true})
 ```
 
 The example above maps to these C declarations in `mylib.so`:
@@ -2378,7 +2381,7 @@ MyObject foo(MyObject o) {
 ffi.cfunc('foo', [MyObject], .voidPtr)
 let lib = ffi.bindLib('./mylib.so')
 
-var ptr = lib.foo(MyObject{a: 123, b: os.cstr('foo'), c: true})
+var ptr = lib.foo(MyObject{a=123, b=os.cstr('foo'), c=true})
 var res = lib.ptrToMyObject(ptr)
 ```
 
@@ -3036,7 +3039,7 @@ let Counter{ count }:
     let inc():
         count += 1
         
-let c = Counter{ count: 0 }
+let c = Counter{count=0}
 c.inc()
 print c.count       --> 1
 ```
@@ -3048,7 +3051,7 @@ Tables can be declared without any methods:
 ```cy
 let Vec3{x, y, z}
 
-let v = Vec3{x: 1, y: 2, z: 3}
+let v = Vec3{x=1, y=2, z=3}
 ```
 
 ## Dynamic inference.
@@ -3103,15 +3106,15 @@ type Vec2:
 
     func '$infix+'(o Vec2) Vec2:
         return Vec2{
-            x: x + o.x,
-            y: y + o.y,
+            x = x + o.x,
+            y = y + o.y,
         }
 
     func '$prefix-'() Vec2:
-        return Vec2{x: -x, y: -y}
+        return Vec2{x=-x, y=-y}
 
-var a = Vec2{x: 1, y: 2}
-var b = a + Vec2{x: 3, y: 4}
+var a = Vec2{x=1, y=2}
+var b = a + Vec2{x=3, y=4}
 var c = -a
 ```
 
@@ -3126,7 +3129,7 @@ type MyCollection:
     func $setIndex(idx, val):
         arr[idx * 2] = val 
 
-var a = MyCollection{arr: [1, 2, 3, 4]}
+var a = MyCollection{arr=[1, 2, 3, 4]}
 print a[1]        -- Prints `3`
 ```
 
@@ -3170,7 +3173,7 @@ type Vec2:
     y float
 
 func Vec2.$call(x float, y float) Vec2:
-    return Vec2{x: x, y: y}
+    return Vec2{x=x, y=y}
 
 var v = Vec2(1, 2)
 ```
@@ -3184,11 +3187,11 @@ After an instance of the type is created from its default record initializer, th
 ```cy
 type MyMap:
     func $initPair(key any, value any) void:
-        print "$(key): $(value)"
+        print "$(key) = $(value)"
 
-var m = MyMap{ a: 123, b: 234 }
---> a: 123
---> b: 234
+var m = MyMap{a=123, b=234}
+--> a = 123
+--> b = 234
 ```
 `$initPair` is only allowed if the type has a default record initializer or `$initRecord` is declared.
 
@@ -3706,7 +3709,7 @@ Top level declarations such as imports, types, and functions can be referenced i
 > type Foo:
     | a int
     |
-> f = Foo{a: 123}
+> f = Foo{a=123}
 > f.a
 `int` 123
 ```

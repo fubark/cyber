@@ -29,9 +29,9 @@ t.eq(122.fmt(.o), '172')
 t.eq(122.fmt(.d), '122')
 t.eq(122.fmt(.x), '7a')
 t.eq(122.fmt(.c), 'z')
-t.eq(2.fmt(.b, {pad: `0`, width: 8}), '00000010')
-t.eq(8.fmt(.o, {pad: `0`, width: 3}), '010')
-t.eq(10.fmt(.d, {pad: `0`, width: 4}), '0010')
-t.eq(16.fmt(.x, {pad: `0`, width: 4}), '0010')
+t.eq(2.fmt(.b, {pad=`0`, width=8}), '00000010')
+t.eq(8.fmt(.o, {pad=`0`, width=3}), '010')
+t.eq(10.fmt(.d, {pad=`0`, width=4}), '0010')
+t.eq(16.fmt(.x, {pad=`0`, width=4}), '0010')
 
 --cytest: pass

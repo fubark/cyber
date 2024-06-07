@@ -22,7 +22,7 @@ test.eq(c.?, 123)
 -- Wrap object.
 type Foo:
     a int
-var d ?Foo = Foo{a: 123}
+var d ?Foo = Foo{a=123}
 test.eq(d.?.a, 123)
 
 -- Wrap none, implicitly.

@@ -1,7 +1,7 @@
 type S:
     a float
 
-var o = S{a: 123}
+var o = S{a=123}
 o.a = []
 
 --cytest: error

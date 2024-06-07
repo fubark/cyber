@@ -62,7 +62,7 @@ func Node.getFn3(param int, param2 int):
 func Node.flatGet(self):
     return 123
 
-var n = Node{value: 123}
+var n = Node{value=123}
 
 -- Flat method declaration.
 t.eq(n.flatGet(), 123)
@@ -72,22 +72,22 @@ t.eq(n.flatGet2(), 123)
 t.eq(n.getEx(), 123)
 
 -- Explicit get with regular param.
-n = Node{value: 123}
+n = Node{value=123}
 t.eq(n.getEx2(321), 444)
 
 -- Explicit get with many regular params.
-n = Node{value: 123}
+n = Node{value=123}
 t.eq(n.getEx3(321, 1), 443)
 
 -- Implicit get.
 t.eq(n.get(), 123)
 
 -- Implicit get with regular param.
-n = Node{value: 123}
+n = Node{value=123}
 t.eq(n.get2(321), 444)
 
 -- Implicit get with many regular params.
-n = Node{value: 123}
+n = Node{value=123}
 t.eq(n.get3(321, 1), 443)
 
 -- Implicit get with subsequent use of object member alias.

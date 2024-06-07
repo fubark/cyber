@@ -4,12 +4,12 @@ type S:
 func foo():
     return 123
 
-var s = S{a: foo()}
+var s = S{a=foo()}
 
 --cytest: error
 --panic: Expected type `float`, found `int`.
 --
---main:7:14 main:
---var s = S{a: foo()}
---             ^
+--main:7:13 main:
+--var s = S{a=foo()}
+--            ^
 --

@@ -59,7 +59,7 @@ val = cy.parseCyon('[1, 2, 3]')
 t.eqList(val, [1, 2, 3])
 val = cy.parseCyon('{}')
 t.eq(val.size(), 0)
-val = cy.parseCyon('{ a: 123 }')
+val = cy.parseCyon('{a=123}')
 t.eq(val.size(), 1)
 t.eq(val['a'], 123)
 
@@ -84,9 +84,9 @@ t.eq(cyon, '''[
 ]''')
 cyon = cy.toCyon({})
 t.eq(cyon, '{}')
-cyon = cy.toCyon({ a: 123 })
+cyon = cy.toCyon({a=123})
 t.eq(cyon, '''{
-    a: 123,
+    a = 123,
 }''')
 
 --cytest: pass

@@ -18,10 +18,10 @@ type Rectangle:
     func area() float:
         return self.width * self.height
 
-var s Shape = Circle{ radius: 2 }
+var s Shape = Circle{radius=2}
 test.eqNear(s.area(), 12.56)
 
-s = Rectangle{ width: 4, height: 5 }
+s = Rectangle{width=4, height=5}
 test.eq(s.area(), 20)
 
 --cytest: pass

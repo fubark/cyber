@@ -985,7 +985,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 259-b87a37c</div>
+    <div class="sub-title">v0.4-dev 261-95cd639</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -1403,10 +1403,11 @@ var a = 123   -- This is a comment on the same line as a statement.
 <h2 id="cyon">CYON. <a href="#cyon">#</a></h2>
 <p>CYON or the Cyber object notation is similar to JSON. The format uses the same literal value semantics as Cyber.</p>
 <pre><code class="language-cy">{
-    name: 'John Doe',
-    'age': 25,
+    name  = 'John Doe',
+    'age' = 25,
+
     -- This is a comment
-    cities: [
+    cities = [
         'New York',
         'San Francisco',
         'Tokyo',
@@ -1682,11 +1683,11 @@ list.remove(1)
 <p>By default, the record literal initializes a <code>Table</code>:</p>
 <pre><code class="language-cy">var o = {}
 
-o = {a: 123}
+o = {a=123}
 print o.a          --> 123
 </code></pre>
 <p>A <code>Table</code> can be initialized explicitly using its type name:</p>
-<pre><code class="language-cy">var o = Table{a: 123}
+<pre><code class="language-cy">var o = Table{a=123}
 </code></pre>
 <p>Any field can be assigned a value.
 However, accessing a field before it's initialized results in a panic:</p>
@@ -1698,7 +1699,7 @@ print o.foo        --> panic: The field `foo` was not initialized.
 <a href="#basic-types">^topic</a>
 <h3 id="table-indexing">Table indexing. <a href="#table-indexing">#</a></h3>
 <p>Indexing can be used to access a dynamic field or an arbitrary key:</p>
-<pre><code class="language-cy">var o = { name: 'Nova' }
+<pre><code class="language-cy">var o = {name='Nova'}
 var field = 'name'
 print o[field]     --> Nova
 
@@ -1716,7 +1717,7 @@ print o[10]        --> List (3)
 <h2 id="maps">Maps. <a href="#maps">#</a></h2>
 <p>Maps are a builtin type that store key value pairs in dictionaries. See <a href="#type-map" title=""><code>type Map</code></a>.</p>
 <p>Maps are initialized with the <code>Map</code> type and a record literal:</p>
-<pre><code class="language-cy">var map = Map{ a: 123, b: () => 5 }
+<pre><code class="language-cy">var map = Map{a=123, b=() => 5}
 </code></pre>
 <p>The empty record literal creates an empty map:</p>
 <pre><code class="language-cy">var empty = Map{}
@@ -1750,19 +1751,19 @@ This gives structure to the entries and has
 the added benefit of allowing multi-line lambdas.
 <em>Most likely this will not be implemented in favor of a builder syntax</em></p>
 <pre><code class="language-cy">var colors = {}:
-    red: 0xFF0000
-    green: 0x00FF00
-    blue: 0x0000FF
-    dump func (c):
+    .red   = 0xFF0000
+    .green = 0x00FF00
+    .blue  = 0x0000FF
+    .dump  = func (c):
         print c.red
         print c.green
         print c.blue
 
     -- Nested map.
-    darker {}: 
-        red: 0xAA0000
-        green: 0x00AA00
-        blue: 0x0000AA
+    .darker = {}: 
+        .red   = 0xAA0000
+        .green = 0x00AA00
+        .blue  = 0x0000AA
 </code></pre>
 <a href="#basic-types">^topic</a>
 <h2 id="symbols">Symbols. <a href="#symbols">#</a></h2>
@@ -1863,11 +1864,11 @@ type A:
 <a href="#custom-types">^topic</a>
 <h3 id="instantiate">Instantiate. <a href="#instantiate">#</a></h3>
 <p>New object instances are created using a record literal with a leading type name:</p>
-<pre><code class="language-cy">var node = Node{value: 123, next: none}
+<pre><code class="language-cy">var node = Node{value=123, next=none}
 print node.value       -- Prints "123"
 </code></pre>
 <p>A record literal can also initialize to the inferred object type:</p>
-<pre><code class="language-cy">var node Node = {value: 234, next: none}
+<pre><code class="language-cy">var node Node = {value=234, next=none}
 print node.value       -- Prints "234"
 </code></pre>
 <a href="#custom-types">^topic</a>
@@ -1881,7 +1882,7 @@ print node.value       -- Prints "234"
 <a href="#custom-types">^topic</a>
 <h3 id="default-field-values">Default field values. <a href="#default-field-values">#</a></h3>
 <p>When a field is omitted in the record literal, it gets initialized to its <a href="#zero-values" title="">zero value</a>:</p>
-<pre><code class="language-cy">var node Node = {value: 234}
+<pre><code class="language-cy">var node Node = {value=234}
 print node.next    --> Option.none
 
 type Student:
@@ -1922,8 +1923,8 @@ var n = Node{}    -- CompileError. Can not zero initialize `next`
     next  ?Node
 
 var node = Node{
-    value: {a: 123, b: 100.0},
-    next: none,
+    value = {a=123, b=100.0},
+    next  = none,
 }
 </code></pre>
 <a href="#custom-types">^topic</a>
@@ -1940,7 +1941,7 @@ var node = Node{
         self.inc(321)
         print value
 
-var n = Node{value: 123, next: none}
+var n = Node{value=123, next=none}
 n.incAndPrint()         -- Prints "444"
 </code></pre>
 <p>Methods can be declared outside of the type declaration. When using the flat declaration style, <code>self</code> must be the first parameter to distinguish it from a type function:</p>
@@ -1967,7 +1968,7 @@ n.incAndPrint()         -- Prints "444"
 
 -- Declare static function inside `Node`.
 func Node.new():
-    return Node{value: 123, next: none}
+    return Node{value=123, next=none}
 
 var n = Node.new()
 </code></pre>
@@ -1991,7 +1992,7 @@ print Node.DefaultValue    -- Prints "100"
 type Container:
     b use Base
 
-var c = Container{b: Base{a: 123}}
+var c = Container{b = Base{a=123}}
 print c.a         --> 123
 print c.double()  --> 246
 </code></pre>
@@ -2001,7 +2002,7 @@ print c.double()  --> 246
     a int
     b use Base
 
-var c = Container{a: 999, b: Base{a: 123}}
+var c = Container{a=999, b = Base{a=123}}
 print c.a         --> 999
 print c.double()  --> 246
 </code></pre>
@@ -2019,12 +2020,12 @@ print c.double()  --> 246
     x float
     y float
 
-var v = Vec2{x: 30, y: 40}
+var v = Vec2{x=30, y=40}
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="copy-structs">Copy structs. <a href="#copy-structs">#</a></h3>
 <p>Since structs are copied by value, assigning a struct to another variable creates a new struct:</p>
-<pre><code class="language-cy">var v = Vec2{x: 30, y: 40}
+<pre><code class="language-cy">var v = Vec2{x=30, y=40}
 var w = v
 v.x = 100
 print w.x    -- Prints '30'
@@ -2070,13 +2071,13 @@ type Rectangle:
 <a href="#custom-types">^topic</a>
 <h3 id="initialize-choice">Initialize choice. <a href="#initialize-choice">#</a></h3>
 <p>The general way to initialize a choice is to invoke the initializer with the payload as the argument:</p>
-<pre><code class="language-cy">var rect = Rectangle{width: 10, height: 20}
+<pre><code class="language-cy">var rect = Rectangle{width=10, height=20}
 var s = Shape.rectangle(rect)
 
 s = Shape.line(20)
 </code></pre>
 <p>If the payload is a record-like type, the choice can be initialized with a record literal:</p>
-<pre><code class="language-cy">var s = Shape.rectangle{width: 10, height: 20}
+<pre><code class="language-cy">var s = Shape.rectangle{width=10, height=20}
 </code></pre>
 <p>A choice without a payload is initialized like an enum member:</p>
 <pre><code class="language-cy">var s = Shape.point
@@ -2101,7 +2102,7 @@ else:
 <a href="#custom-types">^topic</a>
 <h3 id="access-choice">Access choice. <a href="#access-choice">#</a></h3>
 <p>A choice can be accessed by specifying the access operator <code>.!</code> before the tagged member name. This will either return the payload or panic at runtime: <em>Planned Feature</em></p>
-<pre><code class="language-cy">var s = Shape{line: 20}
+<pre><code class="language-cy">var s = Shape{line=20}
 print s.!line     --> 20
 </code></pre>
 <a href="#custom-types">^topic</a>
@@ -2180,7 +2181,7 @@ Once declared, the alias and the target type can be used interchangeably.</p>
 
 type Pos2 = Vec2
 
-var pos = Pos2{x: 3, y: 4}
+var pos = Pos2{x=3, y=4}
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h2 id="distinct-types">Distinct types. <a href="#distinct-types">#</a></h2>
@@ -2192,7 +2193,7 @@ var pos = Pos2{x: 3, y: 4}
 
 type Pos2 Vec2
 
-var pos = Pos2{x: 3, y: 4}
+var pos = Pos2{x=3, y=4}
 </code></pre>
 <p>Functions can be declared under the new type's namespace:</p>
 <pre><code class="language-">use math
@@ -2203,15 +2204,15 @@ type Pos2 Vec2:
         var dy = math.abs(o.y - y)
         return dx + dy
 
-var pos = Pos2{x: 3, y: 4}
-var dst = Pos2{x: 4, y: 5}
+var pos = Pos2{x=3, y=4}
+var dst = Pos2{x=4, y=5}
 print pos.blockDist(dst)     --> 2
 </code></pre>
 <p>Note that functions declared from the target type do not carry over to the new type.</p>
 <p>Unlike a type alias, the new type and the target type can not be used interchangeably since they are different types. However, instances of the new type can be casted to the target type, and vice versa: <em>Planned Feature</em></p>
 <pre><code class="language-cy">type Pos2 Vec2
 
-var a = Pos2{x: 3, y: 4}
+var a = Pos2{x=3, y=4}
 
 var b Vec2 = a as Vec2
 </code></pre>
@@ -2239,10 +2240,10 @@ type Rectangle:
 </code></pre>
 <p>A type that intends to implement a trait but does not satisfy the trait's interface results in a compile error.</p>
 <p>Implementing types become assignable to the trait type:</p>
-<pre><code class="language-cy">var s Shape = Circle{ radius: 2 }
+<pre><code class="language-cy">var s Shape = Circle{radius=2}
 print s.area()         --> 12.57
 
-s = Rectangle{ width: 4, height: 5 }
+s = Rectangle{width=4, height=5}
 print s.area()         --> 20
 </code></pre>
 <a href="#custom-types">^topic</a>
@@ -2262,7 +2263,7 @@ print s.area()         --> 20
 <h3 id="expand-type-template">Expand type template. <a href="#expand-type-template">#</a></h3>
 <p>When the type template is invoked with template argument(s), a special version of the type is generated.</p>
 <p>In this example, <code>String</code> can be used as an argument since it satisfies the <code>type</code> parameter constraint:</p>
-<pre><code class="language-cy">var a MyContainer[String] = {id: 123, value: 'abc'}
+<pre><code class="language-cy">var a MyContainer[String] = {id=123, value='abc'}
 print a.get()      -- Prints 'abc'
 </code></pre>
 <p>Note that invoking the template again with the same argument(s) returns the same generated type. In other words, the generated type is always memoized from the input parameters.</p>
@@ -2379,7 +2380,7 @@ for list -> n:
     print n
 </code></pre>
 <p>Maps can be iterated. <code>next()</code> returns a key and value tuple:</p>
-<pre><code class="language-cy">var map = Map{ a: 123, b: 234 }
+<pre><code class="language-cy">var map = Map{ a=123, b=234 }
 
 for map -> entry:
     print entry[0]
@@ -2420,8 +2421,10 @@ This loop prints 0 through 9 but skips 4:</p>
 <em>Incomplete: Not all types can be used in the case conditions such as ranges.</em></p>
 <pre><code class="language-cy">var val = 1000
 switch val
-case 0..100: print 'at or between 0 and 99'
-case 100   : print 'val is 100'
+case 0..100:
+    print 'at or between 0 and 99'
+case 100:
+    print 'val is 100'
 case 200:
     print 'val is 200'
 case 300, 400:
@@ -2596,7 +2599,7 @@ func foo():
 </code></pre>
 <p>You can call functions with named parameters.</p>
 <blockquote><p><em>Planned Feature</em></p>
-</blockquote><pre><code class="language-cy">var d = dist(x0: 10, x1: 20, y0: 30, y1: 40)
+</blockquote><pre><code class="language-cy">var d = dist(x0=10, x1=20, y0=30, y1=40)
 </code></pre>
 <a href="#functions">^topic</a>
 <h3 id="shorthand-syntax">Shorthand syntax. <a href="#shorthand-syntax">#</a></h3>
@@ -2616,9 +2619,9 @@ r = foo()         -- Calls the function `random`.
 <p>The call block appends a lambda to a call expression's arguments:</p>
 <pre><code class="language-cy">func Button(name String, size int, on_click any):
     return {
-        name: name,
-        size: size,
-        on_click: on_click,
+        name = name,
+        size = size,
+        on_click = on_click,
     }
 
 Button('Count', 10):
@@ -2661,7 +2664,7 @@ print add(1, 2)         --> 3
 print add(1.0, 2.0)     --> 3.0
 </code></pre>
 <p>In the above example, <code>add[int]</code> and <code>add[float]</code> were inferred from the function calls:</p>
-<p>Nested compile-time parameters can also be inferred:</p>
+<p>Nested template parameters can also be inferred:</p>
 <pre><code class="language-cy">func set(m Map[#K, #V], key K, val V):
     m.set(key, val)
 </code></pre>
@@ -3582,7 +3585,7 @@ lib.add(123, 321)
 <p>If the path argument to <code>bindLib</code> is just a filename, the search steps for the library is specific to the operating system. Provide an absolute (eg. '/foo/mylib.so') or relative (eg. './mylib.so') path to load from a direct location instead. When the path argument is <code>none</code>, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own application/runtime.</p>
 <a href="#ffi">^topic</a>
 <h3 id="configuration">Configuration. <a href="#configuration">#</a></h3>
-<p>By default <code>bindLib</code> returns an anonymous object with the binded C-functions as methods. This is convenient for invoking functions using the method call syntax. If a config is passed into <code>bindLib</code> as the second argument, <code>gen_table: true</code> makes <code>bindLib</code> return a table instead with the binded C-functions as Cyber functions.</p>
+<p>By default <code>bindLib</code> returns an anonymous object with the binded C-functions as methods. This is convenient for invoking functions using the method call syntax. If a config is passed into <code>bindLib</code> as the second argument, <code>gen_table=true</code> makes <code>bindLib</code> return a table instead with the binded C-functions as Cyber functions.</p>
 <a href="#ffi">^topic</a>
 <h3 id="finalizer">Finalizer. <a href="#finalizer">#</a></h3>
 <p>The resulting object of <code>bindLib</code> holds a reference to an internal TCCState which owns the loaded JIT code.
@@ -3609,7 +3612,7 @@ ffi.cbind(MyObject, [.float, .voidPtr, .bool])
 ffi.cfunc('foo', [MyObject], MyObject)
 let lib = ffi.bindLib('./mylib.so')
 
-var res = lib.foo(MyObject{a: 123.0, b: os.cstr('foo'), c: true})
+var res = lib.foo(MyObject{a=123.0, b=os.cstr('foo'), c=true})
 </code></pre>
 <p>The example above maps to these C declarations in <code>mylib.so</code>:</p>
 <pre><code class="language-c">typedef struct MyObject {
@@ -3626,7 +3629,7 @@ MyObject foo(MyObject o) {
 <pre><code class="language-cy">ffi.cfunc('foo', [MyObject], .voidPtr)
 let lib = ffi.bindLib('./mylib.so')
 
-var ptr = lib.foo(MyObject{a: 123, b: os.cstr('foo'), c: true})
+var ptr = lib.foo(MyObject{a=123, b=os.cstr('foo'), c=true})
 var res = lib.ptrToMyObject(ptr)
 </code></pre>
 <a href="#ffi">^topic</a>
@@ -4211,7 +4214,7 @@ print a.name     --> Nova
     let inc():
         count += 1
         
-let c = Counter{ count: 0 }
+let c = Counter{count=0}
 c.inc()
 print c.count       --> 1
 </code></pre>
@@ -4221,7 +4224,7 @@ Additional fields can still be initialized and used.</p>
 <p>Tables can be declared without any methods:</p>
 <pre><code class="language-cy">let Vec3{x, y, z}
 
-let v = Vec3{x: 1, y: 2, z: 3}
+let v = Vec3{x=1, y=2, z=3}
 </code></pre>
 <a href="#dynamic-typing">^topic</a>
 <h2 id="dynamic-inference">Dynamic inference. <a href="#dynamic-inference">#</a></h2>
@@ -4280,15 +4283,15 @@ In this example, the dynamic value <code>a</code> resolves to a <code>String</co
 
     func '$infix+'(o Vec2) Vec2:
         return Vec2{
-            x: x + o.x,
-            y: y + o.y,
+            x = x + o.x,
+            y = y + o.y,
         }
 
     func '$prefix-'() Vec2:
-        return Vec2{x: -x, y: -y}
+        return Vec2{x=-x, y=-y}
 
-var a = Vec2{x: 1, y: 2}
-var b = a + Vec2{x: 3, y: 4}
+var a = Vec2{x=1, y=2}
+var b = a + Vec2{x=3, y=4}
 var c = -a
 </code></pre>
 <p>Some special operators have their own name. This example overloads the <code>index</code> operator and the <code>set index</code> operator:</p>
@@ -4301,7 +4304,7 @@ var c = -a
     func $setIndex(idx, val):
         arr[idx * 2] = val 
 
-var a = MyCollection{arr: [1, 2, 3, 4]}
+var a = MyCollection{arr=[1, 2, 3, 4]}
 print a[1]        -- Prints `3`
 </code></pre>
 <a href="#metaprogramming">^topic</a>
@@ -4321,7 +4324,7 @@ type Vec2:
     y float
 
 func Vec2.$call(x float, y float) Vec2:
-    return Vec2{x: x, y: y}
+    return Vec2{x=x, y=y}
 
 var v = Vec2(1, 2)
 </code></pre>
@@ -4334,11 +4337,11 @@ var v = Vec2(1, 2)
 After an instance of the type is created from its default record initializer, this method is invoked for each key-value pair in the record literal:</p>
 <pre><code class="language-cy">type MyMap:
     func $initPair(key any, value any) void:
-        print "$(key): $(value)"
+        print "$(key) = $(value)"
 
-var m = MyMap{ a: 123, b: 234 }
---> a: 123
---> b: 234
+var m = MyMap{a=123, b=234}
+--> a = 123
+--> b = 234
 </code></pre>
 <p><code>$initPair</code> is only allowed if the type has a default record initializer or <code>$initRecord</code> is declared.</p>
 <a href="#metaprogramming">^topic</a>
@@ -4815,7 +4818,7 @@ hello!
 <pre><code class="language-bash">> type Foo:
     | a int
     |
-> f = Foo{a: 123}
+> f = Foo{a=123}
 > f.a
 `int` 123
 </code></pre>

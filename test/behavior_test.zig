@@ -219,6 +219,7 @@ if (!aot) {
         run.case2(Config.initFileModules("./test/modules/import_missing_sym_error.cy").withSilent(), "modules/import_missing_sym_error.cy");
         run.case2(Config.initFileModules("./test/modules/import_rel_path.cy"), "modules/import_rel_path.cy");
         run.case2(Config.initFileModules("./test/modules/import_implied_rel_path.cy"), "modules/import_implied_rel_path.cy");
+        run.case2(Config.initFileModules("./test/modules/import_stmt_error.cy"), "modules/import_stmt_error.cy");
         run.case2(Config.initFileModules("./test/modules/import_unresolved_rel_path.cy"), "modules/import_unresolved_rel_path.cy");
         
         // Import when running main script in the cwd.

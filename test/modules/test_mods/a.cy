@@ -22,9 +22,6 @@ func fn2(a int, b int):
 func barNoExport():
     return 234
 
--- Test that there is no main block execution for imported modules.
-panic(.ExecutedModuleMain)
-
 func toInt(val any) int:
     return int(val)
 

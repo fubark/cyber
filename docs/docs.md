@@ -2049,8 +2049,7 @@ print random()
 
 ### Main module.
 Only the main module can have top-level statements that aren't static declarations.
-If an imported module contains top-level statements, they are ignored.
-In the future, it may result in a compile error instead:
+An imported module containing top-level statements returns an error:
 ```cy
 -- main.cy
 use a 'foo.cy'
@@ -2059,11 +2058,7 @@ print a.foo
 -- foo.cy
 use 'bar.cy'
 var .foo = 123
-print foo         -- Statement is ignored.
-
--- bar.cy
-var .bar = 321
-print bar         -- Statement is ignored.
+print foo         -- Error: Top-level statement not allowed.
 ```
 
 ### Circular imports.

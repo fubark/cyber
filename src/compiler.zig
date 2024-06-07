@@ -935,6 +935,31 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                 self.sema.list_tmpl = core.getSym("List").?.cast(.template);
                 self.sema.table_type = core.getSym("Table").?.cast(.object_t);
             }
+            if (chunk != self.main_chunk) {
+                // Check for illegal top level statements.
+                if (chunk.parser.staticDecls.items.len != chunk.ast.root.?.stmts.len) {
+                    for (chunk.ast.root.?.stmts) |stmt| {
+                        switch (stmt.type()) {
+                            .context_decl,
+                            .custom_decl,
+                            .distinct_decl,
+                            .enumDecl,
+                            .funcDecl,
+                            .import_stmt,
+                            .objectDecl,
+                            .specialization,
+                            .staticDecl,
+                            .structDecl,
+                            .table_decl,
+                            .typeAliasDecl,
+                            .template => {},
+                            else => {
+                                return chunk.reportError("Top level statement is not allowed from imported module.", @ptrCast(stmt));
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Check for import tasks.

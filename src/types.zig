@@ -29,6 +29,7 @@ pub const TypeKind = enum(u8) {
     table,
     ct_ref,
     ct_infer,
+    distinct,
 };
 
 pub const TypeInfo = packed struct {

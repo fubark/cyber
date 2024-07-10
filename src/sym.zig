@@ -226,6 +226,7 @@ pub const Sym = extern struct {
             .struct_t => return self.cast(.struct_t).variant,
             .custom_t => return self.cast(.custom_t).variant,
             .enum_t   => return self.cast(.enum_t).variant,
+            .int_t    => return self.cast(.int_t).variant,
             else => return null,
         }
     }
@@ -912,6 +913,7 @@ pub const IntType = extern struct {
     type: cy.TypeId,
     mod: vmc.Module,
     bits: u8,
+    variant: ?*Variant,
 
     pub fn getMod(self: *IntType) *cy.Module {
         return @ptrCast(&self.mod);
@@ -1202,6 +1204,7 @@ pub const ChunkExt = struct {
             .type = type_id,
             .mod = undefined,
             .bits = bits,
+            .variant = null,
         });
         @as(*cy.Module, @ptrCast(&sym.mod)).* = cy.Module.init(c);
         c.compiler.sema.types.items[type_id] = .{

@@ -2107,7 +2107,7 @@ pub fn resolveDistinctTypeId(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType, opt
     distinct_t.type = typeid;
     c.compiler.sema.types.items[typeid] = .{
         .sym = @ptrCast(distinct_t),
-        .kind = .null,
+        .kind = .distinct,
         .data = undefined,
         .info = .{},
     };

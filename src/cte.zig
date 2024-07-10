@@ -157,24 +157,26 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
             .args = args_dupe,
             .data = .{ .sym = undefined },
         };
+        res.key_ptr.* = args_dupe;
+        res.value_ptr.* = variant;
 
         const new_sym = try sema.reserveTemplateVariant(c, root_template, root_template.child_decl, variant);
         variant.data.sym = new_sym;
-        res.key_ptr.* = args_dupe;
-        res.value_ptr.* = variant;
 
         const new_type = new_sym.getStaticType().?;
         c.sema.types.items[new_type].info.ct_infer = ct_infer;
         c.sema.types.items[new_type].info.ct_ref = ct_ref;
 
         // Allow circular reference by resolving after the new symbol has been added to the cache.
-        try sema.resolveTemplateVariant(c, root_template, new_sym);
+        // In the case of a distinct type, a new sym is returned after resolving.
+        const final_sym = try sema.resolveTemplateVariant(c, root_template, new_sym);
+        variant.data.sym = final_sym;
 
         if (root_template == template) {
-            return new_sym;
+            return final_sym;
         } else {
             // Access the child expansion from the root.
-            return template.getExpandedSymFrom(root_template, new_sym);
+            return template.getExpandedSymFrom(root_template, final_sym);
         }
     } 
 
@@ -193,8 +195,9 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
         variant.type = .sym;
         variant.data = .{ .sym = new_sym };
 
-        try sema.resolveTemplateVariant(c, template, new_sym);
-        return new_sym;
+        const final_sym = try sema.resolveTemplateVariant(c, template, new_sym);
+        variant.data.sym = new_sym;
+        return final_sym;
     }
 
     if (root_template == template) {

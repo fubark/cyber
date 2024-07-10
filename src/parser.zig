@@ -2091,7 +2091,7 @@ pub const Parser = struct {
     fn parseArrayLiteral(self: *Parser) !*ast.ArrayLit {
         const start = self.next_pos;
         const args = try self.parseArrayLiteral2();
-        return self.ast.newNode(.arrayLit, .{
+        return self.ast.newNode(.array_lit, .{
             .args = args,
             .pos = self.tokenSrcPos(start),
         });
@@ -2736,13 +2736,21 @@ pub const Parser = struct {
                     .pos = self.tokenSrcPos(start),
                 });
             },
-            .dot => {
+            .dot => b: {
                 self.advance();
-                const name = (try self.parseOptName()) orelse {
-                    return self.reportError("Expected symbol identifier.", &.{});
-                };
-                name.setType(.dot_lit);
-                return name;
+                if (self.peek().tag() == .left_bracket) {
+                    const array = try self.parseArrayLiteral();
+                    break :b try self.ast.newNodeErase(.dot_array_lit, .{
+                        .array = array,
+                        .pos = self.tokenSrcPos(start),
+                    });
+                } else {
+                    const name = (try self.parseOptName()) orelse {
+                        return self.reportError("Expected symbol identifier.", &.{});
+                    };
+                    name.setType(.dot_lit);
+                    return name;
+                }
             },
             .symbol_k => b: {
                 self.advance();

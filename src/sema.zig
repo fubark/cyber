@@ -5347,8 +5347,8 @@ pub const ChunkExt = struct {
             .unary_expr => {
                 return try c.semaUnExpr(expr);
             },
-            .arrayLit => {
-                const array_lit = node.cast(.arrayLit);
+            .array_lit => {
+                const array_lit = node.cast(.array_lit);
                 const irIdx = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(bt.ListDyn), node);
                 const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, array_lit.args.len);
 
@@ -5359,6 +5359,35 @@ pub const ChunkExt = struct {
 
                 c.ir.setExprData(irIdx, .list, .{ .numArgs = @intCast(array_lit.args.len) });
                 return ExprResult.initStatic(irIdx, bt.ListDyn);
+            },
+            .dot_array_lit => {
+                if (expr.target_t == cy.NullId) {
+                    return c.reportError("Can not infer array like type.", expr.node);
+                }
+
+                const target_sym = c.sema.getTypeSym(expr.target_t);
+                const variant = target_sym.getVariant() orelse {
+                    return c.reportError("Can not infer array like type.", expr.node);
+                };
+                if (variant.root_template != c.sema.list_tmpl) {
+                    return c.reportError("Can not infer array like type.", expr.node);
+                }
+
+                const array_lit = node.cast(.dot_array_lit).array;
+
+                const nargs = array_lit.args.len;
+                const loc = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(expr.target_t), node);
+                const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
+
+                const elem_t = variant.args[0].asHeapObject().type.type;
+
+                for (array_lit.args, 0..) |arg, i| {
+                    const res = try c.semaExprTarget(arg, elem_t);
+                    c.ir.setArrayItem(args_loc, u32, i, res.irIdx);
+                }
+
+                c.ir.setExprData(loc, .list, .{ .numArgs = @intCast(nargs) });
+                return ExprResult.initStatic(loc, expr.target_t);
             },
             .recordLit => {
                 const record_lit = node.cast(.recordLit);

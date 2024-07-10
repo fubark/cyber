@@ -838,6 +838,16 @@ for list -> it:
 list.remove(1)
 ```
 
+Since `List` is a generic type, an explicit List type can be attached to the initializer:
+```cy
+var a = List[int].[1, 2, 3]
+```
+
+When the intializer is only prefixed with a dot, it will infer the List type constraint:
+```cy
+var a List[int] = .[1, 2, 3]
+```
+
 ## Tuples.
 > _Incomplete: Tuples can only be created from @host funcs at the moment._
 

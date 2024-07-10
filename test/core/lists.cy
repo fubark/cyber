@@ -7,11 +7,18 @@ var a = [
 ]
 t.eq(a.len(), 2)
 
--- Typed initializer.
+-- Explicit list type.
 var ta = List[int].[1, 2, 3]
 t.eq(typeof(ta), List[int])
 t.eq(ta.len(), 3)
 t.eq(ta[0], 1)
+
+-- Infer list type.
+var int_list List[int] = .[1, 2, 3]
+t.eq(int_list.len(), 3)
+t.eq(int_list[0], 1)
+t.eq(int_list[1], 2)
+t.eq(int_list[2], 3)
 
 -- Index access.
 a = [1, 2, 3]

@@ -12,7 +12,7 @@ pub const NodeType = enum(u7) {
 
     accessExpr,
     all,
-    arrayLit,
+    array_lit,
     array_expr,
     array_init,
     assignStmt,
@@ -35,6 +35,7 @@ pub const NodeType = enum(u7) {
     custom_decl,
     decLit,
     distinct_decl,
+    dot_array_lit,
     dot_lit,
     else_block,
     enumDecl,
@@ -284,6 +285,11 @@ pub const CallExpr = struct {
 
 pub const ArrayLit = struct {
     args: []*Node align(8),
+    pos: u32,
+};
+
+pub const DotArrayLit = struct {
+    array: *ArrayLit align(8),
     pos: u32,
 };
 
@@ -549,7 +555,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .null           => Node,
         .accessExpr     => AccessExpr,
         .all            => Token,
-        .arrayLit       => ArrayLit,
+        .array_lit      => ArrayLit,
         .array_expr     => ArrayExpr,
         .array_init     => ArrayInit,
         .assignStmt     => AssignStmt,
@@ -572,6 +578,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .custom_decl    => CustomDecl,
         .decLit         => Span,
         .distinct_decl  => DistinctDecl,
+        .dot_array_lit  => DotArrayLit,
         .dot_lit        => Span,
         .else_block     => ElseBlock,
         .enumDecl       => EnumDecl,
@@ -681,7 +688,7 @@ pub const Node = struct {
             .null           => cy.NullId,
             .all            => self.cast(.all).pos,
             .accessExpr     => self.cast(.accessExpr).left.pos(),
-            .arrayLit       => self.cast(.arrayLit).pos,
+            .array_lit      => self.cast(.array_lit).pos,
             .array_expr     => self.cast(.array_expr).left.pos(),
             .array_init     => self.cast(.array_init).left.pos(),
             .assignStmt     => self.cast(.assignStmt).left.pos(),
@@ -704,6 +711,7 @@ pub const Node = struct {
             .custom_decl    => self.cast(.custom_decl).pos,
             .decLit         => self.cast(.decLit).pos,
             .distinct_decl  => self.cast(.distinct_decl).pos,
+            .dot_array_lit  => self.cast(.dot_array_lit).pos,
             .dot_lit        => self.cast(.dot_lit).pos-1,
             .else_block     => self.cast(.else_block).pos,
             .enumDecl       => self.cast(.enumDecl).pos,
@@ -1407,8 +1415,8 @@ pub const Encoder = struct {
                 try w.writeByte('=');
                 try self.write(w, local_decl.right);
             },
-            .arrayLit => {
-                const expr = node.cast(.arrayLit);
+            .array_lit => {
+                const expr = node.cast(.array_lit);
                 try w.writeByte('[');
                 if (expr.args.len > 0) {
                     try self.write(w, expr.args[0]);

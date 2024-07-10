@@ -345,11 +345,11 @@ pub const DecodeListIR = struct {
     arr: []const *ast.Node,
 
     fn init(alloc: std.mem.Allocator, view: cy.ast.AstView, list_: *ast.Node) !DecodeListIR {
-        if (list_.type() != .arrayLit) {
+        if (list_.type() != .array_lit) {
             return error.NotAList;
         }
 
-        const list = list_.cast(.arrayLit);
+        const list = list_.cast(.array_lit);
 
         var new = DecodeListIR{
             .alloc = alloc,
@@ -576,7 +576,7 @@ pub const DecodeValueIR = struct {
 
     pub fn getValueType(self: DecodeValueIR) ValueType {
         switch (self.expr.type()) {
-            .arrayLit => return .list,
+            .array_lit => return .list,
             .recordLit => return .map,
             .raw_string_lit,
             .stringLit => return .string,

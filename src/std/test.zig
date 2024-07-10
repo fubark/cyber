@@ -23,8 +23,7 @@ const cFunc = cy.builtins.cFunc;
 const func = cy.hostFuncEntry;
 const funcs = [_]C.HostFuncEntry{
     func("assert", zErrFunc(assert)),
-    func("eq",  eq ),
-    func("eqList", zErrFunc(eqList)),
+    func("eq_",  eq),
     func("eqNear", zErrFunc(eqNear)),
 };
 
@@ -52,16 +51,17 @@ fn erase(vm: *cy.VM) Value {
     return vm.getValue(0);
 }
 
-pub fn eq(vm: *cy.VM, args: [*]const cy.Value, _: u8) Value {
-    const res = eq_c(vm, args[0], args[1]);
+pub fn eq(vm: *cy.VM) Value {
+    const type_id = vm.getInt(0);
+    const res = eq_c(vm, @intCast(type_id), vm.getValue(1), vm.getValue(2));
     if (res.hasError()) {
         return Value.Interrupt;
     }
     return Value.initBool(res.val);
 }
 
-pub fn eq_c(c: cy.Context, act: rt.Any, exp: rt.Any) callconv(.C) rt.ErrorUnion(bool) {
-    if (eq2(c, act, exp)) {
+pub fn eq_c(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) callconv(.C) rt.ErrorUnion(bool) {
+    if (eq2(c, type_id, act, exp)) {
         return rt.wrapErrorValue(bool, true);
     } else {
         const err = cy.builtins.prepThrowZError2(c, error.AssertError, null);
@@ -69,7 +69,18 @@ pub fn eq_c(c: cy.Context, act: rt.Any, exp: rt.Any) callconv(.C) rt.ErrorUnion(
     }
 }
 
-fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
+fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
+    if (build_options.rt != .pm) {
+        if (type_id == bt.Integer) {
+            if (act.val == exp.val) {
+                return true;
+            } else {
+                rt.errZFmt(c, "actual: {}, expected: {}", .{act.val, exp.val});
+                return false;
+            }
+        }
+    }
+
     const act_t = act.getTypeId();
     const exp_t = exp.getTypeId();
 
@@ -107,10 +118,10 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
     } else {
         switch (act_t) {
             bt.Integer => {
-                if (act.asInteger() == exp.asInteger()) {
+                if (act.asBoxInt() == exp.asBoxInt()) {
                     return true;
                 } else {
-                    rt.errFmt(c, "actual: {} != {}\n", &.{v(act.asInteger()), v(exp.asInteger())});
+                    rt.errFmt(c, "actual: {} != {}\n", &.{v(act.asBoxInt()), v(exp.asBoxInt())});
                     return false;
                 }
             },

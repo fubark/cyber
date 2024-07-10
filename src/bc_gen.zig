@@ -3502,10 +3502,10 @@ fn pushReleaseExt(c: *Chunk, slot: u8, node: *ast.Node, desc: u32) !void {
     try c.buf.pushOp1Ext(.release, slot, desc);
 }
 
-fn genConstIntExt(c: *Chunk, val: u48, dst: LocalId, desc: ?u32) !GenValue {
+fn genConstIntExt(c: *Chunk, val: i64, dst: LocalId, desc: ?u32) !GenValue {
     // TODO: Can be constU8.
     if (val <= std.math.maxInt(i8)) {
-        try c.buf.pushOp2Ext(.constI8, @bitCast(@as(i8, @intCast(val))), dst, desc);
+        try c.buf.pushOp2Ext(.constIntV8, @bitCast(@as(i8, @intCast(val))), dst, desc);
         return regValue(c, dst, false);
     }
     const idx = try c.buf.getOrPushConst(cy.Value.initInt(@intCast(val)));

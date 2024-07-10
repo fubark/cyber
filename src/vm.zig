@@ -1621,7 +1621,7 @@ pub const VM = struct {
                 return;
             },
             bt.Integer => {
-                try std.fmt.format(w, "{}", .{val.asInteger()});
+                try std.fmt.format(w, "{}", .{val.asBoxInt()});
                 return;
             },
             else => {}, // Fall-through.
@@ -1743,6 +1743,11 @@ fn evalCompareBool(left: Value, right: Value) bool {
 
 fn evalCompare(left: Value, right: Value) Value {
     switch (left.getTypeId()) {
+        bt.Integer => {
+            if (right.getTypeId() == bt.Integer) {
+                return Value.initBool(left.castHeapObject(*cy.heap.Int).val == right.castHeapObject(*cy.heap.Int).val);
+            }
+        },
         bt.String => {
             if (right.getTypeId() == bt.String) {
                 const lstr = left.asString();
@@ -1771,6 +1776,11 @@ fn evalCompare(left: Value, right: Value) Value {
 
 fn evalCompareNot(left: cy.Value, right: cy.Value) cy.Value {
     switch (left.getTypeId()) {
+        bt.Integer => {
+            if (right.getTypeId() == bt.Integer) {
+                return Value.initBool(left.castHeapObject(*cy.heap.Int).val != right.castHeapObject(*cy.heap.Int).val);
+            }
+        },
         bt.String => {
             if (right.getTypeId() == bt.String) {
                 const lstr = left.asString();

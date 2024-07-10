@@ -139,6 +139,7 @@ pub const HeapObject = extern union {
     up: UpValue,
     tccState: if (cy.hasFFI) TccState else void,
     pointer: Pointer,
+    integer: Int,
     type: Type,
     metatype: MetaType,
 
@@ -722,6 +723,12 @@ pub const Pointer = extern struct {
     typeId: cy.TypeId align(8),
     rc: u32,
     ptr: ?*anyopaque,
+};
+
+pub const Int = extern struct {
+    type_id: cy.TypeId align(8),
+    rc: u32,
+    val: i64,
 };
 
 pub const ExternFunc = extern struct {
@@ -1560,6 +1567,7 @@ pub const VmExt = struct {
     pub const allocEmptyListDyn = Root.allocEmptyListDyn;
     pub const allocArray = Root.allocArray;
     pub const allocPointer = Root.allocPointer;
+    pub const allocInt = Root.allocInt;
     pub const allocUnsetArrayObject = Root.allocUnsetArrayObject;
     pub const allocUnsetAstringObject = Root.allocUnsetAstringObject;
     pub const allocUnsetUstringObject = Root.allocUnsetUstringObject;
@@ -1815,6 +1823,16 @@ pub fn allocTccState(self: *cy.VM, state: *tcc.TCCState, optLib: ?*std.DynLib) !
     return Value.initNoCycPtr(obj);
 }
 
+pub fn allocInt(self: *cy.VM, val: i64) !Value {
+    const obj = try allocPoolObject(self);
+    obj.integer = .{
+        .type_id = bt.Integer,
+        .rc = 1,
+        .val = val,
+    };
+    return Value.initNoCycPtr(obj);
+}
+
 pub fn allocPointer(self: *cy.VM, ptr: ?*anyopaque) !Value {
     const obj = try allocPoolObject(self);
     obj.pointer = .{
@@ -1963,6 +1981,9 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
             }
         },
         bt.Lambda => {
+            freePoolObject(vm, obj);
+        },
+        bt.Integer => {
             freePoolObject(vm, obj);
         },
         bt.String => {

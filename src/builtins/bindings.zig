@@ -539,7 +539,7 @@ pub fn intMod(vm: *cy.VM) Value {
 pub fn intPow(vm: *cy.VM) Value {
     const right = vm.getInt(1);
     if (right == 0) return vm.prepPanic("Division by zero.");
-    return Value.initInt(std.math.powi(i48, args[0].asInteger(), right) catch |err| {
+    return Value.initInt(std.math.powi(i64, vm.getInt(0), right) catch |err| {
         switch (err) {
             error.Underflow => return vm.prepPanic("Underflow."),
             error.Overflow => return vm.prepPanic("Overfloat."),

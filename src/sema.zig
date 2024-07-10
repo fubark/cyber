@@ -5572,7 +5572,7 @@ pub const ChunkExt = struct {
         return ExprResult.initStatic(irIdx, bt.Float);
     }
 
-    pub fn semaInt(c: *cy.Chunk, val: u48, node: *ast.Node) !ExprResult {
+    pub fn semaInt(c: *cy.Chunk, val: i64, node: *ast.Node) !ExprResult {
         const irIdx = try c.ir.pushExpr(.int, c.alloc, bt.Integer, node, .{ .val = val });
         return ExprResult.initStatic(irIdx, bt.Integer);
     }

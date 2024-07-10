@@ -55,7 +55,7 @@ pub const EncodeListContext = struct {
         try Common.encodeFloat(self.writer, f);
     }
 
-    pub fn encodeInt(self: *EncodeListContext, i: i48) !void {
+    pub fn encodeInt(self: *EncodeListContext, i: i64) !void {
         try Common.encodeInt(self.writer, i);
     }
 
@@ -113,7 +113,7 @@ pub const EncodeValueContext = struct {
         try Common.encodeFloat(self.writer, f);
     }
 
-    pub fn encodeInt(self: *EncodeValueContext, i: i48) !void {
+    pub fn encodeInt(self: *EncodeValueContext, i: i64) !void {
         try Common.encodeInt(self.writer, i);
     }
 
@@ -218,7 +218,7 @@ pub const EncodeTableContext = struct {
         _ = try self.writer.write(",\n");
     }
 
-    pub fn encodeInt(self: *EncodeTableContext, key: []const u8, i: i48) !void {
+    pub fn encodeInt(self: *EncodeTableContext, key: []const u8, i: i64) !void {
         try self.indent();
         _ = try self.writer.print("{s} = ", .{key});
         try Common.encodeInt(self.writer, i);
@@ -312,7 +312,7 @@ const Common = struct {
         _ = try writer.print("{}", .{b});
     }
 
-    fn encodeInt(writer: anytype, i: i48) !void {
+    fn encodeInt(writer: anytype, i: i64) !void {
         try writer.print("{}", .{i});
     }
 
@@ -614,9 +614,9 @@ pub const DecodeValueIR = struct {
         return try std.fmt.parseFloat(f64, token_s);
     }
 
-    pub fn getInt(self: DecodeValueIR) !i48 {
+    pub fn getInt(self: DecodeValueIR) !i64 {
         const token_s = self.ast.nodeString(self.expr);
-        return try std.fmt.parseInt(i48, token_s, 10);
+        return try std.fmt.parseInt(i64, token_s, 10);
     }
 
     pub fn getBool(self: DecodeValueIR) bool {

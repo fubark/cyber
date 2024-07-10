@@ -518,7 +518,7 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[1].val;
             len += try fmt.printCount(w, "%{} = false", &.{v(dst)});
         },
-        .constI8 => {
+        .constIntV8 => {
             const val: i8 = @bitCast(pc[1].val);
             const dst = pc[2].val;
             len += try fmt.printCount(w, "%{} = {}", &.{v(dst), v(val)});
@@ -942,7 +942,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .copyReleaseDst,
         .copyRetainRelease,
         .copyObjDyn,
-        .constI8,
+        .constIntV8,
         .jump,
         .future_value,
         .coyield,
@@ -1083,7 +1083,7 @@ pub const OpCode = enum(u8) {
     /// [constIdx u16] [dst]
     constOp = vmc.CodeConstOp,
     constRetain = vmc.CodeConstRetain,
-    constI8 = vmc.CodeConstI8,
+    constIntV8 = vmc.CodeConstIntV8,
     addFloat = vmc.CodeAddFloat,
     subFloat = vmc.CodeSubFloat,
     /// Push boolean onto register stack.

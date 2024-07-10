@@ -41,7 +41,7 @@ typedef struct IndexSlice {
 #define TAGGED_UPPER_VALUE_MASK ((u64)0xffff000000000000)
 
 // 0000000000000010
-#define INTEGER_MASK ((u64)1 << 49)
+#define UPPER_PLACEHOLDER_MASK ((u64)1 << 49)
 
 // 0000000000000001
 #define ENUM_MASK ((u64)1 << 48)
@@ -49,7 +49,7 @@ typedef struct IndexSlice {
 // 0111111111111111 0000000000000111
 #define TAGGED_PRIMITIVE_MASK (TAGGED_VALUE_MASK | PRIMITIVE_MASK)
 // 0000000000000011 0000000000000111: Bits relevant to the primitive's type.
-#define PRIMITIVE_MASK (TAGGED_VALUE_MASK | ((u64)TAG_MASK << 32) | INTEGER_MASK | ENUM_MASK)
+#define PRIMITIVE_MASK (TAGGED_VALUE_MASK | ((u64)TAG_MASK << 32) | UPPER_PLACEHOLDER_MASK | ENUM_MASK)
 
 // 1111111111111100: TaggedMask + Sign bit indicates a pointer value.
 #define NOCYC_POINTER_MASK (TAGGED_VALUE_MASK | SIGN_MASK)
@@ -66,7 +66,7 @@ typedef struct IndexSlice {
 #endif
 
 // 0111111111111110(7FFE) 0...
-#define TAGGED_INTEGER_MASK (TAGGED_VALUE_MASK | INTEGER_MASK)
+#define TAGGED_PLACEHOLDER_MASK (TAGGED_VALUE_MASK | UPPER_PLACEHOLDER_MASK)
 
 // 0111111111111101(7FFD) 0...
 #define TAGGED_ENUM_MASK (TAGGED_VALUE_MASK | ENUM_MASK)
@@ -113,11 +113,6 @@ typedef struct IndexSlice {
 #define GC_MARK_CYC_TYPE_MASK ((u32)0xC0000000)
 
 // [Construct values]
-//
-// _BitInt zeroes padding bits after cast.
-#define VALUE_INTEGER_CAST(n) (TAGGED_INTEGER_MASK | (_BitInt(48))n)
-// Assumes _BitInt(48) param. `or` op automatically generates trunc on n's undefined padding bits.
-#define VALUE_INTEGER(n) (TAGGED_INTEGER_MASK | BITCAST(unsigned _BitInt(48), n))
 #define VALUE_BOOLEAN(b) (b ? TRUE_MASK : FALSE_MASK)
 #define VALUE_VOID VOID_MASK
 #define VALUE_FLOAT(n) ((ValueUnion){ .d = n }.u)
@@ -209,7 +204,7 @@ typedef enum {
     CodeConstRetain,
     
     /// Sets an immediate i8 value as an integer to a dst local.
-    CodeConstI8,
+    CodeConstIntV8,
 
     /// Add first two locals and stores result to a dst local.
     CodeAddFloat,
@@ -612,6 +607,12 @@ typedef struct List {
     ZCyList list;
 } List;
 
+typedef struct Int {
+    TypeId typeId;
+    u32 rc;
+    i64 val;
+} Int;
+
 typedef struct Pointer {
     TypeId typeId;
     u32 rc;
@@ -646,6 +647,7 @@ typedef union HeapObject {
     Tuple tuple;
     HostFunc hostFunc;
     Pointer pointer;
+    Int integer;
 } HeapObject;
 
 typedef struct ZAllocator {

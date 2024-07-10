@@ -153,9 +153,7 @@ static inline TypeId getTypeId(Value val) {
         if (VALUE_IS_POINTER(val)) {
             return OBJ_TYPEID(VALUE_AS_HEAPOBJECT(val));
         } else {
-            if (bits >= TAGGED_INTEGER_MASK) {
-                return TYPE_INTEGER;
-            } else if (bits >= TAGGED_ENUM_MASK) {
+            if (bits >= TAGGED_ENUM_MASK) {
                 return val & 0xffffffff;
             } else {
                 return VALUE_GET_TAG(bits);
@@ -191,6 +189,16 @@ static inline bool isTypeCompat(TypeId typeId, TypeId cstrType) {
         return true;
     }
     return false;
+}
+
+static inline ValueResult allocInt(VM* vm, i64 i) {
+    HeapObjectResult res = zAllocPoolObject(vm);
+    res.obj->integer = (Int){
+        .typeId = TYPE_INTEGER,
+        .rc = 1,
+        .val = i,
+    };
+    return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
 static inline ValueResult allocPointer(VM* vm, void* ptr) {
@@ -441,7 +449,7 @@ static inline ValueResult allocHostFunc(VM* vm, void* func, u32 numParams, u32 r
 }
 
 // Exponentiation by squaring.
-static _BitInt(48) ipow(_BitInt(48) b, _BitInt(48) e) {
+static i64 ipow(i64 b, i64 e) {
     if (e < 0) {
         if (b == 1 && e == -1) {
             return 1;
@@ -451,7 +459,7 @@ static _BitInt(48) ipow(_BitInt(48) b, _BitInt(48) e) {
         }
         return 0;
     }
-    _BitInt(48) result = 1;
+    i64 result = 1;
     for (;;) {
         if (e & 1) {
             result *= b;
@@ -537,15 +545,15 @@ static void panicCastFail(VM* vm, TypeId actTypeId, TypeId expTypeId) {
     } while (false)
 
 #define INTEGER_UNOP(...) \
-    Value val = stack[pc[1]]; \
+    i64 val = BITCAST(i64, stack[pc[1]]); \
     /* Body... */ \
     __VA_ARGS__; \
     pc += CALL_OBJ_SYM_INST_LEN; \
     NEXT(); \
 
 #define INTEGER_BINOP(...) \
-    Value left = stack[pc[1]]; \
-    Value right = stack[pc[2]]; \
+    i64 left = BITCAST(i64, stack[pc[1]]); \
+    i64 right = BITCAST(i64, stack[pc[2]]); \
     /* Body... */ \
     __VA_ARGS__; \
     pc += CALL_OBJ_SYM_INST_LEN; \
@@ -592,7 +600,7 @@ ResultCode execBytecode(VM* vm) {
     static void* jumpTable[] = {
         JENTRY(ConstOp),
         JENTRY(ConstRetain),
-        JENTRY(ConstI8),
+        JENTRY(ConstIntV8),
         JENTRY(AddFloat),
         JENTRY(SubFloat),
         JENTRY(True),
@@ -756,8 +764,9 @@ beginSwitch:
         pc += 4;
         NEXT();
     }
-    CASE(ConstI8): {
-        stack[pc[2]] = VALUE_INTEGER_CAST((int8_t)pc[1]);
+    CASE(ConstIntV8): {
+        i64 i = (i64)BITCAST(i8, pc[1]);
+        stack[pc[2]] = BITCAST(u64, i);
         pc += 3;
         NEXT();
     }
@@ -1501,16 +1510,16 @@ beginSwitch:
         FLOAT_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) >= VALUE_AS_FLOAT(right)))
     }
     CASE(LessInt): {
-        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_INTEGER(left) < VALUE_AS_INTEGER(right)))
+        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(left < right))
     }
     CASE(GreaterInt): {
-        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_INTEGER(left) > VALUE_AS_INTEGER(right)))
+        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(left > right))
     }
     CASE(LessEqualInt): {
-        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_INTEGER(left) <= VALUE_AS_INTEGER(right)))
+        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(left <= right))
     }
     CASE(GreaterEqualInt): {
-        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_INTEGER(left) >= VALUE_AS_INTEGER(right)))
+        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(left >= right))
     }
     CASE(MulFloat): {
         FLOAT_BINOP(stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) * VALUE_AS_FLOAT(right)))
@@ -1974,75 +1983,71 @@ beginSwitch:
         }
     }
     CASE(BitwiseAnd): {
-        INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) & VALUE_AS_INTEGER(right)))
+        INTEGER_BINOP(stack[pc[3]] = BITCAST(u64, left & right))
     }
     CASE(BitwiseOr): {
-        INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) | VALUE_AS_INTEGER(right)))
+        INTEGER_BINOP(stack[pc[3]] = BITCAST(u64, left | right))
     }
     CASE(BitwiseXor): {
-        INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) ^ VALUE_AS_INTEGER(right)))
+        INTEGER_BINOP(stack[pc[3]] = BITCAST(u64, left ^ right))
     }
     CASE(BitwiseNot): {
-        INTEGER_UNOP(stack[pc[2]] = VALUE_INTEGER(~VALUE_AS_INTEGER(val)))
+        INTEGER_UNOP(stack[pc[2]] = BITCAST(u64, ~val))
     }
     CASE(BitwiseLeftShift): {
         INTEGER_BINOP(
-            _BitInt(48) rightInt = VALUE_AS_INTEGER(right);
-            if (rightInt > 48 || rightInt < 0) {
+            if (right > 64 || right < 0) {
                 panicOutOfBounds(vm);
                 RETURN(RES_CODE_PANIC);
             }
-            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) << rightInt);
+            stack[pc[3]] = BITCAST(u64, left << right);
         )
     }
     CASE(BitwiseRightShift): {
         INTEGER_BINOP(
-            _BitInt(48) rightInt = VALUE_AS_INTEGER(right);
-            if (rightInt > 48 || rightInt < 0) {
+            if (right > 64 || right < 0) {
                 panicOutOfBounds(vm);
                 RETURN(RES_CODE_PANIC);
             }
-            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) >> rightInt);
+            stack[pc[3]] = BITCAST(u64, left >> right);
         )
     }
     CASE(AddInt): {
-        INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) + VALUE_AS_INTEGER(right)))
+        INTEGER_BINOP(stack[pc[3]] = BITCAST(u64, left + right))
     }
     CASE(SubInt): {
-        INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) - VALUE_AS_INTEGER(right)))
+        INTEGER_BINOP(stack[pc[3]] = BITCAST(u64, left - right))
     }
     CASE(MulInt): {
-        INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) * VALUE_AS_INTEGER(right)))
+        INTEGER_BINOP(stack[pc[3]] = BITCAST(u64, left * right))
     }
     CASE(DivInt): {
         INTEGER_BINOP(
-            _BitInt(48) rightInt = VALUE_AS_INTEGER(right);
-            if (rightInt == 0) {
+            if (right == 0) {
                 panicDivisionByZero(vm);
                 RETURN(RES_CODE_PANIC);
             }
-            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) / VALUE_AS_INTEGER(right));
+            stack[pc[3]] = BITCAST(u64, left / right);
         )
     }
     CASE(PowInt): {
-        INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(ipow(VALUE_AS_INTEGER(left), VALUE_AS_INTEGER(right))))
+        INTEGER_BINOP(stack[pc[3]] = BITCAST(u64, ipow(left, right)))
     }
     CASE(ModInt): {
         INTEGER_BINOP(
-            _BitInt(48) rightInt = VALUE_AS_INTEGER(right);
-            if (rightInt == 0) {
+            if (right == 0) {
                 panicDivisionByZero(vm);
                 RETURN(RES_CODE_PANIC);
             }
-            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) % VALUE_AS_INTEGER(right));
+            stack[pc[3]] = BITCAST(u64, left % right);
         )
     }
     CASE(NegInt): {
-        INTEGER_UNOP(stack[pc[2]] = VALUE_INTEGER(-VALUE_AS_INTEGER(val)))
+        INTEGER_UNOP(stack[pc[2]] = BITCAST(u64, -val))
     }
     CASE(ForRangeInit): {
-        Value startv = stack[pc[1]];
-        Value endv = stack[pc[2]];
+        i64 start = BITCAST(i64, stack[pc[1]]);
+        i64 end = BITCAST(i64, stack[pc[2]]);
         bool increment = pc[3];
         if (VALUE_BOTH_INTEGERS(startv, endv)) {
             _BitInt(48) start = VALUE_AS_INTEGER(startv);
@@ -2071,10 +2076,10 @@ beginSwitch:
         }
     }
     CASE(ForRange): {
-        _BitInt(48) counter = VALUE_AS_INTEGER(stack[pc[1]]) + 1;
-        if (counter < VALUE_AS_INTEGER(stack[pc[2]])) {
-            stack[pc[1]] = VALUE_INTEGER(counter);
-            stack[pc[3]] = VALUE_INTEGER(counter);
+        i64 counter = BITCAST(i64, stack[pc[1]]) + 1;
+        if (counter < BITCAST(i64, stack[pc[2]])) {
+            stack[pc[1]] = counter;
+            stack[pc[3]] = counter;
             pc -= READ_U16(4);
         } else {
             pc += 6;
@@ -2082,10 +2087,10 @@ beginSwitch:
         NEXT();
     }
     CASE(ForRangeReverse): {
-        _BitInt(48) counter = VALUE_AS_INTEGER(stack[pc[1]]) - 1;
-        if (counter > VALUE_AS_INTEGER(stack[pc[2]])) {
-            stack[pc[1]] = VALUE_INTEGER(counter);
-            stack[pc[3]] = VALUE_INTEGER(counter);
+        i64 counter = BITCAST(i64, stack[pc[1]]) - 1;
+        if (counter > BITCAST(i64, stack[pc[2]])) {
+            stack[pc[1]] = counter;
+            stack[pc[3]] = counter;
             pc -= READ_U16(4);
         } else {
             pc += 6;

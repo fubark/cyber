@@ -14,8 +14,8 @@ const vmc = @import("vm_c.zig");
 
 const SignMask: u64 = 1 << 63;
 const TaggedValueMask: u64 = 0x7ffc000000000000;
-const IntegerMask: u64 = vmc.INTEGER_MASK;
-const TaggedIntegerMask: u64 = vmc.TAGGED_INTEGER_MASK;
+const UpperPlaceholderMask: u64 = vmc.UPPER_PLACEHOLDER_MASK;
+const TaggedPlaceholderMask: u64 = vmc.TAGGED_PLACEHOLDER_MASK;
 const TaggedUpperValueMask: u64 = vmc.TAGGED_UPPER_VALUE_MASK;
 const EnumMask: u64 = vmc.ENUM_MASK;
 const TaggedEnumMask: u64 = vmc.TAGGED_ENUM_MASK;
@@ -29,7 +29,7 @@ const ErrorMask: u64 = TaggedValueMask | (@as(u64, TagError) << 32);
 const SymbolMask: u64 = TaggedValueMask | (@as(u64, TagSymbol) << 32);
 
 const TagMask: u32 = (1 << 3) - 1;
-const PrimitiveMask: u64 = TaggedValueMask | (@as(u64, TagMask) << 32) | IntegerMask | EnumMask;
+const PrimitiveMask: u64 = TaggedValueMask | (@as(u64, TagMask) << 32) | UpperPlaceholderMask | EnumMask;
 const TaggedPrimitiveMask = TaggedValueMask | PrimitiveMask;
 const BeforeTagMask: u32 = 0x7fff << 3;
 
@@ -67,8 +67,12 @@ pub const Value = packed union {
     /// Returned from native funcs.
     pub const Interrupt = Value{ .val = ErrorMask | (@as(u32, 0xFF) << 8) | std.math.maxInt(u8) };
 
-    pub inline fn asInteger(self: *const Value) i48 {
-        return @bitCast(@as(u48, @intCast(self.val & 0xffffffffffff)));
+    pub inline fn asBoxInt(self: *const Value) i64 {
+        return self.asHeapObject().integer.val;
+    }
+
+    pub inline fn asInt(self: *const Value) i64 {
+        return @bitCast(self.val);
     }
 
     pub inline fn asF64toI32(self: *const Value) i32 {
@@ -142,7 +146,7 @@ pub const Value = packed union {
         } else {
             switch (self.getTag()) {
                 TagBoolean => return if (self.asBool()) 1 else 0,
-                TagInteger => return @floatFromInt(self.asInteger()),
+                TagInteger => return @floatFromInt(self.asBoxInt()),
                 else => {
                     log.tracev("unsupported conv to number: {}", .{self.getTag()});
                     return error.Unsupported;
@@ -162,7 +166,7 @@ pub const Value = packed union {
         if (self.isFloat() and self.asF64() == 0) {
             return false;
         }
-        if (self.isInteger() and self.asInteger() == 0) {
+        if (self.isBoxInt() and self.asBoxInt() == 0) {
             return false;
         }
         if (self.isString() and self.asString().len == 0) {
@@ -183,8 +187,8 @@ pub const Value = packed union {
         return a.isFloat() and b.isFloat();
     }
 
-    pub inline fn bothIntegers(a: Value, b: Value) bool {
-        return a.val & b.val & TaggedUpperValueMask == IntegerMask;
+    pub inline fn bothBoxInts(a: Value, b: Value) bool {
+        return a.isBoxInt() and b.isBoxInt();
     }
 
     pub inline fn isError(self: *const Value) bool {
@@ -205,9 +209,7 @@ pub const Value = packed union {
             if (self.isPointer()) {
                 return self.asHeapObject().getTypeId();
             } else {
-                if (bits >= TaggedIntegerMask) {
-                    return bt.Integer;
-                } else if (bits >= TaggedEnumMask) {
+                if (bits >= TaggedEnumMask) {
                     return @intCast(self.val & 0xffffffff);
                 } else {
                     return self.getTag();
@@ -228,8 +230,8 @@ pub const Value = packed union {
         return self.val & TaggedValueMask != TaggedValueMask;
     }
 
-    pub inline fn isInteger(self: *const Value) bool {
-        return self.val & TaggedUpperValueMask == TaggedIntegerMask;
+    pub inline fn isBoxInt(self: *const Value) bool {
+        return self.isPointer() and self.asHeapObject().getTypeId() == bt.Integer;
     }
 
     pub inline fn isEnum(self: *const Value) bool {
@@ -343,8 +345,8 @@ pub const Value = packed union {
         return .{ .val = @as(u64, @bitCast(val)) };
     }
 
-    pub inline fn initInt(val: i48) Value {
-        return .{ .val = TaggedIntegerMask | @as(u48, @bitCast(val)) };
+    pub inline fn initInt(val: i64) Value {
+        return .{ .val = @bitCast(val) };
     }
 
     pub inline fn initI32(val: i32) Value {

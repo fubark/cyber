@@ -541,7 +541,7 @@ pub const Float = struct {
 };
 
 pub const Int = struct {
-    val: u48,
+    val: i64,
 };
 
 pub const Array = struct {

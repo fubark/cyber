@@ -60,7 +60,7 @@ pub const FFI = struct {
     fn toCType(self: *FFI, vm: *cy.VM, spec: Value) !CType {
         if (spec.isObjectType(self.CArrayT)) {
             const nField = try vm.ensureFieldSym("n");
-            const n: u32 = @intCast((try vm.getField(spec, nField)).asInteger());
+            const n: u32 = @intCast((try vm.getField(spec, nField)).asBoxInt());
             const elemField = try vm.ensureFieldSym("elem");
             const elem = try vm.getField(spec, elemField);
             const child = try vm.alloc.create(CType);

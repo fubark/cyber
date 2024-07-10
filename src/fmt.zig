@@ -20,6 +20,7 @@ const FmtValueType = enum(u8) {
     i32,
     i48,
     u64,
+    i64,
     f64,
     bool,
     ptr,
@@ -71,6 +72,7 @@ fn toFmtValueType(comptime T: type) FmtValueType {
         i48 => return .i48,
         usize,
         u64 => return .u64,
+        i64 => return .i64,
         f64 => return .f64,
         []u8,
         []const u8 => return .string,
@@ -168,6 +170,14 @@ pub inline fn v(val: anytype) FmtValue {
                 .type = .i48,
                 .data = .{
                     .u64 = @as(u48, @bitCast(val)),
+                }
+            };
+        },
+        .i64 => {
+            return .{
+                .type = .i64,
+                .data = .{
+                    .u64 = @bitCast(val),
                 }
             };
         },
@@ -299,6 +309,9 @@ fn formatValue(writer: anytype, val: FmtValue) !void {
         },
         .i48 => {
             try std.fmt.formatInt(@as(i48, @bitCast(@as(u48, @intCast(val.data.u64)))), 10, .lower, .{}, writer);
+        },
+        .i64 => {
+            try std.fmt.formatInt(@as(i64, @bitCast(val.data.u64)), 10, .lower, .{}, writer);
         },
         .u64 => {
             try std.fmt.formatInt(val.data.u64, 10, .lower, .{}, writer);

@@ -2215,7 +2215,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
             }
 
             const final_ret: u8 = @intCast(ret + 5 + obj.hostFunc.numParams);
-            _ = try preCallDyn(vm, pc, framePtr, numArgs, ret, final_ret, obj.lambda.stackSize, obj.hostFunc.reqCallTypeCheck, obj.hostFunc.funcSigId, cont);
+            _ = try preCallDyn(vm, pc, framePtr, numArgs, ret, final_ret, @intCast(5 + obj.hostFunc.numParams), obj.hostFunc.reqCallTypeCheck, obj.hostFunc.funcSigId, cont);
 
             vm.c.pc = pc;
             vm.c.framePtr = framePtr + final_ret;
@@ -2719,7 +2719,7 @@ fn callMethod(
                 vm.c.trace_indent -= 1;
             };
             const final_ret = ret + 5 + func.nparams;
-            _ = try preCallObjSym(vm, pc, fp, nargs, ret, final_ret, @intCast(func.data.func.stackSize), func.req_type_check, func.sig);
+            _ = try preCallObjSym(vm, pc, fp, nargs, ret, final_ret, 5 + func.nparams, func.req_type_check, func.sig);
 
             // Optimize.
             // TODO: callObjHostFuncIC (rt args typecheck) or callObjHostFuncNoCheckIC

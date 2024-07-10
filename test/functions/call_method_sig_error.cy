@@ -8,11 +8,11 @@ var o = S{}
 o.foo(234)
 
 --cytest: error
---CompileError: Can not find compatible function for call: `foo(S, int)`.
+--CompileError: Can not find compatible function for call: `foo(S, _)`.
 --Functions named `foo` in `S`:
 --    func foo(S) dyn
 --
---main:8:7:
+--main:8:1:
 --o.foo(234)
---      ^
+--^
 --

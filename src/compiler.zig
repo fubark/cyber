@@ -1038,7 +1038,6 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.MetaType,
         bt.Range,
         bt.Table,
-        bt.CTInfer,
     };
 
     for (type_ids) |type_id| {

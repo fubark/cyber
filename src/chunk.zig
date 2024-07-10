@@ -131,6 +131,8 @@ pub const Chunk = struct {
     /// Reference the current resolve context.
     resolve_stack: std.ArrayListUnmanaged(sema.ResolveContext),
 
+    arg_stack: std.ArrayListUnmanaged(sema.Argument),
+
     ///
     /// Codegen pass
     ///
@@ -277,6 +279,7 @@ pub const Chunk = struct {
             .syms = .{},
             .funcs = .{},
             .resolve_stack = .{},
+            .arg_stack = .{},
             .in_ct_expr = false,
             .host_types = .{},
             .host_funcs = .{},
@@ -336,6 +339,7 @@ pub const Chunk = struct {
         self.genIrLocalMapStack.deinit(self.alloc);
         self.slot_stack.deinit(self.alloc);
         self.resolve_stack.deinit(self.alloc);
+        self.arg_stack.deinit(self.alloc);
 
         if (cy.hasJIT) {
             self.tempTypeRefs.deinit(self.alloc);

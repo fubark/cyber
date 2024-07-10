@@ -143,16 +143,9 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
         for (args) |arg| {
             if (arg.getTypeId() == bt.Type) {
                 const type_id = arg.asHeapObject().type.type;
-                switch (type_id) {
-                    bt.CTInfer => {
-                        ct_infer = true;
-                    },
-                    else => {
-                        const type_e = c.sema.types.items[type_id];
-                        ct_infer = ct_infer or type_e.info.ct_infer;
-                        ct_ref = ct_ref or type_e.info.ct_ref;
-                    },
-                }
+                const type_e = c.sema.types.items[type_id];
+                ct_infer = ct_infer or type_e.info.ct_infer;
+                ct_ref = ct_ref or type_e.info.ct_ref;
             }
         }
 

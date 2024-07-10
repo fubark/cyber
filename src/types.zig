@@ -27,6 +27,7 @@ pub const TypeKind = enum(u8) {
     trait,
     bare,
     ct_ref,
+    ct_infer,
 };
 
 pub const TypeInfo = packed struct {
@@ -35,6 +36,7 @@ pub const TypeInfo = packed struct {
     /// If `true`, invoke finalizer before releasing children.
     custom_pre: bool = false,
 
+    /// Whether this type or a child parameter contains a ct_infer.
     ct_infer: bool = false,
 
     /// Whether this type or a child parameter contains a ct_ref.
@@ -72,7 +74,10 @@ pub const Type = extern struct {
             numFields: u16,
         },
         ct_ref: extern struct {
-            param_idx: u32,
+            ct_param_idx: u32,
+        },
+        ct_infer: extern struct {
+            ct_param_idx: u32,
         },
     },
 };
@@ -166,7 +171,6 @@ pub const BuiltinTypes = struct {
     pub const ExternFunc: TypeId = vmc.TYPE_EXTERN_FUNC;
     pub const Range: TypeId = vmc.TYPE_RANGE;
     pub const Table: TypeId = vmc.TYPE_TABLE;
-    pub const CTInfer: TypeId = vmc.TYPE_CTINFER;
 
     /// Used to indicate no type value.
     // pub const Undefined: TypeId = vmc.TYPE_UNDEFINED;
@@ -189,6 +193,10 @@ pub const SemaExt = struct {
         return @intCast(typeId);
     }
 
+    pub fn getType(s: *cy.Sema, id: TypeId) Type {
+        return s.types.items[id];
+    }
+
     pub fn getTypeKind(s: *cy.Sema, id: TypeId) TypeKind {
         return s.types.items[id].kind;
     }
@@ -208,6 +216,10 @@ pub const SemaExt = struct {
     }
 
     pub fn writeTypeName(s: *cy.Sema, w: anytype, id: cy.TypeId, from: ?*cy.Chunk) !void {
+        if (id == cy.NullId) {
+            try w.writeByte('_');
+            return;
+        }
         const sym = s.getTypeSym(id);
         try cy.sym.writeSymName(s, w, sym, .{ .from = from });
     }

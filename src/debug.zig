@@ -510,6 +510,7 @@ pub fn dumpBytecode(vm: *cy.VM, opts: DumpBytecodeOptions) !void {
         var code = pc[0].opcode();
         var len = bytecode.getInstLenAt(pc);
         try dumpInst(vm, pcOffset, code, pc, instIdx, "--");
+        try printTraceAtPc(vm, pcOffset, "Source", "");
         pcOffset += len;
         pc += len;
         instIdx += 1;

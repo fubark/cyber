@@ -592,6 +592,11 @@ pub const VM = struct {
 
         var tt = cy.debug.timer();
         const res = try self.compiler.compile(srcUri, src, config);
+
+        // Sync debug table for debug output.
+        if (config.backend == cc.BackendVM) {
+            self.debugTable = res.vm.debugTable.items;
+        }
         tt.endPrint("compile");
         return res;
     }

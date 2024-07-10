@@ -698,8 +698,8 @@ pub fn execCmd(vm: *cy.VM) anyerror!Value {
     try map.asHeapObject().map.set(vm, errKey, err);
     if (res.term == .Exited) {
         const exitedKey = try vm.retainOrAllocAstring("exited");
-        defer vm.release(exitedKey);
-        try map.asHeapObject().map.set(vm, exitedKey, Value.initInt(@intCast(res.term.Exited)));
+        const exited = try vm.allocInt(@intCast(res.term.Exited));
+        try map.asHeapObject().map.setConsume(vm, exitedKey, exited);
     }
     return map;
 }

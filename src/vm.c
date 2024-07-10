@@ -1262,8 +1262,10 @@ beginSwitch:
     CASE(RetDyn): {
         u8 ret_flag = VALUE_CALLINFO_RETFLAG(stack[1]);
         u8 nargs = pc[1];
-        TypeId ret_t = stack[1] >> 32;
-        if (ret_t == TYPE_INTEGER) {
+        u32 ret_type_mask = stack[1] >> 32;
+        TypeId ret_t = ret_type_mask & 0x7fffffff;
+        bool box = (ret_type_mask & 0x80000000) != 0;
+        if (box) {
             stack[0] = zBox(vm, stack[5+nargs], ret_t);
         } else {
             stack[0] = stack[5+nargs];
@@ -1549,12 +1551,6 @@ beginSwitch:
     CASE(Unbox): {
         u16 type_id = READ_U16(2);
         TypeId act_t = getTypeId(stack[pc[1]]);
-#if TRACE   
-        if (act_t != TYPE_INTEGER) {
-            panicIncompatibleType(vm, act_t, type_id);
-            RETURN(RES_CODE_PANIC);
-        }
-#endif
         stack[pc[4]] = zUnbox(vm, stack[pc[1]], type_id);
         pc += 5;
         NEXT();
@@ -1745,7 +1741,12 @@ beginSwitch:
         NEXT();
     }
     CASE(Coreturn): {
-        pc += 1;
+        bool box = pc[3];
+        if (box) {
+            TypeId ret_t = (TypeId)READ_U16(1);
+            stack[1] = zBox(vm, stack[1], ret_t);
+        }
+        pc += 3;
         if (vm->c.curFiber != &vm->c.mainFiber) {
             PcFpOff res = zPopFiber(vm, NULL_U32, stack, stack[1]);
             pc = vm->c.instPtr + res.pc;

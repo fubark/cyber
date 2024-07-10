@@ -945,9 +945,9 @@ pub const VM = struct {
         // Perform ret_dyn.
         const final_ret = 5 + args.len;
         const ret_v = vm.c.framePtr[final_ret];
-        const ret_t = vm.c.framePtr[1].call_info.payload;
+        const ret_t = vm.c.framePtr[1].call_info.payload & 0x7fffffff;
         var res: Value = undefined;
-        if (cy.types.isUnboxedType(ret_t)) {
+        if (vm.sema.isUnboxedType(ret_t)) {
             res = zBox(vm, ret_v, ret_t);
         } else {
             res = ret_v;
@@ -1068,7 +1068,7 @@ pub const VM = struct {
     pub fn addTypeField(self: *VM, type_id: cy.TypeId, field_id: u32, offset: u16, field_t: types.TypeId) !void {
         const key = rt.FieldTableKey.initFieldTableKey(type_id, field_id);
         try self.type_field_map.putNoClobber(self.alloc, key, .{
-            .boxed = !cy.types.isUnboxedType(field_t),
+            .boxed = !self.sema.isUnboxedType(field_t),
             .offset = offset,
             .type_id = field_t,
         });
@@ -1271,7 +1271,7 @@ pub const VM = struct {
                 return self.prepPanic("Tag is not active.");
             }
             const value = obj.object.getValue(1);
-            if (cy.types.isUnboxedType(member.payloadType)) {
+            if (self.sema.isUnboxedType(member.payloadType)) {
                 return try box(self, value, member.payloadType);
             } else {
                 self.retain(value);
@@ -2053,26 +2053,21 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst, fp: [*]const cy.Value) !void {
 }
 
 fn box(vm: *VM, val: Value, type_id: cy.TypeId) !cy.Value {
-    switch (type_id) {
-        bt.Integer => {
-            return try vm.allocInt(val.asInt());
-        },
-        else => {
+    if (cy.Trace) {
+        if (!vm.sema.isUnboxedType(type_id)) {
             @panic("Unsupported.");
-        },
+        }
     }
+    return vm.allocBoxValue(type_id, val.val);
 }
 
 fn unbox(vm: *VM, val: Value, type_id: cy.TypeId) cy.Value {
-    _ = vm;
-    switch (type_id) {
-        bt.Integer => {
-            return cy.Value{ .val = @bitCast(val.asHeapObject().integer.val) };
-        },
-        else => {
-            @panic("Unsupported arg.");
-        },
+    if (cy.Trace) {
+        if (!vm.sema.isUnboxedType(type_id)) {
+            @panic("Unsupported.");
+        }
     }
+    return val.asHeapObject().object.firstValue;
 }
 
 fn canInferArg(vm: *VM, arg: Value, target_t: cy.TypeId) bool {
@@ -2113,7 +2108,11 @@ fn preCallDyn(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, final_r
     // Setup call frame to return to the next inst.
     fp[ret + 1] = buildDynFrameInfo(cont, cy.bytecode.CallInstLen + cy.bytecode.RetDynLen, final_ret - ret);
     // Save ret box type.
-    fp[ret + 1].call_info.payload = sig.ret;
+    var ret_type_mask = sig.ret;
+    if (vm.sema.isUnboxedType(sig.ret)) {
+        ret_type_mask = ret_type_mask | 0x80000000;
+    }
+    fp[ret + 1].call_info.payload = ret_type_mask;
     fp[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen + cy.bytecode.RetDynLen };
     fp[ret + 3] = Value{ .retFramePtr = fp };
 
@@ -2138,7 +2137,7 @@ fn preCallDyn(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, final_r
                 final_args[i] = final_arg;
                 continue;
             }
-            if (types.isUnboxedType(cstrType.type)) {
+            if (vm.sema.isUnboxedType(cstrType.type)) {
                 const final_arg = @call(.never_inline, unbox, .{vm, arg, argType});
                 final_args[i] = final_arg;
                 continue;
@@ -2633,7 +2632,11 @@ fn preCallObjSym(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, fina
     // Setup call frame to return to the next inst.
     fp[ret + 1] = buildDynFrameInfo(true, cy.bytecode.CallObjSymInstLen + cy.bytecode.RetDynLen, final_ret - ret);
     // Save ret box type.
-    fp[ret + 1].call_info.payload = sig.ret;
+    var ret_type_mask = sig.ret;
+    if (vm.sema.isUnboxedType(sig.ret)) {
+        ret_type_mask = ret_type_mask | 0x80000000;
+    }
+    fp[ret + 1].call_info.payload = ret_type_mask;
     fp[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen + cy.bytecode.RetDynLen };
     fp[ret + 3] = Value{ .retFramePtr = fp };
 
@@ -2660,7 +2663,7 @@ fn preCallObjSym(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, fina
                 final_args[i] = final_arg;
                 continue;
             }
-            if (types.isUnboxedType(cstrType.type)) {
+            if (vm.sema.isUnboxedType(cstrType.type)) {
                 const final_arg = @call(.never_inline, unbox, .{vm, arg, argType});
                 final_args[i] = final_arg;
                 continue;

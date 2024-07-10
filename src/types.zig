@@ -190,6 +190,20 @@ pub const BuiltinTypes = struct {
 
 pub const SemaExt = struct {
 
+    pub fn isUnboxedType(s: *cy.Sema, id: cy.TypeId) bool {
+        switch (id) {
+            bt.Integer => return true,
+            bt.Symbol => return false,
+            bt.Error => return false,
+            else => {
+                if (s.types.items[id].kind == .int) {
+                    return true;
+                }
+                return false;
+            },
+        }
+    }
+
     pub fn pushType(s: *cy.Sema) !TypeId {
         const typeId = s.types.items.len;
         try s.types.append(s.alloc, .{
@@ -553,11 +567,4 @@ fn visitTypeHasZeroInit(c: *cy.Chunk, obj: *cy.sym.ObjectType) !ZeroInitResult {
     }
     c.typeDeps.items[entryId].visited = true;
     return finalRes;
-}
-
-pub fn isUnboxedType(id: cy.TypeId) bool {
-    switch (id) {
-        bt.Integer => return true,
-        else => return false,
-    }
 }

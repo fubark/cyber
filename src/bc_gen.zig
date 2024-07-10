@@ -562,9 +562,13 @@ fn genCoresume(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     const inst = try bc.selectForDstInst(c, cstr, bt.Any, true, node);
 
     const childv = try genExpr(c, data.expr, Cstr.simpleRetain);
+    try initTempValue(c, childv, node);
 
     try c.pushCode(.coresume, &.{childv.reg, inst.dst}, node);
     try popTempValue(c, childv, node);
+    if (inst.own_dst) {
+        try initSlot(c, inst.dst, true, node);
+    }
 
     return finishDstInst(c, inst, true);
 }
@@ -634,12 +638,18 @@ fn genCoinitCall(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
         const data = c.ir.getExprData(call, .call_sym);
         const rtId = c.compiler.genSymMap.get(data.func).?.func.id;
         try pushCallSym(c, callRet, numArgs, 1, rtId, @ptrCast(callExprId));
+
+        const coreturn_pc = c.buf.ops.items.len;
+        const call_ret_t = c.ir.getExprType(call).id;
+        const box = c.sema.isUnboxedType(call_ret_t);
+        try c.pushCode(.coreturn, &.{ 0, 0, @intFromBool(box) }, node);
+        c.buf.setOpArgU16(coreturn_pc + 1, @intCast(call_ret_t));
     } else if (callCode == .call_dyn) {
         try pushCall(c, callRet, numArgs, 1, @ptrCast(callExprId));
         try c.pushCode(.ret_dyn, &.{ @intCast(numArgs) }, @ptrCast(callExprId));
+        try c.pushCode(.coreturn, &.{ 0, 0, 0 }, node);
     } else return error.Unexpected;
 
-    try c.pushCode(.coreturn, &.{}, node);
     c.buf.setOpArgs1(coinitPc + 4, @intCast(c.buf.ops.items.len - coinitPc));
 
     try popFiberBlock(c);

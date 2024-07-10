@@ -614,6 +614,10 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[3].val;
             len += try fmt.printCount(w, "%{} = %{}[%{}]", &.{v(dst), v(list), v(index)});
         },
+        .ret_dyn => {
+            const nargs = pc[1].val;
+            len += try fmt.printCount(w, "%0 = maybe_box(%{})", &.{v(5+nargs)});
+        },
         .jump => {
             const jump = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
             const jumpU32: u32 = @bitCast(@as(i32, jump));
@@ -929,8 +933,7 @@ test "getInstLenAt" {
 pub fn getInstLenAt(pc: [*]const Inst) u8 {
     switch (pc[0].opcode()) {
         .ret0,
-        .ret1,
-        .coreturn => {
+        .ret1 => {
             return 1;
         },
         .ret_dyn,
@@ -966,6 +969,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .none,
         .tag_lit,
         .context,
+        .coreturn,
         .symbol => {
             return 3;
         },

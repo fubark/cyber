@@ -453,10 +453,10 @@ type ArrayIterator:
         return res
 
 type pointer[T type] #int64_t:
-    func $index(self, idx int) T:
+    func $index(self, idx int) *T:
         return self.index((T).id(), idx)
 
-    @host -func index(self, elem_t int, idx int) T
+    @host -func index(self, elem_t int, idx int) *T
 
     func $index(self, range Range) []T:
         return self.indexRange(([]T).id(), range)
@@ -547,7 +547,7 @@ type Slice[T type] struct:
     ptr *T
     n   int
 
-    func $index(self, idx int) T:
+    func $index(self, idx int) *T:
         return self.ptr[idx]
 
     func $index(self, range Range) []T:

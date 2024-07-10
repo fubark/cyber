@@ -289,6 +289,9 @@ pub const Field = struct {
     /// Receiver.
     rec: Loc,
 
+    /// Parent type is recorded since a field can be applied to a type or a pointer.
+    parent_t: cy.TypeId,
+
     /// Field index of receiver.
     idx: u8,
 

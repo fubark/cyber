@@ -758,13 +758,14 @@ fn genAddressOf2(c: *Chunk, expr: usize, cstr: Cstr, node: *ast.Node) !GenValue 
             } else {
                 if (slot.boxed_up) {
                     const temp = try bc.reserveTemp(c, bt.Integer);
-                    try c.pushCode(.addr_local, &.{ local_slot, temp }, node);
+                    const lifted_struct = c.sema.isStructType(expr_t);
+                    try c.pushCode(.addr_local, &.{ local_slot, @intFromBool(lifted_struct), temp }, node);
                     try initSlot(c, temp, false, node);
 
-                    try pushAddrField(c, temp, 0, inst.dst, node);
+                    try c.pushCode(.copy, &.{ temp, inst.dst }, node);
                     try popTemp(c, temp, node);
                 } else {
-                    try c.pushCode(.addr_local, &.{ local_slot, inst.dst }, node);
+                    try c.pushCode(.addr_local, &.{ local_slot, 0, inst.dst }, node);
                 }
             }
             if (inst.own_dst) {
@@ -778,7 +779,8 @@ fn genAddressOf2(c: *Chunk, expr: usize, cstr: Cstr, node: *ast.Node) !GenValue 
             const childv = try genAddressOf2(c, data.rec, Cstr.simple, node);
             try initTempValue(c, childv, node);
 
-            try pushAddrField(c, childv.reg, data.idx, inst.dst, node);
+            const fields = c.sema.getTypeSym(data.parent_t).cast(.struct_t).getFields();
+            try pushAddrConstIndex(c, childv.reg, @intCast(fields[data.idx].offset), inst.dst, node);
             try popTempValue(c, childv, node);
             if (inst.own_dst) {
                 try initSlot(c, inst.dst, false, node);
@@ -794,30 +796,11 @@ fn genAddressOf2(c: *Chunk, expr: usize, cstr: Cstr, node: *ast.Node) !GenValue 
             return genExpr(c, deref.expr, cstr);
         },
         .call_sym => {
-            const call_sym = c.ir.getExprData(expr, .call_sym);
-            // TODO: This is a hack to check for pointer $index call.
-            //       Perhaps check for a function tag instead.
-            if (call_sym.func.is_method and std.mem.eql(u8, "$index", call_sym.func.name())) {
-                const args = c.ir.getArray(call_sym.args, u32, call_sym.numArgs);
-
-                const inst = try bc.selectForDstInst(c, cstr, bt.Integer, false, node);
-
-                const ptrv = try genAddressOf2(c, args[0], Cstr.simple, node);
-                try initTempValue(c, ptrv, node);
-
-                const idxv = try genExpr(c, args[1], Cstr.simple);
-                try initTempValue(c, idxv, node);
-
-                try c.pushCode(.addr_index, &.{ ptrv.reg, idxv.reg, inst.dst }, node);
-                try popTempValue(c, idxv, node);
-                try popTempValue(c, ptrv, node);
-                if (inst.own_dst) {
-                    try initSlot(c, inst.dst, false, node);
-                }
-                return finishDstInst(c, inst, false);
-            } else {
-                return error.TODO;
+            const ret_t = c.ir.getExprType(expr).id;
+            if (c.sema.isPointerType(ret_t)) {
+                return genCallFuncSym(c, expr, cstr, node);
             }
+            return error.TODO;
         },
         else => {
             log.tracev("{}", .{code});
@@ -830,7 +813,8 @@ fn genDeref(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     const data = c.ir.getExprData(idx, .deref);
 
     const ret_t = c.ir.getExprType(idx).id;
-    const ret_is_struct = c.sema.getTypeKind(ret_t) == .@"struct";
+    const ret_te = c.sema.getType(ret_t);
+    const ret_is_struct = ret_te.kind == .struct_t;
     const retain = ret_is_struct or c.sema.isRcCandidateType(ret_t);
 
     const inst = try bc.selectForDstInst(c, cstr, ret_t, ret_is_struct, node);
@@ -838,8 +822,10 @@ fn genDeref(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     try initTempValue(c, srcv, node);
 
     if (ret_is_struct) {
-        const nfields: u8 = @intCast(c.sema.types.items[ret_t].data.@"struct".numFields);
-        try c.pushCode(.deref_struct, &.{ srcv.reg, nfields, inst.dst }, node);
+        const nfields: u8 = @intCast(c.sema.types.items[ret_t].data.struct_t.nfields);
+        const start = c.buf.ops.items.len;
+        try c.pushCode(.deref_struct, &.{ srcv.reg, 0, 0, nfields, inst.dst }, node);
+        c.buf.setOpArgU16(start + 2, @intCast(ret_t));
     } else {
         try c.pushCode(.deref, &.{ srcv.reg, @intFromBool(retain), inst.dst }, node);
     }
@@ -857,17 +843,19 @@ fn genField(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     const inst = try bc.selectForDstInst(c, cstr, ret_t, true, node);
 
     const rec_t = c.ir.getExprType(data.rec).id;
-    const rec_is_struct = c.sema.getTypeKind(rec_t) == .@"struct";
+    const rec_te = c.sema.getType(rec_t);
     const rec_is_pointer = c.sema.isPointerType(rec_t);
     const willRetain = c.sema.isRcCandidateType(ret_t);
-    if (rec_is_struct or rec_is_pointer) {
+    if (rec_te.kind == .struct_t or rec_is_pointer) {
         const addrv = try genAddressOf2(c, idx, Cstr.simple, node);
         try initTempValue(c, addrv, node);
 
-        const ret_is_struct = c.sema.getTypeKind(ret_t) == .@"struct";
-        if (ret_is_struct) {
-            const numFields: u8 = @intCast(c.sema.types.items[ret_t].data.@"struct".numFields);
-            try c.pushCode(.deref_struct, &.{ addrv.reg, numFields, inst.dst }, node);
+        const ret_te = c.sema.getType(ret_t);
+        if (ret_te.kind == .struct_t) {
+            const numFields: u8 = @intCast(c.sema.types.items[ret_t].data.struct_t.nfields);
+            const start = c.buf.ops.items.len;
+            try c.pushCode(.deref_struct, &.{ addrv.reg, 0, 0, numFields, inst.dst }, node);
+            c.buf.setOpArgU16(start + 2, @intCast(ret_t));
         } else {
             try c.pushCode(.deref, &.{ addrv.reg, @intFromBool(willRetain), inst.dst }, node);
         }
@@ -888,9 +876,48 @@ fn genField(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     return finishDstInst(c, inst, willRetain);
 }
 
-fn genObjectInit(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
+fn genStructInit(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     const data = c.ir.getExprData(idx, .object_init);
     const ret_t = c.ir.getExprType(idx).id;
+
+    const inst = try bc.selectForDstInst(c, cstr, ret_t, true, node);
+
+    const args = c.ir.getArray(data.args, u32, data.numArgs);
+    const argStart = numSlots(c);
+    for (args) |argIdx| {
+        const arg_t = c.ir.getExprType(argIdx).id;
+        const temp = try bc.reserveTemp(c, arg_t);
+        const argv = try genExpr(c, argIdx, Cstr.toTempRetain(temp));
+        try initSlot(c, temp, argv.retained, node);
+    }
+
+    const ret_te = c.sema.types.items[ret_t];
+    const ret_ts = ret_te.sym.cast(.struct_t);
+    const nfields = ret_te.data.struct_t.nfields;
+    try pushStructInit(c, data.typeId, @intCast(argStart), @intCast(nfields), ret_ts.getFields(), inst.dst, node);
+    for (0..args.len) |i| {
+        const slot_id = argStart + args.len - i - 1;
+        const slot = getSlot(c, slot_id);
+        if (slot.boxed_retains) {
+            try consumeTemp(c, @intCast(slot_id), node);
+        }
+    }
+    try popTemps(c, args.len, node);
+    if (inst.own_dst) {
+        try initSlot(c, inst.dst, true, node);
+    }
+
+    return finishDstInst(c, inst, true);
+}
+
+fn genObjectInit(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
+    const ret_t = c.ir.getExprType(idx).id;
+    const ret_te = c.sema.getType(ret_t);
+    if (ret_te.kind == .struct_t) {
+        return genStructInit(c, idx, cstr, node);
+    }
+
+    const data = c.ir.getExprData(idx, .object_init);
 
     const inst = try bc.selectForDstInst(c, cstr, ret_t, true, node);
 
@@ -1043,8 +1070,12 @@ fn genSetDeref(c: *Chunk, idx: usize, node: *ast.Node) !void {
     try initTempValue(c, rightv, node);
 
     const right_t = c.ir.getExprType(data.right).id;
-    const right_is_struct = c.sema.getTypeKind(right_t) == .@"struct";
-    try c.pushCode(.set_deref, &.{ ptrv.reg, @intFromBool(right_is_struct), rightv.reg }, node);
+    const right_te = c.sema.types.items[right_t];
+    if (right_te.kind == .struct_t) {
+        try c.pushCode(.set_deref_struct, &.{ ptrv.reg, @intCast(right_te.data.struct_t.nfields), rightv.reg }, node);
+    } else {
+        try c.pushCode(.set_deref, &.{ ptrv.reg, rightv.reg }, node);
+    }
     try consumeTempValue(c, rightv, node);
     try popTempValue(c, rightv, node);
     try popTempValue(c, ptrv, node);
@@ -1055,17 +1086,23 @@ fn setField(c: *Chunk, idx: usize, node: *ast.Node) !void {
     const fieldData = c.ir.getExprData(data.field, .field);
 
     const type_id = c.ir.getExprType(fieldData.rec).id;
-    const isStruct = c.sema.getTypeKind(type_id) == .@"struct";
+    const type_e = c.sema.getType(type_id);
+    // const rec_is_pointer = c.sema.isPointerType(type_id);
 
     // Receiver.
-    if (isStruct) {
+    if (type_e.kind == .struct_t) {
         const addrv = try genAddressOf2(c, data.field, Cstr.simple, node);
         try initTempValue(c, addrv, node);
 
         const rightv = try genExpr(c, data.right, Cstr.simpleRetain);
         try initTempValue(c, rightv, node);
 
-        try c.pushCode(.set_deref, &.{ addrv.reg, 1, rightv.reg }, node);
+        const right_te = c.sema.getType(c.ir.getExprType(data.right).id);
+        if (right_te.kind == .struct_t) {
+            try c.pushCode(.set_deref_struct, &.{ addrv.reg, @intCast(right_te.data.struct_t.nfields), rightv.reg }, node);
+        } else {
+            try c.pushCode(.set_deref, &.{ addrv.reg, rightv.reg }, node);
+        }
 
         try consumeTempValue(c, rightv, node);
         try popTempValue(c, rightv, node);
@@ -1780,8 +1817,8 @@ fn genLocalReg(c: *Chunk, reg: SlotId, slot_t: cy.TypeId, cstr: Cstr, node: *ast
 
     if (!slot.boxed_up) {
         const type_e = c.sema.getType(slot_t);
-        if (type_e.kind == .@"struct") {
-            return genValueLocal(c, reg, @intCast(type_e.data.@"struct".numFields), cstr, node);
+        if (type_e.kind == .struct_t) {
+            return genValueLocal(c, reg, @intCast(type_e.data.struct_t.nfields), cstr, node);
         }
 
         const srcv = regValue(c, reg, false);
@@ -1796,7 +1833,7 @@ fn genLocalReg(c: *Chunk, reg: SlotId, slot_t: cy.TypeId, cstr: Cstr, node: *ast
         return genToExact(c, srcv, exact_cstr, node);
     } else {
         const type_e = c.sema.getType(slot_t);
-        if (type_e.kind == .@"struct") {
+        if (type_e.kind == .struct_t) {
             return genLiftedValueLocal(c, reg, slot, cstr, node);
         }
 
@@ -3861,6 +3898,24 @@ fn pushObjectInit(c: *cy.Chunk, typeId: cy.TypeId, startLocal: u8, numFields: u8
     }
 }
 
+fn pushStructInit(c: *cy.Chunk, typeId: cy.TypeId, startLocal: u8, val_size: u8, fields: []const cy.sym.FieldInfo, dst: SlotId, debugNode: *ast.Node) !void {
+    const start = c.buf.ops.items.len;
+    if (val_size <= 4) {
+        try c.pushCode(.struct_small, &.{ 0, 0, startLocal, @intCast(fields.len), dst }, debugNode);
+    } else {
+        try c.pushFCode(.struct_init, &.{ 0, 0, startLocal, @intCast(fields.len), dst }, debugNode);
+    }
+    c.buf.setOpArgU16(start + 1, @intCast(typeId)); 
+    for (fields) |field| {
+        const type_e = c.sema.types.items[field.type];
+        if (type_e.kind == .struct_t) {
+            try c.buf.pushOperand(@intCast(type_e.data.struct_t.nfields));
+        } else {
+            try c.buf.pushOperand(0);
+        }
+    }
+}
+
 fn pushFieldDyn(c: *cy.Chunk, recv: u8, dst: u8, fieldId: u16, debugNode: *ast.Node) !void {
     const start = c.buf.ops.items.len;
     try c.pushFCode(.fieldDyn, &.{ recv, dst, 0, 0, 0, 0, 0, 0, 0, 0 }, debugNode);
@@ -3871,8 +3926,8 @@ fn pushField(c: *cy.Chunk, recv: u8, fieldIdx: u8, retain: bool, dst: u8, debugN
     try c.pushCode(.field, &.{ recv, fieldIdx, @intFromBool(retain), dst }, debugNode);
 }
 
-fn pushAddrField(c: *cy.Chunk, recv: u8, fieldIdx: u8, dst: u8, debugNode: *ast.Node) !void {
-    try c.pushCode(.addr_field, &.{ recv, fieldIdx, dst }, debugNode);
+fn pushAddrConstIndex(c: *cy.Chunk, recv: u8, offset: u8, dst: u8, debugNode: *ast.Node) !void {
+    try c.pushCode(.addr_const_index, &.{ recv, offset, dst }, debugNode);
 }
 
 /// Selecting for a non local inst with a dst operand.

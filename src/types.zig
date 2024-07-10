@@ -22,7 +22,7 @@ pub const TypeKind = enum(u8) {
     custom,
     @"enum",
     choice,
-    @"struct",
+    struct_t,
     option,
     trait,
     bare,
@@ -79,8 +79,11 @@ pub const Type = extern struct {
             getChildrenFn: C.GetChildrenFn,
             finalizerFn: C.FinalizerFn,
         },
-        @"struct": extern struct {
-            numFields: u16,
+        struct_t: extern struct {
+            // Includes fields for nested structs.
+            nfields: u16,
+
+            cstruct: bool,
         },
         ct_ref: extern struct {
             ct_param_idx: u32,
@@ -223,6 +226,11 @@ pub const SemaExt = struct {
         return variant.root_template == s.pointer_tmpl;
     }
 
+    pub fn getPointerChildType(s: *cy.Sema, id: cy.TypeId) cy.TypeId {
+        const sym = s.getTypeSym(id);
+        return sym.getVariant().?.args[0].castHeapObject(*cy.heap.Type).type;
+    }
+
     pub fn getType(s: *cy.Sema, id: TypeId) Type {
         return s.types.items[id];
     }
@@ -289,7 +297,7 @@ pub const SemaExt = struct {
         if (id < BuiltinEnd) {
             return false;
         }
-        return s.types.items[id].kind == .@"struct";
+        return s.types.items[id].kind == .struct_t;
     }
 
     pub fn isEnumType(s: *cy.Sema, typeId: TypeId) bool {

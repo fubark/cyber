@@ -570,12 +570,6 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[4].val;
             len += try fmt.printCount(w, "%{} = (%{}).{}, +{}", &.{v(dst), v(recv), v(fieldIdx), v(retain)});
         },
-        .addr_field => {
-            const recv = pc[1].val;
-            const fieldIdx = pc[2].val;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "%{} = &%{}.{}", &.{v(dst), v(recv), v(fieldIdx)});
-        },
         .fieldDyn => {
             const recv = pc[1].val;
             const dst = pc[2].val;
@@ -661,21 +655,23 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
                 v(dst), v(type_id), v(vtable), v(src),
             });
         },
-        .object => {
-            const typeId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const argStart = pc[3].val;
-            const numFields = pc[4].val;
-            const dst = pc[5].val;
-            len += try fmt.printCount(w, "%{} = [type={} %{}..%{}]", &.{
-                v(dst), v(typeId), v(argStart), v(argStart+numFields),
-            });
-        },
+        .object,
         .objectSmall => {
             const typeId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
             const argStart = pc[3].val;
             const numFields = pc[4].val;
             const dst = pc[5].val;
-            len += try fmt.printCount(w, "%{} = [type={} %{}..%{}]", &.{
+            len += try fmt.printCount(w, "%{} = type={}{%{}..%{}}", &.{
+                v(dst), v(typeId), v(argStart), v(argStart+numFields)
+            });
+        },
+        .struct_init,
+        .struct_small => {
+            const typeId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const argStart = pc[3].val;
+            const numFields = pc[4].val;
+            const dst = pc[5].val;
+            len += try fmt.printCount(w, "%{} = type={}{%{}..%{}}", &.{
                 v(dst), v(typeId), v(argStart), v(argStart+numFields)
             });
         },
@@ -724,8 +720,15 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
         },
         .addr_local => {
             const local = pc[1].val;
-            const dst = pc[2].val;
-            len += try fmt.printCount(w, "%{} = &%{}", &.{v(dst), v(local)});
+            const up_struct = pc[2].val == 1;
+            const dst = pc[3].val;
+            len += try fmt.printCount(w, "%{} = &%{}.values, upstruct={}", &.{v(dst), v(local), v(up_struct)});
+        },
+        .addr_const_index => {
+            const local = pc[1].val;
+            const offset = pc[2].val;
+            const dst = pc[3].val;
+            len += try fmt.printCount(w, "%{} = &%{}[{}]", &.{v(dst), v(local), v(offset)});
         },
         .addr_index => {
             const local = pc[1].val;
@@ -741,15 +744,20 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
         },
         .deref_struct => {
             const ptr = pc[1].val;
-            const nfields = pc[2].val;
-            const dst = pc[3].val;
+            const nfields = pc[4].val;
+            const dst = pc[5].val;
             len += try fmt.printCount(w, "%{} = copy_struct(%{}.*, nfields={})", &.{v(dst), v(ptr), v(nfields)});
         },
         .set_deref => {
             const ref = pc[1].val;
-            const is_struct = pc[2].val == 1;
+            const val = pc[2].val;
+            len += try fmt.printCount(w, "%{}.* = %{}", &.{v(ref), v(val)});
+        },
+        .set_deref_struct => {
+            const ref = pc[1].val;
+            const nfields = pc[2].val;
             const val = pc[3].val;
-            len += try fmt.printCount(w, "%{}.* = %{}, struct={}", &.{v(ref), v(val), v(is_struct)});
+            len += try fmt.printCount(w, "%{}.* = %{}, size={}", &.{v(ref), v(val), v(nfields)});
         },
         .setFieldDyn,
         .setFieldDynIC => {
@@ -968,7 +976,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numVars = pc[1].val;
             return 2 + numVars;
         },
-        .addr_local,
+        .set_deref,
         .not,
         .copy,
         .copyRetainSrc,
@@ -990,10 +998,11 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .symbol => {
             return 3;
         },
+        .addr_local,
+        .addr_const_index,
         .addr_index,
         .deref,
-        .set_deref,
-        .addr_field,
+        .set_deref_struct,
         .set_up_value,
         .copyObj,
         .call,
@@ -1009,7 +1018,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .list_dyn,
         .enumOp,
         .setCaptured,
-        .deref_struct,
         .jumpNotCond => {
             return 4;
         },
@@ -1032,12 +1040,19 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numConds = pc[2].val;
             return 5 + numConds * 3;
         },
+        .deref_struct,
+        .field_struct,
         .list,
         .object,
         .objectSmall,
         .forRange,
         .forRangeReverse => {
             return 6;
+        },
+        .struct_init,
+        .struct_small => {
+            const num_fields = pc[4].val;
+            return 6 + num_fields;
         },
         .trait,
         .coinit,
@@ -1181,8 +1196,8 @@ pub const OpCode = enum(u8) {
     typeCheck = vmc.CodeTypeCheck,
     typeCheckOption = vmc.CodeTypeCheckOption,
 
+    field_struct = vmc.CodeFieldStruct,
     field = vmc.CodeField,
-    addr_field = vmc.CodeAddrField,
     fieldDyn = vmc.CodeFieldDyn,
     fieldDynIC = vmc.CodeFieldDynIC,
     lambda = vmc.CodeLambda,
@@ -1208,6 +1223,8 @@ pub const OpCode = enum(u8) {
     stringTemplate = vmc.CodeStringTemplate,
     negFloat = vmc.CodeNegFloat,
 
+    struct_small = vmc.CodeStructSmall,
+    struct_init = vmc.CodeStruct,
     objectSmall = vmc.CodeObjectSmall,
     object = vmc.CodeObject,
     trait = vmc.CodeTrait,
@@ -1215,10 +1232,12 @@ pub const OpCode = enum(u8) {
     box = vmc.CodeBox,
     unbox = vmc.CodeUnbox,
     addr_local = vmc.CodeAddrLocal,
+    addr_const_index = vmc.CodeAddrConstIndex,
     addr_index = vmc.CodeAddrIndex,
     deref = vmc.CodeDeref,
     deref_struct = vmc.CodeDerefStruct,
     set_deref = vmc.CodeSetDeref,
+    set_deref_struct = vmc.CodeSetDerefStruct,
     unwrapChoice = vmc.CodeUnwrapChoice,
 
     setFieldDyn = vmc.CodeSetFieldDyn,
@@ -1298,7 +1317,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 123);
+    try t.eq(std.enums.values(OpCode).len, 127);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

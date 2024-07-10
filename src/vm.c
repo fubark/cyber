@@ -192,6 +192,66 @@ static inline ValueResult allocInt(VM* vm, i64 i) {
     return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
+static inline ValueResult allocStructSmall(VM* vm, TypeId typeId, Value* fields, u8* sizes, u8 numFields) {
+    HeapObjectResult res = zAllocPoolObject(vm);
+    if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
+        return (ValueResult){ .code = res.code };
+    }
+    res.obj->object = (Object){
+        .typeId = typeId | CYC_TYPE_MASK,
+        .rc = 1,
+    };
+
+    Value* dst = objectGetValuesPtr(&res.obj->object);
+    u8 offset = 0;
+    for (int i = 0; i < numFields; i += 1) {
+        u8 size = sizes[i];
+        if (size > 0) {
+            // Copy.
+            HeapObject* field = VALUE_AS_HEAPOBJECT(fields[i]);
+            Value* src = objectGetValuesPtr((Object*)field);
+            memcpy(dst + offset, src, size * sizeof(Value));
+            release(vm, fields[i]);
+            offset += size;
+        } else {
+            dst[offset] = fields[i];
+            offset += 1;
+        }
+    }
+
+    return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
+}
+
+static inline ValueResult allocStruct(VM* vm, TypeId typeId, Value* fields, u8* sizes, u8 numFields) {
+    // First slot holds the typeId and rc.
+    HeapObjectResult res = zAllocExternalCycObject(vm, (1 + numFields) * sizeof(Value));
+    if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
+        return (ValueResult){ .code = res.code };
+    }
+    res.obj->object = (Object){
+        .typeId = typeId | CYC_TYPE_MASK,
+        .rc = 1,
+    };
+
+    Value* dst = objectGetValuesPtr(&res.obj->object);
+    u8 offset = 0;
+    for (int i = 0; i < numFields; i += 1) {
+        u8 size = sizes[i];
+        if (size > 0) {
+            // Copy.
+            HeapObject* field = VALUE_AS_HEAPOBJECT(fields[i]);
+            Value* src = objectGetValuesPtr((Object*)field);
+            memcpy(dst + offset, src, size * sizeof(Value));
+            offset += size;
+        } else {
+            dst[i] = fields[i];
+            offset += 1;
+        }
+    }
+
+    return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
+}
+
 static inline ValueResult allocObjectSmall(VM* vm, TypeId typeId, Value* fields, u8 numFields) {
     HeapObjectResult res = zAllocPoolObject(vm);
     if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
@@ -550,8 +610,8 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Call),
         JENTRY(TypeCheck),
         JENTRY(TypeCheckOption),
+        JENTRY(FieldStruct),
         JENTRY(Field),
-        JENTRY(AddrField),
         JENTRY(FieldDyn),
         JENTRY(FieldDynIC),
         JENTRY(Lambda),
@@ -572,16 +632,20 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CompareNot),
         JENTRY(StringTemplate),
         JENTRY(NegFloat),
+        JENTRY(StructSmall),
+        JENTRY(Struct),
         JENTRY(ObjectSmall),
         JENTRY(Object),
         JENTRY(Trait),
         JENTRY(Box),
         JENTRY(Unbox),
         JENTRY(AddrLocal),
+        JENTRY(AddrConstIndex),
         JENTRY(AddrIndex),
         JENTRY(Deref),
         JENTRY(DerefStruct),
         JENTRY(SetDeref),
+        JENTRY(SetDerefStruct),
         JENTRY(UnwrapChoice),
         JENTRY(SetFieldDyn),
         JENTRY(SetFieldDynIC),
@@ -1268,6 +1332,25 @@ beginSwitch:
         pc += 2;
         NEXT();
     }
+    CASE(FieldStruct): {
+        Value recv = stack[pc[1]];
+        u16 type_id = READ_U16(2);
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
+        Value* start = objectGetFieldPtr((Object*)obj, pc[3]);
+        u8 size = pc[4];
+        ValueResult res;
+        if (size <= 4) {
+            res = allocObjectSmall(vm, type_id, start, size);
+        } else {
+            res = allocObject(vm, type_id, start, size);
+        }
+        if (res.code != RES_CODE_SUCCESS) {
+            RETURN(res.code);
+        }
+        stack[pc[5]] = res.val;
+        pc += 6;
+        NEXT();
+    }
     CASE(Field): {
         Value recv = stack[pc[1]];
         HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
@@ -1277,13 +1360,6 @@ beginSwitch:
             retain(vm, stack[pc[4]]);
         }
         pc += 5;
-        NEXT();
-    }
-    CASE(AddrField): {
-        Value* ptr = (Value*)stack[pc[1]];
-        Value* field = objectGetFieldPtr((Object*)VALUE_AS_HEAPOBJECT(*ptr), pc[2]);
-        stack[pc[3]] = (u64)field;
-        pc += 4;
         NEXT();
     }
     CASE(FieldDyn): {
@@ -1457,6 +1533,30 @@ beginSwitch:
     CASE(NegFloat): {
         FLOAT_UNOP(stack[pc[2]] = VALUE_FLOAT(-VALUE_AS_FLOAT(val)))
     }
+    CASE(StructSmall): {
+        u16 typeId = READ_U16(1);
+        u8 startLocal = pc[3];
+        u8 numFields = pc[4];
+        ValueResult res = allocStructSmall(vm, typeId, stack + startLocal, pc + 6, numFields);
+        if (res.code != RES_CODE_SUCCESS) {
+            RETURN(res.code);
+        }
+        stack[pc[5]] = res.val;
+        pc += 6 + numFields;
+        NEXT();
+    }
+    CASE(Struct): {
+        u16 typeId = READ_U16(1);
+        u8 startLocal = pc[3];
+        u8 numFields = pc[4];
+        ValueResult res = allocStruct(vm, typeId, stack + startLocal, pc + 6, numFields);
+        if (res.code != RES_CODE_SUCCESS) {
+            RETURN(res.code);
+        }
+        stack[pc[5]] = res.val;
+        pc += 6 + numFields;
+        NEXT();
+    }
     CASE(ObjectSmall): {
         u16 typeId = READ_U16(1);
         u8 startLocal = pc[3];
@@ -1507,9 +1607,21 @@ beginSwitch:
         NEXT();
     }
     CASE(AddrLocal): {
-        Value* ptr = &stack[pc[1]];
-        stack[pc[2]] = (u64)ptr;
-        pc += 3;
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
+        bool lifted_struct = pc[2];
+        if (lifted_struct) {
+            HeapObject* inner = VALUE_AS_HEAPOBJECT(obj->object.firstValue);
+            stack[pc[3]] = (u64)(&inner->object.firstValue);
+        } else {
+            stack[pc[3]] = (u64)(&obj->object.firstValue);
+        }
+        pc += 4;
+        NEXT();
+    }
+    CASE(AddrConstIndex): {
+        Value* ptr = (Value*)stack[pc[1]];
+        stack[pc[3]] = (u64)(ptr + pc[2]);
+        pc += 4;
         NEXT();
     }
     CASE(AddrIndex): {
@@ -1531,22 +1643,35 @@ beginSwitch:
     }
     CASE(DerefStruct): {
         Value* ptr = (Value*)stack[pc[1]];
-        u8 numFields = pc[2];
-        ValueResult res = zCopyObject(vm, VALUE_AS_HEAPOBJECT(*ptr), numFields);
+        u16 type_id = READ_U16(2);
+        u8 nfields = pc[4];
+
+        ValueResult res;
+        if (nfields <= 4) {
+            res = allocObjectSmall(vm, type_id, ptr, nfields);
+        } else {
+            res = allocObject(vm, type_id, ptr, nfields);
+        }
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
-        stack[pc[3]] = res.val;
-        pc += 4;
+        stack[pc[5]] = res.val;
+        pc += 6;
         NEXT();
     }
     CASE(SetDeref): {
         Value* dst = (Value*)stack[pc[1]];
-        bool is_struct = stack[pc[2]];
-        if (is_struct) {
-            release(vm, *dst);
-        }
-        *dst = stack[pc[3]];
+        *dst = stack[pc[2]];
+        pc += 3;
+        NEXT();
+    }
+    CASE(SetDerefStruct): {
+        Value* dst = (Value*)stack[pc[1]];
+        u8 nfields = pc[2];
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[3]]);
+        Value* src = objectGetValuesPtr((Object*)obj);
+        memcpy(dst, src, nfields * sizeof(Value));
+        releaseObject(vm, obj);
         pc += 4;
         NEXT();
     }

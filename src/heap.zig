@@ -1589,6 +1589,8 @@ pub const VmExt = struct {
     pub const allocListIterDyn = Root.allocListIterDyn;
     pub const allocMapIterator = Root.allocMapIterator;
     pub const allocObjectSmall = Root.allocObjectSmall;
+    pub const allocObject = Root.allocObject;
+    pub const allocObject2 = Root.allocObject2;
     pub const allocType = Root.allocType;
     pub const allocTrait = Root.allocTrait;
     pub const allocFuture = Root.allocFuture;
@@ -1906,6 +1908,14 @@ pub fn allocEmptyObject(self: *cy.VM, type_id: cy.TypeId, nfields: u32) !Value {
     return Value.initCycPtr(obj);
 }
 
+pub fn allocObject2(self: *cy.VM, type_id: cy.TypeId, fields: []const Value) !Value {
+    if (fields.len <= 4) {
+        return self.allocObjectSmall(type_id, fields);
+    } else {
+        return self.allocObject(type_id, fields);
+    }
+}
+
 pub fn allocObjectSmall(self: *cy.VM, type_id: cy.TypeId, fields: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.object = .{
@@ -2135,7 +2145,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
         },
         else => {
             if (cy.Trace) {
-                log.tracev("free {s} {}", .{vm.getTypeName(typeId), typeId});
+                log.tracevIf(log_mem, "free {s} {}", .{vm.getTypeName(typeId), typeId});
 
                 // Check range.
                 if (typeId >= vm.c.types_len) {
@@ -2157,18 +2167,27 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                 .int => {
                     freePoolObject(vm, obj);
                 },
-                .@"struct" => {
-                    const numFields = entry.data.@"struct".numFields;
-                    for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
-                        if (skip_cyc_children and child.isCycPointer()) {
-                            continue;
+                .struct_t => {
+                    if (entry.data.struct_t.cstruct) {
+                        const nfields = entry.data.struct_t.nfields;
+                        if (nfields <= 4) {
+                            freePoolObject(vm, obj);
+                        } else {
+                            freeExternalObject(vm, obj, (1 + nfields) * @sizeOf(Value), true);
                         }
-                        cy.arc.release(vm, child);
-                    }
-                    if (numFields <= 4) {
-                        freePoolObject(vm, obj);
                     } else {
-                        freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value), true);
+                        const nfields = entry.data.struct_t.nfields;
+                        for (obj.object.getValuesConstPtr()[0..nfields]) |child| {
+                            if (skip_cyc_children and child.isCycPointer()) {
+                                continue;
+                            }
+                            cy.arc.release(vm, child);
+                        }
+                        if (nfields <= 4) {
+                            freePoolObject(vm, obj);
+                        } else {
+                            freeExternalObject(vm, obj, (1 + nfields) * @sizeOf(Value), true);
+                        }
                     }
                 },
                 .trait => {

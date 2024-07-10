@@ -985,6 +985,7 @@ pub const VM = struct {
             infos[i] = .{
                 .sym = @ptrCast(field_sym),
                 .type = bt.Any,
+                .offset = 0,
             };
         }
         sym.fields = infos.ptr;
@@ -2796,8 +2797,8 @@ pub fn copyObject(vm: *VM, obj: *HeapObject, numFields: u8) !cy.Value {
     for (0..numFields) |i| {
         const field_t = values[i].getTypeId();
         const type_e = vm.c.types[field_t];
-        if (type_e.kind == .@"struct") {
-            const child_num_fields = type_e.data.@"struct".numFields;
+        if (type_e.kind == .struct_t) {
+            const child_num_fields = type_e.data.struct_t.nfields;
             const child = try copyObject(vm, values[i].asHeapObject(), @intCast(child_num_fields));
             dst[i] = child;
         } else {

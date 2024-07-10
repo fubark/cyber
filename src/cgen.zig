@@ -1320,7 +1320,7 @@ fn genObjectInit(c: *Chunk, loc: usize, cstr: Cstr, node: *ast.Node) !Value {
 
     const typ = c.sema.types.items[data.typeId];
     switch (typ.kind) {
-        .@"struct" => {
+        .struct_t => {
             return error.TODO;
         },
         .object => {

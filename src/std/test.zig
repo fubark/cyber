@@ -52,8 +52,25 @@ fn erase(vm: *cy.VM) Value {
 }
 
 pub fn eq(vm: *cy.VM) Value {
-    const type_id = vm.getInt(0);
-    const res = eq_c(vm, @intCast(type_id), vm.getValue(1), vm.getValue(2));
+    var type_id: cy.TypeId = @intCast(vm.getInt(0));
+
+    var act = vm.getValue(1);
+    var exp = vm.getValue(2);
+    if (type_id == bt.Any or type_id == bt.Dyn) {
+        const act_t = act.getTypeId();
+        const exp_t = exp.getTypeId();
+        if (act_t != exp_t) {
+            rt.errFmt(vm, "Types do not match:\n", &.{});
+            rt.errFmt(vm, "actual: {} != {}\n", &.{v(rt.getTypeName(vm, act_t)), v(rt.getTypeName(vm, exp_t))});
+            return cy.builtins.prepThrowZError(vm, error.AssertError, null);
+        }
+        if (vm.sema.isUnboxedType(act_t)) {
+            act = cy.vm.unbox(vm, act, act_t);
+            exp = cy.vm.unbox(vm, exp, act_t);
+        }
+        type_id = act_t;
+    }
+    const res = eq_c(vm, type_id, act, exp);
     if (res.hasError()) {
         return Value.Interrupt;
     }
@@ -69,6 +86,7 @@ pub fn eq_c(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) callcon
     }
 }
 
+/// Assumes unboxed values.
 fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
     if (build_options.rt != .pm) {
         if (type_id == bt.Integer) {
@@ -79,15 +97,6 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
                 return false;
             }
         }
-    }
-
-    const act_t = act.getTypeId();
-    const exp_t = exp.getTypeId();
-
-    if (act_t != exp_t) {
-        rt.errFmt(c, "Types do not match:\n", &.{});
-        rt.errFmt(c, "actual: {} != {}\n", &.{v(rt.getTypeName(c, act_t)), v(rt.getTypeName(c, exp_t))});
-        return false;
     }
 
     // PM compares by value if `is_struct` is true. Compares reference otherwise.
@@ -116,12 +125,12 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
             }
         }
     } else {
-        switch (act_t) {
+        switch (type_id) {
             bt.Integer => {
-                if (act.asBoxInt() == exp.asBoxInt()) {
+                if (act.asInt() == exp.asInt()) {
                     return true;
                 } else {
-                    rt.errFmt(c, "actual: {} != {}\n", &.{v(act.asBoxInt()), v(exp.asBoxInt())});
+                    rt.errFmt(c, "actual: {} != {}\n", &.{v(act.asInt()), v(exp.asInt())});
                     return false;
                 }
             },
@@ -208,12 +217,12 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
                 }
             },
             else => {
-                if (act_t < cy.types.BuiltinEnd) {
-                    cy.panicFmt("Unsupported type {}", .{act_t});
+                if (type_id < cy.types.BuiltinEnd) {
+                    cy.panicFmt("Unsupported type {}", .{type_id});
                 } else {
-                    if (c.c.types[act_t].kind == .int) {
-                        const act_v = act.asBoxInt();
-                        const exp_v = exp.asBoxInt();
+                    if (c.c.types[type_id].kind == .int) {
+                        const act_v = act.asInt();
+                        const exp_v = exp.asInt();
                         if (act_v == exp_v) {
                             return true;
                         } else {

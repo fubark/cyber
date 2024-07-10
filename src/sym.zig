@@ -223,6 +223,7 @@ pub const Sym = extern struct {
     pub fn getVariant(self: *Sym) ?*Variant {
         switch (self.type) {
             .object_t => return self.cast(.object_t).variant,
+            .struct_t => return self.cast(.struct_t).variant,
             .custom_t => return self.cast(.custom_t).variant,
             .enum_t   => return self.cast(.enum_t).variant,
             else => return null,

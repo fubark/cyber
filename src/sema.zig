@@ -1261,6 +1261,10 @@ pub fn declareTemplate(c: *cy.Chunk, node: *ast.TemplateDecl) !*cy.sym.Template 
             name_n = node.decl.cast(.objectDecl).name.?;
             decl_t = .object_t;
         },
+        .structDecl => {
+            name_n = node.decl.cast(.structDecl).name.?;
+            decl_t = .struct_t;
+        },
         .enumDecl => {
             name_n = node.decl.cast(.enumDecl).name;
             decl_t = .enum_t;
@@ -1735,6 +1739,16 @@ pub fn reserveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, opt_head
 
             return @ptrCast(object_t);
         },
+        .struct_t => {
+            const struct_t = try c.createStructType(@ptrCast(c.sym), name, @ptrCast(template.child_decl));
+            struct_t.variant = variant;
+
+            const header_decl = opt_header_decl orelse template.child_decl;
+            const type_id = try resolveTypeIdFromDecl(c, @ptrCast(struct_t), header_decl.cast(.structDecl).attrs, header_decl);
+            try resolveStructTypeId(c, struct_t, type_id);
+
+            return @ptrCast(struct_t);
+        },
         .custom_t => {
             const custom_t = try c.createCustomType(@ptrCast(c.sym), name, @ptrCast(template.child_decl));
             custom_t.variant = variant;
@@ -1809,6 +1823,20 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
             //         }
             //     }
             // }
+        },
+        .struct_t => {
+            const struct_t = sym.cast(.struct_t);
+            try resolveObjectLikeType(tchunk, @ptrCast(sym), template.child_decl);
+
+            try pushVariantResolveContext(tchunk, struct_t.variant.?);
+            defer popResolveContext(tchunk);
+
+            const struct_decl = template.child_decl.cast(.structDecl);
+            for (struct_decl.funcs) |func_n| {
+                const func = try reserveNestedFunc(tchunk, @ptrCast(struct_t), func_n, false);
+                // func.sym.?.variant = object_t.variant.?;
+                try resolveFunc2(tchunk, func, true);
+            }
         },
         .enum_t => {
             const enum_t = sym.cast(.enum_t);

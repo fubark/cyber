@@ -319,8 +319,16 @@ fn genDeclEntry(vm: *cy.VM, view: ast.AstView, decl: *ast.Node, state: *ParseCyb
             const ret = try genTypeSpecString(vm, view, func_decl.ret);
             try vm.mapSet(entry, try vm.retainOrAllocAstring("ret"), ret);
         },
+        .structDecl => {
+            const struct_decl = decl.cast(.structDecl);
+            const funcs_ = try vm.allocEmptyListDyn();
+            for (struct_decl.funcs) |func_decl| {
+                const f = try genImplicitFuncDeclEntry(vm, view, func_decl, state);
+                try funcs_.asHeapObject().list.append(vm.alloc, f);
+            }
+            try vm.mapSet(entry, try vm.retainOrAllocAstring("funcs"), funcs_);
+        },
         .table_decl,
-        .structDecl,
         .objectDecl => {
             const object_decl = decl.cast(.objectDecl);
             const funcs_ = try vm.allocEmptyListDyn();

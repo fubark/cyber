@@ -301,6 +301,7 @@ typedef enum {
     CodeBox,
     CodeUnbox,
     CodeAddrLocal,
+    CodeAddrIndex,
     CodeDeref,
     CodeDerefStruct,
     CodeSetDeref,

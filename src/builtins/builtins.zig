@@ -206,6 +206,7 @@ const funcs = [_]C.HostFuncEntry{
     // pointer
     func("pointer.index",      zErrFunc(pointerIndex)),
     func("pointer.indexRange", zErrFunc(pointerIndexRange)),
+    func("pointer.setIndex",   zErrFunc(pointerSetIndex)),
     func("pointer.addr",       pointerAddr),
     func("pointer.asObject",   pointerAsObject),
     func("pointer.fromCstr",   zErrFunc(pointerFromCstr)),
@@ -1146,6 +1147,24 @@ fn pointerIndexRange(vm: *cy.VM) anyerror!Value {
     } else {
         return vm.allocSlice(slice_t, ptr - @as(usize, @intCast(range.start)), @intCast(range.end - range.start));
     }
+}
+
+fn pointerSetIndex(vm: *cy.VM) anyerror!Value {
+    const ptr: [*]cy.Value = @ptrCast(@alignCast(vm.getPointer(0)));
+    const elem_t: cy.TypeId = @intCast(vm.getInt(1));
+    const idx: usize = @intCast(vm.getInt(2));
+    const val = vm.getValue(3);
+
+    // Always an 8 byte stride. But cstructs need to be deep copied.
+    if (vm.sema.isUnboxedType(elem_t)) {
+        ptr[idx] = val;
+    } else {
+        const type_e = vm.c.types[elem_t];
+        const prev = ptr[idx];
+        ptr[idx] = try cy.vm.copyObject(vm, val.asHeapObject(), @intCast(type_e.data.@"struct".numFields));
+        vm.release(prev);
+    }
+    return Value.Void;
 }
 
 fn pointerAddr(vm: *cy.VM) Value {

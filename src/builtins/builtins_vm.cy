@@ -453,6 +453,11 @@ type pointer[T type] #int64_t:
 
     @host -func indexRange(self, slice_t int, range Range) []T
 
+    func $setIndex(self, idx int, val T) void:
+        self.setIndex((T).id(), idx, val)
+
+    @host -func setIndex(self, elem_t int, idx int, val T) void
+
     --| When pointer runtime safety is enabled, this returns the raw pointer address as an `int64`. 
     --| Otherwise, the pointer itself is bitcasted to an `int64`.
     @host func addr(self) int
@@ -537,6 +542,9 @@ type Slice[T type] struct:
 
     func $index(self, range Range) []T:
         return self.ptr[range.start..range.end]
+
+    func $setIndex(self, idx int, val T) void:
+        self.ptr[idx] = val
 
     func len(self) int:
         return self.n

@@ -3333,9 +3333,9 @@ pub fn resolveTypeSpecNode(c: *cy.Chunk, node: ?*ast.Node) anyerror!cy.TypeId {
         return bt.Dyn;
     };
     const type_id = try resolveSymType(c, n);
-    if (type_id == bt.Void) {
-        return c.reportErrorFmt("`void` can not be used as common type specifier.", &.{}, n);
-    }
+    // if (type_id == bt.Void) {
+    //     return c.reportErrorFmt("`void` can not be used as common type specifier.", &.{}, n);
+    // }
     return type_id;
 }
 

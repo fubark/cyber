@@ -1530,6 +1530,7 @@ Note that invoking the template again with the same argument(s) returns the same
   * [C struct reference.](#c-struct-reference)
 * [Pointers.](#pointers)
   * [Dereferencing pointers.](#dereferencing-pointers)
+  * [Pointer indexing.](#pointer-indexing)
   * [Pointer arithmetic.](#pointer-arithmetic)
   * [Pointer casting.](#pointer-casting)
   * [Pointer slicing.](#pointer-slicing)
@@ -1679,6 +1680,15 @@ ptr.* = 10
 print a          --> 10
 ```
 
+### Pointer indexing.
+The index operator is used to read or write to a particular element:
+```cy
+var a = mem.alloc(int, 10)
+a[5] = 123
+print a[5]       --> 123
+```
+Negative indexing will locate the element before the pointer's address.
+
 ### Pointer arithmetic.
 > _Planned Feature_
 
@@ -1705,9 +1715,11 @@ var arr = [_]int.[1, 2, 3]
 var s = &arr
 ```
 
-Access elements of a slice with the index operator: 
+Read and write an element with the index operator: 
 ```cy
 print s[0]        --> 1
+s[1] = 123
+print s[1]        --> 123
 ```
 
 Slices provide bounds checking when runtime safety is enabled: *Planned feature*

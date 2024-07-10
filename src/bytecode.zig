@@ -727,6 +727,12 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[2].val;
             len += try fmt.printCount(w, "%{} = &%{}", &.{v(dst), v(local)});
         },
+        .addr_index => {
+            const local = pc[1].val;
+            const index = pc[2].val;
+            const dst = pc[3].val;
+            len += try fmt.printCount(w, "%{} = &%{}[%{}]", &.{v(dst), v(local), v(index)});
+        },
         .deref => {
             const ptr = pc[1].val;
             const retain = pc[2].val == 1;
@@ -979,6 +985,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .symbol => {
             return 3;
         },
+        .addr_index,
         .deref,
         .set_deref,
         .addr_field,
@@ -1203,6 +1210,7 @@ pub const OpCode = enum(u8) {
     box = vmc.CodeBox,
     unbox = vmc.CodeUnbox,
     addr_local = vmc.CodeAddrLocal,
+    addr_index = vmc.CodeAddrIndex,
     deref = vmc.CodeDeref,
     deref_struct = vmc.CodeDerefStruct,
     set_deref = vmc.CodeSetDeref,
@@ -1285,7 +1293,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 122);
+    try t.eq(std.enums.values(OpCode).len, 123);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

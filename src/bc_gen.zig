@@ -781,6 +781,32 @@ fn genAddressOf2(c: *Chunk, expr: usize, cstr: Cstr, node: *ast.Node) !GenValue 
             const deref = c.ir.getExprData(expr, .deref);
             return genExpr(c, deref.expr, cstr);
         },
+        .call_sym => {
+            const call_sym = c.ir.getExprData(expr, .call_sym);
+            // TODO: This is a hack to check for pointer $index call.
+            //       Perhaps check for a function tag instead.
+            if (call_sym.func.is_method and std.mem.eql(u8, "$index", call_sym.func.name())) {
+                const args = c.ir.getArray(call_sym.args, u32, call_sym.numArgs);
+
+                const inst = try bc.selectForDstInst(c, cstr, bt.Integer, false, node);
+
+                const ptrv = try genAddressOf2(c, args[0], Cstr.simple, node);
+                try initTempValue(c, ptrv, node);
+
+                const idxv = try genExpr(c, args[1], Cstr.simple);
+                try initTempValue(c, idxv, node);
+
+                try c.pushCode(.addr_index, &.{ ptrv.reg, idxv.reg, inst.dst }, node);
+                try popTempValue(c, idxv, node);
+                try popTempValue(c, ptrv, node);
+                if (inst.own_dst) {
+                    try initSlot(c, inst.dst, false, node);
+                }
+                return finishDstInst(c, inst, false);
+            } else {
+                return error.TODO;
+            }
+        },
         else => {
             log.tracev("{}", .{code});
             return error.TODO;

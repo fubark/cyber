@@ -578,6 +578,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Box),
         JENTRY(Unbox),
         JENTRY(AddrLocal),
+        JENTRY(AddrIndex),
         JENTRY(Deref),
         JENTRY(DerefStruct),
         JENTRY(SetDeref),
@@ -1509,6 +1510,13 @@ beginSwitch:
         Value* ptr = &stack[pc[1]];
         stack[pc[2]] = (u64)ptr;
         pc += 3;
+        NEXT();
+    }
+    CASE(AddrIndex): {
+        Value* ptr = (Value*)stack[pc[1]];
+        ptr += BITCAST(i64, stack[pc[2]]);
+        stack[pc[3]] = (u64)ptr;
+        pc += 4;
         NEXT();
     }
     CASE(Deref): {

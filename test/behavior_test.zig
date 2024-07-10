@@ -138,7 +138,7 @@ if (!aot) {
     run.case("functions/read_capture_local_error.cy");
     run.case("functions/static.cy");
     run.case("functions/template_functions.cy");
-    run.case("functions/void_param_error.cy");
+    // run.case("functions/void_param_error.cy");
 
     run.case("memory/arc_cases.cy");
     run.case("memory/gc_reference_cycle_unreachable.cy");

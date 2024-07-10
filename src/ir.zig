@@ -65,9 +65,6 @@ pub const StmtCode = enum(u8) {
     setIndex,
     setVarSym,
 
-    /// Upon merging branches back, a dynamic local may have a new recent type.
-    setLocalType,
-
     pushDebugLabel,
     dumpBytecode,
     verbose,
@@ -138,6 +135,7 @@ pub const ExprCode = enum(u8) {
     unwrapChoice,
     unwrap_or,
     box,
+    unbox,
     range,
     trait,
 };
@@ -172,6 +170,10 @@ pub const Trait = struct {
 };
 
 pub const Box = struct {
+    expr: Loc,
+};
+
+pub const Unbox = struct {
     expr: Loc,
 };
 
@@ -305,11 +307,6 @@ pub const ObjectInit = struct {
     typeId: TypeId,
     args: Loc,
     numArgs: u8,
-};
-
-pub const SetLocalType = struct {
-    local: u8,
-    type: CompactType,
 };
 
 pub const ForIterStmt = struct {
@@ -629,7 +626,6 @@ pub fn StmtData(comptime code: StmtCode) type {
         .tryStmt => TryStmt,
         .forIterStmt => ForIterStmt,
         .forRangeStmt => ForRangeStmt,
-        .setLocalType => SetLocalType,
         .setIndex,
         .setLocal,
         .set_field_dyn,
@@ -694,6 +690,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .type_check => TypeCheck,
         .typeCheckOption => TypeCheckOption,
         .box => Box,
+        .unbox => Unbox,
         .range => Range,
         .await_expr => Await,
         .trait => Trait,

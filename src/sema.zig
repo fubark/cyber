@@ -27,8 +27,6 @@ const vm_ = @import("vm.zig");
 
 const log = cy.log.scoped(.sema);
 
-const RegisterId = cy.register.RegisterId;
-
 pub const LocalVarId = u32;
 
 const LocalVarType = enum(u8) {
@@ -44,6 +42,31 @@ const LocalVarType = enum(u8) {
     objectMemberAlias,
 
     parentObjectMemberAlias,
+};
+
+const LocalVarS = struct {
+    /// Id emitted in IR code. Starts from 0 after params in the current block.
+    /// Aliases do not have an id.
+    id: u8,
+
+    /// If `isParam` is true, `id` refers to the param idx.
+    isParam: bool,
+    /// If a param is written to or turned into a Box, `copied` becomes true.
+    isParamCopied: bool,
+
+    /// If declaration has an initializer.
+    hasInit: bool,
+
+    /// Currently a captured var always needs to be lifted.
+    /// In the future, the concept of a immutable variable could change this.
+    lifted: bool,
+
+    /// If var is hidden, user code can not reference it.
+    hidden: bool,
+
+    /// For locals this points to a ir.DeclareLocal.
+    /// This is NullId for params.
+    declIrStart: u32,
 };
 
 /// Represents a variable or alias in a block.
@@ -64,34 +87,11 @@ pub const LocalVar = struct {
 
     /// Local register offset assigned to this var.
     /// Locals are relative to the stack frame's start position.
-    local: RegisterId = undefined,
+    local: u8 = undefined,
 
     inner: union {
         staticAlias: *Sym,
-        local: struct {
-            /// Id emitted in IR code. Starts from 0 after params in the current block.
-            /// Aliases do not have an id.
-            id: u8,
-
-            /// If `isParam` is true, `id` refers to the param idx.
-            isParam: bool,
-            /// If a param is written to or turned into a Box, `copied` becomes true.
-            isParamCopied: bool,
-
-            /// If declaration has an initializer.
-            hasInit: bool,
-
-            /// Currently a captured var always needs to be lifted.
-            /// In the future, the concept of a immutable variable could change this.
-            lifted: bool,
-
-            /// If var is hidden, user code can not reference it.
-            hidden: bool,
-
-            /// For locals this points to a ir.DeclareLocal.
-            /// This is NullId for params.
-            declIrStart: u32,
-        },
+        local: LocalVarS,
         objectMemberAlias: struct {
             fieldIdx: u8,
         },
@@ -868,7 +868,7 @@ fn assignStmt(c: *cy.Chunk, node: *ast.Node, left_n: *ast.Node, right: *ast.Node
                     .right = right_res.irIdx,
                 }});
             } else if (leftRes.resType == .global) {
-                const rightExpr = Expr{ .node = right, .reqTypeCstr = !leftT.dynamic, .target_t = leftT.id };
+                const rightExpr = Expr{ .node = right, .reqTypeCstr = !leftT.dynamic, .target_t = leftT.id, .fit_target = !leftT.dynamic, .fit_target_unbox_dyn = !leftT.dynamic };
                 right_res = try c.semaExprOrOpAssignBinExpr(rightExpr, opts.rhsOpAssignBinExpr);
 
                 const name = c.ast.nodeString(left_n);
@@ -887,7 +887,7 @@ fn assignStmt(c: *cy.Chunk, node: *ast.Node, left_n: *ast.Node, right: *ast.Node
                     .isBlockResult = false,
                 });
             } else {
-                const rightExpr = Expr{ .node = right, .reqTypeCstr = !leftT.dynamic, .target_t = leftT.id };
+                const rightExpr = Expr{ .node = right, .reqTypeCstr = !leftT.dynamic, .target_t = leftT.id, .fit_target = !leftT.dynamic, .fit_target_unbox_dyn = !leftT.dynamic };
                 right_res = try c.semaExprOrOpAssignBinExpr(rightExpr, opts.rhsOpAssignBinExpr);
             }
 
@@ -981,13 +981,17 @@ fn semaAccessFieldName(c: *cy.Chunk, rec: ExprResult, name: []const u8, field: *
         c.ir.setNode(rec.irIdx, field);
         return ExprResult.initCustom(rec.irIdx, .field, field_t, undefined);
     } else {
-        const loc = try c.ir.pushExpr(.field, c.alloc, info.typeId, field, .{
-            .idx = info.idx,
-            .rec = rec.irIdx,
-            .numNestedFields = 0,
-        });
-        return ExprResult.initCustom(loc, .field, field_t, undefined);
+        return semaField(c, rec, info.idx, info.typeId, field);
     }
+}
+
+fn semaField(c: *cy.Chunk, rec: ExprResult, idx: usize, type_id: cy.TypeId, node: *ast.Node) !ExprResult {
+    const loc = try c.ir.pushExpr(.field, c.alloc, type_id, node, .{
+        .idx = @intCast(idx),
+        .rec = rec.irIdx,
+        .numNestedFields = 0,
+    });
+    return ExprResult.initCustom(loc, .field, CompactType.init(type_id), undefined);
 }
 
 fn checkGetField(c: *cy.Chunk, rec_t: TypeId, fieldName: []const u8, node: *ast.Node) !FieldResult {
@@ -2576,7 +2580,7 @@ fn localDecl(c: *cy.Chunk, node: *ast.VarDecl) !void {
 
     // Infer rhs type and enforce constraint.
     const right = try c.semaExpr(node.right, .{
-        .target_t = typeId,
+        .target_t = if (inferType) cy.NullId else typeId,
         .req_target_t = !inferType,
     });
 
@@ -2636,6 +2640,8 @@ pub fn staticDecl(c: *cy.Chunk, sym: *Sym, node: *ast.StaticVarDecl) !void {
 const SemaExprOptions = struct {
     target_t: TypeId = cy.NullId,
     req_target_t: bool = false,
+    fit_target: bool = false,
+    fit_target_unbox_dyn: bool = false,
 };
 
 fn semaExprCType(c: *cy.Chunk, node: *ast.Node, ctype: CompactType) !ExprResult {
@@ -2670,7 +2676,7 @@ pub const ExprResult = struct {
     data: ExprResultData,
     irIdx: u32,
 
-    fn init(irIdx: u32, ctype: CompactType) ExprResult {
+    pub fn init(irIdx: u32, ctype: CompactType) ExprResult {
         return .{
             .resType = .value,
             .type = ctype,
@@ -2722,6 +2728,14 @@ pub const Expr = struct {
     /// Whether to fail if incompatible with type cstr.
     reqTypeCstr: bool,
 
+    /// Whether to try a last attempt to fit the target type before type checking.
+    fit_target: bool,
+
+    /// Whether to unbox dyn.
+    /// Normally this is true when `fit_target` is true,
+    /// but false when matching an arg for overloaded functions.
+    fit_target_unbox_dyn: bool,
+
     node: *ast.Node,
     target_t: TypeId,
 
@@ -2730,6 +2744,18 @@ pub const Expr = struct {
             .node = node,
             .target_t = bt.Any,
             .reqTypeCstr = false,
+            .fit_target = false,
+            .fit_target_unbox_dyn = false,
+        };
+    }
+
+    fn initRequire(node: *ast.Node, type_id: cy.TypeId) Expr {
+        return .{
+            .node = node,
+            .target_t = type_id,
+            .reqTypeCstr = true,
+            .fit_target = true,
+            .fit_target_unbox_dyn = true,
         };
     }
 
@@ -2927,7 +2953,9 @@ fn semaLocal(c: *cy.Chunk, id: LocalVarId, node: *ast.Node) !ExprResult {
         },
         .parentObjectMemberAlias => {
             const rec_t = c.varStack.items[svar.inner.parentObjectMemberAlias.parentVarId].declT;
-            const rec_loc = try c.ir.pushExpr(.captured, c.alloc, rec_t, node, .{ .idx = svar.inner.parentObjectMemberAlias.selfCapturedIdx });
+            const rec_loc = try c.ir.pushExpr(.captured, c.alloc, rec_t, node, .{
+                .idx = svar.inner.parentObjectMemberAlias.selfCapturedIdx,
+            });
             const loc = try c.ir.pushExpr(.field, c.alloc, svar.vtype.id, node, .{
                 .idx = svar.inner.parentObjectMemberAlias.fieldIdx,
                 .rec = rec_loc,
@@ -3487,7 +3515,6 @@ fn preLoop(c: *cy.Chunk, node: *ast.Node) !void {
                         .varId = @intCast(proc.varStart + i),
                     });
                     svar.vtype.id = bt.Any;
-                    _ = try c.ir.pushStmt(c.alloc, .setLocalType, node, .{ .local = svar.inner.local.id, .type = svar.vtype });
                 }
             }
         }
@@ -3519,11 +3546,6 @@ fn popBlock(c: *cy.Chunk) !cy.ir.StmtBlock {
                 // Merge recent static type.
                 if (svar.vtype.id != prevt.id) {
                     svar.vtype.id = bt.Any;
-                    if (svar.type == .local) {
-                        _ = try c.ir.pushStmt(c.alloc, .setLocalType, b.node, .{
-                            .local = svar.inner.local.id, .type = svar.vtype,
-                        });
-                    }
 
                     // Previous sub block hasn't recorded the var assignment.
                     if (!pblock.prevVarTypes.contains(varId)) {
@@ -3567,7 +3589,6 @@ fn popBlock(c: *cy.Chunk) !cy.ir.StmtBlock {
 }
 
 fn popLoopBlock(c: *cy.Chunk) !cy.ir.StmtBlock {
-    const pblock = c.block();
     const stmtBlock = try popBlock(c);
 
     const b = c.block();
@@ -3577,7 +3598,6 @@ fn popLoopBlock(c: *cy.Chunk) !cy.ir.StmtBlock {
         if (svar.dynamicLastMutBlockId <= c.semaBlocks.items.len - 1) {
             // Unused inside loop block. Restore type.
             svar.vtype = save.vtype;
-            _ = try c.ir.pushStmt(c.alloc, .setLocalType, pblock.node, .{ .local = svar.inner.local.id, .type = svar.vtype });
         }
     }
     c.preLoopVarSaveStack.items.len = b.preLoopVarSaveStart;
@@ -4729,10 +4749,21 @@ pub const ChunkExt = struct {
         }
     }
 
+    pub fn semaExprHint(c: *cy.Chunk, node: *ast.Node, target_t: TypeId) !ExprResult {
+        return try semaExpr(c, node, .{
+            .target_t = target_t,
+            .req_target_t = false,
+            .fit_target = false,
+            .fit_target_unbox_dyn = false,
+        });
+    }
+
     pub fn semaExprTarget(c: *cy.Chunk, node: *ast.Node, target_t: TypeId) !ExprResult {
         return try semaExpr(c, node, .{
             .target_t = target_t,
             .req_target_t = false,
+            .fit_target = true,
+            .fit_target_unbox_dyn = true,
         });
     }
 
@@ -4740,6 +4771,8 @@ pub const ChunkExt = struct {
         return try semaExpr(c, node, .{
             .target_t = typeId,
             .req_target_t = true,
+            .fit_target = true,
+            .fit_target_unbox_dyn = true,
         });
     }
 
@@ -4770,6 +4803,8 @@ pub const ChunkExt = struct {
         const expr = Expr{
             .target_t = opts.target_t,
             .reqTypeCstr = opts.req_target_t,
+            .fit_target = opts.fit_target,
+            .fit_target_unbox_dyn = opts.fit_target_unbox_dyn,
             .node = node,
         };
         return c.semaExpr2(expr);
@@ -4805,14 +4840,6 @@ pub const ChunkExt = struct {
                     return ExprResult.initStatic(irIdx, expr.target_t);
                 }
             } else {
-                if (expr.target_t == bt.Any and res.type.id != bt.Any) {
-                    // Box value.
-                    var newRes = res;
-                    newRes.irIdx = try c.ir.pushExpr(.box, c.alloc, bt.Any, expr.node, .{
-                        .expr = res.irIdx,
-                    });
-                    return newRes;
-                }
                 if (type_e.kind == .trait) {
                     const res_type_e = c.sema.types.items[res.type.id];
                     if (res_type_e.kind == .object) {
@@ -4829,16 +4856,28 @@ pub const ChunkExt = struct {
                 }
             }
 
+            if (expr.fit_target) {
+                const target_is_boxed = expr.target_t == bt.Any or expr.target_t == bt.Dyn;
+                if (target_is_boxed and res.type.id != bt.Any) {
+                    // Box value.
+                    var newRes = res;
+                    newRes.irIdx = try c.ir.pushExpr(.box, c.alloc, bt.Any, expr.node, .{
+                        .expr = res.irIdx,
+                    });
+                    return newRes;
+                }
+
+                if (!target_is_boxed and expr.fit_target_unbox_dyn and res.type.isDynAny()) {
+                    const loc = try c.unboxOrCheck(expr.target_t, res, expr.node);
+                    var newRes = res;
+                    newRes.irIdx = loc;
+                    newRes.type.id = @intCast(expr.target_t);
+                    return res;
+                }
+            }
+
             if (expr.reqTypeCstr) {
                 if (!cy.types.isTypeSymCompat(c.compiler, res.type.id, expr.target_t)) {
-                    if (res.type.dynamic) {
-                        var new_res = res;
-                        new_res.irIdx = try c.ir.pushExpr(.type_check, c.alloc, expr.target_t, expr.node, .{
-                            .expr = res.irIdx,
-                            .exp_type = expr.target_t,
-                        });
-                        return new_res;
-                    }
                     const cstrName = try c.sema.allocTypeName(expr.target_t);
                     defer c.alloc.free(cstrName);
                     const typeName = try c.sema.allocTypeName(res.type.id);
@@ -4848,6 +4887,19 @@ pub const ChunkExt = struct {
             }
         }
         return res;
+    }
+
+    pub fn unboxOrCheck(c: *cy.Chunk, target_t: cy.TypeId, res: ExprResult, node: *ast.Node) !u32 {
+        if (target_t == bt.Integer) {
+            return c.ir.pushExpr(.unbox, c.alloc, target_t, node, .{
+                .expr = res.irIdx,
+            });
+        } else {
+            return c.ir.pushExpr(.type_check, c.alloc, target_t, node, .{
+                .expr = res.irIdx,
+                .exp_type = target_t,
+            });
+        }
     }
 
     pub fn semaExprNoCheck(c: *cy.Chunk, expr: Expr) anyerror!ExprResult {
@@ -5003,13 +5055,20 @@ pub const ChunkExt = struct {
                 const cast_expr = node.cast(.castExpr);
                 const typeId = try resolveTypeSpecNode(c, cast_expr.typeSpec);
                 const child = try c.semaExpr(cast_expr.expr, .{});
-                const irIdx = try c.ir.pushExpr(.cast, c.alloc, typeId, node, .{
-                    .typeId = typeId, .isRtCast = true, .expr = child.irIdx,
-                });
+                var cast_loc: u32 = undefined;
+                if (cy.types.isUnboxedType(typeId)) {
+                    cast_loc = try c.ir.pushExpr(.unbox, c.alloc, typeId, node, .{
+                        .expr = child.irIdx,
+                    });
+                } else {
+                    cast_loc = try c.ir.pushExpr(.cast, c.alloc, typeId, node, .{
+                        .typeId = typeId, .isRtCast = true, .expr = child.irIdx,
+                    });
+                }
                 if (!child.type.dynamic) {
                     // Compile-time cast.
                     if (cy.types.isTypeSymCompat(c.compiler, child.type.id, typeId)) {
-                        c.ir.getExprDataPtr(irIdx, .cast).isRtCast = false;
+                        c.ir.getExprDataPtr(cast_loc, .cast).isRtCast = false;
                     } else {
                         // Check if it's a narrowing cast (deferred to runtime).
                         if (!cy.types.isTypeSymCompat(c.compiler, typeId, child.type.id)) {
@@ -5019,7 +5078,7 @@ pub const ChunkExt = struct {
                         }
                     }
                 }
-                return ExprResult.init(irIdx, CompactType.init(typeId));
+                return ExprResult.init(cast_loc, CompactType.init(typeId));
             },
             .callExpr => {
                 return c.semaCallExpr(expr);
@@ -5951,7 +6010,7 @@ fn assignToLocalVar(c: *cy.Chunk, localRes: ExprResult, rhs: *ast.Node, opts: As
     const id = localRes.data.local;
     var svar = &c.varStack.items[id];
 
-    const rightExpr = Expr{ .target_t = svar.vtype.id, .node = rhs, .reqTypeCstr = !svar.vtype.dynamic };
+    const rightExpr = Expr{ .target_t = svar.vtype.id, .node = rhs, .reqTypeCstr = !svar.vtype.dynamic, .fit_target = !svar.vtype.dynamic, .fit_target_unbox_dyn = !svar.vtype.dynamic };
     const right = try c.semaExprOrOpAssignBinExpr(rightExpr, opts.rhsOpAssignBinExpr);
     // Refresh pointer after rhs.
     svar = &c.varStack.items[id];

@@ -560,12 +560,13 @@ pub fn dumpBytecode(vm: *cy.VM, opts: DumpBytecodeOptions) !void {
             instIdx += 1;
         }
 
-        rt.printFmt(vm, "\nConstants ({}):\n", &.{v(vm.compiler.buf.mconsts.len)});
-        for (vm.compiler.buf.mconsts) |extra| {
-            const val = cy.Value{ .val = extra.val };
-            const str = try vm.bufPrintValueShortStr(&vm.tempBuf, val);
-            rt.printFmt(vm, "{}\n", &.{v(str)});
-        }
+        // TODO: Record unboxed constant types.
+        // rt.printFmt(vm, "\nConstants ({}):\n", &.{v(vm.compiler.buf.mconsts.len)});
+        // for (vm.compiler.buf.mconsts) |extra| {
+        //     const val = cy.Value{ .val = extra.val };
+        //     const str = try vm.bufPrintValueShortStr(&vm.tempBuf, val);
+        //     rt.printFmt(vm, "{}\n", &.{v(str)});
+        // }
     }
 }
 
@@ -692,7 +693,7 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
     }
 
     switch (type_id) {
-        bt.Integer => try w.print("{}", .{val.asInteger()}),
+        bt.Integer => try w.print("{}", .{val.asBoxInt()}),
         bt.Float => {
             const f = val.asF64();
             if (cy.Value.floatCanBeInteger(f)) {

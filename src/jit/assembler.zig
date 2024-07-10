@@ -1,6 +1,6 @@
 const builtin = @import("builtin");
 const cy = @import("../cyber.zig");
-const Slot = cy.register.RegisterId;
+const Slot = u8;
 
 const a64 = @import("a64_assembler.zig");
 const x64 = @import("x64_assembler.zig");

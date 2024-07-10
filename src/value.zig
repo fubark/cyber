@@ -52,6 +52,7 @@ pub const Value = packed union {
 
     call_info: cy.vm.CallInfo,
     retPcPtr: [*]const cy.Inst,
+    ret_t: cy.TypeId,
     retFramePtr: [*]Value,
 
     /// This is only used to return something from binded functions that have void return.
@@ -478,9 +479,6 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) Value {
             },
             bt.Fiber => {
                 fmt.panic("Unsupported copy fiber.", &.{});
-            },
-            bt.Box => {
-                fmt.panic("Unsupported copy box.", &.{});
             },
             bt.HostFunc => {
                 fmt.panic("Unsupported copy native func.", &.{});

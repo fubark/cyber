@@ -441,6 +441,9 @@ pub const Compiler = struct {
             switch (self.config.backend) {
                 C.BackendJIT => {
                     if (cy.isWasm) return error.Unsupported;
+                    {
+                        return error.Unsupported;
+                    }
                     try jitgen.gen(self);
                     return .{ .jit = .{
                         .mainStackSize = self.buf.mainStackSize,

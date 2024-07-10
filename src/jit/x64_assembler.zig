@@ -2,7 +2,7 @@ const std = @import("std");
 const stdx = @import("stdx");
 const cy = @import("../cyber.zig");
 const t = stdx.testing;
-const Slot = cy.register.RegisterId;
+const Slot = u8;
 const assm = @import("assembler.zig");
 
 const X64 = @import("x64.zig");

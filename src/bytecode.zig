@@ -364,8 +364,9 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
         .captured => {
             const closure = pc[1].val;
             const varIdx = pc[2].val;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "closure={}, varIdx={}, dst={}", &.{v(closure), v(varIdx), v(dst)});
+            const retain = pc[3].val;
+            const dst = pc[4].val;
+            len += try fmt.printCount(w, "%{} = closure(%{})[{}], retain={}", &.{v(dst), v(closure), v(varIdx), v(retain)});
         },
         .boxValue => {
             const local = pc[1].val;
@@ -558,8 +559,9 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
         .field => {
             const recv = pc[1].val;
             const fieldIdx = pc[2].val;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "%{} = (%{}).{}", &.{v(dst), v(recv), v(fieldIdx)});
+            const retain = pc[3].val;
+            const dst = pc[4].val;
+            len += try fmt.printCount(w, "%{} = (%{}).{}, +{}", &.{v(dst), v(recv), v(fieldIdx), v(retain)});
         },
         .fieldRef => {
             const recv = pc[1].val;
@@ -692,6 +694,29 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const idx = pc[2].val;
             const val = pc[3].val;
             len += try fmt.printCount(w, "(%{}).{} = %{}", &.{v(recv), v(idx), v(val)});
+        },
+        .typeCheck => {
+            const slot = pc[1].val;
+            const exp_t = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
+            len += try fmt.printCount(w, "check(%{}, type={})", &.{v(slot), v(exp_t)});
+        },
+        .unbox => {
+            const slot = pc[1].val;
+            const type_id = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
+            const dst = pc[4].val;
+            len += try fmt.printCount(w, "%{} = unbox(%{}, type={})", &.{v(dst), v(slot), v(type_id)});
+        },
+        .box => {
+            const slot = pc[1].val;
+            const type_id = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
+            const dst = pc[4].val;
+            len += try fmt.printCount(w, "%{} = box(%{}, type={})", &.{v(dst), v(slot), v(type_id)});
+        },
+        .metatype => {
+            const sym_t = pc[1].val;
+            const sym_id = @as(*const align(1) u32, @ptrCast(pc + 2)).*;
+            const dst = pc[6].val;
+            len += try fmt.printCount(w, "%{} = metatype(kind={}, sym={})", &.{v(dst), v(sym_t), v(sym_id)});
         },
         .ref => {
             const ref = pc[1].val;
@@ -899,6 +924,7 @@ const DebugMarker = extern struct {
 pub const CallObjSymInstLen = vmc.CALL_OBJ_SYM_INST_LEN;
 pub const CallSymInstLen = vmc.CALL_SYM_INST_LEN;
 pub const CallInstLen = vmc.CALL_INST_LEN;
+pub const RetDynLen = 2;
 
 test "getInstLenAt" {
     var code = Inst.initOpCode(.call);
@@ -912,6 +938,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .coreturn => {
             return 1;
         },
+        .ret_dyn,
         .typeCheckOption,
         .throw,
         .retain,
@@ -957,13 +984,11 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .copyObj,
         .typeCheck,
         .call,
-        .captured,
         .constOp,
         .constRetain,
         .staticVar,
         .setStaticVar,
         .staticFunc,
-        .field,
         .setField,
         .jumpNone,
         .jumpCond,
@@ -980,6 +1005,10 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numExprs = pc[2].val;
             return 4 + numExprs + 1;
         },
+        .field,
+        .captured,
+        .box,
+        .unbox,
         .range,
         .unwrapChoice,
         .cast,
@@ -1131,6 +1160,7 @@ pub const OpCode = enum(u8) {
     call_trait = vmc.CodeCallTrait,
     ret1 = vmc.CodeRet1,
     ret0 = vmc.CodeRet0,
+    ret_dyn = vmc.CodeRetDyn,
 
     /// Calls a lambda.
     /// [calleeLocal] [numArgs] [numRet=0/1]
@@ -1170,6 +1200,8 @@ pub const OpCode = enum(u8) {
     object = vmc.CodeObject,
     trait = vmc.CodeTrait,
 
+    box = vmc.CodeBox,
+    unbox = vmc.CodeUnbox,
     ref = vmc.CodeRef,
     refCopyObj = vmc.CodeRefCopyObj,
     setRef = vmc.CodeSetRef,

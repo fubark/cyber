@@ -630,6 +630,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CallSymDyn),
         JENTRY(Ret1),
         JENTRY(Ret0),
+        JENTRY(RetDyn),
         JENTRY(Call),
         JENTRY(TypeCheck),
         JENTRY(TypeCheckOption),
@@ -658,6 +659,8 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(ObjectSmall),
         JENTRY(Object),
         JENTRY(Trait),
+        JENTRY(Box),
+        JENTRY(Unbox),
         JENTRY(Ref),
         JENTRY(RefCopyObj),
         JENTRY(SetRef),
@@ -1104,6 +1107,9 @@ beginSwitch:
         NEXT();
     }
     CASE(CallObjSym): {
+        #if TRACE
+            vm->c.trace_indent += 1;
+        #endif
         u8 ret = pc[1];
         u8 numArgs = pc[2];
         u16 method = READ_U16(4);
@@ -1127,9 +1133,13 @@ beginSwitch:
 
         TypeId cachedTypeId = READ_U16(14);
         if (typeId == cachedTypeId) {
+            #if TRACE
+                vm->c.trace_indent += 1;
+            #endif
             SAVE_STATE();
             HostFuncFn fn = (HostFuncFn)READ_U48(8);
-            Value res = fn(vm, stack + ret + CALL_ARG_START, numArgs);
+            vm->c.call_ret = stack + ret;
+            Value res = fn(vm);
             if (res == VALUE_INTERRUPT) {
                 RETURN(RES_CODE_PANIC);
             }
@@ -1138,6 +1148,10 @@ beginSwitch:
             // In the future, we might allow native functions to change the pc and framePtr.
             // pc = vm.pc;
             // framePtr = vm.framePtr;
+            
+            #if TRACE
+                vm->c.trace_indent -= 1;
+            #endif
             NEXT();
         }
 
@@ -1156,6 +1170,10 @@ beginSwitch:
             pc[0] = CodeCallObjSym;
             NEXT();
         }
+
+        #if TRACE
+            vm->c.trace_indent += 1;
+        #endif
 
         // TODO: Split into CallObjTypedFuncIC where cached func sig id is used instead.
         // const callFuncSig = vm.sema.getFuncSig(callSigId);
@@ -1178,10 +1196,13 @@ beginSwitch:
         NEXT();
     }
     CASE(CallSym): {
+        #if TRACE
+            vm->c.trace_indent += 1;
+        #endif
         u8 ret = pc[1];
         u8 numArgs = pc[2];
         u16 symId = READ_U16(4);
-        PcFpResult res = zCallSym(vm, pc, stack, symId, ret, numArgs);
+        PcFpResult res = zCallSym(vm, pc, stack, symId, ret);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
@@ -1190,6 +1211,9 @@ beginSwitch:
         NEXT();
     }
     CASE(CallFuncIC): {
+        #if TRACE
+            vm->c.trace_indent += 1;
+        #endif
         u8 ret = pc[1];
         u8 numLocals = pc[4];
         if (stack + ret + numLocals >= vm->c.stackEndPtr) {
@@ -1205,25 +1229,34 @@ beginSwitch:
         NEXT();
     }
     CASE(CallNativeFuncIC): {
+        #if TRACE
+            vm->c.trace_indent += 1;
+        #endif
         u8 ret = pc[1];
         u8 numArgs = pc[2];
 
         SAVE_STATE();
-        Value* newStack = stack + ret;
         HostFuncFn fn = (HostFuncFn)READ_U48(6);
-        Value res = fn(vm, newStack + CALL_ARG_START, numArgs);
+        vm->c.call_ret = stack + ret;
+        Value res = fn(vm);
         if (res == VALUE_INTERRUPT) {
             RETURN(RES_CODE_PANIC);
         }
-        newStack[0] = res;
+        stack[ret] = res;
         pc += CALL_SYM_INST_LEN;
+        #if TRACE
+            vm->c.trace_indent -= 1;
+        #endif
         NEXT();
     }
     CASE(CallTrait): {
+        #if TRACE
+            vm->c.trace_indent += 1;
+        #endif
         u8 ret = pc[1];
         u8 nargs = pc[2];
         u16 vtable_idx = READ_U16(4);
-        PcFpResult res = zCallTrait(vm, pc, stack, vtable_idx, ret, nargs);
+        PcFpResult res = zCallTrait(vm, pc, stack, vtable_idx, ret);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
@@ -1232,6 +1265,9 @@ beginSwitch:
         NEXT();
     }
     CASE(CallSymDyn): {
+        #if TRACE
+            vm->c.trace_indent += 1;
+        #endif
         u8 ret = pc[1];
         u8 nargs = pc[2];
         u16 entry = READ_U16(4);
@@ -1244,6 +1280,9 @@ beginSwitch:
         NEXT();
     }
     CASE(Ret1): {
+        #if TRACE
+            vm->c.trace_indent -= 1;
+        #endif
         u8 retFlag = VALUE_CALLINFO_RETFLAG(stack[1]);
         if (retFlag == 0) {
             pc = (Inst*)stack[2];
@@ -1254,6 +1293,9 @@ beginSwitch:
         }
     }
     CASE(Ret0): {
+        #if TRACE
+            vm->c.trace_indent -= 1;
+        #endif
         u8 retFlag = VALUE_CALLINFO_RETFLAG(stack[1]);
         stack[0] = VALUE_VOID;
         if (retFlag == 0) {
@@ -1264,7 +1306,34 @@ beginSwitch:
             RETURN(RES_CODE_SUCCESS);
         }
     }
+    CASE(RetDyn): {
+        u8 ret_flag = VALUE_CALLINFO_RETFLAG(stack[1]);
+        u8 nargs = pc[1];
+        TypeId ret_t = BITCAST(TypeId, stack[2]);
+        switch (ret_t) {
+            case TYPE_INTEGER: {
+                ValueResult res = allocInt(vm, BITCAST(i64, stack[5+nargs]));
+                if (res.code != RES_CODE_SUCCESS) {
+                    RETURN(res.code);
+                }
+                stack[0] = res.val;
+            }
+            default: {
+                stack[0] = stack[5+nargs];
+            }
+        }
+        if (ret_flag == 0) {
+            pc += 2;
+            stack = (Value*)stack[3];
+            NEXT();
+        } else {
+            RETURN(RES_CODE_SUCCESS);
+        }
+    }
     CASE(Call): {
+        #if TRACE
+            vm->c.trace_indent += 1;
+        #endif
         u8 ret = pc[1];
         u8 numArgs = pc[2];
 
@@ -1302,9 +1371,12 @@ beginSwitch:
     CASE(Field): {
         Value recv = stack[pc[1]];
         HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-        stack[pc[3]] = objectGetField((Object*)obj, pc[2]);
-        retain(vm, stack[pc[3]]);
-        pc += 4;
+        bool retain_flag = pc[3];
+        stack[pc[4]] = objectGetField((Object*)obj, pc[2]);
+        if (retain_flag) {
+            retain(vm, stack[pc[4]]);
+        }
+        pc += 5;
         NEXT();
     }
     CASE(FieldRef): {
@@ -1523,6 +1595,44 @@ beginSwitch:
         stack[pc[6]] = res.val;
         pc += 7;
         NEXT();
+    }
+    CASE(Box): {
+        u16 type_id = READ_U16(2);
+        switch (type_id) {
+            case TYPE_INTEGER: {
+                ValueResult res = allocInt(vm, BITCAST(i64, stack[pc[1]]));
+                if (res.code != RES_CODE_SUCCESS) {
+                    RETURN(res.code);
+                }
+                stack[pc[4]] = res.val;
+                pc += 5;
+                NEXT();
+            }
+            default: {
+                panicStaticMsg(vm, "Unsupported.");
+                RETURN(RES_CODE_PANIC);
+            }
+        }
+    }
+    CASE(Unbox): {
+        u16 type_id = READ_U16(2);
+        TypeId act_t = getTypeId(stack[pc[1]]);
+        if (act_t != TYPE_INTEGER) {
+            panicIncompatibleType(vm, act_t, type_id);
+            RETURN(RES_CODE_PANIC);
+        }
+        switch (type_id) {
+            case TYPE_INTEGER: {
+                HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
+                stack[pc[4]] = BITCAST(u64, obj->integer.val);
+                pc += 5;
+                NEXT();
+            }
+            default: {
+                panicStaticMsg(vm, "Unsupported.");
+                RETURN(RES_CODE_PANIC);
+            }
+        }
     }
     CASE(Ref): {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);

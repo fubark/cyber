@@ -12,7 +12,7 @@ const types = cy.types;
 const log = cy.log.scoped(.chunk);
 const llvm = @import("llvm.zig");
 const llvm_gen = @import("llvm_gen.zig");
-const bc_gen = @import("bc_gen.zig");
+const bc = @import("bc_gen.zig");
 const jitgen = @import("jit/gen.zig");
 const X64 = @import("jit/x64.zig");
 const ast = cy.ast;
@@ -58,8 +58,6 @@ pub const Chunk = struct {
     semaBlocks: std.ArrayListUnmanaged(sema.Block),
     capVarDescs: std.AutoHashMapUnmanaged(sema.LocalVarId, sema.CapVarDesc),
 
-    genValueStack: std.ArrayListUnmanaged(bc_gen.GenValue),
-
     /// Generic stacks.
     dataStack: std.ArrayListUnmanaged(Data),
     dataU8Stack: std.ArrayListUnmanaged(DataU8),
@@ -77,7 +75,12 @@ pub const Chunk = struct {
 
     /// VM locals. From a block's `localStart` offset, this is indexed by the virtual reg 
     /// which includes function prelude regs and params for simplicity.
-    genLocalStack: std.ArrayListUnmanaged(bc_gen.Local),
+
+    /// Slots for locals and temps.
+    /// Each procedure has a maximum of 255 registers starting at index 0.
+    /// The slot at index 255 isn't used and represents Null.
+    /// The slots in the front are reserved for the call convention and params.
+    slot_stack: std.ArrayListUnmanaged(bc.Slot),
 
     curSelfSym: ?*cy.Sym,
 
@@ -131,10 +134,9 @@ pub const Chunk = struct {
     ///
     /// Codegen pass
     ///
-    rega: cy.register.Allocator,
-    proc_stack: std.ArrayListUnmanaged(bc_gen.Proc),
+    proc_stack: std.ArrayListUnmanaged(bc.Proc),
     procs: std.ArrayListUnmanaged([]const u8),
-    blocks: std.ArrayListUnmanaged(bc_gen.Block),
+    blocks: std.ArrayListUnmanaged(bc.Block),
     blockJumpStack: std.ArrayListUnmanaged(BlockJump),
 
     regStack: std.ArrayListUnmanaged(u8),
@@ -143,7 +145,7 @@ pub const Chunk = struct {
     unwindTempIndexStack: std.ArrayListUnmanaged(UnwindTempIndex),
     unwindTempRegStack: std.ArrayListUnmanaged(u8),
 
-    curBlock: *bc_gen.Proc,
+    curBlock: *bc.Proc,
 
     /// Shared final code buffer.
     buf: *cy.ByteCodeBuffer,
@@ -226,8 +228,7 @@ pub const Chunk = struct {
             .typeStack = .{},
             .valueStack = .{},
             .ir = cy.ir.Buffer.init(),
-            .genValueStack = .{},
-            .genLocalStack = .{},
+            .slot_stack = .{},
             .genIrLocalMapStack = .{},
             .dataStack = .{},
             .dataU8Stack = .{},
@@ -254,7 +255,6 @@ pub const Chunk = struct {
             .use_alls = .{},
             .use_global = false,
             .funcCheckCache = .{},
-            .rega = cy.register.Allocator.init(c, id),
             .curHostVarIdx = 0,
             .tempTypeRefs = undefined,
             .tempValueRefs = undefined,
@@ -330,12 +330,11 @@ pub const Chunk = struct {
         self.typeStack.deinit(self.alloc);
         self.valueStack.deinit(self.alloc);
         self.ir.deinit(self.alloc);
-        self.genValueStack.deinit(self.alloc);
         self.dataStack.deinit(self.alloc);
         self.dataU8Stack.deinit(self.alloc);
         self.listDataStack.deinit(self.alloc);
         self.genIrLocalMapStack.deinit(self.alloc);
-        self.genLocalStack.deinit(self.alloc);
+        self.slot_stack.deinit(self.alloc);
         self.resolve_stack.deinit(self.alloc);
 
         if (cy.hasJIT) {
@@ -385,7 +384,7 @@ pub const Chunk = struct {
         self.encoder.ast = view;
     }
 
-    pub fn genBlock(self: *cy.Chunk) *bc_gen.Block {
+    pub fn genBlock(self: *cy.Chunk) *bc.Block {
         return &self.blocks.items[self.blocks.items.len-1];
     }
 
@@ -438,52 +437,35 @@ pub const Chunk = struct {
         }
     }
 
-    pub inline fn isTempLocal(self: *const Chunk, local: LocalId) bool {
-        return local >= self.rega.tempStart;
-    }
-
-    pub inline fn isParamOrLocalVar(self: *const Chunk, reg: u8) bool {
-        if (self.procs.items.len > 1) {
-            return reg != 0 and reg < self.rega.tempStart;
-        } else {
-            return reg < self.rega.tempStart;
-        }
-    }
-
-    /// TODO: This can be extended to check whether the operands use the dst.
-    pub inline fn canUseDstAsTempForBinOp(self: *const Chunk, dst: LocalId) bool {
-        return !self.isParamOrLocalVar(dst);
-    }
-
-    pub fn initGenValue(self: *const Chunk, local: LocalId, vtype: types.TypeId, retained: bool) bc_gen.GenValue {
+    pub fn initGenValue(self: *const Chunk, local: LocalId, vtype: types.TypeId, retained: bool) bc.GenValue {
         if (self.isTempLocal(local)) {
-            return bc_gen.GenValue.initTempValue(local, vtype, retained);
+            return bc.GenValue.initTempValue(local, vtype, retained);
         } else {
-            return bc_gen.GenValue.initLocalValue(local, vtype, retained);
+            return bc.GenValue.initLocalValue(local, vtype, retained);
         }
     }
 
     /// Given two local values, determine the next destination temp local.
     /// The type of the dest value is left undefined to be set by caller.
-    fn nextTempDestValue(self: *cy.Compiler, src1: bc_gen.GenValue, src2: bc_gen.GenValue) !bc_gen.GenValue {
+    fn nextTempDestValue(self: *cy.Compiler, src1: bc.GenValue, src2: bc.GenValue) !bc.GenValue {
         if (src1.isTempLocal == src2.isTempLocal) {
             if (src1.isTempLocal) {
                 const minTempLocal = std.math.min(src1.local, src2.local);
                 self.setFirstFreeTempLocal(minTempLocal + 1);
-                return bc_gen.GenValue.initTempValue(minTempLocal, undefined);
+                return bc.GenValue.initTempValue(minTempLocal, undefined);
             } else {
-                return bc_gen.GenValue.initTempValue(try self.nextFreeTempLocal(), undefined);
+                return bc.GenValue.initTempValue(try self.nextFreeTempLocal(), undefined);
             }
         } else {
             if (src1.isTempLocal) {
-                return bc_gen.GenValue.initTempValue(src1.local, undefined);
+                return bc.GenValue.initTempValue(src1.local, undefined);
             } else {
-                return bc_gen.GenValue.initTempValue(src2.local, undefined);
+                return bc.GenValue.initTempValue(src2.local, undefined);
             }
         }
     }
 
-    fn genEnsureRequiredType(self: *Chunk, genv: bc_gen.GenValue, requiredType: types.Type) !void {
+    fn genEnsureRequiredType(self: *Chunk, genv: bc.GenValue, requiredType: types.Type) !void {
         if (requiredType.typeT != .any) {
             if (genv.vtype.typeT == requiredType.typeT) {
                 return;
@@ -627,7 +609,7 @@ pub const Chunk = struct {
     }
 
     pub fn getMaxUsedRegisters(self: *Chunk) u8 {
-        return self.rega.maxTemp;
+        return self.curBlock.max_slots;
     }
 
     pub fn blockNumLocals(self: *Chunk) usize {

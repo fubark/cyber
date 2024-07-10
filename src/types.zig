@@ -528,3 +528,10 @@ fn visitTypeHasZeroInit(c: *cy.Chunk, obj: *cy.sym.ObjectType) !ZeroInitResult {
     c.typeDeps.items[entryId].visited = true;
     return finalRes;
 }
+
+pub fn isUnboxedType(id: cy.TypeId) bool {
+    switch (id) {
+        bt.Integer => return true,
+        else => return false,
+    }
+}

@@ -137,7 +137,7 @@ const funcs = [_]C.HostFuncEntry{
     func("String.count",       string.count),
     func("String.endsWith",    string.endsWith),
     func("String.find",        string.find),
-    func("String.findAnyRune", string.findAnyRune),
+    func("String.findAnyRune", zErrFunc(string.findAnyRune)),
     func("String.findRune",    string.findRune),
     func("String.insert",      zErrFunc(string.insertFn)),
     func("String.isAscii",     string.isAscii),

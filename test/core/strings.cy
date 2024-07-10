@@ -1,5 +1,7 @@
 use t 'test'
 
+-- TODO: All string tests will be moved here and tested for each variant.
+
 var escaped = 'Return the underlying `symbol`.'.replace('`', '\\`')
 t.eq(escaped, 'Return the underlying \\`symbol\\`.')
 

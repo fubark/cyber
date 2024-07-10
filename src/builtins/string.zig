@@ -135,7 +135,7 @@ pub fn isAscii(vm: *cy.VM) Value {
 const intSome = cy.builtins.intSome;
 const intNone = cy.builtins.intNone;
 
-pub fn findAnyRune(vm: *cy.VM) Value {
+pub fn findAnyRune(vm: *cy.VM) anyerror!Value {
     const obj = vm.getObject(*cy.heap.String, 0);
     const str = obj.getSlice();
     const set_obj = vm.getObject(*cy.heap.String, 1);
@@ -147,7 +147,7 @@ pub fn findAnyRune(vm: *cy.VM) Value {
         if (stype.isAstring()) {
             if (setIsAscii) {
                 if (@call(.never_inline, string.indexOfAsciiSet, .{str, set})) |idx| {
-                    return intSome(vm, @intCast(idx)) catch cy.fatal();
+                    return intSome(vm, @intCast(idx));
                 }
             } else {
                 // Reduce search set to just ASCII codepoints.
@@ -161,41 +161,46 @@ pub fn findAnyRune(vm: *cy.VM) Value {
                 };
                 while (iter.nextCodepoint()) |cp| {
                     if (cp < 128) {
-                        tempBuf.append(alloc, @intCast(cp)) catch fatal();
+                        try tempBuf.append(alloc, @intCast(cp));
                     }
                 }
                 if (tempBuf.len > 0) {
                     if (string.indexOfAsciiSet(str, tempBuf.items())) |idx| {
-                        return intSome(vm, @intCast(idx)) catch cy.fatal();
+                        return intSome(vm, @intCast(idx));
                     }
                 }
             }
         } else {
             if (setIsAscii) {
                 if (string.indexOfAsciiSet(str, set)) |idx| {
-                    return intSome(vm, @intCast(idx)) catch cy.fatal();
+                    return intSome(vm, @intCast(idx));
                 }
             } else {
                 // Scalar.
+                var idx: usize = 0;
                 var iter = std.unicode.Utf8Iterator{
                     .bytes = str,
                     .i = 0,
                 };
-                while (iter.nextCodepoint()) |cp| {
+                while (true) {
+                    idx = iter.i;
+                    const cp = iter.nextCodepoint() orelse {
+                        break;
+                    };
                     var set_iter = std.unicode.Utf8Iterator{
                         .bytes = set,
                         .i = 0,
                     };
                     while (set_iter.nextCodepoint()) |set_cp| {
                         if (set_cp == cp) {
-                            return intSome(vm, @intCast(iter.i)) catch cy.fatal();
+                            return intSome(vm, @intCast(idx));
                         }
                     }
                 }
             }
         }
     }
-    return intNone(vm) catch cy.fatal();
+    return intNone(vm);
 }
 
 pub fn findRune(vm: *cy.VM) Value {

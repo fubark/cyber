@@ -75,7 +75,7 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
             if (act.val == exp.val) {
                 return true;
             } else {
-                rt.errZFmt(c, "actual: {}, expected: {}", .{act.asInt(), exp.asInt()});
+                rt.errZFmt(c, "actual: {}, expected: {}\n", .{act.asInt(), exp.asInt()});
                 return false;
             }
         }
@@ -101,7 +101,7 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
                 if (std.mem.eql(u8, act_s, exp_s)) {
                     return true;
                 } else {
-                    rt.errZFmt(c, "actual: {any} != {any}", .{act_s, exp_s});
+                    rt.errZFmt(c, "actual: {any} != {any}\n", .{act_s, exp_s});
                     return false;
                 }
             } else {
@@ -111,7 +111,7 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
             if (act.value == exp.value) {
                 return true;
             } else {
-                rt.errFmt(c, "actual: {} != {}", &.{v(act.value), v(exp.value)});
+                rt.errFmt(c, "actual: {} != {}\n", &.{v(act.value), v(exp.value)});
                 return false;
             }
         }

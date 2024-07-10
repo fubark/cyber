@@ -126,6 +126,14 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
         }
     } else {
         switch (type_id) {
+            bt.Byte => {
+                if (act.asByte() == exp.asByte()) {
+                    return true;
+                } else {
+                    rt.errFmt(c, "actual: {} != {}\n", &.{v(act.asByte()), v(exp.asByte())});
+                    return false;
+                }
+            },
             bt.Integer => {
                 if (act.asInt() == exp.asInt()) {
                     return true;

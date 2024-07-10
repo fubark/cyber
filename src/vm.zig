@@ -2061,7 +2061,7 @@ fn box(vm: *VM, val: Value, type_id: cy.TypeId) !cy.Value {
     return vm.allocBoxValue(type_id, val.val);
 }
 
-fn unbox(vm: *VM, val: Value, type_id: cy.TypeId) cy.Value {
+pub fn unbox(vm: *VM, val: Value, type_id: cy.TypeId) cy.Value {
     if (cy.Trace) {
         if (!vm.sema.isUnboxedType(type_id)) {
             @panic("Unsupported.");
@@ -3401,6 +3401,10 @@ fn spawn(args: struct {
 
 pub const VMGetArgExt = struct {
 
+    pub fn getByte(vm: *VM, idx: u32) u8 {
+        return vm.c.framePtr[CallArgStart + idx].asByte();
+    }
+
     pub fn getInt(vm: *VM, idx: u32) i64 {
         return vm.c.framePtr[CallArgStart + idx].asInt();
     }
@@ -3431,6 +3435,10 @@ pub const VMGetArgExt = struct {
 
     pub fn getArray(vm: *VM, idx: u32) []const u8 {
         return vm.c.framePtr[CallArgStart + idx].asArray();
+    }
+
+    pub fn getEnumValue(vm: *VM, idx: u32) u32 {
+        return vm.c.framePtr[CallArgStart + idx].getEnumValue();
     }
 
     pub fn getSymbol(vm: *VM, idx: u32) u32 {

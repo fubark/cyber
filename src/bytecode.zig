@@ -518,10 +518,15 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[1].val;
             len += try fmt.printCount(w, "%{} = false", &.{v(dst)});
         },
+        .const_byte => {
+            const val = pc[1].val;
+            const dst = pc[2].val;
+            len += try fmt.printCount(w, "%{} = byte({})", &.{v(dst), v(val)});
+        },
         .constIntV8 => {
             const val: i8 = @bitCast(pc[1].val);
             const dst = pc[2].val;
-            len += try fmt.printCount(w, "%{} = {}", &.{v(dst), v(val)});
+            len += try fmt.printCount(w, "%{} = int({})", &.{v(dst), v(val)});
         },
         .constRetain,
         .constOp => {
@@ -960,6 +965,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .copyRetainRelease,
         .copyObjDyn,
         .constIntV8,
+        .const_byte,
         .jump,
         .future_value,
         .coyield,
@@ -1100,6 +1106,7 @@ pub const OpCode = enum(u8) {
     constOp = vmc.CodeConstOp,
     constRetain = vmc.CodeConstRetain,
     constIntV8 = vmc.CodeConstIntV8,
+    const_byte = vmc.CodeConstByte,
     addFloat = vmc.CodeAddFloat,
     subFloat = vmc.CodeSubFloat,
     /// Push boolean onto register stack.
@@ -1278,7 +1285,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 121);
+    try t.eq(std.enums.values(OpCode).len, 122);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

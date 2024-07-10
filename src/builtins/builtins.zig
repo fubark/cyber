@@ -55,6 +55,27 @@ const funcs = [_]C.HostFuncEntry{
     func("error.sym",      errorSym),
     func("error.$call",    errorCall),
 
+    // byte
+    func("byte.$prefix~",   bindings.byteNot),
+    func("byte.$infix<",    bindings.byteLess),
+    func("byte.$infix<=",   bindings.byteLessEq),
+    func("byte.$infix>",    bindings.byteGreater),
+    func("byte.$infix>=",   bindings.byteGreaterEq),
+    func("byte.$infix+",    bindings.byteAdd),
+    func("byte.$infix-",    bindings.byteSub),
+    func("byte.$infix*",    bindings.byteMul),
+    func("byte.$infix/",    bindings.byteDiv),
+    func("byte.$infix%",    bindings.byteMod),
+    func("byte.$infix^",    bindings.bytePow),
+    func("byte.$infix&",    bindings.byteAnd),
+    func("byte.$infix|",    bindings.byteOr),
+    func("byte.$infix||",   bindings.byteXor),
+    func("byte.$infix<<",   bindings.byteLeftShift),
+    func("byte.$infix>>",   bindings.byteRightShift),
+    func("byte.fmt",        zErrFunc(bindings.byteFmt)),
+    func("byte.fmt2",       zErrFunc(bindings.byteFmt2)),
+    func("byte.$call",      bindings.byteCall),
+
     // int
     func("int.$prefix~",   bindings.intNot),
     func("int.$prefix-",   bindings.intNeg),
@@ -224,7 +245,7 @@ const vm_types = [_]C.HostTypeEntry{
     htype("int",            C.CORE_TYPE_DECL(bt.Integer)),
     htype("float",          C.CORE_TYPE_DECL(bt.Float)), 
     htype("placeholder1",   C.CORE_TYPE(bt.Placeholder1)), 
-    htype("placeholder2",   C.CORE_TYPE(bt.Placeholder2)), 
+    htype("byte",           C.CORE_TYPE_DECL(bt.Byte)), 
     htype("taglit",         C.CORE_TYPE(bt.TagLit)), 
     htype("dyn",            C.CORE_TYPE(bt.Dyn)),
     htype("any",            C.CORE_TYPE(bt.Any)),
@@ -888,8 +909,8 @@ fn arrayFindByte(vm: *cy.VM) Value {
 
 fn arrayFmt(vm: *cy.VM) anyerror!Value {
     const arr = vm.getArray(0);
-    const kind = try std.meta.intToEnum(Symbol, vm.getSymbol(1));
-    if (kind == .c) {
+    const kind = try std.meta.intToEnum(NumberFormat, vm.getEnumValue(1));
+    if (kind == .asc) {
         var buf: std.ArrayListUnmanaged(u8) = .{};
         defer buf.deinit(vm.alloc);
 
@@ -903,19 +924,19 @@ fn arrayFmt(vm: *cy.VM) anyerror!Value {
         var base: u8 = undefined;
         var width: u8 = undefined;
         switch (kind) {
-            .b => {
+            .bin => {
                 base = 2;
                 width = 8;
             },
-            .o => {
+            .oct => {
                 base = 8;
                 width = 3;
             },
-            .d => {
+            .dec => {
                 base = 10;
                 width = 3;
             },
-            .x => {
+            .hex => {
                 base = 16;
                 width = 2;
             },
@@ -1227,16 +1248,29 @@ fn errorCall(vm: *cy.VM) Value {
     }
 }
 
+pub const NumberFormat = enum {
+    asc,
+    bin,
+    dec,
+    hex,
+    oct,
+};
+
 fn intFmt(vm: *cy.VM) anyerror!Value {
     const val = vm.getInt(0);
-    const kind = try std.meta.intToEnum(Symbol, vm.getSymbol(1));
-    return intFmtExt(vm, val, kind, .{});
+    const format = try std.meta.intToEnum(NumberFormat, vm.getEnumValue(1));
+    return intFmtExt(vm, val, format, .{});
 }
 
 fn intFmt2(vm: *cy.VM) anyerror!Value {
     const val = vm.getInt(0);
-    const kind = try std.meta.intToEnum(Symbol, vm.getSymbol(1));
+    const format = try std.meta.intToEnum(NumberFormat, vm.getEnumValue(1));
     const optsv = vm.getObject(*cy.heap.Table, 2);
+    const opts = try getIntFmtOptions(optsv);
+    return intFmtExt(vm, val, format, opts);
+}
+
+pub fn getIntFmtOptions(optsv: *cy.heap.Table) !IntFmtOptions {
     var opts: IntFmtOptions = .{};
     if (optsv.map().getByString("pad")) |pad| {
         if (!pad.isBoxInt()) return error.InvalidArgument;
@@ -1250,7 +1284,7 @@ fn intFmt2(vm: *cy.VM) anyerror!Value {
         if (widthv < 0) return error.InvalidArgument;
         opts.width = @intCast(widthv);
     }
-    return intFmtExt(vm, val, kind, opts);
+    return opts;
 }
 
 const IntFmtOptions = struct {
@@ -1258,19 +1292,19 @@ const IntFmtOptions = struct {
     width: ?usize = null,
 };
 
-fn intFmtExt(vm: *cy.VM, val: i64, kind: Symbol, opts: IntFmtOptions) !Value {
-    if (kind == .c) {
+pub fn intFmtExt(vm: *cy.VM, val: i64, format: NumberFormat, opts: IntFmtOptions) !Value {
+    if (format == .asc) {
         if (val < 0 or val > 127) {
             return error.InvalidArgument;
         }
         const uchar: u8 = @intCast(val);
         return vm.retainOrAllocAstring(&.{uchar});
     } else {
-        const base: u8 = switch (kind) {
-            .b => 2,
-            .o => 8,
-            .d => 10,
-            .x => 16,
+        const base: u8 = switch (format) {
+            .bin => 2,
+            .oct => 8,
+            .dec => 10,
+            .hex => 16,
             else => return error.InvalidArgument,
         };
         var buf: [64]u8 = undefined;

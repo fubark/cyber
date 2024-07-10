@@ -49,6 +49,7 @@ pub const TagInteger: TagId = 7;
 /// and one more bit (so that QNANs can also be a number value) take up 13 bits.
 pub const Value = packed union {
     val: u64,
+    byte: u8,
 
     call_info: cy.fiber.CallInfo,
     retPcPtr: [*]cy.Inst,
@@ -72,6 +73,10 @@ pub const Value = packed union {
 
     pub inline fn asInt(self: *const Value) i64 {
         return @bitCast(self.val);
+    }
+
+    pub inline fn asByte(self: *const Value) u8 {
+        return self.byte;
     }
 
     pub inline fn asPointer(self: *const Value) ?*anyopaque {
@@ -351,6 +356,10 @@ pub const Value = packed union {
 
     pub inline fn initInt(val: i64) Value {
         return .{ .val = @bitCast(val) };
+    }
+
+    pub inline fn initByte(val: u8) Value {
+        return .{ .val = val };
     }
 
     pub inline fn initI32(val: i32) Value {

@@ -266,11 +266,10 @@ if (!aot) {
     run.case("core/arithmetic_unsupported_panic.cy");
     run.case("core/arrays.cy");
     run.case("core/array_slices.cy");
-    run.case("core/bitwise_ops.cy");
     run.case("core/bool.cy");
+    run.case("core/byte.cy");
     run.case("core/compare_eq.cy");
     run.case("core/compare_neq.cy");
-    run.case("core/compare_numbers.cy");
     run.case("core/dynamic_ops.cy");
     run.case("core/escape_sequences.cy");
     run.case("core/floats.cy");

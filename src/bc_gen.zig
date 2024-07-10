@@ -417,6 +417,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .address_of         => genAddressOf(c, idx, cstr, node),
         .await_expr         => genAwait(c, idx, cstr, node),
         .box                => genBox(c, idx, cstr, node),
+        .byte               => genByte(c, idx, cstr, node),
         .captured           => genCaptured(c, idx, cstr, node),
         .cast               => genCast(c, idx, cstr, node),
         .coinitCall         => genCoinitCall(c, idx, cstr, node),
@@ -1156,6 +1157,20 @@ fn genFalse(c: *Chunk, cstr: Cstr, node: *ast.Node) !GenValue {
         try initSlot(c, inst.dst, false, node);
     }
 
+    return finishNoErrNoDepInst(c, inst, false);
+}
+
+fn genByte(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
+    const data = c.ir.getExprData(idx, .byte);
+
+    const inst = try bc.selectForNoErrNoDepInst(c, cstr, bt.Byte, false, node);
+    if (inst.requiresPreRelease) {
+        try pushRelease(c, inst.dst, node);
+    }
+    try c.pushCode(.const_byte, &.{ data.val, inst.dst }, node);
+    if (inst.own_dst) {
+        try initSlot(c, inst.dst, false, node);
+    }
     return finishNoErrNoDepInst(c, inst, false);
 }
 

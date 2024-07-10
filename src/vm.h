@@ -211,6 +211,8 @@ typedef enum {
     /// Sets an immediate i8 value as an integer to a dst local.
     CodeConstIntV8,
 
+    CodeConstByte,
+
     /// Add first two locals and stores result to a dst local.
     CodeAddFloat,
 
@@ -363,7 +365,7 @@ enum {
     TYPE_BOOLEAN = 1,
     TYPE_ERROR = 2,
     TYPE_PLACEHOLDER1 = 3,
-    TYPE_PLACEHOLDER2 = 4,
+    TYPE_BYTE = 4,
     TYPE_TAGLIT = 5,
     TYPE_SYMBOL = 6,
     TYPE_INTEGER = 7,

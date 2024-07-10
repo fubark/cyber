@@ -576,7 +576,7 @@ if true:
 It has 64-bits representing integers in the range -(2<sup>63</sup>) to 2<sup>63</sup>-1.
 Integer types use the two's complement format.
 
-The following integer types are supported: [`int8`](#type-int8), [`int16`](#type-int16), [`int32`](#type-int32), [`int64`](#type-int64).
+The following integer types are supported: [`byte`](#type-byte), [`int8`](#type-int8), [`int16`](#type-int16), [`int32`](#type-int32), [`int64`](#type-int64).
 Integer types are named according to how many bits they occupy.
 
 When a numeric literal is used and the type can not be inferred, it will default to the `int` type:

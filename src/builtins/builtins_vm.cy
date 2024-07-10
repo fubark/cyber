@@ -73,6 +73,34 @@ type error #int64_t:
 @host func error.$call(val any) error
 
 @host
+type byte #int8_t:
+    @host func '$prefix~'(self) byte
+    @host func '$infix<'(self, o byte) bool
+    @host func '$infix<='(self, o byte) bool
+    @host func '$infix>'(self, o byte) bool
+    @host func '$infix>='(self, o byte) bool
+    @host func '$infix+'(self, o byte) byte
+    @host func '$infix-'(self, o byte) byte
+    @host func '$infix*'(self, o byte) byte
+    @host func '$infix/'(self, o byte) byte
+    @host func '$infix%'(self, o byte) byte
+    @host func '$infix^'(self, o byte) byte
+    @host func '$infix&'(self, o byte) byte
+    @host func '$infix|'(self, o byte) byte
+    @host func '$infix||'(self, o byte) byte
+    @host func '$infix<<'(self, o int) byte
+    @host func '$infix>>'(self, o int) byte
+
+    --| Formats the byte using a NumberFormat.
+    @host func fmt(self, format NumberFormat) String
+
+    --| `opts.pad` provides the ASCII rune that is used for padding with a string length of `config.width`.
+    @host='int.fmt2'
+    func fmt(self, format NumberFormat, config Table) String
+
+    @host func $call(b byte) byte
+
+@host
 type int #int64_t:
     @host func '$prefix~'(self) int
     @host func '$prefix-'(self) int
@@ -92,13 +120,24 @@ type int #int64_t:
     @host func '$infix<<'(self, o int) int
     @host func '$infix>>'(self, o int) int
 
-    --| Formats the integer using a kind specifier which can be binary `.b`,
-    --| octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.
-    @host func fmt(self, kind symbol) String
+    --| Formats the integer using a NumberFormat.
+    @host func fmt(self, format NumberFormat) String
 
     --| `opts.pad` provides the ASCII rune that is used for padding with a string length of `config.width`.
     @host='int.fmt2'
-    func fmt(self, kind symbol, config Table) String
+    func fmt(self, format NumberFormat, config Table) String
+
+type NumberFormat enum:
+    --| ASCII
+    case asc
+    --| binary
+    case bin
+    --| decimal
+    case dec
+    --| hexadecimal
+    case hex
+    --| octal
+    case oct
 
 --| Converts a value to an 48-bit integer.
 @host func int.$call(val any) int
@@ -121,7 +160,6 @@ type float #float64_t:
 @host func float.$call(val any) float
 
 @host type placeholder1 _
-@host type placeholder2 _
 @host type taglit _
 
 @host type dyn _
@@ -343,10 +381,9 @@ type Array _:
     --| Returns the first index of `byte` in the array or `none` if not found.
     @host func findByte(self, byte int) ?int
 
-    --| Formats each byte in the array using a kind specifier which can be binary `.b`,
-    --| octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.
+    --| Formats each byte in the array using a NumberFormat.
     --| Each byte is zero padded.
-    @host func fmt(self, kind symbol) String
+    @host func fmt(self, format NumberFormat) String
 
     --| Returns the byte value (0-255) at the given index `idx`.
     @host func getByte(self, idx int) int

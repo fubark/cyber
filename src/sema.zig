@@ -5206,33 +5206,53 @@ pub const ChunkExt = struct {
                 return ExprResult.initStatic(irIdx, bt.Float);
             },
             .decLit => {
+                const literal = c.ast.nodeString(node);
                 if (expr.target_t == bt.Float) {
-                    const literal = c.ast.nodeString(node);
                     const val = try std.fmt.parseFloat(f64, literal);
                     return c.semaFloat(val, node);
+                } else if (expr.target_t == bt.Byte) {
+                    const val = try std.fmt.parseInt(u8, literal, 10);
+                    return c.semaByte(val, node);
                 } else {
-                    const literal = c.ast.nodeString(node);
                     const val = try std.fmt.parseInt(u64, literal, 10);
                     return c.semaInt(@intCast(val), node);
                 }
             },
             .binLit => {
                 const literal = c.ast.nodeString(node);
-                const val = try std.fmt.parseInt(i64, literal[2..], 2);
-                const loc = try c.ir.pushExpr(.int, c.alloc, bt.Integer, node, .{ .val = val });
-                return ExprResult.initStatic(loc, bt.Integer);
+                if (expr.target_t == bt.Byte) {
+                    const val = try std.fmt.parseInt(u8, literal[2..], 2);
+                    const loc = try c.ir.pushExpr(.int, c.alloc, bt.Byte, node, .{ .val = val });
+                    return ExprResult.initStatic(loc, bt.Byte);
+                } else {
+                    const val = try std.fmt.parseInt(i64, literal[2..], 2);
+                    const loc = try c.ir.pushExpr(.int, c.alloc, bt.Integer, node, .{ .val = val });
+                    return ExprResult.initStatic(loc, bt.Integer);
+                }
             },
             .octLit => {
                 const literal = c.ast.nodeString(node);
-                const val = try std.fmt.parseInt(i64, literal[2..], 8);
-                const loc = try c.ir.pushExpr(.int, c.alloc, bt.Integer, node, .{ .val = val });
-                return ExprResult.initStatic(loc, bt.Integer);
+                if (expr.target_t == bt.Byte) {
+                    const val = try std.fmt.parseInt(u8, literal[2..], 8);
+                    const loc = try c.ir.pushExpr(.byte, c.alloc, bt.Byte, node, .{ .val = val });
+                    return ExprResult.initStatic(loc, bt.Byte);
+                } else {
+                    const val = try std.fmt.parseInt(i64, literal[2..], 8);
+                    const loc = try c.ir.pushExpr(.int, c.alloc, bt.Integer, node, .{ .val = val });
+                    return ExprResult.initStatic(loc, bt.Integer);
+                }
             },
             .hexLit => {
                 const literal = c.ast.nodeString(node);
-                const val = try std.fmt.parseInt(i64, literal[2..], 16);
-                const loc = try c.ir.pushExpr(.int, c.alloc, bt.Integer, node, .{ .val = val });
-                return ExprResult.initStatic(loc, bt.Integer);
+                if (expr.target_t == bt.Byte) {
+                    const val = try std.fmt.parseInt(u8, literal[2..], 16);
+                    const loc = try c.ir.pushExpr(.byte, c.alloc, bt.Byte, node, .{ .val = val });
+                    return ExprResult.initStatic(loc, bt.Byte);
+                } else {
+                    const val = try std.fmt.parseInt(i64, literal[2..], 16);
+                    const loc = try c.ir.pushExpr(.int, c.alloc, bt.Integer, node, .{ .val = val });
+                    return ExprResult.initStatic(loc, bt.Integer);
+                }
             },
             .ident => {
                 return try semaIdent(c, node, true, expr.prefer_addressable);
@@ -5836,6 +5856,11 @@ pub const ChunkExt = struct {
         return ExprResult.initStatic(irIdx, bt.Integer);
     }
 
+    pub fn semaByte(c: *cy.Chunk, val: u8, node: *ast.Node) !ExprResult {
+        const irIdx = try c.ir.pushExpr(.byte, c.alloc, bt.Byte, node, .{ .val = val });
+        return ExprResult.initStatic(irIdx, bt.Byte);
+    }
+
     pub fn semaFalse(c: *cy.Chunk, node: *ast.Node) !ExprResult {
         const irIdx = try c.ir.pushExpr(.falsev, c.alloc, bt.Boolean, node, {});
         return ExprResult.initStatic(irIdx, bt.Boolean);
@@ -6022,32 +6047,17 @@ pub const ChunkExt = struct {
             .bitwiseLeftShift,
             .bitwiseRightShift => {
                 const left = try c.semaExprTarget(leftId, expr.target_t);
-                const right = try c.semaExprTarget(rightId, left.type.id);
 
                 if (left.type.isDynAny()) {
+                    const right = try c.semaExprTarget(rightId, bt.Dyn);
                     return c.semaCallObjSym2(left.irIdx, getBinOpName(op), &.{right}, node);
                 }
 
-                if (left.type.id == right.type.id and left.type.id == bt.Integer) {
-                    // Specialized.
-                    const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
-                    c.ir.setExprCode(loc, .preBinOp);
-                    c.ir.setExprType(loc, bt.Integer);
-                    c.ir.setExprData(loc, .preBinOp, .{ .binOp = .{
-                        .leftT = bt.Integer,
-                        .rightT = right.type.id,
-                        .op = op,
-                        .left = left.irIdx,
-                        .right = right.irIdx,
-                    }});
-                    return ExprResult.initStatic(loc, bt.Integer);
-                } else {
-                    // Look for sym under left type's module.
-                    const leftTypeSym = c.sema.getTypeSym(left.type.id);
-                    const sym = try c.mustFindSym(leftTypeSym, op.name(), node);
-                    const funcSym = try requireFuncSym(c, sym, node);
-                    return c.semaCallFuncSym2(funcSym, leftId, left, rightId, right, expr.getRetCstr(), node);
-                }
+                // Look for sym under left type's module.
+                const leftTypeSym = c.sema.getTypeSym(left.type.id);
+                const sym = try c.mustFindSym(leftTypeSym, op.name(), node);
+                const funcSym = try requireFuncSym(c, sym, node);
+                return c.semaCallFuncSymRec(funcSym, leftId, left, &.{ rightId }, expr.getRetCstr(), node);
             },
             .greater,
             .greater_equal,

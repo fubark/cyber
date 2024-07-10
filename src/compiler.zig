@@ -1003,6 +1003,7 @@ fn loadCtBuiltins(self: *Compiler) !void {
 
     _ = try bc.declareBoolType(@ptrCast(bc.sym), "bool_t", null, null);
     _ = try bc.declareIntType(@ptrCast(bc.sym), "int64_t", 64, null, null);
+    _ = try bc.declareIntType(@ptrCast(bc.sym), "int8_t", 8, null, null);
     _ = try bc.declareFloatType(@ptrCast(bc.sym), "float64_t", 64, null, null);
 }
 
@@ -1017,7 +1018,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.Boolean,
         bt.Error,
         bt.Placeholder1,
-        bt.Placeholder2,
+        bt.Byte,
         bt.TagLit,
         bt.Symbol,
         bt.Integer,

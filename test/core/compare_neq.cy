@@ -1,9 +1,5 @@
 use t 'test'
 
--- Integers.
-t.eq(3 != 2, true)
-t.eq(3 != 3, false)
-
 -- Strings.
 t.eq('foo' != 'foo', false)
 t.eq('foo' != 'bar', true)

@@ -93,6 +93,7 @@ pub const ExprCode = enum(u8) {
     tag_lit,
     float,
     int,
+    byte,
     none,
     unOpEnd,
     funcSym,
@@ -559,6 +560,10 @@ pub const Int = struct {
     val: i64,
 };
 
+pub const Byte = struct {
+    val: u8,
+};
+
 pub const Array = struct {
     buffer: []const u8,
 };
@@ -659,6 +664,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .typeSym => TypeSym,
         .float => Float,
         .int => Int,
+        .byte => Byte,
         .none => None,
         .local => Local,
         .if_expr => IfExpr,

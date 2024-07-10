@@ -23,12 +23,6 @@ const log = cy.log.scoped(.bindings);
 const NullId = std.math.maxInt(u32);
 
 pub const Symbol = enum {
-    b,
-    o,
-    d,
-    x,
-    c,
-
     bool,
     char,
     uchar,
@@ -488,6 +482,103 @@ pub fn mapGet(vm: *cy.VM) Value {
     } else return anyNone(vm) catch cy.fatal();
 }
 
+pub fn byteNot(vm: *cy.VM) Value {
+    return Value.initByte(~vm.getByte(0));
+}
+
+pub fn byteFmt(vm: *cy.VM) anyerror!Value {
+    const val = vm.getByte(0);
+    const format = try std.meta.intToEnum(cy.builtins.NumberFormat, vm.getEnumValue(1));
+    return cy.builtins.intFmtExt(vm, @intCast(val), format, .{});
+}
+
+pub fn byteFmt2(vm: *cy.VM) anyerror!Value {
+    const val = vm.getByte(0);
+    const format = try std.meta.intToEnum(cy.builtins.NumberFormat, vm.getEnumValue(1));
+    const optsv = vm.getObject(*cy.heap.Table, 2);
+    const opts = try cy.builtins.getIntFmtOptions(optsv);
+    return cy.builtins.intFmtExt(vm, @intCast(val), format, opts);
+}
+
+pub fn byteLess(vm: *cy.VM) Value {
+    return Value.initBool(vm.getByte(0) < vm.getByte(1));
+}
+
+pub fn byteLessEq(vm: *cy.VM) Value {
+    return Value.initBool(vm.getByte(0) <= vm.getByte(1));
+}
+
+pub fn byteGreater(vm: *cy.VM) Value {
+    return Value.initBool(vm.getByte(0) > vm.getByte(1));
+}
+
+pub fn byteGreaterEq(vm: *cy.VM) Value {
+    return Value.initBool(vm.getByte(0) >= vm.getByte(1));
+}
+
+pub fn byteCall(vm: *cy.VM) Value {
+    return vm.getValue(0);
+}
+
+pub fn byteAdd(vm: *cy.VM) Value {
+    return Value.initByte(vm.getByte(0) +% vm.getByte(1));
+}
+
+pub fn byteSub(vm: *cy.VM) Value {
+    return Value.initByte(vm.getByte(0) -% vm.getByte(1));
+}
+
+pub fn byteMul(vm: *cy.VM) Value {
+    return Value.initByte(vm.getByte(0) *% vm.getByte(1));
+}
+
+pub fn byteDiv(vm: *cy.VM) Value {
+    const right = vm.getByte(1);
+    if (right == 0) return vm.prepPanic("Division by zero.");
+    return Value.initByte(@divTrunc(vm.getByte(0), right));
+}
+
+pub fn byteMod(vm: *cy.VM) Value {
+    const right = vm.getByte(1);
+    if (right == 0) return vm.prepPanic("Division by zero.");
+    return Value.initByte(@mod(vm.getByte(0), right));
+}
+
+pub fn bytePow(vm: *cy.VM) Value {
+    const right = vm.getByte(1);
+    if (right == 0) return vm.prepPanic("Division by zero.");
+    return Value.initByte(std.math.powi(u8, vm.getByte(0), right) catch |err| {
+        switch (err) {
+            error.Underflow => return vm.prepPanic("Underflow."),
+            error.Overflow => return vm.prepPanic("Overflow."),
+        }
+    });
+}
+
+pub fn byteAnd(vm: *cy.VM) Value {
+    return Value.initByte(vm.getByte(0) & vm.getByte(1));
+}
+
+pub fn byteOr(vm: *cy.VM) Value {
+    return Value.initByte(vm.getByte(0) | vm.getByte(1));
+}
+
+pub fn byteXor(vm: *cy.VM) Value {
+    return Value.initByte(vm.getByte(0) ^ vm.getByte(1));
+}
+
+pub fn byteLeftShift(vm: *cy.VM) Value {
+    const right = vm.getInt(1);
+    if (right > 8 or right < 0) return vm.prepPanic("Out of bounds.");
+    return Value.initByte(vm.getByte(0) << @intCast(right));
+}
+
+pub fn byteRightShift(vm: *cy.VM) Value {
+    const right = vm.getByte(1);
+    if (right > 8 or right < 0) return vm.prepPanic("Out of bounds.");
+    return Value.initByte(vm.getByte(0) >> @intCast(right));
+}
+
 pub fn intNeg(vm: *cy.VM) Value {
     return Value.initInt(-vm.getInt(0));
 }
@@ -557,13 +648,13 @@ pub fn intXor(vm: *cy.VM) Value {
 
 pub fn intLeftShift(vm: *cy.VM) Value {
     const right = vm.getInt(1);
-    if (right > 48 or right < 0) return vm.prepPanic("Out of bounds.");
+    if (right > 64 or right < 0) return vm.prepPanic("Out of bounds.");
     return Value.initInt(vm.getInt(0) << @intCast(right));
 }
 
 pub fn intRightShift(vm: *cy.VM) Value {
     const right = vm.getInt(1);
-    if (right > 48 or right < 0) return vm.prepPanic("Out of bounds.");
+    if (right > 64 or right < 0) return vm.prepPanic("Out of bounds.");
     return Value.initInt(vm.getInt(0) >> @intCast(right));
 }
 

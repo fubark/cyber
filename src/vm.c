@@ -565,6 +565,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(ConstOp),
         JENTRY(ConstRetain),
         JENTRY(ConstIntV8),
+        JENTRY(ConstByte),
         JENTRY(AddFloat),
         JENTRY(SubFloat),
         JENTRY(True),
@@ -731,6 +732,12 @@ beginSwitch:
     CASE(ConstIntV8): {
         i64 i = (i64)BITCAST(i8, pc[1]);
         stack[pc[2]] = BITCAST(u64, i);
+        pc += 3;
+        NEXT();
+    }
+    CASE(ConstByte): {
+        u8 val = pc[1];
+        stack[pc[2]] = val;
         pc += 3;
         NEXT();
     }

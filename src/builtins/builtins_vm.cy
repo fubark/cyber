@@ -443,7 +443,15 @@ type ArrayIterator:
         return res
 
 type pointer[T type] #int64_t:
-    @host func $index(self, idx int) T
+    func $index(self, idx int) T:
+        return self.index((T).id(), idx)
+
+    @host -func index(self, elem_t int, idx int) T
+
+    func $index(self, range Range) []T:
+        return self.indexRange(([]T).id(), range)
+
+    @host -func indexRange(self, slice_t int, range Range) []T
 
     --| When pointer runtime safety is enabled, this returns the raw pointer address as an `int64`. 
     --| Otherwise, the pointer itself is bitcasted to an `int64`.
@@ -519,3 +527,16 @@ func FutureResolver.new(#T type) FutureResolver[T]:
     return FutureResolver.new_(T, (Future[T]).id(), (FutureResolver[T]).id())
 
 @host -func FutureResolver.new_(#T type, future_t int, ret_t int) FutureResolver[T]
+
+type Slice[T type] struct:
+    ptr *T
+    n   int
+
+    func $index(self, idx int) T:
+        return self.ptr[idx]
+
+    func $index(self, range Range) []T:
+        return self.ptr[range.start..range.end]
+
+    func len(self) int:
+        return self.n

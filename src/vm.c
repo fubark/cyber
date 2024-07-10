@@ -192,18 +192,6 @@ static inline ValueResult allocInt(VM* vm, i64 i) {
     return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
-static inline ValueResult allocObjectSmallEmpty(VM* vm, TypeId typeId) {
-    HeapObjectResult res = zAllocPoolObject(vm);
-    if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
-        return (ValueResult){ .code = res.code };
-    }
-    res.obj->object = (Object){
-        .typeId = typeId | CYC_TYPE_MASK,
-        .rc = 1,
-    };
-    return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
-}
-
 static inline ValueResult allocObjectSmall(VM* vm, TypeId typeId, Value* fields, u8 numFields) {
     HeapObjectResult res = zAllocPoolObject(vm);
     if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
@@ -217,19 +205,6 @@ static inline ValueResult allocObjectSmall(VM* vm, TypeId typeId, Value* fields,
     Value* dst = objectGetValuesPtr(&res.obj->object);
     memcpy(dst, fields, numFields * sizeof(Value));
 
-    return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
-}
-
-static inline ValueResult allocObjectEmpty(VM* vm, TypeId typeId, u8 numFields) {
-    // First slot holds the typeId and rc.
-    HeapObjectResult res = zAllocExternalCycObject(vm, (1 + numFields) * sizeof(Value));
-    if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
-        return (ValueResult){ .code = res.code };
-    }
-    res.obj->object = (Object){
-        .typeId = typeId | CYC_TYPE_MASK,
-        .rc = 1,
-    };
     return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
@@ -262,38 +237,6 @@ static inline ValueResult allocTrait(VM* vm, TypeId typeId, u16 vtable, Value im
         .vtable = vtable,
     };
     return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
-}
-
-static ValueResult copyObj(VM* vm, HeapObject* obj, u8 numFields) {
-    TypeId typeId = OBJ_TYPEID(obj);
-    Value* values = objectGetValuesPtr(&obj->object);
-    ValueResult res;
-    if (numFields <= 4) {
-        res = allocObjectSmallEmpty(vm, typeId);
-    } else {
-        res = allocObjectEmpty(vm, typeId, numFields);
-    }
-    if (res.code != RES_CODE_SUCCESS) {
-        return res;
-    }
-
-    Value* dst = objectGetValuesPtr(&VALUE_AS_HEAPOBJECT(res.val)->object);
-    for (int i = 0; i < numFields; i += 1) {
-        TypeId typeId = getTypeId(values[i]);
-        TypeEntry entry = ((TypeEntry*)vm->c.typesPtr)[typeId];
-        if (entry.kind == TYPE_KIND_STRUCT) {
-            u8 childNumFields = entry.data.struct_t.numFields;
-            ValueResult res = copyObj(vm, VALUE_AS_HEAPOBJECT(values[i]), childNumFields);
-            if (res.code != RES_CODE_SUCCESS) {
-                return res;
-            }
-            dst[i] = res.val;
-        } else {
-            retain(vm, values[i]);
-            dst[i] = values[i];
-        }
-    }
-    return res;
 }
 
 static inline ValueResult allocEmptyMap(VM* vm) {
@@ -813,7 +756,7 @@ beginSwitch:
     CASE(CopyObj): {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
         u8 numFields = pc[2];
-        ValueResult res = copyObj(vm, obj, numFields);
+        ValueResult res = zCopyObject(vm, obj, numFields);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
@@ -829,7 +772,7 @@ beginSwitch:
         if (entry.kind == TYPE_KIND_STRUCT) {
             u8 numFields = (u8)entry.data.object.numFields;
             HeapObject* obj = VALUE_AS_HEAPOBJECT(src);
-            ValueResult res = copyObj(vm, obj, numFields);
+            ValueResult res = zCopyObject(vm, obj, numFields);
             if (res.code != RES_CODE_SUCCESS) {
                 RETURN(res.code);
             }
@@ -1581,7 +1524,7 @@ beginSwitch:
     CASE(DerefStruct): {
         Value* ptr = (Value*)stack[pc[1]];
         u8 numFields = pc[2];
-        ValueResult res = copyObj(vm, VALUE_AS_HEAPOBJECT(*ptr), numFields);
+        ValueResult res = zCopyObject(vm, VALUE_AS_HEAPOBJECT(*ptr), numFields);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }

@@ -196,7 +196,7 @@ if (!aot) {
     run.case("types/optionals_unwrap_panic.cy");
     run.case("types/optionals.cy");
     run.case("types/pointers.cy");
-
+    run.case("types/slices.cy");
     run.case("types/struct_zero_init_error.cy");
     run.case("types/structs.cy");
     run.case("types/template_choices.cy");

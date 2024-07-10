@@ -1532,7 +1532,9 @@ Note that invoking the template again with the same argument(s) returns the same
   * [Dereferencing pointers.](#dereferencing-pointers)
   * [Pointer arithmetic.](#pointer-arithmetic)
   * [Pointer casting.](#pointer-casting)
+  * [Pointer slicing.](#pointer-slicing)
   * [Pointer conversions.](#pointer-conversions)
+* [Slices.](#slices)
 * [Union types.](#union-types)
 
 [^top](#table-of-contents)
@@ -1683,8 +1685,40 @@ print a          --> 10
 ### Pointer casting.
 > _Planned Feature_
 
+### Pointer slicing.
+The slice operator will produce a new slice of type `[]T` from a `*T` pointer type:
+```cy
+var ints = mem.alloc(int, 10)
+var slice = ints[0..5]
+print typeof(slice)    --> []int
+```
+
 ### Pointer conversions.
 > _Planned Feature_
+
+## Slices.
+Slices are pointers with a length field. They are denoted as `[]T` where T is the element type.
+
+A slice can be created by taking the address of an array: *Planned feature*
+```cy
+var arr = [_]int.[1, 2, 3]
+var s = &arr
+```
+
+Access elements of a slice with the index operator: 
+```cy
+print s[0]        --> 1
+```
+
+Slices provide bounds checking when runtime safety is enabled: *Planned feature*
+```cy
+print s[100]      --> Panic. Out of bounds.
+```
+
+Slice operations can be applied: *Planned feature*
+```cy
+print s[0..2]     --> [1, 2]
+```
 
 ## Union types.
 > _Planned Feature_

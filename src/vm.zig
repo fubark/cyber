@@ -1347,6 +1347,7 @@ pub const VM = struct {
                     };
                 },
                 else => {
+                    logger.tracev("{}", .{func.type});
                     return self.panic("Missing func");
                 },
             }
@@ -1402,7 +1403,7 @@ pub const VM = struct {
                 };
             },
             .null => {
-                return self.panic("Missing func");
+                return self.panic("Missing func null");
             },
         }
     }
@@ -2740,7 +2741,7 @@ fn callMethod(
             };
         },
         .null => {
-            return vm.panic("Missing func");
+            return vm.panic("Missing func null");
         },
     }
 }
@@ -2760,6 +2761,46 @@ fn zFatal() callconv(.C) void {
 fn zOpCodeName(code: vmc.OpCode) callconv(.C) [*:0]const u8 {
     const ecode: cy.OpCode = @enumFromInt(code);
     return @tagName(ecode);
+}
+
+fn zCopyObject(vm: *VM, obj: *HeapObject, numFields: u8) callconv(.C) vmc.ValueResult {
+    const val = copyObject(vm, obj, numFields) catch {
+        return .{
+            .val = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .val = @bitCast(val),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
+pub fn copyObject(vm: *VM, obj: *HeapObject, numFields: u8) !cy.Value {
+    const type_id = obj.object.typeId;
+
+    const values = obj.object.getValuesPtr();
+    var res: cy.Value = undefined;
+    if (numFields <= 4) {
+        res = try vm.allocEmptyObjectSmall(type_id);
+    } else {
+        res = try vm.allocEmptyObject(type_id, numFields);
+    }
+
+    const dst = res.castHeapObject(*cy.heap.Object).getValuesPtr();
+    for (0..numFields) |i| {
+        const field_t = values[i].getTypeId();
+        const type_e = vm.c.types[field_t];
+        if (type_e.kind == .@"struct") {
+            const child_num_fields = type_e.data.@"struct".numFields;
+            const child = try copyObject(vm, values[i].asHeapObject(), @intCast(child_num_fields));
+            dst[i] = child;
+        } else {
+            retain(vm, values[i]);
+            dst[i] = values[i];
+        }
+    }
+    return res;
 }
 
 fn zBox(vm: *VM, val: cy.Value, type_id: cy.TypeId) callconv(.C) cy.Value {
@@ -3304,6 +3345,7 @@ comptime {
         @export(zAlloc, .{ .name = "zAlloc", .linkage = .strong });
         @export(zAllocList, .{ .name = "zAllocList", .linkage = .strong });
         @export(zAllocListDyn, .{ .name = "zAllocListDyn", .linkage = .strong });
+        @export(zCopyObject, .{ .name = "zCopyObject", .linkage = .strong });
         @export(zBox, .{ .name = "zBox", .linkage = .strong });
         @export(zUnbox, .{ .name = "zUnbox", .linkage = .strong });
         @export(zCall, .{ .name = "zCall", .linkage = .strong });

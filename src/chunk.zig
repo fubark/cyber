@@ -189,8 +189,9 @@ pub const Chunk = struct {
 
     indent: u32,
 
-    /// Variant func syms are accumulated and processed after the initial sema pass.
-    variantFuncSyms: std.ArrayListUnmanaged(*cy.Func),
+    /// Funcs deferred to a later sema pass. (eg. func variants, funcs from parent type variants)
+    /// Assumed to have resolved signatures.
+    deferred_funcs: std.ArrayListUnmanaged(*cy.Func),
 
     rootStmtBlock: cy.ir.StmtBlock,
 
@@ -269,7 +270,7 @@ pub const Chunk = struct {
             .encoder = undefined,
             .nextUnnamedId = 1,
             .indent = 0,
-            .variantFuncSyms = .{},
+            .deferred_funcs = .{},
             .rootStmtBlock = .{
                 .first = cy.NullId,
                 .last = cy.NullId,
@@ -364,10 +365,11 @@ pub const Chunk = struct {
         }
         self.syms.deinit(self.alloc);
 
-        for (self.variantFuncSyms.items) |func| {
+        for (self.deferred_funcs.items) |func| {
+            func.deinit(self.alloc);
             self.alloc.destroy(func);
         }
-        self.variantFuncSyms.deinit(self.alloc);
+        self.deferred_funcs.deinit(self.alloc);
 
         self.alloc.free(self.srcUri);
         self.parser.deinit();

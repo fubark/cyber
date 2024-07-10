@@ -5,6 +5,12 @@ var a = 123
 var b = &a
 test.eq(b.*, 123)
 
+-- pointer indexing
+test.eq(b[0], 123)
+
+-- pointer slicing
+test.eq(b[0..10].len(), 10)
+
 -- Write to `int` pointer.
 b.* = 234
 test.eq(b.*, 234)

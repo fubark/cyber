@@ -204,14 +204,15 @@ const funcs = [_]C.HostFuncEntry{
     func("Array.$call",        zErrFunc(arrayCall)),
 
     // pointer
-    func("pointer.$index",     zErrFunc(pointerIndex)),
+    func("pointer.index",      zErrFunc(pointerIndex)),
+    func("pointer.indexRange", zErrFunc(pointerIndexRange)),
     func("pointer.addr",       pointerAddr),
     func("pointer.asObject",   pointerAsObject),
     func("pointer.fromCstr",   zErrFunc(pointerFromCstr)),
     func("pointer.get",        zErrFunc(pointerGet)),
     func("pointer.set",        zErrFunc(pointerSet)),
     func("pointer.toArray",    zErrFunc(pointerToArray)),
-    func("pointer.$call",       zErrFunc(pointerCall)),
+    func("pointer.$call",      zErrFunc(pointerCall)),
 
     // ExternFunc
     func("ExternFunc.addr",    externFuncAddr),
@@ -1120,11 +1121,31 @@ fn pointerAsObject(vm: *cy.VM) Value {
 }
 
 fn pointerIndex(vm: *cy.VM) anyerror!Value {
-    const ptr = vm.getInt(0);
-    _ = ptr;
-    const idx = vm.getInt(1);
-    _ = idx;
-    return error.Unsupported;
+    const ptr: [*]cy.Value = @ptrCast(@alignCast(vm.getPointer(0)));
+    const elem_t: cy.TypeId = @intCast(vm.getInt(1));
+    const idx: usize = @intCast(vm.getInt(2));
+    // Always an 8 byte stride. But cstructs need to be deep copied.
+    if (vm.sema.isUnboxedType(elem_t)) {
+        return ptr[idx];
+    } else {
+        const obj = ptr[idx].asHeapObject();
+        const type_e = vm.c.types[obj.getTypeId()];
+        return cy.vm.copyObject(vm, ptr[idx].asHeapObject(), @intCast(type_e.data.@"struct".numFields));
+    }
+}
+
+fn pointerIndexRange(vm: *cy.VM) anyerror!Value {
+    const ptr: [*]cy.Value = @ptrCast(@alignCast(vm.getPointer(0)));
+    const slice_t: cy.TypeId = @intCast(vm.getInt(1));
+    const range = vm.getObject(*cy.heap.Range, 2);
+    if (range.end < range.start) {
+        return error.InvalidArgument;
+    }
+    if (range.start > 0) {
+        return vm.allocSlice(slice_t, ptr + @as(usize, @intCast(range.start)), @intCast(range.end - range.start));
+    } else {
+        return vm.allocSlice(slice_t, ptr - @as(usize, @intCast(range.start)), @intCast(range.end - range.start));
+    }
 }
 
 fn pointerAddr(vm: *cy.VM) Value {

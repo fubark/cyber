@@ -77,7 +77,10 @@ pub fn genAll(c: *cy.Compiler) !void {
         for (chunk.syms.items) |sym| {
             try prepareSym(c, sym);
         }
-        for (chunk.variantFuncSyms.items) |func| {
+        for (chunk.deferred_funcs.items) |func| {
+            // prepareSym will handle deferred funcs that have a parent func sym.
+            if (func.variant == null) continue;
+
             try prepareFunc(c, null, func);
         }
     }

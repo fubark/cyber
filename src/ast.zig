@@ -46,6 +46,7 @@ pub const NodeType = enum(u7) {
     expandOpt,
     expand_ptr,
     exprStmt,
+    expand_slice,
     falseLit,
     forIterStmt,
     forRangeStmt,
@@ -111,6 +112,11 @@ pub const NodeType = enum(u7) {
 
 pub const AttributeType = enum(u8) {
     host,
+};
+
+const ExpandSlice = struct {
+    elem: *Node align(8),
+    pos: u32,
 };
 
 const ExpandOpt = struct {
@@ -601,6 +607,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .expandOpt      => ExpandOpt,
         .expand_ptr     => ExpandPtr,
         .exprStmt       => ExprStmt,
+        .expand_slice   => ExpandSlice,
         .falseLit       => Token,
         .forIterStmt    => ForIterStmt,
         .forRangeStmt   => ForRangeStmt,
@@ -737,6 +744,7 @@ pub const Node = struct {
             .expandOpt      => self.cast(.expandOpt).pos,
             .expand_ptr     => self.cast(.expand_ptr).pos,
             .exprStmt       => self.cast(.exprStmt).child.pos(),
+            .expand_slice   => self.cast(.expand_slice).pos,
             .falseLit       => self.cast(.falseLit).pos,
             .floatLit       => self.cast(.floatLit).pos,
             .forIterStmt    => self.cast(.forIterStmt).pos,
@@ -870,7 +878,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 98);
+    try t.eq(std.enums.values(NodeType).len, 99);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 
@@ -1458,6 +1466,10 @@ pub const Encoder = struct {
                 try w.writeByte('{');
                 try w.writeAll("...");
                 try w.writeByte('}');
+            },
+            .expand_slice => {
+                try w.writeAll("[]");
+                try self.write(w, node.cast(.expand_slice).elem);
             },
             .expandOpt => {
                 try w.writeByte('?');

@@ -372,14 +372,12 @@ pub const ChunkExt = struct {
     }
 
     pub fn reserveHostFunc(
-        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: ?*ast.FuncDecl, is_method: bool, is_variant: bool,
+        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: ?*ast.FuncDecl, is_method: bool, deferred: bool,
     ) !*cy.Func {
         const mod = parent.getMod().?;
         const sym = try prepareFuncSym(c, parent, mod, name, node);
         const func = try c.createFunc(.hostFunc, parent, sym, @ptrCast(node), is_method);
-        if (is_variant) {
-            try c.variantFuncSyms.append(c.alloc, func);
-        } else {
+        if (!deferred) {
             try c.funcs.append(c.alloc, func);
         }
         func.data = .{ .hostFunc = .{
@@ -395,7 +393,7 @@ pub const ChunkExt = struct {
     }
 
     pub fn reserveTraitFunc(
-        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: *ast.FuncDecl, vtable_idx: usize, is_variant: bool,
+        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: *ast.FuncDecl, vtable_idx: usize, deferred: bool,
     ) !*cy.Func {
         const mod = parent.getMod().?;
         const sym = try prepareFuncSym(c, parent, mod, name, node);
@@ -405,9 +403,7 @@ pub const ChunkExt = struct {
                 .vtable_idx = @intCast(vtable_idx),
             },
         };
-        if (is_variant) {
-           try c.variantFuncSyms.append(c.alloc, func);
-        } else {
+        if (!deferred) {
            try c.funcs.append(c.alloc, func);
         }
         sym.addFunc(func);
@@ -415,14 +411,12 @@ pub const ChunkExt = struct {
     }
 
     pub fn reserveUserFunc(
-        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: *ast.FuncDecl, is_method: bool, is_variant: bool,
+        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: *ast.FuncDecl, is_method: bool, deferred: bool,
     ) !*cy.Func {
         const mod = parent.getMod().?;
         const sym = try prepareFuncSym(c, parent, mod, name, node);
         const func = try c.createFunc(.userFunc, parent, sym, @ptrCast(node), is_method);
-        if (is_variant) {
-           try c.variantFuncSyms.append(c.alloc, func);
-        } else {
+        if (!deferred) {
            try c.funcs.append(c.alloc, func);
         }
         sym.addFunc(func);

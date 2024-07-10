@@ -630,21 +630,21 @@ pub const Template = struct {
 
     /// Template args to variant. Keys are not owned.
     variant_cache: std.HashMapUnmanaged([]const cy.Value, *Variant, VariantKeyContext, 80),
+    variants: std.ArrayListUnmanaged(*Variant),
 
     mod: vmc.Module,
 
     fn deinit(self: *Template, alloc: std.mem.Allocator, vm: *cy.VM) void {
         self.getMod().deinit(alloc);
 
-        var iter = self.variant_cache.iterator();
-        while (iter.next()) |e| {
-            const variant = e.value_ptr.*;
+        for (self.variants.items) |variant| {
             for (variant.args) |arg| {
                 vm.release(arg);
             }
             alloc.free(variant.args);
             alloc.destroy(variant);
         }
+        self.variants.deinit(alloc);
         self.variant_cache.deinit(alloc);
         if (self.is_root) {
             alloc.free(self.params);
@@ -1034,12 +1034,13 @@ pub const FuncTemplate = struct {
 
     /// Template args to variant. Keys are not owned.
     variant_cache: std.HashMapUnmanaged([]const cy.Value, *FuncVariant, VariantKeyContext, 80),
+    variants: std.ArrayListUnmanaged(*FuncVariant),
 
     pub fn deinit(self: *FuncTemplate, alloc: std.mem.Allocator) void {
-        var iter = self.variant_cache.iterator();
-        while (iter.next()) |e| {
-            alloc.destroy(e.value_ptr.*);
+        for (self.variants.items) |variant| {
+            alloc.destroy(variant);
         }
+        self.variants.deinit(alloc);
         self.variant_cache.deinit(alloc);
         alloc.free(self.params);
     }
@@ -1300,6 +1301,7 @@ pub const ChunkExt = struct {
             .params = params,
             .sigId = sigId,
             .variant_cache = .{},
+            .variants = .{},
             .mod = undefined,
         });
         sym.getMod().* = cy.Module.init(c);

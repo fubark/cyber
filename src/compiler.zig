@@ -421,8 +421,8 @@ pub const Compiler = struct {
         for (self.newChunks()) |chunk| {
             try chunk.ir.pushStmtBlock2(chunk.alloc, chunk.rootStmtBlock);
             var i: usize = 0; // Explicit iterator in case more variants are added during body sema.
-            while (i < chunk.variantFuncSyms.items.len) : (i += 1) {
-                const func = chunk.variantFuncSyms.items[i];
+            while (i < chunk.deferred_funcs.items.len) : (i += 1) {
+                const func = chunk.deferred_funcs.items[i];
                 if (func.type != .userFunc) {
                     continue;
                 }
@@ -908,6 +908,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                                     .data = .{ .specialization = decl.decl },
                                 };
                                 try template.variant_cache.put(chunk.alloc, args_dupe, variant);
+                                try template.variants.append(chunk.alloc, variant);
                             },
                             else => {
                                 log.tracev("{}", .{decl.decl.type()});
@@ -948,6 +949,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                 self.sema.pointer_tmpl = core.getSym("pointer").?.cast(.template);
                 self.sema.list_tmpl = core.getSym("List").?.cast(.template);
                 self.sema.table_type = core.getSym("Table").?.cast(.object_t);
+                self.sema.slice_tmpl = core.getSym("Slice").?.cast(.template);
             }
             if (chunk != self.main_chunk) {
                 // Check for illegal top level statements.

@@ -2589,6 +2589,18 @@ pub const Parser = struct {
         while (true) {
             const next = self.peek();
             switch (next.tag()) {
+                .ident => {
+                    if (left.type() == .array_lit) {
+                        if (left.cast(.array_lit).args.len == 0) {
+                            const elem = try self.parseTermExpr2(.{});
+                            return self.ast.newNodeErase(.expand_slice, .{
+                                .pos = left.cast(.array_lit).pos,
+                                .elem = elem,
+                            });
+                        }
+                    }
+                    break;
+                },
                 .dot => {
                     self.advance();
 

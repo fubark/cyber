@@ -1699,7 +1699,6 @@ pub fn reserveFuncTemplateVariant(c: *cy.Chunk, tfunc: *cy.Func, opt_header_decl
     }
     func.is_nested = tfunc.is_nested;
     func.variant = variant;
-    try c.variantFuncSyms.append(c.alloc, func);
 
     return func;
 }
@@ -1788,9 +1787,10 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
 
             const object_decl = template.child_decl.cast(.objectDecl);
             for (object_decl.funcs) |func_n| {
-                const func = try reserveNestedFunc(tchunk, @ptrCast(object_t), func_n, false);
+                const func = try reserveNestedFunc(tchunk, @ptrCast(object_t), func_n, true);
                 // func.sym.?.variant = object_t.variant.?;
                 try resolveFunc2(tchunk, func, true);
+                try tchunk.deferred_funcs.append(c.alloc, func);
             }
             return sym;
         },
@@ -1802,9 +1802,10 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
             const custom_decl = template.child_decl.cast(.custom_decl);
 
             for (custom_decl.funcs) |func_n| {
-                const func = try reserveNestedFunc(tchunk, @ptrCast(custom_t), func_n, false);
+                const func = try reserveNestedFunc(tchunk, @ptrCast(custom_t), func_n, true);
                 // func.sym.?.variant = custom_t.variant.?;
                 try resolveFunc2(tchunk, func, true);
+                try tchunk.deferred_funcs.append(c.alloc, func);
             }
             // if (type_e.info.load_all_methods) {
             //     var iter = template.getMod().symMap.iterator();
@@ -1832,9 +1833,10 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
 
             const struct_decl = template.child_decl.cast(.structDecl);
             for (struct_decl.funcs) |func_n| {
-                const func = try reserveNestedFunc(tchunk, @ptrCast(struct_t), func_n, false);
+                const func = try reserveNestedFunc(tchunk, @ptrCast(struct_t), func_n, true);
                 // func.sym.?.variant = object_t.variant.?;
                 try resolveFunc2(tchunk, func, true);
+                try tchunk.deferred_funcs.append(c.alloc, func);
             }
             return sym;
         },
@@ -1852,9 +1854,10 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
 
             const distinct_decl = template.child_decl.cast(.distinct_decl);
             for (distinct_decl.funcs) |func_n| {
-                const func = try reserveNestedFunc(tchunk, new_sym, func_n, false);
+                const func = try reserveNestedFunc(tchunk, new_sym, func_n, true);
                 // func.sym.?.variant = object_t.variant.?;
                 try resolveFunc2(tchunk, func, true);
+                try tchunk.deferred_funcs.append(c.alloc, func);
             }
             return new_sym;
         },
@@ -2316,6 +2319,7 @@ pub fn resolveHostFuncVariant(c: *cy.Chunk, func: *cy.Func) !void {
 
     const sig_id = try resolveFuncSig(c, func, true);
     try resolveHostFunc2(c, func, sig_id);
+    try c.deferred_funcs.append(c.alloc, func);
 }
 
 pub fn resolveHostFunc(c: *cy.Chunk, func: *cy.Func) !void {
@@ -2389,6 +2393,7 @@ pub fn resolveUserFuncVariant(c: *cy.Chunk, func: *cy.Func) !void {
 
     const sig_id = try resolveFuncSig(c, func, true);
     try c.resolveUserFunc(func, sig_id);
+    try c.deferred_funcs.append(c.alloc, func);
 }
 
 pub fn resolveUserFunc(c: *cy.Chunk, func: *cy.Func) !void {
@@ -2416,11 +2421,11 @@ pub fn reserveImplicitTraitMethod(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.Func
     return func;
 }
 
-pub fn reserveNestedFunc(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.FuncDecl, is_variant: bool) !*cy.Func {
+pub fn reserveNestedFunc(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.FuncDecl, deferred: bool) !*cy.Func {
     const name = c.ast.nodeString(decl.name);
     const is_method = c.ast.isMethodDecl(decl);
     if (decl.stmts.len > 0) {
-        const func = try c.reserveUserFunc(parent, name, decl, is_method, is_variant);
+        const func = try c.reserveUserFunc(parent, name, decl, is_method, deferred);
         func.is_nested = true;
         return func;
     }
@@ -2428,7 +2433,7 @@ pub fn reserveNestedFunc(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.FuncDecl, is_
     // No initializer. Check if @host func.
     if (decl.attrs.len > 0) {
         if (decl.attrs[0].type == .host) {
-            const func = try c.reserveHostFunc(parent, name, decl, is_method, is_variant);
+            const func = try c.reserveHostFunc(parent, name, decl, is_method, deferred);
             func.is_nested = true;
             return func;
         }
@@ -2468,6 +2473,7 @@ fn resolveToFuncTemplate(c: *cy.Chunk, func: *cy.Func, sig_id: FuncSigId, ct_par
         .sig = sig,
         .params = params,
         .variant_cache = .{},
+        .variants = .{},
     };
     try c.resolveTemplateFunc(func, sig_id, template);
 }
@@ -3454,6 +3460,10 @@ pub fn resolveSym(c: *cy.Chunk, expr: *ast.Node) anyerror!*cy.Sym {
         .callExpr => {
             return error.TODO;
             // return try cte.expandTemplateOnCallExpr(c, expr.cast(.callExpr));
+        },
+        .expand_slice => {
+            const expand_slice = expr.cast(.expand_slice);
+            return try cte.expandTemplateOnCallArgs(c, c.sema.slice_tmpl, &.{ expand_slice.elem }, expr);
         },
         .expandOpt => {
             const expand_opt = expr.cast(.expandOpt);
@@ -5338,6 +5348,12 @@ pub const ChunkExt = struct {
             .callExpr => {
                 return c.semaCallExpr(expr);
             },
+            .expand_slice => {
+                const sym = try cte.expandTemplateOnCallArgs(c, c.sema.slice_tmpl, &.{node.cast(.expand_slice).elem}, node);
+                const type_id = sym.getStaticType().?;
+                const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, bt.MetaType, node, .{ .typeId = type_id });
+                return ExprResult.init(irIdx, CompactType.init(bt.MetaType));
+            },
             .expand_ptr => {
                 const sym = try cte.expandTemplateOnCallArgs(c, c.sema.pointer_tmpl, &.{node.cast(.expand_ptr).elem}, node);
                 const type_id = sym.getStaticType().?;
@@ -6507,6 +6523,7 @@ pub const Sema = struct {
     funcSigMap: std.HashMapUnmanaged(FuncSigKey, FuncSigId, FuncSigKeyContext, 80),
 
     future_tmpl: *cy.sym.Template,
+    slice_tmpl: *cy.sym.Template,
     option_tmpl: *cy.sym.Template,
     pointer_tmpl: *cy.sym.Template,
     list_tmpl: *cy.sym.Template,
@@ -6517,6 +6534,7 @@ pub const Sema = struct {
             .alloc = alloc,
             .compiler = compiler,
             .future_tmpl = undefined,
+            .slice_tmpl = undefined,
             .option_tmpl = undefined,
             .pointer_tmpl = undefined,
             .list_tmpl = undefined,

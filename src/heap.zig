@@ -1567,6 +1567,9 @@ pub const VmExt = struct {
     pub const allocPointer = Root.allocPointer;
     pub const allocInt = Root.allocInt;
     pub const allocBoxValue = Root.allocBoxValue;
+    pub const allocSlice = Root.allocSlice;
+    pub const allocEmptyObjectSmall = Root.allocEmptyObjectSmall;
+    pub const allocEmptyObject = Root.allocEmptyObject;
     pub const allocUnsetArrayObject = Root.allocUnsetArrayObject;
     pub const allocUnsetAstringObject = Root.allocUnsetAstringObject;
     pub const allocUnsetUstringObject = Root.allocUnsetUstringObject;
@@ -1839,6 +1842,19 @@ pub fn allocPointer(self: *cy.VM, type_id: cy.TypeId, ptr: ?*anyopaque) !Value {
         .rc = 1,
         .ptr = ptr,
     };
+    return Value.initNoCycPtr(obj);
+}
+
+pub fn allocSlice(self: *cy.VM, type_id: cy.TypeId, ptr: ?*anyopaque, len: usize) !Value {
+    const obj = try allocPoolObject(self);
+    obj.object = .{
+        .typeId = type_id,
+        .rc = 1,
+        .firstValue = undefined,
+    };
+    const fields = obj.object.getValuesPtr();
+    fields[0] = Value.initRaw(@intFromPtr(ptr));
+    fields[1] = Value.initInt(@intCast(len));
     return Value.initNoCycPtr(obj);
 }
 

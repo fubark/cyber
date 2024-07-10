@@ -1487,6 +1487,9 @@ pub const Encoder = struct {
                 try w.writeAll("*");
                 try self.write(w, node.cast(.expand_ptr).elem);
             },
+            .comptimeExpr => {
+                try self.write(w, node.cast(.comptimeExpr).child);
+            },
             else => {
                 try w.writeByte('<');
                 try w.writeAll(@tagName(node.type()));

@@ -356,6 +356,15 @@ fn genDeclEntry(vm: *cy.VM, view: ast.AstView, decl: *ast.Node, state: *ParseCyb
             }
             try vm.mapSet(entry, try vm.retainOrAllocAstring("funcs"), funcs_);
         },
+        .trait_decl => {
+            const trait_decl = decl.cast(.trait_decl);
+            const funcs_ = try vm.allocEmptyListDyn();
+            for (trait_decl.funcs) |func_decl| {
+                const f = try genImplicitFuncDeclEntry(vm, view, func_decl, state);
+                try funcs_.asHeapObject().list.append(vm.alloc, f);
+            }
+            try vm.mapSet(entry, try vm.retainOrAllocAstring("funcs"), funcs_);
+        },
         else => {
             log.tracev("{}", .{decl.type()});
             return error.Unsupported;

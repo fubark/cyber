@@ -451,6 +451,10 @@ func genDecl(decl Map) String:
         gen += "### `type $(decl['name'])`\n\n"
         for decl['funcs'] -> fdecl:
             gen += genFuncDecl(fdecl)
+    case 'trait_decl':
+        gen += "### `type $(decl['name']) trait`\n\n"
+        for decl['funcs'] -> fdecl:
+            gen += genFuncDecl(fdecl)
     case 'template':
         gen += genDecl(decl['child'])
     case 'specialization':

@@ -6,6 +6,9 @@ type Foo cstruct:
     a int
     b float
 
+test.eq(sizeof(int), 8)
+test.eq(sizeof(Foo), 16)
+
 -- Memory.new primitive
 var intp = mem.new(int)
 intp.* = 123

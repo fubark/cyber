@@ -648,8 +648,12 @@ pub fn queueTask(vm: *cy.VM) anyerror!Value {
 
 pub fn sizeof(vm: *cy.VM) Value {
     const type_id: cy.TypeId = @intCast(vm.getInt(0));
-    _ = type_id;
-    return Value.initInt(8);
+    const type_e = vm.c.types[type_id];
+    if (type_e.kind == .struct_t) {
+        return Value.initInt(8 * type_e.data.struct_t.nfields);
+    } else {
+        return Value.initInt(8);
+    }
 }
 
 pub fn typeof(vm: *cy.VM) Value {

@@ -318,8 +318,8 @@ fn loadUrl(vm: *cy.VM, alloc: std.mem.Allocator, url: []const u8) ![]const u8 {
 pub const use_ln = builtin.os.tag != .windows and builtin.os.tag != .wasi;
 const ln = @import("linenoise");
 
-pub fn replReadLine(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
-    const prefix = try vm.alloc.dupeZ(u8, args[0].asString());
+pub fn replReadLine(vm: *cy.VM) anyerror!cy.Value {
+    const prefix = try vm.alloc.dupeZ(u8, vm.getString(0));
     defer vm.alloc.free(prefix);
     if (use_ln) {
         const line = try LnReadLine.read(undefined, prefix);

@@ -91,10 +91,7 @@ typedef struct CLModule {
 } CLModule;
 
 // @host func is binded to this function pointer signature.
-typedef CLValue (*CLFuncFn)(CLVM* vm, const CLValue* args, uint8_t nargs);
-
-// Internal @host func used to do inline caching.
-typedef void (*CLInlineFuncFn)(CLVM* vm, uint8_t* pc, const CLValue* args, uint8_t nargs);
+typedef CLValue (*CLFuncFn)(CLVM* vm);
 
 typedef struct CLResolverParams {
     /// Chunk that invoked the resolver.
@@ -408,6 +405,11 @@ CLResultCode clRunReadyTasks(CLVM* vm);
 CLResultCode clCompile(CLVM* vm, CLStr uri, CLStr src, CLCompileConfig config);
 CLResultCode clValidate(CLVM* vm, CLStr src);
 
+/// Get call arguments.
+int64_t clGetInt(CLVM* vm, uint32_t idx);
+double clGetFloat(CLVM* vm, uint32_t idx);
+CLValue clGetValue(CLVM* vm, uint32_t idx);
+
 /// Convenience function to return the last error summary.
 /// Returns clNewErrorReportSummary if the last result was a CL_ERROR_COMPILE,
 /// or clNewPanicSummary if the last result was a CL_ERROR_PANIC,
@@ -565,7 +567,7 @@ CLStr clNewValueDump(CLVM* vm, CLValue val);
 double clAsFloat(CLValue val);
 bool clToBool(CLValue val);
 bool clAsBool(CLValue val);
-int64_t clAsInteger(CLValue val);
+int64_t clAsBoxInt(CLValue val);
 uint32_t clAsSymbolId(CLValue val);
 CLStr clToTempString(CLVM* vm, CLValue val);
 CLStr clToTempRawString(CLVM* vm, CLValue val);

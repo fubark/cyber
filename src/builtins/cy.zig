@@ -51,7 +51,7 @@ const UserVM = struct {
     vm: *cy.VM,
 };
 
-pub fn UserVM_new(vm: *cy.VM, _: [*]const cy.Value, _: u8) anyerror!cy.Value {
+pub fn UserVM_new(vm: *cy.VM) anyerror!cy.Value {
     const core_data = vm.getData(*cy.builtins.CoreData, "core");
 
     // Create an isolated VM.
@@ -68,22 +68,22 @@ pub fn UserVM_new(vm: *cy.VM, _: [*]const cy.Value, _: u8) anyerror!cy.Value {
     return cy.Value.initHostNoCycPtr(uvm);
 }
 
-pub fn UserVM_getErrorSummary(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
-    const uvm = args[0].castHostObject(*UserVM);
+pub fn UserVM_getErrorSummary(vm: *cy.VM) anyerror!cy.Value {
+    const uvm = vm.getValue(0).castHostObject(*UserVM);
     const summary = C.newErrorReportSummary(@ptrCast(uvm.vm));
     defer C.free(@ptrCast(uvm.vm), summary);
     return vm.allocString(C.fromStr(summary));
 }
 
-pub fn UserVM_getPanicSummary(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
-    const uvm = args[0].castHostObject(*UserVM);
+pub fn UserVM_getPanicSummary(vm: *cy.VM) anyerror!cy.Value {
+    const uvm = vm.getValue(0).castHostObject(*UserVM);
     const summary = C.newPanicSummary(@ptrCast(uvm.vm));
     defer C.free(@ptrCast(uvm.vm), summary);
     return vm.allocString(C.fromStr(summary));
 }
 
-pub fn UserValue_dump(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
-    const uval = args[0].castHostObject(*UserValue);
+pub fn UserValue_dump(vm: *cy.VM) anyerror!cy.Value {
+    const uval = vm.getValue(0).castHostObject(*UserValue);
     const uvm = uval.vm.castHostObject(*UserVM);
 
     const str = C.newValueDump(@ptrCast(uvm.vm), uval.val);
@@ -91,15 +91,14 @@ pub fn UserValue_dump(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Va
     return vm.allocString(C.fromStr(str));
 }
 
-pub fn UserValue_getTypeId(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
-    _ = vm;
-    const uval = args[0].castHostObject(*UserValue);
+pub fn UserValue_getTypeId(vm: *cy.VM) anyerror!cy.Value {
+    const uval = vm.getValue(0).castHostObject(*UserValue);
     const val: cy.Value = @bitCast(uval.val);
     return cy.Value.initInt(@intCast(val.getTypeId()));
 }
 
-pub fn UserValue_toHost(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
-    const uval = args[0].castHostObject(*UserValue);
+pub fn UserValue_toHost(vm: *cy.VM) anyerror!cy.Value {
+    const uval = vm.getValue(0).castHostObject(*UserValue);
     const val: cy.Value = @bitCast(uval.val);
     switch (val.getTypeId()) {
         bt.Void => return cy.Value.False,
@@ -117,17 +116,17 @@ pub fn UserValue_toHost(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.
     }
 }
 
-pub fn UserVM_eval(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
+pub fn UserVM_eval(vm: *cy.VM) anyerror!cy.Value {
     const core_data = vm.getData(*cy.builtins.CoreData, "core");
-    const uvm = args[0].castHostObject(*UserVM);
-    const src = args[1].asString();
+    const uvm = vm.getValue(0).castHostObject(*UserVM);
+    const src = vm.getString(1);
 
     var res: C.Value = @bitCast(cy.Value.Void);
     const code = C.eval(@ptrCast(uvm.vm), C.toStr(src), &res);
 
     const value: *UserValue = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.ValueT, @sizeOf(UserValue))));
-    vm.retain(args[0]);
-    value.vm = args[0];
+    vm.retain(vm.getValue(0));
+    value.vm = vm.getValue(0);
     value.val = @bitCast(res);
 
     const eval_res: *EvalResult = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.EvalResultT, @sizeOf(EvalResult))));
@@ -138,12 +137,12 @@ pub fn UserVM_eval(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value
     return cy.Value.initHostNoCycPtr(eval_res);
 }
 
-pub fn UserVM_evalExt(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
+pub fn UserVM_evalExt(vm: *cy.VM) anyerror!cy.Value {
     const core_data = vm.getData(*cy.builtins.CoreData, "core");
-    const uvm = args[0].castHostObject(*UserVM);
-    const uri = args[1].asString();
-    const src = args[2].asString();
-    const config = &args[3].asHeapObject().object;
+    const uvm = vm.getValue(0).castHostObject(*UserVM);
+    const uri = vm.getString(1);
+    const src = vm.getString(2);
+    const config = &vm.getValue(3).asHeapObject().object;
 
     const config_c = C.EvalConfig{
         .single_run = (try vm.getObjectField(config, "single_run")).asBool(),
@@ -158,8 +157,8 @@ pub fn UserVM_evalExt(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Va
     const code = C.evalExt(@ptrCast(uvm.vm), C.toStr(uri), C.toStr(src), config_c, &res);
 
     const value: *UserValue = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.ValueT, @sizeOf(UserValue))));
-    vm.retain(args[0]);
-    value.vm = args[0];
+    vm.retain(vm.getValue(0));
+    value.vm = vm.getValue(0);
     value.val = @bitCast(res);
 
     const eval_res: *EvalResult = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.EvalResultT, @sizeOf(EvalResult))));
@@ -199,8 +198,8 @@ pub fn UserValue_finalizer(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) void {
     ivm.vm.release(@bitCast(value.val));
 }
 
-pub fn parse(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
-    const src = args[0].asString();
+pub fn parse(vm: *cy.VM) anyerror!cy.Value {
+    const src = vm.getString(0);
 
     var parser: cy.Parser = undefined;
     try parser.init(vm.alloc);
@@ -464,8 +463,8 @@ fn parseCyberGenResult(vm: *cy.VM, parser: *const cy.Parser) !cy.Value {
     return root;
 }
 
-pub fn parseCyon(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
-    const src = args[0].asString();
+pub fn parseCyon(vm: *cy.VM) anyerror!cy.Value {
+    const src = vm.getString(0);
 
     var parser: cy.Parser = undefined;
     try parser.init(vm.alloc);
@@ -517,8 +516,8 @@ fn fromCyonValue(vm: *cy.VM, val: cy.DecodeValueIR) !cy.Value {
     }
 }
 
-pub fn toCyon(vm: *cy.VM, args: [*]const cy.Value, _: u8) anyerror!cy.Value {
-    const res = try allocToCyon(vm, vm.alloc, args[0]);
+pub fn toCyon(vm: *cy.VM) anyerror!cy.Value {
+    const res = try allocToCyon(vm, vm.alloc, vm.getValue(0));
     defer vm.alloc.free(res);
     return vm.allocString(res);
 }
@@ -535,7 +534,7 @@ pub fn allocToCyon(vm: *cy.VM, alloc: std.mem.Allocator, root: cy.Value) ![]cons
                         try ctx.encodeFloat(key, e.value.asF64());
                     },
                     bt.Integer => {
-                        try ctx.encodeInt(key, e.value.asInteger());
+                        try ctx.encodeInt(key, e.value.asBoxInt());
                     },
                     bt.String => {
                         const keyDupe = try uservm.alloc.dupe(u8, key);
@@ -566,7 +565,7 @@ pub fn allocToCyon(vm: *cy.VM, alloc: std.mem.Allocator, root: cy.Value) ![]cons
                         _ = try ctx.writer.write(",\n");
                     },
                     bt.Integer => {
-                        try ctx.encodeInt(it.asInteger());
+                        try ctx.encodeInt(it.asBoxInt());
                         _ = try ctx.writer.write(",\n");
                     },
                     bt.String => {
@@ -599,7 +598,7 @@ pub fn allocToCyon(vm: *cy.VM, alloc: std.mem.Allocator, root: cy.Value) ![]cons
                         try ctx.encodeFloat(val.asF64());
                     },
                     bt.Integer => {
-                        try ctx.encodeInt(val.asInteger());
+                        try ctx.encodeInt(val.asBoxInt());
                     },
                     bt.String => {
                         const uservm = cy.ptrAlignCast(*cy.VM, ctx.user_ctx);

@@ -1362,15 +1362,14 @@ pub const VM = struct {
             // TODO: Extract common code between this and `callSym`
             switch (func.type) {
                 .host_func => {
-                    const newFramePtr = fp + ret;
-
                     self.c.pc = pc;
                     self.c.framePtr = fp;
-                    const res: Value = @bitCast(func.data.host_func.?(@ptrCast(self), @ptrCast(newFramePtr + CallArgStart), nargs));
+                    self.c.call_ret = fp + ret;
+                    const res: Value = @bitCast(func.data.host_func.?(@ptrCast(self)));
                     if (res.isInterrupt()) {
                         return error.Panic;
                     }
-                    newFramePtr[0] = @bitCast(res);
+                    fp[ret] = @bitCast(res);
                     return cy.fiber.PcFp{
                         .pc = pc + cy.bytecode.CallSymInstLen,
                         .fp = fp,
@@ -1411,12 +1410,13 @@ pub const VM = struct {
                 self.c.pc = pc;
                 self.c.framePtr = framePtr;
 
-                const newFramePtr = framePtr + ret;
-                const res: Value = @bitCast(func.data.host_func.?(@ptrCast(self), @ptrCast(newFramePtr + CallArgStart), numArgs));
+                self.c.call_ret = framePtr + ret;
+                const res: Value = @bitCast(func.data.host_func.?(@ptrCast(self)));
                 if (res.isInterrupt()) {
                     return error.Panic;
                 }
-                newFramePtr[0] = @bitCast(res);
+                framePtr[ret] = @bitCast(res);
+                if (cy.Trace) self.c.trace_indent -= 1;
                 return cy.fiber.PcFp{
                     .pc = pc + cy.bytecode.CallSymInstLen,
                     .fp = framePtr,
@@ -1717,6 +1717,7 @@ pub const VM = struct {
 
     pub usingnamespace cy.heap.VmExt;
     pub usingnamespace cy.arc.VmExt;
+    pub usingnamespace VMGetArgExt;
 };
 
 fn evalCompareBool(left: Value, right: Value) bool {
@@ -3414,3 +3415,54 @@ fn spawn(args: struct {
     try child.spawn();
     return try child.wait();
 }
+
+pub const VMGetArgExt = struct {
+
+    pub fn getInt(vm: *VM, idx: u32) i64 {
+        return vm.c.call_ret[CallArgStart + idx].asInt();
+    }
+
+    pub fn setInt(vm: *VM, idx: u32, i: i64) void {
+        vm.c.call_ret[CallArgStart + idx] = Value.initInt(i);
+    }    
+
+    pub fn getFloat(vm: *VM, idx: u32) f64 {
+        return vm.c.call_ret[CallArgStart + idx].asF64();
+    }
+
+    pub fn getString(vm: *VM, idx: u32) []const u8 {
+        return vm.c.call_ret[CallArgStart + idx].asString();
+    }
+
+    pub fn getBool(vm: *VM, idx: u32) bool {
+        return vm.c.call_ret[CallArgStart + idx].asBool();
+    }
+
+    pub fn setBool(vm: *VM, idx: u32, b: bool) void {
+        vm.c.call_ret[CallArgStart + idx] = Value.initBool(b);
+    }    
+
+    pub fn getArray(vm: *VM, idx: u32) []const u8 {
+        return vm.c.call_ret[CallArgStart + idx].asArray();
+    }
+
+    pub fn getSymbol(vm: *VM, idx: u32) u32 {
+        return vm.c.call_ret[CallArgStart + idx].asSymbolId();
+    }
+
+    pub fn setSymbol(vm: *VM, idx: u32, id: u32) void {
+        vm.c.call_ret[CallArgStart + idx] = Value.initSymbol(id);
+    }    
+
+    pub fn getObject(vm: *VM, comptime Ptr: type, idx: u32) Ptr {
+        return vm.c.call_ret[CallArgStart + idx].castHeapObject(Ptr);
+    }
+
+    pub fn getHostObject(vm: *VM, comptime Ptr: type, idx: u32) Ptr {
+        return vm.c.call_ret[CallArgStart + idx].castHostObject(Ptr);
+    }
+
+    pub fn getValue(vm: *VM, idx: u32) Value {
+        return vm.c.call_ret[CallArgStart + idx];
+    }
+};

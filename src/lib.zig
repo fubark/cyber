@@ -294,6 +294,18 @@ test "clValidate()" {
     try t.eq(res, c.ErrorCompile);
 }
 
+export fn clGetInt(vm: *cy.VM, idx: u32) i64 {
+    return vm.getInt(idx);
+}
+
+export fn clGetFloat(vm: *cy.VM, idx: u32) f64 {
+    return vm.getFloat(idx);
+}
+
+export fn clGetValue(vm: *cy.VM, idx: u32) Value {
+    return vm.getValue(idx);
+}
+
 export fn clResultName(code: c.ResultCode) c.Str {
     switch (code) {
         c.Success => return c.toStr("Success"),
@@ -678,8 +690,8 @@ test "clAsBool()" {
     try t.eq(c.asBool(c.clFalse()), false);
 }
 
-export fn clAsInteger(val: Value) i64 {
-    return val.asInteger();
+export fn clAsBoxInt(val: Value) i64 {
+    return val.asBoxInt();
 }
 
 test "clAsInteger()" {

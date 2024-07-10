@@ -68,7 +68,7 @@ fn logger(str: C.Str) callconv(.C) void {
 }
 
 extern fn hostEvalJS(vm: *cy.VM, ptr: [*]const u8, len: usize) cy.Value;
-pub fn eval(vm: *cy.VM, args: [*]const cy.Value, _: u8) cy.Value {
+pub fn eval(vm: *cy.VM) cy.Value {
     const str = vm.getOrBufPrintValueStr(&cy.tempBuf, args[0]) catch cy.fatal();
     return hostEvalJS(vm, str.ptr, str.len);
 }

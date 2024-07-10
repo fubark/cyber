@@ -885,7 +885,7 @@ typedef struct PcFpResult {
     ResultCode code;
 } PcFpResult;
 
-typedef Value (*HostFuncFn)(VM* vm, const Value* args, uint8_t nargs);
+typedef Value (*HostFuncFn)(VM* vm);
 
 // C API.
 ResultCode execBytecode(VM* vm);

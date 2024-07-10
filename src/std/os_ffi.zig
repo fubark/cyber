@@ -437,16 +437,16 @@ const CGen = struct {
     }
 };
 
-pub fn ffiCbind(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn ffiCbind(vm: *cy.VM) anyerror!Value {
     const alloc = vm.alloc;
-    const ffi = args[0].castHostObject(*FFI);
-    const mt = args[1].asHeapObject();
+    const ffi = vm.getHostObject(*FFI, 0);
+    const mt = vm.getValue(1).asHeapObject();
     if (mt.metatype.typeKind != @intFromEnum(cy.heap.MetaTypeKind.object)) {
         log.tracev("Not an object Symbol", .{});
         return error.InvalidArgument;
     }
     const typeId = mt.metatype.type;
-    const fieldsList = &args[2].asHeapObject().list;
+    const fieldsList = &vm.getValue(2).asHeapObject().list;
 
     if (ffi.typeToCStruct.contains(typeId)) {
         log.tracev("Object type already declared.", .{});
@@ -466,10 +466,10 @@ pub fn ffiCbind(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return Value.Void;
 }
 
-pub fn ffiCfunc(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const ffi = args[0].castHostObject(*FFI);
+pub fn ffiCfunc(vm: *cy.VM) anyerror!Value {
+    const ffi = vm.getHostObject(*FFI, 0);
 
-    const funcArgs = args[2].asHeapObject().list.items();
+    const funcArgs = vm.getObject(*cy.heap.List, 2).items();
 
     const ctypes = try vm.alloc.alloc(CType, funcArgs.len);
     if (funcArgs.len > 0) {
@@ -478,9 +478,9 @@ pub fn ffiCfunc(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
         }
     }
 
-    const retType = try ffi.toCType(vm, args[3]);
+    const retType = try ffi.toCType(vm, vm.getValue(3));
 
-    const symName = try vm.getOrBufPrintValueStr(&cy.tempBuf, args[1]);
+    const symName = try vm.getOrBufPrintValueStr(&cy.tempBuf, vm.getValue(1));
     try ffi.cfuncs.append(vm.alloc, .{
         .namez = try vm.alloc.dupeZ(u8, symName),
         .params = ctypes,
@@ -493,10 +493,10 @@ pub fn ffiCfunc(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return Value.Void;
 }
 
-pub fn ffiNew(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn ffiNew(vm: *cy.VM) anyerror!Value {
     // const ffi = args[0].castHostObject(*FFI);
 
-    const csym = try std.meta.intToEnum(Symbol, args[1].asSymbolId());
+    const csym = try std.meta.intToEnum(Symbol, vm.getSymbol(1));
     const size = try sizeOf(csym);
 
     const ptr = std.c.malloc(size);
@@ -778,8 +778,8 @@ fn toCyType(ctype: CType, forRet: bool) !types.TypeId {
     }
 }
 
-pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Value {
-    const ffi = args[0].castHostObject(*FFI);
+pub fn ffiBindLib(vm: *cy.VM, config: BindLibConfig) !Value {
+    const ffi = vm.getHostObject(*FFI, 0);
 
     var success = false;
 
@@ -790,8 +790,8 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
         }
     }
 
-    const path = args[1].asHeapObject();
-    if (path.object.getValue(0).asInteger() == 0) {
+    const path = vm.getObject(*cy.heap.Object, 1);
+    if (path.getValue(0).asInt() == 0) {
         if (builtin.os.tag == .macos) {
             const exe = try std.fs.selfExePathAlloc(vm.alloc);
             defer vm.alloc.free(exe);
@@ -800,7 +800,7 @@ pub fn ffiBindLib(vm: *cy.VM, args: [*]const Value, config: BindLibConfig) !Valu
             lib.* = try dlopen("");
         }
     } else {
-        const path_s = path.object.getValue(1).asString();
+        const path_s = path.getValue(1).asString();
         log.tracev("bindLib {s}", .{path_s});
         lib.* = dlopen(path_s) catch |err| {
             if (err == error.FileNotFound) {
@@ -1113,13 +1113,13 @@ fn breakpoint() callconv(.C) void {
     @breakpoint();
 }
 
-pub fn ffiBindCallback(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn ffiBindCallback(vm: *cy.VM) anyerror!Value {
     if (!cy.hasFFI) return vm.prepPanic("Unsupported.");
 
-    const ffi = args[0].castHostObject(*FFI);
-    const func = args[1];
-    const params = args[2].asHeapObject().list.items();
-    const ret = try ffi.toCType(vm, args[3]);
+    const ffi = vm.getHostObject(*FFI, 0);
+    const func = vm.getValue(1);
+    const params = vm.getObject(*cy.heap.List, 2).items();
+    const ret = try ffi.toCType(vm, vm.getValue(3));
 
     var csrc: std.ArrayListUnmanaged(u8) = .{};
     defer csrc.deinit(vm.alloc);
@@ -1234,30 +1234,30 @@ pub fn ffiBindCallback(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return res;
 }
 
-pub fn ffiBindObjPtr(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    if (!args[1].isPointer()) return error.InvalidArgument;
+pub fn ffiBindObjPtr(vm: *cy.VM) anyerror!Value {
+    if (!vm.getValue(1).isPointer()) return error.InvalidArgument;
 
-    const ffi = args[0].castHostObject(*FFI);
-    const obj = args[1].asHeapObject();
+    const ffi = vm.getHostObject(*FFI, 0);
+    const obj = vm.getValue(1).asHeapObject();
     const res = vm.allocPointer(@ptrCast(obj));
 
     // Retain and managed by FFI context.
     vm.retainObject(obj);
-    try ffi.managed.append(vm.alloc, args[1]);
+    try ffi.managed.append(vm.alloc, vm.getValue(1));
     
     return res;
 }
 
-pub fn ffiUnbindObjPtr(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    if (!args[1].isPointer()) return error.InvalidArgument;
+pub fn ffiUnbindObjPtr(vm: *cy.VM) anyerror!Value {
+    if (!vm.getValue(1).isPointer()) return error.InvalidArgument;
 
-    const ffi = args[0].castHostObject(*FFI);
-    const obj = args[1].asHeapObject();
+    const ffi = vm.getHostObject(*FFI, 0);
+    const val = vm.getValue(1);
 
     // Linear scan for now.
     for (ffi.managed.items, 0..) |ffiObj, i| {
-        if (args[1].val == ffiObj.val) {
-            vm.releaseObject(obj);
+        if (val.val == ffiObj.val) {
+            vm.release(val);
             _ = ffi.managed.swapRemove(i);
             break;
         }

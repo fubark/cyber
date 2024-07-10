@@ -146,9 +146,9 @@ pub fn listSort(vm: *cy.VM, args: [*]const Value, nargs: u8) Value {
     return Value.None;
 }
 
-pub fn listRemove(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const index: i64 = @intCast(args[1].asInteger());
-    const list = args[0].asHeapObject();
+pub fn listRemove(vm: *cy.VM) Value {
+    const index: i64 = @intCast(vm.getInt(1));
+    const list = vm.getValue(0).asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index >= inner.len) {
         return rt.prepThrowError(vm, .OutOfBounds);
@@ -159,9 +159,9 @@ pub fn listRemove(vm: *cy.VM, args: [*]const Value, _: u8) Value {
 }
 
 /// `mapIndex` with a different error message.
-pub fn getGlobal(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const map = args[0].asHeapObject();
-    if (map.map.map().get(args[1])) |val| {
+pub fn getGlobal(vm: *cy.VM) Value {
+    const map = vm.getValue(0).asHeapObject();
+    if (map.map.map().get(vm.getValue(1))) |val| {
         vm.retain(val);
         return val;
     } else {
@@ -169,15 +169,15 @@ pub fn getGlobal(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     }
 }
 
-pub fn tableInitPair(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const table = args[0].asHeapObject();
-    try table.table.set(vm, args[1], args[2]);
+pub fn tableInitPair(vm: *cy.VM) anyerror!Value {
+    const table = vm.getValue(0).asHeapObject();
+    try table.table.set(vm, vm.getValue(1), vm.getValue(2));
     return Value.Void;
 }
 
-pub fn tableGet(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const table = args[0].asHeapObject();
-    const name = args[1].asString();
+pub fn tableGet(vm: *cy.VM) Value {
+    const table = vm.getValue(0).asHeapObject();
+    const name = vm.getString(1);
     if (table.table.map().getByString(name)) |val| {
         vm.retain(val);
         return val;
@@ -187,15 +187,15 @@ pub fn tableGet(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     return Value.Void;
 }
 
-pub fn tableSet(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const table = args[0].asHeapObject();
-    try table.table.set(vm, args[1], args[2]);
+pub fn tableSet(vm: *cy.VM) anyerror!Value {
+    const table = vm.getValue(0).asHeapObject();
+    try table.table.set(vm, vm.getValue(1), vm.getValue(2));
     return Value.Void;
 }
 
-pub fn tableIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const table = args[0].asHeapObject();
-    if (table.table.map().get(args[1])) |val| {
+pub fn tableIndex(vm: *cy.VM) Value {
+    const table = vm.getValue(0).asHeapObject();
+    if (table.table.map().get(vm.getValue(1))) |val| {
         vm.retain(val);
         return val;
     } else {
@@ -204,9 +204,9 @@ pub fn tableIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     return Value.Void;
 }
 
-pub fn mapIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const map = args[0].asHeapObject();
-    if (map.map.map().get(args[1])) |val| {
+pub fn mapIndex(vm: *cy.VM) Value {
+    const map = vm.getValue(0).asHeapObject();
+    if (map.map.map().get(vm.getValue(1))) |val| {
         vm.retain(val);
         return val;
     } else {
@@ -214,15 +214,15 @@ pub fn mapIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     }
 }
 
-pub fn mapSetIndex(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const map = args[0].asHeapObject();
-    try map.map.set(vm, args[1], args[2]);
+pub fn mapSetIndex(vm: *cy.VM) anyerror!Value {
+    const map = vm.getValue(0).asHeapObject();
+    try map.map.set(vm, vm.getValue(1), vm.getValue(2));
     return Value.Void;
 }
 
-pub fn tupleIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const index: i64 = @intCast(args[1].asInteger());
-    const tuple = args[0].asHeapObject();
+pub fn tupleIndex(vm: *cy.VM) Value {
+    const index: i64 = @intCast(vm.getInt(1));
+    const tuple = vm.getValue(0).asHeapObject();
     if (index < 0 or index > tuple.tuple.len) {
         return vm.prepPanic("Out of bounds.");
     } 
@@ -231,9 +231,9 @@ pub fn tupleIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     return value;
 }
 
-pub fn listIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const index: i64 = @intCast(args[1].asInteger());
-    const list = args[0].asHeapObject();
+pub fn listIndex(vm: *cy.VM) Value {
+    const index: i64 = @intCast(vm.getInt(1));
+    const list = vm.getValue(0).asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index > inner.len) {
         return vm.prepPanic("Out of bounds.");
@@ -243,22 +243,22 @@ pub fn listIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     return value;
 }
 
-pub fn listSetIndex(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const index: i64 = @intCast(args[1].asInteger());
-    const list = args[0].asHeapObject();
+pub fn listSetIndex(vm: *cy.VM) Value {
+    const index: i64 = @intCast(vm.getInt(1));
+    const list = vm.getValue(0).asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index > inner.len) {
         return vm.prepPanic("Out of bounds.");
     } 
     vm.release(inner.buf[@intCast(index)]);
-    vm.retain(args[2]);
-    inner.buf[@intCast(index)] = args[2];
+    vm.retain(vm.getValue(2));
+    inner.buf[@intCast(index)] = vm.getValue(2);
     return Value.Void;
 }
 
-pub fn listSlice(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const list = args[0].asHeapObject();
-    const range = args[1].asHeapObject();
+pub fn listSlice(vm: *cy.VM) anyerror!Value {
+    const list = vm.getValue(0).asHeapObject();
+    const range = vm.getValue(1).asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     var start: i64 = undefined;
     if (range.range.has_start) {
@@ -291,10 +291,10 @@ pub fn listSlice(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return cy.heap.allocListDyn(vm, elems);
 }
 
-pub fn listInsert(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const index: i64 = @intCast(args[1].asInteger());
-    const value = args[2];
-    const list = args[0].asHeapObject();
+pub fn listInsert(vm: *cy.VM) Value {
+    const index: i64 = @intCast(vm.getInt(1));
+    const value = vm.getValue(2);
+    const list = vm.getValue(0).asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index > inner.len) {
         return rt.prepThrowError(vm, .OutOfBounds);
@@ -305,12 +305,12 @@ pub fn listInsert(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     return Value.Void;
 }
 
-pub fn listJoin(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const obj = args[0].asHeapObject();
+pub fn listJoin(vm: *cy.VM) anyerror!Value {
+    const obj = vm.getValue(0).asHeapObject();
     const items = obj.list.items();
     if (items.len > 0) {
-        var is_ascii = args[1].asHeapObject().string.getType().isAstring();
-        const sep = args[1].asString();
+        var is_ascii = vm.getObject(*cy.heap.String, 1).getType().isAstring();
+        const sep = vm.getString(1);
 
         // First record length.
         var byteLen: u32 = 0;
@@ -362,9 +362,9 @@ pub fn listJoin(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     }
 }
 
-pub fn listAppendAll(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const obj = args[0].asHeapObject();
-    const list = args[1].asHeapObject();
+pub fn listAppendAll(vm: *cy.VM) anyerror!Value {
+    const obj = vm.getValue(0).asHeapObject();
+    const list = vm.getValue(1).asHeapObject();
     for (list.list.items()) |it| {
         vm.retain(it);
         try obj.list.append(vm.alloc, it);
@@ -372,15 +372,15 @@ pub fn listAppendAll(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return Value.Void;
 }
 
-pub fn listAppend(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const obj = args[0].asHeapObject();
-    vm.retain(args[1]);
-    try obj.list.append(vm.alloc, args[1]);
+pub fn listAppend(vm: *cy.VM) anyerror!Value {
+    const obj = vm.getValue(0).asHeapObject();
+    vm.retain(vm.getValue(1));
+    try obj.list.append(vm.alloc, vm.getValue(1));
     return Value.Void;
 }
 
-pub fn listIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
+pub fn listIteratorNext(vm: *cy.VM) Value {
+    const obj = vm.getValue(0).asHeapObject();
     const list = &obj.listIter.inner.list.asHeapObject().list;
     if (obj.listIter.inner.nextIdx < list.list.len) {
         defer obj.listIter.inner.nextIdx += 1;
@@ -390,16 +390,16 @@ pub fn listIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     } else return anyNone(vm) catch cy.fatal();
 }
 
-pub fn listIterator(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    vm.retain(args[0]);
-    return vm.allocListIter(@intCast(args[1].asInteger()), args[0]) catch fatal();
+pub fn listIterator(vm: *cy.VM) Value {
+    vm.retain(vm.getValue(0));
+    return vm.allocListIter(@intCast(vm.getInt(1)), vm.getValue(0)) catch fatal();
 }
 
-pub fn listResize(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const recv = args[0];
+pub fn listResize(vm: *cy.VM) Value {
+    const recv = vm.getValue(0);
     const list = recv.asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
-    const size: u32 = @intCast(args[1].asInteger());
+    const size: u32 = @intCast(vm.getInt(1));
     if (inner.len < size) {
         const oldLen = inner.len;
         inner.resize(vm.alloc, size) catch cy.fatal();
@@ -416,14 +416,14 @@ pub fn listResize(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     return Value.Void;
 }
 
-pub fn mapIterator(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
+pub fn mapIterator(vm: *cy.VM) Value {
+    const obj = vm.getValue(0).asHeapObject();
     vm.retainObject(obj);
-    return vm.allocMapIterator(args[0]) catch fatal();
+    return vm.allocMapIterator(vm.getValue(0)) catch fatal();
 }
 
-pub fn mapIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
+pub fn mapIteratorNext(vm: *cy.VM) Value {
+    const obj = vm.getValue(0).asHeapObject();
     const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.castHeapObject(*cy.heap.Map).inner);
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
         vm.retain(entry.key);
@@ -433,21 +433,21 @@ pub fn mapIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     } else return TupleNone(vm) catch cy.fatal();
 }
 
-pub fn mapSize(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
+pub fn mapSize(vm: *cy.VM) Value {
+    const obj = vm.getValue(0).asHeapObject();
     const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     return Value.initInt(@intCast(inner.size));
 }
 
-pub fn mapRemove(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
+pub fn mapRemove(vm: *cy.VM) Value {
+    const obj = vm.getValue(0).asHeapObject();
     const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-    const removed = inner.remove(vm, args[1]);
+    const removed = inner.remove(vm, vm.getValue(1));
     return Value.initBool(removed);
 }
 
-pub fn listLen(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    const list = args[0].asHeapObject();
+pub fn listLen(vm: *cy.VM) Value {
+    const list = vm.getValue(0).asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     return Value.initInt(@intCast(inner.len));
 }
@@ -477,67 +477,67 @@ pub fn listLen(_: *cy.VM, args: [*]const Value, _: u8) Value {
 //     return Value.None;
 // }
 
-pub fn mapContains(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
+pub fn mapContains(vm: *cy.VM) Value {
+    const obj = vm.getValue(0).asHeapObject();
     const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-    return Value.initBool(inner.contains(args[1]));
+    return Value.initBool(inner.contains(vm.getValue(1)));
 }
 
-pub fn mapGet(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
+pub fn mapGet(vm: *cy.VM) Value {
+    const obj = vm.getValue(0).asHeapObject();
     const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-    if (inner.get(args[1])) |val| {
+    if (inner.get(vm.getValue(1))) |val| {
         vm.retain(val);
         return anySome(vm, val) catch cy.fatal();
     } else return anyNone(vm) catch cy.fatal();
 }
 
-pub fn intNeg(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initInt(-args[0].asInteger());
+pub fn intNeg(vm: *cy.VM) Value {
+    return Value.initInt(-vm.getInt(0));
 }
 
-pub fn intLess(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initBool(args[0].asInteger() < args[1].asInteger());
+pub fn intLess(vm: *cy.VM) Value {
+    return Value.initBool(vm.getInt(0) < vm.getInt(1));
 }
 
-pub fn intLessEq(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initBool(args[0].asInteger() <= args[1].asInteger());
+pub fn intLessEq(vm: *cy.VM) Value {
+    return Value.initBool(vm.getInt(0) <= vm.getInt(1));
 }
 
-pub fn intGreater(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initBool(args[0].asInteger() > args[1].asInteger());
+pub fn intGreater(vm: *cy.VM) Value {
+    return Value.initBool(vm.getInt(0) > vm.getInt(1));
 }
 
-pub fn intGreaterEq(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initBool(args[0].asInteger() >= args[1].asInteger());
+pub fn intGreaterEq(vm: *cy.VM) Value {
+    return Value.initBool(vm.getInt(0) >= vm.getInt(1));
 }
 
-pub fn intAdd(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initInt(args[0].asInteger() + args[1].asInteger());
+pub fn intAdd(vm: *cy.VM) Value {
+    return Value.initInt(vm.getInt(0) +% vm.getInt(1));
 }
 
-pub fn intSub(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initInt(args[0].asInteger() - args[1].asInteger());
+pub fn intSub(vm: *cy.VM) Value {
+    return Value.initInt(vm.getInt(0) -% vm.getInt(1));
 }
 
-pub fn intMul(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initInt(args[0].asInteger() * args[1].asInteger());
+pub fn intMul(vm: *cy.VM) Value {
+    return Value.initInt(vm.getInt(0) *% vm.getInt(1));
 }
 
-pub fn intDiv(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const right = args[1].asInteger();
+pub fn intDiv(vm: *cy.VM) Value {
+    const right = vm.getInt(1);
     if (right == 0) return vm.prepPanic("Division by zero.");
-    return Value.initInt(@divTrunc(args[0].asInteger(), right));
+    return Value.initInt(@divTrunc(vm.getInt(0), right));
 }
 
-pub fn intMod(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const right = args[1].asInteger();
+pub fn intMod(vm: *cy.VM) Value {
+    const right = vm.getInt(1);
     if (right == 0) return vm.prepPanic("Division by zero.");
-    return Value.initInt(@mod(args[0].asInteger(), right));
+    return Value.initInt(@mod(vm.getInt(0), right));
 }
 
-pub fn intPow(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const right = args[1].asInteger();
+pub fn intPow(vm: *cy.VM) Value {
+    const right = vm.getInt(1);
     if (right == 0) return vm.prepPanic("Division by zero.");
     return Value.initInt(std.math.powi(i48, args[0].asInteger(), right) catch |err| {
         switch (err) {
@@ -547,76 +547,76 @@ pub fn intPow(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     });
 }
 
-pub fn intAnd(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initInt(args[0].asInteger() & args[1].asInteger());
+pub fn intAnd(vm: *cy.VM) Value {
+    return Value.initInt(vm.getInt(0) & vm.getInt(1));
 }
 
-pub fn intOr(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initInt(args[0].asInteger() | args[1].asInteger());
+pub fn intOr(vm: *cy.VM) Value {
+    return Value.initInt(vm.getInt(0) | vm.getInt(1));
 }
 
-pub fn intXor(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initInt(args[0].asInteger() ^ args[1].asInteger());
+pub fn intXor(vm: *cy.VM) Value {
+    return Value.initInt(vm.getInt(0) ^ vm.getInt(1));
 }
 
-pub fn intLeftShift(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const right = args[1].asInteger();
+pub fn intLeftShift(vm: *cy.VM) Value {
+    const right = vm.getInt(1);
     if (right > 48 or right < 0) return vm.prepPanic("Out of bounds.");
-    return Value.initInt(args[0].asInteger() << @intCast(right));
+    return Value.initInt(vm.getInt(0) << @intCast(right));
 }
 
-pub fn intRightShift(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const right = args[1].asInteger();
+pub fn intRightShift(vm: *cy.VM) Value {
+    const right = vm.getInt(1);
     if (right > 48 or right < 0) return vm.prepPanic("Out of bounds.");
-    return Value.initInt(args[0].asInteger() >> @intCast(right));
+    return Value.initInt(vm.getInt(0) >> @intCast(right));
 }
 
-pub fn intNot(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initInt(~args[0].asInteger());
+pub fn intNot(vm: *cy.VM) Value {
+    return Value.initInt(~vm.getInt(0));
 }
 
-pub fn floatNeg(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(-args[0].asF64());
+pub fn floatNeg(vm: *cy.VM) Value {
+    return Value.initF64(-vm.getFloat(0));
 }
 
-pub fn floatLess(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initBool(args[0].asF64() < args[1].asF64());
+pub fn floatLess(vm: *cy.VM) Value {
+    return Value.initBool(vm.getFloat(0) < vm.getFloat(1));
 }
 
-pub fn floatLessEq(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initBool(args[0].asF64() <= args[1].asF64());
+pub fn floatLessEq(vm: *cy.VM) Value {
+    return Value.initBool(vm.getFloat(0) <= vm.getFloat(1));
 }
 
-pub fn floatGreater(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initBool(args[0].asF64() > args[1].asF64());
+pub fn floatGreater(vm: *cy.VM) Value {
+    return Value.initBool(vm.getFloat(0) > vm.getFloat(1));
 }
 
-pub fn floatGreaterEq(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initBool(args[0].asF64() >= args[1].asF64());
+pub fn floatGreaterEq(vm: *cy.VM) Value {
+    return Value.initBool(vm.getFloat(0) >= vm.getFloat(1));
 }
 
-pub fn floatAdd(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(args[0].asF64() + args[1].asF64());
+pub fn floatAdd(vm: *cy.VM) Value {
+    return Value.initF64(vm.getFloat(0) + vm.getFloat(1));
 }
 
-pub fn floatSub(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(args[0].asF64() - args[1].asF64());
+pub fn floatSub(vm: *cy.VM) Value {
+    return Value.initF64(vm.getFloat(0) - vm.getFloat(1));
 }
 
-pub fn floatMul(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(args[0].asF64() * args[1].asF64());
+pub fn floatMul(vm: *cy.VM) Value {
+    return Value.initF64(vm.getFloat(0) * vm.getFloat(1));
 }
 
-pub fn floatDiv(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(args[0].asF64() / args[1].asF64());
+pub fn floatDiv(vm: *cy.VM) Value {
+    return Value.initF64(vm.getFloat(0) / vm.getFloat(1));
 }
 
-pub fn floatMod(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(@mod(args[0].asF64(), args[1].asF64()));
+pub fn floatMod(vm: *cy.VM) Value {
+    return Value.initF64(@mod(vm.getFloat(0), vm.getFloat(1)));
 }
 
-pub fn floatPow(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(std.math.pow(f64, args[0].asF64(), args[1].asF64()));
+pub fn floatPow(vm: *cy.VM) Value {
+    return Value.initF64(std.math.pow(f64, vm.getFloat(0), vm.getFloat(1)));
 }
 
 pub const QuickenType = enum(u8) {

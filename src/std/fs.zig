@@ -172,16 +172,17 @@ test "fs internals" {
     try t.eq(@offsetOf(File, "fd"), @offsetOf(Dir, "fd"));
 }
 
-pub fn fileStreamLines(vm: *cy.VM, args: [*]const Value, nargs: u8) anyerror!Value {
+pub fn fileStreamLines(vm: *cy.VM) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
-    return fileStreamLines1(vm, &[_]Value{ args[0], Value.initInt(4096) }, nargs);
+    vm.setInt(1, 4096);
+    return fileStreamLines1(vm);
 }
 
-pub fn fileStreamLines1(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn fileStreamLines1(vm: *cy.VM) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
     // Don't need to release obj since it's being returned.
-    const file = args[0].castHostObject(*File);
-    const bufSize: usize = @intCast(args[1].asInteger());
+    const file = vm.getHostObject(*File, 0);
+    const bufSize: usize = @intCast(vm.getInt(1));
     var createReadBuf = true;
     if (file.hasReadBuf) {
         if (bufSize != file.readBufCap) {
@@ -200,52 +201,52 @@ pub fn fileStreamLines1(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value 
         file.hasReadBuf = true;
     }
 
-    vm.retain(args[0]);
-    return args[0];
+    vm.retain(vm.getValue(0));
+    return vm.getValue(0);
 }
 
-pub fn dirWalk(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+pub fn dirWalk(vm: *cy.VM) Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
-    const dir = args[0].castHostObject(*Dir);
+    const dir = vm.getHostObject(*Dir, 0);
     if (dir.iterable) {
-        vm.retain(args[0]);
-        return allocDirIterator(vm, args[0], true) catch cy.fatal();
+        vm.retain(vm.getValue(0));
+        return allocDirIterator(vm, vm.getValue(0), true) catch cy.fatal();
     } else {
         return rt.prepThrowError(vm, .NotAllowed);
     }
 }
 
-pub fn dirIterator(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+pub fn dirIterator(vm: *cy.VM) Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
-    const dir = args[0].castHostObject(*Dir);
+    const dir = vm.getHostObject(*Dir, 0);
     if (dir.iterable) {
-        vm.retain(args[0]);
-        return allocDirIterator(vm, args[0], false) catch cy.fatal();
+        vm.retain(vm.getValue(0));
+        return allocDirIterator(vm, vm.getValue(0), false) catch cy.fatal();
     } else {
         return rt.prepThrowError(vm, .NotAllowed);
     }
 }
 
-pub fn fileIterator(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn fileIterator(vm: *cy.VM) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     // Don't need to release obj since it's being returned.
-    const file = args[0].castHostObject(*File);
+    const file = vm.getHostObject(*File, 0);
     file.curPos = 0;
     file.readBufEnd = 0;
-    vm.retain(args[0]);
-    return args[0];
+    vm.retain(vm.getValue(0));
+    return vm.getValue(0);
 }
 
-pub fn fileSeekFromEnd(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn fileSeekFromEnd(vm: *cy.VM) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
-    const fileo = args[0].castHostObject(*File);
+    const fileo = vm.getHostObject(*File, 0);
     if (fileo.closed) {
         return rt.prepThrowError(vm, .Closed);
     }
 
-    const numBytes = args[1].asInteger();
+    const numBytes = vm.getInt(1);
     if (numBytes > 0) {
         return rt.prepThrowError(vm, .InvalidArgument);
     }
@@ -255,30 +256,30 @@ pub fn fileSeekFromEnd(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return Value.Void;
 }
 
-pub fn fileSeekFromCur(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn fileSeekFromCur(vm: *cy.VM) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
-    const fileo = args[0].castHostObject(*File);
+    const fileo = vm.getHostObject(*File, 0);
     if (fileo.closed) {
         return rt.prepThrowError(vm, .Closed);
     }
 
-    const numBytes = args[1].asInteger();
+    const numBytes = vm.getInt(1);
 
     const file = fileo.getStdFile();
     try file.seekBy(numBytes);
     return Value.Void;
 }
 
-pub fn fileSeek(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn fileSeek(vm: *cy.VM) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
-    const fileo = args[0].castHostObject(*File);
+    const fileo = vm.getHostObject(*File, 0);
     if (fileo.closed) {
         return rt.prepThrowError(vm, .Closed);
     }
 
-    const numBytes = args[1].asInteger();
+    const numBytes = vm.getInt(1);
     if (numBytes < 0) {
         return rt.prepThrowError(vm, .InvalidArgument);
     }
@@ -289,37 +290,37 @@ pub fn fileSeek(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return Value.Void;
 }
 
-pub fn fileWrite(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn fileWrite(vm: *cy.VM) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
-    const fileo = args[0].castHostObject(*File);
+    const fileo = vm.getHostObject(*File, 0);
     if (fileo.closed) {
         return rt.prepThrowError(vm, .Closed);
     }
 
-    const buf = try vm.getOrBufPrintValueRawStr(&cy.tempBuf, args[1]);
+    const buf = try vm.getOrBufPrintValueRawStr(&cy.tempBuf, vm.getValue(1));
     const file = fileo.getStdFile();
     const numWritten = try file.write(buf);
     return Value.initInt(@intCast(numWritten));
 }
 
-pub fn fileClose(vm: *cy.VM, args: [*]const Value, _: u8) Value {
+pub fn fileClose(vm: *cy.VM) Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
-    const file = args[0].castHostObject(*File);
+    const file = vm.getHostObject(*File, 0);
     file.close();
     return Value.Void;
 }
 
-pub fn fileRead(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn fileRead(vm: *cy.VM) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
-    const fileo = args[0].castHostObject(*File);
+    const fileo = vm.getHostObject(*File, 0);
     if (fileo.closed) {
         return rt.prepThrowError(vm, .Closed);
     }
 
-    const numBytes = args[1].asInteger();
+    const numBytes = vm.getInt(1);
     if (numBytes <= 0) {
         return error.InvalidArgument;
     }
@@ -336,10 +337,10 @@ pub fn fileRead(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return vm.allocArray(tempBuf.buf[0..numRead]);
 }
 
-pub fn fileReadAll(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn fileReadAll(vm: *cy.VM) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
-    const fileo = args[0].castHostObject(*File);
+    const fileo = vm.getHostObject(*File, 0);
     if (fileo.closed) {
         return rt.prepThrowError(vm, .Closed);
     }
@@ -368,27 +369,27 @@ pub fn fileReadAll(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     }
 }
 
-pub fn fileOrDirStat(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn fileOrDirStat(vm: *cy.VM) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
     const cli_data = vm.getData(*cli.CliData, "cli");
 
-    const obj = args[0].asHeapObject();
+    const obj = vm.getValue(0).asHeapObject();
     const typeId = obj.getTypeId();
     if (typeId == cli_data.FileT) {
-        const file = args[0].castHostObject(*File);
+        const file = vm.getHostObject(*File, 0);
         if (file.closed) {
             return rt.prepThrowError(vm, .Closed);
         }
     } else if (typeId == cli_data.DirT) {
-        const dir = args[0].castHostObject(*Dir);
+        const dir = vm.getHostObject(*Dir, 0);
         if (dir.closed) {
             return rt.prepThrowError(vm, .Closed);
         }
     } else return error.Unexpected;
 
     // File/Dir share the same fd member offset.
-    const fileo = args[0].castHostObject(*File);
+    const fileo = vm.getHostObject(*File, 0);
     const file = fileo.getStdFile();
     const stat = try file.stat();
 
@@ -423,10 +424,10 @@ pub fn fileOrDirStat(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return mapv;
 }
 
-pub fn fileNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn fileNext(vm: *cy.VM) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
-    const fileo = args[0].castHostObject(*File);
+    const fileo = vm.getHostObject(*File, 0);
     if (fileo.iterLines) {
         const readBuf = fileo.readBuf[0..fileo.readBufCap];
         if (cy.string.getLineEnd(readBuf[fileo.curPos..fileo.readBufEnd])) |end| {
@@ -486,10 +487,10 @@ const MapSome = cy.builtins.MapSome;
 const ArrayNone = cy.builtins.ArrayNone;
 const ArraySome = cy.builtins.ArraySome;
 
-pub fn dirIteratorNext(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
+pub fn dirIteratorNext(vm: *cy.VM) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
 
-    const iter = args[0].castHostObject(*DirIterator);
+    const iter = vm.getHostObject(*DirIterator, 0);
     if (iter.recursive) {
         const walker = cy.ptrAlignCast(*std.fs.Dir.Walker, &iter.inner.walker);
         const entryOpt = try walker.next();

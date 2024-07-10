@@ -47,9 +47,9 @@ fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
 }
 
 /// Simply returns the value so the caller get's an erased `any` type.
-fn erase(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    vm.retain(args[0]);
-    return args[0];
+fn erase(vm: *cy.VM) Value {
+    vm.retain(vm.getValue(0));
+    return vm.getValue(0);
 }
 
 pub fn eq(vm: *cy.VM, args: [*]const cy.Value, _: u8) Value {
@@ -224,8 +224,8 @@ fn eq2(c: cy.Context, act: rt.Any, exp: rt.Any) bool {
     }
 }
 
-pub fn assert(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    if (args[0].asBool()) {
+pub fn assert(vm: *cy.VM) anyerror!Value {
+    if (vm.getBool(0)) {
         return Value.Void;
     } else {
         rt.err(vm, "Assertion failed.\n");
@@ -233,9 +233,9 @@ pub fn assert(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     }
 }
 
-pub fn eqNear(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const act = args[0];
-    const exp = args[1];
+pub fn eqNear(vm: *cy.VM) anyerror!Value {
+    const act = vm.getValue(0);
+    const exp = vm.getValue(1);
 
     const actType = act.getTypeId();
     const expType = exp.getTypeId();

@@ -6,48 +6,48 @@ const fatal = cy.fatal;
 const bindings = @import("bindings.zig");
 const string = cy.string;
 
-pub fn concat(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    const stype = obj.string.getType();
-    const str = obj.string.getSlice();
+pub fn concat(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const stype = obj.getType();
+    const str = obj.getSlice();
     if (stype.isAstring()) {
-        const obj2 = args[1].asHeapObject();
-        const rstr = obj2.string.getSlice();
-        if (obj2.string.getType().isAstring()) {
+        const obj2 = vm.getObject(*cy.heap.String, 1);
+        const rstr = obj2.getSlice();
+        if (obj2.getType().isAstring()) {
             return vm.allocAstringConcat(str, rstr) catch fatal();
         } else {
             return vm.allocUstringConcat(str, rstr) catch fatal();
         }
     } else {
-        const obj2 = args[1].asHeapObject();
-        const rstr = obj2.string.getSlice();
+        const obj2 = vm.getObject(*cy.heap.String, 1);
+        const rstr = obj2.getSlice();
         return vm.allocUstringConcat(str, rstr) catch fatal();
     }
 }
 
-pub fn sliceFn(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    const stype = obj.string.getType();
-    const str = obj.string.getSlice();
-    const parent = obj.string.getParentByType(stype);
+pub fn sliceFn(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const stype = obj.getType();
+    const str = obj.getSlice();
+    const parent = obj.getParentByType(stype);
 
-    const range = args[1].asHeapObject();
+    const range = vm.getObject(*cy.heap.Range, 1);
 
     var start: i48 = undefined;
-    if (!range.range.has_start) {
+    if (!range.has_start) {
         start = 0;
     } else {
-        start = @intCast(range.range.start);
+        start = @intCast(range.start);
     }
     if (start < 0) {
         return rt.prepThrowError(vm, .OutOfBounds);
     }
 
     var end: i48 = undefined;
-    if (!range.range.has_end) {
+    if (!range.has_end) {
         end = @intCast(str.len);
     } else {
-        end = @intCast(range.range.end);
+        end = @intCast(range.end);
     }
     if (end > str.len) {
         return rt.prepThrowError(vm, .OutOfBounds);
@@ -71,34 +71,33 @@ pub fn sliceFn(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     }
 }
 
-pub fn insertFn(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.string.getSlice();
-    const idx = args[1].asInteger();
+pub fn insertFn(vm: *cy.VM) anyerror!Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const str = obj.getSlice();
+    const idx = vm.getInt(1);
     if (idx < 0 or idx > str.len) {
         return error.OutOfBounds;
     }
     const uidx: u32 = @intCast(idx);
-    const stype = obj.string.getType();
+    const stype = obj.getType();
     if (stype.isAstring()) {
-        const obj2 = args[2].asHeapObject();
-        const insert = obj2.string.getSlice();
-        if (obj2.string.getType().isAstring()) {
+        const obj2 = vm.getObject(*cy.heap.String, 2);
+        const insert = obj2.getSlice();
+        if (obj2.getType().isAstring()) {
             return vm.allocAstringConcat3(str[0..uidx], insert, str[uidx..]) catch fatal();
         } else {
             return vm.allocUstringConcat3(str[0..uidx], insert, str[uidx..]) catch fatal();
         }
     } else {
-        const obj2 = args[2].asHeapObject();
-        const insert = obj2.string.getSlice();
+        const insert = vm.getString(2);
         return vm.allocUstringConcat3(str[0..uidx], insert, str[uidx..]) catch fatal();
     }
 }
 
-pub fn find(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.string.getSlice();
-    const needle = args[1].asString();
+pub fn find(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const str = obj.getSlice();
+    const needle = vm.getString(1);
     if (needle.len > 0 and needle.len <= str.len) {
         if (needle.len == 1) {
             // One ascii char special case. Perform indexOfChar.
@@ -113,37 +112,36 @@ pub fn find(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     return intNone(vm) catch cy.fatal();
 }
 
-pub fn startsWith(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.string.getSlice();
-    const needle = args[1].asString();
+pub fn startsWith(vm: *cy.VM) Value {
+    const str = vm.getString(0);
+    const needle = vm.getString(1);
     return Value.initBool(std.mem.startsWith(u8, str, needle));
 }
 
 
-pub fn endsWith(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    const str = args[0].asHeapObject().string.getSlice();
-    const needle = args[1].asString();
+pub fn endsWith(vm: *cy.VM) Value {
+    const str = vm.getString(0);
+    const needle = vm.getString(1);
     return Value.initBool(std.mem.endsWith(u8, str, needle));
 }
 
 
-pub fn isAscii(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    const stype = obj.string.getType();
+pub fn isAscii(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const stype = obj.getType();
     return Value.initBool(stype.isAstring());
 }
 
 const intSome = cy.builtins.intSome;
 const intNone = cy.builtins.intNone;
 
-pub fn findAnyRune(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.string.getSlice();
-    const set_obj = args[1].asHeapObject();
-    const set = set_obj.string.getSlice();
-    const setIsAscii = set_obj.string.getType().isAstring();
-    const stype = obj.string.getType();
+pub fn findAnyRune(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const str = obj.getSlice();
+    const set_obj = vm.getObject(*cy.heap.String, 1);
+    const set = set_obj.getSlice();
+    const setIsAscii = set_obj.getType().isAstring();
+    const stype = obj.getType();
 
     if (set.len > 0) {
         if (stype.isAstring()) {
@@ -200,11 +198,11 @@ pub fn findAnyRune(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     return intNone(vm) catch cy.fatal();
 }
 
-pub fn findRune(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.string.getSlice();
-    const needle = args[1].asInteger();
-    const stype = obj.string.getType(); 
+pub fn findRune(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const str = obj.getSlice();
+    const needle = vm.getInt(1);
+    const stype = obj.getType(); 
 
     if (needle > 0) {
         const code: u21 = @intCast(needle);
@@ -232,10 +230,10 @@ pub fn findRune(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     return intNone(vm) catch cy.fatal();
 }
 
-pub fn upper(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.string.getSlice();
-    const stype = obj.string.getType();
+pub fn upper(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const str = obj.getSlice();
+    const stype = obj.getType();
     if (stype.isAstring()) {
         const new = vm.allocUnsetAstringObject(str.len) catch fatal();
         const newBuf = new.astring.getMutSlice();
@@ -249,10 +247,10 @@ pub fn upper(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     }
 }
 
-pub fn lower(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.string.getSlice();
-    const stype = obj.string.getType();
+pub fn lower(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const str = obj.getSlice();
+    const stype = obj.getType();
     if (stype.isAstring()) {
         const new = vm.allocUnsetAstringObject(str.len) catch fatal();
         const newBuf = new.astring.getMutSlice();
@@ -266,33 +264,33 @@ pub fn lower(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     }
 }
 
-pub fn less(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.string.getSlice();
-    const right = args[1].asString();
+pub fn less(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const str = obj.getSlice();
+    const right = vm.getString(1);
     return Value.initBool(std.mem.lessThan(u8, str, right));
 }
 
-pub fn lenFn(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    return Value.initInt(obj.string.len());
+pub fn lenFn(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    return Value.initInt(obj.len());
 }
 
-pub fn count(_: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    const stype = obj.string.getType();
+pub fn count(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const stype = obj.getType();
     if (stype.isAstring()) {
-        return Value.initInt(obj.string.len());
+        return Value.initInt(obj.len());
     } else {
-        return Value.initInt(@intCast(cy.string.countRunes(obj.string.getSlice())));
+        return Value.initInt(@intCast(cy.string.countRunes(obj.getSlice())));
     }
 }
 
-pub fn seek(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.string.getSlice();
-    const idx = args[1].asInteger();
-    const stype = obj.string.getType();
+pub fn seek(vm: *cy.VM) anyerror!Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const str = obj.getSlice();
+    const idx = vm.getInt(1);
+    const stype = obj.getType();
     if (stype.isAstring()) {
         if (idx < 0 or idx >= str.len) {
             return error.OutOfBounds;
@@ -306,14 +304,14 @@ pub fn seek(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     }
 }
 
-pub fn runeAt(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.string.getSlice();
-    const idx = args[1].asInteger();
+pub fn runeAt(vm: *cy.VM) anyerror!Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const str = obj.getSlice();
+    const idx = vm.getInt(1);
     if (idx < 0 or idx >= str.len) {
         return error.OutOfBounds;
     }
-    const stype = obj.string.getType();
+    const stype = obj.getType();
     if (stype.isAstring()) {
         return Value.initInt(@intCast(str[@intCast(idx)]));
     } else {
@@ -331,11 +329,11 @@ pub fn runeAt(_: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     }
 }
 
-pub fn sliceAt(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.string.getSlice();
-    const stype = obj.string.getType();
-    const idx = args[1].asInteger();
+pub fn sliceAt(vm: *cy.VM) anyerror!Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const str = obj.getSlice();
+    const stype = obj.getType();
+    const idx = vm.getInt(1);
 
     if (idx < 0 or idx >= str.len) {
         return error.OutOfBounds;
@@ -351,24 +349,24 @@ pub fn sliceAt(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
         if (slice.len == 1 and !bad_byte) {
             // TODO: If single ascii runes are interned by default,
             //       it's better to fetch that instead to reduce dependency on parent.
-            vm.retainObject(obj);
-            return vm.allocAstringSlice(slice, obj) catch fatal();
+            vm.retainObject(@ptrCast(obj));
+            return vm.allocAstringSlice(slice, @ptrCast(obj)) catch fatal();
         } else {
-            vm.retainObject(obj);
-            return vm.allocUstringSlice(slice, obj) catch fatal();
+            vm.retainObject(@ptrCast(obj));
+            return vm.allocUstringSlice(slice, @ptrCast(obj)) catch fatal();
         }
     }
 }
 
-pub fn trim(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.string.getSlice();
-    const stype = obj.string.getType();
+pub fn trim(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const str = obj.getSlice();
+    const stype = obj.getType();
 
-    const trimRunes = args[2].asString();
+    const trimRunes = vm.getString(2);
 
     var res: []const u8 = undefined;
-    const mode = bindings.getBuiltinSymbol(args[1].asSymbolId()) orelse {
+    const mode = bindings.getBuiltinSymbol(vm.getSymbol(2)) orelse {
         return rt.prepThrowError(vm, .InvalidArgument);
     };
     switch (mode) {
@@ -380,34 +378,34 @@ pub fn trim(vm: *cy.VM, args: [*]const Value, _: u8) Value {
         }
     }
 
-    vm.retainObject(obj);
+    vm.retainObject(@ptrCast(obj));
     if (stype.isAstring()) {
-        return vm.allocAstringSlice(res, obj) catch fatal();
+        return vm.allocAstringSlice(res, @ptrCast(obj)) catch fatal();
     } else {
-        return vm.allocUstringSlice(res, obj) catch fatal();
+        return vm.allocUstringSlice(res, @ptrCast(obj)) catch fatal();
     }
 }
 
-pub fn stringReplace(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.string.getSlice();
-    const stype = obj.string.getType();
+pub fn stringReplace(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const str = obj.getSlice();
+    const stype = obj.getType();
 
-    const needle = args[1].castHeapObject(*cy.heap.String);
-    const replace = args[2].castHeapObject(*cy.heap.String);
+    const needle = vm.getObject(*cy.heap.String, 1);
+    const replace = vm.getObject(*cy.heap.String, 2);
 
     if (stype.isAstring()) {
         if (astringReplace(vm, str, needle, replace)) |val| {
             return val;
         } else {
-            vm.retainObject(obj);
+            vm.retainObject(@ptrCast(obj));
             return Value.initNoCycPtr(obj);
         }
     } else {
         if (ustringReplace(vm, str, needle, replace)) |val| {
             return val;
         } else {
-            vm.retainObject(obj);
+            vm.retainObject(@ptrCast(obj));
             return Value.initNoCycPtr(obj);
         }
     }
@@ -461,11 +459,11 @@ fn ustringReplace(vm: *cy.VM, str: []const u8, needlev: *cy.heap.String, replace
     }
 }
 
-pub fn repeat(vm: *cy.VM, args: [*]const Value, _: u8) Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.string.getSlice();
+pub fn repeat(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const str = obj.getSlice();
 
-    const n = args[1].asInteger();
+    const n = vm.getInt(1);
     if (n < 0) {
         return rt.prepThrowError(vm, .InvalidArgument);
     }
@@ -475,7 +473,7 @@ pub fn repeat(vm: *cy.VM, args: [*]const Value, _: u8) Value {
     if (un > 1 and len > 0) {
         var new: *cy.HeapObject = undefined;
         var buf: []u8 = undefined;
-        const stype = obj.string.getType();
+        const stype = obj.getType();
         if (stype.isAstring()) {
             new = vm.allocUnsetAstringObject(len) catch fatal();
             buf = new.astring.getMutSlice();
@@ -498,18 +496,18 @@ pub fn repeat(vm: *cy.VM, args: [*]const Value, _: u8) Value {
             vm.retain(vm.emptyString);
             return vm.emptyString;
         } else {
-            vm.retainObject(obj);
+            vm.retainObject(@ptrCast(obj));
             return Value.initNoCycPtr(obj);
         }
     }
 }
 
-pub fn split(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const obj = args[0].asHeapObject();
-    const str = obj.string.getSlice();
-    const stype = obj.string.getType();
-    const parent = obj.string.getParentByType(stype);
-    const delim = args[1].asString();
+pub fn split(vm: *cy.VM) anyerror!Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const str = obj.getSlice();
+    const stype = obj.getType();
+    const parent = obj.getParentByType(stype);
+    const delim = vm.getString(1);
 
     const res = try vm.allocEmptyListDyn();
     if (delim.len == 0) {
@@ -532,8 +530,8 @@ pub fn split(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
     return res;
 }
 
-pub fn stringCall(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const val = args[0];
+pub fn stringCall(vm: *cy.VM) anyerror!Value {
+    const val = vm.getValue(0);
     if (val.isString()) {
         vm.retain(val);
         return val; 

@@ -141,14 +141,14 @@ pub fn Nullable(comptime T: type) type {
     return T;
 }
 
-pub const ZHostFuncFn = *const fn (*VM, [*]const Value, u8) Value;
+pub const ZHostFuncFn = *const fn (*VM) Value;
 pub fn hostFuncEntry(name: []const u8, func: ZHostFuncFn) C.HostFuncEntry {
     return .{
         .name = C.toStr(name),
         .func = @ptrCast(func),
     };
 }
-pub const ZHostFuncCFn = *const fn (*VM, [*]const Value, u8) callconv(.C) Value;
+pub const ZHostFuncCFn = *const fn (*VM) callconv(.C) Value;
 
 pub const log = @import("log.zig");
 pub const utils = @import("utils.zig");

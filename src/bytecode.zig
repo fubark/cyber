@@ -565,18 +565,11 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[4].val;
             len += try fmt.printCount(w, "%{} = (%{}).{}, +{}", &.{v(dst), v(recv), v(fieldIdx), v(retain)});
         },
-        .fieldRef => {
+        .addr_field => {
             const recv = pc[1].val;
             const fieldIdx = pc[2].val;
-            const numNestedFields = pc[3].val;
-            const dst = pc[4].val;
-            len += try fmt.printCount(w, "%{} = *(%{}.{}", &.{v(dst), v(recv), v(fieldIdx)});
-            if (numNestedFields > 0) {
-                for (0..numNestedFields) |i| {
-                    len += try fmt.printCount(w, ".{}", &.{v(pc[5+i].val)});
-                }
-            }
-            len += try fmt.printCount(w, ")", &.{});
+            const dst = pc[3].val;
+            len += try fmt.printCount(w, "%{} = &%{}.{}", &.{v(dst), v(recv), v(fieldIdx)});
         },
         .fieldDyn => {
             const recv = pc[1].val;
@@ -720,15 +713,28 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[6].val;
             len += try fmt.printCount(w, "%{} = metatype(kind={}, sym={})", &.{v(dst), v(sym_t), v(sym_id)});
         },
-        .ref => {
-            const ref = pc[1].val;
+        .addr_local => {
+            const local = pc[1].val;
             const dst = pc[2].val;
-            len += try fmt.printCount(w, "%{} = %{}.*", &.{v(dst), v(ref)});
+            len += try fmt.printCount(w, "%{} = &%{}", &.{v(dst), v(local)});
         },
-        .setRef => {
+        .deref => {
+            const ptr = pc[1].val;
+            const retain = pc[2].val == 1;
+            const dst = pc[3].val;
+            len += try fmt.printCount(w, "%{} = %{}.*, retain={}", &.{v(dst), v(ptr), v(retain)});
+        },
+        .deref_struct => {
+            const ptr = pc[1].val;
+            const nfields = pc[2].val;
+            const dst = pc[3].val;
+            len += try fmt.printCount(w, "%{} = copy_struct(%{}.*, nfields={})", &.{v(dst), v(ptr), v(nfields)});
+        },
+        .set_deref => {
             const ref = pc[1].val;
-            const val = pc[2].val;
-            len += try fmt.printCount(w, "%{}.* = %{}", &.{v(ref), v(val)});
+            const is_struct = pc[2].val == 1;
+            const val = pc[3].val;
+            len += try fmt.printCount(w, "%{}.* = %{}, struct={}", &.{v(ref), v(val), v(is_struct)});
         },
         .setFieldDyn,
         .setFieldDynIC => {
@@ -943,6 +949,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numVars = pc[1].val;
             return 2 + numVars;
         },
+        .addr_local,
         .not,
         .copy,
         .copyRetainSrc,
@@ -956,14 +963,15 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .coresume,
         .up,
         .up_value,
-        .ref,
-        .setRef,
         .none,
         .tag_lit,
         .context,
         .symbol => {
             return 3;
         },
+        .deref,
+        .set_deref,
+        .addr_field,
         .set_up_value,
         .copyObj,
         .call,
@@ -979,7 +987,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .list_dyn,
         .enumOp,
         .setCaptured,
-        .refCopyObj,
+        .deref_struct,
         .jumpNotCond => {
             return 4;
         },
@@ -1001,10 +1009,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .match => {
             const numConds = pc[2].val;
             return 5 + numConds * 3;
-        },
-        .fieldRef => {
-            const numNestedFields = pc[3].val;
-            return 5 + numNestedFields;
         },
         .list,
         .object,
@@ -1155,7 +1159,7 @@ pub const OpCode = enum(u8) {
     typeCheckOption = vmc.CodeTypeCheckOption,
 
     field = vmc.CodeField,
-    fieldRef = vmc.CodeFieldRef,
+    addr_field = vmc.CodeAddrField,
     fieldDyn = vmc.CodeFieldDyn,
     fieldDynIC = vmc.CodeFieldDynIC,
     lambda = vmc.CodeLambda,
@@ -1187,9 +1191,10 @@ pub const OpCode = enum(u8) {
 
     box = vmc.CodeBox,
     unbox = vmc.CodeUnbox,
-    ref = vmc.CodeRef,
-    refCopyObj = vmc.CodeRefCopyObj,
-    setRef = vmc.CodeSetRef,
+    addr_local = vmc.CodeAddrLocal,
+    deref = vmc.CodeDeref,
+    deref_struct = vmc.CodeDerefStruct,
+    set_deref = vmc.CodeSetDeref,
     unwrapChoice = vmc.CodeUnwrapChoice,
 
     setFieldDyn = vmc.CodeSetFieldDyn,
@@ -1269,7 +1274,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 120);
+    try t.eq(std.enums.values(OpCode).len, 121);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

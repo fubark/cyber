@@ -479,7 +479,7 @@ pub fn getEnvAll(vm: *cy.VM) anyerror!Value {
 
 pub fn free(vm: *cy.VM) Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
-    const ptr = vm.getObject(*cy.heap.Pointer, 0).ptr;
+    const ptr = vm.getPointer(0);
     std.c.free(ptr);
     return Value.Void;
 }
@@ -488,7 +488,7 @@ pub fn malloc(vm: *cy.VM) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
     const size: usize = @intCast(vm.getInt(0));
     const ptr = std.c.malloc(size);
-    return cy.heap.allocPointer(vm, ptr);
+    return Value.initRaw(@intCast(@intFromPtr(ptr)));
 }
 
 fn cstr(vm: *cy.VM) anyerror!Value {
@@ -497,7 +497,7 @@ fn cstr(vm: *cy.VM) anyerror!Value {
     const new: [*]u8 = @ptrCast(std.c.malloc(bytes.len + 1));
     @memcpy(new[0..bytes.len], bytes);
     new[bytes.len] = 0;
-    return cy.heap.allocPointer(vm, new);
+    return Value.initRaw(@intCast(@intFromPtr(new)));
 }
 
 pub fn now(vm: *cy.VM) anyerror!Value {

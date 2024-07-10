@@ -57,7 +57,7 @@ type CXSourceLocation:
     int_data int
 
 type CXString:
-    data pointer 
+    data *void 
     private_flags int
 
 type CXCursor:

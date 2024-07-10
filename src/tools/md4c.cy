@@ -61,10 +61,10 @@ var .ALIGN_CENTER int = 2
 var .ALIGN_RIGHT int = 3
 
 type ATTRIBUTE_S:
-    text any -- const MD_CHAR *
+    text *void -- const MD_CHAR *
     size SIZE
-    substr_types any -- const MD_TEXTTYPE *
-    substr_offsets any -- const MD_OFFSET *
+    substr_types *void -- const MD_TEXTTYPE *
+    substr_offsets *void -- const MD_OFFSET *
 
 type ATTRIBUTE = ATTRIBUTE_S
 
@@ -132,19 +132,19 @@ type SPAN_WIKILINK_DETAIL = SPAN_WIKILINK_S
 type PARSER_S:
     abi_version int
     flags int
-    enter_block any -- int (*)(MD_BLOCKTYPE, void *, void *)
-    leave_block any -- int (*)(MD_BLOCKTYPE, void *, void *)
-    enter_span any -- int (*)(MD_SPANTYPE, void *, void *)
-    leave_span any -- int (*)(MD_SPANTYPE, void *, void *)
-    text any -- int (*)(MD_TEXTTYPE, const MD_CHAR *, MD_SIZE, void *)
-    debug_log any -- void (*)(const char *, void *)
-    syntax any -- void (*)(void)
+    enter_block *void -- int (*)(MD_BLOCKTYPE, void *, void *)
+    leave_block *void -- int (*)(MD_BLOCKTYPE, void *, void *)
+    enter_span *void -- int (*)(MD_SPANTYPE, void *, void *)
+    leave_span *void -- int (*)(MD_SPANTYPE, void *, void *)
+    text *void -- int (*)(MD_TEXTTYPE, const MD_CHAR *, MD_SIZE, void *)
+    debug_log *void -- void (*)(const char *, void *)
+    syntax *void -- void (*)(void)
 
 type PARSER = PARSER_S
 
 type RENDERER = PARSER
 
-func md_parse(text any, size SIZE, parser any, userdata any) int:
+func md_parse(text *void, size SIZE, parser *void, userdata *void) int:
     return lib.md_parse(text, size, parser, userdata)
 
 use os

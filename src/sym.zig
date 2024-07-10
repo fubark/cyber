@@ -1566,6 +1566,11 @@ pub fn writeSymName(s: *cy.Sema, w: anytype, sym: *cy.Sym, config: SymFormatConf
                 const name = s.getTypeBaseName(arg.type.type);
                 try w.print("?{s}", .{name});
                 return;
+            } else if (variant.root_template == s.pointer_tmpl) {
+                const arg = variant.args[0].asHeapObject();
+                const name = s.getTypeBaseName(arg.type.type);
+                try w.print("*{s}", .{name});
+                return;
             }
             try w.writeAll(sym.name());
             try w.writeByte('[');

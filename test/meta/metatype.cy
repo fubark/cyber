@@ -11,7 +11,7 @@ t.eq(typeof(123).id(), 7)
 t.eq(typeof(123.0).id(), 8)
 t.eq(typeof([]).id(), 13)
 t.eq(typeof(Map{}).id(), 15)
-t.eq(typeof({}).id(), 29)
+t.eq(typeof({}).id(), 28)
 
 -- Referencing type object.
 type Foo:
@@ -29,10 +29,9 @@ t.eq((Array).id(), 22)
 t.eq((symbol).id(), 6)
 t.eq((List[dyn]).id(), 13)
 t.eq((Map).id(), 15)
-t.eq((pointer).id(), 26)
 t.eq((error).id(), 2)
 t.eq((Fiber).id(), 23)
-t.eq((metatype).id(), 27)
+t.eq((metatype).id(), 26)
 
 -- Referencing type name path.
 use os

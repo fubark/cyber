@@ -823,6 +823,8 @@ pub const Parser = struct {
                     return self.reportError("Unnamed type is not allowed in this context.", &.{});
                 }
             },
+            .left_bracket,
+            .star,
             .question,
             .pound,
             .void_k,
@@ -2582,14 +2584,7 @@ pub const Parser = struct {
         });
     }
 
-    fn parseTermExpr2(self: *Parser, config: ParseTermConfig) anyerror!*ast.Node {
-        return (try self.parseTermExpr2Opt(config)) orelse {
-            return self.reportError("Expected term expr. Got: {}.", &.{v(self.peek().tag())});
-        };
-    }
-
-    fn parseTermExprWithLeft(self: *Parser, start: u32, left_: *ast.Node, config: ParseTermConfig) !*ast.Node {
-        _ = start;
+    fn parseTermExprWithLeft(self: *Parser, left_: *ast.Node, config: ParseTermConfig) !*ast.Node {
         var left = left_;
         while (true) {
             const next = self.peek();
@@ -2619,6 +2614,12 @@ pub const Parser = struct {
                     self.advance();
                     left = try self.ast.newNodeErase(.unwrap, .{
                         .opt = left,
+                    });
+                },
+                .dot_star => {
+                    self.advance();
+                    left = try self.ast.newNodeErase(.deref, .{
+                        .left = left,
                     });
                 },
                 .left_bracket => {
@@ -2678,7 +2679,6 @@ pub const Parser = struct {
                 .dec,
                 .float,
                 .if_k,
-                .ident,
                 .templateString,
                 .equal_right_angle,
                 .new_line,
@@ -2689,29 +2689,40 @@ pub const Parser = struct {
         return left;
     }
 
+    fn parseTermExpr2(self: *Parser, config: ParseTermConfig) anyerror!*ast.Node {
+        return (try self.parseTermExpr2Opt(config)) orelse {
+            return self.reportError("Expected term expr. Got: {}.", &.{v(self.peek().tag())});
+        };
+    }
+
     /// An expression term doesn't contain a unary/binary expression at the top.
     fn parseTermExpr2Opt(self: *Parser, config: ParseTermConfig) anyerror!?*ast.Node {
+        const left = (try self.parseTermExprLeft()) orelse return null;
+        return try self.parseTermExprWithLeft(left, config);
+    }
+
+    fn parseTermExprLeft(self: *Parser) !?*ast.Node {
         const start = self.next_pos;
         var token = self.peek();
-        const left: *ast.Node = switch (token.tag()) {
-            .ident => b: {
+        switch (token.tag()) {
+            .ident => {
                 self.advance();
                 const n = try self.newSpanNode(.ident, start);
                 const name = self.ast.nodeString(@ptrCast(n));
                 if (!self.isVarDeclaredFromScope(name)) {
                     try self.deps.put(self.alloc, name, @ptrCast(n));
                 }
-                break :b @ptrCast(n);
+                return @ptrCast(n);
             },
-            .type_k => b: {
+            .type_k => {
                 self.advance();
-                break :b @ptrCast(try self.newSpanNode(.ident, start));
+                return @ptrCast(try self.newSpanNode(.ident, start));
             },
-            .struct_k => b: {
+            .struct_k => {
                 self.advance();
-                break :b @ptrCast(try self.newSpanNode(.ident, start));
+                return @ptrCast(try self.newSpanNode(.ident, start));
             },
-            .error_k => b: {
+            .error_k => {
                 self.advance();
                 token = self.peek();
                 if (token.tag() == .dot) {
@@ -2721,28 +2732,40 @@ pub const Parser = struct {
                     if (token.tag() == .ident) {
                         const lit = try self.newSpanNode(.error_lit, self.next_pos);
                         self.advance();
-                        break :b @ptrCast(lit);
+                        return @ptrCast(lit);
                     } else {
                         return self.reportError("Expected symbol identifier.", &.{});
                     }
                 } else {
                     // Becomes an ident.
-                    break :b @ptrCast(try self.newSpanNode(.ident, start));
+                    return @ptrCast(try self.newSpanNode(.ident, start));
                 }
             },
-            .question => b: {
+            .star => {
                 self.advance();
-                const param = try self.parseTermExpr2(.{ .parse_record_expr = false });
-                break :b try self.ast.newNodeErase(.expandOpt, .{
+                const elem = (try self.parseTermExpr2Opt(.{ .parse_record_expr = false })) orelse {
+                    return self.reportError("Expected pointer child type.", &.{});
+                };
+                return try self.ast.newNodeErase(.expand_ptr, .{
+                    .elem = elem,
+                    .pos = self.tokenSrcPos(start),
+                });
+            },
+            .question => {
+                self.advance();
+                const param = (try self.parseTermExpr2Opt(.{ .parse_record_expr = false })) orelse {
+                    return self.reportError("Expected option child type.", &.{});
+                };
+                return try self.ast.newNodeErase(.expandOpt, .{
                     .param = param,
                     .pos = self.tokenSrcPos(start),
                 });
             },
-            .dot => b: {
+            .dot => {
                 self.advance();
                 if (self.peek().tag() == .left_bracket) {
                     const array = try self.parseArrayLiteral();
-                    break :b try self.ast.newNodeErase(.dot_array_lit, .{
+                    return try self.ast.newNodeErase(.dot_array_lit, .{
                         .array = array,
                         .pos = self.tokenSrcPos(start),
                     });
@@ -2754,7 +2777,7 @@ pub const Parser = struct {
                     return name;
                 }
             },
-            .symbol_k => b: {
+            .symbol_k => {
                 self.advance();
                 token = self.peek();
                 if (token.tag() == .dot) {
@@ -2764,10 +2787,10 @@ pub const Parser = struct {
                         return self.reportError("Expected symbol identifier.", &.{});
                     };
                     name.setType(.symbol_lit);
-                    break :b name;
+                    return name;
                 } else {
                     // Becomes an ident.
-                    break :b @ptrCast(try self.newSpanNode(.ident, start));
+                    return @ptrCast(try self.newSpanNode(.ident, start));
                 }
             },
             .true_k => {
@@ -2786,45 +2809,45 @@ pub const Parser = struct {
                 self.advance();
                 return try self.ast.newNodeErase(.void, .{ .pos = self.tokenSrcPos(start) });
             },
-            .dec => b: {
+            .dec => {
                 self.advance();
-                break :b @ptrCast(try self.newSpanNode(.decLit, start));
+                return @ptrCast(try self.newSpanNode(.decLit, start));
             },
-            .float => b: {
+            .float => {
                 self.advance();
-                break :b @ptrCast(try self.newSpanNode(.floatLit, start));
+                return @ptrCast(try self.newSpanNode(.floatLit, start));
             },
-            .bin => b: {
+            .bin => {
                 self.advance();
-                break :b @ptrCast(try self.newSpanNode(.binLit, start));
+                return @ptrCast(try self.newSpanNode(.binLit, start));
             },
-            .oct => b: {
+            .oct => {
                 self.advance();
-                break :b @ptrCast(try self.newSpanNode(.octLit, start));
+                return @ptrCast(try self.newSpanNode(.octLit, start));
             },
-            .hex => b: {
+            .hex => {
                 self.advance();
-                break :b @ptrCast(try self.newSpanNode(.hexLit, start));
+                return @ptrCast(try self.newSpanNode(.hexLit, start));
             },
-            .rune => b: {
+            .rune => {
                 self.advance();
-                break :b @ptrCast(try self.newSpanNode(.runeLit, start));
+                return @ptrCast(try self.newSpanNode(.runeLit, start));
             },
-            .raw_string => b: {
+            .raw_string => {
                 self.advance();
-                break :b @ptrCast(try self.newSpanNode(.raw_string_lit, start));
+                return @ptrCast(try self.newSpanNode(.raw_string_lit, start));
             },
-            .string => b: {
+            .string => {
                 self.advance();
-                break :b @ptrCast(try self.newSpanNode(.stringLit, start));
+                return @ptrCast(try self.newSpanNode(.stringLit, start));
             },
-            .templateString => b: {
-                break :b @ptrCast(try self.parseStringTemplate());
+            .templateString => {
+                return @ptrCast(try self.parseStringTemplate());
             },
-            .pound => b: {
-                break :b @ptrCast(try self.parseComptimeExpr());
+            .pound => {
+                return @ptrCast(try self.parseComptimeExpr());
             },
-            .left_paren => b: {
+            .left_paren => {
                 self.advance();
                 token = self.peek();
 
@@ -2852,7 +2875,7 @@ pub const Parser = struct {
                         const params = try self.ast.dupeNodes(&.{param});
                         return @ptrCast(try self.parseLambdaFunc(@ptrCast(params)));
                     }
-                    break :b try self.ast.newNodeErase(.group, .{
+                    return try self.ast.newNodeErase(.group, .{
                         .child = expr,
                         .pos = self.tokenSrcPos(start),
                     });
@@ -2865,11 +2888,19 @@ pub const Parser = struct {
                     return self.reportError("Expected right parenthesis.", &.{});
                 }
             },
-            .left_bracket => b: {
-                break :b @ptrCast(try self.parseArrayLiteral());
+            .left_bracket => {
+                return @ptrCast(try self.parseArrayLiteral());
             },
-            .left_brace => b: {
-                break :b @ptrCast(try self.parseRecordLiteral());
+            .left_brace => {
+                return @ptrCast(try self.parseRecordLiteral());
+            },
+            .ampersand => {
+                self.advance();
+                const child = try self.parseTermExpr2(.{});
+                return self.ast.newNodeErase(.unary_expr, .{
+                    .child = child,
+                    .op = .address_of,
+                });
             },
             .minus => {
                 self.advance();
@@ -2898,8 +2929,7 @@ pub const Parser = struct {
             else => {
                 return null;
             }
-        };
-        return try self.parseTermExprWithLeft(start, left, config);
+        }
     }
 
     fn parseComptimeExpr(self: *Parser) !*ast.ComptimeExpr {
@@ -3073,7 +3103,7 @@ pub const Parser = struct {
                         .child = expr,
                         .pos = self.tokenSrcPos(start),
                     });
-                    const term = try self.parseTermExprWithLeft(start, group, .{});
+                    const term = try self.parseTermExprWithLeft(group, .{});
                     return self.parseExprWithLeft(start, term, .{});
                 } else if (self.peek().tag() == .comma) {
                     self.advance();
@@ -3505,6 +3535,7 @@ pub const Parser = struct {
 
         switch (expr.type()) {
             .accessExpr,
+            .deref,
             .array_expr,
             .ident => {},
             else => {
@@ -3675,7 +3706,7 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .as_k, .at, .await_k,
         .bang, .bin, .break_k,
         .minus_right_angle, .case_k, .catch_k, .coinit_k, .colon, .comma, .context_k, .continue_k, .coresume_k, .coyield_k, .cstruct_k,
-        .dec, .dot, .dot_question, .dot_dot,
+        .dec, .dot, .dot_question, .dot_dot, .dot_star,
         .else_k, .enum_k, .err, .error_k, .equal, .equal_right_angle,
         .false_k, .float, .for_k, .func_k,
         .hex, .ident, .if_k, .mod_k, .indent,

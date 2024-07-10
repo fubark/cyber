@@ -16,7 +16,7 @@ else os.system == 'windows':
 type MyObject:
     a float
     b int
-    c pointer
+    c *void
     d bool
 
 ffi = os.newFFI()
@@ -68,8 +68,8 @@ os.free(cstr)
 -- Return struct ptr and convert to Cyber object.
 cstr = os.cstr('foo')
 var ptr = lib.testRetObjectPtr(MyObject{a=123.0, b=10, c=cstr, d=true})
-t.eq(typeof(ptr), pointer)
-res = lib.ptrToMyObject(pointer(ptr))
+t.eq(typeof(ptr), *void)
+res = lib.ptrToMyObject(ptr)
 t.eq(res.a, 123.0)
 t.eq(res.b, 10)
 t.eq(res.c.fromCstr(0), Array('foo'))
@@ -82,8 +82,8 @@ t.eq(lib.testCharPtr(cstr).fromCstr(0), Array('foo'))
 os.free(cstr)
 
 -- testVoidPtr
-t.eq(lib.testVoidPtr(pointer(123)), pointer(123))
-t.eq(lib.testVoidPtr(pointer(0)), pointer(0))
+t.eq(lib.testVoidPtr(pointer(void, 123)), pointer(void, 123))
+t.eq(lib.testVoidPtr(pointer(void, 0)), pointer(void, 0))
 
 -- void return and no args.
 lib.testVoid()
@@ -106,7 +106,7 @@ var add = func(a int, b int):
     return a + b
 lib = ffi.bindLib(libPath)
 var cadd = ffi.bindCallback(add, [symbol.int, symbol.int], symbol.int)
-t.eq(lib.testCallback(10, 20, cadd), 30)
+t.eq(lib.testCallback(10, 20, cadd.ptr()), 30)
 
 -- bindObjPtr.
 ffi = os.newFFI()

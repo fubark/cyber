@@ -1566,6 +1566,7 @@ pub const VmExt = struct {
     pub const allocArray = Root.allocArray;
     pub const allocPointer = Root.allocPointer;
     pub const allocInt = Root.allocInt;
+    pub const allocBoxValue = Root.allocBoxValue;
     pub const allocUnsetArrayObject = Root.allocUnsetArrayObject;
     pub const allocUnsetAstringObject = Root.allocUnsetAstringObject;
     pub const allocUnsetUstringObject = Root.allocUnsetUstringObject;
@@ -1831,12 +1832,22 @@ pub fn allocInt(self: *cy.VM, val: i64) !Value {
     return Value.initNoCycPtr(obj);
 }
 
-pub fn allocPointer(self: *cy.VM, ptr: ?*anyopaque) !Value {
+pub fn allocPointer(self: *cy.VM, type_id: cy.TypeId, ptr: ?*anyopaque) !Value {
     const obj = try allocPoolObject(self);
     obj.pointer = .{
-        .typeId = bt.Pointer,
+        .typeId = type_id,
         .rc = 1,
         .ptr = ptr,
+    };
+    return Value.initNoCycPtr(obj);
+}
+
+pub fn allocBoxValue(self: *cy.VM, type_id: cy.TypeId, value: u64) !Value {
+    const obj = try allocPoolObject(self);
+    obj.object = .{
+        .typeId = type_id,
+        .rc = 1,
+        .firstValue = @bitCast(value),
     };
     return Value.initNoCycPtr(obj);
 }
@@ -2088,9 +2099,6 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                 unreachable;
             }
         },
-        bt.Pointer => {
-            freePoolObject(vm, obj);
-        },
         bt.Type => {
             freePoolObject(vm, obj);
         },
@@ -2116,6 +2124,9 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                     if (!skip_cyc_children or !child.isCycPointer()) {
                         cy.arc.release(vm, child);
                     }
+                    freePoolObject(vm, obj);
+                },
+                .int => {
                     freePoolObject(vm, obj);
                 },
                 .@"struct" => {

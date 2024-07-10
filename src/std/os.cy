@@ -40,7 +40,7 @@
 @host func createFile(path String, truncate bool) File
 
 --| Returns a null terminated C string.
-@host func cstr(s any) pointer
+@host func cstr(s any) *void
 
 --| Returns the current working directory.
 @host func cwd() String
@@ -61,7 +61,7 @@
 @host func fetchUrl(url String) Array
 
 --| Frees the memory located at `ptr`.
-@host func free(ptr pointer) void
+@host func free(ptr *void) void
 
 --| Returns an environment variable by key.
 @host func getEnv(key String) ?String
@@ -70,7 +70,7 @@
 @host func getEnvAll() Map
 
 --| Allocates `size` bytes of memory and returns a pointer.
-@host func malloc(size int) pointer
+@host func malloc(size int) *void
 
 --| Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01.
 --| For an high resolution timestamp, use `now()`.
@@ -207,7 +207,7 @@ type FFI _:
     --| Returns a Cyber object's pointer. Operations on the pointer is unsafe,
     --| but it can be useful when passing it to C as an opaque pointer.
     --| The object is also retained and managed by the FFI context.
-    @host func bindObjPtr(self, obj any) pointer
+    @host func bindObjPtr(self, obj any) *void
 
     --| Binds a Cyber type to a C struct.
     @host func cbind(self, mt metatype, fields List[dyn]) void
@@ -218,7 +218,7 @@ type FFI _:
     --| Allocates memory for a C struct or primitive with the given C type specifier.
     --| A `pointer` to the allocated memory is returned.
     --| Eventually this will return a `cpointer` instead which will be more idiomatic to use.
-    @host func new(self, ctype symbol) pointer
+    @host func new(self, ctype symbol) *void
 
     --| Releases the object from the FFI context.
     --| External code should no longer use the object's pointer since it's not guaranteed to exist

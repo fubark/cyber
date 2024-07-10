@@ -61,6 +61,7 @@ pub const StmtCode = enum(u8) {
     set_field,
     setIndex,
     setVarSym,
+    set_deref,
 
     pushDebugLabel,
     dumpBytecode,
@@ -135,6 +136,8 @@ pub const ExprCode = enum(u8) {
     box,
     unbox,
     trait,
+    address_of,
+    deref,
 };
 
 pub const ExprType = packed struct {
@@ -151,6 +154,14 @@ pub const ExprType = packed struct {
 };
 
 pub const Await = struct {
+    expr: Loc,
+};
+
+pub const AddressOf = struct {
+    expr: Loc,
+};
+
+pub const Deref = struct {
     expr: Loc,
 };
 
@@ -280,8 +291,8 @@ pub const Field = struct {
     /// Field index of receiver.
     idx: u8,
 
-    /// Number of nested field indexes.
-    numNestedFields: u8,
+    /// Whether there is a followup member access.
+    member_cont: bool = false,
 };
 
 pub const SetField = struct {
@@ -429,6 +440,11 @@ pub const Set = union {
     callObjSymTern: SetCallObjSymTern,
     set_field_dyn: SetFieldDyn,
     set_field: SetField,
+};
+
+pub const SetDeref = struct {
+    ptr: Loc,
+    right: Loc,
 };
 
 pub const SetCallObjSymTern = struct {
@@ -609,6 +625,7 @@ pub fn StmtData(comptime code: StmtCode) type {
         .set_field,
         .setVarSym,
         .set => Set,
+        .set_deref => SetDeref,
         .opSet => OpSet,
         .pushDebugLabel => PushDebugLabel,
         .verbose => Verbose,
@@ -670,6 +687,8 @@ pub fn ExprData(comptime code: ExprCode) type {
         .unbox => Unbox,
         .await_expr => Await,
         .trait => Trait,
+        .address_of => AddressOf,
+        .deref => Deref,
         else => void,
     };
 }

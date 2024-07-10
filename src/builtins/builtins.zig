@@ -183,16 +183,18 @@ const funcs = [_]C.HostFuncEntry{
     func("Array.$call",        zErrFunc(arrayCall)),
 
     // pointer
+    func("pointer.$index",     zErrFunc(pointerIndex)),
     func("pointer.addr",       pointerAddr),
     func("pointer.asObject",   pointerAsObject),
     func("pointer.fromCstr",   zErrFunc(pointerFromCstr)),
     func("pointer.get",        zErrFunc(pointerGet)),
     func("pointer.set",        zErrFunc(pointerSet)),
     func("pointer.toArray",    zErrFunc(pointerToArray)),
-    func("pointer.$call",      pointerCall),
+    func("pointer.$call",       zErrFunc(pointerCall)),
 
     // ExternFunc
     func("ExternFunc.addr",    externFuncAddr),
+    func("ExternFunc.ptr",     externFuncPtr),
 
     // Fiber
     func("Fiber.status",       fiberStatus),
@@ -237,7 +239,6 @@ const vm_types = [_]C.HostTypeEntry{
     htype("MapIterator",    C.CORE_TYPE(bt.MapIter)),
     htype("String",         C.CORE_TYPE(bt.String)),
     htype("Array",          C.CORE_TYPE(bt.Array)),
-    htype("pointer",        C.CORE_TYPE(bt.Pointer)),
     htype("Closure",        C.CORE_TYPE(bt.Closure)),
     htype("Lambda",         C.CORE_TYPE(bt.Lambda)),
     htype("HostFunc",       C.CORE_TYPE(bt.HostFunc)),
@@ -257,6 +258,7 @@ pub const BuiltinsData = struct {
     OptionMap: cy.TypeId,
     OptionArray: cy.TypeId,
     OptionString: cy.TypeId,
+    PointerVoid: cy.TypeId,
 };
 
 pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
@@ -286,38 +288,47 @@ fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
 
     const option_tmpl = chunk_sym.getMod().getSym("Option").?.toC();
 
+    const assert = std.debug.assert;
+
     const int_t = C.newType(vm_, bt.Integer);
     defer C.release(vm_, int_t);
-    data.OptionInt = C.expandTemplateType(option_tmpl, &int_t, 1);
+    assert(C.expandTemplateType(option_tmpl, &int_t, 1, &data.OptionInt));
 
     const any_t = C.newType(vm_, bt.Any);
     defer C.release(vm_, any_t);
-    data.OptionAny = C.expandTemplateType(option_tmpl, &any_t, 1);
+    assert(C.expandTemplateType(option_tmpl, &any_t, 1, &data.OptionAny));
 
     const tuple_t = C.newType(vm_, bt.Tuple);
     defer C.release(vm_, tuple_t);
-    data.OptionTuple = C.expandTemplateType(option_tmpl, &tuple_t, 1);
+    assert(C.expandTemplateType(option_tmpl, &tuple_t, 1, &data.OptionTuple));
 
     const map_t = C.newType(vm_, bt.Map);
     defer C.release(vm_, map_t);
-    data.OptionMap = C.expandTemplateType(option_tmpl, &map_t, 1);
+    assert(C.expandTemplateType(option_tmpl, &map_t, 1, &data.OptionMap));
 
     const array_t = C.newType(vm_, bt.Array);
     defer C.release(vm_, array_t);
-    data.OptionArray = C.expandTemplateType(option_tmpl, &array_t, 1);
+    assert(C.expandTemplateType(option_tmpl, &array_t, 1, &data.OptionArray));
 
     const string_t = C.newType(vm_, bt.String);
     defer C.release(vm_, string_t);
-    data.OptionString = C.expandTemplateType(option_tmpl, &string_t, 1);
+    assert(C.expandTemplateType(option_tmpl, &string_t, 1, &data.OptionString));
+
+    const pointer_tmpl = chunk_sym.getMod().getSym("pointer").?.toC();
+
+    const void_t = C.newType(vm_, bt.Void);
+    defer C.release(vm_, void_t);
+    assert(C.expandTemplateType(pointer_tmpl, &void_t, 1, &data.PointerVoid));
 
     const list_tmpl = chunk_sym.getMod().getSym("List").?.toC();
 
     const dynamic_t = C.newType(vm_, bt.Dyn);
     defer C.release(vm_, dynamic_t);
-    _ = C.expandTemplateType(list_tmpl, &dynamic_t, 1);
+    var temp: cy.TypeId = undefined;
+    assert(C.expandTemplateType(list_tmpl, &dynamic_t, 1, &temp));
 
     const list_iter_tmpl = chunk_sym.getMod().getSym("ListIterator").?.toC();
-    _ = C.expandTemplateType(list_iter_tmpl, &dynamic_t, 1);
+    assert(C.expandTemplateType(list_iter_tmpl, &dynamic_t, 1, &temp));
 
     // Verify all core types have been initialized.
     if (cy.Trace) {
@@ -1082,37 +1093,43 @@ fn metatypeId(vm: *cy.VM) Value {
 }
 
 fn pointerAsObject(vm: *cy.VM) Value {
-    const ptr = vm.getObject(*cy.heap.Pointer, 0).ptr;
+    const ptr = vm.getPointer(0);
     vm.retainObject(@ptrCast(@alignCast(ptr)));
     return Value.initPtr(ptr);
 }
 
+fn pointerIndex(vm: *cy.VM) anyerror!Value {
+    const ptr = vm.getInt(0);
+    _ = ptr;
+    const idx = vm.getInt(1);
+    _ = idx;
+    return error.Unsupported;
+}
+
 fn pointerAddr(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.Pointer, 0);
-    return Value.initInt(@bitCast(@as(u64, @intFromPtr(obj.ptr))));
+    return vm.getValue(0);
 }
 
 fn pointerFromCstr(vm: *cy.VM) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
-    const obj = vm.getObject(*cy.heap.Pointer, 0);
-    const raw: [*]const u8 = @ptrCast(obj.ptr);
+    const ptr: [*]const u8 = @ptrCast(vm.getPointer(0));
     const off: u64 = @bitCast(vm.getInt(1));
-    const bytes = std.mem.span(@as([*:0]const u8, @ptrCast(raw + off)));
+    const bytes = std.mem.span(@as([*:0]const u8, @ptrCast(ptr + off)));
     return vm.allocArray(bytes);
 }
 
 fn pointerGet(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getObject(*cy.heap.Pointer, 0);
+    const ptr = vm.getPointer(0);
     const off = vm.getInt(1);
     const ctype = try std.meta.intToEnum(Symbol, vm.getSymbol(2));
 
-    const raw = obj.ptr;
     const uoff: u64 = @bitCast(off);
     switch (ctype) {
         .voidPtr => {
-            const addr: usize = @intFromPtr(raw) + @as(usize, @intCast(uoff));
+            const addr: usize = @intFromPtr(ptr) + @as(usize, @intCast(uoff));
             const val = @as(*?*anyopaque, @ptrFromInt(addr)).*;
-            return vm.allocPointer(val);
+            const data = vm.getData(*BuiltinsData, "builtins");
+            return vm.allocPointer(data.PointerVoid, val);
         },
         else => {
             return error.InvalidArgument;
@@ -1121,17 +1138,16 @@ fn pointerGet(vm: *cy.VM) anyerror!Value {
 }
 
 fn pointerSet(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getObject(*cy.heap.Pointer, 0);
+    const ptr = vm.getPointer(0);
     const idx: usize = @intCast(vm.getInt(1));
     const ctype = try std.meta.intToEnum(Symbol, vm.getSymbol(2));
     const val = vm.getValue(3);
-    const rawPtr = obj.ptr;
     const valT = val.getTypeId();
     switch (ctype) {
         .int => {
             switch (valT) {
                 bt.Integer => {
-                    const addr: usize = @intFromPtr(rawPtr) + idx;
+                    const addr: usize = @intFromPtr(ptr) + idx;
                     @as(*i32, @ptrFromInt(addr)).* = @intCast(val.asBoxInt());
                     return Value.Void;
                 },
@@ -1142,17 +1158,18 @@ fn pointerSet(vm: *cy.VM) anyerror!Value {
         },
         .voidPtr => {
             switch (valT) {
-                bt.Pointer => {
-                    const addr: usize = @intFromPtr(rawPtr) + idx;
-                    @as(*?*anyopaque, @ptrFromInt(addr)).* = val.asHeapObject().pointer.ptr;
-                    return Value.Void;
-                },
                 bt.ExternFunc => {
-                    const addr: usize = @intFromPtr(rawPtr) + idx;
+                    const addr: usize = @intFromPtr(ptr) + idx;
                     @as(*?*anyopaque, @ptrFromInt(addr)).* = val.asHeapObject().externFunc.ptr;
                     return Value.Void;
                 },
                 else => {
+                    if (vm.c.types[valT].kind == .int) {
+                        const addr: usize = @intFromPtr(ptr) + idx;
+                        const right_addr: usize = @intCast(val.asBoxInt());
+                        @as(*?*anyopaque, @ptrFromInt(addr)).* = @ptrFromInt(right_addr);
+                        return Value.Void;
+                    }
                     return error.InvalidArgument;
                 }
             }
@@ -1164,24 +1181,21 @@ fn pointerSet(vm: *cy.VM) anyerror!Value {
 }
 
 fn pointerToArray(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getObject(*cy.heap.Pointer, 0);
+    const ptr: [*]const u8 = @ptrCast(vm.getPointer(0));
     const off: usize = @intCast(vm.getInt(1));
     const len: usize = @intCast(vm.getInt(2));
-    const raw: [*]const u8 = @ptrCast(obj.ptr);
-    return vm.allocArray(raw[off..@intCast(off+len)]);
+    return vm.allocArray(ptr[off..@intCast(off+len)]);
 }
 
-fn pointerCall(vm: *cy.VM) Value {
-    const val = vm.getValue(0);
-    if (val.isPointerT()) {
-        vm.retain(val);
-        return val;
-    } else if (val.isBoxInt()) {
-        const i: usize = @intCast(val.asBoxInt());
-        return cy.heap.allocPointer(vm, @ptrFromInt(i)) catch fatal();
-    } else {
-        return vm.prepPanic("Not a `pointer`.");
-    }
+fn pointerCall(vm: *cy.VM) anyerror!Value {
+    const val = vm.getInt(0);
+    const addr: usize = @intCast(val);
+    return Value.initRaw(@intCast(addr));
+}
+
+fn externFuncPtr(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.ExternFunc, 0);
+    return Value.initRaw(@intFromPtr(obj.ptr));
 }
 
 fn externFuncAddr(vm: *cy.VM) Value {

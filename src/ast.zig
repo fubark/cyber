@@ -35,6 +35,7 @@ pub const NodeType = enum(u7) {
     cstruct_decl,
     custom_decl,
     decLit,
+    deref,
     distinct_decl,
     dot_array_lit,
     dot_lit,
@@ -43,6 +44,7 @@ pub const NodeType = enum(u7) {
     enumMember,
     error_lit,
     expandOpt,
+    expand_ptr,
     exprStmt,
     falseLit,
     forIterStmt,
@@ -113,6 +115,11 @@ pub const AttributeType = enum(u8) {
 
 const ExpandOpt = struct {
     param: *Node align(8),
+    pos: u32,
+};
+
+const ExpandPtr = struct {
+    elem: *Node align(8),
     pos: u32,
 };
 
@@ -267,6 +274,10 @@ const AwaitExpr = struct {
 const AccessExpr = struct {
     left: *Node align(8),
     right: *Node,
+};
+
+const DerefExpr = struct {
+    left: *Node align(8),
 };
 
 const Unwrap = struct {
@@ -579,6 +590,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .cstruct_decl   => ObjectDecl,
         .custom_decl    => CustomDecl,
         .decLit         => Span,
+        .deref          => DerefExpr,
         .distinct_decl  => DistinctDecl,
         .dot_array_lit  => DotArrayLit,
         .dot_lit        => Span,
@@ -587,6 +599,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .enumMember     => EnumMember,
         .error_lit      => Span,
         .expandOpt      => ExpandOpt,
+        .expand_ptr     => ExpandPtr,
         .exprStmt       => ExprStmt,
         .falseLit       => Token,
         .forIterStmt    => ForIterStmt,
@@ -713,6 +726,7 @@ pub const Node = struct {
             .cstruct_decl   => self.cast(.cstruct_decl).pos,
             .custom_decl    => self.cast(.custom_decl).pos,
             .decLit         => self.cast(.decLit).pos,
+            .deref          => self.cast(.deref).left.pos(),
             .distinct_decl  => self.cast(.distinct_decl).pos,
             .dot_array_lit  => self.cast(.dot_array_lit).pos,
             .dot_lit        => self.cast(.dot_lit).pos-1,
@@ -721,6 +735,7 @@ pub const Node = struct {
             .enumMember     => self.cast(.enumMember).name.pos(),
             .error_lit      => self.cast(.error_lit).pos-6,
             .expandOpt      => self.cast(.expandOpt).pos,
+            .expand_ptr     => self.cast(.expand_ptr).pos,
             .exprStmt       => self.cast(.exprStmt).child.pos(),
             .falseLit       => self.cast(.falseLit).pos,
             .floatLit       => self.cast(.floatLit).pos,
@@ -840,6 +855,7 @@ pub const UnaryOp = enum(u8) {
     minus,
     not,
     bitwiseNot,
+    address_of,
     dummy,
 
     pub fn name(self: UnaryOp) []const u8 {
@@ -847,13 +863,14 @@ pub const UnaryOp = enum(u8) {
             .minus => "$prefix-",
             .not => "$prefix!",
             .bitwiseNot => "$prefix~",
+            .address_of => "$prefix&",
             else => "unknown",
         };
     }
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 94);
+    try t.eq(std.enums.values(NodeType).len, 98);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 
@@ -1160,6 +1177,7 @@ fn getUnOpStr(op: UnaryOp) []const u8 {
         .minus => "-",
         .not => "!",
         .bitwiseNot => "~",
+        .address_of => "&",
         .dummy => cy.unexpected(),
     };
 }
@@ -1444,6 +1462,10 @@ pub const Encoder = struct {
             .expandOpt => {
                 try w.writeByte('?');
                 try self.write(w, node.cast(.expandOpt).param);
+            },
+            .expand_ptr => {
+                try w.writeAll("*");
+                try self.write(w, node.cast(.expand_ptr).elem);
             },
             else => {
                 try w.writeByte('<');

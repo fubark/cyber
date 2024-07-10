@@ -166,7 +166,6 @@ pub const BuiltinTypes = struct {
     pub const ListIterDyn: TypeId = vmc.TYPE_LIST_ITER_DYN;
     pub const Map: TypeId = vmc.TYPE_MAP;
     pub const MapIter: TypeId = vmc.TYPE_MAP_ITER;
-    pub const Pointer: TypeId = vmc.TYPE_POINTER;
     pub const Void: TypeId = vmc.TYPE_VOID;
     pub const Error: TypeId = vmc.TYPE_ERROR;
     pub const Fiber: TypeId = vmc.TYPE_FIBER;
@@ -200,6 +199,12 @@ pub const SemaExt = struct {
             .info = .{},
         });
         return @intCast(typeId);
+    }
+
+    pub fn isPointerType(s: *cy.Sema, id: cy.TypeId) bool {
+        const sym = s.getTypeSym(id);
+        const variant = sym.getVariant() orelse return false;
+        return variant.root_template == s.pointer_tmpl;
     }
 
     pub fn getType(s: *cy.Sema, id: TypeId) Type {
@@ -293,7 +298,6 @@ pub const SemaExt = struct {
             bt.ListIterDyn,
             bt.Map,
             bt.MapIter,
-            bt.Pointer,
             bt.Fiber,
             bt.MetaType,
             bt.Dyn,

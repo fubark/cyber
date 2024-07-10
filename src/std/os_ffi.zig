@@ -188,8 +188,8 @@ const CGen = struct {
             \\    VMC c;
             \\}} VM;
             \\extern void _cyRelease(VM*, uint64_t);
-            \\extern void* icyGetPtr(uint64_t);
-            \\extern void* _cyGetFuncPtr(uint64_t);
+            \\extern void* icyGetPtr(VM*, uint64_t);
+            \\extern void* _cyGetFuncPtr(VM*, uint64_t);
             \\extern uint64_t icyAllocObject(VM*, uint32_t);
             \\extern uint64_t icyAllocList(VM*, uint64_t*, uint32_t);
             \\extern uint64_t cy_alloc_int(VM*, int64_t);
@@ -198,7 +198,7 @@ const CGen = struct {
             \\extern uint64_t _cyCallFunc(VM*, uint64_t, uint64_t*, uint8_t);
             \\extern int printf(char* fmt, ...);
             \\#define CALL_ARG_START 5
-            \\int64_t cy_get_value(VM* vm, size_t idx) {{
+            \\uint64_t cy_get_value(VM* vm, size_t idx) {{
             \\    return vm->c.fp[CALL_ARG_START + idx];
             \\}}
             // \\extern void exit(int code);
@@ -357,9 +357,9 @@ const CGen = struct {
                     try writeNamedCType(w, param, cval);
                     try w.print(";\n", .{});
 
-                    try w.print("  to{s}Array{}(vm, cy_get_value(vm, {}), &arr{}[0]);", .{elemName, param.arr.n, argIdx, argIdx});
+                    try w.print("  to{s}Array{}(vm, cy_get_value(vm, {}), &arr{}[0]);\n", .{elemName, param.arr.n, argIdx, argIdx});
                 } else {
-                    try w.print("uint64_t arg_{} = cy_get_value(vm, {});", .{argIdx, argIdx});
+                    try w.print("  uint64_t arg_{} = cy_get_value(vm, {});\n", .{argIdx, argIdx});
                 }
             }
         }
@@ -517,7 +517,7 @@ pub fn ffiNew(vm: *cy.VM) anyerror!Value {
     const size = try sizeOf(csym);
 
     const ptr = std.c.malloc(size);
-    return cy.heap.allocPointer(vm, ptr);
+    return Value.initRaw(@intFromPtr(ptr));
 }
 
 /// Returns the name of a base type. No arrays.
@@ -643,13 +643,25 @@ fn writeToCValueForSym(w: anytype, val: []const u8, sym: Symbol, unbox: bool) !v
             try w.print("*(double*)&{s}", .{val});
         },
         .charPtr => {
-            try w.print("(char*)icyGetPtr({s})", .{val});
+            if (unbox) {
+                try w.print("(char*)icyGetPtr(vm, {s})", .{val});
+            } else {
+                try w.print("(char*){s}", .{val});
+            }
         },
         .voidPtr => {
-            try w.print("icyGetPtr({s})", .{val});
+            if (unbox) {
+                try w.print("icyGetPtr(vm, {s})", .{val});
+            } else {
+                try w.print("(void*){s}", .{val});
+            }
         },
         .funcPtr => {
-            try w.print("_cyGetFuncPtr({s})", .{val});
+            if (unbox) {
+                try w.print("_cyGetFuncPtr(vm, {s})", .{val});
+            } else {
+                try w.print("(void*){s}", .{val});
+            }
         },
         else => {
             std.debug.print("Unsupported arg type: {s}\n", .{ @tagName(sym) });
@@ -702,10 +714,18 @@ fn writeToCyValueForSym(w: anytype, cval: []const u8, ctype: Symbol, must_box: b
             try w.print("*(uint64_t*)&{s}", .{cval});
         },
         .charPtr => {
-            try w.print("icyAllocCyPointer(vm, {s})", .{cval});
+            if (must_box) {
+                try w.print("icyAllocCyPointer(vm, {s})", .{cval});
+            } else {
+                try w.print("((uint64_t){s})", .{cval});
+            }
         },
         .voidPtr => {
-            try w.print("icyAllocCyPointer(vm, {s})", .{cval});
+            if (must_box) {
+                try w.print("icyAllocCyPointer(vm, {s})", .{cval});
+            } else {
+                try w.print("((uint64_t){s})", .{cval});
+            }
         },
         .void => {
             try w.print("0x7FFC000000000000", .{});
@@ -769,7 +789,7 @@ fn sizeOf(ctype: Symbol) !usize {
     };
 }
 
-fn toCyType(ctype: CType, forRet: bool) !types.TypeId {
+fn toCyType(vm: *cy.VM, ctype: CType) !types.TypeId {
     switch (ctype) {
         .object => |objectT| return objectT,
         .arr => return bt.ListDyn,
@@ -787,15 +807,11 @@ fn toCyType(ctype: CType, forRet: bool) !types.TypeId {
                 .usize => return bt.Integer,
                 .float => return bt.Float,
                 .double => return bt.Float,
-                .funcPtr, // pointer? or ExternFunc.
+                .funcPtr,
                 .charPtr,
                 .voidPtr => {
-                    // TODO: Once optional types are implemented, this would be an optional pointer.
-                    if (!forRet) {
-                        return bt.Any;
-                    } else {
-                        return bt.Pointer;
-                    }
+                    const data = vm.getData(*cy.builtins.BuiltinsData, "builtins");
+                    return data.PointerVoid;
                 },
                 .void => return bt.Void,
                 else => {
@@ -809,6 +825,8 @@ fn toCyType(ctype: CType, forRet: bool) !types.TypeId {
 
 pub fn ffiBindLib(vm: *cy.VM, config: BindLibConfig) !Value {
     const ffi = vm.getHostObject(*FFI, 0);
+
+    const bt_data = vm.getData(*cy.builtins.BuiltinsData, "builtins");
 
     var success = false;
 
@@ -878,12 +896,12 @@ pub fn ffiBindLib(vm: *cy.VM, config: BindLibConfig) !Value {
             try tempTypes.append(param_t);
         }
         for (cfunc.params) |param| {
-            const typeId = try toCyType(param, false);
+            const typeId = try toCyType(vm, param);
             const param_t = sema.FuncParam.initRt(typeId);
             try tempTypes.append(param_t);
         }
 
-        const retType = try toCyType(cfunc.ret, true);
+        const retType = try toCyType(vm, cfunc.ret);
         const funcSigId = try vm.sema.ensureFuncSig(tempTypes.slice(), retType);
 
         cfunc.ptr = ptr;
@@ -896,9 +914,9 @@ pub fn ffiBindLib(vm: *cy.VM, config: BindLibConfig) !Value {
         const isMethod = !config.gen_table;
         try w.print("uint64_t cyPtrTo{s}(VM* vm) {{\n", .{vm.getTypeName(cstruct.type)});
         if (isMethod) {
-            try w.print("  uint64_t ptr = *((uint64_t*)(cy_get_value(vm, 1) & ~PointerMask) + 1);\n", .{});
+            try w.print("  uint64_t ptr = cy_get_value(vm, 1);\n", .{});
         } else {
-            try w.print("  uint64_t ptr = *((uint64_t*)(cy_get_value(vm, 0) & ~PointerMask) + 1);\n", .{});
+            try w.print("  uint64_t ptr = cy_get_value(vm, 0);\n", .{});
         }
         try w.print("  uint64_t res = fromStruct{}(vm, *(Struct{}*)ptr);\n", .{cstruct.type, cstruct.type});
         try w.print("  return res;\n", .{});
@@ -988,7 +1006,7 @@ pub fn ffiBindLib(vm: *cy.VM, config: BindLibConfig) !Value {
             const symKey = try vm.allocAstringConcat("ptrTo", typeName);
             const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
 
-            const funcSigId = try vm.sema.ensureFuncSigRt(&.{ bt.Dyn }, bt.Dyn);
+            const funcSigId = try vm.sema.ensureFuncSigRt(&.{ bt_data.PointerVoid }, cstruct.type);
             const funcVal = try cy.heap.allocHostFunc(vm, func, 1, funcSigId, cyState, false);
             try table.asHeapObject().table.set(vm, symKey, funcVal);
             vm.release(symKey);
@@ -1036,7 +1054,7 @@ pub fn ffiBindLib(vm: *cy.VM, config: BindLibConfig) !Value {
             const name_id = try rt.ensureNameSymExt(vm, methodName, true);
             const managed_name = rt.getName(vm, name_id);
 
-            const funcSigId = try vm.sema.ensureFuncSigRt(&.{ bt.Any, bt.Pointer }, cstruct.type);
+            const funcSigId = try vm.sema.ensureFuncSigRt(&.{ bt.Any, bt_data.PointerVoid }, cstruct.type);
             const group = try vm.addFuncGroup();
             const func_sym = rt.FuncSymbol.initHostFunc(@ptrCast(func), true, true, 2, funcSigId);
             _ = try vm.addGroupFunc(group, managed_name, funcSigId, func_sym);
@@ -1085,29 +1103,30 @@ fn cAsBoxInt(val: Value) callconv(.C) i64 {
     return val.asBoxInt();
 }
 
-fn cGetPtr(val: Value) callconv(.C) ?*anyopaque {
+fn cGetPtr(vm: *cy.VM, val: Value) callconv(.C) ?*anyopaque {
     const valT = val.getTypeId();
     switch (valT) {
-        bt.Pointer => {
-            return val.asHeapObject().pointer.ptr;
-        },
         else => {
+            const type_e = vm.c.types[valT];
+            if (type_e.kind == .int) {
+                const addr: usize = @intCast(val.asBoxInt());
+                return @ptrFromInt(addr);
+            }
             // TODO: Since union types aren't supported yet, check for type miss.
             cy.panicFmt("Expected `pointer`, got type id: `{}`", .{valT});
         },
     }
 }
 
-fn cGetFuncPtr(val: Value) callconv(.C) ?*anyopaque {
+fn cGetFuncPtr(vm: *cy.VM, val: Value) callconv(.C) ?*anyopaque {
     const valT = val.getTypeId();
     switch (valT) {
-        bt.Pointer => {
-            return val.asHeapObject().pointer.ptr;
-        },
-        bt.ExternFunc => {
-            return val.asHeapObject().externFunc.ptr;
-        },
         else => {
+            const type_e = vm.c.types[valT];
+            if (type_e.kind == .int) {
+                const addr: usize = @intCast(val.asBoxInt());
+                return @ptrFromInt(addr);
+            }
             // TODO: Since union types aren't supported yet, check for type miss.
             cy.panicFmt("Expected `pointer`, got type id: `{}`", .{valT});
         },
@@ -1115,7 +1134,8 @@ fn cGetFuncPtr(val: Value) callconv(.C) ?*anyopaque {
 }
 
 fn cAllocCyPointer(vm: *cy.VM, ptr: ?*anyopaque) callconv(.C) Value {
-    return cy.heap.allocPointer(vm, ptr) catch cy.fatal();
+    const bt_data = vm.getData(*cy.builtins.BuiltinsData, "builtins");
+    return cy.heap.allocPointer(vm, bt_data.PointerVoid, ptr) catch cy.fatal();
 }
 
 fn cAllocInt(vm: *cy.VM, val: i64) callconv(.C) Value {
@@ -1284,13 +1304,12 @@ pub fn ffiBindObjPtr(vm: *cy.VM) anyerror!Value {
 
     const ffi = vm.getHostObject(*FFI, 0);
     const obj = vm.getValue(1).asHeapObject();
-    const res = vm.allocPointer(@ptrCast(obj));
 
     // Retain and managed by FFI context.
     vm.retainObject(obj);
     try ffi.managed.append(vm.alloc, vm.getValue(1));
     
-    return res;
+    return Value.initRaw(@intFromPtr(obj));
 }
 
 pub fn ffiUnbindObjPtr(vm: *cy.VM) anyerror!Value {

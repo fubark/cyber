@@ -74,6 +74,11 @@ pub const Value = packed union {
         return @bitCast(self.val);
     }
 
+    pub inline fn asPointer(self: *const Value) ?*anyopaque {
+        const addr: usize = @intCast(self.val);
+        return @ptrFromInt(addr);
+    }
+
     pub inline fn asF64toI32(self: *const Value) i32 {
         const f = self.asF64();
         if (self.val & 0x7ff0000000000000 != 0x7ff0000000000000) {
@@ -490,42 +495,46 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) anyerror!Value {
             bt.TccState => {
                 fmt.panic("Unsupported copy tcc state.", &.{});
             },
-            bt.Pointer => {
-                fmt.panic("Unsupported copy pointer.", &.{});
-            },
             else => {
                 const entry = &@as(*const cy.VM, @ptrCast(vm)).c.types[obj.getTypeId()];
-                if (entry.kind == .object) {
-                    const numFields = entry.data.object.numFields;
-                    const fields = obj.object.getValuesConstPtr()[0..numFields];
-                    var new: Value = undefined;
-                    if (numFields <= 4) {
-                        new = try cy.heap.allocObjectSmall(vm, obj.getTypeId(), fields);
-                    } else {
-                        new = try cy.heap.allocObject(vm, obj.getTypeId(), fields);
-                    }
-                    const rt_fields = entry.data.object.fields[0..numFields];
-                    for (fields, 0..) |field, i| {
-                        if (rt_fields[i]) {
+                switch (entry.kind) {
+                    .int => {
+                        return vm.allocInt(obj.integer.val);
+                    },
+                    .object => {
+                        const numFields = entry.data.object.numFields;
+                        const fields = obj.object.getValuesConstPtr()[0..numFields];
+                        var new: Value = undefined;
+                        if (numFields <= 4) {
+                            new = try cy.heap.allocObjectSmall(vm, obj.getTypeId(), fields);
+                        } else {
+                            new = try cy.heap.allocObject(vm, obj.getTypeId(), fields);
+                        }
+                        const rt_fields = entry.data.object.fields[0..numFields];
+                        for (fields, 0..) |field, i| {
+                            if (rt_fields[i]) {
+                                cy.arc.retain(vm, field);
+                            }
+                        }
+                        return new;
+                    },
+                    .table => {
+                        const numFields = entry.data.table.numFields;
+                        const fields = obj.object.getValuesConstPtr()[0..numFields];
+                        var new: Value = undefined;
+                        if (numFields <= 4) {
+                            new = try cy.heap.allocObjectSmall(vm, obj.getTypeId(), fields);
+                        } else {
+                            new = try cy.heap.allocObject(vm, obj.getTypeId(), fields);
+                        }
+                        for (fields) |field| {
                             cy.arc.retain(vm, field);
                         }
-                    }
-                    return new;
-                } else if (entry.kind == .table) {
-                    const numFields = entry.data.table.numFields;
-                    const fields = obj.object.getValuesConstPtr()[0..numFields];
-                    var new: Value = undefined;
-                    if (numFields <= 4) {
-                        new = try cy.heap.allocObjectSmall(vm, obj.getTypeId(), fields);
-                    } else {
-                        new = try cy.heap.allocObject(vm, obj.getTypeId(), fields);
-                    }
-                    for (fields) |field| {
-                        cy.arc.retain(vm, field);
-                    }
-                    return new;
-                } else {
-                    fmt.panic("Unsupported copy host object. {}", &.{fmt.v(entry.kind)});
+                        return new;
+                    },
+                    else => {
+                        fmt.panic("Unsupported copy host object. {}", &.{fmt.v(entry.kind)});
+                    },
                 }
             },
         }

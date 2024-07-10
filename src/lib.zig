@@ -461,25 +461,34 @@ export fn clDeclareVar(mod: c.Sym, name: [*:0]const u8, typeId: cy.TypeId, val: 
     }
 }
 
-export fn clExpandTemplateType(ctemplate: c.Sym, args_ptr: [*]const cy.Value, nargs: u32) c.TypeId {
+export fn clExpandTemplateType(ctemplate: c.Sym, args_ptr: [*]const cy.Value, nargs: u32, res: *c.TypeId) bool {
     const template = cy.Sym.fromC(ctemplate).cast(.template);
-    const chunk = template.chunk();
     const args = args_ptr[0..nargs];
+    const type_id = clExpandTemplateType2(template, args) catch |err| {
+        log.tracev("{}", .{err});
+        return false;
+    };
+    res.* = type_id;
+    return true;
+}
+
+fn clExpandTemplateType2(template: *cy.sym.Template, args: []const cy.Value) !cy.TypeId {
+    const chunk = template.chunk();
 
     // Build args types.
     const typeStart = chunk.typeStack.items.len;
     defer chunk.typeStack.items.len = typeStart;
     for (args) |arg| {
-        chunk.typeStack.append(chunk.alloc, arg.getTypeId()) catch cy.fatal();
+        try chunk.typeStack.append(chunk.alloc, arg.getTypeId());
     }
     const arg_types = chunk.typeStack.items[typeStart..];
 
     // Check against template signature.
     if (!cy.types.isTypeFuncSigCompat(chunk.compiler, @ptrCast(arg_types), .not_void, template.sigId)) {
-        cy.fatal();
+        return error.SigMismatch;
     }
 
-    const sym = cy.cte.expandTemplate(chunk, template, args) catch cy.fatal();
+    const sym = try cy.cte.expandTemplate(chunk, template, args);
     return sym.getStaticType().?;
 }
 
@@ -651,8 +660,9 @@ export fn clSymbol(vm: *cy.VM, str: c.Str) Value {
     return Value.initSymbol(@intCast(id));
 }
 
-export fn clNewPointer(vm: *cy.VM, ptr: ?*anyopaque) Value {
-    return cy.heap.allocPointer(vm, ptr) catch fatal();
+export fn clNewPointerVoid(vm: *cy.VM, ptr: ?*anyopaque) Value {
+    const bt_data = vm.getData(*cy.builtins.BuiltinsData, "builtins");
+    return cy.heap.allocPointer(vm, bt_data.PointerVoid, ptr) catch fatal();
 }
 
 export fn clNewType(vm: *cy.VM, type_id: cy.TypeId) Value {
@@ -663,9 +673,7 @@ test "clNewPointer()" {
     const vm = c.create();
     defer c.destroy(vm);
 
-    const val = c.newPointer(vm, @ptrFromInt(123));
-    try t.eq(c.getTypeId(val), bt.Pointer);
-
+    const val = c.newPointerVoid(vm, @ptrFromInt(123));
     const obj = (Value{.val = val}).asHeapObject();
     try t.eq(@intFromPtr(obj.pointer.ptr), 123);
 }
@@ -770,7 +778,6 @@ test "Constants." {
     try t.eq(c.TypeExternFunc, bt.ExternFunc);
     try t.eq(c.TypeType, bt.Type);
     try t.eq(c.TypeTccState, bt.TccState);
-    try t.eq(c.TypePointer, bt.Pointer);
     try t.eq(c.TypeTuple, bt.Tuple);
     try t.eq(c.TypeMetaType, bt.MetaType);
 }

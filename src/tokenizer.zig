@@ -74,6 +74,7 @@ pub const TokenType = enum(u8) {
     dot,
     dot_question,
     dot_dot,
+    dot_star,
     double_left_angle,
     double_right_angle,
     double_vert_bar,
@@ -315,14 +316,22 @@ pub const Tokenizer = struct {
             ']' => try t.pushToken(.right_bracket, start),
             ',' => try t.pushToken(.comma, start),
             '.' => {
-                if (peek(t) == '.') {
-                    advance(t);
-                    try t.pushToken(.dot_dot, start);
-                } else if (peek(t) == '?') {
-                    advance(t);
-                    try t.pushToken(.dot_question, start);
-                } else {
-                    try t.pushToken(.dot, start);
+                switch (peek(t)) {
+                    '.' => {
+                        advance(t);
+                        try t.pushToken(.dot_dot, start);
+                    },
+                    '?' => {
+                        advance(t);
+                        try t.pushToken(.dot_question, start);
+                    },
+                    '*' => {
+                        advance(t);
+                        try t.pushToken(.dot_star, start);
+                    },
+                    else => {
+                        try t.pushToken(.dot, start);
+                    },
                 }
             },
             ':' => {
@@ -1012,6 +1021,6 @@ test "tokenizer internals." {
     try tt.eq(@alignOf(Token), 4);
     try tt.eq(@sizeOf(TokenizeState), 4);
 
-    try tt.eq(std.enums.values(TokenType).len, 93);
+    try tt.eq(std.enums.values(TokenType).len, 94);
     try tt.eq(keywords.kvs.len, 40);
 }

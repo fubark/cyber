@@ -60,7 +60,6 @@ typedef enum {
     CL_TYPE_FIBER,
     CL_TYPE_UPVALUE,
     CL_TYPE_TCCSTATE,
-    CL_TYPE_POINTER,
     CL_TYPE_METATYPE,
     CL_TYPE_RANGE,
     CL_TYPE_TABLE,
@@ -457,7 +456,7 @@ void clDeclareDynVar(CLSym mod, const char* name, CLTypeId type, CLValue val);
 void clDeclareVar(CLSym mod, const char* name, CLTypeId type, CLValue val);
 
 // Expand type template for given arguments.
-CLTypeId clExpandTemplateType(CLSym type_t, const CLValue* args, uint32_t nargs);
+bool clExpandTemplateType(CLSym type_t, const CLValue* args, uint32_t nargs, CLTypeId* res);
 
 // -----------------------------------
 // [ Memory ]
@@ -544,7 +543,7 @@ CLValue clNewList(CLVM* vm, CLTypeId type_id, const CLValue* vals, size_t len);
 CLValue clNewEmptyMap(CLVM* vm);
 CLValue clNewFuncDyn(CLVM* vm, uint32_t numParams, CLFuncFn func);
 CLValue clNewFunc(CLVM* vm, const CLTypeId* params, uint32_t numParams, CLTypeId retType, CLFuncFn func);
-CLValue clNewPointer(CLVM* vm, void* ptr);
+CLValue clNewPointerVoid(CLVM* vm, void* ptr);
 CLValue clNewType(CLVM* vm, CLTypeId type_id);
 
 // Instantiating a `@host type` requires the `typeId` obtained from `CLTypeLoader` and

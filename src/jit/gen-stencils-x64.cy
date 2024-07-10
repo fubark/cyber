@@ -18,7 +18,7 @@ var cbuf = llvm.GetBufferStart(llBuf)
 var size = llvm.GetBufferSize(llBuf)
 var buf = cbuf.toArray(0, size)
 
-var llBin = llvm.CreateBinary(llBuf, pointer(0), outMsg)
+var llBin = llvm.CreateBinary(llBuf, pointer(void, 0), outMsg)
 
 var binType = llvm.BinaryGetType(llBin)
 if binType != llvm.BinaryTypeELF64L:

@@ -121,10 +121,7 @@ pub const VM = struct {
     /// Always contains one dummy node to avoid null checking.
     cyclableHead: if (cy.hasGC) *cy.heap.DListNode else void,
 
-    /// Cached buckets used to lookup object methods.
-    /// If the `MethodEntry.mru_type` matches, `mru_id` stored in MethodEntry is used first.
-    /// Otherwise, `type_method_map` is queried.
-    /// `TypeMethod`s are not created until at least 2 types share the same method name.
+    /// `type_method_map` is queried at runtime by dynamic method calls using the receiver's type and method id.
     method_map: std.AutoHashMapUnmanaged(rt.MethodKey, vmc.MethodId),
     type_method_map: std.HashMapUnmanaged(rt.TypeMethodKey, rt.FuncGroupId, cy.hash.KeyU64Context, 80),
 
@@ -3408,6 +3405,10 @@ pub const VMGetArgExt = struct {
     pub fn setInt(vm: *VM, idx: u32, i: i64) void {
         vm.c.framePtr[CallArgStart + idx] = Value.initInt(i);
     }    
+
+    pub fn getPointer(vm: *VM, idx: u32) ?*anyopaque {
+        return vm.c.framePtr[CallArgStart + idx].asPointer();
+    }
 
     pub fn getFloat(vm: *VM, idx: u32) f64 {
         return vm.c.framePtr[CallArgStart + idx].asF64();

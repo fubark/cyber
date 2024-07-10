@@ -48,16 +48,16 @@ t.eq(fooInt(n as int), true)
 --|
 --| pointer.
 --|
-func fooPointer(a pointer):
+func fooPointer(a *void):
   return a.addr() == 123
 
 -- From var.
-var ptr = pointer(123)
+var ptr = pointer(void, 123)
 t.eq(fooPointer(ptr), true)
 
 -- Cast erased type.
-ptr = t.erase(pointer(123))
-t.eq(fooPointer(pointer(ptr)), true)
+var ptr2 = t.erase(pointer(void, 123))
+t.eq(fooPointer(ptr2), true)
 
 --|
 --| String.

@@ -405,29 +405,30 @@ type ArrayIterator:
         nextIdx += 1
         return res
 
-@host
-type pointer _:
+type pointer[T type] #int64_t:
+    @host func $index(self, idx int) T
+
     --| When pointer runtime safety is enabled, this returns the raw pointer address as an `int64`. 
     --| Otherwise, the pointer itself is bitcasted to an `int64`.
     @host func addr(self) int
 
-    --| Unsafe. Casts the pointer to a Cyber object. The object is retained before it's returned.
+    --| Casts the pointer to a Cyber object. The object is retained before it's returned.
     @host func asObject(self) any
 
-    --| Unsafe. Returns an `Array` from a null terminated C string.
+    --| Returns an `Array` from a null terminated C string.
     @host func fromCstr(self, offset int) Array
 
-    --| Unsafe. Dereferences the pointer at a byte offset and returns the C value converted to Cyber.
-    @host func get(self, offset int, ctype symbol) any
+    --| Dereferences the pointer at a byte offset and returns the C value converted to Cyber.
+    @host func get(self, offset int, ctype symbol) dyn
 
-    --| Unsafe. Converts the value to a compatible C value and writes it to a byte offset from this pointer.
+    --| Converts the value to a compatible C value and writes it to a byte offset from this pointer.
     @host func set(self, offset int, ctype symbol, val any) void
 
-    --| Unsafe. Returns an `Array` with a copy of the byte data starting from an offset to the specified length.
+    --| Returns an `Array` with a copy of the byte data starting from an offset to the specified length.
     @host func toArray(self, offset int, len int) Array
 
---| Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI.
-@host func pointer.$call(val any) pointer
+--| Converts an `int` to a `pointer` value.
+@host func pointer.$call(#T type, addr int) *T
 
 @host type Closure _
 @host type Lambda _
@@ -438,6 +439,8 @@ type ExternFunc _:
     --| Returns the memory address as an `int`. The value may be negative since it's
     --| bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
     @host func addr(self) int
+
+    @host func ptr(self) *void
 
 @host
 type Fiber _:

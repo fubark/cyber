@@ -192,16 +192,6 @@ static inline ValueResult allocInt(VM* vm, i64 i) {
     return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
-static inline ValueResult allocPointer(VM* vm, void* ptr) {
-    HeapObjectResult res = zAllocPoolObject(vm);
-    res.obj->pointer = (Pointer){
-        .typeId = TYPE_POINTER,
-        .rc = 1,
-        .ptr = ptr,
-    };
-    return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
-}
-
 static inline ValueResult allocObjectSmallEmpty(VM* vm, TypeId typeId) {
     HeapObjectResult res = zAllocPoolObject(vm);
     if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
@@ -617,7 +607,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(TypeCheck),
         JENTRY(TypeCheckOption),
         JENTRY(Field),
-        JENTRY(FieldRef),
+        JENTRY(AddrField),
         JENTRY(FieldDyn),
         JENTRY(FieldDynIC),
         JENTRY(Lambda),
@@ -643,9 +633,10 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Trait),
         JENTRY(Box),
         JENTRY(Unbox),
-        JENTRY(Ref),
-        JENTRY(RefCopyObj),
-        JENTRY(SetRef),
+        JENTRY(AddrLocal),
+        JENTRY(Deref),
+        JENTRY(DerefStruct),
+        JENTRY(SetDeref),
         JENTRY(UnwrapChoice),
         JENTRY(SetFieldDyn),
         JENTRY(SetFieldDynIC),
@@ -1335,23 +1326,11 @@ beginSwitch:
         pc += 5;
         NEXT();
     }
-    CASE(FieldRef): {
-        HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
-        Value* field = objectGetFieldPtr((Object*)obj, pc[2]);
-        u8 numNestedFields = pc[3];
-        if (numNestedFields > 0) {
-            for (int i = 0; i < numNestedFields; i += 1) {
-                u8 nextIdx = pc[5 + i];
-                field = objectGetFieldPtr((Object*)VALUE_AS_HEAPOBJECT(*field), nextIdx);
-            }
-        }
-
-        ValueResult res = allocPointer(vm, field);
-        if (res.code != RES_CODE_SUCCESS) {
-            RETURN(res.code);
-        }
-        stack[pc[4]] = res.val;
-        pc += 5 + numNestedFields;
+    CASE(AddrField): {
+        Value* ptr = (Value*)stack[pc[1]];
+        Value* field = objectGetFieldPtr((Object*)VALUE_AS_HEAPOBJECT(*ptr), pc[2]);
+        stack[pc[3]] = (u64)field;
+        pc += 4;
         NEXT();
     }
     CASE(FieldDyn): {
@@ -1580,18 +1559,26 @@ beginSwitch:
         pc += 5;
         NEXT();
     }
-    CASE(Ref): {
-        HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
-        Value* src = (Value*)obj->pointer.ptr;
-        stack[pc[2]] = *src;
+    CASE(AddrLocal): {
+        Value* ptr = &stack[pc[1]];
+        stack[pc[2]] = (u64)ptr;
         pc += 3;
         NEXT();
     }
-    CASE(RefCopyObj): {
-        HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
-        Value* src = (Value*)obj->pointer.ptr;
+    CASE(Deref): {
+        Value* src = (Value*)stack[pc[1]];
+        bool retain_v = pc[2];
+        if (retain_v) {
+            retain(vm, *src);
+        }
+        stack[pc[3]] = *src;
+        pc += 4;
+        NEXT();
+    }
+    CASE(DerefStruct): {
+        Value* ptr = (Value*)stack[pc[1]];
         u8 numFields = pc[2];
-        ValueResult res = copyObj(vm, VALUE_AS_HEAPOBJECT(*src), numFields);
+        ValueResult res = copyObj(vm, VALUE_AS_HEAPOBJECT(*ptr), numFields);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
@@ -1599,12 +1586,14 @@ beginSwitch:
         pc += 4;
         NEXT();
     }
-    CASE(SetRef): {
-        HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
-        Value* dst = (Value*)obj->pointer.ptr;
-        release(vm, *dst);
-        *dst = stack[pc[2]];
-        pc += 3;
+    CASE(SetDeref): {
+        Value* dst = (Value*)stack[pc[1]];
+        bool is_struct = stack[pc[2]];
+        if (is_struct) {
+            release(vm, *dst);
+        }
+        *dst = stack[pc[3]];
+        pc += 4;
         NEXT();
     }
     CASE(UnwrapChoice): {

@@ -29,7 +29,7 @@ var leaveBlock_c = md.ffi.bindCallback(leaveBlock, [symbol.int, symbol.voidPtr, 
 var enterSpan_c = md.ffi.bindCallback(enterSpan, [symbol.int, symbol.voidPtr, symbol.voidPtr], symbol.int)
 var leaveSpan_c = md.ffi.bindCallback(leaveSpan, [symbol.int, symbol.voidPtr, symbol.voidPtr], symbol.int)
 var text_c = md.ffi.bindCallback(text, [symbol.int, symbol.voidPtr, symbol.int, symbol.voidPtr], symbol.int)
-var nullptr = pointer(0)
+var nullptr = pointer(void, 0)
 parser.set(0, .int, 0)
 parser.set(4, .int, md.FLAG_TABLES)
 parser.set(8, .voidPtr, enterBlock_c)
@@ -40,7 +40,7 @@ parser.set(40, .voidPtr, text_c)
 parser.set(48, .voidPtr, nullptr)
 parser.set(56, .voidPtr, nullptr)
 
-var res = md.md_parse(csrc, csrcLen, parser, pointer(0))
+var res = md.md_parse(csrc, csrcLen, parser, pointer(void, 0))
 if res != 0:
     print "parse error: $(res)"
     os.exit(1)
@@ -97,7 +97,7 @@ hljs.registerLanguage('cy', function() {
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case', 'trait'
         ],
         type: [
-            'float', 'String', 'Array', 'bool', 'any', 'int', 'List', 'Map', 'symbol', 'pointer', 'dyn'
+            'float', 'String', 'Array', 'bool', 'any', 'int', 'List', 'Map', 'symbol', 'dyn'
         ],
     },
     contains: [
@@ -162,7 +162,7 @@ func resetState():
     state = State.main
     bufContent = false
 
-func enterBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
+func enterBlock(block_t md.BLOCKTYPE, detail_p *void, userdata *void) int:
     if parsingToc:
         switch block_t
         case md.BLOCK_HTML:
@@ -229,7 +229,7 @@ func enterBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         print "unsupported enter block $(block_t)"
         return 1
 
-func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
+func leaveBlock(block_t md.BLOCKTYPE, detail_p *void, userdata *void) int:
     if parsingToc:
         if block_t == md.BLOCK_HTML:
             if textContent.startsWith('<!--') and !isNone(textContent.find('TOC-END')):
@@ -310,7 +310,7 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p pointer, userdata pointer) int:
         print "unsupported leave block $(block_t)"
         return 1
 
-func enterSpan(span_t md.SPANTYPE, detail_p pointer, userdata pointer) int:
+func enterSpan(span_t md.SPANTYPE, detail_p *void, userdata *void) int:
     switch span_t
     case md.SPAN_EM:
         out += '<em>'
@@ -342,7 +342,7 @@ func enterSpan(span_t md.SPANTYPE, detail_p pointer, userdata pointer) int:
         print "unsupported enter span $(span_t)"
         return 1
 
-func leaveSpan(span_t md.SPANTYPE, detail pointer, userdata pointer) int:
+func leaveSpan(span_t md.SPANTYPE, detail *void, userdata *void) int:
     switch span_t
     case md.SPAN_EM:
         out += '</em>'
@@ -368,7 +368,7 @@ func leaveSpan(span_t md.SPANTYPE, detail pointer, userdata pointer) int:
         print "unsupported leave span $(span_t)"
         return 1
 
-func text(text_t md.SPANTYPE, ptr pointer, len int, userdata pointer) int:
+func text(text_t md.SPANTYPE, ptr *void, len int, userdata *void) int:
     var str = ptr.toArray(0, len).decode()
     if bufContent:
         textContent += str
@@ -380,7 +380,7 @@ func text(text_t md.SPANTYPE, ptr pointer, len int, userdata pointer) int:
 func getAttrText(attr dyn) String:
     if attr.size == 0:
         return ''
-    return (attr.text as pointer).toArray(0, attr.size).decode()
+    return (attr.text as *void).toArray(0, attr.size).decode()
 
 type ModulePair:
     path    String

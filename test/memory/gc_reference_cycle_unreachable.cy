@@ -19,7 +19,7 @@ func foo2():
     var b = []
     a.append(b as any)
     b.append(a as any)
-    a.append(pointer(1))
+    a.append(pointer(void, 1))
 foo2()
 res = performGC()
 t.eq(res['numCycFreed'], 2)

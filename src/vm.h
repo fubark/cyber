@@ -267,7 +267,7 @@ typedef enum {
     CodeTypeCheck,
     CodeTypeCheckOption,
     CodeField,
-    CodeFieldRef,
+    CodeAddrField,
     CodeFieldDyn,
     CodeFieldDynIC,
     CodeLambda,
@@ -298,9 +298,10 @@ typedef enum {
 
     CodeBox,
     CodeUnbox,
-    CodeRef,
-    CodeRefCopyObj,
-    CodeSetRef,
+    CodeAddrLocal,
+    CodeDeref,
+    CodeDerefStruct,
+    CodeSetDeref,
     CodeUnwrapChoice,
 
     /// Set field with runtime type check.
@@ -389,14 +390,13 @@ enum {
     TYPE_FIBER = 23,
     TYPE_UPVALUE = 24,
     TYPE_TCC_STATE = 25,
-    TYPE_POINTER = 26,
-    TYPE_METATYPE = 27,
-    TYPE_RANGE = 28,
-    TYPE_TABLE = 29,
+    TYPE_METATYPE = 26,
+    TYPE_RANGE = 27,
+    TYPE_TABLE = 28,
 };
 
 #define PrimitiveEnd 9
-#define BuiltinEnd 30
+#define BuiltinEnd 29
 
 typedef uint8_t Inst;
 typedef uint64_t Value;

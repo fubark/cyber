@@ -153,16 +153,6 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
                     return false;
                 }
             },
-            bt.Pointer => {
-                const actPtr = act.castHeapObject(*cy.Pointer).ptr;
-                const expPtr = exp.castHeapObject(*cy.Pointer).ptr;
-                if (actPtr == expPtr) {
-                    return true;
-                } else {
-                    rt.errFmt(c, "actual: {} != {}\n", &.{v(actPtr), v(expPtr)});
-                    return false;
-                }
-            },
             bt.Boolean => {
                 const actv = act.asBool();
                 const expv = exp.asBool();
@@ -221,6 +211,16 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
                 if (act_t < cy.types.BuiltinEnd) {
                     cy.panicFmt("Unsupported type {}", .{act_t});
                 } else {
+                    if (c.c.types[act_t].kind == .int) {
+                        const act_v = act.asBoxInt();
+                        const exp_v = exp.asBoxInt();
+                        if (act_v == exp_v) {
+                            return true;
+                        } else {
+                            rt.errFmt(c, "actual: {} != {}\n", &.{v(act_v), v(exp_v)});
+                            return false;
+                        }
+                    }
                     const actv = act.asAnyOpaque();
                     const expv = exp.asAnyOpaque();
                     if (actv == expv) {

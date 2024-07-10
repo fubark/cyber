@@ -1528,6 +1528,11 @@ Note that invoking the template again with the same argument(s) returns the same
 * [C structs.](#c-structs)
   * [C struct methods.](#c-struct-methods)
   * [C struct reference.](#c-struct-reference)
+* [Pointers.](#pointers)
+  * [Dereferencing pointers.](#dereferencing-pointers)
+  * [Pointer arithmetic.](#pointer-arithmetic)
+  * [Pointer casting.](#pointer-casting)
+  * [Pointer conversions.](#pointer-conversions)
 * [Union types.](#union-types)
 
 [^top](#table-of-contents)
@@ -1540,6 +1545,7 @@ This table shows the size and type compatibility of Cyber and C types:
 
 | Cyber | C | Size (bits) |
 | --- | --- | --- |
+| void | void | 0, used as *void |
 | int8 | int8_t | 8 | 
 | byte | uint8_t | 8 |
 | c_char | char | 8 |
@@ -1638,6 +1644,47 @@ func scale(a *Vec2, n float):
 add(&v, 10)
 print v                 --> Vec2{x=40, y=20}
 ```
+
+## Pointers.
+A `pointer` is a reference to a memory location. Its type is denoted as `*T` where `T` is the type that the pointer references in memory:
+```cy
+func setName(p *Person, name []byte):
+    p.name = name
+
+var p = Person{}
+setName(&p, 'Spock')
+```
+
+Depending on the target architecture, the alignment of the pointer will either be at least 8 bytes on a 64-bit machine or 4 bytes on a 32-bit machine. Aligned pointers will be supported in a future version.
+
+Pointers are unsafe since they can reference corrupted or invalidated memory.
+When runtime memory checks are enabled, pointers will occupy an extra word size in order to set traps and prevent unsafe uses of pointers. See [Memory / Runtime memory checks](#runtime-memory-checks).
+
+A pointer can be created with an explicit address using `pointer`.
+```cy
+var ptr = pointer(*void, 0xDEADBEEF)
+print ptr.value()     --'3735928559'
+```
+
+### Dereferencing pointers.
+Pointers are dereferenced using the accessor operator `.*`:
+```cy
+var a = 123
+var ptr = &a
+print ptr.*      --> 123
+
+ptr.* = 10
+print a          --> 10
+```
+
+### Pointer arithmetic.
+> _Planned Feature_
+
+### Pointer casting.
+> _Planned Feature_
+
+### Pointer conversions.
+> _Planned Feature_
 
 ## Union types.
 > _Planned Feature_
@@ -2412,7 +2459,6 @@ t.eq(a, 444)
   * [Finalizer.](#finalizer)
 * [Mappings.](#mappings)
 * [Bind to Cyber type.](#bind-to-cyber-type)
-* [Pointers.](#pointers)
 * [cbindgen.cy](#cbindgency)
 
 [^top](#table-of-contents)
@@ -2481,8 +2527,8 @@ When using `cfunc` or `cbind` declarations, [symbols](#symbols) are used to repr
 | .usize | int | size_t, uintptr_t | 
 | .float | float | float |
 | .double | float | double |
-| (1) .charPtr | pointer | char* |
-| .voidPtr | pointer | void* |
+| (1) .charPtr | *void | char* |
+| .voidPtr | *void | void* |
 | (2) type {S} | type {S} | struct |
 
 1. Use `os.cstr()` and `pointer.fromCstr()` to convert between a Cyber string and a null terminated C string.
@@ -2495,7 +2541,7 @@ use os
 
 type MyObject:
     a float
-    b pointer
+    b *void
     c bool
 
 ffi.cbind(MyObject, [.float, .voidPtr, .bool])
@@ -2525,15 +2571,6 @@ let lib = ffi.bindLib('./mylib.so')
 
 var ptr = lib.foo(MyObject{a=123, b=os.cstr('foo'), c=true})
 var res = lib.ptrToMyObject(ptr)
-```
-
-## Pointers.
-A `pointer` is used to read or write to an exact memory address. This is typically used for FFI to manually map Cyber types to C, and back. See [`type pointer`](#type-pointer).
-
-A new pointer can be created with the builtin `pointer`.
-```cy
-var ptr = pointer(0xDEADBEEF)
-print ptr.value()     --'3735928559'
 ```
 
 ## cbindgen.cy
@@ -3722,6 +3759,7 @@ void myNodeFinalizer(CLVM* vm, void* obj) {
   * [Cycle detection.](#cycle-detection)
 * [Manual memory.](#manual-memory)
   * [Memory allocations.](#memory-allocations)
+  * [Runtime memory checks.](#runtime-memory-checks)
 
 [^top](#table-of-contents)
 
@@ -3793,6 +3831,18 @@ print res['numObjFreed']      -- Output: 2
 
 ### Memory allocations.
 > _Planned Feature_
+
+### Runtime memory checks.
+*Planned Feature*
+When runtime memory checks are enabled, the compiler will insert traps and runtime logic to prevent the following unsafe uses of pointers and memory allocations:
+* Use after free.
+* Double free.
+* Out of bounds memory access.
+* Null pointer access.
+* Misaligned pointer access.
+* Unfreed memory.
+
+With these checks in place, using manual memory will be much less error prone at the cost of some runtime performance and memory cost. Pointers will occupy an extra word size and the runtime will maintain an allocation table that contains the raw pointer and metadata.
 
 # CLI.
 

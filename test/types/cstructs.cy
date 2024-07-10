@@ -34,14 +34,14 @@ test.eq(a.val, 123)
 type Bar cstruct:
     a int
     b Foo
-var c = Bar{a=123, b = {val=234}}
+var c = Bar{a=123, b={val=234}}
 test.eq(c.a, 123)
 test.eq(c.b.val, 234)
 var c2 = c
 var cb = c.b
 c.a = 1234
-c.b.val = 2345
 test.eq(c.a, 1234)
+c.b.val = 2345
 test.eq(c.b.val, 2345)
 test.eq(c2.a, 123)
 test.eq(c2.b.val, 234)

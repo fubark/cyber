@@ -195,9 +195,7 @@ if (!aot) {
     run.case("types/optionals_incompat_value_error.cy");
     run.case("types/optionals_unwrap_panic.cy");
     run.case("types/optionals.cy");
-
-    // run.case("types/pointers.cy");
-    // run.case("types/pointers_error.cy");
+    run.case("types/pointers.cy");
 
     run.case("types/struct_zero_init_error.cy");
     run.case("types/structs.cy");

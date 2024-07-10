@@ -146,11 +146,11 @@ pub const ExprType = packed struct {
     throws: bool,
 
     pub fn init(id: cy.TypeId) ExprType {
-        return .{ .id = @intCast(id), .throws = false };
+        return .{ .id = @truncate(id), .throws = false };
     }
 
     pub fn initThrows(id: cy.TypeId) ExprType {
-        return .{ .id = @intCast(id), .throws = true };
+        return .{ .id = @truncate(id), .throws = true };
     }
 };
 

@@ -358,7 +358,7 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
         len = try fmt.printCount(w, "{} {}: ", &.{v(pcOffset), v(code)});
     }
     switch (code) {
-        .box => {
+        .up => {
             const local = pc[1].val;
             const dst = pc[2].val;
             len += try fmt.printCount(w, "local={}, dst={}", &.{v(local), v(dst)});
@@ -370,7 +370,7 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[4].val;
             len += try fmt.printCount(w, "%{} = closure(%{})[{}], retain={}", &.{v(dst), v(closure), v(varIdx), v(retain)});
         },
-        .boxValue => {
+        .up_value => {
             const local = pc[1].val;
             const dst = pc[2].val;
             len += try fmt.printCount(w, "local={}, dst={}", &.{v(local), v(dst)});
@@ -481,10 +481,10 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const numRet = pc[3].val;
             len += try fmt.printCount(w, "ret={}, narg={}, nret={}", &.{v(startLocal), v(numArgs), v(numRet)});
         },
-        .setBoxValue => {
-            const box = pc[1].val;
+        .set_up_value => {
+            const up = pc[1].val;
             const rhs = pc[2].val;
-            len += try printInstArgs(w, &.{"box", "rhs"}, &.{v(box), v(rhs)});
+            len += try printInstArgs(w, &.{"up", "rhs"}, &.{v(up), v(rhs)});
         },
         .lambda => {
             const funcOff = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
@@ -947,11 +947,8 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .future_value,
         .coyield,
         .coresume,
-        .box,
-        .setBoxValue,
-        .setBoxValueRelease,
-        .boxValue,
-        .boxValueRetain,
+        .up,
+        .up_value,
         .ref,
         .setRef,
         .none,
@@ -1200,12 +1197,10 @@ pub const OpCode = enum(u8) {
     /// Lifts a source local to a box object and stores the result in `dstLocal`.
     /// The source local is also retained.
     /// [srcLocal] [dstLocal]
-    box = vmc.CodeBox,
+    up = vmc.CodeUp,
 
-    setBoxValue = vmc.CodeSetBoxValue,
-    setBoxValueRelease = vmc.CodeSetBoxValueRelease,
-    boxValue = vmc.CodeBoxValue,
-    boxValueRetain = vmc.CodeBoxValueRetain,
+    set_up_value = vmc.CodeSetUpValue,
+    up_value = vmc.CodeUpValue,
     captured = vmc.CodeCaptured,
     setCaptured = vmc.CodeSetCaptured,
     tag_lit = vmc.CodeTagLit,

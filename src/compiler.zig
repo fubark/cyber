@@ -1032,7 +1032,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.String,
         bt.Array,
         bt.Fiber,
-        bt.Box,
+        bt.UpValue,
         bt.TccState,
         bt.Pointer,
         bt.MetaType,
@@ -1047,10 +1047,15 @@ fn reserveCoreTypes(self: *Compiler) !void {
 
     std.debug.assert(self.sema.types.items.len == cy.types.BuiltinEnd);
 
-    self.sema.types.items[bt.CTInfer].kind = .bare;
-    self.sema.types.items[bt.CTInfer].sym = @ptrCast(&CTInferType);
-    self.sema.types.items[bt.CTInfer].info.ct_infer = true;
+    self.sema.types.items[bt.UpValue].kind = .bare;
+    self.sema.types.items[bt.UpValue].sym = @ptrCast(&UpValueType);
+    self.sema.types.items[bt.UpValue].info = .{};
 }
+
+pub var UpValueType = cy.sym.DummyType{
+    .head = cy.Sym.init(.dummy_t, null, "UpValue"),
+    .type = bt.UpValue,
+};
 
 pub var CTInferType = cy.sym.DummyType{
     .head = cy.Sym.init(.dummy_t, null, "compt-infer"),

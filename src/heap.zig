@@ -136,7 +136,7 @@ pub const HeapObject = extern union {
 
     object: Object,
     trait: Trait,
-    box: Box,
+    up: UpValue,
     tccState: if (cy.hasFFI) TccState else void,
     pointer: Pointer,
     type: Type,
@@ -693,7 +693,7 @@ pub fn allocFutureResolver(vm: *cy.VM, type_id: cy.TypeId, future: Value) !Value
     }
 }
 
-const Box = extern struct {
+const UpValue = extern struct {
     typeId: cy.TypeId align(8),
     rc: u32,
     val: Value,
@@ -2040,9 +2040,9 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
             cy.fiber.freeFiberPanic(vm, @ptrCast(obj));
             freeExternalObject(vm, obj, @sizeOf(vmc.Fiber), true);
         },
-        bt.Box => {
-            if (!skip_cyc_children or !obj.box.val.isCycPointer()) {
-                cy.arc.release(vm, obj.box.val);
+        bt.UpValue => {
+            if (!skip_cyc_children or !obj.up.val.isCycPointer()) {
+                cy.arc.release(vm, obj.up.val);
             }
             freePoolObject(vm, obj);
         },
@@ -2272,7 +2272,7 @@ test "heap internals." {
         try t.eq(@sizeOf(Array), 16);
         try t.eq(@sizeOf(ArraySlice), 24);
         try t.eq(@sizeOf(Object), 16);
-        try t.eq(@sizeOf(Box), 16);
+        try t.eq(@sizeOf(UpValue), 16);
         try t.eq(@sizeOf(HostFunc), 40);
         try t.eq(@sizeOf(MetaType), 16);
         if (cy.hasFFI) {

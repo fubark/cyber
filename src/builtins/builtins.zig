@@ -244,7 +244,6 @@ const vm_types = [_]C.HostTypeEntry{
     htype("Fiber",          C.CORE_TYPE(bt.Fiber)),
     htype("metatype",       C.CORE_TYPE(bt.MetaType)),
     htype("Range",          C.CORE_TYPE(bt.Range)),
-    htype("Box",            C.CORE_TYPE(bt.Box)),
     htype("TccState",       C.CORE_TYPE(bt.TccState)),
     htype("Future",         C.CUSTOM_TYPE(null, futureGetChildren, null)),
     htype("FutureResolver", C.CUSTOM_TYPE(null, futureResolverGetChildren, null)),

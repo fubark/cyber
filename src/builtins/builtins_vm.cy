@@ -433,7 +433,6 @@ type metatype _:
     @host func id() int
 
 @host type Range _
-@host type Box _
 @host type TccState _
 
 type Option[T type] enum:

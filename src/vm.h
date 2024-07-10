@@ -148,7 +148,7 @@ typedef struct IndexSlice {
 #define VALUE_IS_BOOLEAN(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == BOOLEAN_MASK)
 #define VALUE_IS_POINTER(v) (v >= NOCYC_POINTER_MASK)
 #define VALUE_IS_CLOSURE(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_CLOSURE))
-#define VALUE_IS_BOX(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_BOX))
+#define VALUE_IS_UPVALUE(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_UPVALUE))
 #define VALUE_IS_FLOAT(v) ((v & TAGGED_VALUE_MASK) != TAGGED_VALUE_MASK)
 #define VALUE_IS_ERROR(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == ERROR_MASK)
 
@@ -319,11 +319,9 @@ typedef enum {
     CodeAwait,
     CodeFutureValue,
     CodeRetain,
-    CodeBox,
-    CodeSetBoxValue,
-    CodeSetBoxValueRelease,
-    CodeBoxValue,
-    CodeBoxValueRetain,
+    CodeUp,
+    CodeSetUpValue,
+    CodeUpValue,
     CodeCaptured,
     CodeSetCaptured,
     CodeTagLit,
@@ -390,7 +388,7 @@ enum {
     TYPE_STRING = 21,
     TYPE_ARRAY = 22,
     TYPE_FIBER = 23,
-    TYPE_BOX = 24,
+    TYPE_UPVALUE = 24,
     TYPE_TCC_STATE = 25,
     TYPE_POINTER = 26,
     TYPE_METATYPE = 27,
@@ -557,11 +555,11 @@ typedef struct ValueMap {
     u32 padding;
 } ValueMap;
 
-typedef struct Box {
+typedef struct UpValue {
     TypeId typeId;
     uint32_t rc;
     Value val;
-} Box;
+} UpValue;
 
 typedef struct Closure {
     TypeId typeId;
@@ -642,7 +640,7 @@ typedef union HeapObject {
     MetaType metatype;
     Lambda lambda;
     Closure closure;
-    Box box;
+    UpValue up;
     Map map;
     List list;
     Tuple tuple;

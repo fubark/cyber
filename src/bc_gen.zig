@@ -1682,10 +1682,9 @@ fn genLocalReg(c: *Chunk, reg: SlotId, slot_t: cy.TypeId, cstr: Cstr, node: *ast
         }
         const inst = try bc.selectForDstInst(c, cstr, slot_t, retain_src, node);
 
-        if (retainSrc) {
-            try c.pushCode(.boxValueRetain, &.{ reg, inst.dst }, node);
-        } else {
-            try c.pushCode(.boxValue, &.{ reg, inst.dst }, node);
+        try c.pushCode(.up_value, &.{ reg, inst.dst }, node);
+        if (retain_src) {
+            try c.pushCode(.retain, &.{ inst.dst }, node);
         }
 
         return finishDstInst(c, inst, retain_src);
@@ -1830,7 +1829,7 @@ fn reserveFuncSlots(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []al
             if (param.lifted) {
                 // Retain param and box.
                 try c.buf.pushOp1(.retain, nextReg);
-                try c.pushFCode(.box, &.{nextReg, reg}, c.curBlock.debugNode);
+                try c.pushFCode(.up, &.{nextReg, slot}, c.curBlock.debugNode);
             } else {
                 try c.pushCode(.copyRetainSrc, &.{ nextReg, slot }, c.curBlock.debugNode);
             }
@@ -2465,11 +2464,8 @@ fn genToExactDesc(c: *Chunk, src: GenValue, dst: Cstr, node: *ast.Node, extraIdx
                 try c.pushCode(.retain, &.{ src.reg }, node);
             }
 
-            if (lifted.rcCandidate) {
-                try c.pushCodeExt(.setBoxValueRelease, &.{ lifted.reg, src.reg }, node, extraIdx);
-            } else {
-                try c.pushCodeExt(.setBoxValue, &.{ lifted.reg, src.reg }, node, extraIdx);
-            }
+            const release: u8 = @intFromBool(lifted.rcCandidate);
+            try c.pushCodeExt(.set_up_value, &.{ lifted.reg, src.reg, release }, node, extraIdx);
             return GenValue.initRetained(src.retained);
         },
         .varSym => {

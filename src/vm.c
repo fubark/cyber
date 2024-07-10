@@ -354,7 +354,7 @@ static inline ValueResult allocClosure(
     for (int i = 0; i < numCapturedVals; i += 1) {
         Inst local = capturedVals[i];
 #if TRACE
-        if (!VALUE_IS_BOX(fp[local])) {
+        if (!VALUE_IS_UPVALUE(fp[local])) {
             TRACEV("Expected box value.");
             zFatal();
         }
@@ -399,13 +399,13 @@ static inline ValueResult allocRange(VM* vm, bool has_start, i64 start, bool has
     return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
-static inline ValueResult allocBox(VM* vm, Value val) {
+static inline ValueResult allocUpValue(VM* vm, Value val) {
     HeapObjectResult res = zAllocPoolObject(vm);
     if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
         return (ValueResult){ .code = res.code };
     }
-    res.obj->box = (Box){
-        .typeId = TYPE_BOX | CYC_TYPE_MASK,
+    res.obj->up = (UpValue){
+        .typeId = TYPE_UPVALUE | CYC_TYPE_MASK,
         .rc = 1,
         .val = val,
     };
@@ -677,11 +677,9 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Await),
         JENTRY(FutureValue),
         JENTRY(Retain),
-        JENTRY(Box),
-        JENTRY(SetBoxValue),
-        JENTRY(SetBoxValueRelease),
-        JENTRY(BoxValue),
-        JENTRY(BoxValueRetain),
+        JENTRY(Up),
+        JENTRY(SetUpValue),
+        JENTRY(UpValue),
         JENTRY(Captured),
         JENTRY(SetCaptured),
         JENTRY(TagLit),
@@ -1833,9 +1831,9 @@ beginSwitch:
         pc += 2;
         NEXT();
     }
-    CASE(Box): {
+    CASE(Up): {
         Value value = stack[pc[1]];
-        ValueResult res = allocBox(vm, value);
+        ValueResult res = allocUpValue(vm, value);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
@@ -1843,58 +1841,33 @@ beginSwitch:
         pc += 3;
         NEXT();
     }
-    CASE(SetBoxValue): {
-        Value box = stack[pc[1]];
+    CASE(SetUpValue): {
+        Value up = stack[pc[1]];
         Value rval = stack[pc[2]];
+        bool release_flag = pc[3];
 #if TRACE
-        ASSERT(VALUE_IS_POINTER(box));
+        ASSERT(VALUE_IS_POINTER(up));
 #endif
-        HeapObject* obj = VALUE_AS_HEAPOBJECT(box);
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(up);
 #if TRACE
-        ASSERT(OBJ_TYPEID(obj) == TYPE_BOX);
+        ASSERT(OBJ_TYPEID(obj) == TYPE_UPVALUE);
 #endif
-        obj->box.val = rval;
-        pc += 3;
+        if (release_flag) {
+            release(vm, obj->up.val);
+        }
+        obj->up.val = rval;
+        pc += 4;
         NEXT();
     }
-    CASE(SetBoxValueRelease): {
-        Value box = stack[pc[1]];
-        Value rval = stack[pc[2]];
+    CASE(UpValue): {
+        Value up = stack[pc[1]];
 #if TRACE
-        ASSERT(VALUE_IS_POINTER(box));
-#endif
-        HeapObject* obj = VALUE_AS_HEAPOBJECT(box);
-#if TRACE
-        ASSERT(OBJ_TYPEID(obj) == TYPE_BOX);
-#endif
-        release(vm, obj->box.val);
-        obj->box.val = rval;
-        pc += 3;
-        NEXT();
-    }
-    CASE(BoxValue): {
-        Value box = stack[pc[1]];
-#if TRACE
-        if (!VALUE_IS_BOX(box)) {
+        if (!VALUE_IS_UPVALUE(up)) {
             TRACEV("Expected box value.");
             zFatal();
         }
 #endif
-        stack[pc[2]] = VALUE_AS_HEAPOBJECT(box)->box.val;
-        pc += 3;
-        NEXT();
-    }
-    CASE(BoxValueRetain): {
-        Value box = stack[pc[1]];
-#if TRACE
-        if (!VALUE_IS_BOX(box)) {
-            TRACEV("Expected box value.");
-            zFatal();
-        }
-#endif
-        Value val = VALUE_AS_HEAPOBJECT(box)->box.val;
-        stack[pc[2]] = val;
-        retain(vm, val);
+        stack[pc[2]] = VALUE_AS_HEAPOBJECT(up)->up.val;
         pc += 3;
         NEXT();
     }
@@ -1906,17 +1879,20 @@ beginSwitch:
             zFatal();
         }
 #endif
-        Value box = closureGetCapturedValuesPtr(&VALUE_AS_HEAPOBJECT(closure)->closure)[pc[2]];
+        Value up = closureGetCapturedValuesPtr(&VALUE_AS_HEAPOBJECT(closure)->closure)[pc[2]];
 #if TRACE
-        if (!VALUE_IS_BOX(box)) {
+        if (!VALUE_IS_UPVALUE(up)) {
             TRACEV("Expected box value.");
             zFatal();
         }
 #endif
-        Value val = VALUE_AS_HEAPOBJECT(box)->box.val;
-        retain(vm, val);
-        stack[pc[3]] = val;
-        pc += 4;
+        Value val = VALUE_AS_HEAPOBJECT(up)->up.val;
+        bool retain_flag = pc[3];
+        if (retain_flag) {
+            retain(vm, val);
+        }
+        stack[pc[4]] = val;
+        pc += 5;
         NEXT();
     }
     CASE(SetCaptured): {
@@ -1927,13 +1903,13 @@ beginSwitch:
             zFatal();
         }
 #endif
-        Value box = closureGetCapturedValuesPtr(&VALUE_AS_HEAPOBJECT(closure)->closure)[pc[2]];
-        HeapObject* obj = VALUE_AS_HEAPOBJECT(box);
+        Value up = closureGetCapturedValuesPtr(&VALUE_AS_HEAPOBJECT(closure)->closure)[pc[2]];
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(up);
 #if TRACE
-        ASSERT(OBJ_TYPEID(obj) == TYPE_BOX);
+        ASSERT(OBJ_TYPEID(obj) == TYPE_UPVALUE);
 #endif
-        release(vm, obj->box.val);
-        obj->box.val = stack[pc[3]];
+        release(vm, obj->up.val);
+        obj->up.val = stack[pc[3]];
         pc += 4;
         NEXT();
     }

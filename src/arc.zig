@@ -400,9 +400,9 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
                 }
             }
         },
-        bt.Box => {
-            if (obj.box.val.isCycPointer()) {
-                markValue(vm, obj.box.val);
+        bt.UpValue => {
+            if (obj.up.val.isCycPointer()) {
+                markValue(vm, obj.up.val);
             }
         },
         bt.Fiber => {

@@ -822,6 +822,10 @@ pub const ObjectType = extern struct {
 
     cstruct: bool,
 
+    /// Only relevant for structs/cstructs.
+    /// Used to detect circular dependency.
+    resolving_struct: bool = false,
+
     mod: vmc.Module,
 
     pub fn isResolved(self: *ObjectType) bool {

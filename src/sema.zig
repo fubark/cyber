@@ -2160,6 +2160,7 @@ pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Object
         },
         .struct_t => {
             obj = object_like.cast(.struct_t);
+            obj.resolving_struct = true;
         },
         else => {
             return error.Unsupported;
@@ -2177,6 +2178,7 @@ pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Object
     for (decl.fields, 0..) |field, i| {
         const fieldName = c.ast.nodeString(field.name);
         const fieldType = try resolveTypeSpecNode(c, field.typeSpec);
+        try ensureCompleteType(c, fieldType, @ptrCast(field.typeSpec));
 
         const sym = try c.declareField(@ptrCast(obj), fieldName, i, fieldType, @ptrCast(field));
         fields[i] = .{
@@ -3331,6 +3333,39 @@ pub fn getResolvedLocalSym(c: *cy.Chunk, name: []const u8, node: *ast.Node, dist
         }
     }
     return null;
+}
+
+pub fn ensureCompleteType(c: *cy.Chunk, type_id: cy.TypeId, node: *ast.Node) anyerror!void {
+    const sym = c.sema.getTypeSym(type_id);
+    switch (sym.type) {
+        .trait_t,
+        .float_t,
+        .int_t,
+        .bool_t,
+        .enum_t,
+        .custom_t => {
+            return;
+        },
+        .struct_t => {
+            const struct_t = sym.cast(.struct_t);
+            if (struct_t.isResolved()) {
+                return;
+            }
+            if (struct_t.resolving_struct) {
+                return c.reportError("Structs can not contain a circular dependency.", node);
+            }
+            const src_chunk = struct_t.getMod().chunk;
+            try sema.resolveObjectLikeType(src_chunk, sym, @ptrCast(struct_t.decl.?));
+        },
+        .object_t => {
+            // Objects are always references.
+            return;
+        },
+        else => {
+            log.tracev("{}", .{sym.type});
+            return error.TODO;
+        }
+    }
 }
 
 /// If no type spec, default to `dynamic` type.

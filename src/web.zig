@@ -99,7 +99,8 @@ export fn clWebNewFuture(vm: *cy.VM) u32 {
 
     const any_t = C.newType(@ptrCast(vm), cy.types.BuiltinTypes.Any);
     defer C.release(@ptrCast(vm), any_t);
-    const FutureAnyT = C.expandTemplateType(vm.sema.future_tmpl.head.toC(), &any_t, 1);
+    var FutureAnyT: cy.TypeId = undefined;
+    std.debug.assert(C.expandTemplateType(vm.sema.future_tmpl.head.toC(), &any_t, 1, &FutureAnyT));
     const future = vm.allocFuture(FutureAnyT) catch @panic("error");
 
     const id = ctx.next_id;

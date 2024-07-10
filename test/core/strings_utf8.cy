@@ -51,11 +51,11 @@ t.assert(str.find('bd') == none)
 t.eq(str.find('ab').?, 0)
 
 -- findAnyRune()
-t.eq(str.findAnyRune('a').?, 0)
-t.eq(str.findAnyRune('🦊').?, 3)    -- Find utf-8 rune.
-t.eq(str.findAnyRune('🦊a').?, 0)   -- Find ascii rune.
-t.eq(str.findAnyRune('xy').?, 7)
-t.assert(str.findAnyRune('ef') == none)
+t.eq(str.findAnyRune(.[`a`]).?, 0)
+t.eq(str.findAnyRune(.[`🦊`]).?, 3)        -- Find utf-8 rune.
+t.eq(str.findAnyRune(.[`🦊`, `a`]).?, 0)   -- Find ascii rune.
+t.eq(str.findAnyRune(.[`x`, `y`]).?, 7)
+t.assert(str.findAnyRune(.[`e`, `f`]) == none)
 
 -- findRune()
 t.eq(str.findRune(`a`).?, 0)

@@ -1,6 +1,6 @@
 use t 'test'
 
--- TODO: All string tests will be moved here and tested for each variant.
+-- TODO: All string tests will be separated to strings_ascii and strings_utf8.
 
 var escaped = 'Return the underlying `symbol`.'.replace('`', '\\`')
 t.eq(escaped, 'Return the underlying \\`symbol\\`.')

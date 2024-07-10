@@ -257,7 +257,7 @@ type String _:
     @host func find(needle String) ?int
 
     --| Returns the first byte index of any rune in `runes` or `none` if not found. SIMD enabled.
-    @host func findAnyRune(runes String) ?int
+    @host func findAnyRune(runes List[int]) ?int
 
     --| Returns the first byte index of a rune `needle` in the string or `none` if not found. SIMD enabled.
     @host func findRune(rune int) ?int

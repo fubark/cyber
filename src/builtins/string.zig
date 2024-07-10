@@ -138,41 +138,40 @@ const intNone = cy.builtins.intNone;
 pub fn findAnyRune(vm: *cy.VM) anyerror!Value {
     const obj = vm.getObject(*cy.heap.String, 0);
     const str = obj.getSlice();
-    const set_obj = vm.getObject(*cy.heap.String, 1);
-    const set = set_obj.getSlice();
-    const setIsAscii = set_obj.getType().isAstring();
+    const set_list = vm.getObject(*cy.heap.List, 1).items();
     const stype = obj.getType();
 
-    if (set.len > 0) {
+    const tempBuf = &vm.u8Buf;
+    tempBuf.clearRetainingCapacity();
+    defer tempBuf.ensureMaxCapOrClear(vm.alloc, 4096) catch fatal();
+
+    var set_is_ascii = true;
+    for (set_list) |rune| {
+        if (rune.val >= 0 and rune.val < 128) {
+            try tempBuf.append(vm.alloc, @intCast(rune.val));
+        } else {
+            set_is_ascii = false;
+        }
+    }
+    const set_str = tempBuf.items();
+
+    if (set_list.len > 0) {
         if (stype.isAstring()) {
-            if (setIsAscii) {
-                if (@call(.never_inline, string.indexOfAsciiSet, .{str, set})) |idx| {
+            if (set_is_ascii) {
+                if (@call(.never_inline, string.indexOfAsciiSet, .{str, set_str})) |idx| {
                     return intSome(vm, @intCast(idx));
                 }
             } else {
                 // Reduce search set to just ASCII codepoints.
-                const alloc = vm.alloc;
-                const tempBuf = &vm.u8Buf;
-                tempBuf.clearRetainingCapacity();
-                defer tempBuf.ensureMaxCapOrClear(alloc, 4096) catch fatal();
-                var iter = std.unicode.Utf8Iterator{
-                    .bytes = set,
-                    .i = 0,
-                };
-                while (iter.nextCodepoint()) |cp| {
-                    if (cp < 128) {
-                        try tempBuf.append(alloc, @intCast(cp));
-                    }
-                }
-                if (tempBuf.len > 0) {
-                    if (string.indexOfAsciiSet(str, tempBuf.items())) |idx| {
+                if (set_str.len > 0) {
+                    if (string.indexOfAsciiSet(str, set_str)) |idx| {
                         return intSome(vm, @intCast(idx));
                     }
                 }
             }
         } else {
-            if (setIsAscii) {
-                if (string.indexOfAsciiSet(str, set)) |idx| {
+            if (set_is_ascii) {
+                if (string.indexOfAsciiSet(str, set_str)) |idx| {
                     return intSome(vm, @intCast(idx));
                 }
             } else {
@@ -187,12 +186,8 @@ pub fn findAnyRune(vm: *cy.VM) anyerror!Value {
                     const cp = iter.nextCodepoint() orelse {
                         break;
                     };
-                    var set_iter = std.unicode.Utf8Iterator{
-                        .bytes = set,
-                        .i = 0,
-                    };
-                    while (set_iter.nextCodepoint()) |set_cp| {
-                        if (set_cp == cp) {
+                    for (set_list) |set_rune| {
+                        if (set_rune.val == cp) {
                             return intSome(vm, @intCast(idx));
                         }
                     }

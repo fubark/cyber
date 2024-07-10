@@ -789,14 +789,14 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         const decl = node.cast(.structDecl);
                         const sym = try sema.reserveStruct(chunk, decl);
                         for (decl.funcs) |func| {
-                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func, false);
+                            _ = try sema.reserveNestedFunc(chunk, @ptrCast(sym), func, false);
                         }
                     },
                     .objectDecl => {
                         const decl = node.cast(.objectDecl);
                         const sym = try sema.reserveObjectType(chunk, decl);
                         for (decl.funcs) |func| {
-                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func, false);
+                            _ = try sema.reserveNestedFunc(chunk, @ptrCast(sym), func, false);
                         }
                     },
                     .trait_decl => {
@@ -822,7 +822,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         try sema.reserveTableMethods(chunk, @ptrCast(sym));
 
                         for (decl.funcs) |func| {
-                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func, false);
+                            _ = try sema.reserveNestedFunc(chunk, @ptrCast(sym), func, false);
                         }
                     },
                     .enumDecl => {
@@ -836,7 +836,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         const sym = try sema.declareCustomType(chunk, decl);
 
                         for (decl.funcs) |func| {
-                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func, false);
+                            _ = try sema.reserveNestedFunc(chunk, @ptrCast(sym), func, false);
                         }
                     },
                     .distinct_decl => {
@@ -844,7 +844,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         const sym = try sema.reserveDistinctType(chunk, decl);
 
                         for (decl.funcs) |func| {
-                            _ = try sema.reserveImplicitMethod(chunk, @ptrCast(sym), func, false);
+                            _ = try sema.reserveNestedFunc(chunk, @ptrCast(sym), func, false);
                         }
                     },
                     .template => {

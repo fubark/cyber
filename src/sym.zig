@@ -1081,7 +1081,8 @@ pub const Func = struct {
 
     is_method: bool,
 
-    is_implicit_method: bool,
+    /// Whether the function was declared nested in a type.
+    is_nested: bool,
     throws: bool,
 
     /// Whether it has already emitted IR.
@@ -1446,7 +1447,7 @@ pub const ChunkExt = struct {
             .throws = false,
             .parent = parent,
             .is_method = isMethod,
-            .is_implicit_method = false,
+            .is_nested = false,
             .numParams = undefined,
             .variant = null,
             .decl = node,

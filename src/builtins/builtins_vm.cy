@@ -62,55 +62,55 @@
 @host
 type error #int64_t:
     --| Return the underlying `symbol`.
-    @host func sym() symbol
+    @host func sym(self) symbol
 
 --| Create an error from symbol.
 @host func error.$call(val any) error
 
 @host
 type int #int64_t:
-    @host func '$prefix~'() int
-    @host func '$prefix-'() int
-    @host func '$infix<'(o int) bool
-    @host func '$infix<='(o int) bool
-    @host func '$infix>'(o int) bool
-    @host func '$infix>='(o int) bool
-    @host func '$infix+'(o int) int
-    @host func '$infix-'(o int) int
-    @host func '$infix*'(o int) int
-    @host func '$infix/'(o int) int
-    @host func '$infix%'(o int) int
-    @host func '$infix^'(o int) int
-    @host func '$infix&'(o int) int
-    @host func '$infix|'(o int) int
-    @host func '$infix||'(o int) int
-    @host func '$infix<<'(o int) int
-    @host func '$infix>>'(o int) int
+    @host func '$prefix~'(self) int
+    @host func '$prefix-'(self) int
+    @host func '$infix<'(self, o int) bool
+    @host func '$infix<='(self, o int) bool
+    @host func '$infix>'(self, o int) bool
+    @host func '$infix>='(self, o int) bool
+    @host func '$infix+'(self, o int) int
+    @host func '$infix-'(self, o int) int
+    @host func '$infix*'(self, o int) int
+    @host func '$infix/'(self, o int) int
+    @host func '$infix%'(self, o int) int
+    @host func '$infix^'(self, o int) int
+    @host func '$infix&'(self, o int) int
+    @host func '$infix|'(self, o int) int
+    @host func '$infix||'(self, o int) int
+    @host func '$infix<<'(self, o int) int
+    @host func '$infix>>'(self, o int) int
 
     --| Formats the integer using a kind specifier which can be binary `.b`,
     --| octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.
-    @host func fmt(kind symbol) String
+    @host func fmt(self, kind symbol) String
 
     --| `opts.pad` provides the ASCII rune that is used for padding with a string length of `config.width`.
     @host='int.fmt2'
-    func fmt(kind symbol, config Table) String
+    func fmt(self, kind symbol, config Table) String
 
 --| Converts a value to an 48-bit integer.
 @host func int.$call(val any) int
 
 @host
 type float #float64_t:
-    @host func '$prefix-'() float
-    @host func '$infix<'(o float) bool
-    @host func '$infix<='(o float) bool
-    @host func '$infix>'(o float) bool
-    @host func '$infix>='(o float) bool
-    @host func '$infix+'(o float) float
-    @host func '$infix-'(o float) float
-    @host func '$infix*'(o float) float
-    @host func '$infix/'(o float) float
-    @host func '$infix%'(o float) float
-    @host func '$infix^'(o float) float
+    @host func '$prefix-'(self) float
+    @host func '$infix<'(self, o float) bool
+    @host func '$infix<='(self, o float) bool
+    @host func '$infix>'(self, o float) bool
+    @host func '$infix>='(self, o float) bool
+    @host func '$infix+'(self, o float) float
+    @host func '$infix-'(self, o float) float
+    @host func '$infix*'(self, o float) float
+    @host func '$infix/'(self, o float) float
+    @host func '$infix%'(self, o float) float
+    @host func '$infix^'(self, o float) float
 
 --| Converts the value to a `float`. Panics if type conversion fails.
 @host func float.$call(val any) float
@@ -126,47 +126,47 @@ type float #float64_t:
 @host type type _
 
 @host type List[T type] _:
-    @host func $index(idx int) T
+    @host func $index(self, idx int) T
 
     @host='List.$indexRange'
-    func $index(range Range) List[T]
+    func $index(self, range Range) List[T]
 
-    @host func $setIndex(idx int, val T) void
+    @host func $setIndex(self, idx int, val T) void
 
     --| Appends a value to the end of the list.
-    @host func append(val T) void
+    @host func append(self, val T) void
 
     --| Appends the elements of another list to the end of this list.
-    @host func appendAll(list List[T]) void
+    @host func appendAll(self, list List[T]) void
 
     --| Inserts a value at index `idx`.
-    @host func insert(idx int, val T) void
+    @host func insert(self, idx int, val T) void
 
     --| Returns a new iterator over the list elements.
-    func iterator() ListIterator[T]:
+    func iterator(self) ListIterator[T]:
         return self.iterator_((ListIterator[T]).id())
 
-    @host -func iterator_(ret_type int) ListIterator[T]
+    @host -func iterator_(self, ret_type int) ListIterator[T]
 
     --| Returns a new string that joins the elements with `separator`.
-    @host func join(sep String) String
+    @host func join(self, sep String) String
 
     --| Returns the number of elements in the list.
-    @host func len() int
+    @host func len(self) int
 
     --| Removes an element at index `idx`.
-    @host func remove(idx int) void
+    @host func remove(self, idx int) void
 
     --| Resizes the list to `len` elements. If the new size is bigger, `none` values
     --| are appended to the list. If the new size is smaller, elements at the end of the list are removed.
-    func resize(size int) void:
+    func resize(self, size int) void:
         self.resize_((T).id(), size)
 
-    @host func resize_(elem_t int, size int) void
+    @host func resize_(self, elem_t int, size int) void
 
     --| Sorts the list with the given `less` function.
     --| If element `a` should be ordered before `b`, the function should return `true` otherwise `false`.
-    func sort(lessFn any) void:
+    func sort(self, lessFn any) void:
         -- Simple insertion sort, will be upgraded to pdqsort later on.
         for 1..self.len() -> i:
             var cur = self[i]
@@ -186,10 +186,10 @@ type List[dyn] _
 @host func List.fill(val #T, n int) List[T]
 
 @host type ListIterator[T type] _:
-    func next() ?T:
+    func next(self) ?T:
         return self.next_((Option[T]).id())
 
-    @host func next_(ret_t int) ?T
+    @host func next_(self, ret_t int) ?T
 
 
 @host='ListIterDyn'
@@ -197,194 +197,194 @@ type ListIterator[dyn] _
 
 @host
 type Tuple _:
-    @host func $index(idx int) any
+    @host func $index(self, idx int) any
 
 @host
 type Table:
     table_data Map
 
-    @host func $initPair(key String, value any) void
+    @host func $initPair(self, key String, value any) void
 
-    @host func $get(name String) dyn
+    @host func $get(self, name String) dyn
 
-    @host func $set(name String, value any)
+    @host func $set(self, name String, value any)
 
-    @host func $index(key any) dyn
+    @host func $index(self, key any) dyn
 
-    @host func $setIndex(key any, value any) void
+    @host func $setIndex(self, key any, value any) void
 
 @host
 type Map _:
-    @host func $initPair(key any, value any) void
+    @host func $initPair(self, key any, value any) void
 
-    @host func $index(key any) dyn
-    @host func $setIndex(key any, val any) void
+    @host func $index(self, key any) dyn
+    @host func $setIndex(self, key any, val any) void
 
     --| Returns whether there is a value mapped to `key`.
-    @host func contains(key any) bool
+    @host func contains(self, key any) bool
 
     --| Returns value mapped to `key` or returns `none`.
-    @host func get(key any) ?any
+    @host func get(self, key any) ?any
 
     --| Removes the element with the given key `key`.
-    @host func remove(key any) bool
+    @host func remove(self, key any) bool
 
     --| Returns the number of key-value pairs in the map.
-    @host func size() int
+    @host func size(self) int
 
     --| Returns a new iterator over the map elements.
-    @host func iterator() MapIterator
+    @host func iterator(self) MapIterator
 
 @host
 type MapIterator _:
-    @host func next() ?any
+    @host func next(self) ?any
   
 @host
 type String _:
     --| Returns a new string that concats this string and `str`.
-    @host func '$infix+'(o any) String
+    @host func '$infix+'(self, o any) String
 
     --| Returns a new string that concats this string and `str`.
-    @host func concat(o String) String
+    @host func concat(self, o String) String
 
     --| Returns the number of runes in the string.
-    @host func count() int
+    @host func count(self) int
 
     --| Returns whether the string ends with `suffix`.
-    @host func endsWith(suffix String) bool
+    @host func endsWith(self, suffix String) bool
 
     --| Returns the first byte index of substring `needle` in the string or `none` if not found. SIMD enabled.
-    @host func find(needle String) ?int
+    @host func find(self, needle String) ?int
 
     --| Returns the first byte index of any rune in `runes` or `none` if not found. SIMD enabled.
-    @host func findAnyRune(runes List[int]) ?int
+    @host func findAnyRune(self, runes List[int]) ?int
 
     --| Returns the first byte index of a rune `needle` in the string or `none` if not found. SIMD enabled.
-    @host func findRune(rune int) ?int
+    @host func findRune(self, rune int) ?int
 
     --| Returns a new string with `str` inserted at byte index `idx`.
-    @host func insert(idx int, str String) String
+    @host func insert(self, idx int, str String) String
 
     --| Returns whether the string contains all ASCII runes.
-    @host func isAscii() bool
+    @host func isAscii(self) bool
 
     --| Returns the byte length of the string. See `count()` to obtain the number of runes.
-    @host func len() int
+    @host func len(self) int
 
     --| Returns whether this string is lexicographically before `other`.
-    @host func less(other String) bool
+    @host func less(self, other String) bool
 
     --| Returns this string in lowercase.
-    @host func lower() String
+    @host func lower(self) String
 
     --| Returns a new string with all occurrences of `needle` replaced with `replacement`.
-    @host func replace(needle String, replacement String) String
+    @host func replace(self, needle String, replacement String) String
 
     --| Returns a new string with this string repeated `n` times.
-    @host func repeat(n int) String
+    @host func repeat(self, n int) String
 
     --| Returns the starting byte index for the rune index `idx`.
-    @host func seek(idx int) int
+    @host func seek(self, idx int) int
 
     --| Returns the UTF-8 rune starting at byte index `idx` as a string.
-    @host func sliceAt(idx int) String
+    @host func sliceAt(self, idx int) String
 
     --| Returns the rune at byte index `idx`. The replacement character (0xFFFD) is returned for an invalid UTF-8 rune.
-    @host func $index(idx int) int
+    @host func $index(self, idx int) int
 
     --| Returns a slice into this string from a `Range` with `start` (inclusive) to `end` (exclusive) byte indexes.
     @host='String.$indexRange'
-    func $index(range Range) String
+    func $index(self, range Range) String
 
     --| Returns a list of UTF-8 strings split at occurrences of `sep`.
-    @host func split(sep String) List[String]
+    @host func split(self, sep String) List[String]
 
     --| Returns whether the string starts with `prefix`.
-    @host func startsWith(prefix String) bool
+    @host func startsWith(self, prefix String) bool
 
     --| Returns the string with ends trimmed from runes in `delims`. `mode` can be .left, .right, or .ends.
-    @host func trim(mode symbol, delims String) String
+    @host func trim(self, mode symbol, delims String) String
 
     --| Returns this string in uppercase.
-    @host func upper() String
+    @host func upper(self) String
 
 --| Converts a value to a string.
 @host func String.$call(val any) String
 
 @host
 type Array _:
-    @host func '$infix+'(o any) Array
+    @host func '$infix+'(self, o any) Array
 
     --| Returns a new array that concats this array and `other`.
-    @host func concat(other Array) Array
+    @host func concat(self, other Array) Array
 
     --| Calls decode(.utf8)
-    @host func decode() String
+    @host func decode(self) String
 
     --| Decodes the array based on an `encoding`. Supported encodings: `.utf8`.
     --| Returns the decoded string or throws `error.Decode`.
     @host='Array.decode2'
-    func decode(encoding symbol) String
+    func decode(self, encoding symbol) String
 
     --| Returns whether the array ends with `suffix`.
-    @host func endsWith(suffix Array) bool
+    @host func endsWith(self, suffix Array) bool
 
     --| Returns the first index of `needle` in the array or `none` if not found.
-    @host func find(needle Array) ?int
+    @host func find(self, needle Array) ?int
 
     --| Returns the first index of any `bytes` in `arrays` or `none` if not found.
-    @host func findAnyByte(bytes Array) ?int
+    @host func findAnyByte(self, bytes Array) ?int
 
     --| Returns the first index of `byte` in the array or `none` if not found.
-    @host func findByte(byte int) ?int
+    @host func findByte(self, byte int) ?int
 
     --| Formats each byte in the array using a kind specifier which can be binary `.b`,
     --| octal `.o`, decimal `.d`, hexadecimal `.x`, ASCII `.c`.
     --| Each byte is zero padded.
-    @host func fmt(kind symbol) String
+    @host func fmt(self, kind symbol) String
 
     --| Returns the byte value (0-255) at the given index `idx`.
-    @host func getByte(idx int) int
+    @host func getByte(self, idx int) int
 
     --| Returns the int value of the 6 bytes starting from `idx` with the given endianness (.little or .big).
-    @host func getInt(idx int, endian symbol) int
+    @host func getInt(self, idx int, endian symbol) int
 
     --| Returns the int value of the 4 bytes starting from `idx` with the given endianness (.little or .big).
-    @host func getInt32(idx int, endian symbol) int
+    @host func getInt32(self, idx int, endian symbol) int
 
     --| Returns a new array with `arr` inserted at index `idx`.
-    @host func insert(idx int, arr Array) Array
+    @host func insert(self, idx int, arr Array) Array
 
     --| Returns a new array with `byte` inserted at index `idx`.
-    @host func insertByte(idx int, byte int) Array
+    @host func insertByte(self, idx int, byte int) Array
 
     --| Returns a new iterator over the array bytes.
-    @host func iterator() ArrayIterator:
+    func iterator(self) ArrayIterator:
         return ArrayIterator{arr=self, nextIdx=0}
 
     --| Returns the number of bytes in the array.
-    @host func len() int
+    @host func len(self) int
 
     --| Returns a new array with this array repeated `n` times.
-    @host func repeat(n int) Array
+    @host func repeat(self, n int) Array
 
     --| Returns a new array with all occurrences of `needle` replaced with `replacement`.
-    @host func replace(needle Array, replacement Array) Array
+    @host func replace(self, needle Array, replacement Array) Array
 
-    @host func $index(idx int) int
+    @host func $index(self, idx int) int
 
     --| Returns a slice into this array from a `Range` with `start` (inclusive) to `end` (exclusive) indexes.
     @host='Array.$indexRange'
-    func $index(range Range) Array
+    func $index(self, range Range) Array
 
     --| Returns a list of arrays split at occurrences of `sep`.
-    @host func split(sep Array) List[Array]
+    @host func split(self, sep Array) List[Array]
 
     --| Returns whether the array starts with `prefix`.
-    @host func startsWith(prefix Array) bool
+    @host func startsWith(self, prefix Array) bool
 
     --| Returns the array with ends trimmed from runes in `delims`. `mode` can be .left, .right, or .ends.
-    @host func trim(mode symbol, delims Array) Array
+    @host func trim(self, mode symbol, delims Array) Array
 
 --| Converts a string to an byte `Array`.
 @host func Array.$call(val any) Array
@@ -393,33 +393,33 @@ type ArrayIterator:
     arr     Array
     nextIdx int
 
-    func next() ?any:
-        if nextIdx >= self.arr.len():
+    func next(self) ?any:
+        if nextIdx >= arr.len():
             return none
-        var res = self.arr[nextIdx]
+        var res = arr[nextIdx]
         nextIdx += 1
         return res
 
 @host
 type pointer _:
-    --| Returns the memory address as an `int`. The value may be negative since it's
-    --| bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
-    @host func addr() int
+    --| When pointer runtime safety is enabled, this returns the raw pointer address as an `int64`. 
+    --| Otherwise, the pointer itself is bitcasted to an `int64`.
+    @host func addr(self) int
 
     --| Unsafe. Casts the pointer to a Cyber object. The object is retained before it's returned.
-    @host func asObject() any
+    @host func asObject(self) any
 
     --| Unsafe. Returns an `Array` from a null terminated C string.
-    @host func fromCstr(offset int) Array
+    @host func fromCstr(self, offset int) Array
 
     --| Unsafe. Dereferences the pointer at a byte offset and returns the C value converted to Cyber.
-    @host func get(offset int, ctype symbol) any
+    @host func get(self, offset int, ctype symbol) any
 
     --| Unsafe. Converts the value to a compatible C value and writes it to a byte offset from this pointer.
-    @host func set(offset int, ctype symbol, val any) void
+    @host func set(self, offset int, ctype symbol, val any) void
 
     --| Unsafe. Returns an `Array` with a copy of the byte data starting from an offset to the specified length.
-    @host func toArray(offset int, len int) Array
+    @host func toArray(self, offset int, len int) Array
 
 --| Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI.
 @host func pointer.$call(val any) pointer
@@ -432,15 +432,15 @@ type pointer _:
 type ExternFunc _:
     --| Returns the memory address as an `int`. The value may be negative since it's
     --| bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.
-    @host func addr() int
+    @host func addr(self) int
 
 @host
 type Fiber _:
-    @host func status() symbol
+    @host func status(self) symbol
 
 @host
 type metatype _:
-    @host func id() int
+    @host func id(self) int
 
 @host type Range _
 @host type TccState _
@@ -463,8 +463,8 @@ func Future.new(#T type) Future[T]:
 @host -func Future.new_(#T type, ret_type int) Future[T]
 
 @host type FutureResolver[T type] _:
-    @host func complete(val T) void
-    @host func future() Future[T]
+    @host func complete(self, val T) void
+    @host func future(self) Future[T]
 
 func FutureResolver.new(#T type) FutureResolver[T]:
     return FutureResolver.new_(T, (Future[T]).id(), (FutureResolver[T]).id())

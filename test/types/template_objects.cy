@@ -3,10 +3,10 @@ use test
 type Foo[T type]:
     a T
 
-    func get() T:
+    func get(self) T:
         return self.a
 
-    func set(a T):
+    func set(self, a T):
         self.a = a
 
 -- Infer decl type.

@@ -65,18 +65,18 @@ type Backend enum:
     value Value
 
 @host type Value _:
-    @host func dump() String
-    @host func getTypeId() int
-    @host func toHost() any
+    @host func dump(self) String
+    @host func getTypeId(self) int
+    @host func toHost(self) any
 
 @host type VM _:
-    @host func eval(code String) EvalResult
+    @host func eval(self, code String) EvalResult
 
     @host='VM.eval2'
-    func eval(uri String, code String, config EvalConfig) EvalResult
+    func eval(self, uri String, code String, config EvalConfig) EvalResult
 
-    @host func getErrorSummary() String
-    @host func getPanicSummary() String
+    @host func getErrorSummary(self) String
+    @host func getPanicSummary(self) String
 
 --| Create an isolated VM.
 @host func VM.new() VM
@@ -88,11 +88,11 @@ type REPL:
     -- Build multi-line input.
     input_buffer String
 
-    func printIntro():
+    func printIntro(self):
         print "$(#build_full_version) REPL"
         print "Commands: .exit"
 
-    func read(read_line dyn) ?String:
+    func read(self, read_line dyn) ?String:
         while:
             var prefix = self.getPrefix()
             var str_or_future = read_line(prefix)
@@ -124,7 +124,7 @@ type REPL:
                 self.input_buffer += input
                 continue
 
-    func evalPrint(code String) void:
+    func evalPrint(self, code String) void:
         var res = self.vm.eval(code)
         if res.code != Success:
             if res.code == ErrorCompile:
@@ -140,7 +140,7 @@ type REPL:
         if res.value.getTypeId() != TypeVoid:
             print res.value.dump()
 
-    func getPrefix() String:
+    func getPrefix(self) String:
         var head = if (self.indent == 0) '> ' else '| '
         var s = ' '.repeat(self.indent * 4)
         return s + head

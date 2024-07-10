@@ -6,48 +6,48 @@ func Node.flatGet2(self):
 type Node:
     value int
 
-    func getEx():
+    func getEx(self):
         return self.value
 
-    func getEx2(param int):
+    func getEx2(self, param int):
         return self.value + param
 
-    func getEx3(param int, param2 int):
+    func getEx3(self, param int, param2 int):
         return self.value + param - param2
 
-    func setEx():
+    func setEx(self):
         self.value = 1
 
-    func setEx2(param int):
+    func setEx2(self, param int):
         self.value += param
 
-    func setEx3(param int):
+    func setEx3(self, param int):
         self.value = 1 + param
 
-    func get():
+    func get(self):
         return value
 
-    func get2(param int):
+    func get2(self, param int):
         return value + param
 
-    func get3(param int, param2 int):
+    func get3(self, param int, param2 int):
         return value + param - param2
 
-    func get4():
+    func get4(self):
         var a = value
         return a + value
 
-    func get5():
+    func get5(self):
         var f = () => value
         return f()
 
-    func set():
+    func set(self):
         value = 1
 
-    func set2(param int):
+    func set2(self, param int):
         value += param
 
-    func set3(param int):
+    func set3(self, param int):
         value = 1 + param
 
 func Node.getFn():

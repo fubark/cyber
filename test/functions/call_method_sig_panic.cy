@@ -3,7 +3,7 @@ use test
 type S:
     a any
 
-    func foo():
+    func foo(self):
         return 123
 
 let o = test.erase(S{})

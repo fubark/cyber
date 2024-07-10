@@ -4,10 +4,10 @@ type Foo:
     a    int
     data Map
 
-    func $get(name String):
+    func $get(self, name String):
         return data[name]
 
-    func $set(name String, value int):
+    func $set(self, name String, value int):
         data[name] = value
 
 var f = Foo{a=123}

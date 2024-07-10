@@ -3,7 +3,7 @@ use test
 type Foo:
     member dyn
 
-    func foo():
+    func foo(self):
         return self.member()
 
 var f = Foo{member=() => 3}  

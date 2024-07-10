@@ -7,7 +7,7 @@ type Number enum:
 
 -- Infer tag literal from dyn method call.
 type Object:
-    func foo(a Number):
+    func foo(self, a Number):
         return a == .one
 let o = test.erase(Object{})
 test.eq(o.foo(.one), true)

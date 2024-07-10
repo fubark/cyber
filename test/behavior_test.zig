@@ -133,7 +133,6 @@ if (!aot) {
     run.case("functions/lambda_incompat_arg_panic.cy");
     run.case("functions/let_call_recursive.cy");
     run.case("functions/let_func.cy");
-    run.case("functions/method_self_param_error.cy");
     run.case("functions/object_funcs.cy");
     run.case("functions/overload.cy");
     run.case("functions/read_capture_local_error.cy");

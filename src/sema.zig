@@ -1658,7 +1658,7 @@ pub fn reserveFuncTemplateVariant(c: *cy.Chunk, tfunc: *cy.Func, opt_header_decl
     } else {
         func = try c.createFunc(.userFunc, @ptrCast(c.sym), sym, @ptrCast(opt_header_decl), tfunc.isMethod());
     }
-    func.is_implicit_method = tfunc.is_implicit_method;
+    func.is_nested = tfunc.is_nested;
     func.variant = variant;
     try c.variantFuncSyms.append(c.alloc, func);
 
@@ -1723,9 +1723,9 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
 
             const object_decl = template.child_decl.cast(.objectDecl);
             for (object_decl.funcs) |func_n| {
-                const func = try reserveImplicitMethod(tchunk, @ptrCast(object_t), func_n, false);
+                const func = try reserveNestedFunc(tchunk, @ptrCast(object_t), func_n, false);
                 // func.sym.?.variant = object_t.variant.?;
-                try resolveImplicitMethod(tchunk, func, true);
+                try resolveFunc2(tchunk, func, true);
             }
         },
         .custom_t => {
@@ -1736,9 +1736,9 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
             const custom_decl = template.child_decl.cast(.custom_decl);
 
             for (custom_decl.funcs) |func_n| {
-                const func = try reserveImplicitMethod(tchunk, @ptrCast(custom_t), func_n, false);
+                const func = try reserveNestedFunc(tchunk, @ptrCast(custom_t), func_n, false);
                 // func.sym.?.variant = custom_t.variant.?;
-                try resolveImplicitMethod(tchunk, func, true);
+                try resolveFunc2(tchunk, func, true);
             }
             // if (type_e.info.load_all_methods) {
             //     var iter = template.getMod().symMap.iterator();
@@ -2137,46 +2137,59 @@ pub fn reserveHostFunc2(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: *
 pub fn resolveFuncVariant(c: *cy.Chunk, func: *cy.Func) !void {
     switch (func.type) {
         .hostFunc => {
-            if (func.is_implicit_method) {
-                try sema.resolveImplicitMethodVariant(c, func);
-            } else {
-                try sema.resolveHostFuncVariant(c, func);
-            }
+            try sema.resolveHostFuncVariant(c, func);
         },
         .userFunc => {
-            if (func.is_implicit_method) {
-                try sema.resolveImplicitMethodVariant(c, func);
-            } else {
-                try sema.resolveUserFuncVariant(c, func);
-            }
+            try sema.resolveUserFuncVariant(c, func);
         },
         .trait => {
             return error.TODO;
-            // try sema.resolveImplicitTraitMethod(c, func);
+            // try sema.resolveImplicitTraitMethod(c, func); 
         },
         .template,
         .userLambda => {},
     }
 }
 
-pub fn resolveFunc(c: *cy.Chunk, func: *cy.Func) !void {
+pub fn resolveFunc2(c: *cy.Chunk, func: *cy.Func, has_parent_ctx: bool) !void {
+    if (func.isResolved()) {
+        return;
+    }
+
+    try pushResolveContext(c);
+    defer popResolveContext(c);
+    getResolveContext(c).has_parent_ctx = has_parent_ctx;
+    getResolveContext(c).parse_ct_inferred_params = true;
+
+    const sig_id = try resolveFuncSig(c, func, false);
+    const sig = c.sema.getFuncSig(sig_id);
+    if (sig.is_template) {
+        const ct_params = getResolveContext(c).ct_params;
+        try resolveToFuncTemplate(c, func, sig_id, ct_params);
+        return;
+    }
     switch (func.type) {
         .hostFunc => {
-            if (func.is_implicit_method) {
-                try sema.resolveImplicitMethod(c, func, false);
-            } else {
-                try sema.resolveHostFunc(c, func);
-            }
+            try resolveHostFunc2(c, func, sig_id);
         },
         .userFunc => {
-            if (func.is_implicit_method) {
-                try sema.resolveImplicitMethod(c, func, false);
-            } else {
-                try sema.resolveUserFunc(c, func);
-            }
+            try c.resolveUserFunc(func, sig_id);
         },
         .trait => {
-            try sema.resolveImplicitTraitMethod(c, func);
+            try c.resolveUserFunc(func, sig_id);
+        },
+        else => {
+            return error.Unexpected;
+        },
+    }
+}
+
+pub fn resolveFunc(c: *cy.Chunk, func: *cy.Func) !void {
+    switch (func.type) {
+        .trait,
+        .userFunc,
+        .hostFunc => {
+            try resolveFunc2(c, func, false);
         },
         .template,
         .userLambda => {},
@@ -2296,29 +2309,24 @@ pub fn reserveImplicitTraitMethod(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.Func
         return c.reportErrorFmt("Trait methods should not have a body.", &.{}, @ptrCast(decl));
     }
     const func = try c.reserveTraitFunc(decl_path.parent, decl_path.name.base_name, decl, vtable_idx, is_variant);
-    func.is_implicit_method = true;
+    func.is_nested = true;
     return func;
 }
 
-pub fn resolveImplicitTraitMethod(c: *cy.Chunk, func: *cy.Func) !void {
-    const rec_param = FuncParam.initRt(func.parent.getStaticType().?);
-    const func_sig = try resolveImplicitMethodSig(c, func, rec_param, false);
-    try c.resolveUserFunc(func, func_sig);
-}
-
-pub fn reserveImplicitMethod(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.FuncDecl, is_variant: bool) !*cy.Func {
+pub fn reserveNestedFunc(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.FuncDecl, is_variant: bool) !*cy.Func {
     const name = c.ast.nodeString(decl.name);
+    const is_method = c.ast.isMethodDecl(decl);
     if (decl.stmts.len > 0) {
-        const func = try c.reserveUserFunc(parent, name, decl, true, is_variant);
-        func.is_implicit_method = true;
+        const func = try c.reserveUserFunc(parent, name, decl, is_method, is_variant);
+        func.is_nested = true;
         return func;
     }
 
     // No initializer. Check if @host func.
     if (decl.attrs.len > 0) {
         if (decl.attrs[0].type == .host) {
-            const func = try c.reserveHostFunc(parent, name, decl, true, is_variant);
-            func.is_implicit_method = true;
+            const func = try c.reserveHostFunc(parent, name, decl, is_method, is_variant);
+            func.is_nested = true;
             return func;
         }
     }
@@ -2359,42 +2367,6 @@ fn resolveToFuncTemplate(c: *cy.Chunk, func: *cy.Func, sig_id: FuncSigId, ct_par
         .variant_cache = .{},
     };
     try c.resolveTemplateFunc(func, sig_id, template);
-}
-
-pub fn resolveImplicitMethodVariant(c: *cy.Chunk, func: *cy.Func) !void {
-    try pushFuncVariantResolveContext(c, func.variant.?);
-    defer popResolveContext(c);
-    getResolveContext(c).expand_ct_inferred_params = true;
-
-    const rec_param = FuncParam.initRt(func.parent.getStaticType().?);
-    const sig_id = try resolveImplicitMethodSig(c, func, rec_param, true);
-    if (func.type == .hostFunc) {
-        try resolveHostFunc2(c, func, sig_id);
-    } else {
-        try c.resolveUserFunc(func, sig_id);
-    }
-}
-
-pub fn resolveImplicitMethod(c: *cy.Chunk, func: *cy.Func, has_parent_ctx: bool) !void {
-    try pushResolveContext(c);
-    defer popResolveContext(c);
-    getResolveContext(c).has_parent_ctx = has_parent_ctx;
-
-    const method_rec_t = func.parent.getStaticType().?;
-    const rec_param = FuncParam.initRt(method_rec_t);
-
-    const sig_id = try resolveImplicitMethodSig(c, func, rec_param, false);
-    const sig = c.sema.getFuncSig(sig_id);
-    if (sig.is_template) {
-        const ct_params = getResolveContext(c).ct_params;
-        try resolveToFuncTemplate(c, func, sig_id, ct_params);
-        return;
-    }
-    if (func.type == .hostFunc) {
-        try resolveHostFunc2(c, func, sig_id);
-    } else {
-        try c.resolveUserFunc(func, sig_id);
-    }
 }
 
 pub fn methodDecl(c: *cy.Chunk, func: *cy.Func) !void {
@@ -3376,38 +3348,6 @@ pub fn resolveSym(c: *cy.Chunk, expr: *ast.Node) anyerror!*cy.Sym {
 
 fn getResolveContext(c: *cy.Chunk) *ResolveContext {
     return &c.resolve_stack.items[c.resolve_stack.items.len-1];
-}
-
-pub fn resolveImplicitMethodSig(c: *cy.Chunk, func: *cy.Func, rec_param: FuncParam, skip_ct_params: bool) !FuncSigId {
-    const func_n = func.decl.?.cast(.funcDecl);
-
-    // Get params, build func signature.
-    const start = c.typeStack.items.len;
-    defer c.typeStack.items.len = start;
-
-    // First param is always `self`.
-    try c.typeStack.append(c.alloc, @bitCast(rec_param));
-
-    for (func_n.params) |param| {
-        const paramName = c.ast.funcParamName(param);
-        if (std.mem.eql(u8, "self", paramName)) {
-            return c.reportErrorFmt("`self` param is not allowed in an implicit method declaration.", &.{}, @ptrCast(param));
-        }
-        const type_id = try resolveTypeSpecNode(c, param.typeSpec);
-
-        if (param.ct_param) {
-            if (skip_ct_params) continue;
-            const param_v = try c.vm.allocType(type_id);
-            try setResolveCtParam(c, paramName, param_v);
-        }
-
-        const param_t = FuncParam.init(type_id, param.ct_param);
-        try c.typeStack.append(c.alloc, @bitCast(param_t));
-    }
-
-    // Get return type.
-    const retType = try resolveReturnTypeSpecNode(c, func_n.ret);
-    return c.sema.ensureFuncSig(@ptrCast(c.typeStack.items[start..]), retType);
 }
 
 fn resolveTemplateSig(c: *cy.Chunk, params: []*ast.FuncParam, outSigId: *FuncSigId) ![]cy.sym.TemplateParam {

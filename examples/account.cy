@@ -2,16 +2,16 @@ type Account:
     name    String
     balance float
 
-    func deposit(amt float):
+    func deposit(self, amt float):
         balance += amt
 
-    func withdraw(amt float):
+    func withdraw(self, amt float):
         if amt > balance:
             throw error.InsufficientFunds
         else:
             balance -= amt
 
-    func show(title String):
+    func show(self, title String):
         print "$(title), $(name), $(balance)"
 
 func Account.new(name String) Account:

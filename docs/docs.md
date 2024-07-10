@@ -994,7 +994,7 @@ The dynamic type defers type checking to runtime. However, it also tracks its ow
   * [Circular references.](#circular-references)
   * [Unnamed object.](#unnamed-object)
   * [Methods.](#methods)
-  * [`self` variable.](#self-variable)
+  * [Implicit members.](#implicit-members)
   * [Type functions.](#type-functions)
   * [Type variables.](#type-variables)
   * [Type embedding.](#type-embedding)
@@ -1122,50 +1122,61 @@ var node = Node{
 ```
 
 ### Methods.
-Methods allow invoking a function on an object instance using the `.` operator:
+Methods are functions that are invoked with a parent instance using the `.` operator.
+When the first parameter of a function contains `self`, it's declared as a method of the parent type:
 ```cy
 type Node:
     value int
     next  ?Node
 
-    func inc(n):
-        value += n
+    func inc(self, n):
+        self.value += n
 
-    func incAndPrint():
+    func incAndPrint(self):
         self.inc(321)
         print value
 
 var n = Node{value=123, next=none}
 n.incAndPrint()         -- Prints "444"
 ```
+`self` is then used to reference members of the parent instance.
 
-Methods can be declared outside of the type declaration. When using the flat declaration style, `self` must be the first parameter to distinguish it from a type function:
+Methods can be declared outside of the type declaration as a flat declaration:
 ```cy
 func Node.getNext(self):
     return self.next
 ```
 
-### `self` variable.
-Type members can be implicitly referenced inside the method. *Incomplete: Only the type's fields can be referenced this way.*
-
-To reference members explicitly inside a method, use the builtin `self`:
+### Implicit members.
+When a method is nested under a type declaration, the type members can be implicitly referenced inside the method: *Incomplete: Only the type's fields can be referenced this way.*
 ```cy
 type Node:
     value int
     next  ?Node
 
-    func double():
-        return self.value * 2
+    func double(self):
+        return value * 2
 ```
 
 ### Type functions.
-Type functions are declared outside of the `type` block with an explicit namespace path:
+Type functions can be declared within the type block without a `self` param:
 ```cy
 type Node:
     value int
     next  ?Node
 
--- Declare static function inside `Node`.
+    func new():
+        return Node{value=123, next=none}
+
+var n = Node.new()
+```
+
+Type functions can also be declared outside of the type block using a flat declaration:
+```cy
+type Node:
+    value int
+    next  ?Node
+
 func Node.new():
     return Node{value=123, next=none}
 
@@ -1187,7 +1198,7 @@ Type embedding facilitates type composition by using the namespace of a child fi
 type Base:
     a int
 
-    func double() int:
+    func double(self) int:
         return a * 2
 
 type Container:
@@ -1435,7 +1446,7 @@ Functions can be declared under the new type's namespace:
 use math
 
 type Pos2 Vec2:
-    func blockDist(o Pos2):
+    func blockDist(self, o Pos2):
         var dx = math.abs(o.x - x)
         var dy = math.abs(o.y - y)
         return dx + dy
@@ -1459,7 +1470,7 @@ var b Vec2 = a as Vec2
 A trait type defines a common interface for implementing types. A trait type is declared with the `trait` keyword:
 ```cy
 type Shape trait:
-    func area() float
+    func area(self) float
 ```
 
 Types can implement a trait using the `with` keyword:
@@ -1468,7 +1479,7 @@ type Circle:
     with Shape
     radius float
 
-    func area() float:
+    func area(self) float:
         return 3.14 * self.radius^2
 
 type Rectangle:
@@ -1476,7 +1487,7 @@ type Rectangle:
     width  float
     height float
 
-    func area() float:
+    func area(self) float:
         return self.width * self.height
 ```
 A type that intends to implement a trait but does not satisfy the trait's interface results in a compile error.
@@ -1500,7 +1511,7 @@ type MyContainer[T type]:
     id    int
     value T
 
-    func get() T:
+    func get(self) T:
         return self.value
 ```
 
@@ -3118,13 +3129,13 @@ type Vec2:
     x float
     y float
 
-    func '$infix+'(o Vec2) Vec2:
+    func '$infix+'(self, o Vec2) Vec2:
         return Vec2{
             x = x + o.x,
             y = y + o.y,
         }
 
-    func '$prefix-'() Vec2:
+    func '$prefix-'(self) Vec2:
         return Vec2{x=-x, y=-y}
 
 var a = Vec2{x=1, y=2}
@@ -3137,10 +3148,10 @@ Some special operators have their own name. This example overloads the `index` o
 type MyCollection:
     arr List
 
-    func $index(idx):
+    func $index(self, idx):
         return arr[idx * 2]
 
-    func $setIndex(idx, val):
+    func $setIndex(self, idx, val):
         arr[idx * 2] = val 
 
 var a = MyCollection{arr=[1, 2, 3, 4]}
@@ -3200,7 +3211,7 @@ The `$initPair` method overrides the record initializer.
 After an instance of the type is created from its default record initializer, this method is invoked for each key-value pair in the record literal:
 ```cy
 type MyMap:
-    func $initPair(key any, value any) void:
+    func $initPair(self, key any, value any) void:
         print "$(key) = $(value)"
 
 var m = MyMap{a=123, b=234}
@@ -3213,7 +3224,7 @@ var m = MyMap{a=123, b=234}
 The `$get` method allows overriding field accesses for **undeclared fields**:
 ```cy
 type Foo:
-    func $get(name String):
+    func $get(self, name String):
         return name.len()
 
 var f = Foo{}
@@ -3225,7 +3236,7 @@ print f.hello    --> 5
 The `$set` method allows overriding field assignments for **undeclared fields**:
 ```cy
 type Foo:
-    func $set(name String, value any):
+    func $set(self, name String, value any):
         print "setting $(name) $(value)"
 
 var f = Foo{}
@@ -3238,7 +3249,7 @@ Declare a `$missing` method as a fallback when a method was not found in an inst
 ```cy
 type A:
 
-    func $missing(args...):
+    func $missing(self, args...):
         return args.len
 
 var a = A{}
@@ -3406,7 +3417,7 @@ bool modLoader(CLVM* vm, CLStr spec, CLModule* res) {
             "\n"
             "@host\n"
             "type MyNode _:\n"
-            "    @host func asList() any"
+            "    @host func asList(self) any"
             "\n"
             "@host func MyNode.new(a any, b any) MyNode\n"
         );

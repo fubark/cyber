@@ -1,5 +1,5 @@
 type Shape trait:
-    func area() float
+    func area(self) float
 
 type Circle:
     with Shape

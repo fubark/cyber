@@ -1,7 +1,7 @@
 type S:
     a any
 
-    func foo():
+    func foo(self):
         return 123
 
 var o = S{}

@@ -131,60 +131,60 @@
 type File _:
 
     --| Closes the file handle. File ops invoked afterwards will return `error.Closed`.
-    @host func close() void
-    @host func iterator() any
-    @host func next() any
+    @host func close(self) void
+    @host func iterator(self) any
+    @host func next(self) any
 
     --| Reads at most `n` bytes as an `Array`. `n` must be at least 1.
     --| A result with length 0 indicates the end of file was reached.
-    @host func read(n int) Array
+    @host func read(self, n int) Array
 
     --| Reads to the end of the file and returns the content as an `Array`.
-    @host func readAll() Array
+    @host func readAll(self) Array
 
     --| Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.
-    @host func seek(n int) void
+    @host func seek(self, n int) void
 
     --| Seeks the read/write position by `pos` bytes from the current position.
-    @host func seekFromCur(n int) void
+    @host func seekFromCur(self, n int) void
 
     --| Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid.
-    @host func seekFromEnd(n int) void
+    @host func seekFromEnd(self, n int) void
 
     --| Returns info about the file as a `Map`.
-    @host func stat() Map
+    @host func stat(self) Map
 
     --| Equivalent to `streamLines(4096)`.
-    @host func streamLines() File
+    @host func streamLines(self) File
 
     --| Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`.
     --| The lines returned include the new line character(s).
     --| A buffer size of `bufSize` bytes is allocated for reading.
     --| If `\r` is found at the end of the read buffer, the line is returned instead of
     --| waiting to see if the next read has a connecting `\n`.
-    @host func streamLines(bufSize int) File
+    @host func streamLines(self, bufSize int) File
 
     --| Writes a `String` or `Array` at the current file position.
     --| The number of bytes written is returned.
-    @host func write(val any) int
+    @host func write(self, val any) int
 
 @host
 type Dir _:
 
     --| Returns a new iterator over the directory entries.
     --| If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
-    @host func iterator() DirIterator
+    @host func iterator(self) DirIterator
 
     --| Returns info about the file as a `Map`.
-    @host func stat() Map
+    @host func stat(self) Map
 
     --| Returns a new iterator over the directory recursive entries.
     --| If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
-    @host func walk() DirIterator
+    @host func walk(self) DirIterator
 
 @host
 type DirIterator _:
-    @host func next() ?Map
+    @host func next(self) ?Map
 
 @host
 type FFI _:
@@ -192,38 +192,38 @@ type FFI _:
     --| Creates an `ExternFunc` that contains a C function pointer with the given signature.
     --| The extern function is a wrapper that calls the provided user function.
     --| Once created, the extern function is retained and managed by the FFI context.
-    @host func bindCallback(fn any, params List[dyn], ret symbol) ExternFunc
+    @host func bindCallback(self, fn any, params List[dyn], ret symbol) ExternFunc
 
     --| Calls `bindLib(path, [:])`. 
-    @host func bindLib(path ?String) any
+    @host func bindLib(self, path ?String) any
 
     --| Creates a handle to a dynamic library and functions declared from `cfunc`.
     --| By default, an anonymous object is returned with the C-functions binded as the object's methods.
     --| If `config` contains `gen_table: true`, a `Table` is returned instead with C-functions
     --| binded as function values.
     @host='FFI.bindLib2'
-    func bindLib(path ?String, config Table) any
+    func bindLib(self, path ?String, config Table) any
 
     --| Returns a Cyber object's pointer. Operations on the pointer is unsafe,
     --| but it can be useful when passing it to C as an opaque pointer.
     --| The object is also retained and managed by the FFI context.
-    @host func bindObjPtr(obj any) pointer
+    @host func bindObjPtr(self, obj any) pointer
 
     --| Binds a Cyber type to a C struct.
-    @host func cbind(mt metatype, fields List[dyn]) void
+    @host func cbind(self, mt metatype, fields List[dyn]) void
 
     --| Declares a C function which will get binded to the library handle created from `bindLib`.
-    @host func cfunc(name String, params List[dyn], ret any) void
+    @host func cfunc(self, name String, params List[dyn], ret any) void
 
     --| Allocates memory for a C struct or primitive with the given C type specifier.
     --| A `pointer` to the allocated memory is returned.
     --| Eventually this will return a `cpointer` instead which will be more idiomatic to use.
-    @host func new(ctype symbol) pointer
+    @host func new(self, ctype symbol) pointer
 
     --| Releases the object from the FFI context.
     --| External code should no longer use the object's pointer since it's not guaranteed to exist
     --| or point to the correct object.
-    @host func unbindObjPtr(obj any) void
+    @host func unbindObjPtr(self, obj any) void
 
 @host type CArray:
     elem any

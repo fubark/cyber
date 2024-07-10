@@ -1,13 +1,13 @@
 use test
 
 type Shape trait:
-    func area() float
+    func area(self) float
 
 type Circle:
     with Shape
     radius float
 
-    func area() float:
+    func area(self) float:
         return 3.14 * self.radius^2
 
 type Rectangle:
@@ -15,7 +15,7 @@ type Rectangle:
     width  float
     height float
 
-    func area() float:
+    func area(self) float:
         return self.width * self.height
 
 var s Shape = Circle{radius=2}

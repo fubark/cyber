@@ -6225,9 +6225,8 @@ pub const Sema = struct {
                     is_template = true;
                     continue;
                 }
-                if (param.type != bt.Dyn and param.type != bt.Any) {
+                if (!reqCallTypeCheck and param.type != bt.Dyn and param.type != bt.Any) {
                     reqCallTypeCheck = true;
-                    break;
                 }
             }
             try s.funcSigs.append(s.alloc, .{

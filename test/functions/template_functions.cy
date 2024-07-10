@@ -20,4 +20,9 @@ test.eq(add2(float, 1.0, 2.0), 3.0)
 test.eq(add2[int](1, 2), 3)
 test.eq(add2[float](1, 2), 3.0)
 
+-- Infer param declared after runtime param.
+func add3(i int, a #T, b T) T:
+    return i + a + b
+test.eq(add3(1, 2, 3), 6)
+
 --cytest: pass

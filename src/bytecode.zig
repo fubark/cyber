@@ -609,11 +609,17 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const negOffset = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
             len += try fmt.printCount(w, "counter={}, end={}, userCounter={}, negOffset={}", &.{v(counter), v(end), v(userCounter), v(negOffset)});
         },
-        .indexList => {
-            const recv = pc[1].val;
+        .indexMap => {
+            const map = pc[1].val;
             const index = pc[2].val;
             const dst = pc[3].val;
-            len += try fmt.printCount(w, "recv={}, index={}, dst={}", &.{v(recv), v(index), v(dst)});
+            len += try fmt.printCount(w, "%{} = %{}[%{}]", &.{v(dst), v(map), v(index)});
+        },
+        .indexList => {
+            const list = pc[1].val;
+            const index = pc[2].val;
+            const dst = pc[3].val;
+            len += try fmt.printCount(w, "%{} = %{}[%{}]", &.{v(dst), v(list), v(index)});
         },
         .jump => {
             const jump = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
@@ -693,7 +699,8 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
         .typeCheck => {
             const slot = pc[1].val;
             const exp_t = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
-            len += try fmt.printCount(w, "check(%{}, type={})", &.{v(slot), v(exp_t)});
+            const dst = pc[4].val;
+            len += try fmt.printCount(w, "%{} = check(%{}, type={})", &.{v(dst), v(slot), v(exp_t)});
         },
         .unbox => {
             const slot = pc[1].val;
@@ -959,7 +966,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         },
         .set_up_value,
         .copyObj,
-        .typeCheck,
         .call,
         .constOp,
         .constRetain,
@@ -981,6 +987,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numExprs = pc[2].val;
             return 4 + numExprs + 1;
         },
+        .typeCheck,
         .field,
         .captured,
         .box,
@@ -1012,8 +1019,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .metatype => {
             return 7;
         },
-        .fieldDyn,
-        .fieldDynIC,
         .forRangeInit => {
             return 8;
         },
@@ -1023,6 +1028,10 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .setFieldDyn,
         .setFieldDynIC => {
             return 10;
+        },
+        .fieldDyn,
+        .fieldDynIC => {
+            return 11;
         },
         .closure => {
             const numCaptured = pc[4].val;
@@ -1262,7 +1271,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 122);
+    try t.eq(std.enums.values(OpCode).len, 121);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

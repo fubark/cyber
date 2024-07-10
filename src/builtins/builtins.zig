@@ -30,7 +30,7 @@ pub const CoreData = struct {
 const func = cy.hostFuncEntry;
 const funcs = [_]C.HostFuncEntry{
     // Utils.
-    func("copy",           copy),
+    func("copy",           zErrFunc(copy)),
     func("dump",           zErrFunc(dump)),
     func("eprint",         eprint),
     func("errorReport",    zErrFunc(errorReport)),
@@ -101,12 +101,12 @@ const funcs = [_]C.HostFuncEntry{
     func("List.join",        zErrFunc(bindings.listJoin)),
     func("List.len",         bindings.listLen),
     func("List.remove",      bindings.listRemove),
-    func("List.resize",      bindings.listResize),
+    func("List.resize_",     zErrFunc(bindings.listResize)),
     // .{"sort", bindings.listSort, .standard},
     func("List.fill",        listFill),
 
     // ListIterator
-    func("ListIterator.next",  bindings.listIteratorNext),
+    func("ListIterator.next_", zErrFunc(bindings.listIteratorNext)),
 
     // Tuple
     func("Tuple.$index",       bindings.tupleIndex),
@@ -249,12 +249,14 @@ const vm_types = [_]C.HostTypeEntry{
     htype("FutureResolver", C.CUSTOM_TYPE(null, futureResolverGetChildren, null)),
 };
 
-pub var OptionInt: cy.TypeId = undefined;
-pub var OptionAny: cy.TypeId = undefined;
-pub var OptionTuple: cy.TypeId = undefined;
-pub var OptionMap: cy.TypeId = undefined;
-pub var OptionArray: cy.TypeId = undefined;
-pub var OptionString: cy.TypeId = undefined;
+pub const BuiltinsData = struct {
+    OptionInt: cy.TypeId,
+    OptionAny: cy.TypeId,
+    OptionTuple: cy.TypeId,
+    OptionMap: cy.TypeId,
+    OptionArray: cy.TypeId,
+    OptionString: cy.TypeId,
+};
 
 pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
     const aot = cy.isAot(vm.compiler.config.backend);
@@ -279,31 +281,33 @@ fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
         b.declareFuncSig("traceReleases", &.{}, bt.Integer, traceRetains) catch cy.fatal();
     }
 
+    const data = vm.getData(*BuiltinsData, "builtins");
+
     const option_tmpl = chunk_sym.getMod().getSym("Option").?.toC();
 
     const int_t = C.newType(vm_, bt.Integer);
     defer C.release(vm_, int_t);
-    OptionInt = C.expandTemplateType(option_tmpl, &int_t, 1);
+    data.OptionInt = C.expandTemplateType(option_tmpl, &int_t, 1);
 
     const any_t = C.newType(vm_, bt.Any);
     defer C.release(vm_, any_t);
-    OptionAny = C.expandTemplateType(option_tmpl, &any_t, 1);
+    data.OptionAny = C.expandTemplateType(option_tmpl, &any_t, 1);
 
     const tuple_t = C.newType(vm_, bt.Tuple);
     defer C.release(vm_, tuple_t);
-    OptionTuple = C.expandTemplateType(option_tmpl, &tuple_t, 1);
+    data.OptionTuple = C.expandTemplateType(option_tmpl, &tuple_t, 1);
 
     const map_t = C.newType(vm_, bt.Map);
     defer C.release(vm_, map_t);
-    OptionMap = C.expandTemplateType(option_tmpl, &map_t, 1);
+    data.OptionMap = C.expandTemplateType(option_tmpl, &map_t, 1);
 
     const array_t = C.newType(vm_, bt.Array);
     defer C.release(vm_, array_t);
-    OptionArray = C.expandTemplateType(option_tmpl, &array_t, 1);
+    data.OptionArray = C.expandTemplateType(option_tmpl, &array_t, 1);
 
     const string_t = C.newType(vm_, bt.String);
     defer C.release(vm_, string_t);
-    OptionString = C.expandTemplateType(option_tmpl, &string_t, 1);
+    data.OptionString = C.expandTemplateType(option_tmpl, &string_t, 1);
 
     const list_tmpl = chunk_sym.getMod().getSym("List").?.toC();
 
@@ -392,7 +396,7 @@ pub fn listFill(vm: *cy.VM) Value {
     return vm.allocListFill(vm.getValue(0), @intCast(vm.getInt(1))) catch cy.fatal();
 }
 
-pub fn copy(vm: *cy.VM) Value {
+pub fn copy(vm: *cy.VM) anyerror!Value {
     const val = vm.getValue(0);
     return cy.value.shallowCopy(vm, val);
 }
@@ -403,10 +407,9 @@ pub fn errorReport(vm: *cy.VM) anyerror!Value {
     // Append frames from current call-site.
     try cy.fiber.recordCurFrames(vm);
 
-    // Remove top frame since it contains the `errorReport` call.
-    if (vm.compactTrace.len > curFrameLen) {
-        vm.compactTrace.remove(curFrameLen);
-    }
+    // Remove top two frames since it contains the `errorReport` call.
+    vm.compactTrace.remove(curFrameLen);
+    vm.compactTrace.remove(curFrameLen);
 
     const trace = try cy.debug.allocStackTrace(vm, vm.c.getStack(), vm.compactTrace.items());
     defer vm.alloc.free(trace);
@@ -423,6 +426,7 @@ pub fn errorReport(vm: *cy.VM) anyerror!Value {
 pub fn must(vm: *cy.VM) anyerror!Value {
     const val = vm.getValue(0);
     if (!val.isError()) {
+        vm.retain(val);
         return val;
     } else {
         return panic(vm);
@@ -468,7 +472,7 @@ pub fn isNone(vm: *cy.VM) Value {
     if (type_e.kind != .option) {
         return Value.False;
     }
-    const is_none = val.asHeapObject().object.getValue(0).asBoxInt() == 0;
+    const is_none = val.asHeapObject().object.getValue(0).asInt() == 0;
     return Value.initBool(is_none);
 }
 
@@ -509,12 +513,10 @@ pub fn performGC(vm: *cy.VM) anyerror!Value {
     const map = try vm.allocEmptyMap();
     const cycKey = try vm.retainOrAllocAstring("numCycFreed");
     const objKey = try vm.retainOrAllocAstring("numObjFreed");
-    defer {
-        vm.release(cycKey);
-        vm.release(objKey);
-    }
-    try map.asHeapObject().map.set(vm, cycKey, Value.initInt(@intCast(res.numCycFreed)));
-    try map.asHeapObject().map.set(vm, objKey, Value.initInt(@intCast(res.numObjFreed)));
+    const num_cyc_freed = try vm.allocInt(@intCast(res.numCycFreed));
+    try map.asHeapObject().map.setConsume(vm, cycKey, num_cyc_freed);
+    const num_obj_freed = try vm.allocInt(@intCast(res.numObjFreed));
+    try map.asHeapObject().map.setConsume(vm, objKey, num_obj_freed);
     return map;
 }
 
@@ -832,7 +834,7 @@ fn arrayGetInt32(vm: *cy.VM) anyerror!Value {
 
     if (idx < 0 or idx + 4 > slice.len) return error.OutOfBounds;
     const uidx: usize = @intCast(idx);
-    const val = std.mem.readVarInt(u48, slice[uidx..uidx+4], endian);
+    const val = std.mem.readVarInt(u32, slice[uidx..uidx+4], endian);
     return Value.initInt(@intCast(val));
 }
 
@@ -1286,7 +1288,7 @@ fn intCall(vm: *cy.VM) Value {
         },
         bt.Symbol => return Value.initInt(@intCast(val.val & @as(u64, 0xFF))),
         bt.Integer => {
-            return val;
+            return Value.initInt(val.asHeapObject().integer.val);
         },
         else => {
             if (val.isEnum()) {
@@ -1326,49 +1328,69 @@ fn floatCall(vm: *cy.VM) Value {
 }
 
 pub fn intNone(vm: *cy.VM) !Value {
-    return vm.allocObjectSmall(OptionInt, &.{ Value.initInt(0), Value.initInt(0) });
+    const data = vm.getData(*BuiltinsData, "builtins");
+    return vm.allocObjectSmall(data.OptionInt, &.{ Value.initInt(0), Value.initInt(0) });
 }
 
 pub fn intSome(vm: *cy.VM, v: i48) !Value {
-    return vm.allocObjectSmall(OptionInt, &.{ Value.initInt(1), Value.initInt(v) });
+    const data = vm.getData(*BuiltinsData, "builtins");
+    return vm.allocObjectSmall(data.OptionInt, &.{ Value.initInt(1), Value.initInt(v) });
 }
 
 pub fn anyNone(vm: *cy.VM) !Value {
-    return vm.allocObjectSmall(OptionAny, &.{ Value.initInt(0), Value.initInt(0) });
+    const data = vm.getData(*BuiltinsData, "builtins");
+    return vm.allocObjectSmall(data.OptionAny, &.{ Value.initInt(0), Value.initInt(0) });
 }
 
 pub fn anySome(vm: *cy.VM, v: Value) !Value {
-    return vm.allocObjectSmall(OptionAny, &.{ Value.initInt(1), v });
+    const data = vm.getData(*BuiltinsData, "builtins");
+    return vm.allocObjectSmall(data.OptionAny, &.{ Value.initInt(1), v });
+}
+
+pub fn optionNone(vm: *cy.VM, option_t: cy.TypeId) !Value {
+    return vm.allocObjectSmall(option_t, &.{ Value.initInt(0), Value.initInt(0) });
+}
+
+pub fn optionSome(vm: *cy.VM, option_t: cy.TypeId, v: Value) !Value {
+    return vm.allocObjectSmall(option_t, &.{ Value.initInt(1), v });
 }
 
 pub fn TupleNone(vm: *cy.VM) !Value {
-    return vm.allocObjectSmall(OptionTuple, &.{ Value.initInt(0), Value.initInt(0) });
+    const data = vm.getData(*BuiltinsData, "builtins");
+    return vm.allocObjectSmall(data.OptionTuple, &.{ Value.initInt(0), Value.initInt(0) });
 }
 
 pub fn TupleSome(vm: *cy.VM, v: Value) !Value {
-    return vm.allocObjectSmall(OptionTuple, &.{ Value.initInt(1), v });
+    const data = vm.getData(*BuiltinsData, "builtins");
+    return vm.allocObjectSmall(data.OptionTuple, &.{ Value.initInt(1), v });
 }
 
 pub fn MapNone(vm: *cy.VM) !Value {
-    return vm.allocObjectSmall(OptionMap, &.{ Value.initInt(0), Value.initInt(0) });
+    const data = vm.getData(*BuiltinsData, "builtins");
+    return vm.allocObjectSmall(data.OptionMap, &.{ Value.initInt(0), Value.initInt(0) });
 }
 
 pub fn MapSome(vm: *cy.VM, v: Value) !Value {
-    return vm.allocObjectSmall(OptionMap, &.{ Value.initInt(1), v });
+    const data = vm.getData(*BuiltinsData, "builtins");
+    return vm.allocObjectSmall(data.OptionMap, &.{ Value.initInt(1), v });
 }
 
 pub fn ArrayNone(vm: *cy.VM) !Value {
-    return vm.allocObjectSmall(OptionArray, &.{ Value.initInt(0), Value.initInt(0) });
+    const data = vm.getData(*BuiltinsData, "builtins");
+    return vm.allocObjectSmall(data.OptionArray, &.{ Value.initInt(0), Value.initInt(0) });
 }
 
 pub fn ArraySome(vm: *cy.VM, v: Value) !Value {
-    return vm.allocObjectSmall(OptionArray, &.{ Value.initInt(1), v });
+    const data = vm.getData(*BuiltinsData, "builtins");
+    return vm.allocObjectSmall(data.OptionArray, &.{ Value.initInt(1), v });
 }
 
 pub fn StringNone(vm: *cy.VM) !Value {
-    return vm.allocObjectSmall(OptionString, &.{ Value.initInt(0), Value.initInt(0) });
+    const data = vm.getData(*BuiltinsData, "builtins");
+    return vm.allocObjectSmall(data.OptionString, &.{ Value.initInt(0), Value.initInt(0) });
 }
 
 pub fn StringSome(vm: *cy.VM, v: Value) !Value {
-    return vm.allocObjectSmall(OptionString, &.{ Value.initInt(1), v });
+    const data = vm.getData(*BuiltinsData, "builtins");
+    return vm.allocObjectSmall(data.OptionString, &.{ Value.initInt(1), v });
 }

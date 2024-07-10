@@ -96,6 +96,9 @@ const TupleSome = cy.builtins.TupleSome;
 const anyNone = cy.builtins.anyNone;
 const anySome = cy.builtins.anySome;
 
+const optionSome = cy.builtins.optionSome;
+const optionNone = cy.builtins.optionNone;
+
 pub fn getBuiltinSymbol(id: u32) ?Symbol {
     return std.meta.intToEnum(Symbol, id) catch {
         return null;
@@ -379,15 +382,18 @@ pub fn listAppend(vm: *cy.VM) anyerror!Value {
     return Value.Void;
 }
 
-pub fn listIteratorNext(vm: *cy.VM) Value {
+pub fn listIteratorNext(vm: *cy.VM) anyerror!Value {
     const obj = vm.getValue(0).asHeapObject();
+    const option_t: cy.TypeId = @intCast(vm.getInt(1));
     const list = &obj.listIter.inner.list.asHeapObject().list;
     if (obj.listIter.inner.nextIdx < list.list.len) {
         defer obj.listIter.inner.nextIdx += 1;
         const val = list.list.ptr[obj.listIter.inner.nextIdx];
         vm.retain(val);
-        return anySome(vm, val) catch cy.fatal();
-    } else return anyNone(vm) catch cy.fatal();
+        return optionSome(vm, option_t, val);
+    } else {
+        return optionNone(vm, option_t);
+    }
 }
 
 pub fn listIterator(vm: *cy.VM) Value {
@@ -395,23 +401,27 @@ pub fn listIterator(vm: *cy.VM) Value {
     return vm.allocListIter(@intCast(vm.getInt(1)), vm.getValue(0)) catch fatal();
 }
 
-pub fn listResize(vm: *cy.VM) Value {
+pub fn listResize(vm: *cy.VM) !Value {
+    const elem_t: cy.TypeId = @intCast(vm.getInt(1));
     const recv = vm.getValue(0);
     const list = recv.asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
-    const size: u32 = @intCast(vm.getInt(1));
+    const size: u32 = @intCast(vm.getInt(2));
     if (inner.len < size) {
+        if (elem_t != bt.Dyn) {
+            return error.InvalidArgument;
+        }
         const oldLen = inner.len;
-        inner.resize(vm.alloc, size) catch cy.fatal();
+        try inner.resize(vm.alloc, size);
         for (inner.items()[oldLen..size]) |*item| {
-            item.* = Value.initInt(0);
+            item.* = Value.False;
         }
     } else if (inner.len > size) {
         // Remove items.
         for (inner.items()[size..inner.len]) |item| {
             vm.release(item);
         }
-        inner.resize(vm.alloc, size) catch cy.fatal();
+        try inner.resize(vm.alloc, size);
     }
     return Value.Void;
 }
@@ -542,7 +552,7 @@ pub fn intPow(vm: *cy.VM) Value {
     return Value.initInt(std.math.powi(i64, vm.getInt(0), right) catch |err| {
         switch (err) {
             error.Underflow => return vm.prepPanic("Underflow."),
-            error.Overflow => return vm.prepPanic("Overfloat."),
+            error.Overflow => return vm.prepPanic("Overflow."),
         }
     });
 }

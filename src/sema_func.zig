@@ -4,6 +4,7 @@ const bt = cy.types.BuiltinTypes;
 const ast = cy.ast;
 const sema = cy.sema;
 const cte = cy.cte;
+const log = cy.log.scoped(.sema_func);
 
 pub const FuncSymResult = struct {
     dyn_call: bool,
@@ -75,6 +76,10 @@ pub fn matchFunc(c: *cy.Chunk, func: *cy.sym.Func, arg_start: usize, nargs: usiz
     var rt_arg_idx: u32 = 0;
     for (0..nargs) |i| {
         const arg = c.arg_stack.items[arg_start + i];
+        if (arg.type == .skip) {
+            rt_arg_idx += 1;
+            continue;
+        }
         const final_arg = try matchArg(c, arg, params[i], ct_arg_start, true);
         c.arg_stack.items[arg_start + i] = final_arg;
 
@@ -116,7 +121,7 @@ pub fn matchFuncSym(c: *cy.Chunk, func_sym: *cy.sym.FuncSym, arg_start: usize, n
             .dyn_call = false,
             .func = res.func,
             .args_loc = res.args_loc,
-            .nargs = @intCast(nargs),
+            .nargs = res.nargs,
         };
     }
 
@@ -153,6 +158,10 @@ fn matchOverloadedFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, nargs: us
     var rt_arg_idx: u32 = 0;
     for (0..nargs) |i| {
         const arg = c.arg_stack.items[arg_start + i];
+        if (arg.type == .skip) {
+            rt_arg_idx += 1;
+            continue;
+        }
         const final_arg = try matchArg(c, arg, params[i], ct_arg_start, false);
         c.arg_stack.items[arg_start + i] = final_arg;
 
@@ -192,14 +201,23 @@ fn matchOverloadedFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, nargs: us
     }
 }
 
-fn resolveRtArg(c: *cy.Chunk, arg: Argument, node: *ast.Node, opt_target_t: ?cy.TypeId) !sema.ExprResult {
+fn resolveRtArg(c: *cy.Chunk, arg: Argument, node: *ast.Node, opt_target_t: ?cy.TypeId, single_func: bool) !sema.ExprResult {
     if (arg.resolve_t == .rt) {
         return arg.res;
     }
     switch (arg.type) {
         .standard => {
             if (opt_target_t) |target_t| {
-                return c.semaExprTarget(node, target_t);
+                if (single_func) {
+                    return c.semaExprTarget(node, target_t);
+                } else {
+                    return c.semaExpr(node, .{
+                        .target_t = target_t,
+                        .req_target_t = false,
+                        .fit_target = true,
+                        .fit_target_unbox_dyn = false,
+                    });
+                }
             } else {
                 return c.semaExpr(node, .{});
             }
@@ -232,7 +250,7 @@ fn matchArg(c: *cy.Chunk, arg: Argument, param: sema.FuncParam, ct_arg_start: us
     }
 
     var target_t = try resolveTargetParam(c, param.type, ct_arg_start);
-    var res = try resolveRtArg(c, arg, arg.node, target_t);
+    var res = try resolveRtArg(c, arg, arg.node, target_t, single_func);
 
     const type_e = c.sema.types.items[param.type];
     if (type_e.info.ct_infer) {

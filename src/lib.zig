@@ -213,13 +213,19 @@ fn runReadyTasks(vm: *cy.VM) anyerror!void {
                 vm.c.stack = @ptrCast(fiber.stackPtr);
                 vm.c.stack_len = fiber.stackLen;
                 vm.c.stackEndPtr = @ptrCast(fiber.stackPtr + fiber.stackLen);
-                _ = vm.callFunc(task.data.callback, &.{}, .{ .from_external = false }) catch |err| {
-                    if (err == error.Await) {
-                        return error.TODO;
-                    } else {
-                        return err;
-                    }
-                };
+                while (true) {
+                    _ = vm.callFunc(task.data.callback, &.{}, .{ .from_external = false }) catch |err| {
+                        if (err == error.Await) {
+                            return error.TODO;
+                        } else if (err == error.StackOverflow) {
+                            try @call(.never_inline, cy.fiber.growStackAuto, .{vm});
+                            continue;
+                        } else {
+                            return err;
+                        }
+                    };
+                    break;
+                }
 
                 cy.fiber.saveCurFiber(vm);
                 fiber.pcOffset = cy.NullId;
@@ -509,11 +515,11 @@ export fn clFloat(n: f64) Value {
     return Value.initF64(n);
 }
 
-export fn clInteger(n: i64) Value {
+export fn clInt(n: i64) Value {
     return Value.initInt(@intCast(n));
 }
 
-export fn clInteger32(n: i32) Value {
+export fn clInt32(n: i32) Value {
     return Value.initInt(n);
 }
 
@@ -523,6 +529,10 @@ export fn clHostObject(ptr: *anyopaque) Value {
 
 export fn clVmObject(ptr: *anyopaque) Value {
     return Value.initPtr(ptr);
+}
+
+export fn clNewInt(vm: *cy.VM, n: i64) Value {
+    return vm.allocInt(n) catch fatal();
 }
 
 export fn clNewString(vm: *cy.VM, cstr: c.Str) Value {
@@ -673,10 +683,17 @@ export fn clToBool(val: Value) bool {
 }
 
 test "clToBool()" {
+    const vm = c.create();
+    defer c.destroy(vm);
+
     try t.eq(c.toBool(c.float(0)), false);
     try t.eq(c.toBool(c.float(123.0)), true);
-    try t.eq(c.toBool(c.integer(0)), false);
-    try t.eq(c.toBool(c.integer(1)), true);
+
+    var i = c.newInt(vm, 0);
+    try t.eq(c.toBool(i), false);
+    i = c.newInt(vm, 1);
+    try t.eq(c.toBool(i), true);
+
     try t.eq(c.toBool(c.clTrue()), true);
     try t.eq(c.toBool(c.clFalse()), false);
 }
@@ -694,8 +711,12 @@ export fn clAsBoxInt(val: Value) i64 {
     return val.asBoxInt();
 }
 
-test "clAsInteger()" {
-    try t.eq(c.asInteger(c.integer(123)), 123);
+test "clAsBoxInt()" {
+    const vm = c.create();
+    defer c.destroy(vm);
+
+    const val = c.newInt(vm, 123);
+    try t.eq(c.asBoxInt(val), 123);
 }
 
 export fn clAsSymbolId(val: Value) u32 {
@@ -745,7 +766,6 @@ test "Constants." {
     try t.eq(c.TypeString, bt.String);
     try t.eq(c.TypeArray, bt.Array);
     try t.eq(c.TypeFiber, bt.Fiber);
-    try t.eq(c.TypeBox, bt.Box);
     try t.eq(c.TypeHostFunc, bt.HostFunc);
     try t.eq(c.TypeExternFunc, bt.ExternFunc);
     try t.eq(c.TypeType, bt.Type);
@@ -831,7 +851,7 @@ test "List ops." {
 
     // Get.
     res = c.listGet(vm, list, 1);
-    try t.eq(c.asInteger(res), 2);
+    try t.eq(c.asBoxInt(res), 2);
 
     // Set.
     c.listSet(vm, list, 1, c.float(100));

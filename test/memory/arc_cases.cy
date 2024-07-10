@@ -1,7 +1,9 @@
 use t 'test'
 
+var a any = 'abc'
+
 -- Temporary rc if expr cond is released before entering body.
-var a = if (String(1) == '1') 123 else false
+a = if (String(1) == '1') 123 else 234
 
 -- Temporary rc if stmt cond is released before entering body.
 if String(1) == '1':

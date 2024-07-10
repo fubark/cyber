@@ -42,7 +42,6 @@ const VMC = extern struct {
     stack: [*]Value,
     stack_len: usize,
     stackEndPtr: [*]const Value,
-    call_ret: [*]Value,
 
     ops: [*]cy.Inst,
     ops_len: usize,
@@ -53,9 +52,9 @@ const VMC = extern struct {
     curFiber: *cy.Fiber,
     mainFiber: cy.Fiber,
 
-    fieldSyms: [*]rt.FieldSymbolMap,
-    fieldSyms_cap: usize,
-    fieldSyms_len: usize,
+    fields: [*]vmc.Field,
+    fields_cap: usize,
+    fields_len: usize,
 
     /// Static vars. 
     varSyms: [*]rt.VarSym,
@@ -89,8 +88,8 @@ const VMC = extern struct {
         return @ptrCast(&self.context_vars);
     }
 
-    pub fn getFieldSyms(self: *VMC) *cy.List(rt.FieldSymbolMap) {
-        return @ptrCast(&self.fieldSyms);
+    pub fn getFields(self: *VMC) *cy.List(vmc.Field) {
+        return @ptrCast(&self.fields);
     }
 
     pub fn getStack(self: *VMC) []Value {
@@ -141,8 +140,8 @@ pub const VM = struct {
     func_groups: cy.List(rt.FuncGroup),
 
     /// Struct fields symbol table.
-    fieldTable: std.HashMapUnmanaged(rt.FieldTableKey, FieldEntry, cy.hash.KeyU64Context, 80),
-    fieldSymSignatures: std.StringHashMapUnmanaged(rt.FieldId),
+    type_field_map: std.HashMapUnmanaged(rt.FieldTableKey, vmc.TypeField, cy.hash.KeyU64Context, 80),
+    field_map: std.AutoHashMapUnmanaged(vmc.NameId, rt.FieldId),
 
     /// Stores insts that were modified to restore them later.
     inlineSaves: std.AutoHashMapUnmanaged(u32, [*]const u8),
@@ -257,16 +256,15 @@ pub const VM = struct {
                 .consts = undefined,
                 .consts_len = 0,
                 .stackEndPtr = undefined,
-                .call_ret = undefined,
                 .varSyms = undefined,
                 .varSyms_cap = 0,
                 .varSyms_len = 0,
                 .context_vars = undefined,
                 .context_vars_cap = 0,
                 .context_vars_len = 0,
-                .fieldSyms = undefined,
-                .fieldSyms_cap = 0,
-                .fieldSyms_len = 0,
+                .fields = undefined,
+                .fields_cap = 0,
+                .fields_len = 0,
                 .types = undefined,
                 .types_len = 0,
                 .trace = undefined,
@@ -283,8 +281,8 @@ pub const VM = struct {
             .funcSymDetails = .{},
             .overloaded_funcs = .{},
             .func_groups = .{},
-            .fieldTable = .{},
-            .fieldSymSignatures = .{},
+            .type_field_map = .{},
+            .field_map = .{},
             .syms = .{},
             .symSignatures = .{},
             .inlineSaves = .{},
@@ -351,7 +349,7 @@ pub const VM = struct {
         try self.method_map.ensureTotalCapacity(self.alloc, 200);
         std.debug.assert(cy.utils.getHashMapMemSize(rt.MethodKey, vmc.MethodId, self.method_map.capacity()) < 4096);
 
-        try self.c.getFieldSyms().ensureTotalCapacityPrecise(alloc, 170);
+        try self.c.getFields().ensureTotalCapacityPrecise(alloc, 170);
 
         // Initialize heap.
         const list = try cy.heap.growHeapPages(self, 1);
@@ -359,6 +357,9 @@ pub const VM = struct {
         if (cy.Trace) {
             self.heapFreeTail = list.tail;
         }
+
+        const data = try self.alloc.create(cy.builtins.BuiltinsData);
+        try self.data.put(self.alloc, "builtins", data);
     }
 
     pub fn deinitRtObjects(self: *VM) void {
@@ -389,6 +390,12 @@ pub const VM = struct {
     pub fn deinit(self: *VM, reset: bool) void {
         if (self.deinited) {
             return;
+        }
+
+        if (!reset) {
+            const data = self.getData(*cy.builtins.BuiltinsData, "builtins");
+            self.alloc.destroy(data);
+            _ = self.data.remove("builtins");
         }
 
         cy.fiber.freeFiberPanic(self, &self.c.mainFiber);
@@ -457,13 +464,13 @@ pub const VM = struct {
         }
 
         if (reset) {
-            self.c.getFieldSyms().clearRetainingCapacity();
-            self.fieldTable.clearRetainingCapacity();
-            self.fieldSymSignatures.clearRetainingCapacity();
+            self.c.getFields().clearRetainingCapacity();
+            self.type_field_map.clearRetainingCapacity();
+            self.field_map.clearRetainingCapacity();
         } else {
-            self.c.getFieldSyms().deinit(self.alloc);
-            self.fieldTable.deinit(self.alloc);
-            self.fieldSymSignatures.deinit(self.alloc);
+            self.c.getFields().deinit(self.alloc);
+            self.type_field_map.deinit(self.alloc);
+            self.field_map.deinit(self.alloc);
         }
 
         if (reset) {
@@ -745,9 +752,10 @@ pub const VM = struct {
         // Dump object fields.
         {
             fmt.printStderr("obj fields:\n", &.{});
-            var iter = self.fieldSymSignatures.iterator();
+            var iter = self.field_map.iterator();
             while (iter.next()) |it| {
-                fmt.printStderr("\t{}: {}\n", &.{v(it.key_ptr.*), v(it.value_ptr.*)});
+                const name = rt.getName(self, it.key_ptr.*);
+                fmt.printStderr("\t{}: {}\n", &.{v(name), v(it.value_ptr.*)});
             }
         }
     }
@@ -851,14 +859,17 @@ pub const VM = struct {
     /// Assumes `vm.pc` is at a call inst before entering host code.
     fn getNewCallFuncRet(vm: *VM) u8 {
         const fp = cy.fiber.getStackOffset(vm.c.stack, vm.c.framePtr);
+        const frame_t = cy.fiber.getFrameType(vm, vm.c.getStack(), fp);
         if (fp == 0) {
             return vm.c.curFiber.stack_size;
-        } else if (cy.fiber.isVmFrame(vm, vm.c.getStack(), fp)) {
+        } else if (frame_t == .vm) {
             // Vm frame.
             return vm.c.framePtr[1].call_info.stack_size;
-        } else {
+        } else if (frame_t == .host) {
             // Host frame.
-            cy.panic("TODO getNewCallFuncFp");
+            return vm.c.framePtr[1].call_info.stack_size;
+        } else {
+            @panic("Unexpected");
         }
     }
 
@@ -878,32 +889,16 @@ pub const VM = struct {
         // Should the stack grow, update pointer.
         vm.c.framePtr = vm.c.stack + fpOff;
 
-        var call_ret: u8 = undefined;
-        if (config.from_external) {
-            // Create a new host frame so that it can be reported.
-            const retInfo = buildRootCallInfo(false);
-            const retFramePtr = Value{ .retFramePtr = vm.c.framePtr };
-            vm.c.framePtr += ret;
+        // Copy callee + args to a new blank frame.
+        vm.c.framePtr[ret + CalleeStart] = func;
+        @memcpy(vm.c.framePtr[ret+CallArgStart..ret+CallArgStart+args.len], args);
 
-            // Reserve extra slot for info about the call.
-            vm.c.framePtr[0].val = func.getTypeId();
-            vm.c.framePtr += 1;
-
-            vm.c.framePtr[1] = retInfo;
-            // Return pc points to the call inst that entered host.
-            vm.c.framePtr[2] = Value{ .retPcPtr = pc };
-            vm.c.framePtr[3] = retFramePtr;
-            call_ret = 4;
-        } else {
-            call_ret = ret;
+        if (cy.Trace) {
+            vm.c.trace_indent += 1;
         }
 
-        // Copy callee + args to a new blank frame.
-        vm.c.framePtr[call_ret + CalleeStart] = func;
-        @memcpy(vm.c.framePtr[call_ret+CallArgStart..call_ret+CallArgStart+args.len], args);
-
         // Pass in an arbitrary `pc` to reuse the same `call` used by the VM.
-        const pcsp = try call(vm, vm.c.pc, vm.c.framePtr, func, call_ret, @intCast(args.len), false);
+        const pcsp = try call(vm, vm.c.pc, vm.c.framePtr, func, ret, @intCast(args.len), false);
         vm.c.framePtr = pcsp.fp;
         vm.c.pc = pcsp.pc;
 
@@ -936,16 +931,30 @@ pub const VM = struct {
                     }
                 };
             }
+            // Return to dyn frame since ret inst does not unwind for cont=false.
+            vm.c.pc = vm.c.framePtr[2].retPcPtr;
+            vm.c.framePtr = vm.c.framePtr[3].retFramePtr;
+        } else {
+            if (cy.Trace) {
+                vm.c.trace_indent -= 1;
+            }
+        }
+
+        // Perform ret_dyn.
+        const final_ret = 5 + args.len;
+        const ret_v = vm.c.framePtr[final_ret];
+        const ret_t = vm.c.framePtr[1].call_info.payload;
+        var res: Value = undefined;
+        if (cy.types.isUnboxedType(ret_t)) {
+            res = zBox(vm, ret_v, ret_t);
+        } else {
+            res = ret_v;
         }
 
         // Restore pc/sp.
         vm.c.framePtr = vm.c.stack + fpOff;
         vm.c.pc = pc;
-        if (config.from_external) {
-            return vm.c.framePtr[ret + 1 + 4];
-        } else {
-            return vm.c.framePtr[ret];
-        }
+        return res;
     }
 
     pub fn addAnonymousStruct(self: *VM, parent: *cy.Sym, baseName: []const u8, uniqId: u32, fields: []const []const u8) !cy.TypeId {
@@ -973,30 +982,18 @@ pub const VM = struct {
         }
         sym.fields = infos.ptr;
         sym.numFields = @intCast(infos.len);
+        const rt_fields = try c.alloc.alloc(bool, infos.len);
+        @memset(rt_fields, true);
         c.sema.types.items[sym.type].data.object = .{
             .numFields = @intCast(sym.numFields),
+            .has_boxed_fields = true,
+            .fields = rt_fields.ptr,
         };
 
         // Update vm types view.
         self.c.types = c.sema.types.items.ptr;
         self.c.types_len = c.sema.types.items.len;
         return sym.type;
-    }
-
-    pub fn getStructFieldIdx(self: *const VM, typeId: cy.TypeId, propName: []const u8) ?u32 {
-        const fieldId = self.fieldSymSignatures.get(propName) orelse return null;
-        const entry = &self.fieldSyms.buf[fieldId];
-
-        if (entry.mruTypeId == typeId) {
-            return entry.mruOffset;
-        } else {
-            const key = rt.FieldTableKey.initFieldTableKey(typeId, fieldId);
-            const res = self.fieldTable.get(key) orelse return null;
-            entry.mruTypeId = typeId;
-            entry.mruOffset = res.offset;
-            entry.mruFieldTypeSymId = res.typeSymId;
-            return res.offset;
-        }
     }
 
     pub fn getSymbolName(self: *const VM, id: u32) []const u8 {
@@ -1028,16 +1025,13 @@ pub const VM = struct {
         }
     }
 
-    pub fn ensureFieldSym(self: *VM, name: []const u8) !SymbolId {
-        const nameId = try rt.ensureNameSym(self, name);
-        const res = try self.fieldSymSignatures.getOrPut(self.alloc, name);
+    pub fn ensureField(self: *VM, name: []const u8) !rt.FieldId {
+        const name_id = try rt.ensureNameSym(self, name);
+        const res = try self.field_map.getOrPut(self.alloc, name_id);
         if (!res.found_existing) {
-            const id: u32 = @intCast(self.c.fieldSyms_len);
-            try self.c.getFieldSyms().append(self.alloc, .{
-                .mruTypeId = cy.NullId,
-                .mruOffset = undefined,
-                .mruFieldTypeSymId = undefined,
-                .nameId = nameId,
+            const id: u32 = @intCast(self.c.fields_len);
+            try self.c.getFields().append(self.alloc, .{
+                .name_id = name_id,
             });
             res.value_ptr.* = id;
             return id;
@@ -1069,30 +1063,13 @@ pub const VM = struct {
         }
     }
 
-    pub fn addFieldSym(self: *VM, sid: cy.TypeId, fieldId: u32, offset: u16, typeSymId: types.TypeId) !void {
-        const sym = &self.c.fieldSyms[fieldId];
-        if (sym.mruTypeId != cy.NullId) {
-            // Add prev mru if it doesn't exist in hashmap.
-            const prev = rt.FieldTableKey.initFieldTableKey(sym.mruTypeId, fieldId);
-            if (!self.fieldTable.contains(prev)) {
-                try self.fieldTable.putNoClobber(self.alloc, prev, .{
-                    .offset = sym.mruOffset,
-                    .typeId = sym.mruFieldTypeSymId,
-                });
-            }
-            const key = rt.FieldTableKey.initFieldTableKey(sid, fieldId);
-            try self.fieldTable.putNoClobber(self.alloc, key, .{
-                .offset = offset,
-                .typeId = typeSymId,
-            });
-            sym.mruTypeId = sid;
-            sym.mruOffset = offset;
-            sym.mruFieldTypeSymId = typeSymId;
-        } else {
-            sym.mruTypeId = sid;
-            sym.mruOffset = offset;
-            sym.mruFieldTypeSymId = typeSymId;
-        }
+    pub fn addTypeField(self: *VM, type_id: cy.TypeId, field_id: u32, offset: u16, field_t: types.TypeId) !void {
+        const key = rt.FieldTableKey.initFieldTableKey(type_id, field_id);
+        try self.type_field_map.putNoClobber(self.alloc, key, .{
+            .boxed = !cy.types.isUnboxedType(field_t),
+            .offset = offset,
+            .type_id = field_t,
+        });
     }
 
     /// Walking the linked list is ok since overloaded functions are less common
@@ -1195,28 +1172,6 @@ pub const VM = struct {
         return error.Panic;
     }
 
-    fn setField(self: *VM, recv: Value, fieldId: SymbolId, val: Value) !void {
-        if (recv.isPointer()) {
-            const obj = recv.asHeapObject();
-            const symMap = &self.c.fieldSyms.buf[fieldId];
-
-            if (obj.getTypeId() == symMap.mruTypeId) {
-                obj.object.getValuePtr(symMap.mruOffset).* = val;
-            } else {
-                const offset = self.getFieldOffset(obj, fieldId);
-                if (offset != cy.NullU8) {
-                    symMap.mruTypeId = obj.head.typeId;
-                    symMap.mruOffset = offset;
-                    obj.object.getValuePtr(offset).* = val;
-                } else {
-                    return self.getFieldMissingSymbolError();
-                }
-            }
-        } else {
-            return self.setFieldNotObjectError();
-        }
-    }
-
     fn getFieldMissingSymbolError(self: *VM) error{Panic, OutOfMemory} {
         @setCold(true);
         return self.panic("Field not found in value.");
@@ -1227,26 +1182,11 @@ pub const VM = struct {
         return self.panic("Can't assign to value's field since the value is not an object.");
     }
 
-    pub fn getFieldOffsetFromTable(self: *VM, typeId: cy.TypeId, symId: SymbolId) u8 {
-        const key = rt.FieldTableKey.initFieldTableKey(typeId, symId);
-        if (self.fieldTable.get(key)) |res| {
-            const sym = &self.c.fieldSyms[symId];
-            sym.mruTypeId = typeId;
-            sym.mruOffset = res.offset;
-            sym.mruFieldTypeSymId = res.typeId;
-            return @intCast(res.offset);
-        } else {
-            return cy.NullU8;
-        }
-    }
-
-    pub fn getFieldOffset(self: *VM, obj: *HeapObject, symId: SymbolId) u8 {
-        const symMap = self.c.fieldSyms[symId];
-        if (obj.getTypeId() == symMap.mruTypeId) {
-            return @intCast(symMap.mruOffset);
-        } else {
-            return @call(.never_inline, VM.getFieldOffsetFromTable, .{self, obj.getTypeId(), symId});
-        }
+    pub fn getTypeField(self: *VM, type_id: cy.TypeId, field_id: rt.FieldId) vmc.TypeField {
+        const key = rt.FieldTableKey.initFieldTableKey(type_id, field_id);
+        return self.type_field_map.get(key) orelse {
+            return .{ .offset = cy.NullU16, .boxed = false, .type_id = cy.NullId };
+        };
     }
 
     pub fn setFieldRelease(self: *VM, recv: Value, symId: SymbolId, val: Value) !void {
@@ -1266,15 +1206,15 @@ pub const VM = struct {
         }
     }
 
-    pub fn getField(self: *VM, recv: Value, symId: SymbolId) !Value {
+    pub fn getField(self: *VM, recv: Value, field_id: rt.FieldId) !Value {
         if (recv.isPointer()) {
             const obj = recv.asHeapObject();
-            const offset = self.getFieldOffset(obj, symId);
-            if (offset != cy.NullU8) {
-                return obj.object.getValue(offset);
+            const res = self.getTypeField(obj.getTypeId(), field_id);
+            if (res.offset != cy.NullU16) {
+                return obj.object.getValue(res.offset);
             } else {
-                const sym = self.c.fieldSyms[symId];
-                return self.getFieldFallback(obj, sym.nameId);
+                const field = self.c.fields[field_id];
+                return self.getFieldFallback(obj, field.name_id);
             }
         } else {
             return self.getFieldMissingSymbolError();
@@ -1283,12 +1223,13 @@ pub const VM = struct {
 
     /// Does not invoke `getFieldFallback`.
     pub fn getObjectField(self: *VM, obj: *cy.heap.Object, field: []const u8) !Value {
-        const field_id = try self.ensureFieldSym(field);
-        const offset = self.getFieldOffset(@ptrCast(obj), field_id);
-        if (offset == cy.NullU8) {
+        const field_id = try self.ensureField(field);
+        const base: *cy.heap.HeapObject = @ptrCast(obj);
+        const res = self.getTypeField(base.getTypeId(), field_id);
+        if (res.offset == cy.NullU16) {
             return error.MissingField;
         }
-        return obj.getValue(offset);
+        return obj.getValue(res.offset);
     }
 
     fn setFieldFallback(self: *VM, obj: *HeapObject, nameId: vmc.NameId, val: cy.Value) !void {
@@ -1317,7 +1258,25 @@ pub const VM = struct {
     fn getFieldFallback(self: *VM, obj: *HeapObject, nameId: vmc.NameId) !Value {
         const name = rt.getName(self, nameId);
         const rec_t = obj.getTypeId();
-        if (!self.c.types[rec_t].has_get_method) {
+        const type_e = self.c.types[rec_t];
+        if (type_e.kind == .option) {
+            const enum_t = type_e.sym.cast(.enum_t);
+            const member = enum_t.getMember(name) orelse {
+                return self.prepPanic("Missing member from choice type.");
+            };
+            const active_tag: u32 = @intCast(obj.object.getValue(0).asInt());
+            if (active_tag != member.val) {
+                return self.prepPanic("Tag is not active.");
+            }
+            const value = obj.object.getValue(1);
+            if (cy.types.isUnboxedType(member.payloadType)) {
+                return try box(self, value, member.payloadType);
+            } else {
+                self.retain(value);
+                return value;
+            }
+        }
+        if (!type_e.has_get_method) {
             return self.prepPanic("Missing field in object.");
         }
 
@@ -1333,6 +1292,7 @@ pub const VM = struct {
         const func_val = try cy.heap.allocFuncFromSym(self, func);
         defer self.release(func_val);
         const result = try self.callFunc(func_val, &args, .{ .from_external = false });
+
         return result;
     }
 
@@ -1356,8 +1316,10 @@ pub const VM = struct {
             switch (func.type) {
                 .host_func => {
                     self.c.pc = pc;
-                    self.c.framePtr = fp;
-                    self.c.call_ret = fp + ret;
+                    self.c.framePtr = fp + ret;
+                    fp[ret + 1] = buildRootCallInfo(false);
+                    fp[ret + 2] = Value{ .retPcPtr = pc };
+                    fp[ret + 3] = Value{ .retFramePtr = fp };
                     const res: Value = @bitCast(func.data.host_func.?(@ptrCast(self)));
                     if (res.isInterrupt()) {
                         return error.Panic;
@@ -1396,20 +1358,23 @@ pub const VM = struct {
     ) !cy.fiber.PcFp {
         switch (func.type) {
             .host_func => {
+                defer if (cy.Trace) {
+                    self.c.trace_indent -= 1;
+                };
                 // Optimize.
                 pc[0] = cy.Inst.initOpCode(.callNativeFuncIC);
                 @as(*align(1) u48, @ptrCast(pc + 6)).* = @intCast(@intFromPtr(func.data.host_func));
 
                 self.c.pc = pc;
-                self.c.framePtr = framePtr;
-
-                self.c.call_ret = framePtr + ret;
+                self.c.framePtr = framePtr + ret;
+                framePtr[ret + 1] = buildRootCallInfo(false);
+                framePtr[ret + 2] = Value{ .retPcPtr = pc };
+                framePtr[ret + 3] = Value{ .retFramePtr = framePtr };
                 const res: Value = @bitCast(func.data.host_func.?(@ptrCast(self)));
                 if (res.isInterrupt()) {
                     return error.Panic;
                 }
                 framePtr[ret] = @bitCast(res);
-                if (cy.Trace) self.c.trace_indent -= 1;
                 return cy.fiber.PcFp{
                     .pc = pc + cy.bytecode.CallSymInstLen,
                     .fp = framePtr,
@@ -1868,13 +1833,11 @@ test "vm internals." {
     try t.eq(@offsetOf(VMC, "framePtr"), @offsetOf(vmc.VMC, "curStack"));
     try t.eq(@offsetOf(VMC, "stack"), @offsetOf(vmc.VMC, "stackPtr"));
     try t.eq(@offsetOf(VMC, "stackEndPtr"), @offsetOf(vmc.VMC, "stackEndPtr"));
-    try t.eq(@offsetOf(VMC, "call_ret"), @offsetOf(vmc.VMC, "call_ret"));
     try t.eq(@offsetOf(VMC, "ops"), @offsetOf(vmc.VMC, "instPtr"));
     try t.eq(@offsetOf(VMC, "consts"), @offsetOf(vmc.VMC, "constPtr"));
-    try t.eq(@offsetOf(VMC, "tryStack"), @offsetOf(vmc.VMC, "tryStack"));
     try t.eq(@offsetOf(VMC, "varSyms"), @offsetOf(vmc.VMC, "varSyms"));
     try t.eq(@offsetOf(VMC, "context_vars"), @offsetOf(vmc.VMC, "context_vars"));
-    try t.eq(@offsetOf(VMC, "fieldSyms"), @offsetOf(vmc.VMC, "fieldSyms"));
+    try t.eq(@offsetOf(VMC, "fields"), @offsetOf(vmc.VMC, "fields"));
     try t.eq(@offsetOf(VMC, "curFiber"), @offsetOf(vmc.VMC, "curFiber"));
     try t.eq(@offsetOf(VMC, "mainFiber"), @offsetOf(vmc.VMC, "mainFiber"));
     try t.eq(@offsetOf(VMC, "types"), @offsetOf(vmc.VMC, "typesPtr"));
@@ -2033,7 +1996,7 @@ fn popStackFrameLocal1(vm: *VM, pc: *[*]const cy.Inst, framePtr: *[*]Value) bool
     }
 }
 
-fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst) !void {
+fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst, fp: [*]const cy.Value) !void {
     const S = struct {
         var buf: [1024]u8 = undefined;
     };
@@ -2064,15 +2027,20 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst) !void {
             extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{name});
         },
         .callSym => {
+            const ret = pc[1].val;
             const symId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
             const details = vm.funcSymDetails.buf[symId];
             const name = details.namePtr[0..details.nameLen];
-            extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{name});
+            extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}, fp={}", .{name, cy.fiber.getStackOffset(vm.c.stack, fp) + ret});
+        },
+        .call => {
+            const ret = pc[1].val;
+            extra = try std.fmt.bufPrint(&S.buf, "rt: fp={}", .{cy.fiber.getStackOffset(vm.c.stack, fp) + ret});
         },
         .fieldDyn => {
-            const symId = pc[3].val;
-            const sym = vm.c.fieldSyms[symId];
-            const name = rt.getName(vm, sym.nameId);
+            const field_id = pc[3].val;
+            const field = vm.c.fields[field_id];
+            const name = rt.getName(vm, field.name_id);
             extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{name});
         },
         else => {},
@@ -2082,27 +2050,22 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst) !void {
     try cy.bytecode.dumpInst(vm, offset, pc[0].opcode(), pc, .{ .extra = extra });
 }
 
-const FieldEntry = struct {
-    offset: u32,
-    typeId: types.TypeId,
-};
-
-fn box(vm: *VM, val: Value, type_id: cy.TypeId) !?cy.Value {
+fn box(vm: *VM, val: Value, type_id: cy.TypeId) !cy.Value {
     switch (type_id) {
         bt.Integer => {
             return try vm.allocInt(val.asInt());
         },
         else => {
-            return null;
+            @panic("Unsupported.");
         },
     }
 }
 
-fn unboxArg(vm: *VM, arg: Value, arg_t: cy.TypeId) cy.Value {
+fn unbox(vm: *VM, val: Value, type_id: cy.TypeId) cy.Value {
     _ = vm;
-    switch (arg_t) {
+    switch (type_id) {
         bt.Integer => {
-            return cy.Value{ .val = @bitCast(arg.asHeapObject().integer.val) };
+            return cy.Value{ .val = @bitCast(val.asHeapObject().integer.val) };
         },
         else => {
             @panic("Unsupported arg.");
@@ -2146,9 +2109,10 @@ fn preCallDyn(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, final_r
     const sig = vm.compiler.sema.getFuncSig(sig_id);
 
     // Setup call frame to return to the next inst.
-    fp[ret + 1] = buildCallInfo2(cont, cy.bytecode.CallInstLen + cy.bytecode.RetDynLen, final_ret - ret);
-    // Return pc is repurposed for ret box type.
-    fp[ret + 2] = Value{ .ret_t = sig.ret };
+    fp[ret + 1] = buildDynFrameInfo(cont, cy.bytecode.CallInstLen + cy.bytecode.RetDynLen, final_ret - ret);
+    // Save ret box type.
+    fp[ret + 1].call_info.payload = sig.ret;
+    fp[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen + cy.bytecode.RetDynLen };
     fp[ret + 3] = Value{ .retFramePtr = fp };
 
     // Setup the final call frame with args copied.
@@ -2173,7 +2137,7 @@ fn preCallDyn(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, final_r
                 continue;
             }
             if (types.isUnboxedType(cstrType.type)) {
-                const final_arg = @call(.never_inline, unboxArg, .{vm, arg, argType});
+                const final_arg = @call(.never_inline, unbox, .{vm, arg, argType});
                 final_args[i] = final_arg;
                 continue;
             }
@@ -2243,24 +2207,25 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
             }
 
             const final_ret: u8 = @intCast(ret + 5 + obj.hostFunc.numParams);
-            const ret_t = try preCallDyn(vm, pc, framePtr, numArgs, ret, final_ret, obj.lambda.stackSize, obj.hostFunc.reqCallTypeCheck, obj.hostFunc.funcSigId, cont);
+            _ = try preCallDyn(vm, pc, framePtr, numArgs, ret, final_ret, obj.lambda.stackSize, obj.hostFunc.reqCallTypeCheck, obj.hostFunc.funcSigId, cont);
 
             vm.c.pc = pc;
-            vm.c.framePtr = framePtr;
-            vm.c.call_ret = framePtr + final_ret;
+            vm.c.framePtr = framePtr + final_ret;
+
+            // Overwrite last frame as a host frame.
+            framePtr[final_ret + 1] = buildRootCallInfo(false);
+            framePtr[final_ret + 2] = Value{ .retPcPtr = pc };
+            // Keep retFramePtr.
+
             const res: cy.Value = @bitCast(obj.hostFunc.func.?(@ptrCast(vm)));
             if (res.isInterrupt()) {
                 return error.Panic;
             }
-            if (try box(vm, res, ret_t)) |box_v| {
-                framePtr[ret] = box_v;
-            } else {
-                framePtr[ret] = @bitCast(res);
-            }
+            framePtr[final_ret] = res;
 
             return cy.fiber.PcFp{
-                .pc = pc + cy.bytecode.CallInstLen + cy.bytecode.RetDynLen,
-                .fp = framePtr,
+                .pc = pc + cy.bytecode.CallInstLen,
+                .fp = framePtr + ret,
             };
         },
         else => {
@@ -2489,26 +2454,21 @@ fn callObjSymFallback(
     return vm.panic("Missing method.");
 }
 
-pub const CallInfo = packed struct {
-    /// Whether a ret op should return from the VM loop.
-    ret_flag: bool,
-
-    /// Since there are different call insts with varying lengths,
-    /// the call convention prefers to advance the pc before saving it so
-    /// stepping over the call will already have the correct pc.
-    /// An offset is stored to the original call inst for stack unwinding.
-    call_inst_off: u7,
-
-    /// Stack size of the function.
-    /// Used to dynamically push stack frames when calling into the VM.
-    stack_size: u8,
-};
+pub inline fn buildDynFrameInfo(cont: bool, comptime call_inst_off: u8, stack_size: u8) Value {
+    return .{ .call_info = .{
+        .ret_flag = !cont,
+        .call_inst_off = call_inst_off,
+        .stack_size = stack_size,
+        .type = .dyn,
+    }};
+}
 
 pub inline fn buildCallInfo2(cont: bool, comptime callInstOffset: u8, stack_size: u8) Value {
     return .{ .call_info = .{
         .ret_flag = !cont,
         .call_inst_off = callInstOffset,
         .stack_size = stack_size,
+        .type = .vm,
     }};
 }
 
@@ -2517,6 +2477,7 @@ pub inline fn buildCallInfo(comptime cont: bool, comptime callInstOffset: u8, st
         .ret_flag = !cont,
         .call_inst_off = callInstOffset,
         .stack_size = stack_size,
+        .type = .vm,
     }};
 }
 
@@ -2525,6 +2486,7 @@ pub inline fn buildRootCallInfo(comptime cont: bool) Value {
         .ret_flag = !cont,
         .call_inst_off = 0,
         .stack_size = 4,
+        .type = .host,
     }};
 }
 
@@ -2667,8 +2629,10 @@ pub const CalleeStart: u8 = vmc.CALLEE_START;
 fn preCallObjSym(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, final_ret: u8, func_stack_size: u8, req_type_check: bool, sig_id: sema.FuncSigId) !cy.TypeId {
     const sig = vm.compiler.sema.getFuncSig(sig_id);
     // Setup call frame to return to the next inst.
-    fp[ret + 1] = buildCallInfo2(true, cy.bytecode.CallObjSymInstLen + cy.bytecode.RetDynLen, final_ret - ret);
-    fp[ret + 2] = Value{ .ret_t = sig.ret };
+    fp[ret + 1] = buildDynFrameInfo(true, cy.bytecode.CallObjSymInstLen + cy.bytecode.RetDynLen, final_ret - ret);
+    // Save ret box type.
+    fp[ret + 1].call_info.payload = sig.ret;
+    fp[ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen + cy.bytecode.RetDynLen };
     fp[ret + 3] = Value{ .retFramePtr = fp };
 
     // Setup the final call frame with args copied.
@@ -2695,7 +2659,7 @@ fn preCallObjSym(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, fina
                 continue;
             }
             if (types.isUnboxedType(cstrType.type)) {
-                const final_arg = @call(.never_inline, unboxArg, .{vm, arg, argType});
+                const final_arg = @call(.never_inline, unbox, .{vm, arg, argType});
                 final_args[i] = final_arg;
                 continue;
             }
@@ -2739,8 +2703,11 @@ fn callMethod(
             };
         },
         .host_func => {
+            defer if (cy.Trace) {
+                vm.c.trace_indent -= 1;
+            };
             const final_ret = ret + 5 + func.nparams;
-            const ret_t = try preCallObjSym(vm, pc, fp, nargs, ret, final_ret, @intCast(func.data.func.stackSize), func.req_type_check, func.sig);
+            _ = try preCallObjSym(vm, pc, fp, nargs, ret, final_ret, @intCast(func.data.func.stackSize), func.req_type_check, func.sig);
 
             // Optimize.
             // TODO: callObjHostFuncIC (rt args typecheck) or callObjHostFuncNoCheckIC
@@ -2751,22 +2718,20 @@ fn callMethod(
             }
 
             vm.c.pc = pc;
-            vm.c.framePtr = fp;
-            vm.c.call_ret = fp + final_ret;
+            vm.c.framePtr = fp + final_ret;
+            // Overwrite last frame as a host frame.
+            fp[final_ret + 1] = buildRootCallInfo(false);
+            fp[final_ret + 2] = Value{ .retPcPtr = pc };
+            // Keep retFramePtr.
             const res: Value = @bitCast(func.data.host_func.?(@ptrCast(vm)));
             if (res.isInterrupt()) {
                 return error.Panic;
             }
-            if (try box(vm, res, ret_t)) |box_v| {
-                fp[ret] = box_v;
-            } else {
-                fp[ret] = @bitCast(res);
-            }
+            fp[final_ret] = res;
 
-            if (cy.Trace) vm.c.trace_indent -= 1;
             return cy.fiber.PcFp{
-                .pc = pc + cy.bytecode.CallObjSymInstLen + cy.bytecode.RetDynLen,
-                .fp = fp,
+                .pc = pc + cy.bytecode.CallObjSymInstLen,
+                .fp = fp + ret,
             };
         },
         .null => {
@@ -2790,6 +2755,14 @@ fn zFatal() callconv(.C) void {
 fn zOpCodeName(code: vmc.OpCode) callconv(.C) [*:0]const u8 {
     const ecode: cy.OpCode = @enumFromInt(code);
     return @tagName(ecode);
+}
+
+fn zBox(vm: *VM, val: cy.Value, type_id: cy.TypeId) callconv(.C) cy.Value {
+    return box(vm, val, type_id) catch @panic("Unexpected.");
+}
+
+fn zUnbox(vm: *VM, val: cy.Value, type_id: cy.TypeId) callconv(.C) cy.Value {
+    return unbox(vm, val, type_id);
 }
 
 fn zCallTrait(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, vtable_idx: u16, ret: u8) callconv(.C) vmc.PcFpResult {
@@ -2889,8 +2862,8 @@ fn zCallSymDyn(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8,
     };
 }
 
-fn zDumpEvalOp(vm: *VM, pc: [*]const cy.Inst) callconv(.C) void {
-    dumpEvalOp(vm, pc) catch cy.fatal();
+fn zDumpEvalOp(vm: *VM, pc: [*]const cy.Inst, fp: [*]const cy.Value) callconv(.C) void {
+    dumpEvalOp(vm, pc, fp) catch cy.fatal();
 }
 
 pub fn zFreeObject(vm: *cy.VM, obj: *HeapObject) callconv(.C) void {
@@ -3083,8 +3056,8 @@ fn zAllocObjectSmall(vm: *cy.VM, typeId: cy.TypeId, fields: [*]const Value, nfie
     };
 }
 
-fn zGetFieldOffsetFromTable(vm: *VM, typeId: cy.TypeId, symId: SymbolId) callconv(.C) u8 {
-    return vm.getFieldOffsetFromTable(typeId, symId);
+fn zGetTypeField(vm: *VM, type_id: cy.TypeId, field_id: rt.FieldId) callconv(.C) vmc.TypeField {
+    return vm.getTypeField(type_id, field_id);
 }
 
 fn zEvalCompare(left: Value, right: Value) callconv(.C) vmc.Value {
@@ -3102,6 +3075,12 @@ fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, nu
                 .pc = undefined,
                 .fp = undefined,
                 .code = vmc.RES_CODE_PANIC,
+            };
+        } else if (err == error.StackOverflow) {
+            return .{
+                .pc = undefined,
+                .fp = undefined,
+                .code = vmc.RES_CODE_STACK_OVERFLOW,
             };
         } else {
             return .{
@@ -3190,14 +3169,16 @@ pub fn zDumpValue(vm: *VM, val: Value) callconv(.C) void {
     cy.rt.log(fbuf.getWritten());
 }
 
-fn zGetFieldFallback(vm: *VM, obj: *HeapObject, nameId: vmc.NameId) callconv(.C) Value {
-    return vm.getFieldFallback(obj, nameId) catch {
+fn zGetFieldFallback(vm: *VM, obj: *HeapObject, field_id: rt.FieldId) callconv(.C) Value {
+    const name_id = vm.c.fields[field_id].name_id;
+    return vm.getFieldFallback(obj, name_id) catch {
         return Value.Interrupt;
     };
 }
 
-fn zSetFieldFallback(vm: *VM, obj: *HeapObject, nameId: vmc.NameId, val: cy.Value) callconv(.C) vmc.ResultCode {
-    vm.setFieldFallback(obj, nameId, val) catch |err| {
+fn zSetFieldFallback(vm: *VM, obj: *HeapObject, field_id: rt.FieldId, val: cy.Value) callconv(.C) vmc.ResultCode {
+    const name_id = vm.c.fields[field_id].name_id;
+    vm.setFieldFallback(obj, name_id, val) catch |err| {
         if (err == error.Panic) {
             return vmc.RES_CODE_PANIC;
         } else {
@@ -3318,6 +3299,8 @@ comptime {
         @export(zAlloc, .{ .name = "zAlloc", .linkage = .strong });
         @export(zAllocList, .{ .name = "zAllocList", .linkage = .strong });
         @export(zAllocListDyn, .{ .name = "zAllocListDyn", .linkage = .strong });
+        @export(zBox, .{ .name = "zBox", .linkage = .strong });
+        @export(zUnbox, .{ .name = "zUnbox", .linkage = .strong });
         @export(zCall, .{ .name = "zCall", .linkage = .strong });
         @export(zCallSym, .{ .name = "zCallSym", .linkage = .strong });
         @export(zCallTrait, .{ .name = "zCallTrait", .linkage = .strong });
@@ -3337,7 +3320,7 @@ comptime {
         @export(zEvalCompare, .{ .name = "zEvalCompare", .linkage = .strong });
         @export(zEnsureListCap, .{ .name = "zEnsureListCap", .linkage = .strong });
         @export(zEnd, .{ .name = "zEnd", .linkage = .strong });
-        @export(zGetFieldOffsetFromTable, .{ .name = "zGetFieldOffsetFromTable", .linkage = .strong });
+        @export(zGetTypeField, .{ .name = "zGetTypeField", .linkage = .strong });
     }
 }
 
@@ -3414,50 +3397,50 @@ fn spawn(args: struct {
 pub const VMGetArgExt = struct {
 
     pub fn getInt(vm: *VM, idx: u32) i64 {
-        return vm.c.call_ret[CallArgStart + idx].asInt();
+        return vm.c.framePtr[CallArgStart + idx].asInt();
     }
 
     pub fn setInt(vm: *VM, idx: u32, i: i64) void {
-        vm.c.call_ret[CallArgStart + idx] = Value.initInt(i);
+        vm.c.framePtr[CallArgStart + idx] = Value.initInt(i);
     }    
 
     pub fn getFloat(vm: *VM, idx: u32) f64 {
-        return vm.c.call_ret[CallArgStart + idx].asF64();
+        return vm.c.framePtr[CallArgStart + idx].asF64();
     }
 
     pub fn getString(vm: *VM, idx: u32) []const u8 {
-        return vm.c.call_ret[CallArgStart + idx].asString();
+        return vm.c.framePtr[CallArgStart + idx].asString();
     }
 
     pub fn getBool(vm: *VM, idx: u32) bool {
-        return vm.c.call_ret[CallArgStart + idx].asBool();
+        return vm.c.framePtr[CallArgStart + idx].asBool();
     }
 
     pub fn setBool(vm: *VM, idx: u32, b: bool) void {
-        vm.c.call_ret[CallArgStart + idx] = Value.initBool(b);
+        vm.c.framePtr[CallArgStart + idx] = Value.initBool(b);
     }    
 
     pub fn getArray(vm: *VM, idx: u32) []const u8 {
-        return vm.c.call_ret[CallArgStart + idx].asArray();
+        return vm.c.framePtr[CallArgStart + idx].asArray();
     }
 
     pub fn getSymbol(vm: *VM, idx: u32) u32 {
-        return vm.c.call_ret[CallArgStart + idx].asSymbolId();
+        return vm.c.framePtr[CallArgStart + idx].asSymbolId();
     }
 
     pub fn setSymbol(vm: *VM, idx: u32, id: u32) void {
-        vm.c.call_ret[CallArgStart + idx] = Value.initSymbol(id);
+        vm.c.framePtr[CallArgStart + idx] = Value.initSymbol(id);
     }    
 
     pub fn getObject(vm: *VM, comptime Ptr: type, idx: u32) Ptr {
-        return vm.c.call_ret[CallArgStart + idx].castHeapObject(Ptr);
+        return vm.c.framePtr[CallArgStart + idx].castHeapObject(Ptr);
     }
 
     pub fn getHostObject(vm: *VM, comptime Ptr: type, idx: u32) Ptr {
-        return vm.c.call_ret[CallArgStart + idx].castHostObject(Ptr);
+        return vm.c.framePtr[CallArgStart + idx].castHostObject(Ptr);
     }
 
     pub fn getValue(vm: *VM, idx: u32) Value {
-        return vm.c.call_ret[CallArgStart + idx];
+        return vm.c.framePtr[CallArgStart + idx];
     }
 };

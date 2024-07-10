@@ -67,6 +67,7 @@ else:
     test.fail()
 
 -- Switch case on empty payload. Expr.
+s = Shape.point
 res = switch s:
     case .point => 123
     else => test.fail()

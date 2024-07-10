@@ -27,7 +27,7 @@ t.eqList(a[3..], [4, 5])
 t.eqList(a[..3], [1, 2, 3])
 -- Dynamic invocation.
 let b = t.erase(a)
-t.eqList(b[0..2], [1, 2])
+t.eqList(b[0..2] as List[dyn], [1, 2])
 
 --| Slice retains rc elems.
 a = [String(1), String(2), String(3)]
@@ -141,7 +141,7 @@ t.eq(a[1], 3)
 a = [1, 2, 3]
 a.resize(4)
 t.eq(a.len(), 4)
-t.eq(a[3], 0)
+t.eq(a[3], false)
 a.resize(2)
 t.eq(a.len(), 2)
 t.eq(a[1], 2)

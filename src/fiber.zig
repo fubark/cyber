@@ -28,11 +28,9 @@ pub const PanicType = enum(u8) {
 
 test "fiber internals." {
     if (cy.is32Bit) {
-        try t.eq(@sizeOf(vmc.Fiber), 72);
-        try t.eq(@sizeOf(vmc.TryFrame), 12);
+        try t.eq(@sizeOf(vmc.Fiber), 64);
     } else {
-        try t.eq(@sizeOf(vmc.Fiber), 88);
-        try t.eq(@sizeOf(vmc.TryFrame), 12);
+        try t.eq(@sizeOf(vmc.Fiber), 72);
     }
 }
 
@@ -179,8 +177,11 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
 }
 
 // Determine whether it's a vm or host frame.
-pub fn isVmFrame(_: *cy.VM, stack: []const Value, fpOff: u32) bool {
-    return stack[fpOff+1].call_info.call_inst_off > 0;
+pub fn getFrameType(_: *cy.VM, stack: []const Value, fp_off: u32) FrameType {
+    if (fp_off == 0) {
+        return .main;
+    }
+    return stack[fp_off+1].call_info.type;
 }
 
 /// Unwind from `ctx` and release each frame.
@@ -193,8 +194,9 @@ pub fn unwindStack(vm: *cy.VM, stack: []const Value, ctx: PcFpOff) !PcFpOff {
     vm.compactTrace.clearRetainingCapacity();
 
     while (true) {
-        log.tracev("frame pc={} fp={}", .{pc, fp});
-        if (fp == 0 or isVmFrame(vm, stack, fp)) {
+        const frame_t = getFrameType(vm, stack, fp);
+        log.tracev("unwind on frame pc={}, fp={}, type={}", .{pc, fp, frame_t});
+        if (fp == 0 or frame_t == .vm) {
             try vm.compactTrace.append(vm.alloc, .{
                 .pcOffset = pc,
                 .fpOffset = fp,
@@ -204,17 +206,20 @@ pub fn unwindStack(vm: *cy.VM, stack: []const Value, ctx: PcFpOff) !PcFpOff {
                 // Done, at main block.
                 return PcFpOff{ .pc = pc, .fp = fp };
             } else {
-                const prev = getVmFramePrev(vm, stack, fp);
+                const prev = getPrevFrame(vm, stack, fp);
                 pc = prev.pc;
                 fp = prev.fp;
             }
         } else {
-            try vm.compactTrace.append(vm.alloc, .{
-                .pcOffset = cy.NullId,
-                .fpOffset = fp,
-            });
-            // Skip releasing host frame. Record it.
-            const prev = getHostFramePrev(vm, stack, fp);
+            // Record host frames.
+            if (frame_t == .host) {
+                try vm.compactTrace.append(vm.alloc, .{
+                    .pcOffset = cy.NullId,
+                    .fpOffset = fp,
+                });
+            }
+            // Skip frame.
+            const prev = getPrevFrame(vm, stack, fp);
             pc = prev.pc;
             fp = prev.fp;
         }
@@ -229,9 +234,10 @@ pub fn recordCurFrames(vm: *cy.VM) !void {
     var fp = cy.fiber.getStackOffset(vm.c.stack, vm.c.framePtr);
     var pc = cy.fiber.getInstOffset(vm.c.ops, vm.c.pc);
     while (true) {
-        log.tracev("pc: {}, fp: {}", .{pc, fp});
+        const frame_t = getFrameType(vm, vm.c.getStack(), fp);
+        log.tracev("record on pc={}, fp={}, type={}", .{pc, fp, frame_t});
 
-        if (fp == 0 or cy.fiber.isVmFrame(vm, vm.c.getStack(), fp)) {
+        if (fp == 0 or frame_t == .vm) {
             try vm.compactTrace.append(vm.alloc, .{
                 .pcOffset = pc,
                 .fpOffset = fp,
@@ -240,16 +246,18 @@ pub fn recordCurFrames(vm: *cy.VM) !void {
                 // Main.
                 break;
             } else {
-                const prev = getVmFramePrev(vm, vm.c.getStack(), fp);
+                const prev = getPrevFrame(vm, vm.c.getStack(), fp);
                 fp = prev.fp;
                 pc = prev.pc;
             }
         } else {
-            try vm.compactTrace.append(vm.alloc, .{
-                .pcOffset = cy.NullId,
-                .fpOffset = fp,
-            });
-            const prev = getHostFramePrev(vm, vm.c.getStack(), fp);
+            if (frame_t == .host) {
+                try vm.compactTrace.append(vm.alloc, .{
+                    .pcOffset = cy.NullId,
+                    .fpOffset = fp,
+                });
+            }
+            const prev = getPrevFrame(vm, vm.c.getStack(), fp);
             fp = prev.fp;
             pc = prev.pc;
         }
@@ -259,7 +267,7 @@ pub fn recordCurFrames(vm: *cy.VM) !void {
 fn releaseFrame(vm: *cy.VM, fp: u32, pc: u32) !void {
     const symIdx = try cy.debug.indexOfDebugSym(vm, pc);
     const key = cy.debug.getUnwindKey(vm, symIdx);
-    log.tracev("release frame: pc={} {}, fp={} key: {},{}", .{pc, vm.c.ops[pc].opcode(), fp, key.is_null, key.idx});
+    log.tracev("release frame: pc={} {}, fp={} key: {},{}", .{pc, vm.c.ops[pc].opcode(), fp, !key.is_null, key.idx});
     if (!key.is_null) {
         cy.arc.runUnwindReleases(vm, vm.c.stack + fp, key);
     }
@@ -275,16 +283,10 @@ fn releaseFrameTemps(vm: *cy.VM, fp: u32, pc: u32) !void {
     cy.arc.runTempReleaseOps(vm, vm.c.stack + fp, tempIdx);
 }
 
-fn getHostFramePrev(vm: *cy.VM, stack: []const Value, fp: u32) PcFpOff {
+fn getPrevFrame(vm: *cy.VM, stack: []const Value, fp: u32) PcFpOff {
+    const prev_pc = getInstOffset(vm.c.ops, stack[fp + 2].retPcPtr) - stack[fp + 1].call_info.call_inst_off;
     const prev_fp = getStackOffset(stack.ptr, stack[fp + 3].retFramePtr);
-    const prev_pc = getInstOffset(vm.c.ops, stack[fp + 2].retPcPtr);
     return PcFpOff{ .pc = prev_pc, .fp = prev_fp };
-}
-
-fn getVmFramePrev(vm: *cy.VM, stack: []const Value, fp: u32) PcFpOff {
-    const prevPc = getInstOffset(vm.c.ops, stack[fp + 2].retPcPtr) - stack[fp + 1].call_info.call_inst_off;
-    const prevFp = getStackOffset(stack.ptr, stack[fp + 3].retFramePtr);
-    return PcFpOff{ .pc = prevPc, .fp = prevFp };
 }
 
 // Returns a continuation if there is a parent fiber otherwise null.
@@ -338,12 +340,21 @@ pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcFpOff, err: Value) !PcFpOff {
             .fpOffset = fp,
         });
 
+        const frame_t = getFrameType(vm, vm.c.getStack(), fp);
+        log.tracev("throw on frame: fp={}, pc={}, type={}", .{fp, pc, frame_t});
+        if (frame_t != .vm and frame_t != .main) {
+            const prev = getPrevFrame(vm, vm.c.getStack(), fp);
+            fp = prev.fp;
+            pc = prev.pc;
+            continue;
+        }
+
         const debug_idx = try cy.debug.indexOfDebugSym(vm, pc);
         const key = cy.debug.getUnwindKey(vm, debug_idx);
         if (cy.arc.runUnwindReleasesUntilCatch(vm, vm.c.stack + fp, key)) |catch_pc| {
             const err_local = vm.c.ops[catch_pc+3].val;
             const release = vm.c.ops[catch_pc+4].val == 1;
-            log.tracev("catch at {}, err={}, release={}", .{catch_pc, err_local, release});
+            log.tracev("catch at {}, err={}, release={}, fp={}", .{catch_pc, err_local, release, fp});
             // Copy error to catch dst.
             if (err_local != cy.NullU8) {
                 if (release) {
@@ -377,7 +388,7 @@ pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcFpOff, err: Value) !PcFpOff {
             }
         }
 
-        const prev = getVmFramePrev(vm, vm.c.getStack(), fp);
+        const prev = getPrevFrame(vm, vm.c.getStack(), fp);
         fp = prev.fp;
         pc = prev.pc;
     }
@@ -520,4 +531,30 @@ pub const PcFpOff = struct {
 pub const PcFp = struct {
     pc: [*]cy.Inst,
     fp: [*]Value,
+};
+
+pub const FrameType = enum(u2) {
+    vm,
+    host,
+    dyn,
+    main,
+};
+
+pub const CallInfo = packed struct {
+    /// Whether a ret op should return from the VM loop.
+    ret_flag: bool,
+
+    /// Since there are different call insts with varying lengths,
+    /// the call convention prefers to advance the pc before saving it so
+    /// stepping over the call will already have the correct pc.
+    /// An offset is stored to the original call inst for stack unwinding.
+    call_inst_off: u7,
+
+    /// Stack size of the function.
+    /// Used to dynamically push stack frames when calling into the VM.
+    stack_size: u8,
+
+    type: FrameType,
+    padding: u14 = undefined,
+    payload: u32 = undefined,
 };

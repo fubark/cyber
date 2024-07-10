@@ -1056,7 +1056,7 @@ pub fn allocListFill(self: *cy.VM, val: Value, n: u32) !Value {
     } else {
         var i: u32 = 0;
         while (i < n) : (i += 1) {
-            list.buf[i] = cy.value.shallowCopy(self, val);
+            list.buf[i] = try cy.value.shallowCopy(self, val);
         }
     }
     return Value.initCycPtr(obj);
@@ -2141,13 +2141,34 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                     }
                     freePoolObject(vm, obj);
                 },
-                .object => {
-                    const numFields = entry.data.object.numFields;
-                    for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
-                        if (skip_cyc_children and child.isCycPointer()) {
+                .table => {
+                    const numFields = entry.data.table.numFields;
+                    const field_vals = obj.object.getValuesConstPtr()[0..numFields];
+                    for (field_vals) |field| {
+                        if (skip_cyc_children and field.isCycPointer()) {
                             continue;
                         }
-                        cy.arc.release(vm, child);
+                        cy.arc.release(vm, field);
+                    }
+                    if (numFields <= 4) {
+                        freePoolObject(vm, obj);
+                    } else {
+                        freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value), true);
+                    }
+                },
+                .object => {
+                    const numFields = entry.data.object.numFields;
+                    if (entry.data.object.has_boxed_fields) {
+                        const field_vals = obj.object.getValuesConstPtr()[0..numFields];
+                        for (entry.data.object.fields[0..numFields], 0..) |boxed, i| {
+                            if (boxed) {
+                                const field = field_vals[i];
+                                if (skip_cyc_children and field.isCycPointer()) {
+                                    continue;
+                                }
+                                cy.arc.release(vm, field);
+                            }
+                        }
                     }
                     if (numFields <= 4) {
                         freePoolObject(vm, obj);

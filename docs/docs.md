@@ -571,14 +571,19 @@ if true:
 ## Numbers.
 
 ### Integers.
-`int` is the default integer type. It has 48-bits and can represent integers in the range -(2<sup>47</sup>) to 2<sup>47</sup>-1. See [`type int`](#type-int).
+`int` is the default integer type and is an alias for `int64`.
+It has 64-bits representing integers in the range -(2<sup>63</sup>) to 2<sup>63</sup>-1.
+Integer types use the two's complement format.
+
+The following integer types are supported: [`int8`](#type-int8), [`int16`](#type-int16), [`int32`](#type-int32), [`int64`](#type-int64).
+Integer types are named according to how many bits they occupy.
 
 When a numeric literal is used and the type can not be inferred, it will default to the `int` type:
 ```cy
 var a = 123
 ```
 
-Integer notations always produce a `int` value:
+Integer notations always produce an integer value:
 ```cy
 var a = 0xFF     -- hex.
 a = 0o17         -- octal.
@@ -1728,6 +1733,7 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
 * [Function calls.](#function-calls)
   * [Shorthand syntax.](#shorthand-syntax)
   * [Call block syntax.](#call-block-syntax)
+  * [Piping.](#piping)
 * [Function templates.](#function-templates)
   * [Explicit template call.](#explicit-template-call)
   * [Expand function.](#expand-function)
@@ -1905,6 +1911,9 @@ Button('Count'):
     print 'on click'
 ```
 Arguments assigned in the call block can be unordered.
+
+### Piping.
+> _Planned Feature_
 
 ## Function templates.
 Function declarations can include template parameters to create a function template:
@@ -3652,7 +3661,7 @@ print res['numObjFreed']      -- Output: 2
 * [Basic commands.](#basic-commands)
 * [REPL.](#repl)
 * [JIT compiler.](#jit-compiler)
-* [AOT compiler.](#aot-compiler)
+* [C backend.](#c-backend)
 
 [^top](#table-of-contents)
 
@@ -3728,9 +3737,8 @@ cyber -jit &lt;script&gt;
 
 The goal of the JIT compiler is to be fast at compilation while still being significantly faster than the interpreter. The codegen involves stitching together pregenerated machine code that targets the same runtime stack slots used by the VM. This technique is also known as `copy-and-patch`. As the VM transitions to unboxed data types, the generated code will see more performance gains.
 
-## AOT compiler.
-The ahead-of-time compiler generates a static or dynamic binary from Cyber source code.
-This is done by first compiling Cyber code into C code, and using a C compiler to generate the final binary.
+## C backend.
+The C backend generates a static binary from Cyber source code by first transpiling to C code and relying on a C compiler to produce the final executable.
 The user can specify the system's `cc` compiler or the builtin `tinyc` compiler that is bundled with the CLI.
 *This is currently in progress.*
 

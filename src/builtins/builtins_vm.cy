@@ -51,7 +51,10 @@
 
 @host type bool #bool_t
 
---| Converts a value to either `true` or `false`.
+--| Converts any value to either `true` or `false`.
+--| Integers and floats equal to 0 return false.
+--| Empty strings return false.
+--| Otherwise, returns true.
 @host func bool.$call(val any) bool
 
 @host type symbol #int64_t
@@ -156,7 +159,10 @@ type float #float64_t:
 
     --| Resizes the list to `len` elements. If the new size is bigger, `none` values
     --| are appended to the list. If the new size is smaller, elements at the end of the list are removed.
-    @host func resize(size int) void
+    func resize(size int) void:
+        self.resize_((T).id(), size)
+
+    @host func resize_(elem_t int, size int) void
 
     --| Sorts the list with the given `less` function.
     --| If element `a` should be ordered before `b`, the function should return `true` otherwise `false`.
@@ -180,7 +186,11 @@ type List[dyn] _
 @host func List.fill(val #T, n int) List[T]
 
 @host type ListIterator[T type] _:
-    @host func next() ?T
+    func next() ?T:
+        return self.next_((Option[T]).id())
+
+    @host func next_(ret_t int) ?T
+
 
 @host='ListIterDyn'
 type ListIterator[dyn] _

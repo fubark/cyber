@@ -231,6 +231,7 @@ pub const VMrunner = struct {
                 return err;
             };
         } else {
+            c.release(vm, resv);
             if (res_code == c.Await) {
                 // Consume all ready tasks.
                 var cont_code = res_code;

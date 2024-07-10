@@ -152,8 +152,14 @@ pub const ValueMap = struct {
     fn computeHash(key: cy.Value) u64 {
         if (key.isPointer()) {
             const obj = key.asHeapObject();
-            if (obj.getTypeId() == bt.String) {
-                return std.hash.Wyhash.hash(0, obj.string.getSlice());
+            switch (obj.getTypeId()) {
+                bt.String => {
+                    return std.hash.Wyhash.hash(0, obj.string.getSlice());
+                },
+                bt.Integer => {
+                    return std.hash.Wyhash.hash(0, std.mem.asBytes(&obj.integer.val));
+                },
+                else => {},
             }
         }
         return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.val));
@@ -177,14 +183,21 @@ pub const ValueMap = struct {
         if (!a.isPointer()) {
             return false;
         }
-        const aobj = a.asHeapObject();
-        if (aobj.getTypeId() == bt.String) {
-            const astr = aobj.string.getSlice();
-            if (b.getTypeId() == bt.String) {
-                return std.mem.eql(u8, astr, b.asHeapObject().string.getSlice());
+        const a_t = a.getTypeId();
+        if (a_t != b.getTypeId()) {
+            return false;
+        }
+        switch (a_t) {
+            bt.String => {
+                return std.mem.eql(u8, a.asString(), b.asString());
+            },
+            bt.Integer => {
+                return a.asBoxInt() == b.asBoxInt();
+            },
+            else => {
+                return false;
             }
         }
-        return false;
     }
 
     fn capacityForSize(size: u32) u32 {
@@ -320,7 +333,9 @@ pub const ValueMap = struct {
         if (self.getIndex(key)) |idx| {
             self.removeByIndex(idx);
             // Release key since it can be an object.
-            cy.arc.release(vm, self.entries.?[idx].key);
+            const e = self.entries.?[idx];
+            cy.arc.release(vm, e.key);
+            cy.arc.release(vm, e.value);
             return true;
         }
         return false;

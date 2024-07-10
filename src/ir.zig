@@ -210,6 +210,7 @@ pub const BlockExpr = struct {
 pub const Switch = struct {
     expr: Loc,
     numCases: u8,
+    is_expr: bool,
 };
 
 const Loc = u32;
@@ -434,6 +435,7 @@ pub const BinOp = struct {
 };
 
 pub const Set = union {
+    local: SetLocal,
     index: SetIndex,
     generic: SetGeneric,
     callObjSymTern: SetCallObjSymTern,
@@ -452,6 +454,11 @@ pub const SetGeneric = struct {
     left_t: CompactType,
     right_t: CompactType,
     left: Loc,
+    right: Loc,
+};
+
+pub const SetLocal = struct {
+    id: u8,
     right: Loc,
 };
 

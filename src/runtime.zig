@@ -127,8 +127,6 @@ pub const VarSym = struct {
     }
 };
 
-pub const FieldSymbolMap = vmc.FieldSymbolMap;
-
 pub fn getName(vm: *const cy.VM, nameId: vmc.NameId) []const u8 {
     const name = vm.names.buf[nameId];
     return name.ptr[0..name.len];
@@ -176,8 +174,6 @@ test "runtime internals." {
     try t.eq(@offsetOf(FuncSymbol, "is_method"), @offsetOf(vmc.FuncSymbol, "is_method"));
     try t.eq(@offsetOf(FuncSymbol, "req_type_check"), @offsetOf(vmc.FuncSymbol, "req_type_check"));
     try t.eq(@offsetOf(FuncSymbol, "data"), @offsetOf(vmc.FuncSymbol, "data"));
-
-    try t.eq(@sizeOf(FieldSymbolMap), 16);
 }
 
 pub fn ErrorUnion(comptime T: type) type {

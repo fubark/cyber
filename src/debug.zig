@@ -334,6 +334,7 @@ test "debug internals." {
 /// Can only rely on pc and other non-reference values to build the stack frame since
 /// unwinding could have already freed reference values.
 pub fn compactToStackFrame(vm: *cy.VM, stack: []const cy.Value, frame: vmc.CompactFrame) !StackFrame {
+    _ = stack;
     if (frame.pcOffset != cy.NullId) {
         const sym = getDebugSymByPc(vm, frame.pcOffset) orelse {
             log.trace("at pc: {}", .{frame.pcOffset});
@@ -341,27 +342,16 @@ pub fn compactToStackFrame(vm: *cy.VM, stack: []const cy.Value, frame: vmc.Compa
         };
         return getStackFrame(vm, sym);
     } else {
-        // External frame.
-        const func_type = stack[frame.fpOffset-1].val;
-        if (func_type == bt.HostFunc) {
-            return StackFrame{
-                .name = "call host func",
-                .chunkId = cy.NullId,
-                .line = 0,
-                .col = 0,
-                .lineStartPos = cy.NullId,
-            };
-        } else {
-            // TODO: If there is a function debug table, the function name could be 
-            //       found with a pc value.
-            return StackFrame{
-                .name = "call lambda",
-                .chunkId = cy.NullId,
-                .line = 0,
-                .col = 0,
-                .lineStartPos = cy.NullId,
-            };
-        }
+        // Host frame.
+        // TODO: If there is a function debug table, the function name could be 
+        //       found with a pc value.
+        return StackFrame{
+            .name = "host function",
+            .chunkId = cy.NullId,
+            .line = 0,
+            .col = 0,
+            .lineStartPos = cy.NullId,
+        };
     }
 }
 

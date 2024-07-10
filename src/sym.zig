@@ -1422,6 +1422,8 @@ pub const ChunkExt = struct {
             .kind = .object,
             .data = .{ .object = .{
                 .numFields = cy.NullU16,
+                .has_boxed_fields = false,
+                .fields = undefined,
             }},
             .info = .{},
         };

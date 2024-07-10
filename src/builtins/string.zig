@@ -366,7 +366,7 @@ pub fn trim(vm: *cy.VM) Value {
     const trimRunes = vm.getString(2);
 
     var res: []const u8 = undefined;
-    const mode = bindings.getBuiltinSymbol(vm.getSymbol(2)) orelse {
+    const mode = bindings.getBuiltinSymbol(vm.getSymbol(1)) orelse {
         return rt.prepThrowError(vm, .InvalidArgument);
     };
     switch (mode) {

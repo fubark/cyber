@@ -420,7 +420,9 @@ pub const Compiler = struct {
         // Perform deferred sema.
         for (self.newChunks()) |chunk| {
             try chunk.ir.pushStmtBlock2(chunk.alloc, chunk.rootStmtBlock);
-            for (chunk.variantFuncSyms.items) |func| {
+            var i: usize = 0; // Explicit iterator in case more variants are added during body sema.
+            while (i < chunk.variantFuncSyms.items.len) : (i += 1) {
+                const func = chunk.variantFuncSyms.items[i];
                 if (func.type != .userFunc) {
                     continue;
                 }
@@ -816,6 +818,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                     .table_decl => {
                         const decl = node.cast(.table_decl);
                         const sym = try sema.reserveTableType(chunk, decl);
+                        
                         try sema.reserveTableMethods(chunk, @ptrCast(sym));
 
                         for (decl.funcs) |func| {

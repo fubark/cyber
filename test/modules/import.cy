@@ -13,7 +13,7 @@ t.eqList(a.varList, [1, 2, 3])
 a.varList.append(4)
 t.eqList(a.varList, [1, 2, 3, 4])
 
-t.eqList(a.varAny, [1, 2, 3])
+t.eqList(a.varAny as List[dyn], [1, 2, 3])
 t.eq(a.varMap.size(), 3)
 t.eq(a.varMap['a'], 1)
 t.eq(a.varMap['b'], 2)

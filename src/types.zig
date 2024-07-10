@@ -26,6 +26,7 @@ pub const TypeKind = enum(u8) {
     option,
     trait,
     bare,
+    table,
     ct_ref,
     ct_infer,
 };
@@ -60,9 +61,16 @@ pub const Type = extern struct {
     info: TypeInfo,
 
     data: extern union {
+        table: extern struct {
+            numFields: u16,
+        },
         // This is duped from ObjectType so that object creation/destruction avoids the lookup from `sym`.
         object: extern struct {
             numFields: u16,
+            has_boxed_fields: bool,
+
+            /// Each entry indicates whether the corresponding field is boxed.
+            fields: [*]bool,
         },
         // Even though this increases the size of other type entries, it might not be worth
         // separating into another table since it would add another indirection.

@@ -172,15 +172,6 @@ static inline uint32_t stackOffset(VM* vm, Value* stack) {
     return ((uintptr_t)stack - (uintptr_t)vm->c.stackPtr) >> 3;
 }
 
-static inline uint8_t getFieldOffset(VM* vm, HeapObject* obj, uint32_t symId) {
-    FieldSymbolMap* symMap = ((FieldSymbolMap*)vm->c.fieldSyms.buf) + symId;
-    if (OBJ_TYPEID(obj) == symMap->mruTypeId) {
-        return (uint8_t)symMap->mruOffset;
-    } else {
-        return zGetFieldOffsetFromTable(vm, OBJ_TYPEID(obj), symId);
-    }
-}
-
 static inline bool isTypeCompat(TypeId typeId, TypeId cstrType) {
     if (typeId == cstrType) {
         return true;
@@ -588,7 +579,7 @@ ResultCode execBytecode(VM* vm) {
         vm->c.trace->totalOpCounts += 1;
     #define PRE_DUMP() \
         if (clVerbose) { \
-            zDumpEvalOp(vm, pc); \
+            zDumpEvalOp(vm, pc, stack); \
         } \
         vm->c.debugPc = pcOffset(vm, pc);
 #else
@@ -1138,18 +1129,15 @@ beginSwitch:
             #if TRACE
                 vm->c.trace_indent += 1;
             #endif
-            SAVE_STATE();
+            vm->c.curPc = pc;
+            vm->c.curStack = stack + ret;
             HostFuncFn fn = (HostFuncFn)READ_U48(8);
-            vm->c.call_ret = stack + ret;
             Value res = fn(vm);
             if (res == VALUE_INTERRUPT) {
                 RETURN(RES_CODE_PANIC);
             }
             stack[ret] = res;
             pc += CALL_OBJ_SYM_INST_LEN;
-            // In the future, we might allow native functions to change the pc and framePtr.
-            // pc = vm.pc;
-            // framePtr = vm.framePtr;
             
             #if TRACE
                 vm->c.trace_indent -= 1;
@@ -1237,9 +1225,9 @@ beginSwitch:
         u8 ret = pc[1];
         u8 numArgs = pc[2];
 
-        SAVE_STATE();
+        vm->c.curPc = pc;
+        vm->c.curStack = stack + ret;
         HostFuncFn fn = (HostFuncFn)READ_U48(6);
-        vm->c.call_ret = stack + ret;
         Value res = fn(vm);
         if (res == VALUE_INTERRUPT) {
             RETURN(RES_CODE_PANIC);
@@ -1311,21 +1299,14 @@ beginSwitch:
     CASE(RetDyn): {
         u8 ret_flag = VALUE_CALLINFO_RETFLAG(stack[1]);
         u8 nargs = pc[1];
-        TypeId ret_t = BITCAST(TypeId, stack[2]);
-        switch (ret_t) {
-            case TYPE_INTEGER: {
-                ValueResult res = allocInt(vm, BITCAST(i64, stack[5+nargs]));
-                if (res.code != RES_CODE_SUCCESS) {
-                    RETURN(res.code);
-                }
-                stack[0] = res.val;
-            }
-            default: {
-                stack[0] = stack[5+nargs];
-            }
+        TypeId ret_t = stack[1] >> 32;
+        if (ret_t == TYPE_INTEGER) {
+            stack[0] = zBox(vm, stack[5+nargs], ret_t);
+        } else {
+            stack[0] = stack[5+nargs];
         }
         if (ret_flag == 0) {
-            pc += 2;
+            pc = (Inst*)stack[2];
             stack = (Value*)stack[3];
             NEXT();
         } else {
@@ -1356,7 +1337,8 @@ beginSwitch:
             panicIncompatibleType(vm, actType, expType);
             RETURN(RES_CODE_PANIC);
         }
-        pc += 4;
+        stack[pc[4]] = val;
+        pc += 5;
         NEXT();
     }
     CASE(TypeCheckOption): {
@@ -1403,52 +1385,61 @@ beginSwitch:
     CASE(FieldDyn): {
         u8 left = pc[1];
         u8 dst = pc[2];
-        u16 symId = READ_U16(3);
+        u16 field_id = READ_U16(3);
         Value recv = stack[left];
-        if (VALUE_IS_POINTER(recv)) {
-            HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            u8 offset = getFieldOffset(vm, obj, symId);
-            if (offset != NULL_U8) {
-                stack[dst] = objectGetField((Object*)obj, offset);
-                pc[0] = CodeFieldDynIC;
-                WRITE_U16(5, OBJ_TYPEID(obj));
-                pc[7] = offset;
-                retain(vm, stack[dst]);
-            } else {
-                NameId name_id = ((FieldSymbolMap*)vm->c.fieldSyms.buf)[symId].nameId;
-                SAVE_STATE();
-                Value res = zGetFieldFallback(vm, obj, name_id);
-                if (res == VALUE_INTERRUPT) {
-                    RESTORE_STATE();
-                    RETURN(RES_CODE_PANIC);
-                }
-                stack[dst] = res;
-            }
-            pc += 8;
-            NEXT();
-        } else {
+        if (!VALUE_IS_POINTER(recv)) {
             panicFieldMissing(vm);
             RETURN(RES_CODE_PANIC);
         }
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
+        TypeField res = zGetTypeField(vm, OBJ_TYPEID(obj), field_id);
+        if (res.offset != NULL_U16) {
+            Value field = objectGetField((Object*)obj, res.offset);
+            if (res.boxed) {
+                retain(vm, field);
+                stack[dst] = field;
+            } else {
+                stack[dst] = zBox(vm, field, res.type_id);
+            }
+            pc[0] = CodeFieldDynIC;
+            WRITE_U16(5, OBJ_TYPEID(obj));
+            pc[7] = (u8)res.offset;
+            pc[8] = res.boxed;
+            WRITE_U16(9, res.type_id);
+        } else {
+            SAVE_STATE();
+            Value res = zGetFieldFallback(vm, obj, field_id);
+            if (res == VALUE_INTERRUPT) {
+                RESTORE_STATE();
+                RETURN(RES_CODE_PANIC);
+            }
+            stack[dst] = res;
+        }
+        pc += 11;
+        NEXT();
     }
     CASE(FieldDynIC): {
         Value recv = stack[pc[1]];
         u8 dst = pc[2];
-        if (VALUE_IS_POINTER(recv)) {
-            HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            if (OBJ_TYPEID(obj) == READ_U16(5)) {
-                stack[dst] = objectGetField((Object*)obj, pc[7]);
-                retain(vm, stack[dst]);
-                pc += 8;
-                NEXT();
-            } else {
-                // Deoptimize.
-                pc[0] = CodeFieldDyn;
-                NEXT();
-            }
-        } else {
+        if (!VALUE_IS_POINTER(recv)) {
             panicFieldMissing(vm);
             RETURN(RES_CODE_PANIC);
+        }
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
+        if (OBJ_TYPEID(obj) == READ_U16(5)) {
+            Value field = objectGetField((Object*)obj, pc[7]);
+            if (pc[8]) {
+                retain(vm, field);
+                stack[dst] = field;
+            } else {
+                stack[dst] = zBox(vm, field, READ_U16(9));
+            }
+            pc += 11;
+            NEXT();
+        } else {
+            // Deoptimize.
+            pc[0] = CodeFieldDyn;
+            NEXT();
         }
     }
     CASE(Lambda): {
@@ -1600,41 +1591,22 @@ beginSwitch:
     }
     CASE(Box): {
         u16 type_id = READ_U16(2);
-        switch (type_id) {
-            case TYPE_INTEGER: {
-                ValueResult res = allocInt(vm, BITCAST(i64, stack[pc[1]]));
-                if (res.code != RES_CODE_SUCCESS) {
-                    RETURN(res.code);
-                }
-                stack[pc[4]] = res.val;
-                pc += 5;
-                NEXT();
-            }
-            default: {
-                panicStaticMsg(vm, "Unsupported.");
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        stack[pc[4]] = zBox(vm, stack[pc[1]], type_id);
+        pc += 5;
+        NEXT();
     }
     CASE(Unbox): {
         u16 type_id = READ_U16(2);
         TypeId act_t = getTypeId(stack[pc[1]]);
+#if TRACE   
         if (act_t != TYPE_INTEGER) {
             panicIncompatibleType(vm, act_t, type_id);
             RETURN(RES_CODE_PANIC);
         }
-        switch (type_id) {
-            case TYPE_INTEGER: {
-                HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
-                stack[pc[4]] = BITCAST(u64, obj->integer.val);
-                pc += 5;
-                NEXT();
-            }
-            default: {
-                panicStaticMsg(vm, "Unsupported.");
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+#endif
+        stack[pc[4]] = zUnbox(vm, stack[pc[1]], type_id);
+        pc += 5;
+        NEXT();
     }
     CASE(Ref): {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
@@ -1682,32 +1654,34 @@ beginSwitch:
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
             u16 fieldId = READ_U16(2);
-            u8 offset = getFieldOffset(vm, obj, fieldId);
+            TypeField res = zGetTypeField(vm, OBJ_TYPEID(obj), fieldId);
             Value val = stack[pc[4]];
-            if (offset != NULL_U8) {
-                FieldSymbolMap* symMap = ((FieldSymbolMap*)vm->c.fieldSyms.buf) + fieldId;
-                u32 fieldTypeId = symMap->mruFieldTypeSymId;
+            if (res.offset != NULL_U16) {
                 TypeId rightTypeId = getTypeId(val);
-                if (fieldTypeId != TYPE_DYN) {
+                if (res.type_id != TYPE_DYN) {
                     // Must perform type check on rhs.
-                    if (!isTypeCompat(rightTypeId, fieldTypeId)) {
-                        panicIncompatibleFieldType(vm, fieldTypeId, rightTypeId);
+                    if (!isTypeCompat(rightTypeId, res.type_id)) {
+                        panicIncompatibleFieldType(vm, res.type_id, rightTypeId);
                         RETURN(RES_CODE_PANIC);
                     }
                 }
 
-                Value* lastValue = objectGetFieldPtr((Object*)obj, offset);
-                release(vm, *lastValue);
-                *lastValue = val;
+                Value* lastValue = objectGetFieldPtr((Object*)obj, res.offset);
+                if (res.boxed) {
+                    release(vm, *lastValue);
+                    *lastValue = val;
+                } else {
+                    *lastValue = zUnbox(vm, val, res.type_id);
+                    release(vm, val);
+                }
 
                 pc[0] = CodeSetFieldDynIC;
                 WRITE_U16(5, OBJ_TYPEID(obj));
                 WRITE_U16(7, rightTypeId);
-                pc[9] = offset;
+                pc[9] = (u8)res.offset;
             } else {
                 SAVE_STATE();
-                NameId name_id = ((FieldSymbolMap*)vm->c.fieldSyms.buf)[fieldId].nameId;
-                ResultCode code = zSetFieldFallback(vm, obj, name_id, val);
+                ResultCode code = zSetFieldFallback(vm, obj, fieldId, val);
                 if (code != RES_CODE_SUCCESS) {
                     RESTORE_STATE();
                     RETURN(code);
@@ -1996,7 +1970,7 @@ beginSwitch:
     }
     CASE(BitwiseLeftShift): {
         INTEGER_BINOP(
-            if (right > 64 || right < 0) {
+            if (right > 63 || right < 0) {
                 panicOutOfBounds(vm);
                 RETURN(RES_CODE_PANIC);
             }

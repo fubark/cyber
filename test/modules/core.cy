@@ -74,7 +74,9 @@ t.eq(int('100.1'), 100)
 
 -- is()
 t.eq(is(1, 2), false)
-t.eq(is(2, 2), true)
+t.eq(is(2, 2), false)
+var a any = 2
+t.eq(is(a, a), true)
 t.eq(is([], []), false)
 var list = []
 var list2 = list

@@ -50,9 +50,8 @@ pub const TagInteger: TagId = 7;
 pub const Value = packed union {
     val: u64,
 
-    call_info: cy.vm.CallInfo,
-    retPcPtr: [*]const cy.Inst,
-    ret_t: cy.TypeId,
+    call_info: cy.fiber.CallInfo,
+    retPcPtr: [*]cy.Inst,
     retFramePtr: [*]Value,
 
     /// This is only used to return something from binded functions that have void return.
@@ -440,20 +439,20 @@ pub const Value = packed union {
     }
 };
 
-pub fn shallowCopy(vm: *cy.VM, val: Value) Value {
+pub fn shallowCopy(vm: *cy.VM, val: Value) anyerror!Value {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         switch (obj.getTypeId()) {
             bt.ListDyn => {
                 const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                const new = cy.heap.allocListDyn(vm, list.items()) catch cy.fatal();
+                const new = try cy.heap.allocListDyn(vm, list.items());
                 for (list.items()) |item| {
                     vm.retain(item);
                 }
                 return new;
             },
             bt.Map => {
-                const new = cy.heap.allocEmptyMap(vm) catch cy.fatal();
+                const new = try cy.heap.allocEmptyMap(vm);
                 const newMap = cy.ptrAlignCast(*cy.MapInner, &(new.asHeapObject()).map.inner);
 
                 const map = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
@@ -461,9 +460,12 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) Value {
                 while (iter.next()) |entry| {
                     cy.arc.retain(vm, entry.key);
                     cy.arc.retain(vm, entry.value);
-                    newMap.put(vm.alloc, entry.key, entry.value) catch cy.fatal();
+                    try newMap.put(vm.alloc, entry.key, entry.value);
                 }
                 return new;
+            },
+            bt.Integer => {
+                return vm.allocInt(obj.integer.val);
             },
             bt.Closure => {
                 fmt.panic("Unsupported copy closure.", &.{});
@@ -498,16 +500,32 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) Value {
                     const fields = obj.object.getValuesConstPtr()[0..numFields];
                     var new: Value = undefined;
                     if (numFields <= 4) {
-                        new = cy.heap.allocObjectSmall(vm, obj.getTypeId(), fields) catch cy.fatal();
+                        new = try cy.heap.allocObjectSmall(vm, obj.getTypeId(), fields);
                     } else {
-                        new = cy.heap.allocObject(vm, obj.getTypeId(), fields) catch cy.fatal();
+                        new = try cy.heap.allocObject(vm, obj.getTypeId(), fields);
+                    }
+                    const rt_fields = entry.data.object.fields[0..numFields];
+                    for (fields, 0..) |field, i| {
+                        if (rt_fields[i]) {
+                            cy.arc.retain(vm, field);
+                        }
+                    }
+                    return new;
+                } else if (entry.kind == .table) {
+                    const numFields = entry.data.table.numFields;
+                    const fields = obj.object.getValuesConstPtr()[0..numFields];
+                    var new: Value = undefined;
+                    if (numFields <= 4) {
+                        new = try cy.heap.allocObjectSmall(vm, obj.getTypeId(), fields);
+                    } else {
+                        new = try cy.heap.allocObject(vm, obj.getTypeId(), fields);
                     }
                     for (fields) |field| {
                         cy.arc.retain(vm, field);
                     }
                     return new;
                 } else {
-                    fmt.panic("Unsupported copy host object.", &.{});
+                    fmt.panic("Unsupported copy host object. {}", &.{fmt.v(entry.kind)});
                 }
             },
         }
@@ -542,7 +560,7 @@ test "value internals." {
     try t.eq(TrueMask, 0x7FFC000100000001);
     try t.eq(FalseMask, 0x7FFC000100000000);
     try t.eq(vmc.POINTER_MASK, 0xFFFE000000000000);
-    try t.eq(Value.initInt(0).val, 0x7ffe000000000000);
+    try t.eq(Value.initInt(0).val, 0);
 
     // Check Zig/C struct compat.
     try t.eq(@sizeOf(Value), @sizeOf(vmc.Value));

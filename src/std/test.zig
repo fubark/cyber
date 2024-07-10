@@ -75,7 +75,7 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
             if (act.val == exp.val) {
                 return true;
             } else {
-                rt.errZFmt(c, "actual: {}, expected: {}", .{act.val, exp.val});
+                rt.errZFmt(c, "actual: {}, expected: {}", .{act.asInt(), exp.asInt()});
                 return false;
             }
         }

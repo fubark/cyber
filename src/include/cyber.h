@@ -516,13 +516,14 @@ CLValue clTrue(void);
 CLValue clFalse(void);
 CLValue clBool(bool b);
 
-// int64_t is downcasted to a 48-bit int.
-CLValue clInteger(int64_t n);
-CLValue clInteger32(int32_t n);
+CLValue clInt(int64_t n);   // Unboxed.
+CLValue clInt32(int32_t n); // Unboxed.
 CLValue clFloat(double f);
 CLValue clHostObject(void* ptr);
 CLValue clVmObject(void* ptr);
 CLValue clSymbol(CLVM* vm, CLStr str);
+
+CLValue clNewInt(CLVM* vm, int64_t n);
 
 // `clNewString` is the recommended way to create a new string. Use `Astring` or `Ustring` if you know it
 // will be ASCII or UTF-8 respectively.

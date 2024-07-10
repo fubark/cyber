@@ -31,14 +31,14 @@ test "ARC." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 2);
-        try t.eq(trace.numReleases, 2);
+        try t.eq(trace.numRetains, 4);
+        try t.eq(trace.numReleases, 4);
     }}.func);
 
-    // Non-initializer expr in if expr true branch is retained.
+    // Local in if expr true branch is retained.
     try eval(.{},
-        \\var a = [ 123 ]
-        \\var b = if (true) a else 234
+        \\var a = 'abc'
+        \\var b = if (true) a else 'xyz'
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
@@ -53,8 +53,8 @@ test "ARC." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 1);
-        try t.eq(trace.numReleases, 1);
+        try t.eq(trace.numRetains, 3);
+        try t.eq(trace.numReleases, 3);
     }}.func);
 
     // List literal is assigned to a local. Increase ref count.
@@ -63,8 +63,8 @@ test "ARC." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 1);
-        try t.eq(trace.numReleases, 1);
+        try t.eq(trace.numRetains, 3);
+        try t.eq(trace.numReleases, 3);
     }}.func);
 
     // Object is retained when assigned to struct literal.
@@ -78,8 +78,8 @@ test "ARC." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 4);
-        try t.eq(trace.numReleases, 4);
+        try t.eq(trace.numRetains, 8);
+        try t.eq(trace.numReleases, 8);
     }}.func);
 
     // Object is released when returned rvalue field access.
@@ -90,9 +90,11 @@ test "ARC." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         const val = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(val.asInteger(), 124);
-        try t.eq(trace.numRetains, 1);
-        try t.eq(trace.numReleases, 1);
+        try t.eq(val.asBoxInt(), 124);
+        const vm = run.internal();
+        vm.release(val);
+        try t.eq(trace.numRetains, 4);
+        try t.eq(trace.numReleases, 4);
     }}.func);
 
     // Map entry access expression retains the entry.
@@ -102,14 +104,14 @@ test "ARC." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 8);
-        try t.eq(trace.numReleases, 8);
+        try t.eq(trace.numRetains, 9);
+        try t.eq(trace.numReleases, 9);
     }}.func);
 
-    // Non-initializer expr in if expr false branch is retained.
+    // Local in if expr false branch is retained.
     try eval(.{},
-        \\var a = [ 123 ]
-        \\var b = if (false) 234 else a
+        \\var a = 'abc'
+        \\var b = if (false) 'xyz' else a
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
@@ -128,8 +130,8 @@ test "ARC for static variable declarations." {
         _ = try res.getValue();
         c.deinit(run.vm);
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 3);
-        try t.eq(trace.numRetains, 2);
+        try t.eq(trace.numRetainAttempts, 8);
+        try t.eq(trace.numRetains, 7);
     }}.func);
 }
 
@@ -144,10 +146,10 @@ test "ARC assignments." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 3);
-        try t.eq(trace.numReleaseAttempts, 4);
-        try t.eq(trace.numRetains, 1);
-        try t.eq(trace.numReleases, 1);
+        try t.eq(trace.numRetainAttempts, 8);
+        try t.eq(trace.numReleaseAttempts, 8);
+        try t.eq(trace.numRetains, 7);
+        try t.eq(trace.numReleases, 7);
     }}.func);
 
     // Set index on rc-candidate child to rc-candidate.
@@ -160,10 +162,10 @@ test "ARC assignments." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 6);
-        try t.eq(trace.numReleaseAttempts, 7);
-        try t.eq(trace.numRetains, 6);
-        try t.eq(trace.numReleases, 6);
+        try t.eq(trace.numRetainAttempts, 9);
+        try t.eq(trace.numReleaseAttempts, 9);
+        try t.eq(trace.numRetains, 8);
+        try t.eq(trace.numReleases, 8);
     }}.func);
 }
 
@@ -177,8 +179,8 @@ test "ARC for passing call args." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 1);
-        try t.eq(trace.numReleases, 1);
+        try t.eq(trace.numRetains, 6);
+        try t.eq(trace.numReleases, 6);
     }}.func);
 }
 
@@ -196,8 +198,8 @@ test "ARC for function return values." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 2);
-        try t.eq(trace.numReleases, 2);
+        try t.eq(trace.numRetains, 6);
+        try t.eq(trace.numReleases, 6);
     }}.func);
 
     // Object is released when returned from a function if no followup assignment.
@@ -211,8 +213,8 @@ test "ARC for function return values." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 1);
-        try t.eq(trace.numReleases, 1);
+        try t.eq(trace.numRetains, 2);
+        try t.eq(trace.numReleases, 2);
     }}.func);
 }
 
@@ -223,8 +225,8 @@ test "ARC on temp locals in expressions." {
         \\var ret = traceRetains()
         \\var rel = traceReleases()
         \\var res = Map{a=[123]}['a'][0]
-        \\test.eq(traceRetains() - ret, 8)
-        \\test.eq(traceReleases() - rel, 8)
+        \\test.eq(traceRetains() - ret, 11)
+        \\test.eq(traceReleases() - rel, 12)
         \\test.eq(res, 123)
     );
 
@@ -238,8 +240,8 @@ test "ARC on temp locals in expressions." {
         const vm = run.internal();
         vm.release(val);
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 2);
-        try t.eq(trace.numReleases, 2);
+        try t.eq(trace.numRetains, 3);
+        try t.eq(trace.numReleases, 3);
     }}.func);
 }
 
@@ -252,8 +254,8 @@ test "ARC in loops." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 3);
-        try t.eq(trace.numReleases, 3);
+        try t.eq(trace.numRetains, 4);
+        try t.eq(trace.numReleases, 4);
     }}.func);
 
     // A non-rcCandidate var is reassigned to a rcCandidate var inside a loop and if branch.
@@ -265,8 +267,8 @@ test "ARC in loops." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 3);
-        try t.eq(trace.numReleases, 3);
+        try t.eq(trace.numRetains, 10);
+        try t.eq(trace.numReleases, 10);
     }}.func);
 
     // A non-rcCandidate var is reassigned to a rcCandidate var (field access on the right) inside a loop.
@@ -279,10 +281,10 @@ test "ARC in loops." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 6);
-        try t.eq(trace.numRetains, 3);
-        try t.eq(trace.numReleaseAttempts, 10);
-        try t.eq(trace.numReleases, 3);
+        try t.eq(trace.numRetainAttempts, 13);
+        try t.eq(trace.numRetains, 13);
+        try t.eq(trace.numReleaseAttempts, 13);
+        try t.eq(trace.numReleases, 13);
     }}.func);
 
     // An rc var first used inside a loop.
@@ -292,9 +294,9 @@ test "ARC in loops." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 3);
+        try t.eq(trace.numRetains, 6);
         // The inner set inst should be a releaseSet.
-        try t.eq(trace.numReleases, 3);
+        try t.eq(trace.numReleases, 6);
     }}.func);
 
     // For iter initializes the temp value as the `any` type if the iterator has an `any` type,
@@ -308,8 +310,8 @@ test "ARC in loops." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 11);
-        try t.eq(trace.numRetains, 7);
+        try t.eq(trace.numRetainAttempts, 21);
+        try t.eq(trace.numRetains, 21);
     }}.func);
 
     // For iter with `any` temp value, the last temp value is released at the end of the block.
@@ -321,9 +323,9 @@ test "ARC in loops." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 21);
-        try t.eq(trace.numRetains, 19);
-        try t.eq(trace.numReleases, 19);
+        try t.eq(trace.numRetainAttempts, 31);
+        try t.eq(trace.numRetains, 31);
+        try t.eq(trace.numReleases, 31);
     }}.func);
 }
 
@@ -498,7 +500,7 @@ test "Stack trace unwinding." {
         \\1 + a.foo
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, c.ErrorPanic,
-            \\panic: Field not found in value.
+            \\panic: Missing field in object.
             \\
             \\main:3:7 main:
             \\1 + a.foo
@@ -525,7 +527,7 @@ test "Stack trace unwinding." {
         \\foo()
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, c.ErrorPanic,
-            \\panic: Field not found in value.
+            \\panic: Missing field in object.
             \\
             \\main:4:16 foo:
             \\  return 1 + a.foo
@@ -641,17 +643,17 @@ test "Custom modules." {
 
     c.setResolver(@ptrCast(run.vm), c.defaultResolver);
     const S = struct {
-        fn test1(vm: *c.VM, _: [*]const c.Value, _: u8) cy.Value {
+        fn test1(vm: *c.VM) cy.Value {
             const count_: *usize = @ptrCast(@alignCast(c.getUserData(vm)));
             count_.* += 1;
             return cy.Value.Void;
         }
-        fn test2(vm: *c.VM, _: [*]const c.Value, _: u8) cy.Value {
+        fn test2(vm: *c.VM) cy.Value {
             const count_: *usize = @ptrCast(@alignCast(c.getUserData(vm)));
             count_.* += 2;
             return cy.Value.Void;
         }
-        fn test3(vm: *c.VM, _: [*]const c.Value, _: u8) cy.Value {
+        fn test3(vm: *c.VM) cy.Value {
             const count_: *usize = @ptrCast(@alignCast(c.getUserData(vm)));
             count_.* += 3;
             return cy.Value.Void;
@@ -721,6 +723,17 @@ test "Custom modules." {
     );
 
     try t.eq(count, 12);
+}
+
+test "Return from main." {
+    try eval(.{},
+        \\return 123
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        const val = try res.getValueC();
+        const vm = run.internal();
+        try t.eq(c.asBoxInt(val), 123);
+        vm.release(try res.getValue());
+    }}.func);
 }
 
 fn allocString(str: []const u8) []const u8 {

@@ -92,6 +92,7 @@ typedef struct IndexSlice {
 #define TAGLIT_MASK (TAGGED_VALUE_MASK | ((u64)TAG_TAGLIT << 32))
 #define BEFORE_TAG_MASK ((u32)(0x00007fff << 3))
 #define NULL_U32 UINT32_MAX
+#define NULL_U16 UINT16_MAX
 #define NULL_U8 UINT8_MAX
 
 // 0001111111111111
@@ -111,6 +112,10 @@ typedef struct IndexSlice {
 
 // 1100000000000000
 #define GC_MARK_CYC_TYPE_MASK ((u32)0xC0000000)
+
+#define FRAME_VM 0
+#define FRAME_HOST 1
+#define FRAME_DYN 2
 
 // [Construct values]
 #define VALUE_BOOLEAN(b) (b ? TRUE_MASK : FALSE_MASK)
@@ -680,7 +685,7 @@ typedef struct TypeEntry {
     bool has_set_method;
     bool has_init_pair_method;
     bool cyclable;
-    bool custom_pre;
+    u8 info;
     union {
         struct {
             u16 numFields;
@@ -707,12 +712,15 @@ typedef struct DebugSym {
     uint32_t file;
 } DebugSym;
 
-typedef struct FieldSymbolMap {
-    uint32_t mruTypeId;
-    uint32_t mruOffset;
-    uint32_t mruFieldTypeSymId;
-    uint32_t nameId;
-} FieldSymbolMap;
+typedef struct TypeField {
+    TypeId type_id;
+    uint16_t offset;
+    bool boxed;
+} TypeField;
+
+typedef struct Field {
+    uint32_t name_id;
+} Field;
 
 typedef struct VM VM;
 
@@ -786,7 +794,6 @@ typedef struct VMC {
     size_t stackLen;
 
     Value* stackEndPtr;
-    Value* call_ret;
 
     Inst* instPtr;
     size_t instLen;
@@ -797,7 +804,7 @@ typedef struct VMC {
     Fiber* curFiber;
     Fiber mainFiber;
 
-    ZCyList fieldSyms;
+    ZCyList fields;
 
     ZCyList varSyms; // StaticVar
 
@@ -884,7 +891,7 @@ char* zOpCodeName(OpCode code);
 PcFpResult zCallSym(VM* vm, Inst* pc, Value* stack, u16 symId, u8 ret);
 PcFpResult zCallTrait(VM* vm, Inst* pc, Value* stack, u16 vtable_idx, u8 ret);
 PcFpResult zCallSymDyn(VM* vm, Inst* pc, Value* stack, u16 symId, u8 ret, u8 nargs);
-void zDumpEvalOp(VM* vm, Inst* pc);
+void zDumpEvalOp(VM* vm, Inst* pc, Value* fp);
 void zDumpValue(VM* vm, Value val);
 void zFreeObject(VM* vm, HeapObject* obj);
 void zEnd(VM* vm, Inst* pc);
@@ -897,7 +904,7 @@ PcFp zPushFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Fiber* fiber, uin
 PcFpOff zPopFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Value retValue);
 ResultCode zAwait(VM* vm, Value value);
 Value zFutureValue(VM* vm, Value mb_future);
-uint8_t zGetFieldOffsetFromTable(VM* vm, TypeId typeId, uint32_t symId);
+TypeField zGetTypeField(VM* vm, TypeId typeId, uint32_t field_id);
 Value zEvalCompare(Value left, Value right);
 Value zEvalCompareNot(Value left, Value right);
 PcFpResult zCall(VM* vm, Inst* pc, Value* stack, Value callee, uint8_t startLocal, uint8_t numArgs);
@@ -907,8 +914,8 @@ HeapObjectResult zAllocExternalCycObject(VM* vm, size_t size);
 ValueResult zAllocStringTemplate(VM* vm, Inst* strs, u8 strCount, Value* vals, u8 valCount);
 ValueResult zAllocStringTemplate2(VM* vm, Value* strs, u8 strCount, Value* vals, u8 valCount);
 ValueResult zAllocFuncFromSym(VM* vm, u16 id);
-Value zGetFieldFallback(VM* vm, HeapObject* obj, NameId nameId);
-ResultCode zSetFieldFallback(VM* vm, HeapObject* obj, NameId nameId, Value val);
+Value zGetFieldFallback(VM* vm, HeapObject* obj, uint32_t field_id);
+ResultCode zSetFieldFallback(VM* vm, HeapObject* obj, uint32_t field_id, Value val);
 u16 zOpMatch(const Inst* pc, Value* framePtr);
 void zLog(const char* fmt, const FmtValue* vals, size_t len);
 void zCheckDoubleFree(VM* vm, HeapObject* obj);
@@ -919,3 +926,5 @@ ResultCode zMapSet(VM* vm, Map* map, Value key, Value val);
 Str zGetTypeName(VM* vm, TypeId id);
 ResultCode zEnsureListCap(VM* vm, ZCyList* list, size_t cap);
 void zTraceRetain(VM* vm, Value v);
+Value zBox(VM* vm, Value v, TypeId type_id);
+Value zUnbox(VM* vm, Value v, TypeId type_id);

@@ -348,9 +348,11 @@ if (!aot) {
     run.case("control_flow/for_iter_unsupported_panic.cy");
     run.case("control_flow/for_range.cy");
     run.case("control_flow/if_expr.cy");
+    run.case("control_flow/if_expr_error.cy");
     run.case("control_flow/if_stmt.cy");
     run.case("control_flow/if_unwrap.cy");
     run.case("control_flow/switch.cy");
+    run.case("control_flow/switch_error.cy");
     run.case("control_flow/return.cy");
     run.case("control_flow/while_cond.cy");
     run.case("control_flow/while_inf.cy");
@@ -600,15 +602,6 @@ test "windows new lines" {
 //         try t.eqStr(compile_res.output, "(function () {});");
 //     }
 // }
-
-test "Return from main." {
-    try eval(.{},
-        \\return 123
-    , struct { fn func(_: *VMrunner, res: EvalResult) !void {
-        const val = try res.getValueC();
-        try t.eq(c.asInteger(val), 123);
-    }}.func);
-}
 
 inline fn thisDir() []const u8 {
     return comptime std.fs.path.dirname(@src().file) orelse @panic("error");

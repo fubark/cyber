@@ -102,7 +102,9 @@ pub fn UserValue_toHost(vm: *cy.VM) anyerror!cy.Value {
     const val: cy.Value = @bitCast(uval.val);
     switch (val.getTypeId()) {
         bt.Void => return cy.Value.False,
-        bt.Integer,
+        bt.Integer => {
+            return vm.allocInt(val.asBoxInt());
+        },
         bt.Float,
         bt.Boolean => {
             return val;
@@ -275,7 +277,7 @@ fn genImplicitFuncDeclEntry(vm: *cy.VM, view: ast.AstView, node: *ast.FuncDecl, 
     }
 
     try vm.mapSet(entry, try vm.retainOrAllocAstring("name"), try vm.retainOrAllocAstring(name));
-    try vm.mapSet(entry, try vm.retainOrAllocAstring("pos"), cy.Value.initInt(@intCast(node.pos)));
+    try vm.mapSet(entry, try vm.retainOrAllocAstring("pos"), try vm.allocInt(@intCast(node.pos)));
     return entryv;
 }
 
@@ -360,7 +362,7 @@ fn genDeclEntry(vm: *cy.VM, view: ast.AstView, decl: *ast.Node, state: *ParseCyb
     }
 
     try vm.mapSet(entry, try vm.retainOrAllocAstring("name"), try vm.retainOrAllocAstring(name));
-    try vm.mapSet(entry, try vm.retainOrAllocAstring("pos"), cy.Value.initInt(@intCast(decl.pos())));
+    try vm.mapSet(entry, try vm.retainOrAllocAstring("pos"), try vm.allocInt(@intCast(decl.pos())));
     return entryv;
 }
 
@@ -505,7 +507,7 @@ fn fromCyonValue(vm: *cy.VM, val: cy.DecodeValueIR) !cy.Value {
             return try vm.allocString(str);
         },
         .integer => {
-            return cy.Value.initInt(try val.getInt());
+            return vm.allocInt(try val.getInt());
         },
         .float => {
             return cy.Value.initF64(try val.getF64());

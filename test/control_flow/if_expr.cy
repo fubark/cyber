@@ -5,9 +5,12 @@ test.eq(if (foo) 123 else 456, 123)
 foo = false
 test.eq(if (foo) 123 else 456, 456)
 
--- Types are merged.
-var a = if (false) 123 else "$(123)456"
-test.eq(a, '123456')
--- `a` should be released since else returns a heap string.
+-- Heap allocated values.
+var a = if (false) 'abc' else 'xyz'
+test.eq(a, 'xyz')
+
+-- `any` infer type.
+var b any = if (false) 123 else '456'
+test.eq(b, '456')
 
 --cytest: pass

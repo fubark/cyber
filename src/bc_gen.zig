@@ -443,7 +443,6 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .pre_call_trait     => genCallTrait(c, idx, cstr, node),
         .preCallObjSym      => genCallObjSym(c, idx, cstr, node),
         .preUnOp            => genUnOp(c, idx, cstr, node),
-        .range              => genRange(c, idx, cstr, node),
         .string             => genString(c, idx, cstr, node),
         .stringTemplate     => genStringTemplate(c, idx, cstr, node),
         .switchExpr         => genSwitch(c, idx, cstr, node),
@@ -960,39 +959,6 @@ fn genError(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     }
 
     return finishNoErrNoDepInst(c, inst, false);
-}
-
-fn genRange(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .range);
-
-    const inst = try bc.selectForDstInst(c, cstr, bt.Range, true, node);
-
-    var start: GenValue = undefined;
-    if (data.start != cy.NullId) {
-        // Assume int.
-        start = try genExpr(c, data.start, Cstr.simple);
-        try initTempValue(c, start, node);
-    }
-
-    var end: GenValue = undefined;
-    if (data.end != cy.NullId) {
-        // Assume int.
-        end = try genExpr(c, data.end, Cstr.simple);
-        try initTempValue(c, end, node);
-    }
-
-    const start_reg = if (data.start != cy.NullId) start.reg else cy.NullU8;
-    const end_reg = if (data.end != cy.NullId) end.reg else cy.NullU8;
-    try c.pushCode(.range, &.{start_reg, end_reg, @intFromBool(data.inc), inst.dst}, node);
-
-    if (data.end != cy.NullId) try popTempValue(c, end, node);
-    if (data.start != cy.NullId) try popTempValue(c, start, node);
-
-    if (inst.own_dst) {
-        try initSlot(c, inst.dst, true, node);
-    }
-
-    return finishDstInst(c, inst, true);
 }
 
 fn genTagLit(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
@@ -2137,6 +2103,8 @@ fn opSet(c: *Chunk, idx: usize, node: *ast.Node) !void {
 //     }
 // }
 
+/// `or` and `and` are not simplified to an opcode because we want to prevent
+/// the execution of the right expr if the left expr is enough to return the result.
 fn orOp(c: *Chunk, data: ir.BinOp, cstr: Cstr, node: *ast.Node) !GenValue {
     const merged_cstr = try toMergedDst(c, cstr, bt.Boolean);
     const cond = try reserveTemp(c, bt.Boolean);

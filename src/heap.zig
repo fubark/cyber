@@ -217,8 +217,6 @@ pub const Tuple = extern struct {
 pub const Range = extern struct {
     typeId: cy.TypeId,
     rc: u32,
-    has_start: bool,
-    has_end: bool,
     start: i64,
     end: i64,
 };

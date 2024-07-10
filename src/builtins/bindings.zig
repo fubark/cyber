@@ -261,33 +261,19 @@ pub fn listSetIndex(vm: *cy.VM) Value {
 
 pub fn listSlice(vm: *cy.VM) anyerror!Value {
     const list = vm.getValue(0).asHeapObject();
-    const range = vm.getValue(1).asHeapObject();
+    const range = vm.getValue(1).castHeapObject(*cy.heap.Range);
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
-    var start: i64 = undefined;
-    if (range.range.has_start) {
-        start = range.range.start;
-        if (start < 0) {
-            return vm.prepPanic("Out of bounds.");
-        }
-    } else {
-        start = 0;
+    if (range.start < 0) {
+        return vm.prepPanic("Out of bounds.");
     }
-
-    var end: i64 = undefined;
-    if (range.range.has_end) {
-        end = range.range.end;
-        if (end > inner.len) {
-            return vm.prepPanic("Out of bounds.");
-        }
-    } else {
-        end = @intCast(inner.len);
+    if (range.end > inner.len) {
+        return vm.prepPanic("Out of bounds.");
     }
-
-    if (end < start) {
+    if (range.end < range.start) {
         return vm.prepPanic("Out of bounds.");
     }
 
-    const elems = inner.buf[@intCast(start)..@intCast(end)];
+    const elems = inner.buf[@intCast(range.start)..@intCast(range.end)];
     for (elems) |elem| {
         vm.retain(elem);
     }

@@ -525,7 +525,7 @@ pub const TemplateDecl = struct {
     decl: *Node,
 };
 
-const Range = struct {
+pub const Range = struct {
     start: ?*Node align(8),
     end: ?*Node,
     inc: bool,

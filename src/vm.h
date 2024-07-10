@@ -327,7 +327,6 @@ typedef enum {
     CodeTagLit,
     CodeEnum,
     CodeSymbol,
-    CodeRange,
     CodeCast,
     CodeCastAbstract,
     CodeBitwiseAnd,
@@ -627,9 +626,6 @@ typedef struct Pointer {
 typedef struct Range {
     TypeId typeId;
     u32 rc;
-    bool has_start;
-    bool has_end;
-    bool inc;
     i64 start;
     i64 end;
 } Range;

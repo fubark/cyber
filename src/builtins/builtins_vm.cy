@@ -442,7 +442,11 @@ type Fiber _:
 type metatype _:
     @host func id(self) int
 
-@host type Range _
+@host
+type Range struct:
+    start int
+    end   int
+
 @host type TccState _
 
 type Option[T type] enum:

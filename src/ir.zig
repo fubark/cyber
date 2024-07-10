@@ -134,7 +134,6 @@ pub const ExprCode = enum(u8) {
     unwrap_or,
     box,
     unbox,
-    range,
     trait,
 };
 
@@ -153,12 +152,6 @@ pub const ExprType = packed struct {
 
 pub const Await = struct {
     expr: Loc,
-};
-
-pub const Range = struct {
-    start: cy.Nullable(Loc),
-    end: cy.Nullable(Loc),
-    inc: bool,
 };
 
 pub const Trait = struct {
@@ -675,7 +668,6 @@ pub fn ExprData(comptime code: ExprCode) type {
         .typeCheckOption => TypeCheckOption,
         .box => Box,
         .unbox => Unbox,
-        .range => Range,
         .await_expr => Await,
         .trait => Trait,
         else => void,

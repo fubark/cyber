@@ -984,17 +984,71 @@ fn semaIndexExpr2(c: *cy.Chunk, left: ExprResult, left_n: *ast.Node, arg0: ExprR
         &.{arg0}, &.{arg0_n}, .any, node);
 }
 
-fn semaIndexExpr(c: *cy.Chunk, left_id: *ast.Node, left: ExprResult, expr: Expr) !ExprResult {
+fn semaSliceExpr(c: *cy.Chunk, left: *ast.Node, left_res: ExprResult, range: *ast.Range, node: *ast.Node) !ExprResult {
+    var b: ObjectBuilder = .{ .c = c };
+    try b.begin(bt.Range, 2, @ptrCast(range));
+    if (range.start) |start| {
+        const start_res = try c.semaExprCstr(start, bt.Integer);
+        b.pushArg(start_res);
+    } else {
+        const start_res = try c.semaInt(0, @ptrCast(range));
+        b.pushArg(start_res);
+    }
+    if (range.end) |end| {
+        const end_res = try c.semaExprCstr(end, bt.Integer);
+        b.pushArg(end_res);
+    } else {
+        if (left_res.type.isDynAny()) {
+            var loc = try c.ir.pushExpr(.fieldDyn, c.alloc, bt.Any, @ptrCast(range), .{
+                .name = "len",
+                .rec = left_res.irIdx,
+            });
+            loc = try c.ir.pushExpr(.unbox, c.alloc, bt.Integer, @ptrCast(range), .{
+                .expr = loc,
+            });
+            b.pushArg(ExprResult.initStatic(loc, bt.Integer));
+        } else {
+            const recTypeSym = c.sema.getTypeSym(left_res.type.id);
+            const sym = try c.mustFindSym(recTypeSym, "len", @ptrCast(range));
+            const func_sym = try requireFuncSym(c, sym, @ptrCast(range));
+
+            const end_res = try c.semaCallFuncSymRec(func_sym,
+                left, left_res,
+                &.{}, .any, @ptrCast(range));
+            b.pushArg(end_res);
+        }
+    }
+    const range_loc = b.end();
+    const range_res = ExprResult.initStatic(range_loc, bt.Range);
+
+    if (left_res.type.isDynAny()) {
+        const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
+        return c.semaCallObjSym2(loc, left_res.irIdx, getBinOpName(.index), &.{range_res});
+    } else {
+        const recTypeSym = c.sema.getTypeSym(left_res.type.id);
+        const sym = try c.mustFindSym(recTypeSym, "$index", node);
+        const func_sym = try requireFuncSym(c, sym, node);
+        return c.semaCallFuncSymRec2(func_sym,
+            left, left_res,
+            &.{range_res}, &.{@ptrCast(range)}, .any, node);
+    }
+}
+
+fn semaIndexExpr(c: *cy.Chunk, left: *ast.Node, left_res: ExprResult, expr: Expr) !ExprResult {
     const array = expr.node.cast(.array_expr);
     if (array.args.len != 1) {
         return c.reportErrorFmt("Unsupported array expr.", &.{}, expr.node);
     }
 
-    const leftT = left.type.id;
-    if (left.type.isDynAny()) {
+    if (array.args[0].type() == .range) {
+        return semaSliceExpr(c, left, left_res, array.args[0].cast(.range), expr.node);
+    }
+
+    const leftT = left_res.type.id;
+    if (left_res.type.isDynAny()) {
         const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, expr.node);
         const index = try c.semaExprCstr(array.args[0], bt.Dyn);
-        return c.semaCallObjSym2(loc, left.irIdx, getBinOpName(.index), &.{index});
+        return c.semaCallObjSym2(loc, left_res.irIdx, getBinOpName(.index), &.{index});
     }
 
     const recTypeSym = c.sema.getTypeSym(leftT);
@@ -1002,7 +1056,7 @@ fn semaIndexExpr(c: *cy.Chunk, left_id: *ast.Node, left: ExprResult, expr: Expr)
     const func_sym = try requireFuncSym(c, sym, expr.node);
 
     return c.semaCallFuncSymRec(func_sym,
-        left_id, left,
+        left, left_res,
         array.args, expr.getRetCstr(), expr.node);
 }
 
@@ -5263,21 +5317,23 @@ pub const ChunkExt = struct {
             },
             .range => {
                 const range = node.cast(.range);
-                var start: u32 = cy.NullId;
-                if (range.start != null) {
-                    const start_res = try c.semaExprCstr(range.start.?, bt.Integer);
-                    start = start_res.irIdx;
-                }
-                var end: u32 = cy.NullId;
-                if (range.end != null) {
-                    const end_res = try c.semaExprCstr(range.end.?, bt.Integer);
-                    end = end_res.irIdx;
-                }
-                const loc = try c.ir.pushExpr(.range, c.alloc, bt.Range, node, .{
-                    .start = start,
-                    .end = end,
-                    .inc = range.inc,
-                });
+                const start = range.start orelse {
+                    return error.Unexpected;
+                };
+                const end = range.end orelse {
+                    return error.Unexpected;
+                };
+
+                var b: ObjectBuilder = .{ .c = c };
+                try b.begin(bt.Range, 2, node);
+
+                const start_res = try c.semaExprCstr(start, bt.Integer);
+                b.pushArg(start_res);
+
+                const end_res = try c.semaExprCstr(end, bt.Integer);
+                b.pushArg(end_res);
+
+                const loc = b.end();
                 return ExprResult.initStatic(loc, bt.Range);
             },
             .binExpr => {

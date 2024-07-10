@@ -243,7 +243,7 @@ const vm_types = [_]C.HostTypeEntry{
     htype("ExternFunc",     C.CORE_TYPE(bt.ExternFunc)),
     htype("Fiber",          C.CORE_TYPE(bt.Fiber)),
     htype("metatype",       C.CORE_TYPE(bt.MetaType)),
-    htype("Range",          C.CORE_TYPE(bt.Range)),
+    htype("Range",          C.CORE_TYPE_DECL(bt.Range)),
     htype("TccState",       C.CORE_TYPE(bt.TccState)),
     htype("Future",         C.CUSTOM_TYPE(null, futureGetChildren, null)),
     htype("FutureResolver", C.CUSTOM_TYPE(null, futureResolverGetChildren, null)),
@@ -680,33 +680,20 @@ fn arraySlice(vm: *cy.VM) Value {
     const slice = obj.getSlice();
 
     const range = vm.getObject(*cy.heap.Range, 1);
-
-    var start: i64 = undefined;
-    if (!range.has_start) {
-        start = 0;
-    } else {
-        start = @intCast(range.start);
-    }
-    if (start < 0) {
+    if (range.start < 0) {
         return rt.prepThrowError(vm, .OutOfBounds);
     }
 
-    var end: i64 = undefined;
-    if (!range.has_end) {
-        end = @intCast(slice.len);
-    } else {
-        end = @intCast(range.end);
-    }
-    if (end > slice.len) {
+    if (range.end > slice.len) {
         return rt.prepThrowError(vm, .OutOfBounds);
     }
-    if (end < start) {
+    if (range.end < range.start) {
         return rt.prepThrowError(vm, .OutOfBounds);
     }
 
     const parent = obj.getParent();
     vm.retainObject(parent);
-    return vm.allocArraySlice(slice[@intCast(start)..@intCast(end)], parent) catch fatal();
+    return vm.allocArraySlice(slice[@intCast(range.start)..@intCast(range.end)], parent) catch fatal();
 }
 
 fn intIndex(i: i64, len: usize) !usize {

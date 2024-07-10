@@ -437,11 +437,11 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .object_init        => genObjectInit(c, idx, cstr, node),
         .pre                => return error.Unexpected,
         .preBinOp           => genBinOp(c, idx, cstr, node),
-        .preCallDyn         => genCallDyn(c, idx, cstr, node),
-        .preCallFuncSym     => genCallFuncSym(c, idx, cstr, node),
-        .pre_call_sym_dyn   => genCallSymDyn(c, idx, cstr, node),
-        .pre_call_trait     => genCallTrait(c, idx, cstr, node),
-        .preCallObjSym      => genCallObjSym(c, idx, cstr, node),
+        .call_dyn           => genCallDyn(c, idx, cstr, node),
+        .call_sym           => genCallFuncSym(c, idx, cstr, node),
+        .call_sym_dyn       => genCallSymDyn(c, idx, cstr, node),
+        .call_trait         => genCallTrait(c, idx, cstr, node),
+        .call_obj_sym       => genCallObjSym(c, idx, cstr, node),
         .preUnOp            => genUnOp(c, idx, cstr, node),
         .string             => genString(c, idx, cstr, node),
         .stringTemplate     => genStringTemplate(c, idx, cstr, node),
@@ -573,26 +573,26 @@ fn genCoyield(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
 }
 
 fn genCoinitCall(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
-    const callIdx = c.ir.advanceExpr(idx, .coinitCall);
-    const callCode: ir.ExprCode = @enumFromInt(c.ir.buf.items[callIdx]);
-    const data = c.ir.getExprData(callIdx, .pre);
+    const call = c.ir.getExprData(idx, .coinitCall).call;
+    const callCode: ir.ExprCode = @enumFromInt(c.ir.buf.items[call]);
 
     const inst = try bc.selectForDstInst(c, cstr, bt.Fiber, true, node);
 
     const tempStart = numSlots(c);
     var numArgs: u32 = 0;
     var args: []align(1) const u32 = undefined;
-    if (callCode == .preCallFuncSym) {
-        numArgs = data.callFuncSym.numArgs;
+    if (callCode == .call_sym) {
+        const data = c.ir.getExprData(call, .call_sym);
+        numArgs = data.numArgs;
 
-        const argsIdx = c.ir.advanceExpr(callIdx, .preCallFuncSym);
-        args = c.ir.getArray(argsIdx, u32, numArgs);
-    } else if (callCode == .preCallDyn) {
-        numArgs = data.callDyn.numArgs;
-        args = c.ir.getArray(data.callDyn.args, u32, numArgs);
+        args = c.ir.getArray(data.args, u32, numArgs);
+    } else if (callCode == .call_dyn) {
+        const data = c.ir.getExprData(call, .call_dyn);
+        numArgs = data.numArgs;
+        args = c.ir.getArray(data.args, u32, numArgs);
 
         const temp = try bc.reserveTemp(c, bt.Dyn);
-        _ = try genExpr(c, data.callDyn.callee, Cstr.toTempRetain(temp));
+        _ = try genExpr(c, data.callee, Cstr.toTempRetain(temp));
     } else return error.Unexpected;
 
     for (args) |argIdx| {
@@ -605,9 +605,9 @@ fn genCoinitCall(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
 
     var numTotalArgs = numArgs;
     var argDst: u8 = undefined;
-    if (callCode == .preCallFuncSym) {
+    if (callCode == .call_sym) {
         argDst = 1 + cy.vm.CallArgStart;
-    } else if (callCode == .preCallDyn) {
+    } else if (callCode == .call_dyn) {
         numTotalArgs += 1;
         argDst = 1 + cy.vm.CallArgStart - 1;
     } else return error.Unexpected;
@@ -626,10 +626,11 @@ fn genCoinitCall(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
 
     // Gen func call.
     const callRet: u8 = 1;
-    if (callCode == .preCallFuncSym) {
-        const rtId = c.compiler.genSymMap.get(data.callFuncSym.func).?.func.id;
+    if (callCode == .call_sym) {
+        const data = c.ir.getExprData(call, .call_sym);
+        const rtId = c.compiler.genSymMap.get(data.func).?.func.id;
         try pushCallSym(c, callRet, numArgs, 1, rtId, @ptrCast(callExprId));
-    } else if (callCode == .preCallDyn) {
+    } else if (callCode == .call_dyn) {
         try pushCall(c, callRet, numArgs, 1, @ptrCast(callExprId));
         try c.pushCode(.ret_dyn, &.{ @intCast(numArgs) }, @ptrCast(callExprId));
     } else return error.Unexpected;
@@ -1199,7 +1200,7 @@ fn genUnOp(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
 }
 
 fn genCallSymDyn(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .pre_call_sym_dyn).call_sym_dyn;
+    const data = c.ir.getExprData(idx, .call_sym_dyn);
 
     const inst = try beginCall(c, cstr, bt.Dyn, false, node);
 
@@ -1225,7 +1226,7 @@ fn genCallSymDyn(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
 }
 
 fn genCallObjSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .preCallObjSym).callObjSym;
+    const data = c.ir.getExprData(idx, .call_obj_sym);
 
     const inst = try beginCall(c, cstr, bt.Dyn, false, node);
 
@@ -1256,7 +1257,7 @@ fn genCallObjSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
 }
 
 fn genCallTrait(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .pre_call_trait).call_trait;
+    const data = c.ir.getExprData(idx, .call_trait);
 
     const ret_t = c.ir.getExprType(idx).id;
     const inst = try beginCall(c, cstr, ret_t, true, node);
@@ -1287,14 +1288,14 @@ fn genCallTrait(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
 
     try popTemps(c, args.len + 2, node);
     if (inst.own_ret) {
-        try initSlot(c, inst.ret, !types.isUnboxedType(ret_t), node);
+        try initSlot(c, inst.ret, !c.sema.isUnboxedType(ret_t), node);
     }
 
     return endCall(c, inst, true);
 }
 
 fn genCallFuncSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .preCallFuncSym).callFuncSym;
+    const data = c.ir.getExprData(idx, .call_sym);
 
     if (true) {
         // TODO: Handle specialized. (eg. listIndex, listAppend)
@@ -1327,7 +1328,7 @@ fn genCallFuncSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue 
 }
 
 fn genCallDyn(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .preCallDyn).callDyn;
+    const data = c.ir.getExprData(idx, .call_dyn);
     const inst = try beginCall(c, cstr, bt.Dyn, true, node);
 
     // Callee.

@@ -8,7 +8,7 @@ t.eq(123, 234)
 --test:7:12 eq:
 --    return eq_((T).id(), a, b)
 --           ^
---main:3:1 main:
+--main:3:3 main:
 --t.eq(123, 234)
---^
+--  ^
 --

@@ -114,11 +114,11 @@ pub const ExprCode = enum(u8) {
     pre,
     preBinOp,
     preUnOp,
-    preCallDyn,
-    preCallObjSym,
-    preCallFuncSym,
-    pre_call_sym_dyn,
-    pre_call_trait,
+    call_dyn,
+    call_obj_sym,
+    call_sym,
+    call_sym_dyn,
+    call_trait,
 
     andOp,
     orOp,
@@ -396,12 +396,7 @@ pub const DeclareLocal = struct {
 pub const Prepare = union {
     binOp: BinOp,
     slice: Slice,
-    callDyn: CallDyn,
     unOp: UnOp,
-    call_sym_dyn: CallSymDyn,
-    callFuncSym: CallFuncSym,
-    callObjSym: CallObjSym,
-    call_trait: CallTrait,
 
     pub fn initCall(numArgs: u8) Prepare {
         return .{
@@ -481,6 +476,10 @@ pub const FuncSym = struct {
 
 pub const TypeSym = struct {
     typeId: TypeId,
+};
+
+pub const CoinitCall = struct {
+    call: Loc,
 };
 
 pub const CallObjSym = struct {
@@ -627,11 +626,12 @@ pub fn ExprData(comptime code: ExprCode) type {
         .switchExpr => Switch,
         .switchCase => SwitchCase,
         .else_block => ElseBlock,
-        .preCallDyn,
-        .preCallFuncSym,
-        .pre_call_trait,
-        .pre_call_sym_dyn,
-        .preCallObjSym,
+        .call_dyn => CallDyn,
+        .call_sym => CallFuncSym,
+        .call_trait => CallTrait,
+        .call_sym_dyn => CallSymDyn,
+        .call_obj_sym => CallObjSym,
+        .coinitCall => CoinitCall,
         .preBinOp,
         .preUnOp,
         .pre => Prepare,
@@ -787,9 +787,9 @@ pub const Buffer = struct {
         return std.mem.bytesAsSlice(T, data);
     }
 
-    pub fn pushExpr(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, type_id: cy.TypeId, node_id: *ast.Node, data: ExprData(code)) !u32 {
+    pub fn pushExpr(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, type_id: cy.TypeId, node: *ast.Node, data: ExprData(code)) !u32 {
         const expr_t = ExprType.init(type_id);
-        const loc = try self.pushEmptyExpr(code, alloc, expr_t, node_id);
+        const loc = try self.pushEmptyExpr(code, alloc, expr_t, node);
         self.setExprData(loc, code, data);
         return loc;
     }

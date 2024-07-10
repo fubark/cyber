@@ -807,10 +807,9 @@ fn assignStmt(c: *cy.Chunk, node: *ast.Node, left_n: *ast.Node, right: *ast.Node
             }
 
             if (rec.type.isDynAny()) {
-                const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
                 const index = try c.semaExprCstr(left.args[0], bt.Dyn);
                 const right_res = try c.semaExprCstr(final_right, bt.Dyn);
-                const res = try c.semaCallObjSym2(loc, rec.irIdx, "$setIndex", &.{index, right_res});
+                const res = try c.semaCallObjSym2(rec.irIdx, "$setIndex", &.{index, right_res}, node);
                 return c.ir.pushStmt(c.alloc, .exprStmt, node, .{
                     .expr = res.irIdx,
                     .isBlockResult = false,
@@ -916,8 +915,7 @@ fn assignStmt(c: *cy.Chunk, node: *ast.Node, left_n: *ast.Node, right: *ast.Node
                 try c.arg_stack.append(c.alloc, sema.Argument.initPreResolved(left_n, key));
                 try c.arg_stack.append(c.alloc, sema.Argument.initPreResolved(right, right_res));
                 const func_res = try sema.matchFuncSym(c, set_index.cast(.func), arg_start, 3, .any, node);
-                const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
-                const res = try c.semaCallFuncSymResult(loc, set_index.cast(.func), func_res, node);
+                const res = try c.semaCallFuncSymResult(set_index.cast(.func), func_res, node);
 
                 return c.ir.pushStmt(c.alloc, .exprStmt, node, .{
                     .expr = res.irIdx,
@@ -972,8 +970,7 @@ fn assignStmt(c: *cy.Chunk, node: *ast.Node, left_n: *ast.Node, right: *ast.Node
 fn semaIndexExpr2(c: *cy.Chunk, left: ExprResult, left_n: *ast.Node, arg0: ExprResult, arg0_n: *ast.Node, node: *ast.Node) !ExprResult {
     const leftT = left.type.id;
     if (left.type.isDynAny()) {
-        const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
-        return c.semaCallObjSym2(loc, left.irIdx, getBinOpName(.index), &.{arg0});
+        return c.semaCallObjSym2(left.irIdx, getBinOpName(.index), &.{arg0}, node);
     }
 
     const recTypeSym = c.sema.getTypeSym(leftT);
@@ -1023,8 +1020,7 @@ fn semaSliceExpr(c: *cy.Chunk, left: *ast.Node, left_res: ExprResult, range: *as
     const range_res = ExprResult.initStatic(range_loc, bt.Range);
 
     if (left_res.type.isDynAny()) {
-        const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
-        return c.semaCallObjSym2(loc, left_res.irIdx, getBinOpName(.index), &.{range_res});
+        return c.semaCallObjSym2(left_res.irIdx, getBinOpName(.index), &.{range_res}, node);
     } else {
         const recTypeSym = c.sema.getTypeSym(left_res.type.id);
         const sym = try c.mustFindSym(recTypeSym, "$index", node);
@@ -1047,9 +1043,8 @@ fn semaIndexExpr(c: *cy.Chunk, left: *ast.Node, left_res: ExprResult, expr: Expr
 
     const leftT = left_res.type.id;
     if (left_res.type.isDynAny()) {
-        const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, expr.node);
         const index = try c.semaExprCstr(array.args[0], bt.Dyn);
-        return c.semaCallObjSym2(loc, left_res.irIdx, getBinOpName(.index), &.{index});
+        return c.semaCallObjSym2(left_res.irIdx, getBinOpName(.index), &.{index}, expr.node);
     }
 
     const recTypeSym = c.sema.getTypeSym(leftT);
@@ -3006,43 +3001,43 @@ fn requireFuncSym(c: *cy.Chunk, sym: *Sym, node: *ast.Node) !*cy.sym.FuncSym {
 }
 
 // Invoke a type's sym as the callee.
-fn callTypeSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, symNodeId: *ast.Node, args: []*ast.Node, typeId: cy.TypeId, ret_cstr: ReturnCstr) !ExprResult {
+fn callTypeSym(c: *cy.Chunk, sym: *Sym, sym_n: *ast.Node, args: []*ast.Node, typeId: cy.TypeId, ret_cstr: ReturnCstr, node: *ast.Node) !ExprResult {
     _ = typeId;
-    const typeCallSym = try c.getResolvedDistinctSym(sym, "$call", null, true);
-    const funcSym = try requireFuncSym(c, typeCallSym, symNodeId);
-    return c.semaCallFuncSym(preIdx, funcSym, args, ret_cstr, symNodeId);
+    const typeCallSym = try c.getResolvedDistinctSym(sym, "$call", sym_n, true);
+    const funcSym = try requireFuncSym(c, typeCallSym, sym_n);
+    return c.semaCallFuncSym(funcSym, args, ret_cstr, node);
 }
 
-fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, symNode: *ast.Node, args: []*ast.Node, ret_cstr: ReturnCstr) !ExprResult {
+fn callSym(c: *cy.Chunk, sym: *Sym, symNode: *ast.Node, args: []*ast.Node, ret_cstr: ReturnCstr, node: *ast.Node) !ExprResult {
     try referenceSym(c, sym, symNode);
     switch (sym.type) {
         .func => {
             const funcSym = sym.cast(.func);
-            return c.semaCallFuncSym(preIdx, funcSym, args, ret_cstr, symNode);
+            return c.semaCallFuncSym(funcSym, args, ret_cstr, symNode);
         },
         .bool_t => {
             const type_id = sym.cast(.bool_t).type;
-            return callTypeSym(c, preIdx, sym, symNode, args, type_id, ret_cstr);
+            return callTypeSym(c, sym, symNode, args, type_id, ret_cstr, node);
         }, 
         .int_t => {
             const type_id = sym.cast(.int_t).type;
-            return callTypeSym(c, preIdx, sym, symNode, args, type_id, ret_cstr);
+            return callTypeSym(c, sym, symNode, args, type_id, ret_cstr, node);
         }, 
         .float_t => {
             const type_id = sym.cast(.float_t).type;
-            return callTypeSym(c, preIdx, sym, symNode, args, type_id, ret_cstr);
+            return callTypeSym(c, sym, symNode, args, type_id, ret_cstr, node);
         }, 
         .custom_t => {
             const type_id = sym.cast(.custom_t).type;
-            return callTypeSym(c, preIdx, sym, symNode, args, type_id, ret_cstr);
+            return callTypeSym(c, sym, symNode, args, type_id, ret_cstr, node);
         },
         .struct_t => {
             const type_id = sym.cast(.struct_t).type;
-            return callTypeSym(c, preIdx, sym, symNode, args, type_id, ret_cstr);
+            return callTypeSym(c, sym, symNode, args, type_id, ret_cstr, node);
         },
         .object_t => {
             const type_id = sym.cast(.object_t).type;
-            return callTypeSym(c, preIdx, sym, symNode, args, type_id, ret_cstr);
+            return callTypeSym(c, sym, symNode, args, type_id, ret_cstr, node);
         },
         .enumMember => {
             const member = sym.cast(.enumMember);
@@ -3060,7 +3055,7 @@ fn callSym(c: *cy.Chunk, preIdx: u32, sym: *Sym, symNode: *ast.Node, args: []*as
             // preCall.
             const callee = try sema.symbol(c, sym, symNode, true);
             const args_loc = try c.semaPushDynCallArgs(args);
-            return c.semaCallValue(preIdx, callee.irIdx, args.len, args_loc);
+            return c.semaCallValue(callee.irIdx, args.len, args_loc, node);
         },
         .template => {
             const final_sym = try cte.expandTemplateOnCallArgs(c, sym.cast(.template), args, symNode);
@@ -3104,7 +3099,7 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, node: *ast.Node, symAsValue: bool) !ExprR
             },
             .object_t => {
                 const objTypeId = sym.cast(.object_t).type;
-                const irIdx = try c.ir.pushExpr(.typeSym,c.alloc, typeId, node, .{ .typeId = objTypeId });
+                const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, typeId, node, .{ .typeId = objTypeId });
                 return ExprResult.init(irIdx, ctype);
             },
             .custom_t => {
@@ -3226,9 +3221,8 @@ fn semaIdent(c: *cy.Chunk, node: *ast.Node, symAsValue: bool) !ExprResult {
             const map = try symbol(c, sym, node, true);
             const key = try c.semaString(name, node);
 
-            const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
             const get_global = c.compiler.get_global.?.sym.?;
-            var expr_res = try c.semaCallFuncSym2(loc, get_global, node, map, node, key, .any, node);
+            var expr_res = try c.semaCallFuncSym2(get_global, node, map, node, key, .any, node);
             expr_res.resType = .global;
             return expr_res;
         },
@@ -3681,9 +3675,9 @@ fn visitChunkInit(self: *cy.Compiler, c: *cy.Chunk) !void {
 
     // Once all deps are visited, emit IR.
     const func = c.sym.getMod().getSym("$init").?.cast(.func).first;
-    const exprLoc = try self.main_chunk.ir.pushExpr(.preCallFuncSym, c.alloc, bt.Void, c.ast.null_node, .{ .callFuncSym = .{
+    const exprLoc = try self.main_chunk.ir.pushExpr(.call_sym, c.alloc, bt.Void, c.ast.null_node, .{ 
         .func = func, .numArgs = 0, .args = 0,
-    }});
+    });
     _ = try self.main_chunk.ir.pushStmt(c.alloc, .exprStmt, c.ast.null_node, .{
         .expr = exprLoc,
         .isBlockResult = false,
@@ -4767,14 +4761,13 @@ pub const ChunkExt = struct {
             }
 
             const res = try sema.matchFuncSym(c, sym, arg_start, args.len+1, ret_cstr, node);
-            const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
-            c.ir.setExprCode(loc, .pre_call_trait);
+            const loc = try c.ir.pushExpr(.call_trait, c.alloc, undefined, node, .{
+                .trait = rec_res.irIdx,
+                .vtable_idx = @intCast(res.func.data.trait.vtable_idx),
+                .nargs = @intCast(res.nargs),
+                .args = res.args_loc,
+            });
             c.ir.setExprType2(loc, .{ .id = @intCast(res.func.retType), .throws = res.func.throws });
-
-            c.ir.setExprData(loc, .pre_call_trait, .{ .call_trait = .{
-                .trait = rec_res.irIdx, .vtable_idx = @intCast(res.func.data.trait.vtable_idx),
-                .nargs = @intCast(res.nargs), .args = res.args_loc,
-            }});
             return ExprResult.init(loc, CompactType.init(res.func.retType));
         } else {
             const arg_start = c.arg_stack.items.len;
@@ -4785,8 +4778,7 @@ pub const ChunkExt = struct {
                 try c.arg_stack.append(c.alloc, sema.Argument.initPreResolved(arg_nodes[i], args[i]));
             }
             const res = try sema.matchFuncSym(c, sym, arg_start, args.len+1, ret_cstr, node);
-            const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
-            return c.semaCallFuncSymResult(loc, sym, res, node);
+            return c.semaCallFuncSymResult(sym, res, node);
         }
     }
 
@@ -4804,14 +4796,13 @@ pub const ChunkExt = struct {
             }
 
             const res = try sema.matchFuncSym(c, sym, arg_start, args.len+1, ret_cstr, node);
-            const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
-            c.ir.setExprCode(loc, .pre_call_trait);
+            const loc = try c.ir.pushExpr(.call_trait, c.alloc, undefined, node, .{
+                .trait = rec_res.irIdx,
+                .vtable_idx = @intCast(res.func.data.trait.vtable_idx),
+                .nargs = @intCast(res.nargs),
+                .args = res.args_loc,
+            });
             c.ir.setExprType2(loc, .{ .id = @intCast(res.func.retType), .throws = res.func.throws });
-
-            c.ir.setExprData(loc, .pre_call_trait, .{ .call_trait = .{
-                .trait = rec_res.irIdx, .vtable_idx = @intCast(res.func.data.trait.vtable_idx),
-                .nargs = @intCast(res.nargs), .args = res.args_loc,
-            }});
             return ExprResult.init(loc, CompactType.init(res.func.retType));
         } else {
             const arg_start = c.arg_stack.items.len;
@@ -4822,43 +4813,43 @@ pub const ChunkExt = struct {
                 try c.arg_stack.append(c.alloc, sema.Argument.init(arg));
             }
             const res = try sema.matchFuncSym(c, sym, arg_start, args.len+1, ret_cstr, node);
-            const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
-            return c.semaCallFuncSymResult(loc, sym, res, node);
+            return c.semaCallFuncSymResult(sym, res, node);
         }
     }
 
-    pub fn semaCallFuncResult(c: *cy.Chunk, loc: u32, res: sema.FuncResult, node: *ast.Node) !ExprResult {
-        _ = node;
+    pub fn semaCallFuncResult(c: *cy.Chunk, res: sema.FuncResult, node: *ast.Node) !ExprResult {
         // try referenceSym(c, @ptrCast(matcher.sym), node);
-        c.ir.setExprCode(loc, .preCallFuncSym);
+        const loc = try c.ir.pushExpr(.call_sym, c.alloc, undefined, node, .{
+            .func = res.func,
+            .numArgs = @as(u8, @intCast(res.nargs)),
+            .args = res.args_loc,
+        });
         c.ir.setExprType2(loc, .{ .id = @intCast(res.func.retType), .throws = res.func.throws });
-        c.ir.setExprData(loc, .preCallFuncSym, .{ .callFuncSym = .{
-            .func = res.func, .numArgs = @as(u8, @intCast(res.nargs)), .args = res.args_loc,
-        }});
         return ExprResult.init(loc, CompactType.init(res.func.retType));
     }
 
-    pub fn semaCallFuncSymResult(c: *cy.Chunk, loc: u32, func_sym: *cy.sym.FuncSym, func_res: sema.FuncSymResult, node: *ast.Node) !ExprResult {
+    pub fn semaCallFuncSymResult(c: *cy.Chunk, func_sym: *cy.sym.FuncSym, func_res: sema.FuncSymResult, node: *ast.Node) !ExprResult {
         try referenceSym(c, @ptrCast(func_sym), node);
         if (func_res.dyn_call) {
             // Dynamic call.
-            c.ir.setExprCode(loc, .pre_call_sym_dyn);
-            c.ir.setExprType(loc, bt.Any);
-            c.ir.setExprData(loc, .pre_call_sym_dyn, .{ .call_sym_dyn = .{
-                .sym = func_sym, .nargs = @as(u8, @intCast(func_res.nargs)), .args = func_res.args_loc,
-            }});
+            const loc = try c.ir.pushExpr(.call_sym_dyn, c.alloc, bt.Dyn, node, .{
+                .sym = func_sym,
+                .nargs = @as(u8, @intCast(func_res.nargs)),
+                .args = func_res.args_loc,
+            });
             return ExprResult.initDynamic(loc, bt.Any);
         } else {
-            c.ir.setExprCode(loc, .preCallFuncSym);
+            const loc = try c.ir.pushExpr(.call_sym, c.alloc, undefined, node, .{ 
+                .func = func_res.func,
+                .numArgs = @as(u8, @intCast(func_res.nargs)),
+                .args = func_res.args_loc,
+            });
             c.ir.setExprType2(loc, .{ .id = @intCast(func_res.func.retType), .throws = func_res.func.throws });
-            c.ir.setExprData(loc, .preCallFuncSym, .{ .callFuncSym = .{
-                .func = func_res.func, .numArgs = @as(u8, @intCast(func_res.nargs)), .args = func_res.args_loc,
-            }});
             return ExprResult.init(loc, CompactType.init(func_res.func.retType));
         }
     }
 
-    pub fn semaCallFuncSym1(c: *cy.Chunk, loc: u32, sym: *cy.sym.FuncSym, arg1_n: *ast.Node, arg1: ExprResult,
+    pub fn semaCallFuncSym1(c: *cy.Chunk, sym: *cy.sym.FuncSym, arg1_n: *ast.Node, arg1: ExprResult,
         ret_cstr: ReturnCstr, node: *ast.Node) !ExprResult {
 
         const arg_start = c.arg_stack.items.len;
@@ -4866,10 +4857,10 @@ pub const ChunkExt = struct {
         try c.arg_stack.append(c.alloc, sema.Argument.initPreResolved(arg1_n, arg1));
 
         const res = try sema.matchFuncSym(c, sym, arg_start, 1, ret_cstr, node);
-        return c.semaCallFuncSymResult(loc, sym, res, node);
+        return c.semaCallFuncSymResult(sym, res, node);
     }
 
-    pub fn semaCallFuncSym2(c: *cy.Chunk, loc: u32, sym: *cy.sym.FuncSym, arg1_n: *ast.Node, arg1: ExprResult,
+    pub fn semaCallFuncSym2(c: *cy.Chunk, sym: *cy.sym.FuncSym, arg1_n: *ast.Node, arg1: ExprResult,
         arg2_n: *ast.Node, arg2: ExprResult, ret_cstr: ReturnCstr, node: *ast.Node) !ExprResult {
 
         const arg_start = c.arg_stack.items.len;
@@ -4878,28 +4869,28 @@ pub const ChunkExt = struct {
         try c.arg_stack.append(c.alloc, sema.Argument.initPreResolved(arg2_n, arg2));
 
         const res = try sema.matchFuncSym(c, sym, arg_start, 2, ret_cstr, node);
-        return c.semaCallFuncSymResult(loc, sym, res, node);
+        return c.semaCallFuncSymResult(sym, res, node);
     }
 
-    pub fn semaCallFunc(c: *cy.Chunk, loc: u32, func: *cy.Func, args: []*ast.Node, ret_cstr: ReturnCstr, node: *ast.Node) !ExprResult {
+    pub fn semaCallFunc(c: *cy.Chunk, func: *cy.Func, args: []*ast.Node, ret_cstr: ReturnCstr, node: *ast.Node) !ExprResult {
         const arg_start = c.arg_stack.items.len;
         defer c.arg_stack.items.len = arg_start;
         for (args) |arg| {
             try c.arg_stack.append(c.alloc, sema.Argument.init(arg));
         }
         const res = try sema.matchFunc(c, func, arg_start, args.len, ret_cstr, node);
-        return c.semaCallFuncResult(loc, res, node);
+        return c.semaCallFuncResult(res, node);
     }
 
     /// Match first overloaded function.
-    pub fn semaCallFuncSym(c: *cy.Chunk, loc: u32, sym: *cy.sym.FuncSym, args: []*ast.Node, ret_cstr: ReturnCstr, node: *ast.Node) !ExprResult {
+    pub fn semaCallFuncSym(c: *cy.Chunk, sym: *cy.sym.FuncSym, args: []*ast.Node, ret_cstr: ReturnCstr, node: *ast.Node) !ExprResult {
         const arg_start = c.arg_stack.items.len;
         defer c.arg_stack.items.len = arg_start;
         for (args) |arg| {
             try c.arg_stack.append(c.alloc, sema.Argument.init(arg));
         }
         const res = try sema.matchFuncSym(c, sym, arg_start, args.len, ret_cstr, node);
-        return c.semaCallFuncSymResult(loc, sym, res, node);
+        return c.semaCallFuncSymResult(sym, res, node);
     }
 
     pub fn semaPushDynCallArgs(c: *cy.Chunk, args: []*ast.Node) !u32 {
@@ -5582,24 +5573,24 @@ pub const ChunkExt = struct {
             },
             .coinit => {
                 const coinit = node.cast(.coinit);
-                const irIdx = try c.ir.pushExpr(.coinitCall, c.alloc, bt.Fiber, node, {});
-
-                const irCallIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
                 const callExpr = coinit.child;
 
                 const callee = try c.semaExprSkipSym(callExpr.callee);
 
                 // Callee is already pushed as a value or is a symbol.
+                var call_res: ExprResult = undefined;
                 if (callee.resType == .sym) {
                     const sym = callee.data.sym;
-                    _ = try callSym(c, irCallIdx, sym, 
-                        callExpr.callee, callExpr.args, expr.getRetCstr());
+                    call_res = try callSym(c, sym, callExpr.callee, callExpr.args, expr.getRetCstr(), node);
                 } else {
                     // preCall.
                     const args = try c.semaPushDynCallArgs(callExpr.args);
-                    _ = try c.semaCallValue(irCallIdx, callee.irIdx, callExpr.args.len, args);
+                    call_res = try c.semaCallValue(callee.irIdx, callExpr.args.len, args, node);
                 }
 
+                const irIdx = try c.ir.pushExpr(.coinitCall, c.alloc, bt.Fiber, node, .{
+                    .call = call_res.irIdx,
+                });
                 return ExprResult.initStatic(irIdx, bt.Fiber);
             },
             .coyield => {
@@ -5678,8 +5669,8 @@ pub const ChunkExt = struct {
                     // Runtime method call.
                     const recv = try sema.symbol(c, leftSym, callee.left, true);
                     const args = try c.semaPushDynCallArgs(node.args);
-                    const preIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, expr.node);
-                    return c.semaCallObjSym(preIdx, recv.irIdx, callee.right, node.args.len, args);
+                    const name = c.ast.nodeString(callee.right);
+                    return c.semaCallObjSym(recv.irIdx, name, node.args.len, args, expr.node);
                 }
 
                 if (leftSym.isVariable()) {
@@ -5693,15 +5684,14 @@ pub const ChunkExt = struct {
                 } else {
                     // Look for sym under left module.
                     const rightSym = try c.mustFindSym(leftSym, rightName, callee.right);
-                    const preIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, expr.node);
-                    return try callSym(c, preIdx, rightSym, callee.right, node.args, expr.getRetCstr());
+                    return try callSym(c, rightSym, callee.right, node.args, expr.getRetCstr(), expr.node);
                 }
             } else {
                 if (leftRes.type.isDynAny()) {
                     // preCallObjSym.
                     const args = try c.semaPushDynCallArgs(node.args);
-                    const preIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, expr.node);
-                    return c.semaCallObjSym(preIdx, leftRes.irIdx, callee.right, node.args.len, args);
+                    const name = c.ast.nodeString(callee.right);
+                    return c.semaCallObjSym(leftRes.irIdx, name, node.args.len, args, expr.node);
                 } else {
                     // Look for sym under left type's module.
                     const rightName = c.ast.nodeString(callee.right);
@@ -5715,8 +5705,7 @@ pub const ChunkExt = struct {
                         const callee_v = try c.semaExpr(node.callee, .{});
                         if (callee_v.type.isDynAny()) {
                             const args = try c.semaPushDynCallArgs(node.args);
-                            const preIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, expr.node);
-                            return c.semaCallValue(preIdx, callee_v.irIdx, node.args.len, args);
+                            return c.semaCallValue(callee_v.irIdx, node.args.len, args, expr.node);
                         } else {
                             return c.reportErrorFmt("Expected `{}` to be a function.", &.{v(rightName)}, callee.right);
                         }
@@ -5733,27 +5722,22 @@ pub const ChunkExt = struct {
                     // preCall.
                     const calleeRes = try c.semaExpr(node.callee, .{});
                     const args = try c.semaPushDynCallArgs(node.args);
-                    const preIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, expr.node);
-                    return c.semaCallValue(preIdx, calleeRes.irIdx, node.args.len, args);
+                    return c.semaCallValue(calleeRes.irIdx, node.args.len, args, expr.node);
                 },
                 .static => |sym| {
-                    const preIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, expr.node);
-                    return callSym(c, preIdx, sym, node.callee, node.args, expr.getRetCstr());
+                    return callSym(c, sym, node.callee, node.args, expr.getRetCstr(), expr.node);
                 },
             }
         } else {
             // preCall.
             const calleeRes = try c.semaExprSkipSym(node.callee);
             if (calleeRes.resType == .sym) {
-                const preIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, expr.node);
-                return callSym(c, preIdx, calleeRes.data.sym, node.callee, node.args, expr.getRetCstr());
+                return callSym(c, calleeRes.data.sym, node.callee, node.args, expr.getRetCstr(), expr.node);
             } else if (calleeRes.resType == .func) {
-                const preIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, expr.node);
-                return c.semaCallFunc(preIdx, calleeRes.data.func, node.args, expr.getRetCstr(), @ptrCast(node));
+                return c.semaCallFunc(calleeRes.data.func, node.args, expr.getRetCstr(), @ptrCast(node));
             } else {
                 const args = try c.semaPushDynCallArgs(node.args);
-                const preIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, expr.node);
-                return c.semaCallValue(preIdx, calleeRes.irIdx, node.args.len, args);
+                return c.semaCallValue(calleeRes.irIdx, node.args.len, args, expr.node);
             }
         }
     }
@@ -5839,59 +5823,51 @@ pub const ChunkExt = struct {
         return ExprResult.initStatic(irIdx, bt.Map);
     }
 
-    pub fn semaCallValue(c: *cy.Chunk, preIdx: u32, calleeLoc: u32, numArgs: usize, argsLoc: u32) !ExprResult {
+    pub fn semaCallValue(c: *cy.Chunk, calleeLoc: u32, numArgs: usize, argsLoc: u32, node: *ast.Node) !ExprResult {
         // Dynamic call.
-        c.ir.setExprCode(preIdx, .preCallDyn);
-        c.ir.setExprType(preIdx, bt.Any);
-        c.ir.setExprData(preIdx, .preCallDyn, .{ .callDyn = .{
+        const loc = try c.ir.pushExpr(.call_dyn, c.alloc, bt.Dyn, node, .{ 
             .callee = calleeLoc,
             .numArgs = @as(u8, @intCast(numArgs)),
             .args = argsLoc,
-        }});
-        return ExprResult.initDynamic(preIdx, bt.Any);
+        });
+        return ExprResult.initDynamic(loc, bt.Any);
     }
 
-    pub fn semaCallObjSym(c: *cy.Chunk, preIdx: u32, recLoc: u32, right: *ast.Node, num_args: usize, irArgsIdx: u32) !ExprResult {
+    pub fn semaCallObjSym(c: *cy.Chunk, rec_loc: u32, name: []const u8, num_args: usize, irArgsIdx: u32, node: *ast.Node) !ExprResult {
         // Dynamic method call.
-        const name = c.ast.nodeString(right);
-
-        c.ir.setExprCode(preIdx, .preCallObjSym);
-        c.ir.setExprData(preIdx, .preCallObjSym, .{ .callObjSym = .{
+        const loc = try c.ir.pushExpr(.call_obj_sym, c.alloc, bt.Dyn, node, .{ 
             .name = name,
             .numArgs = @intCast(num_args),
-            .rec = recLoc,
+            .rec = rec_loc,
             .args = irArgsIdx,
-        }});
-        return ExprResult.initDynamic(preIdx, bt.Any);
+        });
+        return ExprResult.initDynamic(loc, bt.Any);
     }
 
     pub fn semaCallObjSym0(c: *cy.Chunk, rec: u32, name: []const u8, node: *ast.Node) !ExprResult {
-        const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
         const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, 0);
-        c.ir.setExprCode(loc, .preCallObjSym);
-        c.ir.setExprData(loc, .preCallObjSym, .{ .callObjSym = .{
+        const loc = try c.ir.pushExpr(.call_obj_sym, c.alloc, bt.Dyn, node, .{ 
             .name = name,
             .numArgs = 0,
             .rec = rec,
             .args = args_loc,
-        }});
+        });
         return ExprResult.initDynamic(loc, bt.Any);
     }
 
-    pub fn semaCallObjSym2(c: *cy.Chunk, preIdx: u32, recLoc: u32, name: []const u8, arg_exprs: []const ExprResult) !ExprResult {
+    pub fn semaCallObjSym2(c: *cy.Chunk, recLoc: u32, name: []const u8, arg_exprs: []const ExprResult, node: *ast.Node) !ExprResult {
         const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, arg_exprs.len);
         for (arg_exprs, 0..) |expr, i| {
             c.ir.setArrayItem(args_loc, u32, i, expr.irIdx);
         }
 
-        c.ir.setExprCode(preIdx, .preCallObjSym);
-        c.ir.setExprData(preIdx, .preCallObjSym, .{ .callObjSym = .{
+        const loc = try c.ir.pushExpr(.call_obj_sym, c.alloc, bt.Dyn, node, .{ 
             .name = name,
             .numArgs = @as(u8, @intCast(arg_exprs.len)),
             .rec = recLoc,
             .args = args_loc,
-        }});
-        return ExprResult.initDynamic(preIdx, bt.Any);
+        });
+        return ExprResult.initDynamic(loc, bt.Any);
     }
 
     pub fn semaUnExpr(c: *cy.Chunk, expr: Expr) !ExprResult {
@@ -5901,8 +5877,7 @@ pub const ChunkExt = struct {
             .minus => {
                 const child = try c.semaExprHint(node.child, expr.target_t);
                 if (child.type.isDynAny()) {
-                    const irIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, expr.node);
-                    return c.semaCallObjSym2(irIdx, child.irIdx, getUnOpName(.minus), &.{});
+                    return c.semaCallObjSym2(child.irIdx, getUnOpName(.minus), &.{}, expr.node);
                 }
 
                 if (child.type.id == bt.Integer or child.type.id == bt.Float) {
@@ -5916,8 +5891,7 @@ pub const ChunkExt = struct {
                     const childTypeSym = c.sema.getTypeSym(child.type.id);
                     const sym = try c.mustFindSym(childTypeSym, node.op.name(), expr.node);
                     const func_sym = try requireFuncSym(c, sym, expr.node);
-                    const irIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, expr.node);
-                    return c.semaCallFuncSym1(irIdx, func_sym, node.child, child, expr.getRetCstr(), expr.node);
+                    return c.semaCallFuncSym1(func_sym, node.child, child, expr.getRetCstr(), expr.node);
                 }
             },
             .not => {
@@ -5934,10 +5908,11 @@ pub const ChunkExt = struct {
 
                 const child = try c.semaExprTarget(node.child, expr.target_t);
                 if (child.type.isDynAny()) {
-                    return c.semaCallObjSym2(irIdx, child.irIdx, getUnOpName(.bitwiseNot), &.{});
+                    return c.semaCallObjSym2(child.irIdx, getUnOpName(.bitwiseNot), &.{}, expr.node);
                 }
 
                 if (child.type.id == bt.Integer) {
+                    const irIdx = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, expr.node);
                     c.ir.setExprCode(irIdx, .preUnOp);
                     c.ir.setExprData(irIdx, .preUnOp, .{ .unOp = .{
                         .childT = child.type.id, .op = node.op, .expr = child.irIdx,
@@ -5948,7 +5923,7 @@ pub const ChunkExt = struct {
                     const childTypeSym = c.sema.getTypeSym(child.type.id);
                     const sym = try c.mustFindSym(childTypeSym, node.op.name(), expr.node);
                     const func_sym = try requireFuncSym(c, sym, expr.node);
-                    return c.semaCallFuncSym1(irIdx, func_sym, node.child, child, expr.getRetCstr(), expr.node);
+                    return c.semaCallFuncSym1(func_sym, node.child, child, expr.getRetCstr(), expr.node);
                 }
             },
             else => return c.reportErrorFmt("Unsupported unary op: {}", &.{v(node.op)}, expr.node),
@@ -5980,17 +5955,16 @@ pub const ChunkExt = struct {
             .bitwiseXor,
             .bitwiseLeftShift,
             .bitwiseRightShift => {
-                const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
-
                 const left = try c.semaExprTarget(leftId, expr.target_t);
                 const right = try c.semaExprTarget(rightId, left.type.id);
 
                 if (left.type.isDynAny()) {
-                    return c.semaCallObjSym2(loc, left.irIdx, getBinOpName(op), &.{right});
+                    return c.semaCallObjSym2(left.irIdx, getBinOpName(op), &.{right}, node);
                 }
 
                 if (left.type.id == right.type.id and left.type.id == bt.Integer) {
                     // Specialized.
+                    const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
                     c.ir.setExprCode(loc, .preBinOp);
                     c.ir.setExprType(loc, bt.Integer);
                     c.ir.setExprData(loc, .preBinOp, .{ .binOp = .{
@@ -6006,20 +5980,18 @@ pub const ChunkExt = struct {
                     const leftTypeSym = c.sema.getTypeSym(left.type.id);
                     const sym = try c.mustFindSym(leftTypeSym, op.name(), node);
                     const funcSym = try requireFuncSym(c, sym, node);
-                    return c.semaCallFuncSym2(loc, funcSym, leftId, left, rightId, right, expr.getRetCstr(), node);
+                    return c.semaCallFuncSym2(funcSym, leftId, left, rightId, right, expr.getRetCstr(), node);
                 }
             },
             .greater,
             .greater_equal,
             .less,
             .less_equal => {
-                const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
-
                 const left = try c.semaExprHint(leftId, expr.target_t);
 
                 if (left.type.isDynAny()) {
                     const right = try c.semaExprTarget(rightId, bt.Dyn);
-                    return c.semaCallObjSym2(loc, left.irIdx, getBinOpName(op), &.{right});
+                    return c.semaCallObjSym2(left.irIdx, getBinOpName(op), &.{right}, node);
                 }
 
                 const leftTypeSym = c.sema.getTypeSym(left.type.id);
@@ -6034,13 +6006,11 @@ pub const ChunkExt = struct {
             .caret,
             .plus,
             .minus => {
-                const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
-
                 const left = try c.semaExprHint(leftId, expr.target_t);
 
                 if (left.type.isDynAny()) {
                     const right = try c.semaExprTarget(rightId, bt.Dyn);
-                    return c.semaCallObjSym2(loc, left.irIdx, getBinOpName(op), &.{right});
+                    return c.semaCallObjSym2(left.irIdx, getBinOpName(op), &.{right}, node);
                 }
 
                 // Look for sym under left type's module.
@@ -6143,8 +6113,7 @@ fn semaWithInitPairs(c: *cy.Chunk, type_sym: *cy.Sym, type_id: cy.TypeId, record
             try c.arg_stack.append(c.alloc, sema.Argument.initPreResolved(arg.key, key_expr));
             try c.arg_stack.append(c.alloc, sema.Argument.init(arg.value));
             const func_res = try sema.matchFuncSym(c, init_pair.cast(.func), arg_start, 3, .any, @ptrCast(arg));
-            const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
-            const res = try c.semaCallFuncSymResult(loc, init_pair.cast(.func), func_res, node);
+            const res = try c.semaCallFuncSymResult(init_pair.cast(.func), func_res, node);
 
             _ = try c.ir.pushStmt(c.alloc, .exprStmt, @ptrCast(arg), .{
                 .expr = res.irIdx,

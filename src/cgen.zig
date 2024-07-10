@@ -901,8 +901,8 @@ fn genExpr(c: *Chunk, loc: usize, cstr: Cstr) anyerror!Value {
         .object_init        => genObjectInit(c, loc, cstr, node),
         // .pre                => return error.Unexpected,
         .preBinOp           => genBinOp(c, loc, cstr, .{}, node),
-        .preCallDyn         => genCallDyn(c, loc, cstr, node),
-        .preCallFuncSym     => genCallFuncSym(c, loc, cstr, node),
+        .call_dyn           => genCallDyn(c, loc, cstr, node),
+        .call_sym           => genCallFuncSym(c, loc, cstr, node),
         // .preCallObjSym      => genCallObjSym(c, idx, cstr, node),
         // .preUnOp            => genUnOp(c, idx, cstr, node),
         .string             => genString(c, loc, cstr, node),
@@ -1030,7 +1030,7 @@ fn getBinOpName(op: cy.BinaryExprOp) []const u8 {
 fn genCallDyn(c: *Chunk, loc: usize, cstr: Cstr, node: *ast.Node) !Value {
     _ = cstr;
     _ = node;
-    const data = c.ir.getExprData(loc, .preCallDyn).callDyn;
+    const data = c.ir.getExprData(loc, .call_dyn);
     const args = c.ir.getArray(data.args, u32, data.numArgs);
 
     try c.bufPush("cbCallDyn(rt, ");
@@ -1051,7 +1051,7 @@ fn genCallFuncSym(c: *Chunk, loc: usize, cstr: Cstr, node: *ast.Node) !Value {
     _ = cstr;
     _ = node;
 
-    const data = c.ir.getExprData(loc, .preCallFuncSym).callFuncSym;
+    const data = c.ir.getExprData(loc, .call_sym);
 
     // if (data.hasDynamicArg) {
     //     try genCallTypeCheck(c, inst.ret + cy.vm.CallArgStart, data.numArgs, data.func.funcSigId, node);

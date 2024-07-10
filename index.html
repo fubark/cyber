@@ -985,7 +985,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 262-467ae30</div>
+    <div class="sub-title">v0.4-dev 299-1d68786</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -997,6 +997,7 @@ table tbody tr:nth-child(even) {
 <li><a href="#syntax">Syntax.</a></li>
 <li><a href="#basic-types">Basic Types.</a></li>
 <li><a href="#custom-types">Custom Types.</a></li>
+<li><a href="#c-types">C Types.</a></li>
 <li><a href="#control-flow">Control Flow.</a></li>
 <li><a href="#functions">Functions.</a></li>
 <li><a href="#modules">Modules.</a></li>
@@ -1275,7 +1276,7 @@ print a    --> panic: `a` is not defined in `$global`.
 <p>These keywords only have meaning in a certain context.</p>
 <ul>
 <li><a href="#methods" title="">Methods</a>: <code>self</code> <code>Self</code></li>
-<li><a href="#custom-types" title="">Types</a>: <a href="#objects" title=""><code>object</code></a> <a href="#structs" title=""><code>struct</code></a> <a href="#enums" title=""><code>enum</code></a> <a href="#traits" title=""><code>trait</code></a></li>
+<li><a href="#custom-types" title="">Types</a>: <a href="#objects" title=""><code>object</code></a> <a href="#structs" title=""><code>struct</code></a> <a href="#c-structs" title=""><code>cstruct</code></a> <a href="#enums" title=""><code>enum</code></a> <a href="#traits" title=""><code>trait</code></a></li>
 <li><a href="#caught-variable" title="">Catching Errors</a>: <code>caught</code></li>
 <li>Function Return: <code>void</code></li>
 </ul>
@@ -1477,11 +1478,15 @@ if true:
 <h2 id="numbers">Numbers. <a href="#numbers">#</a></h2>
 <a href="#basic-types">^topic</a>
 <h3 id="integers">Integers. <a href="#integers">#</a></h3>
-<p><code>int</code> is the default integer type. It has 48-bits and can represent integers in the range -(2<sup>47</sup>) to 2<sup>47</sup>-1. See <a href="#type-int" title=""><code>type int</code></a>.</p>
+<p><code>int</code> is the default integer type and is an alias for <code>int64</code>.
+It has 64-bits representing integers in the range -(2<sup>63</sup>) to 2<sup>63</sup>-1.
+Integer types use the two's complement format.</p>
+<p>The following integer types are supported: <a href="#type-byte" title=""><code>byte</code></a>, <a href="#type-int8" title=""><code>int8</code></a>, <a href="#type-int16" title=""><code>int16</code></a>, <a href="#type-int32" title=""><code>int32</code></a>, <a href="#type-int64" title=""><code>int64</code></a>.
+Integer types are named according to how many bits they occupy.</p>
 <p>When a numeric literal is used and the type can not be inferred, it will default to the <code>int</code> type:</p>
 <pre><code class="language-cy">var a = 123
 </code></pre>
-<p>Integer notations always produce a <code>int</code> value:</p>
+<p>Integer notations always produce an integer value:</p>
 <pre><code class="language-cy">var a = 0xFF     -- hex.
 a = 0o17         -- octal.
 a = 0b1010       -- binary.
@@ -1674,6 +1679,12 @@ for list -> it:
 -- Remove an element at a specific index.
 list.remove(1)
 </code></pre>
+<p>Since <code>List</code> is a generic type, an explicit List type can be attached to the initializer:</p>
+<pre><code class="language-cy">var a = List[int].[1, 2, 3]
+</code></pre>
+<p>When the intializer is only prefixed with a dot, it will infer the List type constraint:</p>
+<pre><code class="language-cy">var a List[int] = .[1, 2, 3]
+</code></pre>
 <a href="#basic-types">^topic</a>
 <h2 id="tuples">Tuples. <a href="#tuples">#</a></h2>
 <blockquote><p><em>Incomplete: Tuples can only be created from @host funcs at the moment.</em></p>
@@ -1804,7 +1815,7 @@ print square(a)           --> CompileError. Expected `int`, got `any`.
 <li><a href="#circular-references" title="">Circular references.</a></li>
 <li><a href="#unnamed-object" title="">Unnamed object.</a></li>
 <li><a href="#methods" title="">Methods.</a></li>
-<li><a href="#self-variable" title=""><code>self</code> variable.</a></li>
+<li><a href="#implicit-members" title="">Implicit members.</a></li>
 <li><a href="#type-functions" title="">Type functions.</a></li>
 <li><a href="#type-variables" title="">Type variables.</a></li>
 <li><a href="#type-embedding" title="">Type embedding.</a></li>
@@ -1838,7 +1849,6 @@ print square(a)           --> CompileError. Expected `int`, got `any`.
 <li><a href="#type-aliases" title="">Type aliases.</a></li>
 <li><a href="#distinct-types" title="">Distinct types.</a></li>
 <li><a href="#traits" title="">Traits.</a></li>
-<li><a href="#union-types" title="">Union types.</a></li>
 <li><a href="#type-templates" title="">Type templates.</a><ul>
 <li><a href="#expand-type-template" title="">Expand type template.</a></li>
 </ul>
@@ -1867,8 +1877,8 @@ type A:
 <pre><code class="language-cy">var node = Node{value=123, next=none}
 print node.value       -- Prints "123"
 </code></pre>
-<p>A record literal can also initialize to the inferred object type:</p>
-<pre><code class="language-cy">var node Node = {value=234, next=none}
+<p>A dot record literal can also initialize to the inferred object type:</p>
+<pre><code class="language-cy">var node Node = .{value=234, next=none}
 print node.value       -- Prints "234"
 </code></pre>
 <a href="#custom-types">^topic</a>
@@ -1882,7 +1892,7 @@ print node.value       -- Prints "234"
 <a href="#custom-types">^topic</a>
 <h3 id="default-field-values">Default field values. <a href="#default-field-values">#</a></h3>
 <p>When a field is omitted in the record literal, it gets initialized to its <a href="#zero-values" title="">zero value</a>:</p>
-<pre><code class="language-cy">var node Node = {value=234}
+<pre><code class="language-cy">var node Node = .{value=234}
 print node.next    --> Option.none
 
 type Student:
@@ -1923,50 +1933,60 @@ var n = Node{}    -- CompileError. Can not zero initialize `next`
     next  ?Node
 
 var node = Node{
-    value = {a=123, b=100.0},
+    value = .{a=123, b=100.0},
     next  = none,
 }
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="methods">Methods. <a href="#methods">#</a></h3>
-<p>Methods allow invoking a function on an object instance using the <code>.</code> operator:</p>
+<p>Methods are functions that are invoked with a parent instance using the <code>.</code> operator.
+When the first parameter of a function contains <code>self</code>, it's declared as a method of the parent type:</p>
 <pre><code class="language-cy">type Node:
     value int
     next  ?Node
 
-    func inc(n):
-        value += n
+    func inc(self, n):
+        self.value += n
 
-    func incAndPrint():
+    func incAndPrint(self):
         self.inc(321)
         print value
 
 var n = Node{value=123, next=none}
 n.incAndPrint()         -- Prints "444"
 </code></pre>
-<p>Methods can be declared outside of the type declaration. When using the flat declaration style, <code>self</code> must be the first parameter to distinguish it from a type function:</p>
+<p><code>self</code> is then used to reference members of the parent instance.</p>
+<p>Methods can be declared outside of the type declaration as a flat declaration:</p>
 <pre><code class="language-cy">func Node.getNext(self):
     return self.next
 </code></pre>
 <a href="#custom-types">^topic</a>
-<h3 id="self-variable"><code>self</code> variable. <a href="#self-variable">#</a></h3>
-<p>Type members can be implicitly referenced inside the method. <em>Incomplete: Only the type's fields can be referenced this way.</em></p>
-<p>To reference members explicitly inside a method, use the builtin <code>self</code>:</p>
+<h3 id="implicit-members">Implicit members. <a href="#implicit-members">#</a></h3>
+<p>When a method is nested under a type declaration, the type members can be implicitly referenced inside the method: <em>Incomplete: Only the type's fields can be referenced this way.</em></p>
 <pre><code class="language-cy">type Node:
     value int
     next  ?Node
 
-    func double():
-        return self.value * 2
+    func double(self):
+        return value * 2
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="type-functions">Type functions. <a href="#type-functions">#</a></h3>
-<p>Type functions are declared outside of the <code>type</code> block with an explicit namespace path:</p>
+<p>Type functions can be declared within the type block without a <code>self</code> param:</p>
 <pre><code class="language-cy">type Node:
     value int
     next  ?Node
 
--- Declare static function inside `Node`.
+    func new():
+        return Node{value=123, next=none}
+
+var n = Node.new()
+</code></pre>
+<p>Type functions can also be declared outside of the type block using a flat declaration:</p>
+<pre><code class="language-cy">type Node:
+    value int
+    next  ?Node
+
 func Node.new():
     return Node{value=123, next=none}
 
@@ -1986,7 +2006,7 @@ print Node.DefaultValue    -- Prints "100"
 <pre><code class="language-cy">type Base:
     a int
 
-    func double() int:
+    func double(self) int:
         return a * 2
 
 type Container:
@@ -2012,7 +2032,7 @@ print c.double()  --> 246
 <a href="#custom-types">^topic</a>
 <h2 id="structs">Structs. <a href="#structs">#</a></h2>
 <p>Struct types can contain field and method members just like object types, but their instances are copied by value rather than by reference. In that sense, they behave like primitive data types.</p>
-<p>Unlike objects, structs do not have a reference count. They can be safely referenced using borrow semantics. Unsafe pointers can also reference structs.</p>
+<p>Unlike objects, structs are value types and do not have a reference count. They can be safely referenced with the <code>ref</code> modifier and their lifetime can be managed with single ownership semantics. Unsafe pointers can not reference structs by default, but there may be an unsafe builtin to allow it anyway.</p>
 <a href="#custom-types">^topic</a>
 <h3 id="declare-struct">Declare struct. <a href="#declare-struct">#</a></h3>
 <p>Struct types are created using the <code>type struct</code> declaration:</p>
@@ -2199,7 +2219,7 @@ var pos = Pos2{x=3, y=4}
 <pre><code class="language-">use math
 
 type Pos2 Vec2:
-    func blockDist(o Pos2):
+    func blockDist(self, o Pos2):
         var dx = math.abs(o.x - x)
         var dy = math.abs(o.y - y)
         return dx + dy
@@ -2220,14 +2240,14 @@ var b Vec2 = a as Vec2
 <h2 id="traits">Traits. <a href="#traits">#</a></h2>
 <p>A trait type defines a common interface for implementing types. A trait type is declared with the <code>trait</code> keyword:</p>
 <pre><code class="language-cy">type Shape trait:
-    func area() float
+    func area(self) float
 </code></pre>
 <p>Types can implement a trait using the <code>with</code> keyword:</p>
 <pre><code class="language-cy">type Circle:
     with Shape
     radius float
 
-    func area() float:
+    func area(self) float:
         return 3.14 * self.radius^2
 
 type Rectangle:
@@ -2235,7 +2255,7 @@ type Rectangle:
     width  float
     height float
 
-    func area() float:
+    func area(self) float:
         return self.width * self.height
 </code></pre>
 <p>A type that intends to implement a trait but does not satisfy the trait's interface results in a compile error.</p>
@@ -2247,27 +2267,191 @@ s = Rectangle{width=4, height=5}
 print s.area()         --> 20
 </code></pre>
 <a href="#custom-types">^topic</a>
-<h2 id="union-types">Union types. <a href="#union-types">#</a></h2>
-<blockquote><p><em>Planned Feature</em></p>
-</blockquote><a href="#custom-types">^topic</a>
 <h2 id="type-templates">Type templates. <a href="#type-templates">#</a></h2>
 <p>Type declarations can include template parameters to create a type template:</p>
 <pre><code class="language-cy">type MyContainer[T type]:
     id    int
     value T
 
-    func get() T:
+    func get(self) T:
         return self.value
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h3 id="expand-type-template">Expand type template. <a href="#expand-type-template">#</a></h3>
 <p>When the type template is invoked with template argument(s), a special version of the type is generated.</p>
 <p>In this example, <code>String</code> can be used as an argument since it satisfies the <code>type</code> parameter constraint:</p>
-<pre><code class="language-cy">var a MyContainer[String] = {id=123, value='abc'}
+<pre><code class="language-cy">var a MyContainer[String] = .{id=123, value='abc'}
 print a.get()      -- Prints 'abc'
 </code></pre>
 <p>Note that invoking the template again with the same argument(s) returns the same generated type. In other words, the generated type is always memoized from the input parameters.</p>
 <a href="#custom-types">^topic</a>
+<h1 id="c-types">C Types. <a href="#c-types">#</a></h1>
+<ul>
+<li><a href="#c-primitives" title="">C primitives.</a></li>
+<li><a href="#c-structs" title="">C structs.</a><ul>
+<li><a href="#c-struct-methods" title="">C struct methods.</a></li>
+<li><a href="#c-struct-reference" title="">C struct reference.</a></li>
+</ul>
+</li>
+<li><a href="#pointers" title="">Pointers.</a><ul>
+<li><a href="#dereferencing-pointers" title="">Dereferencing pointers.</a></li>
+<li><a href="#pointer-indexing" title="">Pointer indexing.</a></li>
+<li><a href="#pointer-arithmetic" title="">Pointer arithmetic.</a></li>
+<li><a href="#pointer-casting" title="">Pointer casting.</a></li>
+<li><a href="#pointer-slicing" title="">Pointer slicing.</a></li>
+<li><a href="#pointer-conversions" title="">Pointer conversions.</a></li>
+</ul>
+</li>
+<li><a href="#slices" title="">Slices.</a></li>
+<li><a href="#union-types" title="">Union types.</a></li>
+</ul>
+<p><a href="#table-of-contents" title="">^top</a></p>
+<p>C types interop with C-ABI types and are used to represent external or manual memory.
+Using C types is considered unsafe, but runtime safety checks can be inserted to make it safer at the cost of runtime performance.</p>
+<h2 id="c-primitives">C primitives. <a href="#c-primitives">#</a></h2>
+<p>This table shows the size and type compatibility of Cyber and C types:</p>
+<table><thead><tr><th>Cyber</th><th>C</th><th>Size (bits)</th></tr></thead><tbody><tr><td>void</td><td>void</td><td>0, used as *void</td></tr><tr><td>int8</td><td>int8_t</td><td>8</td></tr><tr><td>byte</td><td>uint8_t</td><td>8</td></tr><tr><td>c_char</td><td>char</td><td>8</td></tr><tr><td>int16</td><td>int16_t</td><td>16</td></tr><tr><td>c_short</td><td>short</td><td>16*</td></tr><tr><td>c_uint16</td><td>uint16_t</td><td>16</td></tr><tr><td>c_ushort</td><td>unsigned short</td><td>16*</td></tr><tr><td>int32</td><td>int32_t</td><td>32</td></tr><tr><td>c_int</td><td>int</td><td>32*</td></tr><tr><td>c_uint32</td><td>uint32_t</td><td>32</td></tr><tr><td>c_uint</td><td>unsigned int</td><td>32*</td></tr><tr><td>int, int64</td><td>int64_t</td><td>64</td></tr><tr><td>c_long</td><td>long</td><td>64*</td></tr><tr><td>c_uint64</td><td>uint64_t</td><td>64</td></tr><tr><td>c_ulong</td><td>unsigned long</td><td>64*</td></tr><tr><td>c_longlong</td><td>long long</td><td>64*</td></tr><tr><td>c_ulonglong</td><td>unsigned long long</td><td>64*</td></tr><tr><td>float32</td><td>float</td><td>32</td></tr><tr><td>float, float64</td><td>double</td><td>64</td></tr><tr><td>c_longdouble</td><td>long double</td><td>80*</td></tr><tr><td>*T, pointer[T]</td><td>T*</td><td>64*</td></tr></tbody></table><p>* Varies depending on C compiler and architecture. Pointers may occupy an extra word size for runtime memory checks.</p>
+<a href="#c-types">^topic</a>
+<h2 id="c-structs">C structs. <a href="#c-structs">#</a></h2>
+<p><code>C structs</code> are unsafe since they can be referenced by unsafe <a href="#pointers" title="">pointers</a>. The underlying memory could be corrupted or invalidated before use.
+In contrast, <a href="#structs" title="">structs</a> can be safely used since they can only be instantiated in safe memory.</p>
+<p><code>C structs</code> can be declared with the <code>cstruct</code> keyword:</p>
+<pre><code class="language-cy">type Data cstruct:
+    x   float
+    y   float
+    ptr *int
+    str []byte
+</code></pre>
+<p>A <code>C struct</code> may contain:</p>
+<ul>
+<li>C types.</li>
+<li>Primitive types.</li>
+<li>Container types that contain a compatible element type. This includes <code>enums</code>, <code>choices</code>, and <code>optionals</code>.</li>
+</ul>
+<p>It may not contain <code>structs</code> or <code>objects</code>.</p>
+<a href="#c-types">^topic</a>
+<h3 id="c-struct-methods">C struct methods. <a href="#c-struct-methods">#</a></h3>
+<p><code>C structs</code> can be declared with methods:</p>
+<pre><code class="language-cy">type Vec2 cstruct:
+    x float
+    y float
+
+    func add(self, o Vec2):
+        return Vec2{
+            x = self.x+o.x,
+            y = self.y+o.y,
+        }
+
+var v = Vec2{x=1, y=2}
+print v.add(Vec2{x=2, y=1})   --> Vec2{x=3, y=3}
+</code></pre>
+<p>In this example <code>add</code> passes the receiver by value.</p>
+<p>In order to pass the receiver by reference, <code>self</code> must be annotated with <code>*</code>:</p>
+<pre><code class="language-cy">type Vec2 cstruct:
+    x float
+    y float
+
+    func add(*self, o Vec2):
+        self.x += o.x
+        self.y += o.y
+
+var v = Vec2{x=1, y=2}
+v.add(Vec2{x=2, y=1})
+print v                 --> Vec2{x=3, y=3}
+</code></pre>
+<a href="#c-types">^topic</a>
+<h3 id="c-struct-reference">C struct reference. <a href="#c-struct-reference">#</a></h3>
+<p>The <code>&</code> operator is used to obtain the reference to a <code>C struct</code> value:</p>
+<pre><code class="language-cy">type Vec2 cstruct:
+    x float
+    y float
+
+var v = Vec2{x=1, y=2}
+var ref = &v
+ref.x = 4
+
+print v                 --> Vec2{x=4, y=2}
+</code></pre>
+<p>The reference is a <a href="#pointers" title="">pointer</a> type that points to the <code>C struct</code>:</p>
+<pre><code class="language-">func scale(a *Vec2, n float):
+    a.x *= n
+    a.y *= n
+
+add(&v, 10)
+print v                 --> Vec2{x=40, y=20}
+</code></pre>
+<a href="#c-types">^topic</a>
+<h2 id="pointers">Pointers. <a href="#pointers">#</a></h2>
+<p>A <code>pointer</code> is a reference to a memory location. Its type is denoted as <code>*T</code> where <code>T</code> is the type that the pointer references in memory:</p>
+<pre><code class="language-cy">func setName(p *Person, name []byte):
+    p.name = name
+
+var p = Person{}
+setName(&p, 'Spock')
+</code></pre>
+<p>Depending on the target architecture, the alignment of the pointer will either be at least 8 bytes on a 64-bit machine or 4 bytes on a 32-bit machine. Aligned pointers will be supported in a future version.</p>
+<p>Pointers are unsafe since they can reference corrupted or invalidated memory.
+When runtime memory checks are enabled, pointers will occupy an extra word size in order to set traps and prevent unsafe uses of pointers. See <a href="#runtime-memory-checks" title="">Memory / Runtime memory checks</a>.</p>
+<p>A pointer can be created with an explicit address using <code>pointer</code>.</p>
+<pre><code class="language-cy">var ptr = pointer(*void, 0xDEADBEEF)
+print ptr.value()     --'3735928559'
+</code></pre>
+<a href="#c-types">^topic</a>
+<h3 id="dereferencing-pointers">Dereferencing pointers. <a href="#dereferencing-pointers">#</a></h3>
+<p>Pointers are dereferenced using the accessor operator <code>.*</code>:</p>
+<pre><code class="language-cy">var a = 123
+var ptr = &a
+print ptr.*      --> 123
+
+ptr.* = 10
+print a          --> 10
+</code></pre>
+<a href="#c-types">^topic</a>
+<h3 id="pointer-indexing">Pointer indexing. <a href="#pointer-indexing">#</a></h3>
+<p>The index operator is used to read or write to a particular element:</p>
+<pre><code class="language-cy">var a = mem.alloc(int, 10)
+a[5] = 123
+print a[5]       --> 123
+</code></pre>
+<p>Negative indexing will locate the element before the pointer's address.</p>
+<a href="#c-types">^topic</a>
+<h3 id="pointer-arithmetic">Pointer arithmetic. <a href="#pointer-arithmetic">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#c-types">^topic</a>
+<h3 id="pointer-casting">Pointer casting. <a href="#pointer-casting">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#c-types">^topic</a>
+<h3 id="pointer-slicing">Pointer slicing. <a href="#pointer-slicing">#</a></h3>
+<p>The slice operator will produce a new slice of type <code>[]T</code> from a <code>*T</code> pointer type:</p>
+<pre><code class="language-cy">var ints = mem.alloc(int, 10)
+var slice = ints[0..5]
+print typeof(slice)    --> []int
+</code></pre>
+<a href="#c-types">^topic</a>
+<h3 id="pointer-conversions">Pointer conversions. <a href="#pointer-conversions">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#c-types">^topic</a>
+<h2 id="slices">Slices. <a href="#slices">#</a></h2>
+<p>Slices are pointers with a length field. They are denoted as <code>[]T</code> where T is the element type.</p>
+<p>A slice can be created by taking the address of an array: <em>Planned feature</em></p>
+<pre><code class="language-cy">var arr = [_]int.[1, 2, 3]
+var s = &arr
+</code></pre>
+<p>Read and write an element with the index operator:</p>
+<pre><code class="language-cy">print s[0]        --> 1
+s[1] = 123
+print s[1]        --> 123
+</code></pre>
+<p>Slices provide bounds checking when runtime safety is enabled: <em>Planned feature</em></p>
+<pre><code class="language-cy">print s[100]      --> Panic. Out of bounds.
+</code></pre>
+<p>Slice operations can be applied: <em>Planned feature</em></p>
+<pre><code class="language-cy">print s[0..2]     --> [1, 2]
+</code></pre>
+<a href="#c-types">^topic</a>
+<h2 id="union-types">Union types. <a href="#union-types">#</a></h2>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#c-types">^topic</a>
 <h1 id="control-flow">Control Flow. <a href="#control-flow">#</a></h1>
 <table><tr>
 <td valign="top">
@@ -2479,6 +2663,7 @@ case 0..5:
 <li><a href="#function-calls" title="">Function calls.</a><ul>
 <li><a href="#shorthand-syntax" title="">Shorthand syntax.</a></li>
 <li><a href="#call-block-syntax" title="">Call block syntax.</a></li>
+<li><a href="#piping" title="">Piping.</a></li>
 </ul>
 </li>
 <li><a href="#function-templates" title="">Function templates.</a><ul>
@@ -2634,6 +2819,9 @@ Button('Count', 10):
 </code></pre>
 <p>Arguments assigned in the call block can be unordered.</p>
 <a href="#functions">^topic</a>
+<h3 id="piping">Piping. <a href="#piping">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#functions">^topic</a>
 <h2 id="function-templates">Function templates. <a href="#function-templates">#</a></h2>
 <p>Function declarations can include template parameters to create a function template:</p>
 <pre><code class="language-cy">func add(#T type, a T, b T) T:
@@ -2861,7 +3049,8 @@ print typeof('my str').id()
 </code></pre>
 <p><a href="#modules" title="">^topic</a></p>
 <!-- core.start -->
-<blockquote><p><code>func copy(val any) any</code></p>
+<blockquote><p><code>func bitcast(D type, val S) D</code></p>
+</blockquote><blockquote><p><code>func copy(val any) any</code></p>
 <p>Copies a primitive value or creates a shallow copy of an object value.</p>
 </blockquote><blockquote><p><code>func dump(val any) <void></code></p>
 <p>Prints the result of <code>toCyon</code> on a value.</p>
@@ -2884,12 +3073,15 @@ print typeof('my str').id()
 <p>Stop execution in the current fiber and starts unwinding the call stack. See <a href="#unexpected-errors" title="">Unexpected Errors</a>.</p>
 </blockquote><blockquote><p><code>func performGC() Map</code></p>
 <p>Runs the garbage collector once to detect reference cycles and abandoned objects.  Returns the statistics of the run in a map value.</p>
+</blockquote><blockquote><p><code>func ptrcast(D type, val S) *D</code></p>
 </blockquote><blockquote><p><code>func print(str any) <void></code></p>
 <p>Prints a value. The host determines how it is printed.</p>
 </blockquote><blockquote><p><code>func queueTask(fn any) <void></code></p>
 <p>Queues a callback function as an async task.</p>
 </blockquote><blockquote><p><code>func runestr(val int) String</code></p>
 <p>Converts a rune to a string.</p>
+</blockquote><blockquote><p><code>func sizeof(T type) int</code></p>
+</blockquote><blockquote><p><code>func sizeof_(type_id int) int</code></p>
 </blockquote><blockquote><p><code>func typeof(val any) metatype</code></p>
 <p>Returns the value's type as a <code>metatype</code> object.</p>
 </blockquote><a href="#modules">^topic</a>
@@ -2897,59 +3089,79 @@ print typeof('my str').id()
 <a href="#modules">^topic</a>
 <h3 id="type-bool"><code>type bool</code> <a href="#type-bool">#</a></h3>
 <blockquote><p><code>func bool.$call(val any) bool</code></p>
-<p>Converts a value to either <code>true</code> or <code>false</code>.</p>
+<p>Converts any value to either <code>true</code> or <code>false</code>.  Integers and floats equal to 0 return false.  Empty strings return false.  Otherwise, returns true.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-symbol"><code>type symbol</code> <a href="#type-symbol">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-error"><code>type error</code> <a href="#type-error">#</a></h3>
-<blockquote><p><code>func sym() symbol</code></p>
+<blockquote><p><code>func sym(self any) symbol</code></p>
 <p>Return the underlying <code>symbol</code>.</p>
 </blockquote><blockquote><p><code>func error.$call(val any) error</code></p>
 <p>Create an error from symbol.</p>
 </blockquote><a href="#modules">^topic</a>
+<h3 id="type-byte"><code>type byte</code> <a href="#type-byte">#</a></h3>
+<blockquote><p><code>func $prefix~(self any) byte</code></p>
+</blockquote><blockquote><p><code>func $infix<(self any, o byte) bool</code></p>
+</blockquote><blockquote><p><code>func $infix<=(self any, o byte) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>(self any, o byte) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>=(self any, o byte) bool</code></p>
+</blockquote><blockquote><p><code>func $infix+(self any, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix-(self any, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix*(self any, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix/(self any, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix%(self any, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix^(self any, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix&(self any, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix|(self any, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix||(self any, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix<<(self any, o int) byte</code></p>
+</blockquote><blockquote><p><code>func $infix>>(self any, o int) byte</code></p>
+</blockquote><blockquote><p><code>func fmt(self any, format NumberFormat) String</code></p>
+<p>Formats the byte using a NumberFormat.</p>
+</blockquote><blockquote><p><code>func fmt(self any, format NumberFormat, config Table) String</code></p>
+<p><code>opts.pad</code> provides the ASCII rune that is used for padding with a string length of <code>config.width</code>.</p>
+</blockquote><blockquote><p><code>func $call(b byte) byte</code></p>
+</blockquote><a href="#modules">^topic</a>
 <h3 id="type-int"><code>type int</code> <a href="#type-int">#</a></h3>
-<blockquote><p><code>func $prefix~() int</code></p>
-</blockquote><blockquote><p><code>func $prefix-() int</code></p>
-</blockquote><blockquote><p><code>func $infix<(o int) bool</code></p>
-</blockquote><blockquote><p><code>func $infix<=(o int) bool</code></p>
-</blockquote><blockquote><p><code>func $infix>(o int) bool</code></p>
-</blockquote><blockquote><p><code>func $infix>=(o int) bool</code></p>
-</blockquote><blockquote><p><code>func $infix+(o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix-(o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix*(o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix/(o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix%(o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix^(o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix&(o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix|(o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix||(o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix<<(o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix>>(o int) int</code></p>
-</blockquote><blockquote><p><code>func fmt(kind symbol) String</code></p>
-<p>Formats the integer using a kind specifier which can be binary <code>.b</code>,  octal <code>.o</code>, decimal <code>.d</code>, hexadecimal <code>.x</code>, ASCII <code>.c</code>.</p>
-</blockquote><blockquote><p><code>func fmt(kind symbol, config Table) String</code></p>
+<blockquote><p><code>func $prefix~(self any) int</code></p>
+</blockquote><blockquote><p><code>func $prefix-(self any) int</code></p>
+</blockquote><blockquote><p><code>func $infix<(self any, o int) bool</code></p>
+</blockquote><blockquote><p><code>func $infix<=(self any, o int) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>(self any, o int) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>=(self any, o int) bool</code></p>
+</blockquote><blockquote><p><code>func $infix+(self any, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix-(self any, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix*(self any, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix/(self any, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix%(self any, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix^(self any, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix&(self any, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix|(self any, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix||(self any, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix<<(self any, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix>>(self any, o int) int</code></p>
+</blockquote><blockquote><p><code>func fmt(self any, format NumberFormat) String</code></p>
+<p>Formats the integer using a NumberFormat.</p>
+</blockquote><blockquote><p><code>func fmt(self any, format NumberFormat, config Table) String</code></p>
 <p><code>opts.pad</code> provides the ASCII rune that is used for padding with a string length of <code>config.width</code>.</p>
 </blockquote><blockquote><p><code>func int.$call(val any) int</code></p>
-<p>Converts a value to an 48-bit integer.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-float"><code>type float</code> <a href="#type-float">#</a></h3>
-<blockquote><p><code>func $prefix-() float</code></p>
-</blockquote><blockquote><p><code>func $infix<(o float) bool</code></p>
-</blockquote><blockquote><p><code>func $infix<=(o float) bool</code></p>
-</blockquote><blockquote><p><code>func $infix>(o float) bool</code></p>
-</blockquote><blockquote><p><code>func $infix>=(o float) bool</code></p>
-</blockquote><blockquote><p><code>func $infix+(o float) float</code></p>
-</blockquote><blockquote><p><code>func $infix-(o float) float</code></p>
-</blockquote><blockquote><p><code>func $infix*(o float) float</code></p>
-</blockquote><blockquote><p><code>func $infix/(o float) float</code></p>
-</blockquote><blockquote><p><code>func $infix%(o float) float</code></p>
-</blockquote><blockquote><p><code>func $infix^(o float) float</code></p>
+<blockquote><p><code>func $prefix-(self any) float</code></p>
+</blockquote><blockquote><p><code>func $infix<(self any, o float) bool</code></p>
+</blockquote><blockquote><p><code>func $infix<=(self any, o float) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>(self any, o float) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>=(self any, o float) bool</code></p>
+</blockquote><blockquote><p><code>func $infix+(self any, o float) float</code></p>
+</blockquote><blockquote><p><code>func $infix-(self any, o float) float</code></p>
+</blockquote><blockquote><p><code>func $infix*(self any, o float) float</code></p>
+</blockquote><blockquote><p><code>func $infix/(self any, o float) float</code></p>
+</blockquote><blockquote><p><code>func $infix%(self any, o float) float</code></p>
+</blockquote><blockquote><p><code>func $infix^(self any, o float) float</code></p>
 </blockquote><blockquote><p><code>func float.$call(val any) float</code></p>
 <p>Converts the value to a <code>float</code>. Panics if type conversion fails.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-placeholder1"><code>type placeholder1</code> <a href="#type-placeholder1">#</a></h3>
-<a href="#modules">^topic</a>
-<h3 id="type-placeholder2"><code>type placeholder2</code> <a href="#type-placeholder2">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-taglit"><code>type taglit</code> <a href="#type-taglit">#</a></h3>
 <a href="#modules">^topic</a>
@@ -2960,175 +3172,180 @@ print typeof('my str').id()
 <h3 id="type-type"><code>type type</code> <a href="#type-type">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-list"><code>type List</code> <a href="#type-list">#</a></h3>
-<blockquote><p><code>func $index(idx int) T</code></p>
-</blockquote><blockquote><p><code>func $index(range Range) List[T]</code></p>
-</blockquote><blockquote><p><code>func $setIndex(idx int, val T) <void></code></p>
-</blockquote><blockquote><p><code>func append(val T) <void></code></p>
+<blockquote><p><code>func $index(self any, idx int) T</code></p>
+</blockquote><blockquote><p><code>func $index(self any, range Range) List[T]</code></p>
+</blockquote><blockquote><p><code>func $setIndex(self any, idx int, val T) <void></code></p>
+</blockquote><blockquote><p><code>func append(self any, val T) <void></code></p>
 <p>Appends a value to the end of the list.</p>
-</blockquote><blockquote><p><code>func appendAll(list List[T]) <void></code></p>
+</blockquote><blockquote><p><code>func appendAll(self any, list List[T]) <void></code></p>
 <p>Appends the elements of another list to the end of this list.</p>
-</blockquote><blockquote><p><code>func insert(idx int, val T) <void></code></p>
+</blockquote><blockquote><p><code>func insert(self any, idx int, val T) <void></code></p>
 <p>Inserts a value at index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func iterator() ListIterator[T]</code></p>
+</blockquote><blockquote><p><code>func iterator(self any) ListIterator[T]</code></p>
 <p>Returns a new iterator over the list elements.</p>
-</blockquote><blockquote><p><code>func join(sep String) String</code></p>
+</blockquote><blockquote><p><code>func join(self any, sep String) String</code></p>
 <p>Returns a new string that joins the elements with <code>separator</code>.</p>
-</blockquote><blockquote><p><code>func len() int</code></p>
+</blockquote><blockquote><p><code>func len(self any) int</code></p>
 <p>Returns the number of elements in the list.</p>
-</blockquote><blockquote><p><code>func remove(idx int) <void></code></p>
+</blockquote><blockquote><p><code>func remove(self any, idx int) <void></code></p>
 <p>Removes an element at index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func resize(size int) <void></code></p>
+</blockquote><blockquote><p><code>func resize(self any, size int) <void></code></p>
 <p>Resizes the list to <code>len</code> elements. If the new size is bigger, <code>none</code> values  are appended to the list. If the new size is smaller, elements at the end of the list are removed.</p>
-</blockquote><blockquote><p><code>func sort(lessFn any) <void></code></p>
+</blockquote><blockquote><p><code>func resize_(self any, elem_t int, size int) <void></code></p>
+</blockquote><blockquote><p><code>func sort(self any, lessFn any) <void></code></p>
 <p>Sorts the list with the given <code>less</code> function.  If element <code>a</code> should be ordered before <code>b</code>, the function should return <code>true</code> otherwise <code>false</code>.</p>
-</blockquote><blockquote><p><code>func List.fill(val <comptimeExpr>, n int) List[T]</code></p>
+</blockquote><blockquote><p><code>func List.fill(val T, n int) List[T]</code></p>
 <p>Creates a list with initial capacity of <code>n</code> and values set to <code>val</code>.  If the value is an object, it is shallow copied <code>n</code> times.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-listiterator"><code>type ListIterator</code> <a href="#type-listiterator">#</a></h3>
-<blockquote><p><code>func next() ?T</code></p>
+<blockquote><p><code>func next(self any) ?T</code></p>
+</blockquote><blockquote><p><code>func next_(self any, ret_t int) ?T</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-tuple"><code>type Tuple</code> <a href="#type-tuple">#</a></h3>
-<blockquote><p><code>func $index(idx int) any</code></p>
+<blockquote><p><code>func $index(self any, idx int) any</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-table"><code>type Table</code> <a href="#type-table">#</a></h3>
-<blockquote><p><code>func $initPair(key String, value any) <void></code></p>
-</blockquote><blockquote><p><code>func $get(name String) dyn</code></p>
-</blockquote><blockquote><p><code>func $set(name String, value any) </code></p>
-</blockquote><blockquote><p><code>func $index(key any) dyn</code></p>
-</blockquote><blockquote><p><code>func $setIndex(key any, value any) <void></code></p>
+<blockquote><p><code>func $initPair(self any, key String, value any) <void></code></p>
+</blockquote><blockquote><p><code>func $get(self any, name String) dyn</code></p>
+</blockquote><blockquote><p><code>func $set(self any, name String, value any) </code></p>
+</blockquote><blockquote><p><code>func $index(self any, key any) dyn</code></p>
+</blockquote><blockquote><p><code>func $setIndex(self any, key any, value any) <void></code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-map"><code>type Map</code> <a href="#type-map">#</a></h3>
-<blockquote><p><code>func $initPair(key any, value any) <void></code></p>
-</blockquote><blockquote><p><code>func $index(key any) dyn</code></p>
-</blockquote><blockquote><p><code>func $setIndex(key any, val any) <void></code></p>
-</blockquote><blockquote><p><code>func contains(key any) bool</code></p>
+<blockquote><p><code>func $initPair(self any, key any, value any) <void></code></p>
+</blockquote><blockquote><p><code>func $index(self any, key any) dyn</code></p>
+</blockquote><blockquote><p><code>func $setIndex(self any, key any, val any) <void></code></p>
+</blockquote><blockquote><p><code>func contains(self any, key any) bool</code></p>
 <p>Returns whether there is a value mapped to <code>key</code>.</p>
-</blockquote><blockquote><p><code>func get(key any) ?any</code></p>
+</blockquote><blockquote><p><code>func get(self any, key any) ?any</code></p>
 <p>Returns value mapped to <code>key</code> or returns <code>none</code>.</p>
-</blockquote><blockquote><p><code>func remove(key any) bool</code></p>
+</blockquote><blockquote><p><code>func remove(self any, key any) bool</code></p>
 <p>Removes the element with the given key <code>key</code>.</p>
-</blockquote><blockquote><p><code>func size() int</code></p>
+</blockquote><blockquote><p><code>func size(self any) int</code></p>
 <p>Returns the number of key-value pairs in the map.</p>
-</blockquote><blockquote><p><code>func iterator() MapIterator</code></p>
+</blockquote><blockquote><p><code>func iterator(self any) MapIterator</code></p>
 <p>Returns a new iterator over the map elements.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-mapiterator"><code>type MapIterator</code> <a href="#type-mapiterator">#</a></h3>
-<blockquote><p><code>func next() ?any</code></p>
+<blockquote><p><code>func next(self any) ?any</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-string"><code>type String</code> <a href="#type-string">#</a></h3>
-<blockquote><p><code>func $infix+(o any) String</code></p>
+<blockquote><p><code>func $infix+(self any, o any) String</code></p>
 <p>Returns a new string that concats this string and <code>str</code>.</p>
-</blockquote><blockquote><p><code>func concat(o String) String</code></p>
+</blockquote><blockquote><p><code>func concat(self any, o String) String</code></p>
 <p>Returns a new string that concats this string and <code>str</code>.</p>
-</blockquote><blockquote><p><code>func count() int</code></p>
+</blockquote><blockquote><p><code>func count(self any) int</code></p>
 <p>Returns the number of runes in the string.</p>
-</blockquote><blockquote><p><code>func endsWith(suffix String) bool</code></p>
+</blockquote><blockquote><p><code>func endsWith(self any, suffix String) bool</code></p>
 <p>Returns whether the string ends with <code>suffix</code>.</p>
-</blockquote><blockquote><p><code>func find(needle String) ?int</code></p>
+</blockquote><blockquote><p><code>func find(self any, needle String) ?int</code></p>
 <p>Returns the first byte index of substring <code>needle</code> in the string or <code>none</code> if not found. SIMD enabled.</p>
-</blockquote><blockquote><p><code>func findAnyRune(runes String) ?int</code></p>
+</blockquote><blockquote><p><code>func findAnyRune(self any, runes List[int]) ?int</code></p>
 <p>Returns the first byte index of any rune in <code>runes</code> or <code>none</code> if not found. SIMD enabled.</p>
-</blockquote><blockquote><p><code>func findRune(rune int) ?int</code></p>
+</blockquote><blockquote><p><code>func findRune(self any, rune int) ?int</code></p>
 <p>Returns the first byte index of a rune <code>needle</code> in the string or <code>none</code> if not found. SIMD enabled.</p>
-</blockquote><blockquote><p><code>func insert(idx int, str String) String</code></p>
+</blockquote><blockquote><p><code>func insert(self any, idx int, str String) String</code></p>
 <p>Returns a new string with <code>str</code> inserted at byte index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func isAscii() bool</code></p>
+</blockquote><blockquote><p><code>func isAscii(self any) bool</code></p>
 <p>Returns whether the string contains all ASCII runes.</p>
-</blockquote><blockquote><p><code>func len() int</code></p>
+</blockquote><blockquote><p><code>func len(self any) int</code></p>
 <p>Returns the byte length of the string. See <code>count()</code> to obtain the number of runes.</p>
-</blockquote><blockquote><p><code>func less(other String) bool</code></p>
+</blockquote><blockquote><p><code>func less(self any, other String) bool</code></p>
 <p>Returns whether this string is lexicographically before <code>other</code>.</p>
-</blockquote><blockquote><p><code>func lower() String</code></p>
+</blockquote><blockquote><p><code>func lower(self any) String</code></p>
 <p>Returns this string in lowercase.</p>
-</blockquote><blockquote><p><code>func replace(needle String, replacement String) String</code></p>
+</blockquote><blockquote><p><code>func replace(self any, needle String, replacement String) String</code></p>
 <p>Returns a new string with all occurrences of <code>needle</code> replaced with <code>replacement</code>.</p>
-</blockquote><blockquote><p><code>func repeat(n int) String</code></p>
+</blockquote><blockquote><p><code>func repeat(self any, n int) String</code></p>
 <p>Returns a new string with this string repeated <code>n</code> times.</p>
-</blockquote><blockquote><p><code>func seek(idx int) int</code></p>
+</blockquote><blockquote><p><code>func seek(self any, idx int) int</code></p>
 <p>Returns the starting byte index for the rune index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func sliceAt(idx int) String</code></p>
+</blockquote><blockquote><p><code>func sliceAt(self any, idx int) String</code></p>
 <p>Returns the UTF-8 rune starting at byte index <code>idx</code> as a string.</p>
-</blockquote><blockquote><p><code>func $index(idx int) int</code></p>
+</blockquote><blockquote><p><code>func $index(self any, idx int) int</code></p>
 <p>Returns the rune at byte index <code>idx</code>. The replacement character (0xFFFD) is returned for an invalid UTF-8 rune.</p>
-</blockquote><blockquote><p><code>func $index(range Range) String</code></p>
+</blockquote><blockquote><p><code>func $index(self any, range Range) String</code></p>
 <p>Returns a slice into this string from a <code>Range</code> with <code>start</code> (inclusive) to <code>end</code> (exclusive) byte indexes.</p>
-</blockquote><blockquote><p><code>func split(sep String) List[String]</code></p>
+</blockquote><blockquote><p><code>func split(self any, sep String) List[String]</code></p>
 <p>Returns a list of UTF-8 strings split at occurrences of <code>sep</code>.</p>
-</blockquote><blockquote><p><code>func startsWith(prefix String) bool</code></p>
+</blockquote><blockquote><p><code>func startsWith(self any, prefix String) bool</code></p>
 <p>Returns whether the string starts with <code>prefix</code>.</p>
-</blockquote><blockquote><p><code>func trim(mode symbol, delims String) String</code></p>
+</blockquote><blockquote><p><code>func trim(self any, mode symbol, delims String) String</code></p>
 <p>Returns the string with ends trimmed from runes in <code>delims</code>. <code>mode</code> can be .left, .right, or .ends.</p>
-</blockquote><blockquote><p><code>func upper() String</code></p>
+</blockquote><blockquote><p><code>func upper(self any) String</code></p>
 <p>Returns this string in uppercase.</p>
 </blockquote><blockquote><p><code>func String.$call(val any) String</code></p>
 <p>Converts a value to a string.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-array"><code>type Array</code> <a href="#type-array">#</a></h3>
-<blockquote><p><code>func $infix+(o any) Array</code></p>
-</blockquote><blockquote><p><code>func concat(other Array) Array</code></p>
+<blockquote><p><code>func $infix+(self any, o any) Array</code></p>
+</blockquote><blockquote><p><code>func concat(self any, other Array) Array</code></p>
 <p>Returns a new array that concats this array and <code>other</code>.</p>
-</blockquote><blockquote><p><code>func decode() String</code></p>
+</blockquote><blockquote><p><code>func decode(self any) String</code></p>
 <p>Calls decode(.utf8)</p>
-</blockquote><blockquote><p><code>func decode(encoding symbol) String</code></p>
+</blockquote><blockquote><p><code>func decode(self any, encoding symbol) String</code></p>
 <p>Decodes the array based on an <code>encoding</code>. Supported encodings: <code>.utf8</code>.  Returns the decoded string or throws <code>error.Decode</code>.</p>
-</blockquote><blockquote><p><code>func endsWith(suffix Array) bool</code></p>
+</blockquote><blockquote><p><code>func endsWith(self any, suffix Array) bool</code></p>
 <p>Returns whether the array ends with <code>suffix</code>.</p>
-</blockquote><blockquote><p><code>func find(needle Array) ?int</code></p>
+</blockquote><blockquote><p><code>func find(self any, needle Array) ?int</code></p>
 <p>Returns the first index of <code>needle</code> in the array or <code>none</code> if not found.</p>
-</blockquote><blockquote><p><code>func findAnyByte(bytes Array) ?int</code></p>
+</blockquote><blockquote><p><code>func findAnyByte(self any, bytes Array) ?int</code></p>
 <p>Returns the first index of any <code>bytes</code> in <code>arrays</code> or <code>none</code> if not found.</p>
-</blockquote><blockquote><p><code>func findByte(byte int) ?int</code></p>
+</blockquote><blockquote><p><code>func findByte(self any, byte int) ?int</code></p>
 <p>Returns the first index of <code>byte</code> in the array or <code>none</code> if not found.</p>
-</blockquote><blockquote><p><code>func fmt(kind symbol) String</code></p>
-<p>Formats each byte in the array using a kind specifier which can be binary <code>.b</code>,  octal <code>.o</code>, decimal <code>.d</code>, hexadecimal <code>.x</code>, ASCII <code>.c</code>.  Each byte is zero padded.</p>
-</blockquote><blockquote><p><code>func getByte(idx int) int</code></p>
+</blockquote><blockquote><p><code>func fmt(self any, format NumberFormat) String</code></p>
+<p>Formats each byte in the array using a NumberFormat.  Each byte is zero padded.</p>
+</blockquote><blockquote><p><code>func getByte(self any, idx int) int</code></p>
 <p>Returns the byte value (0-255) at the given index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func getInt(idx int, endian symbol) int</code></p>
+</blockquote><blockquote><p><code>func getInt(self any, idx int, endian symbol) int</code></p>
 <p>Returns the int value of the 6 bytes starting from <code>idx</code> with the given endianness (.little or .big).</p>
-</blockquote><blockquote><p><code>func getInt32(idx int, endian symbol) int</code></p>
+</blockquote><blockquote><p><code>func getInt32(self any, idx int, endian symbol) int</code></p>
 <p>Returns the int value of the 4 bytes starting from <code>idx</code> with the given endianness (.little or .big).</p>
-</blockquote><blockquote><p><code>func insert(idx int, arr Array) Array</code></p>
+</blockquote><blockquote><p><code>func insert(self any, idx int, arr Array) Array</code></p>
 <p>Returns a new array with <code>arr</code> inserted at index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func insertByte(idx int, byte int) Array</code></p>
+</blockquote><blockquote><p><code>func insertByte(self any, idx int, byte int) Array</code></p>
 <p>Returns a new array with <code>byte</code> inserted at index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func iterator() ArrayIterator</code></p>
+</blockquote><blockquote><p><code>func iterator(self any) ArrayIterator</code></p>
 <p>Returns a new iterator over the array bytes.</p>
-</blockquote><blockquote><p><code>func len() int</code></p>
+</blockquote><blockquote><p><code>func len(self any) int</code></p>
 <p>Returns the number of bytes in the array.</p>
-</blockquote><blockquote><p><code>func repeat(n int) Array</code></p>
+</blockquote><blockquote><p><code>func repeat(self any, n int) Array</code></p>
 <p>Returns a new array with this array repeated <code>n</code> times.</p>
-</blockquote><blockquote><p><code>func replace(needle Array, replacement Array) Array</code></p>
+</blockquote><blockquote><p><code>func replace(self any, needle Array, replacement Array) Array</code></p>
 <p>Returns a new array with all occurrences of <code>needle</code> replaced with <code>replacement</code>.</p>
-</blockquote><blockquote><p><code>func $index(idx int) int</code></p>
-</blockquote><blockquote><p><code>func $index(range Range) Array</code></p>
+</blockquote><blockquote><p><code>func $index(self any, idx int) int</code></p>
+</blockquote><blockquote><p><code>func $index(self any, range Range) Array</code></p>
 <p>Returns a slice into this array from a <code>Range</code> with <code>start</code> (inclusive) to <code>end</code> (exclusive) indexes.</p>
-</blockquote><blockquote><p><code>func split(sep Array) List[Array]</code></p>
+</blockquote><blockquote><p><code>func split(self any, sep Array) List[Array]</code></p>
 <p>Returns a list of arrays split at occurrences of <code>sep</code>.</p>
-</blockquote><blockquote><p><code>func startsWith(prefix Array) bool</code></p>
+</blockquote><blockquote><p><code>func startsWith(self any, prefix Array) bool</code></p>
 <p>Returns whether the array starts with <code>prefix</code>.</p>
-</blockquote><blockquote><p><code>func trim(mode symbol, delims Array) Array</code></p>
+</blockquote><blockquote><p><code>func trim(self any, mode symbol, delims Array) Array</code></p>
 <p>Returns the array with ends trimmed from runes in <code>delims</code>. <code>mode</code> can be .left, .right, or .ends.</p>
 </blockquote><blockquote><p><code>func Array.$call(val any) Array</code></p>
 <p>Converts a string to an byte <code>Array</code>.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-arrayiterator"><code>type ArrayIterator</code> <a href="#type-arrayiterator">#</a></h3>
-<blockquote><p><code>func next() ?any</code></p>
+<blockquote><p><code>func next(self any) ?any</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-pointer"><code>type pointer</code> <a href="#type-pointer">#</a></h3>
-<blockquote><p><code>func addr() int</code></p>
-<p>Returns the memory address as an <code>int</code>. The value may be negative since it's  bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.</p>
-</blockquote><blockquote><p><code>func asObject() any</code></p>
-<p>Unsafe. Casts the pointer to a Cyber object. The object is retained before it's returned.</p>
-</blockquote><blockquote><p><code>func fromCstr(offset int) Array</code></p>
-<p>Unsafe. Returns an <code>Array</code> from a null terminated C string.</p>
-</blockquote><blockquote><p><code>func get(offset int, ctype symbol) any</code></p>
-<p>Unsafe. Dereferences the pointer at a byte offset and returns the C value converted to Cyber.</p>
-</blockquote><blockquote><p><code>func set(offset int, ctype symbol, val any) <void></code></p>
-<p>Unsafe. Converts the value to a compatible C value and writes it to a byte offset from this pointer.</p>
-</blockquote><blockquote><p><code>func toArray(offset int, len int) Array</code></p>
-<p>Unsafe. Returns an <code>Array</code> with a copy of the byte data starting from an offset to the specified length.</p>
-</blockquote><blockquote><p><code>func pointer.$call(val any) pointer</code></p>
-<p>Converts a <code>int</code> to a <code>pointer</code> value, or casts to a <code>pointer</code>. This is usually used with FFI.</p>
+<blockquote><p><code>func $index(self any, idx int) *T</code></p>
+</blockquote><blockquote><p><code>func $index(self any, range Range) []T</code></p>
+</blockquote><blockquote><p><code>func $setIndex(self any, idx int, val T) <void></code></p>
+</blockquote><blockquote><p><code>func addr(self any) int</code></p>
+<p>When pointer runtime safety is enabled, this returns the raw pointer address as an <code>int64</code>.   Otherwise, the pointer itself is bitcasted to an <code>int64</code>.</p>
+</blockquote><blockquote><p><code>func asObject(self any) any</code></p>
+<p>Casts the pointer to a Cyber object. The object is retained before it's returned.</p>
+</blockquote><blockquote><p><code>func fromCstr(self any, offset int) Array</code></p>
+<p>Returns an <code>Array</code> from a null terminated C string.</p>
+</blockquote><blockquote><p><code>func get(self any, offset int, ctype symbol) dyn</code></p>
+<p>Dereferences the pointer at a byte offset and returns the C value converted to Cyber.</p>
+</blockquote><blockquote><p><code>func set(self any, offset int, ctype symbol, val any) <void></code></p>
+<p>Converts the value to a compatible C value and writes it to a byte offset from this pointer.</p>
+</blockquote><blockquote><p><code>func toArray(self any, offset int, len int) Array</code></p>
+<p>Returns an <code>Array</code> with a copy of the byte data starting from an offset to the specified length.</p>
+</blockquote><blockquote><p><code>func pointer.$call(T type, addr int) *T</code></p>
+<p>Converts an <code>int</code> to a <code>pointer</code> value.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-closure"><code>type Closure</code> <a href="#type-closure">#</a></h3>
 <a href="#modules">^topic</a>
@@ -3137,30 +3354,49 @@ print typeof('my str').id()
 <h3 id="type-hostfunc"><code>type HostFunc</code> <a href="#type-hostfunc">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-externfunc"><code>type ExternFunc</code> <a href="#type-externfunc">#</a></h3>
-<blockquote><p><code>func addr() int</code></p>
+<blockquote><p><code>func addr(self any) int</code></p>
 <p>Returns the memory address as an <code>int</code>. The value may be negative since it's  bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.</p>
+</blockquote><blockquote><p><code>func ptr(self any) *<void></code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-fiber"><code>type Fiber</code> <a href="#type-fiber">#</a></h3>
-<blockquote><p><code>func status() symbol</code></p>
+<blockquote><p><code>func status(self any) symbol</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-metatype"><code>type metatype</code> <a href="#type-metatype">#</a></h3>
-<blockquote><p><code>func id() int</code></p>
+<blockquote><p><code>func id(self any) int</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-range"><code>type Range</code> <a href="#type-range">#</a></h3>
-<a href="#modules">^topic</a>
-<h3 id="type-box"><code>type Box</code> <a href="#type-box">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-tccstate"><code>type TccState</code> <a href="#type-tccstate">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-future"><code>type Future</code> <a href="#type-future">#</a></h3>
-<blockquote><p><code>func Future.complete(val <comptimeExpr>) Future[T]</code></p>
+<blockquote><p><code>func Future.complete(val T) Future[T]</code></p>
 <p>Returns a <code>Future[T]</code> that has a completed value.</p>
 </blockquote><blockquote><p><code>func Future.new(T type) Future[T]</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-futureresolver"><code>type FutureResolver</code> <a href="#type-futureresolver">#</a></h3>
-<blockquote><p><code>func complete(val T) <void></code></p>
-</blockquote><blockquote><p><code>func future() Future[T]</code></p>
+<blockquote><p><code>func complete(self any, val T) <void></code></p>
+</blockquote><blockquote><p><code>func future(self any) Future[T]</code></p>
 </blockquote><blockquote><p><code>func FutureResolver.new(T type) FutureResolver[T]</code></p>
+</blockquote><a href="#modules">^topic</a>
+<h3 id="type-slice"><code>type Slice</code> <a href="#type-slice">#</a></h3>
+<blockquote><p><code>func $index(self any, idx int) *T</code></p>
+</blockquote><blockquote><p><code>func $index(self any, range Range) []T</code></p>
+</blockquote><blockquote><p><code>func $setIndex(self any, idx int, val T) <void></code></p>
+</blockquote><blockquote><p><code>func len(self any) int</code></p>
+</blockquote><a href="#modules">^topic</a>
+<h3 id="type-imemory-trait"><code>type IMemory trait</code> <a href="#type-imemory-trait">#</a></h3>
+<blockquote><p><code>func alloc(self any, len int) []byte</code></p>
+</blockquote><blockquote><p><code>func free(self any, buf []byte) <void></code></p>
+</blockquote><a href="#modules">^topic</a>
+<h3 id="type-memory"><code>type Memory</code> <a href="#type-memory">#</a></h3>
+<blockquote><p><code>func new(self any, T type) *T</code></p>
+</blockquote><blockquote><p><code>func alloc(self any, T type, n int) []T</code></p>
+</blockquote><blockquote><p><code>func free(self any, ptr *T) </code></p>
+</blockquote><blockquote><p><code>func free(self any, slice []T) </code></p>
+</blockquote><a href="#modules">^topic</a>
+<h3 id="type-defaultmemory"><code>type DefaultMemory</code> <a href="#type-defaultmemory">#</a></h3>
+<blockquote><p><code>func alloc(self any, len int) []byte</code></p>
+</blockquote><blockquote><p><code>func free(self any, buf []byte) <void></code></p>
 </blockquote><!-- core.end -->
 <a href="#modules">^topic</a>
 <h2 id="mod-cy"><code>mod cy</code> <a href="#mod-cy">#</a></h2>
@@ -3192,23 +3428,23 @@ print cy.toCyon([1, 2, 3])
 <h3 id="type-evalresult"><code>type EvalResult</code> <a href="#type-evalresult">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-value"><code>type Value</code> <a href="#type-value">#</a></h3>
-<blockquote><p><code>func dump() String</code></p>
-</blockquote><blockquote><p><code>func getTypeId() int</code></p>
-</blockquote><blockquote><p><code>func toHost() any</code></p>
+<blockquote><p><code>func dump(self any) String</code></p>
+</blockquote><blockquote><p><code>func getTypeId(self any) int</code></p>
+</blockquote><blockquote><p><code>func toHost(self any) any</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-vm"><code>type VM</code> <a href="#type-vm">#</a></h3>
-<blockquote><p><code>func eval(code String) EvalResult</code></p>
-</blockquote><blockquote><p><code>func eval(uri String, code String, config EvalConfig) EvalResult</code></p>
-</blockquote><blockquote><p><code>func getErrorSummary() String</code></p>
-</blockquote><blockquote><p><code>func getPanicSummary() String</code></p>
+<blockquote><p><code>func eval(self any, code String) EvalResult</code></p>
+</blockquote><blockquote><p><code>func eval(self any, uri String, code String, config EvalConfig) EvalResult</code></p>
+</blockquote><blockquote><p><code>func getErrorSummary(self any) String</code></p>
+</blockquote><blockquote><p><code>func getPanicSummary(self any) String</code></p>
 </blockquote><blockquote><p><code>func VM.new() VM</code></p>
 <p>Create an isolated VM.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-repl"><code>type REPL</code> <a href="#type-repl">#</a></h3>
-<blockquote><p><code>func printIntro() </code></p>
-</blockquote><blockquote><p><code>func read(read_line dyn) ?String</code></p>
-</blockquote><blockquote><p><code>func evalPrint(code String) <void></code></p>
-</blockquote><blockquote><p><code>func getPrefix() String</code></p>
+<blockquote><p><code>func printIntro(self any) </code></p>
+</blockquote><blockquote><p><code>func read(self any, read_line dyn) ?String</code></p>
+</blockquote><blockquote><p><code>func evalPrint(self any, code String) <void></code></p>
+</blockquote><blockquote><p><code>func getPrefix(self any) String</code></p>
 </blockquote><blockquote><p><code>func REPL.new() REPL</code></p>
 </blockquote><!-- cy.end -->
 <a href="#modules">^topic</a>
@@ -3385,7 +3621,7 @@ for map -> [k, v]:
 <p>Creates the directory at <code>path</code>. Returns <code>true</code> if successful.</p>
 </blockquote><blockquote><p><code>func createFile(path String, truncate bool) File</code></p>
 <p>Creates and opens the file at <code>path</code>. If <code>truncate</code> is true, an existing file will be truncated.</p>
-</blockquote><blockquote><p><code>func cstr(s any) pointer</code></p>
+</blockquote><blockquote><p><code>func cstr(s any) *<void></code></p>
 <p>Returns a null terminated C string.</p>
 </blockquote><blockquote><p><code>func cwd() String</code></p>
 <p>Returns the current working directory.</p>
@@ -3399,13 +3635,13 @@ for map -> [k, v]:
 <p>Exits the program with a status code.</p>
 </blockquote><blockquote><p><code>func fetchUrl(url String) Array</code></p>
 <p>Fetches the contents at <code>url</code> using the HTTP GET request method.</p>
-</blockquote><blockquote><p><code>func free(ptr pointer) <void></code></p>
+</blockquote><blockquote><p><code>func free(ptr *<void>) <void></code></p>
 <p>Frees the memory located at <code>ptr</code>.</p>
 </blockquote><blockquote><p><code>func getEnv(key String) ?String</code></p>
 <p>Returns an environment variable by key.</p>
 </blockquote><blockquote><p><code>func getEnvAll() Map</code></p>
 <p>Returns all environment variables as a <code>Map</code>.</p>
-</blockquote><blockquote><p><code>func malloc(size int) pointer</code></p>
+</blockquote><blockquote><p><code>func malloc(size int) *<void></code></p>
 <p>Allocates <code>size</code> bytes of memory and returns a pointer.</p>
 </blockquote><blockquote><p><code>func milliTime() float</code></p>
 <p>Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01.  For an high resolution timestamp, use <code>now()</code>.</p>
@@ -3443,56 +3679,56 @@ for map -> [k, v]:
 <p>Writes <code>contents</code> as a string or bytes to a file.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-file"><code>type File</code> <a href="#type-file">#</a></h3>
-<blockquote><p><code>func close() <void></code></p>
+<blockquote><p><code>func close(self any) <void></code></p>
 <p>Closes the file handle. File ops invoked afterwards will return <code>error.Closed</code>.</p>
-</blockquote><blockquote><p><code>func iterator() any</code></p>
-</blockquote><blockquote><p><code>func next() any</code></p>
-</blockquote><blockquote><p><code>func read(n int) Array</code></p>
+</blockquote><blockquote><p><code>func iterator(self any) any</code></p>
+</blockquote><blockquote><p><code>func next(self any) any</code></p>
+</blockquote><blockquote><p><code>func read(self any, n int) Array</code></p>
 <p>Reads at most <code>n</code> bytes as an <code>Array</code>. <code>n</code> must be at least 1.  A result with length 0 indicates the end of file was reached.</p>
-</blockquote><blockquote><p><code>func readAll() Array</code></p>
+</blockquote><blockquote><p><code>func readAll(self any) Array</code></p>
 <p>Reads to the end of the file and returns the content as an <code>Array</code>.</p>
-</blockquote><blockquote><p><code>func seek(n int) <void></code></p>
+</blockquote><blockquote><p><code>func seek(self any, n int) <void></code></p>
 <p>Seeks the read/write position to <code>pos</code> bytes from the start. Negative <code>pos</code> is invalid.</p>
-</blockquote><blockquote><p><code>func seekFromCur(n int) <void></code></p>
+</blockquote><blockquote><p><code>func seekFromCur(self any, n int) <void></code></p>
 <p>Seeks the read/write position by <code>pos</code> bytes from the current position.</p>
-</blockquote><blockquote><p><code>func seekFromEnd(n int) <void></code></p>
+</blockquote><blockquote><p><code>func seekFromEnd(self any, n int) <void></code></p>
 <p>Seeks the read/write position by <code>pos</code> bytes from the end. Positive <code>pos</code> is invalid.</p>
-</blockquote><blockquote><p><code>func stat() Map</code></p>
+</blockquote><blockquote><p><code>func stat(self any) Map</code></p>
 <p>Returns info about the file as a <code>Map</code>.</p>
-</blockquote><blockquote><p><code>func streamLines() File</code></p>
+</blockquote><blockquote><p><code>func streamLines(self any) File</code></p>
 <p>Equivalent to <code>streamLines(4096)</code>.</p>
-</blockquote><blockquote><p><code>func streamLines(bufSize int) File</code></p>
+</blockquote><blockquote><p><code>func streamLines(self any, bufSize int) File</code></p>
 <p>Returns an iterable that streams lines ending in <code>\n</code>, <code>\r</code>, <code>\r\n</code>, or the <code>EOF</code>.  The lines returned include the new line character(s).  A buffer size of <code>bufSize</code> bytes is allocated for reading.  If <code>\r</code> is found at the end of the read buffer, the line is returned instead of  waiting to see if the next read has a connecting <code>\n</code>.</p>
-</blockquote><blockquote><p><code>func write(val any) int</code></p>
+</blockquote><blockquote><p><code>func write(self any, val any) int</code></p>
 <p>Writes a <code>String</code> or <code>Array</code> at the current file position.  The number of bytes written is returned.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-dir"><code>type Dir</code> <a href="#type-dir">#</a></h3>
-<blockquote><p><code>func iterator() DirIterator</code></p>
+<blockquote><p><code>func iterator(self any) DirIterator</code></p>
 <p>Returns a new iterator over the directory entries.  If this directory was not opened with the iterable flag, <code>error.NotAllowed</code> is returned instead.</p>
-</blockquote><blockquote><p><code>func stat() Map</code></p>
+</blockquote><blockquote><p><code>func stat(self any) Map</code></p>
 <p>Returns info about the file as a <code>Map</code>.</p>
-</blockquote><blockquote><p><code>func walk() DirIterator</code></p>
+</blockquote><blockquote><p><code>func walk(self any) DirIterator</code></p>
 <p>Returns a new iterator over the directory recursive entries.  If this directory was not opened with the iterable flag, <code>error.NotAllowed</code> is returned instead.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-diriterator"><code>type DirIterator</code> <a href="#type-diriterator">#</a></h3>
-<blockquote><p><code>func next() ?Map</code></p>
+<blockquote><p><code>func next(self any) ?Map</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-ffi"><code>type FFI</code> <a href="#type-ffi">#</a></h3>
-<blockquote><p><code>func bindCallback(fn any, params List[dyn], ret symbol) ExternFunc</code></p>
+<blockquote><p><code>func bindCallback(self any, fn any, params List[dyn], ret symbol) ExternFunc</code></p>
 <p>Creates an <code>ExternFunc</code> that contains a C function pointer with the given signature.  The extern function is a wrapper that calls the provided user function.  Once created, the extern function is retained and managed by the FFI context.</p>
-</blockquote><blockquote><p><code>func bindLib(path ?String) any</code></p>
+</blockquote><blockquote><p><code>func bindLib(self any, path ?String) any</code></p>
 <p>Calls <code>bindLib(path, [:])</code>.</p>
-</blockquote><blockquote><p><code>func bindLib(path ?String, config Table) any</code></p>
+</blockquote><blockquote><p><code>func bindLib(self any, path ?String, config Table) any</code></p>
 <p>Creates a handle to a dynamic library and functions declared from <code>cfunc</code>.  By default, an anonymous object is returned with the C-functions binded as the object's methods.  If <code>config</code> contains <code>gen_table: true</code>, a <code>Table</code> is returned instead with C-functions  binded as function values.</p>
-</blockquote><blockquote><p><code>func bindObjPtr(obj any) pointer</code></p>
+</blockquote><blockquote><p><code>func bindObjPtr(self any, obj any) *<void></code></p>
 <p>Returns a Cyber object's pointer. Operations on the pointer is unsafe,  but it can be useful when passing it to C as an opaque pointer.  The object is also retained and managed by the FFI context.</p>
-</blockquote><blockquote><p><code>func cbind(mt metatype, fields List[dyn]) <void></code></p>
+</blockquote><blockquote><p><code>func cbind(self any, mt metatype, fields List[dyn]) <void></code></p>
 <p>Binds a Cyber type to a C struct.</p>
-</blockquote><blockquote><p><code>func cfunc(name String, params List[dyn], ret any) <void></code></p>
+</blockquote><blockquote><p><code>func cfunc(self any, name String, params List[dyn], ret any) <void></code></p>
 <p>Declares a C function which will get binded to the library handle created from <code>bindLib</code>.</p>
-</blockquote><blockquote><p><code>func new(ctype symbol) pointer</code></p>
+</blockquote><blockquote><p><code>func new(self any, ctype symbol) *<void></code></p>
 <p>Allocates memory for a C struct or primitive with the given C type specifier.  A <code>pointer</code> to the allocated memory is returned.  Eventually this will return a <code>cpointer</code> instead which will be more idiomatic to use.</p>
-</blockquote><blockquote><p><code>func unbindObjPtr(obj any) <void></code></p>
+</blockquote><blockquote><p><code>func unbindObjPtr(self any, obj any) <void></code></p>
 <p>Releases the object from the FFI context.  External code should no longer use the object's pointer since it's not guaranteed to exist  or point to the correct object.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-carray"><code>type CArray</code> <a href="#type-carray">#</a></h3>
@@ -3518,11 +3754,11 @@ t.eq(a, 444)
 <!-- test.start -->
 <blockquote><p><code>func assert(pred bool) <void></code></p>
 <p>Panics if <code>pred</code> is <code>false</code>.</p>
-</blockquote><blockquote><p><code>func eq(a <comptimeExpr>, b T) bool</code></p>
+</blockquote><blockquote><p><code>func eq(a T, b T) bool</code></p>
 <p>Returns whether two values are equal.  Panics with <code>error.AssertError</code> if types or values do not match up.</p>
-</blockquote><blockquote><p><code>func eqList(a any, b any) bool</code></p>
+</blockquote><blockquote><p><code>func eqList(a List[T], b List[T]) bool</code></p>
 <p>Returns <code>true</code> if two lists have the same size and the elements are equal  as if <code>eq</code> was called on those corresponding elements.</p>
-</blockquote><blockquote><p><code>func eqNear(a <comptimeExpr>, b T) bool</code></p>
+</blockquote><blockquote><p><code>func eqNear(a T, b T) bool</code></p>
 <p>Returns <code>true</code> if two numbers are near each other within epsilon 1e-5.</p>
 </blockquote><blockquote><p><code>func fail() </code></p>
 </blockquote><blockquote><p><code>func fail(msg String) </code></p>
@@ -3542,7 +3778,6 @@ t.eq(a, 444)
 </li>
 <li><a href="#mappings" title="">Mappings.</a></li>
 <li><a href="#bind-to-cyber-type" title="">Bind to Cyber type.</a></li>
-<li><a href="#pointers" title="">Pointers.</a></li>
 <li><a href="#cbindgency" title="">cbindgen.cy</a></li>
 </ul>
 <p><a href="#table-of-contents" title="">^top</a></p>
@@ -3589,7 +3824,7 @@ Once the object is released by ARC, the TCCState is also released which removes 
 <h2 id="mappings">Mappings. <a href="#mappings">#</a></h2>
 <p>When using <code>cfunc</code> or <code>cbind</code> declarations, <a href="#symbols" title="">symbols</a> are used to represent default type mappings from Cyber to C and back:</p>
 <blockquote><p><em>Incomplete: This is not the final API for dynamically loading and interfacing with C libraries. The plan is to parse a subset of C headers to bind to Cyber types and functions.</em></p>
-</blockquote><table><thead><tr><th>Binding</th><th>Cyber</th><th>C</th></tr></thead><tbody><tr><td>.bool</td><td>bool</td><td>bool</td></tr><tr><td>.char</td><td>int</td><td>int8_t, signed char</td></tr><tr><td>.uchar</td><td>int</td><td>uint8_t, unsigned char</td></tr><tr><td>.short</td><td>int</td><td>int16_t, short</td></tr><tr><td>.ushort</td><td>int</td><td>uint16_t, unsigned short</td></tr><tr><td>.int</td><td>int</td><td>int32_t, int</td></tr><tr><td>.uint</td><td>int</td><td>uint32_t, unsigned int</td></tr><tr><td>.long</td><td>int</td><td>int64_t, long long</td></tr><tr><td>.ulong</td><td>int</td><td>uint64_t, unsigned long long</td></tr><tr><td>.usize</td><td>int</td><td>size_t, uintptr_t</td></tr><tr><td>.float</td><td>float</td><td>float</td></tr><tr><td>.double</td><td>float</td><td>double</td></tr><tr><td>(1) .charPtr</td><td>pointer</td><td>char*</td></tr><tr><td>.voidPtr</td><td>pointer</td><td>void*</td></tr><tr><td>(2) type {S}</td><td>type {S}</td><td>struct</td></tr></tbody></table><ol>
+</blockquote><table><thead><tr><th>Binding</th><th>Cyber</th><th>C</th></tr></thead><tbody><tr><td>.bool</td><td>bool</td><td>bool</td></tr><tr><td>.char</td><td>int</td><td>int8_t, signed char</td></tr><tr><td>.uchar</td><td>int</td><td>uint8_t, unsigned char</td></tr><tr><td>.short</td><td>int</td><td>int16_t, short</td></tr><tr><td>.ushort</td><td>int</td><td>uint16_t, unsigned short</td></tr><tr><td>.int</td><td>int</td><td>int32_t, int</td></tr><tr><td>.uint</td><td>int</td><td>uint32_t, unsigned int</td></tr><tr><td>.long</td><td>int</td><td>int64_t, long long</td></tr><tr><td>.ulong</td><td>int</td><td>uint64_t, unsigned long long</td></tr><tr><td>.usize</td><td>int</td><td>size_t, uintptr_t</td></tr><tr><td>.float</td><td>float</td><td>float</td></tr><tr><td>.double</td><td>float</td><td>double</td></tr><tr><td>(1) .charPtr</td><td>*void</td><td>char*</td></tr><tr><td>.voidPtr</td><td>*void</td><td>void*</td></tr><tr><td>(2) type {S}</td><td>type {S}</td><td>struct</td></tr></tbody></table><ol>
 <li>Use <code>os.cstr()</code> and <code>pointer.fromCstr()</code> to convert between a Cyber string and a null terminated C string.</li>
 <li>The mapping from a Cyber object type <code>S</code> and the C-struct can be declared with <code>cbind</code>.</li>
 </ol>
@@ -3600,7 +3835,7 @@ Once the object is released by ARC, the TCCState is also released which removes 
 
 type MyObject:
     a float
-    b pointer
+    b *void
     c bool
 
 ffi.cbind(MyObject, [.float, .voidPtr, .bool])
@@ -3626,13 +3861,6 @@ let lib = ffi.bindLib('./mylib.so')
 
 var ptr = lib.foo(MyObject{a=123, b=os.cstr('foo'), c=true})
 var res = lib.ptrToMyObject(ptr)
-</code></pre>
-<a href="#ffi">^topic</a>
-<h2 id="pointers">Pointers. <a href="#pointers">#</a></h2>
-<p>A <code>pointer</code> is used to read or write to an exact memory address. This is typically used for FFI to manually map Cyber types to C, and back. See <a href="#type-pointer" title=""><code>type pointer</code></a>.</p>
-<p>A new pointer can be created with the builtin <code>pointer</code>.</p>
-<pre><code class="language-cy">var ptr = pointer(0xDEADBEEF)
-print ptr.value()     --'3735928559'
 </code></pre>
 <a href="#ffi">^topic</a>
 <h2 id="cbindgency">cbindgen.cy <a href="#cbindgency">#</a></h2>
@@ -4276,13 +4504,13 @@ In this example, the dynamic value <code>a</code> resolves to a <code>String</co
     x float
     y float
 
-    func '$infix+'(o Vec2) Vec2:
+    func '$infix+'(self, o Vec2) Vec2:
         return Vec2{
             x = x + o.x,
             y = y + o.y,
         }
 
-    func '$prefix-'() Vec2:
+    func '$prefix-'(self) Vec2:
         return Vec2{x=-x, y=-y}
 
 var a = Vec2{x=1, y=2}
@@ -4293,10 +4521,10 @@ var c = -a
 <pre><code class="language-cy">type MyCollection:
     arr List
 
-    func $index(idx):
+    func $index(self, idx):
         return arr[idx * 2]
 
-    func $setIndex(idx, val):
+    func $setIndex(self, idx, val):
         arr[idx * 2] = val 
 
 var a = MyCollection{arr=[1, 2, 3, 4]}
@@ -4331,7 +4559,7 @@ var v = Vec2(1, 2)
 <p>The <code>$initPair</code> method overrides the record initializer.
 After an instance of the type is created from its default record initializer, this method is invoked for each key-value pair in the record literal:</p>
 <pre><code class="language-cy">type MyMap:
-    func $initPair(key any, value any) void:
+    func $initPair(self, key any, value any) void:
         print "$(key) = $(value)"
 
 var m = MyMap{a=123, b=234}
@@ -4343,7 +4571,7 @@ var m = MyMap{a=123, b=234}
 <h3 id="get-method"><code>$get</code> method. <a href="#get-method">#</a></h3>
 <p>The <code>$get</code> method allows overriding field accesses for <strong>undeclared fields</strong>:</p>
 <pre><code class="language-cy">type Foo:
-    func $get(name String):
+    func $get(self, name String):
         return name.len()
 
 var f = Foo{}
@@ -4354,7 +4582,7 @@ print f.hello    --> 5
 <h3 id="set-method"><code>$set</code> method. <a href="#set-method">#</a></h3>
 <p>The <code>$set</code> method allows overriding field assignments for <strong>undeclared fields</strong>:</p>
 <pre><code class="language-cy">type Foo:
-    func $set(name String, value any):
+    func $set(self, name String, value any):
         print "setting $(name) $(value)"
 
 var f = Foo{}
@@ -4366,7 +4594,7 @@ f.abc = 123      --> setting abc 123
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><pre><code class="language-cy">type A:
 
-    func $missing(args...):
+    func $missing(self, args...):
         return args.len
 
 var a = A{}
@@ -4520,7 +4748,7 @@ Only one module loader can be active and is set using <code>clSetModuleLoader</c
             "\n"
             "@host\n"
             "type MyNode _:\n"
-            "    @host func asList() any"
+            "    @host func asList(self) any"
             "\n"
             "@host func MyNode.new(a any, b any) MyNode\n"
         );
@@ -4700,6 +4928,7 @@ However, it can be useful to perform additional cleanup tasks for instances that
 </li>
 <li><a href="#manual-memory" title="">Manual memory.</a><ul>
 <li><a href="#memory-allocations" title="">Memory allocations.</a></li>
+<li><a href="#runtime-memory-checks" title="">Runtime memory checks.</a></li>
 </ul>
 </li>
 </ul>
@@ -4769,12 +4998,25 @@ print res['numObjFreed']      -- Output: 2
 <h3 id="memory-allocations">Memory allocations. <a href="#memory-allocations">#</a></h3>
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#memory">^topic</a>
+<h3 id="runtime-memory-checks">Runtime memory checks. <a href="#runtime-memory-checks">#</a></h3>
+<p><em>Planned Feature</em>
+When runtime memory checks are enabled, the compiler will insert traps and runtime logic to prevent the following unsafe uses of pointers and memory allocations:</p>
+<ul>
+<li>Use after free.</li>
+<li>Double free.</li>
+<li>Out of bounds memory access.</li>
+<li>Null pointer access.</li>
+<li>Misaligned pointer access.</li>
+<li>Unfreed memory.</li>
+</ul>
+<p>With these checks in place, using manual memory will be much less error prone at the cost of some runtime performance and memory cost. Pointers will occupy an extra word size and the runtime will maintain an allocation table that contains the raw pointer and metadata.</p>
+<a href="#memory">^topic</a>
 <h1 id="cli">CLI. <a href="#cli">#</a></h1>
 <ul>
 <li><a href="#basic-commands" title="">Basic commands.</a></li>
 <li><a href="#repl" title="">REPL.</a></li>
 <li><a href="#jit-compiler" title="">JIT compiler.</a></li>
-<li><a href="#aot-compiler" title="">AOT compiler.</a></li>
+<li><a href="#c-backend" title="">C backend.</a></li>
 </ul>
 <p><a href="#table-of-contents" title="">^top</a></p>
 <h2 id="basic-commands">Basic commands. <a href="#basic-commands">#</a></h2>
@@ -4833,9 +5075,8 @@ a
 </code></pre>
 <p>The goal of the JIT compiler is to be fast at compilation while still being significantly faster than the interpreter. The codegen involves stitching together pregenerated machine code that targets the same runtime stack slots used by the VM. This technique is also known as <code>copy-and-patch</code>. As the VM transitions to unboxed data types, the generated code will see more performance gains.</p>
 <a href="#cli">^topic</a>
-<h2 id="aot-compiler">AOT compiler. <a href="#aot-compiler">#</a></h2>
-<p>The ahead-of-time compiler generates a static or dynamic binary from Cyber source code.
-This is done by first compiling Cyber code into C code, and using a C compiler to generate the final binary.
+<h2 id="c-backend">C backend. <a href="#c-backend">#</a></h2>
+<p>The C backend generates a static binary from Cyber source code by first transpiling to C code and relying on a C compiler to produce the final executable.
 The user can specify the system's <code>cc</code> compiler or the builtin <code>tinyc</code> compiler that is bundled with the CLI.
 <em>This is currently in progress.</em></p>
 <p>&nbsp;</p>
@@ -5216,12 +5457,12 @@ hljs.registerLanguage('cy', function() {
     keywords: {
         keyword: [
             'func', 'mod', 'for', 'coinit', 'coresume', 'coyield', 'use', 'await', 'context',
-            'return', 'if', 'else', 'as', 'while', 'var', 'let', 'dynobject', 'object', 'struct', 'with', 'caught',
+            'return', 'if', 'else', 'as', 'while', 'var', 'let', 'dynobject', 'object', 'struct', 'cstruct', 'with', 'caught',
             'break', 'continue', 'switch', 'pass', 'or', 'and', 'not', 'is', 'error', 'throws',
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case', 'trait'
         ],
         type: [
-            'float', 'String', 'Array', 'bool', 'any', 'int', 'List', 'Map', 'symbol', 'pointer', 'dyn'
+            'float', 'String', 'Array', 'bool', 'any', 'int', 'List', 'Map', 'symbol', 'dyn'
         ],
     },
     contains: [

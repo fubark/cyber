@@ -1376,25 +1376,18 @@ fn genBinOp(c: *Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, node: *ast.No
         },
         else => {},
     }
-    const inst = try c.rega.selectForDstInst(cstr, willRetain, node);
-
-    var prefer = PreferDst{
-        .dst = inst.dst,
-        .canUseDst = !c.isParamOrLocalVar(inst.dst),
-    };
+    const inst = try bc.selectForDstInst(c, cstr, ret_t, willRetain, node);
 
     // Lhs.
     var leftv: GenValue = undefined;
     if (opts.left) |left| {
         leftv = left;
     } else {
-        leftv = try genExpr(c, data.left, Cstr.preferVolatileIf(prefer.canUseDst, prefer.dst));
-        try pushUnwindValue(c, leftv);
+        leftv = try genExpr(c, data.left, Cstr.simple);
     }
 
     // Rhs.
-    const rightv = try genExpr(c, data.right, prefer.nextCstr(leftv));
-    try pushUnwindValue(c, rightv);
+    const rightv = try genExpr(c, data.right, Cstr.simple);
 
     var retained = false;
     switch (data.op) {
@@ -1635,10 +1628,6 @@ fn genLocalReg(c: *Chunk, reg: SlotId, slot_t: cy.TypeId, cstr: Cstr, node: *ast
         const srcv = regValue(c, reg, false);
         var exact_cstr = cstr;
         switch (cstr.type) {
-            .preferVolatile => {
-                exact_cstr = Cstr.toLocal(reg, false);
-                exact_cstr.data.reg.retain = false;
-            },
             .simple => {
                 exact_cstr = Cstr.toLocal(reg, false);
                 exact_cstr.data.slot.retain = slot.boxed and cstr.data.simple.retain;

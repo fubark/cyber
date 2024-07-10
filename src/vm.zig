@@ -19,6 +19,7 @@ const types = cy.types;
 const builtins = @import("builtins/builtins.zig");
 const bindings = @import("builtins/bindings.zig");
 const math_mod = @import("builtins/math.zig");
+const bc = @import("bc_gen.zig");
 const Value = cy.Value;
 const debug = @import("debug.zig");
 const http = @import("http.zig");
@@ -362,6 +363,10 @@ pub const VM = struct {
     pub fn deinitRtObjects(self: *VM) void {
         if (self.deinitedRtObjects) {
             return;
+        }
+
+        for (self.c.getContextVars().items()) |context_var| {
+            self.release(context_var.value);
         }
 
         logger.tracev("release varSyms", .{});

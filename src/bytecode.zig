@@ -802,6 +802,11 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[3].val;
             len += try fmt.printCount(w, "%{} = vars[{}]", &.{v(dst), v(symId)});
         },
+        .context => {
+            const idx = pc[1].val;
+            const dst = pc[2].val;
+            len += try fmt.printCount(w, "%{} = context_vars[{}]", &.{v(dst), v(idx)});
+        },
         .setStaticVar => {
             const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
             const src = pc[3].val;

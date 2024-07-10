@@ -251,9 +251,13 @@ pub const Compiler = struct {
         if (!self.cont) {
             try reserveCoreTypes(self);
             try loadCtBuiltins(self);
+            try self.context_vars.put(self.alloc, "mem", .{
+                .type = bt.Memory,
+                .idx = 0,
+            });
             try self.context_vars.put(self.alloc, "test_int", .{
                 .type = bt.Integer,
-                .idx = 0,
+                .idx = 1,
             });
         }
 
@@ -362,12 +366,12 @@ pub const Compiler = struct {
                         const decl = object_t.decl.?.cast(.objectDecl);
                         const mod = object_t.getMod();
 
-                        for (impls, 0..) |*impl, i| {
+                        for (impls) |*impl| {
                             const trait_members = impl.trait.members();
                             const funcs = try self.alloc.alloc(*cy.Func, trait_members.len);
                             errdefer self.alloc.free(funcs);
 
-                            for (trait_members) |member| {
+                            for (trait_members, 0..) |member, i| {
                                 const func = mod.getTraitMethodImpl(self, member) orelse {
                                     const sig_str = try self.sema.allocFuncSigStr(member.func.funcSigId, true, mod.chunk);
                                     defer self.alloc.free(sig_str);
@@ -1051,6 +1055,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.MetaType,
         bt.Range,
         bt.Table,
+        bt.Memory,
     };
 
     for (type_ids) |type_id| {

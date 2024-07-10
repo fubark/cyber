@@ -66,6 +66,7 @@ pub const Symbol = enum {
     PermissionDenied,
     UnknownError,
     Unicode,
+    Unsupported,
 
     running,
     paused,

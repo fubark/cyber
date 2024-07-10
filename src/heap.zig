@@ -586,6 +586,17 @@ pub const Trait = extern struct {
     vtable: u32,
 };
 
+fn allocTrait(vm: *cy.VM, type_id: cy.TypeId, vtable: u16, impl: cy.Value) !cy.Value {
+    const obj = try allocPoolObject(vm);
+    obj.trait = .{
+        .typeId = type_id | vmc.CYC_TYPE_MASK,
+        .rc = 1,
+        .impl = impl,
+        .vtable = vtable,
+    };
+    return Value.initCycPtr(obj);
+}
+
 pub const Object = extern struct {
     typeId: cy.TypeId,
     rc: u32,
@@ -1579,6 +1590,7 @@ pub const VmExt = struct {
     pub const allocMapIterator = Root.allocMapIterator;
     pub const allocObjectSmall = Root.allocObjectSmall;
     pub const allocType = Root.allocType;
+    pub const allocTrait = Root.allocTrait;
     pub const allocFuture = Root.allocFuture;
     pub const allocFutureResolver = Root.allocFutureResolver;
 

@@ -1690,12 +1690,12 @@ pub fn reserveFuncTemplateVariant(c: *cy.Chunk, tfunc: *cy.Func, opt_header_decl
     var func: *cy.Func = undefined;
     const decl = tfunc.decl.?.cast(.funcDecl);
     if (decl.stmts.len == 0) {
-        func = try c.createFunc(.hostFunc, @ptrCast(c.sym), sym, @ptrCast(opt_header_decl), tfunc.isMethod());
+        func = try c.createFunc(.hostFunc, tfunc.parent, sym, @ptrCast(opt_header_decl), tfunc.isMethod());
         func.data = .{ .hostFunc = .{
             .ptr = undefined,
         }};
     } else {
-        func = try c.createFunc(.userFunc, @ptrCast(c.sym), sym, @ptrCast(opt_header_decl), tfunc.isMethod());
+        func = try c.createFunc(.userFunc, tfunc.parent, sym, @ptrCast(opt_header_decl), tfunc.isMethod());
     }
     func.is_nested = tfunc.is_nested;
     func.variant = variant;
@@ -3138,10 +3138,17 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, node: *ast.Node, symAsValue: bool) !ExprR
         }
     } else {
         if (sym.isVariable()) {
-            const typeId = (try sym.getValueType()) orelse return error.Unexpected;
-            const ctype = CompactType.init(typeId);
-            const loc = try c.ir.pushExpr(.varSym, c.alloc, typeId, node, .{ .sym = sym });
-            return ExprResult.initCustom(loc, .varSym, ctype, .{ .varSym = sym });
+            if (sym.type == .context_var) {
+                const typeId = (try sym.getValueType()) orelse return error.Unexpected;
+                const ctype = CompactType.init(typeId);
+                const loc = try c.ir.pushExpr(.context, c.alloc, typeId, node, .{ .sym = @ptrCast(sym) });
+                return ExprResult.init(loc, ctype);
+            } else {
+                const typeId = (try sym.getValueType()) orelse return error.Unexpected;
+                const ctype = CompactType.init(typeId);
+                const loc = try c.ir.pushExpr(.varSym, c.alloc, typeId, node, .{ .sym = sym });
+                return ExprResult.initCustom(loc, .varSym, ctype, .{ .varSym = sym });
+            }
         }
         var typeId: CompactType = undefined;
         if (sym.isType()) {

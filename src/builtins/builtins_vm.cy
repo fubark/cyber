@@ -40,6 +40,11 @@ func bitcast(#D type, val #S) D:
 --| Returns the statistics of the run in a map value.
 @host func performGC() Map
 
+func ptrcast(#D type, val #S) *D:
+    return ptrcast_(D, (S).id(), val)
+
+@host -func ptrcast_(#D type, src_t int, val #S) *D
+
 --| Prints a value. The host determines how it is printed.
 @host func print(str any) void
 
@@ -48,6 +53,11 @@ func bitcast(#D type, val #S) D:
 
 --| Converts a rune to a string.
 @host func runestr(val int) String
+
+func sizeof(#T type) int:
+    return sizeof_((T).id())
+
+@host func sizeof_(type_id int) int
 
 --| Returns the value's type as a `metatype` object.
 @host func typeof(val any) metatype
@@ -548,3 +558,32 @@ type Slice[T type] struct:
 
     func len(self) int:
         return self.n
+
+type IMemory trait:
+    func alloc(self, len int) []byte
+    func free(self, buf []byte) void
+
+@host
+type Memory:
+    iface IMemory
+
+    func new(self, #T type) *T:
+        var bytes = self.iface.alloc(sizeof(T))
+        return ptrcast(T, bytes.ptr)
+
+    func alloc(self, #T type, n int) []T:
+        var bytes = self.iface.alloc(sizeof(T) * n)
+        return ptrcast(T, bytes.ptr)[0..n]
+
+    func free(self, ptr *#T):
+        self.iface.free(ptrcast(byte, ptr)[0..sizeof(T)])
+
+    func free(self, slice []#T):
+        var bytes = ptrcast(byte, slice.ptr)[0..sizeof(T)*slice.len()]
+        self.iface.free(bytes)
+
+type DefaultMemory:
+    with IMemory
+
+    @host func alloc(self, len int) []byte
+    @host func free(self, buf []byte) void

@@ -63,6 +63,7 @@ typedef enum {
     CL_TYPE_METATYPE,
     CL_TYPE_RANGE,
     CL_TYPE_TABLE,
+    CL_TYPE_MEMORY,
 } CLType;
 typedef uint32_t CLTypeId;
 

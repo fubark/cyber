@@ -43,9 +43,11 @@ const funcs = [_]C.HostFuncEntry{
     func("must",           zErrFunc(must)),
     func("panic",          zErrFunc(panic)),
     func("performGC",      zErrFunc(performGC)),
+    func("ptrcast_",       zErrFunc(ptrcast)),
     func("print",          print),
     func("queueTask",      zErrFunc(queueTask)),
     func("runestr",        zErrFunc(runestr)),
+    func("sizeof_",        sizeof),
     func("typeof",         typeof),
 
     // bool
@@ -233,6 +235,10 @@ const funcs = [_]C.HostFuncEntry{
     func("FutureResolver.complete", zErrFunc(futureResolverComplete)),
     func("FutureResolver.future",   zErrFunc(futureResolverFuture)),
     func("FutureResolver.new_",     zErrFunc(futureResolverNew)),
+
+    // DefaultMemory
+    func("DefaultMemory.alloc",     zErrFunc(DefaultMemory_alloc)),
+    func("DefaultMemory.free",      zErrFunc(DefaultMemory_free)),
 };
 
 const types = [_]C.HostTypeEntry{
@@ -272,6 +278,7 @@ const vm_types = [_]C.HostTypeEntry{
     htype("TccState",       C.CORE_TYPE(bt.TccState)),
     htype("Future",         C.CUSTOM_TYPE(null, futureGetChildren, null)),
     htype("FutureResolver", C.CUSTOM_TYPE(null, futureResolverGetChildren, null)),
+    htype("Memory",         C.CORE_TYPE_DECL(bt.Memory)),
 };
 
 pub const BuiltinsData = struct {
@@ -282,6 +289,7 @@ pub const BuiltinsData = struct {
     OptionArray: cy.TypeId,
     OptionString: cy.TypeId,
     PointerVoid: cy.TypeId,
+    SliceByte: cy.TypeId,
 };
 
 pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
@@ -353,6 +361,11 @@ fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
     const list_iter_tmpl = chunk_sym.getMod().getSym("ListIterator").?.toC();
     assert(C.expandTemplateType(list_iter_tmpl, &dynamic_t, 1, &temp));
 
+    const slice_tmpl = chunk_sym.getMod().getSym("Slice").?.toC();
+    const byte_t = C.newType(vm_, bt.Byte);
+    defer C.release(vm_, byte_t);
+    assert(C.expandTemplateType(slice_tmpl, &byte_t, 1, &data.SliceByte));
+
     // Verify all core types have been initialized.
     if (cy.Trace) {
         for (0..cy.types.BuiltinEnd) |i| {
@@ -415,6 +428,7 @@ fn errorSymbol(err: anyerror) Symbol {
         error.StdoutStreamTooLong   => return .StreamTooLong,
         error.StderrStreamTooLong   => return .StreamTooLong,
         error.EndOfStream           => return .EndOfStream,
+        error.Unsupported           => return .Unsupported,
         else                        => return .UnknownError,
     }
 }
@@ -429,6 +443,12 @@ fn traceReleases(vm: *cy.VM) Value {
 
 pub fn listFill(vm: *cy.VM) Value {
     return vm.allocListFill(vm.getValue(0), @intCast(vm.getInt(1))) catch cy.fatal();
+}
+
+pub fn ptrcast(vm: *cy.VM) anyerror!Value {
+    const ptr_t: cy.TypeId = @intCast(vm.getInt(0));
+    _ = ptr_t;
+    return vm.getValue(1);
 }
 
 pub fn bitcast(vm: *cy.VM) anyerror!Value {
@@ -626,6 +646,12 @@ pub fn queueTask(vm: *cy.VM) anyerror!Value {
     return Value.Void;
 }
 
+pub fn sizeof(vm: *cy.VM) Value {
+    const type_id: cy.TypeId = @intCast(vm.getInt(0));
+    _ = type_id;
+    return Value.initInt(8);
+}
+
 pub fn typeof(vm: *cy.VM) Value {
     const val = vm.getValue(0);
     const typeId = val.getTypeId();
@@ -714,6 +740,25 @@ pub fn futureResolverNew(vm: *cy.VM) anyerror!Value {
     const resolver_t: cy.TypeId = @intCast(vm.getInt(1));
     const future = try vm.allocFuture(future_t);
     return vm.allocFutureResolver(resolver_t, future);
+}
+
+pub fn DefaultMemory_alloc(vm: *cy.VM) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
+    const size: usize = @intCast(vm.getInt(1));
+    const ptr = std.c.malloc(size);
+    const ptr_v = Value.initRaw(@intCast(@intFromPtr(ptr)));
+
+    const data = vm.getData(*BuiltinsData, "builtins");
+    return vm.allocObjectSmall(data.SliceByte, &.{ ptr_v, Value.initInt(@intCast(size)) });
+}
+
+pub fn DefaultMemory_free(vm: *cy.VM) anyerror!Value {
+    if (cy.isWasm) return vm.prepPanic("Unsupported.");
+    const slice = vm.getObject(*cy.heap.Object, 1);
+    const addr: usize = @intCast(slice.getValue(0).val);
+    const ptr: [*]u8 = @ptrFromInt(addr);
+    std.c.free(ptr);
+    return Value.Void;
 }
 
 fn arrayConcat(vm: *cy.VM) Value {

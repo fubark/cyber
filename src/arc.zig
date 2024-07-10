@@ -250,6 +250,11 @@ fn performMark(vm: *cy.VM) !void {
             markValue(vm, sym.value);
         }
     }
+    for (vm.c.getContextVars().items()) |context_var| {
+        if (context_var.value.isCycPointer()) {
+            markValue(vm, context_var.value);
+        }
+    }
 }
 
 fn performSweep(vm: *cy.VM) !c.GCResult {
@@ -419,6 +424,8 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
                         markValue(vm, m);
                     }
                 }
+            } else if (entry.kind == .trait) {
+                markValue(vm, obj.trait.impl);
             } else {
                 // Custom object type.
                 if (entry.sym.cast(.custom_t).getChildrenFn) |getChildren| {

@@ -141,6 +141,9 @@ if (!aot) {
     // run.case("functions/void_param_error.cy");
 
     run.case("memory/arc_cases.cy");
+if (!cy.isWasm) {
+    run.case("memory/default_memory.cy");
+}
     run.case("memory/gc_reference_cycle_unreachable.cy");
     run.case2(.{ .cleanupGC = true }, "memory/gc_reference_cycle_reachable.cy");
     run.case("memory/release_expr_stmt_return.cy");

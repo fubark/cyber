@@ -222,17 +222,18 @@ pub const Sym = extern struct {
 
     pub fn getVariant(self: *Sym) ?*Variant {
         switch (self.type) {
-            .object_t => return self.cast(.object_t).variant,
-            .struct_t => return self.cast(.struct_t).variant,
-            .custom_t => return self.cast(.custom_t).variant,
-            .enum_t   => return self.cast(.enum_t).variant,
-            .int_t    => return self.cast(.int_t).variant,
+            .object_t   => return self.cast(.object_t).variant,
+            .struct_t   => return self.cast(.struct_t).variant,
+            .custom_t   => return self.cast(.custom_t).variant,
+            .enum_t     => return self.cast(.enum_t).variant,
+            .int_t      => return self.cast(.int_t).variant,
+            .distinct_t => return self.cast(.distinct_t).variant,
             else => return null,
         }
     }
 
     pub fn isVariable(self: Sym) bool {
-        return self.type == .userVar or self.type == .hostVar;
+        return self.type == .userVar or self.type == .hostVar or self.type == .context_var;
     }
 
     pub fn isType(self: *Sym) bool {
@@ -1572,6 +1573,11 @@ pub fn writeSymName(s: *cy.Sema, w: anytype, sym: *cy.Sym, config: SymFormatConf
                 const arg = variant.args[0].asHeapObject();
                 const name = s.getTypeBaseName(arg.type.type);
                 try w.print("*{s}", .{name});
+                return;
+            } else if (variant.root_template == s.slice_tmpl) {
+                const arg = variant.args[0].asHeapObject();
+                const name = s.getTypeBaseName(arg.type.type);
+                try w.print("[]{s}", .{name});
                 return;
             }
             try w.writeAll(sym.name());

@@ -396,10 +396,11 @@ enum {
     TYPE_METATYPE = 26,
     TYPE_RANGE = 27,
     TYPE_TABLE = 28,
+    TYPE_MEMORY = 29,
 };
 
 #define PrimitiveEnd 9
-#define BuiltinEnd 29
+#define BuiltinEnd 30
 
 typedef uint8_t Inst;
 typedef uint64_t Value;

@@ -2589,6 +2589,7 @@ pub const Parser = struct {
         while (true) {
             const next = self.peek();
             switch (next.tag()) {
+                .pound,
                 .ident => {
                     if (left.type() == .array_lit) {
                         if (left.cast(.array_lit).args.len == 0) {

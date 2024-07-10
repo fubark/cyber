@@ -85,11 +85,6 @@ pub fn genAll(c: *cy.Compiler) !void {
         }
     }
 
-    if (!c.cont) {
-        // test_int.
-        try c.vm.c.getContextVars().append(c.alloc, .{ .value = cy.Value.initInt(123) });
-    }
-
     for (c.newChunks()) |chunk| {
         for (chunk.syms.items) |sym| {
             switch (sym.type) {
@@ -109,6 +104,23 @@ pub fn genAll(c: *cy.Compiler) !void {
                 else => {},
             }
         }
+    }
+
+    if (!c.cont) {
+        const context_vars = c.vm.c.getContextVars();
+
+        const core = c.chunks.items[0].sym.getMod();
+
+        const DefaultMemoryT = core.getSym("DefaultMemory").?.getStaticType().?;
+        const impl = try c.vm.allocObjectSmall(DefaultMemoryT, &.{});
+        const IMemoryT = core.getSym("IMemory").?.getStaticType().?;
+        const vtable_idx = c.gen_vtables.get(bc.VtableKey{ .type = DefaultMemoryT, .trait = IMemoryT }).?;
+        const imem = try c.vm.allocTrait(IMemoryT, @intCast(vtable_idx), impl);
+        const mem = try c.vm.allocObjectSmall(bt.Memory, &.{ imem });
+        try context_vars.append(c.alloc, .{ .value = mem });
+
+        // test_int.
+        try context_vars.append(c.alloc, .{ .value = cy.Value.initInt(123) });
     }
 
     // Bind the rest that aren't in sema.

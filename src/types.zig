@@ -179,6 +179,7 @@ pub const BuiltinTypes = struct {
     pub const ExternFunc: TypeId = vmc.TYPE_EXTERN_FUNC;
     pub const Range: TypeId = vmc.TYPE_RANGE;
     pub const Table: TypeId = vmc.TYPE_TABLE;
+    pub const Memory: TypeId = vmc.TYPE_MEMORY;
 
     /// Used to indicate no type value.
     // pub const Undefined: TypeId = vmc.TYPE_UNDEFINED;

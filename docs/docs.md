@@ -3,6 +3,7 @@
 - [Syntax.](#syntax)
 - [Basic Types.](#basic-types)
 - [Custom Types.](#custom-types)
+- [C Types.](#c-types)
 - [Control Flow.](#control-flow)
 - [Functions.](#functions)
 - [Modules.](#modules)
@@ -323,7 +324,7 @@ There are `29` general keywords. This list categorizes them:
 ### Contextual keywords.
 These keywords only have meaning in a certain context.
 - [Methods](#methods): `self` `Self`
-- [Types](#custom-types): [`object`](#objects) [`struct`](#structs) [`enum`](#enums) [`trait`](#traits)
+- [Types](#custom-types): [`object`](#objects) [`struct`](#structs) [`cstruct`](#c-structs) [`enum`](#enums) [`trait`](#traits)
 - [Catching Errors](#caught-variable): `caught`
 - Function Return: `void`
 
@@ -1019,7 +1020,6 @@ The dynamic type defers type checking to runtime. However, it also tracks its ow
 * [Type aliases.](#type-aliases)
 * [Distinct types.](#distinct-types)
 * [Traits.](#traits)
-* [Union types.](#union-types)
 * [Type templates.](#type-templates)
   * [Expand type template.](#expand-type-template)
 </td>
@@ -1229,7 +1229,7 @@ print c.b.a       --> 123
 ## Structs.
 Struct types can contain field and method members just like object types, but their instances are copied by value rather than by reference. In that sense, they behave like primitive data types.
 
-Unlike objects, structs do not have a reference count. They can be safely referenced using borrow semantics. Unsafe pointers can also reference structs.
+Unlike objects, structs are value types and do not have a reference count. They can be safely referenced with the `ref` modifier and their lifetime can be managed with single ownership semantics. Unsafe pointers can not reference structs by default, but there may be an unsafe builtin to allow it anyway.
 
 ### Declare struct.
 Struct types are created using the `type struct` declaration:
@@ -1501,9 +1501,6 @@ s = Rectangle{width=4, height=5}
 print s.area()         --> 20
 ```
 
-## Union types.
-> _Planned Feature_
-
 ## Type templates.
 Type declarations can include template parameters to create a type template:
 ```cy
@@ -1524,6 +1521,126 @@ var a MyContainer[String] = {id=123, value='abc'}
 print a.get()      -- Prints 'abc'
 ```
 Note that invoking the template again with the same argument(s) returns the same generated type. In other words, the generated type is always memoized from the input parameters.
+
+# C Types.
+
+* [C primitives.](#c-primitives)
+* [C structs.](#c-structs)
+  * [C struct methods.](#c-struct-methods)
+  * [C struct reference.](#c-struct-reference)
+* [Union types.](#union-types)
+
+[^top](#table-of-contents)
+
+C types interop with C-ABI types and are used to represent external or manual memory.
+Using C types is considered unsafe, but runtime safety checks can be inserted to make it safer at the cost of runtime performance.
+
+## C primitives.
+This table shows the size and type compatibility of Cyber and C types:
+
+| Cyber | C | Size (bits) |
+| --- | --- | --- |
+| int8 | int8_t | 8 | 
+| byte | uint8_t | 8 |
+| c_char | char | 8 |
+| int16 | int16_t | 16 | 
+| c_short | short | 16* |
+| c_uint16 | uint16_t | 16 | 
+| c_ushort | unsigned short | 16* |
+| int32 | int32_t | 32 | 
+| c_int | int | 32* | 
+| c_uint32 | uint32_t | 32 | 
+| c_uint | unsigned int | 32* |
+| int, int64 | int64_t | 64 |
+| c_long | long | 64* |
+| c_uint64 | uint64_t | 64 |
+| c_ulong | unsigned long | 64* |
+| c_longlong | long long | 64* |
+| c_ulonglong | unsigned long long | 64* |
+| float32 | float | 32 |
+| float, float64 | double | 64 |
+| c_longdouble | long double | 80* |
+| *T, pointer[T] | T* | 64* |
+
+\* Varies depending on C compiler and architecture. Pointers may occupy an extra word size for runtime memory checks.
+
+## C structs.
+`C structs` are unsafe since they can be referenced by unsafe [pointers](#pointers). The underlying memory could be corrupted or invalidated before use.
+In contrast, [structs](#structs) can be safely used since they can only be instantiated in safe memory.
+
+`C structs` can be declared with the `cstruct` keyword:
+```cy
+type Data cstruct:
+    x   float
+    y   float
+    ptr *int
+    str []byte
+```
+A `C struct` may contain:
+* C types.
+* Primitive types.
+* Container types that contain a compatible element type. This includes `enums`, `choices`, and `optionals`.
+
+It may not contain `structs` or `objects`.
+
+### C struct methods.
+`C structs` can be declared with methods:
+```cy
+type Vec2 cstruct:
+    x float
+    y float
+
+    func add(self, o Vec2):
+        return Vec2{
+            x = self.x+o.x,
+            y = self.y+o.y,
+        }
+
+var v = Vec2{x=1, y=2}
+print v.add(Vec2{x=2, y=1})   --> Vec2{x=3, y=3}
+```
+In this example `add` passes the receiver by value.
+
+In order to pass the receiver by reference, `self` must be annotated with `*`:
+```cy
+type Vec2 cstruct:
+    x float
+    y float
+
+    func add(*self, o Vec2):
+        self.x += o.x
+        self.y += o.y
+
+var v = Vec2{x=1, y=2}
+v.add(Vec2{x=2, y=1})
+print v                 --> Vec2{x=3, y=3}
+```
+
+### C struct reference.
+The `&` operator is used to obtain the reference to a `C struct` value:
+```cy
+type Vec2 cstruct:
+    x float
+    y float
+
+var v = Vec2{x=1, y=2}
+var ref = &v
+ref.x = 4
+
+print v                 --> Vec2{x=4, y=2}
+```
+The reference is a [pointer](#pointers) type that points to the `C struct`:
+```
+func scale(a *Vec2, n float):
+    a.x *= n
+    a.y *= n
+
+add(&v, 10)
+print v                 --> Vec2{x=40, y=20}
+```
+
+## Union types.
+> _Planned Feature_
 
 # Control Flow.
 <table><tr>

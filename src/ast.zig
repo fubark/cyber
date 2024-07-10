@@ -32,6 +32,7 @@ pub const NodeType = enum(u7) {
     continueStmt,
     coresume,
     coyield,
+    cstruct_decl,
     custom_decl,
     decLit,
     distinct_decl,
@@ -575,6 +576,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .continueStmt   => Token,
         .coresume       => Coresume,
         .coyield        => Token,
+        .cstruct_decl   => ObjectDecl,
         .custom_decl    => CustomDecl,
         .decLit         => Span,
         .distinct_decl  => DistinctDecl,
@@ -708,6 +710,7 @@ pub const Node = struct {
             .continueStmt   => self.cast(.continueStmt).pos,
             .coresume       => self.cast(.coresume).pos,
             .coyield        => self.cast(.coyield).pos,
+            .cstruct_decl   => self.cast(.cstruct_decl).pos,
             .custom_decl    => self.cast(.custom_decl).pos,
             .decLit         => self.cast(.decLit).pos,
             .distinct_decl  => self.cast(.distinct_decl).pos,
@@ -994,6 +997,12 @@ pub const AstView = struct {
             .table_decl => {
                 const object_decl = n.cast(.table_decl);
                 return self.nodeString(object_decl.name);
+            },
+            .cstruct_decl => {
+                const cstruct = n.cast(.cstruct_decl);
+                if (cstruct.name) |name| {
+                    return self.nodeString(name);
+                } else return "";
             },
             .structDecl => {
                 const object_decl = n.cast(.structDecl);

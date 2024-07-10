@@ -298,8 +298,8 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn reserveStructType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.ObjectDecl) !*cy.sym.ObjectType {
-        const sym = try c.createStructType(parent, name, decl);
+    pub fn reserveStructType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, cstruct: bool, decl: *ast.ObjectDecl) !*cy.sym.ObjectType {
+        const sym = try c.createStructType(parent, name, cstruct, decl);
         const mod = parent.getMod().?;
         _ = try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
         return sym;

@@ -16,6 +16,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "continue", .continue_k },
     .{ "coresume", .coresume_k },
     .{ "coyield", .coyield_k },
+    .{ "cstruct", .cstruct_k },
     .{ "else", .else_k },
     .{ "enum", .enum_k },
     .{ "error", .error_k },
@@ -68,6 +69,7 @@ pub const TokenType = enum(u8) {
     continue_k,
     coresume_k,
     coyield_k,
+    cstruct_k,
     dec,
     dot,
     dot_question,
@@ -1010,6 +1012,6 @@ test "tokenizer internals." {
     try tt.eq(@alignOf(Token), 4);
     try tt.eq(@sizeOf(TokenizeState), 4);
 
-    try tt.eq(std.enums.values(TokenType).len, 92);
-    try tt.eq(keywords.kvs.len, 39);
+    try tt.eq(std.enums.values(TokenType).len, 93);
+    try tt.eq(keywords.kvs.len, 40);
 }

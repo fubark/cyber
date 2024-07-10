@@ -168,6 +168,7 @@ if (!aot) {
     run.case("types/choice_access_error.cy");
     run.case("types/choice_access_panic.cy");
     run.case("types/choice_type.cy");
+    run.case("types/cstructs.cy");
     run.case("types/distinct.cy");
 }
     run.case("types/dyn_recent_type_error.cy");

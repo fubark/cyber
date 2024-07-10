@@ -818,6 +818,8 @@ pub const ObjectType = extern struct {
     impls_ptr: [*]Impl,
     impls_len: u32,
 
+    cstruct: bool,
+
     mod: vmc.Module,
 
     pub fn isResolved(self: *ObjectType) bool {
@@ -846,6 +848,7 @@ pub const ObjectType = extern struct {
             .variant = null,
             .numFields = cy.NullId,
             .rt_size = cy.NullId,
+            .cstruct = false,
             .mod = undefined,
             .impls_ptr = undefined,
             .impls_len = 0,
@@ -1350,7 +1353,7 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createStructType(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: *ast.ObjectDecl) !*ObjectType {
+    pub fn createStructType(c: *cy.Chunk, parent: *Sym, name: []const u8, cstruct: bool, decl: *ast.ObjectDecl) !*ObjectType {
         const sym = try createSym(c.alloc, .struct_t, .{
             .head = Sym.init(.struct_t, parent, name),
             .decl = @ptrCast(decl),
@@ -1359,6 +1362,7 @@ pub const ChunkExt = struct {
             .variant = null,
             .numFields = cy.NullId,
             .rt_size = cy.NullId,
+            .cstruct = cstruct,
             .mod = undefined,
             .impls_ptr = undefined,
             .impls_len = 0,
@@ -1368,7 +1372,7 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createStructTypeUnnamed(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: *ast.ObjectDecl) !*ObjectType {
+    pub fn createStructTypeUnnamed(c: *cy.Chunk, parent: *Sym, name: []const u8, cstruct: bool, decl: *ast.ObjectDecl) !*ObjectType {
         const mod = parent.getMod().?;
         _ = mod;
 
@@ -1381,6 +1385,7 @@ pub const ChunkExt = struct {
             .variant = null,
             .numFields = cy.NullId,
             .rt_size = cy.NullId,
+            .cstruct = cstruct,
             .mod = undefined,
             .impls_ptr = undefined,
             .impls_len = 0,
@@ -1414,6 +1419,7 @@ pub const ChunkExt = struct {
             .variant = null,
             .numFields = cy.NullId,
             .rt_size = cy.NullId,
+            .cstruct = false,
             .mod = undefined,
             .impls_ptr = undefined,
             .impls_len = 0,

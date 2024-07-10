@@ -370,6 +370,7 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
         .trait_decl,
         .objectDecl,
         .structDecl,
+        .cstruct_decl,
         .passStmt,
         .staticDecl,
         .context_decl,
@@ -1740,7 +1741,7 @@ pub fn reserveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, opt_head
             return @ptrCast(object_t);
         },
         .struct_t => {
-            const struct_t = try c.createStructType(@ptrCast(c.sym), name, @ptrCast(template.child_decl));
+            const struct_t = try c.createStructType(@ptrCast(c.sym), name, false, @ptrCast(template.child_decl));
             struct_t.variant = variant;
 
             const header_decl = opt_header_decl orelse template.child_decl;
@@ -1784,7 +1785,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
     switch (sym.type) {
         .object_t => {
             const object_t = sym.cast(.object_t);
-            try resolveObjectLikeType(tchunk, @ptrCast(sym), template.child_decl);
+            try resolveObjectLikeType(tchunk, @ptrCast(sym), template.child_decl.cast(.objectDecl));
 
             try pushVariantResolveContext(tchunk, object_t.variant.?);
             defer popResolveContext(tchunk);
@@ -1826,7 +1827,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
         },
         .struct_t => {
             const struct_t = sym.cast(.struct_t);
-            try resolveObjectLikeType(tchunk, @ptrCast(sym), template.child_decl);
+            try resolveObjectLikeType(tchunk, @ptrCast(sym), template.child_decl.cast(.structDecl));
 
             try pushVariantResolveContext(tchunk, struct_t.variant.?);
             defer popResolveContext(tchunk);
@@ -1960,18 +1961,18 @@ pub fn resolveObjectTypeId(c: *cy.Chunk, object_t: *cy.sym.ObjectType, type_id: 
     };
 }
 
-pub fn reserveStruct(c: *cy.Chunk, node: *ast.ObjectDecl) !*cy.sym.ObjectType {
+pub fn reserveStruct(c: *cy.Chunk, node: *ast.ObjectDecl, cstruct: bool) !*cy.sym.ObjectType {
     if (node.name == null) {
         // Unnamed.
         var buf: [16]u8 = undefined;
         const name = c.getNextUniqUnnamedIdent(&buf);
         const nameDup = try c.alloc.dupe(u8, name);
         try c.parser.ast.strs.append(c.alloc, nameDup);
-        return c.createStructTypeUnnamed(@ptrCast(c.sym), nameDup, node);
+        return c.createStructTypeUnnamed(@ptrCast(c.sym), nameDup, cstruct, node);
     }
 
     const name = c.ast.nodeString(node.name.?);
-    const sym = try c.reserveStructType(@ptrCast(c.sym), name, node);
+    const sym = try c.reserveStructType(@ptrCast(c.sym), name, cstruct, node);
 
     // Check for @host modifier.
     var opt_type: ?cy.TypeId = null;
@@ -2004,7 +2005,7 @@ pub fn resolveDistinctType(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType) !*cy.
             new.getMod().* = distinct_t.getMod().*;
             new.getMod().updateParentRefs(@ptrCast(new));
 
-            try sema.resolveObjectLikeType(c, @ptrCast(new), object_t.decl.?);
+            try sema.resolveObjectLikeType(c, @ptrCast(new), object_t.decl.?.cast(.objectDecl));
             new_sym = @ptrCast(new);
         },
         .bool_t => {
@@ -2092,7 +2093,7 @@ pub fn resolveStructTypeId(c: *cy.Chunk, struct_t: *cy.sym.ObjectType, opt_type:
     };
 }
 
-pub fn resolveObjectLikeType(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Node) !void {
+pub fn resolveObjectLikeType(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.ObjectDecl) !void {
     if (object_like.getVariant()) |variant| {
         try pushVariantResolveContext(c, variant);
     } else {
@@ -2103,12 +2104,11 @@ pub fn resolveObjectLikeType(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Node
     try resolveObjectFields(c, object_like, decl);
     if (object_like.type == .object_t) {
         const object_t = object_like.cast(.object_t);
-        const object_decl = decl.cast(.objectDecl);
 
-        const impls = try c.alloc.alloc(cy.sym.Impl, object_decl.impl_withs.len);
+        const impls = try c.alloc.alloc(cy.sym.Impl, decl.impl_withs.len);
         errdefer c.alloc.free(impls);
 
-        for (object_decl.impl_withs, 0..) |with, i| {
+        for (decl.impl_withs, 0..) |with, i| {
             const trait_t = try resolveTypeSpecNode(c, with.trait);
             const trait_sym = c.sema.getTypeSym(trait_t);
             if (trait_sym.type != .trait_t) {
@@ -2125,17 +2125,14 @@ pub fn resolveObjectLikeType(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Node
 }
 
 /// Explicit `decl` node for distinct type declarations. Must belong to `c`.
-pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Node) !void {
+pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.ObjectDecl) !void {
     var obj: *cy.sym.ObjectType = undefined;
-    var object_decl: *ast.ObjectDecl = undefined;
     switch (object_like.type) {
         .object_t => {
             obj = object_like.cast(.object_t);
-            object_decl = decl.cast(.objectDecl);
         },
         .struct_t => {
             obj = object_like.cast(.struct_t);
-            object_decl = decl.cast(.structDecl);
         },
         else => {
             return error.Unsupported;
@@ -2146,11 +2143,11 @@ pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Node) 
     }
 
     // Load fields.
-    const fields = try c.alloc.alloc(cy.sym.FieldInfo, object_decl.fields.len);
+    const fields = try c.alloc.alloc(cy.sym.FieldInfo, decl.fields.len);
     errdefer c.alloc.free(fields);
 
     var has_boxed_fields = false;
-    for (object_decl.fields, 0..) |field, i| {
+    for (decl.fields, 0..) |field, i| {
         const fieldName = c.ast.nodeString(field.name);
         const fieldType = try resolveTypeSpecNode(c, field.typeSpec);
 

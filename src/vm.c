@@ -598,6 +598,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(True),
         JENTRY(False),
         JENTRY(Not),
+        JENTRY(None),
         JENTRY(Copy),
         JENTRY(CopyReleaseDst),
         JENTRY(CopyRetainSrc),
@@ -617,7 +618,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(JumpNotCond),
         JENTRY(JumpCond),
         JENTRY(Jump),
-        JENTRY(JumpNone),
         JENTRY(Release),
         JENTRY(ReleaseN),
         JENTRY(CallObjSym),
@@ -706,7 +706,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(ForRangeInit),
         JENTRY(ForRange),
         JENTRY(ForRangeReverse),
-        JENTRY(SeqDestructure),
         JENTRY(Match),
         JENTRY(StaticFunc),
         JENTRY(StaticVar),
@@ -790,6 +789,21 @@ beginSwitch:
 #endif
         bool bval = VALUE_AS_BOOLEAN(val);
         stack[pc[2]] = VALUE_BOOLEAN(!bval);
+        pc += 3;
+        NEXT();
+    }
+    CASE(None): {
+        Value opt = stack[pc[1]];
+#if TRACE
+        TypeId typeId = getTypeId(opt);
+        TypeEntry entry = ((TypeEntry*)vm->c.typesPtr)[typeId];
+        if (entry.kind != TYPE_KIND_OPTION) {
+            TRACEV("Expected option value.");
+            zFatal();
+        }
+#endif
+        bool is_none = VALUE_AS_INTEGER(objectGetField((Object*)VALUE_AS_HEAPOBJECT(opt), 0)) == 0;
+        stack[pc[2]] = VALUE_BOOLEAN(is_none);
         pc += 3;
         NEXT();
     }
@@ -1071,24 +1085,6 @@ beginSwitch:
     CASE(Jump): {
         pc += READ_I16(1);
         NEXT();
-    }
-    CASE(JumpNone): {
-        Value opt = stack[pc[1]];
-        i16 offset = READ_I16(2);
-#if TRACE
-        TypeId typeId = getTypeId(opt);
-        TypeEntry entry = ((TypeEntry*)vm->c.typesPtr)[typeId];
-        if (entry.kind != TYPE_KIND_OPTION) {
-            panicStaticMsg(vm, "Unexpected. Insert type check.");
-        }
-#endif
-        if (VALUE_AS_INTEGER(objectGetField((Object*)VALUE_AS_HEAPOBJECT(opt), 0)) == 0) {
-            pc += offset;
-            NEXT();
-        } else {
-            pc += 4;
-            NEXT();
-        }
     }
     CASE(Release): {
         release(vm, stack[pc[1]]);
@@ -2119,29 +2115,6 @@ beginSwitch:
             pc += 6;
         }
         NEXT();
-    }
-    CASE(SeqDestructure): {
-        Value val = stack[pc[1]];
-        u8 numDst = pc[2];
-
-        TypeId typeId = getTypeId(val);
-        if (typeId == TYPE_TUPLE) {
-            Tuple* tuple = (Tuple*)VALUE_AS_HEAPOBJECT(val);
-            if (tuple->len < numDst) {
-                panicStaticMsg(vm, "Not enough elements.");
-                RETURN(RES_CODE_PANIC);
-            }
-            for (int i = 0; i < numDst; i += 1) {
-                Value elem = (&tuple->firstValue)[i];
-                retain(vm, elem);
-                stack[pc[3+i]] = elem;
-            }
-            pc += 3 + numDst;
-            NEXT();
-        } else {
-            panicStaticMsg(vm, "Expected tuple.");
-            RETURN(RES_CODE_PANIC);
-        }
     }
     CASE(Match): {
         pc += zOpMatch(pc, stack);

@@ -476,7 +476,7 @@ const WhileCondStmt = struct {
     pos: u32,
 };
 
-const WhileOptStmt = struct {
+pub const WhileOptStmt = struct {
     opt: *Node align(8),
     capture: *Node,
     stmts: []const *Node,

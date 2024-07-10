@@ -628,23 +628,16 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const jump = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
             len += try fmt.printCount(w, "if !%{} jmp @{}", &.{v(pc[1].val), v(pcOffset + jump)});
         },
-        .jumpNone => {
-            const jump = @as(*const align(1) i16, @ptrCast(pc + 2)).*;
-            const jump_u32: u32 = @bitCast(@as(i32, jump));
-            len += try fmt.printCount(w, "if %{} == none: jmp @{}", &.{v(pc[1].val), v(pcOffset +% jump_u32)});
+        .none => {
+            const opt = pc[1].val;
+            const dst = pc[2].val;
+            len += try fmt.printCount(w, "%{} = isNone(%{})", &.{v(dst), v(opt)});
         },
         .list => {
             const startLocal = pc[1].val;
             const numElems = pc[2].val;
             const dst = pc[3].val;
             len += try fmt.printCount(w, "%{} = [List %{}..%{}]", &.{v(dst), v(startLocal), v(startLocal+numElems)});
-        },
-        .seqDestructure => {
-            const src = pc[1].val;
-            const numLocals = pc[2].val;
-            const locals = std.mem.sliceAsBytes(pc[3..3+numLocals]);
-            len += try fmt.printCount(w, "src={}, nlocals={}, {}", &.{
-                v(src), v(numLocals), fmt.sliceU8(locals)});
         },
         .map => {
             const dst = pc[1].val;
@@ -961,14 +954,13 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .boxValueRetain,
         .ref,
         .setRef,
+        .none,
         .tag_lit,
         .context,
         .symbol => {
             return 3;
         },
-        .seqDestructure => {
-            return 3 + pc[2].val;
-        },
+        .set_up_value,
         .copyObj,
         .typeCheck,
         .call,
@@ -978,7 +970,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .setStaticVar,
         .staticFunc,
         .setField,
-        .jumpNone,
         .jumpCond,
         .compare,
         .compareNot,
@@ -1103,6 +1094,7 @@ pub const OpCode = enum(u8) {
     false = vmc.CodeFalse,
     /// Pops top register, performs not, and pushes result onto stack.
     not = vmc.CodeNot,
+    none = vmc.CodeNone,
     /// Copies a local from src to dst.
     copy = vmc.CodeCopy,
     copyReleaseDst = vmc.CodeCopyReleaseDst,
@@ -1221,14 +1213,12 @@ pub const OpCode = enum(u8) {
     symbol = vmc.CodeSymbol,
     range = vmc.CodeRange,
 
-    seqDestructure = vmc.CodeSeqDestructure,
     bitwiseAnd = vmc.CodeBitwiseAnd,
     bitwiseOr = vmc.CodeBitwiseOr,
     bitwiseXor = vmc.CodeBitwiseXor,
     bitwiseNot = vmc.CodeBitwiseNot,
     bitwiseLeftShift = vmc.CodeBitwiseLeftShift,
     bitwiseRightShift = vmc.CodeBitwiseRightShift,
-    jumpNone = vmc.CodeJumpNone,
     addInt = vmc.CodeAddInt,
     subInt = vmc.CodeSubInt,
     mulInt = vmc.CodeMulInt,

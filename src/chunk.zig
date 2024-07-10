@@ -494,12 +494,6 @@ pub const Chunk = struct {
         try self.regStack.append(self.alloc, reg);
     }
 
-    pub fn pushEmptyJumpNone(self: *Chunk, opt: LocalId) !u32 {
-        const start: u32 = @intCast(self.buf.ops.items.len);
-        try self.buf.pushOp3(.jumpNone, opt, 0, 0);
-        return start;
-    }
-
     pub fn pushEmptyJumpNotCond(self: *Chunk, condLocal: LocalId) !u32 {
         const start: u32 = @intCast(self.buf.ops.items.len);
         try self.buf.pushOp3(.jumpNotCond, condLocal, 0, 0);
@@ -545,10 +539,6 @@ pub const Chunk = struct {
     }
 
     pub fn patchJumpNotCondToCurPc(self: *Chunk, jumpPc: u32) void {
-        self.buf.setOpArgU16(jumpPc + 2, @intCast(self.buf.ops.items.len - jumpPc));
-    }
-
-    pub fn patchJumpNoneToCurPc(self: *Chunk, jumpPc: u32) void {
         self.buf.setOpArgU16(jumpPc + 2, @intCast(self.buf.ops.items.len - jumpPc));
     }
 

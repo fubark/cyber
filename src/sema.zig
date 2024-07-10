@@ -523,30 +523,15 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
 
             try pushBlock(c, node);
             {
-                const if_stmt = try c.ir.pushEmptyStmt(c.alloc, .ifUnwrapStmt, stmt.opt);
+                const S = struct {
+                    fn body(c_: *cy.Chunk, data: *anyopaque) !void {
+                        const stmt_: *ast.WhileOptStmt = @ptrCast(@alignCast(data));
+                        try semaStmts(c_, stmt_.stmts);
+                        _ = try c_.ir.pushStmt(c_.alloc, .contStmt, @ptrCast(stmt_), {});
+                    }
+                }; 
                 const opt = try c.semaOptionExpr(stmt.opt);
-                try pushBlock(c, stmt.opt);
-                var decl_head: u32 = undefined;
-                var unwrap_local: u8 = undefined;
-                {
-                    const unwrap_t = if (opt.type.dynamic) bt.Dyn else b: {
-                        break :b c.sema.getTypeSym(opt.type.id).cast(.enum_t).getMemberByIdx(1).payloadType;
-                    };
-                    const unwrap_var = try declareLocal(c, stmt.capture, unwrap_t, false);
-                    unwrap_local = @intCast(c.varStack.items[unwrap_var].inner.local.id);
-
-                    decl_head = c.ir.getAndClearStmtBlock();
-                    try semaStmts(c, stmt.stmts);
-                    _ = try c.ir.pushStmt(c.alloc, .contStmt, node, {});
-                }
-                const if_block = try popBlock(c);
-                c.ir.setStmtData(if_stmt, .ifUnwrapStmt, .{
-                    .opt = opt.irIdx,
-                    .unwrap_local = unwrap_local,
-                    .decl_head = decl_head,
-                    .body_head = if_block.first,
-                    .else_block = cy.NullId,
-                });
+                try semaIfUnwrapStmt2(c, opt, stmt.opt, stmt.capture, S.body, stmt, &.{}, @ptrCast(stmt));
             }
             const stmtBlock = try popLoopBlock(c);
             c.ir.setStmtData(loc, .loopStmt, .{
@@ -669,51 +654,83 @@ fn semaElseStmt(c: *cy.Chunk, node: *ast.Node) !u32 {
     } else return error.TODO;
 }
 
-fn semaIfUnwrapStmt(c: *cy.Chunk, block: *ast.IfUnwrapStmt) !void {
-    const loc = try c.ir.pushEmptyStmt(c.alloc, .ifUnwrapStmt, @ptrCast(block));
-
-    const opt = try c.semaOptionExpr(block.opt);
-
-    try pushBlock(c, @ptrCast(block));
-    var decl_head: u32 = undefined;
-    var unwrap_local: u8 = undefined;
+fn semaIfUnwrapStmt2(c: *cy.Chunk, opt: ExprResult, opt_n: *ast.Node, opt_unwrap: ?*ast.Node, body: *const fn (*cy.Chunk, *anyopaque) anyerror!void, body_data: *anyopaque, else_blocks: []*ast.ElseBlock, node: *ast.Node) !void {
+    try pushBlock(c, @ptrCast(node));
     {
-        const unwrap_t = if (opt.type.dynamic) bt.Dyn else b: {
-            break :b c.sema.getTypeSym(opt.type.id).cast(.enum_t).getMemberByIdx(1).payloadType;
-        };
-        const unwrap_var = try declareLocal(c, block.unwrap, unwrap_t, false);
-        unwrap_local = @intCast(c.varStack.items[unwrap_var].inner.local.id);
+        // $opt = <opt>
+        const opt_v = try declareLocalNameInit(c, "$opt", opt.type.id, opt, opt_n);
+        const get_opt = try semaLocal(c, opt_v.id, opt_n);
 
-        decl_head = c.ir.getAndClearStmtBlock();
-        try semaStmts(c, block.stmts);
+        // if isNone($opt)
+        const cond = try c.semaIsNone(get_opt, opt_n);
+        try pushBlock(c, @ptrCast(node));
+        {
+            // $unwrap = $opt.?
+            const unwrap_t = if (opt.type.isDynAny()) bt.Dyn else b: {
+                break :b c.sema.getTypeSym(opt.type.id).cast(.enum_t).getMemberByIdx(1).payloadType;
+            };
+            var unwrap_name: []const u8 = undefined;
+            if (opt_unwrap) |unwrap| {
+                if (unwrap.type() == .ident) {
+                    unwrap_name = c.ast.nodeString(unwrap);
+                } else if (unwrap.type() == .seqDestructure) {
+                    unwrap_name = "$unwrap";
+                } else {
+                    return c.reportErrorFmt("Unsupported unwrap declaration: {}", &.{v(unwrap.type())}, unwrap);
+                }
+                const unwrap_init = try semaAccessFieldName(c, opt, "some", unwrap);
+                const unwrap_v = try declareLocalNameInit(c, unwrap_name, unwrap_t, unwrap_init, unwrap);
+                const unwrap_local = try semaLocal(c, unwrap_v.id, unwrap);
+
+                if (unwrap.type() == .seqDestructure) {
+                    const decls = unwrap.cast(.seqDestructure).args;
+                    for (decls, 0..) |decl, i| {
+                        const name = c.ast.nodeString(decl);
+                        const index = try c.semaInt(@intCast(i), unwrap);
+                        const dvar_init = try semaIndexExpr2(c, unwrap_local, unwrap, index, unwrap, unwrap);
+                        _ = try declareLocalNameInit(c, name, bt.Dyn, dvar_init, unwrap);
+                    }
+                }
+            }
+
+            try body(c, body_data);
+        }
+        const block = try popBlock(c);
+        var first_else: u32 = cy.NullId;
+        if (else_blocks.len > 0) {
+            var else_loc = try semaElseStmt(c, @ptrCast(else_blocks[0]));
+            first_else = else_loc;
+
+            for (else_blocks[1..]) |else_block| {
+                const next_else_loc = try semaElseStmt(c, @ptrCast(else_block));
+                c.ir.getExprDataPtr(else_loc, .else_block).else_block = next_else_loc;
+                else_loc = next_else_loc;
+            }
+        }
+        try semaIfStmt2(c, cond, block.first, first_else, node);
     }
-    const if_block = try popBlock(c);
+    const block = try popBlock(c);
+    _ = try c.ir.pushStmt(c.alloc, .block, node, .{ .bodyHead = block.first });
+}
 
-    if (block.else_blocks.len == 0) {
-        c.ir.setStmtData(loc, .ifUnwrapStmt, .{
-            .opt = opt.irIdx,
-            .unwrap_local = unwrap_local,
-            .decl_head = decl_head,
-            .body_head = if_block.first,
-            .else_block = cy.NullId,
-        });
-        return;
-    }
+fn semaIfUnwrapStmt(c: *cy.Chunk, stmt: *ast.IfUnwrapStmt) !void {
+    const opt = try c.semaOptionExpr(stmt.opt);
+    const S = struct {
+        fn body(c_: *cy.Chunk, data: *anyopaque) !void {
+            const stmt_: *ast.IfUnwrapStmt = @ptrCast(@alignCast(data));
+            try semaStmts(c_, stmt_.stmts);
+        }
+    }; 
+    try semaIfUnwrapStmt2(c, opt, stmt.opt, stmt.unwrap, S.body, stmt, stmt.else_blocks, @ptrCast(stmt));
+}
 
-    var else_loc = try semaElseStmt(c, @ptrCast(block.else_blocks[0]));
-    c.ir.setStmtData(loc, .ifUnwrapStmt, .{
-        .opt = opt.irIdx,
-        .unwrap_local = unwrap_local,
-        .decl_head = decl_head,
-        .body_head = if_block.first,
-        .else_block = else_loc,
+fn semaIfStmt2(c: *cy.Chunk, cond: ExprResult, first_stmt: u32, else_block: u32, node: *ast.Node) !void {
+    const irIdx = try c.ir.pushEmptyStmt(c.alloc, .ifStmt, node);
+    c.ir.setStmtData(irIdx, .ifStmt, .{
+        .cond = cond.irIdx,
+        .body_head = first_stmt,
+        .else_block = else_block,
     });
-
-    for (block.else_blocks[1..]) |else_block| {
-        const next_else_loc = try semaElseStmt(c, @ptrCast(else_block));
-        c.ir.getExprDataPtr(else_loc, .else_block).else_block = next_else_loc;
-        else_loc = next_else_loc;
-    }
 }
 
 fn semaIfStmt(c: *cy.Chunk, block: *ast.IfStmt) !void {
@@ -922,6 +939,22 @@ fn assignStmt(c: *cy.Chunk, node: *ast.Node, left_n: *ast.Node, right: *ast.Node
             return c.reportErrorFmt("Assignment to the left `{}` is unsupported.", &.{v(left_n.type())}, node);
         }
     }
+}
+
+fn semaIndexExpr2(c: *cy.Chunk, left: ExprResult, left_n: *ast.Node, arg0: ExprResult, arg0_n: *ast.Node, node: *ast.Node) !ExprResult {
+    const leftT = left.type.id;
+    if (left.type.isDynAny()) {
+        const loc = try c.ir.pushEmptyExpr(.pre, c.alloc, undefined, node);
+        return c.semaCallObjSym2(loc, left.irIdx, getBinOpName(.index), &.{arg0});
+    }
+
+    const recTypeSym = c.sema.getTypeSym(leftT);
+    const sym = try c.mustFindSym(recTypeSym, "$index", node);
+    const func_sym = try requireFuncSym(c, sym, node);
+
+    return c.semaCallFuncSymRec2(func_sym,
+        left_n, left,
+        &.{arg0}, &.{arg0_n}, .any, node);
 }
 
 fn semaIndexExpr(c: *cy.Chunk, left_id: *ast.Node, left: ExprResult, expr: Expr) !ExprResult {
@@ -2486,6 +2519,20 @@ fn declareParam(c: *cy.Chunk, param: ?*ast.FuncParam, isSelf: bool, paramIdx: us
     proc.curNumLocals += 1;
 }
 
+const LocalResult = struct {
+    id: u32, 
+    ir_id: u32,
+};
+
+fn declareLocalNameInit(c: *cy.Chunk, name: []const u8, decl_t: cy.TypeId, init: ExprResult, node: *ast.Node) !LocalResult {
+    const var_id = try declareLocalName(c, name, decl_t, true, node);
+    const info = c.varStack.items[var_id].inner.local;
+    var data = c.ir.getStmtDataPtr(info.declIrStart, .declareLocalInit);
+    data.init = init.irIdx;
+    data.initType = CompactType.init(decl_t);
+    return .{ .id = var_id, .ir_id = info.declIrStart };
+}
+
 fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, hasInit: bool, node: *ast.Node) !LocalVarId {
     const proc = c.proc();
     if (proc.nameToVar.get(name)) |varInfo| {
@@ -3504,6 +3551,7 @@ pub fn pushProc(self: *cy.Chunk, func: ?*cy.Func) !ProcId {
 }
 
 fn preLoop(c: *cy.Chunk, node: *ast.Node) !void {
+    _ = node;
     const proc = c.proc();
     const b = c.block();
 
@@ -4762,8 +4810,7 @@ pub const ChunkExt = struct {
         });
     }
 
-    pub fn semaOptionExpr(c: *cy.Chunk, node: *ast.Node) !ExprResult {
-        const res = try semaExpr(c, node, .{});
+    pub fn semaOptionExpr2(c: *cy.Chunk, res: ExprResult, node: *ast.Node) !ExprResult {
         if (res.type.dynamic and res.type.id == bt.Any) {
             // Runtime check.
             var new_res = res;
@@ -4780,6 +4827,11 @@ pub const ChunkExt = struct {
             }
             return res;
         }
+    }
+
+    pub fn semaOptionExpr(c: *cy.Chunk, node: *ast.Node) !ExprResult {
+        const res = try semaExpr(c, node, .{});
+        return semaOptionExpr2(c, res, node);
     }
 
     pub fn semaExpr(c: *cy.Chunk, node: *ast.Node, opts: SemaExprOptions) !ExprResult {
@@ -5088,7 +5140,6 @@ pub const ChunkExt = struct {
                 const loc = try c.ir.pushExpr(.unwrapChoice, c.alloc, payload_t, node, .{
                     .choice = opt.irIdx,
                     .tag = 1,
-                    .payload_t = payload_t,
                     .fieldIdx = 1,
                 });
                 return ExprResult.initInheritDyn(loc, opt.type, payload_t);
@@ -5127,7 +5178,7 @@ pub const ChunkExt = struct {
                                     c.ir.setArrayItem(args_loc, u32, i, res.irIdx);
                                 }
 
-                                c.ir.setExprData(loc, .list, .{ .type = type_id, .numArgs = @intCast(nargs) });
+                                c.ir.setExprData(loc, .list, .{ .numArgs = @intCast(nargs) });
                                 return ExprResult.initStatic(loc, type_id);
                             }
                         }
@@ -5180,11 +5231,11 @@ pub const ChunkExt = struct {
                 const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, array_lit.args.len);
 
                 for (array_lit.args, 0..) |arg, i| {
-                    const argRes = try c.semaExpr(arg, .{});
+                    const argRes = try c.semaExprCstr(arg, bt.Dyn);
                     c.ir.setArrayItem(irArgsIdx, u32, i, argRes.irIdx);
                 }
 
-                c.ir.setExprData(irIdx, .list, .{ .type = bt.ListDyn, .numArgs = @intCast(array_lit.args.len) });
+                c.ir.setExprData(irIdx, .list, .{ .numArgs = @intCast(array_lit.args.len) });
                 return ExprResult.initStatic(irIdx, bt.ListDyn);
             },
             .recordLit => {
@@ -5238,7 +5289,7 @@ pub const ChunkExt = struct {
                 // Generate function body.
                 try appendFuncParamVars(c, func, lambda.params);
 
-                const exprRes = try c.semaExpr(@ptrCast(@constCast(@alignCast(lambda.stmts.ptr))), .{});
+                const exprRes = try c.semaExprCstr(@ptrCast(@constCast(@alignCast(lambda.stmts.ptr))), func.retType);
                 _ = try c.ir.pushStmt(c.alloc, .retExprStmt, node, .{
                     .expr = exprRes.irIdx,
                 });
@@ -5538,6 +5589,11 @@ pub const ChunkExt = struct {
         return ExprResult.initStatic(irIdx, bt.Boolean);
     }
 
+    pub fn semaIsNone(c: *cy.Chunk, child: ExprResult, node: *ast.Node) !ExprResult {
+        const irIdx = try c.ir.pushExpr(.none, c.alloc, bt.Boolean, node, .{ .child = child.irIdx });
+        return ExprResult.initStatic(irIdx, bt.Boolean);
+    }
+
     pub fn semaNone(c: *cy.Chunk, preferType: cy.TypeId, node: *ast.Node) !ExprResult {
         const type_e = c.sema.types.items[preferType];
         if (type_e.kind == .option) {
@@ -5558,7 +5614,7 @@ pub const ChunkExt = struct {
     }
 
     pub fn semaEmptyList(c: *cy.Chunk, node: *ast.Node) !ExprResult {
-        const irIdx = try c.ir.pushExpr(.list, c.alloc, bt.ListDyn, node, .{ .type = bt.ListDyn, .numArgs = 0 });
+        const irIdx = try c.ir.pushExpr(.list, c.alloc, bt.ListDyn, node, .{ .numArgs = 0 });
         return ExprResult.initStatic(irIdx, bt.ListDyn);
     }
 

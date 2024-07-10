@@ -42,13 +42,10 @@ pub const StmtCode = enum(u8) {
 
     exprStmt,
     ifStmt,
-    ifUnwrapStmt,
     switchStmt,
     tryStmt,
     loopStmt,
     forRangeStmt,
-    forIterStmt,
-    destrElemsStmt,
     retStmt,
     retExprStmt,
     breakStmt,
@@ -95,6 +92,7 @@ pub const ExprCode = enum(u8) {
     tag_lit,
     float,
     int,
+    none,
     unOpEnd,
     funcSym,
     varSym,
@@ -188,7 +186,6 @@ pub const TypeCheckOption = struct {
 
 pub const UnwrapChoice = struct {
     choice: Loc,
-    payload_t: cy.TypeId,
     tag: u8,
     fieldIdx: u8,
 };
@@ -222,11 +219,6 @@ pub const SwitchCase = struct {
     numConds: u8,
     bodyIsExpr: bool,
     bodyHead: Loc,
-};
-
-pub const DestructureElems = struct {
-    numLocals: u8,
-    right: u32,
 };
 
 pub const LoopStmt = struct {
@@ -549,7 +541,6 @@ pub const Map = struct {
 };
 
 pub const List = struct {
-    type: cy.TypeId,
     numArgs: u8,
 };
 
@@ -563,6 +554,10 @@ pub const Int = struct {
 
 pub const Array = struct {
     buffer: []const u8,
+};
+
+pub const None = struct {
+    child: Loc,
 };
 
 pub const String = struct {
@@ -597,14 +592,6 @@ pub const IfStmt = struct {
     else_block: cy.Nullable(Loc),
 };
 
-pub const IfUnwrapStmt = struct {
-    opt: Loc,
-    unwrap_local: u8,
-    decl_head: Loc,
-    body_head: Loc,
-    else_block: cy.Nullable(Loc),
-};
-
 pub const Verbose = struct {
     verbose: bool,
 };
@@ -622,7 +609,6 @@ pub fn StmtData(comptime code: StmtCode) type {
         .declareLocal => DeclareLocal,
         .declareLocalInit => DeclareLocalInit,
         .ifStmt => IfStmt,
-        .ifUnwrapStmt => IfUnwrapStmt,
         .tryStmt => TryStmt,
         .forIterStmt => ForIterStmt,
         .forRangeStmt => ForRangeStmt,
@@ -636,7 +622,6 @@ pub fn StmtData(comptime code: StmtCode) type {
         .opSet => OpSet,
         .pushDebugLabel => PushDebugLabel,
         .verbose => Verbose,
-        .destrElemsStmt => DestructureElems,
         .exprStmt => ExprStmt,
         .block => Block,
         .retExprStmt => RetExprStmt,
@@ -666,6 +651,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .typeSym => TypeSym,
         .float => Float,
         .int => Int,
+        .none => None,
         .local => Local,
         .if_expr => IfExpr,
         .tryExpr => TryExpr,

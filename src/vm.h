@@ -220,6 +220,7 @@ typedef enum {
     CodeTrue,
     CodeFalse,
     CodeNot,
+    CodeNone,
     CodeCopy,
     CodeCopyReleaseDst,
     CodeCopyRetainSrc,
@@ -244,7 +245,6 @@ typedef enum {
     CodeJumpNotCond,
     CodeJumpCond,
     CodeJump,
-    CodeJumpNone,
     CodeRelease,
     CodeReleaseN,
 
@@ -348,7 +348,6 @@ typedef enum {
     CodeForRangeInit,
     CodeForRange,
     CodeForRangeReverse,
-    CodeSeqDestructure,
     CodeMatch,
     CodeStaticFunc,
     CodeStaticVar,

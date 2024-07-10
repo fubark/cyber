@@ -325,7 +325,6 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .forRangeStmt       => try forRangeStmt(c, idx, node),
         .funcBlock          => try funcBlock(c, idx, node),
         .ifStmt             => try ifStmt(c, idx, node),
-        .ifUnwrapStmt       => try ifUnwrapStmt(c, idx, node),
         .loopStmt           => try loopStmt(c, idx, node),
         .mainBlock          => try mainBlock(c, idx, node),
         .block              => try genBlock(c, idx, node),
@@ -432,6 +431,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .list               => genList(c, idx, cstr, node),
         .local              => genLocal(c, idx, cstr, node),
         .map                => genMap(c, idx, cstr, node),
+        .none               => genNone(c, idx, cstr, node),
         .object_init        => genObjectInit(c, idx, cstr, node),
         .pre                => return error.Unexpected,
         .preBinOp           => genBinOp(c, idx, cstr, .{}, node),
@@ -1108,6 +1108,22 @@ fn genFloat(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
         try initSlot(c, inst.dst, false, node);
     }
     return finishNoErrNoDepInst(c, inst, false);
+}
+
+fn genNone(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
+    const data = c.ir.getExprData(idx, .none);
+    const ret_t = c.ir.getExprType(idx).id;
+
+    const childv = try genExpr(c, data.child, Cstr.simple);
+
+    const inst = try bc.selectForDstInst(c, cstr, ret_t, false, node);
+    try c.pushCode(.none, &.{childv.reg, inst.dst}, node);
+    try popTempValue(c, childv, node);
+    if (inst.dst_owned) {
+        try initSlot(c, inst.dst, false, node);
+    }
+
+    return finishDstInst(c, inst, false);
 }
 
 fn genStringTemplate(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
@@ -2619,25 +2635,6 @@ fn loopStmt(c: *cy.Chunk, loc: usize, node: *ast.Node) !void {
     c.patchForBlockJumps(jump_start, c.buf.ops.items.len, top_pc);
 }
 
-fn destrElemsStmt(c: *Chunk, idx: usize, node: *ast.Node) !void {
-    const data = c.ir.getStmtData(idx, .destrElemsStmt);
-    const localsIdx = c.ir.advanceStmt(idx, .destrElemsStmt);
-    const locals = c.ir.getArray(localsIdx, u8, data.numLocals);
-
-    const rightv = try genExpr(c, data.right, Cstr.simple);
-
-    try c.pushFCode(.seqDestructure, &.{rightv.reg, @as(u8, @intCast(locals.len))}, node);
-    const start = c.buf.ops.items.len;
-    try c.buf.ops.resize(c.alloc, c.buf.ops.items.len + locals.len);
-    for (locals, 0..) |local, i| {
-        const reg = toLocalReg(c, local);
-        updateRegType(c, reg, bt.Any);
-        c.buf.ops.items[start+i] = .{ .val = reg };
-    }
-
-    _ = try popUnwindValue(c, rightv);
-}
-
 fn forRangeStmt(c: *Chunk, idx: usize, node: *ast.Node) !void {
     const data = c.ir.getStmtData(idx, .forRangeStmt);
 
@@ -2782,8 +2779,10 @@ fn genUnwrapOr(c: *Chunk, loc: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     }
 
     const optv = try genExpr(c, data.opt, Cstr.simple);
-    try pushUnwindValue(c, optv);
-    const jump_none = try c.pushEmptyJumpNone(optv.reg);
+
+    const cond = try bc.reserveTemp(c, bt.Boolean);
+    try c.pushCode(.none, &.{optv.reg, cond}, node);
+    const jump_cond = try c.pushEmptyJumpCond(cond);
 
     const retain_some = true;
     const inst = try bc.selectForDstInst(c, finalCstr, ret_t, retain_some, node);
@@ -2793,7 +2792,7 @@ fn genUnwrapOr(c: *Chunk, loc: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     const jump_end = try c.pushEmptyJump();
 
     // else.
-    c.patchJumpNoneToCurPc(jump_none);
+    c.patchJumpCondToCurPc(jump_cond);
     _ = try genExpr(c, data.default, finalCstr);
 
     c.patchJumpToCurPc(jump_end);
@@ -2840,65 +2839,13 @@ fn genIfExpr(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     return val;
 }
 
-fn ifUnwrapStmt(c: *cy.Chunk, loc: usize, node: *ast.Node) !void {
-    const data = c.ir.getStmtData(loc, .ifUnwrapStmt);
-
-    const opt_nid = c.ir.getNode(data.opt);
-    var optv = try genExpr(c, data.opt, Cstr.simple);
-    try pushUnwindValue(c, optv);
-
-    const jump_none = try c.pushEmptyJumpNone(optv.reg);
-    {
-        try pushBlock(c, false, node);
-        try genStmts(c, data.decl_head);
-
-        // Unwrap to var.
-        const unwrap_reg = toLocalReg(c, data.unwrap_local);
-        const unwrap_local = getLocalInfoPtr(c, unwrap_reg);
-        try pushField(c, optv.reg, 1, unwrap_reg, node);
-        // Mark var defined for ARC.
-        unwrap_local.some.defined = true;
-
-        // ARC cleanup for true case.
-        try popTempAndUnwind(c, optv);
-        try releaseTempValue(c, optv, opt_nid);
-
-        try genStmts(c, data.body_head);
-        try popBlock(c);
-    }
-
-    var jump_end: u32 = undefined;
-    if (data.else_block != cy.NullId) {
-        jump_end = try c.pushEmptyJump();
-    }
-
-    if (optv.isRetainedTemp()) {
-        const skip_release = try c.pushEmptyJump();
-        c.patchJumpNoneToCurPc(jump_none);
-        try pushRelease(c, optv.reg, opt_nid);
-        c.patchJumpToCurPc(skip_release);
-    } else {
-        c.patchJumpNoneToCurPc(jump_none);
-    }
-
-    if (data.else_block != cy.NullId) {
-        try elseBlocks(c, data.else_block);
-        c.patchJumpToCurPc(jump_end);
-    }
-}
-
 fn ifStmt(c: *cy.Chunk, idx: usize, node: *ast.Node) !void {
     const data = c.ir.getStmtData(idx, .ifStmt);
 
     const condNodeId = c.ir.getNode(data.cond);
     const condv = try genExpr(c, data.cond, Cstr.simple);
-    try pushUnwindValue(c, condv);
 
     const jump_miss = try c.pushEmptyJumpNotCond(condv.reg);
-
-    // ARC cleanup for true case.
-    try popTempAndUnwind(c, condv);
-    try releaseTempValue(c, condv, condNodeId);
 
     try pushBlock(c, false, node);
     try genStmts(c, data.body_head);

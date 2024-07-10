@@ -18,7 +18,7 @@ f = Foo[String]{a='abc'}
 test.eq(f.a, 'abc')
 
 -- Declare with type spec.
-var f2 Foo[String] = {a='abc'}
+var f2 Foo[String] = .{a='abc'}
 test.eq(f2.a, 'abc')
 
 -- Different variant.

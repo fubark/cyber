@@ -8,7 +8,7 @@ var a = Foo{val=123}
 test.eq(a.val, 123)
 
 -- Initalize with inferred type.
-var a2 Foo = {val=123}
+var a2 Foo = .{val=123}
 test.eq(a2.val, 123)
 
 -- Set field.
@@ -34,7 +34,7 @@ test.eq(a.val, 123)
 type Bar cstruct:
     a int
     b Foo
-var c = Bar{a=123, b={val=234}}
+var c = Bar{a=123, b=.{val=234}}
 test.eq(c.a, 123)
 test.eq(c.b.val, 234)
 var c2 = c

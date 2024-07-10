@@ -38,6 +38,7 @@ pub const NodeType = enum(u7) {
     deref,
     distinct_decl,
     dot_array_lit,
+    dot_record_lit,
     dot_lit,
     else_block,
     enumDecl,
@@ -308,6 +309,11 @@ pub const ArrayLit = struct {
 
 pub const DotArrayLit = struct {
     array: *ArrayLit align(8),
+    pos: u32,
+};
+
+pub const DotRecordLit = struct {
+    record: *RecordLit align(8),
     pos: u32,
 };
 
@@ -599,6 +605,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .deref          => DerefExpr,
         .distinct_decl  => DistinctDecl,
         .dot_array_lit  => DotArrayLit,
+        .dot_record_lit => DotRecordLit,
         .dot_lit        => Span,
         .else_block     => ElseBlock,
         .enumDecl       => EnumDecl,
@@ -736,6 +743,7 @@ pub const Node = struct {
             .deref          => self.cast(.deref).left.pos(),
             .distinct_decl  => self.cast(.distinct_decl).pos,
             .dot_array_lit  => self.cast(.dot_array_lit).pos,
+            .dot_record_lit => self.cast(.dot_record_lit).pos,
             .dot_lit        => self.cast(.dot_lit).pos-1,
             .else_block     => self.cast(.else_block).pos,
             .enumDecl       => self.cast(.enumDecl).pos,
@@ -878,7 +886,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 99);
+    try t.eq(std.enums.values(NodeType).len, 100);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 

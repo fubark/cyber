@@ -1053,9 +1053,9 @@ var node = Node{value=123, next=none}
 print node.value       -- Prints "123"
 ```
 
-A record literal can also initialize to the inferred object type:
+A dot record literal can also initialize to the inferred object type:
 ```cy
-var node Node = {value=234, next=none}
+var node Node = .{value=234, next=none}
 print node.value       -- Prints "234"
 ```
 
@@ -1071,7 +1071,7 @@ type Info:
 ### Default field values.
 When a field is omitted in the record literal, it gets initialized to its [zero value](#zero-values):
 ```cy
-var node Node = {value=234}
+var node Node = .{value=234}
 print node.next    --> Option.none
 
 type Student:
@@ -1116,7 +1116,7 @@ type Node:
     next  ?Node
 
 var node = Node{
-    value = {a=123, b=100.0},
+    value = .{a=123, b=100.0},
     next  = none,
 }
 ```
@@ -1517,7 +1517,7 @@ When the type template is invoked with template argument(s), a special version o
 
 In this example, `String` can be used as an argument since it satisfies the `type` parameter constraint:
 ```cy
-var a MyContainer[String] = {id=123, value='abc'}
+var a MyContainer[String] = .{id=123, value='abc'}
 print a.get()      -- Prints 'abc'
 ```
 Note that invoking the template again with the same argument(s) returns the same generated type. In other words, the generated type is always memoized from the input parameters.

@@ -2782,6 +2782,12 @@ pub const Parser = struct {
                         .array = array,
                         .pos = self.tokenSrcPos(start),
                     });
+                } else if (self.peek().tag() == .left_brace) {
+                    const record = try self.parseRecordLiteral();
+                    return try self.ast.newNodeErase(.dot_record_lit, .{
+                        .record = record,
+                        .pos = self.tokenSrcPos(start),
+                    });
                 } else {
                     const name = (try self.parseOptName()) orelse {
                         return self.reportError("Expected symbol identifier.", &.{});

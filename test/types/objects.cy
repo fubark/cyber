@@ -16,7 +16,7 @@ var n2 = NodeA{value2=234}
 t.eq(n2.value2, 234)
 
 -- Initialize, infer type.
-var left Node = {value=123}
+var left Node = .{value=123}
 t.eq(left.value, 123)
 
 type NodeHeap:

@@ -5569,20 +5569,25 @@ pub const ChunkExt = struct {
                 c.ir.setExprData(loc, .list, .{ .numArgs = @intCast(nargs) });
                 return ExprResult.initStatic(loc, expr.target_t);
             },
-            .recordLit => {
-                const record_lit = node.cast(.recordLit);
-
-                if (expr.hasTargetType()) {
-                    if (c.sema.isUserObjectType(expr.target_t)) {
-                        // Infer user object type.
-                        const obj = c.sema.getTypeSym(expr.target_t).cast(.object_t);
-                        return c.semaObjectInit2(obj, record_lit);
-                    } else if (c.sema.isStructType(expr.target_t)) {
-                        const obj = c.sema.getTypeSym(expr.target_t).cast(.struct_t);
-                        return c.semaObjectInit2(obj, record_lit);
-                    }
+            .dot_record_lit => {
+                if (expr.target_t == cy.NullId) {
+                    return c.reportError("Can not infer record like type.", expr.node);
                 }
 
+                const record_lit = node.cast(.dot_record_lit).record;
+                if (c.sema.isUserObjectType(expr.target_t)) {
+                    // Infer user object type.
+                    const obj = c.sema.getTypeSym(expr.target_t).cast(.object_t);
+                    return c.semaObjectInit2(obj, record_lit);
+                } else if (c.sema.isStructType(expr.target_t)) {
+                    const obj = c.sema.getTypeSym(expr.target_t).cast(.struct_t);
+                    return c.semaObjectInit2(obj, record_lit);
+                } else {
+                    return c.reportError("Can not infer record like type.", expr.node);
+                }
+            },
+            .recordLit => {
+                const record_lit = node.cast(.recordLit);
                 const obj_t = c.sema.getTypeSym(bt.Table).cast(.object_t);
                 return c.semaObjectInit2(obj_t, record_lit);
             },

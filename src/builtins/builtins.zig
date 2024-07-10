@@ -30,6 +30,7 @@ pub const CoreData = struct {
 const func = cy.hostFuncEntry;
 const funcs = [_]C.HostFuncEntry{
     // Utils.
+    func("bitcast_",       zErrFunc(bitcast)),
     func("copy",           zErrFunc(copy)),
     func("dump",           zErrFunc(dump)),
     func("eprint",         eprint),
@@ -394,6 +395,18 @@ fn traceReleases(vm: *cy.VM) Value {
 
 pub fn listFill(vm: *cy.VM) Value {
     return vm.allocListFill(vm.getValue(0), @intCast(vm.getInt(1))) catch cy.fatal();
+}
+
+pub fn bitcast(vm: *cy.VM) anyerror!Value {
+    const dst_t: cy.TypeId = @intCast(vm.getInt(0));
+    const src_t: cy.TypeId = @intCast(vm.getInt(2));
+    if (vm.c.types[src_t].kind != .int or vm.c.types[dst_t].kind != .int) {
+        return error.InvalidArgument;
+    }
+    if (vm.c.types[src_t].sym.cast(.int_t).bits != vm.c.types[dst_t].sym.cast(.int_t).bits) {
+        return error.InvalidArgument;
+    }
+    return vm.getValue(1);
 }
 
 pub fn copy(vm: *cy.VM) anyerror!Value {

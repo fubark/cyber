@@ -381,6 +381,7 @@ pub const Sym = extern struct {
             .typeAlias       => return self.cast(.typeAlias).type,
             .struct_t        => return self.cast(.struct_t).type,
             .object_t        => return self.cast(.object_t).type,
+            .distinct_t      => return self.cast(.distinct_t).type,
             .trait_t         => return self.cast(.trait_t).type,
             .custom_t        => return self.cast(.custom_t).type,
             .use_alias       => return self.cast(.use_alias).sym.getStaticType(),
@@ -392,7 +393,6 @@ pub const Sym = extern struct {
             .enumMember,
             .func,
             .module_alias,
-            .distinct_t,
             .chunk,
             .context_var,
             .hostVar,
@@ -601,7 +601,7 @@ pub const DistinctType = extern struct {
     decl: *ast.DistinctDecl,
     type: cy.TypeId,
     mod: vmc.Module,
-    variant: u32,
+    variant: ?*Variant,
     resolved: bool,
 
     pub fn getMod(self: *DistinctType) *cy.Module {
@@ -1155,7 +1155,7 @@ pub const ChunkExt = struct {
             .type = cy.NullId,
             .mod = undefined,
             .resolved = false,
-            .variant = cy.NullId,
+            .variant = null,
         });
         sym.getMod().* = cy.Module.init(c);
         try c.syms.append(c.alloc, @ptrCast(sym));
@@ -1519,16 +1519,6 @@ pub const ChunkExt = struct {
             .data = undefined,
         };
         try c.syms.append(c.alloc, @ptrCast(sym));
-        return sym;
-    }
-
-    pub fn createEnumTypeVariant(c: *cy.Chunk, parent: *Sym, template: *Template, isChoiceType: bool, variant: *Variant) !*EnumType {
-        const name = template.head.name();
-        const sym = try createEnumType(c, parent, name, isChoiceType, template.child_decl.cast(.enumDecl));
-        sym.variant = variant;
-        if (template == c.sema.option_tmpl) {
-            c.compiler.sema.types.items[sym.type].kind = .option;
-        }
         return sym;
     }
 };

@@ -1274,6 +1274,10 @@ pub fn declareTemplate(c: *cy.Chunk, node: *ast.TemplateDecl) !*cy.sym.Template 
             name_n = node.decl.cast(.custom_decl).name;
             decl_t = .custom_t;
         },
+        .distinct_decl => {
+            name_n = node.decl.cast(.distinct_decl).name;
+            decl_t = .distinct_t;
+        },
         else => {
             return c.reportErrorFmt("Unsupported type template.", &.{}, @ptrCast(node));
         }
@@ -1764,7 +1768,22 @@ pub fn reserveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, opt_head
         },
         .enum_t => {
             const decl = template.child_decl.cast(.enumDecl);
-            const sym = try c.createEnumTypeVariant(@ptrCast(c.sym), template, decl.isChoiceType, variant);
+            const sym = try c.createEnumType(@ptrCast(c.sym), name, decl.isChoiceType, decl);
+            sym.variant = variant;
+            if (template == c.sema.option_tmpl) {
+                c.compiler.sema.types.items[sym.type].kind = .option;
+            }
+            return @ptrCast(sym);
+        },
+        .distinct_t => {
+            const decl = template.child_decl.cast(.distinct_decl);
+            const sym = try c.createDistinctType(@ptrCast(c.sym), name, decl);
+            sym.variant = variant;
+
+            const header_decl = opt_header_decl orelse template.child_decl;
+            const type_id = try resolveTypeIdFromDecl(c, @ptrCast(sym), header_decl.cast(.distinct_decl).attrs, header_decl);
+            try resolveDistinctTypeId(c, sym, type_id);
+
             return @ptrCast(sym);
         },
         else => {
@@ -1782,6 +1801,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
         return;
     }
     const tchunk = template.chunk();
+
     switch (sym.type) {
         .object_t => {
             const object_t = sym.cast(.object_t);
@@ -1842,6 +1862,20 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
         .enum_t => {
             const enum_t = sym.cast(.enum_t);
             try resolveEnumType(tchunk, enum_t, @ptrCast(template.child_decl));
+        },
+        .distinct_t => {
+            const distinct_t = sym.cast(.distinct_t);
+            const new_sym = try sema.resolveDistinctType(tchunk, distinct_t);
+
+            try pushVariantResolveContext(tchunk, distinct_t.variant.?);
+            defer popResolveContext(tchunk);
+
+            const distinct_decl = template.child_decl.cast(.distinct_decl);
+            for (distinct_decl.funcs) |func_n| {
+                const func = try reserveNestedFunc(tchunk, new_sym, func_n, false);
+                // func.sym.?.variant = object_t.variant.?;
+                try resolveFunc2(tchunk, func, true);
+            }
         },
         else => {
             return error.Unsupported;
@@ -1988,7 +2022,11 @@ pub fn reserveStruct(c: *cy.Chunk, node: *ast.ObjectDecl, cstruct: bool) !*cy.sy
 }
 
 pub fn resolveDistinctType(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType) !*cy.Sym {
-    try sema.pushResolveContext(c);
+    if (distinct_t.variant) |variant| {
+        try sema.pushVariantResolveContext(c, variant);
+    } else {
+        try sema.pushResolveContext(c);
+    }
     defer sema.popResolveContext(c);
 
     const decl = distinct_t.decl;

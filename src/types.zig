@@ -315,6 +315,7 @@ pub const SemaExt = struct {
                     .enum_t => {
                         return sym.cast(.enum_t).isChoiceType;
                     },
+                    .int_t => return false,
                     else => {
                         cy.panicFmt("Unexpected sym type: {} {}", .{id, sym.type});
                     }

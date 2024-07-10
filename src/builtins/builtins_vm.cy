@@ -1,3 +1,8 @@
+func bitcast(#D type, val #S) D:
+    return bitcast_(D, (D).id(), val, (S).id())
+
+@host -func bitcast_(#D type, dst_t int, val #S, src_t int) D
+
 --| Copies a primitive value or creates a shallow copy of an object value.
 @host func copy(val any) any
 

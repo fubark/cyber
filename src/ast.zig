@@ -492,7 +492,7 @@ const ForRangeStmt = struct {
     pos: u32,
 };
 
-const ForIterStmt = struct {
+pub const ForIterStmt = struct {
     iterable: *Node align(8),
     each: ?*Node,
     count: ?*Node,

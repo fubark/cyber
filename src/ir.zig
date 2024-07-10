@@ -301,14 +301,6 @@ pub const ObjectInit = struct {
     numArgs: u8,
 };
 
-pub const ForIterStmt = struct {
-    eachLocal: ?u8,
-    countLocal: ?u8,
-    iter: Loc,
-    declHead: u32,
-    bodyHead: u32,
-};
-
 pub const ForRangeStmt = struct {
     start: Loc,
     end: Loc,
@@ -610,7 +602,6 @@ pub fn StmtData(comptime code: StmtCode) type {
         .declareLocalInit => DeclareLocalInit,
         .ifStmt => IfStmt,
         .tryStmt => TryStmt,
-        .forIterStmt => ForIterStmt,
         .forRangeStmt => ForRangeStmt,
         .setIndex,
         .setLocal,

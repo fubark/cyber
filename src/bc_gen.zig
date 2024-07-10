@@ -321,7 +321,6 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
             exp_slot_count += 1;
         },
         .exprStmt           => try exprStmt(c, idx, node),
-        .forIterStmt        => try forIterStmt(c, idx, node),
         .forRangeStmt       => try forRangeStmt(c, idx, node),
         .funcBlock          => try funcBlock(c, idx, node),
         .ifStmt             => try ifStmt(c, idx, node),
@@ -2511,95 +2510,6 @@ fn genToFinalDst(c: *Chunk, val: GenValue, dst: Cstr, node: *ast.Node) !GenValue
 pub fn endCall(c: *Chunk, inst: CallInst, retained: bool) !GenValue {
     popNullSlots(c, inst.numPreludeTemps);
     return finishCallInst(c, inst, retained);
-}
-
-fn forIterStmt(c: *Chunk, idx: usize, node: *ast.Node) !void {
-    const data = c.ir.getStmtData(idx, .forIterStmt);
-
-    if (data.countLocal != null) {
-        // Counter increment. Always 1.
-        _ = try c.rega.consumeNextTemp();
-        // Counter.
-        _ = try c.rega.consumeNextTemp();
-
-        // Initialize count.
-        try c.buf.pushOp2(.constI8, 1, c.rega.nextTemp - 2);
-        try c.buf.pushOp2(.constI8, @bitCast(@as(i8, -1)), c.rega.nextTemp - 1);
-    }
-
-    // Reserve temp local for iterator.
-    const iterTemp = try c.rega.consumeNextTemp();
-
-    // Iterable.
-    const iterv = try genExpr(c, data.iter, Cstr.toTemp(iterTemp + cy.vm.CallArgStart));
-
-    const block = node.cast(.forIterStmt);
-
-    var extraIdx = try c.fmtExtraDesc("iterator()", .{});
-    try pushCallObjSymExt(c, iterTemp, 1,
-        @intCast(c.compiler.iteratorMID),
-        block.iterable, extraIdx);
-
-    try releaseIf(c, iterv.retained, iterv.reg, block.iterable);
-    _ = try pushUnwind(c, iterTemp);
-
-    try pushBlock(c, true, node);
-    try genStmts(c, data.declHead);
-
-    const bodyPc = c.buf.ops.items.len;
-
-    // next()
-    try genIterNext(c, iterTemp, data.countLocal != null, block.iterable);
-    const hasCounter = data.countLocal != null;
-
-    const jump_none = try c.pushEmptyJumpNone(iterTemp + 1);
-    if (data.eachLocal) |eachLocal| {
-        // extraIdx = try c.fmtExtraDesc("copy next() to local", .{});
-
-        // Unwrap to var.
-        const unwrap_reg = toLocalReg(c, eachLocal);
-        const unwrap_local = getLocalInfoPtr(c, unwrap_reg);
-        try pushField(c, iterTemp + 1, 1, unwrap_reg, node);
-        // Mark var defined for ARC.
-        unwrap_local.some.defined = true;
-    }
-    if (data.countLocal) |countLocal| {
-        extraIdx = try c.fmtExtraDesc("copy count to local", .{});
-        const countTemp = regValue(c, iterTemp - 1, false);
-        try setLocal(c, .{ .id = countLocal }, undefined, bt.Integer, block.each.?, .{ .rightv = countTemp, .extraIdx = extraIdx });
-    }
-
-    try pushRelease(c, iterTemp + 1, block.iterable);
-
-    const jumpStackSave: u32 = @intCast(c.blockJumpStack.items.len);
-    defer c.blockJumpStack.items.len = jumpStackSave;
-
-    try genStmts(c, data.bodyHead);
-
-    const b = c.blocks.getLast();
-    try genReleaseLocals(c, b.nextLocalReg, b.node);
-    // Pop sub block.
-    try popLoopBlock(c);
-
-    const contPc = c.buf.ops.items.len;
-    try c.pushJumpBackTo(bodyPc);
-
-    c.patchForBlockJumps(jumpStackSave, c.buf.ops.items.len, contPc);
-
-    const skip_release = try c.pushEmptyJump();
-    c.patchJumpNoneToCurPc(jump_none);
-    try pushRelease(c, iterTemp + 1, block.iterable);
-    c.patchJumpToCurPc(skip_release);
-
-    // TODO: Iter local should be a reserved hidden local (instead of temp) so it can be cleaned up by endLocals when aborting the current fiber.
-    try pushRelease(c, iterTemp, block.iterable);
-
-    try popUnwind(c, iterTemp);
-
-    if (hasCounter) {
-        c.rega.nextTemp -= 2;
-    }
-    c.rega.nextTemp -= 1;
 }
 
 fn genIterNext(c: *Chunk, iterTemp: u8, hasCounter: bool, iterNodeId: *ast.Node) !void {

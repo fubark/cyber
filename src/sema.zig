@@ -375,73 +375,66 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
             const stmt = node.cast(.forIterStmt);
 
             try preLoop(c, node);
-            const irIdx = try c.ir.pushEmptyStmt(c.alloc, .forIterStmt, node);
-            const iter = try c.semaExpr(stmt.iterable, .{});
             try pushBlock(c, node);
+            {
+                const iterable_init = try c.semaExpr(stmt.iterable, .{});
+                const iterable_v = try declareLocalNameInit(c, "$iterable", bt.Dyn, iterable_init, node);
+                const iterable = try semaLocal(c, iterable_v.id, node);
 
-            var eachLocal: ?u8 = null;
-            var countLocal: ?u8 = null;
-            var hasSeqDestructure = false;
-            var seqIrVarStart: u32 = undefined;
-            if (stmt.each) |each| {
-                if (each.type() == .ident) {
-                    const varId = try declareLocal(c, each, bt.Dyn, false);
-                    eachLocal = c.varStack.items[varId].inner.local.id;
+                const iterator_init = try c.semaCallObjSym0(iterable.irIdx, "iterator", node);
+                const iterator_v = try declareLocalNameInit(c, "$iterator", bt.Dyn, iterator_init, node);
+                const iterator = try semaLocal(c, iterator_v.id, node);
 
-                    if (stmt.count) |count| {
-                        const countVarId = try declareLocal(c, count, bt.Integer, false);
-                        countLocal = c.varStack.items[countVarId].inner.local.id;
-                    }
-                } else if (each.type() == .seqDestructure) {
-                    const varId = try declareLocalName(c, "$elem", bt.Dyn, false, each);
-                    eachLocal = c.varStack.items[varId].inner.local.id;
+                const counter_init = try c.semaInt(-1, node);
+                _ = try declareLocalNameInit(c, "$counter", bt.Integer, counter_init, node);
 
-                    if (stmt.count) |count| {
-                        const countVarId = try declareLocal(c, count, bt.Integer, false);
-                        countLocal = c.varStack.items[countVarId].inner.local.id;
-                    }
+                // Loop block.
+                const loop_stmt = try c.ir.pushEmptyStmt(c.alloc, .loopStmt, node);
+                try pushBlock(c, node);
+                {
+                    // if $iterator.next() -> each, i
+                    const S = struct {
+                        fn body(c_: *cy.Chunk, data: *anyopaque) !void {
+                            const stmt_: *ast.ForIterStmt = @ptrCast(@alignCast(data));
+                            if (stmt_.count) |count| {
+                                // $counter += 1
+                                const int_t = c_.sema.getTypeSym(bt.Integer);
+                                const sym = try c_.mustFindSym(int_t, "$infix+", @ptrCast(stmt_));
+                                const func_sym = try requireFuncSym(c_, sym, @ptrCast(stmt_));
+                                const one = try c_.semaInt(1, @ptrCast(stmt_));
+                                const res = try getOrLookupVar(c_, "$counter", @ptrCast(stmt_));
+                                const counter_ = try semaLocal(c_, res.local, @ptrCast(stmt_));
+                                const right = try c_.semaCallFuncSymRec2(func_sym, @ptrCast(stmt_), counter_, 
+                                    &.{one}, &.{ @ptrCast(stmt_) }, .any, @ptrCast(stmt_));
+                                const irStart = try c_.ir.pushEmptyStmt(c_.alloc, .set, @ptrCast(stmt_));
+                                c_.ir.setStmtData(irStart, .set, .{ .generic = .{
+                                    .left_t = CompactType.init(bt.Integer),
+                                    .right_t = CompactType.init(bt.Integer),
+                                    .left = counter_.irIdx,
+                                    .right = right.irIdx,
+                                }});
+                                c_.ir.setStmtCode(irStart, .setLocal);
 
-                    const decls = each.cast(.seqDestructure).args;
+                                // $count = $counter
+                                const count_name = c_.ast.nodeString(count);
+                                _ = try declareLocalNameInit(c_, count_name, bt.Integer, counter_, @ptrCast(stmt_));
+                            }
 
-                    seqIrVarStart = @intCast(c.dataU8Stack.items.len);
-                    for (decls) |decl| {
-                        const varId2 = try declareLocal(c, decl, bt.Dyn, false);
-                        const irVarId = c.varStack.items[varId2].inner.local.id;
-                        try c.dataU8Stack.append(c.alloc, .{ .irLocal = irVarId });
-                    }
-                    hasSeqDestructure = true;
-                } else {
-                    return c.reportErrorFmt("Unsupported each clause: {}", &.{v(each.type())}, each);
+                            try semaStmts(c_, stmt_.stmts);
+                            _ = try c_.ir.pushStmt(c_.alloc, .contStmt, @ptrCast(stmt_), {});
+                        }
+                    }; 
+                    const next = try c.semaCallObjSym0(iterator.irIdx, "next", node);
+                    const opt = try c.semaOptionExpr2(next, node);
+                    try semaIfUnwrapStmt2(c, opt, node, stmt.each, S.body, stmt, &.{}, @ptrCast(stmt));
                 }
-            }
-
-            const declHead = c.ir.getAndClearStmtBlock();
-
-            // Begin body code.
-            if (hasSeqDestructure) {
-                const destrIdx = try c.ir.pushEmptyStmt(c.alloc, .destrElemsStmt, stmt.each.?);
-                const locals = c.dataU8Stack.items[seqIrVarStart..];
-                const irStart = c.ir.buf.items.len;
-                try c.ir.buf.resize(c.alloc, c.ir.buf.items.len + locals.len);
-                for (locals, 0..) |local, i| {
-                    c.ir.buf.items[irStart + i] = local.irLocal;
-                }
-                const right = try c.ir.pushExpr(.local, c.alloc, bt.Any, stmt.each.?, .{ .id = eachLocal.? });
-                c.ir.setStmtData(destrIdx, .destrElemsStmt, .{
-                    .numLocals = @intCast(stmt.each.?.cast(.seqDestructure).args.len),
-                    .right = right,
+                const block = try popLoopBlock(c);
+                c.ir.setStmtData(loop_stmt, .loopStmt, .{
+                    .body_head = block.first,
                 });
-                c.dataU8Stack.items.len = seqIrVarStart;
             }
-
-            try semaStmts(c, stmt.stmts);
-            const stmtBlock = try popLoopBlock(c);
-
-            c.ir.setStmtData(irIdx, .forIterStmt, .{
-                .iter = iter.irIdx, .eachLocal = eachLocal,
-                .countLocal = countLocal, .declHead = declHead,
-                .bodyHead = stmtBlock.first,
-            });
+            const block = try popBlock(c);
+            _ = try c.ir.pushStmt(c.alloc, .block, @ptrCast(stmt), .{ .bodyHead = block.first });
         },
         .forRangeStmt => {
             const stmt = node.cast(.forRangeStmt);

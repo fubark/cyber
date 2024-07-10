@@ -10,7 +10,14 @@ func eq(a #T, b T) bool:
 
 --| Returns `true` if two lists have the same size and the elements are equal
 --| as if `eq` was called on those corresponding elements.
-@host func eqList(a any, b any) bool
+func eqList(a List[#T], b List[T]) bool:
+    if a.len() != b.len():
+        eprint("Length mismatch: $(a.len()) != $(b.len())")
+        return false
+    for a -> a_elem, i:
+        if !eq(a_elem, b[i]):
+            return false
+    return true
 
 --| Returns `true` if two numbers are near each other within epsilon 1e-5.
 @host func eqNear(a #T, b T) bool

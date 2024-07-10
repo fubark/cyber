@@ -268,39 +268,3 @@ pub fn eqNear(vm: *cy.VM) anyerror!Value {
         return rt.prepThrowError(vm, .AssertError);
     }
 }
-
-pub fn eqList(vm: *cy.VM, args: [*]const Value, _: u8) anyerror!Value {
-    const act = args[0];
-    const exp = args[1];
-
-    const actType = act.getTypeId();
-    const expType = exp.getTypeId();
-    if (actType == expType) {
-        if (actType == bt.ListDyn) {
-            const acto = act.asHeapObject();
-            const expo = exp.asHeapObject();
-            if (acto.list.list.len == expo.list.list.len) {
-                var i: u32 = 0;
-                const actItems = acto.list.items();
-                const expItems = expo.list.items();
-                while (i < acto.list.list.len) : (i += 1) {
-                    if (!eq2(vm, actItems[i], expItems[i])) {
-                        rt.errFmt(vm, "Item mismatch at idx: {}\n", &.{v(i)});
-                        return rt.prepThrowError(vm, .AssertError);
-                    }
-                }
-                return Value.True;
-            } else {
-                rt.errFmt(vm, "actual list len: {} != {}\n", &.{v(acto.list.list.len), v(expo.list.list.len)});
-                return rt.prepThrowError(vm, .AssertError);
-            }
-        } else {
-            rt.errFmt(vm, "Expected list, actual: {}\n", &.{v(actType)});
-            return rt.prepThrowError(vm, .AssertError);
-        }
-    } else {
-        rt.errFmt(vm, "Types do not match:\n", &.{});
-        rt.errFmt(vm, "actual: {} != {}\n", &.{v(actType), v(expType)});
-        return rt.prepThrowError(vm, .AssertError);
-    }
-}

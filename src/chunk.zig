@@ -144,8 +144,7 @@ pub const Chunk = struct {
     regStack: std.ArrayListUnmanaged(u8),
     operandStack: std.ArrayListUnmanaged(u8),
 
-    unwindTempIndexStack: std.ArrayListUnmanaged(UnwindTempIndex),
-    unwindTempRegStack: std.ArrayListUnmanaged(u8),
+    unwind_stack: std.ArrayListUnmanaged(bc.UnwindEntry),
 
     curBlock: *bc.Proc,
 
@@ -237,8 +236,7 @@ pub const Chunk = struct {
             .listDataStack = .{},
             .regStack = .{},
             .operandStack = .{},
-            .unwindTempIndexStack = .{},
-            .unwindTempRegStack = .{},
+            .unwind_stack = .{},
             .curBlock = undefined,
             .curSelfSym = null,
             .buf = undefined,
@@ -322,8 +320,7 @@ pub const Chunk = struct {
         self.preLoopVarSaveStack.deinit(self.alloc);
         self.regStack.deinit(self.alloc);
         self.operandStack.deinit(self.alloc);
-        self.unwindTempIndexStack.deinit(self.alloc);
-        self.unwindTempRegStack.deinit(self.alloc);
+        self.unwind_stack.deinit(self.alloc);
         self.capVarDescs.deinit(self.alloc);
 
         self.symInitDeps.deinit(self.alloc);
@@ -675,116 +672,21 @@ pub const Chunk = struct {
         return error.CompileError;
     }
 
-    pub fn getUnwindTempsLen(c: *Chunk) usize {
-        return c.unwindTempIndexStack.items.len;
-    }
-
-    pub fn pushUnwindTempBoundary(c: *Chunk) !void {
-        try c.unwindTempIndexStack.append(c.alloc, @bitCast(@as(u32, cy.NullId)));
-        try c.unwindTempRegStack.append(c.alloc, cy.NullU8);
-    }
-
-    pub fn pushUnwindTemp(c: *Chunk, reg: u8) !void {
-        log.tracev("unwind temp {} +1 ({})", .{c.unwindTempIndexStack.items.len, reg});
-        try c.unwindTempIndexStack.append(c.alloc, .{
-            .created = false,
-        });
-        try c.unwindTempRegStack.append(c.alloc, reg);
-    }
-
-    pub fn pushUnwindTempValue(c: *Chunk, val: bc_gen.GenValue) !bool {
-        if (val.isRetainedTemp()) {
-            try c.unwindTempIndexStack.append(c.alloc, .{
-                .created = false,
-            });
-            try c.unwindTempRegStack.append(c.alloc, val.local);
-            return true;
-        }
-        return false;
-    }
-
-    pub fn popUnwindTemp(self: *Chunk) cy.register.RegisterId {
-        log.tracev("unwind temp: {} -1", .{self.unwindTempIndexStack.items.len});
-        _ = self.unwindTempIndexStack.pop();
-        return self.unwindTempRegStack.pop();
-    }
-
-    pub fn getLastUnwindTempIndex(self: *Chunk) !u32 {
-        const tempIdx = self.unwindTempIndexStack.items[self.unwindTempIndexStack.items.len-1];
-        if (@as(u32, @bitCast(tempIdx)) == cy.NullId) {
-            return cy.NullId;
-        }
-        if (!tempIdx.created) {
-            var prev: u32 = cy.NullId;
-            if (self.unwindTempIndexStack.items.len > 1) {
-                const prevIdx = self.unwindTempIndexStack.items[self.unwindTempIndexStack.items.len-2];
-                if (@as(u32, @bitCast(prevIdx)) != cy.NullId) {
-                    if (!prevIdx.created) {
-                        // Multiple uncreated temp indexes. 
-
-                        // Find first uncreated.
-                        var first = self.unwindTempIndexStack.items.len-2;
-                        while (first > 0) {
-                            first -= 1;
-                            if (@as(u32, @bitCast(self.unwindTempIndexStack.items[first])) == cy.NullId) {
-                                // Block boundary.
-                                prev = cy.NullId;
-                                first += 1;
-                                break;
-                            }
-                            if (self.unwindTempIndexStack.items[first].created) {
-                                // Created.
-                                prev = self.unwindTempIndexStack.items[first].idx;
-                                first += 1;
-                                break;
-                            }
-                        }
-
-                        for (first..self.unwindTempIndexStack.items.len-1) |i| {
-                            const idx = self.buf.unwindTempRegs.items.len;
-                            try self.buf.unwindTempRegs.append(self.alloc, self.unwindTempRegStack.items[i]);
-                            try self.buf.unwindTempPrevIndexes.append(self.alloc, prev);
-                            prev = @intCast(idx);
-                        }
-                    } else {
-                        // Previous index is already created.
-                        prev = prevIdx.idx;
-                    }
-                }
-            }
-
-            // Insert unwind temp now that it's needed by a failable inst.
-            const idx = self.buf.unwindTempRegs.items.len;
-            const reg = self.unwindTempRegStack.items[self.unwindTempRegStack.items.len-1];
-            try self.buf.unwindTempRegs.append(self.alloc, reg);
-            try self.buf.unwindTempPrevIndexes.append(self.alloc, prev);
-
-            // Update temp index record.
-            self.unwindTempIndexStack.items[self.unwindTempIndexStack.items.len-1] = .{
-                .created = true,
-                .idx = @intCast(idx),
-            };
-            return @intCast(idx);
-        } else {
-            return tempIdx.idx;
-        }
-    }
-
     /// An optional debug sym is only included in Trace builds.
     pub fn pushOptionalDebugSym(c: *Chunk, node: *ast.Node) !void {
         if (cy.Trace or c.compiler.vm.config.gen_all_debug_syms) {
             try c.buf.pushFailableDebugSym(
                 c.buf.ops.items.len, c.id, node.pos(), c.curBlock.id,
-                cy.NullId, 0, 0,
+                cy.fiber.UnwindKey.initNull(),
             );
         }
     }
 
     pub fn pushFailableDebugSym(self: *Chunk, node: *ast.Node) !void {
-        const unwindTempIdx = try self.getLastUnwindTempIndex();
+        const key = try bc.getLastUnwindKey(self);
         try self.buf.pushFailableDebugSym(
             self.buf.ops.items.len, self.id, node.pos(), self.curBlock.id,
-            unwindTempIdx, self.curBlock.startLocalReg, self.curBlock.nextLocalReg,
+            key,
         );
     }
 
@@ -858,11 +760,6 @@ const ReservedTempLocal = struct {
 };
 
 const LocalId = u8;
-
-const UnwindTempIndex = packed struct {
-    idx: u31 = undefined,
-    created: bool,
-};
 
 pub const SymInitInfo = struct {
     depStart: u32,

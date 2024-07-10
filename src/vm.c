@@ -668,8 +668,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(SetFieldDyn),
         JENTRY(SetFieldDynIC),
         JENTRY(SetField),
-        JENTRY(PushTry),
-        JENTRY(PopTry),
+        JENTRY(Catch),
         JENTRY(Throw),
         JENTRY(Coinit),
         JENTRY(Coyield),
@@ -1748,28 +1747,7 @@ beginSwitch:
         pc += 4;
         NEXT();
     }
-    CASE(PushTry): {
-        u8 errDst = pc[1];
-        bool releaseDst = pc[2];
-        u16 catchPcOffset = READ_U16(3);
-        if (vm->c.tryStack.len == vm->c.tryStack.cap) {
-            ResultCode code = zGrowTryStackTotalCapacity(vm);
-            if (code != RES_CODE_SUCCESS) {
-                RETURN(code);
-            }
-        }
-        ((TryFrame*)vm->c.tryStack.buf)[vm->c.tryStack.len] = (TryFrame){
-            .fp = stackOffset(vm, stack),
-            .catchPc = pcOffset(vm, pc) + catchPcOffset,
-            .catchErrDst = errDst,
-            .releaseDst = releaseDst,
-        };
-        vm->c.tryStack.len += 1; 
-        pc += 5;
-        NEXT();
-    }
-    CASE(PopTry): {
-        vm->c.tryStack.len -= 1; 
+    CASE(Catch): {
         pc += READ_U16(1);
         NEXT();
     }
@@ -1802,7 +1780,7 @@ beginSwitch:
     }
     CASE(Coyield):
         if (vm->c.curFiber != &vm->c.mainFiber) {
-            PcFpOff res = zPopFiber(vm, pcOffset(vm, pc), stack, VALUE_INTEGER(0));
+            PcFpOff res = zPopFiber(vm, pcOffset(vm, pc), stack, VALUE_BOOLEAN(false));
             pc = vm->c.instPtr + res.pc;
             stack = vm->c.stackPtr + res.fp;
         } else {

@@ -47,8 +47,8 @@ pub fn getDebugSymByIndex(vm: *const cy.VM, idx: usize) cy.DebugSym {
     return vm.debugTable[idx];
 }
 
-pub fn getDebugTempIndex(vm: *const cy.VM, idx: usize) u32 {
-    return vm.debugTempIndexTable[idx];
+pub fn getUnwindKey(vm: *const cy.VM, idx: usize) cy.fiber.UnwindKey {
+    return vm.unwind_table[idx];
 }
 
 pub fn getDebugSymFromTable(table: []const cy.DebugSym, pc: usize) ?cy.DebugSym {

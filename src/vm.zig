@@ -67,10 +67,6 @@ const VMC = extern struct {
     context_vars_cap: usize,
     context_vars_len: usize,
 
-    tryStack: [*]vmc.TryFrame,
-    tryStack_cap: usize,
-    tryStack_len: usize,
-
     /// Types.
     types: [*]const types.Type,
     types_len: usize,
@@ -81,11 +77,9 @@ const VMC = extern struct {
     /// debugPc == NullId indicates execution has not started.
     debugPc: u32,
 
-    refCounts: if (cy.TrackGlobalRC) usize else void,
+    trace_indent: u32,
 
-    pub fn getTryStack(self: *VMC) *cy.List(vmc.TryFrame) {
-        return @ptrCast(&self.tryStack);
-    }
+    refCounts: if (cy.TrackGlobalRC) usize else void,
 
     pub fn getVarSyms(self: *VMC) *cy.List(rt.VarSym) {
         return @ptrCast(&self.varSyms);
@@ -178,9 +172,10 @@ pub const VM = struct {
     /// This is needed for reporting since a method entry can be empty.
     methods: cy.List(rt.Method),
     debugTable: []const cy.DebugSym,
-    debugTempIndexTable: []const u32,
-    unwindTempRegs: []const u8,
-    unwindTempPrevIndexes: []const u32,
+    unwind_table: []const cy.fiber.UnwindKey,
+    unwind_slots: []const u8,
+    unwind_slot_prevs: []const cy.fiber.UnwindKey,
+    unwind_trys: []const cy.fiber.UnwindTry,
 
     /// Records a minimal trace when walking the stack.
     /// Stack frames are then constructed from them.
@@ -272,9 +267,6 @@ pub const VM = struct {
                 .fieldSyms = undefined,
                 .fieldSyms_cap = 0,
                 .fieldSyms_len = 0,
-                .tryStack = undefined,
-                .tryStack_len = 0,
-                .tryStack_cap = 0,
                 .types = undefined,
                 .types_len = 0,
                 .trace = undefined,
@@ -282,6 +274,7 @@ pub const VM = struct {
                 .mainFiber = undefined,
                 .curFiber = undefined,
                 .debugPc = cy.NullId,
+                .trace_indent = 0,
             },
             .method_map = .{},
             .methods = .{},
@@ -298,9 +291,10 @@ pub const VM = struct {
             .u8Buf = .{},
             .stackTrace = .{},
             .debugTable = undefined,
-            .debugTempIndexTable = undefined,
-            .unwindTempRegs = undefined,
-            .unwindTempPrevIndexes = undefined,
+            .unwind_table = undefined,
+            .unwind_slots = undefined,
+            .unwind_slot_prevs = undefined,
+            .unwind_trys = undefined,
             .compactTrace = .{},
             .endLocal = undefined,
             .objectTraceMap = .{},
@@ -420,10 +414,8 @@ pub const VM = struct {
         }
 
         if (reset) {
-            self.c.getTryStack().clearRetainingCapacity();
             self.compactTrace.clearRetainingCapacity();
         } else {
-            self.c.getTryStack().deinit(self.alloc);
             self.compactTrace.deinit(self.alloc);
         }
 
@@ -819,9 +811,10 @@ pub const VM = struct {
         cy.fiber.freeFiberPanic(self, &self.c.mainFiber);
         self.c.curFiber.panicType = vmc.PANIC_NONE;
         self.debugTable = buf.debugTable.items;
-        self.debugTempIndexTable = buf.debugTempIndexTable.items;
-        self.unwindTempRegs = buf.unwindTempRegs.items;
-        self.unwindTempPrevIndexes = buf.unwindTempPrevIndexes.items;
+        self.unwind_table = buf.unwind_table.items;
+        self.unwind_slots = buf.unwind_slots.items;
+        self.unwind_slot_prevs = buf.unwind_slot_prevs.items;
+        self.unwind_trys = buf.unwind_trys.items;
 
         // Set these last to hint location to cache before eval.
         if (self.num_cont_evals > 0) {
@@ -3223,13 +3216,6 @@ fn zAlloc(alloc: vmc.ZAllocator, n: usize) callconv(.C) vmc.BufferResult {
     };
 }
 
-fn zGrowTryStackTotalCapacity(vm: *cy.VM) callconv(.C) vmc.ResultCode {
-    vm.c.getTryStack().growTotalCapacity(vm.alloc, vm.c.tryStack_len + 1) catch {
-        return vmc.RES_CODE_UNKNOWN;
-    };
-    return vmc.RES_CODE_SUCCESS;
-}
-
 fn zOpMatch(pc: [*]const cy.Inst, framePtr: [*]const Value) callconv(.C) u16 {
     return opMatch(pc, framePtr);
 }
@@ -3330,7 +3316,6 @@ comptime {
         @export(zOpMatch, .{ .name = "zOpMatch", .linkage = .strong });
         @export(zOpCodeName, .{ .name = "zOpCodeName", .linkage = .strong });
         @export(zLog, .{ .name = "zLog", .linkage = .strong });
-        @export(zGrowTryStackTotalCapacity, .{ .name = "zGrowTryStackTotalCapacity", .linkage = .strong });
         @export(zGetTypeName, .{ .name = "zGetTypeName", .linkage = .strong });
         @export(zFreeObject, .{ .name = "zFreeObject", .linkage = .strong });
         @export(zDumpValue, .{ .name = "zDumpValue", .linkage = .strong });

@@ -365,9 +365,9 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
 
     // Check stack after statement.
     if (c.proc_stack.items.len > 0) {
-        if (c.unwindTempIndexStack.items.len != tempRetainedStart) {
-            return c.reportErrorFmt("Expected {} unwindable retained temps, got {}",
-                &.{v(tempRetainedStart), v(c.unwindTempIndexStack.items.len)}, node);
+        if (c.unwind_stack.items.len != exp_unwind_index_start) {
+            return c.reportErrorFmt("Expected {} arc unwind index, found {}.",
+                &.{v(exp_unwind_index_start), v(c.unwind_stack.items.len)}, node);
         }
 
         if (c.slot_stack.items.len != exp_slot_count) {
@@ -391,21 +391,9 @@ fn genChunkInner(c: *Chunk) !void {
     try genStmts(c, data.bodyHead);
 
     // Ensure that all cstr and values were accounted for.
-    if (c.genValueStack.items.len > 0) {
-        return c.reportErrorFmt("Remaining gen values: {}", &.{v(c.genValueStack.items.len)}, null);
+    if (c.unwind_stack.items.len > 0) {
+        return c.reportErrorFmt("Remaining arc unwind index: {}", &.{v(c.unwind_stack.items.len)}, null);
     }
-    if (c.unwindTempIndexStack.items.len > 0) {
-        return c.reportErrorFmt("Remaining unwind temp index: {}", &.{v(c.unwindTempIndexStack.items.len)}, null);
-    }
-    if (c.unwindTempRegStack.items.len > 0) {
-        return c.reportErrorFmt("Remaining unwind temp reg: {}", &.{v(c.unwindTempRegStack.items.len)}, null);
-    }
-}
-
-fn genAndPushExpr(c: *Chunk, idx: usize, cstr: Cstr) !GenValue {
-    const val = try genExpr(c, idx, cstr);
-    try c.genValueStack.append(c.alloc, val);
-    return val;
 }
 
 fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
@@ -520,7 +508,7 @@ fn mainBlock(c: *Chunk, idx: usize, node: *ast.Node) !void {
     c.buf.mainStackSize = c.getMaxUsedRegisters();
 
     // Pop boundary index.
-    try popUnwind(c, cy.NullU8);
+    try popUnwindBoundary(c, node);
 }
 
 fn funcBlock(c: *Chunk, idx: usize, node: *ast.Node) !void {
@@ -577,7 +565,7 @@ fn genCoresume(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
 
 fn genCoyield(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     _ = idx;
-    try c.pushCode(.coyield, &.{c.curBlock.startLocalReg, c.curBlock.nextLocalReg}, node);
+    try c.pushFCode(.coyield, &.{0, 0}, node);
     // TODO: return coyield expression.
     return genFalse(c, cstr, node);
 }
@@ -2723,16 +2711,16 @@ fn verbose(c: *cy.Chunk, idx: usize, node: *ast.Node) !void {
 
 fn tryStmt(c: *cy.Chunk, idx: usize, node: *ast.Node) !void {
     const data = c.ir.getStmtData(idx, .tryStmt);
-    const pushTryPc = c.buf.ops.items.len;
-    try c.pushCode(.pushTry, &.{0, 0, 0, 0}, node);
+
+    try pushUnwindTry(c);
 
     try pushBlock(c, false, node);
     try genStmts(c, data.bodyHead);
     try popBlock(c);
 
-    const popTryPc = c.buf.ops.items.len;
-    try c.buf.pushOp2(.popTry, 0, 0);
-    c.buf.setOpArgU16(pushTryPc + 3, @intCast(c.buf.ops.items.len - pushTryPc));
+    const catch_pc = c.buf.ops.items.len;
+    popUnwindTry(c, catch_pc);
+    try c.pushCode(.catch_op, &.{0, 0, 0, 0}, node);
 
     try pushBlock(c, false, node);
     try genStmts(c, data.catchBodyHead);
@@ -2743,30 +2731,29 @@ fn tryStmt(c: *cy.Chunk, idx: usize, node: *ast.Node) !void {
     try popBlock(c);
 
     // Patch pushTry with errReg.
-    c.buf.setOpArgs1(pushTryPc + 1, errReg);
+    c.buf.setOpArgs1(catch_pc + 3, errReg);
 
-    c.buf.setOpArgU16(popTryPc + 1, @intCast(c.buf.ops.items.len - popTryPc));
+    c.buf.setOpArgU16(catch_pc + 1, @intCast(c.buf.ops.items.len - catch_pc));
 }
 
 fn genTryExpr(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     const data = c.ir.getExprData(idx, .tryExpr);
-    const pushTryPc = c.buf.ops.items.len;
-    try c.pushCode(.pushTry, &.{ 0, 0, 0, 0 }, node);
 
     const type_id = c.ir.getExprType(idx).id;
     const temp = try reserveTemp(c, type_id);
 
     // Body expr.
-    const childv = try genExpr(c, data.expr, mcstr.cstr);
+    try pushUnwindTry(c);
+    const childv = try genExpr(c, data.expr, Cstr.toTemp(temp));
+    const catch_pc = c.buf.ops.items.len;
+    popUnwindTry(c, catch_pc);
 
-    const popTryPc = c.buf.ops.items.len;
-    try c.buf.pushOp2(.popTry, 0, 0);
-    c.buf.setOpArgU16(pushTryPc + 3, @intCast(c.buf.ops.items.len - pushTryPc));
+    try c.pushCode(.catch_op, &.{ 0, 0, 0, 0 }, node);
 
     var retained = childv.retained;
     if (data.catchBody != cy.NullId) {
         // Error is not copied anywhere.
-        c.buf.setOpArgs1(pushTryPc + 1, cy.NullU8);
+        c.buf.setOpArgs1(catch_pc + 3, cy.NullU8);
 
         // Catch expr.
         const catchv = try genExpr(c, data.catchBody, Cstr.toTemp(temp));
@@ -2774,14 +2761,25 @@ fn genTryExpr(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
             retained = true;
         }
     } else {
-        const inst = try c.rega.selectForDstInst(mcstr.cstr, false, node);
-        c.buf.setOpArgs1(pushTryPc + 1, inst.dst);
-        c.buf.setOpArgs1(pushTryPc + 2, @intFromBool(false));
+        // const inst = try bc.selectForDstInst(c, merge_cstr, bt.Any, false, node);
 
-        _ = try finishDstInst(c, inst, false);
+        // Runtime will copy error to `temp`.
+        // c.buf.setOpArgs1(catch_pc + 3, inst.dst);
+        c.buf.setOpArgs1(catch_pc + 3, temp);
+        c.buf.setOpArgs1(catch_pc + 4, @intFromBool(false));
+
+        // _ = try finishDstInst(c, inst, false);
     }
-    c.buf.setOpArgU16(popTryPc + 1, @intCast(c.buf.ops.items.len - popTryPc));
-    return val;
+    c.buf.setOpArgU16(catch_pc + 1, @intCast(c.buf.ops.items.len - catch_pc));
+
+    try initSlot(c, temp, retained, node);
+    if (cstr.isExact()) {
+        const val = try genToExact(c, childv, cstr, node);
+        try popTemp(c, temp, node);
+        return val;
+    } else {
+        return regValue(c, temp, retained);
+    }
 }
 
 fn genUnwrapOr(c: *Chunk, loc: usize, cstr: Cstr, node: *ast.Node) !GenValue {
@@ -3162,8 +3160,7 @@ fn popFiberBlock(c: *Chunk) !void {
     try genBlockReleaseLocals(c);
 
     // Pop boundary index.
-    try popUnwind(c, cy.NullU8);
-}
+    try popUnwindBoundary(c, c.curBlock.debugNode);
 
     try popProc(c);
 }
@@ -3207,14 +3204,14 @@ pub fn popFuncBlockCommon(c: *Chunk, func: *cy.Func) !void {
     // TODO: Check last statement to skip adding ret.
     try genFuncEnd(c);
 
-    // Pop the null boundary index.
-    try popUnwind(c, cy.NullU8);
-
     if (c.compiler.config.gen_debug_func_markers) {
         try c.compiler.buf.pushDebugFuncEnd(func, c.id);
     }
 
     try popProc(c);
+
+    // Pop the null boundary index.
+    try popUnwindBoundary(c, c.curBlock.debugNode);
 }
 
 fn genLambda(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
@@ -3289,11 +3286,8 @@ pub fn pushProc(c: *Chunk, btype: ProcType, name: []const u8, debugNode: *ast.No
     c.curBlock.slot_start = @intCast(c.slot_stack.items.len);
     c.curBlock.debugNode = debugNode;
 
-    try c.pushUnwindTempBoundary();
-    if (cy.Trace) {
-        c.curBlock.retainedTempStart = @intCast(c.getUnwindTempsLen());
-        c.indent += 1;
-    }
+    try pushUnwindBoundary(c);
+    try pushBlock(c, false, debugNode);
 }
 
 pub fn popProc(c: *Chunk) !void {
@@ -3870,7 +3864,7 @@ fn getIntOpCode(op: cy.BinaryExprOp) cy.OpCode {
     };
 }
 
-fn pushObjectInit(c: *cy.Chunk, typeId: cy.TypeId, startLocal: u8, numFields: u8, dst: RegisterId, debugNode: *ast.Node) !void {
+fn pushObjectInit(c: *cy.Chunk, typeId: cy.TypeId, startLocal: u8, numFields: u8, dst: SlotId, debugNode: *ast.Node) !void {
     if (numFields <= 4) {
         const start = c.buf.ops.items.len;
         try c.pushCode(.objectSmall, &.{ 0, 0, startLocal, numFields, dst }, debugNode);
@@ -4321,4 +4315,143 @@ pub fn popNullSlots(c: *cy.Chunk, n: u8) void {
 
 pub inline fn isTempSlot(c: *const cy.Chunk, slot: SlotId) bool {
     return c.slot_stack.items[c.curBlock.slot_start + slot].type == .temp;
+}
+
+pub fn popUnwindBoundary(c: *Chunk, node: *ast.Node) !void {
+    log.tracev("-pop unwind boundary: stack={}", .{c.unwind_stack.items.len});
+    const entry = c.unwind_stack.pop();
+    if (entry.type != .boundary) {
+        return c.reportErrorFmt("Expected unwind boundary, found {}.", &.{v(entry.type)}, node);
+    }
+}
+
+pub fn popUnwindSlot(c: *Chunk, slot: SlotId, node: *ast.Node) !void {
+    log.tracev("-pop unwind slot: stack={} slot={}", .{c.unwind_stack.items.len, slot});
+    const entry = c.unwind_stack.pop();
+    if (entry.payload != slot) {
+        return c.reportErrorFmt("Pop unwind at {}, found {}.", &.{v(slot), v(entry.payload)}, node);
+    }
+}
+
+pub fn pushUnwindSlot(c: *Chunk, slot: u8) !void {
+    log.tracev("+push unwind: stack={} slot={}", .{c.unwind_stack.items.len, slot});
+    try c.unwind_stack.append(c.alloc, .{
+        .payload = slot,
+        .created = false,
+        .type = .slot,
+    });
+}
+
+pub fn popUnwindTry(c: *Chunk, catch_pc: usize) void {
+    log.tracev("-pop unwind try: stack={} catch={}", .{c.unwind_stack.items.len, catch_pc});
+    const entry = c.unwind_stack.pop();
+    if (entry.created) {
+        c.buf.unwind_trys.items[entry.rt_idx].catch_pc = @intCast(catch_pc);
+    }
+}
+
+pub fn pushUnwindTry(c: *Chunk) !void {
+    log.tracev("+push unwind try: stack={}", .{c.unwind_stack.items.len});
+    try c.unwind_stack.append(c.alloc, .{
+        .created = false,
+        .type = .try_e,
+    });
+}
+
+const UnwindEntryType = enum(u2) {
+    boundary,
+    try_e,
+    slot,
+};
+
+pub const UnwindEntry = packed struct {
+    // `payload` can refer to catch pc for a try entry, or slot id for a slot entry.
+    payload: u32 = undefined,
+    rt_idx: u29 = undefined,
+    created: bool,
+    type: UnwindEntryType,
+};
+
+pub fn getUnwindLen(c: *Chunk) usize {
+    return c.unwind_stack.items.len;
+}
+
+pub fn pushUnwindBoundary(c: *Chunk) !void {
+    try c.unwind_stack.append(c.alloc, .{
+        .created = false,
+        .type = .boundary,
+    });
+}
+
+pub fn getLastUnwindKey(self: *Chunk) !cy.fiber.UnwindKey {
+    const entry = &self.unwind_stack.items[self.unwind_stack.items.len-1];
+    if (entry.type == .boundary) {
+        return cy.fiber.UnwindKey.initNull();
+    }
+    if (entry.created) {
+        return cy.fiber.UnwindKey.fromCreatedEntry(entry.*);
+    }
+    var prev = cy.fiber.UnwindKey.initNull();
+    if (self.unwind_stack.items.len > 1) {
+        const prev_e = self.unwind_stack.items[self.unwind_stack.items.len-2];
+        if (prev_e.type != .boundary) {
+            if (!prev_e.created) {
+                // Multiple uncreated temp indexes. 
+
+                // Find first uncreated.
+                var first = self.unwind_stack.items.len-2;
+                while (first > 0) {
+                    first -= 1;
+                    if (self.unwind_stack.items[first].type == .boundary) {
+                        // Block boundary.
+                        prev = cy.fiber.UnwindKey.initNull();
+                        first += 1;
+                        break;
+                    }
+                    if (self.unwind_stack.items[first].created) {
+                        // Created.
+                        prev = cy.fiber.UnwindKey.fromCreatedEntry(self.unwind_stack.items[first]);
+                        first += 1;
+                        break;
+                    }
+                }
+
+                for (first..self.unwind_stack.items.len-1) |i| {
+                    const e = &self.unwind_stack.items[i];
+                    if (e.type == .try_e) {
+                        const rt_idx = self.buf.unwind_trys.items.len;
+                        try self.buf.unwind_trys.append(self.alloc, .{ .catch_pc = e.payload, .prev = prev });
+                        prev = cy.fiber.UnwindKey{ .idx = @intCast(rt_idx), .is_try = true, .is_null = false };
+                        e.created = true;
+                        e.rt_idx = @intCast(rt_idx);
+                    } else {
+                        const rt_idx = self.buf.unwind_slots.items.len;
+                        try self.buf.unwind_slots.append(self.alloc, @intCast(e.payload));
+                        try self.buf.unwind_slot_prevs.append(self.alloc, prev);
+                        prev = cy.fiber.UnwindKey{ .idx = @intCast(rt_idx), .is_try = false, .is_null = false };
+                        e.created = true;
+                        e.rt_idx = @intCast(rt_idx);
+                    }
+                }
+            } else {
+                // Previous index is already created.
+                prev = cy.fiber.UnwindKey.fromCreatedEntry(prev_e);
+            }
+        }
+    }
+
+    // Insert unwind temp now that it's needed by a failable inst.
+    if (entry.type == .try_e) {
+        const rt_idx = self.buf.unwind_trys.items.len;
+        try self.buf.unwind_trys.append(self.alloc, .{ .catch_pc = entry.payload, .prev = prev });
+        entry.created = true;
+        entry.rt_idx = @intCast(rt_idx);
+    } else {
+        const rt_idx = self.buf.unwind_slots.items.len;
+        try self.buf.unwind_slots.append(self.alloc, @intCast(entry.payload));
+        try self.buf.unwind_slot_prevs.append(self.alloc, prev);
+        entry.created = true;
+        entry.rt_idx = @intCast(rt_idx);
+    }
+    return cy.fiber.UnwindKey.fromCreatedEntry(entry.*);
 }

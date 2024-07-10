@@ -9,6 +9,7 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
 const vmc = @import("vm_c.zig");
+const bc = @import("bc_gen.zig");
 const rt = cy.rt;
 const log = cy.log.scoped(.fiber);
 const Value = cy.Value;
@@ -53,9 +54,6 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, argDst: u8, ini
         .numArgs = @intCast(args.len),
         .stackOffset = 0,
         .parentDstLocal = parentDstLocal,
-        .tryStackCap = 0,
-        .tryStackPtr = undefined,
-        .tryStackLen = 0,
         .throwTracePtr = undefined,
         .throwTraceCap = 0,
         .throwTraceLen = 0,
@@ -148,52 +146,16 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
     log.tracev("release fiber stack, start", .{});
     defer log.tracev("release fiber stack, end", .{});
     var stack = @as([*]Value, @ptrCast(fiber.stackPtr))[0..fiber.stackLen];
-    var framePtr = fiber.stackOffset;
-    var pc = fiber.pcOffset;
+    const framePtr = fiber.stackOffset;
+    const pc = fiber.pcOffset;
 
     if (pc != cy.NullId) {
-        // Check if fiber was previously on a yield op.
-        if (vm.c.ops[pc].opcode() == .coyield) {
-            // The yield statement contains the alive locals.
-            const localsStart = vm.c.ops[pc+1].val;
-            const localsEnd = vm.c.ops[pc+2].val;
-            log.tracev("release on frame {} {} localsEnd: {}", .{framePtr, pc, localsEnd});
-            for (stack[framePtr+localsStart..framePtr+localsEnd]) |val| {
-                cy.arc.release(vm, val);
-            }
-
-            // Prev frame.
-            pc = @intCast(getInstOffset(vm.c.ops, stack[framePtr + 2].retPcPtr) - stack[framePtr + 1].call_info.call_inst_off);
-            framePtr = @intCast(getStackOffset(stack.ptr, stack[framePtr + 3].retFramePtr));
-
-            // Unwind stack and release all locals.
-            while (framePtr > 0) {
-                const symIdx = try cy.debug.indexOfDebugSym(vm, pc);
-                const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
-                const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
-
-                const locals = sym.getLocals();
-                log.tracev("release on frame {} {}, locals: {}-{}", .{framePtr, pc, locals.start, locals.end});
-
-                if (tempIdx != cy.NullId) {
-                    cy.arc.runTempReleaseOps(vm, stack.ptr + framePtr, tempIdx);
-                }
-                if (locals.len() > 0) {
-                    cy.arc.releaseLocals(vm, vm.c.getStack(), framePtr, locals);
-                }
-
-                // Prev frame.
-                pc = @intCast(getInstOffset(vm.c.ops, stack[framePtr + 2].retPcPtr) - stack[framePtr + 1].call_info.call_inst_off);
-                framePtr = @intCast(getStackOffset(stack.ptr, stack[framePtr + 3].retFramePtr));
-            }
-        }
-
         // Cleanup on main fiber block.
         if (vm.c.ops[pc].opcode() != .coreturn) {
             const symIdx = try cy.debug.indexOfDebugSym(vm, pc);
-            const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
-            if (tempIdx != cy.NullId) {
-                cy.arc.runTempReleaseOps(vm, stack.ptr + framePtr, tempIdx);
+            const key = cy.debug.getUnwindKey(vm, symIdx);
+            if (!key.is_null) {
+                cy.arc.runUnwindReleases(vm, stack.ptr + framePtr, key);
             }
 
             // No end locals for main fiber block yet.
@@ -296,19 +258,10 @@ pub fn recordCurFrames(vm: *cy.VM) !void {
 
 fn releaseFrame(vm: *cy.VM, fp: u32, pc: u32) !void {
     const symIdx = try cy.debug.indexOfDebugSym(vm, pc);
-    const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
-    const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
-    const locals = sym.getLocals();
-    log.tracev("release frame: pc={} {}, fp={} tempIdx: {}, locals: {}-{}", .{pc, vm.c.ops[pc].opcode(), fp, tempIdx, locals.start, locals.end});
-
-    // Release temps.
-    if (tempIdx != cy.NullId) {
-        cy.arc.runTempReleaseOps(vm, vm.c.stack + fp, tempIdx);
-    }
-
-    // Release locals.
-    if (locals.len() > 0) {
-        cy.arc.releaseLocals(vm, vm.c.getStack(), fp, locals);
+    const key = cy.debug.getUnwindKey(vm, symIdx);
+    log.tracev("release frame: pc={} {}, fp={} key: {},{}", .{pc, vm.c.ops[pc].opcode(), fp, key.is_null, key.idx});
+    if (!key.is_null) {
+        cy.arc.runUnwindReleases(vm, vm.c.stack + fp, key);
     }
 }
 
@@ -316,6 +269,7 @@ fn releaseFrameTemps(vm: *cy.VM, fp: u32, pc: u32) !void {
     const symIdx = try cy.debug.indexOfDebugSym(vm, pc);
     const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
     log.tracev("release frame temps: {} {}, tempIdx: {}", .{pc, vm.c.ops[pc].opcode(), tempIdx});
+    defer log.tracev("release frame temps: end", .{});
 
     // Release temps.
     cy.arc.runTempReleaseOps(vm, vm.c.stack + fp, tempIdx);
@@ -344,23 +298,35 @@ pub fn fiberEnd(vm: *cy.VM, ctx: PcFpOff) ?PcFpOff {
     } else return null;
 }
 
+pub const UnwindTry = packed struct {
+    catch_pc: u32,
+    prev: UnwindKey,
+};
+
+pub const UnwindKey = packed struct {
+    idx: u30,
+    is_try: bool,
+    is_null: bool,
+
+    pub fn initNull() UnwindKey {
+        return .{ .idx = undefined, .is_try = undefined, .is_null = true };
+    }
+
+    pub fn fromCreatedEntry(entry: bc.UnwindEntry) UnwindKey {
+        return .{
+            .idx = entry.rt_idx,
+            .is_try = entry.type == .try_e,
+            .is_null = false,
+        };
+    }
+};
+
 /// Throws an error value by unwinding until the either the first matching catch block
 /// is reached or `endFp` is reached.
 /// If the main rootFp is reached without a catch block, the error is elevated to an uncaught panic error.
 /// Records frames in `compactTrace`.
 pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcFpOff, err: Value) !PcFpOff {
     log.tracev("throw", .{});
-    var tframe: vmc.TryFrame = undefined;
-    var hasTryFrame = false;
-
-    if (vm.c.tryStack_len > 0) {
-        tframe = vm.c.tryStack[vm.c.tryStack_len-1];
-        if (tframe.fp >= endFp) {
-            // Only consider a tframe if it exists at or after `endFp`.
-            vm.c.tryStack_len -= 1;
-            hasTryFrame = true;
-        }
-    }
 
     vm.compactTrace.clearRetainingCapacity();
     var fp = ctx.fp;
@@ -371,69 +337,49 @@ pub fn throw(vm: *cy.VM, endFp: u32, ctx: PcFpOff, err: Value) !PcFpOff {
             .pcOffset = pc,
             .fpOffset = fp,
         });
-        if (hasTryFrame) {
-            if (fp > tframe.fp) {
-                // Haven't reached target try block. Unwind frame.
-                try releaseFrame(vm, fp, pc);
-                const prev = getVmFramePrev(vm, vm.c.getStack(), fp);
-                fp = prev.fp;
-                pc = prev.pc;
-            } else {
-                if (cy.Trace and fp != tframe.fp) {
-                    log.tracev("{} {}", .{fp, tframe.fp});
-                    return error.Unexpected;
-                }
 
-                // Reached target try block.
-                try releaseFrameTemps(vm, fp, pc);
-
-                // Copy error to catch dst.
-                if (tframe.catchErrDst != cy.NullU8) {
-                    if (tframe.releaseDst) {
-                        cy.arc.release(vm, vm.c.stack[fp + tframe.catchErrDst]);
-                    }
-                    vm.c.stack[tframe.fp + tframe.catchErrDst] = @bitCast(err);
+        const debug_idx = try cy.debug.indexOfDebugSym(vm, pc);
+        const key = cy.debug.getUnwindKey(vm, debug_idx);
+        if (cy.arc.runUnwindReleasesUntilCatch(vm, vm.c.stack + fp, key)) |catch_pc| {
+            const err_local = vm.c.ops[catch_pc+3].val;
+            const release = vm.c.ops[catch_pc+4].val == 1;
+            log.tracev("catch at {}, err={}, release={}", .{catch_pc, err_local, release});
+            // Copy error to catch dst.
+            if (err_local != cy.NullU8) {
+                if (release) {
+                    cy.arc.release(vm, vm.c.stack[fp + err_local]);
                 }
-                // Goto catch block in the current frame.
-                return PcFpOff{
-                    .pc = tframe.catchPc,
-                    .fp = fp,
-                };
+                vm.c.stack[fp + err_local] = @bitCast(err);
             }
-        } else {
-            // Unwind frame.
-            try releaseFrame(vm, fp, pc);
-            if (fp > endFp) {
-                const prev = getVmFramePrev(vm, vm.c.getStack(), fp);
-                fp = prev.fp;
-                pc = prev.pc;
-            } else {
-                if (cy.Trace and fp != endFp) {
-                    log.tracev("{} {}", .{fp, endFp});
-                    return error.Unexpected;
-                }
-                
-                // Reached end.
+            // Goto catch block in the current frame.
+            return PcFpOff{
+                .pc = catch_pc + 5,
+                .fp = fp,
+            };
+        }
+        if (fp == endFp) {
+            if (fp == 0) {
+                // Main root. Convert to uncaught panic.
+                vm.c.curFiber.panicType = vmc.PANIC_UNCAUGHT_ERROR;
 
-                if (fp == 0) {
-                    // Main root. Convert to uncaught panic.
-                    vm.c.curFiber.panicType = vmc.PANIC_UNCAUGHT_ERROR;
+                // Build stack trace.
+                const frames = try cy.debug.allocStackTrace(vm, vm.c.getStack(), vm.compactTrace.items());
+                vm.stackTrace.deinit(vm.alloc);
+                vm.stackTrace.frames = frames;
 
-                    // Build stack trace.
-                    const frames = try cy.debug.allocStackTrace(vm, vm.c.getStack(), vm.compactTrace.items());
-                    vm.stackTrace.deinit(vm.alloc);
-                    vm.stackTrace.frames = frames;
-
-                    return fiberEnd(vm, .{ .pc = pc, .fp = fp }) orelse {
-                        return error.Panic;
-                    };
-                } else {
-                    // Gives host dispatch a chance to catch the error.
-                    vm.c.curFiber.panicType = vmc.PANIC_UNCAUGHT_ERROR;
+                return fiberEnd(vm, .{ .pc = pc, .fp = fp }) orelse {
                     return error.Panic;
-                }
+                };
+            } else {
+                // Gives host dispatch a chance to catch the error.
+                vm.c.curFiber.panicType = vmc.PANIC_UNCAUGHT_ERROR;
+                return error.Panic;
             }
         }
+
+        const prev = getVmFramePrev(vm, vm.c.getStack(), fp);
+        fp = prev.fp;
+        pc = prev.pc;
     }
 }
 

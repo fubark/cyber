@@ -29,14 +29,15 @@ pub const ByteCodeBuffer = struct {
     /// Maps bytecode insts back to source code.
     /// Contains entries ordered by `pc`. 
     debugTable: std.ArrayListUnmanaged(DebugSym),
-    debugTempIndexTable: std.ArrayListUnmanaged(u32),
+    unwind_table: std.ArrayListUnmanaged(cy.fiber.UnwindKey),
 
     /// Ordered labels by `pc` for debugging only.
     debugMarkers: std.ArrayListUnmanaged(DebugMarker),
 
-    /// Unwinding temp graph.
-    unwindTempRegs: std.ArrayListUnmanaged(u8),
-    unwindTempPrevIndexes: std.ArrayListUnmanaged(u32),
+    /// Unwind entries.
+    unwind_slots: std.ArrayListUnmanaged(u8),
+    unwind_slot_prevs: std.ArrayListUnmanaged(cy.fiber.UnwindKey),
+    unwind_trys: std.ArrayListUnmanaged(cy.fiber.UnwindTry),
 
     /// Currently each inst maps to a nullable desc idx, but ideally it should be sparser like the debug table.
     instDescs: if (cy.Trace) std.ArrayListUnmanaged(cy.Nullable(u32)) else void,
@@ -54,13 +55,14 @@ pub const ByteCodeBuffer = struct {
             .consts = .{},
             .constMap = .{},
             .debugTable = .{},
-            .debugTempIndexTable = .{},
+            .unwind_table = .{},
             .debugMarkers = .{},
             .instDescs = if (cy.Trace) .{} else {},
             .instDescExtras = if (cy.Trace) .{} else {},
             .mconsts = &.{},
-            .unwindTempRegs = .{},
-            .unwindTempPrevIndexes = .{},
+            .unwind_slots = .{},
+            .unwind_slot_prevs = .{},
+            .unwind_trys = .{},
         };
         // Perform big allocation for instruction buffer for more consistent heap allocation.
         try new.ops.ensureTotalCapacityPrecise(alloc, 4096);
@@ -72,10 +74,11 @@ pub const ByteCodeBuffer = struct {
         self.consts.deinit(self.alloc);
         self.constMap.deinit(self.alloc);
         self.debugTable.deinit(self.alloc);
-        self.debugTempIndexTable.deinit(self.alloc);
+        self.unwind_table.deinit(self.alloc);
         self.debugMarkers.deinit(self.alloc);
-        self.unwindTempRegs.deinit(self.alloc);
-        self.unwindTempPrevIndexes.deinit(self.alloc);
+        self.unwind_slots.deinit(self.alloc);
+        self.unwind_slot_prevs.deinit(self.alloc);
+        self.unwind_trys.deinit(self.alloc);
         if (cy.Trace) {
             self.instDescs.deinit(self.alloc);
             for (self.instDescExtras.items) |extra| {
@@ -89,10 +92,11 @@ pub const ByteCodeBuffer = struct {
         self.ops.clearRetainingCapacity();
         self.consts.clearRetainingCapacity();
         self.debugTable.clearRetainingCapacity();
-        self.debugTempIndexTable.clearRetainingCapacity();
+        self.unwind_table.clearRetainingCapacity();
         self.debugMarkers.clearRetainingCapacity();
-        self.unwindTempRegs.clearRetainingCapacity();
-        self.unwindTempPrevIndexes.clearRetainingCapacity();
+        self.unwind_slots.clearRetainingCapacity();
+        self.unwind_slot_prevs.clearRetainingCapacity();
+        self.unwind_trys.clearRetainingCapacity();
         if (cy.Trace) {
             self.instDescs.clearRetainingCapacity();
             for (self.instDescExtras.items) |extra| {
@@ -159,16 +163,14 @@ pub const ByteCodeBuffer = struct {
         });
     }
 
-    pub fn pushFailableDebugSym(self: *ByteCodeBuffer, pc: usize, file: u32, loc: u32, frameLoc: u32, unwindTempIdx: u32, localStart: u8, localEnd: u8) !void {
+    pub fn pushFailableDebugSym(self: *ByteCodeBuffer, pc: usize, file: u32, loc: u32, frameLoc: u32, unwind_key: cy.fiber.UnwindKey) !void {
         try self.debugTable.append(self.alloc, .{
             .pc = @intCast(pc),
             .loc = loc,
             .file = @intCast(file),
             .frameLoc = frameLoc,
-            .localStart = localStart,
-            .localEnd = localEnd,
         });
-        try self.debugTempIndexTable.append(self.alloc, unwindTempIdx);
+        try self.unwind_table.append(self.alloc, unwind_key);
     }
 
     pub fn pushOp(self: *ByteCodeBuffer, code: OpCode) !void {
@@ -784,15 +786,11 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const src = pc[3].val;
             len += try fmt.printCount(w, "vars[{}] = %{}", &.{v(symId), v(src)});
         },
-        .pushTry => {
-            const errDst = pc[1].val;
-            const dstIsRetained = pc[2].val;
-            const catchPcOffset = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            len += try fmt.printCount(w, "errDst={} dstIsRetained={} catchOff={}", &.{v(errDst), v(dstIsRetained), v(catchPcOffset)});
-        },
-        .popTry => {
+        .catch_op => {
             const endOffset = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            len += try fmt.printCount(w, "endOff={}", &.{v(endOffset)});
+            const err_slot = pc[3].val;
+            const dst_retained = pc[4].val;
+            len += try fmt.printCount(w, "catch jmp={}, err_slot={}, dst_retained={}", &.{v(endOffset), v(err_slot), v(dst_retained)});
         },
         .stringTemplate => {
             const startLocal = pc[1].val;
@@ -872,15 +870,6 @@ pub const DebugSym = extern struct {
 
     /// ChunkId.
     file: u16,
-
-    /// Which locals are alive before this instruction.
-    /// Not all locals in this range have a RC but they are guaranteed to have a defined value.
-    localStart: u8,
-    localEnd: u8,
-
-    pub fn getLocals(sym: cy.DebugSym) cy.IndexSlice(u8) {
-        return cy.IndexSlice(u8).init(sym.localStart, @intCast(sym.localEnd));
-    }
 };
 
 const DebugMarkerType = enum(u8) {
@@ -955,7 +944,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             return 2 + numVars;
         },
         .not,
-        .popTry,
         .copy,
         .copyRetainSrc,
         .copyReleaseDst,
@@ -1012,8 +1000,8 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .range,
         .unwrapChoice,
         .cast,
-        .castAbstract,
-        .pushTry => {
+        .catch_op,
+        .castAbstract => {
             return 5;
         },
         .match => {
@@ -1278,8 +1266,7 @@ pub const OpCode = enum(u8) {
     cast = vmc.CodeCast,
     castAbstract = vmc.CodeCastAbstract,
 
-    pushTry = vmc.CodePushTry,
-    popTry = vmc.CodePopTry,
+    catch_op = vmc.CodeCatch,
     throw = vmc.CodeThrow,
 
     await_op = vmc.CodeAwait,

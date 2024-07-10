@@ -101,21 +101,35 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) void {
     }
 }
 
-pub fn runTempReleaseOps(vm: *cy.VM, fp: [*]const cy.Value, tempIdx: u32) void {
-    log.tracev("release temps", .{});
-    var curIdx = tempIdx;
-    while (curIdx != cy.NullId) {
-        log.tracev("release temp: {}", .{vm.unwindTempRegs[curIdx]});
-        release(vm, fp[vm.unwindTempRegs[curIdx]]);
-        curIdx = vm.unwindTempPrevIndexes[curIdx];
+pub fn runUnwindReleases(vm: *cy.VM, fp: [*]const cy.Value, key: cy.fiber.UnwindKey) void {
+    log.tracev("unwind releases", .{});
+    var cur = key;
+    while (!cur.is_null) {
+        if (cur.is_try) {
+            const try_e = vm.unwind_trys[cur.idx];
+            cur = try_e.prev;
+        } else {
+            log.tracev("unwind release: {}", .{vm.unwind_slots[cur.idx]});
+            release(vm, fp[vm.unwind_slots[cur.idx]]);
+            cur = vm.unwind_slot_prevs[cur.idx];
+        }
     }
 }
 
-pub fn releaseLocals(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, locals: cy.IndexSlice(u8)) void {
-    log.tracev("release locals: {}-{}", .{locals.start, locals.end});
-    for (stack[framePtr+locals.start..framePtr+locals.end]) |val| {
-        release(vm, val);
+pub fn runUnwindReleasesUntilCatch(vm: *cy.VM, fp: [*]const cy.Value, key: cy.fiber.UnwindKey) ?u32 {
+    log.tracev("unwind releases until catch", .{});
+    var cur = key;
+    while (!cur.is_null) {
+        if (cur.is_try) {
+            const try_e = vm.unwind_trys[cur.idx];
+            return try_e.catch_pc;
+        } else {
+            log.tracev("unwind release: {}", .{vm.unwind_slots[cur.idx]});
+            release(vm, fp[vm.unwind_slots[cur.idx]]);
+            cur = vm.unwind_slot_prevs[cur.idx];
+        }
     }
+    return null;
 }
 
 pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) void {
@@ -317,32 +331,28 @@ fn markMainStackRoots(vm: *cy.VM) !void {
 
     while (true) {
         const symIdx = try cy.debug.indexOfDebugSym(vm, pcOff);
-        const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
-        const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
-        const locals = sym.getLocals();
-        log.tracev("mark frame: pc={} {s} fp={} {}, locals={}..{}", .{pcOff, @tagName(vm.c.ops[pcOff].opcode()), fpOff, tempIdx, locals.start, locals.end});
+        const key = cy.debug.getUnwindKey(vm, symIdx);
+        log.tracev("mark frame: pc={} {s} fp={} unwind={},{}", .{pcOff, @tagName(vm.c.ops[pcOff].opcode()), fpOff, key.is_null, key.idx});
 
-        if (tempIdx != cy.NullId) {
+        if (!key.is_null) {
             const fp = vm.c.stack + fpOff;
             log.tracev("mark temps", .{});
-            var curIdx = tempIdx;
-            while (curIdx != cy.NullId) {
-                log.tracev("mark reg: {}", .{vm.unwindTempRegs[curIdx]});
-                const v = fp[vm.unwindTempRegs[curIdx]];
-                if (v.isCycPointer()) {
-                    markValue(vm, v);
+            var cur = key;
+            while (!cur.is_null) {
+                if (cur.is_try) {
+                    const try_e = vm.unwind_trys[cur.idx];
+                    cur = try_e.prev;
+                } else {
+                    log.tracev("mark slot: {}", .{vm.unwind_slots[cur.idx]});
+                    const v = fp[vm.unwind_slots[cur.idx]];
+                    if (v.isCycPointer()) {
+                        markValue(vm, v);
+                    }
+                    cur = vm.unwind_slot_prevs[cur.idx];
                 }
-                curIdx = vm.unwindTempPrevIndexes[curIdx];
             }
         }
 
-        if (locals.len() > 0) {
-            for (vm.c.stack[fpOff+locals.start..fpOff+locals.end]) |val| {
-                if (val.isCycPointer()) {
-                    markValue(vm, val);
-                }
-            }
-        }
         if (fpOff == 0) {
             // Done, at main block.
             return;

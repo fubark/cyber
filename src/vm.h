@@ -310,8 +310,7 @@ typedef enum {
     /// Set field with predetermined field index.
     CodeSetField,
     
-    CodePushTry,
-    CodePopTry,
+    CodeCatch,
     CodeThrow,
     CodeCoinit,
     CodeCoyield,
@@ -474,14 +473,6 @@ typedef enum {
     PANIC_NONE,
 } PanicType;
 
-/// Holds info about a runtime try block.
-typedef struct TryFrame {
-    u32 fp;
-    u32 catchPc;
-    u8 catchErrDst;
-    bool releaseDst;
-} TryFrame;
-
 /// Minimal stack frame to reconstruct a `StackFrame`.
 typedef struct CompactFrame {
     // If `pcOffset == NULL_U32`, then this is a host frame.
@@ -500,10 +491,6 @@ typedef struct Fiber {
     /// If pcOffset == NullId, the fiber is done.
     uint32_t pcOffset;
     uint32_t stackOffset;
-
-    uint32_t tryStackCap;
-    TryFrame* tryStackPtr;
-    uint32_t tryStackLen;
 
     uint32_t throwTraceCap;
     CompactFrame* throwTracePtr;
@@ -817,8 +804,6 @@ typedef struct VMC {
 
     ZCyList context_vars; // ContextVar
 
-    ZCyList tryStack;
-
     void* typesPtr;
     size_t typesLen;
 
@@ -925,7 +910,6 @@ ValueResult zAllocStringTemplate2(VM* vm, Value* strs, u8 strCount, Value* vals,
 ValueResult zAllocFuncFromSym(VM* vm, u16 id);
 Value zGetFieldFallback(VM* vm, HeapObject* obj, NameId nameId);
 ResultCode zSetFieldFallback(VM* vm, HeapObject* obj, NameId nameId, Value val);
-ResultCode zGrowTryStackTotalCapacity(VM* vm);
 u16 zOpMatch(const Inst* pc, Value* framePtr);
 void zLog(const char* fmt, const FmtValue* vals, size_t len);
 void zCheckDoubleFree(VM* vm, HeapObject* obj);

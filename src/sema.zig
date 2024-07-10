@@ -441,8 +441,8 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
             try preLoop(c, node);
             const irIdx = try c.ir.pushEmptyStmt(c.alloc, .forRangeStmt, node);
 
-            const range_start = try c.semaExpr(stmt.start, .{});
-            const range_end = try c.semaExpr(stmt.end, .{});
+            const range_start = try c.semaExprCstr(stmt.start, bt.Integer);
+            const range_end = try c.semaExprCstr(stmt.end, bt.Integer);
 
             try pushBlock(c, node);
 

@@ -2049,31 +2049,25 @@ beginSwitch:
         i64 start = BITCAST(i64, stack[pc[1]]);
         i64 end = BITCAST(i64, stack[pc[2]]);
         bool increment = pc[3];
-        if (VALUE_BOTH_INTEGERS(startv, endv)) {
-            _BitInt(48) start = VALUE_AS_INTEGER(startv);
-            _BitInt(48) end = VALUE_AS_INTEGER(endv);
-            stack[pc[4]] = startv;
-            stack[pc[5]] = startv;
-            u16 offset = READ_U16(6);
-            if (increment) {
-                if (start >= end) {
-                    pc += offset + 6;
-                    NEXT();
-                }
-                pc[offset] = CodeForRange;
-            } else {
-                if (start <= end) {
-                    pc += offset + 6;
-                    NEXT();
-                }
-                pc[offset] = CodeForRangeReverse;
+
+        stack[pc[4]] = start;
+        stack[pc[5]] = start;
+        u16 offset = READ_U16(6);
+        if (increment) {
+            if (start >= end) {
+                pc += offset + 6;
+                NEXT();
             }
-            pc += 8;
-            NEXT();
+            pc[offset] = CodeForRange;
         } else {
-            panicExpectedInteger(vm);
-            RETURN(RES_CODE_PANIC);
+            if (start <= end) {
+                pc += offset + 6;
+                NEXT();
+            }
+            pc[offset] = CodeForRangeReverse;
         }
+        pc += 8;
+        NEXT();
     }
     CASE(ForRange): {
         i64 counter = BITCAST(i64, stack[pc[1]]) + 1;

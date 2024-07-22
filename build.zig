@@ -25,6 +25,7 @@ var rtarget: std.Build.ResolvedTarget = undefined;
 var target: std.Target = undefined;
 var optimize: std.builtin.OptimizeMode = undefined;
 var dev: bool = undefined;
+var isystem: []const []const u8 = undefined;
 
 pub fn build(b: *std.Build) !void {
     rtarget = b.standardTargetOptions(.{});
@@ -45,6 +46,7 @@ pub fn build(b: *std.Build) !void {
     log_mem = b.option(bool, "log-mem", "Log memory traces.") orelse false;
     no_cache = b.option(bool, "no-cache", "Disable caching when running tests.") orelse false;
     dev = b.option(bool, "dev", "Marks version as dev.") orelse true;
+    isystem = b.option([]const []const u8, "isystem", "System includes.") orelse &.{};
 
     {
         const step = b.step("cli", "Build main cli.");
@@ -144,6 +146,9 @@ pub fn build(b: *std.Build) !void {
         opts.applyOverrides();
 
         const lib = try buildLib(b, opts);
+        for (isystem) |path| {
+            lib.addSystemIncludePath(.{ .path = path });
+        }
         step.dependOn(&b.addInstallArtifact(lib, .{}).step);
     }
 
@@ -618,6 +623,9 @@ pub fn buildCVM(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
         .file = .{ .path = thisDir() ++ "/src/vm.c" },
         .flags = cflags.items
     });
+    for (isystem) |path| {
+        lib.addSystemIncludePath(.{ .path = path });
+    }
     return lib;
 }
 

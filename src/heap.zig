@@ -2061,11 +2061,17 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                         }
                     } else {
                         const nfields = entry.data.struct_t.nfields;
-                        for (obj.object.getValuesConstPtr()[0..nfields]) |child| {
-                            if (skip_cyc_children and child.isCycPointer()) {
-                                continue;
+                        if (entry.data.struct_t.has_boxed_fields) {
+                            const field_vals = obj.object.getValuesConstPtr()[0..nfields];
+                            for (entry.data.struct_t.fields[0..nfields], 0..) |boxed, i| {
+                                if (boxed) {
+                                    const field = field_vals[i];
+                                    if (skip_cyc_children and field.isCycPointer()) {
+                                        continue;
+                                    }
+                                    cy.arc.release(vm, field);
+                                }
                             }
-                            cy.arc.release(vm, child);
                         }
                         if (nfields <= 4) {
                             freePoolObject(vm, obj);

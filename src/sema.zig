@@ -2156,6 +2156,8 @@ pub fn resolveStructTypeId(c: *cy.Chunk, struct_t: *cy.sym.ObjectType, opt_type:
         .data = .{ .struct_t = .{
             .nfields = cy.NullU16,
             .cstruct = struct_t.cstruct,
+            .has_boxed_fields = false,
+            .fields = undefined,
         }},
         .info = .{},
     };
@@ -2211,6 +2213,9 @@ pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Object
         return;
     }
 
+    const rt_field_start = c.dataU8Stack.items.len;
+    defer c.dataU8Stack.items.len = rt_field_start;
+
     // Load fields.
     var num_total_fields: u32 = 0;
     const fields = try c.alloc.alloc(cy.sym.FieldInfo, decl.fields.len);
@@ -2228,13 +2233,31 @@ pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Object
             .type = fieldType,
             .offset = num_total_fields,
         };
-        has_boxed_fields = has_boxed_fields or !c.sema.isUnboxedType(fieldType);
+
+        if (object_like.type != .struct_t) {
+            has_boxed_fields = has_boxed_fields or !c.sema.isUnboxedType(fieldType);
+        }
 
         const field_te = c.sema.types.items[fieldType];
         if (field_te.kind == .struct_t) {
             num_total_fields += field_te.data.struct_t.nfields;
+
+            if (object_like.type == .struct_t) {
+                if (field_te.data.struct_t.has_boxed_fields) {
+                    const child_fields = field_te.data.struct_t.fields[0..field_te.data.struct_t.nfields];
+                    try c.dataU8Stack.appendSlice(c.alloc, @ptrCast(child_fields));
+                    has_boxed_fields = has_boxed_fields or field_te.data.struct_t.has_boxed_fields;
+                } else {
+                    try c.dataU8Stack.appendNTimes(c.alloc, .{ .boxed=false }, field_te.data.struct_t.nfields);
+                }
+            }
         } else {
             num_total_fields += 1;
+            if (object_like.type == .struct_t) {
+                const boxed = !c.sema.isUnboxedType(fieldType);
+                try c.dataU8Stack.append(c.alloc, .{ .boxed=boxed });
+                has_boxed_fields = has_boxed_fields or boxed;
+            }
         }
     }
     obj.fields = fields.ptr;
@@ -2255,9 +2278,15 @@ pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Object
             };
         },
         .struct_t => {
+            var rt_fields: []bool = &.{};
+            if (has_boxed_fields) {
+                rt_fields = try c.alloc.dupe(bool, @ptrCast(c.dataU8Stack.items[rt_field_start..]));
+            }
             c.sema.types.items[obj.type].data.struct_t = .{
                 .nfields = @intCast(num_total_fields),
                 .cstruct = obj.cstruct,
+                .has_boxed_fields = has_boxed_fields,
+                .fields = rt_fields.ptr,
             };
             obj.resolving_struct = false;
         },
@@ -6692,6 +6721,10 @@ pub const Sema = struct {
             if (type_e.kind == .object) {
                 if (type_e.data.object.has_boxed_fields) {
                     alloc.free(type_e.data.object.fields[0..type_e.data.object.numFields]);
+                }
+            } else if (type_e.kind == .struct_t) {
+                if (type_e.data.struct_t.has_boxed_fields) {
+                    alloc.free(type_e.data.struct_t.fields[0..type_e.data.struct_t.nfields]);
                 }
             }
         }

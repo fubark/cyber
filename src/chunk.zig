@@ -785,8 +785,9 @@ pub const ListData = union {
     jumpToEndPc: u32,
 };
 
-pub const DataU8 = union {
+pub const DataU8 = extern union {
     irLocal: u8,
+    boxed: bool,
 };
 
 pub const Data = union {

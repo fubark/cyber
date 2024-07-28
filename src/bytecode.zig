@@ -542,11 +542,10 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[2].val;
             len += try fmt.printCount(w, "%{} = %{}", &.{v(dst), v(src)});
         },
-        .copyObj => {
+        .copy_struct => {
             const src = pc[1].val;
-            const numFields = pc[2].val;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "%{} = copy(%{}) nfields={}", &.{v(dst), v(src), v(numFields)});
+            const dst = pc[2].val;
+            len += try fmt.printCount(w, "%{} = copy(%{})", &.{v(dst), v(src)});
         },
         .copyObjDyn => {
             const src = pc[1].val;
@@ -976,6 +975,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numVars = pc[1].val;
             return 2 + numVars;
         },
+        .copy_struct,
         .set_deref,
         .not,
         .copy,
@@ -1004,7 +1004,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .deref,
         .set_deref_struct,
         .set_up_value,
-        .copyObj,
         .call,
         .constOp,
         .constRetain,
@@ -1148,7 +1147,7 @@ pub const OpCode = enum(u8) {
     copyReleaseDst = vmc.CodeCopyReleaseDst,
     copyRetainSrc = vmc.CodeCopyRetainSrc,
     copyRetainRelease = vmc.CodeCopyRetainRelease,
-    copyObj = vmc.CodeCopyObj,
+    copy_struct = vmc.CodeCopyStruct,
     copyObjDyn = vmc.CodeCopyObjDyn,
 
     setIndexList = vmc.CodeSetIndexList,

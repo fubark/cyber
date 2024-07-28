@@ -2735,8 +2735,8 @@ fn zOpCodeName(code: vmc.OpCode) callconv(.C) [*:0]const u8 {
     return @tagName(ecode);
 }
 
-fn zCopyObject(vm: *VM, obj: *HeapObject, numFields: u8) callconv(.C) vmc.ValueResult {
-    const val = copyObject(vm, obj, numFields) catch {
+fn zCopyStruct(vm: *VM, obj: *HeapObject) callconv(.C) vmc.ValueResult {
+    const val = copyStruct(vm, obj) catch {
         return .{
             .val = undefined,
             .code = vmc.RES_CODE_UNKNOWN,
@@ -2748,29 +2748,29 @@ fn zCopyObject(vm: *VM, obj: *HeapObject, numFields: u8) callconv(.C) vmc.ValueR
     };
 }
 
-pub fn copyObject(vm: *VM, obj: *HeapObject, numFields: u8) !cy.Value {
-    const type_id = obj.object.typeId;
+pub fn copyStruct(vm: *VM, obj: *HeapObject) !cy.Value {
+    const type_id = obj.getTypeId();
+    const type_e = vm.c.types[type_id];
 
     const values = obj.object.getValuesPtr();
+    const nfields = type_e.data.struct_t.nfields;
     var res: cy.Value = undefined;
-    if (numFields <= 4) {
+    if (nfields <= 4) {
         res = try vm.allocEmptyObjectSmall(type_id);
     } else {
-        res = try vm.allocEmptyObject(type_id, numFields);
+        res = try vm.allocEmptyObject(type_id, nfields);
     }
 
     const dst = res.castHeapObject(*cy.heap.Object).getValuesPtr();
-    for (0..numFields) |i| {
-        const field_t = values[i].getTypeId();
-        const type_e = vm.c.types[field_t];
-        if (type_e.kind == .struct_t) {
-            const child_num_fields = type_e.data.struct_t.nfields;
-            const child = try copyObject(vm, values[i].asHeapObject(), @intCast(child_num_fields));
-            dst[i] = child;
-        } else {
-            retain(vm, values[i]);
+    if (type_e.data.struct_t.has_boxed_fields) {
+        for (type_e.data.struct_t.fields[0..nfields], 0..) |boxed, i| {
             dst[i] = values[i];
+            if (boxed) {
+                retain(vm, dst[i]);
+            }
         }
+    } else {
+        @memcpy(dst[0..nfields], values[0..nfields]);
     }
     return res;
 }
@@ -3331,7 +3331,7 @@ comptime {
         @export(zAllocArray, .{ .name = "zAllocArray", .linkage = .strong });
         @export(zAllocList, .{ .name = "zAllocList", .linkage = .strong });
         @export(zAllocListDyn, .{ .name = "zAllocListDyn", .linkage = .strong });
-        @export(zCopyObject, .{ .name = "zCopyObject", .linkage = .strong });
+        @export(zCopyStruct, .{ .name = "zCopyStruct", .linkage = .strong });
         @export(zBox, .{ .name = "zBox", .linkage = .strong });
         @export(zUnbox, .{ .name = "zUnbox", .linkage = .strong });
         @export(zCall, .{ .name = "zCall", .linkage = .strong });

@@ -1464,6 +1464,8 @@ pub const ChunkExt = struct {
             .data = .{ .struct_t = .{
                 .nfields = cy.NullU16,
                 .cstruct = cstruct,
+                .has_boxed_fields = false,
+                .fields = undefined,
             }},
             .info = .{},
         };

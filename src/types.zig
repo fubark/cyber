@@ -85,6 +85,10 @@ pub const Type = extern struct {
             nfields: u16,
 
             cstruct: bool,
+            has_boxed_fields: bool,
+
+            /// Inlined fields. Each entry indicates whether the corresponding field is boxed.
+            fields: [*]bool,
         },
         ct_ref: extern struct {
             ct_param_idx: u32,

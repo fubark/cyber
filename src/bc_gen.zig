@@ -1780,7 +1780,7 @@ pub fn toLocalReg(c: *Chunk, irVarId: u8) SlotId {
     return c.genIrLocalMapStack.items[c.curBlock.irLocalMapStart + irVarId];
 }
 
-fn genValueLocal(c: *Chunk, reg: SlotId, nfields: u8, cstr: Cstr, node: *ast.Node) !GenValue {
+fn genValueLocal(c: *Chunk, reg: SlotId, cstr: Cstr, node: *ast.Node) !GenValue {
     if (!cstr.isExact()) {
         // Prefer no copy.
         const retain = cstr.type == .simple and cstr.data.simple.retain;
@@ -1790,7 +1790,7 @@ fn genValueLocal(c: *Chunk, reg: SlotId, nfields: u8, cstr: Cstr, node: *ast.Nod
         return regValue(c, reg, retain);
     }
     const inst = try selectForDstInst(c, cstr, bt.Any, true, node);
-    try c.pushCode(.copyObj, &.{ reg, nfields, inst.dst }, node);
+    try c.pushCode(.copy_struct, &.{ reg, inst.dst }, node);
     if (inst.own_dst) {
         try initSlot(c, inst.dst, true, node);
     }
@@ -1807,7 +1807,7 @@ fn genLiftedValueLocal(c: *Chunk, reg: SlotId, local: Slot, cstr: Cstr, node: *a
     // const inst = try c.rega.selectForDstInst(cstr, true, node);
     // try c.pushCode(.up_value, &.{ reg, inst.dst }, node);
     // const numFields: u8 = @intCast(c.sema.types.items[local.some.type].data.object.numFields);
-    // try c.pushCode(.copyObj, &.{ inst.dst, numFields, inst.dst }, node);
+    // try c.pushCode(.copy_struct, &.{ inst.dst, numFields, inst.dst }, node);
     // return finishDstInst(c, inst, true);
     return error.TODO;
 }
@@ -1818,7 +1818,7 @@ fn genLocalReg(c: *Chunk, reg: SlotId, slot_t: cy.TypeId, cstr: Cstr, node: *ast
     if (!slot.boxed_up) {
         const type_e = c.sema.getType(slot_t);
         if (type_e.kind == .struct_t) {
-            return genValueLocal(c, reg, @intCast(type_e.data.struct_t.nfields), cstr, node);
+            return genValueLocal(c, reg, cstr, node);
         }
 
         const srcv = regValue(c, reg, false);

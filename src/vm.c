@@ -579,7 +579,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CopyReleaseDst),
         JENTRY(CopyRetainSrc),
         JENTRY(CopyRetainRelease),
-        JENTRY(CopyObj),
+        JENTRY(CopyStruct),
         JENTRY(CopyObjDyn),
         JENTRY(SetIndexList),
         JENTRY(SetIndexMap),
@@ -819,15 +819,14 @@ beginSwitch:
         pc += 3;
         NEXT();
     }
-    CASE(CopyObj): {
+    CASE(CopyStruct): {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(stack[pc[1]]);
-        u8 numFields = pc[2];
-        ValueResult res = zCopyObject(vm, obj, numFields);
+        ValueResult res = zCopyStruct(vm, obj);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
-        stack[pc[3]] = res.val;
-        pc += 4;
+        stack[pc[2]] = res.val;
+        pc += 3;
         NEXT();
     }
     CASE(CopyObjDyn): {
@@ -838,7 +837,7 @@ beginSwitch:
         if (entry.kind == TYPE_KIND_STRUCT) {
             u8 numFields = (u8)entry.data.object.numFields;
             HeapObject* obj = VALUE_AS_HEAPOBJECT(src);
-            ValueResult res = zCopyObject(vm, obj, numFields);
+            ValueResult res = zCopyStruct(vm, obj);
             if (res.code != RES_CODE_SUCCESS) {
                 RETURN(res.code);
             }

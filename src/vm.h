@@ -227,7 +227,7 @@ typedef enum {
     CodeCopyReleaseDst,
     CodeCopyRetainSrc,
     CodeCopyRetainRelease,
-    CodeCopyObj,
+    CodeCopyStruct,
     CodeCopyObjDyn,
 
     /// [listReg] [indexReg] [rightReg]
@@ -934,4 +934,4 @@ ResultCode zEnsureListCap(VM* vm, ZCyList* list, size_t cap);
 void zTraceRetain(VM* vm, Value v);
 Value zBox(VM* vm, Value v, TypeId type_id);
 Value zUnbox(VM* vm, Value v, TypeId type_id);
-ValueResult zCopyObject(VM* vm, HeapObject* obj, u8 numFields);
+ValueResult zCopyStruct(VM* vm, HeapObject* obj);

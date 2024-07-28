@@ -949,6 +949,11 @@ blockquote p {
     padding: 0px;
 }
 
+p {
+    margin-block-start: 1.3em;
+    margin-block-end: 1.3em;
+}
+
 blockquote em {
     color: #fb6767;
 }
@@ -985,7 +990,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 300-0a37853</div>
+    <div class="sub-title">v0.4-dev 313-e5f458c</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -1000,14 +1005,14 @@ table tbody tr:nth-child(even) {
 <li><a href="#c-types">C Types.</a></li>
 <li><a href="#control-flow">Control Flow.</a></li>
 <li><a href="#functions">Functions.</a></li>
-<li><a href="#modules">Modules.</a></li>
-<li><a href="#ffi">FFI.</a></li>
+<li><a href="#memory">Memory.</a></li>
 <li><a href="#error-handling">Error Handling.</a></li>
 <li><a href="#concurrency">Concurrency.</a></li>
 <li><a href="#dynamic-typing">Dynamic Typing.</a></li>
 <li><a href="#metaprogramming">Metaprogramming.</a></li>
+<li><a href="#modules">Modules.</a></li>
+<li><a href="#ffi">FFI.</a></li>
 <li><a href="#libcyber">libcyber.</a></li>
-<li><a href="#memory">Memory.</a></li>
 <li><a href="#cli">CLI.</a></li>
     </ul>
 </header>
@@ -1022,7 +1027,7 @@ table tbody tr:nth-child(even) {
 <h2 id="hello-world">Hello World. <a href="#hello-world">#</a></h2>
 <pre><code class="language-cy">use math
 
-var worlds = ['World', '世界', 'दुनिया', 'mundo']
+var worlds = {'World', '世界', 'दुनिया', 'mundo'}
 worlds.append(math.random())
 for worlds -> w:
     print "Hello, $(w)!"
@@ -1082,12 +1087,12 @@ if year > 2020 and year <= 2030 and
     month > 0 and month <= 11:
     print 'Valid'
 </code></pre>
-<p>Any token inside a delimited syntax (such as parentheses or brackets) can be wrapped to the next line:</p>
+<p>Any token inside a delimited syntax (such as parentheses or braces) can be wrapped to the next line:</p>
 <pre><code class="language-cy">var sum = add(1, 2, 3, 4,
     100, 200, 300, 400)
 
-var colors = ['red', 'blue', 'green',
-    'purple', 'orange', 'yellow']
+var colors = {'red', 'blue', 'green',
+    'purple', 'orange', 'yellow'}
 </code></pre>
 <a href="#syntax">^topic</a>
 <h2 id="blocks">Blocks. <a href="#blocks">#</a></h2>
@@ -1100,7 +1105,7 @@ if true:
 </code></pre>
 <p>Subsequent statements in the block must follow the same indentation.
 The block ends when a statement recedes from this indentation:</p>
-<pre><code class="language-cy">var items = [10, 20, 30]
+<pre><code class="language-cy">var items = {10, 20, 30}
 for items -> it:
     if it == 20:
         print it
@@ -1314,10 +1319,10 @@ By default, a comparison operator evaluates to a <a href="#booleans" title="">Bo
 var a = 'abc'
 a == 'abc'  -- Evaluates to `true`
 
-a = []
+a = {_}
 var b = a
 a == b      -- Evaluates to `true`
-a == []     -- Evaluates to `false`
+a == {_}    -- Evaluates to `false`
 </code></pre>
 <p>The not equals operator returns true if the two values are not equal.</p>
 <pre><code class="language-cy">1 != 1      -- Evaluates to `false`
@@ -1378,7 +1383,7 @@ a << b
 <h2 id="zero-values">Zero values. <a href="#zero-values">#</a></h2>
 <p>Uninitialized type fields currently default to their zero values. However, this implicit behavior will be removed in the future in favor of a default value clause. Zero values must then be expressed using the reserved <code>zero</code> literal.</p>
 <p>The following shows the zero values of builtin or created types:</p>
-<table><thead><tr><th>Type</th><th>Zero value</th></tr></thead><tbody><tr><td><code>boolean</code></td><td><code>false</code></td></tr><tr><td><code>int</code></td><td><code>0</code></td></tr><tr><td><code>float</code></td><td><code>0.0</code></td></tr><tr><td><code>String</code></td><td><code>''</code></td></tr><tr><td><code>Array</code></td><td><code>Array('')</code></td></tr><tr><td><code>List</code></td><td><code>[]</code></td></tr><tr><td><code>Map</code></td><td><code>Map{}</code></td></tr><tr><td><code>type S</code></td><td><code>S{}</code></td></tr><tr><td><code>@host type S</code></td><td><code>S.$zero()</code></td></tr><tr><td><code>dyn</code></td><td><code>int(0)</code></td></tr><tr><td><code>any</code></td><td><code>int(0)</code></td></tr><tr><td><code>?S</code></td><td><code>Option[S].none</code></td></tr></tbody></table><a href="#syntax">^topic</a>
+<table><thead><tr><th>Type</th><th>Zero value</th></tr></thead><tbody><tr><td><code>boolean</code></td><td><code>false</code></td></tr><tr><td><code>int</code></td><td><code>0</code></td></tr><tr><td><code>float</code></td><td><code>0.0</code></td></tr><tr><td><code>String</code></td><td><code>''</code></td></tr><tr><td><code>List[T]</code></td><td><code>List[T]{}</code></td></tr><tr><td><code>Map</code></td><td><code>Map{}</code></td></tr><tr><td><code>type S</code></td><td><code>S{}</code></td></tr><tr><td><code>@host type S</code></td><td><code>S.$zero()</code></td></tr><tr><td><code>dyn</code></td><td><code>int(0)</code></td></tr><tr><td><code>any</code></td><td><code>int(0)</code></td></tr><tr><td><code>?S</code></td><td><code>Option[S].none</code></td></tr></tbody></table><a href="#syntax">^topic</a>
 <h2 id="type-casting">Type casting. <a href="#type-casting">#</a></h2>
 <p>The <code>as</code> keyword can be used to cast a value to a specific type. Casting lets the compiler know what the expected type is and does not perform any conversions.</p>
 <p>If the compiler knows the cast will always fail at runtime, a compile error is returned instead.</p>
@@ -1408,11 +1413,11 @@ var a = 123   -- This is a comment on the same line as a statement.
     'age' = 25,
 
     -- This is a comment
-    cities = [
+    cities = {
         'New York',
         'San Francisco',
         'Tokyo',
-    ],
+    },
 }
 </code></pre>
 <a href="#syntax">^topic</a>
@@ -1439,13 +1444,23 @@ var a = 123   -- This is a comment on the same line as a statement.
 <li><a href="#mutable-strings" title="">Mutable strings.</a></li>
 </ul>
 </li>
+<li><a href="#symbols" title="">Symbols.</a></li>
 </ul>
 </td>
 <td valign="top">
 <ul>
+<li><a href="#optionals" title="">Optionals.</a><ul>
+<li><a href="#wrap-value" title="">Wrap value.</a></li>
+<li><a href="#wrap-none" title="">Wrap <code>none</code>.</a></li>
+<li><a href="#unwrap-or-panic" title="">Unwrap or panic.</a></li>
+<li><a href="#unwrap-or-default" title="">Unwrap or default.</a></li>
+<li><a href="#optional-chaining" title="">Optional chaining.</a></li>
+<li><a href="#if-unwrap" title=""><code>if</code> unwrap.</a></li>
+<li><a href="#while-unwrap" title=""><code>while</code> unwrap.</a></li>
+</ul>
+</li>
 <li><a href="#arrays" title="">Arrays.</a></li>
 <li><a href="#lists" title="">Lists.</a></li>
-<li><a href="#tuples" title="">Tuples.</a></li>
 <li><a href="#tables" title="">Tables.</a><ul>
 <li><a href="#table-indexing" title="">Table indexing.</a></li>
 <li><a href="#check-field-existence" title="">Check field existence.</a></li>
@@ -1458,16 +1473,14 @@ var a = 123   -- This is a comment on the same line as a statement.
 <li><a href="#map-block" title="">Map block.</a></li>
 </ul>
 </li>
-<li><a href="#symbols" title="">Symbols.</a></li>
 <li><a href="#any" title=""><code>any</code>.</a></li>
 <li><a href="#dyn" title=""><code>dyn</code>.</a></li>
 </ul>
 </td>
 </tr></table>
 <p><a href="#table-of-contents" title="">^top</a></p>
-<p>In Cyber, there are primitive types and object types. By default, primitives are copied around by value and don't need additional heap memory or reference counts.</p>
-<p>Primitives include <a href="#booleans" title="">Booleans</a>, <a href="#floats" title="">Floats</a>, <a href="#integers" title="">Integers</a>, <a href="#enums" title="">Enums</a>, <a href="#symbols" title="">Symbols</a>, and <a href="#error-value" title="">Error Values</a>.</p>
-<p>Object types include <a href="#lists" title="">Lists</a>, <a href="#tuples" title="">Tuples</a>, <a href="#maps" title="">Maps</a>, <a href="#strings" title="">Strings</a>, <a href="#arrays" title="">Arrays</a>, <a href="#objects" title="">Objects</a>, <a href="#lambdas" title="">Lambdas</a>, <a href="#fibers" title="">Fibers</a>, <a href="#choices" title="">Choices</a>, <a href="#optionals" title="">Optionals</a>, <a href="#pointers" title="">Pointers</a>, and several internal object types.</p>
+<p>In Cyber, there are value types and reference types.
+This section will describe common builtin types.</p>
 <h2 id="booleans">Booleans. <a href="#booleans">#</a></h2>
 <p>Booleans can be <code>true</code> or <code>false</code>. See <a href="#type-bool" title=""><code>type bool</code></a>.</p>
 <pre><code class="language-cy">var a = true
@@ -1617,48 +1630,124 @@ print "$(bytes.fmt(.x))"
 <li>Allows each line to be indented along with the surrounding syntax.</li>
 <li>The starting whitespace for each line is made explicit.</li>
 </ul>
-<pre><code class="language-cy">var paragraph = [
+<pre><code class="language-cy">var paragraph = {
     \'the line-join literal
     \'hello\nworld
     \"hello $(name)
     \'last line
     \'
-]
+}
 </code></pre>
 <a href="#basic-types">^topic</a>
 <h3 id="mutable-strings">Mutable strings. <a href="#mutable-strings">#</a></h3>
 <p>To mutate an existing string, use <a href="#mutstring" title="">type MutString</a>. <em>Planned Feature</em></p>
 <a href="#basic-types">^topic</a>
+<h2 id="optionals">Optionals. <a href="#optionals">#</a></h2>
+<p>An Optional is a value type that provides <strong>null safety</strong> by forcing the inner value to be unwrapped before it can be used.</p>
+<p>The <code>Option</code> template type is a choice type that either holds a <code>none</code> value or contains <code>some</code> value. The option template is defined as:</p>
+<pre><code class="language-cy">type Option[T type] enum:
+    case none
+    case some T
+</code></pre>
+<p>A type prefixed with <code>?</code> is the idiomatic way to create an option type. The following String optional types are equivalent:</p>
+<pre><code class="language-cy">Option[String]
+?String
+</code></pre>
+<a href="#basic-types">^topic</a>
+<h3 id="wrap-value">Wrap value. <a href="#wrap-value">#</a></h3>
+<p>A value is automatically wrapped into the inferred optional's <code>some</code> case:</p>
+<pre><code class="language-cy">var a ?String = 'abc'
+print a     --> some(abc)'
+</code></pre>
+<a href="#basic-types">^topic</a>
+<h3 id="wrap-none">Wrap <code>none</code>. <a href="#wrap-none">#</a></h3>
+<p><code>none</code> is automatically initialized to the inferred optional's <code>none</code> case:</p>
+<pre><code class="language-cy">var a ?String = none
+print a     --> none
+</code></pre>
+<a href="#basic-types">^topic</a>
+<h3 id="unwrap-or-panic">Unwrap or panic. <a href="#unwrap-or-panic">#</a></h3>
+<p>The <code>.?</code> access operator is used to unwrap an optional. If the expression evaluates to the <code>none</code> case, the runtime panics:</p>
+<pre><code class="language-cy">var opt ?int = 123
+var v = opt.?
+print v     --> 123
+</code></pre>
+<a href="#basic-types">^topic</a>
+<h3 id="unwrap-or-default">Unwrap or default. <a href="#unwrap-or-default">#</a></h3>
+<p>The <code>?else</code> control flow operator either returns the unwrapped value or a default value when the optional is <code>none</code>:</p>
+<pre><code class="language-cy">var opt ?int = none
+var v = opt ?else 123
+print v     --> 123
+</code></pre>
+<p><code>?else</code> can be used in an assignment block: <em>Planned Feature</em></p>
+<pre><code class="language-cy">var v = opt ?else:
+    break 'empty'
+
+var v = opt ?else:
+    throw error.Missing
+</code></pre>
+<a href="#basic-types">^topic</a>
+<h3 id="optional-chaining">Optional chaining. <a href="#optional-chaining">#</a></h3>
+<p>Given the last member's type <code>T</code> in a chain of <code>?.</code> access operators, the chain's execution will either return <code>Option[T].none</code> on the first encounter of <code>none</code> or returns the last member as an <code>Option[T].some</code>: <em>Planned Feature</em></p>
+<pre><code class="language-cy">print root?.a?.b?.c?.last
+</code></pre>
+<a href="#basic-types">^topic</a>
+<h3 id="if-unwrap"><code>if</code> unwrap. <a href="#if-unwrap">#</a></h3>
+<p>The <code>if</code> statement can be amended to unwrap an optional value using the capture <code>-></code> operator:</p>
+<pre><code class="language-cy">var opt ?String = 'abc'
+if opt -> v:
+    print v     -- Prints 'abc'
+</code></pre>
+<a href="#basic-types">^topic</a>
+<h3 id="while-unwrap"><code>while</code> unwrap. <a href="#while-unwrap">#</a></h3>
+<p>The <code>while</code> statement can be amended to unwrap an optional value using the capture <code>-></code> operator.
+The loop exits when <code>none</code> is encountered:</p>
+<pre><code class="language-cy">var iter = dir.walk()
+while iter.next() -> entry:
+    print entry.name
+</code></pre>
+<a href="#basic-types">^topic</a>
 <h2 id="arrays">Arrays. <a href="#arrays">#</a></h2>
-<p>An <code>Array</code> is an immutable sequence of bytes.
+<p>An array type is a value type and is denoted as <code>[N]T</code> where <code>N</code> is the size of the array and <code>T</code> is the element type.
 See <a href="#type-array" title=""><code>type Array</code></a>.</p>
-<pre><code class="language-cy">var a = Array('abcd')
-a = a.insertByte(1, 255)
-print a[0]     -- "97"
-print a[1]     -- "255"
+<p>Arrays are initialized with its type followed by the initializer literal:</p>
+<pre><code class="language-cy">var a = [3]int{1, 2, 3}
+</code></pre>
+<p>The number of elements can be inferred using pseudo type <code>[.]T</code>: <em>Planned Feature</em></p>
+<pre><code class="language-cy">var a = [.]int{1, 2, 3}
+</code></pre>
+<p>The array type can be inferred by the dot initializer literal:</p>
+<pre><code class="language-cy">var a [3]int = .{1, 2, 3}
+</code></pre>
+<p>Arrays can be indexed:</p>
+<pre><code class="language-cy">a[2] = 300
+print a[2]    --> 300
 </code></pre>
 <a href="#basic-types">^topic</a>
 <h2 id="lists">Lists. <a href="#lists">#</a></h2>
 <p>Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements. See <a href="#type-list" title=""><code>type List</code></a>.</p>
-<pre><code class="language-cy">-- Construct a new list.
-var list = [1, 2, 3]
-
--- The first element of the list starts at index 0.
-print list[0]    -- Prints '1'
+<p>The first element of the list starts at index 0.
+Lists are initialized with elements in braces:</p>
+<pre><code class="language-cy">var list = {1, 2, 3}
+print list[0]    --> 1
+</code></pre>
+<p>The empty list is initialized with an underscore as the only element:</p>
+<pre><code class="language-cy">var list = {_}
+print list.len() --> 0
 </code></pre>
 <p>Lists can be sliced with the range <code>..</code> clause. The sliced list becomes a new list that you can modify without affecting the original list. The end index is non-inclusive.</p>
-<pre><code class="language-cy">var list = [ 1, 2, 3, 4, 5 ]
-list[0..0]    -- []          
-list[0..3]    -- [ 1, 2, 3 ] 
-list[3..]     -- [ 4, 5 ]    
-list[..3]     -- [ 1, 2, 3 ] 
+<pre><code class="language-cy">var list = {1, 2, 3, 4, 5}
+print list[0..0]    --> {_}          
+print list[0..3]    --> {1, 2, 3}
+print list[3..]     --> {4, 5}
+print list[..3]     --> {1, 2, 3}
 </code></pre>
 <p>The <code>+..</code> invokes the slice operator with an end position that is an increment from the start: <em>Planned Feature</em></p>
-<pre><code class="language-cy">var list = [ 1, 2, 3, 4, 5 ]
-list[2+..2]   -- [ 3, 4 ]
+<pre><code class="language-cy">var list = {1, 2, 3, 4, 5}
+print list[2+..2]   --> {3, 4}
 </code></pre>
 <p>List operations.</p>
-<pre><code class="language-cy">var list = [234]
+<pre><code class="language-cy">var list = {234}
 
 -- Append a value.
 list.append(123)
@@ -1680,15 +1769,12 @@ for list -> it:
 list.remove(1)
 </code></pre>
 <p>Since <code>List</code> is a generic type, an explicit List type can be attached to the initializer:</p>
-<pre><code class="language-cy">var a = List[int].[1, 2, 3]
+<pre><code class="language-cy">var a = List[int]{1, 2, 3}
 </code></pre>
 <p>When the intializer is only prefixed with a dot, it will infer the List type constraint:</p>
-<pre><code class="language-cy">var a List[int] = .[1, 2, 3]
+<pre><code class="language-cy">var a List[int] = .{1, 2, 3}
 </code></pre>
 <a href="#basic-types">^topic</a>
-<h2 id="tuples">Tuples. <a href="#tuples">#</a></h2>
-<blockquote><p><em>Incomplete: Tuples can only be created from @host funcs at the moment.</em></p>
-</blockquote><a href="#basic-types">^topic</a>
 <h2 id="tables">Tables. <a href="#tables">#</a></h2>
 <p>A <code>Table</code> is a versatile object that can have an arbitrary set of fields.</p>
 <p>By default, the record literal initializes a <code>Table</code>:</p>
@@ -1752,7 +1838,7 @@ print map.size()
 map.remove(123)
 
 -- Iterating a map.
-for map -> [val, key]:
+for map -> {val, key}:
     print "$(key) -> $(val)"
 </code></pre>
 <a href="#basic-types">^topic</a>
@@ -1792,7 +1878,7 @@ print int(currency)      --> <unique ID>
     return i * i
 
 var a any = 123
-a = ['a', 'list']         --> Valid assignment to a value with a different type.
+a = {'a', 'list'}         --> Valid assignment to a value with a different type.
 a = 10
 
 print square(a)           --> CompileError. Expected `int`, got `any`.
@@ -1826,24 +1912,15 @@ print square(a)           --> CompileError. Expected `int`, got `any`.
 <li><a href="#copy-structs" title="">Copy structs.</a></li>
 </ul>
 </li>
+<li><a href="#tuples" title="">Tuples.</a></li>
+</ul>
+</td><td valign="top">
+<ul>
 <li><a href="#enums" title="">Enums.</a></li>
 <li><a href="#choices" title="">Choices.</a><ul>
 <li><a href="#initialize-choice" title="">Initialize choice.</a></li>
 <li><a href="#choice-switch" title="">Choice <code>switch</code>.</a></li>
 <li><a href="#access-choice" title="">Access choice.</a></li>
-</ul>
-</li>
-</ul>
-</td><td valign="top">
-<ul>
-<li><a href="#optionals" title="">Optionals.</a><ul>
-<li><a href="#wrap-value" title="">Wrap value.</a></li>
-<li><a href="#wrap-none" title="">Wrap <code>none</code>.</a></li>
-<li><a href="#unwrap-or-panic" title="">Unwrap or panic.</a></li>
-<li><a href="#unwrap-or-default" title="">Unwrap or default.</a></li>
-<li><a href="#optional-chaining" title="">Optional chaining.</a></li>
-<li><a href="#if-unwrap" title=""><code>if</code> unwrap.</a></li>
-<li><a href="#while-unwrap" title=""><code>while</code> unwrap.</a></li>
 </ul>
 </li>
 <li><a href="#type-aliases" title="">Type aliases.</a></li>
@@ -2052,6 +2129,9 @@ print w.x    -- Prints '30'
 print v.x    -- Prints '100'
 </code></pre>
 <a href="#custom-types">^topic</a>
+<h2 id="tuples">Tuples. <a href="#tuples">#</a></h2>
+<blockquote><p><em>Incomplete: Tuples can only be created from @host funcs at the moment.</em></p>
+</blockquote><a href="#custom-types">^topic</a>
 <h2 id="enums">Enums. <a href="#enums">#</a></h2>
 <p>A new enum type can be declared with the <code>type enum</code> declaration.
 An enum value can only be one of the unique symbols declared in the enum type.
@@ -2124,71 +2204,6 @@ else:
 <p>A choice can be accessed by specifying the access operator <code>.!</code> before the tagged member name. This will either return the payload or panic at runtime: <em>Planned Feature</em></p>
 <pre><code class="language-cy">var s = Shape{line=20}
 print s.!line     --> 20
-</code></pre>
-<a href="#custom-types">^topic</a>
-<h2 id="optionals">Optionals. <a href="#optionals">#</a></h2>
-<p>Optionals provide <strong>Null Safety</strong> by forcing values to be unwrapped before they can be used.</p>
-<p>The <code>Option</code> template type is a choice type that either holds a <code>none</code> value or contains <code>some</code> value. The option template is defined as:</p>
-<pre><code class="language-cy">type Option[T type] enum:
-    case none
-    case some T
-</code></pre>
-<p>A type prefixed with <code>?</code> is the idiomatic way to create an option type. The following String optional types are equivalent:</p>
-<pre><code class="language-cy">Option[String]
-?String
-</code></pre>
-<a href="#custom-types">^topic</a>
-<h3 id="wrap-value">Wrap value. <a href="#wrap-value">#</a></h3>
-<p>A value is automatically wrapped into the inferred optional's <code>some</code> case:</p>
-<pre><code class="language-cy">var a ?String = 'abc'
-print a     --> some(abc)'
-</code></pre>
-<a href="#custom-types">^topic</a>
-<h3 id="wrap-none">Wrap <code>none</code>. <a href="#wrap-none">#</a></h3>
-<p><code>none</code> is automatically initialized to the inferred optional's <code>none</code> case:</p>
-<pre><code class="language-cy">var a ?String = none
-print a     --> none
-</code></pre>
-<a href="#custom-types">^topic</a>
-<h3 id="unwrap-or-panic">Unwrap or panic. <a href="#unwrap-or-panic">#</a></h3>
-<p>The <code>.?</code> access operator is used to unwrap an optional. If the expression evaluates to the <code>none</code> case, the runtime panics:</p>
-<pre><code class="language-cy">var opt ?int = 123
-var v = opt.?
-print v     --> 123
-</code></pre>
-<a href="#custom-types">^topic</a>
-<h3 id="unwrap-or-default">Unwrap or default. <a href="#unwrap-or-default">#</a></h3>
-<p>The <code>?else</code> control flow operator either returns the unwrapped value or a default value when the optional is <code>none</code>:</p>
-<pre><code class="language-cy">var opt ?int = none
-var v = opt ?else 123
-print v     --> 123
-</code></pre>
-<p><code>?else</code> can be used in an assignment block: <em>Planned Feature</em></p>
-<pre><code class="language-cy">var v = opt ?else:
-    break 'empty'
-
-var v = opt ?else:
-    throw error.Missing
-</code></pre>
-<a href="#custom-types">^topic</a>
-<h3 id="optional-chaining">Optional chaining. <a href="#optional-chaining">#</a></h3>
-<p>Given the last member's type <code>T</code> in a chain of <code>?.</code> access operators, the chain's execution will either return <code>Option[T].none</code> on the first encounter of <code>none</code> or returns the last member as an <code>Option[T].some</code>: <em>Planned Feature</em></p>
-<pre><code class="language-cy">print root?.a?.b?.c?.last
-</code></pre>
-<a href="#custom-types">^topic</a>
-<h3 id="if-unwrap"><code>if</code> unwrap. <a href="#if-unwrap">#</a></h3>
-<p>The <code>if</code> statement can be amended to unwrap an optional value using the capture <code>-></code> operator:</p>
-<pre><code class="language-cy">var opt ?String = 'abc'
-if opt -> v:
-    print v     -- Prints 'abc'
-</code></pre>
-<a href="#custom-types">^topic</a>
-<h3 id="while-unwrap"><code>while</code> unwrap. <a href="#while-unwrap">#</a></h3>
-<p>The <code>while</code> statement can be amended to unwrap an optional value using the capture <code>-></code> operator.
-The loop exits when <code>none</code> is encountered:</p>
-<pre><code class="language-cy">var iter = dir.walk()
-while iter.next() -> entry:
-    print entry.name
 </code></pre>
 <a href="#custom-types">^topic</a>
 <h2 id="type-aliases">Type aliases. <a href="#type-aliases">#</a></h2>
@@ -2302,7 +2317,7 @@ print a.get()      -- Prints 'abc'
 <li><a href="#pointer-conversions" title="">Pointer conversions.</a></li>
 </ul>
 </li>
-<li><a href="#slices" title="">Slices.</a></li>
+<li><a href="#pointer-slices" title="">Pointer slices.</a></li>
 <li><a href="#union-types" title="">Union types.</a></li>
 </ul>
 <p><a href="#table-of-contents" title="">^top</a></p>
@@ -2320,7 +2335,7 @@ In contrast, <a href="#structs" title="">structs</a> can be safely used since th
     x   float
     y   float
     ptr *int
-    str []byte
+    str [*]byte
 </code></pre>
 <p>A <code>C struct</code> may contain:</p>
 <ul>
@@ -2361,13 +2376,13 @@ print v                 --> Vec2{x=3, y=3}
 </code></pre>
 <a href="#c-types">^topic</a>
 <h3 id="c-struct-reference">C struct reference. <a href="#c-struct-reference">#</a></h3>
-<p>The <code>&</code> operator is used to obtain the reference to a <code>C struct</code> value:</p>
+<p>The <code>*</code> operator is used to obtain the pointer to a <code>C struct</code> value:</p>
 <pre><code class="language-cy">type Vec2 cstruct:
     x float
     y float
 
 var v = Vec2{x=1, y=2}
-var ref = &v
+var ref = *v
 ref.x = 4
 
 print v                 --> Vec2{x=4, y=2}
@@ -2377,30 +2392,30 @@ print v                 --> Vec2{x=4, y=2}
     a.x *= n
     a.y *= n
 
-add(&v, 10)
+add(*v, 10)
 print v                 --> Vec2{x=40, y=20}
 </code></pre>
 <a href="#c-types">^topic</a>
 <h2 id="pointers">Pointers. <a href="#pointers">#</a></h2>
 <p>A <code>pointer</code> is a reference to a memory location. Its type is denoted as <code>*T</code> where <code>T</code> is the type that the pointer references in memory:</p>
-<pre><code class="language-cy">func setName(p *Person, name []byte):
+<pre><code class="language-cy">func setName(p *Person, name [*]byte):
     p.name = name
 
 var p = Person{}
-setName(&p, 'Spock')
+setName(*p, 'Spock')
 </code></pre>
 <p>Depending on the target architecture, the alignment of the pointer will either be at least 8 bytes on a 64-bit machine or 4 bytes on a 32-bit machine. Aligned pointers will be supported in a future version.</p>
 <p>Pointers are unsafe since they can reference corrupted or invalidated memory.
 When runtime memory checks are enabled, pointers will occupy an extra word size in order to set traps and prevent unsafe uses of pointers. See <a href="#runtime-memory-checks" title="">Memory / Runtime memory checks</a>.</p>
 <p>A pointer can be created with an explicit address using <code>pointer</code>.</p>
-<pre><code class="language-cy">var ptr = pointer(*void, 0xDEADBEEF)
+<pre><code class="language-cy">var ptr = pointer(void, 0xDEADBEEF)
 print ptr.value()     --'3735928559'
 </code></pre>
 <a href="#c-types">^topic</a>
 <h3 id="dereferencing-pointers">Dereferencing pointers. <a href="#dereferencing-pointers">#</a></h3>
 <p>Pointers are dereferenced using the accessor operator <code>.*</code>:</p>
 <pre><code class="language-cy">var a = 123
-var ptr = &a
+var ptr = *a
 print ptr.*      --> 123
 
 ptr.* = 10
@@ -2422,7 +2437,7 @@ print a[5]       --> 123
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#c-types">^topic</a>
 <h3 id="pointer-slicing">Pointer slicing. <a href="#pointer-slicing">#</a></h3>
-<p>The slice operator will produce a new slice of type <code>[]T</code> from a <code>*T</code> pointer type:</p>
+<p>The slice operator will produce a new slice of type <code>[*]T</code> from a <code>*T</code> pointer type:</p>
 <pre><code class="language-cy">var ints = mem.alloc(int, 10)
 var slice = ints[0..5]
 print typeof(slice)    --> []int
@@ -2431,11 +2446,11 @@ print typeof(slice)    --> []int
 <h3 id="pointer-conversions">Pointer conversions. <a href="#pointer-conversions">#</a></h3>
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#c-types">^topic</a>
-<h2 id="slices">Slices. <a href="#slices">#</a></h2>
-<p>Slices are pointers with a length field. They are denoted as <code>[]T</code> where T is the element type.</p>
-<p>A slice can be created by taking the address of an array: <em>Planned feature</em></p>
-<pre><code class="language-cy">var arr = [_]int.[1, 2, 3]
-var s = &arr
+<h2 id="pointer-slices">Pointer slices. <a href="#pointer-slices">#</a></h2>
+<p>Slices are pointers with a length field. They are denoted as <code>[*]T</code> where T is the element type.</p>
+<p>A slice can be created by taking the pointer of an array: <em>Planned feature</em></p>
+<pre><code class="language-cy">var arr = [3]int{1, 2, 3}
+var s = *arr
 </code></pre>
 <p>Read and write an element with the index operator:</p>
 <pre><code class="language-cy">print s[0]        --> 1
@@ -2446,7 +2461,7 @@ print s[1]        --> 123
 <pre><code class="language-cy">print s[100]      --> Panic. Out of bounds.
 </code></pre>
 <p>Slice operations can be applied: <em>Planned feature</em></p>
-<pre><code class="language-cy">print s[0..2]     --> [1, 2]
+<pre><code class="language-cy">print s[0..2]     --> {1, 2}
 </code></pre>
 <a href="#c-types">^topic</a>
 <h2 id="union-types">Union types. <a href="#union-types">#</a></h2>
@@ -2558,26 +2573,26 @@ for 0..100 -> i:
 <h3 id="for-each"><code>for</code> each. <a href="#for-each">#</a></h3>
 <p>The <code>for</code> clause can iterate over any type that implements the <code>Iterable</code> trait. An Iterable contains an <code>iterator()</code> method which returns an <code>Iterator</code> object. The for loop continually invokes the Iterator's <code>next()</code> method until <code>none</code> is returned.</p>
 <p>Lists can be iterated since they implement the Iterable trait. The capture operator <code>-></code> is used to capture the value returned from an iterator's <code>next()</code>:</p>
-<pre><code class="language-cy">var list = [1, 2, 3, 4, 5]
+<pre><code class="language-cy">var list = {1, 2, 3, 4, 5}
 
 for list -> n:
     print n
 </code></pre>
 <p>Maps can be iterated. <code>next()</code> returns a key and value tuple:</p>
-<pre><code class="language-cy">var map = Map{ a=123, b=234 }
+<pre><code class="language-cy">var map = Map{a=123, b=234}
 
 for map -> entry:
     print entry[0]
     print entry[1]
 </code></pre>
 <p>Use the destructure syntax to extract the key and value into two separate variables:</p>
-<pre><code class="language-cy">for map -> [ key, val ]:
+<pre><code class="language-cy">for map -> {key, val}:
     print "key $(key) -> value $(val)"
 </code></pre>
 <a href="#control-flow">^topic</a>
 <h3 id="for-each-with-index"><code>for</code> each with index. <a href="#for-each-with-index">#</a></h3>
 <p>A counting index can be declared after the each variable. The count starts at 0 for the first value:</p>
-<pre><code class="language-cy">var list = [1, 2, 3, 4, 5]
+<pre><code class="language-cy">var list = {1, 2, 3, 4, 5}
 
 for list -> val, i:
     print "index $(i), value $(val)"
@@ -2700,10 +2715,10 @@ print squareDist(dist, 30.0)
 <p>Functions can only return one value. However, the value can be destructured: <em>Planned Feature</em></p>
 <pre><code class="language-cy">use {cos, sin} 'math'
 
-func compute(rad float) [float, float]:
-    return [ cos(rad), sin(rad) ]
+func compute(rad float) [2]float:
+    return .{cos(rad), sin(rad)}
 
-var [ x, y ] = compute(pi)
+var {x, y} = compute(pi)
 </code></pre>
 <a href="#functions">^topic</a>
 <h2 id="function-overloading">Function overloading. <a href="#function-overloading">#</a></h2>
@@ -3078,6 +3093,7 @@ print typeof('my str').id()
 <p>Prints a value. The host determines how it is printed.</p>
 </blockquote><blockquote><p><code>func queueTask(fn any) <void></code></p>
 <p>Queues a callback function as an async task.</p>
+</blockquote><blockquote><p><code>func refcast(T type, ptr *T) <ref></code></p>
 </blockquote><blockquote><p><code>func runestr(val int) String</code></p>
 <p>Converts a rune to a string.</p>
 </blockquote><blockquote><p><code>func sizeof(T type) int</code></p>
@@ -3163,6 +3179,8 @@ print typeof('my str').id()
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-placeholder1"><code>type placeholder1</code> <a href="#type-placeholder1">#</a></h3>
 <a href="#modules">^topic</a>
+<h3 id="type-placeholder2"><code>type placeholder2</code> <a href="#type-placeholder2">#</a></h3>
+<a href="#modules">^topic</a>
 <h3 id="type-taglit"><code>type taglit</code> <a href="#type-taglit">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-dyn"><code>type dyn</code> <a href="#type-dyn">#</a></h3>
@@ -3230,7 +3248,11 @@ print typeof('my str').id()
 <blockquote><p><code>func next(self any) ?any</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-string"><code>type String</code> <a href="#type-string">#</a></h3>
-<blockquote><p><code>func $infix+(self any, o any) String</code></p>
+<blockquote><p><code>func $index(self any, idx int) int</code></p>
+<p>Returns the rune at byte index <code>idx</code>. The replacement character (0xFFFD) is returned for an invalid UTF-8 rune.</p>
+</blockquote><blockquote><p><code>func $index(self any, range Range) String</code></p>
+<p>Returns a slice into this string from a <code>Range</code> with <code>start</code> (inclusive) to <code>end</code> (exclusive) byte indexes.</p>
+</blockquote><blockquote><p><code>func $infix+(self any, o any) String</code></p>
 <p>Returns a new string that concats this string and <code>str</code>.</p>
 </blockquote><blockquote><p><code>func concat(self any, o String) String</code></p>
 <p>Returns a new string that concats this string and <code>str</code>.</p>
@@ -3240,12 +3262,26 @@ print typeof('my str').id()
 <p>Returns whether the string ends with <code>suffix</code>.</p>
 </blockquote><blockquote><p><code>func find(self any, needle String) ?int</code></p>
 <p>Returns the first byte index of substring <code>needle</code> in the string or <code>none</code> if not found. SIMD enabled.</p>
+</blockquote><blockquote><p><code>func findAnyByte(self any, set List[byte]) ?int</code></p>
+<p>Returns the first index of any byte in <code>set</code> or <code>none</code> if not found.</p>
 </blockquote><blockquote><p><code>func findAnyRune(self any, runes List[int]) ?int</code></p>
 <p>Returns the first byte index of any rune in <code>runes</code> or <code>none</code> if not found. SIMD enabled.</p>
+</blockquote><blockquote><p><code>func findByte(self any, b byte) ?int</code></p>
+<p>Returns the first index of <code>byte</code> in the array or <code>none</code> if not found.</p>
 </blockquote><blockquote><p><code>func findRune(self any, rune int) ?int</code></p>
 <p>Returns the first byte index of a rune <code>needle</code> in the string or <code>none</code> if not found. SIMD enabled.</p>
+</blockquote><blockquote><p><code>func fmtBytes(self any, format NumberFormat) String</code></p>
+<p>Formats each byte in the string using a NumberFormat.  Each byte is zero padded.</p>
+</blockquote><blockquote><p><code>func getByte(self any, idx int) byte</code></p>
+<p>Returns the byte value (0-255) at the given index <code>idx</code>.</p>
+</blockquote><blockquote><p><code>func getInt(self any, idx int, endian symbol) int</code></p>
+<p>Returns the int value of the 6 bytes starting from <code>idx</code> with the given endianness (.little or .big).</p>
+</blockquote><blockquote><p><code>func getInt32(self any, idx int, endian symbol) int</code></p>
+<p>Returns the int value of the 4 bytes starting from <code>idx</code> with the given endianness (.little or .big).</p>
 </blockquote><blockquote><p><code>func insert(self any, idx int, str String) String</code></p>
 <p>Returns a new string with <code>str</code> inserted at byte index <code>idx</code>.</p>
+</blockquote><blockquote><p><code>func insertByte(self any, idx int, byte int) String</code></p>
+<p>Returns a new array with <code>byte</code> inserted at index <code>idx</code>.</p>
 </blockquote><blockquote><p><code>func isAscii(self any) bool</code></p>
 <p>Returns whether the string contains all ASCII runes.</p>
 </blockquote><blockquote><p><code>func len(self any) int</code></p>
@@ -3262,10 +3298,6 @@ print typeof('my str').id()
 <p>Returns the starting byte index for the rune index <code>idx</code>.</p>
 </blockquote><blockquote><p><code>func sliceAt(self any, idx int) String</code></p>
 <p>Returns the UTF-8 rune starting at byte index <code>idx</code> as a string.</p>
-</blockquote><blockquote><p><code>func $index(self any, idx int) int</code></p>
-<p>Returns the rune at byte index <code>idx</code>. The replacement character (0xFFFD) is returned for an invalid UTF-8 rune.</p>
-</blockquote><blockquote><p><code>func $index(self any, range Range) String</code></p>
-<p>Returns a slice into this string from a <code>Range</code> with <code>start</code> (inclusive) to <code>end</code> (exclusive) byte indexes.</p>
 </blockquote><blockquote><p><code>func split(self any, sep String) List[String]</code></p>
 <p>Returns a list of UTF-8 strings split at occurrences of <code>sep</code>.</p>
 </blockquote><blockquote><p><code>func startsWith(self any, prefix String) bool</code></p>
@@ -3277,73 +3309,31 @@ print typeof('my str').id()
 </blockquote><blockquote><p><code>func String.$call(val any) String</code></p>
 <p>Converts a value to a string.</p>
 </blockquote><a href="#modules">^topic</a>
+<h3 id="type-array_t"><code>type array_t</code> <a href="#type-array_t">#</a></h3>
+<a href="#modules">^topic</a>
 <h3 id="type-array"><code>type Array</code> <a href="#type-array">#</a></h3>
-<blockquote><p><code>func $infix+(self any, o any) Array</code></p>
-</blockquote><blockquote><p><code>func concat(self any, other Array) Array</code></p>
-<p>Returns a new array that concats this array and <code>other</code>.</p>
-</blockquote><blockquote><p><code>func decode(self any) String</code></p>
-<p>Calls decode(.utf8)</p>
-</blockquote><blockquote><p><code>func decode(self any, encoding symbol) String</code></p>
-<p>Decodes the array based on an <code>encoding</code>. Supported encodings: <code>.utf8</code>.  Returns the decoded string or throws <code>error.Decode</code>.</p>
-</blockquote><blockquote><p><code>func endsWith(self any, suffix Array) bool</code></p>
-<p>Returns whether the array ends with <code>suffix</code>.</p>
-</blockquote><blockquote><p><code>func find(self any, needle Array) ?int</code></p>
-<p>Returns the first index of <code>needle</code> in the array or <code>none</code> if not found.</p>
-</blockquote><blockquote><p><code>func findAnyByte(self any, bytes Array) ?int</code></p>
-<p>Returns the first index of any <code>bytes</code> in <code>arrays</code> or <code>none</code> if not found.</p>
-</blockquote><blockquote><p><code>func findByte(self any, byte int) ?int</code></p>
-<p>Returns the first index of <code>byte</code> in the array or <code>none</code> if not found.</p>
-</blockquote><blockquote><p><code>func fmt(self any, format NumberFormat) String</code></p>
-<p>Formats each byte in the array using a NumberFormat.  Each byte is zero padded.</p>
-</blockquote><blockquote><p><code>func getByte(self any, idx int) int</code></p>
-<p>Returns the byte value (0-255) at the given index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func getInt(self any, idx int, endian symbol) int</code></p>
-<p>Returns the int value of the 6 bytes starting from <code>idx</code> with the given endianness (.little or .big).</p>
-</blockquote><blockquote><p><code>func getInt32(self any, idx int, endian symbol) int</code></p>
-<p>Returns the int value of the 4 bytes starting from <code>idx</code> with the given endianness (.little or .big).</p>
-</blockquote><blockquote><p><code>func insert(self any, idx int, arr Array) Array</code></p>
-<p>Returns a new array with <code>arr</code> inserted at index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func insertByte(self any, idx int, byte int) Array</code></p>
-<p>Returns a new array with <code>byte</code> inserted at index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func iterator(self any) ArrayIterator</code></p>
-<p>Returns a new iterator over the array bytes.</p>
+<blockquote><p><code>func $index(self any, idx int) <ref></code></p>
+</blockquote><blockquote><p><code>func iterator(self any) RefSliceIterator[T]</code></p>
+<p>Returns a new iterator over the array.</p>
 </blockquote><blockquote><p><code>func len(self any) int</code></p>
-<p>Returns the number of bytes in the array.</p>
-</blockquote><blockquote><p><code>func repeat(self any, n int) Array</code></p>
-<p>Returns a new array with this array repeated <code>n</code> times.</p>
-</blockquote><blockquote><p><code>func replace(self any, needle Array, replacement Array) Array</code></p>
-<p>Returns a new array with all occurrences of <code>needle</code> replaced with <code>replacement</code>.</p>
-</blockquote><blockquote><p><code>func $index(self any, idx int) int</code></p>
-</blockquote><blockquote><p><code>func $index(self any, range Range) Array</code></p>
-<p>Returns a slice into this array from a <code>Range</code> with <code>start</code> (inclusive) to <code>end</code> (exclusive) indexes.</p>
-</blockquote><blockquote><p><code>func split(self any, sep Array) List[Array]</code></p>
-<p>Returns a list of arrays split at occurrences of <code>sep</code>.</p>
-</blockquote><blockquote><p><code>func startsWith(self any, prefix Array) bool</code></p>
-<p>Returns whether the array starts with <code>prefix</code>.</p>
-</blockquote><blockquote><p><code>func trim(self any, mode symbol, delims Array) Array</code></p>
-<p>Returns the array with ends trimmed from runes in <code>delims</code>. <code>mode</code> can be .left, .right, or .ends.</p>
-</blockquote><blockquote><p><code>func Array.$call(val any) Array</code></p>
-<p>Converts a string to an byte <code>Array</code>.</p>
-</blockquote><a href="#modules">^topic</a>
-<h3 id="type-arrayiterator"><code>type ArrayIterator</code> <a href="#type-arrayiterator">#</a></h3>
-<blockquote><p><code>func next(self any) ?any</code></p>
+<p>Returns the number of elements in the array.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-pointer"><code>type pointer</code> <a href="#type-pointer">#</a></h3>
 <blockquote><p><code>func $index(self any, idx int) *T</code></p>
-</blockquote><blockquote><p><code>func $index(self any, range Range) []T</code></p>
+</blockquote><blockquote><p><code>func $index(self any, range Range) [*]T</code></p>
 </blockquote><blockquote><p><code>func $setIndex(self any, idx int, val T) <void></code></p>
 </blockquote><blockquote><p><code>func addr(self any) int</code></p>
 <p>When pointer runtime safety is enabled, this returns the raw pointer address as an <code>int64</code>.   Otherwise, the pointer itself is bitcasted to an <code>int64</code>.</p>
 </blockquote><blockquote><p><code>func asObject(self any) any</code></p>
 <p>Casts the pointer to a Cyber object. The object is retained before it's returned.</p>
-</blockquote><blockquote><p><code>func fromCstr(self any, offset int) Array</code></p>
-<p>Returns an <code>Array</code> from a null terminated C string.</p>
+</blockquote><blockquote><p><code>func fromCstr(self any, offset int) String</code></p>
+<p>Returns a <code>String</code> from a null terminated C string.</p>
 </blockquote><blockquote><p><code>func get(self any, offset int, ctype symbol) dyn</code></p>
 <p>Dereferences the pointer at a byte offset and returns the C value converted to Cyber.</p>
+</blockquote><blockquote><p><code>func getString(self any, offset int, len int) String</code></p>
+<p>Returns a <code>String</code> with a copy of the byte data starting from an offset to the specified length.</p>
 </blockquote><blockquote><p><code>func set(self any, offset int, ctype symbol, val any) <void></code></p>
 <p>Converts the value to a compatible C value and writes it to a byte offset from this pointer.</p>
-</blockquote><blockquote><p><code>func toArray(self any, offset int, len int) Array</code></p>
-<p>Returns an <code>Array</code> with a copy of the byte data starting from an offset to the specified length.</p>
 </blockquote><blockquote><p><code>func pointer.$call(T type, addr int) *T</code></p>
 <p>Converts an <code>int</code> to a <code>pointer</code> value.</p>
 </blockquote><a href="#modules">^topic</a>
@@ -3363,6 +3353,7 @@ print typeof('my str').id()
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-metatype"><code>type metatype</code> <a href="#type-metatype">#</a></h3>
 <blockquote><p><code>func id(self any) int</code></p>
+</blockquote><blockquote><p><code>func metatype.$call(T type) metatype</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-range"><code>type Range</code> <a href="#type-range">#</a></h3>
 <a href="#modules">^topic</a>
@@ -3378,25 +3369,47 @@ print typeof('my str').id()
 </blockquote><blockquote><p><code>func future(self any) Future[T]</code></p>
 </blockquote><blockquote><p><code>func FutureResolver.new(T type) FutureResolver[T]</code></p>
 </blockquote><a href="#modules">^topic</a>
-<h3 id="type-slice"><code>type Slice</code> <a href="#type-slice">#</a></h3>
-<blockquote><p><code>func $index(self any, idx int) *T</code></p>
-</blockquote><blockquote><p><code>func $index(self any, range Range) []T</code></p>
+<h3 id="type-ref"><code>type Ref</code> <a href="#type-ref">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-refslice"><code>type RefSlice</code> <a href="#type-refslice">#</a></h3>
+<blockquote><p><code>func $index(self any, idx int) <ref></code></p>
+</blockquote><blockquote><p><code>func $index(self any, range Range) <ref_slice></code></p>
 </blockquote><blockquote><p><code>func $setIndex(self any, idx int, val T) <void></code></p>
+</blockquote><blockquote><p><code>func iterator(self any) RefSliceIterator[T]</code></p>
 </blockquote><blockquote><p><code>func len(self any) int</code></p>
 </blockquote><a href="#modules">^topic</a>
+<h3 id="type-refsliceiterator"><code>type RefSliceIterator</code> <a href="#type-refsliceiterator">#</a></h3>
+<blockquote><p><code>func next(self any) ?T</code></p>
+</blockquote><a href="#modules">^topic</a>
+<h3 id="type-ptrslice"><code>type PtrSlice</code> <a href="#type-ptrslice">#</a></h3>
+<blockquote><p><code>func $index(self any, idx int) *T</code></p>
+</blockquote><blockquote><p><code>func $index(self any, range Range) [*]T</code></p>
+</blockquote><blockquote><p><code>func $setIndex(self any, idx int, val T) <void></code></p>
+</blockquote><blockquote><p><code>func endsWith(self any, suffix [*]T) bool</code></p>
+<p>Returns whether the array ends with <code>suffix</code>.</p>
+</blockquote><blockquote><p><code>func findScalar(self any, needle T) ?int</code></p>
+<p>Returns the first index of <code>needle</code> in the slice or <code>none</code> if not found.</p>
+</blockquote><blockquote><p><code>func iterator(self any) PtrSliceIterator[T]</code></p>
+</blockquote><blockquote><p><code>func len(self any) int</code></p>
+</blockquote><blockquote><p><code>func startsWith(self any, prefix [*]T) bool</code></p>
+<p>Returns whether the array starts with <code>prefix</code>.</p>
+</blockquote><a href="#modules">^topic</a>
+<h3 id="type-ptrsliceiterator"><code>type PtrSliceIterator</code> <a href="#type-ptrsliceiterator">#</a></h3>
+<blockquote><p><code>func next(self any) ?T</code></p>
+</blockquote><a href="#modules">^topic</a>
 <h3 id="type-imemory-trait"><code>type IMemory trait</code> <a href="#type-imemory-trait">#</a></h3>
-<blockquote><p><code>func alloc(self any, len int) []byte</code></p>
-</blockquote><blockquote><p><code>func free(self any, buf []byte) <void></code></p>
+<blockquote><p><code>func alloc(self any, len int) [*]byte</code></p>
+</blockquote><blockquote><p><code>func free(self any, buf [*]byte) <void></code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-memory"><code>type Memory</code> <a href="#type-memory">#</a></h3>
 <blockquote><p><code>func new(self any, T type) *T</code></p>
-</blockquote><blockquote><p><code>func alloc(self any, T type, n int) []T</code></p>
+</blockquote><blockquote><p><code>func alloc(self any, T type, n int) [*]T</code></p>
 </blockquote><blockquote><p><code>func free(self any, ptr *T) </code></p>
-</blockquote><blockquote><p><code>func free(self any, slice []T) </code></p>
+</blockquote><blockquote><p><code>func free(self any, slice [*]T) </code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-defaultmemory"><code>type DefaultMemory</code> <a href="#type-defaultmemory">#</a></h3>
-<blockquote><p><code>func alloc(self any, len int) []byte</code></p>
-</blockquote><blockquote><p><code>func free(self any, buf []byte) <void></code></p>
+<blockquote><p><code>func alloc(self any, len int) [*]byte</code></p>
+</blockquote><blockquote><p><code>func free(self any, buf [*]byte) <void></code></p>
 </blockquote><!-- core.end -->
 <a href="#modules">^topic</a>
 <h2 id="mod-cy"><code>mod cy</code> <a href="#mod-cy">#</a></h2>
@@ -3590,7 +3603,7 @@ cli.repl()
 <pre><code class="language-cy">use os
 
 var map = os.getEnvAll()
-for map -> [k, v]:
+for map -> {k, v}:
     print "$(k) -> $(v)"
 </code></pre>
 <p><a href="#modules" title="">^topic</a></p>
@@ -3621,7 +3634,7 @@ for map -> [k, v]:
 <p>Creates the directory at <code>path</code>. Returns <code>true</code> if successful.</p>
 </blockquote><blockquote><p><code>func createFile(path String, truncate bool) File</code></p>
 <p>Creates and opens the file at <code>path</code>. If <code>truncate</code> is true, an existing file will be truncated.</p>
-</blockquote><blockquote><p><code>func cstr(s any) *<void></code></p>
+</blockquote><blockquote><p><code>func cstr(s String) *<void></code></p>
 <p>Returns a null terminated C string.</p>
 </blockquote><blockquote><p><code>func cwd() String</code></p>
 <p>Returns the current working directory.</p>
@@ -3633,7 +3646,7 @@ for map -> [k, v]:
 <p>Returns the current executable's path.</p>
 </blockquote><blockquote><p><code>func exit(status int) <void></code></p>
 <p>Exits the program with a status code.</p>
-</blockquote><blockquote><p><code>func fetchUrl(url String) Array</code></p>
+</blockquote><blockquote><p><code>func fetchUrl(url String) String</code></p>
 <p>Fetches the contents at <code>url</code> using the HTTP GET request method.</p>
 </blockquote><blockquote><p><code>func free(ptr *<void>) <void></code></p>
 <p>Frees the memory located at <code>ptr</code>.</p>
@@ -3675,17 +3688,17 @@ for map -> [k, v]:
 <p>Pauses the current thread for given milliseconds.</p>
 </blockquote><blockquote><p><code>func unsetEnv(key String) <void></code></p>
 <p>Removes an environment variable by key.</p>
-</blockquote><blockquote><p><code>func writeFile(path String, contents any) <void></code></p>
+</blockquote><blockquote><p><code>func writeFile(path String, contents String) <void></code></p>
 <p>Writes <code>contents</code> as a string or bytes to a file.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-file"><code>type File</code> <a href="#type-file">#</a></h3>
 <blockquote><p><code>func close(self any) <void></code></p>
 <p>Closes the file handle. File ops invoked afterwards will return <code>error.Closed</code>.</p>
-</blockquote><blockquote><p><code>func iterator(self any) any</code></p>
-</blockquote><blockquote><p><code>func next(self any) any</code></p>
-</blockquote><blockquote><p><code>func read(self any, n int) Array</code></p>
+</blockquote><blockquote><p><code>func iterator(self any) File</code></p>
+</blockquote><blockquote><p><code>func next(self any) String</code></p>
+</blockquote><blockquote><p><code>func read(self any, n int) String</code></p>
 <p>Reads at most <code>n</code> bytes as an <code>Array</code>. <code>n</code> must be at least 1.  A result with length 0 indicates the end of file was reached.</p>
-</blockquote><blockquote><p><code>func readAll(self any) Array</code></p>
+</blockquote><blockquote><p><code>func readAll(self any) String</code></p>
 <p>Reads to the end of the file and returns the content as an <code>Array</code>.</p>
 </blockquote><blockquote><p><code>func seek(self any, n int) <void></code></p>
 <p>Seeks the read/write position to <code>pos</code> bytes from the start. Negative <code>pos</code> is invalid.</p>
@@ -3699,8 +3712,8 @@ for map -> [k, v]:
 <p>Equivalent to <code>streamLines(4096)</code>.</p>
 </blockquote><blockquote><p><code>func streamLines(self any, bufSize int) File</code></p>
 <p>Returns an iterable that streams lines ending in <code>\n</code>, <code>\r</code>, <code>\r\n</code>, or the <code>EOF</code>.  The lines returned include the new line character(s).  A buffer size of <code>bufSize</code> bytes is allocated for reading.  If <code>\r</code> is found at the end of the read buffer, the line is returned instead of  waiting to see if the next read has a connecting <code>\n</code>.</p>
-</blockquote><blockquote><p><code>func write(self any, val any) int</code></p>
-<p>Writes a <code>String</code> or <code>Array</code> at the current file position.  The number of bytes written is returned.</p>
+</blockquote><blockquote><p><code>func write(self any, val String) int</code></p>
+<p>Writes a <code>String</code> at the current file position.  The number of bytes written is returned.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-dir"><code>type Dir</code> <a href="#type-dir">#</a></h3>
 <blockquote><p><code>func iterator(self any) DirIterator</code></p>
@@ -3758,6 +3771,8 @@ t.eq(a, 444)
 <p>Returns whether two values are equal.  Panics with <code>error.AssertError</code> if types or values do not match up.</p>
 </blockquote><blockquote><p><code>func eqList(a List[T], b List[T]) bool</code></p>
 <p>Returns <code>true</code> if two lists have the same size and the elements are equal  as if <code>eq</code> was called on those corresponding elements.</p>
+</blockquote><blockquote><p><code>func eqSlice(a <ref_slice>, b <ref_slice>) bool</code></p>
+<p>Returns <code>true</code> if two slices have the same size and the elements are equal  as if <code>eq</code> was called on those corresponding elements.</p>
 </blockquote><blockquote><p><code>func eqNear(a T, b T) bool</code></p>
 <p>Returns <code>true</code> if two numbers are near each other within epsilon 1e-5.</p>
 </blockquote><blockquote><p><code>func fail() </code></p>
@@ -3794,7 +3809,7 @@ var ffi = os.newFFI()
 <a href="#ffi">^topic</a>
 <h2 id="declare-functions">Declare functions. <a href="#declare-functions">#</a></h2>
 <p>Functions from a library are first declared using <code>cfunc</code> which accepts C types in the form of symbols. In a future update they will accept C syntax instead.</p>
-<pre><code class="language-cy">ffi.cfunc('add', [.int, .int], .int)
+<pre><code class="language-cy">ffi.cfunc('add', {.int, .int}, .int)
 </code></pre>
 <p>The first argument refers to the symbol's name in the dynamic library.
 The second argument contains the function's parameter types and finally the last argument is the function's return type.</p>
@@ -3838,8 +3853,8 @@ type MyObject:
     b *void
     c bool
 
-ffi.cbind(MyObject, [.float, .voidPtr, .bool])
-ffi.cfunc('foo', [MyObject], MyObject)
+ffi.cbind(MyObject, {.float, .voidPtr, .bool})
+ffi.cfunc('foo', {MyObject}, MyObject)
 let lib = ffi.bindLib('./mylib.so')
 
 var res = lib.foo(MyObject{a=123.0, b=os.cstr('foo'), c=true})
@@ -3856,7 +3871,7 @@ MyObject foo(MyObject o) {
 }
 </code></pre>
 <p><code>cbind</code> also generates <code>ptrTo[Type]</code> as a helper function to dereference an opaque ptr to a new Cyber object:</p>
-<pre><code class="language-cy">ffi.cfunc('foo', [MyObject], .voidPtr)
+<pre><code class="language-cy">ffi.cfunc('foo', {MyObject}, .voidPtr)
 let lib = ffi.bindLib('./mylib.so')
 
 var ptr = lib.foo(MyObject{a=123, b=os.cstr('foo'), c=true})
@@ -4376,7 +4391,7 @@ print a / 2
 --> CompileError: Can not find the symbol `$infix/` in `String`
 </code></pre>
 <p>When <code>a</code> is assigned a different type of value, its <strong>recent type</strong> is updated so the compiler can continue to surface errors ahead of time:</p>
-<pre><code class="language-cy">a = [1, 2, 3]
+<pre><code class="language-cy">a = {1, 2, 3}
 print a / 2
 --> CompileError: Can not find the symbol `$infix/` in `List`
 </code></pre>
@@ -4527,7 +4542,7 @@ var c = -a
     func $setIndex(self, idx, val):
         arr[idx * 2] = val 
 
-var a = MyCollection{arr=[1, 2, 3, 4]}
+var a = MyCollection{arr={1, 2, 3, 4}}
 print a[1]        -- Prints `3`
 </code></pre>
 <a href="#metaprogramming">^topic</a>
@@ -4912,18 +4927,37 @@ However, it can be useful to perform additional cleanup tasks for instances that
 </code></pre>
 <a href="#libcyber">^topic</a>
 <h1 id="memory">Memory. <a href="#memory">#</a></h1>
+<table><tr>
+<td valign="top">
 <ul>
-<li><a href="#arc" title="">ARC.</a><ul>
-<li><a href="#reference-counting" title="">Reference counting.</a></li>
-<li><a href="#object-destructor" title="">Object destructor.</a></li>
-<li><a href="#optimizations" title="">Optimizations.</a></li>
-<li><a href="#closures-1" title="">Closures.</a></li>
-<li><a href="#fibers-1" title="">Fibers.</a></li>
+<li><a href="#structured-memory" title="">Structured memory.</a><ul>
+<li><a href="#value-ownership" title="">Value ownership.</a></li>
+<li><a href="#copy-semantics" title="">Copy semantics.</a></li>
+<li><a href="#cloning" title="">Cloning.</a></li>
+<li><a href="#moving" title="">Moving.</a></li>
+<li><a href="#references" title="">References.</a></li>
+<li><a href="#exclusive-reference" title="">Exclusive reference.</a></li>
+<li><a href="#self-reference" title=""><code>self</code> reference.</a></li>
+<li><a href="#lifted-values" title="">Lifted values.</a></li>
+<li><a href="#deferred-references" title="">Deferred references.</a></li>
+<li><a href="#implicit-lifetimes" title="">Implicit lifetimes.</a></li>
+<li><a href="#explicit-reference-lifetimes" title="">Reference lifetimes.</a></li>
+<li><a href="#shared-ownership" title="">Shared ownership.</a></li>
+<li><a href="#deinitializer" title="">Deinitializer.</a></li>
+<li><a href="#pointer-interop" title="">Pointer interop.</a></li>
 </ul>
 </li>
-<li><a href="#heap" title="">Heap.</a><ul>
-<li><a href="#weak-references" title="">Weak references.</a></li>
-<li><a href="#cycle-detection" title="">Cycle detection.</a></li>
+</ul>
+</td><td valign="top">
+<ul>
+<li><a href="#automatic-memory" title="">Automatic memory.</a><ul>
+<li><a href="#arc" title="">ARC.</a></li>
+<li><a href="#object-destructor" title="">Object destructor.</a></li>
+<li><a href="#retain-optimizations" title="">Retain optimizations.</a></li>
+<li><a href="#closures-1" title="">Closures.</a></li>
+<li><a href="#fibers-1" title="">Fibers.</a></li>
+<li><a href="#heap-objects" title="">Heap objects.</a></li>
+<li><a href="#gc" title="">GC.</a></li>
 </ul>
 </li>
 <li><a href="#manual-memory" title="">Manual memory.</a><ul>
@@ -4932,14 +4966,274 @@ However, it can be useful to perform additional cleanup tasks for instances that
 </ul>
 </li>
 </ul>
+</td>
+</tr></table>
 <p><a href="#table-of-contents" title="">^top</a></p>
-<p>Cyber provides memory safety by default.</p>
-<h2 id="arc">ARC. <a href="#arc">#</a></h2>
-<p>Cyber uses ARC or automatic reference counting to manage memory.
-ARC is deterministic and has less overhead compared to a tracing garbage collector. Reference counting distributes memory management, which reduces GC pauses and makes ARC suitable for realtime applications. One common issue in ARC implementations is reference cycles which Cyber addresses with <a href="#weak-references" title="">Weak References</a> and it's very own <a href="#cycle-detection" title="">Cycle Detection</a>.</p>
+<p>Cyber provides memory safety by default with structured and automatic memory.
+Manual memory is also supported but discouraged.</p>
+<h2 id="structured-memory">Structured memory. <a href="#structured-memory">#</a></h2>
+<p>Cyber uses single value ownership and variable scopes to determine the lifetime of values.
+When lifetimes are known at compile-time, the memory occupied by values do not need to be manually managed which prevents memory bugs such as:</p>
+<ul>
+<li>Use after free.</li>
+<li>Use after invalidation.</li>
+<li>Free with wrong allocator.</li>
+<li>Double free.</li>
+<li>Memory leaks.</li>
+<li>Null pointer dereferencing.</li>
+</ul>
+<p>At the same time, structured memory allows performant code to be written since it provides safe semantics to directly reference values and child values.</p>
 <a href="#memory">^topic</a>
-<h3 id="reference-counting">Reference counting. <a href="#reference-counting">#</a></h3>
-<p>In Cyber, there are <a href="#basic-types" title="">primitive and object</a> values. Primitives don't need any memory management, since they are copied by value and no heap allocation is required (with the exception of primitives being captured by a <a href="#closures-1" title="">closure</a>.</p>
+<h3 id="value-ownership">Value ownership. <a href="#value-ownership">#</a></h3>
+<p>Every value in safe memory has a single owner.
+An owner can be a variable that binds to a value. Otherwise, the owner can be a parent value or the value itself.
+The owner is responsible for deinitializing or dropping the value when it has gone out of scope (no longer reachable).
+For example, at the end of the block, a variable can no longer be accessed so it drops the value that it owns:</p>
+<pre><code class="language-cy">var a = 123
+print a    --> 123
+-- Deinit `a`.
+</code></pre>
+<p>In this case, there is nothing to deinitialize since the value is an integer.</p>
+<p>If the value was a <code>String</code>, the deinit logic would release (-1) on a reference counted byte buffer since strings are just immutable views over byte buffers:</p>
+<pre><code class="language-cy">var a = 'hello'
+print a    --> hello
+-- Deinit `a`.
+-- `a.buf` is released.
+-- `a.buf` is freed.
+</code></pre>
+<p>Since the string buffer's reference count reaches 0, it's freed as well.</p>
+<p>Finally, let's take a look at <code>ListValue</code> which manages a dynamically sized array of elements:</p>
+<pre><code class="language-cy">var a = ListValue[int]{1, 2, 3}
+print a    --> {1, 2, 3}
+-- Deinit `a`.
+-- `a.buf` is freed.
+</code></pre>
+<p>When <code>a</code> is deinitialized, the buffer that holds the 3 integer elements is freed.
+You may have surmised that it's named <code>ListValue</code> because it's a value type (it can only be passed around by copying itself). The object type, <a href="#lists" title=""><code>List</code></a>, wraps <code>ListValue</code> and can be passed around by reference.</p>
+<p>The concept of a value having a single owner is very simple yet powerful.
+A value can represent any data structure from primitives to dynamically allocated buffers.
+A value always knows <strong>how</strong> to deinitialize itself, and the owner knows <strong>when</strong> to deinitialize the value.
+Later, we'll see that this same concept also applies to <a href="#shared-ownership" title="">shared ownership</a>.</p>
+<a href="#memory">^topic</a>
+<h3 id="copy-semantics">Copy semantics. <a href="#copy-semantics">#</a></h3>
+<p>By default, values are passed around by copying (shallow copying), but now all values can perform a copy.</p>
+<p>A primitive, such as an integer, can always be copied:</p>
+<pre><code class="language-cy">var a = 123
+var b = a
+-- Deinit `b`.
+-- Deinit `a`.
+</code></pre>
+<p>After a copy, a new value is created and given the owner of <code>b</code>. At the end of the block, both <code>a</code> and <code>b</code> are deinitialized (which does nothing since they are just primitives).</p>
+<p>Strings are also copyable since they are immutable views over byte buffers:</p>
+<pre><code class="language-">var a = 'hello'
+var b = a
+-- Deinit `b`.
+-- `b.buf` is released.
+-- Deinit `a`.
+-- `a.buf` is released.
+-- `a.buf` is freed.
+</code></pre>
+<p>The copy <code>b</code> also reuses the byte buffer of <code>a</code> by retaining (+1) on the reference counted byte buffer. The byte buffer is finally freed once there are no references pointing to it.</p>
+<p>Unlike the integer and string, a <code>ListValue</code> can not be copied since doing so requires duping a heap allocated buffer which is considered expensive:</p>
+<pre><code class="language-cy">var a = ListValue[int]{1, 2, 3}
+var b = a      --> error: Can not copy `ListValue`. Can only be cloned or moved.
+</code></pre>
+<p>Instead <code>a</code> can only be <a href="#cloned" title="">cloned</a> or <a href="#moving" title="">moved</a>.</p>
+<p>By default, a declared value type is copyable if all of it's members are also copyable:</p>
+<pre><code class="language-cy">type Foo struct:
+    a int
+    b String
+
+var a = Foo{a=123, b='hello'}
+var b = a
+</code></pre>
+<p>Since integers and strings are both copyable, <code>Foo</code> is also copyable.</p>
+<p><code>Foo</code> is non-copyable if it contains at least one non-copyable member:</p>
+<pre><code class="language-cy">type Foo struct:
+    a int
+    b String
+    c ListValue[int]
+
+var a = Foo{a=123, b='hello'}
+var b = a      --> error: Can not copy `Foo`. Can only be moved.
+</code></pre>
+<p><code>Foo</code> is also non-copyable if it contains unsafe types such as pointers or pointer slices:</p>
+<pre><code class="language-cy">type Foo struct:
+    a int
+    b String
+    c *Bar
+    d [*]float
+</code></pre>
+<p><code>Foo</code> can implement <code>Copyable</code> to override the default behavior and define it's own copy logic:</p>
+<pre><code class="language-cy">type Foo struct:
+    with Copyable
+    a int
+    b String
+    c *Bar
+    d [*]float
+
+    func copy(self) Foo:
+        return .{
+            a = self.a,
+            b = self.b,
+            c = self.c,
+            d = self.d,
+        }
+</code></pre>
+<p>Likewise, <code>Foo</code> can implement <code>NonCopyable</code> which indicates that it can never be copied:</p>
+<pre><code class="language-cy">type Foo struct:
+    with NonCopyable
+    a int
+    b String
+</code></pre>
+<a href="#memory">^topic</a>
+<h3 id="cloning">Cloning. <a href="#cloning">#</a></h3>
+<p>Some value types are not allowed to be copied by default and must be cloned instead:</p>
+<pre><code class="language-cy">var a = ListValue[int]{1, 2, 3}
+var b = a.clone()
+</code></pre>
+<p>Any <code>Copyable</code> type is also <code>Cloneable</code>. For example, performing a clone on an integer will simply perform a copy:</p>
+<pre><code class="language-cy">var a = 123
+var b = a.clone()
+</code></pre>
+<p>A value type can implement <code>Cloneable</code> to override the default behavior and define it's own clone logic:</p>
+<pre><code class="language-cy">type Foo struct:
+    with Cloneable
+    a int
+    b String
+
+    func clone(self) Foo:
+        return .{
+            a = self.a + 1,
+            b = self.b,
+        }
+</code></pre>
+<p>Likewise, <code>Foo</code> can implement <code>NonCloneable</code> which indicates that it can never be cloned:</p>
+<pre><code class="language-cy">type Foo struct:
+    with NonCloneable
+    a int
+    b String
+</code></pre>
+<a href="#memory">^topic</a>
+<h3 id="moving">Moving. <a href="#moving">#</a></h3>
+<p>Values can be moved, thereby transfering ownership from one variable to another:</p>
+<pre><code class="language-cy">var a = 123
+var b = move a
+print a     --> error: `a` does not own a value.
+</code></pre>
+<p>Some types such as <code>ListValue</code> can not be passed around by default without moving (or cloning) the value:</p>
+<pre><code class="language-cy">var a = ListValue[int]{1, 2, 3}
+print computeSum(move a)    --> 6
+</code></pre>
+<p>In this case, the list value is moved into the <code>computeSum</code> function, so the list is deinitialized in the function before the function returns.</p>
+<a href="#memory">^topic</a>
+<h3 id="references">References. <a href="#references">#</a></h3>
+<p>References are safe pointers to values.
+Unlike unsafe pointers, a reference is never concerned with when to free or deinitialize a value since that responsibility always belongs to the value's owner.
+They are considered safe pointers because they are guaranteed to point to their values and never outlive the lifetime of their values.</p>
+<p>References grant <strong>stable mutability</strong> which allows a value to be modified as long as it does not invalidate other references.
+<strong>Multiple</strong> references can be alive at once as long as an <a href="#exclusive-reference" title="">exclusive reference</a> is not also alive.</p>
+<p>The <code>&</code> operator is used to obtain a reference to a value:</p>
+<pre><code class="language-cy">var a = 123
+var ref = &a
+ref.* = 234
+print a        --> 234
+</code></pre>
+<p>A reference can not outlive the value it's referencing:</p>
+<pre><code class="language-cy">var a = 123
+var ref = &a
+if true:
+    var b = 234
+    ref = &b   --> error: `ref` can not oulive `b`.
+</code></pre>
+<p>A reference type is denoted as <code>&T</code> where <code>T</code> is the type that the reference points to:</p>
+<pre><code class="language-cy">var a = 123
+
+func inc(a &int):
+    a.* = a.* + 1
+</code></pre>
+<p>References allow stable mutation:</p>
+<pre><code class="language-cy">var a = ListValue[int]{1, 2, 3}
+var third = &a[2]
+third.* = 300
+print a        --> {1, 2, 300}
+</code></pre>
+<p>The element that <code>third</code> points to can be mutated because it does not invalidate other references.</p>
+<p>References however can not perform a unstable mutation.
+An unstable mutation requires an exclusive reference:</p>
+<pre><code class="language-cy">var a = ListValue[int]{1, 2, 3}
+var ref = &a
+ref.append(4)  --> error: Expected exclusive reference.
+</code></pre>
+<a href="#memory">^topic</a>
+<h3 id="exclusive-reference">Exclusive reference. <a href="#exclusive-reference">#</a></h3>
+<p>An exclusive reference grants <strong>full mutability</strong> which allows a value to be modified even if could potentially invalidate unsafe pointers.</p>
+<p>A <strong>single</strong> exclusive reference can be alive as long as no other references are also alive.
+Since no other references (safe pointers) are allowed to be alive at the same time, no references can become invalidated.</p>
+<p>The <code>&!</code> operator is used to obtain an exclusive reference to a value.
+An exclusive reference type is denoted as <code>&!T</code> where <code>T</code> is the type that the reference points to.</p>
+<p><code>ListValue</code> is an example of a type that requires an exclusive reference for operations that can resize or reallocate its dynamic buffer:</p>
+<pre><code class="language-cy">var a = ListValue[int]{1, 2, 3}
+a.append(4)
+print a        --> {1, 2, 3, 4}
+</code></pre>
+<p>Note that invoking the method <code>append</code> here automatically obtains an exclusive reference for <code>self</code> without an explicit <code>&!</code> operator.</p>
+<p>If another reference is alive before <code>append</code>, the compiler will not allow an exclusive reference to be obtained from <code>a</code>.
+Doing so would allow <code>append</code> to potentially reallocate its dynamic buffer, thereby invalidating other references:</p>
+<pre><code class="language-cy">var a = ListValue[int]{1, 2, 3}
+var third = &a[2]
+a.append(4)    --> error: Can not obtain exclusive reference, `third` is still alive.
+print third
+</code></pre>
+<a href="#memory">^topic</a>
+<h3 id="self-reference"><code>self</code> reference. <a href="#self-reference">#</a></h3>
+<p>By default <code>self</code> has a type of <code>&T</code> when declared in a value type's method:</p>
+<pre><code class="language-cy">type Pair struct:
+    a int
+    b int
+
+    func sum(self) int:
+        return self.a + self.b
+</code></pre>
+<p>If <code>self</code> requires an exclusive reference, then it must be prepended with <code>!</code>:</p>
+<pre><code class="language-cy">type Pair struct:
+    a int
+    b int
+
+    func sum(!self) int:
+        return self.a + self.b
+</code></pre>
+<p>Invoking methods automatically obtains the correct reference as specified by the method:</p>
+<pre><code class="language-cy">var p = Pair{a=1, b=2}
+print p.sum()     --> 3
+</code></pre>
+<a href="#memory">^topic</a>
+<h3 id="lifted-values">Lifted values. <a href="#lifted-values">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#memory">^topic</a>
+<h3 id="deferred-references">Deferred references. <a href="#deferred-references">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#memory">^topic</a>
+<h3 id="implicit-lifetimes">Implicit lifetimes. <a href="#implicit-lifetimes">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#memory">^topic</a>
+<h3 id="reference-lifetimes">Reference lifetimes. <a href="#reference-lifetimes">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#memory">^topic</a>
+<h3 id="shared-ownership">Shared ownership. <a href="#shared-ownership">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#memory">^topic</a>
+<h3 id="deinitializer">Deinitializer. <a href="#deinitializer">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#memory">^topic</a>
+<h3 id="pointer-interop">Pointer interop. <a href="#pointer-interop">#</a></h3>
+<blockquote><p><em>Planned Feature</em></p>
+</blockquote><a href="#memory">^topic</a>
+<h2 id="automatic-memory">Automatic memory. <a href="#automatic-memory">#</a></h2>
+<p>Cyber uses an ARC/GC hybrid to automatically manage objects instantiated from object types. Value types typically do not need to be automatically managed unless they were lifted by a <a href="#closures-1" title="">closure</a> or a dynamic container.</p>
+<a href="#memory">^topic</a>
+<h3 id="arc">ARC. <a href="#arc">#</a></h3>
+<p>ARC also known as automatic reference counting is deterministic and has less overhead compared to a tracing garbage collector. Reference counting distributes memory management, which reduces GC pauses and makes ARC suitable for realtime applications. One common issue in ARC implementations is reference cycles which Cyber addresses with a <a href="#gc" title="">GC</a> supplement when it is required.</p>
 <p>Objects are managed by ARC. Each object has its own reference counter. Upon creating a new object, it receives a reference count of 1. When the object is copied, it's <strong>retained</strong> and the reference count increments by 1. When an object value is removed from it's parent or is no longer reachable in the current stack frame, it is <strong>released</strong> and the reference count decrements by 1.</p>
 <p>Once the reference count reaches 0 the object begins its <a href="#object-destructor" title="">destruction</a> procedure.</p>
 <a href="#memory">^topic</a>
@@ -4954,8 +5248,11 @@ ARC is deterministic and has less overhead compared to a tracing garbage collect
 Since objects freed by the GC either belongs to a reference cycle or branched from one, the GC will still end up invoking the destructor of all unreachable objects.
 This implies that the destructor order is not reliable, but destructors are guaranteed to be invoked for all unreachable objects.</p>
 <a href="#memory">^topic</a>
-<h3 id="optimizations">Optimizations. <a href="#optimizations">#</a></h3>
-<p>The compiler can reduce the number of retain/release ops since it can infer value types even though they are dynamically typed to the user. Arguments passed to functions are only retained depending on the analysis from the callsite.</p>
+<h3 id="retain-optimizations">Retain optimizations. <a href="#retain-optimizations">#</a></h3>
+<p>When the lifetime of an object's reference is known on the stack, a large amount of retain/release ops can be avoided.
+For example, calling a function with an object doesn't need a retain since it is guaranteed to be alive when the function returns.
+This leaves only cases where an object must retain to ensure correctness such as escaping the stack.</p>
+<p>When using dynamic types, the compiler can omit retain/release ops when it can infer the actual type even though they are dynamically typed to the user.</p>
 <a href="#memory">^topic</a>
 <h3 id="closures-1">Closures. <a href="#closures-1">#</a></h3>
 <p>When primitive variables are captured by a <a href="#closures" title="">closure</a>, they are boxed and allocated on the heap. This means they are managed by ARC and cleaned up when there are no more references to them.</p>
@@ -4963,20 +5260,19 @@ This implies that the destructor order is not reliable, but destructors are guar
 <h3 id="fibers-1">Fibers. <a href="#fibers-1">#</a></h3>
 <p><a href="#fibers" title="">Fibers</a> are freed by ARC just like any other object. Once there are no references to the fiber, it begins to release it's child references by unwinding it's call stack.</p>
 <a href="#memory">^topic</a>
-<h2 id="heap">Heap. <a href="#heap">#</a></h2>
-<p>Many object types in Cyber are small enough to be at or under 40 bytes. To take advantage of this, Cyber can reserve object pools to quickly allocate and free these small objects with very little bookkeeping. Bigger objects are allocated and managed by <code>mimalloc</code> which has proven to be a fast and reliable general-purpose heap allocator.</p>
+<h3 id="heap-objects">Heap objects. <a href="#heap-objects">#</a></h3>
+<p>Many object types are small enough to be at or under 40 bytes. To take advantage of this, object pools are reserved to quickly allocate and free these small objects with very little bookkeeping. Bigger objects are allocated and managed by <code>mimalloc</code> which has proven to be a fast and reliable general-purpose heap allocator.</p>
 <a href="#memory">^topic</a>
-<h3 id="weak-references">Weak references. <a href="#weak-references">#</a></h3>
-<blockquote><p><em>Planned Feature</em></p>
-</blockquote><a href="#memory">^topic</a>
-<h3 id="cycle-detection">Cycle detection. <a href="#cycle-detection">#</a></h3>
-<p>The cycle detector is also considered a GC and frees abandoned objects managed by ARC. Although weak references can remove cycles altogether, Cyber does not force you to use them and provides a manual GC as a one-time catch all solution.</p>
-<blockquote><p><em>Incomplete Feature: Only the main fiber stack is cleaned up at the moment.</em></p>
-</blockquote><p>To invoke the GC, call the builtin function: <code>performGC</code>.</p>
+<h3 id="gc">GC. <a href="#gc">#</a></h3>
+<p>The garbage collector is only used if the program may contain objects that form reference cycles. This property is statically determined by the compiler. Since ARC frees most objects, the GC's only responsibility is to free abandoned objects that form reference cycles.
+This reduces the amount of work for GC marking since only cyclable objects (objects that may contain a reference cycle) are considered.</p>
+<p>Weak references are not supported for object types because objects are intended to behave like GC objects (the user should not be concerned with reference cycles). If weak references do get supported in the future, they will be introduced as a <code>Weak[T]</code> type that is used with an explicit reference counted <code>Rc[T]</code> type.</p>
+<p>Currently, the GC can be manually invoked. However, the plan is for this to be automatic by either running in a separate thread or per virtual thread by running the GC incrementally.</p>
+<p>To invoke the GC, call the builtin function: <code>performGC</code>. <em>Incomplete Feature: Only the main fiber stack is cleaned up at the moment.</em></p>
 <pre><code class="language-cy">func foo():
     -- Create a reference cycle.
-    var a = []
-    var b = []
+    var a = {_}
+    var b = {_}
     a.append(b)
     b.append(a)
 
@@ -5458,7 +5754,7 @@ hljs.registerLanguage('cy', function() {
         keyword: [
             'func', 'mod', 'for', 'coinit', 'coresume', 'coyield', 'use', 'await', 'context',
             'return', 'if', 'else', 'as', 'while', 'var', 'let', 'dynobject', 'object', 'struct', 'cstruct', 'with', 'caught',
-            'break', 'continue', 'switch', 'pass', 'or', 'and', 'not', 'is', 'error', 'throws',
+            'break', 'continue', 'switch', 'pass', 'or', 'and', 'not', 'is', 'error', 'throws', 'move',
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case', 'trait'
         ],
         type: [

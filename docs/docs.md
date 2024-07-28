@@ -1632,14 +1632,14 @@ print v                 --> Vec2{x=3, y=3}
 ```
 
 ### C struct reference.
-The `&` operator is used to obtain the reference to a `C struct` value:
+The `*` operator is used to obtain the pointer to a `C struct` value:
 ```cy
 type Vec2 cstruct:
     x float
     y float
 
 var v = Vec2{x=1, y=2}
-var ref = &v
+var ref = *v
 ref.x = 4
 
 print v                 --> Vec2{x=4, y=2}
@@ -1650,7 +1650,7 @@ func scale(a *Vec2, n float):
     a.x *= n
     a.y *= n
 
-add(&v, 10)
+add(*v, 10)
 print v                 --> Vec2{x=40, y=20}
 ```
 
@@ -1661,7 +1661,7 @@ func setName(p *Person, name [*]byte):
     p.name = name
 
 var p = Person{}
-setName(&p, 'Spock')
+setName(*p, 'Spock')
 ```
 
 Depending on the target architecture, the alignment of the pointer will either be at least 8 bytes on a 64-bit machine or 4 bytes on a 32-bit machine. Aligned pointers will be supported in a future version.
@@ -1679,7 +1679,7 @@ print ptr.value()     --'3735928559'
 Pointers are dereferenced using the accessor operator `.*`:
 ```cy
 var a = 123
-var ptr = &a
+var ptr = *a
 print ptr.*      --> 123
 
 ptr.* = 10
@@ -1715,10 +1715,10 @@ print typeof(slice)    --> []int
 ## Pointer slices.
 Slices are pointers with a length field. They are denoted as `[*]T` where T is the element type.
 
-A slice can be created by taking the address of an array: *Planned feature*
+A slice can be created by taking the pointer of an array: *Planned feature*
 ```cy
-var arr = []int{1, 2, 3}
-var s = &arr
+var arr = [3]int{1, 2, 3}
+var s = *arr
 ```
 
 Read and write an element with the index operator: 

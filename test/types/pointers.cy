@@ -2,7 +2,7 @@ use test
 
 -- Read dereferenced `int`.
 var a = 123
-var b = &a
+var b = *a
 test.eq(b.*, 123)
 
 -- pointer indexing, primitive.
@@ -26,7 +26,7 @@ type Foo cstruct:
 
 -- Read dereferenced cstruct.
 var f = Foo{a=123}
-var g = &f
+var g = *f
 test.eq(g.a, 123)
 test.eq(g.*.a, 123)
 

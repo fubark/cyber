@@ -1,7 +1,7 @@
 use test
 
 var a = 123
-var ptr = &a
+var ptr = *a
 var slice = ptr[0..1]
 
 -- Slice index.

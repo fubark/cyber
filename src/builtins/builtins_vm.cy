@@ -510,6 +510,9 @@ type Fiber _:
 type metatype _:
     @host func id(self) int
 
+func metatype.$call(#T type) metatype:
+    return T
+
 @host
 type Range struct:
     start int

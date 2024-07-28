@@ -1660,7 +1660,7 @@ pub fn writeSymName(s: *cy.Sema, w: anytype, sym: *cy.Sym, config: SymFormatConf
                 const name = s.getTypeBaseName(arg.type.type);
                 try w.print("*{s}", .{name});
                 return;
-            } else if (variant.root_template == s.slice_tmpl) {
+            } else if (variant.root_template == s.ref_slice_tmpl) {
                 const arg = variant.args[0].asHeapObject();
                 const name = s.getTypeBaseName(arg.type.type);
                 try w.print("[]{s}", .{name});

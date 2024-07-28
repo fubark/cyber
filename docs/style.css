@@ -313,6 +313,11 @@ blockquote p {
     padding: 0px;
 }
 
+p {
+    margin-block-start: 1.3em;
+    margin-block-end: 1.3em;
+}
+
 blockquote em {
     color: #fb6767;
 }

@@ -45,6 +45,7 @@ const funcs = [_]C.HostFuncEntry{
     func("performGC",      zErrFunc(performGC)),
     func("ptrcast_",       zErrFunc(ptrcast)),
     func("print",          print),
+    func("refcast",        zErrFunc(refcast)),
     func("queueTask",      zErrFunc(queueTask)),
     func("runestr",        zErrFunc(runestr)),
     func("sizeof_",        sizeof),
@@ -116,7 +117,7 @@ const funcs = [_]C.HostFuncEntry{
 
     // List
     func("List.$index",      bindings.listIndex),
-    func("List.$indexRange", zErrFunc(bindings.listSlice)),
+    func("List.$indexRange", zErrFunc(bindings.List_slice)),
     func("List.$setIndex",   bindings.listSetIndex),
     func("List.append",      zErrFunc(bindings.listAppend)),
     func("List.appendAll",   zErrFunc(bindings.listAppendAll)),
@@ -131,6 +132,20 @@ const funcs = [_]C.HostFuncEntry{
 
     // ListIterator
     func("ListIterator.next_", zErrFunc(bindings.listIteratorNext)),
+
+    // Slice
+    // func("Slice.endsWith",         Slice_endsWith),
+    // func("Slice.find",         Slice_find),
+    // func("Slice.split",        zErrFunc(sliceSplit)),
+    // func("Slice.startsWith",         Slice_startsWith),
+    // func("Slice.trim", sliceTrim),
+
+    // RefSlice
+    // func("RefSlice.endsWith",         RefSlice_endsWith),
+    // func("RefSlice.find",         RefSlice_find),
+    // func("RefSlice.split",        zErrFunc(sliceSplit)),
+    // func("RefSlice.startsWith",         RefSlice_startsWith),
+    // func("RefSlice.trim", sliceTrim),
 
     // Tuple
     func("Tuple.$index",       bindings.tupleIndex),
@@ -231,7 +246,7 @@ const funcs = [_]C.HostFuncEntry{
 
     // DefaultMemory
     func("DefaultMemory.alloc",     zErrFunc(DefaultMemory_alloc)),
-    func("DefaultMemory.free",      zErrFunc(DefaultMemory_free)),
+    func("DefaultMemory.free",      zErrFunc(DefaultMemory_free)), 
 };
 
 const types = [_]C.HostTypeEntry{
@@ -293,8 +308,8 @@ pub const BuiltinsData = struct {
     OptionTuple: cy.TypeId,
     OptionMap: cy.TypeId,
     OptionString: cy.TypeId,
-    PointerVoid: cy.TypeId,
-    SliceByte: cy.TypeId,
+    PtrVoid: cy.TypeId,
+    PtrSliceByte: cy.TypeId,
 };
 
 pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
@@ -350,7 +365,7 @@ fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
 
     const void_t = C.newType(vm_, bt.Void);
     defer C.release(vm_, void_t);
-    assert(C.expandTemplateType(pointer_tmpl, &void_t, 1, &data.PointerVoid));
+    assert(C.expandTemplateType(pointer_tmpl, &void_t, 1, &data.PtrVoid));
 
     const list_tmpl = chunk_sym.getMod().getSym("List").?.toC();
 
@@ -362,10 +377,10 @@ fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
     const list_iter_tmpl = chunk_sym.getMod().getSym("ListIterator").?.toC();
     assert(C.expandTemplateType(list_iter_tmpl, &dynamic_t, 1, &temp));
 
-    const slice_tmpl = chunk_sym.getMod().getSym("Slice").?.toC();
+    const ptr_slice_tmpl = chunk_sym.getMod().getSym("PtrSlice").?.toC();
     const byte_t = C.newType(vm_, bt.Byte);
     defer C.release(vm_, byte_t);
-    assert(C.expandTemplateType(slice_tmpl, &byte_t, 1, &data.SliceByte));
+    assert(C.expandTemplateType(ptr_slice_tmpl, &byte_t, 1, &data.PtrSliceByte));
 
     // Verify all core types have been initialized.
     if (cy.Trace) {
@@ -446,9 +461,11 @@ pub fn listFill(vm: *cy.VM) Value {
     return vm.allocListFill(vm.getValue(0), @intCast(vm.getInt(1))) catch cy.fatal();
 }
 
+pub fn refcast(vm: *cy.VM) anyerror!Value {
+    return vm.getValue(0);
+}
+
 pub fn ptrcast(vm: *cy.VM) anyerror!Value {
-    const ptr_t: cy.TypeId = @intCast(vm.getInt(0));
-    _ = ptr_t;
     return vm.getValue(1);
 }
 
@@ -754,7 +771,7 @@ pub fn DefaultMemory_alloc(vm: *cy.VM) anyerror!Value {
     const ptr_v = Value.initRaw(@intCast(@intFromPtr(ptr)));
 
     const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.allocObjectSmall(data.SliceByte, &.{ ptr_v, Value.initInt(@intCast(size)) });
+    return vm.allocObjectSmall(data.PtrSliceByte, &.{ ptr_v, Value.initInt(@intCast(size)) });
 }
 
 pub fn DefaultMemory_free(vm: *cy.VM) anyerror!Value {
@@ -764,6 +781,18 @@ pub fn DefaultMemory_free(vm: *cy.VM) anyerror!Value {
     const ptr: [*]u8 = @ptrFromInt(addr);
     std.c.free(ptr);
     return Value.Void;
+}
+
+fn Slice_startsWith(vm: *cy.VM) Value {
+    const slice = vm.getObject(*cy.heap.Array, 0).getSlice();
+    const needle = vm.getArray(1);
+    return Value.initBool(std.mem.startsWith(u8, slice, needle));
+}
+
+fn Slice_endsWith(vm: *cy.VM) Value {
+    const slice = vm.getObject(*cy.heap.Array, 0).getSlice();
+    const needle = vm.getArray(1);
+    return Value.initBool(std.mem.endsWith(u8, slice, needle));
 }
 
 fn arrayConcat(vm: *cy.VM) Value {
@@ -815,7 +844,7 @@ fn arrayInsert(vm: *cy.VM) anyerror!Value {
     return Value.initNoCycPtr(new);
 }
 
-fn arrayFind(vm: *cy.VM) Value {
+fn Slice_find(vm: *cy.VM) Value {
     const obj = vm.getObject(*cy.heap.Array, 0);
     const slice = obj.getSlice();
     const needle = vm.getArray(1);
@@ -1200,7 +1229,7 @@ fn pointerGet(vm: *cy.VM) anyerror!Value {
             const addr: usize = @intFromPtr(ptr) + @as(usize, @intCast(uoff));
             const val = @as(*?*anyopaque, @ptrFromInt(addr)).*;
             const data = vm.getData(*BuiltinsData, "builtins");
-            return vm.allocPointer(data.PointerVoid, val);
+            return vm.allocPointer(data.PtrVoid, val);
         },
         else => {
             return error.InvalidArgument;

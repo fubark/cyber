@@ -811,7 +811,7 @@ fn toCyType(vm: *cy.VM, ctype: CType) !types.TypeId {
                 .charPtr,
                 .voidPtr => {
                     const data = vm.getData(*cy.builtins.BuiltinsData, "builtins");
-                    return data.PointerVoid;
+                    return data.PtrVoid;
                 },
                 .void => return bt.Void,
                 else => {
@@ -1006,7 +1006,7 @@ pub fn ffiBindLib(vm: *cy.VM, config: BindLibConfig) !Value {
             const symKey = try vm.allocAstringConcat("ptrTo", typeName);
             const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
 
-            const funcSigId = try vm.sema.ensureFuncSigRt(&.{ bt_data.PointerVoid }, cstruct.type);
+            const funcSigId = try vm.sema.ensureFuncSigRt(&.{ bt_data.PtrVoid }, cstruct.type);
             const funcVal = try cy.heap.allocHostFunc(vm, func, 1, funcSigId, cyState, false);
             try table.asHeapObject().table.set(vm, symKey, funcVal);
             vm.release(symKey);
@@ -1054,7 +1054,7 @@ pub fn ffiBindLib(vm: *cy.VM, config: BindLibConfig) !Value {
             const name_id = try rt.ensureNameSymExt(vm, methodName, true);
             const managed_name = rt.getName(vm, name_id);
 
-            const funcSigId = try vm.sema.ensureFuncSigRt(&.{ bt.Any, bt_data.PointerVoid }, cstruct.type);
+            const funcSigId = try vm.sema.ensureFuncSigRt(&.{ bt.Any, bt_data.PtrVoid }, cstruct.type);
             const group = try vm.addFuncGroup();
             const func_sym = rt.FuncSymbol.initHostFunc(@ptrCast(func), true, true, 2, funcSigId);
             _ = try vm.addGroupFunc(group, managed_name, funcSigId, func_sym);
@@ -1135,7 +1135,7 @@ fn cGetFuncPtr(vm: *cy.VM, val: Value) callconv(.C) ?*anyopaque {
 
 fn cAllocCyPointer(vm: *cy.VM, ptr: ?*anyopaque) callconv(.C) Value {
     const bt_data = vm.getData(*cy.builtins.BuiltinsData, "builtins");
-    return cy.heap.allocPointer(vm, bt_data.PointerVoid, ptr) catch cy.fatal();
+    return cy.heap.allocPointer(vm, bt_data.PtrVoid, ptr) catch cy.fatal();
 }
 
 fn cAllocInt(vm: *cy.VM, val: i64) callconv(.C) Value {

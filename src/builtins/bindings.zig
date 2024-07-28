@@ -254,18 +254,18 @@ pub fn listSetIndex(vm: *cy.VM) Value {
     return Value.Void;
 }
 
-pub fn listSlice(vm: *cy.VM) anyerror!Value {
+pub fn List_slice(vm: *cy.VM) anyerror!Value {
     const list = vm.getValue(0).asHeapObject();
     const range = vm.getValue(1).castHeapObject(*cy.heap.Range);
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (range.start < 0) {
-        return vm.prepPanic("Out of bounds.");
+        return error.OutOfBounds;
     }
     if (range.end > inner.len) {
-        return vm.prepPanic("Out of bounds.");
+        return error.OutOfBounds;
     }
     if (range.end < range.start) {
-        return vm.prepPanic("Out of bounds.");
+        return error.OutOfBounds;
     }
 
     const elems = inner.buf[@intCast(range.start)..@intCast(range.end)];
@@ -273,6 +273,25 @@ pub fn listSlice(vm: *cy.VM) anyerror!Value {
         vm.retain(elem);
     }
     return cy.heap.allocListDyn(vm, elems);
+}
+
+pub fn ListValue_slice(vm: *cy.VM) anyerror!Value {
+    const list = vm.getValue(0).asHeapObject();
+    const slice_t: cy.TypeId = @intCast(vm.getInt(1));
+    const range = vm.getValue(2).castHeapObject(*cy.heap.Range);
+    const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
+    if (range.start < 0) {
+        return error.OutOfBounds;
+    }
+    if (range.end > inner.len) {
+        return error.OutOfBounds;
+    }
+    if (range.end < range.start) {
+        return error.OutOfBounds;
+    }
+
+    const ptr = inner.buf.ptr + @as(usize, @intCast(range.start));
+    return vm.allocRefSlice(slice_t, ptr, @intCast(range.end - range.start));
 }
 
 pub fn listInsert(vm: *cy.VM) Value {

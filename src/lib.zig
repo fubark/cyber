@@ -662,7 +662,7 @@ export fn clSymbol(vm: *cy.VM, str: c.Str) Value {
 
 export fn clNewPointerVoid(vm: *cy.VM, ptr: ?*anyopaque) Value {
     const bt_data = vm.getData(*cy.builtins.BuiltinsData, "builtins");
-    return cy.heap.allocPointer(vm, bt_data.PointerVoid, ptr) catch fatal();
+    return cy.heap.allocPointer(vm, bt_data.PtrVoid, ptr) catch fatal();
 }
 
 export fn clNewType(vm: *cy.VM, type_id: cy.TypeId) Value {

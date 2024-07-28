@@ -44,7 +44,6 @@ pub const NodeType = enum(u7) {
     enumMember,
     error_lit,
     expandOpt,
-    expand_ptr,
     exprStmt,
     falseLit,
     forIterStmt,
@@ -75,9 +74,15 @@ pub const NodeType = enum(u7) {
     octLit,
     opAssignStmt,
     passStmt,
-    pointer_slice,
+    ptr,
+    ptr_slice,
     range,
     raw_string_lit,
+
+    // Ref type or address of operator.
+    ref,
+
+    ref_slice,
     returnExprStmt,
     returnStmt,
     root,
@@ -114,7 +119,7 @@ pub const AttributeType = enum(u8) {
     host,
 };
 
-const PointerSlice = struct {
+const PtrSlice = struct {
     elem: *Node align(8),
     pos: u32,
 };
@@ -124,7 +129,17 @@ const ExpandOpt = struct {
     pos: u32,
 };
 
-const ExpandPtr = struct {
+const RefSlice = struct {
+    elem: *Node align(8),
+    pos: u32,
+};
+
+const Ref = struct {
+    elem: *Node align(8),
+    pos: u32,
+};
+
+const Ptr = struct {
     elem: *Node align(8),
     pos: u32,
 };
@@ -586,6 +601,8 @@ fn NodeData(comptime node_t: NodeType) type {
         .await_expr     => AwaitExpr,
         .binExpr        => BinExpr,
         .binLit         => Span,
+        .ref            => Ref,
+        .ref_slice      => RefSlice,
         .breakStmt      => Token,
         .caseBlock      => CaseBlock,
         .callExpr       => CallExpr,
@@ -610,7 +627,6 @@ fn NodeData(comptime node_t: NodeType) type {
         .enumMember     => EnumMember,
         .error_lit      => Span,
         .expandOpt      => ExpandOpt,
-        .expand_ptr     => ExpandPtr,
         .exprStmt       => ExprStmt,
         .falseLit       => Token,
         .forIterStmt    => ForIterStmt,
@@ -641,7 +657,8 @@ fn NodeData(comptime node_t: NodeType) type {
         .octLit         => Span,
         .opAssignStmt   => OpAssignStmt,
         .passStmt       => Token,
-        .pointer_slice  => PointerSlice,
+        .ptr            => Ptr,
+        .ptr_slice      => PtrSlice,
         .range          => Range,
         .raw_string_lit => Span,
         .returnExprStmt => ReturnExprStmt,
@@ -747,9 +764,7 @@ pub const Node = struct {
             .enumMember     => self.cast(.enumMember).name.pos(),
             .error_lit      => self.cast(.error_lit).pos-6,
             .expandOpt      => self.cast(.expandOpt).pos,
-            .expand_ptr     => self.cast(.expand_ptr).pos,
             .exprStmt       => self.cast(.exprStmt).child.pos(),
-            .pointer_slice  => self.cast(.pointer_slice).pos,
             .falseLit       => self.cast(.falseLit).pos,
             .floatLit       => self.cast(.floatLit).pos,
             .forIterStmt    => self.cast(.forIterStmt).pos,
@@ -779,8 +794,12 @@ pub const Node = struct {
             .octLit         => self.cast(.octLit).pos,
             .opAssignStmt   => self.cast(.opAssignStmt).left.pos(),
             .passStmt       => self.cast(.passStmt).pos,
+            .ptr            => self.cast(.ptr).pos,
+            .ptr_slice      => self.cast(.ptr_slice).pos,
             .range          => self.cast(.range).pos,
             .raw_string_lit => self.cast(.raw_string_lit).pos,
+            .ref            => self.cast(.ref).pos,
+            .ref_slice      => self.cast(.ref_slice).pos,
             .returnExprStmt => self.cast(.returnExprStmt).pos,
             .returnStmt     => self.cast(.returnStmt).pos,
             .root           => self.cast(.root).stmts[0].pos(),
@@ -883,7 +902,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 98);
+    try t.eq(std.enums.values(NodeType).len, 101);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 
@@ -1472,17 +1491,17 @@ pub const Encoder = struct {
                 try w.writeAll("...");
                 try w.writeByte('}');
             },
-            .pointer_slice => {
+            .ptr_slice => {
                 try w.writeAll("[*]");
-                try self.write(w, node.cast(.pointer_slice).elem);
+                try self.write(w, node.cast(.ptr_slice).elem);
             },
             .expandOpt => {
                 try w.writeByte('?');
                 try self.write(w, node.cast(.expandOpt).param);
             },
-            .expand_ptr => {
+            .ptr => {
                 try w.writeAll("*");
-                try self.write(w, node.cast(.expand_ptr).elem);
+                try self.write(w, node.cast(.ptr).elem);
             },
             .comptimeExpr => {
                 try self.write(w, node.cast(.comptimeExpr).child);

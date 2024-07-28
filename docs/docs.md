@@ -6,14 +6,14 @@
 - [C Types.](#c-types)
 - [Control Flow.](#control-flow)
 - [Functions.](#functions)
-- [Modules.](#modules)
-- [FFI.](#ffi)
+- [Memory.](#memory)
 - [Error Handling.](#error-handling)
 - [Concurrency.](#concurrency)
 - [Dynamic Typing.](#dynamic-typing)
 - [Metaprogramming.](#metaprogramming)
+- [Modules.](#modules)
+- [FFI.](#ffi)
 - [libcyber.](#libcyber)
-- [Memory.](#memory)
 - [CLI.](#cli)
 
 <!--TOC-END-->
@@ -3810,29 +3810,361 @@ void myNodeFinalizer(CLVM* vm, void* obj) {
 
 # Memory.
 
-* [ARC.](#arc)
-  * [Reference counting.](#reference-counting)
+<table><tr>
+<td valign="top">
+
+* [Structured memory.](#structured-memory)
+  * [Value ownership.](#value-ownership)
+  * [Copy semantics.](#copy-semantics)
+  * [Cloning.](#cloning)
+  * [Moving.](#moving)
+  * [References.](#references)
+  * [Exclusive reference.](#exclusive-reference)
+  * [`self` reference.](#self-reference)
+  * [Lifted values.](#lifted-values)
+  * [Deferred references.](#deferred-references)
+  * [Implicit lifetimes.](#implicit-lifetimes)
+  * [Reference lifetimes.](#explicit-reference-lifetimes)
+  * [Shared ownership.](#shared-ownership)
+  * [Deinitializer.](#deinitializer)
+  * [Pointer interop.](#pointer-interop)
+</td><td valign="top">
+
+* [Automatic memory.](#automatic-memory)
+  * [ARC.](#arc)
   * [Object destructor.](#object-destructor)
-  * [Optimizations.](#optimizations)
+  * [Retain optimizations.](#retain-optimizations)
   * [Closures.](#closures-1)
   * [Fibers.](#fibers-1)
-* [Heap.](#heap)
-  * [Weak references.](#weak-references)
-  * [Cycle detection.](#cycle-detection)
+  * [Heap objects.](#heap-objects)
+  * [GC.](#gc)
 * [Manual memory.](#manual-memory)
   * [Memory allocations.](#memory-allocations)
   * [Runtime memory checks.](#runtime-memory-checks)
+</td>
+</tr></table>
 
 [^top](#table-of-contents)
 
-Cyber provides memory safety by default.
+Cyber provides memory safety by default with structured and automatic memory.
+Manual memory is also supported but discouraged.
 
-## ARC.
-Cyber uses ARC or automatic reference counting to manage memory.
-ARC is deterministic and has less overhead compared to a tracing garbage collector. Reference counting distributes memory management, which reduces GC pauses and makes ARC suitable for realtime applications. One common issue in ARC implementations is reference cycles which Cyber addresses with [Weak References](#weak-references) and it's very own [Cycle Detection](#cycle-detection).
+## Structured memory.
+Cyber uses single value ownership and variable scopes to determine the lifetime of values.
+When lifetimes are known at compile-time, the memory occupied by values do not need to be manually managed which prevents memory bugs such as:
+* Use after free.
+* Use after invalidation.
+* Free with wrong allocator.
+* Double free.
+* Memory leaks.
+* Null pointer dereferencing.
 
-### Reference counting.
-In Cyber, there are [primitive and object](#basic-types) values. Primitives don't need any memory management, since they are copied by value and no heap allocation is required (with the exception of primitives being captured by a [closure](#closures-1). 
+At the same time, structured memory allows performant code to be written since it provides safe semantics to directly reference values and child values.
+
+### Value ownership.
+Every value in safe memory has a single owner.
+An owner can be a variable that binds to a value. Otherwise, the owner can be a parent value or the value itself.
+The owner is responsible for deinitializing or dropping the value when it has gone out of scope (no longer reachable).
+For example, at the end of the block, a variable can no longer be accessed so it drops the value that it owns:
+```cy
+var a = 123
+print a    --> 123
+-- Deinit `a`.
+```
+In this case, there is nothing to deinitialize since the value is an integer.
+
+If the value was a `String`, the deinit logic would release (-1) on a reference counted byte buffer since strings are just immutable views over byte buffers:
+```cy
+var a = 'hello'
+print a    --> hello
+-- Deinit `a`.
+-- `a.buf` is released.
+-- `a.buf` is freed.
+```
+Since the string buffer's reference count reaches 0, it's freed as well.
+
+Finally, let's take a look at `ListValue` which manages a dynamically sized array of elements:
+```cy
+var a = ListValue[int]{1, 2, 3}
+print a    --> {1, 2, 3}
+-- Deinit `a`.
+-- `a.buf` is freed.
+```
+When `a` is deinitialized, the buffer that holds the 3 integer elements is freed.
+You may have surmised that it's named `ListValue` because it's a value type (it can only be passed around by copying itself). The object type, [`List`](#lists), wraps `ListValue` and can be passed around by reference.
+
+The concept of a value having a single owner is very simple yet powerful.
+A value can represent any data structure from primitives to dynamically allocated buffers.
+A value always knows **how** to deinitialize itself, and the owner knows **when** to deinitialize the value.
+Later, we'll see that this same concept also applies to [shared ownership](#shared-ownership).
+
+### Copy semantics.
+By default, values are passed around by copying (shallow copying), but now all values can perform a copy.
+
+A primitive, such as an integer, can always be copied:
+```cy
+var a = 123
+var b = a
+-- Deinit `b`.
+-- Deinit `a`.
+```
+After a copy, a new value is created and given the owner of `b`. At the end of the block, both `a` and `b` are deinitialized (which does nothing since they are just primitives).
+
+Strings are also copyable since they are immutable views over byte buffers:
+```
+var a = 'hello'
+var b = a
+-- Deinit `b`.
+-- `b.buf` is released.
+-- Deinit `a`.
+-- `a.buf` is released.
+-- `a.buf` is freed.
+```
+The copy `b` also reuses the byte buffer of `a` by retaining (+1) on the reference counted byte buffer. The byte buffer is finally freed once there are no references pointing to it.
+
+Unlike the integer and string, a `ListValue` can not be copied since doing so requires duping a heap allocated buffer which is considered expensive:
+```cy
+var a = ListValue[int]{1, 2, 3}
+var b = a      --> error: Can not copy `ListValue`. Can only be cloned or moved.
+```
+Instead `a` can only be [cloned](#cloned) or [moved](#moving).
+
+By default, a declared value type is copyable if all of it's members are also copyable:
+```cy
+type Foo struct:
+    a int
+    b String
+
+var a = Foo{a=123, b='hello'}
+var b = a
+```
+Since integers and strings are both copyable, `Foo` is also copyable.
+
+`Foo` is non-copyable if it contains at least one non-copyable member:
+```cy
+type Foo struct:
+    a int
+    b String
+    c ListValue[int]
+
+var a = Foo{a=123, b='hello'}
+var b = a      --> error: Can not copy `Foo`. Can only be moved.
+```
+
+`Foo` is also non-copyable if it contains unsafe types such as pointers or pointer slices:
+```cy
+type Foo struct:
+    a int
+    b String
+    c *Bar
+    d [*]float
+```
+
+`Foo` can implement `Copyable` to override the default behavior and define it's own copy logic:
+```cy
+type Foo struct:
+    with Copyable
+    a int
+    b String
+    c *Bar
+    d [*]float
+
+    func copy(self) Foo:
+        return .{
+            a = self.a,
+            b = self.b,
+            c = self.c,
+            d = self.d,
+        }
+```
+
+Likewise, `Foo` can implement `NonCopyable` which indicates that it can never be copied:
+```cy
+type Foo struct:
+    with NonCopyable
+    a int
+    b String
+```
+
+### Cloning.
+Some value types are not allowed to be copied by default and must be cloned instead:
+```cy
+var a = ListValue[int]{1, 2, 3}
+var b = a.clone()
+```
+
+Any `Copyable` type is also `Cloneable`. For example, performing a clone on an integer will simply perform a copy:
+```cy
+var a = 123
+var b = a.clone()
+```
+
+A value type can implement `Cloneable` to override the default behavior and define it's own clone logic:
+```cy
+type Foo struct:
+    with Cloneable
+    a int
+    b String
+
+    func clone(self) Foo:
+        return .{
+            a = self.a + 1,
+            b = self.b,
+        }
+```
+
+Likewise, `Foo` can implement `NonCloneable` which indicates that it can never be cloned:
+```cy
+type Foo struct:
+    with NonCloneable
+    a int
+    b String
+```
+
+### Moving.
+Values can be moved, thereby transfering ownership from one variable to another:
+```cy
+var a = 123
+var b = move a
+print a     --> error: `a` does not own a value.
+```
+
+Some types such as `ListValue` can not be passed around by default without moving (or cloning) the value:
+```cy
+var a = ListValue[int]{1, 2, 3}
+print computeSum(move a)    --> 6
+```
+In this case, the list value is moved into the `computeSum` function, so the list is deinitialized in the function before the function returns.
+
+### References.
+References are safe pointers to values.
+Unlike unsafe pointers, a reference is never concerned with when to free or deinitialize a value since that responsibility always belongs to the value's owner.
+They are considered safe pointers because they are guaranteed to point to their values and never outlive the lifetime of their values.
+
+References grant **stable mutability** which allows a value to be modified as long as it does not invalidate other references.
+**Multiple** references can be alive at once as long as an [exclusive reference](#exclusive-reference) is not also alive.
+
+The `&` operator is used to obtain a reference to a value:
+```cy
+var a = 123
+var ref = &a
+ref.* = 234
+print a        --> 234
+```
+
+A reference can not outlive the value it's referencing:
+```cy
+var a = 123
+var ref = &a
+if true:
+    var b = 234
+    ref = &b   --> error: `ref` can not oulive `b`.
+```
+
+A reference type is denoted as `&T` where `T` is the type that the reference points to:
+```cy
+var a = 123
+
+func inc(a &int):
+    a.* = a.* + 1
+```
+
+References allow stable mutation:
+```cy
+var a = ListValue[int]{1, 2, 3}
+var third = &a[2]
+third.* = 300
+print a        --> {1, 2, 300}
+```
+The element that `third` points to can be mutated because it does not invalidate other references.
+
+References however can not perform a unstable mutation.
+An unstable mutation requires an exclusive reference:
+```cy
+var a = ListValue[int]{1, 2, 3}
+var ref = &a
+ref.append(4)  --> error: Expected exclusive reference.
+```
+
+### Exclusive reference.
+An exclusive reference grants **full mutability** which allows a value to be modified even if could potentially invalidate unsafe pointers.
+
+A **single** exclusive reference can be alive as long as no other references are also alive.
+Since no other references (safe pointers) are allowed to be alive at the same time, no references can become invalidated.
+
+The `&!` operator is used to obtain an exclusive reference to a value.
+An exclusive reference type is denoted as `&!T` where `T` is the type that the reference points to.
+
+`ListValue` is an example of a type that requires an exclusive reference for operations that can resize or reallocate its dynamic buffer:
+```cy
+var a = ListValue[int]{1, 2, 3}
+a.append(4)
+print a        --> {1, 2, 3, 4}
+```
+Note that invoking the method `append` here automatically obtains an exclusive reference for `self` without an explicit `&!` operator.
+
+If another reference is alive before `append`, the compiler will not allow an exclusive reference to be obtained from `a`.
+Doing so would allow `append` to potentially reallocate its dynamic buffer, thereby invalidating other references:
+```cy
+var a = ListValue[int]{1, 2, 3}
+var third = &a[2]
+a.append(4)    --> error: Can not obtain exclusive reference, `third` is still alive.
+print third
+```
+
+### `self` reference.
+By default `self` has a type of `&T` when declared in a value type's method:
+```cy
+type Pair struct:
+    a int
+    b int
+
+    func sum(self) int:
+        return self.a + self.b
+```
+
+If `self` requires an exclusive reference, then it must be prepended with `!`:
+```cy
+type Pair struct:
+    a int
+    b int
+
+    func sum(!self) int:
+        return self.a + self.b
+```
+
+Invoking methods automatically obtains the correct reference as specified by the method:
+```cy
+var p = Pair{a=1, b=2}
+print p.sum()     --> 3
+```
+
+### Lifted values.
+> _Planned Feature_
+
+### Deferred references.
+> _Planned Feature_
+
+### Implicit lifetimes.
+> _Planned Feature_
+
+### Reference lifetimes.
+> _Planned Feature_
+
+### Shared ownership.
+> _Planned Feature_
+
+### Deinitializer.
+> _Planned Feature_
+
+### Pointer interop.
+> _Planned Feature_
+
+## Automatic memory.
+Cyber uses an ARC/GC hybrid to automatically manage objects instantiated from object types. Value types typically do not need to be automatically managed unless they were lifted by a [closure](#closures-1) or a dynamic container.
+
+### ARC.
+ARC also known as automatic reference counting is deterministic and has less overhead compared to a tracing garbage collector. Reference counting distributes memory management, which reduces GC pauses and makes ARC suitable for realtime applications. One common issue in ARC implementations is reference cycles which Cyber addresses with a [GC](#gc) supplement when it is required.
 
 Objects are managed by ARC. Each object has its own reference counter. Upon creating a new object, it receives a reference count of 1. When the object is copied, it's **retained** and the reference count increments by 1. When an object value is removed from it's parent or is no longer reachable in the current stack frame, it is **released** and the reference count decrements by 1.
 
@@ -3848,8 +4180,12 @@ If the destructor is invoked by the GC instead of ARC, cyclable child references
 Since objects freed by the GC either belongs to a reference cycle or branched from one, the GC will still end up invoking the destructor of all unreachable objects.
 This implies that the destructor order is not reliable, but destructors are guaranteed to be invoked for all unreachable objects.
 
-### Optimizations.
-The compiler can reduce the number of retain/release ops since it can infer value types even though they are dynamically typed to the user. Arguments passed to functions are only retained depending on the analysis from the callsite.
+### Retain optimizations.
+When the lifetime of an object's reference is known on the stack, a large amount of retain/release ops can be avoided.
+For example, calling a function with an object doesn't need a retain since it is guaranteed to be alive when the function returns.
+This leaves only cases where an object must retain to ensure correctness such as escaping the stack.
+
+When using dynamic types, the compiler can omit retain/release ops when it can infer the actual type even though they are dynamically typed to the user.
 
 ### Closures.
 When primitive variables are captured by a [closure](#closures), they are boxed and allocated on the heap. This means they are managed by ARC and cleaned up when there are no more references to them.
@@ -3857,17 +4193,18 @@ When primitive variables are captured by a [closure](#closures), they are boxed 
 ### Fibers.
 [Fibers](#fibers) are freed by ARC just like any other object. Once there are no references to the fiber, it begins to release it's child references by unwinding it's call stack.
 
-## Heap.
-Many object types in Cyber are small enough to be at or under 40 bytes. To take advantage of this, Cyber can reserve object pools to quickly allocate and free these small objects with very little bookkeeping. Bigger objects are allocated and managed by `mimalloc` which has proven to be a fast and reliable general-purpose heap allocator.
+### Heap objects.
+Many object types are small enough to be at or under 40 bytes. To take advantage of this, object pools are reserved to quickly allocate and free these small objects with very little bookkeeping. Bigger objects are allocated and managed by `mimalloc` which has proven to be a fast and reliable general-purpose heap allocator.
 
-### Weak references.
-> _Planned Feature_
+### GC.
+The garbage collector is only used if the program may contain objects that form reference cycles. This property is statically determined by the compiler. Since ARC frees most objects, the GC's only responsibility is to free abandoned objects that form reference cycles.
+This reduces the amount of work for GC marking since only cyclable objects (objects that may contain a reference cycle) are considered.
 
-### Cycle detection.
-The cycle detector is also considered a GC and frees abandoned objects managed by ARC. Although weak references can remove cycles altogether, Cyber does not force you to use them and provides a manual GC as a one-time catch all solution.
-> _Incomplete Feature: Only the main fiber stack is cleaned up at the moment._
+Weak references are not supported for object types because objects are intended to behave like GC objects (the user should not be concerned with reference cycles). If weak references do get supported in the future, they will be introduced as a `Weak[T]` type that is used with an explicit reference counted `Rc[T]` type.
 
-To invoke the GC, call the builtin function: `performGC`.
+Currently, the GC can be manually invoked. However, the plan is for this to be automatic by either running in a separate thread or per virtual thread by running the GC incrementally.
+
+To invoke the GC, call the builtin function: `performGC`. *Incomplete Feature: Only the main fiber stack is cleaned up at the moment.*
 ```cy
 func foo():
     -- Create a reference cycle.

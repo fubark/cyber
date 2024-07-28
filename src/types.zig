@@ -225,6 +225,12 @@ pub const SemaExt = struct {
         return @intCast(typeId);
     }
 
+    pub fn isRefType(s: *cy.Sema, id: cy.TypeId) bool {
+        const sym = s.getTypeSym(id);
+        const variant = sym.getVariant() orelse return false;
+        return variant.root_template == s.ref_tmpl;
+    }
+
     pub fn isPointerType(s: *cy.Sema, id: cy.TypeId) bool {
         const sym = s.getTypeSym(id);
         const variant = sym.getVariant() orelse return false;

@@ -826,6 +826,7 @@ pub const Parser = struct {
             .left_bracket,
             .star,
             .question,
+            .ampersand,
             .pound,
             .void_k,
             .type_k,
@@ -2758,9 +2759,19 @@ pub const Parser = struct {
             .star => {
                 self.advance();
                 const elem = (try self.parseTermExpr2Opt(.{ .parse_record_expr = false })) orelse {
-                    return self.reportError("Expected pointer child type.", &.{});
+                    return self.reportError("Expected right child.", &.{});
                 };
-                return try self.ast.newNodeErase(.expand_ptr, .{
+                return try self.ast.newNodeErase(.ptr, .{
+                    .elem = elem,
+                    .pos = self.tokenSrcPos(start),
+                });
+            },
+            .ampersand => {
+                self.advance();
+                const elem = (try self.parseTermExpr2Opt(.{ .parse_record_expr = true })) orelse {
+                    return self.reportError("Expected right child.", &.{});
+                };
+                return try self.ast.newNodeErase(.ref, .{
                     .elem = elem,
                     .pos = self.tokenSrcPos(start),
                 });
@@ -2914,7 +2925,17 @@ pub const Parser = struct {
                     const elem = (try self.parseTermExpr2Opt(.{ .parse_record_expr = false })) orelse {
                         return self.reportError("Expected pointer slice child type.", &.{});
                     };
-                    return try self.ast.newNodeErase(.pointer_slice, .{
+                    return try self.ast.newNodeErase(.ptr_slice, .{
+                        .elem = elem,
+                        .pos = self.tokenSrcPos(start),
+                    });
+                } else if (next_tag == .right_bracket) {
+                    self.advance();
+                    self.advance();
+                    const elem = (try self.parseTermExpr2Opt(.{ .parse_record_expr = false })) orelse {
+                        return self.reportError("Expected reference slice child type.", &.{});
+                    };
+                    return try self.ast.newNodeErase(.ref_slice, .{
                         .elem = elem,
                         .pos = self.tokenSrcPos(start),
                     });
@@ -2940,14 +2961,6 @@ pub const Parser = struct {
             },
             .left_brace => {
                 return @ptrCast(try self.parseInitLiteral());
-            },
-            .ampersand => {
-                self.advance();
-                const child = try self.parseTermExpr2(.{});
-                return self.ast.newNodeErase(.unary_expr, .{
-                    .child = child,
-                    .op = .address_of,
-                });
             },
             .minus => {
                 self.advance();
@@ -3102,13 +3115,11 @@ pub const Parser = struct {
             .dot_dot => {
                 // Start omitted.
                 self.advance();
-                const end = (try self.parseExpr(.{})) orelse {
-                    return self.reportError("Expected range end.", &.{});
-                };
+                const opt_end = try self.parseExpr(.{});
 
                 return self.ast.newNodeErase(.range, .{
                     .start = null,
-                    .end = end,
+                    .end = opt_end,
                     .inc = true,
                     .pos = self.tokenSrcPos(start),
                 });

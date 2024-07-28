@@ -51,6 +51,8 @@ func ptrcast(#D type, val #S) *D:
 --| Queues a callback function as an async task.
 @host func queueTask(fn any) void
 
+@host func refcast(#T type, ptr *T) &T
+
 --| Converts a rune to a string.
 @host func runestr(val int) String
 
@@ -179,7 +181,33 @@ type float #float64_t:
 
 @host type type _
 
+-- @host type ListValue[T type] struct:
+--     @host func $index(self, idx int) &T
+
+--     func $index(self, range Range) []T:
+--         return self.indexRange(([]T).id(), range)
+
+--     @host func indexRange(self, slice_t int, range Range) RefSlice(self, []T)
+
+--     --| Appends a value to the end of the list.
+--     @host func append(self, val T) void
+
+--     --| Appends the elements of another list to the end of this list.
+--     @host func appendList(self, o ListValue[T]) void
+
+--     --| Appends the elements of another list to the end of this list.
+--     @host func appendSlice(self, slice []T) void
+
+--     --| Inserts a value at index `idx`.
+--     @host func insert(self, idx int, val T) void
+
+--     --| Returns a new iterator over the list elements.
+--     func iterator(self) ListIterator[T]:
+--         return self.iterator_((ListIterator[T]).id())
+
 @host type List[T type] _:
+    -- val ListValue[T]
+
     @host func $index(self, idx int) T
 
     @host='List.$indexRange'
@@ -528,7 +556,61 @@ func FutureResolver.new(#T type) FutureResolver[T]:
 
 @host -func FutureResolver.new_(#T type, future_t int, ret_t int) FutureResolver[T]
 
-type Slice[T type] struct:
+type Ref[T type] #int64_t
+
+type RefSlice[T type] struct:
+    ptr *T
+    n   int
+
+    func $index(self, idx int) &T:
+        return refcast(T, self.ptr[idx])
+
+    func $index(self, range Range) []T:
+        var ptr_slice = self.ptr[range.start..range.end]
+        return .{ ptr=ptr_slice.ptr, n=ptr_slice.n }
+
+    func $setIndex(self, idx int, val T) void:
+        self.ptr[idx] = val
+
+    -- --| Returns whether the array ends with `suffix`.
+    -- @host func endsWith(self, suffix []T) bool
+
+    -- --| Returns the first index of `needle` in the slice or `none` if not found.
+    -- @host func find(self, needle []T) ?int
+
+    -- --| Returns the first index of any `bytes` in `set` or `none` if not found.
+    -- @host func findAny(self, set []T) ?int
+
+    -- --| Returns the first index of `needle` in the slice or `none` if not found.
+    -- @host func findScalar(self, needle T) ?int
+
+    func iterator(self) RefSliceIterator[T]:
+        return RefSliceIterator[T]{slice=self, next_idx=0}
+
+    func len(self) int:
+        return self.n
+
+    -- --| Returns a list of arrays split at occurrences of `sep`.
+    -- @host func split(self, sep []T) List[Array]
+
+    -- --| Returns whether the array starts with `prefix`.
+    -- @host func startsWith(self, prefix []T) bool
+
+    -- --| Returns a slice with ends trimmed from `delims`. `mode` can be .left, .right, or .ends.
+    -- @host func trim(self, mode symbol, delims []T) []T
+
+type RefSliceIterator[T type]:
+    slice    []T
+    next_idx int
+
+    func next(self) ?T:
+        if self.next_idx >= self.slice.len():
+            return none
+        var res = self.slice[self.next_idx]
+        self.next_idx += 1
+        return res
+
+type PtrSlice[T type] struct:
     ptr *T
     n   int
 
@@ -541,8 +623,59 @@ type Slice[T type] struct:
     func $setIndex(self, idx int, val T) void:
         self.ptr[idx] = val
 
+    --| Returns whether the array ends with `suffix`.
+    func endsWith(self, suffix [*]T) bool:
+        if suffix.len() > self.len():
+            return false
+        for self[self.len()-suffix.len()..] -> elem, i:
+            if elem != suffix[i]:
+                return false
+        return true
+
+    -- --| Returns the first index of `needle` in the slice or `none` if not found.
+    -- @host func find(self, needle [*]T) ?int
+
+    -- --| Returns the first index of any `bytes` in `set` or `none` if not found.
+    -- @host func findAny(self, set [*]T) ?int
+
+    --| Returns the first index of `needle` in the slice or `none` if not found.
+    func findScalar(self, needle T) ?int:
+        for self -> elem, i:
+            if elem == needle: return i
+        return none
+
+    func iterator(self) PtrSliceIterator[T]:
+        return PtrSliceIterator[T]{slice=self, next_idx=0}
+
     func len(self) int:
         return self.n
+
+    -- TODO: Consider returning iterator instead.
+    -- --| Returns a list of arrays split at occurrences of `sep`.
+    -- @host func split(self, sep [*]T) List[Array]
+
+    --| Returns whether the array starts with `prefix`.
+    func startsWith(self, prefix [*]T) bool:
+        if prefix.len() > self.len():
+            return false
+        for self[..prefix.len()] -> elem, i:
+            if elem != prefix[i]:
+                return false
+        return true
+
+    -- --| Returns a slice with ends trimmed from `delims`. `mode` can be .left, .right, or .ends.
+    -- @host func trim(self, mode symbol, delims [*]T) [*]T
+
+type PtrSliceIterator[T type]:
+    slice    [*]T
+    next_idx int
+
+    func next(self) ?T:
+        if self.next_idx >= self.slice.len():
+            return none
+        var res = self.slice[self.next_idx]
+        self.next_idx += 1
+        return res
 
 type IMemory trait:
     func alloc(self, len int) [*]byte

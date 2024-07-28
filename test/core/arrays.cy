@@ -3,6 +3,7 @@ use t 'test'
 -- TODO: Some of these tests should be moved to ref/ptr slices.
 
 var arr = [3]int{1, 2, 3}
+t.eqSlice(&arr, &[3]int{1, 2, 3})
 
 -- index operator
 t.eq(try arr[-1], error.OutOfBounds)

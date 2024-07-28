@@ -389,15 +389,24 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
             {
                 const iterable_n: *ast.Node = @ptrCast(stmt.iterable);
                 const iterable_init = try c.semaExprCstr(stmt.iterable, bt.Dyn);
-                const iterable_v = try declareLocalNameInit(c, "$iterable", bt.Dyn, iterable_init, iterable_n);
+                const iterable_v = try declareHiddenLocal(c, "$iterable", bt.Dyn, iterable_init, iterable_n);
                 const iterable = try semaLocal(c, iterable_v.id, node);
 
                 const iterator_init = try c.semaCallObjSym0(iterable.irIdx, "iterator", iterable_n);
-                const iterator_v = try declareLocalNameInit(c, "$iterator", bt.Dyn, iterator_init, iterable_n);
+                const iterator_v = try declareHiddenLocal(c, "$iterator", bt.Dyn, iterator_init, iterable_n);
                 const iterator = try semaLocal(c, iterator_v.id, node);
 
                 const counter_init = try c.semaInt(-1, node);
-                _ = try declareLocalNameInit(c, "$counter", bt.Integer, counter_init, node);
+                const counterv = try declareHiddenLocal(c, "$counter", bt.Integer, counter_init, node);
+
+                const ClosureData = struct {
+                    stmt: *ast.ForIterStmt,
+                    counterv: LocalResult,
+                };
+                var closure_data = ClosureData{
+                    .stmt = stmt,
+                    .counterv = counterv,
+                };
 
                 // Loop block.
                 const loop_stmt = try c.ir.pushEmptyStmt(c.alloc, .loopStmt, node);
@@ -405,37 +414,38 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
                 {
                     // if $iterator.next() -> each, i
                     const S = struct {
-                        fn body(c_: *cy.Chunk, data: *anyopaque) !void {
-                            const stmt_: *ast.ForIterStmt = @ptrCast(@alignCast(data));
-                            if (stmt_.count) |count| {
+                        fn body(c_: *cy.Chunk, data_: *anyopaque) !void {
+                            const data: *ClosureData = @ptrCast(@alignCast(data_));
+                            if (data.stmt.count) |count| {
                                 // $counter += 1
                                 const int_t = c_.sema.getTypeSym(bt.Integer);
-                                const sym = try c_.mustFindSym(int_t, "$infix+", @ptrCast(stmt_));
-                                const func_sym = try requireFuncSym(c_, sym, @ptrCast(stmt_));
-                                const one = try c_.semaInt(1, @ptrCast(stmt_));
-                                const res = try getOrLookupVar(c_, "$counter", @ptrCast(stmt_));
-                                const counter_ = try semaLocal(c_, res.local, @ptrCast(stmt_));
-                                const right = try c_.semaCallFuncSymRec2(func_sym, @ptrCast(stmt_), counter_, 
-                                    &.{one}, &.{ @ptrCast(stmt_) }, .any, @ptrCast(stmt_));
-                                const irStart = try c_.ir.pushEmptyStmt(c_.alloc, .setLocal, @ptrCast(stmt_));
-                                const counter_info = c_.varStack.items[res.local].inner.local;
+                                const sym = try c_.mustFindSym(int_t, "$infix+", @ptrCast(data.stmt));
+                                const func_sym = try requireFuncSym(c_, sym, @ptrCast(data.stmt));
+                                const one = try c_.semaInt(1, @ptrCast(data.stmt));
+
+                                const counter_ = try semaLocal(c_, data.counterv.id, @ptrCast(data.stmt));
+                                const right = try c_.semaCallFuncSymRec2(func_sym, @ptrCast(data.stmt), counter_, 
+                                    &.{one}, &.{ @ptrCast(data.stmt) }, .any, @ptrCast(data.stmt));
+                                const irStart = try c_.ir.pushEmptyStmt(c_.alloc, .setLocal, @ptrCast(data.stmt));
+                                const info = c_.varStack.items[data.counterv.id].inner.local;
                                 c_.ir.setStmtData(irStart, .setLocal, .{ .local = .{
-                                    .id = counter_info.id,
+                                    .id = info.id,
                                     .right = right.irIdx,
                                 }});
 
                                 // $count = $counter
                                 const count_name = c_.ast.nodeString(count);
-                                _ = try declareLocalNameInit(c_, count_name, bt.Integer, counter_, @ptrCast(stmt_));
+                                _ = try declareLocalInit(c_, count_name, bt.Integer, counter_, @ptrCast(data.stmt));
                             }
 
-                            try semaStmts(c_, stmt_.stmts);
-                            _ = try c_.ir.pushStmt(c_.alloc, .contStmt, @ptrCast(stmt_), {});
+                            try semaStmts(c_, data.stmt.stmts);
+                            _ = try c_.ir.pushStmt(c_.alloc, .contStmt, @ptrCast(data.stmt), {});
                         }
                     }; 
                     const next = try c.semaCallObjSym0(iterator.irIdx, "next", node);
                     const opt = try c.semaOptionExpr2(next, node);
-                    try semaIfUnwrapStmt2(c, opt, node, stmt.each, S.body, stmt, &.{}, @ptrCast(stmt));
+
+                    try semaIfUnwrapStmt2(c, opt, node, stmt.each, S.body, &closure_data, &.{}, @ptrCast(stmt));
                 }
                 const block = try popLoopBlock(c);
                 c.ir.setStmtData(loop_stmt, .loopStmt, .{
@@ -664,7 +674,7 @@ fn semaIfUnwrapStmt2(c: *cy.Chunk, opt: ExprResult, opt_n: *ast.Node, opt_unwrap
     try pushBlock(c, @ptrCast(node));
     {
         // $opt = <opt>
-        const opt_v = try declareLocalNameInit(c, "$opt", opt.type.toDeclType(), opt, opt_n);
+        const opt_v = try declareHiddenLocal(c, "$opt", opt.type.toDeclType(), opt, opt_n);
         const get_opt = try semaLocal(c, opt_v.id, opt_n);
 
         // if !isNone($opt)
@@ -689,7 +699,7 @@ fn semaIfUnwrapStmt2(c: *cy.Chunk, opt: ExprResult, opt_n: *ast.Node, opt_unwrap
                     return c.reportErrorFmt("Unsupported unwrap declaration: {}", &.{v(unwrap.type())}, unwrap);
                 }
                 const unwrap_init = try semaAccessEnumPayload(c, get_opt, "some", unwrap);
-                const unwrap_v = try declareLocalNameInit(c, unwrap_name, unwrap_t, unwrap_init, unwrap);
+                const unwrap_v = try declareLocalInit(c, unwrap_name, unwrap_t, unwrap_init, unwrap);
                 const unwrap_local = try semaLocal(c, unwrap_v.id, unwrap);
 
                 if (unwrap.type() == .seqDestructure) {
@@ -702,7 +712,7 @@ fn semaIfUnwrapStmt2(c: *cy.Chunk, opt: ExprResult, opt_n: *ast.Node, opt_unwrap
                         });
                         index.type.id = bt.Any;
                         const dvar_init = try semaIndexExpr2(c, unwrap_local, unwrap, index, unwrap, unwrap);
-                        _ = try declareLocalNameInit(c, name, bt.Dyn, dvar_init, unwrap);
+                        _ = try declareLocalInit(c, name, bt.Dyn, dvar_init, unwrap);
                     }
                 }
             }
@@ -1096,7 +1106,8 @@ fn semaIndexExpr(c: *cy.Chunk, left: *ast.Node, left_res: ExprResult, expr: Expr
         left, left_res,
         array.args, expr.getRetCstr(), expr.node);
 
-    if (!expr.use_addressable and c.sema.isPointerType(res.type.id) and expr.target_t != res.type.id) {
+    const ptr_or_ref = c.sema.isPointerType(res.type.id) or c.sema.isRefType(res.type.id);
+    if (!expr.use_addressable and ptr_or_ref and expr.target_t != res.type.id) {
         const child_t = c.sema.getPointerChildType(res.type.id);
         const loc = try c.ir.pushExpr(.deref, c.alloc, child_t, expr.node, .{
             .expr = res.irIdx,
@@ -2765,8 +2776,8 @@ const LocalResult = struct {
     ir_id: u32,
 };
 
-fn declareLocalNameInit(c: *cy.Chunk, name: []const u8, decl_t: cy.TypeId, init: ExprResult, node: *ast.Node) !LocalResult {
-    const var_id = try declareLocalName(c, name, decl_t, true, node);
+fn declareLocalInit(c: *cy.Chunk, name: []const u8, decl_t: cy.TypeId, init: ExprResult, node: *ast.Node) !LocalResult {
+    const var_id = try declareLocalName(c, name, decl_t, false, true, node);
     const info = c.varStack.items[var_id].inner.local;
     var data = c.ir.getStmtDataPtr(info.declIrStart, .declareLocalInit);
     data.init = init.irIdx;
@@ -2774,33 +2785,40 @@ fn declareLocalNameInit(c: *cy.Chunk, name: []const u8, decl_t: cy.TypeId, init:
     return .{ .id = var_id, .ir_id = info.declIrStart };
 }
 
-fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, hasInit: bool, node: *ast.Node) !LocalVarId {
-    const proc = c.proc();
-    if (proc.nameToVar.get(name)) |varInfo| {
-        if (varInfo.blockId == c.semaBlocks.items.len - 1) {
-            const svar = &c.varStack.items[varInfo.varId];
-            if (svar.isParentLocalAlias()) {
-                return c.reportErrorFmt("`{}` already references a parent local variable.", &.{v(name)}, node);
-            } else if (svar.type == .staticAlias) {
-                return c.reportErrorFmt("`{}` already references a static variable.", &.{v(name)}, node);
+fn declareHiddenLocal(c: *cy.Chunk, name: []const u8, decl_t: cy.TypeId, init: ExprResult, node: *ast.Node) !LocalResult {
+    const var_id = try declareLocalName(c, name, decl_t, true, true, node);
+    const info = c.varStack.items[var_id].inner.local;
+    var data = c.ir.getStmtDataPtr(info.declIrStart, .declareLocalInit);
+    data.init = init.irIdx;
+    data.initType = CompactType.init(decl_t);
+    return .{ .id = var_id, .ir_id = info.declIrStart };
+}
+
+fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, hidden: bool, hasInit: bool, node: *ast.Node) !LocalVarId {
+    if (!hidden) {
+        const proc = c.proc();
+        if (proc.nameToVar.get(name)) |varInfo| {
+            if (varInfo.blockId == c.semaBlocks.items.len - 1) {
+                const svar = &c.varStack.items[varInfo.varId];
+                if (svar.isParentLocalAlias()) {
+                    return c.reportErrorFmt("`{}` already references a parent local variable.", &.{v(name)}, node);
+                } else if (svar.type == .staticAlias) {
+                    return c.reportErrorFmt("`{}` already references a static variable.", &.{v(name)}, node);
+                } else {
+                    return c.reportErrorFmt("Variable `{}` is already declared in the block.", &.{v(name)}, node);
+                }
             } else {
-                return c.reportErrorFmt("Variable `{}` is already declared in the block.", &.{v(name)}, node);
+                // Create shadow entry for restoring the prev var.
+                try c.varShadowStack.append(c.alloc, .{
+                    .namePtr = name.ptr,
+                    .nameLen = @intCast(name.len),
+                    .varId = varInfo.varId,
+                    .blockId = varInfo.blockId,
+                });
             }
-        } else {
-            // Create shadow entry for restoring the prev var.
-            try c.varShadowStack.append(c.alloc, .{
-                .namePtr = name.ptr,
-                .nameLen = @intCast(name.len),
-                .varId = varInfo.varId,
-                .blockId = varInfo.blockId,
-            });
         }
     }
 
-    return try declareLocalName2(c, name, declType, false, hasInit, node);
-}
-
-fn declareLocalName2(c: *cy.Chunk, name: []const u8, declType: TypeId, hidden: bool, hasInit: bool, node: *ast.Node) !LocalVarId {
     const id = try pushLocalVar(c, .local, name, declType, hidden);
     var svar = &c.varStack.items[id];
 
@@ -2848,7 +2866,7 @@ fn declareLocalName2(c: *cy.Chunk, name: []const u8, declType: TypeId, hidden: b
 
 fn declareLocal(c: *cy.Chunk, ident: *ast.Node, declType: TypeId, hasInit: bool) !LocalVarId {
     const name = c.ast.nodeString(ident);
-    return declareLocalName(c, name, declType, hasInit, ident);
+    return declareLocalName(c, name, declType, false, hasInit, ident);
 }
 
 fn localDecl(c: *cy.Chunk, node: *ast.VarDecl) !void {
@@ -3586,17 +3604,25 @@ pub fn resolveSym(c: *cy.Chunk, expr: *ast.Node) anyerror!*cy.Sym {
             return error.TODO;
             // return try cte.expandTemplateOnCallExpr(c, expr.cast(.callExpr));
         },
-        .pointer_slice => {
-            const pointer_slice = expr.cast(.pointer_slice);
-            return try cte.expandTemplateOnCallArgs(c, c.sema.slice_tmpl, &.{ pointer_slice.elem }, expr);
+        .ptr_slice => {
+            const ptr_slice = expr.cast(.ptr_slice);
+            return try cte.expandTemplateOnCallArgs(c, c.sema.ptr_slice_tmpl, &.{ ptr_slice.elem }, expr);
         },
         .expandOpt => {
             const expand_opt = expr.cast(.expandOpt);
             return try cte.expandTemplateOnCallArgs(c, c.sema.option_tmpl, &.{expand_opt.param}, expr);
         },
-        .expand_ptr => {
-            const expand_ptr = expr.cast(.expand_ptr);
-            return try cte.expandTemplateOnCallArgs(c, c.sema.pointer_tmpl, &.{ expand_ptr.elem }, expr);
+        .ptr => {
+            const ptr = expr.cast(.ptr);
+            return try cte.expandTemplateOnCallArgs(c, c.sema.pointer_tmpl, &.{ ptr.elem }, expr);
+        },
+        .ref => {
+            const ref = expr.cast(.ref);
+            return try cte.expandTemplateOnCallArgs(c, c.sema.ref_tmpl, &.{ ref.elem }, expr);
+        },
+        .ref_slice => {
+            const ref_slice = expr.cast(.ref_slice);
+            return try cte.expandTemplateOnCallArgs(c, c.sema.ref_slice_tmpl, &.{ ref_slice.elem }, expr);
         },
         else => {
             return c.reportErrorFmt("Unsupported symbol expr: `{}`", &.{v(expr.type())}, expr);
@@ -4478,7 +4504,7 @@ fn semaSwitchExpr(c: *cy.Chunk, block: *ast.SwitchBlock, target: SemaExprOptions
 /// The choice tag is then used for the switch expr.
 /// Choice payload is copied to case blocks that have a capture param.
 fn semaSwitchChoicePrologue(c: *cy.Chunk, info: *SwitchInfo, expr: ExprResult, exprId: *ast.Node) !u32 {
-    const choiceVarId = try declareLocalName2(c, "choice", expr.type.id, true, true, exprId);
+    const choiceVarId = try declareLocalName(c, "choice", expr.type.id, true, true, exprId);
     const choiceVar = &c.varStack.items[choiceVarId];
     info.choiceIrVarId = choiceVar.inner.local.id;
     const declareLoc = choiceVar.inner.local.declIrStart;
@@ -5140,9 +5166,9 @@ pub const ChunkExt = struct {
                 const ctype = CompactType.init(sym.getStaticType().?);
                 return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = sym });
             },
-            .expand_ptr => {
-                const expand_ptr = node.cast(.expand_ptr);
-                const sym = try cte.expandTemplateOnCallArgs(c, c.sema.pointer_tmpl, &.{ expand_ptr.elem }, node);
+            .ptr => {
+                const ptr = node.cast(.ptr);
+                const sym = try cte.expandTemplateOnCallArgs(c, c.sema.pointer_tmpl, &.{ ptr.elem }, node);
                 const ctype = CompactType.init(sym.getStaticType().?);
                 return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = sym });
             },
@@ -5516,14 +5542,14 @@ pub const ChunkExt = struct {
             .callExpr => {
                 return c.semaCallExpr(expr);
             },
-            .pointer_slice => {
-                const sym = try cte.expandTemplateOnCallArgs(c, c.sema.slice_tmpl, &.{node.cast(.pointer_slice).elem}, node);
+            .ptr_slice => {
+                const sym = try cte.expandTemplateOnCallArgs(c, c.sema.ptr_slice_tmpl, &.{node.cast(.ptr_slice).elem}, node);
                 const type_id = sym.getStaticType().?;
                 const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, bt.MetaType, node, .{ .typeId = type_id });
                 return ExprResult.init(irIdx, CompactType.init(bt.MetaType));
             },
-            .expand_ptr => {
-                const sym = try cte.expandTemplateOnCallArgs(c, c.sema.pointer_tmpl, &.{node.cast(.expand_ptr).elem}, node);
+            .ref_slice => {
+                const sym = try cte.expandTemplateOnCallArgs(c, c.sema.ref_slice_tmpl, &.{node.cast(.ref_slice).elem}, node);
                 const type_id = sym.getStaticType().?;
                 const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, bt.MetaType, node, .{ .typeId = type_id });
                 return ExprResult.init(irIdx, CompactType.init(bt.MetaType));
@@ -5615,6 +5641,12 @@ pub const ChunkExt = struct {
             },
             .unary_expr => {
                 return try c.semaUnExpr(expr);
+            },
+            .ref => {
+                return try c.semaRefOf(expr);
+            },
+            .ptr => {
+                return try c.semaPtrOf(expr);
             },
             .deref => {
                 const deref = node.cast(.deref);
@@ -6103,6 +6135,73 @@ pub const ChunkExt = struct {
         return ExprResult.initDynamic(loc, bt.Any);
     }
 
+    pub fn semaRefOf(c: *cy.Chunk, expr: Expr) !ExprResult {
+        const node = expr.node.cast(.ref);
+        const child = try c.semaExpr(node.elem, .{ .prefer_addressable = true });
+        const child_type = c.sema.getTypeSym(child.type.id);
+        if (child_type.type == .array_t) {
+            if (child.resType == .local) {
+                try ensureLiftedVar(c, child.data.local);
+            }
+
+            // Declare array in same block to extend lifetime.
+            const tempv = try declareHiddenLocal(c, "$temp", child.type.id, child, node.elem);
+            const temp = try semaLocal(c, tempv.id, node.elem);
+            return semaArrayRefSlice(c, temp, expr.node);
+        }
+
+        if (!child.addressable) {
+            return c.reportError("Expected an addressable expression.", expr.node);
+        }
+        if (child.resType == .local) {
+            try ensureLiftedVar(c, child.data.local);
+        }
+
+        const ref_t = try getRefType(c, child.type.id);
+        const irIdx = try c.ir.pushExpr(.address_of, c.alloc, ref_t, expr.node, .{
+            .expr = child.irIdx,
+        });
+        return ExprResult.initStatic(irIdx, ref_t);
+    }
+
+    pub fn semaArrayRefSlice(c: *cy.Chunk, arr: ExprResult, node: *ast.Node) !ExprResult{
+        const array_t = c.sema.getTypeSym(arr.type.id).cast(.array_t);
+        const elem_t = array_t.elem_t;
+        const slice_t = try getRefSliceType(c, elem_t);
+        const ptr_t = try getPointerType(c, elem_t);
+
+        var b: ObjectBuilder = .{ .c = c };
+        try b.begin(slice_t, 2, node);
+        var loc = try c.ir.pushExpr(.address_of, c.alloc, ptr_t, node, .{
+            .expr = arr.irIdx,
+        });
+        b.pushArg(ExprResult.initStatic(loc, ptr_t));
+
+        const len = try semaInt(c, @intCast(array_t.n), node);
+        b.pushArg(len);
+        loc = b.end();
+
+        return ExprResult.initStatic(loc, slice_t);
+    }
+
+    pub fn semaPtrOf(c: *cy.Chunk, expr: Expr) !ExprResult {
+        const node = expr.node.cast(.ptr);
+        const child = try c.semaExpr(node.elem, .{ .prefer_addressable = true });
+        if (!child.addressable) {
+            return c.reportError("Expected an addressable expression.", expr.node);
+        }
+
+        if (child.resType == .local) {
+            try ensureLiftedVar(c, child.data.local);
+        }
+
+        const ptr_t = try getPointerType(c, child.type.id);
+        const irIdx = try c.ir.pushExpr(.address_of, c.alloc, ptr_t, expr.node, .{
+            .expr = child.irIdx,
+        });
+        return ExprResult.initStatic(irIdx, ptr_t);
+    }
+
     pub fn semaUnExpr(c: *cy.Chunk, expr: Expr) !ExprResult {
         const node = expr.node.cast(.unary_expr);
 
@@ -6135,22 +6234,6 @@ pub const ChunkExt = struct {
                     .expr = child.irIdx,
                 }});
                 return ExprResult.initStatic(loc, bt.Boolean);
-            },
-            .address_of => {
-                const child = try c.semaExpr(node.child, .{ .prefer_addressable = true });
-                if (!child.addressable) {
-                    return c.reportError("Expected an addressable expression.", expr.node);
-                }
-
-                if (child.resType == .local) {
-                    try ensureLiftedVar(c, child.data.local);
-                }
-
-                const ptr_t = try getPointerType(c, child.type.id);
-                const irIdx = try c.ir.pushExpr(.address_of, c.alloc, ptr_t, expr.node, .{
-                    .expr = child.irIdx,
-                });
-                return ExprResult.initStatic(irIdx, ptr_t);
             },
             .bitwiseNot => {
                 const child = try c.semaExprTarget(node.child, expr.target_t);
@@ -6324,7 +6407,7 @@ fn semaWithInitPairs(c: *cy.Chunk, type_sym: *cy.Sym, type_id: cy.TypeId, init_n
     try pushBlock(c, node);
     {
         // create temp with object.
-        const var_id = try declareLocalName(c, "$temp", type_id, true, node);
+        const var_id = try declareLocalName(c, "$temp", type_id, true, true, node);
         const temp_ir_id = c.varStack.items[var_id].inner.local.id;
         const temp_ir = c.varStack.items[var_id].inner.local.declIrStart;
         const decl_stmt = c.ir.getStmtDataPtr(temp_ir, .declareLocalInit);
@@ -6672,9 +6755,11 @@ pub const Sema = struct {
     funcSigMap: std.HashMapUnmanaged(FuncSigKey, FuncSigId, FuncSigKeyContext, 80),
 
     future_tmpl: *cy.sym.Template,
-    slice_tmpl: *cy.sym.Template,
+    ref_slice_tmpl: *cy.sym.Template,
+    ptr_slice_tmpl: *cy.sym.Template,
     option_tmpl: *cy.sym.Template,
     pointer_tmpl: *cy.sym.Template,
+    ref_tmpl: *cy.sym.Template,
     list_tmpl: *cy.sym.Template,
     table_type: *cy.sym.ObjectType,
     array_tmpl: *cy.sym.Template,
@@ -6684,9 +6769,11 @@ pub const Sema = struct {
             .alloc = alloc,
             .compiler = compiler,
             .future_tmpl = undefined,
-            .slice_tmpl = undefined,
+            .ref_slice_tmpl = undefined,
+            .ptr_slice_tmpl = undefined,
             .option_tmpl = undefined,
             .pointer_tmpl = undefined,
+            .ref_tmpl = undefined,
             .list_tmpl = undefined,
             .table_type = undefined,
             .array_tmpl = undefined,
@@ -7146,5 +7233,19 @@ pub fn getPointerType(c: *cy.Chunk, elem_t: cy.TypeId) !cy.TypeId {
     const arg = try c.vm.allocType(elem_t);
     defer c.vm.release(arg);
     const sym = try cte.expandTemplate(c, c.sema.pointer_tmpl, &.{ arg });
+    return sym.getStaticType().?;
+}
+
+pub fn getRefType(c: *cy.Chunk, elem_t: cy.TypeId) !cy.TypeId {
+    const arg = try c.vm.allocType(elem_t);
+    defer c.vm.release(arg);
+    const sym = try cte.expandTemplate(c, c.sema.ref_tmpl, &.{ arg });
+    return sym.getStaticType().?;
+}
+
+pub fn getRefSliceType(c: *cy.Chunk, elem_t: cy.TypeId) !cy.TypeId {
+    const arg = try c.vm.allocType(elem_t);
+    defer c.vm.release(arg);
+    const sym = try cte.expandTemplate(c, c.sema.ref_slice_tmpl, &.{ arg });
     return sym.getStaticType().?;
 }

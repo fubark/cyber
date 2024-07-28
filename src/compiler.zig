@@ -956,9 +956,11 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                 self.sema.option_tmpl = core.getSym("Option").?.cast(.template);
                 self.sema.array_tmpl = core.getSym("Array").?.cast(.template);
                 self.sema.pointer_tmpl = core.getSym("pointer").?.cast(.template);
+                self.sema.ref_tmpl = core.getSym("Ref").?.cast(.template);
                 self.sema.list_tmpl = core.getSym("List").?.cast(.template);
                 self.sema.table_type = core.getSym("Table").?.cast(.object_t);
-                self.sema.slice_tmpl = core.getSym("Slice").?.cast(.template);
+                self.sema.ptr_slice_tmpl = core.getSym("PtrSlice").?.cast(.template);
+                self.sema.ref_slice_tmpl = core.getSym("RefSlice").?.cast(.template);
             }
             if (chunk != self.main_chunk) {
                 // Check for illegal top level statements.

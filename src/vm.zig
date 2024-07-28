@@ -1671,6 +1671,11 @@ pub const VM = struct {
 
 fn evalCompareBool(left: Value, right: Value) bool {
     switch (left.getTypeId()) {
+        bt.Integer => {
+            if (right.getTypeId() == bt.Integer) {
+                return left.castHeapObject(*cy.heap.Int).val == right.castHeapObject(*cy.heap.Int).val;
+            }
+        },
         bt.String => {
             if (right.getTypeId() == bt.String) {
                 const lstr = left.asString();

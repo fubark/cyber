@@ -841,12 +841,12 @@ list.remove(1)
 
 Since `List` is a generic type, an explicit List type can be attached to the initializer:
 ```cy
-var a = List[int].[1, 2, 3]
+var a = List[int]{1, 2, 3}
 ```
 
 When the intializer is only prefixed with a dot, it will infer the List type constraint:
 ```cy
-var a List[int] = .[1, 2, 3]
+var a List[int] = .{1, 2, 3}
 ```
 
 ## Tuples.
@@ -1665,7 +1665,7 @@ When runtime memory checks are enabled, pointers will occupy an extra word size 
 
 A pointer can be created with an explicit address using `pointer`.
 ```cy
-var ptr = pointer(*void, 0xDEADBEEF)
+var ptr = pointer(void, 0xDEADBEEF)
 print ptr.value()     --'3735928559'
 ```
 
@@ -1711,7 +1711,7 @@ Slices are pointers with a length field. They are denoted as `[]T` where T is th
 
 A slice can be created by taking the address of an array: *Planned feature*
 ```cy
-var arr = [_]int.[1, 2, 3]
+var arr = [_]int{1, 2, 3}
 var s = &arr
 ```
 

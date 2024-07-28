@@ -14,7 +14,6 @@ pub const NodeType = enum(u7) {
     all,
     array_lit,
     array_expr,
-    array_init,
     assignStmt,
     attribute,
     await_expr,
@@ -37,8 +36,7 @@ pub const NodeType = enum(u7) {
     decLit,
     deref,
     distinct_decl,
-    dot_array_lit,
-    dot_record_lit,
+    dot_init_lit,
     dot_lit,
     else_block,
     enumDecl,
@@ -62,6 +60,8 @@ pub const NodeType = enum(u7) {
     if_unwrap_stmt,
     impl_with,
     import_stmt,
+    init_expr,
+    init_lit,
     keyValue,
     label_decl,
     lambda_expr, 
@@ -77,8 +77,6 @@ pub const NodeType = enum(u7) {
     passStmt,
     range,
     raw_string_lit,
-    recordLit,
-    record_expr,
     returnExprStmt,
     returnStmt,
     root,
@@ -307,13 +305,8 @@ pub const ArrayLit = struct {
     pos: u32,
 };
 
-pub const DotArrayLit = struct {
-    array: *ArrayLit align(8),
-    pos: u32,
-};
-
-pub const DotRecordLit = struct {
-    record: *RecordLit align(8),
+pub const DotInitLit = struct {
+    init: *InitLit align(8),
     pos: u32,
 };
 
@@ -322,18 +315,14 @@ const ArrayExpr = struct {
     args: []*Node,
 };
 
-const ArrayInit = struct {
+const InitExpr = struct {
     left: *Node align(8),
-    args: []*Node,
+    init: *InitLit,
 };
 
-const RecordExpr = struct {
-    left: *Node align(8),
-    record: *RecordLit,
-};
-
-pub const RecordLit = struct {
-    args: []*KeyValue align(8),
+pub const InitLit = struct {
+    // KeyValue or Expr.
+    args: []*Node align(8),
     pos: u32,
 };
 
@@ -581,7 +570,6 @@ fn NodeData(comptime node_t: NodeType) type {
         .all            => Token,
         .array_lit      => ArrayLit,
         .array_expr     => ArrayExpr,
-        .array_init     => ArrayInit,
         .assignStmt     => AssignStmt,
         .attribute      => Attribute,
         .await_expr     => AwaitExpr,
@@ -604,8 +592,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .decLit         => Span,
         .deref          => DerefExpr,
         .distinct_decl  => DistinctDecl,
-        .dot_array_lit  => DotArrayLit,
-        .dot_record_lit => DotRecordLit,
+        .dot_init_lit   => DotInitLit,
         .dot_lit        => Span,
         .else_block     => ElseBlock,
         .enumDecl       => EnumDecl,
@@ -629,6 +616,8 @@ fn NodeData(comptime node_t: NodeType) type {
         .if_unwrap_stmt => IfUnwrapStmt,
         .impl_with      => ImplWith,
         .import_stmt    => ImportStmt,
+        .init_expr      => InitExpr,
+        .init_lit       => InitLit,
         .keyValue       => KeyValue,
         .label_decl     => void,
         .lambda_expr    => LambdaExpr,
@@ -644,8 +633,6 @@ fn NodeData(comptime node_t: NodeType) type {
         .passStmt       => Token,
         .range          => Range,
         .raw_string_lit => Span,
-        .recordLit      => RecordLit,
-        .record_expr    => RecordExpr,
         .returnExprStmt => ReturnExprStmt,
         .returnStmt     => Token,
         .root           => Root,
@@ -719,7 +706,6 @@ pub const Node = struct {
             .accessExpr     => self.cast(.accessExpr).left.pos(),
             .array_lit      => self.cast(.array_lit).pos,
             .array_expr     => self.cast(.array_expr).left.pos(),
-            .array_init     => self.cast(.array_init).left.pos(),
             .assignStmt     => self.cast(.assignStmt).left.pos(),
             .attribute      => self.cast(.attribute).pos,
             .await_expr     => self.cast(.await_expr).pos,
@@ -742,8 +728,7 @@ pub const Node = struct {
             .decLit         => self.cast(.decLit).pos,
             .deref          => self.cast(.deref).left.pos(),
             .distinct_decl  => self.cast(.distinct_decl).pos,
-            .dot_array_lit  => self.cast(.dot_array_lit).pos,
-            .dot_record_lit => self.cast(.dot_record_lit).pos,
+            .dot_init_lit   => self.cast(.dot_init_lit).pos,
             .dot_lit        => self.cast(.dot_lit).pos-1,
             .else_block     => self.cast(.else_block).pos,
             .enumDecl       => self.cast(.enumDecl).pos,
@@ -768,6 +753,8 @@ pub const Node = struct {
             .impl_with      => self.cast(.impl_with).pos,
             .keyValue       => self.cast(.keyValue).key.pos(),
             .import_stmt    => self.cast(.import_stmt).pos,
+            .init_expr      => self.cast(.init_expr).left.pos(),
+            .init_lit       => self.cast(.init_lit).pos,
             .label_decl     => cy.NullId,
             .lambda_expr    => self.cast(.lambda_expr).pos,
             .lambda_multi   => self.cast(.lambda_multi).pos,
@@ -782,8 +769,6 @@ pub const Node = struct {
             .passStmt       => self.cast(.passStmt).pos,
             .range          => self.cast(.range).pos,
             .raw_string_lit => self.cast(.raw_string_lit).pos,
-            .record_expr    => self.cast(.record_expr).left.pos(),
-            .recordLit      => self.cast(.recordLit).pos,
             .returnExprStmt => self.cast(.returnExprStmt).pos,
             .returnStmt     => self.cast(.returnStmt).pos,
             .root           => self.cast(.root).stmts[0].pos(),
@@ -886,7 +871,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 100);
+    try t.eq(std.enums.values(NodeType).len, 98);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 
@@ -1403,10 +1388,10 @@ pub const Encoder = struct {
                 }
                 try w.writeByte(']');
             },
-            .record_expr => {
-                const expr = node.cast(.record_expr);
+            .init_expr => {
+                const expr = node.cast(.init_expr);
                 try self.write(w, expr.left);
-                try self.write(w, @ptrCast(expr.record));
+                try self.write(w, @ptrCast(expr.init));
             },
             .throwExpr => {
                 try w.writeAll("throw ");
@@ -1470,7 +1455,7 @@ pub const Encoder = struct {
                 }
                 try w.writeByte(']');
             },
-            .recordLit => {
+            .init_lit => {
                 try w.writeByte('{');
                 try w.writeAll("...");
                 try w.writeByte('}');

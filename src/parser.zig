@@ -2147,7 +2147,7 @@ pub const Parser = struct {
         return self.ast.dupeNodes(self.node_stack.items[arg_start..]);
     }
 
-    fn parseRecordLiteral(self: *Parser) !*ast.RecordLit {
+    fn parseInitLiteral(self: *Parser) !*ast.InitLit {
         const start = self.next_pos;
         // Assume first token is left brace.
         self.advance();
@@ -2155,13 +2155,13 @@ pub const Parser = struct {
 
         if (self.peek().tag() == .right_brace) {
             self.advance();
-            return self.ast.newNode(.recordLit, .{
+            return self.ast.newNode(.init_lit, .{
                 .args = &.{},
                 .pos = self.tokenSrcPos(start),
             });
         }
 
-        var entry = try self.parseRecordEntry();
+        var entry = try self.parseInitEntry();
         const entry_start = self.node_stack.items.len;
         defer self.node_stack.items.len = entry_start;
         try self.pushNode(@ptrCast(entry));
@@ -2178,7 +2178,7 @@ pub const Parser = struct {
                 break;
             }
 
-            entry = try self.parseRecordEntry();
+            entry = try self.parseInitEntry();
             try self.pushNode(@ptrCast(entry));
         }
 
@@ -2187,20 +2187,20 @@ pub const Parser = struct {
         }
         self.advance();
 
-        const args: []*ast.KeyValue = @ptrCast(try self.ast.dupeNodes(self.node_stack.items[entry_start..]));
-        return self.ast.newNode(.recordLit, .{
+        const args: []*ast.Node = try self.ast.dupeNodes(self.node_stack.items[entry_start..]);
+        return self.ast.newNode(.init_lit, .{
             .args = args,
             .pos = self.tokenSrcPos(start),
         });
     }
 
-    fn parseRecordEntry(self: *Parser) !*ast.KeyValue {
+    fn parseInitEntry(self: *Parser) !*ast.Node {
         const arg = (try self.parseTermExpr2Opt(.{})) orelse {
-            return self.reportError("Expected record key.", &.{});
+            return self.reportError("Expected arg.", &.{});
         };
 
         if (self.peek().tag() != .equal) {
-            return self.reportError("Expected `=`.", &.{});
+            return arg;
         }
         self.advance();
 
@@ -2211,7 +2211,7 @@ pub const Parser = struct {
         const val = (try self.parseExpr(.{})) orelse {
             return self.reportError("Expected record value.", &.{});
         };
-        return self.ast.newNode(.keyValue, .{
+        return self.ast.newNodeErase(.keyValue, .{
             .key = arg,
             .value = val,
         });
@@ -2605,23 +2605,14 @@ pub const Parser = struct {
                 .dot => {
                     self.advance();
 
-                    if (self.peek().tag() == .left_bracket) {
-                        // Array initializer.
-                        const args = try self.parseArrayLiteral2();
-                        left = try self.ast.newNodeErase(.array_init, .{
-                            .left = left,
-                            .args = args,
-                        });
-                    } else {
-                        // Access expr.
-                        const right = (try self.parseOptName()) orelse {
-                            return self.reportError("Expected ident", &.{});
-                        };
-                        left = try self.ast.newNodeErase(.accessExpr, .{
-                            .left = left,
-                            .right = right,
-                        });
-                    }
+                    // Access expr.
+                    const right = (try self.parseOptName()) orelse {
+                        return self.reportError("Expected ident", &.{});
+                    };
+                    left = try self.ast.newNodeErase(.accessExpr, .{
+                        .left = left,
+                        .right = right,
+                    });
                 },
                 .dot_question => {
                     self.advance();
@@ -2644,10 +2635,10 @@ pub const Parser = struct {
                 },
                 .left_brace => {
                     if (!config.parse_record_expr) break;
-                    const record = try self.parseRecordLiteral();
-                    left = try self.ast.newNodeErase(.record_expr, .{
+                    const init_n = try self.parseInitLiteral();
+                    left = try self.ast.newNodeErase(.init_expr, .{
                         .left = left,
-                        .record = record,
+                        .init = init_n,
                     });
                 },
                 .left_paren => {
@@ -2776,16 +2767,10 @@ pub const Parser = struct {
             },
             .dot => {
                 self.advance();
-                if (self.peek().tag() == .left_bracket) {
-                    const array = try self.parseArrayLiteral();
-                    return try self.ast.newNodeErase(.dot_array_lit, .{
-                        .array = array,
-                        .pos = self.tokenSrcPos(start),
-                    });
-                } else if (self.peek().tag() == .left_brace) {
-                    const record = try self.parseRecordLiteral();
-                    return try self.ast.newNodeErase(.dot_record_lit, .{
-                        .record = record,
+                if (self.peek().tag() == .left_brace) {
+                    const init_n = try self.parseInitLiteral();
+                    return try self.ast.newNodeErase(.dot_init_lit, .{
+                        .init = init_n,
                         .pos = self.tokenSrcPos(start),
                     });
                 } else {
@@ -2911,7 +2896,7 @@ pub const Parser = struct {
                 return @ptrCast(try self.parseArrayLiteral());
             },
             .left_brace => {
-                return @ptrCast(try self.parseRecordLiteral());
+                return @ptrCast(try self.parseInitLiteral());
             },
             .ampersand => {
                 self.advance();

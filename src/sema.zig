@@ -4656,7 +4656,7 @@ pub const ChunkExt = struct {
     }
 
     /// `initializerId` is a record literal node.
-    pub fn semaObjectInit2(c: *cy.Chunk, obj: *cy.sym.ObjectType, initializer: *ast.RecordLit) !ExprResult {
+    pub fn semaObjectInit2(c: *cy.Chunk, obj: *cy.sym.ObjectType, initializer: *ast.InitLit) !ExprResult {
         const node: *ast.Node = @ptrCast(initializer);
         const type_e = c.sema.types.items[obj.type];
         if (type_e.has_init_pair_method) {
@@ -4697,15 +4697,16 @@ pub const ChunkExt = struct {
         @memset(fieldNodes, .{ .node = null });
 
         for (initializer.args) |arg| {
-            const fieldName = c.ast.nodeString(@ptrCast(arg.key));
-            const info = try checkSymInitField(c, @ptrCast(obj), fieldName, arg.key);
+            const pair = arg.cast(.keyValue);
+            const fieldName = c.ast.nodeString(@ptrCast(pair.key));
+            const info = try checkSymInitField(c, @ptrCast(obj), fieldName, pair.key);
             // if (info.use_get_method) {
             //     try c.listDataStack.append(c.alloc, .{ .node = entryId });
             //     entryId = entry.next();
             //     continue;
             // }
 
-            fieldNodes[info.idx] = .{ .node = arg.value };
+            fieldNodes[info.idx] = .{ .node = pair.value };
         }
 
         const irIdx = try c.ir.pushEmptyExpr(.object_init, c.alloc, ir.ExprType.init(obj.type), node);
@@ -4773,7 +4774,7 @@ pub const ChunkExt = struct {
     }
 
     pub fn semaObjectInit(c: *cy.Chunk, expr: Expr) !ExprResult {
-        const node = expr.node.cast(.record_expr);
+        const node = expr.node.cast(.init_expr);
 
         const left = try c.semaExprSkipSym(node.left, false);
         if (left.resType != .sym) {
@@ -4783,14 +4784,34 @@ pub const ChunkExt = struct {
         }
 
         const sym = left.data.sym.resolved();
+        if (sym.getStaticType()) |type_id| {
+            if (left.data.sym.getVariant()) |variant| {
+                if (variant.root_template == c.sema.list_tmpl) {
+                    const nargs = node.init.args.len;
+                    const loc = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(type_id), expr.node);
+                    const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
+
+                    const elem_t = variant.args[0].asHeapObject().type.type;
+
+                    for (node.init.args, 0..) |arg, i| {
+                        const res = try c.semaExprTarget(arg, elem_t);
+                        c.ir.setArrayItem(args_loc, u32, i, res.irIdx);
+                    }
+
+                    c.ir.setExprData(loc, .list, .{ .numArgs = @intCast(nargs) });
+                    return ExprResult.initStatic(loc, type_id);
+                }
+            }
+        }
+
         switch (sym.type) {
             .struct_t => {
                 const obj = sym.cast(.struct_t);
-                return c.semaObjectInit2(obj, node.record);
+                return c.semaObjectInit2(obj, node.init);
             },
             .object_t => {
                 const obj = sym.cast(.object_t);
-                return c.semaObjectInit2(obj, node.record);
+                return c.semaObjectInit2(obj, node.init);
             },
             .enum_t => {
                 return c.reportErrorFmt("Only enum members can be used as initializers.", &.{}, node.left);
@@ -4814,7 +4835,7 @@ pub const ChunkExt = struct {
                     }
 
                     const obj = c.sema.getTypeSym(member.payloadType).cast(.object_t);
-                    const payload = try c.semaObjectInit2(obj, node.record);
+                    const payload = try c.semaObjectInit2(obj, node.init);
                     return semaInitChoice(c, member, payload, expr.node);
                 }
             },
@@ -4828,12 +4849,12 @@ pub const ChunkExt = struct {
                 const object_t = sym.cast(.custom_t);
                 switch (object_t.type) {
                     bt.Map => {
-                        const init = try c.ir.pushExpr(.map, c.alloc, object_t.type, @ptrCast(node.record), .{ .placeholder = undefined });
+                        const init = try c.ir.pushExpr(.map, c.alloc, object_t.type, @ptrCast(node.init), .{ .placeholder = undefined });
                         const type_e = c.sema.types.items[object_t.type];
                         if (!type_e.has_init_pair_method) {
                             return error.Unexpected;
                         }
-                        return semaWithInitPairs(c, sym, object_t.type, node.record, init);
+                        return semaWithInitPairs(c, sym, object_t.type, node.init, init);
                     },
                     else => {
                         const desc = try c.encoder.allocFmt(c.alloc, node.left);
@@ -5480,32 +5501,6 @@ pub const ChunkExt = struct {
                 });
                 return ExprResult.initInheritDyn(loc, opt.type, payload_t);
             },
-            .array_init => {
-                const array_init = node.cast(.array_init);
-                var left = try c.semaExprSkipSym(array_init.left, false);
-                if (left.resType == .sym) {
-                    if (left.data.sym.getStaticType()) |type_id| {
-                        if (left.data.sym.getVariant()) |variant| {
-                            if (variant.root_template == c.sema.list_tmpl) {
-                                const nargs = array_init.args.len;
-                                const loc = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(type_id), node);
-                                const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
-
-                                const elem_t = variant.args[0].asHeapObject().type.type;
-
-                                for (array_init.args, 0..) |arg, i| {
-                                    const res = try c.semaExprTarget(arg, elem_t);
-                                    c.ir.setArrayItem(args_loc, u32, i, res.irIdx);
-                                }
-
-                                c.ir.setExprData(loc, .list, .{ .numArgs = @intCast(nargs) });
-                                return ExprResult.initStatic(loc, type_id);
-                            }
-                        }
-                    }
-                }
-                return c.reportError("Unsupported array initializer", expr.node);
-            },
             .array_expr => {
                 const array_expr = node.cast(.array_expr);
                 var left = try c.semaExprSkipSym(array_expr.left, true);
@@ -5578,56 +5573,47 @@ pub const ChunkExt = struct {
                 c.ir.setExprData(irIdx, .list, .{ .numArgs = @intCast(array_lit.args.len) });
                 return ExprResult.initStatic(irIdx, bt.ListDyn);
             },
-            .dot_array_lit => {
+            .dot_init_lit => {
                 if (expr.target_t == cy.NullId) {
-                    return c.reportError("Can not infer array like type.", expr.node);
+                    return c.reportError("Can not infer initializer type.", expr.node);
                 }
+
+                const init_lit = node.cast(.dot_init_lit).init;
 
                 const target_sym = c.sema.getTypeSym(expr.target_t);
-                const variant = target_sym.getVariant() orelse {
-                    return c.reportError("Can not infer array like type.", expr.node);
-                };
-                if (variant.root_template != c.sema.list_tmpl) {
-                    return c.reportError("Can not infer array like type.", expr.node);
+                if (target_sym.getVariant()) |variant| {
+                    if (variant.root_template == c.sema.list_tmpl) {
+                        const nargs = init_lit.args.len;
+                        const loc = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(expr.target_t), node);
+                        const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
+
+                        const elem_t = variant.args[0].asHeapObject().type.type;
+
+                        for (init_lit.args, 0..) |arg, i| {
+                            const res = try c.semaExprTarget(arg, elem_t);
+                            c.ir.setArrayItem(args_loc, u32, i, res.irIdx);
+                        }
+
+                        c.ir.setExprData(loc, .list, .{ .numArgs = @intCast(nargs) });
+                        return ExprResult.initStatic(loc, expr.target_t);
+                    }
                 }
 
-                const array_lit = node.cast(.dot_array_lit).array;
-
-                const nargs = array_lit.args.len;
-                const loc = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(expr.target_t), node);
-                const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
-
-                const elem_t = variant.args[0].asHeapObject().type.type;
-
-                for (array_lit.args, 0..) |arg, i| {
-                    const res = try c.semaExprTarget(arg, elem_t);
-                    c.ir.setArrayItem(args_loc, u32, i, res.irIdx);
-                }
-
-                c.ir.setExprData(loc, .list, .{ .numArgs = @intCast(nargs) });
-                return ExprResult.initStatic(loc, expr.target_t);
-            },
-            .dot_record_lit => {
-                if (expr.target_t == cy.NullId) {
-                    return c.reportError("Can not infer record like type.", expr.node);
-                }
-
-                const record_lit = node.cast(.dot_record_lit).record;
                 if (c.sema.isUserObjectType(expr.target_t)) {
                     // Infer user object type.
                     const obj = c.sema.getTypeSym(expr.target_t).cast(.object_t);
-                    return c.semaObjectInit2(obj, record_lit);
+                    return c.semaObjectInit2(obj, init_lit);
                 } else if (c.sema.isStructType(expr.target_t)) {
                     const obj = c.sema.getTypeSym(expr.target_t).cast(.struct_t);
-                    return c.semaObjectInit2(obj, record_lit);
+                    return c.semaObjectInit2(obj, init_lit);
                 } else {
-                    return c.reportError("Can not infer record like type.", expr.node);
+                    return c.reportError("Can not infer initializer type.", expr.node);
                 }
             },
-            .recordLit => {
-                const record_lit = node.cast(.recordLit);
+            .init_lit => {
+                const init_lit = node.cast(.init_lit);
                 const obj_t = c.sema.getTypeSym(bt.Table).cast(.object_t);
-                return c.semaObjectInit2(obj_t, record_lit);
+                return c.semaObjectInit2(obj_t, init_lit);
             },
             .stringTemplate => {
                 const template = node.cast(.stringTemplate);
@@ -5691,7 +5677,7 @@ pub const ChunkExt = struct {
 
                 return ExprResult.initStatic(irIdx, bt.Any);
             },
-            .record_expr => {
+            .init_expr => {
                 return c.semaObjectInit(expr);
             },
             .throwExpr => {
@@ -6257,9 +6243,9 @@ pub const ChunkExt = struct {
     }
 };
 
-fn semaWithInitPairs(c: *cy.Chunk, type_sym: *cy.Sym, type_id: cy.TypeId, record: *ast.RecordLit, init: u32) !ExprResult {
-    const node: *ast.Node = @ptrCast(record);
-    if (record.args.len == 0) {
+fn semaWithInitPairs(c: *cy.Chunk, type_sym: *cy.Sym, type_id: cy.TypeId, init_n: *ast.InitLit, init: u32) !ExprResult {
+    const node: *ast.Node = @ptrCast(init_n);
+    if (init_n.args.len == 0) {
         // Just return default initializer for no record pairs.
         return ExprResult.init(init, CompactType.initStatic(type_id));
     }
@@ -6280,19 +6266,23 @@ fn semaWithInitPairs(c: *cy.Chunk, type_sym: *cy.Sym, type_id: cy.TypeId, record
         const temp_loc = try c.ir.pushExpr(.local, c.alloc, type_id, node, .{ .id = temp_ir_id });
         const temp_expr = ExprResult.init(temp_loc, CompactType.initStatic(type_id));
 
-        for (record.args) |arg| {
-            const key_name = c.ast.nodeString(arg.key);
-            const key_expr = try c.semaString(key_name, arg.key);
+        for (init_n.args) |arg| {
+            if (arg.type() != .keyValue) {
+                return c.reportError("Expected key value pair.", arg);
+            }
+            const pair = arg.cast(.keyValue);
+            const key_name = c.ast.nodeString(pair.key);
+            const key_expr = try c.semaString(key_name, pair.key);
 
             const arg_start = c.arg_stack.items.len;
             defer c.arg_stack.items.len = arg_start;
             try c.arg_stack.append(c.alloc, sema.Argument.initPreResolved(node, temp_expr));
-            try c.arg_stack.append(c.alloc, sema.Argument.initPreResolved(arg.key, key_expr));
-            try c.arg_stack.append(c.alloc, sema.Argument.init(arg.value));
-            const func_res = try sema.matchFuncSym(c, init_pair.cast(.func), arg_start, 3, .any, @ptrCast(arg));
+            try c.arg_stack.append(c.alloc, sema.Argument.initPreResolved(pair.key, key_expr));
+            try c.arg_stack.append(c.alloc, sema.Argument.init(pair.value));
+            const func_res = try sema.matchFuncSym(c, init_pair.cast(.func), arg_start, 3, .any, arg);
             const res = try c.semaCallFuncSymResult(init_pair.cast(.func), func_res, node);
 
-            _ = try c.ir.pushStmt(c.alloc, .exprStmt, @ptrCast(arg), .{
+            _ = try c.ir.pushStmt(c.alloc, .exprStmt, arg, .{
                 .expr = res.irIdx,
                 .isBlockResult = false,
             });

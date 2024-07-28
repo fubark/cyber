@@ -395,7 +395,7 @@ pub const DecodeTableIR = struct {
     map: std.StringArrayHashMapUnmanaged(*ast.Node),
 
     fn init(alloc: std.mem.Allocator, view: cy.ast.AstView, map: *ast.Node) !DecodeTableIR {
-        if (map.type() != .recordLit) {
+        if (map.type() != .init_lit) {
             return error.NotAMap;
         }
 
@@ -406,16 +406,17 @@ pub const DecodeTableIR = struct {
         };
 
         // Parse literal into map.
-        for (map.cast(.recordLit).args) |entry| {
-            switch (entry.key.type()) {
+        for (map.cast(.init_lit).args) |entry| {
+            const pair = entry.cast(.keyValue);
+            switch (pair.key.type()) {
                 .binLit,
                 .octLit,
                 .hexLit,
                 .decLit,
                 .floatLit,
                 .ident => {
-                    const str = view.nodeString(entry.key);
-                    try new.map.put(alloc, str, entry.value);
+                    const str = view.nodeString(pair.key);
+                    try new.map.put(alloc, str, pair.value);
                 },
                 else => return error.Unsupported,
             }
@@ -577,7 +578,7 @@ pub const DecodeValueIR = struct {
     pub fn getValueType(self: DecodeValueIR) ValueType {
         switch (self.expr.type()) {
             .array_lit => return .list,
-            .recordLit => return .map,
+            .init_lit => return .map,
             .raw_string_lit,
             .stringLit => return .string,
             .hexLit,

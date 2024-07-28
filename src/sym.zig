@@ -17,7 +17,7 @@ pub const SymType = enum(u8) {
     userVar,
     hostVar,
     func,
-    custom_t,
+    hostobj_t,
     object_t,
     struct_t,
     trait_t,
@@ -109,8 +109,8 @@ pub const Sym = extern struct {
     pub fn destroy(self: *Sym, vm: *cy.VM, alloc: std.mem.Allocator) void {
         self.deinit(alloc);
         switch (self.type) {
-            .custom_t => {
-                const hostType = self.cast(.custom_t);
+            .hostobj_t => {
+                const hostType = self.cast(.hostobj_t);
                 hostType.getMod().deinit(alloc);
                 alloc.destroy(hostType);
             },
@@ -230,12 +230,25 @@ pub const Sym = extern struct {
         switch (self.type) {
             .object_t   => return self.cast(.object_t).variant,
             .struct_t   => return self.cast(.struct_t).variant,
-            .custom_t   => return self.cast(.custom_t).variant,
+            .hostobj_t  => return self.cast(.hostobj_t).variant,
             .enum_t     => return self.cast(.enum_t).variant,
             .int_t      => return self.cast(.int_t).variant,
             .distinct_t => return self.cast(.distinct_t).variant,
             .array_t    => return self.cast(.array_t).variant,
             else => return null,
+        }
+    }
+
+    pub fn setVariant(self: *Sym, variant: *Variant) !void {
+        switch (self.type) {
+            .object_t   => self.cast(.object_t).variant = variant,
+            .struct_t   => self.cast(.struct_t).variant = variant,
+            .hostobj_t  => self.cast(.hostobj_t).variant = variant,
+            .enum_t     => self.cast(.enum_t).variant = variant,
+            .int_t      => self.cast(.int_t).variant = variant,
+            .distinct_t => self.cast(.distinct_t).variant = variant,
+            .array_t    => self.cast(.array_t).variant = variant,
+            else => return error.Unsupported,
         }
     }
 
@@ -246,7 +259,7 @@ pub const Sym = extern struct {
     pub fn isType(self: *Sym) bool {
         switch (self.type) {
             .use_alias => return self.cast(.use_alias).sym.isType(),
-            .custom_t,
+            .hostobj_t,
             .bool_t,
             .int_t,
             .float_t,
@@ -301,7 +314,7 @@ pub const Sym = extern struct {
             .array_t         => return @ptrCast(&self.cast(.array_t).mod),
             .struct_t        => return @ptrCast(&self.cast(.struct_t).mod),
             .object_t        => return @ptrCast(&self.cast(.object_t).mod),
-            .custom_t        => return @ptrCast(&self.cast(.custom_t).mod),
+            .hostobj_t       => return @ptrCast(&self.cast(.hostobj_t).mod),
             .bool_t          => return @ptrCast(&self.cast(.bool_t).mod),
             .int_t           => return @ptrCast(&self.cast(.int_t).mod),
             .float_t         => return @ptrCast(&self.cast(.float_t).mod),
@@ -362,7 +375,7 @@ pub const Sym = extern struct {
             .struct_t,
             .bool_t,
             .typeAlias,
-            .custom_t,
+            .hostobj_t,
             .trait_t,
             .object_t   => return bt.MetaType,
             .func => {
@@ -396,7 +409,7 @@ pub const Sym = extern struct {
             .object_t        => return self.cast(.object_t).type,
             .distinct_t      => return self.cast(.distinct_t).type,
             .trait_t         => return self.cast(.trait_t).type,
-            .custom_t        => return self.cast(.custom_t).type,
+            .hostobj_t       => return self.cast(.hostobj_t).type,
             .use_alias       => return self.cast(.use_alias).sym.getStaticType(),
             .dummy_t         => return self.cast(.dummy_t).type,
             .placeholder,
@@ -429,7 +442,7 @@ pub const Sym = extern struct {
             .typeAlias,
             .use_alias,
             .trait_t,
-            .custom_t,
+            .hostobj_t,
             .null,
             .field,
             .template,
@@ -504,7 +517,7 @@ fn SymChild(comptime symT: SymType) type {
         .object_t => ObjectType,
         .array_t => ArrayType,
         .trait_t => TraitType,
-        .custom_t => CustomType,
+        .hostobj_t => HostObjectType,
         .bool_t => BoolType,
         .int_t => IntType,
         .float_t => FloatType,
@@ -628,6 +641,15 @@ pub const ValueType = extern struct {
     head: Sym,
 };
 
+/// This is similar to SymType but has custom_t.
+pub const TemplateType = enum {
+    object_t,
+    struct_t,
+    enum_t,
+    distinct_t,
+    custom_t,
+};
+
 /// TODO: Consider splitting into Template and FuncTemplate.
 pub const Template = struct {
     head: Sym,
@@ -635,7 +657,7 @@ pub const Template = struct {
 
     sigId: cy.sema.FuncSigId,
 
-    kind: SymType,
+    kind: TemplateType,
 
     is_root: bool,
 
@@ -911,7 +933,7 @@ pub const ObjectType = extern struct {
     }
 };
 
-pub const CustomType = extern struct {
+pub const HostObjectType = extern struct {
     head: Sym,
     type: cy.TypeId,
     decl: *ast.CustomDecl,
@@ -920,7 +942,7 @@ pub const CustomType = extern struct {
     mod: vmc.Module,
     variant: ?*Variant,
 
-    pub fn getMod(self: *CustomType) *cy.Module {
+    pub fn getMod(self: *HostObjectType) *cy.Module {
         return @ptrCast(&self.mod);
     }
 };
@@ -1353,7 +1375,7 @@ pub const ChunkExt = struct {
     }
 
     pub fn createTemplate(c: *cy.Chunk, parent: *Sym, name: []const u8,
-        sigId: cy.sema.FuncSigId, is_root: bool, params: []TemplateParam, kind: SymType,
+        sigId: cy.sema.FuncSigId, is_root: bool, params: []TemplateParam, kind: TemplateType,
         child_decl: *ast.Node) !*Template {
         const sym = try createSym(c.alloc, .template, .{
             .head = Sym.init(.template, parent, name),
@@ -1403,11 +1425,11 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createCustomType(
+    pub fn createHostObjectType(
         c: *cy.Chunk, parent: *Sym, name: []const u8, decl: *ast.CustomDecl,
-    ) !*CustomType {
-        const sym = try createSym(c.alloc, .custom_t, .{
-            .head = Sym.init(.custom_t, parent, name),
+    ) !*HostObjectType {
+        const sym = try createSym(c.alloc, .hostobj_t, .{
+            .head = Sym.init(.hostobj_t, parent, name),
             .decl = decl,
             .type = cy.NullId,
             .getChildrenFn = null,

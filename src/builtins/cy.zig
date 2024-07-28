@@ -18,8 +18,8 @@ pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
     const types = [_]C.HostTypeEntry{
         htype("EvalConfig", C.DECL_TYPE(&core_data.EvalConfigT)),
         htype("EvalResult", C.DECL_TYPE(&core_data.EvalResultT)),
-        htype("Value",      C.CUSTOM_PRE_TYPE(&core_data.ValueT, UserValue_getChildren, UserValue_finalizer)),
-        htype("VM",         C.CUSTOM_TYPE(&core_data.VMT,    null, UserVM_finalizer)),
+        htype("Value",      C.HOST_OBJECT_PRE(&core_data.ValueT, UserValue_getChildren, UserValue_finalizer)),
+        htype("VM",         C.HOST_OBJECT(&core_data.VMT,    null, UserVM_finalizer)),
     };
 
     var config = C.ModuleConfig{

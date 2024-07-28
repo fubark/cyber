@@ -150,7 +150,7 @@ pub fn reportDupSym(c: *cy.Chunk, sym: *cy.Sym, name: []const u8, decl: ?*ast.No
     return c.reportErrorFmt("`{}` has already been declared as a `{}`.", &.{v(name), v(sym.type)}, decl);
 }
 
-fn addUniqueSym(c: *cy.Chunk, mod: *Module, name: []const u8, sym: *cy.Sym, decl: ?*ast.Node) !void {
+pub fn addUniqueSym(c: *cy.Chunk, mod: *Module, name: []const u8, sym: *cy.Sym, decl: ?*ast.Node) !void {
     const res = try mod.symMap.getOrPut(c.alloc, name);
     if (res.found_existing) {
         const existing = res.value_ptr.*;
@@ -208,15 +208,15 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn reserveCustomType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.CustomDecl) !*cy.sym.CustomType {
-        const sym = try c.createCustomType(parent, name, decl);
+    pub fn reserveHostObjectType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.CustomDecl) !*cy.sym.HostObjectType {
+        const sym = try c.createHostObjectType(parent, name, decl);
         const mod = parent.getMod().?;
         _ = try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
         return sym;
     }
 
     pub fn declareTemplate(c: *cy.Chunk, parent: *cy.Sym, name: []const u8,
-        sigId: cy.sema.FuncSigId, is_root: bool, params: []cy.sym.TemplateParam, kind: cy.sym.SymType,
+        sigId: cy.sema.FuncSigId, is_root: bool, params: []cy.sym.TemplateParam, kind: cy.sym.TemplateType,
         child_decl: *ast.Node, decl: *ast.TemplateDecl) !*cy.sym.Template {
 
         const sym = try c.createTemplate(parent, name, sigId, is_root, params, kind, child_decl);
@@ -522,7 +522,7 @@ pub const ChunkExt = struct {
             .array_t,
             .struct_t,
             .object_t,
-            .custom_t,
+            .hostobj_t,
             .trait_t,
             .enum_t,
             .chunk,
@@ -603,7 +603,7 @@ pub const ChunkExt = struct {
             .struct_t,
             .object_t,
             .trait_t,
-            .custom_t,
+            .hostobj_t,
             .dummy_t,
             .enum_t,
             .chunk,

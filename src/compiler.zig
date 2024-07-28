@@ -844,7 +844,8 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                     },
                     .custom_decl => {
                         const decl = node.cast(.custom_decl);
-                        const sym = try sema.declareCustomType(chunk, decl);
+                        const sym = try sema.resolveCustomType(chunk, decl);
+                        _ = try cy.module.addUniqueSym(chunk, sym.parent.?.getMod().?, sym.name(), sym, @ptrCast(decl));
 
                         for (decl.funcs) |func| {
                             _ = try sema.reserveNestedFunc(chunk, @ptrCast(sym), func, false);
@@ -868,6 +869,9 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         const decl = node.cast(.specialization);
                         switch (decl.decl.type()) {
                             .custom_decl => {
+                                try sema.pushResolveContext(chunk);
+                                defer sema.popResolveContext(chunk);
+
                                 const child_decl = decl.decl.cast(.custom_decl);
                                 const sym = try sema.resolveSym(chunk, child_decl.name);
                                 if (sym.type != .template) {

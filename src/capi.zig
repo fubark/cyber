@@ -78,6 +78,7 @@ pub const declareFuncDyn = c.clDeclareFuncDyn;
 pub const declareFunc = c.clDeclareFunc;
 pub const declareDynVar = c.clDeclareDynVar;
 pub const declareVar = c.clDeclareVar;
+pub const CreateTypeFn = c.CLCreateTypeFn;
 pub const expandTemplateType = c.clExpandTemplateType;
 pub const setResolver = c.clSetResolver;
 pub const resolve = c.clResolve;
@@ -138,10 +139,18 @@ pub inline fn DECL_TYPE(out_type_id: ?*TypeId) HostType {
         }},
     };
 }
-pub inline fn CUSTOM_TYPE(out_type_id: ?*TypeId, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
+pub inline fn CREATE_TYPE(create_fn: CreateTypeFn) HostType {
     return HostType{
-        .type = c.CL_BIND_TYPE_CUSTOM,
-        .data = .{ .custom = .{
+        .type = c.CL_BIND_TYPE_CREATE,
+        .data = .{ .create = .{
+            .create_fn = create_fn,
+        }},
+    };
+}
+pub inline fn HOST_OBJECT(out_type_id: ?*TypeId, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
+    return HostType{
+        .type = c.CL_BIND_TYPE_HOSTOBJ,
+        .data = .{ .hostobj = .{
             .out_type_id = out_type_id,
             .get_children = get_children,
             .finalizer = finalizer,
@@ -149,10 +158,10 @@ pub inline fn CUSTOM_TYPE(out_type_id: ?*TypeId, get_children: GetChildrenFn, fi
         }},
     };
 }
-pub inline fn CUSTOM_PRE_TYPE(out_type_id: ?*TypeId, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
+pub inline fn HOST_OBJECT_PRE(out_type_id: ?*TypeId, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
     return HostType{
-        .type = c.CL_BIND_TYPE_CUSTOM,
-        .data = .{ .custom = .{
+        .type = c.CL_BIND_TYPE_HOSTOBJ,
+        .data = .{ .hostobj = .{
             .out_type_id = out_type_id,
             .get_children = get_children,
             .finalizer = finalizer,
@@ -239,10 +248,11 @@ pub const FuncEnumType = enum(u8) {
     inlinec = c.CL_FUNC_INLINE,
 };
 
-pub const BindTypeCustom = c.CL_BIND_TYPE_CUSTOM;
+pub const BindTypeHostObj = c.CL_BIND_TYPE_HOSTOBJ;
 pub const BindTypeCoreCustom = c.CL_BIND_TYPE_CORE_CUSTOM;
 pub const BindTypeCoreDecl = c.CL_BIND_TYPE_CORE_DECL;
 pub const BindTypeDecl = c.CL_BIND_TYPE_DECL;
+pub const BindTypeCreate = c.CL_BIND_TYPE_CREATE;
 
 pub const Backend = c.CLBackend;
 pub const BackendVM = c.CL_VM;

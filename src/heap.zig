@@ -2138,13 +2138,13 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                     }
                     freePoolObject(vm, obj);
                 },
-                .custom => {
+                .host_object => {
                     if (entry.info.custom_pre) {
-                        if (entry.data.custom.finalizerFn) |finalizer| {
+                        if (entry.data.host_object.finalizerFn) |finalizer| {
                             finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
                         }
                     }
-                    if (entry.data.custom.getChildrenFn) |getChildren| {
+                    if (entry.data.host_object.getChildrenFn) |getChildren| {
                         const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
                         for (Value.fromSliceC(children)) |child| {
                             if (skip_cyc_children and child.isCycPointer()) {
@@ -2154,7 +2154,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                         }
                     }
                     if (!entry.info.custom_pre) {
-                        if (entry.data.custom.finalizerFn) |finalizer| {
+                        if (entry.data.host_object.finalizerFn) |finalizer| {
                             finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
                         }
                     }

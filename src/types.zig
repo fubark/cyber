@@ -19,7 +19,7 @@ pub const TypeKind = enum(u8) {
     int,
     float,
     object,
-    custom,
+    host_object,
     @"enum",
     choice,
     struct_t,
@@ -76,7 +76,7 @@ pub const Type = extern struct {
         },
         // Even though this increases the size of other type entries, it might not be worth
         // separating into another table since it would add another indirection.
-        custom: extern struct {
+        host_object: extern struct {
             getChildrenFn: C.GetChildrenFn,
             finalizerFn: C.FinalizerFn,
         },
@@ -343,7 +343,7 @@ pub const SemaExt = struct {
                 switch (sym.type) {
                     .array_t,
                     .trait_t,
-                    .custom_t,
+                    .hostobj_t,
                     .struct_t,
                     .object_t => return true,
                     .enum_t => {

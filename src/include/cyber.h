@@ -181,7 +181,7 @@ typedef struct CLTypeInfo {
 
 typedef enum {
     // Create a new object type with it's own memory layout and finalizer.
-    CL_BIND_TYPE_CUSTOM,
+    CL_BIND_TYPE_HOSTOBJ,
 
     // Create a new type and bind the generated type id.
     CL_BIND_TYPE_DECL,
@@ -191,7 +191,11 @@ typedef enum {
 
     // Create a new type from the given type declaration with a predefined type id.
     CL_BIND_TYPE_CORE_DECL,
+
+    CL_BIND_TYPE_CREATE,
 } CLBindTypeKind;
+
+typedef CLSym (*CLCreateTypeFn)(CLVM* vm, CLSym mod, CLTypeId type_id);
 
 // Given an object, return the pointer of an array and the number of children.
 // If there are no children, return NULL and 0 for the length.
@@ -232,7 +236,7 @@ typedef struct CLHostType {
             CLGetChildrenFn get_children;
             // Pointer to callback or null.
             CLFinalizerFn finalizer;
-        } custom;
+        } hostobj;
         struct {
             // The reserved `typeId` is used for the new type.
             CLTypeId type_id;
@@ -240,6 +244,10 @@ typedef struct CLHostType {
         struct {
             CLTypeId* out_type_id;
         } decl;
+        struct {
+            // Pointer to callback.
+            CLCreateTypeFn create_fn;
+        } create;     
     } data;
     // `CLBindTypeKind`.
     uint8_t type;

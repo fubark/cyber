@@ -105,10 +105,10 @@ pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
 
     const htype = C.hostTypeEntry;
     const types = [_]C.HostTypeEntry{
-        htype("File",         C.CUSTOM_TYPE(&cli_data.FileT, null, fs.fileFinalizer)),
-        htype("Dir",          C.CUSTOM_TYPE(&cli_data.DirT, null, fs.dirFinalizer)),
-        htype("DirIterator",  C.CUSTOM_TYPE(&cli_data.DirIterT, fs.dirIterGetChildren, fs.dirIterFinalizer)),
-        htype("FFI",          C.CUSTOM_TYPE(&cli_data.FFIT, ffi.ffiGetChildren, ffi.ffiFinalizer)),
+        htype("File",         C.HOST_OBJECT(&cli_data.FileT, null, fs.fileFinalizer)),
+        htype("Dir",          C.HOST_OBJECT(&cli_data.DirT, null, fs.dirFinalizer)),
+        htype("DirIterator",  C.HOST_OBJECT(&cli_data.DirIterT, fs.dirIterGetChildren, fs.dirIterFinalizer)),
+        htype("FFI",          C.HOST_OBJECT(&cli_data.FFIT, ffi.ffiGetChildren, ffi.ffiFinalizer)),
         htype("CArray",       C.DECL_TYPE(&cli_data.CArrayT)),
         htype("CDimArray",    C.DECL_TYPE(&cli_data.CDimArrayT)),
     };

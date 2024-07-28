@@ -5560,19 +5560,6 @@ pub const ChunkExt = struct {
                 });
                 return ExprResult.initStatic(irIdx, child_t);
             },
-            .array_lit => {
-                const array_lit = node.cast(.array_lit);
-                const irIdx = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(bt.ListDyn), node);
-                const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, array_lit.args.len);
-
-                for (array_lit.args, 0..) |arg, i| {
-                    const argRes = try c.semaExprCstr(arg, bt.Dyn);
-                    c.ir.setArrayItem(irArgsIdx, u32, i, argRes.irIdx);
-                }
-
-                c.ir.setExprData(irIdx, .list, .{ .numArgs = @intCast(array_lit.args.len) });
-                return ExprResult.initStatic(irIdx, bt.ListDyn);
-            },
             .dot_init_lit => {
                 if (expr.target_t == cy.NullId) {
                     return c.reportError("Can not infer initializer type.", expr.node);
@@ -5612,8 +5599,21 @@ pub const ChunkExt = struct {
             },
             .init_lit => {
                 const init_lit = node.cast(.init_lit);
-                const obj_t = c.sema.getTypeSym(bt.Table).cast(.object_t);
-                return c.semaObjectInit2(obj_t, init_lit);
+                if (init_lit.array_like) {
+                    const irIdx = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(bt.ListDyn), node);
+                    const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, init_lit.args.len);
+
+                    for (init_lit.args, 0..) |arg, i| {
+                        const argRes = try c.semaExprCstr(arg, bt.Dyn);
+                        c.ir.setArrayItem(irArgsIdx, u32, i, argRes.irIdx);
+                    }
+
+                    c.ir.setExprData(irIdx, .list, .{ .numArgs = @intCast(init_lit.args.len) });
+                    return ExprResult.initStatic(irIdx, bt.ListDyn);
+                } else {
+                    const obj_t = c.sema.getTypeSym(bt.Table).cast(.object_t);
+                    return c.semaObjectInit2(obj_t, init_lit);
+                }
             },
             .stringTemplate => {
                 const template = node.cast(.stringTemplate);

@@ -8,7 +8,7 @@ else os.system == 'windows':
   libPath = 'test/ffi/win_lib.dll'
 
 var ffi = os.newFFI()
-ffi.cfunc('testAdd', [symbol.int, symbol.int], symbol.int)
+ffi.cfunc('testAdd', {symbol.int, symbol.int}, symbol.int)
 let lib = ffi.bindLib(libPath)
 lib.testAdd(123, 234, 345)
 

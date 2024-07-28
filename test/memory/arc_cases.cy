@@ -20,7 +20,7 @@ while String(1) == '1':
     break
 
 -- b's narrow type becomes `any` after the if branch, `a = b` should generate copyRetainSrc.
-let b = []
+let b = {_}
 if false:
     b = 123
 a = b

@@ -33,7 +33,7 @@ Cyber is a statically typed language so the documentation will provide examples 
 ```cy
 use math
 
-var worlds = ['World', '世界', 'दुनिया', 'mundo']
+var worlds = {'World', '世界', 'दुनिया', 'mundo'}
 worlds.append(math.random())
 for worlds -> w:
     print "Hello, $(w)!"
@@ -93,13 +93,13 @@ if year > 2020 and year <= 2030 and
     print 'Valid'
 ```
 
-Any token inside a delimited syntax (such as parentheses or brackets) can be wrapped to the next line:
+Any token inside a delimited syntax (such as parentheses or braces) can be wrapped to the next line:
 ```cy
 var sum = add(1, 2, 3, 4,
     100, 200, 300, 400)
 
-var colors = ['red', 'blue', 'green',
-    'purple', 'orange', 'yellow']
+var colors = {'red', 'blue', 'green',
+    'purple', 'orange', 'yellow'}
 ```
 
 ## Blocks.
@@ -114,7 +114,7 @@ if true:
 Subsequent statements in the block must follow the same indentation.
 The block ends when a statement recedes from this indentation:
 ```cy
-var items = [10, 20, 30]
+var items = {10, 20, 30}
 for items -> it:
     if it == 20:
         print it
@@ -377,10 +377,10 @@ The equals operator returns true if the two values are equal. For primitive type
 var a = 'abc'
 a == 'abc'  -- Evaluates to `true`
 
-a = []
+a = {_}
 var b = a
 a == b      -- Evaluates to `true`
-a == []     -- Evaluates to `false`
+a == {_}    -- Evaluates to `false`
 ```
 
 The not equals operator returns true if the two values are not equal.
@@ -462,7 +462,7 @@ The following shows the zero values of builtin or created types:
 |`float`|`0.0`|
 |`String`|`''`|
 |`Array`|`Array('')`|
-|`List`|`[]`|
+|`List`|`{_}`|
 |`Map`|`Map{}`|
 |`type S`|`S{}`|
 |`@host type S`|`S.$zero()`|
@@ -505,11 +505,11 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
     'age' = 25,
 
     -- This is a comment
-    cities = [
+    cities = {
         'New York',
         'San Francisco',
         'Tokyo',
-    ],
+    },
 }
 ```
 
@@ -766,13 +766,13 @@ This has several properties:
 * The starting whitespace for each line is made explicit.
 
 ```cy
-var paragraph = [
+var paragraph = {
     \'the line-join literal
     \'hello\nworld
     \"hello $(name)
     \'last line
     \'
-]
+}
 ```
 
 ### Mutable strings.
@@ -791,33 +791,39 @@ print a[1]     -- "255"
 
 ## Lists.
 Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements. See [`type List`](#type-list).
-```cy
--- Construct a new list.
-var list = [1, 2, 3]
 
--- The first element of the list starts at index 0.
-print list[0]    -- Prints '1'
+The first element of the list starts at index 0.
+Lists are initialized with elements in braces:
+```cy
+var list = {1, 2, 3}
+print list[0]    --> 1
+```
+
+The empty list is initialized with an underscore as the only element:
+```cy
+var list = {_}
+print list.len() --> 0
 ```
 
 Lists can be sliced with the range `..` clause. The sliced list becomes a new list that you can modify without affecting the original list. The end index is non-inclusive.
 ```cy
-var list = [ 1, 2, 3, 4, 5 ]
-list[0..0]    -- []          
-list[0..3]    -- [ 1, 2, 3 ] 
-list[3..]     -- [ 4, 5 ]    
-list[..3]     -- [ 1, 2, 3 ] 
+var list = {1, 2, 3, 4, 5}
+print list[0..0]    --> {_}          
+print list[0..3]    --> {1, 2, 3}
+print list[3..]     --> {4, 5}
+print list[..3]     --> {1, 2, 3}
 ```
 
 The `+..` invokes the slice operator with an end position that is an increment from the start: *Planned Feature*
 
 ```cy
-var list = [ 1, 2, 3, 4, 5 ]
-list[2+..2]   -- [ 3, 4 ]
+var list = {1, 2, 3, 4, 5}
+print list[2+..2]   --> {3, 4}
 ```
 
 List operations.
 ```cy
-var list = [234]
+var list = {234}
 
 -- Append a value.
 list.append(123)
@@ -928,7 +934,7 @@ print map.size()
 map.remove(123)
 
 -- Iterating a map.
-for map -> [val, key]:
+for map -> {val, key}:
     print "$(key) -> $(val)"
 ```
 
@@ -971,7 +977,7 @@ func square(i int):
     return i * i
 
 var a any = 123
-a = ['a', 'list']         --> Valid assignment to a value with a different type.
+a = {'a', 'list'}         --> Valid assignment to a value with a different type.
 a = 10
 
 print square(a)           --> CompileError. Expected `int`, got `any`.
@@ -1729,7 +1735,7 @@ print s[100]      --> Panic. Out of bounds.
 
 Slice operations can be applied: *Planned feature*
 ```cy
-print s[0..2]     --> [1, 2]
+print s[0..2]     --> {1, 2}
 ```
 
 ## Union types.
@@ -1848,7 +1854,7 @@ The `for` clause can iterate over any type that implements the `Iterable` trait.
 
 Lists can be iterated since they implement the Iterable trait. The capture operator `->` is used to capture the value returned from an iterator's `next()`:
 ```cy
-var list = [1, 2, 3, 4, 5]
+var list = {1, 2, 3, 4, 5}
 
 for list -> n:
     print n
@@ -1856,7 +1862,7 @@ for list -> n:
 
 Maps can be iterated. `next()` returns a key and value tuple:
 ```cy
-var map = Map{ a=123, b=234 }
+var map = Map{a=123, b=234}
 
 for map -> entry:
     print entry[0]
@@ -1865,14 +1871,14 @@ for map -> entry:
 
 Use the destructure syntax to extract the key and value into two separate variables:
 ```cy
-for map -> [ key, val ]:
+for map -> {key, val}:
     print "key $(key) -> value $(val)"
 ```
 
 ### `for` each with index.
 A counting index can be declared after the each variable. The count starts at 0 for the first value:
 ```cy
-var list = [1, 2, 3, 4, 5]
+var list = {1, 2, 3, 4, 5}
 
 for list -> val, i:
     print "index $(i), value $(val)"
@@ -2009,7 +2015,7 @@ use {cos, sin} 'math'
 func compute(rad float) [float, float]:
     return [ cos(rad), sin(rad) ]
 
-var [ x, y ] = compute(pi)
+var {x, y} = compute(pi)
 ```
 
 ## Function overloading.
@@ -2451,7 +2457,7 @@ Sample usage:
 use os
 
 var map = os.getEnvAll()
-for map -> [k, v]:
+for map -> {k, v}:
     print "$(k) -> $(v)"
 ```
 
@@ -2525,7 +2531,7 @@ var ffi = os.newFFI()
 ## Declare functions.
 Functions from a library are first declared using `cfunc` which accepts C types in the form of symbols. In a future update they will accept C syntax instead.
 ```cy
-ffi.cfunc('add', [.int, .int], .int)
+ffi.cfunc('add', {.int, .int}, .int)
 ```
 The first argument refers to the symbol's name in the dynamic library. 
 The second argument contains the function's parameter types and finally the last argument is the function's return type.
@@ -2590,8 +2596,8 @@ type MyObject:
     b *void
     c bool
 
-ffi.cbind(MyObject, [.float, .voidPtr, .bool])
-ffi.cfunc('foo', [MyObject], MyObject)
+ffi.cbind(MyObject, {.float, .voidPtr, .bool})
+ffi.cfunc('foo', {MyObject}, MyObject)
 let lib = ffi.bindLib('./mylib.so')
 
 var res = lib.foo(MyObject{a=123.0, b=os.cstr('foo'), c=true})
@@ -2612,7 +2618,7 @@ MyObject foo(MyObject o) {
 
 `cbind` also generates `ptrTo[Type]` as a helper function to dereference an opaque ptr to a new Cyber object:
 ```cy
-ffi.cfunc('foo', [MyObject], .voidPtr)
+ffi.cfunc('foo', {MyObject}, .voidPtr)
 let lib = ffi.bindLib('./mylib.so')
 
 var ptr = lib.foo(MyObject{a=123, b=os.cstr('foo'), c=true})
@@ -3189,7 +3195,7 @@ print a / 2
 
 When `a` is assigned a different type of value, its **recent type** is updated so the compiler can continue to surface errors ahead of time:
 ```cy
-a = [1, 2, 3]
+a = {1, 2, 3}
 print a / 2
 --> CompileError: Can not find the symbol `$infix/` in `List`
 ```
@@ -3354,7 +3360,7 @@ type MyCollection:
     func $setIndex(self, idx, val):
         arr[idx * 2] = val 
 
-var a = MyCollection{arr=[1, 2, 3, 4]}
+var a = MyCollection{arr={1, 2, 3, 4}}
 print a[1]        -- Prints `3`
 ```
 
@@ -3855,8 +3861,8 @@ To invoke the GC, call the builtin function: `performGC`.
 ```cy
 func foo():
     -- Create a reference cycle.
-    var a = []
-    var b = []
+    var a = {_}
+    var b = {_}
     a.append(b)
     b.append(a)
 

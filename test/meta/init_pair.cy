@@ -1,7 +1,7 @@
 use test
 
-var .keys = []
-var .values = []
+var .keys = {_}
+var .values = {_}
 
 type Foo:
     func $initPair(self, key String, value any):

@@ -9,7 +9,7 @@ t.eq(typeof('abc🦊').id(), 21)
 t.eq(typeof(symbol.abc).id(), 6)
 t.eq(typeof(123).id(), 7)
 t.eq(typeof(123.0).id(), 8)
-t.eq(typeof([]).id(), 13)
+t.eq(typeof({_}).id(), 13)
 t.eq(typeof(Map{}).id(), 15)
 t.eq(typeof({}).id(), 28)
 

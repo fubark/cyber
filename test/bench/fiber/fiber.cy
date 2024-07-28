@@ -9,7 +9,7 @@ func inc():
     coyield
     count += 1
 
-var fibers = []
+var fibers = {_}
 for 0..100000:
     var f = coinit(inc)
     coresume f

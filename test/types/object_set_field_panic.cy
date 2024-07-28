@@ -1,7 +1,7 @@
 type S:
     a float
 
-func foo(): return []
+func foo(): return {_}
 
 var o = S{a=123}
 o.a = foo()

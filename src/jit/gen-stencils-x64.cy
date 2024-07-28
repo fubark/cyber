@@ -53,7 +53,7 @@ type Sym:
     code Array
 
 -- First pass accumulates the unordered symbols.
-let syms = []
+let syms = {_}
 var symMap = {}
 while llvm.ObjectFileIsSymbolIteratorAtEnd(llBin, llSymIter) == 0:
     if llvm.GetSectionContainsSymbol(llSectIter, llSymIter) == 0:
@@ -138,7 +138,7 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
 for syms -> sym, i:
     print "$(sym.name) $(sym.addr) $(sym.code.fmt(.x))"
 
-    var bytes = []
+    var bytes = {_}
     for sym.code -> byte:
         bytes.append("0x$(byte.fmt(.x, {pad=`0`, width=2}))")
 

@@ -76,16 +76,16 @@ t.eq(a[123], 234)
 
 -- Nested list.
 a = Map{
-    b = [ 1, 2 ]
+    b = {1, 2}
 }
 t.eq(a['b'][1], 2)
 
 -- Nested list with items separated by commas.
 a = Map{
-    b = [
+    b = {
         1,
         2,
-    ]
+    }
 }
 t.eq(a['b'][1], 2)
 
@@ -101,7 +101,7 @@ t.eq(sum, 9)
 -- Destructure map entry.
 sum = 0
 var codeSum = 0
-for m -> [k, v]:
+for m -> {k, v}:
     sum += v
     codeSum += k[0]
 t.eq(sum, 9)
@@ -121,9 +121,9 @@ t.eq(res, 36)
 m = Map{a=1, b=2, c=3}
 res = 0
 codeSum = 0
-for m -> [k, n]:
+for m -> {k, n}:
     var innerSum = 0
-    for m -> [kk, nn]:
+    for m -> {kk, nn}:
         innerSum += nn
         codeSum += kk[0]
     res += n * innerSum
@@ -132,10 +132,10 @@ t.eq(res, 36)
 t.eq(codeSum, 294 * 4)
 
 -- Iterate rc values.
-m = Map{a=[2], b=[3], c=[4]}
+m = Map{a={2}, b={3}, c={4}}
 sum = 0
 codeSum = 0
-for m -> [k, v]:
+for m -> {k, v}:
     sum += v[0]
     codeSum += k[0]
 t.eq(sum, 9)

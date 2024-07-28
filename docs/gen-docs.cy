@@ -11,10 +11,10 @@ use cy
 use os
 use md '../src/tools/md4c.cy'
 
-let args = os.parseArgs([
+let args = os.parseArgs(.{
     { name='version', type=String, default='DEV' },
     { name='import-style', type=bool, default=false },
-])
+})
 
 genDocsModules()
 
@@ -24,11 +24,11 @@ var csrc = os.cstr(src)
 var csrcLen = Array(src).len()
 
 var parser = os.malloc(64)
-var enterBlock_c = md.ffi.bindCallback(enterBlock, [symbol.int, symbol.voidPtr, symbol.voidPtr], symbol.int)
-var leaveBlock_c = md.ffi.bindCallback(leaveBlock, [symbol.int, symbol.voidPtr, symbol.voidPtr], symbol.int)
-var enterSpan_c = md.ffi.bindCallback(enterSpan, [symbol.int, symbol.voidPtr, symbol.voidPtr], symbol.int)
-var leaveSpan_c = md.ffi.bindCallback(leaveSpan, [symbol.int, symbol.voidPtr, symbol.voidPtr], symbol.int)
-var text_c = md.ffi.bindCallback(text, [symbol.int, symbol.voidPtr, symbol.int, symbol.voidPtr], symbol.int)
+var enterBlock_c = md.ffi.bindCallback(enterBlock, {symbol.int, symbol.voidPtr, symbol.voidPtr}, symbol.int)
+var leaveBlock_c = md.ffi.bindCallback(leaveBlock, {symbol.int, symbol.voidPtr, symbol.voidPtr}, symbol.int)
+var enterSpan_c = md.ffi.bindCallback(enterSpan, {symbol.int, symbol.voidPtr, symbol.voidPtr}, symbol.int)
+var leaveSpan_c = md.ffi.bindCallback(leaveSpan, {symbol.int, symbol.voidPtr, symbol.voidPtr}, symbol.int)
+var text_c = md.ffi.bindCallback(text, {symbol.int, symbol.voidPtr, symbol.int, symbol.voidPtr}, symbol.int)
 var nullptr = pointer(void, 0)
 parser.set(0, .int, 0)
 parser.set(4, .int, md.FLAG_TABLES)
@@ -45,7 +45,7 @@ if res != 0:
     print "parse error: $(res)"
     os.exit(1)
 
-var tocLinksHtml = []
+var tocLinksHtml = {_}
 for tocLinks -> link:
     tocLinksHtml.append("""<li><a href="$(link.href)">$(link.text)</a></li>""")
 
@@ -139,7 +139,7 @@ var .htmlContent = ''
 let .textContent = ''
 var .state = State.main
 var .parsingToc = false
-var .tocLinks = []
+var .tocLinks = {_}
 var .bufContent = false
 var .lastTopicId = ''
 var .lastHLevel = 1
@@ -390,7 +390,7 @@ func genFuncDecl(decl Map) String:
     if (decl['hidden']): return ''
     
     var docLine = decl.get('docs') ?else ''
-    var params = []
+    var params = {_}
     for decl['params'] -> param:
         var typeSpec = if (param['typeSpec'] != '') param['typeSpec'] else 'any'
         params.append("$(param['name']) $(typeSpec)")
@@ -398,14 +398,14 @@ func genFuncDecl(decl Map) String:
     return "> `func $(decl['name'])($(paramsStr)) $(decl['ret'])`\n>\n>$(docLine)\n\n"
 
 func genDocsModules():
-    var modules = [
+    var modules = {
         ModulePair{path='../src/builtins/builtins_vm.cy', section='core'},
         ModulePair{path='../src/builtins/cy.cy', section='cy'},
         ModulePair{path='../src/builtins/math.cy', section='math'},
         ModulePair{path='../src/std/cli.cy', section='cli'},
         ModulePair{path='../src/std/os.cy', section='os'},
         ModulePair{path='../src/std/test.cy', section='test'},
-    ]
+    }
 
     var curDir = os.dirName(#modUri).?
     -- var md = os.readFile("$(curDir)/../modules.md")

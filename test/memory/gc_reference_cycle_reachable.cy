@@ -1,8 +1,8 @@
 use t 'test'
 
 var .g any = 0
-var a = []
-var b = []
+var a = {_}
+var b = {_}
 a.append(b)
 b.append(a)
 g = a

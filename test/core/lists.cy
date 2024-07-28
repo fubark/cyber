@@ -1,10 +1,10 @@
 use t 'test'
 
 -- Omits last comma for multiline initializer.
-var a = [
+var a = {
     1,
     2,
-]
+}
 t.eq(a.len(), 2)
 
 -- Explicit list type.
@@ -21,66 +21,66 @@ t.eq(int_list[1], 2)
 t.eq(int_list[2], 3)
 
 -- Index access.
-a = [1, 2, 3]
+a = {1, 2, 3}
 t.eq(a[0], 1)
 
 --| Slice operator.
 -- Start to end index slice.
-a = [1, 2, 3, 4, 5]
-t.eqList(a[1..4], [2, 3, 4])
+a = {1, 2, 3, 4, 5}
+t.eqList(a[1..4], {2, 3, 4})
 -- Start index to end of list.
-t.eqList(a[3..], [4, 5])
+t.eqList(a[3..], {4, 5})
 -- Start of list to end index.
-t.eqList(a[..3], [1, 2, 3])
+t.eqList(a[..3], {1, 2, 3})
 -- Dynamic invocation.
 let b = t.erase(a)
-t.eqList(b[0..2] as List[dyn], [1, 2])
+t.eqList(b[0..2] as List[dyn], {1, 2})
 
 --| Slice retains rc elems.
-a = [String(1), String(2), String(3)]
+a = {String(1), String(2), String(3)}
 a = a[..1]
 t.eq(a[0], '1')
 
 -- Set index
-a = []
+a = {_}
 a.resize(3)
 a[2] = 3
 t.eq(a[2], 3)
 
 -- append()
-a = []
+a = {_}
 a.append(1)
 t.eq(a.len(), 1)
 t.eq(a[0], 1)
 
 -- append(any)
-a = []
+a = {_}
 var elem = t.erase(123)
 a.append(elem)
 t.eq(a.len(), 1)
 t.eq(a[0], 123)
 
 -- appendAll(List)
-a = [1, 2, 3]
-a.appendAll([4, 5, 6])
-t.eqList(a, [1, 2, 3, 4, 5, 6])
+a = {1, 2, 3}
+a.appendAll({4, 5, 6})
+t.eqList(a, {1, 2, 3, 4, 5, 6})
 
 -- insert() in empty
-a = []
+a = {_}
 a.insert(0, 1)
 t.eq(a[0], 1)
 
 -- insert() at start
 a.insert(0, 2)
-t.eqList(a, [2, 1])
+t.eqList(a, {2, 1})
 
 -- insert() at end
 a.insert(2, 3)
-t.eqList(a, [2, 1, 3])
+t.eqList(a, {2, 1, 3})
 
 -- insert() in middle
 a.insert(1, 4)
-t.eqList(a, [2, 4, 1, 3])
+t.eqList(a, {2, 4, 1, 3})
 
 -- insert() at index out of bounds.
 try:
@@ -93,40 +93,40 @@ catch err:
     t.eq(err, error.OutOfBounds)
 
 -- join()
-t.eq([].join(','), '')
-t.eq([1].join(','), '1')
-t.eq([1, 2, 3].join(','), '1,2,3')
-t.eq([1, 2, 3].join(',').isAscii(), true)
-t.eq([1, 2, 3].join('🦊'), '1🦊2🦊3')
-t.eq([1, 2, 3].join('🦊').isAscii(), false)
+t.eq({_}.join(','), '')
+t.eq({1}.join(','), '1')
+t.eq({1, 2, 3}.join(','), '1,2,3')
+t.eq({1, 2, 3}.join(',').isAscii(), true)
+t.eq({1, 2, 3}.join('🦊'), '1🦊2🦊3')
+t.eq({1, 2, 3}.join('🦊').isAscii(), false)
 
 -- len()
-a = [1, 2, 3, 4]
+a = {1, 2, 3, 4}
 t.eq(a.len(), 4)
 
 -- remove()
-a = [1, 2, 3]
+a = {1, 2, 3}
 a.remove(1)
 t.eq(a.len(), 2)
 t.eq(a[0], 1)
 t.eq(a[1], 3)
 
 -- remove() first item.
-a = [1, 2, 3]
+a = {1, 2, 3}
 a.remove(0)
 t.eq(a.len(), 2)
 t.eq(a[0], 2)
 t.eq(a[1], 3)
 
 -- remove() last item.
-a = [1, 2, 3]
+a = {1, 2, 3}
 a.remove(2)
 t.eq(a.len(), 2)
 t.eq(a[0], 1)
 t.eq(a[1], 2)
 
 -- remove() out of bounds.
-a = [1, 2, 3]
+a = {1, 2, 3}
 try:
     a.remove(-1)
 catch err:
@@ -138,14 +138,14 @@ catch err:
 t.eq(a.len(), 3)
 
 -- remove() rc item.
-a = [1, [123], 3]
+a = {1, {123}, 3}
 a.remove(1)
 t.eq(a.len(), 2)
 t.eq(a[0], 1)
 t.eq(a[1], 3)
 
 -- resize()
-a = [1, 2, 3]
+a = {1, 2, 3}
 a.resize(4)
 t.eq(a.len(), 4)
 t.eq(a[3], false)
@@ -154,24 +154,24 @@ t.eq(a.len(), 2)
 t.eq(a[1], 2)
 
 -- sort()
-a = [3, 1, 2]
+a = {3, 1, 2}
 a.sort((a, b) => a < b)
-t.eqList(a, [1, 2, 3])
-let a2 = [ [3], [1], [2] ]
+t.eqList(a, {1, 2, 3})
+let a2 = { {3}, {1}, {2} }
 a2.sort((a, b) => a[0] < b[0])
 t.eq(a2[0][0], 1)
 t.eq(a2[1][0], 2)
 t.eq(a2[2][0], 3)
 
 -- Iteration.
-a = [1, 2, 3, 4, 5]
+a = {1, 2, 3, 4, 5}
 var sum = 0
 for a -> it:
     sum += it
 t.eq(sum, 15)
 
 -- Pair iteration.
-a = [10, 20, 30]
+a = {10, 20, 30}
 sum = 0
 var idxSum = 0
 for a -> it, idx:
@@ -181,7 +181,7 @@ t.eq(sum, 60)
 t.eq(idxSum, 3)
 
 -- Nested iteration.
-a = [1, 2, 3]
+a = {1, 2, 3}
 var res = 0
 for a -> n:
     var innerSum = 0
@@ -191,7 +191,7 @@ for a -> n:
 t.eq(res, 36)
 
 -- Nested pair iteration.
-a = [1, 2, 3]
+a = {1, 2, 3}
 res = 0
 var idxRes = 0
 for a -> n, i:
@@ -215,7 +215,7 @@ testFill()
 
 -- List.fill with object performs shallow copy.
 func testFill2():
-    var a = List.fill([], 2)
+    var a = List.fill({_}, 2)
     t.eq(a.len(), 2)
     t.eq(a[0] == a[1], false)
 testFill2()

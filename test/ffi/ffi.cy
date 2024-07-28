@@ -20,26 +20,26 @@ type MyObject:
     d bool
 
 ffi = os.newFFI()
-ffi.cbind(MyObject, [symbol.double, symbol.int, symbol.charPtr, symbol.bool])
-ffi.cfunc('testAdd', [symbol.int, symbol.int], symbol.int)
-ffi.cfunc('testI8', [symbol.char], symbol.char)
-ffi.cfunc('testU8', [symbol.uchar], symbol.uchar)
-ffi.cfunc('testI16', [symbol.short], symbol.short)
-ffi.cfunc('testU16', [symbol.ushort], symbol.ushort)
-ffi.cfunc('testI32', [symbol.int], symbol.int)
-ffi.cfunc('testU32', [symbol.uint], symbol.uint)
-ffi.cfunc('testI64', [symbol.long], symbol.long)
-ffi.cfunc('testU64', [symbol.ulong], symbol.ulong)
-ffi.cfunc('testUSize', [symbol.usize], symbol.usize)
-ffi.cfunc('testF32', [symbol.float], symbol.float)
-ffi.cfunc('testF64', [symbol.double], symbol.double)
-ffi.cfunc('testCharPtr', [symbol.charPtr], symbol.charPtr)
-ffi.cfunc('testVoidPtr', [symbol.voidPtr], symbol.voidPtr)
-ffi.cfunc('testVoid', [], symbol.void)
-ffi.cfunc('testBool', [symbol.bool], symbol.bool)
-ffi.cfunc('testObject', [MyObject], MyObject)
-ffi.cfunc('testRetObjectPtr', [MyObject], symbol.voidPtr)
-ffi.cfunc('testArray', [os.CArray{n=2, elem=symbol.double}], symbol.double)
+ffi.cbind(MyObject, {symbol.double, symbol.int, symbol.charPtr, symbol.bool})
+ffi.cfunc('testAdd', {symbol.int, symbol.int}, symbol.int)
+ffi.cfunc('testI8', {symbol.char}, symbol.char)
+ffi.cfunc('testU8', {symbol.uchar}, symbol.uchar)
+ffi.cfunc('testI16', {symbol.short}, symbol.short)
+ffi.cfunc('testU16', {symbol.ushort}, symbol.ushort)
+ffi.cfunc('testI32', {symbol.int}, symbol.int)
+ffi.cfunc('testU32', {symbol.uint}, symbol.uint)
+ffi.cfunc('testI64', {symbol.long}, symbol.long)
+ffi.cfunc('testU64', {symbol.ulong}, symbol.ulong)
+ffi.cfunc('testUSize', {symbol.usize}, symbol.usize)
+ffi.cfunc('testF32', {symbol.float}, symbol.float)
+ffi.cfunc('testF64', {symbol.double}, symbol.double)
+ffi.cfunc('testCharPtr', {symbol.charPtr}, symbol.charPtr)
+ffi.cfunc('testVoidPtr', {symbol.voidPtr}, symbol.voidPtr)
+ffi.cfunc('testVoid', {_}, symbol.void)
+ffi.cfunc('testBool', {symbol.bool}, symbol.bool)
+ffi.cfunc('testObject', {MyObject}, MyObject)
+ffi.cfunc('testRetObjectPtr', {MyObject}, symbol.voidPtr)
+ffi.cfunc('testArray', {os.CArray{n=2, elem=symbol.double}}, symbol.double)
 lib = ffi.bindLib(libPath)
 
 t.eq(lib.testAdd(123, 321), 444)
@@ -54,7 +54,7 @@ t.eq(lib.testU64(123456789000), 123456789000)
 t.eq(lib.testUSize(123456789000), 123456789000)
 t.eqNear(lib.testF32(1.2345), 1.2345)
 t.eq(lib.testF64(1.2345), 1.2345)
-t.eq(lib.testArray([123.0, 321.0]), 444.0)
+t.eq(lib.testArray({123.0, 321.0}), 444.0)
 
 -- object arg and return type.
 var cstr = os.cstr('foo')
@@ -94,18 +94,18 @@ t.eq(lib.testBool(false), false)
 
 -- bindLib that returns a map of functions.
 ffi = os.newFFI()
-ffi.cfunc('testAdd', [symbol.int, symbol.int], symbol.int)
+ffi.cfunc('testAdd', {symbol.int, symbol.int}, symbol.int)
 lib = ffi.bindLib(libPath, {gen_table=true})
 var testAdd = lib['testAdd']
 t.eq(testAdd(123, 321), 444)
 
 -- Callback.
 ffi = os.newFFI()
-ffi.cfunc('testCallback', [symbol.int, symbol.int, symbol.funcPtr], symbol.int)
+ffi.cfunc('testCallback', {symbol.int, symbol.int, symbol.funcPtr}, symbol.int)
 var add = func(a int, b int):
     return a + b
 lib = ffi.bindLib(libPath)
-var cadd = ffi.bindCallback(add, [symbol.int, symbol.int], symbol.int)
+var cadd = ffi.bindCallback(add, {symbol.int, symbol.int}, symbol.int)
 t.eq(lib.testCallback(10, 20, cadd.ptr()), 30)
 
 -- bindObjPtr.

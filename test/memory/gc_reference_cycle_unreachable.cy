@@ -2,8 +2,8 @@ use t 'test'
 
 -- GC is able to detect reference cycle.
 func foo():
-    var a = []
-    var b = []
+    var a = {_}
+    var b = {_}
     a.append(b as any)
     b.append(a as any)
     var res = performGC()
@@ -15,8 +15,8 @@ t.eq(res['numCycFreed'], 2)
 
 -- Reference cycle with child non cyclable.
 func foo2():
-    var a = []
-    var b = []
+    var a = {_}
+    var b = {_}
     a.append(b as any)
     b.append(a as any)
     a.append(pointer(void, 1))

@@ -324,6 +324,9 @@ pub const InitLit = struct {
     // KeyValue or Expr.
     args: []*Node align(8),
     pos: u32,
+
+    /// This only reflects the literal by itself.
+    array_like: bool,
 };
 
 const Unary = struct {

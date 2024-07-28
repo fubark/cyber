@@ -18,7 +18,7 @@ a = 0
 next = func () ?List[dyn]:
     if a < 4:
         a += 1
-        return [a]
+        return {a}
     else:
         return none
 sum = 0

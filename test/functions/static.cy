@@ -36,9 +36,9 @@ t.eq(try bar('a', 123), error.InvalidSignature)
 -- Using as custom less function for sort.
 func less(a int, b int):
     return a < b
-var list = [3, 2, 1]
+var list = {3, 2, 1}
 list.sort(less)
-t.eqList(list, [1, 2, 3])
+t.eqList(list, {1, 2, 3})
 
 -- Single line block.
 func foo5(): return 2 + 2

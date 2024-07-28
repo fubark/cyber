@@ -842,7 +842,7 @@ test "List ops." {
     defer c.destroy(vm);
 
     var list: c.Value = undefined;
-    _ = c.eval(vm, c.toStr("[1, 2, 3]"), &list);
+    _ = c.eval(vm, c.toStr("{1, 2, 3}"), &list);
     defer c.release(vm, list);
 
     // Initial cap.

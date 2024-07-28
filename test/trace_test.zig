@@ -26,7 +26,7 @@ const eqUserError = setup.eqUserError;
 test "ARC." {
     // Assigning to another variable increases the ref count.
     try eval(.{},
-        \\var a = [1, 2]
+        \\var a = {1, 2}
         \\var b = a
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
@@ -48,7 +48,7 @@ test "ARC." {
 
     // Code is still generated for unused expr stmt.
     try eval(.{},
-        \\[1, 2]
+        \\{1, 2}
         \\return
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
@@ -59,7 +59,7 @@ test "ARC." {
 
     // List literal is assigned to a local. Increase ref count.
     try eval(.{},
-        \\var a = [1, 2]
+        \\var a = {1, 2}
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
@@ -72,7 +72,7 @@ test "ARC." {
         \\use t 'test'
         \\type S:
         \\  value List[dyn]
-        \\var a = [123]
+        \\var a = {123}
         \\var s = S{value=a}
         \\t.eq(s.value[0], 123)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
@@ -124,7 +124,7 @@ test "ARC for static variable declarations." {
     // Static variable is freed on vm end.
     try eval(.{},
         \\use t 'test'
-        \\var .a = [123]
+        \\var .a = {123}
         \\t.eq(a[0], 123)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
@@ -139,7 +139,7 @@ test "ARC assignments." {
     // Set index on rc-candidate child to primitive.
     try eval(.{},
         \\use t 'test'
-        \\var a = [123]
+        \\var a = {123}
         \\var b = 234
         \\a[0] = b
         \\t.eq(a[0], 234)
@@ -155,7 +155,7 @@ test "ARC assignments." {
     // Set index on rc-candidate child to rc-candidate.
     try eval(.{},
         \\use t 'test'
-        \\var a = [123]
+        \\var a = {123}
         \\var b = Map{}
         \\a[0] = b
         \\t.eq(typeof(a[0]), Map)
@@ -175,7 +175,7 @@ test "ARC for passing call args." {
         \\use t 'test'
         \\func foo(list List[dyn]):
         \\  return list[0]
-        \\t.eq(foo([1]), 1)
+        \\t.eq(foo({1}), 1)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
@@ -224,7 +224,7 @@ test "ARC on temp locals in expressions." {
         \\use test
         \\var ret = traceRetains()
         \\var rel = traceReleases()
-        \\var res = Map{a=[123]}['a'][0]
+        \\var res = Map{a={123}}['a'][0]
         \\test.eq(traceRetains() - ret, 11)
         \\test.eq(traceReleases() - rel, 12)
         \\test.eq(res, 123)
@@ -304,7 +304,7 @@ test "ARC in loops." {
     try eval(.{},
         \\func foo(it int):
         \\  pass
-        \\var list = [123, 234] -- +1a +1 
+        \\var list = {123, 234} -- +1a +1 
         \\for list -> it:       -- +4a +4 (iterator is retained once, list is retained for iterator, and 2 retains for next() returning the child item.)
         \\  foo(it)             -- +0a +0
     , struct { fn func(run: *Runner, res: EvalResult) !void {
@@ -316,7 +316,7 @@ test "ARC in loops." {
 
     // For iter with `any` temp value, the last temp value is released at the end of the block.
     try eval(.{},
-        \\var list = [Map{a=123}, Map{a=234}] -- +3a +3
+        \\var list = {Map{a=123}, Map{a=234}} -- +3a +3
         \\for list -> it:                 -- +7a +7 -2
         \\  pass                      
         \\                                --        -8

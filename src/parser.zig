@@ -1633,7 +1633,7 @@ pub const Parser = struct {
             self.advance();
             token = self.peek();
             var eachClause: *ast.Node = undefined;
-            if (token.tag() == .left_bracket) {
+            if (token.tag() == .left_brace) {
                 eachClause = @ptrCast(try self.parseSeqDestructure());
             } else {
                 eachClause = (try self.parseExpr(.{})) orelse {
@@ -2038,7 +2038,7 @@ pub const Parser = struct {
             self.consumeWhitespaceTokens();
             var token = self.peek();
 
-            if (token.tag() == .right_bracket) {
+            if (token.tag() == .right_brace) {
                 // Empty.
                 return self.reportError("Expected at least one identifier.", &.{});
             } else {
@@ -2060,12 +2060,12 @@ pub const Parser = struct {
                         self.advance();
                         self.consumeWhitespaceTokens();
                     }
-                } else if (token.tag() == .right_bracket) {
+                } else if (token.tag() == .right_brace) {
                     break :outer;
                 }
 
                 token = self.peek();
-                if (token.tag() == .right_bracket) {
+                if (token.tag() == .right_brace) {
                     break :outer;
                 } else {
                     const decl = (try self.parseExpr(.{})) orelse {
@@ -2081,7 +2081,7 @@ pub const Parser = struct {
 
         // Parse closing bracket.
         const token = self.peek();
-        if (token.tag() == .right_bracket) {
+        if (token.tag() == .right_brace) {
             self.advance();
 
             const args = try self.ast.dupeNodes(self.node_stack.items[decl_start..]);
@@ -2158,10 +2158,27 @@ pub const Parser = struct {
             return self.ast.newNode(.init_lit, .{
                 .args = &.{},
                 .pos = self.tokenSrcPos(start),
+                .array_like = false,
+            });
+        } else if (self.peek().tag() == .underscore) {
+            self.advance();
+            if (self.peek().tag() != .right_brace) {
+                return self.reportErrorAt("Expected closing brace.", &.{}, self.next_pos);
+            }
+            self.advance();
+            return self.ast.newNode(.init_lit, .{
+                .args = &.{},
+                .pos = self.tokenSrcPos(start),
+                .array_like = true,
             });
         }
 
-        var entry = try self.parseInitEntry();
+        var array_like = true;
+        var is_pair = false;
+        var entry = try self.parseInitEntry(&is_pair);
+        if (is_pair) {
+            array_like = false;
+        }
         const entry_start = self.node_stack.items.len;
         defer self.node_stack.items.len = entry_start;
         try self.pushNode(@ptrCast(entry));
@@ -2178,7 +2195,10 @@ pub const Parser = struct {
                 break;
             }
 
-            entry = try self.parseInitEntry();
+            entry = try self.parseInitEntry(&is_pair);
+            if (is_pair) {
+                array_like = false;
+            }
             try self.pushNode(@ptrCast(entry));
         }
 
@@ -2191,15 +2211,17 @@ pub const Parser = struct {
         return self.ast.newNode(.init_lit, .{
             .args = args,
             .pos = self.tokenSrcPos(start),
+            .array_like = array_like,
         });
     }
 
-    fn parseInitEntry(self: *Parser) !*ast.Node {
+    fn parseInitEntry(self: *Parser, is_pair: *bool) !*ast.Node {
         const arg = (try self.parseTermExpr2Opt(.{})) orelse {
             return self.reportError("Expected arg.", &.{});
         };
 
         if (self.peek().tag() != .equal) {
+            is_pair.* = false;
             return arg;
         }
         self.advance();
@@ -2211,6 +2233,7 @@ pub const Parser = struct {
         const val = (try self.parseExpr(.{})) orelse {
             return self.reportError("Expected record value.", &.{});
         };
+        is_pair.* = true;
         return self.ast.newNodeErase(.keyValue, .{
             .key = arg,
             .value = val,

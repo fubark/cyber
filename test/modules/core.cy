@@ -37,7 +37,7 @@ type S:
     foo any
     bar any
 var s = S{}
-var oldList = [123, s]
+var oldList = {123, s}
 var newList = copy(oldList) as List[dyn]
 t.eq(newList == oldList, false)
 t.eq(newList.len(), 2)
@@ -52,7 +52,7 @@ t.eq(newMap['b'], s)
 var oldStr = 'foo'
 var newStr = copy(oldStr)
 t.eq(newStr, oldStr)
-var rcList = []
+var rcList = {_}
 s.foo = 123
 s.bar = rcList
 let newS = copy(s)
@@ -77,8 +77,8 @@ t.eq(is(1, 2), false)
 t.eq(is(2, 2), false)
 var a any = 2
 t.eq(is(a, a), true)
-t.eq(is([], []), false)
-var list = []
+t.eq(is({_}, {_}), false)
+var list = {_}
 var list2 = list
 t.eq(is(list, list2), true)
 
@@ -129,7 +129,7 @@ t.eq(typeof(pointer(void, 123)), *void)
 t.eq(typeof('abc'), String)
 t.eq(typeof(Array('abc')), typeof(Array('xyz')))
 t.eq(typeof(error.Foo), error)
-t.eq(typeof([]), List[dyn])
+t.eq(typeof({_}), List[dyn])
 t.eq(typeof(Map{}), Map)
 t.eq(typeof({}), Table)
 

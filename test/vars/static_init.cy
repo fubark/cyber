@@ -20,7 +20,7 @@ t.eq(a2(123), 124)
 t.eq(a3(123, 321), 444)
 
 -- Invoke method.
-var .a4 = [1, 2, 3]
+var .a4 = {1, 2, 3}
 t.eq(a4.len(), 3)
 a4.append(4)
 t.eq(a4.len(), 4)

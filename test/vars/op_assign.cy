@@ -21,7 +21,7 @@ s.foo += 10
 t.eq(s.foo, 11)
 
 -- Op assign to index.
-a = [1]
+a = {1}
 a[0] += 1
 t.eq(a[0], 2)
 

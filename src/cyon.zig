@@ -18,7 +18,7 @@ pub const EncodeListContext = struct {
     }
 
     pub fn encodeList(self: *EncodeListContext, val: anytype, cb: fn (*EncodeListContext, @TypeOf(val)) anyerror!void) !void {
-        _ = try self.writer.write("[\n");
+        _ = try self.writer.write("{\n");
 
         var list_ctx = EncodeListContext{
             .writer = self.writer,
@@ -29,7 +29,7 @@ pub const EncodeListContext = struct {
         try cb(&list_ctx, val);
 
         try self.indent();
-        _ = try self.writer.write("]");
+        _ = try self.writer.write("}");
     }
     
     pub fn encodeTable(self: *EncodeListContext, val: anytype, encode_table: fn (*EncodeTableContext, @TypeOf(val)) anyerror!void) !void {
@@ -76,7 +76,7 @@ pub const EncodeValueContext = struct {
     }
 
     pub fn encodeList(self: *EncodeValueContext, val: anytype, encode_list: fn (*EncodeListContext, @TypeOf(val)) anyerror!void) !void {
-        _ = try self.writer.print("[\n", .{});
+        _ = try self.writer.print("{{\n", .{});
 
         var list_ctx = EncodeListContext{
             .writer = self.writer,
@@ -87,7 +87,7 @@ pub const EncodeValueContext = struct {
         try encode_list(&list_ctx, val);
 
         try self.indent();
-        _ = try self.writer.write("]");
+        _ = try self.writer.write("}");
     }
 
     pub fn encodeTable(self: *EncodeValueContext, val: anytype, encode_table: fn (*EncodeTableContext, @TypeOf(val)) anyerror!void) !void {
@@ -134,7 +134,7 @@ pub const EncodeTableContext = struct {
 
     pub fn encodeSlice(self: *EncodeTableContext, key: []const u8, slice: anytype, encode_value: fn (*EncodeValueContext, anytype) anyerror!void) !void {
         try self.indent();
-        _ = try self.writer.print("{s} = [\n", .{key});
+        _ = try self.writer.print("{s} = {{\n", .{key});
 
         var val_ctx = EncodeValueContext{
             .writer = self.writer,
@@ -151,12 +151,12 @@ pub const EncodeTableContext = struct {
         self.cur_indent -= 1;
 
         try self.indent();
-        _ = try self.writer.write("],\n");
+        _ = try self.writer.write("},\n");
     }
 
     pub fn encodeList(self: *EncodeTableContext, key: []const u8, val: anytype, encode_list: fn (*EncodeListContext, @TypeOf(val)) anyerror!void) !void {
         try self.indent();
-        _ = try self.writer.print("{s} = [\n", .{key});
+        _ = try self.writer.print("{s} = {{\n", .{key});
 
         var list_ctx = EncodeListContext{
             .writer = self.writer,
@@ -167,7 +167,7 @@ pub const EncodeTableContext = struct {
         try encode_list(&list_ctx, val);
 
         try self.indent();
-        _ = try self.writer.write("]\n");
+        _ = try self.writer.write("}\n");
     }
 
     pub fn encodeTable(self: *EncodeTableContext, key: []const u8, val: anytype, encode_table: fn (*EncodeTableContext, @TypeOf(val)) anyerror!void) !void {
@@ -345,11 +345,11 @@ pub const DecodeListIR = struct {
     arr: []const *ast.Node,
 
     fn init(alloc: std.mem.Allocator, view: cy.ast.AstView, list_: *ast.Node) !DecodeListIR {
-        if (list_.type() != .array_lit) {
+        if (list_.type() != .init_lit) {
             return error.NotAList;
         }
 
-        const list = list_.cast(.array_lit);
+        const list = list_.cast(.init_lit);
 
         var new = DecodeListIR{
             .alloc = alloc,
@@ -577,8 +577,13 @@ pub const DecodeValueIR = struct {
 
     pub fn getValueType(self: DecodeValueIR) ValueType {
         switch (self.expr.type()) {
-            .array_lit => return .list,
-            .init_lit => return .map,
+            .init_lit => {
+                if (self.expr.cast(.init_lit).array_like) {
+                    return .list;
+                } else {
+                    return .map;
+                }
+            },
             .raw_string_lit,
             .stringLit => return .string,
             .hexLit,
@@ -693,14 +698,14 @@ test "encode" {
     try t.eqStr(res,
         \\{
         \\    name = 'project',
-        \\    list = [
+        \\    list = {
         \\        {
         \\            field = 1,
         \\        },
         \\        {
         \\            field = 2,
         \\        },
-        \\    ],
+        \\    },
         \\    table = {
         \\        1 = 'foo',
         \\        2 = 'bar',
@@ -753,10 +758,10 @@ test "decodeTable" {
     try decodeTable(t.alloc, &parser, {}, &root, S.decodeRoot, 
         \\{
         \\    name = 'project',
-        \\    list = [
+        \\    list = {
         \\        {field=1},
         \\        {field=2},
-        \\    ],
+        \\    },
         \\    table = {
         \\        1 = 'foo',
         \\        2 = 'bar',

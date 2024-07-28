@@ -12,8 +12,8 @@ var MaxRuns = 50
 
 var cmd = os.args()[2..]
 
-var totalTimes = []
-var times = []
+var totalTimes = {_}
+var times = {_}
 
 for 0..MaxRuns:
     var start = os.now()

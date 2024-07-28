@@ -629,7 +629,7 @@ pub fn allocToCyon(vm: *cy.VM, alloc: std.mem.Allocator, root: cy.Value) ![]cons
                     },
                     bt.ListDyn => {
                         if (val.asHeapObject().list.items().len == 0) {
-                            _ = try ctx.writer.write("[]");
+                            _ = try ctx.writer.write("{_}");
                         } else {
                             try ctx.encodeList(val, encodeList);
                         }

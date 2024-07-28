@@ -48,7 +48,7 @@ t.eq(fn(1, 2), 126)
 
 -- Closure over local retained object in function.
 f = func():
-    var a = [ 123 ]
+    var a = {123}
     return () => a[0]
 fn = f()
 t.eq(fn(), 123)

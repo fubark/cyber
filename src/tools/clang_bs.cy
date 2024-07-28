@@ -76,122 +76,122 @@ func load(dummy any):
     ffi = os.newFFI()
 
     -- enum CXTypeKind kind, void *data[2]
-    ffi.cbind(CXType, [symbol.int, os.CArray{n=2, elem=symbol.voidPtr}])
+    ffi.cbind(CXType, {symbol.int, os.CArray{n=2, elem=symbol.voidPtr}})
 
     -- enum CXCursorKind kind, int xdata, const void *data[3]
-    ffi.cbind(CXCursor, [symbol.int, symbol.int, os.CArray{n=3, elem=symbol.voidPtr}])
+    ffi.cbind(CXCursor, {symbol.int, symbol.int, os.CArray{n=3, elem=symbol.voidPtr}})
 
     -- const void* data, unsigned private_flags
-    ffi.cbind(CXString, [symbol.voidPtr, symbol.uint])
+    ffi.cbind(CXString, {symbol.voidPtr, symbol.uint})
 
     -- const void* ptr_data [2], unsigned int_data
-    ffi.cbind(CXSourceLocation, [os.CArray{n=2, elem=symbol.voidPtr}, symbol.uint])
+    ffi.cbind(CXSourceLocation, {os.CArray{n=2, elem=symbol.voidPtr}, symbol.uint})
 
     -- CXIndex (int excludeDeclarationsFromPCH, int displayDiagnostics)
-    ffi.cfunc('clang_createIndex', [symbol.int, symbol.int], symbol.voidPtr)
+    ffi.cfunc('clang_createIndex', {symbol.int, symbol.int}, symbol.voidPtr)
 
     -- CXTranslationUnit (CXIndex CIdx, const char *source_filename, const char *const *command_line_args, int num_command_line_args, struct CXUnsavedFile *unsaved_files, unsigned num_unsaved_files, unsigned options)
-    ffi.cfunc('clang_parseTranslationUnit', [
-        symbol.voidPtr, symbol.charPtr, symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.uint, symbol.uint], symbol.voidPtr)
+    ffi.cfunc('clang_parseTranslationUnit', {
+        symbol.voidPtr, symbol.charPtr, symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.uint, symbol.uint}, symbol.voidPtr)
 
     -- unsigned (CXTranslationUnit Unit)
-    ffi.cfunc('clang_getNumDiagnostics', [symbol.voidPtr], symbol.int)
+    ffi.cfunc('clang_getNumDiagnostics', {symbol.voidPtr}, symbol.int)
 
     -- CXDiagnostic (CXTranslationUnit Unit, unsigned Index)
-    ffi.cfunc('clang_getDiagnostic', [symbol.voidPtr, symbol.int], symbol.voidPtr)
+    ffi.cfunc('clang_getDiagnostic', {symbol.voidPtr, symbol.int}, symbol.voidPtr)
 
     -- CXString (CXDiagnostic)
-    ffi.cfunc('clang_getDiagnosticSpelling', [symbol.voidPtr], symbol.voidPtr)
+    ffi.cfunc('clang_getDiagnosticSpelling', {symbol.voidPtr}, symbol.voidPtr)
 
     -- CXCursor (CXTranslationUnit)   
-    ffi.cfunc('clang_getTranslationUnitCursor', [symbol.voidPtr], CXCursor)
+    ffi.cfunc('clang_getTranslationUnitCursor', {symbol.voidPtr}, CXCursor)
 
     -- unsigned (CXCursor parent, CXCursorVisitor visitor, CXClientData client_data)
-    ffi.cfunc('clang_visitChildren', [CXCursor, symbol.funcPtr, symbol.voidPtr], symbol.uint)
+    ffi.cfunc('clang_visitChildren', {CXCursor, symbol.funcPtr, symbol.voidPtr}, symbol.uint)
 
     -- CXString (CXCursor)
-    ffi.cfunc('clang_getCursorSpelling', [CXCursor], CXString)
+    ffi.cfunc('clang_getCursorSpelling', {CXCursor}, CXString)
 
     -- CXString (CXCursor)
-    ffi.cfunc('clang_getCursorDisplayName', [CXCursor], CXString)
+    ffi.cfunc('clang_getCursorDisplayName', {CXCursor}, CXString)
 
     -- const char* (CXString string)   
-    ffi.cfunc('clang_getCString', [CXString], symbol.charPtr)
+    ffi.cfunc('clang_getCString', {CXString}, symbol.charPtr)
 
     -- CXSourceLocation (CXCursor)
-    ffi.cfunc('clang_getCursorLocation', [CXCursor], CXSourceLocation)
+    ffi.cfunc('clang_getCursorLocation', {CXCursor}, CXSourceLocation)
 
     -- int (CXSourceLocation location)   
-    ffi.cfunc('clang_Location_isInSystemHeader', [CXSourceLocation], symbol.int)
+    ffi.cfunc('clang_Location_isInSystemHeader', {CXSourceLocation}, symbol.int)
 
     -- unsigned (CXCursor C)
-    ffi.cfunc('clang_Cursor_isMacroBuiltin', [CXCursor], symbol.uint)
+    ffi.cfunc('clang_Cursor_isMacroBuiltin', {CXCursor}, symbol.uint)
 
     -- unsigned (CXCursor C)
-    ffi.cfunc('clang_Cursor_isMacroFunctionLike', [CXCursor], symbol.uint)
+    ffi.cfunc('clang_Cursor_isMacroFunctionLike', {CXCursor}, symbol.uint)
 
     -- CXType (CXCursor C)
-    ffi.cfunc('clang_getCursorType', [CXCursor], CXType)
+    ffi.cfunc('clang_getCursorType', {CXCursor}, CXType)
 
     -- CXCursor (CXType T)
-    ffi.cfunc('clang_getTypeDeclaration', [CXType], CXCursor)
+    ffi.cfunc('clang_getTypeDeclaration', {CXType}, CXCursor)
 
     -- CXString (CXType CT)   
-    ffi.cfunc('clang_getTypedefName', [CXType], CXString)
+    ffi.cfunc('clang_getTypedefName', {CXType}, CXString)
 
     -- CXString (CXType CT)   
-    ffi.cfunc('clang_getTypeSpelling', [CXType], CXString)
+    ffi.cfunc('clang_getTypeSpelling', {CXType}, CXString)
 
     -- CXType  (CXCursor C)   
-    ffi.cfunc('clang_getTypedefDeclUnderlyingType', [CXCursor], CXType)
+    ffi.cfunc('clang_getTypedefDeclUnderlyingType', {CXCursor}, CXType)
 
     -- long long (CXType T)   
-    ffi.cfunc('clang_getNumElements', [CXType], symbol.long)
+    ffi.cfunc('clang_getNumElements', {CXType}, symbol.long)
 
     -- CXType (CXType T)   
-    ffi.cfunc('clang_getElementType', [CXType], CXType)
+    ffi.cfunc('clang_getElementType', {CXType}, CXType)
 
     -- long long (CXCursor C)   
-    ffi.cfunc('clang_getEnumConstantDeclValue', [CXCursor], symbol.long)
+    ffi.cfunc('clang_getEnumConstantDeclValue', {CXCursor}, symbol.long)
 
     -- CXType (CXType T)   
-    ffi.cfunc('clang_getResultType', [CXType], CXType)
+    ffi.cfunc('clang_getResultType', {CXType}, CXType)
 
     -- int (CXType T)
-    ffi.cfunc('clang_getNumArgTypes', [CXType], symbol.int)
+    ffi.cfunc('clang_getNumArgTypes', {CXType}, symbol.int)
 
     -- CXType (CXType T, unsigned i)
-    ffi.cfunc('clang_getArgType', [CXType, symbol.uint], CXType)
+    ffi.cfunc('clang_getArgType', {CXType, symbol.uint}, CXType)
 
     -- CXCursor (CXCursor C, unsigned i)
-    ffi.cfunc('clang_Cursor_getArgument', [CXCursor, symbol.uint], CXCursor)
+    ffi.cfunc('clang_Cursor_getArgument', {CXCursor, symbol.uint}, CXCursor)
 
     -- CXEvalResult (CXCursor C)   
-    ffi.cfunc('clang_Cursor_Evaluate', [CXCursor], symbol.voidPtr)
+    ffi.cfunc('clang_Cursor_Evaluate', {CXCursor}, symbol.voidPtr)
 
     -- CXEvalResultKind (CXEvalResult E)   
-    ffi.cfunc('clang_EvalResult_getKind', [symbol.voidPtr], symbol.int)
+    ffi.cfunc('clang_EvalResult_getKind', {symbol.voidPtr}, symbol.int)
 
     -- void (CXEvalResult E)   
-    ffi.cfunc('clang_EvalResult_dispose', [symbol.voidPtr], symbol.void)
+    ffi.cfunc('clang_EvalResult_dispose', {symbol.voidPtr}, symbol.void)
 
     -- long long (CXEvalResult E)   
-    ffi.cfunc('clang_EvalResult_getAsLongLong', [symbol.voidPtr], symbol.long)
+    ffi.cfunc('clang_EvalResult_getAsLongLong', {symbol.voidPtr}, symbol.long)
 
     -- const char *(CXEvalResult E)
-    ffi.cfunc('clang_EvalResult_getAsStr', [symbol.voidPtr], symbol.charPtr)
+    ffi.cfunc('clang_EvalResult_getAsStr', {symbol.voidPtr}, symbol.charPtr)
 
     -- double (CXEvalResult E)
-    ffi.cfunc('clang_EvalResult_getAsDouble', [symbol.voidPtr], symbol.double)
+    ffi.cfunc('clang_EvalResult_getAsDouble', {symbol.voidPtr}, symbol.double)
 
     -- CXCursor (CXCursor cursor)
-    ffi.cfunc('clang_Cursor_getVarDeclInitializer', [CXCursor], CXCursor)
+    ffi.cfunc('clang_Cursor_getVarDeclInitializer', {CXCursor}, CXCursor)
 
     -- CXType (CXCursor C)
-    ffi.cfunc('clang_Cursor_getReceiverType', [CXCursor], CXType)
+    ffi.cfunc('clang_Cursor_getReceiverType', {CXCursor}, CXType)
 
     -- CXType clang_Type_getNamedType(CXType T);
-    ffi.cfunc('clang_Type_getNamedType', [CXType], CXType)
+    ffi.cfunc('clang_Type_getNamedType', {CXType}, CXType)
 
     return ffi.bindLib(Option[String].some('libclang.dylib'))
     -- return ffi.bindLib('/Library/Developer/CommandLineTools/usr/lib/libclang.dylib')

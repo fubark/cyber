@@ -23,7 +23,7 @@ type NodeHeap:
     value List[dyn]
 
 -- Init with heap value.
-var n3 = NodeHeap{value=[123]}
+var n3 = NodeHeap{value={123}}
 t.eq(n3.value[0], 123)
 
 type NodeHeap2:
@@ -50,12 +50,12 @@ nw.value += 1
 t.eq(nw.value, 124)
 
 -- Assign to object field when the object is a temp local.
-let nodes = [ Node{value=123} ]
+let nodes = { Node{value=123} }
 nodes[0].value = 234
 t.eq(nodes[0].value, 234)
 
 -- Op assign to object field when the object is a temp local.
-nodes = [ Node{value=123} ]
+nodes = { Node{value=123} }
 nodes[0].value += 1
 t.eq(nodes[0].value, 124)
 
@@ -68,8 +68,8 @@ f()
 t.eq(snode.value, 234)
 
 -- Set to field with heap value.
-n3 = NodeHeap{value=[123]}
-n3.value = []
+n3 = NodeHeap{value={123}}
+n3.value = {_}
 t.eq(n3.value.len(), 0)
 
 -- Struct to string returns struct's name. 

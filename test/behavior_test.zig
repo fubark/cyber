@@ -268,7 +268,6 @@ if (!aot) {
     run.case("core/arithmetic_ops.cy");
     run.case("core/arithmetic_unsupported_panic.cy");
     run.case("core/arrays.cy");
-    run.case("core/array_slices.cy");
     run.case("core/bool.cy");
     run.case("core/byte.cy");
     run.case("core/compare_eq.cy");

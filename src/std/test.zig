@@ -160,16 +160,6 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
                     return false;
                 }
             },
-            bt.Array => {
-                const actStr = act.asArray();
-                const expStr = exp.asArray();
-                if (std.mem.eql(u8, actStr, expStr)) {
-                    return true;
-                } else {
-                    rt.errFmt(c, "actual: '{}' != '{}'\n", &.{v(actStr), v(expStr)});
-                    return false;
-                }
-            },
             bt.Boolean => {
                 const actv = act.asBool();
                 const expv = exp.asBool();

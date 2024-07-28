@@ -30,6 +30,7 @@ pub const TypeKind = enum(u8) {
     ct_ref,
     ct_infer,
     distinct,
+    array,
 };
 
 pub const TypeInfo = packed struct {
@@ -157,12 +158,12 @@ pub const BuiltinTypes = struct {
     pub const Any: TypeId = vmc.TYPE_ANY;
     pub const Boolean: TypeId = vmc.TYPE_BOOLEAN;
     pub const Placeholder1: TypeId = vmc.TYPE_PLACEHOLDER1;
+    pub const Placeholder2: TypeId = vmc.TYPE_PLACEHOLDER2;
     pub const Byte: TypeId = vmc.TYPE_BYTE;
     pub const TagLit: TypeId = vmc.TYPE_TAGLIT;
     pub const Float: TypeId = vmc.TYPE_FLOAT;
     pub const Integer: TypeId = vmc.TYPE_INTEGER;
     pub const String: TypeId = vmc.TYPE_STRING;
-    pub const Array: TypeId = vmc.TYPE_ARRAY;
     pub const Symbol: TypeId = vmc.TYPE_SYMBOL;
     pub const Tuple: TypeId = vmc.TYPE_TUPLE;
     pub const ListDyn: TypeId = vmc.TYPE_LIST_DYN;
@@ -317,7 +318,6 @@ pub const SemaExt = struct {
     pub fn isRcCandidateType(s: *cy.Sema, id: TypeId) bool {
         switch (id) {
             bt.String,
-            bt.Array,
             bt.ListDyn,
             bt.ListIterDyn,
             bt.Map,
@@ -337,6 +337,7 @@ pub const SemaExt = struct {
             else => {
                 const sym = s.getTypeSym(id);
                 switch (sym.type) {
+                    .array_t,
                     .trait_t,
                     .custom_t,
                     .struct_t,
@@ -516,7 +517,6 @@ fn hasZeroInit(c: *cy.Chunk, typeId: TypeId) ZeroInitResult {
         bt.Float,
         bt.ListDyn,
         bt.Map,
-        bt.Array,
         bt.String => return .hasZeroInit,
         else => {
             const sym = c.sema.getTypeSym(typeId);

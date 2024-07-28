@@ -21,7 +21,7 @@ genDocsModules()
 var curDir = os.dirName(#modUri).?
 var src = os.readFile("$(curDir)/docs-modules.md")
 var csrc = os.cstr(src)
-var csrcLen = Array(src).len()
+var csrcLen = src.len()
 
 var parser = os.malloc(64)
 var enterBlock_c = md.ffi.bindCallback(enterBlock, {symbol.int, symbol.voidPtr, symbol.voidPtr}, symbol.int)
@@ -369,7 +369,7 @@ func leaveSpan(span_t md.SPANTYPE, detail *void, userdata *void) int:
         return 1
 
 func text(text_t md.SPANTYPE, ptr *void, len int, userdata *void) int:
-    var str = ptr.toArray(0, len).decode()
+    var str = ptr.getString(0, len)
     if bufContent:
         textContent += str
         htmlContent += str
@@ -380,7 +380,7 @@ func text(text_t md.SPANTYPE, ptr *void, len int, userdata *void) int:
 func getAttrText(attr dyn) String:
     if attr.size == 0:
         return ''
-    return (attr.text as *void).toArray(0, attr.size).decode()
+    return (attr.text as *void).getString(0, attr.size)
 
 type ModulePair:
     path    String

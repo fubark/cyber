@@ -71,17 +71,17 @@ os.free(ptr)
 
 -- File.read()
 file = os.openFile('test/assets/file.txt', .read)
-t.eq(file.read(3), Array('foo'))
-t.eq(file.read(10), Array('bar'))
-t.eq(file.read(10), Array(''))
-t.eq(file.read(10), Array(''))
+t.eq(file.read(3), 'foo')
+t.eq(file.read(10), 'bar')
+t.eq(file.read(10), '')
+t.eq(file.read(10), '')
 t.eq(try file.read(-1), error.InvalidArgument)
 t.eq(try file.read(0), error.InvalidArgument)
 
 -- File.readAll()
 file = os.openFile('test/assets/file.txt', .read)
-t.eq(file.readAll(), Array('foobar'))
-t.eq(file.readAll(), Array(''))
+t.eq(file.readAll(), 'foobar')
+t.eq(file.readAll(), '')
 
 -- File.close()
 file = os.openFile('test/assets/file.txt', .read)
@@ -96,25 +96,25 @@ try:
 catch err:
     t.eq(err, error.InvalidArgument)
 file.seek(3)
-t.eq(file.read(3), Array('bar'))
+t.eq(file.read(3), 'bar')
 
 -- File.seekFromCur()
 file = os.openFile('test/assets/file.txt', .read)
 file.seekFromCur(3)
-t.eq(file.read(3), Array('bar'))
+t.eq(file.read(3), 'bar')
 file.seekFromCur(-6)
-t.eq(file.read(3), Array('foo'))
+t.eq(file.read(3), 'foo')
 
 -- File.seekFromEnd()
 file = os.openFile('test/assets/file.txt', .read)
 file.seekFromEnd(-3)
-t.eq(file.read(3), Array('bar'))
+t.eq(file.read(3), 'bar')
 try:
     file.seekFromEnd(1)
 catch err:
     t.eq(err, error.InvalidArgument)
 file.seekFromEnd(-6)
-t.eq(file.read(3), Array('foo'))
+t.eq(file.read(3), 'foo')
 
 -- File.write() from create
 file = os.createFile('test/assets/write.txt', true)
@@ -160,7 +160,7 @@ t.eq(entries[3]['path'], 'file2.txt')
 
 -- writeFile()
 if os.cpu != 'wasm32':
-    var s = Array('').insertByte(0, 255)
+    var s = ''.insertByte(0, 255)
     os.writeFile('test.txt', s)
     var file = os.openFile('test.txt', .read)
     var bytes = file.readAll()

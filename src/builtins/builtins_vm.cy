@@ -170,6 +170,7 @@ type float #float64_t:
 @host func float.$call(val any) float
 
 @host type placeholder1 _
+@host type placeholder2 _
 @host type taglit _
 
 @host type dyn _
@@ -294,6 +295,13 @@ type MapIterator _:
   
 @host
 type String _:
+    --| Returns the rune at byte index `idx`. The replacement character (0xFFFD) is returned for an invalid UTF-8 rune.
+    @host func $index(self, idx int) int
+
+    --| Returns a slice into this string from a `Range` with `start` (inclusive) to `end` (exclusive) byte indexes.
+    @host='String.$indexRange'
+    func $index(self, range Range) String
+
     --| Returns a new string that concats this string and `str`.
     @host func '$infix+'(self, o any) String
 
@@ -303,20 +311,56 @@ type String _:
     --| Returns the number of runes in the string.
     @host func count(self) int
 
+    --| Calls decode(.utf8)
+    -- @host func decode(self String) String
+
+    --| Decodes the array based on an `encoding`. Supported encodings: `.utf8`.
+    --| Returns the decoded string or throws `error.Decode`.
+    -- @host='String.decode2'
+    -- func decode(self String, encoding symbol) String
+
     --| Returns whether the string ends with `suffix`.
     @host func endsWith(self, suffix String) bool
 
     --| Returns the first byte index of substring `needle` in the string or `none` if not found. SIMD enabled.
     @host func find(self, needle String) ?int
 
+    -- @host='String.findAnyByteSlice'
+    -- func findAnyByte(self String, set []byte) ?int
+
+    --| Returns the first index of any byte in `set` or `none` if not found.
+    @host func findAnyByte(self, set List[byte]) ?int
+
+    -- @host='String.findAnyRuneSlice'
+    -- func findAnyRune(self String, runes []int) ?int
+
     --| Returns the first byte index of any rune in `runes` or `none` if not found. SIMD enabled.
     @host func findAnyRune(self, runes List[int]) ?int
+
+    --| Returns the first index of `byte` in the array or `none` if not found.
+    @host func findByte(self, b byte) ?int
 
     --| Returns the first byte index of a rune `needle` in the string or `none` if not found. SIMD enabled.
     @host func findRune(self, rune int) ?int
 
+    --| Formats each byte in the string using a NumberFormat.
+    --| Each byte is zero padded.
+    @host func fmtBytes(self, format NumberFormat) String
+
+    --| Returns the byte value (0-255) at the given index `idx`.
+    @host func getByte(self, idx int) byte
+
+    --| Returns the int value of the 6 bytes starting from `idx` with the given endianness (.little or .big).
+    @host func getInt(self, idx int, endian symbol) int
+
+    --| Returns the int value of the 4 bytes starting from `idx` with the given endianness (.little or .big).
+    @host func getInt32(self, idx int, endian symbol) int
+
     --| Returns a new string with `str` inserted at byte index `idx`.
     @host func insert(self, idx int, str String) String
+
+    --| Returns a new array with `byte` inserted at index `idx`.
+    @host func insertByte(self, idx int, byte int) String
 
     --| Returns whether the string contains all ASCII runes.
     @host func isAscii(self) bool
@@ -342,13 +386,6 @@ type String _:
     --| Returns the UTF-8 rune starting at byte index `idx` as a string.
     @host func sliceAt(self, idx int) String
 
-    --| Returns the rune at byte index `idx`. The replacement character (0xFFFD) is returned for an invalid UTF-8 rune.
-    @host func $index(self, idx int) int
-
-    --| Returns a slice into this string from a `Range` with `start` (inclusive) to `end` (exclusive) byte indexes.
-    @host='String.$indexRange'
-    func $index(self, range Range) String
-
     --| Returns a list of UTF-8 strings split at occurrences of `sep`.
     @host func split(self, sep String) List[String]
 
@@ -364,93 +401,38 @@ type String _:
 --| Converts a value to a string.
 @host func String.$call(val any) String
 
-@host
-type Array _:
-    @host func '$infix+'(self, o any) Array
+@host type array_t[N int, T type] _
 
-    --| Returns a new array that concats this array and `other`.
-    @host func concat(self, other Array) Array
+type Array[N int, T type] array_t[N, T]:
+    func $index(self, idx int) &T:
+        return self.index((T).id(), idx)
 
-    --| Calls decode(.utf8)
-    @host func decode(self) String
+    @host -func index(self, elem_t int, idx int) &T
 
-    --| Decodes the array based on an `encoding`. Supported encodings: `.utf8`.
-    --| Returns the decoded string or throws `error.Decode`.
-    @host='Array.decode2'
-    func decode(self, encoding symbol) String
+    -- --| Returns a slice into this array from a `Range` with `start` (inclusive) to `end` (exclusive) indexes.
+    -- func $index(self, range Range) []T:
+    --     return self.indexRange(([]T).id(), range)
 
-    --| Returns whether the array ends with `suffix`.
-    @host func endsWith(self, suffix Array) bool
+    -- @host -func indexRange(self, slice_t int, range Range) []T
 
-    --| Returns the first index of `needle` in the array or `none` if not found.
-    @host func find(self, needle Array) ?int
+    -- @host func '$infix+'(self, o Array[#M, T]) Array[N + M, T]
 
-    --| Returns the first index of any `bytes` in `arrays` or `none` if not found.
-    @host func findAnyByte(self, bytes Array) ?int
+    -- --| Returns a new array that concats this array and `other`.
+    -- @host func concat(self, other Array[#M, T]) Array[N + M, T]
 
-    --| Returns the first index of `byte` in the array or `none` if not found.
-    @host func findByte(self, byte int) ?int
+    -- --| Returns a new array with `arr` inserted at index `idx`.
+    -- @host func insert(self, idx int, arr Array) Array
 
-    --| Formats each byte in the array using a NumberFormat.
-    --| Each byte is zero padded.
-    @host func fmt(self, format NumberFormat) String
+    --| Returns a new iterator over the array.
+    func iterator(self) RefSliceIterator[T]:
+        var slice = &self
+        return slice.iterator()
 
-    --| Returns the byte value (0-255) at the given index `idx`.
-    @host func getByte(self, idx int) int
-
-    --| Returns the int value of the 6 bytes starting from `idx` with the given endianness (.little or .big).
-    @host func getInt(self, idx int, endian symbol) int
-
-    --| Returns the int value of the 4 bytes starting from `idx` with the given endianness (.little or .big).
-    @host func getInt32(self, idx int, endian symbol) int
-
-    --| Returns a new array with `arr` inserted at index `idx`.
-    @host func insert(self, idx int, arr Array) Array
-
-    --| Returns a new array with `byte` inserted at index `idx`.
-    @host func insertByte(self, idx int, byte int) Array
-
-    --| Returns a new iterator over the array bytes.
-    func iterator(self) ArrayIterator:
-        return ArrayIterator{arr=self, nextIdx=0}
-
-    --| Returns the number of bytes in the array.
+    --| Returns the number of elements in the array.
     @host func len(self) int
 
-    --| Returns a new array with this array repeated `n` times.
-    @host func repeat(self, n int) Array
-
-    --| Returns a new array with all occurrences of `needle` replaced with `replacement`.
-    @host func replace(self, needle Array, replacement Array) Array
-
-    @host func $index(self, idx int) int
-
-    --| Returns a slice into this array from a `Range` with `start` (inclusive) to `end` (exclusive) indexes.
-    @host='Array.$indexRange'
-    func $index(self, range Range) Array
-
-    --| Returns a list of arrays split at occurrences of `sep`.
-    @host func split(self, sep Array) List[Array]
-
-    --| Returns whether the array starts with `prefix`.
-    @host func startsWith(self, prefix Array) bool
-
-    --| Returns the array with ends trimmed from runes in `delims`. `mode` can be .left, .right, or .ends.
-    @host func trim(self, mode symbol, delims Array) Array
-
---| Converts a string to an byte `Array`.
-@host func Array.$call(val any) Array
-
-type ArrayIterator:
-    arr     Array
-    nextIdx int
-
-    func next(self) ?any:
-        if nextIdx >= arr.len():
-            return none
-        var res = arr[nextIdx]
-        nextIdx += 1
-        return res
+    -- --| Returns a new array with this array repeated `n` times.
+    -- @host func repeat(self, #M int) Array[N * M, T]
 
 type pointer[T type] #int64_t:
     func $index(self, idx int) *T:
@@ -475,17 +457,17 @@ type pointer[T type] #int64_t:
     --| Casts the pointer to a Cyber object. The object is retained before it's returned.
     @host func asObject(self) any
 
-    --| Returns an `Array` from a null terminated C string.
-    @host func fromCstr(self, offset int) Array
+    --| Returns a `String` from a null terminated C string.
+    @host func fromCstr(self, offset int) String
 
     --| Dereferences the pointer at a byte offset and returns the C value converted to Cyber.
     @host func get(self, offset int, ctype symbol) dyn
 
+    --| Returns a `String` with a copy of the byte data starting from an offset to the specified length.
+    @host func getString(self, offset int, len int) String
+
     --| Converts the value to a compatible C value and writes it to a byte offset from this pointer.
     @host func set(self, offset int, ctype symbol, val any) void
-
-    --| Returns an `Array` with a copy of the byte data starting from an offset to the specified length.
-    @host func toArray(self, offset int, len int) Array
 
 --| Converts an `int` to a `pointer` value.
 @host func pointer.$call(#T type, addr int) *T

@@ -38,7 +38,7 @@ typedef enum {
     CL_TYPE_BOOLEAN,
     CL_TYPE_ERROR,
     CL_TYPE_PLACEHOLDER1,
-    CL_TYPE_PLACEHOLDER2,
+    CL_TYPE_BYTE,
     CL_TYPE_TAGLIT,
     CL_TYPE_SYMBOL,
     CL_TYPE_INTEGER,
@@ -56,7 +56,7 @@ typedef enum {
     CL_TYPE_HOST_FUNC,
     CL_TYPE_EXTERN_FUNC,
     CL_TYPE_STRING,
-    CL_TYPE_ARRAY,
+    CL_TYPE_PLACEHOLDER2,
     CL_TYPE_FIBER,
     CL_TYPE_UPVALUE,
     CL_TYPE_TCCSTATE,
@@ -571,7 +571,6 @@ bool clAsBool(CLValue val);
 int64_t clAsBoxInt(CLValue val);
 uint32_t clAsSymbolId(CLValue val);
 CLStr clToTempString(CLVM* vm, CLValue val);
-CLStr clToTempRawString(CLVM* vm, CLValue val);
 void* clAsHostObject(CLValue val);
 
 // Lists.

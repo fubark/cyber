@@ -461,8 +461,7 @@ The following shows the zero values of builtin or created types:
 |`int`|`0`|
 |`float`|`0.0`|
 |`String`|`''`|
-|`Array`|`Array('')`|
-|`List`|`{_}`|
+|`List[T]`|`List[T]{}`|
 |`Map`|`Map{}`|
 |`type S`|`S{}`|
 |`@host type S`|`S.$zero()`|
@@ -533,12 +532,20 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
   * [String formatting.](#string-formatting)
   * [Line-join literal.](#line-join-literal)
   * [Mutable strings.](#mutable-strings) 
+* [Symbols.](#symbols)
 </td>
 <td valign="top">
 
+* [Optionals.](#optionals)
+  * [Wrap value.](#wrap-value)
+  * [Wrap `none`.](#wrap-none)
+  * [Unwrap or panic.](#unwrap-or-panic)
+  * [Unwrap or default.](#unwrap-or-default)
+  * [Optional chaining.](#optional-chaining)
+  * [`if` unwrap.](#if-unwrap)
+  * [`while` unwrap.](#while-unwrap)
 * [Arrays.](#arrays)
 * [Lists.](#lists)
-* [Tuples.](#tuples)
 * [Tables.](#tables)
   * [Table indexing.](#table-indexing)
   * [Check field existence.](#check-field-existence)
@@ -547,7 +554,6 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
   * [Map indexing.](#map-indexing)
   * [Map operations.](#map-operations)
   * [Map block.](#map-block)
-* [Symbols.](#symbols)
 * [`any`.](#any)
 * [`dyn`.](#dyn)
 </td>
@@ -555,11 +561,8 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
 
 [^top](#table-of-contents)
 
-In Cyber, there are primitive types and object types. By default, primitives are copied around by value and don't need additional heap memory or reference counts.
-
-Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integers), [Enums](#enums), [Symbols](#symbols), and [Error Values](#error-value).
-
-Object types include [Lists](#lists), [Tuples](#tuples), [Maps](#maps), [Strings](#strings), [Arrays](#arrays), [Objects](#objects), [Lambdas](#lambdas), [Fibers](#fibers), [Choices](#choices), [Optionals](#optionals), [Pointers](#pointers), and several internal object types.
+In Cyber, there are value types and reference types.
+This section will describe common builtin types.
 
 ## Booleans.
 Booleans can be `true` or `false`. See [`type bool`](#type-bool).
@@ -778,15 +781,106 @@ var paragraph = {
 ### Mutable strings.
 To mutate an existing string, use [type MutString](#mutstring). *Planned Feature*
 
+## Optionals.
+An Optional is a value type that provides **null safety** by forcing the inner value to be unwrapped before it can be used.
+
+The `Option` template type is a choice type that either holds a `none` value or contains `some` value. The option template is defined as:
+```cy
+type Option[T type] enum:
+    case none
+    case some T
+```
+A type prefixed with `?` is the idiomatic way to create an option type. The following String optional types are equivalent:
+```cy
+Option[String]
+?String
+```
+
+### Wrap value.
+A value is automatically wrapped into the inferred optional's `some` case:
+```cy
+var a ?String = 'abc'
+print a     --> some(abc)'
+```
+
+### Wrap `none`.
+`none` is automatically initialized to the inferred optional's `none` case:
+```cy
+var a ?String = none
+print a     --> none
+```
+
+### Unwrap or panic.
+The `.?` access operator is used to unwrap an optional. If the expression evaluates to the `none` case, the runtime panics:
+```cy
+var opt ?int = 123
+var v = opt.?
+print v     --> 123
+```
+
+### Unwrap or default.
+The `?else` control flow operator either returns the unwrapped value or a default value when the optional is `none`:
+```cy
+var opt ?int = none
+var v = opt ?else 123
+print v     --> 123
+```
+
+`?else` can be used in an assignment block: *Planned Feature*
+```cy
+var v = opt ?else:
+    break 'empty'
+
+var v = opt ?else:
+    throw error.Missing
+```
+
+### Optional chaining.
+Given the last member's type `T` in a chain of `?.` access operators, the chain's execution will either return `Option[T].none` on the first encounter of `none` or returns the last member as an `Option[T].some`: *Planned Feature*
+```cy
+print root?.a?.b?.c?.last
+```
+
+### `if` unwrap.
+The `if` statement can be amended to unwrap an optional value using the capture `->` operator:
+```cy
+var opt ?String = 'abc'
+if opt -> v:
+    print v     -- Prints 'abc'
+```
+
+### `while` unwrap. 
+The `while` statement can be amended to unwrap an optional value using the capture `->` operator.
+The loop exits when `none` is encountered:
+```cy
+var iter = dir.walk()
+while iter.next() -> entry:
+    print entry.name
+```
+
 ## Arrays.
-An `Array` is an immutable sequence of bytes.
+An array type is a value type and is denoted as `[N]T` where `N` is the size of the array and `T` is the element type.
 See [`type Array`](#type-array).
 
+Arrays are initialized with its type followed by the initializer literal:
 ```cy
-var a = Array('abcd')
-a = a.insertByte(1, 255)
-print a[0]     -- "97"
-print a[1]     -- "255"
+var a = [3]int{1, 2, 3}
+```
+
+The number of elements can be inferred using pseudo type `[.]T`: *Planned Feature*
+```cy
+var a = [.]int{1, 2, 3}
+```
+
+The array type can be inferred by the dot initializer literal:
+```cy
+var a [3]int = .{1, 2, 3}
+```
+
+Arrays can be indexed:
+```cy
+a[2] = 300
+print a[2]    --> 300
 ```
 
 ## Lists.
@@ -854,9 +948,6 @@ When the intializer is only prefixed with a dot, it will infer the List type con
 ```cy
 var a List[int] = .{1, 2, 3}
 ```
-
-## Tuples.
-> _Incomplete: Tuples can only be created from @host funcs at the moment._
 
 ## Tables.
 A `Table` is a versatile object that can have an arbitrary set of fields.
@@ -1008,21 +1099,14 @@ The dynamic type defers type checking to runtime. However, it also tracks its ow
 * [Structs.](#structs)
   * [Declare struct.](#declare-struct)
   * [Copy structs.](#copy-structs)
+* [Tuples.](#tuples)
+</td><td valign="top">
+
 * [Enums.](#enums)
 * [Choices.](#choices)
   * [Initialize choice.](#initialize-choice)
   * [Choice `switch`.](#choice-switch)
   * [Access choice.](#access-choice)
-</td><td valign="top">
-
-* [Optionals.](#optionals)
-  * [Wrap value.](#wrap-value)
-  * [Wrap `none`.](#wrap-none)
-  * [Unwrap or panic.](#unwrap-or-panic)
-  * [Unwrap or default.](#unwrap-or-default)
-  * [Optional chaining.](#optional-chaining)
-  * [`if` unwrap.](#if-unwrap)
-  * [`while` unwrap.](#while-unwrap)
 * [Type aliases.](#type-aliases)
 * [Distinct types.](#distinct-types)
 * [Traits.](#traits)
@@ -1257,6 +1341,9 @@ print w.x    -- Prints '30'
 print v.x    -- Prints '100'
 ```
 
+## Tuples.
+> _Incomplete: Tuples can only be created from @host funcs at the moment._
+
 ## Enums.
 A new enum type can be declared with the `type enum` declaration.
 An enum value can only be one of the unique symbols declared in the enum type.
@@ -1339,83 +1426,6 @@ A choice can be accessed by specifying the access operator `.!` before the tagge
 ```cy
 var s = Shape{line=20}
 print s.!line     --> 20
-```
-
-## Optionals.
-Optionals provide **Null Safety** by forcing values to be unwrapped before they can be used.
-
-The `Option` template type is a choice type that either holds a `none` value or contains `some` value. The option template is defined as:
-```cy
-type Option[T type] enum:
-    case none
-    case some T
-```
-A type prefixed with `?` is the idiomatic way to create an option type. The following String optional types are equivalent:
-```cy
-Option[String]
-?String
-```
-
-### Wrap value.
-A value is automatically wrapped into the inferred optional's `some` case:
-```cy
-var a ?String = 'abc'
-print a     --> some(abc)'
-```
-
-### Wrap `none`.
-`none` is automatically initialized to the inferred optional's `none` case:
-```cy
-var a ?String = none
-print a     --> none
-```
-
-### Unwrap or panic.
-The `.?` access operator is used to unwrap an optional. If the expression evaluates to the `none` case, the runtime panics:
-```cy
-var opt ?int = 123
-var v = opt.?
-print v     --> 123
-```
-
-### Unwrap or default.
-The `?else` control flow operator either returns the unwrapped value or a default value when the optional is `none`:
-```cy
-var opt ?int = none
-var v = opt ?else 123
-print v     --> 123
-```
-
-`?else` can be used in an assignment block: *Planned Feature*
-```cy
-var v = opt ?else:
-    break 'empty'
-
-var v = opt ?else:
-    throw error.Missing
-```
-
-### Optional chaining.
-Given the last member's type `T` in a chain of `?.` access operators, the chain's execution will either return `Option[T].none` on the first encounter of `none` or returns the last member as an `Option[T].some`: *Planned Feature*
-```cy
-print root?.a?.b?.c?.last
-```
-
-### `if` unwrap.
-The `if` statement can be amended to unwrap an optional value using the capture `->` operator:
-```cy
-var opt ?String = 'abc'
-if opt -> v:
-    print v     -- Prints 'abc'
-```
-
-### `while` unwrap. 
-The `while` statement can be amended to unwrap an optional value using the capture `->` operator.
-The loop exits when `none` is encountered:
-```cy
-var iter = dir.walk()
-while iter.next() -> entry:
-    print entry.name
 ```
 
 ## Type aliases.
@@ -2012,8 +2022,8 @@ Functions can only return one value. However, the value can be destructured: *Pl
 ```cy
 use {cos, sin} 'math'
 
-func compute(rad float) [float, float]:
-    return [ cos(rad), sin(rad) ]
+func compute(rad float) [2]float:
+    return .{cos(rad), sin(rad)}
 
 var {x, y} = compute(pi)
 ```

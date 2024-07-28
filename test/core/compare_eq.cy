@@ -4,11 +4,6 @@ use t 'test'
 t.eq('foo' == 'bar', false)
 t.eq('foo' == 'foo', true)
 
-t.eq(Array('foo') == Array('foo'), true)
-t.eq(Array('foo') == Array('bar'), false)
-
--- Arrays.
-
 -- Heap string equals.
 var foo = "$('fo')$('o')"
 t.eq(foo == 'bar', false)

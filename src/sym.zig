@@ -21,6 +21,7 @@ pub const SymType = enum(u8) {
     object_t,
     struct_t,
     trait_t,
+    array_t,
     // pointer_t,
     bool_t,
     int_t,
@@ -128,6 +129,11 @@ pub const Sym = extern struct {
                 float_t.getMod().deinit(alloc);
                 alloc.destroy(float_t);
             },
+            .array_t => {
+                const array_t = self.cast(.array_t);
+                array_t.getMod().deinit(alloc);
+                alloc.destroy(array_t);
+            },
             .chunk => {
                 const chunk = self.cast(.chunk);
                 chunk.getMod().deinit(alloc);
@@ -228,6 +234,7 @@ pub const Sym = extern struct {
             .enum_t     => return self.cast(.enum_t).variant,
             .int_t      => return self.cast(.int_t).variant,
             .distinct_t => return self.cast(.distinct_t).variant,
+            .array_t    => return self.cast(.array_t).variant,
             else => return null,
         }
     }
@@ -244,6 +251,7 @@ pub const Sym = extern struct {
             .int_t,
             .float_t,
             .typeAlias,
+            .array_t,
             .struct_t,
             .object_t,
             .trait_t,
@@ -290,6 +298,7 @@ pub const Sym = extern struct {
         switch (self.type) {
             .chunk           => return @ptrCast(&self.cast(.chunk).mod),
             .enum_t          => return @ptrCast(&self.cast(.enum_t).mod),
+            .array_t         => return @ptrCast(&self.cast(.array_t).mod),
             .struct_t        => return @ptrCast(&self.cast(.struct_t).mod),
             .object_t        => return @ptrCast(&self.cast(.object_t).mod),
             .custom_t        => return @ptrCast(&self.cast(.custom_t).mod),
@@ -349,6 +358,7 @@ pub const Sym = extern struct {
             .enum_t,
             .int_t,
             .float_t,
+            .array_t,
             .struct_t,
             .bool_t,
             .typeAlias,
@@ -381,6 +391,7 @@ pub const Sym = extern struct {
             .float_t         => return self.cast(.float_t).type,
             .enum_t          => return self.cast(.enum_t).type,
             .typeAlias       => return self.cast(.typeAlias).type,
+            .array_t         => return self.cast(.array_t).type,
             .struct_t        => return self.cast(.struct_t).type,
             .object_t        => return self.cast(.object_t).type,
             .distinct_t      => return self.cast(.distinct_t).type,
@@ -410,6 +421,7 @@ pub const Sym = extern struct {
             },
             .struct_t        => return self.cast(.struct_t).getFields(),
             .object_t        => return self.cast(.object_t).getFields(),
+            .array_t,
             .placeholder,
             .bool_t,
             .int_t,
@@ -490,6 +502,7 @@ fn SymChild(comptime symT: SymType) type {
         .hostVar => HostVar,
         .struct_t,
         .object_t => ObjectType,
+        .array_t => ArrayType,
         .trait_t => TraitType,
         .custom_t => CustomType,
         .bool_t => BoolType,
@@ -721,6 +734,10 @@ const VariantKeyContext = struct {
                     const typeId = val.asHeapObject().type.type;
                     c.update(std.mem.asBytes(&typeId));
                 },
+                bt.Integer => {
+                    const i = val.asHeapObject().integer.val;
+                    c.update(std.mem.asBytes(&i));
+                },
                 else => {
                     cy.rt.logZFmt("Unsupported value hash: {}", .{val.getTypeId()});
                     @panic("");
@@ -745,6 +762,9 @@ const VariantKeyContext = struct {
                     if (av.asHeapObject().type.type != b[i].asHeapObject().type.type) {
                         return false;
                     }
+                },
+                bt.Integer => {
+                    return av.asBoxInt() == b[i].asBoxInt();
                 },
                 else => {
                     cy.rt.logZFmt("Unsupported value comparison: {}", .{atype});
@@ -912,6 +932,19 @@ pub const FloatType = extern struct {
     bits: u8,
 
     pub fn getMod(self: *FloatType) *cy.Module {
+        return @ptrCast(&self.mod);
+    }
+};
+
+pub const ArrayType = extern struct {
+    head: Sym,
+    type: cy.TypeId,
+    n: usize,
+    elem_t: cy.TypeId,
+    mod: vmc.Module,
+    variant: ?*Variant,
+
+    pub fn getMod(self: *ArrayType) *cy.Module {
         return @ptrCast(&self.mod);
     }
 };
@@ -1199,6 +1232,27 @@ pub const ChunkExt = struct {
         c.compiler.sema.types.items[type_id] = .{
             .sym = @ptrCast(sym),
             .kind = .float,
+            .data = undefined,
+            .info = .{},
+        };
+        try c.syms.append(c.alloc, @ptrCast(sym));
+        return sym;
+    }
+
+    pub fn createArrayType(c: *cy.Chunk, parent: *Sym, name: []const u8, opt_type_id: ?cy.TypeId, n: usize, elem_t: cy.TypeId) !*ArrayType {
+        const type_id = opt_type_id orelse try c.sema.pushType();
+        const sym = try createSym(c.alloc, .array_t, .{
+            .head = Sym.init(.array_t, parent, name),
+            .type = type_id,
+            .mod = undefined,
+            .n = n,
+            .elem_t = elem_t,
+            .variant = null,
+        });
+        @as(*cy.Module, @ptrCast(&sym.mod)).* = cy.Module.init(c);
+        c.compiler.sema.types.items[type_id] = .{
+            .sym = @ptrCast(sym),
+            .kind = .array,
             .data = undefined,
             .info = .{},
         };
@@ -1619,20 +1673,27 @@ fn writeParentPrefix(s: *cy.Sema, w: anytype, sym: *cy.Sym, config: SymFormatCon
     try w.writeByte('.');
 }
 
-fn writeLocalTemplateArgs(s: *cy.Sema, w: anytype, variant: *cy.sym.Variant, config: SymFormatConfig) !void {
-    const args = variant.args;
-    if (args[0].getTypeId() != bt.Type) {
-        return error.Unsupported;
-    }
-    var sym = s.getTypeSym(args[0].asHeapObject().type.type);
-    try writeSymName(s, w, sym, config);
-    for (args[1..]) |arg| {
-        try w.writeByte(',');
-        if (arg.getTypeId() != bt.Type) {
+fn writeTemplateArg(s: *cy.Sema, w: anytype, arg: cy.Value, config: SymFormatConfig) !void {
+    switch (arg.getTypeId()) {
+        bt.Type => {
+            const sym = s.getTypeSym(arg.asHeapObject().type.type);
+            try writeSymName(s, w, sym, config);
+        },
+        bt.Integer => {
+            try w.print("{}", .{arg.asBoxInt()});
+        },
+        else => {
             return error.Unsupported;
         }
-        sym = s.getTypeSym(arg.asHeapObject().type.type);
-        try writeSymName(s, w, sym, config);
+    }
+}
+
+fn writeLocalTemplateArgs(s: *cy.Sema, w: anytype, variant: *cy.sym.Variant, config: SymFormatConfig) !void {
+    const args = variant.args;
+    try writeTemplateArg(s, w, args[0], config);
+    for (args[1..]) |arg| {
+        try w.writeByte(',');
+        try writeTemplateArg(s, w, arg, config);
     }
 }
 

@@ -1688,7 +1688,7 @@ pub fn pushResolveContext(c: *cy.Chunk) !void {
     try c.resolve_stack.append(c.alloc, new);
 }
 
-fn setResolveCtParam(c: *cy.Chunk, name: []const u8, param: cy.Value) !void {
+pub fn setResolveCtParam(c: *cy.Chunk, name: []const u8, param: cy.Value) !void {
     try c.resolve_stack.items[c.resolve_stack.items.len-1].setCtParam(c, name, param);
 }
 
@@ -1875,6 +1875,21 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
                 try tchunk.deferred_funcs.append(c.alloc, func);
             }
             return new_sym;
+        },
+        .array_t => {
+            const array_t = sym.cast(.array_t);
+            try pushVariantResolveContext(tchunk, array_t.variant.?);
+            defer popResolveContext(tchunk);
+
+            const custom_decl = template.child_decl.cast(.custom_decl);
+
+            for (custom_decl.funcs) |func_n| {
+                const func = try reserveNestedFunc(tchunk, @ptrCast(array_t), func_n, true);
+                try resolveFunc2(tchunk, func, true);
+                try tchunk.deferred_funcs.append(c.alloc, func);
+            }
+
+            return sym;
         },
         else => {
             return error.Unsupported;
@@ -2069,6 +2084,14 @@ pub fn resolveDistinctType(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType) !*cy.
             new.getMod().* = distinct_t.getMod().*;
             new.getMod().updateParentRefs(@ptrCast(new));
 
+            new_sym = @ptrCast(new);
+        },
+        .array_t => {
+            const array_t = target_sym.cast(.array_t);
+            const new = try c.createArrayType(distinct_t.head.parent.?, name, distinct_t.type, array_t.n, array_t.elem_t);
+            new.getMod().* = distinct_t.getMod().*;
+            new.getMod().updateParentRefs(@ptrCast(new));
+            new.variant = distinct_t.variant;
             new_sym = @ptrCast(new);
         },
         else => {
@@ -3437,7 +3460,7 @@ fn ensureLocalNamePathSym(c: *cy.Chunk, path: []*ast.Node) !*Sym {
     return sym;
 }
 
-fn resolveSymType(c: *cy.Chunk, expr: *ast.Node) !cy.TypeId {
+pub fn resolveSymType(c: *cy.Chunk, expr: *ast.Node) !cy.TypeId {
     const sym = try resolveSym(c, expr);
     return sym.getStaticType() orelse {
         switch (sym.type) {
@@ -3556,7 +3579,7 @@ pub fn resolveSym(c: *cy.Chunk, expr: *ast.Node) anyerror!*cy.Sym {
     }
 }
 
-fn getResolveContext(c: *cy.Chunk) *ResolveContext {
+pub fn getResolveContext(c: *cy.Chunk) *ResolveContext {
     return &c.resolve_stack.items[c.resolve_stack.items.len-1];
 }
 
@@ -4633,7 +4656,6 @@ pub const ChunkExt = struct {
             bt.Float    => return c.semaFloat(0, node),
             bt.ListDyn  => return c.semaEmptyList(node),
             bt.Map      => return c.semaMap(node),
-            bt.Array    => return c.semaArray("", node),
             bt.String   => return c.semaString("", node),
             else => {
                 const sym = c.sema.getTypeSym(typeId);
@@ -4798,7 +4820,7 @@ pub const ChunkExt = struct {
                         c.ir.setArrayItem(args_loc, u32, i, res.irIdx);
                     }
 
-                    c.ir.setExprData(loc, .list, .{ .numArgs = @intCast(nargs) });
+                    c.ir.setExprData(loc, .list, .{ .nargs = @intCast(nargs), .args = args_loc });
                     return ExprResult.initStatic(loc, type_id);
                 }
             }
@@ -4812,6 +4834,20 @@ pub const ChunkExt = struct {
             .object_t => {
                 const obj = sym.cast(.object_t);
                 return c.semaObjectInit2(obj, node.init);
+            },
+            .array_t => {
+                const array_t = sym.cast(.array_t);
+                const nargs = node.init.args.len;
+                const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
+                for (node.init.args, 0..) |arg, i| {
+                    const res = try c.semaExprTarget(arg, array_t.elem_t);
+                    c.ir.setArrayItem(args_loc, u32, i, res.irIdx);
+                }
+
+                const loc = try c.ir.pushExpr(.array, c.alloc, array_t.type, expr.node, .{
+                    .nargs = @intCast(nargs), .args = args_loc,
+                });
+                return ExprResult.initStatic(loc, array_t.type);
             },
             .enum_t => {
                 return c.reportErrorFmt("Only enum members can be used as initializers.", &.{}, node.left);
@@ -5066,6 +5102,12 @@ pub const ChunkExt = struct {
                 } else {
                     return c.semaExpr(node, .{});
                 }
+            },
+            .array_type => {
+                const array_type = node.cast(.array_type);
+                const sym = try cte.expandTemplateOnCallArgs(c, c.sema.array_tmpl, &.{ array_type.size, array_type.elem }, node);
+                const ctype = CompactType.init(sym.getStaticType().?);
+                return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = sym });
             },
             .expandOpt => {
                 const expand_opt = node.cast(.expandOpt);
@@ -5467,6 +5509,13 @@ pub const ChunkExt = struct {
                 const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, bt.MetaType, node, .{ .typeId = type_id });
                 return ExprResult.init(irIdx, CompactType.init(bt.MetaType));
             },
+            .array_type => { 
+                const array_type = node.cast(.array_type);
+                const sym = try cte.expandTemplateOnCallArgs(c, c.sema.array_tmpl, &.{array_type.size, array_type.elem}, node);
+                const type_id = sym.getStaticType().?;
+                const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, bt.MetaType, node, .{ .typeId = type_id });
+                return ExprResult.init(irIdx, CompactType.init(bt.MetaType));
+            },
             .accessExpr => {
                 return try c.semaAccessExpr(expr, true);
             },
@@ -5581,7 +5630,7 @@ pub const ChunkExt = struct {
                             c.ir.setArrayItem(args_loc, u32, i, res.irIdx);
                         }
 
-                        c.ir.setExprData(loc, .list, .{ .numArgs = @intCast(nargs) });
+                        c.ir.setExprData(loc, .list, .{ .nargs = @intCast(nargs), .args = args_loc });
                         return ExprResult.initStatic(loc, expr.target_t);
                     }
                 }
@@ -5608,7 +5657,7 @@ pub const ChunkExt = struct {
                         c.ir.setArrayItem(irArgsIdx, u32, i, argRes.irIdx);
                     }
 
-                    c.ir.setExprData(irIdx, .list, .{ .numArgs = @intCast(init_lit.args.len) });
+                    c.ir.setExprData(irIdx, .list, .{ .nargs = @intCast(init_lit.args.len), .args = irArgsIdx });
                     return ExprResult.initStatic(irIdx, bt.ListDyn);
                 } else {
                     const obj_t = c.sema.getTypeSym(bt.Table).cast(.object_t);
@@ -5928,11 +5977,6 @@ pub const ChunkExt = struct {
         return ExprResult.initStatic(irIdx, bt.String);
     }
 
-    pub fn semaArray(c: *cy.Chunk, arr: []const u8, node: *ast.Node) !ExprResult {
-        const irIdx = try c.ir.pushExpr(.array, c.alloc, bt.Array, node, .{ .buffer = arr });
-        return ExprResult.initStatic(irIdx, bt.Array);
-    }
-
     pub fn semaFloat(c: *cy.Chunk, val: f64, node: *ast.Node) !ExprResult {
         const irIdx = try c.ir.pushExpr(.float, c.alloc, bt.Float, node, .{ .val = val });
         return ExprResult.initStatic(irIdx, bt.Float);
@@ -5978,7 +6022,7 @@ pub const ChunkExt = struct {
     }
 
     pub fn semaEmptyList(c: *cy.Chunk, node: *ast.Node) !ExprResult {
-        const irIdx = try c.ir.pushExpr(.list, c.alloc, bt.ListDyn, node, .{ .numArgs = 0 });
+        const irIdx = try c.ir.pushExpr(.list, c.alloc, bt.ListDyn, node, .{ .nargs = 0, .args = 0 });
         return ExprResult.initStatic(irIdx, bt.ListDyn);
     }
 
@@ -6608,6 +6652,7 @@ pub const Sema = struct {
     pointer_tmpl: *cy.sym.Template,
     list_tmpl: *cy.sym.Template,
     table_type: *cy.sym.ObjectType,
+    array_tmpl: *cy.sym.Template,
 
     pub fn init(alloc: std.mem.Allocator, compiler: *cy.Compiler) Sema {
         return .{
@@ -6619,6 +6664,7 @@ pub const Sema = struct {
             .pointer_tmpl = undefined,
             .list_tmpl = undefined,
             .table_type = undefined,
+            .array_tmpl = undefined,
             .funcSigs = .{},
             .funcSigMap = .{},
             .types = .{},

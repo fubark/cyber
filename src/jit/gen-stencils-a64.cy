@@ -16,7 +16,7 @@ if llvm.CreateMemoryBufferWithContentsOfFile(os.cstr("$(curDir)/stencils.o"), ou
 var llBuf = outLLBuf.get(0, symbol.voidPtr)
 var cbuf = llvm.GetBufferStart(llBuf)
 var size = llvm.GetBufferSize(llBuf)
-var buf = cbuf.toArray(0, size)
+var buf = cbuf.getString(0, size)
 
 var llBin = llvm.CreateBinary(llBuf, pointer(void, 0), outMsg)
 
@@ -33,12 +33,12 @@ while llvm.ObjectFileIsSectionIteratorAtEnd(llBin, llSectIter) == 0:
         llvm.MoveToNextSection(llSectIter)
         continue
 
-    var name = cname.fromCstr(0).decode()
+    var name = cname.fromCstr(0)
 
     if name == '__text':
         var ccodeBuf = llvm.GetSectionContents(llSectIter)
         var size = llvm.GetSectionSize(llSectIter)
-        codeBuf = ccodeBuf.toArray(0, size)
+        codeBuf = ccodeBuf.getString(0, size)
         break
     llvm.MoveToNextSection(llSectIter)
 
@@ -61,7 +61,7 @@ while llvm.ObjectFileIsSymbolIteratorAtEnd(llBin, llSymIter) == 0:
         continue
 
     var cname = llvm.GetSymbolName(llSymIter)
-    var name = cname.fromCstr(0).decode()
+    var name = cname.fromCstr(0)
     var addr = llvm.GetSymbolAddress(llSymIter)
     -- Size is missing, calculate by sorting symbols and using their address.
     var sym = Sym{name=name, addr=addr}
@@ -104,7 +104,7 @@ var llRelocIter = llvm.GetRelocations(llSectIter)
 while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
     var symRef = llvm.GetRelocationSymbol(llRelocIter)
     var csymName = llvm.GetSymbolName(symRef)
-    var symName = csymName.fromCstr(0).decode()
+    var symName = csymName.fromCstr(0)
     if symName.startsWith('_cont'):
         -- Skip continuations.
         llvm.MoveToNextRelocation(llRelocIter)
@@ -113,9 +113,9 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
     var offset = llvm.GetRelocationOffset(llRelocIter)
     -- var relocType = llvm.GetRelocationType(llRelocIter)
     var cname = llvm.GetRelocationTypeName(llRelocIter)
-    var name = cname.fromCstr(0).decode()
+    var name = cname.fromCstr(0)
     var cvalue = llvm.GetRelocationValueString(llRelocIter)
-    var value = cname.fromCstr(0).decode()
+    var value = cname.fromCstr(0)
 
     -- Find relevant func sym.
     let found = false

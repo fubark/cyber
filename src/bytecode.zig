@@ -1043,6 +1043,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .deref_struct,
         .field_struct,
         .list,
+        .array,
         .object,
         .objectSmall,
         .forRange,
@@ -1162,6 +1163,7 @@ pub const OpCode = enum(u8) {
     /// First operand points the first elem and also the dst local. Second operand contains the number of elements.
     list_dyn = vmc.CodeListDyn,
     list = vmc.CodeList,
+    array = vmc.CodeArray,
     /// First operand points the first entry value and also the dst local. Second operand contains the number of elements.
     /// Const key indexes follow the size operand.
     map = vmc.CodeMap,
@@ -1317,7 +1319,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 127);
+    try t.eq(std.enums.values(OpCode).len, 128);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

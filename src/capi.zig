@@ -265,7 +265,6 @@ pub const TypeMapIter = c.CL_TYPE_MAPITER;
 pub const TypeClosure = c.CL_TYPE_CLOSURE;
 pub const TypeLambda = c.CL_TYPE_LAMBDA;
 pub const TypeString = c.CL_TYPE_STRING;
-pub const TypeArray = c.CL_TYPE_ARRAY;
 pub const TypeFiber = c.CL_TYPE_FIBER;
 pub const TypeHostFunc = c.CL_TYPE_HOST_FUNC;
 pub const TypeExternFunc = c.CL_TYPE_EXTERN_FUNC;

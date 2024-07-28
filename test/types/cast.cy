@@ -20,14 +20,8 @@ t.eq(foo3(a as String), true)
 func foo3(a String):
     return true
 
--- Cast to exact array type.
-a = Array('abc')
-t.eq(foo4(a as Array), true)
-func foo4(a Array):
-    return true
-
 -- Cast to abstract any type.
-a = Array('abc')
+a = 'abc'
 t.eq(foo5(a as any), true)
 func foo5(a any):
     return true

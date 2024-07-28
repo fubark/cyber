@@ -38,12 +38,6 @@ t.eq(a['bc'], 123)
 -- ustring slice
 a['abc🦊'[1..]] = 123
 t.eq(a['bc🦊'], 123)
--- Array
-a[Array('abc')] = 123
-t.eq(a['abc'], 123)
--- Array slice
-a[Array('abc')[1..]] = 123
-t.eq(a['bc'], 123)
 
 -- Various key types.
 a[32] = 1

@@ -493,7 +493,7 @@ pub fn malloc(vm: *cy.VM) anyerror!Value {
 
 fn cstr(vm: *cy.VM) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
-    const bytes = try vm.getOrBufPrintValueRawStr(&cy.tempBuf, vm.getValue(0));
+    const bytes = vm.getString(0);
     const new: [*]u8 = @ptrCast(std.c.malloc(bytes.len + 1));
     @memcpy(new[0..bytes.len], bytes);
     new[bytes.len] = 0;
@@ -719,7 +719,7 @@ pub fn fetchUrl(vm: *cy.VM) anyerror!Value {
         const resp = try http.get(vm.alloc, vm.httpClient, url);
         defer vm.alloc.free(resp.body);
         // TODO: Use allocOwnedString
-        return vm.allocArray(resp.body);
+        return vm.allocString(resp.body);
     }
 }
 
@@ -754,7 +754,7 @@ pub fn readFile(vm: *cy.VM) anyerror!Value {
 pub fn writeFile(vm: *cy.VM) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
     const path = vm.getString(0);
-    const content = try vm.getOrBufPrintValueRawStr(&cy.tempBuf, vm.getValue(1));
+    const content = vm.getString(1);
     try std.fs.cwd().writeFile(path, content);
     return Value.Void;
 }

@@ -14,6 +14,7 @@ pub const NodeType = enum(u7) {
     all,
     array_lit,
     array_expr,
+    array_type,
     assignStmt,
     attribute,
     await_expr,
@@ -315,6 +316,12 @@ const ArrayExpr = struct {
     args: []*Node,
 };
 
+const ArrayType = struct {
+    size: *Node align(8),
+    elem: *Node,
+    pos: u32,
+};
+
 const InitExpr = struct {
     left: *Node align(8),
     init: *InitLit,
@@ -573,6 +580,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .all            => Token,
         .array_lit      => ArrayLit,
         .array_expr     => ArrayExpr,
+        .array_type     => ArrayType,
         .assignStmt     => AssignStmt,
         .attribute      => Attribute,
         .await_expr     => AwaitExpr,
@@ -709,6 +717,7 @@ pub const Node = struct {
             .accessExpr     => self.cast(.accessExpr).left.pos(),
             .array_lit      => self.cast(.array_lit).pos,
             .array_expr     => self.cast(.array_expr).left.pos(),
+            .array_type     => self.cast(.array_type).pos,
             .assignStmt     => self.cast(.assignStmt).left.pos(),
             .attribute      => self.cast(.attribute).pos,
             .await_expr     => self.cast(.await_expr).pos,

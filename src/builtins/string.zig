@@ -57,6 +57,22 @@ pub fn sliceFn(vm: *cy.VM) Value {
     }
 }
 
+pub fn insertByte(vm: *cy.VM) anyerror!Value {
+    const str = vm.getObject(*cy.heap.String, 0);
+    const slice = str.getSlice();
+    const idx = try cy.builtins.intAsIndex(vm.getInt(1), slice.len + 1);
+    const byte = vm.getByte(2);
+    if (str.getType().isAstring()) {
+        if (byte < 128) {
+            return vm.allocAstringConcat3(slice[0..idx], &.{ byte }, slice[idx..]);
+        } else {
+            return vm.allocUstringConcat3(slice[0..idx], &.{ byte }, slice[idx..]);
+        }
+    } else {
+        return vm.allocUstringConcat3(slice[0..idx], &.{byte}, slice[idx..]);
+    }
+}
+
 pub fn insertFn(vm: *cy.VM) anyerror!Value {
     const obj = vm.getObject(*cy.heap.String, 0);
     const str = obj.getSlice();

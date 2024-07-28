@@ -298,9 +298,9 @@ pub fn fileWrite(vm: *cy.VM) anyerror!Value {
         return rt.prepThrowError(vm, .Closed);
     }
 
-    const buf = try vm.getOrBufPrintValueRawStr(&cy.tempBuf, vm.getValue(1));
+    const str = vm.getString(1);
     const file = fileo.getStdFile();
-    const numWritten = try file.write(buf);
+    const numWritten = try file.write(str);
     return Value.initInt(@intCast(numWritten));
 }
 
@@ -334,7 +334,7 @@ pub fn fileRead(vm: *cy.VM) anyerror!Value {
 
     const numRead = try file.read(tempBuf.buf[0..unumBytes]);
     // Can return empty string when numRead == 0.
-    return vm.allocArray(tempBuf.buf[0..numRead]);
+    return vm.allocString(tempBuf.buf[0..numRead]);
 }
 
 pub fn fileReadAll(vm: *cy.VM) anyerror!Value {
@@ -362,7 +362,7 @@ pub fn fileReadAll(vm: *cy.VM) anyerror!Value {
             // Done.
             const all = tempBuf.items();
             // Can return empty string.
-            return vm.allocArray(all);
+            return vm.allocString(all);
         } else {
             try tempBuf.ensureUnusedCapacity(vm.alloc, MinReadBufSize);
         }
@@ -432,15 +432,15 @@ pub fn fileNext(vm: *cy.VM) anyerror!Value {
         const readBuf = fileo.readBuf[0..fileo.readBufCap];
         if (cy.string.getLineEnd(readBuf[fileo.curPos..fileo.readBufEnd])) |end| {
             // Found new line.
-            const line = try vm.allocArray(readBuf[fileo.curPos..fileo.curPos+end]);
+            const line = try vm.allocString(readBuf[fileo.curPos..fileo.curPos+end]);
 
             // Advance pos.
             fileo.curPos += @intCast(end);
 
-            return ArraySome(vm, line);
+            return StringSome(vm, line);
         }
 
-        var lineBuf = try cy.string.HeapArrayBuilder.init(vm);
+        var lineBuf = try cy.string.HeapStringBuilder.init(vm);
         defer lineBuf.deinit();
         // Start with previous string without line delimiter.
         try lineBuf.appendString(vm.alloc, readBuf[fileo.curPos..fileo.readBufEnd]);
@@ -455,9 +455,9 @@ pub fn fileNext(vm: *cy.VM) anyerror!Value {
                 // End of stream.
                 fileo.iterLines = false;
                 if (lineBuf.len > 0) {
-                    return ArraySome(vm, Value.initNoCycPtr(lineBuf.ownObject(vm.alloc)));
+                    return StringSome(vm, Value.initNoCycPtr(lineBuf.ownObject(vm.alloc)));
                 } else {
-                    return ArrayNone(vm);
+                    return StringNone(vm);
                 }
             }
             if (cy.string.getLineEnd(readBuf[0..bytesRead])) |end| {
@@ -468,7 +468,7 @@ pub fn fileNext(vm: *cy.VM) anyerror!Value {
                 fileo.curPos = @intCast(end);
                 fileo.readBufEnd = @intCast(bytesRead);
 
-                return ArraySome(vm, Value.initNoCycPtr(lineBuf.ownObject(vm.alloc)));
+                return StringSome(vm, Value.initNoCycPtr(lineBuf.ownObject(vm.alloc)));
             } else {
                 try lineBuf.appendString(vm.alloc, readBuf[0..bytesRead]);
 
@@ -478,14 +478,14 @@ pub fn fileNext(vm: *cy.VM) anyerror!Value {
             }
         }
     } else {
-        return ArrayNone(vm);
+        return StringNone(vm);
     }
 }
 
 const MapNone = cy.builtins.MapNone;
 const MapSome = cy.builtins.MapSome;
-const ArrayNone = cy.builtins.ArrayNone;
-const ArraySome = cy.builtins.ArraySome;
+const StringNone = cy.builtins.StringNone;
+const StringSome = cy.builtins.StringSome;
 
 pub fn dirIteratorNext(vm: *cy.VM) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");

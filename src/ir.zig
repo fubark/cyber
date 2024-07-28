@@ -83,6 +83,7 @@ pub const ExprCode = enum(u8) {
     fieldDyn,
     field,
 
+    array,
     list,
     map,
 
@@ -103,7 +104,6 @@ pub const ExprCode = enum(u8) {
     enumMemberSym,
     string,
     stringTemplate,
-    array,
     lambda,
     closure,
     if_expr,
@@ -551,8 +551,14 @@ pub const Map = struct {
     placeholder: u8,
 };
 
+pub const Array = struct {
+    args: Loc,
+    nargs: u8,
+};
+
 pub const List = struct {
-    numArgs: u8,
+    args: Loc,
+    nargs: u8,
 };
 
 pub const Float = struct {
@@ -565,10 +571,6 @@ pub const Int = struct {
 
 pub const Byte = struct {
     val: u8,
-};
-
-pub const Array = struct {
-    buffer: []const u8,
 };
 
 pub const None = struct {

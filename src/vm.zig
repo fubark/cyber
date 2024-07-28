@@ -199,7 +199,6 @@ pub const VM = struct {
     stdHttpClient: if (cy.hasCLI) *http.StdHttpClient else *anyopaque,
 
     emptyString: Value,
-    emptyArray: Value,
 
     varSymExtras: cy.List(*cy.Sym),
 
@@ -235,7 +234,6 @@ pub const VM = struct {
             .compiler = undefined,
             .sema = undefined,
             .emptyString = undefined,
-            .emptyArray = undefined,
             .strInterns = .{},
             .staticObjects = .{},
             .names = .{},
@@ -1505,15 +1503,6 @@ pub const VM = struct {
         return try self.alloc.dupe(u8, str);
     }
 
-    /// Not guaranteed to be valid UTF-8. Returns `array` bytes.
-    pub fn getOrBufPrintValueRawStr(self: *const VM, buf: []u8, val: Value) ![]const u8 {
-        if (val.isArray()) {
-            return val.asArray();
-        } else {
-            return self.getOrBufPrintValueStr(buf, val);
-        }
-    }
-
     pub fn bufPrintValueShortStr(self: *const VM, buf: []u8, val: Value) ![]const u8 {
         var fbuf = std.io.fixedBufferStream(buf);
         var w = fbuf.writer();
@@ -1618,13 +1607,6 @@ pub const VM = struct {
             bt.String => {
                 try w.writeAll(obj.string.getSlice());
             },
-            bt.Array => {
-                if (obj.array.isSlice()) {
-                    try std.fmt.format(w, "Array ({})", .{obj.array.len()});
-                } else {
-                    try std.fmt.format(w, "Array ({})", .{obj.array.len()});
-                }
-            },
             bt.ListDyn => {
                 try std.fmt.format(w, "List ({})", .{obj.list.list.len});
             },
@@ -1696,13 +1678,6 @@ fn evalCompareBool(left: Value, right: Value) bool {
                 return std.mem.eql(u8, lstr, rstr);
             }
         },
-        bt.Array => {
-            if (right.getTypeId() == bt.Array) {
-                const lslice = left.asArray();
-                const rslice = right.asArray();
-                return std.mem.eql(u8, lslice, rslice);
-            }
-        },
         bt.MetaType => {
             if (right.getTypeId() == bt.MetaType) {
                 const l = left.asHeapObject().metatype;
@@ -1729,13 +1704,6 @@ fn evalCompare(left: Value, right: Value) Value {
                 return Value.initBool(std.mem.eql(u8, lstr, rstr));
             }
         },
-        bt.Array => {
-            if (right.getTypeId() == bt.Array) {
-                const lslice = left.asArray();
-                const rslice = right.asArray();
-                return Value.initBool(std.mem.eql(u8, lslice, rslice));
-            }
-        },
         bt.MetaType => {
             if (right.getTypeId() == bt.MetaType) {
                 const l = left.asHeapObject().metatype;
@@ -1760,13 +1728,6 @@ fn evalCompareNot(left: cy.Value, right: cy.Value) cy.Value {
                 const lstr = left.asString();
                 const rstr = right.asString();
                 return Value.initBool(!std.mem.eql(u8, lstr, rstr));
-            }
-        },
-        bt.Array => {
-            if (right.getTypeId() == bt.Array) {
-                const lslice = left.asArray();
-                const rslice = right.asArray();
-                return Value.initBool(!std.mem.eql(u8, lslice, rslice));
             }
         },
         bt.MetaType => {
@@ -2940,6 +2901,19 @@ fn zAllocFuncFromSym(vm: *cy.VM, id: u16) callconv(.C) vmc.ValueResult {
     };
 }
 
+fn zAllocArray(vm: *cy.VM, type_id: cy.TypeId, elemStart: [*]const Value, nElems: u8) callconv(.C) vmc.ValueResult {
+    const arr = cy.heap.allocArray(vm, type_id, elemStart[0..nElems]) catch {
+        return .{
+            .val = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .val = @bitCast(arr),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
 fn zAllocList(vm: *cy.VM, type_id: cy.TypeId, elemStart: [*]const Value, nElems: u8) callconv(.C) vmc.ValueResult {
     const list = cy.heap.allocList(vm, type_id, elemStart[0..nElems]) catch {
         return .{
@@ -3349,6 +3323,7 @@ comptime {
         @export(zAllocFiber, .{ .name = "zAllocFiber", .linkage = .strong });
         @export(zAllocFuncFromSym, .{ .name = "zAllocFuncFromSym", .linkage = .strong });
         @export(zAlloc, .{ .name = "zAlloc", .linkage = .strong });
+        @export(zAllocArray, .{ .name = "zAllocArray", .linkage = .strong });
         @export(zAllocList, .{ .name = "zAllocList", .linkage = .strong });
         @export(zAllocListDyn, .{ .name = "zAllocListDyn", .linkage = .strong });
         @export(zCopyObject, .{ .name = "zCopyObject", .linkage = .strong });
@@ -3481,8 +3456,9 @@ pub const VMGetArgExt = struct {
         vm.c.framePtr[CallArgStart + idx] = Value.initBool(b);
     }    
 
-    pub fn getArray(vm: *VM, idx: u32) []const u8 {
-        return vm.c.framePtr[CallArgStart + idx].asArray();
+    pub fn getArrayElems(vm: *VM, idx: u32) []Value {
+        const arr = vm.c.framePtr[CallArgStart + idx].castHeapObject(*cy.heap.Array);
+        return arr.getElemsPtr()[0..arr.len];
     }
 
     pub fn getEnumValue(vm: *VM, idx: u32) u32 {

@@ -2918,8 +2918,25 @@ pub const Parser = struct {
                         .elem = elem,
                         .pos = self.tokenSrcPos(start),
                     });
+                } else {
+                    // Array type.
+                    self.advance();
+                    const size = (try self.parseTermExpr2Opt(.{ .parse_record_expr = false })) orelse {
+                        return self.reportError("Expected array type size.", &.{});
+                    };
+                    if (self.peek().tag() != .right_bracket) {
+                        return self.reportError("Expected right bracket.", &.{});
+                    }
+                    self.advance();
+                    const elem = (try self.parseTermExpr2Opt(.{ .parse_record_expr = false })) orelse {
+                        return self.reportError("Expected array elem type.", &.{});
+                    };
+                    return try self.ast.newNodeErase(.array_type, .{
+                        .size = size,
+                        .elem = elem,
+                        .pos = self.tokenSrcPos(start),
+                    });
                 }
-                return @ptrCast(try self.parseArrayLiteral());
             },
             .left_brace => {
                 return @ptrCast(try self.parseInitLiteral());

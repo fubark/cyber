@@ -56,7 +56,7 @@ var unit = getTranslationUnit(headerPath)
 for 0..clang.lib.clang_getNumDiagnostics(unit) -> i:
     var diag = clang.lib.clang_getDiagnostic(unit, i)
     let spelling = clang.lib.clang_getDiagnosticSpelling(diag)
-    print spelling.fromCstr(0).decode()
+    print spelling.fromCstr(0)
 
 let cursor = clang.lib.clang_getTranslationUnitCursor(unit)
 
@@ -397,7 +397,7 @@ func genMacros(headerPath String):
     for 0..clang.lib.clang_getNumDiagnostics(unit) -> i:
         var diag = clang.lib.clang_getDiagnostic(unit, i)
         let spelling = clang.lib.clang_getDiagnosticSpelling(diag)
-        print spelling.fromCstr(0).decode()
+        print spelling.fromCstr(0)
 
     out += "-- Macros\n"
 
@@ -501,7 +501,7 @@ let macrosRootVisitor(cursor, parent, state):
             out += "var .$(finalName) float = $(val)\n"
         case clang.CXEval_StrLiteral:
             let strz = clang.lib.clang_EvalResult_getAsStr(eval)
-            var str = strz.fromCstr(0).decode()
+            var str = strz.fromCstr(0)
             out += """var .$(finalName) String = "$(str)"\n"""
         else:
             print "$(kind)"
@@ -515,7 +515,7 @@ let macrosRootVisitor(cursor, parent, state):
 
 func fromCXString(cxStr any) String:
     let cname = clang.lib.clang_getCString(cxStr)
-    return cname.fromCstr(0).decode()
+    return cname.fromCstr(0)
 
 let toCyType(nameOrSym, forRet):
     if typeof(nameOrSym) == symbol:

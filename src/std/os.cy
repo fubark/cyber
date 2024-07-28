@@ -40,7 +40,7 @@
 @host func createFile(path String, truncate bool) File
 
 --| Returns a null terminated C string.
-@host func cstr(s any) *void
+@host func cstr(s String) *void
 
 --| Returns the current working directory.
 @host func cwd() String
@@ -58,7 +58,7 @@
 @host func exit(status int) void
 
 --| Fetches the contents at `url` using the HTTP GET request method.
-@host func fetchUrl(url String) Array
+@host func fetchUrl(url String) String
 
 --| Frees the memory located at `ptr`.
 @host func free(ptr *void) void
@@ -125,22 +125,22 @@
 @host func unsetEnv(key String) void
 
 --| Writes `contents` as a string or bytes to a file.
-@host func writeFile(path String, contents any) void
+@host func writeFile(path String, contents String) void
 
 @host
 type File _:
 
     --| Closes the file handle. File ops invoked afterwards will return `error.Closed`.
     @host func close(self) void
-    @host func iterator(self) any
-    @host func next(self) any
+    @host func iterator(self) File
+    @host func next(self) String
 
     --| Reads at most `n` bytes as an `Array`. `n` must be at least 1.
     --| A result with length 0 indicates the end of file was reached.
-    @host func read(self, n int) Array
+    @host func read(self, n int) String
 
     --| Reads to the end of the file and returns the content as an `Array`.
-    @host func readAll(self) Array
+    @host func readAll(self) String
 
     --| Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.
     @host func seek(self, n int) void
@@ -164,9 +164,9 @@ type File _:
     --| waiting to see if the next read has a connecting `\n`.
     @host func streamLines(self, bufSize int) File
 
-    --| Writes a `String` or `Array` at the current file position.
+    --| Writes a `String` at the current file position.
     --| The number of bytes written is returned.
-    @host func write(self, val any) int
+    @host func write(self, val String) int
 
 @host
 type Dir _:

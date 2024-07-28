@@ -130,10 +130,7 @@ pub const HeapObject = extern union {
     aslice: AstringSlice,
     uslice: UstringSlice,
 
-    // Arrays.
     array: Array,
-    arraySlice: ArraySlice,
-
     object: Object,
     trait: Trait,
     up: UpValue,
@@ -516,66 +513,13 @@ pub const MaxPoolObjectArrayByteLen = 28;
 pub const Array = extern struct {
     typeId: cy.TypeId align(8),
     rc: u32,
-    /// Most significant bit contains the slice flag.
-    headerAndLen: u32,
-    bufStart: u8,
+    len: u64,
+    elem_head: Value,
 
     pub const BufOffset = @offsetOf(Array, "bufStart");
 
-    pub fn getParent(self: *Array) *cy.HeapObject {
-        if (self.isSlice()) {
-            return @as(*const ArraySlice, @ptrCast(self)).getParentPtr().?;
-        } else {
-            return @ptrCast(self);
-        }
-    }
-
-    pub inline fn getMutSlice(self: *Array) []u8 {
-        if (self.isSlice()) {
-            return @as(*ArraySlice, @ptrCast(self)).getMutSlice();
-        } else {
-            return @as([*]u8, @ptrCast(&self.bufStart))[0..self.len()];
-        }
-    }
-
-    pub inline fn getSlice(self: *const Array) []const u8 {
-        if (self.isSlice()) {
-            return @as(*const ArraySlice, @ptrCast(self)).getSlice();
-        } else {
-            return @as([*]const u8, @ptrCast(&self.bufStart))[0..self.len()];
-        }
-    }
-
-    pub inline fn isSlice(self: *const Array) bool {
-        return (self.headerAndLen & 0x80000000) > 0;
-    }
-
-    pub inline fn len(self: *const Array) u32 {
-        return self.headerAndLen & 0x7fffffff;
-    }
-};
-
-const ArraySlice = extern struct {
-    typeId: cy.TypeId align(8),
-    rc: u32,
-    headerAndLen: u32,
-
-    /// `buf` offset from the parent Array object.
-    offset: u32,
-    buf: [*]const u8,
-
-    pub inline fn getMutSlice(self: *ArraySlice) []u8 {
-        return @constCast(self.buf[0..@as(*const Array, @ptrCast(self)).len()]);
-    }
-
-    pub inline fn getSlice(self: *const ArraySlice) []const u8 {
-        return self.buf[0..@as(*const Array, @ptrCast(self)).len()];
-    }
-
-    pub inline fn getParentPtr(self: *const ArraySlice) ?*cy.HeapObject {
-        if (self.offset != 0) {
-            return @ptrFromInt(@intFromPtr(self.buf) - self.offset);
-        } else return null;
+    pub inline fn getElemsPtr(self: *Array) [*]Value {
+        return @ptrCast(&self.elem_head);
     }
 };
 
@@ -1126,6 +1070,19 @@ pub fn allocTuple(vm: *cy.VM, elems: []const Value) !Value {
     return Value.initCycPtr(obj);
 }
 
+pub fn allocArray(vm: *cy.VM, type_id: cy.TypeId, elems: []const Value) !Value {
+    const arr: *Array = @ptrCast(try allocExternalObject(vm, (2 + elems.len) * @sizeOf(Value), true));
+    arr.* = .{
+        .typeId = type_id | vmc.CYC_TYPE_MASK,
+        .rc = 1,
+        .len = elems.len,
+        .elem_head = undefined,
+    };
+    const dst = arr.getElemsPtr();
+    @memcpy(dst[0..elems.len], elems);
+    return Value.initCycPtr(arr);
+}
+
 pub fn allocList(self: *cy.VM, type_id: cy.TypeId, elems: []const Value) !Value {
     const cyclable = self.c.types[type_id].cyclable;
     const obj = try allocPoolObject(self);
@@ -1383,26 +1340,6 @@ pub fn getOrAllocOwnedUstring(self: *cy.VM, obj: *HeapObject) !Value {
     return getOrAllocOwnedString(self, obj, obj.ustring.getSlice());
 }
 
-pub fn allocArrayConcat(self: *cy.VM, slice: []const u8, other: []const u8) !Value {
-    const len: u32 = @intCast(slice.len + other.len);
-    var obj: *HeapObject = undefined;
-    if (len <= MaxPoolObjectArrayByteLen) {
-        obj = try allocPoolObject(self);
-    } else {
-        obj = try allocExternalObject(self, len + Array.BufOffset, false);
-    }
-    obj.array = .{
-        .typeId = bt.Array,
-        .rc = 1,
-        .headerAndLen = len,
-        .bufStart = undefined,
-    };
-    const dst = @as([*]u8, @ptrCast(&obj.array.bufStart))[0..len];
-    @memcpy(dst[0..slice.len], slice);
-    @memcpy(dst[slice.len..], other);
-    return Value.initNoCycPtr(obj);
-}
-
 fn allocUstringConcat3Object(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8) !*HeapObject {
     const obj = try allocUnsetUstringObject(self, str1.len + str2.len + str3.len);
     const dst = obj.ustring.getMutSlice();
@@ -1568,8 +1505,6 @@ pub const VmExt = struct {
     pub const allocOwnedUstring = Root.getOrAllocOwnedUstring;
     pub const allocAstringSlice = Root.allocAstringSlice;
     pub const allocUstringSlice = Root.allocUstringSlice;
-    pub const allocArraySlice = Root.allocArraySlice;
-    pub const allocArrayConcat = Root.allocArrayConcat;
     pub const allocHostFunc = Root.allocHostFunc;
     pub const allocTable = Root.allocTable;
     pub const allocEmptyMap = Root.allocEmptyMap;
@@ -1581,7 +1516,6 @@ pub const VmExt = struct {
     pub const allocSlice = Root.allocSlice;
     pub const allocEmptyObjectSmall = Root.allocEmptyObjectSmall;
     pub const allocEmptyObject = Root.allocEmptyObject;
-    pub const allocUnsetArrayObject = Root.allocUnsetArrayObject;
     pub const allocUnsetAstringObject = Root.allocUnsetAstringObject;
     pub const allocUnsetUstringObject = Root.allocUnsetUstringObject;
     pub const allocListFill = Root.allocListFill;
@@ -1738,41 +1672,6 @@ pub fn allocAstringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject) !
         .headerAndLen = (@as(u32, @intFromEnum(StringType.aslice)) << 30) | @as(u32, @intCast(slice.len)),
         .buf = slice.ptr,
         .parent = parent,
-    };
-    return Value.initNoCycPtr(obj);
-}
-
-pub fn allocUnsetArrayObject(self: *cy.VM, len: usize) !*HeapObject {
-    var obj: *HeapObject = undefined;
-    if (len <= MaxPoolObjectArrayByteLen) {
-        obj = try allocPoolObject(self);
-    } else {
-        obj = try allocExternalObject(self, len + Array.BufOffset, false);
-    }
-    obj.array = .{
-        .typeId = bt.Array,
-        .rc = 1,
-        .headerAndLen = @intCast(len),
-        .bufStart = undefined,
-    };
-    return obj;
-}
-
-pub fn allocArray(vm: *cy.VM, buf: []const u8) !Value {
-    const obj = try allocUnsetArrayObject(vm, buf.len);
-    const dst = @as([*]u8, @ptrCast(&obj.array.bufStart))[0..buf.len];
-    @memcpy(dst, buf);
-    return Value.initNoCycPtr(obj);
-}
-
-pub fn allocArraySlice(self: *cy.VM, slice: []const u8, parent: *HeapObject) !Value {
-    const obj = try allocPoolObject(self);
-    obj.arraySlice = .{
-        .typeId = bt.Array,
-        .rc = 1,
-        .buf = slice.ptr,
-        .headerAndLen = 0x80000000 | @as(u32, @intCast(slice.len)),
-        .offset = @intCast(@intFromPtr(slice.ptr) - @intFromPtr(parent)),
     };
     return Value.initNoCycPtr(obj);
 }
@@ -2084,21 +1983,6 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                 },
             }
         },
-        bt.Array => {
-            if (obj.array.isSlice()) {
-                if (obj.arraySlice.getParentPtr()) |parent| {
-                    cy.arc.releaseObject(vm, parent);
-                }
-                freePoolObject(vm, obj);
-            } else {
-                const len = obj.array.len();
-                if (len <= MaxPoolObjectArrayByteLen) {
-                    freePoolObject(vm, obj);
-                } else {
-                    freeExternalObject(vm, obj, Array.BufOffset + len, false);
-                }
-            }
-        },
         bt.Fiber => {
             const fiber: *vmc.Fiber = @ptrCast(obj);
             // TODO: isCyc.
@@ -2189,6 +2073,15 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                             freeExternalObject(vm, obj, (1 + nfields) * @sizeOf(Value), true);
                         }
                     }
+                },
+                .array => {
+                    for (obj.array.getElemsPtr()[0..obj.array.len]) |it| {
+                        if (skip_cyc_children and it.isCycPointer()) {
+                            continue;
+                        }
+                        cy.arc.release(vm, it);
+                    }
+                    freeExternalObject(vm, obj, (2 + obj.array.len) * @sizeOf(Value), true);
                 },
                 .trait => {
                     const impl = obj.trait.impl;
@@ -2350,7 +2243,6 @@ test "heap internals." {
             try t.eq(@sizeOf(ListIterator), 24);
             try t.eq(@sizeOf(Map), 40);
             try t.eq(@sizeOf(MapIterator), 24);
-            try t.eq(@sizeOf(ArraySlice), 24);
             try t.eq(@sizeOf(Pointer), 16);
         }
     }
@@ -2367,8 +2259,7 @@ test "heap internals." {
             try t.eq(@sizeOf(AstringSlice), 32);
             try t.eq(@sizeOf(UstringSlice), 32);
         }
-        try t.eq(@sizeOf(Array), 16);
-        try t.eq(@sizeOf(ArraySlice), 24);
+        try t.eq(@sizeOf(Array), 24);
         try t.eq(@sizeOf(Object), 16);
         try t.eq(@sizeOf(UpValue), 16);
         try t.eq(@sizeOf(HostFunc), 40);
@@ -2385,18 +2276,6 @@ test "heap internals." {
 
     var list: List = undefined;
     try t.eq(@intFromPtr(&list.list.ptr), @intFromPtr(&list) + 8);
-
-    const arr = Array{
-        .typeId = bt.Array,
-        .rc = 1,
-        .headerAndLen = 1,
-        .bufStart = undefined,
-    };
-    try t.eq(@intFromPtr(&arr.typeId), @intFromPtr(&arr));
-    try t.eq(@intFromPtr(&arr.rc), @intFromPtr(&arr) + 4);
-    try t.eq(@intFromPtr(&arr.headerAndLen), @intFromPtr(&arr) + 8);
-    try t.eq(Array.BufOffset, 12);
-    try t.eq(@intFromPtr(&arr.bufStart), @intFromPtr(&arr) + Array.BufOffset);
 
     const astr = Astring{
         .typeId = bt.String,

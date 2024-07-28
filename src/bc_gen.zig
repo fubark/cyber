@@ -27,8 +27,6 @@ pub const VtableKey = packed struct {
 pub fn genAll(c: *cy.Compiler) !void {
     // Constants.
     c.vm.emptyString = try c.buf.getOrPushStaticAstring("");
-    c.vm.emptyArray = try cy.heap.allocArray(c.vm, "");
-    try c.vm.staticObjects.append(c.alloc, c.vm.emptyArray.asHeapObject());
 
     // Prepare types.
     for (c.newTypes(), c.type_start..) |stype, typeId| {
@@ -63,7 +61,7 @@ pub fn genAll(c: *cy.Compiler) !void {
             .int_t,
             .float_t,
             .bool_t,
-            .custom_t,
+            .array_t,
             .enum_t => {},
             else => {
                 log.tracev("{}", .{sym.type});
@@ -216,6 +214,7 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
         .bool_t,
         .int_t,
         .float_t,
+        .array_t,
         .chunk,
         .field,
         .struct_t,
@@ -430,6 +429,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
 
     const res = try switch (code) {
         .address_of         => genAddressOf(c, idx, cstr, node),
+        .array              => genArray(c, idx, cstr, node),
         .await_expr         => genAwait(c, idx, cstr, node),
         .box                => genBox(c, idx, cstr, node),
         .byte               => genByte(c, idx, cstr, node),
@@ -3126,8 +3126,7 @@ fn genMap(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
 
 fn genList(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     const data = c.ir.getExprData(idx, .list);
-    const argsIdx = c.ir.advanceExpr(idx, .list);
-    const args = c.ir.getArray(argsIdx, u32, data.numArgs);
+    const args = c.ir.getArray(data.args, u32, data.nargs);
     const ret_t = c.ir.getExprType(idx).id;
 
     const inst = try bc.selectForDstInst(c, cstr, ret_t, true, node);
@@ -3141,12 +3140,46 @@ fn genList(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     }
 
     if (ret_t == bt.ListDyn) {
-        try c.pushFCode(.list_dyn, &.{@intCast(argStart), data.numArgs, inst.dst}, node);
+        try c.pushFCode(.list_dyn, &.{@intCast(argStart), data.nargs, inst.dst}, node);
     } else {
         const start = c.buf.ops.items.len;
-        try c.pushFCode(.list, &.{@intCast(argStart), data.numArgs, 0, 0, inst.dst}, node);
+        try c.pushFCode(.list, &.{@intCast(argStart), data.nargs, 0, 0, inst.dst}, node);
         c.buf.setOpArgU16(start + 3, @intCast(ret_t)); 
     }
+
+    for (0..args.len) |i| {
+        const slot_id = argStart + args.len - i - 1;
+        const slot = getSlot(c, slot_id);
+        if (slot.boxed_retains) {
+            try consumeTemp(c, @intCast(slot_id), node);
+        }
+    }
+    try popTemps(c, args.len, node);
+    if (inst.own_dst) {
+        try initSlot(c, inst.dst, true, node);
+    }
+
+    return finishDstInst(c, inst, true);
+}
+
+fn genArray(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
+    const data = c.ir.getExprData(idx, .array);
+    const args = c.ir.getArray(data.args, u32, data.nargs);
+    const ret_t = c.ir.getExprType(idx).id;
+
+    const inst = try bc.selectForDstInst(c, cstr, ret_t, true, node);
+    const argStart = numSlots(c);
+
+    for (args) |argIdx| {
+        const arg_t = c.ir.getExprType(argIdx).id;
+        const temp = try bc.reserveTemp(c, arg_t);
+        const argv = try genExpr(c, argIdx, Cstr.toTempRetain(temp));
+        try initSlot(c, temp, argv.retained, node);
+    }
+
+    const start = c.buf.ops.items.len;
+    try c.pushFCode(.array, &.{@intCast(argStart), data.nargs, 0, 0, inst.dst}, node);
+    c.buf.setOpArgU16(start + 3, @intCast(ret_t)); 
 
     for (0..args.len) |i| {
         const slot_id = argStart + args.len - i - 1;

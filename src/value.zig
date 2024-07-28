@@ -117,14 +117,6 @@ pub const Value = packed union {
         return @intCast(self.val & @as(u64, 0xFFFFFFFF));
     }
 
-    pub inline fn asArray(self: *const Value) []const u8 {
-        if (cy.Trace) {
-            if (!self.isArray()) cy.panic("Not an array.");
-        }
-        const obj = self.asHeapObject();
-        return obj.array.getSlice();
-    }
-
     pub fn asString(val: Value) []const u8 {
         if (cy.Trace) {
             if (!val.isString()) cy.panic("Not a string.");
@@ -488,10 +480,6 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) anyerror!Value {
                 fmt.panic("Unsupported copy closure.", &.{});
             },
             bt.String => {
-                cy.arc.retainObject(vm, obj);
-                return val;
-            },
-            bt.Array => {
                 cy.arc.retainObject(vm, obj);
                 return val;
             },

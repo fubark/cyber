@@ -4,10 +4,6 @@ use t 'test'
 t.eq('foo' != 'foo', false)
 t.eq('foo' != 'bar', true)
 
--- Arrays.
-t.eq(Array('foo') != Array('foo'), false)
-t.eq(Array('foo') != Array('bar'), true)
-
 -- Comparing objects.
 type S:
     value any

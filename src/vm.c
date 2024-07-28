@@ -589,6 +589,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(AppendList),
         JENTRY(ListDyn),
         JENTRY(List),
+        JENTRY(Array),
         JENTRY(Map),
         JENTRY(SliceList),
         JENTRY(JumpNotCond),
@@ -974,6 +975,18 @@ beginSwitch:
         u8 numElems = pc[2];
         u16 type_id = READ_U16(3);
         ValueResult res = zAllocList(vm, type_id, stack + startLocal, numElems);
+        if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
+            RETURN(res.code);
+        }
+        stack[pc[5]] = res.val;
+        pc += 6;
+        NEXT();
+    }
+    CASE(Array): {
+        u8 startLocal = pc[1];
+        u8 numElems = pc[2];
+        u16 type_id = READ_U16(3);
+        ValueResult res = zAllocArray(vm, type_id, stack + startLocal, numElems);
         if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
             RETURN(res.code);
         }

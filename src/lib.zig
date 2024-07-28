@@ -753,11 +753,6 @@ export fn clToTempString(vm: *cy.VM, val: Value) c.Str {
     return c.toStr(str);
 }
 
-export fn clToTempByteArray(vm: *cy.VM, val: Value) c.Str {
-    const str = vm.getOrBufPrintValueRawStr(&cy.tempBuf, val) catch cy.fatal();
-    return c.toStr(str);
-}
-
 test "Constants." {
     try t.eq(c.TypeVoid, bt.Void);
     try t.eq(c.TypeBoolean, bt.Boolean);
@@ -772,7 +767,6 @@ test "Constants." {
     try t.eq(c.TypeClosure, bt.Closure);
     try t.eq(c.TypeLambda, bt.Lambda);
     try t.eq(c.TypeString, bt.String);
-    try t.eq(c.TypeArray, bt.Array);
     try t.eq(c.TypeFiber, bt.Fiber);
     try t.eq(c.TypeHostFunc, bt.HostFunc);
     try t.eq(c.TypeExternFunc, bt.ExternFunc);

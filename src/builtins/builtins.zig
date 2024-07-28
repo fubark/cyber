@@ -159,11 +159,20 @@ const funcs = [_]C.HostFuncEntry{
     func("String.$infix+",     string.concat),
     func("String.concat",      string.concat),
     func("String.count",       string.count),
+    // func("String.decode",       String_decode),
+    // func("String.decode2",      String_decode2),
     func("String.endsWith",    string.endsWith),
     func("String.find",        string.find),
+    func("String.findAnyByte", stringFindAnyByte),
     func("String.findAnyRune", zErrFunc(string.findAnyRune)),
+    func("String.findByte",    stringFindByte),
     func("String.findRune",    string.findRune),
+    func("String.fmtBytes",    zErrFunc(stringFmtBytes)),
+    func("String.getByte",     zErrFunc(stringGetByte)),
+    func("String.getInt",      zErrFunc(String_getInt)),
+    func("String.getInt32",    zErrFunc(String_getInt32)),
     func("String.insert",      zErrFunc(string.insertFn)),
+    func("String.insertByte",  zErrFunc(string.insertByte)),
     func("String.isAscii",     string.isAscii),
     func("String.len",         string.lenFn),
     func("String.less",        string.less),
@@ -181,29 +190,13 @@ const funcs = [_]C.HostFuncEntry{
     func("String.$call",       zErrFunc(string.stringCall)),
 
     // Array
-    func("Array.$infix+",      arrayConcat),
-    func("Array.concat",       arrayConcat),
-    func("Array.decode",       arrayDecode),
-    func("Array.decode2",      arrayDecode2),
-    func("Array.endsWith",     arrayEndsWith),
-    func("Array.find",         arrayFind),
-    func("Array.findAnyByte",  arrayFindAnyByte),
-    func("Array.findByte",     arrayFindByte),
-    func("Array.fmt",          zErrFunc(arrayFmt)),
-    func("Array.getByte",      zErrFunc(arrayGetByte)),
-    func("Array.getInt",       zErrFunc(arrayGetInt)),
-    func("Array.getInt32",     zErrFunc(arrayGetInt32)),
-    func("Array.insert",       zErrFunc(arrayInsert)),
-    func("Array.insertByte",   zErrFunc(arrayInsertByte)),
+    // func("Array.$infix+",      arrayConcat),
+    // func("Array.concat",       arrayConcat),
+    // func("Array.insert",       zErrFunc(arrayInsert)),
     func("Array.len",          arrayLen),
-    func("Array.repeat",       zErrFunc(arrayRepeat)),
-    func("Array.replace",      arrayReplace),
-    func("Array.$index",       zErrFunc(arrayGetByte)),
-    func("Array.$indexRange",  arraySlice),
-    func("Array.split",        zErrFunc(arraySplit)),
-    func("Array.startsWith",   arrayStartsWith),
-    func("Array.trim",         zErrFunc(arrayTrim)),
-    func("Array.$call",        zErrFunc(arrayCall)),
+    // func("Array.repeat",       zErrFunc(arrayRepeat)),
+    func("Array.index",        zErrFunc(arrayIndex)),
+    func("Array.indexRange",   zErrFunc(arraySlice)),
 
     // pointer
     func("pointer.index",      zErrFunc(pointerIndex)),
@@ -213,8 +206,8 @@ const funcs = [_]C.HostFuncEntry{
     func("pointer.asObject",   pointerAsObject),
     func("pointer.fromCstr",   zErrFunc(pointerFromCstr)),
     func("pointer.get",        zErrFunc(pointerGet)),
+    func("pointer.getString",  zErrFunc(pointerGetString)),
     func("pointer.set",        zErrFunc(pointerSet)),
-    func("pointer.toArray",    zErrFunc(pointerToArray)),
     func("pointer.$call",      zErrFunc(pointerCall)),
 
     // ExternFunc
@@ -253,6 +246,7 @@ const vm_types = [_]C.HostTypeEntry{
     htype("int",            C.CORE_TYPE_DECL(bt.Integer)),
     htype("float",          C.CORE_TYPE_DECL(bt.Float)), 
     htype("placeholder1",   C.CORE_TYPE(bt.Placeholder1)), 
+    htype("placeholder2",   C.CORE_TYPE(bt.Placeholder2)), 
     htype("byte",           C.CORE_TYPE_DECL(bt.Byte)), 
     htype("taglit",         C.CORE_TYPE(bt.TagLit)), 
     htype("dyn",            C.CORE_TYPE(bt.Dyn)),
@@ -267,7 +261,6 @@ const vm_types = [_]C.HostTypeEntry{
     htype("Map",            C.CORE_TYPE(bt.Map)),
     htype("MapIterator",    C.CORE_TYPE(bt.MapIter)),
     htype("String",         C.CORE_TYPE(bt.String)),
-    htype("Array",          C.CORE_TYPE(bt.Array)),
     htype("Closure",        C.CORE_TYPE(bt.Closure)),
     htype("Lambda",         C.CORE_TYPE(bt.Lambda)),
     htype("HostFunc",       C.CORE_TYPE(bt.HostFunc)),
@@ -279,14 +272,26 @@ const vm_types = [_]C.HostTypeEntry{
     htype("Future",         C.CUSTOM_TYPE(null, futureGetChildren, null)),
     htype("FutureResolver", C.CUSTOM_TYPE(null, futureResolverGetChildren, null)),
     htype("Memory",         C.CORE_TYPE_DECL(bt.Memory)),
+    htype("array_t",        C.CREATE_TYPE(createArrayType)),
 };
+
+fn createArrayType(vm: ?*C.VM, c_mod: C.Sym, type_id: cy.TypeId) callconv(.C) C.Sym {
+    _ = vm;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
+
+    var ctx = cy.sema.getResolveContext(c);
+    const n: usize = @intCast(ctx.ct_params.get("N").?.asBoxInt());
+    const elem_t = ctx.ct_params.get("T").?.castHeapObject(*cy.heap.Type).type;
+    const sym = c.createArrayType(@ptrCast(chunk_sym), "array_t", type_id, n, elem_t) catch @panic("error");
+    return @as(*cy.Sym, @ptrCast(sym)).toC();
+}
 
 pub const BuiltinsData = struct {
     OptionInt: cy.TypeId,
     OptionAny: cy.TypeId,
     OptionTuple: cy.TypeId,
     OptionMap: cy.TypeId,
-    OptionArray: cy.TypeId,
     OptionString: cy.TypeId,
     PointerVoid: cy.TypeId,
     SliceByte: cy.TypeId,
@@ -336,10 +341,6 @@ fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
     const map_t = C.newType(vm_, bt.Map);
     defer C.release(vm_, map_t);
     assert(C.expandTemplateType(option_tmpl, &map_t, 1, &data.OptionMap));
-
-    const array_t = C.newType(vm_, bt.Array);
-    defer C.release(vm_, array_t);
-    assert(C.expandTemplateType(option_tmpl, &array_t, 1, &data.OptionArray));
 
     const string_t = C.newType(vm_, bt.String);
     defer C.release(vm_, string_t);
@@ -771,28 +772,27 @@ fn arrayConcat(vm: *cy.VM) Value {
     return vm.allocArrayConcat(slice, rslice) catch fatal();
 }
 
-fn arraySlice(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.Array, 0);
-    const slice = obj.getSlice();
+fn arraySlice(vm: *cy.VM) anyerror!Value {
+    const arr = vm.getObject(*cy.heap.Array, 0);
+    const elems = arr.getElemsPtr();
+    const slice_t: cy.TypeId = @intCast(vm.getInt(1));
 
-    const range = vm.getObject(*cy.heap.Range, 1);
+    const range = vm.getObject(*cy.heap.Range, 2);
     if (range.start < 0) {
-        return rt.prepThrowError(vm, .OutOfBounds);
+        return error.OutOfBounds;
     }
 
-    if (range.end > slice.len) {
-        return rt.prepThrowError(vm, .OutOfBounds);
+    if (range.end > arr.len) {
+        return error.OutOfBounds;
     }
     if (range.end < range.start) {
-        return rt.prepThrowError(vm, .OutOfBounds);
+        return error.OutOfBounds;
     }
-
-    const parent = obj.getParent();
-    vm.retainObject(parent);
-    return vm.allocArraySlice(slice[@intCast(range.start)..@intCast(range.end)], parent) catch fatal();
+    const start: usize = @intCast(range.start);
+    return vm.allocRefSlice(slice_t, elems + start, @intCast(range.end - range.start));
 }
 
-fn intIndex(i: i64, len: usize) !usize {
+pub fn intAsIndex(i: i64, len: usize) !usize {
     if (i < 0) {
         return error.OutOfBounds;
     }
@@ -805,7 +805,7 @@ fn intIndex(i: i64, len: usize) !usize {
 
 fn arrayInsert(vm: *cy.VM) anyerror!Value {
     const slice = vm.getArray(0);
-    const idx = try intIndex(vm.getInt(1), slice.len+1);
+    const idx = try intAsIndex(vm.getInt(1), slice.len+1);
     const insert = vm.getArray(2);
     const new = vm.allocUnsetArrayObject(slice.len + insert.len) catch cy.fatal();
     const buf = new.array.getMutSlice();
@@ -833,24 +833,12 @@ fn arrayFind(vm: *cy.VM) Value {
     return intNone(vm) catch cy.fatal();
 }
 
-fn arrayStartsWith(vm: *cy.VM) Value {
-    const slice = vm.getObject(*cy.heap.Array, 0).getSlice();
-    const needle = vm.getArray(1);
-    return Value.initBool(std.mem.startsWith(u8, slice, needle));
-}
-
-fn arrayEndsWith(vm: *cy.VM) Value {
-    const slice = vm.getObject(*cy.heap.Array, 0).getSlice();
-    const needle = vm.getArray(1);
-    return Value.initBool(std.mem.endsWith(u8, slice, needle));
-}
-
-fn arrayDecode(vm: *cy.VM) Value {
+fn String_decode(vm: *cy.VM) Value {
     vm.setSymbol(1, @intFromEnum(Symbol.utf8));
-    return arrayDecode2(vm);
+    return String_decode2(vm);
 }
 
-fn arrayDecode2(vm: *cy.VM) Value {
+fn String_decode2(vm: *cy.VM) Value {
     const obj = vm.getObject(*cy.heap.Array, 0);
 
     const encoding = bindings.getBuiltinSymbol(vm.getSymbol(1)) orelse {
@@ -876,19 +864,32 @@ fn arrayDecode2(vm: *cy.VM) Value {
     }
 }
 
-fn arrayGetByte(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getObject(*cy.heap.Array, 0);
-    const slice = obj.getSlice();
+fn arrayIndex(vm: *cy.VM) anyerror!Value {
+    const arr = vm.getObject(*cy.heap.Array, 0);
+    const elem_t: cy.TypeId = @intCast(vm.getInt(1));
+    const idx = try intAsIndex(vm.getInt(2), arr.len);
+
+    const elems = arr.getElemsPtr();
+    if (vm.sema.isUnboxedType(elem_t)) {
+        // Always an 8 byte stride.
+        return Value.initRaw(@intFromPtr(elems + idx));
+    } else {
+        const type_e = vm.c.types[elem_t];
+        const n = type_e.data.struct_t.nfields;
+        return Value.initRaw(@intFromPtr(elems + idx * n));
+    }
+}
+
+fn stringGetByte(vm: *cy.VM) anyerror!Value {
+    const slice = vm.getString(0);
     const idx = vm.getInt(1);
 
     if (idx < 0 or idx >= slice.len) return error.OutOfBounds;
-    return Value.initInt(@intCast(slice[@intCast(idx)]));
+    return Value.initByte(slice[@intCast(idx)]);
 }
 
-fn arrayGetInt(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getObject(*cy.heap.Array, 0);
-
-    const slice = obj.getSlice();
+fn String_getInt(vm: *cy.VM) anyerror!Value {
+    const bytes = vm.getString(0);
     const idx = vm.getInt(1);
     const sym = try std.meta.intToEnum(Symbol, vm.getSymbol(2));
     const endian: std.builtin.Endian = switch (sym) {
@@ -897,16 +898,14 @@ fn arrayGetInt(vm: *cy.VM) anyerror!Value {
         else => return error.InvalidArgument,
     };
 
-    if (idx < 0 or idx + 8 > slice.len) return error.OutOfBounds;
+    if (idx < 0 or idx + 8 > bytes.len) return error.OutOfBounds;
     const uidx: usize = @intCast(idx);
-    const val = std.mem.readVarInt(u64, slice[uidx..uidx+8], endian);
+    const val = std.mem.readVarInt(u64, bytes[uidx..uidx+8], endian);
     return Value.initInt(@bitCast(val));
 }
 
-fn arrayGetInt32(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getObject(*cy.heap.Array, 0);
-
-    const slice = obj.getSlice();
+fn String_getInt32(vm: *cy.VM) anyerror!Value {
+    const bytes = vm.getString(0);
     const idx = vm.getInt(1);
     const sym = try std.meta.intToEnum(Symbol, vm.getSymbol(2));
     const endian: std.builtin.Endian = switch (sym) {
@@ -915,16 +914,18 @@ fn arrayGetInt32(vm: *cy.VM) anyerror!Value {
         else => return error.InvalidArgument,
     };
 
-    if (idx < 0 or idx + 4 > slice.len) return error.OutOfBounds;
+    if (idx < 0 or idx + 4 > bytes.len) return error.OutOfBounds;
     const uidx: usize = @intCast(idx);
-    const val = std.mem.readVarInt(u32, slice[uidx..uidx+4], endian);
+    const val = std.mem.readVarInt(u32, bytes[uidx..uidx+4], endian);
     return Value.initInt(@intCast(val));
 }
 
-fn arrayFindAnyByte(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.Array, 0);
-    const slice = obj.getSlice();
-    const set = vm.getArray(1);
+fn stringFindAnyByte(vm: *cy.VM) Value {
+    const slice = vm.getString(0);
+    const set_slice = vm.getObject(*cy.heap.Object, 1);
+    const set_ptr: [*]u8 = @ptrFromInt(set_slice.getValue(0).val);
+    const set_len: usize = @intCast(set_slice.getValue(1).asInt());
+    const set = set_ptr[0..set_len];
     const setIsAscii = cy.string.isAstring(set);
     if (setIsAscii) {
         if (cy.string.indexOfAsciiSet(slice, set)) |idx| {
@@ -947,10 +948,9 @@ fn arrayFindAnyByte(vm: *cy.VM) Value {
     return intNone(vm) catch cy.fatal();
 }
 
-fn arrayFindByte(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.Array, 0);
-    const slice = obj.getSlice();
-    const byte = vm.getInt(1);
+fn stringFindByte(vm: *cy.VM) Value {
+    const slice = vm.getString(0);
+    const byte = vm.getByte(1);
 
     if (cy.string.indexOfChar(slice, @intCast(byte))) |idx| {
         return intSome(vm, @intCast(idx)) catch cy.fatal();
@@ -958,19 +958,21 @@ fn arrayFindByte(vm: *cy.VM) Value {
     return intNone(vm) catch cy.fatal();
 }
 
-fn arrayFmt(vm: *cy.VM) anyerror!Value {
-    const arr = vm.getArray(0);
+fn stringFmtBytes(vm: *cy.VM) anyerror!Value {
+    const str = vm.getString(0);
     const kind = try std.meta.intToEnum(NumberFormat, vm.getEnumValue(1));
     if (kind == .asc) {
         var buf: std.ArrayListUnmanaged(u8) = .{};
         defer buf.deinit(vm.alloc);
 
-        for (arr) |byte| {
+        for (str) |byte| {
             if (byte < 0 or byte > 127) {
                 return error.InvalidArgument;
             }
         }
-        return vm.retainOrAllocAstring(arr);
+        const strv = vm.getValue(0);
+        vm.retain(strv);
+        return strv;
     } else {
         var base: u8 = undefined;
         var width: u8 = undefined;
@@ -997,7 +999,7 @@ fn arrayFmt(vm: *cy.VM) anyerror!Value {
         var buf: std.ArrayListUnmanaged(u8) = .{};
         defer buf.deinit(vm.alloc);
         const w = buf.writer(vm.alloc);
-        for (arr) |byte| {
+        for (str) |byte| {
             try std.fmt.formatInt(byte, base, .lower, .{ .width = width, .fill = '0' }, w);
         }
         return vm.retainOrAllocAstring(buf.items);
@@ -1005,11 +1007,11 @@ fn arrayFmt(vm: *cy.VM) anyerror!Value {
 }
 
 fn arrayLen(vm: *cy.VM) Value {
-    const arr = vm.getArray(0);
+    const arr = vm.getArrayElems(0);
     return Value.initInt(@intCast(arr.len));
 }
 
-fn arrayTrim(vm: *cy.VM) anyerror!Value {
+fn sliceTrim(vm: *cy.VM) anyerror!Value {
     const obj = vm.getObject(*cy.heap.Array, 0);
     const slice = obj.getSlice();
 
@@ -1029,43 +1031,6 @@ fn arrayTrim(vm: *cy.VM) anyerror!Value {
     }
 
     return vm.allocArray(res);
-}
-
-fn arrayReplace(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.Array, 0);
-    const slice = obj.getSlice();
-    const needle = vm.getArray(1);
-    const replacement = vm.getArray(2);
-
-    const idxBuf = &vm.u8Buf;
-    idxBuf.clearRetainingCapacity();
-    defer idxBuf.ensureMaxCapOrClear(vm.alloc, 4096) catch fatal();
-    const newLen = cy.string.prepReplacement(slice, needle, replacement, idxBuf.writer(vm.alloc)) catch fatal();
-    const numIdxes = @divExact(idxBuf.len, 4);
-    if (numIdxes > 0) {
-        const new = vm.allocUnsetArrayObject(newLen) catch fatal();
-        const newBuf = new.array.getMutSlice();
-        const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
-        cy.string.replaceAtIdxes(newBuf, slice, @intCast(needle.len), replacement, idxes);
-        return Value.initNoCycPtr(new);
-    } else {
-        vm.retainObject(@ptrCast(obj));
-        return Value.initNoCycPtr(obj);
-    }
-}
-
-fn arrayInsertByte(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getObject(*cy.heap.Array, 0);
-    const str = obj.getSlice();
-
-    const index = try intIndex(vm.getInt(1), str.len + 1);
-    const byte: u8 = @intCast(vm.getInt(2));
-    const new = vm.allocUnsetArrayObject(str.len + 1) catch cy.fatal();
-    const buf = new.array.getMutSlice();
-    @memcpy(buf[0..index], str[0..index]);
-    buf[index] = byte;
-    @memcpy(buf[index+1..], str[index..]);
-    return Value.initNoCycPtr(new);
 }
 
 fn arrayRepeat(vm: *cy.VM) anyerror!Value {
@@ -1103,7 +1068,7 @@ fn arrayRepeat(vm: *cy.VM) anyerror!Value {
     }
 }
 
-fn arraySplit(vm: *cy.VM) anyerror!Value {
+fn sliceSplit(vm: *cy.VM) anyerror!Value {
     const obj = vm.getObject(*cy.heap.Array, 0);
     const slice = obj.getSlice();
     const delim = vm.getArray(1);
@@ -1122,11 +1087,6 @@ fn arraySplit(vm: *cy.VM) anyerror!Value {
         try list.list.append(vm.alloc, new);
     }
     return res;
-}
-
-fn arrayCall(vm: *cy.VM) anyerror!Value {
-    const str = try vm.getOrBufPrintValueRawStr(&cy.tempBuf, vm.getValue(0));
-    return vm.allocArray(str);
 }
 
 fn fiberStatus(vm: *cy.VM) Value {
@@ -1226,7 +1186,7 @@ fn pointerFromCstr(vm: *cy.VM) anyerror!Value {
     const ptr: [*]const u8 = @ptrCast(vm.getPointer(0));
     const off: u64 = @bitCast(vm.getInt(1));
     const bytes = std.mem.span(@as([*:0]const u8, @ptrCast(ptr + off)));
-    return vm.allocArray(bytes);
+    return vm.allocString(bytes);
 }
 
 fn pointerGet(vm: *cy.VM) anyerror!Value {
@@ -1291,11 +1251,11 @@ fn pointerSet(vm: *cy.VM) anyerror!Value {
     }
 }
 
-fn pointerToArray(vm: *cy.VM) anyerror!Value {
+fn pointerGetString(vm: *cy.VM) anyerror!Value {
     const ptr: [*]const u8 = @ptrCast(vm.getPointer(0));
     const off: usize = @intCast(vm.getInt(1));
     const len: usize = @intCast(vm.getInt(2));
-    return vm.allocArray(ptr[off..@intCast(off+len)]);
+    return vm.allocString(ptr[off..@intCast(off+len)]);
 }
 
 fn pointerCall(vm: *cy.VM) anyerror!Value {
@@ -1511,16 +1471,6 @@ pub fn MapNone(vm: *cy.VM) !Value {
 pub fn MapSome(vm: *cy.VM, v: Value) !Value {
     const data = vm.getData(*BuiltinsData, "builtins");
     return vm.allocObjectSmall(data.OptionMap, &.{ Value.initInt(1), v });
-}
-
-pub fn ArrayNone(vm: *cy.VM) !Value {
-    const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.allocObjectSmall(data.OptionArray, &.{ Value.initInt(0), Value.initInt(0) });
-}
-
-pub fn ArraySome(vm: *cy.VM, v: Value) !Value {
-    const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.allocObjectSmall(data.OptionArray, &.{ Value.initInt(1), v });
 }
 
 pub fn StringNone(vm: *cy.VM) !Value {

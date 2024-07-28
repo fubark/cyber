@@ -18,7 +18,7 @@ pub fn expandTemplateOnCallExpr(c: *cy.Chunk, node: *ast.CallExpr) !*cy.Sym {
 
 pub fn pushNodeValues(c: *cy.Chunk, args: []const *ast.Node) !void {
     for (args) |arg| {
-        const res = try nodeToCtValue(c, arg);
+        const res = try resolveCtValue(c, arg);
         try c.typeStack.append(c.alloc, res.type);
         try c.valueStack.append(c.alloc, res.value);
     }
@@ -255,20 +255,104 @@ fn genNodeFromValue(c: *cy.Chunk, val: cy.Value, srcPos: u32) !*ast.Node {
     }
 }
 
-const CtValue = struct {
+pub const CtValue = struct {
     type: cy.TypeId,
     value: cy.Value,
 };
 
-pub fn nodeToCtValue(c: *cy.Chunk, node: *ast.Node) anyerror!CtValue {
-    // TODO: Evaluate const expressions.
-    const sym = try sema.resolveSym(c, node);
-    if (sym.getStaticType()) |type_id| {
-        return CtValue{
-            .type = bt.Type,
-            .value = try c.vm.allocType(type_id),
-        };
-    }
+// TODO: Evaluate const expressions.
+pub fn resolveCtValue(c: *cy.Chunk, expr: *ast.Node) !CtValue {
+    switch (expr.type()) {
+        .decLit => {
+            const literal = c.ast.nodeString(expr);
+            const val = try std.fmt.parseInt(i64, literal, 10);
+            return .{
+                .type = bt.Integer,
+                .value = try c.vm.allocInt(val),
+            };
+        },
+        .ident => {
+            const name = c.ast.nodeString(expr);
 
-    return c.reportErrorFmt("Unsupported conversion to compile-time value: {}", &.{v(sym.type)}, node);
+            // Look in ct context.
+            var resolve_ctx_idx = c.resolve_stack.items.len-1;
+            while (true) {
+                const ctx = c.resolve_stack.items[resolve_ctx_idx];
+                if (ctx.ct_params.size > 0) {
+                    if (ctx.ct_params.get(name)) |param| {
+                        c.vm.retain(param);
+                        return .{
+                            .type = param.getTypeId(),
+                            .value = param,
+                        };
+                    }
+                }
+                if (!ctx.has_parent_ctx) {
+                    break;
+                }
+                resolve_ctx_idx -= 1;
+            }
+
+            const sym = try sema.resolveSym(c, expr);
+            if (sym.getStaticType()) |type_id| {
+                return CtValue{
+                    .type = bt.Type,
+                    .value = try c.vm.allocType(type_id),
+                };
+            }
+            return c.reportErrorFmt("Unsupported conversion to compile-time value: {}", &.{v(sym.type)}, expr);
+        },
+        .ptr,
+        .array_expr => {
+            const type_id = try sema.resolveSymType(c, expr);
+            return CtValue{
+                .type = bt.Type,
+                .value = try c.vm.allocType(type_id),
+            };
+        },
+        .void => {
+            return CtValue{
+                .type = bt.Type,
+                .value = try c.vm.allocType(bt.Void),
+            };
+        },
+        .comptimeExpr => {
+            const ctx = sema.getResolveContext(c);
+            if (ctx.parse_ct_inferred_params) {
+                const ct_expr = expr.cast(.comptimeExpr);
+                if (ct_expr.child.type() != .ident) {
+                    return c.reportErrorFmt("Expected identifier.", &.{}, ct_expr.child);
+                }
+                const param_name = c.ast.nodeString(ct_expr.child);
+
+                const param_idx = ctx.ct_params.size;
+                const ref_t = try c.sema.ensureCtRefType(param_idx);
+                const ref_v = try c.vm.allocType(ref_t);
+                try sema.setResolveCtParam(c, param_name, ref_v);
+
+                const infer_t = try c.sema.ensureCtInferType(param_idx);
+                return CtValue{
+                    .type = bt.Type,
+                    .value = try c.vm.allocType(infer_t),
+                };
+            }
+
+            if (ctx.expand_ct_inferred_params) {
+                const ct_expr = expr.cast(.comptimeExpr);
+                const param_name = c.ast.nodeString(ct_expr.child);
+                const val = ctx.ct_params.get(param_name) orelse {
+                    return c.reportErrorFmt("Could not find the compile-time parameter `{}`.", &.{v(param_name)}, ct_expr.child);
+                };
+                c.vm.retain(val);
+                return CtValue{
+                    .type = val.getTypeId(),
+                    .value = val,
+                };
+            }
+            return c.reportErrorFmt("Unexpected compile-time expression.", &.{}, expr);
+        },
+        else => {
+            return c.reportErrorFmt("Unsupported expr: `{}`", &.{v(expr.type())}, expr);
+        }
+    }
 }

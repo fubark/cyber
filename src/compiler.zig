@@ -950,6 +950,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                 const core = self.chunks.items[0].sym.getMod();
                 self.sema.future_tmpl = core.getSym("Future").?.cast(.template);
                 self.sema.option_tmpl = core.getSym("Option").?.cast(.template);
+                self.sema.array_tmpl = core.getSym("Array").?.cast(.template);
                 self.sema.pointer_tmpl = core.getSym("pointer").?.cast(.template);
                 self.sema.list_tmpl = core.getSym("List").?.cast(.template);
                 self.sema.table_type = core.getSym("Table").?.cast(.object_t);
@@ -1048,7 +1049,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.HostFunc,
         bt.ExternFunc,
         bt.String,
-        bt.Array,
+        bt.Placeholder2,
         bt.Fiber,
         bt.UpValue,
         bt.TccState,

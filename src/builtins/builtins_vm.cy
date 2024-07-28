@@ -458,10 +458,10 @@ type pointer[T type] #int64_t:
 
     @host -func index(self, elem_t int, idx int) *T
 
-    func $index(self, range Range) []T:
-        return self.indexRange(([]T).id(), range)
+    func $index(self, range Range) [*]T:
+        return self.indexRange(([*]T).id(), range)
 
-    @host -func indexRange(self, slice_t int, range Range) []T
+    @host -func indexRange(self, slice_t int, range Range) [*]T
 
     func $setIndex(self, idx int, val T) void:
         self.setIndex((T).id(), idx, val)
@@ -550,7 +550,7 @@ type Slice[T type] struct:
     func $index(self, idx int) *T:
         return self.ptr[idx]
 
-    func $index(self, range Range) []T:
+    func $index(self, range Range) [*]T:
         return self.ptr[range.start..range.end]
 
     func $setIndex(self, idx int, val T) void:
@@ -560,8 +560,8 @@ type Slice[T type] struct:
         return self.n
 
 type IMemory trait:
-    func alloc(self, len int) []byte
-    func free(self, buf []byte) void
+    func alloc(self, len int) [*]byte
+    func free(self, buf [*]byte) void
 
 @host
 type Memory:
@@ -571,19 +571,19 @@ type Memory:
         var bytes = self.iface.alloc(sizeof(T))
         return ptrcast(T, bytes.ptr)
 
-    func alloc(self, #T type, n int) []T:
+    func alloc(self, #T type, n int) [*]T:
         var bytes = self.iface.alloc(sizeof(T) * n)
         return ptrcast(T, bytes.ptr)[0..n]
 
     func free(self, ptr *#T):
         self.iface.free(ptrcast(byte, ptr)[0..sizeof(T)])
 
-    func free(self, slice []#T):
+    func free(self, slice [*]#T):
         var bytes = ptrcast(byte, slice.ptr)[0..sizeof(T)*slice.len()]
         self.iface.free(bytes)
 
 type DefaultMemory:
     with IMemory
 
-    @host func alloc(self, len int) []byte
-    @host func free(self, buf []byte) void
+    @host func alloc(self, len int) [*]byte
+    @host func free(self, buf [*]byte) void

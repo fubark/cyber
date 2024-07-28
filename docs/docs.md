@@ -1535,7 +1535,7 @@ Note that invoking the template again with the same argument(s) returns the same
   * [Pointer casting.](#pointer-casting)
   * [Pointer slicing.](#pointer-slicing)
   * [Pointer conversions.](#pointer-conversions)
-* [Slices.](#slices)
+* [Pointer slices.](#pointer-slices)
 * [Union types.](#union-types)
 
 [^top](#table-of-contents)
@@ -1583,7 +1583,7 @@ type Data cstruct:
     x   float
     y   float
     ptr *int
-    str []byte
+    str [*]byte
 ```
 A `C struct` may contain:
 * C types.
@@ -1651,7 +1651,7 @@ print v                 --> Vec2{x=40, y=20}
 ## Pointers.
 A `pointer` is a reference to a memory location. Its type is denoted as `*T` where `T` is the type that the pointer references in memory:
 ```cy
-func setName(p *Person, name []byte):
+func setName(p *Person, name [*]byte):
     p.name = name
 
 var p = Person{}
@@ -1696,7 +1696,7 @@ Negative indexing will locate the element before the pointer's address.
 > _Planned Feature_
 
 ### Pointer slicing.
-The slice operator will produce a new slice of type `[]T` from a `*T` pointer type:
+The slice operator will produce a new slice of type `[*]T` from a `*T` pointer type:
 ```cy
 var ints = mem.alloc(int, 10)
 var slice = ints[0..5]
@@ -1706,12 +1706,12 @@ print typeof(slice)    --> []int
 ### Pointer conversions.
 > _Planned Feature_
 
-## Slices.
-Slices are pointers with a length field. They are denoted as `[]T` where T is the element type.
+## Pointer slices.
+Slices are pointers with a length field. They are denoted as `[*]T` where T is the element type.
 
 A slice can be created by taking the address of an array: *Planned feature*
 ```cy
-var arr = [_]int{1, 2, 3}
+var arr = []int{1, 2, 3}
 var s = &arr
 ```
 

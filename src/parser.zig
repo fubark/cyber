@@ -2589,19 +2589,6 @@ pub const Parser = struct {
         while (true) {
             const next = self.peek();
             switch (next.tag()) {
-                .pound,
-                .ident => {
-                    if (left.type() == .array_lit) {
-                        if (left.cast(.array_lit).args.len == 0) {
-                            const elem = try self.parseTermExpr2(.{});
-                            return self.ast.newNodeErase(.expand_slice, .{
-                                .pos = left.cast(.array_lit).pos,
-                                .elem = elem,
-                            });
-                        }
-                    }
-                    break;
-                },
                 .dot => {
                     self.advance();
 
@@ -2893,6 +2880,22 @@ pub const Parser = struct {
                 }
             },
             .left_bracket => {
+                const next_tag = self.peekAhead(1).tag();
+                if (next_tag == .star) {
+                    self.advance();
+                    self.advance();
+                    if (self.peek().tag() != .right_bracket) {
+                        return self.reportError("Expected right bracket.", &.{});
+                    }
+                    self.advance();
+                    const elem = (try self.parseTermExpr2Opt(.{ .parse_record_expr = false })) orelse {
+                        return self.reportError("Expected pointer slice child type.", &.{});
+                    };
+                    return try self.ast.newNodeErase(.pointer_slice, .{
+                        .elem = elem,
+                        .pos = self.tokenSrcPos(start),
+                    });
+                }
                 return @ptrCast(try self.parseArrayLiteral());
             },
             .left_brace => {

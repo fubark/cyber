@@ -45,7 +45,6 @@ pub const NodeType = enum(u7) {
     expandOpt,
     expand_ptr,
     exprStmt,
-    expand_slice,
     falseLit,
     forIterStmt,
     forRangeStmt,
@@ -75,6 +74,7 @@ pub const NodeType = enum(u7) {
     octLit,
     opAssignStmt,
     passStmt,
+    pointer_slice,
     range,
     raw_string_lit,
     returnExprStmt,
@@ -113,7 +113,7 @@ pub const AttributeType = enum(u8) {
     host,
 };
 
-const ExpandSlice = struct {
+const PointerSlice = struct {
     elem: *Node align(8),
     pos: u32,
 };
@@ -601,7 +601,6 @@ fn NodeData(comptime node_t: NodeType) type {
         .expandOpt      => ExpandOpt,
         .expand_ptr     => ExpandPtr,
         .exprStmt       => ExprStmt,
-        .expand_slice   => ExpandSlice,
         .falseLit       => Token,
         .forIterStmt    => ForIterStmt,
         .forRangeStmt   => ForRangeStmt,
@@ -631,6 +630,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .octLit         => Span,
         .opAssignStmt   => OpAssignStmt,
         .passStmt       => Token,
+        .pointer_slice  => PointerSlice,
         .range          => Range,
         .raw_string_lit => Span,
         .returnExprStmt => ReturnExprStmt,
@@ -737,7 +737,7 @@ pub const Node = struct {
             .expandOpt      => self.cast(.expandOpt).pos,
             .expand_ptr     => self.cast(.expand_ptr).pos,
             .exprStmt       => self.cast(.exprStmt).child.pos(),
-            .expand_slice   => self.cast(.expand_slice).pos,
+            .pointer_slice  => self.cast(.pointer_slice).pos,
             .falseLit       => self.cast(.falseLit).pos,
             .floatLit       => self.cast(.floatLit).pos,
             .forIterStmt    => self.cast(.forIterStmt).pos,
@@ -1460,9 +1460,9 @@ pub const Encoder = struct {
                 try w.writeAll("...");
                 try w.writeByte('}');
             },
-            .expand_slice => {
-                try w.writeAll("[]");
-                try self.write(w, node.cast(.expand_slice).elem);
+            .pointer_slice => {
+                try w.writeAll("[*]");
+                try self.write(w, node.cast(.pointer_slice).elem);
             },
             .expandOpt => {
                 try w.writeByte('?');

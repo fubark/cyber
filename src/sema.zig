@@ -3538,9 +3538,9 @@ pub fn resolveSym(c: *cy.Chunk, expr: *ast.Node) anyerror!*cy.Sym {
             return error.TODO;
             // return try cte.expandTemplateOnCallExpr(c, expr.cast(.callExpr));
         },
-        .expand_slice => {
-            const expand_slice = expr.cast(.expand_slice);
-            return try cte.expandTemplateOnCallArgs(c, c.sema.slice_tmpl, &.{ expand_slice.elem }, expr);
+        .pointer_slice => {
+            const pointer_slice = expr.cast(.pointer_slice);
+            return try cte.expandTemplateOnCallArgs(c, c.sema.slice_tmpl, &.{ pointer_slice.elem }, expr);
         },
         .expandOpt => {
             const expand_opt = expr.cast(.expandOpt);
@@ -5449,8 +5449,8 @@ pub const ChunkExt = struct {
             .callExpr => {
                 return c.semaCallExpr(expr);
             },
-            .expand_slice => {
-                const sym = try cte.expandTemplateOnCallArgs(c, c.sema.slice_tmpl, &.{node.cast(.expand_slice).elem}, node);
+            .pointer_slice => {
+                const sym = try cte.expandTemplateOnCallArgs(c, c.sema.slice_tmpl, &.{node.cast(.pointer_slice).elem}, node);
                 const type_id = sym.getStaticType().?;
                 const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, bt.MetaType, node, .{ .typeId = type_id });
                 return ExprResult.init(irIdx, CompactType.init(bt.MetaType));

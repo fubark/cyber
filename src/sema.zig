@@ -6957,7 +6957,7 @@ pub const FuncSigKeyContext = struct {
         return c.final();
     }
     pub fn eql(_: @This(), a: FuncSigKey, b: FuncSigKey) bool {
-        return std.mem.eql(u32, @ptrCast(a.params_ptr[0..a.params_len]), @ptrCast(b.params_ptr[0..b.params_len]));
+        return std.mem.eql(u32, @ptrCast(a.params_ptr[0..a.params_len]), @ptrCast(b.params_ptr[0..b.params_len])) and a.ret == b.ret;
     }
 };
 

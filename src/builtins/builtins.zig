@@ -896,7 +896,7 @@ fn String_decode2(vm: *cy.VM) Value {
 fn arrayIndex(vm: *cy.VM) anyerror!Value {
     const arr = vm.getObject(*cy.heap.Array, 0);
     const elem_t: cy.TypeId = @intCast(vm.getInt(1));
-    const idx = try intAsIndex(vm.getInt(2), arr.len);
+    const idx = try intAsIndex(vm.getInt(2), @intCast(arr.len));
 
     const elems = arr.getElemsPtr();
     if (vm.sema.isUnboxedType(elem_t)) {
@@ -952,7 +952,7 @@ fn String_getInt32(vm: *cy.VM) anyerror!Value {
 fn stringFindAnyByte(vm: *cy.VM) Value {
     const slice = vm.getString(0);
     const set_slice = vm.getObject(*cy.heap.Object, 1);
-    const set_ptr: [*]u8 = @ptrFromInt(set_slice.getValue(0).val);
+    const set_ptr: [*]u8 = @ptrFromInt(@as(usize, @intCast(set_slice.getValue(0).val)));
     const set_len: usize = @intCast(set_slice.getValue(1).asInt());
     const set = set_ptr[0..set_len];
     const setIsAscii = cy.string.isAstring(set);

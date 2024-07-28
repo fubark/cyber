@@ -199,6 +199,7 @@ pub const VM = struct {
     stdHttpClient: if (cy.hasCLI) *http.StdHttpClient else *anyopaque,
 
     emptyString: Value,
+    placeholder: Value,
 
     varSymExtras: cy.List(*cy.Sym),
 
@@ -234,6 +235,7 @@ pub const VM = struct {
             .compiler = undefined,
             .sema = undefined,
             .emptyString = undefined,
+            .placeholder = undefined,
             .strInterns = .{},
             .staticObjects = .{},
             .names = .{},
@@ -3463,7 +3465,7 @@ pub const VMGetArgExt = struct {
 
     pub fn getArrayElems(vm: *VM, idx: u32) []Value {
         const arr = vm.c.framePtr[CallArgStart + idx].castHeapObject(*cy.heap.Array);
-        return arr.getElemsPtr()[0..arr.len];
+        return arr.getElemsPtr()[0..@intCast(arr.len)];
     }
 
     pub fn getEnumValue(vm: *VM, idx: u32) u32 {

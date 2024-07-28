@@ -2095,13 +2095,13 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                     }
                 },
                 .array => {
-                    for (obj.array.getElemsPtr()[0..obj.array.len]) |it| {
+                    for (obj.array.getElemsPtr()[0..@intCast(obj.array.len)]) |it| {
                         if (skip_cyc_children and it.isCycPointer()) {
                             continue;
                         }
                         cy.arc.release(vm, it);
                     }
-                    freeExternalObject(vm, obj, (2 + obj.array.len) * @sizeOf(Value), true);
+                    freeExternalObject(vm, obj, @intCast((2 + obj.array.len) * @sizeOf(Value)), true);
                 },
                 .trait => {
                     const impl = obj.trait.impl;

@@ -684,17 +684,19 @@ pub fn getLineEnd(buf: []const u8) ?usize {
             const lfHits: MaskInt = @bitCast(vbuf == lfNeedle);
             const crHits: MaskInt = @bitCast(vbuf == crNeedle);
             const bitIdx = @ctz(lfHits | crHits);
-            if (bitIdx > 0) {
+            if (bitIdx < VecSize) {
                 // Found.
                 const res = i + bitIdx;
                 if (buf[res] == '\n') {
                     return res + 1;
-                } else {
+                } else if (buf[res] == '\r') {
                     if (res + 1 < buf.len and buf[res+1] == '\n') {
                         return res + 2;
                     } else {
                         return res + 1;
                     }
+                } else {
+                    @panic("Unexpected.");
                 }
             }
         }

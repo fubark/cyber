@@ -443,7 +443,7 @@ pub fn fileNext(vm: *cy.VM) anyerror!Value {
         var lineBuf = try cy.string.HeapStringBuilder.init(vm);
         defer lineBuf.deinit();
         // Start with previous string without line delimiter.
-        try lineBuf.appendString(vm.alloc, readBuf[fileo.curPos..fileo.readBufEnd]);
+        try lineBuf.appendString(readBuf[fileo.curPos..fileo.readBufEnd]);
 
         // Read into buffer.
         const file = fileo.getStdFile();
@@ -455,22 +455,22 @@ pub fn fileNext(vm: *cy.VM) anyerror!Value {
                 // End of stream.
                 fileo.iterLines = false;
                 if (lineBuf.len > 0) {
-                    return StringSome(vm, Value.initNoCycPtr(lineBuf.ownObject(vm.alloc)));
+                    return StringSome(vm, Value.initNoCycPtr(try lineBuf.build()));
                 } else {
                     return StringNone(vm);
                 }
             }
             if (cy.string.getLineEnd(readBuf[0..bytesRead])) |end| {
                 // Found new line.
-                try lineBuf.appendString(vm.alloc, readBuf[0..end]);
+                try lineBuf.appendString(readBuf[0..end]);
 
                 // Advance pos.
                 fileo.curPos = @intCast(end);
                 fileo.readBufEnd = @intCast(bytesRead);
 
-                return StringSome(vm, Value.initNoCycPtr(lineBuf.ownObject(vm.alloc)));
+                return StringSome(vm, Value.initNoCycPtr(try lineBuf.build()));
             } else {
-                try lineBuf.appendString(vm.alloc, readBuf[0..bytesRead]);
+                try lineBuf.appendString(readBuf[0..bytesRead]);
 
                 // Advance pos.
                 fileo.curPos = @intCast(bytesRead);

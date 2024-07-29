@@ -76,7 +76,7 @@ const funcs = [_]C.HostFuncEntry{
     func("File.seekFromEnd",    zErrFunc(fs.fileSeekFromEnd)),
     func("File.stat",           zErrFunc(fs.fileOrDirStat)),
     func("File.streamLines",    zErrFunc(fs.fileStreamLines)),
-    func("File.streamLines",    zErrFunc(fs.fileStreamLines1)),
+    func("File.streamLines2",   zErrFunc(fs.fileStreamLines1)),
     func("File.write",          zErrFunc(fs.fileWrite)),
 
     // Dir

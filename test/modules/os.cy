@@ -116,6 +116,26 @@ catch err:
 file.seekFromEnd(-6)
 t.eq(file.read(3), 'foo')
 
+-- File.streamLines()
+file = os.openFile('test/assets/multiline.txt', .read)
+var lines = List[String]{}
+for file.streamLines() -> line:
+    lines.append(line)
+t.eq(lines.len(), 3)
+t.eq(lines[0], "foo\n")
+t.eq(lines[1], "abcxyz\n")
+t.eq(lines[2], 'bar')
+
+-- File.streamLines2()
+file = os.openFile('test/assets/multiline.txt', .read)
+lines = List[String]{}
+for file.streamLines(2) -> line:
+    lines.append(line)
+t.eq(lines.len(), 3)
+t.eq(lines[0], "foo\n")
+t.eq(lines[1], "abcxyz\n")
+t.eq(lines[2], 'bar')
+
 -- File.write() from create
 file = os.createFile('test/assets/write.txt', true)
 t.eq(file.write('foobar'), 6)

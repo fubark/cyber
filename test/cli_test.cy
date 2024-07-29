@@ -1,4 +1,4 @@
-import os
+use os
 use t 'test'
 
 var printCmd = ''
@@ -10,7 +10,7 @@ else:
 -- os.readLine() returns error.EndOfStream
 runPipeInput('$(printCmd) "abc"', "
 use test
-import os
+use os
 if os.system == 'windows':
   test.eq(os.readLine(), 'abc\\r')
   test.eq(try os.readLine(), error.EndOfStream)
@@ -21,13 +21,13 @@ else:
 -- os.readLine() returns user input before new line.
 runPipeInput('$(printCmd) "abc\n"', "
 use test
-import os
+use os
 test.eq(os.readLine(), 'abc')
 ")
 
 -- os.stdin.streamLines()
 runPipeInput('$(printCmd) "abc\nfoo\r\nbar"', "
-import os
+use os
 use test
 var lines = []
 for os.stdin.streamLines() -> line:
@@ -43,7 +43,7 @@ else:
 
 -- os.stdin.streamLines() with small buffer size to test string building.
 runPipeInput('$(printCmd) "abcxyz\nfoobar\r\ndeadbeef"', "
-import os
+use os
 use test
 var lines = []
 for os.stdin.streamLines(4) -> line:
@@ -63,7 +63,7 @@ else:
 
 runArgs(['123', 'foobar'], "
 use test
-import os
+use os
 var args = os.args()
 test.eq(args.len(), 4)
 test.eq(args[0], os.exePath())
@@ -74,13 +74,13 @@ test.eq(args[3], 'foobar')
 
 -- os.stdout
 runExpectOut("
-import os
+use os
 os.stdout.write('foo')
 ", 'foo')
 
 -- os.stderr
 runExpectErr("
-import os
+use os
 os.stderr.write('foo')
 ", 'foo')
 

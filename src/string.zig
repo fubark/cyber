@@ -12,14 +12,16 @@ const bt = cy.types.BuiltinTypes;
 const log = cy.log.scoped(.string);
 
 /// Like `ArrayList` except the buffer is allocated as a `Astring` or `Ustring`.
+/// A final slice is returned from the backing string to avoid an extra copy.
 pub const HeapStringBuilder = struct {
+    buf_obj: *cy.HeapObject,
     buf: []u8,
     len: u32,
     isAstring: bool,
     hasObject: bool,
     vm: *cy.VM,
 
-    /// Starts as an Astring heap pool object.
+    /// Starts as an Astring pool object.
     pub fn init(vm: *cy.VM) !HeapStringBuilder {
         const obj = try cy.heap.allocPoolObject(vm);
         obj.astring = .{
@@ -29,6 +31,7 @@ pub const HeapStringBuilder = struct {
             .bufStart = undefined,
         };
         return .{
+            .buf_obj = obj,
             .buf = obj.astring.getMutSlice(),
             .len = 0,
             .isAstring = true,
@@ -38,88 +41,65 @@ pub const HeapStringBuilder = struct {
     }
 
     fn getHeapObject(self: *const HeapStringBuilder) * align(@alignOf(cy.HeapObject)) cy.HeapObject {
-        return @ptrCast(@alignCast(self.buf.ptr - @offsetOf(cy.Astring, "bufStart")));
+        return self.buf_obj;
     }
 
     pub fn deinit(self: *HeapStringBuilder) void {
         if (self.hasObject) {
-            const obj = self.getHeapObject();
-            obj.string.headerAndLen = (@as(u32, @intFromEnum(obj.string.getType())) << 30) | self.len;
-            self.vm.releaseObject(obj);
+            self.vm.releaseObject(self.buf_obj);
             self.hasObject = false;
         }
     }
 
-    pub fn ownObject(self: *HeapStringBuilder, alloc: std.mem.Allocator) *cy.HeapObject {
-        const obj = self.getHeapObject();
-        obj.string.headerAndLen = (@as(u32, @intFromEnum(obj.string.getType())) << 30) | self.len;
+    pub fn build(self: *HeapStringBuilder) !*cy.HeapObject {
+        var slice: cy.Value = undefined;
+        if (self.isAstring) {
+            slice = try self.vm.allocAstringSlice(self.buf[0..self.len], self.buf_obj);
+        } else {
+            slice = try self.vm.allocUstringSlice(self.buf[0..self.len], self.buf_obj);
+        }
 
-        // Shrink.
-        const objBuf = (self.buf.ptr - 16)[0..self.buf.len + 16];
-        _ = alloc.resize(objBuf, self.len + 16);
-
+        // Don't need to retain for slice since we are moving.
         self.hasObject = false;
-        return obj;
+        return slice.asHeapObject();
     }
 
-    pub fn appendString(self: *HeapStringBuilder, alloc: std.mem.Allocator, str: []const u8) !void {
-        try self.ensureTotalCapacity(alloc, self.len + str.len);
+    pub fn appendString(self: *HeapStringBuilder, str: []const u8) !void {
+        try self.ensureTotalCapacity(self.len + str.len);
         const oldLen = self.len;
         self.len += @intCast(str.len);
         @memcpy(self.buf[oldLen..self.len], str);
         const append_ascii = cy.string.isAstring(str);
         if (self.isAstring and !append_ascii) {
             // Upgrade to Ustring.
-            const obj = self.getHeapObject();
-            obj.string.headerAndLen = (@as(u32, @intFromEnum(cy.heap.StringType.ustring)) << 30) | obj.string.headerAndLen;
+            const len = self.buf_obj.string.len();
+            self.buf_obj.string.headerAndLen = (@as(u32, @intFromEnum(cy.heap.StringType.ustring)) << 30) | len;
             self.isAstring = false;
         }
     }
 
-    pub inline fn ensureTotalCapacity(self: *HeapStringBuilder, alloc: std.mem.Allocator, newCap: usize) !void {
+    pub inline fn ensureTotalCapacity(self: *HeapStringBuilder, newCap: usize) !void {
         if (newCap > self.buf.len) {
-            try self.growTotalCapacity(alloc, newCap);
+            try self.growTotalCapacity(newCap);
         }
     }
 
-    pub fn growTotalCapacityPrecise(self: *HeapStringBuilder, alloc: std.mem.Allocator, newCap: usize) !void {
-        if (self.buf.len > cy.MaxPoolObjectStringByteLen) {
-            const oldHead = (self.buf.ptr - 16)[0..self.buf.len + 16];
-            if (alloc.resize(oldHead, 16 + newCap)) {
-                self.buf.len = newCap;
-            } else {
-                const old = self.buf;
-                const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), 16 + newCap);
-                const obj: *cy.HeapObject = @ptrCast(objSlice.ptr);
-                obj.string = .{
-                    .typeId = bt.String,
-                    .rc = 1,
-                    .headerAndLen = (@as(u32, @intFromEnum(cy.heap.StringType.astring)) << 30) | 0,
-                };
-                self.buf = objSlice[16..newCap];
-                @memcpy(self.buf[0..self.len], old[0..self.len]);
-                alloc.free(oldHead);
-            }
-        } else {
-            const oldObj = self.getHeapObject();
-            const old = self.buf;
-            const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), 16 + newCap);
-            const obj: *cy.HeapObject = @ptrCast(objSlice.ptr);
-            obj.string = .{
-                .typeId = bt.String,
-                .rc = 1,
-                .headerAndLen = (@as(u32, @intFromEnum(cy.heap.StringType.astring)) << 30) | 0,
-            };
-            self.buf = objSlice[16..newCap];
-            @memcpy(self.buf[0..self.len], old[0..self.len]);
+    pub fn growTotalCapacityPrecise(self: *HeapStringBuilder, newCap: usize) !void {
+        const new_obj = try cy.heap.allocExternalObject(self.vm, 12 + newCap, false);
+        new_obj.string = .{
+            .typeId = bt.String,
+            .rc = 1,
+            .headerAndLen = (@as(u32, @intFromEnum(self.buf_obj.string.getType())) << 30) | @as(u30, @intCast(newCap)),
+        };
+        const new_buf = new_obj.astring.getMutSlice();
+        @memcpy(new_buf[0..self.len], self.buf[0..self.len]);
 
-            // Free pool object.
-            oldObj.string.headerAndLen = (@as(u32, @intFromEnum(oldObj.string.getType())) << 30) | self.len;
-            cy.heap.freeObject(self.vm, oldObj, false);
-        }
+        self.vm.releaseObject(self.buf_obj);
+        self.buf_obj = new_obj;
+        self.buf = new_buf;
     }
 
-    pub fn growTotalCapacity(self: *HeapStringBuilder, alloc: std.mem.Allocator, newCap: usize) !void {
+    pub fn growTotalCapacity(self: *HeapStringBuilder, newCap: usize) !void {
         var betterCap = self.buf.len;
         while (true) {
             betterCap +|= betterCap / 2 + 8;
@@ -127,7 +107,7 @@ pub const HeapStringBuilder = struct {
                 break;
             }
         }
-        try self.growTotalCapacityPrecise(alloc, betterCap);
+        try self.growTotalCapacityPrecise(betterCap);
     }
 };
 

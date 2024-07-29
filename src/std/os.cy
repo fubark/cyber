@@ -162,7 +162,8 @@ type File _:
     --| A buffer size of `bufSize` bytes is allocated for reading.
     --| If `\r` is found at the end of the read buffer, the line is returned instead of
     --| waiting to see if the next read has a connecting `\n`.
-    @host func streamLines(self, bufSize int) File
+    @host='File.streamLines2'
+    func streamLines(self, bufSize int) File
 
     --| Writes a `String` at the current file position.
     --| The number of bytes written is returned.

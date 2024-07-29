@@ -1,5 +1,5 @@
 /* ----------------------------------------------------------------------------
-Copyright (c) 2018-2021 Microsoft Research, Daan Leijen
+Copyright (c) 2018-2023 Microsoft Research, Daan Leijen
 This is free software; you can redistribute it and/or modify it under the
 terms of the MIT license. A copy of the license can be found in the file
 "LICENSE" at the root of this distribution.
@@ -8,12 +8,23 @@ terms of the MIT license. A copy of the license can be found in the file
 #ifndef MIMALLOC_ATOMIC_H
 #define MIMALLOC_ATOMIC_H
 
+// include windows.h or pthreads.h
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#elif !defined(__wasi__) && (!defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__))
+#define  MI_USE_PTHREADS
+#include <pthread.h>
+#endif
+
 // --------------------------------------------------------------------------------------------
 // Atomics
 // We need to be portable between C, C++, and MSVC.
-// We base the primitives on the C/C++ atomics and create a mimimal wrapper for MSVC in C compilation mode. 
-// This is why we try to use only `uintptr_t` and `<type>*` as atomic types. 
-// To gain better insight in the range of used atomics, we use explicitly named memory order operations 
+// We base the primitives on the C/C++ atomics and create a mimimal wrapper for MSVC in C compilation mode.
+// This is why we try to use only `uintptr_t` and `<type>*` as atomic types.
+// To gain better insight in the range of used atomics, we use explicitly named memory order operations
 // instead of passing the memory order as a parameter.
 // -----------------------------------------------------------------------------------------------
 
@@ -23,14 +34,16 @@ terms of the MIT license. A copy of the license can be found in the file
 #define  _Atomic(tp)            std::atomic<tp>
 #define  mi_atomic(name)        std::atomic_##name
 #define  mi_memory_order(name)  std::memory_order_##name
-#if !defined(ATOMIC_VAR_INIT) || (__cplusplus >= 202002L) // c++20, see issue #571
+#if (__cplusplus >= 202002L)    // c++20, see issue #571
+ #define MI_ATOMIC_VAR_INIT(x)  x
+#elif !defined(ATOMIC_VAR_INIT)
  #define MI_ATOMIC_VAR_INIT(x)  x
 #else
  #define MI_ATOMIC_VAR_INIT(x)  ATOMIC_VAR_INIT(x)
 #endif
 #elif defined(_MSC_VER)
 // Use MSVC C wrapper for C11 atomics
-#define  _Atomic(tp)            tp 
+#define  _Atomic(tp)            tp
 #define  MI_ATOMIC_VAR_INIT(x)  x
 #define  mi_atomic(name)        mi_atomic_##name
 #define  mi_memory_order(name)  mi_memory_order_##name
@@ -39,7 +52,13 @@ terms of the MIT license. A copy of the license can be found in the file
 #include <stdatomic.h>
 #define  mi_atomic(name)        atomic_##name
 #define  mi_memory_order(name)  memory_order_##name
-#define  MI_ATOMIC_VAR_INIT(x)  ATOMIC_VAR_INIT(x)
+#if (__STDC_VERSION__ >= 201710L) // c17, see issue #735
+ #define MI_ATOMIC_VAR_INIT(x) x
+#elif !defined(ATOMIC_VAR_INIT)
+ #define MI_ATOMIC_VAR_INIT(x) x
+#else
+ #define MI_ATOMIC_VAR_INIT(x) ATOMIC_VAR_INIT(x)
+#endif
 #endif
 
 // Various defines for all used memory orders in mimalloc
@@ -113,18 +132,18 @@ static inline void mi_atomic_maxi64_relaxed(volatile int64_t* p, int64_t x) {
 }
 
 // Used by timers
-#define mi_atomic_loadi64_acquire(p)    mi_atomic(load_explicit)(p,mi_memory_order(acquire))
-#define mi_atomic_loadi64_relaxed(p)    mi_atomic(load_explicit)(p,mi_memory_order(relaxed))
-#define mi_atomic_storei64_release(p,x) mi_atomic(store_explicit)(p,x,mi_memory_order(release))
-#define mi_atomic_storei64_relaxed(p,x) mi_atomic(store_explicit)(p,x,mi_memory_order(relaxed))
+#define mi_atomic_loadi64_acquire(p)            mi_atomic(load_explicit)(p,mi_memory_order(acquire))
+#define mi_atomic_loadi64_relaxed(p)            mi_atomic(load_explicit)(p,mi_memory_order(relaxed))
+#define mi_atomic_storei64_release(p,x)         mi_atomic(store_explicit)(p,x,mi_memory_order(release))
+#define mi_atomic_storei64_relaxed(p,x)         mi_atomic(store_explicit)(p,x,mi_memory_order(relaxed))
 
+#define mi_atomic_casi64_strong_acq_rel(p,e,d)  mi_atomic_cas_strong_acq_rel(p,e,d)
+#define mi_atomic_addi64_acq_rel(p,i)           mi_atomic_add_acq_rel(p,i)
 
 
 #elif defined(_MSC_VER)
 
-// MSVC C compilation wrapper that uses Interlocked operations to model C11 atomics.
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+// Legacy MSVC plain C compilation wrapper that uses Interlocked operations to model C11 atomics.
 #include <intrin.h>
 #ifdef _WIN64
 typedef LONG64   msc_intptr_t;
@@ -189,7 +208,7 @@ static inline uintptr_t mi_atomic_load_explicit(_Atomic(uintptr_t) const* p, mi_
 #else
   uintptr_t x = *p;
   if (mo > mi_memory_order_relaxed) {
-    while (!mi_atomic_compare_exchange_weak_explicit(p, &x, x, mo, mi_memory_order_relaxed)) { /* nothing */ };
+    while (!mi_atomic_compare_exchange_weak_explicit((_Atomic(uintptr_t)*)p, &x, x, mo, mi_memory_order_relaxed)) { /* nothing */ };
   }
   return x;
 #endif
@@ -245,6 +264,21 @@ static inline void mi_atomic_maxi64_relaxed(volatile _Atomic(int64_t)*p, int64_t
   } while (current < x && _InterlockedCompareExchange64(p, x, current) != current);
 }
 
+static inline void mi_atomic_addi64_acq_rel(volatile _Atomic(int64_t*)p, int64_t i) {
+  mi_atomic_addi64_relaxed(p, i);
+}
+
+static inline bool mi_atomic_casi64_strong_acq_rel(volatile _Atomic(int64_t*)p, int64_t* exp, int64_t des) {
+  int64_t read = _InterlockedCompareExchange64(p, des, *exp);
+  if (read == *exp) {
+    return true;
+  }
+  else {
+    *exp = read;
+    return false;
+  }
+}
+
 // The pointer macros cast to `uintptr_t`.
 #define mi_atomic_load_ptr_acquire(tp,p)                (tp*)mi_atomic_load_acquire((_Atomic(uintptr_t)*)(p))
 #define mi_atomic_load_ptr_relaxed(tp,p)                (tp*)mi_atomic_load_relaxed((_Atomic(uintptr_t)*)(p))
@@ -275,15 +309,41 @@ static inline intptr_t mi_atomic_subi(_Atomic(intptr_t)*p, intptr_t sub) {
   return (intptr_t)mi_atomic_addi(p, -sub);
 }
 
-// Yield 
+
+// ----------------------------------------------------------------------
+// Once and Guard
+// ----------------------------------------------------------------------
+
+typedef _Atomic(uintptr_t) mi_atomic_once_t;
+
+// Returns true only on the first invocation
+static inline bool mi_atomic_once( mi_atomic_once_t* once ) {
+  if (mi_atomic_load_relaxed(once) != 0) return false;     // quick test
+  uintptr_t expected = 0;
+  return mi_atomic_cas_strong_acq_rel(once, &expected, (uintptr_t)1); // try to set to 1
+}
+
+typedef _Atomic(uintptr_t) mi_atomic_guard_t;
+
+// Allows only one thread to execute at a time
+#define mi_atomic_guard(guard) \
+  uintptr_t _mi_guard_expected = 0; \
+  for(bool _mi_guard_once = true; \
+      _mi_guard_once && mi_atomic_cas_strong_acq_rel(guard,&_mi_guard_expected,(uintptr_t)1); \
+      (mi_atomic_store_release(guard,(uintptr_t)0), _mi_guard_once = false) )
+
+
+
+// ----------------------------------------------------------------------
+// Yield
+// ----------------------------------------------------------------------
+
 #if defined(__cplusplus)
 #include <thread>
 static inline void mi_atomic_yield(void) {
   std::this_thread::yield();
 }
 #elif defined(_WIN32)
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 static inline void mi_atomic_yield(void) {
   YieldProcessor();
 }
@@ -294,7 +354,7 @@ static inline void mi_atomic_yield(void) {
 }
 #elif (defined(__GNUC__) || defined(__clang__)) && \
       (defined(__x86_64__) || defined(__i386__) || defined(__arm__) || defined(__armel__) || defined(__ARMEL__) || \
-       defined(__aarch64__) || defined(__powerpc__) || defined(__ppc__) || defined(__PPC__))
+       defined(__aarch64__) || defined(__powerpc__) || defined(__ppc__) || defined(__PPC__)) || defined(__POWERPC__)
 #if defined(__x86_64__) || defined(__i386__)
 static inline void mi_atomic_yield(void) {
   __asm__ volatile ("pause" ::: "memory");
@@ -307,10 +367,16 @@ static inline void mi_atomic_yield(void) {
 static inline void mi_atomic_yield(void) {
   __asm__ volatile("yield" ::: "memory");
 }
-#elif defined(__powerpc__) || defined(__ppc__) || defined(__PPC__)
+#elif defined(__powerpc__) || defined(__ppc__) || defined(__PPC__) || defined(__POWERPC__)
+#ifdef __APPLE__
+static inline void mi_atomic_yield(void) {
+  __asm__ volatile ("or r27,r27,r27" ::: "memory");
+}
+#else
 static inline void mi_atomic_yield(void) {
   __asm__ __volatile__ ("or 27,27,27" ::: "memory");
 }
+#endif
 #elif defined(__armel__) || defined(__ARMEL__)
 static inline void mi_atomic_yield(void) {
   __asm__ volatile ("nop" ::: "memory");
@@ -333,6 +399,109 @@ static inline void mi_atomic_yield(void) {
   sleep(0);
 }
 #endif
+
+
+// ----------------------------------------------------------------------
+// Locks are only used for abandoned segment visiting in `arena.c`
+// ----------------------------------------------------------------------
+
+#if defined(_WIN32)
+
+#define mi_lock_t  CRITICAL_SECTION
+
+static inline bool mi_lock_try_acquire(mi_lock_t* lock) {
+  return TryEnterCriticalSection(lock);
+}
+static inline bool mi_lock_acquire(mi_lock_t* lock) {
+  EnterCriticalSection(lock);
+  return true;
+}
+static inline void mi_lock_release(mi_lock_t* lock) {
+  LeaveCriticalSection(lock);
+}
+static inline void mi_lock_init(mi_lock_t* lock) {
+  InitializeCriticalSection(lock);
+}
+static inline void mi_lock_done(mi_lock_t* lock) {
+  DeleteCriticalSection(lock);
+}
+
+
+#elif defined(MI_USE_PTHREADS)
+
+#define mi_lock_t  pthread_mutex_t
+
+static inline bool mi_lock_try_acquire(mi_lock_t* lock) {
+  return (pthread_mutex_trylock(lock) == 0);
+}
+static inline bool mi_lock_acquire(mi_lock_t* lock) {
+  return (pthread_mutex_lock(lock) == 0);
+}
+static inline void mi_lock_release(mi_lock_t* lock) {
+  pthread_mutex_unlock(lock);
+}
+static inline void mi_lock_init(mi_lock_t* lock) {
+  pthread_mutex_init(lock, NULL);
+}
+static inline void mi_lock_done(mi_lock_t* lock) {
+  pthread_mutex_destroy(lock);
+}
+
+/*
+#elif defined(__cplusplus)
+
+#include <mutex>
+#define mi_lock_t  std::mutex
+
+static inline bool mi_lock_try_acquire(mi_lock_t* lock) {
+  return lock->lock_try_acquire();
+}
+static inline bool mi_lock_acquire(mi_lock_t* lock) {
+  lock->lock();
+  return true;
+}
+static inline void mi_lock_release(mi_lock_t* lock) {
+  lock->unlock();
+}
+static inline void mi_lock_init(mi_lock_t* lock) {
+  (void)(lock);
+}
+static inline void mi_lock_done(mi_lock_t* lock) {
+  (void)(lock);
+}
+*/
+
+#else
+
+// fall back to poor man's locks.
+// this should only be the case in a single-threaded environment (like __wasi__)
+
+#define mi_lock_t  _Atomic(uintptr_t)
+
+static inline bool mi_lock_try_acquire(mi_lock_t* lock) {
+  uintptr_t expected = 0;
+  return mi_atomic_cas_strong_acq_rel(lock, &expected, (uintptr_t)1);
+}
+static inline bool mi_lock_acquire(mi_lock_t* lock) {
+  for (int i = 0; i < 1000; i++) {  // for at most 1000 tries?
+    if (mi_lock_try_acquire(lock)) return true;
+    mi_atomic_yield();
+  }
+  return true;
+}
+static inline void mi_lock_release(mi_lock_t* lock) {
+  mi_atomic_store_release(lock, (uintptr_t)0);
+}
+static inline void mi_lock_init(mi_lock_t* lock) {
+  mi_lock_release(lock);
+}
+static inline void mi_lock_done(mi_lock_t* lock) {
+  (void)(lock);
+}
+
+#endif
+
+
 
 
 #endif // __MIMALLOC_ATOMIC_H

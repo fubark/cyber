@@ -1,5 +1,5 @@
 /* ----------------------------------------------------------------------------
-Copyright (c) 2019-2020 Microsoft Research, Daan Leijen
+Copyright (c) 2019-2023 Microsoft Research, Daan Leijen
 This is free software; you can redistribute it and/or modify it under the
 terms of the MIT license. A copy of the license can be found in the file
 "LICENSE" at the root of this distribution.
@@ -7,7 +7,7 @@ terms of the MIT license. A copy of the license can be found in the file
 
 /* ----------------------------------------------------------------------------
 Concurrent bitmap that can set/reset sequences of bits atomically,
-represeted as an array of fields where each field is a machine word (`size_t`)
+represented as an array of fields where each field is a machine word (`size_t`)
 
 There are two api's; the standard one cannot have sequences that cross
 between the bitmap fields (and a sequence must be <= MI_BITMAP_FIELD_BITS).
@@ -38,11 +38,6 @@ typedef size_t mi_bitmap_index_t;
 static inline mi_bitmap_index_t mi_bitmap_index_create(size_t idx, size_t bitidx) {
   mi_assert_internal(bitidx < MI_BITMAP_FIELD_BITS);
   return (idx*MI_BITMAP_FIELD_BITS) + bitidx;
-}
-
-// Create a bit index.
-static inline mi_bitmap_index_t mi_bitmap_index_create_from_bit(size_t full_bitidx) {  
-  return mi_bitmap_index_create(full_bitidx / MI_BITMAP_FIELD_BITS, full_bitidx % MI_BITMAP_FIELD_BITS);
 }
 
 // Get the field index from a bit index.
@@ -76,6 +71,10 @@ bool _mi_bitmap_try_find_from_claim(mi_bitmap_t bitmap, const size_t bitmap_fiel
 // Returns `true` if all `count` bits were 1 previously.
 bool _mi_bitmap_unclaim(mi_bitmap_t bitmap, size_t bitmap_fields, size_t count, mi_bitmap_index_t bitmap_idx);
 
+// Try to set `count` bits at `bitmap_idx` from 0 to 1 atomically. 
+// Returns `true` if successful when all previous `count` bits were 0.
+bool _mi_bitmap_try_claim(mi_bitmap_t bitmap, size_t bitmap_fields, size_t count, mi_bitmap_index_t bitmap_idx);
+
 // Set `count` bits at `bitmap_idx` to 1 atomically
 // Returns `true` if all `count` bits were 0 previously. `any_zero` is `true` if there was at least one zero bit.
 bool _mi_bitmap_claim(mi_bitmap_t bitmap, size_t bitmap_fields, size_t count, mi_bitmap_index_t bitmap_idx, bool* any_zero);
@@ -91,7 +90,7 @@ bool _mi_bitmap_is_any_claimed(mi_bitmap_t bitmap, size_t bitmap_fields, size_t 
 
 // Find `count` bits of zeros and set them to 1 atomically; returns `true` on success.
 // Starts at idx, and wraps around to search in all `bitmap_fields` fields.
-bool _mi_bitmap_try_find_from_claim_across(mi_bitmap_t bitmap, const size_t bitmap_fields, const size_t start_field_idx, const size_t count, mi_bitmap_index_t* bitmap_idx);
+bool _mi_bitmap_try_find_from_claim_across(mi_bitmap_t bitmap, const size_t bitmap_fields, const size_t start_field_idx, const size_t count, mi_bitmap_index_t* bitmap_idx, mi_stats_t* stats);
 
 // Set `count` bits at `bitmap_idx` to 0 atomically
 // Returns `true` if all `count` bits were 1 previously.

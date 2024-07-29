@@ -64,18 +64,26 @@ pub fn buildAndLink(b: *std.Build, mod: *std.Build.Module, opts: BuildOptions) v
         "/vendor/src/page.c",
         "/vendor/src/heap.c",
         "/vendor/src/random.c",
-        "/vendor/src/segment-cache.c",
         "/vendor/src/options.c",
         "/vendor/src/bitmap.c",
         "/vendor/src/os.c",
         "/vendor/src/init.c",
         "/vendor/src/segment.c",
+        "/vendor/src/segment-map.c",
         "/vendor/src/arena.c",
         "/vendor/src/stats.c",
+        "/vendor/src/prim/prim.c",
+        "/vendor/src/libc.c",
     }) catch @panic("error");
     for (sources.items) |src| {
         lib.addCSourceFile(.{
             .file = .{ .path = b.fmt("{s}{s}", .{thisDir(), src}) },
+            .flags = c_flags.items,
+        });
+    }
+    if (opts.target.result.os.tag != .windows) {
+        lib.addCSourceFile(.{
+            .file = .{ .path = b.fmt("{s}/vendor/src/alloc-posix.c", .{thisDir()}) },
             .flags = c_flags.items,
         });
     }

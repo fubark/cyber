@@ -1,2 +1,5 @@
 tcc: https://github.com/mirror/tinycc
 04365dd4c91f78361c7cf3169fe5fab3ccb9bfbf
+
+mimalloc: https://github.com/microsoft/mimalloc
+03020fbf81541651e24289d2f7033a772a50f480

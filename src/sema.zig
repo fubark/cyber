@@ -3116,24 +3116,14 @@ fn callSym(c: *cy.Chunk, sym: *Sym, symNode: *ast.Node, args: []*ast.Node, ret_c
             const funcSym = sym.cast(.func);
             return c.semaCallFuncSym(funcSym, args, ret_cstr, symNode);
         },
-        .bool_t => {
-            return callNamespaceSym(c, sym, symNode, args, ret_cstr, node);
-        }, 
-        .int_t => {
-            return callNamespaceSym(c, sym, symNode, args, ret_cstr, node);
-        }, 
-        .float_t => {
-            return callNamespaceSym(c, sym, symNode, args, ret_cstr, node);
-        }, 
-        .hostobj_t => {
-            return callNamespaceSym(c, sym, symNode, args, ret_cstr, node);
-        },
-        .struct_t => {
-            return callNamespaceSym(c, sym, symNode, args, ret_cstr, node);
-        },
-        .object_t => {
-            return callNamespaceSym(c, sym, symNode, args, ret_cstr, node);
-        },
+        .trait_t,
+        .enum_t,
+        .bool_t,
+        .int_t,
+        .float_t,
+        .hostobj_t,
+        .struct_t,
+        .object_t,
         .template => {
             return callNamespaceSym(c, sym, symNode, args, ret_cstr, node);
         },

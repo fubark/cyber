@@ -378,6 +378,7 @@ fn inferCtArgValueEq(c: *cy.Chunk, arg: cy.Value, infer: cy.Value) bool {
 }
 
 /// Returns the target param type at index. Returns null if type should be deduced from arg.
+/// resolveSymType isn't used because that performs resolving on a node rather than a type.
 fn resolveTargetParam(c: *cy.Chunk, param_t: cy.TypeId, ct_arg_start: usize) !?cy.TypeId {
     const type_e = c.sema.types.items[param_t];
     if (type_e.info.ct_ref or type_e.info.ct_infer) {

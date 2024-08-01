@@ -3332,6 +3332,19 @@ fn semaLocal(c: *cy.Chunk, id: LocalVarId, node: *ast.Node) !ExprResult {
     }
 }
 
+pub fn semaCtValue(c: *cy.Chunk, ct_value: cte.CtValue, node: *ast.Node) !ExprResult {
+    switch (ct_value.type) {
+        bt.Integer => {
+            return c.semaInt(ct_value.value.asBoxInt(), node);
+        },
+        else => {
+            const type_n = try c.sema.allocTypeName(ct_value.type);
+            defer c.alloc.free(type_n);
+            return c.reportErrorFmt("Unsupported compile-time value: `{}`.", &.{v(type_n)}, node);
+        }
+    }
+}
+
 fn semaIdent(c: *cy.Chunk, node: *ast.Node, symAsValue: bool, prefer_addressable: bool) !ExprResult {
     const name = c.ast.nodeString(node);
     const res = try getOrLookupVar(c, name, node);
@@ -3355,6 +3368,16 @@ fn semaIdent(c: *cy.Chunk, node: *ast.Node, symAsValue: bool, prefer_addressable
         .static => |sym| {
             return sema.symbol(c, sym, node, symAsValue);
         },
+        .ct_value => |ct_value| {
+            defer c.vm.release(ct_value.value);
+            if (ct_value.type == bt.Type) {
+                const type_id = ct_value.value.castHeapObject(*cy.heap.Type).type;
+                const sym = c.sema.getTypeSym(type_id);
+                return sema.symbol(c, sym, node, symAsValue);
+            } else {
+                return semaCtValue(c, ct_value, node);
+            }
+        },
     }
 }
 
@@ -3373,24 +3396,45 @@ pub fn getLocalDistinctSym(c: *cy.Chunk, name: []const u8, node: *ast.Node) !?*S
     return null;
 }
 
-pub fn getResolvedLocalSym(c: *cy.Chunk, name: []const u8, node: *ast.Node, distinct: bool) !?*Sym {
+const NameResultType = enum {
+    sym,
+    ct_value,
+};
+
+const NameResult = struct {
+    type: NameResultType,
+    data: union {
+        sym: *Sym,
+        ct_value: cte.CtValue,
+    },
+
+    fn initSym(sym: *Sym) NameResult {
+        return .{ .type = .sym, .data = .{ .sym = sym, }};
+    }
+
+    fn initCtValue(ct_value: cte.CtValue) NameResult {
+        return .{ .type = .ct_value, .data = .{ .ct_value = ct_value, }};
+    }
+};
+
+pub fn getResolvedSym(c: *cy.Chunk, name: []const u8, node: *ast.Node, distinct: bool) !?NameResult {
     if (c.sym_cache.get(name)) |sym| {
         if (distinct and !sym.isDistinct()) {
             return c.reportErrorFmt("`{}` is not a unique symbol.", &.{v(name)}, node);
         }
-        return sym;
+        return NameResult.initSym(sym);
     }
 
     // Look in the current chunk module.
     if (distinct) {
         if (try c.getResolvedDistinctSym(@ptrCast(c.sym), name, node, false)) |res| {
             try c.sym_cache.putNoClobber(c.alloc, name, res);
-            return res;
+            return NameResult.initSym(res);
         }
     } else {
         if (try c.getOptResolvedSym(@ptrCast(c.sym), name)) |sym| {
             try c.sym_cache.putNoClobber(c.alloc, name, sym);
-            return sym;
+            return NameResult.initSym(sym);
         }
     }
 
@@ -3400,14 +3444,8 @@ pub fn getResolvedLocalSym(c: *cy.Chunk, name: []const u8, node: *ast.Node, dist
         const ctx = c.resolve_stack.items[resolve_ctx_idx];
         if (ctx.ct_params.size > 0) {
             if (ctx.ct_params.get(name)) |param| {
-                if (param.getTypeId() != bt.Type) {
-                    const param_type_name = c.sema.getTypeBaseName(param.getTypeId());
-                    return c.reportErrorFmt("Can not use a `{}` template param here.", &.{v(param_type_name)}, node);
-                }
-                const sym = c.sema.getTypeSym(param.asHeapObject().type.type);
-                if (!distinct or sym.isDistinct()) {
-                    return sym;
-                }
+                c.vm.retain(param);
+                return NameResult.initCtValue(.{ .type = param.getTypeId(), .value = param });
             }
         }
         if (!ctx.has_parent_ctx) {
@@ -3424,12 +3462,12 @@ pub fn getResolvedLocalSym(c: *cy.Chunk, name: []const u8, node: *ast.Node, dist
         if (distinct) {
             if (try c.getResolvedDistinctSym(@ptrCast(mod_sym), name, node, false)) |res| {
                 try c.sym_cache.putNoClobber(c.alloc, name, res);
-                return res;
+                return NameResult.initSym(res);
             }
         } else {
             if (try c.getOptResolvedSym(@ptrCast(mod_sym), name)) |sym| {
                 try c.sym_cache.putNoClobber(c.alloc, name, sym);
-                return sym;
+                return NameResult.initSym(sym);
             }
         }
     }
@@ -3537,9 +3575,23 @@ pub fn resolveSym(c: *cy.Chunk, expr: *ast.Node) anyerror!*cy.Sym {
                 }
             }
 
-            return (try getResolvedLocalSym(c, name, expr, true)) orelse {
+            const res = (try getResolvedSym(c, name, expr, true)) orelse {
                 return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, expr);
             };
+            switch (res.type) {
+                .sym => return res.data.sym,
+                .ct_value => {
+                    defer c.vm.release(res.data.ct_value.value);
+                    if (res.data.ct_value.type == bt.Type) {
+                        const type_id = res.data.ct_value.value.castHeapObject(*cy.heap.Type).type;
+                        return c.sema.getTypeSym(type_id);
+                    } else {
+                        const type_n = try c.sema.allocTypeName(res.data.ct_value.type);
+                        defer c.alloc.free(type_n);
+                        return c.reportErrorFmt("Expected symbol, found compile-time value `{}`.", &.{v(type_n)}, expr);
+                    }
+                }
+            }
         },
         .accessExpr => {
             const access_expr = expr.cast(.accessExpr);
@@ -3647,10 +3699,16 @@ fn resolveTemplateSig(c: *cy.Chunk, params: []*ast.FuncParam, outSigId: *FuncSig
         }
         const typeId = try resolveTypeSpecNode(c, param.typeSpec);
         try c.typeStack.append(c.alloc, typeId);
+        const param_name = c.ast.funcParamName(param);
         tparams[i] = .{
-            .name = c.ast.funcParamName(param),
+            .name = param_name,
             .type = typeId,
         };
+
+        const ct_param_idx = getResolveContext(c).ct_params.size;
+        const ref_t = try c.sema.ensureCtRefType(ct_param_idx);
+        const param_v = try c.vm.allocType(ref_t);
+        try setResolveCtParam(c, param_name, param_v);
     }
 
     const retType = bt.Type;
@@ -4182,6 +4240,7 @@ fn referenceSym(c: *cy.Chunk, sym: *Sym, node: *ast.Node) !void {
 const VarLookupResult = union(enum) {
     global: *Sym,
     static: *Sym,
+    ct_value: cte.CtValue,
 
     /// Local, parent local alias, or parent object member alias.
     local: LocalVarId,
@@ -4285,16 +4344,28 @@ pub fn getOrLookupVar(self: *cy.Chunk, name: []const u8, node: *ast.Node) !VarLo
             }
             return self.reportErrorFmt("Undeclared variable `{}`.", &.{v(name)}, node);
         };
-        _ = try pushStaticVarAlias(self, name, res.static);
+        switch (res) {
+            .static => |sym| {
+                _ = try pushStaticVarAlias(self, name, sym);
+            },
+            else => {}
+        }
         return res;
     }
 }
 
 fn lookupStaticVar(c: *cy.Chunk, name: []const u8, node: *ast.Node) !?VarLookupResult {
-    const res = (try getResolvedLocalSym(c, name, node, false)) orelse {
+    const res = (try getResolvedSym(c, name, node, false)) orelse {
         return null;
     };
-    return VarLookupResult{ .static = res };
+    switch (res.type) {
+        .sym => {
+            return VarLookupResult{ .static = res.data.sym };
+        },
+        .ct_value => {
+            return VarLookupResult{ .ct_value = res.data.ct_value };
+        },
+    }
 }
 
 const LookupParentLocalResult = struct {
@@ -5991,6 +6062,16 @@ pub const ChunkExt = struct {
                 },
                 .static => |sym| {
                     return callSym(c, sym, node.callee, node.args, expr.getRetCstr(), expr.node);
+                },
+                .ct_value => |ct_value| {
+                    defer c.vm.release(ct_value.value);
+                    if (ct_value.type == bt.Type) {
+                        const type_id = ct_value.value.castHeapObject(*cy.heap.Type).type;
+                        const sym = c.sema.getTypeSym(type_id);
+                        return callSym(c, sym, node.callee, node.args, expr.getRetCstr(), expr.node);
+                    } else {
+                        return error.TODO;
+                    }
                 },
             }
         } else {

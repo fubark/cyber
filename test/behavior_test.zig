@@ -203,6 +203,8 @@ if (!aot) {
     run.case("types/struct_circular_dep_error.cy");
     run.case("types/structs.cy");
     run.case("types/template_choices.cy");
+    run.case("types/template_dep_param_type.cy");
+    run.case("types/template_dep_param_type_error.cy");
     run.case("types/template_object_init_noexpand_error.cy");
     run.case("types/template_object_spec_noexpand_error.cy");
     run.case("types/template_object_expand_error.cy");

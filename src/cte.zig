@@ -16,6 +16,47 @@ pub fn expandTemplateOnCallExpr(c: *cy.Chunk, node: *ast.CallExpr) !*cy.Sym {
     return cte.expandTemplateOnCallArgs(c, callee.cast(.template), node.args, @ptrCast(node));
 }
 
+pub fn pushNodeValuesCstr(c: *cy.Chunk, args: []const *ast.Node, template: *cy.sym.Template, ct_arg_start: usize, node: *ast.Node) !void {
+    const params = c.sema.getFuncSig(template.sigId).params();
+    if (args.len != params.len) {
+        const params_s = try c.sema.allocFuncParamsStr(params, c);
+        defer c.alloc.free(params_s);
+        return c.reportErrorFmt(
+            \\Expected template signature `{}[{}]`.
+        , &.{v(template.head.name()), v(params_s)}, node);
+    }
+    for (args, 0..) |arg, i| {
+        const param = params[i];
+        const exp_type = try resolveTemplateParamType(c, param.type, ct_arg_start);
+        const res = try resolveCtValue(c, arg);
+        try c.valueStack.append(c.alloc, res.value);
+
+        if (res.type != exp_type) {
+            const cstrName = try c.sema.allocTypeName(exp_type);
+            defer c.alloc.free(cstrName);
+            const typeName = try c.sema.allocTypeName(res.type);
+            defer c.alloc.free(typeName);
+            return c.reportErrorFmt("Expected type `{}`, got `{}`.", &.{v(cstrName), v(typeName)}, arg);
+        }
+    }
+}
+
+/// This is similar to `sema_func.resolveTemplateParamType` except it only cares about ct_ref.
+fn resolveTemplateParamType(c: *cy.Chunk, type_id: cy.TypeId, ct_arg_start: usize) !cy.TypeId {
+    const type_e = c.sema.types.items[type_id];
+    if (type_e.kind == .ct_ref) {
+        const ct_arg = c.valueStack.items[ct_arg_start + type_e.data.ct_infer.ct_param_idx];
+        if (ct_arg.getTypeId() != bt.Type) {
+            return error.TODO;
+        }
+        return ct_arg.asHeapObject().type.type;
+    } else if (type_e.info.ct_ref) {
+        return error.TODO;
+    } else {
+        return type_id;
+    }
+}
+
 pub fn pushNodeValues(c: *cy.Chunk, args: []const *ast.Node) !void {
     for (args) |arg| {
         const res = try resolveCtValue(c, arg);
@@ -26,11 +67,8 @@ pub fn pushNodeValues(c: *cy.Chunk, args: []const *ast.Node) !void {
 
 pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, args: []const *ast.Node, node: *ast.Node) !*cy.Sym {
     // Accumulate compile-time args.
-    const typeStart = c.typeStack.items.len;
     const valueStart = c.valueStack.items.len;
     defer {
-        c.typeStack.items.len = typeStart;
-
         // Values need to be released.
         const values = c.valueStack.items[valueStart..];
         for (values) |val| {
@@ -39,21 +77,8 @@ pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, args: 
         c.valueStack.items.len = valueStart;
     }
 
-    try pushNodeValues(c, args);
-
-    const argTypes = c.typeStack.items[typeStart..];
+    try pushNodeValuesCstr(c, args, template, valueStart, node);
     const arg_vals = c.valueStack.items[valueStart..];
-
-    // Check against template signature.
-    if (!cy.types.isTypeFuncSigCompat(c.compiler, @ptrCast(argTypes), .not_void, template.sigId)) {
-        const sig = c.sema.getFuncSig(template.sigId);
-        const params_s = try c.sema.allocFuncParamsStr(sig.params(), c);
-        defer c.alloc.free(params_s);
-        return c.reportErrorFmt(
-            \\Expected template signature `{}[{}]`.
-        , &.{v(template.head.name()), v(params_s)}, node);
-    }
-
     return expandTemplate(c, template, arg_vals);
 }
 
@@ -263,6 +288,14 @@ pub const CtValue = struct {
 // TODO: Evaluate const expressions.
 pub fn resolveCtValue(c: *cy.Chunk, expr: *ast.Node) !CtValue {
     switch (expr.type()) {
+        .floatLit => {
+            const literal = c.ast.nodeString(expr);
+            const val = try std.fmt.parseFloat(f64, literal);
+            return .{
+                .type = bt.Float,
+                .value = cy.Value.initF64(val),
+            };
+        },
         .decLit => {
             const literal = c.ast.nodeString(expr);
             const val = try std.fmt.parseInt(i64, literal, 10);
@@ -352,7 +385,7 @@ pub fn resolveCtValue(c: *cy.Chunk, expr: *ast.Node) !CtValue {
             return c.reportErrorFmt("Unexpected compile-time expression.", &.{}, expr);
         },
         else => {
-            return c.reportErrorFmt("Unsupported expr: `{}`", &.{v(expr.type())}, expr);
+            return c.reportErrorFmt("Unsupported compile-time expression: `{}`", &.{v(expr.type())}, expr);
         }
     }
 }

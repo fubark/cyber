@@ -90,7 +90,6 @@ pub const NodeType = enum(u7) {
     runeLit,
     semaSym,
     seqDestructure,
-    specialization,
     staticDecl,
     stringLit,
     stringTemplate,
@@ -560,11 +559,6 @@ pub const SeqDestructure = struct {
     pos: u32,
 };
 
-pub const Specialization = struct {
-    args: []*Node align(8),
-    child_decl: *Node,
-};
-
 pub const TemplateDecl = struct {
     params: []*FuncParam align(8),
     child_decl: *Node,
@@ -675,7 +669,6 @@ fn NodeData(comptime node_t: NodeType) type {
         .runeLit        => Span,
         .semaSym        => SemaSym,
         .seqDestructure => SeqDestructure,
-        .specialization => Specialization,
         .staticDecl     => StaticVarDecl,
         .stringLit      => Span,
         .stringTemplate => StringTemplate,
@@ -818,7 +811,6 @@ pub const Node = struct {
             .runeLit        => self.cast(.runeLit).pos,
             .seqDestructure => self.cast(.seqDestructure).pos,
             .semaSym        => cy.NullId,
-            .specialization => self.cast(.specialization).child_decl.pos(),
             .staticDecl     => self.cast(.staticDecl).pos,
             .stringLit      => self.cast(.stringLit).pos,
             .stringTemplate => self.cast(.stringTemplate).parts[0].pos(),
@@ -1105,9 +1097,6 @@ pub const AstView = struct {
             },
             .template => {
                 return self.declNamePath(n.cast(.template).child_decl);
-            },
-            .specialization => {
-                return self.declNamePath(n.cast(.specialization).child_decl);
             },
             .staticDecl => {
                 return self.getNamePathInfo(n.cast(.staticDecl).name).name_path;

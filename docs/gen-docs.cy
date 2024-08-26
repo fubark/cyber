@@ -457,8 +457,6 @@ func genDecl(decl Map) String:
             gen += genFuncDecl(fdecl)
     case 'template':
         gen += genDecl(decl['child'])
-    case 'specialization':
-        pass
     case 'import_stmt':
         pass
     case 'enumDecl':

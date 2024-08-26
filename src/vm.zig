@@ -358,6 +358,8 @@ pub const VM = struct {
 
         const data = try self.alloc.create(cy.builtins.BuiltinsData);
         try self.data.put(self.alloc, "builtins", data);
+        
+        try @call(.never_inline, cy.bindings.bindCore, .{self});
     }
 
     pub fn deinitRtObjects(self: *VM) void {
@@ -1729,6 +1731,13 @@ fn evalCompare(left: Value, right: Value) Value {
                 return Value.initBool(l.typeKind == r.typeKind and l.type == r.type);
             }
         },
+        bt.Type => {
+            if (right.getTypeId() == bt.Type) {
+                const l = left.asHeapObject().type;
+                const r = right.asHeapObject().type;
+                return Value.initBool(l.type == r.type);
+            }
+        },
         else => {},
     }
     return Value.False;
@@ -1753,6 +1762,13 @@ fn evalCompareNot(left: cy.Value, right: cy.Value) cy.Value {
                 const l = left.asHeapObject().metatype;
                 const r = right.asHeapObject().metatype;
                 return Value.initBool(l.typeKind != r.typeKind or l.type != r.type);
+            }
+        },
+        bt.Type => {
+            if (right.getTypeId() == bt.Type) {
+                const l = left.asHeapObject().type;
+                const r = right.asHeapObject().type;
+                return Value.initBool(l.type != r.type);
             }
         },
         else => {},

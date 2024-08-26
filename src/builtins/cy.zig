@@ -296,7 +296,6 @@ fn genDeclEntry(vm: *cy.VM, view: ast.AstView, decl: *ast.Node, state: *ParseCyb
         .enumDecl,
         .use_alias,
         .import_stmt,
-        .specialization,
         .typeAliasDecl => {},
         .template => {
             const template = decl.cast(.template);

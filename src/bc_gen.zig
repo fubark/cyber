@@ -3256,7 +3256,7 @@ pub const Sym = union {
 };
 
 pub fn pushFuncBlock(c: *Chunk, data: ir.FuncBlock, params: []align(1) const ir.FuncParam, node: *ast.Node) !void {
-    log.tracev("push func block: {}, {}, {}, {}", .{data.func.numParams, data.maxLocals, data.func.isMethod(), node});
+    log.tracev("push func block: params={}, max_locals={}, method={}, {}", .{data.func.numParams, data.maxLocals, data.func.isMethod(), node});
     try pushFuncBlockCommon(c, data.maxLocals, data.numParamCopies, params, data.func, node);
 }
 

@@ -262,9 +262,6 @@ type float #float64_t:
                 else: break
             self[j + 1] = cur
 
-@host='ListDyn'
-type List[dyn] _
-
 --| Creates a list with initial capacity of `n` and values set to `val`.
 --| If the value is an object, it is shallow copied `n` times.
 @host func List.fill(val #T, n int) List[T]
@@ -274,10 +271,6 @@ type List[dyn] _
         return self.next_((Option[T]).id())
 
     @host func next_(self, ret_t int) ?T
-
-
-@host='ListIterDyn'
-type ListIterator[dyn] _
 
 @host
 type Tuple _:

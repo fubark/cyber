@@ -793,15 +793,13 @@ pub const Parser = struct {
         allow_decl: bool,
     };
 
-    fn parseTemplateOrSpecialization(self: *Parser) !*ast.Node {
+    fn parseTemplate(self: *Parser) !*ast.Node {
         // Assumes starting with '['.
         const tag = self.peekAhead(2).tag();
         if (tag == .right_bracket or tag == .comma) {
-            const args = try self.parseArrayLiteral2();
-            return self.ast.newNodeErase(.specialization, .{
-                .args = args,
-                .child_decl = undefined,
-            });
+            // Might need to parse template child declaration in the future.
+            // const args = try self.parseArrayLiteral2();
+            return error.TODO;
         } else {
             self.advance();
             const params = try self.parseFuncParams(&.{}, true);
@@ -828,7 +826,7 @@ pub const Parser = struct {
 
         var opt_template: ?*ast.Node = null;
         if (self.peek().tag() == .left_bracket) {
-            opt_template = try self.parseTemplateOrSpecialization();
+            opt_template = try self.parseTemplate();
             try self.staticDecls.append(self.alloc, @ptrCast(opt_template));
             self.consumeWhitespaceTokens();
         }
@@ -865,11 +863,7 @@ pub const Parser = struct {
         }
 
         if (opt_template) |template| {
-            if (template.type() == .specialization) {
-                template.cast(.specialization).child_decl = decl;
-            } else {
-                template.cast(.template).child_decl = decl;
-            }
+            template.cast(.template).child_decl = decl;
             return template;
         } else {
             try self.staticDecls.append(self.alloc, @ptrCast(decl));

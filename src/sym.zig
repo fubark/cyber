@@ -100,11 +100,6 @@ pub const Sym = extern struct {
                         variant.data.ct_val = cy.Value.Void;
                     }
                 }
-
-                if (template.kind == .ct_func) {
-                    vm.release(template.ct_func_val);
-                    template.ct_func_val = cy.Value.Void;
-                }
             },
             else => {},
         }
@@ -590,16 +585,9 @@ pub const Template = struct {
     /// Owned by root template.
     params: []TemplateParam,
 
-    /// Resolved when the template is resolved.
-    specializations: std.ArrayListUnmanaged(*ast.Specialization),
-
     /// Template args to variant. Keys are not owned.
     variant_cache: std.HashMapUnmanaged([]const cy.Value, *Variant, VariantKeyContext, 80),
     variants: std.ArrayListUnmanaged(*Variant),
-
-    /// For compile-time function templates.
-    ct_func: ?*Func,
-    ct_func_val: cy.Value,
 
     mod: vmc.Module,
 
@@ -649,12 +637,6 @@ fn deinitTemplate(vm: *cy.VM, template: *Template) void {
     if (template.is_root) {
         vm.alloc.free(template.params);
     }
-
-    template.specializations.deinit(vm.alloc);
-    if (template.ct_func) |ct_func| {
-        vm.alloc.destroy(ct_func);
-    }
-    vm.release(template.ct_func_val);
 }
 
 pub const TemplateParam = struct {
@@ -663,7 +645,6 @@ pub const TemplateParam = struct {
 };
 
 const VariantType = enum(u8) {
-    specialization,
     sym,
     ct_val,
 };
@@ -679,7 +660,6 @@ pub const Variant = struct {
     args: []const cy.Value,
 
     data: union {
-        specialization: *ast.Node,
         sym: *Sym,
         ct_val: cy.Value,
     },
@@ -1446,10 +1426,7 @@ pub const ChunkExt = struct {
             .sigId = cy.NullId,
             .variant_cache = .{},
             .variants = .{},
-            .specializations = .{},
             .mod = undefined,
-            .ct_func = null,
-            .ct_func_val = cy.Value.Void,
         });
         sym.getMod().* = cy.Module.init(c);
         try c.syms.append(c.alloc, @ptrCast(sym));

@@ -192,35 +192,39 @@ pub fn expandCtFuncTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []co
         res.value_ptr.* = variant;
         try template.variants.append(c.alloc, variant);
 
-        if (template.ct_func == null) {
-            // Generate ct func.
-            const func = try c.createFunc(.userFunc, @ptrCast(template), @ptrCast(template.decl.child_decl), false);
-            const func_sig = c.compiler.sema.getFuncSig(template.sigId);
-            func.funcSigId = template.sigId;
-            func.retType = func_sig.getRetType();
-            func.reqCallTypeCheck = func_sig.reqCallTypeCheck;
-            func.numParams = @intCast(func_sig.params_len);
+        // Generate ct func.
+        const func = try c.createFunc(.userFunc, @ptrCast(template), @ptrCast(template.decl.child_decl), false);
+        defer c.vm.alloc.destroy(func);
+        const func_sig = c.compiler.sema.getFuncSig(template.sigId);
+        func.funcSigId = template.sigId;
+        func.retType = func_sig.getRetType();
+        func.reqCallTypeCheck = func_sig.reqCallTypeCheck;
+        func.numParams = @intCast(func_sig.params_len);
 
-            // Perform sema.
-            const loc = c.ir.buf.items.len;
-            try sema.funcDecl(c, func);
+        // Perform sema.
+        const loc = c.ir.buf.items.len;
+        defer c.ir.buf.items.len = loc;
+        try sema.pushVariantResolveContext(c, variant);
+        defer sema.popResolveContext(c);
+        try sema.funcDecl2(c, func);
 
-            // Perform bc gen.
-            const loc_n = c.ir.getNode(loc);
-            c.buf = &c.compiler.buf;
-            try bcgen.prepareFunc(c.compiler, null, func);
-            try bcgen.funcBlock(c, loc, loc_n);
+        // Perform bc gen.
+        const loc_n = c.ir.getNode(loc);
+        c.buf = &c.compiler.buf;
+        // TODO: defer restore bc state.
+        try bcgen.prepareFunc(c.compiler, null, func);
+        try bcgen.funcBlock(c, loc, loc_n);
 
-            const rt_id = c.compiler.genSymMap.get(func).?.func.id;
-            const rt_func = c.vm.funcSyms.buf[rt_id];
-            template.ct_func_val = try cy.heap.allocFunc(c.vm, rt_func);
-            template.ct_func = func;
-        }
+        const rt_id = c.compiler.genSymMap.get(func).?.func.id;
+        const rt_func = c.vm.funcSyms.buf[rt_id];
+        const func_val = try cy.heap.allocFunc(c.vm, rt_func);
+        defer c.vm.release(func_val);
 
         try c.vm.prepCtEval(&c.compiler.buf);
-        const retv = try c.vm.callFunc(template.ct_func_val, args, .{});
+        const retv = try c.vm.callFunc(func_val, args_dupe, .{});
         c.vm.retain(retv);
         variant.data = .{ .ct_val = retv };
+
         return retv;
     } 
 
@@ -285,25 +289,6 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
     } 
 
     const variant = res.value_ptr.*;
-    if (variant.type == .specialization) {
-        const child_decl = variant.data.specialization;
-        if (child_decl.type() != .custom_decl) {
-            return error.Unsupported;
-        }
-        const custom_decl = child_decl.cast(.custom_decl);
-        if (custom_decl.funcs.len > 0) {
-            return error.Unsupported;
-        }
-
-        const new_sym = try sema.reserveTemplateVariant(c, template, variant.data.specialization, variant);
-        variant.type = .sym;
-        variant.data = .{ .sym = new_sym };
-
-        const final_sym = try sema.resolveTemplateVariant(c, template, new_sym);
-        variant.data.sym = new_sym;
-        return final_sym;
-    }
-
     if (root_template == template) {
         return variant.data.sym;
     } else {

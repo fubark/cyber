@@ -1298,51 +1298,6 @@ pub fn resolveTemplate(c: *cy.Chunk, sym: *cy.sym.Template) !void {
     var sigId: FuncSigId = undefined;
     const params = try resolveTemplateSig(c, sym.decl.params, &sigId);
     try c.resolveTemplate(sym, sigId, params);
-
-    // Resolve specializations.
-    for (sym.specializations.items) |decl| {
-        try sema.pushResolveContext(c);
-        defer sema.popResolveContext(c);
-
-        // TODO: Check that specialization doesn't exist already.
-
-        // Get CT template args.
-        const typeStart = c.typeStack.items.len;
-        const valueStart = c.valueStack.items.len;
-        defer {
-            c.typeStack.items.len = typeStart;
-
-            // Values need to be released.
-            const values = c.valueStack.items[valueStart..];
-            for (values) |val| {
-                c.vm.release(val);
-            }
-            c.valueStack.items.len = valueStart;
-        }
-        try cy.cte.pushNodeValues(c, decl.args);
-        const arg_types = c.typeStack.items[typeStart..];
-        const args = c.valueStack.items[valueStart..];
-
-        // Check against template signature.
-        if (!cy.types.isTypeFuncSigCompat(c.compiler, @ptrCast(arg_types), .not_void, sym.sigId)) {
-            return error.IncompatSig;
-        }
-
-        const args_dupe = try c.alloc.dupe(cy.Value, args);
-        for (args_dupe) |arg| {
-            c.vm.retain(arg);
-        }
-
-        const variant = try c.alloc.create(cy.sym.Variant);
-        variant.* = .{
-            .type = .specialization,
-            .root_template = sym,
-            .args = args_dupe,
-            .data = .{ .specialization = decl.child_decl },
-        };
-        try sym.variant_cache.putContext(c.alloc, args_dupe, variant, .{ .sema = c.sema });
-        try sym.variants.append(c.alloc, variant);
-    }
 }
 
 /// Explicit `decl` for specialization declarations.
@@ -1392,7 +1347,7 @@ pub fn resolveCustomType(c: *cy.Chunk, decl: *ast.CustomDecl) !*cy.Sym {
     return resolveCustomTypeResult(c, decl_path, decl, host_t);
 }
 
-fn resolveHostObjectType(c: *cy.Chunk, hostobj_t: *cy.sym.HostObjectType,
+pub fn resolveHostObjectType(c: *cy.Chunk, hostobj_t: *cy.sym.HostObjectType,
     get_children: C.GetChildrenFn, finalizer: C.FinalizerFn, opt_type: ?cy.TypeId, pre: bool, load_all_methods: bool) !void {
     const typeid = opt_type orelse try c.sema.pushType();
     hostobj_t.type = typeid;
@@ -1733,7 +1688,7 @@ fn pushFuncVariantResolveContext(c: *cy.Chunk, variant: *cy.sym.FuncVariant) !vo
     try c.resolve_stack.append(c.alloc, new);
 }
 
-fn pushVariantResolveContext(c: *cy.Chunk, variant: *cy.sym.Variant) !void {
+pub fn pushVariantResolveContext(c: *cy.Chunk, variant: *cy.sym.Variant) !void {
     var new = ResolveContext{
         .has_ct_params = true,
         .ct_params = .{},
@@ -2648,9 +2603,6 @@ pub fn funcDecl(c: *cy.Chunk, func: *cy.Func) !void {
     if (func.variant) |variant| {
         try pushFuncVariantResolveContext(c, variant);
         defer popResolveContext(c);
-
-        const sig = try c.sema.allocFuncSigStr(func.funcSigId, true, null);
-        defer c.alloc.free(sig);
         try funcDecl2(c, func);
     } else {
         try pushResolveContext(c);

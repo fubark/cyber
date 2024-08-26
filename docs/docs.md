@@ -2,7 +2,7 @@
 - [Introduction.](#introduction)
 - [Syntax.](#syntax)
 - [Basic Types.](#basic-types)
-- [Custom Types.](#custom-types)
+- [Type Declarations.](#type-declarations)
 - [C Types.](#c-types)
 - [Control Flow.](#control-flow)
 - [Functions.](#functions)
@@ -1081,7 +1081,7 @@ print square(a as int)    --> 100
 ## `dyn`.
 The dynamic type defers type checking to runtime. However, it also tracks its own **recent type** in order to surface errors at compile-time. See [Dynamic Typing](#dynamic-typing).
 
-# Custom Types.
+# Type Declarations.
 <table><tr>
 <td valign="top">
 
@@ -1112,6 +1112,7 @@ The dynamic type defers type checking to runtime. However, it also tracks its ow
 * [Traits.](#traits)
 * [Type templates.](#type-templates)
   * [Expand type template.](#expand-type-template)
+  * [Type specialization.](#type-specialization)
 </td>
 </tr></table>
 
@@ -1537,6 +1538,18 @@ var a MyContainer[String] = .{id=123, value='abc'}
 print a.get()      -- Prints 'abc'
 ```
 Note that invoking the template again with the same argument(s) returns the same generated type. In other words, the generated type is always memoized from the input parameters.
+
+### Type specialization.
+[Compile-time function templates](#compile-time-function-templates) can be used to specialize type templates:
+```cy
+func List[T type] type:
+    if T == dyn:
+        return DynList
+    else:
+        return GenList[T]
+
+var a = List[int]{1, 2, 3}
+```
 
 # C Types.
 
@@ -1991,7 +2004,7 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
   * [Explicit template call.](#explicit-template-call)
   * [Expand function.](#expand-function)
   * [Infer param type.](#infer-param-type)
-  * [Compile-time function template.](#compile-time-function-template)
+  * [Compile-time function templates.](#compile-time-function-templates)
 </td>
 </tr></table>
 
@@ -2269,7 +2282,7 @@ func set(m Map[#K, #V], key K, val V):
     m.set(key, val)
 ```
 
-### Compile-time function template.
+### Compile-time function templates.
 When function parameters are delimited with brackets instead of parentheses, the function becomes a compile-time function template.
 This is different from a function template which generates different runtime functions based on its compile-time parameters.
 
@@ -3412,7 +3425,6 @@ print str.trim(.left, ' ')
 * [Reflection.](#reflection)
 * [Attributes.](#attributes)
 * [Templates.](#templates)
-  * [Template specialization.](#template-specialization)
 * [Macros.](#macros)
 * [Compile-time execution.](#compile-time-execution)
   * [Builtin types.](#builtin-types)
@@ -3581,10 +3593,7 @@ Attributes start with `@`. They are used as declaration modifiers.
 ## Templates.
 Templates enables parametric polymorphism for types and functions. Template arguments are passed to templates to generate specialized code. This facilitates developing container types and algorithms that operate on different types.
 
-See [Custom Types / Type templates](#type-templates) and [Functions / Function templates](#function-templates).
-
-### Template specialization.
-> _Planned Feature_
+See [Type Declarations / Type templates](#type-templates) and [Functions / Function templates](#function-templates).
 
 ## Macros.
 > _Planned Feature_

@@ -269,10 +269,8 @@ const vm_types = [_]C.HostTypeEntry{
     htype("dyn",            C.CORE_TYPE(bt.Dyn)),
     htype("any",            C.CORE_TYPE(bt.Any)),
     htype("type",           C.CORE_TYPE(bt.Type)),
-    htype("List",           C.HOST_OBJECT(null, listGetChildren, listFinalizer)),
-    htype("ListDyn",        C.CORE_TYPE_EXT(bt.ListDyn, listGetChildren, listFinalizer, true)),
-    htype("ListIterator",   C.HOST_OBJECT(null, listIterGetChildren, null)),
-    htype("ListIterDyn",    C.CORE_TYPE_EXT(bt.ListIterDyn, listIterGetChildren, null, true)),
+    htype("List",           C.CREATE_TYPE(createListType)),
+    htype("ListIterator",   C.CREATE_TYPE(createListIterType)),
     htype("Tuple",          C.CORE_TYPE(bt.Tuple)),
     htype("Table",          C.DECL_TYPE(bt.Table)),
     htype("Map",            C.CORE_TYPE(bt.Map)),
@@ -341,6 +339,66 @@ fn createArrayType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) C.Sym {
     const type_id = c.sema.pushType() catch @panic("error");
     const sym = c.createArrayType(@ptrCast(chunk_sym), "array_t", type_id, n, elem_t) catch @panic("error");
     return @as(*cy.Sym, @ptrCast(sym)).toC();
+}
+
+fn createListType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) C.Sym {
+    _ = vm;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
+
+    var ctx = cy.sema.getResolveContext(c);
+    const child_t = ctx.ct_params.get("T").?.castHeapObject(*cy.heap.Type).type;
+    if (child_t == bt.Dyn) {
+        const sym = c.createHostObjectType(@ptrCast(chunk_sym), "List", @ptrCast(C.fromNode(decl))) catch @panic("error");
+        cy.sema.resolveHostObjectType(c, sym,
+            listGetChildren,
+            listFinalizer,
+            bt.ListDyn,
+            false,
+            false,
+        ) catch @panic("error");
+        return @as(*cy.Sym, @ptrCast(sym)).toC();
+    } else {
+        const sym = c.createHostObjectType(@ptrCast(chunk_sym), "List", @ptrCast(C.fromNode(decl))) catch @panic("error");
+        cy.sema.resolveHostObjectType(c, sym,
+            listGetChildren,
+            listFinalizer,
+            null,
+            false,
+            false,
+        ) catch @panic("error");
+        return @as(*cy.Sym, @ptrCast(sym)).toC();
+    }
+}
+
+fn createListIterType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) C.Sym {
+    _ = vm;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
+
+    var ctx = cy.sema.getResolveContext(c);
+    const child_t = ctx.ct_params.get("T").?.castHeapObject(*cy.heap.Type).type;
+    if (child_t == bt.Dyn) {
+        const sym = c.createHostObjectType(@ptrCast(chunk_sym), "ListIterator", @ptrCast(C.fromNode(decl))) catch @panic("error");
+        cy.sema.resolveHostObjectType(c, sym,
+            listIterGetChildren,
+            null,
+            bt.ListIterDyn,
+            false,
+            false,
+        ) catch @panic("error");
+        return @as(*cy.Sym, @ptrCast(sym)).toC();
+    } else {
+        const sym = c.createHostObjectType(@ptrCast(chunk_sym), "ListIterator", @ptrCast(C.fromNode(decl))) catch @panic("error");
+        cy.sema.resolveHostObjectType(c, sym,
+            listIterGetChildren,
+            null,
+            null,
+            false,
+            false,
+        ) catch @panic("error");
+        return @as(*cy.Sym, @ptrCast(sym)).toC();
+    }
 }
 
 pub const BuiltinsData = struct {

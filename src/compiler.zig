@@ -863,19 +863,6 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         const decl = node.cast(.template);
                         _ = try sema.reserveTemplate(chunk, decl);
                     },
-                    .specialization => {
-                        const decl = node.cast(.specialization);
-                        // For now template declaration must already be declared.
-
-                        const name = try chunk.ast.declNamePath(@ptrCast(decl));
-                        const sym = chunk.sym.getMod().getSym(name) orelse {
-                            return chunk.reportError("Expected template.", @ptrCast(decl));
-                        };
-                        if (sym.type != .template) {
-                            return chunk.reportError("Expected template.", @ptrCast(decl));
-                        }
-                        try sym.cast(.template).specializations.append(chunk.alloc, decl);
-                    },
                     .staticDecl => {
                         const sym = try sema.reserveVar(chunk, node.cast(.staticDecl));
                         if (sym.type == .userVar) {
@@ -929,7 +916,6 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                             .funcDecl,
                             .import_stmt,
                             .objectDecl,
-                            .specialization,
                             .staticDecl,
                             .structDecl,
                             .table_decl,

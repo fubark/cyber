@@ -6994,7 +6994,7 @@ fn popLambdaProc(c: *cy.Chunk, ct: bool) !cy.TypeId {
         }
     } else {
         if (ct) {
-            type_id = try getCtFuncType(c, proc.func.?.funcSigId);
+            type_id = try getFuncSymType(c, proc.func.?.funcSigId);
         } else {
             type_id = try getFuncPtrType(c, proc.func.?.funcSigId);
         }
@@ -7675,7 +7675,7 @@ pub fn getFuncUnionType(c: *cy.Chunk, sig: FuncSigId) !cy.TypeId {
     return sym.getStaticType().?;
 }
 
-pub fn getCtFuncType(c: *cy.Chunk, sig: FuncSigId) !cy.TypeId {
+pub fn getFuncSymType(c: *cy.Chunk, sig: FuncSigId) !cy.TypeId {
     const arg = try c.vm.allocFuncSig(sig);
     defer c.vm.release(arg);
     const sym = try cte.expandTemplate(c, c.sema.func_sym_tmpl, &.{ arg });

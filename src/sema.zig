@@ -2145,8 +2145,25 @@ pub fn resolveDistinctType(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType) !*cy.
             new.variant = distinct_t.variant;
             new_sym = @ptrCast(new);
         },
+        .hostobj_t => {
+            const hostobj_t = target_sym.cast(.hostobj_t);
+            const new = try c.createHostObjectType(distinct_t.head.parent.?, name, hostobj_t.decl);
+            const target_te = c.sema.getType(target_t);
+            try resolveHostObjectType(c, new,
+                target_te.data.host_object.getChildrenFn,
+                target_te.data.host_object.finalizerFn,
+                distinct_t.type,
+                target_te.info.custom_pre,
+                target_te.info.load_all_methods,
+            );
+            new.getMod().* = distinct_t.getMod().*;
+            new.getMod().updateParentRefs(@ptrCast(new));
+
+            new.variant = distinct_t.variant;
+            new_sym = @ptrCast(new);
+        },
         else => {
-            return error.Unsupported;
+            return c.reportErrorFmt("Unsupported: {}", &.{v(target_sym.type)}, @ptrCast(decl));
         },
     }
     if (distinct_t.variant == null) {

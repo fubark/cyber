@@ -559,8 +559,7 @@ pub fn funcBlock(c: *Chunk, idx: usize, node: *ast.Node) !void {
         return;
     }
 
-    const paramsIdx = c.ir.advanceStmt(idx, .funcBlock);
-    const params = c.ir.getArray(paramsIdx, ir.FuncParam, func.numParams);
+    const params = c.ir.getArray(data.params, ir.FuncParam, func.numParams);
 
     const funcPc = c.buf.ops.items.len;
 
@@ -3306,8 +3305,7 @@ pub fn popFuncBlockCommon(c: *Chunk, func: *cy.Func) !void {
 fn genLambda(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     const data = c.ir.getExprData(idx, .lambda);
     const func = data.func;
-    const paramsIdx = c.ir.advanceExpr(idx, .lambda);
-    const params = c.ir.getArray(paramsIdx, ir.FuncParam, func.numParams);
+    const params = c.ir.getArray(data.params, ir.FuncParam, func.numParams);
 
     const inst = try bc.selectForDstInst(c, cstr, bt.Any, true, node);
 

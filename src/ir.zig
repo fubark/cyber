@@ -337,6 +337,7 @@ pub const Lambda = struct {
     numCaptures: u8,
     numParamCopies: u8,
     bodyHead: u32,
+    params: Loc,
     captures: u32,
     ct: bool,
 };
@@ -346,6 +347,7 @@ pub const FuncBlock = struct {
     maxLocals: u8,
     numParamCopies: u8,
     bodyHead: u32,
+    params: Loc,
 
     // For methods only.
     parentType: cy.TypeId,

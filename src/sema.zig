@@ -3797,9 +3797,6 @@ pub fn popProc(self: *cy.Chunk) !cy.ir.StmtBlock {
 pub fn pushLambdaProc(c: *cy.Chunk, func: *cy.Func) !ProcId {
     const loc = try c.ir.pushEmptyExpr(.lambda, c.alloc, undefined, @ptrCast(func.decl));
     // try c.ir.func_blocks.append(c.alloc, loc);
-    // Reserve param info.
-    _ = try c.ir.pushEmptyArray(c.alloc, ir.FuncParam, func.numParams);
-
     const id = try pushProc(c, func);
     c.proc().irStart = loc;
     return id;
@@ -3808,9 +3805,6 @@ pub fn pushLambdaProc(c: *cy.Chunk, func: *cy.Func) !ProcId {
 pub fn pushFuncProc(c: *cy.Chunk, func: *cy.Func) !ProcId {
     const loc = try c.ir.pushEmptyStmt2(c.alloc, .funcBlock, @ptrCast(func.decl), false);
     try c.ir.func_blocks.append(c.alloc, loc);
-    // Reserve param info.
-    _ = try c.ir.pushEmptyArray(c.alloc, ir.FuncParam, func.numParams);
-
     const id = try pushProc(c, func);
     c.proc().irStart = loc;
     return id;
@@ -6867,8 +6861,9 @@ fn popLambdaProc(c: *cy.Chunk, ct: bool) !cy.TypeId {
     const stmtBlock = try popProc(c);
 
     var numParamCopies: u8 = 0;
-    const paramIrStart = c.ir.advanceExpr(proc.irStart, .lambda);
-    const paramData = c.ir.getArray(paramIrStart, ir.FuncParam, params.len);
+
+    const params_loc = try c.ir.pushEmptyArray(c.alloc, ir.FuncParam, params.len);
+    const paramData = c.ir.getArray(params_loc, ir.FuncParam, params.len);
     for (params, 0..) |param, i| {
         paramData[i] = .{
             .namePtr = param.namePtr,
@@ -6914,6 +6909,7 @@ fn popLambdaProc(c: *cy.Chunk, ct: bool) !cy.TypeId {
         .numParamCopies = numParamCopies,
         .bodyHead = stmtBlock.first,
         .captures = irCapturesIdx,
+        .params = params_loc,
         .ct = ct,
     });
     return type_id;
@@ -6926,8 +6922,8 @@ pub fn popFuncBlock(c: *cy.Chunk) !void {
     const stmtBlock = try popProc(c);
 
     var numParamCopies: u8 = 0;
-    const paramIrStart = c.ir.advanceStmt(proc.irStart, .funcBlock);
-    const paramData = c.ir.getArray(paramIrStart, ir.FuncParam, params.len);
+    const params_loc = try c.ir.pushEmptyArray(c.alloc, ir.FuncParam, params.len);
+    const paramData = c.ir.getArray(params_loc, ir.FuncParam, params.len);
     for (params, 0..) |param, i| {
         paramData[i] = .{
             .namePtr = param.namePtr,
@@ -6951,6 +6947,7 @@ pub fn popFuncBlock(c: *cy.Chunk) !void {
         .func = proc.func.?,
         .bodyHead = stmtBlock.first,
         .parentType = parentType,
+        .params = params_loc,
     });
 }
 

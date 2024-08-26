@@ -471,6 +471,7 @@ pub const ObjectDecl = struct {
     fields: []*Field,
     funcs: []*FuncDecl,
     unnamed: bool,
+    is_tuple: bool,
     pos: u32,
 };
 

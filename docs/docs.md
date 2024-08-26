@@ -1331,7 +1331,33 @@ print v.x    -- Prints '100'
 ```
 
 ## Tuples.
-> _Incomplete: Tuples can only be created from @host funcs at the moment._
+Tuples can be declared using parentheses to wrap member fields:
+```cy
+type Vec2 struct(x float, y float)
+```
+
+Function declarations can still be declared under the type:
+```cy
+type Vec2 struct(x float, y float):
+    func scale(self, s float):
+        self.x *= s
+        self.y *= s
+```
+
+Tuples can be initialized with member values corresponding to the order they were declared:
+```cy
+var v = Vec2{3, 4}
+```
+
+The initializer can also be inferred from the target type:
+```cy
+var v Vec2 = .{3, 4}
+```
+
+Tuples can still be initialized with explicit field names:
+```cy
+var v = Vec2{x=3, y=4}
+```
 
 ## Enums.
 A new enum type can be declared with the `type enum` declaration.

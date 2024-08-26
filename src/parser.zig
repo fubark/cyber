@@ -1015,7 +1015,10 @@ pub const Parser = struct {
         });
     }
 
-    fn newObjectDecl(self: *Parser, start: TokenId, node_t: ast.NodeType, opt_name: ?*ast.Node, config: TypeDeclConfig, impl_withs: []*ast.ImplWith, fields: []*ast.Field, funcs: []*ast.FuncDecl) !*ast.ObjectDecl {
+    fn newObjectDecl(self: *Parser, start: TokenId, node_t: ast.NodeType, opt_name: ?*ast.Node,
+        config: TypeDeclConfig, impl_withs: []*ast.ImplWith, fields: []*ast.Field, funcs: []*ast.FuncDecl,
+        is_tuple: bool) !*ast.ObjectDecl {
+
         const n = try self.ast.newNodeErase(.objectDecl, .{
             .name = opt_name,
             .pos = self.tokenSrcPos(start),
@@ -1024,6 +1027,7 @@ pub const Parser = struct {
             .attrs = config.attrs,
             .unnamed = opt_name == null,
             .funcs = funcs,
+            .is_tuple = is_tuple,
         });
         n.setType(node_t);
         return @ptrCast(@alignCast(n));
@@ -1060,6 +1064,28 @@ pub const Parser = struct {
         }
 
         return @ptrCast(try self.ast.dupeNodes(self.node_stack.items[with_start..]));
+    }
+
+    fn parseTupleFields(self: *Parser) ![]*ast.Field {
+        var field = (try self.parseObjectField()) orelse return &.{};
+
+        const field_start = self.node_stack.items.len;
+        defer self.node_stack.items.len = field_start;
+        try self.pushNode(@ptrCast(field));
+
+        while (true) {
+            if (self.peek().tag() == .right_paren) {
+                self.advance();
+                break;
+            }
+            if (self.peek().tag() != .comma) {
+                return self.reportError("Expected comma or right parenthesis.", &.{});
+            }
+            self.advance();
+            field = (try self.parseObjectField()) orelse return error.Unexpected;
+            try self.pushNode(@ptrCast(field));
+        }
+        return @ptrCast(try self.ast.dupeNodes(self.node_stack.items[field_start..]));
     }
 
     fn parseTypeFields(self: *Parser, req_indent: u32, has_more_members: *bool) ![]*ast.Field {
@@ -1158,22 +1184,39 @@ pub const Parser = struct {
         token = self.peek();
         if (token.tag() == .colon) {
             self.advance();
+        } else if (token.tag() == .left_paren) {
+            self.advance();
+            const fields = try self.parseTupleFields();
+            if (token.tag() != .colon) {
+                try self.consumeNewLineOrEnd();
+                return self.newObjectDecl(start, ntype, name, config, &.{}, fields, &.{}, true);
+            }
+
+            const req_indent = try self.parseFirstChildIndent(self.cur_indent);
+            const prev_indent = self.pushIndent(req_indent);
+            defer self.cur_indent = prev_indent;
+
+            const funcs = try self.parseTypeFuncs(req_indent);
+            return self.newObjectDecl(start, ntype, name, config, &.{}, fields, funcs, true);
         } else {
             // Only declaration. No members.
-            return self.newObjectDecl(start, ntype, name, config, &.{}, &.{}, &.{});
+            return self.newObjectDecl(start, ntype, name, config, &.{}, &.{}, &.{}, false);
         }
 
         const req_indent = try self.parseFirstChildIndent(self.cur_indent);
         const prev_indent = self.pushIndent(req_indent);
         defer self.cur_indent = prev_indent;
 
+        // Check for impl `with`.
+        const impl_withs = try self.parseImplWiths(req_indent);
+
         var has_more_members: bool = undefined;
         const fields = try self.parseTypeFields(req_indent, &has_more_members);
         if (!has_more_members) {
-            return self.newObjectDecl(start, ntype, name, config, &.{}, fields, &.{});
+            return self.newObjectDecl(start, ntype, name, config, impl_withs, fields, &.{}, false);
         }
         const funcs = try self.parseTypeFuncs(req_indent);
-        return self.newObjectDecl(start, ntype, name, config, &.{}, fields, funcs);
+        return self.newObjectDecl(start, ntype, name, config, impl_withs, fields, funcs, false);
     }
 
     fn parseObjectDecl(self: *Parser, start: TokenId, name: ?*ast.Node, config: TypeDeclConfig) anyerror!*ast.ObjectDecl {
@@ -1188,7 +1231,7 @@ pub const Parser = struct {
             self.advance();
         } else {
             // Only declaration. No members.
-            return self.newObjectDecl(start, .objectDecl, name, config, &.{}, &.{}, &.{});
+            return self.newObjectDecl(start, .objectDecl, name, config, &.{}, &.{}, &.{}, false);
         }
 
         const req_indent = try self.parseFirstChildIndent(self.cur_indent);
@@ -1201,10 +1244,10 @@ pub const Parser = struct {
         var has_more_members: bool = undefined;
         const fields = try self.parseTypeFields(req_indent, &has_more_members);
         if (!has_more_members) {
-            return self.newObjectDecl(start, .objectDecl, name, config, impl_withs, fields, &.{});
+            return self.newObjectDecl(start, .objectDecl, name, config, impl_withs, fields, &.{}, false);
         }
         const funcs = try self.parseTypeFuncs(req_indent);
-        return self.newObjectDecl(start, .objectDecl, name, config, impl_withs, fields, funcs);
+        return self.newObjectDecl(start, .objectDecl, name, config, impl_withs, fields, funcs, false);
     }
 
     const FuncDeclConfig = struct {

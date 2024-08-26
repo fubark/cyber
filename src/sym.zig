@@ -1503,7 +1503,7 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createStructTypeUnnamed(c: *cy.Chunk, parent: *Sym, name: []const u8, cstruct: bool, decl: *ast.ObjectDecl) !*ObjectType {
+    pub fn createStructTypeUnnamed(c: *cy.Chunk, parent: *Sym, name: []const u8, cstruct: bool, tuple: bool, decl: *ast.ObjectDecl) !*ObjectType {
         const mod = parent.getMod().?;
         _ = mod;
 
@@ -1530,6 +1530,7 @@ pub const ChunkExt = struct {
                 .cstruct = cstruct,
                 .has_boxed_fields = false,
                 .fields = undefined,
+                .tuple = tuple,
             }},
             .info = .{},
         };

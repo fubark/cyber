@@ -1796,12 +1796,13 @@ pub fn reserveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, opt_head
             return @ptrCast(object_t);
         },
         .struct_t => {
-            const struct_t = try c.createStructType(@ptrCast(c.sym), name, false, @ptrCast(template.decl.child_decl));
+            const decl = template.decl.child_decl.cast(.structDecl);
+            const struct_t = try c.createStructType(@ptrCast(c.sym), name, false, @ptrCast(decl));
             struct_t.variant = variant;
 
             const header_decl = opt_header_decl orelse template.decl.child_decl;
             const type_id = try resolveTypeIdFromDecl(c, @ptrCast(struct_t), header_decl.cast(.structDecl).attrs, header_decl);
-            try resolveStructTypeId(c, struct_t, type_id);
+            try resolveStructTypeId(c, struct_t, decl.is_tuple, type_id);
 
             return @ptrCast(struct_t);
         },
@@ -2079,7 +2080,7 @@ pub fn reserveStruct(c: *cy.Chunk, node: *ast.ObjectDecl, cstruct: bool) !*cy.sy
         const name = c.getNextUniqUnnamedIdent(&buf);
         const nameDup = try c.alloc.dupe(u8, name);
         try c.parser.ast.strs.append(c.alloc, nameDup);
-        return c.createStructTypeUnnamed(@ptrCast(c.sym), nameDup, cstruct, node);
+        return c.createStructTypeUnnamed(@ptrCast(c.sym), nameDup, cstruct, node.is_tuple, node);
     }
 
     const name = c.ast.nodeString(node.name.?);
@@ -2094,7 +2095,7 @@ pub fn reserveStruct(c: *cy.Chunk, node: *ast.ObjectDecl, cstruct: bool) !*cy.sy
         }
     }
 
-    try resolveStructTypeId(c, sym, opt_type);
+    try resolveStructTypeId(c, sym, node.is_tuple, opt_type);
     return @ptrCast(sym);
 }
 
@@ -2189,7 +2190,7 @@ pub fn resolveDistinctTypeId(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType, opt
     };
 }
 
-pub fn resolveStructTypeId(c: *cy.Chunk, struct_t: *cy.sym.ObjectType, opt_type: ?cy.TypeId) !void {
+pub fn resolveStructTypeId(c: *cy.Chunk, struct_t: *cy.sym.ObjectType, is_tuple: bool, opt_type: ?cy.TypeId) !void {
     const typeid = opt_type orelse try c.sema.pushType();
     struct_t.type = typeid;
     c.compiler.sema.types.items[typeid] = .{
@@ -2200,6 +2201,7 @@ pub fn resolveStructTypeId(c: *cy.Chunk, struct_t: *cy.sym.ObjectType, opt_type:
             .cstruct = struct_t.cstruct,
             .has_boxed_fields = false,
             .fields = undefined,
+            .tuple = is_tuple,
         }},
         .info = .{},
     };
@@ -2324,12 +2326,11 @@ pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Object
             if (has_boxed_fields) {
                 rt_fields = try c.alloc.dupe(bool, @ptrCast(c.dataU8Stack.items[rt_field_start..]));
             }
-            c.sema.types.items[obj.type].data.struct_t = .{
-                .nfields = @intCast(num_total_fields),
-                .cstruct = obj.cstruct,
-                .has_boxed_fields = has_boxed_fields,
-                .fields = rt_fields.ptr,
-            };
+            const data = &c.sema.types.items[obj.type].data.struct_t;
+            data.nfields = @intCast(num_total_fields);
+            data.cstruct = obj.cstruct;
+            data.has_boxed_fields = has_boxed_fields;
+            data.fields = rt_fields.ptr;
             obj.resolving_struct = false;
         },
         else => return error.Unexpected,
@@ -4793,6 +4794,25 @@ pub const ChunkExt = struct {
         }
     }
 
+    pub fn semaTupleInit(c: *cy.Chunk, type_id: cy.TypeId, fields: []const cy.sym.FieldInfo, init: *ast.InitLit) !ExprResult {
+        if (init.args.len != fields.len) {
+            return c.reportErrorFmt("Expected {} args, found {}.", &.{v(fields.len), v(init.args.len)}, @ptrCast(init));
+        }
+
+        const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, fields.len);
+        for (fields, 0..) |field, i| {
+            const arg = try c.semaExprCstr(init.args[i], field.type);
+            c.ir.setArrayItem(args_loc, u32, i, arg.irIdx);
+        }
+
+        const loc = try c.ir.pushEmptyExpr(.object_init, c.alloc, ir.ExprType.init(type_id), @ptrCast(init));
+        c.ir.setExprData(loc, .object_init, .{
+            .typeId = type_id, .numArgs = @as(u8, @intCast(fields.len)), .args = args_loc,
+        });
+
+        return ExprResult.initStatic(loc, type_id);
+    }
+
     /// `initializerId` is a record literal node.
     pub fn semaObjectInit2(c: *cy.Chunk, obj: *cy.sym.ObjectType, initializer: *ast.InitLit) !ExprResult {
         const node: *ast.Node = @ptrCast(initializer);
@@ -4945,6 +4965,14 @@ pub const ChunkExt = struct {
         switch (sym.type) {
             .struct_t => {
                 const obj = sym.cast(.struct_t);
+                if (node.init.array_like) {
+                    const type_e = c.sema.getType(obj.type);
+                    if (type_e.data.struct_t.tuple) {
+                        return c.semaTupleInit(obj.type, obj.getFields(), node.init);
+                    } else {
+                        return c.reportError("Expected record initializer.", @ptrCast(node.init));
+                    }
+                }
                 return c.semaObjectInit2(obj, node.init);
             },
             .object_t => {
@@ -5803,8 +5831,16 @@ pub const ChunkExt = struct {
                     const obj = c.sema.getTypeSym(expr.target_t).cast(.object_t);
                     return c.semaObjectInit2(obj, init_lit);
                 } else if (c.sema.isStructType(expr.target_t)) {
-                    const obj = c.sema.getTypeSym(expr.target_t).cast(.struct_t);
-                    return c.semaObjectInit2(obj, init_lit);
+                    const type_e = c.sema.getType(expr.target_t);
+                    if (init_lit.array_like) {
+                        const sym = type_e.sym.cast(.struct_t);
+                        if (type_e.data.struct_t.tuple) {
+                            return c.semaTupleInit(sym.type, sym.getFields(), init_lit);
+                        } else {
+                            return c.reportError("Expected record initializer.", @ptrCast(init_lit));
+                        }
+                    }
+                    return c.semaObjectInit2(type_e.sym.cast(.struct_t), init_lit);
                 } else {
                     return c.reportError("Can not infer initializer type.", expr.node);
                 }

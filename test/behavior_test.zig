@@ -223,6 +223,7 @@ if (!aot) {
     run.case("types/template_builtin_ints.cy");
     run.case("types/trait_error.cy");
     run.case("types/trait.cy");
+    run.case("types/tuple.cy");
     run.case("types/type_alias.cy");
     run.case("types/type_spec.cy");
     run.case("types/unnamed_object.cy");

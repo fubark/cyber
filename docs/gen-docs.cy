@@ -392,8 +392,10 @@ func genFuncDecl(decl Map) String:
     var docLine = decl.get('docs') ?else ''
     var params = {_}
     for decl['params'] -> param:
-        var typeSpec = if (param['typeSpec'] != '') param['typeSpec'] else 'any'
-        params.append("$(param['name']) $(typeSpec)")
+        if param['typeSpec'] != '':
+            params.append("$(param['name']) $(param['typeSpec'])")
+        else:
+            params.append("$(param['name'])")
     var paramsStr = params.join(', ')
     return "> `func $(decl['name'])($(paramsStr)) $(decl['ret'])`\n>\n>$(docLine)\n\n"
 

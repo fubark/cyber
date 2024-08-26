@@ -23,6 +23,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "false", .false_k },
     .{ "for", .for_k },
     .{ "func", .func_k },
+    .{ "Func", .Func_k },
     .{ "if", .if_k },
     .{ "let", .let_k },
     .{ "mod", .mod_k },
@@ -90,6 +91,7 @@ pub const TokenType = enum(u8) {
     float,
     for_k,
     func_k,
+    Func_k,
     hex,
     ident,
     if_k,
@@ -1021,6 +1023,6 @@ test "tokenizer internals." {
     try tt.eq(@alignOf(Token), 4);
     try tt.eq(@sizeOf(TokenizeState), 4);
 
-    try tt.eq(std.enums.values(TokenType).len, 94);
-    try tt.eq(keywords.kvs.len, 40);
+    try tt.eq(std.enums.values(TokenType).len, 95);
+    try tt.eq(keywords.kvs.len, 41);
 }

@@ -15,14 +15,14 @@ t.eq(sum, 10)
 
 -- Assign rc value to variable.
 a = 0 
-next = func () ?List[dyn]:
+var next2 = func () ?List[dyn]:
     if a < 4:
         a += 1
         return {a}
     else:
         return none
 sum = 0
-while next() -> res:
+while next2() -> res:
     sum += res[0]
 t.eq(sum, 10)
 

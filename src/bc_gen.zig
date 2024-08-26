@@ -441,7 +441,8 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .fieldDyn           => genFieldDyn(c, idx, cstr, node),
         .field              => genField(c, idx, cstr, node),
         .float              => genFloat(c, idx, cstr, node),
-        .funcSym            => genFuncSym(c, idx, cstr, node),
+        .func_ptr           => genFuncPtr(c, idx, cstr, node),
+        .func_union         => genFuncUnion(c, idx, cstr, node),
         .if_expr            => genIfExpr(c, idx, cstr, node),
         .int                => genInt(c, idx, cstr, node),
         .lambda             => genLambda(c, idx, cstr, node),
@@ -1931,16 +1932,35 @@ fn genVarSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     return finishNoErrNoDepInst(c, inst, true);
 }
 
-fn genFuncSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .funcSym);
+fn genFuncPtr(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
+    const data = c.ir.getExprData(idx, .func_ptr);
 
     const inst = try bc.selectForDstInst(c, cstr, bt.Any, true, node);
 
     const pc = c.buf.len();
-    try c.pushOptionalDebugSym(node);
-    try c.buf.pushOp3(.staticFunc, 0, 0, inst.dst);
+    try c.pushCode(.func_ptr, &.{ 0, 0, 0, 0, inst.dst }, node);
     const rtId = c.compiler.genSymMap.get(data.func).?.func.id;
     c.buf.setOpArgU16(pc + 1, @intCast(rtId));
+    c.buf.setOpArgU16(pc + 3, @intCast(c.ir.getExprType(idx).id));
+    if (inst.own_dst) {
+        try initSlot(c, inst.dst, true, node);
+    }
+    return finishDstInst(c, inst, true);
+}
+
+fn genFuncUnion(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
+    const data = c.ir.getExprData(idx, .func_union);
+
+    const inst = try bc.selectForDstInst(c, cstr, bt.Any, true, node);
+    const childv = try genExpr(c, data.expr, Cstr.simple);
+    try initTempValue(c, childv, node);
+
+    const pc = c.buf.len();
+    try c.pushCode(.func_union, &.{ childv.reg, 0, 0, inst.dst }, node);
+    c.buf.setOpArgU16(pc + 2, @intCast(c.ir.getExprType(idx).id));
+
+    try consumeTempValue(c, childv, node);
+    try popTempValue(c, childv, node);
     if (inst.own_dst) {
         try initSlot(c, inst.dst, true, node);
     }
@@ -3287,18 +3307,20 @@ fn genLambda(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     if (data.numCaptures == 0) {
         const start = c.buf.ops.items.len;
         try c.pushCode(.lambda, &.{
-            0, 0, func.numParams, stackSize, @intFromBool(func.reqCallTypeCheck), 0, 0, inst.dst }, node);
+            0, 0, func.numParams, stackSize, @intFromBool(func.reqCallTypeCheck), 0, 0, 0, 0, inst.dst }, node);
         c.buf.setOpArgU16(start + 1, offset);
         c.buf.setOpArgU16(start + 6, @intCast(func.funcSigId));
+        c.buf.setOpArgU16(start + 8, @intCast(c.ir.getExprType(idx).id));
     } else {
         const captures = c.ir.getArray(data.captures, u8, data.numCaptures);
         const start = c.buf.ops.items.len;
         try c.pushCode(.closure, &.{
             0, 0, func.numParams, @as(u8, @intCast(captures.len)), stackSize, 
-            0, 0, cy.vm.CalleeStart, @intFromBool(func.reqCallTypeCheck), inst.dst
+            0, 0, 0, 0, cy.vm.CalleeStart, @intFromBool(func.reqCallTypeCheck), inst.dst
         }, node);
         c.buf.setOpArgU16(start + 1, offset);
         c.buf.setOpArgU16(start + 6, @intCast(func.funcSigId));
+        c.buf.setOpArgU16(start + 8, @intCast(c.ir.getExprType(idx).id));
 
         const operandStart = try c.buf.reserveData(captures.len);
         for (captures, 0..) |irVar, i| {

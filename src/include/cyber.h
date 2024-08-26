@@ -51,12 +51,12 @@ typedef enum {
     CL_TYPE_LISTITER_DYN,
     CL_TYPE_MAP,
     CL_TYPE_MAPITER,
-    CL_TYPE_CLOSURE,
-    CL_TYPE_LAMBDA,
-    CL_TYPE_HOST_FUNC,
+    CL_TYPE_FUNC,
+    CL_TYPE_PLACHHOLDER2,
+    CL_TYPE_PLACEHOLDER3,
     CL_TYPE_EXTERN_FUNC,
     CL_TYPE_STRING,
-    CL_TYPE_PLACEHOLDER2,
+    CL_TYPE_PLACEHOLDER4,
     CL_TYPE_FIBER,
     CL_TYPE_UPVALUE,
     CL_TYPE_TCCSTATE,
@@ -66,6 +66,8 @@ typedef enum {
     CL_TYPE_MEMORY,
 } CLType;
 typedef uint32_t CLTypeId;
+
+typedef uint32_t CLFuncSigId;
 
 // Cyber deals with string slices internally for efficiency.
 // Some API functions may require you to use slices rather than a null terminated string.

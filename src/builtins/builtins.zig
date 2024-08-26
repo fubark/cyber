@@ -262,6 +262,8 @@ const vm_types = [_]C.HostTypeEntry{
     htype("float",          C.DECL_TYPE(bt.Float)), 
     htype("placeholder1",   C.CORE_TYPE(bt.Placeholder1)), 
     htype("placeholder2",   C.CORE_TYPE(bt.Placeholder2)), 
+    htype("placeholder3",   C.CORE_TYPE(bt.Placeholder3)), 
+    htype("placeholder4",   C.CORE_TYPE(bt.Placeholder4)), 
     htype("byte",           C.DECL_TYPE(bt.Byte)), 
     htype("taglit",         C.CORE_TYPE(bt.TagLit)), 
     htype("dyn",            C.CORE_TYPE(bt.Dyn)),
@@ -276,9 +278,6 @@ const vm_types = [_]C.HostTypeEntry{
     htype("Map",            C.CORE_TYPE(bt.Map)),
     htype("MapIterator",    C.CORE_TYPE(bt.MapIter)),
     htype("String",         C.CORE_TYPE(bt.String)),
-    htype("Closure",        C.CORE_TYPE(bt.Closure)),
-    htype("Lambda",         C.CORE_TYPE(bt.Lambda)),
-    htype("HostFunc",       C.CORE_TYPE(bt.HostFunc)),
     htype("ExternFunc",     C.CORE_TYPE(bt.ExternFunc)),
     htype("Fiber",          C.CORE_TYPE(bt.Fiber)),
     htype("metatype",       C.CORE_TYPE(bt.MetaType)),
@@ -288,9 +287,35 @@ const vm_types = [_]C.HostTypeEntry{
     htype("FutureResolver", C.HOST_OBJECT(null, futureResolverGetChildren, null)),
     htype("Memory",         C.DECL_TYPE(bt.Memory)),
     htype("array_t",        C.CREATE_TYPE(createArrayType)),
+    htype("funcptr_t",      C.CREATE_TYPE(createFuncPtrType)),
+    htype("funcunion_t",    C.CREATE_TYPE(createFuncUnionType)),
+    htype("Func",           C.CORE_TYPE(bt.Func)),
 };
 
-fn createArrayType(vm: ?*C.VM, c_mod: C.Sym, type_id: cy.TypeId) callconv(.C) C.Sym {
+fn createFuncUnionType(vm: ?*C.VM, c_mod: C.Sym, type_id: cy.TypeId, decl: C.Node) callconv(.C) C.Sym {
+    _ = vm;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
+
+    var ctx = cy.sema.getResolveContext(c);
+    const sig: cy.sema.FuncSigId = @intCast(ctx.ct_params.get("SIG").?.asBoxInt());
+    const sym = c.createFuncUnionType(@ptrCast(chunk_sym), "Func", type_id, sig, C.fromNode(decl)) catch @panic("error");
+    return @as(*cy.Sym, @ptrCast(sym)).toC();
+}
+
+fn createFuncPtrType(vm: ?*C.VM, c_mod: C.Sym, type_id: cy.TypeId, decl: C.Node) callconv(.C) C.Sym {
+    _ = vm;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
+
+    var ctx = cy.sema.getResolveContext(c);
+    const sig: cy.sema.FuncSigId = @intCast(ctx.ct_params.get("SIG").?.asBoxInt());
+    const sym = c.createFuncPtrType(@ptrCast(chunk_sym), "funcptr", type_id, sig, C.fromNode(decl)) catch @panic("error");
+    return @as(*cy.Sym, @ptrCast(sym)).toC();
+}
+
+fn createArrayType(vm: ?*C.VM, c_mod: C.Sym, type_id: cy.TypeId, decl: C.Node) callconv(.C) C.Sym {
+    _ = decl;
     _ = vm;
     const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
     const c = chunk_sym.chunk;

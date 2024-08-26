@@ -173,6 +173,8 @@ type float #float64_t:
 
 @host type placeholder1 _
 @host type placeholder2 _
+@host type placeholder3 _
+@host type placeholder4 _
 @host type taglit _
 
 @host type dyn _
@@ -280,6 +282,15 @@ type ListIterator[dyn] _
 @host
 type Tuple _:
     @host func $index(self, idx int) any
+
+-- Function pointer.
+@host type funcptr_t[SIG int] _
+
+-- Function union.
+@host type funcunion_t[SIG int] _
+
+-- Any function.
+@host type Func _
 
 @host
 type Table:
@@ -499,10 +510,6 @@ type pointer[T type] #int64_t:
 
 --| Converts an `int` to a `pointer` value.
 @host func pointer.$call(#T type, addr int) *T
-
-@host type Closure _
-@host type Lambda _
-@host type HostFunc _
 
 @host
 type ExternFunc _:

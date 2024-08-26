@@ -910,7 +910,7 @@ pub const VM = struct {
         vm.c.pc = pcsp.pc;
 
         // Only user funcs start eval loop.
-        if (!func.isObjectType(bt.HostFunc)) {
+        if (!cy.value.isHostFunc(vm, func)) {
             if (config.from_external) {
                 @call(.never_inline, evalLoopGrowStack, .{vm, true}) catch |err| {
                     if (err == error.Panic) {
@@ -1255,7 +1255,7 @@ pub const VM = struct {
         const func = self.getCompatMethodFunc(rec_t, self.compiler.setMID, args[1..]) orelse {
             return error.Unexpected;
         };
-        const func_val = try cy.heap.allocFuncFromSym(self, func);
+        const func_val = try cy.heap.allocFunc(self, func);
         defer self.release(func_val);
         const result = try self.callFunc(func_val, &args, .{ .from_external = false });
         if (result.isInterrupt()) {
@@ -1297,7 +1297,7 @@ pub const VM = struct {
             return error.Unexpected;
         };
 
-        const func_val = try cy.heap.allocFuncFromSym(self, func);
+        const func_val = try cy.heap.allocFunc(self, func);
         defer self.release(func_val);
         const result = try self.callFunc(func_val, &args, .{ .from_external = false });
 
@@ -2077,7 +2077,7 @@ fn inferArg(vm: *VM, arg: Value, target_t: cy.TypeId) ?Value {
     return null;
 }
 
-fn preCallDyn(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, final_ret: u8, func_stack_size: u8, req_type_check: bool, sig_id: sema.FuncSigId, cont: bool) !cy.TypeId {
+fn preCallDyn(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, final_ret: u8, func_stack_size: u16, req_type_check: bool, sig_id: sema.FuncSigId, cont: bool) !cy.TypeId {
     const sig = vm.compiler.sema.getFuncSig(sig_id);
 
     // Setup call frame to return to the next inst.
@@ -2093,7 +2093,7 @@ fn preCallDyn(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, final_r
 
     // Setup the final call frame with args copied.
     // This allows arg unboxing so that post call release still operates on boxed args.
-    fp[final_ret + 1] = buildCallInfo2(cont, cy.bytecode.CallInstLen, func_stack_size);
+    fp[final_ret + 1] = buildCallInfo2(cont, cy.bytecode.CallInstLen, @intCast(func_stack_size));
     fp[final_ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen};
     fp[final_ret + 3] = Value{ .retFramePtr = fp + ret };
 
@@ -2135,55 +2135,116 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
         return vm.interruptThrowSymbol(.InvalidArgument);
     }
     const obj = callee.asHeapObject();
-    switch (obj.getTypeId()) {
-        bt.Closure => {
-            if (numArgs != obj.closure.numParams) {
-                logger.tracev("closure params/args mismatch {} {}", .{numArgs, obj.closure.numParams});
+    if (obj.getTypeId() == bt.Func) {
+        return callFuncUnion(vm, pc, framePtr, callee, ret, numArgs, cont, &obj.func);
+    }
+    const type_e = vm.c.types[obj.getTypeId()];
+    if (type_e.kind == .func_ptr) {
+        switch (obj.func_ptr.kind) {
+            .bc => {
+                if (numArgs != obj.func_ptr.numParams) {
+                    logger.tracev("lambda params/args mismatch {} {}", .{numArgs, obj.func_ptr.numParams});
+                    return vm.interruptThrowSymbol(.InvalidSignature);
+                }
+
+                const req_stack_size = obj.func_ptr.data.bc.stack_size + CallArgStart + obj.func_ptr.numParams;
+                if (@intFromPtr(framePtr + ret + req_stack_size) >= @intFromPtr(vm.c.stackEndPtr)) {
+                    return error.StackOverflow;
+                }
+
+                const final_ret: u8 = @intCast(ret + 5 + obj.func_ptr.numParams);
+                _ = try preCallDyn(vm, pc, framePtr, numArgs, ret, final_ret, obj.func_ptr.data.bc.stack_size, obj.func_ptr.reqCallTypeCheck, obj.func_ptr.sig, cont);
+                return cy.fiber.PcFp{
+                    .pc = cy.fiber.toVmPc(vm, obj.func_ptr.data.bc.pc),
+                    .fp = framePtr + final_ret,
+                };
+            },
+            .host => {
+                if (numArgs != obj.func_ptr.numParams) {
+                    logger.tracev("hostfunc params/args mismatch {} {}", .{numArgs, obj.func_ptr.numParams});
+                    return vm.interruptThrowSymbol(.InvalidSignature);
+                }
+
+                const final_ret: u8 = @intCast(ret + 5 + obj.func_ptr.numParams);
+                _ = try preCallDyn(vm, pc, framePtr, numArgs, ret, final_ret, @intCast(5 + obj.func_ptr.numParams), obj.func_ptr.reqCallTypeCheck, obj.func_ptr.sig, cont);
+
+                vm.c.pc = pc;
+                vm.c.framePtr = framePtr + final_ret;
+
+                // Overwrite last frame as a host frame.
+                framePtr[final_ret + 1] = buildRootCallInfo(false);
+                framePtr[final_ret + 2] = Value{ .retPcPtr = pc };
+                // Keep retFramePtr.
+
+                const res: cy.Value = @bitCast(obj.func_ptr.data.host.ptr.?(@ptrCast(vm)));
+                if (res.isInterrupt()) {
+                    return error.Panic;
+                }
+                framePtr[final_ret] = res;
+
+                return cy.fiber.PcFp{
+                    .pc = pc + cy.bytecode.CallInstLen,
+                    .fp = framePtr + ret,
+                };
+            },
+        }
+    } else if (type_e.kind == .func_union) {
+        return callFuncUnion(vm, pc, framePtr, callee, ret, numArgs, cont, &obj.func_union);
+    } else {
+        return vm.interruptThrowSymbol(.InvalidArgument);
+    }
+}
+
+fn callFuncUnion(vm: *VM, pc: [*]cy.Inst, framePtr: [*]cy.Value, callee: cy.Value, ret: u8, numArgs: u8, cont: bool, func: *cy.heap.FuncUnion) !cy.fiber.PcFp {
+    switch (func.kind) {
+        .closure => {
+            if (numArgs != func.numParams) {
+                logger.tracev("closure params/args mismatch {} {}", .{numArgs, func.numParams});
                 return vm.interruptThrowSymbol(.InvalidSignature);
             }
 
-            const req_stack_size = obj.closure.stackSize + CallArgStart + obj.closure.numParams;
+            const req_stack_size = func.data.closure.stack_size + CallArgStart + func.numParams;
             if (@intFromPtr(framePtr + ret + req_stack_size) >= @intFromPtr(vm.c.stackEndPtr)) {
                 return error.StackOverflow;
             }
 
-            const final_ret = ret + 5 + obj.closure.numParams;
-            _ = try preCallDyn(vm, pc, framePtr, numArgs, ret, final_ret, obj.closure.stackSize, obj.closure.reqCallTypeCheck, obj.closure.funcSigId, cont);
+            const final_ret: u8 = @intCast(ret + 5 + func.numParams);
+            _ = try preCallDyn(vm, pc, framePtr, numArgs, ret, final_ret, func.data.closure.stack_size, func.reqCallTypeCheck, func.sig, cont);
 
             // Copy closure to local.
-            framePtr[final_ret + obj.closure.local] = callee;
+            framePtr[final_ret + func.data.closure.local] = callee;
 
             return cy.fiber.PcFp{
-                .pc = cy.fiber.toVmPc(vm, obj.closure.funcPc),
+                .pc = cy.fiber.toVmPc(vm, func.data.closure.pc),
                 .fp = framePtr + final_ret,
             };
         },
-        bt.Lambda => {
-            if (numArgs != obj.lambda.numParams) {
-                logger.tracev("lambda params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
+        .bc => {
+            if (numArgs != func.numParams) {
+                logger.tracev("lambda params/args mismatch {} {}", .{numArgs, func.numParams});
                 return vm.interruptThrowSymbol(.InvalidSignature);
             }
 
-            const req_stack_size = obj.lambda.stackSize + CallArgStart + obj.lambda.numParams;
+            const req_stack_size = func.data.bc.stack_size + CallArgStart + func.numParams;
             if (@intFromPtr(framePtr + ret + req_stack_size) >= @intFromPtr(vm.c.stackEndPtr)) {
                 return error.StackOverflow;
             }
 
-            const final_ret = ret + 5 + obj.lambda.numParams;
-            _ = try preCallDyn(vm, pc, framePtr, numArgs, ret, final_ret, obj.lambda.stackSize, obj.lambda.reqCallTypeCheck, obj.lambda.funcSigId, cont);
+            const final_ret: u8 = @intCast(ret + 5 + func.numParams);
+            _ = try preCallDyn(vm, pc, framePtr, numArgs, ret, final_ret, func.data.bc.stack_size, func.reqCallTypeCheck, func.sig, cont);
             return cy.fiber.PcFp{
-                .pc = cy.fiber.toVmPc(vm, obj.lambda.funcPc),
+                .pc = cy.fiber.toVmPc(vm, func.data.bc.pc),
                 .fp = framePtr + final_ret,
             };
         },
-        bt.HostFunc => {
-            if (numArgs != obj.hostFunc.numParams) {
-                logger.tracev("hostfunc params/args mismatch {} {}", .{numArgs, obj.hostFunc.numParams});
+        .host => {
+            if (numArgs != func.numParams) {
+                logger.tracev("hostfunc params/args mismatch {} {}", .{numArgs, func.numParams});
                 return vm.interruptThrowSymbol(.InvalidSignature);
             }
 
-            const final_ret: u8 = @intCast(ret + 5 + obj.hostFunc.numParams);
-            _ = try preCallDyn(vm, pc, framePtr, numArgs, ret, final_ret, @intCast(5 + obj.hostFunc.numParams), obj.hostFunc.reqCallTypeCheck, obj.hostFunc.funcSigId, cont);
+            const final_ret: u8 = @intCast(ret + 5 + func.numParams);
+            _ = try preCallDyn(vm, pc, framePtr, numArgs, ret, final_ret, @intCast(5 + func.numParams), func.reqCallTypeCheck, func.sig, cont);
 
             vm.c.pc = pc;
             vm.c.framePtr = framePtr + final_ret;
@@ -2193,7 +2254,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
             framePtr[final_ret + 2] = Value{ .retPcPtr = pc };
             // Keep retFramePtr.
 
-            const res: cy.Value = @bitCast(obj.hostFunc.func.?(@ptrCast(vm)));
+            const res: cy.Value = @bitCast(func.data.host.ptr.?(@ptrCast(vm)));
             if (res.isInterrupt()) {
                 return error.Panic;
             }
@@ -2203,9 +2264,6 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                 .pc = pc + cy.bytecode.CallInstLen,
                 .fp = framePtr + ret,
             };
-        },
-        else => {
-            return vm.interruptThrowSymbol(.InvalidArgument);
         },
     }
 }
@@ -2895,8 +2953,8 @@ fn zEnd(vm: *cy.VM, pc: [*]const cy.Inst) callconv(.C) void {
     vm.c.curFiber.pcOffset = @intCast(getInstOffset(vm, pc + 2));
 }
 
-fn zAllocFuncFromSym(vm: *cy.VM, id: u16) callconv(.C) vmc.ValueResult {
-    const func = cy.heap.allocFuncFromSym(vm, vm.funcSyms.buf[id]) catch {
+fn zAllocFuncPtr(vm: *cy.VM, ptr_t: cy.TypeId, rt_func: u16) callconv(.C) vmc.ValueResult {
+    const func = cy.heap.allocFuncPtr(vm, ptr_t, vm.funcSyms.buf[rt_func]) catch {
         return .{
             .val = undefined,
             .code = vmc.RES_CODE_UNKNOWN,
@@ -3328,7 +3386,7 @@ comptime {
         @export(zAllocPoolObject, .{ .name = "zAllocPoolObject", .linkage = .strong });
         @export(zAllocObjectSmall, .{ .name = "zAllocObjectSmall", .linkage = .strong });
         @export(zAllocFiber, .{ .name = "zAllocFiber", .linkage = .strong });
-        @export(zAllocFuncFromSym, .{ .name = "zAllocFuncFromSym", .linkage = .strong });
+        @export(zAllocFuncPtr, .{ .name = "zAllocFuncPtr", .linkage = .strong });
         @export(zAlloc, .{ .name = "zAlloc", .linkage = .strong });
         @export(zAllocArray, .{ .name = "zAllocArray", .linkage = .strong });
         @export(zAllocList, .{ .name = "zAllocList", .linkage = .strong });
@@ -3492,3 +3550,8 @@ pub const VMGetArgExt = struct {
         return vm.c.framePtr[CallArgStart + idx];
     }
 };
+
+pub fn getFuncPtrType(vm: *cy.VM, sig: cy.sema.FuncSigId) !cy.TypeId {
+    const chunk = vm.sema.func_ptr_tmpl.chunk();
+    return cy.sema.getFuncPtrType(chunk, sig);
+}

@@ -20,9 +20,9 @@ var fn = f()
 t.eq(fn(), 123)
 
 -- Closure over param number in function.
-f = func(a int):
+var f2 = func(a int):
     return () => a * 2
-fn = f(22)
+fn = f2(22)
 t.eq(fn(), 44)
 
 -- Closure over local number in function using a param.

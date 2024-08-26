@@ -292,7 +292,7 @@ let rootVisitor(cursor, parent, state):
 
         var cxName = clang.lib.clang_getCursorSpelling(cursor)
         var funcName = fromCXString(cxName)
-        var fn = Func{}
+        var fn = Function{}
         fn.name = funcName
 
         var cxFunc = clang.lib.clang_getCursorType(cursor)
@@ -629,7 +629,7 @@ func getApiName(name String):
 
 var .reserved_keywords = Map{'type'=true}
 
-type Func:
+type Function:
     name dyn
     params dyn
     ret dyn

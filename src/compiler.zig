@@ -961,6 +961,8 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                 self.sema.table_type = core.getSym("Table").?.cast(.object_t);
                 self.sema.ptr_slice_tmpl = core.getSym("PtrSlice").?.cast(.template);
                 self.sema.ref_slice_tmpl = core.getSym("RefSlice").?.cast(.template);
+                self.sema.func_ptr_tmpl = core.getSym("funcptr_t").?.cast(.template);
+                self.sema.func_union_tmpl = core.getSym("funcunion_t").?.cast(.template);
             }
             if (chunk != self.main_chunk) {
                 // Check for illegal top level statements.
@@ -1050,12 +1052,12 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.ListIterDyn,
         bt.Map,
         bt.MapIter,
-        bt.Closure,
-        bt.Lambda,
-        bt.HostFunc,
+        bt.Func,
+        bt.Placeholder2,
+        bt.Placeholder3,
         bt.ExternFunc,
         bt.String,
-        bt.Placeholder2,
+        bt.Placeholder4,
         bt.Fiber,
         bt.UpValue,
         bt.TccState,

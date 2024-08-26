@@ -129,6 +129,11 @@ if (!aot) {
     run.case("functions/call_undeclared_error.cy");   
     run.case("functions/call_void_return_error.cy");
     run.case("functions/decl_over_builtin.cy");
+    run.case("functions/func_type.cy");
+    run.case("functions/func_type_closure_error.cy");
+    run.case("functions/func_type_error.cy");
+    run.case("functions/func_union_type.cy");
+    run.case("functions/func_union_type_error.cy");
     run.case("functions/lambda.cy");
     run.case("functions/lambda_incompat_arg_panic.cy");
     run.case("functions/let_call_recursive.cy");

@@ -148,7 +148,7 @@ pub const Sym = extern struct {
             },
             .distinct_t => {
                 const distinct_t = self.cast(.distinct_t);
-                if (!distinct_t.resolved) {
+                if (distinct_t.resolved == null) {
                     distinct_t.getMod().deinit(alloc);
                 }
                 alloc.destroy(distinct_t);
@@ -328,45 +328,6 @@ pub const Sym = extern struct {
         }
     }
 
-    pub fn getValueType(self: *Sym) !?cy.TypeId {
-        switch (self.type) {
-            .context_var => return self.cast(.context_var).type,
-            .userVar    => return self.cast(.userVar).type,
-            .hostVar    => return self.cast(.hostVar).type,
-            .enumMember => {
-                const member = self.cast(.enumMember);
-                if (member.payloadType != cy.NullId and member.is_choice_type) {
-                    return null;
-                }
-                return member.type;
-            },
-            .use_alias  => return self.cast(.use_alias).sym.getValueType(),
-            .enum_t,
-            .type,
-            .struct_t,
-            .typeAlias,
-            .hostobj_t,
-            .trait_t,
-            .object_t   => return bt.MetaType,
-            .func => {
-                const func = self.cast(.func);
-                if (func.numFuncs == 1) {
-                    return getFuncType(func.first);
-                } else {
-                    return error.AmbiguousSymbol;
-                }
-            },
-            .dummy_t,
-            .placeholder,
-            .field,
-            .null,
-            .module_alias,
-            .distinct_t,
-            .template,
-            .chunk => return null,
-        }
-    }
-
     pub fn getStaticType(self: *Sym) ?cy.TypeId {
         switch (self.type) {
             .enum_t          => return self.cast(.enum_t).type,
@@ -464,11 +425,6 @@ pub fn createSym(alloc: std.mem.Allocator, comptime symT: SymType, init: SymChil
     const sym = try alloc.create(SymChild(symT));
     sym.* = init;
     return sym;
-}
-
-fn getFuncType(func: *Func) cy.TypeId {
-    _ = func;
-    return bt.Any;
 }
 
 fn SymChild(comptime symT: SymType) type {
@@ -591,7 +547,7 @@ pub const DistinctType = extern struct {
     type: cy.TypeId,
     mod: vmc.Module,
     variant: ?*Variant,
-    resolved: bool,
+    resolved: ?*cy.Sym,
 
     pub fn getMod(self: *DistinctType) *cy.Module {
         return @ptrCast(&self.mod);
@@ -1040,7 +996,7 @@ pub const FuncTemplateParam = struct {
     name: []const u8,
 };
 
-pub const FuncType = enum {
+pub const FuncKind = enum {
     hostFunc,
     userFunc,
     userLambda,
@@ -1049,7 +1005,7 @@ pub const FuncType = enum {
 };
 
 pub const Func = struct {
-    type: FuncType,
+    type: FuncKind,
     next: ?*Func,
     sym: ?*FuncSym,
 
@@ -1060,6 +1016,7 @@ pub const Func = struct {
     // FuncDecl/LambdaExpr
     decl: ?*ast.Node,
     retType: cy.TypeId,
+
     data: union {
         hostFunc: struct {
             ptr: cy.ZHostFuncFn,
@@ -1141,13 +1098,52 @@ pub const Func = struct {
 
 pub const ChunkExt = struct {
 
+    pub fn getSymValueType(c: *cy.Chunk, sym: *Sym) !?cy.TypeId {
+        switch (sym.type) {
+            .context_var => return sym.cast(.context_var).type,
+            .userVar    => return sym.cast(.userVar).type,
+            .hostVar    => return sym.cast(.hostVar).type,
+            .enumMember => {
+                const member = sym.cast(.enumMember);
+                if (member.payloadType != cy.NullId and member.is_choice_type) {
+                    return null;
+                }
+                return member.type;
+            },
+            .use_alias  => return getSymValueType(c, sym.cast(.use_alias).sym),
+            .enum_t,
+            .type,
+            .struct_t,
+            .typeAlias,
+            .hostobj_t,
+            .trait_t,
+            .object_t   => return bt.MetaType,
+            .func => {
+                const func = sym.cast(.func);
+                if (func.numFuncs == 1) {
+                    return try cy.sema.getFuncPtrType(c, func.first.funcSigId);
+                } else {
+                    return error.AmbiguousSymbol;
+                }
+            },
+            .dummy_t,
+            .placeholder,
+            .field,
+            .null,
+            .module_alias,
+            .distinct_t,
+            .template,
+            .chunk => return null,
+        }
+    }
+
     pub fn createDistinctType(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: *ast.DistinctDecl) !*DistinctType {
         const sym = try createSym(c.alloc, .distinct_t, .{
             .head = Sym.init(.distinct_t, parent, name),
             .decl = decl,
             .type = cy.NullId,
             .mod = undefined,
-            .resolved = false,
+            .resolved = null,
             .variant = null,
         });
         sym.getMod().* = cy.Module.init(c);
@@ -1201,6 +1197,52 @@ pub const ChunkExt = struct {
         @as(*cy.Module, @ptrCast(&sym.mod)).* = cy.Module.init(c);
         c.sema.types.items[type_id] = c.sema.types.items[src_t];
         c.sema.types.items[type_id].sym = @ptrCast(sym);
+        try c.syms.append(c.alloc, @ptrCast(sym));
+        return sym;
+    }
+
+    pub fn createFuncPtrType(c: *cy.Chunk, parent: *Sym, name: []const u8, opt_type_id: ?cy.TypeId, sig: cy.sema.FuncSigId, decl: *ast.Node) !*HostObjectType {
+        const type_id = opt_type_id orelse try c.sema.pushType();
+        const sym = try createSym(c.alloc, .hostobj_t, .{
+            .head = Sym.init(.hostobj_t, parent, name),
+            .decl = decl.cast(.custom_decl),
+            .type = type_id,
+            .getChildrenFn = null,
+            .finalizerFn = null,
+            .variant = null,
+            .mod = undefined,
+        });
+        c.compiler.sema.types.items[type_id] = .{
+            .sym = @ptrCast(sym),
+            .kind = .func_ptr,
+            .data = .{ .func_ptr = .{
+                .sig = sig,
+            }},
+            .info = .{},
+        };
+        try c.syms.append(c.alloc, @ptrCast(sym));
+        return sym;
+    }
+
+    pub fn createFuncUnionType(c: *cy.Chunk, parent: *Sym, name: []const u8, opt_type_id: ?cy.TypeId, sig: cy.sema.FuncSigId, decl: *ast.Node) !*HostObjectType {
+        const type_id = opt_type_id orelse try c.sema.pushType();
+        const sym = try createSym(c.alloc, .hostobj_t, .{
+            .head = Sym.init(.hostobj_t, parent, name),
+            .decl = decl.cast(.custom_decl),
+            .type = type_id,
+            .getChildrenFn = null,
+            .finalizerFn = null,
+            .variant = null,
+            .mod = undefined,
+        });
+        c.compiler.sema.types.items[type_id] = .{
+            .sym = @ptrCast(sym),
+            .kind = .func_union,
+            .data = .{ .func_union = .{
+                .sig = sig,
+            }},
+            .info = .{},
+        };
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }
@@ -1482,7 +1524,7 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createFunc(c: *cy.Chunk, ftype: FuncType, parent: *Sym, sym: ?*FuncSym, node: ?*ast.Node, isMethod: bool) !*Func {
+    pub fn createFunc(c: *cy.Chunk, ftype: FuncKind, parent: *Sym, sym: ?*FuncSym, node: ?*ast.Node, isMethod: bool) !*Func {
         const func = try c.alloc.create(Func);
         func.* = .{
             .type = ftype,
@@ -1611,6 +1653,16 @@ pub fn writeSymName(s: *cy.Sema, w: anytype, sym: *cy.Sym, config: SymFormatConf
                 const arg = variant.args[0].asHeapObject();
                 const name = s.getTypeBaseName(arg.type.type);
                 try w.print("[]{s}", .{name});
+                return;
+            } else if (variant.root_template == s.func_ptr_tmpl) {
+                try w.writeAll("func");
+                const sig: cy.sema.FuncSigId = @intCast(variant.args[0].asBoxInt());
+                try s.writeFuncSigStr(w, sig, config.from);
+                return;
+            } else if (variant.root_template == s.func_union_tmpl) {
+                try w.writeAll("Func");
+                const sig: cy.sema.FuncSigId = @intCast(variant.args[0].asBoxInt());
+                try s.writeFuncSigStr(w, sig, config.from);
                 return;
             }
             try w.writeAll(sym.name());

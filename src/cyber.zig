@@ -65,7 +65,6 @@ pub const HeapObject = heap.HeapObject;
 pub const MapInner = heap.MapInner;
 pub const Map = heap.Map;
 pub const CyList = heap.List;
-pub const Closure = heap.Closure;
 pub const Pointer = heap.Pointer;
 pub const Astring = heap.Astring;
 pub const Array = heap.Array;

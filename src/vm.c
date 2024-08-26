@@ -41,8 +41,8 @@ static inline Value* objectGetValuesPtr(Object* obj) {
     return &obj->firstValue;
 }
 
-static inline Value* closureGetCapturedValuesPtr(Closure* closure) {
-    return &closure->firstCapturedVal;
+static inline Value* closureGetCapturedValuesPtr(FuncUnion* closure) {
+    return &closure->data.closure.firstCapturedVal;
 }
 
 static inline void release(VM* vm, Value val) {
@@ -318,9 +318,29 @@ static inline ValueResult allocEmptyMap(VM* vm) {
     return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
+static inline ValueResult allocFuncUnion(VM* vm, TypeId union_t, FuncPtr* func_ptr) {
+    HeapObjectResult res = zAllocPoolObject(vm);
+    if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
+        return (ValueResult){ .code = res.code };
+    }
+    res.obj->func_union = (FuncUnion){
+        .typeId = union_t | CYC_TYPE_MASK,
+        .rc = 1,
+        .numParams = func_ptr->numParams,
+        .kind = func_ptr->kind,
+        .reqCallTypeCheck = func_ptr->reqCallTypeCheck,
+        .sig = func_ptr->sig,
+        .data = func_ptr->data,
+    };
+    if (func_ptr->kind == 1 && func_ptr->data.host.has_tcc_state) {
+        retain(vm, func_ptr->data.host.tcc_state);
+    }
+    return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
+}
+
 static inline ValueResult allocClosure(
-    VM* vm, Value* fp, size_t funcPc, u8 numParams, u8 stackSize,
-    u16 rFuncSigId, const Inst* capturedVals, u8 numCapturedVals, u8 closureLocal, bool reqCallTypeCheck
+    VM* vm, TypeId union_t, Value* fp, size_t funcPc, u8 numParams, u8 stackSize,
+    u16 sig, const Inst* capturedVals, u8 numCapturedVals, u8 closureLocal, bool reqCallTypeCheck
 ) {
     HeapObjectResult res;
     if (numCapturedVals <= 2) {
@@ -331,18 +351,21 @@ static inline ValueResult allocClosure(
     if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
         return (ValueResult){ .code = res.code };
     }
-    res.obj->closure = (Closure){
-        .typeId = TYPE_CLOSURE | CYC_TYPE_MASK,
+    res.obj->func_union = (FuncUnion){
+        .typeId = union_t | CYC_TYPE_MASK,
         .rc = 1,
-        .funcPc = funcPc,
         .numParams = numParams,
-        .stackSize = stackSize,
-        .numCaptured = numCapturedVals,
-        .local = closureLocal,
+        .kind = 2,
         .reqCallTypeCheck = reqCallTypeCheck,
-        .rFuncSigId = rFuncSigId,
+        .sig = sig,
+        .data = { .closure = {
+            .pc = funcPc,
+            .stack_size = stackSize,
+            .numCaptured = numCapturedVals,
+            .local = closureLocal,
+        }},
     };
-    Value* dst = closureGetCapturedValuesPtr(&res.obj->closure);
+    Value* dst = closureGetCapturedValuesPtr(&res.obj->func_union);
     for (int i = 0; i < numCapturedVals; i += 1) {
         Inst local = capturedVals[i];
 #if TRACE
@@ -357,19 +380,22 @@ static inline ValueResult allocClosure(
     return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
-static inline ValueResult allocLambda(VM* vm, u32 funcPc, u8 numParams, u8 stackSize, u16 rFuncSigId, bool reqCallTypeCheck) {
+static inline ValueResult allocLambda(VM* vm, TypeId ptr_t, u32 funcPc, u8 numParams, u8 stackSize, u16 sig, bool reqCallTypeCheck) {
     HeapObjectResult res = zAllocPoolObject(vm);
     if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
         return (ValueResult){ .code = res.code };
     }
-    res.obj->lambda = (Lambda){
-        .typeId = TYPE_LAMBDA,
+    res.obj->func_ptr = (FuncPtr){
+        .typeId = ptr_t,
         .rc = 1,
-        .funcPc = funcPc,
         .numParams = numParams,
-        .stackSize = stackSize,
         .reqCallTypeCheck = reqCallTypeCheck,
-        .rFuncSigId = rFuncSigId,
+        .kind = FUNC_PTR_BC,
+        .sig = sig,
+        .data = { .bc = {
+            .pc = funcPc,
+            .stack_size = stackSize,
+        }},
     };
     return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
@@ -397,20 +423,6 @@ static inline ValueResult allocMetaType(VM* vm, uint8_t symType, uint32_t symId)
         .rc = 1,
         .type = symType,
         .symId = symId,
-    };
-    return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
-}
-
-static inline ValueResult allocHostFunc(VM* vm, void* func, u32 numParams, u32 rFuncSigId, bool reqCallTypeCheck) {
-    HeapObjectResult res = zAllocPoolObject(vm);
-    res.obj->hostFunc = (HostFunc){
-        .typeId = TYPE_HOST_FUNC,
-        .rc = 1,
-        .func = func,
-        .numParams = numParams,
-        .rFuncSigId = rFuncSigId,
-        .hasTccState = false,
-        .reqCallTypeCheck = reqCallTypeCheck,
     };
     return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
@@ -687,7 +699,8 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(ForRange),
         JENTRY(ForRangeReverse),
         JENTRY(Match),
-        JENTRY(StaticFunc),
+        JENTRY(FuncPtr),
+        JENTRY(FuncUnion),
         JENTRY(StaticVar),
         JENTRY(SetStaticVar),
         JENTRY(Context),
@@ -783,7 +796,7 @@ beginSwitch:
         Value opt = stack[pc[1]];
 #if TRACE
         TypeId typeId = getTypeId(opt);
-        TypeEntry entry = ((TypeEntry*)vm->c.typesPtr)[typeId];
+        TypeEntry entry = vm->c.typesPtr[typeId];
         if (entry.kind != TYPE_KIND_OPTION) {
             TRACEV("Expected option value.");
             zFatal();
@@ -833,7 +846,7 @@ beginSwitch:
         // Check that src is actually a value type.
         Value src = stack[pc[1]];
         TypeId typeId = getTypeId(src);
-        TypeEntry entry = ((TypeEntry*)vm->c.typesPtr)[typeId];
+        TypeEntry entry = vm->c.typesPtr[typeId];
         if (entry.kind == TYPE_KIND_STRUCT) {
             u8 numFields = (u8)entry.data.object.numFields;
             HeapObject* obj = VALUE_AS_HEAPOBJECT(src);
@@ -1336,7 +1349,7 @@ beginSwitch:
     CASE(TypeCheckOption): {
         Value val = stack[pc[1]];
         TypeId typeId = getTypeId(val);
-        TypeEntry entry = ((TypeEntry*)vm->c.typesPtr)[typeId];
+        TypeEntry entry = vm->c.typesPtr[typeId];
         if (entry.kind != TYPE_KIND_OPTION) {
             panicStaticMsg(vm, "Expected `Option` type.");
             RETURN(RES_CODE_PANIC);
@@ -1440,13 +1453,14 @@ beginSwitch:
         u8 numParams = pc[3];
         u8 stackSize = pc[4];
         bool reqCallTypeCheck = pc[5];
-        u16 rFuncSigId = READ_U16(6);
-        ValueResult res = allocLambda(vm, funcPc, numParams, stackSize, rFuncSigId, reqCallTypeCheck);
+        u16 sig = READ_U16(6);
+        u16 ptr_t = READ_U16(8);
+        ValueResult res = allocLambda(vm, ptr_t, funcPc, numParams, stackSize, sig, reqCallTypeCheck);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
-        stack[pc[8]] = res.val;
-        pc += 9;
+        stack[pc[10]] = res.val;
+        pc += 11;
         NEXT();
     }
     CASE(Closure): {
@@ -1456,17 +1470,18 @@ beginSwitch:
         u8 numCaptured = pc[4];
         u8 stackSize = pc[5];
         u16 rFuncSigId = READ_U16(6);
-        u8 local = pc[8];
-        bool reqCallTypeCheck = pc[9];
-        u8 dst = pc[10];
-        Inst* capturedVals = pc + 11;
+        u16 union_t = READ_U16(8);
+        u8 local = pc[10];
+        bool reqCallTypeCheck = pc[11];
+        u8 dst = pc[12];
+        Inst* capturedVals = pc + 13;
 
-        ValueResult res = allocClosure(vm, stack, funcPc, numParams, stackSize, rFuncSigId, capturedVals, numCaptured, local, reqCallTypeCheck);
+        ValueResult res = allocClosure(vm, union_t, stack, funcPc, numParams, stackSize, rFuncSigId, capturedVals, numCaptured, local, reqCallTypeCheck);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
         stack[dst] = res.val;
-        pc += 11 + numCaptured;
+        pc += 13 + numCaptured;
         NEXT();
     }
     CASE(Compare): {
@@ -1914,12 +1929,12 @@ beginSwitch:
     CASE(Captured): {
         Value closure = stack[pc[1]];
 #if TRACE
-        if (!VALUE_IS_CLOSURE(closure)) {
+        if (!VALUE_IS_CLOSURE(vm, closure)) {
             TRACEV("Expected closure value.");
             zFatal();
         }
 #endif
-        Value up = closureGetCapturedValuesPtr(&VALUE_AS_HEAPOBJECT(closure)->closure)[pc[2]];
+        Value up = closureGetCapturedValuesPtr(&VALUE_AS_HEAPOBJECT(closure)->func_union)[pc[2]];
 #if TRACE
         if (!VALUE_IS_UPVALUE(up)) {
             TRACEV("Expected box value.");
@@ -1938,12 +1953,12 @@ beginSwitch:
     CASE(SetCaptured): {
         Value closure = stack[pc[1]];
 #if TRACE
-        if (!VALUE_IS_CLOSURE(closure)) {
+        if (!VALUE_IS_CLOSURE(vm, closure)) {
             TRACEV("Expected closure value.");
             zFatal();
         }
 #endif
-        Value up = closureGetCapturedValuesPtr(&VALUE_AS_HEAPOBJECT(closure)->closure)[pc[2]];
+        Value up = closureGetCapturedValuesPtr(&VALUE_AS_HEAPOBJECT(closure)->func_union)[pc[2]];
         HeapObject* obj = VALUE_AS_HEAPOBJECT(up);
 #if TRACE
         ASSERT(OBJ_TYPEID(obj) == TYPE_UPVALUE);
@@ -2109,14 +2124,33 @@ beginSwitch:
         pc += zOpMatch(pc, stack);
         NEXT();
     }
-    CASE(StaticFunc): {
+    CASE(FuncPtr): {
         u16 funcId = READ_U16(1);
-        ValueResult res = zAllocFuncFromSym(vm, funcId);
+        u16 ptr_t = READ_U16(3);
+        ValueResult res = zAllocFuncPtr(vm, ptr_t, funcId);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
-        stack[pc[3]] = res.val;
-        pc += 4;
+        stack[pc[5]] = res.val;
+        pc += 6;
+        NEXT();
+    }
+    CASE(FuncUnion): {
+        Value val = stack[pc[1]];
+        u16 union_t = READ_U16(2);
+        if (getTypeId(val) == TYPE_FUNC) {
+            panicStaticMsg(vm, "TODO");
+            RETURN(RES_CODE_PANIC);
+        } else {
+            // FuncPtr type.
+            ValueResult res = allocFuncUnion(vm, union_t, &VALUE_AS_HEAPOBJECT(val)->func_ptr);
+            if (res.code != RES_CODE_SUCCESS) {
+                RETURN(res.code);
+            }
+            release(vm, val);
+            stack[pc[4]] = res.val;
+        }
+        pc += 5;
         NEXT();
     }
     CASE(StaticVar): {

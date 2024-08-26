@@ -396,15 +396,6 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
         bt.MapIter => {
             markValue(vm, obj.mapIter.map);
         },
-        bt.Closure => {
-            const vals = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
-            for (vals) |val| {
-                // TODO: Can this be assumed to always be a Box value?
-                if (val.isCycPointer()) {
-                    markValue(vm, val);
-                }
-            }
-        },
         bt.UpValue => {
             if (obj.up.val.isCycPointer()) {
                 markValue(vm, obj.up.val);
@@ -426,6 +417,14 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
                 }
             } else if (entry.kind == .trait) {
                 markValue(vm, obj.trait.impl);
+            } else if (entry.kind == .func_union) {
+                const vals = obj.func_union.getCapturedValuesPtr()[0..obj.func_union.data.closure.numCaptured];
+                for (vals) |val| {
+                    // TODO: Can this be assumed to always be a Box value?
+                    if (val.isCycPointer()) {
+                        markValue(vm, val);
+                    }
+                }
             } else {
                 // Custom object type.
                 if (entry.sym.cast(.hostobj_t).getChildrenFn) |getChildren| {

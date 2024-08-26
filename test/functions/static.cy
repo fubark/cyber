@@ -25,8 +25,8 @@ t.eq(bar(), 5)
 t.eq(try bar(2), error.InvalidSignature)
 
 -- Static function binding wrapped in value.
-bar = toString
-t.eq(bar(10), '10')
+var bar2 = toString
+t.eq(bar2(10), '10')
 func toString(val int) String:
     return String(val)
 

@@ -445,6 +445,24 @@ pub const Value = packed union {
     }
 };
 
+pub fn isHostFunc(vm: *cy.VM, val: Value) bool {
+    if (!val.isPointer()) {
+        return false;
+    }
+    const type_id = val.asHeapObject().getTypeId();
+    if (type_id == bt.Func) {
+        return val.asHeapObject().func.kind == .host;
+    }
+    const type_e = vm.c.types[type_id];
+    if (type_e.kind == .func_ptr) {
+        return val.asHeapObject().func_ptr.kind == .host;
+    } else if (type_e.kind == .func_union) {
+        return val.asHeapObject().func_union.kind == .host;
+    } else {
+        return false;
+    }
+}
+
 pub fn shallowCopy(vm: *cy.VM, val: Value) anyerror!Value {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
@@ -473,21 +491,12 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) anyerror!Value {
             bt.Integer => {
                 return vm.allocInt(obj.integer.val);
             },
-            bt.Closure => {
-                fmt.panic("Unsupported copy closure.", &.{});
-            },
-            bt.Lambda => {
-                fmt.panic("Unsupported copy closure.", &.{});
-            },
             bt.String => {
                 cy.arc.retainObject(vm, obj);
                 return val;
             },
             bt.Fiber => {
                 fmt.panic("Unsupported copy fiber.", &.{});
-            },
-            bt.HostFunc => {
-                fmt.panic("Unsupported copy native func.", &.{});
             },
             bt.TccState => {
                 fmt.panic("Unsupported copy tcc state.", &.{});

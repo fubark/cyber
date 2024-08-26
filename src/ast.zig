@@ -50,7 +50,8 @@ pub const NodeType = enum(u7) {
     forRangeStmt,
     floatLit,
     funcDecl,
-    funcParam,
+    func_param,
+    func_type,
     group,
     hexLit,
     ident,
@@ -374,6 +375,13 @@ const ComptimeStmt = struct {
     pos: u32,
 };
 
+pub const FuncType = struct {
+    params: []const *FuncParam align(8),
+    ret: ?*Node,
+    pos: u32,
+    is_union: bool,
+};
+
 pub const LambdaExpr = struct {
     params: []const *FuncParam align(8),
     // For single expr lambda, `stmts.ptr` refers to the node.
@@ -395,9 +403,8 @@ pub const FuncDecl = struct {
 };
 
 pub const FuncParam = struct {
-    name_pos: u32 align(8),
-    name_len: u32,
-    typeSpec: ?*Node,
+    name_type: *Node align(8),
+    type: ?*Node,
     ct_param: bool,
 };
 
@@ -633,7 +640,8 @@ fn NodeData(comptime node_t: NodeType) type {
         .forRangeStmt   => ForRangeStmt,
         .floatLit       => Span,
         .funcDecl       => FuncDecl,
-        .funcParam      => FuncParam,
+        .func_param     => FuncParam,
+        .func_type      => FuncType,
         .group          => Group,
         .hexLit         => Span,
         .ident          => Span,
@@ -770,7 +778,11 @@ pub const Node = struct {
             .forIterStmt    => self.cast(.forIterStmt).pos,
             .forRangeStmt   => self.cast(.forRangeStmt).pos,
             .funcDecl       => self.cast(.funcDecl).pos,
-            .funcParam      => self.cast(.funcParam).name_pos,
+            .func_param     => {
+                const param = self.cast(.func_param);
+                return param.name_type.pos() - @intFromBool(param.ct_param);
+            },
+            .func_type      => self.cast(.func_type).pos,
             .group          => self.cast(.group).pos,
             .hexLit         => self.cast(.hexLit).pos,
             .ident          => self.cast(.ident).pos,
@@ -902,7 +914,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 101);
+    try t.eq(std.enums.values(NodeType).len, 102);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 
@@ -1114,10 +1126,6 @@ pub const AstView = struct {
         }
     }
 
-    pub fn funcParamName(self: AstView, param: *FuncParam) []const u8 {
-        return self.src[param.name_pos..param.name_pos+param.name_len];
-    }
-
     pub fn nodeString(self: AstView, n: *Node) []const u8 {
         const span: *Span = @ptrCast(@alignCast(n));
         if (span.srcGen) {
@@ -1140,7 +1148,7 @@ pub const AstView = struct {
         if (decl.params.len == 0) {
             return false;
         }
-        const param_name = self.funcParamName(decl.params[0]);
+        const param_name = self.nodeString(decl.params[0].name_type);
         return std.mem.eql(u8, param_name, "self");
     }
 
@@ -1288,10 +1296,10 @@ pub const Encoder = struct {
                 }
                 // node.data.func.bodyHead
             },
-            .funcParam => {
-                const param = node.cast(.funcParam);
-                try w.writeAll(self.ast.funcParamName(param));
-                if (param.typeSpec) |type_spec| {
+            .func_param => {
+                const param = node.cast(.func_param);
+                try w.writeAll(self.ast.nodeString(param.name_type));
+                if (param.type) |type_spec| {
                     try w.writeAll(" ");
                     try self.write(w, type_spec);
                 }

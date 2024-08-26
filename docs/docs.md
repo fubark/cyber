@@ -1973,9 +1973,10 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
 * [Function overloading.](#function-overloading)
 * [Lambdas.](#lambdas)
 * [Closures.](#closures)
+* [Function types.](#function-types)
 * [`extern` functions.](#extern-functions)
+* [Multiple parameters.](#multiple-parameters)
 * [Named parameters.](#named-parameters)
-* [Optional parameters.](#optional-parameters)
 * [Variadic parameters.](#variadic-parameters)
 * [Function calls.](#function-calls)
   * [Shorthand syntax.](#shorthand-syntax)
@@ -2101,10 +2102,50 @@ func foo():
 ## `extern` functions.
 > _Planned Feature_
 
-## Named parameters.
+## Function types.
+A function type is denoted as `func(P1, P2, ...) R` where `P`s are parameter types and `R` is the return type in addition to any function modifiers:
+```cy
+type AddFn -> func(int, int) int
+```
+
+Function types can include optional parameter names:
+```cy
+type AddFn -> func(a int, b int) int
+```
+If one parameter has a name, the other parameters must also have names.
+Parameter names do not alter the function signature and only serve to document the function type.
+
+Only static functions can be assigned to a function type:
+```cy
+func add(a int, b int) int:
+    return a + b
+
+var fn AddFn = add
+fn(10, 20)         --> 30
+```
+
+Similarily, a function union type is denoted as `Func(P1, P2, ...) R` and can store static functions, lambdas, and closures:
+```cy
+var c = 5
+func addClosure(a int, b int) int:
+    return a + b + c
+
+var fn Func(int, int) int = add
+fn(10, 20)         --> 30
+fn = addClosure 
+fn(10, 20)         --> 35
+```
+
+## Multiple parameters.
 > _Planned Feature_
 
-## Optional parameters.
+When multiple parameters share the same type they can be declared together in a sequence:
+```cy
+func sum(a, b, c int) int
+    return a + b + c
+```
+
+## Named parameters.
 > _Planned Feature_
 
 ## Variadic parameters.

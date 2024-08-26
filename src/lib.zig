@@ -582,21 +582,21 @@ export fn clNewEmptyMap(vm: *cy.VM) Value {
 
 export fn clNewFuncDyn(vm: *cy.VM, numParams: u32, func: c.FuncFn) Value {
     const funcSigId = vm.sema.ensureUntypedFuncSig(numParams) catch fatal();
-    return vm.allocHostFunc(@ptrCast(func), numParams, funcSigId, null, false) catch fatal();
+    return vm.allocHostFuncUnion(bt.Func, @ptrCast(func), numParams, funcSigId, null, false) catch fatal();
 }
 
 export fn clNewFunc(vm: *cy.VM, params: [*]const cy.TypeId, numParams: u32, retType: cy.TypeId, func: c.FuncFn) Value {
     const funcSigId = vm.sema.ensureFuncSig(@ptrCast(params[0..numParams]), retType) catch fatal();
     const funcSig = vm.sema.funcSigs.items[funcSigId];
-    return vm.allocHostFunc(@ptrCast(func), numParams, funcSigId, null, funcSig.reqCallTypeCheck) catch fatal();
+    return vm.allocHostFuncUnion(bt.Func, @ptrCast(func), numParams, funcSigId, null, funcSig.reqCallTypeCheck) catch fatal();
 }
 
 test "clNewFunc()" {
-    const vm = c.create();
-    defer c.destroy(vm);
+    const vm: *cy.VM = @ptrCast(@alignCast(c.create()));
+    defer c.destroy(@ptrCast(vm));
 
-    const val = c.newFunc(vm, &[_]cy.TypeId{}, 0, bt.Dyn, @ptrFromInt(8));
-    try t.eq(c.getTypeId(val), bt.HostFunc);
+    const val = c.newFunc(@ptrCast(vm), &[_]cy.TypeId{}, 0, bt.Dyn, @ptrFromInt(8));
+    try t.eq(c.getTypeId(val), bt.Func);
 }
 
 export fn clCreateModule(vm: *cy.VM, r_uri: c.Str, src: c.Str) c.Module {
@@ -764,11 +764,9 @@ test "Constants." {
     try t.eq(c.TypeListIterDyn, bt.ListIterDyn);
     try t.eq(c.TypeMap, bt.Map);
     try t.eq(c.TypeMapIter, bt.MapIter);
-    try t.eq(c.TypeClosure, bt.Closure);
-    try t.eq(c.TypeLambda, bt.Lambda);
+    try t.eq(c.TypeFunc, bt.Func);
     try t.eq(c.TypeString, bt.String);
     try t.eq(c.TypeFiber, bt.Fiber);
-    try t.eq(c.TypeHostFunc, bt.HostFunc);
     try t.eq(c.TypeExternFunc, bt.ExternFunc);
     try t.eq(c.TypeType, bt.Type);
     try t.eq(c.TypeTccState, bt.TccState);

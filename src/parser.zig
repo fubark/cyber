@@ -422,7 +422,24 @@ pub const Parser = struct {
         });
     }
 
-    fn parseLeftAssignLambdaFunction(self: *Parser) !*ast.LambdaExpr {
+    fn parseFuncUnionType(self: *Parser) !*ast.Node {
+        const start = self.next_pos;
+
+        // Assume first token is `func`.
+        self.advance();
+
+        const params = try self.parseParenAndFuncParams();
+        const ret = try self.parseFuncReturn();
+
+        return self.ast.newNodeErase(.func_type, .{
+            .params = params,
+            .pos = self.tokenSrcPos(start),
+            .ret = ret,
+            .is_union = true,
+        });
+    }
+
+    fn parseLambdaFuncOrType(self: *Parser) !*ast.Node {
         const start = self.next_pos;
 
         // Assume first token is `func`.
@@ -441,7 +458,7 @@ pub const Parser = struct {
             };
             _ = self.popBlock();
 
-            return self.ast.newNode(.lambda_expr, .{
+            return self.ast.newNodeErase(.lambda_expr, .{
                 .params = params,
                 .sig_t = .func,
                 .stmts = @as([*]*ast.Node, @ptrCast(@alignCast(expr)))[0..1],
@@ -453,14 +470,20 @@ pub const Parser = struct {
         if (self.peek().tag() == .colon) {
             self.advance();
         } else {
-            return self.reportError("Expected `:` or `=>`.", &.{});
+            // Parse as function type.
+            return self.ast.newNodeErase(.func_type, .{
+                .params = params,
+                .pos = self.tokenSrcPos(start),
+                .ret = ret,
+                .is_union = false,
+            });
         }
 
         try self.pushBlock();
         const stmts = try self.parseSingleOrIndentedBodyStmts();
         _ = self.popBlock();
 
-        const lambda = try self.ast.newNode(.lambda_multi, .{
+        const lambda = try self.ast.newNodeErase(.lambda_multi, .{
             .params = params,
             .sig_t = .func,
             .stmts = stmts,
@@ -477,15 +500,13 @@ pub const Parser = struct {
             return self.reportError("Expected open parenthesis.", &.{});
         }
         self.advance();
-        return self.parseFuncParams(&.{}, true, false);
+        return self.parseFuncParams(&.{}, false);
     }
 
     fn genDynFuncParam(self: *Parser, ident: *ast.Node) !*ast.FuncParam {
-        const name: *ast.Span = @ptrCast(@alignCast(ident));
-        return self.ast.newNode(.funcParam, .{
-            .name_pos = name.pos,
-            .name_len = name.len,
-            .typeSpec = null,
+        return self.ast.newNode(.func_param, .{
+            .name_type = ident,
+            .type = null,
             .ct_param = false,
         });
     }
@@ -536,47 +557,48 @@ pub const Parser = struct {
         return self.ast.dupeNodes(self.node_stack.items[field_start..]);
     }
 
-    fn parseFuncParam(self: *Parser, typed: bool, allow_self: bool) !*ast.FuncParam {
-        var name_token = self.peek();
+    fn parseFuncParam(self: *Parser) anyerror!*ast.FuncParam {
         var ct_param = false;
-        if (name_token.tag() != .ident) {
-            if (name_token.tag() == .pound) {
-                self.advance();
-                name_token = self.peek();
-                ct_param = true;
-                if (self.peek().tag() != .ident) {
-                    return self.reportError("Expected param name.", &.{});
+        var name_type: *ast.Node = undefined;
+        if (self.peek().tag() == .pound) {
+            self.advance();
+            if (self.peek().tag() != .ident) {
+                return self.reportError("Expected param name.", &.{});
+            }
+            name_type = @ptrCast(try self.newSpanNode(.ident, self.next_pos));
+            self.advance();
+            ct_param = true;
+        } else {
+            const next = self.peek();
+            if (next.tag() == .ident) {
+                // Check for space between ident and next token otherwise it could be a type.
+                const next2 = self.peekAhead(1);
+                if (next2.pos() >= next.data.end_pos + 1) {
+                    name_type = @ptrCast(try self.newSpanNode(.ident, self.next_pos));
+                    self.advance();
+                } else {
+                    name_type = (try self.parseTermExpr(.{})) orelse {
+                        return self.reportError("Expected param.", &.{});
+                    };
                 }
+            } else {
+                name_type = (try self.parseTermExpr(.{})) orelse {
+                    return self.reportError("Expected param.", &.{});
+                };
             }
         }
 
-        self.advance();
-        var type_spec: ?*ast.Node = null;
-        if (typed) {
-            if (try self.parseOptTypeSpec(false)) |spec| {
-                type_spec = spec;
-            } else {
-                if (allow_self) {
-                    const param_name = self.ast.src[name_token.pos()..name_token.data.end_pos];
-                    if (!std.mem.eql(u8, param_name, "self")) {
-                        return self.reportError("Expected param type.", &.{});
-                    }
-                } else {
-                    return self.reportError("Expected param type.", &.{});
-                }
-            }
-        }
-        return self.ast.newNode(.funcParam, .{
-            .name_pos = name_token.pos(),
-            .name_len = name_token.data.end_pos - name_token.pos(),
-            .typeSpec = type_spec,
+        const type_spec = try self.parseOptTypeSpec(false);
+        return self.ast.newNode(.func_param, .{
+            .name_type = name_type,
+            .type = type_spec,
             .ct_param = ct_param,
         });
     }
 
     /// Assumes token at first param ident or right paren.
     /// Let sema check whether param types are required since it depends on the context.
-    fn parseFuncParams(self: *Parser, pre_params: []const *ast.FuncParam, typed: bool, comptime template: bool) ![]*ast.FuncParam {
+    fn parseFuncParams(self: *Parser, pre_params: []const *ast.FuncParam, comptime template: bool) ![]*ast.FuncParam {
         const CloseDelim: cy.TokenType = if (template) .right_bracket else .right_paren;
 
         const param_start = self.node_stack.items.len;
@@ -592,7 +614,7 @@ pub const Parser = struct {
         }
 
         // Parse params.
-        var param = try self.parseFuncParam(typed, true);
+        var param = try self.parseFuncParam();
         try self.pushNode(@ptrCast(param));
 
         while (true) {
@@ -606,7 +628,7 @@ pub const Parser = struct {
                 },
                 else => return self.reportError("Expected `,`.", &.{}),
             }
-            param = try self.parseFuncParam(typed, false);
+            param = try self.parseFuncParam();
             try self.pushNode(@ptrCast(param));
         }
         const params = self.node_stack.items[param_start..];
@@ -628,6 +650,7 @@ pub const Parser = struct {
             .error_k,
             .symbol_k,
             .none_k,
+            .Func_k,
             .ident => {
                 self.advance();
                 return @ptrCast(try self.newSpanNode(.ident, start));
@@ -734,7 +757,7 @@ pub const Parser = struct {
             });
         } else {
             self.advance();
-            const params = try self.parseFuncParams(&.{}, true, true);
+            const params = try self.parseFuncParams(&.{}, true);
             return self.ast.newNodeErase(.template, .{
                 .params = params,
                 .decl = undefined,
@@ -807,7 +830,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseOptTypeSpec(self: *Parser, allowUnnamedType: bool) !?*ast.Node {
+    fn parseOptTypeSpec(self: *Parser, allowUnnamedType: bool) anyerror!?*ast.Node {
         const token = self.peek();
         switch (token.tag()) {
             .object_k => {
@@ -831,9 +854,11 @@ pub const Parser = struct {
             .void_k,
             .type_k,
             .symbol_k,
+            .func_k,
+            .Func_k,
             .error_k,
             .ident => {
-                return try self.parseTermExpr2(.{});
+                return try self.parseTermExpr(.{});
             },
             else => {
                 return null;
@@ -2907,7 +2932,7 @@ pub const Parser = struct {
                 } else if (tag == .comma) {
                     self.advance();
                     const param = try self.genDynFuncParam(expr);
-                    const params = try self.parseFuncParams(&.{param}, false, false);
+                    const params = try self.parseFuncParams(&.{param}, false);
                     return @ptrCast(try self.parseLambdaFunc(params));
                 } else {
                     return self.reportError("Expected right parenthesis.", &.{});
@@ -3125,7 +3150,10 @@ pub const Parser = struct {
                 });
             },
             .func_k => {
-                return @ptrCast(try self.parseLeftAssignLambdaFunction());
+                return @ptrCast(try self.parseLambdaFuncOrType());
+            },
+            .Func_k => {
+                return @ptrCast(try self.parseFuncUnionType());
             },
             .left_paren => {
                 self.advance();
@@ -3166,7 +3194,7 @@ pub const Parser = struct {
                 } else if (self.peek().tag() == .comma) {
                     self.advance();
                     const param = try self.genDynFuncParam(expr);
-                    const params = try self.parseFuncParams(&.{ param }, false, false);
+                    const params = try self.parseFuncParams(&.{ param }, false);
                     if (self.peek().tag() == .equal_right_angle) {
                         return @ptrCast(try self.parseLambdaFunc(params));
                     } else if (self.peek().tag() == .colon) {
@@ -3349,7 +3377,7 @@ pub const Parser = struct {
             self.advance();
             
             // Parse as untyped function.
-            const params = try self.parseFuncParams(&.{}, false, false);
+            const params = try self.parseFuncParams(&.{}, false);
             if (self.peek().tag() != .colon) {
                 return self.reportError("Expected colon.", &.{});
             }
@@ -3766,7 +3794,7 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .minus_right_angle, .case_k, .catch_k, .coinit_k, .colon, .comma, .context_k, .continue_k, .coresume_k, .coyield_k, .cstruct_k,
         .dec, .dot, .dot_question, .dot_dot, .dot_star,
         .else_k, .enum_k, .err, .error_k, .equal, .equal_right_angle,
-        .false_k, .float, .for_k, .func_k,
+        .false_k, .float, .for_k, .func_k, .Func_k,
         .hex, .ident, .if_k, .mod_k, .indent,
         .left_brace, .left_bracket, .left_paren, .let_k,
         .minus_double_dot, .new_line, .none_k, .not_k, .object_k, .oct, .pass_k, .underscore, .pound, .question,

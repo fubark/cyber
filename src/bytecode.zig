@@ -492,7 +492,9 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const numLocals = pc[4].val;
             const reqCallTypeCheck = pc[5].val;
             const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 6)).*;
-            const dst = pc[8].val;
+            const ptr_t = @as(*const align(1) u16, @ptrCast(pc + 8)).*;
+            _ = ptr_t;
+            const dst = pc[10].val;
             len += try fmt.printCount(w, "off={}, nparam={}, nlocal={}, typechk={}, fsigId={}, dst={}", &.{
                 v(funcOff), v(numParams), v(numLocals), v(reqCallTypeCheck), v(funcSigId), v(dst)});
         },
@@ -502,9 +504,11 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const numCaptured = pc[4].val;
             const numLocals = pc[5].val;
             const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 6)).*;
-            const local = pc[8].val;
-            const reqCallTypeCheck = pc[9].val;
-            const dst = pc[10].val;
+            const union_t = @as(*const align(1) u16, @ptrCast(pc + 8)).*;
+            _ = union_t;
+            const local = pc[10].val;
+            const reqCallTypeCheck = pc[11].val;
+            const dst = pc[12].val;
             len += try fmt.printCount(w, "off={}, nparam={}, ncap={}, nlocal={}, fsigId={}, closure={}, typechk={}, dst={} {}", &.{
                 v(funcOff), v(numParams), v(numCaptured), v(numLocals),
                 v(funcSigId), v(local), v(reqCallTypeCheck), v(dst), fmt.sliceU8(std.mem.sliceAsBytes(pc[11..11+numCaptured])),
@@ -799,9 +803,14 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[3].val;
             len += try fmt.printCount(w, "%{} = cast(type={}, %{})", &.{v(dst), v(expTypeId), v(child)});
         },
-        .staticFunc => {
+        .func_ptr => {
             const id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const dst = pc[3].val;
+            const dst = pc[5].val;
+            len += try fmt.printCount(w, "id={} dst={}", &.{v(id), v(dst)});
+        },
+        .func_union => {
+            const id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const dst = pc[5].val;
             len += try fmt.printCount(w, "id={} dst={}", &.{v(id), v(dst)});
         },
         .staticVar => {
@@ -1009,7 +1018,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .constRetain,
         .staticVar,
         .setStaticVar,
-        .staticFunc,
         .setField,
         .jumpCond,
         .compare,
@@ -1024,6 +1032,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numExprs = pc[2].val;
             return 4 + numExprs + 1;
         },
+        .func_union,
         .typeCheck,
         .field,
         .captured,
@@ -1039,6 +1048,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numConds = pc[2].val;
             return 5 + numConds * 3;
         },
+        .func_ptr,
         .deref_struct,
         .field_struct,
         .list,
@@ -1062,20 +1072,18 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .forRangeInit => {
             return 8;
         },
-        .lambda => {
-            return 9;
-        },
         .setFieldDyn,
         .setFieldDynIC => {
             return 10;
         },
+        .lambda,
         .fieldDyn,
         .fieldDynIC => {
             return 11;
         },
         .closure => {
             const numCaptured = pc[4].val;
-            return 11 + numCaptured;
+            return 13 + numCaptured;
         },
         .call_trait,
         .callSym,
@@ -1298,7 +1306,8 @@ pub const OpCode = enum(u8) {
 
     /// Wraps a static function in a function value.
     /// [symId u16] [dstLocal]
-    staticFunc = vmc.CodeStaticFunc,
+    func_ptr = vmc.CodeFuncPtr,
+    func_union = vmc.CodeFuncUnion,
 
     /// Allocates a symbol object to a destination local.
     /// [symType] [symId] [dst]
@@ -1318,7 +1327,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 128);
+    try t.eq(std.enums.values(OpCode).len, 129);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

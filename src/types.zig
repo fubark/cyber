@@ -31,6 +31,8 @@ pub const TypeKind = enum(u8) {
     ct_infer,
     distinct,
     array,
+    func_ptr,
+    func_union,
 };
 
 pub const TypeInfo = packed struct {
@@ -105,6 +107,12 @@ pub const Type = extern struct {
         },
         int: extern struct {
             bits: u8,
+        },
+        func_ptr: extern struct {
+            sig: cy.sema.FuncSigId,
+        },
+        func_union: extern struct {
+            sig: cy.sema.FuncSigId,
         },
     },
 };
@@ -189,10 +197,10 @@ pub const BuiltinTypes = struct {
     pub const Fiber: TypeId = vmc.TYPE_FIBER;
     pub const MetaType: TypeId = vmc.TYPE_METATYPE;
     pub const Type: TypeId = vmc.TYPE_TYPE;
-    pub const Closure: TypeId = vmc.TYPE_CLOSURE;
-    pub const Lambda: TypeId = vmc.TYPE_LAMBDA;
+    pub const Placeholder3: TypeId = vmc.TYPE_PLACEHOLDER3;
+    pub const Placeholder4: TypeId = vmc.TYPE_PLACEHOLDER4;
     pub const UpValue: TypeId = vmc.TYPE_UPVALUE;
-    pub const HostFunc: TypeId = vmc.TYPE_HOST_FUNC;
+    pub const Func: TypeId = vmc.TYPE_FUNC;
     pub const TccState: TypeId = vmc.TYPE_TCC_STATE;
     pub const ExternFunc: TypeId = vmc.TYPE_EXTERN_FUNC;
     pub const Range: TypeId = vmc.TYPE_RANGE;

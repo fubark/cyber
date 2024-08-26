@@ -2,9 +2,9 @@ func foo(a):
     pass
 
 --cytest: error
---ParseError: Expected param type.
+--CompileError: Expected parameter type.
 --
---main:1:11:
+--main:1:10:
 --func foo(a):
---          ^
+--         ^
 --

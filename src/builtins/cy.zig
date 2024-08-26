@@ -237,12 +237,12 @@ fn genNodeValue(vm: *cy.VM, view: ast.AstView, node: *ast.Node) !cy.Value {
     const res = try vm.allocEmptyMap();
     const map = res.castHeapObject(*cy.heap.Map);
     switch (node.type()) {
-        .funcParam => {
-            const param = node.cast(.funcParam);
-            const name = view.funcParamName(param);
+        .func_param => {
+            const param = node.cast(.func_param);
+            const name = view.nodeString(param.name_type);
             try vm.mapSet(map, try vm.retainOrAllocAstring("name"), try vm.allocString(name));
 
-            const typeSpec = try genTypeSpecString(vm, view, param.typeSpec);
+            const typeSpec = try genTypeSpecString(vm, view, param.type);
             try vm.mapSet(map, try vm.retainOrAllocAstring("typeSpec"), typeSpec);
         },
         else => {},

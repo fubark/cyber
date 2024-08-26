@@ -147,7 +147,7 @@ typedef struct IndexSlice {
 
 #define VALUE_IS_BOOLEAN(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == BOOLEAN_MASK)
 #define VALUE_IS_POINTER(v) (v >= NOCYC_POINTER_MASK)
-#define VALUE_IS_CLOSURE(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_CLOSURE))
+#define VALUE_IS_CLOSURE(vm, v) (VALUE_IS_POINTER(v) && (vm->c.typesPtr[OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v))].kind == TYPE_KIND_FUNC_UNION) && (VALUE_AS_HEAPOBJECT(v)->func_union.kind == 2))
 #define VALUE_IS_UPVALUE(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_UPVALUE))
 #define VALUE_IS_FLOAT(v) ((v & TAGGED_VALUE_MASK) != TAGGED_VALUE_MASK)
 #define VALUE_IS_ERROR(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == ERROR_MASK)
@@ -355,7 +355,8 @@ typedef enum {
     CodeForRange,
     CodeForRangeReverse,
     CodeMatch,
-    CodeStaticFunc,
+    CodeFuncPtr,
+    CodeFuncUnion,
     CodeStaticVar,
     CodeSetStaticVar,
     CodeContext,
@@ -389,12 +390,12 @@ enum {
     TYPE_LIST_ITER_DYN = 14,
     TYPE_MAP = 15,
     TYPE_MAP_ITER = 16,
-    TYPE_CLOSURE = 17,
-    TYPE_LAMBDA = 18,
-    TYPE_HOST_FUNC = 19,
+    TYPE_FUNC = 17,
+    TYPE_PLACEHOLDER2 = 18,
+    TYPE_PLACEHOLDER3 = 19,
     TYPE_EXTERN_FUNC = 20,
     TYPE_STRING = 21,
-    TYPE_PLACEHOLDER2 = 22,
+    TYPE_PLACEHOLDER4 = 22,
     TYPE_FIBER = 23,
     TYPE_UPVALUE = 24,
     TYPE_TCC_STATE = 25,
@@ -447,17 +448,6 @@ typedef struct FuncSig {
     uint16_t paramLen;
     bool isTyped;
 } FuncSig;
-
-typedef struct HostFunc {
-    TypeId typeId;
-    u32 rc;
-    void* func;
-    u32 numParams;
-    u32 rFuncSigId;
-    Value tccState;
-    bool hasTccState;
-    bool reqCallTypeCheck;
-} HostFunc;
 
 typedef enum {
     /// Uncaught thrown error. Error value is in `panicPayload`.
@@ -569,29 +559,51 @@ typedef struct UpValue {
     Value val;
 } UpValue;
 
-typedef struct Closure {
-    TypeId typeId;
-    u32 rc;
-    u32 funcPc;
-    u8 numParams;
-    u8 numCaptured;
-    u8 stackSize;
-    u8 local;
-    u32 rFuncSigId;
-    bool reqCallTypeCheck;
-    Value firstCapturedVal;
-} Closure;
+#define FUNC_PTR_BC 0
+#define FUNC_PTR_HOST 1
 
-typedef struct Lambda {
+typedef union FuncData {
+    struct {
+        void* ptr;
+        Value tcc_state;
+        bool has_tcc_state;
+    } host;
+    struct {
+        u32 pc;
+        u16 stack_size;
+    } bc;
+    struct {
+        u32 pc;
+        u16 stack_size;
+        u8 numCaptured;
+        u8 local;
+        Value firstCapturedVal;
+    } closure;
+} FuncData;
+
+typedef struct FuncPtr {
     TypeId typeId;
     u32 rc;
-    u32 funcPc;
-    u8 numParams;
-    u8 stackSize;
+
+    u16 numParams;
+    u8 kind;
     bool reqCallTypeCheck;
-    u8 padding;
-    u32 rFuncSigId;
-} Lambda;
+    u32 sig;
+
+    FuncData data;
+} FuncPtr;
+
+typedef struct FuncUnion {
+    TypeId typeId;
+    u32 rc;
+
+    u16 numParams;
+    u8 kind;
+    bool reqCallTypeCheck;
+    u32 sig;
+
+    FuncData data;
+} FuncUnion;
 
 typedef struct MetaType {
     TypeId typeId;
@@ -649,13 +661,12 @@ typedef union HeapObject {
     Trait trait;
     Range range;
     MetaType metatype;
-    Lambda lambda;
-    Closure closure;
+    FuncPtr func_ptr;
+    FuncUnion func_union;
     UpValue up;
     Map map;
     List list;
     Tuple tuple;
-    HostFunc hostFunc;
     Pointer pointer;
     Int integer;
 } HeapObject;
@@ -682,6 +693,7 @@ typedef struct ZList {
 
 #define TYPE_KIND_STRUCT 8
 #define TYPE_KIND_OPTION 9
+#define TYPE_KIND_FUNC_UNION 18
 
 typedef struct TypeEntry {
     void* sym;
@@ -815,7 +827,7 @@ typedef struct VMC {
 
     ZCyList context_vars; // ContextVar
 
-    void* typesPtr;
+    TypeEntry* typesPtr;
     size_t typesLen;
 
     TraceInfo* trace;
@@ -919,7 +931,7 @@ HeapObjectResult zAllocExternalObject(VM* vm, size_t size);
 HeapObjectResult zAllocExternalCycObject(VM* vm, size_t size);
 ValueResult zAllocStringTemplate(VM* vm, Inst* strs, u8 strCount, Value* vals, u8 valCount);
 ValueResult zAllocStringTemplate2(VM* vm, Value* strs, u8 strCount, Value* vals, u8 valCount);
-ValueResult zAllocFuncFromSym(VM* vm, u16 id);
+ValueResult zAllocFuncPtr(VM* vm, TypeId ptr_t, u16 id);
 Value zGetFieldFallback(VM* vm, HeapObject* obj, uint32_t field_id);
 ResultCode zSetFieldFallback(VM* vm, HeapObject* obj, uint32_t field_id, Value val);
 u16 zOpMatch(const Inst* pc, Value* framePtr);

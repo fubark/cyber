@@ -218,23 +218,38 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
                 if (type_id < cy.types.BuiltinEnd) {
                     cy.panicFmt("Unsupported type {}", .{type_id});
                 } else {
-                    if (c.c.types[type_id].kind == .int) {
-                        const act_v = act.asInt();
-                        const exp_v = exp.asInt();
-                        if (act_v == exp_v) {
+                    switch (c.c.types[type_id].kind) {
+                        .int => {
+                            const act_v = act.asInt();
+                            const exp_v = exp.asInt();
+                            if (act_v == exp_v) {
+                                return true;
+                            } else {
+                                rt.errFmt(c, "actual: {} != {}\n", &.{v(act_v), v(exp_v)});
+                                return false;
+                            }
+                        },
+                        .func_ptr => {
+                            const act_v = act.castHeapObject(*cy.heap.FuncPtr);
+                            const exp_v = exp.castHeapObject(*cy.heap.FuncPtr);
+                            if (act_v.kind != exp_v.kind) {
+                                return false;
+                            }
+                            if (act_v.sig != exp_v.sig) {
+                                return false;
+                            }
                             return true;
-                        } else {
-                            rt.errFmt(c, "actual: {} != {}\n", &.{v(act_v), v(exp_v)});
-                            return false;
+                        },
+                        else => {
+                            const actv = act.asAnyOpaque();
+                            const expv = exp.asAnyOpaque();
+                            if (actv == expv) {
+                                return true;
+                            } else {
+                                rt.errFmt(c, "actual: {} != {}\n", &.{v(actv), v(expv)});
+                                return false;
+                            }
                         }
-                    }
-                    const actv = act.asAnyOpaque();
-                    const expv = exp.asAnyOpaque();
-                    if (actv == expv) {
-                        return true;
-                    } else {
-                        rt.errFmt(c, "actual: {} != {}\n", &.{v(actv), v(expv)});
-                        return false;
                     }
                 }
             }

@@ -987,7 +987,9 @@ pub fn ffiBindLib(vm: *cy.VM, config: BindLibConfig) !Value {
             const symKey = try vm.retainOrAllocAstring(cfunc.namez);
             const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
             const funcSig = vm.compiler.sema.getFuncSig(cfunc.funcSigId);
-            const funcVal = try cy.heap.allocHostFunc(vm, func, @intCast(cfunc.params.len),
+
+            const ptr_t = try cy.vm.getFuncPtrType(vm, cfunc.funcSigId);
+            const funcVal = try cy.heap.allocHostFuncPtr(vm, ptr_t, func, @intCast(cfunc.params.len),
                 cfunc.funcSigId, cyState, funcSig.reqCallTypeCheck);
             try table.asHeapObject().table.set(vm, symKey, funcVal);
             vm.release(symKey);
@@ -1007,7 +1009,8 @@ pub fn ffiBindLib(vm: *cy.VM, config: BindLibConfig) !Value {
             const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
 
             const funcSigId = try vm.sema.ensureFuncSigRt(&.{ bt_data.PtrVoid }, cstruct.type);
-            const funcVal = try cy.heap.allocHostFunc(vm, func, 1, funcSigId, cyState, false);
+            const ptr_t = try cy.vm.getFuncPtrType(vm, funcSigId);
+            const funcVal = try cy.heap.allocHostFuncPtr(vm, ptr_t, func, 1, funcSigId, cyState, false);
             try table.asHeapObject().table.set(vm, symKey, funcVal);
             vm.release(symKey);
             vm.release(funcVal);

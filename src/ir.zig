@@ -97,7 +97,8 @@ pub const ExprCode = enum(u8) {
     byte,
     none,
     unOpEnd,
-    funcSym,
+    func_ptr,
+    func_union,
     varSym,
     context,
     typeSym,
@@ -490,8 +491,12 @@ pub const EnumMemberSym = struct {
     val: u8,
 };
 
-pub const FuncSym = struct {
+pub const FuncPtr = struct {
     func: *cy.Func,
+};
+
+pub const FuncUnion = struct {
+    expr: Loc,
 };
 
 pub const TypeSym = struct {
@@ -665,7 +670,8 @@ pub fn ExprData(comptime code: ExprCode) type {
         .varSym => VarSym,
         .context => Context,
         .enumMemberSym => EnumMemberSym,
-        .funcSym => FuncSym,
+        .func_ptr => FuncPtr,
+        .func_union => FuncUnion,
         .typeSym => TypeSym,
         .float => Float,
         .int => Int,

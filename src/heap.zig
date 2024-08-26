@@ -118,9 +118,9 @@ pub const HeapObject = extern union {
     range: Range,
 
     // Functions.
-    closure: Closure,
-    lambda: Lambda,
-    hostFunc: HostFunc,
+    func: FuncUnion,
+    func_ptr: FuncPtr,
+    func_union: FuncUnion,
     externFunc: ExternFunc,
 
     // Strings.
@@ -353,37 +353,6 @@ pub const MapIterator = extern struct {
     rc: u32,
     map: Value,
     nextIdx: u32,
-};
-
-pub const Closure = extern struct {
-    typeId: cy.TypeId align (8),
-    rc: u32,
-    funcPc: u32, 
-    numParams: u8,
-    numCaptured: u8,
-    stackSize: u8,
-    /// Closure value is copied to this local to provide captured var lookup.
-    local: u8,
-    funcSigId: u32,
-    reqCallTypeCheck: bool,
-
-    // Begins array of `Box` values.
-    firstCapturedVal: Value,
-
-    pub inline fn getCapturedValuesPtr(self: *Closure) [*]Value {
-        return @ptrCast(&self.firstCapturedVal);
-    }
-};
-
-const Lambda = extern struct {
-    typeId: cy.TypeId align(8),
-    rc: u32,
-    funcPc: u32, 
-    numParams: u8,
-    stackSize: u8,
-    reqCallTypeCheck: bool,
-    padding: u8 = 0,
-    funcSigId: u32,
 };
 
 pub const StringType = enum(u2) {
@@ -653,15 +622,73 @@ const UpValue = extern struct {
     val: Value,
 };
 
-const HostFunc = extern struct {
+const FuncPtrKind = enum(u8) {
+    bc,
+    host,
+};
+
+pub const FuncPtr = extern struct {
     typeId: cy.TypeId align(8),
     rc: u32,
-    func: vmc.HostFuncFn,
-    numParams: u32,
-    funcSigId: u32,
-    tccState: Value,
-    hasTccState: bool,
+
+    numParams: u16,
+    kind: FuncPtrKind,
     reqCallTypeCheck: bool,
+    sig: cy.sema.FuncSigId,
+
+    data: extern union {
+        host: extern struct {
+            ptr: vmc.HostFuncFn,
+            tcc_state: Value,
+            has_tcc_state: bool,
+        },
+        bc: extern struct {
+            pc: u32,
+            stack_size: u16,
+        },
+    },
+};
+
+const FuncUnionKind = enum(u8) {
+    bc,
+    host,
+    closure,
+};
+
+pub const FuncUnion = extern struct {
+    typeId: cy.TypeId align (8),
+    rc: u32,
+
+    numParams: u16,
+    kind: FuncUnionKind,
+    reqCallTypeCheck: bool,
+    sig: cy.sema.FuncSigId,
+
+    data: extern union {
+        host: extern struct {
+            ptr: vmc.HostFuncFn,
+            tcc_state: Value,
+            has_tcc_state: bool,
+        },
+        bc: extern struct {
+            pc: u32,
+            stack_size: u16,
+        },
+        closure: extern struct {
+            pc: u32,
+            stack_size: u16,
+            numCaptured: u8,
+            /// Closure value is copied to this local to provide captured var lookup.
+            local: u8,
+
+            // Begins array of `Box` values.
+            firstCapturedVal: Value,
+        },
+    },
+
+    pub inline fn getCapturedValuesPtr(self: *FuncUnion) [*]Value {
+        return @ptrCast(&self.data.closure.firstCapturedVal);
+    }
 };
 
 const TccState = extern struct {
@@ -1265,16 +1292,36 @@ pub fn allocClosure(
     return Value.initCycPtr(obj);
 }
 
-pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, stackSize: u8, funcSigId: u16, req_type_check: bool) !Value {
+pub fn allocBcFuncPtr(self: *cy.VM, ptr_t: cy.TypeId, funcPc: usize, numParams: u8, stackSize: u8, funcSigId: u16, req_type_check: bool) !Value {
     const obj = try allocPoolObject(self);
-    obj.lambda = .{
-        .typeId = bt.Lambda,
+    obj.func_ptr = .{
+        .typeId = ptr_t,
         .rc = 1,
-        .funcPc = @intCast(funcPc),
         .numParams = numParams,
-        .stackSize = stackSize,
-        .funcSigId = funcSigId,
+        .sig = funcSigId,
+        .kind = .bc,
         .reqCallTypeCheck = req_type_check,
+        .data = .{ .bc = .{
+            .pc = @intCast(funcPc),
+            .stack_size = stackSize,
+        }},
+    };
+    return Value.initNoCycPtr(obj);
+}
+
+pub fn allocBcFuncUnion(self: *cy.VM, union_t: cy.TypeId, funcPc: usize, numParams: u8, stackSize: u8, funcSigId: u16, req_type_check: bool) !Value {
+    const obj = try allocPoolObject(self);
+    obj.func_union = .{
+        .typeId = union_t,
+        .rc = 1,
+        .numParams = numParams,
+        .sig = funcSigId,
+        .kind = .bc,
+        .reqCallTypeCheck = req_type_check,
+        .data = .{ .bc = .{
+            .pc = @intCast(funcPc),
+            .stack_size = stackSize,
+        }},
     };
     return Value.initNoCycPtr(obj);
 }
@@ -1505,7 +1552,8 @@ pub const VmExt = struct {
     pub const allocOwnedUstring = Root.getOrAllocOwnedUstring;
     pub const allocAstringSlice = Root.allocAstringSlice;
     pub const allocUstringSlice = Root.allocUstringSlice;
-    pub const allocHostFunc = Root.allocHostFunc;
+    pub const allocHostFuncPtr = Root.allocHostFuncPtr;
+    pub const allocHostFuncUnion = Root.allocHostFuncUnion;
     pub const allocTable = Root.allocTable;
     pub const allocEmptyMap = Root.allocEmptyMap;
     pub const allocEmptyListDyn = Root.allocEmptyListDyn;
@@ -1704,21 +1752,46 @@ pub fn allocExternFunc(self: *cy.VM, cyFunc: Value, funcPtr: *anyopaque, tccStat
     }
 }
 
-pub fn allocHostFunc(self: *cy.VM, func: cy.ZHostFuncFn, numParams: u32, funcSigId: cy.sema.FuncSigId, tccState: ?Value, reqCallTypeCheck: bool) !Value {
+pub fn allocHostFuncPtr(self: *cy.VM, ptr_t: cy.TypeId, func: cy.ZHostFuncFn, numParams: u32, funcSigId: cy.sema.FuncSigId, tccState: ?Value, reqCallTypeCheck: bool) !Value {
     const obj = try allocPoolObject(self);
-    obj.hostFunc = .{
-        .typeId = bt.HostFunc,
+    obj.func_ptr = .{
+        .typeId = ptr_t,
         .rc = 1,
-        .func = @ptrCast(func),
-        .numParams = numParams,
-        .funcSigId = funcSigId,
-        .tccState = undefined,
-        .hasTccState = false,
+        .numParams = @intCast(numParams),
+        .kind = .host,
+        .sig = funcSigId,
         .reqCallTypeCheck = reqCallTypeCheck,
+        .data = .{ .host = .{
+            .ptr = @ptrCast(func),
+            .tcc_state = undefined,
+            .has_tcc_state = false,
+        }},
     };
     if (tccState) |state| {
-        obj.hostFunc.tccState = state;
-        obj.hostFunc.hasTccState = true;
+        obj.func_ptr.data.host.tcc_state = state;
+        obj.func_ptr.data.host.has_tcc_state = true;
+    }
+    return Value.initNoCycPtr(obj);
+}
+
+pub fn allocHostFuncUnion(self: *cy.VM, union_t: cy.TypeId, func: cy.ZHostFuncFn, numParams: u32, funcSigId: cy.sema.FuncSigId, tccState: ?Value, reqCallTypeCheck: bool) !Value {
+    const obj = try allocPoolObject(self);
+    obj.func_union = .{
+        .typeId = union_t,
+        .rc = 1,
+        .numParams = @intCast(numParams),
+        .kind = .host,
+        .sig = funcSigId,
+        .reqCallTypeCheck = reqCallTypeCheck,
+        .data = .{ .host = .{
+            .ptr = @ptrCast(func),
+            .tcc_state = undefined,
+            .has_tcc_state = false,
+        }},
+    };
+    if (tccState) |state| {
+        obj.func_union.data.host.tcc_state = state;
+        obj.func_union.data.host.has_tcc_state = true;
     }
     return Value.initNoCycPtr(obj);
 }
@@ -1853,13 +1926,13 @@ pub fn allocEmptyObjectSmall(self: *cy.VM, type_id: cy.TypeId) !Value {
     return Value.initCycPtr(obj);
 }
 
-pub fn allocFuncFromSym(self: *cy.VM, func: rt.FuncSymbol) !Value {
+pub fn allocFuncPtr(self: *cy.VM, ptr_t: cy.TypeId, func: rt.FuncSymbol) !Value {
     switch (func.type) {
         .host_func => {
-            return allocHostFunc(self, @ptrCast(func.data.host_func), func.nparams, func.sig, null, func.req_type_check);
+            return allocHostFuncPtr(self, ptr_t, @ptrCast(func.data.host_func), func.nparams, func.sig, null, func.req_type_check);
         },
         .func => {
-            return allocLambda(self, func.data.func.pc,
+            return allocBcFuncPtr(self, ptr_t, func.data.func.pc,
                 @intCast(func.nparams),
                 @intCast(func.data.func.stackSize),
                 @intCast(func.sig),
@@ -1868,6 +1941,27 @@ pub fn allocFuncFromSym(self: *cy.VM, func: rt.FuncSymbol) !Value {
         },
         .null => return error.Unexpected,
     }
+}
+
+pub fn allocFuncUnion(self: *cy.VM, union_t: cy.TypeId, func: rt.FuncSymbol) !Value {
+    switch (func.type) {
+        .host_func => {
+            return allocHostFuncUnion(self, union_t, @ptrCast(func.data.host_func), func.nparams, func.sig, null, func.req_type_check);
+        },
+        .func => {
+            return allocBcFuncUnion(self, union_t, func.data.func.pc,
+                @intCast(func.nparams),
+                @intCast(func.data.func.stackSize),
+                @intCast(func.sig),
+                func.req_type_check
+            );
+        },
+        .null => return error.Unexpected,
+    }
+}
+
+pub fn allocFunc(vm: *cy.VM, func: rt.FuncSymbol) !Value {
+    return allocFuncUnion(vm, bt.Func, func);
 }
 
 /// `skip_cyc_children` is important for reducing the work for the GC mark/sweep.
@@ -1926,22 +2020,33 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
             }
             freePoolObject(vm, obj);
         },
-        bt.Closure => {
-            const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
-            for (src) |capturedVal| {
-                if (skip_cyc_children and capturedVal.isCycPointer()) {
-                    continue;
-                }
-                cy.arc.release(vm, capturedVal);
+        bt.Func => {
+            switch (obj.func.kind) {
+                .host => {
+                    if (obj.func.data.host.has_tcc_state) {
+                        cy.arc.releaseObject(vm, obj.func.data.host.tcc_state.asHeapObject());
+                    }
+                    freePoolObject(vm, obj);
+                },
+                .closure => {
+                    const num_captured = obj.func.data.closure.numCaptured;
+                    const src = obj.func.getCapturedValuesPtr()[0..num_captured];
+                    for (src) |capturedVal| {
+                        if (skip_cyc_children and capturedVal.isCycPointer()) {
+                            continue;
+                        }
+                        cy.arc.release(vm, capturedVal);
+                    }
+                    if (num_captured <= 2) {
+                        freePoolObject(vm, obj);
+                    } else {
+                        freeExternalObject(vm, obj, (3 + num_captured) * @sizeOf(Value), true);
+                    }
+                },
+                .bc => {
+                    freePoolObject(vm, obj);
+                },
             }
-            if (obj.closure.numCaptured <= 2) {
-                freePoolObject(vm, obj);
-            } else {
-                freeExternalObject(vm, obj, (3 + obj.closure.numCaptured) * @sizeOf(Value), true);
-            }
-        },
-        bt.Lambda => {
-            freePoolObject(vm, obj);
         },
         bt.Integer => {
             freePoolObject(vm, obj);
@@ -2016,13 +2121,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
             cy.arc.releaseObject(vm, obj.externFunc.tccState.asHeapObject());
             cy.arc.releaseObject(vm, obj.externFunc.func.asHeapObject());
             freePoolObject(vm, obj);
-        },
-        bt.HostFunc => {
-            if (obj.hostFunc.hasTccState) {
-                cy.arc.releaseObject(vm, obj.hostFunc.tccState.asHeapObject());
-            }
-            freePoolObject(vm, obj);
-        },
+        }, 
         bt.TccState => {
             if (cy.hasFFI) {
                 tcc.tcc_delete(obj.tccState.state);
@@ -2092,6 +2191,40 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                         } else {
                             freeExternalObject(vm, obj, (1 + nfields) * @sizeOf(Value), true);
                         }
+                    }
+                },
+                .func_ptr => {
+                    if (obj.func_ptr.kind == .host and obj.func_ptr.data.host.has_tcc_state) {
+                        cy.arc.releaseObject(vm, obj.func_ptr.data.host.tcc_state.asHeapObject());
+                    }
+                    freePoolObject(vm, obj);
+                },
+                .func_union => {
+                    switch (obj.func_union.kind) {
+                        .host => {
+                            if (obj.func_union.data.host.has_tcc_state) {
+                                cy.arc.releaseObject(vm, obj.func_union.data.host.tcc_state.asHeapObject());
+                            }
+                            freePoolObject(vm, obj);
+                        },
+                        .closure => {
+                            const num_captured = obj.func_union.data.closure.numCaptured;
+                            const src = obj.func_union.getCapturedValuesPtr()[0..num_captured];
+                            for (src) |capturedVal| {
+                                if (skip_cyc_children and capturedVal.isCycPointer()) {
+                                    continue;
+                                }
+                                cy.arc.release(vm, capturedVal);
+                            }
+                            if (num_captured <= 2) {
+                                freePoolObject(vm, obj);
+                            } else {
+                                freeExternalObject(vm, obj, (3 + num_captured) * @sizeOf(Value), true);
+                            }
+                        },
+                        .bc => {
+                            freePoolObject(vm, obj);
+                        },
                     }
                 },
                 .array => {
@@ -2268,8 +2401,8 @@ test "heap internals." {
     }
 
     if (builtin.os.tag != .windows) { 
-        try t.eq(@sizeOf(Closure), 32);
-        try t.eq(@sizeOf(Lambda), 24);
+        try t.eq(@sizeOf(FuncUnion), 40);
+        try t.eq(@sizeOf(FuncPtr), 40);
         try t.eq(@sizeOf(Astring), 16);
         try t.eq(@sizeOf(Ustring), 16);
         if (cy.is32Bit) {
@@ -2282,7 +2415,6 @@ test "heap internals." {
         try t.eq(@sizeOf(Array), 24);
         try t.eq(@sizeOf(Object), 16);
         try t.eq(@sizeOf(UpValue), 16);
-        try t.eq(@sizeOf(HostFunc), 40);
         try t.eq(@sizeOf(MetaType), 16);
         if (cy.hasFFI) {
             try t.eq(@sizeOf(TccState), 32);
@@ -2324,16 +2456,19 @@ test "heap internals." {
     try t.eq(@offsetOf(List, "typeId"), 0);    
     try t.eq(@offsetOf(List, "rc"), 4);    
 
-    try t.eq(@offsetOf(Closure, "typeId"), @offsetOf(vmc.Closure, "typeId"));
-    try t.eq(@offsetOf(Closure, "rc"), @offsetOf(vmc.Closure, "rc"));
-    try t.eq(@offsetOf(Closure, "funcPc"), @offsetOf(vmc.Closure, "funcPc"));
-    try t.eq(@offsetOf(Closure, "numParams"), @offsetOf(vmc.Closure, "numParams"));
-    try t.eq(@offsetOf(Closure, "numCaptured"), @offsetOf(vmc.Closure, "numCaptured"));
-    try t.eq(@offsetOf(Closure, "stackSize"), @offsetOf(vmc.Closure, "stackSize"));
-    try t.eq(@offsetOf(Closure, "local"), @offsetOf(vmc.Closure, "local"));
-    try t.eq(@offsetOf(Closure, "funcSigId"), @offsetOf(vmc.Closure, "rFuncSigId"));
-    try t.eq(@offsetOf(Closure, "reqCallTypeCheck"), @offsetOf(vmc.Closure, "reqCallTypeCheck"));
-    try t.eq(@offsetOf(Closure, "firstCapturedVal"), @offsetOf(vmc.Closure, "firstCapturedVal"));
+    var func_u: FuncUnion = undefined;
+    const c_func_u: *vmc.FuncUnion = @ptrCast(&func_u);
+    try t.eq(&func_u.typeId, &c_func_u.typeId);
+    try t.eq(&func_u.rc, &c_func_u.rc);
+    try t.eq(&func_u.numParams, &c_func_u.numParams);
+    try t.eq(&func_u.sig, &c_func_u.sig);
+    try t.eq(&func_u.reqCallTypeCheck, &c_func_u.reqCallTypeCheck);
+    try t.eq(&func_u.data.closure.pc, &c_func_u.data.closure.pc);
+    try t.eq(&func_u.data.closure.stack_size, &c_func_u.data.closure.stack_size);
+    try t.eq(&func_u.data.closure.numCaptured, &c_func_u.data.closure.numCaptured);
+    try t.eq(&func_u.data.closure.local, &c_func_u.data.closure.local);
+    try t.eq(&func_u.data.closure.firstCapturedVal, @ptrCast(&c_func_u.data.closure.firstCapturedVal));
+    try t.eq(@intFromPtr(&func_u.data.closure.firstCapturedVal), @intFromPtr(&func_u) + 24);
 
     try t.eq(@offsetOf(cy.ValueMap, "metadata"), @offsetOf(vmc.ValueMap, "metadata"));
     try t.eq(@offsetOf(cy.ValueMap, "entries"), @offsetOf(vmc.ValueMap, "entries"));

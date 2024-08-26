@@ -384,7 +384,12 @@ pub const Tokenizer = struct {
                 try t.pushToken(.plus, start);
             },
             '_' => {
-                try t.pushToken(.underscore, start);
+                const next = peek(t);
+                if ((next >= 'A' and next <= 'Z') or (next >= 'a' and next <= 'z') or next == '$' or next == '_') {
+                    try tokenizeKeywordOrIdent(t, start);
+                } else {
+                    try t.pushToken(.underscore, start);
+                }
             },
             '^' => {
                 try t.pushToken(.caret, start);

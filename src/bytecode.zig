@@ -92,6 +92,7 @@ pub const ByteCodeBuffer = struct {
     }
 
     pub fn clear(self: *ByteCodeBuffer) void {
+        self.main_pc = 0;
         self.ops.clearRetainingCapacity();
         self.consts.clearRetainingCapacity();
         self.debugTable.clearRetainingCapacity();
@@ -629,6 +630,11 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
         .jumpNotCond => {
             const jump = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
             len += try fmt.printCount(w, "if !%{} jmp @{}", &.{v(pc[1].val), v(pcOffset + jump)});
+        },
+        .not => {
+            const cond = pc[1].val;
+            const dst = pc[2].val;
+            len += try fmt.printCount(w, "%{} = !%{}", &.{v(dst), v(cond)});
         },
         .none => {
             const opt = pc[1].val;
@@ -1325,7 +1331,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 129);
+    try t.eq(std.enums.values(OpCode).len, 130);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

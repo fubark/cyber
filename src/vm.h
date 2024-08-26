@@ -724,6 +724,12 @@ typedef struct TypeEntry {
         } object;
         struct {
             u16 numFields;
+
+            bool cstruct;
+            bool has_boxed_fields;
+            bool tuple;
+
+            bool* fields;
         } struct_t;
         struct {
             void* getChildrenFn;

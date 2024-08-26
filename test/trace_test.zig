@@ -78,8 +78,8 @@ test "ARC." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 8);
-        try t.eq(trace.numReleases, 8);
+        try t.eq(trace.numRetains, 7);
+        try t.eq(trace.numReleases, 7);
     }}.func);
 
     // Object is released when returned rvalue field access.
@@ -130,8 +130,8 @@ test "ARC for static variable declarations." {
         _ = try res.getValue();
         c.deinit(run.vm);
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 8);
-        try t.eq(trace.numRetains, 7);
+        try t.eq(trace.numRetainAttempts, 7);
+        try t.eq(trace.numRetains, 6);
     }}.func);
 }
 
@@ -146,10 +146,10 @@ test "ARC assignments." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 8);
-        try t.eq(trace.numReleaseAttempts, 8);
-        try t.eq(trace.numRetains, 7);
-        try t.eq(trace.numReleases, 7);
+        try t.eq(trace.numRetainAttempts, 7);
+        try t.eq(trace.numReleaseAttempts, 7);
+        try t.eq(trace.numRetains, 6);
+        try t.eq(trace.numReleases, 6);
     }}.func);
 
     // Set index on rc-candidate child to rc-candidate.
@@ -158,14 +158,14 @@ test "ARC assignments." {
         \\var a = {123}
         \\var b = Map{}
         \\a[0] = b
-        \\t.eq(typeof(a[0]), Map)
+        \\t.eq(type(a[0]), Map)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 9);
-        try t.eq(trace.numReleaseAttempts, 9);
-        try t.eq(trace.numRetains, 8);
-        try t.eq(trace.numReleases, 8);
+        try t.eq(trace.numRetainAttempts, 8);
+        try t.eq(trace.numReleaseAttempts, 8);
+        try t.eq(trace.numRetains, 7);
+        try t.eq(trace.numReleases, 7);
     }}.func);
 }
 
@@ -179,8 +179,8 @@ test "ARC for passing call args." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 6);
-        try t.eq(trace.numReleases, 6);
+        try t.eq(trace.numRetains, 5);
+        try t.eq(trace.numReleases, 5);
     }}.func);
 }
 
@@ -198,8 +198,8 @@ test "ARC for function return values." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 6);
-        try t.eq(trace.numReleases, 6);
+        try t.eq(trace.numRetains, 5);
+        try t.eq(trace.numReleases, 5);
     }}.func);
 
     // Object is released when returned from a function if no followup assignment.
@@ -226,7 +226,7 @@ test "ARC on temp locals in expressions." {
         \\var rel = traceReleases()
         \\var res = Map{a={123}}['a'][0]
         \\test.eq(traceRetains() - ret, 11)
-        \\test.eq(traceReleases() - rel, 12)
+        \\test.eq(traceReleases() - rel, 11)
         \\test.eq(res, 123)
     );
 
@@ -310,8 +310,8 @@ test "ARC in loops." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 21);
-        try t.eq(trace.numRetains, 21);
+        try t.eq(trace.numRetainAttempts, 17);
+        try t.eq(trace.numRetains, 17);
     }}.func);
 
     // For iter with `any` temp value, the last temp value is released at the end of the block.
@@ -323,9 +323,9 @@ test "ARC in loops." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 31);
-        try t.eq(trace.numRetains, 31);
-        try t.eq(trace.numReleases, 31);
+        try t.eq(trace.numRetainAttempts, 27);
+        try t.eq(trace.numRetains, 27);
+        try t.eq(trace.numReleases, 27);
     }}.func);
 }
 

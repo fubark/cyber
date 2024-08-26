@@ -1820,10 +1820,10 @@ test "sym internals" {
     if (builtin.mode == .ReleaseFast) {
         if (cy.is32Bit) {
             try t.eq(@sizeOf(Sym), 16);
-            try t.eq(@sizeOf(Func), 40);
+            try t.eq(@sizeOf(Func), 36);
         } else {
             try t.eq(@sizeOf(Sym), 24);
-            try t.eq(@sizeOf(Func), 64);
+            try t.eq(@sizeOf(Func), 56);
         }
     } else {
         if (cy.is32Bit) {
@@ -1831,7 +1831,7 @@ test "sym internals" {
             try t.eq(@sizeOf(Func), 44);
         } else {
             try t.eq(@sizeOf(Sym), 24);
-            try t.eq(@sizeOf(Func), 72);
+            try t.eq(@sizeOf(Func), 64);
         }
     }
 

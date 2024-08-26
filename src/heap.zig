@@ -19,6 +19,7 @@ const log = cy.log.scoped(.heap);
 const NullId = std.math.maxInt(u32);
 const NullU8 = std.math.maxInt(u8);
 const log_mem = build_options.log_mem;
+const log_free = builtin.mode == .Debug and false;
 
 var gpa: std.heap.GeneralPurposeAllocator(.{
     .enable_memory_limit = false,

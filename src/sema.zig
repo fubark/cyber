@@ -5334,6 +5334,12 @@ pub const ChunkExt = struct {
                     }
                     return newRes;
                 }
+                
+                if (expr.target_t == bt.ExprType) {
+                    // Infer expression type.
+                    const loc = try c.ir.pushExpr(.type, c.alloc, bt.ExprType, expr.node, .{ .typeId = res.type.id, .expr_type = true });
+                    return ExprResult.init(loc, CompactType.init(bt.ExprType));
+                }
 
                 if (!target_is_boxed and expr.fit_target_unbox_dyn and res.type.isDynAny()) {
                     const loc = try c.unboxOrCheck(expr.target_t, res, expr.node);
@@ -5341,12 +5347,6 @@ pub const ChunkExt = struct {
                     newRes.irIdx = loc;
                     newRes.type.id = @intCast(expr.target_t);
                     return newRes;
-                }
-
-                if (expr.target_t == bt.ExprType) {
-                    // Infer expression type.
-                    const loc = try c.ir.pushExpr(.type, c.alloc, bt.ExprType, expr.node, .{ .typeId = res.type.id, .expr_type = true });
-                    return ExprResult.init(loc, CompactType.init(bt.ExprType));
                 }
             }
 
@@ -6967,7 +6967,7 @@ pub const FuncParam = packed struct {
 };
 
 pub const FuncSigId = u32;
-pub const FuncSig = struct {
+pub const FuncSig = packed struct {
     /// Last elem is the return type sym.
     params_ptr: [*]const FuncParam,
     ret: cy.TypeId,
@@ -7460,7 +7460,7 @@ test "sema internals." {
     }
 
     if (cy.is32Bit) {
-        try t.eq(@sizeOf(FuncSig), 12);
+        try t.eq(@sizeOf(FuncSig), 16);
     } else {
         try t.eq(@sizeOf(FuncSig), 16);
     }

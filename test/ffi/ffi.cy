@@ -68,7 +68,7 @@ os.free(cstr)
 -- Return struct ptr and convert to Cyber object.
 cstr = os.cstr('foo')
 var ptr = lib.testRetObjectPtr(MyObject{a=123.0, b=10, c=cstr, d=true})
-t.eq(typeof(ptr), metatype(*void))
+t.eq(type(ptr), *void)
 res = lib.ptrToMyObject(ptr)
 t.eq(res.a, 123.0)
 t.eq(res.b, 10)

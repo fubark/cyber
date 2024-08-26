@@ -737,15 +737,15 @@ test "clAsSymbolId()" {
 
     var str = c.toStr("foo");
     var val = c.symbol(vm, str);
-    try t.eq(c.asSymbolId(val), 0);
+    try t.eq(c.asSymbolId(val), 49);
 
     str = c.toStr("bar");
     val = c.symbol(vm, str);
-    try t.eq(c.asSymbolId(val), 1);
+    try t.eq(c.asSymbolId(val), 50);
 
     str = c.toStr("foo");
     val = c.symbol(vm, str);
-    try t.eq(c.asSymbolId(val), 0);
+    try t.eq(c.asSymbolId(val), 49);
 }
 
 export fn clToTempString(vm: *cy.VM, val: Value) c.Str {
@@ -771,7 +771,8 @@ test "Constants." {
     try t.eq(c.TypeType, bt.Type);
     try t.eq(c.TypeTccState, bt.TccState);
     try t.eq(c.TypeTuple, bt.Tuple);
-    try t.eq(c.TypeMetaType, bt.MetaType);
+    try t.eq(c.TypeFuncSig, bt.FuncSig);
+    try t.eq(c.TypeExprType, bt.ExprType);
 }
 
 export fn clAsHostObject(val: Value) *anyopaque {
@@ -834,7 +835,11 @@ test "List ops." {
     defer c.destroy(vm);
 
     var list: c.Value = undefined;
-    _ = c.eval(vm, c.toStr("{1, 2, 3}"), &list);
+    const eval_res = c.eval(vm, c.toStr("{1, 2, 3}"), &list);
+    if (eval_res != c.Success) {
+        const summary = c.fromStr(c.newLastErrorSummary(vm));
+        std.debug.panic("{s}", .{summary});
+    }
     defer c.release(vm, list);
 
     // Initial cap.

@@ -430,6 +430,7 @@ pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
 }
 
 fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
+    log.tracev("builtins: on load", .{});
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     const chunk_sym = cy.Sym.fromC(mod).cast(.chunk);
     const b = bindings.ModuleBuilder.init(vm.compiler, @ptrCast(chunk_sym));

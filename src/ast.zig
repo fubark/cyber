@@ -919,7 +919,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 102);
+    try t.eq(std.enums.values(NodeType).len, 101);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 

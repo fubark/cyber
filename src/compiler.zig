@@ -1062,6 +1062,7 @@ fn createDynMethodIds(self: *Compiler) !void {
 
 fn resolveSyms(self: *Compiler) !void {
     log.tracev("Resolve syms.", .{});
+    defer log.tracev("Resolve syms. Done.", .{});
     for (self.newChunks()) |chunk| {
         // Iterate with explicit index since unnamed types could be appended.
         var i: u32 = 0;

@@ -290,7 +290,8 @@ pub const TypeExternFunc = c.CL_TYPE_EXTERN_FUNC;
 pub const TypeTccState = c.CL_TYPE_TCCSTATE;
 pub const TypeTuple = c.CL_TYPE_TUPLE;
 pub const TypeType = c.CL_TYPE_TYPE;
-pub const TypeMetaType = c.CL_TYPE_METATYPE;
+pub const TypeFuncSig = c.CL_TYPE_FUNC_SIG;
+pub const TypeExprType = c.CL_TYPE_EXPRTYPE;
 
 pub const ResultCode = c.CLResultCode;
 pub const Success = c.CL_SUCCESS;

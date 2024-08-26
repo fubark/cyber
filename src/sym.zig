@@ -21,11 +21,7 @@ pub const SymType = enum(u8) {
     object_t,
     struct_t,
     trait_t,
-    array_t,
-    // pointer_t,
-    bool_t,
-    int_t,
-    float_t,
+    type,
     module_alias,
     use_alias,
     chunk,
@@ -114,25 +110,10 @@ pub const Sym = extern struct {
                 hostType.getMod().deinit(alloc);
                 alloc.destroy(hostType);
             },
-            .bool_t => {
-                const bool_t = self.cast(.bool_t);
-                bool_t.getMod().deinit(alloc);
-                alloc.destroy(bool_t);
-            },
-            .int_t => {
-                const int_t = self.cast(.int_t);
-                int_t.getMod().deinit(alloc);
-                alloc.destroy(int_t);
-            },
-            .float_t => {
-                const float_t = self.cast(.float_t);
-                float_t.getMod().deinit(alloc);
-                alloc.destroy(float_t);
-            },
-            .array_t => {
-                const array_t = self.cast(.array_t);
-                array_t.getMod().deinit(alloc);
-                alloc.destroy(array_t);
+            .type => {
+                const type_sym = self.cast(.type);
+                type_sym.getMod().deinit(alloc);
+                alloc.destroy(type_sym);
             },
             .chunk => {
                 const chunk = self.cast(.chunk);
@@ -232,9 +213,8 @@ pub const Sym = extern struct {
             .struct_t   => return self.cast(.struct_t).variant,
             .hostobj_t  => return self.cast(.hostobj_t).variant,
             .enum_t     => return self.cast(.enum_t).variant,
-            .int_t      => return self.cast(.int_t).variant,
             .distinct_t => return self.cast(.distinct_t).variant,
-            .array_t    => return self.cast(.array_t).variant,
+            .type       => return self.cast(.type).variant,
             else => return null,
         }
     }
@@ -245,9 +225,8 @@ pub const Sym = extern struct {
             .struct_t   => self.cast(.struct_t).variant = variant,
             .hostobj_t  => self.cast(.hostobj_t).variant = variant,
             .enum_t     => self.cast(.enum_t).variant = variant,
-            .int_t      => self.cast(.int_t).variant = variant,
             .distinct_t => self.cast(.distinct_t).variant = variant,
-            .array_t    => self.cast(.array_t).variant = variant,
+            .type       => self.cast(.type).variant = variant,
             else => return error.Unsupported,
         }
     }
@@ -260,11 +239,8 @@ pub const Sym = extern struct {
         switch (self.type) {
             .use_alias => return self.cast(.use_alias).sym.isType(),
             .hostobj_t,
-            .bool_t,
-            .int_t,
-            .float_t,
             .typeAlias,
-            .array_t,
+            .type,
             .struct_t,
             .object_t,
             .trait_t,
@@ -311,13 +287,10 @@ pub const Sym = extern struct {
         switch (self.type) {
             .chunk           => return @ptrCast(&self.cast(.chunk).mod),
             .enum_t          => return @ptrCast(&self.cast(.enum_t).mod),
-            .array_t         => return @ptrCast(&self.cast(.array_t).mod),
+            .type            => return @ptrCast(&self.cast(.type).mod),
             .struct_t        => return @ptrCast(&self.cast(.struct_t).mod),
             .object_t        => return @ptrCast(&self.cast(.object_t).mod),
             .hostobj_t       => return @ptrCast(&self.cast(.hostobj_t).mod),
-            .bool_t          => return @ptrCast(&self.cast(.bool_t).mod),
-            .int_t           => return @ptrCast(&self.cast(.int_t).mod),
-            .float_t         => return @ptrCast(&self.cast(.float_t).mod),
             .placeholder     => return @ptrCast(&self.cast(.placeholder).mod),
             .distinct_t      => return @ptrCast(&self.cast(.distinct_t).mod),
             .typeAlias       => return @ptrCast(&self.cast(.typeAlias).mod),
@@ -369,11 +342,8 @@ pub const Sym = extern struct {
             },
             .use_alias  => return self.cast(.use_alias).sym.getValueType(),
             .enum_t,
-            .int_t,
-            .float_t,
-            .array_t,
+            .type,
             .struct_t,
-            .bool_t,
             .typeAlias,
             .hostobj_t,
             .trait_t,
@@ -399,12 +369,9 @@ pub const Sym = extern struct {
 
     pub fn getStaticType(self: *Sym) ?cy.TypeId {
         switch (self.type) {
-            .bool_t          => return self.cast(.bool_t).type,
-            .int_t           => return self.cast(.int_t).type,
-            .float_t         => return self.cast(.float_t).type,
             .enum_t          => return self.cast(.enum_t).type,
             .typeAlias       => return self.cast(.typeAlias).type,
-            .array_t         => return self.cast(.array_t).type,
+            .type            => return self.cast(.type).type,
             .struct_t        => return self.cast(.struct_t).type,
             .object_t        => return self.cast(.object_t).type,
             .distinct_t      => return self.cast(.distinct_t).type,
@@ -434,11 +401,8 @@ pub const Sym = extern struct {
             },
             .struct_t        => return self.cast(.struct_t).getFields(),
             .object_t        => return self.cast(.object_t).getFields(),
-            .array_t,
+            .type,
             .placeholder,
-            .bool_t,
-            .int_t,
-            .float_t,
             .typeAlias,
             .use_alias,
             .trait_t,
@@ -515,12 +479,9 @@ fn SymChild(comptime symT: SymType) type {
         .hostVar => HostVar,
         .struct_t,
         .object_t => ObjectType,
-        .array_t => ArrayType,
+        .type => TypeSym,
         .trait_t => TraitType,
         .hostobj_t => HostObjectType,
-        .bool_t => BoolType,
-        .int_t => IntType,
-        .float_t => FloatType,
         .enum_t => EnumType,
         .enumMember => EnumMember,
         .typeAlias => TypeAlias,
@@ -947,48 +908,14 @@ pub const HostObjectType = extern struct {
     }
 };
 
-pub const FloatType = extern struct {
+/// Generic type symbol.
+pub const TypeSym = extern struct {
     head: Sym,
     type: cy.TypeId,
-    mod: vmc.Module,
-    bits: u8,
-
-    pub fn getMod(self: *FloatType) *cy.Module {
-        return @ptrCast(&self.mod);
-    }
-};
-
-pub const ArrayType = extern struct {
-    head: Sym,
-    type: cy.TypeId,
-    n: usize,
-    elem_t: cy.TypeId,
     mod: vmc.Module,
     variant: ?*Variant,
 
-    pub fn getMod(self: *ArrayType) *cy.Module {
-        return @ptrCast(&self.mod);
-    }
-};
-
-pub const IntType = extern struct {
-    head: Sym,
-    type: cy.TypeId,
-    mod: vmc.Module,
-    bits: u8,
-    variant: ?*Variant,
-
-    pub fn getMod(self: *IntType) *cy.Module {
-        return @ptrCast(&self.mod);
-    }
-};
-
-pub const BoolType = extern struct {
-    head: Sym,
-    type: cy.TypeId,
-    mod: vmc.Module,
-
-    pub fn getMod(self: *BoolType) *cy.Module {
+    pub fn getMod(self: *TypeSym) *cy.Module {
         return @ptrCast(&self.mod);
     }
 };
@@ -1242,72 +1169,92 @@ pub const ChunkExt = struct {
         return sym;
     } 
 
-    pub fn createFloatType(c: *cy.Chunk, parent: *Sym, name: []const u8, bits: u8, opt_type_id: ?cy.TypeId) !*FloatType {
+    pub fn createFloatType(c: *cy.Chunk, parent: *Sym, name: []const u8, bits: u8, opt_type_id: ?cy.TypeId) !*TypeSym {
         const type_id = opt_type_id orelse try c.sema.pushType();
-        const sym = try createSym(c.alloc, .float_t, .{
-            .head = Sym.init(.float_t, parent, name),
+        const sym = try createSym(c.alloc, .type, .{
+            .head = Sym.init(.type, parent, name),
             .type = type_id,
             .mod = undefined,
-            .bits = bits,
+            .variant = null,
         });
         @as(*cy.Module, @ptrCast(&sym.mod)).* = cy.Module.init(c);
         c.compiler.sema.types.items[type_id] = .{
             .sym = @ptrCast(sym),
             .kind = .float,
-            .data = undefined,
+            .data = .{ .float = .{
+                .bits = bits,
+            }},
             .info = .{},
         };
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }
 
-    pub fn createArrayType(c: *cy.Chunk, parent: *Sym, name: []const u8, opt_type_id: ?cy.TypeId, n: usize, elem_t: cy.TypeId) !*ArrayType {
+    pub fn createTypeSymCopy(c: *cy.Chunk, parent: *Sym, name: []const u8, opt_type_id: ?cy.TypeId, src_t: cy.TypeId) !*TypeSym {
         const type_id = opt_type_id orelse try c.sema.pushType();
-        const sym = try createSym(c.alloc, .array_t, .{
-            .head = Sym.init(.array_t, parent, name),
+        const sym = try createSym(c.alloc, .type, .{
+            .head = Sym.init(.type, parent, name),
             .type = type_id,
             .mod = undefined,
-            .n = n,
-            .elem_t = elem_t,
+            .variant = null,
+        });
+        @as(*cy.Module, @ptrCast(&sym.mod)).* = cy.Module.init(c);
+        c.sema.types.items[type_id] = c.sema.types.items[src_t];
+        c.sema.types.items[type_id].sym = @ptrCast(sym);
+        try c.syms.append(c.alloc, @ptrCast(sym));
+        return sym;
+    }
+
+    pub fn createArrayType(c: *cy.Chunk, parent: *Sym, name: []const u8, opt_type_id: ?cy.TypeId, n: usize, elem_t: cy.TypeId) !*TypeSym {
+        const type_id = opt_type_id orelse try c.sema.pushType();
+        const sym = try createSym(c.alloc, .type, .{
+            .head = Sym.init(.type, parent, name),
+            .type = type_id,
+            .mod = undefined,
             .variant = null,
         });
         @as(*cy.Module, @ptrCast(&sym.mod)).* = cy.Module.init(c);
         c.compiler.sema.types.items[type_id] = .{
             .sym = @ptrCast(sym),
             .kind = .array,
-            .data = undefined,
+            .data = .{ .array = .{
+                .n = n,
+                .elem_t = elem_t,
+            }},
             .info = .{},
         };
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }
 
-    pub fn createIntType(c: *cy.Chunk, parent: *Sym, name: []const u8, bits: u8, opt_type_id: ?cy.TypeId) !*IntType {
+    pub fn createIntType(c: *cy.Chunk, parent: *Sym, name: []const u8, bits: u8, opt_type_id: ?cy.TypeId) !*TypeSym {
         const type_id = opt_type_id orelse try c.sema.pushType();
-        const sym = try createSym(c.alloc, .int_t, .{
-            .head = Sym.init(.int_t, parent, name),
+        const sym = try createSym(c.alloc, .type, .{
+            .head = Sym.init(.type, parent, name),
             .type = type_id,
             .mod = undefined,
-            .bits = bits,
             .variant = null,
         });
         @as(*cy.Module, @ptrCast(&sym.mod)).* = cy.Module.init(c);
         c.compiler.sema.types.items[type_id] = .{
             .sym = @ptrCast(sym),
             .kind = .int,
-            .data = undefined,
+            .data = .{ .int = .{
+                .bits = bits,
+            }},
             .info = .{},
         };
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }
 
-    pub fn createBoolType(c: *cy.Chunk, parent: *Sym, name: []const u8, opt_type_id: ?cy.TypeId) !*BoolType {
+    pub fn createBoolType(c: *cy.Chunk, parent: *Sym, name: []const u8, opt_type_id: ?cy.TypeId) !*TypeSym {
         const type_id = opt_type_id orelse try c.sema.pushType();
-        const sym = try createSym(c.alloc, .bool_t, .{
-            .head = Sym.init(.bool_t, parent, name),
+        const sym = try createSym(c.alloc, .type, .{
+            .head = Sym.init(.type, parent, name),
             .type = type_id,
             .mod = undefined,
+            .variant = null,
         });
         @as(*cy.Module, @ptrCast(&sym.mod)).* = cy.Module.init(c);
         c.compiler.sema.types.items[type_id] = .{

@@ -1883,15 +1883,15 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
             }
             return new_sym;
         },
-        .array_t => {
-            const array_t = sym.cast(.array_t);
-            try pushVariantResolveContext(tchunk, array_t.variant.?);
+        .type => {
+            const type_sym = sym.cast(.type);
+            try pushVariantResolveContext(tchunk, type_sym.variant.?);
             defer popResolveContext(tchunk);
 
             const custom_decl = template.child_decl.cast(.custom_decl);
 
             for (custom_decl.funcs) |func_n| {
-                const func = try reserveNestedFunc(tchunk, @ptrCast(array_t), func_n, true);
+                const func = try reserveNestedFunc(tchunk, @ptrCast(type_sym), func_n, true);
                 try resolveFunc2(tchunk, func, true);
                 try tchunk.deferred_funcs.append(c.alloc, func);
             }
@@ -2069,33 +2069,8 @@ pub fn resolveDistinctType(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType) !*cy.
             new.variant = distinct_t.variant;
             new_sym = @ptrCast(new);
         },
-        .bool_t => {
-            const new = try c.createBoolType(distinct_t.head.parent.?, name, distinct_t.type);
-            new.getMod().* = distinct_t.getMod().*;
-            new.getMod().updateParentRefs(@ptrCast(new));
-
-            new_sym = @ptrCast(new);
-        },
-        .int_t => {
-            const int_t = target_sym.cast(.int_t);
-
-            const new = try c.createIntType(distinct_t.head.parent.?, name, int_t.bits, distinct_t.type);
-            new.getMod().* = distinct_t.getMod().*;
-            new.getMod().updateParentRefs(@ptrCast(new));
-            new.variant = distinct_t.variant;
-            new_sym = @ptrCast(new);
-        },
-        .float_t => {
-            const float_t = target_sym.cast(.float_t);
-            const new = try c.createFloatType(distinct_t.head.parent.?, name, float_t.bits, distinct_t.type);
-            new.getMod().* = distinct_t.getMod().*;
-            new.getMod().updateParentRefs(@ptrCast(new));
-
-            new_sym = @ptrCast(new);
-        },
-        .array_t => {
-            const array_t = target_sym.cast(.array_t);
-            const new = try c.createArrayType(distinct_t.head.parent.?, name, distinct_t.type, array_t.n, array_t.elem_t);
+        .type => {
+            const new = try c.createTypeSymCopy(distinct_t.head.parent.?, name, distinct_t.type, target_t);
             new.getMod().* = distinct_t.getMod().*;
             new.getMod().updateParentRefs(@ptrCast(new));
             new.variant = distinct_t.variant;
@@ -3118,9 +3093,7 @@ fn callSym(c: *cy.Chunk, sym: *Sym, symNode: *ast.Node, args: []*ast.Node, ret_c
         },
         .trait_t,
         .enum_t,
-        .bool_t,
-        .int_t,
-        .float_t,
+        .type,
         .hostobj_t,
         .struct_t,
         .object_t,
@@ -3191,23 +3164,13 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, node: *ast.Node, symAsValue: bool) !ExprR
                 const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, typeId, node, .{ .typeId = type_id });
                 return ExprResult.init(irIdx, ctype);
             },
-            .bool_t => {
-                const type_id = sym.cast(.bool_t).type;
-                const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, typeId, node, .{ .typeId = type_id });
-                return ExprResult.init(irIdx, ctype);
-            },
             .enum_t => {
                 const type_id = sym.cast(.enum_t).type;
                 const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, typeId, node, .{ .typeId = type_id });
                 return ExprResult.init(irIdx, ctype);
             },
-            .int_t => {
-                const type_id = sym.cast(.int_t).type;
-                const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, typeId, node, .{ .typeId = type_id });
-                return ExprResult.init(irIdx, ctype);
-            },
-            .float_t => {
-                const type_id = sym.cast(.float_t).type;
+            .type => {
+                const type_id = sym.cast(.type).type;
                 const irIdx = try c.ir.pushExpr(.typeSym, c.alloc, typeId, node, .{ .typeId = type_id });
                 return ExprResult.init(irIdx, ctype);
             },
@@ -3466,11 +3429,20 @@ pub fn getResolvedSym(c: *cy.Chunk, name: []const u8, node: *ast.Node, distinct:
 
 pub fn ensureCompleteType(c: *cy.Chunk, type_id: cy.TypeId, node: *ast.Node) anyerror!void {
     const sym = c.sema.getTypeSym(type_id);
+    const type_e = c.sema.getType(type_id);
     switch (sym.type) {
+        .type => {
+            switch (type_e.kind) {
+                .bool,
+                .int,
+                .float => return,
+                else => {
+                    log.tracev("{}", .{sym.type});
+                    return error.TODO;
+                }
+            }
+        },
         .trait_t,
-        .float_t,
-        .int_t,
-        .bool_t,
         .enum_t,
         .hostobj_t => {
             return;
@@ -4947,19 +4919,24 @@ pub const ChunkExt = struct {
                 const obj = sym.cast(.object_t);
                 return c.semaObjectInit2(obj, node.init);
             },
-            .array_t => {
-                const array_t = sym.cast(.array_t);
-                const nargs = node.init.args.len;
-                const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
-                for (node.init.args, 0..) |arg, i| {
-                    const res = try c.semaExprTarget(arg, array_t.elem_t);
-                    c.ir.setArrayItem(args_loc, u32, i, res.irIdx);
-                }
+            .type => {
+                const type_sym = sym.cast(.type);
+                const type_e = c.sema.types.items[type_sym.type];
+                if (type_e.kind == .array) {
+                    const nargs = node.init.args.len;
+                    const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
+                    for (node.init.args, 0..) |arg, i| {
+                        const res = try c.semaExprTarget(arg, type_e.data.array.elem_t);
+                        c.ir.setArrayItem(args_loc, u32, i, res.irIdx);
+                    }
 
-                const loc = try c.ir.pushExpr(.array, c.alloc, array_t.type, expr.node, .{
-                    .nargs = @intCast(nargs), .args = args_loc,
-                });
-                return ExprResult.initStatic(loc, array_t.type);
+                    const loc = try c.ir.pushExpr(.array, c.alloc, type_sym.type, expr.node, .{
+                        .nargs = @intCast(nargs), .args = args_loc,
+                    });
+                    return ExprResult.initStatic(loc, type_sym.type);
+                } else {
+                    return error.TODO;
+                }
             },
             .enum_t => {
                 return c.reportErrorFmt("Only enum members can be used as initializers.", &.{}, node.left);
@@ -6209,8 +6186,8 @@ pub const ChunkExt = struct {
     pub fn semaRefOf(c: *cy.Chunk, expr: Expr) !ExprResult {
         const node = expr.node.cast(.ref);
         const child = try c.semaExpr(node.elem, .{ .prefer_addressable = true });
-        const child_type = c.sema.getTypeSym(child.type.id);
-        if (child_type.type == .array_t) {
+        const child_e = c.sema.getType(child.type.id);
+        if (child_e.kind == .array) {
             if (child.resType == .local) {
                 try ensureLiftedVar(c, child.data.local);
             }
@@ -6236,8 +6213,8 @@ pub const ChunkExt = struct {
     }
 
     pub fn semaArrayRefSlice(c: *cy.Chunk, arr: ExprResult, node: *ast.Node) !ExprResult{
-        const array_t = c.sema.getTypeSym(arr.type.id).cast(.array_t);
-        const elem_t = array_t.elem_t;
+        const array_t = c.sema.getType(arr.type.id);
+        const elem_t = array_t.data.array.elem_t;
         const slice_t = try getRefSliceType(c, elem_t);
         const ptr_t = try getPointerType(c, elem_t);
 
@@ -6248,7 +6225,7 @@ pub const ChunkExt = struct {
         });
         b.pushArg(ExprResult.initStatic(loc, ptr_t));
 
-        const len = try semaInt(c, @intCast(array_t.n), node);
+        const len = try semaInt(c, @intCast(array_t.data.array.n), node);
         b.pushArg(len);
         loc = b.end();
 
@@ -6552,8 +6529,9 @@ fn semaStructCompare(c: *cy.Chunk, left: ExprResult, left_id: *ast.Node, op: cy.
     const fields = left_te.sym.getFields().?;
 
     var field_t = c.sema.getTypeSym(fields[0].type);
+    var field_te = c.sema.getType(fields[0].type);
     var it: u32 = undefined;
-    if (field_t.type != .int_t and field_t.type != .object_t) {
+    if (field_te.kind != .int and field_t.type != .object_t) {
         return error.Unsupported;
     } else {
         const left_f = try c.ir.pushExpr(.field, c.alloc, fields[0].type, left_id, .{
@@ -6577,7 +6555,8 @@ fn semaStructCompare(c: *cy.Chunk, left: ExprResult, left_id: *ast.Node, op: cy.
     if (fields.len > 1) {
         for (fields[1..], 1..) |field, fidx| {
             field_t = c.sema.getTypeSym(fields[0].type);
-            if (field_t.type != .int_t and field_t.type != .object_t) {
+            field_te = c.sema.getType(fields[0].type);
+            if (field_te.kind != .int and field_t.type != .object_t) {
                 return error.Unsupported;
             }
             const left_f = try c.ir.pushExpr(.field, c.alloc, field.type, left_id, .{

@@ -96,6 +96,16 @@ pub const Type = extern struct {
         ct_infer: extern struct {
             ct_param_idx: u32,
         },
+        array: extern struct {
+            n: usize,
+            elem_t: cy.TypeId,
+        },
+        float: extern struct {
+            bits: u8,
+        },
+        int: extern struct {
+            bits: u8,
+        },
     },
 };
 
@@ -347,15 +357,27 @@ pub const SemaExt = struct {
             else => {
                 const sym = s.getTypeSym(id);
                 switch (sym.type) {
-                    .array_t,
                     .trait_t,
                     .hostobj_t,
                     .struct_t,
                     .object_t => return true,
+                    .type => {
+                        const type_e = s.getType(id);
+                        switch (type_e.kind) {
+                            .array => {
+                                return true;
+                            },
+                            .int => {
+                                return false;
+                            },
+                            else => {
+                                cy.panicFmt("Unexpected sym type: {} {}", .{id, sym.type});
+                            },
+                        }
+                    },
                     .enum_t => {
                         return sym.cast(.enum_t).isChoiceType;
                     },
-                    .int_t => return false,
                     else => {
                         cy.panicFmt("Unexpected sym type: {} {}", .{id, sym.type});
                     }

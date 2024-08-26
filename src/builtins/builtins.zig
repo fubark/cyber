@@ -475,7 +475,7 @@ pub fn bitcast(vm: *cy.VM) anyerror!Value {
     if (vm.c.types[src_t].kind != .int or vm.c.types[dst_t].kind != .int) {
         return error.InvalidArgument;
     }
-    if (vm.c.types[src_t].sym.cast(.int_t).bits != vm.c.types[dst_t].sym.cast(.int_t).bits) {
+    if (vm.c.types[src_t].data.int.bits != vm.c.types[dst_t].data.int.bits) {
         return error.InvalidArgument;
     }
     return vm.getValue(1);

@@ -467,7 +467,16 @@ pub fn gen(self: *cy.Compiler) !cy.compiler.AotCompileResult {
                     }
                     try compiler.genSymName(sym, name);
                 },
-                .bool_t,
+                .type => {
+                    const type_sym = sym.cast(.type);
+                    const type_e = self.sema.getType(type_sym.type);
+                    switch (type_e.kind) {
+                        .bool => {
+                            try compiler.genSymName(sym, sym.name());
+                        },
+                        else => {},
+                    }
+                },
                 .hostobj_t,
                 .object_t => {
                     try compiler.genSymName(sym, sym.name());
@@ -676,18 +685,25 @@ fn genHead(c: *Compiler, w: std.ArrayListUnmanaged(u8).Writer, chunks: []Chunk) 
 
         for (base.syms.items) |sym| {
             switch (sym.type) {
-                .bool_t => {
-                    const c_name = chunk.cSymName(sym);
-                    const name = try cStringLit(chunk, sym.name());
-                    try w.print(
-                        \\CbTypeTable {s}TypeTable = {{
-                        \\    .size = sizeof(bool),
-                        \\    .name = "{s}",
-                        \\    .toPrintString = 0,
-                        \\    .kind = CbTypeStruct,
-                        \\}};
-                        \\
-                    , .{ c_name, name });
+                .type => {
+                    const type_sym = sym.cast(.type);
+                    const type_e = chunk.sema.getType(type_sym.type);
+                    switch (type_e.kind) {
+                        .bool => {
+                            const c_name = chunk.cSymName(sym);
+                            const name = try cStringLit(chunk, sym.name());
+                            try w.print(
+                                \\CbTypeTable {s}TypeTable = {{
+                                \\    .size = sizeof(bool),
+                                \\    .name = "{s}",
+                                \\    .toPrintString = 0,
+                                \\    .kind = CbTypeStruct,
+                                \\}};
+                                \\
+                            , .{ c_name, name });
+                        },
+                        else => {},
+                    }
                 },
                 .object_t => {
                     try genObjectDecl(chunk, sym, w);

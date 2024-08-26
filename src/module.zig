@@ -323,21 +323,21 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn declareFloatType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, bits: u8, opt_type_id: ?types.TypeId, decl: ?*ast.Node) !*cy.sym.FloatType {
+    pub fn declareFloatType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, bits: u8, opt_type_id: ?types.TypeId, decl: ?*ast.Node) !*cy.sym.TypeSym {
         const sym = try c.createFloatType(parent, name, bits, opt_type_id);
         const mod = parent.getMod().?;
         _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl);
         return sym;
     }
 
-    pub fn declareIntType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, bits: u8, opt_type_id: ?types.TypeId, decl: ?*ast.Node) !*cy.sym.IntType {
+    pub fn declareIntType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, bits: u8, opt_type_id: ?types.TypeId, decl: ?*ast.Node) !*cy.sym.TypeSym {
         const sym = try c.createIntType(parent, name, bits, opt_type_id);
         const mod = parent.getMod().?;
         _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl);
         return sym;
     }
 
-    pub fn declareBoolType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, opt_type_id: ?types.TypeId, decl: ?*ast.Node) !*cy.sym.BoolType {
+    pub fn declareBoolType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, opt_type_id: ?types.TypeId, decl: ?*ast.Node) !*cy.sym.TypeSym {
         const sym = try c.createBoolType(parent, name, opt_type_id);
         const mod = parent.getMod().?;
         _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl);
@@ -519,16 +519,13 @@ pub const ChunkExt = struct {
             .context_var,
             .userVar,
             .hostVar,
-            .array_t,
+            .type,
             .struct_t,
             .object_t,
             .hostobj_t,
             .trait_t,
             .enum_t,
             .chunk,
-            .bool_t,
-            .int_t,
-            .float_t,
             .distinct_t,
             .template,
             .placeholder,
@@ -599,7 +596,7 @@ pub const ChunkExt = struct {
             .context_var,
             .userVar,
             .hostVar,
-            .array_t,
+            .type,
             .struct_t,
             .object_t,
             .trait_t,
@@ -607,9 +604,6 @@ pub const ChunkExt = struct {
             .dummy_t,
             .enum_t,
             .chunk,
-            .bool_t,
-            .int_t,
-            .float_t,
             .distinct_t,
             .template,
             .placeholder,

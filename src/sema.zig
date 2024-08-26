@@ -1194,7 +1194,14 @@ fn semaAccessFieldName(c: *cy.Chunk, rec: ExprResult, name: []const u8, field: *
     }
     const field_sym = sym.cast(.field);
 
-    // const recIsStructFromFieldAccess = rec.resType == .field and c.sema.getTypeKind(rec.type.id) == .@"struct";
+    const rec_te = c.sema.getType(rec.type.id);
+    if (rec_te.kind == .struct_t) {
+        if (rec.resType != .local) {
+            const tempv = try declareHiddenLocal(c, "$temp", rec.type.id, rec, field);
+            const temp = try semaLocal(c, tempv.id, field);
+            return semaField(c, temp, field_sym.idx, field_sym.type, field);
+        }
+    }
     return semaField(c, rec, field_sym.idx, field_sym.type, field);
 }
 

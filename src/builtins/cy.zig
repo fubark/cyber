@@ -129,7 +129,11 @@ pub fn UserVM_eval(vm: *cy.VM) anyerror!cy.Value {
     const value: *UserValue = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.ValueT, @sizeOf(UserValue))));
     vm.retain(vm.getValue(0));
     value.vm = vm.getValue(0);
-    value.val = @bitCast(res);
+    if (code == C.Success) {
+        value.val = @bitCast(res);
+    } else {
+        value.val = @bitCast(cy.Value.Void);
+    }
 
     const eval_res: *EvalResult = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.EvalResultT, @sizeOf(EvalResult))));
     eval_res.* = .{

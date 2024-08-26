@@ -351,6 +351,10 @@ pub const FuncBlock = struct {
 
     // For methods only.
     parentType: cy.TypeId,
+
+    /// Mark a func block to skip generation.
+    /// Useful for removing temporary compile-time functions.
+    skip: bool = false,
 };
 
 pub const PushBlock = struct {
@@ -795,7 +799,7 @@ pub const Buffer = struct {
     }
 
     pub fn pushEmptyExpr(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, expr_t: ExprType, node_id: *ast.Node) !u32 {
-        log.tracev("irPushExpr: {}", .{code});
+        log.tracev("irPushExpr: {} at {}", .{code, self.buf.items.len});
         const start = self.buf.items.len;
         try self.buf.resize(alloc, self.buf.items.len + 1 + 8 + 4 + @sizeOf(ExprData(code)));
         self.buf.items[start] = @intFromEnum(code);
@@ -908,7 +912,7 @@ pub const Buffer = struct {
     }
 
     pub fn pushEmptyStmt2(self: *Buffer, alloc: std.mem.Allocator, comptime code: StmtCode, node: *ast.Node, comptime appendToParent_: bool) !u32 {
-        log.tracev("irPushStmt: {}", .{code});
+        log.tracev("irPushStmt: {} at {}", .{code, self.buf.items.len});
         const start: u32 = @intCast(self.buf.items.len);
         try self.buf.resize(alloc, self.buf.items.len + 1 + 8 + 4 + @sizeOf(StmtData(code)));
         self.buf.items[start] = @intFromEnum(code);

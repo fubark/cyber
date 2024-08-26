@@ -1063,6 +1063,11 @@ pub const Func = struct {
             vtable_idx: u32,
         },
         template: *FuncTemplate,
+        userFunc: struct {
+            /// Currently used to invalidate the IR func block when removing temporary functions.
+            /// See `cte.expandValueTemplate`.
+            loc: u32,
+        },
     },
     variant: ?*Variant,
     reqCallTypeCheck: bool,

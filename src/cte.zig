@@ -149,7 +149,7 @@ pub fn expandCtFuncTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, 
 
     try pushNodeValuesCstr(c, args, template, valueStart, node);
     const arg_vals = c.valueStack.items[valueStart..];
-    return expandCtFuncTemplate(c, template, arg_vals);
+    return expandValueTemplate(c, template, arg_vals);
 }
 
 pub fn expandFuncTemplateOnCallArgs(c: *cy.Chunk, template: *cy.Func, args: []const *ast.Node, node: *ast.Node) !*cy.Func {
@@ -252,22 +252,33 @@ fn compileFuncDeep(c: *cy.Chunk, func: *cy.Func, queued: *std.AutoHashMapUnmanag
     src_chunk.buf = &c.compiler.buf;
     // TODO: defer restore bc state.
     try bcgen.prepareFunc(src_chunk.compiler, null, func);
-    try bcgen.funcBlock(src_chunk, loc, loc_n);
+    switch (func.type) {
+        .hostFunc => {
+            // Nop. Already setup from `prepareFunc`.
+        },
+        .userFunc => {
+            try bcgen.funcBlock(src_chunk, loc, loc_n);
 
-    // Analyze IR for func deps.
-    var visitor = try src_chunk.ir.visitStmt(c.alloc, @intCast(loc));
-    defer visitor.deinit();
-    while (try visitor.next()) |entry| {
-        if (entry.is_stmt) {
-            continue;
-        }
-        const code = src_chunk.ir.getExprCode(entry.loc);
-        switch (code) {
-            .call_sym => {
-                const data = src_chunk.ir.getExprData(entry.loc, .call_sym);
-                try compileFuncDeep(c, data.func, queued);
-            },
-            else => {},
+            // Analyze IR for func deps.
+            var visitor = try src_chunk.ir.visitStmt(c.alloc, @intCast(loc));
+            defer visitor.deinit();
+            while (try visitor.next()) |entry| {
+                if (entry.is_stmt) {
+                    continue;
+                }
+                const code = src_chunk.ir.getExprCode(entry.loc);
+                switch (code) {
+                    .call_sym => {
+                        const data = src_chunk.ir.getExprData(entry.loc, .call_sym);
+                        try compileFuncDeep(c, data.func, queued);
+                    },
+                    else => {},
+                }
+            }
+            func.data = .{ .userFunc = .{ .loc = @intCast(loc) }};
+        },
+        else => {
+            return error.Unexpected;
         }
     }
     func.emitted_deps = true;
@@ -292,7 +303,7 @@ pub fn callFunc(c: *cy.Chunk, func: *cy.Func, args: []const cy.Value) !CtValue {
     };
 }
 
-pub fn expandCtFuncTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy.Value) !CtValue {
+pub fn expandValueTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy.Value) !CtValue {
     // Ensure variant type.
     const res = try template.variant_cache.getOrPutContext(c.alloc, args, .{ .sema = c.sema });
     if (!res.found_existing) {
@@ -328,7 +339,14 @@ pub fn expandCtFuncTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []co
 
         // Generate ct func. Can assume not a `@host` func.
         const func = try c.createFunc(.userFunc, @ptrCast(template), @ptrCast(template.decl.child_decl), false);
-        defer c.vm.alloc.destroy(func);
+        defer {
+            // Remove references to the func and invalidate the sema func block.
+            _ = c.compiler.genSymMap.remove(@ptrCast(func));
+            const src_chunk = func.chunk();
+            const data = src_chunk.ir.getStmtDataPtr(func.data.userFunc.loc, .funcBlock);
+            data.skip = true;
+            c.vm.alloc.destroy(func);
+        }
         const func_sig = c.sema.getFuncSig(sig);
         func.funcSigId = sig;
         func.retType = func_sig.getRetType();

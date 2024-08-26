@@ -200,6 +200,7 @@ pub const BuiltinTypes = struct {
     pub const Error: TypeId = vmc.TYPE_ERROR;
     pub const Fiber: TypeId = vmc.TYPE_FIBER;
     pub const Type: TypeId = vmc.TYPE_TYPE;
+    pub const ExprType: TypeId = vmc.TYPE_EXPRTYPE;
     pub const FuncSig: TypeId = vmc.TYPE_FUNC_SIG;
     pub const Placeholder2: TypeId = vmc.TYPE_PLACEHOLDER2;
     pub const Placeholder3: TypeId = vmc.TYPE_PLACEHOLDER3;

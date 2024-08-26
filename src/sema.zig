@@ -5348,6 +5348,12 @@ pub const ChunkExt = struct {
                     newRes.type.id = @intCast(expr.target_t);
                     return newRes;
                 }
+
+                if (expr.target_t == bt.ExprType) {
+                    // Infer expression type.
+                    const loc = try c.ir.pushExpr(.type, c.alloc, bt.ExprType, expr.node, .{ .typeId = res.type.id, .expr_type = true });
+                    return ExprResult.init(loc, CompactType.init(bt.ExprType));
+                }
             }
 
             if (expr.reqTypeCstr) {

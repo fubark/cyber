@@ -65,6 +65,10 @@ func sizeof(#T type) int:
 
 @host func sizeof_(type_id int) int
 
+--| Returns the type of an expression. 
+func typeof(t ExprType) type:
+    return t.getType()
+
 --|
 --| Compile-time functions.
 --|
@@ -721,3 +725,6 @@ type DefaultMemory:
 
     @host func alloc(self, len int) [*]byte
     @host func free(self, buf [*]byte) void
+
+@host type ExprType type:
+    @host func getType(self) type

@@ -714,7 +714,7 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
         },
         .type => {
             const type_id = @as(*const align(1) u32, @ptrCast(pc + 1)).*;
-            const dst = pc[5].val;
+            const dst = pc[6].val;
             len += try fmt.printCount(w, "%{} = type(id={})", &.{v(dst), v(type_id)});
         },
         .addr_local => {
@@ -1045,7 +1045,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             return 5 + numConds * 3;
         },
         .lambda,
-        .type,
         .func_ptr,
         .deref_struct,
         .field_struct,
@@ -1062,6 +1061,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const num_fields = pc[4].val;
             return 6 + num_fields;
         },
+        .type,
         .trait,
         .coinit => {
             return 7;

@@ -229,6 +229,9 @@ const funcs = [_]C.HostFuncEntry{
     func("ExternFunc.addr",    externFuncAddr),
     func("ExternFunc.ptr",     externFuncPtr),
 
+    // ExprType
+    func("ExprType.getType",   zErrFunc(ExprType_getType)),
+
     // Fiber
     func("Fiber.status",       fiberStatus),
 
@@ -269,6 +272,7 @@ const vm_types = [_]C.HostTypeEntry{
     htype("dyn",            C.CORE_TYPE(bt.Dyn)),
     htype("any",            C.CORE_TYPE(bt.Any)),
     htype("type",           C.CORE_TYPE(bt.Type)),
+    htype("ExprType",       C.DECL_TYPE(bt.ExprType)),
     htype("List",           C.CREATE_TYPE(createListType)),
     htype("ListIterator",   C.CREATE_TYPE(createListIterType)),
     htype("Tuple",          C.CORE_TYPE(bt.Tuple)),
@@ -1607,4 +1611,9 @@ pub fn StringNone(vm: *cy.VM) !Value {
 pub fn StringSome(vm: *cy.VM, v: Value) !Value {
     const data = vm.getData(*BuiltinsData, "builtins");
     return vm.allocObjectSmall(data.OptionString, &.{ Value.initInt(1), v });
+}
+
+fn ExprType_getType(vm: *cy.VM) anyerror!Value {
+    const val = vm.getObject(*cy.heap.Type, 0);
+    return vm.allocType(val.type);
 }

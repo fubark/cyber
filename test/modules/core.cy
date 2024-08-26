@@ -120,13 +120,20 @@ t.eq(String(float), 'type: float')
 
 -- typeof()
 t.eq(typeof(true), bool)
+t.eq(typeof(false), bool)
 t.eq(typeof(123), int)
 t.eq(typeof(123.0), float)
-t.eq(typeof(pointer(void, 123)), metatype(*void))
+t.eq(typeof(pointer(void, 123)), *void)
 t.eq(typeof('abc'), String)
+t.eq(typeof('abc🦊'), String)
+t.eq(typeof(symbol.abc), symbol)
 t.eq(typeof(error.Foo), error)
 t.eq(typeof({_}), List[dyn])
 t.eq(typeof(Map{}), Map)
 t.eq(typeof({}), Table)
+type Foo:
+    a float
+var foo = Foo{a=123}
+t.eq(typeof(foo), Foo)
 
 --cytest: pass

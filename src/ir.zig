@@ -496,6 +496,7 @@ pub const FuncUnion = struct {
 
 pub const Type = struct {
     typeId: TypeId,
+    expr_type: bool = false,
 };
 
 pub const CoinitCall = struct {

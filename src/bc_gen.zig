@@ -1990,10 +1990,10 @@ fn genFuncUnion(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
 fn genType(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     const data = c.ir.getExprData(idx, .type);
 
-    const inst = try bc.selectForDstInst(c, cstr, bt.Type, true, node);
+    const inst = try bc.selectForDstInst(c, cstr, if (data.expr_type) bt.ExprType else bt.Type, true, node);
     const pc = c.buf.len();
 
-    try c.pushCode(.type, &.{0, 0, 0, 0, inst.dst}, node);
+    try c.pushCode(.type, &.{0, 0, 0, 0, @intFromBool(data.expr_type), inst.dst}, node);
     c.buf.setOpArgU32(pc + 1, data.typeId);
     if (inst.own_dst) {
         try initSlot(c, inst.dst, true, node);

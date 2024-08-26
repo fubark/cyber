@@ -983,7 +983,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.Placeholder2,
         bt.ExternFunc,
         bt.String,
-        bt.Placeholder3,
+        bt.ExprType,
         bt.Fiber,
         bt.UpValue,
         bt.TccState,

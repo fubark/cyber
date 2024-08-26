@@ -70,7 +70,7 @@ func typeof(t ExprType) type:
     return t.getType()
 
 --|
---| Compile-time functions.
+--| Value templates.
 --|
 
 --| Returns the type ID of a type.

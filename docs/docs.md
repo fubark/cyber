@@ -1554,7 +1554,7 @@ print a.get()      -- Prints 'abc'
 Note that invoking the template again with the same argument(s) returns the same generated type. In other words, the generated type is always memoized from the input parameters.
 
 ### Type specialization.
-[Compile-time function templates](#compile-time-function-templates) can be used to specialize type templates:
+[Value templates](#value-templates) can be used to specialize type templates:
 ```cy
 func List[T type] type:
     if T == dyn:
@@ -2019,7 +2019,7 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
   * [Explicit template call.](#explicit-template-call)
   * [Expand function.](#expand-function)
   * [Infer param type.](#infer-param-type)
-  * [Compile-time function templates.](#compile-time-function-templates)
+* [Value templates.](#value-templates)
 </td>
 </tr></table>
 
@@ -2309,12 +2309,10 @@ func set(m Map[#K, #V], key K, val V):
     m.set(key, val)
 ```
 
-### Compile-time function templates.
-When function parameters are delimited with brackets instead of parentheses, the function becomes a compile-time function template.
-This is different from a function template which generates different runtime functions based on its compile-time parameters.
+## Value templates.
+A value template returns a memoized value after being invoked with template arguments just once. It's declared with `func` but the template parameters are delimited with brackets.
 
-A compile-time function template does not generate a runtime function and can only be called at compile-time. After invocation, the return value is cached by the template parameters:
-
+This is different from a function template which generates multiple runtime functions based on its template parameters. A value template does not generate a runtime function and instead expands to a value at compile-time:
 ```cy
 func GetType[ID String] type:
     if ID == 'bool':

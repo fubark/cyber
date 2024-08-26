@@ -494,31 +494,21 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             len += try printInstArgs(w, &.{"up", "rhs"}, &.{v(up), v(rhs)});
         },
         .lambda => {
-            const funcOff = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const numParams = pc[3].val;
-            const numLocals = pc[4].val;
-            const reqCallTypeCheck = pc[5].val;
-            const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 6)).*;
-            const ptr_t = @as(*const align(1) u16, @ptrCast(pc + 8)).*;
-            _ = ptr_t;
-            const dst = pc[10].val;
-            len += try fmt.printCount(w, "off={}, nparam={}, nlocal={}, typechk={}, fsigId={}, dst={}", &.{
-                v(funcOff), v(numParams), v(numLocals), v(reqCallTypeCheck), v(funcSigId), v(dst)});
+            const func_id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const ptr_t = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const dst = pc[5].val;
+            len += try fmt.printCount(w, "%{} = lambda(id={}, ptr_t={})", &.{
+                v(dst), v(func_id), v(ptr_t)});
         },
         .closure => {
-            const funcOff = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const numParams = pc[3].val;
-            const numCaptured = pc[4].val;
-            const numLocals = pc[5].val;
-            const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 6)).*;
-            const union_t = @as(*const align(1) u16, @ptrCast(pc + 8)).*;
-            _ = union_t;
-            const local = pc[10].val;
-            const reqCallTypeCheck = pc[11].val;
-            const dst = pc[12].val;
-            len += try fmt.printCount(w, "off={}, nparam={}, ncap={}, nlocal={}, fsigId={}, closure={}, typechk={}, dst={} {}", &.{
-                v(funcOff), v(numParams), v(numCaptured), v(numLocals),
-                v(funcSigId), v(local), v(reqCallTypeCheck), v(dst), fmt.sliceU8(std.mem.sliceAsBytes(pc[11..11+numCaptured])),
+            const func_id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const union_t = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const numCaptured = pc[5].val;
+            const local = pc[6].val;
+            const dst = pc[7].val;
+            len += try fmt.printCount(w, "%{} = closure(id={}, union_t={}, ncap={}, closure={} vals={})", &.{
+                v(dst), v(func_id), v(union_t), v(numCaptured), 
+                v(local), fmt.sliceU8(std.mem.sliceAsBytes(pc[8..8+numCaptured])),
             });
         },
         .true => {
@@ -1060,6 +1050,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numConds = pc[2].val;
             return 5 + numConds * 3;
         },
+        .lambda,
         .type,
         .func_ptr,
         .deref_struct,
@@ -1085,19 +1076,18 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .forRangeInit => {
             return 8;
         },
+        .closure => {
+            const numCaptured = pc[5].val;
+            return 8 + numCaptured;
+        },
         .func_sym,
         .setFieldDyn,
         .setFieldDynIC => {
             return 10;
         },
-        .lambda,
         .fieldDyn,
         .fieldDynIC => {
             return 11;
-        },
-        .closure => {
-            const numCaptured = pc[4].val;
-            return 13 + numCaptured;
         },
         .call_trait,
         .callSym,

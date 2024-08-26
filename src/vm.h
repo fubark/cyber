@@ -949,6 +949,8 @@ HeapObjectResult zAllocExternalCycObject(VM* vm, size_t size);
 ValueResult zAllocStringTemplate(VM* vm, Inst* strs, u8 strCount, Value* vals, u8 valCount);
 ValueResult zAllocStringTemplate2(VM* vm, Value* strs, u8 strCount, Value* vals, u8 valCount);
 ValueResult zAllocFuncPtr(VM* vm, TypeId ptr_t, u16 id);
+ValueResult zAllocLambda(VM* vm, u32 rt_id, TypeId ptr_t);
+ValueResult zAllocClosure(VM* vm, Value* fp, u32 rt_id, TypeId ptr_t, Inst* captures, u8 ncaptures, u8 closure_local);
 Value zGetFieldFallback(VM* vm, HeapObject* obj, uint32_t field_id);
 ResultCode zSetFieldFallback(VM* vm, HeapObject* obj, uint32_t field_id, Value val);
 u16 zOpMatch(const Inst* pc, Value* framePtr);

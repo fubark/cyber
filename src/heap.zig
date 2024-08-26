@@ -1276,34 +1276,38 @@ pub fn allocMapIterator(self: *cy.VM, map: Value) !Value {
 
 /// Captured values are retained during alloc.
 pub fn allocClosure(
-    self: *cy.VM, fp: [*]Value, funcPc: usize, numParams: u8, stackSize: u8,
-    funcSigId: u16, capturedVals: []const cy.Inst, closureLocal: u8,
+    self: *cy.VM, fp: [*]Value, func_id: u32, union_t: cy.TypeId, captured: []const cy.Inst, closure_local: u8,
 ) !Value {
+    const func = self.funcSyms.buf[func_id];
     var obj: *HeapObject = undefined;
-    if (capturedVals.len <= 2) {
+    if (captured.len <= 2) {
         obj = try allocPoolObject(self);
     } else {
-        obj = try allocExternalObject(self, (3 + capturedVals.len) * @sizeOf(Value));
+        obj = try allocExternalObject(self, (3 + captured.len) * @sizeOf(Value), true);
     }
-    obj.closure = .{
-        .typeId = bt.Closure | vmc.CYC_TYPE_MASK,
+    obj.func_union = .{
+        .typeId = union_t | vmc.CYC_TYPE_MASK,
         .rc = 1,
-        .funcPc = @intCast(funcPc),
-        .numParams = numParams,
-        .stackSize = stackSize,
-        .numCaptured = @intCast(capturedVals.len),
-        .local = closureLocal,
-        .funcSigId = funcSigId,
-        .firstCapturedVal = undefined,
+        .kind = .closure,
+        .reqCallTypeCheck = func.req_type_check,
+        .sig = func.sig,
+        .numParams = func.nparams,
+        .data = .{ .closure = .{
+            .pc = func.data.func.pc,
+            .stack_size = func.data.func.stackSize,
+            .numCaptured = @intCast(captured.len),
+            .local = closure_local,
+            .firstCapturedVal = undefined,
+        }},
     };
-    const dst = obj.closure.getCapturedValuesPtr();
-    for (capturedVals, 0..) |local, i| {
+    const dst = obj.func_union.getCapturedValuesPtr();
+    for (captured, 0..) |local, i| {
         if (cy.Trace) {
-            if (!fp[local.val].isBox()) {
-                cy.panic("Expected box value.");
+            if (!fp[local.val].isUpValue()) {
+                cy.panic("Expected up value.");
             }
         }
-        cy.arc.retain(self, fp[local.val]);
+        self.retain(fp[local.val]);
         dst[i] = fp[local.val];
     }
     return Value.initCycPtr(obj);

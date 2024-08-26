@@ -2975,6 +2975,38 @@ fn zEnd(vm: *cy.VM, pc: [*]const cy.Inst) callconv(.C) void {
     vm.c.curFiber.pcOffset = @intCast(getInstOffset(vm, pc + 2));
 }
 
+fn zAllocLambda(vm: *cy.VM, rt_id: u32, ptr_t: cy.TypeId) callconv(.C) vmc.ValueResult {
+    const func = vm.funcSyms.buf[rt_id];
+    const func_ptr = cy.heap.allocBcFuncPtr(vm, ptr_t, func.data.func.pc,
+        @intCast(func.nparams),
+        @intCast(func.data.func.stackSize),
+        @intCast(func.sig),
+        func.req_type_check
+    ) catch {
+        return .{
+            .val = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .val = @bitCast(func_ptr),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
+fn zAllocClosure(vm: *cy.VM, fp: [*]cy.Value, rt_id: u32, union_t: cy.TypeId, captures: [*]cy.Inst, ncaptures: u8, closure_local: u8) callconv(.C) vmc.ValueResult {
+    const func_union = cy.heap.allocClosure(vm, fp, rt_id, union_t, captures[0..ncaptures], closure_local) catch {
+        return .{
+            .val = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .val = @bitCast(func_union),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
 fn zAllocFuncPtr(vm: *cy.VM, ptr_t: cy.TypeId, rt_func: u16) callconv(.C) vmc.ValueResult {
     const func = cy.heap.allocFuncPtr(vm, ptr_t, vm.funcSyms.buf[rt_func]) catch {
         return .{
@@ -3409,6 +3441,8 @@ comptime {
         @export(zAllocObjectSmall, .{ .name = "zAllocObjectSmall", .linkage = .strong });
         @export(zAllocFiber, .{ .name = "zAllocFiber", .linkage = .strong });
         @export(zAllocFuncPtr, .{ .name = "zAllocFuncPtr", .linkage = .strong });
+        @export(zAllocLambda, .{ .name = "zAllocLambda", .linkage = .strong });
+        @export(zAllocClosure, .{ .name = "zAllocClosure", .linkage = .strong });
         @export(zAlloc, .{ .name = "zAlloc", .linkage = .strong });
         @export(zAllocArray, .{ .name = "zAllocArray", .linkage = .strong });
         @export(zAllocList, .{ .name = "zAllocList", .linkage = .strong });

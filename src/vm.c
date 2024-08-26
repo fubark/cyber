@@ -351,68 +351,6 @@ static inline ValueResult allocFuncSym(VM* vm, TypeId sym_t, void* func) {
     return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
-static inline ValueResult allocClosure(
-    VM* vm, TypeId union_t, Value* fp, size_t funcPc, u8 numParams, u8 stackSize,
-    u16 sig, const Inst* capturedVals, u8 numCapturedVals, u8 closureLocal, bool reqCallTypeCheck
-) {
-    HeapObjectResult res;
-    if (numCapturedVals <= 2) {
-        res = zAllocPoolObject(vm);
-    } else {
-        res = zAllocExternalCycObject(vm, (3 + numCapturedVals) * sizeof(Value));
-    }
-    if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
-        return (ValueResult){ .code = res.code };
-    }
-    res.obj->func_union = (FuncUnion){
-        .typeId = union_t | CYC_TYPE_MASK,
-        .rc = 1,
-        .numParams = numParams,
-        .kind = 2,
-        .reqCallTypeCheck = reqCallTypeCheck,
-        .sig = sig,
-        .data = { .closure = {
-            .pc = funcPc,
-            .stack_size = stackSize,
-            .numCaptured = numCapturedVals,
-            .local = closureLocal,
-        }},
-    };
-    Value* dst = closureGetCapturedValuesPtr(&res.obj->func_union);
-    for (int i = 0; i < numCapturedVals; i += 1) {
-        Inst local = capturedVals[i];
-#if TRACE
-        if (!VALUE_IS_UPVALUE(fp[local])) {
-            TRACEV("Expected box value.");
-            zFatal();
-        }
-#endif
-        retain(vm, fp[local]);
-        dst[i] = fp[local];
-    }
-    return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
-}
-
-static inline ValueResult allocLambda(VM* vm, TypeId ptr_t, u32 funcPc, u8 numParams, u8 stackSize, u16 sig, bool reqCallTypeCheck) {
-    HeapObjectResult res = zAllocPoolObject(vm);
-    if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
-        return (ValueResult){ .code = res.code };
-    }
-    res.obj->func_ptr = (FuncPtr){
-        .typeId = ptr_t,
-        .rc = 1,
-        .numParams = numParams,
-        .reqCallTypeCheck = reqCallTypeCheck,
-        .kind = FUNC_PTR_BC,
-        .sig = sig,
-        .data = { .bc = {
-            .pc = funcPc,
-            .stack_size = stackSize,
-        }},
-    };
-    return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
-}
-
 static inline ValueResult allocUpValue(VM* vm, Value val) {
     HeapObjectResult res = zAllocPoolObject(vm);
     if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
@@ -1476,40 +1414,30 @@ beginSwitch:
         }
     }
     CASE(Lambda): {
-        u16 funcOff = READ_U16(1);
-        u32 funcPc = ((uint32_t)pcOffset(vm, pc)) - funcOff;
-        u8 numParams = pc[3];
-        u8 stackSize = pc[4];
-        bool reqCallTypeCheck = pc[5];
-        u16 sig = READ_U16(6);
-        u16 ptr_t = READ_U16(8);
-        ValueResult res = allocLambda(vm, ptr_t, funcPc, numParams, stackSize, sig, reqCallTypeCheck);
+        u16 func_id = READ_U16(1);
+        u16 ptr_t = READ_U16(3);
+        ValueResult res = zAllocLambda(vm, func_id, ptr_t);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
-        stack[pc[10]] = res.val;
-        pc += 11;
+        stack[pc[5]] = res.val;
+        pc += 6;
         NEXT();
     }
     CASE(Closure): {
-        u16 funcOff = READ_U16(1);
-        u32 funcPc = pcOffset(vm, pc) - funcOff;
-        u8 numParams = pc[3];
-        u8 numCaptured = pc[4];
-        u8 stackSize = pc[5];
-        u16 rFuncSigId = READ_U16(6);
-        u16 union_t = READ_U16(8);
-        u8 local = pc[10];
-        bool reqCallTypeCheck = pc[11];
-        u8 dst = pc[12];
-        Inst* capturedVals = pc + 13;
+        u16 func_id = READ_U16(1);
+        u16 union_t = READ_U16(3);
+        u8 numCaptured = pc[5];
+        u8 local = pc[6];
+        u8 dst = pc[7];
+        Inst* capturedVals = pc + 8;
 
-        ValueResult res = allocClosure(vm, union_t, stack, funcPc, numParams, stackSize, rFuncSigId, capturedVals, numCaptured, local, reqCallTypeCheck);
+        ValueResult res = zAllocClosure(vm, stack, func_id, union_t, capturedVals, numCaptured, local);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }
         stack[dst] = res.val;
-        pc += 13 + numCaptured;
+        pc += 8 + numCaptured;
         NEXT();
     }
     CASE(Compare): {

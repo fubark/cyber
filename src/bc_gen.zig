@@ -73,6 +73,11 @@ pub fn genAll(c: *cy.Compiler) !void {
         for (chunk.syms.items) |sym| {
             try prepareSym(c, sym);
         }
+        for (chunk.funcs.items) |func| {
+            if (func.type == .userLambda) {
+                try prepareFunc(c, null, func);
+            }
+        }
         for (chunk.deferred_funcs.items) |func| {
             // prepareSym will handle deferred funcs that have a parent func sym.
             if (func.variant == null) continue;
@@ -229,9 +234,18 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
 pub fn prepareFunc(c: *cy.Compiler, opt_group: ?rt.FuncGroupId, func: *cy.Func) !void {
     switch (func.type) {
         .template,
-        .trait,
-        .userLambda => return,
-
+        .trait => return,
+        .userLambda => {
+            if (cy.Trace) {
+                const symPath = try cy.sym.allocSymName(&c.sema, c.alloc, func.parent, .{});
+                defer c.alloc.free(symPath);
+                log.tracev("prep lambda in: {s}", .{symPath});
+            }
+            if (opt_group != null) {
+                return error.Unexpected;
+            }
+            _ = try addFunc(c, func, rt.FuncSymbol.initNull());
+        },
         .hostFunc => {
             if (cy.Trace) {
                 const symPath = try cy.sym.allocSymName(&c.sema, c.alloc, func.parent, .{});
@@ -3300,9 +3314,12 @@ fn genLambda(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     try genStmts(c, data.bodyHead);
 
     const stackSize = c.getMaxUsedRegisters();
+    const rt_id = c.compiler.genSymMap.get(func).?.func.id;
+    const rt_func = rt.FuncSymbol.initFunc(funcPc, stackSize, func.numParams, func.funcSigId, func.reqCallTypeCheck, func.isMethod());
+    c.compiler.vm.funcSyms.buf[rt_id] = rt_func;
+
     try popFuncBlockCommon(c, func);
     c.patchJumpToCurPc(skipJump);
-    const offset: u16 = @intCast(c.buf.ops.items.len - funcPc);
 
     if (data.numCaptures == 0) {
         if (data.ct) {
@@ -3313,22 +3330,18 @@ fn genLambda(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
             c.buf.setOpArgU48(start + 3, @intCast(@intFromPtr(func)));
         } else {
             const start = c.buf.ops.items.len;
-            try c.pushCode(.lambda, &.{
-                0, 0, func.numParams, stackSize, @intFromBool(func.reqCallTypeCheck), 0, 0, 0, 0, inst.dst }, node);
-            c.buf.setOpArgU16(start + 1, offset);
-            c.buf.setOpArgU16(start + 6, @intCast(func.funcSigId));
-            c.buf.setOpArgU16(start + 8, @intCast(c.ir.getExprType(idx).id));
+            try c.pushCode(.lambda, &.{ 0, 0, 0, 0, inst.dst }, node);
+            c.buf.setOpArgU16(start + 1, @intCast(rt_id));
+            c.buf.setOpArgU16(start + 3, @intCast(c.ir.getExprType(idx).id));
         }
     } else {
         const captures = c.ir.getArray(data.captures, u8, data.numCaptures);
         const start = c.buf.ops.items.len;
         try c.pushCode(.closure, &.{
-            0, 0, func.numParams, @as(u8, @intCast(captures.len)), stackSize, 
-            0, 0, 0, 0, cy.vm.CalleeStart, @intFromBool(func.reqCallTypeCheck), inst.dst
+            0, 0, 0, 0, @as(u8, @intCast(captures.len)), cy.vm.CalleeStart, inst.dst
         }, node);
-        c.buf.setOpArgU16(start + 1, offset);
-        c.buf.setOpArgU16(start + 6, @intCast(func.funcSigId));
-        c.buf.setOpArgU16(start + 8, @intCast(c.ir.getExprType(idx).id));
+        c.buf.setOpArgU16(start + 1, @intCast(rt_id));
+        c.buf.setOpArgU16(start + 3, @intCast(c.ir.getExprType(idx).id));
 
         const operandStart = try c.buf.reserveData(captures.len);
         for (captures, 0..) |irVar, i| {

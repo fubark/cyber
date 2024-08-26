@@ -2188,13 +2188,13 @@ func Button(name String, size int, on_click any):
         on_click = on_click,
     }
 
-Button('Count', 10):
+Button('Count', 10) => ():
     print 'on click'
 ```
 
 If arguments are omitted from the call expression they can be appended inside the call block using named arguments: *Planned Feature*
 ```cy
-Button('Count'):
+Button('Count') => ():
     .size = 10
     print 'on click'
 ```

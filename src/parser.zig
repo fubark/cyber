@@ -2377,8 +2377,14 @@ pub const Parser = struct {
         if (allow_block_expr) {
             // Parse call block syntax.
             const block_start = self.next_pos;
-            if (self.peek().tag() == .colon) {
+            if (self.peek().tag() == .equal_right_angle) {
                 self.advance();
+                const params = try self.parseParenAndFuncParams();
+                if (self.peek().tag() != .colon) {
+                    return self.reportError("Expected colon.", &.{});
+                }
+                self.advance();
+
                 const child_indent = try self.parseFirstChildIndent(self.cur_indent);
                 const prev_indent = self.pushIndent(child_indent);
                 defer self.cur_indent = prev_indent;
@@ -2402,7 +2408,7 @@ pub const Parser = struct {
                 const lambda = try self.ast.newNodeErase(.lambda_multi, .{
                     .sig_t = .infer,
                     .stmts = stmts,
-                    .params = &.{},
+                    .params = params,
                     .pos = self.tokenSrcPos(block_start),
                     .ret = null,
                 });

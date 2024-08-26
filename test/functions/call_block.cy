@@ -10,31 +10,31 @@ func fooRet(fn any):
 
 -- Expression stmt.
 n = 123
-foo():
+foo() => ():
     n += 1
 test.eq(n, 124)
 
 -- Decl stmt.
 n = 123
-var a = fooRet():
+var a = fooRet() => ():
     return n + 1
 test.eq(a, 124)
 
 -- Decl stmt, ending expr.
 n = 123
-var b = 1 + fooRet():
+var b = 1 + fooRet() => ():
     return n + 1
 test.eq(b, 125)
 
 -- Assign stmt.
 n = 123
-a = fooRet():
+a = fooRet() => ():
     return n + 1
 test.eq(a, 124)
 
 -- Assign stmt, ending expr.
 n = 123
-b = 1 + fooRet():
+b = 1 + fooRet() => ():
     return n + 1
 test.eq(b, 125)
 

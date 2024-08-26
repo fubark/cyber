@@ -3,11 +3,21 @@ use test
 type Foo[T type] struct:
     a T
 
+    func foo(a T) T:
+        var rt_type = T
+        var ret T = a
+        return ret
+
     func get(self) T:
-        return self.a
+        var rt_type = T
+        var ret T = self.a
+        return ret
 
     func set(self, a T):
         self.a = a
+
+-- Static function.
+test.eq(Foo[int].foo(123), 123)
 
 -- Infer decl type.
 var f = Foo[String]{a='abc'}

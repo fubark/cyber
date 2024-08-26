@@ -2617,7 +2617,7 @@ pub fn methodDecl(c: *cy.Chunk, func: *cy.Func) !void {
         defer popResolveContext(c);
         try methodDecl2(c, func);
     } else {
-        try pushResolveContext(c);
+        try pushFuncResolveContext(c, func);
         defer popResolveContext(c);
         try methodDecl2(c, func);
     }
@@ -2639,6 +2639,13 @@ pub fn methodDecl2(c: *cy.Chunk, func: *cy.Func) !void {
 pub fn funcDecl(c: *cy.Chunk, func: *cy.Func) !void {
     if (func.variant) |variant| {
         try pushFuncVariantResolveContext(c, variant);
+        defer popResolveContext(c);
+        try funcDecl2(c, func);
+        return;
+    }
+
+    if (func.parent.parent.?.getVariant()) |parent_variant| {
+        try pushVariantResolveContext(c, parent_variant);
         defer popResolveContext(c);
         try funcDecl2(c, func);
     } else {

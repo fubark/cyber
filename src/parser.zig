@@ -876,7 +876,7 @@ pub const Parser = struct {
         switch (token.tag()) {
             .object_k => {
                 if (allowUnnamedType) {
-                    const decl = try self.parseObjectDecl(token.pos(), null, .{
+                    const decl = try self.parseObjectDecl(self.next_pos, null, .{
                         .hidden = false,
                         .attrs = &.{},
                         .allow_decl = true,

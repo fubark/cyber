@@ -229,7 +229,7 @@ let rootVisitor(cursor, parent, state):
             var bindType = toBindType(atype)
             if typeof(bindType) == symbol or bindType != name:
                 aliases[name] = bindType
-                out += "type $(getApiName(name)) = $(toCyType(bindType, true))\n\n"
+                out += "type $(getApiName(name)) -> $(toCyType(bindType, true))\n\n"
 
     case clang.CXCursor_StructDecl:
         -- print "struct $(name)"
@@ -278,7 +278,7 @@ let rootVisitor(cursor, parent, state):
 
         -- Skip unnamed enum.
         if !name.startsWith('enum '):
-            out += "type $(getApiName(name)) = int\n"
+            out += "type $(getApiName(name)) -> int\n"
             aliases[name] = symbol.int
 
         var newState = State{type=.enum}

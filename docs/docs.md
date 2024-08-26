@@ -1432,13 +1432,13 @@ print s.!line     --> 20
 A type alias refers to a different target type.
 Once declared, the alias and the target type can be used interchangeably.
 
-A type alias is declared using the assignment `=` operator after a `type` name declaration:
+A type alias declaration is denoted as `type A -> T` where `A` is the alias type of `T`:
 ```cy
 type Vec2:
     x float
     y float
 
-type Pos2 = Vec2
+type Pos2 -> Vec2
 
 var pos = Pos2{x=3, y=4}
 ```

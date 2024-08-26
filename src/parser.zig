@@ -783,7 +783,7 @@ pub const Parser = struct {
             .colon => {
                 decl = @ptrCast(try self.parseObjectDecl(start, name, config));
             },
-            .equal => {
+            .minus_right_angle => {
                 decl = @ptrCast(try self.parseTypeAliasDecl(start, name, config));
             },
             .underscore => {

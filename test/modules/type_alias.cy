@@ -2,7 +2,7 @@ use a './test_mods/a.cy'
 use t 'test'
 
 -- Type alias of imported type.
-type Vec2 = a.Vec2
+type Vec2 -> a.Vec2
 
 -- Using alias as type spec.
 type Parent:

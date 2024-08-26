@@ -4,7 +4,7 @@
     -b int
 
 -- Type alias.
--type Foo2 = Foo
+-type Foo2 -> Foo
 
 -- Distinct type.
 -type Foo3 Foo

@@ -47,7 +47,7 @@ type Vec2:
 
 func Vec2.new(x float, y float):
     return Vec2{x=x, y=y}
-type Vec2Alias = Vec2
+type Vec2Alias -> Vec2
 
 type Bar:
     a float

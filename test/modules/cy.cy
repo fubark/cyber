@@ -20,7 +20,7 @@ res = cy.parse('var .foo = 123')
 t.eq(res['decls'][0]['type'], 'staticDecl')
 t.eq(res['decls'][0]['name'], 'foo')
 
-res = cy.parse('type foo = bar')
+res = cy.parse('type foo -> bar')
 t.eq(res['decls'][0]['type'], 'typeAliasDecl')
 t.eq(res['decls'][0]['name'], 'foo')
 

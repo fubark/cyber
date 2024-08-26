@@ -1693,24 +1693,24 @@ pub fn writeSymName(s: *cy.Sema, w: anytype, sym: *cy.Sym, config: SymFormatConf
     if (config.emit_template_args) {
         if (sym.getVariant()) |variant| {
             if (variant.root_template == s.option_tmpl) {
+                try w.writeAll("?");
                 const arg = variant.args[0].asHeapObject();
-                const name = s.getTypeBaseName(arg.type.type);
-                try w.print("?{s}", .{name});
+                try s.writeTypeName(w, arg.type.type, config.from);
                 return;
             } else if (variant.root_template == s.pointer_tmpl) {
+                try w.writeAll("*");
                 const arg = variant.args[0].asHeapObject();
-                const name = s.getTypeBaseName(arg.type.type);
-                try w.print("*{s}", .{name});
+                try s.writeTypeName(w, arg.type.type, config.from);
                 return;
             } else if (variant.root_template == s.ptr_slice_tmpl) {
+                try w.writeAll("[*]");
                 const arg = variant.args[0].asHeapObject();
-                const name = s.getTypeBaseName(arg.type.type);
-                try w.print("[*]{s}", .{name});
+                try s.writeTypeName(w, arg.type.type, config.from);
                 return;
             } else if (variant.root_template == s.ref_slice_tmpl) {
+                try w.writeAll("[]");
                 const arg = variant.args[0].asHeapObject();
-                const name = s.getTypeBaseName(arg.type.type);
-                try w.print("[]{s}", .{name});
+                try s.writeTypeName(w, arg.type.type, config.from);
                 return;
             } else if (variant.root_template == s.func_ptr_tmpl) {
                 try w.writeAll("func");

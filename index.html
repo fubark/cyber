@@ -990,7 +990,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 314-e65deb8</div>
+    <div class="sub-title">v0.4-dev 373-d804987</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -1001,7 +1001,7 @@ table tbody tr:nth-child(even) {
         <li><a href="#introduction">Introduction.</a></li>
 <li><a href="#syntax">Syntax.</a></li>
 <li><a href="#basic-types">Basic Types.</a></li>
-<li><a href="#custom-types">Custom Types.</a></li>
+<li><a href="#type-declarations">Type Declarations.</a></li>
 <li><a href="#c-types">C Types.</a></li>
 <li><a href="#control-flow">Control Flow.</a></li>
 <li><a href="#functions">Functions.</a></li>
@@ -1890,7 +1890,7 @@ print square(a)           --> CompileError. Expected `int`, got `any`.
 <h2 id="dyn"><code>dyn</code>. <a href="#dyn">#</a></h2>
 <p>The dynamic type defers type checking to runtime. However, it also tracks its own <strong>recent type</strong> in order to surface errors at compile-time. See <a href="#dynamic-typing" title="">Dynamic Typing</a>.</p>
 <a href="#basic-types">^topic</a>
-<h1 id="custom-types">Custom Types. <a href="#custom-types">#</a></h1>
+<h1 id="type-declarations">Type Declarations. <a href="#type-declarations">#</a></h1>
 <table><tr>
 <td valign="top">
 <ul>
@@ -1901,7 +1901,6 @@ print square(a)           --> CompileError. Expected `int`, got `any`.
 <li><a href="#circular-references" title="">Circular references.</a></li>
 <li><a href="#unnamed-object" title="">Unnamed object.</a></li>
 <li><a href="#methods" title="">Methods.</a></li>
-<li><a href="#implicit-members" title="">Implicit members.</a></li>
 <li><a href="#type-functions" title="">Type functions.</a></li>
 <li><a href="#type-variables" title="">Type variables.</a></li>
 <li><a href="#type-embedding" title="">Type embedding.</a></li>
@@ -1928,6 +1927,7 @@ print square(a)           --> CompileError. Expected `int`, got `any`.
 <li><a href="#traits" title="">Traits.</a></li>
 <li><a href="#type-templates" title="">Type templates.</a><ul>
 <li><a href="#expand-type-template" title="">Expand type template.</a></li>
+<li><a href="#type-specialization" title="">Type specialization.</a></li>
 </ul>
 </li>
 </ul>
@@ -1948,7 +1948,7 @@ type A:
     value int
     next  ?Node
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h3 id="instantiate">Instantiate. <a href="#instantiate">#</a></h3>
 <p>New object instances are created using a record literal with a leading type name:</p>
 <pre><code class="language-cy">var node = Node{value=123, next=none}
@@ -1958,7 +1958,7 @@ print node.value       -- Prints "123"
 <pre><code class="language-cy">var node Node = .{value=234, next=none}
 print node.value       -- Prints "234"
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h2 id="field-visibility">Field visibility. <a href="#field-visibility">#</a></h2>
 <p>All fields have public visibility. However, when a field is declared with a <code>-</code> prefix, it suggests that it should not be made available to an editor's autocomplete:</p>
 <pre><code class="language-cy">type Info:
@@ -1966,7 +1966,7 @@ print node.value       -- Prints "234"
     -b      int
     -secret String
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h3 id="default-field-values">Default field values. <a href="#default-field-values">#</a></h3>
 <p>When a field is omitted in the record literal, it gets initialized to its <a href="#zero-values" title="">zero value</a>:</p>
 <pre><code class="language-cy">var node Node = .{value=234}
@@ -1982,7 +1982,7 @@ print s.name       -->
 print s.age        --> 0
 print s.gpa        --> 0.0
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h3 id="circular-references">Circular references. <a href="#circular-references">#</a></h3>
 <p>Circular type references are allowed if the object can be initialized:</p>
 <pre><code class="language-cy">type Node:
@@ -2000,7 +2000,7 @@ var n = Node{}    -- Initializes.
 var n = Node{}    -- CompileError. Can not zero initialize `next`
                    -- because of circular dependency.
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h3 id="unnamed-object">Unnamed object. <a href="#unnamed-object">#</a></h3>
 <p>Unnamed object types can be declared and used without an explicit <code>type</code> declaration:</p>
 <pre><code class="language-cy">type Node:
@@ -2014,7 +2014,7 @@ var node = Node{
     next  = none,
 }
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h3 id="methods">Methods. <a href="#methods">#</a></h3>
 <p>Methods are functions that are invoked with a parent instance using the <code>.</code> operator.
 When the first parameter of a function contains <code>self</code>, it's declared as a method of the parent type:</p>
@@ -2037,17 +2037,7 @@ n.incAndPrint()         -- Prints "444"
 <pre><code class="language-cy">func Node.getNext(self):
     return self.next
 </code></pre>
-<a href="#custom-types">^topic</a>
-<h3 id="implicit-members">Implicit members. <a href="#implicit-members">#</a></h3>
-<p>When a method is nested under a type declaration, the type members can be implicitly referenced inside the method: <em>Incomplete: Only the type's fields can be referenced this way.</em></p>
-<pre><code class="language-cy">type Node:
-    value int
-    next  ?Node
-
-    func double(self):
-        return value * 2
-</code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h3 id="type-functions">Type functions. <a href="#type-functions">#</a></h3>
 <p>Type functions can be declared within the type block without a <code>self</code> param:</p>
 <pre><code class="language-cy">type Node:
@@ -2069,7 +2059,7 @@ func Node.new():
 
 var n = Node.new()
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h3 id="type-variables">Type variables. <a href="#type-variables">#</a></h3>
 <p>Similarily, type variables are declared outside of the <code>type</code> block:</p>
 <pre><code class="language-cy">-- Declare inside the `Node` namespace.
@@ -2077,7 +2067,7 @@ var Node.DefaultValue = 100
 
 print Node.DefaultValue    -- Prints "100"
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h3 id="type-embedding">Type embedding. <a href="#type-embedding">#</a></h3>
 <p>Type embedding facilitates type composition by using the namespace of a child field's type: <em>Planned Feature</em></p>
 <pre><code class="language-cy">type Base:
@@ -2106,11 +2096,11 @@ print c.double()  --> 246
 <p>Since the embedding field is named, it can be used just like any other field:</p>
 <pre><code class="language-cy">print c.b.a       --> 123
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h2 id="structs">Structs. <a href="#structs">#</a></h2>
 <p>Struct types can contain field and method members just like object types, but their instances are copied by value rather than by reference. In that sense, they behave like primitive data types.</p>
 <p>Unlike objects, structs are value types and do not have a reference count. They can be safely referenced with the <code>ref</code> modifier and their lifetime can be managed with single ownership semantics. Unsafe pointers can not reference structs by default, but there may be an unsafe builtin to allow it anyway.</p>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h3 id="declare-struct">Declare struct. <a href="#declare-struct">#</a></h3>
 <p>Struct types are created using the <code>type struct</code> declaration:</p>
 <pre><code class="language-cy">type Vec2 struct:
@@ -2119,7 +2109,7 @@ print c.double()  --> 246
 
 var v = Vec2{x=30, y=40}
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h3 id="copy-structs">Copy structs. <a href="#copy-structs">#</a></h3>
 <p>Since structs are copied by value, assigning a struct to another variable creates a new struct:</p>
 <pre><code class="language-cy">var v = Vec2{x=30, y=40}
@@ -2128,10 +2118,27 @@ v.x = 100
 print w.x    -- Prints '30'
 print v.x    -- Prints '100'
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h2 id="tuples">Tuples. <a href="#tuples">#</a></h2>
-<blockquote><p><em>Incomplete: Tuples can only be created from @host funcs at the moment.</em></p>
-</blockquote><a href="#custom-types">^topic</a>
+<p>Tuples can be declared using parentheses to wrap member fields:</p>
+<pre><code class="language-cy">type Vec2 struct(x float, y float)
+</code></pre>
+<p>Function declarations can still be declared under the type:</p>
+<pre><code class="language-cy">type Vec2 struct(x float, y float):
+    func scale(self, s float):
+        self.x *= s
+        self.y *= s
+</code></pre>
+<p>Tuples can be initialized with member values corresponding to the order they were declared:</p>
+<pre><code class="language-cy">var v = Vec2{3, 4}
+</code></pre>
+<p>The initializer can also be inferred from the target type:</p>
+<pre><code class="language-cy">var v Vec2 = .{3, 4}
+</code></pre>
+<p>Tuples can still be initialized with explicit field names:</p>
+<pre><code class="language-cy">var v = Vec2{x=3, y=4}
+</code></pre>
+<a href="#type-declarations">^topic</a>
 <h2 id="enums">Enums. <a href="#enums">#</a></h2>
 <p>A new enum type can be declared with the <code>type enum</code> declaration.
 An enum value can only be one of the unique symbols declared in the enum type.
@@ -2151,7 +2158,7 @@ print int(fruit)  -- '3'
 fruit = .orange
 print(fruit == Fruit.orange)   -- 'true'
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h2 id="choices">Choices. <a href="#choices">#</a></h2>
 <p>Choices are enums with payloads (also known as sum types or tagged unions). An enum declaration becomes a choice type if one of the cases has a payload type specifier:</p>
 <pre><code class="language-cy">type Shape enum:
@@ -2168,7 +2175,7 @@ type Rectangle:
     width  float
     height float
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h3 id="initialize-choice">Initialize choice. <a href="#initialize-choice">#</a></h3>
 <p>The general way to initialize a choice is to invoke the initializer with the payload as the argument:</p>
 <pre><code class="language-cy">var rect = Rectangle{width=10, height=20}
@@ -2182,7 +2189,7 @@ s = Shape.line(20)
 <p>A choice without a payload is initialized like an enum member:</p>
 <pre><code class="language-cy">var s = Shape.point
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h3 id="choice-switch">Choice <code>switch</code>. <a href="#choice-switch">#</a></h3>
 <p><code>case</code> clauses can match choices and capture the payload:</p>
 <pre><code class="language-cy">switch s
@@ -2199,26 +2206,26 @@ case .point:
 else:
     print "Unsupported."
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h3 id="access-choice">Access choice. <a href="#access-choice">#</a></h3>
 <p>A choice can be accessed by specifying the access operator <code>.!</code> before the tagged member name. This will either return the payload or panic at runtime: <em>Planned Feature</em></p>
 <pre><code class="language-cy">var s = Shape{line=20}
 print s.!line     --> 20
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h2 id="type-aliases">Type aliases. <a href="#type-aliases">#</a></h2>
 <p>A type alias refers to a different target type.
 Once declared, the alias and the target type can be used interchangeably.</p>
-<p>A type alias is declared using the assignment <code>=</code> operator after a <code>type</code> name declaration:</p>
+<p>A type alias declaration is denoted as <code>type A -> T</code> where <code>A</code> is the alias type of <code>T</code>:</p>
 <pre><code class="language-cy">type Vec2:
     x float
     y float
 
-type Pos2 = Vec2
+type Pos2 -> Vec2
 
 var pos = Pos2{x=3, y=4}
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h2 id="distinct-types">Distinct types. <a href="#distinct-types">#</a></h2>
 <p>A distinct type creates a new type by copying a target type.</p>
 <p>It's declared with <code>type</code> name declaration followed by the target type specifier:</p>
@@ -2251,7 +2258,7 @@ var a = Pos2{x=3, y=4}
 
 var b Vec2 = a as Vec2
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h2 id="traits">Traits. <a href="#traits">#</a></h2>
 <p>A trait type defines a common interface for implementing types. A trait type is declared with the <code>trait</code> keyword:</p>
 <pre><code class="language-cy">type Shape trait:
@@ -2281,7 +2288,7 @@ print s.area()         --> 12.57
 s = Rectangle{width=4, height=5}
 print s.area()         --> 20
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h2 id="type-templates">Type templates. <a href="#type-templates">#</a></h2>
 <p>Type declarations can include template parameters to create a type template:</p>
 <pre><code class="language-cy">type MyContainer[T type]:
@@ -2291,7 +2298,7 @@ print s.area()         --> 20
     func get(self) T:
         return self.value
 </code></pre>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
 <h3 id="expand-type-template">Expand type template. <a href="#expand-type-template">#</a></h3>
 <p>When the type template is invoked with template argument(s), a special version of the type is generated.</p>
 <p>In this example, <code>String</code> can be used as an argument since it satisfies the <code>type</code> parameter constraint:</p>
@@ -2299,7 +2306,18 @@ print s.area()         --> 20
 print a.get()      -- Prints 'abc'
 </code></pre>
 <p>Note that invoking the template again with the same argument(s) returns the same generated type. In other words, the generated type is always memoized from the input parameters.</p>
-<a href="#custom-types">^topic</a>
+<a href="#type-declarations">^topic</a>
+<h3 id="type-specialization">Type specialization. <a href="#type-specialization">#</a></h3>
+<p><a href="#value-templates" title="">Value templates</a> can be used to specialize type templates:</p>
+<pre><code class="language-cy">func List[T type] type:
+    if T == dyn:
+        return DynList
+    else:
+        return GenList[T]
+
+var a = List[int]{1, 2, 3}
+</code></pre>
+<a href="#type-declarations">^topic</a>
 <h1 id="c-types">C Types. <a href="#c-types">#</a></h1>
 <ul>
 <li><a href="#c-primitives" title="">C primitives.</a></li>
@@ -2666,19 +2684,26 @@ case 0..5:
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#control-flow">^topic</a>
 <h1 id="functions">Functions. <a href="#functions">#</a></h1>
+<table><tr>
+<td valign="top">
 <ul>
 <li><a href="#static-functions" title="">Static functions.</a></li>
 <li><a href="#function-overloading" title="">Function overloading.</a></li>
 <li><a href="#lambdas" title="">Lambdas.</a></li>
 <li><a href="#closures" title="">Closures.</a></li>
+<li><a href="#function-types" title="">Function types.</a></li>
 <li><a href="#extern-functions" title=""><code>extern</code> functions.</a></li>
+<li><a href="#multiple-parameters" title="">Multiple parameters.</a></li>
 <li><a href="#named-parameters" title="">Named parameters.</a></li>
-<li><a href="#optional-parameters" title="">Optional parameters.</a></li>
 <li><a href="#variadic-parameters" title="">Variadic parameters.</a></li>
+</ul>
+</td><td valign="top">
+<ul>
 <li><a href="#function-calls" title="">Function calls.</a><ul>
 <li><a href="#shorthand-syntax" title="">Shorthand syntax.</a></li>
 <li><a href="#call-block-syntax" title="">Call block syntax.</a></li>
 <li><a href="#piping" title="">Piping.</a></li>
+<li><a href="#compile-time-call" title="">Compile-time call.</a></li>
 </ul>
 </li>
 <li><a href="#function-templates" title="">Function templates.</a><ul>
@@ -2687,7 +2712,10 @@ case 0..5:
 <li><a href="#infer-param-type" title="">Infer param type.</a></li>
 </ul>
 </li>
+<li><a href="#value-templates" title="">Value templates.</a></li>
 </ul>
+</td>
+</tr></table>
 <p><a href="#table-of-contents" title="">^top</a></p>
 <p>In Cyber, there are first-class functions (or function values) and static functions.</p>
 <h2 id="static-functions">Static functions. <a href="#static-functions">#</a></h2>
@@ -2784,10 +2812,56 @@ func foo():
 <h2 id="extern-functions"><code>extern</code> functions. <a href="#extern-functions">#</a></h2>
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#functions">^topic</a>
-<h2 id="named-parameters">Named parameters. <a href="#named-parameters">#</a></h2>
+<h2 id="function-types">Function types. <a href="#function-types">#</a></h2>
+<p>A function type is denoted as <code>func(P1, P2, ...) R</code> where <code>P</code>s are parameter types and <code>R</code> is the return type in addition to any function modifiers:</p>
+<pre><code class="language-cy">type AddFn -> func(int, int) int
+</code></pre>
+<p>Function types can include optional parameter names:</p>
+<pre><code class="language-cy">type AddFn -> func(a int, b int) int
+</code></pre>
+<p>If one parameter has a name, the other parameters must also have names.
+Parameter names do not alter the function signature and only serve to document the function type.</p>
+<p>Only static functions can be assigned to a function type:</p>
+<pre><code class="language-cy">func add(a int, b int) int:
+    return a + b
+
+var fn AddFn = add
+fn(10, 20)         --> 30
+</code></pre>
+<p>Similarily, a function union type is denoted as <code>Func(P1, P2, ...) R</code> and can store static functions, lambdas, and closures:</p>
+<pre><code class="language-cy">var c = 5
+func addClosure(a int, b int) int:
+    return a + b + c
+
+var fn Func(int, int) int = add
+fn(10, 20)         --> 30
+fn = addClosure 
+fn(10, 20)         --> 35
+</code></pre>
+<p>Function types declared in template parameters represent <strong>function symbol</strong> types.
+A function symbol can only be used at compile-time. It can be expanded to a runtime function:</p>
+<pre><code class="language-cy">type IntMap[K type, HASH func(K) int]
+    ints [*]int
+
+    -- Probing omitted.
+    func get(self, key K) int:
+        var slot = HASH(key) % self.ints.len
+        return self.ints[slot]
+
+func my_str_hash(s String) int:
+    return s.len()
+
+var m = IntMap[String, my_str_hash]{}
+</code></pre>
+<a href="#functions">^topic</a>
+<h2 id="multiple-parameters">Multiple parameters. <a href="#multiple-parameters">#</a></h2>
 <blockquote><p><em>Planned Feature</em></p>
-</blockquote><a href="#functions">^topic</a>
-<h2 id="optional-parameters">Optional parameters. <a href="#optional-parameters">#</a></h2>
+</blockquote><p>When multiple parameters share the same type they can be declared together in a sequence:</p>
+<pre><code class="language-cy">func sum(a, b, c int) int
+    return a + b + c
+</code></pre>
+<a href="#functions">^topic</a>
+<h2 id="named-parameters">Named parameters. <a href="#named-parameters">#</a></h2>
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#functions">^topic</a>
 <h2 id="variadic-parameters">Variadic parameters. <a href="#variadic-parameters">#</a></h2>
@@ -2816,27 +2890,38 @@ r = foo()         -- Calls the function `random`.
 </code></pre>
 <a href="#functions">^topic</a>
 <h3 id="call-block-syntax">Call block syntax. <a href="#call-block-syntax">#</a></h3>
-<p>The call block appends a lambda to a call expression's arguments:</p>
-<pre><code class="language-cy">func Button(name String, size int, on_click any):
-    return {
+<p>The call block appends a lambda to a call expression's last argument:</p>
+<pre><code class="language-cy">func Button(name String, size int, on_click func() void) ButtonConfig:
+    return .{
         name = name,
         size = size,
         on_click = on_click,
     }
 
-Button('Count', 10):
+Button('Count', 10, ():
     print 'on click'
 </code></pre>
-<p>If arguments are omitted from the call expression they can be appended inside the call block using named arguments: <em>Planned Feature</em></p>
-<pre><code class="language-cy">Button('Count'):
-    .size = 10
-    print 'on click'
-</code></pre>
-<p>Arguments assigned in the call block can be unordered.</p>
 <a href="#functions">^topic</a>
 <h3 id="piping">Piping. <a href="#piping">#</a></h3>
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#functions">^topic</a>
+<h3 id="compile-time-call">Compile-time call. <a href="#compile-time-call">#</a></h3>
+<p>Any function can be invoked at compile-time using <code>#</code> before the arguments:</p>
+<pre><code class="language-cy">func fib(n int) int:
+    if n < 2:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+var res = fib#(30)
+print res         --> 832040
+</code></pre>
+<p>The result of the function call is used instead of emitting a runtime function call.
+The call arguments must be compile-time compatible values.</p>
+<p>There is no need for <code>#</code> if the caller is already in a compile-time context: <em>Compile-time if is planned.</em></p>
+<pre><code class="language-cy">#if fib(30) == 832040:
+    print 'Correct result.'
+</code></pre>
+<a href="#functions">^topic</a>
 <h2 id="function-templates">Function templates. <a href="#function-templates">#</a></h2>
 <p>Function declarations can include template parameters to create a function template:</p>
 <pre><code class="language-cy">func add(#T type, a T, b T) T:
@@ -2871,6 +2956,25 @@ print add(1.0, 2.0)     --> 3.0
 <pre><code class="language-cy">func set(m Map[#K, #V], key K, val V):
     m.set(key, val)
 </code></pre>
+<a href="#functions">^topic</a>
+<h2 id="value-templates">Value templates. <a href="#value-templates">#</a></h2>
+<p>A value template returns a memoized value after being invoked with template arguments just once. It's declared with <code>func</code> but the template parameters are delimited with brackets.</p>
+<p>This is different from a function template which generates multiple runtime functions based on its template parameters. A value template does not generate a runtime function and instead expands to a value at compile-time:</p>
+<pre><code class="language-cy">func GetType[ID String] type:
+    if ID == 'bool':
+        return bool
+    else ID == 'int':
+        return int
+    else ID == 'String':
+        return String
+    else
+        throw error.Unsupported
+
+var a GetType['int'] = 123
+print a         --> 123
+</code></pre>
+<p>This can be useful to evaluate compile-time logic to create new types or specialize other templates.
+Any compile-time compatible type can also be returned.</p>
 <a href="#functions">^topic</a>
 <h1 id="modules">Modules. <a href="#modules">#</a></h1>
 <table><tr>
@@ -3068,7 +3172,7 @@ print typeof('my str').id()
 </blockquote><blockquote><p><code>func copy(val any) any</code></p>
 <p>Copies a primitive value or creates a shallow copy of an object value.</p>
 </blockquote><blockquote><p><code>func dump(val any) <void></code></p>
-<p>Prints the result of <code>toCyon</code> on a value.</p>
+<p>Dumps a detailed description of a value.</p>
 </blockquote><blockquote><p><code>func eprint(str any) <void></code></p>
 <p>Prints a value to the error stream. The host determines how it is printed.</p>
 </blockquote><blockquote><p><code>func errorReport() String</code></p>
@@ -3091,15 +3195,16 @@ print typeof('my str').id()
 </blockquote><blockquote><p><code>func ptrcast(D type, val S) *D</code></p>
 </blockquote><blockquote><p><code>func print(str any) <void></code></p>
 <p>Prints a value. The host determines how it is printed.</p>
-</blockquote><blockquote><p><code>func queueTask(fn any) <void></code></p>
+</blockquote><blockquote><p><code>func queueTask(fn <func_type>) <void></code></p>
 <p>Queues a callback function as an async task.</p>
 </blockquote><blockquote><p><code>func refcast(T type, ptr *T) <ref></code></p>
 </blockquote><blockquote><p><code>func runestr(val int) String</code></p>
 <p>Converts a rune to a string.</p>
 </blockquote><blockquote><p><code>func sizeof(T type) int</code></p>
 </blockquote><blockquote><p><code>func sizeof_(type_id int) int</code></p>
-</blockquote><blockquote><p><code>func typeof(val any) metatype</code></p>
-<p>Returns the value's type as a <code>metatype</code> object.</p>
+</blockquote><blockquote><p><code>func typeof(t ExprType) type</code></p>
+<p>Returns the type of an expression.</p>
+</blockquote><blockquote><p><code>func typeid(T type) int</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-void"><code>type void</code> <a href="#type-void">#</a></h3>
 <a href="#modules">^topic</a>
@@ -3181,6 +3286,8 @@ print typeof('my str').id()
 <a href="#modules">^topic</a>
 <h3 id="type-placeholder2"><code>type placeholder2</code> <a href="#type-placeholder2">#</a></h3>
 <a href="#modules">^topic</a>
+<h3 id="type-placeholder3"><code>type placeholder3</code> <a href="#type-placeholder3">#</a></h3>
+<a href="#modules">^topic</a>
 <h3 id="type-taglit"><code>type taglit</code> <a href="#type-taglit">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-dyn"><code>type dyn</code> <a href="#type-dyn">#</a></h3>
@@ -3188,7 +3295,10 @@ print typeof('my str').id()
 <h3 id="type-any"><code>type any</code> <a href="#type-any">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-type"><code>type type</code> <a href="#type-type">#</a></h3>
-<a href="#modules">^topic</a>
+<blockquote><p><code>func id(self any) int</code></p>
+</blockquote><blockquote><p><code>func type.$call(val any) type</code></p>
+<p>Return the type of a value.  See <code>typeof</code> to obtain the type of an expression at compile-time.</p>
+</blockquote><a href="#modules">^topic</a>
 <h3 id="type-list"><code>type List</code> <a href="#type-list">#</a></h3>
 <blockquote><p><code>func $index(self any, idx int) T</code></p>
 </blockquote><blockquote><p><code>func $index(self any, range Range) List[T]</code></p>
@@ -3210,7 +3320,7 @@ print typeof('my str').id()
 </blockquote><blockquote><p><code>func resize(self any, size int) <void></code></p>
 <p>Resizes the list to <code>len</code> elements. If the new size is bigger, <code>none</code> values  are appended to the list. If the new size is smaller, elements at the end of the list are removed.</p>
 </blockquote><blockquote><p><code>func resize_(self any, elem_t int, size int) <void></code></p>
-</blockquote><blockquote><p><code>func sort(self any, lessFn any) <void></code></p>
+</blockquote><blockquote><p><code>func sort(self any, lessFn <func_type>) <void></code></p>
 <p>Sorts the list with the given <code>less</code> function.  If element <code>a</code> should be ordered before <code>b</code>, the function should return <code>true</code> otherwise <code>false</code>.</p>
 </blockquote><blockquote><p><code>func List.fill(val T, n int) List[T]</code></p>
 <p>Creates a list with initial capacity of <code>n</code> and values set to <code>val</code>.  If the value is an object, it is shallow copied <code>n</code> times.</p>
@@ -3222,6 +3332,16 @@ print typeof('my str').id()
 <h3 id="type-tuple"><code>type Tuple</code> <a href="#type-tuple">#</a></h3>
 <blockquote><p><code>func $index(self any, idx int) any</code></p>
 </blockquote><a href="#modules">^topic</a>
+<h3 id="type-funcsig"><code>type FuncSig</code> <a href="#type-funcsig">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-funcptr_t"><code>type funcptr_t</code> <a href="#type-funcptr_t">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-funcunion_t"><code>type funcunion_t</code> <a href="#type-funcunion_t">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-func"><code>type Func</code> <a href="#type-func">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-funcsym_t"><code>type funcsym_t</code> <a href="#type-funcsym_t">#</a></h3>
+<a href="#modules">^topic</a>
 <h3 id="type-table"><code>type Table</code> <a href="#type-table">#</a></h3>
 <blockquote><p><code>func $initPair(self any, key String, value any) <void></code></p>
 </blockquote><blockquote><p><code>func $get(self any, name String) dyn</code></p>
@@ -3337,12 +3457,6 @@ print typeof('my str').id()
 </blockquote><blockquote><p><code>func pointer.$call(T type, addr int) *T</code></p>
 <p>Converts an <code>int</code> to a <code>pointer</code> value.</p>
 </blockquote><a href="#modules">^topic</a>
-<h3 id="type-closure"><code>type Closure</code> <a href="#type-closure">#</a></h3>
-<a href="#modules">^topic</a>
-<h3 id="type-lambda"><code>type Lambda</code> <a href="#type-lambda">#</a></h3>
-<a href="#modules">^topic</a>
-<h3 id="type-hostfunc"><code>type HostFunc</code> <a href="#type-hostfunc">#</a></h3>
-<a href="#modules">^topic</a>
 <h3 id="type-externfunc"><code>type ExternFunc</code> <a href="#type-externfunc">#</a></h3>
 <blockquote><p><code>func addr(self any) int</code></p>
 <p>Returns the memory address as an <code>int</code>. The value may be negative since it's  bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.</p>
@@ -3350,10 +3464,6 @@ print typeof('my str').id()
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-fiber"><code>type Fiber</code> <a href="#type-fiber">#</a></h3>
 <blockquote><p><code>func status(self any) symbol</code></p>
-</blockquote><a href="#modules">^topic</a>
-<h3 id="type-metatype"><code>type metatype</code> <a href="#type-metatype">#</a></h3>
-<blockquote><p><code>func id(self any) int</code></p>
-</blockquote><blockquote><p><code>func metatype.$call(T type) metatype</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-range"><code>type Range</code> <a href="#type-range">#</a></h3>
 <a href="#modules">^topic</a>
@@ -3410,6 +3520,9 @@ print typeof('my str').id()
 <h3 id="type-defaultmemory"><code>type DefaultMemory</code> <a href="#type-defaultmemory">#</a></h3>
 <blockquote><p><code>func alloc(self any, len int) [*]byte</code></p>
 </blockquote><blockquote><p><code>func free(self any, buf [*]byte) <void></code></p>
+</blockquote><a href="#modules">^topic</a>
+<h3 id="type-exprtype"><code>type ExprType</code> <a href="#type-exprtype">#</a></h3>
+<blockquote><p><code>func getType(self any) type</code></p>
 </blockquote><!-- core.end -->
 <a href="#modules">^topic</a>
 <h2 id="mod-cy"><code>mod cy</code> <a href="#mod-cy">#</a></h2>
@@ -3735,7 +3848,7 @@ for map -> {k, v}:
 <p>Creates a handle to a dynamic library and functions declared from <code>cfunc</code>.  By default, an anonymous object is returned with the C-functions binded as the object's methods.  If <code>config</code> contains <code>gen_table: true</code>, a <code>Table</code> is returned instead with C-functions  binded as function values.</p>
 </blockquote><blockquote><p><code>func bindObjPtr(self any, obj any) *<void></code></p>
 <p>Returns a Cyber object's pointer. Operations on the pointer is unsafe,  but it can be useful when passing it to C as an opaque pointer.  The object is also retained and managed by the FFI context.</p>
-</blockquote><blockquote><p><code>func cbind(self any, mt metatype, fields List[dyn]) <void></code></p>
+</blockquote><blockquote><p><code>func cbind(self any, mt type, fields List[dyn]) <void></code></p>
 <p>Binds a Cyber type to a C struct.</p>
 </blockquote><blockquote><p><code>func cfunc(self any, name String, params List[dyn], ret any) <void></code></p>
 <p>Declares a C function which will get binded to the library handle created from <code>bindLib</code>.</p>
@@ -4495,10 +4608,7 @@ In this example, the dynamic value <code>a</code> resolves to a <code>String</co
 <ul>
 <li><a href="#reflection" title="">Reflection.</a></li>
 <li><a href="#attributes" title="">Attributes.</a></li>
-<li><a href="#templates" title="">Templates.</a><ul>
-<li><a href="#template-specialization" title="">Template specialization.</a></li>
-</ul>
-</li>
+<li><a href="#templates" title="">Templates.</a></li>
 <li><a href="#macros" title="">Macros.</a></li>
 <li><a href="#compile-time-execution" title="">Compile-time execution.</a><ul>
 <li><a href="#builtin-types" title="">Builtin types.</a></li>
@@ -4633,11 +4743,8 @@ print bool          -- 'type: bool'
 </blockquote><a href="#metaprogramming">^topic</a>
 <h2 id="templates">Templates. <a href="#templates">#</a></h2>
 <p>Templates enables parametric polymorphism for types and functions. Template arguments are passed to templates to generate specialized code. This facilitates developing container types and algorithms that operate on different types.</p>
-<p>See <a href="#type-templates" title="">Custom Types / Type templates</a> and <a href="#function-templates" title="">Functions / Function templates</a>.</p>
+<p>See <a href="#type-templates" title="">Type Declarations / Type templates</a> and <a href="#function-templates" title="">Functions / Function templates</a>.</p>
 <a href="#metaprogramming">^topic</a>
-<h3 id="template-specialization">Template specialization. <a href="#template-specialization">#</a></h3>
-<blockquote><p><em>Planned Feature</em></p>
-</blockquote><a href="#metaprogramming">^topic</a>
 <h2 id="macros">Macros. <a href="#macros">#</a></h2>
 <blockquote><p><em>Planned Feature</em></p>
 </blockquote><a href="#metaprogramming">^topic</a>
@@ -4972,7 +5079,8 @@ However, it can be useful to perform additional cleanup tasks for instances that
 <p>Cyber provides memory safety by default with structured and automatic memory.
 Manual memory is also supported but discouraged.</p>
 <h2 id="structured-memory">Structured memory. <a href="#structured-memory">#</a></h2>
-<p>Cyber uses single value ownership and variable scopes to determine the lifetime of values.
+<p><em>Structured memory is very much incomplete. It will be centered around single value ownership but the semantics are subject to change.</em>
+Cyber uses single value ownership and variable scopes to determine the lifetime of values and references.
 When lifetimes are known at compile-time, the memory occupied by values do not need to be manually managed which prevents memory bugs such as:</p>
 <ul>
 <li>Use after free.</li>
@@ -4982,7 +5090,8 @@ When lifetimes are known at compile-time, the memory occupied by values do not n
 <li>Memory leaks.</li>
 <li>Null pointer dereferencing.</li>
 </ul>
-<p>At the same time, structured memory allows performant code to be written since it provides safe semantics to directly reference values and child values.</p>
+<p>At the same time, structured memory allows performant code to be written since it provides safe semantics to directly reference values and child values.
+These safety features are guaranteed for debug and optimized builds with no additional runtime cost.</p>
 <a href="#memory">^topic</a>
 <h3 id="value-ownership">Value ownership. <a href="#value-ownership">#</a></h3>
 <p>Every value in safe memory has a single owner.
@@ -5016,7 +5125,7 @@ A value always knows <strong>how</strong> to deinitialize itself, and the owner 
 Later, we'll see that this same concept also applies to <a href="#shared-ownership" title="">shared ownership</a>.</p>
 <a href="#memory">^topic</a>
 <h3 id="copy-semantics">Copy semantics. <a href="#copy-semantics">#</a></h3>
-<p>By default, values are passed around by copying (shallow copying), but now all values can perform a copy.</p>
+<p>By default, values are passed around by copying (shallow copying), but not all values can perform a copy.</p>
 <p>A primitive, such as an integer, can always be copied:</p>
 <pre><code class="language-cy">var a = 123
 var b = a
@@ -5131,7 +5240,7 @@ print computeSum(move a)    --> 6
 <p>References are safe pointers to values.
 Unlike unsafe pointers, a reference is never concerned with when to free or deinitialize a value since that responsibility always belongs to the value's owner.
 They are considered safe pointers because they are guaranteed to point to their values and never outlive the lifetime of their values.</p>
-<p>References grant <strong>stable mutability</strong> which allows a value to be modified as long as it does not invalidate other references.
+<p>References grant <strong>in-place mutability</strong> which allows a value to be modified as long as it does not invalidate other references.
 <strong>Multiple</strong> references can be alive at once as long as an <a href="#exclusive-reference" title="">exclusive reference</a> is not also alive.</p>
 <p>The <code>&</code> operator is used to obtain a reference to a value:</p>
 <pre><code class="language-cy">var a = 123
@@ -5144,7 +5253,7 @@ print a        --> 234
 var ref = &a
 if true:
     var b = 234
-    ref = &b   --> error: `ref` can not oulive `b`.
+    ref = &b   --> error: `ref` can not outlive `b`.
 </code></pre>
 <p>A reference type is denoted as <code>&T</code> where <code>T</code> is the type that the reference points to:</p>
 <pre><code class="language-cy">var a = 123
@@ -5152,14 +5261,14 @@ if true:
 func inc(a &int):
     a.* = a.* + 1
 </code></pre>
-<p>References allow stable mutation:</p>
+<p>References allow in-place mutation:</p>
 <pre><code class="language-cy">var a = ListValue[int]{1, 2, 3}
 var third = &a[2]
 third.* = 300
 print a        --> {1, 2, 300}
 </code></pre>
 <p>The element that <code>third</code> points to can be mutated because it does not invalidate other references.</p>
-<p>References however can not perform a unstable mutation.
+<p>References however can not perform an unstable mutation.
 An unstable mutation requires an exclusive reference:</p>
 <pre><code class="language-cy">var a = ListValue[int]{1, 2, 3}
 var ref = &a
@@ -5187,7 +5296,7 @@ print third
 </code></pre>
 <a href="#memory">^topic</a>
 <h3 id="self-reference"><code>self</code> reference. <a href="#self-reference">#</a></h3>
-<p>By default <code>self</code> has a type of <code>&T</code> when declared in a value type's method:</p>
+<p>By default <code>self</code> has a type of <code>&T</code> when declared in a value <code>T</code>'s method:</p>
 <pre><code class="language-cy">type Pair struct:
     a int
     b int

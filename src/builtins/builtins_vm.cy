@@ -6,7 +6,7 @@ func bitcast(#D type, val #S) D:
 --| Copies a primitive value or creates a shallow copy of an object value.
 @host func copy(val any) any
 
---| Prints the result of `toCyon` on a value.
+--| Dumps a detailed description of a value.
 @host func dump(val any) void
 
 --| Prints a value to the error stream. The host determines how it is printed.

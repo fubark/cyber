@@ -675,10 +675,11 @@ pub fn runestr(vm: *cy.VM) anyerror!Value {
 }
 
 pub fn dump(vm: *cy.VM) anyerror!Value {
-    const res = try cy_mod.allocToCyon(vm, vm.alloc, vm.getValue(0));
-    defer vm.alloc.free(res);
-    rt.print(vm, res);
-    rt.print(vm, "\n");
+    // const res = try cy_mod.allocToCyon(vm, vm.alloc, vm.getValue(0));
+    // defer vm.alloc.free(res);
+    // rt.print(vm, res);
+    // rt.print(vm, "\n");
+    cy.vm.zDumpValue(vm, vm.getValue(0));
     return Value.Void;
 }
 

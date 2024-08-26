@@ -678,9 +678,8 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
             }
         },
         else => {
-            const name = getTypeName(vm, type_id);
             try w.writeByte('<');
-            _ = try w.writeAll(name);
+            _ = try vm.sema.writeTypeName(w, type_id, null);
             if (type_id == bt.Void) {
                 _ = try w.writeAll(">");
             } else {
@@ -690,6 +689,7 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
     }
 
     switch (type_id) {
+        bt.Boolean => try w.print("{}", .{val.asBool()}),
         bt.Integer => try w.print("{}", .{val.asBoxInt()}),
         bt.Float => {
             const f = val.asF64();
@@ -777,12 +777,14 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
                             try w.print("'{s}'", .{str});
                         }
                     },
-                    // bt.Lambda => try w.print("Lambda {*}", .{obj}),
-                    // bt.Closure => try w.print("Closure {*}", .{obj}),
-                    // bt.Fiber => try w.print("Fiber {*}", .{obj}),
-                    // bt.HostFunc => try w.print("NativeFunc {*}", .{obj}),
-                    // bt.Pointer => try w.print("Pointer {*} ptr={*}", .{obj, obj.pointer.ptr}),
-                    else => {},
+                    else => {
+                        const type_e = vm.sema.getType(type_id);
+                        if (type_e.sym.getVariant()) |variant| {
+                            if (variant.root_template == vm.sema.pointer_tmpl) {
+                                try w.print("0x{x}", .{obj.object.firstValue.val});
+                            }
+                        }
+                    },
                 }
             } else {
                 try w.print("unsupported", .{});

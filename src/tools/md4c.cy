@@ -150,7 +150,7 @@ func md_parse(text *void, size SIZE, parser *void, userdata *void) int:
 use os
 let .ffi = false
 let .lib = load()
-func load():
+func load() dyn:
     ffi = os.newFFI()
     ffi.cbind(ATTRIBUTE_S, {symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr})
     ffi.cbind(BLOCK_UL_DETAIL_S, {symbol.int, symbol.char})

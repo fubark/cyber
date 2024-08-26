@@ -8,47 +8,47 @@ type Node:
     parent dyn
     value  dyn
 
-    func getLeftmost(self):
+    func getLeftmost(self) dyn:
         if self.left == false:
             return self
         return self.left.getLeftmost()
 
-    func getRightmost(self):
+    func getRightmost(self) dyn:
         if self.right == false:
             return self
         return self.right.getRightmost()
 
-    func getLeftSibling(self):
+    func getLeftSibling(self) dyn:
         if self.parent.right == self:
             return self.parent.left
         else:
             return self.parent.getLeftSibling2(1)
 
-    func getLeftSibling2(self, height int):
+    func getLeftSibling2(self, height int) dyn:
         if self.parent.right == self:
             return self.parent.left.getRightN(height)
         else:
             return self.parent.getLeftSibling2(height + 1)
 
-    func getRightSibling(self):
+    func getRightSibling(self) dyn:
         if self.parent.left == self:
             return self.parent.right
         else:
             return self.parent.getRightSibling2(1)
 
-    func getRightSibling2(self, height int):
+    func getRightSibling2(self, height int) dyn:
         if self.parent.left == self:
             return self.parent.right.getLeftN(height)
         else:
             return self.parent.getRightSibling2(height + 1)
 
-    func getRightN(self, n int):
+    func getRightN(self, n int) dyn:
         if n == 1:
             return self.right
         else:
             return self.right.getRightN(n - 1)
 
-    func getLeftN(self, n int):
+    func getLeftN(self, n int) dyn:
         if n == 1:
             return self.left
         else:
@@ -156,7 +156,7 @@ type Heap:
             self.swapUp(node.right)
             self.siftDown(node)
 
-    func popTop(self):
+    func popTop(self) Node:
         if self.size == 1:
             var res = self.root
             self.root = false

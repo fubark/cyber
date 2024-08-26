@@ -115,7 +115,7 @@ res = switch list.a:
 t.eq(res, 1)
 
 -- Switch case returns.
-func foo2():
+func foo2() int:
     switch 'one':
         case 'one': return 1
         else      : return -1

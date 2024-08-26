@@ -8,7 +8,7 @@ func foo(n int):
 --cytest: error
 --CompileError: Can not find compatible function for call: `foo(String)`.
 --Functions named `foo` in `main`:
---    func foo(int) dyn
+--    func foo(int) void
 --
 --main:4:5:
 --foo(a)

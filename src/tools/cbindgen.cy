@@ -79,7 +79,7 @@ clang.lib.clang_visitChildren(cursor, cvisitor.ptr(), cstate)
 out += "\nuse os\n"
 out += "let .ffi = false\n"
 out += "let .lib = load()\n"
-out += "func load():\n"
+out += "func load() dyn:\n"
 out += "    ffi = os.newFFI()\n"
 for structs -> name:
     var fieldTypes = structMap[name].fieldTypes as List[dyn]
@@ -137,7 +137,7 @@ var .funcs = {_}
 -- var .arrays = {_}     -- [n]typeName -> true
 -- var vars = {_}            -- varName -> bindingType
 
-func getTranslationUnit(headerPath String):
+func getTranslationUnit(headerPath String) dyn:
     var rest = args.rest[3..]
 
     var cargs = os.malloc(8 * rest.len())
@@ -151,7 +151,7 @@ func getTranslationUnit(headerPath String):
         -- clang.CXTranslationUnit_DetailedPreprocessingRecord | clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_SingleFileParse)
         clang.CXTranslationUnit_DetailedPreprocessingRecord | clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_KeepGoing)
 
-func getMacrosTranslationUnit(hppPath String):
+func getMacrosTranslationUnit(hppPath String) dyn:
     var rest = args.rest[3..]
 
     var cargs = os.malloc(8 * rest.len())
@@ -543,7 +543,7 @@ let toCyType(nameOrSym, forRet):
                 return '*void'
         return getApiName(nameOrSym)
 
-func ensureBindType(nameOrSym any):
+func ensureBindType(nameOrSym any) dyn:
     if typeof(nameOrSym) == symbol:
         return nameOrSym
     else:
@@ -553,7 +553,7 @@ func ensureBindType(nameOrSym any):
                 return og
         return nameOrSym
 
-func getStruct(name any):
+func getStruct(name any) dyn:
     if structMap.contains(name):
         return structMap[name]
     if aliases.contains(name):
@@ -620,7 +620,7 @@ let toBindType(cxType):
         print "Unsupported type $(cxType.kind)"
         throw error.Unsupported
 
-func getApiName(name String):
+func getApiName(name String) String:
     if name.startsWith(args['stripPrefix']):
         name = name[args['stripPrefix'].len()..]
     if name.startsWith('_'):

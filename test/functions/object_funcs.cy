@@ -1,18 +1,18 @@
 use t 'test'
 
-func Node.flatGet2(self):
+func Node.flatGet2(self) int:
     return 123
 
 type Node:
     value int
 
-    func getEx(self):
+    func getEx(self) int:
         return self.value
 
-    func getEx2(self, param int):
+    func getEx2(self, param int) int:
         return self.value + param
 
-    func getEx3(self, param int, param2 int):
+    func getEx3(self, param int, param2 int) int:
         return self.value + param - param2
 
     func setEx(self):
@@ -24,21 +24,21 @@ type Node:
     func setEx3(self, param int):
         self.value = 1 + param
 
-    func get(self):
+    func get(self) int:
         return value
 
-    func get2(self, param int):
+    func get2(self, param int) int:
         return value + param
 
-    func get3(self, param int, param2 int):
+    func get3(self, param int, param2 int) int:
         return value + param - param2
 
-    func get4(self):
+    func get4(self) int:
         var a = value
         return a + value
 
-    func get5(self):
-        var f = () => value
+    func get5(self) int:
+        var f = func() => value
         return f()
 
     func set(self):
@@ -50,16 +50,16 @@ type Node:
     func set3(self, param int):
         value = 1 + param
 
-func Node.getFn():
+func Node.getFn() int:
     return 123
 
-func Node.getFn2(param int):
+func Node.getFn2(param int) int:
     return 123 + param
 
-func Node.getFn3(param int, param2 int):
+func Node.getFn3(param int, param2 int) int:
     return 123 + param - param2
 
-func Node.flatGet(self):
+func Node.flatGet(self) int:
     return 123
 
 var n = Node{value=123}
@@ -134,7 +134,7 @@ t.eq(Node.getFn2(321), 444)
 t.eq(Node.getFn3(321, 1), 443)
 
 type S
-func S.foo(a float):
+func S.foo(a float) float:
     return a
 
 -- Object function, infer arg type.

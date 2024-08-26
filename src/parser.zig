@@ -893,6 +893,7 @@ pub const Parser = struct {
                     return self.reportError("Unnamed type is not allowed in this context.", &.{});
                 }
             },
+            .left_paren,
             .left_bracket,
             .star,
             .question,

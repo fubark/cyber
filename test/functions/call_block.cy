@@ -2,10 +2,10 @@ use test
 
 var .n int = 0
 
-func foo(fn any):
+func foo(fn func()):
     fn()
 
-func fooRet(fn any):
+func fooRet(fn func() int) int:
     return fn()
 
 -- Expression stmt.

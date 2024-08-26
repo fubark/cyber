@@ -3505,9 +3505,13 @@ pub fn resolveTypeSpecNode(c: *cy.Chunk, node: ?*ast.Node) anyerror!cy.TypeId {
     return type_id;
 }
 
-pub fn resolveReturnTypeSpecNode(c: *cy.Chunk, node: ?*ast.Node) anyerror!cy.TypeId {
+pub fn resolveReturnTypeSpecNode(c: *cy.Chunk, node: ?*ast.Node, typed: bool) anyerror!cy.TypeId {
     const n = node orelse {
-        return bt.Dyn;
+        if (typed) {
+            return bt.Void;
+        } else {
+            return bt.Dyn;
+        }
     };
     return resolveSymType(c, n);
 }
@@ -3661,6 +3665,10 @@ pub fn resolveSym(c: *cy.Chunk, expr: *ast.Node) anyerror!*cy.Sym {
             const ref_slice = expr.cast(.ref_slice);
             return try cte.expandTemplateOnCallArgs(c, c.sema.ref_slice_tmpl, &.{ ref_slice.elem }, expr);
         },
+        .group => {
+            const group = expr.cast(.group);
+            return resolveSym(c, group.child);
+        },
         .func_type => {
             const func_type = expr.cast(.func_type);
             const sig = try resolveFuncType(c, func_type);
@@ -3733,7 +3741,7 @@ fn resolveFuncType(c: *cy.Chunk, func_type: *ast.FuncType) !FuncSigId {
     }
 
     // Get return type.
-    const ret_t = try resolveReturnTypeSpecNode(c, func_type.ret);
+    const ret_t = try resolveReturnTypeSpecNode(c, func_type.ret, true);
     return c.sema.ensureFuncSig(@ptrCast(c.typeStack.items[start..]), ret_t);
 }
 
@@ -3783,7 +3791,7 @@ fn resolveFuncSig(c: *cy.Chunk, func: *cy.Func, skip_ct_params: bool) !FuncSigId
     }
 
     // Get return type.
-    const retType = try resolveReturnTypeSpecNode(c, func_n.ret);
+    const retType = try resolveReturnTypeSpecNode(c, func_n.ret, sig_t == .func);
     return c.sema.ensureFuncSig(@ptrCast(c.typeStack.items[start..]), retType);
 }
 

@@ -2,56 +2,56 @@ use t 'test'
 
 -- Closure read over number in main block.
 var a = 123
-var foo = () => a
+var foo = func () => a
 t.eq(foo(), 123)
 
 -- Closure write over number in main block.
 var a2 = 123
-foo = func():
+var foo2 = func():
     a2 = 234
-foo()
+foo2()
 t.eq(a2, 234)
 
 -- Closure over local number in function.
-var f = func():
+var f = func() (Func() int):
     var a = 123
     return () => a
 var fn = f()
 t.eq(fn(), 123)
 
 -- Closure over param number in function.
-var f2 = func(a int):
+var f2 = func(a int) (Func() int):
     return () => a * 2
 fn = f2(22)
 t.eq(fn(), 44)
 
 -- Closure over local number in function using a param.
-f = func():
+var f3 = func() (Func(int) int):
     var a = 123
     return b => a + b
-fn = f()
-t.eq(fn(1), 124)
+var fn2 = f3()
+t.eq(fn2(1), 124)
 
 -- Closure over local number in function using a param in parentheses.
-f = func():
+f3 = func() (Func(int) int):
     var a = 123
     return (b) => a + b
-fn = f()
-t.eq(fn(1), 124)
+fn2 = f3()
+t.eq(fn2(1), 124)
 
 -- Closure over local number in function using a multiple params.
-f = func():
+var f4 = func() (Func(int, int) int):
     var a = 123
     return (b, c) => a + b + c
-fn = f()
-t.eq(fn(1, 2), 126)
+var fn3 = f4()
+t.eq(fn3(1, 2), 126)
 
 -- Closure over local retained object in function.
-f = func():
+var f5 = func() (Func() dyn):
     var a = {123}
     return () => a[0]
-fn = f()
-t.eq(fn(), 123)
+var fn4 = f5()
+t.eq(fn4(), 123)
 
 -- Closure with more than 3 captured vars forces allocation outside of object pool.
 var a3 = 123
@@ -64,7 +64,7 @@ t.eq(foo(), 1158)
 -- Typed param.
 if true:
     var b = 2
-    var foo = func (a int):
+    var foo = func (a int) int:
         return a + b
     t.eq(foo(1), 3)
 

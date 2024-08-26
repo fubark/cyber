@@ -28,7 +28,7 @@ foo3 = let (a, b):
 t.eq(foo3(10, 11), 21)
 
 -- Pass lambda as arg.
-func call(f dyn):
+func call(f func(int) int) int:
     return f(14)
 t.eq(call(a => a + 1), 15)
 
@@ -40,22 +40,22 @@ t.eq((m.a)(), 4)
 t.eq((let (a) => a + 1)(14), 15)
 
 -- Typed, no params.
-var tfoo = func ():
+var tfoo = func () int:
     return 2 + 2
 t.eq(tfoo(), 4)
 
 -- Typed, one param.
-var tfoo2 = func (a int):
+var tfoo2 = func (a int) int:
     return a + 1
 t.eq(tfoo2(10), 11)
 
 -- Typed, multiple params.
-var tfoo3 = func (bar int, inc int):
+var tfoo3 = func (bar int, inc int) int:
     return bar + inc
 t.eq(tfoo3(20, 10), 30)
 
 -- Typed, single line block.
-tfoo = func (): return 2 + 2
+tfoo = func () int: return 2 + 2
 t.eq(tfoo(), 4)
 
 --cytest: pass

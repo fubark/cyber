@@ -1,8 +1,11 @@
 use t 'test'
 
-func print(v int):
-    return v + 2
+var .a = 123
 
-t.eq(print(1), 3)
+func print(v int):
+    a = v
+
+print(1)
+t.eq(a, 1)
 
 --cytest: pass

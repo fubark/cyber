@@ -26,7 +26,7 @@ else:
 -- Switch case on object payload. Expr.
 let res = switch s:
     case .rectangle -> r => r
-    else => test.fail()
+    else => Shape.rectangle{width=0, height=0}
 test.eq(res.width, 123.0)
 test.eq(res.height, 234.0)
 
@@ -41,7 +41,7 @@ else:
 -- Switch case on unnamed object payload. Expr.
 res = switch s:
     case .circle -> c => c
-    else => test.fail()
+    else => Shape.circle{radius=0}
 test.eq(res.radius, 10.0)
 
 -- Switch case on primitive payload.
@@ -55,7 +55,7 @@ else:
 -- Switch case on primitive payload. Expr.
 res = switch s:
     case .line -> l => l
-    else => test.fail()
+    else => Shape.line(0)
 test.eq(res, 20.0)
 
 -- Switch case on empty payload.
@@ -70,7 +70,7 @@ else:
 s = Shape.point
 res = switch s:
     case .point => 123
-    else => test.fail()
+    else => 0
 test.eq(res, 123)
 
 -- Switch else case.
@@ -83,7 +83,7 @@ else:
 
 -- Switch else case. Expr.
 res = switch s:
-    case .circle -> c => test.fail()
+    case .circle -> c => 0
     else => 234
 test.eq(res, 234)
 

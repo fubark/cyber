@@ -1,7 +1,7 @@
 type S:
     a dyn
 
-func foo():
+func foo() int:
     return 123
 
 var s = S{a=foo()}

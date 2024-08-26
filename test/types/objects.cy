@@ -35,7 +35,7 @@ t.eq(n4.value, 0)
 
 -- Get field from declared static var.
 snode.value = 123
-var f = func():
+var f = func() int:
     return snode.value
 t.eq(f(), 123)
 
@@ -61,10 +61,10 @@ t.eq(nodes[0].value, 124)
 
 -- Set object field after declared as a static var.
 snode.value = 123
-f = func():
+var f2 = func():
     snode.value = 234
     t.eq(snode.value, 234)
-f()
+f2()
 t.eq(snode.value, 234)
 
 -- Set to field with heap value.

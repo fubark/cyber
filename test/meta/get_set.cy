@@ -4,7 +4,7 @@ type Foo:
     a    int
     data Map
 
-    func $get(self, name String):
+    func $get(self, name String) dyn:
         return data[name]
 
     func $set(self, name String, value int):

@@ -1,9 +1,9 @@
 use t 'test'
 
-func fail():
+func fail() int:
     throw error.Fail
 
-func happy(a any):
+func happy(a int) int:
     return a
 
 -- No error.
@@ -15,7 +15,7 @@ catch:
 t.eq(a, 1)
 
 -- No error in function.
-func foo():
+func foo() int:
     try:
         return 1
     catch:
@@ -37,7 +37,7 @@ catch err:
 t.eq(a, error.Fail)
 
 -- Error case in function
-func foo2():
+func foo2() int:
     try:
         return fail()
     catch:

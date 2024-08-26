@@ -12,8 +12,9 @@ t.eq(res, true)
 t.eq(res or 'cyber' == 'cyber', true)
 
 var .called = false
-func foo():
+func foo() bool:
     called = true
+    return true
 
 -- If first `or` operand evaluates to true, the second expression is not evaluated
 -- and the first operand is returned.

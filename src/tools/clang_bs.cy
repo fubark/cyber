@@ -72,7 +72,7 @@ type CXType:
 let .lib = load(ffi) -- Make lib dependent on ffi.
 let .ffi = false
 
-func load(dummy any):
+func load(dummy any) dyn:
     ffi = os.newFFI()
 
     -- enum CXTypeKind kind, void *data[2]

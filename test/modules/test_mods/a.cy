@@ -3,23 +3,23 @@ var .varTypedInt int = 123
 var .varAny = {1, 2, 3}
 var .varList List[dyn] = {1, 2, 3}
 var .varMap Map = Map{a=1, b=2, c=3}
-var .varFunc = func():
+var .varFunc = func() int:
     return 345
-var .varFunc1 = func(a int):
+var .varFunc1 = func(a int) int:
     return a + 1
-var .varFunc2 = func(a int, b int):
+var .varFunc2 = func(a int, b int) int:
     return a + b
 
 var .varNoExport = 123
 
-func fn():
+func fn() int:
     return 234
-func fn1(a int):
+func fn1(a int) int:
     return a + 1
-func fn2(a int, b int):
+func fn2(a int, b int) int:
     return a + b
 
-func barNoExport():
+func barNoExport() int:
     return 234
 
 func toInt(val any) int:
@@ -27,7 +27,7 @@ func toInt(val any) int:
 
 var .initOnce = incInitOnce(initOnceCount)
 var .initOnceCount = 0
-func incInitOnce(cur int):
+func incInitOnce(cur int) int:
     initOnceCount = cur + 1
     return initOnceCount
 
@@ -35,17 +35,17 @@ func incInitOnce(cur int):
 var .varDepRes = varDep
 var .varDep = 123
 
-func sameFuncName():
+func sameFuncName() int:
     return 123
 
-func useInt(a any):
+func useInt(a any) int:
     return toInt(a)
 
 type Vec2:
     x float
     y float
 
-func Vec2.new(x float, y float):
+func Vec2.new(x float, y float) Vec2:
     return Vec2{x=x, y=y}
 type Vec2Alias -> Vec2
 

@@ -1,6 +1,6 @@
 use t 'test'
 
-func foo(a metatype):
+func foo(a metatype) bool:
     return a == float
 
 -- Literal.

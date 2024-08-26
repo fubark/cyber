@@ -4,7 +4,7 @@ var start = os.now()
 
 var .count = 0
 
-func inc():
+func inc() dyn:
     count += 1
     coyield
     count += 1

@@ -1,4 +1,4 @@
-func go():
+func go() dyn:
     print 'start'
     coyield
     for 0..100 -> i:

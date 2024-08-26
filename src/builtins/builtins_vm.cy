@@ -49,7 +49,7 @@ func ptrcast(#D type, val #S) *D:
 @host func print(str any) void
 
 --| Queues a callback function as an async task.
-@host func queueTask(fn any) void
+@host func queueTask(fn Func() void) void
 
 @host func refcast(#T type, ptr *T) &T
 
@@ -250,7 +250,7 @@ type float #float64_t:
 
     --| Sorts the list with the given `less` function.
     --| If element `a` should be ordered before `b`, the function should return `true` otherwise `false`.
-    func sort(self, lessFn any) void:
+    func sort(self, lessFn Func(T, T) bool) void:
         -- Simple insertion sort, will be upgraded to pdqsort later on.
         for 1..self.len() -> i:
             var cur = self[i]

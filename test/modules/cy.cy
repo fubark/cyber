@@ -13,7 +13,7 @@ mul(10, 5)''')
 t.eq(res, 50)
 res = cy.eval('"hello $(123)"')
 t.eq(res, 'hello 123')
-t.throws(() => cy.eval('a'), error.EvalError)
+t.throws(func () => cy.eval('a'), error.EvalError)
 
 -- parse()
 res = cy.parse('var .foo = 123')

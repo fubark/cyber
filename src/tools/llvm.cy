@@ -1883,7 +1883,7 @@ func IsSymbolIteratorAtEnd(ObjectFile *void, SI *void) Bool:
 use os
 let .ffi = false
 let .lib = load()
-func load():
+func load() dyn:
     ffi = os.newFFI()
     ffi.cbind(OpaqueMemoryBuffer_S, {_})
     ffi.cbind(OpaqueContext_S, {_})

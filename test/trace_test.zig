@@ -173,7 +173,7 @@ test "ARC for passing call args." {
     // Temp list is retained when passed into function.
     try eval(.{},
         \\use t 'test'
-        \\func foo(list List[dyn]):
+        \\func foo(list List[dyn]) dyn:
         \\  return list[0]
         \\t.eq(foo({1}), 1)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
@@ -190,7 +190,7 @@ test "ARC for function return values." {
         \\use t 'test'
         \\type S:
         \\  value any
-        \\func foo():
+        \\func foo() S:
         \\  var a = S{value=123}
         \\  return a
         \\let s = foo()
@@ -206,7 +206,7 @@ test "ARC for function return values." {
     try eval(.{},
         \\type S:
         \\  value any
-        \\func foo():
+        \\func foo() S:
         \\  return S{value=123}
         \\foo()
         \\return
@@ -521,7 +521,7 @@ test "Stack trace unwinding." {
     // Function stack trace.
     try eval(.{ .silent = true },
         \\use test
-        \\func foo():
+        \\func foo() int:
         \\  let a = test.erase(123)
         \\  return 1 + a.foo
         \\foo()
@@ -544,14 +544,14 @@ test "Stack trace unwinding." {
             .chunkId = 1,
             .line = 3,
             .col = 15,
-            .lineStartPos = 47,
+            .lineStartPos = 51,
         });
         try eqStackFrame(trace.frames[1], .{
             .name = "main",
             .chunkId = 1,
             .line = 4,
             .col = 0,
-            .lineStartPos = 66,
+            .lineStartPos = 70,
         });
     }}.func);
 

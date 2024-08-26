@@ -26,7 +26,7 @@ if false:
 a = b
 
 -- Binary metatype operand does not reuse dst for temp since it is retained.
-var f = func():
+var f = func() bool:
     return float == bool
 f()
 

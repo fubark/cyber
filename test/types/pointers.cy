@@ -50,4 +50,8 @@ test.eq(g.a, 456)
 var ptr = pointer(void, 0xDEADBEEF)
 test.eq(ptr.addr(), 3735928559)
 
+-- Infer pointer child type.
+var foo_ptr *Foo = *.{a=123}
+test.eq(foo_ptr.a, 123)
+
 --cytest: pass

@@ -2823,7 +2823,7 @@ fn declareHiddenLocal(c: *cy.Chunk, name: []const u8, decl_t: cy.TypeId, init: E
     return .{ .id = var_id, .ir_id = info.declIrStart };
 }
 
-fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, hidden: bool, hasInit: bool, node: *ast.Node) !LocalVarId {
+fn reserveLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, hidden: bool, hasInit: bool, node: *ast.Node) !LocalVarId {
     if (!hidden) {
         const proc = c.proc();
         if (proc.nameToVar.get(name)) |varInfo| {
@@ -2854,13 +2854,33 @@ fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, hidden: bo
     const proc = c.proc();
     const irId = proc.curNumLocals;
 
+    svar.inner = .{ .local = .{
+        .id = irId,
+        .isParam = false,
+        .isParamCopied = false,
+        .hasInit = hasInit,
+        .lifted = false,
+        .hidden = hidden,
+        .declIrStart = cy.NullId,
+    }};
+
+    const b = c.block();
+    b.numLocals += 1;
+
+    proc.curNumLocals += 1;
+    return id;
+}
+
+fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, hidden: bool, hasInit: bool, node: *ast.Node) !LocalVarId {
+    const id = try reserveLocalName(c, name, declType, hidden, hasInit, node);
+    const local = &c.varStack.items[id];
     var irIdx: u32 = undefined;
     if (hasInit) {
         irIdx = try c.ir.pushStmt(c.alloc, .declareLocalInit, node, .{
             .namePtr = name.ptr,
             .nameLen = @as(u16, @intCast(name.len)),
             .declType = declType,
-            .id = irId,
+            .id = local.inner.local.id,
             .lifted = false,
             .init = cy.NullId,
             .initType = undefined,
@@ -2871,25 +2891,11 @@ fn declareLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, hidden: bo
             .namePtr = name.ptr,
             .nameLen = @as(u16, @intCast(name.len)),
             .declType = declType,
-            .id = irId,
+            .id = local.inner.local.id,
             .lifted = false,
         });
     }
-
-    svar.inner = .{ .local = .{
-        .id = irId,
-        .isParam = false,
-        .isParamCopied = false,
-        .hasInit = hasInit,
-        .lifted = false,
-        .hidden = hidden,
-        .declIrStart = @intCast(irIdx),
-    }};
-
-    const b = c.block();
-    b.numLocals += 1;
-
-    proc.curNumLocals += 1;
+    local.inner.local.declIrStart = irIdx;
     return id;
 }
 
@@ -2912,11 +2918,11 @@ fn localDecl(c: *cy.Chunk, node: *ast.VarDecl) !void {
         typeId = bt.Dyn;
     }
 
-    const varId = try declareLocal(c, node.name, typeId, true);
-    var svar = &c.varStack.items[varId];
-    const irIdx = svar.inner.local.declIrStart;
+    // Reserve local first.
+    const name = c.ast.nodeString(node.name);
+    const varId = try reserveLocalName(c, name, typeId, false, true, node.name);
 
-    const maxLocalsBeforeInit = c.proc().curNumLocals;
+    // const maxLocalsBeforeInit = c.proc().curNumLocals;
 
     // Infer rhs type and enforce constraint.
     const right = try c.semaExpr(node.right, .{
@@ -2926,27 +2932,34 @@ fn localDecl(c: *cy.Chunk, node: *ast.VarDecl) !void {
         .fit_target_unbox_dyn = !deduce_type,
     });
 
-    var data = c.ir.getStmtDataPtr(irIdx, .declareLocalInit);
-    data.init = right.irIdx;
-    data.initType = right.type;
-    if (maxLocalsBeforeInit < c.proc().maxLocals) {
-        // Initializer must have a declaration (in a block expr)
-        // since the number of locals increased.
-        // Local's memory must be zeroed.
-        data.zeroMem = true;
-    }
-
-    svar = &c.varStack.items[varId];
+    // Insert declare statement after rhs sema so it can depend on temp locals.
+    var svar = &c.varStack.items[varId];
     if (deduce_type) {
         const declType = right.type.toDeclType();
         svar.declT = declType;
         svar.vtype = right.type;
-        // Patch IR.
-        data.declType = declType;
+        typeId = declType;
     } else if (typeId == bt.Dyn) {
         // Update recent static type.
         svar.vtype.id = right.type.id;
     }
+    const loc = try c.ir.pushStmt(c.alloc, .declareLocalInit, node.name, .{
+        .namePtr = name.ptr,
+        .nameLen = @as(u16, @intCast(name.len)),
+        .declType = typeId,
+        .id = svar.inner.local.id,
+        .lifted = false,
+        .init = right.irIdx,
+        .initType = right.type,
+        .zeroMem = false,
+    });
+    svar.inner.local.declIrStart = loc;
+    // if (maxLocalsBeforeInit < c.proc().maxLocals) {
+    //     // Initializer must have a declaration (in a block expr)
+    //     // since the number of locals increased.
+    //     // Local's memory must be zeroed.
+    //     data.zeroMem = true;
+    // }
 
     try c.assignedVarStack.append(c.alloc, varId);
 }
@@ -6428,20 +6441,34 @@ pub const ChunkExt = struct {
 
     pub fn semaPtrOf(c: *cy.Chunk, expr: Expr) !ExprResult {
         const node = expr.node.cast(.ptr);
-        const child = try c.semaExpr(node.elem, .{ .prefer_addressable = true });
-        if (!child.addressable) {
-            return c.reportError("Expected an addressable expression.", expr.node);
+        var child_cstr = SemaExprOptions{
+            .prefer_addressable = true,
+        };
+        if (expr.hasTargetType()) {
+            const target_te = c.sema.getType(expr.target_t);
+            if (target_te.sym.getVariant()) |variant| {
+                if (variant.root_template == c.sema.pointer_tmpl) {
+                    const child_t = variant.args[0].castHeapObject(*cy.heap.Type).type;
+                    child_cstr.target_t = child_t;
+                }
+            }
+        }
+        var child = try c.semaExpr(node.elem, child_cstr);
+        if (child.resType != .local) {
+            const tempv = try declareHiddenLocal(c, "$temp", child.type.id, child, expr.node);
+            child = try semaLocal(c, tempv.id, expr.node);
         }
 
         if (child.resType == .local) {
+            // Ensure lifted var so pointer doesn't get invalidated from stack resizing.
             try ensureLiftedVar(c, child.data.local);
         }
 
         const ptr_t = try getPointerType(c, child.type.id);
-        const irIdx = try c.ir.pushExpr(.address_of, c.alloc, ptr_t, expr.node, .{
+        const loc = try c.ir.pushExpr(.address_of, c.alloc, ptr_t, expr.node, .{
             .expr = child.irIdx,
         });
-        return ExprResult.initStatic(irIdx, ptr_t);
+        return ExprResult.initStatic(loc, ptr_t);
     }
 
     pub fn semaUnExpr(c: *cy.Chunk, expr: Expr) !ExprResult {

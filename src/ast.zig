@@ -563,6 +563,17 @@ pub const SeqDestructure = struct {
 pub const TemplateDecl = struct {
     params: []*FuncParam align(8),
     child_decl: *Node,
+
+    pub fn getAttrs(self: *TemplateDecl) []const *Attribute {
+        switch (self.child_decl.type()) {
+            .funcDecl => {
+                return self.child_decl.cast(.funcDecl).attrs;
+            },
+            else => {
+                std.debug.panic("TODO: {}", .{self.child_decl.type()});
+            }
+        }
+    }
 };
 
 pub const Range = struct {
@@ -1583,3 +1594,15 @@ pub const Encoder = struct {
 //         }
 //     }
 // };
+
+pub fn findAttr(attrs: []const *Attribute, attr_t: AttributeType) ?*Attribute {
+    if (attrs.len == 0) {
+        return null;
+    }
+    for (attrs) |attr| {
+        if (attr.type == attr_t) {
+            return attr;
+        }
+    }
+    return null;
+}

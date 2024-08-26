@@ -254,7 +254,7 @@ pub fn expandCtFuncTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []co
         // Resolve dependent func sig. There are no rt params since they are compile-time params.
         const sig = try c.sema.ensureFuncSig(&.{}, ret_t);
 
-        // Generate ct func.
+        // Generate ct func. Can assume not a `@host` func.
         const func = try c.createFunc(.userFunc, @ptrCast(template), @ptrCast(template.decl.child_decl), false);
         defer c.vm.alloc.destroy(func);
         const func_sig = c.sema.getFuncSig(sig);

@@ -1274,6 +1274,10 @@ pub fn reserveTemplate(c: *cy.Chunk, node: *ast.TemplateDecl) !*cy.sym.Template 
         .funcDecl => {
             name_n = node.child_decl.cast(.funcDecl).name;
             template_t = .ct_func;
+
+            if (ast.findAttr(node.getAttrs(), .host) != null) {
+                return c.reportError("A template function can not be binded to a `@host` function. Consider invoking a `@host` function in the template body instead.", @ptrCast(node));
+            }
         },
         else => {
             return c.reportErrorFmt("Unsupported type template.", &.{}, @ptrCast(node));
@@ -1304,11 +1308,9 @@ pub fn resolveTemplate(c: *cy.Chunk, sym: *cy.sym.Template) !void {
 pub fn resolveCustomType(c: *cy.Chunk, decl: *ast.CustomDecl) !*cy.Sym {
     var name: ?[]const u8 = null;
     var has_host_attr = false;
-    if (decl.attrs.len > 0) {
-        if (decl.attrs[0].type == .host) {
-            has_host_attr = true;
-            name = try getHostAttrName(c, decl.attrs[0]);
-        }
+    if (ast.findAttr(decl.attrs, .host)) |attr| {
+        has_host_attr = true;
+        name = try getHostAttrName(c, attr);
     }
     if (!has_host_attr) {
         return c.reportErrorFmt("Custom type requires a `@host` attribute.", &.{}, @ptrCast(decl));
@@ -1406,12 +1408,9 @@ pub fn reserveDistinctType(c: *cy.Chunk, decl: *ast.DistinctDecl) !*cy.sym.Disti
     const sym = try c.reserveDistinctType(@ptrCast(c.sym), name, decl);
     var opt_type: ?cy.TypeId = null;
 
-    // Check for @host modifier.
-    if (decl.attrs.len > 0) {
-        if (decl.attrs[0].type == .host) {
-            const host_name = try getHostAttrName(c, decl.attrs[0]);
-            opt_type = try getHostTypeId(c, @ptrCast(sym), host_name, @ptrCast(decl));
-        }
+    if (ast.findAttr(decl.attrs, .host)) |attr| {
+        const host_name = try getHostAttrName(c, attr);
+        opt_type = try getHostTypeId(c, @ptrCast(sym), host_name, @ptrCast(decl));
     }
 
     try resolveDistinctTypeId(c, sym, opt_type);
@@ -2024,12 +2023,9 @@ pub fn reserveObjectType(c: *cy.Chunk, decl: *ast.ObjectDecl) !*cy.sym.ObjectTyp
 fn resolveTypeIdFromDecl(c: *cy.Chunk, sym: *cy.Sym, attrs: []const *ast.Attribute, decl: ?*ast.Node) !cy.TypeId {
     var opt_type: ?cy.TypeId = null;
 
-    // Check for @host modifier.
-    if (attrs.len > 0) {
-        if (attrs[0].type == .host) {
-            const name = try getHostAttrName(c, attrs[0]);
-            opt_type = try getHostTypeId(c, sym, name, decl);
-        }
+    if (ast.findAttr(attrs, .host)) |attr| {
+        const name = try getHostAttrName(c, attr);
+        opt_type = try getHostTypeId(c, sym, name, decl);
     }
 
     return opt_type orelse {
@@ -2088,11 +2084,9 @@ pub fn reserveStruct(c: *cy.Chunk, node: *ast.ObjectDecl, cstruct: bool) !*cy.sy
 
     // Check for @host modifier.
     var opt_type: ?cy.TypeId = null;
-    if (node.attrs.len > 0) {
-        if (node.attrs[0].type == .host) {
-            const host_name = try getHostAttrName(c, node.attrs[0]);
-            opt_type = try getHostTypeId(c, @ptrCast(sym), host_name, @ptrCast(node));
-        }
+    if (ast.findAttr(node.attrs, .host)) |attr| {
+        const host_name = try getHostAttrName(c, attr);
+        opt_type = try getHostTypeId(c, @ptrCast(sym), host_name, @ptrCast(node));
     }
 
     try resolveStructTypeId(c, sym, node.is_tuple, opt_type);
@@ -2343,11 +2337,9 @@ pub fn reserveHostFunc(c: *cy.Chunk, node: *ast.FuncDecl) !*cy.Func {
     }
     // Check if @host func.
     const decl_path = try ensureDeclNamePath(c, @ptrCast(c.sym), node.name);
-    if (node.attrs.len > 0) {
-        if (node.attrs[0].type == .host) {
-            const is_method = c.ast.isMethodDecl(node);
-            return c.reserveHostFunc(decl_path.parent, decl_path.name.base_name, node, is_method, false);
-        }
+    if (ast.findAttr(node.attrs, .host) != null) {
+        const is_method = c.ast.isMethodDecl(node);
+        return c.reserveHostFunc(decl_path.parent, decl_path.name.base_name, node, is_method, false);
     }
     return c.reportErrorFmt("`{}` is not a host function.", &.{v(decl_path.name.name_path)}, @ptrCast(node));
 }
@@ -2356,12 +2348,9 @@ pub fn reserveHostFunc2(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: *
     if (node.stmts.len > 0) {
         return error.Unexpected;
     }
-    // Check if @host func.
-    if (node.attrs.len > 0) {
-        if (node.attrs[0].type == .host) {
-            const is_method = c.ast.isMethodDecl(node);
-            return c.reserveHostFunc(parent, name, node, is_method, is_variant);
-        }
+    if (ast.findAttr(node.attrs, .host) != null) {
+        const is_method = c.ast.isMethodDecl(node);
+        return c.reserveHostFunc(parent, name, node, is_method, is_variant);
     }
     return c.reportErrorFmt("`{}` is not a host function.", &.{v(name)}, @ptrCast(node));
 }
@@ -2467,20 +2456,16 @@ pub fn resolveHostFunc(c: *cy.Chunk, func: *cy.Func) !void {
     }
 }
 
-fn resolveHostFunc2(c: *cy.Chunk, func: *cy.Func, func_sig: FuncSigId) !void {
-    const decl = func.decl.?.cast(.funcDecl);
-    const attr = decl.attrs[0];
-    const host_name = try getHostAttrName(c, attr);
+pub fn resolveHostFuncPtr(c: *cy.Chunk, func: *cy.Func, func_sig: FuncSigId, host_attr: *ast.Attribute) !C.FuncFn {
+    const host_name = try getHostAttrName(c, host_attr);
     var name_buf: [128]u8 = undefined;
     const bind_name = host_name orelse b: {
         var fbs = std.io.fixedBufferStream(&name_buf);
         try cy.sym.writeFuncName(c.sema, fbs.writer(), func, .{ .from = c, .emit_template_args = false });
         break :b fbs.getWritten();
     };
-
     if (c.host_funcs.get(bind_name)) |ptr| {
-        try c.resolveHostFunc(func, func_sig, @ptrCast(@alignCast(ptr)));
-        return;
+        return ptr;
     }
 
     const loader = c.func_loader orelse {
@@ -2498,7 +2483,14 @@ fn resolveHostFunc2(c: *cy.Chunk, func: *cy.Func, func_sig: FuncSigId) !void {
     if (!loader(@ptrCast(c.compiler.vm), info, @ptrCast(&res))) {
         return c.reportErrorFmt("Host func `{}` failed to load.", &.{v(bind_name)}, @ptrCast(func.decl));
     }
-    try c.resolveHostFunc(func, func_sig, @ptrCast(@alignCast(res)));
+    return res;
+}
+
+fn resolveHostFunc2(c: *cy.Chunk, func: *cy.Func, func_sig: FuncSigId) !void {
+    const decl = func.decl.?.cast(.funcDecl);
+    const attr = ast.findAttr(decl.attrs, .host).?;
+    const func_ptr = try resolveHostFuncPtr(c, func, func_sig, attr);
+    try c.resolveHostFunc(func, func_sig, @ptrCast(@alignCast(func_ptr)));
 }
 
 /// Declares a bytecode function in a given module.
@@ -2556,13 +2548,11 @@ pub fn reserveNestedFunc(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.FuncDecl, def
         return func;
     }
 
-    // No initializer. Check if @host func.
-    if (decl.attrs.len > 0) {
-        if (decl.attrs[0].type == .host) {
-            const func = try c.reserveHostFunc(parent, name, decl, is_method, deferred);
-            func.is_nested = true;
-            return func;
-        }
+    // No initializer.
+    if (ast.findAttr(decl.attrs, .host) != null) {
+        const func = try c.reserveHostFunc(parent, name, decl, is_method, deferred);
+        func.is_nested = true;
+        return func;
     }
 
     return c.reportErrorFmt("`{}` does not have an initializer.", &.{v(name)}, @ptrCast(decl));
@@ -2679,11 +2669,9 @@ pub fn reserveContextVar(c: *cy.Chunk, decl: *ast.ContextDecl) !*cy.sym.ContextV
 pub fn reserveVar(c: *cy.Chunk, decl: *ast.StaticVarDecl) !*Sym {
     const decl_path = try ensureDeclNamePath(c, @ptrCast(c.sym), decl.name);
     if (decl.right == null) {
-        // No initializer. Check if @host var.
-        if (decl.attrs.len > 0) {
-            if (decl.attrs[0].type == .host) {
-                return @ptrCast(try c.reserveHostVar(decl_path.parent, decl_path.name.base_name, decl));
-            }
+        // No initializer.
+        if (ast.findAttr(decl.attrs, .host) != null) {
+            return @ptrCast(try c.reserveHostVar(decl_path.parent, decl_path.name.base_name, decl));
         }
         return c.reportErrorFmt("`{}` does not have an initializer.", &.{v(decl_path.name.name_path)}, @ptrCast(decl));
     } else {

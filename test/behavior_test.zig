@@ -145,7 +145,8 @@ if (!aot) {
     run.case("functions/read_capture_local_error.cy");
     run.case("functions/static.cy");
     run.case("functions/template_ct_func.cy");
-    run.case("functions/template_ct_func_error.cy");
+    run.case("functions/template_ct_func_host_error.cy");
+    run.case("functions/template_ct_func_throw_error.cy");
     run.case("functions/template_functions.cy");
     // run.case("functions/void_param_error.cy");
 

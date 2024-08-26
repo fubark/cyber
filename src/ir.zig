@@ -25,8 +25,6 @@ const ast = cy.ast;
 /// Data specific to a node's type follows the metadata.
 
 pub const StmtCode = enum(u8) {
-    root,
-
     /// Main block. Only one chunk has IR for the main block.
     mainBlock,
 
@@ -356,10 +354,6 @@ pub const PushBlock = struct {
     maxLocals: u8,
 };
 
-pub const Root = struct {
-    bodyHead: u32,
-};
-
 pub const MainBlock = struct {
     maxLocals: u8,
     bodyHead: u32,
@@ -628,7 +622,6 @@ pub const OpSet = struct {
 
 pub fn StmtData(comptime code: StmtCode) type {
     return comptime switch (code) {
-        .root => Root,
         .mainBlock => MainBlock,
         .funcBlock => FuncBlock,
         .declareLocal => DeclareLocal,
@@ -718,16 +711,21 @@ pub const Buffer = struct {
     buf: std.ArrayListUnmanaged(u8),
     stmtBlockStack: std.ArrayListUnmanaged(StmtBlock),
 
+    /// Main and func blocks.
+    func_blocks: std.ArrayListUnmanaged(Loc),
+
     pub fn init() Buffer {
         return .{
             .buf = .{},
             .stmtBlockStack = .{},
+            .func_blocks = .{},
         };
     }
 
     pub fn deinit(self: *Buffer, alloc: std.mem.Allocator) void {
         self.buf.deinit(alloc);
         self.stmtBlockStack.deinit(alloc);
+        self.func_blocks.deinit(alloc);
     }
 
     pub fn setExprCode(self: *Buffer, idx: usize, comptime code: ExprCode) void {

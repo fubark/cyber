@@ -46,10 +46,13 @@ pub const ByteCodeBuffer = struct {
     /// The required stack size for the main frame.
     mainStackSize: u32,
 
+    main_pc: u32,
+
     pub fn init(alloc: std.mem.Allocator, vm: *cy.VM) !ByteCodeBuffer {
         var new = ByteCodeBuffer{
             .alloc = alloc,
             .mainStackSize = 0,
+            .main_pc = 0,
             .ops = .{},
             .vm = vm,
             .consts = .{},

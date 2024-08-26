@@ -191,8 +191,6 @@ pub const Chunk = struct {
     /// Assumed to have resolved signatures.
     deferred_funcs: std.ArrayListUnmanaged(*cy.Func),
 
-    rootStmtBlock: cy.ir.StmtBlock,
-
     /// LLVM
     tempTypeRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.TypeRef) else void,
     tempValueRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.ValueRef) else void,
@@ -268,10 +266,6 @@ pub const Chunk = struct {
             .nextUnnamedId = 1,
             .indent = 0,
             .deferred_funcs = .{},
-            .rootStmtBlock = .{
-                .first = cy.NullId,
-                .last = cy.NullId,
-            },
             .syms = .{},
             .funcs = .{},
             .resolve_stack = .{},

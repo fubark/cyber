@@ -393,11 +393,9 @@ fn genChunkInner(c: *Chunk) !void {
 
     c.indent = 0;
 
-    const code = c.ir.getStmtCode(0);
-    if (code != .root) return error.Unexpected;
-
-    const data = c.ir.getStmtData(0, .root);
-    try genStmts(c, data.bodyHead);
+    for (c.ir.func_blocks.items) |block| {
+        try genStmt(c, block);
+    }
 
     // Ensure that all cstr and values were accounted for.
     if (c.unwind_stack.items.len > 0) {
@@ -503,6 +501,8 @@ fn mainBlock(c: *Chunk, idx: usize, node: *ast.Node) !void {
 
     try reserveMainRegs(c, data.maxLocals);
 
+    const main_pc = c.buf.ops.items.len;
+
     var child = data.bodyHead;
     while (child != cy.NullId) {
         try genStmt(c, child);
@@ -520,6 +520,7 @@ fn mainBlock(c: *Chunk, idx: usize, node: *ast.Node) !void {
     try popProc(c);
 
     c.buf.mainStackSize = c.getMaxUsedRegisters();
+    c.buf.main_pc = @intCast(main_pc);
 
     // Pop boundary index.
     try popUnwindBoundary(c, node);
@@ -530,9 +531,6 @@ pub fn funcBlock(c: *Chunk, idx: usize, node: *ast.Node) !void {
     const func = data.func;
     const paramsIdx = c.ir.advanceStmt(idx, .funcBlock);
     const params = c.ir.getArray(paramsIdx, ir.FuncParam, func.numParams);
-
-    // Reserve jump to skip the body.
-    const skipJump = try c.pushEmptyJump();
 
     const funcPc = c.buf.ops.items.len;
 
@@ -549,7 +547,6 @@ pub fn funcBlock(c: *Chunk, idx: usize, node: *ast.Node) !void {
     c.compiler.vm.funcSyms.buf[rtId] = rtFunc;
 
     try popFuncBlockCommon(c, func);
-    c.patchJumpToCurPc(skipJump);
 }
 
 fn genAwait(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {

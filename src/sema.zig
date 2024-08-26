@@ -3896,27 +3896,30 @@ pub fn popProc(self: *cy.Chunk) !cy.ir.StmtBlock {
 }
 
 pub fn pushLambdaProc(c: *cy.Chunk, func: *cy.Func) !ProcId {
-    const idx = try c.ir.pushEmptyExpr(.lambda, c.alloc, undefined, @ptrCast(func.decl));
+    const loc = try c.ir.pushEmptyExpr(.lambda, c.alloc, undefined, @ptrCast(func.decl));
+    // try c.ir.func_blocks.append(c.alloc, loc);
     // Reserve param info.
     _ = try c.ir.pushEmptyArray(c.alloc, ir.FuncParam, func.numParams);
 
     const id = try pushProc(c, func);
-    c.proc().irStart = idx;
+    c.proc().irStart = loc;
     return id;
 }
 
 pub fn pushFuncProc(c: *cy.Chunk, func: *cy.Func) !ProcId {
-    const idx = try c.ir.pushEmptyStmt(c.alloc, .funcBlock, @ptrCast(func.decl));
+    const loc = try c.ir.pushEmptyStmt2(c.alloc, .funcBlock, @ptrCast(func.decl), false);
+    try c.ir.func_blocks.append(c.alloc, loc);
     // Reserve param info.
     _ = try c.ir.pushEmptyArray(c.alloc, ir.FuncParam, func.numParams);
 
     const id = try pushProc(c, func);
-    c.proc().irStart = idx;
+    c.proc().irStart = loc;
     return id;
 }
 
 pub fn semaMainBlock(compiler: *cy.Compiler, mainc: *cy.Chunk) !u32 {
-    const irIdx = try mainc.ir.pushEmptyStmt(compiler.alloc, .mainBlock, @ptrCast(mainc.ast.root));
+    const loc = try mainc.ir.pushEmptyStmt2(compiler.alloc, .mainBlock, @ptrCast(mainc.ast.root), false);
+    try mainc.ir.func_blocks.append(mainc.alloc, loc);
 
     const id = try pushProc(mainc, null);
     mainc.mainSemaProcId = id;
@@ -3952,11 +3955,11 @@ pub fn semaMainBlock(compiler: *cy.Compiler, mainc: *cy.Chunk) !u32 {
     const stmtBlock = try popProc(mainc);
     log.tracev("pop main block: {}", .{proc.maxLocals});
 
-    mainc.ir.setStmtData(irIdx, .mainBlock, .{
+    mainc.ir.setStmtData(loc, .mainBlock, .{
         .maxLocals = proc.maxLocals,
         .bodyHead = stmtBlock.first,
     });
-    return irIdx;
+    return loc;
 }
 
 fn visitChunkInit(self: *cy.Compiler, c: *cy.Chunk) !void {

@@ -807,11 +807,9 @@ fn genChunk(c: *Chunk) !void {
 }
 
 fn genChunkInner(c: *Chunk) !void {
-    const code = c.ir.getStmtCode(0);
-    if (code != .root) return error.Unexpected;
-
-    const data = c.ir.getStmtData(0, .root);
-    try genStmts(c, data.bodyHead);
+    for (c.ir.func_blocks.items) |block| {
+        try genStmt(c, block);
+    }
 }
 
 fn genStmts(c: *Chunk, idx: u32) !void {

@@ -836,12 +836,7 @@ pub const VM = struct {
         self.unwind_slot_prevs = buf.unwind_slot_prevs.items;
         self.unwind_trys = buf.unwind_trys.items;
     
-        // Set these last to hint location to cache before eval.
-        if (self.num_cont_evals > 0) {
-            self.c.pc = @ptrCast(&buf.ops.items[self.last_bc_len]);
-        } else {
-            self.c.pc = @ptrCast(buf.ops.items.ptr);
-        }
+        self.c.pc = @ptrCast(&buf.ops.items[buf.main_pc]);
 
         try cy.fiber.stackEnsureTotalCapacity(self, buf.mainStackSize);
         self.c.mainFiber.stack_size = @intCast(buf.mainStackSize);

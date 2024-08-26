@@ -395,16 +395,11 @@ pub const Compiler = struct {
         log.tracev("Perform init sema.", .{});
         for (self.newChunks()) |chunk| {
             // First stmt is root at index 0.
-            _ = try chunk.ir.pushEmptyStmt2(chunk.alloc, .root, @ptrCast(chunk.ast.root), false);
-            try chunk.ir.pushStmtBlock2(chunk.alloc, chunk.rootStmtBlock);
-
             chunk.initializerVisited = false;
             chunk.initializerVisiting = false;
             if (chunk.hasStaticInit) {
                 try performChunkInitSema(self, chunk);
             }
-
-            chunk.rootStmtBlock = chunk.ir.popStmtBlock();
         }
 
         // Perform sema on all chunks.
@@ -423,7 +418,6 @@ pub const Compiler = struct {
 
         // Perform deferred sema.
         for (self.newChunks()) |chunk| {
-            try chunk.ir.pushStmtBlock2(chunk.alloc, chunk.rootStmtBlock);
             var i: usize = 0; // Explicit iterator in case more variants are added during body sema.
             while (i < chunk.deferred_funcs.items.len) : (i += 1) {
                 const func = chunk.deferred_funcs.items[i];
@@ -436,9 +430,6 @@ pub const Compiler = struct {
                     try sema.funcDecl(chunk, func);
                 }
             }
-            chunk.rootStmtBlock = chunk.ir.popStmtBlock();
-            // No more statements are added to the chunks root, so update bodyHead.
-            chunk.ir.setStmtData(0, .root, .{ .bodyHead = chunk.rootStmtBlock.first });
         }
 
         if (!config.skip_codegen) {
@@ -567,8 +558,6 @@ fn performChunkParse(self: *Compiler, chunk: *cy.Chunk) !void {
 /// Sema pass.
 /// Symbol resolving, type checking, and builds the model for codegen.
 fn performChunkSema(self: *Compiler, chunk: *cy.Chunk) !void {
-    try chunk.ir.pushStmtBlock2(chunk.alloc, chunk.rootStmtBlock);
-
     if (chunk == self.main_chunk) {
         try sema.pushResolveContext(chunk);
         defer sema.popResolveContext(chunk);
@@ -577,8 +566,6 @@ fn performChunkSema(self: *Compiler, chunk: *cy.Chunk) !void {
     }
     // Top level declarations only.
     try performChunkSemaDecls(chunk);
-
-    chunk.rootStmtBlock = chunk.ir.popStmtBlock();
 }
 
 fn performChunkSemaDecls(c: *cy.Chunk) !void {

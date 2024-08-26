@@ -270,6 +270,10 @@ pub const ByteCodeBuffer = struct {
         return start;
     }
 
+    pub fn setOpArgU48(self: *ByteCodeBuffer, idx: usize, arg: u48) void {
+        @as(*align(1) u48, @ptrCast(&self.ops.items[idx])).* = arg;
+    }
+
     pub fn setOpArgU32(self: *ByteCodeBuffer, idx: usize, arg: u32) void {
         @as(*align(1) u32, @ptrCast(&self.ops.items[idx])).* = arg;
     }
@@ -1081,6 +1085,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .forRangeInit => {
             return 8;
         },
+        .func_sym,
         .setFieldDyn,
         .setFieldDynIC => {
             return 10;
@@ -1317,6 +1322,7 @@ pub const OpCode = enum(u8) {
     /// [symId u16] [dstLocal]
     func_ptr = vmc.CodeFuncPtr,
     func_union = vmc.CodeFuncUnion,
+    func_sym = vmc.CodeFuncSym,
 
     /// Allocates a symbol object to a destination local.
     /// [symType] [symId] [dst]

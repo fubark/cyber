@@ -357,6 +357,7 @@ typedef enum {
     CodeMatch,
     CodeFuncPtr,
     CodeFuncUnion,
+    CodeFuncSym,
     CodeStaticVar,
     CodeSetStaticVar,
     CodeContext,
@@ -606,6 +607,13 @@ typedef struct FuncUnion {
     FuncData data;
 } FuncUnion;
 
+typedef struct FuncSym {
+    TypeId typeId;
+    u32 rc;
+
+    void* func;
+} FuncSym;
+
 typedef struct Type {
     TypeId typeId;
     uint32_t rc;
@@ -671,6 +679,7 @@ typedef union HeapObject {
     Type type;
     FuncPtr func_ptr;
     FuncUnion func_union;
+    FuncSym func_sym;
     UpValue up;
     Map map;
     List list;

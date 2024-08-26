@@ -3305,12 +3305,20 @@ fn genLambda(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     const offset: u16 = @intCast(c.buf.ops.items.len - funcPc);
 
     if (data.numCaptures == 0) {
-        const start = c.buf.ops.items.len;
-        try c.pushCode(.lambda, &.{
-            0, 0, func.numParams, stackSize, @intFromBool(func.reqCallTypeCheck), 0, 0, 0, 0, inst.dst }, node);
-        c.buf.setOpArgU16(start + 1, offset);
-        c.buf.setOpArgU16(start + 6, @intCast(func.funcSigId));
-        c.buf.setOpArgU16(start + 8, @intCast(c.ir.getExprType(idx).id));
+        if (data.ct) {
+            const start = c.buf.ops.items.len;
+            try c.pushCode(.func_sym, &.{
+                0, 0, 0, 0, 0, 0, 0, 0, inst.dst }, node);
+            c.buf.setOpArgU16(start + 1, @intCast(c.ir.getExprType(idx).id));
+            c.buf.setOpArgU48(start + 3, @intCast(@intFromPtr(func)));
+        } else {
+            const start = c.buf.ops.items.len;
+            try c.pushCode(.lambda, &.{
+                0, 0, func.numParams, stackSize, @intFromBool(func.reqCallTypeCheck), 0, 0, 0, 0, inst.dst }, node);
+            c.buf.setOpArgU16(start + 1, offset);
+            c.buf.setOpArgU16(start + 6, @intCast(func.funcSigId));
+            c.buf.setOpArgU16(start + 8, @intCast(c.ir.getExprType(idx).id));
+        }
     } else {
         const captures = c.ir.getArray(data.captures, u8, data.numCaptures);
         const start = c.buf.ops.items.len;

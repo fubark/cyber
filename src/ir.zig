@@ -338,6 +338,7 @@ pub const Lambda = struct {
     numParamCopies: u8,
     bodyHead: u32,
     captures: u32,
+    ct: bool,
 };
 
 pub const FuncBlock = struct {

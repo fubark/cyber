@@ -338,6 +338,19 @@ static inline ValueResult allocFuncUnion(VM* vm, TypeId union_t, FuncPtr* func_p
     return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
+static inline ValueResult allocFuncSym(VM* vm, TypeId sym_t, void* func) {
+    HeapObjectResult res = zAllocPoolObject(vm);
+    if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
+        return (ValueResult){ .code = res.code };
+    }
+    res.obj->func_sym = (FuncSym){
+        .typeId = sym_t,
+        .rc = 1,
+        .func = func,
+    };
+    return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
+}
+
 static inline ValueResult allocClosure(
     VM* vm, TypeId union_t, Value* fp, size_t funcPc, u8 numParams, u8 stackSize,
     u16 sig, const Inst* capturedVals, u8 numCapturedVals, u8 closureLocal, bool reqCallTypeCheck
@@ -714,6 +727,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Match),
         JENTRY(FuncPtr),
         JENTRY(FuncUnion),
+        JENTRY(FuncSym),
         JENTRY(StaticVar),
         JENTRY(SetStaticVar),
         JENTRY(Context),
@@ -2165,6 +2179,18 @@ beginSwitch:
             stack[pc[4]] = res.val;
         }
         pc += 5;
+        NEXT();
+    }
+    CASE(FuncSym): {
+        u16 sym_t = READ_U16(1);
+        void* func_sym = (void*)READ_U48(3);
+
+        ValueResult res = allocFuncSym(vm, sym_t, func_sym);
+        if (res.code != RES_CODE_SUCCESS) {
+            RETURN(res.code);
+        }
+        stack[pc[9]] = res.val;
+        pc += 10;
         NEXT();
     }
     CASE(StaticVar): {

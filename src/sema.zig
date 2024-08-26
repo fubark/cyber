@@ -5847,6 +5847,14 @@ pub const ChunkExt = struct {
             .lambda_expr => {
                 const lambda = node.cast(.lambda_expr);
 
+                var ct = false;
+                if (expr.hasTargetType()) {
+                    const target_te = c.sema.getType(expr.target_t);
+                    if (target_te.kind == .func_sym) {
+                        ct = true;
+                    }
+                }
+
                 if (try inferLambdaFuncSig(c, lambda, expr)) |sig| {
                     const func = try c.addUserLambda(@ptrCast(c.sym), lambda);
                     _ = try pushLambdaProc(c, func);
@@ -5862,7 +5870,7 @@ pub const ChunkExt = struct {
                         .expr = exprRes.irIdx,
                     });
 
-                    const ret_t = try popLambdaProc(c);
+                    const ret_t = try popLambdaProc(c, ct);
                     return ExprResult.initStatic(irIdx, ret_t);
                 } else {
                     const start = c.typeStack.items.len;
@@ -5897,12 +5905,20 @@ pub const ChunkExt = struct {
                     const sig = try c.sema.ensureFuncSig(@ptrCast(params), func_ret_t);
                     try c.resolveUserLambda(func, sig);
 
-                    const ret_t = try popLambdaProc(c);
+                    const ret_t = try popLambdaProc(c, ct);
                     return ExprResult.initStatic(irIdx, ret_t);
                 }
             },
             .lambda_multi => {
                 const lambda = node.cast(.lambda_multi);
+
+                var ct = false;
+                if (expr.hasTargetType()) {
+                    const target_te = c.sema.getType(expr.target_t);
+                    if (target_te.kind == .func_sym) {
+                        ct = true;
+                    }
+                }
 
                 try pushResolveContext(c);
                 defer popResolveContext(c);
@@ -5919,7 +5935,7 @@ pub const ChunkExt = struct {
                     // Generate function body.
                     try semaStmts(c, lambda.stmts);
 
-                    const ret_t = try popLambdaProc(c);
+                    const ret_t = try popLambdaProc(c, ct);
                     return ExprResult.initStatic(irIdx, ret_t);
                 } else {
                     const start = c.typeStack.items.len;
@@ -5940,7 +5956,7 @@ pub const ChunkExt = struct {
                     // Generate function body.
                     try semaStmts(c, lambda.stmts);
 
-                    const ret_t = try popLambdaProc(c);
+                    const ret_t = try popLambdaProc(c, ct);
                     return ExprResult.initStatic(irIdx, ret_t);
                 }
             },
@@ -6783,7 +6799,7 @@ fn assignToLocalVar(c: *cy.Chunk, localRes: ExprResult, rhs: *ast.Node, opts: As
     return right;
 }
 
-fn popLambdaProc(c: *cy.Chunk) !cy.TypeId {
+fn popLambdaProc(c: *cy.Chunk, ct: bool) !cy.TypeId {
     const proc = c.proc();
     const params = c.getProcParams(proc);
 
@@ -6816,9 +6832,17 @@ fn popLambdaProc(c: *cy.Chunk) !cy.TypeId {
             c.ir.setArrayItem(irCapturesIdx, u8, i, pvar.inner.local.id);
         }
         c.alloc.free(captures);
-        type_id = try getFuncUnionType(c, proc.func.?.funcSigId);
+        if (ct) {
+            return c.reportError("A closure can not be a function symbol.", proc.node);
+        } else {
+            type_id = try getFuncUnionType(c, proc.func.?.funcSigId);
+        }
     } else {
-        type_id = try getFuncPtrType(c, proc.func.?.funcSigId);
+        if (ct) {
+            type_id = try getCtFuncType(c, proc.func.?.funcSigId);
+        } else {
+            type_id = try getFuncPtrType(c, proc.func.?.funcSigId);
+        }
     }
     c.ir.setExprType(proc.irStart, type_id);
 
@@ -6830,6 +6854,7 @@ fn popLambdaProc(c: *cy.Chunk) !cy.TypeId {
         .numParamCopies = numParamCopies,
         .bodyHead = stmtBlock.first,
         .captures = irCapturesIdx,
+        .ct = ct,
     });
     return type_id;
 }

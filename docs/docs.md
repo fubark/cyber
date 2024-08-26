@@ -2176,10 +2176,10 @@ A function symbol can only be used at compile-time. It can be expanded to a runt
 ```cy
 type IntMap[K type, HASH func(K) int]
     ints [*]int
-    cap  int
 
+    -- Probing omitted.
     func get(self, key K) int:
-        var slot = HASH(key) % self.cap
+        var slot = HASH(key) % self.ints.len
         return self.ints[slot]
 
 func my_str_hash(s String) int:
@@ -3954,7 +3954,8 @@ Cyber provides memory safety by default with structured and automatic memory.
 Manual memory is also supported but discouraged.
 
 ## Structured memory.
-Cyber uses single value ownership and variable scopes to determine the lifetime of values.
+*Structured memory is very much incomplete. It will be centered around single value ownership but the semantics are subject to change.*
+Cyber uses single value ownership and variable scopes to determine the lifetime of values and references.
 When lifetimes are known at compile-time, the memory occupied by values do not need to be manually managed which prevents memory bugs such as:
 * Use after free.
 * Use after invalidation.
@@ -3964,6 +3965,7 @@ When lifetimes are known at compile-time, the memory occupied by values do not n
 * Null pointer dereferencing.
 
 At the same time, structured memory allows performant code to be written since it provides safe semantics to directly reference values and child values.
+These safety features are guaranteed for debug and optimized builds with no additional runtime cost.
 
 ### Value ownership.
 Every value in safe memory has a single owner.
@@ -4003,7 +4005,7 @@ A value always knows **how** to deinitialize itself, and the owner knows **when*
 Later, we'll see that this same concept also applies to [shared ownership](#shared-ownership).
 
 ### Copy semantics.
-By default, values are passed around by copying (shallow copying), but now all values can perform a copy.
+By default, values are passed around by copying (shallow copying), but not all values can perform a copy.
 
 A primitive, such as an integer, can always be copied:
 ```cy
@@ -4145,7 +4147,7 @@ References are safe pointers to values.
 Unlike unsafe pointers, a reference is never concerned with when to free or deinitialize a value since that responsibility always belongs to the value's owner.
 They are considered safe pointers because they are guaranteed to point to their values and never outlive the lifetime of their values.
 
-References grant **stable mutability** which allows a value to be modified as long as it does not invalidate other references.
+References grant **in-place mutability** which allows a value to be modified as long as it does not invalidate other references.
 **Multiple** references can be alive at once as long as an [exclusive reference](#exclusive-reference) is not also alive.
 
 The `&` operator is used to obtain a reference to a value:
@@ -4162,7 +4164,7 @@ var a = 123
 var ref = &a
 if true:
     var b = 234
-    ref = &b   --> error: `ref` can not oulive `b`.
+    ref = &b   --> error: `ref` can not outlive `b`.
 ```
 
 A reference type is denoted as `&T` where `T` is the type that the reference points to:
@@ -4173,7 +4175,7 @@ func inc(a &int):
     a.* = a.* + 1
 ```
 
-References allow stable mutation:
+References allow in-place mutation:
 ```cy
 var a = ListValue[int]{1, 2, 3}
 var third = &a[2]
@@ -4182,7 +4184,7 @@ print a        --> {1, 2, 300}
 ```
 The element that `third` points to can be mutated because it does not invalidate other references.
 
-References however can not perform a unstable mutation.
+References however can not perform an unstable mutation.
 An unstable mutation requires an exclusive reference:
 ```cy
 var a = ListValue[int]{1, 2, 3}
@@ -4217,7 +4219,7 @@ print third
 ```
 
 ### `self` reference.
-By default `self` has a type of `&T` when declared in a value type's method:
+By default `self` has a type of `&T` when declared in a value `T`'s method:
 ```cy
 type Pair struct:
     a int

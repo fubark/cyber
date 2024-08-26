@@ -1969,6 +1969,9 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
 
 # Functions.
 
+<table><tr>
+<td valign="top">
+
 * [Static functions.](#static-functions)
 * [Function overloading.](#function-overloading)
 * [Lambdas.](#lambdas)
@@ -1978,6 +1981,8 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
 * [Multiple parameters.](#multiple-parameters)
 * [Named parameters.](#named-parameters)
 * [Variadic parameters.](#variadic-parameters)
+</td><td valign="top">
+
 * [Function calls.](#function-calls)
   * [Shorthand syntax.](#shorthand-syntax)
   * [Call block syntax.](#call-block-syntax)
@@ -1986,6 +1991,9 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
   * [Explicit template call.](#explicit-template-call)
   * [Expand function.](#expand-function)
   * [Infer param type.](#infer-param-type)
+  * [Compile-time function template.](#compile-time-function-template)
+</td>
+</tr></table>
 
 [^top](#table-of-contents)
 
@@ -2260,6 +2268,29 @@ Nested template parameters can also be inferred:
 func set(m Map[#K, #V], key K, val V):
     m.set(key, val)
 ```
+
+### Compile-time function template.
+When function parameters are delimited with brackets instead of parentheses, the function becomes a compile-time function template.
+This is different from a function template which generates different runtime functions based on its compile-time parameters.
+
+A compile-time function template does not generate a runtime function and can only be called at compile-time. After invocation, the return value is cached by the template parameters:
+
+```cy
+func GetType[ID String] type:
+    if ID == 'bool':
+        return bool
+    else ID == 'int':
+        return int
+    else ID == 'String':
+        return String
+    else
+        throw error.Unsupported
+
+var a GetType['int'] = 123
+print a         --> 123
+```
+This can be useful to evaluate compile-time logic to create new types or specialize other templates.
+Any compile-time compatible type can also be returned.
 
 # Modules.
 <table><tr>

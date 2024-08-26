@@ -413,6 +413,19 @@ static inline ValueResult allocUpValue(VM* vm, Value val) {
     return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
+static inline ValueResult allocType(VM* vm, uint32_t type_id) {
+    HeapObjectResult res = zAllocPoolObject(vm);
+    if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
+        return (ValueResult){ .code = res.code };
+    }
+    res.obj->type = (Type){
+        .typeId = TYPE_TYPE,
+        .rc = 1,
+        .type = type_id,
+    };
+    return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
+}
+
 static inline ValueResult allocMetaType(VM* vm, uint8_t symType, uint32_t symId) {
     HeapObjectResult res = zAllocPoolObject(vm);
     if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
@@ -705,6 +718,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(SetStaticVar),
         JENTRY(Context),
         JENTRY(Metatype),
+        JENTRY(Type),
         JENTRY(End),
     };
     STATIC_ASSERT(sizeof(jumpTable) == (CodeEnd + 1) * sizeof(void*), JUMP_TABLE_INCOMPLETE);
@@ -2184,6 +2198,16 @@ beginSwitch:
         if (LIKELY(res.code == RES_CODE_SUCCESS)) {
             stack[pc[6]] = res.val;
             pc += 7;
+            NEXT();
+        }
+        RETURN(res.code);
+    }
+    CASE(Type): {
+        u32 type_id = READ_U32(1);
+        ValueResult res = allocType(vm, type_id);
+        if (LIKELY(res.code == RES_CODE_SUCCESS)) {
+            stack[pc[5]] = res.val;
+            pc += 6;
             NEXT();
         }
         RETURN(res.code);

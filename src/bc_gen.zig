@@ -119,9 +119,6 @@ pub fn genAll(c: *cy.Compiler) !void {
         try context_vars.append(c.alloc, .{ .value = cy.Value.initInt(123) });
     }
 
-    // Bind the rest that aren't in sema.
-    try @call(.never_inline, cy.bindings.bindCore, .{c.vm});
-
     for (c.newChunks()) |chunk| {
         log.tracev("Perform codegen for chunk{}: {s}", .{chunk.id, chunk.srcUri});
         chunk.buf = &c.buf;
@@ -229,7 +226,7 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
     }
 }
 
-fn prepareFunc(c: *cy.Compiler, opt_group: ?rt.FuncGroupId, func: *cy.Func) !void {
+pub fn prepareFunc(c: *cy.Compiler, opt_group: ?rt.FuncGroupId, func: *cy.Func) !void {
     switch (func.type) {
         .template,
         .trait,
@@ -237,7 +234,7 @@ fn prepareFunc(c: *cy.Compiler, opt_group: ?rt.FuncGroupId, func: *cy.Func) !voi
 
         .hostFunc => {
             if (cy.Trace) {
-                const symPath = try cy.sym.allocSymName(&c.sema, c.alloc, @ptrCast(func.sym.?), .{});
+                const symPath = try cy.sym.allocSymName(&c.sema, c.alloc, func.parent, .{});
                 defer c.alloc.free(symPath);
                 log.tracev("prep func: {s}", .{symPath});
             }
@@ -251,7 +248,7 @@ fn prepareFunc(c: *cy.Compiler, opt_group: ?rt.FuncGroupId, func: *cy.Func) !voi
         },
         .userFunc => {
             if (cy.Trace) {
-                const symPath = try cy.sym.allocSymName(&c.sema, c.alloc, @ptrCast(func.sym.?), .{});
+                const symPath = try cy.sym.allocSymName(&c.sema, c.alloc, func.parent, .{});
                 defer c.alloc.free(symPath);
                 log.tracev("prep func: {s}", .{symPath});
             }
@@ -470,7 +467,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .trait              => genTrait(c, idx, cstr, node),
         .truev              => genTrue(c, cstr, node),
         .tryExpr            => genTryExpr(c, idx, cstr, node),
-        .typeSym            => genTypeSym(c, idx, cstr, node),
+        .type               => genType(c, idx, cstr, node),
         .unbox              => genUnbox(c, idx, cstr, node),
         .unwrapChoice       => genUnwrapChoice(c, idx, cstr, node),
         .unwrap_or          => genUnwrapOr(c, idx, cstr, node),
@@ -528,7 +525,7 @@ fn mainBlock(c: *Chunk, idx: usize, node: *ast.Node) !void {
     try popUnwindBoundary(c, node);
 }
 
-fn funcBlock(c: *Chunk, idx: usize, node: *ast.Node) !void {
+pub fn funcBlock(c: *Chunk, idx: usize, node: *ast.Node) !void {
     const data = c.ir.getStmtData(idx, .funcBlock);
     const func = data.func;
     const paramsIdx = c.ir.advanceStmt(idx, .funcBlock);
@@ -1967,13 +1964,19 @@ fn genFuncUnion(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     return finishDstInst(c, inst, true);
 }
 
-fn genTypeSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .typeSym);
+fn genType(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
+    const data = c.ir.getExprData(idx, .type);
 
     const inst = try bc.selectForDstInst(c, cstr, bt.MetaType, true, node);
     const pc = c.buf.len();
-    try c.pushCode(.metatype, &.{@intFromEnum(cy.heap.MetaTypeKind.object), 0, 0, 0, 0, inst.dst}, node);
-    c.buf.setOpArgU32(pc + 2, data.typeId);
+
+    if (data.ct) {
+        try c.pushCode(.type, &.{0, 0, 0, 0, inst.dst}, node);
+        c.buf.setOpArgU32(pc + 1, data.typeId);
+    } else {
+        try c.pushCode(.metatype, &.{@intFromEnum(cy.heap.MetaTypeKind.object), 0, 0, 0, 0, inst.dst}, node);
+        c.buf.setOpArgU32(pc + 2, data.typeId);
+    }
     if (inst.own_dst) {
         try initSlot(c, inst.dst, true, node);
     }

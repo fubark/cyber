@@ -101,7 +101,7 @@ pub const ExprCode = enum(u8) {
     func_union,
     varSym,
     context,
-    typeSym,
+    type,
     enumMemberSym,
     string,
     stringTemplate,
@@ -499,8 +499,11 @@ pub const FuncUnion = struct {
     expr: Loc,
 };
 
-pub const TypeSym = struct {
+pub const Type = struct {
     typeId: TypeId,
+
+    /// Whether to emit runtime type or compile-time type.
+    ct: bool,
 };
 
 pub const CoinitCall = struct {
@@ -672,7 +675,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .enumMemberSym => EnumMemberSym,
         .func_ptr => FuncPtr,
         .func_union => FuncUnion,
-        .typeSym => TypeSym,
+        .type => Type,
         .float => Float,
         .int => Int,
         .byte => Byte,

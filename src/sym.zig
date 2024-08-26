@@ -88,14 +88,22 @@ pub const Sym = extern struct {
             .template => {
                 const template = self.cast(.template);
 
-                var iter = template.variant_cache.iterator();
-                while (iter.next()) |e| {
-                    const variant = e.value_ptr.*;
+                for (template.variants.items) |variant| {
                     for (variant.args) |arg| {
                         cy.arc.release(vm, arg);
                     }
                     vm.alloc.free(variant.args);
                     variant.args = &.{};
+
+                    if (variant.type == .ct_val) {
+                        vm.release(variant.data.ct_val);
+                        variant.data.ct_val = cy.Value.Void;
+                    }
+                }
+
+                if (template.kind == .ct_func) {
+                    vm.release(template.ct_func_val);
+                    template.ct_func_val = cy.Value.Void;
                 }
             },
             else => {},
@@ -143,7 +151,7 @@ pub const Sym = extern struct {
             },
             .template => {
                 const template = self.cast(.template);
-                template.deinit(alloc, vm);
+                deinitTemplate(vm, template);
                 alloc.destroy(template);
             },
             .distinct_t => {
@@ -565,6 +573,7 @@ pub const TemplateType = enum {
     enum_t,
     distinct_t,
     custom_t,
+    ct_func,
 };
 
 /// TODO: Consider splitting into Template and FuncTemplate.
@@ -588,26 +597,11 @@ pub const Template = struct {
     variant_cache: std.HashMapUnmanaged([]const cy.Value, *Variant, VariantKeyContext, 80),
     variants: std.ArrayListUnmanaged(*Variant),
 
+    /// For compile-time function templates.
+    ct_func: ?*Func,
+    ct_func_val: cy.Value,
+
     mod: vmc.Module,
-
-    fn deinit(self: *Template, alloc: std.mem.Allocator, vm: *cy.VM) void {
-        self.getMod().deinit(alloc);
-
-        for (self.variants.items) |variant| {
-            for (variant.args) |arg| {
-                vm.release(arg);
-            }
-            alloc.free(variant.args);
-            alloc.destroy(variant);
-        }
-        self.variants.deinit(alloc);
-        self.variant_cache.deinit(alloc);
-        if (self.is_root) {
-            alloc.free(self.params);
-        }
-
-        self.specializations.deinit(alloc);
-    }
 
     pub fn getMod(self: *Template) *cy.Module {
         return @ptrCast(&self.mod);
@@ -643,6 +637,26 @@ pub const Template = struct {
     }
 };
 
+fn deinitTemplate(vm: *cy.VM, template: *Template) void {
+    template.getMod().deinit(vm.alloc);
+
+    for (template.variants.items) |variant| {
+        deinitVariant(vm, variant);
+        vm.alloc.destroy(variant);
+    }
+    template.variants.deinit(vm.alloc);
+    template.variant_cache.deinit(vm.alloc);
+    if (template.is_root) {
+        vm.alloc.free(template.params);
+    }
+
+    template.specializations.deinit(vm.alloc);
+    if (template.ct_func) |ct_func| {
+        vm.alloc.destroy(ct_func);
+    }
+    vm.release(template.ct_func_val);
+}
+
 pub const TemplateParam = struct {
     name: []const u8,
     type: cy.TypeId,
@@ -651,6 +665,7 @@ pub const TemplateParam = struct {
 const VariantType = enum(u8) {
     specialization,
     sym,
+    ct_val,
 };
 
 pub const Variant = struct {
@@ -666,8 +681,19 @@ pub const Variant = struct {
     data: union {
         specialization: *ast.Node,
         sym: *Sym,
+        ct_val: cy.Value,
     },
 };
+
+fn deinitVariant(vm: *cy.VM, variant: *Variant) void {
+    for (variant.args) |arg| {
+        vm.release(arg);
+    }
+    vm.alloc.free(variant.args);
+    if (variant.type == .ct_val) {
+        vm.release(variant.data.ct_val);
+    }
+}
 
 const VariantKeyContext = struct {
     sema: *cy.sema.Sema,
@@ -683,6 +709,10 @@ const VariantKeyContext = struct {
                 bt.Integer => {
                     const i = val.asHeapObject().integer.val;
                     c.update(std.mem.asBytes(&i));
+                },
+                bt.String => {
+                    const str = val.asString();
+                    c.update(str);
                 },
                 else => {
                     const type_e = self.sema.getType(val.getTypeId());
@@ -717,6 +747,9 @@ const VariantKeyContext = struct {
                 },
                 bt.Integer => {
                     return av.asBoxInt() == b[i].asBoxInt();
+                },
+                bt.String => {
+                    return std.mem.eql(u8, av.asString(), b[i].asString());
                 },
                 else => {
                     const type_e = self.sema.getType(atype);
@@ -1024,9 +1057,8 @@ pub const FuncKind = enum {
 pub const Func = struct {
     type: FuncKind,
     next: ?*Func,
-    sym: ?*FuncSym,
 
-    /// For non-lambdas, this is equivalent to `sym.parent`.
+    /// For non-lambdas, this can refer to a FuncSym or Template.
     parent: *Sym,
 
     funcSigId: cy.sema.FuncSigId,
@@ -1102,14 +1134,14 @@ pub const Func = struct {
     }
 
     pub fn chunk(self: *const Func) *cy.Chunk {
-        return self.parent.getMod().?.chunk;
+        return self.parent.parent.?.getMod().?.chunk;
     }
 
     pub fn name(self: Func) []const u8 {
         if (self.type == .userLambda) {
             return "lambda";
         }
-        return self.sym.?.head.name();
+        return self.parent.name();
     }
 };
 
@@ -1416,6 +1448,8 @@ pub const ChunkExt = struct {
             .variants = .{},
             .specializations = .{},
             .mod = undefined,
+            .ct_func = null,
+            .ct_func_val = cy.Value.Void,
         });
         sym.getMod().* = cy.Module.init(c);
         try c.syms.append(c.alloc, @ptrCast(sym));
@@ -1564,14 +1598,13 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createFunc(c: *cy.Chunk, ftype: FuncKind, parent: *Sym, sym: ?*FuncSym, node: ?*ast.Node, isMethod: bool) !*Func {
+    pub fn createFunc(c: *cy.Chunk, ftype: FuncKind, parent: *Sym, node: ?*ast.Node, isMethod: bool) !*Func {
         const func = try c.alloc.create(Func);
         func.* = .{
             .type = ftype,
             .funcSigId = cy.NullId,
             .retType = cy.NullId,
             .reqCallTypeCheck = undefined,
-            .sym = sym,
             .throws = false,
             .parent = parent,
             .is_method = isMethod,
@@ -1650,7 +1683,7 @@ const SymFormatConfig = struct {
 };
 
 pub fn writeFuncName(s: *cy.Sema, w: anytype, func: *cy.Func, config: SymFormatConfig) !void {
-    try writeParentPrefix(s, w, @ptrCast(func.sym.?), config);
+    try writeParentPrefix(s, w, func.parent, config);
     try w.writeAll(func.name());
     if (config.emit_template_args) {
         if (func.variant) |variant| {

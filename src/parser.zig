@@ -1232,18 +1232,20 @@ pub const Parser = struct {
             return self.reportError("Expected function name identifier.", &.{});
         };
 
-        var opt_template: ?*ast.Node = null;
+        var opt_template: ?*ast.TemplateDecl = null;
+        var params: []*ast.FuncParam = undefined;
         if (self.peek().tag() == .left_bracket) {
-            const args = try self.parseArrayLiteral2();
-            opt_template = try self.ast.newNodeErase(.specialization, .{
-                .args = args,
+            self.advance();
+            params = try self.parseFuncParams(&.{}, true);
+            opt_template = try self.ast.newNode(.template, .{
+                .params = params,
                 .child_decl = undefined,
             });
             try self.staticDecls.append(self.alloc, @ptrCast(opt_template));
             self.consumeWhitespaceTokens();
+        } else {
+            params = try self.parseParenAndFuncParams();
         }
-
-        const params = try self.parseParenAndFuncParams();
         const ret = try self.parseFuncReturn();
 
         // const nameStr = self.ast.nodeString(name);
@@ -1284,18 +1286,13 @@ pub const Parser = struct {
         }
 
         if (opt_template) |template| {
-            if (template.type() == .specialization) {
-                template.cast(.specialization).child_decl = @ptrCast(decl);
-            } else {
-                template.cast(.template).child_decl = @ptrCast(decl);
-            }
-            return template;
+            template.child_decl = @ptrCast(decl);
         } else {
             if (self.cur_indent == 0) {
                 try self.staticDecls.append(self.alloc, @ptrCast(decl));
             }
-            return @ptrCast(decl);
         }
+        return @ptrCast(decl);
     }
 
     fn parseElseStmts(self: *Parser) ![]*ast.ElseBlock {

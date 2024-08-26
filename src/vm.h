@@ -361,6 +361,7 @@ typedef enum {
     CodeSetStaticVar,
     CodeContext,
     CodeMetatype,
+    CodeType,
     CodeEnd,
     NumCodes,
 } OpCode;
@@ -605,6 +606,12 @@ typedef struct FuncUnion {
     FuncData data;
 } FuncUnion;
 
+typedef struct Type {
+    TypeId typeId;
+    uint32_t rc;
+    uint32_t type;
+} Type;
+
 typedef struct MetaType {
     TypeId typeId;
     uint32_t rc;
@@ -661,6 +668,7 @@ typedef union HeapObject {
     Trait trait;
     Range range;
     MetaType metatype;
+    Type type;
     FuncPtr func_ptr;
     FuncUnion func_union;
     UpValue up;

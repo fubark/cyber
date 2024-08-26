@@ -605,6 +605,8 @@ pub const VM = struct {
 
     pub fn resetVM(self: *VM) !void {
         self.deinit(true);
+        try @call(.never_inline, cy.bindings.bindCore, .{self});
+
         self.num_cont_evals = 0;
 
         // Reset flags for next reset/deinit.
@@ -818,11 +820,12 @@ pub const VM = struct {
         @memset(self.stack, val);
     }
 
-    pub fn evalByteCode(self: *VM, buf: cy.ByteCodeBuffer) !Value {
-        if (buf.ops.items.len == 0) {
-            return error.NoEndOp;
-        }
+    pub fn prepCtEval(self: *VM, buf: *cy.ByteCodeBuffer) !void {
+        buf.mconsts = buf.consts.items;
+        try self.prepEval(buf);
+    }
 
+    pub fn prepEval(self: *VM, buf: *cy.ByteCodeBuffer) !void {
         cy.fiber.freeFiberPanic(self, &self.c.mainFiber);
         self.c.curFiber.panicType = vmc.PANIC_NONE;
         self.debugTable = buf.debugTable.items;
@@ -830,13 +833,14 @@ pub const VM = struct {
         self.unwind_slots = buf.unwind_slots.items;
         self.unwind_slot_prevs = buf.unwind_slot_prevs.items;
         self.unwind_trys = buf.unwind_trys.items;
-
+    
         // Set these last to hint location to cache before eval.
         if (self.num_cont_evals > 0) {
             self.c.pc = @ptrCast(&buf.ops.items[self.last_bc_len]);
         } else {
             self.c.pc = @ptrCast(buf.ops.items.ptr);
         }
+
         try cy.fiber.stackEnsureTotalCapacity(self, buf.mainStackSize);
         self.c.mainFiber.stack_size = @intCast(buf.mainStackSize);
         self.c.framePtr = @ptrCast(self.c.stack);
@@ -847,7 +851,14 @@ pub const VM = struct {
         self.c.consts_len = buf.mconsts.len;
         self.c.types = self.compiler.sema.types.items.ptr;
         self.c.types_len = self.compiler.sema.types.items.len;
+    }
 
+    pub fn evalByteCode(self: *VM, buf: *cy.ByteCodeBuffer) !Value {
+        if (buf.ops.items.len == 0) {
+            return error.NoEndOp;
+        }
+
+        try self.prepEval(buf);
         defer {
             self.num_cont_evals += 1;
             self.num_evals += 1;

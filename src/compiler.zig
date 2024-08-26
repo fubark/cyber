@@ -468,7 +468,7 @@ pub const Compiler = struct {
                 C.BackendVM => {
                     try bcgen.genAll(self);
                     return .{
-                        .vm = self.buf,
+                        .vm = &self.buf,
                     };
                 },
                 else => return error.Unsupported,
@@ -1158,7 +1158,7 @@ fn resolveSyms(self: *Compiler) !void {
 }
 
 pub const CompileResult = union {
-    vm: cy.ByteCodeBuffer,
+    vm: *cy.ByteCodeBuffer,
     jit: struct {
         mainStackSize: u32,
         buf: jitgen.CodeBuffer,

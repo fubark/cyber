@@ -134,14 +134,6 @@ pub const Module = struct {
         var iter = m.symMap.valueIterator();
         while (iter.next()) |val_ptr| {
             val_ptr.*.parent = parent;
-            if (val_ptr.*.type == .func) {
-                const func_sym = val_ptr.*.cast(.func);
-                var opt_func: ?*cy.Func = func_sym.first;
-                while (opt_func) |func| {
-                    func.parent = parent;
-                    opt_func = func.next;
-                }
-            }
         }
     }
 };
@@ -350,7 +342,7 @@ pub const ChunkExt = struct {
     }
 
     pub fn addUserLambda(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.LambdaExpr) !*cy.Func {
-        const func = try c.createFunc(.userLambda, parent, null, @ptrCast(decl), false);
+        const func = try c.createFunc(.userLambda, parent, @ptrCast(decl), false);
         try c.funcs.append(c.alloc, func);
         return func;
     }
@@ -368,7 +360,7 @@ pub const ChunkExt = struct {
     ) !*cy.Func {
         const mod = parent.getMod().?;
         const sym = try prepareFuncSym(c, parent, mod, name, node);
-        const func = try c.createFunc(.template, parent, sym, @ptrCast(node), is_method);
+        const func = try c.createFunc(.template, sym, @ptrCast(node), is_method);
         try c.funcs.append(c.alloc, func);
         sym.addFunc(func);
         return func;
@@ -384,7 +376,7 @@ pub const ChunkExt = struct {
     ) !*cy.Func {
         const mod = parent.getMod().?;
         const sym = try prepareFuncSym(c, parent, mod, name, node);
-        const func = try c.createFunc(.hostFunc, parent, sym, @ptrCast(node), is_method);
+        const func = try c.createFunc(.hostFunc, @ptrCast(sym), @ptrCast(node), is_method);
         if (!deferred) {
             try c.funcs.append(c.alloc, func);
         }
@@ -405,7 +397,7 @@ pub const ChunkExt = struct {
     ) !*cy.Func {
         const mod = parent.getMod().?;
         const sym = try prepareFuncSym(c, parent, mod, name, node);
-        const func = try c.createFunc(.trait, parent, sym, @ptrCast(node), true);
+        const func = try c.createFunc(.trait, @ptrCast(sym), @ptrCast(node), true);
         func.data = .{
             .trait = .{
                 .vtable_idx = @intCast(vtable_idx),
@@ -423,7 +415,7 @@ pub const ChunkExt = struct {
     ) !*cy.Func {
         const mod = parent.getMod().?;
         const sym = try prepareFuncSym(c, parent, mod, name, node);
-        const func = try c.createFunc(.userFunc, parent, sym, @ptrCast(node), is_method);
+        const func = try c.createFunc(.userFunc, @ptrCast(sym), @ptrCast(node), is_method);
         if (!deferred) {
            try c.funcs.append(c.alloc, func);
         }
@@ -436,8 +428,8 @@ pub const ChunkExt = struct {
     }
 
     fn resolveFunc(c: *cy.Chunk, func: *cy.Func, func_sig_id: sema.FuncSigId) !void {
-        const mod = func.parent.getMod().?;
-        const sym = func.sym.?;
+        const sym = func.parent.cast(.func);
+        const mod = sym.head.parent.?.getMod().?;
         if (!mod.isFuncUnique(sym, func_sig_id)) {
             return c.reportErrorFmt("`{}` has already been declared with the same function signature.", &.{v(func.name())}, @ptrCast(func.decl));
         }

@@ -5,6 +5,7 @@ const sema = cy.sema;
 const v = cy.fmt.v;
 const log = cy.log.scoped(.cte);
 const ast = cy.ast;
+const bcgen = @import("bc_gen.zig");
 
 const cte = @This();
 
@@ -82,6 +83,23 @@ pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, args: 
     return expandTemplate(c, template, arg_vals);
 }
 
+pub fn expandCtFuncTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, args: []const *ast.Node, node: *ast.Node) !cy.Value {
+    // Accumulate compile-time args.
+    const valueStart = c.valueStack.items.len;
+    defer {
+        // Values need to be released.
+        const values = c.valueStack.items[valueStart..];
+        for (values) |val| {
+            c.vm.release(val);
+        }
+        c.valueStack.items.len = valueStart;
+    }
+
+    try pushNodeValuesCstr(c, args, template, valueStart, node);
+    const arg_vals = c.valueStack.items[valueStart..];
+    return expandCtFuncTemplate(c, template, arg_vals);
+}
+
 pub fn expandFuncTemplateOnCallArgs(c: *cy.Chunk, template: *cy.Func, args: []const *ast.Node, node: *ast.Node) !*cy.Func {
     // Accumulate compile-time args.
     const typeStart = c.typeStack.items.len;
@@ -150,6 +168,65 @@ pub fn expandFuncTemplate(c: *cy.Chunk, tfunc: *cy.sym.Func, args: []const cy.Va
     } 
     const variant = res.value_ptr.*;
     return variant.func;
+}
+
+pub fn expandCtFuncTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy.Value) !cy.Value {
+    // Ensure variant type.
+    const res = try template.variant_cache.getOrPutContext(c.alloc, args, .{ .sema = c.sema });
+    if (!res.found_existing) {
+        // Dupe args and retain
+        const args_dupe = try c.alloc.dupe(cy.Value, args);
+        for (args_dupe) |param| {
+            c.vm.retain(param);
+        }
+
+        // Generate variant type.
+        const variant = try c.alloc.create(cy.sym.Variant);
+        variant.* = .{
+            .type = .ct_val,
+            .root_template = template,
+            .args = args_dupe,
+            .data = .{ .ct_val = cy.Value.Void },
+        };
+        res.key_ptr.* = args_dupe;
+        res.value_ptr.* = variant;
+        try template.variants.append(c.alloc, variant);
+
+        if (template.ct_func == null) {
+            // Generate ct func.
+            const func = try c.createFunc(.userFunc, @ptrCast(template), @ptrCast(template.decl.child_decl), false);
+            const func_sig = c.compiler.sema.getFuncSig(template.sigId);
+            func.funcSigId = template.sigId;
+            func.retType = func_sig.getRetType();
+            func.reqCallTypeCheck = func_sig.reqCallTypeCheck;
+            func.numParams = @intCast(func_sig.params_len);
+
+            // Perform sema.
+            const loc = c.ir.buf.items.len;
+            try sema.funcDecl(c, func);
+
+            // Perform bc gen.
+            const loc_n = c.ir.getNode(loc);
+            c.buf = &c.compiler.buf;
+            try bcgen.prepareFunc(c.compiler, null, func);
+            try bcgen.funcBlock(c, loc, loc_n);
+
+            const rt_id = c.compiler.genSymMap.get(func).?.func.id;
+            const rt_func = c.vm.funcSyms.buf[rt_id];
+            template.ct_func_val = try cy.heap.allocFunc(c.vm, rt_func);
+            template.ct_func = func;
+        }
+
+        try c.vm.prepCtEval(&c.compiler.buf);
+        const retv = try c.vm.callFunc(template.ct_func_val, args, .{});
+        c.vm.retain(retv);
+        variant.data = .{ .ct_val = retv };
+        return retv;
+    } 
+
+    const variant = res.value_ptr.*;
+    c.vm.retain(variant.data.ct_val);
+    return variant.data.ct_val;
 }
 
 pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy.Value) !*cy.Sym {
@@ -288,6 +365,13 @@ pub const CtValue = struct {
 // TODO: Evaluate const expressions.
 pub fn resolveCtValue(c: *cy.Chunk, expr: *ast.Node) !CtValue {
     switch (expr.type()) {
+        .raw_string_lit => {
+            const str = c.ast.nodeString(expr);
+            return .{
+                .type = bt.String,
+                .value = try c.vm.allocString(str),
+            };
+        },
         .floatLit => {
             const literal = c.ast.nodeString(expr);
             const val = try std.fmt.parseFloat(f64, literal);

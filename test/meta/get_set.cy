@@ -5,10 +5,10 @@ type Foo:
     data Map
 
     func $get(self, name String) dyn:
-        return data[name]
+        return self.data[name]
 
     func $set(self, name String, value int):
-        data[name] = value
+        self.data[name] = value
 
 var f = Foo{a=123}
 

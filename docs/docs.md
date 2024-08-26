@@ -1092,7 +1092,6 @@ The dynamic type defers type checking to runtime. However, it also tracks its ow
   * [Circular references.](#circular-references)
   * [Unnamed object.](#unnamed-object)
   * [Methods.](#methods)
-  * [Implicit members.](#implicit-members)
   * [Type functions.](#type-functions)
   * [Type variables.](#type-variables)
   * [Type embedding.](#type-embedding)
@@ -1236,17 +1235,6 @@ Methods can be declared outside of the type declaration as a flat declaration:
 ```cy
 func Node.getNext(self):
     return self.next
-```
-
-### Implicit members.
-When a method is nested under a type declaration, the type members can be implicitly referenced inside the method: *Incomplete: Only the type's fields can be referenced this way.*
-```cy
-type Node:
-    value int
-    next  ?Node
-
-    func double(self):
-        return value * 2
 ```
 
 ### Type functions.

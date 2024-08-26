@@ -103,7 +103,7 @@ type REPL:
 
             if input.endsWith(':'):
                 self.input_buffer += input
-                indent += 1
+                self.indent += 1
                 continue
 
             if self.input_buffer.len() == 0:

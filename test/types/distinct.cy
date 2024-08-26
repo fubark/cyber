@@ -6,7 +6,7 @@ type Vec2:
 
 type Vec Vec2:
     func add(self) float:
-        return x + y
+        return self.x + self.y
 
 var v = Vec{x=1, y=2}
 test.eq(v.x, 1.0)

@@ -38,11 +38,6 @@ const LocalVarType = enum(u8) {
     staticAlias,
 
     parentLocalAlias,
-
-    /// Whether this var references a parent object member.
-    objectMemberAlias,
-
-    parentObjectMemberAlias,
 };
 
 const LocalVarS = struct {
@@ -93,14 +88,6 @@ pub const LocalVar = struct {
     inner: union {
         staticAlias: *Sym,
         local: LocalVarS,
-        objectMemberAlias: struct {
-            fieldIdx: u8,
-        },
-        parentObjectMemberAlias: struct {
-            parentVarId: u32,
-            selfCapturedIdx: u8,
-            fieldIdx: u8,
-        },
         parentLocalAlias: struct {
             capturedIdx: u8,
         },
@@ -3260,28 +3247,6 @@ fn semaLocal(c: *cy.Chunk, id: LocalVarId, node: *ast.Node) !ExprResult {
                 return ExprResult.initCustom(loc, .local, CompactType.init(svar.declT), .{ .local = id });
             }
         },
-        .objectMemberAlias => {
-            const rec_t = c.varStack.items[c.proc().varStart].declT;
-            const rec_loc = try c.ir.pushExpr(.local, c.alloc, rec_t, node, .{ .id = 0 });
-            const loc = try c.ir.pushExpr(.field, c.alloc, svar.vtype.id, node, .{
-                .idx = svar.inner.objectMemberAlias.fieldIdx,
-                .rec = rec_loc,
-                .parent_t = rec_t,
-            });
-            return ExprResult.initCustom(loc, .field, svar.vtype, undefined);
-        },
-        .parentObjectMemberAlias => {
-            const rec_t = c.varStack.items[svar.inner.parentObjectMemberAlias.parentVarId].declT;
-            const rec_loc = try c.ir.pushExpr(.captured, c.alloc, rec_t, node, .{
-                .idx = svar.inner.parentObjectMemberAlias.selfCapturedIdx,
-            });
-            const loc = try c.ir.pushExpr(.field, c.alloc, svar.vtype.id, node, .{
-                .idx = svar.inner.parentObjectMemberAlias.fieldIdx,
-                .rec = rec_loc,
-                .parent_t = rec_t,
-            });
-            return ExprResult.init(loc, svar.vtype);
-        },
         .parentLocalAlias => {
             const loc = try c.ir.pushExpr(.captured, c.alloc, svar.vtype.id, node, .{ .idx = svar.inner.parentLocalAlias.capturedIdx });
             return ExprResult.initCustom(loc, .capturedLocal, svar.vtype, undefined);
@@ -4182,35 +4147,6 @@ fn pushStaticVarAlias(c: *cy.Chunk, name: []const u8, sym: *Sym) !LocalVarId {
     return id;
 }
 
-fn pushObjectMemberAlias(c: *cy.Chunk, name: []const u8, idx: u8, typeId: TypeId) !LocalVarId {
-    const id = try pushLocalVar(c, .objectMemberAlias, name, typeId, false);
-    c.varStack.items[id].inner = .{ .objectMemberAlias = .{
-        .fieldIdx = idx,
-    }};
-    return id;
-}
-
-fn pushCapturedObjectMemberAlias(self: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, idx: u8, vtype: TypeId) !LocalVarId {
-    const proc = self.proc();
-    const id = try pushLocalVar(self, .parentObjectMemberAlias, name, vtype, false);
-    const capturedIdx: u8 = @intCast(proc.captures.items.len);
-    self.varStack.items[id].inner = .{ .parentObjectMemberAlias = .{
-        .parentVarId = parentVarId,
-        .selfCapturedIdx = capturedIdx,
-        .fieldIdx = idx,
-    }};
-
-    const pvar = &self.varStack.items[parentVarId];
-    pvar.inner.local.lifted = true;
-
-    try self.capVarDescs.put(self.alloc, id, .{
-        .user = parentVarId,
-    });
-
-    try proc.captures.append(self.alloc, id);
-    return id;
-}
-
 fn ensureLiftedVar(c: *cy.Chunk, var_id: LocalVarId) !void {
     const info = &c.varStack.items[var_id];
     info.inner.local.lifted = true;
@@ -4310,10 +4246,6 @@ pub fn getOrLookupVar(self: *cy.Chunk, name: []const u8, node: *ast.Node) !VarLo
             return VarLookupResult{
                 .static = svar.inner.staticAlias,
             };
-        } else if (svar.type == .objectMemberAlias) {
-            return VarLookupResult{
-                .local = varInfo.varId,
-            };
         } else if (svar.isParentLocalAlias()) {
             // Can not reference local var in a static var decl unless it's in a nested block.
             // eg. var a = 0
@@ -4334,19 +4266,6 @@ pub fn getOrLookupVar(self: *cy.Chunk, name: []const u8, node: *ast.Node) !VarLo
         }
     }
 
-    // Look for object member if inside method.
-    if (proc.isMethodBlock) {
-        if (self.curSelfSym.?.getMod().?.getSym(name)) |sym| {
-            if (sym.type == .field) {
-                const field = sym.cast(.field);
-                const id = try pushObjectMemberAlias(self, name, @intCast(field.idx), field.type);
-                return VarLookupResult{
-                    .local = id,
-                };
-            }
-        }
-    }
-
     if (try lookupParentLocal(self, name)) |res| {
         if (self.isInStaticInitializer()) {
             // Nop. Since static initializers are analyzed separately from the main block, it can capture any parent block local.
@@ -4358,30 +4277,14 @@ pub fn getOrLookupVar(self: *cy.Chunk, name: []const u8, node: *ast.Node) !VarLo
 
         // Create a local captured variable.
         const parentVar = self.varStack.items[res.varId];
-        if (res.isObjectField) {
-            const parentBlock = &self.semaProcs.items[res.blockIdx];
-            const selfId = parentBlock.nameToVar.get("self").?.varId;
-            const resVarId = res.varId;
-            const selfVar = &self.varStack.items[selfId];
-            if (!selfVar.inner.local.isParamCopied) {
-                selfVar.inner.local.isParamCopied = true;
-            }
-
-            const id = try pushCapturedObjectMemberAlias(self, name, resVarId, res.fieldIdx, res.fieldT);
-
-            return VarLookupResult{
-                .local = id,
-            };
-        } else {
-            const resVar = &self.varStack.items[res.varId];
-            if (!resVar.inner.local.isParamCopied) {
-                resVar.inner.local.isParamCopied = true;
-            }
-            const id = try pushCapturedVar(self, name, res.varId, parentVar.vtype);
-            return VarLookupResult{
-                .local = id,
-            };
+        const resVar = &self.varStack.items[res.varId];
+        if (!resVar.inner.local.isParamCopied) {
+            resVar.inner.local.isParamCopied = true;
         }
+        const id = try pushCapturedVar(self, name, res.varId, parentVar.vtype);
+        return VarLookupResult{
+            .local = id,
+        };
     } else {
         const res = (try lookupStaticVar(self, name, node)) orelse {
             if (self.use_global) {
@@ -4415,9 +4318,6 @@ fn lookupStaticVar(c: *cy.Chunk, name: []const u8, node: *ast.Node) !?VarLookupR
 
 const LookupParentLocalResult = struct {
     varId: LocalVarId,
-    isObjectField: bool,
-    fieldIdx: u8,
-    fieldT: TypeId,
     blockIdx: u32,
 };
 
@@ -4429,28 +4329,9 @@ fn lookupParentLocal(c: *cy.Chunk, name: []const u8) !?LookupParentLocalResult {
             const svar = c.varStack.items[varInfo.varId];
             if (svar.isCapturable()) {
                 return .{
-                    .isObjectField = false,
                     .varId = varInfo.varId,
                     .blockIdx = @intCast(c.semaProcs.items.len - 2),
-                    .fieldIdx = undefined,
-                    .fieldT = undefined,
                 };
-            }
-        }
-
-        // Look for object member if inside method.
-        if (prev.isMethodBlock) {
-            if (c.curSelfSym.?.getMod().?.getSym(name)) |sym| {
-                if (sym.type == .field) {
-                    const field = sym.cast(.field);
-                    return .{
-                        .varId = prev.nameToVar.get("self").?.varId,
-                        .blockIdx = @intCast(c.semaProcs.items.len - 2),
-                        .fieldIdx = @intCast(field.idx),
-                        .fieldT = field.type,
-                        .isObjectField = true,
-                    };
-                }
             }
         }
     }

@@ -2145,8 +2145,8 @@ fn = addClosure
 fn(10, 20)         --> 35
 ```
 
-Function types declared in template parameters represent compile-time functions.
-A compile-time function is then expanded to the function's runtime symbol:
+Function types declared in template parameters represent **function symbol** types.
+A function symbol can only be used at compile-time. It can be expanded to a runtime function:
 ```cy
 type IntMap[K type, HASH func(K) int]
     ints [*]int

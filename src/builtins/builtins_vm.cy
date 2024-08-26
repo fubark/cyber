@@ -285,8 +285,8 @@ type Tuple _:
 -- Any function.
 @host type Func _
 
--- Compile-time function.
-@host type func_ct[SIG int] _
+-- Function symbol.
+@host type funcsym_t[SIG int] _
 
 @host
 type Table:

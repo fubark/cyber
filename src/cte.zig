@@ -409,7 +409,7 @@ pub fn resolveCtValue(c: *cy.Chunk, expr: *ast.Node) !CtValue {
                     const func_t = try cy.sema.getCtFuncType(c, func_sym.first.funcSigId);
                     return CtValue{
                         .type = func_t,
-                        .value = try c.vm.allocCtFunc(func_t, func_sym.first),
+                        .value = try c.vm.allocFuncSym(func_t, func_sym.first),
                     };
                 }
             }

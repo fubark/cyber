@@ -696,9 +696,9 @@ const VariantKeyContext = struct {
                 },
                 else => {
                     const type_e = self.sema.getType(val.getTypeId());
-                    if (type_e.kind == .ct_func) {
+                    if (type_e.kind == .func_sym) {
                         c.update(std.mem.asBytes(&val.getTypeId()));
-                        c.update(std.mem.asBytes(&val.asHeapObject().ct_func.func));
+                        c.update(std.mem.asBytes(&val.asHeapObject().func_sym.func));
                         continue;
                     }
                     cy.rt.logZFmt("Unsupported value hash: {}", .{val.getTypeId()});
@@ -733,8 +733,8 @@ const VariantKeyContext = struct {
                 },
                 else => {
                     const type_e = self.sema.getType(atype);
-                    if (type_e.kind == .ct_func) {
-                        return av.asHeapObject().ct_func.func == b[i].asHeapObject().ct_func.func;
+                    if (type_e.kind == .func_sym) {
+                        return av.asHeapObject().func_sym.func == b[i].asHeapObject().func_sym.func;
                     }
                     cy.rt.logZFmt("Unsupported value comparison: {}", .{atype});
                     @panic("");
@@ -1253,7 +1253,7 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createCtFuncType(c: *cy.Chunk, parent: *Sym, name: []const u8, opt_type_id: ?cy.TypeId, sig: cy.sema.FuncSigId, decl: *ast.Node) !*HostObjectType {
+    pub fn createFuncSymType(c: *cy.Chunk, parent: *Sym, name: []const u8, opt_type_id: ?cy.TypeId, sig: cy.sema.FuncSigId, decl: *ast.Node) !*HostObjectType {
         const type_id = opt_type_id orelse try c.sema.pushType();
         const sym = try createSym(c.alloc, .hostobj_t, .{
             .head = Sym.init(.hostobj_t, parent, name),
@@ -1266,8 +1266,8 @@ pub const ChunkExt = struct {
         });
         c.compiler.sema.types.items[type_id] = .{
             .sym = @ptrCast(sym),
-            .kind = .ct_func,
-            .data = .{ .ct_func = .{
+            .kind = .func_sym,
+            .data = .{ .func_sym = .{
                 .sig = sig,
             }},
             .info = .{},
@@ -1714,6 +1714,11 @@ pub fn writeSymName(s: *cy.Sema, w: anytype, sym: *cy.Sym, config: SymFormatConf
                 const sig: cy.sema.FuncSigId = @intCast(variant.args[0].asBoxInt());
                 try s.writeFuncSigStr(w, sig, config.from);
                 return;
+            } else if (variant.root_template == s.func_sym_tmpl) {
+                try w.writeAll("funcsym");
+                const sig: cy.sema.FuncSigId = @intCast(variant.args[0].asBoxInt());
+                try s.writeFuncSigStr(w, sig, config.from);
+                return;
             }
             try w.writeAll(sym.name());
             try w.writeByte('[');
@@ -1757,9 +1762,9 @@ fn writeTemplateArg(s: *cy.Sema, w: anytype, arg: cy.Value, config: SymFormatCon
         },
         else => {
             const type_e = s.getType(arg.getTypeId());
-            if (type_e.kind == .ct_func) {
+            if (type_e.kind == .func_sym) {
                 try w.writeAll("func");
-                const func = arg.asHeapObject().ct_func.func;
+                const func = arg.asHeapObject().func_sym.func;
                 try s.writeFuncSigStr(w, func.funcSigId, config.from);
             } else {
                 return error.Unsupported;

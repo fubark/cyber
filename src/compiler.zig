@@ -899,7 +899,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                 self.sema.list_tmpl = core.getSym("List").?.cast(.template);
                 self.sema.table_type = core.getSym("Table").?.cast(.object_t);
                 self.sema.ptr_slice_tmpl = core.getSym("PtrSlice").?.cast(.template);
-                self.sema.ct_func_tmpl = core.getSym("func_ct").?.cast(.template);
+                self.sema.func_sym_tmpl = core.getSym("funcsym_t").?.cast(.template);
                 self.sema.ref_slice_tmpl = core.getSym("RefSlice").?.cast(.template);
                 self.sema.func_ptr_tmpl = core.getSym("funcptr_t").?.cast(.template);
                 self.sema.func_union_tmpl = core.getSym("funcunion_t").?.cast(.template);

@@ -118,7 +118,7 @@ pub const HeapObject = extern union {
     range: Range,
 
     // Functions.
-    ct_func: CtFunc,
+    func_sym: FuncSym,
     func: FuncUnion,
     func_ptr: FuncPtr,
     func_union: FuncUnion,
@@ -692,7 +692,7 @@ pub const FuncUnion = extern struct {
     }
 };
 
-pub const CtFunc = extern struct {
+pub const FuncSym = extern struct {
     typeId: cy.TypeId align (8),
     rc: u32,
 
@@ -956,9 +956,9 @@ pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) void {
     }
 }
 
-pub fn allocCtFunc(self: *cy.VM, type_id: cy.TypeId, func: *cy.Func) !Value {
+pub fn allocFuncSym(self: *cy.VM, type_id: cy.TypeId, func: *cy.Func) !Value {
     const obj = try allocPoolObject(self);
-    obj.ct_func = .{
+    obj.func_sym = .{
         .typeId = type_id,
         .rc = 1,
         .func = func,
@@ -1593,7 +1593,7 @@ pub const VmExt = struct {
     pub const allocObject = Root.allocObject;
     pub const allocObject2 = Root.allocObject2;
     pub const allocType = Root.allocType;
-    pub const allocCtFunc = Root.allocCtFunc;
+    pub const allocFuncSym = Root.allocFuncSym;
     pub const allocTrait = Root.allocTrait;
     pub const allocFuture = Root.allocFuture;
     pub const allocFutureResolver = Root.allocFutureResolver;
@@ -2246,7 +2246,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                         },
                     }
                 },
-                .ct_func => {
+                .func_sym => {
                     freePoolObject(vm, obj);
                 },
                 .array => {

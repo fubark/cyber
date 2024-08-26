@@ -6094,8 +6094,8 @@ pub const ChunkExt = struct {
                         return callSym(c, sym, node.callee, node.args, expr.getRetCstr(), expr.node);
                     } else {
                         const type_e = c.sema.getType(ct_value.type);
-                        if (type_e.kind == .ct_func) {
-                            const func = ct_value.value.asHeapObject().ct_func.func;
+                        if (type_e.kind == .func_sym) {
+                            const func = ct_value.value.asHeapObject().func_sym.func;
                             return c.semaCallFunc(func, node.args, expr.getRetCstr(), expr.node);
                         } else {
                             return error.TODO;
@@ -6884,10 +6884,10 @@ pub const Sema = struct {
     ref_tmpl: *cy.sym.Template,
     list_tmpl: *cy.sym.Template,
     table_type: *cy.sym.ObjectType,
-    ct_func_tmpl: *cy.sym.Template,
     array_tmpl: *cy.sym.Template,
     func_ptr_tmpl: *cy.sym.Template,
     func_union_tmpl: *cy.sym.Template,
+    func_sym_tmpl: *cy.sym.Template,
 
     pub fn init(alloc: std.mem.Allocator, compiler: *cy.Compiler) Sema {
         return .{
@@ -6901,10 +6901,10 @@ pub const Sema = struct {
             .ref_tmpl = undefined,
             .list_tmpl = undefined,
             .table_type = undefined,
-            .ct_func_tmpl = undefined,
             .array_tmpl = undefined,
             .func_ptr_tmpl = undefined,
             .func_union_tmpl = undefined,
+            .func_sym_tmpl = undefined,
             .funcSigs = .{},
             .funcSigMap = .{},
             .func_ptr_types = .{},
@@ -7405,6 +7405,6 @@ pub fn getFuncUnionType(c: *cy.Chunk, sig: FuncSigId) !cy.TypeId {
 pub fn getCtFuncType(c: *cy.Chunk, sig: FuncSigId) !cy.TypeId {
     const arg = try c.vm.allocInt(sig);
     defer c.vm.release(arg);
-    const sym = try cte.expandTemplate(c, c.sema.ct_func_tmpl, &.{ arg });
+    const sym = try cte.expandTemplate(c, c.sema.func_sym_tmpl, &.{ arg });
     return sym.getStaticType().?;
 }

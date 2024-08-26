@@ -2642,7 +2642,7 @@ pub fn funcDecl(c: *cy.Chunk, func: *cy.Func) !void {
         defer popResolveContext(c);
         try funcDecl2(c, func);
     } else {
-        try pushResolveContext(c);
+        try pushFuncResolveContext(c, func);
         defer popResolveContext(c);
         try funcDecl2(c, func);
     }
@@ -3446,6 +3446,8 @@ pub fn getResolvedSym(c: *cy.Chunk, name: []const u8, node: *ast.Node, distinct:
                 if (ctx.data.func.parent.type == .func) {
                     return NameResult.initSym(ctx.data.func.parent.parent.?);
                 }
+            } else if (ctx.type == .sym) {
+                return NameResult.initSym(ctx.data.sym);
             }
         }
 

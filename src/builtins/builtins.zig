@@ -1264,13 +1264,14 @@ fn pointerIndex(vm: *cy.VM) anyerror!Value {
     const ptr: [*]cy.Value = @ptrCast(@alignCast(vm.getPointer(0)));
     const elem_t: cy.TypeId = @intCast(vm.getInt(1));
     const idx: usize = @intCast(vm.getInt(2));
-    if (vm.sema.isUnboxedType(elem_t)) {
+
+    const elem_te = vm.sema.getType(elem_t);
+    if (elem_te.kind == .struct_t) {
+        const n = elem_te.data.struct_t.nfields;
+        return Value.initRaw(@intCast(@intFromPtr(ptr + idx*n)));
+    } else {
         // Always an 8 byte stride.
         return Value.initRaw(@intCast(@intFromPtr(ptr + idx)));
-    } else {
-        const type_e = vm.c.types[elem_t];
-        const n = type_e.data.struct_t.nfields;
-        return Value.initRaw(@intCast(@intFromPtr(ptr + idx*n)));
     }
 }
 
@@ -1294,15 +1295,20 @@ fn pointerSetIndex(vm: *cy.VM) anyerror!Value {
     const idx: usize = @intCast(vm.getInt(2));
     const val = vm.getValue(3);
 
-    if (vm.sema.isUnboxedType(elem_t)) {
-        // Always an 8 byte stride.
-        ptr[idx] = val;
-    } else {
-        const type_e = vm.c.types[elem_t];
-        const n = type_e.data.struct_t.nfields;
+    const elem_te = vm.sema.getType(elem_t);
+    if (elem_te.kind == .struct_t) {
+        const n = elem_te.data.struct_t.nfields;
         const dst = ptr[idx*n..idx*n+n];
         const src = val.asHeapObject().object.getValuesPtr()[0..n];
         @memcpy(dst, src);
+    } else {
+        if (vm.sema.isUnboxedType(elem_t)) {
+            vm.release(ptr[idx]);
+            vm.retain(val);
+        }
+
+        // Always an 8 byte stride.
+        ptr[idx] = val;
     }
     return Value.Void;
 }

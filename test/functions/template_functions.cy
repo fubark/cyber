@@ -25,4 +25,10 @@ func add3(i int, a #T, b T) T:
     return i + a + b
 test.eq(add3(1, 2, 3), 6)
 
+-- All compile-time parameters still generates different runtime functions.
+func foo(#T type) int:
+    return 123
+test.eq(foo[int], foo[int])
+test.assert(foo[int] != foo[float])
+
 --cytest: pass

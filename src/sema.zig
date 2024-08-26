@@ -2510,7 +2510,7 @@ pub fn resolveUserFuncVariant(c: *cy.Chunk, func: *cy.Func) !void {
     getResolveContext(c).expand_ct_inferred_params = true;
 
     const sig_id = try resolveFuncSig(c, func, true);
-    try c.resolveUserFunc(func, sig_id);
+    c.resolveFuncInfo(func, sig_id);
     try c.deferred_funcs.append(c.alloc, func);
 }
 

@@ -440,6 +440,10 @@ pub const ChunkExt = struct {
             const key = ModFuncKey.initModFuncKey(sym, func_sig_id);
             try mod.overloadedFuncMap.putNoClobber(c.alloc, key, func);
         }
+        resolveFuncInfo(c, func, func_sig_id);
+    }
+
+    pub fn resolveFuncInfo(c: *cy.Chunk, func: *cy.Func, func_sig_id: sema.FuncSigId) void {
         const func_sig = c.compiler.sema.getFuncSig(func_sig_id);
         func.funcSigId = func_sig_id;
         func.retType = func_sig.getRetType();

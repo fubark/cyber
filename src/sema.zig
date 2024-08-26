@@ -1277,7 +1277,7 @@ pub fn reserveTemplate(c: *cy.Chunk, node: *ast.TemplateDecl) !*cy.sym.Template 
             template_t = .ct_func;
 
             if (ast.findAttr(node.getAttrs(), .host) != null) {
-                return c.reportError("A template function can not be binded to a `@host` function. Consider invoking a `@host` function in the template body instead.", @ptrCast(node));
+                return c.reportError("A value template can not be binded to a `@host` function. Consider invoking a `@host` function in the template body instead.", @ptrCast(node));
             }
         },
         else => {

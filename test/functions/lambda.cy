@@ -1,29 +1,29 @@
 use t 'test'
 
 -- Untyped, shorthand, no params.
-var foo = () => 2 + 2
+var foo = let () => 2 + 2
 t.eq(foo(), 4)
 
 -- Untyped, shorthand, one param.
-var foo2 = a => a + 1
+var foo2 = let (a) => a + 1
 t.eq(foo2(10), 11)
 
 -- Untyped, shorthand, multiple params.
-var foo3 = (bar, inc) => bar + inc
+var foo3 = let (bar, inc) => bar + inc
 t.eq(foo3(20, 10), 30)
 
 -- Untyped, no params.
-foo = ():
+foo = let ():
     return 3
 t.eq(foo(), 3)
 
 -- Untyped, one param.
-foo2 = (a):
+foo2 = let (a):
     return a + 3
 t.eq(foo2(1), 4)
 
 -- Untyped, multiple params.
-foo3 = (a, b):
+foo3 = let (a, b):
     return a + b
 t.eq(foo3(10, 11), 21)
 
@@ -33,11 +33,11 @@ func call(f dyn):
 t.eq(call(a => a + 1), 15)
 
 -- Using parentheses.
-var m = {a=() => 4}
+var m = {a=let () => 4}
 t.eq((m.a)(), 4)
 
 -- Invoking lambda temp.
-t.eq((a => a + 1)(14), 15)
+t.eq((let (a) => a + 1)(14), 15)
 
 -- Typed, no params.
 var tfoo = func ():

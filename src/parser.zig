@@ -383,7 +383,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseLambdaFunc(self: *Parser, params: []const *ast.FuncParam) !*ast.LambdaExpr {
+    fn parseInferLambda(self: *Parser, params: []const *ast.FuncParam) !*ast.LambdaExpr {
         const start = self.next_pos;
         // Assumes first token is `=>`.
         self.advance();
@@ -404,7 +404,7 @@ pub const Parser = struct {
         });
     }
 
-    fn parseLambdaBlock(self: *Parser, params: []const *ast.FuncParam, ret: ?*ast.Node) !*ast.LambdaExpr {
+    fn parseInferLambdaBlock(self: *Parser, params: []const *ast.FuncParam, ret: ?*ast.Node) !*ast.LambdaExpr {
         const start = self.next_pos;
         // Assumes first token is `:`.
         self.advance();
@@ -439,7 +439,54 @@ pub const Parser = struct {
         });
     }
 
-    fn parseLambdaFuncOrType(self: *Parser) !*ast.Node {
+    fn parseLetLambda(self: *Parser) !*ast.Node {
+        const start = self.next_pos;
+
+        // Assume first token is `let`.
+        self.advance();
+
+        const params = try self.parseParenAndFuncParams();
+
+        if (self.peek().tag() == .equal_right_angle) {
+            self.advance();
+
+            // Parse body expr.
+            try self.pushBlock();
+            const expr = (try self.parseExpr(.{})) orelse {
+                return self.reportError("Expected lambda body expression.", &.{});
+            };
+            _ = self.popBlock();
+
+            return self.ast.newNodeErase(.lambda_expr, .{
+                .params = params,
+                .sig_t = .let,
+                .stmts = @as([*]*ast.Node, @ptrCast(@alignCast(expr)))[0..1],
+                .pos = self.tokenSrcPos(start),
+                .ret = null,
+            });
+        }
+
+        if (self.peek().tag() != .colon) {
+            return self.reportError("Expected lambda body.", &.{});
+        }
+        self.advance();
+
+        try self.pushBlock();
+        const stmts = try self.parseSingleOrIndentedBodyStmts();
+        _ = self.popBlock();
+
+        const lambda = try self.ast.newNodeErase(.lambda_multi, .{
+            .params = params,
+            .sig_t = .let,
+            .stmts = stmts,
+            .pos = self.tokenSrcPos(start),
+            .ret = null,
+        });
+        @as(*ast.Node, @ptrCast(lambda)).setBlockExpr(true);
+        return lambda;
+    }
+
+    fn parseFuncLambdaOrType(self: *Parser) !*ast.Node {
         const start = self.next_pos;
 
         // Assume first token is `func`.
@@ -2911,7 +2958,7 @@ pub const Parser = struct {
                     // Assume empty args for lambda.
                     token = self.peek();
                     if (token.tag() == .equal_right_angle) {
-                        return @ptrCast(try self.parseLambdaFunc(&.{}));
+                        return @ptrCast(try self.parseInferLambda(&.{}));
                     } else {
                         return self.reportError("Unexpected paren.", &.{});
                     }
@@ -2923,7 +2970,7 @@ pub const Parser = struct {
                     if (expr.type() == .ident and self.peek().tag() == .equal_right_angle) {
                         const param: *ast.Node = @ptrCast(try self.genDynFuncParam(expr));
                         const params = try self.ast.dupeNodes(&.{param});
-                        return @ptrCast(try self.parseLambdaFunc(@ptrCast(params)));
+                        return @ptrCast(try self.parseInferLambda(@ptrCast(params)));
                     }
                     return try self.ast.newNodeErase(.group, .{
                         .child = expr,
@@ -2933,7 +2980,7 @@ pub const Parser = struct {
                     self.advance();
                     const param = try self.genDynFuncParam(expr);
                     const params = try self.parseFuncParams(&.{param}, false);
-                    return @ptrCast(try self.parseLambdaFunc(params));
+                    return @ptrCast(try self.parseInferLambda(params));
                 } else {
                     return self.reportError("Expected right parenthesis.", &.{});
                 }
@@ -3149,8 +3196,11 @@ pub const Parser = struct {
                     .pos = self.tokenSrcPos(start),
                 });
             },
+            .let_k => {
+                return @ptrCast(try self.parseLetLambda());
+            },
             .func_k => {
-                return @ptrCast(try self.parseLambdaFuncOrType());
+                return @ptrCast(try self.parseFuncLambdaOrType());
             },
             .Func_k => {
                 return @ptrCast(try self.parseFuncUnionType());
@@ -3165,9 +3215,9 @@ pub const Parser = struct {
                     }
                     // Assume empty args for lambda.
                     if (self.peek().tag() == .equal_right_angle) {
-                        return @ptrCast(try self.parseLambdaFunc(&.{}));
+                        return @ptrCast(try self.parseInferLambda(&.{}));
                     } else if (self.peek().tag() == .colon) {
-                        return @ptrCast(try self.parseLambdaBlock(&.{}, null));
+                        return @ptrCast(try self.parseInferLambdaBlock(&.{}, null));
                     } else {
                         return self.reportError("Unexpected paren.", &.{});
                     }
@@ -3178,10 +3228,10 @@ pub const Parser = struct {
                         const param: *ast.Node = @ptrCast(try self.genDynFuncParam(expr));
                         if (self.peek().tag() == .equal_right_angle) {
                             const params = try self.ast.dupeNodes(&.{param});
-                            return @ptrCast(try self.parseLambdaFunc(@ptrCast(params)));
+                            return @ptrCast(try self.parseInferLambda(@ptrCast(params)));
                         } else if (self.peek().tag() == .colon) {
                             const params = try self.ast.dupeNodes(&.{param});
-                            return @ptrCast(try self.parseLambdaBlock(@ptrCast(params), null));
+                            return @ptrCast(try self.parseInferLambdaBlock(@ptrCast(params), null));
                         }
                     }
 
@@ -3196,9 +3246,9 @@ pub const Parser = struct {
                     const param = try self.genDynFuncParam(expr);
                     const params = try self.parseFuncParams(&.{ param }, false);
                     if (self.peek().tag() == .equal_right_angle) {
-                        return @ptrCast(try self.parseLambdaFunc(params));
+                        return @ptrCast(try self.parseInferLambda(params));
                     } else if (self.peek().tag() == .colon) {
-                        return @ptrCast(try self.parseLambdaBlock(params, null));
+                        return @ptrCast(try self.parseInferLambdaBlock(params, null));
                     } else {
                         return self.reportError("Expected `=>` or `:`.", &.{});
                     }
@@ -3223,7 +3273,7 @@ pub const Parser = struct {
                     if (left.type() == .ident) {
                         const param: *ast.Node = @ptrCast(try self.genDynFuncParam(left));
                         const params = try self.ast.dupeNodes(&.{param});
-                        return @ptrCast(try self.parseLambdaFunc(@ptrCast(params)));
+                        return @ptrCast(try self.parseInferLambda(@ptrCast(params)));
                     } else {
                         return self.reportError("Unexpected `=>` token", &.{});
                     }

@@ -344,15 +344,18 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn addUserLambda(c: *cy.Chunk, parent: *cy.Sym, funcSigId: sema.FuncSigId, decl: *ast.LambdaExpr) !*cy.Func {
+    pub fn addUserLambda(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.LambdaExpr) !*cy.Func {
         const func = try c.createFunc(.userLambda, parent, null, @ptrCast(decl), false);
         try c.funcs.append(c.alloc, func);
-        const func_sig = c.compiler.sema.getFuncSig(funcSigId);
-        func.funcSigId = funcSigId;
+        return func;
+    }
+
+    pub fn resolveUserLambda(c: *cy.Chunk, func: *cy.Func, sig: sema.FuncSigId) !void {
+        const func_sig = c.compiler.sema.getFuncSig(sig);
+        func.funcSigId = sig;
         func.retType = func_sig.getRetType();
         func.reqCallTypeCheck = func_sig.reqCallTypeCheck;
         func.numParams = @intCast(func_sig.params_len);
-        return func;
     }
 
     pub fn reserveTemplateFunc(

@@ -2613,7 +2613,8 @@ pub fn funcDecl(c: *cy.Chunk, func: *cy.Func) !void {
 pub fn funcDecl2(c: *cy.Chunk, func: *cy.Func) !void {
     const node = func.decl.?.cast(.funcDecl);
     _ = try pushFuncProc(c, func);
-    try appendFuncParamVars(c, func, node.params);
+    const sig = c.sema.getFuncSig(func.funcSigId);
+    try appendFuncParamVars(c, node.params, @ptrCast(sig.params()));
     try semaStmts(c, node.stmts);
 
     try popFuncBlock(c);
@@ -3786,11 +3787,7 @@ fn resolveFuncSig(c: *cy.Chunk, func: *cy.Func, skip_ct_params: bool) !FuncSigId
     return c.sema.ensureFuncSig(@ptrCast(c.typeStack.items[start..]), retType);
 }
 
-fn resolveLambdaFuncSig(c: *cy.Chunk, n: *ast.LambdaExpr) !FuncSigId {
-    // Get params, build func signature.
-    const start = c.typeStack.items.len;
-    defer c.typeStack.items.len = start;
-
+fn pushLambdaFuncParams(c: *cy.Chunk, n: *ast.LambdaExpr) !void {
     for (n.params) |param| {
         const paramName = c.ast.nodeString(param.name_type);
         if (std.mem.eql(u8, paramName, "self")) {
@@ -3808,10 +3805,23 @@ fn resolveLambdaFuncSig(c: *cy.Chunk, n: *ast.LambdaExpr) !FuncSigId {
         const typeId = try resolveTypeSpecNode(c, param.type);
         try c.typeStack.append(c.alloc, typeId);
     }
+}
 
-    // Get return type.
-    const retType = try resolveReturnTypeSpecNode(c, n.ret);
-    return c.sema.ensureFuncSig(@ptrCast(c.typeStack.items[start..]), retType);
+fn inferLambdaFuncSig(c: *cy.Chunk, n: *ast.LambdaExpr, expr: Expr) !?FuncSigId {
+    if (n.sig_t != .infer) {
+        return null;
+    }
+    if (!expr.hasTargetType()) {
+        return c.reportError("Can not infer function type.", expr.node);
+    }
+    const type_e = c.sema.getType(expr.target_t);
+    if (type_e.kind == .func_ptr) {
+        return type_e.data.func_ptr.sig;
+    } else if (type_e.kind == .func_union) {
+        return type_e.data.func_union.sig;
+    } else {
+        return c.reportError("Can not infer function type.", expr.node);
+    }
 }
 
 const DeclNamePathResult = struct {
@@ -4109,16 +4119,14 @@ fn pushMethodParamVars(c: *cy.Chunk, objectT: TypeId, func: *const cy.Func) !voi
     }
 }
 
-fn appendFuncParamVars(c: *cy.Chunk, func: *const cy.Func, params: []const *ast.FuncParam) !void {
-    if (func.numParams > 0) {
-        const rFuncSig = c.compiler.sema.funcSigs.items[func.funcSigId];
-        const sig_params = rFuncSig.params();
+fn appendFuncParamVars(c: *cy.Chunk, ast_params: []const *ast.FuncParam, params: []const FuncParam) !void {
+    if (params.len > 0) {
         var rt_param_idx: usize = 0;
-        for (params) |param| {
+        for (ast_params) |param| {
             if (param.ct_param) {
                 continue;
             }
-            try declareParam(c, param, false, rt_param_idx, sig_params[rt_param_idx].type);
+            try declareParam(c, param, false, rt_param_idx, params[rt_param_idx].type);
             rt_param_idx += 1;
         }
     }
@@ -5864,21 +5872,60 @@ pub const ChunkExt = struct {
             },
             .lambda_expr => {
                 const lambda = node.cast(.lambda_expr);
-                const func_sig = try resolveLambdaFuncSig(c, lambda);
-                const func = try c.addUserLambda(@ptrCast(c.sym), func_sig, lambda);
-                _ = try pushLambdaProc(c, func);
-                const irIdx = c.proc().irStart;
 
-                // Generate function body.
-                try appendFuncParamVars(c, func, lambda.params);
+                if (try inferLambdaFuncSig(c, lambda, expr)) |sig| {
+                    const func = try c.addUserLambda(@ptrCast(c.sym), lambda);
+                    _ = try pushLambdaProc(c, func);
+                    const irIdx = c.proc().irStart;
 
-                const exprRes = try c.semaExprCstr(@ptrCast(@constCast(@alignCast(lambda.stmts.ptr))), func.retType);
-                _ = try c.ir.pushStmt(c.alloc, .retExprStmt, node, .{
-                    .expr = exprRes.irIdx,
-                });
+                    // Generate function body.
+                    const func_sig = c.sema.getFuncSig(sig);
+                    try c.resolveUserLambda(func, sig);
+                    try appendFuncParamVars(c, lambda.params, func_sig.params());
 
-                const ret_t = try popLambdaProc(c);
-                return ExprResult.initStatic(irIdx, ret_t);
+                    const exprRes = try c.semaExprCstr(@ptrCast(@constCast(@alignCast(lambda.stmts.ptr))), func.retType);
+                    _ = try c.ir.pushStmt(c.alloc, .retExprStmt, node, .{
+                        .expr = exprRes.irIdx,
+                    });
+
+                    const ret_t = try popLambdaProc(c);
+                    return ExprResult.initStatic(irIdx, ret_t);
+                } else {
+                    const start = c.typeStack.items.len;
+                    defer c.typeStack.items.len = start;
+                    try pushLambdaFuncParams(c, lambda);
+
+                    const func = try c.addUserLambda(@ptrCast(c.sym), lambda);
+                    _ = try pushLambdaProc(c, func);
+                    const irIdx = c.proc().irStart;
+
+                    // Generate function body.
+                    const params = c.typeStack.items[start..];
+                    try appendFuncParamVars(c, lambda.params, @ptrCast(params));
+
+                    var func_ret_t: cy.TypeId = undefined;
+                    if (lambda.sig_t != .let and lambda.ret == null) {
+                        // Infer return type.
+                        const expr_res = try c.semaExpr(@ptrCast(@constCast(@alignCast(lambda.stmts.ptr))), .{});
+                        func_ret_t = expr_res.type.id;
+                        _ = try c.ir.pushStmt(c.alloc, .retExprStmt, node, .{
+                            .expr = expr_res.irIdx,
+                        });
+                    } else {
+                        func_ret_t = try resolveReturnTypeSpecNode(c, lambda.ret, lambda.sig_t == .func);
+
+                        const expr_res = try c.semaExprCstr(@ptrCast(@constCast(@alignCast(lambda.stmts.ptr))), func_ret_t);
+                        _ = try c.ir.pushStmt(c.alloc, .retExprStmt, node, .{
+                            .expr = expr_res.irIdx,
+                        });
+                    }
+
+                    const sig = try c.sema.ensureFuncSig(@ptrCast(params), func_ret_t);
+                    try c.resolveUserLambda(func, sig);
+
+                    const ret_t = try popLambdaProc(c);
+                    return ExprResult.initStatic(irIdx, ret_t);
+                }
             },
             .lambda_multi => {
                 const lambda = node.cast(.lambda_multi);
@@ -5886,17 +5933,42 @@ pub const ChunkExt = struct {
                 try pushResolveContext(c);
                 defer popResolveContext(c);
 
-                const func_sig = try resolveLambdaFuncSig(c, lambda);
-                const func = try c.addUserLambda(@ptrCast(c.sym), func_sig, lambda);
-                _ = try pushLambdaProc(c, func);
-                const irIdx = c.proc().irStart;
+                if (try inferLambdaFuncSig(c, lambda, expr)) |sig| {
+                    const func = try c.addUserLambda(@ptrCast(c.sym), lambda);
+                    _ = try pushLambdaProc(c, func);
+                    const irIdx = c.proc().irStart;
 
-                // Generate function body.
-                try appendFuncParamVars(c, func, lambda.params);
-                try semaStmts(c, lambda.stmts);
+                    const func_sig = c.sema.getFuncSig(sig);
+                    try c.resolveUserLambda(func, sig);
+                    try appendFuncParamVars(c, lambda.params, @ptrCast(func_sig.params()));
 
-                const ret_t = try popLambdaProc(c);
-                return ExprResult.initStatic(irIdx, ret_t);
+                    // Generate function body.
+                    try semaStmts(c, lambda.stmts);
+
+                    const ret_t = try popLambdaProc(c);
+                    return ExprResult.initStatic(irIdx, ret_t);
+                } else {
+                    const start = c.typeStack.items.len;
+                    defer c.typeStack.items.len = start;
+                    try pushLambdaFuncParams(c, lambda);
+
+                    const func = try c.addUserLambda(@ptrCast(c.sym), lambda);
+                    _ = try pushLambdaProc(c, func);
+                    const irIdx = c.proc().irStart;
+
+                    const func_ret_t = try resolveReturnTypeSpecNode(c, lambda.ret, lambda.sig_t == .func);
+                    const params = c.typeStack.items[start..];
+                    const sig = try c.sema.ensureFuncSig(@ptrCast(params), func_ret_t);
+                    try c.resolveUserLambda(func, sig);
+
+                    try appendFuncParamVars(c, lambda.params, @ptrCast(params));
+
+                    // Generate function body.
+                    try semaStmts(c, lambda.stmts);
+
+                    const ret_t = try popLambdaProc(c);
+                    return ExprResult.initStatic(irIdx, ret_t);
+                }
             },
             .init_expr => {
                 return c.semaObjectInit(expr);

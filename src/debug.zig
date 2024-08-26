@@ -589,8 +589,14 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const cy.Inst
         .staticVar => {
             if (cy.Trace) {
                 const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-                const name = vm.varSymExtras.buf[symId].name();
-                extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
+
+                var fbuf = std.io.fixedBufferStream(&buf);
+                var w = fbuf.writer();
+
+                try w.writeAll("[");
+                try cy.sym.writeSymName(vm.sema, w, vm.varSymExtras.buf[symId], .{});
+                try w.writeAll("]");
+                extra = fbuf.getWritten();
             }
         },
         else => {

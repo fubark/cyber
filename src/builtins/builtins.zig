@@ -208,10 +208,9 @@ const funcs = [_]C.HostFuncEntry{
     // func("Array.$infix+",      arrayConcat),
     // func("Array.concat",       arrayConcat),
     // func("Array.insert",       zErrFunc(arrayInsert)),
-    func("Array.len",          arrayLen),
     // func("Array.repeat",       zErrFunc(arrayRepeat)),
     func("Array.index",        zErrFunc(arrayIndex)),
-    func("Array.indexRange",   zErrFunc(arraySlice)),
+    // func("Array.indexRange",   zErrFunc(arraySlice)),
 
     // pointer
     func("pointer.index",      zErrFunc(pointerIndex)),
@@ -901,23 +900,24 @@ fn arrayConcat(vm: *cy.VM) Value {
 }
 
 fn arraySlice(vm: *cy.VM) anyerror!Value {
-    const arr = vm.getObject(*cy.heap.Array, 0);
-    const elems = arr.getElemsPtr();
-    const slice_t: cy.TypeId = @intCast(vm.getInt(1));
+    _ = vm;
+    // const arr = vm.getObject(*cy.heap.Object, 0);
+    // const elems = arr.getElemsPtr();
+    // const slice_t: cy.TypeId = @intCast(vm.getInt(1));
 
-    const range = vm.getObject(*cy.heap.Range, 2);
-    if (range.start < 0) {
-        return error.OutOfBounds;
-    }
+    // const range = vm.getObject(*cy.heap.Range, 2);
+    // if (range.start < 0) {
+    //     return error.OutOfBounds;
+    // }
 
-    if (range.end > arr.len) {
-        return error.OutOfBounds;
-    }
-    if (range.end < range.start) {
-        return error.OutOfBounds;
-    }
-    const start: usize = @intCast(range.start);
-    return vm.allocRefSlice(slice_t, elems + start, @intCast(range.end - range.start));
+    // if (range.end > arr.len) {
+    //     return error.OutOfBounds;
+    // }
+    // if (range.end < range.start) {
+    //     return error.OutOfBounds;
+    // }
+    // const start: usize = @intCast(range.start);
+    // return vm.allocRefSlice(slice_t, elems + start, @intCast(range.end - range.start));
 }
 
 pub fn intAsIndex(i: i64, len: usize) !usize {
@@ -993,18 +993,19 @@ fn String_decode2(vm: *cy.VM) Value {
 }
 
 fn arrayIndex(vm: *cy.VM) anyerror!Value {
-    const arr = vm.getObject(*cy.heap.Array, 0);
-    const elem_t: cy.TypeId = @intCast(vm.getInt(1));
-    const idx = try intAsIndex(vm.getInt(2), @intCast(arr.len));
+    const arr = vm.getObject(*cy.heap.Object, 0);
+    const n: usize = @intCast(vm.getInt(1));
+    const elem_t: cy.TypeId = @intCast(vm.getInt(2));
+    const idx = try intAsIndex(vm.getInt(3), n);
 
-    const elems = arr.getElemsPtr();
+    const elems = arr.getValuesPtr();
     if (vm.sema.isUnboxedType(elem_t)) {
         // Always an 8 byte stride.
         return Value.initRaw(@intFromPtr(elems + idx));
     } else {
         const type_e = vm.c.types[elem_t];
-        const n = type_e.data.struct_t.nfields;
-        return Value.initRaw(@intFromPtr(elems + idx * n));
+        const elem_size = type_e.data.struct_t.nfields;
+        return Value.initRaw(@intFromPtr(elems + idx * elem_size));
     }
 }
 
@@ -1132,11 +1133,6 @@ fn stringFmtBytes(vm: *cy.VM) anyerror!Value {
         }
         return vm.retainOrAllocAstring(buf.items);
     }
-}
-
-fn arrayLen(vm: *cy.VM) Value {
-    const arr = vm.getArrayElems(0);
-    return Value.initInt(@intCast(arr.len));
 }
 
 fn sliceTrim(vm: *cy.VM) anyerror!Value {

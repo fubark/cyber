@@ -441,9 +441,9 @@ type String _:
 
 type Array[N int, T type] array_t[N, T]:
     func $index(self, idx int) &T:
-        return self.index((T).id(), idx)
+        return self.index(N, (T).id(), idx)
 
-    @host -func index(self, elem_t int, idx int) &T
+    @host -func index(self, n int, elem_t int, idx int) &T
 
     -- --| Returns a slice into this array from a `Range` with `start` (inclusive) to `end` (exclusive) indexes.
     -- func $index(self, range Range) []T:
@@ -465,7 +465,8 @@ type Array[N int, T type] array_t[N, T]:
         return slice.iterator()
 
     --| Returns the number of elements in the array.
-    @host func len(self) int
+    func len(self) int:
+        return N
 
     -- --| Returns a new array with this array repeated `n` times.
     -- @host func repeat(self, #M int) Array[N * M, T]

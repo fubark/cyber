@@ -748,7 +748,7 @@ fn genAddressOf2(c: *Chunk, expr: usize, cstr: Cstr, node: *ast.Node) !GenValue 
             } else {
                 if (slot.boxed_up) {
                     const temp = try bc.reserveTemp(c, bt.Integer);
-                    const lifted_struct = c.sema.isStructType(expr_t);
+                    const lifted_struct = c.sema.isStructType(expr_t) or c.sema.isArrayType(expr_t);
                     try c.pushCode(.addr_local, &.{ local_slot, @intFromBool(lifted_struct), temp }, node);
                     try initSlot(c, temp, false, node);
 

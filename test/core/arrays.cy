@@ -13,6 +13,20 @@ t.eq(arr[0], 1)
 t.eq(arr[2], 3)
 t.eq(try arr[14], error.OutOfBounds)
 
+-- Array of structs. Tests contiguous memory layout.
+type Foo struct:
+    a int
+    b int
+var slice = *[2]Foo{
+    .{a=1, b=2},
+    .{a=3, b=4},
+}
+t.eq(slice.len(), 2)
+t.eq(slice[0].a, 1)
+t.eq(slice[0].b, 2)
+t.eq(slice[1].a, 3)
+t.eq(slice[1].b, 4)
+
 -- -- slice operator
 -- t.eq(arr[0..], Array('abc🦊xyz🐶'))
 -- t.eq(arr[7..], Array('xyz🐶'))

@@ -2871,7 +2871,7 @@ pub const Parser = struct {
             },
             .star => {
                 self.advance();
-                const elem = (try self.parseTermExpr2Opt(.{ .parse_record_expr = false })) orelse {
+                const elem = (try self.parseTermExpr2Opt(.{})) orelse {
                     return self.reportError("Expected right child.", &.{});
                 };
                 return try self.ast.newNodeErase(.ptr, .{

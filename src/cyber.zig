@@ -69,7 +69,6 @@ pub const Pointer = heap.Pointer;
 pub const Astring = heap.Astring;
 pub const Array = heap.Array;
 pub const MaxPoolObjectStringByteLen = heap.MaxPoolObjectAstringByteLen;
-pub const MaxPoolObjectArrayByteLen = heap.MaxPoolObjectArrayByteLen;
 
 pub const fiber = @import("fiber.zig");
 

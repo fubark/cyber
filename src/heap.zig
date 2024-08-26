@@ -131,7 +131,6 @@ pub const HeapObject = extern union {
     aslice: AstringSlice,
     uslice: UstringSlice,
 
-    array: Array,
     object: Object,
     trait: Trait,
     up: UpValue,
@@ -475,21 +474,6 @@ pub const UstringSlice = extern struct {
 
     pub inline fn getSlice(self: *const UstringSlice) []const u8 {
         return self.buf[0..@as(*const String, @ptrCast(self)).len()];
-    }
-};
-
-pub const MaxPoolObjectArrayByteLen = 28;
-
-pub const Array = extern struct {
-    typeId: cy.TypeId align(8),
-    rc: u32,
-    len: u64,
-    elem_head: Value,
-
-    pub const BufOffset = @offsetOf(Array, "bufStart");
-
-    pub inline fn getElemsPtr(self: *Array) [*]Value {
-        return @ptrCast(&self.elem_head);
     }
 };
 
@@ -1115,17 +1099,32 @@ pub fn allocTuple(vm: *cy.VM, elems: []const Value) !Value {
     return Value.initCycPtr(obj);
 }
 
+/// Reuse `Object` so that address_of refers to the first element for both structs and arrays.
 pub fn allocArray(vm: *cy.VM, type_id: cy.TypeId, elems: []const Value) !Value {
-    const arr: *Array = @ptrCast(try allocExternalObject(vm, (2 + elems.len) * @sizeOf(Value), true));
+    const child_t = vm.c.types[elems[0].getTypeId()];
+    var size = elems.len;
+    if (child_t.kind == .struct_t) {
+        size = child_t.data.struct_t.nfields * elems.len;
+    }
+    const arr: *Object = @ptrCast(try allocExternalObject(vm, (1 + size) * @sizeOf(Value), true));
     arr.* = .{
-        .typeId = type_id | vmc.CYC_TYPE_MASK,
+        .typeId = type_id,
         .rc = 1,
-        .len = elems.len,
-        .elem_head = undefined,
+        .firstValue = undefined,
     };
-    const dst = arr.getElemsPtr();
-    @memcpy(dst[0..elems.len], elems);
-    return Value.initCycPtr(arr);
+
+    const dst = arr.getValuesPtr();
+    if (child_t.kind == .struct_t) {
+        const elem_size = child_t.data.struct_t.nfields;
+        for (elems, 0..) |elem, i| {
+            const fields = elem.castHeapObject(*cy.heap.Object).getValuesPtr()[0..elem_size];
+            @memcpy(dst[i*elem_size..i*elem_size + elem_size], fields);
+            vm.release(elem);
+        }
+    } else {
+        @memcpy(dst[0..elems.len], elems);
+    }
+    return Value.initNoCycPtr(arr);
 }
 
 pub fn allocList(self: *cy.VM, type_id: cy.TypeId, elems: []const Value) !Value {
@@ -2264,13 +2263,18 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                     freePoolObject(vm, obj);
                 },
                 .array => {
-                    for (obj.array.getElemsPtr()[0..@intCast(obj.array.len)]) |it| {
+                    var size = entry.data.array.n;
+                    const child_te = vm.c.types[entry.data.array.elem_t];
+                    if (child_te.kind == .struct_t) {
+                        size *= child_te.data.struct_t.nfields;
+                    }
+                    for (obj.object.getValuesPtr()[0..size]) |it| {
                         if (skip_cyc_children and it.isCycPointer()) {
                             continue;
                         }
                         cy.arc.release(vm, it);
                     }
-                    freeExternalObject(vm, obj, @intCast((2 + obj.array.len) * @sizeOf(Value)), true);
+                    freeExternalObject(vm, obj, @intCast((1 + size) * @sizeOf(Value)), true);
                 },
                 .trait => {
                     const impl = obj.trait.impl;
@@ -2448,7 +2452,6 @@ test "heap internals." {
             try t.eq(@sizeOf(AstringSlice), 32);
             try t.eq(@sizeOf(UstringSlice), 32);
         }
-        try t.eq(@sizeOf(Array), 24);
         try t.eq(@sizeOf(Object), 16);
         try t.eq(@sizeOf(UpValue), 16);
         try t.eq(@sizeOf(MetaType), 16);

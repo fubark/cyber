@@ -665,7 +665,9 @@ pub const Variant = struct {
 };
 
 const VariantKeyContext = struct {
-    pub fn hash(_: VariantKeyContext, key: []const cy.Value) u64 {
+    sema: *cy.sema.Sema,
+
+    pub fn hash(self: VariantKeyContext, key: []const cy.Value) u64 {
         var c = std.hash.Wyhash.init(0);
         for (key) |val| {
             switch (val.getTypeId()) {
@@ -678,6 +680,12 @@ const VariantKeyContext = struct {
                     c.update(std.mem.asBytes(&i));
                 },
                 else => {
+                    const type_e = self.sema.getType(val.getTypeId());
+                    if (type_e.kind == .ct_func) {
+                        c.update(std.mem.asBytes(&val.getTypeId()));
+                        c.update(std.mem.asBytes(&val.asHeapObject().ct_func.func));
+                        continue;
+                    }
                     cy.rt.logZFmt("Unsupported value hash: {}", .{val.getTypeId()});
                     @panic("");
                 }
@@ -686,7 +694,7 @@ const VariantKeyContext = struct {
         return c.final();
     }
 
-    pub fn eql(_: VariantKeyContext, a: []const cy.Value, b: []const cy.Value) bool {
+    pub fn eql(self: VariantKeyContext, a: []const cy.Value, b: []const cy.Value) bool {
         if (a.len != b.len) {
             return false;
         }
@@ -706,6 +714,10 @@ const VariantKeyContext = struct {
                     return av.asBoxInt() == b[i].asBoxInt();
                 },
                 else => {
+                    const type_e = self.sema.getType(atype);
+                    if (type_e.kind == .ct_func) {
+                        return av.asHeapObject().ct_func.func == b[i].asHeapObject().ct_func.func;
+                    }
                     cy.rt.logZFmt("Unsupported value comparison: {}", .{atype});
                     @panic("");
                 },
@@ -1224,6 +1236,29 @@ pub const ChunkExt = struct {
         return sym;
     }
 
+    pub fn createCtFuncType(c: *cy.Chunk, parent: *Sym, name: []const u8, opt_type_id: ?cy.TypeId, sig: cy.sema.FuncSigId, decl: *ast.Node) !*HostObjectType {
+        const type_id = opt_type_id orelse try c.sema.pushType();
+        const sym = try createSym(c.alloc, .hostobj_t, .{
+            .head = Sym.init(.hostobj_t, parent, name),
+            .decl = decl.cast(.custom_decl),
+            .type = type_id,
+            .getChildrenFn = null,
+            .finalizerFn = null,
+            .variant = null,
+            .mod = undefined,
+        });
+        c.compiler.sema.types.items[type_id] = .{
+            .sym = @ptrCast(sym),
+            .kind = .ct_func,
+            .data = .{ .ct_func = .{
+                .sig = sig,
+            }},
+            .info = .{},
+        };
+        try c.syms.append(c.alloc, @ptrCast(sym));
+        return sym;
+    }
+
     pub fn createFuncUnionType(c: *cy.Chunk, parent: *Sym, name: []const u8, opt_type_id: ?cy.TypeId, sig: cy.sema.FuncSigId, decl: *ast.Node) !*HostObjectType {
         const type_id = opt_type_id orelse try c.sema.pushType();
         const sym = try createSym(c.alloc, .hostobj_t, .{
@@ -1706,7 +1741,14 @@ fn writeTemplateArg(s: *cy.Sema, w: anytype, arg: cy.Value, config: SymFormatCon
             try w.print("{}", .{arg.asBoxInt()});
         },
         else => {
-            return error.Unsupported;
+            const type_e = s.getType(arg.getTypeId());
+            if (type_e.kind == .ct_func) {
+                try w.writeAll("func");
+                const func = arg.asHeapObject().ct_func.func;
+                try s.writeFuncSigStr(w, func.funcSigId, config.from);
+            } else {
+                return error.Unsupported;
+            }
         }
     }
 }

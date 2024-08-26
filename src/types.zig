@@ -33,6 +33,7 @@ pub const TypeKind = enum(u8) {
     array,
     func_ptr,
     func_union,
+    ct_func,
 };
 
 pub const TypeInfo = packed struct {
@@ -112,6 +113,9 @@ pub const Type = extern struct {
             sig: cy.sema.FuncSigId,
         },
         func_union: extern struct {
+            sig: cy.sema.FuncSigId,
+        },
+        ct_func: extern struct {
             sig: cy.sema.FuncSigId,
         },
     },

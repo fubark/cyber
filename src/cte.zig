@@ -120,7 +120,7 @@ pub fn expandFuncTemplate(c: *cy.Chunk, tfunc: *cy.sym.Func, args: []const cy.Va
     const template = tfunc.data.template;
 
     // Ensure variant func.
-    const res = try template.variant_cache.getOrPut(c.alloc, args);
+    const res = try template.variant_cache.getOrPutContext(c.alloc, args, .{ .sema = c.sema });
     if (!res.found_existing) {
         // Dupe args and retain
         const args_dupe = try c.alloc.dupe(cy.Value, args);
@@ -156,7 +156,7 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
     const root_template = template.root();
 
     // Ensure variant type.
-    const res = try root_template.variant_cache.getOrPut(c.alloc, args);
+    const res = try root_template.variant_cache.getOrPutContext(c.alloc, args, .{ .sema = c.sema });
     if (!res.found_existing) {
         // Dupe args and retain
         const args_dupe = try c.alloc.dupe(cy.Value, args);
@@ -332,6 +332,17 @@ pub fn resolveCtValue(c: *cy.Chunk, expr: *ast.Node) !CtValue {
                     .type = bt.Type,
                     .value = try c.vm.allocType(type_id),
                 };
+            }
+
+            if (sym.type == .func) {
+                const func_sym = sym.cast(.func);
+                if (func_sym.numFuncs == 1) {
+                    const func_t = try cy.sema.getCtFuncType(c, func_sym.first.funcSigId);
+                    return CtValue{
+                        .type = func_t,
+                        .value = try c.vm.allocCtFunc(func_t, func_sym.first),
+                    };
+                }
             }
             return c.reportErrorFmt("Unsupported conversion to compile-time value: {}", &.{v(sym.type)}, expr);
         },

@@ -128,6 +128,7 @@ if (!aot) {
     run.case("functions/call_typed_param.cy");
     run.case("functions/call_undeclared_error.cy");   
     run.case("functions/call_void_return_error.cy");
+    run.case("functions/ct_func_type.cy");
     run.case("functions/decl_over_builtin.cy");
     run.case("functions/func_type.cy");
     run.case("functions/func_type_closure_error.cy");

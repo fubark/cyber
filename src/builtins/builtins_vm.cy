@@ -292,6 +292,9 @@ type Tuple _:
 -- Any function.
 @host type Func _
 
+-- Compile-time function.
+@host type func_ct[SIG int] _
+
 @host
 type Table:
     table_data Map

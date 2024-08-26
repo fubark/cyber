@@ -1255,6 +1255,7 @@ const InitFieldResult = struct {
 
 pub fn declareTemplate(c: *cy.Chunk, node: *ast.TemplateDecl) !*cy.sym.Template {
     try pushResolveContext(c);
+    getResolveContext(c).prefer_ct_type = true;
     defer popResolveContext(c);
 
     var name_n: *ast.Node = undefined;
@@ -1650,6 +1651,9 @@ pub const ResolveContext = struct {
     expand_ct_inferred_params: bool = false,
 
     has_parent_ctx: bool = false,
+
+    /// Prefer the comptime type when encountering a runtime type. (e.g. For template param types)
+    prefer_ct_type: bool = false,
 
     /// Compile-time params in this context.
     /// TODO: Avoid hash map if 2 or fewer ct params.
@@ -3675,10 +3679,15 @@ pub fn resolveSym(c: *cy.Chunk, expr: *ast.Node) anyerror!*cy.Sym {
             const arg = try c.vm.allocInt(sig);
             defer c.vm.release(arg);
             
-            if (func_type.is_union) {
-                return try cte.expandTemplate(c, c.sema.func_union_tmpl, &.{ arg });
+            const resolve_ctx = getResolveContext(c);
+            if (resolve_ctx.prefer_ct_type) {
+                return try cte.expandTemplate(c, c.sema.ct_func_tmpl, &.{ arg });
             } else {
-                return try cte.expandTemplate(c, c.sema.func_ptr_tmpl, &.{ arg });
+                if (func_type.is_union) {
+                    return try cte.expandTemplate(c, c.sema.func_union_tmpl, &.{ arg });
+                } else {
+                    return try cte.expandTemplate(c, c.sema.func_ptr_tmpl, &.{ arg });
+                }
             }
         },
         else => {
@@ -6200,7 +6209,13 @@ pub const ChunkExt = struct {
                         const sym = c.sema.getTypeSym(type_id);
                         return callSym(c, sym, node.callee, node.args, expr.getRetCstr(), expr.node);
                     } else {
-                        return error.TODO;
+                        const type_e = c.sema.getType(ct_value.type);
+                        if (type_e.kind == .ct_func) {
+                            const func = ct_value.value.asHeapObject().ct_func.func;
+                            return c.semaCallFunc(func, node.args, expr.getRetCstr(), expr.node);
+                        } else {
+                            return error.TODO;
+                        }
                     }
                 },
             }
@@ -6985,6 +7000,7 @@ pub const Sema = struct {
     ref_tmpl: *cy.sym.Template,
     list_tmpl: *cy.sym.Template,
     table_type: *cy.sym.ObjectType,
+    ct_func_tmpl: *cy.sym.Template,
     array_tmpl: *cy.sym.Template,
     func_ptr_tmpl: *cy.sym.Template,
     func_union_tmpl: *cy.sym.Template,
@@ -7001,6 +7017,7 @@ pub const Sema = struct {
             .ref_tmpl = undefined,
             .list_tmpl = undefined,
             .table_type = undefined,
+            .ct_func_tmpl = undefined,
             .array_tmpl = undefined,
             .func_ptr_tmpl = undefined,
             .func_union_tmpl = undefined,
@@ -7498,5 +7515,12 @@ pub fn getFuncUnionType(c: *cy.Chunk, sig: FuncSigId) !cy.TypeId {
     const arg = try c.vm.allocInt(sig);
     defer c.vm.release(arg);
     const sym = try cte.expandTemplate(c, c.sema.func_union_tmpl, &.{ arg });
+    return sym.getStaticType().?;
+}
+
+pub fn getCtFuncType(c: *cy.Chunk, sig: FuncSigId) !cy.TypeId {
+    const arg = try c.vm.allocInt(sig);
+    defer c.vm.release(arg);
+    const sym = try cte.expandTemplate(c, c.sema.ct_func_tmpl, &.{ arg });
     return sym.getStaticType().?;
 }

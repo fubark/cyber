@@ -290,7 +290,19 @@ const vm_types = [_]C.HostTypeEntry{
     htype("funcptr_t",      C.CREATE_TYPE(createFuncPtrType)),
     htype("funcunion_t",    C.CREATE_TYPE(createFuncUnionType)),
     htype("Func",           C.CORE_TYPE(bt.Func)),
+    htype("func_ct",        C.CREATE_TYPE(createCtFuncType)),
 };
+
+fn createCtFuncType(vm: ?*C.VM, c_mod: C.Sym, type_id: cy.TypeId, decl: C.Node) callconv(.C) C.Sym {
+    _ = vm;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
+
+    var ctx = cy.sema.getResolveContext(c);
+    const sig: cy.sema.FuncSigId = @intCast(ctx.ct_params.get("SIG").?.asBoxInt());
+    const sym = c.createCtFuncType(@ptrCast(chunk_sym), "func_ct", type_id, sig, C.fromNode(decl)) catch @panic("error");
+    return @as(*cy.Sym, @ptrCast(sym)).toC();
+}
 
 fn createFuncUnionType(vm: ?*C.VM, c_mod: C.Sym, type_id: cy.TypeId, decl: C.Node) callconv(.C) C.Sym {
     _ = vm;

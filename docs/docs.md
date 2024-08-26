@@ -2136,6 +2136,23 @@ fn = addClosure
 fn(10, 20)         --> 35
 ```
 
+Function types declared in template parameters represent compile-time functions.
+A compile-time function is then expanded to the function's runtime symbol:
+```cy
+type IntMap[K type, HASH func(K) int]
+    ints [*]int
+    cap  int
+
+    func get(self, key K) int:
+        var slot = HASH(key) % self.cap
+        return self.ints[slot]
+
+func my_str_hash(s String) int:
+    return s.len()
+
+var m = IntMap[String, my_str_hash]{}
+```
+
 ## Multiple parameters.
 > _Planned Feature_
 

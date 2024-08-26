@@ -118,6 +118,7 @@ pub const HeapObject = extern union {
     range: Range,
 
     // Functions.
+    ct_func: CtFunc,
     func: FuncUnion,
     func_ptr: FuncPtr,
     func_union: FuncUnion,
@@ -691,6 +692,13 @@ pub const FuncUnion = extern struct {
     }
 };
 
+pub const CtFunc = extern struct {
+    typeId: cy.TypeId align (8),
+    rc: u32,
+
+    func: *cy.Func,
+};
+
 const TccState = extern struct {
     typeId: cy.TypeId align(8),
     rc: u32,
@@ -946,6 +954,16 @@ pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) void {
             vm.heapFreeHead = obj;
         }
     }
+}
+
+pub fn allocCtFunc(self: *cy.VM, type_id: cy.TypeId, func: *cy.Func) !Value {
+    const obj = try allocPoolObject(self);
+    obj.ct_func = .{
+        .typeId = type_id,
+        .rc = 1,
+        .func = func,
+    };
+    return Value.initNoCycPtr(obj);
 }
 
 pub fn allocType(self: *cy.VM, typeId: cy.TypeId) !Value {
@@ -1575,6 +1593,7 @@ pub const VmExt = struct {
     pub const allocObject = Root.allocObject;
     pub const allocObject2 = Root.allocObject2;
     pub const allocType = Root.allocType;
+    pub const allocCtFunc = Root.allocCtFunc;
     pub const allocTrait = Root.allocTrait;
     pub const allocFuture = Root.allocFuture;
     pub const allocFutureResolver = Root.allocFutureResolver;
@@ -2226,6 +2245,9 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                             freePoolObject(vm, obj);
                         },
                     }
+                },
+                .ct_func => {
+                    freePoolObject(vm, obj);
                 },
                 .array => {
                     for (obj.array.getElemsPtr()[0..@intCast(obj.array.len)]) |it| {

@@ -51,7 +51,6 @@ const funcs = [_]C.HostFuncEntry{
     func("sizeof_",        sizeof),
 
     // Compile-time funcs.
-    func("typeid_",        typeid),
 
     // bool
     func("bool.$call",     boolCall),
@@ -773,11 +772,6 @@ pub fn sizeof(vm: *cy.VM) Value {
     } else {
         return Value.initInt(8);
     }
-}
-
-pub fn typeid(vm: *cy.VM) Value {
-    const val = vm.getObject(*cy.heap.Type, 0);
-    return cy.Value.initInt(@intCast(val.type));
 }
 
 pub fn type_call(vm: *cy.VM) !Value {

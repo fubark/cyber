@@ -71,12 +71,7 @@ func sizeof(#T type) int:
 
 --| Returns the type ID of a type.
 func typeid[T type] int:
-    return typeid_(T)
-
-@host func typeid_(T type) int
-
---| Returns the type of a value at compile-time.
---@host @comptime func typeof(val Expr) type
+    return (T).id()
 
 --|
 --| Types.

@@ -468,7 +468,8 @@ let macrosRootVisitor(cursor, parent, state):
         var eval = clang.lib.clang_Cursor_Evaluate(cursor)
         var kind = clang.lib.clang_EvalResult_getKind(eval)
 
-        var finalName = getApiName(name[4..].trim(.left, '_'))
+        -- var finalName = getApiName(name[4..].trim(.left, '_'))
+        var finalName = getApiName(name[4..])
         switch kind
         case clang.CXEval_UnExposed:
             -- Can't eval to primitive. Check for struct intializer.
